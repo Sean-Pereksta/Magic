@@ -14558,26 +14558,57 @@ function simpleQualtricsAverage(values){
   values=(values||[]).filter(isFinite);
   return values.length?values.reduce(function(sum,value){ return sum+value; },0)/values.length:NaN;
 }
+function simpleQualtricsRuleConfigsForRecord(record){
+  const rule=state.rules.find(function(item){ return item.id===record?.ruleId; });
+  if(!rule) return [];
+  if(isStatRule(rule)&&rule.statRule) return [rule.statRule];
+  return Array.isArray(rule.stats)?rule.stats:[];
+}
+function simpleQualtricsMetricConfigLabel(config){
+  return String(metricLabel(config?.metric,config?.customHeader)||config?.label||'').trim();
+}
 function simpleQualtricsRecordAssociatedChecks(record){
-  return (Array.isArray(record?.statChecks)?record.statChecks:[]).filter(function(check){ return check&&String(check.label||'').trim(); });
+  const checks=(Array.isArray(record?.statChecks)?record.statChecks:[]).filter(function(check){ return check&&String(check.label||'').trim(); });
+  const configs=simpleQualtricsRuleConfigsForRecord(record), used=new Set();
+  return checks.map(function(check,index){
+    const label=String(check.label||'').trim();
+    let configIndex=configs.findIndex(function(config,configIndex){ return !used.has(configIndex)&&simpleQualtricsMetricConfigLabel(config)===label; });
+    if(configIndex<0&&configs[index]&&!used.has(index)) configIndex=index;
+    if(configIndex<0) configIndex=configs.findIndex(function(config,configIndex){ return !used.has(configIndex); });
+    if(configIndex>=0) used.add(configIndex);
+    const config=configIndex>=0?configs[configIndex]:{metric:check.metric||'custom',customHeader:label};
+    return {check:check,config:config,label:label};
+  });
+}
+function simpleQualtricsSixWeekMetric(record,entry){
+  const unavailable={currentAvailable:false,trendAvailable:false,currentAverage:NaN,priorAverage:NaN,delta:NaN,currentCount:0,priorCount:0};
+  if(!record?.repKey||!entry?.config) return unavailable;
+  const end=parseDate(state.report?.reportDate)||new Date();
+  const earliest=earliestMetricDate(record.repKey,entry.config,end);
+  if(!(earliest instanceof Date)||isNaN(earliest)) return unavailable;
+  const points=weeklyStatValues(record.repKey,entry.config,earliest,end).filter(function(point){ return point&&isFinite(Number(point.value)); }).sort(function(a,b){ return String(a.week||'').localeCompare(String(b.week||'')); }).slice(-6);
+  const current=points.slice(-3), prior=points.slice(-6,-3);
+  const currentAverage=current.length===3?simpleQualtricsAverage(current.map(function(point){ return Number(point.value); })):NaN;
+  const priorAverage=prior.length===3?simpleQualtricsAverage(prior.map(function(point){ return Number(point.value); })):NaN;
+  const trendAvailable=isFinite(currentAverage)&&isFinite(priorAverage);
+  return {currentAvailable:isFinite(currentAverage),trendAvailable:trendAvailable,currentAverage:currentAverage,priorAverage:priorAverage,delta:trendAvailable?currentAverage-priorAverage:NaN,currentCount:current.length,priorCount:prior.length};
 }
 function simpleQualtricsAssociatedGroups(source,predicate){
   const groups=new Map();
   (source.rows||[]).forEach(function(record){
     if(predicate&&!predicate(record)) return;
     const personKey=record.repKey||repKey(record.repName||'');
-    simpleQualtricsRecordAssociatedChecks(record).forEach(function(check){
-      const label=String(check.label||'').trim();
-      if(!label) return;
+    simpleQualtricsRecordAssociatedChecks(record).forEach(function(entry){
+      const label=entry.label;
       if(!groups.has(label)) groups.set(label,new Map());
       const people=groups.get(label);
       if(!people.has(personKey)) people.set(personKey,{averages:[],deltas:[],before:[],after:[]});
-      const person=people.get(personKey), average=Number(check.avg), trend=check.coachingTrend;
-      if(isFinite(average)) person.averages.push(average);
-      if(trend?.available&&isFinite(Number(trend.delta))){
-        person.deltas.push(Number(trend.delta));
-        if(isFinite(Number(trend.beforeAvg))) person.before.push(Number(trend.beforeAvg));
-        if(isFinite(Number(trend.afterAvg))) person.after.push(Number(trend.afterAvg));
+      const person=people.get(personKey), snapshot=simpleQualtricsSixWeekMetric(record,entry);
+      if(snapshot.currentAvailable) person.averages.push(snapshot.currentAverage);
+      if(snapshot.trendAvailable){
+        person.deltas.push(snapshot.delta);
+        person.before.push(snapshot.priorAverage);
+        person.after.push(snapshot.currentAverage);
       }
     });
   });
@@ -14587,65 +14618,90 @@ function simpleQualtricsAssociatedGroups(source,predicate){
     const deltas=personRows.map(function(person){ return simpleQualtricsAverage(person.deltas); }).filter(isFinite);
     const before=personRows.map(function(person){ return simpleQualtricsAverage(person.before); }).filter(isFinite);
     const after=personRows.map(function(person){ return simpleQualtricsAverage(person.after); }).filter(isFinite);
-    return {label:entry[0],average:simpleQualtricsAverage(averages),delta:simpleQualtricsAverage(deltas),before:simpleQualtricsAverage(before),after:simpleQualtricsAverage(after),repCount:personRows.length,trendCount:deltas.length};
+    return {label:entry[0],average:simpleQualtricsAverage(averages),delta:simpleQualtricsAverage(deltas),before:simpleQualtricsAverage(before),after:simpleQualtricsAverage(after),repCount:personRows.length,averageCount:averages.length,trendCount:deltas.length};
   });
 }
+
 function simpleQualtricsCoachedTrendHtml(source){
-  const metrics=simpleQualtricsAssociatedGroups(source,function(record){ return !!record.coached?.isCoached; });
-  const visible=metrics.filter(function(metric){ return isFinite(metric.average)||isFinite(metric.delta); });
-  if(!visible.length) return '<span style="color:#64748b;font-weight:800">N/A</span>';
-  return visible.map(function(metric){
-    let trend='<span style="color:#64748b;font-weight:800">Trend N/A</span>';
-    if(isFinite(metric.delta)){
-      const color=metric.delta>0?'#15803d':metric.delta<0?'#b91c1c':'#92400e';
-      const background=metric.delta>0?'#dcfce7':metric.delta<0?'#fee2e2':'#fef3c7';
-      const arrow=metric.delta>0?'↑':metric.delta<0?'↓':'→';
-      const delta=(metric.delta>0?'+':'')+formatMetricValue(metric.label,metric.delta);
-      trend='<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:'+background+';color:'+color+';font-weight:1000">'+arrow+' '+esc(delta)+'</span>';
-    }
-    const average=isFinite(metric.average)?'<div style="font-size:10px;color:#475569;margin-top:4px"><strong>Average:</strong> '+esc(formatMetricValue(metric.label,metric.average))+' '+esc(metric.label)+'</div>':'<div style="font-size:10px;color:#64748b;margin-top:4px">Average: N/A '+esc(metric.label)+'</div>';
-    return '<div style="margin-bottom:7px">'+trend+average+'</div>';
+  const metrics=simpleQualtricsAssociatedGroups(source,function(record){ return !!record.coached?.isCoached; }).filter(function(metric){ return isFinite(metric.delta); });
+  if(!metrics.length) return '<span style="color:#64748b;font-weight:800">N/A</span>';
+  return metrics.map(function(metric){
+    const color=metric.delta>0?'#15803d':metric.delta<0?'#b91c1c':'#92400e';
+    const background=metric.delta>0?'#dcfce7':metric.delta<0?'#fee2e2':'#fef3c7';
+    const arrow=metric.delta>0?'↑':metric.delta<0?'↓':'→';
+    const delta=(metric.delta>0?'+':'')+formatMetricValue(metric.label,metric.delta);
+    return '<div style="margin-bottom:7px"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:'+background+';color:'+color+';font-weight:1000">'+arrow+' '+esc(delta)+'</span><div style="font-size:10px;color:#475569;margin-top:4px">'+esc(metric.label)+'</div></div>';
   }).join('');
 }
+
+function simpleQualtricsCoachedRepKeys(source){
+  return new Set((source.rows||[]).filter(function(record){ return !!record.coached?.isCoached; }).map(function(record){ return record.repKey||repKey(record.repName||''); }).filter(Boolean));
+}
 function simpleQualtricsUncoachedCell(source){
-  const metrics=simpleQualtricsAssociatedGroups(source,function(record){ return !record.coached?.isCoached; }).filter(function(metric){ return isFinite(metric.average); });
+  const coachedKeys=simpleQualtricsCoachedRepKeys(source);
+  const metrics=simpleQualtricsAssociatedGroups(source,function(record){
+    const key=record.repKey||repKey(record.repName||'');
+    return !coachedKeys.has(key);
+  }).filter(function(metric){ return isFinite(metric.average); });
   if(!metrics.length) return '<span style="color:#64748b;font-weight:800">N/A</span>';
   return metrics.map(function(metric){ return '<div style="font-size:13px;color:#7f1d1d;font-weight:1000;margin-bottom:5px">'+esc(formatMetricValue(metric.label,metric.average))+' '+esc(metric.label)+'</div>'; }).join('');
 }
+
 function simpleQualtricsRuleTableHtml(rows){
   const sources=simpleQualtricsRuleSources(rows), th='border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top;font-size:11px;white-space:normal;overflow-wrap:anywhere', td='border:1px solid #dbe2ea;padding:8px;vertical-align:top;font-size:11px;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.4';
   const body=sources.map(function(source){
-    const needing=simpleQualtricsUniqueNames(source.rows||[]);
-    const coached=simpleQualtricsUniqueNames(source.rows||[],function(row){ return !!row.coached?.isCoached; });
+    const coachedKeys=simpleQualtricsCoachedRepKeys(source);
+    const coached=simpleQualtricsUniqueNames(source.rows||[],function(row){ return coachedKeys.has(row.repKey||repKey(row.repName||'')); });
+    const needing=simpleQualtricsUniqueNames(source.rows||[],function(row){ return !coachedKeys.has(row.repKey||repKey(row.repName||'')); });
     return '<tr style="page-break-inside:avoid;break-inside:avoid"><td style="'+td+';font-weight:1000;color:#0f172a">'+esc(source.dataSource||source.ruleTitle||'Unknown rule')+'</td><td style="'+td+'">'+simpleQualtricsRuleDescription(source)+'</td><td style="'+td+'">'+simpleQualtricsNamesHtml(needing)+'</td><td style="'+td+';background:#f0fdf4">'+simpleQualtricsNamesHtml(coached)+'</td><td style="'+td+'">'+simpleQualtricsCoachedTrendHtml(source)+'</td><td style="'+td+';background:#fef2f2">'+simpleQualtricsUncoachedCell(source)+'</td></tr>';
   }).join('');
-  return '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:980px;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:14%"><col style="width:21%"><col style="width:18%"><col style="width:15%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th style="'+th+';background:#0f172a;color:#fff">Rule</th><th style="'+th+';background:#0f172a;color:#fff">Breakdown</th><th style="'+th+';background:#1e3a8a;color:#fff">Reps Needing Coaching</th><th style="'+th+';background:#166534;color:#fff">Has Been Coached</th><th style="'+th+';background:#0f766e;color:#fff">Coached Trend &amp; Average</th><th style="'+th+';background:#991b1b;color:#fff">Average of Reps Not Coached</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  return '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:980px;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:14%"><col style="width:21%"><col style="width:18%"><col style="width:15%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th style="'+th+';background:#0f172a;color:#fff">Rule</th><th style="'+th+';background:#0f172a;color:#fff">Breakdown</th><th style="'+th+';background:#1e3a8a;color:#fff">Reps Needing Coaching</th><th style="'+th+';background:#166534;color:#fff">Has Been Coached</th><th style="'+th+';background:#0f766e;color:#fff">Coached Trend</th><th style="'+th+';background:#991b1b;color:#fff">Average of Reps Not Coached</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+function simpleQualtricsRecordKpiValues(record){
+  const seen=new Set(), values=[];
+  simpleQualtricsRecordAssociatedChecks(record).forEach(function(entry){
+    if(seen.has(entry.label)) return;
+    const snapshot=simpleQualtricsSixWeekMetric(record,entry);
+    const value=snapshot.currentAvailable?snapshot.currentAverage:Number(entry.check?.avg);
+    if(!isFinite(value)) return;
+    seen.add(entry.label);
+    values.push({label:entry.label,value:value});
+  });
+  return values;
 }
 function simpleQualtricsTopNeeds(rows){
+  const needingRows=(rows||[]).filter(function(record){ return !record.coached?.isCoached; });
   const affected=new Set((rows||[]).map(function(row){ return row.repKey; }).filter(Boolean));
   const assigned=assignedRepSetForRows(rows||[]);
   const eligible=Math.max(affected.size,assigned.size);
-  return urgencyRepresentativeRows(rows||[],eligible).slice(0,3).map(function(rep){
+  return urgencyRepresentativeRows(needingRows,eligible).slice(0,3).map(function(rep){
     const appearance=(rep.appearances||[]).slice().sort(function(a,b){ return b.score.score-a.score.score; })[0];
-    const rule=appearance?.record?.dataSource||appearance?.record?.ruleTitle||'';
-    return {name:rep.repName,score:rep.score,label:rep.label,rule:rule};
+    const record=appearance?.record, rule=record?.dataSource||record?.ruleTitle||'';
+    return {name:rep.repName,rule:rule,kpis:record?simpleQualtricsRecordKpiValues(record):[]};
   });
 }
+
 function simpleQualtricsSuccessStories(rows){
   const best=new Map();
   (rows||[]).filter(function(record){ return !!record.coached?.isCoached; }).forEach(function(record){
-    simpleQualtricsRecordAssociatedChecks(record).forEach(function(check){
-      const trend=check.coachingTrend, change=Number(trend?.delta), label=String(check.label||'').trim();
-      if(!label||!trend?.available||!isFinite(change)||change<=0) return;
+    simpleQualtricsRecordAssociatedChecks(record).forEach(function(entry){
+      const snapshot=simpleQualtricsSixWeekMetric(record,entry), change=Number(snapshot.delta);
+      if(!snapshot.trendAvailable||!isFinite(change)||change<=0) return;
       const key=record.repKey||repKey(record.repName||''), current=best.get(key);
-      if(!current||change>current.change) best.set(key,{name:record.repName||key,rule:record.dataSource||record.ruleTitle||'',label:label,change:change});
+      if(!current||change>current.change) best.set(key,{name:record.repName||key,rule:record.dataSource||record.ruleTitle||'',label:entry.label,change:change});
     });
   });
   return [...best.values()].sort(function(a,b){ return b.change-a.change||String(a.name).localeCompare(String(b.name)); }).slice(0,3);
 }
+
 function simpleQualtricsNeedListHtml(items){
-  return items.length?'<ol style="margin:5px 0 0;padding-left:20px;line-height:1.45">'+items.map(function(item){ return '<li><strong>'+esc(item.name)+'</strong> — '+item.score+' '+esc(item.label)+(item.rule?'<br><span style="font-size:10px;color:#64748b">'+esc(item.rule)+'</span>':'')+'</li>'; }).join('')+'</ol>':'';
+  return items.length?'<ol style="margin:5px 0 0;padding-left:20px;line-height:1.45">'+items.map(function(item){
+    const kpis=(item.kpis||[]).length?(item.kpis||[]).map(function(kpi){ return esc(formatMetricValue(kpi.label,kpi.value))+' '+esc(kpi.label); }).join('<br>'):'KPI N/A';
+    return '<li><strong>'+esc(item.name)+'</strong> — '+kpis+(item.rule?'<br><span style="font-size:10px;color:#64748b">'+esc(item.rule)+'</span>':'')+'</li>';
+  }).join('')+'</ol>':'';
 }
+
 function simpleQualtricsStoryListHtml(items){
   return items.length?'<ol style="margin:5px 0 0;padding-left:20px;line-height:1.45">'+items.map(function(item){ return '<li><strong>'+esc(item.name)+'</strong> <span style="color:#15803d;font-weight:1000">↑ +'+esc(formatMetricValue(item.label,item.change))+'</span><br><span style="font-size:10px;color:#64748b">'+esc(item.rule)+' · '+esc(item.label)+'</span></li>'; }).join('')+'</ol>':'';
 }
@@ -14653,32 +14709,40 @@ function simpleQualtricsCoachOverviewHtml(rows){
   const coverage=urgencyCoachingCoverage(rows||[]), reps=new Set((rows||[]).map(function(row){ return row.repKey; }).filter(Boolean)), needs=simpleQualtricsTopNeeds(rows), stories=simpleQualtricsSuccessStories(rows);
   const meta=simpleQualtricsRateMeta(coverage), cards=[];
   cards.push('<div style="border:1px solid #dbe2ea;border-top:5px solid '+meta.color+';border-radius:10px;padding:10px;background:'+meta.background+'"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Overall Coaching Rate</div><div style="font-size:26px;font-weight:1000;color:'+meta.color+';margin-top:4px">'+meta.text+'</div></div>');
-  cards.push('<div style="border:1px solid #dbe2ea;border-top:5px solid #2563eb;border-radius:10px;padding:10px;background:#eff6ff"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Representatives Pulled</div><div style="font-size:26px;font-weight:1000;color:#1e3a8a;margin-top:4px">'+reps.size+'</div></div>');
+  cards.push('<div style="border:1px solid #dbe2ea;border-top:5px solid #2563eb;border-radius:10px;padding:10px;background:#eff6ff"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Representatives Justified</div><div style="font-size:26px;font-weight:1000;color:#1e3a8a;margin-top:4px">'+reps.size+'</div></div>');
   if(needs.length) cards.push('<div style="border:1px solid #fecaca;border-top:5px solid #dc2626;border-radius:10px;padding:10px;background:#fef2f2"><div style="font-size:10px;color:#991b1b;font-weight:1000;text-transform:uppercase">Top '+needs.length+' Needing Coaching</div>'+simpleQualtricsNeedListHtml(needs)+'</div>');
   if(stories.length) cards.push('<div style="border:1px solid #bbf7d0;border-top:5px solid #16a34a;border-radius:10px;padding:10px;background:#f0fdf4"><div style="font-size:10px;color:#166534;font-weight:1000;text-transform:uppercase">Top '+stories.length+' Success Stories</div>'+simpleQualtricsStoryListHtml(stories)+'</div>');
   return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin:10px 0 12px">'+cards.join('')+'</div>';
 }
 function simpleQualtricsOverallStripHtml(rows){
   const coverage=urgencyCoachingCoverage(rows||[]), reps=new Set((rows||[]).map(function(row){ return row.repKey; }).filter(Boolean)), meta=simpleQualtricsRateMeta(coverage);
-  return '<table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 12px"><tr><td style="width:50%;border:1px solid #dbe2ea;border-left:5px solid '+meta.color+';padding:10px;background:'+meta.background+'"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Overall Coaching Rate</div><div style="font-size:24px;font-weight:1000;color:'+meta.color+'">'+meta.text+'</div></td><td style="width:50%;border:1px solid #dbe2ea;border-left:5px solid #2563eb;padding:10px;background:#eff6ff"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Representatives Pulled</div><div style="font-size:24px;font-weight:1000;color:#1e3a8a">'+reps.size+'</div></td></tr></table>';
+  return '<table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 12px"><tr><td style="width:50%;border:1px solid #dbe2ea;border-left:5px solid '+meta.color+';padding:10px;background:'+meta.background+'"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Overall Coaching Rate</div><div style="font-size:24px;font-weight:1000;color:'+meta.color+'">'+meta.text+'</div></td><td style="width:50%;border:1px solid #dbe2ea;border-left:5px solid #2563eb;padding:10px;background:#eff6ff"><div style="font-size:10px;color:#475569;font-weight:1000;text-transform:uppercase">Representatives Justified</div><div style="font-size:24px;font-weight:1000;color:#1e3a8a">'+reps.size+'</div></td></tr></table>';
+}
+function simpleQualtricsUrgencyBandMeta(urgency,hasSource){
+  if(!hasSource) return {label:'None',color:'#475569',background:'#f1f5f9',border:'#94a3b8'};
+  const score=Number(urgency?.score), raw=String(urgency?.label||'').toLowerCase();
+  if((isFinite(score)&&score>=65)||raw==='critical'||raw==='high') return {label:'High',color:'#991b1b',background:'#fee2e2',border:'#dc2626'};
+  if((isFinite(score)&&score>=40)||raw==='moderate') return {label:'Moderate',color:'#92400e',background:'#fef3c7',border:'#f59e0b'};
+  return {label:'Low',color:'#166534',background:'#dcfce7',border:'#22c55e'};
 }
 function simpleQualtricsExecutiveMatrixHtml(rows){
   const groups=simpleQualtricsCoachGroups(rows), catalog=simpleQualtricsCatalog(), th='border:1px solid #334155;padding:8px;text-align:left;vertical-align:top;font-size:11px;white-space:normal;overflow-wrap:anywhere', td='border:1px solid #dbe2ea;padding:8px;vertical-align:top;font-size:11px;white-space:normal;overflow-wrap:anywhere';
   const body=groups.map(function(group){
     const map=new Map(simpleQualtricsRuleSources(group.rows).map(function(source){ return [urgencyCatalogKey(source),source]; }));
     return '<tr><td style="'+td+';font-weight:1000">'+esc(group.coach)+'</td>'+catalog.map(function(item){
-      const source=map.get(urgencyCatalogKey(item));
-      if(!source) return '<td style="'+td+'"><div style="font-weight:1000;color:#0f172a"># Reps: 0</div><div style="margin-top:4px;color:#64748b">Urgency: N/A</div><div style="margin-top:5px">Coaching rate: '+simpleQualtricsRateBadge(null)+'</div></td>';
-      const urgency=source.urgency||{}, repCount=isFinite(Number(urgency.affected))?Number(urgency.affected):new Set((source.rows||[]).map(function(row){ return row.repKey; }).filter(Boolean)).size;
-      return '<td style="'+td+'"><div style="font-weight:1000;color:#0f172a"># Reps: '+repCount+'</div><div style="margin-top:4px;font-weight:900;color:#0f172a">Urgency: '+esc((urgency.label||'N/A')+(isFinite(urgency.score)?' · '+urgency.score:'') )+'</div><div style="margin-top:5px">Coaching rate: '+simpleQualtricsRateBadge(urgency.coaching)+'</div></td>';
+      const source=map.get(urgencyCatalogKey(item)), urgency=source?.urgency||{}, band=simpleQualtricsUrgencyBandMeta(urgency,!!source);
+      if(!source) return '<td style="'+td+';background:'+band.background+';border-left:5px solid '+band.border+'"><div style="font-weight:1000;color:#0f172a"># Reps: 0</div><div style="margin-top:4px;font-weight:1000;color:'+band.color+'">Urgency: '+band.label+'</div><div style="margin-top:5px">Coaching rate: '+simpleQualtricsRateBadge(null)+'</div></td>';
+      const repCount=isFinite(Number(urgency.affected))?Number(urgency.affected):new Set((source.rows||[]).map(function(row){ return row.repKey; }).filter(Boolean)).size;
+      return '<td style="'+td+';background:'+band.background+';border-left:5px solid '+band.border+'"><div style="font-weight:1000;color:#0f172a"># Reps: '+repCount+'</div><div style="margin-top:4px;font-weight:1000;color:'+band.color+'">Urgency: '+band.label+'</div><div style="margin-top:5px">Coaching rate: '+simpleQualtricsRateBadge(urgency.coaching)+'</div></td>';
     }).join('')+'</tr>';
   }).join('');
   return '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:'+Math.max(760,220+catalog.length*170)+'px;border-collapse:collapse;table-layout:fixed"><thead><tr><th style="'+th+';background:#0f172a;color:#fff;width:180px">Coach</th>'+catalog.map(function(item){ return '<th style="'+th+';background:#0f172a;color:#fff">'+esc(item.dataSource||item.ruleTitle||'Rule')+'</th>'; }).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';
 }
+
 function simpleQualtricsExecutiveCoachTableHtml(rows){
   const groups=simpleQualtricsCoachGroups(rows), summaries=groups.map(function(group){ return {group:group,coverage:urgencyCoachingCoverage(group.rows),reps:new Set(group.rows.map(function(row){ return row.repKey; }).filter(Boolean)).size,needs:simpleQualtricsTopNeeds(group.rows),stories:simpleQualtricsSuccessStories(group.rows)}; }), showStories=summaries.some(function(item){ return item.stories.length; });
   const th='border:1px solid #334155;padding:8px;text-align:left;vertical-align:top;font-size:11px;background:#0f172a;color:#fff', td='border:1px solid #dbe2ea;padding:8px;vertical-align:top;font-size:11px;white-space:normal;overflow-wrap:anywhere';
-  return '<div style="margin-top:14px"><h2 style="font-size:16px;margin:0 0 7px;color:#0f172a">Coach Summary</h2><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr><th style="'+th+'">Coach</th><th style="'+th+'">Coaching Rate</th><th style="'+th+'">Reps Pulled</th><th style="'+th+'">Top 3 Needing Coaching</th>'+(showStories?'<th style="'+th+'">Top 3 Success Stories</th>':'')+'</tr></thead><tbody>'+summaries.map(function(item){ return '<tr><td style="'+td+'"><strong>'+esc(item.group.coach)+'</strong></td><td style="'+td+'">'+simpleQualtricsRateBadge(item.coverage)+'</td><td style="'+td+'">'+item.reps+'</td><td style="'+td+'">'+simpleQualtricsNeedListHtml(item.needs)+'</td>'+(showStories?'<td style="'+td+'">'+simpleQualtricsStoryListHtml(item.stories)+'</td>':'')+'</tr>'; }).join('')+'</tbody></table></div>';
+  return '<div style="margin-top:14px"><h2 style="font-size:16px;margin:0 0 7px;color:#0f172a">Coach Summary</h2><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr><th style="'+th+'">Coach</th><th style="'+th+'">Coaching Rate</th><th style="'+th+'">Reps Justified</th><th style="'+th+'">Top 3 Needing Coaching</th>'+(showStories?'<th style="'+th+'">Top 3 Success Stories</th>':'')+'</tr></thead><tbody>'+summaries.map(function(item){ return '<tr><td style="'+td+'"><strong>'+esc(item.group.coach)+'</strong></td><td style="'+td+'">'+simpleQualtricsRateBadge(item.coverage)+'</td><td style="'+td+'">'+item.reps+'</td><td style="'+td+'">'+simpleQualtricsNeedListHtml(item.needs)+'</td>'+(showStories?'<td style="'+td+'">'+simpleQualtricsStoryListHtml(item.stories)+'</td>':'')+'</tr>'; }).join('')+'</tbody></table></div>';
 }
 renderReport=function(){
   const report=state.report, root=els.reportBody;
