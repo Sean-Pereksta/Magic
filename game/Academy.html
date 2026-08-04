@@ -429,7 +429,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
 .listTesterCellTable th,.listTesterCellTable td{position:static!important;white-space:normal;word-break:break-word;vertical-align:top}
 .listTesterCellTable th{width:230px;background:#f1f5f9;color:#111827}
 .listTesterCellValue{white-space:pre-wrap;max-height:9em;overflow:auto;line-height:1.35}
-.listTesterPdfRoot{width:1056px;background:#fff;color:#111827;padding:18px;font-family:Arial,Helvetica,sans-serif}
+.listTesterPdfRoot{width:1056px;background:#fff;color:#111827;padding:18px;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .listTesterPdfHeader{border-bottom:4px solid #991b1b;padding-bottom:10px;margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .listTesterPdfHeader h1{font-size:24px;margin:0}.listTesterPdfHeader p{margin:4px 0 0;color:#4b5563;font-weight:700}
 .listTesterPdfSection{margin:0 0 14px;break-inside:auto;page-break-inside:auto}
@@ -437,6 +437,10 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
 .listTesterPdfRoot table{width:100%;min-width:0!important;border-collapse:collapse;table-layout:auto}
 .listTesterPdfRoot th,.listTesterPdfRoot td{position:static!important;white-space:normal!important;word-break:break-word;border:1px solid #cbd5e1;padding:5px 6px;font-size:10px;vertical-align:top}
 .listTesterPdfRoot th{background:#e5e7eb;color:#111827}
+.listTesterPdfRoot tr.listTesterPdfCoachingGood td{background:#dcfce7!important;color:#14532d;border-color:#86efac}
+.listTesterPdfRoot tr.listTesterPdfCoachingGood td:first-child{background:#bbf7d0!important;border-left:5px solid #15803d}
+.listTesterPdfRoot tr.listTesterPdfCoachingBad td{background:#fee2e2!important;color:#7f1d1d;border-color:#fca5a5}
+.listTesterPdfRoot tr.listTesterPdfCoachingBad td:first-child{background:#fecaca!important;border-left:5px solid #b91c1c}
 .listTesterPdfPerson{break-before:auto;page-break-before:auto;margin-top:12px}
 .listTesterPdfPersonTitle{font-size:18px;font-weight:950;border-bottom:2px solid #991b1b;padding-bottom:5px;margin-bottom:7px}
 .listTesterPdfMatch{border:1px solid #cbd5e1;border-left:5px solid #991b1b;border-radius:8px;padding:8px;margin:0 0 9px;break-inside:auto;page-break-inside:auto}
@@ -10663,8 +10667,16 @@ function matchListTesterName(input,index){
 }
 function listTesterCoachCounts(results){
   const counts=new Map();
-  (results||[]).filter(r=>r.accepted).forEach(r=>(r.entry?.coaches||[]).forEach(coach=>{ if(!coach||coachNameKey(coach)===coachNameKey(NA_TEAM)) return; const key=coachNameKey(coach), rec=counts.get(key)||{coach,count:0}; rec.count++; counts.set(key,rec); }));
-  return [...counts.values()].sort((a,b)=>a.coach.localeCompare(b.coach));
+  (results||[]).filter(r=>r.accepted).forEach(r=>(r.entry?.coaches||[]).forEach(coach=>{
+    if(!coach||coachNameKey(coach)===coachNameKey(NA_TEAM)) return;
+    const key=coachNameKey(coach), rec=counts.get(key)||{coach,count:0,coachingCount:0,withCoachings:0,withoutCoachings:0};
+    const coachingCount=Math.max(0,Number(r.itemCount)||0);
+    rec.count++;
+    rec.coachingCount+=coachingCount;
+    if(coachingCount>0) rec.withCoachings++; else rec.withoutCoachings++;
+    counts.set(key,rec);
+  }));
+  return [...counts.values()].map(rec=>({...rec,averageCoachings:rec.count?rec.coachingCount/rec.count:0})).sort((a,b)=>a.coach.localeCompare(b.coach));
 }
 function listTesterCheckEnabled(){ return !!els.listTesterCheckEnabled?.checked; }
 function listTesterCheckSourceChoices(){
@@ -10864,10 +10876,11 @@ function openListTesterDetail(index){
 }
 function listTesterPdfHtml(){
   const results=state.listTesterResults||[], config=state.listTesterCheckConfig||{}, coaches=listTesterCoachCounts(results), checkActive=!!config.enabled||results.some(r=>r.itemCount!==null&&r.itemCount!==undefined);
-  const matched=results.filter(r=>r.accepted).length, withItems=results.filter(r=>r.accepted&&Number(r.itemCount)>0).length;
-  const summaryRows=results.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.input)}</td><td>${esc(r.entry?.name||'—')}</td><td>${esc((r.entry?.coaches||[]).join(' / ')||'—')}</td>${checkActive?`<td>${Number(r.itemCount||0).toLocaleString()}</td>`:''}<td>${esc(r.status||'')}</td><td>${r.score?Math.round(r.score*100)+'%':'—'}</td></tr>`).join('');
-  const people=results.filter(r=>r.accepted).map(r=>{ const matches=sortListTesterMatches(r.itemMatches||[]); return `<section class="listTesterPdfSection listTesterPdfPerson"><div class="listTesterPdfPersonTitle">${esc(r.entry?.name||r.input)} · ${esc((r.entry?.coaches||[]).join(' / ')||'No coach')}</div>${matches.length?matches.map((match,i)=>listTesterDetailRecordHtml(match,i,{pdf:true})).join(''):'<p>No stored Check Item records were pulled for this representative.</p>'}</section>`; }).join('');
-  return `<div class="listTesterPdfRoot"><header class="listTesterPdfHeader"><div><h1>Representative List Checker</h1><p>Generated ${esc(new Date().toLocaleString())}</p></div><div><strong>${results.length.toLocaleString()}</strong> pasted<br><strong>${matched.toLocaleString()}</strong> matched${checkActive?`<br><strong>${withItems.toLocaleString()}</strong> with items`:''}</div></header><section class="listTesterPdfSection"><h2>Check Settings</h2><table><tbody><tr><th>Source</th><td>${esc(labelSource(config.source)||config.source||'Name matching only')}</td><th>Search Header</th><td>${esc(config.header||'—')}</td></tr><tr><th>Contains</th><td>${esc((config.phrases||[]).join(' | ')||'—')}</td><th>Date Range</th><td>${esc([config.startDate,config.endDate].filter(Boolean).join(' through ')||'All dates')}</td></tr></tbody></table></section><section class="listTesterPdfSection"><h2>Unique Coaches</h2><table><thead><tr><th>Coach</th><th>Representatives</th></tr></thead><tbody>${coaches.map(x=>`<tr><td>${esc(x.coach)}</td><td>${x.count.toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="2">No confirmed coaches.</td></tr>'}</tbody></table></section><section class="listTesterPdfSection"><h2>Representative Results</h2><table><thead><tr><th>#</th><th>Pasted Name</th><th>Matched Associate</th><th>Team / Coach</th>${checkActive?'<th>Items</th>':''}<th>Status</th><th>Confidence</th></tr></thead><tbody>${summaryRows}</tbody></table></section>${people}</div>`;
+  const matched=results.filter(r=>r.accepted).length, withCoachings=results.filter(r=>r.accepted&&Number(r.itemCount)>0).length, totalCoachings=results.filter(r=>r.accepted).reduce((sum,r)=>sum+Math.max(0,Number(r.itemCount)||0),0), averageCoachings=matched?totalCoachings/matched:0;
+  const summaryRows=results.map((r,i)=>{ const coachingCount=Math.max(0,Number(r.itemCount)||0), rowClass=checkActive&&r.accepted?(coachingCount>0?'listTesterPdfCoachingGood':'listTesterPdfCoachingBad'):''; return `<tr class="${rowClass}"><td>${i+1}</td><td>${esc(r.input)}</td><td>${esc(r.entry?.name||'—')}</td><td>${esc((r.entry?.coaches||[]).join(' / ')||'—')}</td>${checkActive?`<td>${coachingCount.toLocaleString()}</td>`:''}<td>${esc(r.status||'')}</td><td>${r.score?Math.round(r.score*100)+'%':'—'}</td></tr>`; }).join('');
+  const coachRows=coaches.map(x=>{ const rowClass=checkActive?(x.coachingCount>0?'listTesterPdfCoachingGood':'listTesterPdfCoachingBad'):''; return `<tr class="${rowClass}"><td>${esc(x.coach)}</td><td>${x.count.toLocaleString()}</td>${checkActive?`<td>${x.coachingCount.toLocaleString()}</td><td>${x.averageCoachings.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>`:''}</tr>`; }).join('');
+  const people=results.filter(r=>r.accepted).map(r=>{ const matches=sortListTesterMatches(r.itemMatches||[]); return `<section class="listTesterPdfSection listTesterPdfPerson"><div class="listTesterPdfPersonTitle">${esc(r.entry?.name||r.input)} · ${esc((r.entry?.coaches||[]).join(' / ')||'No coach')}</div>${matches.length?matches.map((match,i)=>listTesterDetailRecordHtml(match,i,{pdf:true})).join(''):'<p>No stored coaching records were pulled for this representative.</p>'}</section>`; }).join('');
+  return `<div class="listTesterPdfRoot"><header class="listTesterPdfHeader"><div><h1>Representative List Checker</h1><p>Generated ${esc(new Date().toLocaleString())}</p></div><div><strong>${results.length.toLocaleString()}</strong> pasted<br><strong>${matched.toLocaleString()}</strong> matched${checkActive?`<br><strong>${withCoachings.toLocaleString()}</strong> with coachings<br><strong>${averageCoachings.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong> average coachings per matched representative`:''}</div></header><section class="listTesterPdfSection"><h2>Check Settings</h2><table><tbody><tr><th>Source</th><td>${esc(labelSource(config.source)||config.source||'Name matching only')}</td><th>Search Header</th><td>${esc(config.header||'—')}</td></tr><tr><th>Contains</th><td>${esc((config.phrases||[]).join(' | ')||'—')}</td><th>Date Range</th><td>${esc([config.startDate,config.endDate].filter(Boolean).join(' through ')||'All dates')}</td></tr></tbody></table></section><section class="listTesterPdfSection"><h2>Unique Coaches</h2><table><thead><tr><th>Coach</th><th>Representatives</th>${checkActive?'<th>Total Coachings</th><th>Average Coachings</th>':''}</tr></thead><tbody>${coachRows||`<tr><td colspan="${checkActive?4:2}">No confirmed coaches.</td></tr>`}</tbody></table></section><section class="listTesterPdfSection"><h2>Representative Results</h2><table><thead><tr><th>#</th><th>Pasted Name</th><th>Matched Associate</th><th>Team / Coach</th>${checkActive?'<th>Coachings</th>':''}<th>Status</th><th>Confidence</th></tr></thead><tbody>${summaryRows}</tbody></table></section>${people}</div>`;
 }
 async function exportListTesterPdf(){
   const results=state.listTesterResults||[]; if(!results.length) return alert('Test a list before exporting a PDF.');
