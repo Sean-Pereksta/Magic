@@ -274,6 +274,1063 @@ export const CARDS = Object.freeze([
     allyText: "The next enemy draws 1 fewer card.",
     flavor: "It does not destroy the fortress. It removes the reason it was built."
   },
+   {
+    id: "brood_path_forerunner",
+    name: "Brood-Path Forerunner",
+    image: "brood_path_forerunner.png",
+    faction: "green",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "spawn",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "spawn",
+        count: 1,
+        look: 4
+      }
+    },
+    ally: {
+      combat: 2
+    },
+    text:
+      "Gain 2 Combat, create a Spawn in your discard pile, then draw a Spawn from the top 4 cards of your draw pile if one is there.",
+    allyText: "Gain 2 Combat.",
+    flavor:
+      "It does not track the brood. It opens the road the brood was already coming through."
+  },
+
+  {
+    id: "gorge_nest_matriarch",
+    name: "Gorge-Nest Matriarch",
+    image: "gorge_nest_matriarch.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "⬢",
+    effect: {},
+    recurring: {
+      everyTurns: 3,
+      effect: {
+        createToken: {
+          id: "spawn",
+          count: 2,
+          zone: "discard"
+        }
+      }
+    },
+    charge: {
+      trigger: "cardSacrificed",
+      sacrificedId: "spawn",
+      gain: 1,
+      max: 5,
+      actions: [
+        {
+          label: "Feed the Gorge",
+          cost: 2,
+          effect: {
+            trade: 2
+          }
+        },
+        {
+          label: "Open the Nest",
+          cost: 5,
+          effect: {
+            createToken: {
+              id: "spawn",
+              count: 2,
+              zone: "hand"
+            }
+          }
+        }
+      ]
+    },
+    text:
+      "Every third turn, create two Spawn in your discard pile. Whenever you sacrifice a Spawn, gain 1 Charge, up to 5.",
+    chargeText:
+      "Spend 2: gain 2 Trade. Spend 5: create two Spawn in hand.",
+    flavor:
+      "The gorge echoes because every empty chamber is learning how to hatch."
+  },
+
+  {
+    id: "spawnlash_alpha",
+    name: "Spawnlash Alpha",
+    image: "spawnlash_alpha.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 3
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 1,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 2,
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text:
+      "Gain 3 Combat. If 1 Spawn was played before this, gain 2 Combat; at 2 Spawn, gain 2 Trade; at 3 Spawn, draw 1 card.",
+    flavor:
+      "Each smaller mouth announces the arrival of the one that taught them hunger."
+  },
+
+  {
+    id: "carrion_nursery_raider",
+    name: "Carrion Nursery Raider",
+    image: "carrion_nursery_raider.png",
+    faction: "green",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      trade: 2,
+      createToken: {
+        id: "spawn",
+        count: 2,
+        zone: "discard"
+      }
+    },
+    ally: {
+      combat: 2
+    },
+    sacrifice: {
+      createToken: {
+        id: "spawn",
+        count: 2,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 2 Trade and create two Spawn in your discard pile.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText: "Sacrifice: Create two Spawn in hand.",
+    flavor:
+      "It raids for meat, metal, and anything warm enough to become a nest."
+  },
+
+  {
+    id: "maw_of_the_third_brood",
+    name: "Maw of the Third Brood",
+    image: "maw_of_the_third_brood.png",
+    faction: "green",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 5
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 2,
+        effect: {
+          createToken: {
+            id: "spawn",
+            count: 1,
+            zone: "hand"
+          }
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    doubleAlly: {
+      combat: 3
+    },
+    text:
+      "Gain 5 Combat. If two Spawn were played before this, create a Spawn in hand. If three were played, also draw 1 card.",
+    doubleAllyText: "Gain 3 Combat.",
+    flavor:
+      "The third brood is never counted by bodies. It is counted by vanished cities."
+  },
+
+  // ==========================================================
+  // GREEN — WORKER PACKAGE
+  // ==========================================================
+  {
+    id: "ironroot_foreman",
+    name: "Ironroot Foreman",
+    image: "ironroot_foreman.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      trade: 2,
+      createToken: {
+        id: "worker",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "worker",
+        count: 1,
+        look: 5
+      }
+    },
+    ally: {
+      trade: 1
+    },
+    text:
+      "Gain 2 Trade, create a Worker in your discard pile, then draw a Worker from the top 5 cards of your draw pile if one is there.",
+    allyText: "Gain 1 Trade.",
+    flavor:
+      "He measures progress in walls raised before the enemy notices the quarry is empty."
+  },
+
+  {
+    id: "mobile_foundry_crew",
+    name: "Mobile Foundry Crew",
+    image: "mobile_foundry_crew.png",
+    faction: "green",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      or: [
+        {
+          label: "Collect Wages",
+          effect: {
+            trade: 3
+          }
+        },
+        {
+          label: "Call the Crew",
+          effect: {
+            createToken: {
+              id: "worker",
+              count: 1,
+              zone: "hand"
+            }
+          }
+        },
+        {
+          label: "Search the Line",
+          effect: {
+            drawFromDrawPile: {
+              id: "worker",
+              count: 1,
+              look: 6
+            }
+          }
+        }
+      ]
+    },
+    ally: {
+      combat: 2
+    },
+    text:
+      "Choose one: gain 3 Trade; create a Worker in hand; or draw a Worker from the top 6 cards of your draw pile if one is there.",
+    allyText: "Gain 2 Combat.",
+    flavor:
+      "Wherever the wheels stop, a factory begins arguing with the horizon."
+  },
+
+  {
+    id: "labor_tithe_overseer",
+    name: "Labor-Tithe Overseer",
+    image: "labor_tithe_overseer.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "⬢",
+    effect: {
+      trade: 1
+    },
+    sacrificeThresholds: [
+      {
+        at: 1,
+        requiresSacrificedId: "worker",
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        at: 2,
+        requiresSacrificedId: "worker",
+        effect: {
+          draw: 1
+        }
+      },
+      {
+        at: 3,
+        requiresSacrificedId: "worker",
+        effect: {
+          createToken: {
+            id: "worker",
+            count: 1,
+            zone: "hand"
+          }
+        }
+      }
+    ],
+    text:
+      "Gain 1 Trade. Each turn, your first sacrificed Worker gives 2 Trade; your second draws 1 card; your third creates a Worker in hand.",
+    flavor:
+      "The books balance because every missing laborer is entered as future productivity."
+  },
+
+  {
+    id: "siegeworks_coordinator",
+    name: "Siegeworks Coordinator",
+    image: "siegeworks_coordinator.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "worker",
+        count: 1,
+        zone: "discard"
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "worker",
+        at: 1,
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "worker",
+        at: 2,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "worker",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text:
+      "Gain 2 Combat and create a Worker in discard. If 1 Worker was played before this, gain 2 Trade; at 2 Workers, gain 3 Combat; at 3, draw 1 card.",
+    flavor:
+      "The ram, the road, and the replacement wall are all on the same schedule."
+  },
+
+  {
+    id: "worldroot_mobilizer",
+    name: "Worldroot Mobilizer",
+    image: "worldroot_mobilizer.png",
+    faction: "green",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      trade: 3,
+      createToken: {
+        id: "worker",
+        count: 2,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "worker",
+        count: 2,
+        look: 7
+      }
+    },
+    doubleAlly: {
+      createToken: {
+        id: "worker",
+        count: 1,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 3 Trade, create two Workers in your discard pile, then draw up to two Workers from the top 7 cards of your draw pile.",
+    doubleAllyText: "Create a Worker in hand.",
+    flavor:
+      "When the worldroot moves, every camp becomes a city before nightfall."
+  },
+
+  // ==========================================================
+  // YELLOW — DRONE PACKAGE
+  // ==========================================================
+  {
+    id: "sparkline_dispatcher",
+    name: "Sparkline Dispatcher",
+    image: "sparkline_dispatcher.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      trade: 1,
+      createToken: {
+        id: "drone",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "drone",
+        count: 1,
+        look: 5
+      }
+    },
+    ally: {
+      createToken: {
+        id: "drone",
+        count: 1,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 1 Trade, create a Drone in your discard pile, then draw a Drone from the top 5 cards of your draw pile if one is there.",
+    allyText: "Create a Drone in hand.",
+    flavor:
+      "Its orders arrive one heartbeat before the machines realize they have been built."
+  },
+
+  {
+    id: "recursive_swarm_array",
+    name: "Recursive Swarm Array",
+    image: "recursive_swarm_array.png",
+    faction: "yellow",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◈",
+    effect: {
+      trade: 1
+    },
+    charge: {
+      trigger: "tokenPlayed",
+      tokenId: "drone",
+      gain: 1,
+      max: 6,
+      actions: [
+        {
+          label: "Convert Signal",
+          cost: 2,
+          effect: {
+            trade: 2
+          }
+        },
+        {
+          label: "Print Reinforcement",
+          cost: 4,
+          effect: {
+            createToken: {
+              id: "drone",
+              count: 1,
+              zone: "hand"
+            }
+          }
+        },
+        {
+          label: "Recursive Launch",
+          cost: 6,
+          effect: {
+            draw: 1,
+            createToken: {
+              id: "drone",
+              count: 1,
+              zone: "hand"
+            }
+          }
+        }
+      ]
+    },
+    text:
+      "Gain 1 Trade. Whenever you play a Drone, gain 1 Charge, up to 6.",
+    chargeText:
+      "Spend 2: gain 2 Trade. Spend 4: create a Drone in hand. Spend 6: draw 1 card and create a Drone in hand.",
+    flavor:
+      "Each signal contains the blueprint for the machine that will repeat it."
+  },
+
+  {
+    id: "swarm_arithmetic_savant",
+    name: "Swarm-Arithmetic Savant",
+    image: "swarm_arithmetic_savant.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      trade: 2
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "drone",
+        at: 1,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "drone",
+        at: 2,
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "drone",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text:
+      "Gain 2 Trade. If 1 Drone was played before this, gain 2 Combat; at 2 Drones, gain 2 Trade; at 3, draw 1 card.",
+    flavor:
+      "To the Savant, a swarm is only an equation that has learned to fly."
+  },
+
+  {
+    id: "scrap_spark_replicator",
+    name: "Scrap-Spark Replicator",
+    image: "scrap_spark_replicator.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      combat: 2,
+      drawFromDrawPile: {
+        id: "drone",
+        count: 1,
+        look: 6
+      }
+    },
+    ally: {
+      trade: 2
+    },
+    sacrifice: {
+      createToken: {
+        id: "drone",
+        count: 2,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 2 Combat, then draw a Drone from the top 6 cards of your draw pile if one is there.",
+    allyText: "Gain 2 Trade.",
+    sacrificeText: "Sacrifice: Create two Drones in hand.",
+    flavor:
+      "Breaking the original only proves the copies were always more important."
+  },
+
+  {
+    id: "thousand_eye_carrier",
+    name: "Thousand-Eye Carrier",
+    image: "thousand_eye_carrier.png",
+    faction: "yellow",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      combat: 4,
+      createToken: {
+        id: "drone",
+        count: 2,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "drone",
+        count: 2,
+        look: 8
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "drone",
+        at: 3,
+        effect: {
+          combat: 4
+        }
+      }
+    ],
+    doubleAlly: {
+      trade: 3
+    },
+    text:
+      "Gain 4 Combat, create two Drones in discard, then draw up to two Drones from the top 8 cards of your draw pile. If three Drones were played before this, gain 4 Combat.",
+    doubleAllyText: "Gain 3 Trade.",
+    flavor:
+      "Every eye watches a different future. Every future contains the same swarm."
+  },
+
+  // ==========================================================
+  // BLUE — INTERCEPTOR PACKAGE
+  // ==========================================================
+  {
+    id: "halo_scramble_officer",
+    name: "Halo Scramble Officer",
+    image: "halo_scramble_officer.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "interceptor",
+        count: 1,
+        look: 5
+      }
+    },
+    ally: {
+      shield: 2
+    },
+    text:
+      "Gain 2 Combat, create an Interceptor in your discard pile, then draw an Interceptor from the top 5 cards of your draw pile if one is there.",
+    allyText: "Gain 2 Shield.",
+    flavor:
+      "The order to launch is considered late if the pilots have not already returned."
+  },
+
+  {
+    id: "skywall_muster_deck",
+    name: "Skywall Muster Deck",
+    image: "skywall_muster_deck.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: true,
+    sigil: "✦",
+    effect: {
+      shield: 1
+    },
+    recurring: {
+      everyTurns: 2,
+      effect: {
+        createToken: {
+          id: "interceptor",
+          count: 1,
+          zone: "discard"
+        },
+        drawFromDrawPile: {
+          id: "interceptor",
+          count: 1,
+          look: 4
+        }
+      }
+    },
+    charge: {
+      trigger: "tokenPlayed",
+      tokenId: "interceptor",
+      gain: 1,
+      max: 4,
+      actions: [
+        {
+          label: "Raise the Skywall",
+          cost: 4,
+          effect: {
+            armor: {
+              amount: 1,
+              all: true
+            }
+          }
+        }
+      ]
+    },
+    text:
+      "Outpost. Gain 1 Shield. Every second turn, create an Interceptor in discard, then draw one from the top 4 cards of your draw pile if one is there. Played Interceptors add Charge.",
+    chargeText:
+      "Spend 4: Give all of your bases 1 temporary Armor.",
+    flavor:
+      "Its deck is a prayer platform with engines beneath every answer."
+  },
+
+  {
+    id: "formation_vow_captain",
+    name: "Formation Vow-Captain",
+    image: "formation_vow_captain.png",
+    faction: "blue",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      shield: 2
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "interceptor",
+        at: 1,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "interceptor",
+        at: 2,
+        effect: {
+          armor: {
+            amount: 2
+          }
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "interceptor",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text:
+      "Gain 2 Shield. If 1 Interceptor was played before this, gain 2 Combat; at 2 Interceptors, give a base 2 Armor; at 3, draw 1 card.",
+    flavor:
+      "A formation is a vow spoken by wings instead of voices."
+  },
+
+  {
+    id: "last_light_recovery_wing",
+    name: "Last-Light Recovery Wing",
+    image: "last_light_recovery_wing.png",
+    faction: "blue",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      heal: 3,
+      reclaim: {
+        ids: ["interceptor"]
+      }
+    },
+    ally: {
+      trade: 2
+    },
+    sacrifice: {
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 3 Authority and Reclaim an Interceptor from your discard pile.",
+    allyText: "Gain 2 Trade.",
+    sacrificeText:
+      "Sacrifice: Create an Interceptor in hand.",
+    flavor:
+      "No light is called last while one pilot can still be brought home."
+  },
+
+  {
+    id: "seraphic_air_marshal",
+    name: "Seraphic Air Marshal",
+    image: "seraphic_air_marshal.png",
+    faction: "blue",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      combat: 5,
+      shield: 3,
+      drawFromDrawPile: {
+        id: "interceptor",
+        count: 2,
+        look: 7
+      }
+    },
+    doubleAlly: {
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 5 Combat and 3 Shield, then draw up to two Interceptors from the top 7 cards of your draw pile.",
+    doubleAllyText: "Create an Interceptor in hand.",
+    flavor:
+      "The Marshal does not command the sky. The sky has simply taken the same oath."
+  },
+
+  // ==========================================================
+  // RED — EMBERLING PACKAGE
+  // ==========================================================
+  {
+    id: "ashspark_midwife",
+    name: "Ashspark Midwife",
+    image: "ashspark_midwife.png",
+    faction: "red",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "emberling",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "emberling",
+        count: 1,
+        look: 5
+      }
+    },
+    ally: {
+      createToken: {
+        id: "emberling",
+        count: 1,
+        zone: "hand"
+      }
+    },
+    text:
+      "Gain 2 Combat, create an Emberling in your discard pile, then draw an Emberling from the top 5 cards of your draw pile if one is there.",
+    allyText: "Create an Emberling in hand.",
+    flavor:
+      "She teaches every spark the single word it needs: consume."
+  },
+
+  {
+    id: "cinder_choir",
+    name: "Cinder Choir",
+    image: "cinder_choir.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 7,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    recurring: {
+      everyTurns: 3,
+      effect: {
+        createToken: {
+          id: "emberling",
+          count: 2,
+          zone: "hand"
+        }
+      }
+    },
+    sacrificeThresholds: [
+      {
+        at: 1,
+        requiresSacrificedId: "emberling",
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 2,
+        requiresSacrificedId: "emberling",
+        effect: {
+          trade: 2
+        }
+      }
+    ],
+    text:
+      "Every third turn, create two Emberlings in hand. Each turn, your first sacrificed Emberling gives 2 Combat and your second gives 2 Trade.",
+    flavor:
+      "Each voice burns out quickly. Together they sing long enough to ignite the walls."
+  },
+
+  {
+    id: "furnace_reveler",
+    name: "Furnace Reveler",
+    image: "furnace_reveler.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 3
+    },
+    sacrificeThresholds: [
+      {
+        at: 1,
+        requiresSacrificedId: "emberling",
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        at: 2,
+        requiresSacrificedId: "emberling",
+        effect: {
+          draw: 1
+        }
+      },
+      {
+        at: 3,
+        requiresSacrificedId: "emberling",
+        effect: {
+          combat: 4
+        }
+      }
+    ],
+    text:
+      "Gain 3 Combat. Each turn, your first sacrificed Emberling gives 2 Trade; your second draws 1 card; your third gives 4 Combat.",
+    flavor:
+      "It celebrates every extinguished flame by throwing another into the furnace."
+  },
+
+  {
+    id: "debt_kindler_broker",
+    name: "Debt-Kindler Broker",
+    image: "debt_kindler_broker.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      trade: 3
+    },
+    ally: {
+      combat: 2
+    },
+    sacrifice: {
+      createToken: {
+        id: "emberling",
+        count: 2,
+        zone: "hand"
+      },
+      drawFromDrawPile: {
+        id: "emberling",
+        count: 1,
+        look: 5
+      }
+    },
+    text: "Gain 3 Trade.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText:
+      "Sacrifice: Create two Emberlings in hand, then draw an Emberling from the top 5 cards of your draw pile if one is there.",
+    flavor:
+      "Every debt is written in ash so the payment can be burned twice."
+  },
+
+  {
+    id: "pyre_heart_tyrant",
+    name: "Pyre-Heart Tyrant",
+    image: "pyre_heart_tyrant.png",
+    faction: "red",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 6,
+      createToken: {
+        id: "emberling",
+        count: 2,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "emberling",
+        count: 2,
+        look: 8
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "emberling",
+        at: 2,
+        effect: {
+          draw: 1
+        }
+      },
+      {
+        metric: "playedBefore",
+        tokenId: "emberling",
+        at: 3,
+        effect: {
+          combat: 4
+        }
+      }
+    ],
+    doubleAlly: {
+      combat: 3
+    },
+    text:
+      "Gain 6 Combat, create two Emberlings in discard, then draw up to two Emberlings from the top 8 cards of your draw pile. If two Emberlings were played before this, draw 1 card; at three, gain 4 Combat.",
+    doubleAllyText: "Gain 3 Combat.",
+    flavor:
+      "Its throne is the point where every smaller fire agrees to become one war."
+  }
   {
     id: "aegis_tide_saint",
     name: "Aegis Tide Saint",
