@@ -5788,7 +5788,14 @@ export const CARDS = Object.freeze([
     sigil: "⬢",
     token: true,
     collectible: false,
-    effect: { trade: 1 },
+    effect: {
+      trade: 1,
+      drawFromDrawPile: {
+        id: "worker",
+        count: 1,
+        look: 3
+      }
+    },
     sacrifice: {
       draw: 1,
       or: [
@@ -5796,7 +5803,7 @@ export const CARDS = Object.freeze([
         { label: "Repair", effect: { repair: { amount: 1 } } }
       ]
     },
-    text: "Token. Gain 1 Trade.",
+    text: "Token. Gain 1 Trade. If a Worker is among the top 3 cards of your draw pile, draw it.",
     sacrificeText: "Sacrifice — draw 1 card, then remove 1 Construction or repair an Expansion Base for 1.",
     flavor: "Worlds are conquered by armies and made permanent by labor."
   },
@@ -5835,7 +5842,14 @@ export const CARDS = Object.freeze([
     sigil: "⬢",
     token: true,
     collectible: false,
-    effect: { combat: 1 },
+    effect: {
+      combat: 2,
+      drawFromDrawPile: {
+        id: "spawn",
+        count: 1,
+        look: 2
+      }
+    },
     tokenCombo: { id: "spawn", count: 3, into: "brood_horror", oncePerTurn: true },
     sacrifice: {
       drawFromDrawPile: {
@@ -5844,7 +5858,7 @@ export const CARDS = Object.freeze([
         look: 6
       }
     },
-    text: "Token. Gain 1 Combat. Three played Spawn may merge into a Brood Horror.",
+    text: "Token. Gain 2 Combat. If a Spawn is among the top 2 cards of your draw pile, draw it. Three played Spawn may merge into a Brood Horror.",
     sacrificeText: "Sacrifice: Draw up to 2 Spawn from the top 6 cards of your draw pile.",
     flavor: "One is vermin. Three are an omen."
   },
