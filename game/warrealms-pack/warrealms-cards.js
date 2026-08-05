@@ -1330,7 +1330,7 @@ export const CARDS = Object.freeze([
     doubleAllyText: "Gain 3 Combat.",
     flavor:
       "Its throne is the point where every smaller fire agrees to become one war."
-  }
+  },
   {
     id: "aegis_tide_saint",
     name: "Aegis Tide Saint",
