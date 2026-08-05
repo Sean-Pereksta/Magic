@@ -2301,21 +2301,146 @@
     return true;
   }
 
+  const OWNER_TURN_TRANSFORM_ZONES = Object.freeze(["draw", "discard", "hand", "played"]);
+
+  function transformProgressKey(entry, card) {
+    return String(entry?.instanceId || card?.id || "");
+  }
+
+  function readTransformProgress(player, entry, card) {
+    player.transformProgress = player.transformProgress || {};
+    const key = transformProgressKey(entry, card);
+    if (!key) return 0;
+
+    if (Object.prototype.hasOwnProperty.call(player.transformProgress, key)) {
+      return Math.max(0, Number(player.transformProgress[key]) || 0);
+    }
+
+    // One-time migration for older saves that tracked progress by card ID.
+    if (entry?.instanceId && card?.id && Object.prototype.hasOwnProperty.call(player.transformProgress, card.id)) {
+      const legacyProgress = Math.max(0, Number(player.transformProgress[card.id]) || 0);
+      delete player.transformProgress[card.id];
+      if (legacyProgress > 0) player.transformProgress[key] = legacyProgress;
+      return legacyProgress;
+    }
+
+    return 0;
+  }
+
+  function writeTransformProgress(player, entry, card, value) {
+    player.transformProgress = player.transformProgress || {};
+    const key = transformProgressKey(entry, card);
+    if (!key) return 0;
+    const normalized = Math.max(0, Number(value) || 0);
+    if (normalized > 0) player.transformProgress[key] = normalized;
+    else delete player.transformProgress[key];
+    return normalized;
+  }
+
+  function clearTransformProgress(player, entry, card) {
+    player.transformProgress = player.transformProgress || {};
+    const key = transformProgressKey(entry, card);
+    if (key) delete player.transformProgress[key];
+    if (card?.id && card.id !== key) delete player.transformProgress[card.id];
+  }
+
+  function locateOwnedEntry(player, instanceId, allowedZones = OWNER_TURN_TRANSFORM_ZONES) {
+    if (!player || !instanceId) return null;
+    for (const zone of allowedZones) {
+      const entries = Array.isArray(player[zone]) ? player[zone] : [];
+      const index = entries.findIndex(candidate => candidate?.instanceId === instanceId);
+      if (index >= 0) return { zone, index, entry: entries[index] };
+    }
+    return null;
+  }
+
+  function normalizedTransformDestination(destination) {
+    const requested = String(destination || "discard");
+    if (requested === "topdeck" || requested === "draw") return "draw";
+    if (["discard", "hand", "played"].includes(requested)) return requested;
+    return "discard";
+  }
+
+  function completeOwnerTurnTransform(game, player, location, card) {
+    const transform = card?.transform;
+    const nextCard = transform?.into ? getCard(transform.into) : null;
+    if (!location || !nextCard) return false;
+
+    const sourceEntries = player[location.zone];
+    const currentEntry = sourceEntries?.[location.index];
+    if (!currentEntry || currentEntry.instanceId !== location.entry.instanceId || currentEntry.id !== card.id) return false;
+
+    const destination = normalizedTransformDestination(transform.destination);
+    const transformedEntry = makeBattleEntry(nextCard.id, player.id, {
+      instanceId: currentEntry.instanceId,
+      tokenOrigin: currentEntry.tokenOrigin || "transformed"
+    });
+
+    sourceEntries.splice(location.index, 1);
+    if (destination === "draw") player.draw.push(transformedEntry);
+    else player[destination].push(transformedEntry);
+
+    clearTransformProgress(player, currentEntry, card);
+    pushVisualEvent(game, "card-transform", {
+      actorId: player.id,
+      targetId: player.id,
+      fromCardId: card.id,
+      cardId: nextCard.id,
+      instanceId: transformedEntry.instanceId
+    });
+    addLog(game, `${player.name}'s ${card.name} transformed into ${nextCard.name} in their ${destination === "draw" ? "draw pile" : destination}.`);
+    return true;
+  }
+
+  function advanceOwnerTurnTransforms(game, player) {
+    if (!player) return 0;
+    player.transformProgress = player.transformProgress || {};
+
+    // Snapshot the forms that existed before this turn began. A newly created
+    // form therefore cannot gain another owner-turn tick during the same pass.
+    const candidates = OWNER_TURN_TRANSFORM_ZONES.flatMap(zone =>
+      (Array.isArray(player[zone]) ? player[zone] : []).map(entry => ({
+        zone,
+        instanceId: entry?.instanceId || "",
+        cardId: entry?.id || ""
+      }))
+    ).filter(candidate => candidate.instanceId && candidate.cardId);
+
+    let transformed = 0;
+    for (const candidate of candidates) {
+      const location = locateOwnedEntry(player, candidate.instanceId);
+      if (!location || location.entry.id !== candidate.cardId) continue;
+
+      const card = getCard(location.entry);
+      const transform = card?.transform;
+      if (!transform || transform.trigger !== "ownerTurnsElapsed" || !transform.into) continue;
+
+      const required = Math.max(1, Math.floor(Number(transform.required) || 1));
+      const progress = writeTransformProgress(
+        player,
+        location.entry,
+        card,
+        readTransformProgress(player, location.entry, card) + 1
+      );
+
+      if (progress < required) continue;
+      if (completeOwnerTurnTransform(game, player, location, card)) transformed += 1;
+    }
+
+    return transformed;
+  }
+
   function recordTransformProgress(game, player, entry, card) {
     const transform = card?.transform;
-    if (!transform || typeof transform !== "object" || !transform.into || transform.trigger === "sacrificed") return false;
-    player.transformProgress = player.transformProgress || {};
+    if (!transform || typeof transform !== "object" || !transform.into || ["sacrificed", "ownerTurnsElapsed"].includes(transform.trigger)) return false;
     const required = Math.max(1, Number(transform.required) || 1);
     let gain = 0;
     if (transform.trigger === "timesPlayed") gain = 1;
     if (transform.trigger === "cumulativePrimaryEffect") gain = Math.max(0, Number(coreEffect(primaryCardEffect(card))[transform.effectKey]) || 0);
     if (!gain) return false;
-    const progressKey = entry.instanceId || card.id;
-    const progress = Math.max(0, Number(player.transformProgress[progressKey]) || Number(player.transformProgress[card.id]) || 0) + gain;
-    player.transformProgress[progressKey] = progress;
+    const progress = writeTransformProgress(player, entry, card, readTransformProgress(player, entry, card) + gain);
     if (progress < required || !getCard(transform.into)) return false;
-    delete player.transformProgress[progressKey];
-    delete player.transformProgress[card.id];
+    clearTransformProgress(player, entry, card);
     const previousId = entry.id;
     entry.id = transform.into;
     pushVisualEvent(game, "card-transform", { actorId: player.id, targetId: player.id, fromCardId: previousId, cardId: transform.into, instanceId: entry.instanceId });
@@ -4976,6 +5101,8 @@
     player.sacrificesThisTurn = 0;
     player.sacrificedIdsThisTurn = [];
     player.factionPlayedThisTurn = { yellow: 0, blue: 0, green: 0, red: 0 };
+
+    advanceOwnerTurnTransforms(game, player);
 
     for (const base of player.bases) {
       base.turnsSurvived = Math.max(0, Number(base.turnsSurvived) || 0) + 1;
