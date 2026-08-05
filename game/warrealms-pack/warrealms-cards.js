@@ -492,11 +492,30 @@ export const CARDS = Object.freeze([
     combat: 25
   },
 
+  optionalSacrificeFriendlyCard: {
+    allowedIds: [
+      "voracynth_dream_egg",
+      "voracynth_star_hatchling",
+      "voracynth_rift_juvenile",
+      "voracynth_void_elder",
+      "voracynth_apex_of_tomorrow"
+    ],
+    excludeSelf: true,
+    zone: "played",
+    count: 1,
+    effect: {
+      combat: 25
+    }
+  },
+
   text:
     "Gain 25 Combat.",
 
+  abilityText:
+    "Devour Its Own Kind — You may sacrifice another listed Voracynth you played this turn. If you do, gain 25 additional Combat.",
+
   flavor:
-    "The shell did not hatch. The universe simply became too small to contain it."
+    "It recognizes its own blood only as another world waiting to be consumed."
 },
 {
   id: "voracynth_rift_juvenile",
@@ -8372,6 +8391,10 @@ export function fullCardRules(card) {
 
   if (card.text) {
     lines.push(card.text);
+  }
+
+  if (card.abilityText) {
+    lines.push(card.abilityText);
   }
 
   if (card.allyText) {
