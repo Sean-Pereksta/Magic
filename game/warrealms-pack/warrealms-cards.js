@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 14;
+export const WAR_REALMS_CARD_VERSION = 15;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -5764,9 +5764,16 @@ export const CARDS = Object.freeze([
     sigil: "◈",
     token: true,
     collectible: false,
-    effect: { combat: 1 },
+    effect: {
+      combat: 1,
+      drawFromDrawPile: {
+        id: "drone",
+        count: 1,
+        look: 3
+      }
+    },
     ally: { trade: 1 },
-    text: "Token. Gain 1 Combat.",
+    text: "Token. Gain 1 Combat. If another Drone is among the top 3 cards of your draw pile, draw it.",
     allyText: "Gain 1 Trade.",
     flavor: "A disposable possibility given engines and a purpose."
   },
@@ -5783,13 +5790,14 @@ export const CARDS = Object.freeze([
     collectible: false,
     effect: { trade: 1 },
     sacrifice: {
+      draw: 1,
       or: [
         { label: "Build", effect: { advanceConstruction: { amount: 1 } } },
         { label: "Repair", effect: { repair: { amount: 1 } } }
       ]
     },
     text: "Token. Gain 1 Trade.",
-    sacrificeText: "Sacrifice — remove 1 Construction or repair an Expansion Base for 1.",
+    sacrificeText: "Sacrifice — draw 1 card, then remove 1 Construction or repair an Expansion Base for 1.",
     flavor: "Worlds are conquered by armies and made permanent by labor."
   },
   {
@@ -5829,7 +5837,15 @@ export const CARDS = Object.freeze([
     collectible: false,
     effect: { combat: 1 },
     tokenCombo: { id: "spawn", count: 3, into: "brood_horror", oncePerTurn: true },
+    sacrifice: {
+      drawFromDrawPile: {
+        id: "spawn",
+        count: 2,
+        look: 6
+      }
+    },
     text: "Token. Gain 1 Combat. Three played Spawn may merge into a Brood Horror.",
+    sacrificeText: "Sacrifice: Draw up to 2 Spawn from the top 6 cards of your draw pile.",
     flavor: "One is vermin. Three are an omen."
   },
   {
@@ -5878,8 +5894,16 @@ export const CARDS = Object.freeze([
     token: true,
     collectible: false,
     effect: { combat: 1 },
+    doubleAlly: {
+      drawFromDrawPile: {
+        id: "emberling",
+        count: 1,
+        look: 5
+      }
+    },
     sacrifice: { combat: 1 },
     text: "Token. Gain 1 Combat.",
+    doubleAllyText: "If another Emberling is among the top 5 cards of your draw pile, draw it.",
     sacrificeText: "Sacrifice: Gain 1 additional Combat.",
     flavor: "A small flame is still willing to consume itself."
   },
