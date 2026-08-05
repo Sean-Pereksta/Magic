@@ -1336,6 +1336,7 @@ export const CARDS = Object.freeze([
     name: "Aegis Tide Saint",
     image: "aegis_tide_saint.png",
     faction: "blue",
+    collectible_edition: true,
     cost: 5,
     shop_cost: 60,
     type: "ship",
