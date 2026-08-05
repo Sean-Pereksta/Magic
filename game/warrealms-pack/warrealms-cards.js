@@ -445,7 +445,59 @@ export const CARDS = Object.freeze([
   flavor:
     "It enters the world hungry, curious, and only slightly dangerous."
 },
+{
+  id: "worldheart_dream_egg",
+  name: "Worldheart Dream-Egg",
+  image: "worldheart_dream_egg.png",
+  faction: "yellow",
+  cost: 8,
+  shop_cost: 175,
+  type: "ship",
+  sigil: "◈",
 
+  effect: {},
+
+  transform: {
+    trigger: "ownerTurnsElapsed",
+    required: 12,
+    into: "voracynth_world_ender",
+    destination: "discard",
+    resetProgress: true
+  },
+
+  text:
+    "This card has no immediate effect.",
+
+  transformText:
+    "Ascendant — After 12 of your turns, transform this card into Voracynth, World-Ender in your discard pile.",
+
+  flavor:
+    "For twelve cycles, the shell absorbs the fear of every world beneath it."
+},
+
+{
+  id: "voracynth_world_ender",
+  name: "Voracynth, World-Ender",
+  image: "voracynth_world_ender.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "worldheart_dream_egg",
+  cost: 16,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 25
+  },
+
+  text:
+    "Gain 25 Combat.",
+
+  flavor:
+    "The shell did not hatch. The universe simply became too small to contain it."
+},
 {
   id: "voracynth_rift_juvenile",
   name: "Voracynth Rift-Juvenile",
