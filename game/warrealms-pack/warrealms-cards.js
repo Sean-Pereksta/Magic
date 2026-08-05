@@ -494,10 +494,10 @@ export const CARDS = Object.freeze([
 
   optionalSacrificeFriendlyCard: {
     allowedIds: [
-      "voracynth_dream_egg",
       "voracynth_star_hatchling",
       "voracynth_rift_juvenile",
       "voracynth_void_elder",
+      "voralyth_future_devourer",
       "voracynth_apex_of_tomorrow"
     ],
     excludeSelf: true,
