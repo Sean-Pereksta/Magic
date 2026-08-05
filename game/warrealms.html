@@ -258,8 +258,9 @@
     .choiceModal{width:min(620px,100%);max-height:100%;overflow:auto;border:1px solid #65778a;border-radius:17px;background:#101720;box-shadow:0 30px 90px rgba(0,0,0,.72);padding:16px}
     .choiceHeader{text-align:center;padding:3px 7px 13px}.choiceEyebrow{font-size:8px;font-weight:950;letter-spacing:.15em;text-transform:uppercase;color:#e5ca55}.choiceHeader h2{margin:6px 0 5px;font-size:22px}.choiceHeader p{margin:0;color:#aab6c4;font-size:9px;line-height:1.45}
     .choiceGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px}.choiceOption{--choiceFaction:var(--neutral);min-height:118px;border:1px solid color-mix(in srgb,var(--choiceFaction) 60%,#536274);border-radius:13px;background:linear-gradient(145deg,color-mix(in srgb,var(--choiceFaction) 9%,#18212b),#0c1219);padding:12px;text-align:left;color:#fff;cursor:pointer;display:flex;flex-direction:column;gap:7px;transition:transform .13s ease,border-color .13s ease,background .13s ease}.choiceOption:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--choiceFaction) 85%,#fff);background:color-mix(in srgb,var(--choiceFaction) 13%,#17212c)}.choiceOption:disabled{opacity:.45;cursor:not-allowed;transform:none}.choiceOptionTop{display:flex;align-items:center;gap:8px}.choiceOptionNumber{width:27px;height:27px;flex:0 0 27px;border-radius:50%;display:grid;place-items:center;background:var(--choiceFaction);color:#080b10;font-size:11px;font-weight:1000}.choiceOption strong{font-size:12px}.choiceOptionText{font-size:10px;line-height:1.45;color:#d4dce6}.choiceOptionGlyphs{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto}.choiceOptionGlyphs .abilityGlyph{height:22px;padding:0 7px;font-size:8px}.choiceRequired{text-align:center;margin-top:12px;color:#8090a1;font-size:7px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+    .choiceOption.cardTarget{min-height:164px;display:grid;grid-template-columns:76px minmax(0,1fr);grid-template-rows:1fr auto;column-gap:11px;align-items:stretch}.choiceTargetArt{grid-row:1/3;width:76px;aspect-ratio:512/716;border:1px solid color-mix(in srgb,var(--choiceFaction) 58%,#526071);border-radius:9px;overflow:hidden;background:#070b10;display:grid;place-items:center}.choiceTargetArt img{width:100%;height:100%;display:block;object-fit:contain;background:#070b10}.choiceTargetFallback{font-size:30px;color:var(--choiceFaction);text-shadow:0 0 14px color-mix(in srgb,var(--choiceFaction) 60%,transparent)}.choiceTargetCopy{min-width:0;display:flex;flex-direction:column;gap:5px}.choiceTargetCopy strong{font-size:12px;line-height:1.2}.choiceTargetForm{font-size:8px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--choiceFaction)}.choiceTargetDescription{font-size:8px;line-height:1.4;color:#acb8c6}.choiceActionLabel{align-self:end;justify-self:stretch;border:1px solid color-mix(in srgb,var(--choiceFaction) 68%,#fff);border-radius:8px;background:color-mix(in srgb,var(--choiceFaction) 20%,#121922);padding:7px 9px;text-align:center;font-size:9px;font-weight:1000;letter-spacing:.1em}.choiceOption.promptChoice .choiceOptionText{min-height:28px}.choiceOption.promptChoice .choiceActionLabel{margin-top:auto}
     .abilityGlyph.choice{border-color:#cf83ff;color:#e8c4ff;background:#21142b}
-    @media(max-width:620px){.choiceModal{padding:10px;border-radius:13px}.choiceHeader{padding-bottom:9px}.choiceHeader h2{font-size:17px}.choiceGrid{grid-template-columns:1fr;gap:6px}.choiceOption{min-height:84px;padding:9px}.choiceOptionText{font-size:8px}.choiceRequired{margin-top:8px}}
+    @media(max-width:620px){.choiceModal{padding:10px;border-radius:13px}.choiceHeader{padding-bottom:9px}.choiceHeader h2{font-size:17px}.choiceGrid{grid-template-columns:1fr;gap:6px}.choiceOption{min-height:84px;padding:9px}.choiceOptionText{font-size:8px}.choiceOption.cardTarget{min-height:142px;grid-template-columns:64px minmax(0,1fr);column-gap:9px}.choiceTargetArt{width:64px}.choiceRequired{margin-top:8px}}
 
     .realmField .battleCardVisual,.marketRow .battleCardVisual,.handRow .battleCardVisual,.ownCards .battleCardVisual{height:auto}
     .realmField .gameCard,.marketRow .gameCard,.handRow .gameCard,.ownCards .gameCard{align-self:flex-start}
@@ -1537,9 +1538,15 @@
         id: String(choice.id || makeId("choice")),
         cardId: String(choice.cardId || ""),
         source: String(choice.source || "primary"),
+        title: String(choice.title || ""),
+        subtitle: String(choice.subtitle || ""),
         createdAtMs: Number(choice.createdAtMs) || Date.now(),
         options: choice.options.filter(option => option && typeof option === "object" && option.effect && typeof option.effect === "object").map((option, index) => ({
           label: String(option.label || ""),
+          description: String(option.description || ""),
+          actionLabel: String(option.actionLabel || ""),
+          cardId: String(option.cardId || ""),
+          instanceId: String(option.instanceId || ""),
           effect: clone(option.effect),
           index
         }))
@@ -2176,8 +2183,18 @@
       id: makeId("choice"),
       cardId: String(context.cardId || ""),
       source: String(context.source || "primary"),
+      title: String(context.title || ""),
+      subtitle: String(context.subtitle || ""),
       createdAtMs: Date.now(),
-      options: valid.map((option, index) => ({ label: String(option.label || ""), effect: clone(option.effect), index }))
+      options: valid.map((option, index) => ({
+        label: String(option.label || ""),
+        description: String(option.description || ""),
+        actionLabel: String(option.actionLabel || ""),
+        cardId: String(option.cardId || ""),
+        instanceId: String(option.instanceId || ""),
+        effect: clone(option.effect),
+        index
+      }))
     });
     return true;
   }
@@ -2820,6 +2837,146 @@
     if (card.token) badges.push(`<span class="persistentBadge token">TOKEN</span>`);
     if (card.type === "attachment") badges.push(`<span class="persistentBadge attachment">ATTACH</span>`);
     return `${card.heat ? `<span class="heatBadge">♨ ${Math.max(0, entry.heat || 0)}</span>` : ""}${chargeBadgeHtml(entry, card)}${badges.length ? `<span class="persistentBadgeRow">${badges.join("")}</span>` : ""}`;
+  }
+
+  function optionalSacrificeFriendlyCardConfig(card) {
+    const raw = card?.optionalSacrificeFriendlyCard;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const allowedIds = [...new Set((Array.isArray(raw.allowedIds) ? raw.allowedIds : []).map(id => String(id || "").trim()).filter(Boolean))];
+    const zone = String(raw.zone || "played");
+    const count = Math.max(1, Math.floor(Number(raw.count) || 1));
+    if (!allowedIds.length || zone !== "played" || count !== 1) return null;
+    return {
+      allowedIds,
+      excludeSelf: raw.excludeSelf !== false,
+      zone,
+      count,
+      effect: raw.effect && typeof raw.effect === "object" && !Array.isArray(raw.effect) ? clone(raw.effect) : {},
+      repeat: raw.repeat === true,
+      title: String(raw.title || "Devour Its Own Kind"),
+      prompt: String(raw.prompt || "Sacrifice another Voracynth you played this turn to gain 25 additional Combat."),
+      confirmLabel: String(raw.confirmLabel || "DEVOUR"),
+      declineLabel: String(raw.declineLabel || "DECLINE")
+    };
+  }
+
+  function eligibleOptionalFriendlySacrificeTargets(game, player, sourceInstanceId, config) {
+    if (!game || !player || !config || config.zone !== "played") return [];
+    return (player.played || []).filter(candidate => {
+      const candidateCard = getCard(candidate);
+      if (!candidateCard || candidate.ownerId !== player.id || candidate.deployedTurnSerial !== game.turnSerial) return false;
+      if (config.excludeSelf && candidate.instanceId === sourceInstanceId) return false;
+      return config.allowedIds.includes(candidateCard.id);
+    });
+  }
+
+  function queueOptionalSacrificeFriendlyCardPrompt(game, player, sourceEntry, sourceCard) {
+    const config = optionalSacrificeFriendlyCardConfig(sourceCard);
+    if (!config || !sourceEntry) return false;
+    if (sourceEntry.optionalSacrificeFriendlyCardTurn === game.turnSerial && !config.repeat) return false;
+    sourceEntry.optionalSacrificeFriendlyCardTurn = game.turnSerial;
+    const candidates = eligibleOptionalFriendlySacrificeTargets(game, player, sourceEntry.instanceId, config);
+    if (!candidates.length) return false;
+    return queueSpecialChoice(game, player, [
+      {
+        label: "Devour a Voracynth",
+        description: "Sacrifice one eligible listed Voracynth.",
+        actionLabel: config.confirmLabel,
+        effect: {
+          __queueOptionalSacrificeFriendlyCardTargets: {
+            sourceCardId: sourceCard.id,
+            sourceInstanceId: sourceEntry.instanceId
+          }
+        }
+      },
+      {
+        label: "Decline",
+        description: "Resolve no additional effect.",
+        actionLabel: config.declineLabel,
+        effect: { __noop: true }
+      }
+    ], {
+      cardId: sourceCard.id,
+      source: "optionalSacrificeFriendlyCardPrompt",
+      title: config.title,
+      subtitle: config.prompt
+    });
+  }
+
+  function queueOptionalSacrificeFriendlyCardTargets(game, player, instruction = {}) {
+    const sourceCard = getCard(instruction.sourceCardId);
+    const config = optionalSacrificeFriendlyCardConfig(sourceCard);
+    if (!sourceCard || !config) return false;
+    const candidates = eligibleOptionalFriendlySacrificeTargets(game, player, instruction.sourceInstanceId, config);
+    if (!candidates.length) {
+      addLog(game, `${player.name} had no eligible friendly card left to sacrifice for ${sourceCard.name}.`);
+      return false;
+    }
+    const options = candidates.map(entry => {
+      const card = getCard(entry);
+      return {
+        label: card.name,
+        description: `Current form: ${card.name}`,
+        actionLabel: config.confirmLabel,
+        cardId: card.id,
+        instanceId: entry.instanceId,
+        effect: {
+          __resolveOptionalSacrificeFriendlyCard: {
+            sourceCardId: sourceCard.id,
+            sourceInstanceId: instruction.sourceInstanceId,
+            targetInstanceId: entry.instanceId
+          }
+        }
+      };
+    });
+    return queueSpecialChoice(game, player, options, {
+      cardId: sourceCard.id,
+      source: "optionalSacrificeFriendlyCardTarget",
+      title: config.title,
+      subtitle: config.prompt
+    });
+  }
+
+  function resolveOptionalSacrificeFriendlyCard(game, player, instruction = {}) {
+    const sourceCard = getCard(instruction.sourceCardId);
+    const config = optionalSacrificeFriendlyCardConfig(sourceCard);
+    if (!sourceCard || !config) return false;
+    const target = eligibleOptionalFriendlySacrificeTargets(game, player, instruction.sourceInstanceId, config)
+      .find(candidate => candidate.instanceId === instruction.targetInstanceId);
+    if (!target) {
+      addLog(game, `${player.name}'s selected sacrifice target was no longer eligible.`);
+      return false;
+    }
+    const targetIndex = player.played.findIndex(candidate => candidate.instanceId === target.instanceId);
+    if (targetIndex < 0) return false;
+    const [removed] = player.played.splice(targetIndex, 1);
+    const removedCard = getCard(removed);
+    if (!removedCard) return false;
+    game.scrapped.push({
+      ...removed,
+      originalOwnerId: player.id,
+      originalOwnerName: player.name,
+      reason: "sacrifice-friendly-card",
+      sacrificedTurn: game.turnSerial
+    });
+    pushVisualEvent(game, "card-scrap", {
+      actorId: player.id,
+      cardId: removedCard.id,
+      target: "player",
+      targetId: player.id,
+      reason: "sacrifice",
+      instanceId: removed.instanceId
+    });
+    recordSacrifice(game, player, removed, removedCard);
+    if (config.effect && Object.keys(config.effect).length) {
+      applyEffect(game, player, config.effect, {
+        cardId: sourceCard.id,
+        instanceId: instruction.sourceInstanceId,
+        source: "optionalSacrificeFriendlyCard"
+      });
+    }
+    addLog(game, `${player.name} devoured ${removedCard.name} with ${sourceCard.name}.`);
+    return true;
   }
 
   function queueSacrificeTarget(game, player, config = {}, context = {}) {
@@ -4651,6 +4808,8 @@
     const internalTokenCombo = normalized.__tokenCombo;
     const internalSearchDeck = normalized.__searchDeck;
     const internalSacrificeOwned = normalized.__sacrificeOwned;
+    const internalQueueOptionalSacrificeFriendlyCardTargets = normalized.__queueOptionalSacrificeFriendlyCardTargets;
+    const internalResolveOptionalSacrificeFriendlyCard = normalized.__resolveOptionalSacrificeFriendlyCard;
     const internalTopdeckHand = normalized.__topdeckHand;
     const resurrectConfig = normalized.resurrect;
     const graveEchoConfig = normalized.graveEcho;
@@ -4677,6 +4836,8 @@
     delete normalized.__tokenCombo;
     delete normalized.__searchDeck;
     delete normalized.__sacrificeOwned;
+    delete normalized.__queueOptionalSacrificeFriendlyCardTargets;
+    delete normalized.__resolveOptionalSacrificeFriendlyCard;
     delete normalized.__topdeckHand;
     delete normalized.__noop;
     delete normalized.resurrect;
@@ -4739,6 +4900,8 @@
     if (internalTokenCombo) resolveTokenComboAction(game, player, internalTokenCombo);
     if (internalSearchDeck) resolveSearchDeck(game, player, internalSearchDeck);
     if (internalSacrificeOwned) sacrificeOwnedEntry(game, player, internalSacrificeOwned.instanceId, internalSacrificeOwned.thenEffect || {});
+    if (internalQueueOptionalSacrificeFriendlyCardTargets) queueOptionalSacrificeFriendlyCardTargets(game, player, internalQueueOptionalSacrificeFriendlyCardTargets);
+    if (internalResolveOptionalSacrificeFriendlyCard) resolveOptionalSacrificeFriendlyCard(game, player, internalResolveOptionalSacrificeFriendlyCard);
     if (internalTopdeckHand) {
       const handIndex = player.hand.findIndex(entry => entry.instanceId === internalTopdeckHand.instanceId);
       if (handIndex >= 0) player.draw.push(player.hand.splice(handIndex, 1)[0]);
@@ -5196,6 +5359,7 @@
         resolveCardThresholds(game, actor, entry, card);
         resolveTokenCombo(game, actor, entry, card);
         recordTransformProgress(game, actor, entry, card);
+        queueOptionalSacrificeFriendlyCardPrompt(game, actor, entry, card);
         addLog(game, `${actor.name} played ${card.name}.`);
 
         if (revivedPlay) {
@@ -5959,6 +6123,8 @@
   }
 
   function choiceSourceLabel(source = "primary") {
+    if (String(source).startsWith("optionalSacrificeFriendlyCardTarget")) return "Choose a friendly card to sacrifice";
+    if (String(source).startsWith("optionalSacrificeFriendlyCard")) return "Optional friendly-card sacrifice";
     if (String(source).startsWith("doubleAlly")) return "Double Ally choice";
     if (String(source).startsWith("ally")) return "Faction Ally choice";
     if (String(source).startsWith("sacrifice")) return "Sacrifice choice";
@@ -5981,16 +6147,28 @@
       return;
     }
     const card = getCard(choice.cardId);
+    const source = String(choice.source || "");
+    const selectingFriendlySacrificeTarget = source.startsWith("optionalSacrificeFriendlyCardTarget");
+    const optionalFriendlySacrificePrompt = source.startsWith("optionalSacrificeFriendlyCardPrompt");
     $("#choiceSource").textContent = choiceSourceLabel(choice.source);
-    $("#choiceTitle").textContent = card ? card.name : "Select an ability";
-    const selectingCard = String(choice.source).startsWith("resurrect") || String(choice.source).startsWith("graveEcho");
-    $("#choiceSubtitle").textContent = selectingCard
+    $("#choiceTitle").textContent = choice.title || (card ? card.name : "Select an ability");
+    const selectingCard = selectingFriendlySacrificeTarget || source.startsWith("resurrect") || source.startsWith("graveEcho");
+    $("#choiceSubtitle").textContent = choice.subtitle || (selectingCard
       ? `Choose exactly one of ${choice.options.length} eligible cards.`
-      : `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`;
+      : `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`);
     $("#choiceGrid").innerHTML = choice.options.map((option, index) => {
-      const summary = option.label || effectDisplaySummary(option.effect) || `Option ${index + 1}`;
+      const summary = option.description || option.label || effectDisplaySummary(option.effect) || `Option ${index + 1}`;
       const glyphs = effectGlyphItems(option.effect, "choice").filter(item => item.key !== "choice");
-      return `<button class="choiceOption" style="--choiceFaction:var(--${card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceOptionTop"><span class="choiceOptionNumber">${index + 1}</span><strong>${escapeHtml(option.label || `Option ${index + 1}`)}</strong></span><span class="choiceOptionText">${escapeHtml(summary)}</span><span class="choiceOptionGlyphs">${glyphs.map(item => abilityGlyphHtml(item)).join("")}</span></button>`;
+      const targetCard = option.cardId ? getCard(option.cardId) : null;
+      if (selectingFriendlySacrificeTarget && targetCard) {
+        const artUrl = directCardArtUrl(targetCard.id, playerUsesCollectibleEdition(me, targetCard.id));
+        const artHtml = artUrl
+          ? `<img src="${escapeHtml(artUrl)}" alt="${escapeHtml(targetCard.name)}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="choiceTargetFallback" hidden>${escapeHtml(targetCard.sigil || "◆")}</span>`
+          : `<span class="choiceTargetFallback">${escapeHtml(targetCard.sigil || "◆")}</span>`;
+        return `<button class="choiceOption cardTarget" style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">Current form: ${escapeHtml(targetCard.name)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || "Eligible friendly card played this turn.")}</span></span><span class="choiceActionLabel">${escapeHtml(option.actionLabel || "DEVOUR")}</span></button>`;
+      }
+      const promptClass = optionalFriendlySacrificePrompt ? " promptChoice" : "";
+      return `<button class="choiceOption${promptClass}" style="--choiceFaction:var(--${card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceOptionTop"><span class="choiceOptionNumber">${index + 1}</span><strong>${escapeHtml(option.label || `Option ${index + 1}`)}</strong></span><span class="choiceOptionText">${escapeHtml(summary)}</span><span class="choiceOptionGlyphs">${glyphs.map(item => abilityGlyphHtml(item)).join("")}</span>${optionalFriendlySacrificePrompt ? `<span class="choiceActionLabel">${escapeHtml(option.actionLabel || option.label || "SELECT")}</span>` : ""}</button>`;
     }).join("");
   }
 
