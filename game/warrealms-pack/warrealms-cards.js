@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 15;
+export const WAR_REALMS_CARD_VERSION = 16;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -394,6 +394,9 @@ export const CARDS = Object.freeze([
 
   effect: {},
 
+  // Advanced once at the beginning of each of this card owner's turns while
+  // this physical card remains in an owned battle zone. Progress is tracked
+  // by instanceId so multiple Dream-Egg copies hatch independently.
   transform: {
     trigger: "ownerTurnsElapsed",
     required: 2,
