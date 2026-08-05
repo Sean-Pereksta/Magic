@@ -5861,6 +5861,7 @@ export const CARDS = Object.freeze([
     collectible: false,
     tags: ["spawn"],
     effect: { combat: 6 },
+    doubleAlly: {draw: 2 },
     sacrifice: { combat: 3 },
     text: "Token. Gain 6 Combat. This counts as a Spawn.",
     sacrificeText: "Sacrifice: Gain 3 additional Combat.",
