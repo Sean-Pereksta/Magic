@@ -6987,7 +6987,7 @@ export const CARDS = Object.freeze([
     sigil: "◒",
     token: true,
     collectible: false,
-    effect: { combat: 1 },
+    effect: { combat: 3 },
     doubleAlly: {
       drawFromDrawPile: {
         id: "emberling",
