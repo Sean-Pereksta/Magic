@@ -6898,7 +6898,7 @@ export const CARDS = Object.freeze([
     token: true,
     collectible: false,
     effect: {
-      combat: 1,
+      combat: 3,
       drawFromDrawPile: {
         id: "interceptor",
         count: 1,
@@ -6953,11 +6953,11 @@ export const CARDS = Object.freeze([
     token: true,
     collectible: false,
     tags: ["spawn"],
-    effect: { combat: 6 },
+    effect: { combat: 8 },
     doubleAlly: {draw: 1},
-    sacrifice: { combat: 3 },
-    text: "Token. Gain 6 Combat. This counts as a Spawn.",
-    sacrificeText: "Sacrifice: Gain 3 additional Combat.",
+    sacrifice: { combat: 5 },
+    text: "Token. Gain 8 Combat. This counts as a Spawn.",
+    sacrificeText: "Sacrifice: Gain 5 additional Combat.",
     flavor: "The brood remembers every body it used to become one."
   },
   {
