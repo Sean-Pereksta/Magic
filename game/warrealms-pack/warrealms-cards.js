@@ -382,6 +382,192 @@ export const CARDS = Object.freeze([
     flavor:
       "The gorge echoes because every empty chamber is learning how to hatch."
   },
+  {
+  id: "voracynth_dream_egg",
+  name: "Voracynth Dream-Egg",
+  image: "voracynth_dream_egg.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {},
+
+  transform: {
+    trigger: "ownerTurnsElapsed",
+    required: 2,
+    into: "voracynth_star_hatchling",
+    destination: "discard",
+    resetProgress: true
+  },
+
+  text: "This card has no immediate effect.",
+
+  transformText:
+    "Ascendant — After 2 of your turns, transform this card into Voracynth Star-Hatchling in your discard pile.",
+
+  flavor:
+    "Something inside the shell dreams of stars that have not yet been born."
+},
+
+{
+  id: "voracynth_star_hatchling",
+  name: "Voracynth Star-Hatchling",
+  image: "voracynth_star_hatchling.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "voracynth_dream_egg",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 1,
+    trade: 1
+  },
+
+  transform: {
+    trigger: "ownerTurnsElapsed",
+    required: 2,
+    into: "voracynth_rift_juvenile",
+    destination: "discard",
+    resetProgress: true
+  },
+
+  text: "Gain 1 Combat and 1 Trade.",
+
+  transformText:
+    "Ascendant — After 2 of your turns in this form, transform this card into Voracynth Rift-Juvenile in your discard pile.",
+
+  flavor:
+    "It enters the world hungry, curious, and only slightly dangerous."
+},
+
+{
+  id: "voracynth_rift_juvenile",
+  name: "Voracynth Rift-Juvenile",
+  image: "voracynth_rift_juvenile.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "voracynth_star_hatchling",
+  cost: 8,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 3,
+    trade: 1
+  },
+
+  ally: {
+    shield: 2
+  },
+
+  transform: {
+    trigger: "ownerTurnsElapsed",
+    required: 2,
+    into: "voracynth_void_elder",
+    destination: "discard",
+    resetProgress: true
+  },
+
+  text: "Gain 3 Combat and 1 Trade.",
+
+  allyText: "Gain 2 Shield.",
+
+  transformText:
+    "Ascendant — After 2 of your turns in this form, transform this card into Voracynth Void-Elder in your discard pile.",
+
+  flavor:
+    "Its growing wings bend distance before they learn how to fly."
+},
+
+{
+  id: "voracynth_void_elder",
+  name: "Voracynth Void-Elder",
+  image: "voracynth_void_elder.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "voracynth_rift_juvenile",
+  cost: 10,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 6,
+    stun: 1
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  transform: {
+    trigger: "ownerTurnsElapsed",
+    required: 3,
+    into: "voracynth_apex_of_tomorrow",
+    destination: "discard",
+    resetProgress: true
+  },
+
+  text: "Gain 6 Combat and 1 Disable.",
+
+  allyText: "Draw 1 card.",
+
+  transformText:
+    "Final Ascension — After 3 of your turns in this form, transform this card into Voracynth, Apex of Tomorrow in your discard pile.",
+
+  flavor:
+    "It no longer hunts within the present. It waits where its prey will eventually be."
+},
+
+{
+  id: "voracynth_apex_of_tomorrow",
+  name: "Voracynth, Apex of Tomorrow",
+  image: "voracynth_apex_of_tomorrow.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "voracynth_void_elder",
+  cost: 14,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 10,
+    stun: 2,
+    opponentDiscard: 1
+  },
+
+  ally: {
+    draw: 1,
+    trade: 2
+  },
+
+  doubleAlly: {
+    combat: 4
+  },
+
+  text:
+    "Gain 10 Combat and 2 Disable. The next enemy draws 1 fewer card.",
+
+  allyText:
+    "Draw 1 card and gain 2 Trade.",
+
+  doubleAllyText:
+    "Gain 4 additional Combat.",
+
+  flavor:
+    "The creature that entered the egg is gone. What emerged remembers devouring tomorrow."
+},
 
   {
     id: "spawnlash_alpha",
