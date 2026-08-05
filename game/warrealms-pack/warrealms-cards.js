@@ -305,7 +305,28 @@ export const CARDS = Object.freeze([
     flavor:
       "It does not track the brood. It opens the road the brood was already coming through."
   },
-
+{
+  id: "broodheart_idol",
+  name: "Broodheart Idol",
+  image: "broodheart_idol.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 70,
+  type: "base",
+  defense: 5,
+  outpost: false,
+  sigil: "⬢",
+  effect: {},
+  sacrificeTrigger: {
+    sacrificedId: "spawn",
+    effect: {
+      heal: 2
+    }
+  },
+  text: "Whenever you sacrifice a Spawn, gain 2 Authority.",
+  flavor:
+    "The brood does not mourn its fallen. It feeds upon their strength."
+},
   {
     id: "gorge_nest_matriarch",
     name: "Gorge-Nest Matriarch",
