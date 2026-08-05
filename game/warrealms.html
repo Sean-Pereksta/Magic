@@ -154,6 +154,10 @@
     .chargeBadge{position:absolute;z-index:4;right:5px;top:5px;min-width:27px;height:22px;border:1px solid #f0cc56;border-radius:999px;background:rgba(24,18,5,.94);display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:0 7px;color:#ffe57d;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 12px rgba(240,204,86,.2)}
     .personalDiscountBadge{position:absolute;z-index:5;left:5px;top:5px;min-width:34px;height:23px;border:1px solid #65d39a;border-radius:999px;background:rgba(8,42,29,.96);display:inline-flex;align-items:center;justify-content:center;padding:0 7px;color:#a7f4c9;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 14px rgba(101,211,154,.24)}
     .chargeBadge.empty{border-color:#526071;color:#93a0ae;background:rgba(10,15,21,.92);box-shadow:0 4px 13px rgba(0,0,0,.35)}
+    .heatBadge{position:absolute;z-index:6;right:5px;top:5px;min-width:32px;height:22px;border:1px solid #ff765f;border-radius:999px;background:rgba(61,17,8,.95);display:inline-flex;align-items:center;justify-content:center;padding:0 7px;color:#ffb29e;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 12px rgba(255,92,59,.22)}
+    .persistentBadgeRow{position:absolute;z-index:6;left:5px;bottom:31px;display:flex;gap:3px;flex-wrap:wrap;max-width:calc(100% - 10px);pointer-events:none}.persistentBadge{border:1px solid #526477;border-radius:999px;background:rgba(8,13,19,.94);padding:2px 5px;color:#c6d2de;font-size:6px;font-weight:1000;white-space:nowrap;box-shadow:0 3px 9px rgba(0,0,0,.36)}.persistentBadge.health{border-color:#ba5264;color:#ffb0bc}.persistentBadge.armor{border-color:#5c9fca;color:#aee1ff}.persistentBadge.construction{border-color:#c79742;color:#f5d07b}.persistentBadge.token{border-color:#7662aa;color:#d6c7ff}.persistentBadge.attachment{border-color:#4e9c81;color:#a4eccf}
+    .baseGroup{flex:0 0 auto;display:flex;align-items:flex-start;gap:3px;padding:2px;border:1px solid #2d3a47;border-radius:10px;background:rgba(7,11,16,.58)}.baseGroup>.gameCard{flex:0 0 auto}.baseAttachments{display:flex;align-items:flex-start;gap:3px}.baseAttachments .gameCard{width:72px!important;flex:0 0 72px!important;opacity:.92}.baseAttachments .cardActions{padding:2px}.baseAttachments .btn{min-width:0!important;font-size:5.8px!important;padding:2px!important}.baseAttachments .cardArt{height:27px!important}
+    .baseAbilityList{display:grid;gap:8px}.baseAbilityRow{border:1px solid #344354;border-radius:10px;background:#121a23;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}.baseAbilityRow.disabled{opacity:.58}.baseAbilityName{font-size:10px;font-weight:950}.baseAbilityText{margin-top:4px;color:#9cabb9;font-size:8px;line-height:1.4}.baseAbilityReason{margin-top:4px;color:#d7929c;font-size:7px}.turnSystems{display:flex;gap:3px;flex-wrap:wrap}.turnSystem{border:1px solid #46586a;border-radius:999px;background:#0b1219;padding:2px 5px;color:#aebbc8;font-size:6px;font-weight:950;white-space:nowrap}.turnSystem.sacrifice{border-color:#9b4758;color:#ff9caf}
     .gameCard.transformReady{box-shadow:0 0 0 2px #cf83ff,0 0 24px rgba(207,131,255,.35)}
 
     /* DIRECT CARD PLAY */
@@ -1145,7 +1149,7 @@
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   // Version the module URL so browsers cannot reuse an older validator.
   const cardLibrary = await import(
-    "./warrealms-pack/warrealms-cards.js?v=13"
+    "./warrealms-pack/warrealms-cards.js?v=14"
   );
 
   const {
@@ -1158,7 +1162,7 @@
     COLLECTIBLE_CARDS,
     CARD_MAP,
     ALL_CARD_MAP,
-    getCard,
+    getCard: getCardDefinition,
     createStarterDeck,
     defaultOwnedCards,
     countCards,
@@ -1169,6 +1173,10 @@
     effectSummary,
     fullCardRules
   } = cardLibrary;
+
+  function getCard(value) {
+    return getCardDefinition(typeof value === "object" && value ? value.id : value);
+  }
 
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -1197,7 +1205,7 @@
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
   const PROFILE_VERSION = 6;
-  const GAME_SCHEMA = 12;
+  const GAME_SCHEMA = 13;
   const STARTING_AUTHORITY = 60;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
@@ -1414,6 +1422,9 @@
   }
 
   function displayCardType(card) {
+    if (isExpansionBase(card)) return "EXPANSION BASE";
+    if (card?.type === "attachment") return "ATTACHMENT";
+    if (card?.token) return "TOKEN";
     return card?.type === "base" ? "BASE" : "CARD";
   }
 
@@ -1425,32 +1436,81 @@
     return `legacy_${String(ownerId || "player").replace(/[^a-z0-9_-]/gi, "_")}_${zone}_${index}_${String(cardId || "card").replace(/[^a-z0-9_-]/gi, "_")}`;
   }
 
-  function normalizeBattleEntry(entry, ownerId, zone, index) {
-    if (typeof entry === "string") {
-      return { id: entry, instanceId: legacyInstanceId(ownerId, zone, index, entry), ownerId, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0, charges: 0, chargeUsedTurn: 0 };
-    }
-    if (!entry || typeof entry !== "object" || !entry.id) return null;
+  function cardEntryId(value) {
+    return typeof value === "object" && value ? String(value.id || "") : String(value || "");
+  }
+
+  function isExpansionBase(card) {
+    return !!card?.expansion;
+  }
+
+  function makeBattleEntry(value, ownerId, overrides = {}) {
+    const id = cardEntryId(value);
+    const source = typeof value === "object" && value ? value : {};
+    const card = getCard(id);
     return {
+      id,
+      instanceId: source.instanceId || overrides.instanceId || makeId("card"),
+      ownerId,
       allyTurn: 0,
       doubleAllyTurn: 0,
       disabledTurn: 0,
       stunTurns: 0,
       charges: 0,
       chargeUsedTurn: 0,
+      chargeGainTurn: 0,
+      chargeGainedThisTurn: 0,
+      heat: 0,
+      heatActionTurn: 0,
+      armor: 0,
+      armorExpiresTurn: 0,
+      currentHealth: isExpansionBase(card) ? Math.max(1, Number(card.health) || 1) : 0,
+      maxHealth: isExpansionBase(card) ? Math.max(1, Number(card.health) || 1) : 0,
+      constructionRemaining: isExpansionBase(card) ? Math.max(0, Math.floor(Number(card.construction) || 0)) : 0,
+      deployedTurnSerial: 0,
+      attachedTo: "",
+      attachedTurnSerial: 0,
+      turnsSurvived: 0,
+      recurringTurns: 0,
+      thresholdTurns: {},
+      tokenOrigin: card?.token ? "generated" : "",
+      ...source,
+      ...overrides,
+      id,
       ownerId,
-      ...entry,
-      charges: Math.max(0, Math.floor(Number(entry.charges) || 0)),
-      chargeUsedTurn: Math.max(0, Math.floor(Number(entry.chargeUsedTurn) || 0)),
-      instanceId: entry.instanceId || legacyInstanceId(ownerId, zone, index, entry.id)
+      instanceId: source.instanceId || overrides.instanceId || makeId("card")
     };
+  }
+
+  function normalizeBattleEntry(entry, ownerId, zone, index) {
+    const id = cardEntryId(entry);
+    if (!id) return null;
+    const normalized = makeBattleEntry(entry, ownerId, {
+      instanceId: typeof entry === "object" && entry?.instanceId ? entry.instanceId : legacyInstanceId(ownerId, zone, index, id)
+    });
+    const card = getCard(id);
+    normalized.charges = Math.max(0, Math.floor(Number(normalized.charges) || 0));
+    normalized.chargeUsedTurn = Math.max(0, Math.floor(Number(normalized.chargeUsedTurn) || 0));
+    normalized.chargeGainTurn = Math.max(0, Math.floor(Number(normalized.chargeGainTurn) || 0));
+    normalized.chargeGainedThisTurn = Math.max(0, Math.floor(Number(normalized.chargeGainedThisTurn) || 0));
+    normalized.heat = Math.max(0, Math.min(Math.max(0, Number(card?.heat?.max) || 99), Math.floor(Number(normalized.heat) || 0)));
+    normalized.heatActionTurn = Math.max(0, Math.floor(Number(normalized.heatActionTurn) || 0));
+    normalized.armor = Math.max(0, Math.floor(Number(normalized.armor) || 0));
+    normalized.armorExpiresTurn = Math.max(0, Math.floor(Number(normalized.armorExpiresTurn) || 0));
+    normalized.constructionRemaining = isExpansionBase(card)
+      ? Math.max(0, Math.min(Math.floor(Number(card.construction) || 0), Math.floor(Number(normalized.constructionRemaining) || 0)))
+      : 0;
+    normalized.maxHealth = isExpansionBase(card) ? Math.max(1, Math.floor(Number(normalized.maxHealth) || Number(card.health) || 1)) : 0;
+    normalized.currentHealth = isExpansionBase(card) ? Math.max(1, Math.min(normalized.maxHealth, Math.floor(Number(normalized.currentHealth) || normalized.maxHealth))) : 0;
+    normalized.thresholdTurns = normalized.thresholdTurns && typeof normalized.thresholdTurns === "object" && !Array.isArray(normalized.thresholdTurns) ? normalized.thresholdTurns : {};
+    return normalized;
   }
 
   function normalizeGameState(game) {
     if (!game || typeof game !== "object") return game;
     game.players = Array.isArray(game.players) ? game.players : [];
     game.players.forEach(player => {
-      for (const zone of ["draw", "discard", "hand"]) player[zone] = Array.isArray(player[zone]) ? player[zone] : [];
-      for (const zone of ["played", "bases"]) {
+      for (const zone of ["draw", "discard", "hand", "played", "bases", "attachments"]) {
         player[zone] = (Array.isArray(player[zone]) ? player[zone] : [])
           .map((entry, index) => normalizeBattleEntry(entry, player.id || player.uid, zone, index))
           .filter(Boolean);
@@ -1510,7 +1570,16 @@
       player.transformProgress = player.transformProgress && typeof player.transformProgress === "object" && !Array.isArray(player.transformProgress)
         ? Object.fromEntries(Object.entries(player.transformProgress).map(([cardId, count]) => [cardId, Math.max(0, Number(count) || 0)]).filter(([, count]) => count > 0))
         : {};
+      player.sacrificesThisTurn = Math.max(0, Math.floor(Number(player.sacrificesThisTurn) || 0));
+      player.sacrificedIdsThisTurn = Array.isArray(player.sacrificedIdsThisTurn) ? player.sacrificedIdsThisTurn.map(String) : [];
+      player.factionPlayedThisTurn = Object.fromEntries(["yellow", "blue", "green", "red"].map(faction => [faction, Math.max(0, Math.floor(Number(player.factionPlayedThisTurn?.[faction]) || 0))]));
+      player.factionAcquired = Object.fromEntries(["yellow", "blue", "green", "red"].map(faction => [faction, Math.max(0, Math.floor(Number(player.factionAcquired?.[faction]) || 0))]));
+      player.tokenComboUsedTurn = player.tokenComboUsedTurn && typeof player.tokenComboUsedTurn === "object" ? player.tokenComboUsedTurn : {};
+      player.redeployUsedTurn = Math.max(0, Math.floor(Number(player.redeployUsedTurn) || 0));
+      for (const base of player.bases) syncExpansionHealth(player, base);
     });
+    game.schema = Math.max(GAME_SCHEMA, Number(game.schema) || 0);
+    game.cardVersion = Math.max(WAR_REALMS_CARD_VERSION, Number(game.cardVersion) || 0);
     game.draftStartedAtMs = Math.max(0, Number(game.draftStartedAtMs) || 0);
     game.draftEndsAtMs = Math.max(game.draftStartedAtMs, Number(game.draftEndsAtMs) || 0);
     game.draftCompletedAtMs = Math.max(0, Number(game.draftCompletedAtMs) || 0);
@@ -1783,7 +1852,7 @@
     for (const entry of game?.tradeRow || []) add(entry, entry?.collectibleEdition === true);
     for (const entry of game?.scrapped || []) add(entry, entry?.collectibleEdition === true);
     for (const player of game?.players || []) {
-      for (const zone of ["draw", "discard", "hand", "played", "bases"]) {
+      for (const zone of ["draw", "discard", "hand", "played", "bases", "attachments"]) {
         for (const entry of player[zone] || []) {
           const cardId = typeof entry === "string" ? entry : entry?.id;
           add(entry, playerUsesCollectibleEdition(player, cardId));
@@ -1907,7 +1976,17 @@
     "Charge": "Charge counters are stored on an individual Base. The Base's listed action spends those counters during its owner's turn.",
     "Echo": "Echo repeats allowed parts of the Primary ability of the previously played ship. It never copies Ally or Sacrifice abilities.",
     "Transform": "Transform permanently replaces that copy with its listed evolved form after the printed condition is completed.",
-    "Control": "Control is a temporary resource used by card effects that manipulate, delay, or redirect enemy options. Unspent Control disappears at turn end."
+    "Control": "Control is a temporary resource used by card effects that manipulate, delay, or redirect enemy options. Unspent Control disappears at turn end.",
+    "Heat": "Heat stays on that exact ship instance through hand, play, discard, reshuffle, Reclaim, and Redeploy. Heat thresholds strengthen ships; Overload spends or resets Heat for a risky burst.",
+    "Overload": "Overload is a high-Heat payoff. It grants a powerful effect, then applies the printed reset and Authority cost. Optional Overloads can be declined.",
+    "Reclaim": "Reclaim moves an eligible exact card instance from the discard or sacrifice history into your hand.",
+    "Redeploy": "Redeploy immediately resolves an eligible discarded card, then places that exact card instance on the bottom of your draw pile.",
+    "Armor": "Armor protects a base before its Defense or persistent Health. Temporary Armor normally expires at the start of its owner's next turn.",
+    "Repair": "Repair restores an Expansion Base's persistent Health without exceeding its current maximum Health.",
+    "Construction": "Expansion Bases enter with Construction counters, lose one at the start of later turns, and cannot use completed abilities until Construction reaches zero.",
+    "Expansion Base": "An Expansion Base keeps damage between turns, can be repaired, begins under Construction, and normally holds two Attachments.",
+    "Attachment": "An Attachment stays connected to a selected base. If that base leaves play, its Attachments go to discard.",
+    "Token": "A Token is a real unique card instance created inside the match. It moves through deck zones normally, counts for its faction, and cannot be bought in the Armory."
   });
 
   const EFFECT_TERM_ALIASES = Object.freeze({
@@ -1961,6 +2040,18 @@
     "transform": "Transform",
     "transforms": "Transform",
     "control": "Control"
+    ,"heat": "Heat"
+    ,"overload": "Overload"
+    ,"reclaim": "Reclaim"
+    ,"redeploy": "Redeploy"
+    ,"armor": "Armor"
+    ,"repair": "Repair"
+    ,"construction": "Construction"
+    ,"expansion base": "Expansion Base"
+    ,"attachment": "Attachment"
+    ,"attachments": "Attachment"
+    ,"token": "Token"
+    ,"tokens": "Token"
   });
 
   const CHOICE_EFFECT_KEYS = Object.freeze(["or", "choice", "chooseOne", "choose_one", "options"]);
@@ -2091,14 +2182,15 @@
   function queueResurrectionChoice(game, player, config = {}, context = {}) {
     const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
     const cardType = String(config.cardType || "").trim();
-    const options = player.discard.map((cardId, discardIndex) => {
-      const card = getCard(cardId);
+    const options = player.discard.map((entry, discardIndex) => {
+      const card = getCard(entry);
       if (!card || card.cost > maxCost || (cardType && card.type !== cardType)) return null;
       return {
         label: `${card.name} · Cost ${card.cost}`,
         effect: {
           __resurrect: {
-            cardId,
+            cardId: card.id,
+            instanceId: entry.instanceId,
             discardIndex,
             sacrificeAfterPlay: config.sacrificeAfterPlay !== false
           }
@@ -2134,28 +2226,30 @@
   function resolveInternalResurrection(game, player, instruction = {}) {
     const expectedId = String(instruction.cardId || "");
     let index = Number(instruction.discardIndex);
-    if (!Number.isInteger(index) || player.discard[index] !== expectedId) index = player.discard.findIndex(cardId => cardId === expectedId);
+    if (!Number.isInteger(index) || cardEntryId(player.discard[index]) !== expectedId || (instruction.instanceId && player.discard[index]?.instanceId !== instruction.instanceId)) {
+      index = player.discard.findIndex(entry => (instruction.instanceId && entry.instanceId === instruction.instanceId) || (!instruction.instanceId && cardEntryId(entry) === expectedId));
+    }
     if (index < 0) {
       addLog(game, `${player.name}'s Resurrection target was no longer in the discard pile.`);
       return false;
     }
-    const cardId = player.discard.splice(index, 1)[0];
-    player.hand.push(cardId);
+    const entry = player.discard.splice(index, 1)[0];
+    const cardId = cardEntryId(entry);
+    player.hand.push(entry);
     if (instruction.sacrificeAfterPlay !== false) {
       player.temporaryResurrections = player.temporaryResurrections || {};
-      player.temporaryResurrections[cardId] = Math.max(0, Number(player.temporaryResurrections[cardId]) || 0) + 1;
+      player.temporaryResurrections[entry.instanceId] = true;
     }
     pushVisualEvent(game, "card-resurrect", { actorId: player.id, targetId: player.id, cardId });
     addLog(game, `${player.name} Resurrected ${getCard(cardId)?.name || "a card"} into their hand.`);
     return true;
   }
 
-  function consumeTemporaryResurrection(player, cardId) {
+  function consumeTemporaryResurrection(player, entry) {
     player.temporaryResurrections = player.temporaryResurrections || {};
-    const count = Math.max(0, Math.floor(Number(player.temporaryResurrections[cardId]) || 0));
-    if (!count) return false;
-    if (count <= 1) delete player.temporaryResurrections[cardId];
-    else player.temporaryResurrections[cardId] = count - 1;
+    const instanceId = typeof entry === "object" ? entry.instanceId : String(entry || "");
+    if (!instanceId || !player.temporaryResurrections[instanceId]) return false;
+    delete player.temporaryResurrections[instanceId];
     return true;
   }
 
@@ -2196,9 +2290,11 @@
     if (transform.trigger === "timesPlayed") gain = 1;
     if (transform.trigger === "cumulativePrimaryEffect") gain = Math.max(0, Number(coreEffect(primaryCardEffect(card))[transform.effectKey]) || 0);
     if (!gain) return false;
-    const progress = Math.max(0, Number(player.transformProgress[card.id]) || 0) + gain;
-    player.transformProgress[card.id] = progress;
+    const progressKey = entry.instanceId || card.id;
+    const progress = Math.max(0, Number(player.transformProgress[progressKey]) || Number(player.transformProgress[card.id]) || 0) + gain;
+    player.transformProgress[progressKey] = progress;
     if (progress < required || !getCard(transform.into)) return false;
+    delete player.transformProgress[progressKey];
     delete player.transformProgress[card.id];
     const previousId = entry.id;
     entry.id = transform.into;
@@ -2215,16 +2311,30 @@
   function gainChargeForBase(game, player, entry, trigger, event = {}) {
     const card = getCard(entry?.id);
     const charge = card?.charge;
-    if (!charge || charge.trigger !== trigger || entry.disabledTurn === game.turnSerial) return 0;
+    const triggers = [charge?.trigger, ...(Array.isArray(charge?.triggers) ? charge.triggers : [])].filter(Boolean);
+    if (!charge || !triggers.includes(trigger) || entry.disabledTurn === game.turnSerial || (isExpansionBase(card) && entry.constructionRemaining > 0)) return 0;
     if (trigger === "friendlyFactionPlayed") {
       if (charge.faction && charge.faction !== event.faction) return 0;
       if (event.sourceInstanceId && event.sourceInstanceId === entry.instanceId) return 0;
     }
+    if (trigger === "tokenPlayed" && charge.tokenId && charge.tokenId !== event.cardId && !event.tags?.includes(charge.tokenId)) return 0;
+    if (trigger === "cardAcquired" && charge.faction && charge.faction !== event.faction) return 0;
+    if (trigger === "cardSacrificed" && charge.sacrificedId && charge.sacrificedId !== event.cardId) return 0;
+    if (entry.chargeGainTurn !== game.turnSerial) {
+      entry.chargeGainTurn = game.turnSerial;
+      entry.chargeGainedThisTurn = 0;
+    }
     const before = Math.max(0, Math.floor(Number(entry.charges) || 0));
     const maximum = Math.max(0, Math.floor(Number(charge.max) || 99));
-    entry.charges = Math.min(maximum, before + Math.max(0, Math.floor(Number(charge.gain) || 0)));
+    const cap = Number.isFinite(Number(charge.perTurnCap)) ? Math.max(0, Math.floor(Number(charge.perTurnCap))) : Infinity;
+    const roomThisTurn = Math.max(0, cap - entry.chargeGainedThisTurn);
+    const requested = Math.min(roomThisTurn, Math.max(0, Math.floor(Number(charge.gain) || 0)));
+    entry.charges = Math.min(maximum, before + requested);
     const gained = entry.charges - before;
-    if (gained) addLog(game, `${player.name}'s ${card.name} gained ${gained} Charge${gained === 1 ? "" : "s"} (${entry.charges}/${maximum}).`);
+    if (gained) {
+      entry.chargeGainedThisTurn += gained;
+      addLog(game, `${player.name}'s ${card.name} gained ${gained} Charge${gained === 1 ? "" : "s"} (${entry.charges}/${maximum}).`);
+    }
     return gained;
   }
 
@@ -2235,6 +2345,7 @@
   function chargeActionAvailability(game, player, entry, action = {}) {
     const charges = Math.max(0, Math.floor(Number(entry?.charges) || 0));
     if (!entry || entry.disabledTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
+    if (isExpansionBase(getCard(entry)) && entry.constructionRemaining > 0) return { allowed: false, charges, spend: 0 };
     if (action.oncePerTurn && entry.chargeUsedTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
     if (action.cost === "all") {
       const minimum = Math.max(1, Math.floor(Number(action.minimum) || 1));
@@ -2252,9 +2363,15 @@
     return result;
   }
 
-  function chargeResolvedEffect(action = {}, spent = 0) {
-    if (action.effectPerCharge) return multipliedEffect(action.effectPerCharge, spent);
-    return clone(action.effect || {});
+  function chargeResolvedEffect(action = {}, spent = 0, player = null) {
+    const resolved = action.effectPerCharge ? multipliedEffect(action.effectPerCharge, spent) : clone(action.effect || {});
+    const bonus = action.ownedFactionBonus;
+    if (bonus && playerOwnedFactionCount(player, bonus.faction) >= Math.max(0, Number(bonus.at) || 0)) {
+      for (const [key, value] of Object.entries(bonus.effect || {})) {
+        if (typeof value === "number") resolved[key] = (Number(resolved[key]) || 0) + value;
+      }
+    }
+    return resolved;
   }
 
   function chargeBadgeHtml(entry, card) {
@@ -2265,14 +2382,465 @@
 
   function chargeButtonsHtml(entry, card, canAct, game = state) {
     const actions = Array.isArray(card?.charge?.actions) ? card.charge.actions : [];
-    if (!entry || !actions.length) return "";
+    const attachmentActions = attachedEntriesForBase(myPlayer(game), entry.instanceId).filter(attachment => getCard(attachment)?.attachment?.action);
+    if (!entry || (!actions.length && !attachmentActions.length)) return "";
+    return `<button class="btn small blue" data-act="base-abilities" data-instance-id="${escapeHtml(entry.instanceId)}">Base Abilities · ${actions.length + attachmentActions.length}</button>`;
+  }
+
+  function allPlayerEntries(player) {
+    if (!player) return [];
+    return ["draw", "discard", "hand", "played", "bases", "attachments"].flatMap(zone => player[zone] || []);
+  }
+
+  function entryTags(entry) {
+    const card = getCard(entry);
+    return [...new Set([card?.id, ...(Array.isArray(card?.tags) ? card.tags : [])].filter(Boolean))];
+  }
+
+  function playerOwnedFactionCount(player, faction) {
+    if (!player || !faction) return 0;
+    return allPlayerEntries(player).filter(entry => getCard(entry)?.faction === faction).length;
+  }
+
+  function factionMetricValue(player, metric, faction) {
+    const played = Math.max(0, Number(player?.factionPlayedThisTurn?.[faction]) || 0);
+    if (metric === "owned") return playerOwnedFactionCount(player, faction);
+    if (metric === "acquired") return Math.max(0, Number(player?.factionAcquired?.[faction]) || 0);
+    if (metric === "playedBefore") return Math.max(0, played - 1);
+    if (metric === "playedAfterFirst") return Math.max(0, played - 1);
+    return played;
+  }
+
+  function createTokenCards(game, player, config = {}, context = {}) {
+    const card = getCard(config.id);
+    if (!card?.token) return 0;
+    let count = Math.max(1, Math.floor(Number(config.count) || 1));
+    let zone = ["hand", "discard", "topdeck"].includes(config.zone) ? config.zone : "discard";
+    if (config.topdeckIfPlayed && (player.played || []).some(entry => entryTags(entry).includes(config.topdeckIfPlayed))) zone = "topdeck";
+    if (config.handAtSacrifice && player.sacrificesThisTurn >= Number(config.handAtSacrifice)) {
+      const handCount = Math.min(count, Math.max(1, Math.floor(Number(config.handCount) || 1)));
+      for (let index = 0; index < handCount; index += 1) player.hand.push(makeBattleEntry(card.id, player.id, { tokenOrigin: context.cardId || "generated" }));
+      count -= handCount;
+    }
+    for (let index = 0; index < count; index += 1) {
+      const entry = makeBattleEntry(card.id, player.id, { tokenOrigin: context.cardId || "generated" });
+      if (zone === "hand") player.hand.push(entry);
+      else if (zone === "topdeck") player.draw.push(entry);
+      else player.discard.push(entry);
+    }
+    const total = Math.max(1, Math.floor(Number(config.count) || 1));
+    addLog(game, `${player.name} created ${total} ${card.name}${total === 1 ? "" : "s"} ${zone === "topdeck" ? "on top of the deck" : `in ${zone}`}.`);
+    return total;
+  }
+
+  function attachedEntriesForBase(player, baseInstanceId) {
+    return (player?.attachments || []).filter(entry => entry.attachedTo === baseInstanceId);
+  }
+
+  function attachmentCapacity(card) {
+    if (!card || card.type !== "base") return 0;
+    return Math.max(1, Math.floor(Number(card.attachmentCapacity) || (isExpansionBase(card) ? 2 : 1)));
+  }
+
+  function legalAttachmentTargets(player, attachmentCard) {
+    return (player?.bases || []).filter(base => {
+      const baseCard = getCard(base);
+      if (!baseCard || (attachmentCard?.attachment?.expansionOnly && !isExpansionBase(baseCard))) return false;
+      return attachedEntriesForBase(player, base.instanceId).length < attachmentCapacity(baseCard);
+    });
+  }
+
+  function baseAttachmentModifier(player, baseEntry, key) {
+    return attachedEntriesForBase(player, baseEntry.instanceId).reduce((sum, entry) => sum + Math.max(0, Number(getCard(entry)?.attachment?.[key]) || 0), 0);
+  }
+
+  function effectiveBaseDefense(player, baseEntry) {
+    const card = getCard(baseEntry);
+    if (!card) return 0;
+    return Math.max(1, Math.floor(Number(card.defense) || 0) + baseAttachmentModifier(player, baseEntry, "defense"));
+  }
+
+  function effectiveExpansionMaxHealth(player, baseEntry) {
+    const card = getCard(baseEntry);
+    if (!isExpansionBase(card)) return 0;
+    return Math.max(1, Math.floor(Number(card.health) || 1) + baseAttachmentModifier(player, baseEntry, "expansionHealth"));
+  }
+
+  function syncExpansionHealth(player, baseEntry, grantAddedHealth = false) {
+    const card = getCard(baseEntry);
+    if (!isExpansionBase(card)) return;
+    const previousMax = Math.max(1, Number(baseEntry.maxHealth) || Number(card.health) || 1);
+    const nextMax = effectiveExpansionMaxHealth(player, baseEntry);
+    baseEntry.maxHealth = nextMax;
+    if (grantAddedHealth && nextMax > previousMax) baseEntry.currentHealth = Math.min(nextMax, Math.max(1, Number(baseEntry.currentHealth) || previousMax) + (nextMax - previousMax));
+    else baseEntry.currentHealth = Math.max(1, Math.min(nextMax, Number(baseEntry.currentHealth) || nextMax));
+  }
+
+  function resetBaseForDiscard(entry) {
+    const card = getCard(entry);
+    const reset = makeBattleEntry(entry, entry.ownerId, { instanceId: entry.instanceId, heat: entry.heat || 0 });
+    reset.charges = 0;
+    reset.armor = 0;
+    reset.armorExpiresTurn = 0;
+    reset.attachedTo = "";
+    reset.deployedTurnSerial = 0;
+    if (isExpansionBase(card)) {
+      reset.maxHealth = Math.max(1, Number(card.health) || 1);
+      reset.currentHealth = reset.maxHealth;
+      reset.constructionRemaining = Math.max(0, Math.floor(Number(card.construction) || 0));
+    }
+    return reset;
+  }
+
+  function discardBaseWithAttachments(game, target, baseEntry, source = {}) {
+    const baseIndex = target.bases.findIndex(entry => entry.instanceId === baseEntry.instanceId);
+    if (baseIndex < 0) return false;
+    target.bases.splice(baseIndex, 1);
+    const attachments = attachedEntriesForBase(target, baseEntry.instanceId);
+    target.attachments = (target.attachments || []).filter(entry => entry.attachedTo !== baseEntry.instanceId);
+    target.discard.push(resetBaseForDiscard(baseEntry));
+    for (const attachment of attachments) target.discard.push(makeBattleEntry(attachment, target.id, { attachedTo: "", attachedTurnSerial: 0 }));
+    pushVisualEvent(game, "card-destroy", { actorId: source.actorId || "", targetId: target.id, cardId: baseEntry.id, instanceId: baseEntry.instanceId, damage: source.damage || 0, method: source.method || "combat" });
+    if (attachments.length) addLog(game, `${attachments.length} attachment${attachments.length === 1 ? "" : "s"} fell with ${getCard(baseEntry)?.name || "the base"}.`);
+    return true;
+  }
+
+  function queueBaseTargetChoice(game, player, config = {}, context = {}, mode = "armor") {
+    let targets = (player.bases || []).filter(entry => mode === "armor" || isExpansionBase(getCard(entry)));
+    if (config.attachedBase && context.attachedTo) targets = targets.filter(entry => entry.instanceId === context.attachedTo);
+    if (config.all) {
+      for (const entry of targets) applyBaseModification(game, player, entry, mode, config, context);
+      return targets.length > 0;
+    }
+    if (targets.length === 1 && config.attachedBase) return applyBaseModification(game, player, targets[0], mode, config, context);
+    const options = targets.map(entry => ({
+      label: `${getCard(entry)?.name || "Base"} · ${isExpansionBase(getCard(entry)) ? `${entry.currentHealth}/${entry.maxHealth} Health` : `${effectiveBaseDefense(player, entry)} Defense`}`,
+      effect: { __baseModify: { instanceId: entry.instanceId, mode, config: clone(config) } }
+    }));
+    if (!queueSpecialChoice(game, player, options, { ...context, source: mode })) {
+      addLog(game, `${player.name} had no legal base for ${mode}.`);
+      return false;
+    }
+    return true;
+  }
+
+  function applyBaseModification(game, player, entry, mode, config = {}, context = {}) {
+    if (!entry) return false;
+    const amount = Math.max(0, Math.floor(Number(config.amount) || 0));
+    if (mode === "armor") {
+      entry.armor = Math.max(0, Number(entry.armor) || 0) + amount;
+      entry.armorExpiresTurn = Math.max(entry.armorExpiresTurn || 0, game.turnSerial + 1);
+      addLog(game, `${getCard(entry)?.name || "A base"} gained ${amount} temporary Armor.`);
+      return true;
+    }
+    if (mode === "repair") {
+      syncExpansionHealth(player, entry);
+      const before = entry.currentHealth;
+      entry.currentHealth = Math.min(entry.maxHealth, entry.currentHealth + amount);
+      addLog(game, `${getCard(entry)?.name || "Expansion Base"} repaired ${entry.currentHealth - before} Health.`);
+      return entry.currentHealth > before;
+    }
+    if (mode === "construction") {
+      if (entry.constructionRemaining <= 0 && config.repairFallback) return applyBaseModification(game, player, entry, "repair", { amount: config.repairFallback }, context);
+      const before = entry.constructionRemaining;
+      entry.constructionRemaining = Math.max(0, before - amount);
+      if (before > 0 && entry.constructionRemaining === 0) {
+        pushVisualEvent(game, "construction-complete", { actorId: player.id, targetId: player.id, cardId: entry.id, instanceId: entry.instanceId });
+        addLog(game, `${player.name} completed ${getCard(entry)?.name || "an Expansion Base"}.`);
+      }
+      return entry.constructionRemaining < before;
+    }
+    return false;
+  }
+
+  function queueHeatTargetChoice(game, player, config = {}, context = {}) {
+    const amount = Math.max(1, Math.floor(Number(config.amount) || 1));
+    const targets = allPlayerEntries(player).filter(entry => getCard(entry)?.heat && (entry.heat || 0) > 0 && entry.instanceId !== context.instanceId);
+    const options = targets.map(entry => ({
+      label: `${getCard(entry).name} · Heat ${entry.heat}`,
+      effect: { __heatChange: { instanceId: entry.instanceId, delta: -amount, remainingTargets: Math.max(0, Math.floor(Number(config.targets) || 1) - 1), ifChangedEffect: clone(config.ifChangedEffect || {}) } }
+    }));
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "coolHeat" })) {
+      addLog(game, `${player.name} had no heated ship to cool.`);
+      return false;
+    }
+    return true;
+  }
+
+  function findOwnedEntry(player, instanceId) {
+    return allPlayerEntries(player).find(entry => entry.instanceId === instanceId) || null;
+  }
+
+  function resolveHeatChange(game, player, instruction = {}, context = {}) {
+    const entry = findOwnedEntry(player, instruction.instanceId);
+    const card = getCard(entry);
+    if (!entry || !card?.heat) return false;
+    const before = Math.max(0, Number(entry.heat) || 0);
+    const maximum = Math.max(0, Number(card.heat.max) || 99);
+    entry.heat = Math.max(0, Math.min(maximum, before + (Number(instruction.delta) || 0)));
+    const changed = entry.heat !== before;
+    if (changed) {
+      addLog(game, `${card.name} changed from Heat ${before} to Heat ${entry.heat}.`);
+      if (instruction.ifChangedEffect && Object.keys(instruction.ifChangedEffect).length) applyEffect(game, player, instruction.ifChangedEffect, context);
+    }
+    if (instruction.remainingTargets > 0) queueHeatTargetChoice(game, player, { amount: Math.abs(Number(instruction.delta) || 1), targets: instruction.remainingTargets }, context);
+    return changed;
+  }
+
+  function resolveHeatOnPlay(game, player, entry, card) {
+    if (!card?.heat) return;
+    const maximum = Math.max(0, Number(card.heat.max) || 99);
+    entry.heat = Math.min(maximum, Math.max(0, Number(entry.heat) || 0) + Math.max(0, Number(card.heat.gain) || 0));
+    if (card.heat.gain) {
+      triggerChargeEvent(game, player, "heatGained", { cardId: card.id, amount: card.heat.gain, sourceInstanceId: entry.instanceId });
+      addLog(game, `${card.name} reached Heat ${entry.heat}/${maximum}.`);
+    }
+    for (const threshold of card.heat.thresholds || []) {
+      if (entry.heat >= Number(threshold.at)) applyEffect(game, player, threshold.effect, { cardId: card.id, instanceId: entry.instanceId, source: "heat" });
+    }
+    const overload = card.heat.overload;
+    if (!overload || entry.heat < Number(overload.at)) return;
+    const instruction = { instanceId: entry.instanceId, reset: Math.max(0, Number(overload.reset) || 0), selfDamage: Math.max(0, Number(overload.selfDamage) || 0), effect: clone(overload.effect || {}) };
+    if (overload.optional) {
+      queueSpecialChoice(game, player, [
+        { label: "Overload", effect: { __heatOverload: instruction } },
+        { label: "Hold Heat", effect: { __noop: true } }
+      ], { cardId: card.id, source: "overload" });
+    } else resolveHeatOverload(game, player, instruction, { cardId: card.id, source: "overload" });
+  }
+
+  function resolveHeatOverload(game, player, instruction = {}, context = {}) {
+    const entry = findOwnedEntry(player, instruction.instanceId);
+    if (!entry) return false;
+    applyEffect(game, player, instruction.effect || {}, context);
+    if (instruction.selfDamage) damageAuthority(game, player, instruction.selfDamage, `${getCard(entry)?.name || "A ship"} Overload`, player.id);
+    entry.heat = Math.max(0, Number(instruction.reset) || 0);
+    addLog(game, `${getCard(entry)?.name || "A ship"} Overloaded and reset to Heat ${entry.heat}.`);
+    return true;
+  }
+
+  function heatActionButtonsHtml(entry, card, canAct) {
+    const actions = Array.isArray(card?.heat?.actions) ? card.heat.actions : [];
     return actions.map((action, actionIndex) => {
-      const availability = game ? chargeActionAvailability(game, myPlayer(game) || {}, entry, action) : { allowed: false, spend: 0 };
-      const enabled = !!canAct && availability.allowed;
-      const costText = action.cost === "all" ? `All ${availability.charges}` : `${Math.max(1, Number(action.cost) || 1)}⚡`;
-      const label = String(action.label || "Release Charge").replace(/ Release$/i, "");
-      return `<button class="btn small blue" data-act="use-charge" data-instance-id="${escapeHtml(entry.instanceId)}" data-action-index="${actionIndex}" ${enabled ? "" : "disabled"}>${escapeHtml(label)} · ${escapeHtml(costText)}</button>`;
+      const cost = Math.max(1, Number(action.cost) || 1);
+      const enabled = canAct && (entry.heat || 0) >= cost && (!action.oncePerTurn || entry.heatActionTurn !== state?.turnSerial);
+      return `<button class="btn small warning" data-act="use-heat" data-instance-id="${escapeHtml(entry.instanceId)}" data-action-index="${actionIndex}" ${enabled ? "" : "disabled"}>${escapeHtml(action.label || "Vent Heat")} · −${cost}♨</button>`;
     }).join("");
+  }
+
+  function queueReclaimChoice(game, player, config = {}, context = {}) {
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const ids = new Set(config.ids || []);
+    const tags = new Set(config.tags || []);
+    const types = new Set(config.types || []);
+    const matches = entry => {
+      const card = getCard(entry);
+      if (!card || card.cost > maxCost) return false;
+      if (!ids.size && !tags.size && !types.size) return true;
+      return ids.has(card.id) || types.has(card.type) || entryTags(entry).some(tag => tags.has(tag));
+    };
+    let candidates = player.discard.filter(matches).map(entry => ({ entry, source: "discard" }));
+    if (config.sacrificedOnly) candidates = (game.scrapped || []).filter(entry => entry.originalOwnerId === player.id && String(entry.reason || "").startsWith("sacrifice") && matches(entry)).map(entry => ({ entry, source: "scrapped" }));
+    const options = candidates.map(({ entry, source }) => ({
+      label: `${getCard(entry)?.name || "Card"} · Cost ${getCard(entry)?.cost || 0}`,
+      effect: { __reclaim: { instanceId: entry.instanceId, cardId: entry.id, source } }
+    }));
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "reclaim" })) {
+      addLog(game, `${player.name} had no eligible card to Reclaim.`);
+      return false;
+    }
+    return true;
+  }
+
+  function resolveReclaim(game, player, instruction = {}) {
+    let entry = null;
+    if (instruction.source === "scrapped") {
+      const index = game.scrapped.findIndex(item => item.instanceId === instruction.instanceId && item.originalOwnerId === player.id);
+      if (index >= 0) entry = game.scrapped.splice(index, 1)[0];
+    } else {
+      const index = player.discard.findIndex(item => item.instanceId === instruction.instanceId);
+      if (index >= 0) entry = player.discard.splice(index, 1)[0];
+    }
+    if (!entry) return false;
+    player.hand.push(makeBattleEntry(entry, player.id, { attachedTo: "" }));
+    addLog(game, `${player.name} Reclaimed ${getCard(entry)?.name || "a card"}.`);
+    return true;
+  }
+
+  function queueRedeployChoice(game, player, config = {}, context = {}) {
+    if (config.oncePerTurn && player.redeployUsedTurn === game.turnSerial) return false;
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const source = config.sacrificedThisTurn ? "scrapped" : "discard";
+    const sourceEntries = config.sacrificedThisTurn
+      ? (game.scrapped || []).filter(item => item.originalOwnerId === player.id && item.sacrificedTurn === game.turnSerial)
+      : player.discard;
+    const candidates = sourceEntries.filter(entry => {
+      const card = getCard(entry);
+      return card && card.type !== "base" && card.type !== "attachment" && card.cost <= maxCost;
+    });
+    const options = candidates.map(entry => ({
+      label: `${getCard(entry).name} · Cost ${getCard(entry).cost}`,
+      effect: { __redeploy: { instanceId: entry.instanceId, source, oncePerTurn: !!config.oncePerTurn } }
+    }));
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "redeploy" })) {
+      addLog(game, `${player.name} had no eligible card to Redeploy.`);
+      return false;
+    }
+    return true;
+  }
+
+  function resolveRedeploy(game, player, instruction = {}) {
+    const sourceEntries = instruction.source === "scrapped" ? game.scrapped : player.discard;
+    const index = sourceEntries.findIndex(entry => entry.instanceId === instruction.instanceId && (instruction.source !== "scrapped" || entry.originalOwnerId === player.id));
+    if (index < 0) return false;
+    const entry = makeBattleEntry(sourceEntries.splice(index, 1)[0], player.id, { attachedTo: "" });
+    const card = getCard(entry);
+    if (!card || card.type === "base" || card.type === "attachment") return false;
+    if (instruction.oncePerTurn) player.redeployUsedTurn = game.turnSerial;
+    entry.allyTurn = 0;
+    entry.doubleAllyTurn = 0;
+    player.played.push(entry);
+    player.factionPlayedThisTurn[card.faction] = (player.factionPlayedThisTurn[card.faction] || 0) + 1;
+    applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, instanceId: entry.instanceId, source: "redeploy" });
+    resolveHeatOnPlay(game, player, entry, card);
+    resolveCardThresholds(game, player, entry, card);
+    triggerFactionAllies(game, player, card.faction);
+    const playedIndex = player.played.findIndex(item => item.instanceId === entry.instanceId);
+    if (playedIndex >= 0) player.played.splice(playedIndex, 1);
+    player.draw.unshift(entry);
+    addLog(game, `${player.name} Redeployed ${card.name}; it returned to the bottom of the deck.`);
+    return true;
+  }
+
+  function recordSacrifice(game, player, entry, card) {
+    player.sacrificesThisTurn = Math.max(0, Number(player.sacrificesThisTurn) || 0) + 1;
+    player.sacrificedIdsThisTurn = [...(player.sacrificedIdsThisTurn || []), card.id];
+    triggerChargeEvent(game, player, "cardSacrificed", { cardId: card.id, tags: entryTags(entry), sourceInstanceId: entry.instanceId });
+    for (const active of [...(player.played || []), ...(player.bases || [])]) resolveCardThresholds(game, player, active, getCard(active));
+  }
+
+  function resolveCardThresholds(game, player, entry, card) {
+    if (!entry || !card || (isExpansionBase(card) && entry.constructionRemaining > 0)) return;
+    entry.thresholdTurns = entry.thresholdTurns || {};
+    for (const [index, threshold] of (card.sacrificeThresholds || []).entries()) {
+      const key = `sacrifice:${index}`;
+      if (entry.thresholdTurns[key] === game.turnSerial || player.sacrificesThisTurn < Number(threshold.at)) continue;
+      if (threshold.requiresSacrificedId && !(player.sacrificedIdsThisTurn || []).includes(threshold.requiresSacrificedId)) continue;
+      entry.thresholdTurns[key] = game.turnSerial;
+      applyEffect(game, player, threshold.effect || {}, { cardId: card.id, instanceId: entry.instanceId, source: "sacrificeThreshold" });
+    }
+    for (const [index, threshold] of (card.factionThresholds || []).entries()) {
+      const key = `faction:${index}`;
+      if (entry.thresholdTurns[key] === game.turnSerial) continue;
+      if (factionMetricValue(player, threshold.metric, threshold.faction || card.faction) < Number(threshold.at)) continue;
+      if (threshold.everyTurns && (entry.turnsSurvived || 0) % Number(threshold.everyTurns) !== 0) continue;
+      entry.thresholdTurns[key] = game.turnSerial;
+      applyEffect(game, player, threshold.effect || {}, { cardId: card.id, instanceId: entry.instanceId, source: "factionThreshold" });
+    }
+    const scaling = card.factionScaling;
+    const scaleKey = "factionScaling";
+    if (scaling && entry.thresholdTurns[scaleKey] !== game.turnSerial) {
+      const metric = factionMetricValue(player, scaling.metric, scaling.faction || card.faction);
+      const units = Math.min(Math.max(0, Number(scaling.maxUnits) || 99), Math.floor(metric / Math.max(1, Number(scaling.per) || 1)));
+      if (units > 0) applyEffect(game, player, multipliedEffect(scaling.effectPerUnit || {}, units), { cardId: card.id, instanceId: entry.instanceId, source: "factionScaling" });
+      entry.thresholdTurns[scaleKey] = game.turnSerial;
+    }
+  }
+
+  function resolveTokenCombo(game, player, entry, card) {
+    const combo = card?.tokenCombo;
+    if (!combo || (combo.oncePerTurn && player.tokenComboUsedTurn?.[card.id] === game.turnSerial)) return;
+    const candidates = (player.played || []).filter(item => itemTagsMatch(item, combo.id));
+    if (candidates.length < Math.max(2, Number(combo.count) || 2)) return;
+    queueSpecialChoice(game, player, [
+      { label: combo.into ? `Merge into ${getCard(combo.into)?.name || combo.into}` : `Sacrifice ${combo.count} for deck search`, effect: { __tokenCombo: { cardId: card.id, count: combo.count, into: combo.into || "", searchMinCost: combo.searchMinCost || 0 } } },
+      { label: "Keep Tokens", effect: { __noop: true } }
+    ], { cardId: card.id, source: "tokenCombo" });
+  }
+
+  function itemTagsMatch(entry, tag) {
+    return entryTags(entry).includes(tag);
+  }
+
+  function resolveTokenComboAction(game, player, instruction = {}) {
+    const count = Math.max(2, Number(instruction.count) || 2);
+    const indices = player.played.map((entry, index) => itemTagsMatch(entry, instruction.cardId) ? index : -1).filter(index => index >= 0).slice(0, count);
+    if (indices.length < count) return false;
+    const removed = indices.sort((a, b) => b - a).map(index => player.played.splice(index, 1)[0]);
+    for (const entry of removed) {
+      const card = getCard(entry);
+      game.scrapped.push({ ...entry, originalOwnerId: player.id, originalOwnerName: player.name, reason: "sacrifice-token-combo", sacrificedTurn: game.turnSerial });
+      recordSacrifice(game, player, entry, card);
+    }
+    player.tokenComboUsedTurn = player.tokenComboUsedTurn || {};
+    player.tokenComboUsedTurn[instruction.cardId] = game.turnSerial;
+    if (instruction.into) createTokenCards(game, player, { id: instruction.into, count: 1, zone: "discard" }, { cardId: instruction.cardId });
+    if (instruction.searchMinCost) {
+      const choices = player.draw.filter(entry => Number(getCard(entry)?.cost) >= Number(instruction.searchMinCost)).map(entry => ({ label: `${getCard(entry).name} · Cost ${getCard(entry).cost}`, effect: { __searchDeck: { instanceId: entry.instanceId } } }));
+      queueSpecialChoice(game, player, choices, { cardId: instruction.cardId, source: "tokenSearch" });
+    }
+    return true;
+  }
+
+  function resolveSearchDeck(game, player, instruction = {}) {
+    const index = player.draw.findIndex(entry => entry.instanceId === instruction.instanceId);
+    if (index < 0) return false;
+    const entry = player.draw.splice(index, 1)[0];
+    player.hand.push(entry);
+    player.draw = shuffleWithGame(game, player.draw);
+    addLog(game, `${player.name} searched for ${getCard(entry)?.name || "a card"}.`);
+    return true;
+  }
+
+  function attachCardToBase(game, player, attachmentEntry, baseEntry) {
+    const card = getCard(attachmentEntry);
+    if (!card?.attachment || !legalAttachmentTargets(player, card).some(entry => entry.instanceId === baseEntry?.instanceId)) return false;
+    attachmentEntry.attachedTo = baseEntry.instanceId;
+    attachmentEntry.attachedTurnSerial = game.turnSerial;
+    syncExpansionHealth(player, baseEntry, true);
+    if (card.attachment.onAttach) applyEffect(game, player, card.attachment.onAttach, { cardId: card.id, instanceId: attachmentEntry.instanceId, attachedTo: baseEntry.instanceId, source: "attachment" });
+    addLog(game, `${player.name} attached ${card.name} to ${getCard(baseEntry)?.name || "a base"}.`);
+    return true;
+  }
+
+  function queueAttachmentTarget(game, player, entry, card) {
+    const options = legalAttachmentTargets(player, card).map(base => ({ label: getCard(base)?.name || "Base", effect: { __attach: { attachmentInstanceId: entry.instanceId, baseInstanceId: base.instanceId } } }));
+    return queueSpecialChoice(game, player, options, { cardId: card.id, source: "attachment" });
+  }
+
+  function persistentStateBadgesHtml(entry, card) {
+    if (!entry) return "";
+    const badges = [];
+    if (isExpansionBase(card)) badges.push(`<span class="persistentBadge health">♥ ${Math.max(0, entry.currentHealth || 0)}/${Math.max(1, entry.maxHealth || card.health)}</span>`);
+    if ((entry.armor || 0) > 0) badges.push(`<span class="persistentBadge armor">⬡ ${entry.armor}</span>`);
+    if (isExpansionBase(card) && (entry.constructionRemaining || 0) > 0) badges.push(`<span class="persistentBadge construction">⚒ ${entry.constructionRemaining}</span>`);
+    if (card.token) badges.push(`<span class="persistentBadge token">TOKEN</span>`);
+    if (card.type === "attachment") badges.push(`<span class="persistentBadge attachment">ATTACH</span>`);
+    return `${card.heat ? `<span class="heatBadge">♨ ${Math.max(0, entry.heat || 0)}</span>` : ""}${chargeBadgeHtml(entry, card)}${badges.length ? `<span class="persistentBadgeRow">${badges.join("")}</span>` : ""}`;
+  }
+
+  function queueSacrificeTarget(game, player, config = {}, context = {}) {
+    const candidates = [...(player.played || []), ...(player.attachments || [])].filter(entry => entry.instanceId !== context.instanceId);
+    const options = candidates.map(entry => ({ label: getCard(entry)?.name || "Card", effect: { __sacrificeOwned: { instanceId: entry.instanceId, thenEffect: clone(config.thenEffect || {}) } } }));
+    return queueSpecialChoice(game, player, options, { ...context, source: "sacrificeTarget" });
+  }
+
+  function sacrificeOwnedEntry(game, player, instanceId, thenEffect = {}) {
+    let zone = ["played", "attachments", "bases"].find(name => (player[name] || []).some(entry => entry.instanceId === instanceId));
+    if (!zone) return false;
+    const index = player[zone].findIndex(entry => entry.instanceId === instanceId);
+    const entry = player[zone].splice(index, 1)[0];
+    const card = getCard(entry);
+    if (!card) return false;
+    if (zone === "bases") {
+      const attachments = attachedEntriesForBase(player, entry.instanceId);
+      player.attachments = player.attachments.filter(item => item.attachedTo !== entry.instanceId);
+      for (const attachment of attachments) player.discard.push(makeBattleEntry(attachment, player.id, { attachedTo: "" }));
+    }
+    game.scrapped.push({ ...entry, originalOwnerId: player.id, originalOwnerName: player.name, reason: "sacrifice-effect", sacrificedTurn: game.turnSerial });
+    recordSacrifice(game, player, entry, card);
+    if (thenEffect && Object.keys(thenEffect).length) applyEffect(game, player, thenEffect, { cardId: card.id, instanceId: entry.instanceId, source: "sacrificeReward" });
+    return true;
   }
 
   const ABILITY_VISUALS = Object.freeze({
@@ -2304,6 +2872,12 @@
     });
     const choices = choiceEffectOptions(effect);
     if (choices.length) glyphs.push({ key: "choice", icon: "OR", label: `Choose one of ${choices.length}`, amountText: `1/${choices.length}`, source: "choice" });
+    if (normalized.createToken) glyphs.push({ key: "token", icon: "✦+", label: `Create ${getCard(normalized.createToken.id)?.name || "Token"}`, amountText: String(normalized.createToken.count || 1), source });
+    if (normalized.reclaim) glyphs.push({ key: "reclaim", icon: "↥", label: "Reclaim from discard", amountText: normalized.reclaim.maxCost ? `≤${normalized.reclaim.maxCost}` : "", source });
+    if (normalized.redeploy) glyphs.push({ key: "redeploy", icon: "↻", label: "Redeploy from discard", amountText: normalized.redeploy.maxCost ? `≤${normalized.redeploy.maxCost}` : "", source });
+    if (normalized.armor) glyphs.push({ key: "armor", icon: "⬡", label: "Base Armor", amountText: String(normalized.armor.amount || 0), source });
+    if (normalized.repair) glyphs.push({ key: "repair", icon: "♥+", label: "Repair Expansion Base", amountText: String(normalized.repair.amount || 0), source });
+    if (normalized.advanceConstruction) glyphs.push({ key: "construction", icon: "⚒", label: "Advance Construction", amountText: String(normalized.advanceConstruction.amount || 0), source });
     return glyphs;
   }
 
@@ -2315,12 +2889,15 @@
 
   function hasEffect(effect) {
     const shared = coreEffect(effect);
-    return choiceEffectOptions(effect).length > 0 || Object.keys(shared).some(key => Number(shared[key]) || shared[key] === true);
+    return choiceEffectOptions(effect).length > 0 || Object.values(shared).some(value => Number(value) || value === true || (value && typeof value === "object"));
   }
 
   function completeCardRules(card) {
     const rules = String(fullCardRules(card) || "");
     const additions = [];
+    if (isExpansionBase(card)) additions.push(`Expansion Base — ${card.health} persistent Health and ${card.construction} Construction.`);
+    if (card.type === "attachment") additions.push("Attachment — select a legal base when played; it is discarded if that base leaves play.");
+    if (card.token) additions.push("Token — a real generated card instance that cannot be bought in the Armory.");
     const doubleAlly = effectDisplaySummary(doubleAllyEffect(card));
     if (doubleAlly && !/double ally\s*:/i.test(rules)) additions.push(`Double Ally: ${doubleAlly}.`);
     const allEffects = [primaryCardEffect(card), card.ally, doubleAllyEffect(card), card.sacrifice];
@@ -2329,7 +2906,7 @@
       const firstChoice = allEffects.find(effect => choiceEffectOptions(effect).length > 0);
       additions.push(`${effectDisplaySummary(firstChoice)}.`);
     }
-    for (const extra of [card.onPurchaseText, card.resurrectText, card.graveEchoText, card.thresholdText, card.chargeText, card.echoText, card.transformText]) {
+    for (const extra of [card.onPurchaseText, card.resurrectText, card.redeployText, card.graveEchoText, card.thresholdText, card.chargeText, card.heatText, card.echoText, card.transformText]) {
       const clean = String(extra || "").trim();
       if (clean && !rules.toLowerCase().includes(clean.toLowerCase())) additions.push(clean.endsWith(".") ? clean : `${clean}.`);
     }
@@ -2410,9 +2987,13 @@
     if (card.effect?.graveEcho) glyphs.push({ key: "graveEcho", icon: "↶", label: "Grave Echo", amountText: "", source: "graveEcho" });
     if (card.authorityThreshold) glyphs.push({ key: "threshold", icon: "♥≤", label: `Last Stand ${card.authorityThreshold.atOrBelow}`, amountText: String(card.authorityThreshold.atOrBelow || ""), source: "threshold" });
     if (card.charge) glyphs.push({ key: "charge", icon: "⚡", label: `Charge up to ${card.charge.max || "∞"}`, amountText: String(card.charge.max || ""), source: "charge" });
+    if (card.heat) glyphs.push({ key: "heat", icon: "♨", label: `Heat up to ${card.heat.max || "∞"}`, amountText: String(card.heat.max || ""), source: "heat" });
+    if (card.type === "attachment") glyphs.unshift({ key: "attachment", icon: "⌁", label: "Attachment", amountText: "", source: "attachment" });
+    if (card.token) glyphs.unshift({ key: "token", icon: "✦", label: "Token", amountText: "", source: "token" });
     if (card.echo) glyphs.push({ key: "echo", icon: "◉", label: "Echo previous ship", amountText: "", source: "echo" });
     if (card.transform) glyphs.push({ key: "transform", icon: "⇆", label: `Transform into ${getCard(card.transform.into)?.name || card.transform.into || "new form"}`, amountText: "", source: "transform" });
     if (card.outpost) glyphs.unshift({ key: "outpost", icon: "🛡", label: `Outpost ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
+    else if (isExpansionBase(card)) glyphs.unshift({ key: "expansion", icon: "▰", label: `Expansion ${card.health || 0} Health`, amountText: String(card.health || 0), source: "expansion" });
     else if (card.type === "base") glyphs.unshift({ key: "base", icon: "▣", label: `Base ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
     return glyphs;
   }
@@ -3453,9 +4034,11 @@
     return persistEditedDeck(true);
   }
 
-  function showCardDetails(cardId, extraActions = "", collectibleEdition = null) {
+  function showCardDetails(cardId, extraActions = "", collectibleEdition = null, instanceId = "") {
     const card = getCard(cardId);
     if (!card) return;
+    const owner = state?.players?.find(player => allPlayerEntries(player).some(entry => entry.instanceId === instanceId));
+    const instance = owner ? findOwnedEntry(owner, instanceId) : null;
     const useCollectibleEdition = collectibleEdition == null ? profileUsesCollectibleEdition(cardId) : !!collectibleEdition;
     const faction = FACTIONS[card.faction];
     const effect = effectDisplaySummary(primaryCardEffect(card));
@@ -3466,7 +4049,7 @@
       <div class="detailGrid" style="--faction:var(--${card.faction})">
         <div class="detailArt" ${cardArtDataAttributes(card.id, useCollectibleEdition)}>${cardArtInnerHtml(card, true, useCollectibleEdition)}</div>
         <div class="detailCopy">
-          <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" ? ` · ${card.defense} Defense` : ""}</div>
+          <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" && !isExpansionBase(card) ? ` · ${card.defense} Defense` : ""}${isExpansionBase(card) ? ` · ${card.health} Health · Construction ${card.construction}` : ""}</div>
           <h3>${escapeHtml(card.name)}</h3>
           <p class="effectHint">Tap any highlighted effect term for a quick explanation. The icon row previews the card's abilities.</p>
           ${cardAbilityRailHtml(card, true)}
@@ -3482,6 +4065,9 @@
           ${card.transformText ? `<div class="detailEffect"><b>${effectLabelHtml("Transform")}:</b> ${linkEffectTerms(card.transformText)}</div>` : ""}
           ${card.resurrectText ? `<div class="detailEffect"><b>${effectLabelHtml("Resurrect")}:</b> ${linkEffectTerms(card.resurrectText)}</div>` : ""}
           ${card.graveEchoText ? `<div class="detailEffect"><b>${effectLabelHtml("Grave Echo")}:</b> ${linkEffectTerms(card.graveEchoText)}</div>` : ""}
+          ${card.heatText ? `<div class="detailEffect"><b>${effectLabelHtml("Heat")}:</b> ${linkEffectTerms(card.heatText)}</div>` : ""}
+          ${card.redeployText ? `<div class="detailEffect"><b>${effectLabelHtml("Redeploy")}:</b> ${linkEffectTerms(card.redeployText)}</div>` : ""}
+          ${instance ? `<div class="detailEffect"><b>Persistent instance:</b> ${card.heat ? `Heat ${instance.heat || 0}` : ""}${card.charge ? ` · Charges ${instance.charges || 0}/${card.charge.max || "∞"}` : ""}${isExpansionBase(card) ? ` · Health ${instance.currentHealth}/${instance.maxHealth} · Construction ${instance.constructionRemaining}` : ""}${instance.armor ? ` · Armor ${instance.armor}` : ""}${card.type === "attachment" && instance.attachedTo ? ` · Attached` : ""}</div>` : ""}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
         </div>
@@ -3780,11 +4366,12 @@
       commandDeckId: String(entrant.commandDeckId || ""),
       commandDeckName: normalizeDeckName(entrant.commandDeckName, "Command Deck"),
       health: STARTING_AUTHORITY,
-      draw: shuffleWithGame(game, createStarterDeck()),
+      draw: shuffleWithGame(game, createStarterDeck().map(cardId => makeBattleEntry(cardId, entrant.uid, { tokenOrigin: "starter" }))),
       discard: [],
       hand: [],
       played: [],
       bases: [],
+      attachments: [],
       trade: 0,
       combat: 0,
       stun: 0,
@@ -3798,6 +4385,12 @@
       pendingChoices: [],
       temporaryResurrections: {},
       transformProgress: {},
+      sacrificesThisTurn: 0,
+      sacrificedIdsThisTurn: [],
+      factionPlayedThisTurn: { yellow: 0, blue: 0, green: 0, red: 0 },
+      factionAcquired: { yellow: 0, blue: 0, green: 0, red: 0 },
+      tokenComboUsedTurn: {},
+      redeployUsedTurn: 0,
       discardPenalty: 0,
       handSize: Math.max(2, Math.min(7, Number(entrant.handSize) || 5)),
       isBot: !!entrant.isBot,
@@ -3962,6 +4555,7 @@
         pushVisualEvent(game, "card-destroy", { actorId: sourceId, targetId: target.id, cardId: base.id, instanceId: base.instanceId, method: "realm-fall" });
       }
       target.bases = [];
+      target.attachments = [];
       addLog(game, `${target.name}'s realm has fallen to ${sourceName}.`);
       finishGameIfNeeded(game);
     }
@@ -3997,11 +4591,56 @@
   function applyEffect(game, player, effect = {}, context = {}) {
     const normalized = coreEffect(effect);
     const internalResurrection = normalized.__resurrect;
+    const internalReclaim = normalized.__reclaim;
+    const internalRedeploy = normalized.__redeploy;
+    const internalHeatChange = normalized.__heatChange;
+    const internalHeatOverload = normalized.__heatOverload;
+    const internalBaseModify = normalized.__baseModify;
+    const internalAttach = normalized.__attach;
+    const internalTokenCombo = normalized.__tokenCombo;
+    const internalSearchDeck = normalized.__searchDeck;
+    const internalSacrificeOwned = normalized.__sacrificeOwned;
+    const internalTopdeckHand = normalized.__topdeckHand;
     const resurrectConfig = normalized.resurrect;
     const graveEchoConfig = normalized.graveEcho;
+    const reclaimConfig = normalized.reclaim;
+    const redeployConfig = normalized.redeploy;
+    const createTokenConfig = normalized.createToken;
+    const coolHeatConfig = normalized.coolHeat;
+    const armorConfig = normalized.armor;
+    const repairConfig = normalized.repair;
+    const constructionConfig = normalized.advanceConstruction;
+    const selfDamage = Math.max(0, Math.floor(Number(normalized.selfDamage) || 0));
+    const topdeckFromHand = Math.max(0, Math.floor(Number(normalized.topdeckFromHand) || 0));
+    const repeatPrimaryChoice = Math.max(0, Math.floor(Number(normalized.repeatPrimaryChoice) || 0));
+    const sacrificeRequired = Math.max(0, Math.floor(Number(normalized.sacrificeRequired) || 0));
+    const peekTop = Math.max(0, Math.floor(Number(normalized.peekTop) || 0));
     delete normalized.__resurrect;
+    delete normalized.__reclaim;
+    delete normalized.__redeploy;
+    delete normalized.__heatChange;
+    delete normalized.__heatOverload;
+    delete normalized.__baseModify;
+    delete normalized.__attach;
+    delete normalized.__tokenCombo;
+    delete normalized.__searchDeck;
+    delete normalized.__sacrificeOwned;
+    delete normalized.__topdeckHand;
+    delete normalized.__noop;
     delete normalized.resurrect;
     delete normalized.graveEcho;
+    delete normalized.reclaim;
+    delete normalized.redeploy;
+    delete normalized.createToken;
+    delete normalized.coolHeat;
+    delete normalized.armor;
+    delete normalized.repair;
+    delete normalized.advanceConstruction;
+    delete normalized.selfDamage;
+    delete normalized.topdeckFromHand;
+    delete normalized.repeatPrimaryChoice;
+    delete normalized.sacrificeRequired;
+    delete normalized.peekTop;
     delete normalized.echo;
     delete normalized.transform;
 
@@ -4016,7 +4655,10 @@
     player.scrapOwn += normalized.scrapOwn || 0;
     player.destroyBase = (player.destroyBase || 0) + (normalized.destroyBase || 0);
     player.lifelink = Math.max(Number(player.lifelink) || 0, Number(normalized.lifelink) || 0);
-    player.shield = Math.min(50, Math.max(0, Number(player.shield) || 0) + (normalized.shield || 0));
+    const shieldBefore = Math.max(0, Number(player.shield) || 0);
+    player.shield = Math.min(50, shieldBefore + (normalized.shield || 0));
+    const shieldGained = player.shield - shieldBefore;
+    if (shieldGained) triggerChargeEvent(game, player, "shieldGained", { amount: shieldGained, cardId: context.cardId || "" });
     if (normalized.draw) drawCards(game, player, normalized.draw);
     if (normalized.drawPerBase) drawCards(game, player, activeBases * normalized.drawPerBase);
     if (normalized.opponentDiscard) resolveOpponentDiscard(game, player, normalized.opponentDiscard);
@@ -4027,16 +4669,55 @@
       }
     }
     if (internalResurrection) resolveInternalResurrection(game, player, internalResurrection);
+    if (internalReclaim) resolveReclaim(game, player, internalReclaim);
+    if (internalRedeploy) resolveRedeploy(game, player, internalRedeploy);
+    if (internalHeatChange) resolveHeatChange(game, player, internalHeatChange, context);
+    if (internalHeatOverload) resolveHeatOverload(game, player, internalHeatOverload, context);
+    if (internalBaseModify) {
+      const entry = player.bases.find(base => base.instanceId === internalBaseModify.instanceId);
+      applyBaseModification(game, player, entry, internalBaseModify.mode, internalBaseModify.config || {}, context);
+    }
+    if (internalAttach) {
+      const attachment = player.attachments.find(entry => entry.instanceId === internalAttach.attachmentInstanceId);
+      const base = player.bases.find(entry => entry.instanceId === internalAttach.baseInstanceId);
+      attachCardToBase(game, player, attachment, base);
+    }
+    if (internalTokenCombo) resolveTokenComboAction(game, player, internalTokenCombo);
+    if (internalSearchDeck) resolveSearchDeck(game, player, internalSearchDeck);
+    if (internalSacrificeOwned) sacrificeOwnedEntry(game, player, internalSacrificeOwned.instanceId, internalSacrificeOwned.thenEffect || {});
+    if (internalTopdeckHand) {
+      const handIndex = player.hand.findIndex(entry => entry.instanceId === internalTopdeckHand.instanceId);
+      if (handIndex >= 0) player.draw.push(player.hand.splice(handIndex, 1)[0]);
+    }
     if (resurrectConfig) queueResurrectionChoice(game, player, resurrectConfig, context);
     if (graveEchoConfig) queueGraveEchoChoice(game, player, graveEchoConfig, context);
+    if (reclaimConfig) queueReclaimChoice(game, player, reclaimConfig, context);
+    if (redeployConfig) queueRedeployChoice(game, player, redeployConfig, context);
+    if (createTokenConfig) createTokenCards(game, player, createTokenConfig, context);
+    if (coolHeatConfig) queueHeatTargetChoice(game, player, coolHeatConfig, context);
+    if (armorConfig) queueBaseTargetChoice(game, player, armorConfig, context, "armor");
+    if (repairConfig) queueBaseTargetChoice(game, player, repairConfig, context, "repair");
+    if (constructionConfig) queueBaseTargetChoice(game, player, constructionConfig, context, "construction");
+    if (selfDamage) damageAuthority(game, player, selfDamage, `${getCard(context.cardId)?.name || "A card"} effect`, player.id);
+    if (topdeckFromHand && player.hand.length) {
+      const options = player.hand.map(entry => ({ label: getCard(entry)?.name || "Card", effect: { __topdeckHand: { instanceId: entry.instanceId } } }));
+      queueSpecialChoice(game, player, options, { ...context, source: "topdeck" });
+    }
+    if (repeatPrimaryChoice) queueEffectChoice(game, player, primaryCardEffect(getCard(context.cardId)), { ...context, source: "repeatPrimary" });
+    if (sacrificeRequired) queueSacrificeTarget(game, player, { thenEffect: {} }, context);
+    if (peekTop && player.draw.length) addLog(game, `${player.name} looked ahead and saw ${getCard(player.draw[player.draw.length - 1])?.name || "an unknown card"} on top of the deck.`);
     if (visualGlyphs.length) pushVisualEvent(game, "ability-burst", { actorId: player.id, targetId: player.id, cardId: context.cardId || "", source: context.source || "primary", abilities: visualGlyphs });
     queueEffectChoice(game, player, effect, context);
   }
 
   function activeFactionEntries(game, player, faction) {
-    return [...player.played, ...player.bases].filter(entry => {
+    return [...player.played, ...player.bases, ...(player.attachments || [])].filter(entry => {
       const card = CARD_MAP[entry.id];
       if (!card || card.faction !== faction) return false;
+      if (card.type === "attachment") {
+        const base = player.bases.find(item => item.instanceId === entry.attachedTo);
+        return !!base && base.disabledTurn !== game.turnSerial;
+      }
       return entry.disabledTurn !== game.turnSerial;
     });
   }
@@ -4075,8 +4756,13 @@
     player.destroyBase = 0;
     player.lifelink = 0;
     player.shield = Math.max(0, Number(player.shield) || 0);
+    player.sacrificesThisTurn = 0;
+    player.sacrificedIdsThisTurn = [];
+    player.factionPlayedThisTurn = { yellow: 0, blue: 0, green: 0, red: 0 };
 
     for (const base of player.bases) {
+      base.turnsSurvived = Math.max(0, Number(base.turnsSurvived) || 0) + 1;
+      if ((base.armorExpiresTurn || 0) <= game.turnSerial) base.armor = 0;
       if ((base.stunTurns || 0) > 0) {
         base.stunTurns -= 1;
         base.disabledTurn = game.turnSerial;
@@ -4085,10 +4771,36 @@
       }
       const card = CARD_MAP[base.id];
       if (card) {
+        syncExpansionHealth(player, base);
+        if (isExpansionBase(card) && base.constructionRemaining > 0 && (base.deployedTurnSerial || 0) < game.turnSerial) {
+          applyBaseModification(game, player, base, "construction", { amount: 1 });
+        }
+        if (isExpansionBase(card) && base.constructionRemaining > 0) {
+          if (card.constructionEffect) applyEffect(game, player, card.constructionEffect, { cardId: card.id, instanceId: base.instanceId, source: "construction" });
+          continue;
+        }
         gainChargeForBase(game, player, base, "startOfTurn");
         const authorityBefore = player.health;
-        applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, source: "base" });
+        applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, instanceId: base.instanceId, source: "base" });
         resolveAuthorityThreshold(game, player, card, authorityBefore, { source: "base" });
+        const recurring = card.recurring;
+        if (recurring?.everyTurns && base.turnsSurvived % Math.max(1, Number(recurring.everyTurns) || 1) === 0) {
+          applyEffect(game, player, recurring.effect || {}, { cardId: card.id, instanceId: base.instanceId, source: "recurring" });
+        }
+        resolveCardThresholds(game, player, base, card);
+      }
+    }
+
+    for (const attachment of player.attachments || []) {
+      const card = getCard(attachment);
+      const base = player.bases.find(entry => entry.instanceId === attachment.attachedTo);
+      if (!card?.attachment || !base || base.disabledTurn === game.turnSerial) continue;
+      attachment.turnsSurvived = Math.max(0, Number(attachment.turnsSurvived) || 0) + 1;
+      if (card.attachment.startOfTurn) applyEffect(game, player, card.attachment.startOfTurn, { cardId: card.id, instanceId: attachment.instanceId, attachedTo: base.instanceId, source: "attachment" });
+      if (card.attachment.everyTurns && attachment.turnsSurvived % Math.max(1, Number(card.attachment.everyTurns) || 1) === 0) {
+        const recurring = clone(card.attachment.recurring || {});
+        if (recurring.advanceConstruction) recurring.advanceConstruction.repairFallback = card.attachment.recurring?.repairFallback || 0;
+        applyEffect(game, player, recurring, { cardId: card.id, instanceId: attachment.instanceId, attachedTo: base.instanceId, source: "attachment" });
       }
     }
 
@@ -4298,7 +5010,7 @@
   }
 
   function openingDraftStarterIndices(player) {
-    return (player?.draw || []).flatMap((cardId, index) => STARTER_DECK_CARD_IDS.has(cardId) ? [index] : []);
+    return (player?.draw || []).flatMap((entry, index) => STARTER_DECK_CARD_IDS.has(cardEntryId(entry)) ? [index] : []);
   }
 
   function buyOpeningDraftCard(game, player, cardId) {
@@ -4313,7 +5025,8 @@
     const starterIndices = openingDraftStarterIndices(player);
     if (!starterIndices.length) return "All ten starter cards have already been replaced.";
     const removeIndex = starterIndices[Math.floor(nextRng(game) * starterIndices.length)];
-    const removedStarterId = player.draw.splice(removeIndex, 1, card.id)[0];
+    const removedStarter = player.draw.splice(removeIndex, 1, makeBattleEntry(card.id, player.id, { tokenOrigin: "opening" }))[0];
+    const removedStarterId = cardEntryId(removedStarter);
     player.draftPicks.push(card.id);
     player.draftReplacements.push({ cardId: card.id, removedStarterId });
     player.draftRemaining = Math.max(0, player.draftRemaining - Number(card.cost));
@@ -4363,6 +5076,7 @@
         const option = choice.options[optionIndex];
         actor.pendingChoices.shift();
         applyEffect(game, actor, option.effect, { cardId: choice.cardId, source: `${choice.source || "primary"}-choice` });
+        triggerChargeEvent(game, actor, "choiceMade", { cardId: choice.cardId, source: choice.source || "primary" });
         const cardName = getCard(choice.cardId)?.name || "Card";
         const summary = option.label || effectDisplaySummary(option.effect) || `Option ${optionIndex + 1}`;
         addLog(game, `${actor.name} chose ${summary} for ${cardName}.`);
@@ -4371,9 +5085,10 @@
       case "FORCED_DISCARD": {
         const handIndex = Number(action.index);
         if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= actor.hand.length) return "That card is no longer in your hand.";
-        const cardId = actor.hand.splice(handIndex, 1)[0];
-        consumeTemporaryResurrection(actor, cardId);
-        actor.discard.push(cardId);
+        const entry = actor.hand.splice(handIndex, 1)[0];
+        const cardId = cardEntryId(entry);
+        consumeTemporaryResurrection(actor, entry);
+        actor.discard.push(entry);
         actor.forcedDiscard = Math.min(Math.max(0, actor.forcedDiscard - 1), actor.hand.length);
         pushVisualEvent(game, "card-discard", { actorId: actor.id, targetId: actor.id, cardId, remaining: actor.forcedDiscard });
         addLog(game, `${actor.name} discarded ${getCard(cardId)?.name || "a card"}${actor.forcedDiscard ? ` and must discard ${actor.forcedDiscard} more` : " and may now continue"}.`);
@@ -4382,26 +5097,49 @@
       case "PLAY": {
         const handIndex = Number(action.index);
         if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= actor.hand.length) return "That card is no longer in your hand.";
-        const cardId = actor.hand.splice(handIndex, 1)[0];
-        const card = getCard(cardId);
+        const pendingEntry = actor.hand[handIndex];
+        const card = getCard(pendingEntry);
+        if (card?.type === "attachment" && !legalAttachmentTargets(actor, card).length) return "You need a base with an open Attachment slot before playing that card.";
+        const entry = actor.hand.splice(handIndex, 1)[0];
+        const cardId = cardEntryId(entry);
         if (!card) {
-          actor.discard.push(cardId);
+          actor.discard.push(entry);
           addLog(game, `${actor.name} cleared an obsolete card entry from their hand.`);
           break;
         }
         const previousShipEntry = [...actor.played].reverse().find(previous => getCard(previous.id)?.type !== "base") || null;
-        const revivedPlay = consumeTemporaryResurrection(actor, cardId);
-        const entry = { id: cardId, instanceId: makeId("card"), ownerId: actor.id, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0, charges: 0, chargeUsedTurn: 0, sacrificeAfterPlay: revivedPlay };
-        const zone = card.type === "base" ? "bases" : "played";
+        const revivedPlay = consumeTemporaryResurrection(actor, entry);
+        Object.assign(entry, { ownerId: actor.id, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0, sacrificeAfterPlay: revivedPlay, deployedTurnSerial: game.turnSerial });
+        if (card.type === "base") {
+          entry.armor = 0;
+          entry.armorExpiresTurn = 0;
+          entry.charges = 0;
+          entry.chargeUsedTurn = 0;
+          if (isExpansionBase(card)) {
+            entry.maxHealth = Math.max(1, Number(card.health) || 1);
+            entry.currentHealth = entry.maxHealth;
+            entry.constructionRemaining = Math.max(0, Number(card.construction) || 0);
+          }
+        }
+        const zone = card.type === "base" ? "bases" : card.type === "attachment" ? "attachments" : "played";
         actor[zone].push(entry);
         pushActionQueue(game, actor, card);
         pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, collectibleEdition: playerUsesCollectibleEdition(actor, card.id), instanceId: entry.instanceId, zone });
-        const authorityBefore = actor.health;
-        applyEffect(game, actor, primaryCardEffect(card), { cardId: card.id, source: "primary" });
-        resolveAuthorityThreshold(game, actor, card, authorityBefore);
-        resolveEcho(game, actor, card, previousShipEntry);
+        if (FACTIONS[card.faction] && card.faction !== "neutral") actor.factionPlayedThisTurn[card.faction] = (actor.factionPlayedThisTurn[card.faction] || 0) + 1;
+        if (card.type === "attachment") {
+          queueAttachmentTarget(game, actor, entry, card);
+        } else if (!isExpansionBase(card) || entry.constructionRemaining <= 0) {
+          const authorityBefore = actor.health;
+          applyEffect(game, actor, primaryCardEffect(card), { cardId: card.id, instanceId: entry.instanceId, source: "primary" });
+          resolveAuthorityThreshold(game, actor, card, authorityBefore);
+          resolveEcho(game, actor, card, previousShipEntry);
+          resolveHeatOnPlay(game, actor, entry, card);
+        }
         triggerChargeEvent(game, actor, "friendlyFactionPlayed", { faction: card.faction, cardId: card.id, sourceInstanceId: entry.instanceId });
+        if (card.token) triggerChargeEvent(game, actor, "tokenPlayed", { faction: card.faction, cardId: card.id, tags: entryTags(entry), sourceInstanceId: entry.instanceId });
         triggerFactionAllies(game, actor, card.faction);
+        resolveCardThresholds(game, actor, entry, card);
+        resolveTokenCombo(game, actor, entry, card);
         recordTransformProgress(game, actor, entry, card);
         addLog(game, `${actor.name} played ${card.name}.`);
 
@@ -4429,7 +5167,11 @@
         const marketCost = marketCardCostForPlayer(card, actor);
         if (actor.trade < marketCost) return "Not enough Trade.";
         actor.trade -= marketCost;
-        actor.discard.push(card.id);
+        actor.discard.push(makeBattleEntry(card.id, actor.id, { tokenOrigin: "acquired" }));
+        if (FACTIONS[card.faction] && card.faction !== "neutral") {
+          actor.factionAcquired[card.faction] = (actor.factionAcquired[card.faction] || 0) + 1;
+          triggerChargeEvent(game, actor, "cardAcquired", { faction: card.faction, cardId: card.id });
+        }
         if (marketEntry.collectibleEdition === true) {
           actor.collectibleEditionCardIds = normalizeCollectibleEditionCardIds([...(actor.collectibleEditionCardIds || []), card.id]);
         }
@@ -4466,28 +5208,37 @@
         const zone = allowedZones.has(action.zone) ? action.zone : "";
         const index = Number(action.index);
         if (!zone || !Number.isInteger(index) || index < 0 || index >= actor[zone].length) return "That card is no longer available to purge.";
-        const cardId = actor[zone].splice(index, 1)[0];
-        if (zone === "hand") consumeTemporaryResurrection(actor, cardId);
+        const entry = actor[zone].splice(index, 1)[0];
+        const cardId = cardEntryId(entry);
+        if (zone === "hand") consumeTemporaryResurrection(actor, entry);
         actor.scrapOwn -= 1;
-        game.scrapped.push({ id: cardId, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "purge" });
-        pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId, target: "player", targetId: actor.id, reason: "purge" });
+        game.scrapped.push({ ...entry, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "purge" });
+        pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId, target: "player", targetId: actor.id, reason: "purge", instanceId: entry.instanceId });
         triggerChargeEvent(game, actor, "ownCardPurged", { cardId });
         addLog(game, `${actor.name} permanently purged ${getCard(cardId)?.name || "a card"} from their deck.`);
         break;
       }
       case "SACRIFICE": {
-        const zone = action.zone === "bases" ? "bases" : "played";
+        const zone = action.zone === "bases" ? "bases" : action.zone === "attachments" ? "attachments" : "played";
         const index = actor[zone].findIndex(entry => entry.instanceId === action.instanceId);
         const entry = actor[zone][index];
         const card = entry && CARD_MAP[entry.id];
         if (!card?.sacrifice) return "That card has no sacrifice ability.";
         actor[zone].splice(index, 1);
-        game.scrapped.push({ id: card.id, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "sacrifice" });
+        if (zone === "bases") {
+          const attachments = attachedEntriesForBase(actor, entry.instanceId);
+          actor.attachments = actor.attachments.filter(item => item.attachedTo !== entry.instanceId);
+          for (const attachment of attachments) actor.discard.push(makeBattleEntry(attachment, actor.id, { attachedTo: "" }));
+        }
+        game.scrapped.push({ ...entry, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "sacrifice", sacrificedTurn: game.turnSerial });
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: card.id, target: "player", targetId: actor.id, reason: "sacrifice", instanceId: entry.instanceId });
+        recordSacrifice(game, actor, entry, card);
         applyEffect(game, actor, card.sacrifice, { cardId: card.id, source: "sacrifice" });
         const transformedId = transformedSacrificeId(card);
         if (transformedId) {
-          actor.discard.push(transformedId);
+          const scrappedIndex = game.scrapped.findIndex(item => item.instanceId === entry.instanceId);
+          if (scrappedIndex >= 0) game.scrapped.splice(scrappedIndex, 1);
+          actor.discard.push(makeBattleEntry(transformedId, actor.id, { instanceId: entry.instanceId, tokenOrigin: "transform" }));
           pushVisualEvent(game, "card-transform", { actorId: actor.id, targetId: actor.id, fromCardId: card.id, cardId: transformedId, instanceId: entry.instanceId });
           addLog(game, `${card.name} transformed into ${getCard(transformedId)?.name || transformedId} in ${actor.name}'s discard pile.`);
         }
@@ -4505,9 +5256,34 @@
         if (!availability.allowed) return entry.disabledTurn === game.turnSerial ? "That Base is disabled this turn." : "That Base does not have enough Charges.";
         entry.charges = Math.max(0, availability.charges - availability.spend);
         if (chargeAction.oncePerTurn) entry.chargeUsedTurn = game.turnSerial;
-        const resolved = chargeResolvedEffect(chargeAction, availability.spend);
+        const resolved = chargeResolvedEffect(chargeAction, availability.spend, actor);
         applyEffect(game, actor, resolved, { cardId: card.id, source: "charge" });
         addLog(game, `${actor.name} spent ${availability.spend} Charge${availability.spend === 1 ? "" : "s"} from ${card.name} to use ${chargeAction.label || "its charged ability"}.`);
+        break;
+      }
+      case "USE_HEAT": {
+        const entry = actor.played.find(item => item.instanceId === action.instanceId);
+        const card = getCard(entry);
+        const heatAction = card?.heat?.actions?.[Number(action.actionIndex)];
+        if (!entry || !heatAction) return "That Heat ability is no longer available.";
+        const cost = Math.max(1, Number(heatAction.cost) || 1);
+        if ((entry.heat || 0) < cost) return "That card does not have enough Heat.";
+        if (heatAction.oncePerTurn && entry.heatActionTurn === game.turnSerial) return "That Heat ability was already used this turn.";
+        entry.heat -= cost;
+        if (heatAction.oncePerTurn) entry.heatActionTurn = game.turnSerial;
+        applyEffect(game, actor, heatAction.effect || {}, { cardId: card.id, instanceId: entry.instanceId, source: "heatAction" });
+        addLog(game, `${actor.name} removed ${cost} Heat from ${card.name} to use ${heatAction.label || "its Heat ability"}.`);
+        break;
+      }
+      case "USE_ATTACHMENT": {
+        const entry = actor.attachments.find(item => item.instanceId === action.instanceId);
+        const card = getCard(entry);
+        const attachmentAction = card?.attachment?.action;
+        if (!entry || !attachmentAction || !entry.attachedTo) return "That Attachment ability is no longer available.";
+        if (attachmentAction.oncePerTurn && entry.chargeUsedTurn === game.turnSerial) return "That Attachment ability was already used this turn.";
+        if (attachmentAction.oncePerTurn) entry.chargeUsedTurn = game.turnSerial;
+        applyEffect(game, actor, attachmentAction.effect || {}, { cardId: card.id, instanceId: entry.instanceId, attachedTo: entry.attachedTo, source: "attachmentAction" });
+        addLog(game, `${actor.name} used ${card.name}'s attached ability.`);
         break;
       }
       case "STUN_BASE": {
@@ -4532,9 +5308,8 @@
         const allowed = attackableBases(target).some(entry => entry.instanceId === base.instanceId);
         if (!allowed) return "An Outpost protects that base. Destroy an Outpost first.";
         actor.destroyBase -= 1;
-        target.bases.splice(index, 1);
-        target.discard.push(card.id);
-        pushVisualEvent(game, "card-destroy", { actorId: actor.id, targetId: target.id, cardId: card.id, instanceId: base.instanceId, method: "ability" });
+        discardBaseWithAttachments(game, target, base, { actorId: actor.id, method: "ability" });
+        triggerChargeEvent(game, actor, "enemyBaseDestroyed", { cardId: card.id, targetId: target.id });
         addLog(game, `${actor.name} destroyed ${target.name}'s ${card.name} with a card ability.`);
         break;
       }
@@ -4548,13 +5323,32 @@
         if (!card) return "That base no longer exists.";
         const allowed = attackableBases(target).some(entry => entry.instanceId === base.instanceId);
         if (!allowed) return "An Outpost protects that base. Destroy an Outpost first.";
-        if (actor.combat < card.defense) return `You need ${card.defense} Combat to destroy ${card.name}.`;
-        actor.combat -= card.defense;
-        target.bases.splice(index, 1);
-        target.discard.push(card.id);
-        pushVisualEvent(game, "card-destroy", { actorId: actor.id, targetId: target.id, cardId: card.id, instanceId: base.instanceId, damage: card.defense, method: "combat" });
-        applyLifelink(game, actor, card.defense);
-        addLog(game, `${actor.name} destroyed ${target.name}'s ${card.name}.`);
+        if (isExpansionBase(card)) {
+          syncExpansionHealth(target, base);
+          const available = Math.max(0, Number(actor.combat) || 0);
+          const damage = Math.min(available, Math.max(0, Number(base.armor) || 0) + Math.max(1, Number(base.currentHealth) || 1));
+          actor.combat -= damage;
+          const absorbed = Math.min(base.armor || 0, damage);
+          base.armor = Math.max(0, (base.armor || 0) - absorbed);
+          const healthDamage = Math.min(base.currentHealth, damage - absorbed);
+          base.currentHealth = Math.max(0, base.currentHealth - healthDamage);
+          triggerChargeEvent(game, actor, "enemyBaseDamaged", { cardId: card.id, damage: healthDamage, targetId: target.id });
+          applyLifelink(game, actor, healthDamage);
+          if (base.currentHealth <= 0) {
+            discardBaseWithAttachments(game, target, base, { actorId: actor.id, damage, method: "combat" });
+            triggerChargeEvent(game, actor, "enemyBaseDestroyed", { cardId: card.id, targetId: target.id });
+            addLog(game, `${actor.name} destroyed ${target.name}'s ${card.name}.`);
+          } else addLog(game, `${actor.name} dealt ${healthDamage} damage to ${card.name}; it remains at ${base.currentHealth}/${base.maxHealth} Health${absorbed ? ` after ${absorbed} Armor` : ""}.`);
+        } else {
+          const defense = effectiveBaseDefense(target, base) + Math.max(0, Number(base.armor) || 0);
+          if (actor.combat < defense) return `You need ${defense} Combat to destroy ${card.name}.`;
+          actor.combat -= defense;
+          discardBaseWithAttachments(game, target, base, { actorId: actor.id, damage: defense, method: "combat" });
+          triggerChargeEvent(game, actor, "enemyBaseDamaged", { cardId: card.id, damage: defense, targetId: target.id });
+          triggerChargeEvent(game, actor, "enemyBaseDestroyed", { cardId: card.id, targetId: target.id });
+          applyLifelink(game, actor, defense);
+          addLog(game, `${actor.name} destroyed ${target.name}'s ${card.name}.`);
+        }
         break;
       }
       case "ATTACK_PLAYER": {
@@ -4570,8 +5364,8 @@
         break;
       }
       case "END": {
-        for (const cardId of actor.hand) consumeTemporaryResurrection(actor, cardId);
-        actor.discard.push(...actor.hand, ...actor.played.map(entry => entry.id));
+        for (const entry of actor.hand) consumeTemporaryResurrection(actor, entry);
+        actor.discard.push(...actor.hand, ...actor.played);
         actor.hand = [];
         actor.played = [];
         actor.trade = 0;
@@ -4599,6 +5393,7 @@
         actor.pendingChoices = [];
         for (const base of actor.bases || []) pushVisualEvent(game, "card-destroy", { actorId: actor.id, targetId: actor.id, cardId: base.id, instanceId: base.instanceId, method: "forfeit" });
         actor.bases = [];
+        actor.attachments = [];
         addLog(game, `${actor.name} forfeited the realm.`);
         if (game.turn === game.players.indexOf(actor) && livingPlayers(game).length > 1) {
           game.turn = nextLivingIndex(game, game.turn);
@@ -4745,7 +5540,7 @@
       </div>
 
       ${options.personalDiscount ? personalDiscountBadgeHtml(card, options.discountPlayer) : ""}
-      ${chargeBadgeHtml(entry, card)}
+      ${persistentStateBadgesHtml(entry, card)}
       ${cardAbilityRailHtml(card)}
 
       <div class="cardActions">
@@ -4753,6 +5548,37 @@
       </div>
     </article>
   `;
+  }
+
+  function baseGroupHtml(player, entry, options = {}) {
+    const card = getCard(entry);
+    if (!card) return "";
+    const collectibleEdition = playerUsesCollectibleEdition(player, entry.id);
+    const actionButtons = [];
+    if (options.mine && options.canAct && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="bases" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
+    if (options.mine) actionButtons.push(chargeButtonsHtml(entry, card, options.canAct));
+    if (!options.mine && options.canAttack) {
+      const cost = isExpansionBase(card)
+        ? Math.min(Math.max(1, Number(options.combat) || 1), Math.max(1, Number(entry.currentHealth) || 1) + Math.max(0, Number(entry.armor) || 0))
+        : effectiveBaseDefense(player, entry) + Math.max(0, Number(entry.armor) || 0);
+      actionButtons.push(`<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${cost}</button>`);
+    }
+    const baseHtml = battleCardHtml(entry, {
+      ownerName: player.name,
+      zoneClass: "baseCard",
+      primaryAction: actionButtons.join(""),
+      locked: options.protectedBase,
+      attackable: options.canAttack,
+      disabledBase: (entry.stunTurns || 0) > 0,
+      collectibleEdition
+    });
+    const attachments = attachedEntriesForBase(player, entry.instanceId).map(attachment => battleCardHtml(attachment, {
+      ownerName: player.name,
+      zoneClass: "attachmentCard",
+      locked: true,
+      collectibleEdition: playerUsesCollectibleEdition(player, attachment.id)
+    })).join("");
+    return `<div class="baseGroup">${baseHtml}${attachments ? `<div class="baseAttachments">${attachments}</div>` : ""}</div>`;
   }
 
   function renderRealmSeat(player) {
@@ -4766,29 +5592,28 @@
     const canAct = canUseTurnActions() && !mine;
     const realmAttackAllowed = canAct && (myPlayer()?.combat || 0) > 0 && blockers.length === 0 && !player.eliminated && !player.left;
 
-    const cards = [...played.map(entry => ({ ...entry, zone: "played" })), ...bases.map(entry => ({ ...entry, zone: "bases" }))];
-    const cardHtml = cards.map(entry => {
+    const playedHtml = played.map(entry => {
       const card = getCard(entry.id);
-      const isBase = entry.zone === "bases";
       const collectibleEdition = playerUsesCollectibleEdition(player, entry.id);
-      if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: isBase ? "baseCard" : "playedCard", locked: true, collectibleEdition });
-      const protectedBase = isBase && blockers.length > 0 && !card.outpost;
-      const canAttackBase = canAct && isBase && attackable.includes(entry.instanceId) && (myPlayer()?.combat || 0) >= (card.defense || 0);
+      if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: "playedCard", locked: true, collectibleEdition });
       const actionButtons = [];
-      if (mine && canUseTurnActions() && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
-      if (mine && isBase) actionButtons.push(chargeButtonsHtml(entry, card, canUseTurnActions()));
-      if (!mine && canAttackBase) actionButtons.push(`<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${card.defense}</button>`);
-      const primaryAction = actionButtons.join("");
+      if (mine && canUseTurnActions() && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="played" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
+      if (mine) actionButtons.push(heatActionButtonsHtml(entry, card, canUseTurnActions()));
       return battleCardHtml(entry, {
         ownerName: player.name,
-        zoneClass: isBase ? "baseCard" : "playedCard",
-        primaryAction,
-        locked: protectedBase,
-        attackable: canAttackBase,
-        disabledBase: isBase && (entry.stunTurns || 0) > 0,
+        zoneClass: "playedCard",
+        primaryAction: actionButtons.join(""),
         collectibleEdition
       });
     }).join("");
+    const baseHtml = bases.map(entry => {
+      const card = getCard(entry);
+      const protectedBase = blockers.length > 0 && !card?.outpost;
+      const required = isExpansionBase(card) ? 1 : effectiveBaseDefense(player, entry) + Math.max(0, Number(entry.armor) || 0);
+      const canAttackBase = canAct && attackable.includes(entry.instanceId) && (myPlayer()?.combat || 0) >= required;
+      return baseGroupHtml(player, entry, { mine, canAct: mine && canUseTurnActions(), canAttack: canAttackBase, protectedBase, combat: myPlayer()?.combat || 0 });
+    }).join("");
+    const cardHtml = playedHtml + baseHtml;
 
     const lowHealth = player.health <= STARTING_AUTHORITY / 3;
     const topRealmAction = realmAttackAllowed
@@ -4818,6 +5643,7 @@
       const control = (player.stun || 0) + (player.destroyBase || 0);
       return `<div class="roundEarningsPlayer ${activeTurn ? "active" : ""}">
         <span class="roundEarningsName">${escapeHtml(player.name)}${activeTurn ? " <em>· TURN</em>" : ""}</span>
+        <span class="turnSystems"><span class="turnSystem sacrifice">✦ Sac ${player.sacrificesThisTurn || 0}</span>${["yellow","blue","green","red"].map(faction => `<span class="turnSystem" style="color:var(--${faction})" title="Played this turn / currently owned">${FACTIONS[faction].icon} ${player.factionPlayedThisTurn?.[faction] || 0}/${playerOwnedFactionCount(player, faction)}</span>`).join("")}</span>
         <span class="roundEarningsHealth">♥ ${player.health}</span>
         <span class="roundEarningsResource trade">◆ ${player.trade || 0}</span>
         <span class="roundEarningsResource combat">⚔ ${player.combat || 0}</span>
@@ -4856,19 +5682,19 @@
     const forcedDiscard = forcedDiscardRemaining(me);
     const canAct = myTurn && forcedDiscard === 0;
     const mustDiscard = myTurn && forcedDiscard > 0;
-    $("#handRow").innerHTML = (me.hand || []).map((cardId, index) => {
-      const card = getCard(cardId);
-      const collectibleEdition = playerUsesCollectibleEdition(me, cardId);
+    $("#handRow").innerHTML = (me.hand || []).map((entry, index) => {
+      const card = getCard(entry);
+      const collectibleEdition = playerUsesCollectibleEdition(me, card?.id || entry.id);
       if (mustDiscard) {
         const primaryAction = `<button class="btn small warning" data-act="forced-discard" data-index="${index}">Discard</button>`;
-        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, discardChoice: true, dataAttributes: `data-hand-index="${index}"`, collectibleEdition });
+        return battleCardHtml(entry, { primaryAction, ownerName: me.name, discardChoice: true, dataAttributes: `data-hand-index="${index}"`, collectibleEdition });
       }
       if (!card) {
         const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Clear</button>`;
-        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : "", collectibleEdition });
+        return battleCardHtml(entry, { primaryAction, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : "", collectibleEdition });
       }
       const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Play</button>`;
-      return battleCardHtml(cardId, {
+      return battleCardHtml(entry, {
         primaryAction,
         ownerName: me.name,
         attackable: canAct,
@@ -4881,27 +5707,23 @@
     // Persistent bases/outposts are shown first, followed by cards played during the current turn.
     // END clears me.played but leaves me.bases intact, so the display naturally removes temporary cards
     // while keeping bases and outposts visible between turns.
-    const ownEntries = [
-      ...(me.bases || []).map(entry => ({ ...entry, zone: "bases" })),
-      ...(me.played || []).map(entry => ({ ...entry, zone: "played" }))
-    ];
-    $("#ownCards").innerHTML = ownEntries.map(entry => {
+    const playedHtml = (me.played || []).map(entry => {
       const card = getCard(entry.id);
-      const zoneClass = entry.zone === "bases" ? "baseCard" : "playedCard";
       const collectibleEdition = playerUsesCollectibleEdition(me, entry.id);
-      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass, collectibleEdition });
+      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass: "playedCard", collectibleEdition });
       const actionButtons = [];
-      if (canAct && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
-      if (entry.zone === "bases") actionButtons.push(chargeButtonsHtml(entry, card, canAct));
+      if (canAct && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="played" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
+      actionButtons.push(heatActionButtonsHtml(entry, card, canAct));
       const primaryAction = actionButtons.join("");
       return battleCardHtml(entry, {
         primaryAction,
         ownerName: me.name,
-        zoneClass,
-        disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0,
+        zoneClass: "playedCard",
         collectibleEdition
       });
-    }).join("") || '<div class="emptyZone">No bases or cards played this turn</div>';
+    }).join("");
+    const baseHtml = (me.bases || []).map(entry => baseGroupHtml(me, entry, { mine: true, canAct })).join("");
+    $("#ownCards").innerHTML = playedHtml + baseHtml || '<div class="emptyZone">No bases or cards played this turn</div>';
   }
 
   function renderOpponentQueue() {
@@ -5182,16 +6004,39 @@
     }
   }
 
+  function showBaseAbilities(instanceId) {
+    const me = myPlayer();
+    const entry = me?.bases?.find(base => base.instanceId === instanceId);
+    const card = getCard(entry);
+    if (!me || !entry || !card) return;
+    const canAct = canUseTurnActions();
+    const chargeRows = (card.charge?.actions || []).map((action, actionIndex) => {
+      const availability = chargeActionAvailability(state, me, entry, action);
+      const cost = action.cost === "all" ? `All Charges (minimum ${action.minimum || 1})` : `${action.cost} Charges`;
+      const reason = entry.disabledTurn === state.turnSerial ? "Base is disabled." : !availability.allowed ? `Needs ${action.cost === "all" ? action.minimum || 1 : action.cost} Charges; currently ${availability.charges}.` : !canAct ? "Available only during your turn." : "";
+      return `<div class="baseAbilityRow ${reason ? "disabled" : ""}"><div><div class="baseAbilityName">${escapeHtml(action.label || "Charge Ability")} · ${cost}</div><div class="baseAbilityText">${escapeHtml(effectDisplaySummary(chargeResolvedEffect(action, availability.spend, me)) || "Special charged effect")}</div>${reason ? `<div class="baseAbilityReason">${escapeHtml(reason)}</div>` : ""}</div><button class="btn small blue" data-act="use-charge" data-instance-id="${entry.instanceId}" data-action-index="${actionIndex}" ${reason ? "disabled" : ""}>Activate</button></div>`;
+    });
+    const attachmentRows = attachedEntriesForBase(me, entry.instanceId).flatMap(attachment => {
+      const attachmentCard = getCard(attachment);
+      const action = attachmentCard?.attachment?.action;
+      if (!action) return [];
+      const used = action.oncePerTurn && attachment.chargeUsedTurn === state.turnSerial;
+      const reason = used ? "Already used this turn." : !canAct ? "Available only during your turn." : "";
+      return [`<div class="baseAbilityRow ${reason ? "disabled" : ""}"><div><div class="baseAbilityName">${escapeHtml(attachmentCard.name)} · Attachment</div><div class="baseAbilityText">${escapeHtml(action.label || effectDisplaySummary(action.effect))}</div>${reason ? `<div class="baseAbilityReason">${escapeHtml(reason)}</div>` : ""}</div><button class="btn small warning" data-act="use-attachment" data-instance-id="${attachment.instanceId}" ${reason ? "disabled" : ""}>Activate</button></div>`];
+    });
+    openModal(`${card.name} Abilities`, `${entry.charges || 0}/${card.charge?.max || 0} Charges · ${attachedEntriesForBase(me, entry.instanceId).length}/${attachmentCapacity(card)} Attachments`, `<div class="baseAbilityList">${[...chargeRows, ...attachmentRows].join("") || '<div class="emptyZone">This base has no activatable abilities.</div>'}</div>`);
+  }
+
   function showPurgeSelector() {
     const me = myPlayer();
     if (!me || !canUseTurnActions() || me.scrapOwn < 1) return;
     const rows = [];
     for (const zone of ["hand", "draw", "discard"]) {
-      me[zone].forEach((cardId, index) => rows.push({ zone, index, cardId }));
+      me[zone].forEach((entry, index) => rows.push({ zone, index, entry }));
     }
     openModal("Permanently Purge a Card", `${me.scrapOwn} Purge remaining. Red specializes in removing weak cards from your hand, draw pile, or discard pile.`, `
       <div class="selectorGrid">${rows.map(row => {
-        const card = getCard(row.cardId);
+        const card = getCard(row.entry);
         const name = card?.name || "Unavailable Card";
         const faction = card?.faction || "neutral";
         const sigil = card?.sigil || "?";
@@ -5254,10 +6099,11 @@
         <p><b>Faction allies:</b> A card always resolves its Primary ability first. Ally and Double Ally effects are added afterward as bonus effects; they never replace or cancel the Primary ability. Ally requires one other active matching-faction card, while Double Ally requires two others. Each bonus triggers only once per turn, and persistent bases count.</p>
         <p><b>Bases and Outposts:</b> Bases remain in play and produce their primary effect at the start of their owner's turns. An Outpost has taunt: while a realm controls any Outpost, its health and non-Outpost bases cannot be attacked. Outposts must be destroyed first.</p>
         <p><b>Targeting:</b> Combat is stored in your Combat pool. Choose exactly which attackable base or enemy realm receives it. Bases require Combat equal to their Defense and are destroyed immediately. Attacking a realm spends all remaining Combat.</p>
-        <p><b>Current card abilities:</b> Trade, Combat, healing, card draw, forced opponent discard, Disable, Market Erase, permanent Purge, faction Ally triggers, persistent Base production, Outpost protection, Sacrifice, Deploy-on-purchase, Resurrection, Grave Echo, Authority Thresholds, stored Charges, previous-card Echo, and permanent Transform abilities. Compact symbols beneath each card make these effects visible without covering the full artwork.</p>
-        <p><b>New playstyles:</b> Deploy resolves immediately when a card is bought. Resurrected cards return from discard and are sacrificed after their revived play. Grave Echo copies an allowed Primary ability from your sacrifice history. Last Stand checks Authority before the Primary effect resolves. Charges are stored on individual Bases and spent through their buttons. Echo copies only the previous ship's allowed Primary effects. Transform progress is saved per commander and permanently replaces the copy that completes its condition.</p>
+        <p><b>Persistent systems:</b> Every battle card now has a stable instance identity. Heat follows that exact ship through hand, play, discard, Reclaim, Redeploy, reshuffle, save, and reconnection. Charges remain on each deployed base until it leaves play. The turn panel tracks Sacrifice Count plus faction cards played and currently owned.</p>
+        <p><b>New playstyles:</b> Heat ships build toward optional or automatic Overloads and can be cooled or vented. Charge Bases store trigger-driven counters behind a Base Abilities panel. Reclaim returns a discarded instance to hand; Redeploy resolves it immediately and then bottom-decks it. Real Token cards can be generated, sacrificed, merged, searched, and counted for faction density.</p>
+        <p><b>Attachments and construction:</b> Normal Bases hold one Attachment and Expansion Bases normally hold two. Expansion Bases retain damage between turns, begin with Construction counters, and unlock their completed abilities at zero Construction. Armor absorbs base damage first, while Repair restores persistent Health. Destroying or sacrificing an attached base also sends its Attachments to discard.</p>
         <p><b>Forced discard:</b> A discard effect queues cards for the next affected turn. After that player draws, they must select the required number of highlighted hand cards and move them to discard before playing, buying, attacking, or ending the turn. The requirement is capped by the cards actually in hand, so an empty hand always resolves it.</p>
-        <p><b>New future-card abilities:</b> <b>Lifelink</b> heals the attacker for combat damage actually dealt; <b>Destroy Base</b> removes a legal target without spending Combat; <b>Shield</b> absorbs Authority damage; <b>Damage All</b> hits every rival; and per-base scaling can grant Trade, Combat, healing, or draws for each active base. No existing card definitions are changed by this update.</p>
+        <p><b>Additional abilities:</b> <b>Lifelink</b> heals for combat damage actually dealt; <b>Destroy Base</b> removes a legal target; <b>Shield</b> protects Authority; <b>Damage All</b> hits every rival; and faction scaling can use cards played this turn, currently owned, or acquired during the match.</p>
         <p><b>Red Purge:</b> Purge permanently removes a selected card from your hand, draw pile, or discard pile for the rest of the match. This is the defining strength of the Umbral Covenant.</p>
         <p><b>Singleplayer:</b> Choose Easy, Medium, Hard, or Impossible from the Armory. Every bot brings a legal low-cost-weighted 50-card deck and selects opening upgrades plus three discounts to support its strategy. Hard and Impossible plans always include Purge so the bot can remove basic starter cards; several plans also prioritize Draw. Impossible draws six cards each turn; all other difficulties draw five.</p>
         <p><b>Choice / OR abilities:</b> A card effect can contain two or more alternatives. When it resolves, the current player must select exactly one option before any other action. Choice effects work on Primary, Base, Ally, Double Ally, and Sacrifice abilities, and Warbots select an option automatically.</p>
@@ -5392,7 +6238,14 @@
     const sharedValue = (normalized.trade || 0) * 1.25 + (normalized.combat || 0) * 1.2 + (normalized.heal || 0) * .55 + (normalized.draw || 0) * 3.2 +
       (normalized.stun || 0) * 2.2 + (normalized.scrapMarket || 0) * 1.4 + (normalized.scrapOwn || 0) * 2.8 + (normalized.destroyBase || 0) * 4.5 +
       (normalized.shield || 0) * .65 + (normalized.damageAll || 0) * 1.5 + (normalized.tradePerBase || 0) * 2.2 + (normalized.combatPerBase || 0) * 2.2 +
-      (normalized.drawPerBase || 0) * 3.5 + (normalized.healPerBase || 0) * .8 + (normalized.opponentDiscard || 0) * 2.4 + (normalized.lifelink || 0) * 4;
+      (normalized.drawPerBase || 0) * 3.5 + (normalized.healPerBase || 0) * .8 + (normalized.opponentDiscard || 0) * 2.4 + (normalized.lifelink || 0) * 4 +
+      (normalized.createToken ? Math.max(1, Number(normalized.createToken.count) || 1) * 2 : 0) +
+      (normalized.reclaim ? 3 + Math.min(4, Number(normalized.reclaim.maxCost) || 0) * .35 : 0) +
+      (normalized.redeploy ? 4 + Math.min(4, Number(normalized.redeploy.maxCost) || 0) * .45 : 0) +
+      (normalized.armor ? Math.max(0, Number(normalized.armor.amount) || 0) * (normalized.armor.all ? 1.4 : .7) : 0) +
+      (normalized.repair ? Math.max(0, Number(normalized.repair.amount) || 0) * .65 : 0) +
+      (normalized.advanceConstruction ? Math.max(0, Number(normalized.advanceConstruction.amount) || 0) * 2.2 : 0) +
+      (normalized.coolHeat ? Math.max(0, Number(normalized.coolHeat.amount) || 0) * 1.1 : 0);
     const options = choiceEffectOptions(effect);
     const bestChoice = options.length ? Math.max(...options.map(option => effectAiValue(option.effect))) : 0;
     return sharedValue + bestChoice;
@@ -5422,6 +6275,14 @@
     if (chargeActions.length) {
       value += Math.max(...chargeActions.map(action => strategyEffectValue(action.effect || action.effectPerCharge, strategy.weights))) * .35;
     }
+    const createsToken = !!(card.effect?.createToken || card.ally?.createToken || card.recurring?.effect?.createToken);
+    const recoversCard = !!(card.effect?.reclaim || card.effect?.redeploy || card.ally?.reclaim || card.ally?.redeploy);
+    if (strategyKey === "engine") value += (card.heat ? 5 : 0) + (card.charge ? 4 : 0);
+    if (strategyKey === "stronghold") value += (isExpansionBase(card) ? 6 : 0) + (card.type === "attachment" ? 4.5 : 0) + (card.effect?.armor || card.effect?.repair ? 3 : 0);
+    if (strategyKey === "cycle") value += recoversCard ? 6 : 0;
+    if (strategyKey === "attrition") value += (card.sacrifice || card.sacrificeThresholds ? 5 : 0) + (card.effect?.reclaim ? 2 : 0);
+    if (strategyKey === "vanguard" || strategyKey === "siege") value += createsToken ? 3.5 : 0;
+    if (strategyKey === "marketeer") value += card.factionScaling || card.factionThresholds ? 3 : 0;
     if (card.type === "base") value += strategy.baseBias + Math.max(0, Number(card.defense) || 0) * strategy.defenseWeight;
     return value;
   }
@@ -5429,11 +6290,12 @@
   function botDeckCardIds(bot) {
     if (!bot) return [];
     return [
-      ...(bot.draw || []),
-      ...(bot.discard || []),
-      ...(bot.hand || []),
+      ...(bot.draw || []).map(cardEntryId),
+      ...(bot.discard || []).map(cardEntryId),
+      ...(bot.hand || []).map(cardEntryId),
       ...(bot.played || []).map(entry => entry.id),
-      ...(bot.bases || []).map(entry => entry.id)
+      ...(bot.bases || []).map(entry => entry.id),
+      ...(bot.attachments || []).map(entry => entry.id)
     ];
   }
 
@@ -5469,6 +6331,14 @@
       const strategy = BOT_STRATEGIES[bot?.botStrategy];
       if (strategy) score += strategyEffectValue(option.effect, strategy.weights) * (difficulty === "medium" ? .55 : 1);
       if (effect.__resurrect?.cardId) score += cardAiValue(getCard(effect.__resurrect.cardId), bot, difficulty) + 4;
+      if (effect.__reclaim?.cardId) score += cardAiValue(getCard(effect.__reclaim.cardId), bot, difficulty) + 3;
+      if (effect.__redeploy?.instanceId) score += cardAiValue(getCard(findOwnedEntry(bot, effect.__redeploy.instanceId)), bot, difficulty) + 5;
+      if (effect.__heatOverload) score += effectAiValue(effect.__heatOverload.effect || {}) - Math.max(0, Number(effect.__heatOverload.selfDamage) || 0) * .7;
+      if (effect.__heatChange) score += 2;
+      if (effect.__baseModify) score += Math.max(1, Number(effect.__baseModify.config?.amount) || 0);
+      if (effect.__attach) score += 4;
+      if (effect.__tokenCombo) score += effect.__tokenCombo.into ? 8 : 6;
+      if (effect.__searchDeck) score += cardAiValue(getCard(findOwnedEntry(bot, effect.__searchDeck.instanceId)), bot, difficulty) + 4;
       if (effect.heal) score *= Math.max(.2, (STARTING_AUTHORITY - bot.health) / STARTING_AUTHORITY + .25);
       if (effect.draw && bot.hand.length < 3) score += 2;
       if (effect.trade && bot.hand.length === 0) score -= .4;
@@ -5484,6 +6354,13 @@
     if (card.effect?.graveEcho) value += 5;
     if (card.authorityThreshold) value += bot.health <= Number(card.authorityThreshold.atOrBelow) ? effectAiValue(card.authorityThreshold.effect) : effectAiValue(card.authorityThreshold.effect) * .2;
     if (card.charge) value += 3 + effectAiValue(card.charge.actions?.[0]?.effect || card.charge.actions?.[0]?.effectPerCharge) * .5;
+    if (card.heat) value += 2.5 + (card.heat.thresholds?.length || 0) * 1.2 + (card.heat.overload ? 2 : 0);
+    if (card.token) value += .8;
+    if (card.effect?.createToken || card.ally?.createToken) value += 3;
+    if (card.type === "attachment") value += 3.2;
+    if (isExpansionBase(card)) value += Math.max(0, Number(card.health) || 0) * .12 - Math.max(0, Number(card.construction) || 0) * .5;
+    if (card.factionScaling || card.factionThresholds) value += 2.4;
+    if (card.sacrificeThresholds) value += 2.2;
     if (card.echo) value += 3.5;
     if (card.transform) value += 3;
     if (card.type === "base") value += (card.defense || 0) * .7 + (card.outpost ? 2.5 : 1.2);
@@ -5504,8 +6381,9 @@
   function weakCardLocation(bot) {
     const locations = [];
     for (const zone of ["hand", "discard", "draw"]) {
-      bot[zone].forEach((cardId, index) => {
-        const card = getCard(cardId);
+      bot[zone].forEach((entry, index) => {
+        const cardId = cardEntryId(entry);
+        const card = getCard(entry);
         const baseValue = card ? cardAiValue(card, bot, "hard") : -20;
         const basicStarterPriority = STARTER_DECK_CARD_IDS.has(cardId) ? -100 : 0;
         locations.push({ zone, index, cardId, score: basicStarterPriority + baseValue + (card?.faction === "neutral" ? -5 : 0) });
@@ -5558,10 +6436,10 @@
   function chooseEnemyBase(game, bot, difficulty, requireAffordable = false) {
     const enemy = game.players.find(player => player.id !== bot.id && !player.eliminated && !player.left);
     if (!enemy) return null;
-    const allowed = attackableBases(enemy).map(base => ({ base, card: getCard(base.id) })).filter(item => item.card && (!requireAffordable || item.card.defense <= bot.combat));
+    const allowed = attackableBases(enemy).map(base => ({ base, card: getCard(base.id) })).filter(item => item.card && (!requireAffordable || (isExpansionBase(item.card) ? bot.combat > 0 : effectiveBaseDefense(enemy, item.base) + (item.base.armor || 0) <= bot.combat)));
     if (!allowed.length) return null;
     if (difficulty === "easy" || difficulty === "medium") return { enemy, ...allowed[Math.floor(Math.random() * allowed.length)] };
-    return { enemy, ...allowed.map(item => ({ ...item, score: cardAiValue(item.card, bot, difficulty) - item.card.defense * .12 })).sort((left, right) => right.score - left.score)[0] };
+    return { enemy, ...allowed.map(item => ({ ...item, score: cardAiValue(item.card, bot, difficulty) - (isExpansionBase(item.card) ? item.base.currentHealth : effectiveBaseDefense(enemy, item.base)) * .12 })).sort((left, right) => right.score - left.score)[0] };
   }
 
   async function applyBotAction(action, token) {
@@ -5599,7 +6477,7 @@
       return actions.map((action, actionIndex) => {
         const availability = chargeActionAvailability(game, bot, entry, action);
         if (!availability.allowed) return null;
-        const effect = chargeResolvedEffect(action, availability.spend);
+        const effect = chargeResolvedEffect(action, availability.spend, bot);
         let score = effectAiValue(effect);
         if (difficulty === "easy") score = Math.random() * 10;
         if (coreEffect(effect).heal) score *= Math.max(.25, (STARTING_AUTHORITY - bot.health) / STARTING_AUTHORITY + .2);
@@ -5625,6 +6503,36 @@
         if (index < 0 || !await applyBotAction({ type: "PLAY", index }, token)) break;
         await resolveBotPendingChoices(token);
       }
+    }
+  }
+
+  async function useBotPersistentActions(token, difficulty) {
+    let safety = 0;
+    while (singlePlayerMode && token === botRunToken && state?.phase === "playing" && currentPlayer(state)?.isBot && safety++ < 8) {
+      const bot = currentPlayer(state);
+      const heatOptions = (bot.played || []).flatMap(entry => {
+        const card = getCard(entry);
+        return (card?.heat?.actions || []).map((action, actionIndex) => ({
+          type: "USE_HEAT",
+          instanceId: entry.instanceId,
+          actionIndex,
+          allowed: (entry.heat || 0) >= Math.max(1, Number(action.cost) || 1) && (!action.oncePerTurn || entry.heatActionTurn !== state.turnSerial),
+          score: effectAiValue(action.effect || {})
+        }));
+      }).filter(option => option.allowed);
+      const attachmentOptions = (bot.attachments || []).flatMap(entry => {
+        const card = getCard(entry);
+        const action = card?.attachment?.action;
+        if (!action || (action.oncePerTurn && entry.chargeUsedTurn === state.turnSerial)) return [];
+        return [{ type: "USE_ATTACHMENT", instanceId: entry.instanceId, score: effectAiValue(action.effect || {}) }];
+      });
+      const selected = [...heatOptions, ...attachmentOptions].sort((left, right) => right.score - left.score)[0];
+      if (!selected || (difficulty === "easy" && Math.random() < .5)) break;
+      const action = selected.type === "USE_HEAT"
+        ? { type: selected.type, instanceId: selected.instanceId, actionIndex: selected.actionIndex }
+        : { type: selected.type, instanceId: selected.instanceId };
+      if (!await applyBotAction(action, token)) break;
+      await resolveBotPendingChoices(token);
     }
   }
 
@@ -5657,6 +6565,7 @@
       }
 
       await useBotCharges(token, difficulty);
+      await useBotPersistentActions(token, difficulty);
 
       if (state?.phase === "playing" && currentPlayer(state)?.isBot) {
         let bot = currentPlayer(state);
@@ -6002,7 +6911,7 @@
     const button = event.target.closest("[data-act]");
     if (!button) return;
     const action = button.dataset.act;
-    if (action === "details") showCardDetails(button.dataset.cardId, "", button.hasAttribute("data-collectible-edition") ? button.dataset.collectibleEdition === "1" : null);
+    if (action === "details") showCardDetails(button.dataset.cardId, "", button.hasAttribute("data-collectible-edition") ? button.dataset.collectibleEdition === "1" : null, button.dataset.instanceId || "");
     if (action === "effect-help") showEffectHelp(button.dataset.effectTerm);
     if (action === "buy-profile-card") purchaseProfileCard(button.dataset.cardId);
     if (action === "buy-collectible-edition") purchaseCollectibleEdition(button.dataset.cardId);
@@ -6046,6 +6955,9 @@
     if (action === "purge-card") performAction({ type: "SCRAP_OWN", zone: button.dataset.zone, index: Number(button.dataset.index) });
     if (action === "sacrifice") performAction({ type: "SACRIFICE", zone: button.dataset.zone, instanceId: button.dataset.instanceId });
     if (action === "use-charge") performAction({ type: "USE_CHARGE", instanceId: button.dataset.instanceId, actionIndex: Number(button.dataset.actionIndex) });
+    if (action === "base-abilities") showBaseAbilities(button.dataset.instanceId);
+    if (action === "use-heat") performAction({ type: "USE_HEAT", instanceId: button.dataset.instanceId, actionIndex: Number(button.dataset.actionIndex) });
+    if (action === "use-attachment") performAction({ type: "USE_ATTACHMENT", instanceId: button.dataset.instanceId });
     if (action === "stun-base") performAction({ type: "STUN_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });
     if (action === "destroy-base") performAction({ type: "DESTROY_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });
     if (action === "attack-base") performAction({ type: "ATTACK_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });

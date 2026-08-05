@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 12;
+export const WAR_REALMS_CARD_VERSION = 13;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -4815,6 +4815,905 @@ export const CARDS = Object.freeze([
     text: "Draw 1 card and gain 1 Purge.",
     allyText: "Gain 2 Combat.",
     flavor: "Each discarded weakness leaves more room for the void."
+  },
+
+  // ==========================================================
+  // PERSISTENT SYSTEMS — INITIAL PLAYABLE TEST SET
+  // Heat, tokens, attachments, expansion bases, construction,
+  // discard recovery, sacrifice chains, and faction density.
+  // ==========================================================
+
+  // ----- REAL DECK TOKENS -----
+  {
+    id: "drone",
+    name: "Drone",
+    image: "drone.png",
+    faction: "yellow",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "◈",
+    token: true,
+    collectible: false,
+    effect: { combat: 1 },
+    ally: { trade: 1 },
+    text: "Token. Gain 1 Combat.",
+    allyText: "Gain 1 Trade.",
+    flavor: "A disposable possibility given engines and a purpose."
+  },
+  {
+    id: "worker",
+    name: "Worker",
+    image: "worker.png",
+    faction: "green",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "⬢",
+    token: true,
+    collectible: false,
+    effect: { trade: 1 },
+    sacrifice: {
+      or: [
+        { label: "Build", effect: { advanceConstruction: { amount: 1 } } },
+        { label: "Repair", effect: { repair: { amount: 1 } } }
+      ]
+    },
+    text: "Token. Gain 1 Trade.",
+    sacrificeText: "Sacrifice — remove 1 Construction or repair an Expansion Base for 1.",
+    flavor: "Worlds are conquered by armies and made permanent by labor."
+  },
+  {
+    id: "interceptor",
+    name: "Interceptor",
+    image: "interceptor.png",
+    faction: "blue",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "✦",
+    token: true,
+    collectible: false,
+    effect: { combat: 1 },
+    sacrifice: { armor: { amount: 2 } },
+    text: "Token. Gain 1 Combat.",
+    sacrificeText: "Sacrifice: Give one base 2 temporary Armor.",
+    flavor: "Its final maneuver is a shield drawn across another vessel."
+  },
+  {
+    id: "spawn",
+    name: "Spawn",
+    image: "spawn.png",
+    faction: "green",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "⬢",
+    token: true,
+    collectible: false,
+    effect: { combat: 1 },
+    tokenCombo: { id: "spawn", count: 3, into: "brood_horror", oncePerTurn: true },
+    text: "Token. Gain 1 Combat. Three played Spawn may merge into a Brood Horror.",
+    flavor: "One is vermin. Three are an omen."
+  },
+  {
+    id: "brood_horror",
+    name: "Brood Horror",
+    image: "brood_horror.png",
+    faction: "green",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "⬢",
+    token: true,
+    collectible: false,
+    tags: ["spawn"],
+    effect: { combat: 6 },
+    sacrifice: { combat: 3 },
+    text: "Token. Gain 6 Combat. This counts as a Spawn.",
+    sacrificeText: "Sacrifice: Gain 3 additional Combat.",
+    flavor: "The brood remembers every body it used to become one."
+  },
+  {
+    id: "acolyte",
+    name: "Acolyte",
+    image: "acolyte.png",
+    faction: "blue",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "✦",
+    token: true,
+    collectible: false,
+    effect: { trade: 1 },
+    tokenCombo: { id: "acolyte", count: 2, searchMinCost: 5, oncePerTurn: true },
+    text: "Token. Gain 1 Trade. Two played Acolytes may be sacrificed to draw a cost 5+ card from your deck.",
+    flavor: "Two voices are enough to open the sealed reliquary."
+  },
+  {
+    id: "emberling",
+    name: "Emberling",
+    image: "emberling.png",
+    faction: "red",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "◒",
+    token: true,
+    collectible: false,
+    effect: { combat: 1 },
+    sacrifice: { combat: 1 },
+    text: "Token. Gain 1 Combat.",
+    sacrificeText: "Sacrifice: Gain 1 additional Combat.",
+    flavor: "A small flame is still willing to consume itself."
+  },
+
+  // ----- HEAT AND OVERLOAD -----
+  {
+    id: "reactor_skirmisher",
+    name: "Reactor Skirmisher",
+    image: "reactor_skirmisher.png",
+    faction: "red",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2 },
+    heat: {
+      gain: 1,
+      max: 5,
+      thresholds: [{ at: 3, effect: { combat: 2 } }],
+      overload: { at: 5, optional: true, reset: 1, selfDamage: 2, effect: { combat: 5 } }
+    },
+    text: "Gain 2 Combat and 1 Heat. At Heat 3+, gain 2 more Combat. At Heat 5, you may Overload: gain 5 Combat, take 2 Authority damage, and reset to Heat 1.",
+    heatText: "Maximum Heat 5. Optional Overload at Heat 5.",
+    flavor: "Its reactor is safest when no one asks it to win."
+  },
+  {
+    id: "furnace_dreadnought",
+    name: "Furnace Dreadnought",
+    image: "furnace_dreadnought.png",
+    faction: "red",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 5 },
+    heat: {
+      gain: 1,
+      max: 5,
+      thresholds: [{ at: 3, effect: { combat: 3 } }],
+      overload: { at: 5, optional: false, reset: 0, selfDamage: 3, effect: { combat: 4 } }
+    },
+    text: "Gain 5 Combat and 1 Heat. At Heat 3+, gain 3 more Combat. At Heat 5, automatically Overload to 12 total Combat, take 3 Authority damage, and reset to Heat 0.",
+    heatText: "Maximum Heat 5. Automatic Overload at Heat 5.",
+    flavor: "The crew measures victory in seconds before containment failure."
+  },
+  {
+    id: "voltaic_corsair",
+    name: "Voltaic Corsair",
+    image: "voltaic_corsair.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 2, combat: 1 },
+    heat: {
+      gain: 1,
+      max: 5,
+      actions: [{ label: "Convert Heat to Insight", cost: 2, oncePerTurn: true, effect: { draw: 1 } }]
+    },
+    text: "Gain 2 Trade, 1 Combat, and 1 Heat. You may remove 2 Heat from this card to draw a card.",
+    heatText: "Maximum Heat 5. Spend 2 Heat: draw 1 card.",
+    flavor: "Every overheating circuit predicts one more profitable escape."
+  },
+  {
+    id: "thermal_aegis",
+    name: "Thermal Aegis",
+    image: "thermal_aegis.png",
+    faction: "blue",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "✦",
+    effect: { shield: 2, coolHeat: { amount: 1, ifChangedEffect: { shield: 2 } } },
+    ally: { trade: 1 },
+    text: "Gain 2 Shield. Remove 1 Heat from one of your ships; if Heat was removed, gain 2 additional Shield.",
+    allyText: "Gain 1 Trade.",
+    flavor: "The order calls cooling a mercy. Reactor captains call it survival."
+  },
+  {
+    id: "coolant_tender",
+    name: "Coolant Tender",
+    image: "coolant_tender.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      or: [
+        { label: "Deep Cool", effect: { coolHeat: { amount: 2 } } },
+        { label: "Split Cool", effect: { coolHeat: { amount: 1, targets: 2 } } },
+        { label: "Supply Run", effect: { trade: 2 } }
+      ]
+    },
+    text: "Choose one: remove up to 2 Heat from one ship; remove 1 Heat from up to two ships; or gain 2 Trade.",
+    flavor: "It carries the one resource every reactor eventually worships."
+  },
+
+  // ----- CHARGE BASES -----
+  {
+    id: "storm_capacitor",
+    name: "Storm Capacitor",
+    image: "storm_capacitor.png",
+    faction: "yellow",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◈",
+    effect: {},
+    charge: {
+      trigger: "friendlyFactionPlayed",
+      faction: "yellow",
+      gain: 1,
+      max: 8,
+      actions: [
+        { label: "Market Pulse", cost: 2, effect: { trade: 2 } },
+        { label: "Probability Release", cost: 4, effect: { draw: 1 } },
+        { label: "Perfect Discharge", cost: 8, effect: { draw: 2, topdeckFromHand: 1 } }
+      ]
+    },
+    text: "Whenever you play another Yellow card, gain 1 Charge, up to 8.",
+    chargeText: "Spend 2: gain 2 Trade. Spend 4: draw 1. Spend 8: draw 2, then put one card from hand on top of your deck.",
+    flavor: "It stores the lightning from futures that never arrived."
+  },
+  {
+    id: "aegis_font",
+    name: "Aegis Font",
+    image: "aegis_font.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 95,
+    type: "base",
+    defense: 9,
+    outpost: false,
+    sigil: "✦",
+    effect: { shield: 1 },
+    charge: {
+      trigger: "shieldGained",
+      gain: 1,
+      max: 8,
+      perTurnCap: 2,
+      actions: [
+        { label: "Fortify", cost: 2, effect: { armor: { amount: 3 } } },
+        { label: "Sanctuary", cost: 5, effect: { shield: 5 } },
+        { label: "Aegis Wave", cost: 8, effect: { armor: { amount: 3, all: true } } }
+      ]
+    },
+    text: "Gain 1 Shield. Whenever you gain Shield, gain 1 Charge, up to twice each turn and 8 total.",
+    chargeText: "Spend 2: give one base 3 Armor. Spend 5: gain 5 Shield. Spend 8: all bases gain 3 Armor.",
+    flavor: "Every shield raised becomes a prayer stored in blue fire."
+  },
+  {
+    id: "brood_vat",
+    name: "Brood Vat",
+    image: "brood_vat.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "⬢",
+    effect: {},
+    charge: {
+      trigger: "tokenPlayed",
+      tokenId: "spawn",
+      gain: 1,
+      max: 8,
+      actions: [
+        { label: "Seed the Brood", cost: 2, effect: { createToken: { id: "spawn", count: 1, zone: "discard" } } },
+        { label: "Release Spawn", cost: 5, effect: { createToken: { id: "spawn", count: 1, zone: "hand" } } },
+        { label: "Birth Horror", cost: 8, effect: { createToken: { id: "brood_horror", count: 1, zone: "discard" } } }
+      ]
+    },
+    text: "Whenever a Spawn is played, gain 1 Charge, up to 8.",
+    chargeText: "Spend 2: create a Spawn in discard. Spend 5: create one in hand. Spend 8: create a Brood Horror in discard.",
+    flavor: "The vat does not manufacture life. It remembers hunger."
+  },
+  {
+    id: "blood_tithe_crucible",
+    name: "Blood-Tithe Crucible",
+    image: "blood_tithe_crucible.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    charge: {
+      trigger: "cardSacrificed",
+      gain: 1,
+      max: 9,
+      actions: [
+        { label: "Tithe of War", cost: 2, effect: { combat: 3 } },
+        { label: "Painful Insight", cost: 5, effect: { draw: 1, selfDamage: 1 } },
+        { label: "Return the Ash", cost: 9, effect: { combat: 10, reclaim: { maxCost: 3, sacrificedOnly: true } } }
+      ]
+    },
+    text: "Whenever you sacrifice one of your cards, gain 1 Charge, up to 9.",
+    chargeText: "Spend 2: gain 3 Combat. Spend 5: draw 1 and take 1 damage. Spend 9: gain 10 Combat and Reclaim a sacrificed cost 3 or less card.",
+    flavor: "The Crucible keeps exact accounts, especially of what no longer exists."
+  },
+
+  // ----- SACRIFICE CHAINS -----
+  {
+    id: "cinder_initiate",
+    name: "Cinder Initiate",
+    image: "cinder_initiate.png",
+    faction: "red",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 1 },
+    sacrifice: { combat: 3 },
+    text: "Gain 1 Combat.",
+    sacrificeText: "Sacrifice: Gain 3 additional Combat and advance your Sacrifice Count.",
+    flavor: "The first lesson is that ash can still strike."
+  },
+  {
+    id: "chain_reaction_marauder",
+    name: "Chain-Reaction Marauder",
+    image: "chain_reaction_marauder.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2 },
+    sacrificeThresholds: [
+      { at: 1, effect: { combat: 2 } },
+      { at: 2, effect: { combat: 3 } },
+      { at: 3, effect: { draw: 1 } }
+    ],
+    text: "Gain 2 Combat. At Sacrifice 1 gain 2 Combat; at 2 gain 3 more; at 3 draw a card.",
+    flavor: "Every loss is another fuse already burning."
+  },
+  {
+    id: "altar_of_escalation",
+    name: "Altar of Escalation",
+    image: "altar_of_escalation.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    sacrificeThresholds: [
+      { at: 1, effect: { combat: 1 } },
+      { at: 2, effect: { trade: 2 } },
+      { at: 3, effect: { draw: 1 } }
+    ],
+    text: "Each turn: after your first sacrifice gain 1 Combat; after your second gain 2 Trade; after your third draw a card.",
+    flavor: "The altar never asks what was offered, only what comes next."
+  },
+  {
+    id: "reclamation_crew",
+    name: "Reclamation Crew",
+    image: "reclamation_crew.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "⬢",
+    effect: { trade: 2 },
+    sacrificeThresholds: [
+      { at: 1, requiresSacrificedId: "worker", effect: { advanceConstruction: { amount: 1 } } },
+      { at: 2, effect: { repair: { amount: 2 } } }
+    ],
+    text: "Gain 2 Trade. If a Worker was sacrificed this turn, remove 1 Construction. At Sacrifice 2, repair an Expansion Base for 2.",
+    flavor: "They rebuild with whatever the war was forced to surrender."
+  },
+
+  // ----- ATTACHMENTS -----
+  {
+    id: "reactive_plating",
+    name: "Reactive Plating",
+    image: "reactive_plating.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 35,
+    type: "attachment",
+    sigil: "✦",
+    attachment: { defense: 2, expansionHealth: 3 },
+    effect: {},
+    text: "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +3 maximum and current Health.",
+    flavor: "Every impact teaches the plating how to survive the next."
+  },
+  {
+    id: "drone_bay",
+    name: "Drone Bay",
+    image: "drone_bay.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "attachment",
+    sigil: "◈",
+    attachment: { startOfTurn: { createToken: { id: "drone", count: 1, zone: "discard" } } },
+    effect: {},
+    text: "Attach to a base. At the start of your turn, create a Drone in your discard pile.",
+    flavor: "The bay is never empty; it is only between launch cycles."
+  },
+  {
+    id: "construction_crane",
+    name: "Construction Crane",
+    image: "construction_crane.png",
+    faction: "green",
+    cost: 4,
+    shop_cost: 60,
+    type: "attachment",
+    sigil: "⬢",
+    attachment: {
+      expansionOnly: true,
+      onAttach: { advanceConstruction: { amount: 1, attachedBase: true } },
+      everyTurns: 3,
+      recurring: { advanceConstruction: { amount: 1, attachedBase: true }, repairFallback: 2 }
+    },
+    effect: {},
+    text: "Attach only to an Expansion Base. Remove 1 Construction immediately and again every third turn; if complete, repair it for 2 instead.",
+    flavor: "The crane's arm is the first horizon of every new fortress."
+  },
+  {
+    id: "void_cannon",
+    name: "Void Cannon",
+    image: "void_cannon.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "attachment",
+    sigil: "◒",
+    attachment: { action: { label: "Fire Void Cannon", oncePerTurn: true, effect: { selfDamage: 1, combat: 4 } } },
+    effect: {},
+    text: "Attach to a base. Once per turn, take 1 Authority damage to gain 4 Combat.",
+    flavor: "The ammunition is absence. The recoil is paid in years."
+  },
+
+  // ----- EXPANSION BASES -----
+  {
+    id: "horizon_probability_engine",
+    name: "Horizon Probability Engine",
+    image: "horizon_probability_engine.png",
+    faction: "yellow",
+    cost: 8,
+    shop_cost: 150,
+    type: "base",
+    expansion: true,
+    health: 20,
+    construction: 3,
+    defense: 20,
+    outpost: false,
+    sigil: "◈",
+    constructionEffect: { peekTop: 1 },
+    effect: { trade: 2 },
+    charge: {
+      trigger: "friendlyFactionPlayed",
+      faction: "yellow",
+      gain: 1,
+      max: 8,
+      actions: [
+        { label: "Select Future", cost: 4, effect: { draw: 1 } },
+        { label: "Open Horizons", cost: 8, effect: { draw: 2 } }
+      ]
+    },
+    text: "Expansion Base — 20 Health, Construction 3. When complete, gain 2 Trade each turn and Charge from Yellow cards.",
+    chargeText: "Spend 4: draw 1. Spend 8: draw 2.",
+    flavor: "A continent-sized machine voting on which tomorrow may exist."
+  },
+  {
+    id: "cathedral_of_the_last_light",
+    name: "Cathedral of the Last Light",
+    image: "cathedral_of_the_last_light.png",
+    faction: "blue",
+    cost: 8,
+    shop_cost: 150,
+    type: "base",
+    expansion: true,
+    health: 24,
+    construction: 3,
+    defense: 24,
+    outpost: false,
+    sigil: "✦",
+    constructionEffect: { shield: 1 },
+    effect: { armor: { amount: 1, all: true } },
+    charge: {
+      trigger: "tokenPlayed",
+      tokenId: "acolyte",
+      gain: 1,
+      max: 6,
+      actions: [{ label: "Grand Benediction", cost: 6, effect: { armor: { amount: 3, all: true } } }]
+    },
+    text: "Expansion Base — 24 Health, Construction 3. While building, gain 1 Shield each turn. When complete, all bases gain 1 Armor each turn.",
+    chargeText: "Acolytes add Charge. Spend 6: all bases gain 3 Armor.",
+    flavor: "Its final lamp is visible from every wounded world."
+  },
+  {
+    id: "worldroot_foundry",
+    name: "Worldroot Foundry",
+    image: "worldroot_foundry.png",
+    faction: "green",
+    cost: 8,
+    shop_cost: 150,
+    type: "base",
+    expansion: true,
+    health: 25,
+    construction: 3,
+    defense: 25,
+    outpost: false,
+    sigil: "⬢",
+    effect: { createToken: { id: "worker", count: 1, zone: "discard" } },
+    charge: {
+      trigger: "cardSacrificed",
+      sacrificedId: "worker",
+      gain: 1,
+      max: 6,
+      actions: [{ label: "Mobilize Labor", cost: 6, effect: { createToken: { id: "worker", count: 2, zone: "hand" } } }]
+    },
+    text: "Expansion Base — 25 Health, Construction 3. When complete, create a Worker in discard each turn. Sacrificed Workers add Charge.",
+    chargeText: "Spend 6: create two Workers in hand.",
+    flavor: "The roots mine stone below while the foundry builds empires above."
+  },
+  {
+    id: "furnace_of_a_thousand_oaths",
+    name: "Furnace of a Thousand Oaths",
+    image: "furnace_of_a_thousand_oaths.png",
+    faction: "red",
+    cost: 8,
+    shop_cost: 150,
+    type: "base",
+    expansion: true,
+    health: 21,
+    construction: 3,
+    defense: 21,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    sacrificeThresholds: [
+      { at: 1, effect: { combat: 2 } },
+      { at: 2, effect: { trade: 2 } },
+      { at: 3, effect: { draw: 1, selfDamage: 1 } }
+    ],
+    text: "Expansion Base — 21 Health, Construction 3. When complete: Sacrifice 1 gives 2 Combat; 2 gives 2 Trade; 3 draws a card and deals 1 damage to you.",
+    flavor: "Every oath burns brighter after the speaker is gone."
+  },
+  {
+    id: "forge_crew",
+    name: "Forge Crew",
+    image: "forge_crew.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      or: [
+        { label: "Trade", effect: { trade: 2 } },
+        { label: "Construct", effect: { advanceConstruction: { amount: 1 } } },
+        { label: "Repair", effect: { repair: { amount: 2 } } }
+      ]
+    },
+    ally: { repeatPrimaryChoice: 1 },
+    text: "Choose one: gain 2 Trade; remove 1 Construction; or repair an Expansion Base for 2.",
+    allyText: "After the first choice resolves, choose a different Forge Crew option.",
+    flavor: "Their hammers keep time for buildings too large to see at once."
+  },
+
+  // ----- DISCARD RECOVERY -----
+  {
+    id: "salvage_navigator",
+    name: "Salvage Navigator",
+    image: "salvage_navigator.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      or: [
+        { label: "Reclaim", effect: { reclaim: { tags: ["drone"], types: ["attachment"] } } },
+        { label: "Trade", effect: { trade: 3 } }
+      ]
+    },
+    text: "Choose one: Reclaim a Drone or Attachment from discard; or gain 3 Trade.",
+    flavor: "It navigates by the wake of things already lost."
+  },
+  {
+    id: "grave_circuit_engineer",
+    name: "Grave-Circuit Engineer",
+    image: "grave_circuit_engineer.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "◒",
+    effect: { redeploy: { maxCost: 2, sacrificedThisTurn: true, oncePerTurn: true }, selfDamage: 1 },
+    text: "Take 1 Authority damage. Redeploy a card sacrificed this turn costing 2 or less; after it resolves, put it on the bottom of your deck.",
+    redeployText: "Redeploy resolves the recovered Primary ability immediately and then bottom-decks that exact card instance.",
+    flavor: "Death is only a circuit with one missing bridge."
+  },
+
+  // ----- TOKEN GENERATORS -----
+  {
+    id: "drone_fabricator",
+    name: "Drone Fabricator",
+    image: "drone_fabricator.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 1, createToken: { id: "drone", count: 1, zone: "discard" } },
+    ally: { createToken: { id: "drone", count: 1, zone: "topdeck" } },
+    text: "Gain 1 Trade and create a Drone in your discard pile.",
+    allyText: "Create another Drone on top of your deck.",
+    flavor: "The first drone is a prototype. The next thousand are policy."
+  },
+  {
+    id: "replication_carrier",
+    name: "Replication Carrier",
+    image: "replication_carrier.png",
+    faction: "yellow",
+    cost: 6,
+    shop_cost: 110,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 3, createToken: { id: "drone", count: 1, zone: "discard" } },
+    factionThresholds: [{ metric: "played", faction: "yellow", at: 3, effect: { createToken: { id: "drone", count: 1, zone: "discard" } } }],
+    text: "Gain 3 Combat and create a Drone in discard. If this is your third Yellow card this turn, create a second Drone.",
+    flavor: "Its hangars contain smaller hangars, each opening at once."
+  },
+  {
+    id: "chapel_recruiter",
+    name: "Chapel Recruiter",
+    image: "chapel_recruiter.png",
+    faction: "blue",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "✦",
+    effect: { createToken: { id: "acolyte", count: 1, zone: "discard" } },
+    ally: { reclaim: { ids: ["acolyte"] } },
+    text: "Create an Acolyte in your discard pile.",
+    allyText: "Reclaim an Acolyte.",
+    flavor: "The chapel always has room for one more vow."
+  },
+  {
+    id: "interceptor_hangar",
+    name: "Interceptor Hangar",
+    image: "interceptor_hangar.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "✦",
+    effect: {},
+    recurring: { everyTurns: 2, effect: { createToken: { id: "interceptor", count: 1, zone: "discard" } } },
+    charge: {
+      trigger: "tokenPlayed",
+      tokenId: "interceptor",
+      gain: 1,
+      max: 3,
+      actions: [{ label: "Scramble Interceptor", cost: 3, effect: { createToken: { id: "interceptor", count: 1, zone: "hand" } } }]
+    },
+    text: "Every second turn, create an Interceptor in discard. Played Interceptors add Charge.",
+    chargeText: "Spend 3: create an Interceptor in hand.",
+    flavor: "The bells ring only after the defenders are already airborne."
+  },
+  {
+    id: "worker_caravan",
+    name: "Worker Caravan",
+    image: "worker_caravan.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "⬢",
+    effect: { trade: 2, createToken: { id: "worker", count: 1, zone: "discard" } },
+    ally: { trade: 1 },
+    text: "Gain 2 Trade and create a Worker in your discard pile.",
+    allyText: "Gain 1 Trade.",
+    flavor: "Every road ends at a wall that still needs building."
+  },
+  {
+    id: "brood_shepherd",
+    name: "Brood Shepherd",
+    image: "brood_shepherd.png",
+    faction: "green",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "⬢",
+    effect: { createToken: { id: "spawn", count: 1, zone: "discard", topdeckIfPlayed: "spawn" } },
+    ally: { combat: 2 },
+    text: "Create a Spawn in discard. If a Spawn was already played this turn, put it on top of your deck instead.",
+    allyText: "Gain 2 Combat.",
+    flavor: "It leads by feeding whatever follows."
+  },
+  {
+    id: "ember_nest",
+    name: "Ember Nest",
+    image: "ember_nest.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 60,
+    type: "base",
+    defense: 7,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    recurring: { everyTurns: 2, effect: { createToken: { id: "emberling", count: 1, zone: "discard" } } },
+    sacrificeThresholds: [{ at: 1, requiresSacrificedId: "emberling", effect: { combat: 1 } }],
+    text: "Every second turn, create an Emberling in discard. The first Emberling sacrificed each turn gives 1 additional Combat.",
+    flavor: "The nest cools only when it is empty, and it is never empty long."
+  },
+  {
+    id: "cinder_broodmother",
+    name: "Cinder Broodmother",
+    image: "cinder_broodmother.png",
+    faction: "red",
+    cost: 6,
+    shop_cost: 110,
+    type: "ship",
+    sigil: "◒",
+    effect: { createToken: { id: "emberling", count: 2, zone: "discard", handAtSacrifice: 2, handCount: 1 } },
+    ally: { combat: 3 },
+    text: "Create two Emberlings in discard. At Sacrifice 2, create one of them in hand instead.",
+    allyText: "Gain 3 Combat.",
+    flavor: "Its young inherit fire before they inherit shape."
+  },
+
+  // ----- FACTION DENSITY -----
+  {
+    id: "constellation_vanguard",
+    name: "Constellation Vanguard",
+    image: "constellation_vanguard.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 1 },
+    factionScaling: { metric: "played", faction: "yellow", per: 2, maxUnits: 3, effectPerUnit: { trade: 1 } },
+    text: "Gain 1 Trade, plus 1 for every two Yellow cards played this turn, up to 3 additional Trade.",
+    flavor: "It navigates by constellations made from allied hulls."
+  },
+  {
+    id: "many_mind_navigator",
+    name: "Many-Mind Navigator",
+    image: "many_mind_navigator.png",
+    faction: "yellow",
+    cost: 6,
+    shop_cost: 110,
+    type: "ship",
+    sigil: "◈",
+    effect: { draw: 1 },
+    factionThresholds: [
+      { metric: "owned", faction: "yellow", at: 10, effect: { trade: 1 } },
+      { metric: "owned", faction: "yellow", at: 15, effect: { draw: 1 } }
+    ],
+    text: "Draw 1. If you own 10 Yellow cards, gain 1 Trade; at 15 Yellow cards, draw 1 additional card.",
+    flavor: "Each mind charts one route; together they choose the impossible one."
+  },
+  {
+    id: "oathwing_formation",
+    name: "Oathwing Formation",
+    image: "oathwing_formation.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "✦",
+    effect: { shield: 2 },
+    factionScaling: { metric: "playedBefore", faction: "blue", per: 1, maxUnits: 4, effectPerUnit: { shield: 1 } },
+    text: "Gain 2 Shield, plus 1 for each Blue card played before this card this turn, up to 4 additional Shield.",
+    flavor: "Each wing protects the vow flying beside it."
+  },
+  {
+    id: "grand_reliquary_guard",
+    name: "Grand Reliquary Guard",
+    image: "grand_reliquary_guard.png",
+    faction: "blue",
+    cost: 7,
+    shop_cost: 125,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 4, shield: 3 },
+    factionThresholds: [
+      { metric: "owned", faction: "blue", at: 12, effect: { armor: { amount: 3 } } },
+      { metric: "owned", faction: "blue", at: 16, effect: { draw: 1 } }
+    ],
+    text: "Gain 4 Combat and 3 Shield. At 12 owned Blue cards give a base 3 Armor; at 16, draw a card.",
+    flavor: "The Guard counts faith not in years, but in banners still standing."
+  },
+  {
+    id: "warhost_stampede",
+    name: "Warhost Stampede",
+    image: "warhost_stampede.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "ship",
+    sigil: "⬢",
+    effect: {},
+    factionScaling: { metric: "played", faction: "green", per: 1, maxUnits: 8, effectPerUnit: { combat: 1 } },
+    factionThresholds: [{ metric: "played", faction: "green", at: 5, effect: { createToken: { id: "spawn", count: 1, zone: "discard" } } }],
+    text: "Gain 1 Combat for each Green card played this turn. At five Green cards, create a Spawn in discard.",
+    flavor: "The ground counts the Warhost before the enemy can."
+  },
+  {
+    id: "horde_census",
+    name: "Horde Census",
+    image: "horde_census.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "⬢",
+    effect: {},
+    factionScaling: { metric: "owned", faction: "green", per: 4, maxUnits: 6, effectPerUnit: { combat: 1 } },
+    factionThresholds: [{ metric: "owned", faction: "green", at: 16, effect: { createToken: { id: "worker", count: 1, zone: "discard" } }, everyTurns: 2 }],
+    text: "Gain 1 Combat for every four Green cards you own. At 16 Green cards, create a Worker every other turn.",
+    flavor: "The Warhost calls it a census. Other realms call it an evacuation order."
+  },
+  {
+    id: "covenant_escalator",
+    name: "Covenant Escalator",
+    image: "covenant_escalator.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 60,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2 },
+    factionScaling: { metric: "playedAfterFirst", faction: "red", per: 1, maxUnits: 5, effectPerUnit: { combat: 1 } },
+    factionThresholds: [{ metric: "played", faction: "red", at: 5, effect: { draw: 1, sacrificeRequired: 1 } }],
+    text: "Gain 2 Combat, plus 1 for each Red card played this turn after the first. At five Red cards, you may sacrifice a card to draw.",
+    flavor: "Every bargain makes the next demand sound reasonable."
+  },
+  {
+    id: "growing_corruption",
+    name: "Growing Corruption",
+    image: "growing_corruption.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    charge: {
+      trigger: "cardAcquired",
+      faction: "red",
+      gain: 1,
+      max: 8,
+      actions: [{ label: "Spread Corruption", cost: 3, effect: { combat: 4 }, ownedFactionBonus: { faction: "red", at: 12, effect: { combat: 2 } } }]
+    },
+    text: "Whenever you acquire a Red card, gain 1 Charge.",
+    chargeText: "Spend 3: gain 4 Combat; gain 6 instead while you own at least 12 Red cards.",
+    flavor: "It grows fastest where everyone insists the stain is contained."
   }
 
 ]);
@@ -5119,17 +6018,58 @@ export function effectSummary(effect = {}) {
     );
   }
 
+  if (effect.createToken) {
+    parts.push(`Create ${effect.createToken.count || 1} ${getCard(effect.createToken.id)?.name || "Token"}`);
+  }
+
+  if (effect.reclaim) {
+    parts.push(`Reclaim${effect.reclaim.maxCost ? ` cost ≤${effect.reclaim.maxCost}` : ""}`);
+  }
+
+  if (effect.redeploy) {
+    parts.push(`Redeploy${effect.redeploy.maxCost ? ` cost ≤${effect.redeploy.maxCost}` : ""}`);
+  }
+
+  if (effect.armor) {
+    parts.push(`⬡ ${effect.armor.amount || 0} Base Armor`);
+  }
+
+  if (effect.repair) {
+    parts.push(`Repair ${effect.repair.amount || 0}`);
+  }
+
+  if (effect.advanceConstruction) {
+    parts.push(`⚒ ${effect.advanceConstruction.amount || 0} Construction`);
+  }
+
+  if (effect.coolHeat) {
+    parts.push(`Cool ${effect.coolHeat.amount || 1} Heat`);
+  }
+
   return parts.join(" · ");
 }
 
 export function fullCardRules(card) {
   const lines = [];
 
-  if (card.type === "base") {
+  if (card.expansion) {
+    lines.push(
+      `Expansion Base — ${card.health} Health; ` +
+      `Construction ${card.construction}.`
+    );
+  } else if (card.type === "base") {
     lines.push(
       `${card.outpost ? "Outpost" : "Base"} — ` +
       `${card.defense} Defense.`
     );
+  }
+
+  if (card.type === "attachment") {
+    lines.push("Attachment — play onto a legal base.");
+  }
+
+  if (card.token) {
+    lines.push("Token.");
   }
 
   if (card.text) {
