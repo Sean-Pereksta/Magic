@@ -1149,7 +1149,7 @@
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   // Version the module URL so browsers cannot reuse an older validator.
   const cardLibrary = await import(
-    "./warrealms-pack/warrealms-cards.js?v=14"
+    "./warrealms-pack/warrealms-cards.js?v=15"
   );
 
   const {
@@ -1954,6 +1954,7 @@
     "Combat": "Combat is spent to attack enemy bases or a rival realm. Attacking a realm spends all remaining Combat.",
     "Authority": "Authority is realm health. Healing restores Authority, but never above the normal maximum unless a card explicitly says otherwise.",
     "Draw": "Draw immediately adds the stated number of cards from your draw pile to your hand. When needed, the discard pile is shuffled into a new draw pile.",
+    "Draw-Pile Pull": "A Draw-Pile Pull moves the named card directly from your current draw pile into your hand. It never checks the discard pile and never reshuffles discard to satisfy the effect. If a top-card limit is printed, only that many cards from the top are checked.",
     "Discard": "A discard effect queues a forced choice for the affected player's next turn. After drawing, that player selects the required number of highlighted hand cards and moves them to discard before any other action. It never requires more cards than are actually in hand.",
     "Ally": "An Ally effect triggers once when this card and at least one other active card of the same faction are present during the turn. Persistent bases count toward that faction total.",
     "Double Ally": "A Double Ally effect triggers once when this card and at least two other active cards of the same faction are present during the turn—three matching active cards total. Persistent bases count.",
@@ -1999,6 +2000,8 @@
     "healing": "Authority",
     "draw": "Draw",
     "draws": "Draw",
+    "draw pile": "Draw-Pile Pull",
+    "draw-pile pull": "Draw-Pile Pull",
     "discard": "Discard",
     "discards": "Discard",
     "double faction ally": "Double Ally",
@@ -2873,6 +2876,11 @@
     const choices = choiceEffectOptions(effect);
     if (choices.length) glyphs.push({ key: "choice", icon: "OR", label: `Choose one of ${choices.length}`, amountText: `1/${choices.length}`, source: "choice" });
     if (normalized.createToken) glyphs.push({ key: "token", icon: "✦+", label: `Create ${getCard(normalized.createToken.id)?.name || "Token"}`, amountText: String(normalized.createToken.count || 1), source });
+    if (normalized.drawFromDrawPile) {
+      const targetName = getCard(normalized.drawFromDrawPile.id)?.name || "card";
+      const look = Math.max(0, Math.floor(Number(normalized.drawFromDrawPile.look) || 0));
+      glyphs.push({ key: "drawFromDrawPile", icon: "⇧✦", label: `Draw ${targetName} from draw pile`, amountText: look ? `top ${look}` : String(normalized.drawFromDrawPile.count || 1), source });
+    }
     if (normalized.reclaim) glyphs.push({ key: "reclaim", icon: "↥", label: "Reclaim from discard", amountText: normalized.reclaim.maxCost ? `≤${normalized.reclaim.maxCost}` : "", source });
     if (normalized.redeploy) glyphs.push({ key: "redeploy", icon: "↻", label: "Redeploy from discard", amountText: normalized.redeploy.maxCost ? `≤${normalized.redeploy.maxCost}` : "", source });
     if (normalized.armor) glyphs.push({ key: "armor", icon: "⬡", label: "Base Armor", amountText: String(normalized.armor.amount || 0), source });
@@ -3024,6 +3032,10 @@
     add("combat", (normalized.combat || 0) + activeBases * (normalized.combatPerBase || 0));
     add("heal", (normalized.heal || 0) + activeBases * (normalized.healPerBase || 0));
     add("draw", (normalized.draw || 0) + activeBases * (normalized.drawPerBase || 0));
+    if (normalized.drawFromDrawPile) {
+      const look = Math.max(0, Math.floor(Number(normalized.drawFromDrawPile.look) || 0));
+      resolved.push({ icon: "⇧✦", amountText: look ? `${look}` : String(normalized.drawFromDrawPile.count || 1) });
+    }
     for (const key of ["opponentDiscard", "stun", "scrapMarket", "scrapOwn", "destroyBase", "shield", "damageAll", "lifelink"]) add(key, normalized[key] || 0);
     return resolved.slice(0, 7);
   }
@@ -4354,6 +4366,45 @@
     }
   }
 
+  function drawMatchingFromDrawPile(game, player, config = {}, context = {}) {
+    const ids = new Set([
+      config.id,
+      ...(Array.isArray(config.ids) ? config.ids : [])
+    ].map(value => String(value || "")).filter(Boolean));
+    if (!ids.size || !player.draw.length) return 0;
+
+    const requested = Math.max(1, Math.floor(Number(config.count) || 1));
+    const look = Math.max(0, Math.floor(Number(config.look) || 0));
+    const firstEligibleIndex = look ? Math.max(0, player.draw.length - look) : 0;
+    const matchingIndexes = [];
+
+    for (let index = player.draw.length - 1; index >= firstEligibleIndex && matchingIndexes.length < requested; index -= 1) {
+      if (ids.has(cardEntryId(player.draw[index]))) matchingIndexes.push(index);
+    }
+
+    const drawn = [];
+    for (const index of matchingIndexes) {
+      const [entry] = player.draw.splice(index, 1);
+      if (!entry) continue;
+      player.hand.push(entry);
+      drawn.push(entry);
+      pushVisualEvent(game, "card-draw-pile-pull", {
+        actorId: player.id,
+        targetId: player.id,
+        cardId: cardEntryId(entry),
+        instanceId: entry.instanceId,
+        sourceCardId: context.cardId || ""
+      });
+    }
+
+    if (drawn.length) {
+      const names = drawn.map(entry => getCard(entry)?.name || "a card");
+      const targetLabel = names.every(name => name === names[0]) ? `${names[0]}${names.length === 1 ? "" : ` ×${names.length}`}` : names.join(", ");
+      addLog(game, `${player.name} drew ${targetLabel} directly from ${look ? `the top ${look} cards of ` : ""}their draw pile.`);
+    }
+    return drawn.length;
+  }
+
   function createPlayer(game, entrant) {
     const draftPool = [...new Set((Array.isArray(entrant.deck) ? entrant.deck : []).filter(cardId => {
       const card = getCard(cardId);
@@ -4606,6 +4657,7 @@
     const reclaimConfig = normalized.reclaim;
     const redeployConfig = normalized.redeploy;
     const createTokenConfig = normalized.createToken;
+    const drawFromDrawPileConfig = normalized.drawFromDrawPile;
     const coolHeatConfig = normalized.coolHeat;
     const armorConfig = normalized.armor;
     const repairConfig = normalized.repair;
@@ -4632,6 +4684,7 @@
     delete normalized.reclaim;
     delete normalized.redeploy;
     delete normalized.createToken;
+    delete normalized.drawFromDrawPile;
     delete normalized.coolHeat;
     delete normalized.armor;
     delete normalized.repair;
@@ -4661,6 +4714,7 @@
     if (shieldGained) triggerChargeEvent(game, player, "shieldGained", { amount: shieldGained, cardId: context.cardId || "" });
     if (normalized.draw) drawCards(game, player, normalized.draw);
     if (normalized.drawPerBase) drawCards(game, player, activeBases * normalized.drawPerBase);
+    if (drawFromDrawPileConfig) drawMatchingFromDrawPile(game, player, drawFromDrawPileConfig, context);
     if (normalized.opponentDiscard) resolveOpponentDiscard(game, player, normalized.opponentDiscard);
     if (normalized.damageAll) {
       for (const target of game.players) {
@@ -4845,6 +4899,7 @@
         ? ["draw", "drawPerBase"]
         : [];
     if (keys.some(key => Math.max(0, Number(normalized[key]) || 0) > 0)) return true;
+    if (ability === "draw" && normalized.drawFromDrawPile) return true;
     return choiceEffectOptions(effect).some(option => draftEffectHasAbility(option.effect, ability));
   }
 
@@ -6240,6 +6295,7 @@
       (normalized.shield || 0) * .65 + (normalized.damageAll || 0) * 1.5 + (normalized.tradePerBase || 0) * 2.2 + (normalized.combatPerBase || 0) * 2.2 +
       (normalized.drawPerBase || 0) * 3.5 + (normalized.healPerBase || 0) * .8 + (normalized.opponentDiscard || 0) * 2.4 + (normalized.lifelink || 0) * 4 +
       (normalized.createToken ? Math.max(1, Number(normalized.createToken.count) || 1) * 2 : 0) +
+      (normalized.drawFromDrawPile ? Math.max(1, Number(normalized.drawFromDrawPile.count) || 1) * (normalized.drawFromDrawPile.look ? 1.7 : 2.6) : 0) +
       (normalized.reclaim ? 3 + Math.min(4, Number(normalized.reclaim.maxCost) || 0) * .35 : 0) +
       (normalized.redeploy ? 4 + Math.min(4, Number(normalized.redeploy.maxCost) || 0) * .45 : 0) +
       (normalized.armor ? Math.max(0, Number(normalized.armor.amount) || 0) * (normalized.armor.all ? 1.4 : .7) : 0) +
@@ -6254,6 +6310,7 @@
   function strategyEffectValue(effect = {}, weights = {}) {
     const normalized = coreEffect(effect);
     let value = Object.entries(weights).reduce((sum, [key, weight]) => sum + Math.max(0, Number(normalized[key]) || 0) * weight, 0);
+    if (normalized.drawFromDrawPile) value += Math.max(1, Number(normalized.drawFromDrawPile.count) || 1) * Math.max(1, Number(weights.draw) || 2);
     const choices = choiceEffectOptions(effect);
     if (choices.length) value += Math.max(...choices.map(option => strategyEffectValue(option.effect, weights)));
     return value;

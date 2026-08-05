@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 13;
+export const WAR_REALMS_CARD_VERSION = 14;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -617,6 +617,10 @@ export const CARDS = Object.freeze([
           id: "drone",
           count: 1,
           zone: "discard"
+        },
+        drawFromDrawPile: {
+          id: "drone",
+          count: 1
         }
       },
       ownedFactionModifiers: [
@@ -641,7 +645,7 @@ export const CARDS = Object.freeze([
         }
       ]
     },
-    text: "At the start of every second turn this base remains in play, create a Drone in your discard pile.",
+    text: "At the start of every second turn this base remains in play, create a Drone in your discard pile, then draw a Drone from your draw pile if one is there.",
     factionText: "10 Yellow Cards Owned: Create the Drone on top of your deck instead. 15 Yellow Cards Owned: Create a second Drone in your discard pile.",
     flavor: "The line has no beginning, and production has no end."
   },
@@ -712,6 +716,10 @@ export const CARDS = Object.freeze([
         id: "acolyte",
         count: 1,
         zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "acolyte",
+        count: 1
       }
     },
     tokenThresholds: [
@@ -728,7 +736,7 @@ export const CARDS = Object.freeze([
         }
       }
     ],
-    text: "Gain 2 Shield. Create an Acolyte in your discard pile.",
+    text: "Gain 2 Shield. Create an Acolyte in your discard pile, then draw an Acolyte from your draw pile if one is there.",
     thresholdText: "If an Acolyte was already played this turn, gain 1 Trade and give one base 1 temporary Armor.",
     flavor: "Each quiet voice strengthens the hymn of the whole."
   },
@@ -807,6 +815,10 @@ export const CARDS = Object.freeze([
               id: "interceptor",
               count: 1,
               zone: "discard"
+            },
+            drawFromDrawPile: {
+              id: "interceptor",
+              count: 1
             }
           }
         },
@@ -832,7 +844,7 @@ export const CARDS = Object.freeze([
         }
       }
     ],
-    text: "Choose one: remove up to 2 Heat from one ship; create an Interceptor in your discard pile; or gain 2 Shield.",
+    text: "Choose one: remove up to 2 Heat from one ship; create an Interceptor in your discard pile, then draw an Interceptor from your draw pile if one is there; or gain 2 Shield.",
     factionText: "Fourth Blue: Choose a second different option.",
     flavor: "Restraint is not weakness. It is power held in perfect discipline."
   },
@@ -865,6 +877,10 @@ export const CARDS = Object.freeze([
               }
             }
           ]
+        },
+        drawFromDrawPile: {
+          id: "interceptor",
+          count: 1
         }
       }
     },
@@ -879,7 +895,7 @@ export const CARDS = Object.freeze([
         }
       }
     },
-    text: "At the start of every second turn this base remains in play, create an Interceptor in your discard pile. Whenever you sacrifice an Interceptor, give this base 1 Armor, up to 3 Armor.",
+    text: "At the start of every second turn this base remains in play, create an Interceptor in your discard pile, then draw an Interceptor from your draw pile if one is there. Whenever you sacrifice an Interceptor, give this base 1 Armor, up to 3 Armor.",
     factionText: "12 Blue Cards Owned: Interceptors created by this base gain 1 additional Combat when played.",
     flavor: "Every launched wing carries the weight of an ancient promise."
   },
@@ -1091,6 +1107,10 @@ export const CARDS = Object.freeze([
             count: 1,
             zone: "discard",
             trackCreatedToken: true
+          },
+          drawFromDrawPile: {
+            id: "spawn",
+            count: 1
           }
         }
       },
@@ -1119,7 +1139,7 @@ export const CARDS = Object.freeze([
         }
       }
     ],
-    text: "Third Green: Create a Spawn in your discard pile. Fifth Green: Put that Spawn on top of your deck instead.",
+    text: "Third Green: Create a Spawn in your discard pile, then draw a Spawn from your draw pile if one is there. Fifth Green: Put the created Spawn on top of your deck instead.",
     factionText: "14 Green Cards Owned: The first Spawn you play each turn gains 1 additional Combat.",
     flavor: "The nest does not sleep. It listens for the rhythm of marching feet."
   },
@@ -1142,6 +1162,10 @@ export const CARDS = Object.freeze([
           id: "worker",
           count: 1,
           zone: "discard"
+        },
+        drawFromDrawPile: {
+          id: "worker",
+          count: 1
         }
       }
     },
@@ -1159,7 +1183,7 @@ export const CARDS = Object.freeze([
         }
       }
     },
-    text: "At the start of every second turn this base remains in play, create a Worker in your discard pile. Whenever a Worker is sacrificed, gain 1 Combat.",
+    text: "At the start of every second turn this base remains in play, create a Worker in your discard pile, then draw a Worker from your draw pile if one is there. Whenever a Worker is sacrificed, gain 1 Combat.",
     factionText: "12 Green Cards Owned: The first Worker sacrificed each turn also grants 1 Trade.",
     flavor: "They build the road, drag the siege engines, and become the fuel."
   },
@@ -1223,6 +1247,10 @@ export const CARDS = Object.freeze([
         id: "emberling",
         count: 1,
         zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "emberling",
+        count: 1
       }
     },
     tokenSacrificeThresholds: [
@@ -1248,7 +1276,7 @@ export const CARDS = Object.freeze([
         }
       }
     ],
-    text: "Gain 2 Combat. Create an Emberling in your discard pile.",
+    text: "Gain 2 Combat. Create an Emberling in your discard pile, then draw an Emberling from your draw pile if one is there.",
     thresholdText: "First Emberling sacrificed this turn: gain 1 Trade. Second: gain 3 Combat. Third: draw a card.",
     flavor: "Individually, they are sparks. Together, they are a verdict."
   },
@@ -1306,6 +1334,10 @@ export const CARDS = Object.freeze([
           id: "emberling",
           count: 1,
           zone: "discard"
+        },
+        drawFromDrawPile: {
+          id: "emberling",
+          count: 1
         }
       }
     },
@@ -1336,7 +1368,7 @@ export const CARDS = Object.freeze([
         ]
       }
     },
-    text: "At the start of every second turn this base remains in play, create an Emberling in your discard pile.",
+    text: "At the start of every second turn this base remains in play, create an Emberling in your discard pile, then draw an Emberling from your draw pile if one is there.",
     thresholdText: "Whenever an Emberling is sacrificed, add 1 Heat to one of your Heat ships or remove 1 Heat from one of your Heat ships. This triggers up to twice per turn.",
     flavor: "Every creature born within it already knows how it will die."
   },
@@ -5771,9 +5803,16 @@ export const CARDS = Object.freeze([
     sigil: "✦",
     token: true,
     collectible: false,
-    effect: { combat: 1 },
+    effect: {
+      combat: 1,
+      drawFromDrawPile: {
+        id: "interceptor",
+        count: 1,
+        look: 3
+      }
+    },
     sacrifice: { armor: { amount: 2 } },
-    text: "Token. Gain 1 Combat.",
+    text: "Token. Gain 1 Combat. If an Interceptor is among the top 3 cards of your draw pile, draw one.",
     sacrificeText: "Sacrifice: Give one base 2 temporary Armor.",
     flavor: "Its final maneuver is a shield drawn across another vessel."
   },
@@ -6256,7 +6295,7 @@ export const CARDS = Object.freeze([
     defense: 25,
     outpost: false,
     sigil: "⬢",
-    effect: { createToken: { id: "worker", count: 1, zone: "discard" } },
+    effect: { createToken: { id: "worker", count: 1, zone: "discard" }, drawFromDrawPile: { id: "worker", count: 1 } },
     charge: {
       trigger: "cardSacrificed",
       sacrificedId: "worker",
@@ -6264,7 +6303,7 @@ export const CARDS = Object.freeze([
       max: 6,
       actions: [{ label: "Mobilize Labor", cost: 6, effect: { createToken: { id: "worker", count: 2, zone: "hand" } } }]
     },
-    text: "Expansion Base — 25 Health, Construction 3. When complete, create a Worker in discard each turn. Sacrificed Workers add Charge.",
+    text: "Expansion Base — 25 Health, Construction 3. When complete, create a Worker in discard each turn, then draw a Worker from your draw pile if one is there. Sacrificed Workers add Charge.",
     chargeText: "Spend 6: create two Workers in hand.",
     flavor: "The roots mine stone below while the foundry builds empires above."
   },
@@ -6357,9 +6396,9 @@ export const CARDS = Object.freeze([
     shop_cost: 35,
     type: "ship",
     sigil: "◈",
-    effect: { trade: 1, createToken: { id: "drone", count: 1, zone: "discard" } },
+    effect: { trade: 1, createToken: { id: "drone", count: 1, zone: "discard" }, drawFromDrawPile: { id: "drone", count: 1 } },
     ally: { createToken: { id: "drone", count: 1, zone: "topdeck" } },
-    text: "Gain 1 Trade and create a Drone in your discard pile.",
+    text: "Gain 1 Trade, create a Drone in your discard pile, then draw a Drone from your draw pile if one is there.",
     allyText: "Create another Drone on top of your deck.",
     flavor: "The first drone is a prototype. The next thousand are policy."
   },
@@ -6372,9 +6411,9 @@ export const CARDS = Object.freeze([
     shop_cost: 110,
     type: "ship",
     sigil: "◈",
-    effect: { combat: 3, createToken: { id: "drone", count: 1, zone: "discard" } },
+    effect: { combat: 3, createToken: { id: "drone", count: 1, zone: "discard" }, drawFromDrawPile: { id: "drone", count: 1 } },
     factionThresholds: [{ metric: "played", faction: "yellow", at: 3, effect: { createToken: { id: "drone", count: 1, zone: "discard" } } }],
-    text: "Gain 3 Combat and create a Drone in discard. If this is your third Yellow card this turn, create a second Drone.",
+    text: "Gain 3 Combat, create a Drone in discard, then draw a Drone from your draw pile if one is there. If this is your third Yellow card this turn, create a second Drone.",
     flavor: "Its hangars contain smaller hangars, each opening at once."
   },
   {
@@ -6386,9 +6425,9 @@ export const CARDS = Object.freeze([
     shop_cost: 60,
     type: "ship",
     sigil: "✦",
-    effect: { createToken: { id: "acolyte", count: 1, zone: "discard" } },
+    effect: { createToken: { id: "acolyte", count: 1, zone: "discard" }, drawFromDrawPile: { id: "acolyte", count: 1 } },
     ally: { reclaim: { ids: ["acolyte"] } },
-    text: "Create an Acolyte in your discard pile.",
+    text: "Create an Acolyte in your discard pile, then draw an Acolyte from your draw pile if one is there.",
     allyText: "Reclaim an Acolyte.",
     flavor: "The chapel always has room for one more vow."
   },
@@ -6404,7 +6443,7 @@ export const CARDS = Object.freeze([
     outpost: false,
     sigil: "✦",
     effect: {},
-    recurring: { everyTurns: 2, effect: { createToken: { id: "interceptor", count: 1, zone: "discard" } } },
+    recurring: { everyTurns: 2, effect: { createToken: { id: "interceptor", count: 1, zone: "discard" }, drawFromDrawPile: { id: "interceptor", count: 1 } } },
     charge: {
       trigger: "tokenPlayed",
       tokenId: "interceptor",
@@ -6412,7 +6451,7 @@ export const CARDS = Object.freeze([
       max: 3,
       actions: [{ label: "Scramble Interceptor", cost: 3, effect: { createToken: { id: "interceptor", count: 1, zone: "hand" } } }]
     },
-    text: "Every second turn, create an Interceptor in discard. Played Interceptors add Charge.",
+    text: "Every second turn, create an Interceptor in discard, then draw an Interceptor from your draw pile if one is there. Played Interceptors add Charge.",
     chargeText: "Spend 3: create an Interceptor in hand.",
     flavor: "The bells ring only after the defenders are already airborne."
   },
@@ -6425,9 +6464,9 @@ export const CARDS = Object.freeze([
     shop_cost: 35,
     type: "ship",
     sigil: "⬢",
-    effect: { trade: 2, createToken: { id: "worker", count: 1, zone: "discard" } },
+    effect: { trade: 2, createToken: { id: "worker", count: 1, zone: "discard" }, drawFromDrawPile: { id: "worker", count: 1 } },
     ally: { trade: 1 },
-    text: "Gain 2 Trade and create a Worker in your discard pile.",
+    text: "Gain 2 Trade, create a Worker in your discard pile, then draw a Worker from your draw pile if one is there.",
     allyText: "Gain 1 Trade.",
     flavor: "Every road ends at a wall that still needs building."
   },
@@ -6458,9 +6497,9 @@ export const CARDS = Object.freeze([
     outpost: false,
     sigil: "◒",
     effect: {},
-    recurring: { everyTurns: 2, effect: { createToken: { id: "emberling", count: 1, zone: "discard" } } },
+    recurring: { everyTurns: 2, effect: { createToken: { id: "emberling", count: 1, zone: "discard" }, drawFromDrawPile: { id: "emberling", count: 1 } } },
     sacrificeThresholds: [{ at: 1, requiresSacrificedId: "emberling", effect: { combat: 1 } }],
-    text: "Every second turn, create an Emberling in discard. The first Emberling sacrificed each turn gives 1 additional Combat.",
+    text: "Every second turn, create an Emberling in discard, then draw an Emberling from your draw pile if one is there. The first Emberling sacrificed each turn gives 1 additional Combat.",
     flavor: "The nest cools only when it is empty, and it is never empty long."
   },
   {
@@ -6472,9 +6511,9 @@ export const CARDS = Object.freeze([
     shop_cost: 110,
     type: "ship",
     sigil: "◒",
-    effect: { createToken: { id: "emberling", count: 2, zone: "discard", handAtSacrifice: 2, handCount: 1 } },
+    effect: { createToken: { id: "emberling", count: 2, zone: "discard", handAtSacrifice: 2, handCount: 1 }, drawFromDrawPile: { id: "emberling", count: 1 } },
     ally: { combat: 3 },
-    text: "Create two Emberlings in discard. At Sacrifice 2, create one of them in hand instead.",
+    text: "Create two Emberlings in discard, then draw an Emberling from your draw pile if one is there. At Sacrifice 2, create one of the new Emberlings in hand instead.",
     allyText: "Gain 3 Combat.",
     flavor: "Its young inherit fire before they inherit shape."
   },
@@ -6872,6 +6911,12 @@ export function effectSummary(effect = {}) {
     parts.push(
       `Draw ${effect.drawPerBase} per Active Base`
     );
+  }
+
+  if (effect.drawFromDrawPile) {
+    const targetName = getCard(effect.drawFromDrawPile.id)?.name || "matching card";
+    const look = Math.max(0, Math.floor(Number(effect.drawFromDrawPile.look) || 0));
+    parts.push(`Draw ${targetName} from ${look ? `top ${look} of ` : ""}draw pile`);
   }
 
   if (effect.opponentDiscard) {
