@@ -6848,7 +6848,7 @@ export const CARDS = Object.freeze([
       drawFromDrawPile: {
         id: "drone",
         count: 1,
-        look: 3
+        look: 6
       }
     },
     ally: { trade: 1 },
