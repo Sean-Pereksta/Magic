@@ -497,7 +497,904 @@ export const CARDS = Object.freeze([
   transformText: "Ascendant — After this card has been played 3 times, transform it into Seraph of the Final Bell.",
   flavor: "It shelters the dying because it already knows the road they will travel."
 },
+{
+    id: "sunspark_drone_carrier",
+    name: "Sunspark Drone Carrier",
+    image: "sunspark_drone_carrier.png",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 65,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "drone",
+        count: 1,
+        zone: "discard",
+        factionPlayedZoneOverride: {
+          faction: "yellow",
+          at: 3,
+          zone: "topdeck"
+        }
+      }
+    },
+    text: "Gain 2 Combat. Create a Drone in your discard pile.",
+    factionText: "Third Yellow: Put the Drone on top of your deck instead.",
+    flavor: "Every spark becomes another mind in the swarm."
+  },
+  {
+    id: "helix_reactor_scout",
+    name: "Helix Reactor Scout",
+    image: "helix_reactor_scout.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 50,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      trade: 2
+    },
+    heat: {
+      gain: 1,
+      max: 5,
+      thresholds: [
+        {
+          at: 2,
+          effect: {
+            peekTop: {
+              count: 1,
+              mayBottom: true
+            }
+          }
+        },
+        {
+          at: 4,
+          effect: {
+            trade: 1,
+            draw: 1
+          },
+          resetTo: 1
+        }
+      ]
+    },
+    text: "Gain 2 Trade and add 1 Heat to this card.",
+    heatText: "At 2+ Heat, look at the top card of your deck; you may place it on the bottom. At 4+ Heat, gain 1 additional Trade and draw a card, then reset this card to 1 Heat. Maximum Heat 5.",
+    flavor: "It has witnessed tomorrow often enough to begin changing it."
+  },
+  {
+    id: "concord_swarm_director",
+    name: "Concord Swarm Director",
+    image: "concord_swarm_director.png",
+    faction: "yellow",
+    cost: 6,
+    shop_cost: 105,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      trade: 3
+    },
+    tokenScaling: {
+      metric: "played",
+      tokenId: "drone",
+      per: 2,
+      maxUnits: 3,
+      effectPerUnit: {
+        trade: 1
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "played",
+        tokenId: "drone",
+        at: 3,
+        effect: {
+          draw: 1,
+          topdeckFromHand: 1
+        }
+      }
+    ],
+    text: "Gain 3 Trade. Gain 1 additional Trade for every two Drones played this turn, up to 3 additional Trade.",
+    thresholdText: "If three or more Drones were played this turn, draw a card, then place one card from your hand on top of your deck.",
+    flavor: "A billion minor calculations resolve into one perfect command."
+  },
+  {
+    id: "infinite_assembly_node",
+    name: "Infinite Assembly Node",
+    image: "infinite_assembly_node.png",
+    faction: "yellow",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◈",
+    effect: {},
+    recurring: {
+      everyTurns: 2,
+      effect: {
+        createToken: {
+          id: "drone",
+          count: 1,
+          zone: "discard"
+        }
+      },
+      ownedFactionModifiers: [
+        {
+          faction: "yellow",
+          at: 10,
+          modify: {
+            path: "createToken.zone",
+            value: "topdeck"
+          }
+        },
+        {
+          faction: "yellow",
+          at: 15,
+          additionalEffect: {
+            createToken: {
+              id: "drone",
+              count: 1,
+              zone: "discard"
+            }
+          }
+        }
+      ]
+    },
+    text: "At the start of every second turn this base remains in play, create a Drone in your discard pile.",
+    factionText: "10 Yellow Cards Owned: Create the Drone on top of your deck instead. 15 Yellow Cards Owned: Create a second Drone in your discard pile.",
+    flavor: "The line has no beginning, and production has no end."
+  },
+  {
+    id: "prismatic_heat_exchange",
+    name: "Prismatic Heat Exchange",
+    image: "prismatic_heat_exchange.png",
+    faction: "yellow",
+    cost: 6,
+    shop_cost: 110,
+    type: "base",
+    defense: 9,
+    outpost: false,
+    sigil: "◈",
+    effect: {},
+    heatAura: {
+      trigger: "shipReachesHeat",
+      at: 3,
+      firstTimeEachTurn: true,
+      effect: {
+        trade: 1
+      }
+    },
+    activatedAbility: {
+      label: "Transfer Heat",
+      oncePerTurn: true,
+      effect: {
+        moveHeat: {
+          amount: 1,
+          from: "friendlyShip",
+          to: "differentFriendlyShip"
+        }
+      }
+    },
+    factionThresholds: [
+      {
+        metric: "played",
+        faction: "yellow",
+        at: 4,
+        oncePerTurn: true,
+        effect: {
+          coolHeat: {
+            amount: 1
+          }
+        }
+      }
+    ],
+    text: "The first time each turn that a ship reaches 3 Heat, gain 1 Trade. Once per turn, move 1 Heat from one of your ships to another one of your ships.",
+    factionText: "Fourth Yellow: You may remove 1 Heat from any ship.",
+    flavor: "Energy is never lost. It merely accepts a more useful future."
+  },
 
+  // ==========================================================
+  // BLUE — AZURE ASCENDANCY
+  // ==========================================================
+  {
+    id: "acolyte_procession_leader",
+    name: "Acolyte Procession Leader",
+    image: "acolyte_procession_leader.png",
+    faction: "blue",
+    cost: 4,
+    shop_cost: 65,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      shield: 2,
+      createToken: {
+        id: "acolyte",
+        count: 1,
+        zone: "discard"
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "acolyte",
+        at: 1,
+        effect: {
+          trade: 1,
+          armor: {
+            amount: 1,
+            temporary: true
+          }
+        }
+      }
+    ],
+    text: "Gain 2 Shield. Create an Acolyte in your discard pile.",
+    thresholdText: "If an Acolyte was already played this turn, gain 1 Trade and give one base 1 temporary Armor.",
+    flavor: "Each quiet voice strengthens the hymn of the whole."
+  },
+  {
+    id: "reliquary_searcher",
+    name: "Reliquary Searcher",
+    image: "reliquary_searcher.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 85,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      combat: 3
+    },
+    factionThresholds: [
+      {
+        metric: "played",
+        faction: "blue",
+        at: 3,
+        effect: {
+          reclaim: {
+            cardId: "acolyte",
+            from: "discard",
+            to: "hand",
+            count: 1
+          }
+        }
+      }
+    ],
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "acolyte",
+        at: 2,
+        optional: true,
+        effect: {
+          topdeckFromDiscard: {
+            faction: "blue",
+            minCost: 5,
+            count: 1
+          }
+        }
+      }
+    ],
+    text: "Gain 3 Combat.",
+    factionText: "Third Blue: Reclaim an Acolyte from your discard pile into your hand.",
+    thresholdText: "If two Acolytes have already been played this turn, you may place one Blue card costing 5 or more from your discard pile on top of your deck.",
+    flavor: "The faithful are never lost. They are merely waiting to be called."
+  },
+  {
+    id: "coolant_wing_chaplain",
+    name: "Coolant Wing Chaplain",
+    image: "coolant_wing_chaplain.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 50,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      or: [
+        {
+          id: "coolant_wing_chaplain_cool",
+          label: "Measured Cooling",
+          effect: {
+            coolHeat: {
+              amount: 2
+            }
+          }
+        },
+        {
+          id: "coolant_wing_chaplain_interceptor",
+          label: "Launch Interceptor",
+          effect: {
+            createToken: {
+              id: "interceptor",
+              count: 1,
+              zone: "discard"
+            }
+          }
+        },
+        {
+          id: "coolant_wing_chaplain_shield",
+          label: "Protective Hymn",
+          effect: {
+            shield: 2
+          }
+        }
+      ]
+    },
+    factionThresholds: [
+      {
+        metric: "played",
+        faction: "blue",
+        at: 4,
+        effect: {
+          chooseAdditionalDifferentOption: {
+            from: "effect.or",
+            count: 1
+          }
+        }
+      }
+    ],
+    text: "Choose one: remove up to 2 Heat from one ship; create an Interceptor in your discard pile; or gain 2 Shield.",
+    factionText: "Fourth Blue: Choose a second different option.",
+    flavor: "Restraint is not weakness. It is power held in perfect discipline."
+  },
+  {
+    id: "hangar_of_the_silver_vow",
+    name: "Hangar of the Silver Vow",
+    image: "hangar_of_the_silver_vow.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 9,
+    outpost: false,
+    sigil: "✦",
+    effect: {},
+    recurring: {
+      everyTurns: 2,
+      effect: {
+        createToken: {
+          id: "interceptor",
+          count: 1,
+          zone: "discard",
+          ownedFactionModifiers: [
+            {
+              faction: "blue",
+              at: 12,
+              tokenModifier: {
+                combat: 1,
+                sourceCardOnly: true
+              }
+            }
+          ]
+        }
+      }
+    },
+    tokenSacrificeTrigger: {
+      tokenId: "interceptor",
+      effect: {
+        armor: {
+          amount: 1,
+          target: "self",
+          permanent: true,
+          totalCap: 3
+        }
+      }
+    },
+    text: "At the start of every second turn this base remains in play, create an Interceptor in your discard pile. Whenever you sacrifice an Interceptor, give this base 1 Armor, up to 3 Armor.",
+    factionText: "12 Blue Cards Owned: Interceptors created by this base gain 1 additional Combat when played.",
+    flavor: "Every launched wing carries the weight of an ancient promise."
+  },
+  {
+    id: "choir_of_unbroken_formation",
+    name: "Choir of Unbroken Formation",
+    image: "choir_of_unbroken_formation.png",
+    faction: "blue",
+    cost: 6,
+    shop_cost: 105,
+    type: "base",
+    defense: 10,
+    outpost: false,
+    sigil: "✦",
+    effect: {},
+    factionThresholds: [
+      {
+        metric: "played",
+        faction: "blue",
+        at: 2,
+        oncePerTurn: true,
+        effect: {
+          armor: {
+            amount: 1,
+            temporary: true
+          }
+        }
+      },
+      {
+        metric: "played",
+        faction: "blue",
+        at: 4,
+        oncePerTurn: true,
+        effect: {
+          shield: 3
+        }
+      },
+      {
+        metric: "played",
+        faction: "blue",
+        at: 6,
+        oncePerTurn: true,
+        effect: {
+          createToken: {
+            id: "acolyte",
+            count: 1,
+            zone: "hand"
+          }
+        }
+      }
+    ],
+    text: "Second Blue: Give one base 1 temporary Armor. Fourth Blue: Gain 3 Shield. Sixth Blue: Create an Acolyte in your hand. Each threshold triggers only once per turn.",
+    flavor: "No single voice commands the heavens. The formation does."
+  },
+
+  // ==========================================================
+  // GREEN — GORAK WARHOST
+  // ==========================================================
+  {
+    id: "brood_chain_stalker",
+    name: "Brood-Chain Stalker",
+    image: "brood_chain_stalker.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 50,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "spawn",
+        count: 1,
+        zone: "discard"
+      }
+    },
+    tokenThresholds: [
+      {
+        metric: "playedBefore",
+        tokenId: "spawn",
+        at: 1,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        metric: "played",
+        tokenId: "spawn",
+        at: 3,
+        effect: {
+          combatAgainstBases: 2
+        }
+      }
+    ],
+    text: "Gain 2 Combat. Create a Spawn in your discard pile.",
+    thresholdText: "If another Spawn was played this turn, gain 2 additional Combat. If three Spawn were played this turn, gain 2 additional Combat against bases.",
+    flavor: "One calls. Ten answer. Then the ground begins to move."
+  },
+  {
+    id: "warhost_token_devourer",
+    name: "Warhost Token Devourer",
+    image: "warhost_token_devourer.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 85,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 3
+    },
+    optionalTokenSacrificeChain: [
+      {
+        sacrificeNumber: 1,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        sacrificeNumber: 2,
+        effect: {
+          createToken: {
+            id: "worker",
+            count: 1,
+            zone: "discard"
+          }
+        }
+      },
+      {
+        sacrificeNumber: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text: "Gain 3 Combat. You may sacrifice one token to gain 3 additional Combat. You may sacrifice a second token to create a Worker in your discard pile. You may sacrifice a third token to draw a card.",
+    flavor: "The Warhost wastes nothing—not even its own."
+  },
+  {
+    id: "furnace_hide_behemoth",
+    name: "Furnace-Hide Behemoth",
+    image: "furnace_hide_behemoth.png",
+    faction: "green",
+    cost: 6,
+    shop_cost: 110,
+    type: "ship",
+    sigil: "⬢",
+    effect: {
+      combat: 4
+    },
+    heat: {
+      gain: 1,
+      max: 5,
+      scaling: {
+        effectPerHeat: {
+          combat: 1
+        }
+      },
+      overload: {
+        at: 5,
+        or: [
+          {
+            id: "furnace_hide_behemoth_siege",
+            label: "Siege Overload",
+            effect: {
+              combatAgainstBases: 8
+            },
+            resetTo: 1
+          },
+          {
+            id: "furnace_hide_behemoth_brood",
+            label: "Brood Overload",
+            effect: {
+              createToken: {
+                id: "spawn",
+                count: 2,
+                zone: "discard"
+              }
+            },
+            resetTo: 0
+          }
+        ]
+      }
+    },
+    text: "Gain 4 Combat and add 1 Heat to this card. Gain 1 additional Combat for each Heat currently on this card.",
+    heatText: "Overload at 5 Heat — choose one: gain 8 additional Combat against bases, then reset to 1 Heat; or create two Spawn in your discard pile, then reset to 0 Heat. Maximum Heat 5.",
+    flavor: "Its blood boils long before its enemies do."
+  },
+  {
+    id: "spawning_war_nest",
+    name: "Spawning War-Nest",
+    image: "spawning_war_nest.png",
+    faction: "green",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "⬢",
+    effect: {},
+    factionThresholds: [
+      {
+        id: "spawning_war_nest_spawn",
+        metric: "played",
+        faction: "green",
+        at: 3,
+        oncePerTurn: true,
+        effect: {
+          createToken: {
+            id: "spawn",
+            count: 1,
+            zone: "discard",
+            trackCreatedToken: true
+          }
+        }
+      },
+      {
+        metric: "played",
+        faction: "green",
+        at: 5,
+        oncePerTurn: true,
+        effect: {
+          moveTrackedCreatedToken: {
+            sourceThresholdId: "spawning_war_nest_spawn",
+            from: "discard",
+            to: "topdeck"
+          }
+        }
+      },
+      {
+        metric: "owned",
+        faction: "green",
+        at: 14,
+        persistentModifier: {
+          firstTokenPlayedEachTurn: {
+            tokenId: "spawn",
+            combat: 1
+          }
+        }
+      }
+    ],
+    text: "Third Green: Create a Spawn in your discard pile. Fifth Green: Put that Spawn on top of your deck instead.",
+    factionText: "14 Green Cards Owned: The first Spawn you play each turn gains 1 additional Combat.",
+    flavor: "The nest does not sleep. It listens for the rhythm of marching feet."
+  },
+  {
+    id: "labor_horde_encampment",
+    name: "Labor-Horde Encampment",
+    image: "labor_horde_encampment.png",
+    faction: "green",
+    cost: 6,
+    shop_cost: 100,
+    type: "base",
+    defense: 9,
+    outpost: false,
+    sigil: "⬢",
+    effect: {},
+    recurring: {
+      everyTurns: 2,
+      effect: {
+        createToken: {
+          id: "worker",
+          count: 1,
+          zone: "discard"
+        }
+      }
+    },
+    tokenSacrificeTrigger: {
+      tokenId: "worker",
+      effect: {
+        combat: 1
+      },
+      ownedFactionBonus: {
+        faction: "green",
+        at: 12,
+        firstEachTurn: true,
+        effect: {
+          trade: 1
+        }
+      }
+    },
+    text: "At the start of every second turn this base remains in play, create a Worker in your discard pile. Whenever a Worker is sacrificed, gain 1 Combat.",
+    factionText: "12 Green Cards Owned: The first Worker sacrificed each turn also grants 1 Trade.",
+    flavor: "They build the road, drag the siege engines, and become the fuel."
+  },
+
+  // ==========================================================
+  // RED — UMBRAL COVENANT
+  // ==========================================================
+  {
+    id: "cinder_core_raider",
+    name: "Cinder-Core Raider",
+    image: "cinder_core_raider.png",
+    faction: "red",
+    cost: 3,
+    shop_cost: 50,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 2
+    },
+    heat: {
+      gain: 1,
+      max: 5,
+      thresholds: [
+        {
+          at: 3,
+          effect: {
+            combat: 2
+          }
+        }
+      ],
+      overload: {
+        at: 5,
+        optionalTokenSacrifice: {
+          successEffect: {
+            combat: 7
+          },
+          successResetTo: 1,
+          declineEffect: {
+            selfDamage: 2
+          },
+          declineResetTo: 0
+        }
+      }
+    },
+    text: "Gain 2 Combat and add 1 Heat to this card. At 3+ Heat, gain 2 additional Combat.",
+    heatText: "Overload at 5 Heat: You may sacrifice a token. If you do, gain 7 additional Combat and reset to 1 Heat. Otherwise, take 2 Authority damage and reset to 0 Heat. Maximum Heat 5.",
+    flavor: "The core demands payment. It has never cared whose blood pays it."
+  },
+  {
+    id: "emberling_taskmaster",
+    name: "Emberling Taskmaster",
+    image: "emberling_taskmaster.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 65,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 2,
+      createToken: {
+        id: "emberling",
+        count: 1,
+        zone: "discard"
+      }
+    },
+    tokenSacrificeThresholds: [
+      {
+        tokenId: "emberling",
+        at: 1,
+        effect: {
+          trade: 1
+        }
+      },
+      {
+        tokenId: "emberling",
+        at: 2,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        tokenId: "emberling",
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      }
+    ],
+    text: "Gain 2 Combat. Create an Emberling in your discard pile.",
+    thresholdText: "First Emberling sacrificed this turn: gain 1 Trade. Second: gain 3 Combat. Third: draw a card.",
+    flavor: "Individually, they are sparks. Together, they are a verdict."
+  },
+  {
+    id: "covenant_heat_harvester",
+    name: "Covenant Heat Harvester",
+    image: "covenant_heat_harvester.png",
+    faction: "red",
+    cost: 6,
+    shop_cost: 105,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 4,
+      harvestHeat: {
+        target: "friendlyShip",
+        min: 1,
+        max: "all",
+        effectPerHeat: {
+          combat: 2
+        },
+        effectCap: {
+          combat: 8
+        },
+        thresholds: [
+          {
+            removedAtLeast: 4,
+            effect: {
+              selfDamage: 2
+            }
+          }
+        ]
+      }
+    },
+    text: "Gain 4 Combat. Choose one of your ships with Heat and remove any amount of Heat from it. Gain 2 Combat for each Heat removed, up to 8 additional Combat.",
+    thresholdText: "If four or more Heat was removed, take 2 Authority damage.",
+    flavor: "The machine cools only because its master has learned to burn."
+  },
+  {
+    id: "pyre_swarm_foundry",
+    name: "Pyre-Swarm Foundry",
+    image: "pyre_swarm_foundry.png",
+    faction: "red",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    recurring: {
+      everyTurns: 2,
+      effect: {
+        createToken: {
+          id: "emberling",
+          count: 1,
+          zone: "discard"
+        }
+      }
+    },
+    tokenSacrificeTrigger: {
+      tokenId: "emberling",
+      perTurnCap: 2,
+      effect: {
+        or: [
+          {
+            id: "pyre_swarm_foundry_add_heat",
+            label: "Add Heat",
+            effect: {
+              addHeat: {
+                amount: 1,
+                target: "friendlyHeatShip"
+              }
+            }
+          },
+          {
+            id: "pyre_swarm_foundry_remove_heat",
+            label: "Remove Heat",
+            effect: {
+              coolHeat: {
+                amount: 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    text: "At the start of every second turn this base remains in play, create an Emberling in your discard pile.",
+    thresholdText: "Whenever an Emberling is sacrificed, add 1 Heat to one of your Heat ships or remove 1 Heat from one of your Heat ships. This triggers up to twice per turn.",
+    flavor: "Every creature born within it already knows how it will die."
+  },
+  {
+    id: "throne_of_escalating_ruin",
+    name: "Throne of Escalating Ruin",
+    image: "throne_of_escalating_ruin.png",
+    faction: "red",
+    cost: 7,
+    shop_cost: 125,
+    type: "base",
+    defense: 10,
+    outpost: false,
+    sigil: "◒",
+    effect: {},
+    factionThresholds: [
+      {
+        metric: "played",
+        faction: "red",
+        at: 2,
+        oncePerTurn: true,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        metric: "played",
+        faction: "red",
+        at: 4,
+        oncePerTurn: true,
+        effect: {
+          createToken: {
+            id: "emberling",
+            count: 1,
+            zone: "discard",
+            ownedFactionZoneOverride: {
+              faction: "red",
+              at: 15,
+              zone: "hand"
+            }
+          }
+        }
+      },
+      {
+        metric: "played",
+        faction: "red",
+        at: 6,
+        oncePerTurn: true,
+        effect: {
+          draw: 1,
+          selfDamage: 1
+        }
+      }
+    ],
+    text: "Second Red: Gain 2 Combat. Fourth Red: Create an Emberling in your discard pile. Sixth Red: Draw a card and take 1 Authority damage. Each threshold triggers only once per turn.",
+    factionText: "15 Red Cards Owned: The Emberling created by this base enters your hand instead.",
+    flavor: "The Covenant measures devotion by how much remains after the fire."
+  },
 {
   id: "seraph_of_the_final_bell",
   name: "Seraph of the Final Bell",
