@@ -155,6 +155,9 @@
     .personalDiscountBadge{position:absolute;z-index:5;left:5px;top:5px;min-width:34px;height:23px;border:1px solid #65d39a;border-radius:999px;background:rgba(8,42,29,.96);display:inline-flex;align-items:center;justify-content:center;padding:0 7px;color:#a7f4c9;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 14px rgba(101,211,154,.24)}
     .chargeBadge.empty{border-color:#526071;color:#93a0ae;background:rgba(10,15,21,.92);box-shadow:0 4px 13px rgba(0,0,0,.35)}
     .heatBadge{position:absolute;z-index:6;right:5px;top:5px;min-width:32px;height:22px;border:1px solid #ff765f;border-radius:999px;background:rgba(61,17,8,.95);display:inline-flex;align-items:center;justify-content:center;padding:0 7px;color:#ffb29e;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 12px rgba(255,92,59,.22)}
+    .ascensionTurnBadge{position:absolute;z-index:12;right:5px;top:5px;min-width:30px;height:23px;border:1px solid #cf83ff;border-radius:999px;background:linear-gradient(135deg,rgba(57,20,82,.97),rgba(23,13,48,.97));display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0 7px;color:#f2d9ff;font-size:8px;font-weight:1000;letter-spacing:.02em;pointer-events:none;box-shadow:0 4px 13px rgba(0,0,0,.44),0 0 14px rgba(207,131,255,.3)}
+    .ascensionTurnBadge.ready{border-color:#f2cf62;background:rgba(63,47,8,.97);color:#ffec9b;box-shadow:0 4px 13px rgba(0,0,0,.44),0 0 16px rgba(242,207,98,.38)}
+    .gameCard:has(.ascensionTurnBadge)>.chargeBadge,.gameCard:has(.ascensionTurnBadge)>.heatBadge{top:31px}
     .persistentBadgeRow{position:absolute;z-index:6;left:5px;bottom:31px;display:flex;gap:3px;flex-wrap:wrap;max-width:calc(100% - 10px);pointer-events:none}.persistentBadge{border:1px solid #526477;border-radius:999px;background:rgba(8,13,19,.94);padding:2px 5px;color:#c6d2de;font-size:6px;font-weight:1000;white-space:nowrap;box-shadow:0 3px 9px rgba(0,0,0,.36)}.persistentBadge.health{border-color:#ba5264;color:#ffb0bc}.persistentBadge.armor{border-color:#5c9fca;color:#aee1ff}.persistentBadge.construction{border-color:#c79742;color:#f5d07b}.persistentBadge.token{border-color:#7662aa;color:#d6c7ff}.persistentBadge.attachment{border-color:#4e9c81;color:#a4eccf}
     .baseGroup{flex:0 0 auto;display:flex;align-items:flex-start;gap:3px;padding:2px;border:1px solid #2d3a47;border-radius:10px;background:rgba(7,11,16,.58)}.baseGroup>.gameCard{flex:0 0 auto}.baseAttachments{display:flex;align-items:flex-start;gap:3px}.baseAttachments .gameCard{width:72px!important;flex:0 0 72px!important;opacity:.92}.baseAttachments .cardActions{padding:2px}.baseAttachments .btn{min-width:0!important;font-size:5.8px!important;padding:2px!important}.baseAttachments .cardArt{height:27px!important}
     .baseAbilityList{display:grid;gap:8px}.baseAbilityRow{border:1px solid #344354;border-radius:10px;background:#121a23;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}.baseAbilityRow.disabled{opacity:.58}.baseAbilityName{font-size:10px;font-weight:950}.baseAbilityText{margin-top:4px;color:#9cabb9;font-size:8px;line-height:1.4}.baseAbilityReason{margin-top:4px;color:#d7929c;font-size:7px}.turnSystems{display:flex;gap:3px;flex-wrap:wrap}.turnSystem{border:1px solid #46586a;border-radius:999px;background:#0b1219;padding:2px 5px;color:#aebbc8;font-size:6px;font-weight:950;white-space:nowrap}.turnSystem.sacrifice{border-color:#9b4758;color:#ff9caf}
@@ -2342,6 +2345,48 @@
     const key = transformProgressKey(entry, card);
     if (key) delete player.transformProgress[key];
     if (card?.id && card.id !== key) delete player.transformProgress[card.id];
+  }
+
+  function peekTransformProgress(player, entry, card) {
+    const progress = player?.transformProgress;
+    if (!progress || typeof progress !== "object" || Array.isArray(progress)) return 0;
+    const key = transformProgressKey(entry, card);
+    if (key && Object.prototype.hasOwnProperty.call(progress, key)) {
+      return Math.max(0, Number(progress[key]) || 0);
+    }
+    if (card?.id && Object.prototype.hasOwnProperty.call(progress, card.id)) {
+      return Math.max(0, Number(progress[card.id]) || 0);
+    }
+    return 0;
+  }
+
+  function transformOwnerForEntry(game, entry) {
+    const players = Array.isArray(game?.players) ? game.players : [];
+    if (!entry || !players.length) return null;
+    const directOwner = players.find(player => player.id === entry.ownerId);
+    if (directOwner) return directOwner;
+    const instanceId = String(entry.instanceId || "");
+    if (!instanceId) return null;
+    return players.find(player => OWNER_TURN_TRANSFORM_ZONES.some(zone =>
+      (Array.isArray(player?.[zone]) ? player[zone] : []).some(candidate => candidate?.instanceId === instanceId)
+    )) || null;
+  }
+
+  function ascensionTurnBadgeHtml(entry, card, game = state) {
+    const transform = card?.transform;
+    if (!entry || transform?.trigger !== "ownerTurnsElapsed" || !transform.into) return "";
+
+    const required = Math.max(1, Math.floor(Number(transform.required) || 1));
+    const owner = transformOwnerForEntry(game, entry);
+    const progress = owner ? peekTransformProgress(owner, entry, card) : 0;
+    const remaining = Math.max(0, required - progress);
+    const nextName = getCard(transform.into)?.name || transform.into;
+    const turnWord = remaining === 1 ? "turn" : "turns";
+    const title = remaining > 0
+      ? `${remaining} owner ${turnWord} until ascending into ${nextName}`
+      : `Ready to ascend into ${nextName}`;
+
+    return `<span class="ascensionTurnBadge${remaining === 0 ? " ready" : ""}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span aria-hidden="true">↟</span>${remaining}</span>`;
   }
 
   function locateOwnedEntry(player, instanceId, allowedZones = OWNER_TURN_TRANSFORM_ZONES) {
@@ -5886,6 +5931,7 @@
       </div>
 
       ${options.personalDiscount ? personalDiscountBadgeHtml(card, options.discountPlayer) : ""}
+      ${ascensionTurnBadgeHtml(entry, card)}
       ${persistentStateBadgesHtml(entry, card)}
       ${cardAbilityRailHtml(card)}
 
