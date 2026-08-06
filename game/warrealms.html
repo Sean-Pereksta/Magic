@@ -46,13 +46,16 @@
       var(--bg)}
 
     /* ARMORY BACKDROP
-       Keep backdrop.png in the same folder as this HTML file. */
+       The image URL is resolved in JavaScript from the same CARD_ART_ROOT
+       used by every War Realms card image. */
+    html.armoryMode,
     body.armoryMode{background:#03060a}
     body.armoryMode .app{
+      background-color:#03060a;
       background-image:
         linear-gradient(180deg,rgba(2,5,9,.34) 0%,rgba(2,5,9,.18) 29%,rgba(2,5,9,.58) 58%,rgba(2,5,9,.88) 100%),
         radial-gradient(900px 520px at 61% 13%,rgba(65,143,226,.16),transparent 66%),
-        url("../graphics/warrealmscards/backdrop.png");
+        var(--armoryBackdropImage,url("../graphics/warrealmscards/backdrop.png?v=20260806-2"));
       background-position:center top,center top,center top;
       background-size:auto,auto,cover;
       background-repeat:no-repeat;
@@ -1360,6 +1363,14 @@
   const FIRST_COPY_PRICE_MULTIPLIER = 1.5;
   const CARD_ART_ROOT = new URL("../graphics/warrealmscards/", import.meta.url).href;
   const CARD_COST_ICON_ROOT = CARD_ART_ROOT;
+
+  // Resolve the menu backdrop from the exact same graphics directory as card art.
+  // The version query prevents a cached failed request from hiding a newly uploaded file.
+  const ARMORY_BACKDROP_URL = new URL("backdrop.png?v=20260806-2", CARD_ART_ROOT).href;
+  document.documentElement.style.setProperty(
+    "--armoryBackdropImage",
+    `url("${ARMORY_BACKDROP_URL}")`
+  );
   const HIRED_LOOTER_CARD = (() => {
     const directMatches = ["hired_looter", "Hired_looter", "hired-looter", "Hired Looter"]
       .map(candidate => getCard(candidate))
