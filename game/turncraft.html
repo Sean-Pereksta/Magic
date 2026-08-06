@@ -1200,7 +1200,36 @@ function attackMoveGroup(ids,x,y,slot){const units=(ids||[]).map(entityById).fil
 function setStructureRally(e,x,y){if(!e||e.kind!=='structure'||e.alive===false)return false;const d=STRUCTURES[e.type];if(!d?.produces?.length&&!d?.larvaEvery&&!d?.base)return false;e.rallyPoint={x:clamp(Number(x),0,BOARD_W-1),y:clamp(Number(y),0,BOARD_H-1)};showCommandMarker(e.rallyPoint.x,e.rallyPoint.y,'rally');toast(`${d.name} rally point set. New troops will move as close as possible.`,1900);markDirty();refreshUI(true);return true}
 function nearestAttackMoveEnemy(e){return entities.filter(t=>t.alive!==false&&!t.garrisonedIn&&t.faction!==e.faction&&t.faction>=0&&!players[t.faction]?.eliminated&&tileVisibleToFaction(e.faction,t.x,t.y)&&dist(e,t)<=Math.max(6,attackRange(e)+2)).sort((a,b)=>dist(e,a)-dist(e,b)||a.id-b.id)[0]||null}
 function updateAttackMoveOrders(){for(const e of entities){if(e.alive===false||e.kind!=='unit'||!e.attackMoveDestination||players[e.faction]?.eliminated)continue;let target=entityById(e.targetId);if(target&&target.alive!==false&&target.faction!==e.faction){if(canTarget(e,target)){fireAt(e,target);continue}if(nowMs()>=e.moveReadyAt)aiStepToward(e,target.x,target.y,true);continue}target=nearestAttackMoveEnemy(e);if(target){e.targetId=target.id;e.order='attackMove';continue}e.targetId=null;e.moveDestination={...e.attackMoveDestination};if(e.x===e.attackMoveDestination.x&&e.y===e.attackMoveDestination.y){e.attackMoveDestination=null;clearMoveDestination(e);e.attackMode=false;e.order='idle'}else if(nowMs()>=e.moveReadyAt)stepTowardDestination(e)}}
-function pushBattleAlert(text,x=null,y=null,severity='normal'){const host=document.getElementById('battleAlerts');if(!host)return;const key=`${text}|${Math.round(x||0)}|${Math.round(y||0)}`,stamp=Number(host.dataset[key]||0);if(nowMs()-stamp<4200)return;host.dataset[key]=String(nowMs());const b=document.createElement('button');b.className='battleAlert'+(severity==='severe'?' severe':'');b.textContent=text;b.onclick=()=>{if(Number.isFinite(x)&&Number.isFinite(y))centerOn(x,y);b.remove()};host.prepend(b);while(host.children.length>3)host.lastElementChild.remove();setTimeout(()=>b.remove(),severity==='severe'?6500:4800)}
+const battleAlertStamps=new Map();
+function pushBattleAlert(text,x=null,y=null,severity='normal'){
+  const host=document.getElementById('battleAlerts');
+  if(!host)return;
+
+  const key=`${text}|${Math.round(x||0)}|${Math.round(y||0)}`;
+  const stamp=battleAlertStamps.get(key)||0;
+  if(nowMs()-stamp<4200)return;
+
+  const currentStamp=nowMs();
+  battleAlertStamps.set(key,currentStamp);
+
+  const b=document.createElement('button');
+  b.className='battleAlert'+(severity==='severe'?' severe':'');
+  b.textContent=text;
+  b.onclick=()=>{
+    if(Number.isFinite(x)&&Number.isFinite(y))centerOn(x,y);
+    b.remove();
+  };
+
+  host.prepend(b);
+  while(host.children.length>3)host.lastElementChild.remove();
+
+  setTimeout(()=>{
+    b.remove();
+    if(battleAlertStamps.get(key)===currentStamp){
+      battleAlertStamps.delete(key);
+    }
+  },severity==='severe'?6500:4800);
+}
 function renderControlGroups(){const host=document.getElementById('controlGroups');if(!host)return;host.innerHTML='';for(let i=0;i<CONTROL_GROUP_COUNT;i++){const b=document.createElement('button'),ids=controlGroupSlots[i].filter(id=>entityById(id)?.alive!==false);controlGroupSlots[i]=ids;b.className='controlGroupChip'+(ids.length?' assigned':'');b.innerHTML=`<b>${i+1}</b>${ids.length||'—'}`;let hold=null;b.onpointerdown=()=>{hold=setTimeout(()=>{assignControlGroup(i);hold=null},520)};b.onpointerup=()=>{if(hold){clearTimeout(hold);recallControlGroup(i)}};b.onpointercancel=()=>{if(hold)clearTimeout(hold)};host.appendChild(b)}}
 function assignControlGroup(i){const ids=selectedEntities().filter(ownEntity).map(e=>e.id);if(!ids.length){toast('Select your units or structures before assigning a control group.',1800);return}controlGroupSlots[i]=ids;renderControlGroups();toast(`Control group ${i+1} assigned: ${ids.length} selected.`,1500)}
 function recallControlGroup(i){const list=controlGroupSlots[i].map(entityById).filter(e=>e&&e.alive!==false&&e.faction===PLAYER);if(!list.length){toast(`Control group ${i+1} is empty. Hold its chip to assign the current selection.`,1700);return}selectEntities(list);const x=list.reduce((s,e)=>s+e.x,0)/list.length,y=list.reduce((s,e)=>s+e.y,0)/list.length;centerOn(x,y)}
