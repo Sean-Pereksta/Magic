@@ -1428,7 +1428,8 @@
       });
       bindProfileLinks($("currentLobbyPlayers"));
       $("currentLobbyRole").textContent=isHost?"Host":"Player";$("waitingForHost").hidden=isHost;
-      $("invitePlayerBtn").hidden=!isHost||getMaxPlayers(game.key)<=1;$("startGameBtn").hidden=!isHost;$("startGameBtn").textContent=`🚀 Start ${gameTitle(game.key,true)}`;
+      const warRealmsNeedsPlayer=game.key==="warrealms"&&(currentLobbyData.players||[]).length<2;
+      $("invitePlayerBtn").hidden=!isHost||getMaxPlayers(game.key)<=1;$("startGameBtn").hidden=!isHost;$("startGameBtn").disabled=warRealmsNeedsPlayer;$("startGameBtn").textContent=warRealmsNeedsPlayer?"🚀 Need 2 Players":`🚀 Start ${gameTitle(game.key,true)}`;
       renderLobbyBrowser();
     }
     function clearCurrentLobby(message=""){
@@ -1441,7 +1442,9 @@
       startingLobbyGame=true;setBusy($("startGameBtn"),true,"Starting game…");
       try{
         const lobbyId=currentLobbyId,ref=doc(db,"lobbies",lobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
-        const data=snap.data(),game=getGame(data.gameType);if(data.status==="started"){currentLobbyData={id:lobbyId,...data};redirectStartedGame(lobbyId,currentLobbyData);return;}
+        const data=snap.data(),game=getGame(data.gameType),players=Array.isArray(data.players)?data.players:[];
+        if(game.key==="warrealms"&&players.length<2){toast("War Realms multiplayer needs at least 2 players.","bad");return;}
+        if(data.status==="started"){currentLobbyData={id:lobbyId,...data};redirectStartedGame(lobbyId,currentLobbyData);return;}
         const launchPatch={status:"started"};
         if(game.key==="estate"){
           const activeId=await joinOrCreateActiveEstate(data.players||[username]);
