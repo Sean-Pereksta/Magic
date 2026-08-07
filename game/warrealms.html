@@ -993,6 +993,31 @@
     .createLobbyField{display:grid;gap:6px;color:#aeb9c6;font-size:9px;font-weight:900}.createLobbyInput{width:100%;min-height:42px;border:1px solid #3c4b5d;border-radius:10px;background:#0b1118;color:#fff;padding:9px 11px;font-size:12px}
     @media(max-width:680px){.publicDeckGrid,.armoryLobbyGrid{grid-template-columns:1fr}.currentArmoryLobby{grid-template-columns:1fr}.currentArmoryLobbyActions{justify-content:stretch}.currentArmoryLobbyActions .btn{flex:1}.publicDeckActions{grid-template-columns:1fr}.armorySpecialIntro{align-items:flex-start}}
 
+
+
+    /* =========================================================
+       WAR REALMS — UI POLISH PASS
+       Commander HUD, Armory discovery, deck intelligence + identity
+       ========================================================= */
+    body.armoryMode .armoryHero{min-height:190px;padding:18px 20px;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(420px,1fr);grid-template-areas:"copy stats" "actions stats";gap:12px 18px;align-items:center}
+    .armoryHeroCopy{grid-area:copy;min-width:0}.armoryHeroCopy h1{font-size:clamp(26px,3.7vw,46px);margin:6px 0 7px}.armoryHeroCopy p{font-size:10px!important;max-width:560px!important}
+    .heroStats{grid-area:stats;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}.heroStat{min-width:0;padding:10px 12px;background:rgba(5,9,14,.62);backdrop-filter:blur(7px)}.heroStat>span{display:block;font-size:7px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#9aa8b8}.heroStat b{font-size:18px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.heroStat small{display:block;margin-top:3px;color:#7f8d9d;font-size:6.5px;font-weight:800}
+    .heroActions.heroDestinations{grid-area:actions;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.heroDestinations .btn{min-width:0;min-height:40px;padding:8px 9px;font-size:9px}.heroDestinations .btn span{font-size:13px}.heroUtilityLink{position:absolute;right:13px;bottom:8px;border:0;background:transparent;color:#8493a4;font-size:7px;font-weight:850;cursor:pointer}.heroUtilityLink:hover{color:#fff;text-decoration:underline}
+    .armoryToolbar{display:block;padding:0}.armoryTabsRow{display:flex;gap:6px;padding:10px 12px 8px;border-bottom:1px solid #283442;overflow-x:auto;scrollbar-width:none}.armoryTabsRow::-webkit-scrollbar{display:none}.armoryTabsRow .tabBtn{flex:0 0 auto}.armorySearchRow{display:grid;grid-template-columns:minmax(220px,1fr) auto auto;gap:7px;align-items:center;padding:9px 12px}.armorySearchRow .searchWrap{min-width:0}.catalogSortLabel{min-width:190px}.catalogSortLabel .catalogSelect{min-width:125px;max-width:none}.advancedFiltersBtn{min-height:36px;border:1px solid #45576b;border-radius:9px;background:#18232f;padding:7px 10px;color:#e9eef5;font-size:9px;font-weight:950;cursor:pointer;white-space:nowrap}.advancedFiltersBtn:hover{background:#223140}.advancedFiltersBtn span{display:inline-grid;place-items:center;min-width:20px;height:20px;margin-left:5px;border-radius:999px;background:#e4c94e;color:#101318;font-size:8px}.advancedFiltersBtn span:empty{display:none}.advancedFiltersBtn.noFilters span{background:#293746;color:#8997a6}
+    .filterChipRow{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:0 12px 9px}.filterChip{min-height:25px;border:1px solid #4a5b6e;border-radius:999px;background:#111923;padding:4px 8px;color:#d8e1eb;font-size:7px;font-weight:900;cursor:pointer}.filterChip:hover{border-color:#71869d;background:#18232f}.filterChip.clear{border-color:#6d4150;color:#f0a8b4}.filterChip b{margin-left:4px;color:#fff}
+    .filterDrawerScrim{position:fixed;inset:0;z-index:345;background:rgba(2,5,8,.72);backdrop-filter:blur(5px);display:flex;justify-content:flex-end}.filterDrawerScrim.hidden{display:none!important}.filterDrawer{width:min(480px,94vw);height:100%;background:linear-gradient(180deg,#111923,#0a1017);border-left:1px solid #405064;box-shadow:-20px 0 60px rgba(0,0,0,.5);display:grid;grid-template-rows:auto minmax(0,1fr) auto;animation:filterDrawerIn .18s ease-out}.filterDrawerHead{padding:15px 16px;border-bottom:1px solid #344252;display:flex;align-items:center;gap:10px}.filterDrawerHead h2{margin:4px 0 0;font-family:var(--displayFont);font-size:18px}.filterDrawerBody{overflow:auto;padding:12px;display:grid;gap:9px;align-content:start}.filterGroup{border:1px solid #303d4b;border-radius:12px;background:#0d141c;padding:10px}.filterGroup h3{margin:0 0 8px;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#aeb9c6}.filterCheckGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.filterCheckGrid.abilities{grid-template-columns:repeat(2,minmax(0,1fr))}.filterCheck{min-height:34px;border:1px solid #354455;border-radius:8px;background:#131d27;padding:7px 8px;display:flex;align-items:center;gap:7px;font-size:8px;font-weight:850;color:#ccd5df}.filterCheck input,.filterToggle input{accent-color:#e4c94e}.filterCheck.yellow{color:var(--yellow)}.filterCheck.blue{color:var(--blue)}.filterCheck.green{color:var(--green)}.filterCheck.red{color:var(--red)}.filterCheck.neutral{color:var(--neutral)}.filterFieldGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.filterFieldGrid label,.filterFullField,.filterRange label{display:grid;gap:5px;color:#8e9cab;font-size:7px;font-weight:900;text-transform:uppercase;letter-spacing:.07em}.filterFieldGrid select,.filterFullField select,.filterRange input{width:100%;min-height:35px;border:1px solid #39495a;border-radius:8px;background:#101821;color:#f2f5f9;padding:7px 8px;font-size:8px;font-weight:850;text-transform:none;letter-spacing:0}.filterToggle{display:flex!important;align-items:center!important;gap:7px!important;min-height:35px;border:1px solid #39495a;border-radius:8px;background:#101821;padding:7px 8px;color:#d3dce5!important;text-transform:none!important;letter-spacing:0!important}.filterRange{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:7px}.filterRange>span{padding-bottom:10px;color:#647486;font-size:8px}.filterDrawerFoot{padding:10px 12px calc(10px + var(--safeBottom));border-top:1px solid #344252;display:grid;grid-template-columns:1fr 1fr;gap:7px;background:#0c1219}.filterDrawerFoot .btn{width:100%}@keyframes filterDrawerIn{from{transform:translateX(26px);opacity:.45}to{transform:none;opacity:1}}
+    .summaryPanel{overflow:hidden}.summaryPanel.deckIdentityYellow{--deckIdentityAccent:var(--yellow)}.summaryPanel.deckIdentityBlue{--deckIdentityAccent:var(--blue)}.summaryPanel.deckIdentityGreen{--deckIdentityAccent:var(--green)}.summaryPanel.deckIdentityRed{--deckIdentityAccent:var(--red)}.summaryPanel.deckIdentityNeutral{--deckIdentityAccent:var(--neutral)}.deckIdentity{margin:-2px -2px 11px;min-height:76px;border:1px solid color-mix(in srgb,var(--deckIdentityAccent,var(--neutral)) 50%,#344252);border-radius:11px;background:linear-gradient(115deg,color-mix(in srgb,var(--deckIdentityAccent,var(--neutral)) 17%,#0b1118),#0b1118);display:grid;grid-template-columns:55px minmax(0,1fr);gap:9px;align-items:center;padding:8px}.deckIdentityArt{width:55px;height:58px;border-radius:8px;overflow:hidden;border:1px solid color-mix(in srgb,var(--deckIdentityAccent,var(--neutral)) 58%,#455365);background:#080d13;display:grid;place-items:center;color:var(--deckIdentityAccent,var(--neutral));font-size:25px}.deckIdentityArt img{width:100%;height:100%;object-fit:cover;display:block}.deckIdentityCopy{min-width:0}.deckIdentityFaction{font-size:7px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:var(--deckIdentityAccent,var(--neutral))}.deckIdentityName{margin-top:3px;font-family:var(--displayFont);font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.deckIdentityFeature{margin-top:4px;color:#8f9dad;font-size:6.7px;line-height:1.3}.deckAnalytics{display:grid;gap:9px;margin:11px 0 12px;padding-top:10px;border-top:1px solid #293441}.deckAnalytics[hidden]{display:none!important}.deckAnalyticsTitle{font-size:8px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#9aa8b7}.deckMetricGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.deckMetric{border:1px solid #2f3c4a;border-radius:8px;background:#0b1118;padding:6px;text-align:center;color:#7f8e9d;font-size:6px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.deckMetric b{display:block;margin-top:3px;color:#fff;font-size:11px;text-transform:none;letter-spacing:0}.costCurve{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.costCurveItem{display:grid;gap:4px;text-align:center;color:#768697;font-size:6px;font-weight:900}.costCurveTrack{height:36px;border:1px solid #2d3947;border-radius:6px;background:#090e14;display:flex;align-items:flex-end;overflow:hidden}.costCurveTrack i{display:block;width:100%;min-height:2px;background:var(--deckIdentityAccent,var(--yellow));opacity:.8}.deckWarnings{display:grid;gap:5px}.deckWarning{border:1px solid #5f4c28;border-radius:8px;background:#211b0e;padding:6px 7px;color:#e7c967;font-size:6.8px;line-height:1.35}.deckWarning.good{border-color:#345d4a;background:#0f2119;color:#75d49e}
+    .publicDeckCard{overflow:hidden}.publicDeckHead{position:relative}.publicDeckFeature{width:42px;height:54px;flex:0 0 42px;border:1px solid color-mix(in srgb,var(--deckFaction) 55%,#4a5969);border-radius:7px;overflow:hidden;background:#080d13}.publicDeckFeature img{width:100%;height:100%;object-fit:cover;display:block}.publicDeckFeatureFallback{width:100%;height:100%;display:grid;place-items:center;color:var(--deckFaction);font-size:20px}
+    .commanderHud{min-height:50px;display:grid;grid-template-columns:minmax(110px,1.25fr) 1.45fr repeat(4,minmax(66px,1fr));gap:5px;padding:5px 6px;border-bottom:1px solid #344252;background:linear-gradient(90deg,rgba(24,33,44,.98),rgba(11,17,24,.98));position:relative;z-index:2}.commanderHudIdentity{min-width:0;display:flex;flex-direction:column;justify-content:center;padding:2px 7px}.commanderHudEyebrow{color:#778798;font-size:6px;font-weight:950;letter-spacing:.13em;text-transform:uppercase}.commanderHudIdentity b{margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--displayFont);font-size:10px}.commanderHudStat{position:relative;min-width:0;border:1px solid #344354;border-radius:9px;background:#101821;padding:5px 7px;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .18s,border-color .18s,background .18s,transform .16s}.commanderHudStat>span{font-size:13px}.commanderHudStat b{display:block;font-size:13px;line-height:1}.commanderHudStat small{display:block;margin-top:2px;color:#8291a0;font-size:5.8px;font-weight:900;text-transform:uppercase;letter-spacing:.07em}.commanderHudStat.authority{justify-content:flex-start;border-color:#793b49;background:linear-gradient(135deg,#35161f,#14131a);color:#ff8897;padding-inline:11px}.commanderHudStat.authority b{font-size:22px;color:#fff}.commanderHudStat.trade{color:#e3c44d}.commanderHudStat.combat{color:#ff7b88}.commanderHudStat.control{color:#88c9f1}.commanderHudStat.purge{color:#dc6980}.commanderHudStat.zero:not(.authority){opacity:.38}.commanderHudStat.critical{border-color:#ff6f7f;background:linear-gradient(135deg,#661d2c,#271017);box-shadow:inset 0 0 0 1px rgba(255,111,127,.2),0 0 15px rgba(255,74,101,.18);animation:authorityCritical 1.35s ease-in-out infinite}.commanderHudStat.hudGain{animation:hudGain .46s ease}.commanderHudStat.hudLoss{animation:hudLoss .46s ease}@keyframes hudGain{0%,100%{transform:none}45%{transform:translateY(-2px);filter:brightness(1.45)}}@keyframes hudLoss{0%,100%{transform:none}30%{transform:translateX(-2px);filter:brightness(1.5)}60%{transform:translateX(2px)}}@keyframes authorityCritical{0%,100%{filter:none}50%{filter:brightness(1.17)}}
+    .fxAcquiredCard{position:fixed;z-index:3;width:94px;transform:translate(-50%,-50%);animation:acquiredFly .78s cubic-bezier(.2,.7,.2,1) both;pointer-events:none}.fxAcquiredCard .fxGhostVisual{aspect-ratio:512/716;border:1px solid #65778a;border-radius:9px;overflow:hidden;background:#070b10;box-shadow:0 14px 35px rgba(0,0,0,.58)}.fxAcquiredCard .fxGhostVisual img{width:100%;height:100%;object-fit:contain;display:block}.fxAcquiredCard b{display:block;margin-top:4px;text-align:center;color:#f1d66a;font-size:7px;text-shadow:0 1px 3px #000}.fxAcquiredCard.played b{color:#77dba0}@keyframes acquiredFly{0%{opacity:0;transform:translate(-50%,-50%) scale(.7) rotate(-4deg)}20%{opacity:1}70%{opacity:1;transform:translate(calc(-50% + var(--fxTravelX)),calc(-50% + var(--fxTravelY))) scale(.88) rotate(3deg)}100%{opacity:0;transform:translate(calc(-50% + var(--fxTravelX)),calc(-50% + var(--fxTravelY))) scale(.5) rotate(7deg)}}
+    .fxTransformFlash{position:fixed;z-index:4;transform:translate(-50%,-50%);width:120px;height:120px;border:2px solid #cf83ff;border-radius:50%;box-shadow:0 0 35px rgba(207,131,255,.6),inset 0 0 30px rgba(242,207,98,.25);animation:transformFlash .7s ease-out both}@keyframes transformFlash{from{opacity:0;transform:translate(-50%,-50%) scale(.2) rotate(0)}35%{opacity:1}to{opacity:0;transform:translate(-50%,-50%) scale(1.5) rotate(90deg)}}
+    body.battleMode .playerDock{grid-template-rows:auto auto minmax(0,1fr)}
+    body.battleMode .turnPanel .resourceRow{display:none!important}
+    body.battleMode .turnPanel .turnActions{grid-column:1/-1;width:100%}
+    @media(max-width:1100px){body.armoryMode .armoryHero{grid-template-columns:1fr;grid-template-areas:"copy" "stats" "actions";min-height:0}.heroStats{grid-template-columns:repeat(4,minmax(0,1fr))}.heroActions.heroDestinations{grid-template-columns:repeat(4,minmax(0,1fr))}.armorySearchRow{grid-template-columns:minmax(160px,1fr) auto minmax(175px,auto)}.commanderHud{grid-template-columns:minmax(90px,1fr) 1.3fr repeat(4,minmax(58px,.85fr))}.commanderHudStat{padding-inline:5px}.commanderHudStat.authority{padding-inline:8px}}
+    @media(max-width:760px){body.armoryMode .armoryHero{padding:13px;gap:9px}.armoryHeroCopy p{display:none}.heroStats{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.heroStat{padding:7px 8px}.heroStat b{font-size:14px}.heroActions.heroDestinations{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.armorySearchRow{grid-template-columns:minmax(0,1fr) auto;padding:7px}.catalogSortLabel{grid-column:1/-1;min-width:0}.catalogSortLabel .catalogSelect{width:100%}.filterChipRow{padding:0 7px 7px}.filterDrawerScrim{align-items:flex-end}.filterDrawer{width:100%;height:min(82dvh,720px);border-left:0;border-top:1px solid #405064;border-radius:17px 17px 0 0;animation:filterSheetIn .18s ease-out}.filterCheckGrid.abilities{grid-template-columns:1fr 1fr}@keyframes filterSheetIn{from{transform:translateY(25px);opacity:.45}to{transform:none;opacity:1}}.commanderHud{grid-template-columns:1.35fr repeat(4,1fr);min-height:44px;padding:4px;gap:3px}.commanderHudIdentity{display:none}.commanderHudStat{padding:4px;gap:3px;border-radius:7px}.commanderHudStat>span{font-size:10px}.commanderHudStat b{font-size:10px}.commanderHudStat small{font-size:4.8px}.commanderHudStat.authority{padding:4px 6px}.commanderHudStat.authority b{font-size:17px}.playerDock{grid-template-rows:auto auto minmax(0,1fr)!important}}
+    @media(max-width:430px){.filterCheckGrid,.filterCheckGrid.abilities,.filterFieldGrid{grid-template-columns:1fr}.heroStats{grid-template-columns:repeat(2,minmax(0,1fr))}.heroStat small{display:none}.commanderHud{grid-template-columns:1.25fr repeat(4,.85fr)}.commanderHudStat small{display:none}.commanderHudStat>span{font-size:9px}.commanderHudStat b{font-size:9px}.commanderHudStat.authority b{font-size:16px}}
+
   </style>
 </head>
 <body>
@@ -1024,58 +1049,48 @@
   <main id="armoryView" class="view hidden">
     <div class="shell">
       <section class="armoryHero">
-        <div class="eyebrow">Single commander detected</div>
-        <h1>The Realm Armory</h1>
-        <p>The store is generated from the collectible War Realms cards; Hired Looter is reserved for its permanent in-game Trade Row supply. New commanders begin with exactly 50 custom cards. Build and save multiple named decks, start new ideas from zero cards, and assign one battle-ready deck as active. Multiplayer loads only the card graphics used by that battle.</p>
+        <div class="armoryHeroCopy">
+          <div class="eyebrow">Commander dashboard</div>
+          <h1>The Realm Armory</h1>
+          <p>Battle, build, collect, and explore from one command center.</p>
+        </div>
         <div class="heroStats">
-          <div class="heroStat">War Sigils<b id="heroSigils">0</b></div>
-          <div class="heroStat">Unique cards owned<b id="heroOwned">0</b></div>
-          <div class="heroStat">Active deck<b id="heroDeck">0 / 50</b></div>
-          <div class="heroStat">Battles / Wins<b id="heroRecord">0 / 0</b></div>
+          <div class="heroStat"><span>War Sigils</span><b id="heroSigils">0</b><small>Available currency</small></div>
+          <div class="heroStat"><span>Collection</span><b id="heroOwned">0%</b><small id="heroOwnedDetail">0 / 0 unique</small></div>
+          <div class="heroStat"><span>Active Deck</span><b id="heroDeck">None</b><small id="heroDeckDetail">0 / 50 cards</small></div>
+          <div class="heroStat"><span>Record</span><b id="heroRecord">0–0</b><small id="heroWinRate">0% win rate</small></div>
         </div>
-        <div class="heroActions">
-          <button class="btn primary" id="botChallengeBtn">Singleplayer Game</button>
-          <button class="btn blue" data-open-armory-tab="multiplayer">Multiplayer Lobbies</button>
-          <button class="btn" data-open-armory-tab="public">Public Decks</button>
-          <button class="btn" id="singleplayerRulesBtn">Bot Difficulty Rules</button>
+        <div class="heroActions heroDestinations">
+          <button class="btn primary" id="botChallengeBtn"><span>⚔</span> Battle</button>
+          <button class="btn blue" data-open-armory-tab="multiplayer"><span>◎</span> Multiplayer</button>
+          <button class="btn" data-open-armory-tab="deck"><span>▤</span> Decks</button>
+          <button class="btn" data-open-armory-tab="store"><span>◆</span> Collection</button>
         </div>
+        <button class="heroUtilityLink" id="singleplayerRulesBtn" type="button">Bot difficulty rules</button>
       </section>
 
       <div class="armoryLayout">
         <section class="panel">
           <div class="armoryToolbar">
-            <button class="tabBtn active" data-armory-tab="store">Card Store</button>
-            <button class="tabBtn" data-armory-tab="deck">Deck Builder</button>
-            <button class="tabBtn" data-armory-tab="public">Public Decks</button>
-            <button class="tabBtn" data-armory-tab="multiplayer">Multiplayer</button>
-            <button class="filterBtn active" data-filter="all">All</button>
-            <button class="filterBtn yellow" data-filter="yellow">Yellow</button>
-            <button class="filterBtn blue" data-filter="blue">Blue</button>
-            <button class="filterBtn green" data-filter="green">Green</button>
-            <button class="filterBtn red" data-filter="red">Red</button>
-            <button class="filterBtn active" data-ownership-filter="all">Any ownership</button>
-            <button class="filterBtn" data-ownership-filter="owned">Owned</button>
-            <button class="filterBtn" data-ownership-filter="unowned">Unowned</button>
-            <div class="catalogOrganizers">
-              <label class="catalogSelectLabel" id="catalogPriceControl">Price
-                <select class="catalogSelect" id="catalogPriceFilter" aria-label="Filter cards by price">
-                  <option value="all">All prices</option>
-                </select>
-              </label>
-              <label class="catalogSelectLabel" id="catalogSortControl">Sort
+            <div class="armoryTabsRow">
+              <button class="tabBtn active" data-armory-tab="store">Card Store</button>
+              <button class="tabBtn" data-armory-tab="deck">Deck Builder</button>
+              <button class="tabBtn" data-armory-tab="public">Public Decks</button>
+              <button class="tabBtn" data-armory-tab="multiplayer">Multiplayer</button>
+            </div>
+            <div class="armorySearchRow" id="armorySearchControls">
+              <div class="searchWrap">
+                <input class="search" id="catalogSearch" type="search" placeholder="Search store cards, filenames, or abilities" aria-label="Search cards" autocomplete="off" spellcheck="false" />
+                <button class="searchClear" id="catalogSearchClear" type="button" aria-label="Clear card search" title="Clear search" hidden>×</button>
+              </div>
+              <button class="advancedFiltersBtn" id="advancedFiltersBtn" type="button" aria-haspopup="dialog" aria-controls="advancedFilterDrawer">Filters <span id="activeFilterCount">0</span></button>
+              <label class="catalogSelectLabel catalogSortLabel" id="catalogSortControl">Sort
                 <select class="catalogSelect" id="catalogSort" aria-label="Sort cards">
                   <option value="default">Default order</option>
-                  <option value="price-asc">Price: low to high</option>
-                  <option value="price-desc">Price: high to low</option>
-                  <option value="faction">Faction</option>
-                  <option value="type">Base to ship</option>
                 </select>
               </label>
             </div>
-            <div class="searchWrap">
-              <input class="search" id="catalogSearch" type="search" placeholder="Search store cards, filenames, or abilities" aria-label="Search cards" autocomplete="off" spellcheck="false" />
-              <button class="searchClear" id="catalogSearchClear" type="button" aria-label="Clear card search" title="Clear search" hidden>×</button>
-            </div>
+            <div class="filterChipRow" id="filterChipRow" aria-label="Active filters" hidden></div>
           </div>
           <div class="deckManagerBar" id="deckManagerBar" hidden>
             <div class="deckManagerCopy">
@@ -1099,12 +1114,14 @@
         <aside class="panel summaryPanel">
           <div class="panelHead"><div><h2>Command Deck</h2><p id="deckSummaryHelp">Save your 50 cards, opening upgrades, and three personal Trade Row discounts together.</p></div></div>
           <div class="summaryBody">
+            <div class="deckIdentity" id="deckIdentity"></div>
             <div class="summaryTitle" id="deckSummaryTitle">50 / 50 cards</div>
             <div class="meter"><i id="deckMeter"></i></div>
             <div class="summaryLine"><span>War Sigils</span><b id="summarySigils">0</b></div>
             <div class="summaryLine"><span>Total collection</span><b id="summaryOwned">0</b></div>
             <div class="summaryLine"><span>Deck validity</span><b id="deckValidity">Checking</b></div>
             <div class="factionBars" id="factionBars"></div>
+            <div class="deckAnalytics" id="deckAnalytics"></div>
             <button class="btn block" id="autoDeckBtn">Build balanced deck</button>
             <button class="btn primary block" id="saveDeckBtn" style="margin-top:7px">Save Deck</button>
             <div class="saveStatus" id="saveStatus">Save complete battle decks or unfinished deck ideas. Only a legal 50-card deck can be assigned active or brought into battle.</div>
@@ -1113,6 +1130,60 @@
       </div>
     </div>
   </main>
+
+  <div class="filterDrawerScrim hidden" id="filterDrawerScrim" aria-hidden="true">
+    <aside class="filterDrawer" id="advancedFilterDrawer" role="dialog" aria-modal="true" aria-labelledby="advancedFilterTitle">
+      <div class="filterDrawerHead"><div><div class="eyebrow">Card discovery</div><h2 id="advancedFilterTitle">Advanced Filters</h2></div><button class="modalClose" id="closeAdvancedFiltersBtn" type="button" aria-label="Close filters">×</button></div>
+      <div class="filterDrawerBody">
+        <section class="filterGroup factionGroup"><h3>Faction</h3><div class="filterCheckGrid">
+          <label class="filterCheck yellow"><input type="checkbox" data-filter-faction="yellow"> Yellow</label>
+          <label class="filterCheck blue"><input type="checkbox" data-filter-faction="blue"> Blue</label>
+          <label class="filterCheck green"><input type="checkbox" data-filter-faction="green"> Green</label>
+          <label class="filterCheck red"><input type="checkbox" data-filter-faction="red"> Red</label>
+          <label class="filterCheck neutral"><input type="checkbox" data-filter-faction="neutral"> Neutral</label>
+        </div></section>
+        <section class="filterGroup" data-card-only-filter><h3>Card Type</h3><div class="filterCheckGrid">
+          <label class="filterCheck"><input type="checkbox" data-filter-type="ship"> Ship</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-type="base"> Base</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-type="outpost"> Outpost</label>
+        </div></section>
+        <section class="filterGroup filterRangeGroup" data-card-only-filter><h3>Battle Cost</h3><div class="filterRange"><label>Min<input id="filterBattleMin" type="number" min="0" max="99" inputmode="numeric" placeholder="Any"></label><span>to</span><label>Max<input id="filterBattleMax" type="number" min="0" max="99" inputmode="numeric" placeholder="Any"></label></div></section>
+        <section class="filterGroup filterRangeGroup" data-card-only-filter><h3>Sigil Price</h3><div class="filterRange"><label>Min<input id="filterSigilMin" type="number" min="0" inputmode="numeric" placeholder="Any"></label><span>to</span><label>Max<input id="filterSigilMax" type="number" min="0" inputmode="numeric" placeholder="Any"></label></div></section>
+        <section class="filterGroup" data-card-only-filter><h3>Collection</h3><div class="filterFieldGrid">
+          <label>Owned copies<select id="filterOwnedCopies"><option value="any">Any</option><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+          <label>Status<select id="filterCollection"><option value="any">Any</option><option value="owned">Owned</option><option value="missing">Missing</option><option value="maxed">Maxed</option></select></label>
+          <label>Deck status<select id="filterDeckStatus"><option value="any">Any deck status</option><option value="active">In active deck</option><option value="not-active">Not in active deck</option><option value="current">In current deck</option></select></label>
+          <label class="filterToggle"><input id="filterCanAfford" type="checkbox"> Can afford now</label>
+        </div></section>
+        <section class="filterGroup" data-card-only-filter><h3>Abilities</h3><div class="filterCheckGrid abilities">
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="combat"> Combat</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="trade"> Trade</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="authority"> Authority</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="draw"> Draw</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="discard"> Discard</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="purge"> Purge</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="sacrifice"> Sacrifice</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="shield"> Shield</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="disable"> Disable</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="destroy-base"> Destroy Base</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="market-erase"> Market Erase</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="ally"> Ally</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="double-ally"> Double Ally</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="transform"> Transform / Ascendant</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="charge"> Charge</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-ability="token"> Token generation</label>
+        </div></section>
+        <section class="filterGroup" data-card-only-filter><h3>Collectible Edition</h3><label class="filterFullField">Edition status<select id="filterCollectible"><option value="any">Any</option><option value="available">Edition supported</option><option value="owned">Collectible owned</option><option value="eligible">Eligible to unlock</option></select></label></section>
+        <section class="filterGroup" data-card-only-filter><h3>Special Mechanics</h3><div class="filterCheckGrid">
+          <label class="filterCheck"><input type="checkbox" data-filter-special="attachment"> Attachments</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-special="token"> Tokens</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-special="on-purchase"> On Purchase</label>
+          <label class="filterCheck"><input type="checkbox" data-filter-special="transform"> Transforming cards</label>
+        </div></section>
+      </div>
+      <div class="filterDrawerFoot"><button class="btn ghost" id="clearAdvancedFiltersBtn" type="button">Clear All</button><button class="btn primary" id="applyAdvancedFiltersBtn" type="button">Done</button></div>
+    </aside>
+  </div>
 
   <main id="battleView" class="view hidden">
     <div class="battleShell">
@@ -1143,6 +1214,14 @@
       </section>
 
       <section class="playerDock" id="playerDock">
+        <div class="commanderHud" id="commanderHud" aria-label="Commander resources" aria-live="polite">
+          <div class="commanderHudIdentity"><span class="commanderHudEyebrow">Commander</span><b id="commanderHudName">Your Realm</b></div>
+          <div class="commanderHudStat authority" id="commanderAuthority"><span>♥</span><div><b id="commanderAuthorityValue">0</b><small>Authority</small></div></div>
+          <div class="commanderHudStat trade" id="commanderTrade"><span>◆</span><div><b id="commanderTradeValue">0</b><small>Trade</small></div></div>
+          <div class="commanderHudStat combat" id="commanderCombat"><span>⚔</span><div><b id="commanderCombatValue">0</b><small>Combat</small></div></div>
+          <div class="commanderHudStat control" id="commanderControl"><span>⌁</span><div><b id="commanderControlValue">0</b><small>Control</small></div></div>
+          <div class="commanderHudStat purge" id="commanderPurge"><span>✕</span><div><b id="commanderPurgeValue">0</b><small>Purge</small></div></div>
+        </div>
         <div class="dockHead">
           <div><div class="dockTitle" id="dockTitle">Your Realm</div><div class="dockStatus" id="dockStatus">Preparing hand</div></div>
           <div class="dockGrow"></div>
@@ -1432,10 +1511,24 @@
   let state = null;
   let armoryTab = "store";
   let deckBuilderTab = "specialization";
-  let factionFilter = "all";
-  let ownershipFilter = "all";
-  let priceFilter = "all";
+  const makeAdvancedFilters = () => ({
+    factions: new Set(),
+    types: new Set(),
+    battleMin: "",
+    battleMax: "",
+    sigilMin: "",
+    sigilMax: "",
+    ownedCopies: "any",
+    collection: "any",
+    canAfford: false,
+    deckStatus: "any",
+    abilities: new Set(),
+    collectible: "any",
+    specials: new Set()
+  });
+  let advancedFilters = makeAdvancedFilters();
   let catalogSort = "default";
+  let lastCommanderHud = null;
   const armorySearch = { store: "", deck: "", public: "" };
   let catalogPage = 0;
   let editDeck = [];
@@ -3434,6 +3527,151 @@
     return Number.isFinite(price) ? price : 0;
   }
 
+  function cardTypeFilterKey(card) {
+    if (card?.type === "base") return card.outpost ? "outpost" : "base";
+    if (card?.type === "attachment") return "attachment";
+    return "ship";
+  }
+
+  function cardMatchesAbilityFilter(card, ability) {
+    const glyphs = cardAbilityGlyphs(card);
+    const hasKey = key => glyphs.some(item => item.key === key);
+    if (ability === "ally") return glyphs.some(item => item.source === "ally");
+    if (ability === "double-ally") return glyphs.some(item => item.source === "doubleAlly");
+    if (ability === "sacrifice") return hasEffect(card.sacrifice) || /sacrifice/i.test(completeCardRules(card));
+    if (ability === "authority") return hasKey("heal") || /authority/i.test(effectDisplaySummary(primaryCardEffect(card)));
+    if (ability === "purge") return hasKey("scrapOwn") || /purge/i.test(completeCardRules(card));
+    if (ability === "disable") return hasKey("stun") || /disable/i.test(completeCardRules(card));
+    if (ability === "destroy-base") return hasKey("destroyBase") || /destroy base|raze/i.test(completeCardRules(card));
+    if (ability === "market-erase") return hasKey("scrapMarket") || /market erase|erase.*market/i.test(completeCardRules(card));
+    if (ability === "transform") return Boolean(card.transform) || hasKey("transform");
+    if (ability === "charge") return Boolean(card.charge) || hasKey("charge");
+    if (ability === "token") return Boolean(card.token) || /token/i.test(completeCardRules(card));
+    if (ability === "discard") return hasKey("discard") || /discard/i.test(completeCardRules(card));
+    return hasKey(ability);
+  }
+
+  function activeFilterCount(publicOnly = false) {
+    if (publicOnly) return advancedFilters.factions.size;
+    let count = advancedFilters.factions.size + advancedFilters.types.size + advancedFilters.abilities.size + advancedFilters.specials.size;
+    if (advancedFilters.battleMin !== "" || advancedFilters.battleMax !== "") count += 1;
+    if (advancedFilters.sigilMin !== "" || advancedFilters.sigilMax !== "") count += 1;
+    if (advancedFilters.ownedCopies !== "any") count += 1;
+    if (advancedFilters.collection !== "any") count += 1;
+    if (advancedFilters.canAfford) count += 1;
+    if (advancedFilters.deckStatus !== "any") count += 1;
+    if (advancedFilters.collectible !== "any") count += 1;
+    return count;
+  }
+
+  function cardMatchesAdvancedFilters(card) {
+    const owned = profile?.owned?.[card.id] || 0;
+    if (advancedFilters.factions.size && !advancedFilters.factions.has(card.faction)) return false;
+    if (advancedFilters.types.size && !advancedFilters.types.has(cardTypeFilterKey(card))) return false;
+    const battleCost = cardPrice(card);
+    const sigilPrice = collectionStorePrice(card, owned);
+    const battleMin = advancedFilters.battleMin === "" ? null : Number(advancedFilters.battleMin);
+    const battleMax = advancedFilters.battleMax === "" ? null : Number(advancedFilters.battleMax);
+    const sigilMin = advancedFilters.sigilMin === "" ? null : Number(advancedFilters.sigilMin);
+    const sigilMax = advancedFilters.sigilMax === "" ? null : Number(advancedFilters.sigilMax);
+    if (battleMin !== null && battleCost < battleMin) return false;
+    if (battleMax !== null && battleCost > battleMax) return false;
+    if (sigilMin !== null && sigilPrice < sigilMin) return false;
+    if (sigilMax !== null && sigilPrice > sigilMax) return false;
+    if (advancedFilters.ownedCopies !== "any" && owned !== Number(advancedFilters.ownedCopies)) return false;
+    if (advancedFilters.collection === "owned" && owned <= 0) return false;
+    if (advancedFilters.collection === "missing" && owned > 0) return false;
+    if (advancedFilters.collection === "maxed" && owned < MAX_COPIES_PER_CARD) return false;
+    if (advancedFilters.canAfford && (owned >= MAX_COPIES_PER_CARD || sigilPrice > (profile?.sigils || 0))) return false;
+    const activeIds = new Set(activeDeckRecord()?.cards || []);
+    const currentIds = new Set(editDeck || []);
+    if (advancedFilters.deckStatus === "active" && !activeIds.has(card.id)) return false;
+    if (advancedFilters.deckStatus === "not-active" && activeIds.has(card.id)) return false;
+    if (advancedFilters.deckStatus === "current" && !currentIds.has(card.id)) return false;
+    for (const ability of advancedFilters.abilities) if (!cardMatchesAbilityFilter(card, ability)) return false;
+    if (advancedFilters.collectible === "available" && !supportsCollectibleEdition(card)) return false;
+    if (advancedFilters.collectible === "owned" && profile?.collectibleEditions?.[card.id] !== true) return false;
+    if (advancedFilters.collectible === "eligible" && (!supportsCollectibleEdition(card) || profile?.collectibleEditions?.[card.id] === true || owned < MAX_COPIES_PER_CARD)) return false;
+    for (const special of advancedFilters.specials) {
+      if (special === "attachment" && card.type !== "attachment") return false;
+      if (special === "token" && !card.token) return false;
+      if (special === "on-purchase" && !card.onPurchase) return false;
+      if (special === "transform" && !card.transform) return false;
+    }
+    return true;
+  }
+
+  function filterChipDefinitions(publicOnly = false) {
+    const chips = [];
+    const factionLabels = { yellow: "Yellow", blue: "Blue", green: "Green", red: "Red", neutral: "Neutral" };
+    for (const faction of advancedFilters.factions) chips.push({ key: `faction:${faction}`, label: factionLabels[faction] || faction });
+    if (publicOnly) return chips;
+    const typeLabels = { ship: "Ship", base: "Base", outpost: "Outpost" };
+    for (const type of advancedFilters.types) chips.push({ key: `type:${type}`, label: typeLabels[type] || type });
+    if (advancedFilters.battleMin !== "" || advancedFilters.battleMax !== "") chips.push({ key: "battle", label: `Battle ${advancedFilters.battleMin || "0"}–${advancedFilters.battleMax || "∞"}` });
+    if (advancedFilters.sigilMin !== "" || advancedFilters.sigilMax !== "") chips.push({ key: "sigil", label: `Sigils ${advancedFilters.sigilMin || "0"}–${advancedFilters.sigilMax || "∞"}` });
+    if (advancedFilters.ownedCopies !== "any") chips.push({ key: "ownedCopies", label: `${advancedFilters.ownedCopies} owned` });
+    if (advancedFilters.collection !== "any") chips.push({ key: "collection", label: advancedFilters.collection === "maxed" ? "Maxed" : advancedFilters.collection === "owned" ? "Owned" : "Missing" });
+    if (advancedFilters.canAfford) chips.push({ key: "afford", label: "Can afford" });
+    if (advancedFilters.deckStatus !== "any") chips.push({ key: "deck", label: advancedFilters.deckStatus === "active" ? "Active deck" : advancedFilters.deckStatus === "not-active" ? "Not active deck" : "Current deck" });
+    const abilityLabels = { combat:"Combat",trade:"Trade",authority:"Authority",draw:"Draw",discard:"Discard",purge:"Purge",sacrifice:"Sacrifice",shield:"Shield",disable:"Disable","destroy-base":"Destroy Base","market-erase":"Market Erase",ally:"Ally","double-ally":"Double Ally",transform:"Transform",charge:"Charge",token:"Token" };
+    for (const ability of advancedFilters.abilities) chips.push({ key: `ability:${ability}`, label: abilityLabels[ability] || ability });
+    if (advancedFilters.collectible !== "any") chips.push({ key: "collectible", label: advancedFilters.collectible === "available" ? "Collectible supported" : advancedFilters.collectible === "owned" ? "Collectible owned" : "Collectible eligible" });
+    const specialLabels = { attachment:"Attachments",token:"Tokens","on-purchase":"On Purchase",transform:"Transforming" };
+    for (const special of advancedFilters.specials) chips.push({ key: `special:${special}`, label: specialLabels[special] || special });
+    return chips;
+  }
+
+  function syncAdvancedFilterControls(publicOnly = false) {
+    $$('[data-filter-faction]').forEach(input => input.checked = advancedFilters.factions.has(input.dataset.filterFaction));
+    $$('[data-filter-type]').forEach(input => input.checked = advancedFilters.types.has(input.dataset.filterType));
+    $$('[data-filter-ability]').forEach(input => input.checked = advancedFilters.abilities.has(input.dataset.filterAbility));
+    $$('[data-filter-special]').forEach(input => input.checked = advancedFilters.specials.has(input.dataset.filterSpecial));
+    $("#filterBattleMin").value = advancedFilters.battleMin;
+    $("#filterBattleMax").value = advancedFilters.battleMax;
+    $("#filterSigilMin").value = advancedFilters.sigilMin;
+    $("#filterSigilMax").value = advancedFilters.sigilMax;
+    $("#filterOwnedCopies").value = advancedFilters.ownedCopies;
+    $("#filterCollection").value = advancedFilters.collection;
+    $("#filterCanAfford").checked = advancedFilters.canAfford;
+    $("#filterDeckStatus").value = advancedFilters.deckStatus;
+    $("#filterCollectible").value = advancedFilters.collectible;
+    $$('[data-card-only-filter]').forEach(section => section.hidden = publicOnly);
+  }
+
+  function renderAdvancedFilterUi(publicOnly = false) {
+    const count = activeFilterCount(publicOnly);
+    const button = $("#advancedFiltersBtn");
+    if (button) {
+      button.classList.toggle("noFilters", count === 0);
+      $("#activeFilterCount").textContent = String(count);
+    }
+    const chips = filterChipDefinitions(publicOnly);
+    const row = $("#filterChipRow");
+    if (row) {
+      row.hidden = !chips.length;
+      row.innerHTML = chips.map(chip => `<button class="filterChip" type="button" data-filter-chip="${escapeHtml(chip.key)}">${escapeHtml(chip.label)} <b>×</b></button>`).join("") + (chips.length ? `<button class="filterChip clear" type="button" data-filter-chip="clear">Clear All</button>` : "");
+    }
+    syncAdvancedFilterControls(publicOnly);
+  }
+
+  function removeAdvancedFilterChip(key) {
+    if (key === "clear") advancedFilters = makeAdvancedFilters();
+    else if (key.startsWith("faction:")) advancedFilters.factions.delete(key.split(":")[1]);
+    else if (key.startsWith("type:")) advancedFilters.types.delete(key.split(":")[1]);
+    else if (key.startsWith("ability:")) advancedFilters.abilities.delete(key.split(":")[1]);
+    else if (key.startsWith("special:")) advancedFilters.specials.delete(key.split(":")[1]);
+    else if (key === "battle") advancedFilters.battleMin = advancedFilters.battleMax = "";
+    else if (key === "sigil") advancedFilters.sigilMin = advancedFilters.sigilMax = "";
+    else if (key === "ownedCopies") advancedFilters.ownedCopies = "any";
+    else if (key === "collection") advancedFilters.collection = "any";
+    else if (key === "afford") advancedFilters.canAfford = false;
+    else if (key === "deck") advancedFilters.deckStatus = "any";
+    else if (key === "collectible") advancedFilters.collectible = "any";
+    catalogPage = 0;
+    renderArmory();
+  }
+
   function sortCatalogCards(cards) {
     const factionOrder = { yellow: 0, blue: 1, green: 2, red: 3, neutral: 4 };
     const typeOrder = card => card?.type === "base" ? (card.outpost ? 0 : 1) : 2;
@@ -3441,6 +3679,9 @@
     return [...cards].sort((a, b) => {
       if (catalogSort === "price-asc") return cardPrice(a) - cardPrice(b) || byName(a, b);
       if (catalogSort === "price-desc") return cardPrice(b) - cardPrice(a) || byName(a, b);
+      if (catalogSort === "sigil-asc") return collectionStorePrice(a, profile?.owned?.[a.id] || 0) - collectionStorePrice(b, profile?.owned?.[b.id] || 0) || byName(a, b);
+      if (catalogSort === "sigil-desc") return collectionStorePrice(b, profile?.owned?.[b.id] || 0) - collectionStorePrice(a, profile?.owned?.[a.id] || 0) || byName(a, b);
+      if (catalogSort === "name") return byName(a, b);
       if (catalogSort === "faction") return (factionOrder[a.faction] ?? 99) - (factionOrder[b.faction] ?? 99) || cardPrice(a) - cardPrice(b) || byName(a, b);
       if (catalogSort === "type") return typeOrder(a) - typeOrder(b) || cardPrice(a) - cardPrice(b) || byName(a, b);
       return 0;
@@ -3977,6 +4218,58 @@
     `).join("");
   }
 
+  function deckIdentityFor(cards = []) {
+    const cardObjects = cards.map(getCard).filter(Boolean);
+    const counts = { yellow: 0, blue: 0, green: 0, red: 0, neutral: 0 };
+    cardObjects.forEach(card => counts[card.faction] = (counts[card.faction] || 0) + 1);
+    const ordered = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const dominant = ordered[0]?.[1] > 0 ? ordered[0][0] : "neutral";
+    const tied = ordered.length > 1 && ordered[0][1] === ordered[1][1] && ordered[0][1] > 0;
+    const featured = [...cardObjects].sort((a, b) => cardPrice(b) - cardPrice(a) || cardAbilityGlyphs(b).length - cardAbilityGlyphs(a).length || String(a.name).localeCompare(String(b.name)))[0] || null;
+    return { dominant: tied ? "neutral" : dominant, featured, counts };
+  }
+
+  function renderDeckIntelligence(deck, name = "Command Deck", visible = true) {
+    const identity = deckIdentityFor(deck);
+    const identityHost = $("#deckIdentity");
+    const analyticsHost = $("#deckAnalytics");
+    const summary = $(".summaryPanel");
+    ["Yellow","Blue","Green","Red","Neutral"].forEach(value => summary?.classList.remove(`deckIdentity${value}`));
+    summary?.classList.add(`deckIdentity${identity.dominant.charAt(0).toUpperCase()}${identity.dominant.slice(1)}`);
+    const featured = identity.featured;
+    const artUrl = featured ? directCardArtUrl(featured.id, profileUsesCollectibleEdition(featured.id)) : "";
+    const factionName = identity.dominant === "neutral" ? (deck.length ? "Mixed Realms" : "Unassigned Realm") : (FACTIONS[identity.dominant]?.name || identity.dominant);
+    if (identityHost) identityHost.innerHTML = `<div class="deckIdentityArt">${artUrl ? `<img src="${escapeHtml(artUrl)}" alt="${escapeHtml(featured?.name || "Featured card")}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>${escapeHtml(featured?.sigil || "◆")}</span>` : `<span>${escapeHtml(featured?.sigil || "◆")}</span>`}</div><div class="deckIdentityCopy"><div class="deckIdentityFaction">${escapeHtml(factionName)}</div><div class="deckIdentityName">${escapeHtml(name || "Command Deck")}</div><div class="deckIdentityFeature">${featured ? `Featured: ${escapeHtml(featured.name)} · Battle Cost ${cardPrice(featured)}` : "Add cards to establish this deck's visual identity."}</div></div>`;
+    if (!analyticsHost) return;
+    analyticsHost.hidden = !visible;
+    if (!visible) return;
+    const cards = deck.map(getCard).filter(Boolean);
+    const countAbility = ability => cards.filter(card => cardMatchesAbilityFilter(card, ability)).length;
+    const typeCounts = { ship: 0, base: 0, outpost: 0, attachment: 0 };
+    const curve = [0, 0, 0, 0];
+    cards.forEach(card => {
+      typeCounts[cardTypeFilterKey(card)] = (typeCounts[cardTypeFilterKey(card)] || 0) + 1;
+      const cost = cardPrice(card);
+      curve[cost <= 2 ? 0 : cost <= 4 ? 1 : cost <= 6 ? 2 : 3] += 1;
+    });
+    const draw = countAbility("draw");
+    const combat = countAbility("combat");
+    const trade = countAbility("trade");
+    const authority = countAbility("authority");
+    const sacrifice = countAbility("sacrifice");
+    const ally = countAbility("ally") + countAbility("double-ally");
+    const highCost = curve[3];
+    const dominantCount = identity.counts[identity.dominant] || 0;
+    const warnings = [];
+    if (deck.length >= 20 && highCost >= Math.max(10, Math.ceil(deck.length * .28))) warnings.push(`${highCost} cards cost 7+ — this deck may open slowly.`);
+    if (deck.length >= 20 && trade < 5) warnings.push(`Only ${trade} Trade source${trade === 1 ? "" : "s"} — expensive cards may be harder to reach.`);
+    if (deck.length >= 20 && draw < 4) warnings.push(`Only ${draw} Draw source${draw === 1 ? "" : "s"} — hand velocity is limited.`);
+    if (ally > 0 && dominantCount > 0) warnings.push(`${ally} Ally-trigger card${ally === 1 ? "" : "s"} with ${dominantCount} cards in the dominant faction.`);
+    if (!warnings.length) warnings.push("No obvious deck-building pressure points detected from the current card mix.");
+    const maxCurve = Math.max(1, ...curve);
+    analyticsHost.innerHTML = `<div class="deckAnalyticsTitle">Deck Intelligence</div><div class="deckMetricGrid"><div class="deckMetric">Ships<b>${typeCounts.ship || 0}</b></div><div class="deckMetric">Bases<b>${typeCounts.base || 0}</b></div><div class="deckMetric">Outposts<b>${typeCounts.outpost || 0}</b></div>${typeCounts.attachment ? `<div class="deckMetric">Attachments<b>${typeCounts.attachment}</b></div>` : ""}<div class="deckMetric">Draw<b>${draw}</b></div><div class="deckMetric">Combat<b>${combat}</b></div><div class="deckMetric">Trade<b>${trade}</b></div><div class="deckMetric">Authority<b>${authority}</b></div><div class="deckMetric">Sacrifice<b>${sacrifice}</b></div><div class="deckMetric">Ally Links<b>${ally}</b></div></div><div class="deckAnalyticsTitle">Cost Curve</div><div class="costCurve">${[["0–2",curve[0]],["3–4",curve[1]],["5–6",curve[2]],["7+",curve[3]]].map(([label,value]) => `<div class="costCurveItem"><div class="costCurveTrack"><i style="height:${Math.max(5, value / maxCurve * 100)}%"></i></div><b>${value}</b><span>${label}</span></div>`).join("")}</div><div class="deckWarnings">${warnings.map((warning, index) => `<div class="deckWarning${warnings.length === 1 && warning.startsWith("No obvious") ? " good" : ""}">${escapeHtml(warning)}</div>`).join("")}</div>`;
+  }
+
   function collectionStorePrice(card, ownedCount = 0) {
     const basePrice = Math.max(0, Number(cardStorePrice(card)) || 0);
     if (ownedCount > 0) return basePrice;
@@ -4305,8 +4598,11 @@
   function normalCatalogSortOptions() {
     return [
       ["default", "Default order"],
-      ["price-asc", "Price: low to high"],
-      ["price-desc", "Price: high to low"],
+      ["price-asc", "Battle Cost: low to high"],
+      ["price-desc", "Battle Cost: high to low"],
+      ["sigil-asc", "Sigil Price: low to high"],
+      ["sigil-desc", "Sigil Price: high to low"],
+      ["name", "Card name"],
       ["faction", "Faction"],
       ["type", "Base to ship"]
     ];
@@ -4346,8 +4642,10 @@
       addLabel = `Missing ${missingCopies}`;
       addDisabled = true;
     }
+    const featured = deckIdentityFor(deck.cards).featured;
+    const featureArt = featured ? directCardArtUrl(featured.id, false) : "";
     return `<article class="publicDeckCard ${escapeHtml(faction)}">
-      <div class="publicDeckHead"><div class="publicDeckSigil">${escapeHtml(factionSigil)}</div><div><div class="publicDeckName">${escapeHtml(deck.name)}</div><div class="publicDeckMeta">${escapeHtml(factionName)} · ${deck.battleReady ? "Battle ready" : "Unfinished deck"}</div></div></div>
+      <div class="publicDeckHead"><div class="publicDeckFeature">${featureArt ? `<img src="${escapeHtml(featureArt)}" alt="${escapeHtml(featured.name)}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="publicDeckFeatureFallback" hidden>${escapeHtml(featured.sigil || factionSigil)}</span>` : `<span class="publicDeckFeatureFallback">${escapeHtml(factionSigil)}</span>`}</div><div><div class="publicDeckName">${escapeHtml(deck.name)}</div><div class="publicDeckMeta">${escapeHtml(factionName)} · ${deck.battleReady ? "Battle ready" : "Unfinished deck"}</div></div></div>
       <div class="publicDeckFacts"><div class="publicDeckFact">Cards<b>${deck.cardCount}/${COMMAND_DECK_SIZE}</b></div><div class="publicDeckFact">Owners<b>${deck.ownerCount}</b></div><div class="publicDeckFact">Opening / Discounts<b>${deck.openingCardIds.length} / ${deck.discountCardIds.length}</b></div></div>
       <div class="publicDeckOwners"><b>Owned by:</b> ${ownerNames || "Unknown commander"}${ownerRemainder ? ` and ${ownerRemainder} more` : ""}</div>
       <div class="publicDeckMissing ${missing.length ? "" : "good"}">${missingText}</div>
@@ -4373,7 +4671,7 @@
     const search = normalizeName(armorySearch.public);
     const factionOrder = { yellow: 0, blue: 1, green: 2, red: 3, mixed: 4 };
     let decks = publicDecks.filter(deck => {
-      if (factionFilter !== "all" && deck.dominantFaction !== factionFilter) return false;
+      if (advancedFilters.factions.size && !advancedFilters.factions.has(deck.dominantFaction)) return false;
       if (!search) return true;
       const cardNames = [...new Set(deck.cards)].map(cardId => getCard(cardId)?.name || cardId).join(" ");
       const ownerNames = deck.owners.map(owner => owner.name).join(" ");
@@ -4772,9 +5070,13 @@
     const uniqueOwned = DECK_ELIGIBLE_CARDS.filter(card => (profile.owned[card.id] || 0) > 0).length;
     const totalOwned = Object.values(profile.owned).reduce((sum, value) => sum + value, 0);
     $("#heroSigils").textContent = profile.sigils;
-    $("#heroOwned").textContent = `${uniqueOwned} / ${TOTAL_CUSTOM_CARDS}`;
-    $("#heroDeck").textContent = `${activeDeck?.cards?.length || 0} / ${COMMAND_DECK_SIZE}`;
-    $("#heroRecord").textContent = `${profile.games} / ${profile.wins}`;
+    const collectionPct = TOTAL_CUSTOM_CARDS ? Math.round(uniqueOwned / TOTAL_CUSTOM_CARDS * 100) : 0;
+    $("#heroOwned").textContent = `${collectionPct}%`;
+    $("#heroOwnedDetail").textContent = `${uniqueOwned} / ${TOTAL_CUSTOM_CARDS} unique`;
+    $("#heroDeck").textContent = activeDeck?.name || "No active deck";
+    $("#heroDeckDetail").textContent = `${activeDeck?.cards?.length || 0} / ${COMMAND_DECK_SIZE} cards`;
+    $("#heroRecord").textContent = `${profile.wins}–${Math.max(0, profile.games - profile.wins)}`;
+    $("#heroWinRate").textContent = `${profile.games ? Math.round(profile.wins / profile.games * 100) : 0}% win rate`;
     $("#summarySigils").textContent = profile.sigils;
     $("#summaryOwned").textContent = totalOwned;
     $("#deckSummaryTitle").textContent = `${selectedDeck?.name || "Deck"} · ${editDeck.length} / ${COMMAND_DECK_SIZE}`;
@@ -4792,6 +5094,7 @@
     const publicMode = armoryTab === "public";
     const multiplayerMode = armoryTab === "multiplayer";
     const specialMode = publicMode || multiplayerMode;
+    renderDeckIntelligence(editDeck, selectedDeck?.name || "Command Deck", deckMode);
     document.body.classList.toggle("deckBuilderMode", deckMode);
     document.body.classList.toggle("specialArmoryMode", specialMode);
     $("#deckManagerBar").hidden = !deckMode;
@@ -4801,18 +5104,11 @@
     $("#assignActiveDeckBtn").disabled = !validation.valid || editDeckId === profile.activeDeckId || actionBusy;
     $("#assignActiveDeckBtn").textContent = editDeckId === profile.activeDeckId ? "Active Deck" : "Assign Active";
     $$('[data-armory-tab]').forEach(button => button.classList.toggle("active", button.dataset.armoryTab === armoryTab));
-    $$('[data-filter]').forEach(button => {
-      button.classList.toggle("active", button.dataset.filter === factionFilter);
-      button.classList.toggle("hidden", multiplayerMode);
-    });
-    $$('[data-ownership-filter]').forEach(button => {
-      button.classList.toggle("active", button.dataset.ownershipFilter === ownershipFilter);
-      button.classList.toggle("hidden", armoryTab !== "store");
-    });
-    $("#catalogPriceControl").hidden = specialMode;
     $("#catalogSortControl").hidden = multiplayerMode;
-    $(".searchWrap").hidden = multiplayerMode;
-    $(".catalogOrganizers").hidden = multiplayerMode;
+    $("#armorySearchControls").hidden = multiplayerMode;
+    $("#advancedFiltersBtn").hidden = multiplayerMode;
+    renderAdvancedFilterUi(publicMode);
+    if (multiplayerMode) $("#filterChipRow").hidden = true;
 
     const catalog = $("#armoryCatalog");
     catalog.classList.toggle("storeCatalogGrid", armoryTab === "store");
@@ -4833,20 +5129,13 @@
       searchInput.setAttribute("aria-label", "Search public War Realms decks");
       if (searchInput.value !== activeSearchText) searchInput.value = activeSearchText;
       $("#catalogSearchClear").hidden = !activeSearchText;
+      renderAdvancedFilterUi(true);
       renderPublicDeckLibrary();
       if (!publicDecksLoaded && !publicDecksLoading) void loadPublicDecks();
       return;
     }
 
     setCatalogSortChoices(normalCatalogSortOptions(), catalogSort);
-    const priceSelect = $("#catalogPriceFilter");
-    const availablePrices = [...new Set(DECK_ELIGIBLE_CARDS.map(cardPrice))].sort((a, b) => a - b);
-    const expectedPriceOptions = ["all", ...availablePrices.map(String)];
-    if ([...priceSelect.options].map(option => option.value).join("|") !== expectedPriceOptions.join("|")) {
-      priceSelect.innerHTML = `<option value="all">All prices</option>${availablePrices.map(price => `<option value="${price}">${price}</option>`).join("")}`;
-    }
-    if (!expectedPriceOptions.includes(priceFilter)) priceFilter = "all";
-    priceSelect.value = priceFilter;
     $("#catalogSort").value = catalogSort;
     const activeSearchText = armorySearch[deckMode ? "deck" : "store"] || "";
     const searchInput = $("#catalogSearch");
@@ -4857,11 +5146,7 @@
     if (searchInput.value !== activeSearchText) searchInput.value = activeSearchText;
     $("#catalogSearchClear").hidden = !activeSearchText;
 
-    const matchesFactionAndSearch = card => {
-      if (factionFilter !== "all" && card.faction !== factionFilter) return false;
-      if (priceFilter !== "all" && cardPrice(card) !== Number(priceFilter)) return false;
-      return cardMatchesSearch(card, activeSearchText);
-    };
+    const matchesFactionAndSearch = card => cardMatchesAdvancedFilters(card) && cardMatchesSearch(card, activeSearchText);
 
     $("#catalogPrevBtn").disabled = true;
     $("#catalogNextBtn").disabled = true;
@@ -4882,11 +5167,9 @@
     const filtered = sortCatalogCards(DECK_ELIGIBLE_CARDS.filter(card => {
       const owned = profile.owned[card.id] || 0;
       if (!matchesFactionAndSearch(card)) return false;
-      if (ownershipFilter === "owned" && owned <= 0) return false;
-      if (ownershipFilter === "unowned" && owned > 0) return false;
       return true;
     }));
-    $("#catalogPageLabel").textContent = `${filtered.length} of ${DECK_ELIGIBLE_CARDS.length} collectible cards`;
+    $("#catalogPageLabel").textContent = `${filtered.length} card${filtered.length === 1 ? "" : "s"} found · ${DECK_ELIGIBLE_CARDS.length} collectible total`;
     catalog.innerHTML = filtered.length
       ? filtered.map(card => catalogCardHtml(card)).join("")
       : `<div class="emptyZone" style="grid-column:1/-1;padding:28px">No store cards match${activeSearchText ? ` “${escapeHtml(activeSearchText)}”` : " the selected filters"}.</div>`;
@@ -6401,6 +6684,7 @@
         if (actor.trade < marketCost) return "Not enough Trade.";
         actor.trade -= marketCost;
         actor.discard.push(makeBattleEntry(card.id, actor.id, { tokenOrigin: "acquired" }));
+        pushVisualEvent(game, "card-acquired", { actorId: actor.id, targetId: actor.id, cardId: card.id, collectibleEdition: marketEntry.collectibleEdition === true, marketIndex });
         if (FACTIONS[card.faction] && card.faction !== "neutral") {
           actor.factionAcquired[card.faction] = (actor.factionAcquired[card.faction] || 0) + 1;
           triggerChargeEvent(game, actor, "cardAcquired", { faction: card.faction, cardId: card.id });
@@ -7037,8 +7321,39 @@
     const editionPlayer = (state?.players || []).find(player => player.id === (event.targetId || event.actorId || event.sourceId));
     const collectibleEdition = event.collectibleEdition === true || playerUsesCollectibleEdition(editionPlayer, event.cardId);
 
+    if (event.type === "card-acquired") {
+      const card = getCard(event.cardId);
+      const marketPoint = rectCenter($(".marketRow"), { x: innerWidth / 2, y: innerHeight / 2 });
+      const dockPoint = rectCenter($("#playerDock"), { x: innerWidth / 2, y: innerHeight * .84 });
+      const ghost = document.createElement("div");
+      ghost.className = "fxAcquiredCard";
+      ghost.style.left = `${marketPoint.x}px`;
+      ghost.style.top = `${marketPoint.y}px`;
+      ghost.style.setProperty("--fxTravelX", `${dockPoint.x - marketPoint.x}px`);
+      ghost.style.setProperty("--fxTravelY", `${dockPoint.y - marketPoint.y}px`);
+      ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card?.faction || "neutral"})">${card ? cardArtInnerHtml(card, true, collectibleEdition) : ""}</div><b>ACQUIRED</b>`;
+      $("#battleFxLayer").appendChild(ghost);
+      setTimeout(() => ghost.remove(), 850);
+      await new Promise(resolve => setTimeout(resolve, 260));
+      return;
+    }
     if (event.type === "card-play") {
-      fxCardGhost(event.cardId, source, false, collectibleEdition);
+      if (event.actorId === myPlayer()?.id) {
+        const card = getCard(event.cardId);
+        const handPoint = rectCenter($("#handRow"), { x: innerWidth / 2, y: innerHeight * .82 });
+        const playedPoint = rectCenter($("#ownCards"), { x: innerWidth * .75, y: innerHeight * .82 });
+        const ghost = document.createElement("div");
+        ghost.className = "fxAcquiredCard played";
+        ghost.style.left = `${handPoint.x}px`;
+        ghost.style.top = `${handPoint.y}px`;
+        ghost.style.setProperty("--fxTravelX", `${playedPoint.x - handPoint.x}px`);
+        ghost.style.setProperty("--fxTravelY", `${playedPoint.y - handPoint.y}px`);
+        ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card?.faction || "neutral"})">${card ? cardArtInnerHtml(card, true, collectibleEdition) : ""}</div><b>PLAYED</b>`;
+        $("#battleFxLayer").appendChild(ghost);
+        setTimeout(() => ghost.remove(), 850);
+      } else {
+        fxCardGhost(event.cardId, source, false, collectibleEdition);
+      }
       sourceSeat?.classList.add("playPulse");
       setTimeout(() => sourceSeat?.classList.remove("playPulse"), 600);
       await new Promise(resolve => setTimeout(resolve, 240));
@@ -7097,6 +7412,12 @@
       return;
     }
     if (event.type === "card-transform") {
+      const flash = document.createElement("div");
+      flash.className = "fxTransformFlash";
+      flash.style.left = `${target.x}px`;
+      flash.style.top = `${target.y}px`;
+      $("#battleFxLayer").appendChild(flash);
+      setTimeout(() => flash.remove(), 760);
       if (event.fromCardId) fxCardGhost(event.fromCardId, target, true, playerUsesCollectibleEdition(editionPlayer, event.fromCardId));
       await new Promise(resolve => setTimeout(resolve, 220));
       fxCardGhost(event.cardId, target, false, collectibleEdition);
@@ -7187,6 +7508,37 @@
     }).join("");
   }
 
+  function pulseCommanderHudStat(id, direction = "gain") {
+    const element = $(id);
+    if (!element) return;
+    const className = direction === "loss" ? "hudLoss" : "hudGain";
+    element.classList.remove("hudGain", "hudLoss");
+    void element.offsetWidth;
+    element.classList.add(className);
+    setTimeout(() => element.classList.remove(className), 520);
+  }
+
+  function updateCommanderHud(me, trade, combat, control, purge) {
+    const health = Math.max(0, Number(me?.health) || 0);
+    $("#commanderHudName").textContent = me?.name || "Spectating";
+    $("#commanderAuthorityValue").textContent = String(health);
+    $("#commanderTradeValue").textContent = String(trade);
+    $("#commanderCombatValue").textContent = String(combat);
+    $("#commanderControlValue").textContent = String(control);
+    $("#commanderPurgeValue").textContent = String(purge);
+    $("#commanderAuthority").classList.toggle("critical", Boolean(me && health > 0 && health < 15));
+    [["#commanderTrade", trade],["#commanderCombat", combat],["#commanderControl", control],["#commanderPurge", purge]].forEach(([id,value]) => $(id)?.classList.toggle("zero", !value));
+    const current = { health, trade, combat, control, purge, playerId: me?.id || "" };
+    if (lastCommanderHud && lastCommanderHud.playerId === current.playerId) {
+      if (current.health !== lastCommanderHud.health) pulseCommanderHudStat("#commanderAuthority", current.health < lastCommanderHud.health ? "loss" : "gain");
+      for (const [key, id] of [["trade","#commanderTrade"],["combat","#commanderCombat"],["control","#commanderControl"],["purge","#commanderPurge"]]) {
+        if (current[key] > lastCommanderHud[key]) pulseCommanderHudStat(id, "gain");
+        else if (current[key] < lastCommanderHud[key]) pulseCommanderHudStat(id, "loss");
+      }
+    }
+    lastCommanderHud = current;
+  }
+
   function renderBattle() {
     if (!state || mode !== "battle") return;
     const me = myPlayer();
@@ -7224,13 +7576,14 @@
     $("#controlResource").textContent = `⌁ ${control}${(me?.destroyBase || 0) > 0 ? ` · ☠ ${me.destroyBase}` : ""}`;
     $("#purgeResource").textContent = `✕ ${purge}`;
     [["tradeResource", trade], ["combatResource", combat], ["controlResource", control + (me?.destroyBase || 0)], ["purgeResource", purge]].forEach(([id, value]) => $("#" + id).classList.toggle("zero", !value));
+    updateCommanderHud(me, trade, combat, control + (me?.destroyBase || 0), purge);
     $("#handLabel").textContent = me ? requiredChoice && isMyTurn() ? `CHOOSE ONE EFFECT · ${me.hand.length} IN HAND` : forcedDiscard > 0 && isMyTurn() ? `CHOOSE ${forcedDiscard} TO DISCARD · ${me.hand.length} IN HAND` : `HAND · ${me.hand.length} CARD${me.hand.length === 1 ? "" : "S"}` : "SPECTATING";
     $("#turnLine").textContent = state.phase === "finished"
       ? `${state.winnerName} controls the War Realms.`
       : isMyTurn() && requiredChoice ? `Choose one card effect · Round ${state.round}`
       : isMyTurn() && forcedDiscard > 0 ? `Discard ${forcedDiscard} before playing · Round ${state.round}`
       : isMyTurn() ? `Your turn · Round ${state.round}` : `${active?.name || "Waiting"}'s turn · Round ${state.round}`;
-    $("#dockTitle").textContent = me ? `${me.name}'s Realm · ♥ ${me.health}` : "Spectating";
+    $("#dockTitle").textContent = me ? `${me.name}'s Realm` : "Spectating";
     $("#dockStatus").textContent = state.log?.at(-1)?.text || "Battle synchronized.";
     $("#playAllBtn").disabled = !turnActionsAllowed || !me?.hand.length || actionBusy;
     $("#endTurnBtn").disabled = !turnActionsAllowed || actionBusy;
@@ -8255,6 +8608,10 @@
   });
 
   document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !$("#filterDrawerScrim").classList.contains("hidden")) {
+      setAdvancedFilterDrawer(false);
+      return;
+    }
     if (event.key === "Escape" && !$("#effectOverlay").classList.contains("hidden")) {
       closeEffectHelp();
       return;
@@ -8287,24 +8644,52 @@
     catalogPage = 0;
     renderArmory();
   }));
-  $$("[data-filter]").forEach(button => button.addEventListener("click", () => {
-    factionFilter = button.dataset.filter;
+  function setAdvancedFilterDrawer(open) {
+    const scrim = $("#filterDrawerScrim");
+    scrim.classList.toggle("hidden", !open);
+    scrim.setAttribute("aria-hidden", open ? "false" : "true");
+    if (open) {
+      syncAdvancedFilterControls(armoryTab === "public");
+      setTimeout(() => $("#closeAdvancedFiltersBtn")?.focus(), 0);
+    } else {
+      $("#advancedFiltersBtn")?.focus();
+    }
+  }
+
+  $("#advancedFiltersBtn").addEventListener("click", () => setAdvancedFilterDrawer(true));
+  $("#closeAdvancedFiltersBtn").addEventListener("click", () => setAdvancedFilterDrawer(false));
+  $("#applyAdvancedFiltersBtn").addEventListener("click", () => setAdvancedFilterDrawer(false));
+  $("#clearAdvancedFiltersBtn").addEventListener("click", () => {
+    advancedFilters = makeAdvancedFilters();
+    catalogPage = 0;
+    renderArmory();
+  });
+  $("#filterDrawerScrim").addEventListener("click", event => {
+    if (event.target === $("#filterDrawerScrim")) setAdvancedFilterDrawer(false);
+  });
+  $("#advancedFilterDrawer").addEventListener("change", event => {
+    const target = event.target;
+    if (target.dataset.filterFaction) target.checked ? advancedFilters.factions.add(target.dataset.filterFaction) : advancedFilters.factions.delete(target.dataset.filterFaction);
+    else if (target.dataset.filterType) target.checked ? advancedFilters.types.add(target.dataset.filterType) : advancedFilters.types.delete(target.dataset.filterType);
+    else if (target.dataset.filterAbility) target.checked ? advancedFilters.abilities.add(target.dataset.filterAbility) : advancedFilters.abilities.delete(target.dataset.filterAbility);
+    else if (target.dataset.filterSpecial) target.checked ? advancedFilters.specials.add(target.dataset.filterSpecial) : advancedFilters.specials.delete(target.dataset.filterSpecial);
+    else if (target.id === "filterBattleMin") advancedFilters.battleMin = target.value;
+    else if (target.id === "filterBattleMax") advancedFilters.battleMax = target.value;
+    else if (target.id === "filterSigilMin") advancedFilters.sigilMin = target.value;
+    else if (target.id === "filterSigilMax") advancedFilters.sigilMax = target.value;
+    else if (target.id === "filterOwnedCopies") advancedFilters.ownedCopies = target.value;
+    else if (target.id === "filterCollection") advancedFilters.collection = target.value;
+    else if (target.id === "filterCanAfford") advancedFilters.canAfford = target.checked;
+    else if (target.id === "filterDeckStatus") advancedFilters.deckStatus = target.value;
+    else if (target.id === "filterCollectible") advancedFilters.collectible = target.value;
     deckListScroll.in = 0;
     deckListScroll.out = 0;
     catalogPage = 0;
     renderArmory();
-  }));
-  $$("[data-ownership-filter]").forEach(button => button.addEventListener("click", () => {
-    ownershipFilter = button.dataset.ownershipFilter;
-    catalogPage = 0;
-    renderArmory();
-  }));
-  $("#catalogPriceFilter").addEventListener("change", event => {
-    priceFilter = event.target.value;
-    deckListScroll.in = 0;
-    deckListScroll.out = 0;
-    catalogPage = 0;
-    renderArmory();
+  });
+  $("#filterChipRow").addEventListener("click", event => {
+    const chip = event.target.closest("[data-filter-chip]");
+    if (chip) removeAdvancedFilterChip(chip.dataset.filterChip);
   });
   $("#catalogSort").addEventListener("change", event => {
     if (armoryTab === "public") publicDeckSort = event.target.value;
