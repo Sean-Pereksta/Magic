@@ -2605,13 +2605,14 @@
 
   function ascensionTurnBadgeHtml(entry, card, game = state) {
     const transform = card?.transform;
-    if (!entry || transform?.trigger !== "ownerTurnsElapsed" || !transform.into) return "";
+    if (!entry || transform?.trigger !== "ownerTurnsElapsed" || !transformHasTarget(transform)) return "";
 
     const required = Math.max(1, Math.floor(Number(transform.required) || 1));
     const owner = transformOwnerForEntry(game, entry);
     const progress = owner ? peekTransformProgress(owner, entry, card) : 0;
     const remaining = Math.max(0, required - progress);
-    const nextName = getCard(transform.into)?.name || transform.into;
+    const targets = transformTargetOptions(transform);
+    const nextName = targets.length > 1 ? `${targets.length} possible forms` : (getCard(targets[0]?.into)?.name || targets[0]?.into || "a new form");
     const turnWord = remaining === 1 ? "turn" : "turns";
     const title = remaining > 0
       ? `${remaining} owner ${turnWord} until ascending into ${nextName}`
@@ -2637,35 +2638,148 @@
     return "discard";
   }
 
-  function completeOwnerTurnTransform(game, player, location, card) {
-    const transform = card?.transform;
-    const nextCard = transform?.into ? getCard(transform.into) : null;
-    if (!location || !nextCard) return false;
+  // Transform targets can stay simple with `into: "card_id"`, or use
+  // `choose: ["card_a", "card_b"]` / `choose: [{ into, label, destination }]`.
+  // If choose is present it takes precedence over into and the player chooses
+  // the resulting form when the transform condition is met.
+  function transformChoiceOptions(transform = {}) {
+    const raw = Array.isArray(transform?.choose) ? transform.choose : [];
+    return raw.map(option => {
+      const config = typeof option === "string" ? { into: option } : (option && typeof option === "object" ? option : {});
+      const into = String(config.into || config.id || "").trim();
+      const target = into ? getCard(into) : null;
+      if (!target) return null;
+      return {
+        into,
+        label: String(config.label || target.name || into),
+        description: String(config.description || `Transform into ${target.name || into}.`),
+        destination: config.destination == null ? "" : String(config.destination)
+      };
+    }).filter(Boolean);
+  }
 
-    const sourceEntries = player[location.zone];
-    const currentEntry = sourceEntries?.[location.index];
-    if (!currentEntry || currentEntry.instanceId !== location.entry.instanceId || currentEntry.id !== card.id) return false;
+  function transformTargetOptions(transform = {}) {
+    const choices = transformChoiceOptions(transform);
+    if (choices.length) return choices;
+    const into = String(transform?.into || "").trim();
+    const target = into ? getCard(into) : null;
+    return target ? [{ into, label: target.name || into, description: `Transform into ${target.name || into}.`, destination: "" }] : [];
+  }
 
-    const destination = normalizedTransformDestination(transform.destination);
-    const transformedEntry = makeBattleEntry(nextCard.id, player.id, {
-      instanceId: currentEntry.instanceId,
-      tokenOrigin: currentEntry.tokenOrigin || "transformed"
-    });
+  function transformHasTarget(transform = {}) {
+    return transformTargetOptions(transform).length > 0;
+  }
 
-    sourceEntries.splice(location.index, 1);
-    if (destination === "draw") player.draw.push(transformedEntry);
-    else player[destination].push(transformedEntry);
+  function transformDestinationForTrigger(transform = {}, trigger = "", optionDestination = "") {
+    const explicit = String(optionDestination || transform?.destination || "").trim();
+    if (explicit) return normalizedTransformDestination(explicit);
+    // Preserve the old in-place behavior for timesPlayed / cumulativePrimaryEffect.
+    // Owner-turn, sacrifice, and Heat transforms default to the discard pile.
+    if (["ownerTurnsElapsed", "sacrificed", "heat"].includes(String(trigger || transform?.trigger || ""))) return "discard";
+    return "";
+  }
 
-    clearTransformProgress(player, currentEntry, card);
+  function resolveTransformSelection(game, player, instruction = {}) {
+    const sourceCard = getCard(instruction.sourceCardId);
+    const nextCard = getCard(instruction.into);
+    if (!sourceCard || !nextCard || !instruction.sourceInstanceId) return false;
+
+    let currentEntry = null;
+    let sourceEntries = null;
+    let sourceIndex = -1;
+    let sourceZone = "";
+
+    if (instruction.fromScrapped) {
+      sourceEntries = game.scrapped || [];
+      sourceIndex = sourceEntries.findIndex(item => item.instanceId === instruction.sourceInstanceId && item.id === sourceCard.id && item.originalOwnerId === player.id);
+      if (sourceIndex >= 0) currentEntry = sourceEntries[sourceIndex];
+      sourceZone = "scrapped";
+    } else {
+      const location = locateOwnedEntry(player, instruction.sourceInstanceId);
+      if (!location || location.entry.id !== sourceCard.id) return false;
+      sourceEntries = player[location.zone];
+      sourceIndex = location.index;
+      currentEntry = location.entry;
+      sourceZone = location.zone;
+    }
+
+    if (!currentEntry || sourceIndex < 0) return false;
+
+    const destination = String(instruction.destination || "").trim();
+    let transformedEntry = currentEntry;
+
+    if (destination || instruction.fromScrapped) {
+      sourceEntries.splice(sourceIndex, 1);
+      transformedEntry = makeBattleEntry(nextCard.id, player.id, {
+        instanceId: currentEntry.instanceId,
+        tokenOrigin: currentEntry.tokenOrigin || "transformed"
+      });
+      const resolvedDestination = normalizedTransformDestination(destination || "discard");
+      if (resolvedDestination === "draw") player.draw.push(transformedEntry);
+      else player[resolvedDestination].push(transformedEntry);
+      sourceZone = resolvedDestination;
+    } else {
+      // Backward-compatible in-place transform for existing timesPlayed and
+      // cumulativePrimaryEffect cards that do not specify a destination.
+      transformedEntry.id = nextCard.id;
+    }
+
+    clearTransformProgress(player, currentEntry, sourceCard);
     pushVisualEvent(game, "card-transform", {
       actorId: player.id,
       targetId: player.id,
-      fromCardId: card.id,
+      fromCardId: sourceCard.id,
       cardId: nextCard.id,
       instanceId: transformedEntry.instanceId
     });
-    addLog(game, `${player.name}'s ${card.name} transformed into ${nextCard.name} in their ${destination === "draw" ? "draw pile" : destination}.`);
+    const destinationText = destination || instruction.fromScrapped
+      ? ` in their ${sourceZone === "draw" ? "draw pile" : sourceZone}`
+      : "";
+    addLog(game, `${player.name}'s ${sourceCard.name} transformed into ${nextCard.name}${destinationText}.`);
     return true;
+  }
+
+  function requestTransform(game, player, entry, card, transform = card?.transform, context = {}) {
+    if (!entry || !card || !transformHasTarget(transform)) return false;
+    const trigger = String(context.trigger || transform.trigger || "");
+    const choices = transformChoiceOptions(transform);
+    const targets = choices.length ? choices : transformTargetOptions(transform);
+    const buildInstruction = option => ({
+      sourceInstanceId: entry.instanceId,
+      sourceCardId: card.id,
+      into: option.into,
+      destination: transformDestinationForTrigger(transform, trigger, option.destination),
+      trigger,
+      fromScrapped: context.fromScrapped === true
+    });
+
+    if (choices.length) {
+      const options = targets.map(option => ({
+        label: option.label,
+        description: option.description,
+        actionLabel: "TRANSFORM",
+        cardId: option.into,
+        instanceId: entry.instanceId,
+        effect: { __resolveTransformChoice: buildInstruction(option) }
+      }));
+      const queued = queueSpecialChoice(game, player, options, {
+        cardId: card.id,
+        source: `transform:${trigger || "choice"}`,
+        title: String(transform.chooseTitle || `Choose ${card.name}'s new form`),
+        subtitle: String(transform.choosePrompt || `Choose which card ${card.name} transforms into.`)
+      });
+      if (queued) addLog(game, `${player.name} must choose which form ${card.name} transforms into.`);
+      return queued;
+    }
+
+    return resolveTransformSelection(game, player, buildInstruction(targets[0]));
+  }
+
+  function completeOwnerTurnTransform(game, player, location, card) {
+    if (!location || !card?.transform) return false;
+    const currentEntry = player[location.zone]?.[location.index];
+    if (!currentEntry || currentEntry.instanceId !== location.entry.instanceId || currentEntry.id !== card.id) return false;
+    return requestTransform(game, player, currentEntry, card, card.transform, { trigger: "ownerTurnsElapsed" });
   }
 
   function advanceOwnerTurnTransforms(game, player) {
@@ -2689,7 +2803,7 @@
 
       const card = getCard(location.entry);
       const transform = card?.transform;
-      if (!transform || transform.trigger !== "ownerTurnsElapsed" || !transform.into) continue;
+      if (!transform || transform.trigger !== "ownerTurnsElapsed" || !transformHasTarget(transform)) continue;
 
       const required = Math.max(1, Math.floor(Number(transform.required) || 1));
       const progress = writeTransformProgress(
@@ -2708,25 +2822,21 @@
 
   function recordTransformProgress(game, player, entry, card) {
     const transform = card?.transform;
-    if (!transform || typeof transform !== "object" || !transform.into || ["sacrificed", "ownerTurnsElapsed"].includes(transform.trigger)) return false;
+    if (!transform || typeof transform !== "object" || !transformHasTarget(transform) || ["sacrificed", "ownerTurnsElapsed", "heat"].includes(transform.trigger)) return false;
     const required = Math.max(1, Number(transform.required) || 1);
     let gain = 0;
     if (transform.trigger === "timesPlayed") gain = 1;
     if (transform.trigger === "cumulativePrimaryEffect") gain = Math.max(0, Number(coreEffect(primaryCardEffect(card))[transform.effectKey]) || 0);
     if (!gain) return false;
     const progress = writeTransformProgress(player, entry, card, readTransformProgress(player, entry, card) + gain);
-    if (progress < required || !getCard(transform.into)) return false;
-    clearTransformProgress(player, entry, card);
-    const previousId = entry.id;
-    entry.id = transform.into;
-    pushVisualEvent(game, "card-transform", { actorId: player.id, targetId: player.id, fromCardId: previousId, cardId: transform.into, instanceId: entry.instanceId });
-    addLog(game, `${player.name}'s ${card.name} transformed into ${getCard(transform.into)?.name || transform.into}.`);
-    return true;
+    if (progress < required) return false;
+    return requestTransform(game, player, entry, card, transform, { trigger: transform.trigger });
   }
 
-  function transformedSacrificeId(card) {
+  function resolveSacrificedTransform(game, player, entry, card) {
     const transform = card?.transform;
-    return transform?.trigger === "sacrificed" && transform?.replaceSacrificeRemoval && getCard(transform.into) ? transform.into : "";
+    if (!entry || !card || transform?.trigger !== "sacrificed" || !transform?.replaceSacrificeRemoval || !transformHasTarget(transform)) return false;
+    return requestTransform(game, player, entry, card, transform, { trigger: "sacrificed", fromScrapped: true });
   }
 
   function gainChargeForBase(game, player, entry, trigger, event = {}) {
@@ -3041,6 +3151,14 @@
     return allPlayerEntries(player).find(entry => entry.instanceId === instanceId) || null;
   }
 
+  function resolveHeatTransformIfReady(game, player, entry, card) {
+    const transform = card?.transform;
+    if (!entry || !card || transform?.trigger !== "heat" || !transformHasTarget(transform)) return false;
+    const required = Math.max(1, Number(transform.required) || 1);
+    if (Math.max(0, Number(entry.heat) || 0) < required) return false;
+    return requestTransform(game, player, entry, card, transform, { trigger: "heat" });
+  }
+
   function resolveHeatChange(game, player, instruction = {}, context = {}) {
     const entry = findOwnedEntry(player, instruction.instanceId);
     const card = getCard(entry);
@@ -3052,6 +3170,7 @@
     if (changed) {
       addLog(game, `${card.name} changed from Heat ${before} to Heat ${entry.heat}.`);
       if (instruction.ifChangedEffect && Object.keys(instruction.ifChangedEffect).length) applyEffect(game, player, instruction.ifChangedEffect, context);
+      if (entry.heat > before && resolveHeatTransformIfReady(game, player, entry, card)) return true;
     }
     if (instruction.remainingTargets > 0) queueHeatTargetChoice(game, player, { amount: Math.abs(Number(instruction.delta) || 1), targets: instruction.remainingTargets }, context);
     return changed;
@@ -3068,6 +3187,10 @@
     for (const threshold of card.heat.thresholds || []) {
       if (entry.heat >= Number(threshold.at)) applyEffect(game, player, threshold.effect, { cardId: card.id, instanceId: entry.instanceId, source: "heat" });
     }
+    // Heat transforms resolve before Overload. If choose is configured, the
+    // mandatory transform choice is queued and the source card stays in place
+    // only until that choice resolves.
+    if (resolveHeatTransformIfReady(game, player, entry, card)) return;
     const overload = card.heat.overload;
     if (!overload || entry.heat < Number(overload.at)) return;
     const instruction = { instanceId: entry.instanceId, reset: Math.max(0, Number(overload.reset) || 0), selfDamage: Math.max(0, Number(overload.selfDamage) || 0), effect: clone(overload.effect || {}) };
@@ -3767,7 +3890,13 @@
     if (card.type === "attachment") glyphs.unshift({ key: "attachment", icon: "⌁", label: "Attachment", amountText: "", source: "attachment" });
     if (card.token) glyphs.unshift({ key: "token", icon: "✦", label: "Token", amountText: "", source: "token" });
     if (card.echo) glyphs.push({ key: "echo", icon: "◉", label: "Echo previous ship", amountText: "", source: "echo" });
-    if (card.transform) glyphs.push({ key: "transform", icon: "⇆", label: `Transform into ${getCard(card.transform.into)?.name || card.transform.into || "new form"}`, amountText: "", source: "transform" });
+    if (card.transform) {
+      const targets = transformTargetOptions(card.transform);
+      const transformLabel = targets.length > 1
+        ? `Choose transformation (${targets.map(option => getCard(option.into)?.name || option.into).join(" / ")})`
+        : `Transform into ${getCard(targets[0]?.into)?.name || targets[0]?.into || "new form"}`;
+      glyphs.push({ key: "transform", icon: "⇆", label: transformLabel, amountText: targets.length > 1 ? String(targets.length) : "", source: "transform" });
+    }
     if (card.outpost) glyphs.unshift({ key: "outpost", icon: "🛡", label: `Outpost ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
     else if (isExpansionBase(card)) glyphs.unshift({ key: "expansion", icon: "▰", label: `Expansion ${card.health || 0} Health`, amountText: String(card.health || 0), source: "expansion" });
     else if (card.type === "base") glyphs.unshift({ key: "base", icon: "▣", label: `Base ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
@@ -6167,6 +6296,7 @@
     const internalSacrificeOwned = normalized.__sacrificeOwned;
     const internalQueueOptionalSacrificeFriendlyCardTargets = normalized.__queueOptionalSacrificeFriendlyCardTargets;
     const internalResolveOptionalSacrificeFriendlyCard = normalized.__resolveOptionalSacrificeFriendlyCard;
+    const internalResolveTransformChoice = normalized.__resolveTransformChoice;
     const internalTopdeckHand = normalized.__topdeckHand;
     const resurrectConfig = normalized.resurrect;
     const graveEchoConfig = normalized.graveEcho;
@@ -6195,6 +6325,7 @@
     delete normalized.__sacrificeOwned;
     delete normalized.__queueOptionalSacrificeFriendlyCardTargets;
     delete normalized.__resolveOptionalSacrificeFriendlyCard;
+    delete normalized.__resolveTransformChoice;
     delete normalized.__topdeckHand;
     delete normalized.__noop;
     delete normalized.resurrect;
@@ -6259,6 +6390,7 @@
     if (internalSacrificeOwned) sacrificeOwnedEntry(game, player, internalSacrificeOwned.instanceId, internalSacrificeOwned.thenEffect || {});
     if (internalQueueOptionalSacrificeFriendlyCardTargets) queueOptionalSacrificeFriendlyCardTargets(game, player, internalQueueOptionalSacrificeFriendlyCardTargets);
     if (internalResolveOptionalSacrificeFriendlyCard) resolveOptionalSacrificeFriendlyCard(game, player, internalResolveOptionalSacrificeFriendlyCard);
+    if (internalResolveTransformChoice) resolveTransformSelection(game, player, internalResolveTransformChoice);
     if (internalTopdeckHand) {
       const handIndex = player.hand.findIndex(entry => entry.instanceId === internalTopdeckHand.instanceId);
       if (handIndex >= 0) player.draw.push(player.hand.splice(handIndex, 1)[0]);
@@ -6817,14 +6949,7 @@
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: card.id, target: "player", targetId: actor.id, reason: "sacrifice", instanceId: entry.instanceId });
         recordSacrifice(game, actor, entry, card);
         applyEffect(game, actor, card.sacrifice, { cardId: card.id, source: "sacrifice" });
-        const transformedId = transformedSacrificeId(card);
-        if (transformedId) {
-          const scrappedIndex = game.scrapped.findIndex(item => item.instanceId === entry.instanceId);
-          if (scrappedIndex >= 0) game.scrapped.splice(scrappedIndex, 1);
-          actor.discard.push(makeBattleEntry(transformedId, actor.id, { instanceId: entry.instanceId, tokenOrigin: "transform" }));
-          pushVisualEvent(game, "card-transform", { actorId: actor.id, targetId: actor.id, fromCardId: card.id, cardId: transformedId, instanceId: entry.instanceId });
-          addLog(game, `${card.name} transformed into ${getCard(transformedId)?.name || transformedId} in ${actor.name}'s discard pile.`);
-        }
+        resolveSacrificedTransform(game, actor, entry, card);
         addLog(game, `${actor.name} sacrificed ${card.name}.`);
         break;
       }
@@ -7535,6 +7660,7 @@
     if (String(source).startsWith("base")) return "Base choice";
     if (String(source).startsWith("resurrect")) return "Choose a card to Resurrect";
     if (String(source).startsWith("graveEcho")) return "Choose a sacrificed Primary ability";
+    if (String(source).startsWith("transform")) return "Choose a transformation";
     if (String(source).startsWith("echo")) return "Echo choice";
     if (String(source).startsWith("charge")) return "Charge choice";
     return "Primary ability choice";
@@ -7553,10 +7679,11 @@
     const card = getCard(choice.cardId);
     const source = String(choice.source || "");
     const selectingFriendlySacrificeTarget = source.startsWith("optionalSacrificeFriendlyCardTarget");
+    const selectingTransformTarget = source.startsWith("transform");
     const optionalFriendlySacrificePrompt = source.startsWith("optionalSacrificeFriendlyCardPrompt");
     $("#choiceSource").textContent = choiceSourceLabel(choice.source);
     $("#choiceTitle").textContent = choice.title || (card ? card.name : "Select an ability");
-    const selectingCard = selectingFriendlySacrificeTarget || source.startsWith("resurrect") || source.startsWith("graveEcho");
+    const selectingCard = selectingFriendlySacrificeTarget || selectingTransformTarget || source.startsWith("resurrect") || source.startsWith("graveEcho");
     $("#choiceSubtitle").textContent = choice.subtitle || (selectingCard
       ? `Choose exactly one of ${choice.options.length} eligible cards.`
       : `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`);
@@ -7564,12 +7691,15 @@
       const summary = option.description || option.label || effectDisplaySummary(option.effect) || `Option ${index + 1}`;
       const glyphs = effectGlyphItems(option.effect, "choice").filter(item => item.key !== "choice");
       const targetCard = option.cardId ? getCard(option.cardId) : null;
-      if (selectingFriendlySacrificeTarget && targetCard) {
+      if ((selectingFriendlySacrificeTarget || selectingTransformTarget) && targetCard) {
         const artUrl = directCardArtUrl(targetCard.id, playerUsesCollectibleEdition(me, targetCard.id));
         const artHtml = artUrl
           ? `<img src="${escapeHtml(artUrl)}" alt="${escapeHtml(targetCard.name)}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="choiceTargetFallback" hidden>${escapeHtml(targetCard.sigil || "◆")}</span>`
           : `<span class="choiceTargetFallback">${escapeHtml(targetCard.sigil || "◆")}</span>`;
-        return `<button class="choiceOption cardTarget" style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">Current form: ${escapeHtml(targetCard.name)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || "Eligible friendly card played this turn.")}</span></span><span class="choiceActionLabel">${escapeHtml(option.actionLabel || "DEVOUR")}</span></button>`;
+        const formText = selectingTransformTarget ? `New form: ${targetCard.name}` : `Current form: ${targetCard.name}`;
+        const defaultDescription = selectingTransformTarget ? `Transform into ${targetCard.name}.` : "Eligible friendly card played this turn.";
+        const defaultAction = selectingTransformTarget ? "TRANSFORM" : "DEVOUR";
+        return `<button class="choiceOption cardTarget" style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">${escapeHtml(formText)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || defaultDescription)}</span></span><span class="choiceActionLabel">${escapeHtml(option.actionLabel || defaultAction)}</span></button>`;
       }
       const promptClass = optionalFriendlySacrificePrompt ? " promptChoice" : "";
       return `<button class="choiceOption${promptClass}" style="--choiceFaction:var(--${card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceOptionTop"><span class="choiceOptionNumber">${index + 1}</span><strong>${escapeHtml(option.label || `Option ${index + 1}`)}</strong></span><span class="choiceOptionText">${escapeHtml(summary)}</span><span class="choiceOptionGlyphs">${glyphs.map(item => abilityGlyphHtml(item)).join("")}</span>${optionalFriendlySacrificePrompt ? `<span class="choiceActionLabel">${escapeHtml(option.actionLabel || option.label || "SELECT")}</span>` : ""}</button>`;
@@ -8006,6 +8136,7 @@
       if (effect.__reclaim?.cardId) score += cardAiValue(getCard(effect.__reclaim.cardId), bot, difficulty) + 3;
       if (effect.__redeploy?.instanceId) score += cardAiValue(getCard(findOwnedEntry(bot, effect.__redeploy.instanceId)), bot, difficulty) + 5;
       if (effect.__heatOverload) score += effectAiValue(effect.__heatOverload.effect || {}) - Math.max(0, Number(effect.__heatOverload.selfDamage) || 0) * .7;
+      if (effect.__resolveTransformChoice?.into) score += cardAiValue(getCard(effect.__resolveTransformChoice.into), bot, difficulty) + 3;
       if (effect.__heatChange) score += 2;
       if (effect.__baseModify) score += Math.max(1, Number(effect.__baseModify.config?.amount) || 0);
       if (effect.__attach) score += 4;
