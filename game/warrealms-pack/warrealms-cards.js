@@ -290,6 +290,1200 @@ export const CARDS = Object.freeze([
   flavor:
     "No two warning lights mean the same thing. The crew stopped asking why."
 },
+  {
+  id: "grukkin_embercub",
+  name: "Grukkin Embercub",
+  image: "grukkin_embercub.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 75,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 2
+  },
+
+  ally: {
+    combat: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Gnaw the Chains",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 3
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "grukkin_ironjaw_brute",
+        label: "Evolve into Ironjaw Brute"
+      },
+      {
+        into: "grukkin_broodback_ravager",
+        label: "Evolve into Broodback Ravager"
+      }
+    ],
+
+    destination: "discard",
+    chooseTitle: "The Grukkin Comes of Age",
+    choosePrompt:
+      "Choose whether the Grukkin becomes a fortress-breaking Ironjaw or a brood-leading Ravager."
+  },
+
+  text:
+    "Gain 2 Combat and 1 Heat.",
+
+  allyText:
+    "Gain 1 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Combat. At Heat 4, choose one of two evolutions.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Ironjaw Brute or Broodback Ravager. Put the chosen form into your discard pile.",
+
+  flavor:
+    "Gorak children are taught not to feed them after the horns begin splitting."
+},
+
+
+// --------------------------------------------------------------------------
+// GREEN ROUTE A — IRONJAW
+// --------------------------------------------------------------------------
+
+{
+  id: "grukkin_ironjaw_brute",
+  name: "Grukkin Ironjaw Brute",
+  image: "grukkin_ironjaw_brute.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "grukkin_embercub",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 5
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Lower the Horns",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 4
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "grukkar_gatebreaker_colossus",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 5 Combat and 1 Heat.",
+
+  allyText:
+    "Gain 2 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: gain 4 Combat. At Heat 4, evolve into Grukkar, Gatebreaker Colossus.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Grukkar, Gatebreaker Colossus in your discard pile.",
+
+  flavor:
+    "Its first tusks were decorations. The second pair were siege equipment."
+},
+
+
+{
+  id: "grukkar_gatebreaker_colossus",
+  name: "Grukkar, Gatebreaker Colossus",
+  image: "grukkar_gatebreaker_colossus.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "grukkin_ironjaw_brute",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 9,
+    destroyBase: 1
+  },
+
+  ally: {
+    combat: 4
+  },
+
+  doubleAlly: {
+    combat: 3
+  },
+
+  text:
+    "Gain 9 Combat and Raze 1.",
+
+  allyText:
+    "Gain 4 additional Combat.",
+
+  doubleAllyText:
+    "Gain 3 additional Combat.",
+
+  flavor:
+    "The Warhost stopped constructing battering rams the year Grukkar learned what gates were."
+},
+
+
+// --------------------------------------------------------------------------
+// GREEN ROUTE B — BROODBACK
+// --------------------------------------------------------------------------
+
+{
+  id: "grukkin_broodback_ravager",
+  name: "Grukkin Broodback Ravager",
+  image: "grukkin_broodback_ravager.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "grukkin_embercub",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 3,
+
+    createToken: {
+      id: "spawn",
+      count: 1,
+      zone: "discard"
+    }
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Call the Litter",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          createToken: {
+            id: "spawn",
+            count: 1,
+            zone: "hand"
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "gorge_crown_brood_tyrant",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 3 Combat, create a Spawn in your discard pile, and gain 1 Heat.",
+
+  allyText:
+    "Gain 2 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: create a Spawn in your hand. At Heat 4, evolve into Gorge-Crown Brood-Tyrant.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Gorge-Crown Brood-Tyrant in your discard pile.",
+
+  flavor:
+    "The creatures nesting between its armor plates eventually began answering its roar."
+},
+
+
+{
+  id: "gorge_crown_brood_tyrant",
+  name: "Gorge-Crown Brood-Tyrant",
+  image: "gorge_crown_brood_tyrant.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "grukkin_broodback_ravager",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 7,
+
+    createToken: {
+      id: "spawn",
+      count: 2,
+      zone: "discard"
+    }
+  },
+
+  ally: {
+    createToken: {
+      id: "spawn",
+      count: 1,
+      zone: "hand"
+    }
+  },
+
+  doubleAlly: {
+    combat: 5
+  },
+
+  text:
+    "Gain 7 Combat and create two Spawn in your discard pile.",
+
+  allyText:
+    "Create a Spawn in your hand.",
+
+  doubleAllyText:
+    "Gain 5 additional Combat.",
+
+  flavor:
+    "A single roar from the Gorge-Crown is answered by a thousand smaller mouths."
+},
+
+
+
+
+// ============================================================================
+// YELLOW — XYTHE CONCORD
+// FAMILY: VEYLITH PRISMKIN
+//
+// THE CROSS-FACTION EVOLUTION FAMILY.
+//
+// This Xythe creature absorbs the metaphysical signature of other realms.
+// At Heat 4 it abandons Yellow entirely and can become:
+//   • BLUE — an angelic prism-beast
+//   • RED  — a sorcerous void predator
+//
+// This means the same collectible starter can permanently evolve into
+// a completely different faction.
+// ============================================================================
+
+{
+  id: "veylith_prismkin",
+  name: "Veylith Prismkin",
+  image: "veylith_prismkin.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 85,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2,
+    combat: 1
+  },
+
+  ally: {
+    stun: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Consume the Possibility",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          trade: 2,
+          stun: 1
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "aurelium_haloform",
+        label: "Absorb Azure Light"
+      },
+      {
+        into: "umbravore_hexform",
+        label: "Absorb Umbral Sorcery"
+      }
+    ],
+
+    destination: "discard",
+    chooseTitle: "Prismatic Divergence",
+    choosePrompt:
+      "The Prismkin can no longer remain Xythe. Choose the power it assimilates."
+  },
+
+  text:
+    "Gain 2 Trade, 1 Combat, and 1 Heat.",
+
+  allyText:
+    "Gain 1 Disable.",
+
+  heatText:
+    "Spend 1 Heat: gain 2 Trade and 1 Disable. At Heat 4, choose an Azure or Umbral evolution.",
+
+  transformText:
+    "Prismatic Evolution — At Heat 4, become either the BLUE Aurelium Haloform or the RED Umbravore Hexform.",
+
+  flavor:
+    "It was born without a final shape. The Concord considers this an advantage."
+},
+
+
+// --------------------------------------------------------------------------
+// YELLOW CROSS-FACTION ROUTE A → BLUE
+// --------------------------------------------------------------------------
+
+{
+  id: "aurelium_haloform",
+  name: "Aurelium Haloform",
+  image: "aurelium_haloform.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "veylith_prismkin",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    heal: 3,
+    shield: 2
+  },
+
+  ally: {
+    trade: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Radiant Stabilization",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          heal: 3
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "seraphic_prismarch",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 3 Authority, 2 Shield, and 1 Heat.",
+
+  allyText:
+    "Gain 2 Trade.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Authority. At Heat 4, evolve into Seraphic Prismarch.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Seraphic Prismarch in your discard pile.",
+
+  flavor:
+    "The Azure did not convert it. It simply discovered that prayer was another wavelength."
+},
+
+
+{
+  id: "seraphic_prismarch",
+  name: "Seraphic Prismarch",
+  image: "seraphic_prismarch.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "aurelium_haloform",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    heal: 6,
+    shield: 5,
+    draw: 1
+  },
+
+  ally: {
+    trade: 2
+  },
+
+  text:
+    "Gain 6 Authority, 5 Shield, and draw 1 card.",
+
+  allyText:
+    "Gain 2 Trade.",
+
+  flavor:
+    "Alien flesh and celestial radiance have become indistinguishable beneath its wings."
+},
+
+
+// --------------------------------------------------------------------------
+// YELLOW CROSS-FACTION ROUTE B → RED
+// --------------------------------------------------------------------------
+
+{
+  id: "umbravore_hexform",
+  name: "Umbravore Hexform",
+  image: "umbravore_hexform.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "veylith_prismkin",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 4,
+    scrapOwn: 1
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Feed the Hex",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 4,
+          selfDamage: 1
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "covenant_prismfiend",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 4 Combat, 1 Purge, and 1 Heat.",
+
+  allyText:
+    "Gain 2 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 4, evolve into Covenant Prismfiend.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Covenant Prismfiend in your discard pile.",
+
+  flavor:
+    "Once it learned that souls also refract, the Covenant stopped calling it an experiment."
+},
+
+
+{
+  id: "covenant_prismfiend",
+  name: "Covenant Prismfiend",
+  image: "covenant_prismfiend.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "umbravore_hexform",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 9,
+    scrapOwn: 1,
+    opponentDiscard: 1
+  },
+
+  ally: {
+    combat: 3
+  },
+
+  sacrifice: {
+    draw: 1,
+    combat: 5
+  },
+
+  text:
+    "Gain 9 Combat and 1 Purge. The next enemy draws 1 fewer card.",
+
+  allyText:
+    "Gain 3 additional Combat.",
+
+  sacrificeText:
+    "Sacrifice: Draw 1 card and gain 5 Combat.",
+
+  flavor:
+    "It remembers being Xythe only as a weakness it successfully discarded."
+},
+
+
+
+
+// ============================================================================
+// BLUE — AZURE ASCENDANCY
+// FAMILY: HALOQUILL
+//
+// A tiny celestial predator resembling a winged lynx with luminous feathers.
+//
+// Evolution choice:
+//   • AEGISWING — guardian / shield route
+//   • SUNCLAW   — judgment / combat + lifelink route
+// ============================================================================
+
+{
+  id: "haloquill_fledgling",
+  name: "Haloquill Fledgling",
+  image: "haloquill_fledgling.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    heal: 2,
+    shield: 1
+  },
+
+  ally: {
+    trade: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Fold the Wings",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          shield: 3
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "aegiswing_gryphet",
+        label: "Take the Guardian Path"
+      },
+      {
+        into: "sunclaw_canticle_lynx",
+        label: "Take the Judgment Path"
+      }
+    ],
+
+    destination: "discard",
+    chooseTitle: "The First Ascension",
+    choosePrompt:
+      "Choose whether the Haloquill becomes a protector of the faithful or a hunter of the condemned."
+  },
+
+  text:
+    "Gain 2 Authority, 1 Shield, and 1 Heat.",
+
+  allyText:
+    "Gain 1 Trade.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Shield. At Heat 4, choose one of two evolutions.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Aegiswing Gryphet or Sunclaw Canticle-Lynx.",
+
+  flavor:
+    "Its feathers glow brightest when someone nearby has something worth protecting."
+},
+
+
+// --------------------------------------------------------------------------
+// BLUE ROUTE A — GUARDIAN
+// --------------------------------------------------------------------------
+
+{
+  id: "aegiswing_gryphet",
+  name: "Aegiswing Gryphet",
+  image: "aegiswing_gryphet.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "haloquill_fledgling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    shield: 4,
+    heal: 2
+  },
+
+  ally: {
+    shield: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Sheltering Halo",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          shield: 4
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "thronewing_aegisbeast",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 4 Shield, 2 Authority, and 1 Heat.",
+
+  allyText:
+    "Gain 2 additional Shield.",
+
+  heatText:
+    "Spend 1 Heat: gain 4 Shield. At Heat 4, evolve into Thronewing Aegisbeast.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Thronewing Aegisbeast in your discard pile.",
+
+  flavor:
+    "It sleeps across monastery doors and wakes before danger decides to arrive."
+},
+
+
+{
+  id: "thronewing_aegisbeast",
+  name: "Thronewing Aegisbeast",
+  image: "thronewing_aegisbeast.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "aegiswing_gryphet",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    shield: 8,
+    heal: 4
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  doubleAlly: {
+    shield: 4
+  },
+
+  text:
+    "Gain 8 Shield and 4 Authority.",
+
+  allyText:
+    "Draw 1 card.",
+
+  doubleAllyText:
+    "Gain 4 additional Shield.",
+
+  flavor:
+    "Entire pilgrim columns march beneath its wings without ever seeing the arrows meant for them."
+},
+
+
+// --------------------------------------------------------------------------
+// BLUE ROUTE B — JUDGMENT
+// --------------------------------------------------------------------------
+
+{
+  id: "sunclaw_canticle_lynx",
+  name: "Sunclaw Canticle-Lynx",
+  image: "sunclaw_canticle_lynx.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "haloquill_fledgling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    combat: 4,
+    heal: 2
+  },
+
+  ally: {
+    lifelink: 0.25
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Sing the War Canticle",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 3,
+          heal: 2
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "dawnmane_judgment_beast",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 4 Combat, 2 Authority, and 1 Heat.",
+
+  allyText:
+    "Gain 25% Lifelink this turn.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Combat and 2 Authority. At Heat 4, evolve into Dawnmane Judgment-Beast.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Dawnmane Judgment-Beast in your discard pile.",
+
+  flavor:
+    "Its hunting cry contains seven notes. The condemned rarely hear the seventh."
+},
+
+
+{
+  id: "dawnmane_judgment_beast",
+  name: "Dawnmane Judgment-Beast",
+  image: "dawnmane_judgment_beast.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "sunclaw_canticle_lynx",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    combat: 8,
+    heal: 4,
+    lifelink: 0.5
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  text:
+    "Gain 8 Combat, 4 Authority, and 50% Lifelink this turn.",
+
+  allyText:
+    "Draw 1 card.",
+
+  flavor:
+    "Mercy walks beside it. Judgment runs ahead."
+},
+
+
+
+
+// ============================================================================
+// RED — UMBRAL COVENANT
+// FAMILY: HEXSPARK
+//
+// A tiny sorcerous familiar born from a coal containing a trapped whisper.
+//
+// Evolution choice:
+//   • BLOODHORN — reckless combat / self-damage
+//   • GRAVECINDER — purge / sacrifice / card-value route
+// ============================================================================
+
+{
+  id: "hexspark_impkin",
+  name: "Hexspark Impkin",
+  image: "hexspark_impkin.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3
+  },
+
+  ally: {
+    trade: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Drink the Flame",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 4,
+          selfDamage: 1
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "bloodhorn_pactbeast",
+        label: "Bind It With Blood"
+      },
+      {
+        into: "gravecinder_familiar",
+        label: "Teach It the Grave-Rite"
+      }
+    ],
+
+    destination: "discard",
+    chooseTitle: "The Familiar Demands a Name",
+    choosePrompt:
+      "Choose whether the Hexspark becomes a living weapon or a devourer of discarded power."
+  },
+
+  text:
+    "Gain 3 Combat and 1 Heat.",
+
+  allyText:
+    "Gain 1 Trade.",
+
+  heatText:
+    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 4, choose one of two evolutions.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Bloodhorn Pactbeast or Gravecinder Familiar.",
+
+  flavor:
+    "Every apprentice is given one. Every master bears the scars of having done so."
+},
+
+
+// --------------------------------------------------------------------------
+// RED ROUTE A — BLOODHORN
+// --------------------------------------------------------------------------
+
+{
+  id: "bloodhorn_pactbeast",
+  name: "Bloodhorn Pactbeast",
+  image: "bloodhorn_pactbeast.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "hexspark_impkin",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 6,
+    selfDamage: 1
+  },
+
+  ally: {
+    combat: 3
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Break the Blood Seal",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 5,
+          selfDamage: 2
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "blood_crowned_calamity",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 6 Combat, take 1 Authority damage, and gain 1 Heat.",
+
+  allyText:
+    "Gain 3 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: gain 5 Combat and take 2 Authority damage. At Heat 4, evolve into Blood-Crowned Calamity.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Blood-Crowned Calamity in your discard pile.",
+
+  flavor:
+    "The pact was written around its neck. Eventually its neck became too large for the words."
+},
+
+
+{
+  id: "blood_crowned_calamity",
+  name: "Blood-Crowned Calamity",
+  image: "blood_crowned_calamity.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "bloodhorn_pactbeast",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 12,
+    selfDamage: 3
+  },
+
+  ally: {
+    combat: 4
+  },
+
+  sacrifice: {
+    combat: 8
+  },
+
+  text:
+    "Gain 12 Combat and take 3 Authority damage.",
+
+  allyText:
+    "Gain 4 additional Combat.",
+
+  sacrificeText:
+    "Sacrifice: Gain 8 Combat.",
+
+  flavor:
+    "The Covenant calls it a successful binding because technically it has not left the battlefield."
+},
+
+
+// --------------------------------------------------------------------------
+// RED ROUTE B — GRAVECINDER
+// --------------------------------------------------------------------------
+
+{
+  id: "gravecinder_familiar",
+  name: "Gravecinder Familiar",
+  image: "gravecinder_familiar.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "hexspark_impkin",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3,
+    scrapOwn: 1
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Chew the Ashes",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          combat: 3,
+          trade: 2
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "ashen_archive_fiend",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 3 Combat, 1 Purge, and 1 Heat.",
+
+  allyText:
+    "Draw 1 card.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Combat and 2 Trade. At Heat 4, evolve into Ashen Archive Fiend.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Ashen Archive Fiend in your discard pile.",
+
+  flavor:
+    "It does not eat corpses. It eats everything the corpse was supposed to remember."
+},
+
+
+{
+  id: "ashen_archive_fiend",
+  name: "Ashen Archive Fiend",
+  image: "ashen_archive_fiend.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "gravecinder_familiar",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 7,
+    scrapOwn: 2,
+    opponentDiscard: 1
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  sacrifice: {
+    draw: 2,
+    combat: 5
+  },
+
+  text:
+    "Gain 7 Combat and 2 Purge. The next enemy draws 1 fewer card.",
+
+  allyText:
+    "Draw 1 card.",
+
+  sacrificeText:
+    "Sacrifice: Draw 2 cards and gain 5 Combat.",
+
+  flavor:
+    "Libraries burn quietly around it, each lost word joining the thing beneath its skin."
+},
 
 
 // ==========================================================
