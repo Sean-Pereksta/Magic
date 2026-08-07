@@ -589,25 +589,686 @@ export const CARDS = Object.freeze([
   flavor:
     "A single roar from the Gorge-Crown is answered by a thousand smaller mouths."
 },
+  {
+  id: "quellix_glintling",
+  name: "Quellix Glintling",
+  image: "quellix_glintling.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2
+  },
+
+  ally: {
+    combat: 1,
+    stun: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Consume a Possibility",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          scrapMarket: 1
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "quellix_nullmaw_skimmer",
+        label: "Become a Nullmaw"
+      },
+      {
+        into: "quellix_archiveback_seer",
+        label: "Become an Archiveback"
+      }
+    ],
+
+    destination: "discard",
+
+    chooseTitle: "Quellix Divergence",
+
+    choosePrompt:
+      "Choose whether the Quellix learns to consume unrealized futures or feed upon discarded memories."
+  },
+
+  text:
+    "Gain 2 Trade and 1 Heat.",
+
+  allyText:
+    "Gain 1 Combat and 1 Disable.",
+
+  heatText:
+    "Spend 1 Heat: gain 1 Market Erase. At Heat 4, choose one of two evolutions.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Nullmaw Skimmer or Archiveback Seer and put the chosen form into your discard pile.",
+
+  flavor:
+    "Its stomach contains several things that almost existed."
+},
+
+
+// ============================================================================
+// QUELLIX ROUTE A — MARKET PREDATOR
+//
+// This route increasingly attacks the Trade Row.
+// ============================================================================
+
+{
+  id: "quellix_nullmaw_skimmer",
+  name: "Quellix Nullmaw Skimmer",
+  image: "quellix_nullmaw_skimmer.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "quellix_glintling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2,
+    scrapMarket: 1
+  },
+
+  ally: {
+    stun: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Erase the Opening",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          scrapMarket: 1,
+          combat: 2
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "eventide_market_eater",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 2 Trade, 1 Market Erase, and 1 Heat.",
+
+  allyText:
+    "Gain 1 Disable.",
+
+  heatText:
+    "Spend 1 Heat: gain 1 additional Market Erase and 2 Combat. At Heat 4, evolve into Eventide Market-Eater.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Eventide Market-Eater in your discard pile.",
+
+  flavor:
+    "Merchants notice it only after inventories begin developing impossible gaps."
+},
+
+
+{
+  id: "eventide_market_eater",
+  name: "Eventide Market-Eater",
+  image: "eventide_market_eater.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "quellix_nullmaw_skimmer",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 4,
+    combat: 4,
+    scrapMarket: 2
+  },
+
+  ally: {
+    opponentDiscard: 1
+  },
+
+  doubleAlly: {
+    stun: 1,
+    trade: 2
+  },
+
+  text:
+    "Gain 4 Trade, 4 Combat, and 2 Market Erase.",
+
+  allyText:
+    "The next enemy draws 1 fewer card.",
+
+  doubleAllyText:
+    "Gain 1 Disable and 2 Trade.",
+
+  flavor:
+    "Entire wars have ended because the weapon required to continue them ceased to have ever been for sale."
+},
+
+
+// ============================================================================
+// QUELLIX ROUTE B — MEMORY SCAVENGER
+//
+// Instead of destroying opportunities, this route retrieves old ones.
+// ============================================================================
+
+{
+  id: "quellix_archiveback_seer",
+  name: "Quellix Archiveback Seer",
+  image: "quellix_archiveback_seer.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "quellix_glintling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2,
+    reclaim: {
+      maxCost: 2
+    }
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Recall the Lost Pattern",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          trade: 2,
+          reclaim: {
+            maxCost: 2
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "paradox_archive_beast",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 2 Trade, Reclaim a cost 2 or less card, and gain 1 Heat.",
+
+  allyText:
+    "Draw 1 card.",
+
+  heatText:
+    "Spend 1 Heat: gain 2 Trade and Reclaim a cost 2 or less card. At Heat 4, evolve into Paradox Archive-Beast.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Paradox Archive-Beast in your discard pile.",
+
+  flavor:
+    "Patterns of dead machines swim beneath the glassy plates along its spine."
+},
+
+
+{
+  id: "paradox_archive_beast",
+  name: "Paradox Archive-Beast",
+  image: "paradox_archive_beast.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "quellix_archiveback_seer",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 4,
+
+    reclaim: {
+      maxCost: 4
+    }
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  doubleAlly: {
+    combat: 4
+  },
+
+  sacrifice: {
+    redeploy: {
+      maxCost: 3,
+      sacrificedThisTurn: true,
+      oncePerTurn: true
+    }
+  },
+
+  text:
+    "Gain 4 Trade and Reclaim a cost 4 or less card.",
+
+  allyText:
+    "Draw 1 card.",
+
+  doubleAllyText:
+    "Gain 4 Combat.",
+
+  sacrificeText:
+    "Sacrifice: Redeploy a card costing 3 or less that you sacrificed this turn.",
+
+  flavor:
+    "It cannot distinguish memory from matter, so eventually neither can reality."
+},
 
 
 
 
 // ============================================================================
-// YELLOW — XYTHE CONCORD
-// FAMILY: VEYLITH PRISMKIN
+// BLUE — AZURE ASCENDANCY
+// FAMILY: KEYSTONE KID
 //
-// THE CROSS-FACTION EVOLUTION FAMILY.
+// A strange little celestial mountain-goat creature with marble-like skin,
+// tiny metallic wings, and a glowing architectural rune embedded in its brow.
 //
-// This Xythe creature absorbs the metaphysical signature of other realms.
-// At Heat 4 it abandons Yellow entirely and can become:
-//   • BLUE — an angelic prism-beast
-//   • RED  — a sorcerous void predator
+// The Azure raise them inside fortress-monasteries.
 //
-// This means the same collectible starter can permanently evolve into
-// a completely different faction.
+// THEY DO NOT PRIMARILY HEAL OR FIGHT.
+//
+// They BUILD.
+//
+// ROUTE A:
+//   FOUNDATION PATH
+//   Keystone Kid → Rampart Ram → Living Citadel
+//
+//   Accelerates Expansion Base construction.
+//
+// ROUTE B:
+//   RESTORATION PATH
+//   Keystone Kid → Reliquary Hart → Basilica Worldhart
+//
+//   Repairs and recovers damaged/lost infrastructure.
+//
+// This creates a creature family whose evolution is valuable specifically
+// to construction-heavy decks.
 // ============================================================================
 
+{
+  id: "keystone_kid",
+  name: "Keystone Kid",
+  image: "keystone_kid.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    trade: 2
+  },
+
+  ally: {
+    shield: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Carry the Cornerstone",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "rampart_ram",
+        label: "Become a Rampart Ram"
+      },
+      {
+        into: "reliquary_hart",
+        label: "Become a Reliquary Hart"
+      }
+    ],
+
+    destination: "discard",
+
+    chooseTitle: "Architectural Ascension",
+
+    choosePrompt:
+      "Choose whether the creature becomes a living builder of fortresses or a guardian that restores what has fallen."
+  },
+
+  text:
+    "Gain 2 Trade and 1 Heat.",
+
+  allyText:
+    "Gain 1 Shield.",
+
+  heatText:
+    "Spend 1 Heat: remove 1 Construction from an Expansion Base. At Heat 4, choose one of two evolutions.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Rampart Ram or Reliquary Hart.",
+
+  flavor:
+    "The masons insist the creature understands blueprints. The creature insists the blueprints understand it."
+},
+
+
+// ============================================================================
+// KEYSTONE ROUTE A — FOUNDATION
+//
+// Construction acceleration.
+// ============================================================================
+
+{
+  id: "rampart_ram",
+  name: "Rampart Ram",
+  image: "rampart_ram.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "keystone_kid",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    trade: 2,
+
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  ally: {
+    trade: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Raise the Walls",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          advanceConstruction: {
+            amount: 2
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "living_citadel_behemoth",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 2 Trade, remove 1 Construction from an Expansion Base, and gain 1 Heat.",
+
+  allyText:
+    "Gain 1 Trade.",
+
+  heatText:
+    "Spend 1 Heat: remove 2 Construction from an Expansion Base. At Heat 4, evolve into Living Citadel Behemoth.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Living Citadel Behemoth in your discard pile.",
+
+  flavor:
+    "Where its hooves strike stone, foundations begin arranging themselves."
+},
+
+
+{
+  id: "living_citadel_behemoth",
+  name: "Living Citadel Behemoth",
+  image: "living_citadel_behemoth.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "rampart_ram",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    trade: 3,
+
+    advanceConstruction: {
+      amount: 2
+    },
+
+    repair: {
+      amount: 3
+    }
+  },
+
+  ally: {
+    shield: 3
+  },
+
+  doubleAlly: {
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  text:
+    "Gain 3 Trade, remove 2 Construction from an Expansion Base, and repair an Expansion Base for 3.",
+
+  allyText:
+    "Gain 3 Shield.",
+
+  doubleAllyText:
+    "Remove 1 additional Construction from an Expansion Base.",
+
+  flavor:
+    "Siege crews occasionally discover that the fortress approaching them has legs."
+},
+
+
+// ============================================================================
+// KEYSTONE ROUTE B — RESTORATION
+//
+// Repairs structures and retrieves useful support pieces.
+// ============================================================================
+
+{
+  id: "reliquary_hart",
+  name: "Reliquary Hart",
+  image: "reliquary_hart.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "keystone_kid",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    repair: {
+      amount: 4
+    }
+  },
+
+  ally: {
+    reclaim: {
+      ids: [
+        "worker",
+        "interceptor",
+        "acolyte"
+      ]
+    }
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Consecrate the Ruins",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          repair: {
+            amount: 5
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "basilica_worldhart",
+    destination: "discard"
+  },
+
+  text:
+    "Repair an Expansion Base for 4 and gain 1 Heat.",
+
+  allyText:
+    "Reclaim a Worker, Interceptor, or Acolyte.",
+
+  heatText:
+    "Spend 1 Heat: repair an Expansion Base for 5. At Heat 4, evolve into Basilica Worldhart.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Basilica Worldhart in your discard pile.",
+
+  flavor:
+    "Flowers appear in the footprints it leaves across shattered battlements."
+},
+
+
+{
+  id: "basilica_worldhart",
+  name: "Basilica Worldhart",
+  image: "basilica_worldhart.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "reliquary_hart",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    repair: {
+      amount: 7
+    },
+
+    reclaim: {
+      ids: [
+        "worker",
+        "interceptor",
+        "acolyte"
+      ]
+    }
+  },
+
+  ally: {
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  doubleAlly: {
+    draw: 1
+  },
+
+  sacrifice: {
+    repair: {
+      amount: 8
+    }
+  },
+
+  text:
+    "Repair an Expansion Base for 7 and Reclaim a Worker, Interceptor, or Acolyte.",
+
+  allyText:
+    "Remove 1 Construction from an Expansion Base.",
+
+  doubleAllyText:
+    "Draw 1 card.",
+
+  sacrificeText:
+    "Sacrifice: Repair an Expansion Base for 8.",
+
+  flavor:
+    "The oldest monasteries claim they were not constructed. They were places where a Worldhart finally chose to sleep."
+},
 {
   id: "veylith_prismkin",
   name: "Veylith Prismkin",
