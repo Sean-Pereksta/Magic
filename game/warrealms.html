@@ -2224,8 +2224,8 @@
     "Reclaim": "Reclaim moves an eligible exact card instance from the discard or sacrifice history into your hand.",
     "Redeploy": "Redeploy immediately resolves an eligible discarded card, then places that exact card instance on the bottom of your draw pile.",
     "Armor": "Armor protects a base before its Defense or persistent Health. Temporary Armor normally expires at the start of its owner's next turn.",
-    "Repair": "Repair restores an Expansion Base's persistent Health without exceeding its current maximum Health.",
-    "Construction": "Expansion Bases enter with Construction counters, lose one at the start of later turns, and cannot use completed abilities until Construction reaches zero.",
+    "Repair": "Repair restores an Expansion Base's persistent Health without exceeding the Health currently available from its Construction progress.",
+    "Construction": "Expansion Bases enter with Construction counters and only 1/X of their completed Health, where X is their Construction time. Each Construction step raises their available Health by another 1/X, and completed abilities unlock at zero Construction.",
     "Expansion Base": "An Expansion Base keeps damage between turns, can be repaired, begins under Construction, and normally holds two Attachments.",
     "Attachment": "An Attachment stays connected to a selected base. If that base leaves play, its Attachments go to discard.",
     "Token": "A Token is a real unique card instance created inside the match. It moves through deck zones normally, counts for its faction, and cannot be bought in the Armory."
@@ -2889,14 +2889,39 @@
     return Math.max(1, Math.floor(Number(card.health) || 1) + baseAttachmentModifier(player, baseEntry, "expansionHealth"));
   }
 
+  function expansionConstructionHealthCap(card, baseEntry, finalMaxHealth) {
+    const finalMax = Math.max(1, Math.floor(Number(finalMaxHealth) || Number(card?.health) || 1));
+    const total = Math.max(0, Math.floor(Number(card?.construction) || 0));
+    if (!isExpansionBase(card) || total <= 0) return finalMax;
+
+    const remaining = Math.max(0, Math.min(total, Math.floor(Number(baseEntry?.constructionRemaining) || 0)));
+    if (remaining <= 0) return finalMax;
+
+    // A newly deployed Expansion Base begins at 1/X of its completed Health.
+    // Each Construction step increases the usable Health ceiling by another 1/X.
+    const builtSteps = Math.max(1, Math.min(total, total - remaining + 1));
+    return Math.max(1, Math.min(finalMax, Math.floor((finalMax * builtSteps) / total)));
+  }
+
+  function effectiveExpansionHealthCap(player, baseEntry) {
+    const card = getCard(baseEntry);
+    if (!isExpansionBase(card)) return 0;
+    return expansionConstructionHealthCap(card, baseEntry, effectiveExpansionMaxHealth(player, baseEntry));
+  }
+
   function syncExpansionHealth(player, baseEntry, grantAddedHealth = false) {
     const card = getCard(baseEntry);
     if (!isExpansionBase(card)) return;
     const previousMax = Math.max(1, Number(baseEntry.maxHealth) || Number(card.health) || 1);
+    const previousCap = expansionConstructionHealthCap(card, baseEntry, previousMax);
     const nextMax = effectiveExpansionMaxHealth(player, baseEntry);
+    const nextCap = expansionConstructionHealthCap(card, baseEntry, nextMax);
     baseEntry.maxHealth = nextMax;
-    if (grantAddedHealth && nextMax > previousMax) baseEntry.currentHealth = Math.min(nextMax, Math.max(1, Number(baseEntry.currentHealth) || previousMax) + (nextMax - previousMax));
-    else baseEntry.currentHealth = Math.max(1, Math.min(nextMax, Number(baseEntry.currentHealth) || nextMax));
+    if (grantAddedHealth && nextCap > previousCap) {
+      baseEntry.currentHealth = Math.min(nextCap, Math.max(1, Number(baseEntry.currentHealth) || previousCap) + (nextCap - previousCap));
+    } else {
+      baseEntry.currentHealth = Math.max(1, Math.min(nextCap, Number(baseEntry.currentHealth) || nextCap));
+    }
   }
 
   function resetBaseForDiscard(entry) {
@@ -2909,8 +2934,8 @@
     reset.deployedTurnSerial = 0;
     if (isExpansionBase(card)) {
       reset.maxHealth = Math.max(1, Number(card.health) || 1);
-      reset.currentHealth = reset.maxHealth;
       reset.constructionRemaining = Math.max(0, Math.floor(Number(card.construction) || 0));
+      reset.currentHealth = expansionConstructionHealthCap(card, reset, reset.maxHealth);
     }
     return reset;
   }
@@ -2936,13 +2961,13 @@
     // Construction/Repair abilities from being spent on completed or full-health bases.
     if (mode === "repair") {
       for (const entry of targets) syncExpansionHealth(player, entry);
-      targets = targets.filter(entry => (entry.currentHealth || 0) < (entry.maxHealth || 0));
+      targets = targets.filter(entry => (entry.currentHealth || 0) < effectiveExpansionHealthCap(player, entry));
     } else if (mode === "construction") {
       targets = targets.filter(entry => {
         if ((entry.constructionRemaining || 0) > 0) return true;
         if (!config.repairFallback) return false;
         syncExpansionHealth(player, entry);
-        return (entry.currentHealth || 0) < (entry.maxHealth || 0);
+        return (entry.currentHealth || 0) < effectiveExpansionHealthCap(player, entry);
       });
     }
 
@@ -2974,14 +2999,21 @@
     if (mode === "repair") {
       syncExpansionHealth(player, entry);
       const before = entry.currentHealth;
-      entry.currentHealth = Math.min(entry.maxHealth, entry.currentHealth + amount);
+      const healthCap = effectiveExpansionHealthCap(player, entry);
+      entry.currentHealth = Math.min(healthCap, entry.currentHealth + amount);
       addLog(game, `${getCard(entry)?.name || "Expansion Base"} repaired ${entry.currentHealth - before} Health.`);
       return entry.currentHealth > before;
     }
     if (mode === "construction") {
       if (entry.constructionRemaining <= 0 && config.repairFallback) return applyBaseModification(game, player, entry, "repair", { amount: config.repairFallback }, context);
+      syncExpansionHealth(player, entry);
       const before = entry.constructionRemaining;
+      const healthCapBefore = effectiveExpansionHealthCap(player, entry);
       entry.constructionRemaining = Math.max(0, before - amount);
+      const healthCapAfter = effectiveExpansionHealthCap(player, entry);
+      if (healthCapAfter > healthCapBefore) {
+        entry.currentHealth = Math.min(healthCapAfter, Math.max(1, Number(entry.currentHealth) || 1) + (healthCapAfter - healthCapBefore));
+      }
       if (before > 0 && entry.constructionRemaining === 0) {
         pushVisualEvent(game, "construction-complete", { actorId: player.id, targetId: player.id, cardId: entry.id, instanceId: entry.instanceId });
         addLog(game, `${player.name} completed ${getCard(entry)?.name || "an Expansion Base"}.`);
@@ -6662,8 +6694,8 @@
           entry.chargeUsedTurn = 0;
           if (isExpansionBase(card)) {
             entry.maxHealth = Math.max(1, Number(card.health) || 1);
-            entry.currentHealth = entry.maxHealth;
-            entry.constructionRemaining = Math.max(0, Number(card.construction) || 0);
+            entry.constructionRemaining = Math.max(0, Math.floor(Number(card.construction) || 0));
+            entry.currentHealth = expansionConstructionHealthCap(card, entry, entry.maxHealth);
           }
         }
         const zone = card.type === "base" ? "bases" : card.type === "attachment" ? "attachments" : "played";
@@ -7739,7 +7771,7 @@
         <p><b>Targeting:</b> Combat is stored in your Combat pool. Choose exactly which attackable base or enemy realm receives it. Bases require Combat equal to their Defense and are destroyed immediately. Attacking a realm spends all remaining Combat.</p>
         <p><b>Persistent systems:</b> Every battle card now has a stable instance identity. Heat follows that exact ship through hand, play, discard, Reclaim, Redeploy, reshuffle, save, and reconnection. Charges remain on each deployed base until it leaves play. The turn panel tracks Sacrifice Count plus faction cards played and currently owned.</p>
         <p><b>New playstyles:</b> Heat ships build toward optional or automatic Overloads and can be cooled or vented. Charge Bases store trigger-driven counters behind a Base Abilities panel. Reclaim returns a discarded instance to hand; Redeploy resolves it immediately and then bottom-decks it. Real Token cards can be generated, sacrificed, merged, searched, and counted for faction density.</p>
-        <p><b>Attachments and construction:</b> Normal Bases hold one Attachment and Expansion Bases normally hold two. Expansion Bases retain damage between turns, begin with Construction counters, and unlock their completed abilities at zero Construction. Armor absorbs base damage first, while Repair restores persistent Health. Destroying or sacrificing an attached base also sends its Attachments to discard.</p>
+        <p><b>Attachments and construction:</b> Normal Bases hold one Attachment and Expansion Bases normally hold two. Expansion Bases retain damage between turns and begin at 1/X of their completed Health, where X is their Construction time. Each Construction step raises that Health ceiling by another 1/X until the base is fully built; damage already taken remains missing. Completed abilities unlock at zero Construction. Armor absorbs base damage first, while Repair restores persistent Health only up to the base's current construction Health ceiling. Destroying or sacrificing an attached base also sends its Attachments to discard.</p>
         <p><b>Forced discard:</b> A discard effect queues cards for the next affected turn. After that player draws, they must select the required number of highlighted hand cards and move them to discard before playing, buying, attacking, or ending the turn. The requirement is capped by the cards actually in hand, so an empty hand always resolves it.</p>
         <p><b>Additional abilities:</b> <b>Lifelink</b> heals for combat damage actually dealt; <b>Destroy Base</b> removes a legal target; <b>Shield</b> protects Authority; <b>Damage All</b> hits every rival; and faction scaling can use cards played this turn, currently owned, or acquired during the match.</p>
         <p><b>Red Purge:</b> Purge permanently removes a selected card from your hand, draw pile, or discard pile for the rest of the match. This is the defining strength of the Umbral Covenant.</p>
