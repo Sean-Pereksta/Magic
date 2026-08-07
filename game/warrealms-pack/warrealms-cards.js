@@ -470,7 +470,721 @@ export const CARDS = Object.freeze([
 // --------------------------------------------------------------------------
 // GREEN ROUTE B — BROODBACK
 // --------------------------------------------------------------------------
+{
+  id: "cinderwisp_hatchling",
+  name: "Cinderwisp Hatchling",
+  image: "cinderwisp_hatchling.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "◒",
 
+  effect: {
+    combat: 2,
+    trade: 1
+  },
+
+  ally: {
+    combat: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Feed on Warmth",
+        cost: 1,
+        oncePerTurn: true,
+        effect: {
+          coolHeat: {
+            amount: 1,
+            ifChangedEffect: {
+              combat: 3
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "furnace_leech",
+        label: "Become a Furnace-Leech"
+      },
+      {
+        into: "ember_shepherd",
+        label: "Become an Ember-Shepherd"
+      }
+    ],
+
+    destination: "discard",
+
+    chooseTitle: "Instinct of the Cinderwisp",
+
+    choosePrompt:
+      "Choose whether it learns to consume dangerous Heat or spread it throughout the Covenant."
+  },
+
+  text:
+    "Gain 2 Combat, 1 Trade, and 1 Heat.",
+
+  allyText:
+    "Gain 1 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: remove 1 Heat from one of your ships. If Heat was removed, gain 3 Combat. At Heat 4, choose an evolution.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Furnace-Leech or Ember-Shepherd.",
+
+  flavor:
+    "It curls beside overheated reactors the way ordinary animals curl beside fires."
+},
+
+
+// ============================================================================
+// CINDERWISP ROUTE A — DEVOUR HEAT
+// ============================================================================
+
+{
+  id: "furnace_leech",
+  name: "Furnace-Leech",
+  image: "furnace_leech.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "cinderwisp_hatchling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3,
+
+    harvestHeat: {
+      target: "friendlyShip",
+      min: 1,
+      max: 3,
+
+      effectPerHeat: {
+        combat: 2
+      },
+
+      effectCap: {
+        combat: 6
+      }
+    }
+  },
+
+  ally: {
+    trade: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Drain the Core",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          coolHeat: {
+            amount: 2,
+            ifChangedEffect: {
+              combat: 3
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "pyremaw_heat_eater",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 3 Combat and 1 Heat. Choose one of your ships with Heat and remove up to 3 Heat from it; gain 2 Combat for each Heat removed, up to 6.",
+
+  allyText:
+    "Gain 2 Trade.",
+
+  heatText:
+    "Spend 1 Heat: remove up to 2 Heat from one of your ships. If any was removed, gain 3 Combat. At Heat 4, evolve.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Pyre-Maw Heat-Eater.",
+
+  flavor:
+    "Its jaws never close around flesh. They close around temperature."
+},
+
+
+{
+  id: "pyremaw_heat_eater",
+  name: "Pyre-Maw Heat-Eater",
+  image: "pyremaw_heat_eater.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "furnace_leech",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 5,
+
+    harvestHeat: {
+      target: "friendlyShip",
+      min: 1,
+      max: "all",
+
+      effectPerHeat: {
+        combat: 2
+      },
+
+      effectCap: {
+        combat: 10
+      },
+
+      thresholds: [
+        {
+          removedAtLeast: 3,
+          effect: {
+            draw: 1
+          }
+        }
+      ]
+    }
+  },
+
+  ally: {
+    combat: 3
+  },
+
+  doubleAlly: {
+    trade: 3
+  },
+
+  text:
+    "Gain 5 Combat. Remove any amount of Heat from one friendly ship and gain 2 Combat per Heat removed, up to 10 additional Combat. If you remove at least 3 Heat, draw 1 card.",
+
+  allyText:
+    "Gain 3 additional Combat.",
+
+  doubleAllyText:
+    "Gain 3 Trade.",
+
+  flavor:
+    "Reactor crews cheer when it arrives. Enemy crews learn why shortly afterward."
+},
+
+
+// ============================================================================
+// CINDERWISP ROUTE B — SPREAD HEAT
+//
+// Instead of cooling your Heat cards, this deliberately accelerates them.
+//
+// Very useful for:
+//   • Heat Transform creatures
+//   • Overload cards
+//   • Heat thresholds
+//
+// But potentially dangerous.
+// ============================================================================
+
+{
+  id: "ember_shepherd",
+  name: "Ember-Shepherd",
+  image: "ember_shepherd.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "cinderwisp_hatchling",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3,
+
+    addHeat: {
+      amount: 1,
+      target: "friendlyHeatShip"
+    }
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Whip the Flames",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          addHeat: {
+            amount: 1,
+            target: "friendlyHeatShip"
+          },
+
+          combat: 2
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "wildfire_brood_sovereign",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 3 Combat, add 1 Heat to another friendly Heat ship, and gain 1 Heat.",
+
+  allyText:
+    "Gain 2 additional Combat.",
+
+  heatText:
+    "Spend 1 Heat: add 1 Heat to a friendly Heat ship and gain 2 Combat. At Heat 4, evolve.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Wildfire Brood-Sovereign.",
+
+  flavor:
+    "Where the Shepherd crawls, every warning gauge begins leaning toward red."
+},
+
+
+{
+  id: "wildfire_brood_sovereign",
+  name: "Wildfire Brood-Sovereign",
+  image: "wildfire_brood_sovereign.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "ember_shepherd",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 7,
+
+    addHeat: {
+      amount: 1,
+      target: "friendlyHeatShip",
+      targets: 2
+    }
+  },
+
+  ally: {
+    combat: 3
+  },
+
+  doubleAlly: {
+    draw: 1
+  },
+
+  text:
+    "Gain 7 Combat. Add 1 Heat to each of up to two friendly Heat ships.",
+
+  allyText:
+    "Gain 3 additional Combat.",
+
+  doubleAllyText:
+    "Draw 1 card.",
+
+  flavor:
+    "It does not breathe fire. It convinces everything nearby that it was already burning."
+},
+
+
+
+
+// ============================================================================
+// YELLOW — XYTHE CONCORD
+// FAMILY: CHRONOTICK
+//
+// A tiny four-legged insectoid alien with a circular crystalline shell.
+// It seems to react several seconds BEFORE things actually happen.
+//
+// This family revolves around PLAY ORDER and DECK ORDER.
+//
+// ROUTE A — ORACLE
+//
+//   Chronotick
+//       ↓
+//   Tomorrow-Shell
+//       ↓
+//   Thousand-Future Oracle
+//
+// Manipulates what you will draw next.
+//
+//
+// ROUTE B — ECHO PREDATOR
+//
+//   Chronotick
+//       ↓
+//   Afterimage Stalker
+//       ↓
+//   Recursive Apex
+//
+// Becomes stronger based on the card played immediately before it.
+//
+// ============================================================================
+
+{
+  id: "chronotick_nymph",
+  name: "Chronotick Nymph",
+  image: "chronotick_nymph.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 1,
+
+    peekTop: {
+      count: 1,
+      mayBottom: true
+    }
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Delay the Future",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          peekTop: {
+            count: 2,
+            mayBottom: true
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+
+    choose: [
+      {
+        into: "tomorrow_shell",
+        label: "Become a Tomorrow-Shell"
+      },
+      {
+        into: "afterimage_stalker",
+        label: "Become an Afterimage Stalker"
+      }
+    ],
+
+    destination: "discard",
+
+    chooseTitle: "Temporal Specialization",
+
+    choosePrompt:
+      "Choose whether the Chronotick learns to predict future draws or imitate events that have already occurred."
+  },
+
+  text:
+    "Gain 1 Trade, look at the top card of your deck and you may put it on the bottom, then gain 1 Heat.",
+
+  allyText:
+    "Gain 2 Combat.",
+
+  heatText:
+    "Spend 1 Heat: look at the top 2 cards of your deck and manipulate the future. At Heat 4, choose an evolution.",
+
+  transformText:
+    "Evolution — At Heat 4, choose Tomorrow-Shell or Afterimage Stalker.",
+
+  flavor:
+    "Its handlers discovered that it begins eating several seconds before food is presented."
+},
+
+
+// ============================================================================
+// CHRONOTICK ROUTE A — FUTURE ORACLE
+// ============================================================================
+
+{
+  id: "tomorrow_shell",
+  name: "Tomorrow-Shell",
+  image: "tomorrow_shell.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "chronotick_nymph",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2,
+
+    peekTop: {
+      count: 2,
+      mayBottom: true
+    }
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Reject This Future",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          peekTop: {
+            count: 3,
+            mayBottom: true
+          }
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "thousand_future_oracle",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 2 Trade, inspect the top 2 cards of your deck, and gain 1 Heat.",
+
+  allyText:
+    "Draw 1 card.",
+
+  heatText:
+    "Spend 1 Heat: inspect the top 3 cards and send unwanted futures to the bottom. At Heat 4, evolve.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Thousand-Future Oracle.",
+
+  flavor:
+    "Each plate on its shell reflects a tomorrow that has not yet been rejected."
+},
+
+
+{
+  id: "thousand_future_oracle",
+  name: "Thousand-Future Oracle",
+  image: "thousand_future_oracle.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "tomorrow_shell",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 3,
+    draw: 1,
+
+    peekTop: {
+      count: 3,
+      mayBottom: true
+    }
+  },
+
+  ally: {
+    stun: 1
+  },
+
+  doubleAlly: {
+    draw: 1
+  },
+
+  text:
+    "Gain 3 Trade, draw 1 card, then inspect the top 3 cards of your deck and reject unwanted futures.",
+
+  allyText:
+    "Gain 1 Disable.",
+
+  doubleAllyText:
+    "Draw 1 additional card.",
+
+  flavor:
+    "It has witnessed every possible defeat and simply refuses to walk toward any of them."
+},
+
+
+// ============================================================================
+// CHRONOTICK ROUTE B — ECHO PREDATOR
+//
+// This creature cares about SEQUENCING.
+//
+// Rather than simply producing resources itself,
+// it becomes whatever sort of threat you played immediately before it.
+// ============================================================================
+
+{
+  id: "afterimage_stalker",
+  name: "Afterimage Stalker",
+  image: "afterimage_stalker.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "chronotick_nymph",
+  cost: 7,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 2
+  },
+
+  echo: {
+    maximumCopiedCombat: 5
+  },
+
+  ally: {
+    trade: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    actions: [
+      {
+        label: "Preserve the Afterimage",
+        cost: 1,
+        oncePerTurn: true,
+
+        effect: {
+          combat: 3
+        }
+      }
+    ]
+  },
+
+  transform: {
+    trigger: "heat",
+    required: 4,
+    into: "recursive_apex",
+    destination: "discard"
+  },
+
+  text:
+    "Gain 2 Combat and 1 Heat. Echo the Primary Combat of the ship played immediately before this, up to 5 Combat.",
+
+  echoText:
+    "Echo — Copy the previous ship's Primary Combat, to a maximum of 5.",
+
+  allyText:
+    "Gain 2 Trade.",
+
+  heatText:
+    "Spend 1 Heat: gain 3 Combat. At Heat 4, evolve into Recursive Apex.",
+
+  transformText:
+    "Final Evolution — At Heat 4, transform into Recursive Apex.",
+
+  flavor:
+    "The first beast attacks. The Stalker remembers the attack more accurately than the beast does."
+},
+
+
+{
+  id: "recursive_apex",
+  name: "Recursive Apex",
+  image: "recursive_apex.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "afterimage_stalker",
+  cost: 11,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 4
+  },
+
+  echo: {
+    maximumCopiedCombat: 8
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  doubleAlly: {
+    trade: 3
+  },
+
+  text:
+    "Gain 4 Combat. Echo the Primary Combat of the ship played immediately before this, up to 8 Combat.",
+
+  echoText:
+    "Perfect Echo — Copy up to 8 Primary Combat from the previous ship.",
+
+  allyText:
+    "Draw 1 card.",
+
+  doubleAllyText:
+    "Gain 3 Trade.",
+
+  flavor:
+    "By the time it reaches maturity, there is no meaningful distinction between an event and its reflection."
+},
 {
   id: "grukkin_broodback_ravager",
   name: "Grukkin Broodback Ravager",
