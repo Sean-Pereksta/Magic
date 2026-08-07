@@ -7864,6 +7864,2072 @@ export const CARDS = Object.freeze([
     flavor: "It leads by feeding whatever follows."
   },
   {
+  id: "probability_lens_array",
+  name: "Probability Lens Array",
+  image: "probability_lens_array.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 35,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    startOfTurn: {
+      peekTop: 1
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. At the start of your turn, inspect the top card of your deck.",
+
+  flavor:
+    "The machine never predicts the future. It simply rejects the futures it dislikes."
+},
+
+{
+  id: "nullfield_projector",
+  name: "Nullfield Projector",
+  image: "nullfield_projector.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    action: {
+      label: "Project Nullfield",
+      oncePerTurn: true,
+      effect: {
+        stun: 1
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, gain 1 Disable.",
+
+  flavor:
+    "Inside its radius, engines remember every reason they should stop."
+},
+
+{
+  id: "recursive_drone_hangar",
+  name: "Recursive Drone Hangar",
+  image: "recursive_drone_hangar.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    everyTurns: 2,
+    recurring: {
+      createToken: {
+        id: "drone",
+        count: 1,
+        zone: "hand"
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Every second turn, create a Drone in your hand.",
+
+  flavor:
+    "Each finished machine immediately begins assembling its successor."
+},
+
+{
+  id: "causal_accelerator",
+  name: "Causal Accelerator",
+  image: "causal_accelerator.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    expansionOnly: true,
+
+    onAttach: {
+      advanceConstruction: {
+        amount: 1,
+        attachedBase: true
+      }
+    },
+
+    action: {
+      label: "Accelerate Construction",
+      oncePerTurn: true,
+      effect: {
+        advanceConstruction: {
+          amount: 1,
+          attachedBase: true
+        }
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Remove 1 Construction immediately. Once per turn, remove 1 additional Construction from this base.",
+
+  flavor:
+    "The final tower is already standing. The workers are merely persuading history to catch up."
+},
+
+{
+  id: "market_refraction_spire",
+  name: "Market Refraction Spire",
+  image: "market_refraction_spire.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    action: {
+      label: "Refract Market",
+      oncePerTurn: true,
+      effect: {
+        scrapMarket: 1
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, gain 1 Market Erase.",
+
+  flavor:
+    "Goods disappear from the market before merchants remember offering them."
+},
+
+{
+  id: "dimensional_anchor_grid",
+  name: "Dimensional Anchor Grid",
+  image: "dimensional_anchor_grid.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    defense: 2,
+    expansionHealth: 4
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +4 maximum and current Health.",
+
+  flavor:
+    "Destroying the fortress becomes difficult once reality itself has agreed that it belongs there."
+},
+
+{
+  id: "paradox_relay",
+  name: "Paradox Relay",
+  image: "paradox_relay.png",
+  faction: "yellow",
+  cost: 6,
+  shop_cost: 110,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    expansionOnly: true,
+
+    action: {
+      label: "Borrow Tomorrow",
+      oncePerTurn: true,
+      effect: {
+        draw: 1,
+        selfDamage: 1
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Once per turn, take 1 Authority damage to draw 1 card.",
+
+  flavor:
+    "The debt is always collected yesterday."
+},
+
+{
+  id: "horizon_command_node",
+  name: "Horizon Command Node",
+  image: "horizon_command_node.png",
+  faction: "yellow",
+  cost: 7,
+  shop_cost: 125,
+  type: "attachment",
+  sigil: "◈",
+
+  attachment: {
+    expansionOnly: true,
+
+    startOfTurn: {
+      trade: 1,
+      createToken: {
+        id: "drone",
+        count: 1,
+        zone: "discard"
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. At the start of your turn, gain 1 Trade and create a Drone in your discard pile.",
+
+  flavor:
+    "A single thought here becomes an instruction everywhere."
+},
+
+
+// ============================================================================
+// BLUE — AZURE ASCENDANCY ATTACHMENTS
+// Defense / recovery / authority / protection
+// ============================================================================
+
+{
+  id: "sanctified_bulkhead",
+  name: "Sanctified Bulkhead",
+  image: "sanctified_bulkhead.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 35,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    defense: 3,
+    expansionHealth: 4
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. A normal base gains +3 Defense; an Expansion Base gains +4 maximum and current Health.",
+
+  flavor:
+    "Every plate bears the name of someone who survived behind another."
+},
+
+{
+  id: "restoration_chapel",
+  name: "Restoration Chapel",
+  image: "restoration_chapel.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    expansionOnly: true,
+
+    startOfTurn: {
+      repair: {
+        amount: 2,
+        attachedBase: true
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. At the start of your turn, repair this base for 2.",
+
+  flavor:
+    "Stone is taught the same doctrine as soldiers: rise again."
+},
+
+{
+  id: "interceptor_launch_rail",
+  name: "Interceptor Launch Rail",
+  image: "interceptor_launch_rail.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    everyTurns: 2,
+    recurring: {
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "hand"
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Every second turn, create an Interceptor in hand.",
+
+  flavor:
+    "Pilots launch from the cathedral before the warning bell finishes ringing."
+},
+
+{
+  id: "pilgrims_aegis",
+  name: "Pilgrim's Aegis",
+  image: "pilgrims_aegis.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    startOfTurn: {
+      shield: 2
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. At the start of your turn, gain 2 Shield.",
+
+  flavor:
+    "Those who shelter beneath it claim the light becomes physically heavier."
+},
+
+{
+  id: "reliquary_repair_arm",
+  name: "Reliquary Repair Arm",
+  image: "reliquary_repair_arm.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    action: {
+      label: "Restore Structure",
+      oncePerTurn: true,
+      effect: {
+        repair: {
+          amount: 3
+        }
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, repair an Expansion Base for 3.",
+
+  flavor:
+    "It treats shattered masonry as a wound rather than a ruin."
+},
+
+{
+  id: "consecrated_shipyard",
+  name: "Consecrated Shipyard",
+  image: "consecrated_shipyard.png",
+  faction: "blue",
+  cost: 6,
+  shop_cost: 110,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    expansionOnly: true,
+
+    everyTurns: 3,
+
+    recurring: {
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "hand"
+      },
+      heal: 2
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Every third turn, gain 2 Authority and create an Interceptor in hand.",
+
+  flavor:
+    "Every vessel leaves the yard already blessed for a battle nobody has named."
+},
+
+{
+  id: "oathbound_armor_matrix",
+  name: "Oathbound Armor Matrix",
+  image: "oathbound_armor_matrix.png",
+  faction: "blue",
+  cost: 6,
+  shop_cost: 110,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    action: {
+      label: "Invoke the Oath",
+      oncePerTurn: true,
+      effect: {
+        armor: {
+          amount: 2,
+          all: true
+        }
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, give all your bases 2 temporary Armor.",
+
+  flavor:
+    "One fortress speaks the vow. Every wall answers."
+},
+
+{
+  id: "last_light_beacon",
+  name: "Last-Light Beacon",
+  image: "last_light_beacon.png",
+  faction: "blue",
+  cost: 7,
+  shop_cost: 125,
+  type: "attachment",
+  sigil: "✦",
+
+  attachment: {
+    expansionOnly: true,
+
+    startOfTurn: {
+      heal: 2,
+      shield: 2
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. At the start of your turn, gain 2 Authority and 2 Shield.",
+
+  flavor:
+    "If even one tower remains lit, the Ascendancy considers the realm unconquered."
+},
+
+
+// ============================================================================
+// GREEN — GORAK WARHOST ATTACHMENTS
+// Construction / Workers / brute-force infrastructure
+// ============================================================================
+
+{
+  id: "warhost_scaffolding",
+  name: "Warhost Scaffolding",
+  image: "warhost_scaffolding.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 25,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    expansionOnly: true,
+
+    onAttach: {
+      advanceConstruction: {
+        amount: 1,
+        attachedBase: true
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Immediately remove 1 Construction from it.",
+
+  flavor:
+    "Anything can become scaffolding if enough orcs are willing to stand on it."
+},
+
+{
+  id: "worker_barracks",
+  name: "Worker Barracks",
+  image: "worker_barracks.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    everyTurns: 2,
+
+    recurring: {
+      createToken: {
+        id: "worker",
+        count: 1,
+        zone: "hand"
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Every second turn, create a Worker in hand.",
+
+  flavor:
+    "The beds are never empty because the shift never truly ends."
+},
+
+{
+  id: "worldroot_crane",
+  name: "Worldroot Crane",
+  image: "worldroot_crane.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    expansionOnly: true,
+
+    onAttach: {
+      advanceConstruction: {
+        amount: 1,
+        attachedBase: true
+      }
+    },
+
+    everyTurns: 2,
+
+    recurring: {
+      advanceConstruction: {
+        amount: 1,
+        attachedBase: true
+      },
+      repairFallback: 3
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Remove 1 Construction immediately and every second turn. Once complete, repair it for 3 instead.",
+
+  flavor:
+    "Its roots pull stone upward faster than gravity can object."
+},
+
+{
+  id: "siege_foundry",
+  name: "Siege Foundry",
+  image: "siege_foundry.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    action: {
+      label: "Forge Siegeworks",
+      oncePerTurn: true,
+      effect: {
+        combat: 3
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, gain 3 Combat.",
+
+  flavor:
+    "A fortress is only a weapon that has decided not to move."
+},
+
+{
+  id: "industrial_overgrowth",
+  name: "Industrial Overgrowth",
+  image: "industrial_overgrowth.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    expansionHealth: 5,
+    defense: 2
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +5 maximum and current Health.",
+
+  flavor:
+    "The roots grow around the steel until neither remembers which one was reinforcement."
+},
+
+{
+  id: "labor_command_deck",
+  name: "Labor Command Deck",
+  image: "labor_command_deck.png",
+  faction: "green",
+  cost: 6,
+  shop_cost: 110,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    expansionOnly: true,
+
+    startOfTurn: {
+      createToken: {
+        id: "worker",
+        count: 1,
+        zone: "discard"
+      },
+      drawFromDrawPile: {
+        id: "worker",
+        count: 1,
+        look: 5
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. At the start of your turn, create a Worker in discard, then draw a Worker from the top 5 cards of your draw pile if one is there.",
+
+  flavor:
+    "Every unfinished wall is entered into the ledger as an emergency."
+},
+
+{
+  id: "colossal_lifting_rig",
+  name: "Colossal Lifting Rig",
+  image: "colossal_lifting_rig.png",
+  faction: "green",
+  cost: 7,
+  shop_cost: 125,
+  type: "attachment",
+  sigil: "⬢",
+
+  attachment: {
+    expansionOnly: true,
+
+    onAttach: {
+      advanceConstruction: {
+        amount: 2,
+        attachedBase: true
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Immediately remove 2 Construction.",
+
+  flavor:
+    "Mountains become building materials when the crane is taller than the mountain."
+},
+
+
+// ============================================================================
+// RED — UMBRAL COVENANT ATTACHMENTS
+// Sacrifice / dangerous engines / purge / offensive infrastructure
+// ============================================================================
+
+{
+  id: "blood_furnace",
+  name: "Blood Furnace",
+  image: "blood_furnace.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 35,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    action: {
+      label: "Feed the Furnace",
+      oncePerTurn: true,
+      effect: {
+        selfDamage: 1,
+        combat: 3
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, take 1 Authority damage to gain 3 Combat.",
+
+  flavor:
+    "It accepts every fuel except mercy."
+},
+
+{
+  id: "emberling_incubator",
+  name: "Emberling Incubator",
+  image: "emberling_incubator.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    everyTurns: 2,
+
+    recurring: {
+      createToken: {
+        id: "emberling",
+        count: 1,
+        zone: "hand"
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Every second turn, create an Emberling in hand.",
+
+  flavor:
+    "The chambers are designed to open from the inside."
+},
+
+{
+  id: "grave_reclamation_hook",
+  name: "Grave Reclamation Hook",
+  image: "grave_reclamation_hook.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    action: {
+      label: "Reclaim the Dead",
+      oncePerTurn: true,
+      effect: {
+        reclaim: {
+          types: ["attachment"]
+        }
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, Reclaim an Attachment from your discard pile.",
+
+  flavor:
+    "Nothing installed in the Covenant is permitted the luxury of remaining destroyed."
+},
+
+{
+  id: "soul_driven_crane",
+  name: "Soul-Driven Crane",
+  image: "soul_driven_crane.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 60,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    expansionOnly: true,
+
+    action: {
+      label: "Overdrive Construction",
+      oncePerTurn: true,
+      effect: {
+        selfDamage: 1,
+        advanceConstruction: {
+          amount: 1,
+          attachedBase: true
+        }
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. Once per turn, take 1 Authority damage to remove 1 Construction from this base.",
+
+  flavor:
+    "The dead do not tire. The architects call this efficiency."
+},
+
+{
+  id: "annihilation_turret",
+  name: "Annihilation Turret",
+  image: "annihilation_turret.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 110,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    action: {
+      label: "Fire Annihilation Turret",
+      oncePerTurn: true,
+      effect: {
+        combat: 5,
+        selfDamage: 2
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, take 2 Authority damage to gain 5 Combat.",
+
+  flavor:
+    "There is no recoil absorber. The architects considered pain cheaper."
+},
+
+{
+  id: "covenant_scrap_vault",
+  name: "Covenant Scrap Vault",
+  image: "covenant_scrap_vault.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 90,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    action: {
+      label: "Open the Scrap Vault",
+      oncePerTurn: true,
+      effect: {
+        scrapOwn: 1,
+        trade: 2
+      }
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach to a base. Once per turn, gain 1 Purge and 2 Trade.",
+
+  flavor:
+    "Every obsolete thing becomes either currency or kindling."
+},
+
+{
+  id: "black_sun_reactor",
+  name: "Black Sun Reactor",
+  image: "black_sun_reactor.png",
+  faction: "red",
+  cost: 7,
+  shop_cost: 125,
+  type: "attachment",
+  sigil: "◒",
+
+  attachment: {
+    expansionOnly: true,
+
+    startOfTurn: {
+      combat: 4,
+      selfDamage: 1
+    }
+  },
+
+  effect: {},
+
+  text:
+    "Attach only to an Expansion Base. At the start of your turn, gain 4 Combat and take 1 Authority damage.",
+
+  flavor:
+    "It powers a city with the energy produced by slowly deleting a star."
+},
+
+
+// ============================================================================
+// EXPANSION / CONSTRUCTION BASES — 15
+// ============================================================================
+
+
+// ============================================================================
+// YELLOW EXPANSION BASES
+// ============================================================================
+
+{
+  id: "chronosphere_assembly",
+  name: "Chronosphere Assembly",
+  image: "chronosphere_assembly.png",
+  faction: "yellow",
+  cost: 7,
+  shop_cost: 125,
+  type: "base",
+
+  expansion: true,
+  health: 18,
+  defense: 18,
+  construction: 3,
+  attachmentSlots: 2,
+
+  outpost: false,
+  sigil: "◈",
+
+  constructionEffect: {
+    trade: 1
+  },
+
+  effect: {
+    trade: 2,
+    stun: 1
+  },
+
+  text:
+    "Expansion Base — 18 Health, Construction 3, 2 Attachment slots. While building, gain 1 Trade each turn. When complete, gain 2 Trade and 1 Disable each turn.",
+
+  flavor:
+    "The construction schedule is measured in futures rather than days."
+},
+
+{
+  id: "many_mind_megacomplex",
+  name: "Many-Mind Megacomplex",
+  image: "many_mind_megacomplex.png",
+  faction: "yellow",
+  cost: 9,
+  shop_cost: 175,
+  type: "base",
+
+  expansion: true,
+  health: 24,
+  defense: 24,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "◈",
+
+  constructionEffect: {
+    peekTop: 1
+  },
+
+  effect: {
+    trade: 2
+  },
+
+  charge: {
+    trigger: "friendlyFactionPlayed",
+    faction: "yellow",
+    gain: 1,
+    max: 8,
+
+    actions: [
+      {
+        label: "Shared Calculation",
+        cost: 3,
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        label: "Consensus Future",
+        cost: 5,
+        effect: {
+          draw: 1
+        }
+      },
+      {
+        label: "Total Convergence",
+        cost: 8,
+        effect: {
+          draw: 1,
+          stun: 2
+        }
+      }
+    ]
+  },
+
+  text:
+    "Expansion Base — 24 Health, Construction 4, 3 Attachment slots. While building, inspect your top card each turn. When complete, gain 2 Trade and Charge from Yellow cards.",
+
+  chargeText:
+    "Spend 3: gain 2 Trade. Spend 5: draw 1. Spend 8: draw 1 and gain 2 Disable.",
+
+  flavor:
+    "Millions of minds occupy one structure and disagree only about which enemy should cease existing first."
+},
+
+{
+  id: "reality_lattice_citadel",
+  name: "Reality-Lattice Citadel",
+  image: "reality_lattice_citadel.png",
+  faction: "yellow",
+  cost: 10,
+  shop_cost: 200,
+  type: "base",
+
+  expansion: true,
+  health: 30,
+  defense: 30,
+  construction: 5,
+  attachmentSlots: 4,
+
+  outpost: true,
+  sigil: "◈",
+
+  constructionEffect: {
+    shield: 1
+  },
+
+  effect: {
+    trade: 2,
+    shield: 2
+  },
+
+  recurring: {
+    everyTurns: 3,
+    effect: {
+      opponentDiscard: 1
+    }
+  },
+
+  text:
+    "Expansion Outpost — 30 Health, Construction 5, 4 Attachment slots. While building, gain 1 Shield each turn. When complete, gain 2 Trade and 2 Shield each turn. Every third turn, the next enemy draws 1 fewer card.",
+
+  flavor:
+    "The fortress does not occupy territory. Territory is instructed to occupy the fortress."
+},
+
+{
+  id: "infinite_replication_yard",
+  name: "Infinite Replication Yard",
+  image: "infinite_replication_yard.png",
+  faction: "yellow",
+  cost: 8,
+  shop_cost: 150,
+  type: "base",
+
+  expansion: true,
+  health: 20,
+  defense: 20,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "◈",
+
+  constructionEffect: {
+    trade: 1
+  },
+
+  effect: {
+    createToken: {
+      id: "drone",
+      count: 1,
+      zone: "discard"
+    },
+    drawFromDrawPile: {
+      id: "drone",
+      count: 1,
+      look: 5
+    }
+  },
+
+  text:
+    "Expansion Base — 20 Health, Construction 4, 3 Attachment slots. While building, gain 1 Trade. When complete, create a Drone in discard each turn, then draw a Drone from your top 5 if one is there.",
+
+  flavor:
+    "Production ceased being a process when the factory learned to manufacture factories."
+},
+
+
+// ============================================================================
+// BLUE EXPANSION BASES
+// ============================================================================
+
+{
+  id: "bastion_of_seven_vows",
+  name: "Bastion of Seven Vows",
+  image: "bastion_of_seven_vows.png",
+  faction: "blue",
+  cost: 7,
+  shop_cost: 125,
+  type: "base",
+
+  expansion: true,
+  health: 24,
+  defense: 24,
+  construction: 3,
+  attachmentSlots: 2,
+
+  outpost: true,
+  sigil: "✦",
+
+  constructionEffect: {
+    shield: 1
+  },
+
+  effect: {
+    shield: 3
+  },
+
+  text:
+    "Expansion Outpost — 24 Health, Construction 3, 2 Attachment slots. While building, gain 1 Shield each turn. When complete, gain 3 Shield each turn.",
+
+  flavor:
+    "Seven vows hold the gates. Stone is merely there to make them visible."
+},
+
+{
+  id: "grand_recovery_basilica",
+  name: "Grand Recovery Basilica",
+  image: "grand_recovery_basilica.png",
+  faction: "blue",
+  cost: 8,
+  shop_cost: 150,
+  type: "base",
+
+  expansion: true,
+  health: 26,
+  defense: 26,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "✦",
+
+  constructionEffect: {
+    heal: 1
+  },
+
+  effect: {
+    heal: 2,
+    repair: {
+      amount: 2
+    }
+  },
+
+  text:
+    "Expansion Base — 26 Health, Construction 4, 3 Attachment slots. While building, gain 1 Authority each turn. When complete, gain 2 Authority and repair an Expansion Base for 2 each turn.",
+
+  flavor:
+    "Every ruined vessel returns here as evidence that restoration is stronger than destruction."
+},
+
+{
+  id: "skywall_fortress_monastery",
+  name: "Skywall Fortress-Monastery",
+  image: "skywall_fortress_monastery.png",
+  faction: "blue",
+  cost: 10,
+  shop_cost: 200,
+  type: "base",
+
+  expansion: true,
+  health: 32,
+  defense: 32,
+  construction: 5,
+  attachmentSlots: 4,
+
+  outpost: true,
+  sigil: "✦",
+
+  constructionEffect: {
+    shield: 2
+  },
+
+  effect: {
+    armor: {
+      amount: 1,
+      all: true
+    }
+  },
+
+  recurring: {
+    everyTurns: 2,
+    effect: {
+      createToken: {
+        id: "interceptor",
+        count: 1,
+        zone: "discard"
+      }
+    }
+  },
+
+  text:
+    "Expansion Outpost — 32 Health, Construction 5, 4 Attachment slots. While building, gain 2 Shield. When complete, give all bases 1 Armor each turn and create an Interceptor in discard every second turn.",
+
+  flavor:
+    "The monastery is large enough that entire squadrons take vows without ever touching the ground."
+},
+
+{
+  id: "sanctuary_of_returning_wings",
+  name: "Sanctuary of Returning Wings",
+  image: "sanctuary_of_returning_wings.png",
+  faction: "blue",
+  cost: 8,
+  shop_cost: 150,
+  type: "base",
+
+  expansion: true,
+  health: 22,
+  defense: 22,
+  construction: 4,
+  attachmentSlots: 2,
+
+  outpost: false,
+  sigil: "✦",
+
+  constructionEffect: {
+    heal: 1
+  },
+
+  effect: {
+    reclaim: {
+      ids: ["interceptor", "acolyte"]
+    }
+  },
+
+  text:
+    "Expansion Base — 22 Health, Construction 4, 2 Attachment slots. While building, gain 1 Authority. When complete, Reclaim an Interceptor or Acolyte each turn.",
+
+  flavor:
+    "Every road home ends beneath its towers."
+},
+
+
+// ============================================================================
+// GREEN EXPANSION BASES
+// ============================================================================
+
+{
+  id: "ironroot_construction_camp",
+  name: "Ironroot Construction Camp",
+  image: "ironroot_construction_camp.png",
+  faction: "green",
+  cost: 6,
+  shop_cost: 110,
+  type: "base",
+
+  expansion: true,
+  health: 20,
+  defense: 20,
+  construction: 3,
+  attachmentSlots: 2,
+
+  outpost: false,
+  sigil: "⬢",
+
+  constructionEffect: {
+    createToken: {
+      id: "worker",
+      count: 1,
+      zone: "discard"
+    }
+  },
+
+  effect: {
+    trade: 2
+  },
+
+  text:
+    "Expansion Base — 20 Health, Construction 3, 2 Attachment slots. While building, create a Worker in discard each turn. When complete, gain 2 Trade each turn.",
+
+  flavor:
+    "The workers built the camp, then the camp began building the workers."
+},
+
+{
+  id: "continental_siegeworks",
+  name: "Continental Siegeworks",
+  image: "continental_siegeworks.png",
+  faction: "green",
+  cost: 9,
+  shop_cost: 175,
+  type: "base",
+
+  expansion: true,
+  health: 28,
+  defense: 28,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "⬢",
+
+  constructionEffect: {
+    combat: 1
+  },
+
+  effect: {
+    combat: 5
+  },
+
+  charge: {
+    trigger: "cardSacrificed",
+    sacrificedId: "worker",
+    gain: 1,
+    max: 6,
+
+    actions: [
+      {
+        label: "Emergency Labor",
+        cost: 2,
+        effect: {
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      },
+      {
+        label: "Roll Out the Siege Engines",
+        cost: 6,
+        effect: {
+          combat: 8
+        }
+      }
+    ]
+  },
+
+  text:
+    "Expansion Base — 28 Health, Construction 4, 3 Attachment slots. While building, gain 1 Combat. When complete, gain 5 Combat. Sacrificed Workers add Charge.",
+
+  chargeText:
+    "Spend 2: remove 1 Construction. Spend 6: gain 8 Combat.",
+
+  flavor:
+    "The Warhost once built siege engines. Eventually it simply built the siege."
+},
+
+{
+  id: "worldroot_industrial_colossus",
+  name: "Worldroot Industrial Colossus",
+  image: "worldroot_industrial_colossus.png",
+  faction: "green",
+  cost: 10,
+  shop_cost: 200,
+  type: "base",
+
+  expansion: true,
+  health: 35,
+  defense: 35,
+  construction: 6,
+  attachmentSlots: 4,
+
+  outpost: true,
+  sigil: "⬢",
+
+  constructionEffect: {
+    trade: 1
+  },
+
+  effect: {
+    trade: 3,
+    createToken: {
+      id: "worker",
+      count: 1,
+      zone: "hand"
+    }
+  },
+
+  recurring: {
+    everyTurns: 3,
+    effect: {
+      combat: 6
+    }
+  },
+
+  text:
+    "Expansion Outpost — 35 Health, Construction 6, 4 Attachment slots. While building, gain 1 Trade. When complete, gain 3 Trade and create a Worker in hand each turn. Every third turn, gain 6 Combat.",
+
+  flavor:
+    "It is factory, fortress, quarry, barracks, and eventually the horizon."
+},
+
+{
+  id: "gorge_engineering_hive",
+  name: "Gorge Engineering Hive",
+  image: "gorge_engineering_hive.png",
+  faction: "green",
+  cost: 8,
+  shop_cost: 150,
+  type: "base",
+
+  expansion: true,
+  health: 25,
+  defense: 25,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "⬢",
+
+  constructionEffect: {
+    createToken: {
+      id: "spawn",
+      count: 1,
+      zone: "discard"
+    }
+  },
+
+  effect: {
+    createToken: {
+      id: "worker",
+      count: 1,
+      zone: "discard"
+    }
+  },
+
+  sacrificeThresholds: [
+    {
+      at: 1,
+      requiresSacrificedId: "spawn",
+      effect: {
+        combat: 2
+      }
+    },
+    {
+      at: 2,
+      requiresSacrificedId: "worker",
+      effect: {
+        trade: 2
+      }
+    }
+  ],
+
+  text:
+    "Expansion Base — 25 Health, Construction 4, 3 Attachment slots. While building, create a Spawn in discard. When complete, create a Worker in discard. Spawn and Worker sacrifices provide additional Combat and Trade.",
+
+  flavor:
+    "Half construction site, half breeding pit, entirely unacceptable to neighboring realms."
+},
+
+
+// ============================================================================
+// RED EXPANSION BASES
+// ============================================================================
+
+{
+  id: "ash_foundation_temple",
+  name: "Ash-Foundation Temple",
+  image: "ash_foundation_temple.png",
+  faction: "red",
+  cost: 7,
+  shop_cost: 125,
+  type: "base",
+
+  expansion: true,
+  health: 19,
+  defense: 19,
+  construction: 3,
+  attachmentSlots: 2,
+
+  outpost: false,
+  sigil: "◒",
+
+  constructionEffect: {
+    combat: 1
+  },
+
+  effect: {
+    combat: 3
+  },
+
+  text:
+    "Expansion Base — 19 Health, Construction 3, 2 Attachment slots. While building, gain 1 Combat each turn. When complete, gain 3 Combat each turn.",
+
+  flavor:
+    "Its cornerstone was once a throne. Nobody remembers whose."
+},
+
+{
+  id: "necropolis_engineworks",
+  name: "Necropolis Engineworks",
+  image: "necropolis_engineworks.png",
+  faction: "red",
+  cost: 9,
+  shop_cost: 175,
+  type: "base",
+
+  expansion: true,
+  health: 25,
+  defense: 25,
+  construction: 4,
+  attachmentSlots: 3,
+
+  outpost: false,
+  sigil: "◒",
+
+  constructionEffect: {
+    selfDamage: 1,
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  effect: {
+    combat: 4
+  },
+
+  sacrificeThresholds: [
+    {
+      at: 1,
+      effect: {
+        trade: 2
+      }
+    },
+    {
+      at: 2,
+      effect: {
+        combat: 3
+      }
+    },
+    {
+      at: 3,
+      effect: {
+        draw: 1
+      }
+    }
+  ],
+
+  text:
+    "Expansion Base — 25 Health, Construction 4, 3 Attachment slots. While building, take 1 Authority damage and remove 1 additional Construction each turn. When complete, gain 4 Combat and reward repeated sacrifices.",
+
+  flavor:
+    "Its construction crews are listed in the payroll under Previous Casualties."
+},
+
+{
+  id: "black_star_weapon_foundry",
+  name: "Black-Star Weapon Foundry",
+  image: "black_star_weapon_foundry.png",
+  faction: "red",
+  cost: 10,
+  shop_cost: 200,
+  type: "base",
+
+  expansion: true,
+  health: 28,
+  defense: 28,
+  construction: 5,
+  attachmentSlots: 4,
+
+  outpost: true,
+  sigil: "◒",
+
+  constructionEffect: {
+    combat: 1,
+    selfDamage: 1
+  },
+
+  effect: {
+    combat: 6,
+    selfDamage: 1
+  },
+
+  charge: {
+    trigger: "cardSacrificed",
+    gain: 1,
+    max: 8,
+
+    actions: [
+      {
+        label: "Feed the Reactor",
+        cost: 3,
+        effect: {
+          combat: 4
+        }
+      },
+      {
+        label: "Black-Star Salvo",
+        cost: 8,
+        effect: {
+          combat: 10,
+          destroyBase: 1
+        }
+      }
+    ]
+  },
+
+  text:
+    "Expansion Outpost — 28 Health, Construction 5, 4 Attachment slots. While building, gain 1 Combat and take 1 damage. When complete, gain 6 Combat and take 1 damage each turn. Sacrifices add Charge.",
+
+  chargeText:
+    "Spend 3: gain 4 Combat. Spend 8: gain 10 Combat and Raze 1.",
+
+  flavor:
+    "The final weapon is not stored inside the foundry. The foundry is the weapon."
+},
+
+
+// ============================================================================
+// 10 CONSTRUCTION-RELATED CARDS
+// Various factions
+// ============================================================================
+
+
+// ============================================================================
+// YELLOW CONSTRUCTION SUPPORT
+// ============================================================================
+
+{
+  id: "temporal_site_engineer",
+  name: "Temporal Site Engineer",
+  image: "temporal_site_engineer.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    or: [
+      {
+        label: "Accelerate",
+        effect: {
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      },
+      {
+        label: "Fund the Project",
+        effect: {
+          trade: 2
+        }
+      }
+    ]
+  },
+
+  ally: {
+    stun: 1
+  },
+
+  text:
+    "Choose one: remove 1 Construction from an Expansion Base; or gain 2 Trade.",
+
+  allyText:
+    "Gain 1 Disable.",
+
+  flavor:
+    "A delayed project is simply moved into a timeline where it was already finished."
+},
+
+{
+  id: "architect_of_impossible_angles",
+  name: "Architect of Impossible Angles",
+  image: "architect_of_impossible_angles.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    advanceConstruction: {
+      amount: 1
+    },
+    trade: 2
+  },
+
+  ally: {
+    draw: 1
+  },
+
+  text:
+    "Gain 2 Trade and remove 1 Construction from an Expansion Base.",
+
+  allyText:
+    "Draw 1 card.",
+
+  flavor:
+    "The shortest distance between blueprint and fortress is rarely a straight line."
+},
+
+
+// ============================================================================
+// BLUE CONSTRUCTION SUPPORT
+// ============================================================================
+
+{
+  id: "sanctuary_mason",
+  name: "Sanctuary Mason",
+  image: "sanctuary_mason.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    or: [
+      {
+        label: "Build",
+        effect: {
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      },
+      {
+        label: "Restore",
+        effect: {
+          repair: {
+            amount: 3
+          }
+        }
+      }
+    ]
+  },
+
+  ally: {
+    shield: 2
+  },
+
+  text:
+    "Choose one: remove 1 Construction; or repair an Expansion Base for 3.",
+
+  allyText:
+    "Gain 2 Shield.",
+
+  flavor:
+    "The same hands raise new walls and mend the old ones."
+},
+
+{
+  id: "basilica_logistics_convoy",
+  name: "Basilica Logistics Convoy",
+  image: "basilica_logistics_convoy.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    trade: 2,
+    heal: 2,
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  ally: {
+    armor: {
+      amount: 2
+    }
+  },
+
+  text:
+    "Gain 2 Trade and 2 Authority, then remove 1 Construction from an Expansion Base.",
+
+  allyText:
+    "Give a base 2 temporary Armor.",
+
+  flavor:
+    "Stone, medicine, ammunition, prayer—the convoy considers all four building materials."
+},
+
+{
+  id: "fortress_vow_master",
+  name: "Fortress Vow-Master",
+  image: "fortress_vow_master.png",
+  faction: "blue",
+  cost: 6,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    shield: 3,
+    repair: {
+      amount: 3
+    }
+  },
+
+  doubleAlly: {
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  text:
+    "Gain 3 Shield and repair an Expansion Base for 3.",
+
+  doubleAllyText:
+    "Remove 1 Construction from an Expansion Base.",
+
+  flavor:
+    "A fortress survives first in the convictions of those rebuilding it."
+},
+
+
+// ============================================================================
+// GREEN CONSTRUCTION SUPPORT
+// ============================================================================
+
+{
+  id: "mega_project_foreman",
+  name: "Mega-Project Foreman",
+  image: "mega_project_foreman.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 60,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    trade: 2,
+    createToken: {
+      id: "worker",
+      count: 1,
+      zone: "discard"
+    }
+  },
+
+  ally: {
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  text:
+    "Gain 2 Trade and create a Worker in your discard pile.",
+
+  allyText:
+    "Remove 1 Construction from an Expansion Base.",
+
+  flavor:
+    "His schedules contain only two categories: finished and about to be finished."
+},
+
+{
+  id: "worldroot_architect",
+  name: "Worldroot Architect",
+  image: "worldroot_architect.png",
+  faction: "green",
+  cost: 6,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    advanceConstruction: {
+      amount: 2
+    }
+  },
+
+  ally: {
+    trade: 2
+  },
+
+  sacrifice: {
+    repair: {
+      amount: 5
+    }
+  },
+
+  text:
+    "Remove 2 Construction from an Expansion Base.",
+
+  allyText:
+    "Gain 2 Trade.",
+
+  sacrificeText:
+    "Sacrifice: Repair an Expansion Base for 5.",
+
+  flavor:
+    "He does not design buildings. He teaches landscapes what shape they will become."
+},
+
+{
+  id: "mobile_megaforge",
+  name: "Mobile Megaforge",
+  image: "mobile_megaforge.png",
+  faction: "green",
+  cost: 7,
+  shop_cost: 125,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 3,
+
+    or: [
+      {
+        label: "Raise the Walls",
+        effect: {
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      },
+      {
+        label: "Repair the Works",
+        effect: {
+          repair: {
+            amount: 4
+          }
+        }
+      },
+      {
+        label: "Produce Labor",
+        effect: {
+          createToken: {
+            id: "worker",
+            count: 1,
+            zone: "hand"
+          }
+        }
+      }
+    ]
+  },
+
+  doubleAlly: {
+    combat: 4
+  },
+
+  text:
+    "Gain 3 Combat. Choose one: remove 1 Construction; repair an Expansion Base for 4; or create a Worker in hand.",
+
+  doubleAllyText:
+    "Gain 4 additional Combat.",
+
+  flavor:
+    "The Warhost solved the problem of transporting factories by giving the factories engines."
+},
+
+
+// ============================================================================
+// RED CONSTRUCTION SUPPORT
+// ============================================================================
+
+{
+  id: "graveyard_contractors",
+  name: "Graveyard Contractors",
+  image: "graveyard_contractors.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 60,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 2,
+
+    or: [
+      {
+        label: "Paid in Blood",
+        effect: {
+          selfDamage: 1,
+          advanceConstruction: {
+            amount: 1
+          }
+        }
+      },
+      {
+        label: "Paid in Coin",
+        effect: {
+          trade: 2
+        }
+      }
+    ]
+  },
+
+  text:
+    "Gain 2 Combat. Choose one: take 1 Authority damage to remove 1 Construction; or gain 2 Trade.",
+
+  flavor:
+    "The Covenant discovered that the dead accept extremely competitive labor contracts."
+},
+
+{
+  id: "architect_of_ruin",
+  name: "Architect of Ruin",
+  image: "architect_of_ruin.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 4,
+    selfDamage: 1,
+    advanceConstruction: {
+      amount: 1
+    }
+  },
+
+  ally: {
+    scrapOwn: 1
+  },
+
+  sacrifice: {
+    advanceConstruction: {
+      amount: 2
+    }
+  },
+
+  text:
+    "Gain 4 Combat, take 1 Authority damage, and remove 1 Construction from an Expansion Base.",
+
+  allyText:
+    "Gain 1 Purge.",
+
+  sacrificeText:
+    "Sacrifice: Remove 2 Construction from an Expansion Base.",
+
+  flavor:
+    "The fastest way to build the future is to burn everything that would have occupied its foundation."
+},
+  {
     id: "ember_nest",
     name: "Ember Nest",
     image: "ember_nest.png",
