@@ -224,6 +224,953 @@ export const CARDS = Object.freeze([
   flavor: "His loyalty lasts exactly as long as the coin does."
 },
   {
+  id: "chaos_furnace_harlequin",
+  name: "Chaos-Furnace Harlequin",
+  image: "chaos_furnace_harlequin.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 1,
+        effect: {
+          trade: 2
+        }
+      },
+      {
+        at: 2,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          draw: 1
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          opponentDiscard: 1,
+          selfDamage: 1
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 3,
+      effect: {
+        combat: 8,
+        trade: 2
+      }
+    }
+  },
+
+  text:
+    "Gain 1 Combat and add 1 Heat to this card.",
+
+  heatText:
+    "Heat 1+: gain 2 Trade. Heat 2+: gain 2 additional Combat. Heat 3+: draw a card. Heat 4+: the next enemy draws 1 fewer card, but take 1 Authority damage. At Heat 5, automatically Overload: gain 8 additional Combat and 2 Trade, take 3 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "No two warning lights mean the same thing. The crew stopped asking why."
+},
+
+
+// ==========================================================
+// 2. RED — REDLINE EXECUTIONER
+// Huge repeated shots, followed by a brutal meltdown.
+// ==========================================================
+
+{
+  id: "redline_executioner",
+  name: "Redline Executioner",
+  image: "redline_executioner.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 5
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    scaling: {
+      effectPerHeat: {
+        combat: 1
+      }
+    },
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 5,
+      effect: {
+        combat: 8
+      }
+    }
+  },
+
+  text:
+    "Gain 5 Combat and add 1 Heat. Gain 1 additional Combat for each Heat currently on this card.",
+
+  heatText:
+    "At Heat 5, automatically Overload: gain 8 additional Combat, take 5 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "It was designed to survive one war. Nobody specified whose."
+},
+
+
+// ==========================================================
+// 3. RED — ASHEN CHAIN CANNON
+// Starts extremely hard and becomes suicidal very quickly.
+// ==========================================================
+
+{
+  id: "ashen_chain_cannon",
+  name: "Ashen Chain Cannon",
+  image: "ashen_chain_cannon.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 100,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 5
+  },
+
+  heat: {
+    gain: 1,
+    max: 4,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 3,
+          selfDamage: 1
+        }
+      }
+    ],
+
+    overload: {
+      at: 4,
+      optional: false,
+      reset: 0,
+      selfDamage: 5,
+      effect: {
+        combat: 9
+      }
+    }
+  },
+
+  text:
+    "Gain 5 Combat and add 1 Heat.",
+
+  heatText:
+    "At Heat 2+, gain 2 additional Combat. At Heat 3+, gain 3 additional Combat but take 1 Authority damage. At Heat 4, automatically Overload: gain 9 additional Combat, take 5 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "The fourth shot is technically still considered firing."
+},
+
+
+// ==========================================================
+// 4. RED — UNBOUND HELLKITE
+// A wild engine-beast that becomes harder to control.
+// ==========================================================
+
+{
+  id: "unbound_hellkite",
+  name: "Unbound Hellkite",
+  image: "unbound_hellkite.png",
+  faction: "red",
+  cost: 7,
+  shop_cost: 125,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 4
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combat: 4,
+          selfDamage: 2
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 10,
+      effect: {
+        combat: 10
+      }
+    }
+  },
+
+  text:
+    "Gain 4 Combat and add 1 Heat.",
+
+  heatText:
+    "At Heat 2+, gain 3 additional Combat. At Heat 4+, gain 4 additional Combat and take 2 Authority damage. At Heat 5, the Hellkite breaks loose: gain 10 additional Combat, take 6 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "The chains were never meant to hold it. They were meant to tell everyone when to run."
+},
+
+
+// ==========================================================
+// 5. GREEN — MAGMA-HIDE WARBEAST
+// Untamed Gorak creature.
+// Incredible pressure, but it tramples its own realm too.
+// ==========================================================
+
+{
+  id: "magma_hide_warbeast",
+  name: "Magma-Hide Warbeast",
+  image: "magma_hide_warbeast.png",
+  faction: "green",
+  cost: 6,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 4
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    scaling: {
+      effectPerHeat: {
+        combat: 1
+      }
+    },
+
+    thresholds: [
+      {
+        at: 4,
+        effect: {
+          selfDamage: 2
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 1,
+      selfDamage: 4,
+      effect: {
+        combat: 9
+      }
+    }
+  },
+
+  text:
+    "Gain 4 Combat and add 1 Heat. Gain 1 additional Combat for each Heat on this card.",
+
+  heatText:
+    "At Heat 4+, take 2 Authority damage when this card is played. At Heat 5, automatically Overload: gain 9 additional Combat, take 4 additional Authority damage, then reset to 1 Heat.",
+
+  flavor:
+    "The Warhost points it toward the enemy and simply accepts everything behind it as collateral."
+},
+
+
+// ==========================================================
+// 6. RED — THRICE-FIRED ABOMINATION
+// Three excellent volleys, then the price becomes horrifying.
+// ==========================================================
+
+{
+  id: "thrice_fired_abomination",
+  name: "Thrice-Fired Abomination",
+  image: "thrice_fired_abomination.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 115,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 6
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combat: 3,
+          selfDamage: 3
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 7,
+      effect: {
+        combat: 12
+      }
+    }
+  },
+
+  text:
+    "Gain 6 Combat and add 1 Heat.",
+
+  heatText:
+    "At Heat 2+, gain 2 additional Combat. At Heat 3+, gain 3 more. At Heat 4+, gain another 3 Combat but take 3 Authority damage. At Heat 5, automatically Overload: gain 12 additional Combat, take 7 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "The first shot wins battles. The fifth decides whether there is still a crew."
+},
+
+
+// ==========================================================
+// 7. RED — PYRE-GAMBLER CAPTAIN
+// Lets the player decide whether to vent or push the reactor.
+// ==========================================================
+
+{
+  id: "pyre_gambler_captain",
+  name: "Pyre-Gambler Captain",
+  image: "pyre_gambler_captain.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3,
+    trade: 1
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 3,
+        effect: {
+          combat: 3
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      or: [
+        {
+          id: "pyre_gambler_captain_vent",
+          label: "Vent the Core",
+          effect: {
+            shield: 4
+          },
+          resetTo: 0
+        },
+        {
+          id: "pyre_gambler_captain_push",
+          label: "Push Your Luck",
+          effect: {
+            combat: 10,
+            selfDamage: 4
+          },
+          resetTo: 2
+        }
+      ]
+    }
+  },
+
+  text:
+    "Gain 3 Combat, 1 Trade, and add 1 Heat. At Heat 3+, gain 3 additional Combat.",
+
+  heatText:
+    "Overload at Heat 5 — choose one: Vent the Core to gain 4 Shield and reset to 0 Heat; or Push Your Luck to gain 10 additional Combat, take 4 Authority damage, and reset to 2 Heat.",
+
+  flavor:
+    "A good captain knows the odds. A great captain ignores them."
+},
+
+
+// ==========================================================
+// 8. GREEN — RAMPAGING FURNACE TUSK
+// Wild beast. Strong against bases and increasingly reckless.
+// ==========================================================
+
+{
+  id: "rampaging_furnace_tusk",
+  name: "Rampaging Furnace-Tusk",
+  image: "rampaging_furnace_tusk.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 4
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combatAgainstBases: 3
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combatAgainstBases: 4,
+          selfDamage: 2
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 4,
+      effect: {
+        combatAgainstBases: 10
+      }
+    }
+  },
+
+  text:
+    "Gain 4 Combat and add 1 Heat.",
+
+  heatText:
+    "Heat 2+: gain 3 additional Combat against bases. Heat 3+: gain 2 additional Combat. Heat 4+: gain 4 more Combat against bases and take 2 Authority damage. Heat 5: gain 10 additional Combat against bases, take 4 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "It has never successfully distinguished a fortress from a horizon."
+},
+
+
+// ==========================================================
+// 9. YELLOW — FEVER-DREAM NAVIGATOR
+// Heat converted into increasingly strange utility.
+// ==========================================================
+
+{
+  id: "fever_dream_navigator",
+  name: "Fever-Dream Navigator",
+  image: "fever_dream_navigator.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 70,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          peekTop: {
+            count: 1,
+            mayBottom: true
+          }
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          draw: 1,
+          selfDamage: 1
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 1,
+      selfDamage: 2,
+      effect: {
+        trade: 3,
+        combat: 3
+      }
+    }
+  },
+
+  text:
+    "Gain 2 Trade and add 1 Heat.",
+
+  heatText:
+    "At Heat 2+, look at the top card of your deck and you may put it on the bottom. At Heat 3+, gain 2 Combat. At Heat 4+, draw a card and take 1 Authority damage. At Heat 5, gain 3 Trade and 3 Combat, take 2 Authority damage, then reset to 1 Heat.",
+
+  flavor:
+    "The hotter the engine burns, the more futures begin insisting that they are real."
+},
+
+
+// ==========================================================
+// 10. RED — BLOODBOIL ARTILLERIST
+// Heavy sustained fire where the owner starts paying life.
+// ==========================================================
+
+{
+  id: "bloodboil_artillerist",
+  name: "Bloodboil Artillerist",
+  image: "bloodboil_artillerist.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 4
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combat: 2
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 3,
+          selfDamage: 1
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combat: 4,
+          selfDamage: 2
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 5,
+      effect: {
+        combat: 8
+      }
+    }
+  },
+
+  text:
+    "Gain 4 Combat and add 1 Heat.",
+
+  heatText:
+    "Heat 2+: +2 Combat. Heat 3+: +3 Combat and take 1 Authority damage. Heat 4+: +4 Combat and take 2 Authority damage. Heat 5: +8 Combat, take 5 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "Eventually the ammunition runs out. The gunner is considered ammunition."
+},
+
+
+// ==========================================================
+// 11. RED — CINDER-DEBT ENGINE
+// Heat-powered economy that slowly consumes its owner.
+// ==========================================================
+
+{
+  id: "cinder_debt_engine",
+  name: "Cinder-Debt Engine",
+  image: "cinder_debt_engine.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 70,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    trade: 2
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          trade: 1
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          trade: 2,
+          selfDamage: 1
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combat: 4,
+          selfDamage: 1
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 3,
+      effect: {
+        draw: 1,
+        trade: 3
+      }
+    }
+  },
+
+  text:
+    "Gain 2 Trade and add 1 Heat.",
+
+  heatText:
+    "At Heat 2+, gain 1 Trade. At Heat 3+, gain 2 more Trade and take 1 Authority damage. At Heat 4+, gain 4 Combat and take 1 Authority damage. At Heat 5, draw a card and gain 3 Trade, take 3 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "The Covenant solved infinite growth by making tomorrow responsible for today's losses."
+},
+
+
+// ==========================================================
+// 12. RED — UNTAMED STAR-EATER
+// A genuinely dangerous wild card.
+// Massive offense but high Heat begins attacking its owner.
+// ==========================================================
+
+{
+  id: "untamed_star_eater",
+  name: "Untamed Star-Eater",
+  image: "untamed_star_eater.png",
+  faction: "red",
+  cost: 8,
+  shop_cost: 145,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 7
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 2,
+        effect: {
+          combat: 3
+        }
+      },
+      {
+        at: 3,
+        effect: {
+          combat: 4,
+          selfDamage: 2
+        }
+      },
+      {
+        at: 4,
+        effect: {
+          combat: 5,
+          selfDamage: 3
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 1,
+      selfDamage: 15,
+      effect: {
+        combat: 5
+      }
+    }
+  },
+
+  text:
+    "Gain 7 Combat and add 1 Heat.",
+
+  heatText:
+    "Heat 2+: +3 Combat. Heat 3+: +4 Combat and take 2 Authority damage. Heat 4+: +5 Combat and take 3 Authority damage. Heat 5: the Star-Eater goes feral — gain 15 additional Combat, take 8 Authority damage, then reset to 1 Heat.",
+
+  flavor:
+    "It does not fight for the Covenant. The Covenant merely releases it in the correct direction."
+},
+
+
+// ==========================================================
+// 13. RED — LAST-SHOT REACTOR
+// Can spend accumulated Heat instead of waiting for overload.
+// ==========================================================
+
+{
+  id: "last_shot_reactor",
+  name: "Last-Shot Reactor",
+  image: "last_shot_reactor.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3
+  },
+
+  heat: {
+    gain: 1,
+    max: 5,
+
+    thresholds: [
+      {
+        at: 3,
+        effect: {
+          combat: 2
+        }
+      }
+    ],
+
+    actions: [
+      {
+        label: "Bleed the Reactor",
+        cost: 2,
+        oncePerTurn: true,
+        effect: {
+          combat: 4
+        }
+      }
+    ],
+
+    overload: {
+      at: 5,
+      optional: false,
+      reset: 0,
+      selfDamage: 12,
+      effect: {
+        combat: 3
+      }
+    }
+  },
+
+  text:
+    "Gain 3 Combat and add 1 Heat. At Heat 3+, gain 2 additional Combat.",
+
+  heatText:
+    "Once per turn, remove 2 Heat from this card to gain 4 Combat. At Heat 5, automatically Overload: gain 9 additional Combat, take 4 Authority damage, then reset to 0 Heat.",
+
+  flavor:
+    "Every safety valve has been replaced by a trigger."
+},
+
+
+// ==========================================================
+// 14. BLUE — ABSOLUTE-ZERO ENGINEER
+// DEDICATED COOLING CARD #1
+// Strong single-target emergency cooling.
+// ==========================================================
+
+{
+  id: "absolute_zero_engineer",
+  name: "Absolute-Zero Engineer",
+  image: "absolute_zero_engineer.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 70,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    shield: 2,
+    coolHeat: {
+      amount: 3,
+      ifChangedEffect: {
+        heal: 2
+      }
+    }
+  },
+
+  ally: {
+    trade: 1
+  },
+
+  text:
+    "Gain 2 Shield. Remove up to 3 Heat from one of your ships. If any Heat was removed, gain 2 Authority.",
+
+  allyText:
+    "Gain 1 Trade.",
+
+  flavor:
+    "There is no reactor too angry to be reminded of winter."
+},
+
+
+// ==========================================================
+// 15. BLUE — TWIN-CORE COOLANT FRIGATE
+// DEDICATED COOLING CARD #2
+// Designed for decks running multiple Heat ships.
+// ==========================================================
+
+{
+  id: "twin_core_coolant_frigate",
+  name: "Twin-Core Coolant Frigate",
+  image: "twin_core_coolant_frigate.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    or: [
+      {
+        id: "twin_core_coolant_frigate_deep",
+        label: "Emergency Quench",
+        effect: {
+          coolHeat: {
+            amount: 4
+          }
+        }
+      },
+      {
+        id: "twin_core_coolant_frigate_split",
+        label: "Coolant Distribution",
+        effect: {
+          coolHeat: {
+            amount: 2,
+            targets: 2
+          }
+        }
+      },
+      {
+        id: "twin_core_coolant_frigate_pressure",
+        label: "Redirect Pressure",
+        effect: {
+          coolHeat: {
+            amount: 2,
+            ifChangedEffect: {
+              combat: 3,
+              shield: 2
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  text:
+    "Choose one: remove up to 4 Heat from one ship; remove up to 2 Heat from each of up to two ships; or remove up to 2 Heat from one ship and, if Heat was removed, gain 3 Combat and 2 Shield.",
+
+  flavor:
+    "When half the fleet is glowing red, its arrival is mistaken for divine intervention."
+},
+  {
     id: "dominion_relay",
     name: "Dominion Relay",
     image: "dominion_relay.png",
