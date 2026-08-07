@@ -7548,9 +7548,9 @@ export const CARDS = Object.freeze([
     shop_cost: 35,
     type: "attachment",
     sigil: "✦",
-    attachment: { defense: 2, expansionHealth: 3 },
+    attachment: { defense: 2, expansionHealth: 4 },
     effect: {},
-    text: "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +3 maximum and current Health.",
+    text: "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +4 maximum and current Health.",
     flavor: "Every impact teaches the plating how to survive the next."
   },
   {
@@ -7595,7 +7595,7 @@ export const CARDS = Object.freeze([
     shop_cost: 90,
     type: "attachment",
     sigil: "◒",
-    attachment: { action: { label: "Fire Void Cannon", oncePerTurn: true, effect: { selfDamage: 1, combat: 4 } } },
+    attachment: { action: { label: "Fire Void Cannon", oncePerTurn: true, effect: { selfDamage: 1, combat: 6 } } },
     effect: {},
     text: "Attach to a base. Once per turn, take 1 Authority damage to gain 4 Combat.",
     flavor: "The ammunition is absence. The recoil is paid in years."
@@ -7868,7 +7868,7 @@ export const CARDS = Object.freeze([
   name: "Probability Lens Array",
   image: "probability_lens_array.png",
   faction: "yellow",
-  cost: 3,
+  cost: 1,
   shop_cost: 35,
   type: "attachment",
   sigil: "◈",
@@ -7893,7 +7893,7 @@ export const CARDS = Object.freeze([
   name: "Nullfield Projector",
   image: "nullfield_projector.png",
   faction: "yellow",
-  cost: 4,
+  cost: 2,
   shop_cost: 60,
   type: "attachment",
   sigil: "◈",
@@ -7932,7 +7932,7 @@ export const CARDS = Object.freeze([
     recurring: {
       createToken: {
         id: "drone",
-        count: 1,
+        count: 2,
         zone: "hand"
       }
     }
@@ -7941,7 +7941,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Every second turn, create a Drone in your hand.",
+    "Attach to a base. Every second turn, create 2 Drones in your hand.",
 
   flavor:
     "Each finished machine immediately begins assembling its successor."
@@ -7952,7 +7952,7 @@ export const CARDS = Object.freeze([
   name: "Causal Accelerator",
   image: "causal_accelerator.png",
   faction: "yellow",
-  cost: 5,
+  cost: 3,
   shop_cost: 90,
   type: "attachment",
   sigil: "◈",
@@ -8003,7 +8003,7 @@ export const CARDS = Object.freeze([
       label: "Refract Market",
       oncePerTurn: true,
       effect: {
-        scrapMarket: 1
+        scrapMarket: 2
       }
     }
   },
@@ -8011,7 +8011,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Once per turn, gain 1 Market Erase.",
+    "Attach to a base. Once per turn, gain 2 Market Erase.",
 
   flavor:
     "Goods disappear from the market before merchants remember offering them."
@@ -8022,20 +8022,20 @@ export const CARDS = Object.freeze([
   name: "Dimensional Anchor Grid",
   image: "dimensional_anchor_grid.png",
   faction: "yellow",
-  cost: 4,
+  cost: 5,
   shop_cost: 60,
   type: "attachment",
   sigil: "◈",
 
   attachment: {
     defense: 2,
-    expansionHealth: 4
+    expansionHealth: 7
   },
 
   effect: {},
 
   text:
-    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +4 maximum and current Health.",
+    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +7 maximum and current Health.",
 
   flavor:
     "Destroying the fortress becomes difficult once reality itself has agreed that it belongs there."
@@ -8046,7 +8046,7 @@ export const CARDS = Object.freeze([
   name: "Paradox Relay",
   image: "paradox_relay.png",
   faction: "yellow",
-  cost: 6,
+  cost: 3,
   shop_cost: 110,
   type: "attachment",
   sigil: "◈",
@@ -8087,10 +8087,10 @@ export const CARDS = Object.freeze([
     expansionOnly: true,
 
     startOfTurn: {
-      trade: 1,
+      trade: 2,
       createToken: {
         id: "drone",
-        count: 1,
+        count: 2,
         zone: "discard"
       }
     }
@@ -8099,7 +8099,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach only to an Expansion Base. At the start of your turn, gain 1 Trade and create a Drone in your discard pile.",
+    "Attach only to an Expansion Base. At the start of your turn, gain 2 Trade and create 2 Drones in your discard pile.",
 
   flavor:
     "A single thought here becomes an instruction everywhere."
@@ -8116,20 +8116,20 @@ export const CARDS = Object.freeze([
   name: "Sanctified Bulkhead",
   image: "sanctified_bulkhead.png",
   faction: "blue",
-  cost: 3,
+  cost: 6,
   shop_cost: 35,
   type: "attachment",
   sigil: "✦",
 
   attachment: {
     defense: 3,
-    expansionHealth: 4
+    expansionHealth: 8
   },
 
   effect: {},
 
   text:
-    "Attach to a base. A normal base gains +3 Defense; an Expansion Base gains +4 maximum and current Health.",
+    "Attach to a base. A normal base gains +3 Defense; an Expansion Base gains +8 maximum and current Health.",
 
   flavor:
     "Every plate bears the name of someone who survived behind another."
@@ -8140,7 +8140,7 @@ export const CARDS = Object.freeze([
   name: "Restoration Chapel",
   image: "restoration_chapel.png",
   faction: "blue",
-  cost: 4,
+  cost: 3,
   shop_cost: 60,
   type: "attachment",
   sigil: "✦",
@@ -8150,7 +8150,7 @@ export const CARDS = Object.freeze([
 
     startOfTurn: {
       repair: {
-        amount: 2,
+        amount: 5,
         attachedBase: true
       }
     }
@@ -8159,7 +8159,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach only to an Expansion Base. At the start of your turn, repair this base for 2.",
+    "Attach only to an Expansion Base. At the start of your turn, repair this base for 5.",
 
   flavor:
     "Stone is taught the same doctrine as soldiers: rise again."
@@ -8180,7 +8180,7 @@ export const CARDS = Object.freeze([
     recurring: {
       createToken: {
         id: "interceptor",
-        count: 1,
+        count: 2,
         zone: "hand"
       }
     }
@@ -8189,7 +8189,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Every second turn, create an Interceptor in hand.",
+    "Attach to a base. Every second turn, create 2 Interceptors in hand.",
 
   flavor:
     "Pilots launch from the cathedral before the warning bell finishes ringing."
@@ -8207,14 +8207,14 @@ export const CARDS = Object.freeze([
 
   attachment: {
     startOfTurn: {
-      shield: 2
+      shield: 4
     }
   },
 
   effect: {},
 
   text:
-    "Attach to a base. At the start of your turn, gain 2 Shield.",
+    "Attach to a base. At the start of your turn, gain 4 Shield.",
 
   flavor:
     "Those who shelter beneath it claim the light becomes physically heavier."
@@ -8236,7 +8236,7 @@ export const CARDS = Object.freeze([
       oncePerTurn: true,
       effect: {
         repair: {
-          amount: 3
+          amount: 7
         }
       }
     }
@@ -8245,7 +8245,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Once per turn, repair an Expansion Base for 3.",
+    "Attach to a base. Once per turn, repair an Expansion Base for 7.",
 
   flavor:
     "It treats shattered masonry as a wound rather than a ruin."
@@ -8256,7 +8256,7 @@ export const CARDS = Object.freeze([
   name: "Consecrated Shipyard",
   image: "consecrated_shipyard.png",
   faction: "blue",
-  cost: 6,
+  cost: 2,
   shop_cost: 110,
   type: "attachment",
   sigil: "✦",
@@ -8290,7 +8290,7 @@ export const CARDS = Object.freeze([
   name: "Oathbound Armor Matrix",
   image: "oathbound_armor_matrix.png",
   faction: "blue",
-  cost: 6,
+  cost: 4,
   shop_cost: 110,
   type: "attachment",
   sigil: "✦",
@@ -8322,7 +8322,7 @@ export const CARDS = Object.freeze([
   name: "Last-Light Beacon",
   image: "last_light_beacon.png",
   faction: "blue",
-  cost: 7,
+  cost: 3,
   shop_cost: 125,
   type: "attachment",
   sigil: "✦",
@@ -8331,7 +8331,7 @@ export const CARDS = Object.freeze([
     expansionOnly: true,
 
     startOfTurn: {
-      heal: 2,
+      heal: 3,
       shield: 2
     }
   },
@@ -8356,7 +8356,7 @@ export const CARDS = Object.freeze([
   name: "Warhost Scaffolding",
   image: "warhost_scaffolding.png",
   faction: "green",
-  cost: 2,
+  cost: 1,
   shop_cost: 25,
   type: "attachment",
   sigil: "⬢",
@@ -8397,7 +8397,7 @@ export const CARDS = Object.freeze([
     recurring: {
       createToken: {
         id: "worker",
-        count: 1,
+        count: 2,
         zone: "hand"
       }
     }
@@ -8406,7 +8406,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Every second turn, create a Worker in hand.",
+    "Attach to a base. Every second turn, create 2 Workers in hand.",
 
   flavor:
     "The beds are never empty because the shift never truly ends."
@@ -8417,7 +8417,7 @@ export const CARDS = Object.freeze([
   name: "Worldroot Crane",
   image: "worldroot_crane.png",
   faction: "green",
-  cost: 5,
+  cost: 3,
   shop_cost: 90,
   type: "attachment",
   sigil: "⬢",
@@ -8467,7 +8467,7 @@ export const CARDS = Object.freeze([
       label: "Forge Siegeworks",
       oncePerTurn: true,
       effect: {
-        combat: 3
+        combat: 6
       }
     }
   },
@@ -8475,7 +8475,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Once per turn, gain 3 Combat.",
+    "Attach to a base. Once per turn, gain 6 Combat.",
 
   flavor:
     "A fortress is only a weapon that has decided not to move."
@@ -8492,14 +8492,14 @@ export const CARDS = Object.freeze([
   sigil: "⬢",
 
   attachment: {
-    expansionHealth: 5,
+    expansionHealth: 8,
     defense: 2
   },
 
   effect: {},
 
   text:
-    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +5 maximum and current Health.",
+    "Attach to a base. A normal base gains +2 Defense; an Expansion Base gains +8 maximum and current Health.",
 
   flavor:
     "The roots grow around the steel until neither remembers which one was reinforcement."
@@ -8510,7 +8510,7 @@ export const CARDS = Object.freeze([
   name: "Labor Command Deck",
   image: "labor_command_deck.png",
   faction: "green",
-  cost: 6,
+  cost: 4,
   shop_cost: 110,
   type: "attachment",
   sigil: "⬢",
@@ -8546,7 +8546,7 @@ export const CARDS = Object.freeze([
   name: "Colossal Lifting Rig",
   image: "colossal_lifting_rig.png",
   faction: "green",
-  cost: 7,
+  cost: 5,
   shop_cost: 125,
   type: "attachment",
   sigil: "⬢",
@@ -8593,7 +8593,7 @@ export const CARDS = Object.freeze([
       oncePerTurn: true,
       effect: {
         selfDamage: 1,
-        combat: 3
+        combat: 5
       }
     }
   },
@@ -8601,7 +8601,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Once per turn, take 1 Authority damage to gain 3 Combat.",
+    "Attach to a base. Once per turn, take 1 Authority damage to gain 5 Combat.",
 
   flavor:
     "It accepts every fuel except mercy."
@@ -8623,7 +8623,7 @@ export const CARDS = Object.freeze([
     recurring: {
       createToken: {
         id: "emberling",
-        count: 1,
+        count: 2,
         zone: "hand"
       }
     }
@@ -8632,7 +8632,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Every second turn, create an Emberling in hand.",
+    "Attach to a base. Every second turn, create 2 Emberlings in hand.",
 
   flavor:
     "The chambers are designed to open from the inside."
@@ -8674,7 +8674,7 @@ export const CARDS = Object.freeze([
   name: "Soul-Driven Crane",
   image: "soul_driven_crane.png",
   faction: "red",
-  cost: 4,
+  cost: w,
   shop_cost: 60,
   type: "attachment",
   sigil: "◒",
@@ -8719,7 +8719,7 @@ export const CARDS = Object.freeze([
       label: "Fire Annihilation Turret",
       oncePerTurn: true,
       effect: {
-        combat: 5,
+        combat: 9,
         selfDamage: 2
       }
     }
@@ -8728,7 +8728,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach to a base. Once per turn, take 2 Authority damage to gain 5 Combat.",
+    "Attach to a base. Once per turn, take 2 Authority damage to gain 9 Combat.",
 
   flavor:
     "There is no recoil absorber. The architects considered pain cheaper."
@@ -8769,7 +8769,7 @@ export const CARDS = Object.freeze([
   name: "Black Sun Reactor",
   image: "black_sun_reactor.png",
   faction: "red",
-  cost: 7,
+  cost: 5,
   shop_cost: 125,
   type: "attachment",
   sigil: "◒",
@@ -8778,7 +8778,7 @@ export const CARDS = Object.freeze([
     expansionOnly: true,
 
     startOfTurn: {
-      combat: 4,
+      combat: 6,
       selfDamage: 1
     }
   },
@@ -8786,7 +8786,7 @@ export const CARDS = Object.freeze([
   effect: {},
 
   text:
-    "Attach only to an Expansion Base. At the start of your turn, gain 4 Combat and take 1 Authority damage.",
+    "Attach only to an Expansion Base. At the start of your turn, gain 6 Combat and take 1 Authority damage.",
 
   flavor:
     "It powers a city with the energy produced by slowly deleting a star."
