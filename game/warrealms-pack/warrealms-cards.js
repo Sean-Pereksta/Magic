@@ -8674,7 +8674,7 @@ export const CARDS = Object.freeze([
   name: "Soul-Driven Crane",
   image: "soul_driven_crane.png",
   faction: "red",
-  cost: w,
+  cost: 2,
   shop_cost: 60,
   type: "attachment",
   sigil: "◒",
