@@ -2860,7 +2860,9 @@
 
   function attachmentCapacity(card) {
     if (!card || card.type !== "base") return 0;
-    return Math.max(1, Math.floor(Number(card.attachmentCapacity) || (isExpansionBase(card) ? 2 : 1)));
+    const configured = Number(card.attachmentSlots ?? card.attachmentCapacity);
+    if (Number.isFinite(configured)) return Math.max(0, Math.floor(configured));
+    return isExpansionBase(card) ? 2 : 1;
   }
 
   function legalAttachmentTargets(player, attachmentCard) {
@@ -2920,7 +2922,7 @@
     const attachments = attachedEntriesForBase(target, baseEntry.instanceId);
     target.attachments = (target.attachments || []).filter(entry => entry.attachedTo !== baseEntry.instanceId);
     target.discard.push(resetBaseForDiscard(baseEntry));
-    for (const attachment of attachments) target.discard.push(makeBattleEntry(attachment, target.id, { attachedTo: "", attachedTurnSerial: 0 }));
+    for (const attachment of attachments) target.discard.push(makeBattleEntry(attachment, target.id, { attachedTo: "", attachedTurnSerial: 0, turnsSurvived: 0, chargeUsedTurn: 0 }));
     pushVisualEvent(game, "card-destroy", { actorId: source.actorId || "", targetId: target.id, cardId: baseEntry.id, instanceId: baseEntry.instanceId, damage: source.damage || 0, method: source.method || "combat" });
     if (attachments.length) addLog(game, `${attachments.length} attachment${attachments.length === 1 ? "" : "s"} fell with ${getCard(baseEntry)?.name || "the base"}.`);
     return true;
@@ -2929,13 +2931,28 @@
   function queueBaseTargetChoice(game, player, config = {}, context = {}, mode = "armor") {
     let targets = (player.bases || []).filter(entry => mode === "armor" || isExpansionBase(getCard(entry)));
     if (config.attachedBase && context.attachedTo) targets = targets.filter(entry => entry.instanceId === context.attachedTo);
+
+    // Only offer targets that can actually receive the requested effect. This prevents
+    // Construction/Repair abilities from being spent on completed or full-health bases.
+    if (mode === "repair") {
+      for (const entry of targets) syncExpansionHealth(player, entry);
+      targets = targets.filter(entry => (entry.currentHealth || 0) < (entry.maxHealth || 0));
+    } else if (mode === "construction") {
+      targets = targets.filter(entry => {
+        if ((entry.constructionRemaining || 0) > 0) return true;
+        if (!config.repairFallback) return false;
+        syncExpansionHealth(player, entry);
+        return (entry.currentHealth || 0) < (entry.maxHealth || 0);
+      });
+    }
+
     if (config.all) {
       for (const entry of targets) applyBaseModification(game, player, entry, mode, config, context);
       return targets.length > 0;
     }
     if (targets.length === 1 && config.attachedBase) return applyBaseModification(game, player, targets[0], mode, config, context);
     const options = targets.map(entry => ({
-      label: `${getCard(entry)?.name || "Base"} · ${isExpansionBase(getCard(entry)) ? `${entry.currentHealth}/${entry.maxHealth} Health` : `${effectiveBaseDefense(player, entry)} Defense`}`,
+      label: `${getCard(entry)?.name || "Base"} · ${isExpansionBase(getCard(entry)) ? `${entry.currentHealth}/${entry.maxHealth} Health${mode === "construction" ? ` · ${entry.constructionRemaining || 0} Construction` : ""}` : `${effectiveBaseDefense(player, entry)} Defense`}`,
       effect: { __baseModify: { instanceId: entry.instanceId, mode, config: clone(config) } }
     }));
     if (!queueSpecialChoice(game, player, options, { ...context, source: mode })) {
@@ -3218,9 +3235,14 @@
     if (!card?.attachment || !legalAttachmentTargets(player, card).some(entry => entry.instanceId === baseEntry?.instanceId)) return false;
     attachmentEntry.attachedTo = baseEntry.instanceId;
     attachmentEntry.attachedTurnSerial = game.turnSerial;
+    attachmentEntry.turnsSurvived = 0;
     syncExpansionHealth(player, baseEntry, true);
     if (card.attachment.onAttach) applyEffect(game, player, card.attachment.onAttach, { cardId: card.id, instanceId: attachmentEntry.instanceId, attachedTo: baseEntry.instanceId, source: "attachment" });
     addLog(game, `${player.name} attached ${card.name} to ${getCard(baseEntry)?.name || "a base"}.`);
+
+    // The attachment is not an active faction permanent until its target choice resolves,
+    // so re-check Ally/Double Ally now that it is actually attached.
+    if (FACTIONS[card.faction] && card.faction !== "neutral") triggerFactionAllies(game, player, card.faction);
     return true;
   }
 
@@ -3236,6 +3258,10 @@
     if ((entry.armor || 0) > 0) badges.push(`<span class="persistentBadge armor">⬡ ${entry.armor}</span>`);
     if (isExpansionBase(card) && (entry.constructionRemaining || 0) > 0) badges.push(`<span class="persistentBadge construction">⚒ ${entry.constructionRemaining}</span>`);
     if (card.token) badges.push(`<span class="persistentBadge token">TOKEN</span>`);
+    if (card.type === "base") {
+      const owner = state?.players?.find(player => player.id === entry.ownerId);
+      badges.push(`<span class="persistentBadge attachment">⌁ ${attachedEntriesForBase(owner || {}, entry.instanceId).length}/${attachmentCapacity(card)}</span>`);
+    }
     if (card.type === "attachment") badges.push(`<span class="persistentBadge attachment">ATTACH</span>`);
     return `${card.heat ? `<span class="heatBadge">♨ ${Math.max(0, entry.heat || 0)}</span>` : ""}${chargeBadgeHtml(entry, card)}${badges.length ? `<span class="persistentBadgeRow">${badges.join("")}</span>` : ""}`;
   }
@@ -3393,10 +3419,14 @@
     const entry = player[zone].splice(index, 1)[0];
     const card = getCard(entry);
     if (!card) return false;
+    const detachedHostId = zone === "attachments" ? entry.attachedTo : "";
     if (zone === "bases") {
       const attachments = attachedEntriesForBase(player, entry.instanceId);
       player.attachments = player.attachments.filter(item => item.attachedTo !== entry.instanceId);
-      for (const attachment of attachments) player.discard.push(makeBattleEntry(attachment, player.id, { attachedTo: "" }));
+      for (const attachment of attachments) player.discard.push(makeBattleEntry(attachment, player.id, { attachedTo: "", attachedTurnSerial: 0, turnsSurvived: 0, chargeUsedTurn: 0 }));
+    } else if (detachedHostId) {
+      const hostBase = player.bases.find(base => base.instanceId === detachedHostId);
+      if (hostBase) syncExpansionHealth(player, hostBase);
     }
     game.scrapped.push({ ...entry, originalOwnerId: player.id, originalOwnerName: player.name, reason: "sacrifice-effect", sacrificedTurn: game.turnSerial });
     recordSacrifice(game, player, entry, card);
@@ -5531,7 +5561,7 @@
           ${card.graveEchoText ? `<div class="detailEffect"><b>${effectLabelHtml("Grave Echo")}:</b> ${linkEffectTerms(card.graveEchoText)}</div>` : ""}
           ${card.heatText ? `<div class="detailEffect"><b>${effectLabelHtml("Heat")}:</b> ${linkEffectTerms(card.heatText)}</div>` : ""}
           ${card.redeployText ? `<div class="detailEffect"><b>${effectLabelHtml("Redeploy")}:</b> ${linkEffectTerms(card.redeployText)}</div>` : ""}
-          ${instance ? `<div class="detailEffect"><b>Persistent instance:</b> ${card.heat ? `Heat ${instance.heat || 0}` : ""}${card.charge ? ` · Charges ${instance.charges || 0}/${card.charge.max || "∞"}` : ""}${isExpansionBase(card) ? ` · Health ${instance.currentHealth}/${instance.maxHealth} · Construction ${instance.constructionRemaining}` : ""}${instance.armor ? ` · Armor ${instance.armor}` : ""}${card.type === "attachment" && instance.attachedTo ? ` · Attached` : ""}</div>` : ""}
+          ${instance ? `<div class="detailEffect"><b>Persistent instance:</b> ${card.heat ? `Heat ${instance.heat || 0}` : ""}${card.charge ? ` · Charges ${instance.charges || 0}/${card.charge.max || "∞"}` : ""}${isExpansionBase(card) ? ` · Health ${instance.currentHealth}/${instance.maxHealth} · Construction ${instance.constructionRemaining}` : ""}${card.type === "base" ? ` · Attachments ${attachedEntriesForBase(state?.players?.find(player => player.id === instance.ownerId) || {}, instance.instanceId).length}/${attachmentCapacity(card)}` : ""}${instance.armor ? ` · Armor ${instance.armor}` : ""}${card.type === "attachment" && instance.attachedTo ? ` · Attached` : ""}</div>` : ""}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
         </div>
@@ -6741,11 +6771,15 @@
         const entry = actor[zone][index];
         const card = entry && CARD_MAP[entry.id];
         if (!card?.sacrifice) return "That card has no sacrifice ability.";
+        const detachedHostId = zone === "attachments" ? entry.attachedTo : "";
         actor[zone].splice(index, 1);
         if (zone === "bases") {
           const attachments = attachedEntriesForBase(actor, entry.instanceId);
           actor.attachments = actor.attachments.filter(item => item.attachedTo !== entry.instanceId);
-          for (const attachment of attachments) actor.discard.push(makeBattleEntry(attachment, actor.id, { attachedTo: "" }));
+          for (const attachment of attachments) actor.discard.push(makeBattleEntry(attachment, actor.id, { attachedTo: "", attachedTurnSerial: 0, turnsSurvived: 0, chargeUsedTurn: 0 }));
+        } else if (detachedHostId) {
+          const hostBase = actor.bases.find(base => base.instanceId === detachedHostId);
+          if (hostBase) syncExpansionHealth(actor, hostBase);
         }
         game.scrapped.push({ ...entry, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "sacrifice", sacrificedTurn: game.turnSerial });
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: card.id, target: "player", targetId: actor.id, reason: "sacrifice", instanceId: entry.instanceId });
@@ -6796,7 +6830,9 @@
         const entry = actor.attachments.find(item => item.instanceId === action.instanceId);
         const card = getCard(entry);
         const attachmentAction = card?.attachment?.action;
-        if (!entry || !attachmentAction || !entry.attachedTo) return "That Attachment ability is no longer available.";
+        const hostBase = entry?.attachedTo ? actor.bases.find(base => base.instanceId === entry.attachedTo) : null;
+        if (!entry || !attachmentAction || !hostBase) return "That Attachment ability is no longer available.";
+        if (hostBase.disabledTurn === game.turnSerial) return "That Attachment's base is disabled this turn.";
         if (attachmentAction.oncePerTurn && entry.chargeUsedTurn === game.turnSerial) return "That Attachment ability was already used this turn.";
         if (attachmentAction.oncePerTurn) entry.chargeUsedTurn = game.turnSerial;
         applyEffect(game, actor, attachmentAction.effect || {}, { cardId: card.id, instanceId: entry.instanceId, attachedTo: entry.attachedTo, source: "attachmentAction" });
@@ -7622,7 +7658,8 @@
       const action = attachmentCard?.attachment?.action;
       if (!action) return [];
       const used = action.oncePerTurn && attachment.chargeUsedTurn === state.turnSerial;
-      const reason = used ? "Already used this turn." : !canAct ? "Available only during your turn." : "";
+      const hostDisabled = entry.disabledTurn === state.turnSerial;
+      const reason = hostDisabled ? "Base is disabled this turn." : used ? "Already used this turn." : !canAct ? "Available only during your turn." : "";
       return [`<div class="baseAbilityRow ${reason ? "disabled" : ""}"><div><div class="baseAbilityName">${escapeHtml(attachmentCard.name)} · Attachment</div><div class="baseAbilityText">${escapeHtml(action.label || effectDisplaySummary(action.effect))}</div>${reason ? `<div class="baseAbilityReason">${escapeHtml(reason)}</div>` : ""}</div><button class="btn small warning" data-act="use-attachment" data-instance-id="${attachment.instanceId}" ${reason ? "disabled" : ""}>Activate</button></div>`];
     });
     openModal(`${card.name} Abilities`, `${entry.charges || 0}/${card.charge?.max || 0} Charges · ${attachedEntriesForBase(me, entry.instanceId).length}/${attachmentCapacity(card)} Attachments`, `<div class="baseAbilityList">${[...chargeRows, ...attachmentRows].join("") || '<div class="emptyZone">This base has no activatable abilities.</div>'}</div>`);
@@ -8126,7 +8163,8 @@
       const attachmentOptions = (bot.attachments || []).flatMap(entry => {
         const card = getCard(entry);
         const action = card?.attachment?.action;
-        if (!action || (action.oncePerTurn && entry.chargeUsedTurn === state.turnSerial)) return [];
+        const hostBase = bot.bases.find(base => base.instanceId === entry.attachedTo);
+        if (!action || !hostBase || hostBase.disabledTurn === state.turnSerial || (action.oncePerTurn && entry.chargeUsedTurn === state.turnSerial)) return [];
         return [{ type: "USE_ATTACHMENT", instanceId: entry.instanceId, score: effectAiValue(action.effect || {}) }];
       });
       const selected = [...heatOptions, ...attachmentOptions].sort((left, right) => right.score - left.score)[0];
