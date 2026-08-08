@@ -326,7 +326,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -512,7 +512,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -906,7 +906,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
