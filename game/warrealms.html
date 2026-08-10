@@ -1053,8 +1053,8 @@
     /* =========================================================
        ENEMY SNAPSHOT + SCROLLABLE ATTACK TARGET BOARD
        ========================================================= */
-    body.battleMode #battleView{height:calc(100dvh - 46px);overflow:hidden}
-    body.battleMode .battleShell{grid-template-rows:minmax(180px,1.28fr) auto minmax(150px,.82fr);overflow:hidden}
+    body.battleMode #battleView{height:calc(100dvh - 46px);overflow-x:auto;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+    body.battleMode .battleShell{height:auto;min-height:100%;grid-template-rows:minmax(153px,1.09fr) auto minmax(128px,.7fr);overflow:visible}
     .opponentBattlefield{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(190px,24%) minmax(0,1fr);gap:5px;overflow:hidden}
     body.battleMode .roundEarningsBar{min-height:27px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px;overflow:hidden}.battleStatusStrip{min-width:0;border:1px solid #344354;border-radius:8px;background:#101720;padding:4px 7px;display:flex;align-items:center;gap:7px;font-size:7px}.battleStatusStrip b{color:#f2f5f9}.battleStatusStrip span{color:#e5ca55;font-weight:900}.battleStatusStrip small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#778697}.battleStatusMarket{border:1px solid #3b4b5d;border-radius:8px;background:#121a23;padding:5px 8px;display:grid;place-items:center;color:#91a0af;font-size:6px;font-weight:950;white-space:nowrap}
     .enemySnapshotPanel,.attackTargetsPanel{min-width:0;min-height:0;border:1px solid #354354;border-radius:12px;background:linear-gradient(145deg,rgba(18,26,36,.98),rgba(8,13,19,.98));display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;box-shadow:inset 0 0 28px rgba(0,0,0,.18)}
@@ -1074,7 +1074,7 @@
     .targetOwnerGroup{--enemyAccent:var(--neutral);flex:0 0 auto;min-width:160px;min-height:100%;border:1px solid color-mix(in srgb,var(--enemyAccent) 30%,#303c49);border-radius:11px;background:linear-gradient(145deg,color-mix(in srgb,var(--enemyAccent) 4%,#101720),#080d13);padding:6px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px;transition:border-color .16s,box-shadow .16s,filter .16s}
     .targetOwnerGroup.ownerHighlighted{border-color:color-mix(in srgb,var(--enemyAccent) 76%,#fff);box-shadow:0 0 20px color-mix(in srgb,var(--enemyAccent) 28%,transparent);filter:brightness(1.07)}
     .targetOwnerHead{display:flex;align-items:center;gap:6px;min-height:25px}.targetOwnerHead b{font-family:var(--displayFont);font-size:8px}.targetOwnerHead span{margin-left:auto;color:#8897a7;font-size:6px}.targetCardGrid{display:flex;align-items:flex-start;gap:8px;min-width:max-content}
-    .targetCardGrid .gameCard{width:145px;flex:0 0 145px;align-self:flex-start;display:flex;flex-direction:column;border-radius:10px}
+    .targetCardGrid .gameCard{width:123px;flex:0 0 123px;align-self:flex-start;display:flex;flex-direction:column;border-radius:10px}
     .targetCardGrid .battleCardVisual{width:100%;height:auto;aspect-ratio:512/716;flex:0 0 auto}.targetCardGrid .battleCardVisual img{width:100%;height:100%;object-fit:contain}
     .targetCardGrid .cardAbilityRail{display:none}.targetCardGrid .gameCard .cardActions{min-height:31px;padding:3px}.targetCardGrid .gameCard .cardActions .btn{min-height:25px;padding:3px 5px;font-size:7px}
     .targetCardGrid .gameCard.attackable{border-color:#e26876;box-shadow:0 0 0 1px #f17d89,0 0 22px rgba(226,75,95,.42)}
@@ -1083,14 +1083,29 @@
     .targetStateBadge{position:absolute;z-index:18;left:5px;top:0;border:1px solid #546579;border-radius:999px;background:rgba(9,14,20,.96);padding:3px 6px;color:#aeb9c6;font-size:5.8px;font-weight:1000;letter-spacing:.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.4)}
     .targetBaseWrap.outpostTarget .targetStateBadge{border-color:#bc8d37;color:#f1d074}.targetBaseWrap.protectedTarget{opacity:.55}.targetBaseWrap.protectedTarget .targetStateBadge{border-color:#6f5f2e;color:#d7bd6d}.targetBaseWrap.insufficientTarget .targetStateBadge{border-color:#76404b;color:#df9ca7}
     .targetBaseWrap.inactiveTarget:not(.protectedTarget){opacity:.76;filter:saturate(.72)}
-    .playerTargetCard{width:145px;flex:0 0 145px;min-height:214px;border:1px solid #46586b;border-radius:10px;background:radial-gradient(circle at 50% 24%,color-mix(in srgb,var(--enemyAccent) 24%,transparent),transparent 48%),linear-gradient(155deg,#18222d,#080d13);padding:10px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;overflow:hidden}
+    .playerTargetCard{width:123px;flex:0 0 123px;min-height:182px;border:1px solid #46586b;border-radius:10px;background:radial-gradient(circle at 50% 24%,color-mix(in srgb,var(--enemyAccent) 24%,transparent),transparent 48%),linear-gradient(155deg,#18222d,#080d13);padding:8px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;overflow:hidden}
     .playerTargetCard.attackableTarget{border-color:#ed6878;box-shadow:0 0 0 1px rgba(255,131,145,.42),0 0 24px rgba(220,63,86,.4)}.playerTargetCard.protectedTarget{opacity:.58}.playerTargetCard.dead{opacity:.38;filter:grayscale(.8)}
-    .bossTargetSummary{min-height:238px;border-color:color-mix(in srgb,var(--enemyAccent) 68%,#d8c26c);background:radial-gradient(circle at 50% 28%,color-mix(in srgb,var(--enemyAccent) 31%,transparent),transparent 48%),linear-gradient(155deg,#211923,#080d13)}.bossTargetEyebrow{position:absolute;left:6px;right:6px;top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f1d475;font-size:5.5px;font-weight:1000;letter-spacing:.06em;text-transform:uppercase}.bossTargetAbility{margin-top:7px;border:1px solid color-mix(in srgb,var(--enemyAccent) 45%,#4a5868);border-radius:7px;background:rgba(7,12,18,.72);padding:5px;color:#c8d1dc;font-size:5.8px;line-height:1.45;font-weight:850}
-    .playerTargetSigil{width:66px;height:66px;margin:16px auto 10px;border:1px solid color-mix(in srgb,var(--enemyAccent) 65%,#fff);border-radius:50%;background:#080d13;display:grid;place-items:center;color:var(--enemyAccent);font-size:33px;text-shadow:0 0 18px color-mix(in srgb,var(--enemyAccent) 68%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--enemyAccent) 16%,transparent)}
+    .bossTargetSummary{min-height:202px;border-color:color-mix(in srgb,var(--enemyAccent) 68%,#d8c26c);background:radial-gradient(circle at 50% 28%,color-mix(in srgb,var(--enemyAccent) 31%,transparent),transparent 48%),linear-gradient(155deg,#211923,#080d13)}.bossTargetEyebrow{position:absolute;left:6px;right:6px;top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f1d475;font-size:5.5px;font-weight:1000;letter-spacing:.06em;text-transform:uppercase}.bossTargetAbility{margin-top:6px;border:1px solid color-mix(in srgb,var(--enemyAccent) 45%,#4a5868);border-radius:7px;background:rgba(7,12,18,.72);padding:4px;color:#c8d1dc;font-size:5.8px;line-height:1.4;font-weight:850}
+    .playerTargetSigil{width:56px;height:56px;margin:13px auto 8px;border:1px solid color-mix(in srgb,var(--enemyAccent) 65%,#fff);border-radius:50%;background:#080d13;display:grid;place-items:center;color:var(--enemyAccent);font-size:28px;text-shadow:0 0 18px color-mix(in srgb,var(--enemyAccent) 68%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--enemyAccent) 16%,transparent)}
     .playerTargetCard h3{width:100%;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--displayFont);font-size:11px}.playerTargetStats{margin-top:7px;color:#aeb9c6;font-size:7px;line-height:1.55}.playerTargetStats b{color:#ff9aaa}.playerTargetStatus{margin:7px 0;color:#e3c45a;font-size:6px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}.playerTargetCard .btn{width:100%;min-height:28px;margin-top:auto;padding:4px;font-size:7px}
     .bossTargetCard::before{content:"CAMPAIGN BOSS";position:absolute;z-index:15;left:7px;top:7px;border:1px solid #9d5161;border-radius:999px;background:rgba(48,13,22,.94);padding:3px 6px;color:#ffc0c8;font-size:5.5px;font-weight:1000;letter-spacing:.06em;pointer-events:none}
     .targetEmpty{width:min(430px,70vw);min-height:100%;display:grid;place-items:center;padding:20px;color:#657587;font-size:8px;text-align:center}
     body.battleMode .endTurnBtn{grid-column:1/-1;min-height:34px!important;border-color:#e36b78;background:linear-gradient(135deg,#a9344c,#641d30);box-shadow:0 0 14px rgba(214,63,87,.23);font-size:8px!important;letter-spacing:.06em}
+
+    /* Trim the top and bottom battlefield rows while preserving complete card art. */
+    body.battleMode .battlePanelHead{min-height:30px;padding:5px 7px}
+    body.battleMode .enemySnapshot{padding:6px;grid-template-columns:27px minmax(0,1fr) auto;gap:6px}
+    body.battleMode .enemySnapshotAvatar{width:27px;height:27px;font-size:14px}
+    body.battleMode .enemySnapshotAction .btn{min-height:24px}
+    body.battleMode .playerDock{min-height:274px}
+    body.battleMode .commanderHud{min-height:42px;padding:4px 5px}
+    body.battleMode .dockHead{min-height:31px;padding:4px 6px}
+    body.battleMode .dockBody{min-height:197px}
+    body.battleMode .handRow .gameCard{width:100px;flex:0 0 100px}
+    body.battleMode .ownCards .gameCard{width:85px;flex:0 0 85px}
+    body.battleMode .handZone,body.battleMode .ownField{overflow-x:auto;overflow-y:hidden}
+    body.battleMode .gameCard .cardActions{flex-basis:26px;height:26px;min-height:26px;padding:2px}
+    body.battleMode .gameCard .cardActions .btn{height:22px;min-height:22px}
 
     /* Card Info becomes a non-destructive desktop inspector. */
     @media(min-width:1100px){
@@ -1102,24 +1117,42 @@
     @media(max-width:900px){
       .brandSub{display:none}.primaryNav{margin-left:4px}.primaryNavBtn{padding-inline:7px}.primaryNavBtn b{display:none}.topTags{display:none}
       body.armoryMode.compactArmoryMode .armoryHero{grid-template-columns:1fr;grid-template-areas:"stats";min-height:63px!important}.compactArmoryMode .armoryHeroCopy{display:none}.compactArmoryMode .heroStats{grid-template-columns:repeat(4,minmax(0,1fr))}
-      .opponentBattlefield{grid-template-columns:minmax(160px,31%) minmax(0,1fr)}.battlePanelHead small{display:none}.targetCardGrid .gameCard,.playerTargetCard{width:126px;flex-basis:126px}.playerTargetCard{min-height:190px}.enemySnapshot{grid-template-columns:27px minmax(0,1fr)}.enemySnapshotAvatar{width:27px;height:27px}.enemySnapshotAction{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center}.enemySnapshotAction .btn{grid-column:2;grid-row:1/3}.enemySnapshotAction small{grid-column:1;grid-row:1/3;text-align:left}
+      .opponentBattlefield{grid-template-columns:minmax(160px,31%) minmax(0,1fr)}.battlePanelHead small{display:none}.targetCardGrid .gameCard,.playerTargetCard{width:107px;flex-basis:107px}.playerTargetCard{min-height:162px}.enemySnapshot{grid-template-columns:27px minmax(0,1fr)}.enemySnapshotAvatar{width:27px;height:27px}.enemySnapshotAction{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center}.enemySnapshotAction .btn{grid-column:2;grid-row:1/3}.enemySnapshotAction small{grid-column:1;grid-row:1/3;text-align:left}
     }
     @media(max-width:620px){
       .fullscreenBtn{display:none}.primaryNavBtn{min-width:29px}.topbar{padding-inline:6px}.brandMark{width:29px;height:29px}.brandTitle{font-size:10px}.moreMenu{position:fixed;right:6px;top:48px}
       body.armoryMode.armoryLandingMode .armoryHero{grid-template-columns:1fr!important;grid-template-areas:"copy" "stats" "actions"!important;min-height:0!important;padding:14px!important}.armoryLandingMode .heroStats{grid-template-columns:repeat(2,minmax(0,1fr))}.armoryLandingMode .heroActions.heroDestinations{grid-template-columns:1fr 1fr}
-      .opponentBattlefield{grid-template-columns:minmax(132px,35%) minmax(0,1fr);gap:3px}.battlePanelHead{min-height:28px;padding:4px 5px}.battlePanelHead span{font-size:7px}.enemySnapshotList{padding:3px;gap:3px}.enemySnapshot{padding:4px;grid-template-columns:24px minmax(0,1fr);gap:4px}.enemySnapshotAvatar{width:24px;height:24px;border-radius:7px;font-size:12px}.enemySnapshotName{font-size:7px}.enemySnapshotMeta,.enemySnapshotState{font-size:5.5px;gap:3px}.enemySnapshotAction{display:block}.enemySnapshotAction small{display:none}.enemySnapshotAction .btn{width:100%;min-width:0;min-height:24px;margin-top:3px;font-size:6px}.attackTargetsBoard{padding:4px;gap:5px}.targetOwnerGroup{padding:4px;gap:4px}.targetOwnerHead{min-height:20px}.targetCardGrid{gap:5px}.targetCardGrid .gameCard,.playerTargetCard{width:104px;flex-basis:104px}.playerTargetCard{min-height:160px;padding:6px}.playerTargetSigil{width:46px;height:46px;margin:12px auto 7px;font-size:24px}.playerTargetCard h3{font-size:8px}.playerTargetStats{font-size:6px}.targetStateBadge{font-size:5px}.targetBaseWrap{padding-top:15px}
+      .opponentBattlefield{grid-template-columns:minmax(132px,35%) minmax(0,1fr);gap:3px}.battlePanelHead{min-height:28px;padding:4px 5px}.battlePanelHead span{font-size:7px}.enemySnapshotList{padding:3px;gap:3px}.enemySnapshot{padding:4px;grid-template-columns:24px minmax(0,1fr);gap:4px}.enemySnapshotAvatar{width:24px;height:24px;border-radius:7px;font-size:12px}.enemySnapshotName{font-size:7px}.enemySnapshotMeta,.enemySnapshotState{font-size:5.5px;gap:3px}.enemySnapshotAction{display:block}.enemySnapshotAction small{display:none}.enemySnapshotAction .btn{width:100%;min-width:0;min-height:24px;margin-top:3px;font-size:6px}.attackTargetsBoard{padding:4px;gap:5px}.targetOwnerGroup{padding:4px;gap:4px}.targetOwnerHead{min-height:20px}.targetCardGrid{gap:5px}.targetCardGrid .gameCard,.playerTargetCard{width:88px;flex-basis:88px}.playerTargetCard{min-height:136px;padding:5px}.playerTargetSigil{width:39px;height:39px;margin:10px auto 6px;font-size:21px}.playerTargetCard h3{font-size:8px}.playerTargetStats{font-size:6px}.targetStateBadge{font-size:5px}.targetBaseWrap{padding-top:15px}
     }
     @media (pointer:coarse) and (max-width:900px),(pointer:coarse) and (max-height:620px){body.battleMode #battleView{height:100dvh}}
     @media(max-height:850px){
-      body.armoryMode.armoryLandingMode .armoryHero{min-height:220px!important}.armoryHeroCopy p{font-size:9px!important}.battleShell{gap:4px!important}.battlePanelHead{min-height:31px;padding-block:4px}.battlePanelHead small{display:none}.enemySnapshotList{padding:4px}.targetCardGrid .gameCard,.playerTargetCard{width:132px;flex-basis:132px}.playerTargetCard{min-height:195px}
+      body.armoryMode.armoryLandingMode .armoryHero{min-height:220px!important}.armoryHeroCopy p{font-size:9px!important}.battleShell{gap:4px!important}.battlePanelHead{min-height:27px;padding-block:4px}.battlePanelHead small{display:none}.enemySnapshotList{padding:4px}.targetCardGrid .gameCard,.playerTargetCard{width:112px;flex-basis:112px}.playerTargetCard{min-height:166px}
     }
     @media(max-height:750px){
       body.armoryMode.armoryLandingMode .armoryHero{min-height:170px!important}.armoryLandingMode .armoryHeroCopy p,.armoryLandingMode .heroStat small{display:none}.armoryLandingMode .heroStat{padding-block:6px}.catalogGrid{max-height:calc(100dvh - 220px)}
-      body.battleMode .battleShell{grid-template-rows:minmax(155px,1.08fr) auto minmax(142px,.92fr)}.battlePanelHead{min-height:28px}.targetCardGrid .gameCard,.playerTargetCard{width:116px;flex-basis:116px}.playerTargetCard{min-height:173px}.enemySnapshotMeta{margin-top:2px}.enemySnapshotState{margin-top:2px}
+      body.battleMode .battleShell{grid-template-rows:minmax(132px,.92fr) auto minmax(121px,.78fr)}.battlePanelHead{min-height:24px}.targetCardGrid .gameCard,.playerTargetCard{width:99px;flex-basis:99px}.playerTargetCard{min-height:147px}.enemySnapshotMeta{margin-top:2px}.enemySnapshotState{margin-top:2px}
     }
     @media(max-height:650px){
       body.armoryMode .armoryHero{min-height:62px!important;margin-bottom:6px;padding:7px 10px!important;grid-template-columns:1fr!important;grid-template-areas:"stats"!important}.armoryHeroCopy,.armoryHero .heroActions,.armoryHero .heroUtilityLink{display:none!important}.heroStats{grid-template-columns:repeat(4,minmax(0,1fr))!important}.heroStat{padding:5px 7px}.heroStat b{font-size:12px}.heroStat small{display:none}
-      body.battleMode .battleShell{grid-template-rows:minmax(132px,1fr) auto minmax(130px,.86fr)}.battlePanelHead{min-height:25px}.battlePanelHead small{display:none}.enemySnapshotAvatar{width:24px;height:24px}.enemySnapshot{padding:4px}.enemySnapshotState{display:none}.targetCardGrid .gameCard,.playerTargetCard{width:101px;flex-basis:101px}.playerTargetCard{min-height:151px}.targetOwnerHead{min-height:19px}.roundEarningsBar{display:none}
+      body.battleMode .battleShell{grid-template-rows:minmax(112px,.85fr) auto minmax(111px,.73fr)}.battlePanelHead{min-height:22px}.battlePanelHead small{display:none}.enemySnapshotAvatar{width:24px;height:24px}.enemySnapshot{padding:4px}.enemySnapshotState{display:none}.targetCardGrid .gameCard,.playerTargetCard{width:86px;flex-basis:86px}.playerTargetCard{min-height:128px}.targetOwnerHead{min-height:19px}.roundEarningsBar{display:none}
+    }
+
+    @media (pointer:coarse) and (max-width:900px),(pointer:coarse) and (max-height:620px){
+      body.battleMode #battleView{height:100dvh;min-height:0;overflow-x:hidden;overflow-y:auto}
+      body.battleMode .battleShell{height:auto;min-height:100%;overflow:visible}
+      body.battleMode .playerDock{min-height:260px}
+      body.battleMode .commanderHud{min-height:38px}
+      body.battleMode .dockHead{min-height:27px;padding-block:2px}
+      body.battleMode .dockBody{min-height:195px}
+      body.battleMode .handRow .gameCard{width:95px;flex-basis:95px}
+      body.battleMode .ownCards .gameCard{width:82px;flex-basis:82px}
+      body.battleMode .gameCard .cardActions{flex-basis:28px;height:28px;min-height:28px}
+      body.battleMode .gameCard .cardActions .btn{height:24px;min-height:24px}
+    }
+
+    @media (pointer:coarse) and (max-width:620px) and (orientation:portrait){
+      body.battleMode .battleShell{grid-template-rows:minmax(178px,.92fr) auto minmax(260px,1.04fr)}
+      body.battleMode .opponentBattlefield{min-height:178px}
     }
 
   </style>
