@@ -1368,17 +1368,19 @@
     deleteCampaignProfile,
     loadCampaignProfile,
     saveCampaignProfile
-  } from "./warrealms/campaign/campaign-state.js?v=1";
+  } from "./warrealms/campaign/campaign-state.js?v=2";
   import {
     advanceCampaignNode,
+    campaignPathOptions,
     campaignNodeAt,
     campaignRegionScaling,
+    chooseCampaignPath,
     generateCampaignRegion
-  } from "./warrealms/campaign/campaign-map.js?v=1";
+  } from "./warrealms/campaign/campaign-map.js?v=2";
   import {
     applyCampaignReward,
     generateCampaignRewards
-  } from "./warrealms/campaign/campaign-rewards.js?v=1";
+  } from "./warrealms/campaign/campaign-rewards.js?v=2";
   import {
     CAMPAIGN_BOSSES,
     advanceBossTurn,
@@ -1386,13 +1388,13 @@
     bossAbilityStatus,
     getCampaignBoss,
     pendingBossPhases
-  } from "./warrealms/campaign/campaign-bosses.js?v=1";
+  } from "./warrealms/campaign/campaign-bosses.js?v=2";
   import {
     campaignProgressSummary,
     currentCampaignEncounter,
     finishCampaignRewardNode,
     recordCampaignBattleResult
-  } from "./warrealms/campaign/campaign.js?v=1";
+  } from "./warrealms/campaign/campaign.js?v=2";
   import { evaluateCampaignUnlocks } from "./warrealms/campaign/campaign-unlocks.js?v=1";
   import {
     heatOverloadReady,
@@ -1896,6 +1898,8 @@
       player.campaignEnemy = player.campaignEnemy === true;
       player.campaignBonusTrade = Math.max(0, Math.floor(Number(player.campaignBonusTrade) || 0));
       player.campaignBonusCombat = Math.max(0, Math.floor(Number(player.campaignBonusCombat) || 0));
+      player.campaignTradeLimit = Math.max(1, Math.floor(Number(player.campaignTradeLimit) || 99));
+      player.campaignAggression = Math.max(1, Number(player.campaignAggression) || 1);
       player.bossId = getCampaignBoss(player.bossId) ? String(player.bossId) : "";
       player.bossState = player.bossId ? {
         turns: Math.max(0, Math.floor(Number(player.bossState?.turns) || 0)),
@@ -5665,7 +5669,10 @@
 
   function campaignEncounterDescription(encounter) {
     if (!encounter) return "The next region is being charted.";
-    if (encounter.boss) return `${encounter.boss.name} waits with ${encounter.enemyAuthority} Authority, ${encounter.enemyShield} Shield, prebuilt Bases, a recurring Boss card, and a phase change at 60 Authority.`;
+    if (encounter.boss) {
+      const phaseAt = encounter.boss.phases?.[0]?.authorityAtOrBelow;
+      return `${encounter.boss.name} is a Tier ${encounter.boss.tier} ${encounter.difficulty} boss with ${encounter.enemyAuthority} Authority, ${encounter.enemyShield} Shield, ${encounter.startingDeck.length} fixed opening cards, a ${encounter.enemyTradeLimit}-Trade limit, and ${encounter.startingBases.length} prebuilt Base${encounter.startingBases.length === 1 ? "" : "s"}${phaseAt ? `. Its next phase begins at ${phaseAt} Authority.` : "."}`;
+    }
     if (encounter.node.type === "elite") return `A fortified elite force begins at ${encounter.enemyAuthority} Authority with regional advantages.`;
     return `A Region ${encounter.node.region} Warhost begins at ${encounter.enemyAuthority} Authority and uses the normal War Realms market, cards, Bases, and bot engine.`;
   }
@@ -5673,13 +5680,13 @@
   function renderCampaignArmory() {
     const catalog = $("#armoryCatalog");
     if (!campaignProfile) {
-      catalog.innerHTML = `<section class="campaignDashboard"><div class="campaignHero"><div><div class="eyebrow">Endless campaign</div><h2>Begin Almost Powerless</h2><p>Start with six Realm Coins and four Militia Blades. Victories add card rewards to a separate persistent campaign deck; elites, the World Eater, and increasingly complex regions follow without touching your normal collection.</p></div><div class="campaignHeroActions"><button class="btn primary" data-act="new-campaign">New Campaign</button></div></div></section>`;
+      catalog.innerHTML = `<section class="campaignDashboard"><div class="campaignHero"><div><div class="eyebrow">Endless campaign</div><h2>Choose How the War Escalates</h2><p>Start with six Realm Coins and four Militia Blades. Choose between three routes twice per region, take one of three cards after each victory, and face 21 increasingly dangerous bosses before the roster cycles at higher scaling.</p></div><div class="campaignHeroActions"><button class="btn primary" data-act="new-campaign">New Campaign</button></div></div></section>`;
       $("#catalogPageLabel").textContent = "No active campaign · progress saves separately";
       return;
     }
 
     const summary = campaignProgressSummary(campaignProfile);
-    const nodes = generateCampaignRegion(campaignProfile.region, campaignProfile.runId);
+    const nodes = generateCampaignRegion(campaignProfile.region, campaignProfile.runId, campaignProfile.pathChoices);
     const node = summary.node;
     const encounter = currentCampaignEncounter(campaignProfile);
     const scaling = campaignRegionScaling(campaignProfile.region);
@@ -5694,9 +5701,12 @@
     let encounterBody = "";
     if (campaignProfile.status === "defeated") {
       encounterBody = `<section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Campaign Defeated</h3><p>This run reached Region ${campaignProfile.region} with ${campaignProfile.battlesWon} victories. Start a new run when you are ready.</p></div><button class="btn danger" data-act="new-campaign">New Campaign</button></div></section>`;
+    } else if (node?.type === "path") {
+      const paths = campaignPathOptions(campaignProfile);
+      encounterBody = `<section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Choose Your Path</h3><p>Every route changes the next enemy, its opening pressure, the campaign currency won, and the quality of the three-card reward that follows.</p></div></div><div class="campaignRewardGrid">${paths.map(path => `<article class="campaignReward"><span>${escapeHtml(path.risk)} Risk · ${escapeHtml(path.rewardRarity)} Reward</span><b>${escapeHtml(path.label)}</b><p>${escapeHtml(path.description)}</p><p>${Math.round(path.enemyAuthorityMultiplier * 100)}% enemy Authority · +${path.enemyStartingBases} Base · +${path.enemyBonusCombat} Combat/turn</p><button class="btn small ${path.id === "rift_gambit" ? "danger" : path.id === "siegebreaker" ? "good" : ""}" data-act="select-campaign-path" data-path-id="${escapeHtml(path.id)}">Take This Path</button></article>`).join("")}</div></section>`;
     } else if (node?.type === "reward") {
       const rewards = ensureCampaignRewardOptions();
-      encounterBody = `<section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Victory Reward</h3><p>Choose one card for your campaign ${campaignProfile.rewardDestination === "collection" ? "collection" : "deck"}, or skip. Reward rarity and unlock pools are data-driven.</p></div><button class="btn small" data-act="skip-campaign-reward">Skip</button></div><div class="campaignRewardGrid">${rewards.map(reward => { const card = getCard(reward.cardId); return `<article class="campaignReward"><span>${escapeHtml(reward.rarity)}</span><b>${escapeHtml(card?.name || reward.cardId)}</b><p>${escapeHtml(card?.text || "Campaign reward")}</p><button class="btn small good" data-act="select-campaign-reward" data-card-id="${escapeHtml(reward.cardId)}">Add Card</button></article>`; }).join("") || '<div class="emptyZone">No legal rewards were available. Skip to continue.</div>'}</div></section>`;
+      encounterBody = `<section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Choose 1 of 3 Cards</h3><p>Add one card to your persistent campaign Trade Deck${campaignProfile.rewardDestination === "collection" ? " (your destination is currently set to collection)" : ""}, or skip. Every offer contains three different legal cards.</p></div><button class="btn small" data-act="skip-campaign-reward">Skip</button></div><div class="campaignRewardGrid">${rewards.map(reward => { const card = getCard(reward.cardId); return `<article class="campaignReward"><span>${escapeHtml(reward.rarity)}</span><b>${escapeHtml(card?.name || reward.cardId)}</b><p>${escapeHtml(card?.text || "Campaign reward")}</p><button class="btn small good" data-act="select-campaign-reward" data-card-id="${escapeHtml(reward.cardId)}">Add to Trade Deck</button></article>`; }).join("") || '<div class="emptyZone">No legal rewards were available. Skip to continue.</div>'}</div></section>`;
     } else if (["battle", "elite", "boss"].includes(node?.type)) {
       encounterBody = `<section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>${escapeHtml(node.label)}${encounter?.boss ? ` · ${escapeHtml(encounter.boss.name)}` : ""}</h3><p>${escapeHtml(campaignEncounterDescription(encounter))}</p></div><button class="btn primary" data-act="start-campaign-encounter">Enter Battle</button></div><div class="campaignModifiers">${scaling.modifiers.map(modifier => `<span class="campaignModifier">${escapeHtml(modifier.label)} · Rank ${modifier.rank}</span>`).join("") || '<span class="campaignModifier">Region I · No modifiers</span>'}</div></section>`;
     } else {
@@ -5704,11 +5714,11 @@
     }
 
     catalog.innerHTML = `<section class="campaignDashboard">
-      <div class="campaignHero"><div><div class="eyebrow">Run ${escapeHtml(campaignProfile.runId)}</div><h2>Region ${summary.region} · ${escapeHtml(node?.label || "Next Region")}</h2><p>Campaign state, deck, currency, unlocks, and boss history are persisted separately from your normal Armory profile.</p></div><div class="campaignHeroActions">${campaignProfile.status === "active" ? '<button class="btn primary" data-act="continue-campaign">Continue Campaign</button>' : ""}<button class="btn" data-act="new-campaign">Restart Campaign</button></div></div>
+      <div class="campaignHero"><div><div class="eyebrow">Run ${escapeHtml(campaignProfile.runId)}</div><h2>Region ${summary.region} · ${escapeHtml(node?.label || "Next Region")}</h2><p>Two route decisions, three-card victory choices, and a rotating boss await in every region. Campaign progress remains separate from the normal Armory.</p></div><div class="campaignHeroActions">${campaignProfile.status === "active" ? '<button class="btn primary" data-act="continue-campaign">Continue Campaign</button>' : ""}<button class="btn" data-act="new-campaign">Restart Campaign</button></div></div>
       <div class="campaignStats"><div class="campaignStat">Authority<b>${summary.authority}/${summary.maxAuthority}</b></div><div class="campaignStat">Victories<b>${summary.battlesWon}</b></div><div class="campaignStat">Deck<b>${summary.deckSize}</b></div><div class="campaignStat">Collection<b>${summary.collectionSize}</b></div><div class="campaignStat">Currency<b>${summary.currency}</b></div><div class="campaignStat">Bosses<b>${campaignProfile.bossesDefeated.length}</b></div></div>
       <div class="campaignMap">${nodeMap}</div>
       ${encounterBody}
-      <section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Campaign Deck</h3><p>Rewards currently enter the ${escapeHtml(campaignProfile.rewardDestination)}. This setting is campaign-only.</p></div><button class="btn small" data-act="toggle-campaign-reward-destination">Send rewards to ${campaignProfile.rewardDestination === "deck" ? "collection" : "deck"}</button></div><div class="campaignDeckPreview">${deckPreview}</div>
+      <section class="campaignEncounter"><div class="campaignEncounterHead"><div><h3>Campaign Trade Deck</h3><p>Rewards currently enter the ${escapeHtml(campaignProfile.rewardDestination)}. Cards sent to the deck appear in every later campaign battle.</p></div><button class="btn small" data-act="toggle-campaign-reward-destination">Send rewards to ${campaignProfile.rewardDestination === "deck" ? "collection" : "deck"}</button></div><div class="campaignDeckPreview">${deckPreview}</div>
         <details class="deckIntelDetails"><summary>Campaign Collection · ${summary.collectionSize} cards</summary><div class="deckIntelDetailsBody"><div class="campaignDeckPreview">${collectionPreview}</div></div></details>
         <details class="deckIntelDetails"><summary>Unlocked Cards · ${(campaignProfile.unlockedCards || []).length}</summary><div class="deckIntelDetailsBody"><div class="campaignDeckPreview">${unlockedPreview}</div></div></details>
         <details class="deckIntelDetails"><summary>Relics + Bosses</summary><div class="deckIntelDetailsBody"><div class="campaignDeckPreview">${relicPreview}${bossPreview}</div></div></details>
@@ -6619,6 +6629,8 @@
       campaignEnemy: entrant.campaignEnemy === true,
       campaignBonusTrade: Math.max(0, Math.floor(Number(entrant.campaignBonusTrade) || 0)),
       campaignBonusCombat: Math.max(0, Math.floor(Number(entrant.campaignBonusCombat) || 0)),
+      campaignTradeLimit: Math.max(1, Math.floor(Number(entrant.campaignTradeLimit) || 99)),
+      campaignAggression: Math.max(1, Number(entrant.campaignAggression) || 1),
       bossId: String(entrant.bossId || ""),
       bossState: entrant.bossId ? {
         turns: 0,
@@ -7297,10 +7309,38 @@
 
   function resolveCampaignBossAbility(game, player, boss) {
     const effect = boss?.bossAbility?.effect || {};
-    if (effect.devourCheapestMarket) {
+    const results = [];
+    const tradeLimit = Math.max(1, Number(player.campaignTradeLimit) || 99);
+    if (effect.gainTrade) {
+      const before = player.trade;
+      player.trade = Math.min(tradeLimit, player.trade + Math.max(0, Number(effect.gainTrade) || 0));
+      if (player.trade > before) results.push(`+${player.trade - before} Trade`);
+    }
+    if (effect.gainCombat) {
+      const gained = Math.max(0, Number(effect.gainCombat) || 0);
+      player.combat += gained;
+      if (gained) results.push(`+${gained} Combat`);
+    }
+    if (effect.gainShield) {
+      const gained = Math.max(0, Number(effect.gainShield) || 0);
+      player.shield += gained;
+      if (gained) results.push(`+${gained} Shield`);
+    }
+    if (effect.heal) {
+      const healed = healPlayer(game, player, effect.heal, { source: boss.bossAbility.label, sourceCardId: boss.bossCard });
+      if (healed) results.push(`+${healed} Authority`);
+    }
+    if (effect.createBase) {
+      const base = createCampaignBossBase(game, player, effect.createBase, "boss-ability");
+      if (base) results.push(`created ${getCard(base.id)?.name || "a Base"}`);
+    }
+    if (effect.devourCheapestMarket || effect.devourMostExpensiveMarket) {
       const candidates = (game.tradeRow || []).map((entry, index) => ({ entry, index, card: getCard(entry.id) }))
         .filter(item => item.card && !isPermanentHiredLooterEntry(item.entry))
-        .sort((left, right) => Number(left.card.cost) - Number(right.card.cost) || String(left.card.id).localeCompare(String(right.card.id)));
+        .sort((left, right) => {
+          const direction = effect.devourMostExpensiveMarket ? -1 : 1;
+          return direction * (Number(left.card.cost) - Number(right.card.cost)) || String(left.card.id).localeCompare(String(right.card.id));
+        });
       const target = candidates[0];
       if (target) {
         game.tradeRow.splice(target.index, 1);
@@ -7320,9 +7360,18 @@
           method: "boss-card"
         });
         refillMarket(game);
-        addLog(game, `${boss.name} devoured ${target.card.name} and gained ${gained} Combat.`);
+        results.push(`devoured ${target.card.name}${gained ? ` for ${gained} Combat` : ""}`);
       }
     }
+    if (effect.damageAuthority) {
+      const enemy = game.players.find(candidate => candidate.id !== player.id && !candidate.eliminated && !candidate.left);
+      if (enemy) {
+        const dealt = damageAuthority(game, enemy, effect.damageAuthority, boss.bossAbility.label, player.id);
+        if (dealt) results.push(`dealt ${dealt} Authority damage`);
+      }
+    }
+    pushVisualEvent(game, "ability-burst", { actorId: player.id, targetId: player.id, cardId: boss.bossCard, source: "boss-ability", abilities: ["boss"] });
+    addLog(game, `${boss.name} used ${boss.bossAbility.label}${results.length ? `: ${results.join(", ")}.` : "."}`);
   }
 
   function resolveCampaignBossTurn(game, player) {
@@ -9119,7 +9168,7 @@
       id: cardId,
       healthMultiplier: encounter.scaling.enemyBaseHealthMultiplier
     }));
-    const requested = Math.max(encounter.node.type === "elite" ? 1 : 0, Number(encounter.scaling.enemyStartingBases) || 0);
+    const requested = Math.min(4, Math.max(encounter.node.type === "elite" ? 1 : 0, Number(encounter.scaling.enemyStartingBases) || 0) + Math.max(0, Number(encounter.enemyStartingBases) || 0));
     if (!requested) return [];
     return DECK_ELIGIBLE_CARDS
       .filter(card => card.type === "base" && !card.transformedFrom)
@@ -9132,7 +9181,13 @@
     const encounter = currentCampaignEncounter(campaignProfile);
     if (!encounter || !["battle", "elite", "boss"].includes(encounter.node.type)) return null;
     const difficulty = encounter.difficulty;
-    const botPlan = chooseBotPlan();
+    const randomPlan = chooseBotPlan();
+    const bossStrategy = { green: "vanguard", red: "attrition", blue: "stronghold", yellow: "engine" }[encounter.boss?.faction] || "siege";
+    const botPlan = encounter.boss ? {
+      strategy: bossStrategy,
+      primaryFaction: encounter.primaryFaction || randomPlan.primaryFaction,
+      supportFaction: encounter.supportFaction || randomPlan.supportFaction
+    } : randomPlan;
     const strategy = BOT_STRATEGIES[botPlan.strategy];
     const humanMarketDeck = buildCostCurveCommandDeck();
     const botMarketDeck = randomizedBotCommandDeck(botPlan, difficulty);
@@ -9157,6 +9212,7 @@
       commandDeckName: encounter.boss ? encounter.boss.title : `Region ${campaignProfile.region} Host`,
       deck: botMarketDeck,
       marketDeck: botMarketDeck,
+      initialBattleDeck: encounter.startingDeck.length ? [...encounter.startingDeck] : undefined,
       startingAuthority: encounter.enemyAuthority,
       maximumAuthority: encounter.enemyAuthority,
       startingShield: encounter.enemyShield,
@@ -9169,8 +9225,10 @@
       supportFaction: botPlan.supportFaction,
       botDrawPriority: !!strategy?.drawPriority,
       campaignEnemy: true,
-      campaignBonusTrade: encounter.scaling.enemyBonusTrade,
-      campaignBonusCombat: encounter.scaling.enemyBonusCombat,
+      campaignBonusTrade: encounter.enemyBonusTrade,
+      campaignBonusCombat: encounter.enemyBonusCombat,
+      campaignTradeLimit: encounter.enemyTradeLimit,
+      campaignAggression: encounter.enemyAggression,
       bossId: encounter.boss?.id || "",
       bossFrequencyReduction: encounter.scaling.bossAbilityFrequencyReduction
     };
@@ -9191,7 +9249,7 @@
     game.humanId = humanEntrant.uid;
     game.botId = botEntrant.uid;
     addLog(game, `${humanEntrant.name} entered Region ${campaignProfile.region} with a persistent ${campaignProfile.deck.length}-card campaign deck.`);
-    if (encounter.boss) addLog(game, `${encounter.boss.name} begins with ${encounter.enemyAuthority} Authority, ${encounter.enemyShield} Shield, and ${botEntrant.startingBases.length} prebuilt Bases.`);
+    if (encounter.boss) addLog(game, `${encounter.boss.name} begins with ${encounter.enemyAuthority} Authority, ${encounter.enemyShield} Shield, a fixed ${encounter.startingDeck.length}-card attack deck, a ${encounter.enemyTradeLimit}-Trade limit, and ${botEntrant.startingBases.length} prebuilt Bases.`);
     return game;
   }
 
@@ -9389,10 +9447,16 @@
       .filter(item => item.card && marketCardCostForPlayer(item.card, bot) <= bot.trade);
     if (!affordable.length) return -1;
     if (difficulty === "easy") return affordable[Math.floor(Math.random() * affordable.length)].index;
-    const scored = affordable.map(item => ({
-      ...item,
-      score: cardAiValue(item.card, bot, difficulty, true, game) + (hasPersonalMarketDiscount(bot, item.card.id) ? 1.35 : 0)
-    })).sort((left, right) => right.score - left.score || right.card.cost - left.card.cost);
+    const aggression = Math.max(1, Number(bot.campaignAggression) || 1);
+    const scored = affordable.map(item => {
+      const effect = coreEffect(primaryCardEffect(item.card));
+      const attackValue = Math.max(0, Number(effect.combat) || 0) * 1.4 + Math.max(0, Number(effect.destroyBase) || 0) * 4 + Math.max(0, Number(effect.stun) || 0) * 1.5;
+      const economyValue = Math.max(0, Number(effect.trade) || 0) * .3;
+      return {
+        ...item,
+        score: cardAiValue(item.card, bot, difficulty, true, game) + (hasPersonalMarketDiscount(bot, item.card.id) ? 1.35 : 0) + (attackValue - economyValue) * (aggression - 1)
+      };
+    }).sort((left, right) => right.score - left.score || right.card.cost - left.card.cost);
     const best = scored[0];
     const minimumScore = difficulty === "medium" ? 1.15 : difficulty === "hard" ? 1.7 : 1.5;
     return best && best.score >= minimumScore ? best.index : -1;
@@ -9588,6 +9652,8 @@
           break;
         }
 
+        bot = currentPlayer(state);
+        if (bot?.campaignEnemy) bot.trade = Math.min(bot.trade, Math.max(1, Number(bot.campaignTradeLimit) || 99));
         let buySafety = 0;
         while (state?.phase === "playing" && currentPlayer(state)?.isBot && buySafety++ < 12) {
           bot = currentPlayer(state);
@@ -9688,6 +9754,18 @@
     $(".campaignEncounter")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  function selectCampaignPath(pathId) {
+    if (!campaignProfile || campaignNodeAt(campaignProfile)?.type !== "path") return;
+    const result = chooseCampaignPath(campaignProfile, pathId);
+    if (!result.ok) {
+      showToast(result.reason || "That campaign path is unavailable.", "bad");
+      return;
+    }
+    saveCampaignProfile(campaignProfile);
+    renderArmory();
+    showToast(`${result.path.label} selected. Prepare for ${result.path.risk.toLowerCase()} risk.`, result.path.id === "rift_gambit" ? "bad" : "good");
+  }
+
   function selectCampaignReward(cardId) {
     const node = campaignNodeAt(campaignProfile);
     const reward = campaignProfile?.pendingReward?.options?.find(option => option.cardId === cardId);
@@ -9715,7 +9793,7 @@
 
   function resolveCampaignUtilityNode() {
     const node = campaignNodeAt(campaignProfile);
-    if (!campaignProfile || !node || ["battle", "elite", "boss", "reward"].includes(node.type)) return;
+    if (!campaignProfile || !node || ["path", "battle", "elite", "boss", "reward"].includes(node.type)) return;
     if (node.type === "rest") campaignProfile.authority = Math.min(campaignProfile.maxAuthority, campaignProfile.authority + Math.max(10, Math.floor(campaignProfile.maxAuthority * .25)));
     if (node.type === "event") campaignProfile.currency += 25 + campaignProfile.region * 5;
     advanceCampaignNode(campaignProfile);
@@ -10093,6 +10171,7 @@
     if (action === "start-bot") startSinglePlayerGame(button.dataset.difficulty);
     if (action === "new-campaign") startNewCampaign();
     if (action === "continue-campaign") continueCampaign();
+    if (action === "select-campaign-path") selectCampaignPath(button.dataset.pathId);
     if (action === "start-campaign-encounter") startCampaignEncounter();
     if (action === "select-campaign-reward") selectCampaignReward(button.dataset.cardId);
     if (action === "skip-campaign-reward") skipCampaignReward();

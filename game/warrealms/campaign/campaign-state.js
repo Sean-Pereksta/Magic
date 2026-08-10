@@ -1,4 +1,4 @@
-export const CAMPAIGN_SCHEMA = 1;
+export const CAMPAIGN_SCHEMA = 2;
 export const CAMPAIGN_STORAGE_KEY = "warRealmsCampaign.v1";
 
 export const DEFAULT_CAMPAIGN_CONFIG = Object.freeze({
@@ -56,6 +56,7 @@ export function createCampaignProfile(options = {}) {
     relics: [],
     currency: whole(config.startingCurrency),
     bossesDefeated: [],
+    pathChoices: {},
     difficultyScaling: 1,
     rewardDestination: config.rewardDestination === "collection" ? "collection" : "deck",
     pendingReward: null,
@@ -99,6 +100,7 @@ export function normalizeCampaignProfile(raw, options = {}) {
     relics: strings(raw.relics),
     currency: whole(raw.currency),
     bossesDefeated: [...new Set(strings(raw.bossesDefeated))],
+    pathChoices: Object.fromEntries(Object.entries(object(raw.pathChoices)).map(([nodeId, pathId]) => [String(nodeId), String(pathId)]).filter(([, pathId]) => pathId)),
     difficultyScaling: Math.max(1, Number(raw.difficultyScaling) || 1),
     rewardDestination: raw.rewardDestination === "collection" ? "collection" : "deck",
     pendingReward: raw.pendingReward && typeof raw.pendingReward === "object" ? raw.pendingReward : null,

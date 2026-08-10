@@ -18,19 +18,35 @@ export function currentCampaignEncounter(profile) {
   const scaling = campaignRegionScaling(profile.region);
   const boss = node.type === "boss" ? getCampaignBoss(node.bossId) : null;
   const eliteMultiplier = node.type === "elite" ? 1.25 : 1;
+  const routeMultiplier = Math.max(.75, Number(node.enemyAuthorityMultiplier) || 1);
+  const difficulty = boss
+    ? (boss.difficulty === "mythic" ? "impossible" : boss.difficulty)
+    : node.type === "elite"
+      ? (profile.region >= 8 || node.pathId === "rift_gambit" ? "impossible" : "hard")
+      : profile.region >= 7 ? "hard" : profile.region >= 3 ? "medium" : "easy";
+  const regionalShield = scaling.modifiers.filter(modifier => modifier.id === "armored_front").reduce((sum, modifier) => sum + modifier.rank * 3, 0);
   return {
     node,
     scaling,
     boss,
-    difficulty: node.type === "boss" || node.type === "elite" ? "hard" : profile.region >= 4 ? "hard" : "medium",
+    difficulty,
     enemyAuthority: boss
-      ? Math.round(boss.authority * scaling.enemyAuthorityMultiplier)
-      : Math.round(60 * scaling.enemyAuthorityMultiplier * eliteMultiplier),
+      ? Math.round(boss.authority * scaling.enemyAuthorityMultiplier * routeMultiplier)
+      : Math.round(60 * scaling.enemyAuthorityMultiplier * eliteMultiplier * routeMultiplier),
     enemyShield: boss
-      ? whole(boss.startingShield) + scaling.modifiers.filter(modifier => modifier.id === "armored_front").reduce((sum, modifier) => sum + modifier.rank * 3, 0)
-      : (node.type === "elite" ? 5 : 0),
-    enemyHandSize: scaling.enemyHandSize,
+      ? whole(boss.startingShield) + regionalShield + whole(node.enemyShield)
+      : (node.type === "elite" ? 5 : 0) + regionalShield + whole(node.enemyShield),
+    enemyHandSize: Math.max(2, Math.min(7, scaling.enemyHandSize + whole(node.enemyHandSize))),
     startingBases: boss ? [...boss.startingBases] : [],
+    startingDeck: boss ? [...boss.startingDeck] : [],
+    enemyStartingBases: whole(node.enemyStartingBases),
+    enemyBonusTrade: scaling.enemyBonusTrade + whole(node.enemyBonusTrade) + whole(boss?.economy?.bonusTrade),
+    enemyBonusCombat: scaling.enemyBonusCombat + whole(node.enemyBonusCombat),
+    enemyTradeLimit: boss ? Math.max(1, whole(boss.economy?.tradeLimit, 6)) : 99,
+    enemyAggression: Math.max(1, Number(boss?.aggression) || (node.type === "elite" ? 1.15 : 1)),
+    primaryFaction: boss?.faction || "",
+    supportFaction: boss?.supportFaction || "",
+    currencyBonus: whole(node.currencyBonus),
     bossCard: boss?.bossCard || ""
   };
 }
@@ -51,7 +67,7 @@ export function recordCampaignBattleResult(profile, result = {}) {
   profile.level = Math.max(whole(profile.level, 1), profile.battlesWon + 1);
   const remaining = Math.max(1, whole(result.authorityRemaining, profile.authority || profile.maxAuthority));
   profile.authority = Math.min(whole(profile.maxAuthority, 60), remaining + Math.max(5, Math.floor(profile.maxAuthority * .15)));
-  profile.currency = whole(profile.currency) + (encounter.node.type === "boss" ? 75 : encounter.node.type === "elite" ? 40 : 20) + Math.max(0, profile.region - 1) * 5;
+  profile.currency = whole(profile.currency) + (encounter.node.type === "boss" ? 75 : encounter.node.type === "elite" ? 40 : 20) + Math.max(0, profile.region - 1) * 5 + whole(encounter.currencyBonus);
   if (encounter.boss) profile.bossesDefeated = [...new Set([...(profile.bossesDefeated || []), encounter.boss.id])];
   appendHistory(profile, {
     atMs: now,
@@ -59,6 +75,7 @@ export function recordCampaignBattleResult(profile, result = {}) {
     nodeId: encounter.node.id,
     nodeType: encounter.node.type,
     bossId: encounter.boss?.id || "",
+    pathId: encounter.node.pathId || "",
     region: profile.region,
     authorityRemaining: remaining
   });

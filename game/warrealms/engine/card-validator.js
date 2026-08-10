@@ -139,6 +139,21 @@ function validateBosses(bosses, cardsById, issues) {
         issues.push(issue("ERROR", "INVALID_BOSS_STARTING_BASE", `${boss.id} references invalid starting Base ${typeof baseId === "string" ? baseId : baseId?.id}.`, boss.id, "startingBases"));
       }
     }
+    for (const cardId of boss.startingDeck || []) {
+      const card = cardsById.get(String(cardId || ""));
+      if (!card || card.type !== "ship") {
+        issues.push(issue("ERROR", "INVALID_BOSS_STARTING_CARD", `${boss.id} references invalid starting deck card ${cardId}.`, boss.id, "startingDeck"));
+      }
+    }
+    if ((boss.startingDeck || []).length && (boss.startingDeck || []).length < 5) {
+      issues.push(issue("WARNING", "SHORT_BOSS_STARTING_DECK", `${boss.id} has fewer than five cards in its starting deck.`, boss.id, "startingDeck"));
+    }
+    if (boss.economy?.tradeLimit !== undefined && (!Number.isFinite(Number(boss.economy.tradeLimit)) || Number(boss.economy.tradeLimit) < 1)) {
+      issues.push(issue("ERROR", "INVALID_BOSS_TRADE_LIMIT", `${boss.id} must have a positive trade limit.`, boss.id, "economy.tradeLimit"));
+    }
+    if (!Number.isFinite(Number(boss.bossAbility?.every)) || Number(boss.bossAbility.every) < 1) {
+      issues.push(issue("ERROR", "INVALID_BOSS_ABILITY_FREQUENCY", `${boss.id} must have a positive Boss Ability frequency.`, boss.id, "bossAbility.every"));
+    }
     for (const [phaseIndex, phase] of (boss.phases || []).entries()) {
       if (phase.createBase) {
         const base = cardsById.get(phase.createBase);
