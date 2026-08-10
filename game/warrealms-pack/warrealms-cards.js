@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 16;
+export const WAR_REALMS_CARD_VERSION = 18;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -352,10 +352,10 @@ export const CARDS = Object.freeze([
     "Gain 1 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Combat. At Heat 4, choose one of two evolutions.",
+"Spend 1 Heat: gain 3 Combat. At Heat 3, choose one of two evolutions.",
 
   transformText:
-    "Evolution — At Heat 4, choose Ironjaw Brute or Broodback Ravager. Put the chosen form into your discard pile.",
+    "Evolution — At Heat 3, choose Ironjaw Brute or Broodback Ravager. Put the chosen form into your discard pile.",
 
   flavor:
     "Gorak children are taught not to feed them after the horns begin splitting."
@@ -405,7 +405,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "grukkar_gatebreaker_colossus",
     destination: "discard"
   },
@@ -417,10 +417,10 @@ export const CARDS = Object.freeze([
     "Gain 2 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: gain 4 Combat. At Heat 4, evolve into Grukkar, Gatebreaker Colossus.",
+    "Spend 1 Heat: gain 4 Combat. At Heat 3, evolve into Grukkar, Gatebreaker Colossus.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Grukkar, Gatebreaker Colossus in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Grukkar, Gatebreaker Colossus in your discard pile.",
 
   flavor:
     "Its first tusks were decorations. The second pair were siege equipment."
@@ -540,10 +540,10 @@ export const CARDS = Object.freeze([
     "Gain 1 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: remove 1 Heat from one of your ships. If Heat was removed, gain 3 Combat. At Heat 4, choose an evolution.",
+    "Spend 1 Heat: remove 1 Heat from one of your ships. If Heat was removed, gain 3 Combat. At Heat 3, choose an evolution.",
 
   transformText:
-    "Evolution — At Heat 4, choose Furnace-Leech or Ember-Shepherd.",
+    "Evolution — At Heat 3, choose Furnace-Leech or Ember-Shepherd.",
 
   flavor:
     "It curls beside overheated reactors the way ordinary animals curl beside fires."
@@ -613,7 +613,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "pyremaw_heat_eater",
     destination: "discard"
   },
@@ -625,10 +625,10 @@ export const CARDS = Object.freeze([
     "Gain 2 Trade.",
 
   heatText:
-    "Spend 1 Heat: remove up to 2 Heat from one of your ships. If any was removed, gain 3 Combat. At Heat 4, evolve.",
+    "Spend 1 Heat: remove up to 2 Heat from one of your ships. If any was removed, gain 3 Combat. At Heat 3, evolve.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Pyre-Maw Heat-Eater.",
+    "Final Evolution — At Heat 3, transform into Pyre-Maw Heat-Eater.",
 
   flavor:
     "Its jaws never close around flesh. They close around temperature."
@@ -760,7 +760,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "wildfire_brood_sovereign",
     destination: "discard"
   },
@@ -772,10 +772,10 @@ export const CARDS = Object.freeze([
     "Gain 2 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: add 1 Heat to a friendly Heat ship and gain 2 Combat. At Heat 4, evolve.",
+    "Spend 1 Heat: add 1 Heat to a friendly Heat ship and gain 2 Combat. At Heat 3, evolve.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Wildfire Brood-Sovereign.",
+    "Final Evolution — At Heat 3, transform into Wildfire Brood-Sovereign.",
 
   flavor:
     "Where the Shepherd crawls, every warning gauge begins leaning toward red."
@@ -934,10 +934,10 @@ export const CARDS = Object.freeze([
     "Gain 2 Combat.",
 
   heatText:
-    "Spend 1 Heat: look at the top 2 cards of your deck and manipulate the future. At Heat 4, choose an evolution.",
+    "Spend 1 Heat: look at the top 2 cards of your deck and manipulate the future. At Heat 3, choose an evolution.",
 
   transformText:
-    "Evolution — At Heat 4, choose Tomorrow-Shell or Afterimage Stalker.",
+    "Evolution — At Heat 3, choose Tomorrow-Shell or Afterimage Stalker.",
 
   flavor:
     "Its handlers discovered that it begins eating several seconds before food is presented."
@@ -996,7 +996,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "thousand_future_oracle",
     destination: "discard"
   },
@@ -1008,10 +1008,10 @@ export const CARDS = Object.freeze([
     "Draw 1 card.",
 
   heatText:
-    "Spend 1 Heat: inspect the top 3 cards and send unwanted futures to the bottom. At Heat 4, evolve.",
+    "Spend 1 Heat: inspect the top 3 cards and send unwanted futures to the bottom. At Heat 3, evolve.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Thousand-Future Oracle.",
+    "Final Evolution — At Heat 3, transform into Thousand-Future Oracle.",
 
   flavor:
     "Each plate on its shell reflects a tomorrow that has not yet been rejected."
@@ -1116,7 +1116,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "recursive_apex",
     destination: "discard"
   },
@@ -1131,10 +1131,10 @@ export const CARDS = Object.freeze([
     "Gain 2 Trade.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Combat. At Heat 4, evolve into Recursive Apex.",
+    "Spend 1 Heat: gain 3 Combat. At Heat 3, evolve into Recursive Apex.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Recursive Apex.",
+    "Final Evolution — At Heat 3, transform into Recursive Apex.",
 
   flavor:
     "The first beast attacks. The Stalker remembers the attack more accurately than the beast does."
@@ -1234,7 +1234,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "gorge_crown_brood_tyrant",
     destination: "discard"
   },
@@ -1246,10 +1246,10 @@ export const CARDS = Object.freeze([
     "Gain 2 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: create a Spawn in your hand. At Heat 4, evolve into Gorge-Crown Brood-Tyrant.",
+    "Spend 1 Heat: create a Spawn in your hand. At Heat 3, evolve into Gorge-Crown Brood-Tyrant.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Gorge-Crown Brood-Tyrant in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Gorge-Crown Brood-Tyrant in your discard pile.",
 
   flavor:
     "The creatures nesting between its armor plates eventually began answering its roar."
@@ -1340,7 +1340,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -1368,10 +1368,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Combat and 1 Disable.",
 
   heatText:
-    "Spend 1 Heat: gain 1 Market Erase. At Heat 4, choose one of two evolutions.",
+    "Spend 1 Heat: gain 1 Market Erase. At Heat 3, choose one of two evolutions.",
 
   transformText:
-    "Evolution — At Heat 4, choose Nullmaw Skimmer or Archiveback Seer and put the chosen form into your discard pile.",
+    "Evolution — At Heat 3, choose Nullmaw Skimmer or Archiveback Seer and put the chosen form into your discard pile.",
 
   flavor:
     "Its stomach contains several things that almost existed."
@@ -1425,7 +1425,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "eventide_market_eater",
     destination: "discard"
   },
@@ -1437,10 +1437,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Disable.",
 
   heatText:
-    "Spend 1 Heat: gain 1 additional Market Erase and 2 Combat. At Heat 4, evolve into Eventide Market-Eater.",
+    "Spend 1 Heat: gain 1 additional Market Erase and 2 Combat. At Heat 3, evolve into Eventide Market-Eater.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Eventide Market-Eater in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Eventide Market-Eater in your discard pile.",
 
   flavor:
     "Merchants notice it only after inventories begin developing impossible gaps."
@@ -1540,7 +1540,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "paradox_archive_beast",
     destination: "discard"
   },
@@ -1552,10 +1552,10 @@ export const CARDS = Object.freeze([
     "Draw 1 card.",
 
   heatText:
-    "Spend 1 Heat: gain 2 Trade and Reclaim a cost 2 or less card. At Heat 4, evolve into Paradox Archive-Beast.",
+    "Spend 1 Heat: gain 2 Trade and Reclaim a cost 2 or less card. At Heat 3, evolve into Paradox Archive-Beast.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Paradox Archive-Beast in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Paradox Archive-Beast in your discard pile.",
 
   flavor:
     "Patterns of dead machines swim beneath the glassy plates along its spine."
@@ -1686,7 +1686,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -1714,10 +1714,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Shield.",
 
   heatText:
-    "Spend 1 Heat: remove 1 Construction from an Expansion Base. At Heat 4, choose one of two evolutions.",
+    "Spend 1 Heat: remove 1 Construction from an Expansion Base. At Heat 3, choose one of two evolutions.",
 
   transformText:
-    "Evolution — At Heat 4, choose Rampart Ram or Reliquary Hart.",
+    "Evolution — At Heat 3, choose Rampart Ram or Reliquary Hart.",
 
   flavor:
     "The masons insist the creature understands blueprints. The creature insists the blueprints understand it."
@@ -1776,7 +1776,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "living_citadel_behemoth",
     destination: "discard"
   },
@@ -1788,10 +1788,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Trade.",
 
   heatText:
-    "Spend 1 Heat: remove 2 Construction from an Expansion Base. At Heat 4, evolve into Living Citadel Behemoth.",
+    "Spend 1 Heat: remove 2 Construction from an Expansion Base. At Heat 3, evolve into Living Citadel Behemoth.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Living Citadel Behemoth in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Living Citadel Behemoth in your discard pile.",
 
   flavor:
     "Where its hooves strike stone, foundations begin arranging themselves."
@@ -1903,7 +1903,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "basilica_worldhart",
     destination: "discard"
   },
@@ -1915,10 +1915,10 @@ export const CARDS = Object.freeze([
     "Reclaim a Worker, Interceptor, or Acolyte.",
 
   heatText:
-    "Spend 1 Heat: repair an Expansion Base for 5. At Heat 4, evolve into Basilica Worldhart.",
+    "Spend 1 Heat: repair an Expansion Base for 5. At Heat 3, evolve into Basilica Worldhart.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Basilica Worldhart in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Basilica Worldhart in your discard pile.",
 
   flavor:
     "Flowers appear in the footprints it leaves across shattered battlements."
@@ -2021,7 +2021,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -2047,10 +2047,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Disable.",
 
   heatText:
-    "Spend 1 Heat: gain 2 Trade and 1 Disable. At Heat 4, choose an Azure or Umbral evolution.",
+    "Spend 1 Heat: gain 2 Trade and 1 Disable. At Heat 3, choose an Azure or Umbral evolution.",
 
   transformText:
-    "Prismatic Evolution — At Heat 4, become either the BLUE Aurelium Haloform or the RED Umbravore Hexform.",
+    "Prismatic Evolution — At Heat 3, become either the BLUE Aurelium Haloform or the RED Umbravore Hexform.",
 
   flavor:
     "It was born without a final shape. The Concord considers this an advantage."
@@ -2101,7 +2101,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "seraphic_prismarch",
     destination: "discard"
   },
@@ -2113,10 +2113,10 @@ export const CARDS = Object.freeze([
     "Gain 2 Trade.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Authority. At Heat 4, evolve into Seraphic Prismarch.",
+    "Spend 1 Heat: gain 3 Authority. At Heat 3, evolve into Seraphic Prismarch.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Seraphic Prismarch in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Seraphic Prismarch in your discard pile.",
 
   flavor:
     "The Azure did not convert it. It simply discovered that prayer was another wavelength."
@@ -2202,7 +2202,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "covenant_prismfiend",
     destination: "discard"
   },
@@ -2214,10 +2214,10 @@ export const CARDS = Object.freeze([
     "Gain 2 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 4, evolve into Covenant Prismfiend.",
+    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 3, evolve into Covenant Prismfiend.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Covenant Prismfiend in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Covenant Prismfiend in your discard pile.",
 
   flavor:
     "Once it learned that souls also refract, the Covenant stopped calling it an experiment."
@@ -2316,7 +2316,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -2342,10 +2342,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Trade.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Shield. At Heat 4, choose one of two evolutions.",
+    "Spend 1 Heat: gain 3 Shield. At Heat 3, choose one of two evolutions.",
 
   transformText:
-    "Evolution — At Heat 4, choose Aegiswing Gryphet or Sunclaw Canticle-Lynx.",
+    "Evolution — At Heat 3, choose Aegiswing Gryphet or Sunclaw Canticle-Lynx.",
 
   flavor:
     "Its feathers glow brightest when someone nearby has something worth protecting."
@@ -2396,7 +2396,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "thronewing_aegisbeast",
     destination: "discard"
   },
@@ -2408,10 +2408,10 @@ export const CARDS = Object.freeze([
     "Gain 2 additional Shield.",
 
   heatText:
-    "Spend 1 Heat: gain 4 Shield. At Heat 4, evolve into Thronewing Aegisbeast.",
+    "Spend 1 Heat: gain 4 Shield. At Heat 3, evolve into Thronewing Aegisbeast.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Thronewing Aegisbeast in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Thronewing Aegisbeast in your discard pile.",
 
   flavor:
     "It sleeps across monastery doors and wakes before danger decides to arrive."
@@ -2503,7 +2503,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "dawnmane_judgment_beast",
     destination: "discard"
   },
@@ -2515,10 +2515,10 @@ export const CARDS = Object.freeze([
     "Gain 25% Lifelink this turn.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Combat and 2 Authority. At Heat 4, evolve into Dawnmane Judgment-Beast.",
+    "Spend 1 Heat: gain 3 Combat and 2 Authority. At Heat 3, evolve into Dawnmane Judgment-Beast.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Dawnmane Judgment-Beast in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Dawnmane Judgment-Beast in your discard pile.",
 
   flavor:
     "Its hunting cry contains seven notes. The condemned rarely hear the seventh."
@@ -2609,7 +2609,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
 
     choose: [
       {
@@ -2635,10 +2635,10 @@ export const CARDS = Object.freeze([
     "Gain 1 Trade.",
 
   heatText:
-    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 4, choose one of two evolutions.",
+    "Spend 1 Heat: gain 4 Combat and take 1 Authority damage. At Heat 3, choose one of two evolutions.",
 
   transformText:
-    "Evolution — At Heat 4, choose Bloodhorn Pactbeast or Gravecinder Familiar.",
+    "Evolution — At Heat 3, choose Bloodhorn Pactbeast or Gravecinder Familiar.",
 
   flavor:
     "Every apprentice is given one. Every master bears the scars of having done so."
@@ -2690,7 +2690,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "blood_crowned_calamity",
     destination: "discard"
   },
@@ -2702,10 +2702,10 @@ export const CARDS = Object.freeze([
     "Gain 3 additional Combat.",
 
   heatText:
-    "Spend 1 Heat: gain 5 Combat and take 2 Authority damage. At Heat 4, evolve into Blood-Crowned Calamity.",
+    "Spend 1 Heat: gain 5 Combat and take 2 Authority damage. At Heat 3, evolve into Blood-Crowned Calamity.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Blood-Crowned Calamity in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Blood-Crowned Calamity in your discard pile.",
 
   flavor:
     "The pact was written around its neck. Eventually its neck became too large for the words."
@@ -2797,7 +2797,7 @@ export const CARDS = Object.freeze([
 
   transform: {
     trigger: "heat",
-    required: 4,
+    required: 3,
     into: "ashen_archive_fiend",
     destination: "discard"
   },
@@ -2809,10 +2809,10 @@ export const CARDS = Object.freeze([
     "Draw 1 card.",
 
   heatText:
-    "Spend 1 Heat: gain 3 Combat and 2 Trade. At Heat 4, evolve into Ashen Archive Fiend.",
+    "Spend 1 Heat: gain 3 Combat and 2 Trade. At Heat 3, evolve into Ashen Archive Fiend.",
 
   transformText:
-    "Final Evolution — At Heat 4, transform into Ashen Archive Fiend in your discard pile.",
+    "Final Evolution — At Heat 3, transform into Ashen Archive Fiend in your discard pile.",
 
   flavor:
     "It does not eat corpses. It eats everything the corpse was supposed to remember."
@@ -3833,12 +3833,18 @@ export const CARDS = Object.freeze([
   outpost: false,
   sigil: "⬢",
   effect: {},
-  sacrificeTrigger: {
-    sacrificedId: "spawn",
-    effect: {
-      heal: 2
+  triggers: [
+    {
+      event: "CARD_SACRIFICED",
+      condition: {
+        cardId: "spawn",
+        token: true
+      },
+      effect: {
+        heal: 2
+      }
     }
-  },
+  ],
   text: "Whenever you sacrifice a Spawn, gain 2 Authority.",
   flavor:
     "The brood does not mourn its fallen. It feeds upon their strength."
@@ -13610,6 +13616,144 @@ export const CARDS = Object.freeze([
     text: "Whenever you acquire a Red card, gain 1 Charge.",
     chargeText: "Spend 3: gain 4 Combat; gain 6 instead while you own at least 12 Red cards.",
     flavor: "It grows fastest where everyone insists the stain is contained."
+  },
+
+  // ==========================================================
+  // CAMPAIGN-ONLY ENGINE PROOF ASSETS
+  // ==========================================================
+  {
+    id: "frontier_fort",
+    name: "Frontier Fort",
+    image: "frontier_fort.png",
+    faction: "blue",
+    cost: 7,
+    shop_cost: 0,
+    type: "base",
+    sigil: "✦",
+    expansion: true,
+    health: 10,
+    construction: 2,
+    attachmentSlots: 2,
+    collectible: false,
+    campaignOnly: true,
+    campaignReward: true,
+    effect: { trade: 1 },
+    transform: {
+      trigger: "ownerTurnsElapsed",
+      required: 3,
+      choose: ["citadel_of_war", "fortress_market"],
+      preserve: {
+        healthRatio: true,
+        armor: true,
+        charges: true,
+        attachments: true,
+        construction: true,
+        disableState: true,
+        turnsSurvived: true
+      }
+    },
+    text: "Gain 1 Trade. After surviving three owner turns, evolve into Citadel of War or Fortress Market.",
+    flavor: "Every empire begins as a wall that refused to fall."
+  },
+  {
+    id: "citadel_of_war",
+    name: "Citadel of War",
+    image: "citadel_of_war.png",
+    faction: "blue",
+    cost: 0,
+    shop_cost: 0,
+    type: "base",
+    sigil: "✦",
+    expansion: true,
+    health: 20,
+    construction: 0,
+    attachmentSlots: 3,
+    collectible: false,
+    campaignOnly: true,
+    transformedFrom: "frontier_fort",
+    effect: { combat: 3 },
+    reaction: {
+      event: "BASE_WOULD_BE_DESTROYED",
+      oncePerTurn: true,
+      automatic: true,
+      effect: { armor: 3 }
+    },
+    text: "Gain 3 Combat. Reaction — once per turn, when one of your Bases would be destroyed, give it 3 Armor first.",
+    flavor: "Its gates answer every siege with another wall."
+  },
+  {
+    id: "fortress_market",
+    name: "Fortress Market",
+    image: "fortress_market.png",
+    faction: "blue",
+    cost: 0,
+    shop_cost: 0,
+    type: "base",
+    sigil: "✦",
+    expansion: true,
+    health: 16,
+    construction: 0,
+    attachmentSlots: 3,
+    collectible: false,
+    campaignOnly: true,
+    transformedFrom: "frontier_fort",
+    effect: { trade: 3, shield: 1 },
+    text: "Gain 3 Trade and 1 Shield.",
+    flavor: "Caravans learn quickly that the safest road is also the most profitable."
+  },
+  {
+    id: "worldheart_core",
+    name: "Worldheart Core",
+    image: "worldheart_core.png",
+    faction: "red",
+    cost: 0,
+    shop_cost: 0,
+    type: "base",
+    sigil: "◒",
+    expansion: true,
+    health: 30,
+    construction: 0,
+    attachmentSlots: 3,
+    collectible: false,
+    campaignOnly: true,
+    effect: { shield: 2 },
+    text: "Gain 2 Shield at the start of the World Eater's turn.",
+    flavor: "A stolen planet still beats inside it."
+  },
+  {
+    id: "rift_maw",
+    name: "Rift Maw",
+    image: "rift_maw.png",
+    faction: "red",
+    cost: 0,
+    shop_cost: 0,
+    type: "base",
+    sigil: "◒",
+    expansion: true,
+    health: 15,
+    construction: 0,
+    outpost: true,
+    attachmentSlots: 1,
+    collectible: false,
+    campaignOnly: true,
+    effect: { combat: 3 },
+    text: "Outpost. Gain 3 Combat at the start of the World Eater's turn.",
+    flavor: "It opens only to swallow."
+  },
+  {
+    id: "voracynth_boss_card",
+    name: "Voracynth, World Eater",
+    image: "voracynth_boss_card.png",
+    faction: "red",
+    cost: 0,
+    shop_cost: 0,
+    type: "ship",
+    sigil: "◒",
+    collectible: false,
+    campaignOnly: true,
+    effect: {},
+    text: "Boss Ability — every two Boss turns, devour the cheapest non-permanent Trade Row card and gain Combat equal to its cost.",
+    flavor: "Markets, armies, histories—it recognizes only portions."
   }
 
 ]);
@@ -13623,6 +13767,7 @@ export const CARD_MAP = Object.freeze(
 export function isCollectibleCard(card) {
   return Boolean(card) &&
     card.collectible !== false &&
+    card.campaignOnly !== true &&
     card.token !== true &&
     !card.transformedFrom;
 }
