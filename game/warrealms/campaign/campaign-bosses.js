@@ -28,9 +28,54 @@ function deck(...cardIds) {
   return cardIds;
 }
 
-// Bosses are intentionally ordered from introductory to mythic. Every 21 regions
-// completes one full cycle, so a long campaign sees every boss before repeats begin.
-export const CAMPAIGN_BOSSES = Object.freeze([
+// These five leaders form a deliberately forgiving introductory arc. Their
+// Authority values are not region-multiplied during the first campaign cycle.
+export const BEGINNER_CAMPAIGN_BOSSES = Object.freeze([
+  freezeBoss({
+    id: "coppertrail_reaver", name: "Brakka Coin-Taker", title: "The Coppertrail Reaver", faction: "green", difficulty: "easy", tier: 0, arc: "beginner",
+    story: "A loud border raider whose confidence is considerably larger than her first warband.",
+    authority: 30,
+    startingDeck: deck("starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_blade", "starter_blade", "starter_blade", "starter_blade"),
+    economy: { bonusTrade: 0, tradeLimit: 5 }, aggression: .88,
+    bossAbility: { every: 4, label: "Coppertrail Rush", effect: { gainCombat: 1 } }
+  }),
+  freezeBoss({
+    id: "lantern_road_apprentice", name: "Sister Elowen", title: "The Lantern-Road Apprentice", faction: "blue", difficulty: "easy", tier: 0, arc: "beginner",
+    story: "A young shrine-keeper testing a borrowed shield and an oath she has only just learned to carry.",
+    authority: 35, startingShield: 1,
+    startingDeck: deck("starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_blade", "starter_blade", "starter_blade", "starter_blade", "tithe_acolyte"),
+    economy: { bonusTrade: 0, tradeLimit: 5 }, aggression: .9,
+    bossAbility: { every: 4, label: "Lantern Ward", effect: { gainShield: 2 } }
+  }),
+  freezeBoss({
+    id: "threadglass_wayfinder", name: "Orrin Threadglass", title: "The Unproven Wayfinder", faction: "yellow", difficulty: "easy", tier: 0, arc: "beginner",
+    story: "A future-reader who can see every road ahead except the one on which he loses.",
+    authority: 40, startingShield: 2, startingBases: ["probability_beacon"],
+    startingDeck: deck("starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_blade", "starter_blade", "starter_blade", "starpath_mite", "starwhisper_scout"),
+    economy: { bonusTrade: 0, tradeLimit: 5 }, aggression: .92,
+    bossAbility: { every: 4, label: "Favorable Thread", effect: { gainTrade: 1, gainCombat: 1 } }
+  }),
+  freezeBoss({
+    id: "emberscar_cadet", name: "Vessa Emberscar", title: "The Ash-Court Cadet", faction: "red", difficulty: "easy", tier: 0, arc: "beginner",
+    story: "An ambitious Covenant cadet hunting a victory impressive enough to earn her first blackglass seal.",
+    authority: 45, startingShield: 3, startingBases: ["candlecrypt_altar"],
+    startingDeck: deck("starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_blade", "starter_blade", "starter_blade", "coin_curse", "cinder_initiate", "ashledger_acolyte"),
+    economy: { bonusTrade: 0, tradeLimit: 5 }, aggression: .98,
+    bossAbility: { every: 3, label: "Cadet's Hex", effect: { gainCombat: 2 } }
+  }),
+  freezeBoss({
+    id: "mudwall_chieftain", name: "Drokka Mudwall", title: "Chieftain of the First Siege", faction: "green", difficulty: "easy", tier: 0, arc: "beginner",
+    story: "The first commander in the borderlands with enough discipline to turn a raid into a real siege.",
+    authority: 55, startingShield: 3, startingBases: ["scrapwood_barricade"],
+    startingDeck: deck("starter_coin", "starter_coin", "starter_coin", "starter_coin", "starter_blade", "starter_blade", "wreckmarket_runt", "mudboot_rusher", "fuseback_runt", "ironjaw_scavenger"),
+    economy: { bonusTrade: 0, tradeLimit: 5 }, aggression: 1.02,
+    bossAbility: { every: 3, label: "First Siege", effect: { gainCombat: 3 } },
+    phases: [{ id: "mudwall_stands", name: "Phase II · Mudwall Stands", authorityAtOrBelow: 28, createBase: "mudwall_camp", bossCardFrequency: 3 }]
+  })
+]);
+
+// The original roster remains intact and begins only after the introductory arc.
+export const EXISTING_CAMPAIGN_BOSSES = Object.freeze([
   freezeBoss({
     id: "scrapfang_raider", name: "Ruk Scrapfang", title: "The Border Raider", faction: "green", difficulty: "easy", tier: 1,
     authority: 70, startingBases: ["mudwall_camp"],
@@ -220,6 +265,11 @@ export const CAMPAIGN_BOSSES = Object.freeze([
       { id: "phase_two", name: "Phase II · Endless Hunger", authorityAtOrBelow: 95, createBase: "rift_maw", bossCardFrequency: 1 }
     ]
   })
+]);
+
+export const CAMPAIGN_BOSSES = Object.freeze([
+  ...BEGINNER_CAMPAIGN_BOSSES,
+  ...EXISTING_CAMPAIGN_BOSSES
 ]);
 
 const bossMap = new Map(CAMPAIGN_BOSSES.map(boss => [boss.id, boss]));
