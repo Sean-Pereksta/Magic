@@ -1155,6 +1155,38 @@
       body.battleMode .opponentBattlefield{min-height:178px}
     }
 
+    /* Viewport-priority sizing: compact enemy overview, full trade row and hand. */
+    body.battleMode .battleShell{
+      --battleTopRow:clamp(150px,24dvh,300px);
+      --battleMiddleMin:240px;
+      --battleBottomMin:274px;
+      grid-template-rows:var(--battleTopRow) minmax(var(--battleMiddleMin),.96fr) minmax(var(--battleBottomMin),1.04fr)
+    }
+    body.battleMode .targetOwnerGroup{min-width:clamp(100px,8vw,118px)}
+    body.battleMode .targetCardGrid{gap:5px}
+    body.battleMode .targetCardGrid .gameCard,body.battleMode .playerTargetCard{width:clamp(58px,5.5vw,82px);flex:0 0 clamp(58px,5.5vw,82px)}
+    body.battleMode .playerTargetCard{min-height:clamp(100px,13dvh,122px);padding:5px}
+    body.battleMode .bossTargetSummary{min-height:clamp(112px,14dvh,135px)}
+    body.battleMode .playerTargetSigil{width:clamp(32px,3vw,38px);height:clamp(32px,3vw,38px);margin:8px auto 5px;font-size:20px}
+    body.battleMode .playerTargetCard h3{font-size:clamp(7px,.55vw,9px)}
+    body.battleMode .playerTargetStats{margin-top:4px;font-size:5.8px;line-height:1.4}
+    body.battleMode .playerTargetStatus{margin:4px 0;font-size:5.2px}
+    body.battleMode .playerTargetCard .btn{min-height:22px;padding:2px;font-size:6px}
+
+    @media(max-height:750px){
+      body.battleMode .battleShell{--battleTopRow:clamp(135px,22dvh,165px);--battleMiddleMin:225px;--battleBottomMin:260px}
+    }
+    @media(max-height:650px){
+      body.battleMode .battleShell{--battleTopRow:clamp(120px,21dvh,150px);--battleMiddleMin:215px;--battleBottomMin:250px}
+    }
+    @media (pointer:coarse) and (max-width:620px) and (orientation:portrait){
+      body.battleMode .battleShell{--battleTopRow:clamp(140px,22dvh,205px);--battleMiddleMin:220px;--battleBottomMin:260px;grid-template-rows:var(--battleTopRow) minmax(var(--battleMiddleMin),.96fr) minmax(var(--battleBottomMin),1.04fr)}
+      body.battleMode .opponentBattlefield{min-height:0}
+    }
+    @media (pointer:coarse) and (max-height:620px) and (orientation:landscape){
+      body.battleMode .battleShell{grid-template-rows:minmax(0,1fr)}
+    }
+
   </style>
 </head>
 <body>
