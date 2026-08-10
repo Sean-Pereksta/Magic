@@ -18,17 +18,18 @@ export function currentCampaignEncounter(profile) {
   const scaling = campaignRegionScaling(profile.region);
   const boss = node.type === "boss" ? getCampaignBoss(node.bossId) : null;
   const routeMultiplier = Math.max(.75, Number(node.enemyAuthorityMultiplier) || 1);
+  const difficultyOrder = ["easy", "medium", "hard", "impossible"];
+  const bossBaseDifficulty = boss?.difficulty === "mythic" ? "impossible" : boss?.difficulty;
+  const bossRegionalDifficulty = profile.region <= 2 ? "easy" : profile.region <= 5 ? "medium" : profile.region <= 9 ? "hard" : "impossible";
   const difficulty = boss
-    ? (boss.difficulty === "mythic" ? "impossible" : boss.difficulty)
-    : profile.region <= 3
+    ? difficultyOrder[Math.max(difficultyOrder.indexOf(bossBaseDifficulty), difficultyOrder.indexOf(bossRegionalDifficulty), 0)]
+    : profile.region <= 2
       ? (node.pathId === "rift_gambit" ? "medium" : "easy")
-      : profile.region <= 7
-        ? (node.type === "elite" ? "medium" : "easy")
-        : profile.region <= 12
-          ? (node.pathId === "rift_gambit" && profile.region >= 10 ? "hard" : "medium")
-          : profile.region <= 18
-            ? (node.type === "elite" ? "hard" : "medium")
-            : node.pathId === "rift_gambit" ? "impossible" : "hard";
+      : profile.region <= 5
+        ? (node.type === "elite" ? "hard" : "medium")
+        : profile.region <= 8
+          ? (node.pathId === "rift_gambit" ? "impossible" : "hard")
+          : "impossible";
   const regionalShield = scaling.modifiers.filter(modifier => modifier.id === "armored_front").reduce((sum, modifier) => sum + modifier.rank * 3, 0);
   const configuredBaseTotal = Math.max(whole(node.enemyStartingBases), whole(scaling.enemyStartingBases));
   return {
@@ -37,7 +38,7 @@ export function currentCampaignEncounter(profile) {
     boss,
     difficulty,
     enemyAuthority: boss
-      ? Math.round(boss.authority * scaling.enemyAuthorityMultiplier * routeMultiplier)
+      ? Math.round(boss.authority * scaling.bossAuthorityMultiplier * routeMultiplier)
       : Math.round(scaling.baseEnemyAuthority * scaling.enemyAuthorityMultiplier * routeMultiplier),
     enemyShield: boss
       ? whole(boss.startingShield) + regionalShield + whole(node.enemyShield)
@@ -53,7 +54,8 @@ export function currentCampaignEncounter(profile) {
     primaryFaction: boss?.faction || "",
     supportFaction: boss?.supportFaction || "",
     currencyBonus: whole(node.currencyBonus),
-    bossCard: boss?.bossCard || ""
+    bossCard: boss?.bossCard || "",
+    bossImage: boss?.image || ""
   };
 }
 

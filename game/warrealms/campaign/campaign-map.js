@@ -61,18 +61,14 @@ export const CAMPAIGN_PATHS = Object.freeze([
 
 const pathMap = new Map(CAMPAIGN_PATHS.map(path => [path.id, path]));
 
-// A region alternates decisions, rewards, recovery, and escalation. War Camp and
-// Rest are intentionally separate so currency and recovery both matter.
+// Bosses are the center of the campaign. Each region now contains one route
+// battle before its War Camp and Rest, putting a Boss in every other combat
+// encounter instead of hiding it behind three preliminary battles.
 export const CAMPAIGN_REGION_SEQUENCE = Object.freeze([
   Object.freeze({ type: "path", routeSlot: 1 }),
   Object.freeze({ type: "route", routeSlot: 1, choiceNode: 1 }),
   Object.freeze({ type: "routeReward", routeSlot: 1, choiceNode: 1 }),
-  Object.freeze({ type: "path", routeSlot: 2 }),
-  Object.freeze({ type: "route", routeSlot: 2, choiceNode: 4 }),
-  Object.freeze({ type: "routeReward", routeSlot: 2, choiceNode: 4 }),
   Object.freeze({ type: "shop", label: "War Camp" }),
-  Object.freeze({ type: "elite", encounter: "regional_gate", enemyAuthorityMultiplier: 1.1, enemyShield: 4, enemyStartingBases: 1, enemyBonusCombat: 0 }),
-  Object.freeze({ type: "reward", rarity: "rare", minCost: 4, maxCost: 6, overrideCostCap: true, milestone: "elite" }),
   Object.freeze({ type: "rest", label: "Rest Before the Boss" }),
   Object.freeze({ type: "boss" }),
   Object.freeze({ type: "reward", bossReward: true })
@@ -110,39 +106,42 @@ export function getCampaignPath(pathId) {
 export function campaignRegionScaling(region = 1) {
   const safeRegion = Math.max(1, Math.floor(Number(region) || 1));
   const index = safeRegion - 1;
-  const tier = safeRegion <= 5 ? 0 : safeRegion <= 10 ? 1 : safeRegion <= 15 ? 2 : safeRegion <= 20 ? 3 : 4 + Math.floor((safeRegion - 21) / 6);
-  const modifierCount = Math.min(MODIFIER_ROTATION.length, Math.max(0, Math.floor((safeRegion - 3) / 3)));
+  const tier = safeRegion <= 3 ? 0 : safeRegion <= 6 ? 1 : safeRegion <= 10 ? 2 : safeRegion <= 15 ? 3 : 4 + Math.floor((safeRegion - 16) / 5);
+  const modifierCount = Math.min(MODIFIER_ROTATION.length, Math.max(0, 1 + Math.floor((safeRegion - 2) / 2)));
   const endlessIndex = Math.max(0, safeRegion - CAMPAIGN_BOSSES.length);
   const modifiers = Array.from({ length: modifierCount }, (_, offset) => {
     const modifier = MODIFIER_ROTATION[(tier + offset) % MODIFIER_ROTATION.length];
     return { ...modifier, rank: 1 + Math.floor((tier + offset) / MODIFIER_ROTATION.length) };
   });
-  const baseEnemyAuthority = safeRegion <= 6
-    ? 25 + safeRegion * 5
+  const baseEnemyAuthority = safeRegion <= 5
+    ? 26 + safeRegion * 7
     : safeRegion <= 10
-      ? 55 + (safeRegion - 6) * 5
+      ? 61 + (safeRegion - 5) * 9
       : safeRegion <= 15
-        ? 75 + (safeRegion - 10) * 7
-        : 110 + (safeRegion - 15) * 8;
-  const enemyBonusCombat = safeRegion <= 8
+        ? 106 + (safeRegion - 10) * 11
+        : 161 + (safeRegion - 15) * 13;
+  const enemyBonusCombat = safeRegion <= 2
     ? 0
-    : safeRegion <= 11
+    : safeRegion <= 4
       ? 1
-      : safeRegion <= 15
+      : safeRegion <= 6
         ? 2
-        : Math.min(7, 2 + Math.floor((safeRegion - 16) / 4));
+        : safeRegion <= 9
+          ? 3
+          : Math.min(9, 4 + Math.floor((safeRegion - 10) / 3));
   return {
     region: safeRegion,
     tier,
-    progressBand: safeRegion <= 5 ? "beginner" : safeRegion <= 10 ? "early" : safeRegion <= 15 ? "mid" : safeRegion <= CAMPAIGN_BOSSES.length ? "late" : "endless",
+    progressBand: safeRegion <= 3 ? "beginner" : safeRegion <= 6 ? "early" : safeRegion <= 10 ? "mid" : safeRegion <= CAMPAIGN_BOSSES.length ? "late" : "endless",
     baseEnemyAuthority,
-    enemyAuthorityMultiplier: 1 + endlessIndex * .06 + Math.floor(endlessIndex / Math.max(1, CAMPAIGN_BOSSES.length)) * .08,
-    enemyBaseHealthMultiplier: 1 + Math.max(0, safeRegion - 8) * .035 + endlessIndex * .015,
-    enemyStartingBases: safeRegion <= 8 ? 0 : Math.min(3, 1 + Math.floor((safeRegion - 9) / 7)),
-    enemyBonusTrade: safeRegion <= 8 ? 0 : Math.min(3, Math.floor((safeRegion - 6) / 7)),
+    enemyAuthorityMultiplier: 1 + index * .025 + endlessIndex * .06 + Math.floor(endlessIndex / Math.max(1, CAMPAIGN_BOSSES.length)) * .08,
+    bossAuthorityMultiplier: 1 + endlessIndex * .06 + Math.floor(endlessIndex / Math.max(1, CAMPAIGN_BOSSES.length)) * .08,
+    enemyBaseHealthMultiplier: 1 + Math.max(0, safeRegion - 4) * .045 + endlessIndex * .02,
+    enemyStartingBases: safeRegion <= 3 ? 0 : Math.min(3, 1 + Math.floor((safeRegion - 4) / 5)),
+    enemyBonusTrade: safeRegion <= 4 ? 0 : Math.min(4, 1 + Math.floor((safeRegion - 5) / 5)),
     enemyBonusCombat,
-    enemyHandSize: Math.min(7, 5 + Math.floor(Math.max(0, safeRegion - 9) / 7)),
-    bossAbilityFrequencyReduction: Math.min(1, Math.floor(endlessIndex / 10)),
+    enemyHandSize: Math.min(7, 5 + Math.floor(Math.max(0, safeRegion - 4) / 4)),
+    bossAbilityFrequencyReduction: Math.min(2, Math.floor(Math.max(0, safeRegion - 1) / 8)),
     rewardQuality: Math.log2(safeRegion + 1),
     modifiers
   };
