@@ -1668,10 +1668,22 @@
   const db = getFirestore(app);
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
+  const safeLocalRead = (key, fallback = null) => {
+    try { return localStorage.getItem(key) ?? fallback; }
+    catch (error) { console.warn("Storage read skipped", key, error); return fallback; }
+  };
+  const safeLocalWrite = (key, value) => {
+    try { localStorage.setItem(key, value); return true; }
+    catch (error) { console.warn("Storage write skipped", key, error); return false; }
+  };
+  const safeLocalRemove = key => {
+    try { localStorage.removeItem(key); return true; }
+    catch (error) { console.warn("Storage removal skipped", key, error); return false; }
+  };
   const query = new URLSearchParams(location.search);
   const gameId = (query.get("gameId") || query.get("lobbyId") || "").trim();
-  const gameHubStoredUsername = (localStorage.getItem("gh.username") || "").trim().slice(0, 48);
-  const username = (query.get("username") || query.get("name") || gameHubStoredUsername || localStorage.getItem("username") || "Commander").trim().slice(0, 48);
+  const gameHubStoredUsername = String(safeLocalRead("gh.username", "") || "").trim().slice(0, 48);
+  const username = String(query.get("username") || query.get("name") || gameHubStoredUsername || safeLocalRead("username", "") || "Commander").trim().slice(0, 48);
   const profileId = username.replaceAll("/", "_").slice(0, 80) || "Commander";
   const profileRef = doc(db, "users", profileId);
   const lobbyRef = gameId ? doc(db, "lobbies", gameId) : null;
@@ -1862,6 +1874,15 @@
   let armoryLobbyBusy = false;
   let armoryLobbyLaunching = false;
   let armoryLobbyStartupChecked = false;
+  let armoryLobbyBrowserRefreshTimer = null;
+  let armoryLobbyBrowserRefreshInFlight = false;
+  let armoryLobbyBrowserSourceOrder = 0;
+  let armoryLobbySafetyTimer = null;
+  let armoryLobbySafetyReadInFlight = false;
+  let armoryPageRecoveryPromise = null;
+  let firebaseAuthReady = false;
+  let bootPromise = null;
+  let bootNeedsRetry = false;
   const ARMORY_LOBBY_STORAGE_KEY = "warrealms.armoryLobbyId";
   let handDrag = null;
   let handDragGhost = null;
@@ -1894,7 +1915,7 @@
   const COMPACT_BATTLE_QUERY =
     "(pointer: coarse) and (max-width: 900px), " +
     "(pointer: coarse) and (max-height: 620px)";
-  let battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Number(localStorage.getItem("warrealmsBattleZoom")) || 1));
+  let battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Number(safeLocalRead("warrealmsBattleZoom", "1")) || 1));
   let battleZoomLayoutFrame = 0;
 
   function escapeHtml(value) {
@@ -2479,7 +2500,7 @@
     $("#battleZoomLabel").textContent = `${Math.round(battleZoom * 100)}%`;
     $("#battleZoomOutBtn").disabled = battleZoom <= BATTLE_ZOOM_MIN;
     $("#battleZoomInBtn").disabled = battleZoom >= BATTLE_ZOOM_MAX;
-    localStorage.setItem("warrealmsBattleZoom", String(battleZoom));
+    safeLocalWrite("warrealmsBattleZoom", String(battleZoom));
     syncBattleZoomLayout();
   }
 
@@ -2498,6 +2519,8 @@
     $("#brandSub").textContent = nextMode === "armory" ? "Store, decks, campaign, public library, and multiplayer" : campaignBattleActive ? "Persistent endless campaign battle" : singlePlayerMode ? "Singleplayer War Realms challenge" : "Shared-market realm warfare";
     updatePrimaryNavigation();
     applyBattleZoom();
+    syncArmoryLobbyBrowserPolling();
+    syncArmoryLobbySafetyPolling();
   }
 
   function openModal(title, subtitle, bodyHtml) {
@@ -5574,26 +5597,84 @@
     }
   }
 
-  function startArmoryLobbyBrowser() {
-    if (!hubAccountVerified || unsubscribeArmoryLobbyBrowser) return;
-    const waitingLobbies = firestoreQuery(collection(db, "lobbies"), where("status", "==", "waiting"));
-    unsubscribeArmoryLobbyBrowser = onSnapshot(waitingLobbies, snapshot => {
-      armoryLobbyCache = new Map();
-      snapshot.forEach(lobbySnapshot => {
-        const data = lobbySnapshot.data();
-        if (data.gameType === "warrealms") armoryLobbyCache.set(lobbySnapshot.id, { id: lobbySnapshot.id, ...data });
-      });
-      if (armoryTab === "multiplayer" && mode === "armory") renderArmory();
-    }, error => {
-      console.error("War Realms lobby browser failed", error);
-      showToast(error.message || "Could not load multiplayer lobbies.", "bad");
+  const ARMORY_LOBBY_REFRESH_MS = 4000;
+  const ARMORY_LOBBY_SAFETY_MS = 1000;
+  const armoryWaitingLobbyQuery = () => firestoreQuery(collection(db, "lobbies"), where("status", "==", "waiting"));
+  const armoryLobbyBrowserActive = () => !document.hidden && mode === "armory" && armoryTab === "multiplayer";
+
+  function armoryLobbyMapFromSnapshot(snapshot) {
+    const next = new Map();
+    snapshot.forEach(lobbySnapshot => {
+      const data = lobbySnapshot.data();
+      if (data.gameType === "warrealms") next.set(lobbySnapshot.id, { id: lobbySnapshot.id, ...data });
     });
+    return next;
+  }
+
+  function applyArmoryLobbySnapshot(snapshot, sourceOrder) {
+    // A direct read that began before a newer realtime event cannot overwrite it.
+    if (sourceOrder < armoryLobbyBrowserSourceOrder) return false;
+    armoryLobbyCache = armoryLobbyMapFromSnapshot(snapshot);
+    if (armoryTab === "multiplayer" && mode === "armory") renderArmory();
+    return true;
+  }
+
+  async function refreshArmoryLobbyBrowser({ force = false } = {}) {
+    if (!hubAccountVerified || armoryLobbyBrowserRefreshInFlight) return false;
+    if (!force && !armoryLobbyBrowserActive()) return false;
+    armoryLobbyBrowserRefreshInFlight = true;
+    const sourceOrder = ++armoryLobbyBrowserSourceOrder;
+    try {
+      const snapshot = await getDocs(armoryWaitingLobbyQuery());
+      return applyArmoryLobbySnapshot(snapshot, sourceOrder);
+    } catch (error) {
+      console.warn("Direct War Realms lobby refresh failed", error);
+      if (armoryLobbyBrowserActive() && !armoryLobbyCache.size) {
+        showToast(error.message || "Could not refresh multiplayer lobbies.", "bad");
+      }
+      return false;
+    } finally {
+      armoryLobbyBrowserRefreshInFlight = false;
+    }
+  }
+
+  function syncArmoryLobbyBrowserPolling() {
+    const shouldPoll = hubAccountVerified && armoryLobbyBrowserActive();
+    if (!shouldPoll) {
+      if (armoryLobbyBrowserRefreshTimer) clearInterval(armoryLobbyBrowserRefreshTimer);
+      armoryLobbyBrowserRefreshTimer = null;
+      return;
+    }
+    if (!armoryLobbyBrowserRefreshTimer) {
+      armoryLobbyBrowserRefreshTimer = setInterval(() => void refreshArmoryLobbyBrowser(), ARMORY_LOBBY_REFRESH_MS);
+    }
+  }
+
+  function startArmoryLobbyBrowser(forceReconnect = false) {
+    if (!hubAccountVerified) return;
+    if (unsubscribeArmoryLobbyBrowser && !forceReconnect) {
+      syncArmoryLobbyBrowserPolling();
+      return;
+    }
+    unsubscribeArmoryLobbyBrowser?.();
+    unsubscribeArmoryLobbyBrowser = onSnapshot(armoryWaitingLobbyQuery(), snapshot => {
+      const sourceOrder = ++armoryLobbyBrowserSourceOrder;
+      applyArmoryLobbySnapshot(snapshot, sourceOrder);
+    }, error => {
+      console.error("War Realms lobby listener failed; direct refresh remains active", error);
+      unsubscribeArmoryLobbyBrowser?.();
+      unsubscribeArmoryLobbyBrowser = null;
+      syncArmoryLobbyBrowserPolling();
+      void refreshArmoryLobbyBrowser({ force: true });
+    });
+    syncArmoryLobbyBrowserPolling();
+    void refreshArmoryLobbyBrowser({ force: true });
   }
 
   async function cleanupStaleArmoryLobbyMembership() {
     if (!hubAccountVerified || currentArmoryLobbyId) return;
-    const staleId = localStorage.getItem(ARMORY_LOBBY_STORAGE_KEY) || "";
-    localStorage.removeItem(ARMORY_LOBBY_STORAGE_KEY);
+    const staleId = safeLocalRead(ARMORY_LOBBY_STORAGE_KEY, "") || "";
+    safeLocalRemove(ARMORY_LOBBY_STORAGE_KEY);
     if (!staleId) return;
     try {
       await removeArmoryLobbyMember(staleId, username);
@@ -5603,20 +5684,73 @@
   }
 
   function clearCurrentArmoryLobby(message = "") {
+    stopArmoryLobbySafetyPolling();
     unsubscribeCurrentArmoryLobby?.();
     unsubscribeCurrentArmoryLobby = null;
     currentArmoryLobbyId = "";
     currentArmoryLobbyData = null;
-    localStorage.removeItem(ARMORY_LOBBY_STORAGE_KEY);
+    safeLocalRemove(ARMORY_LOBBY_STORAGE_KEY);
     if (armoryTab === "multiplayer" && mode === "armory") renderArmory();
     if (message) showToast(message, "bad");
   }
 
-  function subscribeCurrentArmoryLobby(lobbyId) {
+  function stopArmoryLobbySafetyPolling() {
+    if (armoryLobbySafetyTimer) clearInterval(armoryLobbySafetyTimer);
+    armoryLobbySafetyTimer = null;
+  }
+
+  function syncArmoryLobbySafetyPolling({ immediate = false } = {}) {
+    const shouldPoll = hubAccountVerified && !!currentArmoryLobbyId && !armoryLobbyLaunching && !document.hidden;
+    if (!shouldPoll) {
+      stopArmoryLobbySafetyPolling();
+      return;
+    }
+    if (!armoryLobbySafetyTimer) {
+      armoryLobbySafetyTimer = setInterval(() => void readCurrentArmoryLobbySafety(), ARMORY_LOBBY_SAFETY_MS);
+    }
+    if (immediate) void readCurrentArmoryLobbySafety();
+  }
+
+  function currentArmoryLobbyStateKey(data) {
+    const players = Array.isArray(data?.players) ? data.players : [];
+    return `${armoryLobbyTime(data?.updatedAt)}|${data?.status || ""}|${data?.host || ""}|${data?.name || ""}|${data?.visibility || "public"}|${players.join("\u0000")}`;
+  }
+
+  async function readCurrentArmoryLobbySafety() {
+    if (armoryLobbySafetyReadInFlight || !hubAccountVerified || !currentArmoryLobbyId || armoryLobbyLaunching || document.hidden) return;
+    const lobbyId = currentArmoryLobbyId;
+    armoryLobbySafetyReadInFlight = true;
+    try {
+      const snapshot = await getDoc(doc(db, "lobbies", lobbyId));
+      if (currentArmoryLobbyId !== lobbyId || armoryLobbyLaunching) return;
+      if (!snapshot.exists()) return clearCurrentArmoryLobby("That multiplayer lobby has closed.");
+      const data = snapshot.data();
+      const players = Array.isArray(data.players) ? data.players : [];
+      if (data.gameType !== "warrealms" || !players.includes(username)) {
+        return clearCurrentArmoryLobby("You are no longer in that lobby.");
+      }
+      const changed = currentArmoryLobbyStateKey(currentArmoryLobbyData) !== currentArmoryLobbyStateKey(data);
+      currentArmoryLobbyData = { id: lobbyId, ...data };
+      if (data.status === "started") return launchArmoryLobbyGame(lobbyId, currentArmoryLobbyData);
+      if (data.status !== "waiting") return clearCurrentArmoryLobby("That multiplayer lobby has closed.");
+      if (changed && armoryTab === "multiplayer" && mode === "armory") renderArmory();
+    } catch (error) {
+      console.warn("War Realms lobby safety read failed", error);
+    } finally {
+      armoryLobbySafetyReadInFlight = false;
+    }
+  }
+
+  function subscribeCurrentArmoryLobby(lobbyId, forceReconnect = false) {
+    if (unsubscribeCurrentArmoryLobby && currentArmoryLobbyId === lobbyId && !forceReconnect) {
+      syncArmoryLobbySafetyPolling({ immediate: true });
+      return;
+    }
     unsubscribeCurrentArmoryLobby?.();
     currentArmoryLobbyId = lobbyId;
-    localStorage.setItem(ARMORY_LOBBY_STORAGE_KEY, lobbyId);
+    safeLocalWrite(ARMORY_LOBBY_STORAGE_KEY, lobbyId);
     unsubscribeCurrentArmoryLobby = onSnapshot(doc(db, "lobbies", lobbyId), snapshot => {
+      if (currentArmoryLobbyId !== lobbyId) return;
       if (!snapshot.exists()) return clearCurrentArmoryLobby("That multiplayer lobby has closed.");
       const data = snapshot.data();
       const players = Array.isArray(data.players) ? data.players : [];
@@ -5628,9 +5762,12 @@
       }
       if (armoryTab === "multiplayer" && mode === "armory") renderArmory();
     }, error => {
-      console.error("Current War Realms lobby listener failed", error);
-      clearCurrentArmoryLobby(error.message || "The current lobby could not be read.");
+      console.error("Current War Realms lobby listener failed; direct safety reads remain active", error);
+      unsubscribeCurrentArmoryLobby?.();
+      unsubscribeCurrentArmoryLobby = null;
+      syncArmoryLobbySafetyPolling({ immediate: true });
     });
+    syncArmoryLobbySafetyPolling({ immediate: true });
   }
 
   function armoryLobbyTime(value) {
@@ -5836,7 +5973,10 @@
     const players = Array.isArray(data?.players) ? data.players : [];
     if (armoryLobbyLaunching || !lobbyId || data?.status !== "started" || !players.includes(username)) return;
     armoryLobbyLaunching = true;
-    localStorage.removeItem(ARMORY_LOBBY_STORAGE_KEY);
+    stopArmoryLobbySafetyPolling();
+    if (armoryLobbyBrowserRefreshTimer) clearInterval(armoryLobbyBrowserRefreshTimer);
+    armoryLobbyBrowserRefreshTimer = null;
+    safeLocalRemove(ARMORY_LOBBY_STORAGE_KEY);
     unsubscribeArmoryLobbyBrowser?.();
     unsubscribeArmoryLobbyBrowser = null;
     unsubscribeCurrentArmoryLobby?.();
@@ -6035,6 +6175,8 @@
     const multiplayerMode = armoryTab === "multiplayer";
     const campaignMode = armoryTab === "campaign";
     const specialMode = publicMode || multiplayerMode || campaignMode;
+    syncArmoryLobbyBrowserPolling();
+    syncArmoryLobbySafetyPolling();
     renderDeckIntelligence(editDeck, selectedDeck?.name || "Command Deck", deckMode);
     document.body.classList.toggle("deckBuilderMode", deckMode);
     document.body.classList.toggle("specialArmoryMode", specialMode);
@@ -10441,6 +10583,7 @@
     $("#syncTag").textContent = hubAccountVerified ? "Account connected" : "Guest profile";
     if (hubAccountVerified) {
       startArmoryLobbyBrowser();
+      await refreshArmoryLobbyBrowser({ force: true });
       if (!armoryLobbyStartupChecked) {
         armoryLobbyStartupChecked = true;
         await cleanupStaleArmoryLobbyMembership();
@@ -10537,42 +10680,75 @@
   }
 
   async function boot() {
-    $("#userTag").textContent = username;
-    try {
-      firebaseUser = await waitForAuth();
-      setLoading("Checking your Game Hub account…");
-      await verifyGameHubAccount();
-      setLoading("Reading your War Realms profile…");
-      await loadOrCreateProfile();
+    if (bootPromise) return bootPromise;
+    bootPromise = (async () => {
+      $("#userTag").textContent = username;
+      try {
+        firebaseUser = await waitForAuth();
+        firebaseAuthReady = !!firebaseUser;
+        setLoading("Checking your Game Hub account…");
+        await verifyGameHubAccount();
+        setLoading("Reading your War Realms profile…");
+        await loadOrCreateProfile();
 
-      if (!lobbyRef) {
-        roster = [{ name: username, lobbyUid: "" }];
-        await startArmory();
-        return;
+        if (!lobbyRef) {
+          roster = [{ name: username, lobbyUid: "" }];
+          await startArmory();
+          bootNeedsRetry = false;
+          return;
+        }
+
+        setLoading("Reading the lobby roster…");
+        const lobbySnapshot = await getDoc(lobbyRef);
+        if (!lobbySnapshot.exists()) throw new Error("The lobby no longer exists.");
+        lobbyData = lobbySnapshot.data();
+        roster = normalizeRoster(lobbyData);
+        $("#modeTag").textContent = `Lobby ${gameId.slice(0, 8)}`;
+
+        unsubscribeLobby?.();
+        unsubscribeLobby = onSnapshot(lobbyRef, snapshot => {
+          if (!snapshot.exists()) return;
+          lobbyData = snapshot.data();
+          const nextRoster = normalizeRoster(lobbyData);
+          roster = nextRoster;
+          renderPresence();
+        });
+
+        if (roster.length <= 1) await startArmory();
+        else await startBattle();
+        bootNeedsRetry = false;
+      } catch (error) {
+        console.error(error);
+        bootNeedsRetry = true;
+        if (!auth.currentUser) firebaseAuthReady = false;
+        setLoading(`Unable to open War Realms: ${error.message}. Return to this tab to retry the multiplayer connection.`);
+        $("#syncTag").textContent = "Connection error";
       }
+    })().finally(() => { bootPromise = null; });
+    return bootPromise;
+  }
 
-      setLoading("Reading the lobby roster…");
-      const lobbySnapshot = await getDoc(lobbyRef);
-      if (!lobbySnapshot.exists()) throw new Error("The lobby no longer exists.");
-      lobbyData = lobbySnapshot.data();
-      roster = normalizeRoster(lobbyData);
-      $("#modeTag").textContent = `Lobby ${gameId.slice(0, 8)}`;
-
-      unsubscribeLobby = onSnapshot(lobbyRef, snapshot => {
-        if (!snapshot.exists()) return;
-        lobbyData = snapshot.data();
-        const nextRoster = normalizeRoster(lobbyData);
-        roster = nextRoster;
-        renderPresence();
-      });
-
-      if (roster.length <= 1) await startArmory();
-      else await startBattle();
-    } catch (error) {
-      console.error(error);
-      setLoading(`Unable to open War Realms: ${error.message}`);
-      $("#syncTag").textContent = "Error";
-    }
+  async function recoverActiveArmoryPage() {
+    if (document.hidden) return;
+    if (armoryPageRecoveryPromise) return armoryPageRecoveryPromise;
+    armoryPageRecoveryPromise = (async () => {
+      if (!firebaseAuthReady || bootNeedsRetry) await boot();
+      if (!firebaseAuthReady || !hubAccountVerified) return;
+      let currentLobbyRead = Promise.resolve();
+      if (currentArmoryLobbyId) {
+        if (!unsubscribeCurrentArmoryLobby) subscribeCurrentArmoryLobby(currentArmoryLobbyId);
+        currentLobbyRead = readCurrentArmoryLobbySafety();
+      }
+      let browserRefresh = Promise.resolve(false);
+      if (mode === "armory") {
+        if (!unsubscribeArmoryLobbyBrowser) startArmoryLobbyBrowser();
+        browserRefresh = refreshArmoryLobbyBrowser({ force: true });
+      }
+      await Promise.all([currentLobbyRead, browserRefresh]);
+      syncArmoryLobbyBrowserPolling();
+      syncArmoryLobbySafetyPolling();
+    })().finally(() => { armoryPageRecoveryPromise = null; });
+    return armoryPageRecoveryPromise;
   }
 
   function clearHandDrag() {
@@ -10968,26 +11144,57 @@
     if (!event.target.closest(".topMenuWrap")) setMoreMenu(false);
   });
 
-  window.addEventListener("pagehide", () => {
+  function detachArmoryLobbyRealtime() {
+    unsubscribeArmoryLobbyBrowser?.();
+    unsubscribeArmoryLobbyBrowser = null;
+    unsubscribeCurrentArmoryLobby?.();
+    unsubscribeCurrentArmoryLobby = null;
+  }
+
+  window.addEventListener("pagehide", event => {
+    if (armoryLobbyBrowserRefreshTimer) clearInterval(armoryLobbyBrowserRefreshTimer);
+    armoryLobbyBrowserRefreshTimer = null;
+    stopArmoryLobbySafetyPolling();
+    detachArmoryLobbyRealtime();
+    // Safari is only parking a persisted page; keep the player in the lobby and
+    // rebuild the listeners from pageshow when the cached page becomes active.
+    if (event.persisted) return;
     if (!armoryLobbyLaunching && currentArmoryLobbyId && hubAccountVerified) {
       const staleLobbyId = currentArmoryLobbyId;
-      localStorage.setItem(ARMORY_LOBBY_STORAGE_KEY, staleLobbyId);
+      safeLocalWrite(ARMORY_LOBBY_STORAGE_KEY, staleLobbyId);
       void removeArmoryLobbyMember(staleLobbyId, username).then(() => {
-        if (localStorage.getItem(ARMORY_LOBBY_STORAGE_KEY) === staleLobbyId) localStorage.removeItem(ARMORY_LOBBY_STORAGE_KEY);
+        if (safeLocalRead(ARMORY_LOBBY_STORAGE_KEY, "") === staleLobbyId) safeLocalRemove(ARMORY_LOBBY_STORAGE_KEY);
       }).catch(() => {});
     }
-  });
-  window.addEventListener("beforeunload", () => {
     unsubscribeLobby?.();
+    unsubscribeLobby = null;
     unsubscribeGame?.();
+    unsubscribeGame = null;
     unsubscribePresence?.();
-    unsubscribeArmoryLobbyBrowser?.();
-    unsubscribeCurrentArmoryLobby?.();
+    unsubscribePresence = null;
     clearInterval(presenceHeartbeat);
+    presenceHeartbeat = null;
     stopOnlineDeckTimer();
   });
+  window.addEventListener("pageshow", event => {
+    if (event.persisted) {
+      armoryLobbyLaunching = false;
+      armoryLobbyBusy = false;
+    }
+    void recoverActiveArmoryPage();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (armoryLobbyBrowserRefreshTimer) clearInterval(armoryLobbyBrowserRefreshTimer);
+      armoryLobbyBrowserRefreshTimer = null;
+      stopArmoryLobbySafetyPolling();
+    } else {
+      void recoverActiveArmoryPage();
+    }
+  });
+  window.addEventListener("focus", () => void recoverActiveArmoryPage());
 
-  boot();
+  void boot();
 </script>
 </body>
 </html>
