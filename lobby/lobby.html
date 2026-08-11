@@ -826,7 +826,12 @@
       lastGame:"gh.lastGameType", lastView:"gh.lastTab", nextRoute:"gh.nextRoute",
       favorites:"gh.favorites", recent:"gh.recentGames"
     };
-    const save=(k,v)=>localStorage.setItem(k,v), read=k=>localStorage.getItem(k), del=k=>localStorage.removeItem(k);
+    const save=(k,v)=>{try{localStorage.setItem(k,v);return true;}catch(e){console.warn("Storage write skipped",k,e);return false;}};
+    const read=(k,fallback=null)=>{try{return localStorage.getItem(k)??fallback;}catch(e){console.warn("Storage read skipped",k,e);return fallback;}};
+    const del=k=>{try{localStorage.removeItem(k);return true;}catch(e){console.warn("Storage removal skipped",k,e);return false;}};
+    const readJson=(k,fallback)=>{try{const value=read(k,null);return value===null?fallback:JSON.parse(value);}catch(e){console.warn("Stored JSON ignored",k,e);return fallback;}};
+    const readSession=(k,fallback=null)=>{try{return sessionStorage.getItem(k)??fallback;}catch{return fallback;}};
+    const saveSession=(k,v)=>{try{sessionStorage.setItem(k,v);return true;}catch{return false;}};
     const normalize=s=>String(s||"").trim().toLowerCase();
     const initials=s=>String(s||"?").split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
     const fmtAge=value=>{
@@ -847,15 +852,26 @@
     let startingLobbyGame=false;
     let launchingGame=false;
     let exitCleanupStarted=false;
+    let firebaseAuthReady=false;
+    let firebaseAuthError="";
+    let authSessionInitialized=false;
+    let authRetryPromise=null;
+    let pageRecoveryPromise=null;
     let pendingAction=null;
     let selectedVisibility="public";
     let selectedCategory="All";
     let gamePlayCounts={};
     let lobbyCache=new Map();
     let inviteCache=new Map();
-    let favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));
-    let recentGames=JSON.parse(read(SK.recent)||"[]");
+    const storedFavorites=readJson(SK.favorites,[]),storedRecentGames=readJson(SK.recent,[]);
+    let favorites=new Set(Array.isArray(storedFavorites)?storedFavorites:[]);
+    let recentGames=Array.isArray(storedRecentGames)?storedRecentGames:[];
     let lobbyBrowserUnsub=null,lobbyUnsub=null,inviteUnsub=null;
+    let lobbyBrowserRefreshTimer=null;
+    let lobbyBrowserRefreshInFlight=false;
+    let lobbyBrowserSourceOrder=0;
+    let currentLobbySafetyTimer=null;
+    let currentLobbySafetyReadInFlight=false;
     let featuredIndex=0;
     let featuredTimer=null;
     let featuredSwipeStart=null;
@@ -882,6 +898,9 @@
       }
       if(launchingGame)return false;
       launchingGame=true;
+      stopCurrentLobbySafetyPolling();
+      if(lobbyBrowserRefreshTimer)clearInterval(lobbyBrowserRefreshTimer);
+      lobbyBrowserRefreshTimer=null;
       location.assign(url);
       return true;
     }
@@ -995,6 +1014,8 @@
       document.querySelectorAll("[data-view]").forEach(btn=>btn.classList.toggle("active",btn.dataset.view===view));
       save(SK.lastView,view);
       if(view==="profile")renderProfile();
+      syncLobbyBrowserPolling();
+      if(view==="multiplayer"&&firebaseAuthReady)void refreshLobbyBrowser();
     }
     document.querySelectorAll("[data-view]").forEach(btn=>btn.addEventListener("click",()=>showView(btn.dataset.view)));
 
@@ -1083,8 +1104,9 @@
         await setDoc(doc(db,"users",username),{chatAuthUid:authUser.uid},{merge:true});currentUserData={...(currentUserData||{}),chatAuthUid:authUser.uid};
       }
       baseProfileCache.set(normalize(username),Promise.resolve({username,...(currentUserData||{})}));profileBundleCache.delete(normalize(username));
-      favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:JSON.parse(read(SK.favorites)||"[]"));
-      recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:JSON.parse(read(SK.recent)||"[]");
+      const savedFavorites=readJson(SK.favorites,[]),savedRecent=readJson(SK.recent,[]);
+      favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:Array.isArray(savedFavorites)?savedFavorites:[]);
+      recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:Array.isArray(savedRecent)?savedRecent:[];
       save(SK.favorites,JSON.stringify([...favorites]));save(SK.recent,JSON.stringify(recentGames));
       updateAccountUI();listenForInvites();markDailyUserOnce(username).catch(()=>{});showDailyUsersPill();renderAllGames();renderOnlineWorlds();renderProfile();
     }
@@ -1096,7 +1118,8 @@
     async function logout(){
       try{if(currentLobbyId)await leaveLobby();}catch{}
       username="";currentUserData=null;del(SK.user);del(SK.lastLobby);del(SK.lastGame);pendingAction=null;
-      favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));recentGames=JSON.parse(read(SK.recent)||"[]");updateAccountUI();showView("multiplayer");toast("Logged out.");
+      const savedFavorites=readJson(SK.favorites,[]),savedRecent=readJson(SK.recent,[]);
+      favorites=new Set(Array.isArray(savedFavorites)?savedFavorites:[]);recentGames=Array.isArray(savedRecent)?savedRecent:[];updateAccountUI();showView("multiplayer");toast("Logged out.");
     }
 
     async function runPendingAction(){
@@ -1113,8 +1136,8 @@
     const fmtYMD=new Intl.DateTimeFormat("en-CA",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
     const todayNY=()=>fmtYMD.format(new Date());
     async function markDailyUserOnce(uid){
-      const key=`gh.du.marked.${todayNY()}`;if(!uid||sessionStorage.getItem(key))return;
-      sessionStorage.setItem(key,"1");await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",uid),{ts:serverTimestamp()},{merge:true});
+      const key=`gh.du.marked.${todayNY()}`;if(!uid||readSession(key))return;
+      saveSession(key,"1");await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",uid),{ts:serverTimestamp()},{merge:true});
     }
     async function showDailyUsersPill(){
       try{const snap=await getCountFromServer(collection(db,"metrics_dailyUsers",todayNY(),"users"));$("dailyUsersCount").textContent=snap.data().count||0;}catch{}
@@ -1294,8 +1317,15 @@
     });
     $("featuredHero").addEventListener("pointercancel",()=>{featuredSwipeStart=null;});
     document.addEventListener("visibilitychange",()=>{
-      if(document.hidden)clearInterval(featuredTimer);
-      else startFeaturedTimer();
+      if(document.hidden){
+        clearInterval(featuredTimer);
+        if(lobbyBrowserRefreshTimer)clearInterval(lobbyBrowserRefreshTimer);
+        lobbyBrowserRefreshTimer=null;
+        stopCurrentLobbySafetyPolling();
+      }else{
+        startFeaturedTimer();
+        void recoverActiveLobbyPage();
+      }
     });
 
     function populateStaticUI(){
@@ -1307,12 +1337,67 @@
     }
     function populateCategoriesOnly(){document.querySelectorAll(".category-btn").forEach(btn=>btn.classList.toggle("active",btn.textContent===selectedCategory));}
 
-    function startLobbyBrowser(){
-      if(lobbyBrowserUnsub)lobbyBrowserUnsub();
-      const qy=query(collection(db,"lobbies"),where("status","==","waiting"));
-      lobbyBrowserUnsub=onSnapshot(qy,snap=>{
-        lobbyCache.clear();snap.forEach(d=>lobbyCache.set(d.id,{id:d.id,...d.data()}));renderLobbyBrowser();validateInvites();
-      },e=>{$("lobbyGrid").innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="big">⚠️</div>Could not load lobbies.<br><small>${escapeHtml(e.message||"")}</small></div>`;});
+    const LOBBY_BROWSER_REFRESH_MS=4000;
+    const CURRENT_LOBBY_SAFETY_MS=1000;
+    const waitingLobbyQuery=()=>query(collection(db,"lobbies"),where("status","==","waiting"));
+    const multiplayerBrowserActive=()=>!document.hidden&&$("view-multiplayer")?.classList.contains("active");
+
+    function showLobbyConnectionState(message,error=false){
+      firebaseAuthError=error?String(message||"Multiplayer connection unavailable."):"";
+      if(lobbyCache.size||!$("lobbyGrid"))return;
+      $("lobbyGrid").innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="big">${error?"⚠️":"⌛"}</div><strong>${escapeHtml(message||"Connecting to multiplayer…")}</strong>${error?'<div style="margin-top:5px">We will retry when this page becomes active.</div>':""}</div>`;
+    }
+    function lobbyMapFromSnapshot(snapshot){
+      const next=new Map();
+      snapshot.forEach(item=>next.set(item.id,{id:item.id,...item.data()}));
+      return next;
+    }
+    function applyLobbyBrowserSnapshot(snapshot,sourceOrder){
+      // Every source receives an order before it begins. If a newer listener event
+      // arrived while a direct read was pending, that older read cannot replace it.
+      if(sourceOrder<lobbyBrowserSourceOrder)return false;
+      lobbyCache=lobbyMapFromSnapshot(snapshot);
+      renderLobbyBrowser();
+      validateInvites();
+      return true;
+    }
+    async function refreshLobbyBrowser({force=false}={}){
+      if(!firebaseAuthReady||lobbyBrowserRefreshInFlight)return false;
+      if(!force&&!multiplayerBrowserActive())return false;
+      lobbyBrowserRefreshInFlight=true;
+      const sourceOrder=++lobbyBrowserSourceOrder;
+      try{
+        const snapshot=await getDocs(waitingLobbyQuery());
+        firebaseAuthError="";
+        return applyLobbyBrowserSnapshot(snapshot,sourceOrder);
+      }catch(error){
+        console.warn("Direct lobby refresh failed",error);
+        showLobbyConnectionState(error.message||"Could not refresh multiplayer lobbies.",true);
+        return false;
+      }finally{lobbyBrowserRefreshInFlight=false;}
+    }
+    function syncLobbyBrowserPolling(){
+      const shouldPoll=firebaseAuthReady&&multiplayerBrowserActive();
+      if(!shouldPoll){if(lobbyBrowserRefreshTimer)clearInterval(lobbyBrowserRefreshTimer);lobbyBrowserRefreshTimer=null;return;}
+      if(!lobbyBrowserRefreshTimer)lobbyBrowserRefreshTimer=setInterval(()=>void refreshLobbyBrowser(),LOBBY_BROWSER_REFRESH_MS);
+    }
+    function startLobbyBrowser(forceReconnect=false){
+      if(!firebaseAuthReady)return;
+      if(lobbyBrowserUnsub&&!forceReconnect){syncLobbyBrowserPolling();return;}
+      if(lobbyBrowserUnsub){lobbyBrowserUnsub();lobbyBrowserUnsub=null;}
+      lobbyBrowserUnsub=onSnapshot(waitingLobbyQuery(),snapshot=>{
+        const sourceOrder=++lobbyBrowserSourceOrder;
+        firebaseAuthError="";
+        applyLobbyBrowserSnapshot(snapshot,sourceOrder);
+      },error=>{
+        console.warn("Lobby listener failed; direct refresh remains active",error);
+        lobbyBrowserUnsub?.();lobbyBrowserUnsub=null;
+        showLobbyConnectionState(error.message||"Realtime lobby updates are reconnecting.",true);
+        syncLobbyBrowserPolling();
+        void refreshLobbyBrowser({force:true});
+      });
+      syncLobbyBrowserPolling();
+      void refreshLobbyBrowser({force:true});
     }
     function visibleLobby(lobby){
       const visibility=lobby.visibility||"public";if(visibility!=="private")return true;if(!username)return false;
@@ -1405,18 +1490,66 @@
     }
     $("createLobbySubmit").addEventListener("click",createLobby);
 
-    function listenToCurrentLobby(){
-      if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}if(!currentLobbyId)return renderCurrentLobby();
-      lobbyUnsub=onSnapshot(doc(db,"lobbies",currentLobbyId),async snap=>{
-        if(!snap.exists()){await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});clearCurrentLobby("That lobby has closed.");return;}
-        const data=snap.data();currentLobbyData={id:snap.id,...data};isHost=data.host===username;renderCurrentLobby();
+    function stopCurrentLobbySafetyPolling(){
+      if(currentLobbySafetyTimer)clearInterval(currentLobbySafetyTimer);
+      currentLobbySafetyTimer=null;
+    }
+    function syncCurrentLobbySafetyPolling({immediate=false}={}){
+      const shouldPoll=firebaseAuthReady&&!!currentLobbyId&&!launchingGame&&!document.hidden;
+      if(!shouldPoll){stopCurrentLobbySafetyPolling();return;}
+      if(!currentLobbySafetyTimer)currentLobbySafetyTimer=setInterval(()=>void readCurrentLobbySafety(),CURRENT_LOBBY_SAFETY_MS);
+      if(immediate)void readCurrentLobbySafety();
+    }
+    function currentLobbyStateKey(data){
+      const players=Array.isArray(data?.players)?data.players:[];
+      return `${valueMs(data?.updatedAt)}|${data?.status||""}|${data?.host||""}|${data?.name||""}|${data?.visibility||"public"}|${players.join("\u0000")}`;
+    }
+    async function readCurrentLobbySafety(){
+      if(currentLobbySafetyReadInFlight||!firebaseAuthReady||!currentLobbyId||launchingGame||document.hidden)return;
+      const lobbyId=currentLobbyId;
+      currentLobbySafetyReadInFlight=true;
+      try{
+        const snapshot=await getDoc(doc(db,"lobbies",lobbyId));
+        if(currentLobbyId!==lobbyId||launchingGame)return;
+        if(!snapshot.exists()){
+          clearCurrentLobby("That lobby has closed.");
+          void cleanupInvitesForLobby(lobbyId).catch(()=>{});
+          return;
+        }
+        const data=snapshot.data(),players=Array.isArray(data.players)?data.players:[];
+        if(!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        const changed=currentLobbyStateKey(currentLobbyData)!==currentLobbyStateKey(data);
+        currentLobbyData={id:lobbyId,...data};isHost=data.host===username;if(changed)renderCurrentLobby();
+        if(data.status==="started"){
+          redirectStartedGame(lobbyId,data);
+          void cleanupInvitesForLobby(lobbyId).catch(()=>{});
+        }else if(data.status!=="waiting")clearCurrentLobby("That lobby has closed.");
+      }catch(error){console.warn("Lobby safety read failed",error);}
+      finally{currentLobbySafetyReadInFlight=false;}
+    }
+    function listenToCurrentLobby(forceReconnect=false){
+      if(!currentLobbyId){stopCurrentLobbySafetyPolling();return renderCurrentLobby();}
+      if(lobbyUnsub&&!forceReconnect){syncCurrentLobbySafetyPolling({immediate:true});return;}
+      if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}
+      const lobbyId=currentLobbyId;
+      lobbyUnsub=onSnapshot(doc(db,"lobbies",lobbyId),async snap=>{
+        if(currentLobbyId!==lobbyId)return;
+        if(!snap.exists()){clearCurrentLobby("That lobby has closed.");void cleanupInvitesForLobby(lobbyId).catch(()=>{});return;}
+        const data=snap.data(),players=Array.isArray(data.players)?data.players:[];
+        if(!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        currentLobbyData={id:snap.id,...data};isHost=data.host===username;renderCurrentLobby();
         if(data.status==="started"){
           // Launch first. iPhone Safari can delay or suspend Firestore work during navigation,
           // so invite cleanup must never block the game redirect.
           redirectStartedGame(snap.id,data);
           void cleanupInvitesForLobby(snap.id).catch(()=>{});
-        }
-      },e=>{console.warn("Lobby listener",e);});
+        }else if(data.status!=="waiting")clearCurrentLobby("That lobby has closed.");
+      },error=>{
+        console.warn("Lobby listener failed; direct safety reads remain active",error);
+        lobbyUnsub?.();lobbyUnsub=null;
+        syncCurrentLobbySafetyPolling({immediate:true});
+      });
+      syncCurrentLobbySafetyPolling({immediate:true});
     }
     function renderCurrentLobby(){
       const has=!!currentLobbyData&&!!currentLobbyId;$("currentLobbyEmpty").hidden=has;$("currentLobbyContent").hidden=!has;$("currentLobbyPanel").classList.toggle("has-lobby",has);if(!has)return;
@@ -1433,7 +1566,7 @@
       renderLobbyBrowser();
     }
     function clearCurrentLobby(message=""){
-      currentLobbyId=null;currentLobbyData=null;isHost=false;startingLobbyGame=false;del(SK.lastLobby);if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}renderCurrentLobby();renderLobbyBrowser();if(message)toast(message,"bad");
+      stopCurrentLobbySafetyPolling();currentLobbyId=null;currentLobbyData=null;isHost=false;startingLobbyGame=false;del(SK.lastLobby);if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}renderCurrentLobby();renderLobbyBrowser();if(message)toast(message,"bad");
     }
     $("startGameBtn").addEventListener("click",startGame);$("leaveLobbyBtn").addEventListener("click",leaveLobby);$("copyInviteBtn").addEventListener("click",()=>currentLobbyId&&copyLobbyLink(currentLobbyId));$("invitePlayerBtn").addEventListener("click",()=>openInviteModal(currentLobbyId));
 
@@ -1479,6 +1612,7 @@
     function redirectStartedGame(id,data){
       const players=Array.isArray(data?.players)?data.players:[];
       if(!id||data?.status!=="started"||currentLobbyId!==id||!players.includes(username))return;
+      stopCurrentLobbySafetyPolling();
       const game=getGame(data.gameType),launchId=data.activeGameId||id;save(SK.lastGame,game.key);save(SK.lastLobby,id);
       const realmId=game.realmId||game.sharedRealm;
       const launchQuery=realmId?`realm=${encodeURIComponent(realmId)}&username=${encodeURIComponent(username)}`:`gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`;
@@ -1661,19 +1795,75 @@
       }
     }
 
+    async function handleAuthenticatedUser(user){
+      if(!user)return;
+      authUser=user;firebaseAuthReady=true;firebaseAuthError="";
+      const firstSessionInitialization=!authSessionInitialized;
+      if(firstSessionInitialization)authSessionInitialized=true;
+      showDailyUsersPill();loadGameStats();startLobbyBrowser();loadLeaderboard();
+      // The listener is the fast path; this explicit server read is the correctness path.
+      await refreshLobbyBrowser({force:true});
+      if(firstSessionInitialization){
+        if(username)await autoLogin(username);else updateAccountUI();
+        await handleStartupLobbyState();
+      }else if(username&&!currentUserData)await autoLogin(username);
+      if(username&&!inviteUnsub)listenForInvites();
+      if(currentLobbyId){listenToCurrentLobby();await readCurrentLobbySafety();}
+      syncLobbyBrowserPolling();syncCurrentLobbySafetyPolling();
+    }
+    async function retryFirebaseAuth(){
+      if(auth.currentUser){if(!firebaseAuthReady)await handleAuthenticatedUser(auth.currentUser);return auth.currentUser;}
+      if(authRetryPromise)return authRetryPromise;
+      showLobbyConnectionState("Connecting to multiplayer…");
+      authRetryPromise=signInAnonymously(auth).then(async result=>{
+        if(!firebaseAuthReady)await handleAuthenticatedUser(result.user);
+        return result.user;
+      }).catch(error=>{
+        firebaseAuthReady=false;
+        const message=error.message||"Firebase authentication failed.";
+        if(firebaseAuthError!==message)toast(`Multiplayer connection failed: ${message}`,"bad");
+        showLobbyConnectionState(message,true);
+        return null;
+      }).finally(()=>{authRetryPromise=null;});
+      return authRetryPromise;
+    }
+    async function recoverActiveLobbyPage(){
+      if(document.hidden)return;
+      if(pageRecoveryPromise)return pageRecoveryPromise;
+      pageRecoveryPromise=(async()=>{
+        if(!firebaseAuthReady)await retryFirebaseAuth();
+        if(!firebaseAuthReady)return;
+        let currentLobbyRead=Promise.resolve();
+        if(currentLobbyId){if(!lobbyUnsub)listenToCurrentLobby();currentLobbyRead=readCurrentLobbySafety();}
+        if(!lobbyBrowserUnsub)startLobbyBrowser();
+        const browserRefresh=refreshLobbyBrowser({force:true});
+        if(username&&!inviteUnsub)listenForInvites();
+        await Promise.all([currentLobbyRead,browserRefresh]);
+        syncLobbyBrowserPolling();syncCurrentLobbySafetyPolling();
+      })().finally(()=>{pageRecoveryPromise=null;});
+      return pageRecoveryPromise;
+    }
+
     if(initialParams.has("username")){initialParams.delete("username");const clean=`${location.pathname}${initialParams.toString()?`?${initialParams}`:""}${location.hash}`;history.replaceState({},"",clean);}
     populateStaticUI();renderFeatured();renderOnlineWorlds();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
 
-    signInAnonymously(auth).catch(err=>toast(`Firebase sign-in failed: ${err.message}`,"bad"));
-    onAuthStateChanged(auth,async user=>{
-      authUser=user;if(!user)return;
-      showDailyUsersPill();loadGameStats();startLobbyBrowser();loadLeaderboard();
-      if(username)await autoLogin(username);else updateAccountUI();
-      await handleStartupLobbyState();
+    onAuthStateChanged(auth,user=>{
+      if(!user){firebaseAuthReady=false;syncLobbyBrowserPolling();stopCurrentLobbySafetyPolling();return;}
+      void handleAuthenticatedUser(user);
     });
+    void retryFirebaseAuth();
 
-    function beginExitLobbyCleanup(){
-      lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();
+    function detachLobbyRealtime(){
+      lobbyBrowserUnsub?.();lobbyBrowserUnsub=null;
+      lobbyUnsub?.();lobbyUnsub=null;
+      inviteUnsub?.();inviteUnsub=null;
+    }
+    function beginExitLobbyCleanup(event){
+      if(lobbyBrowserRefreshTimer)clearInterval(lobbyBrowserRefreshTimer);
+      lobbyBrowserRefreshTimer=null;stopCurrentLobbySafetyPolling();detachLobbyRealtime();
+      // A persisted pagehide means Safari is caching this live page. Keep membership
+      // intact and reconnect from pageshow instead of treating it as a permanent exit.
+      if(event?.persisted)return;
       if(launchingGame||exitCleanupStarted||!currentLobbyId||!username)return;
       exitCleanupStarted=true;
       const id=currentLobbyId,playerName=username;
@@ -1685,7 +1875,11 @@
       }).catch(()=>{});
     }
     window.addEventListener("pagehide",beginExitLobbyCleanup);
-    window.addEventListener("beforeunload",()=>{lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();});
+    window.addEventListener("pageshow",event=>{
+      if(event.persisted){launchingGame=false;exitCleanupStarted=false;startingLobbyGame=false;}
+      void recoverActiveLobbyPage();
+    });
+    window.addEventListener("focus",()=>void recoverActiveLobbyPage());
     window.addEventListener("message",event=>{
       if(event.source!==window.parent||event.data?.type!=="game-hub-open-profile")return;
       const target=String(event.data.username||"").trim();if(target)viewPublicProfile(target);
