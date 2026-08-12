@@ -1713,9 +1713,9 @@
   });
   const BOT_DIFFICULTIES = Object.freeze({
     easy: { name: "Easy", handSize: 5, delay: 500, description: "Random purchases and attacks; sometimes leaves useful plays unused." },
-    medium: { name: "Medium", handSize: 5, delay: 420, description: "Chooses a battle plan and two favored factions, then makes sensible legal plays." },
-    hard: { name: "Hard", handSize: 5, delay: 330, description: "Builds around one of several focused plans, always combining starter-card Purge with a second specialty." },
-    impossible: { name: "Impossible", handSize: 6, delay: 260, description: "Uses focused planning, stronger combination scoring, a six-card hand, and every resource aggressively." }
+    medium: { name: "Medium", handSize: 5, delay: 420, description: "Builds a recognizable archetype around a primary faction and support faction, with moderate variety." },
+    hard: { name: "Hard", handSize: 5, delay: 330, description: "Builds a cohesive archetype, meets its core ability needs, and favors efficient strategy-aligned purchases." },
+    impossible: { name: "Impossible", handSize: 6, delay: 260, description: "Runs an optimized archetype with strong sequencing, synergy evaluation, purchase efficiency, and tactical adaptation." }
   });
   const BOT_FACTION_IDS = Object.freeze(["yellow", "blue", "green", "red"]);
   const BOT_STRATEGIES = Object.freeze({
@@ -1723,6 +1723,14 @@
       name: "Vanguard",
       preferredFactions: Object.freeze(["green", "red"]),
       weights: Object.freeze({ combat: .52, scrapOwn: 1.2, stun: .7, destroyBase: 1.35, opponentDiscard: .72, damageAll: .65, lifelink: 1.15, combatPerBase: .55 }),
+      coreAbilities: Object.freeze(["combat", "destroyBase", "lifelink"]),
+      secondaryAbilities: Object.freeze(["stun", "damageAll"]),
+      preferredTypes: Object.freeze(["unit"]),
+      costProfile: Object.freeze({ idealMin: 1, idealMax: 5, expensiveTolerance: .15, signatureChance: .18 }),
+      factionTargets: Object.freeze({ primary: .62, support: .25 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["combat"]), min: 7 }), Object.freeze({ abilities: Object.freeze(["destroyBase", "stun"]), min: 2 })]),
+      playPriorities: Object.freeze(["combat", "ally"]),
+      baseTarget: 3,
       baseBias: -.18,
       defenseWeight: .04,
       drawPriority: false
@@ -1731,6 +1739,14 @@
       name: "Engine",
       preferredFactions: Object.freeze(["yellow", "red"]),
       weights: Object.freeze({ trade: .48, draw: 1.35, scrapOwn: 1.55, scrapMarket: .52, opponentDiscard: .35, tradePerBase: .75, drawPerBase: 1.1 }),
+      coreAbilities: Object.freeze(["trade", "draw", "scrapOwn"]),
+      secondaryAbilities: Object.freeze(["tradePerBase", "drawPerBase", "scrapMarket"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .72, signatureChance: .68 }),
+      factionTargets: Object.freeze({ primary: .58, support: .27 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["trade", "tradePerBase"]), min: 5 }), Object.freeze({ abilities: Object.freeze(["draw", "drawPerBase"]), min: 4 }), Object.freeze({ abilities: Object.freeze(["scrapOwn"]), min: 2 })]),
+      playPriorities: Object.freeze(["draw", "trade", "scrapOwn"]),
+      baseTarget: 7,
       baseBias: .28,
       defenseWeight: .07,
       drawPriority: true
@@ -1739,6 +1755,14 @@
       name: "Stronghold",
       preferredFactions: Object.freeze(["blue", "green"]),
       weights: Object.freeze({ heal: .28, shield: .5, scrapOwn: 1.1, combat: .18, destroyBase: .5, tradePerBase: .72, combatPerBase: .92, drawPerBase: 1.05, healPerBase: .45 }),
+      coreAbilities: Object.freeze(["shield", "heal", "combatPerBase"]),
+      secondaryAbilities: Object.freeze(["tradePerBase", "drawPerBase", "healPerBase"]),
+      preferredTypes: Object.freeze(["base", "attachment"]),
+      costProfile: Object.freeze({ idealMin: 3, idealMax: 7, expensiveTolerance: .58, signatureChance: .62 }),
+      factionTargets: Object.freeze({ primary: .58, support: .28 }),
+      minimumAbilities: Object.freeze([Object.freeze({ types: Object.freeze(["base"]), min: 9 }), Object.freeze({ abilities: Object.freeze(["shield", "heal", "healPerBase"]), min: 3 }), Object.freeze({ abilities: Object.freeze(["tradePerBase", "combatPerBase", "drawPerBase"]), min: 3 })]),
+      playPriorities: Object.freeze(["base", "shield", "scaling"]),
+      baseTarget: 12,
       baseBias: 1.28,
       defenseWeight: .2,
       drawPriority: false
@@ -1747,6 +1771,14 @@
       name: "Cycle",
       preferredFactions: Object.freeze(["yellow", "blue"]),
       weights: Object.freeze({ draw: 1.7, drawPerBase: 1.45, scrapOwn: 1.45, trade: .35, shield: .35, heal: .25 }),
+      coreAbilities: Object.freeze(["draw", "scrapOwn"]),
+      secondaryAbilities: Object.freeze(["drawPerBase", "reclaim", "redeploy"]),
+      preferredTypes: Object.freeze(["unit"]),
+      costProfile: Object.freeze({ idealMin: 1, idealMax: 5, expensiveTolerance: .25, signatureChance: .25 }),
+      factionTargets: Object.freeze({ primary: .60, support: .27 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["draw", "drawPerBase", "drawFromDrawPile"]), min: 6 }), Object.freeze({ abilities: Object.freeze(["scrapOwn"]), min: 3 })]),
+      playPriorities: Object.freeze(["draw", "scrapOwn", "replace"]),
+      baseTarget: 5,
       baseBias: .18,
       defenseWeight: .08,
       drawPriority: true
@@ -1755,6 +1787,14 @@
       name: "Siege",
       preferredFactions: Object.freeze(["green", "yellow"]),
       weights: Object.freeze({ combat: .55, scrapOwn: 1.25, destroyBase: 1.65, stun: 1.05, combatPerBase: .85, damageAll: .6 }),
+      coreAbilities: Object.freeze(["combat", "destroyBase", "stun"]),
+      secondaryAbilities: Object.freeze(["combatPerBase", "damageAll"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .48, signatureChance: .58 }),
+      factionTargets: Object.freeze({ primary: .60, support: .25 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["combat", "combatPerBase"]), min: 7 }), Object.freeze({ abilities: Object.freeze(["destroyBase", "stun"]), min: 4 })]),
+      playPriorities: Object.freeze(["destroyBase", "stun", "combat"]),
+      baseTarget: 6,
       baseBias: .42,
       defenseWeight: .09,
       drawPriority: false
@@ -1763,6 +1803,14 @@
       name: "Attrition",
       preferredFactions: Object.freeze(["red", "blue"]),
       weights: Object.freeze({ scrapOwn: 1.65, opponentDiscard: 1.2, heal: .55, shield: .55, lifelink: 1.05, combat: .28 }),
+      coreAbilities: Object.freeze(["opponentDiscard", "scrapOwn", "lifelink"]),
+      secondaryAbilities: Object.freeze(["heal", "shield", "reclaim"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .45, signatureChance: .48 }),
+      factionTargets: Object.freeze({ primary: .58, support: .28 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["opponentDiscard"]), min: 4 }), Object.freeze({ abilities: Object.freeze(["heal", "shield", "lifelink"]), min: 3 }), Object.freeze({ abilities: Object.freeze(["scrapOwn"]), min: 2 })]),
+      playPriorities: Object.freeze(["opponentDiscard", "survival", "combat"]),
+      baseTarget: 6,
       baseBias: .2,
       defenseWeight: .11,
       drawPriority: false
@@ -1771,6 +1819,14 @@
       name: "Marketeer",
       preferredFactions: Object.freeze(["yellow", "red"]),
       weights: Object.freeze({ trade: .72, tradePerBase: 1.05, scrapMarket: 1.15, scrapOwn: 1.25, draw: .85, opponentDiscard: .35 }),
+      coreAbilities: Object.freeze(["trade", "scrapMarket", "draw"]),
+      secondaryAbilities: Object.freeze(["tradePerBase", "scrapOwn"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .78, signatureChance: .72 }),
+      factionTargets: Object.freeze({ primary: .58, support: .28 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["trade", "tradePerBase"]), min: 7 }), Object.freeze({ abilities: Object.freeze(["scrapMarket"]), min: 3 }), Object.freeze({ abilities: Object.freeze(["draw", "drawPerBase"]), min: 3 })]),
+      playPriorities: Object.freeze(["draw", "trade", "scrapMarket"]),
+      baseTarget: 6,
       baseBias: .08,
       defenseWeight: .06,
       drawPriority: true
@@ -9636,7 +9692,7 @@
         <p><b>Forced discard:</b> A discard effect queues cards for the next affected turn. After that player draws, they must select the required number of highlighted hand cards and move them to discard before playing, buying, attacking, or ending the turn. The requirement is capped by the cards actually in hand, so an empty hand always resolves it.</p>
         <p><b>Additional abilities:</b> <b>Lifelink</b> heals for combat damage actually dealt; <b>Destroy Base</b> removes a legal target; <b>Shield</b> protects Authority; <b>Damage All</b> hits every rival; and faction scaling can use cards played this turn, currently owned, or acquired during the match.</p>
         <p><b>Red Purge:</b> Purge permanently removes a selected card from your hand, draw pile, or discard pile for the rest of the match. This is the defining strength of the Umbral Covenant.</p>
-        <p><b>Singleplayer:</b> Choose Easy, Medium, Hard, or Impossible from the Armory. Every bot brings a legal low-cost-weighted 50-card deck and selects opening upgrades plus three discounts to support its strategy. Hard and Impossible plans always include Purge so the bot can remove basic starter cards; several plans also prioritize Draw. Impossible draws six cards each turn; all other difficulties draw five.</p>
+        <p><b>Singleplayer:</b> Choose Easy, Medium, Hard, or Impossible from the Armory. Medium and stronger bots commit to a named archetype, primary faction, support faction, ability package, and cost profile. Every bot still brings a legal 50-card command deck; its ten cost-5+ cards are normally divided into affordable threats, a few cost-7–8 payoffs, and at most one signature cost-9+ finisher. Hard and Impossible plans include Purge, use efficiency and two-purchase thinking, and sequence enabling effects before simple attacks. Impossible draws six cards each turn; all other difficulties draw five.</p>
         <p><b>Choice / OR abilities:</b> A card effect can contain two or more alternatives. When it resolves, the current player must select exactly one option before any other action. Choice effects work on Primary, Base, Ally, Double Ally, and Sacrifice abilities, and Warbots select an option automatically.</p>
         <p><b>Battle visuals:</b> Card plays appear in an opponent queue until your turn begins. Trade, Combat, Draw, healing, Shield, Disable, Purge, and other abilities create quick symbol bursts. Forced discard creates a visible threat and card-to-discard animation. Destroyed, sacrificed, purged, and market-erased cards disintegrate; base destruction is synchronized so every multiplayer viewer sees it.</p>
         <p><b>Rewards:</b> Every multiplayer battle awards ${PARTICIPATION_SIGILS} participation Sigils, with ${VICTORY_BONUS_SIGILS} more for the winner. Singleplayer awards less, scaling from ${SINGLEPLAYER_REWARDS.easy.participation + SINGLEPLAYER_REWARDS.easy.victoryBonus} Sigils for an Easy win to ${SINGLEPLAYER_REWARDS.impossible.participation + SINGLEPLAYER_REWARDS.impossible.victoryBonus} for an Impossible win. Rewards, games, and wins are saved once per battle in the player's Firebase profile.</p>
@@ -9658,10 +9714,10 @@
     openModal("Bot Difficulty Rules", "The bot always follows the same card, base, market, Outpost, and combat rules as the player.", `
       <div class="detailCopy">
         <p><b>Easy:</b> Random legal purchasing and targeting, occasional missed plays, and limited use of purge or sacrifice effects.</p>
-        <p><b>Medium:</b> Chooses a simple battle plan, follows its two favored factions, plays its full hand, and makes sensible legal attacks.</p>
-        <p><b>Hard:</b> Selects from Vanguard, Engine, Stronghold, Cycle, Siege, Attrition, and Marketeer plans. Every plan combines Purge with another specialty, assigns matching opening cards and discounts, purges basic starters first, avoids off-plan filler, and targets high-impact bases. Engine, Cycle, and Marketeer emphasize Draw.</p>
-        <p><b>Impossible:</b> Uses the same focused planning with a six-card hand, stronger combination scoring, lethal awareness, and aggressive resource conversion.</p>
-        <p>Medium and stronger bots choose from seven plans plus primary and support factions. They still obey the 25 low-cost, 15 cost-4, and 10 high-cost command-deck curve with no more than four copies of any card. Singleplayer rewards remain lower than multiplayer rewards.</p>
+        <p><b>Medium:</b> Chooses a recognizable battle plan, follows its primary and support factions, meets most archetype needs, and makes sensible legal attacks and purchases.</p>
+        <p><b>Hard:</b> Selects from Vanguard, Engine, Stronghold, Cycle, Siege, Attrition, and Marketeer plans. Each plan has explicit ability quotas, preferred card types, faction targets, a cost profile, and play priorities. Hard bots purge basic starters, avoid off-plan filler, compare value per Trade, and look for efficient two-card buys.</p>
+        <p><b>Impossible:</b> Uses a highly focused version of the same archetypes with a six-card hand, minimal deck-generation noise, stronger synergy scoring, nonlinear premium-card discipline, lethal awareness, and tactical adaptation.</p>
+        <p>Medium and stronger bots still obey the 25 low-cost, 15 cost-4, and 10 cost-5+ command-deck curve with no more than four copies of any card. The high-cost bucket is normally six or seven cost-5–6 cards, three cost-7–8 cards, and zero or one cost-9+ signature card; a second premium card is rare. Singleplayer rewards remain lower than multiplayer rewards.</p>
       </div>
     `);
   }
@@ -9676,48 +9732,205 @@
 
   function botPlanDeckCardScore(card, plan) {
     if (!card || !plan?.strategy) return 0;
-    const factionBonus = card.faction === plan.primaryFaction ? 5.2 : card.faction === plan.supportFaction ? 2.8 : card.faction === "neutral" ? 0 : -.8;
-    return factionBonus + botStrategyCardValue(card, plan.strategy);
+    const strategy = BOT_STRATEGIES[plan.strategy];
+    const factionBonus = card.faction === plan.primaryFaction ? 7.4 : card.faction === plan.supportFaction ? 3.7 : card.faction === "neutral" ? -.6 : -3.4;
+    const normalizedType = card.type === "card" || card.type === "ship" ? "unit" : card.type;
+    const typeBonus = strategy?.preferredTypes?.includes(normalizedType) ? 1.8 : 0;
+    const cost = Math.max(1, Number(card.cost) || 1);
+    const idealMin = Number(strategy?.costProfile?.idealMin) || 1;
+    const idealMax = Number(strategy?.costProfile?.idealMax) || 7;
+    const curvePenalty = cost < idealMin ? (idealMin - cost) * .18 : cost > idealMax ? Math.pow(cost - idealMax, 1.35) * .72 : 0;
+    return factionBonus + typeBonus + botStrategyCardValue(card, plan.strategy) - curvePenalty;
   }
 
-  function ensureBotDeckAbility(deck, plan, predicate, tierKey = "low") {
-    if (deck.some(cardId => {
-      const card = getCard(cardId);
-      return cardMatchesCostTier(card, tierKey) && predicate(card);
-    })) return deck;
+  function botDifficultyIdentity(difficulty) {
+    if (difficulty === "impossible") return { focus: 1.5, randomness: .08, quotaScale: 1 };
+    if (difficulty === "hard") return { focus: 1.28, randomness: .34, quotaScale: 1 };
+    return { focus: 1, randomness: 1.05, quotaScale: .65 };
+  }
+
+  function botCardEffectSources(card) {
+    if (!card) return [];
+    const chargeEffects = (Array.isArray(card.charge?.actions) ? card.charge.actions : []).flatMap(action => [action?.effect, action?.effectPerCharge]);
+    const heatEffects = (Array.isArray(card.heat?.thresholds) ? card.heat.thresholds : []).map(threshold => threshold?.effect);
+    return [primaryCardEffect(card), card.ally, doubleAllyEffect(card), card.sacrifice, card.onPurchase, card.authorityThreshold?.effect, card.recurring?.effect, ...chargeEffects, ...heatEffects];
+  }
+
+  function effectHasBotAbility(effect = {}, ability) {
+    const normalized = coreEffect(effect);
+    if (ability === "drawFromDrawPile" && normalized.drawFromDrawPile) return true;
+    if (ability === "draw" && (Math.max(0, Number(normalized.draw) || 0) > 0 || normalized.drawFromDrawPile)) return true;
+    if (ability === "reclaim" || ability === "redeploy") {
+      if (normalized[ability]) return true;
+    } else if (Math.max(0, Number(normalized[ability]) || 0) > 0) return true;
+    return choiceEffectOptions(effect).some(option => effectHasBotAbility(option.effect, ability));
+  }
+
+  function botCardMatchesRequirement(card, requirement = {}) {
+    if (!card) return false;
+    const normalizedType = card.type === "card" || card.type === "ship" ? "unit" : card.type;
+    if (requirement.types?.length && requirement.types.includes(normalizedType)) return true;
+    return (requirement.abilities || []).some(ability => botCardEffectSources(card).some(effect => effectHasBotAbility(effect, ability)));
+  }
+
+  function botFineCostBand(card) {
+    const cost = Number(card?.cost) || 0;
+    if (cost <= 3) return "low";
+    if (cost === 4) return "mid";
+    if (cost <= 6) return "high56";
+    if (cost <= 8) return "high78";
+    return "high9";
+  }
+
+  function ensureBotDeckRequirement(deck, plan, requirement, difficulty) {
+    const requested = Math.max(0, Math.ceil((Number(requirement?.min) || 0) * botDifficultyIdentity(difficulty).quotaScale));
+    let current = deck.filter(cardId => botCardMatchesRequirement(getCard(cardId), requirement)).length;
+    if (current >= requested) return deck;
     const counts = countCards(deck);
-    const candidate = DECK_ELIGIBLE_CARDS.filter(card => cardMatchesCostTier(card, tierKey) && predicate(card) && (counts[card.id] || 0) < MAX_COPIES_PER_CARD)
-      .sort((left, right) => botPlanDeckCardScore(right, plan) - botPlanDeckCardScore(left, plan))[0];
-    if (!candidate) return deck;
-    const replacement = deck.map((cardId, index) => ({ cardId, index, card: getCard(cardId) }))
-      .filter(item => cardMatchesCostTier(item.card, tierKey) && !predicate(item.card))
-      .sort((left, right) => botPlanDeckCardScore(left.card, plan) - botPlanDeckCardScore(right.card, plan))[0];
-    if (replacement) deck[replacement.index] = candidate.id;
+    let safety = 0;
+    while (current < requested && safety++ < 30) {
+      const candidates = DECK_ELIGIBLE_CARDS.filter(card => botCardMatchesRequirement(card, requirement) && (counts[card.id] || 0) < MAX_COPIES_PER_CARD)
+        .sort((left, right) => botPlanDeckCardScore(right, plan) - botPlanDeckCardScore(left, plan));
+      let swapped = false;
+      for (const candidate of candidates) {
+        const band = botFineCostBand(candidate);
+        const replacement = deck.map((cardId, index) => ({ cardId, index, card: getCard(cardId) }))
+          .filter(item => botFineCostBand(item.card) === band && !botCardMatchesRequirement(item.card, requirement))
+          .sort((left, right) => botPlanDeckCardScore(left.card, plan) - botPlanDeckCardScore(right.card, plan))[0];
+        if (!replacement) continue;
+        counts[replacement.cardId] = Math.max(0, (counts[replacement.cardId] || 0) - 1);
+        counts[candidate.id] = (counts[candidate.id] || 0) + 1;
+        deck[replacement.index] = candidate.id;
+        current += 1;
+        swapped = true;
+        break;
+      }
+      if (!swapped) break;
+    }
     return deck;
+  }
+
+  function botHighCostRecipe(plan, difficulty) {
+    const strategy = BOT_STRATEGIES[plan?.strategy];
+    const signatureChance = Math.max(0, Math.min(1, Number(strategy?.costProfile?.signatureChance) || 0));
+    let premium = Math.random() < signatureChance ? 1 : 0;
+    if (premium && Math.random() < .035 + (Number(strategy?.costProfile?.expensiveTolerance) || 0) * .07) premium = 2;
+    if (plan?.strategy === "vanguard" && difficulty !== "impossible") premium = Math.min(premium, 1);
+    return Object.freeze({ high56: 7 - premium, high78: 3, high9: premium });
+  }
+
+  function botDeckSelectionScore(card, plan, difficulty, deck, counts) {
+    const identity = botDifficultyIdentity(difficulty);
+    const strategy = BOT_STRATEGIES[plan.strategy];
+    const totalTarget = 50;
+    const primaryTarget = Math.round(totalTarget * (Number(strategy.factionTargets?.primary) || .58));
+    const supportTarget = Math.round(totalTarget * (Number(strategy.factionTargets?.support) || .26));
+    const factionCounts = deck.reduce((result, cardId) => {
+      const faction = getCard(cardId)?.faction || "neutral";
+      result[faction] = (result[faction] || 0) + 1;
+      return result;
+    }, {});
+    let score = botPlanDeckCardScore(card, plan) * identity.focus;
+    if (card.faction === plan.primaryFaction) score += (factionCounts[plan.primaryFaction] || 0) < primaryTarget ? 7.8 : difficulty === "medium" ? -28 : -40;
+    else if (card.faction === plan.supportFaction) score += (factionCounts[plan.supportFaction] || 0) < supportTarget ? 8.5 : difficulty === "medium" ? -28 : -40;
+    else if (card.faction !== "neutral") score -= difficulty === "medium" ? 3.2 : 6.8;
+    const baseCount = deck.filter(cardId => getCard(cardId)?.type === "base").length;
+    if (card.type === "base") score += baseCount < (Number(strategy.baseTarget) || 5) ? 3.6 : -1.2;
+    score -= (counts[card.id] || 0) * (difficulty === "medium" ? .62 : 1.05);
+    score += Math.random() * identity.randomness;
+    return score;
+  }
+
+  function addBotDeckCards(deck, counts, count, predicate, plan, difficulty) {
+    for (let slot = 0; slot < count; slot += 1) {
+      const candidate = DECK_ELIGIBLE_CARDS.filter(card => predicate(card) && (counts[card.id] || 0) < MAX_COPIES_PER_CARD)
+        .map(card => ({ card, score: botDeckSelectionScore(card, plan, difficulty, deck, counts) }))
+        .sort((left, right) => right.score - left.score || Number(left.card.cost) - Number(right.card.cost) || left.card.name.localeCompare(right.card.name))[0]?.card;
+      if (!candidate) throw new Error("The card pack does not contain enough cards for the bot's focused cost curve.");
+      deck.push(candidate.id);
+      counts[candidate.id] = (counts[candidate.id] || 0) + 1;
+    }
+  }
+
+  function botDeckCohesionScore(deck, plan) {
+    if (!deck.length || !plan?.strategy) return 0;
+    return deck.reduce((sum, cardId) => sum + botPlanDeckCardScore(getCard(cardId), plan), 0) / deck.length;
+  }
+
+  function botDeckValidationErrors(deck, plan = null, difficulty = "hard") {
+    const counts = countCards(deck);
+    const errors = [];
+    if (deck.length !== 50) errors.push(`expected 50 cards, found ${deck.length}`);
+    for (const tier of COMMAND_DECK_COST_BREAKDOWN) {
+      const actual = deck.filter(cardId => cardMatchesCostTier(getCard(cardId), tier.key)).length;
+      if (actual !== tier.count) errors.push(`${tier.label}: expected ${tier.count}, found ${actual}`);
+    }
+    const overCopies = Object.entries(counts).filter(([, count]) => count > MAX_COPIES_PER_CARD);
+    if (overCopies.length) errors.push(`maximum-copy rule failed for ${overCopies.map(([cardId]) => cardId).join(", ")}`);
+    const commandValidation = validateCommandDeck(deck, counts);
+    if (!commandValidation.valid) errors.push(`command-deck validator failed: ${commandValidation.message || "invalid deck"}`);
+    const premium = deck.filter(cardId => Number(getCard(cardId)?.cost) >= 9).length;
+    if (premium > 2) errors.push(`premium-card cap exceeded: ${premium} cards cost 9+`);
+    if (plan?.strategy) {
+      const aligned = deck.filter(cardId => [plan.primaryFaction, plan.supportFaction].includes(getCard(cardId)?.faction)).length;
+      if (aligned < Math.floor(deck.length * .70)) errors.push(`faction identity too weak: ${aligned}/50 primary or support`);
+      for (const requirement of BOT_STRATEGIES[plan.strategy]?.minimumAbilities || []) {
+        const requested = Math.max(0, Math.ceil((Number(requirement.min) || 0) * botDifficultyIdentity(difficulty).quotaScale));
+        const actual = deck.filter(cardId => botCardMatchesRequirement(getCard(cardId), requirement)).length;
+        if (actual < requested) errors.push(`${BOT_STRATEGIES[plan.strategy].name} requirement failed: expected ${requested}, found ${actual}`);
+      }
+    }
+    return errors;
   }
 
   function randomizedBotCommandDeck(plan = null, difficulty = "medium") {
     if (!plan?.strategy) return buildCostCurveCommandDeck();
     const deck = [];
-    for (const tier of COMMAND_DECK_COST_BREAKDOWN) {
-      const tierPool = DECK_ELIGIBLE_CARDS.filter(card => cardMatchesCostTier(card, tier.key)).flatMap(card => {
-        const strategyBonus = botPlanDeckCardScore(card, plan);
-        return Array.from({ length: MAX_COPIES_PER_CARD }, (_, copyIndex) => ({
-          id: card.id,
-          score: strategyBonus - copyIndex * .42 + Math.random() * 2.1
-        }));
-      }).sort((left, right) => right.score - left.score);
-
-      if (tierPool.length < tier.count) {
-        throw new Error("The card pack does not contain enough cards for the bot command-deck curve.");
-      }
-      deck.push(...tierPool.slice(0, tier.count).map(entry => entry.id));
-    }
-    if (difficulty === "hard" || difficulty === "impossible") {
-      ensureBotDeckAbility(deck, plan, card => hasPrimaryOpeningAbility(card, "purge"), "low");
-      if (BOT_STRATEGIES[plan.strategy]?.drawPriority) ensureBotDeckAbility(deck, plan, card => draftCardHasAbility(card, "draw"), "low");
-    }
+    const counts = {};
+    addBotDeckCards(deck, counts, 25, card => cardMatchesCostTier(card, "low"), plan, difficulty);
+    addBotDeckCards(deck, counts, 15, card => cardMatchesCostTier(card, "mid"), plan, difficulty);
+    const highRecipe = botHighCostRecipe(plan, difficulty);
+    addBotDeckCards(deck, counts, highRecipe.high56, card => Number(card?.cost) >= 5 && Number(card?.cost) <= 6, plan, difficulty);
+    addBotDeckCards(deck, counts, highRecipe.high78, card => Number(card?.cost) >= 7 && Number(card?.cost) <= 8, plan, difficulty);
+    addBotDeckCards(deck, counts, highRecipe.high9, card => Number(card?.cost) >= 9, plan, difficulty);
+    for (const requirement of BOT_STRATEGIES[plan.strategy]?.minimumAbilities || []) ensureBotDeckRequirement(deck, plan, requirement, difficulty);
+    if (difficulty === "hard" || difficulty === "impossible") ensureBotDeckRequirement(deck, plan, { abilities: ["scrapOwn"], min: 1 }, difficulty);
+    const errors = botDeckValidationErrors(deck, plan, difficulty);
+    if (errors.length) throw new Error(`Generated ${BOT_STRATEGIES[plan.strategy].name} bot deck is invalid: ${errors.join("; ")}`);
     return shuffleInPlace(deck);
+  }
+
+  function runBotDeckDevelopmentAssertions(iterations = 6) {
+    const summary = { generated: 0, premiumCounts: [], cohesion: {}, randomBaseline: {} };
+    for (const difficulty of ["medium", "hard", "impossible"]) {
+      for (const strategy of Object.keys(BOT_STRATEGIES)) {
+        let cohesion = 0;
+        let randomCohesion = 0;
+        for (let index = 0; index < iterations; index += 1) {
+          const preferred = BOT_STRATEGIES[strategy].preferredFactions;
+          const plan = { strategy, primaryFaction: preferred[0], supportFaction: preferred[1] };
+          const deck = randomizedBotCommandDeck(plan, difficulty);
+          const errors = botDeckValidationErrors(deck, plan, difficulty);
+          console.assert(!errors.length, `${difficulty} ${strategy}: ${errors.join("; ")}`);
+          summary.premiumCounts.push(deck.filter(cardId => Number(getCard(cardId)?.cost) >= 9).length);
+          cohesion += botDeckCohesionScore(deck, plan);
+          randomCohesion += botDeckCohesionScore(buildCostCurveCommandDeck(), plan);
+          summary.generated += 1;
+        }
+        summary.cohesion[`${difficulty}:${strategy}`] = cohesion / iterations;
+        summary.randomBaseline[`${difficulty}:${strategy}`] = randomCohesion / iterations;
+        if (difficulty === "hard" || difficulty === "impossible") console.assert(cohesion / iterations > randomCohesion / iterations + 1, `${difficulty} ${strategy} should be materially more cohesive than a random legal deck.`);
+      }
+    }
+    console.assert(summary.premiumCounts.every(count => count <= 2), "No standard bot deck may contain more than two cost-9+ cards.");
+    console.assert(summary.premiumCounts.filter(count => count <= 1).length / summary.premiumCounts.length >= .9, "At least 90% of generated decks should contain zero or one cost-9+ card.");
+    const alignedFive = { score: 10, strategyFit: 8, synergy: 4, efficiency: 2, effectiveCost: 5, tacticalValue: 1, card: { name: "Aligned Five" } };
+    const unrelatedNine = { score: 10.4, strategyFit: 0, synergy: -1, efficiency: 1, effectiveCost: 9, tacticalValue: 2, card: { name: "Unrelated Nine" } };
+    const premiumFinisher = { ...unrelatedNine, score: 14, strategyFit: 11, synergy: 5, card: { name: "Premium Finisher" } };
+    console.assert([alignedFive, unrelatedNine].sort(compareBotMarketCandidates)[0] === alignedFive, "A similarly valued aligned cost-5 card should beat an unrelated cost-9 card.");
+    console.assert([alignedFive, premiumFinisher].sort(compareBotMarketCandidates)[0] === premiumFinisher, "An exceptional aligned finisher may overcome its premium cost.");
+    console.info("War Realms bot deck assertions passed", summary);
+    return summary;
   }
 
   function createSinglePlayerGame(difficulty) {
@@ -9939,13 +10152,68 @@
     if (forPurchase) {
       const round = Math.max(1, Number(game?.round) || 1);
       const profile = draftCardIncomePurgeProfile(card);
+      const opponent = game?.players?.find(player => player.id !== bot.id && !player.eliminated && !player.left);
       if (round <= 4) bonus += profile.income * .65 + profile.purge * .45;
       if (round >= 7 && bot.botStrategy !== "engine") bonus -= profile.income * .28;
       bonus -= Math.max(0, sameCard - 1) * .78;
       if (Number(card.cost) <= 2 && sameCard >= 2) bonus -= 1.1;
       if (isHiredLooterCardId(card.id) && sameCard >= 2) bonus -= 1.8 + (sameCard - 2) * .8;
+      if (bot.botStrategy === "siege" && (opponent?.bases?.length || 0) > 1 && botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "destroyBase") || effectHasBotAbility(effect, "stun"))) bonus += 2 + opponent.bases.length * .55;
+      if (bot.botStrategy === "attrition" && (opponent?.hand?.length || 0) >= 5 && botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "opponentDiscard"))) bonus += 2.4;
+      if (bot.botStrategy === "stronghold" && card.type === "base") {
+        const ownedBases = ownedIds.filter(cardId => getCard(cardId)?.type === "base").length;
+        bonus += ownedBases < strategy.baseTarget ? 3.1 : .4;
+      }
+      if ((bot.botStrategy === "engine" || bot.botStrategy === "marketeer") && round <= 5) bonus += profile.income * .85;
     }
     return bonus;
+  }
+
+  function botDeckEconomyProfile(bot) {
+    const cards = botDeckCardIds(bot).map(cardId => getCard(cardId)).filter(Boolean);
+    const costs = cards.map(card => Math.max(0, Number(card.cost) || 0));
+    const factionCounts = cards.reduce((counts, card) => {
+      counts[card.faction || "neutral"] = (counts[card.faction || "neutral"] || 0) + 1;
+      return counts;
+    }, {});
+    return {
+      cardCount: cards.length,
+      averageCost: costs.length ? costs.reduce((sum, cost) => sum + cost, 0) / costs.length : 0,
+      cost7Plus: costs.filter(cost => cost >= 7).length,
+      cost9Plus: costs.filter(cost => cost >= 9).length,
+      economyCards: cards.filter(card => botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "trade") || effectHasBotAbility(effect, "tradePerBase"))).length,
+      primaryFaction: factionCounts[bot?.primaryFaction] || 0,
+      supportFaction: factionCounts[bot?.supportFaction] || 0,
+      factionCounts
+    };
+  }
+
+  function botExpensiveCardPenalty(card, bot, game, effectiveCost, strategyFit, profile = botDeckEconomyProfile(bot)) {
+    const cost = Math.max(1, Number(effectiveCost) || Number(card?.cost) || 1);
+    const over = Math.max(0, cost - 6);
+    if (!over) return 0;
+    const strategy = BOT_STRATEGIES[bot?.botStrategy];
+    let penalty = Math.pow(over, 1.72) * .78;
+    if (hasPersonalMarketDiscount(bot, card.id)) penalty *= .58;
+    if (bot.trade >= cost + 4) penalty *= .76;
+    if (profile.economyCards >= 5) penalty *= .78;
+    if ((Number(game?.round) || 1) >= 7) penalty *= .78;
+    if (strategyFit >= 8) penalty *= 1 - Math.min(.55, (Number(strategy?.costProfile?.expensiveTolerance) || 0) * .58);
+    if (Number(card?.cost) >= 9) penalty += profile.cost9Plus * 3.4 + Math.max(0, profile.cost9Plus - 1) * 5.5;
+    return penalty;
+  }
+
+  function botCardSynergyScore(card, bot, profile = botDeckEconomyProfile(bot)) {
+    if (!card) return 0;
+    const sameFaction = profile.factionCounts[card.faction] || 0;
+    let synergy = Math.min(4.2, sameFaction * .18);
+    if (card.faction === bot?.primaryFaction) synergy += 2.6;
+    else if (card.faction === bot?.supportFaction) synergy += 1.2;
+    else if (card.faction && card.faction !== "neutral") synergy -= 2.1;
+    if (card.factionScaling || card.factionThresholds) synergy += Math.min(3, sameFaction * .22);
+    const strategy = BOT_STRATEGIES[bot?.botStrategy];
+    if (card.type === "base" && strategy?.baseTarget > 7) synergy += 2.2;
+    return synergy;
   }
 
   function chooseBotChoiceIndex(choice, bot, difficulty) {
@@ -10037,13 +10305,29 @@
     return bot.hand.map((cardId, index) => {
       const card = getCard(cardId);
       let score = cardAiValue(card, bot, difficulty);
+      const strategyKey = bot.botStrategy;
+      const sources = botCardEffectSources(card);
+      const hasAbility = ability => sources.some(effect => effectHasBotAbility(effect, ability));
       const activeFactionCount = card ? activeFactionEntries(state, bot, card.faction).length : 0;
       const availableFactionCount = card ? (factionCounts[card.faction] || 0) + activeFactionCount : 0;
       if (card && availableFactionCount > 1) score += 3;
       if (card && hasEffect(doubleAllyEffect(card)) && availableFactionCount > 2) score += 4;
-      if (card?.effect?.draw) score += 5;
+      if (hasAbility("draw")) score += strategyKey === "engine" || strategyKey === "cycle" || strategyKey === "marketeer" ? 8 : 5;
+      if (hasAbility("trade")) score += strategyKey === "engine" || strategyKey === "marketeer" ? 4.5 : 1;
+      if (hasAbility("scrapOwn")) score += strategyKey === "engine" || strategyKey === "cycle" ? 3.5 : 1;
+      if (strategyKey === "vanguard" && hasAbility("combat")) score += availableFactionCount > 1 ? 3.5 : 1.2;
+      if (strategyKey === "stronghold" && card?.type === "base") score += 3;
+      if (strategyKey === "siege" && (hasAbility("destroyBase") || hasAbility("stun"))) score += 4;
+      if (strategyKey === "attrition" && hasAbility("opponentDiscard")) score += 4;
+      if (strategyKey === "marketeer" && hasAbility("scrapMarket")) score += 2;
       return { index, score };
     }).sort((left, right) => right.score - left.score)[0].index;
+  }
+
+  function compareBotMarketCandidates(left, right) {
+    const scoreDifference = right.score - left.score;
+    if (Math.abs(scoreDifference) > .65) return scoreDifference;
+    return right.strategyFit - left.strategyFit || right.synergy - left.synergy || right.efficiency - left.efficiency || left.effectiveCost - right.effectiveCost || right.tacticalValue - left.tacticalValue || left.card.name.localeCompare(right.card.name);
   }
 
   function chooseMarketIndex(game, bot, difficulty) {
@@ -10052,15 +10336,39 @@
     if (!affordable.length) return -1;
     if (difficulty === "easy") return affordable[Math.floor(Math.random() * affordable.length)].index;
     const aggression = Math.max(.75, Number(bot.campaignAggression) || 1);
-    const scored = affordable.map(item => {
+    const economyProfile = botDeckEconomyProfile(bot);
+    let scored = affordable.map(item => {
       const effect = coreEffect(primaryCardEffect(item.card));
       const attackValue = Math.max(0, Number(effect.combat) || 0) * 1.4 + Math.max(0, Number(effect.destroyBase) || 0) * 4 + Math.max(0, Number(effect.stun) || 0) * 1.5;
       const economyValue = Math.max(0, Number(effect.trade) || 0) * .3;
+      const effectiveCost = Math.max(1, marketCardCostForPlayer(item.card, bot));
+      const strategyFit = botStrategyCardBonus(item.card, bot, game, true);
+      const synergy = botCardSynergyScore(item.card, bot, economyProfile);
+      const strategicValue = cardAiValue(item.card, bot, difficulty, true, game);
+      const efficiency = strategicValue / effectiveCost;
+      const tacticalValue = (attackValue - economyValue) * (aggression - 1);
+      const expensivePenalty = botExpensiveCardPenalty(item.card, bot, game, effectiveCost, strategyFit, economyProfile);
       return {
         ...item,
-        score: cardAiValue(item.card, bot, difficulty, true, game) + (hasPersonalMarketDiscount(bot, item.card.id) ? 1.35 : 0) + (attackValue - economyValue) * (aggression - 1)
+        effectiveCost,
+        strategyFit,
+        synergy,
+        efficiency,
+        tacticalValue,
+        strategicValue,
+        score: strategicValue + strategyFit * (difficulty === "medium" ? .38 : .62) + synergy * .7 + efficiency * (difficulty === "impossible" ? 3.2 : difficulty === "hard" ? 2.6 : 1.7) + (hasPersonalMarketDiscount(bot, item.card.id) ? 1.35 : 0) + tacticalValue - expensivePenalty
       };
-    }).sort((left, right) => right.score - left.score || right.card.cost - left.card.cost);
+    });
+    if (difficulty === "hard" || difficulty === "impossible") {
+      scored = scored.map(candidate => {
+        const remainingTrade = bot.trade - candidate.effectiveCost;
+        const second = scored.filter(other => other.index !== candidate.index && other.effectiveCost <= remainingTrade)
+          .sort(compareBotMarketCandidates)[0];
+        const pairBonus = second && second.strategyFit > 0 ? Math.min(5.5, Math.max(0, second.score) * .16 + second.efficiency * .35) : 0;
+        return { ...candidate, pairBonus, score: candidate.score + pairBonus };
+      });
+    }
+    scored.sort(compareBotMarketCandidates);
     const best = scored[0];
     const minimumScore = difficulty === "medium" ? 1.15 : difficulty === "hard" ? 1.7 : 1.5;
     return best && best.score >= minimumScore ? best.index : -1;
@@ -11194,7 +11502,9 @@
   });
   window.addEventListener("focus", () => void recoverActiveArmoryPage());
 
-  void boot();
+  void boot().then(() => {
+    if (query.get("botAiTest") === "1") setTimeout(() => runBotDeckDevelopmentAssertions(), 0);
+  });
 </script>
 </body>
 </html>
