@@ -257,7 +257,7 @@
 
   <section class="panel hidden" id="phase-end">
     <div class="title">Game Over</div>
-    <div class="muted sm">Wins and Bible Game ELO are saved to each player’s Firebase profile exactly once for this session.</div>
+    <div class="muted sm">Wins and Bible Game ELO are saved to each player’s Game Hub account exactly once for this session.</div>
     <div id="endSummary" class="end-summary">Finalizing results…</div>
     <div id="ratingResults" class="rating-results"></div>
     <div class="row" style="margin-top:10px">
@@ -271,7 +271,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, addDoc,
-    serverTimestamp, query, orderBy, limit, getDocs, runTransaction, increment, Timestamp
+    serverTimestamp, query, where, orderBy, limit, getDocs, runTransaction, increment, Timestamp
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -292,6 +292,7 @@
   const url = new URL(location.href);
   const gameId = url.searchParams.get('gameId') || '';
   const username = (url.searchParams.get('username') || '').trim();
+  const connectionId = crypto.randomUUID ? crypto.randomUUID() : `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const MODE_DURATION = {
     voting: 60000,
@@ -305,7 +306,7 @@
   const COOP_REVEAL_MS = 2300;
   const PRESENCE_STALE_MS = 80000;
   const HEARTBEAT_MS = 25000;
-  const RATING_VERSION = 2;
+  const RATING_VERSION = 3;
   const STARTING_ELO = 0;
   const COOP_WIN_GOAL = 12;
   const COOP_CHALLENGE_ELO = 250;
@@ -322,10 +323,6 @@
     {min:1000, key:'crown_of_life',     title:'Crown of Life',     emoji:'✨', color:'#9333ea'}
   ];
 
-
-  // Canonical Protestant Bible order. The source CSV's original book names are
-  // preserved for answers, while these normalized keys control ordering and
-  // Old/New Testament round selection.
   const BIBLE_BOOK_ORDER = [
     'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Ruth',
     '1 Samuel','2 Samuel','1 Kings','2 Kings','1 Chronicles','2 Chronicles','Ezra','Nehemiah','Esther',
@@ -384,6 +381,7 @@
   }
 
   let currentUser = null;
+  let playerUid = '';
   let LOBBY = null;
   let CONTROL = null;
   let SESSION = null;
@@ -428,6 +426,13 @@
   const controlRef = doc(db, 'lobbies', gameId, 'bibleGame', 'control');
 
   const safeName = value => (value || 'Player').toString().trim().slice(0, 40) || 'Player';
+  const normalizeName = value => (value||'').toString().trim().replace(/\s+/g,' ').toLowerCase();
+  const stablePlayerUid = value => `acct_${encodeURIComponent(normalizeName(value))}`;
+  const profileRefForName = value => {
+    const key=(value||'').toString().trim();
+    if(!key || key.includes('/')) throw new Error('Invalid Game Hub username.');
+    return doc(db,'users',key);
+  };
   const nowServer = () => Date.now() + serverClockOffsetMs;
   const fmtTime = ms => {
     ms = Math.max(0, ms || 0);
@@ -451,6 +456,35 @@
     return nowServer() - t < PRESENCE_STALE_MS;
   };
 
+  function lobbyPlayerNames(data){
+    return (Array.isArray(data?.players)?data.players:[]).map(player=>{
+      if(typeof player==='string') return player;
+      if(player && typeof player==='object') return player.username||player.name||player.displayName||'';
+      return '';
+    }).filter(Boolean);
+  }
+
+  function isLobbyMember(data,name){
+    const wanted=normalizeName(name);
+    return !!wanted && lobbyPlayerNames(data).some(candidate=>normalizeName(candidate)===wanted);
+  }
+
+  function isSessionParticipant(s=SESSION,uid=playerUid){
+    if(!s || s.status==='voting') return true;
+    const uids=Array.isArray(s.participantUids)?s.participantUids:[];
+    return !uids.length || uids.includes(uid);
+  }
+
+  function hasPlayerControl(){
+    if(!playerUid) return false;
+    const me=PLAYERS.get(playerUid);
+    return !me || !me.connectionId || me.connectionId===connectionId;
+  }
+
+  function canParticipate(s=SESSION){
+    return !!playerUid && hasPlayerControl() && isSessionParticipant(s,playerUid);
+  }
+
   function rankForElo(value){
     const elo=Math.max(0,Number(value??STARTING_ELO));
     let rank=RANKS[0];
@@ -464,11 +498,6 @@
     const legacyRaw=data?.bibleGameElo;
     const nestedElo=nestedRaw!==null && nestedRaw!==undefined && nestedRaw!=='' ? Number(nestedRaw) : NaN;
     const legacyElo=legacyRaw!==null && legacyRaw!==undefined && legacyRaw!=='' ? Number(legacyRaw) : NaN;
-
-    // Never replace a real saved ELO with the starting value. If one copy was
-    // previously reset to 0 while the other still has a positive rating, keep
-    // the positive saved rating. New players use STARTING_ELO only when neither
-    // saved field contains a usable number.
     if(Number.isFinite(nestedElo) && nestedElo>0) return nestedElo;
     if(Number.isFinite(legacyElo) && legacyElo>0) return legacyElo;
     if(Number.isFinite(nestedElo)) return nestedElo;
@@ -480,8 +509,6 @@
     const current=data?.bibleGame||{};
     const gamesPlayed=Math.max(0,Number(current.gamesPlayed||0));
     const storedElo=getStoredBibleElo(data);
-    // Preserve the saved rating exactly. ratingVersion is metadata only and
-    // must never trigger an automatic conversion or reset.
     const elo=Math.max(0,storedElo);
     const rank=rankForElo(elo);
     return {
@@ -494,14 +521,30 @@
     };
   }
 
+  function mergeBibleProfiles(dataList=[]){
+    const profiles=(dataList.length?dataList:[{}]).map(data=>normalizedBibleProfile(data));
+    const base=profiles.slice().sort((a,b)=>Number(a.gamesPlayed||0)-Number(b.gamesPlayed||0)||Number(a.elo||0)-Number(b.elo||0)).pop()||normalizedBibleProfile({});
+    const elo=Math.max(...profiles.map(p=>Number(p.elo||0)),STARTING_ELO);
+    const rank=rankForElo(elo);
+    return {
+      ...base,
+      ratingVersion:RATING_VERSION,
+      elo,
+      rankKey:rank.key,rankTitle:rank.title,rankEmoji:rank.emoji,rankColor:rank.color,
+      wins:Math.max(...profiles.map(p=>Number(p.wins||0)),0),
+      losses:Math.max(...profiles.map(p=>Number(p.losses||0)),0),
+      draws:Math.max(...profiles.map(p=>Number(p.draws||0)),0),
+      gamesPlayed:Math.max(...profiles.map(p=>Number(p.gamesPlayed||0)),0),
+      winStreak:Math.max(...profiles.map(p=>Number(p.winStreak||0)),0),
+      bestWinStreak:Math.max(...profiles.map(p=>Number(p.bestWinStreak||0)),0)
+    };
+  }
+
   function eloExpected(playerElo,opponentElo){
     return 1/(1+Math.pow(10,(Number(opponentElo)-Number(playerElo))/400));
   }
 
   function calculateEloChange(oldElo,opponentElo,actual,gamesPlayed){
-    // Fast early climb: an even first win grants about +50 ELO, enough to
-    // immediately reach Faithful Flock. Early losses are softened while
-    // players learn, and no final rating can ever fall below zero.
     const k=gamesPlayed<5?100:(gamesPlayed<12?84:(gamesPlayed<25?68:52));
     let change=Math.round(k*(actual-eloExpected(oldElo,opponentElo)));
     if(actual===1) change=Math.max(gamesPlayed<5?28:15,change);
@@ -512,20 +555,44 @@
     return Math.max(-52,Math.min(100,change));
   }
 
+  async function discoverProfileRefs(){
+    const refs=new Map();
+    const add=ref=>refs.set(ref.path,ref);
+    add(profileRefForName(username));
+    if(currentUser?.uid) add(doc(db,'users',currentUser.uid));
+    try{
+      const snap=await getDocs(query(collection(db,'users'),where('username','==',safeName(username)),limit(20)));
+      snap.forEach(d=>{
+        const data=d.data()||{};
+        if(data.bibleGame || data.bibleGameElo!==undefined || d.id===username) add(d.ref);
+      });
+    }catch(err){ console.warn('Legacy Bible profile discovery skipped',err); }
+    return Array.from(refs.values());
+  }
+
   async function ensureBibleProfile(){
     if(!currentUser) return null;
-    const profileRef=doc(db,'users',currentUser.uid);
+    const canonicalRef=profileRefForName(username);
+    const candidateRefs=await discoverProfileRefs();
     const profile=await runTransaction(db,async tx=>{
-      const snap=await tx.get(profileRef);
-      const data=snap.exists()?snap.data():{};
-      const bible=normalizedBibleProfile(data);
+      const snaps=[];
+      for(const ref of candidateRefs) snaps.push(await tx.get(ref));
+      const canonicalIndex=candidateRefs.findIndex(ref=>ref.path===canonicalRef.path);
+      const canonicalSnap=canonicalIndex>=0?snaps[canonicalIndex]:null;
+      const canonicalData=canonicalSnap?.exists()?canonicalSnap.data():{};
+      if(canonicalData.chatAuthUid && canonicalData.chatAuthUid!==currentUser.uid){
+        throw new Error('This Game Hub account is not authenticated in this browser. Return to Game Hub and rejoin the lobby.');
+      }
+      const sourceData=snaps.filter(s=>s.exists()).map(s=>s.data());
+      const bible=mergeBibleProfiles(sourceData);
       const patch={
+        username:safeName(username),
+        chatAuthUid:currentUser.uid,
         bibleGame:{...bible,profileUpdatedAt:serverTimestamp()}, bibleGameElo:bible.elo, bibleGameWins:bible.wins,
         bibleGameRatingVersion:RATING_VERSION, bibleGameProfileUpdatedAt:serverTimestamp(),
         bibleGameRankTitle:bible.rankTitle, bibleGameRankEmoji:bible.rankEmoji, bibleGameRankColor:bible.rankColor
       };
-      if(!data.username) patch.username=safeName(username);
-      tx.set(profileRef,patch,{merge:true});
+      tx.set(canonicalRef,patch,{merge:true});
       return bible;
     });
     MY_PROFILE=profile;
@@ -667,8 +734,8 @@
   }
 
   function canControlBookMode(){
-    if(!SESSION||!currentUser) return false;
-    if(currentUser.uid===SESSION.hostUid) return true;
+    if(!SESSION||!playerUid||!hasPlayerControl()) return false;
+    if(playerUid===SESSION.hostUid) return true;
     const host=PLAYERS.get(SESSION.hostUid);
     return (!host||!isFreshPlayer(host))&&isDriver();
   }
@@ -697,28 +764,28 @@
   }
 
   async function saveDraftChoice(){
-    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='draft') return;
+    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='draft'||!hasPlayerControl()) return;
     const selected=Array.from($('draftBooksInput').selectedOptions).map(option=>option.value);
     const draftBooks=validBookList(selected);
     if(!draftBooks.length){ showReveal('Select at least one book for your draft.','bad'); return; }
-    await setDoc(doc(bookChoicesCol,currentUser.uid),{
-      uid:currentUser.uid,username:safeName(username),draftBooks,updatedAt:serverTimestamp()
+    await setDoc(doc(bookChoicesCol,playerUid),{
+      uid:playerUid,username:safeName(username),profileKey:username,draftBooks,updatedAt:serverTimestamp()
     },{merge:true});
     showReveal(`Saved ${draftBooks.length} drafted book${draftBooks.length===1?'':'s'}.`,'good');
   }
 
   async function saveBanChoice(){
-    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='ban') return;
+    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='ban'||!hasPlayerControl()) return;
     const bannedBook=validBookList([$('banBookInput').value])[0]||'';
     if(!bannedBook){ showReveal('Choose one book to ban.','bad'); return; }
-    await setDoc(doc(bookChoicesCol,currentUser.uid),{
-      uid:currentUser.uid,username:safeName(username),bannedBook,updatedAt:serverTimestamp()
+    await setDoc(doc(bookChoicesCol,playerUid),{
+      uid:playerUid,username:safeName(username),profileKey:username,bannedBook,updatedAt:serverTimestamp()
     },{merge:true});
     showReveal(`${bannedBook} is locked as your ban.`,'good');
   }
 
   function loadMyBookChoiceIntoControls(){
-    const choice=BOOK_CHOICES.get(currentUser?.uid)||{};
+    const choice=BOOK_CHOICES.get(playerUid)||{};
     const signature=JSON.stringify({draftBooks:validBookList(choice.draftBooks||[]),bannedBook:choice.bannedBook||''});
     if(signature===loadedChoiceSignature) return;
     loadedChoiceSignature=signature;
@@ -757,7 +824,7 @@
         const banned=validBookList([choice.bannedBook])[0];
         if(banned) result=`Banned ${banned}`;
       }
-      row.innerHTML=`<span>${escapeHtml(safeName(player.username))}${player.uid===currentUser?.uid?' (you)':''}</span><b>${escapeHtml(result)}</b>`;
+      row.innerHTML=`<span>${escapeHtml(safeName(player.username))}${player.uid===playerUid?' (you)':''}</span><b>${escapeHtml(result)}</b>`;
       status.appendChild(row);
     }
   }
@@ -804,9 +871,9 @@
   }
 
   function getMyTeam(s=SESSION){
-    if(!s || !currentUser) return null;
-    if((s.teamA||[]).includes(currentUser.uid)) return 'A';
-    if((s.teamB||[]).includes(currentUser.uid)) return 'B';
+    if(!s || !playerUid) return null;
+    if((s.teamA||[]).includes(playerUid)) return 'A';
+    if((s.teamB||[]).includes(playerUid)) return 'B';
     return null;
   }
 
@@ -819,28 +886,42 @@
   }
 
   function coopCanAnswer(s=SESSION){
-    if(!s || s.mode!=='coop' || s.coopLocked) return false;
+    if(!s || s.mode!=='coop' || s.coopLocked || !canParticipate(s)) return false;
     return phaseElapsedMs(s)>=COOP_READING_MS && Number(s.sharedLives||0)>0;
   }
 
   function activePlayers(){
-    return Array.from(PLAYERS.values()).filter(isFreshPlayer).sort((a,b)=>{
+    const freshest=new Map();
+    for(const p of Array.from(PLAYERS.values()).filter(isFreshPlayer)){
+      const key=normalizeName(p.profileKey||p.username||p.uid);
+      const existing=freshest.get(key);
+      const pSeen=p.lastSeenAt?.toMillis?.()||0;
+      const eSeen=existing?.lastSeenAt?.toMillis?.()||0;
+      if(!existing || pSeen>=eSeen) freshest.set(key,p);
+    }
+    return Array.from(freshest.values()).sort((a,b)=>{
       const at=a.joinedAt?.toMillis?.()||0, bt=b.joinedAt?.toMillis?.()||0;
       return at-bt || String(a.uid).localeCompare(String(b.uid));
     });
   }
 
+  function activeParticipants(s=SESSION){
+    const list=activePlayers();
+    const ids=new Set(Array.isArray(s?.participantUids)?s.participantUids:[]);
+    return ids.size?list.filter(p=>ids.has(p.uid)):list;
+  }
+
   function isDriver(){
-    if(!SESSION || !currentUser) return false;
-    const active=activePlayers();
+    if(!SESSION || !playerUid || !hasPlayerControl() || !isSessionParticipant(SESSION,playerUid)) return false;
+    const active=activeParticipants(SESSION);
     const host=PLAYERS.get(SESSION.hostUid);
-    if(host && isFreshPlayer(host)) return currentUser.uid===SESSION.hostUid;
-    return active.length>0 && active[0].uid===currentUser.uid;
+    if(host && isFreshPlayer(host) && isSessionParticipant(SESSION,host.uid)) return playerUid===SESSION.hostUid;
+    return active.length>0 && active[0].uid===playerUid;
   }
 
   async function loadBibleData(){
     const csvUrl='https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv';
-    const response=await fetch(csvUrl,{cache:'no-cache'});
+    const response=await fetch(csvUrl,{cache:'force-cache'});
     if(!response.ok) throw new Error(`Bible data failed to load (${response.status}).`);
     verses=buildBooksAndVerses(parseCSV(await response.text()));
     if(!verses.length) throw new Error('Bible data loaded, but no valid verses were found.');
@@ -855,9 +936,11 @@
 
   async function createFreshSession({onlyIfMissing=false}={}){
     if(!currentUser || !LOBBY || createSessionBusy) return false;
+    if(!onlyIfMissing && SESSION?.status==='ended' && !SESSION.ratingsApplied) return false;
     createSessionBusy=true;
     try{
       const sid=makeSessionId();
+      const hostPlayerUid=stablePlayerUid(username);
       const newSessionRef=doc(db,'lobbies',gameId,'bibleSessions',sid);
       return await runTransaction(db,async tx=>{
         const controlSnap=await tx.get(controlRef);
@@ -866,7 +949,7 @@
           sessionId:sid,
           status:'voting',
           mode:null,
-          hostUid:currentUser.uid,
+          hostUid:hostPlayerUid,
           hostName:username,
           phaseStartedAt:serverTimestamp(),
           durationMs:MODE_DURATION.voting,
@@ -903,7 +986,7 @@
         });
         tx.set(controlRef,{
           activeSessionId:sid,
-          hostUid:currentUser.uid,
+          hostUid:hostPlayerUid,
           hostName:username,
           updatedAt:serverTimestamp()
         },{merge:true});
@@ -914,23 +997,47 @@
     }
   }
 
+  async function resolvePlayerUidForSession(){
+    const desired=stablePlayerUid(username);
+    playerUid=desired;
+    try{
+      const [sSnap,pSnap]=await Promise.all([getDoc(sessionRef),getDocs(playersCol)]);
+      const s=sSnap.exists()?sSnap.data():{};
+      const participantIds=new Set(Array.isArray(s.participantUids)?s.participantUids:[]);
+      const matches=[];
+      pSnap.forEach(d=>{
+        const data=d.data()||{};
+        if(normalizeName(data.profileKey||data.username)===normalizeName(username)) matches.push({id:d.id,data});
+      });
+      const participantMatch=matches.find(item=>participantIds.has(item.id));
+      const stableMatch=matches.find(item=>item.id===desired);
+      const newest=matches.slice().sort((a,b)=>(b.data.lastSeenAt?.toMillis?.()||0)-(a.data.lastSeenAt?.toMillis?.()||0))[0];
+      playerUid=(participantMatch||stableMatch||newest||{id:desired}).id;
+    }catch(err){ console.warn('Player reconnect lookup skipped',err); }
+  }
+
   async function joinSession(){
-    if(!sessionRef || !currentUser) return;
+    if(!sessionRef || !currentUser || !playerUid) return;
     await ensureBibleProfile();
     const profile=MY_PROFILE||normalizedBibleProfile({});
     const rank=rankForElo(profile.elo);
-    activePlayerRef=doc(playersCol,currentUser.uid);
+    activePlayerRef=doc(playersCol,playerUid);
     const sent=Date.now();
     await runTransaction(db,async tx=>{
       const sSnap=await tx.get(sessionRef);
       if(!sSnap.exists()) return;
       const s=sSnap.data();
       const pSnap=await tx.get(activePlayerRef);
+      const spectator=s.status==='playing' && Array.isArray(s.participantUids) && s.participantUids.length>0 && !s.participantUids.includes(playerUid);
       const base={
-        uid:currentUser.uid,
+        uid:playerUid,
         username:safeName(username),
+        profileKey:username,
+        authUid:currentUser.uid,
+        connectionId,
+        spectator,
         online:true,
-        ready:true,
+        ready:!spectator,
         lastSeenAt:serverTimestamp(),
         clockProbe:serverTimestamp(),
         clockProbeClientMs:sent,
@@ -945,15 +1052,15 @@
         base.score=0;
         base.joinedAt=serverTimestamp();
         base.questionKey=0;
-        if(s.status==='playing' && s.mode==='speed'){
+        if(!spectator && s.status==='playing' && s.mode==='speed'){
           base.currentQuestion=serializeVerse(pickRandomVerse([], '', s.allowedBooks||[]));
           base.questionKey=1;
         }
         tx.set(activePlayerRef,base);
-        if(s.status==='playing' && s.mode==='teams'){
+        if(!spectator && s.status==='playing' && s.mode==='teams'){
           const A=(s.teamA||[]).slice(), B=(s.teamB||[]).slice();
-          if(!A.includes(currentUser.uid) && !B.includes(currentUser.uid)){
-            (A.length<=B.length?A:B).push(currentUser.uid);
+          if(!A.includes(playerUid) && !B.includes(playerUid)){
+            (A.length<=B.length?A:B).push(playerUid);
             tx.update(sessionRef,{teamA:A,teamB:B,updatedAt:serverTimestamp()});
           }
         }
@@ -967,11 +1074,13 @@
   function startHeartbeat(){
     if(heartbeatTimer) clearInterval(heartbeatTimer);
     const beat=async()=>{
-      if(!activePlayerRef) return;
+      if(!activePlayerRef || !hasPlayerControl()) return;
       const sent=Date.now();
       try{
         await setDoc(activePlayerRef,{
           online:true,
+          connectionId,
+          authUid:currentUser?.uid||'',
           lastSeenAt:serverTimestamp(),
           clockProbe:serverTimestamp(),
           clockProbeClientMs:sent
@@ -998,6 +1107,7 @@
     bookChoicesCol=collection(sessionRef,'bookChoices');
     submissionsCol=collection(sessionRef,'submissions');
     suggestionsCol=collection(sessionRef,'suggestions');
+    await resolvePlayerUidForSession();
 
     sessionUnsub=onSnapshot(sessionRef,snap=>{
       if(!snap.exists()) return;
@@ -1013,13 +1123,14 @@
       const next=new Map();
       snap.forEach(d=>next.set(d.id,{...d.data(),uid:d.id}));
       PLAYERS=next;
-      const me=PLAYERS.get(currentUser.uid);
+      const me=PLAYERS.get(playerUid);
       if(me?.clockProbe?.toMillis && Number.isFinite(me.clockProbeClientMs)){
         const recv=Date.now();
         const midpoint=(Number(me.clockProbeClientMs)+recv)/2;
         serverClockOffsetMs=me.clockProbe.toMillis()-midpoint;
       }
-      setConnection('good','Synced');
+      if(me?.connectionId && me.connectionId!==connectionId) setConnection('bad','Active in another tab/device');
+      else setConnection('good','Synced');
       render();
       ensureChatListener();
     },err=>{ console.error(err); setConnection('bad','Player sync error'); });
@@ -1045,7 +1156,7 @@
     const justEnded=oldState.status==='playing' && newState.status==='ended';
     if(!roundChanged && !justEnded) return;
     if(oldState.mode==='traditional'){
-      const ref=doc(submissionsCol,`${oldState.roundKey}_${currentUser.uid}`);
+      const ref=doc(submissionsCol,`${oldState.roundKey}_${playerUid}`);
       const snap=await getDoc(ref);
       const result=snap.exists()?snap.data():null;
       const correct=oldState.currentQuestion;
@@ -1053,7 +1164,7 @@
         const refText=`${correct.book} ${correct.chapter}:${correct.verse}`;
         showReveal(`${result.full?'✓ Correct':'Answer revealed'} • ${refText} • ${result.points} point${result.points===1?'':'s'}`,result.full?'good':'bad');
         addHistory(refText,!!result.full,Number(result.points||0));
-      }else if(correct){
+      }else if(correct && isSessionParticipant(oldState,playerUid)){
         showReveal(`Time • ${correct.book} ${correct.chapter}:${correct.verse}`,'info');
       }
     }else if(oldState.mode==='teams'){
@@ -1069,7 +1180,7 @@
           addHistory(correctText,!!result.full,Number(result.points||0));
         }else showReveal(`Team ${team} did not lock an answer • ${correctText}`,'info');
       }
-    }else if(oldState.mode==='coop' && (justEnded?newState:oldState).currentQuestion){
+    }else if(oldState.mode==='coop' && isSessionParticipant(oldState,playerUid) && (justEnded?newState:oldState).currentQuestion){
       const revealState=justEnded?newState:oldState;
       const correct=revealState.currentQuestion;
       const text=`${revealState.coopWasRight?'✓ Correct':'✗ Wrong'} • ${correct.book} ${correct.chapter}:${correct.verse}${revealState.coopAnsweredByName?' • '+revealState.coopAnsweredByName:''}`;
@@ -1088,9 +1199,9 @@
     $('phase-play').classList.toggle('hidden',phase!=='playing');
     $('phase-end').classList.toggle('hidden',phase!=='ended');
     $('hostName').textContent=SESSION.hostName||CONTROL?.hostName||getLobbyHostName(LOBBY);
-    $('playerCount').textContent=activePlayers().length;
+    $('playerCount').textContent=activeParticipants(SESSION).length;
     $('modeLabel').textContent=phase==='voting'?'Vote':(SESSION.mode?SESSION.mode[0].toUpperCase()+SESSION.mode.slice(1):'Game');
-    const me=PLAYERS.get(currentUser?.uid)||MY_PROFILE||{};
+    const me=PLAYERS.get(playerUid)||MY_PROFILE||{};
     const myRank=rankForElo(me.elo);
     $('myRankPill').textContent=`${myRank.emoji} ${myRank.title} • ${myRank.elo}`;
     $('myRankPill').style.color=myRank.color;
@@ -1109,6 +1220,10 @@
       return;
     }
     if(phase!=='playing') return;
+
+    const participant=canParticipate(SESSION);
+    if(!isSessionParticipant(SESSION,playerUid)) showNotice('This round was already in progress when you joined. You are spectating until the next game.','info');
+    else if(!hasPlayerControl()) showNotice('This account is active in another tab or device. This tab is read-only.','bad');
 
     fillBookDropdown(effectiveAllowedBooks(SESSION));
     const mode=SESSION.mode;
@@ -1142,15 +1257,15 @@
       $('teamsLastSubmit').textContent=last?`Team ${team} locked: ${last.byName} → ${last.ref}`:'No team answer has been locked yet.';
       const submit=$('submitBtn');
       submit.textContent=stage==='discuss'?'Share Suggestion':stage==='final'?'Lock Team Answer':'Read Verse';
-      submit.disabled=!team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
+      submit.disabled=!participant || !team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
       drawSuggestions();
     }else{
       $('submitBtn').textContent='Submit';
-      $('submitBtn').disabled=false;
+      $('submitBtn').disabled=!participant;
     }
 
     $('verseHeader').textContent=buildVerseHeader();
-    const question=mode==='speed' ? PLAYERS.get(currentUser.uid)?.currentQuestion : SESSION.currentQuestion;
+    const question=mode==='speed' ? PLAYERS.get(playerUid)?.currentQuestion : SESSION.currentQuestion;
     $('verseText').textContent=question?.text||'Loading question…';
     buildPlayHelp();
     if(mode==='coop') buildCoopUI();
@@ -1175,12 +1290,16 @@
     else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.'+poolText;
     else if(m==='teams') text='Rounds alternate Old Testament, then New Testament • 8s reading • 47s discussion • 20s final answer.'+poolText;
     else if(m==='coop') text=`Shared lives • reach ${Number(SESSION.coopGoal||COOP_WIN_GOAL)} correct answers for a shared victory • a short reading period prevents instant locking.${poolText}`;
+    if(!isSessionParticipant(SESSION,playerUid)) text+=' • Spectator until next game.';
     $('playHelp').textContent=text;
   }
 
   function drawScores(){
     const sb=$('scoreboard'); sb.innerHTML='';
-    const list=Array.from(PLAYERS.values()).sort((a,b)=>Number(b.score||0)-Number(a.score||0)||safeName(a.username).localeCompare(safeName(b.username)));
+    const participantIds=new Set(Array.isArray(SESSION?.participantUids)?SESSION.participantUids:[]);
+    const list=Array.from(PLAYERS.values())
+      .filter(p=>!participantIds.size || participantIds.has(p.uid))
+      .sort((a,b)=>Number(b.score||0)-Number(a.score||0)||safeName(a.username).localeCompare(safeName(b.username)));
     const winners=new Set(SESSION?.winnerUids||[]);
     const placeIcons=['🥇','🥈','🥉'];
     for(const [index,p] of list.entries()){
@@ -1188,7 +1307,7 @@
       const online=isFreshPlayer(p);
       const rank=rankForElo(p.elo);
       const result=SESSION?.ratingResults?.[p.uid];
-      row.className=`entry podium-${Math.min(index+1,4)} ${p.uid===currentUser?.uid?'me':''} ${online?'':'offline'} ${winners.has(p.uid)?'winner':''}`.trim();
+      row.className=`entry podium-${Math.min(index+1,4)} ${p.uid===playerUid?'me':''} ${online?'':'offline'} ${winners.has(p.uid)?'winner':''}`.trim();
       row.style.setProperty('--rank-color',result?.rankColor||p.rankColor||rank.color);
       const host=p.uid===SESSION?.hostUid?' ⭐':'';
       const team=SESSION?.mode==='teams'?((SESSION.teamA||[]).includes(p.uid)?' • Team A':((SESSION.teamB||[]).includes(p.uid)?' • Team B':'')):'';
@@ -1236,12 +1355,14 @@
 
   function renderVotes(){
     const counts={traditional:0,speed:0,teams:0,coop:0};
-    for(const data of VOTES.values()) if(Object.prototype.hasOwnProperty.call(counts,data.mode)) counts[data.mode]++;
+    const activeIds=new Set(activePlayers().map(p=>p.uid));
+    for(const [uid,data] of VOTES.entries()) if(activeIds.has(uid) && Object.prototype.hasOwnProperty.call(counts,data.mode)) counts[data.mode]++;
     for(const [mode,count] of Object.entries(counts)){ const el=$(`v-${mode}`); if(el) el.textContent=count; }
     const max=Math.max(...Object.values(counts));
     document.querySelectorAll('#phase-vote .card').forEach(btn=>{
       btn.classList.toggle('leader',counts[btn.dataset.mode]===max);
       btn.classList.toggle('mine',btn.dataset.mode===myVote);
+      btn.disabled=!hasPlayerControl();
     });
   }
 
@@ -1254,18 +1375,19 @@
     if(SESSION.status==='playing' && SESSION.mode==='teams'){
       const stage=getTeamStage();
       const team=getMyTeam();
-      $('submitBtn').disabled=!team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
+      $('submitBtn').disabled=!canParticipate(SESSION) || !team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
     }
     if(SESSION.status==='playing' && SESSION.mode==='coop') applyCoopDisabledState();
   }
 
   async function submitVote(mode){
-    if(!SESSION || SESSION.status!=='voting') return;
+    if(!SESSION || SESSION.status!=='voting' || !hasPlayerControl()) return;
     myVote=mode;
     $('myVote').textContent=mode[0].toUpperCase()+mode.slice(1);
-    await setDoc(doc(votesCol,currentUser.uid),{
-      uid:currentUser.uid,
+    await setDoc(doc(votesCol,playerUid),{
+      uid:playerUid,
       username:safeName(username),
+      profileKey:username,
       mode,
       updatedAt:serverTimestamp()
     });
@@ -1296,15 +1418,16 @@
 
   async function finishVoting(){
     const [voteSnap,choiceSnap]=await Promise.all([getDocs(votesCol),getDocs(bookChoicesCol)]);
+    const active=activePlayers();
+    const uids=active.map(p=>p.uid);
+    if(!uids.includes(playerUid)) uids.push(playerUid);
+    const activeIds=new Set(uids);
     const counts={traditional:0,speed:0,teams:0,coop:0};
-    voteSnap.forEach(d=>{ const m=d.data().mode; if(Object.prototype.hasOwnProperty.call(counts,m)) counts[m]++; });
+    voteSnap.forEach(d=>{ const m=d.data().mode; if(activeIds.has(d.id) && Object.prototype.hasOwnProperty.call(counts,m)) counts[m]++; });
     const max=Math.max(...Object.values(counts));
     let candidates=Object.entries(counts).filter(([,v])=>v===max).map(([k])=>k);
     if(max===0) candidates=['traditional'];
     const chosen=candidates[Math.floor(Math.random()*candidates.length)];
-    const active=activePlayers();
-    const uids=active.map(p=>p.uid);
-    if(!uids.includes(currentUser.uid)) uids.push(currentUser.uid);
     const choiceMap=new Map();
     choiceSnap.forEach(d=>choiceMap.set(d.id,{...d.data(),uid:d.id}));
 
@@ -1337,7 +1460,7 @@
       tx.update(sessionRef,patch);
       for(const uid of uids){
         const pRef=doc(playersCol,uid);
-        const playerPatch={score:0,lastResult:null};
+        const playerPatch={score:0,lastResult:null,spectator:false,ready:true};
         if(chosen==='speed') Object.assign(playerPatch,{currentQuestion:speedQuestions.get(uid),questionKey:1});
         tx.set(pRef,playerPatch,{merge:true});
       }
@@ -1415,14 +1538,23 @@
       if(!sSnap.exists()) return;
       const s=sSnap.data();
       if(s.status!=='ended' || s.ratingsApplied) return;
-      const uids=Array.from(new Set((s.participantUids?.length?s.participantUids:participantUids).filter(Boolean)));
-      const playerRefs=uids.map(uid=>doc(playersCol,uid));
-      const profileRefs=uids.map(uid=>doc(db,'users',uid));
-      const playerSnaps=await Promise.all(playerRefs.map(ref=>tx.get(ref)));
-      const profileSnaps=await Promise.all(profileRefs.map(ref=>tx.get(ref)));
-      const players=uids.map((uid,i)=>({uid,ref:playerRefs[i],data:playerSnaps[i].exists()?playerSnaps[i].data():{uid,username:'Player',score:0}}));
-      const profiles=new Map(uids.map((uid,i)=>[uid,normalizedBibleProfile(profileSnaps[i].exists()?profileSnaps[i].data():{})]));
-      const scores=new Map(players.map(p=>[p.uid,Number(p.data.score||0)]));
+      const sessionUids=Array.from(new Set((s.participantUids?.length?s.participantUids:participantUids).filter(Boolean)));
+      const rawPlayerRefs=sessionUids.map(uid=>doc(playersCol,uid));
+      const rawPlayerSnaps=[];
+      for(const ref of rawPlayerRefs) rawPlayerSnaps.push(await tx.get(ref));
+      const rawPlayers=sessionUids.map((uid,i)=>({uid,ref:rawPlayerRefs[i],data:rawPlayerSnaps[i].exists()?rawPlayerSnaps[i].data():{uid,username:'Player',profileKey:uid,score:0}}));
+      const seenProfiles=new Set();
+      const players=rawPlayers.filter(p=>{
+        const key=normalizeName(p.data.profileKey||p.data.username||p.uid);
+        if(seenProfiles.has(key)) return false;
+        seenProfiles.add(key);
+        return true;
+      });
+      const uids=players.map(p=>p.uid);
+      const profileRefs=players.map(p=>profileRefForName(p.data.profileKey||p.data.username||p.uid));
+      const profileSnaps=[];
+      for(const ref of profileRefs) profileSnaps.push(await tx.get(ref));
+      const profiles=new Map(players.map((p,i)=>[p.uid,normalizedBibleProfile(profileSnaps[i].exists()?profileSnaps[i].data():{})]));
       const outcomes=new Map();
       let winnerUids=[];
       let resultSummary='';
@@ -1467,7 +1599,8 @@
 
       const winnerNames=players.filter(p=>winnerUids.includes(p.uid)).map(p=>safeName(p.data.username));
       const ratingResults={};
-      for(const p of players){
+      for(let i=0;i<players.length;i++){
+        const p=players[i];
         const oldProfile=profiles.get(p.uid)||normalizedBibleProfile({});
         const oldElo=Number(oldProfile.elo??STARTING_ELO);
         const outcome=outcomes.get(p.uid)||'draw';
@@ -1497,7 +1630,8 @@
           profileUpdatedAt:serverTimestamp(),
           lastEloChange:change, lastOutcome:outcome, lastMode:s.mode, lastSessionId:s.sessionId, lastGameAt:serverTimestamp()
         };
-        tx.set(profileRefs[uids.indexOf(p.uid)],{
+        tx.set(profileRefs[i],{
+          username:safeName(p.data.profileKey||p.data.username),
           bibleGame:nextBible, bibleGameElo:newElo, bibleGameWins:wins,
           bibleGameRatingVersion:RATING_VERSION, bibleGameProfileUpdatedAt:serverTimestamp(),
           bibleGameRankTitle:rank.title, bibleGameRankEmoji:rank.emoji, bibleGameRankColor:rank.color
@@ -1517,7 +1651,7 @@
       });
       return ratingResults;
     });
-    const mine=appliedResults?.[currentUser?.uid];
+    const mine=appliedResults?.[playerUid];
     if(mine){
       const current=MY_PROFILE||normalizedBibleProfile({});
       MY_PROFILE={...current,elo:mine.newElo,wins:mine.wins,rankKey:mine.rankKey,rankTitle:mine.rankTitle,rankEmoji:mine.rankEmoji,rankColor:mine.rankColor};
@@ -1538,6 +1672,10 @@
 
   async function onSubmitAnswer(){
     if(!SESSION || SESSION.status!=='playing') return;
+    if(!canParticipate(SESSION)){
+      showNotice(isSessionParticipant(SESSION,playerUid)?'This account is active in another tab or device.':'This match is already underway; you can join the next game.','bad');
+      return;
+    }
     const guess=readGuess();
     if(!guess){ showNotice('Choose a book, chapter, and verse first.','bad'); return; }
     clearNotice();
@@ -1554,24 +1692,27 @@
   async function submitTraditional(guess){
     const stateAtSubmit=SESSION;
     const result=scoreAnswer(guess,stateAtSubmit.currentQuestion,'traditional');
-    const submissionRef=doc(submissionsCol,`${stateAtSubmit.roundKey}_${currentUser.uid}`);
-    const playerRef=doc(playersCol,currentUser.uid);
+    const submissionRef=doc(submissionsCol,`${stateAtSubmit.roundKey}_${playerUid}`);
+    const playerRef=doc(playersCol,playerUid);
     const txResult=await runTransaction(db,async tx=>{
       const [sSnap,subSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(submissionRef),tx.get(playerRef)]);
       if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
-      const s=sSnap.data();
+      const s=sSnap.data(), p=pSnap.data();
+      if(p.connectionId && p.connectionId!==connectionId) return {accepted:false,reason:'replaced'};
+      if(!isSessionParticipant(s,playerUid)) return {accepted:false,reason:'spectator'};
       if(s.status!=='playing'||s.mode!=='traditional'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
       if(subSnap.exists()) return {accepted:false,reason:'already'};
       tx.set(submissionRef,{
-        uid:currentUser.uid,username:safeName(username),roundKey:s.roundKey,
+        uid:playerUid,username:safeName(username),profileKey:username,roundKey:s.roundKey,
         guess,correct:s.currentQuestion,points:result.points,full:result.full,
         createdAt:serverTimestamp()
       });
-      tx.update(playerRef,{score:Number(pSnap.data().score||0)+Math.max(0,result.points),lastResult:{roundKey:s.roundKey,...result}});
+      tx.update(playerRef,{score:Number(p.score||0)+Math.max(0,result.points),lastResult:{roundKey:s.roundKey,...result}});
       return {accepted:true};
     });
     if(!txResult.accepted){
-      showNotice(txResult.reason==='already'?'Your answer for this round was already accepted.':'The round changed before the answer reached Firebase.','bad');
+      const messages={already:'Your answer for this round was already accepted.',replaced:'This account is active in another tab or device.',spectator:'This match was already underway when you joined.',changed:'The round changed before the answer reached Firebase.',missing:'Player state is not ready.'};
+      showNotice(messages[txResult.reason]||'That answer could not be accepted.','bad');
       return;
     }
     clearGuess();
@@ -1579,25 +1720,30 @@
   }
 
   async function submitSpeed(guess){
-    const playerRef=doc(playersCol,currentUser.uid);
+    const playerRef=doc(playersCol,playerUid);
     const nextQuestion=serializeVerse(pickRandomVerse([], '', SESSION.allowedBooks||[]));
     const txResult=await runTransaction(db,async tx=>{
       const [sSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(playerRef)]);
-      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false};
+      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
       const s=sSnap.data(), p=pSnap.data();
-      if(s.status!=='playing'||s.mode!=='speed') return {accepted:false};
+      if(p.connectionId && p.connectionId!==connectionId) return {accepted:false,reason:'replaced'};
+      if(!isSessionParticipant(s,playerUid)) return {accepted:false,reason:'spectator'};
+      if(s.status!=='playing'||s.mode!=='speed') return {accepted:false,reason:'changed'};
       const current=p.currentQuestion;
-      if(!current) return {accepted:false};
+      if(!current) return {accepted:false,reason:'missing'};
       const result=scoreAnswer(guess,current,'speed');
       tx.update(playerRef,{
-        score:Number(p.score||0)+result.points,
+        score:Math.max(0,Number(p.score||0)+result.points),
         currentQuestion:nextQuestion,
         questionKey:Number(p.questionKey||0)+1,
         lastResult:{questionKey:p.questionKey||0,correct:current,...result,answeredAtMs:nowServer()}
       });
       return {accepted:true,result,current};
     });
-    if(!txResult.accepted){ showNotice('That answer could not be accepted because the game state changed.','bad'); return; }
+    if(!txResult.accepted){
+      const messages={replaced:'This account is active in another tab or device.',spectator:'This match was already underway when you joined.',changed:'The game state changed before the answer was accepted.',missing:'Player state is not ready.'};
+      showNotice(messages[txResult.reason]||'That answer could not be accepted.','bad'); return;
+    }
     clearGuess();
     const correct=txResult.current;
     const ref=`${correct.book} ${correct.chapter}:${correct.verse}`;
@@ -1606,30 +1752,34 @@
   }
 
   async function submitSuggestion(guess){
+    if(!canParticipate(SESSION)) return;
     const team=getMyTeam();
     if(!team){ showNotice('You are not assigned to a team in this session.','bad'); return; }
     const stage=getTeamStage();
     if(stage!=='discuss'){ showNotice('Suggestions are only open during the discussion phase.','bad'); return; }
     const ref=`${guess.book} ${guess.chapter}:${guess.verse}`;
-    await setDoc(doc(suggestionsCol,`${SESSION.roundKey}_${currentUser.uid}`),{
-      uid:currentUser.uid,username:safeName(username),team,roundKey:SESSION.roundKey,guess,ref,updatedAt:serverTimestamp()
+    await setDoc(doc(suggestionsCol,`${SESSION.roundKey}_${playerUid}`),{
+      uid:playerUid,username:safeName(username),profileKey:username,team,roundKey:SESSION.roundKey,guess,ref,updatedAt:serverTimestamp()
     });
     showNotice(`Suggestion shared with Team ${team}: ${ref}`,'ok');
   }
 
   async function submitTeamFinal(guess){
+    if(!canParticipate(SESSION)) return;
     const team=getMyTeam();
     if(!team){ showNotice('You are not assigned to a team.','bad'); return; }
     const stateAtSubmit=SESSION;
     const result=scoreAnswer(guess,stateAtSubmit.currentQuestion,'teams');
     const submissionRef=doc(submissionsCol,`team_${stateAtSubmit.roundKey}_${team}`);
-    const playerRef=doc(playersCol,currentUser.uid);
+    const playerRef=doc(playersCol,playerUid);
     const chatRef=doc(collection(sessionRef,team==='A'?'chatTeamA':'chatTeamB'));
 
     const txResult=await runTransaction(db,async tx=>{
       const [sSnap,subSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(submissionRef),tx.get(playerRef)]);
       if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
-      const s=sSnap.data();
+      const s=sSnap.data(), p=pSnap.data();
+      if(p.connectionId && p.connectionId!==connectionId) return {accepted:false,reason:'replaced'};
+      if(!isSessionParticipant(s,playerUid)) return {accepted:false,reason:'spectator'};
       if(s.status!=='playing'||s.mode!=='teams'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
       const remaining=(s.phaseStartedAt?.toMillis?.()||0)+Number(s.durationMs||0)-nowServer();
       if(remaining>TEAM_FINAL_MS+1200) return {accepted:false,reason:'tooSoon'};
@@ -1640,16 +1790,16 @@
       teamTotals[team]+=Math.max(0,result.points);
       const locks={A:!!s.teamLocks?.A,B:!!s.teamLocks?.B}; locks[team]=true;
       const last={A:s.lastTeamSubmission?.A||null,B:s.lastTeamSubmission?.B||null};
-      last[team]={byUid:currentUser.uid,byName:safeName(username),ref,points:result.points,full:result.full,atMs:nowServer()};
-      tx.set(submissionRef,{team,roundKey:s.roundKey,submittedByUid:currentUser.uid,submittedByName:safeName(username),guess,correct:s.currentQuestion,points:result.points,full:result.full,createdAt:serverTimestamp()});
+      last[team]={byUid:playerUid,byName:safeName(username),ref,points:result.points,full:result.full,atMs:nowServer()};
+      tx.set(submissionRef,{team,roundKey:s.roundKey,submittedByUid:playerUid,submittedByName:safeName(username),guess,correct:s.currentQuestion,points:result.points,full:result.full,createdAt:serverTimestamp()});
       tx.update(sessionRef,{teamTotals,teamLocks:locks,lastTeamSubmission:last,updatedAt:serverTimestamp()});
-      tx.update(playerRef,{score:Number(pSnap.data().score||0)+Math.max(0,result.points)});
+      tx.update(playerRef,{score:Number(p.score||0)+Math.max(0,result.points)});
       tx.set(chatRef,{uid:'system',name:'Game',text:`${safeName(username)} locked ${ref} for Team ${team}.`,ts:serverTimestamp(),kind:'system'});
       return {accepted:true};
     });
 
     if(!txResult.accepted){
-      const messages={locked:'A teammate already locked this round’s answer.',tooSoon:'The final-answer window has not started yet.',late:'The round ended before Firebase accepted the answer.',changed:'The round changed before the answer was accepted.',missing:'Player state is not ready yet.'};
+      const messages={locked:'A teammate already locked this round’s answer.',tooSoon:'The final-answer window has not started yet.',late:'The round ended before Firebase accepted the answer.',changed:'The round changed before the answer was accepted.',missing:'Player state is not ready yet.',replaced:'This account is active in another tab or device.',spectator:'This match was already underway when you joined.'};
       showNotice(messages[txResult.reason]||'The team answer was not accepted.','bad');
       return;
     }
@@ -1690,13 +1840,15 @@
 
   async function onSubmitMC(){
     if(!SESSION || SESSION.mode!=='coop' || !mcSelectedId) return;
-    if(!coopCanAnswer()){ showNotice('The answer is still locked for reading or another player already answered.','bad'); return; }
+    if(!coopCanAnswer()){ showNotice('The answer is still locked, this tab is read-only, or another player already answered.','bad'); return; }
     const stateAtSubmit=SESSION;
-    const playerRef=doc(playersCol,currentUser.uid);
+    const playerRef=doc(playersCol,playerUid);
     const txResult=await runTransaction(db,async tx=>{
       const [sSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(playerRef)]);
       if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
-      const s=sSnap.data();
+      const s=sSnap.data(), p=pSnap.data();
+      if(p.connectionId && p.connectionId!==connectionId) return {accepted:false,reason:'replaced'};
+      if(!isSessionParticipant(s,playerUid)) return {accepted:false,reason:'spectator'};
       if(s.status!=='playing'||s.mode!=='coop'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
       if(s.coopLocked) return {accepted:false,reason:'locked'};
       const elapsed=nowServer()-(s.phaseStartedAt?.toMillis?.()||nowServer());
@@ -1713,18 +1865,18 @@
         coopCorrectCount:nextCorrect,
         coopLocked:true,
         coopLockedAt:serverTimestamp(),
-        coopAnsweredByUid:currentUser.uid,
+        coopAnsweredByUid:playerUid,
         coopAnsweredByName:safeName(username),
         coopWasRight:wasRight,
         ...(won||lost?{status:'ended',endReason:won?'coopVictory':'coopDefeat'}:{}),
         updatedAt:serverTimestamp()
       });
-      if(wasRight) tx.update(playerRef,{score:Number(pSnap.data().score||0)+1});
+      if(wasRight) tx.update(playerRef,{score:Number(p.score||0)+1});
       return {accepted:true,wasRight,nextLives,nextCorrect,won,lost};
     });
     if(!txResult.accepted){
-      const message=txResult.reason==='locked'?'Another player’s answer reached Firebase first.':txResult.reason==='tooSoon'?'The reading period is still active.':'The co-op answer was not accepted.';
-      showNotice(message,'bad'); return;
+      const messages={locked:'Another player’s answer reached Firebase first.',tooSoon:'The reading period is still active.',replaced:'This account is active in another tab or device.',spectator:'This match was already underway when you joined.'};
+      showNotice(messages[txResult.reason]||'The co-op answer was not accepted.','bad'); return;
     }
     showNotice(txResult.won?`Victory — the team reached ${txResult.nextCorrect} correct answers!`:txResult.wasRight?`Correct — ${txResult.nextCorrect}/${Number(SESSION.coopGoal||COOP_WIN_GOAL)} toward victory.`:`Wrong — ${txResult.nextLives} shared live${txResult.nextLives===1?'':'s'} remaining.`,txResult.wasRight?'ok':'bad');
   }
@@ -1740,6 +1892,7 @@
       const row=document.createElement('div'); row.className='suggestion';
       const text=document.createElement('div'); text.innerHTML=`<b>${escapeHtml(safeName(s.username))}</b> suggests ${escapeHtml(s.ref)}`;
       const use=document.createElement('button'); use.className='btn-ghost small'; use.textContent='Use';
+      use.disabled=!canParticipate(SESSION);
       use.onclick=()=>{ $('bookInput').value=s.guess.book; $('chapInput').value=s.guess.chapter; $('verseInput').value=s.guess.verse; showNotice(`Copied ${s.ref} into your answer fields.`,'info'); };
       row.append(text,use); wrap.appendChild(row);
     }
@@ -1772,7 +1925,7 @@
   function drawChat(messages){
     const log=$('chatLog'); log.innerHTML='';
     for(const m of messages){
-      const div=document.createElement('div'); div.className=`bubble ${m.uid===currentUser.uid?'mine':''}`;
+      const div=document.createElement('div'); div.className=`bubble ${m.uid===playerUid?'mine':''}`;
       const when=m.ts?.toDate?.();
       const time=when?when.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'sending';
       div.innerHTML=`<div class="meta">${escapeHtml(safeName(m.name))} • ${escapeHtml(time)}</div><div>${escapeHtml(m.text||'')}</div>`;
@@ -1784,11 +1937,11 @@
   async function sendChat(){
     const desired=desiredChatCollection();
     const text=$('chatInput').value.trim();
-    if(!desired || !text) return;
+    if(!desired || !text || !hasPlayerControl()) return;
     $('sendChat').disabled=true; $('chatStatus').textContent='Sending…';
     try{
       await addDoc(collection(sessionRef,desired.name),{
-        uid:currentUser.uid,name:safeName(username),text:text.slice(0,240),ts:serverTimestamp(),kind:'user'
+        uid:playerUid,name:safeName(username),text:text.slice(0,240),ts:serverTimestamp(),kind:'user'
       });
       $('chatInput').value=''; $('chatStatus').textContent='Synced';
     }catch(err){ console.error(err); $('chatStatus').textContent='Failed — retry'; }
@@ -1796,18 +1949,21 @@
   }
 
   function canStartAgain(){
-    if(!SESSION || !currentUser) return false;
-    if(currentUser.uid===SESSION.hostUid) return true;
+    if(!SESSION || !playerUid || SESSION.status!=='ended' || !SESSION.ratingsApplied || !hasPlayerControl()) return false;
+    if(playerUid===SESSION.hostUid) return true;
     const host=PLAYERS.get(SESSION.hostUid);
     return !host || !isFreshPlayer(host);
   }
 
   async function markOffline(){
-    if(!activePlayerRef) return;
+    if(!activePlayerRef || !hasPlayerControl()) return;
     try{ await setDoc(activePlayerRef,{online:false,lastSeenAt:serverTimestamp()},{merge:true}); }catch{}
   }
 
   async function leaveGame(){
+    if(SESSION?.status==='ended' && !SESSION.ratingsApplied && isDriver()){
+      try{ await applyRatingsAndWins(); }catch(err){ console.warn('Final rating save before leave failed',err); }
+    }
     await markOffline();
     location.href=`/index.html?username=${encodeURIComponent(username)}`;
   }
@@ -1817,12 +1973,14 @@
     const lobbySnap=await getDoc(lobbyRef);
     if(!lobbySnap.exists()){ $('subtitle').textContent='Lobby not found.'; setConnection('bad','Lobby missing'); return; }
     LOBBY=lobbySnap.data();
+    if(!isLobbyMember(LOBBY,username)) throw new Error('This player is not a member of this lobby. Return to Game Hub and rejoin.');
+    playerUid=stablePlayerUid(username);
     $('hostName').textContent=getLobbyHostName(LOBBY);
     $('subtitle').textContent=`${username} • Lobby ${gameId}`;
 
     await ensureBibleProfile();
     if(profileUnsub) profileUnsub();
-    profileUnsub=onSnapshot(doc(db,'users',currentUser.uid),snap=>{
+    profileUnsub=onSnapshot(profileRefForName(username),snap=>{
       if(!snap.exists()) return;
       MY_PROFILE=normalizedBibleProfile(snap.data());
       render();
@@ -1865,7 +2023,7 @@
 
   window.addEventListener('online',()=>setConnection('good','Online'));
   window.addEventListener('offline',()=>setConnection('bad','Offline'));
-  window.addEventListener('beforeunload',()=>{ if(activePlayerRef) setDoc(activePlayerRef,{online:false,lastSeenAt:serverTimestamp()},{merge:true}).catch(()=>{}); });
+  window.addEventListener('beforeunload',()=>{ markOffline(); });
 
   if(!gameId || !username){
     $('subtitle').textContent='Missing gameId or username.';
