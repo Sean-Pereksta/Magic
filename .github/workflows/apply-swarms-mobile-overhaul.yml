@@ -1,0 +1,32 @@
+name: Apply Swarm Wars mobile overhaul
+
+on:
+  push:
+    branches:
+      - agent/swarms-mobile-overhaul
+    paths:
+      - '.github/workflows/apply-swarms-mobile-overhaul.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/swarms-mobile-overhaul
+      - name: Rebuild tested Swarm Wars file
+        shell: bash
+        run: |
+          gzip -dc game/.swarms-upgrade/swarms.html.gz > game/swarms.html
+          rm -rf game/.swarms-upgrade
+          rm -f game/swarms.css game/swarms-engine-01.js
+          rm -f game/.swarms-payload-*.b64 game/.swarms-payload-*.db64
+          rm -f .github/workflows/apply-swarms-mobile-overhaul.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Upgrade Swarm Wars mobile experience"
+          git push origin HEAD:agent/swarms-mobile-overhaul
