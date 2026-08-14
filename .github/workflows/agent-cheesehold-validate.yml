@@ -1,0 +1,52 @@
+name: Agent Cheesehold Validate
+
+on:
+  push:
+    branches:
+      - agent/cheesehold-directional-build-survival
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cheesehold-directional-build-survival
+          fetch-depth: 1
+          sparse-checkout: |
+            game/Cheesehold_3D_Progression_Upgrade.html
+            .github/workflows/agent-cheesehold-validate.yml
+      - name: Tighten camera boundary handling and validate JS
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('game/Cheesehold_3D_Progression_Upgrade.html')
+          s=p.read_text(encoding='utf-8')
+          old="if(buildAt(x,y))score+=w;else if(terrain.has(K(x,y)))score+=w*.45"
+          new="if(!inside(x,y))score+=w*.8;else if(buildAt(x,y))score+=w;else if(terrain.has(K(x,y)))score+=w*.45"
+          if old not in s:
+              raise SystemExit('camera obstruction target missing')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          start=s.rfind('<script>')
+          end=s.rfind('</script>')
+          if start<0 or end<=start:
+              raise SystemExit('inline script not found')
+          Path('/tmp/cheesehold-inline.js').write_text(s[start+8:end],encoding='utf-8')
+          PY
+          node --check /tmp/cheesehold-inline.js
+          grep -q "Directional build stick online" game/Cheesehold_3D_Progression_Upgrade.html
+          grep -q "const ROUND_MUTATORS=" game/Cheesehold_3D_Progression_Upgrade.html
+          grep -q "function buildDirection" game/Cheesehold_3D_Progression_Upgrade.html
+          grep -q "function cameraObstructionScore" game/Cheesehold_3D_Progression_Upgrade.html
+          rm .github/workflows/agent-cheesehold-validate.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/Cheesehold_3D_Progression_Upgrade.html .github/workflows/agent-cheesehold-validate.yml
+          git commit -m "Handle Cheesehold boundary occlusion and validate script"
+          git push origin HEAD:agent/cheesehold-directional-build-survival
