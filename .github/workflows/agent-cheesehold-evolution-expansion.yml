@@ -1,0 +1,329 @@
+name: Agent Cheesehold Evolution Expansion
+
+on:
+  push:
+    branches:
+      - agent/cheesehold-directional-build-survival
+    paths:
+      - .github/workflows/agent-cheesehold-evolution-expansion.yml
+
+permissions:
+  contents: write
+
+jobs:
+  expand-cheesehold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cheesehold-directional-build-survival
+          fetch-depth: 0
+      - name: Add bosses artifacts and deep evolution trees
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('game/Cheesehold_3D_Progression_Upgrade.html')
+          s = path.read_text()
+
+          def between(start, end, new):
+              global s
+              i = s.index(start)
+              j = s.index(end, i)
+              s = s[:i] + new.rstrip() + '\n' + s[j:]
+
+          constants = r'''const CAT_ABILITIES=[
+           {id:'pounce',name:'Pounce',unlock:2,cool:10.5},
+           {id:'roar',name:'Hunting Roar',unlock:3,cool:13.5},
+           {id:'slam',name:'Siege Slam',unlock:4,cool:12.5},
+           {id:'summon',name:'Brood Call',unlock:5,cool:15},
+           {id:'frenzy',name:'Blood Frenzy',unlock:7,cool:16.5},
+           {id:'fortify',name:'Predator Guard',unlock:2,cool:14},
+           {id:'shadowstep',name:'Shadowstep',unlock:3,cool:11.5},
+           {id:'stormburst',name:'Storm Burst',unlock:4,cool:13},
+           {id:'cheeseSwipe',name:'Ransack',unlock:3,cool:12.8}
+          ];
+          const BOSS_VARIANTS=[
+           {id:'prowler',name:'Scarlet Prowler',desc:'Balanced hunter',tint:0xff5967,hp:1,damage:1,move:1,wall:1,scale:1,abilities:['pounce','roar','slam'],cool:1,artifact:.02},
+           {id:'ironjaw',name:'Ironjaw Siegebreaker',desc:'Crushes fortifications',tint:0xb86a55,hp:1.28,damage:1.14,move:1.04,wall:1.65,scale:1.12,abilities:['pounce','slam','fortify'],cool:1.03,artifact:.04,horns:true},
+           {id:'broodqueen',name:'Brood Queen',desc:'Floods lanes with minions',tint:0xb25cff,hp:1.08,damage:.96,move:1.03,wall:1.05,scale:1.08,abilities:['roar','summon','fortify'],cool:.88,artifact:.05,summonBonus:2,crown:true},
+           {id:'shadowclaw',name:'Shadowclaw',desc:'Teleports into weak spots',tint:0x5a69d8,hp:.94,damage:1.18,move:.82,wall:.92,scale:.96,abilities:['pounce','shadowstep','frenzy'],cool:.82,artifact:.07},
+           {id:'stormcat',name:'Stormcat',desc:'Punishes clustered defenses',tint:0x58d6ff,hp:1.12,damage:1.08,move:.94,wall:1.12,scale:1.04,abilities:['pounce','stormburst','roar'],cool:.9,artifact:.08,aura:0x58d6ff},
+           {id:'miserking',name:'Miser King',desc:'Steals your cheese economy',tint:0xffc84d,hp:1.18,damage:1.05,move:.96,wall:1.1,scale:1.06,abilities:['cheeseSwipe','roar','slam'],cool:.92,artifact:.1,steal:3,crown:true},
+           {id:'bloodfang',name:'Bloodfang Tyrant',desc:'Relentless frenzy boss',tint:0xff243d,hp:1.35,damage:1.22,move:.9,wall:1.28,scale:1.13,abilities:['pounce','frenzy','fortify','slam'],cool:.82,artifact:.11,horns:true},
+           {id:'apex',name:'Apex of the Pantry',desc:'Endless-run apex predator',tint:0xf2f5ff,hp:1.58,damage:1.27,move:.86,wall:1.45,scale:1.18,abilities:['pounce','shadowstep','stormburst','summon','frenzy','fortify'],cool:.74,artifact:.16,horns:true,crown:true,aura:0xff4c68,summonBonus:1}
+          ];
+          const ROUND_MUTATORS=[
+           {name:'Balanced Hunt',desc:'Standard pressure',enemySpeed:1,wallDamage:1,bountyBonus:0,eliteBonus:0,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Scramble',desc:'Faster hunters · richer bounties',enemySpeed:.88,wallDamage:1,bountyBonus:1,eliteBonus:0,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Siege Night',desc:'Buildings take heavier siege hits',enemySpeed:1,wallDamage:1.28,bountyBonus:1,eliteBonus:.02,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Cheese Bloom',desc:'Cheese appears much faster',enemySpeed:1,wallDamage:1,bountyBonus:0,eliteBonus:0,cheeseRate:.68,cheeseCap:4,catHp:1},
+           {name:'Elite Hunt',desc:'More empowered enemies · same population cap',enemySpeed:.96,wallDamage:1.05,bountyBonus:1,eliteBonus:.12,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Royal Cat',desc:'The boss enters with reinforced health',enemySpeed:1,wallDamage:1.08,bountyBonus:1,eliteBonus:.03,cheeseRate:.9,cheeseCap:1,catHp:1.28}
+          ];
+          const BUILD_EVOLUTIONS={
+           wall:{branches:[
+            {id:'bastion',icon:'▦',name:'Bastion Wall',desc:'Massive raw durability.',mul:{hp:1.8},capstones:[{id:'adamant',icon:'⬢',name:'Adamant Keep',desc:'Nearly indestructible wall core.',mul:{hp:1.55}},{id:'warden',icon:'✚',name:'Warden Rampart',desc:'Durable wall that repairs nearby defenses.',mul:{hp:1.25},add:{repairAura:2.2}}]},
+            {id:'thorn',icon:'✷',name:'Thorn Wall',desc:'Punishes anything that attacks it.',mul:{hp:1.22},add:{retaliation:9},capstones:[{id:'razor',icon:'✹',name:'Razor Fortress',desc:'Extreme retaliation damage.',add:{retaliation:16}},{id:'bloodspike',icon:'♦',name:'Bloodspike Bulwark',desc:'More health and stronger counterattacks.',mul:{hp:1.35},add:{retaliation:9}}]},
+            {id:'mason',icon:'⚒',name:'Living Masonry',desc:'Self-sustaining support wall.',mul:{hp:1.32},add:{repairAura:1.4},capstones:[{id:'living',icon:'♻',name:'Living Wall',desc:'Becomes a powerful repair beacon.',add:{repairAura:3.1}},{id:'citadel',icon:'▣',name:'Citadel Masonry',desc:'Support wall becomes a fortress.',mul:{hp:1.7}}]}
+           ]},
+           superwall:{branches:[
+            {id:'citadel',icon:'▣',name:'Citadel Core',desc:'Absurd health scaling.',mul:{hp:2},capstones:[{id:'monolith',icon:'█',name:'Monolith',desc:'Maximum possible wall durability.',mul:{hp:1.7}},{id:'vault',icon:'◇',name:'Vault Heart',desc:'Extreme durability plus local repair.',mul:{hp:1.3},add:{repairAura:2.4}}]},
+            {id:'crusher',icon:'✷',name:'Crusher Wall',desc:'Turns siege attacks back on enemies.',mul:{hp:1.35},add:{retaliation:15},capstones:[{id:'ironTeeth',icon:'⚔',name:'Iron Teeth',desc:'Devastating retaliation.',add:{retaliation:20}},{id:'siegeMirror',icon:'↯',name:'Siege Mirror',desc:'Tougher core with brutal reflection.',mul:{hp:1.4},add:{retaliation:12}}]},
+            {id:'sanctuary',icon:'✚',name:'Sanctuary Wall',desc:'Repairs nearby structures.',mul:{hp:1.35},add:{repairAura:2.5},capstones:[{id:'beacon',icon:'☀',name:'Fortress Beacon',desc:'Huge repair aura.',add:{repairAura:4}},{id:'guardian',icon:'🛡',name:'Guardian Keep',desc:'Repair aura with stronger health.',mul:{hp:1.6},add:{repairAura:1.5}}]}
+           ]},
+           generator:{branches:[
+            {id:'mint',icon:'◆',name:'Cheese Mint',desc:'Prioritizes huge yield per cycle.',add:{yield:2},capstones:[{id:'bank',icon:'♦',name:'Royal Bank',desc:'Massive cheese output.',add:{yield:3}},{id:'compound',icon:'✦',name:'Compound Mint',desc:'More yield and faster cycles.',mul:{genRate:.84},add:{yield:2}}]},
+            {id:'overclock',icon:'⚡',name:'Overclock Press',desc:'Produces cheese much faster.',mul:{genRate:.62},capstones:[{id:'turbo',icon:'»',name:'Turbo Press',desc:'Extreme production speed.',mul:{genRate:.68}},{id:'cascade',icon:'≋',name:'Cascade Press',desc:'Fast cycles also gain bonus yield.',mul:{genRate:.78},add:{yield:2}}]},
+            {id:'workshop',icon:'⚒',name:'Engineer Workshop',desc:'Generator becomes a repair station.',mul:{hp:1.45},add:{repairAura:2.2},capstones:[{id:'forge',icon:'✚',name:'Repair Forge',desc:'Major repair beacon.',add:{repairAura:3.6}},{id:'armored',icon:'▦',name:'Armored Foundry',desc:'Nearly fortress-level generator health.',mul:{hp:1.9},add:{repairAura:1.4}}]}
+           ]},
+           turret:{branches:[
+            {id:'gatling',icon:'≋',name:'Gatling Nest',desc:'Three-barrel rapid-fire suppression.',mul:{fire:.62,damage:.88},add:{multiShots:1},capstones:[{id:'rotary',icon:'✺',name:'Rotary Cannon',desc:'Even faster with another stream of fire.',mul:{fire:.68},add:{multiShots:1}},{id:'vulcan',icon:'⚡',name:'Vulcan Nest',desc:'Rapid fire without sacrificing damage.',mul:{fire:.78,damage:1.28}}]},
+            {id:'sniper',icon:'⌖',name:'Sniper Tower',desc:'Long range, huge shots, slower cycle.',mul:{damage:1.9,range:1.65,fire:1.45,bossDamage:1.25},add:{multiShots:-1},capstones:[{id:'railgun',icon:'━',name:'Railgun Tower',desc:'Extreme range and single-shot damage.',mul:{damage:1.65,range:1.28,bossDamage:1.35}},{id:'executioner',icon:'★',name:'Boss Executioner',desc:'Specialized anti-boss cannon.',mul:{damage:1.35,bossDamage:1.75}}]},
+            {id:'scatter',icon:'✣',name:'Scatter Turret',desc:'Fires into several targets at once.',mul:{damage:.84,fire:.9,range:.92},add:{multiShots:2},capstones:[{id:'flak',icon:'✥',name:'Flak Fortress',desc:'High-volume multi-target bursts.',mul:{damage:1.22},add:{multiShots:2}},{id:'swarm',icon:'✺',name:'Swarm Battery',desc:'Maximum projectile coverage.',mul:{fire:.8},add:{multiShots:3}}]}
+           ]},
+           slow:{branches:[
+            {id:'cryo',icon:'❄',name:'Cryo Field',desc:'Longer, deeper crowd control.',mul:{slowDuration:1.7,slowRadius:1.12},capstones:[{id:'deepfreeze',icon:'✧',name:'Deep Freeze',desc:'Frozen enemies also take pulse damage.',mul:{slowDuration:1.45},add:{slowDamage:7}},{id:'glacier',icon:'◎',name:'Glacier Field',desc:'Enormous slow radius.',mul:{slowRadius:1.38}}]},
+            {id:'pulse',icon:'◴',name:'Pulse Engine',desc:'Triggers much more often.',mul:{fire:.62,slowRadius:1.18},capstones:[{id:'accelerator',icon:'»',name:'Pulse Accelerator',desc:'Extreme pulse cadence.',mul:{fire:.68}},{id:'resonator',icon:'◉',name:'Resonance Field',desc:'Fast pulses over a larger radius.',mul:{fire:.78,slowRadius:1.3}}]},
+            {id:'grinder',icon:'✹',name:'Frost Grinder',desc:'Slow field becomes a damage trap.',add:{slowDamage:9},capstones:[{id:'frostbite',icon:'☠',name:'Frostbite Engine',desc:'Heavy pulse damage and longer slows.',mul:{slowDuration:1.3},add:{slowDamage:12}},{id:'sawtooth',icon:'✷',name:'Sawtooth Freeze',desc:'Maximum direct trap damage.',add:{slowDamage:19}}]}
+           ]},
+           poison:{branches:[
+            {id:'venom',icon:'☠',name:'Venom Vat',desc:'Greatly stronger poison damage.',mul:{poisonDamage:1.8,poisonDuration:1.2},capstones:[{id:'necrotic',icon:'✦',name:'Necrotic Vat',desc:'Extreme poison duration and damage.',mul:{poisonDamage:1.55,poisonDuration:1.55}},{id:'corrosive',icon:'◆',name:'Corrosive Culture',desc:'High damage with extra bait charges.',mul:{poisonDamage:1.45},add:{poisonCharges:5}}]},
+            {id:'feeder',icon:'◈',name:'Endless Bait',desc:'Carries far more poison charges.',add:{poisonCharges:6},capstones:[{id:'bottomless',icon:'∞',name:'Bottomless Feeder',desc:'Massive charge capacity.',add:{poisonCharges:10}},{id:'laced',icon:'✧',name:'Laced Feast',desc:'More charges plus stronger poison.',mul:{poisonDamage:1.35},add:{poisonCharges:6}}]},
+            {id:'epidemic',icon:'☣',name:'Epidemic Bait',desc:'Poison jumps to nearby enemies.',mul:{poisonDuration:1.3},add:{poisonSpread:1},capstones:[{id:'cloud',icon:'☁',name:'Plague Cloud',desc:'Poison spreads to several nearby targets.',add:{poisonSpread:2}},{id:'pandemic',icon:'✺',name:'Pandemic Culture',desc:'Stronger spreading poison.',mul:{poisonDamage:1.45},add:{poisonSpread:1}}]}
+           ]},
+           tesla:{branches:[
+            {id:'storm',icon:'☇',name:'Storm Tower',desc:'Chains through many more targets.',mul:{range:1.15},add:{chains:3},capstones:[{id:'tempest',icon:'ϟ',name:'Tempest Crown',desc:'Maximum chain count.',add:{chains:5}},{id:'forkKing',icon:'↯',name:'Fork King',desc:'More chains with heavier arcs.',mul:{damage:1.35},add:{chains:2}}]},
+            {id:'capacitor',icon:'◉',name:'Capacitor Lance',desc:'Slow but devastating lightning.',mul:{damage:2,fire:1.35},capstones:[{id:'thunderhead',icon:'☄',name:'Thunderhead',desc:'Extreme damage, especially to bosses.',mul:{damage:1.65,bossDamage:1.4}},{id:'arcLance',icon:'━',name:'Arc Lance',desc:'Long-range high-power strike tower.',mul:{damage:1.35,range:1.45}}]},
+            {id:'overclock',icon:'⚡',name:'Arc Overclock',desc:'Fires lightning much faster.',mul:{fire:.62,damage:.84},capstones:[{id:'pulseCoil',icon:'≋',name:'Pulse Coil',desc:'Rapid fire plus extra chains.',mul:{fire:.68},add:{chains:2}},{id:'reactor',icon:'✺',name:'Arc Reactor',desc:'Fast attacks with restored damage.',mul:{fire:.78,damage:1.45}}]}
+           ]},
+           phoenix:{branches:[
+            {id:'rebirth',icon:'🔥',name:'Rebirth Shrine',desc:'Much stronger revive effect.',add:{reviveHp:50,phoenixSave:.15},capstones:[{id:'immortal',icon:'∞',name:'Immortal Ember',desc:'High chance the Phoenix is not consumed.',add:{phoenixSave:.32}},{id:'grand',icon:'☀',name:'Grand Rebirth',desc:'Revives with enormous health.',add:{reviveHp:75}}]},
+            {id:'ember',icon:'✹',name:'Ember Guard',desc:'Burns attackers that strike the shrine.',mul:{hp:1.35},add:{retaliation:12},capstones:[{id:'inferno',icon:'☄',name:'Inferno Guard',desc:'Brutal retaliation damage.',add:{retaliation:22}},{id:'firewall',icon:'▣',name:'Firewall Shrine',desc:'Tougher shrine with strong retaliation.',mul:{hp:1.55},add:{retaliation:12}}]},
+            {id:'sanctuary',icon:'✚',name:'Hearth Sanctuary',desc:'Heals nearby structures while waiting.',mul:{hp:1.6},add:{repairAura:2.5},capstones:[{id:'hearth',icon:'♥',name:'Eternal Hearth',desc:'Huge repair aura.',add:{repairAura:4.2}},{id:'guardian',icon:'🛡',name:'Guardian Phoenix',desc:'Fortified shrine and stronger revive.',mul:{hp:1.55},add:{reviveHp:40,repairAura:1.5}}]}
+           ]}
+          };
+          const ARTIFACTS=[
+           {id:'clockworkHeart',icon:'⚙',name:'Clockwork Heart',max:1,desc:'Turrets and Tesla towers attack dramatically faster.',apply:m=>{m.turretFire*=.82;m.teslaFire*=.86}},
+           {id:'hunterLens',icon:'⌖',name:'Hunter Lens',max:1,desc:'Turrets gain 35% range and 30% elite damage.',apply:m=>{m.turretRange*=1.35;m.turretElite*=1.3}},
+           {id:'blackPowder',icon:'✦',name:'Black-Powder Wedge',max:1,desc:'Turret shots deal 45% more damage but cycle slightly slower.',apply:m=>{m.turretDamage*=1.45;m.turretFire*=1.08}},
+           {id:'staticCrown',icon:'☇',name:'Static Crown',max:1,desc:'Tesla towers chain to +3 targets and deal 20% more damage.',apply:m=>{m.teslaChains+=3;m.teslaDamage*=1.2;refreshAllBuildings()}},
+           {id:'frostBell',icon:'❄',name:'Frost Bell',max:1,desc:'Slow traps gain 35% radius and 30% duration.',apply:m=>{m.slowRadius*=1.35;m.slowDuration*=1.3}},
+           {id:'venomChalice',icon:'☠',name:'Venom Chalice',max:1,desc:'Poison deals 55% more damage and gains +3 global charges.',apply:m=>{m.poisonDamage*=1.55;m.poisonCharges+=3}},
+           {id:'plagueIdol',icon:'☣',name:'Plague Idol',max:1,desc:'All poison spreads to one nearby target.',apply:m=>m.poisonSpread++},
+           {id:'goldenMold',icon:'◆',name:'Golden Mold',max:1,desc:'Generators produce +2 cheese and cycle 12% faster.',apply:m=>{m.generatorYield+=2;m.generatorRate*=.88}},
+           {id:'ironSpool',icon:'✚',name:'Iron Repair Spool',max:1,desc:'All buildings regenerate +4 HP per second.',apply:m=>m.repairRate+=4},
+           {id:'bastionNail',icon:'▣',name:'Bastion Nail',max:1,desc:'Walls and Super Walls gain 55% more health.',apply:m=>{m.wallHp*=1.55;refreshAllBuildings()}},
+           {id:'phoenixAsh',icon:'🔥',name:'Ancient Phoenix Ash',max:1,desc:'Phoenix revive gains +45 HP and an 18% preserve chance.',apply:m=>{m.phoenixHp+=45;m.phoenixSaveChance+=.18;refreshAllBuildings()}},
+           {id:'redHourglass',icon:'⌛',name:'Red Hourglass',max:1,desc:'Boss abilities telegraph 0.45 seconds longer.',apply:m=>m.telegraphBonus+=.45},
+           {id:'bloodRind',icon:'♥',name:'Blood Rind',max:1,desc:'Every minion kill heals the mouse for 2 HP.',apply:m=>m.killHeal+=2},
+           {id:'buildersThumb',icon:'⚒',name:"Builder's Thumb",max:1,desc:'Building level cap +1 and upgrades cost 15% less.',apply:m=>{m.buildingLevelCap++;m.upgradeDiscount=Math.min(.8,m.upgradeDiscount+.15)}},
+           {id:'warCheese',icon:'★',name:'War Cheese Medal',max:1,desc:'All damage against bosses increases by 35%.',apply:m=>m.bossDamage*=1.35},
+           {id:'magnetGem',icon:'✧',name:'Magnet Nose Gem',max:1,desc:'Cheese pickup radius +1 and pickups give +1 cheese.',apply:m=>{m.cheeseMagnet++;m.cheesePickup++;refreshPlayerVisual()}},
+           {id:'survivorKnot',icon:'🛡',name:'Survivor Knot',max:1,desc:'Mouse takes 8% less damage.',apply:m=>m.damageReduction=Math.min(.45,m.damageReduction+.08)},
+           {id:'trophyCharm',icon:'♛',name:'Boss Trophy Charm',max:1,desc:'Higher artifact drop chance and +1 kill bounty.',apply:m=>{m.artifactLuck+=.12;m.bountyBonus++}},
+           {id:'glassCog',icon:'◇',name:'Glass Engineer Cog',max:1,desc:'Building level scaling is 25% stronger and frames gain 15% HP.',apply:m=>{m.upgradeBoost*=1.25;m.buildingHp*=1.15;refreshAllBuildings()}},
+           {id:'stormSeed',icon:'⚡',name:'Storm Seed',max:1,desc:'Turrets gain a 14% critical-hit chance.',apply:m=>{m.turretCrit+=.14;m.turretCritMult=2.2}},
+           {id:'royalRind',icon:'♦',name:'Royal Rind',max:1,desc:'Start every future round with +10 cheese.',apply:m=>m.roundCheese+=10}
+          ];
+          function freshMods(){return{maxHpBonus:0,moveTime:1,damageReduction:0,cheesePickup:3,cheeseMagnet:0,bountyBonus:0,xpGain:1,buildDiscount:0,buildingHp:1,wallHp:1,turretDamage:1,turretFire:1,turretRange:1,turretElite:1,turretCrit:0,turretCritMult:2,teslaDamage:1,teslaFire:1,teslaChains:4,teslaRange:1,generatorRate:1,generatorYield:1,poisonDamage:1,poisonDuration:8,poisonCharges:0,poisonSpread:0,slowDuration:1,slowRate:1,slowRadius:1,slowDamage:0,repairRate:0,roundCheese:0,upgradeDiscount:0,upgradeBoost:1,buildingLevelCap:5,twinBarrel:false,mouseArmor:0,mouseCrown:false,mouseBoots:0,stormCore:false,royalPress:false,spikedWalls:0,phoenixHp:60,phoenixSaveChance:0,telegraphBonus:0,roundShield:0,killHeal:0,bossDamage:1,artifactLuck:0};}
+          const XP_UPGRADES=[
+           {id:'quickPaws',icon:'➤',name:'Quick Paws',max:5,desc:'Mouse grid movement is 8% faster.',apply:m=>{m.moveTime*=.92;m.mouseBoots=Math.min(3,m.mouseBoots+1);refreshPlayerVisual();}},
+           {id:'thickFur',icon:'♥',name:'Thick Fur',max:5,desc:'+18 maximum Mouse HP and heal that amount now.',apply:m=>{m.maxHpBonus+=18;if(player){player.maxHp+=18;player.hp=Math.min(player.maxHp,player.hp+18)}refreshPlayerVisual();}},
+           {id:'snackPouch',icon:'🧀',name:'Snack Pouch',max:3,desc:'Loose cheese pickups give +1 extra cheese.',apply:m=>m.cheesePickup++},
+           {id:'magnetNose',icon:'✧',name:'Magnet Nose',max:2,desc:'Collect cheese from farther away.',apply:m=>{m.cheeseMagnet++;refreshPlayerVisual();}},
+           {id:'bountySense',icon:'¢',name:'Bounty Sense',max:4,desc:'Every minion kill gives +1 additional cheese.',apply:m=>m.bountyBonus++},
+           {id:'fieldStudy',icon:'XP',name:'Field Study',max:4,desc:'Gain 15% more XP from enemies and pickups.',apply:m=>m.xpGain*=1.15},
+           {id:'cheapPlans',icon:'⌂',name:'Efficient Plans',max:4,desc:'All new structures cost 7% less cheese.',apply:m=>m.buildDiscount=Math.min(.34,m.buildDiscount+.07)},
+           {id:'reinforcedFrames',icon:'▦',name:'Reinforced Frames',max:5,desc:'New and upgraded buildings gain 18% more health.',apply:m=>{m.buildingHp*=1.18;refreshAllBuildings();}},
+           {id:'wallScience',icon:'▰',name:'Wall Science',max:4,desc:'Walls and Super Walls gain another 25% health.',apply:m=>{m.wallHp*=1.25;refreshAllBuildings();}},
+           {id:'hotRounds',icon:'▲',name:'Hot Rounds',max:5,desc:'Turrets deal 18% more projectile damage.',apply:m=>m.turretDamage*=1.18},
+           {id:'rapidLoader',icon:'»',name:'Rapid Loader',max:5,desc:'Turrets fire 10% faster.',apply:m=>m.turretFire*=.90},
+           {id:'longSight',icon:'◎',name:'Long Sight',max:4,desc:'Turret targeting range increases by 10%.',apply:m=>m.turretRange*=1.10},
+           {id:'eliteRounds',icon:'★',name:'Hunter Rounds',max:3,desc:'Turrets deal 20% more damage to elite minions.',apply:m=>m.turretElite*=1.20},
+           {id:'criticalMechanism',icon:'!',name:'Critical Mechanism',max:4,desc:'+5% turret critical chance.',apply:m=>m.turretCrit=Math.min(.45,m.turretCrit+.05)},
+           {id:'bossRounds',icon:'♛',name:'Boss-Piercing Rounds',max:4,desc:'Deal 12% more damage to bosses.',apply:m=>m.bossDamage*=1.12},
+           {id:'arcAmp',icon:'ϟ',name:'Arc Amplifier',max:5,desc:'Tesla damage increases by 18%.',apply:m=>m.teslaDamage*=1.18},
+           {id:'arcReach',icon:'↯',name:'Forked Lightning',max:3,desc:'Tesla chains to one additional target.',apply:m=>m.teslaChains++},
+           {id:'longArc',icon:'☇',name:'Long Arc',max:4,desc:'Tesla targeting radius increases 10%.',apply:m=>m.teslaRange*=1.10},
+           {id:'fastPress',icon:'◆',name:'Faster Cheese Press',max:5,desc:'Generators produce cheese 12% faster.',apply:m=>m.generatorRate*=.88},
+           {id:'richRind',icon:'✦',name:'Rich Rind',max:3,desc:'Generators produce +1 cheese each cycle.',apply:m=>m.generatorYield++},
+           {id:'venomCulture',icon:'☠',name:'Venom Culture',max:5,desc:'Poison damage increases by 22%.',apply:m=>m.poisonDamage*=1.22},
+           {id:'stickyVenom',icon:'≈',name:'Sticky Venom',max:4,desc:'Poison lasts 20% longer.',apply:m=>m.poisonDuration*=1.20},
+           {id:'extraBait',icon:'◈',name:'Extra Bait',max:4,desc:'Every poison structure gains +2 charges.',apply:m=>m.poisonCharges+=2},
+           {id:'plagueSpores',icon:'☣',name:'Plague Spores',max:2,desc:'Poison spreads to one additional nearby enemy.',apply:m=>m.poisonSpread++},
+           {id:'cryoGel',icon:'❄',name:'Cryo Gel',max:4,desc:'Slow traps keep enemies slowed longer.',apply:m=>m.slowDuration*=1.20},
+           {id:'pulseClock',icon:'◴',name:'Trap Clock',max:4,desc:'Slow traps pulse 12% faster.',apply:m=>m.slowRate*=.88},
+           {id:'wideFreeze',icon:'◎',name:'Wide Freeze',max:4,desc:'Slow trap radius increases by 10%.',apply:m=>m.slowRadius*=1.10},
+           {id:'frostbitePulse',icon:'✹',name:'Frostbite Pulse',max:4,desc:'Slow pulses deal +3 damage.',apply:m=>m.slowDamage+=3},
+           {id:'repairPaste',icon:'✚',name:'Repair Paste',max:4,desc:'All buildings slowly regenerate health.',apply:m=>m.repairRate+=1.2},
+           {id:'upgradeTools',icon:'⬆',name:'Precision Tools',max:4,desc:'Building upgrades cost 10% less cheese.',apply:m=>m.upgradeDiscount=Math.min(.4,m.upgradeDiscount+.1)},
+           {id:'structuralTheory',icon:'⚒',name:'Structural Theory',max:2,desc:'Building level cap increases by 1.',apply:m=>m.buildingLevelCap++},
+           {id:'phoenixFeed',icon:'✹',name:'Phoenix Feed',max:3,desc:'Phoenix Cheese revives with +15 more HP.',apply:m=>m.phoenixHp+=15},
+           {id:'emberMemory',icon:'🔥',name:'Ember Memory',max:3,desc:'Phoenix has +6% chance not to be consumed.',apply:m=>m.phoenixSaveChance=Math.min(.55,m.phoenixSaveChance+.06)},
+           {id:'battleSnack',icon:'♥',name:'Battle Snack',max:4,desc:'Minion kills heal +1 HP.',apply:m=>m.killHeal++},
+           {id:'relicSense',icon:'◇',name:'Relic Sense',max:3,desc:'Boss artifact drop chance rises 5%.',apply:m=>m.artifactLuck+=.05}
+          ];
+          const VICTORY_UPGRADES=[
+           {id:'twinBarrel',icon:'⚔',name:'Twin-Barrel Arsenal',max:1,desc:'Turrets visibly gain a second barrel and fire two shots.',apply:m=>{m.twinBarrel=true;refreshAllBuildings();}},
+           {id:'warMouse',icon:'🛡',name:'War Mouse Armor',max:3,desc:'Gain visible armor plating and 10% damage reduction.',apply:m=>{m.mouseArmor++;m.damageReduction=Math.min(.3,m.damageReduction+.10);refreshPlayerVisual();}},
+           {id:'cheeseCrown',icon:'♛',name:'Crown of Cheese',max:2,desc:'Wear a visible cheese crown and start every round with +6 cheese.',apply:m=>{m.mouseCrown=true;m.roundCheese+=6;refreshPlayerVisual();}},
+           {id:'fortressProtocol',icon:'▣',name:'Fortress Protocol',max:3,desc:'Building level cap +1 and walls gain 30% health.',apply:m=>{m.buildingLevelCap++;m.wallHp*=1.3;refreshAllBuildings();}},
+           {id:'masterBuilder',icon:'⚒',name:'Master Builder',max:3,desc:'Building upgrades are 20% cheaper and gain stronger level bonuses.',apply:m=>{m.upgradeDiscount=Math.min(.7,m.upgradeDiscount+.2);m.upgradeBoost*=1.15}},
+           {id:'stormCore',icon:'☇',name:'Tesla Stormcore',max:3,desc:'Tesla towers visibly gain another charged orb and +2 chain targets.',apply:m=>{m.stormCore=true;m.teslaChains+=2;m.teslaDamage*=1.15;refreshAllBuildings();}},
+           {id:'autoRepair',icon:'✚',name:'Auto-Repair Lattice',max:3,desc:'All buildings regenerate 2 HP per second.',apply:m=>m.repairRate+=2},
+           {id:'royalPress',icon:'♦',name:'Royal Cheese Press',max:3,desc:'Generators visibly gain extra crystals and produce +1 cheese.',apply:m=>{m.royalPress=true;m.generatorYield++;refreshAllBuildings();}},
+           {id:'spikeWalls',icon:'✷',name:'Spiked Barricades',max:3,desc:'Walls visibly grow spikes and damage enemies that strike them.',apply:m=>{m.spikedWalls++;refreshAllBuildings();}},
+           {id:'sentryNetwork',icon:'◉',name:'Sentry Network',max:3,desc:'Turrets gain +18% range and +15% elite damage.',apply:m=>{m.turretRange*=1.18;m.turretElite*=1.15}},
+           {id:'phoenixAscendant',icon:'🔥',name:'Phoenix Ascendant',max:3,desc:'Phoenix Cheese revives with +30 HP and gains stronger flame visuals.',apply:m=>{m.phoenixHp+=30;refreshAllBuildings();}},
+           {id:'predatorScanner',icon:'!',name:'Predator Scanner',max:3,desc:'Boss special attacks telegraph 0.25 seconds longer.',apply:m=>m.telegraphBonus+=.25},
+           {id:'roundShield',icon:'◇',name:'Cheese Shield',max:3,desc:'Start each round with one shield that blocks a full hit.',apply:m=>m.roundShield++},
+           {id:'royalBounty',icon:'★',name:'Royal Bounty',max:3,desc:'Elite enemies pay +2 cheese and +25% XP.',apply:m=>{m.bountyBonus+=2;m.xpGain*=1.25}},
+           {id:'overdrive',icon:'⚡',name:'Defense Overdrive',max:3,desc:'Turrets and Tesla towers attack 8% faster.',apply:m=>{m.turretFire*=.92;m.teslaFire*=.92}},
+           {id:'railDoctrine',icon:'━',name:'Rail Doctrine',max:3,desc:'Turret damage +20%, range +12%, boss damage +10%.',apply:m=>{m.turretDamage*=1.2;m.turretRange*=1.12;m.bossDamage*=1.1}},
+           {id:'gatlingDoctrine',icon:'≋',name:'Gatling Doctrine',max:3,desc:'Turrets fire 12% faster and gain +4% critical chance.',apply:m=>{m.turretFire*=.88;m.turretCrit=Math.min(.5,m.turretCrit+.04)}},
+           {id:'deepFreezeDoctrine',icon:'❄',name:'Deep Freeze Doctrine',max:3,desc:'Slow traps gain radius and pulse damage.',apply:m=>{m.slowRadius*=1.15;m.slowDamage+=5}},
+           {id:'plagueEngine',icon:'☣',name:'Plague Engine',max:2,desc:'Poison spreads farther and deals 30% more damage.',apply:m=>{m.poisonSpread++;m.poisonDamage*=1.3}},
+           {id:'eternalFlame',icon:'☀',name:'Eternal Flame',max:2,desc:'Phoenix preserve chance +12% and revive +25 HP.',apply:m=>{m.phoenixSaveChance=Math.min(.7,m.phoenixSaveChance+.12);m.phoenixHp+=25}},
+           {id:'architectPrime',icon:'⌂',name:'Architect Prime',max:2,desc:'Building cap +1 and all structures gain 20% health.',apply:m=>{m.buildingLevelCap++;m.buildingHp*=1.2;refreshAllBuildings()}},
+           {id:'stormLattice',icon:'↯',name:'Storm Lattice',max:2,desc:'Tesla range +20% and +2 chains.',apply:m=>{m.teslaRange*=1.2;m.teslaChains+=2}},
+           {id:'livingFortress',icon:'♻',name:'Living Fortress',max:2,desc:'Walls gain 25% health and global repair +2 HP/s.',apply:m=>{m.wallHp*=1.25;m.repairRate+=2;refreshAllBuildings()}},
+           {id:'relicHunter',icon:'◇',name:'Relic Hunter',max:2,desc:'Boss artifact chance +10%.',apply:m=>m.artifactLuck+=.1}
+          ];'''
+          between("const CAT_ABILITIES=[", "let renderer,scene,camera", constants)
+
+          old_game = "let game={running:false,paused:false,time:0,round:1,kills:0,cheese:16,xp:0,xpLevel:1,xpNext:10,nextCheese:1,nextMinion:3.5,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0]};"
+          new_game = "let game={running:false,paused:false,time:0,round:1,kills:0,cheese:16,xp:0,xpLevel:1,xpNext:10,nextCheese:1,nextMinion:3.5,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},artifactRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0],boss:null};"
+          assert old_game in s
+          s = s.replace(old_game, new_game, 1)
+
+          building_block = r'''function evolutionBranch(type,id){return BUILD_EVOLUTIONS[type]?.branches?.find(x=>x.id===id)||null;}
+          function evolutionCapstone(type,branchId,id){return evolutionBranch(type,branchId)?.capstones?.find(x=>x.id===id)||null;}
+          function buildingEvoStats(b){const out={hp:1,damage:1,fire:1,range:1,genRate:1,slowDuration:1,slowRadius:1,poisonDamage:1,poisonDuration:1,bossDamage:1,yield:0,chains:0,slowDamage:0,poisonCharges:0,repairAura:0,retaliation:0,multiShots:0,reviveHp:0,phoenixSave:0,poisonSpread:0};const apply=d=>{if(!d)return;for(const [k,v] of Object.entries(d.mul||{}))out[k]=(out[k]??1)*v;for(const [k,v] of Object.entries(d.add||{}))out[k]=(out[k]??0)+v};const branch=evolutionBranch(b.type,b.evolution);apply(branch);apply(evolutionCapstone(b.type,b.evolution,b.capstone));return out;}
+          function buildingMesh(type,level=1,evolution=null,capstone=null){const d=BUILDINGS[type],g=new THREE.Group();g.userData.level=level;g.userData.evolution=evolution;g.userData.capstone=capstone;
+           if(type==='wall'||type==='superwall'){const h=(type==='superwall'?1.18:.82)+(level-1)*.08,core=box(CELL*.96,h,CELL*.96,d.color,.58,type==='superwall'?.45:.12);core.position.y=h/2;g.add(core);for(let i=-1;i<=1;i+=2){const brace=box(.11,h*.9,.09,type==='superwall'?0x8e9baa:0x606c7e,.45,.5);brace.position.set(i*.35,h*.48,.5);g.add(brace)}if(level>=2){const cap=box(CELL*.9,.10,CELL*.9,0xc9d1dd,.35,.65);cap.position.y=h+.03;g.add(cap)}if(level>=3||game.mods.spikedWalls||evolution==='thorn'||evolution==='crusher'){for(const sx of [-1,0,1]){const spike=new THREE.Mesh(new THREE.ConeGeometry(.07,.28,5),material(0xdfe7ef,.3,.7));spike.position.set(sx*.34,h+.18,.36);g.add(spike)}}}
+           else if(type==='generator'){const base=new THREE.Mesh(new THREE.CylinderGeometry(.4+.03*(level-1),.46+.03*(level-1),.72,14),material(0x3f4653,.5,.55));base.position.y=.36;g.add(base);const count=1+(level>=2?1:0)+(level>=3?1:0)+(game.mods.royalPress?1:0)+(evolution==='mint'?1:0);for(let i=0;i<count;i++){const crystal=new THREE.Mesh(new THREE.OctahedronGeometry(.23+(i===0?.04:0)),material(d.color,.32,.15,d.color));crystal.material.emissiveIntensity=1.5;const a=i/count*Math.PI*2;crystal.position.set(count===1?0:Math.cos(a)*.24,.88+(i%2)*.12,count===1?0:Math.sin(a)*.24);g.add(crystal)}}
+           else if(type==='turret'){const base=new THREE.Mesh(new THREE.CylinderGeometry(.4+.025*(level-1),.46+.025*(level-1),.28,14),material(0x485463,.48,.55));base.position.y=.14;g.add(base);const pivot=new THREE.Group();pivot.position.y=.5;g.add(pivot);const head=box(.5+.05*(level-1),.38+.04*(level-1),.5,d.color,.36,.6);pivot.add(head);let barrels=(game.mods.twinBarrel||level>=3)?[-.11,.11]:[0];if(evolution==='gatling')barrels=[-.18,0,.18];if(evolution==='scatter')barrels=[-.24,0,.24];if(evolution==='sniper')barrels=[0];const gunLen=(evolution==='sniper'?1.08:.72)+.08*(level-1);for(const bx of barrels){const gun=box(evolution==='gatling'?.09:.11,.13,gunLen,evolution==='sniper'?0xe8f8ff:level>=2?0xbaf5ff:0xd8f5ff,.32,.7);gun.position.set(bx,.04,gunLen*.58);pivot.add(gun)}const muzzle=new THREE.Object3D();muzzle.position.set(0,.04,gunLen+.18);pivot.add(muzzle);if(level>=2||evolution==='sniper'){const sight=sphere(evolution==='sniper'?.1:.08,0x9ae9ff,10);sight.material.emissive.setHex(0x71dfff);sight.material.emissiveIntensity=2;sight.position.set(0,.24,.12);pivot.add(sight)}g.userData.turretPivot=pivot;g.userData.muzzle=muzzle}
+           else if(type==='tesla'){const base=new THREE.Mesh(new THREE.CylinderGeometry(.38,.45,.25,14),material(0x46515f,.46,.55));base.position.y=.13;g.add(base);const mast=box(.14,.72+.08*(level-1),.14,d.color,.3,.75);mast.position.y=.55;g.add(mast);const pivot=new THREE.Group();pivot.position.y=.67;g.add(pivot);const orbCount=1+(level>=3?1:0)+(game.mods.stormCore?1:0)+(evolution==='storm'?1:0);for(let i=0;i<orbCount;i++){const orb=sphere(.18,d.color,14);orb.material.emissive.setHex(d.color);orb.material.emissiveIntensity=2.5;orb.position.set((i-(orbCount-1)/2)*.28,.45+(i%2)*.13,0);pivot.add(orb)}const emitter=box(.1,.1,.48+.08*(level-1),0xe7fdff,.28,.7);emitter.position.set(0,.45,.28);pivot.add(emitter);const muzzle=new THREE.Object3D();muzzle.position.set(0,.45,.58+.08*(level-1));pivot.add(muzzle);g.userData.turretPivot=pivot;g.userData.muzzle=muzzle}
+           else if(type==='slow'||type==='poison'){const disk=new THREE.Mesh(new THREE.CylinderGeometry(.44,.44,.12,20),material(d.color,.5,.24,d.color));disk.material.emissiveIntensity=.65;disk.position.y=.07;g.add(disk);if(type==='poison'){for(let i=0;i<3+(evolution==='feeder'?2:0);i++){const bait=sphere(.1,0xa8ed77,9);bait.position.set((i-2)*.13,.18,(i%2)*.1);g.add(bait)}}if(type==='slow'&&evolution){const halo=new THREE.Mesh(new THREE.TorusGeometry(.34,.035,7,20),new THREE.MeshBasicMaterial({color:d.color}));halo.rotation.x=Math.PI/2;halo.position.y=.16;g.add(halo)}}
+           else if(type==='phoenix'){const base=new THREE.Mesh(new THREE.CylinderGeometry(.38,.45,.18,14),material(0x553629,.6,.2));base.position.y=.09;g.add(base);const flame=new THREE.Mesh(new THREE.ConeGeometry(.3+.04*(level-1),.82+.12*(level-1),8),material(d.color,.28,.05,d.color));flame.material.emissiveIntensity=game.mods.phoenixHp>60?2.7:1.8;flame.position.y=.55;g.add(flame)}
+           if(evolution){const tree=BUILD_EVOLUTIONS[type],idx=Math.max(0,tree.branches.findIndex(x=>x.id===evolution)),colors=[0x72e4ff,0xffd45a,0xc58cff],ring=new THREE.Mesh(new THREE.TorusGeometry(.48,.035,7,28),new THREE.MeshBasicMaterial({color:colors[idx%colors.length],transparent:true,opacity:.9}));ring.rotation.x=Math.PI/2;ring.position.y=.12;g.add(ring)}if(capstone){for(let i=-1;i<=1;i++){const gem=new THREE.Mesh(new THREE.OctahedronGeometry(.07),material(0xffffff,.2,.5,0xffffff));gem.material.emissiveIntensity=1.8;gem.position.set(i*.2,1.08,0);g.add(gem)}}
+           return g;}'''
+          between("function buildingMesh", "function spawnPlayer", building_block)
+
+          boss_spawn = r'''function styleBossMesh(mesh,boss){const tint=new THREE.Color(boss.tint||0xff676f);mesh.traverse(n=>{if(n.material?.color){n.material.color.lerp(tint,.38);if(n.material.emissive&&boss.aura){n.material.emissive.setHex(boss.aura);n.material.emissiveIntensity=.22}}});mesh.scale.multiplyScalar(boss.scale||1);if(boss.horns){for(const sx of [-1,1]){const horn=new THREE.Mesh(new THREE.ConeGeometry(.09,.38,7),material(0xf1e3c7,.65,.08));horn.position.set(sx*.38,1.2,.34);horn.rotation.z=sx*.46;mesh.add(horn)}}if(boss.crown){const crown=new THREE.Mesh(new THREE.TorusGeometry(.3,.045,7,18),material(0xffd45a,.3,.4,0xffc83a));crown.rotation.x=Math.PI/2;crown.position.set(0,1.38,.25);mesh.add(crown)}if(boss.aura){const aura=new THREE.Mesh(new THREE.TorusGeometry(.63,.025,6,30),new THREE.MeshBasicMaterial({color:boss.aura,transparent:true,opacity:.75}));aura.rotation.x=Math.PI/2;aura.position.y=.12;mesh.add(aura)}}
+          function spawnCat(){let spots=[[1,1],[19,15],[1,15],[19,1]],s=spots[(game.round-1)%spots.length];while(terrain.has(K(s[0],s[1])))s=[s[0]+1,s[1]];const boss=BOSS_VARIANTS[(game.round-1)%BOSS_VARIANTS.length],hp=(260+game.round*120)*(game.mutator?.catHp||1)*boss.hp,dmg=(14+game.round*1.8)*boss.damage,move=Math.max(.14,(.52-game.round*.012)*boss.move),mesh=catMesh();styleBossMesh(mesh,boss);game.boss=boss;cat={type:'cat',boss,gx:s[0],gy:s[1],mesh,hp,maxHp:hp,damage:dmg,baseMove:move,attackEvery:.7,nextMove:0,nextAttack:0,moving:null,dead:false,bounty:10+game.round*2,slow:0,poisonUntil:0,poisonTick:0,eaten:new Set(),wall:1.2*boss.wall,attackAnim:null,baseScale:mesh.scale.clone(),special:null,nextAbility:game.time+(game.round>=2?6.8:999),abilityCursor:0};cat.bar=healthBar(1.35);cat.bar.position.y=1.62;cat.mesh.add(cat.bar);cat.mesh.position.copy(worldPos(cat.gx,cat.gy));entityGroup.add(cat.mesh);}'''
+          between("function spawnCat", "function enemyCap", boss_spawn)
+
+          reset = r'''function resetRun(){game={running:true,paused:false,time:0,round:1,kills:0,cheese:16,xp:0,xpLevel:1,xpNext:10,nextCheese:.7,nextMinion:3.4,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},artifactRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0],boss:null};ui.upgrade.classList.remove('open');clearEntities();beginRound(true);}'''
+          between("function resetRun", "function clearEntities", reset)
+
+          begin_round = r'''function beginRound(first=false){for(const b of buildings)disposeObject(b.mesh);for(const c of cheeses)disposeObject(c.mesh);for(const e of enemies)disposeObject(e.mesh);for(const b of bullets)disposeObject(b.mesh);if(cat)disposeObject(cat.mesh);if(player)disposeObject(player.mesh);buildings=[];cheeses=[];enemies=[];bullets=[];cat=null;player=null;game.mutator=ROUND_MUTATORS[(game.round-1)%ROUND_MUTATORS.length];game.cheese+=first?0:game.mods.roundCheese;buildArena(game.round);spawnPlayer();spawnCat();ui.themeSub.textContent='Round '+game.round+' · '+game.mutator.name+' · Boss: '+game.boss.name;for(let i=0;i<7;i++)spawnCheese();game.nextMinion=game.time+3.2;game.nextCheese=game.time+2.5;game.pendingRound=false;showMsg(first?'SURVIVE':'ROUND '+game.round,game.boss.name+' · '+game.boss.desc+' · cap '+enemyCap());updateSelected();}'''
+          between("function beginRound", "function buildAt", begin_round)
+
+          evolve_block = r'''function facingBuilding(dirIndex=player?.lastDir){if(!player||dirIndex==null)return null;const d=DIRS[dirIndex];return buildAt(player.gx+d.x,player.gy+d.y)}
+          function levelHp(type,level){const base=BUILDINGS[type].hp*game.mods.buildingHp*((type==='wall'||type==='superwall')?game.mods.wallHp:1);return Math.round(base*(1+(level-1)*.48*game.mods.upgradeBoost));}
+          function buildingMaxHp(b){return Math.round(levelHp(b.type,b.level)*buildingEvoStats(b).hp);}
+          function refreshPlayerVisual(){if(!player?.mesh)return;const pos=player.mesh.position.clone(),rot=player.mesh.rotation.clone();disposeObject(player.mesh);player.mesh=mouseMesh();player.mesh.position.copy(pos);player.mesh.rotation.copy(rot);entityGroup.add(player.mesh);}
+          function refreshBuildingMesh(b){if(!b||b.dead)return;const pos=worldPos(b.gx,b.gy);disposeObject(b.mesh);b.mesh=buildingMesh(b.type,b.level,b.evolution,b.capstone);b.mesh.position.copy(pos);entityGroup.add(b.mesh);b.bar=healthBar(b.type==='superwall'?1.15:.92);b.bar.position.y=b.type==='superwall'?1.55+(b.level-1)*.08:(b.type==='wall'?1.18+(b.level-1)*.08:1.32+(b.level-1)*.05);b.mesh.add(b.bar);registerHitMaterials(b.mesh);}
+          function refreshAllBuildings(){for(const b of buildings){if(b.dead)continue;const ratio=b.hp/Math.max(1,b.maxHp);b.maxHp=buildingMaxHp(b);b.hp=Math.min(b.maxHp,Math.max(b.hp,b.maxHp*ratio));refreshBuildingMesh(b)}}
+          function openBuildingEvolution(b,tier){if(!b||b.dead)return;const tree=BUILD_EVOLUTIONS[b.type],branch=evolutionBranch(b.type,b.evolution),choices=tier==='branch'?tree?.branches:branch?.capstones;if(!choices?.length)return;game.paused=true;ui.upgradeKind.textContent=tier==='branch'?'BUILDING EVOLUTION · LEVEL 3':'CAPSTONE EVOLUTION · LEVEL 5';ui.upgradeTitle.textContent=BUILDINGS[b.type].name+' — '+(tier==='branch'?'Choose a Path':'Choose a Capstone');ui.upgradeSub.textContent=tier==='branch'?'This individual structure permanently specializes.':'Complete this structure’s evolution path.';ui.upgradeChoices.innerHTML='';for(const choice of choices){const btn=document.createElement('button');btn.className='upgradeChoice';btn.innerHTML='<span class="upIcon">'+choice.icon+'</span><span class="upName">'+choice.name+'</span><span class="upDesc">'+choice.desc+'</span><span class="upRank">'+(tier==='branch'?'PATH I':'CAPSTONE')+'</span>';btn.addEventListener('click',()=>chooseBuildingEvolution(b,choice,tier));ui.upgradeChoices.appendChild(btn)}ui.upgrade.classList.add('open');navigator.vibrate?.([25,30,35]);}
+          function chooseBuildingEvolution(b,choice,tier){const before=buildingEvoStats(b),oldMax=b.maxHp;if(tier==='branch')b.evolution=choice.id;else b.capstone=choice.id;const after=buildingEvoStats(b);if(b.type==='poison')b.charges+=Math.max(0,Math.round(after.poisonCharges-before.poisonCharges));b.maxHp=buildingMaxHp(b);b.hp=Math.min(b.maxHp,b.hp+Math.max(0,b.maxHp-oldMax));refreshBuildingMesh(b);ui.upgrade.classList.remove('open');game.paused=false;toast(choice.name+' evolved');pulse(b.gx,b.gy,0x78e4ff,1.5);updateUI();}
+          function upgradeBuilding(b){if(!b||b.dead)return false;const cap=game.mods.buildingLevelCap;if(b.level>=cap){buildFail('This '+BUILDINGS[b.type].name+' is max level');return false}const cost=buildingUpgradeCost(b);if(game.cheese<cost){buildFail('Need '+cost+' cheese to upgrade');return false}game.cheese-=cost;b.level++;const oldMax=b.maxHp;b.maxHp=buildingMaxHp(b);b.hp=Math.min(b.maxHp,b.hp+(b.maxHp-oldMax)+Math.round(b.maxHp*.18));refreshBuildingMesh(b);pulse(b.gx,b.gy,0x78e4ff,1.2);toast(BUILDINGS[b.type].name+' upgraded to Lv '+b.level);updateUI();if(b.level===3&&!b.evolution)openBuildingEvolution(b,'branch');else if(b.level===5&&b.evolution&&!b.capstone)openBuildingEvolution(b,'capstone');return true}'''
+          between("function facingBuilding", "function buildDirection", evolve_block)
+
+          build_direction = r'''function buildDirection(dirIndex=player?.lastDir){
+           if(!game.running||game.paused||!player||dirIndex==null)return false;const d=DIRS[dirIndex],x=player.gx+d.x,y=player.gy+d.y,def=BUILDINGS[activeBuild],existing=buildAt(x,y);
+           if(existing)return upgradeBuilding(existing);if(!inside(x,y)){buildFail('Outside the arena');return false}if(terrain.has(K(x,y))){buildFail('Terrain blocks that cell');return false}const cost=structureCost(activeBuild);if(game.cheese<cost){buildFail('Need '+cost+' cheese');return false}if((cat&&!cat.dead&&cat.gx===x&&cat.gy===y)||enemies.some(e=>!e.dead&&e.gx===x&&e.gy===y)){buildFail('An enemy occupies that cell');return false}
+           game.cheese-=cost;const mesh=buildingMesh(activeBuild,1,null,null);mesh.position.copy(worldPos(x,y));entityGroup.add(mesh);const b={id:idCounter++,type:activeBuild,level:1,evolution:null,capstone:null,gx:x,gy:y,mesh,hp:1,maxHp:1,dead:false,next:game.time+.5,repairNext:0,charges:activeBuild==='poison'?5+game.mods.poisonCharges:0,bar:healthBar(activeBuild==='superwall'?1.15:.92),hitFlashUntil:0};b.maxHp=buildingMaxHp(b);b.hp=b.maxHp;b.bar.position.y=activeBuild==='superwall'?1.55:(activeBuild==='wall'?1.18:1.32);mesh.add(b.bar);registerHitMaterials(mesh);buildings.push(b);pulse(x,y,def.color,.75);toast(def.name+' built '+DIRS[dirIndex].name.split(' ')[0]);updateUI();return true;
+          }'''
+          between("function buildDirection", "function buildFacing", build_direction)
+
+          poison = r'''function eatPoison(e,b){const es=buildingEvoStats(b);e.eaten.add(b.id);b.charges--;e.poisonUntil=game.time+game.mods.poisonDuration*es.poisonDuration;e.poisonTick=game.time+.2;e.poisonPower=Math.max(e.poisonPower||1,es.poisonDamage);pulse(b.gx,b.gy,0x72df7b,1.0);const spread=Math.max(0,Math.floor(game.mods.poisonSpread+es.poisonSpread));if(spread){const others=enemies.filter(x=>x!==e&&!x.dead&&dist(x,e)<=2.5).concat(cat&&cat!==e&&!cat.dead&&dist(cat,e)<=2.5?[cat]:[]).slice(0,spread);for(const x of others){x.poisonUntil=Math.max(x.poisonUntil||0,game.time+game.mods.poisonDuration*es.poisonDuration*.72);x.poisonTick=game.time+.25;x.poisonPower=Math.max(x.poisonPower||1,es.poisonDamage*.8);pulse(x.gx,x.gy,0x72df7b,.6)}}if(b.charges<=0)setTimeout(()=>removeBuilding(b),100);}'''
+          between("function eatPoison", "function enemyUpdate", poison)
+
+          old_poison_tick = "damageEnemy(e,(7+game.round*.5)*game.mods.poisonDamage,isCat)"
+          assert old_poison_tick in s
+          s = s.replace(old_poison_tick, "damageEnemy(e,(7+game.round*.5)*game.mods.poisonDamage*(e.poisonPower||1),isCat)", 1)
+
+          attack_building = r'''function attackBuilding(e,b){if(!b||b.dead||game.time<e.nextAttack)return;e.nextAttack=game.time+e.attackEvery;startAttackAnimation(e,b,e.type==='ox'||e.type==='brute'?'ram':e.type==='mole'||e.type==='badger'?'dig':'strike');const es=buildingEvoStats(b);damageBuilding(b,e.damage*(e.wall||1)*(game.mutator?.wallDamage||1));const retaliation=((game.mods.spikedWalls&&(b.type==='wall'||b.type==='superwall'))?(7+4*game.mods.spikedWalls)*b.level:0)+es.retaliation;if(!e.dead&&retaliation>0)damageEnemy(e,retaliation,e===cat);}'''
+          between("function attackBuilding", "function attackPlayer", attack_building)
+
+          attack_player = r'''function attackPlayer(e){if(game.time<e.nextAttack||player.inv>game.time)return;e.nextAttack=game.time+e.attackEvery;startAttackAnimation(e,player,e.type==='cat'?'claw':'bite');if(player.shield>0){player.shield--;player.inv=game.time+.45;pulse(player.gx,player.gy,0x78dfff,1.15);toast('Cheese Shield blocked the hit');return}player.hp-=e.damage*(1-game.mods.damageReduction);if(e===cat&&cat.boss?.steal){const stolen=Math.min(Math.floor(game.cheese),cat.boss.steal+Math.floor(game.round/3));game.cheese-=stolen;if(stolen>0)toast(cat.boss.name+' stole '+stolen+' cheese')}player.inv=game.time+.25;pulse(player.gx,player.gy,0xff626c,.75);if(player.hp<=0)playerDeath();}'''
+          between("function attackPlayer", "function availableCatAbilities", attack_player)
+
+          cat_block = r'''function availableCatAbilities(){const allowed=cat?.boss?.abilities;return CAT_ABILITIES.filter(a=>game.round>=a.unlock&&(!allowed||allowed.includes(a.id)))}
+          function catAbilityReady(){if(!cat||cat.dead||cat.special||cat.moving||cat.attackAnim||game.time<cat.nextAbility)return false;return availableCatAbilities().length>0;}
+          function warningRing(x,y,color,scale=2,duration=.9){const r=new THREE.Mesh(new THREE.RingGeometry(.34,.48,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.95,side:THREE.DoubleSide,depthWrite:false}));r.rotation.x=-Math.PI/2;r.position.copy(worldPos(x,y,.04));fxGroup.add(r);effects.push({obj:r,start:game.time,until:game.time+duration,scale});}
+          function flashDanger(color='rgba(255,30,48,.24)'){ui.dangerFlash.style.background='radial-gradient(circle at 50% 50%,transparent 35%,'+color+' 100%)';ui.dangerFlash.animate([{opacity:0},{opacity:.9,offset:.25},{opacity:0}],{duration:850,easing:'ease-out'});}
+          function telegraphCatAbility(type,delay){flashDanger(type==='summon'?'rgba(179,80,255,.22)':type==='fortify'?'rgba(80,220,160,.2)':type==='stormburst'?'rgba(80,190,255,.24)':type==='cheeseSwipe'?'rgba(255,205,70,.22)':type==='roar'?'rgba(255,140,68,.22)':'rgba(255,30,48,.22)');if(type==='pounce'||type==='shadowstep'||type==='cheeseSwipe')warningRing(player.gx,player.gy,type==='cheeseSwipe'?0xffd45a:0xff3348,type==='shadowstep'?2.2:1.7,delay);else if(type==='slam')warningRing(cat.gx,cat.gy,0xff3348,3.4,delay);else if(type==='stormburst'){warningRing(cat.gx,cat.gy,0x62d9ff,4.2,delay);for(const b of buildings.filter(x=>!x.dead).sort((a,b)=>dist(cat,a)-dist(cat,b)).slice(0,4))warningRing(b.gx,b.gy,0x62d9ff,1.2,delay)}else if(type==='fortify')warningRing(cat.gx,cat.gy,0x72e4a0,2.8,delay);else if(type==='summon'){warningRing(cat.gx,cat.gy,0xc45bff,2.5,delay);for(const d of DIR4){const x=cat.gx+d.x*2,y=cat.gy+d.y*2;if(inside(x,y))warningRing(x,y,0xb05cff,.9,delay)}}else if(type==='roar')warningRing(cat.gx,cat.gy,0xff9b62,3.1,delay);else if(type==='frenzy')warningRing(cat.gx,cat.gy,0xff1434,2.8,delay);}
+          function beginCatAbility(){const list=availableCatAbilities();if(!list.length)return;const ability=list[cat.abilityCursor%list.length];cat.abilityCursor++;const delay=.9+game.mods.telegraphBonus;cat.special={type:ability.id,name:ability.name,start:game.time,fire:game.time+delay,end:game.time+delay+.55,fired:false};cat.nextAbility=game.time+ability.cool*(cat.boss?.cool||1)*Math.max(.62,1-(game.round-2)*.018);showMsg(ability.name.toUpperCase(),cat.boss.name+' · DANGER');telegraphCatAbility(ability.id,delay);pulse(cat.gx,cat.gy,cat.boss?.tint||0xff4050,2.4);}
+          function catSpecialUpdate(e,dt){if(!e||e.dead)return false;if(!e.special&&catAbilityReady())beginCatAbility();const sp=e.special;if(!sp)return false;const q=clamp((game.time-sp.start)/Math.max(.01,sp.fire-sp.start),0,1);e.mesh.scale.set(e.baseScale.x*(1+.16*q),e.baseScale.y*(1+.06*q),e.baseScale.z*(1+.16*q));if(!sp.fired&&game.time>=sp.fire){sp.fired=true;e.mesh.scale.copy(e.baseScale);executeCatAbility(sp.type)}if(game.time>=sp.end){e.special=null;e.mesh.scale.copy(e.baseScale);e.mesh.position.copy(worldPos(e.gx,e.gy));return false}return true;}
+          function executeCatAbility(type){if(!cat||cat.dead)return;
+           if(type==='pounce'){const path=pathfind({x:cat.gx,y:cat.gy},{x:player.gx,y:player.gy});if(path&&path.length){const n=path[Math.min(path.length-1,1)];startMove(cat,n.x,n.y,.16);pulse(n.x,n.y,0xff6973,1.5);if(path.length<=2&&player.inv<=game.time){player.hp-=Math.round(cat.damage*.85);player.inv=game.time+.45;pulse(player.gx,player.gy,0xff3543,1.3);if(player.hp<=0)playerDeath()}}}
+           else if(type==='roar'){pulse(cat.gx,cat.gy,0xff8d66,3.2);player.slowUntil=game.time+3.4;for(const e of enemies)e.rageUntil=game.time+4.5;toast('Hunting Roar: mouse slowed, minions enraged')}
+           else if(type==='slam'){pulse(cat.gx,cat.gy,0xff3d47,3.1);let hit=0;for(const b of [...buildings])if(!b.dead&&dist(cat,b)<=2.7){damageBuilding(b,32+game.round*5);hit++}if(!hit){const near=buildings.filter(b=>!b.dead).sort((a,b)=>dist(cat,a)-dist(cat,b))[0];if(near&&dist(cat,near)<=4)damageBuilding(near,42+game.round*5)}}
+           else if(type==='summon'){for(let i=0;i<3+Math.floor(game.round/8)+(cat.boss?.summonBonus||0);i++)spawnEnemy();pulse(cat.gx,cat.gy,0xc45bff,2.7);toast(cat.boss.name+' calls reinforcements!')}
+           else if(type==='frenzy'){game.catFrenzyUntil=game.time+6.5;pulse(cat.gx,cat.gy,0xff1e36,3.4);toast('Blood Frenzy: the hunt accelerates')}
+           else if(type==='fortify'){const heal=cat.maxHp*.1;cat.hp=Math.min(cat.maxHp,cat.hp+heal);for(let i=0;i<2;i++){if(enemies.length<enemyCap())spawnEnemy();else empowerEnemyAtCap()}pulse(cat.gx,cat.gy,0x72e4a0,3);toast(cat.boss.name+' restores '+Math.round(heal)+' HP')}
+           else if(type==='shadowstep'){const spots=[];for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){if(Math.abs(dx)+Math.abs(dy)!==2)continue;const x=player.gx+dx,y=player.gy+dy;if(inside(x,y)&&!enemyBlocked(x,y)&&!occupiedEnemy(x,y,cat))spots.push({x,y})}if(spots.length){const p=spots[Math.floor(Math.random()*spots.length)];cat.gx=p.x;cat.gy=p.y;cat.mesh.position.copy(worldPos(p.x,p.y));pulse(p.x,p.y,0x826cff,2.2);toast('Shadowclaw repositions!')}}
+           else if(type==='stormburst'){pulse(cat.gx,cat.gy,0x62d9ff,4.4);for(const b of [...buildings])if(!b.dead&&dist(cat,b)<=4.2)damageBuilding(b,18+game.round*3.2);if(dist(cat,player)<=4&&player.inv<=game.time){player.hp-=Math.round(cat.damage*.62);player.inv=game.time+.5;if(player.hp<=0)playerDeath()}toast('Storm Burst hits clustered defenses')}
+           else if(type==='cheeseSwipe'){const md=Math.abs(cat.gx-player.gx)+Math.abs(cat.gy-player.gy);if(md<=5){const stolen=Math.min(Math.floor(game.cheese),8+game.round*2);game.cheese-=stolen;pulse(player.gx,player.gy,0xffd45a,2);toast(cat.boss.name+' ransacked '+stolen+' cheese')}else toast('Ransack missed')}
+          }'''
+          between("function availableCatAbilities", "function playerDeath", cat_block)
+
+          player_death = r'''function playerDeath(){const p=buildings.find(b=>!b.dead&&b.type==='phoenix');if(p){const es=buildingEvoStats(p),revive=Math.min(player.maxHp,game.mods.phoenixHp+es.reviveHp),save=Math.min(.8,game.mods.phoenixSaveChance+es.phoenixSave);player.gx=p.gx;player.gy=p.gy;player.mesh.position.copy(worldPos(p.gx,p.gy));player.hp=revive;player.inv=game.time+1.4;if(Math.random()>=save)removeBuilding(p);else{p.hp=Math.min(p.maxHp,Math.max(p.hp,p.maxHp*.45));toast('Immortal Ember preserved the Phoenix')}showMsg('PHOENIX','Revived with '+Math.round(player.hp)+' HP');return}game.running=false;let best={round:0,kills:0};try{best=JSON.parse(localStorage.getItem('cheeseholdBest')||'{\"round\":0,\"kills\":0}')}catch{}best.round=Math.max(best.round||0,game.round);best.kills=Math.max(best.kills||0,game.kills);try{localStorage.setItem('cheeseholdBest',JSON.stringify(best))}catch{}showMsg('RUN ENDED','Round '+game.round+' · '+game.kills+' kills · Best R'+best.round+' / '+best.kills+'K');setTimeout(()=>{ui.menu.classList.remove('hidden');ui.start.textContent='Run Again · Best R'+best.round},1200);}'''
+          between("function playerDeath", "function addXP", player_death)
+
+          reward_block = r'''function upgradePool(kind){let defs=XP_UPGRADES,ranks=game.ranks;if(kind==='victory'){defs=VICTORY_UPGRADES;ranks=game.victoryRanks}else if(kind==='artifact'){defs=ARTIFACTS;ranks=game.artifactRanks}return defs.filter(u=>(ranks[u.id]||0)<u.max)}
+          function openUpgrade(kind){const pool=upgradePool(kind);if(!pool.length){if(kind==='artifact'){openUpgrade('victory');return}if(kind==='victory')advanceRound();return}game.paused=true;const picks=[];const copy=[...pool];while(copy.length&&picks.length<3){const i=Math.floor(Math.random()*copy.length);picks.push(copy.splice(i,1)[0])}const artifact=kind==='artifact',victory=kind==='victory';ui.upgradeKind.textContent=artifact?'BOSS DROP · ARTIFACT':victory?'BOSS VICTORY · EVOLUTION':'XP LEVEL '+game.xpLevel;ui.upgradeTitle.textContent=artifact?'Choose an Artifact':victory?'Choose a Victory Evolution':'Choose an XP Upgrade';ui.upgradeSub.textContent=artifact?'Boss artifacts are rare, run-defining relics. Pick one.':victory?'Rare upgrades reshape your entire defense and unlock deeper builds.':'Frequent upgrades stack into a run-defining build. Choose one.';ui.upgradeChoices.innerHTML='';const ranks=artifact?game.artifactRanks:victory?game.victoryRanks:game.ranks;for(const u of picks){const rank=ranks[u.id]||0,b=document.createElement('button');b.className='upgradeChoice';b.innerHTML='<span class="upIcon">'+u.icon+'</span><span class="upName">'+u.name+'</span><span class="upDesc">'+u.desc+'</span><span class="upRank">'+(artifact?'ARTIFACT':('Rank '+rank+' / '+u.max))+'</span>';b.addEventListener('click',()=>chooseUpgrade(kind,u));ui.upgradeChoices.appendChild(b)}ui.upgrade.classList.add('open');navigator.vibrate?.(artifact?[30,35,55]:victory?[35,40,70]:25)}
+          function chooseUpgrade(kind,u){const ranks=kind==='artifact'?game.artifactRanks:kind==='victory'?game.victoryRanks:game.ranks;ranks[u.id]=(ranks[u.id]||0)+1;u.apply(game.mods);ui.upgrade.classList.remove('open');game.paused=false;toast(u.name+' acquired');if(kind==='artifact'){openUpgrade('victory');return}if(kind==='victory'){advanceRound();return}if(game.xp>=game.xpNext)openUpgrade('xp')}'''
+          between("function upgradePool", "function advanceRound", reward_block)
+
+          damage_enemy = r'''function damageEnemy(e,dmg,isCat=false){if(!e||e.dead)return;if(isCat)dmg*=game.mods.bossDamage;e.hp-=dmg;pulse(e.gx,e.gy,isCat?0xff6b72:e.elite?0xffcf55:0xffffff,.45);if(e.hp<=0){e.dead=true;game.kills++;game.cheese+=(e.bounty||1)+(!isCat?game.mods.bountyBonus:0);const xp=e.xp||0,bossName=e.boss?.name||'Cat Boss';disposeObject(e.mesh);if(isCat){game.cheese+=12+game.round*3;game.pendingRound=true;const chance=Math.min(.88,.38+game.mods.artifactLuck+(e.boss?.artifact||0)),drop=game.round%3===0||Math.random()<chance;showMsg('BOSS DEFEATED',bossName+(drop?' · ARTIFACT DROP!':' · evolution earned'));if(drop)openUpgrade('artifact');else openUpgrade('victory')}else{enemies=enemies.filter(x=>x!==e);if(game.mods.killHeal&&player){player.hp=Math.min(player.maxHp,player.hp+game.mods.killHeal)}addXP(xp)}}}'''
+          between("function damageEnemy", "function updateBuildings", damage_enemy)
+
+          update_buildings = r'''function updateBuildings(dt){const targets=enemies.filter(e=>!e.dead).concat(cat&&!cat.dead?[cat]:[]);for(const b of buildings){if(b.dead)continue;const es=buildingEvoStats(b);if(game.mods.repairRate)b.hp=Math.min(b.maxHp,b.hp+game.mods.repairRate*dt);if(es.repairAura&&game.time>=(b.repairNext||0)){b.repairNext=game.time+.5;for(const other of buildings)if(!other.dead&&dist(b,other)<=3.2)other.hp=Math.min(other.maxHp,other.hp+es.repairAura*.5)}if(b.bar)updateHealthBar(b.bar,b.hp,b.maxHp,b.mesh);if(b.hitFlashUntil&&game.time>=b.hitFlashUntil){b.hitFlashUntil=0;setBuildingHitFlash(b,false)}
+           let tracked=null,tRange=5.4*game.mods.turretRange*es.range*(1+(b.level-1)*.08),zRange=4.6*game.mods.teslaRange*es.range*(1+(b.level-1)*.07);if(b.type==='turret')tracked=nearestTarget(b,targets,tRange);else if(b.type==='tesla')tracked=nearestTarget(b,targets,zRange);if(tracked){b.target=tracked;aimTurret(b,tracked,dt)}else if(b.target?.dead||!b.target||dist(b,b.target)>(b.type==='tesla'?zRange:tRange))b.target=null;
+           if(game.time<b.next)continue;
+           if(b.type==='generator'){game.cheese+=Math.max(1,game.mods.generatorYield+(b.level-1)+es.yield);b.next=game.time+3.8*game.mods.generatorRate*es.genRate/Math.pow(1.08,b.level-1);pulse(b.gx,b.gy,0xffd45a,.55)}
+           else if(b.type==='turret'){const t=tracked||nearestTarget(b,targets,tRange);if(t){aimTurret(b,t,dt,1);let dmg=18*game.mods.turretDamage*es.damage*(1+(b.level-1)*.28)*(t.elite?game.mods.turretElite:1)*(t===cat?es.bossDamage:1);if(Math.random()<game.mods.turretCrit)dmg*=game.mods.turretCritMult;bullet(b,t,dmg,0x70d8ff);const extra=Math.max(0,Math.floor((game.mods.twinBarrel||b.level>=3?1:0)+es.multiShots)),alts=targets.filter(x=>x!==t&&dist(b,x)<=tRange).sort((a,c)=>dist(b,a)-dist(b,c));for(let i=0;i<extra;i++){const target=alts[i]||t;bullet(b,target,dmg*Math.max(.48,.72-i*.05),i%2?0xffd45a:0xbaf5ff)}b.next=game.time+.55*game.mods.turretFire*es.fire/Math.pow(1.08,b.level-1)}else b.next=game.time+.15}
+           else if(b.type==='tesla'){const chain=targets.filter(e=>dist(b,e)<=zRange).sort((a,c)=>dist(b,a)-dist(b,c)).slice(0,Math.max(1,game.mods.teslaChains+(b.level-1)+Math.floor(es.chains)));if(chain.length){aimTurret(b,chain[0],dt,1);lightning(b,chain);for(const e of chain)damageEnemy(e,(13+game.round*.35)*game.mods.teslaDamage*es.damage*(1+(b.level-1)*.22)*(e===cat?es.bossDamage:1),e===cat);b.next=game.time+1.15*game.mods.teslaFire*es.fire/Math.pow(1.07,b.level-1)}else b.next=game.time+.15}
+           else if(b.type==='slow'){const radius=(2.8+(b.level-1)*.25)*game.mods.slowRadius*es.slowRadius;for(const e of targets)if(dist(b,e)<=radius){e.slow=Math.max(e.slow||0,game.time+2.2*game.mods.slowDuration*es.slowDuration);const sd=game.mods.slowDamage+es.slowDamage;if(sd>0)damageEnemy(e,sd,e===cat)}pulse(b.gx,b.gy,0xa68cff,1.5*es.slowRadius);b.next=game.time+2.9*game.mods.slowRate*es.fire/Math.pow(1.08,b.level-1)}
+           else b.next=game.time+.5;
+          }}'''
+          between("function updateBuildings", "function dist", update_buildings)
+
+          old_menu = "<b>⬆ BUILDING LEVELS</b><span>Face one of your buildings and tap BUILD to upgrade it. Each level gains health and stronger effects with visible changes.</span>"
+          new_menu = "<b>⬆ EVOLUTION TREES</b><span>Every structure branches at Level 3, then gains a second capstone choice at Level 5. Build specialized fortresses, railguns, plague engines, repair sanctuaries and more.</span>"
+          if old_menu in s:
+              s = s.replace(old_menu, new_menu, 1)
+          old_intro = "Outrun the cat, harvest cheese, fortify corridors, and evolve your build. XP gives frequent upgrades; defeating the cat grants rarer evolution upgrades that can physically transform your mouse and defenses."
+          new_intro = "Outrun a rotating roster of cat bosses, harvest cheese, chase rare artifact drops, and evolve every defense through deep branching upgrade trees."
+          if old_intro in s:
+              s = s.replace(old_intro, new_intro, 1)
+
+          path.write_text(s)
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text=Path('game/Cheesehold_3D_Progression_Upgrade.html').read_text()
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',text,flags=re.S)
+          inline=[x for x in scripts if x.strip()]
+          if not inline:
+              raise SystemExit('No inline script found')
+          Path('/tmp/cheesehold-inline.js').write_text('\n'.join(inline))
+          for token in ['BOSS_VARIANTS','ARTIFACTS','BUILD_EVOLUTIONS','openBuildingEvolution','shadowstep','stormburst','artifactRanks']:
+              if token not in text:
+                  raise SystemExit('Missing expected expansion token: '+token)
+          PY
+          node --check /tmp/cheesehold-inline.js
+          rm .github/workflows/agent-cheesehold-evolution-expansion.yml
+          git config user.name "OpenAI Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/Cheesehold_3D_Progression_Upgrade.html .github/workflows/agent-cheesehold-evolution-expansion.yml
+          git commit -m "Expand Cheesehold evolution paths and boss rewards"
+          git push origin HEAD:agent/cheesehold-directional-build-survival
