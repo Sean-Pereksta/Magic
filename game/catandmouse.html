@@ -14,7 +14,7 @@
 <body>
   <main class="boot" role="status" aria-live="polite">
     <div class="title">🐭 Preparing Cat &amp; Mouse</div>
-    <div class="copy">Loading the smoother battlefield and faster capped enemy simulation.</div>
+    <div class="copy">Loading a smoother battlefield with fewer, faster enemies.</div>
     <div class="track"><div class="fill"></div></div>
     <div id="status" class="status">Loading battle engine…</div>
   </main>
@@ -22,37 +22,48 @@
 (async () => {
   const CORE_URL = './catandmouse-core.html';
   const status = document.getElementById('status');
-  let html = '';
 
-  function exact(label, oldText, newText){
-    const first = html.indexOf(oldText);
+  function replaceExact(source, oldText, newText, label){
+    const first = source.indexOf(oldText);
     if (first < 0) throw new Error('Patch target missing: ' + label);
-    if (html.indexOf(oldText, first + oldText.length) >= 0) throw new Error('Patch target duplicated: ' + label);
-    html = html.slice(0, first) + newText + html.slice(first + oldText.length);
+    if (source.indexOf(oldText, first + oldText.length) >= 0) throw new Error('Patch target duplicated: ' + label);
+    return source.slice(0, first) + newText + source.slice(first + oldText.length);
   }
 
-  function pattern(label, rx, replacement){
-    rx.lastIndex = 0;
-    if (!rx.test(html)) throw new Error('Patch target missing: ' + label);
-    rx.lastIndex = 0;
-    html = html.replace(rx, replacement);
+  function replacePattern(source, pattern, replacement, label){
+    pattern.lastIndex = 0;
+    if (!pattern.test(source)) throw new Error('Patch target missing: ' + label);
+    pattern.lastIndex = 0;
+    return source.replace(pattern, replacement);
   }
 
-  function patch(){
-    exact('hard difficulty subtitle', 'hard: { icon:"🐀", label:"Hard", subtitle:"More rats, faster cat", className:"difficulty-hard" }', 'hard: { icon:"🐀", label:"Hard", subtitle:"Faster hunters, harder hits", className:"difficulty-hard" }');
-    exact('nightmare difficulty subtitle', 'insane: { icon:"💀", label:"Nightmare", subtitle:"The cat is hunting", className:"difficulty-nightmare" }', 'insane: { icon:"💀", label:"Nightmare", subtitle:"Relentless pursuit", className:"difficulty-nightmare" }');
-    exact('easy difficulty settings', 'easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18 }', 'easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92 }');
-    exact('medium difficulty settings', 'medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26 }', 'medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00 }');
-    exact('hard difficulty settings', 'hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34 }', 'hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10 }');
-    exact('nightmare difficulty settings', 'insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44 }', 'insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20 }');
+  function applyPerformancePass(source){
+    let html = source;
 
-    exact('MAX_RATS', 'const MAX_RATS = 18;', 'const MAX_RATS = 10;');
-    exact('MAX_FLEAS', 'const MAX_FLEAS = 24;', 'const MAX_FLEAS = 8;');
-    exact('MAX_TOTAL_ENEMIES', 'const MAX_TOTAL_ENEMIES = 36;', 'const MAX_TOTAL_ENEMIES = 22;');
-    exact('MAX_PROJECTILES', 'const MAX_PROJECTILES = 80;', 'const MAX_PROJECTILES = 64;');
-    exact('AI budget', 'const ENEMIES_AI_PER_FRAME = 6;', 'const ENEMIES_AI_PER_FRAME = 5;\n  const MAX_FRIENDLY_RABBITS = 12;');
+    html = replacePattern(html,
+      /  const DIFFICULTY_UI_META = \{[\s\S]*?\n  \};\n  const DIFFICULTY_SETTINGS = \{[\s\S]*?\n  \};/,
+`  const DIFFICULTY_UI_META = {
+    easy: { icon:"🧀", label:"Easy", subtitle:"Calm cheese run", className:"difficulty-easy" },
+    medium: { icon:"🐱", label:"Normal", subtitle:"Balanced survival", className:"difficulty-normal" },
+    hard: { icon:"🐀", label:"Hard", subtitle:"Faster hunters, harder hits", className:"difficulty-hard" },
+    insane: { icon:"💀", label:"Nightmare", subtitle:"Relentless pursuit", className:"difficulty-nightmare" }
+  };
+  const DIFFICULTY_SETTINGS = {
+    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92 },
+    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00 },
+    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10 },
+    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20 }
+  };`, 'difficulty metadata');
 
-    pattern('enemy caps', /  function getEnemyCaps\(activePlayerCount = getActivePlayerCount\(\)\)\{[\s\S]*?\n  \}\n  function getPendingEnemyCount/, `  function getEnemyCaps(activePlayerCount = getActivePlayerCount()){
+    html = replacePattern(html, /const MAX_RATS = \d+;/, 'const MAX_RATS = 10;', 'MAX_RATS');
+    html = replacePattern(html, /const MAX_FLEAS = \d+;/, 'const MAX_FLEAS = 8;', 'MAX_FLEAS');
+    html = replacePattern(html, /const MAX_TOTAL_ENEMIES = \d+;/, 'const MAX_TOTAL_ENEMIES = 22;', 'MAX_TOTAL_ENEMIES');
+    html = replacePattern(html, /const MAX_PROJECTILES = \d+;/, 'const MAX_PROJECTILES = 64;', 'MAX_PROJECTILES');
+    html = replacePattern(html, /const ENEMIES_AI_PER_FRAME = \d+;/, 'const ENEMIES_AI_PER_FRAME = 5;\n  const MAX_FRIENDLY_RABBITS = 12;', 'AI budget');
+
+    html = replacePattern(html,
+      /  function getEnemyCaps\(activePlayerCount = getActivePlayerCount\(\)\)\{[\s\S]*?\n  \}\n  function getPendingEnemyCount/,
+`  function getEnemyCaps(activePlayerCount = getActivePlayerCount()){
     const n = Math.max(1, Math.min(4, activePlayerCount || 1));
     return {
       rat:[0,7,8,9,10][n],
@@ -65,21 +76,23 @@
       total:[0,15,18,20,22][n]
     };
   }
-  function getPendingEnemyCount`);
+  function getPendingEnemyCount`, 'enemy caps');
 
-    pattern('enemy scaling', /  function getEnemyScaling\(waveNumber = Math\.max\(1, catPower \|\| ratPower \|\| 1\)\)\{[^\n]*\}/, `  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){
+    html = replacePattern(html,
+      /  function getEnemyScaling\(waveNumber = Math\.max\(1, catPower \|\| ratPower \|\| 1\)\)\{[\s\S]*?\n  \}\n  function scaleEnemyStats/,
+`  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){
     const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;
     return {
       healthMultiplier:Math.min(3.0, 1 + Math.max(0, waveNumber - 1) * 0.06),
       damageMultiplier:Math.min(2.25, 1 + Math.max(0, waveNumber - 1) * 0.035),
       speedMultiplier:Math.min(1.75, difficultySpeed * (1 + Math.max(0, waveNumber - 1) * 0.018))
     };
-  }`);
+  }
+  function scaleEnemyStats`, 'enemy scaling');
 
-    exact('initial terrain texture', '    tile.style.backgroundImage = `url("${getAssetUrl(TERRAIN_ASSETS.grass)}")`;', '    tile.style.backgroundColor = "#68b947";\n    const initialTexture = getTileTexture(x, y);\n    tile.dataset.texture = initialTexture;\n    tile.style.backgroundImage = `url("${getAssetUrl(initialTexture)}")`;');
-    exact('terrain render writes', '          cell.style.backgroundColor = "#68b947";\n          cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;', '          const tileTexture = getTileTexture(x, y);\n          if (cell.dataset.texture !== tileTexture){\n            cell.dataset.texture = tileTexture;\n            cell.style.backgroundImage = `url("${getAssetUrl(tileTexture)}")`;\n          }');
-
-    pattern('pathfinding engine', /  function findPath\(startX, startY, targetX, targetY, allowTargetWallOrPassable = false\)\{[\s\S]*?\n  \}\n\n  function getNearestReachableStructureTarget/, `  let pathQueueBuffer = null;
+    html = replacePattern(html,
+      /  function findPath\(startX, startY, targetX, targetY, allowTargetWallOrPassable = false\)\{[\s\S]*?\n  \}\n\n  function getNearestReachableStructureTarget/,
+`  let pathQueueBuffer = null;
   let pathParentBuffer = null;
   function ensurePathBuffers(){
     const total = gridSize * gridSize;
@@ -141,15 +154,30 @@
     return candidates.slice(0, Math.max(1, limit));
   }
 
-  function getNearestReachableStructureTarget`);
-    exact('reachable structure shortlist', '  function getNearestReachableStructureTarget(startX, startY, passableFn = null){\n    let best = null;\n    for (const s of getAllStructures()){', '  function getNearestReachableStructureTarget(startX, startY, passableFn = null){\n    let best = null;\n    for (const s of getStructurePathCandidates(startX, startY)){');
-    exact('contact structure shortlist', '  function getNearestStructureContactTarget(startX, startY, passableFn){\n    let best = null;\n    for (const s of getAllStructures()){', '  function getNearestStructureContactTarget(startX, startY, passableFn){\n    let best = null;\n    for (const s of getStructurePathCandidates(startX, startY)){');
+  function getNearestReachableStructureTarget`, 'pathfinding engine');
 
-    exact('cat speed', '    const speed = Math.max(190, Math.floor((1300 - catPower * 40) / CAT_SPEED_MULTIPLIER));', '    const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;\n    const speed = Math.max(165, Math.floor((1300 - catPower * 40) / (CAT_SPEED_MULTIPLIER * difficultySpeed)));');
-    exact('rat wave budget', '    const maxRats = catPower;\n    const ratReservation = reserveEnemySpawnSlots("rat", maxRats);', '    const activePlayers = getActivePlayerCount();\n    const baseWaveRats = [0,2,3,4,5][activePlayers];\n    const lateWaveBonus = Math.min(2, Math.floor(Math.max(0, catPower - 10) / 12));\n    const waveRatBudget = Math.min(getEnemyCaps(activePlayers).rat, baseWaveRats + lateWaveBonus);\n    const ratReservation = reserveEnemySpawnSlots("rat", waveRatBudget);');
-    exact('rat think budget', '    const RAT_THINK_INTERVAL_MS = 350;\n    const RAT_REPATH_JITTER_MS = 200;', '    // Fast movement is separated from expensive thinking/repathing.\n    const RAT_THINK_INTERVAL_MS = 500;\n    const RAT_REPATH_JITTER_MS = 260;');
+    html = replacePattern(html,
+      /(function getNearestReachableStructureTarget\([^)]*\)\{\s*let best = null;\s*)for \(const s of getAllStructures\(\)\)\{/,
+      '$1for (const s of getStructurePathCandidates(startX, startY)){', 'reachable structure shortlist');
+    html = replacePattern(html,
+      /(function getNearestStructureContactTarget\([^)]*\)\{\s*let best = null;\s*)for \(const s of getAllStructures\(\)\)\{/,
+      '$1for (const s of getStructurePathCandidates(startX, startY)){', 'contact structure shortlist');
 
-    pattern('enemy movement loops', /    \/\/ enemy sim ticks[\s\S]*?    \}, 700\);\n\n    \/\/ phoenix revive/, `    // Speed-scaled self-scheduling loops keep enemies dangerous without raising entity count.
+    html = replacePattern(html,
+      /const speed = Math\.max\(190, Math\.floor\(\(1300 - catPower \* 40\) \/ CAT_SPEED_MULTIPLIER\)\);/,
+      'const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;\n    const speed = Math.max(165, Math.floor((1300 - catPower * 40) / (CAT_SPEED_MULTIPLIER * difficultySpeed)));', 'cat speed');
+
+    html = replacePattern(html,
+      /const maxRats = catPower;\s*const ratReservation = reserveEnemySpawnSlots\("rat", maxRats\);/,
+      'const activePlayers = getActivePlayerCount();\n    const baseWaveRats = [0,2,3,4,5][activePlayers];\n    const lateWaveBonus = Math.min(2, Math.floor(Math.max(0, catPower - 10) / 12));\n    const waveRatBudget = Math.min(getEnemyCaps(activePlayers).rat, baseWaveRats + lateWaveBonus);\n    const ratReservation = reserveEnemySpawnSlots("rat", waveRatBudget);', 'rat wave budget');
+
+    html = replaceExact(html,
+      '    const RAT_THINK_INTERVAL_MS = 350;\n    const RAT_REPATH_JITTER_MS = 200;',
+      '    // Fast movement is separated from expensive thinking/repathing.\n    const RAT_THINK_INTERVAL_MS = 500;\n    const RAT_REPATH_JITTER_MS = 260;', 'rat think budget');
+
+    html = replacePattern(html,
+      /    \/\/ enemy sim ticks[\s\S]*?\n    \/\/ phoenix revive/,
+`    // Speed-scaled self-scheduling loops keep enemies dangerous without raising entity count.
     const scheduleEnemyTick = (fn, baseMs, minMs, extraMultiplier = 1) => {
       const scheduleNext = () => {
         if (!hostInitialized) return;
@@ -170,40 +198,79 @@
     scheduleEnemyTick(hostMoveTermites, 400, 220, 1.12);
     scheduleEnemyTick(hostMoveFleas, 700, 360, 1.05);
 
-    // phoenix revive`);
+    // phoenix revive`, 'enemy movement loops');
 
-    exact('rabbit cap start', '  async function rabbitDenTick(){\n    // spawn rabbits from dens\n    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};\n    for (const den of getStructuresByType("🐇")){', '  async function rabbitDenTick(){\n    // Friendly helpers also get a global ceiling so large den networks cannot create runaway simulation load.\n    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};\n    let livingRabbitCount = rabbits.filter(r => (r.health ?? 0) > 0).length;\n    for (const den of getStructuresByType("🐇")){\n      if (livingRabbitCount >= MAX_FRIENDLY_RABBITS) break;');
-    exact('rabbit cap increment', '      await runtimeSetDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });\n      window.__lastRabbitSpawnAt[denKey] = Date.now();', '      await runtimeSetDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });\n      livingRabbitCount++;\n      window.__lastRabbitSpawnAt[denKey] = Date.now();');
+    html = replacePattern(html,
+      /  async function rabbitDenTick\(\)\{\s*\/\/ spawn rabbits from dens\s*if \(!window\.__lastRabbitSpawnAt\) window\.__lastRabbitSpawnAt = \{\};\s*for \(const den of getStructuresByType\("🐇"\)\)\{/,
+      '  async function rabbitDenTick(){\n    // Friendly helpers also get a global ceiling so large den networks cannot create runaway simulation load.\n    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};\n    let livingRabbitCount = rabbits.filter(r => (r.health ?? 0) > 0).length;\n    for (const den of getStructuresByType("🐇")){\n      if (livingRabbitCount >= MAX_FRIENDLY_RABBITS) break;', 'rabbit global cap');
+    html = replacePattern(html,
+      /(await runtimeSetDoc\(ccRef\(ID\.rabbit\(id\)\), \{ kind:"rabbit", id, x, y, health:5, createdAt:Date\.now\(\) \}, \{ merge:true \} \);\s*)(window\.__lastRabbitSpawnAt\[denKey\] = Date\.now\(\);)/,
+      '$1livingRabbitCount++;\n      $2', 'rabbit counter');
 
-    exact('menu subtitle', '<p class="war-room-subtitle">Build a shared fortress, collect cheese, and outmaneuver an increasingly dangerous cat.</p>', '<p class="war-room-subtitle">Build smart, move fast, and survive a smaller but increasingly deadly enemy force.</p>');
-    pattern('menu run preview', /      <div class="menu-feature-strip" aria-label="Game highlights">[\s\S]*?      <\/div>\n\n      <div class="menu-dashboard">/, `      <div class="menu-feature-strip" aria-label="Current run pressure">
+    html = replaceExact(html,
+      '            <p class="war-room-subtitle">Build a shared fortress, collect cheese, and outmaneuver an increasingly dangerous cat.</p>',
+      '            <p class="war-room-subtitle">Build smart, move fast, and survive a smaller but increasingly deadly enemy force.</p>', 'menu subtitle');
+
+    html = replacePattern(html,
+      /      <div class="menu-feature-strip" aria-label="Game highlights">[\s\S]*?      <\/div>\n\n      <div class="menu-dashboard">/,
+`      <div class="menu-feature-strip" aria-label="Current run pressure">
         <div><strong id="menuThreatCap">15</strong><span>Hostile cap</span></div>
         <div><strong id="menuEnemySpeed">1.00×</strong><span>Enemy speed</span></div>
         <div><strong id="menuCatAbilities">0</strong><span>Cat abilities</span></div>
         <div><strong id="menuDifficultyPressure">Medium</strong><span>Selected danger</span></div>
       </div>
 
-      <div class="menu-dashboard">`);
-    exact('menu pressure data', '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";', '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";\n    const previewCaps = getEnemyCaps();\n    const previewScaling = getEnemyScaling(Math.max(1, catPower || ratPower || 1));\n    const threatCapEl = document.getElementById("menuThreatCap");\n    const enemySpeedEl = document.getElementById("menuEnemySpeed");\n    const catAbilitiesEl = document.getElementById("menuCatAbilities");\n    const pressureEl = document.getElementById("menuDifficultyPressure");\n    if (threatCapEl) threatCapEl.textContent = String(previewCaps.total);\n    if (enemySpeedEl) enemySpeedEl.textContent = previewScaling.speedMultiplier.toFixed(2) + "×";\n    if (catAbilitiesEl) catAbilitiesEl.textContent = currentDifficulty === "insane" ? "2" : currentDifficulty === "hard" ? "1" : "0";\n    if (pressureEl) pressureEl.textContent = label;');
+      <div class="menu-dashboard">`, 'menu run preview');
 
-    const markers = ['rat:[0,7,8,9,10][n]','total:[0,15,18,20,22][n]','speedMultiplier:Math.min(1.75','STRUCTURE_PATH_CANDIDATE_LIMIT = 16','MAX_FRIENDLY_RABBITS = 12','scheduleEnemyTick(hostMoveRats, 760 / RAT_SPEED_MULTIPLIER, 190, 1.05)','id="menuThreatCap"'];
-    for (const marker of markers) if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
+    html = replacePattern(html,
+      /    const label = DIFFICULTY_SETTINGS\[currentDifficulty\]\?\.label \|\| "Medium";\s*const myVoteLabel = myDifficultyVote \? \(DIFFICULTY_SETTINGS\[myDifficultyVote\]\?\.label \|\| myDifficultyVote\) : "none";/,
+      '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";\n    const previewCaps = getEnemyCaps();\n    const previewScaling = getEnemyScaling(Math.max(1, catPower || ratPower || 1));\n    const threatCapEl = document.getElementById("menuThreatCap");\n    const enemySpeedEl = document.getElementById("menuEnemySpeed");\n    const catAbilitiesEl = document.getElementById("menuCatAbilities");\n    const pressureEl = document.getElementById("menuDifficultyPressure");\n    if (threatCapEl) threatCapEl.textContent = String(previewCaps.total);\n    if (enemySpeedEl) enemySpeedEl.textContent = previewScaling.speedMultiplier.toFixed(2) + "×";\n    if (catAbilitiesEl) catAbilitiesEl.textContent = currentDifficulty === "insane" ? "2" : currentDifficulty === "hard" ? "1" : "0";\n    if (pressureEl) pressureEl.textContent = label;', 'menu pressure data');
+
+    html = replaceExact(html,
+      '    tile.style.backgroundImage = `url("${getAssetUrl(TERRAIN_ASSETS.grass)}")`;',
+      '    tile.style.backgroundColor = "#68b947";\n    const initialTexture = getTileTexture(x, y);\n    tile.dataset.texture = initialTexture;\n    tile.style.backgroundImage = `url("${getAssetUrl(initialTexture)}")`;', 'initial terrain texture');
+    html = replaceExact(html,
+      '          cell.style.backgroundColor = "#68b947";\n          cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;',
+      '          const tileTexture = getTileTexture(x, y);\n          if (cell.dataset.texture !== tileTexture){\n            cell.dataset.texture = tileTexture;\n            cell.style.backgroundImage = `url("${getAssetUrl(tileTexture)}")`;\n          }', 'terrain texture cache');
+
+    const required = [
+      'rat:[0,7,8,9,10][n]',
+      'total:[0,15,18,20,22][n]',
+      'speedMultiplier:Math.min(1.75',
+      'STRUCTURE_PATH_CANDIDATE_LIMIT = 16',
+      'MAX_FRIENDLY_RABBITS = 12',
+      'scheduleEnemyTick(hostMoveRats, 760 / RAT_SPEED_MULTIPLIER, 190, 1.05)',
+      'id="menuThreatCap"'
+    ];
+    for (const marker of required){
+      if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
+    }
+
+    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-08-13-v2";<\/script></body>');
     return html;
   }
 
+  let core = '';
   try {
     status.textContent = 'Loading game core…';
     const response = await fetch(CORE_URL, {cache:'no-cache'});
     if (!response.ok) throw new Error('Core request failed: HTTP ' + response.status);
-    html = await response.text();
+    core = await response.text();
     status.textContent = 'Applying performance pass…';
-    const optimized = patch();
+    const optimized = applyPerformancePass(core);
     document.open();
     document.write(optimized);
     document.close();
   } catch (error) {
     console.error('[CatMouse performance loader]', error);
-    status.textContent = 'Unable to start optimized game: ' + (error?.message || String(error));
+    if (core) {
+      console.warn('[CatMouse performance loader] Falling back to preserved core.');
+      document.open();
+      document.write(core);
+      document.close();
+      return;
+    }
+    status.textContent = 'Unable to start Cat & Mouse: ' + (error?.message || String(error));
   }
 })();
 </script>
