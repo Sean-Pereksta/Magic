@@ -1,0 +1,144 @@
+name: Agent Cheesehold Directional Build Patch
+
+on:
+  push:
+    branches:
+      - agent/cheesehold-directional-build-survival
+
+permissions:
+  contents: write
+
+jobs:
+  patch-cheesehold:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cheesehold-directional-build-survival
+          fetch-depth: 0
+      - name: Apply Cheesehold gameplay patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('game/Cheesehold_3D_Progression_Upgrade.html')
+          text = path.read_text(encoding='utf-8')
+
+          def must_replace(old, new, count=1):
+              global text
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f'Missing replacement target: {old[:120]!r} (found {actual}, need {count})')
+              text = text.replace(old, new, count)
+
+          # Rebuild the lower-right control cluster into a directional build stick plus type switcher.
+          start = text.index('#buildDock{')
+          end = text.index('\n#wheel{', start)
+          new_css = '''#buildDock{position:absolute;right:max(16px,calc(env(safe-area-inset-right) + 8px));bottom:0;width:132px;height:166px;pointer-events:auto}
+          #buildTypeBtn{position:absolute;right:5px;top:0;width:122px;height:34px;border:1px solid rgba(255,255,255,.2);border-radius:12px;background:rgba(12,17,25,.92);color:#fff;font:inherit;font-size:9px;font-weight:1000;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.34);cursor:pointer;touch-action:none}#buildTypeBtn .typeIcon{font-size:16px;color:var(--cheese)}
+          #buildBtn{position:absolute;right:5px;bottom:0;width:122px;height:122px;border-radius:50%;border:2px solid rgba(255,255,255,.22);background:rgba(11,15,22,.42);box-shadow:inset 0 0 36px rgba(0,0,0,.34),0 12px 34px rgba(0,0,0,.3);touch-action:none;cursor:pointer}#buildBtn:before,#buildBtn:after{content:"";position:absolute;background:rgba(255,255,255,.09);pointer-events:none}#buildBtn:before{left:59px;top:10px;width:2px;height:98px}#buildBtn:after{left:10px;top:59px;width:98px;height:2px}
+          #buildKnob{position:absolute;left:34px;top:34px;width:54px;height:54px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:radial-gradient(circle at 34% 29%,#3a4657,#18202d 62%,#0b0f16);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,0,0,.42);will-change:transform;pointer-events:none}#buildBtn .ico{font-size:19px;line-height:1;display:block}#buildBtn .txt{font-size:6px;letter-spacing:.09em;text-transform:uppercase;display:block;margin-top:2px}#buildBtn .cost{font-size:6px;color:var(--cheese);display:block;margin-top:1px;white-space:nowrap}#buildBtn.ready #buildKnob{box-shadow:0 0 0 2px rgba(255,212,90,.09),0 0 26px rgba(255,212,90,.22),0 8px 20px rgba(0,0,0,.42)}#buildBtn.fail{animation:fail .2s linear}@keyframes fail{50%{transform:scale(.94);box-shadow:0 0 0 5px rgba(255,98,108,.28)}}'''
+          text = text[:start] + new_css + text[end:]
+
+          must_replace('#buildDock{width:108px;height:108px}#buildBtn{inset:9px;width:90px;height:90px}', '#buildDock{width:114px;height:150px}#buildTypeBtn{right:3px;width:108px;height:31px;font-size:8px}#buildBtn{right:3px;width:108px;height:108px}#buildBtn:before{left:52px;top:9px;height:86px}#buildBtn:after{top:52px;left:9px;width:86px}#buildKnob{left:31px;top:31px;width:46px;height:46px}')
+
+          controls_start = text.index('  <div id="controls">')
+          controls_end = text.index('\n  <div id="wheel">', controls_start)
+          controls_html = '''  <div id="controls"><div id="movePad"><div id="moveKnob"></div></div><div id="buildDock"><button id="buildTypeBtn" type="button"><span class="typeIcon" id="buildTypeIcon">▰</span><span>Switch Build</span></button><div id="buildBtn" role="button" aria-label="Directional build stick"><div id="buildKnob"><span class="ico" id="buildIcon">▰</span><span class="txt">BUILD</span><span class="cost" id="buildCost">3 cheese</span></div></div></div></div>'''
+          text = text[:controls_start] + controls_html + text[controls_end:]
+
+          must_replace('Move: WASD / arrows / left stick · Tap BUILD to build or upgrade the structure you face · Hold BUILD for the bottom-right build fan · 1–8 selects structures · Space/E builds.', 'Move: WASD / arrows / left stick · Drag the BUILD stick up/down/left/right and release to place or upgrade on that side · Tap the stick to build where you face · SWITCH BUILD cycles structures; hold it for the full build fan · 1–8 selects structures · Space/E builds.')
+
+          must_replace("buildBtn:$('buildBtn'),buildText:document.querySelector('#buildBtn .txt'),buildIcon:$('buildIcon'),buildCost:$('buildCost'),wheel:$('wheel')", "buildBtn:$('buildBtn'),buildKnob:$('buildKnob'),buildTypeBtn:$('buildTypeBtn'),buildTypeIcon:$('buildTypeIcon'),buildText:document.querySelector('#buildBtn .txt'),buildIcon:$('buildIcon'),buildCost:$('buildCost'),wheel:$('wheel')")
+
+          must_replace("let joy={active:false,id:null,dir:null},keys={},lastKeyOrder=[],moveCooldown=0,wheelOpen=false,wheelChoice=null,holdTimer=null,holdTriggered=false,buildPointerId=null,toastTimer=null;", "let joy={active:false,id:null,dir:null},buildJoy={active:false,id:null},buildAimDir=null,keys={},lastKeyOrder=[],moveCooldown=0,wheelOpen=false,wheelChoice=null,holdTimer=null,holdTriggered=false,buildPointerId=null,typePointerId=null,cameraCorner=0,cameraCornerHold=0,toastTimer=null;")
+
+          mutators = '''const ROUND_MUTATORS=[
+           {name:'Balanced Hunt',desc:'Standard pressure',enemySpeed:1,wallDamage:1,bountyBonus:0,eliteBonus:0,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Scramble',desc:'Faster hunters · richer bounties',enemySpeed:.88,wallDamage:1,bountyBonus:1,eliteBonus:0,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Siege Night',desc:'Buildings take heavier siege hits',enemySpeed:1,wallDamage:1.28,bountyBonus:1,eliteBonus:.02,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Cheese Bloom',desc:'Cheese appears much faster',enemySpeed:1,wallDamage:1,bountyBonus:0,eliteBonus:0,cheeseRate:.68,cheeseCap:4,catHp:1},
+           {name:'Elite Hunt',desc:'More empowered enemies · same population cap',enemySpeed:.96,wallDamage:1.05,bountyBonus:1,eliteBonus:.12,cheeseRate:1,cheeseCap:0,catHp:1},
+           {name:'Royal Cat',desc:'The cat enters with reinforced health',enemySpeed:1,wallDamage:1.08,bountyBonus:1,eliteBonus:.03,cheeseRate:.9,cheeseCap:1,catHp:1.28}
+          ];
+          '''
+          anchor = 'function freshMods(){'
+          if 'const ROUND_MUTATORS=[' not in text:
+              text = text.replace(anchor, mutators + anchor, 1)
+
+          text = text.replace('pendingRound:false};', 'pendingRound:false,mutator:ROUND_MUTATORS[0]};')
+
+          must_replace("function facingBuilding(){if(!player)return null;const d=DIRS[player.lastDir];return buildAt(player.gx+d.x,player.gy+d.y)}", "function facingBuilding(dirIndex=player?.lastDir){if(!player||dirIndex==null)return null;const d=DIRS[dirIndex];return buildAt(player.gx+d.x,player.gy+d.y)}")
+
+          build_start = text.index('function buildFacing(){')
+          build_end = text.index('\nfunction buildFail(', build_start)
+          build_code = '''function buildDirection(dirIndex=player?.lastDir){
+           if(!game.running||game.paused||!player||dirIndex==null)return false;const d=DIRS[dirIndex],x=player.gx+d.x,y=player.gy+d.y,def=BUILDINGS[activeBuild],existing=buildAt(x,y);
+           if(existing)return upgradeBuilding(existing);if(!inside(x,y)){buildFail('Outside the arena');return false}if(terrain.has(K(x,y))){buildFail('Terrain blocks that cell');return false}const cost=structureCost(activeBuild);if(game.cheese<cost){buildFail('Need '+cost+' cheese');return false}if((cat&&!cat.dead&&cat.gx===x&&cat.gy===y)||enemies.some(e=>!e.dead&&e.gx===x&&e.gy===y)){buildFail('An enemy occupies that cell');return false}
+           game.cheese-=cost;const mesh=buildingMesh(activeBuild,1);mesh.position.copy(worldPos(x,y));entityGroup.add(mesh);const maxHp=levelHp(activeBuild,1),b={id:idCounter++,type:activeBuild,level:1,gx:x,gy:y,mesh,hp:maxHp,maxHp,dead:false,next:game.time+.5,charges:activeBuild==='poison'?5:0,bar:healthBar(activeBuild==='superwall'?1.15:.92),hitFlashUntil:0};b.bar.position.y=activeBuild==='superwall'?1.55:(activeBuild==='wall'?1.18:1.32);mesh.add(b.bar);registerHitMaterials(mesh);buildings.push(b);pulse(x,y,def.color,.75);toast(def.name+' built '+DIRS[dirIndex].name.split(' ')[0]);updateUI();return true;
+          }
+          function buildFacing(){return buildDirection(player?.lastDir)}'''
+          text = text[:build_start] + build_code + text[build_end:]
+
+          must_replace('const hp=260+game.round*120,dmg=14+game.round*1.8', 'const hp=(260+game.round*120)*(game.mutator?.catHp||1),dmg=14+game.round*1.8')
+          must_replace("Math.min(.34,.07+game.round*.018)", "Math.min(.46,.07+game.round*.018+(game.mutator?.eliteBonus||0))")
+          must_replace("bounty:d.bounty+(elite?2:0),xp:", "bounty:d.bounty+(elite?2:0)+(game.mutator?.bountyBonus||0),xp:")
+          must_replace("baseMove:Math.max(.14,d.move*(1-(game.round-1)*.012)*(elite?.86:1))", "baseMove:Math.max(.14,d.move*(1-(game.round-1)*.012)*(elite?.86:1)*(game.mutator?.enemySpeed||1))")
+          must_replace("damageBuilding(b,e.damage*(e.wall||1));", "damageBuilding(b,e.damage*(e.wall||1)*(game.mutator?.wallDamage||1));")
+
+          begin_start = text.index('function beginRound(first=false){')
+          begin_end = text.index('\nfunction buildAt(', begin_start)
+          begin_code = '''function beginRound(first=false){for(const b of buildings)disposeObject(b.mesh);for(const c of cheeses)disposeObject(c.mesh);for(const e of enemies)disposeObject(e.mesh);for(const b of bullets)disposeObject(b.mesh);if(cat)disposeObject(cat.mesh);if(player)disposeObject(player.mesh);buildings=[];cheeses=[];enemies=[];bullets=[];cat=null;player=null;game.mutator=ROUND_MUTATORS[(game.round-1)%ROUND_MUTATORS.length];game.cheese+=first?0:game.mods.roundCheese;buildArena(game.round);ui.themeSub.textContent='Round '+game.round+' · '+game.mutator.name+' · '+game.mutator.desc;spawnPlayer();spawnCat();for(let i=0;i<7;i++)spawnCheese();game.nextMinion=game.time+3.2;game.nextCheese=game.time+2.5;game.pendingRound=false;showMsg(first?'SURVIVE':'ROUND '+game.round,(first?'Directional build stick online · ':'')+game.mutator.name+' · enemy cap '+enemyCap());updateSelected();}'''
+          text = text[:begin_start] + begin_code + text[begin_end:]
+
+          cheese_start = text.index('function cheeseUpdate(dt){')
+          cheese_end = text.index('\nfunction minionUpdate(){', cheese_start)
+          cheese_code = '''function cheeseUpdate(dt){for(const c of cheeses){c.mesh.rotation.y+=dt*1.7;c.mesh.position.y=.24+Math.sin(game.time*3+c.bob)*.05}const mut=game.mutator||ROUND_MUTATORS[0],cap=11+(mut.cheeseCap||0);if(game.time>=game.nextCheese&&cheeses.length<cap){spawnCheese();game.nextCheese=game.time+Math.max(1.15,(4.8-game.round*.08)*(mut.cheeseRate||1))}}'''
+          text = text[:cheese_start] + cheese_code + text[cheese_end:]
+
+          marker_start = text.index('function markerUpdate(){')
+          marker_end = text.index('\nfunction cameraUpdate(dt){', marker_start)
+          marker_code = '''function markerUpdate(){if(!player)return;const dir=buildAimDir??player.lastDir,d=DIRS[dir],x=player.gx+d.x,y=player.gy+d.y,p=worldPos(x,y,.035),b=buildAt(x,y);marker.position.copy(p);const ok=inside(x,y)&&!terrain.has(K(x,y))&&!b;marker.material.color.setHex(b?(b.level<game.mods.buildingLevelCap?0x72e4ff:0xaeb7c6):(ok?0xffdc65:0xff626c));marker.material.opacity=.72+.18*Math.sin(game.time*6);}'''
+          text = text[:marker_start] + marker_code + text[marker_end:]
+
+          cam_start = text.index('function cameraUpdate(dt){')
+          cam_end = text.index('\nfunction updateUI(){', cam_start)
+          cam_code = '''function cameraObstructionScore(corner){if(!player)return 0;const sx=(corner===0||corner===3)?1:-1,sy=(corner===0||corner===1)?1:-1,cells=[[sx,0,3],[0,sy,3],[sx,sy,2],[sx*2,0,1],[0,sy*2,1]];let score=0;for(const [dx,dy,w] of cells){const x=player.gx+dx,y=player.gy+dy;if(buildAt(x,y))score+=w;else if(terrain.has(K(x,y)))score+=w*.45}return score;}
+          function cameraUpdate(dt){if(!player)return;const p=player.mesh.position,target=new THREE.Vector3(p.x,0,p.z),portrait=innerHeight>innerWidth,base=portrait?new THREE.Vector3(9.2,12.4,12.5):new THREE.Vector3(10.2,11.3,12.8),corners=[base,new THREE.Vector3(-base.x,base.y,base.z),new THREE.Vector3(-base.x,base.y,-base.z),new THREE.Vector3(base.x,base.y,-base.z)],baseScore=cameraObstructionScore(0),currentScore=cameraObstructionScore(cameraCorner);if(baseScore>=3&&(cameraCorner===0||currentScore>=3)){let best=0,bestScore=baseScore;for(let i=1;i<4;i++){const s=cameraObstructionScore(i);if(s<bestScore){best=i;bestScore=s}}if(best!==cameraCorner){cameraCorner=best;cameraCornerHold=game.time+.75}}else if(cameraCorner!==0&&game.time>=cameraCornerHold&&baseScore<2){cameraCorner=0}const desired=target.clone().add(corners[cameraCorner]);camera.position.lerp(desired,1-Math.pow(.001,dt));const look=target.clone().add(new THREE.Vector3(0,.35,-1.0));camera.lookAt(look);dirLight.target.position.lerp(target,.08);pointLight.position.lerp(target.clone().add(new THREE.Vector3(0,4.6,0)),.05);}'''
+          text = text[:cam_start] + cam_code + text[cam_end:]
+
+          must_replace('const fb=facingBuilding(),baseCost=structureCost(activeBuild);', 'const fb=facingBuilding(buildAimDir??player.lastDir),baseCost=structureCost(activeBuild);')
+
+          selected_start = text.index('function updateSelected(){')
+          selected_end = text.index('\nfunction toast(', selected_start)
+          selected_code = '''function updateSelected(){const d=BUILDINGS[activeBuild],cost=structureCost(activeBuild);ui.selName.textContent=d.name;ui.selCost.textContent=cost+' cheese';ui.selDesc.textContent=d.desc+' Use the right BUILD stick to choose any adjacent side; drag toward an existing building to upgrade it.';ui.buildTypeIcon.textContent=d.icon;if(!facingBuilding(buildAimDir??player?.lastDir)){ui.buildText.textContent='BUILD';ui.buildIcon.textContent=d.icon;ui.buildCost.textContent=cost+' cheese'}}'''
+          text = text[:selected_start] + selected_code + text[selected_end:]
+
+          must_replace('const r=ui.buildBtn.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;', 'const r=ui.buildTypeBtn.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;')
+
+          setup_start = text.index('function setupControls(){')
+          setup_end = text.index('\nfunction joyMove(e){', setup_start)
+          setup_code = '''function setupControls(){buildWheel();
+           ui.movePad.addEventListener('pointerdown',e=>{e.preventDefault();joy.active=true;joy.id=e.pointerId;ui.movePad.setPointerCapture?.(e.pointerId);joyMove(e)});ui.movePad.addEventListener('pointermove',e=>{if(joy.active&&e.pointerId===joy.id)joyMove(e)});const endJoy=e=>{if(e.pointerId!==joy.id)return;joy.active=false;joy.id=null;joy.dir=null;ui.moveKnob.style.transform='translate(0,0)'};ui.movePad.addEventListener('pointerup',endJoy);ui.movePad.addEventListener('pointercancel',endJoy);
+           ui.buildBtn.addEventListener('pointerdown',e=>{if(!game.running||game.paused)return;e.preventDefault();buildJoy.active=true;buildJoy.id=e.pointerId;buildAimDir=null;ui.buildBtn.setPointerCapture?.(e.pointerId);buildAimMove(e)});ui.buildBtn.addEventListener('pointermove',e=>{if(buildJoy.active&&e.pointerId===buildJoy.id)buildAimMove(e)});const endBuild=(e,cancel=false)=>{if(e.pointerId!==buildJoy.id)return;const dir=buildAimDir;buildJoy.active=false;buildJoy.id=null;buildAimDir=null;ui.buildKnob.style.transform='translate(0,0)';ui.facing.textContent=DIRS[player?.lastDir??0].name;if(!cancel){navigator.vibrate?.(12);if(dir==null)buildFacing();else buildDirection(dir)}updateUI()};ui.buildBtn.addEventListener('pointerup',e=>endBuild(e,false));ui.buildBtn.addEventListener('pointercancel',e=>endBuild(e,true));ui.buildBtn.addEventListener('contextmenu',e=>e.preventDefault());
+           ui.buildTypeBtn.addEventListener('pointerdown',e=>{if(!game.running||game.paused)return;e.preventDefault();holdTriggered=false;typePointerId=e.pointerId;clearTimeout(holdTimer);holdTimer=setTimeout(()=>{holdTriggered=true;openWheel()},420)});addEventListener('pointermove',e=>{if(typePointerId===e.pointerId&&wheelOpen){e.preventDefault();wheelAt(e.clientX,e.clientY)}},{passive:false});addEventListener('pointerup',e=>{if(typePointerId!==e.pointerId)return;clearTimeout(holdTimer);typePointerId=null;if(wheelOpen){closeWheel(true);return}if(!holdTriggered){const i=(BUILD_ORDER.indexOf(activeBuild)+1)%BUILD_ORDER.length;activeBuild=BUILD_ORDER[i];updateSelected();toast(BUILDINGS[activeBuild].name+' selected')}});addEventListener('pointercancel',e=>{if(typePointerId!==e.pointerId)return;clearTimeout(holdTimer);typePointerId=null;if(wheelOpen)closeWheel(false)});ui.buildTypeBtn.addEventListener('contextmenu',e=>e.preventDefault());
+           addEventListener('keydown',e=>{const key=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowright','arrowdown','arrowleft'].includes(key)){if(!keys[key])lastKeyOrder.push(key);keys[key]=true;e.preventDefault()}if((e.code==='Space'||key==='e')&&!e.repeat&&game.running){e.preventDefault();buildFacing()}if(/^[1-8]$/.test(key)){activeBuild=BUILD_ORDER[Number(key)-1];updateSelected();toast(BUILDINGS[activeBuild].name+' selected')}});addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+          }
+          function buildAimMove(e){const r=ui.buildBtn.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,m=Math.hypot(dx,dy),max=r.width*.29,s=m>max?max/m:1,x=dx*s,y=dy*s;ui.buildKnob.style.transform='translate('+x+'px,'+y+'px)';if(m<14){buildAimDir=null;ui.facing.textContent=DIRS[player?.lastDir??0].name;return}buildAimDir=Math.abs(dx)>Math.abs(dy)?(dx>0?1:3):(dy>0?2:0);ui.facing.textContent=DIRS[buildAimDir].name+' · BUILD AIM';}'''
+          text = text[:setup_start] + setup_code + text[setup_end:]
+
+          # Add long-run bests to the end-of-run message without introducing new UI weight.
+          player_death_old = "game.running=false;showMsg('RUN ENDED','Round '+game.round+' · '+game.kills+' kills');setTimeout(()=>{ui.menu.classList.remove('hidden');ui.start.textContent='Run Again'},1200);"
+          player_death_new = "game.running=false;let best={round:0,kills:0};try{best=JSON.parse(localStorage.getItem('cheeseholdBest')||'{\\\"round\\\":0,\\\"kills\\\":0}')}catch{}best.round=Math.max(best.round||0,game.round);best.kills=Math.max(best.kills||0,game.kills);try{localStorage.setItem('cheeseholdBest',JSON.stringify(best))}catch{}showMsg('RUN ENDED','Round '+game.round+' · '+game.kills+' kills · Best R'+best.round+' / '+best.kills+'K');setTimeout(()=>{ui.menu.classList.remove('hidden');ui.start.textContent='Run Again · Best R'+best.round},1200);"
+          must_replace(player_death_old, player_death_new)
+
+          path.write_text(text, encoding='utf-8')
+          Path('.github/workflows/agent-cheesehold-directional-build.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/Cheesehold_3D_Progression_Upgrade.html .github/workflows/agent-cheesehold-directional-build.yml
+          git commit -m "Upgrade Cheesehold directional building and survival variety"
+          git push origin HEAD:agent/cheesehold-directional-build-survival
