@@ -317,6 +317,8 @@
     .game-meta{display:flex;gap:7px;flex-wrap:wrap}
     .tag{font-size:.68rem;font-weight:900;padding:4px 8px;border-radius:999px;background:#f2f4f7;color:#475467}
     .game-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:auto;padding-top:4px}
+    .game-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+    .download-game-btn{text-decoration:none}
     .play-count{font-size:.75rem;color:var(--muted);font-weight:800}
     .horizontal-strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,280px);gap:13px;overflow:auto;padding:2px 2px 12px;scroll-snap-type:x proximity}
     .horizontal-strip>*{scroll-snap-align:start}
@@ -754,6 +756,7 @@
       {key:"balatlesolo",title:"Balatle Solo",emoji:"🃏👤",desc:"Single-player Balatle with difficulty levels.",route:"/game/balatlesolo.html",category:"Cards",modes:["single"]},
       {key:"dwarfworld",title:"DwarfWorld",emoji:"⛏️🏔️",desc:"Explore, build, and survive underground.",route:"/game/DwarfWorld.html",category:"Builder",modes:["single"]},
       {key:"cheesehold",title:"Cheesehold 3D",emoji:"🐭🧀",desc:"Collect cheese, build defenses, upgrade your mouse, and survive escalating cats and minions.",route:"/game/Cheesehold_3D_Progression_Upgrade.html",category:"Survival",modes:["single"],featured:true},
+      {key:"hearthmouse",title:"Hearthmouse",emoji:"🐭🏠",desc:"Forage through a full-size 3D house, feed your mouse colony, and survive a towering cat that hunts by sight and sound.",route:"/game/hearthmouse/",downloadRoute:"/game/hearthmouse/Hearthmouse-Browser.zip",category:"Survival",modes:["single"],featured:true},
       {key:"stoneyrelic",title:"Stoney's Relic",emoji:"🗿",desc:"A two-to-eight-player relic adventure with a Dungeon Master.",route:"/game/stoney.html",dmRoute:"/game/dungeonmaster.html",category:"RPG",modes:["multi"],maxPlayers:8,minPlayers:2,autoRedirect:true},
       {key:"starcraft2",title:"HTML Craft",emoji:"🚀🛠️",desc:"Command units in a browser RTS survival challenge.",route:"/game/starcraft2.html",category:"Strategy",modes:["single"]},
       {key:"knightwarfare",title:"World Quest",emoji:"🌍🚩",desc:"Explore countries, flags, regions, seas, GDP, and population in five global challenges.",route:"/game/Knight.html",category:"Party",modes:["single"]},
@@ -1178,12 +1181,13 @@
     function gameCard(game,compact=false){
       const card=document.createElement("article");card.className="game-card";card.style.setProperty("--game",gameColor(game.key));
       const modeTags=game.modes.map(m=>`<span class="tag">${m==="single"?"Solo":"Multiplayer"}</span>`).join("");
+      const downloadButton=game.downloadRoute?`<a class="btn secondary small download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>Download</a>`:"";
       card.innerHTML=`
         <div class="game-art">${gameVisual(game,"art")}<button class="favorite-btn ${favorites.has(game.key)?"active":""}" title="Favorite">${favorites.has(game.key)?"★":"☆"}</button></div>
         <div class="game-content"><div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div><div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
-        <div class="game-bottom"><span class="play-count">🎮 ${gamePlayCounts[game.key]||0} plays</span><button class="btn small">${game.modes.includes("single")?"Play":"Create Lobby"}</button></div></div>`;
+        <div class="game-bottom"><span class="play-count">🎮 ${gamePlayCounts[game.key]||0} plays</span><span class="game-actions">${downloadButton}<button class="btn small play-game-btn">${game.modes.includes("single")?"Play":"Create Lobby"}</button></span></div></div>`;
       card.querySelector(".favorite-btn").addEventListener("click",e=>{e.stopPropagation();toggleFavorite(game.key);});
-      card.querySelector(".btn").addEventListener("click",()=>game.modes.includes("single")?playSingle(game,true):openCreateLobby(game.key));
+      card.querySelector(".play-game-btn").addEventListener("click",()=>game.modes.includes("single")?playSingle(game,true):openCreateLobby(game.key));
       return card;
     }
     function renderAllGames(){renderSingleLibrary();}
@@ -1291,6 +1295,7 @@
             <p class="hero-desc">${escapeHtml(game.desc)}</p>
             <div class="hero-actions">
               <button class="btn featured-play" type="button" data-featured-key="${escapeHtml(game.key)}">▶ Play</button>
+              ${game.downloadRoute?`<a class="btn ghost-light download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>↓ Download ZIP</a>`:""}
               <button class="btn ghost-light featured-favorite" type="button" data-featured-key="${escapeHtml(game.key)}">${favorites.has(game.key)?"★ Favorited":"☆ Favorite"}</button>
             </div>
           </div>
