@@ -20,6 +20,7 @@ Mobile
 ------
 Left stick         Move; pull gently to creep, farther to walk, fully to run
 Right stick        Control facing direction and look
+Rest Until Dawn    Appears at the bottom center while safely inside the nest
 
 Optional music
 --------------
