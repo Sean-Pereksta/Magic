@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neon Breach — Arena FPS</title>
+<meta name="theme-color" content="#070b18" />
+  <link rel="stylesheet" href="./neon-arena.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <span class="pill hiddenTopHud" id="score">YOU 0</span>
+    <span class="pill" id="modeLabel">DM</span>
+    <span class="pill" id="ammo">READY</span>
+    <span class="pill" id="timer">05:00</span>
+    <span class="pill" id="botsLeft">BOTS 0</span>
+  </div>
+  <div id="healthWrap">HEALTH <span id="healthText">100</span><div id="healthBar"><div id="healthFill"></div></div><div id="combatInfo"><span>ARMOR <b id="armorText">50</b></span><span>UPGRADE PTS <b id="upgradePoints">0</b></span></div><div id="armorBar"><div id="armorFill"></div></div><div id="weaponName">VOLTLINE ASSAULT</div><div id="reloadHint">R: RELOAD · TAB: UPGRADES</div></div>
+  <canvas id="minimap" width="178" height="178"></canvas>
+  <div id="crosshair"></div>
+  <div id="msg"></div><div id="pickupPrompt"></div><div id="feed"></div>
+</div>
+<div id="survivorShop"><div id="shopPanel"><h2>BETWEEN-WAVE SALVAGE</h2><div id="shopSub">Spend scrap, repair the fort, then launch the next breach.</div><div id="shopScrap">SCRAP 0</div><div id="shopGrid"></div><button id="shopContinue" type="button">START NEXT WAVE</button></div></div>
+<div id="upgradeOverlay"><div id="upgradePanel"><div id="upgradeHeader"><h2 id="upgradeTitle">WEAPON UPGRADES</h2><span class="pill" id="upgradePointLabel">0 POINTS</span></div><div id="upgradeGrid"></div><div id="upgradeHint">Tab / Y closes the tree. Left stick/D-pad selects upgrades, A buys, B backs out. Combat continues, but firing is blocked while this screen is open.</div></div></div>
+<div id="death">YOU WERE DROPPED<br><small style="font-size:18px">Respawning...</small></div>
+<div id="controllerOverlay"><div id="controllerPanel"><h2>LOCAL PLAYER INPUT</h2><div class="sub">Every local player owns a separate controller state, camera, health pool, inventory, score, and build supply. Two connected controllers are assigned independently; keyboard + controller also works.</div><div id="controllerStatus">No controllers detected</div><div class="controllerTabs"><button id="controllerTabP1" type="button" class="active">PLAYER 1</button><button id="controllerTabP2" type="button">PLAYER 2</button></div><div class="settingsGrid"><div class="settingCard"><label>Player 1 Input</label><select id="p1Input"><option value="keyboard" selected>Keyboard + Mouse</option><option value="controller">Controller</option></select></div><div class="settingCard"><label>Player 2 Input</label><select id="p2Input"><option value="off" selected>Off</option><option value="controller">Controller</option><option value="keyboard">Keyboard</option></select></div><div class="settingCard"><label>Player 1 Controller</label><select id="p1Pad"><option value="auto">Auto — first available</option></select></div><div class="settingCard"><label>Player 2 Controller</label><select id="p2Pad"><option value="auto">Auto — next available</option></select></div><div class="settingCard"><label>Shoot</label><select id="padShoot"><option value="5">RB / R1</option><option value="7">RT / R2</option><option value="0">A / Cross</option><option value="2">X / Square</option></select></div><div class="settingCard"><label>Place Build / Telegraph</label><select id="padBuild"><option value="1">B / Circle</option><option value="2">X / Square</option><option value="4">LB / L1</option><option value="6" selected>LT / L2</option></select></div><div class="settingCard"><label>Strict Build Toggle</label><select id="padToggle"><option value="4" selected>LB / L1</option><option value="6">LT / L2</option><option value="3">Y / Triangle</option><option value="8">View / Select</option><option value="9">Menu / Start</option></select></div><div class="settingCard"><label>Reload</label><select id="padReload"><option value="2">X / Square</option><option value="1">B / Circle</option><option value="3">Y / Triangle</option></select></div><div class="settingCard"><label>Pick Up / Swap Weapon</label><select id="padPickup"><option value="1" selected>B / Circle</option><option value="2">X / Square</option><option value="3">Y / Triangle</option><option value="4">LB / L1</option><option value="5">RB / R1</option><option value="6">LT / L2</option><option value="7">RT / R2</option></select></div><div class="settingCard"><label>Jump / Confirm</label><select id="padJump"><option value="0">A / Cross</option><option value="1">B / Circle</option><option value="2">X / Square</option></select></div><div class="settingCard"><label>Upgrade Menu / Tab</label><select id="padTab"><option value="3" selected>Y / Triangle</option><option value="9">Menu / Start</option><option value="8">View / Select</option><option value="2">X / Square</option></select></div><div class="settingCard"><label>Look Sensitivity</label><input id="padLookSensitivity" type="range" min="0.8" max="4.0" step="0.1" value="3.0"></div><div class="settingCard"><label>Stick Deadzone</label><input id="padDeadzone" type="range" min="0.05" max="0.35" step="0.01" value="0.14"></div></div><div class="keys"><span>P1 Keyboard: WASD, mouse, click, Space, R, F</span><span>P2 Keyboard: arrows, Num4/6, Num1 shoot, Num2 build, Num0 jump, Enter reload, Num5 swap</span></div><div class="overlayButtons"><button id="saveController">SAVE INPUTS</button><button id="closeController">CLOSE</button></div></div></div>
+<div id="scoreboardOverlay"><div id="scoreboardPanel"><h2 id="scoreboardTitle">ROUND OVER</h2><div id="scoreboardReason"></div><table id="scoreboardTable"></table><div class="overlayButtons"><button id="nextRound">NEXT ROUND</button><button id="returnMenu">RETURN TO MENU</button></div></div></div>
+
+<div id="menu"><div id="panel">
+  <div class="menuHead"><div class="menuTitleBlock"><div class="menuKicker">Arena combat evolved</div><h1>NEON BREACH</h1><div class="sub">Fast first-person combat, two-gun loadouts, destructible fortifications, adaptive bots, and true two-player split screen.</div></div><div class="menuBadges"><span class="menuBadge">SOLO + LOCAL 2P</span><span class="menuBadge">14 WEAPONS</span><span class="menuBadge">BUILDABLE MAPS</span></div></div>
+  <div class="grid">
+    <div class="fieldCard"><label>Game Mode</label><select id="mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option><option value="frag">Frag — Sniper 1v1</option><option value="siege">Siege — Castle Defense</option><option value="survivor">Survivor — Breach Waves</option></select></div>
+    <div class="fieldCard"><label>Arena</label><select id="map"><option value="grid">Circuit Citadel</option><option value="pastel">Prism Garden</option><option value="reactor">Obsidian Reactor</option></select></div>
+    <div class="fieldCard"><label>Difficulty</label><select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="nightmare">Nightmare</option></select></div>
+    <div class="fieldCard"><label>Bot Count</label><select id="botCount"><option>0</option><option>2</option><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+    <div class="fieldCard"><label>Second Player</label><select id="secondPlayer"><option value="off" selected>Off</option><option value="controller">Controller</option><option value="keyboard">Keyboard</option></select></div>
+    <div class="fieldCard"><label>Match Length</label><select id="matchLen"><option value="180">3 Minutes</option><option value="300" selected>5 Minutes</option><option value="600">10 Minutes</option></select></div>
+    <div class="fieldCard"><label>Graphics</label><select id="visualQuality"><option value="auto" selected>Auto — Smoothest</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+  </div>
+  <div id="mapDescription"><div><b>Circuit Citadel</b>Readable lanes, a fortified inner circuit, and four raised corner positions.</div><span>Balanced · Ground combat</span></div>
+  <div class="menuActions"><button id="start">ENTER THE ARENA</button><button id="controllerSettings" class="secondaryAction" type="button">PLAYER INPUTS</button><button id="fullscreenBtn" class="secondaryAction" type="button">FULL SCREEN</button></div>
+  <details class="controlDetails"><summary>Controls and mode rules</summary><div class="keys"><span>WASD + mouse: move and look</span><span>Left click / RB: fire</span><span>F / B: pick up or swap guns</span><span>Q / LB: wall or platform</span><span>Hold right click / LT: preview and build</span><span>Space / A: jump</span><span>R / X: reload or load ultimate</span><span>Tab / Y: upgrades</span><span>Survivor: build for 30 seconds, then repel escalating squads and bosses.</span><span>Siege: fortify for 60 seconds, then defend one life against two-life raiders.</span></div></details>
+</div></div>
+  <script src="./neon-arena.js"></script>
+</body>
+</html>
