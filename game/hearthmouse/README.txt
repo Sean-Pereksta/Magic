@@ -5,15 +5,21 @@ Open index.html in a modern desktop browser to play.
 
 Controls
 --------
-WASD / Arrow Keys  Move
-Mouse              Look
+WASD / Arrow Keys  Move (W always follows facing direction)
+Mouse              Face and look
 Hold left mouse    Drag-to-look fallback
 Q / R              Turn left / right fallback
 Shift              Sprint
 Ctrl or C          Creep quietly
 Space              Hop
-E                  Take food / settle in for dawn
+Run over food      Pick it up automatically
+E                  Settle in for dawn while inside the nest
 Escape             Release the mouse cursor
+
+Mobile
+------
+Left stick         Move; pull gently to creep, farther to walk, fully to run
+Right stick        Control facing direction and look
 
 Optional music
 --------------
