@@ -1,4 +1,5 @@
 import "./hearthmouse-graphics-quality.mjs";
+import "./hearthmouse-expansion-startup-guard.mjs";
 import { catCountForPopulation } from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-expansion-core.mjs";
 
