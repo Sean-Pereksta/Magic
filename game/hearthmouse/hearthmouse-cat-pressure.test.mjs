@@ -4,8 +4,10 @@ import test from "node:test";
 
 import {
   CAT_DOGPILE_RELEASE_DISTANCE,
+  CAT_MIN_NEST_SPAWN_SEPARATION,
   CAT_MIN_PATROL_SEPARATION,
   CAT_MIN_SPAWN_SEPARATION,
+  chooseNestSafeSpawnIndex,
   chooseSeparatedPatrolIndex,
   pointSeparation,
 } from "./hearthmouse-expansion.mjs";
@@ -87,12 +89,31 @@ test("patrol selection deliberately chooses the least crowded side of the house"
   assert.ok(CAT_DOGPILE_RELEASE_DISTANCE > CAT_MIN_PATROL_SEPARATION);
 });
 
+test("secondary cats choose a spawn safely away from the nest and other cats", () => {
+  const nest = { x: -6.78, z: 3.74 };
+  const mabel = { x: 8.25, z: 4.55 };
+  const points = [
+    { x: -8.5, z: -4.25 },
+    { x: 8.6, z: -4.65 },
+    { x: 8.9, z: 4.8 },
+    { x: 5.65, z: -2.9 },
+  ];
+
+  const choiceIndex = chooseNestSafeSpawnIndex(points, [mabel], nest, 0);
+  assert.equal(choiceIndex, 1);
+  assert.ok(pointSeparation(points[0], nest) < CAT_MIN_NEST_SPAWN_SEPARATION);
+  assert.ok(pointSeparation(points[choiceIndex], nest) >= CAT_MIN_NEST_SPAWN_SEPARATION);
+  assert.ok(pointSeparation(points[choiceIndex], mabel) >= CAT_MIN_SPAWN_SEPARATION);
+});
+
 test("runtime cat roster validates reachability, spawn separation, and chase de-confliction", () => {
   const source = readFileSync(new URL("./hearthmouse-expansion.mjs", import.meta.url), "utf8");
   const startupGuard = readFileSync(new URL("./hearthmouse-expansion-startup-guard.mjs", import.meta.url), "utf8");
   assert.match(source, /function catCanReachMainPatrol/);
   assert.match(source, /function repairCatSpawnLayout/);
   assert.match(source, /CAT_MIN_SPAWN_SEPARATION/);
+  assert.match(source, /CAT_MIN_NEST_SPAWN_SEPARATION/);
+  assert.match(source, /chooseNestSafeSpawnIndex/);
   assert.match(source, /function targetAlreadyCovered/);
   assert.match(source, /proto\.updateCatPatrol = function keepPatrolPressureSpread/);
   assert.match(source, /spreadPatrolDestination\(this, cat\)/);
