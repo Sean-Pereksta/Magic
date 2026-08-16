@@ -11,8 +11,10 @@ import {
   nextColonyPolicy,
   roomUnlocked,
   scoreFoodCandidate,
+  scoreShelterEscape,
   selectNightPlan,
   shouldForagersStop,
+  shouldPauseNewAssignments,
   shouldRecoverMouse,
 } from "./hearthmouse-expansion.mjs";
 
@@ -23,13 +25,17 @@ test("the compact policy control cycles through every risk mode", () => {
   assert.equal(nextColonyPolicy("unknown"), "desperate");
 });
 
-test("balanced is the stable default policy and only desperate targets surplus", () => {
+test("balanced is the stable default while only cautious stops at the base need", () => {
   assert.equal(POLICY_PROFILES.balanced.id, "balanced");
   assert.equal(forageTarget("cautious", 10), 10);
-  assert.equal(forageTarget("balanced", 10), 10);
-  assert.equal(forageTarget("desperate", 10), 14);
-  assert.equal(shouldForagersStop({ policy: "balanced", delivered: 10, nightlyRequirement: 10 }), true);
+  assert.equal(forageTarget("balanced", 10), 13);
+  assert.equal(forageTarget("desperate", 10), 18);
+  assert.equal(shouldForagersStop({ policy: "balanced", delivered: 10, nightlyRequirement: 10 }), false);
   assert.equal(shouldForagersStop({ policy: "desperate", delivered: 10, nightlyRequirement: 10 }), false);
+  assert.equal(shouldPauseNewAssignments({ policy: "cautious", delivered: 8, committed: 2, nightlyRequirement: 10 }), true);
+  assert.equal(shouldPauseNewAssignments({ policy: "balanced", delivered: 8, committed: 5, nightlyRequirement: 10 }), false);
+  assert.equal(shouldPauseNewAssignments({ policy: "desperate", delivered: 8, committed: 10, nightlyRequirement: 10 }), false);
+  assert.equal(shouldPauseNewAssignments({ policy: "balanced", delivered: 13, committed: 0, nightlyRequirement: 10 }), true);
 });
 
 test("foragers deploy promptly in bounded command-dependent waves", () => {
@@ -49,6 +55,9 @@ test("forager concurrency follows colony orders without allowing mass inactivity
   assert.ok(cautious >= 10);
   assert.ok(cautious < balanced);
   assert.ok(balanced < desperate);
+  assert.equal(desperate, 20);
+  assert.ok(activeForagerLimit("balanced", 20, 1) >= 17);
+  assert.equal(activeForagerLimit("desperate", 20, 1), 20);
   assert.equal(activeForagerLimit("balanced", 20, 0), 0);
 });
 
@@ -75,6 +84,22 @@ test("cautious food scoring strongly prefers a safe local crumb", () => {
   const distant = { nestDistance: 13, mouseDistance: 8, depth: 5, value: 5, exposure: 0.15 };
   assert.ok(scoreFoodCandidate(local, "cautious", 0.8) < scoreFoodCandidate(distant, "cautious", 0.8));
   assert.ok(scoreFoodCandidate(distant, "desperate", 0.2) < scoreFoodCandidate(distant, "cautious", 0.8));
+});
+
+test("balanced and desperate distribute mice across distant scavenging sectors", () => {
+  const ordinary = { nestDistance: 11, mouseDistance: 9, depth: 4, value: 3, exposure: 0.08, sectorMatch: 0 };
+  const assignedSector = { ...ordinary, sectorMatch: 1 };
+  assert.ok(scoreFoodCandidate(assignedSector, "balanced", 0.5) < scoreFoodCandidate(ordinary, "balanced", 0.5));
+  assert.ok(scoreFoodCandidate(assignedSector, "desperate", 0.5) < scoreFoodCandidate(ordinary, "desperate", 0.5));
+});
+
+test("escape scoring prefers cat-proof shelter away from the cat's direction", () => {
+  const base = { pathDistance: 2, catDistance: 3, mouseEta: 0.7, catEta: 0.9, caution: 0.6 };
+  const awayAndProtected = scoreShelterEscape({ ...base, directionDot: -0.9, catReachable: false });
+  const towardAndProtected = scoreShelterEscape({ ...base, directionDot: 0.9, catReachable: false });
+  const awayButReachable = scoreShelterEscape({ ...base, directionDot: -0.9, catReachable: true });
+  assert.ok(awayAndProtected < towardAndProtected);
+  assert.ok(awayAndProtected < awayButReachable);
 });
 
 test("campaign rooms unlock on schedule or through a temporary open door", () => {

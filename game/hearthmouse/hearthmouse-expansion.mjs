@@ -7,7 +7,7 @@ export const POLICY_PROFILES = Object.freeze({
     description: "Stay close, flee early, and stop the instant tonight is fed.",
     localRadius: 3.1,
     expandedRadius: 6.2,
-    fleeThreshold: 0.25,
+    fleeThreshold: 0.28,
     panicMultiplier: 2.45,
     surplusRatio: 0,
     finishSafeTrip: false,
@@ -17,28 +17,28 @@ export const POLICY_PROFILES = Object.freeze({
   balanced: Object.freeze({
     id: "balanced",
     label: "BALANCED",
-    description: "Clear safe areas first, then widen the search only as needed.",
-    localRadius: 5.4,
-    expandedRadius: 11.5,
-    fleeThreshold: 0.39,
+    description: "Range through the house, hide from nearby cats, then resume scavenging.",
+    localRadius: 6.8,
+    expandedRadius: Infinity,
+    fleeThreshold: 0.52,
     panicMultiplier: 2.28,
-    surplusRatio: 0,
+    surplusRatio: 0.28,
     finishSafeTrip: true,
-    deepRoomPenalty: 4.8,
-    valueTemptation: 0.82,
+    deepRoomPenalty: 2.4,
+    valueTemptation: 1.05,
   }),
   desperate: Object.freeze({
     id: "desperate",
     label: "DESPERATE",
-    description: "Range deep, chase rich prizes, and risk lives for a winter surplus.",
+    description: "Send everyone out, range deep, and hide only from immediate danger.",
     localRadius: 9,
     expandedRadius: Infinity,
-    fleeThreshold: 0.55,
+    fleeThreshold: 0.92,
     panicMultiplier: 2.12,
-    surplusRatio: 0.32,
+    surplusRatio: 0.75,
     finishSafeTrip: true,
-    deepRoomPenalty: 1.35,
-    valueTemptation: 1.65,
+    deepRoomPenalty: 0.45,
+    valueTemptation: 1.85,
   }),
 });
 
@@ -74,6 +74,11 @@ export function shouldForagersStop({ policy, delivered, nightlyRequirement }) {
   return delivered >= forageTarget(policy, nightlyRequirement);
 }
 
+export function shouldPauseNewAssignments({ policy, delivered, committed = 0, nightlyRequirement }) {
+  if (shouldForagersStop({ policy, delivered, nightlyRequirement })) return true;
+  return getPolicyProfile(policy).id === "cautious" && delivered + committed >= nightlyRequirement;
+}
+
 export function initialForagerDelay(policy, colonyIndex, randomUnit = 0.5) {
   const mode = getPolicyProfile(policy).id;
   const base = mode === "cautious" ? 0.72 : mode === "desperate" ? 0.22 : 0.42;
@@ -85,9 +90,10 @@ export function initialForagerDelay(policy, colonyIndex, randomUnit = 0.5) {
 export function activeForagerLimit(policy, mouseCount, remainingFood) {
   if (mouseCount <= 0 || remainingFood <= 0) return 0;
   const mode = getPolicyProfile(policy).id;
+  if (mode === "desperate") return mouseCount;
   const foodPerMouse = mode === "cautious" ? 2.1 : mode === "desperate" ? 1.12 : 1.55;
   const extraScouts = mode === "cautious" ? 1 : mode === "desperate" ? 4 : 2;
-  const minimum = mode === "cautious" ? 1 : 2;
+  const minimum = mode === "cautious" ? 1 : Math.ceil(mouseCount * 0.85);
   return Math.min(mouseCount, Math.max(minimum, Math.ceil(remainingFood / foodPerMouse) + extraScouts));
 }
 
@@ -106,12 +112,33 @@ export function shouldRecoverMouse({ task, stalledFor, distanceMoved, distanceTo
 
 export function scoreFoodCandidate(candidate, policy, mouseCaution = 0.5) {
   const profile = getPolicyProfile(policy);
-  const ringSize = policy === "cautious" ? 2.4 : policy === "balanced" ? 3.5 : 5.5;
+  const mode = profile.id;
+  const ringSize = mode === "cautious" ? 2.4 : mode === "balanced" ? 4.6 : 7.5;
   const ring = Math.floor(candidate.nestDistance / ringSize);
   const depthPenalty = candidate.depth * profile.deepRoomPenalty * (0.75 + mouseCaution * 0.5);
   const valueReward = candidate.value * profile.valueTemptation * (1.25 - mouseCaution * 0.45);
-  const exposurePenalty = (candidate.exposure ?? 0) * (7 + mouseCaution * 7);
-  return ring * 18 + candidate.mouseDistance * 1.15 + depthPenalty + exposurePenalty - valueReward;
+  const ringWeight = mode === "cautious" ? 18 : mode === "balanced" ? 4.5 : 0.8;
+  const travelWeight = mode === "cautious" ? 1.15 : mode === "balanced" ? 0.72 : 0.3;
+  const exposureWeight = mode === "cautious" ? 15 : mode === "balanced" ? 7 : 1.75;
+  const sectorReward = (candidate.sectorMatch ?? 0) * (mode === "cautious" ? 0.5 : mode === "balanced" ? 8 : 14);
+  const exposurePenalty = (candidate.exposure ?? 0) * exposureWeight * (0.75 + mouseCaution * 0.5);
+  return ring * ringWeight + candidate.mouseDistance * travelWeight + depthPenalty + exposurePenalty - valueReward - sectorReward;
+}
+
+export function scoreShelterEscape({
+  pathDistance,
+  catDistance,
+  mouseEta,
+  catEta,
+  directionDot = 0,
+  caution = 0.5,
+  catReachable = false,
+}) {
+  const interceptPenalty = catEta < mouseEta ? (mouseEta - catEta) * 8 : 0;
+  const towardCatPenalty = Math.max(0, directionDot) * (9 + caution * 6);
+  const awayFromCatReward = Math.max(0, -directionDot) * (4 + caution * 3);
+  const catAccessPenalty = catReachable ? 11 : -5.5;
+  return pathDistance - catDistance * (0.34 + caution * 0.28) + interceptPenalty + towardCatPenalty - awayFromCatReward + catAccessPenalty;
 }
 
 export const ROOM_DEFINITIONS = Object.freeze([
@@ -635,7 +662,7 @@ function buildExpandedHouse(engine, expansion, I) {
   const addCover = (id, roomId, x, z, color = 0x4b392d) => {
     addBox({ name: `${id}-roof`, x, y: 0.17, z, w: 1.15, h: 0.12, d: 0.78, color, collide: true, catOnly: true });
     addBox({ name: `${id}-back`, x, y: 0.1, z: z - 0.35, w: 1.15, h: 0.2, d: 0.08, color, collide: true });
-    world.shelterPoints.push({ id, roomId, position: new I.Vector3(x, 0.025, z + 0.08), unlockNight: ROOM_DEFINITIONS.find((room) => room.id === roomId)?.unlockNight ?? 1 });
+    world.shelterPoints.push({ id, roomId, catProof: true, position: new I.Vector3(x, 0.025, z + 0.08), unlockNight: ROOM_DEFINITIONS.find((room) => room.id === roomId)?.unlockNight ?? 1 });
   };
 
   const addFurniture = (name, roomId, x, z, w, d, color) => {
@@ -682,11 +709,11 @@ function buildExpandedHouse(engine, expansion, I) {
   dynamic("closed-shortcut", { name: "night-closed-shortcut", x: 2.05, y: 1.05, z: -8.9, w: 0.16, h: 2.1, d: 1.18, color: 0x392a22, collide: true });
   dynamic("passage-block", { name: "study-passage-block", x: -5.02, y: 0.18, z: -9, w: 0.18, h: 0.36, d: 0.62, color: 0x795d3d, collide: true, active: true });
   addBox({ name: "study-passage-low-roof", x: -4.86, y: 0.17, z: -9, w: 0.45, h: 0.12, d: 0.74, color: 0x403027, collide: true, catOnly: true });
-  world.shelterPoints.push({ id: "study-hall-passage", roomId: "hallway", position: new I.Vector3(-4.83, 0.025, -9), unlockNight: 6 });
+  world.shelterPoints.push({ id: "study-hall-passage", roomId: "hallway", catProof: true, position: new I.Vector3(-4.83, 0.025, -9), unlockNight: 6 });
   world.shelterPoints.push(
-    { id: "night-cardboard-cover", roomId: "living", dynamicProp: "cardboard-cover", position: new I.Vector3(-1.05, 0.025, 1.35), unlockNight: 1 },
-    { id: "night-blanket-cover", roomId: "living", dynamicProp: "blanket-cover", position: new I.Vector3(-0.7, 0.025, -2.15), unlockNight: 1 },
-    { id: "night-laundry-basket", roomId: "laundry", dynamicProp: "laundry-basket", position: new I.Vector3(11.45, 0.025, 4.55), unlockNight: 3 },
+    { id: "night-cardboard-cover", roomId: "living", dynamicProp: "cardboard-cover", catProof: true, position: new I.Vector3(-1.05, 0.025, 1.35), unlockNight: 1 },
+    { id: "night-blanket-cover", roomId: "living", dynamicProp: "blanket-cover", catProof: true, position: new I.Vector3(-0.7, 0.025, -2.15), unlockNight: 1 },
+    { id: "night-laundry-basket", roomId: "laundry", dynamicProp: "laundry-basket", catProof: true, position: new I.Vector3(11.45, 0.025, 4.55), unlockNight: 3 },
   );
 
   expansion.extraPatrolPoints = ROOM_DEFINITIONS.flatMap((room) => [
@@ -917,10 +944,11 @@ function updateColonyMice(engine, expansion, I, delta) {
     releaseStaleFoodReservations(engine);
     expansion.reservationSweepTimer = 0.42;
   }
-  const committed = committedFoodValue(engine);
-  const remaining = Math.max(0, forageTarget(engine.colonyPolicy, engine.snapshot.tonightRequirement) - engine.snapshot.deliveredTonight - committed);
+  const remaining = Math.max(0, forageTarget(engine.colonyPolicy, engine.snapshot.tonightRequirement) - engine.snapshot.deliveredTonight);
   const maxForagers = activeForagerLimit(engine.colonyPolicy, engine.mice.length, remaining);
-  let assignedForagers = engine.mice.filter((mouse) => ["to-food", "returning", "escaping", "hiding"].includes(mouse.task)).length;
+  // Hidden mice do not consume a departure slot. Other allies should keep
+  // working instead of waiting at the nest for every frightened mouse.
+  let assignedForagers = engine.mice.filter((mouse) => ["to-food", "returning", "escaping"].includes(mouse.task)).length;
 
   for (const mouse of engine.mice) {
     if (!mouse.member.alive || mouse.task === "dead") continue;
@@ -936,7 +964,7 @@ function updateColonyMice(engine, expansion, I, delta) {
       mouse.aiDecisionTimer = 0.11 + (mouse.colonyIndex % 7) * 0.019;
       const threat = assessMouseThreat(engine, expansion, mouse, nearestCat, catDistance);
       mouse.lastThreatScore = threat.score;
-      const fleeThreshold = Math.max(0.16, profile.fleeThreshold - expansion.upgrades.scouts * 0.025 - Math.log2(Math.max(1, engine.snapshot.population)) * 0.012);
+      const fleeThreshold = Math.max(0.16, profile.fleeThreshold - expansion.upgrades.scouts * 0.025);
       if (!["escaping", "hiding"].includes(mouse.task) && mouse.escapeCooldown <= 0 && threat.score >= fleeThreshold) {
         sendMouseToBestShelter(engine, expansion, I, mouse, threat.cat ?? nearestCat, threat);
       }
@@ -952,7 +980,9 @@ function updateColonyMice(engine, expansion, I, delta) {
       }
       if (mouse.escapeGoal && mouse.rig.root.position.distanceTo(mouse.escapeGoal) < 0.14) {
         mouse.task = "hiding";
-        mouse.hideTimer = 2.1 + mouse.member.caution * 2.4;
+        const hideBase = profile.id === "cautious" ? 1.9 : profile.id === "balanced" ? 0.72 : 0.24;
+        const cautionScale = profile.id === "cautious" ? 1.8 : profile.id === "balanced" ? 0.7 : 0.2;
+        mouse.hideTimer = hideBase + mouse.member.caution * cautionScale;
         mouse.safeTimer = 0;
         mouse.path = [];
         mouse.pathIndex = 0;
@@ -966,9 +996,11 @@ function updateColonyMice(engine, expansion, I, delta) {
       resetMouseProgress(mouse);
       mouse.hideTimer -= delta;
       const threat = assessMouseThreat(engine, expansion, mouse, nearestCat, catDistance, true);
-      const clear = threat.score < profile.fleeThreshold * 0.55 && catDistance > 2.35 + mouse.member.caution;
+      const safeDistance = profile.id === "cautious" ? 2.75 + mouse.member.caution : profile.id === "balanced" ? 2.05 + mouse.member.caution * 0.45 : 1.25;
+      const safeTime = profile.id === "cautious" ? 1.05 : profile.id === "balanced" ? 0.48 : 0.16;
+      const clear = threat.score < profile.fleeThreshold * 0.7 && catDistance > safeDistance;
       mouse.safeTimer = clear ? mouse.safeTimer + delta : 0;
-      if (mouse.hideTimer <= 0 && mouse.safeTimer >= 1.25) {
+      if (mouse.hideTimer <= 0 && mouse.safeTimer >= safeTime) {
         mouse.escapeGoal = null;
         mouse.escapeCooldown = 1.8 + mouse.member.caution;
         if (mouse.carriedFood) {
@@ -1238,18 +1270,42 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat, knownThreat = 
       isRoomAccessible(engine, expansion, shelter.roomId ?? roomForPosition(shelter.position.x, shelter.position.z)) &&
       (!shelter.dynamicProp || expansion.dynamicProps.get(shelter.dynamicProp)?.mesh.visible)
     )
-    .map((shelter) => ({ shelter, direct: mouse.rig.root.position.distanceTo(shelter.position), catDistance: cat.rig.root.position.distanceTo(shelter.position) }))
-    .sort((a, b) => (a.direct - a.catDistance * 0.34) - (b.direct - b.catDistance * 0.34))
-    .slice(0, 6);
+    .map((shelter) => {
+      const mousePosition = mouse.rig.root.position;
+      const escapeX = shelter.position.x - mousePosition.x;
+      const escapeZ = shelter.position.z - mousePosition.z;
+      const catX = cat.rig.root.position.x - mousePosition.x;
+      const catZ = cat.rig.root.position.z - mousePosition.z;
+      const escapeLength = Math.max(0.001, Math.hypot(escapeX, escapeZ));
+      const catLength = Math.max(0.001, Math.hypot(catX, catZ));
+      return {
+        shelter,
+        direct: escapeLength,
+        catDistance: cat.rig.root.position.distanceTo(shelter.position),
+        directionDot: (escapeX * catX + escapeZ * catZ) / (escapeLength * catLength),
+      };
+    })
+    .sort((a, b) => (a.direct + Math.max(0, a.directionDot) * 4 - a.catDistance * 0.28) - (b.direct + Math.max(0, b.directionDot) * 4 - b.catDistance * 0.28))
+    .slice(0, 8);
   let best = null;
   for (const candidate of candidates) {
     const route = cachedSmartPath(engine, expansion, I, mouse.rig.root.position, candidate.shelter.position, "mouse", `shelter:${candidate.shelter.id}`);
     if (!route.reachedGoal) continue;
+    const catRoute = candidate.shelter.catProof
+      ? { reachedGoal: false }
+      : cachedSmartPath(engine, expansion, I, cat.rig.root.position, candidate.shelter.position, "cat", `cat-shelter:${cat.id}:${candidate.shelter.id}`);
     const pathDistance = pathLength(mouse.rig.root.position, route.path);
     const mouseEta = pathDistance / Math.max(0.4, mouse.speed * getPolicyProfile(engine.colonyPolicy).panicMultiplier);
     const catEta = candidate.catDistance / 3.62;
-    const interceptPenalty = catEta < mouseEta ? (mouseEta - catEta) * 8 : 0;
-    const score = pathDistance - candidate.catDistance * (0.42 + mouse.member.caution * 0.32) + interceptPenalty;
+    const score = scoreShelterEscape({
+      pathDistance,
+      catDistance: candidate.catDistance,
+      mouseEta,
+      catEta,
+      directionDot: candidate.directionDot,
+      caution: mouse.member.caution,
+      catReachable: catRoute.reachedGoal,
+    });
     if (!best || score < best.score) best = { ...candidate, route, pathDistance, score };
   }
   if (!best) {
@@ -1289,20 +1345,28 @@ function dropMouseFood(engine, mouse) {
 }
 
 function assignLocalFood(engine, expansion, I, mouse) {
-  if (colonyShouldStop(engine) || engine.snapshot.deliveredTonight + committedFoodValue(engine) >= forageTarget(engine.colonyPolicy, engine.snapshot.tonightRequirement)) {
+  const committed = committedFoodValue(engine);
+  if (shouldPauseNewAssignments({
+    policy: engine.colonyPolicy,
+    delivered: engine.snapshot.deliveredTonight,
+    committed,
+    nightlyRequirement: engine.snapshot.tonightRequirement,
+  })) {
     sendMouseHome(engine, mouse);
     return;
   }
   const profile = getPolicyProfile(engine.colonyPolicy);
-  let radius = profile.localRadius;
-  let candidates = availableFood(engine, expansion, mouse, radius);
-  if (!candidates.length) {
-    radius = profile.expandedRadius;
-    candidates = availableFood(engine, expansion, mouse, radius);
+  let candidates = [];
+  if (profile.id === "cautious") {
+    candidates = availableFood(engine, expansion, mouse, profile.localRadius);
+    if (!candidates.length) candidates = availableFood(engine, expansion, mouse, profile.expandedRadius);
+    if (!candidates.length) candidates = availableFood(engine, expansion, mouse, Infinity);
+  } else {
+    // Balanced and Desperate mice consider every unlocked room immediately.
+    // Their scores still weigh safety and travel, while sector assignments
+    // spread the colony across the house instead of forming a single queue.
+    candidates = availableFood(engine, expansion, mouse, Infinity);
   }
-  // Orders decide how far and how boldly mice prefer to range, but an empty
-  // preferred ring must never turn into an idle colony while food remains.
-  if (!candidates.length) candidates = availableFood(engine, expansion, mouse, Infinity);
   candidates.sort((a, b) => scoreFoodCandidate(a, engine.colonyPolicy, mouse.member.caution) - scoreFoodCandidate(b, engine.colonyPolicy, mouse.member.caution));
   for (const candidate of candidates.slice(0, 12)) {
     const route = cachedSmartPath(engine, expansion, I, mouse.rig.root.position, candidate.food.mesh.position, "mouse", `food:${candidate.food.id}`);
@@ -1326,6 +1390,13 @@ function committedFoodValue(engine) {
   }, 0);
 }
 
+function foodSector(food) {
+  const value = String(food.id ?? `${food.room}:${food.nestDistance}`);
+  let hash = 0;
+  for (let index = 0; index < value.length; index++) hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  return hash % 6;
+}
+
 function availableFood(engine, expansion, mouse, radius) {
   for (const [foodId, blockedUntil] of mouse.blockedFoodUntil ?? []) {
     if (blockedUntil <= engine.time) mouse.blockedFoodUntil.delete(foodId);
@@ -1347,6 +1418,7 @@ function availableFood(engine, expansion, mouse, radius) {
       nestDistance: food.nestDistance ?? food.mesh.position.distanceTo(engine.world.nestCenter),
       mouseDistance: food.mesh.position.distanceTo(mouse.rig.root.position),
       exposure: exposureAt(engine, food.mesh.position),
+      sectorMatch: foodSector(food) === mouse.foragingSector ? 1 : 0,
     }));
 }
 
