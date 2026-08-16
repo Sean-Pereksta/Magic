@@ -21,6 +21,7 @@ import {
   shouldForagersStop,
   shouldPauseNewAssignments,
   shouldRecoverMouse,
+  visibilitySampleInterval,
 } from "./hearthmouse-expansion.mjs";
 
 test("spatial grids find adjacent-cell actors, deduplicate broad obstacles, and discard stale positions", () => {
@@ -76,6 +77,34 @@ test("transient pools reset and reuse marker objects instead of allocating repea
   assert.equal(second, first);
   assert.equal(second.ttl, 0);
   assert.equal(pool.created, 1);
+});
+
+test("mobile chase visibility is sampled at a responsive fixed cadence only during pursuit", () => {
+  assert.equal(visibilitySampleInterval(true, "chase"), 1 / 30);
+  assert.equal(visibilitySampleInterval(true, "search"), 0);
+  assert.equal(visibilitySampleInterval(false, "chase"), 0);
+});
+
+test("cat sight keeps exact body probes while broad-phasing occluders and reusing scratch storage", () => {
+  const source = readFileSync(new URL("./hearthmouse-expansion.mjs", import.meta.url), "utf8");
+  assert.match(source, /proto\.scanCatVision = function indexedCatVision/);
+  assert.match(source, /expansion\.spatial\.mice\.queryRadius/);
+  assert.match(source, /probes\[4\]\.set\(targetPosition\.x, 0\.038, targetPosition\.z \+ 0\.06\)/);
+  assert.match(source, /intersectObjects\(occluders, true, sight\.hits\)/);
+  assert.match(source, /cat\.visibilitySamples = new Map\(\)/);
+});
+
+test("clear chase and escape routes bypass A-star without changing the direct path", () => {
+  const source = readFileSync(new URL("./hearthmouse-expansion.mjs", import.meta.url), "utf8");
+  assert.match(source, /if \(ILineClear\(engine, expansion, start, target, agent\)\)/);
+  assert.match(source, /return \{ path: \[target\.clone\(\)\], reachedGoal: true, remainingDistance: 0 \}/);
+});
+
+test("night summaries have a compact scroll-safe landscape phone layout", () => {
+  const css = readFileSync(new URL("./hearthmouse-expansion.css", import.meta.url), "utf8");
+  assert.match(css, /\(pointer: coarse\).*\(orientation: landscape\)/);
+  assert.match(css, /\.summary-card \{[\s\S]*?max-height: 100%;[\s\S]*?overflow-y: auto;/);
+  assert.match(css, /\.summary-card \.primary-action \{[\s\S]*?margin-top: 8px;/);
 });
 
 test("the compact policy control cycles through every risk mode", () => {
