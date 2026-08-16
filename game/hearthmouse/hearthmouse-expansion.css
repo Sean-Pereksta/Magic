@@ -8,6 +8,12 @@
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
+.danger-vignette,
+.whisker-warning {
+  will-change: opacity;
+  backface-visibility: hidden;
+}
+
 .colony-policy-badge {
   appearance: none;
   position: absolute;
@@ -221,6 +227,86 @@
   .policy-options button {
     letter-spacing: 0.045em;
     font-size: 0.47rem;
+  }
+}
+
+@media (pointer: coarse) and (any-hover: none) and (orientation: landscape) {
+  .summary-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding:
+      max(6px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    overflow-y: auto;
+  }
+
+  .summary-card {
+    width: min(720px, 100%);
+    max-height: 100%;
+    padding: 9px clamp(16px, 4vw, 30px) 10px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .summary-card .eyebrow {
+    margin-bottom: 4px;
+    letter-spacing: 0.2em;
+    font-size: 0.45rem;
+  }
+
+  .summary-card h2 {
+    font-size: clamp(1.35rem, 6.5vh, 2rem);
+    line-height: 0.95;
+  }
+
+  .summary-card .night-math {
+    gap: clamp(4px, 1.5vw, 10px);
+    margin: 9px 0 8px;
+  }
+
+  .summary-card .night-math div:not(.math-symbol) {
+    gap: 1px;
+  }
+
+  .summary-card .night-math span,
+  .summary-card .season-line {
+    letter-spacing: 0.09em;
+    font-size: 0.43rem;
+  }
+
+  .summary-card .night-math strong {
+    font-size: clamp(1.35rem, 6vh, 1.9rem);
+  }
+
+  .summary-card .math-symbol {
+    font-size: 0.9rem;
+  }
+
+  .summary-card .season-line {
+    flex-direction: row;
+    gap: 10px;
+    padding: 6px 0;
+  }
+
+  .summary-card .family-news {
+    margin-top: 5px;
+    font-size: 0.68rem;
+    line-height: 1.2;
+  }
+
+  .summary-card .family-news p {
+    margin: 2px 0;
+  }
+
+  .summary-card .primary-action {
+    width: auto;
+    min-width: min(210px, 80vw);
+    margin-top: 8px;
+    padding: 9px 18px 8px;
+    font-size: 0.55rem;
   }
 }
 
