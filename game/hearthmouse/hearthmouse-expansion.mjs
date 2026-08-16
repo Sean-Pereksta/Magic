@@ -145,6 +145,10 @@ export class ReusableObjectPool {
   }
 }
 
+export function visibilitySampleInterval(isTouchDevice, catState) {
+  return isTouchDevice && catState === "chase" ? 1 / 30 : 0;
+}
+
 export const POLICY_PROFILES = Object.freeze({
   cautious: Object.freeze({
     id: "cautious",
@@ -405,6 +409,8 @@ function installEnginePatches(I) {
     updateCats: proto.updateCats,
     updateCatPatrol: proto.updateCatPatrol,
     updateCatChase: proto.updateCatChase,
+    scanCatVision: proto.scanCatVision,
+    targetVisibility: proto.targetVisibility,
     processCatVision: proto.processCatVision,
     setCatState: proto.setCatState,
     targetPosition: proto.targetPosition,
@@ -635,6 +641,14 @@ function installEnginePatches(I) {
     return result;
   };
 
+  proto.scanCatVision = function indexedCatVision(cat) {
+    return scanIndexedCatVision(this, ensureExpansion(this), cat);
+  };
+
+  proto.targetVisibility = function cachedAllocationFreeVisibility(cat, targetId, targetPosition) {
+    return targetVisibilityExact(this, ensureExpansion(this), cat, targetId, targetPosition);
+  };
+
   proto.processCatVision = function expandedCatVision(cat, target, interval) {
     const expansion = ensureExpansion(this);
     if (cat.state !== "chase" && cat.leisureMode === "grooming" && target) {
@@ -681,6 +695,7 @@ function installEnginePatches(I) {
       expansion.routeRevision++;
       expansion.routeCache.clear();
       expansion.roomRouteCache.clear();
+      rebuildStaticSpatialIndexes(this, expansion);
       this.showMessage("A permanent mouse tunnel now links the study and hallway.", 4.4);
     } else if (food.prizeEffect === "scouts") {
       expansion.upgrades.scouts++;
@@ -739,6 +754,7 @@ function ensureExpansion(engine) {
       food: new SpatialGrid(2.5),
       shelters: new SpatialGrid(3),
       colliders: new SpatialGrid(2.5),
+      occluders: new SpatialGrid(3.2),
     },
     foodCandidateCache: new FoodCandidateCache(),
     catDangerSnapshot: { cats: [], count: 0, revision: 0 },
@@ -750,6 +766,9 @@ function ensureExpansion(engine) {
       shelterCandidates: [],
       shelterCandidateRecords: [],
       colliderObjects: [],
+      occluderObjects: [],
+      occluderFallbacks: [],
+      visionMice: [],
       activeMouseById: new Map(),
       mouseById: new Map(),
     },
@@ -771,6 +790,21 @@ function ensureExpansion(engine) {
   engine.__expansion = expansion;
   buildExpandedHouse(engine, expansion, window.HearthmouseInternals);
   const V = window.HearthmouseInternals.Vector3;
+  expansion.isTouchDevice = !!engine.isTouchOnlyDevice?.() || !!window.matchMedia?.("(pointer: coarse)").matches;
+  expansion.sight = {
+    cat: null,
+    time: -Infinity,
+    eye: new V(),
+    center: new V(),
+    flatDirection: new V(),
+    forward: new V(),
+    rayDirection: new V(),
+    up: new V(0, 1, 0),
+    probes: Array.from({ length: 5 }, () => new V()),
+    hits: [],
+    occluderCenter: new V(),
+    occluderScale: new V(1, 1, 1),
+  };
   expansion.dangerSignalPool = new ReusableObjectPool(
     () => ({ position: new V(), ttl: 0, radius: 0, score: 0 }),
     (signal) => { signal.ttl = 0; signal.radius = 0; signal.score = 0; },
@@ -808,6 +842,8 @@ function initializeCat(engine, expansion, cat, index) {
   cat.pounceWindupDuration = computePounceWindup(1, cat.personality);
   cat.pounceCuePlayed = false;
   cat.coverTargetScratch = cat.investigation.clone();
+  cat.visionResult = { id: null, position: null, moving: 0, visible: 0, distance: Infinity };
+  cat.visibilitySamples = new Map();
   if (!cat.rig.__cosmeticThrottleInstalled) {
     const updateRig = cat.rig.update.bind(cat.rig);
     cat.rig.update = (...args) => {
@@ -862,6 +898,59 @@ function rebuildStaticSpatialIndexes(engine, expansion) {
     const collider = engine.world.colliders[index];
     colliderGrid.insertBounds(collider, collider.minX, collider.minZ, collider.maxX, collider.maxZ);
   }
+  rebuildOccluderSpatialIndex(engine, expansion);
+}
+
+function rebuildOccluderSpatialIndex(engine, expansion) {
+  const grid = expansion.spatial.occluders;
+  const fallbacks = expansion.scratch.occluderFallbacks;
+  const sight = expansion.sight;
+  grid.clear();
+  fallbacks.length = 0;
+  const occluders = engine.world.occluders;
+  for (let index = 0; index < occluders.length; index++) {
+    const object = occluders[index];
+    const geometry = object?.geometry;
+    if (!geometry || object.children?.length) {
+      if (object) fallbacks.push(object);
+      continue;
+    }
+    if (!geometry.boundingSphere) geometry.computeBoundingSphere?.();
+    const sphere = geometry.boundingSphere;
+    if (!sphere?.center || !Number.isFinite(sphere.radius)) {
+      fallbacks.push(object);
+      continue;
+    }
+    object.updateWorldMatrix?.(true, false);
+    sight.occluderCenter.copy(sphere.center).applyMatrix4(object.matrixWorld);
+    sight.occluderScale.set(1, 1, 1);
+    object.getWorldScale?.(sight.occluderScale);
+    const radius = sphere.radius * Math.max(
+      Math.abs(sight.occluderScale.x),
+      Math.abs(sight.occluderScale.y),
+      Math.abs(sight.occluderScale.z),
+    );
+    grid.insertBounds(
+      object,
+      sight.occluderCenter.x - radius,
+      sight.occluderCenter.z - radius,
+      sight.occluderCenter.x + radius,
+      sight.occluderCenter.z + radius,
+    );
+  }
+}
+
+function occluderCandidatesForRay(expansion, start, end) {
+  const objects = expansion.spatial.occluders.queryAabb(
+    Math.min(start.x, end.x),
+    Math.min(start.z, end.z),
+    Math.max(start.x, end.x),
+    Math.max(start.z, end.z),
+    expansion.scratch.occluderObjects,
+  );
+  const fallbacks = expansion.scratch.occluderFallbacks;
+  for (let index = 0; index < fallbacks.length; index++) objects.push(fallbacks[index]);
+  return objects;
 }
 
 function rebuildPatrolRoomIndex(world, expansion) {
@@ -957,6 +1046,136 @@ function nearestCatFromSnapshot(expansion, position, result) {
   }
   result.distance = Math.sqrt(bestSquared);
   return result;
+}
+
+function compareMouseVisionOrder(a, b) {
+  return (a.colonyIndex ?? 0) - (b.colonyIndex ?? 0);
+}
+
+function considerVisionTarget(engine, cat, maximumDistance, targetId, position, moving, result, bestPriority) {
+  const distance = cat.rig.root.position.distanceTo(position);
+  if (distance > maximumDistance) return bestPriority;
+  const visible = engine.targetVisibility(cat, targetId, position);
+  if (visible <= 0) return bestPriority;
+  const priority = visible * (0.6 + moving) / Math.max(0.35, distance);
+  if (priority <= bestPriority) return bestPriority;
+  result.id = targetId;
+  result.position = position;
+  result.moving = moving;
+  result.visible = visible;
+  result.distance = distance;
+  return priority;
+}
+
+function scanIndexedCatVision(engine, expansion, cat) {
+  const maximumDistance = cat.state === "chase" ? 10.4 : 8.7;
+  const result = cat.visionResult;
+  let bestPriority = -Infinity;
+
+  const playerMoving = engine.time - engine.lastPlayerMoving < 0.17
+    ? Math.max(0.35, engine.playerVelocity.length() / 1.2)
+    : 0;
+  bestPriority = considerVisionTarget(
+    engine,
+    cat,
+    maximumDistance,
+    "player",
+    engine.playerPosition,
+    playerMoving,
+    result,
+    bestPriority,
+  );
+
+  // The margin covers allied movement after the dynamic grid's frame snapshot.
+  const mice = expansion.spatial.mice.queryRadius(
+    cat.rig.root.position.x,
+    cat.rig.root.position.z,
+    maximumDistance + 0.25,
+    expansion.scratch.visionMice,
+  );
+  mice.sort(compareMouseVisionOrder);
+  for (let index = 0; index < mice.length; index++) {
+    const mouse = mice[index];
+    const moving = mouse.task === "hiding" || mouse.task === "waiting" ? 0 : mouse.speed;
+    bestPriority = considerVisionTarget(
+      engine,
+      cat,
+      maximumDistance,
+      mouse.member.id,
+      mouse.rig.root.position,
+      moving,
+      result,
+      bestPriority,
+    );
+  }
+  return bestPriority > -Infinity ? result : null;
+}
+
+function prepareCatSightFrame(engine, expansion, cat) {
+  const sight = expansion.sight;
+  if (sight.cat === cat && sight.time === engine.time) return sight;
+  sight.cat = cat;
+  sight.time = engine.time;
+  cat.rig.eyeWorldPosition(sight.eye);
+  sight.forward.set(0, 0, -1).applyAxisAngle(sight.up, cat.yaw + cat.lookYaw * 0.5);
+  return sight;
+}
+
+function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition) {
+  const samples = cat.visibilitySamples ?? (cat.visibilitySamples = new Map());
+  let sample = samples.get(targetId);
+  const cacheInterval = visibilitySampleInterval(expansion.isTouchDevice, cat.state);
+  if (
+    cacheInterval > 0 &&
+    sample?.state === cat.state &&
+    engine.time >= sample.time &&
+    engine.time - sample.time < cacheInterval
+  ) {
+    return sample.visible;
+  }
+
+  const sight = prepareCatSightFrame(engine, expansion, cat);
+  sight.center.copy(targetPosition).setY(targetId === "player" ? 0.07 : 0.075);
+  sight.flatDirection.copy(sight.center).sub(sight.eye).setY(0);
+  let visible = 0;
+  if (sight.flatDirection.length() < 0.001) {
+    visible = 1;
+  } else {
+    sight.flatDirection.normalize();
+    const fieldOfView = cat.state === "chase" ? 132 : cat.state === "suspicious" || cat.state === "search" ? 116 : 92;
+    if (sight.flatDirection.dot(sight.forward) >= Math.cos(fieldOfView * Math.PI / 360)) {
+      const probes = sight.probes;
+      probes[0].set(targetPosition.x, 0.095, targetPosition.z - 0.025);
+      probes[1].set(targetPosition.x, 0.057, targetPosition.z);
+      probes[2].set(targetPosition.x - 0.035, 0.06, targetPosition.z + 0.018);
+      probes[3].set(targetPosition.x + 0.035, 0.06, targetPosition.z + 0.018);
+      probes[4].set(targetPosition.x, 0.038, targetPosition.z + 0.06);
+      for (let index = 0; index < probes.length; index++) {
+        const probe = probes[index];
+        sight.rayDirection.copy(probe).sub(sight.eye);
+        const distance = sight.rayDirection.length();
+        sight.rayDirection.normalize();
+        engine.raycaster.set(sight.eye, sight.rayDirection);
+        engine.raycaster.near = 0.01;
+        engine.raycaster.far = Math.max(0.01, distance - 0.014);
+        const occluders = occluderCandidatesForRay(expansion, sight.eye, probe);
+        sight.hits.length = 0;
+        engine.raycaster.intersectObjects(occluders, true, sight.hits);
+        if (!sight.hits.length) visible++;
+        sight.hits.length = 0;
+      }
+      visible /= probes.length;
+    }
+  }
+
+  if (!sample) {
+    sample = { time: -Infinity, state: "", visible: 0 };
+    samples.set(targetId, sample);
+  }
+  sample.time = engine.time;
+  sample.state = cat.state;
+  sample.visible = visible;
+  return visible;
 }
 
 function colliderCandidatesForLine(engine, expansion, start, end, radius, out) {
@@ -2240,6 +2459,9 @@ function cachedSmartPath(engine, expansion, I, start, target, agent, purpose) {
 }
 
 function buildSmartPath(engine, expansion, I, start, target, agent) {
+  if (ILineClear(engine, expansion, start, target, agent)) {
+    return { path: [target.clone()], reachedGoal: true, remainingDistance: 0 };
+  }
   const startRoom = roomForPosition(start.x, start.z);
   const targetRoom = roomForPosition(target.x, target.z);
   if (!startRoom || !targetRoom || startRoom === targetRoom) return I.pathfind(start, target, agent === "cat" ? 0.205 : 0.055, engine.world.colliders, agent);
