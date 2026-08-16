@@ -1,5 +1,150 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
+const spatialCellKey = (cellX, cellZ) => (cellX + 32768) * 65536 + cellZ + 32768;
+
+/**
+ * Allocation-conscious broad-phase index for the flat house simulation.
+ * Query methods append into a caller-owned array so AI loops can reuse buffers.
+ */
+export class SpatialGrid {
+  constructor(cellSize = 2.5) {
+    if (!(cellSize > 0)) throw new RangeError("SpatialGrid cellSize must be positive");
+    this.cellSize = cellSize;
+    this.cells = new Map();
+    this.cellPool = [];
+    this.seen = new WeakMap();
+    this.queryToken = 0;
+  }
+
+  clear() {
+    for (const cell of this.cells.values()) {
+      cell.length = 0;
+      this.cellPool.push(cell);
+    }
+    this.cells.clear();
+  }
+
+  cellCoordinate(value) {
+    return Math.floor(value / this.cellSize);
+  }
+
+  cell(cellX, cellZ, create = false) {
+    const key = spatialCellKey(cellX, cellZ);
+    let result = this.cells.get(key);
+    if (!result && create) {
+      result = this.cellPool.pop() ?? [];
+      this.cells.set(key, result);
+    }
+    return result;
+  }
+
+  insert(item, x, z) {
+    this.cell(this.cellCoordinate(x), this.cellCoordinate(z), true).push(item);
+    return item;
+  }
+
+  insertBounds(item, minX, minZ, maxX, maxZ) {
+    const firstX = this.cellCoordinate(minX);
+    const lastX = this.cellCoordinate(maxX);
+    const firstZ = this.cellCoordinate(minZ);
+    const lastZ = this.cellCoordinate(maxZ);
+    for (let cellX = firstX; cellX <= lastX; cellX++) {
+      for (let cellZ = firstZ; cellZ <= lastZ; cellZ++) this.cell(cellX, cellZ, true).push(item);
+    }
+    return item;
+  }
+
+  queryAabb(minX, minZ, maxX, maxZ, out = []) {
+    out.length = 0;
+    const firstX = this.cellCoordinate(minX);
+    const lastX = this.cellCoordinate(maxX);
+    const firstZ = this.cellCoordinate(minZ);
+    const lastZ = this.cellCoordinate(maxZ);
+    const token = ++this.queryToken;
+    if (this.queryToken >= Number.MAX_SAFE_INTEGER) {
+      this.seen = new WeakMap();
+      this.queryToken = 1;
+    }
+    for (let cellX = firstX; cellX <= lastX; cellX++) {
+      for (let cellZ = firstZ; cellZ <= lastZ; cellZ++) {
+        const cell = this.cell(cellX, cellZ);
+        if (!cell) continue;
+        for (let index = 0; index < cell.length; index++) {
+          const item = cell[index];
+          if (this.seen.get(item) === token) continue;
+          this.seen.set(item, token);
+          out.push(item);
+        }
+      }
+    }
+    return out;
+  }
+
+  queryRadius(x, z, radius, out = []) {
+    return this.queryAabb(x - radius, z - radius, x + radius, z + radius, out);
+  }
+}
+
+export class FoodCandidateCache {
+  constructor() {
+    this.entries = new Map();
+    this.revision = 0;
+    this.valid = false;
+  }
+
+  invalidate() {
+    this.valid = false;
+    this.revision++;
+  }
+
+  rebuild(foods, nestPosition) {
+    this.entries.clear();
+    for (let index = 0; index < foods.length; index++) {
+      const food = foods[index];
+      const position = food.mesh?.position ?? food.position;
+      const dx = position.x - nestPosition.x;
+      const dz = position.z - nestPosition.z;
+      const room = food.room ?? roomForPosition(position.x, position.z);
+      this.entries.set(food, Object.freeze({
+        value: food.value,
+        room,
+        depth: food.depth ?? roomDepth(room),
+        nestDistance: food.nestDistance ?? Math.hypot(dx, dz),
+        sector: foodSector(food),
+        staticExposure: food.staticExposure ?? 0,
+        sourceOrder: index,
+      }));
+    }
+    this.valid = true;
+    this.revision++;
+    return this;
+  }
+
+  get(food) {
+    return this.valid ? this.entries.get(food) : undefined;
+  }
+}
+
+export class ReusableObjectPool {
+  constructor(factory, reset = null) {
+    this.factory = factory;
+    this.reset = reset;
+    this.available = [];
+    this.created = 0;
+  }
+
+  acquire() {
+    if (this.available.length) return this.available.pop();
+    this.created++;
+    return this.factory();
+  }
+
+  release(item) {
+    this.reset?.(item);
+    this.available.push(item);
+  }
+}
+
 export const POLICY_PROFILES = Object.freeze({
   cautious: Object.freeze({
     id: "cautious",
@@ -262,6 +407,10 @@ function installEnginePatches(I) {
     updateCatChase: proto.updateCatChase,
     processCatVision: proto.processCatVision,
     setCatState: proto.setCatState,
+    targetPosition: proto.targetPosition,
+    updateFood: proto.updateFood,
+    mouseTakeFood: proto.mouseTakeFood,
+    playerTakeFood: proto.playerTakeFood,
     mouseDeposit: proto.mouseDeposit,
     registerPrizeDelivery: proto.registerPrizeDelivery,
   };
@@ -282,6 +431,7 @@ function installEnginePatches(I) {
     this.__expansion.upgrades = { tunnel: false, scouts: 0, insulation: 0 };
     this.__expansion.routeRevision++;
     this.__expansion.routeCache.clear();
+    this.__expansion.roomRouteCache.clear();
     return base.restartCampaign.call(this);
   };
 
@@ -309,7 +459,7 @@ function installEnginePatches(I) {
   };
 
   proto.createCats = function expandedCreateCats() {
-    ensureExpansion(this);
+    const expansion = ensureExpansion(this);
     const population = this.startOfNightPopulation || this.snapshot.population || 1;
     const desiredCats = catCountForPopulation(population);
     const createBaseCats = (factoryPopulation) => {
@@ -344,13 +494,17 @@ function installEnginePatches(I) {
         this.cats.push(third);
       }
     }
-    this.cats.forEach((cat, index) => initializeCat(cat, index));
+    this.cats.forEach((cat, index) => initializeCat(this, expansion, cat, index));
+    rebuildDynamicSpatialIndexes(this, expansion);
+    auditAndCacheTextureAssets(this, expansion);
   };
 
   proto.createMice = function expandedCreateMice() {
-    ensureExpansion(this);
+    const expansion = ensureExpansion(this);
     base.createMice.call(this);
-    this.mice.forEach((mouse, index) => initializeMouse(mouse, index, this.colonyPolicy));
+    this.mice.forEach((mouse, index) => initializeMouse(mouse, index, this.colonyPolicy, I));
+    rebuildDynamicSpatialIndexes(this, expansion);
+    auditAndCacheTextureAssets(this, expansion);
   };
 
   proto.chooseNightEvent = function expandedNightEvent(night) {
@@ -372,6 +526,7 @@ function installEnginePatches(I) {
   proto.spawnFood = function expandedSpawnFood() {
     const expansion = ensureExpansion(this);
     spawnExpandedFood(this, expansion, I);
+    rebuildFoodIndexes(this, expansion);
   };
 
   proto.updateGame = function expandedUpdateGame(delta) {
@@ -418,8 +573,41 @@ function installEnginePatches(I) {
   proto.updateCats = function expandedCatAI(delta) {
     const expansion = ensureExpansion(this);
     prepareCatLeisure(this, expansion, delta);
+    for (let index = 0; index < this.cats.length; index++) this.cats[index].__rigUpdatedThisFrame = false;
     base.updateCats.call(this, delta);
     applyCatBehaviorAnimation(this, expansion, delta);
+  };
+
+  proto.updateFood = function indexedFoodUpdates(delta) {
+    const expansion = ensureExpansion(this);
+    updateFoodTransformModes(this, expansion);
+    const nearby = expansion.spatial.food.queryRadius(this.playerPosition.x, this.playerPosition.z, 0.14, expansion.scratch.foodObjects);
+    let pickup = null;
+    let pickupOrder = Infinity;
+    if (!this.carriedFood) {
+      for (let index = 0; index < nearby.length; index++) {
+        const food = nearby[index];
+        if (food.deposited || food.carriedBy || !food.mesh.visible) continue;
+        if (food.mesh.position.distanceToSquared(this.playerPosition) >= 0.018225) continue;
+        const order = expansion.foodCandidateCache.get(food)?.sourceOrder ?? index;
+        if (order < pickupOrder) {
+          pickup = food;
+          pickupOrder = order;
+        }
+      }
+    }
+    if (pickup) this.playerTakeFood(pickup);
+    if (this.carriedFood && this.insideNest()) this.depositPlayerFood();
+  };
+
+  proto.mouseTakeFood = function expandedMouseTakeFood(mouse, food) {
+    thawTransform(food?.mesh);
+    return base.mouseTakeFood.call(this, mouse, food);
+  };
+
+  proto.playerTakeFood = function expandedPlayerTakeFood(food) {
+    thawTransform(food?.mesh);
+    return base.playerTakeFood.call(this, food);
   };
 
   proto.updateCatPatrol = function expandedPatrol(cat, delta, speedOverride) {
@@ -427,16 +615,11 @@ function installEnginePatches(I) {
     if (["grooming", "watching", "cover-watch"].includes(cat.leisureMode) && cat.leisureTimer > 0) return 0;
     if ((!cat.path.length || cat.pathIndex >= cat.path.length) && this.world.patrolPoints.length) {
       const focus = expansion.currentPlan?.event.catFocus;
-      const focused = focus
-        ? this.world.patrolPoints
-            .map((point, index) => ({ point, index }))
-            .filter(({ point }) => roomForPosition(point.x, point.z) === focus)
-        : [];
-      const pool = focused.length && Math.random() < 0.62
-        ? focused
-        : this.world.patrolPoints.map((point, index) => ({ point, index }));
-      const choice = pool[Math.floor(Math.random() * pool.length)];
-      if (choice) cat.patrolIndex = (choice.index - 1 + this.world.patrolPoints.length) % this.world.patrolPoints.length;
+      const focused = focus ? expansion.patrolByRoom.get(focus) : null;
+      const choiceIndex = focused?.length && Math.random() < 0.62
+        ? focused[Math.floor(Math.random() * focused.length)]
+        : Math.floor(Math.random() * this.world.patrolPoints.length);
+      if (Number.isInteger(choiceIndex)) cat.patrolIndex = (choiceIndex - 1 + this.world.patrolPoints.length) % this.world.patrolPoints.length;
     }
     return base.updateCatPatrol.call(this, cat, delta, speedOverride);
   };
@@ -460,6 +643,11 @@ function installEnginePatches(I) {
     }
     const sensitivity = expansion.currentPlan?.event.id === "quiet-house" ? 1.16 : 1;
     return base.processCatVision.call(this, cat, target, interval * sensitivity);
+  };
+
+  proto.targetPosition = function indexedTargetPosition(targetId) {
+    const mouse = ensureExpansion(this).scratch.mouseById.get(targetId);
+    return mouse?.member.alive ? mouse.rig.root.position : base.targetPosition.call(this, targetId);
   };
 
   proto.setCatState = function expandedCatState(cat, state, duration) {
@@ -492,6 +680,7 @@ function installEnginePatches(I) {
       setDynamicPropActive(expansion, "passage-block", false);
       expansion.routeRevision++;
       expansion.routeCache.clear();
+      expansion.roomRouteCache.clear();
       this.showMessage("A permanent mouse tunnel now links the study and hallway.", 4.4);
     } else if (food.prizeEffect === "scouts") {
       expansion.upgrades.scouts++;
@@ -529,10 +718,13 @@ function ensureExpansion(engine) {
     temporaryRoomId: null,
     routeRevision: 1,
     routeCache: new Map(),
+    roomRouteCache: new Map(),
     dangerSignals: [],
+    dangerSignalPool: null,
     dynamicProps: new Map(),
     roomDoors: [],
     extraPatrolPoints: [],
+    patrolByRoom: new Map(),
     navEdges: [],
     ambientMask: 1,
     maskActive: false,
@@ -541,13 +733,54 @@ function ensureExpansion(engine) {
     reservationSweepTimer: 0,
     wellFedNights: 0,
     upgrades: { tunnel: false, scouts: 0, insulation: 0 },
+    spatial: {
+      mice: new SpatialGrid(2.4),
+      cats: new SpatialGrid(3.2),
+      food: new SpatialGrid(2.5),
+      shelters: new SpatialGrid(3),
+      colliders: new SpatialGrid(2.5),
+    },
+    foodCandidateCache: new FoodCandidateCache(),
+    catDangerSnapshot: { cats: [], count: 0, revision: 0 },
+    scratch: {
+      foodObjects: [],
+      foodCandidates: [],
+      foodCandidateRecords: [],
+      shelterObjects: [],
+      shelterCandidates: [],
+      shelterCandidateRecords: [],
+      colliderObjects: [],
+      activeMouseById: new Map(),
+      mouseById: new Map(),
+    },
+    playerRoom: null,
+    performance: {
+      sample: 0,
+      updateMiceMs: 0,
+      dangerSnapshotMs: 0,
+      foodQueryMs: 0,
+      shelterQueryMs: 0,
+      samples: 0,
+    },
+    processedTextures: new WeakSet(),
+    textureImageIds: new WeakMap(),
+    nextTextureImageId: 1,
+    resizedTextureAssets: new Map(),
+    nearbyFoodTransforms: [],
   };
   engine.__expansion = expansion;
   buildExpandedHouse(engine, expansion, window.HearthmouseInternals);
+  const V = window.HearthmouseInternals.Vector3;
+  expansion.dangerSignalPool = new ReusableObjectPool(
+    () => ({ position: new V(), ttl: 0, radius: 0, score: 0 }),
+    (signal) => { signal.ttl = 0; signal.radius = 0; signal.score = 0; },
+  );
+  rebuildStaticSpatialIndexes(engine, expansion);
+  auditAndCacheTextureAssets(engine, expansion);
   return expansion;
 }
 
-function initializeMouse(mouse, index, policy = "balanced") {
+function initializeMouse(mouse, index, policy = "balanced", I = window.HearthmouseInternals) {
   mouse.delay = Math.min(mouse.delay, initialForagerDelay(policy, index, Math.random()));
   mouse.aiDecisionTimer = 0.04 + (index % 8) * 0.027;
   mouse.safeTimer = 0;
@@ -563,14 +796,27 @@ function initializeMouse(mouse, index, policy = "balanced") {
   mouse.stalledFor = 0;
   mouse.recoveryAttempts = 0;
   mouse.blockedFoodUntil = new Map();
+  mouse.threatResult = { score: 0, cat: null, urgent: false };
+  mouse.nearestCatResult = { cat: null, distance: Infinity };
+  mouse.nestActivityGoalScratch = new I.Vector3();
 }
 
-function initializeCat(cat, index) {
+function initializeCat(engine, expansion, cat, index) {
   cat.leisureMode = null;
   cat.leisureTimer = 0;
   cat.leisureCooldown = 2.5 + index;
   cat.pounceWindupDuration = computePounceWindup(1, cat.personality);
   cat.pounceCuePlayed = false;
+  cat.coverTargetScratch = cat.investigation.clone();
+  if (!cat.rig.__cosmeticThrottleInstalled) {
+    const updateRig = cat.rig.update.bind(cat.rig);
+    cat.rig.update = (...args) => {
+      const shouldUpdate = engine.snapshot.phase !== "foraging" || shouldRunCosmeticFrame(engine, expansion, cat.rig.root.position, index, cat.state === "chase");
+      cat.__rigUpdatedThisFrame = shouldUpdate;
+      if (shouldUpdate) return updateRig(...args);
+    };
+    Object.defineProperty(cat.rig, "__cosmeticThrottleInstalled", { value: true });
+  }
 }
 
 function disposeTemporaryCat(cat) {
@@ -588,6 +834,244 @@ function disposeTemporaryCat(cat) {
   materials.forEach((material) => material.dispose());
 }
 
+function freezeStaticTransform(object) {
+  if (!object || object.matrixAutoUpdate === false) return;
+  object.updateMatrix?.();
+  object.matrixAutoUpdate = false;
+  object.matrixWorldNeedsUpdate = true;
+}
+
+function thawTransform(object) {
+  if (!object || object.matrixAutoUpdate !== false) return;
+  object.matrixAutoUpdate = true;
+  object.matrixWorldNeedsUpdate = true;
+}
+
+function rebuildStaticSpatialIndexes(engine, expansion) {
+  const shelterGrid = expansion.spatial.shelters;
+  shelterGrid.clear();
+  for (let index = 0; index < engine.world.shelterPoints.length; index++) {
+    const shelter = engine.world.shelterPoints[index];
+    shelter.__spatialOrder = index;
+    shelterGrid.insert(shelter, shelter.position.x, shelter.position.z);
+  }
+
+  const colliderGrid = expansion.spatial.colliders;
+  colliderGrid.clear();
+  for (let index = 0; index < engine.world.colliders.length; index++) {
+    const collider = engine.world.colliders[index];
+    colliderGrid.insertBounds(collider, collider.minX, collider.minZ, collider.maxX, collider.maxZ);
+  }
+}
+
+function rebuildPatrolRoomIndex(world, expansion) {
+  expansion.patrolByRoom.clear();
+  for (let index = 0; index < world.patrolPoints.length; index++) {
+    const point = world.patrolPoints[index];
+    const room = roomForPosition(point.x, point.z);
+    if (!room) continue;
+    let indices = expansion.patrolByRoom.get(room);
+    if (!indices) {
+      indices = [];
+      expansion.patrolByRoom.set(room, indices);
+    }
+    indices.push(index);
+  }
+}
+
+function rebuildFoodIndexes(engine, expansion) {
+  const grid = expansion.spatial.food;
+  grid.clear();
+  for (let index = 0; index < engine.foods.length; index++) {
+    const food = engine.foods[index];
+    grid.insert(food, food.mesh.position.x, food.mesh.position.z);
+  }
+  expansion.foodCandidateCache.invalidate();
+  expansion.foodCandidateCache.rebuild(engine.foods, engine.world.nestCenter);
+}
+
+function rebuildDynamicSpatialIndexes(engine, expansion) {
+  const mice = expansion.spatial.mice;
+  mice.clear();
+  expansion.scratch.mouseById.clear();
+  for (let index = 0; index < engine.mice.length; index++) {
+    const mouse = engine.mice[index];
+    if (mouse.member.alive && mouse.task !== "dead") {
+      mice.insert(mouse, mouse.rig.root.position.x, mouse.rig.root.position.z);
+      expansion.scratch.mouseById.set(mouse.member.id, mouse);
+    }
+  }
+  const cats = expansion.spatial.cats;
+  cats.clear();
+  for (let index = 0; index < engine.cats.length; index++) {
+    const cat = engine.cats[index];
+    cats.insert(cat, cat.rig.root.position.x, cat.rig.root.position.z);
+  }
+}
+
+function rebuildCatDangerSnapshot(engine, expansion) {
+  const started = profileStart(expansion);
+  const snapshot = expansion.catDangerSnapshot;
+  snapshot.count = engine.cats.length;
+  snapshot.revision++;
+  for (let index = 0; index < engine.cats.length; index++) {
+    const cat = engine.cats[index];
+    let entry = snapshot.cats[index];
+    if (!entry) {
+      entry = { cat: null, x: 0, z: 0, forwardX: 0, forwardZ: 0, state: "", targetId: null, chasedX: 0, chasedZ: 0, hasChasedPosition: false, room: null, pathReachable: true };
+      snapshot.cats[index] = entry;
+    }
+    const facing = cat.yaw + cat.lookYaw * 0.5;
+    const chased = cat.state === "chase" ? engine.targetPosition(cat.targetId) : null;
+    entry.cat = cat;
+    entry.x = cat.rig.root.position.x;
+    entry.z = cat.rig.root.position.z;
+    entry.forwardX = -Math.sin(facing);
+    entry.forwardZ = -Math.cos(facing);
+    entry.state = cat.state;
+    entry.targetId = cat.targetId;
+    entry.chasedX = chased?.x ?? 0;
+    entry.chasedZ = chased?.z ?? 0;
+    entry.hasChasedPosition = !!chased;
+    entry.room = roomForPosition(entry.x, entry.z);
+    entry.pathReachable = cat.pathReachable !== false;
+  }
+  snapshot.cats.length = engine.cats.length;
+  profileFinish(expansion, "dangerSnapshotMs", started);
+  return snapshot;
+}
+
+function nearestCatFromSnapshot(expansion, position, result) {
+  result.cat = null;
+  result.distance = Infinity;
+  let bestSquared = Infinity;
+  const snapshot = expansion.catDangerSnapshot;
+  for (let index = 0; index < snapshot.count; index++) {
+    const entry = snapshot.cats[index];
+    const dx = position.x - entry.x;
+    const dz = position.z - entry.z;
+    const distanceSquared = dx * dx + dz * dz;
+    if (distanceSquared >= bestSquared) continue;
+    bestSquared = distanceSquared;
+    result.cat = entry.cat;
+  }
+  result.distance = Math.sqrt(bestSquared);
+  return result;
+}
+
+function colliderCandidatesForLine(engine, expansion, start, end, radius, out) {
+  expansion.spatial.colliders.queryAabb(
+    Math.min(start.x, end.x) - radius,
+    Math.min(start.z, end.z) - radius,
+    Math.max(start.x, end.x) + radius,
+    Math.max(start.z, end.z) + radius,
+    out,
+  );
+  return out.length ? out : engine.world.colliders;
+}
+
+function profileStart(expansion) {
+  if ((expansion.frame & 31) !== 0 || typeof performance === "undefined") return 0;
+  return performance.now();
+}
+
+function profileFinish(expansion, key, started) {
+  if (!started) return;
+  const elapsed = performance.now() - started;
+  expansion.performance[key] += elapsed;
+  if (key === "updateMiceMs") {
+    expansion.performance.samples++;
+    expansion.performance.sample = expansion.performance.samples;
+  }
+}
+
+function shouldRunCosmeticFrame(engine, expansion, position, index, forceFull = false) {
+  if (forceFull) return true;
+  const dx = position.x - engine.playerPosition.x;
+  const dz = position.z - engine.playerPosition.z;
+  const distanceSquared = dx * dx + dz * dz;
+  if (distanceSquared <= 36) return true;
+  const objectRoom = roomForPosition(position.x, position.z);
+  const sameRoom = objectRoom === expansion.playerRoom;
+  const facingX = -Math.sin(engine.yaw ?? 0);
+  const facingZ = -Math.cos(engine.yaw ?? 0);
+  const facingDot = (dx * facingX + dz * facingZ) / Math.max(0.001, Math.sqrt(distanceSquared));
+  let interval = 1;
+  if (!sameRoom) interval = distanceSquared > 256 ? 5 : distanceSquared > 100 ? 4 : 3;
+  else if (facingDot < -0.25) interval = distanceSquared > 144 ? 4 : 2;
+  else if (distanceSquared > 196) interval = 3;
+  return (expansion.frame + index) % interval === 0;
+}
+
+function updateFoodTransformModes(engine, expansion) {
+  for (let index = 0; index < expansion.nearbyFoodTransforms.length; index++) {
+    const food = expansion.nearbyFoodTransforms[index];
+    if (!food.carriedBy && !food.deposited) freezeStaticTransform(food.mesh);
+  }
+  const nearby = expansion.spatial.food.queryRadius(engine.playerPosition.x, engine.playerPosition.z, 1.5, expansion.scratch.foodObjects);
+  expansion.nearbyFoodTransforms.length = 0;
+  for (let index = 0; index < nearby.length; index++) {
+    const food = nearby[index];
+    if (food.deposited || food.carriedBy || !food.mesh.visible) continue;
+    if (food.mesh.position.distanceToSquared(engine.playerPosition) > 2.25) continue;
+    thawTransform(food.mesh);
+    expansion.nearbyFoodTransforms.push(food);
+  }
+}
+
+const TEXTURE_SLOTS = Object.freeze(["map", "alphaMap", "aoMap", "bumpMap", "emissiveMap", "metalnessMap", "normalMap", "roughnessMap"]);
+
+function auditAndCacheTextureAssets(engine, expansion) {
+  const roots = [engine.world?.root, engine.playerView];
+  for (let index = 0; index < (engine.mice?.length ?? 0); index++) roots.push(engine.mice[index].rig.root);
+  for (let index = 0; index < (engine.cats?.length ?? 0); index++) roots.push(engine.cats[index].rig.root);
+  const gpuLimit = engine.renderer?.capabilities?.maxTextureSize ?? 4096;
+  const displayLimit = Math.max(1024, 2 ** Math.ceil(Math.log2(Math.max(engine.canvas?.width ?? 0, engine.canvas?.height ?? 0, 1024))));
+  const maximumUsefulSize = Math.min(gpuLimit, displayLimit);
+  for (let rootIndex = 0; rootIndex < roots.length; rootIndex++) {
+    const root = roots[rootIndex];
+    if (!root?.traverse) continue;
+    root.traverse((object) => {
+      const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : null;
+      if (!materials) return;
+      for (let materialIndex = 0; materialIndex < materials.length; materialIndex++) {
+        const material = materials[materialIndex];
+        for (let slotIndex = 0; slotIndex < TEXTURE_SLOTS.length; slotIndex++) {
+          const texture = material[TEXTURE_SLOTS[slotIndex]];
+          if (!texture || expansion.processedTextures.has(texture)) continue;
+          expansion.processedTextures.add(texture);
+          const image = texture.image;
+          const width = image?.naturalWidth ?? image?.videoWidth ?? image?.width ?? 0;
+          const height = image?.naturalHeight ?? image?.videoHeight ?? image?.height ?? 0;
+          if (!width || !height || Math.max(width, height) <= maximumUsefulSize || typeof document === "undefined") continue;
+          const scale = maximumUsefulSize / Math.max(width, height);
+          const targetWidth = Math.max(1, Math.round(width * scale));
+          const targetHeight = Math.max(1, Math.round(height * scale));
+          let sourceKey = image.currentSrc || image.src;
+          if (!sourceKey) {
+            sourceKey = expansion.textureImageIds.get(image);
+            if (!sourceKey) {
+              sourceKey = `inline-${expansion.nextTextureImageId++}`;
+              expansion.textureImageIds.set(image, sourceKey);
+            }
+          }
+          const key = `${sourceKey}:${targetWidth}x${targetHeight}`;
+          let cached = expansion.resizedTextureAssets.get(key);
+          if (!cached) {
+            cached = document.createElement("canvas");
+            cached.width = targetWidth;
+            cached.height = targetHeight;
+            cached.getContext("2d", { alpha: true })?.drawImage(image, 0, 0, targetWidth, targetHeight);
+            expansion.resizedTextureAssets.set(key, cached);
+          }
+          texture.image = cached;
+          texture.needsUpdate = true;
+        }
+      }
+    });
+  }
+}
+
 function buildExpandedHouse(engine, expansion, I) {
   const world = engine.world;
   if (world.__expandedHouseBuilt) return;
@@ -598,20 +1082,28 @@ function buildExpandedHouse(engine, expansion, I) {
   world.root.add(roomRoot);
 
   const materials = new Map();
+  const geometries = new Map();
   const material = (color, roughness = 0.9) => {
     const key = `${color}:${roughness}`;
     if (!materials.has(key)) materials.set(key, new I.MeshStandardMaterial({ color, roughness, metalness: 0 }));
     return materials.get(key);
   };
 
+  const boxGeometry = (width, height, depth) => {
+    const key = `${width}:${height}:${depth}`;
+    if (!geometries.has(key)) geometries.set(key, new I.BoxGeometry(width, height, depth));
+    return geometries.get(key);
+  };
+
   const addBox = ({ name, x, y, z, w, h, d, color = 0x66574b, collide = false, catOnly = false, occlude = true, dynamicId = null, active = true }) => {
-    const mesh = new I.Mesh(new I.BoxGeometry(w, h, d), material(color));
+    const mesh = new I.Mesh(boxGeometry(w, h, d), material(color));
     mesh.name = name;
     mesh.position.set(x, y, z);
     mesh.visible = active;
     mesh.castShadow = false;
     mesh.receiveShadow = true;
     roomRoot.add(mesh);
+    freezeStaticTransform(mesh);
     if (occlude) {
       mesh.userData.occluder = true;
       if (active) world.occluders.push(mesh);
@@ -799,11 +1291,20 @@ function buildExpandedHouse(engine, expansion, I) {
         const key = `${entry.position.x.toFixed(2)}:${entry.position.z.toFixed(2)}`;
         if (!existing.has(key)) world.patrolPoints.push(entry.position);
       });
+    rebuildPatrolRoomIndex(world, expansion);
+    rebuildStaticSpatialIndexes(engine, expansion);
   };
 
   const baseSurfaceAt = world.surfaceAt.bind(world);
   world.surfaceAt = (x, z) => {
-    const room = ROOM_DEFINITIONS.find((candidate) => x >= candidate.minX && x <= candidate.maxX && z >= candidate.minZ && z <= candidate.maxZ);
+    let room = null;
+    for (let index = 0; index < ROOM_DEFINITIONS.length; index++) {
+      const candidate = ROOM_DEFINITIONS[index];
+      if (x >= candidate.minX && x <= candidate.maxX && z >= candidate.minZ && z <= candidate.maxZ) {
+        room = candidate;
+        break;
+      }
+    }
     if (room) return room.surface;
     const plan = expansion.currentPlan;
     if (plan?.event.noisyPaper && x > 3.8 && x < 6.2 && z < -4.7 && z > -6.1) return "paper";
@@ -811,6 +1312,8 @@ function buildExpandedHouse(engine, expansion, I) {
   };
 
   world.setNight(engine.snapshot.night || 1);
+  roomRoot.updateMatrixWorld(true);
+  freezeStaticTransform(roomRoot);
 }
 
 function addExpandedFoodSpawns(world, I) {
@@ -866,7 +1369,9 @@ function applyNightPlan(engine, plan) {
   const expansion = engine.__expansion;
   expansion.routeRevision++;
   expansion.routeCache.clear();
-  expansion.dangerSignals.length = 0;
+  expansion.roomRouteCache.clear();
+  expansion.foodCandidateCache.invalidate();
+  while (expansion.dangerSignals.length) expansion.dangerSignalPool.release(expansion.dangerSignals.pop());
   expansion.maskActive = false;
   expansion.lastMaskActive = false;
   expansion.ambientMask = 1;
@@ -883,6 +1388,7 @@ function applyNightPlan(engine, plan) {
   });
   if (plan.event.id === "pantry-spill" || plan.event.id === "grocery-night") setDynamicPropActive(expansion, "grocery-bag", true);
   engine.world.setNight(expansion.planNight || engine.snapshot.night || 1);
+  rebuildStaticSpatialIndexes(engine, expansion);
 }
 
 function setDynamicPropActive(expansion, id, active) {
@@ -941,11 +1447,13 @@ function spawnExpandedFood(engine, expansion, I) {
       const mesh = I.makeFood(spawn.kind, night * 1000 + index + batch * 79);
       const angle = seededUnit(night * 311 + index * 37 + batch * 991) * Math.PI * 2;
       const radius = 0.045 + seededUnit(night * 701 + index * 19 + batch * 313) * (batch ? 0.18 : 0.12);
-      const candidate = spawn.position.clone().add(new I.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
-      mesh.position.copy(candidate);
+      mesh.position.copy(spawn.position);
+      mesh.position.x += Math.cos(angle) * radius;
+      mesh.position.z += Math.sin(angle) * radius;
       mesh.rotation.y = seededUnit(index * 83 + night * 29) * Math.PI * 2;
       if (spawn.prizeId) engine.decoratePrize(mesh, spawn.prizeEffect);
       engine.world.root.add(mesh);
+      freezeStaticTransform(mesh);
       engine.foods.push({
         id: id++, kind: spawn.kind, value: spawn.value, mesh,
         reservedBy: null, carriedBy: null, deposited: false,
@@ -969,8 +1477,15 @@ function eventExtraSpawns(set, I, night) {
 
 function updateEnvironmentalWindow(engine, expansion, delta) {
   expansion.frame++;
-  expansion.dangerSignals.forEach((signal) => { signal.ttl -= delta; });
-  expansion.dangerSignals = expansion.dangerSignals.filter((signal) => signal.ttl > 0);
+  expansion.playerRoom = roomForPosition(engine.playerPosition.x, engine.playerPosition.z);
+  for (let index = expansion.dangerSignals.length - 1; index >= 0; index--) {
+    const signal = expansion.dangerSignals[index];
+    signal.ttl -= delta;
+    if (signal.ttl > 0) continue;
+    const last = expansion.dangerSignals.pop();
+    if (index < expansion.dangerSignals.length) expansion.dangerSignals[index] = last;
+    expansion.dangerSignalPool.release(signal);
+  }
   const cycle = expansion.currentPlan?.event.maskCycle;
   let active = false;
   if (cycle === "storm") active = (engine.time % 9.2) < 1.45;
@@ -992,6 +1507,9 @@ function colonyShouldStop(engine) {
 }
 
 function updateColonyMice(engine, expansion, I, delta) {
+  const started = profileStart(expansion);
+  rebuildDynamicSpatialIndexes(engine, expansion);
+  rebuildCatDangerSnapshot(engine, expansion);
   const profile = getPolicyProfile(engine.colonyPolicy);
   const stop = colonyShouldStop(engine);
   expansion.reservationSweepTimer -= delta;
@@ -1003,7 +1521,11 @@ function updateColonyMice(engine, expansion, I, delta) {
   const maxForagers = activeForagerLimit(engine.colonyPolicy, engine.mice.length, remaining);
   // Hidden mice do not consume a departure slot. Other allies should keep
   // working instead of waiting at the nest for every frightened mouse.
-  let assignedForagers = engine.mice.filter((mouse) => ["to-food", "returning", "escaping"].includes(mouse.task)).length;
+  let assignedForagers = 0;
+  for (let index = 0; index < engine.mice.length; index++) {
+    const task = engine.mice[index].task;
+    if (task === "to-food" || task === "returning" || task === "escaping") assignedForagers++;
+  }
 
   for (const mouse of engine.mice) {
     if (!mouse.member.alive || mouse.task === "dead") continue;
@@ -1012,8 +1534,9 @@ function updateColonyMice(engine, expansion, I, delta) {
     mouse.aiDecisionTimer -= delta;
     mouse.noiseTimer -= delta;
     mouse.nestActivityTimer -= delta;
-    const nearestCat = engine.nearestCat(mouse.rig.root.position);
-    const catDistance = nearestCat ? nearestCat.rig.root.position.distanceTo(mouse.rig.root.position) : Infinity;
+    const nearest = nearestCatFromSnapshot(expansion, mouse.rig.root.position, mouse.nearestCatResult);
+    const nearestCat = nearest.cat;
+    const catDistance = nearest.distance;
 
     if (mouse.aiDecisionTimer <= 0) {
       mouse.aiDecisionTimer = 0.11 + (mouse.colonyIndex % 7) * 0.019;
@@ -1121,7 +1644,7 @@ function updateColonyMice(engine, expansion, I, delta) {
         if (mouse.task === "to-food") assignedForagers++;
       } else if (mouse.nestActivityTimer <= 0) {
         const slot = mouse.colonyIndex % 12;
-        mouse.nestActivityGoal = new I.Vector3(-6.95 + (slot % 4) * 0.22, 0.025, 3.25 + Math.floor(slot / 4) * 0.36);
+        mouse.nestActivityGoal = mouse.nestActivityGoalScratch.set(-6.95 + (slot % 4) * 0.22, 0.025, 3.25 + Math.floor(slot / 4) * 0.36);
         mouse.task = "nesting-move";
         engine.planMousePath(mouse);
       }
@@ -1138,10 +1661,16 @@ function updateColonyMice(engine, expansion, I, delta) {
     const alert = nearestCat?.targetId === mouse.member.id ? 1 : catDistance < 2.4 ? 0.45 : mouse.lastThreatScore * 0.35;
     animateMouse(engine, expansion, mouse, moved, alert, !!mouse.carriedFood);
   }
+  profileFinish(expansion, "updateMiceMs", started);
 }
 
 function releaseStaleFoodReservations(engine) {
-  const activeMice = new Map(engine.mice.filter((mouse) => mouse.member.alive && mouse.task !== "dead").map((mouse) => [mouse.member.id, mouse]));
+  const activeMice = engine.__expansion.scratch.activeMouseById;
+  activeMice.clear();
+  for (let index = 0; index < engine.mice.length; index++) {
+    const mouse = engine.mice[index];
+    if (mouse.member.alive && mouse.task !== "dead") activeMice.set(mouse.member.id, mouse);
+  }
   for (const food of engine.foods) {
     if (!food.reservedBy) continue;
     const holder = activeMice.get(food.reservedBy);
@@ -1203,6 +1732,7 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
   mouse.recoveryAttempts++;
   expansion.routeRevision++;
   expansion.routeCache.clear();
+  expansion.roomRouteCache.clear();
 
   if (mouse.task === "to-food" && mouse.recoveryAttempts >= 2) {
     abandonFoodAssignment(engine, mouse);
@@ -1231,7 +1761,7 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
   if (mouse.task === "returning" && mouse.recoveryAttempts >= 2) {
     const direct = I.pathfind(mouse.rig.root.position, engine.world.nestDeposit, 0.055, engine.world.colliders, "mouse");
     if (direct.reachedGoal && direct.path.length) {
-      mouse.path = direct.path.map((point) => point.clone());
+      mouse.path = direct.path;
       mouse.pathIndex = 0;
       mouse.recoveryAttempts = 0;
       return true;
@@ -1267,84 +1797,121 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
 }
 
 function animateMouse(engine, expansion, mouse, speed, alert, carrying) {
-  const far = mouse.rig.root.position.distanceToSquared(engine.playerPosition) > 42;
-  const home = ["nesting", "hiding"].includes(mouse.task);
-  if ((far || home) && (expansion.frame + mouse.colonyIndex) % (far ? 3 : 2) !== 0) return;
+  const urgent = mouse.task === "escaping" && mouse.rig.root.position.distanceToSquared(engine.playerPosition) <= 64;
+  if (!shouldRunCosmeticFrame(engine, expansion, mouse.rig.root.position, mouse.colonyIndex, urgent)) return;
   mouse.rig.update(engine.time, speed, alert, carrying);
 }
 
 function assessMouseThreat(engine, expansion, mouse, nearestCat, nearestDistance, cheap = false) {
-  let best = { score: 0, cat: nearestCat, urgent: false };
-  for (const cat of engine.cats) {
-    const position = mouse.rig.root.position;
-    const distance = cat.rig.root.position.distanceTo(position);
-    const dx = position.x - cat.rig.root.position.x;
-    const dz = position.z - cat.rig.root.position.z;
+  const best = mouse.threatResult;
+  best.score = 0;
+  best.cat = nearestCat;
+  best.urgent = false;
+  const position = mouse.rig.root.position;
+  const snapshot = expansion.catDangerSnapshot;
+  for (let index = 0; index < snapshot.count; index++) {
+    const entry = snapshot.cats[index];
+    const cat = entry.cat;
+    const dx = position.x - entry.x;
+    const dz = position.z - entry.z;
     const length = Math.max(0.001, Math.hypot(dx, dz));
-    const facing = cat.yaw + cat.lookYaw * 0.5;
-    const lookDot = (dx / length) * -Math.sin(facing) + (dz / length) * -Math.cos(facing);
+    const distance = length;
+    const lookDot = (dx / length) * entry.forwardX + (dz / length) * entry.forwardZ;
     const previous = mouse.lastCatDistances.get(cat.id) ?? distance;
     mouse.lastCatDistances.set(cat.id, distance);
     const approaching = previous - distance > 0.055;
     let score = 0;
     let urgent = false;
-    if (cat.state === "chase" && cat.targetId === mouse.member.id) {
+    if (entry.state === "chase" && entry.targetId === mouse.member.id) {
       score = 1.2;
       urgent = true;
-    } else if (cat.state === "chase") {
-      const chased = engine.targetPosition(cat.targetId);
-      const sharedDanger = chased ? chased.distanceTo(position) < 2.8 : false;
+    } else if (entry.state === "chase") {
+      const chaseDx = entry.chasedX - position.x;
+      const chaseDz = entry.chasedZ - position.z;
+      const sharedDanger = entry.hasChasedPosition && chaseDx * chaseDx + chaseDz * chaseDz < 7.84;
       score = sharedDanger ? 0.94 : distance < 3.4 ? 0.77 : 0.25;
       urgent = sharedDanger && distance < 2.4;
-    } else if (["alert", "investigating", "suspicious", "search"].includes(cat.state)) {
+    } else if (entry.state === "alert" || entry.state === "investigating" || entry.state === "suspicious" || entry.state === "search") {
       score = distance < 2.2 ? 0.9 : distance < 3.7 ? 0.62 : distance < 5.2 ? 0.34 : 0;
       if (lookDot > 0.2) score += 0.15;
     } else if (distance < 4.7 && lookDot > 0.28) {
-      const clearLine = cheap ? true : ILineClear(engine, cat.rig.root.position, position, "cat");
+      const clearLine = cheap ? true : ILineClear(engine, expansion, cat.rig.root.position, position, "cat");
       if (clearLine) score = (1 - distance / 5.2) * (cat.leisureMode === "grooming" ? 0.52 : 0.82) + lookDot * 0.16;
     }
     if (approaching && distance < 5.3) score += 0.18;
     if (distance < 1.15) { score = Math.max(score, 0.94); urgent = true; }
-    if (score > best.score) best = { score, cat, urgent };
+    if (score > best.score) {
+      best.score = score;
+      best.cat = cat;
+      best.urgent = urgent;
+    }
   }
-  for (const signal of expansion.dangerSignals) {
-    const distance = signal.position.distanceTo(mouse.rig.root.position);
+  for (let index = 0; index < expansion.dangerSignals.length; index++) {
+    const signal = expansion.dangerSignals[index];
+    const distance = signal.position.distanceTo(position);
     if (distance < signal.radius) best.score = Math.max(best.score, signal.score * (1 - distance / signal.radius));
   }
   best.score = clamp(best.score + expansion.upgrades.scouts * 0.035, 0, 1.25);
   return best;
 }
 
-function ILineClear(engine, start, end, agent) {
-  return window.HearthmouseInternals.lineClear(start, end, agent === "cat" ? 0.205 : 0.055, engine.world.colliders, agent);
+function ILineClear(engine, expansion, start, end, agent) {
+  const radius = agent === "cat" ? 0.205 : 0.055;
+  const colliders = colliderCandidatesForLine(engine, expansion, start, end, radius, expansion.scratch.colliderObjects);
+  return window.HearthmouseInternals.lineClear(start, end, radius, colliders, agent);
 }
 
 function sendMouseToBestShelter(engine, expansion, I, mouse, cat) {
   if (!cat) return false;
-  const candidates = engine.world.shelterPoints
-    .filter((shelter) =>
-      isRoomAccessible(engine, expansion, shelter.roomId ?? roomForPosition(shelter.position.x, shelter.position.z)) &&
-      (!shelter.dynamicProp || expansion.dynamicProps.get(shelter.dynamicProp)?.mesh.visible)
-    )
-    .map((shelter) => {
-      const mousePosition = mouse.rig.root.position;
+  const started = profileStart(expansion);
+  const mousePosition = mouse.rig.root.position;
+  const catPosition = cat.rig.root.position;
+  const catX = catPosition.x - mousePosition.x;
+  const catZ = catPosition.z - mousePosition.z;
+  const catLength = Math.max(0.001, Math.hypot(catX, catZ));
+  const objects = expansion.scratch.shelterObjects;
+  const candidates = expansion.scratch.shelterCandidates;
+  const records = expansion.scratch.shelterCandidateRecords;
+  let queryRadius = 6;
+  for (;;) {
+    expansion.spatial.shelters.queryRadius(mousePosition.x, mousePosition.z, queryRadius, objects);
+    candidates.length = 0;
+    for (let index = 0; index < objects.length; index++) {
+      const shelter = objects[index];
+      if (!isRoomAccessible(engine, expansion, shelter.roomId ?? roomForPosition(shelter.position.x, shelter.position.z))) continue;
+      if (shelter.dynamicProp && !expansion.dynamicProps.get(shelter.dynamicProp)?.mesh.visible) continue;
       const escapeX = shelter.position.x - mousePosition.x;
       const escapeZ = shelter.position.z - mousePosition.z;
-      const catX = cat.rig.root.position.x - mousePosition.x;
-      const catZ = cat.rig.root.position.z - mousePosition.z;
-      const escapeLength = Math.max(0.001, Math.hypot(escapeX, escapeZ));
-      const catLength = Math.max(0.001, Math.hypot(catX, catZ));
-      return {
-        shelter,
-        direct: escapeLength,
-        catDistance: cat.rig.root.position.distanceTo(shelter.position),
-        directionDot: (escapeX * catX + escapeZ * catZ) / (escapeLength * catLength),
-      };
-    })
-    .sort((a, b) => (a.direct + Math.max(0, a.directionDot) * 4 - a.catDistance * 0.28) - (b.direct + Math.max(0, b.directionDot) * 4 - b.catDistance * 0.28))
-    .slice(0, 8);
-  let best = null;
-  for (const candidate of candidates) {
+      const direct = Math.max(0.001, Math.hypot(escapeX, escapeZ));
+      const catDistance = catPosition.distanceTo(shelter.position);
+      const directionDot = (escapeX * catX + escapeZ * catZ) / (direct * catLength);
+      let record = records[candidates.length];
+      if (!record) {
+        record = { shelter: null, direct: 0, catDistance: 0, directionDot: 0, coarseScore: 0, sourceOrder: 0 };
+        records.push(record);
+      }
+      record.shelter = shelter;
+      record.direct = direct;
+      record.catDistance = catDistance;
+      record.directionDot = directionDot;
+      record.coarseScore = direct + Math.max(0, directionDot) * 4 - catDistance * 0.28;
+      record.sourceOrder = shelter.__spatialOrder ?? index;
+      candidates.push(record);
+    }
+    candidates.sort((a, b) => a.coarseScore - b.coarseScore || a.sourceOrder - b.sourceOrder);
+    if (queryRadius >= 64) break;
+    const worstShortlisted = candidates[Math.min(7, candidates.length - 1)]?.coarseScore ?? Infinity;
+    const unseenLowerBound = queryRadius * 0.72 - catLength * 0.28;
+    if (candidates.length >= 8 && unseenLowerBound >= worstShortlisted) break;
+    queryRadius *= 2;
+  }
+
+  let bestCandidate = null;
+  let bestRoute = null;
+  let bestScore = Infinity;
+  const shortlistLength = Math.min(8, candidates.length);
+  for (let index = 0; index < shortlistLength; index++) {
+    const candidate = candidates[index];
     const route = cachedSmartPath(engine, expansion, I, mouse.rig.root.position, candidate.shelter.position, "mouse", `shelter:${candidate.shelter.id}`);
     if (!route.reachedGoal) continue;
     const catRoute = candidate.shelter.catProof
@@ -1362,9 +1929,14 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat) {
       caution: mouse.member.caution,
       catReachable: catRoute.reachedGoal,
     });
-    if (!best || score < best.score) best = { ...candidate, route, pathDistance, score };
+    if (score < bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
+      bestRoute = route;
+    }
   }
-  if (!best) {
+  profileFinish(expansion, "shelterQueryMs", started);
+  if (!bestCandidate) {
     mouse.escapeCooldown = 0.45;
     return false;
   }
@@ -1375,12 +1947,17 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat) {
     mouse.resumeTask = "waiting";
   }
   mouse.task = "escaping";
-  mouse.escapeGoal = best.shelter.position;
-  mouse.path = best.route.path.map((point) => point.clone());
+  mouse.escapeGoal = bestCandidate.shelter.position;
+  mouse.path = bestRoute.path;
   mouse.pathIndex = 0;
   mouse.escapeCooldown = 2.2;
-  expansion.dangerSignals.push({ position: mouse.rig.root.position.clone(), ttl: 2.6, radius: 2.8 + expansion.upgrades.scouts * 0.55, score: 0.78 });
-  if (expansion.dangerSignals.length > 12) expansion.dangerSignals.shift();
+  if (expansion.dangerSignals.length >= 12) expansion.dangerSignalPool.release(expansion.dangerSignals.shift());
+  const signal = expansion.dangerSignalPool.acquire();
+  signal.position.copy(mouse.rig.root.position);
+  signal.ttl = 2.6;
+  signal.radius = 2.8 + expansion.upgrades.scouts * 0.55;
+  signal.score = 0.78;
+  expansion.dangerSignals.push(signal);
   return true;
 }
 
@@ -1407,14 +1984,16 @@ function assignLocalFood(engine, expansion, I, mouse) {
     // spread the colony across the house instead of forming a single queue.
     candidates = availableFood(engine, expansion, mouse, Infinity);
   }
-  candidates.sort((a, b) => scoreFoodCandidate(a, engine.colonyPolicy, mouse.member.caution) - scoreFoodCandidate(b, engine.colonyPolicy, mouse.member.caution));
-  for (const candidate of candidates.slice(0, 12)) {
+  candidates.sort((a, b) => a.score - b.score || a.sourceOrder - b.sourceOrder);
+  const shortlistLength = Math.min(12, candidates.length);
+  for (let index = 0; index < shortlistLength; index++) {
+    const candidate = candidates[index];
     const route = cachedSmartPath(engine, expansion, I, mouse.rig.root.position, candidate.food.mesh.position, "mouse", `food:${candidate.food.id}`);
     if (!route.reachedGoal) continue;
     candidate.food.reservedBy = mouse.member.id;
     mouse.targetFood = candidate.food;
     mouse.task = "to-food";
-    mouse.path = route.path.map((point) => point.clone());
+    mouse.path = route.path;
     mouse.pathIndex = 0;
     return;
   }
@@ -1424,10 +2003,12 @@ function assignLocalFood(engine, expansion, I, mouse) {
 }
 
 function committedFoodValue(engine) {
-  return engine.foods.reduce((sum, food) => {
-    if (food.deposited) return sum;
-    return food.carriedBy || food.reservedBy ? sum + food.value : sum;
-  }, 0);
+  let total = 0;
+  for (let index = 0; index < engine.foods.length; index++) {
+    const food = engine.foods[index];
+    if (!food.deposited && (food.carriedBy || food.reservedBy)) total += food.value;
+  }
+  return total;
 }
 
 function foodSector(food) {
@@ -1438,36 +2019,54 @@ function foodSector(food) {
 }
 
 function availableFood(engine, expansion, mouse, radius) {
+  const started = profileStart(expansion);
   for (const [foodId, blockedUntil] of mouse.blockedFoodUntil ?? []) {
     if (blockedUntil <= engine.time) mouse.blockedFoodUntil.delete(foodId);
   }
-  return engine.foods
-    .filter((food) =>
-      !food.deposited &&
-      !food.carriedBy &&
-      !food.reservedBy &&
-      food.mesh.visible &&
-      food.nestDistance <= radius &&
-      (mouse.blockedFoodUntil?.get(food.id) ?? 0) <= engine.time &&
-      isRoomAccessible(engine, expansion, food.room ?? roomForPosition(food.mesh.position.x, food.mesh.position.z))
-    )
-    .map((food) => ({
-      food,
-      value: food.value,
-      depth: food.depth ?? roomDepth(food.room),
-      nestDistance: food.nestDistance ?? food.mesh.position.distanceTo(engine.world.nestCenter),
-      mouseDistance: food.mesh.position.distanceTo(mouse.rig.root.position),
-      exposure: exposureAt(engine, food.mesh.position),
-      sectorMatch: foodSector(food) === mouse.foragingSector ? 1 : 0,
-    }));
+  if (!expansion.foodCandidateCache.valid) rebuildFoodIndexes(engine, expansion);
+  const objects = expansion.scratch.foodObjects;
+  const candidates = expansion.scratch.foodCandidates;
+  const records = expansion.scratch.foodCandidateRecords;
+  const spatialRadius = Number.isFinite(radius) ? radius : 64;
+  expansion.spatial.food.queryRadius(engine.world.nestCenter.x, engine.world.nestCenter.z, spatialRadius, objects);
+  candidates.length = 0;
+  for (let index = 0; index < objects.length; index++) {
+    const food = objects[index];
+    const metadata = expansion.foodCandidateCache.get(food);
+    if (!metadata || food.deposited || food.carriedBy || food.reservedBy || !food.mesh.visible) continue;
+    if (metadata.nestDistance > radius) continue;
+    if ((mouse.blockedFoodUntil?.get(food.id) ?? 0) > engine.time) continue;
+    if (!isRoomAccessible(engine, expansion, metadata.room)) continue;
+    const dx = food.mesh.position.x - mouse.rig.root.position.x;
+    const dz = food.mesh.position.z - mouse.rig.root.position.z;
+    let record = records[candidates.length];
+    if (!record) {
+      record = { food: null, value: 0, depth: 0, nestDistance: 0, mouseDistance: 0, exposure: 0, sectorMatch: 0, sourceOrder: 0, score: 0 };
+      records.push(record);
+    }
+    record.food = food;
+    record.value = metadata.value;
+    record.depth = metadata.depth;
+    record.nestDistance = metadata.nestDistance;
+    record.mouseDistance = Math.hypot(dx, dz);
+    record.exposure = metadata.staticExposure + exposureAt(expansion, food.mesh.position);
+    record.sectorMatch = metadata.sector === mouse.foragingSector ? 1 : 0;
+    record.sourceOrder = metadata.sourceOrder;
+    record.score = scoreFoodCandidate(record, engine.colonyPolicy, mouse.member.caution);
+    candidates.push(record);
+  }
+  profileFinish(expansion, "foodQueryMs", started);
+  return candidates;
 }
 
-function exposureAt(engine, position) {
+function exposureAt(expansion, position) {
   let exposure = 0;
-  engine.cats.forEach((cat) => {
-    const distance = cat.rig.root.position.distanceTo(position);
+  const snapshot = expansion.catDangerSnapshot;
+  for (let index = 0; index < snapshot.count; index++) {
+    const entry = snapshot.cats[index];
+    const distance = Math.hypot(entry.x - position.x, entry.z - position.z);
     if (distance < 5) exposure = Math.max(exposure, 1 - distance / 5);
-  });
+  }
   return exposure;
 }
 
@@ -1521,11 +2120,23 @@ function prepareCatLeisure(engine, expansion, delta) {
       cat.stateTimer = cat.leisureTimer;
       cat.path = [];
     } else if (roll < 0.65) {
-      const shelters = engine.world.shelterPoints.filter((shelter) => isRoomAccessible(engine, expansion, shelter.roomId ?? roomForPosition(shelter.position.x, shelter.position.z)));
-      const shelter = shelters[Math.floor(Math.random() * shelters.length)];
+      const nearbyShelters = expansion.spatial.shelters.queryRadius(cat.rig.root.position.x, cat.rig.root.position.z, 64, expansion.scratch.shelterObjects);
+      let shelter = null;
+      let accessibleCount = 0;
+      for (let index = 0; index < nearbyShelters.length; index++) {
+        const candidate = nearbyShelters[index];
+        if (!isRoomAccessible(engine, expansion, candidate.roomId ?? roomForPosition(candidate.position.x, candidate.position.z))) continue;
+        accessibleCount++;
+      }
+      let selectedAccessible = Math.floor(Math.random() * accessibleCount);
+      for (let index = 0; index < nearbyShelters.length && !shelter; index++) {
+        const candidate = nearbyShelters[index];
+        if (!isRoomAccessible(engine, expansion, candidate.roomId ?? roomForPosition(candidate.position.x, candidate.position.z))) continue;
+        if (selectedAccessible-- === 0) shelter = candidate;
+      }
       if (shelter) {
         const angle = Math.random() * Math.PI * 2;
-        cat.coverTarget = shelter.position.clone().add(engine.tempA.set(Math.cos(angle) * 0.72, 0, Math.sin(angle) * 0.72));
+        cat.coverTarget = cat.coverTargetScratch.copy(shelter.position).add(engine.tempA.set(Math.cos(angle) * 0.72, 0, Math.sin(angle) * 0.72));
         cat.investigation.copy(shelter.position);
         cat.leisureMode = "cover-approach";
         cat.leisureTimer = 6.5;
@@ -1545,7 +2156,16 @@ function prepareCatLeisure(engine, expansion, delta) {
 
 function applyCatBehaviorAnimation(engine, expansion) {
   let pounceWarning = 0;
-  for (const cat of engine.cats) {
+  for (let catIndex = 0; catIndex < engine.cats.length; catIndex++) {
+    const cat = engine.cats[catIndex];
+    if (!cat.__rigUpdatedThisFrame) {
+      if (cat.pouncePhase === "windup") {
+        const duration = cat.pounceWindupDuration || computePounceWindup(engine.snapshot.night, cat.personality);
+        const progress = clamp(1 - cat.pounceTimer / duration, 0, 1);
+        pounceWarning = Math.max(pounceWarning, progress * progress * (3 - 2 * progress));
+      }
+      continue;
+    }
     cat.rig.body.rotation.z = 0;
     cat.rig.root.rotation.z = 0;
     if (cat.pouncePhase === "windup") {
@@ -1556,9 +2176,14 @@ function applyCatBehaviorAnimation(engine, expansion) {
       cat.rig.chest.position.y -= 0.044 * tension;
       cat.rig.body.rotation.z = Math.sin(engine.time * 35) * 0.055 * tension;
       cat.rig.headPivot.rotation.x += 0.16 * tension;
-      cat.rig.legs.slice(2).forEach((leg, index) => { leg.rotation.x += Math.sin(engine.time * 31 + index * Math.PI) * 0.13 * tension; });
+      for (let index = 2; index < cat.rig.legs.length; index++) {
+        cat.rig.legs[index].rotation.x += Math.sin(engine.time * 31 + (index - 2) * Math.PI) * 0.13 * tension;
+      }
       cat.rig.tail[0] && (cat.rig.tail[0].rotation.y += Math.sin(engine.time * 32) * 0.08 * tension);
-      cat.rig.eyes.forEach((eye) => { if (eye.material) eye.material.emissiveIntensity = Math.max(eye.material.emissiveIntensity, 0.8 + tension * 0.75); });
+      for (let index = 0; index < cat.rig.eyes.length; index++) {
+        const eye = cat.rig.eyes[index];
+        if (eye.material) eye.material.emissiveIntensity = Math.max(eye.material.emissiveIntensity, 0.8 + tension * 0.75);
+      }
       pounceWarning = Math.max(pounceWarning, tension);
     } else if (cat.leisureMode === "grooming" && cat.state !== "chase") {
       cat.rig.body.position.y -= 0.035;
@@ -1606,10 +2231,10 @@ function emitExpandedNoise(engine, expansion, position, rawStrength) {
 function cachedSmartPath(engine, expansion, I, start, target, agent, purpose) {
   const key = `${expansion.routeRevision}:${agent}:${purpose}:${Math.round(start.x * 2)}:${Math.round(start.z * 2)}`;
   const cached = expansion.routeCache.get(key);
-  if (cached) return { ...cached, path: cached.path.map((point) => point.clone()) };
+  if (cached) return cached;
   const result = buildSmartPath(engine, expansion, I, start, target, agent);
   if (expansion.routeCache.size > 320) expansion.routeCache.clear();
-  expansion.routeCache.set(key, { ...result, path: result.path.map((point) => point.clone()) });
+  expansion.routeCache.set(key, result);
   return result;
 }
 
@@ -1624,9 +2249,10 @@ function buildSmartPath(engine, expansion, I, start, target, agent) {
   const path = [];
   let reachedGoal = true;
   let remainingDistance = 0;
-  for (const waypoint of [...route.map((edge) => edge.point), target]) {
+  for (let index = 0; index <= route.length; index++) {
+    const waypoint = index < route.length ? route[index].point : target;
     const leg = I.pathfind(cursor, waypoint, radius, engine.world.colliders, agent);
-    path.push(...leg.path);
+    for (let pointIndex = 0; pointIndex < leg.path.length; pointIndex++) path.push(leg.path[pointIndex]);
     if (!leg.reachedGoal) {
       reachedGoal = false;
       remainingDistance = leg.remainingDistance + waypoint.distanceTo(target);
@@ -1638,22 +2264,31 @@ function buildSmartPath(engine, expansion, I, start, target, agent) {
 }
 
 function roomRoute(engine, expansion, startRoom, targetRoom, agent) {
-  const openEdges = expansion.navEdges.filter((edge) => {
-    if (edge.mouseOnly && agent === "cat") return false;
-    if (edge.unlockNight && engine.snapshot.night < edge.unlockNight && expansion.temporaryRoomId !== edge.a && expansion.temporaryRoomId !== edge.b) return false;
+  const cacheKey = `${expansion.routeRevision}:${agent}:${startRoom}:${targetRoom}`;
+  const cached = expansion.roomRouteCache.get(cacheKey);
+  if (cached) return cached;
+  const openEdges = [];
+  for (let index = 0; index < expansion.navEdges.length; index++) {
+    const edge = expansion.navEdges[index];
+    if (edge.mouseOnly && agent === "cat") continue;
+    if (edge.unlockNight && engine.snapshot.night < edge.unlockNight && expansion.temporaryRoomId !== edge.a && expansion.temporaryRoomId !== edge.b) continue;
     if (edge.doorId) {
       const door = expansion.roomDoors.find((candidate) => candidate.id === edge.doorId);
-      if (door?.collider.active) return false;
+      if (door?.collider.active) continue;
     }
-    if (edge.dynamicProp === "closed-shortcut" && expansion.dynamicProps.get("closed-shortcut")?.collider.active) return false;
-    if (edge.passage && expansion.dynamicProps.get("passage-block")?.collider.active) return false;
-    return isRoomAccessible(engine, expansion, edge.a) && isRoomAccessible(engine, expansion, edge.b);
-  });
+    if (edge.dynamicProp === "closed-shortcut" && expansion.dynamicProps.get("closed-shortcut")?.collider.active) continue;
+    if (edge.passage && expansion.dynamicProps.get("passage-block")?.collider.active) continue;
+    if (isRoomAccessible(engine, expansion, edge.a) && isRoomAccessible(engine, expansion, edge.b)) openEdges.push(edge);
+  }
   const queue = [{ room: startRoom, path: [] }];
   const visited = new Set([startRoom]);
-  while (queue.length) {
-    const current = queue.shift();
-    if (current.room === targetRoom) return current.path;
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex++) {
+    const current = queue[queueIndex];
+    if (current.room === targetRoom) {
+      if (expansion.roomRouteCache.size > 160) expansion.roomRouteCache.clear();
+      expansion.roomRouteCache.set(cacheKey, current.path);
+      return current.path;
+    }
     for (const edge of openEdges) {
       const next = edge.a === current.room ? edge.b : edge.b === current.room ? edge.a : null;
       if (!next || visited.has(next)) continue;
@@ -1661,6 +2296,7 @@ function roomRoute(engine, expansion, startRoom, targetRoom, agent) {
       queue.push({ room: next, path: [...current.path, edge] });
     }
   }
+  expansion.roomRouteCache.set(cacheKey, []);
   return [];
 }
 
@@ -1670,8 +2306,10 @@ function isRoomAccessible(engine, expansion, roomId) {
 }
 
 function roomForPosition(x, z) {
-  const expanded = ROOM_DEFINITIONS.find((room) => x >= room.minX - 0.12 && x <= room.maxX + 0.12 && z >= room.minZ - 0.12 && z <= room.maxZ + 0.12);
-  if (expanded) return expanded.id;
+  for (let index = 0; index < ROOM_DEFINITIONS.length; index++) {
+    const room = ROOM_DEFINITIONS[index];
+    if (x >= room.minX - 0.12 && x <= room.maxX + 0.12 && z >= room.minZ - 0.12 && z <= room.maxZ + 0.12) return room.id;
+  }
   if (x >= 10.35 && x <= 15.1 && z >= 1.7 && z <= 6.35) return "laundry";
   if (x >= -10.5 && x <= -4.9 && z >= -10.8 && z <= -6.25) return "study";
   if (x < 0.1 && z >= -6.5 && z <= 6.5) return "living";
@@ -1683,13 +2321,20 @@ function roomDepth(roomId) {
   if (["living", "kitchen"].includes(roomId)) return 0;
   if (roomId === "laundry") return 2;
   if (roomId === "study") return 3;
-  return ROOM_DEFINITIONS.find((room) => room.id === roomId)?.depth ?? 1;
+  for (let index = 0; index < ROOM_DEFINITIONS.length; index++) {
+    if (ROOM_DEFINITIONS[index].id === roomId) return ROOM_DEFINITIONS[index].depth;
+  }
+  return 1;
 }
 
 function pathLength(start, path) {
   let total = 0;
   let cursor = start;
-  path.forEach((point) => { total += cursor.distanceTo(point); cursor = point; });
+  for (let index = 0; index < path.length; index++) {
+    const point = path[index];
+    total += cursor.distanceTo(point);
+    cursor = point;
+  }
   return total;
 }
 
