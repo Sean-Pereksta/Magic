@@ -1,3 +1,5 @@
+import "./hearthmouse-room-safety.mjs";
+
 function createSightState(I) {
   const V = I?.Vector3;
   if (!V) return null;
