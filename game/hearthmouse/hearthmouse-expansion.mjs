@@ -352,7 +352,9 @@ function installCatPressureHotfix(I) {
   proto.updateCatPatrol = function keepPatrolPressureSpread(cat, delta, speedOverride) {
     const selectingDestination = !cat.path?.length || cat.pathIndex >= cat.path.length;
     const result = coreUpdateCatPatrol.call(this, cat, delta, speedOverride);
-    if (selectingDestination && cat.state !== "chase") spreadPatrolDestination(this, cat);
+    if (selectingDestination && cat.state !== "chase" && cat.path?.length && cat.pathIndex < cat.path.length) {
+      spreadPatrolDestination(this, cat);
+    }
     return result;
   };
 
