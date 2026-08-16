@@ -4,13 +4,16 @@ import test from "node:test";
 import {
   POLICY_PROFILES,
   ROOM_DEFINITIONS,
+  activeForagerLimit,
   computePounceWindup,
   forageTarget,
+  initialForagerDelay,
   nextColonyPolicy,
   roomUnlocked,
   scoreFoodCandidate,
   selectNightPlan,
   shouldForagersStop,
+  shouldRecoverMouse,
 } from "./hearthmouse-expansion.mjs";
 
 test("the compact policy control cycles through every risk mode", () => {
@@ -27,6 +30,33 @@ test("balanced is the stable default policy and only desperate targets surplus",
   assert.equal(forageTarget("desperate", 10), 14);
   assert.equal(shouldForagersStop({ policy: "balanced", delivered: 10, nightlyRequirement: 10 }), true);
   assert.equal(shouldForagersStop({ policy: "desperate", delivered: 10, nightlyRequirement: 10 }), false);
+});
+
+test("foragers deploy promptly in bounded command-dependent waves", () => {
+  const cautious = Array.from({ length: 24 }, (_, index) => initialForagerDelay("cautious", index, 1));
+  const balanced = Array.from({ length: 24 }, (_, index) => initialForagerDelay("balanced", index, 1));
+  const desperate = Array.from({ length: 24 }, (_, index) => initialForagerDelay("desperate", index, 1));
+  assert.ok(Math.max(...cautious) < 2);
+  assert.ok(Math.max(...balanced) < 1.3);
+  assert.ok(Math.max(...desperate) < 0.8);
+  assert.ok(desperate[0] < balanced[0] && balanced[0] < cautious[0]);
+});
+
+test("forager concurrency follows colony orders without allowing mass inactivity", () => {
+  const cautious = activeForagerLimit("cautious", 20, 20);
+  const balanced = activeForagerLimit("balanced", 20, 20);
+  const desperate = activeForagerLimit("desperate", 20, 20);
+  assert.ok(cautious >= 10);
+  assert.ok(cautious < balanced);
+  assert.ok(balanced < desperate);
+  assert.equal(activeForagerLimit("balanced", 20, 0), 0);
+});
+
+test("the movement watchdog only recovers genuinely stalled travel tasks", () => {
+  assert.equal(shouldRecoverMouse({ task: "waiting", stalledFor: 20, distanceMoved: 0, distanceToGoal: 10 }), false);
+  assert.equal(shouldRecoverMouse({ task: "to-food", stalledFor: 1.1, distanceMoved: 0, distanceToGoal: 2 }), true);
+  assert.equal(shouldRecoverMouse({ task: "to-food", stalledFor: 1.1, distanceMoved: 0.1, distanceToGoal: 2 }), false);
+  assert.equal(shouldRecoverMouse({ task: "returning", stalledFor: 1.3, distanceMoved: 0, distanceToGoal: 0.1 }), false);
 });
 
 test("pounce warning closes gradually but never beats the former maximum timing", () => {
