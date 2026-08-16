@@ -15,6 +15,44 @@ export function chaseReplanInterval(isTouchDevice, catId = "mabel") {
   return (isTouchDevice ? 0.44 : 0.38) + stagger;
 }
 
+export const CAT_MIN_SPAWN_SEPARATION = 4.8;
+export const CAT_MIN_PATROL_SEPARATION = 4.2;
+export const CAT_DOGPILE_RELEASE_DISTANCE = 5.4;
+
+export function pointSeparation(a, b) {
+  if (!a || !b) return Infinity;
+  return Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.z ?? 0) - (b.z ?? 0));
+}
+
+export function chooseSeparatedPatrolIndex(points, occupiedPositions = [], preferredIndex = 0) {
+  if (!Array.isArray(points) || points.length === 0) return -1;
+  const count = points.length;
+  const normalizedPreferred = ((Math.floor(preferredIndex) % count) + count) % count;
+  let bestIndex = normalizedPreferred;
+  let bestSeparation = -Infinity;
+  let bestPreferenceDistance = Infinity;
+
+  for (let index = 0; index < count; index++) {
+    const point = points[index];
+    if (!point) continue;
+    let nearest = Infinity;
+    for (let otherIndex = 0; otherIndex < occupiedPositions.length; otherIndex++) {
+      nearest = Math.min(nearest, pointSeparation(point, occupiedPositions[otherIndex]));
+    }
+    const direct = Math.abs(index - normalizedPreferred);
+    const preferenceDistance = Math.min(direct, count - direct);
+    if (
+      nearest > bestSeparation + 1e-6 ||
+      (Math.abs(nearest - bestSeparation) <= 1e-6 && preferenceDistance < bestPreferenceDistance)
+    ) {
+      bestIndex = index;
+      bestSeparation = nearest;
+      bestPreferenceDistance = preferenceDistance;
+    }
+  }
+  return bestIndex;
+}
+
 function livePopulation(engine) {
   if (Array.isArray(engine.colony)) {
     let allies = 0;
@@ -54,20 +92,157 @@ function clearCats(engine) {
   engine.cats = [];
 }
 
-function catRosterMatches(engine, desiredCount) {
-  if ((engine.cats?.length ?? 0) !== desiredCount) return false;
-  const requiredIds = desiredCount >= 3
+function requiredCatIds(desiredCount) {
+  return desiredCount >= 3
     ? ["mabel", "biscuit", "pepper"]
     : desiredCount >= 2
       ? ["mabel", "biscuit"]
       : ["mabel"];
-  return requiredIds.every((id) => engine.cats.some((cat) => cat.id === id));
+}
+
+function catRosterMatches(engine, desiredCount) {
+  if ((engine.cats?.length ?? 0) !== desiredCount) return false;
+  return requiredCatIds(desiredCount).every((id) => engine.cats.some((cat) => cat.id === id));
 }
 
 function catDisplayName(cat) {
   if (cat?.id === "biscuit") return "Biscuit";
   if (cat?.id === "pepper") return "Pepper";
   return "Mabel";
+}
+
+function catCanReachMainPatrol(engine, I, position) {
+  if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
+  const patrolPoints = engine.world?.patrolPoints ?? [];
+  const anchor = patrolPoints[0] ?? engine.world?.catSpawn;
+  if (!anchor) return true;
+  if (pointSeparation(position, anchor) < 0.28) return true;
+  const route = I.pathfind(position, anchor, 0.205, engine.world.colliders, "cat");
+  return !!route?.reachedGoal;
+}
+
+function reachableCatSpawnCandidates(engine, I) {
+  const candidates = [];
+  const add = (point) => {
+    if (!point || !catCanReachMainPatrol(engine, I, point)) return;
+    if (candidates.some((candidate) => pointSeparation(candidate, point) < 0.18)) return;
+    candidates.push(point);
+  };
+  add(engine.world?.catSpawn);
+  add(engine.world?.kittenSpawn);
+  const patrolPoints = engine.world?.patrolPoints ?? [];
+  for (let index = 0; index < patrolPoints.length; index++) add(patrolPoints[index]);
+  return candidates;
+}
+
+function resetCatAtSpawn(cat, point) {
+  cat.rig.root.position.copy(point);
+  cat.path = [];
+  cat.pathIndex = 0;
+  cat.pathTimer = 0;
+  cat.pathReachable = true;
+  cat.pathRemainingDistance = 0;
+  cat.unreachableTimer = 0;
+  cat.stuckTimer = 0;
+  cat.targetId = null;
+  cat.awareness = 0;
+  cat.investigation.copy(point);
+  cat.lastSeen.copy(point);
+}
+
+function repairCatSpawnLayout(engine, I, desiredCount) {
+  if (!catRosterMatches(engine, desiredCount)) return false;
+  const candidates = reachableCatSpawnCandidates(engine, I);
+  const occupied = [];
+  const ordered = requiredCatIds(desiredCount)
+    .map((id) => engine.cats.find((cat) => cat.id === id))
+    .filter(Boolean);
+
+  for (let index = 0; index < ordered.length; index++) {
+    const cat = ordered[index];
+    const current = cat.rig?.root?.position;
+    const currentReachable = catCanReachMainPatrol(engine, I, current);
+    const currentSeparated = occupied.every((position) => pointSeparation(current, position) >= CAT_MIN_SPAWN_SEPARATION);
+    if (!currentReachable || !currentSeparated) {
+      const preferredIndex = index === 0 ? 0 : index === 1 ? Math.floor(candidates.length / 2) : Math.floor(candidates.length / 3);
+      const candidateIndex = chooseSeparatedPatrolIndex(candidates, occupied, preferredIndex);
+      const candidate = candidates[candidateIndex];
+      if (candidate) resetCatAtSpawn(cat, candidate);
+    }
+    occupied.push(cat.rig.root.position);
+    cat.__pressureSlot = index;
+  }
+
+  return ordered.every((cat, index) => {
+    if (!catCanReachMainPatrol(engine, I, cat.rig.root.position)) return false;
+    for (let otherIndex = 0; otherIndex < index; otherIndex++) {
+      if (pointSeparation(cat.rig.root.position, ordered[otherIndex].rig.root.position) < CAT_MIN_SPAWN_SEPARATION) return false;
+    }
+    return true;
+  });
+}
+
+function pressurePosition(engine, cat) {
+  if (cat.state === "chase" && cat.targetId) return engine.targetPosition(cat.targetId) ?? cat.rig.root.position;
+  if (cat.path?.length && cat.pathIndex < cat.path.length) return cat.path[cat.path.length - 1];
+  return cat.rig.root.position;
+}
+
+function spreadPatrolDestination(engine, cat) {
+  const points = engine.world?.patrolPoints ?? [];
+  if (points.length < 2 || engine.cats.length < 2) return false;
+  const otherPressure = [];
+  for (let index = 0; index < engine.cats.length; index++) {
+    const other = engine.cats[index];
+    if (other === cat) continue;
+    otherPressure.push(pressurePosition(engine, other));
+  }
+  if (!otherPressure.length) return false;
+
+  const currentTarget = cat.path?.length ? cat.path[cat.path.length - 1] : cat.rig.root.position;
+  let currentSeparation = Infinity;
+  for (let index = 0; index < otherPressure.length; index++) {
+    currentSeparation = Math.min(currentSeparation, pointSeparation(currentTarget, otherPressure[index]));
+  }
+  if (currentSeparation >= CAT_MIN_PATROL_SEPARATION) return false;
+
+  const preferredIndex = (cat.patrolIndex + 1 + (cat.__pressureSlot ?? 0) * 3) % points.length;
+  const choiceIndex = chooseSeparatedPatrolIndex(points, otherPressure, preferredIndex);
+  const point = points[choiceIndex];
+  if (!point) return false;
+  let betterSeparation = Infinity;
+  for (let index = 0; index < otherPressure.length; index++) {
+    betterSeparation = Math.min(betterSeparation, pointSeparation(point, otherPressure[index]));
+  }
+  if (betterSeparation < CAT_MIN_PATROL_SEPARATION || betterSeparation < currentSeparation + 0.8) return false;
+
+  const previousPath = cat.path;
+  const previousPathIndex = cat.pathIndex;
+  const previousPatrolIndex = cat.patrolIndex;
+  const previousReachable = cat.pathReachable;
+  const previousRemaining = cat.pathRemainingDistance;
+  engine.planCatPath(cat, point);
+  if (cat.pathReachable === false) {
+    cat.path = previousPath;
+    cat.pathIndex = previousPathIndex;
+    cat.patrolIndex = previousPatrolIndex;
+    cat.pathReachable = previousReachable;
+    cat.pathRemainingDistance = previousRemaining;
+    return false;
+  }
+  cat.patrolIndex = choiceIndex;
+  return true;
+}
+
+function targetAlreadyCovered(engine, cat, targetId) {
+  if (!targetId) return false;
+  const targetPosition = engine.targetPosition(targetId);
+  for (let index = 0; index < engine.cats.length; index++) {
+    const other = engine.cats[index];
+    if (other === cat || other.state !== "chase" || other.targetId !== targetId) continue;
+    if (!targetPosition || pointSeparation(other.rig.root.position, targetPosition) <= CAT_DOGPILE_RELEASE_DISTANCE) return true;
+  }
+  return false;
 }
 
 function installCatPressureHotfix(I) {
@@ -80,6 +255,7 @@ function installCatPressureHotfix(I) {
   const coreCreateCats = proto.createCats;
   const coreTargetVisibility = proto.targetVisibility;
   const coreScanCatVision = proto.scanCatVision;
+  const coreUpdateCatPatrol = proto.updateCatPatrol;
   const coreUpdateCatChase = proto.updateCatChase;
   const coreProcessCatVision = proto.processCatVision;
   const coreSetCatState = proto.setCatState;
@@ -98,11 +274,12 @@ function installCatPressureHotfix(I) {
       coreCreateCats.call(this);
     }
 
-    if (!catRosterMatches(this, desiredCount)) {
-      console.warn("Hearthmouse cat roster mismatch", {
+    const operational = repairCatSpawnLayout(this, I, desiredCount);
+    if (!catRosterMatches(this, desiredCount) || !operational) {
+      console.warn("Hearthmouse cat roster/spawn mismatch", {
         population,
         desiredCount,
-        cats: this.cats.map((cat) => cat.id),
+        cats: this.cats.map((cat) => ({ id: cat.id, x: cat.rig.root.position.x, z: cat.rig.root.position.z })),
       });
     }
 
@@ -138,7 +315,12 @@ function installCatPressureHotfix(I) {
   };
 
   proto.scanCatVision = function keepLockedChaseTarget(cat) {
-    if (cat.state !== "chase" || !cat.targetId) return coreScanCatVision.call(this, cat);
+    if (cat.state !== "chase" || !cat.targetId) {
+      const target = coreScanCatVision.call(this, cat);
+      if (!target?.id || !targetAlreadyCovered(this, cat, target.id)) return target;
+      if (target.position) cat.investigation.copy(target.position);
+      return null;
+    }
     const position = this.targetPosition(cat.targetId);
     if (!position) return null;
     const visible = this.targetVisibility(cat, cat.targetId, position);
@@ -164,6 +346,13 @@ function installCatPressureHotfix(I) {
     result.moving = moving;
     result.visible = visible;
     result.distance = cat.rig.root.position.distanceTo(position);
+    return result;
+  };
+
+  proto.updateCatPatrol = function keepPatrolPressureSpread(cat, delta, speedOverride) {
+    const selectingDestination = !cat.path?.length || cat.pathIndex >= cat.path.length;
+    const result = coreUpdateCatPatrol.call(this, cat, delta, speedOverride);
+    if (selectingDestination && cat.state !== "chase") spreadPatrolDestination(this, cat);
     return result;
   };
 
