@@ -37,6 +37,12 @@ Desperate sends every available ally into the house, strongly favors deep and
 valuable supplies, and builds a large winter surplus. Mice accept nearby-cat
 risk and flee only from an immediate chase or interception threat.
 
+Allied mice keep hold of carried food while panic-scurrying, hiding, and
+recovering a blocked route, then resume their delivery to the nest.
+
+Cat pressure scales with colony size: Biscuit joins Mabel at 8 total mice, and
+Pepper becomes the third active cat at 15 total mice.
+
 The house changes every night. Food, doors, cover, noise, patrol focus, and
 temporary passages can all shift. New rooms open throughout the 12-night
 season, from the hallway and pantry to bedrooms, utility spaces, basement, and
