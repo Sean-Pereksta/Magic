@@ -77,6 +77,7 @@ test("ally escape and recovery code never drops carried food", () => {
   assert.doesNotMatch(source, /dropMouseFood/);
   assert.match(source, /mouse\.resumeTask = mouse\.carriedFood \? "returning"/);
   assert.match(source, /Never discard gathered food/);
+  assert.match(source, /mouse\.task === "returning" && mouse\.carriedFood/);
 });
 
 test("the movement watchdog only recovers genuinely stalled travel tasks", () => {

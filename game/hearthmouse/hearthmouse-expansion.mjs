@@ -1253,6 +1253,12 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
     mouse.pathIndex = 0;
     mouse.recoveryAttempts = 0;
     mouse.progressSampleTimer = 0;
+  } else if (mouse.task === "returning" && mouse.carriedFood) {
+    // A failed replan must not turn a loaded mouse into an idle forager.
+    // Remaining in `returning` guarantees another home-route retry.
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    mouse.progressSampleTimer = 0;
   } else if (!mouse.path.length) {
     mouse.task = "waiting";
     mouse.delay = 0.1 + Math.random() * 0.12;
