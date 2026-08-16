@@ -16,6 +16,7 @@ export function chaseReplanInterval(isTouchDevice, catId = "mabel") {
 }
 
 export const CAT_MIN_SPAWN_SEPARATION = 4.8;
+export const CAT_MIN_NEST_SPAWN_SEPARATION = 10;
 export const CAT_MIN_PATROL_SEPARATION = 4.2;
 export const CAT_DOGPILE_RELEASE_DISTANCE = 5.4;
 
@@ -47,6 +48,45 @@ export function chooseSeparatedPatrolIndex(points, occupiedPositions = [], prefe
     ) {
       bestIndex = index;
       bestSeparation = nearest;
+      bestPreferenceDistance = preferenceDistance;
+    }
+  }
+  return bestIndex;
+}
+
+export function chooseNestSafeSpawnIndex(points, occupiedPositions = [], nestPosition = null, preferredIndex = 0) {
+  if (!Array.isArray(points) || points.length === 0) return -1;
+  const count = points.length;
+  const normalizedPreferred = ((Math.floor(preferredIndex) % count) + count) % count;
+  let bestIndex = -1;
+  let bestNestSeparation = -Infinity;
+  let bestCatSeparation = -Infinity;
+  let bestPreferenceDistance = Infinity;
+
+  for (let index = 0; index < count; index++) {
+    const point = points[index];
+    if (!point) continue;
+    const nestSeparation = pointSeparation(point, nestPosition);
+    if (nestPosition && nestSeparation < CAT_MIN_NEST_SPAWN_SEPARATION) continue;
+
+    let catSeparation = Infinity;
+    for (let otherIndex = 0; otherIndex < occupiedPositions.length; otherIndex++) {
+      catSeparation = Math.min(catSeparation, pointSeparation(point, occupiedPositions[otherIndex]));
+    }
+    if (occupiedPositions.length && catSeparation < CAT_MIN_SPAWN_SEPARATION) continue;
+
+    const direct = Math.abs(index - normalizedPreferred);
+    const preferenceDistance = Math.min(direct, count - direct);
+    if (
+      nestSeparation > bestNestSeparation + 1e-6 ||
+      (Math.abs(nestSeparation - bestNestSeparation) <= 1e-6 && catSeparation > bestCatSeparation + 1e-6) ||
+      (Math.abs(nestSeparation - bestNestSeparation) <= 1e-6 &&
+        Math.abs(catSeparation - bestCatSeparation) <= 1e-6 &&
+        preferenceDistance < bestPreferenceDistance)
+    ) {
+      bestIndex = index;
+      bestNestSeparation = nestSeparation;
+      bestCatSeparation = catSeparation;
       bestPreferenceDistance = preferenceDistance;
     }
   }
@@ -153,6 +193,7 @@ function resetCatAtSpawn(cat, point) {
 function repairCatSpawnLayout(engine, I, desiredCount) {
   if (!catRosterMatches(engine, desiredCount)) return false;
   const candidates = reachableCatSpawnCandidates(engine, I);
+  const nestPosition = engine.world?.nestCenter ?? engine.world?.mouseSpawn ?? null;
   const occupied = [];
   const ordered = requiredCatIds(desiredCount)
     .map((id) => engine.cats.find((cat) => cat.id === id))
@@ -163,9 +204,10 @@ function repairCatSpawnLayout(engine, I, desiredCount) {
     const current = cat.rig?.root?.position;
     const currentReachable = catCanReachMainPatrol(engine, I, current);
     const currentSeparated = occupied.every((position) => pointSeparation(current, position) >= CAT_MIN_SPAWN_SEPARATION);
-    if (!currentReachable || !currentSeparated) {
+    const currentNestSafe = !nestPosition || pointSeparation(current, nestPosition) >= CAT_MIN_NEST_SPAWN_SEPARATION;
+    if (!currentReachable || !currentSeparated || !currentNestSafe) {
       const preferredIndex = index === 0 ? 0 : index === 1 ? Math.floor(candidates.length / 2) : Math.floor(candidates.length / 3);
-      const candidateIndex = chooseSeparatedPatrolIndex(candidates, occupied, preferredIndex);
+      const candidateIndex = chooseNestSafeSpawnIndex(candidates, occupied, nestPosition, preferredIndex);
       const candidate = candidates[candidateIndex];
       if (candidate) resetCatAtSpawn(cat, candidate);
     }
@@ -175,6 +217,7 @@ function repairCatSpawnLayout(engine, I, desiredCount) {
 
   return ordered.every((cat, index) => {
     if (!catCanReachMainPatrol(engine, I, cat.rig.root.position)) return false;
+    if (nestPosition && pointSeparation(cat.rig.root.position, nestPosition) < CAT_MIN_NEST_SPAWN_SEPARATION) return false;
     for (let otherIndex = 0; otherIndex < index; otherIndex++) {
       if (pointSeparation(cat.rig.root.position, ordered[otherIndex].rig.root.position) < CAT_MIN_SPAWN_SEPARATION) return false;
     }
