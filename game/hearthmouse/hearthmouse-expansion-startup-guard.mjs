@@ -17,6 +17,24 @@ function createSightState(I) {
   };
 }
 
+export function catCountForNight(night) {
+  const currentNight = Math.max(1, Math.floor(Number(night) || 1));
+  if (currentNight >= 8) return 3;
+  if (currentNight >= 4) return 2;
+  return 1;
+}
+
+export function catSpeedMultiplierForNight(night) {
+  const currentNight = Math.max(1, Math.floor(Number(night) || 1));
+  return 1 + Math.min(0.2, (currentNight - 1) * 0.02);
+}
+
+function syntheticPopulationForCatCount(catCount) {
+  if (catCount >= 3) return 15;
+  if (catCount >= 2) return 8;
+  return 1;
+}
+
 export function ensureExpansionSight(expansion, I = globalThis.window?.HearthmouseInternals) {
   if (!expansion) return false;
   if (expansion.sight?.occluderCenter && expansion.sight?.occluderScale) return true;
@@ -56,6 +74,52 @@ export function installExpansionSightGuard(engine, I = globalThis.window?.Hearth
   return true;
 }
 
+export function installNightCatPressureGuard(I = globalThis.window?.HearthmouseInternals) {
+  const proto = I?.Engine?.prototype;
+  if (!proto?.__catPressureHotfixInstalled) return false;
+  if (proto.__nightCatPressureGuardInstalled) return true;
+  if (typeof proto.createCats !== "function" || typeof proto.followCatPath !== "function") return false;
+
+  const populationCreateCats = proto.createCats;
+  const baseFollowCatPath = proto.followCatPath;
+  Object.defineProperty(proto, "__nightCatPressureGuardInstalled", { value: true });
+
+  proto.createCats = function nightDrivenCatRoster() {
+    const desiredCount = catCountForNight(this.snapshot?.night ?? 1);
+    const syntheticPopulation = syntheticPopulationForCatCount(desiredCount);
+    const actualColony = this.colony;
+    const actualStartOfNightPopulation = this.startOfNightPopulation;
+    const actualSnapshotPopulation = this.snapshot?.population;
+
+    // The existing reliable multi-cat factory is population-shaped internally.
+    // Feed it the legacy threshold only while it creates the roster, then restore
+    // the real colony immediately. Night number is now the gameplay trigger.
+    const syntheticAllies = Math.max(0, syntheticPopulation - 1);
+    this.colony = Array.from({ length: syntheticAllies }, (_, index) => ({
+      ...(actualColony?.[index] ?? {}),
+      alive: true,
+    }));
+    this.startOfNightPopulation = syntheticPopulation;
+    if (this.snapshot) this.snapshot.population = syntheticPopulation;
+
+    try {
+      populationCreateCats.call(this);
+    } finally {
+      this.colony = actualColony;
+      this.startOfNightPopulation = actualStartOfNightPopulation;
+      if (this.snapshot) this.snapshot.population = actualSnapshotPopulation;
+    }
+  };
+
+  proto.followCatPath = function progressivelyFasterCats(cat, delta, speed) {
+    const multiplier = catSpeedMultiplierForNight(this.snapshot?.night ?? 1);
+    const scaledSpeed = Number.isFinite(speed) ? speed * multiplier : speed;
+    return baseFollowCatPath.call(this, cat, delta, scaledSpeed);
+  };
+
+  return true;
+}
+
 function guardWhenReady() {
   if (typeof window === "undefined") return;
   const engine = window.hearthmouseEngine;
@@ -66,4 +130,14 @@ function guardWhenReady() {
   installExpansionSightGuard(engine, window.HearthmouseInternals);
 }
 
-if (typeof window !== "undefined") guardWhenReady();
+function installNightCatPressureWhenReady() {
+  if (typeof window === "undefined") return;
+  if (!installNightCatPressureGuard(window.HearthmouseInternals)) {
+    window.setTimeout(installNightCatPressureWhenReady, 16);
+  }
+}
+
+if (typeof window !== "undefined") {
+  guardWhenReady();
+  installNightCatPressureWhenReady();
+}
