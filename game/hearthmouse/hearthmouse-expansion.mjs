@@ -74,6 +74,36 @@ export function shouldForagersStop({ policy, delivered, nightlyRequirement }) {
   return delivered >= forageTarget(policy, nightlyRequirement);
 }
 
+export function initialForagerDelay(policy, colonyIndex, randomUnit = 0.5) {
+  const mode = getPolicyProfile(policy).id;
+  const base = mode === "cautious" ? 0.72 : mode === "desperate" ? 0.22 : 0.42;
+  const wave = mode === "cautious" ? 0.17 : mode === "desperate" ? 0.075 : 0.115;
+  const jitter = mode === "cautious" ? 0.26 : mode === "desperate" ? 0.14 : 0.2;
+  return base + (Math.max(0, colonyIndex) % 6) * wave + clamp(randomUnit, 0, 1) * jitter;
+}
+
+export function activeForagerLimit(policy, mouseCount, remainingFood) {
+  if (mouseCount <= 0 || remainingFood <= 0) return 0;
+  const mode = getPolicyProfile(policy).id;
+  const foodPerMouse = mode === "cautious" ? 2.1 : mode === "desperate" ? 1.12 : 1.55;
+  const extraScouts = mode === "cautious" ? 1 : mode === "desperate" ? 4 : 2;
+  const minimum = mode === "cautious" ? 1 : 2;
+  return Math.min(mouseCount, Math.max(minimum, Math.ceil(remainingFood / foodPerMouse) + extraScouts));
+}
+
+const MOUSE_STALL_THRESHOLDS = Object.freeze({
+  escaping: 0.62,
+  "to-food": 1.05,
+  returning: 1.2,
+  home: 1.35,
+  "nesting-move": 1.5,
+});
+
+export function shouldRecoverMouse({ task, stalledFor, distanceMoved, distanceToGoal }) {
+  const threshold = MOUSE_STALL_THRESHOLDS[task];
+  return !!threshold && stalledFor >= threshold && distanceMoved < 0.018 && distanceToGoal > 0.16;
+}
+
 export function scoreFoodCandidate(candidate, policy, mouseCaution = 0.5) {
   const profile = getPolicyProfile(policy);
   const ringSize = policy === "cautious" ? 2.4 : policy === "balanced" ? 3.5 : 5.5;
@@ -253,7 +283,7 @@ function installEnginePatches(I) {
   proto.createMice = function expandedCreateMice() {
     ensureExpansion(this);
     base.createMice.call(this);
-    this.mice.forEach((mouse, index) => initializeMouse(mouse, index));
+    this.mice.forEach((mouse, index) => initializeMouse(mouse, index, this.colonyPolicy));
   };
 
   proto.chooseNightEvent = function expandedNightEvent(night) {
@@ -441,6 +471,7 @@ function ensureExpansion(engine) {
     maskActive: false,
     lastMaskActive: false,
     frame: 0,
+    reservationSweepTimer: 0,
     wellFedNights: 0,
     upgrades: { tunnel: false, scouts: 0, insulation: 0 },
   };
@@ -449,7 +480,8 @@ function ensureExpansion(engine) {
   return expansion;
 }
 
-function initializeMouse(mouse, index) {
+function initializeMouse(mouse, index, policy = "balanced") {
+  mouse.delay = Math.min(mouse.delay, initialForagerDelay(policy, index, Math.random()));
   mouse.aiDecisionTimer = 0.04 + (index % 8) * 0.027;
   mouse.safeTimer = 0;
   mouse.noiseTimer = 0.25 + (index % 5) * 0.11;
@@ -459,6 +491,11 @@ function initializeMouse(mouse, index) {
   mouse.nestActivityTimer = 1 + (index % 7) * 0.36;
   mouse.nestActivityGoal = null;
   mouse.lastThreatScore = 0;
+  mouse.progressPosition = mouse.rig.root.position.clone();
+  mouse.progressSampleTimer = 0;
+  mouse.stalledFor = 0;
+  mouse.recoveryAttempts = 0;
+  mouse.blockedFoodUntil = new Map();
 }
 
 function initializeCat(cat, index) {
@@ -875,9 +912,14 @@ function colonyShouldStop(engine) {
 function updateColonyMice(engine, expansion, I, delta) {
   const profile = getPolicyProfile(engine.colonyPolicy);
   const stop = colonyShouldStop(engine);
+  expansion.reservationSweepTimer -= delta;
+  if (expansion.reservationSweepTimer <= 0) {
+    releaseStaleFoodReservations(engine);
+    expansion.reservationSweepTimer = 0.42;
+  }
   const committed = committedFoodValue(engine);
   const remaining = Math.max(0, forageTarget(engine.colonyPolicy, engine.snapshot.tonightRequirement) - engine.snapshot.deliveredTonight - committed);
-  const maxForagers = Math.min(engine.mice.length, Math.max(2, Math.ceil(remaining / 1.6) + (engine.colonyPolicy === "desperate" ? 3 : 1)));
+  const maxForagers = activeForagerLimit(engine.colonyPolicy, engine.mice.length, remaining);
   let assignedForagers = engine.mice.filter((mouse) => ["to-food", "returning", "escaping", "hiding"].includes(mouse.task)).length;
 
   for (const mouse of engine.mice) {
@@ -915,11 +957,13 @@ function updateColonyMice(engine, expansion, I, delta) {
         mouse.path = [];
         mouse.pathIndex = 0;
       }
+      recoverMouseIfStalled(engine, expansion, I, mouse, delta);
       animateMouse(engine, expansion, mouse, moved, 1, true);
       continue;
     }
 
     if (mouse.task === "hiding") {
+      resetMouseProgress(mouse);
       mouse.hideTimer -= delta;
       const threat = assessMouseThreat(engine, expansion, mouse, nearestCat, catDistance, true);
       const clear = threat.score < profile.fleeThreshold * 0.55 && catDistance > 2.35 + mouse.member.caution;
@@ -997,6 +1041,8 @@ function updateColonyMice(engine, expansion, I, delta) {
       }
     }
 
+    recoverMouseIfStalled(engine, expansion, I, mouse, delta);
+
     if (moved > 0.35 && mouse.noiseTimer <= 0) {
       const surface = engine.world.surfaceAt(mouse.rig.root.position.x, mouse.rig.root.position.z);
       const noise = { carpet: 0.12, wood: 0.24, tile: 0.3, paper: 0.48, metal: 0.62 }[surface] ?? 0.24;
@@ -1006,6 +1052,129 @@ function updateColonyMice(engine, expansion, I, delta) {
     const alert = nearestCat?.targetId === mouse.member.id ? 1 : catDistance < 2.4 ? 0.45 : mouse.lastThreatScore * 0.35;
     animateMouse(engine, expansion, mouse, moved, alert, !!mouse.carriedFood);
   }
+}
+
+function releaseStaleFoodReservations(engine) {
+  const activeMice = new Map(engine.mice.filter((mouse) => mouse.member.alive && mouse.task !== "dead").map((mouse) => [mouse.member.id, mouse]));
+  for (const food of engine.foods) {
+    if (!food.reservedBy) continue;
+    const holder = activeMice.get(food.reservedBy);
+    if (!holder || holder.task !== "to-food" || holder.targetFood !== food) food.reservedBy = null;
+  }
+}
+
+function resetMouseProgress(mouse) {
+  if (!mouse.progressPosition) mouse.progressPosition = mouse.rig.root.position.clone();
+  else mouse.progressPosition.copy(mouse.rig.root.position);
+  mouse.progressSampleTimer = 0;
+  mouse.stalledFor = 0;
+  mouse.recoveryAttempts = 0;
+}
+
+function movementGoalForMouse(engine, mouse) {
+  if (mouse.task === "escaping") return mouse.escapeGoal;
+  if (mouse.task === "to-food") return mouse.targetFood?.mesh.position;
+  if (mouse.task === "returning") return engine.world.nestDeposit;
+  if (mouse.task === "home" || mouse.task === "nesting-move") return mouse.nestActivityGoal ?? engine.world.nestDeposit;
+  return null;
+}
+
+function abandonFoodAssignment(engine, mouse) {
+  const food = mouse.targetFood;
+  if (food?.reservedBy === mouse.member.id) food.reservedBy = null;
+  if (food) mouse.blockedFoodUntil.set(food.id, engine.time + 4.5);
+  mouse.targetFood = null;
+  mouse.path = [];
+  mouse.pathIndex = 0;
+  mouse.task = "waiting";
+  mouse.delay = 0.06 + (mouse.colonyIndex % 5) * 0.025;
+  mouse.recoveryAttempts = 0;
+}
+
+function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
+  const goal = movementGoalForMouse(engine, mouse);
+  if (!goal) {
+    resetMouseProgress(mouse);
+    return false;
+  }
+  if (!mouse.progressPosition) mouse.progressPosition = mouse.rig.root.position.clone();
+  mouse.progressSampleTimer += delta;
+  if (mouse.progressSampleTimer < 0.32) return false;
+  const sampleWindow = mouse.progressSampleTimer;
+  mouse.progressSampleTimer = 0;
+  const distanceMoved = mouse.progressPosition.distanceTo(mouse.rig.root.position);
+  mouse.progressPosition.copy(mouse.rig.root.position);
+  const distanceToGoal = mouse.rig.root.position.distanceTo(goal);
+  if (distanceMoved >= 0.018 || distanceToGoal <= 0.16) {
+    mouse.stalledFor = 0;
+    mouse.recoveryAttempts = 0;
+    return false;
+  }
+  mouse.stalledFor += sampleWindow;
+  if (!shouldRecoverMouse({ task: mouse.task, stalledFor: mouse.stalledFor, distanceMoved, distanceToGoal })) return false;
+
+  mouse.stalledFor = 0;
+  mouse.recoveryAttempts++;
+  expansion.routeRevision++;
+  expansion.routeCache.clear();
+
+  if (mouse.task === "to-food" && mouse.recoveryAttempts >= 2) {
+    abandonFoodAssignment(engine, mouse);
+    return true;
+  }
+  if (mouse.task === "escaping") {
+    const cat = engine.nearestCat(mouse.rig.root.position);
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    if (cat && sendMouseToBestShelter(engine, expansion, I, mouse, cat)) {
+      mouse.recoveryAttempts = 0;
+      return true;
+    }
+    mouse.task = mouse.carriedFood ? "returning" : "waiting";
+    mouse.delay = 0.08;
+  } else if ((mouse.task === "home" || mouse.task === "nesting-move") && isInsideNestBounds(engine, mouse.rig.root.position)) {
+    mouse.task = "nesting";
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    mouse.nestActivityGoal = null;
+    mouse.nestActivityTimer = 0.8 + Math.random() * 1.2;
+    mouse.recoveryAttempts = 0;
+    return true;
+  }
+
+  if (mouse.task === "returning" && mouse.recoveryAttempts >= 2) {
+    const direct = I.pathfind(mouse.rig.root.position, engine.world.nestDeposit, 0.055, engine.world.colliders, "mouse");
+    if (direct.reachedGoal && direct.path.length) {
+      mouse.path = direct.path.map((point) => point.clone());
+      mouse.pathIndex = 0;
+      mouse.recoveryAttempts = 0;
+      return true;
+    }
+  }
+  if (["to-food", "returning", "home", "nesting-move"].includes(mouse.task)) {
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    engine.planMousePath(mouse);
+    if (mouse.path.length) return true;
+  }
+  if (mouse.task === "to-food") {
+    abandonFoodAssignment(engine, mouse);
+  } else if (mouse.task === "returning" && mouse.recoveryAttempts >= 3) {
+    const dropped = mouse.carriedFood;
+    if (dropped) {
+      dropMouseFood(engine, mouse);
+      mouse.blockedFoodUntil.set(dropped.id, engine.time + 4.5);
+    }
+    mouse.task = "waiting";
+    mouse.delay = 0.08;
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    mouse.recoveryAttempts = 0;
+  } else if (!mouse.path.length) {
+    mouse.task = "waiting";
+    mouse.delay = 0.1 + Math.random() * 0.12;
+  }
+  return true;
 }
 
 function animateMouse(engine, expansion, mouse, speed, alert, carrying) {
@@ -1125,17 +1294,17 @@ function assignLocalFood(engine, expansion, I, mouse) {
     return;
   }
   const profile = getPolicyProfile(engine.colonyPolicy);
-  const desperateClock = engine.snapshot.timeRemaining < 78 && engine.snapshot.deliveredTonight < engine.snapshot.tonightRequirement;
-  const colonyHungry = engine.hungerStrikes > 0;
   let radius = profile.localRadius;
-  let candidates = availableFood(engine, mouse, radius);
+  let candidates = availableFood(engine, expansion, mouse, radius);
   if (!candidates.length) {
     radius = profile.expandedRadius;
-    candidates = availableFood(engine, mouse, radius);
+    candidates = availableFood(engine, expansion, mouse, radius);
   }
-  if (!candidates.length && (desperateClock || colonyHungry || engine.colonyPolicy === "desperate")) candidates = availableFood(engine, mouse, Infinity);
+  // Orders decide how far and how boldly mice prefer to range, but an empty
+  // preferred ring must never turn into an idle colony while food remains.
+  if (!candidates.length) candidates = availableFood(engine, expansion, mouse, Infinity);
   candidates.sort((a, b) => scoreFoodCandidate(a, engine.colonyPolicy, mouse.member.caution) - scoreFoodCandidate(b, engine.colonyPolicy, mouse.member.caution));
-  for (const candidate of candidates.slice(0, 5)) {
+  for (const candidate of candidates.slice(0, 12)) {
     const route = cachedSmartPath(engine, expansion, I, mouse.rig.root.position, candidate.food.mesh.position, "mouse", `food:${candidate.food.id}`);
     if (!route.reachedGoal) continue;
     candidate.food.reservedBy = mouse.member.id;
@@ -1145,7 +1314,8 @@ function assignLocalFood(engine, expansion, I, mouse) {
     mouse.pathIndex = 0;
     return;
   }
-  mouse.delay = 1 + Math.random() * 0.7;
+  mouse.task = "waiting";
+  mouse.delay = (engine.colonyPolicy === "cautious" ? 0.42 : engine.colonyPolicy === "desperate" ? 0.14 : 0.24) + Math.random() * 0.2;
   if (!isInsideNestBounds(engine, mouse.rig.root.position)) sendMouseHome(engine, mouse);
 }
 
@@ -1156,9 +1326,20 @@ function committedFoodValue(engine) {
   }, 0);
 }
 
-function availableFood(engine, mouse, radius) {
+function availableFood(engine, expansion, mouse, radius) {
+  for (const [foodId, blockedUntil] of mouse.blockedFoodUntil ?? []) {
+    if (blockedUntil <= engine.time) mouse.blockedFoodUntil.delete(foodId);
+  }
   return engine.foods
-    .filter((food) => !food.deposited && !food.carriedBy && !food.reservedBy && food.mesh.visible && food.nestDistance <= radius)
+    .filter((food) =>
+      !food.deposited &&
+      !food.carriedBy &&
+      !food.reservedBy &&
+      food.mesh.visible &&
+      food.nestDistance <= radius &&
+      (mouse.blockedFoodUntil?.get(food.id) ?? 0) <= engine.time &&
+      isRoomAccessible(engine, expansion, food.room ?? roomForPosition(food.mesh.position.x, food.mesh.position.z))
+    )
     .map((food) => ({
       food,
       value: food.value,
