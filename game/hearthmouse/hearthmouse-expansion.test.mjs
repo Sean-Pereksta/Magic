@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   POLICY_PROFILES,
   ROOM_DEFINITIONS,
   activeForagerLimit,
+  catCountForPopulation,
   computePounceWindup,
   forageTarget,
   initialForagerDelay,
@@ -59,6 +61,22 @@ test("forager concurrency follows colony orders without allowing mass inactivity
   assert.ok(activeForagerLimit("balanced", 20, 1) >= 17);
   assert.equal(activeForagerLimit("desperate", 20, 1), 20);
   assert.equal(activeForagerLimit("balanced", 20, 0), 0);
+});
+
+test("cat pressure scales at eight and fifteen total mice", () => {
+  assert.equal(catCountForPopulation(1), 1);
+  assert.equal(catCountForPopulation(7), 1);
+  assert.equal(catCountForPopulation(8), 2);
+  assert.equal(catCountForPopulation(14), 2);
+  assert.equal(catCountForPopulation(15), 3);
+  assert.equal(catCountForPopulation(24), 3);
+});
+
+test("ally escape and recovery code never drops carried food", () => {
+  const source = readFileSync(new URL("./hearthmouse-expansion.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /dropMouseFood/);
+  assert.match(source, /mouse\.resumeTask = mouse\.carriedFood \? "returning"/);
+  assert.match(source, /Never discard gathered food/);
 });
 
 test("the movement watchdog only recovers genuinely stalled travel tasks", () => {

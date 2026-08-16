@@ -97,6 +97,13 @@ export function activeForagerLimit(policy, mouseCount, remainingFood) {
   return Math.min(mouseCount, Math.max(minimum, Math.ceil(remainingFood / foodPerMouse) + extraScouts));
 }
 
+export function catCountForPopulation(population) {
+  const count = Math.max(0, Math.floor(population || 0));
+  if (count >= 15) return 3;
+  if (count >= 8) return 2;
+  return 1;
+}
+
 const MOUSE_STALL_THRESHOLDS = Object.freeze({
   escaping: 0.62,
   "to-food": 1.05,
@@ -303,7 +310,40 @@ function installEnginePatches(I) {
 
   proto.createCats = function expandedCreateCats() {
     ensureExpansion(this);
-    base.createCats.call(this);
+    const population = this.startOfNightPopulation || this.snapshot.population || 1;
+    const desiredCats = catCountForPopulation(population);
+    const createBaseCats = (factoryPopulation) => {
+      const actualPopulation = this.startOfNightPopulation;
+      this.startOfNightPopulation = factoryPopulation;
+      try {
+        base.createCats.call(this);
+      } finally {
+        this.startOfNightPopulation = actualPopulation;
+      }
+    };
+
+    // The base factory already creates Mabel plus Biscuit at population 20.
+    // Reusing it keeps the cat rigs consistent while moving the threshold to 8.
+    createBaseCats(desiredCats >= 2 ? 20 : population);
+
+    if (desiredCats >= 3) {
+      const extraStart = this.cats.length;
+      createBaseCats(20);
+      const extras = this.cats.splice(extraStart);
+      const third = extras.find((cat) => cat.personality === "hunter") ?? extras[0];
+      extras.filter((cat) => cat !== third).forEach(disposeTemporaryCat);
+      if (third) {
+        third.id = "pepper";
+        third.patrolIndex = Math.min(2, Math.max(0, this.world.patrolPoints.length - 1));
+        const spawn = this.world.patrolPoints[third.patrolIndex] ?? this.world.catSpawn;
+        third.rig.root.position.copy(spawn);
+        third.rig.root.rotation.y = Math.PI * 0.2;
+        third.yaw = third.rig.root.rotation.y;
+        third.investigation.copy(spawn);
+        third.lastSeen.copy(spawn);
+        this.cats.push(third);
+      }
+    }
     this.cats.forEach((cat, index) => initializeCat(cat, index));
   };
 
@@ -531,6 +571,21 @@ function initializeCat(cat, index) {
   cat.leisureCooldown = 2.5 + index;
   cat.pounceWindupDuration = computePounceWindup(1, cat.personality);
   cat.pounceCuePlayed = false;
+}
+
+function disposeTemporaryCat(cat) {
+  const root = cat?.rig?.root;
+  if (!root) return;
+  root.removeFromParent();
+  const geometries = new Set();
+  const materials = new Set();
+  root.traverse((object) => {
+    if (object.geometry) geometries.add(object.geometry);
+    const list = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
+    list.forEach((material) => materials.add(material));
+  });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
 }
 
 function buildExpandedHouse(engine, expansion, I) {
@@ -966,12 +1021,11 @@ function updateColonyMice(engine, expansion, I, delta) {
       mouse.lastThreatScore = threat.score;
       const fleeThreshold = Math.max(0.16, profile.fleeThreshold - expansion.upgrades.scouts * 0.025);
       if (!["escaping", "hiding"].includes(mouse.task) && mouse.escapeCooldown <= 0 && threat.score >= fleeThreshold) {
-        sendMouseToBestShelter(engine, expansion, I, mouse, threat.cat ?? nearestCat, threat);
+        sendMouseToBestShelter(engine, expansion, I, mouse, threat.cat ?? nearestCat);
       }
     }
 
     if (mouse.task === "escaping") {
-      if (mouse.carriedFood && mouse.lastThreatScore > 0.78) dropMouseFood(engine, mouse);
       const speed = mouse.speed * profile.panicMultiplier * (mouse.carriedFood ? 0.93 : 1);
       const moved = engine.followMousePath(mouse, delta, speed);
       if (mouse.noiseTimer <= 0 && moved > 0.4) {
@@ -1192,16 +1246,13 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
   if (mouse.task === "to-food") {
     abandonFoodAssignment(engine, mouse);
   } else if (mouse.task === "returning" && mouse.recoveryAttempts >= 3) {
-    const dropped = mouse.carriedFood;
-    if (dropped) {
-      dropMouseFood(engine, mouse);
-      mouse.blockedFoodUntil.set(dropped.id, engine.time + 4.5);
-    }
-    mouse.task = "waiting";
-    mouse.delay = 0.08;
+    // Never discard gathered food because a route needed several retries.
+    // Keep the delivery task alive and let the next watchdog pass rebuild it.
+    mouse.task = "returning";
     mouse.path = [];
     mouse.pathIndex = 0;
     mouse.recoveryAttempts = 0;
+    mouse.progressSampleTimer = 0;
   } else if (!mouse.path.length) {
     mouse.task = "waiting";
     mouse.delay = 0.1 + Math.random() * 0.12;
@@ -1262,9 +1313,8 @@ function ILineClear(engine, start, end, agent) {
   return window.HearthmouseInternals.lineClear(start, end, agent === "cat" ? 0.205 : 0.055, engine.world.colliders, agent);
 }
 
-function sendMouseToBestShelter(engine, expansion, I, mouse, cat, knownThreat = null) {
+function sendMouseToBestShelter(engine, expansion, I, mouse, cat) {
   if (!cat) return false;
-  const threat = knownThreat ?? assessMouseThreat(engine, expansion, mouse, cat, cat.rig.root.position.distanceTo(mouse.rig.root.position));
   const candidates = engine.world.shelterPoints
     .filter((shelter) =>
       isRoomAccessible(engine, expansion, shelter.roomId ?? roomForPosition(shelter.position.x, shelter.position.z)) &&
@@ -1318,7 +1368,6 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat, knownThreat = 
     mouse.targetFood = null;
     mouse.resumeTask = "waiting";
   }
-  if (mouse.carriedFood && (threat.urgent || best.pathDistance > 1.65 || mouse.carriedFood.value >= 4 && threat.score > 0.68)) dropMouseFood(engine, mouse);
   mouse.task = "escaping";
   mouse.escapeGoal = best.shelter.position;
   mouse.path = best.route.path.map((point) => point.clone());
@@ -1327,21 +1376,6 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat, knownThreat = 
   expansion.dangerSignals.push({ position: mouse.rig.root.position.clone(), ttl: 2.6, radius: 2.8 + expansion.upgrades.scouts * 0.55, score: 0.78 });
   if (expansion.dangerSignals.length > 12) expansion.dangerSignals.shift();
   return true;
-}
-
-function dropMouseFood(engine, mouse) {
-  const food = mouse.carriedFood;
-  if (!food) return;
-  food.carriedBy = null;
-  food.reservedBy = null;
-  food.mesh.removeFromParent();
-  engine.world.root.add(food.mesh);
-  food.mesh.position.copy(mouse.rig.root.position).setY(0.018);
-  food.mesh.scale.setScalar(1);
-  food.mesh.visible = true;
-  food.room = roomForPosition(food.mesh.position.x, food.mesh.position.z);
-  food.nestDistance = food.mesh.position.distanceTo(engine.world.nestCenter);
-  mouse.carriedFood = null;
 }
 
 function assignLocalFood(engine, expansion, I, mouse) {
