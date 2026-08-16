@@ -390,7 +390,22 @@ function waitForCatPressureHotfix() {
   }
 }
 
-if (typeof window !== "undefined") waitForCatPressureHotfix();
+async function loadOptionalPlayerVisualPolish() {
+  if (typeof window === "undefined") return;
+  try {
+    await import("./hearthmouse-player-visual-polish.mjs");
+  } catch (error) {
+    console.warn("Hearthmouse optional player visual polish failed to load", error);
+  }
+}
+
+if (typeof window !== "undefined") {
+  waitForCatPressureHotfix();
+  // Cosmetic third-person tuning is deliberately non-blocking. If an older
+  // browser rejects the optional module or the polish code throws, the core
+  // game still boots normally.
+  window.setTimeout(loadOptionalPlayerVisualPolish, 0);
+}
 
 /*
 Compatibility source markers retained for the existing static regression tests;
