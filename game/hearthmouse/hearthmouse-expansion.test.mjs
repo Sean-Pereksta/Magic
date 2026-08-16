@@ -3,8 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  FoodCandidateCache,
   POLICY_PROFILES,
+  ReusableObjectPool,
   ROOM_DEFINITIONS,
+  SpatialGrid,
   activeForagerLimit,
   catCountForPopulation,
   computePounceWindup,
@@ -19,6 +22,61 @@ import {
   shouldPauseNewAssignments,
   shouldRecoverMouse,
 } from "./hearthmouse-expansion.mjs";
+
+test("spatial grids find adjacent-cell actors, deduplicate broad obstacles, and discard stale positions", () => {
+  const grid = new SpatialGrid(2);
+  const mouse = { id: "mouse" };
+  const cat = { id: "cat" };
+  const obstacle = { id: "wide-obstacle" };
+  const results = [];
+
+  grid.insert(mouse, 0.4, 0.4);
+  grid.insert(cat, -2.2, 0.4);
+  grid.insertBounds(obstacle, -1.2, -1.2, 1.2, 1.2);
+  grid.queryAabb(-0.5, -0.5, 0.5, 0.5, results);
+  assert.ok(results.includes(mouse));
+  assert.ok(results.includes(obstacle));
+  assert.equal(results.filter((item) => item === obstacle).length, 1);
+  assert.ok(!results.includes(cat));
+
+  grid.clear();
+  grid.insert(mouse, 8.2, 8.2);
+  grid.queryRadius(0, 0, 1, results);
+  assert.ok(!results.includes(mouse));
+  grid.queryRadius(8, 8, 1, results);
+  assert.ok(results.includes(mouse));
+});
+
+test("food metadata remains stable until invalidation and rebuilds after a layout change", () => {
+  const cache = new FoodCandidateCache();
+  const food = { id: "crumb", value: 3, room: "living", depth: 0, position: { x: 3, z: 4 } };
+  const nest = { x: 0, z: 0 };
+  cache.rebuild([food], nest);
+  const original = cache.get(food);
+  assert.equal(original.nestDistance, 5);
+  assert.equal(original.value, 3);
+  assert.equal(original.room, "living");
+
+  food.position.x = 6;
+  food.position.z = 8;
+  assert.equal(cache.get(food), original);
+  cache.invalidate();
+  assert.equal(cache.get(food), undefined);
+  cache.rebuild([food], nest);
+  assert.equal(cache.get(food).nestDistance, 10);
+  assert.notEqual(cache.get(food), original);
+});
+
+test("transient pools reset and reuse marker objects instead of allocating repeatedly", () => {
+  const pool = new ReusableObjectPool(() => ({ ttl: 0 }), (item) => { item.ttl = 0; });
+  const first = pool.acquire();
+  first.ttl = 4;
+  pool.release(first);
+  const second = pool.acquire();
+  assert.equal(second, first);
+  assert.equal(second.ttl, 0);
+  assert.equal(pool.created, 1);
+});
 
 test("the compact policy control cycles through every risk mode", () => {
   assert.equal(nextColonyPolicy("cautious"), "balanced");
