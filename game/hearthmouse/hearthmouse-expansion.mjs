@@ -46,6 +46,13 @@ export function getPolicyProfile(policy) {
   return POLICY_PROFILES[policy] ?? POLICY_PROFILES.balanced;
 }
 
+const POLICY_ORDER = Object.freeze(["cautious", "balanced", "desperate"]);
+
+export function nextColonyPolicy(policy) {
+  const currentIndex = POLICY_ORDER.indexOf(getPolicyProfile(policy).id);
+  return POLICY_ORDER[(currentIndex + 1) % POLICY_ORDER.length];
+}
+
 export function computePounceWindup(night, personality = "hunter") {
   const currentMaximumDifficulty = personality === "kitten" ? 0.34 : 0.48;
   const earlyWarning = personality === "kitten" ? 0.32 : 0.5;
@@ -1399,7 +1406,7 @@ function mountColonyControls(engine) {
     root = document.createElement("aside");
     root.className = "hearthmouse-colony-panel";
     root.innerHTML = `
-      <div class="colony-policy-badge"><span>COLONY</span><strong></strong></div>
+      <button type="button" class="colony-policy-badge"><span>COLONY</span><strong></strong></button>
       <section class="nest-policy-card" aria-label="Colony risk policy">
         <p class="nest-policy-eyebrow">NEST ORDERS</p>
         <h2>Colony Risk</h2>
@@ -1410,6 +1417,16 @@ function mountColonyControls(engine) {
         <p class="policy-key-hint">At the nest: press 1, 2, or 3</p>
       </section>`;
     document.querySelector(".game-shell")?.appendChild(root);
+    const compactToggle = root.querySelector(".colony-policy-badge");
+    const mobilePolicyQuery = window.matchMedia?.("(pointer: coarse) and (any-hover: none)");
+    compactToggle.addEventListener("pointerdown", (event) => {
+      if (!mobilePolicyQuery?.matches) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = window.hearthmouseEngine;
+      if (!current?.insideNest()) return;
+      current.setColonyPolicy(nextColonyPolicy(current.colonyPolicy));
+    });
     const options = root.querySelector(".policy-options");
     Object.values(POLICY_PROFILES).forEach((profile, index) => {
       const button = document.createElement("button");
@@ -1442,7 +1459,11 @@ function mountColonyControls(engine) {
     const atNest = current.snapshot.phase === "foraging" && current.insideNest();
     root.classList.toggle("at-nest", atNest);
     root.classList.toggle("mask-window", expansion.maskActive);
-    root.querySelector(".colony-policy-badge strong").textContent = profile.label;
+    const compactToggle = root.querySelector(".colony-policy-badge");
+    compactToggle.querySelector("strong").textContent = profile.label;
+    compactToggle.disabled = !atNest;
+    compactToggle.setAttribute("aria-label", `Colony risk: ${profile.label}. ${atNest ? "Tap to switch policy." : "Return to the nest to switch policy."}`);
+    compactToggle.title = atNest ? `${profile.label} — tap to switch policy` : `${profile.label} — change at the nest`;
     root.querySelector(".policy-description").textContent = profile.description;
     root.querySelectorAll("[data-policy]").forEach((button) => {
       button.classList.toggle("active", button.dataset.policy === profile.id);

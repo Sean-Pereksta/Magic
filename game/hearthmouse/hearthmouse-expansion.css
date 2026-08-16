@@ -9,6 +9,7 @@
 }
 
 .colony-policy-badge {
+  appearance: none;
   position: absolute;
   top: max(18px, env(safe-area-inset-top));
   right: max(20px, env(safe-area-inset-right));
@@ -22,6 +23,7 @@
   box-shadow: 0 8px 28px rgb(0 0 0 / 32%), inset 0 0 18px rgb(217 179 97 / 4%);
   text-shadow: 0 2px 8px #000;
   backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
 .colony-policy-badge span {
@@ -178,35 +180,35 @@
 
 @media (pointer: coarse) and (any-hover: none) {
   .colony-policy-badge {
-    top: max(42px, calc(env(safe-area-inset-top) + 36px));
-    right: max(8px, env(safe-area-inset-right));
-    padding: 6px 8px;
+    top: max(8px, env(safe-area-inset-top));
+    right: auto;
+    left: max(8px, env(safe-area-inset-left));
+    display: inline-flex;
+    align-items: center;
+    min-height: 27px;
+    padding: 5px 8px;
+    cursor: pointer;
+    border-radius: 999px;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  .colony-policy-badge span {
+    display: none;
+  }
+
+  .colony-policy-badge strong {
+    letter-spacing: 0.08em;
+    font-size: 0.5rem;
+  }
+
+  .colony-policy-badge:disabled {
+    cursor: default;
+    opacity: 0.55;
+    pointer-events: none;
   }
 
   .nest-policy-card {
-    right: 50%;
-    bottom: max(126px, calc(env(safe-area-inset-bottom) + 116px));
-    width: min(430px, calc(100vw - 22px));
-    padding: 13px 14px 12px;
-    transform: translate(50%, 10px);
-  }
-
-  .hearthmouse-colony-panel.at-nest .nest-policy-card {
-    transform: translate(50%, 0);
-  }
-
-  .nest-policy-card h2 {
-    margin-bottom: 10px;
-    font-size: 1.25rem;
-  }
-
-  .policy-description {
-    min-height: 0;
-    margin: 9px 1px;
-    font-size: 0.68rem;
-  }
-
-  .policy-key-hint {
     display: none;
   }
 }
@@ -219,30 +221,6 @@
   .policy-options button {
     letter-spacing: 0.045em;
     font-size: 0.47rem;
-  }
-}
-
-@media (pointer: coarse) and (any-hover: none) and (max-height: 520px) {
-  .nest-policy-card {
-    right: 8px;
-    bottom: 8px;
-    width: min(330px, 48vw);
-    padding: 10px;
-    transform: translateY(8px);
-  }
-
-  .hearthmouse-colony-panel.at-nest .nest-policy-card {
-    transform: translateY(0);
-  }
-
-  .nest-policy-eyebrow,
-  .nest-policy-card h2,
-  .room-condition {
-    display: none;
-  }
-
-  .policy-description {
-    margin: 7px 0;
   }
 }
 

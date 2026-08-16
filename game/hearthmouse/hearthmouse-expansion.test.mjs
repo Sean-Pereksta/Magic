@@ -6,11 +6,19 @@ import {
   ROOM_DEFINITIONS,
   computePounceWindup,
   forageTarget,
+  nextColonyPolicy,
   roomUnlocked,
   scoreFoodCandidate,
   selectNightPlan,
   shouldForagersStop,
 } from "./hearthmouse-expansion.mjs";
+
+test("the compact policy control cycles through every risk mode", () => {
+  assert.equal(nextColonyPolicy("cautious"), "balanced");
+  assert.equal(nextColonyPolicy("balanced"), "desperate");
+  assert.equal(nextColonyPolicy("desperate"), "cautious");
+  assert.equal(nextColonyPolicy("unknown"), "desperate");
+});
 
 test("balanced is the stable default policy and only desperate targets surplus", () => {
   assert.equal(POLICY_PROFILES.balanced.id, "balanced");
