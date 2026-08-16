@@ -1039,11 +1039,12 @@ function auditAndCacheTextureAssets(engine, expansion) {
         for (let slotIndex = 0; slotIndex < TEXTURE_SLOTS.length; slotIndex++) {
           const texture = material[TEXTURE_SLOTS[slotIndex]];
           if (!texture || expansion.processedTextures.has(texture)) continue;
-          expansion.processedTextures.add(texture);
           const image = texture.image;
           const width = image?.naturalWidth ?? image?.videoWidth ?? image?.width ?? 0;
           const height = image?.naturalHeight ?? image?.videoHeight ?? image?.height ?? 0;
-          if (!width || !height || Math.max(width, height) <= maximumUsefulSize || typeof document === "undefined") continue;
+          if (!width || !height) continue;
+          expansion.processedTextures.add(texture);
+          if (Math.max(width, height) <= maximumUsefulSize || typeof document === "undefined") continue;
           const scale = maximumUsefulSize / Math.max(width, height);
           const targetWidth = Math.max(1, Math.round(width * scale));
           const targetHeight = Math.max(1, Math.round(height * scale));
