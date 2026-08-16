@@ -1,0 +1,4 @@
+buildMenu();
+init();
+bootstrapIntegrations();
+animate();

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#05070c">
+<title>Basketball 2 — National 1v1 Tour</title>
+<link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+<div id="menu">
+  <div id="menuBox">
+    <div id="primaryMenuScreen" class="menuScreen active">
+      <div class="menu-eyebrow">BASKETBALL 2</div>
+      <div class="bigMenuTitle">National 1v1</div>
+      <div class="primarySubtitle">Deep one-on-one basketball. One clean court. Your way to play.</div>
+      <div class="primaryButtons">
+        <button id="primaryQuickPlayBtn" class="menuLargeBtn">Quick Play</button>
+        <button id="primaryTournamentBtn" class="menuLargeBtn">National Tour</button>
+        <button id="primaryLoadTournamentBtn" class="menuLargeBtn">Continue Tour</button>
+        <button id="primaryTutorialBtn" class="menuLargeBtn secondary">Tutorial</button>
+        <button id="primaryControlsBtn" class="menuLargeBtn secondary">Controls &amp; Settings</button>
+      </div>
+      <div id="primaryMenuMsg" class="statusMsg"></div>
+    </div>
+
+    <div id="quickPlayScreen" class="menuScreen">
+      <button id="quickPlayBackBtn" class="menuBackBtn">← Back</button>
+      <h1>Quick Play Setup</h1>
+      <div class="sub">Choose a matchup, a court, and a rules preset. During play, the presentation stays focused on the players and score.</div>
+
+      <div class="modeRow">
+      <button id="onePlayerBtn" class="modeBtn selected">1 Player vs Bot</button>
+      <button id="twoPlayerBtn" class="modeBtn">2 Player Split Screen</button>
+      </div>
+      <div class="sneakerBox" style="max-width:560px;margin:8px auto 14px;">
+      <div class="sneakerTitle">Court Design</div>
+      <div class="sneakerRow">
+        <button id="courtPrev" class="sneakerArrow">&#9664;</button>
+        <canvas id="courtPreview" class="sneakerPreview" width="300" height="74"></canvas>
+        <button id="courtNext" class="sneakerArrow">&#9654;</button>
+      </div>
+      <div id="courtName" class="sneakerName"></div>
+      <div id="courtStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+    </div>
+
+    <div class="selectGrid">
+      <div class="selectPanel">
+        <div class="sectionTitle">Player 1 Character</div>
+        <div class="cards" id="p1Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Player 1 Sneakers</div>
+          <div class="sneakerRow">
+            <button id="p1SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p1SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p1SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p1SneakerName" class="sneakerName"></div>
+          <div id="p1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Player 1 Jersey</div>
+          <div class="sneakerRow">
+            <button id="p1JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p1JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p1JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p1JerseyName" class="sneakerName"></div>
+          <div id="p1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+
+      <div class="selectPanel">
+        <div class="sectionTitle" id="p2Title">Bot / Player 2 Character</div>
+        <div class="cards" id="p2Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Bot / Player 2 Sneakers</div>
+          <div class="sneakerRow">
+            <button id="p2SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p2SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p2SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p2SneakerName" class="sneakerName"></div>
+          <div id="p2SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Bot / Player 2 Jersey</div>
+          <div class="sneakerRow">
+            <button id="p2JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p2JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p2JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p2JerseyName" class="sneakerName"></div>
+          <div id="p2JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sectionTitle" style="margin-top:16px;">Bot Difficulty</div>
+    <div id="difficultyButtons"></div>
+
+    <div class="sectionTitle" style="margin-top:12px;">Game Mode</div>
+    <div id="gameModeButtons" class="optionRow"></div>
+    <div class="sectionTitle">Rules & Style</div>
+    <div id="ruleButtons" class="optionRow"></div>
+    <div class="sectionTitle">Graphics Quality</div>
+    <div id="qualityButtons" class="optionRow"></div>
+    <div id="qualityStatus" class="quality-status">AUTO · MEDIUM</div>
+    <div id="deviceAssignmentStatus" class="device-assignment">Player 1: WASD · Player 2: IJKL</div>
+
+    <button id="startBtn">START GAME</button>
+
+    <button class="menuBackBtn controls-shortcut" type="button" onclick="showControlsScreen('quickPlayScreen')">View controls</button>
+    </div>
+
+    <div id="tournamentSetupScreen" class="menuScreen">
+      <button id="tournamentSetupBackBtn" class="menuBackBtn">← Back</button>
+      <h1>National 1v1 Tour</h1>
+      <div class="sub">Choose your player, then travel through twelve city showdowns and the Las Vegas National Championship.</div>
+      <div class="selectPanel" style="max-width:860px;margin:0 auto;">
+        <div class="sectionTitle">Player Character</div>
+        <div class="cards" id="tourP1Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Sneakers</div>
+          <div class="sneakerRow">
+            <button id="tourP1SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="tourP1SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="tourP1SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="tourP1SneakerName" class="sneakerName"></div>
+          <div id="tourP1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Jersey</div>
+          <div class="sneakerRow">
+            <button id="tourP1JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="tourP1JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="tourP1JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="tourP1JerseyName" class="sneakerName"></div>
+          <div id="tourP1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+      <button id="startTournamentBtn" style="margin-top:14px;" class="menuLargeBtn">START THE TOUR</button>
+      <div id="tournamentSetupMsg" class="statusMsg"></div>
+    </div>
+
+    <div id="tournamentBetweenScreen" class="menuScreen">
+      <h1 id="tournamentBetweenTitle">National 1v1 Tour</h1>
+      <div class="sub" id="tournamentBetweenSub"></div>
+      <div id="tournamentStandingsWrap"></div>
+      <div class="sub" id="tournamentNextPreview"></div>
+      <div class="modeRow">
+        <button id="saveTournamentBtn" class="modeBtn selected">Save Tournament</button>
+        <button id="continueTournamentBtn" class="modeBtn">Continue</button>
+        <button id="betweenMainMenuBtn" class="modeBtn">Main Menu</button>
+      </div>
+      <div id="tournamentBetweenMsg" class="statusMsg"></div>
+    </div>
+
+    <div id="controlsScreen" class="menuScreen" data-return-to="primaryMenuScreen">
+      <button id="controlsBackBtn" class="menuBackBtn">← Back</button>
+      <h1>Controls &amp; Settings</h1>
+      <div id="controllerStatus" class="controller-status">No controller connected</div>
+      <div class="control-tabs" role="tablist">
+        <button class="optionBtn selected" data-control-tab="keyboard">Keyboard</button>
+        <button class="optionBtn" data-control-tab="mobile">Mobile</button>
+        <button class="optionBtn" data-control-tab="xbox">Xbox</button>
+        <button class="optionBtn" data-control-tab="playstation">PlayStation</button>
+      </div>
+      <section id="controls-keyboard" class="control-layout active" data-device-panel="keyboard">
+        <h2>Modern Keyboard</h2>
+        <div class="binding-grid">
+          <span>Move</span><kbd>W A S D</kbd><span>Sprint</span><kbd>Left Shift</kbd>
+          <span>Shoot / Finish</span><kbd>Space</kbd><span>Block / Contest</span><kbd>F</kbd>
+          <span>Left / Right skill</span><kbd>Q / E</kbd><span>Takeover</span><kbd>R</kbd>
+          <span>Protect ball / stance</span><kbd>Left Ctrl</kbd><span>Pause</span><kbd>Esc</kbd>
+        </div>
+        <p>Player 2 uses IJKL, U/O, Right Shift, Enter, and the numpad defense buttons.</p>
+      </section>
+      <section id="controls-mobile" class="control-layout" data-device-panel="touch">
+        <h2>Touch</h2>
+        <div class="binding-grid">
+          <span>Movement</span><kbd>Left stick</kbd><span>Dribble moves</span><kbd>Right skill stick</kbd>
+          <span>Finish / jumper</span><kbd>Shoot</kbd><span>Defense</span><kbd>Steal / Block</kbd>
+        </div>
+        <p>Flick laterally for a crossover, double-flick for a larger escape, or pull backward for a step-back.</p>
+      </section>
+      <section id="controls-xbox" class="control-layout" data-device-panel="xbox">
+        <h2>Xbox-style Controller</h2>
+        <div class="binding-grid">
+          <span>Move</span><kbd>Left Stick</kbd><span>Skill stick</span><kbd>Right Stick</kbd>
+          <span>Shoot / Finish</span><kbd>X</kbd><span>Block / Contest</span><kbd>Y</kbd>
+          <span>Steal</span><kbd>B</kbd><span>Sprint</span><kbd>RT</kbd>
+          <span>Protect / stance</span><kbd>LT</kbd><span>Takeover</span><kbd>L3 + R3</kbd>
+        </div>
+      </section>
+      <section id="controls-playstation" class="control-layout" data-device-panel="playstation">
+        <h2>PlayStation-style Controller</h2>
+        <div class="binding-grid">
+          <span>Move</span><kbd>Left Stick</kbd><span>Skill stick</span><kbd>Right Stick</kbd>
+          <span>Shoot / Finish</span><kbd>Square</kbd><span>Block / Contest</span><kbd>Triangle</kbd>
+          <span>Steal</span><kbd>Circle</kbd><span>Sprint</span><kbd>R2</kbd>
+          <span>Protect / stance</span><kbd>L2</kbd><span>Takeover</span><kbd>L3 + R3</kbd>
+        </div>
+      </section>
+      <div class="settings-grid">
+        <label>Movement style<select id="controlStyleSelect"><option value="modern">Modern 360°</option><option value="classic">Classic turning</option></select></label>
+        <label>Gameplay preset<select id="gameplayPresetSelect"><option value="simulation">Simulation</option><option value="arcade">Arcade</option></select></label>
+        <label class="check-setting">Shot meter<input id="shotMeterSetting" type="checkbox"></label>
+        <label>Touch scale<input id="mobileScaleSetting" type="range" min="0.78" max="1.25" step="0.01"></label>
+        <label>Touch opacity<input id="mobileOpacitySetting" type="range" min="0.35" max="1" step="0.01"></label>
+        <label>Touch layout<select id="mobileLayoutSetting"><option value="standard">Standard</option><option value="mirrored">Mirrored</option></select></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <div id="p1HudName" class="hud-name">PLAYER 1</div>
+  <div id="scoreText" class="hud-score">0 <span>—</span> 0</div>
+  <div id="p2HudName" class="hud-name">PLAYER 2</div>
+  <div class="legacy-state" aria-hidden="true">
+    <button id="hideUiBtn"></button><strong id="modeText"></strong><strong id="gameRulesText"></strong><strong id="posText"></strong><strong id="statusText"></strong><strong id="strategyText"></strong>
+    <i id="powerBar"></i><i id="foulBar"></i><i id="crossBar"></i><i id="p1SprintBar"></i><i id="p2SprintBar"></i><i id="p1TakeoverBar"></i><i id="p2TakeoverBar"></i>
+  </div>
+</div>
+
+<div id="msg">Choose Mode</div>
+<div id="countdown">3</div>
+<div id="p1Label" class="splitLabel">PLAYER 1</div>
+<div id="p2Label" class="splitLabel">PLAYER 2</div>
+<div id="hideTip" aria-hidden="true"></div>
+<div id="shotFeedback" class="splitLabel" style="left:50%;transform:translateX(-50%);bottom:auto;top:72px;display:none;"></div>
+<div id="tutorialOverlay" aria-live="polite"></div>
+
+<div id="touchControls" aria-label="Touch controls">
+  <div id="moveStick" class="touch-stick touch-move" aria-label="Movement stick"><div class="touch-stick-knob"></div></div>
+  <div class="touch-actions">
+    <button id="touchSprint" data-touch-action="sprint">SPRINT</button>
+    <button id="touchSecondary" data-touch-action="block">BLOCK</button>
+    <button id="touchPrimary" data-touch-action="shoot">SHOOT</button>
+  </div>
+  <div id="skillStick" class="touch-stick touch-skill" aria-label="Basketball skill stick"><div class="touch-stick-knob"></div></div>
+</div>
+
+<div id="pauseOverlay">
+  <div class="pause-card">
+    <div class="menu-eyebrow">GAME PAUSED</div>
+    <h2>Basketball 2</h2>
+    <button id="pauseResumeBtn" class="menuLargeBtn">Resume</button>
+    <button id="pauseControlsBtn" class="menuLargeBtn secondary">Controls</button>
+    <button id="pauseMenuBtn" class="menuLargeBtn secondary">Main Menu</button>
+  </div>
+</div>
+<div id="winnerOverlay">
+  <div id="winnerCard">
+    <div id="winnerText">P1 WINS!</div>
+    <div id="winnerSub">First to 11, win by 2</div>
+    <button id="rematchBtn" class="modeBtn">Rematch Same Players</button>
+    <button id="changeCharsBtn" class="modeBtn">Change Characters</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="js/state.js"></script>
+<script src="js/core/settings.js"></script>
+<script src="js/core/input-manager.js"></script>
+<script src="js/campaign/national-tour.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/rendering.js"></script>
+<script src="js/input-gameplay.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/animation-contact.js"></script>
+<script src="js/ball-physics.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/presentation.js"></script>
+<script src="js/core/integrations.js"></script>
+<script src="js/bootstrap.js"></script>
+</body>
+</html>
