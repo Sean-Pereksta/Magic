@@ -27,14 +27,15 @@ Colony Risk        Tap the small top-left policy button while inside the nest
 Colony orders
 -------------
 Cautious keeps autonomous mice close to home, makes them flee earliest, and
-stops all ordinary foraging as soon as the nightly requirement is returned.
+is the only order that stops at the base nightly food requirement.
 
-Balanced clears nearby rooms first and widens the search only as supplies run
-out. It stops at the nightly requirement, except for a nearly completed safe
-trip.
+Balanced spreads autonomous mice through every unlocked room. They hide in
+cat-inaccessible cover when a cat is nearby, then resume scavenging and build
+a modest surplus once the immediate nightly need is met.
 
-Desperate permits deep-room expeditions and a limited winter surplus. Mice
-accept more exposure, but still seek mouse-sized shelter when a cat closes in.
+Desperate sends every available ally into the house, strongly favors deep and
+valuable supplies, and builds a large winter surplus. Mice accept nearby-cat
+risk and flee only from an immediate chase or interception threat.
 
 The house changes every night. Food, doors, cover, noise, patrol focus, and
 temporary passages can all shift. New rooms open throughout the 12-night
