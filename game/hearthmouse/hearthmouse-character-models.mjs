@@ -335,7 +335,7 @@ function makePrimitive(model, primitive, C, primitiveIndex) {
     ? readAccessor(model, primitive.indices).array
     : sequentialIndices(position.count);
   indices = trianglesForMode(indices, primitive.mode);
-  geometry.setIndex(indices);
+  geometry.setIndex(new C.BufferAttribute(indices, 1, false));
   if (!geometry.attributes.normal) geometry.computeVertexNormals?.();
   geometry.computeBoundingBox?.();
   geometry.computeBoundingSphere?.();
