@@ -1,9 +1,9 @@
 const MODEL_WORKER_URL = new URL("./hearthmouse-model-loader.worker.mjs", import.meta.url);
 const DECORATE_INTERVAL_MS = 100;
 const MODEL_LOAD_TIMEOUT_MS = 15000;
-const CAT_HEAD_YAW_LIMIT_DEGREES = 55;
+const CAT_HEAD_YAW_LIMIT_DEGREES = 18;
 const CAT_HEAD_YAW_LIMIT = CAT_HEAD_YAW_LIMIT_DEGREES * Math.PI / 180;
-const CAT_HEAD_LOOK_RESPONSE = 9.5;
+const CAT_HEAD_LOOK_RESPONSE = 8.25;
 const MOVEMENT_EPSILON = 0.025;
 const DATA_TEXTURE_RGBA_FORMAT = 1023;
 const DATA_TEXTURE_FLOAT_TYPE = 1015;
@@ -219,7 +219,7 @@ function readAccessor(model, accessorIndex) {
         result[destination * componentCount + component] = readElement(
           valueView,
           valueStart + (sparseElement * componentCount + component) * componentInfo.bytes,
-          accessor.componentType,
+          sparse.indices.componentType === 5126 ? 5126 : accessor.componentType,
         );
       }
     }
