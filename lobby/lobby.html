@@ -90,6 +90,9 @@
       min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#fff;color:var(--brand);
       display:inline-grid;place-items:center;font-size:.72rem;font-weight:900;
     }
+    .daily-counts{display:inline-flex;align-items:center;gap:4px}
+    .count-bubble.daily-user-count{background:#22c55e;color:#052e16}
+    .count-bubble.daily-guest-count{background:#facc15;color:#422006}
     .pulse{animation:pulse .65s ease 2}
     @keyframes pulse{50%{transform:scale(1.12);box-shadow:0 0 0 7px rgba(255,255,255,.14)}}
 
@@ -404,7 +407,7 @@
       </nav>
 
       <div class="header-actions">
-        <button id="dailyUsersPill" class="header-btn daily" title="Unique users today">👤 <span class="desktop-label">Today</span> <span id="dailyUsersCount" class="count-bubble">0</span></button>
+        <button id="dailyUsersPill" class="header-btn daily" title="Unique visitors today — green: registered users, yellow: guests">👤 <span class="desktop-label">Today</span> <span class="daily-counts" aria-live="polite"><span id="dailyUsersCount" class="count-bubble daily-user-count" title="Registered users today">0</span><span id="dailyGuestCount" class="count-bubble daily-guest-count" title="Guests today">0</span></span></button>
 
         <div class="dropdown-wrap">
           <button id="memberToggle" class="header-btn members">👥 <span class="desktop-label">Members</span></button>
@@ -1124,7 +1127,7 @@
       try{if(currentLobbyId)await leaveLobby();}catch{}
       username="";currentUserData=null;del(SK.user);del(SK.lastLobby);del(SK.lastGame);pendingAction=null;
       const savedFavorites=readJson(SK.favorites,[]),savedRecent=readJson(SK.recent,[]);
-      favorites=new Set(Array.isArray(savedFavorites)?savedFavorites:[]);recentGames=Array.isArray(savedRecent)?savedRecent:[];updateAccountUI();showView("multiplayer");toast("Logged out.");
+      favorites=new Set(Array.isArray(savedFavorites)?savedFavorites:[]);recentGames=Array.isArray(savedRecent)?savedRecent:[];updateAccountUI();markDailyGuestOnce(authUser?.uid).catch(()=>{});showDailyUsersPill();showView("multiplayer");toast("Logged out.");
     }
 
     async function runPendingAction(){
@@ -1142,10 +1145,19 @@
     const todayNY=()=>fmtYMD.format(new Date());
     async function markDailyUserOnce(uid){
       const key=`gh.du.marked.${todayNY()}`;if(!uid||readSession(key))return;
-      saveSession(key,"1");await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",uid),{ts:serverTimestamp()},{merge:true});
+      await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",uid),{ts:serverTimestamp()},{merge:true});saveSession(key,"1");
+    }
+    async function markDailyGuestOnce(uid){
+      const key=`gh.dg.marked.${todayNY()}`;if(!uid||username||readSession(key))return;
+      await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",`guest__${uid}`),{ts:serverTimestamp(),guest:true},{merge:true});saveSession(key,"1");
     }
     async function showDailyUsersPill(){
-      try{const snap=await getCountFromServer(collection(db,"metrics_dailyUsers",todayNY(),"users"));$("dailyUsersCount").textContent=snap.data().count||0;}catch{}
+      try{
+        const dailyRef=collection(db,"metrics_dailyUsers",todayNY(),"users");
+        const [allSnap,guestSnap]=await Promise.all([getCountFromServer(dailyRef),getCountFromServer(query(dailyRef,where("guest","==",true)))]);
+        const guests=guestSnap.data().count||0,total=allSnap.data().count||0;
+        $("dailyUsersCount").textContent=Math.max(0,total-guests);$("dailyGuestCount").textContent=guests;
+      }catch{}
     }
 
     async function loadGameStats(){
@@ -1807,13 +1819,15 @@
       authUser=user;firebaseAuthReady=true;firebaseAuthError="";
       const firstSessionInitialization=!authSessionInitialized;
       if(firstSessionInitialization)authSessionInitialized=true;
-      showDailyUsersPill();loadGameStats();startLobbyBrowser();loadLeaderboard();
+      loadGameStats();startLobbyBrowser();loadLeaderboard();
       // The listener is the fast path; this explicit server read is the correctness path.
       await refreshLobbyBrowser({force:true});
       if(firstSessionInitialization){
         if(username)await autoLogin(username);else updateAccountUI();
         await handleStartupLobbyState();
       }else if(username&&!currentUserData)await autoLogin(username);
+      if(!username)await markDailyGuestOnce(user.uid).catch(()=>{});
+      showDailyUsersPill();
       if(username&&!inviteUnsub)listenForInvites();
       if(currentLobbyId){listenToCurrentLobby();await readCurrentLobbySafety();}
       syncLobbyBrowserPolling();syncCurrentLobbySafetyPolling();
