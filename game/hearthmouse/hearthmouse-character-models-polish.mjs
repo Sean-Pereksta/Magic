@@ -1,7 +1,7 @@
 import "./hearthmouse-character-models-base.mjs";
 export * from "./hearthmouse-character-models-base.mjs";
 
-const FLOOR_OFFSETS = Object.freeze({ cat: 0.02, rat: -0.007 });
+const FLOOR_OFFSETS = Object.freeze({ cat: 0.02, rat: -0.012 });
 const CAT_TAIL_NODE_INDICES = Object.freeze([8, 7, 6]);
 const CAT_FRONT_LEFT = Object.freeze([2, 1]);
 const CAT_FRONT_RIGHT = Object.freeze([4, 3]);
@@ -11,16 +11,24 @@ const CAT_HEAD_NODE_INDEX = 0;
 const CAT_CHEST_NODE_INDEX = 5;
 const CAT_SPINE_NODE_INDEX = 9;
 const MOUSE_COAT_COLORS = Object.freeze([
-  0x8b6f5d,
-  0xa5856d,
-  0x6f625a,
-  0xb7a392,
-  0x71564c,
-  0x968475,
-  0x796f66,
-  0xc2aa91,
+  0x76584a,
+  0x9b7358,
+  0x5c5f63,
+  0xb89b78,
+  0x4c4541,
+  0x9a8878,
+  0x747a80,
+  0xc3aa8c,
+  0x855f52,
+  0xa9a197,
 ]);
+const CAT_COAT_COLORS = Object.freeze({
+  mabel: 0x4d535d,
+  biscuit: 0xc7935f,
+  pepper: 0xf0ede5,
+});
 const MOUSE_FEATURE_MATERIAL_PATTERN = /eye|iris|pupil|nose|snout|mouth|teeth|tooth|whisker|claw|nail|ear\s*inner/i;
+const CAT_FEATURE_MATERIAL_PATTERN = /eye|iris|pupil|nose|mouth|teeth|tooth|whisker|claw|nail|ear\s*inner/i;
 
 let raf = 0;
 let lastTime = 0;
@@ -51,9 +59,10 @@ function ensurePolishState(controller) {
     axisX: samplePosition.clone().set(1, 0, 0),
     axisY: samplePosition.clone().set(0, 1, 0),
     axisZ: samplePosition.clone().set(0, 0, 1),
-    floorOffsetApplied: false,
+    groundY: Number.isFinite(controller.wrapper?.position?.y) ? controller.wrapper.position.y : null,
     groomClock: Math.random() * 7,
     mouseTintApplied: false,
+    catTintApplied: false,
   };
   controller.__hearthmouseProceduralPolish = state;
   return state;
@@ -67,12 +76,37 @@ function rotateLocal(controller, index, axis, radians, weight = 1) {
   node.quaternion.multiply(state.q).normalize();
 }
 
-function applyFloorOffset(controller) {
+function groundedWrapperY(controller) {
   const state = controller.__hearthmouseProceduralPolish;
-  if (!state || state.floorOffsetApplied || !controller.wrapper?.position) return;
-  const offset = FLOOR_OFFSETS[controller.kind] ?? 0;
-  controller.wrapper.position.y += offset;
-  state.floorOffsetApplied = true;
+  if (!state || !controller.wrapper?.position) return null;
+  if (!Number.isFinite(state.groundY)) state.groundY = controller.wrapper.position.y;
+  return state.groundY + (FLOOR_OFFSETS[controller.kind] ?? 0);
+}
+
+function anchorWrapperToGround(controller) {
+  const y = groundedWrapperY(controller);
+  if (y === null) return;
+  controller.wrapper.position.y = y;
+}
+
+function tintCoat(controller, tint, featurePattern, solidBase = false) {
+  controller.wrapper?.traverse?.((object) => {
+    if (!object?.isMesh || !object.material) return;
+    const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    const tintedMaterials = originalMaterials.map((material) => {
+      if (!material?.clone || !material.color) return material;
+      const materialName = String(material.name ?? object.name ?? "");
+      if (featurePattern.test(materialName)) return material;
+      const copy = material.clone();
+      copy.color?.setHex?.(tint);
+      // Cat coats need to remain visibly distinct even if cat.glb ships with a dark base-color texture.
+      // Removing only the diffuse map keeps normals/roughness while making the requested coat color authoritative.
+      if (solidBase && copy.map) copy.map = null;
+      copy.needsUpdate = true;
+      return copy;
+    });
+    object.material = Array.isArray(object.material) ? tintedMaterials : tintedMaterials[0];
+  });
 }
 
 function applyMouseCoatTint(controller) {
@@ -81,21 +115,19 @@ function applyMouseCoatTint(controller) {
   state.mouseTintApplied = true;
 
   const tint = MOUSE_COAT_COLORS[hashActor(controller.actor) % MOUSE_COAT_COLORS.length];
-  controller.wrapper?.traverse?.((object) => {
-    if (!object?.isMesh || !object.material) return;
-    const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
-    const tintedMaterials = originalMaterials.map((material) => {
-      if (!material?.clone || !material.color) return material;
-      const materialName = String(material.name ?? object.name ?? "");
-      if (MOUSE_FEATURE_MATERIAL_PATTERN.test(materialName)) return material;
-      const copy = material.clone();
-      copy.color?.setHex?.(tint);
-      copy.needsUpdate = true;
-      return copy;
-    });
-    object.material = Array.isArray(object.material) ? tintedMaterials : tintedMaterials[0];
-  });
+  tintCoat(controller, tint, MOUSE_FEATURE_MATERIAL_PATTERN);
   controller.wrapper.userData.__hearthmouseMouseCoatTint = tint;
+}
+
+function applyCatCoatTint(controller) {
+  const state = controller.__hearthmouseProceduralPolish;
+  if (!state || state.catTintApplied || controller.kind !== "cat") return;
+  state.catTintApplied = true;
+
+  const catId = String(controller.actor?.id ?? "mabel").toLowerCase();
+  const tint = CAT_COAT_COLORS[catId] ?? CAT_COAT_COLORS.mabel;
+  tintCoat(controller, tint, CAT_FEATURE_MATERIAL_PATTERN, true);
+  controller.wrapper.userData.__hearthmouseCatCoatTint = tint;
 }
 
 function applyCatTail(controller, time, speed, intensity = 1) {
@@ -125,6 +157,7 @@ function applyCatPounce(controller) {
   const tuck = phase === "windup" ? windup : Math.max(0, 1 - flight * 2.4);
 
   // Anticipation stays mostly horizontal: shoulders dip, hind legs compress, then extend into flight.
+  // The whole GLB stays on its fitted ground anchor so a crouch can never drive the legs through the floor.
   rotateLocal(controller, CAT_SPINE_NODE_INDEX, state.axisX, 0.15 * tuck - 0.1 * reach);
   rotateLocal(controller, CAT_CHEST_NODE_INDEX, state.axisX, 0.1 * tuck - 0.15 * reach);
   rotateLocal(controller, CAT_HEAD_NODE_INDEX, state.axisX, 0.035 * tuck - 0.08 * reach);
@@ -141,12 +174,10 @@ function applyCatPounce(controller) {
     rotateLocal(controller, index, state.axisX, bend * tuck - 0.16 * reach);
   });
 
-  if (controller.wrapper?.position) {
-    const baseOffset = FLOOR_OFFSETS.cat;
-    const baseY = controller.wrapper.__hearthmousePolishBaseY ?? (controller.wrapper.position.y - baseOffset);
-    const crouch = phase === "windup" ? 0.055 * tuck : Math.max(0, 0.055 * (1 - flight * 3));
+  const groundedY = groundedWrapperY(controller);
+  if (groundedY !== null) {
     const lift = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) * 0.035 : 0;
-    controller.wrapper.position.y = baseY + baseOffset - crouch + lift;
+    controller.wrapper.position.y = groundedY + lift;
   }
   return true;
 }
@@ -195,24 +226,21 @@ function applyCatGrooming(controller, delta, time) {
 function polishController(controller, delta, time) {
   const state = ensurePolishState(controller);
   if (!state) return;
-  if (controller.wrapper && controller.wrapper.__hearthmousePolishBaseY === undefined) {
-    controller.wrapper.__hearthmousePolishBaseY = controller.wrapper.position.y;
-  }
-  applyFloorOffset(controller);
+  // The initial fit from hearthmouse-character-models-base is the source of truth for ground height.
+  // Reapply it every frame so newly spawned/reset actors cannot inherit a transient pounce or stale offset.
+  anchorWrapperToGround(controller);
 
   if (controller.kind === "rat") {
     applyMouseCoatTint(controller);
     return;
   }
   if (controller.kind !== "cat") return;
+  applyCatCoatTint(controller);
   const cat = controller.actor;
   const pouncing = applyCatPounce(controller);
   if (pouncing) {
     applyCatTail(controller, time, Math.max(1.2, cat?.speed ?? 0), 1.22);
     return;
-  }
-  if (controller.wrapper?.position) {
-    controller.wrapper.position.y = (controller.wrapper.__hearthmousePolishBaseY ?? controller.wrapper.position.y) + FLOOR_OFFSETS.cat;
   }
   const grooming = applyCatGrooming(controller, delta, time);
   if (!grooming && (cat?.speed ?? 0) > 0.04) applyCatTail(controller, time, cat.speed, cat.state === "chase" ? 1.25 : 1);
