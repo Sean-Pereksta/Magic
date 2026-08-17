@@ -245,7 +245,7 @@ function makeTexture(model, textureIndex, C, colorTexture = false) {
   if (cache.has(key)) return cache.get(key);
 
   const textureDefinition = model.json.textures?.[textureIndex];
-  const sourceIndex = textureDefinition?.source;
+  const sourceIndex = textureDefinition?.extensions?.EXT_texture_webp?.source ?? textureDefinition?.source;
   const uri = model.imageUris?.[sourceIndex];
   if (!textureDefinition || !uri) return null;
 
@@ -504,7 +504,11 @@ function hidePrimitiveCharacterGeometry(rigRoot, glbWrapper) {
 
 function decorateRig(rig, model, kind, engine) {
   const root = rig?.root;
-  if (!root || root.userData?.__hearthmouseGlbModelAttached) return false;
+  if (!root || root.userData?.__hearthmouseGlbModelAttached || root.userData?.__hearthmouseGlbModelError) return false;
+  if (model.__buildError) {
+    root.userData.__hearthmouseGlbModelError = model.__buildError;
+    return false;
+  }
   const C = deriveConstructors(engine);
   if (!C) return false;
 
@@ -517,7 +521,9 @@ function decorateRig(rig, model, kind, engine) {
     root.userData.__hearthmouseGlbModel = wrapper;
     return true;
   } catch (error) {
-    root.userData.__hearthmouseGlbModelError = String(error?.message ?? error);
+    const message = String(error?.message ?? error);
+    model.__buildError = message;
+    root.userData.__hearthmouseGlbModelError = message;
     console.warn(`Hearthmouse could not apply ${kind}.glb; keeping the geometric fallback.`, error);
     return false;
   }
