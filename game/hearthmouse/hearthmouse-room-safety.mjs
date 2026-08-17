@@ -1,5 +1,6 @@
 export const CAT_AGENT_RADIUS = 0.205;
 export const DOORWAY_CLEARANCE_RADIUS = 1.05;
+export const STATIC_DOORWAY_CLEARANCE_RADIUS = CAT_AGENT_RADIUS + 0.1;
 export const CAT_RECOVERY_CHECK_INTERVAL = 2.25;
 export const CAT_MIN_CONNECTED_PATROLS = 2;
 export const CAT_CONVERGENCE_MIN_DISTANCE = 1.6;
@@ -12,6 +13,18 @@ export function planarDistance(a, b) {
 
 export function pointInsideDoorwayClearance(point, doorway, radius = DOORWAY_CLEARANCE_RADIUS) {
   return planarDistance(point, doorway) <= radius;
+}
+
+export function colliderInsideDoorwayClearance(collider, doorway, radius = STATIC_DOORWAY_CLEARANCE_RADIUS) {
+  if (!collider || !doorway) return false;
+  const minX = Number(collider.minX);
+  const maxX = Number(collider.maxX);
+  const minZ = Number(collider.minZ);
+  const maxZ = Number(collider.maxZ);
+  if (![minX, maxX, minZ, maxZ].every(Number.isFinite)) return false;
+  const nearestX = Math.max(minX, Math.min(maxX, doorway.x ?? 0));
+  const nearestZ = Math.max(minZ, Math.min(maxZ, doorway.z ?? 0));
+  return Math.hypot(nearestX - (doorway.x ?? 0), nearestZ - (doorway.z ?? 0)) <= radius;
 }
 
 export function chooseConvergencePatrolIndex(points, otherPosition, preferredIndex = 0) {
@@ -65,15 +78,27 @@ function edgeOpenForCat(engine, expansion, edge) {
   return true;
 }
 
+function removeOccluder(expansion, mesh) {
+  const occluders = expansion.world?.occluders;
+  if (!mesh || !Array.isArray(occluders)) return;
+  const index = occluders.indexOf(mesh);
+  if (index >= 0) occluders.splice(index, 1);
+}
+
 function deactivateProp(expansion, prop) {
   if (!prop) return false;
   if (prop.mesh) prop.mesh.visible = false;
   if (prop.collider) prop.collider.active = false;
-  const occluders = expansion.world?.occluders;
-  if (prop.mesh && Array.isArray(occluders)) {
-    const index = occluders.indexOf(prop.mesh);
-    if (index >= 0) occluders.splice(index, 1);
-  }
+  removeOccluder(expansion, prop.mesh);
+  return true;
+}
+
+function deactivateStaticDoorwayCollider(engine, expansion, collider) {
+  if (!collider?.active) return false;
+  collider.active = false;
+  const mesh = collider.name ? engine.world?.root?.getObjectByName?.(collider.name) : null;
+  if (mesh) mesh.visible = false;
+  removeOccluder(expansion, mesh);
   return true;
 }
 
@@ -92,6 +117,27 @@ function clearDynamicPropsFromDoorways(engine, expansion) {
         deactivateProp(expansion, prop);
         cleared++;
       }
+    }
+  }
+  return cleared;
+}
+
+function clearStaticCollidersFromDoorways(engine, expansion, radius = STATIC_DOORWAY_CLEARANCE_RADIUS) {
+  const edges = expansion.navEdges ?? [];
+  const colliders = engine.world?.colliders ?? [];
+  if (!colliders.length) return 0;
+  const dynamicColliders = new Set();
+  for (const prop of expansion.dynamicProps?.values?.() ?? []) {
+    if (prop?.collider) dynamicColliders.add(prop.collider);
+  }
+  let cleared = 0;
+
+  for (const edge of edges) {
+    if (!edgeOpenForCat(engine, expansion, edge) || !edge.point) continue;
+    for (const collider of colliders) {
+      if (!collider?.active || dynamicColliders.has(collider)) continue;
+      if (!colliderInsideDoorwayClearance(collider, edge.point, radius)) continue;
+      if (deactivateStaticDoorwayCollider(engine, expansion, collider)) cleared++;
     }
   }
   return cleared;
@@ -122,12 +168,14 @@ function validateDoorwayConnectivity(engine, I) {
   const expansion = engine.__expansion;
   if (!expansion?.navEdges || !engine.world) return true;
   clearDynamicPropsFromDoorways(engine, expansion);
+  clearStaticCollidersFromDoorways(engine, expansion);
   let failures = doorwayConnectivityFailures(engine, expansion, I);
 
   if (failures.length) {
     // A moved prop may be just beyond the nominal clearance radius while still
     // pinching the cat-sized route. Remove nearby dynamic blockers once more
-    // before accepting a disconnected entrance.
+    // before accepting a disconnected entrance. Static trim/furniture also gets
+    // a slightly wider pass, while remaining inside the narrow doorway opening.
     for (const edge of failures) {
       for (const prop of expansion.dynamicProps?.values?.() ?? []) {
         if (!prop?.collider?.active || !prop.mesh?.position) continue;
@@ -136,6 +184,7 @@ function validateDoorwayConnectivity(engine, I) {
         }
       }
     }
+    clearStaticCollidersFromDoorways(engine, expansion, STATIC_DOORWAY_CLEARANCE_RADIUS + 0.08);
     failures = doorwayConnectivityFailures(engine, expansion, I);
   }
 
