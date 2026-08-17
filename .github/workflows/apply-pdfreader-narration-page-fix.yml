@@ -15,11 +15,16 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out only the reader patch files
         uses: actions/checkout@v4
         with:
           ref: agent/pdfreader-natural-page-autoplay-fix
-          fetch-depth: 0
+          fetch-depth: 1
+          sparse-checkout: |
+            game/pdfreader.html
+            scripts/apply_pdfreader_narration_page_fix.py
+            .github/workflows/apply-pdfreader-narration-page-fix.yml
+          sparse-checkout-cone-mode: false
 
       - name: Apply guarded PDF reader fix
         run: python3 scripts/apply_pdfreader_narration_page_fix.py
