@@ -10,7 +10,17 @@ const CAT_HIND_RIGHT = Object.freeze([15, 14, 13]);
 const CAT_HEAD_NODE_INDEX = 0;
 const CAT_CHEST_NODE_INDEX = 5;
 const CAT_SPINE_NODE_INDEX = 9;
-const TWO_PI = Math.PI * 2;
+const MOUSE_COAT_COLORS = Object.freeze([
+  0x8b6f5d,
+  0xa5856d,
+  0x6f625a,
+  0xb7a392,
+  0x71564c,
+  0x968475,
+  0x796f66,
+  0xc2aa91,
+]);
+const MOUSE_FEATURE_MATERIAL_PATTERN = /eye|iris|pupil|nose|snout|mouth|teeth|tooth|whisker|claw|nail|ear\s*inner/i;
 
 let raf = 0;
 let lastTime = 0;
@@ -20,6 +30,16 @@ const smoothstep = (value) => {
   const t = clamp01(value);
   return t * t * (3 - 2 * t);
 };
+
+function hashActor(actor) {
+  const text = String(actor?.id ?? actor?.name ?? actor?.mouseId ?? "mouse");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
 
 function ensurePolishState(controller) {
   if (controller.__hearthmouseProceduralPolish) return controller.__hearthmouseProceduralPolish;
@@ -33,6 +53,7 @@ function ensurePolishState(controller) {
     axisZ: samplePosition.clone().set(0, 0, 1),
     floorOffsetApplied: false,
     groomClock: Math.random() * 7,
+    mouseTintApplied: false,
   };
   controller.__hearthmouseProceduralPolish = state;
   return state;
@@ -52,6 +73,29 @@ function applyFloorOffset(controller) {
   const offset = FLOOR_OFFSETS[controller.kind] ?? 0;
   controller.wrapper.position.y += offset;
   state.floorOffsetApplied = true;
+}
+
+function applyMouseCoatTint(controller) {
+  const state = controller.__hearthmouseProceduralPolish;
+  if (!state || state.mouseTintApplied || controller.kind !== "rat") return;
+  state.mouseTintApplied = true;
+
+  const tint = MOUSE_COAT_COLORS[hashActor(controller.actor) % MOUSE_COAT_COLORS.length];
+  controller.wrapper?.traverse?.((object) => {
+    if (!object?.isMesh || !object.material) return;
+    const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    const tintedMaterials = originalMaterials.map((material) => {
+      if (!material?.clone || !material.color) return material;
+      const materialName = String(material.name ?? object.name ?? "");
+      if (MOUSE_FEATURE_MATERIAL_PATTERN.test(materialName)) return material;
+      const copy = material.clone();
+      copy.color?.setHex?.(tint);
+      copy.needsUpdate = true;
+      return copy;
+    });
+    object.material = Array.isArray(object.material) ? tintedMaterials : tintedMaterials[0];
+  });
+  controller.wrapper.userData.__hearthmouseMouseCoatTint = tint;
 }
 
 function applyCatTail(controller, time, speed, intensity = 1) {
@@ -78,26 +122,36 @@ function applyCatPounce(controller) {
   const windup = phase === "windup" ? smoothstep(1 - clamp01((cat.pounceTimer ?? 0) / windupDuration)) : 1;
   const flight = phase === "flight" ? smoothstep(clamp01(cat.pounceVisual ?? (1 - (cat.pounceTimer ?? 0) / 0.38))) : 0;
   const reach = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) : 0;
-  const tuck = phase === "windup" ? windup : Math.max(0, 1 - flight * 1.8);
+  const tuck = phase === "windup" ? windup : Math.max(0, 1 - flight * 2.4);
 
-  rotateLocal(controller, CAT_SPINE_NODE_INDEX, state.axisX, 0.22 * tuck - 0.13 * reach);
-  rotateLocal(controller, CAT_CHEST_NODE_INDEX, state.axisX, 0.16 * tuck - 0.18 * reach);
-  rotateLocal(controller, CAT_HEAD_NODE_INDEX, state.axisX, 0.12 * tuck - 0.26 * reach);
+  // Anticipation stays mostly horizontal: shoulders dip, hind legs compress, then extend into flight.
+  rotateLocal(controller, CAT_SPINE_NODE_INDEX, state.axisX, 0.15 * tuck - 0.1 * reach);
+  rotateLocal(controller, CAT_CHEST_NODE_INDEX, state.axisX, 0.1 * tuck - 0.15 * reach);
+  rotateLocal(controller, CAT_HEAD_NODE_INDEX, state.axisX, 0.035 * tuck - 0.08 * reach);
 
-  for (const index of CAT_FRONT_LEFT) rotateLocal(controller, index, state.axisX, -0.82 * reach + 0.2 * tuck);
-  for (const index of CAT_FRONT_RIGHT) rotateLocal(controller, index, state.axisX, -0.82 * reach + 0.2 * tuck);
-  for (const index of CAT_HIND_LEFT) rotateLocal(controller, index, state.axisX, 0.48 * tuck - 0.12 * reach);
-  for (const index of CAT_HIND_RIGHT) rotateLocal(controller, index, state.axisX, 0.48 * tuck - 0.12 * reach);
+  for (const index of CAT_FRONT_LEFT) rotateLocal(controller, index, state.axisX, -0.78 * reach + 0.16 * tuck);
+  for (const index of CAT_FRONT_RIGHT) rotateLocal(controller, index, state.axisX, -0.78 * reach + 0.16 * tuck);
+
+  CAT_HIND_LEFT.forEach((index, segment) => {
+    const bend = segment === 1 ? 0.86 : (segment === 0 ? 0.58 : 0.68);
+    rotateLocal(controller, index, state.axisX, bend * tuck - 0.16 * reach);
+  });
+  CAT_HIND_RIGHT.forEach((index, segment) => {
+    const bend = segment === 1 ? 0.86 : (segment === 0 ? 0.58 : 0.68);
+    rotateLocal(controller, index, state.axisX, bend * tuck - 0.16 * reach);
+  });
 
   if (controller.wrapper?.position) {
     const baseOffset = FLOOR_OFFSETS.cat;
+    const baseY = controller.wrapper.__hearthmousePolishBaseY ?? (controller.wrapper.position.y - baseOffset);
+    const crouch = phase === "windup" ? 0.055 * tuck : Math.max(0, 0.055 * (1 - flight * 3));
     const lift = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) * 0.035 : 0;
-    controller.wrapper.position.y = (controller.wrapper.__hearthmousePolishBaseY ?? (controller.wrapper.position.y - baseOffset)) + baseOffset + lift;
+    controller.wrapper.position.y = baseY + baseOffset - crouch + lift;
   }
   return true;
 }
 
-function groomingWeight(controller, delta, time) {
+function groomingWeight(controller, delta) {
   const cat = controller.actor;
   const state = controller.__hearthmouseProceduralPolish;
   if (!cat || !state) return 0;
@@ -120,7 +174,7 @@ function groomingWeight(controller, delta, time) {
 function applyCatGrooming(controller, delta, time) {
   const state = controller.__hearthmouseProceduralPolish;
   if (!state) return false;
-  const weight = groomingWeight(controller, delta, time);
+  const weight = groomingWeight(controller, delta);
   if (weight <= 0) return false;
 
   const lickPulse = 0.5 + 0.5 * Math.sin(time * 7.4);
@@ -146,12 +200,19 @@ function polishController(controller, delta, time) {
   }
   applyFloorOffset(controller);
 
+  if (controller.kind === "rat") {
+    applyMouseCoatTint(controller);
+    return;
+  }
   if (controller.kind !== "cat") return;
   const cat = controller.actor;
   const pouncing = applyCatPounce(controller);
   if (pouncing) {
     applyCatTail(controller, time, Math.max(1.2, cat?.speed ?? 0), 1.22);
     return;
+  }
+  if (controller.wrapper?.position) {
+    controller.wrapper.position.y = (controller.wrapper.__hearthmousePolishBaseY ?? controller.wrapper.position.y) + FLOOR_OFFSETS.cat;
   }
   const grooming = applyCatGrooming(controller, delta, time);
   if (!grooming && (cat?.speed ?? 0) > 0.04) applyCatTail(controller, time, cat.speed, cat.state === "chase" ? 1.25 : 1);
