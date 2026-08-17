@@ -1,107 +1,118 @@
 export const LEGACY_DOORWAY_BASEBOARDS = Object.freeze([
-  Object.freeze({
-    name: "south-baseboard",
-    minX: -10.35,
-    maxX: 10.35,
-    openings: Object.freeze([
-      Object.freeze({ center: 3.6, width: 1.56 }),
-    ]),
-  }),
-  Object.freeze({
-    name: "north-baseboard-east",
-    minX: -6.8,
-    maxX: 10.33,
-    openings: Object.freeze([
-      Object.freeze({ center: -1.3, width: 1.56 }),
-      Object.freeze({ center: 4.5, width: 1.41 }),
-    ]),
-  }),
+  "south-baseboard",
+  "north-baseboard-east",
 ]);
 
-export function horizontalSegmentsAroundOpenings(minX, maxX, openings = []) {
-  const start = Math.min(minX, maxX);
-  const end = Math.max(minX, maxX);
-  const cuts = openings
-    .map(({ center, width }) => {
-      const half = Math.max(0, Number(width) || 0) / 2;
-      return [
-        Math.max(start, (Number(center) || 0) - half),
-        Math.min(end, (Number(center) || 0) + half),
-      ];
-    })
-    .filter(([cutStart, cutEnd]) => cutEnd > cutStart)
-    .sort((a, b) => a[0] - b[0]);
-
-  const merged = [];
-  for (const cut of cuts) {
-    const previous = merged[merged.length - 1];
-    if (!previous || cut[0] > previous[1]) merged.push([...cut]);
-    else previous[1] = Math.max(previous[1], cut[1]);
-  }
-
-  const segments = [];
-  let cursor = start;
-  for (const [cutStart, cutEnd] of merged) {
-    if (cutStart > cursor) segments.push({ minX: cursor, maxX: cutStart });
-    cursor = Math.max(cursor, cutEnd);
-  }
-  if (cursor < end) segments.push({ minX: cursor, maxX: end });
-  return segments;
-}
+export const DOORWAY_FLOORBOARD_CLEARANCE = 0.72;
+export const MAX_FLOORBOARD_TOP = 0.18;
+export const MAX_FLOORBOARD_HEIGHT = 0.2;
 
 function removeFromArray(items, item) {
   if (!Array.isArray(items) || !item) return;
-  const index = items.indexOf(item);
-  if (index >= 0) items.splice(index, 1);
-}
-
-function disableLegacyBaseboard(world, source, name) {
-  source.visible = false;
-  removeFromArray(world.occluders, source);
-  for (const collider of world.colliders ?? []) {
-    if (collider?.name === name) collider.active = false;
+  let index = items.indexOf(item);
+  while (index >= 0) {
+    items.splice(index, 1);
+    index = items.indexOf(item);
   }
 }
 
-function addVisualTrimSegments(world, I, source, spec) {
-  const height = source.geometry?.parameters?.height ?? 0.14;
-  const depth = source.geometry?.parameters?.depth ?? 0.1;
-  const y = Number.isFinite(source.position?.y) ? source.position.y : 0.07;
-  const z = Number.isFinite(source.position?.z) ? source.position.z : 0;
-  const segments = horizontalSegmentsAroundOpenings(spec.minX, spec.maxX, spec.openings);
-
-  segments.forEach((segment, index) => {
-    const width = segment.maxX - segment.minX;
-    if (!(width > 0.001)) return;
-    const mesh = new I.Mesh(new I.BoxGeometry(width, height, depth), source.material);
-    mesh.name = `doorway-safe-${spec.name}-${index}`;
-    mesh.position.set((segment.minX + segment.maxX) / 2, y, z);
-    if (mesh.rotation?.copy && source.rotation) mesh.rotation.copy(source.rotation);
-    mesh.castShadow = source.castShadow ?? false;
-    mesh.receiveShadow = source.receiveShadow ?? true;
-    mesh.userData.__doorwaySafeTrim = true;
-    world.root.add(mesh);
-  });
+function meshesNamed(world, name) {
+  const matches = [];
+  const root = world?.root;
+  if (!root) return matches;
+  if (typeof root.traverse === "function") {
+    root.traverse((object) => {
+      if (object?.name === name) matches.push(object);
+    });
+    return matches;
+  }
+  const single = root.getObjectByName?.(name);
+  if (single) matches.push(single);
+  return matches;
 }
 
-export function repairLegacyDoorwayBaseboards(
-  engine,
-  I = globalThis.window?.HearthmouseInternals,
-) {
+function hideNamedWorldObject(world, name) {
+  let hidden = 0;
+  for (const mesh of meshesNamed(world, name)) {
+    if (mesh.visible !== false) hidden++;
+    mesh.visible = false;
+    removeFromArray(world.occluders, mesh);
+  }
+  return hidden;
+}
+
+function disableNamedCollider(world, name) {
+  let disabled = 0;
+  for (const collider of world?.colliders ?? []) {
+    if (collider?.name !== name) continue;
+    if (collider.active !== false) disabled++;
+    collider.active = false;
+  }
+  hideNamedWorldObject(world, name);
+  return disabled;
+}
+
+export function colliderNearDoorway(collider, doorway, radius = DOORWAY_FLOORBOARD_CLEARANCE) {
+  if (!collider || !doorway) return false;
+  const minX = Number(collider.minX);
+  const maxX = Number(collider.maxX);
+  const minZ = Number(collider.minZ);
+  const maxZ = Number(collider.maxZ);
+  const x = Number(doorway.x);
+  const z = Number(doorway.z);
+  if (![minX, maxX, minZ, maxZ, x, z].every(Number.isFinite)) return false;
+  const nearestX = Math.max(minX, Math.min(maxX, x));
+  const nearestZ = Math.max(minZ, Math.min(maxZ, z));
+  return Math.hypot(nearestX - x, nearestZ - z) <= radius;
+}
+
+export function isLowFloorboardCollider(collider) {
+  if (!collider || collider.catOnly) return false;
+  const minY = Number(collider.minY);
+  const maxY = Number(collider.maxY);
+  if (![minY, maxY].every(Number.isFinite)) return false;
+  return maxY <= MAX_FLOORBOARD_TOP && maxY - minY <= MAX_FLOORBOARD_HEIGHT;
+}
+
+function clearLowDoorwayCollider(world, collider) {
+  if (!collider) return false;
+  const wasActive = collider.active !== false;
+  collider.active = false;
+  if (collider.name) hideNamedWorldObject(world, collider.name);
+  return wasActive;
+}
+
+export function clearExpandedDoorwayFloorboards(engine) {
   const world = engine?.world;
-  if (!world?.root?.getObjectByName || !I?.Mesh || !I?.BoxGeometry) return false;
-  if (world.__doorwayBaseboardsRepaired) return true;
+  const expansion = engine?.__expansion;
+  const edges = expansion?.navEdges;
 
-  let repaired = 0;
-  for (const spec of LEGACY_DOORWAY_BASEBOARDS) {
-    const source = world.root.getObjectByName(spec.name);
-    if (!source) continue;
-    disableLegacyBaseboard(world, source, spec.name);
-    addVisualTrimSegments(world, I, source, spec);
-    repaired++;
+  // Wait until the expansion has finished building all room geometry. The old
+  // version could run against the base house too early, then miss a later board.
+  if (!world?.root || !Array.isArray(edges) || edges.length === 0) return false;
+
+  for (const name of LEGACY_DOORWAY_BASEBOARDS) disableNamedCollider(world, name);
+
+  const doorwayPoints = edges.map((edge) => edge?.point).filter(Boolean);
+  for (const collider of world.colliders ?? []) {
+    if (collider?.active === false || !isLowFloorboardCollider(collider)) continue;
+    if (!doorwayPoints.some((point) => colliderNearDoorway(collider, point))) continue;
+    clearLowDoorwayCollider(world, collider);
   }
 
-  if (!repaired) return false;
+  if (!world.__doorwayFloorboardSetNightWrapped && typeof world.setNight === "function") {
+    const baseSetNight = world.setNight.bind(world);
+    Object.defineProperty(world, "__doorwayFloorboardSetNightWrapped", {
+      value: true,
+      configurable: true,
+    });
+    world.setNight = (night) => {
+      const result = baseSetNight(night);
+      clearExpandedDoorwayFloorboards(engine);
+      return result;
+    };
+  }
+
   Object.defineProperty(world, "__doorwayBaseboardsRepaired", {
     value: true,
     configurable: true,
@@ -109,11 +120,12 @@ export function repairLegacyDoorwayBaseboards(
   return true;
 }
 
+// Backward-compatible export name used by the first version of the hotfix.
+export const repairLegacyDoorwayBaseboards = clearExpandedDoorwayFloorboards;
+
 function installWhenReady() {
   if (typeof window === "undefined") return;
-  const engine = window.hearthmouseEngine;
-  const I = window.HearthmouseInternals;
-  if (!repairLegacyDoorwayBaseboards(engine, I)) {
+  if (!clearExpandedDoorwayFloorboards(window.hearthmouseEngine)) {
     window.setTimeout(installWhenReady, 16);
   }
 }
