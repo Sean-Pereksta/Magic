@@ -382,6 +382,12 @@
       white-space: nowrap;
     }
 
+    #speechEngineSelect {
+      min-width: 132px;
+      height: 38px;
+      padding: 6px 9px;
+    }
+
     #speechVoiceSelect {
       width: min(260px, 32vw);
       min-width: 180px;
@@ -821,6 +827,10 @@
         padding: 7px 8px;
       }
 
+      #speechEngineSelect {
+        min-width: 126px;
+      }
+
       #speechVoiceSelect {
         width: 230px;
         min-width: 230px;
@@ -978,15 +988,17 @@
         <span class="speech-icon" aria-hidden="true">🔊</span>
         <button id="speechToggleBtn" class="primary" title="Read from the selected word">▶ Read</button>
         <button id="speechStopBtn" title="Stop narration">■ Stop</button>
-        <select id="speechVoiceSelect" aria-label="Narration voice">
-          <option value="">Default browser voice</option>
+        <select id="speechEngineSelect" aria-label="Narration engine" title="Choose natural AI narration or the browser system voice">
+          <option value="natural">Natural AI</option>
+          <option value="system">System Voice</option>
         </select>
+        <select id="speechVoiceSelect" aria-label="Narration voice"></select>
         <label class="speech-rate-control" for="speechRate">
           Speed
           <input id="speechRate" type="range" min="0.6" max="2" step="0.1" value="1" aria-label="Narration speed">
           <span id="speechRateLabel">1.0×</span>
         </label>
-        <span id="speechHint">Tap any word on the page to begin reading there.</span>
+        <span id="speechHint">Natural AI loads on first use, then stays cached by the browser.</span>
       </div>
 
       <div id="readingProgress" class="reading-progress" title="Click to jump through the document">
@@ -1065,6 +1077,8 @@
       repo: "Bible-Data",
       branch: "main",
       pdfJsBase: "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284",
+      kokoroModule: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm",
+      kokoroModel: "onnx-community/Kokoro-82M-v1.0-ONNX",
       fallbackPdfs: [
         "A_History_of_the_Near_Galaxy (1).pdf",
         "Christianity_and_the_Abolition_of_Slavery.pdf",
@@ -1079,6 +1093,16 @@
       ]
     });
 
+    const NATURAL_VOICES = Object.freeze([
+      { id: "af_heart", label: "Heart — warm female (recommended)" },
+      { id: "af_bella", label: "Bella — expressive female" },
+      { id: "af_sarah", label: "Sarah — clear female" },
+      { id: "af_nova", label: "Nova — bright female" },
+      { id: "am_michael", label: "Michael — natural male" },
+      { id: "am_fenrir", label: "Fenrir — deeper male" },
+      { id: "am_puck", label: "Puck — lively male" }
+    ]);
+
     const STORAGE_PREFIX = `pdf-library:${CONFIG.owner}/${CONFIG.repo}:v1`;
     const STORAGE_KEYS = Object.freeze({
       positions: `${STORAGE_PREFIX}:positions`,
@@ -1086,7 +1110,9 @@
       lastPath: `${STORAGE_PREFIX}:last-path`,
       theme: `${STORAGE_PREFIX}:theme`,
       speechRate: `${STORAGE_PREFIX}:speech-rate`,
-      speechVoice: `${STORAGE_PREFIX}:speech-voice`
+      speechVoice: `${STORAGE_PREFIX}:speech-voice`,
+      speechEngine: `${STORAGE_PREFIX}:speech-engine`,
+      naturalVoice: `${STORAGE_PREFIX}:natural-voice`
     });
 
     const elements = {
@@ -1128,6 +1154,7 @@
       textLayer: document.querySelector("#textLayer"),
       speechToggleBtn: document.querySelector("#speechToggleBtn"),
       speechStopBtn: document.querySelector("#speechStopBtn"),
+      speechEngineSelect: document.querySelector("#speechEngineSelect"),
       speechVoiceSelect: document.querySelector("#speechVoiceSelect"),
       speechRate: document.querySelector("#speechRate"),
       speechRateLabel: document.querySelector("#speechRateLabel"),
@@ -1143,6 +1170,10 @@
       statusMessage: document.querySelector("#statusMessage"),
       toast: document.querySelector("#toast")
     };
+
+    const systemSpeechSupported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+    const naturalSpeechSupported = typeof Audio === "function" && typeof WebAssembly === "object";
+    const storedSpeechEngine = getStoredValue(STORAGE_KEYS.speechEngine);
 
     const state = {
       library: [],
@@ -1162,7 +1193,10 @@
       textCache: new Map(),
       currentPageTextModel: null,
       speech: {
-        supported: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window,
+        supported: systemSpeechSupported || naturalSpeechSupported,
+        systemSupported: systemSpeechSupported,
+        naturalSupported: naturalSpeechSupported,
+        engine: storedSpeechEngine === "system" ? "system" : "natural",
         active: false,
         paused: false,
         session: 0,
@@ -1171,12 +1205,19 @@
         cursorPage: 1,
         cursorWord: 0,
         currentUtterance: null,
-        highlightedSpan: null,
+        currentAudio: null,
+        currentAudioUrl: null,
+        naturalLoading: false,
+        naturalReady: false,
+        naturalDevice: "",
         rate: Math.max(0.6, Math.min(2, Number(getStoredValue(STORAGE_KEYS.speechRate)) || 1)),
-        voiceURI: getStoredValue(STORAGE_KEYS.speechVoice) || ""
+        voiceURI: getStoredValue(STORAGE_KEYS.speechVoice) || "",
+        naturalVoice: getStoredValue(STORAGE_KEYS.naturalVoice) || "af_heart"
       }
     };
 
+    let kokoroTts = null;
+    let kokoroLoadPromise = null;
     let toastTimer = null;
     let resizeTimer = null;
     let positionSaveTimer = null;
@@ -1299,8 +1340,11 @@
       elements.openRawBtn.disabled = !state.activeEntry;
 
       const hasPageText = Boolean(state.currentPageTextModel?.words?.length);
-      elements.speechToggleBtn.disabled = !state.speech.supported || !hasDocument || (!hasPageText && !state.speech.active);
-      elements.speechStopBtn.disabled = !state.speech.supported || (!state.speech.active && !state.speech.paused);
+      const engineAvailable = state.speech.engine === "natural"
+        ? state.speech.naturalSupported
+        : state.speech.systemSupported;
+      elements.speechToggleBtn.disabled = !engineAvailable || !hasDocument || (!hasPageText && !state.speech.active);
+      elements.speechStopBtn.disabled = !engineAvailable || (!state.speech.active && !state.speech.paused);
       elements.speechToggleBtn.textContent = state.speech.active
         ? (state.speech.paused ? "▶ Resume" : "⏸ Pause")
         : "▶ Read";
@@ -1789,10 +1833,29 @@
         highlightSpeechWord(state.speech.cursorWord, false, false);
       }
 
-      elements.speechHint.textContent = model.words.length
-        ? "Tap any word on the page to begin reading there."
-        : "This page has no selectable text. Image-only pages require OCR.";
+      updateSpeechHint(model);
       updateControlState();
+    }
+
+    function updateSpeechHint(model = state.currentPageTextModel) {
+      if (!model?.words?.length) {
+        elements.speechHint.textContent = "This page has no selectable text. Image-only pages require OCR.";
+        return;
+      }
+
+      if (state.speech.engine === "natural") {
+        if (!state.speech.naturalSupported) {
+          elements.speechHint.textContent = "Natural AI is unavailable in this browser. Choose System Voice.";
+        } else if (state.speech.naturalLoading) {
+          elements.speechHint.textContent = "Loading the natural voice model for the first time…";
+        } else if (state.speech.naturalReady) {
+          elements.speechHint.textContent = `Natural AI ready${state.speech.naturalDevice ? ` · ${state.speech.naturalDevice.toUpperCase()}` : ""}. Tap any word to read there.`;
+        } else {
+          elements.speechHint.textContent = "Natural AI loads on first use, then stays cached by the browser.";
+        }
+      } else {
+        elements.speechHint.textContent = "System voice selected. Tap any word on the page to begin reading there.";
+      }
     }
 
     function clearSpeechHighlight() {
@@ -1830,7 +1893,7 @@
     }
 
     function selectedSpeechVoice() {
-      if (!state.speech.supported || !state.speech.voiceURI) return null;
+      if (!state.speech.systemSupported || !state.speech.voiceURI) return null;
       return window.speechSynthesis.getVoices().find(voice => voice.voiceURI === state.speech.voiceURI) || null;
     }
 
@@ -1857,6 +1920,35 @@
       };
     }
 
+    function buildNaturalSpeechChunk(words, startIndex) {
+      const charStarts = [];
+      const pieces = [];
+      let length = 0;
+      let endIndex = startIndex;
+
+      while (endIndex < words.length && pieces.length < 100) {
+        const word = words[endIndex].text;
+        const extra = (pieces.length ? 1 : 0) + word.length;
+        if (pieces.length && length + extra > 520) break;
+
+        charStarts.push(length + (pieces.length ? 1 : 0));
+        pieces.push(word);
+        length += extra;
+        endIndex += 1;
+
+        const sentenceEnding = /[.!?][”’"')\]]*$/u.test(word);
+        if (sentenceEnding && length >= 150) break;
+      }
+
+      return {
+        text: pieces.join(" ")
+          .replace(/\s+([,.;:!?])/g, "$1")
+          .replace(/([“‘(])\s+/g, "$1"),
+        charStarts,
+        endIndex
+      };
+    }
+
     function wordOffsetForCharacter(charStarts, charIndex) {
       let low = 0;
       let high = charStarts.length - 1;
@@ -1875,15 +1967,83 @@
       return result;
     }
 
+    function releaseNaturalAudio() {
+      const audio = state.speech.currentAudio;
+      if (audio) {
+        audio.onended = null;
+        audio.onerror = null;
+        audio.ontimeupdate = null;
+        audio.onloadedmetadata = null;
+        try {
+          audio.pause();
+        } catch {
+          // Ignore audio cleanup failures.
+        }
+      }
+      state.speech.currentAudio = null;
+
+      if (state.speech.currentAudioUrl) {
+        URL.revokeObjectURL(state.speech.currentAudioUrl);
+        state.speech.currentAudioUrl = null;
+      }
+    }
+
+    async function detectNaturalDevice() {
+      if (!navigator.gpu) return "wasm";
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        return adapter ? "webgpu" : "wasm";
+      } catch {
+        return "wasm";
+      }
+    }
+
+    async function ensureNaturalTts() {
+      if (kokoroTts) return kokoroTts;
+      if (kokoroLoadPromise) return kokoroLoadPromise;
+      if (!state.speech.naturalSupported) {
+        throw new Error("Natural text to speech is unavailable in this browser.");
+      }
+
+      state.speech.naturalLoading = true;
+      elements.speechHint.textContent = "Loading the natural voice model for the first time…";
+      updateControlState();
+
+      kokoroLoadPromise = (async () => {
+        try {
+          const { KokoroTTS } = await import(CONFIG.kokoroModule);
+          const device = await detectNaturalDevice();
+          const dtype = device === "webgpu" ? "fp32" : "q8";
+          const instance = await KokoroTTS.from_pretrained(CONFIG.kokoroModel, { device, dtype });
+          kokoroTts = instance;
+          state.speech.naturalReady = true;
+          state.speech.naturalDevice = device;
+          showToast(`Natural AI voice ready${device === "webgpu" ? " with GPU acceleration" : ""}.`);
+          return instance;
+        } catch (error) {
+          kokoroLoadPromise = null;
+          console.error("Natural narration failed to load:", error);
+          throw error;
+        } finally {
+          state.speech.naturalLoading = false;
+          updateSpeechHint();
+          updateControlState();
+        }
+      })();
+
+      return kokoroLoadPromise;
+    }
+
     function stopSpeech({ silent = false, resetCursor = false } = {}) {
       state.speech.session += 1;
-      if (state.speech.supported) {
+      if (state.speech.systemSupported) {
         try {
           window.speechSynthesis.cancel();
         } catch {
           // Narration cleanup should never prevent document use.
         }
       }
+      releaseNaturalAudio();
 
       state.speech.active = false;
       state.speech.paused = false;
@@ -1906,8 +2066,13 @@
     }
 
     async function startSpeechAt(pageNumber, wordIndex = 0) {
-      if (!state.speech.supported) {
-        showToast("Text to speech is not supported by this browser.");
+      const engineAvailable = state.speech.engine === "natural"
+        ? state.speech.naturalSupported
+        : state.speech.systemSupported;
+      if (!engineAvailable) {
+        showToast(state.speech.engine === "natural"
+          ? "Natural AI narration is not supported by this browser."
+          : "System text to speech is not supported by this browser.");
         return;
       }
       if (!state.pdfDocument) return;
@@ -1920,7 +2085,9 @@
       state.speech.wordIndex = Math.max(0, Math.floor(Number(wordIndex) || 0));
       state.speech.cursorPage = state.speech.page;
       state.speech.cursorWord = state.speech.wordIndex;
-      elements.speechHint.textContent = "Preparing narration…";
+      elements.speechHint.textContent = state.speech.engine === "natural"
+        ? "Preparing natural narration…"
+        : "Preparing narration…";
       updateControlState();
 
       await continueSpeech(session);
@@ -1944,7 +2111,13 @@
           continue;
         }
 
-        speakChunk(model, session);
+        if (state.speech.engine === "natural") {
+          await speakNaturalChunk(model, session);
+          if (!state.speech.active || session !== state.speech.session) return;
+          continue;
+        }
+
+        speakSystemChunk(model, session);
         return;
       }
 
@@ -1952,13 +2125,14 @@
         state.speech.active = false;
         state.speech.paused = false;
         state.speech.currentUtterance = null;
+        releaseNaturalAudio();
         elements.speechHint.textContent = "Finished reading the document.";
         updateControlState();
         showToast("Finished reading the document.");
       }
     }
 
-    function speakChunk(model, session) {
+    function speakSystemChunk(model, session) {
       const chunkStart = state.speech.wordIndex;
       const chunk = buildSpeechChunk(model.words, chunkStart);
       if (!chunk.text) {
@@ -2017,20 +2191,161 @@
       window.speechSynthesis.speak(utterance);
     }
 
+    async function speakNaturalChunk(model, session) {
+      const chunkStart = state.speech.wordIndex;
+      const chunk = buildNaturalSpeechChunk(model.words, chunkStart);
+      if (!chunk.text) {
+        state.speech.wordIndex = model.words.length;
+        return;
+      }
+
+      let tts;
+      try {
+        tts = await ensureNaturalTts();
+      } catch (error) {
+        if (!state.speech.active || session !== state.speech.session) return;
+        if (state.speech.systemSupported) {
+          state.speech.engine = "system";
+          elements.speechEngineSelect.value = "system";
+          setStoredValue(STORAGE_KEYS.speechEngine, "system");
+          populateSpeechVoices();
+          showToast("Natural AI could not load, so narration switched to System Voice.");
+          speakSystemChunk(model, session);
+          return;
+        }
+        state.speech.active = false;
+        state.speech.paused = false;
+        elements.speechHint.textContent = "Natural narration could not load in this browser.";
+        updateControlState();
+        showToast("Natural narration could not load.");
+        return;
+      }
+
+      if (!state.speech.active || session !== state.speech.session || state.speech.engine !== "natural") return;
+
+      elements.speechHint.textContent = `Generating natural narration for page ${state.speech.page}…`;
+      let rawAudio;
+      try {
+        rawAudio = await tts.generate(chunk.text, {
+          voice: state.speech.naturalVoice,
+          speed: state.speech.rate
+        });
+      } catch (error) {
+        console.error("Natural narration generation failed:", error);
+        if (!state.speech.active || session !== state.speech.session) return;
+        state.speech.active = false;
+        state.speech.paused = false;
+        elements.speechHint.textContent = "Natural narration stopped because audio generation failed.";
+        updateControlState();
+        showToast("Natural narration could not generate this passage.");
+        return;
+      }
+
+      if (!state.speech.active || session !== state.speech.session || state.speech.engine !== "natural") return;
+
+      releaseNaturalAudio();
+      const blob = typeof rawAudio?.toBlob === "function"
+        ? rawAudio.toBlob()
+        : new Blob([rawAudio?.audio || rawAudio], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      state.speech.currentAudio = audio;
+      state.speech.currentAudioUrl = url;
+
+      await new Promise(resolve => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+
+        audio.onloadedmetadata = () => {
+          if (!state.speech.active || session !== state.speech.session) {
+            finish();
+            return;
+          }
+          highlightSpeechWord(chunkStart, true);
+          elements.speechHint.textContent = `Natural AI reading page ${state.speech.page} of ${state.pageCount}…`;
+          if (!state.speech.paused) {
+            audio.play().catch(error => {
+              console.error("Natural narration playback failed:", error);
+              showToast("Tap Read again if the browser blocked audio playback.");
+            });
+          }
+        };
+
+        audio.ontimeupdate = () => {
+          if (!state.speech.active || state.speech.paused || session !== state.speech.session) return;
+          const duration = Number(audio.duration);
+          if (!Number.isFinite(duration) || duration <= 0) return;
+          const ratio = Math.max(0, Math.min(1, audio.currentTime / duration));
+          const estimatedChar = Math.floor(ratio * Math.max(0, chunk.text.length - 1));
+          const localOffset = wordOffsetForCharacter(chunk.charStarts, estimatedChar);
+          const globalIndex = Math.min(chunk.endIndex - 1, chunkStart + localOffset);
+          if (globalIndex !== state.speech.wordIndex) {
+            state.speech.wordIndex = globalIndex;
+            state.speech.cursorPage = state.speech.page;
+            state.speech.cursorWord = globalIndex;
+            highlightSpeechWord(globalIndex, true);
+            if (globalIndex % 12 === 0) queuePositionSave();
+          }
+        };
+
+        audio.onended = () => {
+          if (state.speech.active && session === state.speech.session) {
+            state.speech.wordIndex = chunk.endIndex;
+            state.speech.cursorPage = state.speech.page;
+            state.speech.cursorWord = Math.max(0, Math.min(model.words.length - 1, chunk.endIndex));
+            queuePositionSave();
+          }
+          finish();
+        };
+
+        audio.onerror = () => {
+          if (state.speech.active && session === state.speech.session) {
+            state.speech.active = false;
+            state.speech.paused = false;
+            elements.speechHint.textContent = "Natural narration audio could not be played.";
+            updateControlState();
+            showToast("Natural narration audio playback failed.");
+          }
+          finish();
+        };
+
+        audio.load();
+      });
+
+      releaseNaturalAudio();
+    }
+
     function toggleSpeech() {
-      if (!state.speech.supported) {
-        showToast("Text to speech is not supported by this browser.");
+      const engineAvailable = state.speech.engine === "natural"
+        ? state.speech.naturalSupported
+        : state.speech.systemSupported;
+      if (!engineAvailable) {
+        showToast(state.speech.engine === "natural"
+          ? "Natural AI narration is not available in this browser."
+          : "System text to speech is not available in this browser.");
         return;
       }
 
       if (state.speech.active) {
         if (state.speech.paused) {
-          window.speechSynthesis.resume();
           state.speech.paused = false;
-          elements.speechHint.textContent = `Reading page ${state.speech.page} of ${state.pageCount}…`;
+          if (state.speech.engine === "natural") {
+            state.speech.currentAudio?.play().catch(() => {});
+          } else {
+            window.speechSynthesis.resume();
+          }
+          elements.speechHint.textContent = `${state.speech.engine === "natural" ? "Natural AI r" : "R"}eading page ${state.speech.page} of ${state.pageCount}…`;
         } else {
-          window.speechSynthesis.pause();
           state.speech.paused = true;
+          if (state.speech.engine === "natural") {
+            state.speech.currentAudio?.pause();
+          } else {
+            window.speechSynthesis.pause();
+          }
           elements.speechHint.textContent = "Narration paused.";
         }
         updateControlState();
@@ -2045,14 +2360,42 @@
     }
 
     function populateSpeechVoices() {
-      if (!state.speech.supported) {
-        elements.speechVoiceSelect.replaceChildren();
+      elements.speechEngineSelect.value = state.speech.engine;
+      elements.speechVoiceSelect.replaceChildren();
+
+      if (state.speech.engine === "natural") {
+        if (!state.speech.naturalSupported) {
+          const option = document.createElement("option");
+          option.textContent = "Natural AI unavailable";
+          elements.speechVoiceSelect.append(option);
+          elements.speechVoiceSelect.disabled = true;
+          updateSpeechHint();
+          updateControlState();
+          return;
+        }
+
+        for (const voice of NATURAL_VOICES) {
+          const option = document.createElement("option");
+          option.value = voice.id;
+          option.textContent = voice.label;
+          elements.speechVoiceSelect.append(option);
+        }
+        if (!NATURAL_VOICES.some(voice => voice.id === state.speech.naturalVoice)) {
+          state.speech.naturalVoice = "af_heart";
+        }
+        elements.speechVoiceSelect.value = state.speech.naturalVoice;
+        elements.speechVoiceSelect.disabled = false;
+        updateSpeechHint();
+        updateControlState();
+        return;
+      }
+
+      if (!state.speech.systemSupported) {
         const option = document.createElement("option");
-        option.textContent = "Speech unavailable";
+        option.textContent = "System speech unavailable";
         elements.speechVoiceSelect.append(option);
         elements.speechVoiceSelect.disabled = true;
-        elements.speechRate.disabled = true;
-        elements.speechHint.textContent = "This browser does not provide text to speech.";
+        updateSpeechHint();
         updateControlState();
         return;
       }
@@ -2064,8 +2407,6 @@
       });
 
       const selected = state.speech.voiceURI;
-      elements.speechVoiceSelect.replaceChildren();
-
       const defaultOption = document.createElement("option");
       defaultOption.value = "";
       defaultOption.textContent = "Default browser voice";
@@ -2078,11 +2419,14 @@
         elements.speechVoiceSelect.append(option);
       }
 
+      elements.speechVoiceSelect.disabled = false;
       elements.speechVoiceSelect.value = voices.some(voice => voice.voiceURI === selected) ? selected : "";
       if (selected && !elements.speechVoiceSelect.value) {
         state.speech.voiceURI = "";
         setStoredValue(STORAGE_KEYS.speechVoice, "");
       }
+      updateSpeechHint();
+      updateControlState();
     }
 
     async function setFitWidthScale() {
@@ -2434,12 +2778,28 @@
     elements.addBookmarkBtn.addEventListener("click", addBookmark);
     elements.speechToggleBtn.addEventListener("click", toggleSpeech);
     elements.speechStopBtn.addEventListener("click", () => stopSpeech());
+    elements.speechEngineSelect.addEventListener("change", () => {
+      const restart = state.speech.active;
+      const page = state.speech.page;
+      const word = state.speech.wordIndex;
+      if (restart) stopSpeech({ silent: true });
+      state.speech.engine = elements.speechEngineSelect.value === "system" ? "system" : "natural";
+      setStoredValue(STORAGE_KEYS.speechEngine, state.speech.engine);
+      populateSpeechVoices();
+      if (restart) startSpeechAt(page, word);
+    });
     elements.speechVoiceSelect.addEventListener("change", () => {
-      state.speech.voiceURI = elements.speechVoiceSelect.value;
-      setStoredValue(STORAGE_KEYS.speechVoice, state.speech.voiceURI);
-      if (state.speech.active) {
-        startSpeechAt(state.speech.page, state.speech.wordIndex);
+      const restart = state.speech.active;
+      const page = state.speech.page;
+      const word = state.speech.wordIndex;
+      if (state.speech.engine === "natural") {
+        state.speech.naturalVoice = elements.speechVoiceSelect.value || "af_heart";
+        setStoredValue(STORAGE_KEYS.naturalVoice, state.speech.naturalVoice);
+      } else {
+        state.speech.voiceURI = elements.speechVoiceSelect.value;
+        setStoredValue(STORAGE_KEYS.speechVoice, state.speech.voiceURI);
       }
+      if (restart) startSpeechAt(page, word);
     });
     elements.speechRate.addEventListener("input", () => {
       state.speech.rate = Math.max(0.6, Math.min(2, Number(elements.speechRate.value) || 1));
@@ -2498,7 +2858,8 @@
     });
 
     window.addEventListener("beforeunload", () => {
-      if (state.speech.supported) window.speechSynthesis.cancel();
+      if (state.speech.systemSupported) window.speechSynthesis.cancel();
+      releaseNaturalAudio();
       saveCurrentPosition();
       if (state.localObjectUrl) URL.revokeObjectURL(state.localObjectUrl);
     });
@@ -2547,10 +2908,15 @@
     initializeTheme();
     elements.speechRate.value = String(state.speech.rate);
     elements.speechRateLabel.textContent = `${state.speech.rate.toFixed(1)}×`;
+    elements.speechEngineSelect.value = state.speech.engine;
     populateSpeechVoices();
-    if (state.speech.supported) {
-      window.speechSynthesis.addEventListener?.("voiceschanged", populateSpeechVoices);
-      window.speechSynthesis.onvoiceschanged = populateSpeechVoices;
+    if (state.speech.systemSupported) {
+      window.speechSynthesis.addEventListener?.("voiceschanged", () => {
+        if (state.speech.engine === "system") populateSpeechVoices();
+      });
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (state.speech.engine === "system") populateSpeechVoices();
+      };
     }
     updateControlState();
     renderBookmarks();
@@ -2558,4 +2924,3 @@
   </script>
 </body>
 </html>
-
