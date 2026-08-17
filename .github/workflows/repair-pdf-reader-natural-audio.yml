@@ -1,0 +1,209 @@
+name: Repair PDF Reader Natural Audio
+
+on:
+  push:
+    branches:
+      - fix/pdf-reader-natural-audio-silence
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/pdf-reader-natural-audio-silence
+          fetch-depth: 0
+
+      - name: Patch silent natural narration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("game/pdfreader.html")
+          text = path.read_text(encoding="utf-8")
+
+          function_start = text.index("    function naturalSamplesFrom(rawAudio) {")
+          function_end = text.index("\n    async function playNaturalBuffer(", function_start)
+
+          replacement = r'''    function naturalSamplesFrom(rawAudio) {
+              const source = rawAudio?.data ?? rawAudio?.audio;
+              let samples;
+              if (source instanceof Float32Array) {
+                samples = source;
+              } else if (ArrayBuffer.isView(source)) {
+                samples = Float32Array.from(source);
+              } else if (Array.isArray(source)) {
+                samples = Float32Array.from(source);
+              } else {
+                throw new Error("The natural voice engine returned no PCM audio samples.");
+              }
+
+              if (samples.length < 800) {
+                throw new Error("The natural voice engine returned an empty or truncated audio buffer.");
+              }
+
+              let peak = 0;
+              let sumSquares = 0;
+              const sampledMagnitudes = [];
+              const analysisStride = Math.max(1, Math.floor(samples.length / 50000));
+
+              for (let index = 0; index < samples.length; index += 1) {
+                const sample = samples[index];
+                if (!Number.isFinite(sample)) {
+                  throw new Error("The natural voice engine returned non-finite audio samples.");
+                }
+                const absolute = Math.abs(sample);
+                peak = Math.max(peak, absolute);
+                sumSquares += sample * sample;
+                if (index % analysisStride === 0) sampledMagnitudes.push(absolute);
+              }
+
+              const rms = Math.sqrt(sumSquares / samples.length);
+              if (peak < 0.00001 || rms < 0.000001) {
+                throw new Error("The natural voice engine returned silent audio.");
+              }
+
+              // Do not normalize an entire passage against one corrupt outlier.
+              // A single giant ONNX/WASM sample was making otherwise-good speech
+              // effectively silent after the old 0.98 / peak gain calculation.
+              sampledMagnitudes.sort((a, b) => a - b);
+              const percentileIndex = Math.min(
+                sampledMagnitudes.length - 1,
+                Math.max(0, Math.floor((sampledMagnitudes.length - 1) * 0.995))
+              );
+              const robustPeak = sampledMagnitudes[percentileIndex] || peak;
+
+              let output = samples;
+              if (peak > 1.05) {
+                if (peak > 1e15) {
+                  throw new Error("The natural voice engine returned numerically corrupted audio.");
+                }
+
+                // Scale against the 99.5th-percentile amplitude. This handles both
+                // integer-like PCM ranges and occasional extreme inference spikes.
+                // If the body of the waveform is already in Web Audio range, keep
+                // unity gain and merely clip the isolated bad samples.
+                const normalizationReference = robustPeak > 1.05 ? robustPeak : 0.92;
+                const gain = robustPeak > 1.05 ? 0.92 / normalizationReference : 1;
+                const normalized = new Float32Array(samples.length);
+                for (let index = 0; index < samples.length; index += 1) {
+                  normalized[index] = Math.max(-0.98, Math.min(0.98, samples[index] * gain));
+                }
+                output = normalized;
+
+                console.warn("Natural narration returned hot PCM; robustly normalized before playback.", {
+                  peak,
+                  rms,
+                  robustPeak,
+                  gain,
+                  samples: samples.length,
+                });
+              }
+
+              // Validate what will actually be sent to Web Audio, not just the
+              // pre-normalized tensor. This makes silent output throw and engage
+              // the existing System Voice fallback instead of pretending to play.
+              let outputPeak = 0;
+              let outputSumSquares = 0;
+              for (let index = 0; index < output.length; index += 1) {
+                const sample = output[index];
+                outputPeak = Math.max(outputPeak, Math.abs(sample));
+                outputSumSquares += sample * sample;
+              }
+              let outputRms = Math.sqrt(outputSumSquares / output.length);
+
+              // Very quiet but otherwise valid PCM gets a conservative second-stage
+              // boost. This is deliberately capped so pauses/noise cannot explode.
+              if (outputRms > 0 && outputRms < 0.015 && outputPeak > 0.0001) {
+                const boost = Math.min(12, 0.06 / outputRms);
+                const boosted = new Float32Array(output.length);
+                outputPeak = 0;
+                outputSumSquares = 0;
+                for (let index = 0; index < output.length; index += 1) {
+                  const sample = Math.max(-0.98, Math.min(0.98, output[index] * boost));
+                  boosted[index] = sample;
+                  outputPeak = Math.max(outputPeak, Math.abs(sample));
+                  outputSumSquares += sample * sample;
+                }
+                output = boosted;
+                outputRms = Math.sqrt(outputSumSquares / output.length);
+              }
+
+              if (outputPeak < 0.001 || outputRms < 0.0015) {
+                throw new Error(
+                  `Natural voice produced inaudible PCM after normalization (peak ${outputPeak.toExponential(2)}, RMS ${outputRms.toExponential(2)}).`
+                );
+              }
+
+              return output;
+            }
+          '''
+
+          text = text[:function_start] + replacement + text[function_end:]
+
+          old_playback_start = '''    async function playNaturalBuffer(rawAudio, chunk, model, chunkStart, session) {
+              const context = await ensureNaturalAudioContext();
+              if (!state.speech.active || session !== state.speech.session) return "stopped";
+          '''
+          new_playback_start = '''    async function playNaturalBuffer(rawAudio, chunk, model, chunkStart, session) {
+              const context = await ensureNaturalAudioContext();
+              if (!state.speech.active || session !== state.speech.session) return "stopped";
+
+              // The first model load can take long enough for browsers/Windows to
+              // suspend Web Audio again. Never report successful narration unless
+              // the output context has actually resumed.
+              if (context.state === "suspended") await context.resume();
+              if (context.state !== "running") {
+                throw new Error(`Natural narration audio context is ${context.state}, not running.`);
+              }
+          '''
+          if old_playback_start not in text:
+              raise SystemExit("Could not find the natural playback prelude to patch")
+          text = text.replace(old_playback_start, new_playback_start, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+          workflow = Path(".github/workflows/repair-pdf-reader-natural-audio.yml")
+          if workflow.exists():
+              workflow.unlink()
+          PY
+
+      - name: Verify narration patch and inline JavaScript syntax
+        shell: bash
+        run: |
+          grep -q "robustly normalized before playback" game/pdfreader.html
+          grep -q "audio context is .*not running" game/pdfreader.html
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path("game/pdfreader.html").read_text(encoding="utf-8")
+          scripts = []
+          cursor = 0
+          while True:
+              start = text.find("<script", cursor)
+              if start < 0:
+                  break
+              body = text.find(">", start)
+              end = text.find("</script>", body)
+              if body < 0 or end < 0:
+                  raise SystemExit("Malformed script tag in pdfreader.html")
+              block = text[body + 1:end].strip()
+              if block:
+                  scripts.append(block)
+              cursor = end + 9
+          Path("/tmp/pdfreader-inline.js").write_text("\n\n".join(scripts), encoding="utf-8")
+          PY
+          node --check /tmp/pdfreader-inline.js
+
+      - name: Commit repaired reader
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/pdfreader.html .github/workflows/repair-pdf-reader-natural-audio.yml
+          git commit -m "Fix silent natural PDF narration"
+          git push origin HEAD:fix/pdf-reader-natural-audio-silence
