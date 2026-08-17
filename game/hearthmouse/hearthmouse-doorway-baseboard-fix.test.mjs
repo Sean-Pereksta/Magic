@@ -2,74 +2,133 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DOORWAY_FLOORBOARD_CLEARANCE,
   LEGACY_DOORWAY_BASEBOARDS,
-  horizontalSegmentsAroundOpenings,
-  repairLegacyDoorwayBaseboards,
+  clearExpandedDoorwayFloorboards,
+  colliderNearDoorway,
+  isLowFloorboardCollider,
 } from "./hearthmouse-doorway-baseboard-fix.mjs";
 
-test("dining-room baseboard is split around the full doorway", () => {
-  const spec = LEGACY_DOORWAY_BASEBOARDS.find((entry) => entry.name === "south-baseboard");
-  const segments = horizontalSegmentsAroundOpenings(spec.minX, spec.maxX, spec.openings);
-  assert.equal(segments.length, 2);
-  const opening = spec.openings[0];
-  const openingMin = opening.center - opening.width / 2;
-  const openingMax = opening.center + opening.width / 2;
-  assert.ok(segments[0].maxX <= openingMin);
-  assert.ok(segments[1].minX >= openingMax);
+function makeMesh(name, visible = true) {
+  return { name, visible };
+}
+
+function makeCollider(name, {
+  minX,
+  maxX,
+  minZ,
+  maxZ,
+  minY = 0,
+  maxY = 0.14,
+  active = true,
+  catOnly = false,
+}) {
+  return { name, minX, maxX, minZ, maxZ, minY, maxY, active, catOnly };
+}
+
+test("floorboard classification catches low doorway trim without treating walls as floorboards", () => {
+  const doorway = { x: 3.6, z: 6.18 };
+  const crossingBoard = makeCollider("crossing-board", {
+    minX: -10.35, maxX: 10.35, minZ: 6.17, maxZ: 6.27,
+  });
+  const sideBoard = makeCollider("side-board", {
+    minX: 7.2, maxX: 8.2, minZ: 6.17, maxZ: 6.27,
+  });
+  const wall = makeCollider("wall", {
+    minX: 3.45, maxX: 3.75, minZ: 6.15, maxZ: 6.35, minY: 0, maxY: 2.95,
+  });
+
+  assert.equal(isLowFloorboardCollider(crossingBoard), true);
+  assert.equal(colliderNearDoorway(crossingBoard, doorway), true);
+  assert.equal(colliderNearDoorway(sideBoard, doorway), false);
+  assert.equal(isLowFloorboardCollider(wall), false);
+  assert.ok(DOORWAY_FLOORBOARD_CLEARANCE > 0.6);
 });
 
-test("hallway and pantry baseboard keeps both doorway gaps open", () => {
-  const spec = LEGACY_DOORWAY_BASEBOARDS.find((entry) => entry.name === "north-baseboard-east");
-  const segments = horizontalSegmentsAroundOpenings(spec.minX, spec.maxX, spec.openings);
-  assert.equal(segments.length, 3);
-  for (const opening of spec.openings) {
-    const openingMin = opening.center - opening.width / 2;
-    const openingMax = opening.center + opening.width / 2;
-    assert.equal(segments.some((segment) => segment.minX < openingMax && segment.maxX > openingMin), false);
-  }
+test("repair waits for expansion doorway geometry instead of finishing against the base house too early", () => {
+  const world = { root: {}, colliders: [], occluders: [], setNight() {} };
+  assert.equal(clearExpandedDoorwayFloorboards({ world, __expansion: { navEdges: [] } }), false);
+  assert.equal(world.__doorwayBaseboardsRepaired, undefined);
 });
 
-test("runtime repair disables legacy collisions and recreates visual-only trim", () => {
-  class BoxGeometry {
-    constructor(width, height, depth) {
-      this.parameters = { width, height, depth };
-    }
-  }
-  class Mesh {
-    constructor(geometry, material) {
-      this.geometry = geometry;
-      this.material = material;
-      this.position = { x: 0, y: 0, z: 0, set: (x, y, z) => Object.assign(this.position, { x, y, z }) };
-      this.rotation = { copy() {} };
-      this.userData = {};
-    }
-  }
-  const sources = new Map();
-  for (const spec of LEGACY_DOORWAY_BASEBOARDS) {
-    sources.set(spec.name, {
-      name: spec.name,
-      visible: true,
-      material: {},
-      geometry: new BoxGeometry(spec.maxX - spec.minX, 0.14, 0.1),
-      position: { y: 0.07, z: spec.name === "south-baseboard" ? 6.22 : -6.22 },
-      rotation: {},
-      castShadow: false,
-      receiveShadow: true,
-    });
-  }
-  const added = [];
+test("repair removes the real low doorway blocker, keeps harmless trim, and reruns after night changes", () => {
+  const meshes = [
+    ...LEGACY_DOORWAY_BASEBOARDS.map((name) => makeMesh(name)),
+    makeMesh("mystery-white-floor-board"),
+    makeMesh("harmless-floor-board"),
+    makeMesh("mouse-tunnel-roof"),
+    makeMesh("full-height-wall"),
+    makeMesh("late-floor-board", false),
+  ];
+  const byName = new Map(meshes.map((mesh) => [mesh.name, mesh]));
+
+  const colliders = [
+    makeCollider("south-baseboard", {
+      minX: -10.35, maxX: 10.35, minZ: 6.17, maxZ: 6.27,
+    }),
+    makeCollider("north-baseboard-east", {
+      minX: -6.8, maxX: 10.33, minZ: -6.27, maxZ: -6.17,
+    }),
+    makeCollider("mystery-white-floor-board", {
+      minX: 3.15, maxX: 4.05, minZ: 6.15, maxZ: 6.25,
+    }),
+    makeCollider("harmless-floor-board", {
+      minX: 7.5, maxX: 8.5, minZ: 8.2, maxZ: 8.3,
+    }),
+    makeCollider("mouse-tunnel-roof", {
+      minX: -5.1, maxX: -4.6, minZ: -9.2, maxZ: -8.8, catOnly: true,
+    }),
+    makeCollider("full-height-wall", {
+      minX: 3.45, maxX: 3.75, minZ: 6.15, maxZ: 6.35, minY: 0, maxY: 2.95,
+    }),
+    makeCollider("late-floor-board", {
+      minX: -1.75, maxX: -0.85, minZ: -6.25, maxZ: -6.15, active: false,
+    }),
+  ];
+  const lateCollider = colliders.find((collider) => collider.name === "late-floor-board");
+
+  let setNightCalls = 0;
   const world = {
     root: {
-      getObjectByName: (name) => sources.get(name),
-      add: (mesh) => added.push(mesh),
+      traverse(callback) {
+        meshes.forEach(callback);
+      },
+      getObjectByName(name) {
+        return byName.get(name);
+      },
     },
-    colliders: [...sources.keys()].map((name) => ({ name, active: true })),
-    occluders: [...sources.values()],
+    colliders,
+    occluders: [...meshes],
+    setNight() {
+      setNightCalls++;
+      lateCollider.active = true;
+      byName.get("late-floor-board").visible = true;
+    },
+  };
+  const engine = {
+    world,
+    __expansion: {
+      navEdges: [
+        { point: { x: 3.6, z: 6.18 } },
+        { point: { x: -1.3, z: -6.18 } },
+        { point: { x: -4.86, z: -9 } },
+      ],
+    },
   };
 
-  assert.equal(repairLegacyDoorwayBaseboards({ world }, { Mesh, BoxGeometry }), true);
-  assert.equal(world.colliders.every((collider) => collider.active === false), true);
-  assert.equal([...sources.values()].every((mesh) => mesh.visible === false), true);
-  assert.equal(added.length, 5);
-  assert.equal(added.every((mesh) => mesh.userData.__doorwaySafeTrim === true), true);
+  assert.equal(clearExpandedDoorwayFloorboards(engine), true);
+  assert.equal(colliders.find((c) => c.name === "south-baseboard").active, false);
+  assert.equal(colliders.find((c) => c.name === "north-baseboard-east").active, false);
+  assert.equal(colliders.find((c) => c.name === "mystery-white-floor-board").active, false);
+  assert.equal(byName.get("mystery-white-floor-board").visible, false);
+
+  assert.equal(colliders.find((c) => c.name === "harmless-floor-board").active, true);
+  assert.equal(byName.get("harmless-floor-board").visible, true);
+  assert.equal(colliders.find((c) => c.name === "mouse-tunnel-roof").active, true);
+  assert.equal(colliders.find((c) => c.name === "full-height-wall").active, true);
+
+  world.setNight(5);
+  assert.equal(setNightCalls, 1);
+  assert.equal(lateCollider.active, false);
+  assert.equal(byName.get("late-floor-board").visible, false);
 });
