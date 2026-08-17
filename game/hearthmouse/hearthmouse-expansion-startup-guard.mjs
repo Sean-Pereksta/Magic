@@ -1,3 +1,4 @@
+import "./hearthmouse-doorway-baseboard-fix.mjs";
 import "./hearthmouse-room-safety.mjs";
 import "./hearthmouse-character-models.mjs";
 
