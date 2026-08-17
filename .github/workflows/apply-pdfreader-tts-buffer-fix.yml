@@ -1,0 +1,56 @@
+name: Apply PDF natural narration buffer fix
+
+on:
+  push:
+    branches:
+      - agent/pdf-natural-voice-buffering
+    paths:
+      - '.github/workflows/apply-pdfreader-tts-buffer-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/pdf-natural-voice-buffering
+
+      - name: Apply guarded PDF reader patch
+        run: python scripts/apply_pdfreader_tts_buffer_fix.py
+
+      - name: Validate module syntax and fix markers
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('game/pdfreader.html').read_text(encoding='utf-8')
+          matches = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one module script, found {len(matches)}')
+          Path('/tmp/pdfreader-module.mjs').write_text(matches[0], encoding='utf-8')
+          required = [
+              'id="speechProgress"',
+              'progress_callback',
+              'context.createBuffer(1, samples.length, sampleRate)',
+              'Audio fully buffered · starting…',
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f'Missing expected marker: {marker}')
+          PY
+          node --check /tmp/pdfreader-module.mjs
+
+      - name: Commit direct reader fix and remove one-shot helpers
+        shell: bash
+        run: |
+          rm -f scripts/apply_pdfreader_tts_buffer_fix.py
+          rm -f .github/workflows/apply-pdfreader-tts-buffer-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/pdfreader.html scripts .github/workflows
+          git commit -m "Fix PDF natural narration buffering"
+          git push origin HEAD:agent/pdf-natural-voice-buffering
