@@ -140,13 +140,14 @@ function applyCatCoatTint(controller) {
 function applyCatTail(controller, time, speed, intensity = 1) {
   const state = controller.__hearthmouseProceduralPolish;
   if (!state) return;
-  const cadence = Math.min(13, 3.8 + speed * 4.1);
-  const travel = Math.min(1.35, 0.38 + speed * 0.27) * intensity;
+  const cadence = Math.min(14.5, 4.2 + speed * 4.5);
+  const travel = Math.min(1.5, 0.42 + speed * 0.31) * intensity;
   CAT_TAIL_NODE_INDICES.forEach((nodeIndex, segment) => {
     const phase = time * cadence - segment * 0.52;
     const taper = 0.72 + segment * 0.24;
-    rotateLocal(controller, nodeIndex, state.axisY, Math.sin(phase) * 0.16 * taper * travel);
-    rotateLocal(controller, nodeIndex, state.axisX, Math.sin(phase * 0.57 + segment) * 0.035 * travel);
+    const whip = Math.sin(phase * 1.72 + segment * 0.37) * 0.028 * travel;
+    rotateLocal(controller, nodeIndex, state.axisY, Math.sin(phase) * 0.2 * taper * travel + whip);
+    rotateLocal(controller, nodeIndex, state.axisX, Math.sin(phase * 0.57 + segment) * 0.05 * travel);
   });
 }
 
@@ -162,28 +163,43 @@ function applyCatPounce(controller) {
   const flight = phase === "flight" ? smoothstep(clamp01(cat.pounceVisual ?? (1 - (cat.pounceTimer ?? 0) / 0.38))) : 0;
   const reach = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) : 0;
   const tuck = phase === "windup" ? windup : Math.max(0, 1 - flight * 2.4);
+  const pawReady = phase === "windup"
+    ? smoothstep(clamp01((windup - 0.18) / 0.82))
+    : Math.max(0, 1 - flight * 1.7);
+  const impactBrace = phase === "flight" ? smoothstep(clamp01((flight - 0.68) / 0.32)) : 0;
 
-  // Anticipation stays mostly horizontal: shoulders dip, hind legs compress, then extend into flight.
-  // The whole GLB stays on its fitted ground anchor so a crouch can never drive the legs through the floor.
-  rotateLocal(controller, CAT_SPINE_NODE_INDEX, state.axisX, 0.15 * tuck - 0.1 * reach);
-  rotateLocal(controller, CAT_CHEST_NODE_INDEX, state.axisX, 0.1 * tuck - 0.15 * reach);
-  rotateLocal(controller, CAT_HEAD_NODE_INDEX, state.axisX, 0.035 * tuck - 0.08 * reach);
+  // Make the attack read clearly even with cat.glb's simple leg rig: a deep stalking crouch,
+  // both forepaws visibly lifting off the floor, then a long two-paw reach through the leap.
+  // The wrapper remains anchored to the model's fitted floor height so the stronger crouch cannot bury the cat.
+  rotateLocal(controller, CAT_SPINE_NODE_INDEX, state.axisX, 0.3 * tuck - 0.2 * reach + 0.04 * impactBrace);
+  rotateLocal(controller, CAT_CHEST_NODE_INDEX, state.axisX, 0.42 * tuck - 0.34 * reach + 0.08 * impactBrace);
+  rotateLocal(controller, CAT_HEAD_NODE_INDEX, state.axisX, 0.1 * tuck - 0.14 * reach + 0.04 * impactBrace);
 
-  for (const index of CAT_FRONT_LEFT) rotateLocal(controller, index, state.axisX, -0.78 * reach + 0.16 * tuck);
-  for (const index of CAT_FRONT_RIGHT) rotateLocal(controller, index, state.axisX, -0.78 * reach + 0.16 * tuck);
+  const frontUpper = -0.72 * pawReady - 1.08 * reach - 0.35 * impactBrace;
+  const frontLower = -0.88 * pawReady - 1.28 * reach - 0.48 * impactBrace;
+  const pawSpread = 0.1 * pawReady + 0.14 * reach + 0.05 * impactBrace;
+
+  rotateLocal(controller, CAT_FRONT_LEFT[0], state.axisX, frontUpper);
+  rotateLocal(controller, CAT_FRONT_RIGHT[0], state.axisX, frontUpper);
+  rotateLocal(controller, CAT_FRONT_LEFT[1], state.axisX, frontLower);
+  rotateLocal(controller, CAT_FRONT_RIGHT[1], state.axisX, frontLower);
+  rotateLocal(controller, CAT_FRONT_LEFT[0], state.axisZ, -pawSpread);
+  rotateLocal(controller, CAT_FRONT_RIGHT[0], state.axisZ, pawSpread);
+  rotateLocal(controller, CAT_FRONT_LEFT[1], state.axisZ, -pawSpread * 0.45);
+  rotateLocal(controller, CAT_FRONT_RIGHT[1], state.axisZ, pawSpread * 0.45);
 
   CAT_HIND_LEFT.forEach((index, segment) => {
-    const bend = segment === 1 ? 0.86 : (segment === 0 ? 0.58 : 0.68);
-    rotateLocal(controller, index, state.axisX, bend * tuck - 0.16 * reach);
+    const bend = segment === 1 ? 1.08 : (segment === 0 ? 0.72 : 0.84);
+    rotateLocal(controller, index, state.axisX, bend * tuck - 0.22 * reach);
   });
   CAT_HIND_RIGHT.forEach((index, segment) => {
-    const bend = segment === 1 ? 0.86 : (segment === 0 ? 0.58 : 0.68);
-    rotateLocal(controller, index, state.axisX, bend * tuck - 0.16 * reach);
+    const bend = segment === 1 ? 1.08 : (segment === 0 ? 0.72 : 0.84);
+    rotateLocal(controller, index, state.axisX, bend * tuck - 0.22 * reach);
   });
 
   const groundedY = groundedWrapperY(controller);
   if (groundedY !== null) {
-    const lift = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) * 0.035 : 0;
+    const lift = phase === "flight" ? Math.sin(clamp01(flight) * Math.PI) * 0.055 : 0;
     controller.wrapper.position.y = groundedY + lift;
   }
   return true;
@@ -246,11 +262,11 @@ function polishController(controller, delta, time) {
   const cat = controller.actor;
   const pouncing = applyCatPounce(controller);
   if (pouncing) {
-    applyCatTail(controller, time, Math.max(1.2, cat?.speed ?? 0), 1.22);
+    applyCatTail(controller, time, Math.max(1.2, cat?.speed ?? 0), 1.5);
     return;
   }
   const grooming = applyCatGrooming(controller, delta, time);
-  if (!grooming && (cat?.speed ?? 0) > 0.04) applyCatTail(controller, time, cat.speed, cat.state === "chase" ? 1.25 : 1);
+  if (!grooming && (cat?.speed ?? 0) > 0.04) applyCatTail(controller, time, cat.speed, cat.state === "chase" ? 1.75 : 1);
 }
 
 function frame(timestamp) {
