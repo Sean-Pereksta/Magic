@@ -1,4 +1,5 @@
 import "./hearthmouse-house-evolution.mjs";
+import "./hearthmouse-mouse-pathing-guard.mjs";
 
 const POLL_INTERVAL_MS = 40;
 const MAX_POLISH_ATTEMPTS = 250;
@@ -18,8 +19,7 @@ function looksLikeEar(object) {
 }
 
 function looksLikeEye(object) {
-  const name = nameOf(object);
-  return name.includes("eye");
+  return nameOf(object).includes("eye");
 }
 
 function looksLikeNose(object) {
