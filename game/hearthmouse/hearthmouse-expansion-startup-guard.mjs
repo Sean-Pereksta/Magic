@@ -1,4 +1,5 @@
 import "./hearthmouse-room-safety.mjs";
+import "./hearthmouse-character-models.mjs";
 
 function createSightState(I) {
   const V = I?.Vector3;
