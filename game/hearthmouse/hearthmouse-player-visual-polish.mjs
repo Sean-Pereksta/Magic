@@ -1,3 +1,5 @@
+import "./hearthmouse-house-evolution.mjs";
+
 const POLL_INTERVAL_MS = 40;
 const MAX_POLISH_ATTEMPTS = 250;
 
@@ -57,8 +59,6 @@ function polishPart(object) {
   if (!object?.scale) return;
 
   if (looksLikeWhisker(object)) {
-    // The old whiskers dominate the face in third person. Keep them readable,
-    // but make them feel like fine mouse vibrissae rather than antennae.
     object.scale.x *= 0.58;
     object.scale.y *= 0.58;
     object.scale.z *= 0.58;
@@ -76,12 +76,10 @@ function polishPart(object) {
     object.scale.y *= 0.9;
     object.scale.z *= 0.88;
   } else if (looksLikeHead(object)) {
-    // Slightly less bulbous and a little longer through the muzzle axis.
     object.scale.x *= 0.94;
     object.scale.y *= 0.93;
     object.scale.z *= 1.03;
   } else if (looksLikeBody(object)) {
-    // A lower, longer body reads much more naturally from the chase camera.
     object.scale.x *= 0.95;
     object.scale.y *= 0.88;
     object.scale.z *= 1.08;
@@ -122,8 +120,6 @@ export function polishThirdPersonMouse(engine = globalThis.window?.hearthmouseEn
     root.userData.__hearthmousePlayerVisualPolished = true;
     root.traverse(polishPart);
 
-    // Lower the visible third-person shell just a touch so the mouse feels
-    // planted on the floor instead of standing high on its legs.
     if (root.position && !root.userData.__hearthmousePlayerVisualYOffsetApplied) {
       root.position.y -= 0.012;
       root.userData.__hearthmousePlayerVisualYOffsetApplied = true;
