@@ -145,24 +145,22 @@ jobs:
 
           text = text[:function_start] + replacement + text[function_end:]
 
-          old_playback_start = '''    async function playNaturalBuffer(rawAudio, chunk, model, chunkStart, session) {
-              const context = await ensureNaturalAudioContext();
-              if (!state.speech.active || session !== state.speech.session) return "stopped";
-          '''
-          new_playback_start = '''    async function playNaturalBuffer(rawAudio, chunk, model, chunkStart, session) {
-              const context = await ensureNaturalAudioContext();
-              if (!state.speech.active || session !== state.speech.session) return "stopped";
+          playback_start = text.index(
+              "    async function playNaturalBuffer(rawAudio, chunk, model, chunkStart, session) {",
+              function_start,
+          )
+          active_line = '      if (!state.speech.active || session !== state.speech.session) return "stopped";'
+          active_pos = text.index(active_line, playback_start)
+          insert_at = active_pos + len(active_line)
+          context_guard = r'''
 
               // Long local model generation can leave Web Audio suspended again.
               // Do not call silent playback a success unless the context is running.
               if (context.state === "suspended") await context.resume();
               if (context.state !== "running") {
                 throw new Error(`Natural narration audio context is ${context.state}, not running.`);
-              }
-          '''
-          if old_playback_start not in text:
-              raise SystemExit("Could not find the natural playback prelude to patch")
-          text = text.replace(old_playback_start, new_playback_start, 1)
+              }'''
+          text = text[:insert_at] + context_guard + text[insert_at:]
 
           path.write_text(text, encoding="utf-8")
 
