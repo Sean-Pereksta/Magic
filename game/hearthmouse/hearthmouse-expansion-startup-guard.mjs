@@ -47,6 +47,51 @@ export function ensureExpansionSight(expansion, I = globalThis.window?.Hearthmou
   return true;
 }
 
+export function ensureExpansionMouseState(engine, I = globalThis.window?.HearthmouseInternals) {
+  const V = I?.Vector3;
+  if (!engine || engine.disposed || !V || !Array.isArray(engine.mice)) return false;
+
+  for (let index = 0; index < engine.mice.length; index++) {
+    const mouse = engine.mice[index];
+    const position = mouse?.rig?.root?.position;
+    if (!mouse || !position) continue;
+
+    // The expansion module can attach after the base engine has already created
+    // its mice. Backfill only expansion-owned scratch state so live tasks, food,
+    // paths, and movement state are preserved instead of resetting the mouse.
+    if (!Number.isFinite(mouse.delay)) mouse.delay = 0.08 + (index % 6) * 0.03;
+    if (!Number.isFinite(mouse.escapeCooldown)) mouse.escapeCooldown = 0;
+    if (!Number.isFinite(mouse.aiDecisionTimer)) mouse.aiDecisionTimer = 0.04 + (index % 8) * 0.027;
+    if (!Number.isFinite(mouse.safeTimer)) mouse.safeTimer = 0;
+    if (!Number.isFinite(mouse.noiseTimer)) mouse.noiseTimer = 0.25 + (index % 5) * 0.11;
+    if (!Number.isFinite(mouse.nestActivityTimer)) mouse.nestActivityTimer = 1 + (index % 7) * 0.36;
+    if (!Number.isFinite(mouse.lastThreatScore)) mouse.lastThreatScore = 0;
+    if (!Number.isFinite(mouse.progressSampleTimer)) mouse.progressSampleTimer = 0;
+    if (!Number.isFinite(mouse.stalledFor)) mouse.stalledFor = 0;
+    if (!Number.isFinite(mouse.recoveryAttempts)) mouse.recoveryAttempts = 0;
+    if (!Number.isFinite(mouse.colonyIndex)) mouse.colonyIndex = index;
+    if (!Number.isFinite(mouse.foragingSector)) mouse.foragingSector = index % 6;
+
+    if (!(mouse.lastCatDistances instanceof Map)) mouse.lastCatDistances = new Map();
+    if (!(mouse.blockedFoodUntil instanceof Map)) mouse.blockedFoodUntil = new Map();
+    if (!mouse.threatResult || typeof mouse.threatResult !== "object") {
+      mouse.threatResult = { score: 0, cat: null, urgent: false };
+    }
+    if (!mouse.nearestCatResult || typeof mouse.nearestCatResult !== "object") {
+      mouse.nearestCatResult = { cat: null, distance: Infinity };
+    }
+    if (!mouse.progressPosition) {
+      mouse.progressPosition = typeof position.clone === "function"
+        ? position.clone()
+        : new V(position.x ?? 0, position.y ?? 0, position.z ?? 0);
+    }
+    if (!mouse.nestActivityGoalScratch) mouse.nestActivityGoalScratch = new V();
+    if (mouse.nestActivityGoal === undefined) mouse.nestActivityGoal = null;
+  }
+
+  return true;
+}
+
 export function installExpansionSightGuard(engine, I = globalThis.window?.HearthmouseInternals) {
   if (!engine || engine.disposed || !I?.Vector3) return false;
 
@@ -131,6 +176,7 @@ function guardWhenReady() {
     return;
   }
   installExpansionSightGuard(engine, window.HearthmouseInternals);
+  ensureExpansionMouseState(engine, window.HearthmouseInternals);
 }
 
 function installNightCatPressureWhenReady() {
