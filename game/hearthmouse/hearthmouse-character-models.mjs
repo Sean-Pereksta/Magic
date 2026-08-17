@@ -1,6 +1,13 @@
 const MODEL_WORKER_URL = new URL("./hearthmouse-model-loader.worker.mjs", import.meta.url);
 const DECORATE_INTERVAL_MS = 100;
 const MODEL_LOAD_TIMEOUT_MS = 15000;
+const CAT_HEAD_YAW_LIMIT_DEGREES = 55;
+const CAT_HEAD_YAW_LIMIT = CAT_HEAD_YAW_LIMIT_DEGREES * Math.PI / 180;
+const CAT_HEAD_LOOK_RESPONSE = 9.5;
+const MOVEMENT_EPSILON = 0.025;
+const DATA_TEXTURE_RGBA_FORMAT = 1023;
+const DATA_TEXTURE_FLOAT_TYPE = 1015;
+const NEAREST_FILTER = 1003;
 
 const COMPONENT_INFO = Object.freeze({
   5120: { ArrayType: Int8Array, bytes: 1, read: (view, offset) => view.getInt8(offset) },
@@ -28,16 +35,30 @@ const ATTRIBUTE_NAMES = Object.freeze({
   TEXCOORD_0: "uv",
   TEXCOORD_1: "uv1",
   COLOR_0: "color",
+  JOINTS_0: "skinIndex",
+  WEIGHTS_0: "skinWeight",
 });
 
 const HEAD_NAMES = Object.freeze(["head", "face", "muzzle", "snout", "nose"]);
 const BODY_NAMES = Object.freeze(["body", "torso", "chest", "spine"]);
 const TEXTURE_WRAP = Object.freeze({ 10497: 1000, 33071: 1001, 33648: 1002 });
+const ACTIVE_LOOK_STATES = new Set(["chase", "alert", "investigating", "suspicious", "search"]);
 
 let loadedModels = null;
 let loadError = null;
 let installTimer = 0;
+let animationFrame = 0;
+let lastAnimationTimestamp = 0;
 let constructors = null;
+
+const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+
+function normalizeAngle(angle) {
+  let value = angle;
+  while (value > Math.PI) value -= Math.PI * 2;
+  while (value < -Math.PI) value += Math.PI * 2;
+  return value;
+}
 
 function loadModelPayloads() {
   return new Promise((resolve, reject) => {
@@ -105,7 +126,9 @@ function deriveConstructors(engine) {
   const BufferGeometry = geometryPrototype?.constructor;
   const BufferAttribute = attributePrototype?.constructor;
   const Box3 = mesh.geometry.boundingBox?.constructor;
-  if (!BufferGeometry || !BufferAttribute || !Box3) return null;
+  const Matrix4 = mesh.matrix?.constructor;
+  const Quaternion = mesh.quaternion?.constructor;
+  if (!BufferGeometry || !BufferAttribute || !Box3 || !Matrix4 || !Quaternion) return null;
 
   const texture = firstWorldTexture(engine);
   const texturePrototype = texture ? Object.getPrototypeOf(texture.constructor.prototype) : null;
@@ -119,6 +142,8 @@ function deriveConstructors(engine) {
     BufferGeometry,
     BufferAttribute,
     Box3,
+    Matrix4,
+    Quaternion,
     Texture,
     srgbColorSpace: texture?.colorSpace ?? "srgb",
   };
@@ -360,6 +385,137 @@ function applyNodeTransform(group, node) {
   if (Array.isArray(node.scale)) group.scale.fromArray(node.scale);
 }
 
+function makeBoneTexture(C, boneMatrices, size) {
+  if (!C.Texture) return null;
+  const texture = new C.Texture();
+  texture.isDataTexture = true;
+  texture.image = { data: boneMatrices, width: size, height: size };
+  texture.format = DATA_TEXTURE_RGBA_FORMAT;
+  texture.type = DATA_TEXTURE_FLOAT_TYPE;
+  texture.magFilter = NEAREST_FILTER;
+  texture.minFilter = NEAREST_FILTER;
+  texture.generateMipmaps = false;
+  texture.flipY = false;
+  texture.unpackAlignment = 1;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function makeSkeleton(model, skinDefinition, nodes, C) {
+  const bones = (skinDefinition.joints ?? []).map((nodeIndex) => nodes[nodeIndex]).filter(Boolean);
+  const inverseAccessor = Number.isInteger(skinDefinition.inverseBindMatrices)
+    ? readAccessor(model, skinDefinition.inverseBindMatrices)
+    : null;
+  const boneInverses = bones.map((_, index) => {
+    const matrix = new C.Matrix4();
+    if (inverseAccessor?.array?.length >= (index + 1) * 16) matrix.fromArray(inverseAccessor.array, index * 16);
+    return matrix;
+  });
+  for (const bone of bones) {
+    bone.isBone = true;
+    if (bone.type === "Group") bone.type = "Bone";
+  }
+
+  const skeleton = {
+    bones,
+    boneInverses,
+    boneMatrices: new Float32Array(Math.max(1, bones.length) * 16),
+    boneTexture: null,
+    frame: -1,
+    mesh: null,
+    _offset: new C.Matrix4(),
+    _meshInverse: new C.Matrix4(),
+    update() {
+      if (!this.mesh) return;
+      this._meshInverse.copy(this.mesh.matrixWorld).invert();
+      for (let index = 0; index < this.bones.length; index++) {
+        const bone = this.bones[index];
+        const inverse = this.boneInverses[index];
+        this._offset.multiplyMatrices(this._meshInverse, bone.matrixWorld).multiply(inverse);
+        this._offset.toArray(this.boneMatrices, index * 16);
+      }
+      if (this.boneTexture) this.boneTexture.needsUpdate = true;
+    },
+    computeBoneTexture() {
+      let size = Math.sqrt(this.bones.length * 4);
+      size = Math.max(4, Math.ceil(size / 4) * 4);
+      const expanded = new Float32Array(size * size * 4);
+      expanded.set(this.boneMatrices.subarray(0, Math.min(this.boneMatrices.length, expanded.length)));
+      this.boneMatrices = expanded;
+      this.boneTexture = makeBoneTexture(C, expanded, size);
+      return this;
+    },
+    dispose() {
+      this.boneTexture?.dispose?.();
+      this.boneTexture = null;
+    },
+  };
+  return skeleton;
+}
+
+function bindSkins(model, json, nodeDefinitions, nodes, C) {
+  const skinDefinitions = json.skins ?? [];
+  const skins = skinDefinitions.map((definition) => makeSkeleton(model, definition, nodes, C));
+  for (let nodeIndex = 0; nodeIndex < nodeDefinitions.length; nodeIndex++) {
+    const definition = nodeDefinitions[nodeIndex] ?? {};
+    if (!Number.isInteger(definition.skin)) continue;
+    const skeleton = skins[definition.skin];
+    if (!skeleton) continue;
+    const node = nodes[nodeIndex];
+    for (const child of node.children ?? []) {
+      if (!child?.isMesh || !child.geometry?.attributes?.skinIndex || !child.geometry?.attributes?.skinWeight) continue;
+      child.isSkinnedMesh = true;
+      child.type = "SkinnedMesh";
+      child.bindMode = "attached";
+      child.bindMatrix = new C.Matrix4();
+      child.bindMatrixInverse = new C.Matrix4();
+      child.skeleton = skeleton;
+      child.frustumCulled = false;
+      if (!skeleton.mesh) skeleton.mesh = child;
+    }
+  }
+  return skins;
+}
+
+function captureRestPose(nodes) {
+  return nodes.map((node) => ({
+    position: [node.position.x, node.position.y, node.position.z],
+    quaternion: [node.quaternion.x, node.quaternion.y, node.quaternion.z, node.quaternion.w],
+    scale: [node.scale.x, node.scale.y, node.scale.z],
+  }));
+}
+
+function buildAnimationClips(model, nodes, C) {
+  return (model.json.animations ?? []).map((definition, animationIndex) => {
+    let duration = 0;
+    const channels = [];
+    for (const channelDefinition of definition.channels ?? []) {
+      const sampler = definition.samplers?.[channelDefinition.sampler];
+      const targetNode = nodes[channelDefinition.target?.node];
+      const path = channelDefinition.target?.path;
+      if (!sampler || !targetNode || !["translation", "rotation", "scale"].includes(path)) continue;
+      const input = readAccessor(model, sampler.input);
+      const output = readAccessor(model, sampler.output);
+      if (!input.array.length || !output.array.length) continue;
+      duration = Math.max(duration, input.array[input.array.length - 1] ?? 0);
+      channels.push({
+        node: targetNode,
+        path,
+        times: input.array,
+        values: output.array,
+        itemSize: output.itemSize,
+        interpolation: sampler.interpolation ?? "LINEAR",
+        tempQuaternion: new C.Quaternion(),
+      });
+    }
+    return {
+      name: definition.name || `animation-${animationIndex}`,
+      duration: Math.max(duration, 1 / 60),
+      channels,
+    };
+  }).filter((clip) => clip.channels.length);
+}
+
 function buildModel(model, C) {
   const json = model.json;
   const nodeDefinitions = json.nodes ?? [];
@@ -401,8 +557,11 @@ function buildModel(model, C) {
     .map((_, index) => index)
     .filter((index) => !nodeDefinitions.some((node) => node?.children?.includes(index)));
   for (const nodeIndex of rootNodeIndices) if (nodes[nodeIndex]) scene.add(nodes[nodeIndex]);
+  const skins = bindSkins(model, json, nodeDefinitions, nodes, C);
+  const restPose = captureRestPose(nodes);
+  const clips = buildAnimationClips(model, nodes, C);
   scene.updateMatrixWorld(true);
-  return scene;
+  return { scene, nodes, skins, restPose, clips };
 }
 
 function findNamedObject(root, needles) {
@@ -502,8 +661,254 @@ function hidePrimitiveCharacterGeometry(rigRoot, glbWrapper) {
   });
 }
 
-function decorateRig(rig, model, kind, engine) {
-  const root = rig?.root;
+function resetRestPose(controller) {
+  for (let index = 0; index < controller.nodes.length; index++) {
+    const node = controller.nodes[index];
+    const pose = controller.restPose[index];
+    node.position.set(pose.position[0], pose.position[1], pose.position[2]);
+    node.quaternion.set(pose.quaternion[0], pose.quaternion[1], pose.quaternion[2], pose.quaternion[3]);
+    node.scale.set(pose.scale[0], pose.scale[1], pose.scale[2]);
+  }
+}
+
+function lowerBoundTime(times, time) {
+  let low = 0;
+  let high = times.length - 1;
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1;
+    if (times[middle] <= time) low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
+function valueOffset(channel, keyIndex, cubicPart = 1) {
+  if (channel.interpolation === "CUBICSPLINE") return (keyIndex * 3 + cubicPart) * channel.itemSize;
+  return keyIndex * channel.itemSize;
+}
+
+function setVectorChannel(channel, keyIndex, nextIndex, alpha, deltaTime) {
+  const nodeValue = channel.path === "translation" ? channel.node.position : channel.node.scale;
+  const values = channel.values;
+  if (channel.interpolation === "STEP" || keyIndex === nextIndex) {
+    const offset = valueOffset(channel, keyIndex);
+    nodeValue.set(values[offset], values[offset + 1], values[offset + 2]);
+    return;
+  }
+  if (channel.interpolation === "CUBICSPLINE") {
+    const p0 = valueOffset(channel, keyIndex, 1);
+    const m0 = valueOffset(channel, keyIndex, 2);
+    const p1 = valueOffset(channel, nextIndex, 1);
+    const m1 = valueOffset(channel, nextIndex, 0);
+    const t2 = alpha * alpha;
+    const t3 = t2 * alpha;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + alpha;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    nodeValue.set(
+      h00 * values[p0] + h10 * deltaTime * values[m0] + h01 * values[p1] + h11 * deltaTime * values[m1],
+      h00 * values[p0 + 1] + h10 * deltaTime * values[m0 + 1] + h01 * values[p1 + 1] + h11 * deltaTime * values[m1 + 1],
+      h00 * values[p0 + 2] + h10 * deltaTime * values[m0 + 2] + h01 * values[p1 + 2] + h11 * deltaTime * values[m1 + 2],
+    );
+    return;
+  }
+  const first = valueOffset(channel, keyIndex);
+  const second = valueOffset(channel, nextIndex);
+  nodeValue.set(
+    values[first] + (values[second] - values[first]) * alpha,
+    values[first + 1] + (values[second + 1] - values[first + 1]) * alpha,
+    values[first + 2] + (values[second + 2] - values[first + 2]) * alpha,
+  );
+}
+
+function setRotationChannel(channel, keyIndex, nextIndex, alpha, deltaTime) {
+  const values = channel.values;
+  if (channel.interpolation === "STEP" || keyIndex === nextIndex) {
+    const offset = valueOffset(channel, keyIndex);
+    channel.node.quaternion.set(values[offset], values[offset + 1], values[offset + 2], values[offset + 3]).normalize();
+    return;
+  }
+  if (channel.interpolation === "CUBICSPLINE") {
+    const p0 = valueOffset(channel, keyIndex, 1);
+    const m0 = valueOffset(channel, keyIndex, 2);
+    const p1 = valueOffset(channel, nextIndex, 1);
+    const m1 = valueOffset(channel, nextIndex, 0);
+    const t2 = alpha * alpha;
+    const t3 = t2 * alpha;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + alpha;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    channel.node.quaternion.set(
+      h00 * values[p0] + h10 * deltaTime * values[m0] + h01 * values[p1] + h11 * deltaTime * values[m1],
+      h00 * values[p0 + 1] + h10 * deltaTime * values[m0 + 1] + h01 * values[p1 + 1] + h11 * deltaTime * values[m1 + 1],
+      h00 * values[p0 + 2] + h10 * deltaTime * values[m0 + 2] + h01 * values[p1 + 2] + h11 * deltaTime * values[m1 + 2],
+      h00 * values[p0 + 3] + h10 * deltaTime * values[m0 + 3] + h01 * values[p1 + 3] + h11 * deltaTime * values[m1 + 3],
+    ).normalize();
+    return;
+  }
+  const first = valueOffset(channel, keyIndex);
+  const second = valueOffset(channel, nextIndex);
+  channel.node.quaternion.set(values[first], values[first + 1], values[first + 2], values[first + 3]).normalize();
+  channel.tempQuaternion.set(values[second], values[second + 1], values[second + 2], values[second + 3]).normalize();
+  channel.node.quaternion.slerp(channel.tempQuaternion, alpha);
+}
+
+function sampleClip(clip, time) {
+  if (!clip?.channels?.length) return;
+  const localTime = clip.duration > 0 ? ((time % clip.duration) + clip.duration) % clip.duration : 0;
+  for (const channel of clip.channels) {
+    const times = channel.times;
+    if (times.length === 1 || localTime <= times[0]) {
+      if (channel.path === "rotation") setRotationChannel(channel, 0, 0, 0, 0);
+      else setVectorChannel(channel, 0, 0, 0, 0);
+      continue;
+    }
+    const lastIndex = times.length - 1;
+    if (localTime >= times[lastIndex]) {
+      if (channel.path === "rotation") setRotationChannel(channel, lastIndex, lastIndex, 0, 0);
+      else setVectorChannel(channel, lastIndex, lastIndex, 0, 0);
+      continue;
+    }
+    const keyIndex = lowerBoundTime(times, localTime);
+    const nextIndex = Math.min(lastIndex, keyIndex + 1);
+    const span = Math.max(1e-6, times[nextIndex] - times[keyIndex]);
+    const alpha = clamp((localTime - times[keyIndex]) / span, 0, 1);
+    if (channel.path === "rotation") setRotationChannel(channel, keyIndex, nextIndex, alpha, span);
+    else setVectorChannel(channel, keyIndex, nextIndex, alpha, span);
+  }
+}
+
+function chooseClips(clips) {
+  const byName = (pattern) => clips.find((clip) => pattern.test(clip.name));
+  const moving = byName(/run|sprint|scurry|walk|move|locomotion/i) ?? clips[0] ?? null;
+  const idle = byName(/idle|stand|breath|rest|sit/i) ?? null;
+  return { moving, idle };
+}
+
+function resolveCatHeadNode(model, nodes, scene) {
+  const named = findNamedObject(scene, HEAD_NAMES);
+  if (named?.userData?.__hearthmouseGltfNodeIndex !== undefined) return named;
+  // The supplied cat.glb uses Blender's generic Bone.* names. Bone.002 (node 0)
+  // is the leaf joint above the shoulder/chest bone and is the actual head joint.
+  if (model.kind === "cat" && nodes[0]) return nodes[0];
+  return null;
+}
+
+function createController(actor, model, built, wrapper, kind, C) {
+  const clips = chooseClips(built.clips);
+  const root = actor?.rig?.root;
+  return {
+    actor,
+    kind,
+    root,
+    wrapper,
+    scene: built.scene,
+    nodes: built.nodes,
+    skins: built.skins,
+    restPose: built.restPose,
+    clips: built.clips,
+    movingClip: clips.moving,
+    idleClip: clips.idle,
+    activeClip: null,
+    clipTime: 0,
+    lastX: root?.position?.x ?? 0,
+    lastZ: root?.position?.z ?? 0,
+    motionReady: false,
+    headNode: kind === "cat" ? resolveCatHeadNode(model, built.nodes, built.scene) : null,
+    headYaw: 0,
+    headLookQuaternion: new C.Quaternion(),
+    upAxis: new C.Vector3(0, 1, 0),
+  };
+}
+
+function catInterestPosition(cat, engine) {
+  if (!cat) return null;
+  if (cat.state === "chase" && cat.targetId != null) {
+    const target = engine?.targetPosition?.(cat.targetId);
+    if (target) return target;
+  }
+  if (ACTIVE_LOOK_STATES.has(cat.state)) {
+    if (cat.state === "search" && cat.lastSeen) return cat.lastSeen;
+    if (cat.investigation) return cat.investigation;
+    if (cat.lastSeen) return cat.lastSeen;
+  }
+  if (cat.leisureMode === "watching" && cat.investigation) return cat.investigation;
+  return null;
+}
+
+function desiredCatHeadYaw(cat, engine, root) {
+  const interest = catInterestPosition(cat, engine);
+  if (interest && root?.position) {
+    const dx = interest.x - root.position.x;
+    const dz = interest.z - root.position.z;
+    if (dx * dx + dz * dz > 1e-5) {
+      const targetWorldYaw = Math.atan2(-dx, -dz);
+      const bodyYaw = Number.isFinite(cat.yaw) ? cat.yaw : (root.rotation?.y ?? 0);
+      return clamp(normalizeAngle(targetWorldYaw - bodyYaw), -CAT_HEAD_YAW_LIMIT, CAT_HEAD_YAW_LIMIT);
+    }
+  }
+  const scanYaw = Number.isFinite(cat.lookYaw) ? cat.lookYaw : 0;
+  return clamp(scanYaw, -CAT_HEAD_YAW_LIMIT, CAT_HEAD_YAW_LIMIT);
+}
+
+function updateController(controller, engine, delta) {
+  const root = controller.root;
+  if (!root?.parent || root.userData?.__hearthmouseGlbController !== controller) return;
+
+  const dx = root.position.x - controller.lastX;
+  const dz = root.position.z - controller.lastZ;
+  const speed = controller.motionReady && delta > 1e-4 ? Math.hypot(dx, dz) / delta : 0;
+  controller.lastX = root.position.x;
+  controller.lastZ = root.position.z;
+  controller.motionReady = true;
+
+  const moving = speed > MOVEMENT_EPSILON;
+  const desiredClip = moving ? controller.movingClip : controller.idleClip;
+  if (controller.activeClip !== desiredClip) {
+    controller.activeClip = desiredClip;
+    controller.clipTime = 0;
+  }
+
+  resetRestPose(controller);
+  if (desiredClip) {
+    const rate = moving ? clamp(0.7 + speed * 0.38, 0.7, 2.35) : 1;
+    controller.clipTime += delta * rate;
+    sampleClip(desiredClip, controller.clipTime);
+  }
+
+  if (controller.kind === "cat" && controller.headNode) {
+    const targetYaw = desiredCatHeadYaw(controller.actor, engine, root);
+    const blend = 1 - Math.exp(-CAT_HEAD_LOOK_RESPONSE * delta);
+    controller.headYaw += normalizeAngle(targetYaw - controller.headYaw) * blend;
+    controller.headYaw = clamp(controller.headYaw, -CAT_HEAD_YAW_LIMIT, CAT_HEAD_YAW_LIMIT);
+    controller.headLookQuaternion.setFromAxisAngle(controller.upAxis, controller.headYaw);
+    controller.headNode.quaternion.premultiply(controller.headLookQuaternion).normalize();
+  }
+}
+
+function animateCharacters(timestamp) {
+  const delta = lastAnimationTimestamp
+    ? clamp((timestamp - lastAnimationTimestamp) / 1000, 0, 0.05)
+    : 1 / 60;
+  lastAnimationTimestamp = timestamp;
+  const engine = window.hearthmouseEngine;
+  if (engine && !engine.disposed) {
+    for (const mouse of engine.mice ?? []) {
+      const controller = mouse?.rig?.root?.userData?.__hearthmouseGlbController;
+      if (controller) updateController(controller, engine, delta);
+    }
+    for (const cat of engine.cats ?? []) {
+      const controller = cat?.rig?.root?.userData?.__hearthmouseGlbController;
+      if (controller) updateController(controller, engine, delta);
+    }
+  }
+  animationFrame = window.requestAnimationFrame(animateCharacters);
+}
+
+function decorateRig(actor, model, kind, engine) {
+  const root = actor?.rig?.root;
   if (!root || root.userData?.__hearthmouseGlbModelAttached || root.userData?.__hearthmouseGlbModelError) return false;
   if (model.__buildError) {
     root.userData.__hearthmouseGlbModelError = model.__buildError;
@@ -513,12 +918,14 @@ function decorateRig(rig, model, kind, engine) {
   if (!C) return false;
 
   try {
-    const content = buildModel(model, C);
-    const wrapper = fitModelToRig(content, root, kind, C);
+    const built = buildModel(model, C);
+    const wrapper = fitModelToRig(built.scene, root, kind, C);
     root.add(wrapper);
     hidePrimitiveCharacterGeometry(root, wrapper);
+    const controller = createController(actor, model, built, wrapper, kind, C);
     root.userData.__hearthmouseGlbModelAttached = kind;
     root.userData.__hearthmouseGlbModel = wrapper;
+    root.userData.__hearthmouseGlbController = controller;
     return true;
   } catch (error) {
     const message = String(error?.message ?? error);
@@ -533,10 +940,10 @@ export function applyCharacterModels(engine = window.hearthmouseEngine, models =
   if (!engine || engine.disposed || !models) return 0;
   let applied = 0;
   for (const mouse of engine.mice ?? []) {
-    if (models.rat && decorateRig(mouse?.rig, models.rat, "rat", engine)) applied++;
+    if (models.rat && decorateRig(mouse, models.rat, "rat", engine)) applied++;
   }
   for (const cat of engine.cats ?? []) {
-    if (models.cat && decorateRig(cat?.rig, models.cat, "cat", engine)) applied++;
+    if (models.cat && decorateRig(cat, models.cat, "cat", engine)) applied++;
   }
   return applied;
 }
@@ -549,6 +956,9 @@ function installLoop() {
     installTimer = window.setTimeout(tick, DECORATE_INTERVAL_MS);
   };
   tick();
+  if (!animationFrame && typeof window.requestAnimationFrame === "function") {
+    animationFrame = window.requestAnimationFrame(animateCharacters);
+  }
 }
 
 async function start() {
@@ -570,6 +980,9 @@ export function hearthmouseModelStatus() {
     error: loadError ? String(loadError?.message ?? loadError) : null,
     rat: !!loadedModels?.rat,
     cat: !!loadedModels?.cat,
+    ratAnimations: loadedModels?.rat?.json?.animations?.map((animation, index) => animation.name || `animation-${index}`) ?? [],
+    catAnimations: loadedModels?.cat?.json?.animations?.map((animation, index) => animation.name || `animation-${index}`) ?? [],
+    catHeadYawLimitDegrees: CAT_HEAD_YAW_LIMIT_DEGREES,
   };
 }
 
@@ -577,6 +990,9 @@ if (typeof window !== "undefined") {
   start();
   window.addEventListener("beforeunload", () => {
     if (installTimer) window.clearTimeout(installTimer);
+    if (animationFrame) window.cancelAnimationFrame?.(animationFrame);
     installTimer = 0;
+    animationFrame = 0;
+    lastAnimationTimestamp = 0;
   }, { once: true });
 }
