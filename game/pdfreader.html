@@ -1260,6 +1260,7 @@
       scale: 1.15,
       zoomMode: "custom",
       renderTask: null,
+      renderSerial: 0,
       loadSerial: 0,
       localObjectUrl: null,
       positions: readStoredObject(STORAGE_KEYS.positions),
@@ -1650,12 +1651,17 @@
       elements.textLayer.replaceChildren();
 
       if (state.renderTask) {
+        const previousRender = state.renderTask;
         try {
-          state.renderTask.cancel();
-        } catch {
-          // No active render to cancel.
+          previousRender.cancel();
+          await previousRender.promise;
+        } catch (error) {
+          if (error?.name !== "RenderingCancelledException") {
+            console.warn("Previous PDF render did not shut down cleanly:", error);
+          }
+        } finally {
+          if (state.renderTask === previousRender) state.renderTask = null;
         }
-        state.renderTask = null;
       }
 
       if (state.pdfDocument) {
@@ -1737,20 +1743,43 @@
     async function renderCurrentPage() {
       if (!state.pdfDocument) return;
 
+      const loadSerial = state.loadSerial;
+      const renderSerial = ++state.renderSerial;
+      const requestedPage = state.pageNumber;
+      const pdfDocument = state.pdfDocument;
+
       state.currentPageTextModel = null;
       elements.textLayer.replaceChildren();
+      setStatus(`Loading page ${requestedPage} of ${state.pageCount}…`);
       updateControlState();
 
-      const serial = state.loadSerial;
-      const page = await state.pdfDocument.getPage(state.pageNumber);
-      if (serial !== state.loadSerial) return;
+      const page = await pdfDocument.getPage(requestedPage);
+      if (
+        loadSerial !== state.loadSerial ||
+        renderSerial !== state.renderSerial ||
+        pdfDocument !== state.pdfDocument ||
+        requestedPage !== state.pageNumber
+      ) return;
 
       if (state.renderTask) {
+        const previousRender = state.renderTask;
         try {
-          state.renderTask.cancel();
-        } catch {
-          // Ignore already-finished tasks.
+          previousRender.cancel();
+          await previousRender.promise;
+        } catch (error) {
+          if (error?.name !== "RenderingCancelledException") {
+            console.warn("Previous PDF page render did not cancel cleanly:", error);
+          }
+        } finally {
+          if (state.renderTask === previousRender) state.renderTask = null;
         }
+
+        if (
+          loadSerial !== state.loadSerial ||
+          renderSerial !== state.renderSerial ||
+          pdfDocument !== state.pdfDocument ||
+          requestedPage !== state.pageNumber
+        ) return;
       }
 
       const viewport = page.getViewport({ scale: state.scale });
@@ -1773,28 +1802,40 @@
         ? [outputScale, 0, 0, outputScale, 0, 0]
         : null;
 
-      state.renderTask = page.render({
+      const renderTask = page.render({
         canvasContext: context,
         viewport,
         transform,
         background: "rgb(255,255,255)"
       });
+      state.renderTask = renderTask;
 
       try {
-        await state.renderTask.promise;
+        await renderTask.promise;
       } catch (error) {
         if (error?.name !== "RenderingCancelledException") throw error;
         return;
       } finally {
-        state.renderTask = null;
+        if (state.renderTask === renderTask) state.renderTask = null;
       }
 
-      await renderInteractiveTextLayer(page, viewport, serial);
-      if (serial !== state.loadSerial) return;
+      if (
+        loadSerial !== state.loadSerial ||
+        renderSerial !== state.renderSerial ||
+        pdfDocument !== state.pdfDocument ||
+        requestedPage !== state.pageNumber
+      ) return;
+
+      await renderInteractiveTextLayer(page, viewport, loadSerial, requestedPage, renderSerial);
+      if (
+        loadSerial !== state.loadSerial ||
+        renderSerial !== state.renderSerial ||
+        requestedPage !== state.pageNumber
+      ) return;
 
       elements.viewerScroll.scrollTo({ top: 0, left: 0, behavior: "auto" });
       elements.currentTitle.textContent = state.activeEntry?.title || "PDF";
-      setStatus(`Page ${state.pageNumber} of ${state.pageCount}`);
+      setStatus(`Page ${requestedPage} of ${state.pageCount}`);
       updateControlState();
       queuePositionSave();
     }
@@ -1840,9 +1881,9 @@
       return model;
     }
 
-    async function renderInteractiveTextLayer(page, viewport, serial) {
-      const model = await getPageTextModel(state.pageNumber, page);
-      if (serial !== state.loadSerial) return;
+    async function renderInteractiveTextLayer(page, viewport, serial, pageNumber, renderSerial) {
+      const model = await getPageTextModel(pageNumber, page);
+      if (serial !== state.loadSerial || renderSerial !== state.renderSerial || pageNumber !== state.pageNumber) return;
 
       elements.textLayer.replaceChildren();
       for (const word of model.words) word.span = null;
@@ -1895,13 +1936,13 @@
           const wordSpan = document.createElement("span");
           wordSpan.className = "pdf-word";
           wordSpan.dataset.wordIndex = String(wordIndex);
-          wordSpan.dataset.pageNumber = String(state.pageNumber);
+          wordSpan.dataset.pageNumber = String(pageNumber);
           wordSpan.textContent = match[0];
           wordSpan.title = `Read from “${match[0]}”`;
           wordSpan.addEventListener("click", event => {
             event.preventDefault();
             event.stopPropagation();
-            startSpeechAt(state.pageNumber, wordIndex);
+            startSpeechAt(pageNumber, wordIndex);
           });
 
           model.words[wordIndex].span = wordSpan;
@@ -2026,10 +2067,10 @@
       let length = 0;
       let endIndex = startIndex;
 
-      while (endIndex < words.length && pieces.length < 100) {
+      while (endIndex < words.length && pieces.length < 60) {
         const word = words[endIndex].text;
         const extra = (pieces.length ? 1 : 0) + word.length;
-        if (pieces.length && length + extra > 520) break;
+        if (pieces.length && length + extra > 320) break;
 
         charStarts.push(length + (pieces.length ? 1 : 0));
         pieces.push(word);
@@ -2042,8 +2083,13 @@
 
       return {
         text: pieces.join(" ")
+          .normalize("NFKC")
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+          .replace(/\u00AD/g, "")
           .replace(/\s+([,.;:!?])/g, "$1")
-          .replace(/([“‘(])\s+/g, "$1"),
+          .replace(/([“‘(])\s+/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim(),
         charStarts,
         endIndex
       };
@@ -2174,20 +2220,43 @@
       }
 
       let peak = 0;
-      const stride = Math.max(1, Math.floor(samples.length / 12000));
-      for (let index = 0; index < samples.length; index += stride) {
+      let sumSquares = 0;
+      for (let index = 0; index < samples.length; index += 1) {
         const sample = samples[index];
         if (!Number.isFinite(sample)) {
           throw new Error("The natural voice engine returned non-finite audio samples.");
         }
-        peak = Math.max(peak, Math.abs(sample));
+        const absolute = Math.abs(sample);
+        peak = Math.max(peak, absolute);
+        sumSquares += sample * sample;
       }
-      if (peak < 0.00001) {
+
+      const rms = Math.sqrt(sumSquares / samples.length);
+      if (peak < 0.00001 || rms < 0.000001) {
         throw new Error("The natural voice engine returned silent audio.");
       }
-      if (peak > 20) {
-        throw new Error("The natural voice engine returned an invalid audio amplitude.");
+
+      // Some WASM/ONNX combinations return valid waveform-shaped PCM with a
+      // scale much hotter than Web Audio's expected -1..1 range. Normalize it
+      // rather than throwing away the whole passage and breaking narration.
+      if (peak > 1.05) {
+        if (peak > 1e12) {
+          throw new Error("The natural voice engine returned numerically corrupted audio.");
+        }
+        const gain = 0.98 / peak;
+        const normalized = new Float32Array(samples.length);
+        for (let index = 0; index < samples.length; index += 1) {
+          normalized[index] = Math.max(-1, Math.min(1, samples[index] * gain));
+        }
+        console.warn("Natural narration returned hot PCM; normalized before playback.", {
+          peak,
+          rms,
+          gain,
+          samples: samples.length,
+        });
+        samples = normalized;
       }
+
       return samples;
     }
 
@@ -2279,7 +2348,7 @@
           const { KokoroTTS } = await import(CONFIG.kokoroModule);
           setNaturalProgress("Choosing the best local AI engine…", 7);
           const device = await detectNaturalDevice();
-          const dtype = device === "webgpu" ? "fp32" : "q8";
+          const dtype = "fp32";
           let highestModelProgress = 7;
           const progress_callback = info => {
             if (!state.speech.naturalLoading || !state.speech.active) return;
@@ -2401,19 +2470,52 @@
 
     async function continueSpeech(session) {
       while (state.speech.active && session === state.speech.session && state.speech.page <= state.pageCount) {
-        if (state.pageNumber !== state.speech.page) {
-          await goToPage(state.speech.page, { fromSpeech: true });
+        const speechPage = state.speech.page;
+        const pageAlreadyReady =
+          state.pageNumber === speechPage &&
+          state.currentPageTextModel?.pageNumber === speechPage;
+
+        if (!pageAlreadyReady) {
+          elements.speechHint.textContent = `Loading page ${speechPage} of ${state.pageCount} for narration…`;
+          if (state.speech.engine === "natural") {
+            setNaturalProgress(`Loading page ${speechPage} of ${state.pageCount}…`);
+          }
+          await goToPage(speechPage, { fromSpeech: true, forceRender: true });
           if (!state.speech.active || session !== state.speech.session) return;
         }
 
-        const model = await getPageTextModel(state.speech.page);
+        const model = state.currentPageTextModel?.pageNumber === speechPage
+          ? state.currentPageTextModel
+          : await getPageTextModel(speechPage);
         if (!state.speech.active || session !== state.speech.session) return;
 
         if (!model.words.length || state.speech.wordIndex >= model.words.length) {
-          state.speech.page += 1;
+          if (speechPage >= state.pageCount) {
+            state.speech.page = state.pageCount + 1;
+            break;
+          }
+
+          const nextPage = speechPage + 1;
+          state.speech.page = nextPage;
           state.speech.wordIndex = 0;
-          state.speech.cursorPage = state.speech.page;
+          state.speech.cursorPage = nextPage;
           state.speech.cursorWord = 0;
+          queuePositionSave();
+
+          elements.speechHint.textContent = `Finished page ${speechPage}. Loading page ${nextPage} of ${state.pageCount}…`;
+          if (state.speech.engine === "natural") {
+            setNaturalProgress(`Loading next page · ${nextPage} of ${state.pageCount}…`);
+          }
+
+          await goToPage(nextPage, { fromSpeech: true, forceRender: true });
+          if (!state.speech.active || session !== state.speech.session) return;
+
+          // Do not generate or speak the next chunk until the visible page and
+          // selectable text layer are definitely ready.
+          if (state.currentPageTextModel?.pageNumber !== nextPage) {
+            await getPageTextModel(nextPage);
+          }
+          if (!state.speech.active || session !== state.speech.session) return;
           continue;
         }
 
@@ -2432,6 +2534,7 @@
         state.speech.paused = false;
         state.speech.currentUtterance = null;
         releaseNaturalAudio();
+        setNaturalProgress();
         elements.speechHint.textContent = "Finished reading the document.";
         updateControlState();
         showToast("Finished reading the document.");
@@ -2719,15 +2822,18 @@
       await renderCurrentPage();
     }
 
-    async function goToPage(pageNumber, { fromSpeech = false } = {}) {
+    async function goToPage(pageNumber, { fromSpeech = false, forceRender = false } = {}) {
       if (!state.pdfDocument) return;
       if (!fromSpeech && state.speech.active) stopSpeech({ silent: true });
       const next = Math.max(1, Math.min(state.pageCount, Math.floor(Number(pageNumber) || 1)));
-      if (next === state.pageNumber) {
+      const pageIsReady = state.currentPageTextModel?.pageNumber === next;
+      if (next === state.pageNumber && !forceRender && pageIsReady) {
         updateControlState();
         return;
       }
+
       state.pageNumber = next;
+      setStatus(`Loading page ${next} of ${state.pageCount}…`);
 
       if (state.zoomMode === "fit") {
         await setFitWidthScale();
