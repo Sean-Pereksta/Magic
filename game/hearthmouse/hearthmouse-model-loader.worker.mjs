@@ -119,13 +119,6 @@ async function loadModel(kind, relativePath) {
   const modelUrl = new URL(relativePath, self.location.href);
   const source = await fetchArrayBuffer(modelUrl.href);
   const { json, binChunk } = parseGlb(source);
-  const unsupported = [];
-  const usedExtensions = new Set(json.extensionsUsed ?? []);
-  if (usedExtensions.has("KHR_draco_mesh_compression")) unsupported.push("KHR_draco_mesh_compression");
-  if (usedExtensions.has("EXT_meshopt_compression")) unsupported.push("EXT_meshopt_compression");
-  if (unsupported.length) {
-    throw new Error(`${kind}.glb uses unsupported compressed geometry: ${unsupported.join(", ")}`);
-  }
   const buffers = await resolveBuffers(json, binChunk, modelUrl);
   const imageUris = await resolveImages(json, buffers, modelUrl);
   return { kind, json, buffers, imageUris };
