@@ -23,7 +23,6 @@ const MOUSE_COAT_COLORS = Object.freeze([
   0xa9a197,
 ]);
 const CAT_COAT_COLORS = Object.freeze({
-  mabel: 0x4d535d,
   biscuit: 0xc7935f,
   pepper: 0xf0ede5,
 });
@@ -99,8 +98,8 @@ function tintCoat(controller, tint, featurePattern, solidBase = false) {
       if (featurePattern.test(materialName)) return material;
       const copy = material.clone();
       copy.color?.setHex?.(tint);
-      // Cat coats need to remain visibly distinct even if cat.glb ships with a dark base-color texture.
-      // Removing only the diffuse map keeps normals/roughness while making the requested coat color authoritative.
+      // Alternate cat coats need to remain visibly distinct even if cat.glb ships with a dark base-color texture.
+      // Removing the diffuse map is intentionally limited to recolored variants; Mabel keeps the original GLB material intact.
       if (solidBase && copy.map) copy.map = null;
       copy.needsUpdate = true;
       return copy;
@@ -125,7 +124,15 @@ function applyCatCoatTint(controller) {
   state.catTintApplied = true;
 
   const catId = String(controller.actor?.id ?? "mabel").toLowerCase();
-  const tint = CAT_COAT_COLORS[catId] ?? CAT_COAT_COLORS.mabel;
+  const tint = CAT_COAT_COLORS[catId];
+
+  // Mabel (and any unknown/future cat without an explicit variant) must use cat.glb exactly as authored.
+  // This preserves its embedded diffuse texture/material instead of replacing the skin with a flat tint.
+  if (!Number.isFinite(tint)) {
+    controller.wrapper.userData.__hearthmouseCatUsesOriginalSkin = true;
+    return;
+  }
+
   tintCoat(controller, tint, CAT_FEATURE_MATERIAL_PATTERN, true);
   controller.wrapper.userData.__hearthmouseCatCoatTint = tint;
 }
