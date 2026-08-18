@@ -1,3 +1,5 @@
+import "./hearthmouse-controller-preflight.mjs";
+import "./hearthmouse-controller-reliability.mjs";
 import "./hearthmouse-graphics-quality.mjs";
 import "./hearthmouse-expansion-startup-guard.mjs";
 import "./hearthmouse-desktop-look-guard.mjs";
