@@ -1,3 +1,5 @@
+import "./hearthmouse-controller-reliability.mjs";
+
 export const DESKTOP_MOUSE_LOOK_MAX_DELTA = 96;
 export const DESKTOP_MOUSE_LOOK_YAW_SENSITIVITY = 0.00235;
 export const DESKTOP_MOUSE_LOOK_PITCH_SENSITIVITY = 0.002;
