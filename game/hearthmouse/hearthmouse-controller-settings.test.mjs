@@ -40,6 +40,9 @@ test("radial deadzone removes stick drift and rescales useful travel", () => {
   const partial = applyControllerDeadzone(0.58, 0, 0.16);
   assert.ok(partial.x > 0.49 && partial.x < 0.51);
   assert.equal(partial.y, 0);
+
+  const diagonal = applyControllerDeadzone(1, 1, 0.16);
+  assert.ok(Math.abs(Math.hypot(diagonal.x, diagonal.y) - 1) < 1e-9);
 });
 
 test("axis vectors honor remapped stick pairs", () => {
