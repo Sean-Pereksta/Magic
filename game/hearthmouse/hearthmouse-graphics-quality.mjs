@@ -133,11 +133,12 @@ export function applyControllerDeadzone(x, y, deadzone = DEFAULT_CONTROLLER_SETT
   const safeX = Number.isFinite(Number(x)) ? Number(x) : 0;
   const safeY = Number.isFinite(Number(y)) ? Number(y) : 0;
   const zone = clamp(Number(deadzone) || DEFAULT_CONTROLLER_SETTINGS.deadzone, 0, 0.95);
-  const magnitude = Math.min(1, Math.hypot(safeX, safeY));
-  if (magnitude <= zone || magnitude <= 1e-6) return { x: 0, y: 0, magnitude: 0 };
+  const rawMagnitude = Math.hypot(safeX, safeY);
+  const magnitude = Math.min(1, rawMagnitude);
+  if (magnitude <= zone || rawMagnitude <= 1e-6) return { x: 0, y: 0, magnitude: 0 };
   const scaledMagnitude = (magnitude - zone) / (1 - zone);
-  const scale = scaledMagnitude / magnitude;
-  return { x: safeX * scale, y: safeY * scale, magnitude: scaledMagnitude };
+  const directionScale = scaledMagnitude / rawMagnitude;
+  return { x: safeX * directionScale, y: safeY * directionScale, magnitude: scaledMagnitude };
 }
 
 export function controllerAxisVector(gamepad, axes, deadzone = DEFAULT_CONTROLLER_SETTINGS.deadzone) {
@@ -1006,7 +1007,7 @@ function mountControllerSettings(root) {
       if (jumpEdge) engine.jumpQueued = true;
       if (edgePressed(gamepad, settings.bindings.interact)) engine.interactQueued = true;
       if (edgePressed(gamepad, settings.bindings.rest)) engine.restForNight?.();
-    } else if ((jumpEdge || menuEdge) && gameIsOnMainMenu()) {
+    } else if ((jumpEdge || menuEdge) && phase && phase !== "dying") {
       menuPrimaryAction()?.click();
     }
     rememberButtons(gamepad);
