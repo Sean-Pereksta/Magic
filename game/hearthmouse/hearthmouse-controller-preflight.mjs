@@ -6,7 +6,26 @@ export function sanitizeGamepadList(value) {
   }
 }
 
-export function installHearthmouseGamepadPreflight(targetNavigator = globalThis.navigator) {
+function replaceGetter(target, key, getter) {
+  if (!target) return false;
+  try {
+    Object.defineProperty(target, key, {
+      configurable: true,
+      writable: true,
+      value: getter,
+    });
+    return target[key] === getter;
+  } catch {
+    try {
+      target[key] = getter;
+      return target[key] === getter;
+    } catch {
+      return false;
+    }
+  }
+}
+
+export function installHearthmouseGamepadPreflight(targetNavigator = globalThis.navigator, targetGlobal = globalThis) {
   if (!targetNavigator) return false;
 
   const sourceGetter = typeof targetNavigator.getGamepads === "function"
@@ -24,22 +43,37 @@ export function installHearthmouseGamepadPreflight(targetNavigator = globalThis.
     }
   };
 
-  try {
-    Object.defineProperty(targetNavigator, "getGamepads", {
-      configurable: true,
-      value: safeGetGamepads,
+  // Prefer an own-property override when the browser allows Navigator expandos.
+  if (replaceGetter(targetNavigator, "getGamepads", safeGetGamepads)) return true;
+
+  // Some Chromium/WebView builds expose Navigator as non-extensible. Patch the
+  // configurable prototype method instead so every subsequent lookup is safe.
+  const prototype = Object.getPrototypeOf(targetNavigator);
+  if (prototype && replaceGetter(prototype, "getGamepads", safeGetGamepads)) return true;
+
+  // Last-resort fallback for hosts that lock both the Navigator instance and
+  // prototype but allow the global navigator property to be redefined.
+  if (targetGlobal && targetGlobal.navigator === targetNavigator && typeof Proxy === "function") {
+    const safeNavigator = new Proxy(targetNavigator, {
+      get(target, property, receiver) {
+        if (property === "getGamepads") return safeGetGamepads;
+        return Reflect.get(target, property, receiver);
+      },
     });
-    return true;
-  } catch {
     try {
-      targetNavigator.getGamepads = safeGetGamepads;
-      return targetNavigator.getGamepads === safeGetGamepads;
+      Object.defineProperty(targetGlobal, "navigator", {
+        configurable: true,
+        get: () => safeNavigator,
+      });
+      return targetGlobal.navigator === safeNavigator;
     } catch {
-      return false;
+      // Nothing else can safely replace the host's Gamepad API.
     }
   }
+
+  return false;
 }
 
 if (typeof navigator !== "undefined") {
-  installHearthmouseGamepadPreflight(navigator);
+  installHearthmouseGamepadPreflight(navigator, globalThis);
 }
