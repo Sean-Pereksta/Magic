@@ -1,3 +1,5 @@
+import "./hearthmouse-backroom-decor.mjs";
+
 export const LEGACY_DOORWAY_BASEBOARDS = Object.freeze([
   "south-baseboard",
   "north-baseboard-east",
