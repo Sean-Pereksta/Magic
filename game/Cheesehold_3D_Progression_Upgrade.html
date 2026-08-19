@@ -65,11 +65,10 @@ function cameraUpdate(dt){if(!player)return;const p=player.mesh.position,target=
     if(!buildPattern.test(html))throw new Error('Build patch target not found');
     html=html.replace(buildPattern,safeBuild+'\nfunction buildFacing()');
 
-    // The core is intentionally an IIFE. Inject the expansion immediately before its closing scope
-    // so it can override the game functions without exposing or duplicating the core state.
+    // Inject inside the core IIFE so the expansion can reuse the existing game state safely.
     const scopeClose=/\}\)\(\);\s*<\/script>\s*<\/body>\s*<\/html>\s*$/;
     if(!scopeClose.test(html))throw new Error('Expansion scope target not found');
-    html=html.replace(scopeClose,expansion+'\n})();\n</script>\n</body>\n</html>');
+    html=html.replace(scopeClose,expansion+'\n})();\n<'+'/script>\n</body>\n</html>');
 
     frame.srcdoc=html;
   }catch(err){
