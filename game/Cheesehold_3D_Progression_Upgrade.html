@@ -15,6 +15,22 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#06080d}#ga
   const frame=document.getElementById('game');
   try{
     let html=await fetch('./Cheesehold_3D_Progression_Upgrade_core.html',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Core '+r.status);return r.text()});
+    const expansion=await fetch('./cheesehold-three-wave-expansion.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Expansion '+r.status);return r.text()});
+    const waveSpawnPatch=`
+function minionUpdate(){
+ const w=game.wave;
+ if(!w||w.clearAt!=null||w.spawned>=w.quota)return;
+ if(game.time>=game.nextMinion){
+   spawnEnemy();
+   if(game.round>=4&&Math.random()<.22&&enemies.length<enemyCap()&&w.spawned<w.quota)spawnEnemy();
+   game.nextMinion=game.time+Math.max(.78,2.9-game.round*.07-(w.number-1)*.18);
+ }
+}`;
+
+    // Expand every arena from 21x17 to 27x21. The injected level builder below uses the new bounds.
+    const sizeToken='const COLS=21,ROWS=17,CELL=1.22;';
+    if(!html.includes(sizeToken))throw new Error('Arena-size patch target not found');
+    html=html.replace(sizeToken,'const COLS=27,ROWS=21,CELL=1.22;');
 
     const hudCss=`
 #hud{top:max(6px,env(safe-area-inset-top));left:7px;right:7px;gap:5px;align-items:flex-start}
@@ -28,10 +44,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#06080d}#ga
 #hud .row:last-child .pill:nth-child(2){display:none!important}
 #abilityPill{min-width:76px!important;max-width:92px}
 #catAbility{font-size:10px!important;max-width:82px!important}
-#theme{top:43px;padding:4px 8px;max-width:48vw}
+#theme{top:43px;padding:5px 10px;max-width:68vw}
 #theme .themeName{font-size:7px}
-#theme .themeSub{display:none}
-@media(max-width:760px){#hud{top:max(4px,env(safe-area-inset-top));left:4px;right:4px}#hud .pill{padding:4px 5px}#hud .k{font-size:5px}#hud .v{font-size:10px}#hud .bar{width:50px}#hud .xpbar{width:48px}#theme{top:38px}}
+#theme .themeSub{display:block;font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
+@media(max-width:760px){#hud{top:max(4px,env(safe-area-inset-top));left:4px;right:4px}#hud .pill{padding:4px 5px}#hud .k{font-size:5px}#hud .v{font-size:10px}#hud .bar{width:50px}#hud .xpbar{width:48px}#theme{top:38px;max-width:76vw}#theme .themeSub{max-width:70vw;font-size:6px}}
 `;
     html=html.replace('</style>',hudCss+'</style>');
     html=html.replace('>Cheese<','>🧀<').replace('>Round<','>R<').replace('>Kills<','>K<').replace('>Mouse HP<','>♥<').replace('>Cat Power<','>CAT<').replace('XP · Lv ','Lv ');
@@ -58,6 +74,11 @@ function cameraUpdate(dt){if(!player)return;const p=player.mesh.position,target=
     const buildPattern=/function buildDirection\(dirIndex=player\?\.lastDir\)\{[\s\S]*?\n\}\nfunction buildFacing\(\)/;
     if(!buildPattern.test(html))throw new Error('Build patch target not found');
     html=html.replace(buildPattern,safeBuild+'\nfunction buildFacing()');
+
+    // Inject inside the core IIFE so the expansion can reuse the existing game state safely.
+    const scopeClose=/\}\)\(\);\s*<\/script>\s*<\/body>\s*<\/html>\s*$/;
+    if(!scopeClose.test(html))throw new Error('Expansion scope target not found');
+    html=html.replace(scopeClose,expansion+'\n'+waveSpawnPatch+'\n})();\n<'+'/script>\n</body>\n</html>');
 
     frame.srcdoc=html;
   }catch(err){
