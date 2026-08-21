@@ -5,9 +5,11 @@ import { NIGHT_EVENTS } from "./hearthmouse-expansion-core.mjs";
 import { SECRET_ROUTES } from "./hearthmouse-circulation-layout.mjs";
 import {
   PLAYER_TRAP_DURATION_SECONDS,
+  TUNNEL_INTERIOR_PROFILES,
   activeTrapCountForNight,
   playerTrapRemaining,
   selectTrapAnchors,
+  secretRouteSafetyScore,
   shouldRiskKnownTrap,
   territoryRoomsFor,
   tunnelStalkPlan,
@@ -42,6 +44,35 @@ test("tunnel travel is continuous and takes time instead of relocating instantly
   assert.ok(middle.x > 0 && middle.x < 4);
   assert.ok(middle.z > -0.22 && middle.z < 3);
   assert.deepEqual(tunnelTransitPoint(source, target, 1), { x: 3.76, z: 3 });
+});
+
+test("tunnel interiors are enclosed by family and urgent mice prefer the safer exit", () => {
+  assert.deepEqual(new Set(SECRET_ROUTES.map((route) => route.family)), new Set(Object.keys(TUNNEL_INTERIOR_PROFILES)));
+  const unsafeExit = secretRouteSafetyScore({
+    entranceDistance: 0.5,
+    directGoalDistance: 4,
+    exitGoalDistance: 2,
+    sourceCatDistance: 1.1,
+    exitCatDistance: 0.45,
+    noise: 0.1,
+    urgent: true,
+  });
+  const safeExit = secretRouteSafetyScore({
+    entranceDistance: 0.7,
+    directGoalDistance: 4,
+    exitGoalDistance: 3,
+    sourceCatDistance: 1.1,
+    exitCatDistance: 5.2,
+    noise: 0.16,
+    urgent: true,
+  });
+  assert.ok(safeExit > unsafeExit);
+  const source = fs.readFileSync(new URL("./hearthmouse-living-house.mjs", import.meta.url), "utf8");
+  assert.match(source, /mouse-tunnel-interior-/);
+  assert.match(source, /alcove-floor/);
+  assert.match(source, /setActiveTunnelInterior/);
+  assert.match(source, /mouse\.rig\.root\.visible = false/);
+  assert.match(source, /mouse\.rig\.root\.visible = true/);
 });
 
 test("exit stalking has bounded patience and at most one optional exit switch", () => {
