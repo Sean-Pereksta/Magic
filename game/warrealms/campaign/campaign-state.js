@@ -1,4 +1,4 @@
-export const CAMPAIGN_SCHEMA = 3;
+export const CAMPAIGN_SCHEMA = 4;
 export const CAMPAIGN_STORAGE_KEY = "warRealmsCampaign.v1";
 
 export const CAMPAIGN_SPECIALIZATIONS = Object.freeze([
@@ -70,6 +70,16 @@ function countCards(cardIds) {
     counts[cardId] = whole(counts[cardId]) + 1;
     return counts;
   }, {});
+}
+
+function migratedCampaignNodeIndex(raw) {
+  const nodeIndex = whole(raw?.nodeIndex);
+  if (whole(raw?.schema) !== 3) return nodeIndex;
+  if (nodeIndex <= 2) return nodeIndex;
+  if (nodeIndex <= 6) return 3;
+  if (nodeIndex <= 9) return 4;
+  if (nodeIndex === 10) return 5;
+  return 6;
 }
 
 export function getCampaignSpecialization(specializationId) {
@@ -147,7 +157,7 @@ export function normalizeCampaignProfile(raw, options = {}) {
     status,
     region: Math.max(1, whole(raw.region, 1)),
     level: Math.max(1, whole(raw.level, 1)),
-    nodeIndex: whole(raw.nodeIndex),
+    nodeIndex: migratedCampaignNodeIndex(raw),
     battlesWon: whole(raw.battlesWon),
     authority: Math.max(0, whole(raw.authority, fallback.authority)),
     maxAuthority: Math.max(1, whole(raw.maxAuthority, fallback.maxAuthority)),

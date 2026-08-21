@@ -1,5 +1,13 @@
 const DIFFICULTY_RANK = Object.freeze({ easy: 1, medium: 2, hard: 3, impossible: 4, mythic: 5 });
 
+function bossImageFile(name) {
+  const slug = String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug ? `${slug}.png` : "";
+}
+
 function freezeBoss(config) {
   return Object.freeze({
     startingShield: 0,
@@ -10,6 +18,7 @@ function freezeBoss(config) {
     bossCard: "",
     phases: Object.freeze([]),
     ...config,
+    image: config.image || bossImageFile(config.name),
     startingBases: Object.freeze([...(config.startingBases || [])]),
     startingDeck: Object.freeze([...(config.startingDeck || [])]),
     economy: Object.freeze({ bonusTrade: 0, tradeLimit: 6, ...(config.economy || {}) }),
