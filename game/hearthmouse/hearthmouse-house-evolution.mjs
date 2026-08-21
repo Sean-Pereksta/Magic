@@ -1,3 +1,5 @@
+import { registerFrameVisualStage } from "./hearthmouse-performance-manager.mjs";
+
 const POLL_INTERVAL_MS = 40;
 const MAX_INSTALL_ATTEMPTS = 300;
 const DAWN_WINDOW_SECONDS = 50;
@@ -434,42 +436,18 @@ function updateHouseEvolution(engine, I) {
   updateNoiseZones(engine, state);
 }
 
-let raf = 0;
-let lastEngine = null;
-let lastAtmosphereTick = -Infinity;
-
-function atmosphereFrame() {
-  if (typeof window === "undefined") return;
-  const I = window.HearthmouseInternals;
-  const engine = window.hearthmouseEngine;
-  if (I?.Engine && engine && !engine.disposed) {
-    if (lastEngine !== engine) {
-      lastEngine = engine;
-      lastAtmosphereTick = -Infinity;
-    }
-    const now = engine.time ?? 0;
-    if (now - lastAtmosphereTick >= 1 / 30 || engine.snapshot?.phase !== "foraging") {
-      lastAtmosphereTick = now;
-      updateHouseEvolution(engine, I);
-    }
-  }
-  raf = window.requestAnimationFrame(atmosphereFrame);
-}
+registerFrameVisualStage("house-evolution", (engine) => {
+  const I = typeof window !== "undefined" ? window.HearthmouseInternals : null;
+  if (I?.Engine) updateHouseEvolution(engine, I);
+}, 1 / 30);
 
 function installWhenReady(attempt = 0) {
   if (typeof window === "undefined") return;
   const I = window.HearthmouseInternals;
-  if (installCatPersonalityAndNoiseHotfix(I)) {
-    if (!raf && typeof window.requestAnimationFrame === "function") raf = window.requestAnimationFrame(atmosphereFrame);
-    return;
-  }
+  if (installCatPersonalityAndNoiseHotfix(I)) return;
   if (attempt < MAX_INSTALL_ATTEMPTS) window.setTimeout(() => installWhenReady(attempt + 1), POLL_INTERVAL_MS);
 }
 
 if (typeof window !== "undefined") {
   installWhenReady();
-  window.addEventListener("beforeunload", () => {
-    if (raf) window.cancelAnimationFrame(raf);
-    raf = 0;
-  });
 }

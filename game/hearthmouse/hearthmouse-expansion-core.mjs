@@ -3,6 +3,14 @@ import {
   ROOM_LAYOUT_BY_ID,
   isCirculationPlacementSafe,
 } from "./hearthmouse-circulation-layout.mjs";
+import {
+  deferActorRigVisuals,
+  ensurePerformanceManager,
+  registerCharacterVisualStage,
+  registerRoomRenderGroup,
+  runCharacterVisualScheduler,
+  shouldInvalidateLosSample,
+} from "./hearthmouse-performance-manager.mjs";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -152,7 +160,9 @@ export class ReusableObjectPool {
 }
 
 export function visibilitySampleInterval(isTouchDevice, catState) {
-  return isTouchDevice && catState === "chase" ? 1 / 30 : 0;
+  if (catState === "chase") return 1 / (isTouchDevice ? 30 : 45);
+  if (["alert", "investigating", "suspicious", "search"].includes(catState)) return 1 / (isTouchDevice ? 20 : 24);
+  return 1 / (isTouchDevice ? 8 : 12);
 }
 
 export const POLICY_PROFILES = Object.freeze({
@@ -409,6 +419,8 @@ function installEnginePatches(I) {
     createMice: proto.createMice,
     spawnFood: proto.spawnFood,
     updateGame: proto.updateGame,
+    updateAmbient: proto.updateAmbient,
+    updateDying: proto.updateDying,
     updateCats: proto.updateCats,
     updateCatPatrol: proto.updateCatPatrol,
     updateCatChase: proto.updateCatChase,
@@ -511,7 +523,7 @@ function installEnginePatches(I) {
   proto.createMice = function expandedCreateMice() {
     const expansion = ensureExpansion(this);
     base.createMice.call(this);
-    this.mice.forEach((mouse, index) => initializeMouse(mouse, index, this.colonyPolicy, I));
+    this.mice.forEach((mouse, index) => initializeMouse(this, mouse, index, this.colonyPolicy, I));
     rebuildDynamicSpatialIndexes(this, expansion);
     auditAndCacheTextureAssets(this, expansion);
   };
@@ -540,9 +552,46 @@ function installEnginePatches(I) {
 
   proto.updateGame = function expandedUpdateGame(delta) {
     const expansion = ensureExpansion(this);
-    updateEnvironmentalWindow(this, expansion, delta);
-    base.updateGame.call(this, delta);
+    const performanceManager = ensurePerformanceManager(this);
+    performanceManager.beginFrame(delta);
+    try {
+      updateEnvironmentalWindow(this, expansion, delta);
+      base.updateGame.call(this, delta);
+      runCharacterVisualScheduler(this, delta);
+    } finally {
+      performanceManager.endFrame();
+    }
   };
+
+  if (typeof base.updateAmbient === "function") {
+    proto.updateAmbient = function expandedAmbientUpdate(delta) {
+      ensureExpansion(this);
+      const performanceManager = ensurePerformanceManager(this);
+      performanceManager.beginFrame(delta);
+      try {
+        const result = base.updateAmbient.call(this, delta);
+        runCharacterVisualScheduler(this, delta);
+        return result;
+      } finally {
+        performanceManager.endFrame();
+      }
+    };
+  }
+
+  if (typeof base.updateDying === "function") {
+    proto.updateDying = function expandedDyingUpdate(delta) {
+      ensureExpansion(this);
+      const performanceManager = ensurePerformanceManager(this);
+      performanceManager.beginFrame(delta);
+      try {
+        const result = base.updateDying.call(this, delta);
+        runCharacterVisualScheduler(this, delta);
+        return result;
+      } finally {
+        performanceManager.endFrame();
+      }
+    };
+  }
 
   proto.updateMice = function expandedMouseAI(delta) {
     updateColonyMice(this, ensureExpansion(this), I, delta);
@@ -582,9 +631,8 @@ function installEnginePatches(I) {
   proto.updateCats = function expandedCatAI(delta) {
     const expansion = ensureExpansion(this);
     prepareCatLeisure(this, expansion, delta);
-    for (let index = 0; index < this.cats.length; index++) this.cats[index].__rigUpdatedThisFrame = false;
     base.updateCats.call(this, delta);
-    applyCatBehaviorAnimation(this, expansion, delta);
+    updatePounceWarning(this);
   };
 
   proto.updateFood = function indexedFoodUpdates(delta) {
@@ -611,7 +659,9 @@ function installEnginePatches(I) {
 
   proto.mouseTakeFood = function expandedMouseTakeFood(mouse, food) {
     thawTransform(food?.mesh);
-    return base.mouseTakeFood.call(this, mouse, food);
+    const result = base.mouseTakeFood.call(this, mouse, food);
+    ensurePerformanceManager(this).promoteActor(mouse, 0.75);
+    return result;
   };
 
   proto.playerTakeFood = function expandedPlayerTakeFood(food) {
@@ -621,6 +671,15 @@ function installEnginePatches(I) {
 
   proto.updateCatPatrol = function expandedPatrol(cat, delta, speedOverride) {
     const expansion = ensureExpansion(this);
+    const performanceManager = ensurePerformanceManager(this);
+    cat.__hearthmousePatrolDelta = Math.min(0.25, (cat.__hearthmousePatrolDelta ?? 0) + delta);
+    if (!performanceManager.shouldRunActorWork(cat, "cat-patrol")) {
+      performanceManager.recordAiSkip(cat);
+      return 0;
+    }
+    const simulationDelta = cat.__hearthmousePatrolDelta;
+    cat.__hearthmousePatrolDelta = 0;
+    performanceManager.recordAiDecision(cat);
     if (["grooming", "watching", "cover-watch", "tunnel-stalk"].includes(cat.leisureMode) && cat.leisureTimer > 0) return 0;
     if ((!cat.path.length || cat.pathIndex >= cat.path.length) && this.world.patrolPoints.length) {
       const focus = expansion.currentPlan?.event.catFocus;
@@ -630,7 +689,7 @@ function installEnginePatches(I) {
         : Math.floor(Math.random() * this.world.patrolPoints.length);
       if (Number.isInteger(choiceIndex)) cat.patrolIndex = (choiceIndex - 1 + this.world.patrolPoints.length) % this.world.patrolPoints.length;
     }
-    return base.updateCatPatrol.call(this, cat, delta, speedOverride);
+    return base.updateCatPatrol.call(this, cat, simulationDelta, speedOverride);
   };
 
   proto.updateCatChase = function expandedPounce(cat, delta) {
@@ -640,6 +699,7 @@ function installEnginePatches(I) {
       cat.pounceWindupDuration = computePounceWindup(this.snapshot.night, cat.personality);
       cat.pounceTimer = cat.pounceWindupDuration;
       cat.pounceCuePlayed = false;
+      ensurePerformanceManager(this).promoteActor(cat, 1);
     }
     return result;
   };
@@ -670,11 +730,17 @@ function installEnginePatches(I) {
   };
 
   proto.setCatState = function expandedCatState(cat, state, duration) {
+    const previousState = cat.state;
     if (state === "chase" || state === "alert" || state === "investigating") {
       cat.leisureMode = null;
       cat.leisureTimer = 0;
     }
-    return base.setCatState.call(this, cat, state, duration);
+    const result = base.setCatState.call(this, cat, state, duration);
+    if (cat.state !== previousState) {
+      cat.visibilitySamples?.clear();
+      ensurePerformanceManager(this).promoteActor(cat, cat.state === "chase" ? 1 : 0.5);
+    }
+    return result;
   };
 
   proto.emitNoise = function expandedNoise(position, strength) {
@@ -724,7 +790,15 @@ function installEnginePatches(I) {
 }
 
 function ensureExpansion(engine) {
-  if (engine.__expansion) return engine.__expansion;
+  if (engine.__expansion) {
+    const needsActorVisualInstall = !engine.__expansion.performanceManager;
+    ensurePerformanceManager(engine);
+    if (needsActorVisualInstall) {
+      for (const mouse of engine.mice ?? []) deferActorRigVisuals(engine, mouse);
+      for (const cat of engine.cats ?? []) deferActorRigVisuals(engine, cat);
+    }
+    return engine.__expansion;
+  }
   let storedPolicy = "balanced";
   try { storedPolicy = window.localStorage.getItem("hearthmouse-colony-policy") || "balanced"; } catch {}
   if (!POLICY_PROFILES[storedPolicy]) storedPolicy = "balanced";
@@ -815,12 +889,15 @@ function ensureExpansion(engine) {
     () => ({ position: new V(), ttl: 0, radius: 0, score: 0 }),
     (signal) => { signal.ttl = 0; signal.radius = 0; signal.score = 0; },
   );
+  ensurePerformanceManager(engine);
+  for (const mouse of engine.mice ?? []) deferActorRigVisuals(engine, mouse);
+  for (const cat of engine.cats ?? []) deferActorRigVisuals(engine, cat);
   rebuildStaticSpatialIndexes(engine, expansion);
   auditAndCacheTextureAssets(engine, expansion);
   return expansion;
 }
 
-function initializeMouse(mouse, index, policy = "balanced", I = window.HearthmouseInternals) {
+function initializeMouse(engine, mouse, index, policy = "balanced", I = window.HearthmouseInternals) {
   mouse.delay = Math.min(mouse.delay, initialForagerDelay(policy, index, Math.random()));
   mouse.aiDecisionTimer = 0.04 + (index % 8) * 0.027;
   mouse.safeTimer = 0;
@@ -839,6 +916,7 @@ function initializeMouse(mouse, index, policy = "balanced", I = window.Hearthmou
   mouse.threatResult = { score: 0, cat: null, urgent: false };
   mouse.nearestCatResult = { cat: null, distance: Infinity };
   mouse.nestActivityGoalScratch = new I.Vector3();
+  deferActorRigVisuals(engine, mouse);
 }
 
 function initializeCat(engine, expansion, cat, index) {
@@ -850,15 +928,7 @@ function initializeCat(engine, expansion, cat, index) {
   cat.coverTargetScratch = cat.investigation.clone();
   ensureCatVisionResult(cat);
   cat.visibilitySamples = new Map();
-  if (!cat.rig.__cosmeticThrottleInstalled) {
-    const updateRig = cat.rig.update.bind(cat.rig);
-    cat.rig.update = (...args) => {
-      const shouldUpdate = engine.snapshot.phase !== "foraging" || shouldRunCosmeticFrame(engine, expansion, cat.rig.root.position, index, cat.state === "chase");
-      cat.__rigUpdatedThisFrame = shouldUpdate;
-      if (shouldUpdate) return updateRig(...args);
-    };
-    Object.defineProperty(cat.rig, "__cosmeticThrottleInstalled", { value: true });
-  }
+  deferActorRigVisuals(engine, cat);
 }
 
 function disposeTemporaryCat(cat) {
@@ -1085,6 +1155,12 @@ function considerVisionTarget(engine, cat, maximumDistance, targetId, position, 
 }
 
 function scanIndexedCatVision(engine, expansion, cat) {
+  const performanceManager = ensurePerformanceManager(engine);
+  if (!performanceManager.shouldScanCatVision(cat)) {
+    const cached = cat.__hearthmouseCachedVisionTarget;
+    if (cached?.id === "player" || cached?.id && expansion.scratch.mouseById.get(cached.id)?.member?.alive) return cached;
+    return null;
+  }
   const maximumDistance = cat.state === "chase" ? 10.4 : 8.7;
   const result = ensureCatVisionResult(cat);
   let bestPriority = -Infinity;
@@ -1126,7 +1202,9 @@ function scanIndexedCatVision(engine, expansion, cat) {
       bestPriority,
     );
   }
-  return bestPriority > -Infinity ? result : null;
+  const target = bestPriority > -Infinity ? result : null;
+  cat.__hearthmouseCachedVisionTarget = target;
+  return target;
 }
 
 function prepareCatSightFrame(engine, expansion, cat) {
@@ -1140,23 +1218,44 @@ function prepareCatSightFrame(engine, expansion, cat) {
 }
 
 function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition) {
+  const performanceManager = ensurePerformanceManager(engine);
   const samples = cat.visibilitySamples ?? (cat.visibilitySamples = new Map());
   let sample = samples.get(targetId);
-  const cacheInterval = visibilitySampleInterval(expansion.isTouchDevice, cat.state);
+  const catPosition = cat.rig.root.position;
+  const catRoom = roomForPosition(catPosition.x, catPosition.z);
+  const targetRoom = roomForPosition(targetPosition.x, targetPosition.z);
+  const dx = catPosition.x - targetPosition.x;
+  const dz = catPosition.z - targetPosition.z;
+  const current = {
+    time: performanceManager.clock,
+    state: cat.state,
+    routeRevision: expansion.routeRevision,
+    catRoom,
+    targetRoom,
+    catX: catPosition.x,
+    catZ: catPosition.z,
+    targetX: targetPosition.x,
+    targetZ: targetPosition.z,
+    yaw: cat.yaw + cat.lookYaw * 0.5,
+    distanceSquared: dx * dx + dz * dz,
+  };
+  const cacheInterval = performanceManager.catVisionInterval(cat);
   if (
-    cacheInterval > 0 &&
-    sample?.state === cat.state &&
-    engine.time >= sample.time &&
-    engine.time - sample.time < cacheInterval
+    !shouldInvalidateLosSample(sample, current) &&
+    current.time - sample.time < cacheInterval
   ) {
+    performanceManager.record("losCacheHits");
     return sample.visible;
   }
 
+  performanceManager.record("catLosChecks");
   const sight = prepareCatSightFrame(engine, expansion, cat);
   sight.center.copy(targetPosition).setY(targetId === "player" ? 0.07 : 0.075);
   sight.flatDirection.copy(sight.center).sub(sight.eye).setY(0);
   let visible = 0;
-  if (sight.flatDirection.length() < 0.001) {
+  if (!performanceManager.roomsCouldShareLineOfSight(catRoom, targetRoom)) {
+    visible = 0;
+  } else if (sight.flatDirection.length() < 0.001) {
     visible = 1;
   } else {
     sight.flatDirection.normalize();
@@ -1178,6 +1277,7 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
         engine.raycaster.far = Math.max(0.01, distance - 0.014);
         const occluders = occluderCandidatesForRay(expansion, sight.eye, probe);
         sight.hits.length = 0;
+        performanceManager.record("losRaycasts");
         engine.raycaster.intersectObjects(occluders, true, sight.hits);
         if (!sight.hits.length) visible++;
         sight.hits.length = 0;
@@ -1190,8 +1290,7 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
     sample = { time: -Infinity, state: "", visible: 0 };
     samples.set(targetId, sample);
   }
-  sample.time = engine.time;
-  sample.state = cat.state;
+  Object.assign(sample, current);
   sample.visible = visible;
   return visible;
 }
@@ -1220,24 +1319,6 @@ function profileFinish(expansion, key, started) {
     expansion.performance.samples++;
     expansion.performance.sample = expansion.performance.samples;
   }
-}
-
-function shouldRunCosmeticFrame(engine, expansion, position, index, forceFull = false) {
-  if (forceFull) return true;
-  const dx = position.x - engine.playerPosition.x;
-  const dz = position.z - engine.playerPosition.z;
-  const distanceSquared = dx * dx + dz * dz;
-  if (distanceSquared <= 36) return true;
-  const objectRoom = roomForPosition(position.x, position.z);
-  const sameRoom = objectRoom === expansion.playerRoom;
-  const facingX = -Math.sin(engine.yaw ?? 0);
-  const facingZ = -Math.cos(engine.yaw ?? 0);
-  const facingDot = (dx * facingX + dz * facingZ) / Math.max(0.001, Math.sqrt(distanceSquared));
-  let interval = 1;
-  if (!sameRoom) interval = distanceSquared > 256 ? 5 : distanceSquared > 100 ? 4 : 3;
-  else if (facingDot < -0.25) interval = distanceSquared > 144 ? 4 : 2;
-  else if (distanceSquared > 196) interval = 3;
-  return (expansion.frame + index) % interval === 0;
 }
 
 function updateFoodTransformModes(engine, expansion) {
@@ -1318,6 +1399,19 @@ function buildExpandedHouse(engine, expansion, I) {
   const roomRoot = new I.Group();
   roomRoot.name = "expanded-house-rooms";
   world.root.add(roomRoot);
+  const roomGroups = new Map();
+  const roomGroup = (roomId) => {
+    if (!roomId) return roomRoot;
+    let group = roomGroups.get(roomId);
+    if (!group) {
+      group = new I.Group();
+      group.name = `expanded-house-room-${roomId}`;
+      roomGroups.set(roomId, group);
+      roomRoot.add(group);
+      registerRoomRenderGroup(world, roomId, group);
+    }
+    return group;
+  };
 
   const materials = new Map();
   const geometries = new Map();
@@ -1333,14 +1427,15 @@ function buildExpandedHouse(engine, expansion, I) {
     return geometries.get(key);
   };
 
-  const addBox = ({ name, x, y, z, w, h, d, color = 0x66574b, collide = false, catOnly = false, occlude = true, dynamicId = null, active = true }) => {
+  const addBox = ({ name, roomId = undefined, x, y, z, w, h, d, color = 0x66574b, collide = false, catOnly = false, occlude = true, dynamicId = null, active = true }) => {
     const mesh = new I.Mesh(boxGeometry(w, h, d), material(color));
     mesh.name = name;
     mesh.position.set(x, y, z);
     mesh.visible = active;
     mesh.castShadow = false;
     mesh.receiveShadow = true;
-    roomRoot.add(mesh);
+    const parent = roomId === false ? roomRoot : roomGroup(roomId ?? roomForPosition(x, z));
+    parent.add(mesh);
     freezeStaticTransform(mesh);
     if (occlude) {
       mesh.userData.occluder = true;
@@ -1365,24 +1460,24 @@ function buildExpandedHouse(engine, expansion, I) {
     world.colliders.filter((collider) => collider.name === name).forEach((collider) => { collider.active = false; });
   };
 
-  const addHorizontalWall = (name, z, minX, maxX, openings = [], color = 0xb9ad99) => {
+  const addHorizontalWall = (name, z, minX, maxX, openings = [], color = 0xb9ad99, roomId = null) => {
     const sorted = openings.map(({ center, width }) => [center - width / 2, center + width / 2]).sort((a, b) => a[0] - b[0]);
     let cursor = minX;
     sorted.forEach(([start, end], index) => {
-      if (start > cursor) addBox({ name: `${name}-${index}`, x: (cursor + start) / 2, y: 1.475, z, w: start - cursor, h: 2.95, d: 0.2, color, collide: true });
+      if (start > cursor) addBox({ name: `${name}-${index}`, roomId, x: (cursor + start) / 2, y: 1.475, z, w: start - cursor, h: 2.95, d: 0.2, color, collide: true });
       cursor = Math.max(cursor, end);
     });
-    if (cursor < maxX) addBox({ name: `${name}-end`, x: (cursor + maxX) / 2, y: 1.475, z, w: maxX - cursor, h: 2.95, d: 0.2, color, collide: true });
+    if (cursor < maxX) addBox({ name: `${name}-end`, roomId, x: (cursor + maxX) / 2, y: 1.475, z, w: maxX - cursor, h: 2.95, d: 0.2, color, collide: true });
   };
 
-  const addVerticalWall = (name, x, minZ, maxZ, openings = [], color = 0xb9ad99) => {
+  const addVerticalWall = (name, x, minZ, maxZ, openings = [], color = 0xb9ad99, roomId = null) => {
     const sorted = openings.map(({ center, width }) => [center - width / 2, center + width / 2]).sort((a, b) => a[0] - b[0]);
     let cursor = minZ;
     sorted.forEach(([start, end], index) => {
-      if (start > cursor) addBox({ name: `${name}-${index}`, x, y: 1.475, z: (cursor + start) / 2, w: 0.2, h: 2.95, d: start - cursor, color, collide: true });
+      if (start > cursor) addBox({ name: `${name}-${index}`, roomId, x, y: 1.475, z: (cursor + start) / 2, w: 0.2, h: 2.95, d: start - cursor, color, collide: true });
       cursor = Math.max(cursor, end);
     });
-    if (cursor < maxZ) addBox({ name: `${name}-end`, x, y: 1.475, z: (cursor + maxZ) / 2, w: 0.2, h: 2.95, d: maxZ - cursor, color, collide: true });
+    if (cursor < maxZ) addBox({ name: `${name}-end`, roomId, x, y: 1.475, z: (cursor + maxZ) / 2, w: 0.2, h: 2.95, d: maxZ - cursor, color, collide: true });
   };
 
   const roomOpenings = {
@@ -1404,13 +1499,13 @@ function buildExpandedHouse(engine, expansion, I) {
     const centerZ = (room.minZ + room.maxZ) / 2;
     const width = room.maxX - room.minX;
     const depth = room.maxZ - room.minZ;
-    addBox({ name: `${room.id}-floor`, x: centerX, y: -0.055, z: centerZ, w: width, h: 0.11, d: depth, color: room.color, occlude: false });
-    addBox({ name: `${room.id}-ceiling`, x: centerX, y: 3.02, z: centerZ, w: width, h: 0.12, d: depth, color: 0xb9ad99, occlude: false });
+    addBox({ name: `${room.id}-floor`, roomId: room.id, x: centerX, y: -0.055, z: centerZ, w: width, h: 0.11, d: depth, color: room.color, occlude: false });
+    addBox({ name: `${room.id}-ceiling`, roomId: room.id, x: centerX, y: 3.02, z: centerZ, w: width, h: 0.12, d: depth, color: 0xb9ad99, occlude: false });
     const openings = roomOpenings[room.id] ?? {};
-    addHorizontalWall(`${room.id}-north-wall`, room.minZ, room.minX, room.maxX, openings.north ?? []);
-    addHorizontalWall(`${room.id}-south-wall`, room.maxZ, room.minX, room.maxX, openings.south ?? []);
-    addVerticalWall(`${room.id}-west-wall`, room.minX, room.minZ, room.maxZ, openings.west ?? []);
-    addVerticalWall(`${room.id}-east-wall`, room.maxX, room.minZ, room.maxZ, openings.east ?? []);
+    addHorizontalWall(`${room.id}-north-wall`, room.minZ, room.minX, room.maxX, openings.north ?? [], 0xb9ad99, room.id);
+    addHorizontalWall(`${room.id}-south-wall`, room.maxZ, room.minX, room.maxX, openings.south ?? [], 0xb9ad99, room.id);
+    addVerticalWall(`${room.id}-west-wall`, room.minX, room.minZ, room.maxZ, openings.west ?? [], 0xb9ad99, room.id);
+    addVerticalWall(`${room.id}-east-wall`, room.maxX, room.minZ, room.maxZ, openings.east ?? [], 0xb9ad99, room.id);
   });
 
   disableBase("north-wall-east");
@@ -1426,7 +1521,9 @@ function buildExpandedHouse(engine, expansion, I) {
   addVerticalWall("rebuilt-study-east", -5.02, -10.68, -6.38, [{ center: -9, width: 0.72 }]);
 
   const addDoor = (id, roomId, unlockNight, x, z, w, d) => {
-    const item = addBox({ name: `locked-${id}`, x, y: 1.08, z, w, h: 2.16, d, color: 0x35271f, collide: true });
+    // Locked portal meshes stay outside target-room groups so the closed door
+    // remains visible from the room the player currently occupies.
+    const item = addBox({ name: `locked-${id}`, roomId: false, x, y: 1.08, z, w, h: 2.16, d, color: 0x35271f, collide: true });
     const door = { id, roomId, unlockNight, ...item };
     expansion.roomDoors.push(door);
     return door;
@@ -1450,8 +1547,8 @@ function buildExpandedHouse(engine, expansion, I) {
       console.warn(`Hearthmouse skipped unsafe cover ${id}`);
       return false;
     }
-    addBox({ name: `${id}-roof`, x, y: 0.17, z, w: 1.15, h: 0.12, d: 0.78, color, collide: true, catOnly: true });
-    addBox({ name: `${id}-back`, x, y: 0.1, z: z - 0.35, w: 1.15, h: 0.2, d: 0.08, color, collide: true });
+    addBox({ name: `${id}-roof`, roomId, x, y: 0.17, z, w: 1.15, h: 0.12, d: 0.78, color, collide: true, catOnly: true });
+    addBox({ name: `${id}-back`, roomId, x, y: 0.1, z: z - 0.35, w: 1.15, h: 0.2, d: 0.08, color, collide: true });
     world.shelterPoints.push({ id, roomId, catProof: true, position: new I.Vector3(x, 0.025, z + 0.08), unlockNight: ROOM_DEFINITIONS.find((room) => room.id === roomId)?.unlockNight ?? 1 });
     return true;
   };
@@ -1462,10 +1559,11 @@ function buildExpandedHouse(engine, expansion, I) {
       console.warn(`Hearthmouse skipped unsafe furniture ${name}`);
       return false;
     }
-    addBox({ name: `${name}-top`, x, y: 0.68, z, w, h: 0.12, d, color, collide: true, catOnly: true });
+    addBox({ name: `${name}-top`, roomId, x, y: 0.68, z, w, h: 0.12, d, color, collide: true, catOnly: true });
     for (const sideX of [-1, 1]) for (const sideZ of [-1, 1]) {
       addBox({
         name: `${name}-leg-${sideX}-${sideZ}`,
+        roomId,
         x: x + sideX * Math.max(0.12, w * 0.38),
         y: 0.31,
         z: z + sideZ * Math.max(0.12, d * 0.34),
@@ -1510,7 +1608,7 @@ function buildExpandedHouse(engine, expansion, I) {
       console.warn(`Hearthmouse skipped unsafe event prop ${id}`);
       return null;
     }
-    return addBox({ ...options, dynamicId: id, active: options.active ?? false });
+    return addBox({ ...options, roomId: circulationGate ? false : options.roomId, dynamicId: id, active: options.active ?? false });
   };
   dynamic("moved-chair", { name: "night-moved-chair", x: -3.2, y: 0.38, z: 4.9, w: 0.72, h: 0.76, d: 0.72, color: 0x493329, collide: true });
   dynamic("cardboard-cover", { name: "night-cardboard-box", x: -3.25, y: 0.17, z: 1.45, w: 1.2, h: 0.34, d: 0.9, color: 0x8f7148, collide: true, catOnly: true });
@@ -1786,6 +1884,7 @@ function colonyShouldStop(engine) {
 
 function updateColonyMice(engine, expansion, I, delta) {
   const started = profileStart(expansion);
+  const performanceManager = ensurePerformanceManager(engine);
   rebuildDynamicSpatialIndexes(engine, expansion);
   rebuildCatDangerSnapshot(engine, expansion);
   const profile = getPolicyProfile(engine.colonyPolicy);
@@ -1810,6 +1909,7 @@ function updateColonyMice(engine, expansion, I, delta) {
     mouse.delay -= delta;
     mouse.escapeCooldown = Math.max(0, mouse.escapeCooldown - delta);
     mouse.aiDecisionTimer -= delta;
+    if (performanceManager.consumeImmediatePromotion(mouse)) mouse.aiDecisionTimer = 0;
     mouse.noiseTimer -= delta;
     mouse.nestActivityTimer -= delta;
     const nearest = nearestCatFromSnapshot(expansion, mouse.rig.root.position, mouse.nearestCatResult);
@@ -1817,12 +1917,19 @@ function updateColonyMice(engine, expansion, I, delta) {
     const catDistance = nearest.distance;
 
     if (mouse.aiDecisionTimer <= 0) {
-      mouse.aiDecisionTimer = 0.11 + (mouse.colonyIndex % 7) * 0.019;
-      const threat = assessMouseThreat(engine, expansion, mouse, nearestCat, catDistance);
-      mouse.lastThreatScore = threat.score;
-      const fleeThreshold = Math.max(0.16, profile.fleeThreshold - expansion.upgrades.scouts * 0.025);
-      if (!["escaping", "hiding"].includes(mouse.task) && mouse.escapeCooldown <= 0 && threat.score >= fleeThreshold) {
-        sendMouseToBestShelter(engine, expansion, I, mouse, threat.cat ?? nearestCat);
+      const decisionInterval = performanceManager.decisionIntervalFor(mouse, "mouse");
+      if (performanceManager.shouldRunActorWork(mouse, "threat-decision", decisionInterval)) {
+        mouse.aiDecisionTimer = decisionInterval;
+        performanceManager.recordAiDecision(mouse);
+        const threat = assessMouseThreat(engine, expansion, mouse, nearestCat, catDistance);
+        mouse.lastThreatScore = threat.score;
+        const fleeThreshold = Math.max(0.16, profile.fleeThreshold - expansion.upgrades.scouts * 0.025);
+        if (!["escaping", "hiding"].includes(mouse.task) && mouse.escapeCooldown <= 0 && threat.score >= fleeThreshold) {
+          sendMouseToBestShelter(engine, expansion, I, mouse, threat.cat ?? nearestCat);
+        }
+      } else {
+        mouse.aiDecisionTimer = Math.min(1 / 30, decisionInterval);
+        performanceManager.recordAiSkip(mouse);
       }
     }
 
@@ -1886,8 +1993,13 @@ function updateColonyMice(engine, expansion, I, delta) {
 
     if (mouse.task === "waiting" && mouse.delay <= 0) {
       if (!stop && assignedForagers < maxForagers) {
-        engine.assignFood(mouse);
-        if (mouse.task === "to-food") assignedForagers++;
+        if (!performanceManager.shouldRunActorWork(mouse, "food-choice")) {
+          performanceManager.recordAiSkip(mouse);
+        } else {
+          performanceManager.recordAiDecision(mouse);
+          engine.assignFood(mouse);
+          if (mouse.task === "to-food") assignedForagers++;
+        }
       } else sendMouseHome(engine, mouse);
     }
 
@@ -1918,8 +2030,13 @@ function updateColonyMice(engine, expansion, I, delta) {
       }
     } else if (mouse.task === "nesting") {
       if (!stop && assignedForagers < maxForagers && mouse.delay <= 0) {
-        engine.assignFood(mouse);
-        if (mouse.task === "to-food") assignedForagers++;
+        if (performanceManager.shouldRunActorWork(mouse, "nest-food-choice")) {
+          performanceManager.recordAiDecision(mouse);
+          engine.assignFood(mouse);
+          if (mouse.task === "to-food") assignedForagers++;
+        } else {
+          performanceManager.recordAiSkip(mouse);
+        }
       } else if (mouse.nestActivityTimer <= 0) {
         const slot = mouse.colonyIndex % 12;
         mouse.nestActivityGoal = mouse.nestActivityGoalScratch.set(-6.95 + (slot % 4) * 0.22, 0.025, 3.25 + Math.floor(slot / 4) * 0.36);
@@ -2075,8 +2192,6 @@ function recoverMouseIfStalled(engine, expansion, I, mouse, delta) {
 }
 
 function animateMouse(engine, expansion, mouse, speed, alert, carrying) {
-  const urgent = mouse.task === "escaping" && mouse.rig.root.position.distanceToSquared(engine.playerPosition) <= 64;
-  if (!shouldRunCosmeticFrame(engine, expansion, mouse.rig.root.position, mouse.colonyIndex, urgent)) return;
   mouse.rig.update(engine.time, speed, alert, carrying);
 }
 
@@ -2229,6 +2344,7 @@ function sendMouseToBestShelter(engine, expansion, I, mouse, cat) {
   mouse.path = bestRoute.path;
   mouse.pathIndex = 0;
   mouse.escapeCooldown = 2.2;
+  ensurePerformanceManager(engine).promoteActor(mouse, 1);
   if (expansion.dangerSignals.length >= 12) expansion.dangerSignalPool.release(expansion.dangerSignals.shift());
   const signal = expansion.dangerSignalPool.acquire();
   signal.position.copy(mouse.rig.root.position);
@@ -2432,60 +2548,62 @@ function prepareCatLeisure(engine, expansion, delta) {
   }
 }
 
-function applyCatBehaviorAnimation(engine, expansion) {
+function updatePounceWarning(engine) {
   let pounceWarning = 0;
-  for (let catIndex = 0; catIndex < engine.cats.length; catIndex++) {
-    const cat = engine.cats[catIndex];
-    if (!cat.__rigUpdatedThisFrame) {
-      if (cat.pouncePhase === "windup") {
-        const duration = cat.pounceWindupDuration || computePounceWindup(engine.snapshot.night, cat.personality);
-        const progress = clamp(1 - cat.pounceTimer / duration, 0, 1);
-        pounceWarning = Math.max(pounceWarning, progress * progress * (3 - 2 * progress));
-      }
-      continue;
-    }
-    cat.rig.body.rotation.z = 0;
-    cat.rig.root.rotation.z = 0;
+  for (const cat of engine.cats) {
     if (cat.pouncePhase === "windup") {
       const duration = cat.pounceWindupDuration || computePounceWindup(engine.snapshot.night, cat.personality);
       const progress = clamp(1 - cat.pounceTimer / duration, 0, 1);
-      const tension = progress * progress * (3 - 2 * progress);
-      cat.rig.body.position.y -= 0.055 * tension;
-      cat.rig.chest.position.y -= 0.044 * tension;
-      cat.rig.body.rotation.z = Math.sin(engine.time * 35) * 0.055 * tension;
-      cat.rig.headPivot.rotation.x += 0.16 * tension;
-      for (let index = 2; index < cat.rig.legs.length; index++) {
-        cat.rig.legs[index].rotation.x += Math.sin(engine.time * 31 + (index - 2) * Math.PI) * 0.13 * tension;
-      }
-      cat.rig.tail[0] && (cat.rig.tail[0].rotation.y += Math.sin(engine.time * 32) * 0.08 * tension);
-      for (let index = 0; index < cat.rig.eyes.length; index++) {
-        const eye = cat.rig.eyes[index];
-        if (eye.material) eye.material.emissiveIntensity = Math.max(eye.material.emissiveIntensity, 0.8 + tension * 0.75);
-      }
-      pounceWarning = Math.max(pounceWarning, tension);
-    } else if (cat.leisureMode === "grooming" && cat.state !== "chase") {
-      cat.rig.body.position.y -= 0.035;
-      cat.rig.chest.position.y -= 0.02;
-      cat.rig.headPivot.rotation.x += 0.42 + Math.sin(engine.time * 3.4) * 0.12;
-      cat.rig.headPivot.rotation.y += 0.46;
-      if (cat.rig.legs[0]) cat.rig.legs[0].rotation.x = -1.05 + Math.sin(engine.time * 4.8) * 0.28;
-    } else if (["watching", "cover-watch"].includes(cat.leisureMode)) {
-      cat.rig.body.position.y -= 0.025;
-      cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.62) * 0.34;
-      cat.rig.headPivot.rotation.x += 0.08;
-    } else if (cat.leisureMode === "tunnel-stalk" && cat.state !== "chase") {
-      const pawCycle = Math.max(0, Math.sin(engine.time * 4.6));
-      cat.rig.body.position.y -= 0.045;
-      cat.rig.chest.position.y -= 0.028;
-      cat.rig.headPivot.rotation.x += 0.28 + Math.sin(engine.time * 1.8) * 0.055;
-      cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.72) * 0.08;
-      if (cat.rig.legs[0]) cat.rig.legs[0].rotation.x = -0.52 - pawCycle * 0.58;
-    } else if (cat.leisureMode === "inspecting") {
-      cat.rig.headPivot.rotation.x += 0.22;
+      pounceWarning = Math.max(pounceWarning, progress * progress * (3 - 2 * progress));
     }
   }
   engine.snapshot.pounceWarning = pounceWarning;
 }
+
+function applyCatBehaviorAnimation(engine, cat) {
+  cat.rig.body.rotation.z = 0;
+  cat.rig.root.rotation.z = 0;
+  if (cat.pouncePhase === "windup") {
+    const duration = cat.pounceWindupDuration || computePounceWindup(engine.snapshot.night, cat.personality);
+    const progress = clamp(1 - cat.pounceTimer / duration, 0, 1);
+    const tension = progress * progress * (3 - 2 * progress);
+    cat.rig.body.position.y -= 0.055 * tension;
+    cat.rig.chest.position.y -= 0.044 * tension;
+    cat.rig.body.rotation.z = Math.sin(engine.time * 35) * 0.055 * tension;
+    cat.rig.headPivot.rotation.x += 0.16 * tension;
+    for (let index = 2; index < cat.rig.legs.length; index++) {
+      cat.rig.legs[index].rotation.x += Math.sin(engine.time * 31 + (index - 2) * Math.PI) * 0.13 * tension;
+    }
+    cat.rig.tail[0] && (cat.rig.tail[0].rotation.y += Math.sin(engine.time * 32) * 0.08 * tension);
+    for (let index = 0; index < cat.rig.eyes.length; index++) {
+      const eye = cat.rig.eyes[index];
+      if (eye.material) eye.material.emissiveIntensity = Math.max(eye.material.emissiveIntensity, 0.8 + tension * 0.75);
+    }
+  } else if (cat.leisureMode === "grooming" && cat.state !== "chase") {
+    cat.rig.body.position.y -= 0.035;
+    cat.rig.chest.position.y -= 0.02;
+    cat.rig.headPivot.rotation.x += 0.42 + Math.sin(engine.time * 3.4) * 0.12;
+    cat.rig.headPivot.rotation.y += 0.46;
+    if (cat.rig.legs[0]) cat.rig.legs[0].rotation.x = -1.05 + Math.sin(engine.time * 4.8) * 0.28;
+  } else if (["watching", "cover-watch"].includes(cat.leisureMode)) {
+    cat.rig.body.position.y -= 0.025;
+    cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.62) * 0.34;
+    cat.rig.headPivot.rotation.x += 0.08;
+  } else if (cat.leisureMode === "tunnel-stalk" && cat.state !== "chase") {
+    const pawCycle = Math.max(0, Math.sin(engine.time * 4.6));
+    cat.rig.body.position.y -= 0.045;
+    cat.rig.chest.position.y -= 0.028;
+    cat.rig.headPivot.rotation.x += 0.28 + Math.sin(engine.time * 1.8) * 0.055;
+    cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.72) * 0.08;
+    if (cat.rig.legs[0]) cat.rig.legs[0].rotation.x = -0.52 - pawCycle * 0.58;
+  } else if (cat.leisureMode === "inspecting") {
+    cat.rig.headPivot.rotation.x += 0.22;
+  }
+}
+
+registerCharacterVisualStage("cat-behavior-animation", (actor, context) => {
+  if (context.kind === "cat") applyCatBehaviorAnimation(context.engine, actor);
+}, 5);
 
 function emitExpandedNoise(engine, expansion, position, rawStrength) {
   const event = expansion.currentPlan?.event;
@@ -2508,6 +2626,7 @@ function emitExpandedNoise(engine, expansion, position, rawStrength) {
     cat.awareness = Math.max(cat.awareness, Math.min(0.34, strength * 0.17));
     cat.leisureMode = null;
     cat.leisureTimer = 0;
+    ensurePerformanceManager(engine).promoteActor(cat, 0.75);
     if (cat.state === "relaxed" || cat.state === "cooldown") engine.setCatState(cat, "alert", cat.personality === "kitten" ? 0.28 : 0.52);
     else if (cat.state === "suspicious") cat.stateTimer = Math.max(cat.stateTimer, 2.6);
   }

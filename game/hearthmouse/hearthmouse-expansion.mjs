@@ -5,6 +5,7 @@ import "./hearthmouse-expansion-startup-guard.mjs";
 import "./hearthmouse-desktop-look-guard.mjs";
 import { catCountForPopulation, ensureCatVisionResult } from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-expansion-core.mjs";
+export * from "./hearthmouse-performance-manager.mjs";
 
 // The core module remains split out so this small compatibility layer can hotfix
 // live engine behavior without rebundling the large generated game file.

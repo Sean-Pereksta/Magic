@@ -1,4 +1,5 @@
 import "./hearthmouse-character-models-base.mjs";
+import { registerCharacterVisualStage } from "./hearthmouse-performance-manager.mjs";
 export * from "./hearthmouse-character-models-base.mjs";
 
 const CAT_TAIL_NODE_INDICES = Object.freeze([8, 7, 6]);
@@ -43,9 +44,6 @@ const CAT_COAT_COLORS = Object.freeze({
 });
 const MOUSE_FEATURE_MATERIAL_PATTERN = /eye|iris|pupil|nose|snout|mouth|teeth|tooth|whisker|claw|nail|ear\s*inner/i;
 const CAT_FEATURE_MATERIAL_PATTERN = /eye|iris|pupil|nose|mouth|teeth|tooth|whisker|claw|nail|ear\s*inner/i;
-
-let raf = 0;
-let lastTime = 0;
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothstep = (value) => {
@@ -484,28 +482,7 @@ function polishController(controller, delta, time) {
   if (!grooming && (cat?.speed ?? 0) > 0.04) applyCatTail(controller, time, cat.speed, cat.state === "chase" ? 1.75 : 1);
 }
 
-function frame(timestamp) {
-  const delta = lastTime ? Math.min(0.05, Math.max(0, (timestamp - lastTime) / 1000)) : 1 / 60;
-  lastTime = timestamp;
-  const engine = window.hearthmouseEngine;
-  if (engine && !engine.disposed) {
-    for (const mouse of engine.mice ?? []) {
-      const controller = mouse?.rig?.root?.userData?.__hearthmouseGlbController;
-      if (controller) polishController(controller, delta, timestamp / 1000);
-    }
-    for (const cat of engine.cats ?? []) {
-      const controller = cat?.rig?.root?.userData?.__hearthmouseGlbController;
-      if (controller) polishController(controller, delta, timestamp / 1000);
-    }
-  }
-  raf = window.requestAnimationFrame(frame);
-}
-
-if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-  raf = window.requestAnimationFrame(frame);
-  window.addEventListener("beforeunload", () => {
-    if (raf) window.cancelAnimationFrame(raf);
-    raf = 0;
-    lastTime = 0;
-  }, { once: true });
-}
+registerCharacterVisualStage("procedural-character-polish", (actor, context) => {
+  const controller = actor?.rig?.root?.userData?.__hearthmouseGlbController;
+  if (controller) polishController(controller, context.delta, context.time);
+}, 20);

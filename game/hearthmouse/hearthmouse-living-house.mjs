@@ -7,6 +7,7 @@ import {
   isCirculationPlacementSafe,
   roomForPoint,
 } from "./hearthmouse-circulation-layout.mjs";
+import { ensurePerformanceManager } from "./hearthmouse-performance-manager.mjs";
 
 export const PLAYER_TRAP_DURATION_SECONDS = 5;
 
@@ -252,6 +253,9 @@ function ensureLivingState(engine, I) {
     baselineFogDensity: engine.scene?.fog?.density,
     catnipCatId: null,
     basePlanMousePath: null,
+    routeCandidates: [],
+    trapCandidates: [],
+    vacuumCandidates: [],
   };
   engine.__livingHouse = state;
   return state;
@@ -922,6 +926,7 @@ function triggerTrap(engine, state, trap, mouse = null) {
     mouse.task = "hiding";
     mouse.hideTimer = 1.8;
     mouse.escapeCooldown = 1.2;
+    ensurePerformanceManager(engine).promoteActor(mouse, 1.8);
     if (planarDistance(mouse.rig.root.position, engine.playerPosition) < 2.2) engine.showMessage?.(`${mouse.member?.name ?? "A scout"} found a trap.`, 1.6);
   } else {
     const startedAt = engine.time ?? 0;
@@ -1166,6 +1171,7 @@ function beginTunnelTransit(engine, state, route, source, target, position, acto
     mouse.__tunnelTransit = transit;
     if (mouse.rig?.root) mouse.rig.root.visible = false;
     mouse.task = "tunneling";
+    ensurePerformanceManager(engine).promoteActor(mouse, duration + 0.45);
     mouse.escapeCooldown = Math.max(mouse.escapeCooldown ?? 0, duration + 0.35);
     state.mouseTunnelTransits.set(actorId, transit);
   } else {
@@ -1190,6 +1196,7 @@ function finishTunnelTransit(engine, state, transit) {
     mouse.task = transit.previousTask === "tunneling" ? (mouse.resumeTask ?? "waiting") : (transit.previousTask ?? "waiting");
     mouse.path = [];
     mouse.pathIndex = 0;
+    ensurePerformanceManager(engine).promoteActor(mouse, 0.8);
     if (mouse.member?.alive && ["escaping", "to-food", "returning", "home", "nesting-move"].includes(mouse.task)) {
       engine.planMousePath?.(mouse);
     }
@@ -1245,7 +1252,13 @@ function updateSecretRoutes(engine, state) {
       if (!state.playerTunnelTransit && playerSpeed > 0.035 && planarDistance(engine.playerPosition, source) < TUNNEL_ENTRY_RADIUS) {
         beginTunnelTransit(engine, state, route, source, target, engine.playerPosition, PLAYER_TARGET_ID);
       }
-      for (const mouse of engine.mice ?? []) {
+      const nearbyMice = engine.__expansion?.spatial?.mice?.queryRadius(
+        source.x,
+        source.z,
+        TUNNEL_ENTRY_RADIUS + 0.04,
+        state.routeCandidates,
+      ) ?? engine.mice ?? [];
+      for (const mouse of nearbyMice) {
         if (!mouse?.member?.id || !mouse?.member?.alive || !mouse?.rig?.root?.position || mouse.task === "dead" || mouse.task === "tunneling") continue;
         const actorId = `mouse:${mouse.member.id}`;
         const plannedEntry = mouse.__secretRoutePlan?.routeId === route.id && mouse.__secretRoutePlan?.sourceId === source.id;
@@ -1263,7 +1276,13 @@ function scanMiceForTraps(engine, state, I, delta) {
   state.scanClock = 0.22;
   for (const trap of state.traps) {
     if (trap.triggered || trap.known) continue;
-    for (const mouse of engine.mice ?? []) {
+    const nearbyMice = engine.__expansion?.spatial?.mice?.queryRadius(
+      trap.anchor.x,
+      trap.anchor.z,
+      1.15,
+      state.trapCandidates,
+    ) ?? engine.mice ?? [];
+    for (const mouse of nearbyMice) {
       if (!mouse.member?.alive || planarDistance(mouse.rig?.root?.position, trap.anchor) > 1.15) continue;
       const target = new I.Vector3(trap.anchor.x, mouse.rig.root.position.y, trap.anchor.z);
       if (!I.lineClear(mouse.rig.root.position, target, 0.055, engine.world.colliders, "mouse")) continue;
@@ -1295,7 +1314,13 @@ function updateVacuum(engine, state, delta) {
   if (state.noiseClock <= 0) {
     state.noiseClock = 0.64;
     engine.emitNoise?.(vacuum.root.position, 1.7);
-    for (const mouse of engine.mice ?? []) {
+    const nearbyMice = engine.__expansion?.spatial?.mice?.queryRadius(
+      vacuum.root.position.x,
+      vacuum.root.position.z,
+      1.05,
+      state.vacuumCandidates,
+    ) ?? engine.mice ?? [];
+    for (const mouse of nearbyMice) {
       if (!mouse.member?.alive || planarDistance(mouse.rig?.root?.position, vacuum.root.position) > 1.05) continue;
       mouse.path = [];
       mouse.pathIndex = 0;
