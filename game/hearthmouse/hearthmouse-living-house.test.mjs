@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { NIGHT_EVENTS } from "./hearthmouse-expansion-core.mjs";
+import { SECRET_ROUTES } from "./hearthmouse-circulation-layout.mjs";
 import {
   PLAYER_TRAP_DURATION_SECONDS,
   activeTrapCountForNight,
@@ -9,9 +10,48 @@ import {
   selectTrapAnchors,
   shouldRiskKnownTrap,
   territoryRoomsFor,
+  tunnelStalkPlan,
+  tunnelTransitPoint,
+  tunnelTransitProgress,
+  tunnelTraversalDuration,
   trapAvoidanceRadius,
   trapDetourCandidates,
 } from "./hearthmouse-living-house.mjs";
+
+test("mouse tunnels cover the requested house routes and remain mouse-only", () => {
+  const ids = new Set(SECRET_ROUTES.map((route) => route.id));
+  for (const id of [
+    "kitchen-pantry-run",
+    "bedroom-closet-run",
+    "dining-hallway-run",
+    "refrigerator-utility-run",
+    "bathtub-wall-run",
+    "couch-burrow",
+  ]) assert.ok(ids.has(id), id);
+  assert.ok(SECRET_ROUTES.every((route) => route.mouseOnly && tunnelTraversalDuration(route) >= 0.65));
+});
+
+test("tunnel travel is continuous and takes time instead of relocating instantly", () => {
+  const source = { x: 0, z: 0, normalX: 0, normalZ: 1 };
+  const target = { x: 4, z: 3, normalX: -1, normalZ: 0 };
+  assert.equal(tunnelTransitProgress(10, 10, 1), 0);
+  assert.equal(tunnelTransitProgress(10, 10.5, 1), 0.5);
+  assert.equal(tunnelTransitProgress(10, 11, 1), 1);
+  assert.deepEqual(tunnelTransitPoint(source, target, 0), { x: 0, z: 0 });
+  const middle = tunnelTransitPoint(source, target, 0.5);
+  assert.ok(middle.x > 0 && middle.x < 4);
+  assert.ok(middle.z > -0.22 && middle.z < 3);
+  assert.deepEqual(tunnelTransitPoint(source, target, 1), { x: 3.76, z: 3 });
+});
+
+test("exit stalking has bounded patience and at most one optional exit switch", () => {
+  const first = tunnelStalkPlan("mabel", "couch-burrow", 12);
+  const second = tunnelStalkPlan("mabel", "couch-burrow", 12);
+  assert.deepEqual(first, second);
+  assert.ok(first.patience >= 4.8 && first.patience <= 7.5);
+  assert.ok(first.switchAfter > 0 && first.switchAfter < first.patience);
+  assert.equal(typeof first.willSwitch, "boolean");
+});
 
 test("trap population grows by night and trap night raises it sharply", () => {
   assert.equal(activeTrapCountForNight(1), 0);
@@ -63,7 +103,10 @@ test("major living-house events cover lighting, guests, vacuum, dog, catnip, win
   assert.ok(NIGHT_EVENTS.find((event) => event.id === "power-outage").soundSensitivity > 1);
   const source = fs.readFileSync(new URL("./hearthmouse-living-house.mjs", import.meta.url), "utf8");
   assert.match(source, /discoveredRoutes/);
-  assert.match(source, /catsInvestigateDisappearance/);
+  assert.match(source, /assignTunnelExitStalk/);
+  assert.match(source, /beginTunnelTransit/);
+  assert.match(source, /tunnelOccludedTargetVisibility/);
+  assert.match(source, /mouse-hole-/);
   assert.match(source, /engine\.emitNoise\?\.\(position, 2\.5\)/);
   assert.match(source, /releaseBlockedKeys/);
   assert.match(source, /applyKnownTrapDetours/);

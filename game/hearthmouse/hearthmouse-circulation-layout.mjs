@@ -145,27 +145,56 @@ export const TRAVEL_LANES = freeze([
   lane("garage-main-aisle", "garage", 19.35, 24.2, 4.58, 6.08),
 ]);
 
-const routeEntrance = (id, roomId, x, z, w = 0.72, d = 0.72) => freeze({ id, roomId, x, z, w, d });
+const routeEntrance = (id, roomId, x, z, w = 0.72, d = 0.72, extra = {}) => freeze({
+  id,
+  roomId,
+  x,
+  z,
+  w,
+  d,
+  axis: extra.axis ?? "x",
+  normalX: extra.normalX ?? 0,
+  normalZ: extra.normalZ ?? 1,
+  style: extra.style ?? "baseboard",
+});
 
 export const SECRET_ROUTE_ENTRANCES = freeze([
-  routeEntrance("study-hall-west", "study", -5.03, -9, 0.72, 0.86),
-  routeEntrance("study-hall-east", "hallway", -4.72, -9, 0.72, 0.86),
-  routeEntrance("bath-bedroom-west", "bathroom", -1.48, -13, 0.78, 0.72),
-  routeEntrance("bath-bedroom-east", "bedroom", -1.12, -13, 0.78, 0.72),
-  routeEntrance("children-bath-west", "children", -5.18, -14.25, 0.78, 0.72),
-  routeEntrance("children-bath-east", "bathroom", -4.53, -14.25, 0.78, 0.72),
-  routeEntrance("pantry-cellar-west", "pantry", 7.02, -10.55, 0.72, 0.78),
-  routeEntrance("pantry-cellar-east", "basement-access", 7.38, -10.55, 0.72, 0.78),
-  routeEntrance("garage-utility-west", "utility", 18.62, 2.55, 0.72, 0.78),
-  routeEntrance("garage-utility-east", "garage", 18.98, 2.55, 0.72, 0.78),
+  routeEntrance("study-hall-west", "study", -5.03, -9, 0.72, 0.86, { axis: "x", normalX: -1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("study-hall-east", "hallway", -4.72, -9, 0.72, 0.86, { axis: "x", normalX: 1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("bath-bedroom-west", "bathroom", -1.48, -13, 0.78, 0.72, { axis: "x", normalX: -1, normalZ: 0, style: "pipe" }),
+  routeEntrance("bath-bedroom-east", "bedroom", -1.12, -13, 0.78, 0.72, { axis: "x", normalX: 1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("children-bath-west", "children", -5.18, -14.25, 0.78, 0.72, { axis: "x", normalX: -1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("children-bath-east", "bathroom", -4.53, -14.25, 0.78, 0.72, { axis: "x", normalX: 1, normalZ: 0, style: "pipe" }),
+  routeEntrance("pantry-cellar-west", "pantry", 7.02, -10.55, 0.72, 0.78, { axis: "x", normalX: -1, normalZ: 0, style: "cabinet" }),
+  routeEntrance("pantry-cellar-east", "basement-access", 7.38, -10.55, 0.72, 0.78, { axis: "x", normalX: 1, normalZ: 0, style: "vent" }),
+  routeEntrance("garage-utility-west", "utility", 18.62, 2.55, 0.72, 0.78, { axis: "x", normalX: -1, normalZ: 0, style: "vent" }),
+  routeEntrance("garage-utility-east", "garage", 18.98, 2.55, 0.72, 0.78, { axis: "x", normalX: 1, normalZ: 0, style: "vent" }),
+  routeEntrance("kitchen-wall-hole", "kitchen", 5.75, -6.18, 0.42, 0.42, { axis: "z", normalX: 0, normalZ: 1, style: "baseboard" }),
+  routeEntrance("pantry-wall-hole", "pantry", 5.75, -6.58, 0.42, 0.42, { axis: "z", normalX: 0, normalZ: -1, style: "cabinet" }),
+  routeEntrance("bedroom-baseboard-hole", "bedroom", 1.86, -13.05, 0.42, 0.42, { axis: "x", normalX: -1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("bedroom-closet-gap", "bedroom", 1.86, -15.15, 0.42, 0.42, { axis: "x", normalX: -1, normalZ: 0, style: "closet" }),
+  routeEntrance("dining-sideboard-hole", "dining", 5.72, 9.38, 0.42, 0.42, { axis: "x", normalX: -1, normalZ: 0, style: "cabinet" }),
+  routeEntrance("hall-console-hole", "hallway", -3.85, -8.12, 0.42, 0.42, { axis: "x", normalX: 1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("refrigerator-gap", "kitchen", 7.28, 3.65, 0.42, 0.42, { axis: "x", normalX: 1, normalZ: 0, style: "appliance" }),
+  routeEntrance("utility-vent-hole", "utility", 15.28, 5.25, 0.42, 0.42, { axis: "x", normalX: 1, normalZ: 0, style: "vent" }),
+  routeEntrance("bathtub-gap", "bathroom", -1.9, -13.46, 0.42, 0.42, { axis: "z", normalX: 0, normalZ: 1, style: "pipe" }),
+  routeEntrance("bathroom-wall-hole", "bathroom", -4.43, -14.55, 0.42, 0.42, { axis: "x", normalX: 1, normalZ: 0, style: "baseboard" }),
+  routeEntrance("couch-left-hole", "living", -5.18, 3.53, 0.42, 0.42, { axis: "x", normalX: 1, normalZ: 0, style: "furniture" }),
+  routeEntrance("couch-right-hole", "living", -2.25, 3.53, 0.42, 0.42, { axis: "x", normalX: -1, normalZ: 0, style: "furniture" }),
 ]);
 
 export const SECRET_ROUTES = freeze([
-  freeze({ id: "study-wall-gap", a: "study-hall-west", b: "study-hall-east", discoveryNight: 6, noise: 0.08, speed: 1 }),
-  freeze({ id: "bathroom-pipe-gap", a: "bath-bedroom-west", b: "bath-bedroom-east", discoveryNight: 7, noise: 0.12, speed: 0.88 }),
-  freeze({ id: "toy-baseboard-hole", a: "children-bath-west", b: "children-bath-east", discoveryNight: 8, noise: 0.34, speed: 0.82 }),
-  freeze({ id: "pantry-cellar-chute", a: "pantry-cellar-west", b: "pantry-cellar-east", discoveryNight: 10, noise: 0.45, speed: 0.76, oneWay: false }),
-  freeze({ id: "garage-utility-vent", a: "garage-utility-west", b: "garage-utility-east", discoveryNight: 11, noise: 0.6, speed: 0.72 }),
+  freeze({ id: "couch-burrow", label: "couch burrow", a: "couch-left-hole", b: "couch-right-hole", discoveryNight: 1, noise: 0.05, speed: 1, duration: 0.86, mouseOnly: true }),
+  freeze({ id: "kitchen-pantry-run", label: "kitchen-pantry tunnel", a: "kitchen-wall-hole", b: "pantry-wall-hole", discoveryNight: 4, noise: 0.08, speed: 1, duration: 0.92, mouseOnly: true }),
+  freeze({ id: "dining-hallway-run", label: "sideboard passage", a: "dining-sideboard-hole", b: "hall-console-hole", discoveryNight: 5, noise: 0.1, speed: 0.9, duration: 1.18, mouseOnly: true }),
+  freeze({ id: "bathtub-wall-run", label: "bathtub pipe run", a: "bathtub-gap", b: "bathroom-wall-hole", discoveryNight: 6, noise: 0.08, speed: 0.92, duration: 0.96, mouseOnly: true }),
+  freeze({ id: "study-wall-gap", label: "study wall gap", a: "study-hall-west", b: "study-hall-east", discoveryNight: 6, noise: 0.08, speed: 1, duration: 0.82, mouseOnly: true }),
+  freeze({ id: "bedroom-closet-run", label: "bedroom closet tunnel", a: "bedroom-baseboard-hole", b: "bedroom-closet-gap", discoveryNight: 7, noise: 0.06, speed: 0.94, duration: 0.94, mouseOnly: true }),
+  freeze({ id: "bathroom-pipe-gap", label: "bathroom pipe gap", a: "bath-bedroom-west", b: "bath-bedroom-east", discoveryNight: 7, noise: 0.12, speed: 0.88, duration: 0.92, mouseOnly: true }),
+  freeze({ id: "refrigerator-utility-run", label: "refrigerator utility tunnel", a: "refrigerator-gap", b: "utility-vent-hole", discoveryNight: 8, noise: 0.16, speed: 0.84, duration: 1.14, mouseOnly: true }),
+  freeze({ id: "toy-baseboard-hole", label: "toy-room baseboard tunnel", a: "children-bath-west", b: "children-bath-east", discoveryNight: 8, noise: 0.34, speed: 0.82, duration: 1.02, mouseOnly: true }),
+  freeze({ id: "pantry-cellar-chute", label: "pantry cellar chute", a: "pantry-cellar-west", b: "pantry-cellar-east", discoveryNight: 10, noise: 0.45, speed: 0.76, duration: 1.24, mouseOnly: true, oneWay: false }),
+  freeze({ id: "garage-utility-vent", label: "garage utility vent", a: "garage-utility-west", b: "garage-utility-east", discoveryNight: 11, noise: 0.6, speed: 0.72, duration: 1.3, mouseOnly: true }),
 ]);
 
 const anchor = (id, roomId, x, z, type, minNight, weight = 1) => freeze({ id, roomId, x, z, type, minNight, weight, w: 0.34, d: 0.3 });

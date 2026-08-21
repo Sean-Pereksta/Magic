@@ -11,6 +11,7 @@ import {
   activeForagerLimit,
   catCountForPopulation,
   computePounceWindup,
+  ensureCatVisionResult,
   forageTarget,
   initialForagerDelay,
   nextColonyPolicy,
@@ -23,6 +24,30 @@ import {
   shouldRecoverMouse,
   visibilitySampleInterval,
 } from "./hearthmouse-expansion.mjs";
+
+test("cat vision results are initialized once and reused across every lifecycle scan", () => {
+  const cat = {};
+  const lifecycleEvents = [
+    "initial-spawn", "new-night", "room-unlock", "roster-change", "enter-chase",
+    "lose-target", "switch-target", "player-restart", "ally-despawn", "multi-cat-play",
+  ];
+  const first = ensureCatVisionResult(cat);
+  assert.deepEqual(first, { id: null, position: null, moving: 0, visible: 0, distance: Infinity });
+  for (const event of lifecycleEvents) {
+    first.id = event;
+    assert.equal(ensureCatVisionResult(cat), first, event);
+    assert.equal(cat.visionResult.id, event, event);
+  }
+});
+
+test("indexed and locked-chase vision share the initializer and skip rebuilt allied mice", () => {
+  const core = readFileSync(new URL("./hearthmouse-expansion-core.mjs", import.meta.url), "utf8");
+  const compatibility = readFileSync(new URL("./hearthmouse-expansion.mjs", import.meta.url), "utf8");
+  assert.match(core, /function scanIndexedCatVision[\s\S]*?const result = ensureCatVisionResult\(cat\)/);
+  assert.match(compatibility, /function keepLockedChaseTarget[\s\S]*?const result = ensureCatVisionResult\(cat\)/);
+  assert.match(core, /if \(!mouse\?\.member\?\.id \|\| !mouse\?\.rig\?\.root\?\.position\) continue;/);
+  assert.doesNotMatch(core, /try\s*\{\s*result\.id = targetId/);
+});
 
 test("spatial grids find adjacent-cell actors, deduplicate broad obstacles, and discard stale positions", () => {
   const grid = new SpatialGrid(2);

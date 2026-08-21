@@ -621,7 +621,7 @@ function installEnginePatches(I) {
 
   proto.updateCatPatrol = function expandedPatrol(cat, delta, speedOverride) {
     const expansion = ensureExpansion(this);
-    if (["grooming", "watching", "cover-watch"].includes(cat.leisureMode) && cat.leisureTimer > 0) return 0;
+    if (["grooming", "watching", "cover-watch", "tunnel-stalk"].includes(cat.leisureMode) && cat.leisureTimer > 0) return 0;
     if ((!cat.path.length || cat.pathIndex >= cat.path.length) && this.world.patrolPoints.length) {
       const focus = expansion.currentPlan?.event.catFocus;
       const focused = focus ? expansion.patrolByRoom.get(focus) : null;
@@ -664,7 +664,9 @@ function installEnginePatches(I) {
 
   proto.targetPosition = function indexedTargetPosition(targetId) {
     const mouse = ensureExpansion(this).scratch.mouseById.get(targetId);
-    return mouse?.member.alive ? mouse.rig.root.position : base.targetPosition.call(this, targetId);
+    return mouse?.member?.alive && mouse?.rig?.root?.position
+      ? mouse.rig.root.position
+      : base.targetPosition.call(this, targetId);
   };
 
   proto.setCatState = function expandedCatState(cat, state, duration) {
@@ -791,6 +793,7 @@ function ensureExpansion(engine) {
     nearbyFoodTransforms: [],
   };
   engine.__expansion = expansion;
+  for (let index = 0; index < (engine.cats?.length ?? 0); index++) ensureCatVisionResult(engine.cats[index]);
   buildExpandedHouse(engine, expansion, window.HearthmouseInternals);
   const V = window.HearthmouseInternals.Vector3;
   expansion.isTouchDevice = !!engine.isTouchOnlyDevice?.() || !!window.matchMedia?.("(pointer: coarse)").matches;
@@ -845,7 +848,7 @@ function initializeCat(engine, expansion, cat, index) {
   cat.pounceWindupDuration = computePounceWindup(1, cat.personality);
   cat.pounceCuePlayed = false;
   cat.coverTargetScratch = cat.investigation.clone();
-  cat.visionResult = { id: null, position: null, moving: 0, visible: 0, distance: Infinity };
+  ensureCatVisionResult(cat);
   cat.visibilitySamples = new Map();
   if (!cat.rig.__cosmeticThrottleInstalled) {
     const updateRig = cat.rig.update.bind(cat.rig);
@@ -988,6 +991,7 @@ function rebuildDynamicSpatialIndexes(engine, expansion) {
   expansion.scratch.mouseById.clear();
   for (let index = 0; index < engine.mice.length; index++) {
     const mouse = engine.mice[index];
+    if (!mouse?.member?.id || !mouse?.rig?.root?.position) continue;
     if (mouse.member.alive && mouse.task !== "dead") {
       mice.insert(mouse, mouse.rig.root.position.x, mouse.rig.root.position.z);
       expansion.scratch.mouseById.set(mouse.member.id, mouse);
@@ -1055,6 +1059,16 @@ function compareMouseVisionOrder(a, b) {
   return (a.colonyIndex ?? 0) - (b.colonyIndex ?? 0);
 }
 
+export function ensureCatVisionResult(cat) {
+  return cat.visionResult ?? (cat.visionResult = {
+    id: null,
+    position: null,
+    moving: 0,
+    visible: 0,
+    distance: Infinity,
+  });
+}
+
 function considerVisionTarget(engine, cat, maximumDistance, targetId, position, moving, result, bestPriority) {
   const distance = cat.rig.root.position.distanceTo(position);
   if (distance > maximumDistance) return bestPriority;
@@ -1072,7 +1086,7 @@ function considerVisionTarget(engine, cat, maximumDistance, targetId, position, 
 
 function scanIndexedCatVision(engine, expansion, cat) {
   const maximumDistance = cat.state === "chase" ? 10.4 : 8.7;
-  const result = cat.visionResult;
+  const result = ensureCatVisionResult(cat);
   let bestPriority = -Infinity;
 
   const playerMoving = engine.time - engine.lastPlayerMoving < 0.17
@@ -1099,6 +1113,7 @@ function scanIndexedCatVision(engine, expansion, cat) {
   mice.sort(compareMouseVisionOrder);
   for (let index = 0; index < mice.length; index++) {
     const mouse = mice[index];
+    if (!mouse?.member?.id || !mouse?.rig?.root?.position) continue;
     const moving = mouse.task === "hiding" || mouse.task === "waiting" ? 0 : mouse.speed;
     bestPriority = considerVisionTarget(
       engine,
@@ -2458,6 +2473,13 @@ function applyCatBehaviorAnimation(engine, expansion) {
       cat.rig.body.position.y -= 0.025;
       cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.62) * 0.34;
       cat.rig.headPivot.rotation.x += 0.08;
+    } else if (cat.leisureMode === "tunnel-stalk" && cat.state !== "chase") {
+      const pawCycle = Math.max(0, Math.sin(engine.time * 4.6));
+      cat.rig.body.position.y -= 0.045;
+      cat.rig.chest.position.y -= 0.028;
+      cat.rig.headPivot.rotation.x += 0.28 + Math.sin(engine.time * 1.8) * 0.055;
+      cat.rig.headPivot.rotation.y += Math.sin(engine.time * 0.72) * 0.08;
+      if (cat.rig.legs[0]) cat.rig.legs[0].rotation.x = -0.52 - pawCycle * 0.58;
     } else if (cat.leisureMode === "inspecting") {
       cat.rig.headPivot.rotation.x += 0.22;
     }

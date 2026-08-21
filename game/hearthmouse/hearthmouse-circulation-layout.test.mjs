@@ -6,6 +6,7 @@ import {
   ROOM_LAYOUTS,
   SAFE_DECOR_REGIONS,
   SECRET_ROUTE_ENTRANCES,
+  SECRET_ROUTES,
   TRAP_ANCHORS,
   TRAVEL_LANES,
   doorwayProtectedBounds,
@@ -52,7 +53,12 @@ test("traps cannot overlap doorways, stairs, lanes, or secret entrances", () => 
     const failures = validateCirculationPlacement(trap, { padding: 0.1 });
     assert.equal(failures.length, 0, `${trap.id}: ${JSON.stringify(failures)}`);
   }
-  assert.equal(SECRET_ROUTE_ENTRANCES.length, 10);
+  assert.equal(SECRET_ROUTE_ENTRANCES.length, 22);
+  assert.equal(SECRET_ROUTES.length, 11);
+  for (const entrance of SECRET_ROUTE_ENTRANCES) {
+    assert.ok(["x", "z"].includes(entrance.axis), entrance.id);
+    assert.ok(Math.hypot(entrance.normalX, entrance.normalZ) > 0.99, entrance.id);
+  }
 });
 
 test("the cat-accessible doorway graph connects every authored room", () => {

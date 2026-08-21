@@ -3,7 +3,7 @@ import "./hearthmouse-controller-reliability.mjs";
 import "./hearthmouse-graphics-quality.mjs";
 import "./hearthmouse-expansion-startup-guard.mjs";
 import "./hearthmouse-desktop-look-guard.mjs";
-import { catCountForPopulation } from "./hearthmouse-expansion-core.mjs";
+import { catCountForPopulation, ensureCatVisionResult } from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-expansion-core.mjs";
 
 // The core module remains split out so this small compatibility layer can hotfix
@@ -371,13 +371,7 @@ function installCatPressureHotfix(I) {
     const visible = this.targetVisibility(cat, cat.targetId, position);
     if (visible <= 0) return null;
 
-    const result = cat.visionResult ?? (cat.visionResult = {
-      id: null,
-      position: null,
-      moving: 0,
-      visible: 0,
-      distance: Infinity,
-    });
+    const result = ensureCatVisionResult(cat);
     let moving = 0;
     if (cat.targetId === "player") {
       moving = this.time - this.lastPlayerMoving < 0.17
