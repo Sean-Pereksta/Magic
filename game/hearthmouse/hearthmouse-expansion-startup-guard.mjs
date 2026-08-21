@@ -1,6 +1,7 @@
 import "./hearthmouse-doorway-baseboard-fix.mjs";
 import "./hearthmouse-room-safety.mjs";
 import "./hearthmouse-character-models.mjs";
+import "./hearthmouse-living-house.mjs";
 
 function createSightState(I) {
   const V = I?.Vector3;

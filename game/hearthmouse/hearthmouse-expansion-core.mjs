@@ -1,3 +1,9 @@
+import {
+  HEARTHMOUSE_ROOM_DEFINITIONS,
+  ROOM_LAYOUT_BY_ID,
+  isCirculationPlacementSafe,
+} from "./hearthmouse-circulation-layout.mjs";
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const spatialCellKey = (cellX, cellZ) => (cellX + 32768) * 65536 + cellZ + 32768;
@@ -297,27 +303,15 @@ export function scoreShelterEscape({
   return pathDistance - catDistance * (0.34 + caution * 0.28) + interceptPenalty + towardCatPenalty - awayFromCatReward + catAccessPenalty;
 }
 
-export const ROOM_DEFINITIONS = Object.freeze([
-  { id: "hallway", name: "Hallway", unlockNight: 2, minX: -4.7, maxX: 2.1, minZ: -11.8, maxZ: -6.38, surface: "carpet", depth: 2, color: 0x6b5a4a },
-  { id: "pantry", name: "Pantry", unlockNight: 4, minX: 2.1, maxX: 7.2, minZ: -11.8, maxZ: -6.38, surface: "paper", depth: 3, color: 0x7d6848 },
-  { id: "dining", name: "Dining Room", unlockNight: 5, minX: 0.4, maxX: 6.8, minZ: 6.38, maxZ: 11.6, surface: "wood", depth: 3, color: 0x6e4937 },
-  { id: "bathroom", name: "Bathroom", unlockNight: 6, minX: -4.7, maxX: -1.3, minZ: -16, maxZ: -11.8, surface: "tile", depth: 4, color: 0x8ba0a0 },
-  { id: "bedroom", name: "Bedroom", unlockNight: 7, minX: -1.3, maxX: 2.1, minZ: -16, maxZ: -11.8, surface: "carpet", depth: 4, color: 0x735a67 },
-  { id: "children", name: "Children's Room", unlockNight: 8, minX: -10.38, maxX: -5.02, minZ: -15.6, maxZ: -10.68, surface: "carpet", depth: 5, color: 0x76654b },
-  { id: "utility", name: "Utility Closet", unlockNight: 8, minX: 15, maxX: 18.8, minZ: 1.84, maxZ: 6.26, surface: "metal", depth: 5, color: 0x646d70 },
-  { id: "mudroom", name: "Mudroom", unlockNight: 9, minX: 0.4, maxX: 6.8, minZ: 11.6, maxZ: 14.2, surface: "tile", depth: 5, color: 0x665f52 },
-  { id: "basement-access", name: "Basement Access", unlockNight: 10, minX: 7.2, maxX: 12.4, minZ: -11.8, maxZ: -6.38, surface: "wood", depth: 6, color: 0x52473d },
-  { id: "basement", name: "Basement", unlockNight: 11, minX: 7.2, maxX: 12.4, minZ: -16.8, maxZ: -11.8, surface: "tile", depth: 7, color: 0x3f4648 },
-  { id: "garage", name: "Garage", unlockNight: 11, minX: 18.8, maxX: 24.5, minZ: -0.5, maxZ: 8.5, surface: "metal", depth: 7, color: 0x4a4f52 },
-]);
+export const ROOM_DEFINITIONS = HEARTHMOUSE_ROOM_DEFINITIONS;
 
-const NIGHT_EVENTS = Object.freeze([
+export const NIGHT_EVENTS = Object.freeze([
   { id: "movie-night", name: "Movie Night", description: "Fresh crumbs cover the living-room rug.", minNight: 1, roomWeights: { living: 3.2 }, catFocus: "living" },
   { id: "late-snack", name: "Late Snack", description: "A short trail of crumbs crosses the kitchen doorway.", minNight: 1, roomWeights: { living: 1.3, kitchen: 2.4 }, catFocus: "kitchen" },
   { id: "clean-kitchen", name: "Clean Kitchen", description: "The starting rooms were swept bare. Safer food is scarce.", minNight: 2, removeRooms: ["kitchen"], nearHomeMultiplier: 0.2 },
   { id: "grocery-night", name: "Grocery Night", description: "Paper bags and pantry boxes hide a noisy feast.", minNight: 3, roomWeights: { kitchen: 1.7, pantry: 3.4 }, noisyPaper: true },
   { id: "laundry-night", name: "Laundry Night", description: "The machines periodically mask every hurried pawstep.", minNight: 3, roomWeights: { laundry: 2.4, utility: 2.2 }, maskCycle: "laundry" },
-  { id: "storm-night", name: "Storm Night", description: "Thunder opens brief windows for a reckless dash.", minNight: 1, maskCycle: "storm" },
+  { id: "storm-night", name: "Storm Night", description: "Thunder opens brief windows for a reckless dash.", minNight: 1, maskCycle: "storm", lighting: "storm" },
   { id: "quiet-house", name: "Quiet House", description: "Mabel is listening to every scrape and footfall.", minNight: 2, soundSensitivity: 1.45 },
   { id: "dinner-leftovers", name: "Dinner Leftovers", description: "Rich scraps surround the dining table, and Mabel knows it.", minNight: 5, roomWeights: { dining: 4.2 }, catFocus: "dining" },
   { id: "closed-door", name: "Closed Door", description: "A familiar shortcut is shut; use the longer room-to-room route.", minNight: 4, forceCondition: "closed-shortcut" },
@@ -328,13 +322,22 @@ const NIGHT_EVENTS = Object.freeze([
   { id: "midnight-baking", name: "Midnight Baking", description: "Kitchen scraps are plentiful, but metal trays make every crossing loud.", minNight: 3, roomWeights: { kitchen: 3.1 }, soundSensitivity: 1.1 },
   { id: "toy-trail", name: "Toy Trail", description: "A trail of crackers leads toward the children's room.", minNight: 8, roomWeights: { children: 4 }, extraSet: "toy-trail" },
   { id: "garage-windfall", name: "Garage Windfall", description: "A torn sack waits beyond the mudroom, deep in Mabel's range.", minNight: 11, roomWeights: { garage: 4.5 }, extraSet: "garage-windfall", catFocus: "garage" },
+  { id: "power-outage", name: "Power Outage", description: "Most lights are dead. Every room is read by sound and silhouette.", minNight: 4, lighting: "outage", soundSensitivity: 1.18, major: true },
+  { id: "guests", name: "Guests", description: "Shoes, bags, and fresh crumbs have changed familiar edges of the house.", minNight: 3, extraSet: "guest-crumbs", eventProps: "guests", major: true },
+  { id: "vacuum-night", name: "Vacuum Night", description: "A roaring vacuum crosses the main rooms and overwhelms quieter sounds.", minNight: 5, maskCycle: "vacuum", vacuum: true, major: true },
+  { id: "dog-visiting", name: "Dog Visiting", description: "A loud visitor roams the open rooms, following noise instead of stalking.", minNight: 6, dog: true, major: true },
+  { id: "lights-left-on", name: "Lights Left On", description: "The hallway and dining room are bright, exposed, and easy for cats to watch.", minNight: 4, lighting: "bright", brightRooms: ["hallway", "dining"], major: true },
+  { id: "dropped-grocery-bag", name: "Dropped Grocery Bag", description: "A dangerous pantry bag holds enough food for a full expedition.", minNight: 4, roomWeights: { pantry: 5.5 }, extraSet: "grocery-bag-feast", eventProps: "grocery-bag", trapBonus: 1, catFocus: "pantry", major: true },
+  { id: "catnip", name: "Catnip", description: "One cat is energetic, playful, and much less faithful to its normal territory.", minNight: 5, catnip: true, major: true },
+  { id: "open-window", name: "Open Window", description: "Outdoor noise pours through a temporary mouse-sized route.", minNight: 7, openWindow: true, soundSensitivity: 0.9, major: true },
+  { id: "mouse-trap-night", name: "Mouse Trap Night", description: "Humans have set more subtle traps near the richest food.", minNight: 4, trapMultiplier: 2.4, major: true },
 ]);
 
 const ROOM_CONDITIONS = Object.freeze([
-  { id: "chair-shifted", label: "A dining chair blocks the direct line.", minNight: 2, prop: "moved-chair" },
+  { id: "chair-shifted", label: "A dining chair creates new cover beside the main route.", minNight: 2, prop: "moved-chair" },
   { id: "box-added", label: "A cardboard box creates fresh mouse cover.", minNight: 2, prop: "cardboard-cover" },
   { id: "grocery-bag", label: "A crackling grocery bag sits near the pantry route.", minNight: 3, prop: "grocery-bag" },
-  { id: "basket-shifted", label: "The laundry basket moved into the corridor.", minNight: 3, prop: "laundry-basket" },
+  { id: "basket-shifted", label: "The laundry basket moved beside the machinery lane.", minNight: 3, prop: "laundry-basket" },
   { id: "blanket-dropped", label: "A dropped blanket protects a once-open crossing.", minNight: 2, prop: "blanket-cover" },
   { id: "passage-exposed", label: "A mouse-sized passage has opened behind the study.", minNight: 6, prop: "passage-open" },
   { id: "closed-shortcut", label: "The hall shortcut is closed tonight.", minNight: 4, prop: "closed-shortcut" },
@@ -1427,12 +1430,23 @@ function buildExpandedHouse(engine, expansion, I) {
   addDoor("garage-door", "garage", 11, 18.75, 4, 0.16, 1.1);
 
   const addCover = (id, roomId, x, z, color = 0x4b392d) => {
+    const placement = { name: id, room: roomId, x, z, w: 1.15, d: 0.78 };
+    if (!isCirculationPlacementSafe(placement)) {
+      console.warn(`Hearthmouse skipped unsafe cover ${id}`);
+      return false;
+    }
     addBox({ name: `${id}-roof`, x, y: 0.17, z, w: 1.15, h: 0.12, d: 0.78, color, collide: true, catOnly: true });
     addBox({ name: `${id}-back`, x, y: 0.1, z: z - 0.35, w: 1.15, h: 0.2, d: 0.08, color, collide: true });
     world.shelterPoints.push({ id, roomId, catProof: true, position: new I.Vector3(x, 0.025, z + 0.08), unlockNight: ROOM_DEFINITIONS.find((room) => room.id === roomId)?.unlockNight ?? 1 });
+    return true;
   };
 
   const addFurniture = (name, roomId, x, z, w, d, color) => {
+    const placement = { name, room: roomId, x, z, w, d };
+    if (!isCirculationPlacementSafe(placement)) {
+      console.warn(`Hearthmouse skipped unsafe furniture ${name}`);
+      return false;
+    }
     addBox({ name: `${name}-top`, x, y: 0.68, z, w, h: 0.12, d, color, collide: true, catOnly: true });
     for (const sideX of [-1, 1]) for (const sideZ of [-1, 1]) {
       addBox({
@@ -1448,39 +1462,54 @@ function buildExpandedHouse(engine, expansion, I) {
       });
     }
     addCover(`${name}-gap`, roomId, x, z, color);
+    return true;
   };
 
   addFurniture("hall-console", "hallway", -3.85, -8.1, 1.15, 0.5, 0x4b3528);
-  addFurniture("pantry-shelves", "pantry", 6.45, -9.1, 0.65, 3.2, 0x5d4028);
+  addFurniture("pantry-cabinet", "pantry", 6.65, -7.15, 0.7, 0.65, 0x5d4028);
   addFurniture("dining-sideboard", "dining", 5.9, 9.6, 1.25, 0.65, 0x4e3024);
-  addFurniture("bath-vanity", "bathroom", -4.05, -14.7, 0.75, 1.45, 0x73888a);
-  addFurniture("bedroom-bed", "bedroom", 1.2, -14.2, 1.25, 2.5, 0x5d4657);
+  addFurniture("bath-vanity", "bathroom", -1.62, -12.18, 0.5, 0.55, 0x73888a);
+  addFurniture("bedroom-bed", "bedroom", 1.42, -14.2, 1.25, 2.5, 0x5d4657);
   addFurniture("toy-chest", "children", -9.35, -13.9, 1.35, 0.75, 0x755534);
-  addFurniture("utility-shelf", "utility", 17.75, 4.9, 0.65, 1.8, 0x586063);
+  addFurniture("utility-shelf", "utility", 17.65, 5.62, 1.5, 0.55, 0x586063);
   addFurniture("mudroom-bench", "mudroom", 5.75, 12.8, 1.45, 0.62, 0x544538);
   addFurniture("stairs-cabinet", "basement-access", 11.45, -9.4, 0.65, 2.4, 0x40362e);
   addFurniture("basement-crates", "basement", 8.3, -15.2, 1.35, 1.2, 0x51402e);
-  addFurniture("garage-workbench", "garage", 23.4, 6.7, 1.45, 2.1, 0x45494a);
+  addFurniture("garage-workbench", "garage", 23.75, 6.9, 1.2, 1.3, 0x45494a);
 
-  addBox({ name: "garage-car", x: 21.5, y: 0.55, z: 2.15, w: 2.1, h: 1.1, d: 4.1, color: 0x303a41, collide: true });
-  addCover("garage-under-car", "garage", 21.5, 4.45, 0x303a41);
-  addBox({ name: "bath-tub", x: -2.15, y: 0.35, z: -14.4, w: 1.05, h: 0.7, d: 2.25, color: 0xb7c0bd, collide: true });
-  addCover("bath-pipe-gap", "bathroom", -2.4, -12.55, 0x697777);
+  addBox({ name: "garage-car", x: 21.5, y: 0.55, z: 2.15, w: 2.1, h: 1.1, d: 4.1, color: 0x303a41, collide: true, catOnly: true });
+  addCover("garage-under-car", "garage", 21.5, 3.55, 0x303a41);
+  addBox({ name: "bath-tub", x: -1.9, y: 0.35, z: -14.55, w: 0.9, h: 0.7, d: 2.1, color: 0xb7c0bd, collide: true });
 
-  const dynamic = (id, options) => addBox({ ...options, dynamicId: id, active: options.active ?? false });
-  dynamic("moved-chair", { name: "night-moved-chair", x: 1.2, y: 0.38, z: 1.15, w: 0.72, h: 0.76, d: 0.72, color: 0x493329, collide: true });
-  dynamic("cardboard-cover", { name: "night-cardboard-box", x: -1.05, y: 0.17, z: 1.35, w: 1.2, h: 0.34, d: 0.9, color: 0x8f7148, collide: true, catOnly: true });
-  dynamic("grocery-bag", { name: "night-grocery-bag", x: 4.7, y: 0.26, z: -5.35, w: 0.78, h: 0.52, d: 0.68, color: 0x9a8057, collide: true });
-  dynamic("laundry-basket", { name: "night-laundry-basket", x: 11.45, y: 0.24, z: 4.55, w: 0.95, h: 0.48, d: 0.8, color: 0x7a6747, collide: true, catOnly: true });
-  dynamic("blanket-cover", { name: "night-blanket", x: -0.7, y: 0.11, z: -2.15, w: 1.8, h: 0.22, d: 1.3, color: 0x6b3e4c, collide: true, catOnly: true });
+  const dynamic = (id, options) => {
+    const circulationGate = id === "closed-shortcut" || id === "passage-block";
+    const placement = {
+      name: options.name ?? id,
+      room: roomForPosition(options.x, options.z),
+      x: options.x,
+      z: options.z,
+      w: options.w,
+      d: options.d,
+    };
+    if (!circulationGate && !isCirculationPlacementSafe(placement)) {
+      console.warn(`Hearthmouse skipped unsafe event prop ${id}`);
+      return null;
+    }
+    return addBox({ ...options, dynamicId: id, active: options.active ?? false });
+  };
+  dynamic("moved-chair", { name: "night-moved-chair", x: -3.2, y: 0.38, z: 4.9, w: 0.72, h: 0.76, d: 0.72, color: 0x493329, collide: true });
+  dynamic("cardboard-cover", { name: "night-cardboard-box", x: -3.25, y: 0.17, z: 1.45, w: 1.2, h: 0.34, d: 0.9, color: 0x8f7148, collide: true, catOnly: true });
+  dynamic("grocery-bag", { name: "night-grocery-bag", x: 9.4, y: 0.26, z: -5.5, w: 0.78, h: 0.52, d: 0.68, color: 0x9a8057, collide: true });
+  dynamic("laundry-basket", { name: "night-laundry-basket", x: 14.38, y: 0.24, z: 2.55, w: 0.72, h: 0.48, d: 0.62, color: 0x7a6747, collide: true, catOnly: true });
+  dynamic("blanket-cover", { name: "night-blanket", x: -2.2, y: 0.11, z: -2.2, w: 1.8, h: 0.22, d: 1.3, color: 0x6b3e4c, collide: true, catOnly: true });
   dynamic("closed-shortcut", { name: "night-closed-shortcut", x: 2.05, y: 1.05, z: -8.9, w: 0.16, h: 2.1, d: 1.18, color: 0x392a22, collide: true });
   dynamic("passage-block", { name: "study-passage-block", x: -5.02, y: 0.18, z: -9, w: 0.18, h: 0.36, d: 0.62, color: 0x795d3d, collide: true, active: true });
   addBox({ name: "study-passage-low-roof", x: -4.86, y: 0.17, z: -9, w: 0.45, h: 0.12, d: 0.74, color: 0x403027, collide: true, catOnly: true });
   world.shelterPoints.push({ id: "study-hall-passage", roomId: "hallway", catProof: true, position: new I.Vector3(-4.83, 0.025, -9), unlockNight: 6 });
   world.shelterPoints.push(
-    { id: "night-cardboard-cover", roomId: "living", dynamicProp: "cardboard-cover", catProof: true, position: new I.Vector3(-1.05, 0.025, 1.35), unlockNight: 1 },
-    { id: "night-blanket-cover", roomId: "living", dynamicProp: "blanket-cover", catProof: true, position: new I.Vector3(-0.7, 0.025, -2.15), unlockNight: 1 },
-    { id: "night-laundry-basket", roomId: "laundry", dynamicProp: "laundry-basket", catProof: true, position: new I.Vector3(11.45, 0.025, 4.55), unlockNight: 3 },
+    { id: "night-cardboard-cover", roomId: "living", dynamicProp: "cardboard-cover", catProof: true, position: new I.Vector3(-3.25, 0.025, 1.45), unlockNight: 1 },
+    { id: "night-blanket-cover", roomId: "living", dynamicProp: "blanket-cover", catProof: true, position: new I.Vector3(-2.2, 0.025, -2.2), unlockNight: 1 },
+    { id: "night-laundry-basket", roomId: "laundry", dynamicProp: "laundry-basket", catProof: true, position: new I.Vector3(14.38, 0.025, 2.55), unlockNight: 3 },
   );
 
   expansion.extraPatrolPoints = ROOM_DEFINITIONS.flatMap((room) => [
@@ -1651,7 +1680,8 @@ function spawnExpandedFood(engine, expansion, I) {
   const desired = Math.min(ordinary.length, Math.max(12, Math.ceil(population * 0.78) + 7));
   const weighted = ordinary
     .map((spawn, index) => {
-      const roomWeight = event.roomWeights?.[spawn.room] ?? 1;
+      const identityWeight = ROOM_LAYOUT_BY_ID.get(spawn.room)?.gameplay?.foodWeight ?? 1;
+      const roomWeight = (event.roomWeights?.[spawn.room] ?? 1) * identityWeight;
       const rank = seededUnit(expansion.campaignSeed + night * 977 + index * 47) / roomWeight;
       return { spawn, rank };
     })
@@ -1692,6 +1722,13 @@ function eventExtraSpawns(set, I, night) {
   if (set === "pantry-spill") return [make(4.6, -10.2, "cereal", 3, "pantry"), make(4.9, -10, "cracker", 4, "pantry"), make(5.15, -10.25, "cheese", 5, "pantry")];
   if (set === "toy-trail") return [make(-5.8, -11.4, "cracker", 2, "children"), make(-7, -12.4, "cracker", 2, "children"), make(-8.4, -13.2, "cheese", 4, "children")];
   if (set === "garage-windfall") return [make(22.8, 6.2, "cereal", 4, "garage"), make(23.1, 6.5, "nut", 5, "garage"), make(22.5, 6.8, "cheese", 6, "garage")];
+  if (set === "guest-crumbs") return [make(-3.8, 4.8, "cracker", 2, "living"), make(2.2, 5.65, "cereal", 2, "kitchen"), make(5.6, 10.8, "cracker", 3, "dining")];
+  if (set === "grocery-bag-feast") return [
+    make(5.55, -10.75, "cereal", 4, "pantry"),
+    make(5.9, -10.55, "nut", 4, "pantry"),
+    make(6.15, -10.85, "cracker", 5, "pantry"),
+    make(5.78, -10.3, "cheese", 6, "pantry"),
+  ];
   return [];
 }
 
@@ -1710,10 +1747,16 @@ function updateEnvironmentalWindow(engine, expansion, delta) {
   let active = false;
   if (cycle === "storm") active = (engine.time % 9.2) < 1.45;
   if (cycle === "laundry") active = (engine.time % 11.5) < 2.25;
+  if (cycle === "vacuum") active = (engine.time % 13.4) < 3.1;
   expansion.maskActive = active;
-  expansion.ambientMask = active ? (cycle === "storm" ? 0.2 : 0.34) : 1;
+  expansion.ambientMask = active ? (cycle === "storm" ? 0.2 : cycle === "vacuum" ? 0.12 : 0.34) : 1;
   if (active && !expansion.lastMaskActive) {
-    engine.showMessage(cycle === "storm" ? "Thunder masks the floor — move now." : "The machines roar — pawsteps are hidden.", 1.6);
+    const message = cycle === "storm"
+      ? "Thunder masks the floor — move now."
+      : cycle === "vacuum"
+        ? "The vacuum roars — quiet sounds disappear."
+        : "The machines roar — pawsteps are hidden.";
+    engine.showMessage(message, 1.6);
   }
   expansion.lastMaskActive = active;
 }
