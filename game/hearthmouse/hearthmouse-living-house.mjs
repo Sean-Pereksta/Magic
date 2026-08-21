@@ -30,6 +30,10 @@ const MOVEMENT_KEYS = Object.freeze([
   "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "KeyC", "Space",
 ]);
 const MOVEMENT_KEY_SET = new Set(MOVEMENT_KEYS);
+const PLAYER_TARGET_ID = "player";
+const TUNNEL_ENTRY_RADIUS = 0.18;
+const TUNNEL_EXIT_OFFSET = 0.24;
+const TUNNEL_CAT_WAIT_OFFSET = 0.5;
 export const EVENT_PROP_ANCHORS = Object.freeze({
   guests: Object.freeze([
     Object.freeze({ name: "guest-shoes", room: "living", x: -8.9, z: 5.45, w: 0.62, h: 0.12, d: 0.28, color: 0x4b342b }),
@@ -57,6 +61,61 @@ function stringSeed(text) {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+export function tunnelTraversalDuration(route) {
+  const authored = Number(route?.duration);
+  if (Number.isFinite(authored)) return Math.max(0.65, Math.min(1.6, authored));
+  const speed = Math.max(0.35, Number(route?.speed) || 1);
+  return Math.max(0.65, Math.min(1.6, 0.92 / speed));
+}
+
+export function tunnelTransitProgress(startedAt, now, duration) {
+  const safeDuration = Math.max(0.001, Number(duration) || 0.001);
+  return clamp01((Number(now) - Number(startedAt)) / safeDuration);
+}
+
+export function tunnelTransitPoint(source, target, progress) {
+  const p = clamp01(progress);
+  const sourceInside = {
+    x: source.x - (source.normalX ?? 0) * 0.22,
+    z: source.z - (source.normalZ ?? 0) * 0.22,
+  };
+  const targetInside = {
+    x: target.x - (target.normalX ?? 0) * 0.22,
+    z: target.z - (target.normalZ ?? 0) * 0.22,
+  };
+  const targetOutside = {
+    x: target.x + (target.normalX ?? 0) * TUNNEL_EXIT_OFFSET,
+    z: target.z + (target.normalZ ?? 0) * TUNNEL_EXIT_OFFSET,
+  };
+  if (p <= 0.18) {
+    const local = p / 0.18;
+    return { x: source.x + (sourceInside.x - source.x) * local, z: source.z + (sourceInside.z - source.z) * local };
+  }
+  if (p < 0.82) {
+    const local = (p - 0.18) / 0.64;
+    const eased = local * local * (3 - 2 * local);
+    return {
+      x: sourceInside.x + (targetInside.x - sourceInside.x) * eased,
+      z: sourceInside.z + (targetInside.z - sourceInside.z) * eased,
+    };
+  }
+  const local = (p - 0.82) / 0.18;
+  return {
+    x: targetInside.x + (targetOutside.x - targetInside.x) * local,
+    z: targetInside.z + (targetOutside.z - targetInside.z) * local,
+  };
+}
+
+export function tunnelStalkPlan(catId, routeId, now = 0) {
+  const seed = stringSeed(`${catId}:${routeId}`) + Math.floor((Number(now) || 0) * 7);
+  const patience = 4.8 + seededUnit(seed + 17) * 2.7;
+  return Object.freeze({
+    patience,
+    switchAfter: patience * (0.48 + seededUnit(seed + 31) * 0.16),
+    willSwitch: seededUnit(seed + 47) < 0.3,
+  });
 }
 
 export function territoryRoomsFor(catId, night) {
@@ -146,6 +205,9 @@ function ensureLivingState(engine, I) {
     knownTrapAnchors: new Set(),
     discoveredRoutes: new Set(),
     routeCooldowns: new Map(),
+    playerTunnelTransit: null,
+    mouseTunnelTransits: new Map(),
+    tunnelVeil: null,
     playerTrap: null,
     releaseBlockedKeys: new Set(),
     scanClock: 0,
@@ -192,6 +254,14 @@ function cleanupNight(engine, state) {
   state.playerTrap = null;
   state.releaseBlockedKeys.clear();
   state.routeCooldowns.clear();
+  state.playerTunnelTransit = null;
+  state.mouseTunnelTransits.clear();
+  if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
+  for (const cat of engine.cats ?? []) {
+    cat.__tunnelStalk = null;
+    cat.__secretEntranceWaitUntil = 0;
+    if (cat.leisureMode === "tunnel-stalk") cat.leisureMode = null;
+  }
   state.vacuum = null;
   state.dog = null;
   state.openWindow = null;
@@ -296,27 +366,137 @@ function spawnTraps(engine, state) {
   }
 }
 
+function tunnelStyleColors(style, discovered) {
+  const trim = {
+    appliance: 0x777b79,
+    baseboard: 0x5b4434,
+    cabinet: 0x493221,
+    closet: 0x4a352b,
+    furniture: 0x352529,
+    pipe: 0x6d7472,
+    vent: 0x626866,
+  }[style] ?? 0x4d392d;
+  return { opening: discovered ? 0x171b19 : 0x090b0b, trim, floor: style === "vent" || style === "appliance" ? 0x515756 : 0x3d3027 };
+}
+
+function createTunnelEntranceVisual(engine, state, route, entrance, discovered) {
+  const axisX = entrance.axis === "x";
+  const colors = tunnelStyleColors(entrance.style, discovered);
+  const frontX = entrance.x + entrance.normalX * 0.012;
+  const frontZ = entrance.z + entrance.normalZ * 0.012;
+  const opening = addBox(engine, state, {
+    name: `mouse-hole-${entrance.id}`,
+    x: frontX,
+    y: 0.078,
+    z: frontZ,
+    w: axisX ? 0.026 : 0.28,
+    h: 0.156,
+    d: axisX ? 0.28 : 0.026,
+    color: colors.opening,
+    roughness: 1,
+    emissive: discovered ? 0x070907 : 0x000000,
+    emissiveIntensity: discovered ? 0.16 : 0,
+  });
+  opening.userData.__mouseTunnelRoute = route.id;
+  opening.userData.__mouseTunnelEntrance = entrance.id;
+
+  addBox(engine, state, {
+    name: `mouse-hole-top-${entrance.id}`,
+    x: frontX,
+    y: 0.171,
+    z: frontZ,
+    w: axisX ? 0.045 : 0.34,
+    h: 0.03,
+    d: axisX ? 0.34 : 0.045,
+    color: colors.trim,
+  });
+  for (const side of [-1, 1]) {
+    addBox(engine, state, {
+      name: `mouse-hole-side-${entrance.id}-${side}`,
+      x: frontX + (axisX ? 0 : side * 0.155),
+      y: 0.085,
+      z: frontZ + (axisX ? side * 0.155 : 0),
+      w: 0.035,
+      h: 0.17,
+      d: 0.035,
+      color: colors.trim,
+    });
+  }
+
+  const thresholdX = entrance.x + entrance.normalX * 0.12;
+  const thresholdZ = entrance.z + entrance.normalZ * 0.12;
+  const alongX = Math.abs(entrance.normalX) > 0;
+  addBox(engine, state, {
+    name: `mouse-tunnel-floor-${entrance.id}`,
+    x: thresholdX,
+    y: 0.008,
+    z: thresholdZ,
+    w: alongX ? 0.3 : 0.22,
+    h: 0.016,
+    d: alongX ? 0.22 : 0.3,
+    color: colors.floor,
+    roughness: 1,
+  });
+  addBox(engine, state, {
+    name: `mouse-tunnel-roof-${entrance.id}`,
+    x: thresholdX,
+    y: 0.184,
+    z: thresholdZ,
+    w: alongX ? 0.3 : 0.24,
+    h: 0.025,
+    d: alongX ? 0.24 : 0.3,
+    color: colors.trim,
+    roughness: 1,
+  });
+
+  if (entrance.style === "vent" || entrance.style === "appliance") {
+    for (const side of [-1, 0, 1]) {
+      addBox(engine, state, {
+        name: `mouse-vent-slat-${entrance.id}-${side}`,
+        x: frontX + (axisX ? 0.018 * side : 0),
+        y: 0.055 + (side + 1) * 0.035,
+        z: frontZ + (axisX ? 0 : 0.018 * side),
+        w: axisX ? 0.018 : 0.22,
+        h: 0.009,
+        d: axisX ? 0.22 : 0.018,
+        color: 0x8a8e89,
+        metalness: 0.45,
+      });
+    }
+  }
+}
+
+function ensureTunnelVeil(state) {
+  if (typeof document === "undefined") return null;
+  if (state.tunnelVeil?.isConnected) return state.tunnelVeil;
+  const existing = document.querySelector(".hearthmouse-tunnel-veil");
+  if (existing) {
+    state.tunnelVeil = existing;
+    return existing;
+  }
+  const veil = document.createElement("div");
+  veil.className = "hearthmouse-tunnel-veil";
+  veil.setAttribute("aria-hidden", "true");
+  document.querySelector(".game-shell")?.appendChild(veil);
+  state.tunnelVeil = veil;
+  return veil;
+}
+
 function createSecretRouteVisuals(engine, state) {
   const night = engine.snapshot?.night ?? 1;
+  const rendered = new Set();
   for (const route of SECRET_ROUTES) {
     if (route.discoveryNight > night) continue;
     const discovered = state.discoveredRoutes.has(route.id);
     for (const entranceId of [route.a, route.b]) {
+      if (rendered.has(entranceId)) continue;
       const entrance = ENTRANCE_BY_ID.get(entranceId);
       if (!entrance || !unlockedRoom(entrance.roomId, night)) continue;
-      addBox(engine, state, {
-        name: `mouse-route-slit-${entranceId}`,
-        x: entrance.x,
-        y: 0.055,
-        z: entrance.z,
-        w: Math.min(0.42, entrance.w * 0.62),
-        h: 0.11,
-        d: Math.min(0.075, entrance.d * 0.12),
-        color: discovered ? 0x2f322d : 0x181a19,
-        roughness: 1,
-      });
+      rendered.add(entranceId);
+      createTunnelEntranceVisual(engine, state, route, entrance, discovered);
     }
   }
+  ensureTunnelVeil(state);
 }
 
 function addEventProps(engine, state, event) {
@@ -609,70 +789,184 @@ function routePair(route, sourceId) {
   return [null, null];
 }
 
-function catsInvestigateDisappearance(engine, mouse, entrance) {
-  for (const cat of engine.cats ?? []) {
-    const wasTarget = cat.targetId === mouse?.member?.id;
-    if (!wasTarget && planarDistance(cat.rig?.root?.position, entrance) > 2.4) continue;
-    cat.targetId = null;
-    cat.awareness = Math.max(cat.awareness ?? 0, 0.3);
-    cat.investigation?.set?.(entrance.x, 0, entrance.z);
-    cat.lastSeen?.set?.(entrance.x, 0, entrance.z);
-    engine.setCatState?.(cat, "search", 3.4);
-    engine.planCatPath?.(cat, cat.lastSeen);
-    cat.__secretEntranceWaitUntil = (engine.time ?? 0) + 3.4;
-  }
+function tunnelWaitPosition(I, entrance, offset = TUNNEL_CAT_WAIT_OFFSET) {
+  return new I.Vector3(
+    entrance.x + (entrance.normalX ?? 0) * offset,
+    0,
+    entrance.z + (entrance.normalZ ?? 0) * offset,
+  );
 }
 
-function useRoute(engine, state, route, source, target, actor, actorId, mouse = null) {
+function tunnelExitPosition(I, entrance) {
+  return new I.Vector3(entrance.x, 0.025, entrance.z);
+}
+
+function catSawTunnelEntry(engine, cat, actorTargetId, sourcePosition) {
+  if (!cat?.rig?.root?.position) return false;
+  if (cat.targetId === actorTargetId) return true;
+  if (cat.state === "chase" || planarDistance(cat.rig.root.position, sourcePosition) > 6.2) return false;
+  return (engine.targetVisibility?.(cat, actorTargetId, sourcePosition) ?? 0) >= 0.22;
+}
+
+function assignTunnelExitStalk(engine, state, route, source, target, actorTargetId, sourcePosition) {
+  let witness = null;
+  let bestScore = -Infinity;
+  for (const cat of engine.cats ?? []) {
+    if (!catSawTunnelEntry(engine, cat, actorTargetId, sourcePosition)) continue;
+    const distance = planarDistance(cat.rig.root.position, sourcePosition);
+    const score = (cat.targetId === actorTargetId ? 20 : 0) - distance;
+    if (score > bestScore) {
+      witness = cat;
+      bestScore = score;
+    }
+  }
+  if (!witness) return null;
+
+  const now = engine.time ?? 0;
+  const authored = tunnelStalkPlan(witness.id, route.id, now);
+  const exitPosition = tunnelExitPosition(state.I, target);
+  const alternateExitPosition = tunnelExitPosition(state.I, source);
+  const waitPosition = tunnelWaitPosition(state.I, target);
+  const alternateWaitPosition = tunnelWaitPosition(state.I, source);
+  witness.targetId = null;
+  witness.awareness = Math.max(witness.awareness ?? 0, 0.32);
+  witness.investigation?.copy?.(exitPosition);
+  witness.lastSeen?.copy?.(exitPosition);
+  engine.setCatState?.(witness, "search", authored.patience);
+  witness.leisureMode = null;
+  witness.leisureTimer = 0;
+  witness.__secretEntranceWaitUntil = now + authored.patience;
+  witness.__tunnelStalk = {
+    routeId: route.id,
+    sourceId: source.id,
+    targetId: target.id,
+    exitPosition,
+    alternateExitPosition,
+    waitPosition,
+    alternateWaitPosition,
+    until: now + authored.patience,
+    switchAt: now + authored.switchAfter,
+    willSwitch: authored.willSwitch,
+    switched: false,
+  };
+  engine.planCatPath?.(witness, waitPosition);
+  return witness;
+}
+
+function actorInTunnel(state, targetId) {
+  if (targetId === PLAYER_TARGET_ID) return !!state.playerTunnelTransit;
+  return state.mouseTunnelTransits.has(`mouse:${targetId}`);
+}
+
+function beginTunnelTransit(engine, state, route, source, target, position, actorId, mouse = null) {
   const now = engine.time ?? 0;
   if ((state.routeCooldowns.get(actorId) ?? 0) > now) return false;
-  const position = actor.position ?? actor;
-  const dx = target.x - source.x;
-  const dz = target.z - source.z;
-  const length = Math.max(0.001, Math.hypot(dx, dz));
+  if (actorId === PLAYER_TARGET_ID ? state.playerTunnelTransit : state.mouseTunnelTransits.has(actorId)) return false;
+
   const wasKnown = state.discoveredRoutes.has(route.id);
+  const duration = tunnelTraversalDuration(route);
+  const actorTargetId = mouse?.member?.id ?? PLAYER_TARGET_ID;
+  const sourcePosition = tunnelExitPosition(state.I, source);
+  assignTunnelExitStalk(engine, state, route, source, target, actorTargetId, sourcePosition);
+  const transit = {
+    actorId,
+    mouse,
+    position,
+    route,
+    source,
+    target,
+    startedAt: now,
+    duration,
+    progress: 0,
+    previousTask: mouse?.task ?? null,
+  };
+
   state.discoveredRoutes.add(route.id);
-  position.set(target.x + dx / length * 0.24, position.y, target.z + dz / length * 0.24);
-  state.routeCooldowns.set(actorId, now + 0.85);
-  if (!wasKnown) engine.showMessage?.(`The colony learned the ${route.id.replaceAll("-", " ")}.`, 2.8);
-  engine.emitNoise?.(position, route.noise);
+  state.routeCooldowns.set(actorId, now + duration + 0.85);
+  engine.emitNoise?.(sourcePosition, route.noise);
+  if (!wasKnown) engine.showMessage?.(`The colony discovered the ${route.label ?? route.id.replaceAll("-", " ")}.`, 2.8);
+
   if (mouse) {
     mouse.path = [];
     mouse.pathIndex = 0;
     mouse.__secretRoutePlan = null;
-    mouse.__secretPlanCooldownUntil = now + 0.72;
-    catsInvestigateDisappearance(engine, mouse, source);
-    state.basePlanMousePath?.call?.(engine, mouse);
+    mouse.__tunnelTransit = transit;
+    mouse.task = "tunneling";
+    mouse.escapeCooldown = Math.max(mouse.escapeCooldown ?? 0, duration + 0.35);
+    state.mouseTunnelTransits.set(actorId, transit);
   } else {
     engine.playerVelocity?.set?.(0, 0, 0);
-    for (const cat of engine.cats ?? []) {
-      if (cat.targetId !== "player" && planarDistance(cat.rig?.root?.position, source) > 2.4) continue;
-      cat.targetId = null;
-      cat.investigation?.set?.(source.x, 0, source.z);
-      cat.lastSeen?.set?.(source.x, 0, source.z);
-      engine.setCatState?.(cat, "search", 3.4);
-      engine.planCatPath?.(cat, cat.lastSeen);
-      cat.__secretEntranceWaitUntil = now + 3.4;
-    }
+    state.playerTunnelTransit = transit;
   }
   return true;
 }
 
+function finishTunnelTransit(engine, state, transit) {
+  const now = engine.time ?? 0;
+  const exit = tunnelTransitPoint(transit.source, transit.target, 1);
+  transit.position.set(exit.x, transit.position.y, exit.z);
+  if (transit.mouse) {
+    const mouse = transit.mouse;
+    state.mouseTunnelTransits.delete(transit.actorId);
+    mouse.__tunnelTransit = null;
+    mouse.__secretRoutePlan = null;
+    mouse.__secretPlanCooldownUntil = now + 0.72;
+    mouse.task = transit.previousTask === "tunneling" ? (mouse.resumeTask ?? "waiting") : (transit.previousTask ?? "waiting");
+    mouse.path = [];
+    mouse.pathIndex = 0;
+    if (mouse.member?.alive && ["escaping", "to-food", "returning", "home", "nesting-move"].includes(mouse.task)) {
+      engine.planMousePath?.(mouse);
+    }
+  } else {
+    state.playerTunnelTransit = null;
+    engine.playerEyeY = 0.066;
+    engine.playerVelocity?.set?.(0, 0, 0);
+    if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
+  }
+}
+
+function advanceTunnelTransit(engine, state, transit) {
+  if (!transit?.position || transit.mouse && (!transit.mouse.member?.alive || !transit.mouse.rig?.root?.position)) {
+    if (transit?.actorId === PLAYER_TARGET_ID) state.playerTunnelTransit = null;
+    else if (transit?.actorId) state.mouseTunnelTransits.delete(transit.actorId);
+    return 1;
+  }
+  const progress = tunnelTransitProgress(transit.startedAt, engine.time ?? 0, transit.duration);
+  const point = tunnelTransitPoint(transit.source, transit.target, progress);
+  const previousX = transit.position.x;
+  const previousZ = transit.position.z;
+  transit.position.set(point.x, transit.position.y, point.z);
+  transit.progress = progress;
+  if (transit.mouse?.rig?.root) {
+    const dx = point.x - previousX;
+    const dz = point.z - previousZ;
+    if (dx * dx + dz * dz > 1e-7) transit.mouse.rig.root.rotation.y = Math.atan2(-dx, -dz);
+  }
+  if (progress >= 1) finishTunnelTransit(engine, state, transit);
+  return progress;
+}
+
 function updateSecretRoutes(engine, state) {
+  if (engine.snapshot?.phase !== "foraging") return;
   const night = engine.snapshot?.night ?? 1;
+  for (const transit of state.mouseTunnelTransits.values()) advanceTunnelTransit(engine, state, transit);
+
   for (const route of SECRET_ROUTES) {
     if (route.discoveryNight > night) continue;
     for (const sourceId of [route.a, route.oneWay ? null : route.b]) {
       if (!sourceId) continue;
       const [source, target] = routePair(route, sourceId);
       if (!source || !target || !unlockedRoom(source.roomId, night) || !unlockedRoom(target.roomId, night)) continue;
-      if (planarDistance(engine.playerPosition, source) < 0.17) {
-        useRoute(engine, state, route, source, target, engine.playerPosition, "player");
+      const playerSpeed = engine.playerVelocity?.length?.() ?? 0;
+      if (!state.playerTunnelTransit && playerSpeed > 0.035 && planarDistance(engine.playerPosition, source) < TUNNEL_ENTRY_RADIUS) {
+        beginTunnelTransit(engine, state, route, source, target, engine.playerPosition, PLAYER_TARGET_ID);
       }
       for (const mouse of engine.mice ?? []) {
-        if (!mouse.member?.alive || mouse.task === "dead") continue;
-        if (planarDistance(mouse.rig?.root?.position, source) < 0.13) {
-          useRoute(engine, state, route, source, target, mouse.rig.root.position, `mouse:${mouse.member.id}`, mouse);
+        if (!mouse?.member?.id || !mouse?.member?.alive || !mouse?.rig?.root?.position || mouse.task === "dead" || mouse.task === "tunneling") continue;
+        const actorId = `mouse:${mouse.member.id}`;
+        const plannedEntry = mouse.__secretRoutePlan?.routeId === route.id && mouse.__secretRoutePlan?.sourceId === source.id;
+        if ((plannedEntry || mouse.task !== "waiting") && planarDistance(mouse.rig.root.position, source) < 0.13) {
+          beginTunnelTransit(engine, state, route, source, target, mouse.rig.root.position, actorId, mouse);
         }
       }
     }
@@ -792,7 +1086,7 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
   const proto = I?.Engine?.prototype;
   if (!proto?.__colonyExpansionInstalled || !proto?.__roomSafetyGuardInstalled) return false;
   if (proto.__livingHouseInstalled) return true;
-  const required = ["beginNight", "restartCampaign", "createCats", "spawnFood", "updateGame", "updatePlayer", "assignFood", "planMousePath", "playerTakeFood", "mouseTakeFood", "updateCatPatrol", "updateCatSearchMotion", "processCatVision", "emitNoise"];
+  const required = ["beginNight", "restartCampaign", "createCats", "spawnFood", "updateGame", "updatePlayer", "updateFood", "assignFood", "planMousePath", "playerTakeFood", "mouseTakeFood", "updateCatPatrol", "updateCatSearchMotion", "targetPosition", "targetVisibility", "processCatVision", "emitNoise"];
   if (required.some((name) => typeof proto[name] !== "function")) return false;
   Object.defineProperty(proto, "__livingHouseInstalled", { value: true });
 
@@ -826,6 +1120,10 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
       const result = base.restartNight.call(this);
       const state = ensureLivingState(this, I);
       state.playerTrap = null;
+      state.playerTunnelTransit = null;
+      state.mouseTunnelTransits.clear();
+      state.routeCooldowns.clear();
+      if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
       state.releaseBlockedKeys.clear();
       for (const trap of state.traps) {
         trap.triggered = false;
@@ -863,6 +1161,22 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
 
   proto.updatePlayer = function exactFiveSecondTrap(delta) {
     const state = ensureLivingState(this, I);
+    const transit = state.playerTunnelTransit;
+    if (transit) {
+      this.playerVelocity?.set?.(0, 0, 0);
+      this.verticalVelocity = 0;
+      this.onGround = true;
+      suppressMovementButKeepLook(this, base.updatePlayer, delta, MOVEMENT_KEYS);
+      const progress = advanceTunnelTransit(this, state, transit);
+      this.playerVelocity?.set?.(0, 0, 0);
+      this.verticalVelocity = 0;
+      this.onGround = true;
+      this.playerEyeY = 0.066 - Math.sin(progress * Math.PI) * 0.02;
+      const veil = ensureTunnelVeil(state);
+      if (veil) veil.style.opacity = String(Math.pow(Math.sin(progress * Math.PI), 0.62) * 0.96);
+      this.updateCamera?.(0.38, false);
+      return;
+    }
     const trap = state.playerTrap;
     const now = this.time ?? 0;
     if (trap && now < trap.until) {
@@ -899,9 +1213,15 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
 
   proto.playerTakeFood = function livingPlayerPickup(food) {
     const state = ensureLivingState(this, I);
+    if (state.playerTunnelTransit) return;
     const trap = findTrap(state, food);
     if (trap) return triggerTrap(this, state, trap);
     return base.playerTakeFood.call(this, food);
+  };
+
+  proto.updateFood = function tunnelSafeFoodUpdate(delta) {
+    if (ensureLivingState(this, I).playerTunnelTransit) return;
+    return base.updateFood.call(this, delta);
   };
 
   proto.mouseTakeFood = function livingMousePickup(mouse, food) {
@@ -940,35 +1260,82 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
 
   proto.updateCatPatrol = function territorialCatPatrol(cat, delta, speedOverride) {
     const state = ensureLivingState(this, I);
+    if (cat.__tunnelStalk && cat.state !== "search") {
+      cat.__tunnelStalk = null;
+      cat.__secretEntranceWaitUntil = 0;
+      if (cat.leisureMode === "tunnel-stalk") cat.leisureMode = null;
+    }
     territoryPatrol(this, state, cat);
     return base.updateCatPatrol.call(this, cat, delta, cat.__catnipAffected ? (speedOverride ?? 0.78) * 1.12 : speedOverride);
   };
 
   proto.updateCatSearchMotion = function secretEntranceSearch(cat, delta, center, speed) {
     const now = this.time ?? 0;
-    if ((cat.__secretEntranceWaitUntil ?? 0) > now && cat.lastSeen) {
-      const distance = planarDistance(cat.rig?.root?.position, cat.lastSeen);
-      if (distance <= 0.34) {
+    const stalk = cat.__tunnelStalk;
+    if (stalk && cat.state !== "chase" && stalk.until > now) {
+      if (stalk.willSwitch && stalk.arrivedAt && !stalk.switched && now >= stalk.switchAt) {
+        stalk.switched = true;
+        stalk.arrivedAt = 0;
+        stalk.waitPosition = stalk.alternateWaitPosition;
+        stalk.exitPosition = stalk.alternateExitPosition;
+        cat.investigation?.copy?.(stalk.exitPosition);
+        cat.lastSeen?.copy?.(stalk.exitPosition);
         cat.path = [];
         cat.pathIndex = 0;
+        this.planCatPath?.(cat, stalk.waitPosition);
+      }
+
+      const distance = planarDistance(cat.rig?.root?.position, stalk.waitPosition);
+      if (distance <= 0.38) {
+        if (!stalk.arrivedAt) stalk.arrivedAt = now;
+        cat.path = [];
+        cat.pathIndex = 0;
+        cat.leisureMode = "tunnel-stalk";
+        cat.leisureTimer = Math.max(0, stalk.until - now);
+        if (cat.rig?.root && stalk.exitPosition) {
+          cat.yaw = this.yawToward?.(cat.rig.root.position, stalk.exitPosition) ?? cat.yaw;
+          cat.rig.root.rotation.y = cat.yaw;
+        }
         return 0;
       }
-      if (!cat.path?.length || cat.pathIndex >= cat.path.length) this.planCatPath?.(cat, cat.lastSeen);
+      if (!cat.path?.length || cat.pathIndex >= cat.path.length) this.planCatPath?.(cat, stalk.waitPosition);
       return this.followCatPath?.(cat, delta, Math.min(speed ?? 0.62, 0.68)) ?? 0;
     }
+    cat.__tunnelStalk = null;
     cat.__secretEntranceWaitUntil = 0;
+    if (cat.leisureMode === "tunnel-stalk") cat.leisureMode = null;
     return base.updateCatSearchMotion.call(this, cat, delta, center, speed);
   };
 
+  proto.targetVisibility = function tunnelOccludedTargetVisibility(cat, targetId, targetPosition) {
+    const state = ensureLivingState(this, I);
+    if (actorInTunnel(state, targetId)) return 0;
+    return base.targetVisibility.call(this, cat, targetId, targetPosition);
+  };
+
+  proto.targetPosition = function tunnelHiddenTargetPosition(targetId) {
+    const state = ensureLivingState(this, I);
+    if (actorInTunnel(state, targetId)) return null;
+    return base.targetPosition.call(this, targetId);
+  };
+
   proto.processCatVision = function roomLightAwareVision(cat, target, interval) {
+    const state = ensureLivingState(this, I);
+    const visibleTarget = target?.id && actorInTunnel(state, target.id) ? null : target;
     const event = this.__expansion?.currentPlan?.event;
-    const targetPosition = target?.position;
+    const targetPosition = visibleTarget?.position;
     const targetRoom = targetPosition ? roomForPoint(targetPosition.x, targetPosition.z) : null;
     const roomLight = ROOM_LAYOUT_BY_ID.get(targetRoom)?.gameplay?.light ?? 0.62;
     const identityMultiplier = 0.72 + roomLight * 0.48;
     const eventMultiplier = event?.lighting === "outage" ? 0.7 : event?.brightRooms?.includes?.(targetRoom) ? 1.38 : 1;
     const multiplier = identityMultiplier * eventMultiplier;
-    return base.processCatVision.call(this, cat, target, interval * multiplier);
+    const result = base.processCatVision.call(this, cat, visibleTarget, interval * multiplier);
+    if (cat.state === "chase" && cat.__tunnelStalk) {
+      cat.__tunnelStalk = null;
+      cat.__secretEntranceWaitUntil = 0;
+      if (cat.leisureMode === "tunnel-stalk") cat.leisureMode = null;
+    }
+    return result;
   };
 
   proto.emitNoise = function livingNoiseMemory(position, strength) {
