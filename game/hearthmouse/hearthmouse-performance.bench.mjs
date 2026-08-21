@@ -1,6 +1,12 @@
 import { performance } from "node:perf_hooks";
 
 import { FoodCandidateCache, SpatialGrid } from "./hearthmouse-expansion.mjs";
+import {
+  HearthmousePerformanceManager,
+  deferActorRigVisuals,
+  registerCharacterVisualStage,
+  runCharacterVisualScheduler,
+} from "./hearthmouse-performance-manager.mjs";
 
 const FOOD_COUNT = 1200;
 const MOUSE_COUNT = 18;
@@ -107,21 +113,180 @@ function snapshottedDangerPass() {
   return checksum;
 }
 
-function benchmark(label, operation) {
+function benchmark(label, operation, iterations = ITERATIONS) {
   let checksum = 0;
   for (let index = 0; index < 20; index++) checksum += operation();
   const started = performance.now();
-  for (let index = 0; index < ITERATIONS; index++) checksum += operation();
+  for (let index = 0; index < iterations; index++) checksum += operation();
   return { label, milliseconds: performance.now() - started, checksum };
+}
+
+const STRESS_POSITIONS = Object.freeze([
+  [-6, 1], [-3, -2], [4, 1], [5, -9], [3.5, 9], [-3, -14],
+  [0.5, -14], [-7.8, -13], [13, 4], [17, 4], [4, 13], [10, -9],
+  [10, -14], [22, 4], [-8, -8], [6, -7], [15.8, 3], [20, 6],
+]);
+const PLAYER_STRESS_PATH = Object.freeze([
+  [-5, 0], [-0.5, 0], [3.6, 2], [3.6, 9], [3.6, 13], [3.6, 9], [3.6, 2], [-0.5, 0], [-5, 0],
+]);
+
+function stressRoot(x, z) {
+  const shadowMesh = { isMesh: true, castShadow: true, userData: {} };
+  return {
+    position: { x, y: 0, z },
+    rotation: { y: 0, z: 0 },
+    userData: {},
+    parent: {},
+    visible: true,
+    traverse(visitor) {
+      visitor(this);
+      visitor(shadowMesh);
+    },
+  };
+}
+
+function stressMouse(index) {
+  const [x, z] = STRESS_POSITIONS[index % STRESS_POSITIONS.length];
+  return {
+    member: { id: `stress-mouse-${index}`, alive: true },
+    task: index % 5 === 0 ? "to-food" : index % 5 === 1 ? "returning" : "nesting",
+    rig: { root: stressRoot(x, z), update() {} },
+  };
+}
+
+function stressCat(index, chase) {
+  const [x, z] = STRESS_POSITIONS[(index * 5 + 2) % STRESS_POSITIONS.length];
+  const root = stressRoot(x, z);
+  return {
+    id: `stress-cat-${index}`,
+    state: chase ? "chase" : index % 2 ? "alert" : "relaxed",
+    targetId: chase ? "player" : null,
+    pouncePhase: "none",
+    lookYaw: 0,
+    yaw: 0,
+    leisureMode: null,
+    rig: {
+      root,
+      body: { position: { y: 0 }, rotation: { z: 0 } },
+      chest: { position: { y: 0 } },
+      headPivot: { rotation: { x: 0, y: 0 } },
+      legs: [],
+      tail: [],
+      eyes: [],
+      update() {},
+    },
+  };
+}
+
+registerCharacterVisualStage("benchmark-animation-sample", (_actor, context) => {
+  context.recordAnimationSample();
+}, 1000);
+
+function runManagerStressScenario(label, mouseCount, catCount, {
+  chase = false,
+  isTouchDevice = false,
+  rapidCamera = false,
+  traverseRooms = false,
+} = {}) {
+  const engine = {
+    time: 0,
+    yaw: -Math.PI / 2,
+    playerPosition: { x: -5, y: 0, z: 0 },
+    snapshot: { phase: "foraging", night: 12 },
+    world: {},
+    mice: Array.from({ length: mouseCount }, (_, index) => stressMouse(index)),
+    cats: Array.from({ length: catCount }, (_, index) => stressCat(index, chase)),
+    __expansion: { isTouchDevice },
+  };
+  const manager = new HearthmousePerformanceManager(engine, { isTouchDevice });
+  engine.__expansion.performanceManager = manager;
+  const actors = [...engine.mice, ...engine.cats];
+  for (const actor of actors) deferActorRigVisuals(engine, actor);
+
+  const frameDelta = 1 / 60;
+  let worstAiUpdates = 0;
+  let roomSetChanges = 0;
+  let previousRoomSignature = "";
+  const started = performance.now();
+  for (let frame = 0; frame < 600; frame++) {
+    engine.time += frameDelta;
+    if (traverseRooms) {
+      const segment = Math.floor(frame / 75) % (PLAYER_STRESS_PATH.length - 1);
+      const progress = (frame % 75) / 75;
+      const from = PLAYER_STRESS_PATH[segment];
+      const to = PLAYER_STRESS_PATH[segment + 1];
+      engine.playerPosition.x = from[0] + (to[0] - from[0]) * progress;
+      engine.playerPosition.z = from[1] + (to[1] - from[1]) * progress;
+      engine.yaw = Math.atan2(-(to[0] - from[0]), -(to[1] - from[1]));
+    } else {
+      engine.yaw = -Math.PI / 2 + Math.sin(frame / 37) * 1.4;
+    }
+    if (rapidCamera) engine.yaw = frame % 8 * Math.PI / 4 - Math.PI;
+    manager.beginFrame(frameDelta);
+    const roomSignature = [...manager.activeRenderRooms].sort().join(":");
+    if (previousRoomSignature && roomSignature !== previousRoomSignature) roomSetChanges++;
+    previousRoomSignature = roomSignature;
+    let frameAiUpdates = 0;
+    for (const actor of actors) {
+      if (manager.shouldRunActorWork(actor, "benchmark-ai")) {
+        manager.recordAiDecision(actor);
+        frameAiUpdates++;
+      } else {
+        manager.recordAiSkip(actor);
+      }
+      actor.rig.update(engine.time, 1, 0, false);
+    }
+    worstAiUpdates = Math.max(worstAiUpdates, frameAiUpdates);
+    for (const cat of engine.cats) {
+      if (!manager.shouldSampleCatVision(cat)) continue;
+      manager.record("catLosChecks");
+      manager.record("losRaycasts", 5);
+    }
+    runCharacterVisualScheduler(engine, frameDelta);
+    manager.endFrame();
+  }
+  return {
+    label,
+    actorCount: actors.length,
+    milliseconds: performance.now() - started,
+    worstAiUpdates,
+    roomSetChanges,
+    snapshot: manager.getDebugSnapshot(),
+  };
 }
 
 const results = [
   benchmark("food-before-full-scan", naiveLocalFoodPass),
   benchmark("food-after-grid-cache", indexedCachedLocalFoodPass),
-  benchmark("danger-before-per-mouse-state", naiveDangerPass),
-  benchmark("danger-after-shared-snapshot", snapshottedDangerPass),
+  benchmark("danger-before-per-mouse-state", naiveDangerPass, ITERATIONS * 10),
+  benchmark("danger-after-shared-snapshot", snapshottedDangerPass, ITERATIONS * 10),
 ];
 
 for (const result of results) console.log(`${result.label}: ${result.milliseconds.toFixed(2)}ms (${result.checksum.toFixed(2)})`);
 console.log(`food speedup: ${(results[0].milliseconds / results[1].milliseconds).toFixed(2)}x`);
 console.log(`danger speedup: ${(results[2].milliseconds / results[3].milliseconds).toFixed(2)}x`);
+
+const stressResults = [
+  runManagerStressScenario("small", 4, 1),
+  runManagerStressScenario("medium", 12, 2),
+  runManagerStressScenario("large", 20, 3),
+  runManagerStressScenario("chase", 20, 3, { chase: true, traverseRooms: true }),
+  runManagerStressScenario("camera", 12, 2, { rapidCamera: true }),
+  runManagerStressScenario("mobile-large", 20, 3, { isTouchDevice: true }),
+];
+for (const result of stressResults) {
+  const stats = result.snapshot;
+  const fullVisualRate = result.actorCount * 60;
+  const visualSavings = fullVisualRate > 0 ? 1 - stats.characterVisualUpdatesPerSecond / fullVisualRate : 0;
+  console.log(
+    `${result.label}: ${result.milliseconds.toFixed(2)}ms, rooms ${stats.visibleRooms}/${stats.totalRooms} `
+    + `(hidden ${stats.hiddenRooms}), `
+    + `visuals ${stats.characterVisualUpdatesPerSecond.toFixed(1)}/s, samples ${stats.animationSamplesPerSecond.toFixed(1)}/s, `
+    + `visual savings ${(visualSavings * 100).toFixed(1)}%, animation skips ${stats.distantAnimationSamplesSkippedPerSecond.toFixed(1)}/s, `
+    + `AI ${stats.aiDecisionUpdatesPerSecond.toFixed(1)}/s (worst frame ${result.worstAiUpdates}), `
+    + `AI skips ${stats.distantAiUpdatesSkippedPerSecond.toFixed(1)}/s, `
+    + `LOS ${stats.catLosChecksPerSecond.toFixed(1)}/s, rays ${stats.losRaycastsPerSecond.toFixed(1)}/s, `
+    + `shadows ${stats.shadowActors}, sleeping ${stats.sleepingVisualActors}, room-set changes ${result.roomSetChanges}, `
+    + `frame ${stats.frameTimeMs.toFixed(2)}ms / worst ${stats.worstFrameTimeMs.toFixed(2)}ms, FPS ${stats.averageFps.toFixed(1)}`,
+  );
+}

@@ -1,5 +1,6 @@
+import { registerCharacterVisualStage } from "./hearthmouse-performance-manager.mjs";
+
 const MODEL_WORKER_URL = new URL("./hearthmouse-model-loader.worker.mjs", import.meta.url);
-const DECORATE_INTERVAL_MS = 100;
 const MODEL_LOAD_TIMEOUT_MS = 15000;
 const CAT_HEAD_YAW_LIMIT_DEGREES = 18;
 const CAT_HEAD_YAW_LIMIT = CAT_HEAD_YAW_LIMIT_DEGREES * Math.PI / 180;
@@ -46,9 +47,6 @@ const ACTIVE_LOOK_STATES = new Set(["chase", "alert", "investigating", "suspicio
 
 let loadedModels = null;
 let loadError = null;
-let installTimer = 0;
-let animationFrame = 0;
-let lastAnimationTimestamp = 0;
 let constructors = null;
 const groundingProfiles = new Map();
 
@@ -930,25 +928,6 @@ function updateController(controller, engine, delta) {
   }
 }
 
-function animateCharacters(timestamp) {
-  const delta = lastAnimationTimestamp
-    ? clamp((timestamp - lastAnimationTimestamp) / 1000, 0, 0.05)
-    : 1 / 60;
-  lastAnimationTimestamp = timestamp;
-  const engine = window.hearthmouseEngine;
-  if (engine && !engine.disposed) {
-    for (const mouse of engine.mice ?? []) {
-      const controller = mouse?.rig?.root?.userData?.__hearthmouseGlbController;
-      if (controller) updateController(controller, engine, delta);
-    }
-    for (const cat of engine.cats ?? []) {
-      const controller = cat?.rig?.root?.userData?.__hearthmouseGlbController;
-      if (controller) updateController(controller, engine, delta);
-    }
-  }
-  animationFrame = window.requestAnimationFrame(animateCharacters);
-}
-
 function decorateRig(actor, model, kind, engine) {
   const root = actor?.rig?.root;
   if (!root || root.userData?.__hearthmouseGlbModelAttached || root.userData?.__hearthmouseGlbModelError) return false;
@@ -990,19 +969,6 @@ export function applyCharacterModels(engine = window.hearthmouseEngine, models =
   return applied;
 }
 
-function installLoop() {
-  if (typeof window === "undefined" || installTimer) return;
-  const tick = () => {
-    const engine = window.hearthmouseEngine;
-    if (loadedModels && engine && !engine.disposed) applyCharacterModels(engine, loadedModels);
-    installTimer = window.setTimeout(tick, DECORATE_INTERVAL_MS);
-  };
-  tick();
-  if (!animationFrame && typeof window.requestAnimationFrame === "function") {
-    animationFrame = window.requestAnimationFrame(animateCharacters);
-  }
-}
-
 async function start() {
   if (typeof window === "undefined" || typeof Worker === "undefined") return;
   try {
@@ -1011,10 +977,20 @@ async function start() {
   } catch (error) {
     loadError = error;
     console.warn("Hearthmouse GLB models could not be loaded. The existing geometric actors remain active.", error);
-  } finally {
-    installLoop();
   }
 }
+
+registerCharacterVisualStage("glb-character-animation", (actor, context) => {
+  const kind = context.kind === "cat" ? "cat" : "rat";
+  const model = loadedModels?.[kind];
+  if (model && decorateRig(actor, model, kind, context.engine)) {
+    context.manager.markActorShadowDirty(actor);
+  }
+  const controller = actor?.rig?.root?.userData?.__hearthmouseGlbController;
+  if (!controller) return;
+  updateController(controller, context.engine, context.delta);
+  context.recordAnimationSample();
+}, 10);
 
 export function hearthmouseModelStatus() {
   return {
@@ -1031,11 +1007,4 @@ export function hearthmouseModelStatus() {
 
 if (typeof window !== "undefined") {
   start();
-  window.addEventListener("beforeunload", () => {
-    if (installTimer) window.clearTimeout(installTimer);
-    if (animationFrame) window.cancelAnimationFrame?.(animationFrame);
-    installTimer = 0;
-    animationFrame = 0;
-    lastAnimationTimestamp = 0;
-  }, { once: true });
 }

@@ -104,10 +104,11 @@ test("transient pools reset and reuse marker objects instead of allocating repea
   assert.equal(pool.created, 1);
 });
 
-test("mobile chase visibility is sampled at a responsive fixed cadence only during pursuit", () => {
+test("cat visibility sampling stays responsive while scaling by state and device", () => {
   assert.equal(visibilitySampleInterval(true, "chase"), 1 / 30);
-  assert.equal(visibilitySampleInterval(true, "search"), 0);
-  assert.equal(visibilitySampleInterval(false, "chase"), 0);
+  assert.equal(visibilitySampleInterval(true, "search"), 1 / 20);
+  assert.equal(visibilitySampleInterval(false, "chase"), 1 / 45);
+  assert.equal(visibilitySampleInterval(false, "relaxed"), 1 / 12);
 });
 
 test("cat sight keeps exact body probes while broad-phasing occluders and reusing scratch storage", () => {

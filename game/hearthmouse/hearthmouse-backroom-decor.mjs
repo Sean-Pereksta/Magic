@@ -5,6 +5,7 @@ import {
   placementIntersectsDoorway,
   validateCirculationPlacement,
 } from "./hearthmouse-circulation-layout.mjs";
+import { registerRoomRenderGroup } from "./hearthmouse-performance-manager.mjs";
 
 export const BACKROOM_DOORWAYS = DOORWAY_CORRIDORS;
 export const CHILDREN_DOORWAY = BACKROOM_DOORWAYS.find((doorway) => doorway.id === "children-door");
@@ -254,6 +255,7 @@ function installBackroomDecor(engine, I) {
     group.userData.unlockNight = ROOM_LAYOUTS.find((room) => room.id === roomId)?.unlockNight ?? 1;
     root.add(group);
     roomGroups.set(roomId, group);
+    registerRoomRenderGroup(world, roomId, group);
     return group;
   };
 
@@ -764,7 +766,10 @@ function installBackroomDecor(engine, I) {
   }
 
   const syncRoomVisibility = (night = engine.snapshot?.night ?? 1) => {
-    for (const group of roomGroups.values()) group.visible = (group.userData.unlockNight ?? 1) <= night;
+    for (const group of roomGroups.values()) {
+      const unlocked = (group.userData.unlockNight ?? 1) <= night;
+      group.visible = unlocked && group.userData.__hearthmouseRenderRelevant !== false;
+    }
     for (const collider of world.colliders ?? []) {
       if (!collider?.__backroomDecor) continue;
       collider.active = (collider.unlockNight ?? 1) <= night;
