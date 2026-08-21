@@ -40,6 +40,16 @@ function enemyCap(){
  return Math.min(48,10+Math.floor(r*1.25)+tier);
 }
 
+function enemyLevelHealthScale(round=game.round){
+ const level=Math.max(0,round-1);
+ return Math.pow(1.075,level)*(1+Math.pow(level,1.35)*.018);
+}
+
+function catLevelHealthScale(round=game.round){
+ const level=Math.max(0,round-1);
+ return Math.pow(1.105,level)*(1+Math.pow(level,1.42)*.025);
+}
+
 function waveQuota(wave=game.wave?.number||1){
  const r=Math.max(1,game.round),total=wavesForRound(r);
  const tier=r>=15?20:r>=10?11:r>=5?4:0;
@@ -130,7 +140,7 @@ function spawnCat(){
  const terror=1+(r-1)*.24+Math.pow(Math.max(0,r-1),1.28)*.075;
  const tierHp=r>=15?1.46:r>=10?1.26:r>=5?1.12:1;
  const tierDmg=r>=15?1.34:r>=10?1.20:r>=5?1.10:1;
- const hp=(350+r*145)*terror*tierHp*(game.mutator?.catHp||1)*boss.hp;
+ const hp=(350+r*145)*terror*tierHp*catLevelHealthScale(r)*(game.mutator?.catHp||1)*boss.hp;
  const dmg=(18+r*2.25)*(1+(r-1)*.13)*tierDmg*boss.damage;
  const move=Math.max(.095,(.49-r*.013)*boss.move);
  const mesh=catMesh();styleBossMesh(mesh,boss);
@@ -178,7 +188,7 @@ function spawnEnemy(){
  const waveScale=1+(waveNumber-1)*(r>=15?.065:.08)+(waveNumber===total?.10:0);
  const hpTier=r>=15?1.62:r>=10?1.35:r>=5?1.18:1;
  const dmgTier=r>=15?1.48:r>=10?1.28:r>=5?1.12:1;
- const scale=(1+(r-1)*.13)*waveScale*hpTier;
+ const scale=(1+(r-1)*.13)*waveScale*hpTier*enemyLevelHealthScale(r);
  const eliteChance=Math.min(.66,.06+r*.021+(waveNumber===total?.10:0)+(game.mutator?.eliteBonus||0)+(d.lateTier||0)*.012);
  const elite=r>=3&&Math.random()<eliteChance;
  const mesh=minionMesh(baseType,d.color);decorateLateEnemy(mesh,d);
