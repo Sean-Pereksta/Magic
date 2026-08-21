@@ -1,4 +1,5 @@
 import "./hearthmouse-backroom-decor.mjs";
+import "./hearthmouse-room-design-pass.mjs";
 import {
   DOORWAY_CORRIDORS,
   SECRET_ROUTE_ENTRANCES,
