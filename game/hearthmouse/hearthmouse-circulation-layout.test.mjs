@@ -7,6 +7,7 @@ import {
   SAFE_DECOR_REGIONS,
   SECRET_ROUTE_ENTRANCES,
   SECRET_ROUTES,
+  TUNNEL_FAMILY_PROFILES,
   TRAP_ANCHORS,
   TRAVEL_LANES,
   doorwayProtectedBounds,
@@ -58,6 +59,17 @@ test("traps cannot overlap doorways, stairs, lanes, or secret entrances", () => 
   for (const entrance of SECRET_ROUTE_ENTRANCES) {
     assert.ok(["x", "z"].includes(entrance.axis), entrance.id);
     assert.ok(Math.hypot(entrance.normalX, entrance.normalZ) > 0.99, entrance.id);
+  }
+});
+
+test("the mouse map uses five physically distinct tunnel families with rare alcoves", () => {
+  assert.deepEqual(new Set(SECRET_ROUTES.map((route) => route.family)), new Set(Object.keys(TUNNEL_FAMILY_PROFILES)));
+  assert.ok(SECRET_ROUTES.filter((route) => route.alcove).length >= 4);
+  for (const route of SECRET_ROUTES) {
+    assert.equal(route.mouseOnly, true, route.id);
+    assert.equal(TUNNEL_FAMILY_PROFILES[route.family].catAccess, false, route.id);
+    assert.ok(route.width <= 0.4 && route.crawlHeight <= 0.3, route.id);
+    assert.ok(route.duration >= 0.9 && route.duration <= 2.8, route.id);
   }
 });
 

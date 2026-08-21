@@ -2,6 +2,7 @@ import {
   ROOM_LAYOUT_BY_ID,
   SECRET_ROUTE_ENTRANCES,
   SECRET_ROUTES,
+  TUNNEL_FAMILY_PROFILES,
   TRAP_ANCHORS,
   isCirculationPlacementSafe,
   roomForPoint,
@@ -34,6 +35,14 @@ const PLAYER_TARGET_ID = "player";
 const TUNNEL_ENTRY_RADIUS = 0.18;
 const TUNNEL_EXIT_OFFSET = 0.24;
 const TUNNEL_CAT_WAIT_OFFSET = 0.5;
+
+export const TUNNEL_INTERIOR_PROFILES = Object.freeze({
+  "gnawed-wall": Object.freeze({ floor: 0x443226, wall: 0x6b513d, roof: 0x584331, trim: 0x8b6848, clue: 0xbca47e, metalness: 0.02, damp: false }),
+  plumbing: Object.freeze({ floor: 0x4b5655, wall: 0x687573, roof: 0x596260, trim: 0xa77b55, clue: 0x9ec0ba, metalness: 0.38, damp: true }),
+  cabinet: Object.freeze({ floor: 0x3e2d21, wall: 0x533a29, roof: 0x493225, trim: 0x9d7446, clue: 0xc8a35d, metalness: 0.01, damp: false }),
+  ventilation: Object.freeze({ floor: 0x4b5254, wall: 0x5e6668, roof: 0x555d5f, trim: 0x90999a, clue: 0xc7d2d1, metalness: 0.62, damp: false }),
+  furniture: Object.freeze({ floor: 0x36292c, wall: 0x564047, roof: 0x49363c, trim: 0x85666e, clue: 0xb99a87, metalness: 0, damp: false }),
+});
 export const EVENT_PROP_ANCHORS = Object.freeze({
   guests: Object.freeze([
     Object.freeze({ name: "guest-shoes", room: "living", x: -8.9, z: 5.45, w: 0.62, h: 0.12, d: 0.28, color: 0x4b342b }),
@@ -65,9 +74,28 @@ function stringSeed(text) {
 
 export function tunnelTraversalDuration(route) {
   const authored = Number(route?.duration);
-  if (Number.isFinite(authored)) return Math.max(0.65, Math.min(1.6, authored));
+  if (Number.isFinite(authored)) return Math.max(0.9, Math.min(2.8, authored));
   const speed = Math.max(0.35, Number(route?.speed) || 1);
-  return Math.max(0.65, Math.min(1.6, 0.92 / speed));
+  return Math.max(0.9, Math.min(2.8, 1.2 / speed));
+}
+
+export function secretRouteSafetyScore({
+  entranceDistance = 0,
+  directGoalDistance = 0,
+  exitGoalDistance = 0,
+  sourceCatDistance = 8,
+  exitCatDistance = 8,
+  noise = 0,
+  urgent = false,
+} = {}) {
+  const progress = Math.max(-8, Math.min(8, directGoalDistance - exitGoalDistance));
+  const safetyGain = Math.max(-8, Math.min(8, exitCatDistance - sourceCatDistance));
+  const exitDanger = exitCatDistance < 0.9 ? (0.9 - exitCatDistance) * 12 : exitCatDistance < 1.6 ? (1.6 - exitCatDistance) * 3.2 : 0;
+  return progress * (urgent ? 0.42 : 1.12)
+    + safetyGain * (urgent ? 1.72 : 0.58)
+    - entranceDistance * (urgent ? 0.82 : 0.48)
+    - Math.max(0, noise) * (urgent ? 0.35 : 1.25)
+    - exitDanger;
 }
 
 export function tunnelTransitProgress(startedAt, now, duration) {
@@ -207,6 +235,8 @@ function ensureLivingState(engine, I) {
     routeCooldowns: new Map(),
     playerTunnelTransit: null,
     mouseTunnelTransits: new Map(),
+    tunnelInteriors: new Map(),
+    activeTunnelRouteId: null,
     tunnelVeil: null,
     playerTrap: null,
     releaseBlockedKeys: new Set(),
@@ -255,7 +285,13 @@ function cleanupNight(engine, state) {
   state.releaseBlockedKeys.clear();
   state.routeCooldowns.clear();
   state.playerTunnelTransit = null;
+  for (const transit of state.mouseTunnelTransits.values()) {
+    if (transit.mouse?.rig?.root) transit.mouse.rig.root.visible = true;
+    if (transit.mouse) transit.mouse.__tunnelTransit = null;
+  }
   state.mouseTunnelTransits.clear();
+  state.tunnelInteriors.clear();
+  state.activeTunnelRouteId = null;
   if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
   for (const cat of engine.cats ?? []) {
     cat.__tunnelStalk = null;
@@ -370,13 +406,17 @@ function tunnelStyleColors(style, discovered) {
   const trim = {
     appliance: 0x777b79,
     baseboard: 0x5b4434,
+    "gnawed-wall": 0x5b4434,
     cabinet: 0x493221,
     closet: 0x4a352b,
     furniture: 0x352529,
     pipe: 0x6d7472,
+    plumbing: 0x7b8582,
     vent: 0x626866,
+    ventilation: 0x737b7d,
   }[style] ?? 0x4d392d;
-  return { opening: discovered ? 0x171b19 : 0x090b0b, trim, floor: style === "vent" || style === "appliance" ? 0x515756 : 0x3d3027 };
+  const metal = ["vent", "ventilation", "appliance", "plumbing", "pipe"].includes(style);
+  return { opening: discovered ? 0x171b19 : 0x090b0b, trim, floor: metal ? 0x515756 : 0x3d3027 };
 }
 
 function createTunnelEntranceVisual(engine, state, route, entrance, discovered) {
@@ -449,7 +489,7 @@ function createTunnelEntranceVisual(engine, state, route, entrance, discovered) 
     roughness: 1,
   });
 
-  if (entrance.style === "vent" || entrance.style === "appliance") {
+  if (["vent", "ventilation", "appliance"].includes(entrance.style)) {
     for (const side of [-1, 0, 1]) {
       addBox(engine, state, {
         name: `mouse-vent-slat-${entrance.id}-${side}`,
@@ -463,7 +503,201 @@ function createTunnelEntranceVisual(engine, state, route, entrance, discovered) 
         metalness: 0.45,
       });
     }
+  } else if (entrance.style === "gnawed-wall" || entrance.style === "baseboard") {
+    for (let index = 0; index < 5; index++) {
+      const offset = (index - 2) * 0.052;
+      addBox(engine, state, {
+        name: `mouse-hole-splinter-${entrance.id}-${index}`,
+        x: frontX + (axisX ? 0.018 : offset),
+        y: 0.028 + (index % 3) * 0.024,
+        z: frontZ + (axisX ? offset : 0.018),
+        w: axisX ? 0.025 : 0.012,
+        h: 0.018,
+        d: axisX ? 0.012 : 0.025,
+        color: index % 2 ? 0x8e6b48 : 0xb09167,
+        rotationY: (index - 2) * 0.12,
+      });
+    }
+    addBox(engine, state, {
+      name: `mouse-hole-paper-clue-${entrance.id}`,
+      x: frontX + entrance.normalX * 0.12 + (axisX ? 0 : 0.12),
+      y: 0.012,
+      z: frontZ + entrance.normalZ * 0.12 + (axisX ? 0.12 : 0),
+      w: 0.09,
+      h: 0.008,
+      d: 0.055,
+      color: 0xb6a17c,
+      rotationY: 0.38,
+    });
+  } else if (entrance.style === "plumbing" || entrance.style === "pipe") {
+    for (const side of [-1, 1]) {
+      addBox(engine, state, {
+        name: `mouse-hole-pipe-${entrance.id}-${side}`,
+        x: frontX + (axisX ? 0.035 : side * 0.125),
+        y: 0.12,
+        z: frontZ + (axisX ? side * 0.125 : 0.035),
+        w: axisX ? 0.035 : 0.045,
+        h: 0.24,
+        d: axisX ? 0.045 : 0.035,
+        color: side > 0 ? 0x9b7452 : 0x707b79,
+        metalness: 0.58,
+      });
+    }
+    addBox(engine, state, {
+      name: `mouse-hole-wet-clue-${entrance.id}`,
+      x: thresholdX,
+      y: 0.018,
+      z: thresholdZ,
+      w: 0.13,
+      h: 0.006,
+      d: 0.08,
+      color: 0x638285,
+      roughness: 0.22,
+      metalness: 0.08,
+      emissive: 0x1f373b,
+      emissiveIntensity: 0.22,
+    });
+  } else if (entrance.style === "cabinet") {
+    for (let index = 0; index < 4; index++) {
+      addBox(engine, state, {
+        name: `mouse-hole-crumb-${entrance.id}-${index}`,
+        x: thresholdX + (index - 1.5) * (axisX ? 0.012 : 0.04),
+        y: 0.02 + (index % 2) * 0.007,
+        z: thresholdZ + (index - 1.5) * (axisX ? 0.04 : 0.012),
+        w: 0.025,
+        h: 0.018,
+        d: 0.022,
+        color: index % 2 ? 0xb68948 : 0xd0af69,
+      });
+    }
+  } else if (entrance.style === "furniture") {
+    for (let index = -2; index <= 2; index++) {
+      addBox(engine, state, {
+        name: `mouse-hole-fabric-fringe-${entrance.id}-${index}`,
+        x: frontX + (axisX ? 0.02 : index * 0.052),
+        y: 0.14 - Math.abs(index) * 0.012,
+        z: frontZ + (axisX ? index * 0.052 : 0.02),
+        w: axisX ? 0.018 : 0.035,
+        h: 0.12,
+        d: axisX ? 0.035 : 0.018,
+        color: 0x765761,
+      });
+    }
   }
+}
+
+function createTunnelInterior(engine, state, route, source, target) {
+  if (!source || !target || state.tunnelInteriors.has(route.id)) return null;
+  const family = TUNNEL_FAMILY_PROFILES[route.family] ? route.family : "gnawed-wall";
+  const profile = TUNNEL_INTERIOR_PROFILES[family] ?? TUNNEL_INTERIOR_PROFILES["gnawed-wall"];
+  const sourceInsideX = source.x - (source.normalX ?? 0) * 0.22;
+  const sourceInsideZ = source.z - (source.normalZ ?? 0) * 0.22;
+  const targetInsideX = target.x - (target.normalX ?? 0) * 0.22;
+  const targetInsideZ = target.z - (target.normalZ ?? 0) * 0.22;
+  const dx = targetInsideX - sourceInsideX;
+  const dz = targetInsideZ - sourceInsideZ;
+  const length = Math.max(0.45, Math.hypot(dx, dz));
+  const width = Math.max(0.28, Math.min(0.4, Number(route.width) || 0.34));
+  const height = Math.max(0.21, Math.min(0.3, Number(route.crawlHeight) || 0.24));
+  const group = new state.I.Group();
+  group.name = `mouse-tunnel-interior-${route.id}`;
+  group.position.set((sourceInsideX + targetInsideX) / 2, 0, (sourceInsideZ + targetInsideZ) / 2);
+  group.rotation.y = Math.atan2(dx, dz);
+  group.visible = false;
+  group.userData.routeId = route.id;
+  group.userData.family = family;
+  makeNightRoot(engine, state).add(group);
+
+  const localBox = (spec) => addBox(engine, state, { ...spec, x: spec.x ?? 0, z: spec.z ?? 0 }, group);
+  localBox({ name: `${route.id}-crawl-floor`, x: 0, y: 0.008, z: 0, w: width, h: 0.016, d: length + 0.18, color: profile.floor, roughness: 1, metalness: profile.metalness });
+  localBox({ name: `${route.id}-crawl-roof`, x: 0, y: height, z: 0, w: width, h: 0.025, d: length + 0.18, color: profile.roof, roughness: 0.92, metalness: profile.metalness });
+
+  const alcoveSide = route.alcove?.side >= 0 ? 1 : -1;
+  const alcoveGap = route.alcove ? Math.min(0.42, length * 0.28) : 0;
+  for (const side of [-1, 1]) {
+    if (!route.alcove || side !== alcoveSide) {
+      localBox({ name: `${route.id}-crawl-wall-${side}`, x: side * width / 2, y: height / 2, z: 0, w: 0.025, h: height, d: length + 0.18, color: profile.wall, roughness: 0.98, metalness: profile.metalness });
+      continue;
+    }
+    const segmentLength = Math.max(0.12, (length + 0.18 - alcoveGap) / 2);
+    for (const direction of [-1, 1]) {
+      localBox({
+        name: `${route.id}-crawl-wall-${side}-${direction}`,
+        x: side * width / 2,
+        y: height / 2,
+        z: direction * (alcoveGap / 2 + segmentLength / 2),
+        w: 0.025,
+        h: height,
+        d: segmentLength,
+        color: profile.wall,
+        roughness: 0.98,
+        metalness: profile.metalness,
+      });
+    }
+  }
+
+  if (route.alcove) {
+    const chamberDepth = 0.38;
+    const chamberX = alcoveSide * (width / 2 + chamberDepth / 2);
+    localBox({ name: `${route.id}-alcove-floor`, x: chamberX, y: 0.009, z: 0, w: chamberDepth, h: 0.018, d: alcoveGap, color: profile.floor, roughness: 1, metalness: profile.metalness });
+    localBox({ name: `${route.id}-alcove-roof`, x: chamberX, y: height, z: 0, w: chamberDepth, h: 0.025, d: alcoveGap, color: profile.roof, roughness: 0.94, metalness: profile.metalness });
+    localBox({ name: `${route.id}-alcove-back`, x: alcoveSide * (width / 2 + chamberDepth), y: height / 2, z: 0, w: 0.025, h: height, d: alcoveGap, color: profile.wall, roughness: 1, metalness: profile.metalness });
+    for (const direction of [-1, 1]) localBox({
+      name: `${route.id}-alcove-side-${direction}`,
+      x: chamberX,
+      y: height / 2,
+      z: direction * alcoveGap / 2,
+      w: chamberDepth,
+      h: height,
+      d: 0.025,
+      color: profile.wall,
+      roughness: 1,
+      metalness: profile.metalness,
+    });
+    localBox({ name: `${route.id}-alcove-${route.alcove.kind}`, x: chamberX + alcoveSide * 0.04, y: 0.035, z: 0, w: 0.12, h: 0.05, d: 0.12, color: profile.clue, emissive: 0x241a0e, emissiveIntensity: 0.18 });
+  }
+
+  if (family === "ventilation") {
+    for (let index = 1; index <= 6; index++) {
+      const z = -length / 2 + length * index / 7;
+      localBox({ name: `${route.id}-vent-rib-${index}`, x: 0, y: height - 0.018, z, w: width + 0.035, h: 0.028, d: 0.035, color: profile.trim, metalness: 0.7 });
+      localBox({ name: `${route.id}-vent-floor-rib-${index}`, x: 0, y: 0.022, z, w: width, h: 0.018, d: 0.024, color: profile.trim, metalness: 0.7 });
+    }
+  } else if (family === "plumbing") {
+    localBox({ name: `${route.id}-copper-pipe`, x: -width * 0.36, y: height * 0.66, z: 0, w: 0.045, h: 0.045, d: length, color: profile.trim, metalness: 0.7 });
+    localBox({ name: `${route.id}-gray-pipe`, x: width * 0.35, y: height * 0.35, z: 0, w: 0.052, h: 0.052, d: length, color: 0x7e8987, metalness: 0.62 });
+    for (const direction of [-1, 1]) localBox({ name: `${route.id}-wet-glint-${direction}`, x: direction * width * 0.18, y: 0.021, z: direction * length * 0.18, w: 0.08, h: 0.006, d: 0.12, color: profile.clue, roughness: 0.18, emissive: 0x183238, emissiveIntensity: 0.28 });
+  } else if (family === "gnawed-wall") {
+    for (let index = 1; index <= 5; index++) {
+      const z = -length / 2 + length * index / 6;
+      localBox({ name: `${route.id}-wall-stud-${index}`, x: 0, y: height - 0.025, z, w: width + 0.04, h: 0.045, d: 0.055, color: profile.trim, roughness: 1 });
+    }
+    localBox({ name: `${route.id}-torn-paper`, x: width * 0.26, y: 0.04, z: -length * 0.12, w: 0.08, h: 0.07, d: 0.025, color: profile.clue, rotationY: 0.3 });
+  } else if (family === "cabinet") {
+    for (let index = 0; index < 7; index++) {
+      localBox({ name: `${route.id}-crumb-${index}`, x: (index % 3 - 1) * width * 0.18, y: 0.023, z: -length * 0.4 + index * length * 0.13, w: 0.022 + (index % 2) * 0.012, h: 0.018, d: 0.025, color: index % 2 ? profile.clue : 0xb8874d });
+    }
+  } else if (family === "furniture") {
+    for (let index = 1; index <= 5; index++) {
+      localBox({ name: `${route.id}-fabric-strip-${index}`, x: -width / 2 + width * index / 6, y: height - 0.035, z: 0, w: 0.035, h: 0.035, d: length, color: index % 2 ? profile.trim : profile.wall, roughness: 1 });
+    }
+  }
+
+  for (const direction of [-1, 1]) localBox({
+    name: `${route.id}-exit-light-${direction}`,
+    x: 0,
+    y: height * 0.55,
+    z: direction * length / 2,
+    w: width * 0.62,
+    h: height * 0.58,
+    d: 0.018,
+    color: 0x9d8a68,
+    emissive: 0x826b45,
+    emissiveIntensity: 0.62,
+  });
+
+  state.tunnelInteriors.set(route.id, group);
+  return group;
 }
 
 function ensureTunnelVeil(state) {
@@ -488,12 +722,17 @@ function createSecretRouteVisuals(engine, state) {
   for (const route of SECRET_ROUTES) {
     if (route.discoveryNight > night) continue;
     const discovered = state.discoveredRoutes.has(route.id);
+    const routeSource = ENTRANCE_BY_ID.get(route.a);
+    const routeTarget = ENTRANCE_BY_ID.get(route.b);
     for (const entranceId of [route.a, route.b]) {
       if (rendered.has(entranceId)) continue;
       const entrance = ENTRANCE_BY_ID.get(entranceId);
       if (!entrance || !unlockedRoom(entrance.roomId, night)) continue;
       rendered.add(entranceId);
       createTunnelEntranceVisual(engine, state, route, entrance, discovered);
+    }
+    if (routeSource && routeTarget && unlockedRoom(routeSource.roomId, night) && unlockedRoom(routeTarget.roomId, night)) {
+      createTunnelInterior(engine, state, route, routeSource, routeTarget);
     }
   }
   ensureTunnelVeil(state);
@@ -758,8 +997,23 @@ function planKnownSecretRoute(engine, state, I, mouse, basePlan) {
   if (!target || !start) return false;
   const startRoom = roomForPoint(start.x, start.z);
   const targetRoom = roomForPoint(target.x, target.z);
+  const night = engine.snapshot?.night ?? 1;
+  const directGoalDistance = planarDistance(start, target);
+  const nearestCatDistance = (point) => {
+    let distance = 12;
+    for (const cat of engine.cats ?? []) {
+      if (!cat?.rig?.root?.position) continue;
+      distance = Math.min(distance, planarDistance(cat.rig.root.position, point));
+    }
+    return distance;
+  };
+  const startCatDistance = nearestCatDistance(start);
+  const urgent = mouse.task === "escaping" || (mouse.lastThreatScore ?? 0) >= 0.5 || startCatDistance < 2.8;
+  let best = null;
   for (const route of SECRET_ROUTES) {
-    if (!state.discoveredRoutes.has(route.id) || route.discoveryNight > (engine.snapshot?.night ?? 1)) continue;
+    // Colony mice know the hidden house even before the player personally uses
+    // a passage. Their first escape can therefore teach the player the route.
+    if (route.discoveryNight > night) continue;
     const a = ENTRANCE_BY_ID.get(route.a);
     const b = ENTRANCE_BY_ID.get(route.b);
     if (!a || !b) continue;
@@ -768,19 +1022,30 @@ function planKnownSecretRoute(engine, state, I, mouse, basePlan) {
     if (a.roomId === startRoom) { source = a; exit = b; }
     else if (b.roomId === startRoom && !route.oneWay) { source = b; exit = a; }
     if (!source || !exit) continue;
-    const sourceDistance = Math.hypot(source.x - target.x, source.z - target.z);
-    const exitDistance = Math.hypot(exit.x - target.x, exit.z - target.z);
-    if (exit.roomId !== targetRoom && exitDistance + 0.55 >= sourceDistance) continue;
+    if (!unlockedRoom(source.roomId, night) || !unlockedRoom(exit.roomId, night)) continue;
+    const entranceDistance = planarDistance(start, source);
+    const exitGoalDistance = planarDistance(exit, target);
+    if (!urgent && exit.roomId !== targetRoom && exitGoalDistance + 0.55 >= directGoalDistance) continue;
     const entrance = new I.Vector3(source.x, start.y, source.z);
     const result = I.pathfind(start, entrance, 0.055, engine.world.colliders, "mouse");
     if (!result?.reachedGoal || !result.path?.length) continue;
-    mouse.path = result.path;
-    mouse.pathIndex = 0;
-    mouse.__secretRoutePlan = { routeId: route.id, sourceId: source.id };
-    state.basePlanMousePath = basePlan;
-    return true;
+    const score = secretRouteSafetyScore({
+      entranceDistance,
+      directGoalDistance,
+      exitGoalDistance,
+      sourceCatDistance: nearestCatDistance(source),
+      exitCatDistance: nearestCatDistance(exit),
+      noise: route.noise,
+      urgent,
+    }) + (exit.roomId === targetRoom ? 1.35 : 0) + (state.discoveredRoutes.has(route.id) ? 0.18 : 0);
+    if (!best || score > best.score) best = { route, source, result, score };
   }
-  return false;
+  if (!best || best.score < (urgent ? -1.25 : 0.3)) return false;
+  mouse.path = best.result.path;
+  mouse.pathIndex = 0;
+  mouse.__secretRoutePlan = { routeId: best.route.id, sourceId: best.source.id };
+  state.basePlanMousePath = basePlan;
+  return true;
 }
 
 function routePair(route, sourceId) {
@@ -858,6 +1123,14 @@ function actorInTunnel(state, targetId) {
   return state.mouseTunnelTransits.has(`mouse:${targetId}`);
 }
 
+function setActiveTunnelInterior(state, routeId = null) {
+  state.activeTunnelRouteId = routeId;
+  for (const [id, group] of state.tunnelInteriors) group.visible = id === routeId;
+  if (state.tunnelVeil) state.tunnelVeil.dataset.tunnelFamily = routeId
+    ? state.tunnelInteriors.get(routeId)?.userData?.family ?? "gnawed-wall"
+    : "";
+}
+
 function beginTunnelTransit(engine, state, route, source, target, position, actorId, mouse = null) {
   const now = engine.time ?? 0;
   if ((state.routeCooldowns.get(actorId) ?? 0) > now) return false;
@@ -891,12 +1164,14 @@ function beginTunnelTransit(engine, state, route, source, target, position, acto
     mouse.pathIndex = 0;
     mouse.__secretRoutePlan = null;
     mouse.__tunnelTransit = transit;
+    if (mouse.rig?.root) mouse.rig.root.visible = false;
     mouse.task = "tunneling";
     mouse.escapeCooldown = Math.max(mouse.escapeCooldown ?? 0, duration + 0.35);
     state.mouseTunnelTransits.set(actorId, transit);
   } else {
     engine.playerVelocity?.set?.(0, 0, 0);
     state.playerTunnelTransit = transit;
+    setActiveTunnelInterior(state, route.id);
   }
   return true;
 }
@@ -909,6 +1184,7 @@ function finishTunnelTransit(engine, state, transit) {
     const mouse = transit.mouse;
     state.mouseTunnelTransits.delete(transit.actorId);
     mouse.__tunnelTransit = null;
+    if (mouse.rig?.root) mouse.rig.root.visible = true;
     mouse.__secretRoutePlan = null;
     mouse.__secretPlanCooldownUntil = now + 0.72;
     mouse.task = transit.previousTask === "tunneling" ? (mouse.resumeTask ?? "waiting") : (transit.previousTask ?? "waiting");
@@ -919,6 +1195,7 @@ function finishTunnelTransit(engine, state, transit) {
     }
   } else {
     state.playerTunnelTransit = null;
+    setActiveTunnelInterior(state, null);
     engine.playerEyeY = 0.066;
     engine.playerVelocity?.set?.(0, 0, 0);
     if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
@@ -927,8 +1204,15 @@ function finishTunnelTransit(engine, state, transit) {
 
 function advanceTunnelTransit(engine, state, transit) {
   if (!transit?.position || transit.mouse && (!transit.mouse.member?.alive || !transit.mouse.rig?.root?.position)) {
-    if (transit?.actorId === PLAYER_TARGET_ID) state.playerTunnelTransit = null;
-    else if (transit?.actorId) state.mouseTunnelTransits.delete(transit.actorId);
+    if (transit?.actorId === PLAYER_TARGET_ID) {
+      state.playerTunnelTransit = null;
+      setActiveTunnelInterior(state, null);
+    }
+    else if (transit?.actorId) {
+      if (transit.mouse?.rig?.root) transit.mouse.rig.root.visible = true;
+      if (transit.mouse) transit.mouse.__tunnelTransit = null;
+      state.mouseTunnelTransits.delete(transit.actorId);
+    }
     return 1;
   }
   const progress = tunnelTransitProgress(transit.startedAt, engine.time ?? 0, transit.duration);
@@ -1121,8 +1405,13 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
       const state = ensureLivingState(this, I);
       state.playerTrap = null;
       state.playerTunnelTransit = null;
+      for (const transit of state.mouseTunnelTransits.values()) {
+        if (transit.mouse?.rig?.root) transit.mouse.rig.root.visible = true;
+        if (transit.mouse) transit.mouse.__tunnelTransit = null;
+      }
       state.mouseTunnelTransits.clear();
       state.routeCooldowns.clear();
+      setActiveTunnelInterior(state, null);
       if (state.tunnelVeil) state.tunnelVeil.style.opacity = "0";
       state.releaseBlockedKeys.clear();
       for (const trap of state.traps) {
@@ -1171,10 +1460,13 @@ export function installLivingHouse(I = globalThis.window?.HearthmouseInternals) 
       this.playerVelocity?.set?.(0, 0, 0);
       this.verticalVelocity = 0;
       this.onGround = true;
-      this.playerEyeY = 0.066 - Math.sin(progress * Math.PI) * 0.02;
+      this.playerEyeY = 0.052 + Math.sin(progress * Math.PI * 6) * 0.0025;
       const veil = ensureTunnelVeil(state);
-      if (veil) veil.style.opacity = String(Math.pow(Math.sin(progress * Math.PI), 0.62) * 0.96);
-      this.updateCamera?.(0.38, false);
+      if (veil) {
+        veil.dataset.tunnelFamily = transit.route?.family ?? "gnawed-wall";
+        veil.style.opacity = String(Math.pow(Math.sin(progress * Math.PI), 0.7) * 0.34);
+      }
+      this.updateCamera?.(0.18, false);
       return;
     }
     const trap = state.playerTrap;
