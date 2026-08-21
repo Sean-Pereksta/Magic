@@ -50,8 +50,16 @@ let installTimer = 0;
 let animationFrame = 0;
 let lastAnimationTimestamp = 0;
 let constructors = null;
+const groundingProfiles = new Map();
 
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+
+export function computeGroundingOffset(localFloorY, transformedMinimumY) {
+  const floor = Number(localFloorY);
+  const minimum = Number(transformedMinimumY);
+  if (!Number.isFinite(floor) || !Number.isFinite(minimum)) return 0;
+  return floor - minimum;
+}
 
 function normalizeAngle(angle) {
   let value = angle;
@@ -629,7 +637,14 @@ function fitModelToRig(modelContent, rigRoot, kind, C) {
   let modelBox = new C.Box3().setFromObject(orientation);
   const modelSize = modelBox.getSize(new C.Vector3());
   if (!(modelSize.y > 1e-6) || !(localTargetHeight > 1e-6)) throw new Error(`${kind}.glb has invalid dimensions`);
-  const scale = localTargetHeight / modelSize.y;
+  // Cats share one official scale/floor profile. That makes the visible offset
+  // independent of which named cat happened to load first or what animation
+  // pose its geometric fallback was in at that moment.
+  const profileKey = kind === "cat"
+    ? "cat:shared-official-floor"
+    : `${kind}:${localTargetHeight.toFixed(6)}:${localTargetBottom.toFixed(6)}`;
+  const existingProfile = groundingProfiles.get(profileKey);
+  const scale = existingProfile?.scale ?? localTargetHeight / modelSize.y;
   wrapper.scale.setScalar(scale);
 
   orientation.updateMatrixWorld(true);
@@ -638,8 +653,31 @@ function fitModelToRig(modelContent, rigRoot, kind, C) {
   const bodyCenter = centerOfObject(body, C, new C.Vector3()) ?? modelBox.getCenter(new C.Vector3());
   wrapper.position.x = -bodyCenter.x * scale;
   wrapper.position.z = -bodyCenter.z * scale;
-  wrapper.position.y = localTargetBottom - modelBox.min.y * scale;
+  const officialFloorY = existingProfile?.floorY ?? (kind === "cat" ? 0 : localTargetBottom);
+  wrapper.position.y = existingProfile?.baselineY ?? computeGroundingOffset(officialFloorY, modelBox.min.y * scale);
+
+  // Measure the fully transformed visible model after orientation and scale.
+  // This catches exported root translations and parent transforms that a raw
+  // accessor minimum cannot see. Every later instance reuses the first exact
+  // baseline instead of inheriting whatever Y happened to be present at load.
+  wrapper.updateMatrixWorld(true);
+  const transformedBox = new C.Box3().setFromObject(wrapper, true);
+  if (!existingProfile && !transformedBox.isEmpty()) {
+    wrapper.position.y += computeGroundingOffset(officialFloorY, transformedBox.min.y);
+    wrapper.updateMatrixWorld(true);
+  }
+  const grounding = existingProfile ?? Object.freeze({
+    key: profileKey,
+    kind,
+    baselineY: wrapper.position.y,
+    floorY: officialFloorY,
+    scale,
+    sourceMinimumY: modelBox.min.y,
+  });
+  if (!existingProfile) groundingProfiles.set(profileKey, grounding);
+  else wrapper.position.y = grounding.baselineY;
   wrapper.userData.__hearthmouseModelScale = scale;
+  wrapper.userData.__hearthmouseGrounding = grounding;
   return wrapper;
 }
 
@@ -820,6 +858,10 @@ function createController(actor, model, built, wrapper, kind, C) {
     headYaw: 0,
     headLookQuaternion: new C.Quaternion(),
     upAxis: new C.Vector3(0, 1, 0),
+    grounding: wrapper.userData.__hearthmouseGrounding ?? null,
+    groundingBox: new C.Box3(),
+    groundingRootWorld: new C.Vector3(),
+    groundingRootScale: new C.Vector3(1, 1, 1),
   };
 }
 
@@ -983,6 +1025,7 @@ export function hearthmouseModelStatus() {
     ratAnimations: loadedModels?.rat?.json?.animations?.map((animation, index) => animation.name || `animation-${index}`) ?? [],
     catAnimations: loadedModels?.cat?.json?.animations?.map((animation, index) => animation.name || `animation-${index}`) ?? [],
     catHeadYawLimitDegrees: CAT_HEAD_YAW_LIMIT_DEGREES,
+    groundingProfiles: [...groundingProfiles.values()].map((profile) => ({ ...profile })),
   };
 }
 

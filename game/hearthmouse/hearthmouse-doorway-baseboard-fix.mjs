@@ -1,4 +1,11 @@
 import "./hearthmouse-backroom-decor.mjs";
+import {
+  DOORWAY_CORRIDORS,
+  SECRET_ROUTE_ENTRANCES,
+  boundsOverlap,
+  doorwayProtectedBounds,
+  placementBounds,
+} from "./hearthmouse-circulation-layout.mjs";
 
 export const LEGACY_DOORWAY_BASEBOARDS = Object.freeze([
   "south-baseboard",
@@ -63,6 +70,9 @@ export function colliderNearDoorway(collider, doorway, radius = DOORWAY_FLOORBOA
   const x = Number(doorway.x);
   const z = Number(doorway.z);
   if (![minX, maxX, minZ, maxZ, x, z].every(Number.isFinite)) return false;
+  if (Number.isFinite(doorway.width) && Number.isFinite(doorway.depth) && doorway.travelAxis) {
+    return boundsOverlap({ minX, maxX, minZ, maxZ }, doorwayProtectedBounds(doorway));
+  }
   const nearestX = Math.max(minX, Math.min(maxX, x));
   const nearestZ = Math.max(minZ, Math.min(maxZ, z));
   return Math.hypot(nearestX - x, nearestZ - z) <= radius;
@@ -95,10 +105,16 @@ export function clearExpandedDoorwayFloorboards(engine) {
 
   for (const name of LEGACY_DOORWAY_BASEBOARDS) disableNamedCollider(world, name);
 
-  const doorwayPoints = edges.map((edge) => edge?.point).filter(Boolean);
+  const legacyDoorwayPoints = edges.map((edge) => edge?.point).filter(Boolean);
+  const secretEntranceBounds = SECRET_ROUTE_ENTRANCES.map((entrance) => placementBounds(entrance, 0.08));
   for (const collider of world.colliders ?? []) {
     if (collider?.active === false || !isLowFloorboardCollider(collider)) continue;
-    if (!doorwayPoints.some((point) => colliderNearDoorway(collider, point))) continue;
+    const colliderBounds = { minX: collider.minX, maxX: collider.maxX, minZ: collider.minZ, maxZ: collider.maxZ };
+    const blocksSharedCirculation = DOORWAY_CORRIDORS.some((doorway) => colliderNearDoorway(collider, doorway))
+      || secretEntranceBounds.some((bounds) => boundsOverlap(colliderBounds, bounds));
+    // Keep nav-edge points as a compatibility fallback for future runtime-only
+    // passages that have not yet been promoted into the shared layout data.
+    if (!blocksSharedCirculation && !legacyDoorwayPoints.some((point) => colliderNearDoorway(collider, point))) continue;
     clearLowDoorwayCollider(world, collider);
   }
 
