@@ -8,21 +8,33 @@ const CHEESEHOLD_LEVELS=[
  {name:'Grand Mousetrap',sub:'concentric defenses with dangerous inner approaches',layout:'rings'}
 ];
 const WAVE_REPRIEVE=15;
+const ROUND_BASE_CHEESE=18;
+const ROUND_CHEESE_GROWTH=4;
+const ROUND_CHEESE_ACCEL=0.55;
 const baseFreshMods=freshMods;
 freshMods=function(){
  const m=baseFreshMods();
- m.generatorRate*=.78;
- m.generatorYield+=1;
+ m.generatorRate*=.92;
+ m.generatorYield=Math.max(1,m.generatorYield*.82);
  return m;
 };
-BUILDINGS.generator.desc='Produces +2 base cheese faster. Fully enclosed generators accelerate again.';
-BUILDINGS.generator.hp=Math.round(BUILDINGS.generator.hp*1.18);
+BUILDINGS.generator.desc='Produces cheese steadily. Fully enclosed generators gain a modest production bonus.';
+BUILDINGS.generator.hp=Math.round(BUILDINGS.generator.hp*1.12);
 
+function roundAllowance(round=game.round){
+ const r=Math.max(1,round)-1;
+ return Math.round(ROUND_BASE_CHEESE+r*ROUND_CHEESE_GROWTH+Math.pow(r,1.22)*ROUND_CHEESE_ACCEL);
+}
+function lateRoundPressure(round=game.round){
+ const r=Math.max(0,round-1);
+ return Math.pow(r,1.34);
+}
 function waveQuota(wave=game.wave?.number||1){
- const r=Math.max(1,game.round);
- if(wave===1)return 6+r*2;
- if(wave===2)return 8+r*2;
- return 4+r;
+ const r=Math.max(1,game.round),pressure=lateRoundPressure(r);
+ const base=wave===1?7:wave===2?10:6;
+ const linear=wave===3?r*1.7:r*2.5;
+ const accel=pressure*(wave===1?.62:wave===2?.82:.58);
+ return Math.round(base+linear+accel);
 }
 function waveLabel(){
  const w=game.wave?.number||1;
@@ -93,14 +105,14 @@ function spawnPlayer(){
 function spawnCat(){
  if(game.wave&&game.wave.number<3)return false;
  const s=safeEdgeSpot(7),boss=BOSS_VARIANTS[(game.round-1)%BOSS_VARIANTS.length];
- const terror=1+(game.round-1)*.24+Math.pow(Math.max(0,game.round-1),1.28)*.075;
- const hp=(350+game.round*145)*terror*(game.mutator?.catHp||1)*boss.hp;
- const dmg=(18+game.round*2.25)*(1+(game.round-1)*.13)*boss.damage;
+ const r=Math.max(0,game.round-1),terror=1+r*.28+Math.pow(r,1.42)*.095;
+ const hp=(380+game.round*160)*terror*(game.mutator?.catHp||1)*boss.hp;
+ const dmg=(18+game.round*2.25)*(1+r*.13)*boss.damage;
  const move=Math.max(.105,(.49-game.round*.013)*boss.move);
  const mesh=catMesh();styleBossMesh(mesh,boss);
- mesh.scale.multiplyScalar(1+Math.min(.42,(game.round-1)*.035));
+ mesh.scale.multiplyScalar(1+Math.min(.55,r*.04+Math.pow(r,1.16)*.006));
  game.boss=boss;
- cat={type:'cat',boss,gx:s[0],gy:s[1],mesh,hp,maxHp:hp,damage:dmg,baseMove:move,attackEvery:Math.max(.42,.7-(game.round-1)*.018),nextMove:game.time+.5,nextAttack:0,moving:null,dead:false,bounty:14+game.round*3,slow:0,poisonUntil:0,poisonTick:0,eaten:new Set(),wall:1.3*boss.wall,attackAnim:null,baseScale:mesh.scale.clone(),special:null,nextAbility:game.time+(game.round>=2?5.8:8.5),abilityCursor:0};
+ cat={type:'cat',boss,gx:s[0],gy:s[1],mesh,hp,maxHp:hp,damage:dmg,baseMove:move,attackEvery:Math.max(.42,.7-r*.018),nextMove:game.time+.5,nextAttack:0,moving:null,dead:false,bounty:14+game.round*3,slow:0,poisonUntil:0,poisonTick:0,eaten:new Set(),wall:1.3*boss.wall,attackAnim:null,baseScale:mesh.scale.clone(),special:null,nextAbility:game.time+(game.round>=2?5.8:8.5),abilityCursor:0};
  cat.bar=healthBar(1.55);cat.bar.position.y=1.72;cat.mesh.add(cat.bar);cat.mesh.position.copy(worldPos(cat.gx,cat.gy));entityGroup.add(cat.mesh);
  flashDanger('rgba(255,25,42,.28)');
  toast(game.boss.name+' enters — '+Math.round(cat.maxHp)+' HP');
@@ -117,13 +129,14 @@ function spawnEnemy(){
  const [type,d]=unlocked[Math.floor(Math.random()*unlocked.length)];
  const spot=safeEdgeSpot((w?.spawned||0)*2);
  if(!spot)return false;
- const waveScale=1+((w?.number||1)-1)*.12;
- const scale=(1+(game.round-1)*.13)*waveScale;
- const elite=game.round>=3&&Math.random()<Math.min(.48,.06+game.round*.02+(w?.number===3?.08:0)+(game.mutator?.eliteBonus||0));
- const mesh=minionMesh(type,d.color),eliteHp=elite?1.75:1,eliteDmg=elite?1.3:1;
- const e={type,gx:spot[0],gy:spot[1],mesh,hp:d.hp*scale*eliteHp,maxHp:d.hp*scale*eliteHp,damage:d.damage*(1+(game.round-1)*.09)*waveScale*eliteDmg,baseMove:Math.max(.13,d.move*(1-(game.round-1)*.012)*(elite?.86:1)*(game.mutator?.enemySpeed||1)),attackEvery:d.attack,bounty:d.bounty+(elite?2:0)+(game.mutator?.bountyBonus||0),xp:d.xp*(elite?1.75:1),wall:d.wall*(elite?1.15:1),elite,nextMove:game.time+.2,nextAttack:0,moving:null,dead:false,slow:0,poisonUntil:0,poisonTick:0,eaten:new Set(),attackAnim:null,baseScale:mesh.scale.clone()};
+ const r=Math.max(0,game.round-1),waveScale=1+((w?.number||1)-1)*.16;
+ const healthScale=(1+r*.16+Math.pow(r,1.38)*.025)*waveScale;
+ const elite=game.round>=3&&Math.random()<Math.min(.58,.06+game.round*.024+(w?.number===3?.1:0)+(game.mutator?.eliteBonus||0));
+ const mesh=minionMesh(type,d.color),eliteHp=elite?1.9:1,eliteDmg=elite?1.3:1;
+ const bodyScale=1+Math.min(.48,r*.018+Math.pow(r,1.24)*.006)+(elite?.16:0);
+ mesh.scale.multiplyScalar(bodyScale);
+ const e={type,gx:spot[0],gy:spot[1],mesh,hp:d.hp*healthScale*eliteHp,maxHp:d.hp*healthScale*eliteHp,damage:d.damage*(1+r*.09)*waveScale*eliteDmg,baseMove:Math.max(.13,d.move*(1-r*.012)*(elite?.86:1)*(game.mutator?.enemySpeed||1)),attackEvery:d.attack,bounty:d.bounty+(elite?2:0)+(game.mutator?.bountyBonus||0),xp:d.xp*(elite?1.75:1),wall:d.wall*(elite?1.15:1),elite,nextMove:game.time+.2,nextAttack:0,moving:null,dead:false,slow:0,poisonUntil:0,poisonTick:0,eaten:new Set(),attackAnim:null,baseScale:mesh.scale.clone()};
  if(elite){
-   mesh.scale.multiplyScalar(1.18);e.baseScale=mesh.scale.clone();
    mesh.traverse(n=>{if(n.material?.emissive){n.material.emissive.setHex(0xffb52e);n.material.emissiveIntensity=.55}});
    const crown=new THREE.Mesh(new THREE.TorusGeometry(.32,.035,6,18),new THREE.MeshBasicMaterial({color:0xffcf55}));
    crown.rotation.x=Math.PI/2;crown.position.y=1.02;mesh.add(crown);
@@ -140,16 +153,16 @@ function beginRound(first=false){
  if(cat)disposeObject(cat.mesh);if(player)disposeObject(player.mesh);
  buildings=[];cheeses=[];enemies=[];bullets=[];cat=null;player=null;
  game.mutator=ROUND_MUTATORS[(game.round-1)%ROUND_MUTATORS.length];
- game.cheese+=first?0:game.mods.roundCheese;
+ game.cheese=roundAllowance(game.round)+Math.max(0,game.mods.roundCheese||0);
  buildArena(game.round);spawnPlayer();
  game.boss=BOSS_VARIANTS[(game.round-1)%BOSS_VARIANTS.length];
  for(let i=0;i<10;i++)spawnCheese();
  game.nextCheese=game.time+2.2;game.pendingRound=false;
  setWave(1);refreshEnclosures(true);updateSelected();
- showMsg(first?'LEVEL 1':'LEVEL '+game.round,CHEESEHOLD_LEVELS[(game.round-1)%CHEESEHOLD_LEVELS.length].name+' · 3 WAVES');
+ showMsg(first?'LEVEL 1':'LEVEL '+game.round,CHEESEHOLD_LEVELS[(game.round-1)%CHEESEHOLD_LEVELS.length].name+' · 3 WAVES · '+game.cheese+' CHEESE');
 }
 function resetRun(){
- game={running:true,paused:false,time:0,round:1,kills:0,cheese:20,xp:0,xpLevel:1,xpNext:10,nextCheese:.7,nextMinion:2.0,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},artifactRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0],boss:null,wave:null};
+ game={running:true,paused:false,time:0,round:1,kills:0,cheese:ROUND_BASE_CHEESE,xp:0,xpLevel:1,xpNext:10,nextCheese:.7,nextMinion:2.0,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},artifactRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0],boss:null,wave:null};
  ui.upgrade.classList.remove('open');clearEntities();beginRound(true);
 }
 
@@ -269,8 +282,8 @@ function enclosureTick(){
    refreshEnclosures();
    for(const b of buildings){
      if(b.dead||!b.fortified)continue;
-     if(Number.isFinite(b.next)&&b.next>game.time)b.next-=dt*(b.type==='generator'?.34:.16);
-     if(b.hp<b.maxHp)b.hp=Math.min(b.maxHp,b.hp+dt*(b.type==='generator'?1.4:.8));
+     if(Number.isFinite(b.next)&&b.next>game.time)b.next-=dt*(b.type==='generator'?.20:.16);
+     if(b.hp<b.maxHp)b.hp=Math.min(b.maxHp,b.hp+dt*(b.type==='generator'?1.05:.8));
      if(b.fortifiedAura){
        b.fortifiedAura.rotation.y+=dt*.65;
        const s=1+Math.sin(game.time*3+b.id)*.05;b.fortifiedAura.scale.setScalar(s);
