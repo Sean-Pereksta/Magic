@@ -18,6 +18,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#06080d}#ga
     const expansion=await fetch('./cheesehold-three-wave-expansion.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Expansion '+r.status);return r.text()});
     const lateGame=await fetch('./cheesehold-late-game-expansion.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Late game '+r.status);return r.text()});
     const saveSystem=await fetch('./cheesehold-save-system.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Save system '+r.status);return r.text()});
+    const progressiveBuildCosts=await fetch('./cheesehold-progressive-build-costs.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Build costs '+r.status);return r.text()});
     const waveSpawnPatch=`
 function minionUpdate(){
  const w=game.wave;
@@ -29,7 +30,6 @@ function minionUpdate(){
  }
 }`;
 
-    // Expand every arena from 21x17 to 27x21. The injected level builder below uses the new bounds.
     const sizeToken='const COLS=21,ROWS=17,CELL=1.22;';
     if(!html.includes(sizeToken))throw new Error('Arena-size patch target not found');
     html=html.replace(sizeToken,'const COLS=27,ROWS=21,CELL=1.22;');
@@ -71,16 +71,15 @@ function cameraUpdate(dt){if(!player)return;const p=player.mesh.position,target=
     const safeBuild=`function buildDirection(dirIndex=player?.lastDir){
  if(!game.running||game.paused||!player||dirIndex==null)return false;const d=DIRS[dirIndex],x=player.gx+d.x,y=player.gy+d.y,def=BUILDINGS[activeBuild],existing=buildAt(x,y);
  if(existing)return upgradeBuilding(existing);if(!inside(x,y)){buildFail('Outside the arena');return false}if(terrain.has(K(x,y))){buildFail('Terrain blocks that cell');return false}const cost=structureCost(activeBuild);if(game.cheese<cost){buildFail('Need '+cost+' cheese');return false}if((cat&&!cat.dead&&cat.gx===x&&cat.gy===y)||enemies.some(e=>!e.dead&&e.gx===x&&e.gy===y)){buildFail('An enemy occupies that cell');return false}
- let mesh=null,b=null;try{mesh=buildingMesh(activeBuild,1,null,null);mesh.position.copy(worldPos(x,y));const bar=healthBar(activeBuild==='superwall'?1.15:.92);b={id:idCounter++,type:activeBuild,level:1,evolution:null,capstone:null,gx:x,gy:y,mesh,hp:1,maxHp:1,dead:false,next:game.time+.5,repairNext:0,charges:activeBuild==='poison'?5+game.mods.poisonCharges:0,bar,hitFlashUntil:0};b.maxHp=buildingMaxHp(b);b.hp=b.maxHp;bar.position.y=activeBuild==='superwall'?1.55:(activeBuild==='wall'?1.18:1.32);mesh.add(bar);registerHitMaterials(mesh);entityGroup.add(mesh);buildings.push(b);game.cheese-=cost;pulse(x,y,def.color,.75);toast(def.name+' built '+DIRS[dirIndex].name.split(' ')[0]);updateUI();return true}catch(err){console.error('[Cheesehold] build failed',err);if(b){buildings=buildings.filter(v=>v!==b)}if(mesh){try{entityGroup.remove(mesh);disposeObject(mesh)}catch{}}buildFail('Build failed safely');return false}
+ let mesh=null,b=null;try{mesh=buildingMesh(activeBuild,1,null,null);mesh.position.copy(worldPos(x,y));const bar=healthBar(activeBuild==='superwall'?1.15:.92);b={id:idCounter++,type:activeBuild,level:1,evolution:null,capstone:null,gx:x,gy:y,mesh,hp:1,maxHp:1,dead:false,next:game.time+.5,repairNext:0,charges:activeBuild==='poison'?5+game.mods.poisonCharges:0,bar,hitFlashUntil:0};b.maxHp=buildingMaxHp(b);b.hp=b.maxHp;bar.position.y=activeBuild==='superwall'?1.55:(activeBuild==='wall'?1.18:1.32);mesh.add(bar);registerHitMaterials(mesh);entityGroup.add(mesh);buildings.push(b);game.cheese-=cost;noteStructureBuilt();pulse(x,y,def.color,.75);toast(def.name+' built · next base cost rises');updateUI();return true}catch(err){console.error('[Cheesehold] build failed',err);if(b){buildings=buildings.filter(v=>v!==b)}if(mesh){try{entityGroup.remove(mesh);disposeObject(mesh)}catch{}}buildFail('Build failed safely');return false}
 }`;
     const buildPattern=/function buildDirection\(dirIndex=player\?\.lastDir\)\{[\s\S]*?\n\}\nfunction buildFacing\(\)/;
     if(!buildPattern.test(html))throw new Error('Build patch target not found');
     html=html.replace(buildPattern,safeBuild+'\nfunction buildFacing()');
 
-    // Inject inside the core IIFE so the expansions can reuse the existing game state safely.
     const scopeClose=/\}\)\(\);\s*<\/script>\s*<\/body>\s*<\/html>\s*$/;
     if(!scopeClose.test(html))throw new Error('Expansion scope target not found');
-    html=html.replace(scopeClose,expansion+'\n'+waveSpawnPatch+'\n'+lateGame+'\n'+saveSystem+'\n})();\n<'+'/script>\n</body>\n</html>');
+    html=html.replace(scopeClose,expansion+'\n'+waveSpawnPatch+'\n'+lateGame+'\n'+saveSystem+'\n'+progressiveBuildCosts+'\nconst progressiveBeginRound=beginRound;beginRound=function(first=false){resetRoundStructurePricing();return progressiveBeginRound(first);};\n})();\n<'+'/script>\n</body>\n</html>');
 
     frame.srcdoc=html;
   }catch(err){
