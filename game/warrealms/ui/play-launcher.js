@@ -86,6 +86,17 @@ let selectedStrategy = "random";
 let selectedDifficulty = "medium";
 let lastFocusedElement = null;
 
+function clearLegacySingleplayerAutoPrompt() {
+  if (typeof window === "undefined" || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  const legacyModePrompt = url.searchParams.get("mode") === "singleplayer";
+  const legacySingleplayerPrompt = url.searchParams.get("singleplayer") === "1";
+  if (!legacyModePrompt && !legacySingleplayerPrompt) return;
+  if (legacyModePrompt) url.searchParams.delete("mode");
+  if (legacySingleplayerPrompt) url.searchParams.delete("singleplayer");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function injectStyles() {
   if (document.getElementById(PLAY_LAUNCHER_STYLE_ID)) return;
   const style = document.createElement("style");
@@ -328,6 +339,8 @@ function installPlayLauncher() {
     if (event.key === "Escape" && !document.getElementById(PLAY_LAUNCHER_ID)?.hidden) closePlayLauncher();
   });
 }
+
+if (typeof window !== "undefined") clearLegacySingleplayerAutoPrompt();
 
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installPlayLauncher, { once: true });
