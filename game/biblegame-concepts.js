@@ -5,7 +5,7 @@ const RAW_CONCEPTS = {
   },
   jesus: {
     label: "Jesus / Son of God",
-    terms: ["Jesus", "Jesus Christ", "Christ Jesus", "Christ", "Son of God", "Son of Man", "Messiah", "Savior", "Saviour"]
+    terms: ["Jesus", "Jesus Christ", "Christ Jesus", "Christ", "Son of God", "Son of Man", "Messiah", "Savior", "Saviour", "The Angel of the Lord"]
   },
   love: {
     label: "Love",
