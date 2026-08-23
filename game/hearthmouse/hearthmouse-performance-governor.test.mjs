@@ -8,11 +8,11 @@ import {
   renderBudgetForQuality,
 } from "./hearthmouse-performance-governor.mjs";
 
-test("medium and high cap native DPR", () => {
-  assert.equal(cappedPixelRatio("medium", 3), 1.22);
-  assert.equal(cappedPixelRatio("high", 3), 1.65);
+test("medium and high use conservative DPR caps", () => {
+  assert.equal(cappedPixelRatio("medium", 3), 1.12);
+  assert.equal(cappedPixelRatio("high", 3), 1.4);
   assert.equal(cappedPixelRatio("high", 1.25), 1.25);
-  assert.equal(cappedPixelRatio("low", 2), 1);
+  assert.equal(cappedPixelRatio("low", 2), 0.95);
 });
 
 test("render budgets keep medium materially cheaper than high", () => {
@@ -22,37 +22,38 @@ test("render budgets keep medium materially cheaper than high", () => {
   assert.ok(medium.shadowMapLimit < high.shadowMapLimit);
   assert.ok(medium.maxShadowCastingActors < high.maxShadowCastingActors);
   assert.ok(medium.maxShadowedLights < high.maxShadowedLights);
+  assert.ok(medium.shadowRefreshIntervalMs > high.shadowRefreshIntervalMs);
 });
 
-test("adaptive DPR steps down quickly under sustained frame pressure", () => {
+test("adaptive DPR drops harder under severe frame pressure", () => {
   const result = nextAdaptivePixelRatio({
     quality: "high",
-    currentPixelRatio: 1.65,
+    currentPixelRatio: 1.4,
     devicePixelRatio: 3,
-    averageFps: 41,
-    worstFrameTimeMs: 43,
+    averageFps: 35,
+    worstFrameTimeMs: 55,
     healthyWindows: 3,
   });
-  assert.equal(result.pixelRatio, 1.58);
+  assert.equal(Number(result.pixelRatio.toFixed(4)), 1.2515);
   assert.equal(result.healthyWindows, 0);
   assert.equal(result.changed, true);
 });
 
-test("adaptive DPR recovers slowly only after four healthy windows", () => {
+test("adaptive DPR recovers only after six healthy windows", () => {
   const base = {
     quality: "medium",
-    currentPixelRatio: 1,
+    currentPixelRatio: 0.95,
     devicePixelRatio: 2,
-    averageFps: 61,
+    averageFps: 62,
     worstFrameTimeMs: 18,
   };
-  for (let healthyWindows = 0; healthyWindows < 3; healthyWindows++) {
+  for (let healthyWindows = 0; healthyWindows < 5; healthyWindows++) {
     const result = nextAdaptivePixelRatio({ ...base, healthyWindows });
-    assert.equal(result.pixelRatio, 1);
+    assert.equal(result.pixelRatio, 0.95);
     assert.equal(result.changed, false);
   }
-  const recovered = nextAdaptivePixelRatio({ ...base, healthyWindows: 3 });
-  assert.equal(recovered.pixelRatio, 1.035);
+  const recovered = nextAdaptivePixelRatio({ ...base, healthyWindows: 5 });
+  assert.equal(recovered.pixelRatio, 0.975);
   assert.equal(recovered.changed, true);
   assert.equal(recovered.healthyWindows, 0);
 });
@@ -67,4 +68,10 @@ test("adaptive DPR respects quality floors", () => {
     worstFrameTimeMs: 70,
   });
   assert.equal(result.pixelRatio, floor);
+});
+
+test("medium and high throttle shadow-map refreshes", () => {
+  assert.equal(HEARTHMOUSE_RENDER_BUDGETS.medium.shadowRefreshIntervalMs, 160);
+  assert.equal(HEARTHMOUSE_RENDER_BUDGETS.high.shadowRefreshIntervalMs, 90);
+  assert.equal(Number.isFinite(HEARTHMOUSE_RENDER_BUDGETS.low.shadowRefreshIntervalMs), false);
 });
