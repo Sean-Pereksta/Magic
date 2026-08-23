@@ -1,0 +1,54 @@
+name: Apply Bible RPG verse reset and lobby registration
+
+on:
+  push:
+    branches:
+      - agent/bible-rpg-verse-reset-lobby
+    paths:
+      - '.github/workflows/apply-bible-rpg-verse-reset-lobby.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bible-rpg-verse-reset-lobby
+      - name: Patch Bible Game RPG and Game Hub
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          bible_path = Path('game/biblegame.html')
+          bible = bible_path.read_text(encoding='utf-8')
+          old = '''function gainXp(amount){rpg.xp+=amount;let needed=rpgXpNeeded(rpg.level);while(rpg.xp>=needed){rpg.xp-=needed;rpg.level++;rpg.maxHealth+=12;rpg.health=Math.min(rpg.maxHealth,rpg.health+24);rpg.baseDamage+=2;needed=rpgXpNeeded(rpg.level)}}function defeatEnemy(){const foe=rpg.enemy,xp=Math.round(foe.xp*(foe.elite?1.55:1)*(1+(rpg.floor-1)*.025));gainXp(xp);rpg.score+=Math.round(40+rpg.floor*12+(foe.elite?60:0)+(foe.boss?120:0));$("combatLog").innerHTML=`<b style="color:#fde68a">${escapeHtml(foe.name)} defeated!</b> +${xp} XP.`;setTimeout(showPathChoice,340)}'''
+          new = '''function gainXp(amount){rpg.xp+=amount;let needed=rpgXpNeeded(rpg.level);while(rpg.xp>=needed){rpg.xp-=needed;rpg.level++;rpg.maxHealth+=12;rpg.health=Math.min(rpg.maxHealth,rpg.health+24);rpg.baseDamage+=2;needed=rpgXpNeeded(rpg.level)}}function defeatEnemy(){const foe=rpg.enemy,xp=Math.round(foe.xp*(foe.elite?1.55:1)*(1+(rpg.floor-1)*.025));gainXp(xp);rpg.score+=Math.round(40+rpg.floor*12+(foe.elite?60:0)+(foe.boss?120:0));const verseReset=!!foe.boss;if(verseReset)rpg.used.clear();$("combatLog").innerHTML=`<b style="color:#fde68a">${escapeHtml(foe.name)} defeated!</b> +${xp} XP.${verseReset?' <b>Your used verses are refreshed for the next stretch.</b>':''}`;setTimeout(showPathChoice,340)}'''
+          if bible.count(old) != 1:
+              raise SystemExit(f'Expected one RPG defeatEnemy target, found {bible.count(old)}')
+          bible_path.write_text(bible.replace(old, new), encoding='utf-8')
+
+          lobby_path = Path('lobby/lobby.html')
+          lobby = lobby_path.read_text(encoding='utf-8')
+          old = '''      {key:"biblegame",title:"Bible Game",emoji:"📖",desc:"A large multiplayer Bible challenge.",route:"/game/biblegame.html",category:"Faith",modes:["multi"],maxPlayers:20,autoRedirect:true},'''
+          new = '''      {key:"biblegame",title:"Bible Game",emoji:"📖",desc:"Train solo in Scripture Quest and Bible challenges, or join a large multiplayer Bible match.",route:"/game/biblegame.html",category:"Faith",modes:["single","multi"],maxPlayers:20,autoRedirect:true},'''
+          if lobby.count(old) != 1:
+              raise SystemExit(f'Expected one Bible Game lobby registry target, found {lobby.count(old)}')
+          lobby_path.write_text(lobby.replace(old, new), encoding='utf-8')
+
+          updated_bible = bible_path.read_text(encoding='utf-8')
+          updated_lobby = lobby_path.read_text(encoding='utf-8')
+          assert 'if(verseReset)rpg.used.clear()' in updated_bible
+          assert 'modes:["single","multi"]' in updated_lobby
+          assert 'key:"biblegame"' in updated_lobby
+          PY
+
+          rm -f .github/workflows/apply-bible-rpg-verse-reset-lobby.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/biblegame.html lobby/lobby.html .github/workflows/apply-bible-rpg-verse-reset-lobby.yml
+          git commit -m "Refresh RPG verses after bosses and add Bible Game solo"
+          git push origin HEAD:agent/bible-rpg-verse-reset-lobby
