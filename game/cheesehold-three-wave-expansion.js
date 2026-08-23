@@ -8,6 +8,7 @@ const CHEESEHOLD_LEVELS=[
  {name:'Grand Mousetrap',sub:'concentric defenses with dangerous inner approaches',layout:'rings'}
 ];
 const WAVE_REPRIEVE=15;
+const ROUND_START_COUNTDOWN=10;
 const ROUND_BASE_CHEESE=18;
 const ROUND_CHEESE_GROWTH=4;
 const ROUND_CHEESE_ACCEL=0.55;
@@ -41,17 +42,21 @@ function waveLabel(){
  return w===3?'WAVE 3 · CAT':'WAVE '+w;
 }
 function setWave(number){
- game.wave={number,spawned:0,quota:waveQuota(number),clearAt:null,nextAt:null,announced:false};
- game.nextMinion=game.time+(number===1?1.8:1.0);
+ game.wave={number,spawned:0,quota:waveQuota(number),clearAt:null,nextAt:null,announced:false,roundStartAt:number===1?game.time:null};
+ game.nextMinion=game.time+(number===1?ROUND_START_COUNTDOWN:1.0);
  if(number===3&&!cat)spawnCat();
- const bossText=number===3?'CAT BOSS + ESCORTS':'Enemy force '+number+' of 3';
- showMsg(number===3?'WAVE 3 — CAT':'WAVE '+number,bossText);
+ const bossText=number===3?'CAT BOSS + ESCORTS':number===1?'Enemies arrive in '+ROUND_START_COUNTDOWN+' seconds':'Enemy force '+number+' of 3';
+ showMsg(number===3?'WAVE 3 — CAT':number===1?'PREPARE':'WAVE '+number,bossText);
  updateWaveHud();
 }
 function updateWaveHud(){
  if(!game.running||!game.wave)return;
  const w=game.wave;
  let status='Round '+game.round+' · '+waveLabel()+' · '+Math.max(0,w.quota-w.spawned)+' reinforcements';
+ if(w.number===1&&w.spawned===0&&w.roundStartAt!=null){
+   const left=Math.max(0,Math.ceil(ROUND_START_COUNTDOWN-(game.time-w.roundStartAt)));
+   if(left>0)status='Round '+game.round+' · Enemies spawn in '+left+'s · Build your defenses';
+ }
  if(w.clearAt!=null&&w.number<3){
    const left=Math.max(0,Math.ceil(WAVE_REPRIEVE-(game.time-w.clearAt)));
    status='Round '+game.round+' · Wave '+w.number+' cleared · '+left+'s reprieve';
@@ -159,7 +164,8 @@ function beginRound(first=false){
  for(let i=0;i<10;i++)spawnCheese();
  game.nextCheese=game.time+2.2;game.pendingRound=false;
  setWave(1);refreshEnclosures(true);updateSelected();
- showMsg(first?'LEVEL 1':'LEVEL '+game.round,CHEESEHOLD_LEVELS[(game.round-1)%CHEESEHOLD_LEVELS.length].name+' · 3 WAVES · '+game.cheese+' CHEESE');
+ showMsg(first?'LEVEL 1':'LEVEL '+game.round,CHEESEHOLD_LEVELS[(game.round-1)%CHEESEHOLD_LEVELS.length].name+' · 10 SECOND BUILD PHASE · '+game.cheese+' CHEESE');
+ toast('Build your defenses — enemies arrive in 10 seconds');
 }
 function resetRun(){
  game={running:true,paused:false,time:0,round:1,kills:0,cheese:ROUND_BASE_CHEESE,xp:0,xpLevel:1,xpNext:10,nextCheese:.7,nextMinion:2.0,catFrenzyUntil:0,mods:freshMods(),ranks:{},victoryRanks:{},artifactRanks:{},pendingRound:false,mutator:ROUND_MUTATORS[0],boss:null,wave:null};
