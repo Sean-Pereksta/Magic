@@ -1,3 +1,5 @@
+import "./play-launcher.js";
+
 const SYSTEM_KEYS = Object.freeze([
   "trade", "combat", "draw", "authority", "shield", "purge", "marketErase", "disable", "raze",
   "sacrificeCards", "sacrificePayoffs", "tokenProducers", "tokenPayoffs", "heatCards", "heatConsumers",
