@@ -155,6 +155,7 @@ function normalizeTerm(value){
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[‘’]/g, "'")
     .toLowerCase()
+    .replace(/\b([a-z0-9]+)'s\b/g, "$1")
     .replace(/[^a-z0-9']+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
