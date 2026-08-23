@@ -5,1083 +5,146 @@
 <title>📖 Bible Game — Solo & Multiplayer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
-  :root{
-    --bg:#0b1020; --panel:#151c32; --panel2:#1c2541; --ink:#f8fafc; --muted:#9aa8c0;
-    --accent:#8b5cf6; --accent2:#6d28d9; --gold:#fbbf24; --good:#22c55e; --bad:#ef4444;
-    --warn:#f59e0b; --cyan:#22d3ee; --br:#2b385b; --shadow:0 18px 45px rgba(0,0,0,.28);
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; min-height:100vh; color:var(--ink);
-    font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-    background:
-      radial-gradient(circle at 18% 8%,rgba(139,92,246,.18),transparent 34%),
-      radial-gradient(circle at 82% 12%,rgba(34,211,238,.10),transparent 30%),
-      linear-gradient(180deg,#080c18,#10172a 55%,#080c18);
-  }
-  button,input,select{font:inherit}
-  button{touch-action:manipulation}
-  .hidden{display:none!important}
-  .shell{max-width:1080px;margin:0 auto;padding:14px}
-  header{
-    display:flex;justify-content:space-between;gap:12px;align-items:center;
-    padding:8px 0 14px;
-  }
-  .brand{display:flex;gap:11px;align-items:center;min-width:0}
-  .logo{
-    width:48px;height:48px;border-radius:15px;display:grid;place-items:center;font-size:26px;
-    background:linear-gradient(145deg,#6d28d9,#4338ca);box-shadow:0 10px 28px rgba(109,40,217,.35)
-  }
-  h1,h2,h3,p{margin-top:0}
-  h1{font-size:1.2rem;margin-bottom:2px}
-  h2{font-size:1.35rem}
-  .sub,.muted{color:var(--muted)}
-  .sub{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}
-  .header-actions{display:flex;gap:8px;align-items:center}
-  .pill{
-    display:inline-flex;align-items:center;gap:6px;border:1px solid var(--br);border-radius:999px;
-    background:#11192c;padding:7px 10px;font-size:.82rem;font-weight:800
-  }
-  .pill.good{border-color:#14532d;color:#bbf7d0;background:#0e2a1a}
-  .pill.warn{border-color:#713f12;color:#fde68a;background:#2c1d0a}
-  .pill.bad{border-color:#7f1d1d;color:#fecaca;background:#2d1114}
-  .btn,.ghost{
-    border:0;border-radius:12px;padding:10px 14px;min-height:42px;font-weight:900;cursor:pointer;
-  }
-  .btn{background:linear-gradient(145deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 8px 20px rgba(109,40,217,.28)}
-  .btn:hover{filter:brightness(1.08)}
-  .btn:disabled,.ghost:disabled{opacity:.45;cursor:not-allowed}
-  .ghost{background:#11192c;color:var(--ink);border:1px solid var(--br)}
-  .ghost.good{border-color:#166534;color:#bbf7d0}
-  .danger{background:linear-gradient(145deg,#ef4444,#b91c1c)}
-  .panel{
-    background:linear-gradient(145deg,rgba(21,28,50,.98),rgba(13,19,36,.98));
-    border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:13px;
-  }
-  .hero{
-    display:grid;grid-template-columns:1.35fr .65fr;gap:14px;align-items:stretch;
-    background:
-      radial-gradient(circle at 92% 12%,rgba(251,191,36,.12),transparent 26%),
-      linear-gradient(145deg,#171f37,#10182b)
-  }
-  .hero-copy{padding:6px}
-  .eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.16em;color:#c4b5fd;font-weight:1000}
-  .hero h2{font-size:clamp(1.6rem,4vw,2.45rem);line-height:1.03;margin:8px 0}
-  .hero p{line-height:1.55;color:#cbd5e1;margin-bottom:12px}
-  .hero-stat{
-    display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-content:center;
-  }
-  .stat{
-    padding:12px;border:1px solid var(--br);border-radius:14px;background:rgba(7,12,24,.56);text-align:center
-  }
-  .stat b{display:block;font-size:1.35rem;color:#fde68a}
-  .stat span{font-size:.74rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.07em}
-  .mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-  .mode-card{
-    position:relative;overflow:hidden;text-align:left;border:1px solid var(--br);border-radius:16px;
-    padding:15px;background:linear-gradient(145deg,#1a2440,#10182c);color:var(--ink);cursor:pointer;
-    box-shadow:0 8px 20px rgba(0,0,0,.18);transition:.14s transform,.14s border-color
-  }
-  .mode-card:hover{transform:translateY(-2px);border-color:#7c3aed}
-  .mode-card .icon{font-size:2rem;margin-bottom:6px}
-  .mode-card h3{margin:0 0 5px;font-size:1.05rem}
-  .mode-card p{margin:0;color:var(--muted);line-height:1.42;font-size:.88rem}
-  .mode-card .tag{
-    margin-top:10px;display:inline-flex;border-radius:999px;padding:4px 8px;font-size:.7rem;font-weight:900;
-    color:#ddd6fe;border:1px solid #4c1d95;background:#25164c
-  }
-  .mode-card.featured{border-color:#a16207;background:linear-gradient(145deg,#2a2116,#171629)}
-  .mode-card.featured::after{
-    content:"ROGUELIKE";position:absolute;right:-30px;top:14px;transform:rotate(34deg);
-    width:125px;text-align:center;font-size:.61rem;letter-spacing:.13em;font-weight:1000;
-    background:#fbbf24;color:#291b03;padding:4px
-  }
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .between{justify-content:space-between}
-  .game-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
-  .game-head h2{margin-bottom:4px}
-  .timer-big{font-size:2rem;font-weight:1000;color:#fde68a;min-width:74px;text-align:right}
-  .word-prompt{
-    text-align:center;padding:18px;border-radius:16px;border:1px solid #4c1d95;
-    background:radial-gradient(circle at center,rgba(139,92,246,.23),rgba(24,21,53,.72));
-    margin:12px 0
-  }
-  .word-prompt .label{font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:#c4b5fd;font-weight:900}
-  .word-prompt .word{font-size:clamp(2.2rem,8vw,4.6rem);font-weight:1000;letter-spacing:-.04em;text-transform:uppercase}
-  .input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
-  input[type="text"]{
-    width:100%;background:#0c1325;color:#fff;border:1px solid var(--br);border-radius:12px;padding:11px 12px;outline:none;
-  }
-  input:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.14)}
-  .notice{min-height:22px;margin:8px 0;font-size:.88rem;font-weight:800}
-  .notice.good{color:#86efac}.notice.bad{color:#fca5a5}.notice.warn{color:#fde68a}
-  .accepted{display:grid;gap:6px;max-height:265px;overflow:auto}
-  .accepted-row{
-    display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;
-    border:1px solid #21462e;background:#0f2819
-  }
-  .accepted-row small{color:#a7f3d0}
-  .score-burst{font-weight:1000;color:#fde68a}
-  .quiz-verse{
-    padding:16px;border:1px solid #37446b;border-radius:15px;background:#0c1325;
-    font-family:Georgia,serif;font-size:1.12rem;line-height:1.6
-  }
-  .options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-  .option{
-    border:1px solid var(--br);border-radius:12px;padding:11px;background:#11192c;color:#fff;font-weight:850;cursor:pointer;text-align:left
-  }
-  .option:hover{border-color:#8b5cf6}
-  .option.good{border-color:#15803d;background:#10311c}
-  .option.bad{border-color:#b91c1c;background:#351417}
-  .rpg-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px}
-  .battlefield{
-    min-height:520px;position:relative;overflow:hidden;border:1px solid #34456c;border-radius:18px;
-    background:
-      radial-gradient(circle at 50% 14%,rgba(96,165,250,.14),transparent 28%),
-      linear-gradient(#121a31 0 55%,#101827 55% 66%,#18213a 66%);
-    padding:14px
-  }
-  .battlefield::after{
-    content:"";position:absolute;left:0;right:0;bottom:0;height:35%;
-    background:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 1px,transparent 1px 46px);
-    pointer-events:none
-  }
-  .battle-top{position:relative;z-index:2}
-  .zone-label{font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:#93c5fd;font-weight:900}
-  .path-strip{display:flex;gap:5px;margin-top:7px;overflow:hidden}
-  .path-dot{height:7px;flex:1;max-width:50px;border-radius:999px;background:#273451;border:1px solid #334155}
-  .path-dot.done{background:#7c3aed}.path-dot.current{background:#fbbf24;box-shadow:0 0 12px rgba(251,191,36,.45)}
-  .fighter{
-    position:absolute;left:50%;top:118px;transform:translateX(-50%);width:min(52%,290px);text-align:center;z-index:1
-  }
-  .enemy-name{font-weight:1000;font-size:1.2rem;margin-top:2px}
-  .enemy-sub{font-size:.78rem;color:#cbd5e1;margin-bottom:7px}
-  .enemy-art{height:190px;display:grid;place-items:center;filter:drop-shadow(0 16px 20px rgba(0,0,0,.3))}
-  .enemy-art svg{width:180px;height:180px;max-width:100%}
-  .bar-wrap{margin-top:6px}
-  .bar-label{display:flex;justify-content:space-between;font-size:.72rem;font-weight:900;margin-bottom:4px}
-  .bar{height:14px;border-radius:999px;overflow:hidden;background:#060913;border:1px solid #334155}
-  .bar > span{display:block;height:100%;width:100%;transition:width .28s ease}
-  .enemy-bar span{background:linear-gradient(90deg,#dc2626,#f97316)}
-  .player-bar span{background:linear-gradient(90deg,#16a34a,#22c55e)}
-  .xp-bar span{background:linear-gradient(90deg,#2563eb,#22d3ee)}
-  .combat-box{
-    position:absolute;left:14px;right:14px;bottom:14px;z-index:3;padding:12px;border-radius:15px;
-    background:rgba(7,11,21,.93);border:1px solid #34456c;backdrop-filter:blur(5px)
-  }
-  .requirement{text-align:center;font-weight:900;margin:0 0 9px}
-  .requirement b{color:#fde68a;font-size:1.18rem}
-  .combat-log{font-size:.82rem;min-height:36px;color:#cbd5e1;margin-top:7px}
-  .side-stack{display:grid;gap:10px;align-content:start}
-  .side-card{border:1px solid var(--br);border-radius:15px;background:#10182b;padding:12px}
-  .side-card h3{font-size:.93rem;margin-bottom:8px}
-  .mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
-  .mini-stat{padding:8px;border-radius:10px;background:#0a1120;border:1px solid #263451;text-align:center}
-  .mini-stat b{display:block;font-size:1.12rem}
-  .mini-stat span{font-size:.66rem;color:var(--muted);text-transform:uppercase;font-weight:900}
-  .mastery-list,.high-list{display:grid;gap:5px;max-height:170px;overflow:auto}
-  .mastery-item,.high-item{padding:7px 8px;border:1px solid #263451;border-radius:9px;background:#0b1222;font-size:.76rem}
-  .high-item{display:flex;justify-content:space-between;gap:6px}
-  .choice-overlay{
-    position:absolute;inset:0;z-index:7;display:grid;place-items:center;padding:18px;background:rgba(5,8,16,.82);backdrop-filter:blur(5px)
-  }
-  .choice-card{width:min(760px,100%);background:#121b31;border:1px solid #45557c;border-radius:18px;padding:16px;box-shadow:var(--shadow)}
-  .path-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-  .path-choice{border:1px solid #334155;border-radius:13px;background:#0c1325;color:#fff;padding:12px;text-align:left;cursor:pointer}
-  .path-choice:hover{border-color:#8b5cf6}
-  .path-choice strong{display:block;margin-bottom:4px}
-  .path-choice small{color:var(--muted);line-height:1.35}
-  .death-verses{display:grid;gap:7px;margin-top:10px;max-height:300px;overflow:auto}
-  .death-verse{padding:9px;border-radius:11px;border:1px solid #374151;background:#0b1222}
-  .death-verse b{color:#fde68a}
-  .death-verse p{font-family:Georgia,serif;line-height:1.45;margin:4px 0 0;font-size:.88rem;color:#e2e8f0}
-  .join-banner{
-    position:sticky;top:8px;z-index:20;margin-bottom:10px;border:1px solid #075985;background:#082f49;color:#bae6fd;
-    padding:9px 11px;border-radius:12px;display:flex;gap:10px;align-items:center;justify-content:space-between
-  }
-  .footer-note{font-size:.75rem;color:#7f8ca6;text-align:center;margin:16px 0 4px}
-  @keyframes hit{0%{transform:translateX(-50%) scale(1)}45%{transform:translateX(-50%) scale(1.06)}100%{transform:translateX(-50%) scale(1)}}
-  @keyframes hurt{0%,100%{filter:none}40%{filter:brightness(1.7) sepia(1) saturate(4)}}
-  .fighter.hit{animation:hit .24s ease}.battlefield.hurt{animation:hurt .28s ease}
-  @media(max-width:780px){
-    .hero{grid-template-columns:1fr}.rpg-layout{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .battlefield{min-height:560px}.fighter{width:64%}.mode-grid{grid-template-columns:1fr 1fr}
-  }
-  @media(max-width:570px){
-    .shell{padding:9px}.header-actions .ghost{display:none}.mode-grid,.options,.path-choices{grid-template-columns:1fr}
-    .side-stack{grid-template-columns:1fr}.hero-stat{grid-template-columns:repeat(4,1fr)}.stat{padding:8px 4px}.stat b{font-size:1rem}.stat span{font-size:.57rem}
-    .input-row{grid-template-columns:1fr}.fighter{width:72%;top:128px}.enemy-art{height:170px}.enemy-art svg{height:165px}
-    .battlefield{min-height:595px}.combat-box{bottom:10px}
-  }
+  :root{--bg:#070b15;--panel:#111827;--panel2:#172033;--ink:#f8fafc;--muted:#a5b4cc;--accent:#8b5cf6;--accent2:#5b21b6;--gold:#fbbf24;--good:#22c55e;--bad:#ef4444;--cyan:#22d3ee;--br:#334155;--shadow:0 22px 54px rgba(0,0,0,.36)}
+  *{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at 18% 4%,rgba(139,92,246,.18),transparent 32%),radial-gradient(circle at 85% 12%,rgba(34,211,238,.10),transparent 26%),linear-gradient(180deg,#070b15,#0c1222 55%,#070b15)}
+  button,input,select{font:inherit}button{touch-action:manipulation}.hidden{display:none!important}.shell{max-width:1160px;margin:0 auto;padding:14px}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0 14px}.brand{display:flex;gap:11px;align-items:center;min-width:0}.logo{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;font-size:26px;background:linear-gradient(145deg,#6d28d9,#4338ca);box-shadow:0 10px 28px rgba(109,40,217,.35)}h1,h2,h3,p{margin-top:0}h1{font-size:1.2rem;margin-bottom:2px}h2{font-size:1.35rem}.sub,.muted{color:var(--muted)}.sub{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}.header-actions{display:flex;gap:8px;align-items:center}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--br);border-radius:999px;background:#11192c;padding:7px 10px;font-size:.82rem;font-weight:850}.pill.good{border-color:#14532d;color:#bbf7d0;background:#0e2a1a}.pill.warn{border-color:#713f12;color:#fde68a;background:#2c1d0a}.pill.bad{border-color:#7f1d1d;color:#fecaca;background:#2d1114}
+  .btn,.ghost{border:0;border-radius:12px;padding:10px 14px;min-height:42px;font-weight:900;cursor:pointer}.btn{background:linear-gradient(145deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 8px 20px rgba(109,40,217,.28)}.btn:hover{filter:brightness(1.08)}.btn:disabled,.ghost:disabled{opacity:.45;cursor:not-allowed}.ghost{background:#11192c;color:var(--ink);border:1px solid var(--br)}.ghost.good{border-color:#166534;color:#bbf7d0}
+  .panel{background:linear-gradient(145deg,rgba(21,28,50,.98),rgba(10,15,29,.98));border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:13px}.hero{display:grid;grid-template-columns:1.35fr .65fr;gap:14px;align-items:stretch;background:radial-gradient(circle at 92% 12%,rgba(251,191,36,.12),transparent 26%),linear-gradient(145deg,#171f37,#10182b)}.hero-copy{padding:6px}.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.16em;color:#c4b5fd;font-weight:1000}.hero h2{font-size:clamp(1.6rem,4vw,2.45rem);line-height:1.03;margin:8px 0}.hero p{line-height:1.55;color:#cbd5e1;margin-bottom:12px}.hero-stat{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-content:center}.stat{padding:12px;border:1px solid var(--br);border-radius:14px;background:rgba(7,12,24,.56);text-align:center}.stat b{display:block;font-size:1.35rem;color:#fde68a}.stat span{font-size:.7rem;color:var(--muted);font-weight:850;text-transform:uppercase;letter-spacing:.07em}
+  .mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.mode-card{position:relative;overflow:hidden;text-align:left;border:1px solid var(--br);border-radius:16px;padding:15px;background:linear-gradient(145deg,#1a2440,#10182c);color:var(--ink);cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.18);transition:.14s transform,.14s border-color}.mode-card:hover{transform:translateY(-2px);border-color:#7c3aed}.mode-card .icon{font-size:2rem;margin-bottom:6px}.mode-card h3{margin:0 0 5px;font-size:1.05rem}.mode-card p{margin:0;color:var(--muted);line-height:1.42;font-size:.88rem}.mode-card .tag{margin-top:10px;display:inline-flex;border-radius:999px;padding:4px 8px;font-size:.7rem;font-weight:900;color:#ddd6fe;border:1px solid #4c1d95;background:#25164c}.mode-card.featured{border-color:#a16207;background:linear-gradient(145deg,#2a2116,#171629)}.mode-card.featured::after{content:"ROGUELIKE";position:absolute;right:-30px;top:14px;transform:rotate(34deg);width:125px;text-align:center;font-size:.61rem;letter-spacing:.13em;font-weight:1000;background:#fbbf24;color:#291b03;padding:4px}
+  .game-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:12px}.timer-big{font-size:2rem;font-weight:1000;color:#fde68a;min-width:74px;text-align:right}.word-prompt{text-align:center;padding:18px;border-radius:16px;border:1px solid #4c1d95;background:radial-gradient(circle at center,rgba(139,92,246,.23),rgba(24,21,53,.72));margin:12px 0}.word-prompt .label{font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:#c4b5fd;font-weight:900}.word-prompt .word{font-size:clamp(1.8rem,7vw,4.2rem);font-weight:1000;letter-spacing:-.04em;text-transform:uppercase}.concept-hint{text-align:center;color:#cbd5e1;font-size:.8rem;margin-top:6px}.input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}input[type="text"]{width:100%;background:#0c1325;color:#fff;border:1px solid var(--br);border-radius:12px;padding:11px 12px;outline:none}input:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.14)}.notice{min-height:22px;margin:8px 0;font-size:.88rem;font-weight:800}.notice.good{color:#86efac}.notice.bad{color:#fca5a5}.notice.warn{color:#fde68a}.accepted{display:grid;gap:6px;max-height:265px;overflow:auto}.accepted-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid #21462e;background:#0f2819}.accepted-row small{color:#a7f3d0}.score-burst{font-weight:1000;color:#fde68a}.quiz-verse{padding:16px;border:1px solid #37446b;border-radius:15px;background:#0c1325;font-family:Georgia,serif;font-size:1.12rem;line-height:1.6}.options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.option{border:1px solid var(--br);border-radius:12px;padding:11px;background:#11192c;color:#fff;font-weight:850;cursor:pointer;text-align:left}.option.good{border-color:#15803d;background:#10311c}.option.bad{border-color:#b91c1c;background:#351417}
+  .rpg-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px}.battlefield{min-height:650px;position:relative;overflow:hidden;border:1px solid #445575;border-radius:20px;background-image:linear-gradient(180deg,rgba(5,10,20,.18),rgba(5,9,18,.42) 64%,rgba(5,9,18,.72)),url('https://pub-15a649bcaae84f2ca6c610e6ef0dde51.r2.dev/backgrounds/battlefield.png');background-position:center;background-size:cover;padding:14px;box-shadow:inset 0 0 80px rgba(0,0,0,.2)}.battle-top{position:relative;z-index:5;text-shadow:0 2px 6px #000}.zone-label{font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:#dbeafe;font-weight:900}.path-strip{display:flex;gap:5px;margin-top:7px;overflow:hidden}.path-dot{height:7px;flex:1;max-width:50px;border-radius:999px;background:#273451;border:1px solid #475569}.path-dot.done{background:#7c3aed}.path-dot.current{background:#fbbf24;box-shadow:0 0 12px rgba(251,191,36,.5)}
+  .arena-fighter{position:absolute;z-index:2;width:min(35%,260px);text-align:center;bottom:185px}.arena-fighter.enemy{right:7%}.arena-fighter.player{left:7%}.combatant-bar{margin:0 auto 7px;padding:7px 9px;border-radius:12px;background:rgba(5,9,18,.86);border:1px solid rgba(148,163,184,.52);box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(4px)}.bar-label{display:flex;justify-content:space-between;gap:7px;font-size:.7rem;font-weight:1000;margin-bottom:4px;text-shadow:0 1px 3px #000}.bar{height:13px;border-radius:999px;overflow:hidden;background:#050913;border:1px solid #475569}.bar>span{display:block;height:100%;width:100%;transition:width .28s ease}.enemy-bar span{background:linear-gradient(90deg,#dc2626,#f97316)}.player-bar span{background:linear-gradient(90deg,#16a34a,#22c55e)}.xp-bar span{background:linear-gradient(90deg,#2563eb,#22d3ee)}.character-art{height:235px;display:flex;align-items:flex-end;justify-content:center;filter:drop-shadow(0 16px 18px rgba(0,0,0,.48))}.character-art img{max-width:100%;max-height:235px;object-fit:contain;user-select:none;pointer-events:none}.fighter-name{font-weight:1000;font-size:1rem;text-shadow:0 2px 5px #000;margin-top:2px}.fighter-sub{font-size:.72rem;color:#e2e8f0;text-shadow:0 2px 5px #000;min-height:18px}.resistance-row{display:flex;justify-content:center;gap:5px;flex-wrap:wrap;margin-top:5px}.resist-chip{font-size:.62rem;font-weight:900;border-radius:999px;padding:3px 6px;border:1px solid rgba(255,255,255,.28);background:rgba(7,12,24,.72)}
+  .combat-box{position:absolute;left:14px;right:14px;bottom:14px;z-index:6;padding:12px;border-radius:15px;background:rgba(7,11,21,.94);border:1px solid #4a5c7e;backdrop-filter:blur(7px);box-shadow:0 12px 34px rgba(0,0,0,.4)}.requirement{text-align:center;font-weight:900;margin:0 0 5px}.requirement b{color:#fde68a;font-size:1.05rem}.weakness-hint{text-align:center;font-size:.73rem;color:#cbd5e1;margin-bottom:9px}.combat-log{font-size:.82rem;min-height:36px;color:#cbd5e1;margin-top:7px}.side-stack{display:grid;gap:10px;align-content:start}.side-card{border:1px solid var(--br);border-radius:15px;background:#10182b;padding:12px}.side-card h3{font-size:.93rem;margin-bottom:8px}.bar-wrap{margin-top:6px}.mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.mini-stat{padding:8px;border-radius:10px;background:#0a1120;border:1px solid #263451;text-align:center}.mini-stat b{display:block;font-size:1.12rem}.mini-stat span{font-size:.66rem;color:var(--muted);text-transform:uppercase;font-weight:900}.mastery-list,.high-list{display:grid;gap:5px;max-height:170px;overflow:auto}.mastery-item,.high-item{padding:7px 8px;border:1px solid #263451;border-radius:9px;background:#0b1222;font-size:.76rem}.high-item{display:flex;justify-content:space-between;gap:6px}.choice-overlay{position:absolute;inset:0;z-index:10;display:grid;place-items:center;padding:18px;background:rgba(5,8,16,.84);backdrop-filter:blur(5px)}.choice-card{width:min(760px,100%);background:#121b31;border:1px solid #45557c;border-radius:18px;padding:16px;box-shadow:var(--shadow)}.path-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.path-choice{border:1px solid #334155;border-radius:13px;background:#0c1325;color:#fff;padding:12px;text-align:left;cursor:pointer}.path-choice:hover{border-color:#8b5cf6}.path-choice strong{display:block;margin-bottom:4px}.path-choice small{color:var(--muted);line-height:1.35}.death-verses{display:grid;gap:7px;margin-top:10px;max-height:300px;overflow:auto}.death-verse{padding:9px;border-radius:11px;border:1px solid #374151;background:#0b1222}.death-verse b{color:#fde68a}.death-verse p{font-family:Georgia,serif;line-height:1.45;margin:4px 0 0;font-size:.88rem;color:#e2e8f0}.join-banner{position:sticky;top:8px;z-index:20;margin-bottom:10px;border:1px solid #075985;background:#082f49;color:#bae6fd;padding:9px 11px;border-radius:12px;display:flex;gap:10px;align-items:center;justify-content:space-between}.footer-note{font-size:.75rem;color:#7f8ca6;text-align:center;margin:16px 0 4px}
+  @keyframes enemyHit{0%{transform:translateX(0)}40%{transform:translateX(8px) scale(1.04);filter:brightness(1.5)}100%{transform:translateX(0)}}@keyframes playerHit{0%{transform:translateX(0)}40%{transform:translateX(-8px) scale(1.04);filter:brightness(1.6) sepia(.5)}100%{transform:translateX(0)}}.arena-fighter.enemy.hit{animation:enemyHit .25s ease}.arena-fighter.player.hit{animation:playerHit .25s ease}
+  @media(max-width:800px){.hero{grid-template-columns:1fr}.rpg-layout{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))}.battlefield{min-height:620px}.arena-fighter{width:min(40%,230px)}.arena-fighter.enemy{right:3%}.arena-fighter.player{left:3%}}
+  @media(max-width:570px){.shell{padding:9px}.header-actions .ghost{display:none}.mode-grid,.options,.path-choices{grid-template-columns:1fr}.side-stack{grid-template-columns:1fr}.hero-stat{grid-template-columns:repeat(4,1fr)}.stat{padding:8px 4px}.stat b{font-size:1rem}.stat span{font-size:.55rem}.input-row{grid-template-columns:1fr}.battlefield{min-height:650px}.arena-fighter{bottom:215px;width:43%}.character-art{height:190px}.character-art img{max-height:190px}.arena-fighter.enemy{right:1%}.arena-fighter.player{left:1%}.fighter-sub,.resistance-row{display:none}.combat-box{bottom:9px}}
 </style>
 </head>
 <body>
 <div class="shell">
   <header>
-    <div class="brand">
-      <div class="logo">📖</div>
-      <div>
-        <h1>Bible Game</h1>
-        <div class="sub" id="subtitle">Loading solo lobby…</div>
-      </div>
-    </div>
-    <div class="header-actions">
-      <span class="pill warn" id="connectionPill">● Checking lobby</span>
-      <button class="ghost" id="multiplayerBtn">Multiplayer</button>
-    </div>
+    <div class="brand"><div class="logo">📖</div><div><h1>Bible Game</h1><div class="sub" id="subtitle">Loading Bible data…</div></div></div>
+    <div class="header-actions"><span class="pill warn" id="connectionPill">● Loading</span><button class="ghost" id="multiplayerBtn">Multiplayer</button></div>
   </header>
-
-  <div class="join-banner hidden" id="joinBanner">
-    <span id="joinBannerText">Another player joined your lobby.</span>
-    <button class="ghost good" id="joinNowBtn">Open Multiplayer</button>
-  </div>
+  <div class="join-banner hidden" id="joinBanner"><span id="joinBannerText">Another player joined your lobby.</span><button class="ghost good" id="joinNowBtn">Open Multiplayer</button></div>
 
   <main id="hubView">
     <section class="panel hero">
-      <div class="hero-copy">
-        <div class="eyebrow">Solo Scripture Arena</div>
-        <h2 id="welcomeTitle">Choose how you want to train.</h2>
-        <p>When you are alone, Bible Game becomes a solo arcade. Practice references, race against a word, or take your mastered verses into an endless roguelike path.</p>
-        <div class="row">
-          <button class="btn" data-mode="rpg">⚔ Begin Scripture Quest</button>
-          <button class="ghost" data-mode="word">⏱ Word Rush</button>
-        </div>
-      </div>
-      <div class="hero-stat">
-        <div class="stat"><b id="bestRpgScore">0</b><span>RPG Best</span></div>
-        <div class="stat"><b id="bestFloor">0</b><span>Best Floor</span></div>
-        <div class="stat"><b id="masteredCount">0</b><span>Mastered</span></div>
-        <div class="stat"><b id="wordBest">0</b><span>Word Rush</span></div>
-      </div>
+      <div class="hero-copy"><div class="eyebrow">Solo Scripture Arena</div><h2 id="welcomeTitle">Choose how you want to train.</h2><p>Fight through Scripture Quest, race through concept-based Verse Rush, or sharpen exact-reference memory. Synonyms and translation-friendly phrases now count together where a mode uses a Bible concept.</p><div class="row"><button class="btn" data-mode="rpg">⚔ Begin Scripture Quest</button><button class="ghost" data-mode="word">⏱ Verse Rush</button></div></div>
+      <div class="hero-stat"><div class="stat"><b id="bestRpgScore">0</b><span>RPG Best</span></div><div class="stat"><b id="bestFloor">0</b><span>Best Floor</span></div><div class="stat"><b id="masteredCount">0</b><span>Mastered</span></div><div class="stat"><b id="wordBest">0</b><span>Verse Rush</span></div></div>
     </section>
-
-    <section class="panel">
-      <div class="row between">
-        <div>
-          <div class="eyebrow">Single Player Modes</div>
-          <h2 style="margin:5px 0 2px">Pick a challenge</h2>
-        </div>
-        <span class="pill" id="lobbyCountPill">1 player • Solo lobby</span>
-      </div>
+    <section class="panel"><div class="row between"><div><div class="eyebrow">Single Player Modes</div><h2 style="margin:5px 0 2px">Pick a challenge</h2></div><span class="pill" id="lobbyCountPill">1 player • Solo lobby</span></div>
       <div class="mode-grid" style="margin-top:12px">
-        <button class="mode-card featured" data-mode="rpg">
-          <div class="icon">⚔️</div>
-          <h3>Scripture Quest</h3>
-          <p>Endless roguelike battles. Enemies can only be hurt by verses containing their weakness word. Level up, choose paths, and build a mastery library.</p>
-          <span class="tag">Persistent highscores • run resets on death</span>
-        </button>
-        <button class="mode-card" data-mode="word">
-          <div class="icon">⏱️</div>
-          <h3>Word Rush</h3>
-          <p>Get one broad Bible word and 60 seconds to name as many different verses containing it as possible.</p>
-          <span class="tag">60-word category pool</span>
-        </button>
-        <button class="mode-card" data-mode="reference">
-          <div class="icon">🎯</div>
-          <h3>Reference Hunt</h3>
-          <p>Read a verse and identify its exact reference. Fast, simple practice with a running score.</p>
-          <span class="tag">90-second solo sprint</span>
-        </button>
-        <button class="mode-card" data-mode="book">
-          <div class="icon">📚</div>
-          <h3>Book Sprint</h3>
-          <p>Read the verse and identify its Bible book from four choices. A lighter single-player warmup.</p>
-          <span class="tag">60-second solo sprint</span>
-        </button>
+        <button class="mode-card featured" data-mode="rpg"><div class="icon">⚔️</div><h3>Scripture Quest</h3><p>Battle from easy imps into specialized enemies and bosses. One verse is one attack; matched concepts deal damage based on each enemy's resistance.</p><span class="tag">Artwork • weighted weaknesses • roguelike highscores</span></button>
+        <button class="mode-card" data-mode="word"><div class="icon">⏱️</div><h3>Concept Verse Rush</h3><p>Get a broad Bible concept and 60 seconds to name verses. Synonyms and phrases such as “body of Christ” can earn credit.</p><span class="tag">Translation-friendly concept matching</span></button>
+        <button class="mode-card" data-mode="reference"><div class="icon">🎯</div><h3>Reference Hunt</h3><p>Read a verse and identify its exact reference.</p><span class="tag">90-second solo sprint</span></button>
+        <button class="mode-card" data-mode="book"><div class="icon">📚</div><h3>Book Sprint</h3><p>Read the verse and identify its Bible book from four choices.</p><span class="tag">60-second warmup</span></button>
       </div>
     </section>
   </main>
 
-  <main id="wordView" class="hidden">
-    <section class="panel">
-      <div class="game-head">
-        <div>
-          <div class="eyebrow">Solo • Word Rush</div>
-          <h2>Verses containing the word</h2>
-          <div class="muted">Enter a reference like <b>John 3:16</b>. Each valid verse scores once.</div>
-        </div>
-        <div class="timer-big" id="wordTimer">1:00</div>
-      </div>
-      <div class="word-prompt">
-        <div class="label">Your word</div>
-        <div class="word" id="wordPrompt">FAITH</div>
-      </div>
-      <div class="row between">
-        <span class="pill">Score <b id="wordScore">0</b></span>
-        <span class="pill">Best <b id="wordHigh">0</b></span>
-      </div>
-      <div class="input-row" style="margin-top:10px">
-        <input id="wordRefInput" type="text" autocomplete="off" placeholder="Type a Bible reference…" />
-        <button class="btn" id="wordSubmitBtn">Submit Verse</button>
-      </div>
-      <div class="notice" id="wordNotice"></div>
-      <div class="accepted" id="wordAccepted"></div>
-      <div class="row" style="margin-top:12px">
-        <button class="ghost" id="wordRestartBtn">New Word</button>
-        <button class="ghost" data-home>Back to Solo Lobby</button>
-      </div>
-    </section>
-  </main>
+  <main id="wordView" class="hidden"><section class="panel"><div class="game-head"><div><div class="eyebrow">Solo • Concept Verse Rush</div><h2>Find verses that match the concept</h2><div class="muted">Enter a reference like <b>John 3:16</b>. Accepted synonyms and phrases count.</div></div><div class="timer-big" id="wordTimer">1:00</div></div><div class="word-prompt"><div class="label">Your concept</div><div class="word" id="wordPrompt">FAITH</div><div class="concept-hint" id="wordConceptHint"></div></div><div class="row between"><span class="pill">Score <b id="wordScore">0</b></span><span class="pill">Best <b id="wordHigh">0</b></span></div><div class="input-row" style="margin-top:10px"><input id="wordRefInput" type="text" autocomplete="off" placeholder="Type a Bible reference…"/><button class="btn" id="wordSubmitBtn">Play Verse</button></div><div class="notice" id="wordNotice"></div><div class="accepted" id="wordAccepted"></div><div class="row" style="margin-top:12px"><button class="ghost" id="wordRestartBtn">New Concept</button><button class="ghost" data-home>Back to Solo Lobby</button></div></section></main>
 
-  <main id="referenceView" class="hidden">
-    <section class="panel">
-      <div class="game-head">
-        <div><div class="eyebrow">Solo • Reference Hunt</div><h2>Find the exact reference</h2></div>
-        <div class="timer-big" id="referenceTimer">1:30</div>
-      </div>
-      <div class="quiz-verse" id="referenceVerse">Loading Bible data…</div>
-      <div class="input-row" style="margin-top:10px">
-        <input id="referenceInput" type="text" autocomplete="off" placeholder="Example: Romans 8:28" />
-        <button class="btn" id="referenceSubmitBtn">Lock Answer</button>
-      </div>
-      <div class="row between" style="margin-top:9px">
-        <div class="notice" id="referenceNotice"></div>
-        <span class="pill">Score <b id="referenceScore">0</b></span>
-      </div>
-      <div class="row"><button class="ghost" data-home>Back to Solo Lobby</button></div>
-    </section>
-  </main>
+  <main id="referenceView" class="hidden"><section class="panel"><div class="game-head"><div><div class="eyebrow">Solo • Reference Hunt</div><h2>Find the exact reference</h2></div><div class="timer-big" id="referenceTimer">1:30</div></div><div class="quiz-verse" id="referenceVerse">Loading…</div><div class="input-row" style="margin-top:10px"><input id="referenceInput" type="text" autocomplete="off" placeholder="Example: Romans 8:28"/><button class="btn" id="referenceSubmitBtn">Lock Answer</button></div><div class="row between" style="margin-top:9px"><div class="notice" id="referenceNotice"></div><span class="pill">Score <b id="referenceScore">0</b></span></div><div class="row"><button class="ghost" data-home>Back to Solo Lobby</button></div></section></main>
 
-  <main id="bookView" class="hidden">
-    <section class="panel">
-      <div class="game-head">
-        <div><div class="eyebrow">Solo • Book Sprint</div><h2>Which book contains this verse?</h2></div>
-        <div class="timer-big" id="bookTimer">1:00</div>
-      </div>
-      <div class="quiz-verse" id="bookVerse">Loading Bible data…</div>
-      <div class="options" id="bookOptions"></div>
-      <div class="row between" style="margin-top:9px">
-        <div class="notice" id="bookNotice"></div>
-        <span class="pill">Score <b id="bookScore">0</b></span>
-      </div>
-      <div class="row"><button class="ghost" data-home>Back to Solo Lobby</button></div>
-    </section>
-  </main>
+  <main id="bookView" class="hidden"><section class="panel"><div class="game-head"><div><div class="eyebrow">Solo • Book Sprint</div><h2>Which book contains this verse?</h2></div><div class="timer-big" id="bookTimer">1:00</div></div><div class="quiz-verse" id="bookVerse">Loading…</div><div class="options" id="bookOptions"></div><div class="row between" style="margin-top:9px"><div class="notice" id="bookNotice"></div><span class="pill">Score <b id="bookScore">0</b></span></div><div class="row"><button class="ghost" data-home>Back to Solo Lobby</button></div></section></main>
 
-  <main id="rpgView" class="hidden">
-    <section class="rpg-layout">
-      <div class="battlefield" id="battlefield">
-        <div class="battle-top">
-          <div class="row between">
-            <div><div class="zone-label" id="zoneLabel">THE WILDERNESS</div><b id="floorLabel">Floor 1</b></div>
-            <span class="pill">Score <b id="rpgScore">0</b></span>
-          </div>
-          <div class="path-strip" id="pathStrip"></div>
-        </div>
-        <div class="fighter" id="fighter">
-          <div class="enemy-art" id="enemyArt"></div>
-          <div class="enemy-name" id="enemyName">Tempter</div>
-          <div class="enemy-sub" id="enemySub">A whisper that twists what is true.</div>
-          <div class="bar-wrap">
-            <div class="bar-label"><span>Enemy</span><span id="enemyHpText">40 / 40</span></div>
-            <div class="bar enemy-bar"><span id="enemyHpBar"></span></div>
-          </div>
-        </div>
-        <div class="combat-box">
-          <div class="requirement">Damage with a verse containing <b id="weaknessWord">TRUTH</b></div>
-          <div class="input-row">
-            <input id="rpgRefInput" type="text" autocomplete="off" placeholder="Enter a Bible reference…" />
-            <button class="btn" id="rpgAttackBtn">Use Verse</button>
-          </div>
-          <div class="combat-log" id="combatLog">Find a verse that matches the enemy weakness.</div>
-        </div>
-
-        <div class="choice-overlay hidden" id="pathOverlay">
-          <div class="choice-card">
-            <div class="eyebrow">Choose your path</div>
-            <h2 id="pathTitle" style="margin:6px 0">The road divides.</h2>
-            <p class="muted" id="pathHint">Choose risk, recovery, or a stronger opponent.</p>
-            <div class="path-choices" id="pathChoices"></div>
-          </div>
-        </div>
-
-        <div class="choice-overlay hidden" id="deathOverlay">
-          <div class="choice-card">
-            <div class="eyebrow" style="color:#fca5a5">Run Ended</div>
-            <h2 id="deathTitle" style="margin:6px 0">You fell on the path.</h2>
-            <p class="muted" id="deathSummary"></p>
-            <div class="death-verses" id="deathVerses"></div>
-            <div class="row" style="margin-top:12px">
-              <button class="btn" id="newRunBtn">Begin New Run</button>
-              <button class="ghost" data-home>Return to Solo Lobby</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <aside class="side-stack">
-        <div class="side-card">
-          <h3>🛡 Scripture Bearer</h3>
-          <div class="bar-wrap">
-            <div class="bar-label"><span>Health</span><span id="playerHpText">100 / 100</span></div>
-            <div class="bar player-bar"><span id="playerHpBar"></span></div>
-          </div>
-          <div class="bar-wrap">
-            <div class="bar-label"><span>Level <b id="playerLevel">1</b></span><span id="xpText">0 / 24 XP</span></div>
-            <div class="bar xp-bar"><span id="xpBar"></span></div>
-          </div>
-          <div class="mini-grid" style="margin-top:9px">
-            <div class="mini-stat"><b id="rpgStreak">0</b><span>Streak</span></div>
-            <div class="mini-stat"><b id="runMastery">0</b><span>Run Verses</span></div>
-            <div class="mini-stat"><b id="damageStat">14</b><span>Base Damage</span></div>
-            <div class="mini-stat"><b id="zoneStat">1</b><span>Zone</span></div>
-          </div>
-        </div>
-
-        <div class="side-card">
-          <div class="row between"><h3 style="margin:0">📜 Mastery Library</h3><span class="pill" id="masteryTotalPill">0 total</span></div>
-          <div class="muted" style="font-size:.74rem;margin:6px 0">Successful references are remembered between runs, but combat power resets when you die.</div>
-          <div class="mastery-list" id="masteryList"></div>
-        </div>
-
-        <div class="side-card">
-          <h3>🏆 Roguelike Highscores</h3>
-          <div class="high-list" id="rpgHighList"></div>
-        </div>
-
-        <button class="ghost" data-home>Leave Run / Solo Lobby</button>
-      </aside>
-    </section>
-  </main>
-
-  <div class="footer-note">Bible Game solo modes use the same Bible data source as multiplayer. Multiplayer remains available at any time.</div>
+  <main id="rpgView" class="hidden"><section class="rpg-layout">
+    <div class="battlefield" id="battlefield">
+      <div class="battle-top"><div class="row between"><div><div class="zone-label" id="zoneLabel">THE WILDERNESS</div><b id="floorLabel">Floor 1</b></div><span class="pill">Score <b id="rpgScore">0</b></span></div><div class="path-strip" id="pathStrip"></div></div>
+      <div class="arena-fighter player" id="playerFighter"><div class="combatant-bar"><div class="bar-label"><span>Word Warden</span><span id="playerHpText">100 / 100</span></div><div class="bar player-bar"><span id="playerHpBar"></span></div></div><div class="character-art"><img id="playerArt" alt="Word Warden" src="https://pub-15a649bcaae84f2ca6c610e6ef0dde51.r2.dev/players/wordwarden.png"/></div><div class="fighter-name">Word Warden</div><div class="fighter-sub">One verse at a time.</div></div>
+      <div class="arena-fighter enemy" id="enemyFighter"><div class="combatant-bar"><div class="bar-label"><span id="enemyBarName">Enemy</span><span id="enemyHpText">30 / 30</span></div><div class="bar enemy-bar"><span id="enemyHpBar"></span></div></div><div class="character-art"><img id="enemyArtImg" alt="Enemy"/></div><div class="fighter-name" id="enemyName">Little Imp</div><div class="fighter-sub" id="enemySub"></div><div class="resistance-row" id="resistanceRow"></div></div>
+      <div class="combat-box"><div class="requirement">Play a verse about <b id="weaknessWord">JESUS / SON OF GOD</b></div><div class="weakness-hint" id="weaknessHint"></div><div class="input-row"><input id="rpgRefInput" type="text" autocomplete="off" placeholder="Enter one Bible reference…"/><button class="btn" id="rpgAttackBtn">Play Verse</button></div><div class="combat-log" id="combatLog">Your verse becomes the attack.</div></div>
+      <div class="choice-overlay hidden" id="pathOverlay"><div class="choice-card"><div class="eyebrow">Choose your path</div><h2 id="pathTitle" style="margin:6px 0">The road divides.</h2><p class="muted" id="pathHint">Choose how you prepare.</p><div class="path-choices" id="pathChoices"></div></div></div>
+      <div class="choice-overlay hidden" id="deathOverlay"><div class="choice-card"><div class="eyebrow" style="color:#fca5a5">Run Ended</div><h2 id="deathTitle" style="margin:6px 0">You fell on the path.</h2><p class="muted" id="deathSummary"></p><div class="death-verses" id="deathVerses"></div><div class="row" style="margin-top:12px"><button class="btn" id="newRunBtn">Begin New Run</button><button class="ghost" data-home>Return to Solo Lobby</button></div></div></div>
+    </div>
+    <aside class="side-stack"><div class="side-card"><h3>🛡 Word Warden</h3><div class="bar-wrap"><div class="bar-label"><span>Level <b id="playerLevel">1</b></span><span id="xpText">0 / 24 XP</span></div><div class="bar xp-bar"><span id="xpBar"></span></div></div><div class="mini-grid" style="margin-top:9px"><div class="mini-stat"><b id="rpgStreak">0</b><span>Streak</span></div><div class="mini-stat"><b id="runMastery">0</b><span>Run Verses</span></div><div class="mini-stat"><b id="damageStat">14</b><span>Base Damage</span></div><div class="mini-stat"><b id="zoneStat">1</b><span>Zone</span></div></div></div><div class="side-card"><div class="row between"><h3 style="margin:0">📜 Mastery Library</h3><span class="pill" id="masteryTotalPill">0 total</span></div><div class="muted" style="font-size:.74rem;margin:6px 0">Successful references stay remembered between runs.</div><div class="mastery-list" id="masteryList"></div></div><div class="side-card"><h3>🏆 Roguelike Highscores</h3><div class="high-list" id="rpgHighList"></div></div><button class="ghost" data-home>Leave Run / Solo Lobby</button></aside>
+  </section></main>
+  <div class="footer-note">Concept matching groups common synonyms and phrases to reduce translation wording differences.</div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { MULTIPLAYER_CATEGORY_KEYS, conceptLabel, conceptHint, matchVerseConcept, matchWeightedConcepts } from "./biblegame-concepts.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.appspot.com",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-const $ = id => document.getElementById(id);
-const params = new URL(location.href).searchParams;
-const gameId = params.get("gameId") || "";
-const username = (params.get("username") || localStorage.getItem("magicUsername") || "Solo Pilgrim").trim();
-const multiplayerUrl = new URL("./biblegame-multiplayer.html", location.href);
-multiplayerUrl.search = location.search;
-
-const WORD_POOL = [
-  "God","Lord","love","faith","heart","king","law","sin","grace","peace","spirit","truth",
-  "life","death","light","darkness","hope","fear","joy","wisdom","word","holy","righteous",
-  "mercy","forgive","forgiven","blood","cross","Christ","Jesus","Father","Son","heaven","earth",
-  "prayer","pray","worship","praise","glory","power","strength","trust","believe","salvation",
-  "save","saved","kingdom","covenant","promise","shepherd","bread","water","fire","angel",
-  "prophet","temple","Israel","Jerusalem","resurrection","eternal"
+const firebaseConfig={apiKey:"AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",authDomain:"bible-game-246c0.firebaseapp.com",projectId:"bible-game-246c0",storageBucket:"bible-game-246c0.appspot.com",messagingSenderId:"959619818996",appId:"1:959619818996:web:5a9fbf492e23c765e445a1"};
+const app=initializeApp(firebaseConfig),db=getFirestore(app),auth=getAuth(app),$=id=>document.getElementById(id);
+const params=new URL(location.href).searchParams,gameId=params.get("gameId")||"",username=(params.get("username")||localStorage.getItem("magicUsername")||"Solo Pilgrim").trim();
+const multiplayerUrl=new URL("./biblegame-multiplayer.html",location.href);multiplayerUrl.search=location.search;
+const ASSET_ROOT="https://pub-15a649bcaae84f2ca6c610e6ef0dde51.r2.dev";
+const FALLBACK_ENEMY=`${ASSET_ROOT}/enemies/dread-wraith.png`;
+const BOOK_ORDER=["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth","1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms","Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi","Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter","1 John","2 John","3 John","Jude","Revelation"];
+const ZONES=[{name:"The Wilderness",minFloor:1},{name:"The Kingdom Roads",minFloor:6},{name:"The Prophets' Watch",minFloor:11},{name:"The Gospel Way",minFloor:16},{name:"The Early Church",minFloor:21},{name:"The Last Things",minFloor:26}];
+const W=(concept,multiplier=1)=>({concept,multiplier});
+const ENEMIES=[
+  {id:"little-imp",name:"Little Imp",art:"little-imp",minFloor:1,maxFloor:4,hp:28,damage:7,xp:10,desc:"A small nuisance driven back by the simplest confessions of who God is.",weaknesses:[W("jesus",1.35),W("god",1.0)]},
+  {id:"ash-imp",name:"Ash Imp",art:"ash-imp",minFloor:1,maxFloor:5,hp:31,damage:8,xp:11,desc:"A weak fiend that hates holy light.",weaknesses:[W("light",1.3),W("holiness",1.05),W("god",.8)]},
+  {id:"idol-priest",name:"Idol Priest",art:"idol-priest",minFloor:2,maxFloor:9,hp:40,damage:10,xp:15,desc:"A false priest that resists generic comfort but fears the true God.",weaknesses:[W("god",1.35),W("jesus",1.05),W("truth",.72)]},
+  {id:"doubter",name:"The Doubter",art:"doubter",minFloor:3,maxFloor:10,hp:43,damage:11,xp:16,desc:"Doubt hardens into armor around him.",weaknesses:[W("faith",1.35),W("hope",1.0),W("jesus",.75)]},
+  {id:"tempter",name:"The Tempter",art:"tempter",minFloor:4,maxFloor:12,hp:46,damage:12,xp:18,desc:"A whisper that twists what is true.",weaknesses:[W("truth",1.4),W("word",1.15),W("jesus",.8)]},
+  {id:"dread-wraith",name:"Dread Wraith",art:"dread-wraith",minFloor:5,maxFloor:14,hp:50,damage:14,xp:20,desc:"Fear becomes substance around this wraith.",weaknesses:[W("peace",1.4),W("faith",1.0),W("hope",.85)]},
+  {id:"accuser",name:"The Accuser",art:"accuser",minFloor:6,maxFloor:16,hp:54,damage:15,xp:22,desc:"He remembers every failure and hates grace.",weaknesses:[W("grace",1.4),W("forgiveness",1.2),W("salvation",.85)]},
+  {id:"greed-beast",name:"Greed Beast",art:"greed-beast",minFloor:7,maxFloor:18,hp:60,damage:16,xp:24,desc:"It hoards everything and is never filled.",weaknesses:[W("giving",1.4),W("kindness",1.05),W("love",.75)]},
+  {id:"pride-giant",name:"Pride Giant",art:"pride-giant",minFloor:8,maxFloor:20,hp:68,damage:18,xp:27,desc:"A towering enemy that cannot imagine kneeling.",weaknesses:[W("humility",1.5),W("grace",.85),W("kindness",.7)]},
+  {id:"merciless-judge",name:"Merciless Judge",art:"merciless-judge",minFloor:9,maxFloor:22,hp:72,damage:19,xp:29,desc:"He can recite every charge but remembers no mercy.",weaknesses:[W("mercy",1.45),W("grace",1.05),W("forgiveness",.85)]},
+  {id:"captor",name:"The Captor",art:"captor",minFloor:10,maxFloor:24,hp:76,damage:20,xp:31,desc:"A jailer who measures victory in chains.",weaknesses:[W("freedom",1.45),W("salvation",1.05),W("grace",.75)]},
+  {id:"division-spirit",name:"Spirit of Division",art:"division-spirit",minFloor:11,maxFloor:26,hp:82,damage:21,xp:34,desc:"It attacks fellowship and tries to split the church apart.",weaknesses:[W("unity",1.55),W("church",1.2),W("love",.72)]},
+  {id:"false-prophet",name:"False Prophet",art:"false-prophet",minFloor:12,maxFloor:28,hp:86,damage:22,xp:35,desc:"He speaks loudly, but his words are crooked.",weaknesses:[W("truth",1.5),W("word",1.15),W("jesus",.8)]},
+  {id:"grave-warden",name:"Grave Warden",art:"grave-warden",minFloor:13,maxFloor:30,hp:92,damage:23,xp:38,desc:"The keeper of a gate that claims no one returns.",weaknesses:[W("resurrection",1.6),W("salvation",1.05),W("life",.8)]},
+  {id:"death-knight",name:"Death Knight",art:"death-knight",minFloor:16,hp:106,damage:25,xp:43,desc:"Its armor is engraved with the certainty of death.",weaknesses:[W("resurrection",1.5),W("life",1.1),W("eternal",.9)]},
+  {id:"church-devourer",name:"Church Devourer",art:"church-devourer",minFloor:18,hp:118,damage:27,xp:48,desc:"It attacks the unity and identity of God's people.",weaknesses:[W("unity",1.6),W("church",1.3),W("love",.65)]},
+  {id:"scarlet-dragon",name:"Scarlet Dragon",art:"scarlet-dragon",minFloor:5,hp:98,damage:22,xp:45,desc:"A boss that rages against every testimony of victory.",weaknesses:[W("blood",1.45),W("overcoming",1.25),W("jesus",.7)],boss:true},
+  {id:"beast-of-night",name:"Beast of Night",art:"beast-of-night",minFloor:10,hp:118,damage:25,xp:50,desc:"A boss that claims every kingdom for itself.",weaknesses:[W("kingdom",1.5),W("jesus",1.05),W("truth",.65)],boss:true},
+  {id:"last-accuser",name:"The Last Accuser",art:"last-accuser",minFloor:15,hp:136,damage:28,xp:58,desc:"A final voice insisting that rescue is impossible.",weaknesses:[W("salvation",1.6),W("grace",1.0),W("forgiveness",.75)],boss:true},
+  {id:"breaker-of-brethren",name:"Breaker of the Brethren",art:"breaker-of-brethren",minFloor:20,hp:154,damage:30,xp:64,desc:"A late boss armored against everything except the church standing as one.",weaknesses:[W("unity",1.7),W("church",1.3),W("love",.6)],boss:true}
 ];
 
-const BOOK_ORDER = [
-  "Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth","1 Samuel","2 Samuel",
-  "1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms","Proverbs",
-  "Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos",
-  "Obadiah","Jonah","Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi","Matthew","Mark","Luke",
-  "John","Acts","Romans","1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians",
-  "1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter",
-  "2 Peter","1 John","2 John","3 John","Jude","Revelation"
-];
+let verses=[],verseByRef=new Map(),currentView="hub",liveLobbyCount=1,lobbyUnsub=null,authUser=null,currentWordGame=null,currentReferenceGame=null,currentBookGame=null,rpg=null;
+function storageKey(s){return `bibleSolo:${username.toLowerCase()}:${s}`}function loadJson(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}function saveJson(k,v){localStorage.setItem(k,JSON.stringify(v))}function safeName(v){return (v||"Solo Pilgrim").toString().trim().slice(0,40)||"Solo Pilgrim"}function normalizeName(v){return (v||"").toString().trim().replace(/\s+/g," ").toLowerCase()}
+function normalizeBook(v){let s=(v||"").toString().trim().toLowerCase().replace(/\./g,"").replace(/\s+/g," ");s=s.replace(/^first\s+/,"1 ").replace(/^second\s+/,"2 ").replace(/^third\s+/,"3 ").replace(/^i\s+/,"1 ").replace(/^ii\s+/,"2 ").replace(/^iii\s+/,"3 ");return ({"psalm":"psalms","song of songs":"song of solomon","songs of solomon":"song of solomon","revelations":"revelation"})[s]||s}function canonicalBook(input){const k=normalizeBook(input);return BOOK_ORDER.find(b=>normalizeBook(b)===k)||""}function refKey(v){return `${normalizeBook(v.book)} ${Number(v.chapter)}:${Number(v.verse)}`}function displayRef(v){return `${v.book} ${v.chapter}:${v.verse}`}function escapeHtml(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]))}function shuffle(a){const out=a.slice();for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out}function randomChoice(a){return a[Math.floor(Math.random()*a.length)]}function fmt(s){const n=Math.max(0,Math.ceil(s));return `${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`}
+function parseCSV(text){const rows=[];let row=[],val="",inQ=false;for(let i=0;i<text.length;i++){const c=text[i];if(inQ){if(c==='"'){if(text[i+1]==='"'){val+='"';i++}else inQ=false}else val+=c}else{if(c==='"')inQ=true;else if(c===','){row.push(val);val=""}else if(c==='\n'){row.push(val);rows.push(row);row=[];val=""}else if(c!=='\r')val+=c}}if(val.length||row.length){row.push(val);rows.push(row)}return rows}
+function buildVerses(rows){const h=(rows[0]||[]).map(x=>(x||"").trim().toLowerCase()),idx=n=>h.indexOf(n.toLowerCase()),bi=idx("bookname"),ci=idx("chapter"),vi=idx("verse"),ti=idx("text"),ii=idx("verseid");if([bi,ci,vi,ti].some(i=>i<0))throw new Error("Bible data headers are missing.");const out=[];for(let i=1;i<rows.length;i++){const r=rows[i]||[],book=(r[bi]||"").trim(),chapter=Number(r[ci]),verse=Number(r[vi]),text=(r[ti]||"").trim();if(book&&chapter&&verse&&text)out.push({id:Number(r[ii])||i,book,chapter,verse,text})}return out}
+async function loadBibleData(){const response=await fetch("https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv",{cache:"force-cache"});if(!response.ok)throw new Error(`Bible data failed to load (${response.status}).`);verses=buildVerses(parseCSV(await response.text()));verseByRef=new Map(verses.map(v=>[refKey(v),v]))}
+function parseReference(input){const s=(input||"").trim().replace(/\s+/g," "),m=s.match(/^(.+?)\s+(\d+)\s*:\s*(\d+)$/);if(!m)return null;const book=canonicalBook(m[1]);if(!book)return null;return verseByRef.get(`${normalizeBook(book)} ${Number(m[2])}:${Number(m[3])}`)||null}
+function showView(name){currentView=name;for(const id of ["hubView","wordView","referenceView","bookView","rpgView"])$(id).classList.add("hidden");$(`${name}View`).classList.remove("hidden");if(name==="hub")refreshHubStats();scrollTo({top:0,behavior:"smooth"})}
+function setConnection(kind,text){const el=$("connectionPill");el.className=`pill ${kind}`;el.textContent=`● ${text}`}function playerNames(data){return (Array.isArray(data?.players)?data.players:[]).map(p=>typeof p==="string"?p:(p?.username||p?.name||p?.displayName||"")).filter(Boolean)}function refreshLobbyUI(){$("lobbyCountPill").textContent=`${liveLobbyCount} player${liveLobbyCount===1?"":"s"} • ${liveLobbyCount<=1?"Solo lobby":"Multiplayer ready"}`}
+function maybeHandleLobbyCount(count){liveLobbyCount=Math.max(1,count||1);refreshLobbyUI();if(liveLobbyCount>1){if(currentView==="hub"){setConnection("good",`${liveLobbyCount} players • Multiplayer`);location.replace(multiplayerUrl.href)}else{$("joinBanner").classList.remove("hidden");$("joinBannerText").textContent=`${liveLobbyCount} players are now in the lobby. You can finish this solo run or jump into multiplayer.`}}else{$("joinBanner").classList.add("hidden");setConnection("good","1 player • Solo")}}
+async function observeLobby(){if(!gameId){setConnection("good","Solo mode");$("subtitle").textContent=`${safeName(username)} • Standalone solo`;refreshLobbyUI();return}try{const lobbyRef=doc(db,"lobbies",gameId),snap=await getDoc(lobbyRef);if(!snap.exists()){setConnection("warn","Lobby missing • Solo available");return}const names=playerNames(snap.data());$("subtitle").textContent=`${safeName(username)} • Lobby ${gameId}`;maybeHandleLobbyCount(names.length||1);lobbyUnsub=onSnapshot(lobbyRef,live=>{if(live.exists())maybeHandleLobbyCount(playerNames(live.data()).length||1)})}catch(err){console.warn("Lobby detection failed",err);setConnection("warn","Solo • Lobby check unavailable")}}
+async function saveProfileBest(patch){if(!authUser||!username||username==="Solo Pilgrim")return;try{await setDoc(doc(db,"users",username),{bibleSolo:{...patch,updatedAt:serverTimestamp()}},{merge:true})}catch(err){console.warn("Solo profile save skipped",err)}}
+function refreshHubStats(){const highs=loadJson(storageKey("rpgHighscores"),[]),mastery=loadJson(storageKey("mastery"),[]);$("bestRpgScore").textContent=highs[0]?.score||0;$("bestFloor").textContent=Math.max(0,...highs.map(x=>Number(x.floor)||0));$("masteredCount").textContent=mastery.length;$("wordBest").textContent=Number(localStorage.getItem(storageKey("wordBest"))||0);$("welcomeTitle").textContent=`${safeName(username)}, choose your challenge.`}
+function endExistingTimers(){for(const g of [currentWordGame,currentReferenceGame,currentBookGame])if(g?.timer)clearInterval(g.timer)}
 
-const ZONES = [
-  {name:"The Wilderness",minFloor:1},
-  {name:"The Kingdom Roads",minFloor:6},
-  {name:"The Prophets' Watch",minFloor:11},
-  {name:"The Gospel Way",minFloor:16},
-  {name:"The Early Church",minFloor:21},
-  {name:"The Last Things",minFloor:26}
-];
+function startWordRush(){endExistingTimers();const viable=MULTIPLAYER_CATEGORY_KEYS.map(key=>({key,count:verses.filter(v=>matchVerseConcept(v.text,key)).length})).filter(x=>x.count>=8),chosen=randomChoice(viable);currentWordGame={key:chosen.key,score:0,used:new Set(),ends:Date.now()+60000,timer:null,over:false};$("wordPrompt").textContent=conceptLabel(chosen.key);$("wordConceptHint").textContent=`Examples that count: ${conceptHint(chosen.key,6)}`;$("wordScore").textContent="0";$("wordHigh").textContent=localStorage.getItem(storageKey("wordBest"))||"0";$("wordAccepted").innerHTML="";$("wordNotice").textContent="";$("wordRefInput").value="";$("wordSubmitBtn").disabled=false;showView("word");$("wordRefInput").focus();const tick=()=>{if(!currentWordGame)return;const remain=(currentWordGame.ends-Date.now())/1000;$("wordTimer").textContent=fmt(remain);if(remain<=0)finishWordRush()};tick();currentWordGame.timer=setInterval(tick,200)}
+function finishWordRush(){if(!currentWordGame||currentWordGame.over)return;currentWordGame.over=true;clearInterval(currentWordGame.timer);$("wordTimer").textContent="0:00";$("wordSubmitBtn").disabled=true;const old=Number(localStorage.getItem(storageKey("wordBest"))||0);if(currentWordGame.score>old){localStorage.setItem(storageKey("wordBest"),String(currentWordGame.score));$("wordHigh").textContent=currentWordGame.score;saveProfileBest({wordRushBest:currentWordGame.score})}const possible=verses.filter(v=>matchVerseConcept(v.text,currentWordGame.key)).length;$("wordNotice").className="notice warn";$("wordNotice").textContent=`Time! ${currentWordGame.score} accepted. ${possible} verses in the loaded translation match this concept family.`}
+function submitWordVerse(){if(!currentWordGame||currentWordGame.over)return;const v=parseReference($("wordRefInput").value),notice=$("wordNotice");if(!v){notice.className="notice bad";notice.textContent="That exact reference was not found.";return}const key=refKey(v);if(currentWordGame.used.has(key)){notice.className="notice bad";notice.textContent="You already used that verse.";return}const match=matchVerseConcept(v.text,currentWordGame.key);if(!match){notice.className="notice bad";notice.textContent=`${displayRef(v)} does not match ${conceptLabel(currentWordGame.key)} in the loaded translation.`;return}currentWordGame.used.add(key);currentWordGame.score++;$("wordScore").textContent=currentWordGame.score;const row=document.createElement("div");row.className="accepted-row";row.innerHTML=`<div><b>${escapeHtml(displayRef(v))}</b><br><small>Matched “${escapeHtml(match.term)}” • ${escapeHtml(v.text.slice(0,125))}${v.text.length>125?"…":""}</small></div><span class="score-burst">+1</span>`;$("wordAccepted").prepend(row);notice.className="notice good";notice.textContent=`Accepted through “${match.term}”.`;$("wordRefInput").value="";$("wordRefInput").focus()}
+function randomVerse(){return verses[Math.floor(Math.random()*verses.length)]}
+function startReferenceHunt(){endExistingTimers();currentReferenceGame={score:0,ends:Date.now()+90000,current:null,timer:null,over:false};showView("reference");nextReferenceQuestion();const tick=()=>{if(!currentReferenceGame)return;const remain=(currentReferenceGame.ends-Date.now())/1000;$("referenceTimer").textContent=fmt(remain);if(remain<=0){currentReferenceGame.over=true;clearInterval(currentReferenceGame.timer);$("referenceSubmitBtn").disabled=true;$("referenceNotice").textContent=`Time! Final score: ${currentReferenceGame.score}.`}};tick();currentReferenceGame.timer=setInterval(tick,200)}function nextReferenceQuestion(){if(!currentReferenceGame||currentReferenceGame.over)return;currentReferenceGame.current=randomVerse();$("referenceVerse").textContent=currentReferenceGame.current.text;$("referenceInput").value="";$("referenceInput").focus()}function submitReference(){if(!currentReferenceGame||currentReferenceGame.over)return;const answer=parseReference($("referenceInput").value),correct=currentReferenceGame.current,ok=!!answer&&refKey(answer)===refKey(correct),notice=$("referenceNotice");if(ok){currentReferenceGame.score+=2;notice.className="notice good";notice.textContent=`Correct — ${displayRef(correct)}.`}else{currentReferenceGame.score=Math.max(0,currentReferenceGame.score-1);notice.className="notice bad";notice.textContent=`It was ${displayRef(correct)}.`}$("referenceScore").textContent=currentReferenceGame.score;setTimeout(nextReferenceQuestion,450)}
+function startBookSprint(){endExistingTimers();currentBookGame={score:0,ends:Date.now()+60000,current:null,timer:null,over:false};showView("book");nextBookQuestion();const tick=()=>{if(!currentBookGame)return;const remain=(currentBookGame.ends-Date.now())/1000;$("bookTimer").textContent=fmt(remain);if(remain<=0){currentBookGame.over=true;clearInterval(currentBookGame.timer);document.querySelectorAll(".option").forEach(b=>b.disabled=true)}};tick();currentBookGame.timer=setInterval(tick,200)}function nextBookQuestion(){if(!currentBookGame||currentBookGame.over)return;const v=randomVerse();currentBookGame.current=v;$("bookVerse").textContent=v.text;$("bookNotice").textContent="";const others=shuffle(BOOK_ORDER.filter(b=>normalizeBook(b)!==normalizeBook(v.book))).slice(0,3),options=shuffle([v.book,...others]);$("bookOptions").innerHTML="";for(const book of options){const btn=document.createElement("button");btn.className="option";btn.textContent=book;btn.onclick=()=>answerBook(book,btn);$("bookOptions").appendChild(btn)}}function answerBook(book,button){if(!currentBookGame||currentBookGame.over)return;const ok=normalizeBook(book)===normalizeBook(currentBookGame.current.book);document.querySelectorAll(".option").forEach(b=>{b.disabled=true;if(normalizeBook(b.textContent)===normalizeBook(currentBookGame.current.book))b.classList.add("good")});if(!ok)button.classList.add("bad");currentBookGame.score=Math.max(0,currentBookGame.score+(ok?1:-1));$("bookScore").textContent=currentBookGame.score;$("bookNotice").className=`notice ${ok?"good":"bad"}`;$("bookNotice").textContent=ok?"Correct.":`That verse is from ${currentBookGame.current.book}.`;setTimeout(nextBookQuestion,520)}
 
-const ENEMIES = [
-  {id:"tempter",name:"The Tempter",kind:"tempter",words:["truth"],hp:42,damage:13,xp:16,desc:"A whisper that twists what is true."},
-  {id:"pharisee",name:"Pharisee",kind:"pharisee",words:["law"],hp:48,damage:12,xp:18,desc:"A strict keeper of law who tests your knowledge."},
-  {id:"accuser",name:"The Accuser",kind:"wraith",words:["grace","forgive"],hp:46,damage:14,xp:19,desc:"He remembers every failure and hates grace."},
-  {id:"idol-priest",name:"Idol Priest",kind:"priest",words:["God","Lord"],hp:50,damage:14,xp:20,desc:"A false priest who bows to created things."},
-  {id:"fear-wraith",name:"Fear Wraith",kind:"wraith",words:["peace","fear"],hp:44,damage:15,xp:18,desc:"A shadow that grows wherever courage fails."},
-  {id:"doubter",name:"The Doubter",kind:"wanderer",words:["faith","believe"],hp:47,damage:14,xp:19,desc:"Doubt hardens into armor around him."},
-  {id:"greed-beast",name:"Greed Beast",kind:"beast",words:["treasure","give","rich"],hp:56,damage:16,xp:22,desc:"It hoards everything and is never filled."},
-  {id:"war-brute",name:"War Brute",kind:"giant",words:["peace","love"],hp:62,damage:18,xp:24,desc:"A giant trained to answer everything with force."},
-  {id:"lying-serpent",name:"Serpent of Lies",kind:"serpent",words:["truth"],hp:53,damage:17,xp:23,desc:"Every coil carries a different deception."},
-  {id:"pride-giant",name:"Pride Giant",kind:"giant",words:["humble","humility"],hp:68,damage:20,xp:28,desc:"A towering enemy that cannot imagine kneeling."},
-  {id:"false-prophet",name:"False Prophet",kind:"prophet",words:["word","prophet"],hp:58,damage:18,xp:26,desc:"He speaks loudly, but his words are crooked."},
-  {id:"grave-warden",name:"Grave Warden",kind:"warden",words:["life","resurrection"],hp:64,damage:20,xp:28,desc:"The keeper of a gate that claims no one returns."},
-  {id:"dark-stalker",name:"Darkness Stalker",kind:"wraith",words:["light"],hp:55,damage:18,xp:24,desc:"A thing that vanishes when the light is spoken."},
-  {id:"storm-spirit",name:"Storm Spirit",kind:"storm",words:["trust","peace"],hp:59,damage:19,xp:25,desc:"Wind and panic circle it like armor."},
-  {id:"captor",name:"The Captor",kind:"warden",words:["free","freedom"],hp:63,damage:20,xp:27,desc:"A jailer who measures victory in chains."},
-  {id:"merciless-judge",name:"Merciless Judge",kind:"judge",words:["mercy"],hp:66,damage:21,xp:29,desc:"He can recite every charge but remembers no mercy."},
-  {id:"hunger-beast",name:"Hunger Beast",kind:"beast",words:["bread"],hp:58,damage:19,xp:25,desc:"A hollow creature that consumes without satisfaction."},
-  {id:"sheep-thief",name:"Sheep Thief",kind:"wanderer",words:["shepherd"],hp:57,damage:18,xp:25,desc:"He enters the fold by another way."},
-  {id:"ash-demon",name:"Ash Demon",kind:"demon",words:["fire","holy"],hp:72,damage:22,xp:31,desc:"A scorched enemy that fears holy fire."},
-  {id:"death-knight",name:"Death Knight",kind:"knight",words:["life","eternal"],hp:78,damage:23,xp:34,desc:"Its armor is engraved with the certainty of death."},
-  {id:"scarlet-dragon",name:"Scarlet Dragon",kind:"dragon",words:["blood","overcome"],hp:110,damage:28,xp:48,desc:"A boss that rages against every testimony of victory.",boss:true},
-  {id:"beast-of-night",name:"Beast of Night",kind:"beast",words:["kingdom","Christ"],hp:104,damage:27,xp:46,desc:"A boss that claims every kingdom for itself.",boss:true},
-  {id:"last-accuser",name:"The Last Accuser",kind:"wraith",words:["salvation","saved"],hp:108,damage:29,xp:50,desc:"A final voice insisting that rescue is impossible.",boss:true}
-];
+function zoneForFloor(floor){let zone=ZONES[0],idx=0;ZONES.forEach((z,i)=>{if(floor>=z.minFloor){zone=z;idx=i}});return{zone,index:idx}}function highScores(){return loadJson(storageKey("rpgHighscores"),[]).sort((a,b)=>b.score-a.score||b.floor-a.floor).slice(0,8)}function persistentMastery(){return loadJson(storageKey("mastery"),[])}function saveMastery(ref){const list=persistentMastery();if(!list.includes(ref)){list.push(ref);saveJson(storageKey("mastery"),list.slice(-500))}}function rpgXpNeeded(level){return 24+(level-1)*13}function enemyArtUrl(enemy){return `${ASSET_ROOT}/enemies/${enemy.art||enemy.id}.png`}
+function startRpg(){endExistingTimers();rpg={health:100,maxHealth:100,level:1,xp:0,score:0,floor:1,streak:0,baseDamage:14,used:new Set(),runMastered:[],enemy:null,dead:false,lastWeaknesses:[],eliteNext:false,damageMod:1,zone:0};showView("rpg");$("deathOverlay").classList.add("hidden");$("pathOverlay").classList.add("hidden");spawnEnemy();renderRpg();$("rpgRefInput").focus()}
+function chooseEnemy(){const bossFloor=rpg.floor%5===0;let pool=ENEMIES.filter(e=>!!e.boss===bossFloor&&rpg.floor>=Number(e.minFloor||1)&&(!e.maxFloor||rpg.floor<=e.maxFloor));if(!pool.length)pool=ENEMIES.filter(e=>!!e.boss===bossFloor&&rpg.floor>=Number(e.minFloor||1));if(bossFloor&&pool.length>1){const highestMin=Math.max(...pool.map(e=>e.minFloor||1));pool=pool.filter(e=>(e.minFloor||1)>=highestMin-5)}return {...randomChoice(pool)}}
+function weaknessSummary(enemy){return enemy.weaknesses.map(w=>`${conceptLabel(w.concept)} ×${Number(w.multiplier).toFixed(2).replace(/0+$/,'').replace(/\.$/,'')}`).join(" • ")}
+function spawnEnemy(){if(!rpg||rpg.dead)return;const base=chooseEnemy(),scale=1+(rpg.floor-1)*.082,elite=rpg.eliteNext;rpg.eliteNext=false;const hp=Math.round(base.hp*scale*(elite?1.42:1)),damage=Math.round(base.damage*(1+(rpg.floor-1)*.04)*(elite?1.28:1));rpg.enemy={...base,maxHp:hp,hp,damage,elite};rpg.lastWeaknesses=base.weaknesses.map(x=>({...x}));$("combatLog").textContent=elite?`Elite encounter! ${weaknessSummary(base)}`:`One verse = one attack. ${weaknessSummary(base)}`}
+function pulseFighter(id){const el=$(id);el.classList.remove("hit");void el.offsetWidth;el.classList.add("hit")}
+function rpgAttack(){if(!rpg||rpg.dead||!rpg.enemy)return;const input=$("rpgRefInput"),v=parseReference(input.value);if(!v){combatFail("That reference was not found in the Bible data.");return}const key=refKey(v);if(rpg.used.has(key)){combatFail("You already used that verse during this run.");return}rpg.used.add(key);const match=matchWeightedConcepts(v.text,rpg.enemy.weaknesses);if(!match){combatFail(`${displayRef(v)} does not match any weakness concept for ${rpg.enemy.name}.`);input.value="";input.focus();return}const wasPersistent=persistentMastery().includes(displayRef(v)),firstMaster=!wasPersistent;saveMastery(displayRef(v));if(!rpg.runMastered.includes(displayRef(v)))rpg.runMastered.push(displayRef(v));rpg.streak++;const streakBonus=Math.min(12,rpg.streak*2),masteryBonus=firstMaster?5:0,raw=(rpg.baseDamage+(rpg.level-1)*3+streakBonus+masteryBonus)*rpg.damageMod,damage=Math.max(1,Math.round(raw*match.multiplier));rpg.enemy.hp=Math.max(0,rpg.enemy.hp-damage);rpg.score+=damage+(firstMaster?15:5);const strength=match.multiplier>=1.35?"Powerful":match.multiplier<.85?"Resisted":"Effective";$("combatLog").innerHTML=`<b style="color:#86efac">${escapeHtml(displayRef(v))}</b> matched <b>${escapeHtml(match.label)}</b> through “${escapeHtml(match.term)}”. <b>${strength} ×${match.multiplier.toFixed(2)}</b> — ${damage} damage${firstMaster?" + new mastery":""}.`;input.value="";input.focus();pulseFighter("enemyFighter");if(rpg.enemy.hp<=0)defeatEnemy();renderRpg()}
+function combatFail(message){if(!rpg||rpg.dead)return;rpg.streak=0;rpg.health=Math.max(0,rpg.health-rpg.enemy.damage);$("combatLog").innerHTML=`<span style="color:#fca5a5">${escapeHtml(message)}</span> ${escapeHtml(rpg.enemy.name)} attacks for <b>${rpg.enemy.damage}</b>.`;pulseFighter("playerFighter");renderRpg();if(rpg.health<=0)endRun()}
+function gainXp(amount){rpg.xp+=amount;let needed=rpgXpNeeded(rpg.level);while(rpg.xp>=needed){rpg.xp-=needed;rpg.level++;rpg.maxHealth+=12;rpg.health=Math.min(rpg.maxHealth,rpg.health+24);rpg.baseDamage+=2;needed=rpgXpNeeded(rpg.level)}}function defeatEnemy(){const foe=rpg.enemy,xp=Math.round(foe.xp*(foe.elite?1.55:1)*(1+(rpg.floor-1)*.025));gainXp(xp);rpg.score+=Math.round(40+rpg.floor*12+(foe.elite?60:0)+(foe.boss?120:0));$("combatLog").innerHTML=`<b style="color:#fde68a">${escapeHtml(foe.name)} defeated!</b> +${xp} XP.`;setTimeout(showPathChoice,340)}
+function showPathChoice(){if(!rpg||rpg.dead)return;$("pathOverlay").classList.remove("hidden");$("pathTitle").textContent=rpg.floor%5===0?"The way opens beyond the boss.":"The road divides.";$("pathHint").textContent="Choose how you prepare for the next fight.";const options=[{icon:"⚔️",name:"Press Forward",desc:"Normal encounter. +10 score.",type:"normal"},{icon:"🔥",name:"Elite Trial",desc:"Stronger next enemy, better reward.",type:"elite"},{icon:"🌿",name:"Quiet Place",desc:"Recover 28% max health.",type:"rest"}];if(Math.random()<.45)options[0]={icon:"📜",name:"Study the Word",desc:"Heal 12% and gain a temporary damage boost.",type:"study"};$("pathChoices").innerHTML="";for(const o of options){const btn=document.createElement("button");btn.className="path-choice";btn.innerHTML=`<strong>${o.icon} ${escapeHtml(o.name)}</strong><small>${escapeHtml(o.desc)}</small>`;btn.onclick=()=>takePath(o.type);$("pathChoices").appendChild(btn)}}
+function takePath(type){if(!rpg||rpg.dead)return;if(type==="elite"){rpg.eliteNext=true;rpg.score+=20}else if(type==="rest")rpg.health=Math.min(rpg.maxHealth,rpg.health+Math.round(rpg.maxHealth*.28));else if(type==="study"){rpg.health=Math.min(rpg.maxHealth,rpg.health+Math.round(rpg.maxHealth*.12));rpg.damageMod=Math.min(1.36,rpg.damageMod+.12)}else rpg.score+=10;rpg.floor++;if(rpg.floor%3===1&&rpg.damageMod>1)rpg.damageMod=Math.max(1,rpg.damageMod-.08);$("pathOverlay").classList.add("hidden");spawnEnemy();renderRpg();$("rpgRefInput").focus()}
+function findDeathVerses(weaknesses){const seenBooks=new Set(),out=[];for(const v of shuffle(verses)){if(!matchWeightedConcepts(v.text,weaknesses))continue;if(seenBooks.has(normalizeBook(v.book)))continue;seenBooks.add(normalizeBook(v.book));out.push(v);if(out.length>=10)break}return out}
+function endRun(){if(!rpg||rpg.dead)return;rpg.dead=true;const record={score:rpg.score,floor:rpg.floor,level:rpg.level,date:new Date().toISOString()},highs=[...highScores(),record].sort((a,b)=>b.score-a.score||b.floor-a.floor).slice(0,8);saveJson(storageKey("rpgHighscores"),highs);saveProfileBest({rpgBestScore:highs[0]?.score||0,rpgBestFloor:Math.max(...highs.map(x=>x.floor||0)),rpgBestLevel:Math.max(...highs.map(x=>x.level||0)),masteredCount:persistentMastery().length});$("deathTitle").textContent=`Defeated on Floor ${rpg.floor}`;$("deathSummary").textContent=`Score ${rpg.score} • Level ${rpg.level} • ${rpg.runMastered.length} verses used. These examples from different Bible books could have damaged ${rpg.enemy.name}.`;$("deathVerses").innerHTML="";for(const v of findDeathVerses(rpg.lastWeaknesses)){const row=document.createElement("div");row.className="death-verse";row.innerHTML=`<b>${escapeHtml(displayRef(v))}</b><p>${escapeHtml(v.text)}</p>`;$("deathVerses").appendChild(row)}if(!$("deathVerses").children.length)$("deathVerses").innerHTML='<div class="muted">No examples were available for this concept set.</div>';$("deathOverlay").classList.remove("hidden");renderRpgHighscores();refreshHubStats()}
+function renderRpgHighscores(){const box=$("rpgHighList");box.innerHTML="";const highs=highScores();if(!highs.length){box.innerHTML='<div class="muted" style="font-size:.76rem">No runs yet.</div>';return}highs.forEach((h,i)=>{const row=document.createElement("div");row.className="high-item";row.innerHTML=`<span>#${i+1} • Floor ${h.floor} • Lv ${h.level}</span><b>${h.score}</b>`;box.appendChild(row)})}function renderMastery(){const list=persistentMastery();$("masteryTotalPill").textContent=`${list.length} total`;const box=$("masteryList");box.innerHTML="";for(const ref of list.slice(-14).reverse()){const row=document.createElement("div");row.className="mastery-item";row.textContent=ref;box.appendChild(row)}if(!list.length)box.innerHTML='<div class="muted" style="font-size:.76rem">Land a successful verse attack to begin your library.</div>'}
+function renderRpg(){if(!rpg||!rpg.enemy)return;const{zone,index}=zoneForFloor(rpg.floor);rpg.zone=index;$("zoneLabel").textContent=zone.name.toUpperCase();$("floorLabel").textContent=`Floor ${rpg.floor}${rpg.enemy.elite?" • ELITE":rpg.enemy.boss?" • BOSS":""}`;$("zoneStat").textContent=index+1;$("rpgScore").textContent=rpg.score;$("rpgStreak").textContent=rpg.streak;$("runMastery").textContent=rpg.runMastered.length;$("damageStat").textContent=Math.round((rpg.baseDamage+(rpg.level-1)*3)*rpg.damageMod);$("enemyName").textContent=rpg.enemy.name;$("enemyBarName").textContent=rpg.enemy.name;$("enemySub").textContent=rpg.enemy.desc;const img=$("enemyArtImg");if(img.dataset.enemy!==rpg.enemy.id){img.dataset.enemy=rpg.enemy.id;img.src=enemyArtUrl(rpg.enemy);img.onerror=()=>{img.onerror=null;img.src=FALLBACK_ENEMY}}const labels=rpg.enemy.weaknesses.map(w=>conceptLabel(w.concept));$("weaknessWord").textContent=labels.join(" / ").toUpperCase();$("weaknessHint").textContent=`Translation-family examples: ${rpg.enemy.weaknesses.map(w=>`${conceptHint(w.concept,3)} (×${w.multiplier})`).join(" • ")}`;$("resistanceRow").innerHTML=rpg.enemy.weaknesses.map(w=>`<span class="resist-chip">${escapeHtml(conceptLabel(w.concept))} ×${w.multiplier}</span>`).join("");$("enemyHpText").textContent=`${rpg.enemy.hp} / ${rpg.enemy.maxHp}`;$("enemyHpBar").style.width=`${Math.max(0,rpg.enemy.hp/rpg.enemy.maxHp*100)}%`;$("playerHpText").textContent=`${rpg.health} / ${rpg.maxHealth}`;$("playerHpBar").style.width=`${Math.max(0,rpg.health/rpg.maxHealth*100)}%`;$("playerLevel").textContent=rpg.level;const need=rpgXpNeeded(rpg.level);$("xpText").textContent=`${rpg.xp} / ${need} XP`;$("xpBar").style.width=`${Math.min(100,rpg.xp/need*100)}%`;const path=$("pathStrip");path.innerHTML="";const start=Math.max(1,rpg.floor-7);for(let i=start;i<=rpg.floor+2;i++){const dot=document.createElement("div");dot.className="path-dot"+(i<rpg.floor?" done":i===rpg.floor?" current":"");path.appendChild(dot)}renderMastery();renderRpgHighscores()}
+function goHome(){endExistingTimers();if(rpg&&!rpg.dead&&currentView==="rpg")rpg=null;showView("hub")}function launchMode(mode){if(!verses.length){alert("Bible data is still loading.");return}if(mode==="word")startWordRush();else if(mode==="reference")startReferenceHunt();else if(mode==="book")startBookSprint();else if(mode==="rpg")startRpg()}
 
-let verses = [];
-let verseByRef = new Map();
-let currentView = "hub";
-let lobbyUnsub = null;
-let liveLobbyCount = 1;
-let authUser = null;
-let currentWordGame = null;
-let currentReferenceGame = null;
-let currentBookGame = null;
-let rpg = null;
-
-function storageKey(suffix){ return `bibleSolo:${username.toLowerCase()}:${suffix}`; }
-function loadJson(key,fallback){
-  try{return JSON.parse(localStorage.getItem(key)) ?? fallback;}catch{return fallback;}
-}
-function saveJson(key,value){ localStorage.setItem(key,JSON.stringify(value)); }
-function safeName(v){ return (v||"Solo Pilgrim").toString().trim().slice(0,40) || "Solo Pilgrim"; }
-function normalizeName(v){ return (v||"").toString().trim().replace(/\s+/g," ").toLowerCase(); }
-function normalizeBook(v){
-  let s=(v||"").toString().trim().toLowerCase().replace(/\./g,"").replace(/\s+/g," ");
-  s=s.replace(/^first\s+/,"1 ").replace(/^second\s+/,"2 ").replace(/^third\s+/,"3 ");
-  s=s.replace(/^i\s+/,"1 ").replace(/^ii\s+/,"2 ").replace(/^iii\s+/,"3 ");
-  const aliases={"psalm":"psalms","song of songs":"song of solomon","songs of solomon":"song of solomon","revelations":"revelation"};
-  return aliases[s]||s;
-}
-function canonicalBook(input){
-  const key=normalizeBook(input);
-  return BOOK_ORDER.find(b=>normalizeBook(b)===key) || "";
-}
-function refKey(v){ return `${normalizeBook(v.book)} ${Number(v.chapter)}:${Number(v.verse)}`; }
-function displayRef(v){ return `${v.book} ${v.chapter}:${v.verse}`; }
-function escapeHtml(value){ return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c])); }
-function shuffle(arr){
-  const out=arr.slice();
-  for(let i=out.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [out[i],out[j]]=[out[j],out[i]]; }
-  return out;
-}
-function randomChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
-function fmt(seconds){
-  const n=Math.max(0,Math.ceil(seconds));
-  return `${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;
-}
-function parseCSV(text){
-  const rows=[]; let row=[], val="", inQ=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i];
-    if(inQ){
-      if(c==='"'){ if(text[i+1]==='"'){val+='"';i++;} else inQ=false; }
-      else val+=c;
-    }else{
-      if(c==='"') inQ=true;
-      else if(c===','){row.push(val);val="";}
-      else if(c==='\n'){row.push(val);rows.push(row);row=[];val="";}
-      else if(c!=='\r') val+=c;
-    }
-  }
-  if(val.length||row.length){row.push(val);rows.push(row);}
-  return rows;
-}
-function buildVerses(rows){
-  const headers=(rows[0]||[]).map(h=>(h||"").trim().toLowerCase());
-  const idx=name=>headers.indexOf(name.toLowerCase());
-  const bookI=idx("bookname"),chapI=idx("chapter"),verseI=idx("verse"),textI=idx("text"),idI=idx("verseid");
-  if([bookI,chapI,verseI,textI].some(i=>i<0)) throw new Error("Bible data headers are missing.");
-  const out=[];
-  for(let i=1;i<rows.length;i++){
-    const r=rows[i]||[];
-    const book=(r[bookI]||"").trim(),chapter=Number(r[chapI]),verse=Number(r[verseI]),text=(r[textI]||"").trim();
-    if(!book||!chapter||!verse||!text) continue;
-    out.push({id:Number(r[idI])||i,book,chapter,verse,text});
-  }
-  return out;
-}
-async function loadBibleData(){
-  const response=await fetch("https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv",{cache:"force-cache"});
-  if(!response.ok) throw new Error(`Bible data failed to load (${response.status}).`);
-  verses=buildVerses(parseCSV(await response.text()));
-  verseByRef=new Map(verses.map(v=>[refKey(v),v]));
-}
-function parseReference(input){
-  const s=(input||"").trim().replace(/\s+/g," ");
-  const match=s.match(/^(.+?)\s+(\d+)\s*:\s*(\d+)$/);
-  if(!match) return null;
-  const book=canonicalBook(match[1]);
-  if(!book) return null;
-  const key=`${normalizeBook(book)} ${Number(match[2])}:${Number(match[3])}`;
-  return verseByRef.get(key)||null;
-}
-function hasWord(text,word){
-  const escaped=word.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  return new RegExp(`(^|[^A-Za-z])${escaped}([^A-Za-z]|$)`,"i").test(text||"");
-}
-function versesForWord(word){
-  return verses.filter(v=>hasWord(v.text,word));
-}
-function setConnection(kind,text){
-  const el=$("connectionPill"); el.className=`pill ${kind}`; el.textContent=`● ${text}`;
-}
-function showView(name){
-  currentView=name;
-  for(const id of ["hubView","wordView","referenceView","bookView","rpgView"]) $(id).classList.add("hidden");
-  $(`${name}View`).classList.remove("hidden");
-  if(name==="hub") refreshHubStats();
-  scrollTo({top:0,behavior:"smooth"});
-}
-function playerNames(data){
-  return (Array.isArray(data?.players)?data.players:[]).map(p=>typeof p==="string"?p:(p?.username||p?.name||p?.displayName||"")).filter(Boolean);
-}
-function refreshLobbyUI(){
-  $("lobbyCountPill").textContent=`${liveLobbyCount} player${liveLobbyCount===1?"":"s"} • ${liveLobbyCount<=1?"Solo lobby":"Multiplayer ready"}`;
-}
-function maybeHandleLobbyCount(count){
-  liveLobbyCount=Math.max(1,count||1);
-  refreshLobbyUI();
-  if(liveLobbyCount>1){
-    if(currentView==="hub"){
-      setConnection("good",`${liveLobbyCount} players • Multiplayer`);
-      location.replace(multiplayerUrl.href);
-    }else{
-      $("joinBanner").classList.remove("hidden");
-      $("joinBannerText").textContent=`${liveLobbyCount} players are now in the lobby. You can finish this solo run or jump into multiplayer.`;
-    }
-  }else{
-    $("joinBanner").classList.add("hidden");
-    setConnection("good","1 player • Solo");
-  }
-}
-async function observeLobby(){
-  if(!gameId){
-    setConnection("good","Solo mode");
-    $("subtitle").textContent=`${safeName(username)} • Standalone solo`;
-    refreshLobbyUI();
-    return;
-  }
-  try{
-    const lobbyRef=doc(db,"lobbies",gameId);
-    const snap=await getDoc(lobbyRef);
-    if(!snap.exists()){
-      setConnection("warn","Lobby missing • Solo available");
-      $("subtitle").textContent=`${safeName(username)} • Solo fallback`;
-      return;
-    }
-    const data=snap.data();
-    const names=playerNames(data);
-    const me=normalizeName(username);
-    if(names.length && !names.some(n=>normalizeName(n)===me)){
-      setConnection("warn","Not listed • Solo available");
-    }
-    $("subtitle").textContent=`${safeName(username)} • Lobby ${gameId}`;
-    maybeHandleLobbyCount(names.length||1);
-    lobbyUnsub=onSnapshot(lobbyRef,live=>{ if(live.exists()) maybeHandleLobbyCount(playerNames(live.data()).length||1); });
-  }catch(err){
-    console.warn("Lobby detection failed; solo remains usable.",err);
-    setConnection("warn","Solo • Lobby check unavailable");
-  }
-}
-async function saveProfileBest(patch){
-  if(!authUser || !username || username==="Solo Pilgrim") return;
-  try{
-    await setDoc(doc(db,"users",username),{bibleSolo:{...patch,updatedAt:serverTimestamp()}},{merge:true});
-  }catch(err){ console.warn("Solo profile save skipped",err); }
-}
-function refreshHubStats(){
-  const highs=loadJson(storageKey("rpgHighscores"),[]);
-  const mastery=loadJson(storageKey("mastery"),[]);
-  $("bestRpgScore").textContent=highs[0]?.score||0;
-  $("bestFloor").textContent=Math.max(0,...highs.map(x=>Number(x.floor)||0));
-  $("masteredCount").textContent=mastery.length;
-  $("wordBest").textContent=Number(localStorage.getItem(storageKey("wordBest"))||0);
-  $("welcomeTitle").textContent=`${safeName(username)}, choose your challenge.`;
-}
-
-function endExistingTimers(){
-  for(const game of [currentWordGame,currentReferenceGame,currentBookGame]){
-    if(game?.timer) clearInterval(game.timer);
-  }
-}
-function startWordRush(){
-  endExistingTimers();
-  const viable=WORD_POOL.map(word=>({word,count:versesForWord(word).length})).filter(x=>x.count>=8);
-  const chosen=randomChoice(viable.length?viable:WORD_POOL.map(word=>({word,count:0})));
-  currentWordGame={word:chosen.word,score:0,used:new Set(),ends:Date.now()+60000,timer:null,over:false};
-  $("wordPrompt").textContent=chosen.word;
-  $("wordScore").textContent="0";
-  $("wordHigh").textContent=localStorage.getItem(storageKey("wordBest"))||"0";
-  $("wordAccepted").innerHTML="";
-  $("wordNotice").textContent="";
-  $("wordRefInput").value="";
-  $("wordSubmitBtn").disabled=false;
-  showView("word");
-  $("wordRefInput").focus();
-  const tick=()=>{
-    if(!currentWordGame) return;
-    const remain=(currentWordGame.ends-Date.now())/1000;
-    $("wordTimer").textContent=fmt(remain);
-    if(remain<=0) finishWordRush();
-  };
-  tick();
-  currentWordGame.timer=setInterval(tick,200);
-}
-function finishWordRush(){
-  if(!currentWordGame||currentWordGame.over) return;
-  currentWordGame.over=true; clearInterval(currentWordGame.timer);
-  $("wordTimer").textContent="0:00"; $("wordSubmitBtn").disabled=true;
-  const old=Number(localStorage.getItem(storageKey("wordBest"))||0);
-  if(currentWordGame.score>old){
-    localStorage.setItem(storageKey("wordBest"),String(currentWordGame.score));
-    $("wordHigh").textContent=String(currentWordGame.score);
-    saveProfileBest({wordRushBest:currentWordGame.score});
-  }
-  const possible=versesForWord(currentWordGame.word).length;
-  $("wordNotice").className="notice warn";
-  $("wordNotice").textContent=`Time! ${currentWordGame.score} accepted verse${currentWordGame.score===1?"":"s"}. This word appears in ${possible} verses in the loaded Bible text.`;
-}
-function submitWordVerse(){
-  if(!currentWordGame||currentWordGame.over) return;
-  const v=parseReference($("wordRefInput").value);
-  const notice=$("wordNotice");
-  if(!v){notice.className="notice bad";notice.textContent="That exact reference was not found.";return;}
-  const key=refKey(v);
-  if(currentWordGame.used.has(key)){notice.className="notice bad";notice.textContent="You already used that verse.";return;}
-  if(!hasWord(v.text,currentWordGame.word)){
-    notice.className="notice bad"; notice.textContent=`${displayRef(v)} does not contain “${currentWordGame.word}”.`; return;
-  }
-  currentWordGame.used.add(key); currentWordGame.score++;
-  $("wordScore").textContent=String(currentWordGame.score);
-  const row=document.createElement("div"); row.className="accepted-row";
-  row.innerHTML=`<div><b>${escapeHtml(displayRef(v))}</b><br><small>${escapeHtml(v.text.slice(0,145))}${v.text.length>145?"…":""}</small></div><span class="score-burst">+1</span>`;
-  $("wordAccepted").prepend(row);
-  notice.className="notice good"; notice.textContent="Accepted.";
-  $("wordRefInput").value=""; $("wordRefInput").focus();
-}
-
-function randomVerse(){ return verses[Math.floor(Math.random()*verses.length)]; }
-function startReferenceHunt(){
-  endExistingTimers();
-  currentReferenceGame={score:0,ends:Date.now()+90000,current:null,timer:null,over:false};
-  showView("reference"); nextReferenceQuestion();
-  const tick=()=>{
-    if(!currentReferenceGame) return;
-    const remain=(currentReferenceGame.ends-Date.now())/1000;
-    $("referenceTimer").textContent=fmt(remain);
-    if(remain<=0){currentReferenceGame.over=true;clearInterval(currentReferenceGame.timer);$("referenceSubmitBtn").disabled=true;$("referenceNotice").textContent=`Time! Final score: ${currentReferenceGame.score}.`;}
-  };
-  tick(); currentReferenceGame.timer=setInterval(tick,200);
-}
-function nextReferenceQuestion(){
-  if(!currentReferenceGame||currentReferenceGame.over) return;
-  currentReferenceGame.current=randomVerse();
-  $("referenceVerse").textContent=currentReferenceGame.current.text;
-  $("referenceInput").value=""; $("referenceInput").focus();
-}
-function submitReference(){
-  if(!currentReferenceGame||currentReferenceGame.over) return;
-  const answer=parseReference($("referenceInput").value);
-  const correct=currentReferenceGame.current;
-  const ok=!!answer && refKey(answer)===refKey(correct);
-  const notice=$("referenceNotice");
-  if(ok){currentReferenceGame.score+=2;notice.className="notice good";notice.textContent=`Correct — ${displayRef(correct)}.`;}
-  else{currentReferenceGame.score=Math.max(0,currentReferenceGame.score-1);notice.className="notice bad";notice.textContent=`It was ${displayRef(correct)}.`;}
-  $("referenceScore").textContent=String(currentReferenceGame.score);
-  setTimeout(nextReferenceQuestion,450);
-}
-
-function startBookSprint(){
-  endExistingTimers();
-  currentBookGame={score:0,ends:Date.now()+60000,current:null,timer:null,over:false};
-  showView("book"); nextBookQuestion();
-  const tick=()=>{
-    if(!currentBookGame) return;
-    const remain=(currentBookGame.ends-Date.now())/1000;
-    $("bookTimer").textContent=fmt(remain);
-    if(remain<=0){currentBookGame.over=true;clearInterval(currentBookGame.timer);$("bookNotice").textContent=`Time! Final score: ${currentBookGame.score}.`;document.querySelectorAll(".option").forEach(b=>b.disabled=true);}
-  };
-  tick(); currentBookGame.timer=setInterval(tick,200);
-}
-function nextBookQuestion(){
-  if(!currentBookGame||currentBookGame.over) return;
-  const v=randomVerse(); currentBookGame.current=v;
-  $("bookVerse").textContent=v.text; $("bookNotice").textContent="";
-  const others=shuffle(BOOK_ORDER.filter(b=>normalizeBook(b)!==normalizeBook(v.book))).slice(0,3);
-  const options=shuffle([v.book,...others]);
-  $("bookOptions").innerHTML="";
-  for(const book of options){
-    const btn=document.createElement("button"); btn.className="option"; btn.textContent=book;
-    btn.onclick=()=>answerBook(book,btn); $("bookOptions").appendChild(btn);
-  }
-}
-function answerBook(book,button){
-  if(!currentBookGame||currentBookGame.over) return;
-  const ok=normalizeBook(book)===normalizeBook(currentBookGame.current.book);
-  document.querySelectorAll(".option").forEach(b=>{b.disabled=true;if(normalizeBook(b.textContent)===normalizeBook(currentBookGame.current.book))b.classList.add("good");});
-  if(!ok) button.classList.add("bad");
-  currentBookGame.score=Math.max(0,currentBookGame.score+(ok?1:-1));
-  $("bookScore").textContent=String(currentBookGame.score);
-  $("bookNotice").className=`notice ${ok?"good":"bad"}`; $("bookNotice").textContent=ok?"Correct.":`That verse is from ${currentBookGame.current.book}.`;
-  setTimeout(nextBookQuestion,520);
-}
-
-function enemySvg(kind){
-  const common=`viewBox="0 0 200 200" role="img" aria-label="Enemy drawing"`;
-  if(kind==="pharisee") return `<svg ${common}><circle cx="100" cy="48" r="26" fill="#d7b38c"/><path d="M70 73 Q100 58 130 73 L151 174 H49Z" fill="#eee8da" stroke="#7666a7" stroke-width="7"/><path d="M82 33 Q100 10 118 33" fill="none" stroke="#22263b" stroke-width="12"/><rect x="80" y="90" width="40" height="52" rx="5" fill="#f8fafc" stroke="#a16207" stroke-width="4"/><path d="M88 102h24M88 114h24M88 126h18" stroke="#7c2d12" stroke-width="4"/></svg>`;
-  if(kind==="serpent") return `<svg ${common}><path d="M43 158 C47 111 145 147 141 93 C137 48 77 84 87 43 C93 18 134 21 146 43" fill="none" stroke="#4ade80" stroke-width="22" stroke-linecap="round"/><circle cx="146" cy="43" r="22" fill="#22c55e"/><circle cx="154" cy="38" r="4" fill="#111827"/><path d="M163 48l20 7-20 3" fill="#ef4444"/></svg>`;
-  if(kind==="wraith") return `<svg ${common}><path d="M100 18 C147 18 161 68 148 108 L164 177 131 159 110 183 90 160 61 178 74 108 C58 67 61 18 100 18Z" fill="#7c3aed" opacity=".78"/><ellipse cx="83" cy="72" rx="8" ry="13" fill="#f8fafc"/><ellipse cx="118" cy="72" rx="8" ry="13" fill="#f8fafc"/><path d="M78 110 Q100 94 123 110" fill="none" stroke="#ddd6fe" stroke-width="6"/></svg>`;
-  if(kind==="giant") return `<svg ${common}><circle cx="100" cy="42" r="27" fill="#a47148"/><rect x="55" y="68" width="90" height="91" rx="30" fill="#92400e"/><rect x="26" y="76" width="38" height="90" rx="18" fill="#a47148"/><rect x="136" y="76" width="38" height="90" rx="18" fill="#a47148"/><path d="M82 39h12M108 39h12" stroke="#111827" stroke-width="6"/><path d="M76 22 Q100 3 126 22" stroke="#3f2718" stroke-width="10"/></svg>`;
-  if(kind==="beast") return `<svg ${common}><path d="M32 133 Q38 69 87 60 L103 34 118 61 Q161 72 170 132 L145 165 59 164Z" fill="#9a3412"/><path d="M66 66L46 34 83 55M132 65l23-31-42 22" fill="#c2410c"/><circle cx="78" cy="100" r="7" fill="#fde68a"/><circle cx="126" cy="100" r="7" fill="#fde68a"/><path d="M77 127 Q102 146 128 127" fill="none" stroke="#111827" stroke-width="8"/></svg>`;
-  if(kind==="dragon") return `<svg ${common}><path d="M31 149 Q44 75 92 73 L111 30 130 74 Q164 86 174 139 L137 130 153 178 112 153 89 182 74 149 37 170Z" fill="#dc2626"/><path d="M44 103L9 70 57 81M151 96l38-25-23 46" fill="#7f1d1d"/><circle cx="91" cy="94" r="6" fill="#fde047"/><circle cx="126" cy="94" r="6" fill="#fde047"/><path d="M107 119l17 27-36-2z" fill="#f97316"/></svg>`;
-  if(kind==="storm") return `<svg ${common}><path d="M49 77 Q57 42 91 47 Q112 16 140 50 Q172 51 176 83 Q174 113 142 116 H56 Q22 111 24 84 Q25 62 49 77Z" fill="#64748b"/><path d="M106 100L76 145h27l-13 39 51-62h-30l18-22z" fill="#fde047"/></svg>`;
-  if(kind==="knight") return `<svg ${common}><path d="M76 28h48l15 39-12 30H73L61 67z" fill="#475569"/><path d="M77 47h47v17H77z" fill="#0f172a"/><path d="M62 96h76l15 80H47z" fill="#334155" stroke="#94a3b8" stroke-width="5"/><path d="M100 101v64M72 127h56" stroke="#ef4444" stroke-width="8"/></svg>`;
-  if(kind==="priest"||kind==="prophet"||kind==="judge"||kind==="warden"||kind==="wanderer") return `<svg ${common}><circle cx="100" cy="45" r="25" fill="#d6b08a"/><path d="M61 72 Q100 57 139 72 L151 175 H49Z" fill="${kind==="judge"?"#7f1d1d":kind==="warden"?"#334155":"#4338ca"}"/><path d="M82 39h13M108 39h13" stroke="#111827" stroke-width="5"/><path d="M84 57 Q100 68 117 57" fill="none" stroke="#6b3f2f" stroke-width="4"/><path d="M100 75v95" stroke="#fbbf24" stroke-width="5"/></svg>`;
-  if(kind==="demon") return `<svg ${common}><path d="M62 66L43 18 84 51M138 66l19-48-42 34" fill="#7f1d1d"/><circle cx="100" cy="91" r="54" fill="#b91c1c"/><circle cx="78" cy="84" r="9" fill="#fde047"/><circle cx="123" cy="84" r="9" fill="#fde047"/><path d="M70 121 Q100 145 132 119" fill="none" stroke="#2d0a0d" stroke-width="8"/></svg>`;
-  return `<svg ${common}><circle cx="100" cy="61" r="38" fill="#64748b"/><path d="M58 97 Q100 75 142 97 L157 176 H43Z" fill="#475569"/><circle cx="84" cy="58" r="6" fill="#f8fafc"/><circle cx="116" cy="58" r="6" fill="#f8fafc"/></svg>`;
-}
-function zoneForFloor(floor){
-  let zone=ZONES[0],idx=0;
-  ZONES.forEach((z,i)=>{if(floor>=z.minFloor){zone=z;idx=i;}});
-  return {zone,index:idx};
-}
-function highScores(){
-  return loadJson(storageKey("rpgHighscores"),[]).sort((a,b)=>b.score-a.score||b.floor-a.floor).slice(0,8);
-}
-function persistentMastery(){
-  return loadJson(storageKey("mastery"),[]);
-}
-function saveMastery(ref){
-  const list=persistentMastery();
-  if(!list.includes(ref)){list.push(ref);saveJson(storageKey("mastery"),list.slice(-500));}
-}
-function rpgXpNeeded(level){ return 24 + (level-1)*13; }
-function startRpg(){
-  endExistingTimers();
-  rpg={
-    health:100,maxHealth:100,level:1,xp:0,score:0,floor:1,streak:0,baseDamage:14,
-    used:new Set(),runMastered:[],enemy:null,dead:false,pendingChoice:null,lastWeakness:[],
-    eliteNext:false,damageMod:1,zone:0
-  };
-  showView("rpg"); $("deathOverlay").classList.add("hidden"); $("pathOverlay").classList.add("hidden");
-  spawnEnemy(); renderRpg(); $("rpgRefInput").focus();
-}
-function chooseEnemy(){
-  const bossFloor=rpg.floor%5===0;
-  const pool=ENEMIES.filter(e=>bossFloor?e.boss:!e.boss);
-  return {...randomChoice(pool)};
-}
-function spawnEnemy(){
-  if(!rpg||rpg.dead)return;
-  const base=chooseEnemy();
-  const scale=1+(rpg.floor-1)*0.095;
-  const elite=rpg.eliteNext; rpg.eliteNext=false;
-  const hp=Math.round(base.hp*scale*(elite?1.42:1));
-  const damage=Math.round(base.damage*(1+(rpg.floor-1)*0.045)*(elite?1.28:1));
-  rpg.enemy={...base,maxHp:hp,hp,damage,elite};
-  rpg.lastWeakness=base.words.slice();
-  $("combatLog").textContent=elite?`Elite encounter! Its weakness is ${base.words.join(" or ")}.`:`Find a verse that contains ${base.words.join(" or ")}.`;
-}
-function rpgAttack(){
-  if(!rpg||rpg.dead||!rpg.enemy)return;
-  const input=$("rpgRefInput"); const v=parseReference(input.value);
-  if(!v){combatFail("That reference was not found in the Bible data.");return;}
-  const key=refKey(v);
-  if(rpg.used.has(key)){combatFail("You already used that verse during this run.");return;}
-  rpg.used.add(key);
-  const matched=rpg.enemy.words.find(word=>hasWord(v.text,word));
-  if(!matched){
-    combatFail(`${displayRef(v)} does not contain ${rpg.enemy.words.join(" or ")}.`);
-    input.value=""; input.focus(); return;
-  }
-  const wasPersistent=persistentMastery().includes(displayRef(v));
-  const firstMaster=!wasPersistent;
-  saveMastery(displayRef(v));
-  if(!rpg.runMastered.includes(displayRef(v))) rpg.runMastered.push(displayRef(v));
-  rpg.streak++;
-  const streakBonus=Math.min(12,rpg.streak*2);
-  const masteryBonus=firstMaster?5:0;
-  const damage=Math.round((rpg.baseDamage+(rpg.level-1)*3+streakBonus+masteryBonus)*rpg.damageMod);
-  rpg.enemy.hp=Math.max(0,rpg.enemy.hp-damage);
-  rpg.score+=damage + (firstMaster?15:5);
-  $("combatLog").innerHTML=`<b style="color:#86efac">${escapeHtml(displayRef(v))}</b> contained <b>${escapeHtml(matched)}</b> — ${damage} damage${firstMaster?" + new mastery bonus":""}.`;
-  input.value=""; input.focus();
-  $("fighter").classList.remove("hit"); void $("fighter").offsetWidth; $("fighter").classList.add("hit");
-  if(rpg.enemy.hp<=0) defeatEnemy();
-  renderRpg();
-}
-function combatFail(message){
-  if(!rpg||rpg.dead)return;
-  rpg.streak=0;
-  rpg.health=Math.max(0,rpg.health-rpg.enemy.damage);
-  $("combatLog").innerHTML=`<span style="color:#fca5a5">${escapeHtml(message)}</span> ${escapeHtml(rpg.enemy.name)} strikes for <b>${rpg.enemy.damage}</b>.`;
-  $("battlefield").classList.remove("hurt"); void $("battlefield").offsetWidth; $("battlefield").classList.add("hurt");
-  renderRpg();
-  if(rpg.health<=0) endRun();
-}
-function gainXp(amount){
-  rpg.xp+=amount;
-  let needed=rpgXpNeeded(rpg.level);
-  while(rpg.xp>=needed){
-    rpg.xp-=needed;rpg.level++;rpg.maxHealth+=12;rpg.health=Math.min(rpg.maxHealth,rpg.health+24);rpg.baseDamage+=2;
-    needed=rpgXpNeeded(rpg.level);
-    $("combatLog").innerHTML+=` <span style="color:#67e8f9"><b>Level ${rpg.level}!</b> Max health and verse damage increased.</span>`;
-  }
-}
-function defeatEnemy(){
-  const foe=rpg.enemy;
-  const xp=Math.round(foe.xp*(foe.elite?1.55:1)*(1+(rpg.floor-1)*.025));
-  gainXp(xp);
-  rpg.score+=Math.round(40+rpg.floor*12+(foe.elite?60:0)+(foe.boss?120:0));
-  $("combatLog").innerHTML=`<b style="color:#fde68a">${escapeHtml(foe.name)} defeated!</b> +${xp} XP.`;
-  setTimeout(showPathChoice,320);
-}
-function showPathChoice(){
-  if(!rpg||rpg.dead)return;
-  const overlay=$("pathOverlay"); overlay.classList.remove("hidden");
-  const bossCleared=rpg.floor%5===0;
-  $("pathTitle").textContent=bossCleared?"The way opens beyond the boss.":"The road divides.";
-  $("pathHint").textContent="Choose how you prepare for the next fight.";
-  const options=[
-    {icon:"⚔️",name:"Press Forward",desc:"Normal encounter. Gain +10 score immediately.",type:"normal"},
-    {icon:"🔥",name:"Elite Trial",desc:"Next enemy has much more health and damage, but gives stronger rewards.",type:"elite"},
-    {icon:"🌿",name:"Quiet Place",desc:"Recover 28% max health, then continue.",type:"rest"}
-  ];
-  if(Math.random()<.45) options[0]={icon:"📜",name:"Study the Word",desc:"Heal a little and gain +12% damage for the next two floors.",type:"study"};
-  $("pathChoices").innerHTML="";
-  for(const option of options){
-    const btn=document.createElement("button");btn.className="path-choice";
-    btn.innerHTML=`<strong>${option.icon} ${escapeHtml(option.name)}</strong><small>${escapeHtml(option.desc)}</small>`;
-    btn.onclick=()=>takePath(option.type);$("pathChoices").appendChild(btn);
-  }
-}
-function takePath(type){
-  if(!rpg||rpg.dead)return;
-  if(type==="elite"){rpg.eliteNext=true;rpg.score+=20;}
-  else if(type==="rest"){rpg.health=Math.min(rpg.maxHealth,rpg.health+Math.round(rpg.maxHealth*.28));}
-  else if(type==="study"){rpg.health=Math.min(rpg.maxHealth,rpg.health+Math.round(rpg.maxHealth*.12));rpg.damageMod=Math.min(1.36,rpg.damageMod+.12);}
-  else rpg.score+=10;
-  rpg.floor++;
-  if(rpg.floor%3===1 && rpg.damageMod>1) rpg.damageMod=Math.max(1,rpg.damageMod-.08);
-  $("pathOverlay").classList.add("hidden");
-  spawnEnemy();renderRpg();$("rpgRefInput").focus();
-}
-function findDeathVerses(words){
-  const seenBooks=new Set(),out=[];
-  for(const v of shuffle(verses)){
-    if(!words.some(w=>hasWord(v.text,w)))continue;
-    if(seenBooks.has(normalizeBook(v.book)))continue;
-    seenBooks.add(normalizeBook(v.book));out.push(v);
-    if(out.length>=10)break;
-  }
-  return out;
-}
-function endRun(){
-  if(!rpg||rpg.dead)return;
-  rpg.dead=true;
-  const record={score:rpg.score,floor:rpg.floor,level:rpg.level,date:new Date().toISOString()};
-  const highs=[...highScores(),record].sort((a,b)=>b.score-a.score||b.floor-a.floor).slice(0,8);
-  saveJson(storageKey("rpgHighscores"),highs);
-  saveProfileBest({rpgBestScore:highs[0]?.score||0,rpgBestFloor:Math.max(...highs.map(x=>x.floor||0)),rpgBestLevel:Math.max(...highs.map(x=>x.level||0)),masteredCount:persistentMastery().length});
-  $("deathTitle").textContent=`Defeated on Floor ${rpg.floor}`;
-  $("deathSummary").textContent=`Score ${rpg.score} • Level ${rpg.level} • ${rpg.runMastered.length} different verses used this run. Here are verses from different Bible books that could have hurt ${rpg.enemy.name}.`;
-  $("deathVerses").innerHTML="";
-  for(const v of findDeathVerses(rpg.lastWeakness)){
-    const row=document.createElement("div");row.className="death-verse";
-    row.innerHTML=`<b>${escapeHtml(displayRef(v))}</b><p>${escapeHtml(v.text)}</p>`;
-    $("deathVerses").appendChild(row);
-  }
-  if(!$("deathVerses").children.length) $("deathVerses").innerHTML='<div class="muted">No example verses were available for this weakness.</div>';
-  $("deathOverlay").classList.remove("hidden");renderRpgHighscores();refreshHubStats();
-}
-function renderRpgHighscores(){
-  const box=$("rpgHighList");box.innerHTML="";
-  const highs=highScores();
-  if(!highs.length){box.innerHTML='<div class="muted" style="font-size:.76rem">No runs yet.</div>';return;}
-  highs.forEach((h,i)=>{
-    const row=document.createElement("div");row.className="high-item";
-    row.innerHTML=`<span>#${i+1} • Floor ${h.floor} • Lv ${h.level}</span><b>${h.score}</b>`;box.appendChild(row);
-  });
-}
-function renderMastery(){
-  const list=persistentMastery();$("masteryTotalPill").textContent=`${list.length} total`;
-  const box=$("masteryList");box.innerHTML="";
-  for(const ref of list.slice(-14).reverse()){
-    const row=document.createElement("div");row.className="mastery-item";row.textContent=ref;box.appendChild(row);
-  }
-  if(!list.length)box.innerHTML='<div class="muted" style="font-size:.76rem">Land a successful verse attack to begin your library.</div>';
-}
-function renderRpg(){
-  if(!rpg||!rpg.enemy)return;
-  const {zone,index}=zoneForFloor(rpg.floor);rpg.zone=index;
-  $("zoneLabel").textContent=zone.name.toUpperCase();$("floorLabel").textContent=`Floor ${rpg.floor}${rpg.enemy.elite?" • ELITE":rpg.enemy.boss?" • BOSS":""}`;
-  $("zoneStat").textContent=String(index+1);
-  $("rpgScore").textContent=String(rpg.score);$("rpgStreak").textContent=String(rpg.streak);$("runMastery").textContent=String(rpg.runMastered.length);
-  $("damageStat").textContent=String(Math.round((rpg.baseDamage+(rpg.level-1)*3)*rpg.damageMod));
-  $("enemyName").textContent=rpg.enemy.name;$("enemySub").textContent=rpg.enemy.desc;$("enemyArt").innerHTML=enemySvg(rpg.enemy.kind);
-  $("weaknessWord").textContent=rpg.enemy.words.join(" / ").toUpperCase();
-  $("enemyHpText").textContent=`${rpg.enemy.hp} / ${rpg.enemy.maxHp}`;$("enemyHpBar").style.width=`${Math.max(0,rpg.enemy.hp/rpg.enemy.maxHp*100)}%`;
-  $("playerHpText").textContent=`${rpg.health} / ${rpg.maxHealth}`;$("playerHpBar").style.width=`${Math.max(0,rpg.health/rpg.maxHealth*100)}%`;
-  $("playerLevel").textContent=String(rpg.level);
-  const need=rpgXpNeeded(rpg.level);$("xpText").textContent=`${rpg.xp} / ${need} XP`;$("xpBar").style.width=`${Math.min(100,rpg.xp/need*100)}%`;
-  const path=$("pathStrip");path.innerHTML="";
-  const shown=Math.max(5,Math.min(12,rpg.floor+2));
-  for(let i=Math.max(1,rpg.floor-shown+3);i<=rpg.floor+2;i++){
-    const dot=document.createElement("div");dot.className="path-dot"+(i<rpg.floor?" done":i===rpg.floor?" current":"");path.appendChild(dot);
-  }
-  renderMastery();renderRpgHighscores();
-}
-function goHome(){
-  endExistingTimers();
-  if(rpg&&!rpg.dead&&currentView==="rpg"){
-    rpg=null;
-  }
-  showView("hub");
-}
-function launchMode(mode){
-  if(!verses.length){alert("Bible data is still loading.");return;}
-  if(mode==="word")startWordRush();
-  else if(mode==="reference")startReferenceHunt();
-  else if(mode==="book")startBookSprint();
-  else if(mode==="rpg")startRpg();
-}
-
-document.querySelectorAll("[data-mode]").forEach(btn=>btn.addEventListener("click",()=>launchMode(btn.dataset.mode)));
-document.querySelectorAll("[data-home]").forEach(btn=>btn.addEventListener("click",goHome));
-$("wordSubmitBtn").onclick=submitWordVerse;
-$("wordRestartBtn").onclick=startWordRush;
-$("wordRefInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitWordVerse();});
-$("referenceSubmitBtn").onclick=submitReference;
-$("referenceInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitReference();});
-$("rpgAttackBtn").onclick=rpgAttack;
-$("rpgRefInput").addEventListener("keydown",e=>{if(e.key==="Enter")rpgAttack();});
-$("newRunBtn").onclick=startRpg;
-$("multiplayerBtn").onclick=()=>location.href=multiplayerUrl.href;
-$("joinNowBtn").onclick=()=>location.href=multiplayerUrl.href;
-
-async function start(){
-  refreshHubStats();
-  $("subtitle").textContent=`${safeName(username)} • Loading Bible data`;
-  setConnection("warn","Loading Bible data");
-  try{
-    await loadBibleData();
-  }catch(err){
-    console.error(err);setConnection("bad","Bible data failed");
-    $("subtitle").textContent=err?.message||"Bible data failed to load.";
-    return;
-  }
-  $("subtitle").textContent=`${safeName(username)} • Solo Bible arcade`;
-  setConnection("good","Solo ready");
-  observeLobby();
-}
-
-let authHandled=false;
-onAuthStateChanged(auth,user=>{
-  if(!authHandled){
-    authHandled=true;
-    if(!user){signInAnonymously(auth).catch(err=>console.warn("Anonymous auth unavailable",err));}
-  }
-  if(user)authUser=user;
-});
-start();
+document.querySelectorAll("[data-mode]").forEach(btn=>btn.addEventListener("click",()=>launchMode(btn.dataset.mode)));document.querySelectorAll("[data-home]").forEach(btn=>btn.addEventListener("click",goHome));$("wordSubmitBtn").onclick=submitWordVerse;$("wordRestartBtn").onclick=startWordRush;$("wordRefInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitWordVerse()});$("referenceSubmitBtn").onclick=submitReference;$("referenceInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitReference()});$("rpgAttackBtn").onclick=rpgAttack;$("rpgRefInput").addEventListener("keydown",e=>{if(e.key==="Enter")rpgAttack()});$("newRunBtn").onclick=startRpg;$("multiplayerBtn").onclick=()=>location.href=multiplayerUrl.href;$("joinNowBtn").onclick=()=>location.href=multiplayerUrl.href;
+async function start(){refreshHubStats();$("subtitle").textContent=`${safeName(username)} • Loading Bible data`;setConnection("warn","Loading Bible data");try{await loadBibleData()}catch(err){console.error(err);setConnection("bad","Bible data failed");$("subtitle").textContent=err?.message||"Bible data failed to load.";return}$("subtitle").textContent=`${safeName(username)} • Solo Bible arcade`;setConnection("good","Solo ready");observeLobby()}
+let authHandled=false;onAuthStateChanged(auth,user=>{if(!authHandled){authHandled=true;if(!user)signInAnonymously(auth).catch(err=>console.warn("Anonymous auth unavailable",err))}if(user)authUser=user});start();
 </script>
 </body>
 </html>
