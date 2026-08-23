@@ -1,0 +1,78 @@
+name: Apply Bible RPG verse echo
+
+on:
+  push:
+    branches:
+      - agent/bible-rpg-verse-echo
+    paths:
+      - '.github/workflows/apply-bible-rpg-verse-echo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bible-rpg-verse-echo
+      - name: Add fading successful-verse display
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('game/biblegame.html')
+          text = path.read_text(encoding='utf-8')
+
+          css_old = '''  .combat-box{position:absolute;left:14px;right:14px;bottom:14px;z-index:6;padding:12px;border-radius:15px;background:rgba(7,11,21,.94);border:1px solid #4a5c7e;backdrop-filter:blur(7px);box-shadow:0 12px 34px rgba(0,0,0,.4)}'''
+          css_new = '''  .verse-echo{position:absolute;z-index:7;left:50%;top:19%;width:min(78%,620px);transform:translate(-50%,10px);text-align:center;pointer-events:none;opacity:0;text-shadow:0 3px 10px rgba(0,0,0,.95),0 0 24px rgba(139,92,246,.28)}.verse-echo.active{animation:verseEcho 2.8s ease-out forwards}.verse-echo-ref{font-size:.74rem;letter-spacing:.13em;text-transform:uppercase;font-weight:1000;color:#fde68a;margin-bottom:6px}.verse-echo-text{font-family:Georgia,serif;font-size:clamp(1.05rem,2.5vw,1.55rem);font-weight:700;line-height:1.42;color:#fff}.combat-box{position:absolute;left:14px;right:14px;bottom:14px;z-index:6;padding:12px;border-radius:15px;background:rgba(7,11,21,.94);border:1px solid #4a5c7e;backdrop-filter:blur(7px);box-shadow:0 12px 34px rgba(0,0,0,.4)}'''
+          if text.count(css_old) != 1:
+              raise SystemExit(f'Expected one combat-box CSS target, found {text.count(css_old)}')
+          text = text.replace(css_old, css_new)
+
+          anim_old = '''  @keyframes enemyHit{0%{transform:translateX(0)}40%{transform:translateX(8px) scale(1.04);filter:brightness(1.5)}100%{transform:translateX(0)}}@keyframes playerHit{0%{transform:translateX(0)}40%{transform:translateX(-8px) scale(1.04);filter:brightness(1.6) sepia(.5)}100%{transform:translateX(0)}}'''
+          anim_new = '''  @keyframes verseEcho{0%{opacity:0;transform:translate(-50%,12px) scale(.98)}12%{opacity:1;transform:translate(-50%,0) scale(1)}68%{opacity:.96;transform:translate(-50%,-4px) scale(1)}100%{opacity:0;transform:translate(-50%,-18px) scale(1.02)}}@keyframes enemyHit{0%{transform:translateX(0)}40%{transform:translateX(8px) scale(1.04);filter:brightness(1.5)}100%{transform:translateX(0)}}@keyframes playerHit{0%{transform:translateX(0)}40%{transform:translateX(-8px) scale(1.04);filter:brightness(1.6) sepia(.5)}100%{transform:translateX(0)}}'''
+          if text.count(anim_old) != 1:
+              raise SystemExit(f'Expected one animation CSS target, found {text.count(anim_old)}')
+          text = text.replace(anim_old, anim_new)
+
+          mobile_old = '''  @media(max-width:570px){.shell{padding:9px}.header-actions .ghost{display:none}.mode-grid,.options,.path-choices{grid-template-columns:1fr}.side-stack{grid-template-columns:1fr}.hero-stat{grid-template-columns:repeat(4,1fr)}'''
+          mobile_new = '''  @media(max-width:570px){.shell{padding:9px}.header-actions .ghost{display:none}.mode-grid,.options,.path-choices{grid-template-columns:1fr}.side-stack{grid-template-columns:1fr}.verse-echo{top:16%;width:90%}.verse-echo-text{font-size:1rem}.hero-stat{grid-template-columns:repeat(4,1fr)}'''
+          if text.count(mobile_old) != 1:
+              raise SystemExit(f'Expected one mobile CSS target, found {text.count(mobile_old)}')
+          text = text.replace(mobile_old, mobile_new)
+
+          html_old = '''      <div class="battle-top"><div class="row between"><div><div class="zone-label" id="zoneLabel">THE WILDERNESS</div><b id="floorLabel">Floor 1</b></div><span class="pill">Score <b id="rpgScore">0</b></span></div><div class="path-strip" id="pathStrip"></div></div>'''
+          html_new = '''      <div class="battle-top"><div class="row between"><div><div class="zone-label" id="zoneLabel">THE WILDERNESS</div><b id="floorLabel">Floor 1</b></div><span class="pill">Score <b id="rpgScore">0</b></span></div><div class="path-strip" id="pathStrip"></div></div>\n      <div class="verse-echo" id="verseEcho" aria-live="polite"><div class="verse-echo-ref" id="verseEchoRef"></div><div class="verse-echo-text" id="verseEchoText"></div></div>'''
+          if text.count(html_old) != 1:
+              raise SystemExit(f'Expected one battlefield header target, found {text.count(html_old)}')
+          text = text.replace(html_old, html_new)
+
+          js_old = '''function pulseFighter(id){const el=$(id);el.classList.remove("hit");void el.offsetWidth;el.classList.add("hit")}\nfunction rpgAttack(){'''
+          js_new = '''function pulseFighter(id){const el=$(id);el.classList.remove("hit");void el.offsetWidth;el.classList.add("hit")}\nfunction showVerseEcho(v){const echo=$("verseEcho");if(!echo||!v)return;$("verseEchoRef").textContent=displayRef(v);$("verseEchoText").textContent=v.text;echo.classList.remove("active");void echo.offsetWidth;echo.classList.add("active")}\nfunction rpgAttack(){'''
+          if text.count(js_old) != 1:
+              raise SystemExit(f'Expected one pulseFighter target, found {text.count(js_old)}')
+          text = text.replace(js_old, js_new)
+
+          call_old = '''$("combatLog").innerHTML=`<b style="color:#86efac">${escapeHtml(displayRef(v))}</b> matched <b>${escapeHtml(match.label)}</b> through “${escapeHtml(match.term)}”. <b>${strength} ×${match.multiplier.toFixed(2)}</b> — ${damage} damage${firstMaster?" + new mastery":""}.`;input.value="";input.focus();pulseFighter("enemyFighter");'''
+          call_new = '''$("combatLog").innerHTML=`<b style="color:#86efac">${escapeHtml(displayRef(v))}</b> matched <b>${escapeHtml(match.label)}</b> through “${escapeHtml(match.term)}”. <b>${strength} ×${match.multiplier.toFixed(2)}</b> — ${damage} damage${firstMaster?" + new mastery":""}.`;showVerseEcho(v);input.value="";input.focus();pulseFighter("enemyFighter");'''
+          if text.count(call_old) != 1:
+              raise SystemExit(f'Expected one successful attack target, found {text.count(call_old)}')
+          text = text.replace(call_old, call_new)
+
+          path.write_text(text, encoding='utf-8')
+          updated = path.read_text(encoding='utf-8')
+          assert 'id="verseEcho"' in updated
+          assert 'function showVerseEcho(v)' in updated
+          assert 'showVerseEcho(v);input.value' in updated
+          assert '@keyframes verseEcho' in updated
+          PY
+
+          rm -f .github/workflows/apply-bible-rpg-verse-echo.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/biblegame.html .github/workflows/apply-bible-rpg-verse-echo.yml
+          git commit -m "Show fading verse text on successful RPG attacks"
+          git push origin HEAD:agent/bible-rpg-verse-echo
