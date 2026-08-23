@@ -72,3 +72,10 @@ beginRound=function(first=false){
  applyCheeseholdArenaSize(game.round);
  return economyAndArenaBeginRound(first);
 };
+
+// Keep the elemental system in its own module while evaluating it inside the core IIFE,
+// where it can extend the existing building/upgrades functions without exposing globals.
+fetch('./cheesehold-elemental-progression.js',{cache:'no-store'})
+ .then(r=>{if(!r.ok)throw new Error('Elemental progression '+r.status);return r.text()})
+ .then(code=>{eval(code)})
+ .catch(err=>console.error('[Cheesehold] elemental progression failed to load',err));
