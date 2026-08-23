@@ -1,0 +1,49 @@
+name: Apply Bible RPG health scaling
+
+on:
+  push:
+    branches:
+      - agent/bible-rpg-health-scaling
+    paths:
+      - '.github/workflows/apply-bible-rpg-health-scaling.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bible-rpg-health-scaling
+      - name: Increase late-run enemy health curve
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('game/biblegame.html')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''function spawnEnemy(){if(!rpg||rpg.dead)return;const base=chooseEnemy(),scale=1+(rpg.floor-1)*.082,elite=rpg.eliteNext;rpg.eliteNext=false;const hp=Math.round(base.hp*scale*(elite?1.42:1)),damage=Math.round(base.damage*(1+(rpg.floor-1)*.04)*(elite?1.28:1));rpg.enemy={...base,maxHp:hp,hp,damage,elite};rpg.lastWeaknesses=base.weaknesses.map(x=>({...x}));$("combatLog").textContent=elite?`Elite encounter! ${weaknessSummary(base)}`:`One verse = one attack. ${weaknessSummary(base)}`}'''
+          new = '''function enemyHealthScale(floor,isBoss=false){const depth=Math.max(0,floor-1),curve=1+depth*.10+Math.pow(depth,1.55)*.012,bossBoost=isBoss?1.20+Math.min(.55,depth*.012):1;return curve*bossBoost}\nfunction spawnEnemy(){if(!rpg||rpg.dead)return;const base=chooseEnemy(),scale=enemyHealthScale(rpg.floor,!!base.boss),elite=rpg.eliteNext;rpg.eliteNext=false;const hp=Math.round(base.hp*scale*(elite?1.50:1)),damage=Math.round(base.damage*(1+(rpg.floor-1)*.04)*(elite?1.28:1));rpg.enemy={...base,maxHp:hp,hp,damage,elite};rpg.lastWeaknesses=base.weaknesses.map(x=>({...x}));$("combatLog").textContent=elite?`Elite encounter! ${weaknessSummary(base)}`:`One verse = one attack. ${weaknessSummary(base)}`}'''
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one spawnEnemy scaling target, found {text.count(old)}')
+          text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+
+          updated = path.read_text(encoding='utf-8')
+          assert 'function enemyHealthScale(floor,isBoss=false)' in updated
+          assert 'Math.pow(depth,1.55)*.012' in updated
+          assert 'scale=enemyHealthScale(rpg.floor,!!base.boss)' in updated
+          assert '(elite?1.50:1)' in updated
+          PY
+
+          rm -f .github/workflows/apply-bible-rpg-health-scaling.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/biblegame.html .github/workflows/apply-bible-rpg-health-scaling.yml
+          git commit -m "Scale Bible RPG enemy health progressively"
+          git push origin HEAD:agent/bible-rpg-health-scaling
