@@ -4577,7 +4577,7 @@ export const CARDS = Object.freeze([
             createToken: {
               id: "drone",
               count: 1,
-              zone: "hand"
+              zone: "discard"
             }
           }
         },
@@ -4598,7 +4598,7 @@ export const CARDS = Object.freeze([
     text:
       "Gain 1 Trade. Whenever you play a Drone, gain 1 Charge, up to 6.",
     chargeText:
-      "Spend 2: gain 2 Trade. Spend 4: create a Drone in hand. Spend 6: draw 1 card and create a Drone in hand.",
+      "Spend 2: gain 2 Trade. Spend 4: create a Drone in discard. Spend 6: draw 1 card and create a Drone in hand.",
     flavor:
       "Each signal contains the blueprint for the machine that will repeat it."
   },
