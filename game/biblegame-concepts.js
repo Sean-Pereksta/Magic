@@ -233,7 +233,24 @@ export function matchWeightedConcepts(text, weaknesses = []){
     matches.push({...match,multiplier:Number.isFinite(multiplier)?multiplier:1});
   }
   matches.sort((a,b)=>b.multiplier-a.multiplier || b.term.length-a.term.length);
-  return matches[0] || null;
+  if(!matches.length) return null;
+
+  const primary=matches[0];
+  const extras=matches.slice(1);
+  const comboBonus=extras.reduce((sum,match)=>sum+(Math.max(0,match.multiplier)*0.30),0);
+  const combinedMultiplier=Math.min(2.5,primary.multiplier+comboBonus);
+  if(!extras.length) return {...primary,matches,comboCount:1,comboBonus:0};
+
+  return {
+    ...primary,
+    label:matches.map(match=>match.label).join(" + "),
+    term:matches.map(match=>match.term).join(" + "),
+    multiplier:combinedMultiplier,
+    baseMultiplier:primary.multiplier,
+    comboBonus:combinedMultiplier-primary.multiplier,
+    comboCount:matches.length,
+    matches
+  };
 }
 
 export function verseMatchesConcept(text, key){
