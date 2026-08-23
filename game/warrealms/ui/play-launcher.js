@@ -329,7 +329,9 @@ function installPlayLauncher() {
   });
 }
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installPlayLauncher, { once: true });
-else installPlayLauncher();
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installPlayLauncher, { once: true });
+  else installPlayLauncher();
+}
 
 export { showPlayLauncher };
