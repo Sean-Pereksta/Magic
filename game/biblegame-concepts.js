@@ -1,7 +1,7 @@
 const RAW_CONCEPTS = {
   god: {
     label: "God",
-    terms: ["God", "Lord", "the Lord", "Almighty", "God Almighty", "Most High", "the Most High"]
+    terms: ["God", "Lord", "the Lord", "Almighty", "God Almighty", "Most High", "the Most High", "Yahweh"]
   },
   jesus: {
     label: "Jesus / Son of God",
