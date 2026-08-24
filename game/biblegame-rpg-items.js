@@ -148,9 +148,8 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
   function rarityRoll(foe){
     const rpg=ensureState();
     const depthBoost=Math.min(.22,Math.max(0,(rpg?.floor||1)-1)*.009);
-    const challengeBoost=(foe?.elite?.22?0:0);
-    const explicitChallengeBoost=(foe?.elite?0.22:0)+(foe?.boss?0.36:0);
-    const roll=Math.random()+depthBoost+explicitChallengeBoost;
+    const challengeBoost=(foe?.elite?0.22:0)+(foe?.boss?0.36:0);
+    const roll=Math.random()+depthBoost+challengeBoost;
     if(roll>=1.17)return "epic";
     if(roll>=.83)return "rare";
     if(roll>=.47)return "uncommon";
@@ -168,9 +167,8 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
     if(!rpg)return [];
     closePanel();
     const baseChance=Math.min(.80,.48+Math.max(0,rpg.floor-1)*.012);
-    const chance=foe?.boss?1:(foe?.elite?.98?0:baseChance);
-    const explicitChance=foe?.boss?1:(foe?.elite?0.98:baseChance);
-    if(Math.random()>explicitChance){showLoot([],foe);render();return []}
+    const chance=foe?.boss?1:(foe?.elite?0.98:baseChance);
+    if(Math.random()>chance){showLoot([],foe);render();return []}
     let count=1;
     if(foe?.elite&&Math.random()<.38)count++;
     if(foe?.boss)count=2+(Math.random()<.28?1:0);
