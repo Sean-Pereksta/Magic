@@ -146,6 +146,46 @@ const RAW_CONCEPTS = {
   eternal: {
     label: "Eternal / Everlasting",
     terms: ["eternal", "everlasting", "forever", "for ever", "forevermore", "for evermore"]
+  },
+  obedience: {
+    label: "Obedience",
+    terms: ["obey", "obeyed", "obeys", "obedient", "obedience", "keep my commandments", "keep his commandments", "keep the commandments", "do what I command", "hearken"]
+  },
+  repentance: {
+    label: "Repentance / Turning Back",
+    terms: ["repent", "repented", "repents", "repentance", "turn from", "turned from", "turn away from", "return to me", "return unto me", "turn to the Lord"]
+  },
+  courage: {
+    label: "Courage / Boldness",
+    terms: ["courage", "courageous", "be strong", "fear not", "do not fear", "not afraid", "bold", "boldly", "boldness"]
+  },
+  justice: {
+    label: "Justice / Right Judgment",
+    terms: ["justice", "judgment", "judgement", "judge righteously", "justly", "execute justice", "do justice", "defend the poor", "defend the needy"]
+  },
+  patience: {
+    label: "Patience / Endurance",
+    terms: ["patient", "patience", "longsuffering", "long suffering", "endure", "endured", "endurance", "persevere", "perseverance", "steadfast", "steadfastness"]
+  },
+  thanksgiving: {
+    label: "Thanksgiving / Gratitude",
+    terms: ["thank", "thanks", "thankful", "thanksgiving", "give thanks", "gave thanks", "giving thanks", "with thanksgiving"]
+  },
+  family: {
+    label: "Family / Household",
+    terms: ["father", "mother", "parents", "children", "child", "son", "daughter", "husband", "wife", "household", "family", "families"]
+  },
+  creation: {
+    label: "Creation / Creator",
+    terms: ["create", "created", "creator", "creation", "made heaven", "made the heavens", "heaven and earth", "heavens and earth", "made all things", "all things were made"]
+  },
+  discipleship: {
+    label: "Discipleship / Following Christ",
+    terms: ["disciple", "disciples", "follow me", "follow him", "follow Jesus", "follow Christ", "following Jesus", "take up his cross", "take up your cross", "deny himself", "deny yourself"]
+  },
+  service: {
+    label: "Service / Servanthood",
+    terms: ["serve", "serves", "served", "serving", "servant", "servants", "minister", "ministered", "ministry", "wash one another's feet"]
   }
 };
 
@@ -178,7 +218,8 @@ export const MULTIPLAYER_CATEGORY_KEYS = Object.freeze([
   "god", "jesus", "love", "kindness", "faith", "grace", "forgiveness", "mercy", "peace", "truth",
   "light", "holiness", "salvation", "resurrection", "life", "unity", "church", "freedom", "humility",
   "giving", "shepherd", "kingdom", "blood", "overcoming", "prayer", "spirit", "wisdom", "hope", "joy",
-  "law", "word", "praise", "covenant", "righteousness", "cross", "eternal"
+  "law", "word", "praise", "covenant", "righteousness", "cross", "eternal", "obedience", "repentance",
+  "courage", "justice", "patience", "thanksgiving", "family", "creation", "discipleship", "service"
 ]);
 
 export function getVerseConcept(key){
