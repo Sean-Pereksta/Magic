@@ -36,23 +36,18 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
     const rpgView=document.getElementById("rpgView"),battlefield=document.getElementById("battlefield");
     const layout=battlefield?.closest(".rpg-layout"),sideStack=layout?.querySelector(":scope > .side-stack");
     if(!rpgView||!battlefield||!layout)return null;
-
     let controls=document.getElementById("rpgControlPane");
     if(!controls){
       controls=document.createElement("section");
       controls.id="rpgControlPane";
       controls.className="rpg-control-pane";
       layout.appendChild(controls);
-
-      const combatBox=battlefield.querySelector(".combat-box");
-      const pathOverlay=document.getElementById("pathOverlay");
-      const deathOverlay=document.getElementById("deathOverlay");
+      const combatBox=battlefield.querySelector(".combat-box"),pathOverlay=document.getElementById("pathOverlay"),deathOverlay=document.getElementById("deathOverlay");
       if(combatBox)controls.appendChild(combatBox);
       if(sideStack)controls.appendChild(sideStack);
       if(pathOverlay)controls.appendChild(pathOverlay);
       if(deathOverlay)controls.appendChild(deathOverlay);
     }
-
     rpgView.classList.add("rpg-viewport-mode");
     return controls;
   }
@@ -122,23 +117,10 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
     document.head.appendChild(style);
 
     const row=input.closest(".input-row");
-    if(row){
-      row.classList.add("rpg-item-actions");
-      const button=document.createElement("button");
-      button.className="ghost rpg-item-button";button.id="rpgItemsBtn";button.type="button";
-      button.innerHTML='🎒 Items <span class="rpg-item-badge" id="rpgItemCount">0</span>';button.onclick=openPanel;row.appendChild(button);
-    }
-
+    if(row){row.classList.add("rpg-item-actions");const button=document.createElement("button");button.className="ghost rpg-item-button";button.id="rpgItemsBtn";button.type="button";button.innerHTML='🎒 Items <span class="rpg-item-badge" id="rpgItemCount">0</span>';button.onclick=openPanel;row.appendChild(button);}
     const combatLog=document.getElementById("combatLog");
-    if(combatLog){
-      const hint=document.createElement("div");hint.id="rpgHintReveal";hint.className="rpg-hint-reveal hidden";combatLog.before(hint);
-      const loot=document.createElement("div");loot.id="rpgLootNotice";loot.className="rpg-loot-notice hidden";combatLog.after(loot);
-      const summary=document.createElement("div");summary.id="rpgItemSummary";summary.className="rpg-item-summary";loot.after(summary);
-    }
-
-    const overlay=document.createElement("div");overlay.className="choice-overlay hidden";overlay.id="itemOverlay";
-    overlay.innerHTML=`<div class="choice-card"><div class="row between"><div><div class="eyebrow">Run Inventory</div><h2 style="margin:6px 0">Use an item</h2></div><button class="ghost" id="itemCloseBtn" type="button">Close</button></div><p class="muted" id="itemPanelHint">Items are consumable and apply to the current fight.</p><div class="rpg-item-grid" id="rpgItemGrid"></div></div>`;
-    controls.appendChild(overlay);document.getElementById("itemCloseBtn").onclick=closePanel;overlay.addEventListener("click",event=>{if(event.target===overlay)closePanel()});
+    if(combatLog){const hint=document.createElement("div");hint.id="rpgHintReveal";hint.className="rpg-hint-reveal hidden";combatLog.before(hint);const loot=document.createElement("div");loot.id="rpgLootNotice";loot.className="rpg-loot-notice hidden";combatLog.after(loot);const summary=document.createElement("div");summary.id="rpgItemSummary";summary.className="rpg-item-summary";loot.after(summary);}
+    const overlay=document.createElement("div");overlay.className="choice-overlay hidden";overlay.id="itemOverlay";overlay.innerHTML=`<div class="choice-card"><div class="row between"><div><div class="eyebrow">Run Inventory</div><h2 style="margin:6px 0">Use an item</h2></div><button class="ghost" id="itemCloseBtn" type="button">Close</button></div><p class="muted" id="itemPanelHint">Items are consumable and apply to the current fight.</p><div class="rpg-item-grid" id="rpgItemGrid"></div></div>`;controls.appendChild(overlay);document.getElementById("itemCloseBtn").onclick=closePanel;overlay.addEventListener("click",event=>{if(event.target===overlay)closePanel();});
   }
 
   function reset(){installUi();const rpg=ensureState();if(!rpg)return;rpg.inventory=[];rpg.itemShields=0;hideHint();hideLoot();closePanel();render();}
@@ -150,9 +132,9 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
   function hideLoot(){const el=document.getElementById("rpgLootNotice");if(el){el.textContent="";el.classList.add("hidden");}}
   function showHint(text){const el=document.getElementById("rpgHintReveal");if(!el)return;el.textContent=text;el.classList.remove("hidden");}
   function showLoot(drops,foe){const el=document.getElementById("rpgLootNotice");if(!el)return;if(!drops.length){el.classList.add("hidden");el.textContent="";return;}const names=drops.map(id=>`${ITEM_DEFS[id].icon} ${ITEM_DEFS[id].name}`).join(" • ");const source=foe.boss?"Boss reward":foe.elite?"Elite reward":"Victory loot";el.textContent=`${source}: ${names}`;el.classList.remove("hidden");}
-  function rarityRoll(foe){const rpg=ensureState();const depthBoost=Math.min(.22,Math.max(0,(rpg?.floor||1)-1)*.009),challengeBoost=(foe?.elite?.22:0)+(foe?.boss?.36:0),roll=Math.random()+depthBoost+challengeBoost;if(roll>=1.17)return"epic";if(roll>=.83)return"rare";if(roll>=.47)return"uncommon";return"common";}
+  function rarityRoll(foe){const rpg=ensureState();const depthBoost=Math.min(.22,Math.max(0,(rpg?.floor||1)-1)*.009),challengeBoost=(foe?.elite?0.22:0)+(foe?.boss?0.36:0),roll=Math.random()+depthBoost+challengeBoost;if(roll>=1.17)return"epic";if(roll>=.83)return"rare";if(roll>=.47)return"uncommon";return"common";}
   function rollItem(foe){const rarity=rarityRoll(foe),pool=ITEMS_BY_RARITY[rarity]||ITEMS_BY_RARITY.common;return randomChoice(pool);}
-  function awardLoot(foe){installUi();const rpg=ensureState();if(!rpg)return[];closePanel();const baseChance=Math.min(.80,.48+Math.max(0,rpg.floor-1)*.012),chance=foe?.boss?1:(foe?.elite?.98:baseChance);if(Math.random()>chance){showLoot([],foe);render();return[];}let count=1;if(foe?.elite&&Math.random()<.38)count++;if(foe?.boss)count=2+(Math.random()<.28?1:0);const drops=[];for(let i=0;i<count;i++){const id=rollItem(foe);rpg.inventory.push(id);drops.push(id);}showLoot(drops,foe);render();return drops;}
+  function awardLoot(foe){installUi();const rpg=ensureState();if(!rpg)return[];closePanel();const baseChance=Math.min(.80,.48+Math.max(0,rpg.floor-1)*.012),chance=foe?.boss?1:(foe?.elite?0.98:baseChance);if(Math.random()>chance){showLoot([],foe);render();return[];}let count=1;if(foe?.elite&&Math.random()<.38)count++;if(foe?.boss)count=2+(Math.random()<.28?1:0);const drops=[];for(let i=0;i<count;i++){const id=rollItem(foe);rpg.inventory.push(id);drops.push(id);}showLoot(drops,foe);render();return drops;}
   function groupedInventory(){const rpg=ensureState(),map=new Map();for(const id of rpg?.inventory||[])map.set(id,(map.get(id)||0)+1);return[...map.entries()].sort((a,b)=>(RARITY_META[ITEM_DEFS[b[0]]?.rarity]?.rank??0)-(RARITY_META[ITEM_DEFS[a[0]]?.rarity]?.rank??0)||itemName(a[0]).localeCompare(itemName(b[0])));}
   function render(){installUi();const rpg=ensureState(),count=rpg?.inventory?.length||0,button=document.getElementById("rpgItemsBtn"),badge=document.getElementById("rpgItemCount"),summary=document.getElementById("rpgItemSummary");if(badge)badge.textContent=String(count);if(button)button.disabled=!activeFight()||count===0;if(summary)summary.textContent=count?`🎒 ${count} item${count===1?"":"s"} • 🛡 ${rpg.itemShields||0} shield charge${rpg.itemShields===1?"":"s"}`:"Defeat enemies to find consumable items. Elites and bosses improve loot quality.";if(!document.getElementById("itemOverlay")?.classList.contains("hidden"))renderPanel();}
   function renderPanel(){const grid=document.getElementById("rpgItemGrid"),hint=document.getElementById("itemPanelHint");if(!grid)return;const groups=groupedInventory();if(!groups.length){grid.innerHTML='<div class="muted">Your inventory is empty. Elite and boss victories have the best reward odds.</div>';return;}grid.innerHTML="";if(hint)hint.textContent="Choose one consumable. Hint and category items apply to the enemy you are fighting now.";for(const[id,count]of groups){const item=ITEM_DEFS[id];if(!item)continue;const btn=document.createElement("button");btn.type="button";btn.className="rpg-item-card";btn.innerHTML=`<div class="rpg-item-top"><span class="rpg-item-name">${item.icon} ${escapeHtml(item.name)}</span><span class="rpg-item-count">×${count}</span></div><div class="rpg-item-rarity">${RARITY_META[item.rarity].label}</div><div class="rpg-item-desc">${escapeHtml(item.desc)}</div>`;btn.onclick=()=>useItem(id);grid.appendChild(btn);}}
@@ -178,7 +160,6 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
 
   function consumeShield(){const rpg=ensureState();if(!rpg||!rpg.itemShields)return false;rpg.itemShields--;render();return true;}
   function dropSummary(drops){return drops.map(id=>`${ITEM_DEFS[id]?.icon||"🎁"} ${itemName(id)}`).join(" • ");}
-
   installUi();
   return{reset,onSpawn,awardLoot,consumeShield,render,openPanel,closePanel,dropSummary,defs:ITEM_DEFS};
 }
