@@ -28,7 +28,6 @@ const ITEMS_BY_RARITY=Object.entries(ITEM_DEFS).reduce((out,[id,item])=>{
 
 function randomChoice(list){return list[Math.floor(Math.random()*list.length)]}
 function escapeHtml(value){return String(value??"").replace(/[&<>'\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'\"':"&quot;"}[c]))}
-function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function itemName(id){return ITEM_DEFS[id]?.name||id}
 
 export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,matchWeightedConcepts,matchVerseConcept,refKey,displayRef,refresh}){
@@ -149,8 +148,9 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
   function rarityRoll(foe){
     const rpg=ensureState();
     const depthBoost=Math.min(.22,Math.max(0,(rpg?.floor||1)-1)*.009);
-    const challengeBoost=(foe?.elite?.22:0)+(foe?.boss?.36:0);
-    const roll=Math.random()+depthBoost+challengeBoost;
+    const challengeBoost=(foe?.elite?.22?0:0);
+    const explicitChallengeBoost=(foe?.elite?0.22:0)+(foe?.boss?0.36:0);
+    const roll=Math.random()+depthBoost+explicitChallengeBoost;
     if(roll>=1.17)return "epic";
     if(roll>=.83)return "rare";
     if(roll>=.47)return "uncommon";
@@ -168,8 +168,9 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
     if(!rpg)return [];
     closePanel();
     const baseChance=Math.min(.80,.48+Math.max(0,rpg.floor-1)*.012);
-    const chance=foe?.boss?1:foe?.elite?.98:baseChance;
-    if(Math.random()>chance){showLoot([],foe);render();return []}
+    const chance=foe?.boss?1:(foe?.elite?.98?0:baseChance);
+    const explicitChance=foe?.boss?1:(foe?.elite?0.98:baseChance);
+    if(Math.random()>explicitChance){showLoot([],foe);render();return []}
     let count=1;
     if(foe?.elite&&Math.random()<.38)count++;
     if(foe?.boss)count=2+(Math.random()<.28?1:0);
@@ -183,7 +184,7 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
   function groupedInventory(){
     const rpg=ensureState(),map=new Map();
     for(const id of rpg?.inventory||[])map.set(id,(map.get(id)||0)+1);
-    return [...map.entries()].sort((a,b)=>RARITY_META[ITEM_DEFS[b[0]]?.rarity]?.rank-RARITY_META[ITEM_DEFS[a[0]]?.rarity]?.rank||itemName(a[0]).localeCompare(itemName(b[0])));
+    return [...map.entries()].sort((a,b)=>(RARITY_META[ITEM_DEFS[b[0]]?.rarity]?.rank??0)-(RARITY_META[ITEM_DEFS[a[0]]?.rarity]?.rank??0)||itemName(a[0]).localeCompare(itemName(b[0])));
   }
 
   function render(){
