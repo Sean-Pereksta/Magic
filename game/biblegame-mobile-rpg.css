@@ -1,0 +1,178 @@
+/* Mobile RPG split-screen layout: 60% battlefield / 40% controls. */
+@media (max-width: 900px) {
+  #rpgView {
+    height: calc(100dvh - 92px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #rpgView .rpg-layout {
+    height: 100%;
+    min-height: 0;
+    gap: 8px;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  #rpgView .battlefield {
+    min-height: 0;
+    height: 100%;
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  #rpgView .side-stack {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  #rpgView .combat-box {
+    position: static;
+    margin-top: 6px;
+    padding: 9px;
+    border-radius: 12px;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  #rpgView .arena-fighter {
+    bottom: 12px;
+    width: min(42%, 230px);
+  }
+
+  #rpgView .character-art,
+  #rpgView .character-art img {
+    max-height: clamp(120px, 24vh, 210px);
+  }
+
+  #rpgView .character-art {
+    height: clamp(120px, 24vh, 210px);
+  }
+
+  #rpgView .fighter-sub,
+  #rpgView .resistance-row {
+    display: none;
+  }
+
+  #rpgView .battle-top {
+    font-size: .86rem;
+  }
+
+  #rpgView .verse-echo {
+    top: 17%;
+    width: 88%;
+  }
+
+  #rpgView .verse-echo-text {
+    font-size: clamp(.85rem, 2.4vw, 1.05rem);
+  }
+
+  #rpgView .choice-overlay {
+    position: fixed;
+    inset: auto 8px max(8px, env(safe-area-inset-bottom)) 8px;
+    height: calc(40dvh - 12px);
+    z-index: 100;
+    padding: 8px;
+    place-items: stretch;
+    background: rgba(5, 8, 16, .96);
+  }
+
+  #rpgView .choice-card {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  #rpgView .path-choices,
+  #rpgView .rpg-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #rpgView .death-verses,
+  #rpgView .mastery-list,
+  #rpgView .high-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  #rpgView {
+    height: calc(100dvh - 72px);
+  }
+
+  #rpgView .rpg-layout {
+    grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+    grid-template-rows: 1fr;
+  }
+
+  #rpgView .side-stack {
+    grid-template-columns: 1fr;
+    height: 100%;
+  }
+
+  #rpgView .choice-overlay {
+    top: 8px;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: 8px;
+    left: 60%;
+    height: auto;
+  }
+
+  #rpgView .arena-fighter {
+    bottom: 10px;
+    width: min(38%, 220px);
+  }
+
+  #rpgView .character-art,
+  #rpgView .character-art img {
+    max-height: clamp(110px, 35vh, 190px);
+  }
+
+  #rpgView .character-art {
+    height: clamp(110px, 35vh, 190px);
+  }
+}
+
+@media (max-width: 570px) and (orientation: portrait) {
+  #rpgView .side-stack {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #rpgView .side-card {
+    padding: 8px;
+  }
+
+  #rpgView .side-card:nth-child(n+3) {
+    display: none;
+  }
+
+  #rpgView .mini-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  #rpgView .mini-stat {
+    padding: 6px 3px;
+  }
+
+  #rpgView .mini-stat b {
+    font-size: .95rem;
+  }
+
+  #rpgView .mini-stat span {
+    font-size: .52rem;
+  }
+
+  #rpgView .path-choices,
+  #rpgView .rpg-item-grid {
+    grid-template-columns: 1fr;
+  }
+}
