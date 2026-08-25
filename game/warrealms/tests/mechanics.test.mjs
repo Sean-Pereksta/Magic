@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { allyActivationState } from "../engine/allies.js";
-import { chargeActionSpend, resolveChargeGain } from "../engine/charges.js";
+import { chargeActionSpend, resolveChargeGain, resolveChargePerTurnCap } from "../engine/charges.js";
 import {
   advanceConstruction,
   constructionHealthCap,
@@ -62,6 +62,34 @@ test("Charge gain obeys maximum and per-turn cap", () => {
   assert.equal(capped.gained, 0);
   assert.deepEqual(chargeActionSpend(4, { cost: "all", minimum: 3 }), { allowed: true, spend: 4, available: 4 });
   assert.equal(chargeActionSpend(2, { cost: 3 }).allowed, false);
+});
+
+test("Self-feeding token charge engines are limited to one full meter per turn", () => {
+  const recursiveSwarmCharge = {
+    trigger: "tokenPlayed",
+    tokenId: "drone",
+    gain: 1,
+    max: 6,
+    actions: [
+      { label: "Convert Signal", cost: 2, effect: { trade: 2 } },
+      { label: "Recursive Launch", cost: 6, effect: { draw: 1, createToken: { id: "drone", count: 1, zone: "hand" } } }
+    ]
+  };
+
+  assert.equal(resolveChargePerTurnCap(recursiveSwarmCharge), 6);
+  assert.equal(resolveChargeGain(0, recursiveSwarmCharge, 6).gained, 0);
+
+  const nonRecursiveTokenCharge = {
+    trigger: "tokenPlayed",
+    tokenId: "acolyte",
+    gain: 1,
+    max: 6,
+    actions: [{ label: "Grand Benediction", cost: 6, effect: { armor: { amount: 3, all: true } } }]
+  };
+  assert.equal(resolveChargePerTurnCap(nonRecursiveTokenCharge), Infinity);
+
+  const explicitOverride = { ...recursiveSwarmCharge, perTurnCap: 3 };
+  assert.equal(resolveChargePerTurnCap(explicitOverride), 3);
 });
 
 test("Ally and Double Ally activation levels remain distinct", () => {
