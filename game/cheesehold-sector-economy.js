@@ -10,15 +10,15 @@ function drawSectorGrid(){if(!decorGroup)return;if(sectorGridGroup){decorGroup.r
 const sectorBaseBuildArena=buildArena;
 buildArena=function(round){const out=sectorBaseBuildArena(round);drawSectorGrid();return out;};
 
-function sectorGeneratorRank(b){const id=sectorIdAt(b.gx,b.gy),gens=buildings.filter(x=>!x.dead&&x.type==='generator'&&sectorIdAt(x.gx,x.gy)===id).sort((a,c)=>a.id-c.id);return Math.max(0,gens.indexOf(b));}
-function sectorGeneratorEfficiency(b){const rank=sectorGeneratorRank(b);return SECTOR_GENERATOR_EFFICIENCY[Math.min(rank,SECTOR_GENERATOR_EFFICIENCY.length-1)];}
+function sectorGeneratorCount(b){const id=sectorIdAt(b.gx,b.gy);return buildings.filter(x=>!x.dead&&x.type==='generator'&&sectorIdAt(x.gx,x.gy)===id).length;}
+function sectorGeneratorEfficiency(b){const count=Math.max(1,sectorGeneratorCount(b));if(count<=SECTOR_GENERATOR_EFFICIENCY.length)return SECTOR_GENERATOR_EFFICIENCY[count-1];return Math.max(.08,.20-(count-5)*.02);}
 function sectorCombatActive(){const w=game?.wave;if(!w||w.clearAt!=null)return false;return !!(enemies.some(e=>!e.dead)||(cat&&!cat.dead)||(w.spawned||0)>0);}
 function sectorGeneratorPathFactor(b){if(b.majorEvolution==='engineerWorkshop')return .25;if(b.majorEvolution==='fortressForge')return .55;return 1;}
 const sectorBaseUpdateBuildings=updateBuildings;
 updateBuildings=function(dt){const due=[];for(const b of buildings){if(!b.dead&&b.type==='generator'&&game.time>=b.next){const es=buildingEvoStats(b),raw=Math.max(1,game.mods.generatorYield+(b.level-1)+(Number(es.yield)||0));due.push({b,raw})}}sectorBaseUpdateBuildings(dt);for(const item of due){const b=item.b;if(b.dead)continue;let factor=sectorGeneratorEfficiency(b)*sectorGeneratorPathFactor(b);if(!sectorCombatActive())factor*=SECTOR_SAFE_ECONOMY;const adjusted=Math.max(1,Math.round(item.raw*factor)),remove=Math.max(0,item.raw-adjusted);if(remove)game.cheese=Math.max(0,game.cheese-remove);b.sectorEfficiency=sectorGeneratorEfficiency(b);b.sectorLastPayout=adjusted;}};
-BUILDINGS.generator.desc='Produces cheese steadily. Sector saturation: 1st generator 100%, 2nd 60%, 3rd 35%, 4th 20%, 5th+ 10%. Safe-time output is reduced.';
+BUILDINGS.generator.desc='Produces cheese steadily. Sector saturation affects every generator together: 1 = 100% each, 2 = 60% each, 3 = 40% each, 4 = 28% each, 5 = 20% each, then lower. Safe-time output is reduced.';
 const sectorBaseBuildDirection=buildDirection;
-buildDirection=function(dirIndex=player?.lastDir){const before=buildings.length,out=sectorBaseBuildDirection(dirIndex);if(out&&buildings.length>before){const b=buildings[buildings.length-1];if(b?.type==='generator'){const eff=Math.round(sectorGeneratorEfficiency(b)*100);toast('Generator built · Sector '+sectorRoman(sectorIdAt(b.gx,b.gy))+' · '+eff+'% output')}}return out;};
+buildDirection=function(dirIndex=player?.lastDir){const before=buildings.length,out=sectorBaseBuildDirection(dirIndex);if(out&&buildings.length>before){const b=buildings[buildings.length-1];if(b?.type==='generator'){const count=sectorGeneratorCount(b),eff=Math.round(sectorGeneratorEfficiency(b)*100);toast('Sector '+sectorRoman(sectorIdAt(b.gx,b.gy))+' saturation · '+count+' generators · '+eff+'% each')}}return out;};
 
 function sectorDesiredReprieve(round=game?.round||1){if(round>=20)return 4;if(round>=15)return 6;if(round>=11)return 8;if(round>=8)return 10;if(round>=5)return 12;return 15;}
 function sectorAdjustReprieve(){const w=game?.wave;if(!game?.running||!w||w.clearAt==null||w.sectorReprieveAdjusted)return;const desired=sectorDesiredReprieve();w.clearAt-=Math.max(0,SECTOR_BASE_REPRIEVE-desired);w.sectorReprieveAdjusted=true;showMsg('WAVE '+w.number+' CLEAR',desired+' SECOND REPRIEVE');toast('Rebuild fast — '+desired+'s until wave '+(w.number+1));}
