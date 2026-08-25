@@ -73,9 +73,15 @@ beginRound=function(first=false){
  return economyAndArenaBeginRound(first);
 };
 
-// Keep the elemental system in its own module while evaluating it inside the core IIFE,
-// where it can extend the existing building/upgrades functions without exposing globals.
-fetch('./cheesehold-elemental-progression.js',{cache:'no-store'})
- .then(r=>{if(!r.ok)throw new Error('Elemental progression '+r.status);return r.text()})
- .then(code=>{eval(code)})
- .catch(err=>console.error('[Cheesehold] elemental progression failed to load',err));
+// Load elemental + sector/summoner modules into one direct eval so they share the same
+// milestone bindings while remaining split into maintainable source files.
+Promise.all([
+ fetch('./cheesehold-elemental-progression.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Elemental progression '+r.status);return r.text()}),
+ fetch('./cheesehold-summoner-milestones.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summoner milestones '+r.status);return r.text()}),
+ fetch('./cheesehold-summoner-legendary.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summoner legendary '+r.status);return r.text()}),
+ fetch('./cheesehold-summoner-upgrades.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summoner upgrades '+r.status);return r.text()}),
+ fetch('./cheesehold-sector-economy.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Sector economy '+r.status);return r.text()}),
+ fetch('./cheesehold-summoner-runtime.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summoner runtime '+r.status);return r.text()})
+])
+ .then(parts=>{eval(parts.join('\n'))})
+ .catch(err=>console.error('[Cheesehold] progression expansion failed to load',err));
