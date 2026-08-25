@@ -3,10 +3,41 @@ function whole(value, fallback = 0) {
   return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
 }
 
+function effectCreatesToken(effect, tokenId, seen = new Set()) {
+  if (!effect || typeof effect !== "object") return false;
+  if (seen.has(effect)) return false;
+  seen.add(effect);
+
+  if (Array.isArray(effect)) {
+    return effect.some(value => effectCreatesToken(value, tokenId, seen));
+  }
+
+  const createToken = effect.createToken;
+  if (createToken && typeof createToken === "object" && String(createToken.id || "") === tokenId) {
+    return true;
+  }
+
+  return Object.values(effect).some(value => effectCreatesToken(value, tokenId, seen));
+}
+
+export function resolveChargePerTurnCap(charge = {}) {
+  if (Number.isFinite(Number(charge.perTurnCap))) return whole(charge.perTurnCap);
+
+  const tokenId = String(charge.tokenId || "");
+  const actions = Array.isArray(charge.actions) ? charge.actions : [];
+  const selfFeedsTriggeredToken = charge.trigger === "tokenPlayed"
+    && tokenId
+    && actions.some(action => effectCreatesToken(action?.effect, tokenId));
+
+  // A self-feeding token charge engine may gain at most one full meter per turn.
+  // This keeps recursive token builds powerful while guaranteeing the loop ends.
+  return selfFeedsTriggeredToken ? whole(charge.max, 99) : Infinity;
+}
+
 export function resolveChargeGain(current, charge = {}, gainedThisTurn = 0) {
   const before = whole(current);
   const maximum = whole(charge.max, 99);
-  const perTurnCap = Number.isFinite(Number(charge.perTurnCap)) ? whole(charge.perTurnCap) : Infinity;
+  const perTurnCap = resolveChargePerTurnCap(charge);
   const roomThisTurn = Math.max(0, perTurnCap - whole(gainedThisTurn));
   const requested = Math.min(roomThisTurn, whole(charge.gain));
   const after = Math.min(maximum, before + requested);
