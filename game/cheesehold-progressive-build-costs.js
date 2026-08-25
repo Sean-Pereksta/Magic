@@ -84,7 +84,8 @@ Promise.all([
  fetch('./cheesehold-summoner-runtime.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summoner runtime '+r.status);return r.text()}),
  fetch('./cheesehold-summon-combat-aura-mythic.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Summon combat/aura/mythic '+r.status);return r.text()}),
  fetch('./cheesehold-breach-fronts-balance.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Breach/front balance '+r.status);return r.text()}),
- fetch('./cheesehold-campaign-threats.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Campaign threats '+r.status);return r.text()})
+ fetch('./cheesehold-campaign-threats.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Campaign threats '+r.status);return r.text()}),
+ fetch('./cheesehold-campaign-runtime.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Campaign runtime '+r.status);return r.text()})
 ])
  .then(parts=>{eval(parts.join('\n'))})
  .catch(err=>console.error('[Cheesehold] progression expansion failed to load',err));
