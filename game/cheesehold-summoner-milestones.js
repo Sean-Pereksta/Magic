@@ -1,7 +1,7 @@
 // Cheesehold sector economy + summoner progression expansion.
 // Concatenated with cheesehold-elemental-progression.js and evaluated inside the core IIFE.
 
-const SECTOR_GENERATOR_EFFICIENCY=[1,.60,.35,.20,.10];
+const SECTOR_GENERATOR_EFFICIENCY=[1,.60,.40,.28,.20];
 const SECTOR_SAFE_ECONOMY=.25;
 const SECTOR_BASE_REPRIEVE=15;
 const SECTOR_SUMMON_TYPES=new Set(['tesla','turret','generator','superwall','phoenix','slow','poison']);
