@@ -1,10 +1,16 @@
 # Bible Roguelike Class Art Manifest
 
-The specialization system looks for one PNG per class under:
+The specialization system looks for one PNG per class directly under:
 
-`https://pub-15a649bcaae84f2ca6c610e6ef0dde51.r2.dev/players/classes/`
+`https://pub-15a649bcaae84f2ca6c610e6ef0dde51.r2.dev/players/`
 
-If a class PNG is not present yet, the UI keeps the class icon visible and the battlefield falls back to the base Word Warden art.
+There is **no `players/classes/` subfolder**. Every specialization uses the filename below directly inside `/players/`.
+
+If a class PNG is not present yet, the UI keeps the selected class identity visible and the battlefield falls back to the base Word Warden art.
+
+## Base Class
+
+- Word Warden — `wordwarden.png`
 
 ## Level 5 — Major Paths
 
