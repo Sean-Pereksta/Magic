@@ -91,7 +91,7 @@
 
   <div class="modal-wrap" id="startModal">
     <section class="start-card">
-      <div class="start-copy"><div class="start-eyebrow">A LIVING AUTONOMOUS EMPIRE</div><h1>SPACE<br>TYRANTS<span>GALACTIC MANDATE</span></h1><p>Your civilization moves workers, fills orders, develops worlds, and wages war on its own. You set priorities. The empire turns them into history.</p><div class="start-features"><span>49 living worlds</span><span>7 rival empires</span><span>Local supply chains</span><span>Autonomous fleets</span><span>Viewport-capped rendering</span></div><div class="start-actions"><button class="primary" id="newGameBtn">Begin New Mandate</button><button class="secondary" id="continueBtn" hidden>Continue Empire</button></div></div>
+      <div class="start-copy"><div class="start-eyebrow">A LIVING AUTONOMOUS EMPIRE</div><h1>SPACE<br>TYRANTS<span>GALACTIC MANDATE</span></h1><p>Your civilization moves workers, fills orders, develops worlds, and wages war on its own. You set priorities. The empire turns them into history.</p><div class="start-features"><span>63 living worlds</span><span>7 rival empires</span><span>Local supply chains</span><span>Cinematic fleet battles</span><span>Viewport-capped rendering</span></div><div class="start-actions"><button class="primary" id="newGameBtn">Begin New Mandate</button><button class="secondary" id="continueBtn" hidden>Continue Empire</button></div></div>
     </section>
   </div>
 
@@ -118,9 +118,9 @@
       ["Aurelian Mandate","#57ddff"],["Karthos Directorate","#ff5d73"],["Veyran Compact","#ffbf5c"],
       ["Nyxian Synod","#b27aff"],["Orion Freeholds","#55ef9e"],["Sable Dominion","#ff80c8"],["Helion Ascendancy","#8aa1ff"]
     ];
-    const WORLD_NAMES=["Aurelia","Koros","Vesta","Nyx","Eidolon","Cinder","Thale","Karthos","Rhex","Damaris","Vulcan","Eris","Veyra","Caligo","Prax","Iona","Tethys","Solis","Noctis","Umbra","Lys","Morrow","Orison","Drift","Orion","Pallas","Haven","Cygni","Astra","Boreal","Sable","Mordane","Ashara","Gloam","Vesper","Nadir","Helion","Crown","Meridian","Caelus","Ember","Radiant","Khepri","Argent","Titan","Farpoint","Zephyr","Talos","Obsidia"];
+    const WORLD_NAMES=["Aurelia","Koros","Vesta","Nyx","Eidolon","Cinder","Thale","Karthos","Rhex","Damaris","Vulcan","Eris","Veyra","Caligo","Prax","Iona","Tethys","Solis","Noctis","Umbra","Lys","Morrow","Orison","Drift","Orion","Pallas","Haven","Cygni","Astra","Boreal","Sable","Mordane","Ashara","Gloam","Vesper","Nadir","Helion","Crown","Meridian","Caelus","Ember","Radiant","Khepri","Argent","Titan","Farpoint","Zephyr","Talos","Obsidia","Mistral","Riven","Halcyon","Ophira","Tarn","Icarus","Perseus","Lacuna","Duskfall","Axiom","Myr","Osiris","Quillon","Arcadia"];
     const TYPE_ICON={freighter:"●",migrant:"○",colony:"△",fleet:"◆",scout:"◇"};
-    const state={running:false,simTime:0,nextCommand:45,commandCycle:45,speed:1,preCommandSpeed:1,last:0,acc:0,lastHud:0,lastEconomy:0,lastGovernor:0,lastLogistics:0,lastAI:0,lastAutosave:0,planets:[],ships:[],empires:[],events:[],stars:[],selected:null,commandChoices:[],commandSelected:new Set(),camera:{x:1850,y:2600,zoom:.68},keys:new Set(),rngState:937145,stats:{visible:0,drawCalls:0},ended:false};
+    const state={running:false,simTime:0,nextCommand:45,commandCycle:45,speed:1,preCommandSpeed:1,last:0,acc:0,lastHud:0,lastEconomy:0,lastGovernor:0,lastLogistics:0,lastAI:0,lastAutosave:0,planets:[],ships:[],battles:[],effects:[],empires:[],events:[],stars:[],nebulae:[],selected:null,commandChoices:[],commandSelected:new Set(),camera:{x:1850,y:2600,zoom:.68},keys:new Set(),rngState:937145,stats:{visible:0,drawCalls:0},ended:false};
     let drag=null,toastTimer=0;
 
     function random(){state.rngState=(state.rngState*1664525+1013904223)>>>0;return state.rngState/4294967296}
@@ -138,7 +138,7 @@
     function logEvent(text,tone="",empireId=0){state.events.unshift({text,tone,time:state.simTime,empireId});state.events=state.events.slice(0,32);if(empireId===0||tone==="danger")renderEvents()}
     function showToast(text){const el=$("toast");el.textContent=text;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),1800)}
 
-    function newEmpire(id){return {id,name:EMPIRE_DATA[id][0],color:EMPIRE_DATA[id][1],modifiers:{},directives:[],tech:{automation:0,weapons:0,propulsion:0,extraction:0},intel:new Set(),fleetReserve:0,doctrine:pick(["expansion","industry","fortress","military"]),lastExpansion:0,lastAttack:0}}
+    function newEmpire(id){return {id,name:EMPIRE_DATA[id][0],color:EMPIRE_DATA[id][1],modifiers:{},directives:[],tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0},intel:new Set(),fleetReserve:0,doctrine:pick(["expansion","industry","fortress","military"]),lastExpansion:0,lastAttack:0}}
     function makePlanet(name,x,y,owner=null,home=false,index=0){
       const q={};RESOURCES.forEach(r=>q[r]=1+Math.floor(random()*5));
       if(name==="Aurelia")Object.assign(q,{iron:4,helium:1,rare:2,titanium:3,uranium:2,silicates:4});
@@ -151,10 +151,23 @@
       const stock={components:home?90:25,equipment:home?25:5,trained:home?pop*.02:0};
       RESOURCES.forEach(r=>stock[r]=home?70+q[r]*18:18+q[r]*8);
       const reserve={};RESOURCES.forEach(r=>reserve[r]=(600+q[r]*620)*rand(.8,1.2));
-      return {id:`p${index}`,name,x,y,r:home?27:rand(14,23),owner,home,pop,capacity:cap,quality:q,reserve,stock,infra,rotation:rand(0,Math.PI*2),spin:rand(.025,.07),orders:[],buildQueue:[],efficiency:1,mineEfficiency:1,factoryEfficiency:1,trainingEfficiency:1,shortages:new Set(),garrison:home?32:owner!==null?12:0,specialization:"Frontier World",unrest:0,lastGov:0,lastLogistics:0,underAttack:false,intel:owner===0?1:owner===null?.35:.15,history:[]};
+      return {id:`p${index}`,name,x,y,r:home?27:rand(14,23),owner,home,pop,capacity:cap,quality:q,reserve,stock,infra,rotation:rand(0,Math.PI*2),spin:rand(.025,.07),orders:[],buildQueue:[],efficiency:1,mineEfficiency:1,factoryEfficiency:1,trainingEfficiency:1,shortages:new Set(),garrison:home?32:owner!==null?12:0,specialization:"Frontier World",unrest:0,lastGov:0,lastLogistics:0,underAttack:false,intel:owner===0?1:owner===null?.35:.15,history:[],popTrend:0,lastPopSample:pop,lastPopSampleAt:0,visualPop:pop,evacuating:false,scattered:false};
+    }
+    function generateSpaceArt(){
+      let seed=0x5f3759df;const vr=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
+      state.stars=Array.from({length:640},(_,i)=>({x:vr()*WORLD.w,y:vr()*WORLD.h,r:.2+vr()*1.6,a:.15+vr()*.72,layer:i%3,tint:vr()>.9?(vr()>.5?"#a8dfff":"#ffd4b0"):"#eaf2ff"}));
+      const hues=[192,218,267,305,28,176,238,282,334];
+      state.nebulae=hues.map((hue,i)=>({x:500+vr()*(WORLD.w-1000),y:420+vr()*(WORLD.h-840),rx:460+vr()*850,ry:240+vr()*520,hue,alpha:.055+vr()*.075,rotation:vr()*Math.PI,seed:i*17+3}));
+    }
+    function addScatteredWorlds(count=14){
+      const used=new Set(state.planets.map(p=>p.name));
+      for(let j=0;j<count;j++){
+        let x=0,y=0,tries=0;do{x=rand(260,WORLD.w-260);y=rand(230,WORLD.h-230);tries++}while(tries<70&&state.planets.some(p=>Math.hypot(p.x-x,p.y-y)<255));
+        let name=WORLD_NAMES.find(n=>!used.has(n))||`Frontier ${state.planets.length+1}`;used.add(name);const p=makePlanet(name,x,y,null,false,state.planets.length);p.scattered=true;p.r=rand(11,19);p.intel=.08;state.planets.push(p)
+      }
     }
     function generateGalaxy(){
-      state.rngState=937145;state.planets=[];state.ships=[];state.events=[];state.empires=EMPIRE_DATA.map((_,i)=>newEmpire(i));
+      state.rngState=937145;state.planets=[];state.ships=[];state.battles=[];state.effects=[];state.events=[];state.empires=EMPIRE_DATA.map((_,i)=>newEmpire(i));
       const centers=[[1800,2600],[6900,850],[6900,4300],[4300,700],[4300,4520],[7600,2600],[4550,2600]];
       let ni=0;
       centers.forEach((c,eid)=>{
@@ -171,9 +184,11 @@
           if(initialOwner===eid)state.empires[eid].intel.add(p.id);
         }
       });
+      // Rogue and frontier worlds break up the seven main clusters and reward deep exploration.
+      addScatteredWorlds(14);
       // Guarantee unique names after the fixed early-game worlds.
       const seen=new Set();state.planets.forEach((p,i)=>{let base=p.name,n=2;while(seen.has(p.name))p.name=`${base} ${roman(n++)}`;seen.add(p.name);p.id=`p${i}`});
-      state.stars=Array.from({length:520},(_,i)=>({x:rand(0,WORLD.w),y:rand(0,WORLD.h),r:rand(.25,1.5),a:rand(.18,.8),layer:i%3}));
+      generateSpaceArt();
       state.simTime=0;state.nextCommand=45;state.selected=state.planets[0];state.camera={x:1800,y:2600,zoom:.68};state.events=[];state.ended=false;
       logEvent("The Aurelian Mandate awakens on Aurelia. Its governors await strategic direction.","good");
       logEvent("Scouts report three nearby opportunities: fuel-rich Koros, iron-rich Vesta, and rare-earth-rich Nyx.","warning");
@@ -197,7 +212,7 @@
     function borderThreat(p){if(p.owner===null)return 0;let threat=0;state.planets.forEach(q=>{if(q.owner!==null&&q.owner!==p.owner){const d=dist(p,q);if(d<1300)threat+=clamp(1-d/1300,0,1)}});return threat}
     function empireResource(id,res){return owned(id).reduce((sum,p)=>sum+(p.stock[res]||0),0)}
     function empireIndustry(id){return owned(id).reduce((sum,p)=>sum+p.infra.factory*p.factoryEfficiency+p.infra.shipyard*.8,0)}
-    function empireFleet(id){return state.ships.filter(s=>s.owner===id&&s.type==="fleet").reduce((n,s)=>n+s.strength,0)+owned(id).reduce((n,p)=>n+p.garrison*.18,0)}
+    function empireFleet(id){return state.ships.filter(s=>s.owner===id&&s.type==="fleet").reduce((n,s)=>n+s.strength,0)+state.battles.reduce((n,b)=>n+(b.attacker===id?b.attackerStrength:0)+(b.defender===id?b.defenderStrength:0),0)+owned(id).reduce((n,p)=>n+p.garrison*.18,0)}
     function totalPop(id){return owned(id).reduce((n,p)=>n+p.pop,0)}
     function totalShortages(id){return owned(id).reduce((n,p)=>n+p.shortages.size,0)}
 
@@ -210,8 +225,13 @@
     function tickPlanet(p,dt){
       if(p.owner===null)return;
       const e=empire(p.owner),popEff=populationEfficiency(p);p.efficiency=popEff;
-      const housing=Math.max(0,p.capacity-p.pop),growth=(.0000085*p.pop+.000004)*modifier(e,"growth")*popEff*dt;
-      p.pop+=Math.min(growth,housing*.002+growth*.2);
+      const housing=Math.max(0,p.capacity-p.pop),crowding=Math.max(0,p.pop/Math.max(.02,p.capacity)-.92);
+      const scarcity=p.shortages.size*.08+p.orders.filter(o=>o.age>30&&["material","equipment","crew"].includes(o.type)).length*.025;
+      const births=(.0000065*p.pop+.0000032)*modifier(e,"growth")*modifier(e,"birthrate")*popEff*dt;
+      const medical=Math.max(.55,1-e.tech.medicine*.08),deaths=p.pop*(.0000018+scarcity*.00004+crowding*.000025+p.unrest*.000018)*modifier(e,"mortality")*medical*dt;
+      const netGrowth=Math.min(births,housing*.002+births*.22)-deaths;p.pop=Math.max(.004,p.pop+netGrowth);
+      p.visualPop+=(p.pop-(p.visualPop??p.pop))*Math.min(1,dt*.7);
+      if(state.simTime-(p.lastPopSampleAt||0)>=6){const span=Math.max(1,state.simTime-(p.lastPopSampleAt||0));p.popTrend=(p.pop-(p.lastPopSample??p.pop))*60/span;p.lastPopSample=p.pop;p.lastPopSampleAt=state.simTime;p.history.push({time:state.simTime,pop:p.pop});p.history=p.history.slice(-20)}
       if(p.pop>p.capacity)p.unrest=clamp(p.unrest+dt*.0005*(p.pop/p.capacity-1),0,1);else p.unrest=clamp(p.unrest-dt*.00025,0,1);
       const labor=p.pop*.56,facilityNeed=p.infra.mine*.025+p.infra.factory*.045+p.infra.training*.03+p.infra.shipyard*.035;
       const laborEff=clamp(labor/Math.max(.02,facilityNeed),.25,1);
@@ -222,20 +242,20 @@
         const capYield=quality*.13*Math.min(p.infra.mine,mineCap);
         let yieldRate=capYield*p.mineEfficiency*(depleted?.5:1);
         if(p.reserve[res]<=0)yieldRate=0;
-        const gained=Math.min(p.reserve[res],yieldRate*dt);p.reserve[res]-=gained;p.stock[res]+=gained;
+        const gained=Math.min(p.reserve[res],yieldRate*dt);p.reserve[res]=Math.max(0,p.reserve[res]-gained*modifier(e,"depletion"));p.stock[res]+=gained;
         if(depleted&&p.infra.mine>0){p.shortages.add(res)}else if(p.stock[res]>35&&p.reserve[res]>quality*100)p.shortages.delete(res);
       });
       const rawNeed=p.infra.factory*.035*dt*modifier(e,"industry");
       const iron=consume(p,"iron",rawNeed),sil=consume(p,"silicates",rawNeed*.7),rare=consume(p,"rare",rawNeed*.18);
       const inputEff=rawNeed?Math.min(iron/rawNeed,sil/(rawNeed*.7||1),rare/(rawNeed*.18||1)):1;
-      p.factoryEfficiency=clamp(inputEff,0,1)*laborEff*popEff*modifier(e,"industry")*(1+e.tech.automation*.1);
+      p.factoryEfficiency=clamp(inputEff,0,1)*laborEff*popEff*modifier(e,"industry")*modifier(e,"civilEfficiency")*(1+e.tech.automation*.1);
       p.stock.components+=p.infra.factory*.055*p.factoryEfficiency*dt;
       p.stock.equipment+=p.infra.factory*.018*p.factoryEfficiency*dt;
       if(p.infra.factory&&p.stock.iron<18)addOrder(p,"material","iron",55,2,"Factory iron order");
       if(p.infra.factory&&p.stock.silicates<14)addOrder(p,"material","silicates",42,1,"Industrial silicates order");
       if(p.infra.factory&&p.stock.rare<8)addOrder(p,"material","rare",20,1,"Electronics order");
       const trainNeed=p.infra.training*.012*dt,gear=consume(p,"equipment",trainNeed);
-      p.trainingEfficiency=trainNeed?clamp(gear/trainNeed,0,1)*laborEff:1;
+      p.trainingEfficiency=(trainNeed?clamp(gear/trainNeed,0,1)*laborEff:1)*modifier(e,"training");
       const recruits=Math.min(p.pop*.000002*dt,p.infra.training*.000013*p.trainingEfficiency*dt);p.pop-=recruits;p.stock.trained+=recruits;
       if(p.infra.training&&p.stock.equipment<5)addOrder(p,"equipment","equipment",15,2,"Training equipment order");
       tickBuildQueue(p,dt);
@@ -288,14 +308,16 @@
       state.planets.forEach(p=>{
         if(p.owner===null)return;
         p.orders.filter(o=>o.status==="waiting").sort((a,b)=>b.priority-a.priority||b.age-a.age).slice(0,2).forEach(o=>fillOrder(p,o));
-        const pressure=p.pop/p.capacity;
-        if(pressure>1.02&&state.ships.filter(s=>s.type==="migrant"&&s.owner===p.owner).length<8){
-          const target=owned(p.owner).filter(q=>q!==p&&q.pop/q.capacity<.62).sort((a,b)=>dist(p,a)-dist(p,b))[0];
-          if(target){const amount=Math.min(.018,p.pop*.025);p.pop-=amount;createShip("migrant",p,target,p.owner,{cargo:{population:amount}});if(p.owner===0)logEvent(`${fmtNum(amount)} people departed overcrowded ${p.name} for ${target.name}.`,"warning")}
+        const e=empire(p.owner),pressure=p.pop/p.capacity,evacuate=!!hasDirective(e,"evacuate")&&borderThreat(p)>.42;
+        p.evacuating=evacuate;
+        if((pressure>1.02||evacuate||(modifier(e,"migration")>1&&pressure>.78))&&state.ships.filter(s=>s.type==="migrant"&&s.owner===p.owner).length<10){
+          const target=owned(p.owner).filter(q=>q!==p&&!q.underAttack&&q.pop/q.capacity<.72).sort((a,b)=>(qSafety(b)-qSafety(a))||dist(p,a)-dist(p,b))[0];
+          if(target){const amount=Math.min(evacuate?.035:.018*modifier(e,"migration"),p.pop*(evacuate?.06:.025));p.pop-=amount;createShip("migrant",p,target,p.owner,{cargo:{population:amount},refugees:evacuate});if(p.owner===0)logEvent(`${fmtNum(amount)} people ${evacuate?"evacuated":"departed"} ${p.name} for ${target.name}.`,evacuate?"danger":"warning")}
         }
       });
       state.empires.forEach(e=>attemptExpansion(e));
     }
+    function qSafety(p){return 1-borderThreat(p)-p.unrest-(p.underAttack?2:0)}
     function fillOrder(dest,o){
       const active=state.ships.some(s=>s.orderId===o.id);if(active)return;
       const candidates=owned(dest.owner).filter(p=>p!==dest&&(p.stock[o.resource]||0)>Math.max(8,o.amount*.45)).sort((a,b)=>dist(a,dest)-dist(b,dest));
@@ -335,28 +357,75 @@
       }
       if(s.type==="fleet")resolveFleetArrival(s,p);
     }
+    function activeBattleAt(p){return state.battles.find(b=>b.planetId===p.id)}
     function resolveFleetArrival(s,p){
-      if(p.owner===s.owner||p.owner===null){if(p.owner===null){p.owner=s.owner;p.pop=.025;p.capacity=.16;p.infra.city=1;empire(s.owner).intel.add(p.id)}p.garrison+=s.strength*.72;return}
-      const defender=empire(p.owner),attack=s.strength*rand(.78,1.18),defense=p.garrison*(1+p.infra.defense*.18)*(1+defender.tech.weapons*.1)*rand(.82,1.2);p.underAttack=true;
-      if(s.owner===0||p.owner===0)logEvent(`${empire(s.owner).name} assaulted ${p.name}: ${Math.round(attack)} vs ${Math.round(defense)} power.`,"danger");
-      if(attack>defense*1.08){const old=p.owner;p.owner=s.owner;p.garrison=Math.max(4,(attack-defense)*.42);p.pop*=rand(.76,.91);p.unrest=.6;empire(s.owner).intel.add(p.id);if(old===0||s.owner===0)logEvent(`${p.name} fell to ${empire(s.owner).name}. Supply routes are adapting.`,s.owner===0?"good":"danger")}
-      else {p.garrison=Math.max(2,p.garrison-attack*.45);if(s.owner===0)logEvent(`The offensive at ${p.name} stalled against stronger defenses.`,"warning")}
-      p.underAttack=false;
+      const battle=activeBattleAt(p);
+      if(battle){
+        if(s.owner===battle.attacker){battle.attackerStrength+=s.strength;battle.attackerInitial+=s.strength}
+        else if(s.owner===battle.defender){battle.defenderStrength+=s.strength;battle.defenderInitial+=s.strength}
+        if(s.owner===0||battle.attacker===0||battle.defender===0)logEvent(`${empire(s.owner).name} reinforcements entered the battle for ${p.name}.`,s.owner===battle.defender?"good":"danger");return
+      }
+      if(p.owner===s.owner||p.owner===null){if(p.owner===null){p.owner=s.owner;p.pop=.025;p.capacity=.16;p.infra.city=1;empire(s.owner).intel.add(p.id)}p.garrison+=s.strength*.82;return}
+      startBattle(s,p);
+    }
+    function startBattle(s,p){
+      if(state.battles.length>=10){p.garrison=Math.max(2,p.garrison-s.strength*.45);return}
+      const defender=p.owner,defenderEmpire=empire(defender),fortification=1+p.infra.defense*.16;
+      const attack=s.strength*rand(.9,1.1),defense=Math.max(4,p.garrison*fortification*(1+defenderEmpire.tech.weapons*.1));p.garrison=0;p.underAttack=true;
+      const battle={id:`b${Math.floor(random()*1e9)}`,planetId:p.id,attacker:s.owner,defender,attackerStrength:attack,defenderStrength:defense,attackerInitial:attack,defenderInitial:defense,elapsed:0,maxDuration:18+rand(3,10),fxClock:0,bursts:[],reinforcementSources:[]};state.battles.push(battle);
+      if(s.owner===0||defender===0)logEvent(`${empire(s.owner).name} engaged the defense fleet above ${p.name}. Nearby commands are evaluating reinforcement routes.`,"danger");
+      dispatchBattleReinforcements(battle,p,defender,false);
+      if(hasDirective(empire(s.owner),"rapidResponse")||hasDirective(empire(s.owner),"totalWar"))dispatchBattleReinforcements(battle,p,s.owner,true);
+    }
+    function dispatchBattleReinforcements(battle,p,owner,attacking){
+      const e=empire(owner),range=1050*modifier(e,"responseRange"),fraction=clamp(.32*modifier(e,"reinforcement"),.22,.68);
+      const sources=owned(owner).filter(q=>q!==p&&!q.underAttack&&!activeBattleAt(q)&&q.garrison>10&&dist(q,p)<range&&!battle.reinforcementSources.includes(q.id)).sort((a,b)=>dist(a,p)-dist(b,p)).slice(0,attacking?1:2);
+      sources.forEach(q=>{const strength=Math.max(7,q.garrison*fraction);q.garrison-=strength;battle.reinforcementSources.push(q.id);createShip("fleet",q,p,owner,{strength,battleId:battle.id,reinforcement:true});if(owner===0)logEvent(`${q.name} released ${Math.round(strength)} fleet power to reinforce ${p.name}.`,"good")});
+    }
+    function spawnBattleBurst(b,p){
+      if(state.effects.length>=140)return;const angle=rand(0,Math.PI*2),radius=rand(25,95);state.effects.push({type:"burst",x:p.x+Math.cos(angle)*radius,y:p.y+Math.sin(angle)*radius,life:rand(.35,.8),maxLife:.8,size:rand(4,13),color:random()>.5?empire(b.attacker).color:empire(b.defender).color});
+    }
+    function tickBattles(dt){
+      for(let i=state.battles.length-1;i>=0;i--){const b=state.battles[i],p=state.planets[+b.planetId.slice(1)];if(!p){state.battles.splice(i,1);continue}
+        b.elapsed+=dt;b.fxClock+=dt;const ae=empire(b.attacker),de=empire(b.defender),fort=1+p.infra.defense*.055;
+        const attackDps=(.16+b.attackerStrength*.006)*(1+ae.tech.weapons*.1+ae.tech.carriers*.06)*modifier(ae,"combat");
+        const defenseDps=(.17+b.defenderStrength*.0055)*fort*(1+de.tech.weapons*.1+de.tech.carriers*.05)*modifier(de,"defense");
+        b.defenderStrength=Math.max(0,b.defenderStrength-attackDps*dt*rand(.82,1.16));b.attackerStrength=Math.max(0,b.attackerStrength-defenseDps*dt*rand(.82,1.16));
+        const civilianLoss=(attackDps+defenseDps)*.0000012*dt;p.pop=Math.max(.004,p.pop-civilianLoss);p.unrest=clamp(p.unrest+dt*.0012,0,1);
+        if(b.fxClock>.38){b.fxClock=0;spawnBattleBurst(b,p)}
+        if(b.attackerStrength<=.6||b.defenderStrength<=.6||b.elapsed>=b.maxDuration)resolveBattle(b,p,i);
+      }
+      for(let i=state.effects.length-1;i>=0;i--){state.effects[i].life-=dt;if(state.effects[i].life<=0)state.effects.splice(i,1)}
+    }
+    function resolveBattle(b,p,index){
+      const attackerWins=b.attackerStrength>b.defenderStrength*1.04,oldOwner=b.defender;
+      if(attackerWins){
+        const refuge=owned(oldOwner).filter(q=>q!==p&&!q.underAttack&&q.pop/q.capacity<.82).sort((a,c)=>dist(p,a)-dist(p,c))[0],refugees=Math.min(p.pop*.12,.06);
+        if(refuge&&refugees>.002){p.pop-=refugees;createShip("migrant",p,refuge,oldOwner,{cargo:{population:refugees},refugees:true})}
+        p.owner=b.attacker;p.garrison=Math.max(4,b.attackerStrength*.58);p.pop*=rand(.9,.97);p.unrest=.65;empire(b.attacker).intel.add(p.id);
+        if(oldOwner===0||b.attacker===0)logEvent(`${p.name} fell to ${empire(b.attacker).name} after a ${Math.round(b.elapsed)}-second fleet battle.${refuge?` Refugees are fleeing to ${refuge.name}.`:""}`,b.attacker===0?"good":"danger")
+      }else {p.garrison=Math.max(3,b.defenderStrength*.72);if(b.attacker===0||b.defender===0)logEvent(`${empire(b.defender).name} held ${p.name}; the attacking fleet broke apart under defensive fire.`,b.defender===0?"good":"warning")}
+      p.underAttack=false;state.battles.splice(index,1);
     }
 
     function aiTick(){
       state.empires.slice(1).forEach(e=>{
         e.directives=e.directives.filter(d=>d.until>state.simTime);
         if(random()<.45){const type=pick(e.doctrine==="military"?["fleet","fortify","invasion"]:e.doctrine==="industry"?["industry","fleet","claim"]:["claim","population","explore","industry"]);addDirective(e,type,null,70)}
-        if(state.simTime-e.lastAttack>55&&owned(e.id).length){
-          const targets=state.planets.filter(p=>p.owner!==null&&p.owner!==e.id).sort((a,b)=>Math.min(...owned(e.id).map(s=>dist(s,a)))-Math.min(...owned(e.id).map(s=>dist(s,b))));const target=targets[0];const source=owned(e.id).sort((a,b)=>dist(a,target)-dist(b,target))[0];
-          if(target&&source&&dist(source,target)<1450&&source.garrison>24){const strength=source.garrison*.52;source.garrison-=strength;createShip("fleet",source,target,e.id,{strength});e.lastAttack=state.simTime}
-        }
+        if((hasDirective(e,"invasion")||state.simTime-e.lastAttack>55)&&owned(e.id).length)launchStrategicOffensive(e);
       });
+      const player=empire(0);if(hasDirective(player,"invasion")||hasDirective(player,"raid"))launchStrategicOffensive(player);
+    }
+    function launchStrategicOffensive(e){
+      if(state.simTime-e.lastAttack<18)return;const invasion=hasDirective(e,"invasion")||hasDirective(e,"raid"),worlds=owned(e.id);if(!worlds.length)return;
+      let target=state.planets.find(p=>p.id===invasion?.target&&p.owner!==null&&p.owner!==e.id);
+      if(!target)target=state.planets.filter(p=>p.owner!==null&&p.owner!==e.id&&!p.underAttack).sort((a,b)=>Math.min(...worlds.map(s=>dist(s,a)))-Math.min(...worlds.map(s=>dist(s,b))))[0];
+      if(!target)return;const source=worlds.filter(p=>!p.underAttack&&p.garrison>22).sort((a,b)=>dist(a,target)-dist(b,target))[0];if(!source||dist(source,target)>1450*modifier(e,"responseRange"))return;
+      const strength=source.garrison*(hasDirective(e,"totalWar")?.62:.48);source.garrison-=strength;createShip("fleet",source,target,e.id,{strength});e.lastAttack=state.simTime;if(e.id===0)logEvent(`${source.name}'s battle group departed for ${target.name}.`,"warning")
     }
     function economyTick(dt){state.planets.forEach(p=>tickPlanet(p,dt));state.empires.forEach(e=>{e.directives=e.directives.filter(d=>d.until>state.simTime);Object.keys(e.modifiers).forEach(k=>{if(e.modifiers[k].until<=state.simTime)delete e.modifiers[k]})})}
     function simulate(dt){
-      state.simTime+=dt;economyTick(dt);tickShips(dt);
+      state.simTime+=dt;economyTick(dt);tickShips(dt);tickBattles(dt);
       if(state.simTime-state.lastGovernor>=7){state.lastGovernor=state.simTime;governorTick()}
       if(state.simTime-state.lastLogistics>=3){state.lastLogistics=state.simTime;logisticsTick()}
       if(state.simTime-state.lastAI>=12){state.lastAI=state.simTime;aiTick()}
@@ -383,10 +452,35 @@
       {id:"claim",cat:"Resources",title:"Claim a Strategic World",desc:"Identify the richest reachable neutral planet and let scouts, colonists, and escorts secure it.",effects:["Best unclaimed world targeted","Colony supply order created","Nearby fleets may escort"],score:()=>state.planets.some(p=>p.owner===null)?68:0,target:()=>bestNeutral(),apply:(e,t)=>addDirective(e,"claim",t?.id,100)},
       {id:"invasion",cat:"Military",title:"Order a Frontier Invasion",desc:"Name a hostile border world. The navy determines whether fuel, crew, and strength are adequate.",effects:["Target world marked","Fleets begin staging","Failure remains possible"],score:()=>nearestEnemy()?55+empireFleet(0)*.5:0,target:()=>nearestEnemy(),apply:(e,t)=>{if(t)addDirective(e,"invasion",t.id,100)}},
       {id:"shipbuilding",cat:"Industry",title:"Galactic Shipbuilding Program",desc:"Convert industrial strength into hulls, escorts, freighters, and reserve combat power.",effects:["Shipbuilding +65%","Factories feed shipyards","Civil projects lose priority"],score:()=>58,apply:e=>{setModifier(e,"shipbuilding",1.65,85);setModifier(e,"industry",1.18,85);addDirective(e,"fleet",null,85)}},
-      {id:"rare",cat:"Resources",title:"Rare-Earth Stockpile",desc:"Advanced electronics are vulnerable. Build a reserve before sensors and targeting systems stall.",effects:["Rare-earth orders prioritized","Rich mines increase extraction","Factories preserve a reserve"],score:()=>80-empireResource(0,"rare")*.3,apply:e=>{setModifier(e,"mining",1.18,70);playerWorlds().forEach(p=>addOrder(p,"mandate","rare",45,4,"Rare-earth stockpile"))}}
+      {id:"rare",cat:"Resources",title:"Rare-Earth Stockpile",desc:"Advanced electronics are vulnerable. Build a reserve before sensors and targeting systems stall.",effects:["Rare-earth orders prioritized","Rich mines increase extraction","Factories preserve a reserve"],score:()=>80-empireResource(0,"rare")*.3,apply:e=>{setModifier(e,"mining",1.18,70);playerWorlds().forEach(p=>addOrder(p,"mandate","rare",45,4,"Rare-earth stockpile"))}},
+      {id:"familyGrants",cat:"Population",title:"Family Expansion Grants",desc:"Turn surplus housing and stability into the fastest civilian expansion the empire can sustain.",effects:["Birth rate +90%","Medical support reduces deaths","Cities prepare new housing"],score:()=>68+(playerWorlds().some(p=>p.pop/p.capacity<.65)?18:0),apply:e=>{setModifier(e,"birthrate",1.9,90);setModifier(e,"mortality",.82,90);addDirective(e,"population",null,90)}},
+      {id:"resettle",cat:"Population",title:"Voluntary Resettlement Charter",desc:"Pay for passage from crowded cores to young colonies without manually assigning a single transport.",effects:["Migration rate +170%","Underfilled worlds prioritized","Overcrowding falls faster"],score:()=>45+playerWorlds().filter(p=>p.pop/p.capacity>.85).length*18,apply:e=>{setModifier(e,"migration",2.7,90);addDirective(e,"population",null,90)}},
+      {id:"rationing",cat:"Population",title:"Emergency Rationing",desc:"Protect lives during empire-wide shortages by slowing consumption and nonessential expansion.",effects:["Shortage mortality -55%","Factory output -15%","Population growth slows"],score:()=>35+totalShortages(0)*22,apply:e=>{setModifier(e,"mortality",.45,80);setModifier(e,"industry",.85,80);setModifier(e,"growth",.78,80)}},
+      {id:"medicine",cat:"Research",title:"Medical Renaissance",desc:"Fund public health, maternity care, and frontier clinics as permanent imperial infrastructure.",effects:["Medicine technology rises","Death rate permanently falls","Population resilience improves"],score:()=>52+playerWorlds().filter(p=>p.popTrend<0).length*10,apply:e=>{e.tech.medicine+=.42;setModifier(e,"mortality",.72,85)}},
+      {id:"homesteads",cat:"Population",title:"Frontier Homestead Act",desc:"Pair growing families with colonial passage to scattered, underdeveloped worlds.",effects:["Strategic neutral world targeted","Colonial migration surges","Core growth briefly slows"],score:()=>bestNeutral()?62:0,target:()=>bestNeutral(),apply:(e,t)=>{setModifier(e,"migration",2.1,95);setModifier(e,"growth",.88,70);addDirective(e,"claim",t?.id,110)}},
+      {id:"urbanRenewal",cat:"Infrastructure",title:"Core World Urban Renewal",desc:"Expand a crowded world's arcologies, transit, and life-support capacity before productivity collapses.",effects:["Target gains major housing","One city tier authorized","Civil productivity rises"],score:()=>mostCrowded()?.pop/mostCrowded()?.capacity*55||20,target:()=>mostCrowded(),apply:(e,t)=>{if(t){t.capacity+=.28+Math.sqrt(t.pop)*.08;t.infra.city++;t.unrest=Math.max(0,t.unrest-.2)}setModifier(e,"civilEfficiency",1.16,75)}},
+      {id:"sanctuary",cat:"Population",title:"Refugee Sanctuary Network",desc:"Reserve housing and transports so civilians escaping war arrive somewhere capable of supporting them.",effects:["Migration capacity +80%","War mortality reduced","Receiving worlds add housing"],score:()=>state.battles.some(b=>b.defender===0)?92:34,apply:e=>{setModifier(e,"migration",1.8,90);setModifier(e,"mortality",.62,90);playerWorlds().filter(p=>p.pop/p.capacity<.75).forEach(p=>p.capacity+=.04)}},
+      {id:"evacuate",cat:"Population",title:"Evacuate Exposed Worlds",desc:"Move civilians off threatened frontier worlds while fleet commands hold the evacuation corridors.",effects:["Threatened populations depart","Safe worlds receive refugees","Frontier industry temporarily slows"],score:()=>mostThreatened()&&borderThreat(mostThreatened())>.35?88:12,target:()=>mostThreatened(),apply:e=>{addDirective(e,"evacuate",null,70);setModifier(e,"civilEfficiency",.82,70);setModifier(e,"responseRange",1.25,70)}},
+      {id:"rapidResponse",cat:"Military",title:"Rapid Response Flotillas",desc:"Authorize nearby uncommitted defense groups to answer battles far beyond their normal patrol zones.",effects:["Reinforcement range +85%","More docked ships respond","Fleet travel speed improves"],score:()=>state.battles.some(b=>b.defender===0)?98:57,apply:e=>{setModifier(e,"responseRange",1.85,90);setModifier(e,"reinforcement",1.55,90);e.tech.propulsion+=.1;addDirective(e,"rapidResponse",null,90);state.battles.filter(b=>b.defender===0).forEach(b=>dispatchBattleReinforcements(b,state.planets[+b.planetId.slice(1)],0,false))}},
+      {id:"carriers",cat:"Military",title:"Carrier Battle Doctrine",desc:"Center fleet design on fighter screens that swarm capital ships during close orbital engagements.",effects:["Carrier technology rises","More combat craft appear","Fleet damage improves"],score:()=>58,apply:e=>{e.tech.carriers+=.38;e.tech.weapons+=.08;setModifier(e,"shipbuilding",1.22,80)}},
+      {id:"shieldNet",cat:"Infrastructure",title:"Planetary Shield Network",desc:"Link fortress worlds into a common defense grid and harden the most exposed population centers.",effects:["Battle defense +40%","Frontier garrisons reinforced","Defense batteries gain priority"],score:()=>45+Math.max(0,...playerWorlds().map(borderThreat))*48,apply:e=>{setModifier(e,"defense",1.4,90);addDirective(e,"fortify",null,90);playerWorlds().sort((a,b)=>borderThreat(b)-borderThreat(a)).slice(0,3).forEach(p=>p.garrison+=8)}},
+      {id:"totalWar",cat:"Military",title:"Total War Mobilization",desc:"Accept population and civilian costs to turn the empire's whole productive system toward survival.",effects:["Combat +45%","Shipbuilding +55%","Birth rate and civilian output fall"],score:()=>state.battles.length?94:42,apply:e=>{setModifier(e,"combat",1.45,80);setModifier(e,"shipbuilding",1.55,80);setModifier(e,"growth",.58,80);setModifier(e,"civilEfficiency",.76,80);addDirective(e,"totalWar",null,80)}},
+      {id:"deepStrike",cat:"Military",title:"Deep Industrial Strike",desc:"Bypass the nearest frontier and aim an offensive at a rival's most productive reachable world.",effects:["Enemy forge world targeted","Attack fleets stage immediately","Long supply line raises risk"],score:()=>enemyIndustryWorld()?55:0,target:()=>enemyIndustryWorld(),apply:(e,t)=>{if(t){addDirective(e,"invasion",t.id,110);setModifier(e,"combat",1.15,75);launchStrategicOffensive(e)}}},
+      {id:"raid",cat:"Military",title:"Raid Enemy Supply Lines",desc:"Send fast battle groups against a vulnerable logistics world rather than attempting permanent conquest.",effects:["Enemy stockpile targeted","Fleet response accelerates","Defender orders may be disrupted"],score:()=>nearestEnemy()?58:0,target:()=>nearestEnemy(),apply:(e,t)=>{if(t){addDirective(e,"raid",t.id,80);setModifier(e,"responseRange",1.35,80);launchStrategicOffensive(e)}}},
+      {id:"officers",cat:"Research",title:"Veteran Officer Corps",desc:"Concentrate academies on experienced commanders, engineers, and damage-control specialists.",effects:["Weapons technology rises","Training output +45%","Battle effectiveness improves"],score:()=>50+state.battles.length*10,apply:e=>{e.tech.weapons+=.24;setModifier(e,"training",1.45,90);setModifier(e,"combat",1.12,90)}},
+      {id:"distributed",cat:"Industry",title:"Distributed Manufacturing",desc:"Reduce dependence on one forge world by planting small factories across productive colonies.",effects:["Weak industrial worlds expand","Construction orders generated","Supply resilience improves"],score:()=>55+playerWorlds().filter(p=>!p.infra.factory).length*7,apply:e=>{playerWorlds().filter(p=>p.infra.factory<1).slice(0,3).forEach(p=>{if(p.stock.components>=34){p.stock.components-=34;p.infra.factory++}else addOrder(p,"construction","components",42,4,"Distributed factory order")});setModifier(e,"industry",1.16,85)}},
+      {id:"armsConversion",cat:"Industry",title:"Arms Conversion Program",desc:"Convert civilian production lines into weapons, defense craft, and field equipment.",effects:["Equipment output surges","Garrisons receive arms","Civil population growth slows"],score:()=>state.battles.length?87:47,apply:e=>{setModifier(e,"industry",1.3,75);setModifier(e,"growth",.8,75);playerWorlds().forEach(p=>{p.stock.equipment+=8;p.garrison+=Math.min(5,p.infra.factory*1.5)})}},
+      {id:"sustainable",cat:"Resources",title:"Sustainable Extraction Act",desc:"Sacrifice some immediate digging speed to stretch strategic deposits and prevent future collapse.",effects:["Reserve depletion -48%","Mining output -12%","Extraction science advances"],score:()=>playerWorlds().some(p=>RESOURCES.some(r=>p.reserve[r]<p.quality[r]*180))?92:44,apply:e=>{setModifier(e,"depletion",.52,100);setModifier(e,"mining",.88,100);e.tech.extraction+=.12}},
+      {id:"helium",cat:"Resources",title:"Helium-3 Fuel Corridor",desc:"Give fuel orders first claim on freighters so distant fleets and colony missions do not stall.",effects:["Helium orders gain priority","Propulsion research rises","Fuel-rich worlds expand mines"],score:()=>78-empireResource(0,"helium")*.25,apply:e=>{e.tech.propulsion+=.1;playerWorlds().forEach(p=>addOrder(p,"mandate","helium",55,4,"Helium-3 fuel corridor"));const rich=playerWorlds().filter(p=>p.quality.helium>=4);rich.forEach(p=>{if(p.infra.mine<sustainableMines(p))p.infra.mine++})}},
+      {id:"orbitalHabitats",cat:"Infrastructure",title:"Orbital Habitat Initiative",desc:"Build living space above the most crowded worlds without consuming additional planetary land.",effects:["Two crowded worlds gain housing","Growth pressure eases","Orbital lights become visible"],score:()=>mostCrowded()?72:0,target:()=>mostCrowded(),apply:(e,t)=>{playerWorlds().sort((a,b)=>b.pop/b.capacity-a.pop/a.capacity).slice(0,2).forEach(p=>{p.capacity+=.22;p.infra.city++});setModifier(e,"growth",1.12,80)}},
+      {id:"sensorWeb",cat:"Research",title:"Galactic Sensor Web",desc:"Link scouts, frontier stations, and civilian traffic into a clearer picture of distant space.",effects:["Planet intelligence improves","Reinforcement range rises","Hidden frontier worlds revealed"],score:()=>70-empire(0).intel.size*.6,apply:e=>{state.planets.forEach(p=>p.intel=Math.min(1,p.intel+.18));state.planets.slice().sort((a,b)=>dist(playerWorlds()[0],a)-dist(playerWorlds()[0],b)).slice(0,10).forEach(p=>e.intel.add(p.id));setModifier(e,"responseRange",1.25,95)}},
+      {id:"emergencyRepair",cat:"Infrastructure",title:"Emergency Battle Repair",desc:"Route engineers, replacement armor, and repair craft directly into every active defensive battle.",effects:["Defending fleets regain strength","Batteries fire faster","Components are consumed"],score:()=>state.battles.some(b=>b.defender===0)?110:8,apply:e=>{state.battles.filter(b=>b.defender===0).forEach(b=>{b.defenderStrength+=12;b.defenderInitial+=12});playerWorlds().forEach(p=>consume(p,"components",Math.min(4,p.stock.components)));setModifier(e,"defense",1.25,55)}}
     ];
     function bestNeutral(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner===null).map(p=>({p,value:Object.values(p.quality).reduce((a,b)=>a+b,0)+Math.max(...Object.values(p.quality))*4-Math.min(...worlds.map(w=>dist(w,p)))/180})).sort((a,b)=>b.value-a.value)[0]?.p||null}
     function nearestEnemy(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner!==null&&p.owner!==0).sort((a,b)=>Math.min(...worlds.map(w=>dist(w,a)))-Math.min(...worlds.map(w=>dist(w,b))))[0]||null}
+    function mostCrowded(){return playerWorlds().slice().sort((a,b)=>b.pop/b.capacity-a.pop/a.capacity)[0]||null}
+    function mostThreatened(){return playerWorlds().slice().sort((a,b)=>borderThreat(b)-borderThreat(a))[0]||null}
+    function enemyIndustryWorld(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner!==null&&p.owner!==0&&Math.min(...worlds.map(w=>dist(w,p)))<2200).sort((a,b)=>(b.infra.factory*2+b.infra.shipyard)-(a.infra.factory*2+a.infra.shipyard))[0]||nearestEnemy()}
     function openCommandPhase(){
       if(!state.running||state.ended||!$("commandModal").hidden)return;state.preCommandSpeed=state.speed||1;state.speed=0;
       const [stage,slots]=stageInfo();const weighted=COMMANDS.map(c=>({c,score:c.score()+rand(-12,12)})).filter(x=>x.score>5).sort((a,b)=>b.score-a.score);
@@ -408,10 +502,16 @@
     function draw(){
       const w=innerWidth,h=innerHeight,z=state.camera.zoom;ctx.setTransform(dpr(),0,0,dpr(),0,0);ctx.fillStyle="#030511";ctx.fillRect(0,0,w,h);state.stats.visible=0;state.stats.drawCalls=1;
       const neb=ctx.createRadialGradient(w*.56,h*.45,20,w*.56,h*.45,Math.max(w,h)*.75);neb.addColorStop(0,"rgba(42,35,104,.22)");neb.addColorStop(.45,"rgba(9,31,75,.12)");neb.addColorStop(1,"rgba(2,3,10,0)");ctx.fillStyle=neb;ctx.fillRect(0,0,w,h);
-      drawStars();drawTerritories();drawLanes();drawShips();drawPlanets();drawSelection();
-      $("perf").textContent=`${state.stats.visible} visible · ${state.ships.length} ships`;
+      drawNebulae();drawStars();drawTerritories();drawLanes();drawShips();drawPlanets();drawBattles();drawEffects();drawSelection();
+      $("perf").textContent=`${state.stats.visible} visible · ${state.ships.length} ships · ${state.battles.length} battles`;
     }
-    function drawStars(){ctx.fillStyle="#dceaff";for(const s of state.stars){const par=.32+s.layer*.16,sp=worldToScreen(s.x*par+state.camera.x*(1-par),s.y*par+state.camera.y*(1-par));if(sp.x<0||sp.x>innerWidth||sp.y<0||sp.y>innerHeight)continue;ctx.globalAlpha=s.a;ctx.beginPath();ctx.arc(sp.x,sp.y,s.r*(.6+state.camera.zoom*.45),0,6.283);ctx.fill();state.stats.visible++}ctx.globalAlpha=1}
+    function drawNebulae(){
+      const z=state.camera.zoom;for(const n of state.nebulae){const s=worldToScreen(n.x,n.y),rx=n.rx*z,ry=n.ry*z;if(s.x+rx<-80||s.x-rx>innerWidth+80||s.y+ry<-80||s.y-ry>innerHeight+80)continue;
+        ctx.save();ctx.translate(s.x,s.y);ctx.rotate(n.rotation);ctx.scale(Math.max(1,rx),Math.max(1,ry));const g=ctx.createRadialGradient(-.18,-.12,.02,0,0,1);g.addColorStop(0,`hsla(${n.hue} 95% 72% / ${n.alpha*1.8})`);g.addColorStop(.32,`hsla(${n.hue+24} 82% 52% / ${n.alpha})`);g.addColorStop(.7,`hsla(${n.hue-18} 72% 32% / ${n.alpha*.52})`);g.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,1,0,6.283);ctx.fill();ctx.restore();
+        ctx.save();ctx.globalAlpha=n.alpha*1.7;ctx.strokeStyle=`hsl(${n.hue+35} 80% 68%)`;ctx.lineWidth=1;for(let i=0;i<3;i++){const phase=n.seed+i*2.1,spread=(i+1)*.22;ctx.beginPath();ctx.moveTo(s.x-rx*.55,s.y+Math.sin(phase)*ry*.25);ctx.bezierCurveTo(s.x-rx*.16,s.y-ry*spread,s.x+rx*.18,s.y+ry*spread,s.x+rx*.62,s.y+Math.cos(phase)*ry*.18);ctx.stroke()}ctx.restore();state.stats.visible++;state.stats.drawCalls+=4
+      }
+    }
+    function drawStars(){for(const s of state.stars){const par=.32+s.layer*.16,sp=worldToScreen(s.x*par+state.camera.x*(1-par),s.y*par+state.camera.y*(1-par));if(sp.x<0||sp.x>innerWidth||sp.y<0||sp.y>innerHeight)continue;ctx.fillStyle=s.tint||"#dceaff";ctx.globalAlpha=s.a;ctx.beginPath();ctx.arc(sp.x,sp.y,s.r*(.6+state.camera.zoom*.45),0,6.283);ctx.fill();state.stats.visible++}ctx.globalAlpha=1}
     function drawTerritories(){if(state.camera.zoom>.9)return;state.empires.forEach(e=>{const ps=owned(e.id).filter(p=>visible(p.x,p.y,600));if(!ps.length)return;ctx.fillStyle=e.color+"0b";ctx.strokeStyle=e.color+"20";ctx.lineWidth=1;ps.forEach(p=>{const s=worldToScreen(p.x,p.y);ctx.beginPath();ctx.arc(s.x,s.y,Math.max(44,420*state.camera.zoom),0,6.283);ctx.fill();ctx.stroke()})})}
     function drawLanes(){ctx.lineWidth=1;for(const l of state.lanes){const a=state.planets[+l.a.slice(1)],b=state.planets[+l.b.slice(1)];if(!a||!b||(!visible(a.x,a.y,250)&&!visible(b.x,b.y,250)))continue;const sa=worldToScreen(a.x,a.y),sb=worldToScreen(b.x,b.y);const same=a.owner!==null&&a.owner===b.owner;ctx.strokeStyle=same?empire(a.owner).color+"28":"rgba(108,137,198,.1)";ctx.setLineDash(same?[4,7]:[2,12]);ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.lineTo(sb.x,sb.y);ctx.stroke();state.stats.drawCalls++}ctx.setLineDash([])}
     function drawShips(){for(const s of state.ships){if(!visible(s.x,s.y,25))continue;const p=worldToScreen(s.x,s.y),color=empire(s.owner).color,size=clamp(2.8*state.camera.zoom,2.2,5);ctx.save();ctx.translate(p.x,p.y);const target=state.planets[+s.to.slice(1)],ang=target?Math.atan2(target.y-s.y,target.x-s.x):0;ctx.rotate(ang);ctx.shadowColor=color;ctx.shadowBlur=8;ctx.fillStyle=color;if(s.type==="fleet"){ctx.beginPath();ctx.moveTo(size*1.8,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.fill()}else if(s.type==="colony"){ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(size,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.stroke()}else{ctx.fillRect(-size,-1,size*2,2)}ctx.restore();state.stats.visible++;state.stats.drawCalls++}}
@@ -420,24 +520,45 @@
       const z=state.camera.zoom;for(const p of state.planets){if(!visible(p.x,p.y,120))continue;const s=worldToScreen(p.x,p.y),r=clamp(p.r*z,5,36);state.stats.visible++;
         if(p.owner!==null){ctx.strokeStyle=empire(p.owner).color+"45";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(s.x,s.y,r*2.2,r*.72,p.rotation*.17,0,6.283);ctx.stroke()}
         ctx.save();ctx.shadowColor=p.owner!==null?empire(p.owner).color:"#607394";ctx.shadowBlur=p.owner!==null?18:8;ctx.fillStyle=planetGradient(p,s,r);ctx.beginPath();ctx.arc(s.x,s.y,r,0,6.283);ctx.fill();ctx.restore();
-        if(z>.54&&p.owner!==null)drawSurface(p,s,r);
+        if(z>.54&&p.owner!==null){drawSurface(p,s,r);drawPopulationActivity(p,s,r)}
         if(p.infra.defense&&p.owner!==null&&z>.42){ctx.strokeStyle=empire(p.owner).color+"68";ctx.lineWidth=1.2;for(let i=0;i<Math.min(3,p.infra.defense);i++){const start=p.rotation+i*2.05;ctx.beginPath();ctx.arc(s.x,s.y,r+7+i*2,start-.48,start+.48);ctx.stroke()}}
         ctx.textAlign="center";ctx.fillStyle=p.owner!==null?"#eef5ff":"#8b9aba";ctx.font=`${z<.45?9:11}px Inter,system-ui`;ctx.fillText(z<.42?p.name.slice(0,1):p.name,s.x,s.y+r+15);
         if(p.home){ctx.fillStyle=p.owner!==null?empire(p.owner).color:"#fff";ctx.font="10px sans-serif";ctx.fillText("✦",s.x,s.y-r-8)}
       }
     }
-    function drawSurface(p,s,r){const count=Math.min(18,p.infra.city*2+p.infra.mine+p.infra.factory*2+p.infra.defense+p.infra.training);for(let i=0;i<count;i++){const a=p.rotation+i*2.399,lat=Math.sin(i*1.71)*.7,front=Math.cos(a)*Math.cos(lat);if(front<-.12)continue;const x=s.x+Math.sin(a)*Math.cos(lat)*r*.78,y=s.y+Math.sin(lat)*r*.68;ctx.fillStyle=i<p.infra.city*2?"#72eaff":i<p.infra.city*2+p.infra.factory*2?"#ffb75c":"#dce8ff";ctx.globalAlpha=.45+front*.45;ctx.fillRect(x-1,y-1,2.2,2.2)}ctx.globalAlpha=1}
+    function drawSurface(p,s,r){
+      const populationLights=Math.round(Math.sqrt(Math.max(.001,p.visualPop??p.pop)*100)*1.25),cityLights=Math.round(p.infra.city*2.4+populationLights),count=Math.min(28,cityLights+p.infra.mine+p.infra.factory*2+p.infra.defense+p.infra.training),trend=p.popTrend||0;
+      for(let i=0;i<count;i++){const a=p.rotation+i*2.399,lat=Math.sin(i*1.71)*.7,front=Math.cos(a)*Math.cos(lat);if(front<-.12)continue;const x=s.x+Math.sin(a)*Math.cos(lat)*r*.78,y=s.y+Math.sin(lat)*r*.68,isCity=i<cityLights,isFactory=i>=cityLights&&i<cityLights+p.infra.factory*2;ctx.fillStyle=isCity?(trend<-.00015?"#ff8b86":"#72eaff"):isFactory?"#ffb75c":"#dce8ff";ctx.globalAlpha=(.38+front*.5)*(trend<-.00015&&isCity?.62:1);const size=isCity?clamp(1.5+Math.sqrt(Math.max(.01,p.pop))*1.1,1.5,3.4):2.1;ctx.fillRect(x-size/2,y-size/2,size,size)}ctx.globalAlpha=1
+    }
+    function drawPopulationActivity(p,s,r){
+      const trend=p.popTrend||0;if(Math.abs(trend)<.00008)return;const growing=trend>0,color=growing?"#59f2bc":"#ff6d82",pulse=(performance.now()/900+p.rotation)%1;ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.18+(1-pulse)*.34;ctx.lineWidth=1;ctx.beginPath();ctx.arc(s.x,s.y,r+5+pulse*9,0,6.283);ctx.stroke();ctx.fillStyle=color;ctx.globalAlpha=.55;for(let i=0;i<3;i++){const a=p.rotation+i*2.094,x=s.x+Math.cos(a)*(r+3),base=s.y+Math.sin(a)*(r*.48),drift=((performance.now()/650+i*.31)%1)*7;ctx.fillRect(x,base+(growing?-drift:drift),1.5,1.5)}ctx.restore()
+    }
+    function battlePoint(s,radius,i,count,direction,elapsed){const a=(i/count)*Math.PI*2+elapsed*.72*direction+(direction>0?0:Math.PI),wobble=Math.sin(elapsed*1.8+i*2.7)*radius*.16;return {x:s.x+Math.cos(a)*(radius+wobble),y:s.y+Math.sin(a)*(radius*.58+wobble*.35)}}
+    function drawCombatCraft(p,target,color,size){const ang=Math.atan2(target.y-p.y,target.x-p.x);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(ang);ctx.shadowColor=color;ctx.shadowBlur=7;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(size*1.8,0);ctx.lineTo(-size,-size*.82);ctx.lineTo(-size*.45,0);ctx.lineTo(-size,size*.82);ctx.closePath();ctx.fill();ctx.fillStyle="#dffcff";ctx.globalAlpha=.75;ctx.fillRect(-size*1.8,-.5,size*.8,1);ctx.restore()}
+    function drawBattles(){
+      const z=state.camera.zoom;for(const b of state.battles){const planet=state.planets[+b.planetId.slice(1)];if(!planet||!visible(planet.x,planet.y,180))continue;const s=worldToScreen(planet.x,planet.y),ac=empire(b.attacker).color,dc=empire(b.defender).color,radius=clamp(82*z,30,118),pulse=.5+.5*Math.sin(b.elapsed*6);state.stats.visible++;
+        if(z<.34){ctx.strokeStyle=ac;ctx.lineWidth=2;ctx.beginPath();ctx.arc(s.x,s.y,12+pulse*4,0,Math.PI);ctx.stroke();ctx.strokeStyle=dc;ctx.beginPath();ctx.arc(s.x,s.y,12+pulse*4,Math.PI,6.283);ctx.stroke();continue}
+        const attackers=clamp(Math.ceil(Math.sqrt(b.attackerInitial)*1.35+empire(b.attacker).tech.carriers*2),3,13),defenders=clamp(Math.ceil(Math.sqrt(b.defenderInitial)*1.25+empire(b.defender).tech.carriers*2),3,13),ap=[],dp=[];
+        for(let i=0;i<attackers;i++)ap.push(battlePoint(s,radius,i,attackers,1,b.elapsed));for(let i=0;i<defenders;i++)dp.push(battlePoint(s,radius*.72,i,defenders,-1,b.elapsed));
+        ctx.save();ctx.globalCompositeOperation="lighter";const beams=Math.min(6,Math.ceil((attackers+defenders)/5));for(let i=0;i<beams;i++){if(((Math.floor(b.elapsed*11)+i*3)%5)>2)continue;const a=ap[(i*3+Math.floor(b.elapsed))%ap.length],d=dp[(i*5+2)%dp.length];ctx.strokeStyle=i%2?ac:dc;ctx.globalAlpha=.55+pulse*.25;ctx.lineWidth=.7+(i%2);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(d.x,d.y);ctx.stroke()}
+        if(planet.infra.defense){ctx.strokeStyle=dc;ctx.globalAlpha=.72;for(let i=0;i<Math.min(3,planet.infra.defense);i++){const target=ap[(i*4+Math.floor(b.elapsed*2))%ap.length],a=planet.rotation+i*2.1;ctx.beginPath();ctx.moveTo(s.x+Math.cos(a)*10*z,s.y+Math.sin(a)*10*z);ctx.lineTo(target.x,target.y);ctx.stroke()}}
+        ctx.restore();const targetD=dp[0]||s,targetA=ap[0]||s;ap.forEach((p,i)=>drawCombatCraft(p,dp[i%dp.length]||targetD,ac,clamp(2.2*z,2,4.5)));dp.forEach((p,i)=>drawCombatCraft(p,ap[i%ap.length]||targetA,dc,clamp(2*z,1.8,4)));
+        ctx.lineWidth=2;ctx.strokeStyle=ac;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(s.x,s.y,radius+12,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(b.attackerStrength/b.attackerInitial,0,1));ctx.stroke();ctx.strokeStyle=dc;ctx.beginPath();ctx.arc(s.x,s.y,radius+16,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(b.defenderStrength/b.defenderInitial,0,1));ctx.stroke();ctx.globalAlpha=1;state.stats.drawCalls+=attackers+defenders+beams
+      }
+    }
+    function drawEffects(){ctx.save();ctx.globalCompositeOperation="lighter";for(const fx of state.effects){if(!visible(fx.x,fx.y,30))continue;const s=worldToScreen(fx.x,fx.y),life=clamp(fx.life/fx.maxLife,0,1),r=fx.size*(1-life*.35)*state.camera.zoom;ctx.globalAlpha=life;const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,Math.max(2,r));g.addColorStop(0,"#fff");g.addColorStop(.25,fx.color);g.addColorStop(1,"rgba(255,70,30,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(s.x,s.y,Math.max(2,r),0,6.283);ctx.fill();state.stats.visible++}ctx.restore();ctx.globalAlpha=1}
     function drawSelection(){if(!state.selected)return;const p=state.selected,s=worldToScreen(p.x,p.y),r=clamp(p.r*state.camera.zoom,5,36)+13;ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(s.x,s.y,r+Math.sin(performance.now()/280)*2,0,6.283);ctx.stroke();ctx.setLineDash([])}
 
     function renderPlanet(){
       const p=state.selected;if(!p){$("planetName").textContent="No world selected";$("planetSubtitle").textContent="Select a world to inspect its living economy.";$("planetBody").innerHTML='<div class="empty-selection"><div><div class="orb"></div>Click a planet to inspect population pressure, resources, facilities, shortages, and delayed orders.</div></div>';return}
-      const e=p.owner!==null?empire(p.owner):null,intel=p.owner===0?1:p.intel;$("planetName").textContent=p.name;$("planetSubtitle").textContent=intel<.45?"Partial sensor contact":p.specialization;
-      const popRatio=p.pop/p.capacity,mineLoad=p.infra.mine/sustainableMines(p),orders=p.orders.filter(o=>o.status!=="filled");
+      const e=p.owner!==null?empire(p.owner):null,intel=p.owner===0?1:p.intel,battle=activeBattleAt(p);$("planetName").textContent=p.name;$("planetSubtitle").textContent=battle?"ACTIVE ORBITAL BATTLE":intel<.45?"Partial sensor contact":p.specialization;
+      const popRatio=p.pop/p.capacity,mineLoad=p.infra.mine/sustainableMines(p),orders=p.orders.filter(o=>o.status!=="filled"),trend=p.popTrend||0,trendText=Math.abs(trend)<.00008?"Stable":`${trend>0?"+":"−"}${fmtNum(Math.abs(trend))}/min`;
       const qualities=RESOURCES.map(r=>`<div class="resource-row"><span style="color:${RESOURCE_COLOR[r]}">${RESOURCE_LABEL[r]} <small>${intel<.45?"estimate":"quality"}</small></span><span class="stars">${intel<.25?"Unknown":"★".repeat(Math.max(1,Math.round(p.quality[r]*(intel<.65?.8:1))))}${intel>=.25?"☆".repeat(Math.max(0,5-Math.round(p.quality[r]*(intel<.65?.8:1)))):""}</span></div>`).join("");
       const stock=p.owner===0?RESOURCES.map(r=>`<div class="resource-row"><span>${RESOURCE_LABEL[r]}</span><b class="${p.shortages.has(r)?"shortage":""}">${fmtStock(p.stock[r])}${p.shortages.has(r)?" · 50% income":""}</b></div>`).join(""):"";
       const facilities=Object.entries(p.infra).filter(([,v])=>v>0).map(([k,v])=>`<div class="facility-row"><span>${({city:"Cities / Towns",mine:"Mining Complexes",factory:"Factories",training:"Training Centers",defense:"Defense Batteries",shipyard:"Shipyards",research:"Research Facilities"})[k]}</span><b>${roman(v)}</b></div>`).join("")||'<div class="subtle">No developed infrastructure.</div>';
       const orderHtml=orders.length?orders.slice(0,6).map(o=>`<div class="order-row"><span>${o.label}<small>${o.status} · ${Math.floor(o.age)}s old</small></span><b>${Math.floor(o.filled)}/${Math.floor(o.amount)}</b></div>`).join(""):'<div class="subtle healthy">No outstanding local orders.</div>';
-      $("planetBody").innerHTML=`<div class="owner-row"><span class="owner-chip" style="color:${e?.color||"#8491aa"}"><i class="dot"></i>${e?.name||"Unclaimed"}</span><span class="status-chip">${p.home?"Capital":"World"}</span></div><div class="metric-grid"><div class="metric"><label>Population</label><b>${fmtNum(p.pop)} / ${fmtNum(p.capacity)}</b><div class="meter ${popRatio>1?"warning":""}"><i style="width:${clamp(popRatio*100,0,100)}%"></i></div></div><div class="metric"><label>Productivity</label><b>${Math.round(p.efficiency*100)}%</b><div class="meter ${p.efficiency<.7?"warning":""}"><i style="width:${p.efficiency*100}%"></i></div></div><div class="metric"><label>Mine Load</label><b>${Math.round(mineLoad*100)}% of cap</b><div class="meter ${mineLoad>1?"warning":""}"><i style="width:${clamp(mineLoad*100,0,100)}%"></i></div></div><div class="metric"><label>Factory Flow</label><b>${Math.round(p.factoryEfficiency*100)}%</b><div class="meter ${p.factoryEfficiency<.65?"warning":""}"><i style="width:${p.factoryEfficiency*100}%"></i></div></div></div><div class="section-label">Resource Quality</div><div class="resource-list">${qualities}</div>${p.owner===0?`<div class="section-label">Local Stockpiles</div><div class="resource-list">${stock}</div>`:""}<div class="section-label">Civilization</div><div class="facility-list">${facilities}</div>${p.owner===0?`<div class="section-label">Autonomous Orders</div><div class="order-list">${orderHtml}</div>`:""}`;
+      const battleHtml=battle?`<div class="section-label">Orbital Battle</div><div class="order-list"><div class="order-row"><span style="color:${empire(battle.attacker).color}">${empire(battle.attacker).name}<small>Attacking fleet</small></span><b>${Math.round(battle.attackerStrength)}</b></div><div class="order-row"><span style="color:${empire(battle.defender).color}">${empire(battle.defender).name}<small>Planetary defenders</small></span><b>${Math.round(battle.defenderStrength)}</b></div></div>`:"";
+      $("planetBody").innerHTML=`<div class="owner-row"><span class="owner-chip" style="color:${e?.color||"#8491aa"}"><i class="dot"></i>${e?.name||"Unclaimed"}</span><span class="status-chip ${battle?"shortage":""}">${battle?"Battle":p.home?"Capital":p.scattered?"Rogue World":"World"}</span></div><div class="metric-grid"><div class="metric"><label>Population</label><b>${fmtNum(p.pop)} / ${fmtNum(p.capacity)}</b><div class="meter ${popRatio>1?"warning":""}"><i style="width:${clamp(popRatio*100,0,100)}%"></i></div></div><div class="metric"><label>Population Trend</label><b class="${trend<-.00008?"shortage":trend>.00008?"healthy":""}">${trendText}</b><div class="meter ${trend<-.00008?"warning":""}"><i style="width:${clamp(50+trend*35000,4,100)}%"></i></div></div><div class="metric"><label>Productivity</label><b>${Math.round(p.efficiency*100)}%</b><div class="meter ${p.efficiency<.7?"warning":""}"><i style="width:${p.efficiency*100}%"></i></div></div><div class="metric"><label>Mine Load</label><b>${Math.round(mineLoad*100)}% of cap</b><div class="meter ${mineLoad>1?"warning":""}"><i style="width:${clamp(mineLoad*100,0,100)}%"></i></div></div><div class="metric"><label>Factory Flow</label><b>${Math.round(p.factoryEfficiency*100)}%</b><div class="meter ${p.factoryEfficiency<.65?"warning":""}"><i style="width:${p.factoryEfficiency*100}%"></i></div></div></div>${battleHtml}<div class="section-label">Resource Quality</div><div class="resource-list">${qualities}</div>${p.owner===0?`<div class="section-label">Local Stockpiles</div><div class="resource-list">${stock}</div>`:""}<div class="section-label">Civilization</div><div class="facility-list">${facilities}</div>${p.owner===0?`<div class="section-label">Autonomous Orders</div><div class="order-list">${orderHtml}</div>`:""}`;
     }
     function renderEvents(){const events=state.events.filter(e=>e.empireId===0||e.tone==="danger").slice(0,12);$("events").innerHTML=events.map(e=>`<div class="event ${e.tone}">${e.text}<time>Year 1 · Day ${Math.floor(e.time/6)+1}</time></div>`).join("")||'<div class="event">The galaxy is quiet—for now.</div>'}
     function updateHud(force=false){
@@ -448,9 +569,9 @@
     function updateSpeedButtons(){document.querySelectorAll("[data-speed]").forEach(b=>b.classList.toggle("active",Number(b.dataset.speed)===state.speed))}
 
     function saveGame(notify=true){
-      if(!state.running)return;try{const data={version:1,simTime:state.simTime,nextCommand:state.nextCommand,rngState:state.rngState,planets:state.planets.map(p=>({...p,shortages:[...p.shortages]})),ships:state.ships,empires:state.empires.map(e=>({...e,intel:[...e.intel]})),events:state.events,camera:state.camera,selected:state.selected?.id};localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(notify)showToast("Mandate saved locally") }catch(err){console.warn("Save failed",err);if(notify)showToast("Save could not be written")}
+      if(!state.running)return;try{const data={version:2,simTime:state.simTime,nextCommand:state.nextCommand,rngState:state.rngState,planets:state.planets.map(p=>({...p,shortages:[...p.shortages]})),ships:state.ships,battles:state.battles,empires:state.empires.map(e=>({...e,intel:[...e.intel]})),events:state.events,camera:state.camera,selected:state.selected?.id};localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(notify)showToast("Mandate saved locally") }catch(err){console.warn("Save failed",err);if(notify)showToast("Save could not be written")}
     }
-    function loadGame(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d||d.version!==1)return false;state.simTime=d.simTime||0;state.nextCommand=d.nextCommand||state.simTime+45;state.rngState=d.rngState||937145;state.planets=d.planets.map(p=>({...p,shortages:new Set(p.shortages||[])}));state.ships=d.ships||[];state.empires=d.empires.map(e=>({...e,intel:new Set(e.intel||[])}));state.events=d.events||[];state.camera=d.camera||{x:1800,y:2600,zoom:.68};state.selected=state.planets.find(p=>p.id===d.selected)||state.planets[0];state.stars=Array.from({length:520},(_,i)=>({x:rand(0,WORLD.w),y:rand(0,WORLD.h),r:rand(.25,1.5),a:rand(.18,.8),layer:i%3}));recomputeLanes();return true}catch(err){console.warn("Load failed",err);return false}}
+    function loadGame(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d||![1,2].includes(d.version))return false;state.simTime=d.simTime||0;state.nextCommand=d.nextCommand||state.simTime+45;state.rngState=d.rngState||937145;state.planets=d.planets.map(p=>({...p,shortages:new Set(p.shortages||[]),history:p.history||[],popTrend:p.popTrend||0,lastPopSample:p.lastPopSample??p.pop,lastPopSampleAt:p.lastPopSampleAt??state.simTime,visualPop:p.visualPop??p.pop,evacuating:!!p.evacuating,scattered:!!p.scattered}));state.ships=d.ships||[];state.battles=d.battles||[];state.effects=[];state.empires=d.empires.map(e=>({...e,tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0,...e.tech},intel:new Set(e.intel||[])}));if(state.planets.length<63)addScatteredWorlds(63-state.planets.length);state.events=d.events||[];state.camera=d.camera||{x:1800,y:2600,zoom:.68};state.selected=state.planets.find(p=>p.id===d.selected)||state.planets[0];generateSpaceArt();recomputeLanes();return true}catch(err){console.warn("Load failed",err);return false}}
     function startGame(load=false){if(!load)generateGalaxy();else if(!loadGame())generateGalaxy();state.running=true;state.speed=1;state.last=performance.now();$("startModal").hidden=true;updateSpeedButtons();renderEvents();renderPlanet();updateHud(true);if(!load)setTimeout(openCommandPhase,500)}
 
     canvas.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY,cx:state.camera.x,cy:state.camera.y,moved:false};canvas.setPointerCapture(e.pointerId);canvas.classList.add("dragging")});
