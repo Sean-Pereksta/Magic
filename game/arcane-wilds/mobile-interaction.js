@@ -66,3 +66,13 @@
   script.dataset.arcanePerformance='true';
   document.body.appendChild(script);
 })();
+
+/* Navigation clarity runs after the optional performance governor and owns final camera/door/spawn presentation. */
+(function loadArcaneNavigationClarity(){
+  if(document.querySelector('script[data-arcane-navigation-clarity]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/navigation-clarity.js';
+  script.async=false;
+  script.dataset.arcaneNavigationClarity='true';
+  document.body.appendChild(script);
+})();
