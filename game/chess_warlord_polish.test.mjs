@@ -63,3 +63,10 @@ test('motion and effects retain performance fallbacks', () => {
   assert.match(source, /if\(tier===0 && !special\) return/);
   assert.match(source, /function topKByScore/);
 });
+
+test('bot turns stay hidden while faction eliminations remain visible', () => {
+  const announce = extractFunction('announceFactionAction');
+  assert.match(announce, /isAIName\(rawNameForFaction\(factionIdx\)\)\) return;/);
+  assert.match(source, /captured the \$\{lf\.short\} king[\s\S]{0,180}\{category:'elimination'\}/);
+  assert.doesNotMatch(source, /shouldSuppressGameplayToasts\(category\)[\s\S]{0,120}category==='elimination'/);
+});
