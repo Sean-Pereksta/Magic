@@ -1,0 +1,41 @@
+name: Patch Arcane Wilds lobby entry
+
+on:
+  push:
+    branches:
+      - feature/arcane-wilds-world-loot-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  patch-lobby:
+    if: ${{ !contains(github.event.head_commit.message, '[lobby-patched]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/arcane-wilds-world-loot-expansion
+      - name: Add Arcane Wilds to single-player registry
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('lobby/lobby.html')
+          text = path.read_text(encoding='utf-8')
+          if 'key:"arcanewilds"' not in text:
+              anchor = '      {key:"spacetyrants",'
+              entry = '      {key:"arcanewilds",title:"Arcane Wilds",emoji:"🌌🪄",desc:"Arcane Winds / Arcane Wilds: explore a sprawling isometric RPG with evolving spells, rare affixed gear, dangerous outer regions, living villages, quests, trinkets, materials and forging.",route:"/game/arcane-wilds.html",category:"RPG",modes:["single"],featured:true},\n'
+              if anchor not in text:
+                  raise SystemExit('Could not find the single-player registry anchor')
+              text = text.replace(anchor, entry + anchor, 1)
+              path.write_text(text, encoding='utf-8')
+      - name: Commit lobby registry change
+        run: |
+          if git diff --quiet -- lobby/lobby.html; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lobby/lobby.html
+          git commit -m "Add Arcane Wilds to single-player lobby [lobby-patched]"
+          git push
