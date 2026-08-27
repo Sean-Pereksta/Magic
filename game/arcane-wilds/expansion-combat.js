@@ -87,8 +87,8 @@ killEnemy=function(e,tag=''){
  if(!e||e.dead)return;const beforeGold=game.gold,_boss=e.boss,_elite=e.elite,volatile=e.trait==='Volatile',volatileDamage=e.damage;_baseKillEnemy(e,tag);
  if(volatile){radialPlayerThreat(e.x,e.y,1.65,volatileDamage*.55);fx('explosion',e.x,e.y,.4,'#ff8a4b',{r:1.65});burst(e.x,e.y,'#ff9b55',18,1.6)}
  const mods=aggregateMods(),baseGain=Math.max(0,game.gold-beforeGold);if(mods.gold>0)game.gold+=Math.floor(baseGain*mods.gold+Math.random()*mods.gold*2);
- const matChance=_boss?1:_elite?.96:.52;if(Math.random()<matChance){const key=materialForEnemy(e),count=_boss?irnd(7,4):_elite?irnd(4,2):1;addMaterial(key,count,true);if(_boss)addMaterial(Math.random()<.5?'dust':game.roomData?.biome==='volcanic'?'ember':game.roomData?.biome==='frost'?'frost':'iron',irnd(5,2),true)}
- if(!_boss&&!game.loot&&Math.random()<(_elite?.075:.006))dropGearNow(_elite?'elite':'enemy');
+ const matChance=_boss ? 1 : _elite ? .96 : .52;if(Math.random()<matChance){const key=materialForEnemy(e),count=_boss?irnd(7,4):_elite?irnd(4,2):1;addMaterial(key,count,true);if(_boss)addMaterial(Math.random()<.5?'dust':game.roomData?.biome==='volcanic'?'ember':game.roomData?.biome==='frost'?'frost':'iron',irnd(5,2),true)}
+ if(!_boss&&!game.loot&&Math.random()<(_elite ? .075 : .006))dropGearNow(_elite?'elite':'enemy');
  const mend=suffixCount('mending');if(mend)healPlayer(1.1+mend*.8);recordQuestEvent('kill',{enemy:e,elite:_elite,boss:_boss});updateExpansionHUD();
 };
 const _baseMarkRoomCleared=markRoomCleared;

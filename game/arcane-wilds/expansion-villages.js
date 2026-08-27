@@ -9,7 +9,7 @@ function buildVillagePeople(room){
  }
 }
 function updateVillageLife(dt){
- if(!game.roomData?.town)return;for(const n of game.interactables){if(!n.npc)continue;n.walkTimer-=dt;if(n.walkTimer<=0){n.walkTimer=1.8+Math.random()*3.5;const roam=n.role==='Villager'?2.2:.8;n.targetX=clamp(n.homeX+rnd(roam,-roam),1.05,ROOM_W-1.05);n.targetY=clamp(n.homeY+rnd(roam,-roam),1.05,ROOM_H-1.05)}const dx=n.targetX-n.x,dy=n.targetY-n.y,l=Math.hypot(dx,dy);if(l>.05){const sp=(n.role==='Villager'?.7:.38)*dt;n.x+=dx/l*Math.min(sp,l);n.y+=dy/l*Math.min(sp,l);n.facing=dx>=0?1:-1}}
+ if(!game.roomData?.town)return;for(const n of game.interactables){if(!n.npc)continue;n.walkTimer-=dt;if(n.walkTimer<=0){n.walkTimer=1.8+Math.random()*3.5;const roam=n.role==='Villager'?2.2:.8;n.targetX=clamp(n.homeX+rnd(roam,-roam),1.05,ROOM_W-1.05);n.targetY=clamp(n.homeY+rnd(roam,-roam),1.05,ROOM_H-1.05)}const dx=n.targetX-n.x,dy=n.targetY-n.y,l=Math.hypot(dx,dy);if(l>.05){const sp=(n.role==='Villager' ? .7 : .38)*dt;n.x+=dx/l*Math.min(sp,l);n.y+=dy/l*Math.min(sp,l);n.facing=dx>=0?1:-1}}
 }
 function questForVillage(room){
  const id=`${room.key}:quest`,h=hash2(room.x,room.y,room.seed+6021),tier=room.villageLevel||1;if(h<.27)return {id,type:'kill',title:'Thin the Roads',desc:`Defeat ${10+tier*3} enemies beyond the village.`,target:10+tier*3,progress:0,rewardGold:34+tier*12,rewardMat:'iron',rewardCount:2+tier};
@@ -55,6 +55,8 @@ function imbueItem(slot){
 }
 function renderForgePanel(){ensureExpansionState();$('forgeMaterials').innerHTML=Object.entries(MATERIALS).map(([k,m])=>`<span>${m.icon} ${m.name} <b>${game.materials[k]||0}</b></span>`).join('');$('forgeRecipes').innerHTML=Object.entries(CRAFT_RECIPES).map(([k,r])=>`<button class="exp-recipe" data-recipe="${k}"><b>${r.title}</b><span>${materialCostText(r.cost)}</span><strong>🪙 ${r.gold}</strong></button>`).join('')+`<div class="exp-card"><b>Imbue equipped gear</b><small>Add a missing prefix or suffix. Not every found item begins with either.</small><div class="exp-inline"><button class="btn secondary" data-imbue="weapon">Weapon • ${materialCostText({dust:5,ember:2,iron:1})} + 🪙32</button><button class="btn secondary" data-imbue="armor">Armor • ${materialCostText({dust:5,iron:3})} + 🪙32</button></div></div>`;$('forgeRecipes').querySelectorAll('[data-recipe]').forEach(b=>b.onclick=()=>forgeRecipe(b.dataset.recipe));$('forgeRecipes').querySelectorAll('[data-imbue]').forEach(b=>b.onclick=()=>imbueItem(b.dataset.imbue))}
 function openForgePanel(){renderForgePanel();showOverlay('forgeCraftPanel')}
+const _baseOpenTownPanel=openTownPanel;
+openTownPanel=function(service){_baseOpenTownPanel(service);$('forgeService').textContent='Open Material Forge';$('forgeService').onclick=()=>{closeOverlay('townPanel');openForgePanel()}};
 
 const _baseLoadRoom=loadRoom;
 loadRoom=function(){_baseLoadRoom();augmentRoom(game.roomData);if(game.roomData.town)buildVillagePeople(game.roomData);updateExpansionHUD();updateHUD()};

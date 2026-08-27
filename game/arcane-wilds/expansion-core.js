@@ -86,7 +86,7 @@ function loadExpansion(){
 }
 
 function rarityForLevel(level=game.level,boost=0){
- const r=Math.random()-boost;let rarity='Common';
+ const r=Math.random()+boost;let rarity='Common';
  if(level>=18&&r>.955)rarity='Legendary';
  else if(level>=12&&r>.86)rarity='Epic';
  else if(level>=7&&r>.68)rarity='Rare';
