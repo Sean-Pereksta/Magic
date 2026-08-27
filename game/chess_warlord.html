@@ -30,6 +30,8 @@
   #fullscreenBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #audioMuteBtn{position:fixed;right:12px;top:12px;z-index:8;appearance:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(18,28,48,.9),rgba(8,12,21,.82));color:#fff;border-radius:13px;font-size:17px;font-weight:1000;cursor:pointer;box-shadow:0 14px 38px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(10px);pointer-events:auto;padding:0;}
   #audioMuteBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
+  #motionToggleBtn{position:fixed;left:12px;top:56px;z-index:8;appearance:none;border:1px solid rgba(255,255,255,.18);background:linear-gradient(180deg,rgba(18,28,48,.88),rgba(8,12,21,.80));color:#dbeafe;border-radius:999px;padding:5px 8px;font:900 10px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(9px);pointer-events:auto;}
+  #motionToggleBtn[aria-pressed="true"]{color:#fff3b0;border-color:rgba(255,212,107,.66);background:rgba(63,46,14,.86)}
   #centerBtn{appearance:none;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);color:#fff;border-radius:13px;padding:9px 10px;font-size:12px;font-weight:1000;cursor:pointer;width:100%;}
   #centerBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #quickPct{font-size:12px;font-weight:900;color:#dbeafe;text-align:center;}
@@ -68,6 +70,14 @@
   #piecePanel p{margin:3px 0;color:var(--muted);font-size:11px;line-height:1.3;}
   #piecePanel .piecePanelDetails button,#menu button{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;padding:7px 9px;border-radius:10px;font-weight:800;margin-top:7px;cursor:pointer;}
   #piecePanel button:hover,#menu button:hover{background:rgba(255,255,255,.16)}
+  #kingThreatState{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:17px;border:1px solid rgba(127,240,176,.28);border-radius:999px;background:rgba(19,80,53,.20);color:#9ff4c1;font-size:8px;font-weight:1000;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;}
+  #kingThreatState.threatened{border-color:rgba(255,210,95,.56);background:rgba(117,73,9,.30);color:#ffe49b;}
+  #kingThreatState.danger{border-color:rgba(255,91,108,.72);background:rgba(112,10,27,.45);color:#ffc4ca;box-shadow:0 0 16px rgba(255,48,74,.24);}
+  .abilityStateBadge{display:inline-flex;align-items:center;gap:5px;margin:3px 0;padding:4px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.18);font-size:9px;font-weight:1000;letter-spacing:.06em;text-transform:uppercase;}
+  .abilityStateBadge.ready{color:#9ff4c1;border-color:rgba(83,232,142,.55);background:rgba(24,117,68,.24)}
+  .abilityStateBadge.cooldown{color:#ffd38a;border-color:rgba(251,172,63,.50);background:rgba(111,62,13,.25)}
+  .abilityStateBadge.passive{color:#bddcff;border-color:rgba(103,176,255,.45);background:rgba(21,66,117,.24)}
+  .abilityStateBadge.unavailable,.abilityStateBadge.no-target{color:#cbd5e1;border-color:rgba(148,163,184,.34);background:rgba(55,65,81,.28)}
   #menu{display:none !important;}
   #menu button.active{background:rgba(255,212,107,.24);border-color:rgba(255,212,107,.7)}
   #graphicsQuality{position:fixed;right:12px;top:92px;z-index:30;border:1px solid rgba(255,255,255,.18);background:rgba(10,18,32,.72);color:#eaf2ff;border-radius:999px;padding:5px 8px;font:800 11px Inter,system-ui,sans-serif;max-width:112px;outline:none;}
@@ -129,6 +139,7 @@
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
     #fullscreenBtn{left:8px;top:8px;padding:8px 9px;border-radius:11px;font-size:10px;}
     #audioMuteBtn{right:8px;top:8px;width:34px;height:34px;border-radius:11px;font-size:16px;}
+    #motionToggleBtn{left:8px;top:47px;padding:4px 7px;font-size:8px;}
     #centerBtn{font-size:10px;padding:8px 6px;border-radius:11px;}
     #quickPct{font-size:10px;}
     #status{display:none;}
@@ -200,6 +211,7 @@
   .guidePanel h3{margin:0 0 6px;font-size:22px}.guideMeta{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0}.guideMeta span{padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.09);font-size:11px;color:#e7eefb}
   .guideGridWrap{position:sticky;top:0}.guideDemoGrid{display:grid;gap:3px;max-width:min(100%,540px);margin:auto;touch-action:none}.guideTile{aspect-ratio:1;border-radius:7px;background:rgba(148,163,184,.18);border:1px solid rgba(255,255,255,.08);display:grid;place-items:center;position:relative;font-size:16px}.guideTile.move{background:#f8fafc;color:#0f172a}.guideTile.attack{background:#dc2626;color:#fff}.guideTile.both{background:#dc2626;color:#fff;border:3px solid #fff}.guideTile.range{background:repeating-linear-gradient(135deg,rgba(56,189,248,.34),rgba(56,189,248,.34) 4px,rgba(14,165,233,.14) 4px,rgba(14,165,233,.14) 8px)}.guideTile.ability::after{content:'★';position:absolute;right:1px;top:-3px;color:#fde047;text-shadow:0 0 4px #000;font-size:16px}.guideTile.abilityOnly{background:#fde047;color:#111827}.guideTile.center{background:rgba(59,130,246,.25);border:2px solid #93c5fd;z-index:2}.guideTile.center img{max-width:92%;max-height:92%}.guideLegend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:11px}.guideLegend span{display:inline-flex;gap:4px;align-items:center;padding:5px 7px;border-radius:999px;background:rgba(255,255,255,.08)}.swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,.35);display:inline-block}.swMove{background:#fff}.swAttack{background:#dc2626}.swBoth{background:#dc2626;border:3px solid #fff}.swAbility{background:#fde047}.swRange{background:repeating-linear-gradient(135deg,#38bdf8,#38bdf8 4px,#0ea5e9 4px,#0ea5e9 8px)}.guideInfoList{margin:8px 0 0;padding-left:18px;color:#d7e2f1;line-height:1.4;font-size:13px}.guideHero{width:70px;height:70px;float:right;margin:0 0 8px 10px;object-fit:contain;border-radius:14px;background:rgba(255,255,255,.08);padding:5px}.overviewCards{display:grid;gap:10px}.overviewCards h3{margin:0}.overviewCards ul{margin:8px 0 0;padding-left:18px;line-height:1.45;color:#dbe7f7}
   @media(max-width:760px){#factionLibraryOverlay{padding:6px}#factionLibraryModal{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100vh - 12px);border-radius:18px}#factionLibraryHeader{padding:10px}#factionLibraryTroopList{gap:6px;padding:7px 24px}.libraryTroopBtn{width:92px;height:46px;grid-template-columns:27px minmax(0,1fr);padding:4px 6px}.libraryThumb{width:26px;height:26px;font-size:17px}.libraryTroopBtn b{font-size:10px}.libraryContentGrid{grid-template-columns:1fr;gap:9px}#factionLibraryContent{padding:8px}.guideGridWrap{position:static}.guidePanel{padding:8px}.guideHero{width:56px;height:56px}.factionGuideBtn{width:40px;height:40px}}
+  @media(prefers-reduced-motion:reduce){.spawnCard,.factionCard,.voteCard,#minimapDock,#assetLoadFill{transition:none!important}}
 
 </style>
 </head>
@@ -211,9 +223,10 @@
 </div>
 <button id="fullscreenBtn" title="Toggle fullscreen">⛶ Fullscreen</button>
 <button id="audioMuteBtn" title="Mute audio" aria-label="Mute audio">🔊</button>
+<button id="motionToggleBtn" type="button" title="Toggle reduced motion" aria-pressed="false">Motion: Full</button>
 <select id="graphicsQuality" title="Graphics quality" aria-label="Graphics quality"><option value="auto">Auto</option><option value="sharp">Sharp</option><option value="balanced">Balanced</option><option value="performance">Performance</option></select>
 <div id="topbar">
-  <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Tokens 0</div></div>
+  <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Tokens 0</div><div id="kingThreatState" aria-live="polite">♛ Shielded · Safe</div></div>
   <div id="status" class="glass"></div>
   <div id="spawnPanel"></div>
   <div id="rightHUD" class="glass">
@@ -320,6 +333,8 @@ const startBtn = document.getElementById('startBtn');
 const centerBtn = document.getElementById('centerBtn');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const audioMuteBtn = document.getElementById('audioMuteBtn');
+const motionToggleBtn = document.getElementById('motionToggleBtn');
+const kingThreatState = document.getElementById('kingThreatState');
 const networkText = document.getElementById('networkText');
 const exitLobbyBtn = document.getElementById('exitLobbyBtn');
 const territoryBtn = document.getElementById('territoryBtn');
@@ -419,7 +434,8 @@ const SUNSPIRE_BEACON_COOLDOWN_BOOST = 0.50;
 const SUNSPIRE_BEACON_ATTACK_SLOW = 0.25;
 const BASTION_TOWER_TYPES = ['tower','shieldfoundry','gatehouse','citadelwalker'];
 const COOLDOWN_SLOWDOWN_MULTIPLIER = 1.6;
-const MOVE_ANIMATION_COOLDOWN_MULTIPLIER = 1.5;
+const MOVE_ANIMATION_MS = 150;
+const PHASE_ANIMATION_MS = 245;
 let PLAYER = 0;
 const SPAWN_SLOWEST_SECONDS = 105 * GLOBAL_SPAWN_COOLDOWN_MULT;
 const SPAWN_FASTEST_SECONDS = 8.8 * GLOBAL_SPAWN_COOLDOWN_MULT;
@@ -450,6 +466,7 @@ let dynamicRenderScale = 1;
 let effectiveRenderDpr = 1;
 let lastResolutionChangeMs = 0;
 const GRAPHICS_QUALITY_KEY = 'cw.graphicsQuality';
+const REDUCE_MOTION_KEY = 'cw.reduceMotion';
 const RENDER_SCALE_STEPS = [1,.9,.8,.7,.6];
 const graphicsQualitySelect = document.getElementById('graphicsQuality');
 const menuGraphicsQualitySelect = document.getElementById('menuGraphicsQuality');
@@ -457,6 +474,9 @@ let graphicsQualityMode = localStorage.getItem(GRAPHICS_QUALITY_KEY) || 'auto';
 if(!['auto','sharp','balanced','performance'].includes(graphicsQualityMode)) graphicsQualityMode='auto';
 if(graphicsQualitySelect) graphicsQualitySelect.value=graphicsQualityMode;
 if(menuGraphicsQualitySelect) menuGraphicsQualitySelect.value=graphicsQualityMode;
+const reducedMotionMedia = matchMedia('(prefers-reduced-motion: reduce)');
+const savedReduceMotion = localStorage.getItem(REDUCE_MOTION_KEY);
+let reduceMotion = savedReduceMotion == null ? reducedMotionMedia.matches : savedReduceMotion === '1';
 let W = 0;
 let H = 0;
 let cam = {x: 0, y: 0, zoom: 1};
@@ -483,6 +503,13 @@ let tickTime = 0;
 let hudTickTime = 0;
 let particles = [];
 let floatingText = [];
+let factionMoveFx = [];
+let turnTransitionFx = null;
+let kingDefeatFx = null;
+let cameraImpulse = {strength:0,until:0,seed:0};
+let warTurn = 0;
+let lastActingFaction = null;
+let lastTurnTransitionAt = 0;
 // These effects are deliberately client-local: they celebrate the current player's input without adding network traffic or altering synced state.
 let localActionFx = [];
 // Local-only destruction scenes are reconstructed from authoritative piece removals, so every client sees the same capture as a crumble without extra Firebase traffic.
@@ -502,6 +529,7 @@ let lastMinimapDrawAt = 0;
 let piecePanelExpanded = false;
 let lastPiecePanelSignature = '';
 let lastPiecePanelId = null;
+let abilityFeedbackByPiece = new Map();
 let spawnHighlightCache = {key:'',expires:0,tiles:[]};
 const visualScheduler={last:new Map(),rates:{essential:60,near:24,medium:16,far:9,minimap:6,fogClose:15,fogMedium:9,solarHigh:24,solarLow:12}, frameRate:60};
 function visualDue(name,rate,force=false){ const t=performance.now(); const hz=Math.max(1,rate||60), last=visualScheduler.last.get(name)||0; if(force || t-last>=1000/hz){ visualScheduler.last.set(name,t); return true; } return false; }
@@ -713,6 +741,7 @@ let shrines = [];
 let nextCheckScanAt = 0;
 let currentCheckWarning = '';
 let kingInCheck = false;
+let kingThreatLevel = 'safe';
 let chessEloProfiles = {};
 let eloLoadSeq = 0;
 let eloAwarding = false;
@@ -1547,6 +1576,7 @@ function applyRemoteState(data){
       targetX:useX, targetY:useY,
       predictedMove: keepPrediction ? old.predictedMove : null,
       lastMove: old && old.x===useX && old.y===useY ? old.lastMove : now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
+      displayHp:old ? finiteCoord(old.displayHp,old.hp) : (pp.hp || 1),
       captures:pp.c || 0, level:pp.lv || 1, alive:true, born:old ? old.born : now(),
       stationarySince: old && old.x===useX && old.y===useY ? (old.stationarySince || now()) : now(),
       lastStationX: useX, lastStationY: useY,
@@ -2066,6 +2096,7 @@ function predictLocalMove(piece,x,y,action){
   piece.py = action.fromY;
   piece.targetX = x;
   piece.targetY = y;
+  piece.visualMoveKind = action.visualKind || 'move';
   piece.flash = .65;
   piece.clientActionId = action.actionId || '';
   piece.clientActionBy = username || '';
@@ -2080,13 +2111,14 @@ async function requestPlayerMove(piece,x,y){
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
   if(lobbyId && !canAuthoritativelyWriteState() && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
   const legal = getLegalMoves(live,false);
-  if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
+  const chosenMove = legal.find(m=>m.x===x && m.y===y);
+  if(!chosenMove){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
   const visualTarget = findPieceAt(x,y);
   const beforeIds = new Set(pieces.filter(p=>p.alive).map(p=>p.id));
   const moveStartMs = Date.now();
-  const moveEndMs = moveStartMs + moveVisualDurationFor(live);
-  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
+  const moveEndMs = moveStartMs + moveVisualDurationFor(live,chosenMove);
+  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, visualKind:isShadowSpecialMoveMeta(chosenMove)?'phase':'move', baseStateVersion: localStateVersion || 0};
   const ok = (lobbyId && !canAuthoritativelyWriteState()) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
     const removedTarget = visualTarget && beforeIds.has(visualTarget.id) && !pieces.some(p=>p.alive && p.id===visualTarget.id);
@@ -3866,6 +3898,25 @@ function updateAdaptiveRenderScale(){
 function applyGraphicsQualityMode(mode){ graphicsQualityMode=mode||'auto'; localStorage.setItem(GRAPHICS_QUALITY_KEY,graphicsQualityMode); if(graphicsQualitySelect) graphicsQualitySelect.value=graphicsQualityMode; if(menuGraphicsQualitySelect) menuGraphicsQualitySelect.value=graphicsQualityMode; if(graphicsQualityMode==='auto') dynamicRenderScale=1; clearRenderSpriteCaches(); clearSolarBeamCaches(); resize(true); }
 if(graphicsQualitySelect) graphicsQualitySelect.addEventListener('change',()=>applyGraphicsQualityMode(graphicsQualitySelect.value));
 if(menuGraphicsQualitySelect) menuGraphicsQualitySelect.addEventListener('change',()=>applyGraphicsQualityMode(menuGraphicsQualitySelect.value));
+function updateMotionToggle(){
+  if(!motionToggleBtn) return;
+  motionToggleBtn.textContent=reduceMotion?'Motion: Reduced':'Motion: Full';
+  motionToggleBtn.setAttribute('aria-pressed',reduceMotion?'true':'false');
+}
+function setReduceMotion(next,persist=true){
+  reduceMotion=!!next;
+  if(persist) localStorage.setItem(REDUCE_MOTION_KEY,reduceMotion?'1':'0');
+  if(reduceMotion){
+    factionMoveFx.length=0;
+    turnTransitionFx=null;
+    cameraImpulse.strength=0;
+    for(const p of pieces){ if(!p?.alive) continue; p.px=p.x; p.py=p.y; p.displayHp=p.hp; }
+  }
+  updateMotionToggle();
+}
+updateMotionToggle();
+if(motionToggleBtn) motionToggleBtn.addEventListener('click',()=>setReduceMotion(!reduceMotion));
+reducedMotionMedia.addEventListener?.('change',event=>{ if(localStorage.getItem(REDUCE_MOTION_KEY)==null) setReduceMotion(event.matches,false); });
 function setMinimapOpen(open, persist=true){
   minimapOpen = !!open;
   if(minimapDock) minimapDock.classList.toggle('collapsed', !minimapOpen);
@@ -4373,7 +4424,7 @@ function newPiece(faction,type,x,y,opts={}){
     id:assignedId, faction, type, x, y, px:x, py:y, targetX:x, targetY:y,
     lastMove: now() - (opts.ready ? def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER : def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * .35 * Math.random()),
     stationarySince: now(), lastStationX:x, lastStationY:y,
-    hp:def.hp || 1, maxHp:def.hp || 1,
+    hp:def.hp || 1, maxHp:def.hp || 1, displayHp:def.hp || 1,
     captures:opts.captures||0, level:opts.level||1, alive:true,
     born:now(), wobble:Math.random()*Math.PI*2,
     flash:0, promoted:false,
@@ -5064,6 +5115,7 @@ function promoteSunspireTroop(p){
   const type=choices[(p.id + Math.floor(now())) % choices.length];
   p.type=type;
   const def=pieceDefs[type];
+  const priorHp=p.hp;
   p.maxHp=def.hp || 1;
   p.hp=p.maxHp;
   p.flash=1;
@@ -5071,6 +5123,7 @@ function promoteSunspireTroop(p){
   p.lastCooldownDuration=baseCooldownFor(p)*.5;
   burst(p.x,p.y,factions[p.faction]?.color || '#fff',24);
   floating(p.x,p.y,'ASCEND', factions[p.faction]?.color || '#fff');
+  if(p.hp>priorHp) floating(p.x,p.y,`+${p.hp-priorHp}`,'#86efac');
   markStateDirty();
 }
 function supplyDistanceMapForFaction(factionIdx){
@@ -5248,9 +5301,15 @@ function cooldownProgress(piece){
   }
   return clamp((now()-piece.lastMove)/cooldownFor(piece),0,1);
 }
-function moveVisualDurationFor(piece){
-  const def=pieceDefs[piece.type] || pieceDefs.pawn;
-  return Math.round(def.cooldown * MOVE_ANIMATION_COOLDOWN_MULTIPLIER * 220);
+function isShadowSpecialMoveMeta(moveMeta){
+  return !!(moveMeta && (moveMeta.shadowTeleport || moveMeta.phase || moveMeta.mirror || moveMeta.markedAssassination));
+}
+function canShadowSpecialCaptureTarget(moveMeta,target){
+  return !(target?.type==='king' && isShadowSpecialMoveMeta(moveMeta));
+}
+function moveVisualDurationFor(piece,moveMeta=null){
+  if(reduceMotion) return 0;
+  return isShadowSpecialMoveMeta(moveMeta) || moveMeta?.shadowRush || moveMeta?.stalk ? PHASE_ANIMATION_MS : MOVE_ANIMATION_MS;
 }
 function addMove(moves,x,y,capture=false,extra={}){ moves.push({x,y,capture,...extra}); }
 function getLegalMoves(piece, ignoreCooldown=false){
@@ -5275,19 +5334,20 @@ function getLegalMoves(piece, ignoreCooldown=false){
     }
     return emptyAllowed;
   };
-  const addStep = (x,y,captureAllowed=true,emptyAllowed=true) => {
+  const addStep = (x,y,captureAllowed=true,emptyAllowed=true,extra={}) => {
     if(!inBounds(x,y)) return;
     if(canAttackWall(piece,x,y)){
-      if(captureAllowed) addMove(moves,x,y,true,{wall:true});
+      if(captureAllowed) addMove(moves,x,y,true,{...extra,wall:true});
       return;
     }
     if(!passableFor(piece,x,y)) return;
     const target=findPieceAt(x,y);
     if(target){
-      if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ if(emptyAllowed) addMove(moves,x,y,false,{fog:true}); }
-      else if(captureAllowed && target.faction!==own) addMove(moves,x,y,true);
+      if(faction?.id==='shadow' && !canShadowSpecialCaptureTarget(extra,target)) return;
+      if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ if(emptyAllowed) addMove(moves,x,y,false,{...extra,fog:true}); }
+      else if(captureAllowed && target.faction!==own) addMove(moves,x,y,true,extra);
     }
-    else if(emptyAllowed) addMove(moves,x,y,false);
+    else if(emptyAllowed) addMove(moves,x,y,false,extra);
   };
   const slide = (dirs,max=maxSlider) => {
     for(const [dx,dy] of dirs){
@@ -5344,12 +5404,12 @@ function getLegalMoves(piece, ignoreCooldown=false){
     }
   } else if(pattern==='shadepawn'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
-    for(const [dx,dy] of DIAG) addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+    for(const [dx,dy] of DIAG) addStep(piece.x+dx*2,piece.y+dy*2,true,true,{shadowTeleport:true});
     if(lvl>=4){
-      for(const [dx,dy] of DIAG) addStep(piece.x+dx*3,piece.y+dy*3,true,true);
+      for(const [dx,dy] of DIAG) addStep(piece.x+dx*3,piece.y+dy*3,true,true,{shadowTeleport:true});
     }
   } else if(pattern==='blinkpawn'){
-    for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,true,{shadowTeleport:true});
   } else if(pattern==='king'){
     const maxKingStep = buildingNear(piece,'royalbannerhall',3) ? 3 : 1;
     for(const [dx,dy] of DIRS8){
@@ -5482,10 +5542,10 @@ function getLegalMoves(piece, ignoreCooldown=false){
     for(const pull of vinePullTargets(piece)) addMove(moves,pull.x,pull.y,false,pull);
   } else if(pattern==='assassin'){
     slide(DIAG,4+(lvl>=4?2:0));
-    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,false);
+    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,false,{shadowTeleport:true});
   } else if(pattern==='shadowstepper'){
     for(const [dx,dy] of DIRS8){
-      for(let r=1;r<=4+(lvl>=4?1:0);r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
+      for(let r=1;r<=4+(lvl>=4?1:0);r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true,{shadowTeleport:true});
     }
   } else if(pattern==='nightblade'){
     // Adjacent/diagonal squares are attacks only. Empty local steps are not allowed.
@@ -5502,7 +5562,7 @@ function getLegalMoves(piece, ignoreCooldown=false){
     for(const rush of getNightbladeRushMoves(piece)) addMove(moves,rush.x,rush.y,false,{shadowRush:true});
   } else if(pattern==='wraith'){
     for(const [dx,dy] of DIRS8){
-      for(let r=6;r<=10;r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
+      for(let r=6;r<=10;r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true,{phase:true});
     }
     for(const enemy of pieces){
       if(!enemy.alive || enemy.faction===own || enemy.type === 'king' || (enemy.shadowMarkedUntil || 0) <= now()) continue;
@@ -5512,8 +5572,8 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='umbralbishop'){
     slide(DIAG,4+(lvl>=4?2:0));
     for(const [dx,dy] of DIAG){
-      addStep(piece.x+dx*2,piece.y+dy*2,true,true);
-      if(lvl>=3) addStep(piece.x+dx*3,piece.y+dy*3,true,true);
+      addStep(piece.x+dx*2,piece.y+dy*2,true,true,{shadowTeleport:true});
+      if(lvl>=3) addStep(piece.x+dx*3,piece.y+dy*3,true,true,{shadowTeleport:true});
     }
   } else if(pattern==='warden'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
@@ -5574,7 +5634,7 @@ function getLegalMoves(piece, ignoreCooldown=false){
         if(isEnemyWallFor(piece,ix,iy) && canVaultWalls(piece)) continue;
         if(!passableFor(piece,ix,iy)){ clear=false; break; }
       }
-      if(clear) addStep(x,y,true,true);
+      if(clear) addStep(x,y,true,true,{shadowTeleport:true});
     }
   } else if(pattern==='citadel'){
     for(const [dx,dy] of ORTHO){ addStep(piece.x+dx,piece.y+dy,true,true); addStep(piece.x+dx*3,piece.y+dy*3,true,true); }
@@ -6093,7 +6153,7 @@ function applyShadowMarkAbility(shade,target,source='player'){
   target.shadowMarkedBy=shade.id;
   shade.markReadyAt=now()+shadowMarkCooldownFor(shade);
   target.flash=1;
-  floating(target.x,target.y,shade.type==='umbralbishop'?'BISHOP MARK':'SHADE MARK', '#ff594f');
+  floating(target.x,target.y,'SHADOW MARKED', '#ff594f');
   burst(target.x,target.y,'rgba(255,92,64,.96)',20);
   markStateDirty();
   return true;
@@ -6145,6 +6205,44 @@ function trySunspireQueenRevive(target){
   markStateDirty();
   return true;
 }
+function beginMoveVisual(piece,fromX,fromY,toX,toY,moveMeta=null){
+  const duration=moveVisualDurationFor(piece,moveMeta);
+  piece.moveStartMs=Date.now();
+  piece.moveEndMs=piece.moveStartMs+duration;
+  piece.visualMoveKind=isShadowSpecialMoveMeta(moveMeta)||moveMeta?.shadowRush||moveMeta?.stalk?'phase':'move';
+  if(reduceMotion || duration<=0){ piece.px=toX; piece.py=toY; }
+  else { piece.px=fromX; piece.py=fromY; }
+  emitFactionMoveEffect(piece,fromX,fromY,toX,toY,moveMeta);
+}
+function movementEffectPalette(factionId){
+  if(factionId==='shadow') return ['#d8b4fe','#7c3aed','#241036'];
+  if(factionId==='ember') return ['#fff0a3','#ff7a38','#c72b14'];
+  if(factionId==='frost') return ['#effcff','#8edcff','#5f8cff'];
+  if(factionId==='verdant') return ['#dbffbd','#77df73','#2d8b57'];
+  if(factionId==='sunspire') return ['#fffbd0','#ffd85b','#f59e0b'];
+  if(factionId==='iron') return ['#f1f5f9','#94a3b8','#475569'];
+  return ['#ffffff','#7dd3fc','#4f46e5'];
+}
+function emitFactionMoveEffect(piece,fromX,fromY,toX,toY,moveMeta=null){
+  if(reduceMotion || !piece || (fromX===toX && fromY===toY)) return;
+  const special=isShadowSpecialMoveMeta(moveMeta) || moveMeta?.shadowRush || moveMeta?.stalk;
+  const tier=effectQualityTier();
+  if(tier===0 && !special) return;
+  const cap=tier<2?18:36;
+  if(factionMoveFx.length>=cap) factionMoveFx.splice(0,factionMoveFx.length-cap+1);
+  factionMoveFx.push({start:now(),duration:special ? .42 : .26,fromX,fromY,toX,toY,factionId:factions[piece.faction]?.id||'',color:factions[piece.faction]?.color||'#fff',special,type:piece.type});
+  if(special) floating(toX,toY,'PHASED',factions[piece.faction]?.aura||'#d8b4fe');
+}
+function announceFactionAction(factionIdx){
+  warTurn++;
+  const stamp=performance.now();
+  const changed=factionIdx!==lastActingFaction;
+  lastActingFaction=factionIdx;
+  if(reduceMotion || !changed || stamp-lastTurnTransitionAt<650) return;
+  const f=factions[factionIdx]; if(!f) return;
+  lastTurnTransitionAt=stamp;
+  turnTransitionFx={start:now(),duration:effectQualityTier()<2 ? .26 : .44,factionIdx,title:`${f.short.toUpperCase()} LEGION`,turn:warTurn,color:f.color};
+}
 function movePiece(piece,x,y,source='player'){
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
   const fromX=piece.x, fromY=piece.y;
@@ -6154,6 +6252,10 @@ function movePiece(piece,x,y,source='player'){
   const prevLastCooldownDuration = piece.lastCooldownDuration || 0;
   const moveMeta=(getLegalMoves(piece,true).find(m=>m.x===x && m.y===y && (m.capture || !findPieceAt(x,y))) || {});
   const target=findPieceAt(x,y);
+  if(target && factions[piece.faction]?.id==='shadow' && !canShadowSpecialCaptureTarget(moveMeta,target)){
+    floating(target.x,target.y,'BLOCKED · KING IMMUNE','#ffd5da');
+    return false;
+  }
   if(moveMeta.vinePull && target && target.faction!==piece.faction){
     const ok=applyVinePullAbility(piece,target,source);
     if(ok){
@@ -6175,17 +6277,19 @@ function movePiece(piece,x,y,source='player'){
         const landing=findIronAssaultLanding(piece,target,fromX,fromY);
         if(landing){
           piece.x=landing.x; piece.y=landing.y; piece.targetX=landing.x; piece.targetY=landing.y; updatePieceTileIndex(piece,fromX,fromY); assertPieceIndexes('iron-landing'); piece.flash=1;
-          piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
+          beginMoveVisual(piece,fromX,fromY,landing.x,landing.y,moveMeta);
           setMoveCooldown(piece,fromX,fromY,landing.x,landing.y,!!target);
           applyFactionCapture(piece,fromX,fromY,landing.x,landing.y,'move',target);
           applyAuraTerritory(piece);
           floating(target.x,target.y,'SHIELD WALL HIT', factions[piece.faction]?.color || '#fff');
+          announceFactionAction(piece.faction);
           markStateDirty();
           return true;
         }
       }
       if(!pushShieldedPiece(piece,target,fromX,fromY)){
         setMoveCooldown(piece,fromX,fromY,x,y,!!target);
+        announceFactionAction(piece.faction);
         return true;
       }
       impactPushedId = target.id;
@@ -6195,9 +6299,10 @@ function movePiece(piece,x,y,source='player'){
   if(moveMeta.stationaryAttack){
     piece.flash=1;
     setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
-    piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
+    piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs;
     if((!!target || !!targetWall) && factions[piece.faction]?.id==='shadow') shadowStrikeEffect(piece,x,y);
     burst(x,y,factions[piece.faction]?.color || '#fff',14);
+    announceFactionAction(piece.faction);
     markStateDirty();
     return true;
   }
@@ -6220,7 +6325,7 @@ function movePiece(piece,x,y,source='player'){
     floating(x,y,'SHADOW RUSH', factions[piece.faction]?.color || '#c8a7ff');
   }
   if((!!target || !!targetWall) && factions[piece.faction]?.id==='shadow') shadowStrikeEffect(piece,x,y);
-  piece.moveStartMs = Date.now(); piece.moveEndMs = piece.moveStartMs + moveVisualDurationFor(piece);
+  beginMoveVisual(piece,fromX,fromY,x,y,moveMeta);
   piece.stationarySince=now(); piece.lastStationX=x; piece.lastStationY=y;
   const hammerPushes = knockBackHammerAdjacentFoes(piece, impactPushedId);
   const swept = applyFactionCapture(piece,fromX,fromY,x,y,'move',target);
@@ -6228,6 +6333,7 @@ function movePiece(piece,x,y,source='player'){
   applyBuildingMoveEffects(piece,fromX,fromY);
   if(swept===0) burst(x,y,factions[piece.faction].color,4);
   if(source==='player' && hammerPushes) moveModeHint = `Hammer shockwave pushed ${hammerPushes} nearby foe${hammerPushes===1?'':'s'}.`;
+  announceFactionAction(piece.faction);
   markStateDirty();
   if(source==='player' && !hammerPushes) moveModeHint = factionCaptureHint(piece,swept);
   return true;
@@ -6365,6 +6471,38 @@ function restartIronMovementCooldownAfterHit(target){
   floating(target.x,target.y,'STAGGERED', factions[target.faction]?.color || '#dbeafe');
   return true;
 }
+function triggerCameraImpulse(strength=.8){
+  if(reduceMotion) return;
+  cameraImpulse={strength:Math.max(cameraImpulse.strength,strength),until:now()+.16,seed:Math.random()*1000};
+}
+function emitCombatImpact(attacker,target,damage,lethal=false){
+  if(!attacker || !target) return;
+  const factionId=factions[attacker.faction]?.id || '';
+  const palette=movementEffectPalette(factionId);
+  const tier=effectQualityTier();
+  const count=reduceMotion?0:(tier<2 ? (damage>1?7:4) : (damage>1?14:8));
+  const cap=tier<2?96:180;
+  const wx=(target.x+.5)*BASE_CELL,wy=(target.y+.5)*BASE_CELL;
+  for(let i=0;i<count && particles.length<cap;i++){
+    const a=Math.random()*Math.PI*2,s=38+Math.random()*(damage>1?120:72);
+    particles.push({x:wx,y:wy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.22+Math.random()*.24,max:.46,color:palette[i%palette.length],size:1.5+Math.random()*(damage>1?2.8:1.7)});
+  }
+  if(!reduceMotion){
+    attacker.recoilUntil=now()+.13;
+    const dx=attacker.x-target.x,dy=attacker.y-target.y,len=Math.max(1,Math.hypot(dx,dy));
+    attacker.recoilX=dx/len; attacker.recoilY=dy/len;
+  }
+  target.flash=1;
+  if(damage>1) floating(target.x,target.y,'CRITICAL',palette[0]);
+  if(lethal || damage>1) triggerCameraImpulse(target.type==='king'?1.8:.62);
+}
+function emitKingDefeatPresentation(target,attacker){
+  if(!target || !attacker) return;
+  const loser=factions[target.faction],winner=factions[attacker.faction];
+  kingDefeatFx={start:now(),duration:reduceMotion ? .28 : .82,loser:loser?.short||'Faction',winner:winner?.short||'',loserColor:loser?.color||'#ff6b7d',winnerColor:winner?.color||'#fff',x:target.x,y:target.y};
+  triggerCameraImpulse(2.2);
+  floating(target.x,target.y,'KING FALLS',winner?.color||'#fff');
+}
 function capturePiece(attacker, target){
   if(!target.alive) return false;
   const markedAssassination = attacker?.type==='wraith' && target.type !== 'king' && target.faction!==attacker.faction && (target.shadowMarkedUntil || 0) > now() && dist2(attacker.x,attacker.y,target.x,target.y) <= 16;
@@ -6373,14 +6511,15 @@ function capturePiece(attacker, target){
     target.orbShieldUntil = now();
     target.flash = 1;
     burst(target.x,target.y,'rgba(180,244,255,.95)',18);
-    floating(target.x,target.y,'SHIELD BLOCK', '#dbeafe');
+    floating(target.x,target.y,'BLOCKED', '#dbeafe');
     markStateDirty();
     return false;
   }
   const dmg = markedAssassination ? Math.max(1,target.hp) : attackDamageFor(attacker,target);
   target.hp -= dmg;
   burst(target.x,target.y,factions[target.faction].color,18);
-  floating(target.x,target.y,markedAssassination ? 'EXECUTED' : (dmg>1 ? `-${dmg} HP` : 'CAPTURE'), factions[attacker.faction].color);
+  floating(target.x,target.y,markedAssassination ? 'EXECUTED' : `-${dmg}`, factions[attacker.faction].color);
+  emitCombatImpact(attacker,target,dmg,target.hp<=0);
   if(target.hp>0){
     const ironCooldownRestarted = restartIronMovementCooldownAfterHit(target);
     floating(target.x,target.y,ironCooldownRestarted ? 'COOLDOWN RESET' : 'SHIELD', '#dbeafe');
@@ -6427,7 +6566,10 @@ function capturePiece(attacker, target){
   setPieceDead(target,'capture');
   assertPieceIndexes('capture');
   trySunspireQueenRevive(target);
-  if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
+  if(target.type==='king'){
+    emitKingDefeatPresentation(target,attacker);
+    conquerFaction(attacker.faction,target.faction,target.x,target.y);
+  }
   return true;
 }
 function conquerFaction(winner, loser, cx, cy){
@@ -6463,11 +6605,16 @@ function triggerDefeat(winner){
   legalMoves = [];
   spawnSelection = null;
   const wf = factions[winner];
-  defeatDetails.textContent = `${displayNameForFaction(winner)} captured your king. Your territory has been absorbed, but the war can continue without you.`;
-  const h = document.querySelector('#defeatCard h2'); if(h) h.textContent = 'You were defeated';
-  restartBtn.textContent = 'Exit to Lobby';
-  spectateBtn.textContent = 'Spectate the Rest';
-  defeatOverlay.style.display = 'flex';
+  const showDefeatCard=()=>{
+    defeatDetails.textContent = `${displayNameForFaction(winner)} captured your king. Your territory has been absorbed, but the war can continue without you.`;
+    const h = document.querySelector('#defeatCard h2'); if(h) h.textContent = 'You were defeated';
+    restartBtn.textContent = 'Exit to Lobby';
+    spectateBtn.textContent = 'Spectate the Rest';
+    defeatOverlay.style.display = 'flex';
+  };
+  clearTimeout(triggerDefeat._timer);
+  if(reduceMotion) showDefeatCard();
+  else triggerDefeat._timer=setTimeout(showDefeatCard,520);
   renderSpawnCards();
   updatePiecePanel();
 }
@@ -6484,6 +6631,12 @@ function maybeAnnounceWorldWinner(){
   }
 }
 function visualQualityTier(){ return visualQuality.tier; }
+function effectQualityTier(){
+  if(graphicsQualityMode==='performance') return 0;
+  if(graphicsQualityMode==='balanced') return 1;
+  if(graphicsQualityMode==='sharp') return 2;
+  return visualQualityTier();
+}
 function updateVisualQuality(dt){
   const ms=dt*1000;
   visualQuality.avg = visualQuality.avg*.96 + ms*.04;
@@ -6494,9 +6647,11 @@ function updateVisualQuality(dt){
 }
 function burst(x,y,color,count=10){
   const wx=(x+.5)*BASE_CELL, wy=(y+.5)*BASE_CELL;
-  const tier=visualQualityTier();
-  const cap=tier<2?96:180;
-  if(tier<2) count=Math.ceil(count*.55);
+  const tier=effectQualityTier();
+  const cap=tier===0?56:(tier<2?96:180);
+  if(tier===0) count=Math.ceil(count*.28);
+  else if(tier<2) count=Math.ceil(count*.55);
+  if(reduceMotion) count=Math.min(3,Math.ceil(count*.22));
   const room=Math.max(0,cap-particles.length);
   count=Math.min(count,room);
   for(let i=0;i<count;i++){
@@ -6505,9 +6660,10 @@ function burst(x,y,color,count=10){
   }
 }
 function floating(x,y,text,color){
-  const cap=visualQualityTier()<2?22:48;
+  const cap=effectQualityTier()===0?14:(effectQualityTier()<2?22:48);
   if(floatingText.length>=cap) floatingText.splice(0,floatingText.length-cap+1);
-  floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:1.2,max:1.2});
+  const duration=reduceMotion ? .62 : 1.2;
+  floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:duration,max:duration});
 }
 function destructionSeed(piece){
   let h=(Number(piece?.id)||1)*2654435761;
@@ -6645,7 +6801,7 @@ function shadowStrikeEffect(piece,x,y){
 }
 
 function emitLocalActionFx(piece,fromX,fromY,toX,toY,isAttack){
-  if(!piece || piece.faction!==PLAYER) return;
+  if(!piece || piece.faction!==PLAYER || reduceMotion) return;
   const f=factions[PLAYER] || {color:'#ffffff',aura:'#ffffff'};
   localActionFx.push({start:now(),duration:isAttack?.72:.52,fromX,fromY,toX,toY,attack:!!isAttack,color:f.color,aura:f.aura || f.color,type:piece.type});
   // A short local-only particle spray makes input feel immediate, while state remains entirely server-safe.
@@ -6680,6 +6836,47 @@ function drawLocalActionEffects(){
     ctx.restore();
   }
 }
+function drawFactionMoveEffects(){
+  if(reduceMotion || !factionMoveFx.length) return;
+  const time=now(),tier=effectQualityTier();
+  for(const fx of factionMoveFx){
+    if(!segmentTouchesRenderBounds({x:fx.fromX,y:fx.fromY},{x:fx.toX,y:fx.toY},3)) continue;
+    const u=clamp((time-fx.start)/fx.duration,0,1),fade=1-u;
+    const ax=(fx.fromX+.5)*BASE_CELL,ay=(fx.fromY+.5)*BASE_CELL,bx=(fx.toX+.5)*BASE_CELL,by=(fx.toY+.5)*BASE_CELL;
+    const dx=bx-ax,dy=by-ay,palette=movementEffectPalette(fx.factionId);
+    ctx.save();ctx.globalCompositeOperation='screen';ctx.lineCap='round';
+    if(fx.special){
+      const originPulse=clamp(1-u*1.9,0,1),arrival=clamp((u-.42)/.58,0,1);
+      ctx.globalAlpha=.18+.48*fade;ctx.strokeStyle=palette[1];ctx.lineWidth=tier<2?3:5;ctx.setLineDash([7,8]);ctx.lineDashOffset=-u*32;
+      ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();ctx.setLineDash([]);
+      ctx.globalAlpha=.28+.44*originPulse;ctx.strokeStyle=palette[0];ctx.lineWidth=3;ctx.beginPath();ctx.arc(ax,ay,BASE_CELL*(.26+.20*(1-originPulse)),0,Math.PI*2);ctx.stroke();
+      ctx.globalAlpha=.28+.55*arrival;ctx.strokeStyle=palette[0];ctx.lineWidth=3.4;ctx.beginPath();ctx.arc(bx,by,BASE_CELL*(.22+.25*arrival),0,Math.PI*2);ctx.stroke();
+      if(tier>=2){
+        for(let i=0;i<4;i++){
+          const p=clamp(u-i*.08,0,1),x=ax+dx*p,y=ay+dy*p;
+          ctx.globalAlpha=(.18+i*.07)*fade;ctx.fillStyle=palette[i%palette.length];ctx.beginPath();ctx.arc(x,y,BASE_CELL*(.15-i*.018),0,Math.PI*2);ctx.fill();
+        }
+      }
+    }else{
+      const head=clamp(u*1.35,0,1),tail=clamp(head-(tier<2 ? .24 : .42),0,1);
+      ctx.globalAlpha=(tier<2 ? .28 : .42)*fade;ctx.strokeStyle=palette[1];ctx.lineWidth=tier<2?2.5:4;ctx.beginPath();ctx.moveTo(ax+dx*tail,ay+dy*tail);ctx.lineTo(ax+dx*head,ay+dy*head);ctx.stroke();
+      if(tier>=2){
+        for(let i=0;i<3;i++){const p=clamp(head-i*.13,0,1);ctx.globalAlpha=.25*fade;ctx.fillStyle=palette[i%palette.length];drawFactionMovementMote(fx.factionId,ax+dx*p,ay+dy*p,2.4-i*.35,u+i);}
+      }
+    }
+    ctx.restore();
+  }
+}
+function drawFactionMovementMote(factionId,x,y,size,phase){
+  ctx.save();ctx.translate(x,y);ctx.rotate(phase*2.4);ctx.beginPath();
+  if(factionId==='verdant') ctx.ellipse(0,0,size*1.6,size*.65,0,0,Math.PI*2);
+  else if(factionId==='ember') ctx.rect(-size*.65,-size*.65,size*1.3,size*1.3);
+  else if(factionId==='frost'){ctx.moveTo(0,-size*1.7);ctx.lineTo(size,size);ctx.lineTo(-size,size);ctx.closePath();}
+  else if(factionId==='shadow'){ctx.arc(0,0,size,phase,phase+Math.PI*1.35);ctx.lineTo(0,0);ctx.closePath();}
+  else if(factionId==='sunspire'){for(let i=0;i<8;i++){const a=i*Math.PI/4,rr=i%2?size*.55:size*1.5;if(i===0)ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}ctx.closePath();}
+  else ctx.arc(0,0,size,0,Math.PI*2);
+  ctx.fill();ctx.restore();
+}
 
 function createGame(){
   closeFactionLibrary('game-start');
@@ -6689,7 +6886,8 @@ function createGame(){
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
   cam.zoom=1;
   if(king) centerOn(king.x,king.y);
-  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; destructionFx=[]; pendingPlayerActions=[];
+  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; factionMoveFx=[]; localActionFx=[]; destructionFx=[]; pendingPlayerActions=[];
+  turnTransitionFx=null; kingDefeatFx=null; warTurn=0; lastActingFaction=null; cameraImpulse.strength=0; abilityFeedbackByPiece.clear();
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
   takeSoundKeys.clear();
   hasAppliedInitialRemoteAudioState = true;
@@ -6938,6 +7136,26 @@ function attackingPiecesForKing(factionIdx){
   if(playerDefeated && factionIdx===PLAYER) return [];
   return attackingPiecesForFactionKing(factionIdx);
 }
+function nearbyKingPressure(factionIdx,king){
+  if(!king) return [];
+  const pressure=[];
+  for(const list of alivePiecesByFaction){
+    for(const p of (list||[])){
+      if(!p.alive || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
+      const cheb=Math.max(Math.abs(p.x-king.x),Math.abs(p.y-king.y));
+      if(cheb<=3 || (cheb<=5 && (pieceDefs[p.type]?.value||1)>=5)) pressure.push(p);
+    }
+  }
+  return pressure;
+}
+function setKingThreatIndicator(level,detail=''){
+  if(!kingThreatState) return;
+  const text=level==='danger'?'♛ Alert · IN DANGER':(level==='threatened'?'♛ Guard · THREATENED':'♛ Shielded · SAFE');
+  setTextIfChanged(kingThreatState,text);
+  const cls=level==='danger'?'danger':(level==='threatened'?'threatened':'');
+  if(kingThreatState.className!==cls) kingThreatState.className=cls;
+  if(kingThreatState.title!==detail) kingThreatState.title=detail;
+}
 function enemyThreatensSquare(factionIdx,x,y,ignoreId=null){
   if(threatCacheRevision!==simulationRevision){ attackersByKingCache = new Map(); enemyThreatCache = new Map(); threatCacheRevision=simulationRevision; }
   const cacheKey=`${factionIdx}|${x}|${y}|${ignoreId||''}`;
@@ -6951,24 +7169,55 @@ function enemyThreatensSquare(factionIdx,x,y,ignoreId=null){
 }
 function updateCheckBanner(){
   if(!checkBanner) return;
-  if(!gameStarted || playerDefeated || !ownFactionAlive()){ checkBanner.style.display='none'; currentCheckWarning=''; kingInCheck=false; return; }
+  if(!gameStarted || playerDefeated || !ownFactionAlive()){
+    checkBanner.style.display='none'; currentCheckWarning=''; kingInCheck=false; kingThreatLevel='safe';
+    if(kingThreatState){ setTextIfChanged(kingThreatState,playerDefeated?'♛ Crown · DEFEATED':'♛ Shielded · SAFE'); kingThreatState.className=''; }
+    return;
+  }
   if(now()>=nextCheckScanAt){
     nextCheckScanAt=now()+.35;
+    const previous=kingThreatLevel;
+    const king=getPiece(factions[PLAYER]?.kingId);
     const attackers=attackingPiecesForKing(PLAYER);
     kingInCheck=attackers.length>0;
     if(kingInCheck){
       const names=attackers.slice(0,2).map(p=>pieceDisplayName(p.faction,p.type)).join(', ');
       currentCheckWarning='CHECK: your king is threatened by '+names+(attackers.length>2?' +'+(attackers.length-2):'');
-    } else currentCheckWarning='';
+      kingThreatLevel='danger';
+    } else {
+      const pressure=nearbyKingPressure(PLAYER,king);
+      kingThreatLevel=pressure.length?'threatened':'safe';
+      currentCheckWarning=pressure.length?`Enemy pressure nearby: ${pressure.slice(0,2).map(p=>pieceDisplayName(p.faction,p.type)).join(', ')}`:'';
+    }
+    setKingThreatIndicator(kingThreatLevel,currentCheckWarning || 'No immediate royal threats.');
+    if(previous!==kingThreatLevel && king && (kingThreatLevel==='danger' || kingThreatLevel==='threatened')) floating(king.x,king.y,'KING THREATENED',kingThreatLevel==='danger'?'#ff6678':'#ffe49b');
   }
-  setTextIfChanged(checkBanner,currentCheckWarning);
-  setStyleIfChanged(checkBanner,'display',currentCheckWarning?'block':'none');
+  setStyleIfChanged(checkBanner,'display','none');
 }
 function roadCooldownNotice(piece){
   const f=factions[piece?.faction];
   if(!piece || !f || isBuildingType(piece.type) || !inBounds(piece.x,piece.y) || tile(piece.x,piece.y).type!=='road') return '';
   const label = ROAD_COOLDOWN_LABEL_BY_FACTION[f.id];
   return label ? `<p style="color:${f.id==='ember'?'#ffb4a2':'#fff3b0'}">${label}</p>` : '';
+}
+function abilityHudState(piece){
+  if(!piece?.alive) return {state:'unavailable',label:'Unavailable'};
+  if(piece.faction!==PLAYER) return {state:'unavailable',label:'Unavailable · Enemy unit'};
+  if(isGuardianBishop(piece)){
+    const remain=Math.max(0,Math.ceil((piece.guardReadyAt||0)-now()));
+    if(remain) return {state:'cooldown',label:`Cooldown · ${remain}s`};
+    const count=guardianShieldTargets(piece).length;
+    return count?{state:'ready',label:`Ready · ${count} target${count===1?'':'s'}`}:{state:'no-target',label:'No valid target'};
+  }
+  if(['shadepawn','umbralbishop'].includes(piece.type)){
+    const remain=Math.max(0,Math.ceil((piece.markReadyAt||0)-now()));
+    if(remain) return {state:'cooldown',label:`Cooldown · ${remain}s`};
+    const count=shadowMarkTargets(piece).length;
+    return count?{state:'ready',label:`Ready · ${count} target${count===1?'':'s'}`}:{state:'no-target',label:'No valid target'};
+  }
+  const def=pieceDefs[piece.type]||{};
+  const passive=!!def.aura || def.building || ['nightblade','wraith','assassin','shadowstepper','voidstrider','stagrunner','vinebishop','hammerknight','citadelwalker','dawnarchon'].includes(piece.type);
+  return passive?{state:'passive',label:'Passive'}:null;
 }
 function updatePiecePanel(){
   if(!selectedPiece || !selectedPiece.alive){
@@ -6991,6 +7240,11 @@ function updatePiecePanel(){
   const roadLine=roadCooldownNotice(p);
   const supply=overextensionInfo(p);
   const overextensionLine=supply.active ? `<p style="color:#ffcb7b"><b>Overextended:</b> ${supply.distance} tiles from friendly territory · cooldowns 15% slower.</p>` : '';
+  const abilityState=abilityHudState(p);
+  const abilityStateLine=abilityState?`<div class="abilityStateBadge ${abilityState.state}">${abilityState.label}</div>`:'';
+  const priorAbilityState=abilityFeedbackByPiece.get(p.id);
+  if(priorAbilityState && priorAbilityState!=='ready' && abilityState?.state==='ready') floating(p.x,p.y,'ABILITY READY',f.aura||f.color);
+  abilityFeedbackByPiece.set(p.id,abilityState?.state||'none');
   let abilityLine='';
   if(isGuardianBishop(p)){
     const remain=Math.max(0,Math.ceil((p.guardReadyAt||0)-now()));
@@ -7014,10 +7268,10 @@ function updatePiecePanel(){
   }
   if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
   if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> All Shadow troops gain +1 valid attack reach against this unit. Wraiths may execute it. ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
-  const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green = Guardian Shield / Vine Pull / Bloom Leap · Orange glow = Shade Mark.</p>`:'';
+  const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Circle = move · Chevrons = attack · Rune = ability · Portal ring = phase · ⚠ = dangerous square · Crown = King target.</p>`:'';
   const troopName=pieceDisplayName(p.faction,p.type);
   const cooldownText=cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.';
-  const signature=[p.id,p.type,p.level,p.captures,p.hp,p.maxHp,Math.round(cd*20),cooldownText,shrineLine,solarLine,marshalLine,roadLine,overextensionLine,abilityLine,piecePanelExpanded].join('|');
+  const signature=[p.id,p.type,p.level,p.captures,p.hp,p.maxHp,Math.round(cd*20),cooldownText,shrineLine,solarLine,marshalLine,roadLine,overextensionLine,abilityStateLine,abilityLine,piecePanelExpanded].join('|');
   piecePanel.style.display='block';
   piecePanel.classList.toggle('expanded',piecePanelExpanded);
   document.body.classList.add('piece-panel-visible');
@@ -7031,6 +7285,7 @@ function updatePiecePanel(){
     <div class="piecePanelDetails">
       <h3 style="color:${f.color}">${def.icon} ${troopName} <span style="font-size:11px;color:#cbd5e1">Lv ${p.level}</span></h3>
       <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
+      ${abilityStateLine}
       <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
       <p>${cooldownText}</p>
       ${shrineLine}
@@ -7147,7 +7402,9 @@ function gameTick(dt){
   for(const p of pieces){
     if(!p.alive) continue;
     const pred = p.predictedMove;
-    if(pred && pendingActionIds?.has(pred.actionId)){
+    if(reduceMotion){
+      p.px=p.x; p.py=p.y;
+    } else if(pred && pendingActionIds?.has(pred.actionId)){
       const denom = Math.max(1, pred.endMs - pred.startMs);
       const u = clamp((frameNowMs - pred.startMs) / denom, 0, 1);
       p.px = lerp(pred.fromX, pred.toX, u);
@@ -7165,6 +7422,10 @@ function gameTick(dt){
       p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
       p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
     }
+    if(!Number.isFinite(p.displayHp)) p.displayHp=p.hp;
+    if(reduceMotion) p.displayHp=p.hp;
+    else if(Math.abs(p.displayHp-p.hp)>.01) p.displayHp=lerp(p.displayHp,p.hp,Math.min(1,dt*12));
+    else p.displayHp=p.hp;
     p.flash=Math.max(0,p.flash-dt*3);
   }
   for(let i=particles.length-1;i>=0;i--){
@@ -7176,6 +7437,7 @@ function gameTick(dt){
     if(f.life<=0) floatingText.splice(i,1);
   }
   for(let i=localActionFx.length-1;i>=0;i--){ if(now()-localActionFx[i].start>localActionFx[i].duration) localActionFx.splice(i,1); }
+  for(let i=factionMoveFx.length-1;i>=0;i--){ if(now()-factionMoveFx[i].start>factionMoveFx[i].duration) factionMoveFx.splice(i,1); }
   for(let i=destructionFx.length-1;i>=0;i--){ if(now()-destructionFx[i].start>destructionFx[i].duration) destructionFx.splice(i,1); }
   if(canAuthoritativelyWriteState()){
     spawnEconomyAccumulator += dt;
@@ -7257,9 +7519,12 @@ function updateSpecialLandRules(dt){
 
 function chooseGuardianShieldTarget(bishop){
   const allies=(alivePiecesByFaction[bishop.faction] || []).filter(p=>p.alive && p.id!==bishop.id && !pieceDefs[p.type]?.building && !pieceHasOrbShield(p));
-  const scored=allies.map(a=>({a,score:(enemyNear(a.x,a.y,a.faction,2)?8:0) + (pieceDefs[a.type]?.value || 1) - dist2(a.x,a.y,bishop.x,bishop.y)*.08}));
-  scored.sort((x,y)=>y.score-x.score);
-  return scored[0]?.a || null;
+  let best=null,bestScore=-Infinity;
+  for(const ally of allies){
+    const score=(enemyNear(ally.x,ally.y,ally.faction,2)?8:0)+(pieceDefs[ally.type]?.value||1)-dist2(ally.x,ally.y,bishop.x,bishop.y)*.08;
+    if(score>bestScore){best=ally;bestScore=score;}
+  }
+  return best;
 }
 
 function updateSunspireFactionAbilities(f, step){
@@ -7276,11 +7541,18 @@ function updateShadowFactionAbilities(f, step){
   // Human Shade Pawns mark only when their owner taps an orange target. AI warlords retain autonomous marking.
   if(isHumanSlot(f.idx)) return;
   const tNow=now();
+  const enemies=[];
+  for(const list of alivePiecesByFaction) for(const q of (list||[])) if(q.alive && q.faction!==f.idx && factions[q.faction]?.alive) enemies.push(q);
   for(const p of (alivePiecesByFaction[f.idx] || [])){
     if(!p.alive || p.faction!==f.idx || !['shadepawn','umbralbishop'].includes(p.type) || tNow < (p.markReadyAt || 0)) continue;
-    const candidates=[]; for(const list of alivePiecesByFaction){ for(const q of (list||[])){ if(q.alive && q.faction!==p.faction && factions[q.faction]?.alive && canShadowMarkerMarkTarget(p,q)) candidates.push({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))}); } }
-    candidates.sort((a,b)=>((b.q.type==='king')-(a.q.type==='king')) || ((pieceDefs[b.q.type]?.value||1)-(pieceDefs[a.q.type]?.value||1)) || ((b.q.maxHp||1)-(a.q.maxHp||1)) || a.cheb-b.cheb);
-    if(candidates[0]?.q) applyShadowMarkAbility(p,candidates[0].q,'ai');
+    let best=null,bestScore=-Infinity;
+    for(const q of enemies){
+      if(!canShadowMarkerMarkTarget(p,q)) continue;
+      const cheb=Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y));
+      const score=shadowTargetPriority(q)-cheb*2;
+      if(score>bestScore){ best=q; bestScore=score; }
+    }
+    if(best) applyShadowMarkAbility(p,best,'ai');
   }
 }
 function updateTemporaryPieces(f){
@@ -7524,6 +7796,7 @@ function updateShieldFoundry(foundry,tNow){
     foundry.shieldBoostId=target.id;
     foundry.nextBuildingTick=tNow+2;
     floating(target.x,target.y,'FOUNDRY SHIELD', factions[foundry.faction]?.color || '#fff');
+    floating(target.x,target.y,'+1','#86efac');
     markStateDirty();
   } else {
     foundry.nextBuildingTick=tNow+5;
@@ -7733,10 +8006,9 @@ function aiTick(dt){
     }
     const army=(alivePiecesByFaction[f.idx] || []).filter(p=>p.alive&&cooldownReady(p));
     const aiContext = buildAiDecisionContext(f);
-    const scoredArmy=army.map(p=>({p,score:aiPiecePriority(f,p,aiContext),tie:Math.random()}));
-    scoredArmy.sort((a,b)=>b.score-a.score || a.tie-b.tie);
+    const scoredArmy=topKByScore(army,Math.min(army.length,Math.max(5,maxActions*3)),p=>aiPiecePriority(f,p,aiContext));
     for(let i=0;i<scoredArmy.length && actions<maxActions && budget>0;i++){
-      if(aiMovePiece(f,scoredArmy[i].p)){
+      if(aiMovePiece(f,scoredArmy[i].item,aiContext)){
         budget--;
         actions++;
       }
@@ -7750,7 +8022,56 @@ function buildAiDecisionContext(f){
   for(const list of alivePiecesByFaction){
     for(const p of (list || [])) if(p.alive && p.faction!==f.idx && factions[p.faction]?.alive) enemies.push(p);
   }
-  return {attackers,ownKing,enemies};
+  const enemyKings=enemies.filter(p=>p.type==='king');
+  const shadowObjectives=f.aiStyle==='assassin'
+    ? topKByScore(enemies.filter(p=>p.type!=='king'),Math.min(14,enemies.length),shadowTargetPriority).map(row=>({target:row.item,priority:row.score}))
+    : [];
+  const nearestToKing=ownKing?nearestPieceFromList(enemies,ownKing.x,ownKing.y):null;
+  return {attackers,ownKing,enemies,enemyKings,shadowObjectives,enemyNearKing:nearestToKing&&dist2(nearestToKing.x,nearestToKing.y,ownKing.x,ownKing.y)<=81?nearestToKing:null};
+}
+function topKByScore(items,k,scoreFn){
+  if(k<=0 || !items?.length) return [];
+  const top=[];
+  for(const item of items){
+    const row={item,score:scoreFn(item),tie:Math.random()};
+    let at=top.length;
+    while(at>0 && (row.score>top[at-1].score || (row.score===top[at-1].score && row.tie<top[at-1].tie))) at--;
+    if(at<k){ top.splice(at,0,row); if(top.length>k) top.pop(); }
+  }
+  return top;
+}
+function nearbyFriendlyCount(target,radius=2){
+  let count=0;
+  for(const ally of (alivePiecesByFaction[target?.faction] || [])){
+    if(ally.alive && ally.id!==target.id && Math.max(Math.abs(ally.x-target.x),Math.abs(ally.y-target.y))<=radius) count++;
+  }
+  return count;
+}
+function shadowTargetPriority(target){
+  if(!target?.alive || target.type==='king') return -1000;
+  const def=pieceDefs[target.type] || pieceDefs.pawn;
+  let score=(def.value||1)*8;
+  if((target.shadowMarkedUntil||0)>now()) score+=210;
+  if(['queen','flamequeen','general','marshal','dawnarchon','citadelwalker','warden','paladin'].includes(target.type)) score+=95;
+  if((def.value||1)>=7) score+=65;
+  if((target.maxHp||1)>1 && target.hp<target.maxHp) score+=(1-target.hp/target.maxHp)*85;
+  const nearby=nearbyFriendlyCount(target,2);
+  if(nearby===0) score+=62;
+  else if(nearby===1) score+=34;
+  const protectedKing=getPiece(factions[target.faction]?.kingId);
+  if(protectedKing && dist2(target.x,target.y,protectedKing.x,protectedKing.y)<=16) score+=70;
+  if(protectedKing && nearby<=1 && dist2(target.x,target.y,protectedKing.x,protectedKing.y)<=49) score+=32;
+  return score;
+}
+function shadowObjectivePressure(objectives,x,y){
+  let best=0;
+  for(const objective of objectives||[]){
+    const target=objective.target;
+    if(!target?.alive) continue;
+    const pressure=objective.priority-Math.sqrt(dist2(x,y,target.x,target.y))*7;
+    if(pressure>best) best=pressure;
+  }
+  return best*.16;
 }
 function aiPiecePriority(f,p,context=null){
   const def=pieceDefs[p.type];
@@ -7803,14 +8124,15 @@ function nearestOwnedFrontier(x,y,faction){
   }
   return best;
 }
-function aiMovePiece(f,p){
+function aiMovePiece(f,p,context=null){
   const moves=getLegalMoves(p,false);
   if(!moves.length) return false;
   const style=f.aiStyle;
   let best=null,bs=-99999;
-  const kingTargets=pieces.filter(q=>q.alive&&q.type==='king'&&q.faction!==p.faction&&factions[q.faction].alive);
-  const ownKing=getPiece(f.kingId);
-  const attackers=attackingPiecesForFactionKing(f.idx);
+  const kingTargets=context?.enemyKings || pieces.filter(q=>q.alive&&q.type==='king'&&q.faction!==p.faction&&factions[q.faction].alive);
+  const ownKing=context?.ownKing || getPiece(f.kingId);
+  const attackers=context?.attackers || attackingPiecesForFactionKing(f.idx);
+  const enemyNearKing=context?.enemyNearKing || (ownKing?nearestEnemy(ownKing.x,ownKing.y,f.idx,9):null);
   const kingInCheck=!!attackers.length;
   for(const m of moves){
     let s=0;
@@ -7818,7 +8140,7 @@ function aiMovePiece(f,p){
     if(target){
       s += 45 + (pieceDefs[target.type].value||1)*6;
       if(target.type==='king') s += 1000;
-      if(style==='assassin') s += target.type==='king'?400:20;
+      if(style==='assassin' && target.type!=='king') s += 18 + shadowTargetPriority(target);
       if(ownKing && dist2(target.x,target.y,ownKing.x,ownKing.y)<=64) s += 75;
       if(attackers.some(a=>a.id===target.id)) s += kingInCheck ? 260 : 130;
     }
@@ -7833,8 +8155,11 @@ function aiMovePiece(f,p){
     const nearestKing=nearestPieceFromList(kingTargets,m.x,m.y);
     if(nearestKing){
       const d=Math.sqrt(dist2(m.x,m.y,nearestKing.x,nearestKing.y));
-      s += (style==='aggressive'||style==='assassin') ? Math.max(0,34-d*1.8) : Math.max(0,15-d);
+      if(style==='aggressive') s += Math.max(0,34-d*1.8);
+      else if(style==='assassin') s += Math.max(0,6-d*.45);
+      else s += Math.max(0,15-d);
     }
+    if(style==='assassin') s += shadowObjectivePressure(context?.shadowObjectives,m.x,m.y);
     if(style==='defensive'){
       const ownKing=getPiece(f.kingId);
       if(ownKing) s += Math.max(0,18-Math.sqrt(dist2(m.x,m.y,ownKing.x,ownKing.y)));
@@ -7842,7 +8167,6 @@ function aiMovePiece(f,p){
     if(ownKing){
       const fromKingDist=Math.sqrt(dist2(p.x,p.y,ownKing.x,ownKing.y));
       const toKingDist=Math.sqrt(dist2(m.x,m.y,ownKing.x,ownKing.y));
-      const enemyNearKing=nearestEnemy(ownKing.x,ownKing.y,f.idx,9);
       if(enemyNearKing){
         s += Math.max(0,18-toKingDist*1.6);
         if(target && dist2(target.x,target.y,ownKing.x,ownKing.y)<=81) s += 90;
@@ -7912,6 +8236,10 @@ function draw(){
   perfTime('background',()=>drawBackground());
   try{
     ctx.save();
+    if(!reduceMotion && cameraImpulse.strength>0 && now()<cameraImpulse.until){
+      const remain=clamp((cameraImpulse.until-now())/.16,0,1),phase=(now()*90+cameraImpulse.seed);
+      ctx.translate(Math.sin(phase)*cameraImpulse.strength*3.2*remain,Math.cos(phase*1.37)*cameraImpulse.strength*2.2*remain);
+    }else if(now()>=cameraImpulse.until) cameraImpulse.strength=0;
     ctx.scale(cam.zoom,cam.zoom);
     ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
     applyIsometricTransform(ctx);
@@ -7921,6 +8249,7 @@ function draw(){
     drawShrines();
     drawShadowFog();
     drawHighlights();
+    drawFactionMoveEffects();
     perfTime('actorsTotal',()=>drawActors());
     perfTime('effects',()=>drawDestructionEffects());
     drawSolarBeaconChannels();
@@ -8436,14 +8765,29 @@ function drawHighlights(){
   }
   if(selectedPiece){
     const sx=selectedPiece.x*BASE_CELL, sy=selectedPiece.y*BASE_CELL;
-    ctx.strokeStyle='#fff3a3'; ctx.lineWidth=4; ctx.strokeRect(sx+3,sy+3,BASE_CELL-6,BASE_CELL-6);
+    const selectPulse=.55+.45*Math.sin(now()*7+selectedPiece.id);
+    ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.14*selectPulse;ctx.fillStyle=factions[selectedPiece.faction]?.color||'#fff3a3';ctx.fillRect(sx+3,sy+3,BASE_CELL-6,BASE_CELL-6);ctx.globalAlpha=.92;ctx.strokeStyle='#fff3a3';ctx.lineWidth=4;ctx.strokeRect(sx+3,sy+3,BASE_CELL-6,BASE_CELL-6);ctx.restore();
     for(const m of legalMoves){
-      const x=m.x*BASE_CELL, y=m.y*BASE_CELL;
-      ctx.globalAlpha=m.capture?.55:.36;
-      ctx.fillStyle=m.vinePull?'#35e66f':(m.broodLeap?'#8cffb0':(m.markedRangeBonus?'#b388ff':(m.capture?'#ff4058':'#7dd3fc')));
-      ctx.beginPath(); ctx.arc(x+BASE_CELL/2,y+BASE_CELL/2,m.capture?15:10,0,Math.PI*2); ctx.fill();
-      ctx.globalAlpha=1;
-      if(m.capture){ ctx.strokeStyle=m.markedRangeBonus?'#d8b4fe':'#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
+      const x=m.x*BASE_CELL,y=m.y*BASE_CELL,cx=x+BASE_CELL/2,cy=y+BASE_CELL/2;
+      const phase=isShadowSpecialMoveMeta(m)||m.shadowRush||m.stalk;
+      const target=m.capture?findPieceAt(m.x,m.y):null;
+      const dangerous=selectedPiece.type==='king'&&enemyThreatensSquare(selectedPiece.faction,m.x,m.y,selectedPiece.id);
+      ctx.save();
+      if(phase){
+        ctx.globalAlpha=.72;ctx.strokeStyle='#d8b4fe';ctx.lineWidth=3;ctx.setLineDash([6,4]);ctx.beginPath();ctx.arc(cx,cy,BASE_CELL*.31,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+        ctx.globalAlpha=.36;ctx.lineWidth=7;ctx.beginPath();ctx.arc(cx,cy,BASE_CELL*.20,0,Math.PI*2);ctx.stroke();
+        ctx.globalAlpha=.92;ctx.fillStyle='#f2e8ff';ctx.font='1000 12px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('◌',cx,cy);
+      }else if(m.capture){
+        ctx.globalAlpha=.42;ctx.fillStyle=m.markedRangeBonus?'#9b63ff':'#ff4058';ctx.beginPath();ctx.arc(cx,cy,15,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.96;ctx.strokeStyle=m.markedRangeBonus?'#e9d5ff':'#ffedf0';ctx.lineWidth=2.7;ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14);
+        for(let i=0;i<4;i++){const a=i*Math.PI/2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*21,cy+Math.sin(a)*21);ctx.lineTo(cx+Math.cos(a)*12,cy+Math.sin(a)*12);ctx.stroke();}
+      }else{
+        ctx.globalAlpha=.32;ctx.fillStyle=m.vinePull?'#35e66f':(m.broodLeap?'#8cffb0':'#7dd3fc');ctx.beginPath();ctx.arc(cx,cy,10,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.82;ctx.strokeStyle='#d9f1ff';ctx.lineWidth=1.8;ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.stroke();
+      }
+      if(dangerous){ctx.globalAlpha=.95;ctx.fillStyle='#ffcf67';ctx.font='1000 13px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('⚠',cx,cy-17);}
+      if(target?.type==='king'){ctx.globalAlpha=.98;ctx.fillStyle='#ffe6a6';ctx.strokeStyle='rgba(65,10,16,.95)';ctx.lineWidth=3;ctx.font='1000 16px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.strokeText('♛',cx,cy);ctx.fillText('♛',cx,cy);}
+      ctx.restore();
     }
     const abilityTargets=selectedAbilityTargetsForFrame();
     for(const a of abilityTargets){
@@ -8949,7 +9293,20 @@ function drawSinglePiece(p,labelIds=new Set()){
     const pieceReady=exactCd>=1;
     drawIsometricCooldownBase(p,f,cd);
     makeCurrentTransformUpright(ctx);
-    ctx.globalAlpha = p.alive ? 1 : .2;
+    const isSelected=rstate.selectedPieceId===p.id;
+    const unrelated=!!selectedPiece && !isSelected && !abilityTarget && !attackTarget && p.faction!==selectedPiece.faction;
+    if((p.recoilUntil||0)>rstate.time){
+      const u=clamp(((p.recoilUntil||0)-rstate.time)/.13,0,1),kick=Math.sin(u*Math.PI)*7;
+      ctx.translate((p.recoilX||0)*kick,(p.recoilY||0)*kick);
+    }
+    if(isSelected){ ctx.translate(0,-5); ctx.scale(1.055,1.055); }
+    let phaseAlpha=1;
+    if(p.visualMoveKind==='phase' && p.moveEndMs>Date.now() && p.moveEndMs>p.moveStartMs){
+      const phaseU=clamp((Date.now()-p.moveStartMs)/(p.moveEndMs-p.moveStartMs),0,1),distort=Math.sin(phaseU*Math.PI);
+      phaseAlpha=.34+.66*Math.abs(phaseU-.5)*2;
+      ctx.scale(1+distort*.08,1-distort*.12);
+    }
+    ctx.globalAlpha = p.alive ? (unrelated ? .72 : 1)*phaseAlpha : .2;
 
     if(abilityTarget || attackTarget){
       drawTargetablePieceGlow(graphic,def,metrics,r,p.id,p.type,f.id,targetGlowColor,targetPulse);
@@ -8987,7 +9344,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       const needsBlur=p.flash>0 || abilityTarget || attackTarget || checkedKing || rstate.selectedPieceId===p.id;
       if(needsBlur || p.flash>0){
         ctx.save();
-        ctx.globalAlpha=p.flash>0 ? .78 : (pieceReady ? 1 : .92);
+        ctx.globalAlpha=(p.flash>0 ? .78 : (pieceReady ? 1 : .92))*phaseAlpha;
         ctx.shadowColor=p.flash>0 ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.62)';
         ctx.shadowBlur=needsBlur ? (p.flash>0 ? 18 : 8) : 0; if(needsBlur) perfCount('shadowBlur');
         const variant=getCachedSpriteVariant(f.id,p.type,graphic,metrics,pieceReady?'ready':'cooling',rstate.tier,f.duplicateFaction);
@@ -8995,7 +9352,7 @@ function drawSinglePiece(p,labelIds=new Set()){
         ctx.restore();
       }else{
         const plate=getPrecomposedPiecePlate(p,f,def,graphic,metrics,r,pieceReady?'ready':'cooling');
-        if(plate){ ctx.save(); ctx.globalAlpha=pieceReady ? 1 : .96; drawSpriteCanvas(ctx,plate,plate.x,plate.y,plate.w,plate.h); ctx.restore(); perfCount('precomposedPlates'); }
+        if(plate){ ctx.save(); ctx.globalAlpha=(pieceReady ? 1 : .96)*phaseAlpha; drawSpriteCanvas(ctx,plate,plate.x,plate.y,plate.w,plate.h); ctx.restore(); perfCount('precomposedPlates'); }
         else { perfCount('uncachedSourceImages'); ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH); }
       }
     } else {
@@ -9100,9 +9457,14 @@ function drawSinglePiece(p,labelIds=new Set()){
     }
     if(labelIds.has(p.id)) drawNameTag(displayNameForFaction(p.faction), r);
     if(p.maxHp>1){
-      for(let i=0;i<p.maxHp;i++){
-        ctx.fillStyle=i<p.hp?'#dbeafe':'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(-r+5+i*8,r+5,3,0,Math.PI*2); ctx.fill();
+      const hpRatio=clamp((Number.isFinite(p.displayHp)?p.displayHp:p.hp)/Math.max(1,p.maxHp),0,1);
+      const hpW=Math.max(34,Math.min(58,r*1.45)),hpH=5,hpY=r+8;
+      ctx.globalAlpha=.88;ctx.fillStyle='rgba(2,6,14,.82)';roundRect(ctx,-hpW/2-1,hpY-1,hpW+2,hpH+2,4);ctx.fill();
+      if(hpRatio>0){
+        const hpColor=hpRatio>.55?'#75efad':(hpRatio>.28?'#ffd166':'#ff6678');
+        ctx.fillStyle=hpColor;roundRect(ctx,-hpW/2,hpY,hpW*hpRatio,hpH,3);ctx.fill();
       }
+      ctx.globalAlpha=1;
     }
     perfCount('renderedPieces');
     ctx.restore();
@@ -9354,10 +9716,31 @@ function drawParticlesWorld(){
   ctx.globalAlpha=1;
 }
 function drawScreenEffects(){
-  if(paused){
+  const t=now();
+  const defeatActive=kingDefeatFx && t-kingDefeatFx.start<kingDefeatFx.duration;
+  if(paused && !defeatActive){
     ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,innerWidth,innerHeight);
     ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 42px Inter'; ctx.fillText('PAUSED',innerWidth/2,innerHeight/2);
   }
+  if(turnTransitionFx){
+    const age=t-turnTransitionFx.start;
+    if(age<turnTransitionFx.duration){
+      const u=clamp(age/turnTransitionFx.duration,0,1),fade=Math.sin(u*Math.PI);
+      ctx.save();ctx.globalAlpha=.72*fade;ctx.fillStyle='rgba(4,8,16,.78)';ctx.fillRect(0,innerHeight*.31,innerWidth,74);
+      ctx.globalAlpha=fade;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=turnTransitionFx.color;ctx.font='1000 23px Inter,system-ui,sans-serif';ctx.fillText(turnTransitionFx.title,innerWidth/2,innerHeight*.31+29);
+      ctx.fillStyle='#dbeafe';ctx.font='900 11px Inter,system-ui,sans-serif';ctx.fillText(`TURN ${turnTransitionFx.turn}`,innerWidth/2,innerHeight*.31+51);ctx.restore();
+    }else turnTransitionFx=null;
+  }
+  if(defeatActive){
+    const age=t-kingDefeatFx.start,u=clamp(age/kingDefeatFx.duration,0,1),fade=Math.sin(u*Math.PI);
+    ctx.save();ctx.globalAlpha=.34*fade;ctx.fillStyle=kingDefeatFx.loserColor;ctx.fillRect(0,0,innerWidth,innerHeight);
+    ctx.globalAlpha=.90*fade;ctx.fillStyle='rgba(3,6,12,.90)';ctx.fillRect(0,innerHeight*.36,innerWidth,118);
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=kingDefeatFx.loserColor;ctx.font=`1000 ${Math.min(42,innerWidth*.065)}px Inter,system-ui,sans-serif`;ctx.fillText(`${kingDefeatFx.loser.toUpperCase()} ELIMINATED`,innerWidth/2,innerHeight*.36+64);
+    ctx.fillStyle=kingDefeatFx.winnerColor;ctx.font='900 12px Inter,system-ui,sans-serif';ctx.fillText(`${kingDefeatFx.winner.toUpperCase()} CLAIMS THE CROWN`,innerWidth/2,innerHeight*.36+94);
+    ctx.strokeStyle='#ffe6a6';ctx.fillStyle='#ffe6a6';ctx.lineWidth=3;
+    for(let i=0;i<5;i++){const spread=(i-2)*18*(.35+u),fall=24*u+22*u*u,rot=(i-2)*u*.8;ctx.save();ctx.translate(innerWidth/2+spread,innerHeight*.36+20+fall);ctx.rotate(rot);ctx.fillRect(-5,-2,10,4);ctx.restore();}
+    ctx.restore();
+  }else if(kingDefeatFx && t-kingDefeatFx.start>=kingDefeatFx.duration) kingDefeatFx=null;
 }
 function ensureMinimapBase(mw,mh){
   const width=Math.max(1,Math.ceil(mw)),height=Math.max(1,Math.ceil(mh));
