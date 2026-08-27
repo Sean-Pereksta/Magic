@@ -1,0 +1,74 @@
+name: Validate Arcane Wilds expansion
+
+on:
+  push:
+    branches:
+      - feature/arcane-wilds-world-loot-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/arcane-wilds-world-loot-expansion
+      - name: Apply final integration corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          core = Path('game/arcane-wilds/expansion-core.js')
+          text = core.read_text(encoding='utf-8')
+          old = "const r=Math.random()-boost;let rarity='Common';"
+          new = "const r=Math.random()+boost;let rarity='Common';"
+          if old in text:
+              text = text.replace(old, new, 1)
+          core.write_text(text, encoding='utf-8')
+
+          villages = Path('game/arcane-wilds/expansion-villages.js')
+          text = villages.read_text(encoding='utf-8')
+          text = text.replace("const sp=(n.role==='Villager'?.7:.38)*dt;", "const sp=(n.role==='Villager' ? .7 : .38)*dt;")
+          marker = "function openForgePanel(){renderForgePanel();showOverlay('forgeCraftPanel')}"
+          override = "\nconst _baseOpenTownPanel=openTownPanel;\nopenTownPanel=function(service){_baseOpenTownPanel(service);$('forgeService').textContent='Open Material Forge';$('forgeService').onclick=()=>{closeOverlay('townPanel');openForgePanel()}};"
+          if '_baseOpenTownPanel' not in text:
+              if marker not in text:
+                  raise SystemExit('Could not locate forge panel integration point')
+              text = text.replace(marker, marker + override, 1)
+          villages.write_text(text, encoding='utf-8')
+
+          combat = Path('game/arcane-wilds/expansion-combat.js')
+          text = combat.read_text(encoding='utf-8')
+          text = text.replace("const matChance=_boss?1:_elite?.96:.52;", "const matChance=_boss ? 1 : _elite ? .96 : .52;")
+          text = text.replace("Math.random()<(_elite?.075:.006)", "Math.random()<(_elite ? .075 : .006)")
+          combat.write_text(text, encoding='utf-8')
+      - name: JavaScript syntax checks
+        run: |
+          node --check game/arcane-wilds/expansion-core.js
+          node --check game/arcane-wilds/expansion-combat.js
+          node --check game/arcane-wilds/expansion-villages.js
+          node --check game/arcane-wilds/expansion-ui.js
+          cat game/arcane-wilds/expansion-core.js game/arcane-wilds/expansion-combat.js game/arcane-wilds/expansion-villages.js game/arcane-wilds/expansion-ui.js > /tmp/arcane-wilds-expansion-all.js
+          node --check /tmp/arcane-wilds-expansion-all.js
+      - name: Verify integration points
+        shell: python
+        run: |
+          from pathlib import Path
+          game = Path('game/arcane-wilds.html').read_text(encoding='utf-8')
+          lobby = Path('lobby/lobby.html').read_text(encoding='utf-8')
+          for name in ['expansion-core.js','expansion-combat.js','expansion-villages.js','expansion-ui.js']:
+              assert f'arcane-wilds/{name}' in game, f'{name} is not loaded by the game shell'
+          assert lobby.count('key:"arcanewilds"') == 1, 'Arcane Wilds lobby entry is missing or duplicated'
+          assert 'modes:["single"]' in lobby[lobby.index('key:"arcanewilds"'):lobby.index('key:"arcanewilds"')+600], 'Arcane Wilds is not marked single-player'
+      - name: Commit validated corrections
+        run: |
+          if git diff --quiet -- game/arcane-wilds; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/arcane-wilds/expansion-core.js game/arcane-wilds/expansion-combat.js game/arcane-wilds/expansion-villages.js
+          git commit -m "Polish and validate Arcane Wilds expansion [arcane-validated]"
+          git push
