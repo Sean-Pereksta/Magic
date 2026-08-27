@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#050817">
+  <title>Space Tyrants: Galactic Mandate</title>
+  <style>
+    :root{
+      --ink:#eef5ff;--muted:#8fa5c9;--panel:rgba(8,13,31,.88);--panel2:rgba(14,23,50,.9);
+      --line:rgba(120,161,255,.2);--cyan:#4ee7ff;--violet:#9c7bff;--gold:#ffce69;
+      --red:#ff5f76;--green:#5cf2a2;--shadow:0 18px 60px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#030511;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button{font:inherit;color:inherit}
+    button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+    [hidden]{display:none!important}
+    #galaxy{position:fixed;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;background:#030511}
+    #galaxy.dragging{cursor:grabbing}
+    .glass{background:linear-gradient(145deg,rgba(14,23,50,.93),rgba(5,9,24,.88));border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(16px)}
+    .topbar{position:fixed;z-index:20;left:14px;right:14px;top:14px;min-height:62px;border-radius:18px;display:flex;align-items:center;gap:18px;padding:9px 14px;pointer-events:auto}
+    .brand{display:flex;align-items:center;gap:11px;min-width:245px}
+    .brand-mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#fff,#66d9ff 8%,#6c4eff 32%,#170b3d 68%);box-shadow:0 0 28px rgba(94,111,255,.55);font-size:19px}
+    .brand strong{display:block;font-size:.97rem;letter-spacing:.12em}.brand span{display:block;color:#91a7cd;font-size:.68rem;letter-spacing:.18em;margin-top:2px}
+    .hud-stats{flex:1;display:grid;grid-template-columns:repeat(6,minmax(74px,1fr));gap:7px}
+    .hud-stat{min-width:0;padding:7px 9px;border-left:1px solid rgba(128,161,229,.14)}
+    .hud-stat label{display:block;color:#8298bd;font-size:.58rem;text-transform:uppercase;letter-spacing:.13em;white-space:nowrap}.hud-stat b{display:block;font-size:.88rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .top-actions{display:flex;gap:7px}.icon-btn,.speed-btn{border:1px solid var(--line);background:rgba(72,97,159,.12);border-radius:10px;min-width:38px;height:38px;cursor:pointer;font-weight:800}.icon-btn:hover,.speed-btn:hover,.speed-btn.active{background:rgba(78,231,255,.16);border-color:rgba(78,231,255,.5)}
+    .left-panel{position:fixed;z-index:16;left:14px;top:90px;bottom:82px;width:300px;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;transition:transform .24s ease}
+    .panel-head{padding:15px 16px 12px;border-bottom:1px solid var(--line);background:rgba(10,17,40,.76)}
+    .kicker{color:var(--cyan);font-size:.61rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase}.panel-head h2{font-size:1.24rem;margin:5px 0 2px}.subtle{color:var(--muted);font-size:.74rem;line-height:1.4}
+    .planet-body{padding:12px 14px 18px;overflow:auto;scrollbar-width:thin;scrollbar-color:#31426c transparent}
+    .empty-selection{display:grid;place-items:center;text-align:center;height:100%;padding:30px;color:var(--muted)}
+    .empty-selection .orb{width:92px;height:92px;border-radius:50%;margin:auto auto 18px;background:radial-gradient(circle at 32% 28%,#8ae8ff,#3c52b0 24%,#111936 62%,#050713);box-shadow:0 0 34px rgba(73,123,255,.35)}
+    .owner-row{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:11px}.owner-chip,.status-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;border:1px solid var(--line);font-size:.65rem;font-weight:850;background:rgba(87,115,177,.12)}
+    .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 9px currentColor}
+    .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0}.metric{padding:9px;border-radius:11px;background:rgba(80,108,169,.1);border:1px solid rgba(114,150,225,.11)}.metric label{display:block;font-size:.57rem;color:#8298bd;text-transform:uppercase;letter-spacing:.1em}.metric b{font-size:.83rem;display:block;margin-top:3px}.meter{height:5px;background:rgba(128,151,203,.15);border-radius:99px;overflow:hidden;margin-top:5px}.meter i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--cyan),var(--violet))}.meter.warning i{background:linear-gradient(90deg,#ffcb68,#ff6f6f)}
+    .section-label{margin:14px 0 7px;color:#b9c7e2;font-size:.62rem;font-weight:900;text-transform:uppercase;letter-spacing:.13em}
+    .resource-list,.facility-list,.order-list{display:grid;gap:6px}.resource-row,.facility-row,.order-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:7px 8px;border-radius:9px;background:rgba(79,102,158,.08);font-size:.7rem}.resource-row small,.order-row small{color:var(--muted)}.stars{letter-spacing:1px;color:var(--gold);font-size:.66rem}.shortage{color:var(--red)!important}.healthy{color:var(--green)!important}
+    .right-panel{position:fixed;z-index:15;right:14px;top:90px;width:286px;max-height:calc(100vh - 172px);border-radius:18px;overflow:hidden}.events{max-height:440px;overflow:auto;padding:8px}.event{position:relative;padding:10px 9px 10px 24px;border-bottom:1px solid rgba(121,154,221,.1);font-size:.69rem;line-height:1.38;color:#c7d4eb}.event::before{content:"";position:absolute;left:9px;top:15px;width:6px;height:6px;border-radius:50%;background:#7390c8;box-shadow:0 0 9px currentColor}.event.warning::before{background:var(--gold)}.event.danger::before{background:var(--red)}.event.good::before{background:var(--green)}.event time{display:block;color:#677fa9;font-size:.58rem;margin-top:3px}
+    .legend{padding:11px 13px;border-top:1px solid var(--line);display:flex;gap:10px;flex-wrap:wrap;color:#8298bd;font-size:.61rem}.legend span{display:flex;align-items:center;gap:5px}
+    .bottombar{position:fixed;z-index:18;left:326px;right:312px;bottom:14px;min-height:55px;border-radius:17px;display:flex;align-items:center;gap:12px;padding:8px 11px}
+    .command-clock{flex:1;min-width:130px}.clock-row{display:flex;justify-content:space-between;gap:8px;font-size:.65rem;text-transform:uppercase;letter-spacing:.11em;color:#9eb1d2}.clock-row b{color:var(--cyan)}.clock-track{height:7px;border-radius:99px;background:rgba(120,151,215,.13);overflow:hidden;margin-top:6px}.clock-track i{display:block;height:100%;width:100%;border-radius:inherit;background:linear-gradient(90deg,var(--violet),var(--cyan));box-shadow:0 0 12px rgba(78,231,255,.4)}
+    .speed-group{display:flex;gap:4px}.speed-btn{height:33px;min-width:34px;font-size:.68rem}
+    .hint{font-size:.63rem;color:#788db3;white-space:nowrap}.perf{font-variant-numeric:tabular-nums}
+    .modal-wrap{position:fixed;z-index:100;inset:0;display:grid;place-items:center;padding:22px;background:rgba(1,3,11,.68);backdrop-filter:blur(10px)}
+    .start-card{width:min(850px,96vw);border-radius:28px;overflow:hidden;position:relative;padding:44px;background:radial-gradient(700px 380px at 80% 12%,rgba(95,70,255,.29),transparent 58%),radial-gradient(450px 300px at 12% 84%,rgba(0,210,255,.14),transparent 60%),linear-gradient(145deg,#111b3b,#050819 68%);border:1px solid rgba(129,164,255,.27);box-shadow:0 40px 120px rgba(0,0,0,.65)}
+    .start-card::before{content:"";position:absolute;right:70px;top:52px;width:190px;height:190px;border-radius:50%;background:radial-gradient(circle at 30% 28%,#c8f8ff,#6c78ff 12%,#2a2d80 34%,#10153e 66%,#050717);box-shadow:0 0 80px rgba(76,102,255,.45)}
+    .start-copy{position:relative;z-index:2;max-width:560px}.start-eyebrow{color:var(--cyan);font-size:.72rem;font-weight:900;letter-spacing:.27em}.start-card h1{font-size:clamp(2.7rem,7vw,5.5rem);line-height:.82;letter-spacing:-.055em;margin:13px 0 15px}.start-card h1 span{display:block;color:#9bb0e0;font-size:.34em;letter-spacing:.2em;margin-top:20px}.start-card p{max-width:540px;color:#aab9d5;line-height:1.6;font-size:.9rem}.start-features{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.start-features span{padding:7px 10px;border-radius:999px;border:1px solid rgba(121,159,238,.22);background:rgba(66,92,151,.12);font-size:.65rem;font-weight:800;color:#c9d8f3}.start-actions{display:flex;gap:10px;flex-wrap:wrap}.primary,.secondary,.issue-btn{border:1px solid transparent;border-radius:12px;padding:11px 17px;font-weight:900;cursor:pointer}.primary,.issue-btn{background:linear-gradient(135deg,#6f57ff,#20cbe3);box-shadow:0 12px 26px rgba(64,102,255,.32)}.primary:hover,.issue-btn:hover{filter:brightness(1.1)}.secondary{background:rgba(104,134,198,.12);border-color:var(--line)}
+    .command-wrap{align-items:end;padding:22px}.command-panel{width:min(1120px,98vw);border-radius:24px;padding:20px;background:linear-gradient(155deg,rgba(13,22,48,.98),rgba(5,8,20,.98));border:1px solid rgba(111,156,255,.28);box-shadow:0 32px 100px rgba(0,0,0,.68)}
+    .command-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px}.command-head h2{margin:4px 0;font-size:1.55rem}.command-head p{margin:0;color:var(--muted);font-size:.76rem}.command-slots{padding:8px 11px;border-radius:11px;background:rgba(78,231,255,.08);border:1px solid rgba(78,231,255,.2);font-size:.72rem;color:#b9f6ff;white-space:nowrap}
+    .command-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.command-card{text-align:left;min-height:195px;padding:15px;border-radius:15px;border:1px solid rgba(120,153,224,.18);background:linear-gradient(145deg,rgba(58,76,137,.16),rgba(15,24,53,.22));cursor:pointer;transition:.16s ease;position:relative;overflow:hidden}.command-card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--cat,#7b8eb8)}.command-card:hover{transform:translateY(-3px);border-color:rgba(78,231,255,.45)}.command-card.selected{border-color:var(--cyan);background:linear-gradient(145deg,rgba(54,136,169,.24),rgba(58,50,135,.27));box-shadow:0 0 0 2px rgba(78,231,255,.08),0 12px 30px rgba(0,0,0,.25)}.command-card.disabled{opacity:.4;cursor:not-allowed;transform:none}.command-cat{font-size:.57rem;letter-spacing:.14em;text-transform:uppercase;color:#90a8cf;font-weight:900}.command-card h3{font-size:.96rem;margin:9px 0 7px}.command-card p{font-size:.69rem;color:#9eb0ce;line-height:1.43;margin:0}.command-effects{display:grid;gap:4px;margin-top:11px;font-size:.62rem;color:#d5e0f2}.command-effects span::before{content:"›";color:var(--cyan);margin-right:5px}.command-target{color:var(--gold);font-size:.62rem;margin-top:9px}.command-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px}.command-note{color:#7f94b8;font-size:.65rem}.issue-btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+    .toast{position:fixed;z-index:150;left:50%;top:92px;transform:translate(-50%,-16px);opacity:0;pointer-events:none;padding:10px 14px;border-radius:11px;background:#132044;border:1px solid #38579a;color:#e9f3ff;font-size:.75rem;font-weight:800;transition:.22s ease;box-shadow:var(--shadow)}.toast.show{opacity:1;transform:translate(-50%,0)}
+    @media(max-width:1050px){.hud-stats{grid-template-columns:repeat(3,1fr)}.hud-stat:nth-child(n+4){display:none}.right-panel{display:none}.bottombar{right:14px}.command-grid{grid-template-columns:repeat(2,1fr)}.command-card{min-height:150px}}
+    @media(max-width:720px){.topbar{left:8px;right:8px;top:8px}.brand{min-width:0}.brand span{display:none}.brand strong{font-size:.75rem}.hud-stat:nth-child(n+3){display:none}.left-panel{left:8px;top:auto;bottom:70px;width:calc(100% - 16px);height:45vh;transform:translateY(calc(100% + 90px))}.left-panel.open{transform:none}.bottombar{left:8px;right:8px;bottom:8px}.hint,.perf{display:none}.command-wrap{padding:8px}.command-panel{max-height:94vh;overflow:auto}.command-grid{grid-template-columns:1fr}.command-card{min-height:0}.start-card{padding:30px 22px}.start-card::before{opacity:.28;right:-45px}.start-card h1{font-size:3.3rem}.planet-toggle{display:inline-grid!important}}
+  </style>
+</head>
+<body>
+  <canvas id="galaxy" aria-label="Interactive galactic strategy map"></canvas>
+
+  <header class="topbar glass">
+    <div class="brand"><div class="brand-mark">✦</div><div><strong>SPACE TYRANTS</strong><span>GALACTIC MANDATE</span></div></div>
+    <div class="hud-stats">
+      <div class="hud-stat"><label>Worlds</label><b id="hudWorlds">1</b></div>
+      <div class="hud-stat"><label>Population</label><b id="hudPop">110K</b></div>
+      <div class="hud-stat"><label>Fleet Power</label><b id="hudFleet">0</b></div>
+      <div class="hud-stat"><label>Industry</label><b id="hudIndustry">1.0</b></div>
+      <div class="hud-stat"><label>Logistics</label><b id="hudLogistics">Stable</b></div>
+      <div class="hud-stat"><label>Mandate</label><b id="hudStage">Settlement</b></div>
+    </div>
+    <div class="top-actions"><button class="icon-btn planet-toggle" id="planetToggle" hidden title="Planet details">◉</button><button class="icon-btn" id="homeBtn" title="Center on capital">⌂</button><button class="icon-btn" id="saveBtn" title="Save game">▣</button></div>
+  </header>
+
+  <aside class="left-panel glass" id="leftPanel">
+    <div class="panel-head"><div class="kicker">Planetary Intelligence</div><h2 id="planetName">No world selected</h2><div class="subtle" id="planetSubtitle">Select a world to inspect its living economy.</div></div>
+    <div class="planet-body" id="planetBody"><div class="empty-selection"><div><div class="orb"></div>Click a planet to inspect population pressure, resources, facilities, shortages, and delayed orders.</div></div></div>
+  </aside>
+
+  <aside class="right-panel glass">
+    <div class="panel-head"><div class="kicker">Empire Chronicle</div><h2>Live Intelligence</h2><div class="subtle">Consequences emerging from the simulation.</div></div>
+    <div class="events" id="events"></div>
+    <div class="legend"><span>● Freighter</span><span>◆ Fleet</span><span>△ Colony</span><span>✦ Capital</span></div>
+  </aside>
+
+  <footer class="bottombar glass">
+    <div class="command-clock"><div class="clock-row"><span>Next command phase</span><b id="commandTime">00:45</b></div><div class="clock-track"><i id="commandProgress"></i></div></div>
+    <div class="speed-group"><button class="speed-btn" data-speed="0">Ⅱ</button><button class="speed-btn active" data-speed="1">1×</button><button class="speed-btn" data-speed="2">2×</button><button class="speed-btn" data-speed="4">4×</button></div>
+    <div class="hint">Drag / WASD · Wheel to zoom</div><div class="hint perf" id="perf">0 visible</div>
+  </footer>
+
+  <div class="modal-wrap" id="startModal">
+    <section class="start-card">
+      <div class="start-copy"><div class="start-eyebrow">A LIVING AUTONOMOUS EMPIRE</div><h1>SPACE<br>TYRANTS<span>GALACTIC MANDATE</span></h1><p>Your civilization moves workers, fills orders, develops worlds, and wages war on its own. You set priorities. The empire turns them into history.</p><div class="start-features"><span>49 living worlds</span><span>7 rival empires</span><span>Local supply chains</span><span>Autonomous fleets</span><span>Viewport-capped rendering</span></div><div class="start-actions"><button class="primary" id="newGameBtn">Begin New Mandate</button><button class="secondary" id="continueBtn" hidden>Continue Empire</button></div></div>
+    </section>
+  </div>
+
+  <div class="modal-wrap command-wrap" id="commandModal" hidden>
+    <section class="command-panel">
+      <div class="command-head"><div><div class="kicker">Strategic Command Phase</div><h2>The ministries await your mandate</h2><p>Choose different branches of government. Your governors decide how to execute them.</p></div><div class="command-slots" id="commandSlots">Choose 1 directive</div></div>
+      <div class="command-grid" id="commandGrid"></div>
+      <div class="command-footer"><div class="command-note" id="commandNote">The simulation is paused while you decide.</div><button class="issue-btn" id="issueBtn" disabled>Issue Mandate</button></div>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (()=>{
+    "use strict";
+    const $=id=>document.getElementById(id);
+    const canvas=$("galaxy"),ctx=canvas.getContext("2d",{alpha:false});
+    const WORLD={w:8200,h:5200};
+    const SAVE_KEY="spaceTyrants.galacticMandate.v1";
+    const RESOURCES=["iron","helium","rare","titanium","uranium","silicates"];
+    const RESOURCE_LABEL={iron:"Iron",helium:"Helium-3",rare:"Rare Earth",titanium:"Titanium",uranium:"Uranium",silicates:"Silicates"};
+    const RESOURCE_COLOR={iron:"#a9b7c8",helium:"#65e8ff",rare:"#e492ff",titanium:"#c8d7ff",uranium:"#7cf594",silicates:"#ffc977"};
+    const EMPIRE_DATA=[
+      ["Aurelian Mandate","#57ddff"],["Karthos Directorate","#ff5d73"],["Veyran Compact","#ffbf5c"],
+      ["Nyxian Synod","#b27aff"],["Orion Freeholds","#55ef9e"],["Sable Dominion","#ff80c8"],["Helion Ascendancy","#8aa1ff"]
+    ];
+    const WORLD_NAMES=["Aurelia","Koros","Vesta","Nyx","Eidolon","Cinder","Thale","Karthos","Rhex","Damaris","Vulcan","Eris","Veyra","Caligo","Prax","Iona","Tethys","Solis","Noctis","Umbra","Lys","Morrow","Orison","Drift","Orion","Pallas","Haven","Cygni","Astra","Boreal","Sable","Mordane","Ashara","Gloam","Vesper","Nadir","Helion","Crown","Meridian","Caelus","Ember","Radiant","Khepri","Argent","Titan","Farpoint","Zephyr","Talos","Obsidia"];
+    const TYPE_ICON={freighter:"●",migrant:"○",colony:"△",fleet:"◆",scout:"◇"};
+    const state={running:false,simTime:0,nextCommand:45,commandCycle:45,speed:1,preCommandSpeed:1,last:0,acc:0,lastHud:0,lastEconomy:0,lastGovernor:0,lastLogistics:0,lastAI:0,lastAutosave:0,planets:[],ships:[],empires:[],events:[],stars:[],selected:null,commandChoices:[],commandSelected:new Set(),camera:{x:1850,y:2600,zoom:.68},keys:new Set(),rngState:937145,stats:{visible:0,drawCalls:0},ended:false};
+    let drag=null,toastTimer=0;
+
+    function random(){state.rngState=(state.rngState*1664525+1013904223)>>>0;return state.rngState/4294967296}
+    function rand(a,b){return a+(b-a)*random()}
+    function pick(arr){return arr[Math.floor(random()*arr.length)]}
+    function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+    function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+    function fmtNum(v){if(v>=1000)return (v/1000).toFixed(v>=10000?0:1)+"B";if(v>=1)return v.toFixed(v>=100?0:v>=10?1:2)+"M";return Math.round(v*1000)+"K"}
+    function fmtStock(v){return v>=1000?(v/1000).toFixed(1)+"k":Math.max(0,Math.floor(v)).toString()}
+    function roman(n){return ["","I","II","III","IV","V","VI","VII","VIII","IX","X"][clamp(Math.round(n),0,10)]||String(n)}
+    function empire(id){return state.empires[id]}
+    function owned(id){return state.planets.filter(p=>p.owner===id)}
+    function playerWorlds(){return owned(0)}
+    function stageInfo(count=playerWorlds().length){if(count>=18)return ["Galactic Hegemon",3];if(count>=10)return ["Galactic Power",3];if(count>=5)return ["Regional Power",2];if(count>=3)return ["Multi-Planet Empire",2];if(count>=2)return ["Planetary Nation",1];return ["Settlement",1]}
+    function logEvent(text,tone="",empireId=0){state.events.unshift({text,tone,time:state.simTime,empireId});state.events=state.events.slice(0,32);if(empireId===0||tone==="danger")renderEvents()}
+    function showToast(text){const el=$("toast");el.textContent=text;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),1800)}
+
+    function newEmpire(id){return {id,name:EMPIRE_DATA[id][0],color:EMPIRE_DATA[id][1],modifiers:{},directives:[],tech:{automation:0,weapons:0,propulsion:0,extraction:0},intel:new Set(),fleetReserve:0,doctrine:pick(["expansion","industry","fortress","military"]),lastExpansion:0,lastAttack:0}}
+    function makePlanet(name,x,y,owner=null,home=false,index=0){
+      const q={};RESOURCES.forEach(r=>q[r]=1+Math.floor(random()*5));
+      if(name==="Aurelia")Object.assign(q,{iron:4,helium:1,rare:2,titanium:3,uranium:2,silicates:4});
+      if(name==="Koros")Object.assign(q,{iron:1,helium:5,rare:2,titanium:2,uranium:3,silicates:2});
+      if(name==="Vesta")Object.assign(q,{iron:5,helium:2,rare:2,titanium:4,uranium:1,silicates:3});
+      if(name==="Nyx")Object.assign(q,{iron:2,helium:2,rare:5,titanium:2,uranium:4,silicates:2});
+      const pop=home?(owner===0?.11:rand(.7,1.5)):owner!==null?rand(.18,.62):rand(.015,.09);
+      const cap=home?(owner===0?.18:rand(1.3,2.3)):owner!==null?rand(.35,.9):rand(.12,.4);
+      const infra={city:home?2:owner!==null?1:0,mine:home?1:owner!==null?1:0,factory:home?1:0,training:home&&owner!==0?1:0,defense:home?2:owner!==null?1:0,shipyard:home&&owner!==0?1:0,research:0};
+      const stock={components:home?90:25,equipment:home?25:5,trained:home?pop*.02:0};
+      RESOURCES.forEach(r=>stock[r]=home?70+q[r]*18:18+q[r]*8);
+      const reserve={};RESOURCES.forEach(r=>reserve[r]=(600+q[r]*620)*rand(.8,1.2));
+      return {id:`p${index}`,name,x,y,r:home?27:rand(14,23),owner,home,pop,capacity:cap,quality:q,reserve,stock,infra,rotation:rand(0,Math.PI*2),spin:rand(.025,.07),orders:[],buildQueue:[],efficiency:1,mineEfficiency:1,factoryEfficiency:1,trainingEfficiency:1,shortages:new Set(),garrison:home?32:owner!==null?12:0,specialization:"Frontier World",unrest:0,lastGov:0,lastLogistics:0,underAttack:false,intel:owner===0?1:owner===null?.35:.15,history:[]};
+    }
+    function generateGalaxy(){
+      state.rngState=937145;state.planets=[];state.ships=[];state.events=[];state.empires=EMPIRE_DATA.map((_,i)=>newEmpire(i));
+      const centers=[[1800,2600],[6900,850],[6900,4300],[4300,700],[4300,4520],[7600,2600],[4550,2600]];
+      let ni=0;
+      centers.forEach((c,eid)=>{
+        const count=eid===0?7:7;
+        for(let j=0;j<count;j++){
+          let x,y,name;
+          if(eid===0&&j===0){x=1800;y=2600;name="Aurelia"}
+          else if(eid===0&&j===1){x=2200;y=2200;name="Koros"}
+          else if(eid===0&&j===2){x=2320;y=2910;name="Vesta"}
+          else if(eid===0&&j===3){x=1350;y=3150;name="Nyx"}
+          else {const angle=(j/count)*Math.PI*2+rand(-.28,.28);const radius=j===0?0:rand(300,760);x=clamp(c[0]+Math.cos(angle)*radius,180,WORLD.w-180);y=clamp(c[1]+Math.sin(angle)*radius,180,WORLD.h-180);name=WORLD_NAMES[ni%WORLD_NAMES.length]}
+          const isHome=j===0;const initialOwner=isHome?eid:(eid===0?null:(j<3?eid:null));
+          const p=makePlanet(name,x,y,initialOwner,isHome,state.planets.length);state.planets.push(p);ni++;
+          if(initialOwner===eid)state.empires[eid].intel.add(p.id);
+        }
+      });
+      // Guarantee unique names after the fixed early-game worlds.
+      const seen=new Set();state.planets.forEach((p,i)=>{let base=p.name,n=2;while(seen.has(p.name))p.name=`${base} ${roman(n++)}`;seen.add(p.name);p.id=`p${i}`});
+      state.stars=Array.from({length:520},(_,i)=>({x:rand(0,WORLD.w),y:rand(0,WORLD.h),r:rand(.25,1.5),a:rand(.18,.8),layer:i%3}));
+      state.simTime=0;state.nextCommand=45;state.selected=state.planets[0];state.camera={x:1800,y:2600,zoom:.68};state.events=[];state.ended=false;
+      logEvent("The Aurelian Mandate awakens on Aurelia. Its governors await strategic direction.","good");
+      logEvent("Scouts report three nearby opportunities: fuel-rich Koros, iron-rich Vesta, and rare-earth-rich Nyx.","warning");
+      recomputeLanes();
+    }
+
+    function recomputeLanes(){
+      state.lanes=[];
+      state.planets.forEach((p,i)=>{
+        const nearest=state.planets.filter(q=>q!==p).sort((a,b)=>dist(p,a)-dist(p,b)).slice(0,3);
+        nearest.forEach(q=>{if(p.id<q.id&&!state.lanes.some(l=>l.a===p.id&&l.b===q.id))state.lanes.push({a:p.id,b:q.id})});
+      });
+    }
+    function modifier(e,key){const m=e.modifiers[key];return m&&m.until>state.simTime?m.value:1}
+    function setModifier(e,key,value,duration){e.modifiers[key]={value,until:state.simTime+duration}}
+    function addDirective(e,type,target=null,duration=75){e.directives=e.directives.filter(d=>d.type!==type);e.directives.push({type,target,until:state.simTime+duration})}
+    function hasDirective(e,type){return e.directives.find(d=>d.type===type&&d.until>state.simTime)}
+
+    function populationEfficiency(p){const ratio=p.pop/Math.max(.02,p.capacity);return ratio<=.86?1:clamp(1-(ratio-.86)*.62,.38,1)}
+    function sustainableMines(p){return 1.15+Math.max(...Object.values(p.quality))*.52+empire(p.owner??0).tech.extraction*.45}
+    function borderThreat(p){if(p.owner===null)return 0;let threat=0;state.planets.forEach(q=>{if(q.owner!==null&&q.owner!==p.owner){const d=dist(p,q);if(d<1300)threat+=clamp(1-d/1300,0,1)}});return threat}
+    function empireResource(id,res){return owned(id).reduce((sum,p)=>sum+(p.stock[res]||0),0)}
+    function empireIndustry(id){return owned(id).reduce((sum,p)=>sum+p.infra.factory*p.factoryEfficiency+p.infra.shipyard*.8,0)}
+    function empireFleet(id){return state.ships.filter(s=>s.owner===id&&s.type==="fleet").reduce((n,s)=>n+s.strength,0)+owned(id).reduce((n,p)=>n+p.garrison*.18,0)}
+    function totalPop(id){return owned(id).reduce((n,p)=>n+p.pop,0)}
+    function totalShortages(id){return owned(id).reduce((n,p)=>n+p.shortages.size,0)}
+
+    function addOrder(p,type,resource,amount,priority=1,label=""){
+      const existing=p.orders.find(o=>o.type===type&&o.resource===resource&&o.status!=="in transit");
+      if(existing){existing.amount=Math.max(existing.amount,amount);existing.priority=Math.max(existing.priority,priority);return existing}
+      const order={id:`o${Math.floor(random()*1e9)}`,type,resource,amount,filled:0,priority,status:"waiting",age:0,label:label||`${RESOURCE_LABEL[resource]||resource} requested`};p.orders.push(order);return order;
+    }
+    function consume(p,res,amount){const got=Math.min(amount,p.stock[res]||0);p.stock[res]=(p.stock[res]||0)-got;return got}
+    function tickPlanet(p,dt){
+      if(p.owner===null)return;
+      const e=empire(p.owner),popEff=populationEfficiency(p);p.efficiency=popEff;
+      const housing=Math.max(0,p.capacity-p.pop),growth=(.0000085*p.pop+.000004)*modifier(e,"growth")*popEff*dt;
+      p.pop+=Math.min(growth,housing*.002+growth*.2);
+      if(p.pop>p.capacity)p.unrest=clamp(p.unrest+dt*.0005*(p.pop/p.capacity-1),0,1);else p.unrest=clamp(p.unrest-dt*.00025,0,1);
+      const labor=p.pop*.56,facilityNeed=p.infra.mine*.025+p.infra.factory*.045+p.infra.training*.03+p.infra.shipyard*.035;
+      const laborEff=clamp(labor/Math.max(.02,facilityNeed),.25,1);
+      const mineCap=sustainableMines(p),mineLoad=p.infra.mine/mineCap;
+      p.mineEfficiency=popEff*laborEff*(mineLoad>1?1/mineLoad:1)*modifier(e,"mining")*(1+e.tech.extraction*.12);
+      RESOURCES.forEach(res=>{
+        const quality=p.quality[res],depleted=p.reserve[res]<quality*100;
+        const capYield=quality*.13*Math.min(p.infra.mine,mineCap);
+        let yieldRate=capYield*p.mineEfficiency*(depleted?.5:1);
+        if(p.reserve[res]<=0)yieldRate=0;
+        const gained=Math.min(p.reserve[res],yieldRate*dt);p.reserve[res]-=gained;p.stock[res]+=gained;
+        if(depleted&&p.infra.mine>0){p.shortages.add(res)}else if(p.stock[res]>35&&p.reserve[res]>quality*100)p.shortages.delete(res);
+      });
+      const rawNeed=p.infra.factory*.035*dt*modifier(e,"industry");
+      const iron=consume(p,"iron",rawNeed),sil=consume(p,"silicates",rawNeed*.7),rare=consume(p,"rare",rawNeed*.18);
+      const inputEff=rawNeed?Math.min(iron/rawNeed,sil/(rawNeed*.7||1),rare/(rawNeed*.18||1)):1;
+      p.factoryEfficiency=clamp(inputEff,0,1)*laborEff*popEff*modifier(e,"industry")*(1+e.tech.automation*.1);
+      p.stock.components+=p.infra.factory*.055*p.factoryEfficiency*dt;
+      p.stock.equipment+=p.infra.factory*.018*p.factoryEfficiency*dt;
+      if(p.infra.factory&&p.stock.iron<18)addOrder(p,"material","iron",55,2,"Factory iron order");
+      if(p.infra.factory&&p.stock.silicates<14)addOrder(p,"material","silicates",42,1,"Industrial silicates order");
+      if(p.infra.factory&&p.stock.rare<8)addOrder(p,"material","rare",20,1,"Electronics order");
+      const trainNeed=p.infra.training*.012*dt,gear=consume(p,"equipment",trainNeed);
+      p.trainingEfficiency=trainNeed?clamp(gear/trainNeed,0,1)*laborEff:1;
+      const recruits=Math.min(p.pop*.000002*dt,p.infra.training*.000013*p.trainingEfficiency*dt);p.pop-=recruits;p.stock.trained+=recruits;
+      if(p.infra.training&&p.stock.equipment<5)addOrder(p,"equipment","equipment",15,2,"Training equipment order");
+      tickBuildQueue(p,dt);
+      p.orders.forEach(o=>o.age+=dt);p.orders=p.orders.filter(o=>o.age<180&&o.filled<o.amount*.98);
+      p.rotation=(p.rotation+p.spin*dt)%(Math.PI*2);
+      p.specialization=classifyPlanet(p);
+    }
+    function classifyPlanet(p){const i=p.infra;if(i.defense>=Math.max(4,i.factory+1))return "Fortress World";if(i.shipyard>=3)return "Naval World";if(i.factory>=Math.max(3,i.mine))return "Forge World";if(i.mine>=Math.max(3,i.factory+1))return "Mining World";if(i.training>=3)return "Training World";if(i.research>=3)return "Research World";if(i.city>=4)return "Population Hub";return "Frontier World"}
+    function tickBuildQueue(p,dt){
+      if(!p.buildQueue.length&&p.infra.shipyard>0&&p.owner!==null){
+        const e=empire(p.owner),military=hasDirective(e,"fleet")||borderThreat(p)>.45;
+        const type=military?"fleet":(random()<.42?"freighter":"scout");
+        p.buildQueue.push({type,progress:0,need:{components:type==="fleet"?38:18,helium:type==="fleet"?18:9,titanium:type==="fleet"?15:5,trained:type==="fleet"?.009:0}});
+      }
+      const q=p.buildQueue[0];if(!q)return;
+      Object.entries(q.need).forEach(([res,amt])=>{if((p.stock[res]||0)<amt*.55)addOrder(p,res==="trained"?"crew":"ship",res,amt,3,`${q.type} construction order`)});
+      if(Object.entries(q.need).every(([res,amt])=>(p.stock[res]||0)>=amt)){
+        q.progress+=dt*.014*p.infra.shipyard*p.factoryEfficiency*modifier(empire(p.owner),"shipbuilding");
+        if(q.progress>=1){Object.entries(q.need).forEach(([res,amt])=>consume(p,res,amt));launchBuiltShip(p,q.type);p.buildQueue.shift()}
+      }
+    }
+    function launchBuiltShip(p,type){
+      if(state.ships.length>=190)return;
+      const e=empire(p.owner),target=chooseShipTarget(p,type);
+      if(!target){if(type==="fleet")p.garrison+=12*(1+e.tech.weapons*.12);return}
+      createShip(type,p,target,p.owner,type==="fleet"?{strength:18*(1+e.tech.weapons*.15)}:{});
+      if(p.owner===0)logEvent(`${p.name} launched a new ${type}.`,"good")
+    }
+    function chooseShipTarget(p,type){const e=empire(p.owner),own=owned(p.owner).filter(q=>q!==p);if(type==="scout")return state.planets.filter(q=>!e.intel.has(q.id)).sort((a,b)=>dist(p,a)-dist(p,b))[0]||pick(own);if(type==="fleet"){const invasion=hasDirective(e,"invasion");if(invasion)return state.planets.find(q=>q.id===invasion.target);return own.sort((a,b)=>borderThreat(b)-borderThreat(a))[0]}return own.length?pick(own):null}
+
+    function governorTick(){
+      state.planets.forEach(p=>{
+        if(p.owner===null)return;const e=empire(p.owner),threat=borderThreat(p),ratio=p.pop/p.capacity;let type=null;
+        if(ratio>.83)type="city";
+        else if(threat>.5||hasDirective(e,"fortify"))type="defense";
+        else if(hasDirective(e,"industry")&&p.infra.factory<5)type="factory";
+        else if(hasDirective(e,"fleet")&&p.infra.shipyard<3)type="shipyard";
+        else if(hasDirective(e,"population"))type="city";
+        else if(p.infra.mine<sustainableMines(p)*.86&&Math.max(...Object.values(p.quality))>=4)type="mine";
+        else if(p.infra.factory<p.infra.mine*.85)type="factory";
+        else if(p.infra.training<Math.ceil(p.infra.shipyard*.7))type="training";
+        else if(random()<.22)type=pick(["research","defense","city"]);
+        if(!type)return;const cost={city:36,mine:30,factory:46,training:40,defense:34,shipyard:62,research:55}[type];
+        if(p.stock.components>=cost){p.stock.components-=cost;p.infra[type]++;if(type==="city")p.capacity+=.12+Math.sqrt(p.pop)*.05;if(type==="defense")p.garrison+=6;if(p.owner===0)logEvent(`${p.name}'s governor completed ${type} expansion.`,"good")}
+        else addOrder(p,"construction","components",cost,ratio>.9?3:1,`${type} construction order`);
+      });
+    }
+
+    function logisticsTick(){
+      state.planets.forEach(p=>{
+        if(p.owner===null)return;
+        p.orders.filter(o=>o.status==="waiting").sort((a,b)=>b.priority-a.priority||b.age-a.age).slice(0,2).forEach(o=>fillOrder(p,o));
+        const pressure=p.pop/p.capacity;
+        if(pressure>1.02&&state.ships.filter(s=>s.type==="migrant"&&s.owner===p.owner).length<8){
+          const target=owned(p.owner).filter(q=>q!==p&&q.pop/q.capacity<.62).sort((a,b)=>dist(p,a)-dist(p,b))[0];
+          if(target){const amount=Math.min(.018,p.pop*.025);p.pop-=amount;createShip("migrant",p,target,p.owner,{cargo:{population:amount}});if(p.owner===0)logEvent(`${fmtNum(amount)} people departed overcrowded ${p.name} for ${target.name}.`,"warning")}
+        }
+      });
+      state.empires.forEach(e=>attemptExpansion(e));
+    }
+    function fillOrder(dest,o){
+      const active=state.ships.some(s=>s.orderId===o.id);if(active)return;
+      const candidates=owned(dest.owner).filter(p=>p!==dest&&(p.stock[o.resource]||0)>Math.max(8,o.amount*.45)).sort((a,b)=>dist(a,dest)-dist(b,dest));
+      const source=candidates[0];if(!source)return;
+      const amount=Math.min(o.amount-o.filled,(source.stock[o.resource]||0)*.55,70);if(amount<=.5)return;
+      source.stock[o.resource]-=amount;o.status="in transit";createShip("freighter",source,dest,dest.owner,{cargo:{[o.resource]:amount},orderId:o.id});
+    }
+    function attemptExpansion(e){
+      if(state.simTime-e.lastExpansion<28)return;
+      const wants=hasDirective(e,"claim")||hasDirective(e,"explore")||e.doctrine==="expansion"||owned(e.id).length<3;
+      if(!wants)return;const sources=owned(e.id).filter(p=>p.pop>.07&&p.stock.components>24);if(!sources.length)return;
+      let targetId=hasDirective(e,"claim")?.target;let target=state.planets.find(p=>p.id===targetId&&p.owner===null);
+      if(!target)target=state.planets.filter(p=>p.owner===null).sort((a,b)=>Math.min(...sources.map(s=>dist(s,a)))-Math.min(...sources.map(s=>dist(s,b))))[0];
+      if(!target)return;const source=sources.sort((a,b)=>dist(a,target)-dist(b,target))[0];if(dist(source,target)>1500&&!hasDirective(e,"explore"))return;
+      source.stock.components-=24;const pop=Math.min(.025,source.pop*.035);source.pop-=pop;createShip("colony",source,target,e.id,{cargo:{population:pop},strength:4});e.lastExpansion=state.simTime;
+      if(e.id===0)logEvent(`A colony mission departed ${source.name} for ${target.name}.`,"good")
+    }
+    function createShip(type,from,to,owner,extra={}){
+      if(!from||!to||state.ships.length>=190)return null;const d=dist(from,to),speed={freighter:72,migrant:68,colony:61,fleet:82,scout:112}[type]||70;
+      const ship={id:`s${Math.floor(random()*1e9)}`,type,from:from.id,to:to.id,x:from.x,y:from.y,progress:0,distance:d,speed:speed*(1+empire(owner).tech.propulsion*.08),owner,cargo:{},strength:0,phase:rand(0,6.28),...extra};state.ships.push(ship);return ship
+    }
+    function tickShips(dt){
+      for(let i=state.ships.length-1;i>=0;i--){const s=state.ships[i],a=state.planets.find(p=>p.id===s.from),b=state.planets.find(p=>p.id===s.to);if(!a||!b){state.ships.splice(i,1);continue}
+        s.progress+=s.speed*dt/Math.max(1,s.distance);const t=clamp(s.progress,0,1),ease=t*t*(3-2*t);s.x=a.x+(b.x-a.x)*ease+Math.sin(t*Math.PI)*Math.sin(s.phase)*28;s.y=a.y+(b.y-a.y)*ease-Math.sin(t*Math.PI)*Math.cos(s.phase)*28;
+        if(s.progress>=1){arriveShip(s,b);state.ships.splice(i,1)}
+      }
+    }
+    function arriveShip(s,p){
+      if(s.type==="freighter"){
+        Object.entries(s.cargo).forEach(([r,v])=>p.stock[r]=(p.stock[r]||0)+v);const o=p.orders.find(o=>o.id===s.orderId);if(o){o.filled+=Object.values(s.cargo)[0]||0;o.status=o.filled>=o.amount*.98?"filled":"waiting"}if(p.owner===0&&o&&o.age>16)logEvent(`${p.name} received delayed ${o.label.toLowerCase()}.`,"good");return
+      }
+      if(s.type==="migrant"){if(p.owner===s.owner)p.pop+=s.cargo.population||0;return}
+      if(s.type==="scout"){empire(s.owner).intel.add(p.id);if(s.owner===0){p.intel=Math.min(1,p.intel+.45);logEvent(`Scouts completed a survey of ${p.name}.`,"good")}return}
+      if(s.type==="colony"){
+        if(p.owner===null){p.owner=s.owner;p.pop=Math.max(.03,s.cargo.population||.02);p.capacity=Math.max(p.capacity,.16);p.infra={city:1,mine:1,factory:0,training:0,defense:0,shipyard:0,research:0};p.garrison=3;empire(s.owner).intel.add(p.id);if(s.owner===0)logEvent(`${p.name} joined the Mandate. Local government is now developing the colony.`,"good")}
+        return
+      }
+      if(s.type==="fleet")resolveFleetArrival(s,p);
+    }
+    function resolveFleetArrival(s,p){
+      if(p.owner===s.owner||p.owner===null){if(p.owner===null){p.owner=s.owner;p.pop=.025;p.capacity=.16;p.infra.city=1;empire(s.owner).intel.add(p.id)}p.garrison+=s.strength*.72;return}
+      const defender=empire(p.owner),attack=s.strength*rand(.78,1.18),defense=p.garrison*(1+p.infra.defense*.18)*(1+defender.tech.weapons*.1)*rand(.82,1.2);p.underAttack=true;
+      if(s.owner===0||p.owner===0)logEvent(`${empire(s.owner).name} assaulted ${p.name}: ${Math.round(attack)} vs ${Math.round(defense)} power.`,"danger");
+      if(attack>defense*1.08){const old=p.owner;p.owner=s.owner;p.garrison=Math.max(4,(attack-defense)*.42);p.pop*=rand(.76,.91);p.unrest=.6;empire(s.owner).intel.add(p.id);if(old===0||s.owner===0)logEvent(`${p.name} fell to ${empire(s.owner).name}. Supply routes are adapting.`,s.owner===0?"good":"danger")}
+      else {p.garrison=Math.max(2,p.garrison-attack*.45);if(s.owner===0)logEvent(`The offensive at ${p.name} stalled against stronger defenses.`,"warning")}
+      p.underAttack=false;
+    }
+
+    function aiTick(){
+      state.empires.slice(1).forEach(e=>{
+        e.directives=e.directives.filter(d=>d.until>state.simTime);
+        if(random()<.45){const type=pick(e.doctrine==="military"?["fleet","fortify","invasion"]:e.doctrine==="industry"?["industry","fleet","claim"]:["claim","population","explore","industry"]);addDirective(e,type,null,70)}
+        if(state.simTime-e.lastAttack>55&&owned(e.id).length){
+          const targets=state.planets.filter(p=>p.owner!==null&&p.owner!==e.id).sort((a,b)=>Math.min(...owned(e.id).map(s=>dist(s,a)))-Math.min(...owned(e.id).map(s=>dist(s,b))));const target=targets[0];const source=owned(e.id).sort((a,b)=>dist(a,target)-dist(b,target))[0];
+          if(target&&source&&dist(source,target)<1450&&source.garrison>24){const strength=source.garrison*.52;source.garrison-=strength;createShip("fleet",source,target,e.id,{strength});e.lastAttack=state.simTime}
+        }
+      });
+    }
+    function economyTick(dt){state.planets.forEach(p=>tickPlanet(p,dt));state.empires.forEach(e=>{e.directives=e.directives.filter(d=>d.until>state.simTime);Object.keys(e.modifiers).forEach(k=>{if(e.modifiers[k].until<=state.simTime)delete e.modifiers[k]})})}
+    function simulate(dt){
+      state.simTime+=dt;economyTick(dt);tickShips(dt);
+      if(state.simTime-state.lastGovernor>=7){state.lastGovernor=state.simTime;governorTick()}
+      if(state.simTime-state.lastLogistics>=3){state.lastLogistics=state.simTime;logisticsTick()}
+      if(state.simTime-state.lastAI>=12){state.lastAI=state.simTime;aiTick()}
+      if(state.simTime-state.lastAutosave>=18){state.lastAutosave=state.simTime;saveGame(false)}
+      if(state.simTime>=state.nextCommand&&$("commandModal").hidden)openCommandPhase();
+      checkWarnings();checkEndState();
+    }
+    function checkWarnings(){
+      if(Math.floor(state.simTime)%17!==0||state.warningSecond===Math.floor(state.simTime))return;state.warningSecond=Math.floor(state.simTime);
+      const critical=playerWorlds().find(p=>p.shortages.size&&p.orders.some(o=>o.age>22));if(critical)logEvent(`${critical.name} reports a persistent ${RESOURCE_LABEL[[...critical.shortages][0]]} shortage. Extraction income is cut by 50% where reserves are exhausted.`,"warning");
+      const crowded=playerWorlds().find(p=>p.pop/p.capacity>1.02);if(crowded)logEvent(`${crowded.name} is overpopulated. Productivity is slowing and residents are seeking passage elsewhere.`,"warning");
+    }
+    function checkEndState(){if(state.ended)return;if(!playerWorlds().length){state.ended=true;state.speed=0;logEvent("The Aurelian Mandate has lost its final world.","danger");showToast("The Mandate has fallen — reload or begin a new empire.")}else if(playerWorlds().length>=25){state.ended=true;logEvent("The Aurelian Mandate commands a galactic majority. History bends to your will.","good");showToast("Galactic Mandate achieved!")}}
+
+    const COMMANDS=[
+      {id:"secureIron",cat:"Resources",title:"Secure Iron Supply",desc:"Correct the most important material bottleneck before construction stalls.",effects:["Mines emphasize iron","Freighters prioritize iron orders","Extraction rises for 75 seconds"],score:()=>90-empireResource(0,"iron"),apply:e=>{setModifier(e,"mining",1.35,75);addDirective(e,"iron",null,75);playerWorlds().forEach(p=>{if(p.stock.iron<70)addOrder(p,"mandate","iron",80,4,"Imperial iron priority")})}},
+      {id:"industry",cat:"Industry",title:"Industrial Surge",desc:"Pull workers and cargo toward manufacturing worlds, accepting slower civilian growth.",effects:["Factory output +45%","Industrial materials gain priority","Population growth slows slightly"],score:()=>55+totalShortages(0)*4,apply:e=>{setModifier(e,"industry",1.45,70);setModifier(e,"growth",.82,70);addDirective(e,"industry",null,70)}},
+      {id:"fleet",cat:"Military",title:"Fleet Mobilization",desc:"Assemble reserves, crew new hulls, and move combat power toward vulnerable borders.",effects:["Shipbuilding +45%","Governors expand shipyards","Border fleets reinforce"],score:()=>60+borderThreat(state.selected||state.planets[0])*30,apply:e=>{setModifier(e,"shipbuilding",1.45,75);addDirective(e,"fleet",null,75)}},
+      {id:"fortify",cat:"Infrastructure",title:"Fortify the Frontier",desc:"Let threatened governors redirect components into batteries, garrisons, and orbital cover.",effects:["Border defense priority","Garrisons receive equipment","Defense construction accelerates"],score:()=>45+Math.max(0,...playerWorlds().map(borderThreat))*55,apply:e=>{addDirective(e,"fortify",null,80);playerWorlds().filter(p=>borderThreat(p)>.25).forEach(p=>p.garrison+=5)}},
+      {id:"population",cat:"Population",title:"Population Initiative",desc:"Expand housing and encourage families while migration balances overcrowded worlds.",effects:["Population growth +55%","Cities gain priority","Colonial migration increases"],score:()=>50-Math.max(0,...playerWorlds().map(p=>p.pop/p.capacity))*15,apply:e=>{setModifier(e,"growth",1.55,75);addDirective(e,"population",null,75)}},
+      {id:"explore",cat:"Research",title:"Deep Exploration",desc:"Send long-range scouts beyond the familiar frontier and improve planetary intelligence.",effects:["Scouts launch more often","Unknown worlds prioritized","Propulsion research advances"],score:()=>75-empire(0).intel.size,apply:e=>{e.tech.propulsion+=.15;addDirective(e,"explore",null,90);const home=playerWorlds()[0];state.planets.filter(p=>!e.intel.has(p.id)).sort((a,b)=>dist(home,a)-dist(home,b)).slice(0,2).forEach(p=>createShip("scout",home,p,0))}},
+      {id:"logistics",cat:"Infrastructure",title:"Imperial Logistics Corridor",desc:"Clear backlogged orders and surge freighter capacity along stressed supply lanes.",effects:["Old orders gain priority","Two emergency freighters launch","Delivery speed improves"],score:()=>40+playerWorlds().reduce((n,p)=>n+p.orders.length*5,0),apply:e=>{e.tech.propulsion+=.08;playerWorlds().forEach(p=>p.orders.forEach(o=>{o.priority+=2}));logisticsTick()}},
+      {id:"automation",cat:"Research",title:"Industrial Automation",desc:"Produce more with fewer workers, easing the labor pressure on mines and factories.",effects:["Automation technology rises","Extraction technology rises","Labor shortages ease permanently"],score:()=>48+playerWorlds().filter(p=>p.efficiency<.85).length*10,apply:e=>{e.tech.automation+=.3;e.tech.extraction+=.18}},
+      {id:"claim",cat:"Resources",title:"Claim a Strategic World",desc:"Identify the richest reachable neutral planet and let scouts, colonists, and escorts secure it.",effects:["Best unclaimed world targeted","Colony supply order created","Nearby fleets may escort"],score:()=>state.planets.some(p=>p.owner===null)?68:0,target:()=>bestNeutral(),apply:(e,t)=>addDirective(e,"claim",t?.id,100)},
+      {id:"invasion",cat:"Military",title:"Order a Frontier Invasion",desc:"Name a hostile border world. The navy determines whether fuel, crew, and strength are adequate.",effects:["Target world marked","Fleets begin staging","Failure remains possible"],score:()=>nearestEnemy()?55+empireFleet(0)*.5:0,target:()=>nearestEnemy(),apply:(e,t)=>{if(t)addDirective(e,"invasion",t.id,100)}},
+      {id:"shipbuilding",cat:"Industry",title:"Galactic Shipbuilding Program",desc:"Convert industrial strength into hulls, escorts, freighters, and reserve combat power.",effects:["Shipbuilding +65%","Factories feed shipyards","Civil projects lose priority"],score:()=>58,apply:e=>{setModifier(e,"shipbuilding",1.65,85);setModifier(e,"industry",1.18,85);addDirective(e,"fleet",null,85)}},
+      {id:"rare",cat:"Resources",title:"Rare-Earth Stockpile",desc:"Advanced electronics are vulnerable. Build a reserve before sensors and targeting systems stall.",effects:["Rare-earth orders prioritized","Rich mines increase extraction","Factories preserve a reserve"],score:()=>80-empireResource(0,"rare")*.3,apply:e=>{setModifier(e,"mining",1.18,70);playerWorlds().forEach(p=>addOrder(p,"mandate","rare",45,4,"Rare-earth stockpile"))}}
+    ];
+    function bestNeutral(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner===null).map(p=>({p,value:Object.values(p.quality).reduce((a,b)=>a+b,0)+Math.max(...Object.values(p.quality))*4-Math.min(...worlds.map(w=>dist(w,p)))/180})).sort((a,b)=>b.value-a.value)[0]?.p||null}
+    function nearestEnemy(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner!==null&&p.owner!==0).sort((a,b)=>Math.min(...worlds.map(w=>dist(w,a)))-Math.min(...worlds.map(w=>dist(w,b))))[0]||null}
+    function openCommandPhase(){
+      if(!state.running||state.ended||!$("commandModal").hidden)return;state.preCommandSpeed=state.speed||1;state.speed=0;
+      const [stage,slots]=stageInfo();const weighted=COMMANDS.map(c=>({c,score:c.score()+rand(-12,12)})).filter(x=>x.score>5).sort((a,b)=>b.score-a.score);
+      const choices=[],cats=new Set();for(const w of weighted){if(cats.has(w.c.cat))continue;choices.push({...w.c,targetObj:w.c.target?.()||null});cats.add(w.c.cat);if(choices.length===4)break}
+      state.commandChoices=choices;state.commandSelected=new Set();$("commandSlots").textContent=`${stage} · choose up to ${slots} directive${slots>1?"s":""}`;$("commandModal").hidden=false;renderCommands();updateSpeedButtons();
+    }
+    function renderCommands(){
+      const slots=stageInfo()[1],grid=$("commandGrid");grid.innerHTML="";
+      state.commandChoices.forEach((c,i)=>{const selected=state.commandSelected.has(i),disabled=!selected&&state.commandSelected.size>=slots;const btn=document.createElement("button");btn.type="button";btn.className=`command-card${selected?" selected":""}${disabled?" disabled":""}`;btn.style.setProperty("--cat",{Military:"#ff6078",Industry:"#ffb75c",Resources:"#69e7ff",Population:"#63f0a4",Research:"#a987ff",Infrastructure:"#7ea3ff"}[c.cat]||"#7ea3ff");btn.innerHTML=`<div class="command-cat">${c.cat} Ministry</div><h3>${c.title}</h3><p>${c.desc}</p><div class="command-effects">${c.effects.map(x=>`<span>${x}</span>`).join("")}</div>${c.targetObj?`<div class="command-target">Target: ${c.targetObj.name}</div>`:""}`;btn.addEventListener("click",()=>{if(disabled)return;if(selected)state.commandSelected.delete(i);else state.commandSelected.add(i);renderCommands()});grid.appendChild(btn)});
+      $("issueBtn").disabled=!state.commandSelected.size;$("issueBtn").textContent=state.commandSelected.size?`Issue ${state.commandSelected.size} Mandate${state.commandSelected.size>1?"s":""}`:"Issue Mandate";
+    }
+    function issueCommands(){const e=empire(0);state.commandSelected.forEach(i=>{const c=state.commandChoices[i];c.apply(e,c.targetObj);logEvent(`MANDATE: ${c.title}${c.targetObj?` — ${c.targetObj.name}`:""}.`,"good")});$("commandModal").hidden=true;state.nextCommand=state.simTime+state.commandCycle;state.speed=state.preCommandSpeed||1;updateSpeedButtons();updateHud(true);saveGame(false)}
+
+    function screenToWorld(x,y){return {x:(x-innerWidth/2)/state.camera.zoom+state.camera.x,y:(y-innerHeight/2)/state.camera.zoom+state.camera.y}}
+    function worldToScreen(x,y){return {x:(x-state.camera.x)*state.camera.zoom+innerWidth/2,y:(y-state.camera.y)*state.camera.zoom+innerHeight/2}}
+    function dpr(){return Math.min(1.5,window.devicePixelRatio||1)}
+    function visible(x,y,pad=80){const s=worldToScreen(x,y);return s.x>-pad&&s.x<innerWidth+pad&&s.y>-pad&&s.y<innerHeight+pad}
+    function resize(){const ratio=dpr();canvas.width=Math.floor(innerWidth*ratio);canvas.height=Math.floor(innerHeight*ratio);ctx.setTransform(ratio,0,0,ratio,0,0)}
+    function draw(){
+      const w=innerWidth,h=innerHeight,z=state.camera.zoom;ctx.setTransform(dpr(),0,0,dpr(),0,0);ctx.fillStyle="#030511";ctx.fillRect(0,0,w,h);state.stats.visible=0;state.stats.drawCalls=1;
+      const neb=ctx.createRadialGradient(w*.56,h*.45,20,w*.56,h*.45,Math.max(w,h)*.75);neb.addColorStop(0,"rgba(42,35,104,.22)");neb.addColorStop(.45,"rgba(9,31,75,.12)");neb.addColorStop(1,"rgba(2,3,10,0)");ctx.fillStyle=neb;ctx.fillRect(0,0,w,h);
+      drawStars();drawTerritories();drawLanes();drawShips();drawPlanets();drawSelection();
+      $("perf").textContent=`${state.stats.visible} visible · ${state.ships.length} ships`;
+    }
+    function drawStars(){ctx.fillStyle="#dceaff";for(const s of state.stars){const par=.32+s.layer*.16,sp=worldToScreen(s.x*par+state.camera.x*(1-par),s.y*par+state.camera.y*(1-par));if(sp.x<0||sp.x>innerWidth||sp.y<0||sp.y>innerHeight)continue;ctx.globalAlpha=s.a;ctx.beginPath();ctx.arc(sp.x,sp.y,s.r*(.6+state.camera.zoom*.45),0,6.283);ctx.fill();state.stats.visible++}ctx.globalAlpha=1}
+    function drawTerritories(){if(state.camera.zoom>.9)return;state.empires.forEach(e=>{const ps=owned(e.id).filter(p=>visible(p.x,p.y,600));if(!ps.length)return;ctx.fillStyle=e.color+"0b";ctx.strokeStyle=e.color+"20";ctx.lineWidth=1;ps.forEach(p=>{const s=worldToScreen(p.x,p.y);ctx.beginPath();ctx.arc(s.x,s.y,Math.max(44,420*state.camera.zoom),0,6.283);ctx.fill();ctx.stroke()})})}
+    function drawLanes(){ctx.lineWidth=1;for(const l of state.lanes){const a=state.planets[+l.a.slice(1)],b=state.planets[+l.b.slice(1)];if(!a||!b||(!visible(a.x,a.y,250)&&!visible(b.x,b.y,250)))continue;const sa=worldToScreen(a.x,a.y),sb=worldToScreen(b.x,b.y);const same=a.owner!==null&&a.owner===b.owner;ctx.strokeStyle=same?empire(a.owner).color+"28":"rgba(108,137,198,.1)";ctx.setLineDash(same?[4,7]:[2,12]);ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.lineTo(sb.x,sb.y);ctx.stroke();state.stats.drawCalls++}ctx.setLineDash([])}
+    function drawShips(){for(const s of state.ships){if(!visible(s.x,s.y,25))continue;const p=worldToScreen(s.x,s.y),color=empire(s.owner).color,size=clamp(2.8*state.camera.zoom,2.2,5);ctx.save();ctx.translate(p.x,p.y);const target=state.planets[+s.to.slice(1)],ang=target?Math.atan2(target.y-s.y,target.x-s.x):0;ctx.rotate(ang);ctx.shadowColor=color;ctx.shadowBlur=8;ctx.fillStyle=color;if(s.type==="fleet"){ctx.beginPath();ctx.moveTo(size*1.8,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.fill()}else if(s.type==="colony"){ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(size,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.stroke()}else{ctx.fillRect(-size,-1,size*2,2)}ctx.restore();state.stats.visible++;state.stats.drawCalls++}}
+    function planetGradient(p,s,r){const hue=(p.id.charCodeAt(1)*47+p.quality.rare*17)%360,g=ctx.createRadialGradient(s.x-r*.32,s.y-r*.34,r*.08,s.x,s.y,r);g.addColorStop(0,`hsl(${hue} 78% 77%)`);g.addColorStop(.22,`hsl(${hue} 58% 52%)`);g.addColorStop(.68,`hsl(${hue+24} 48% 24%)`);g.addColorStop(1,"#050917");return g}
+    function drawPlanets(){
+      const z=state.camera.zoom;for(const p of state.planets){if(!visible(p.x,p.y,120))continue;const s=worldToScreen(p.x,p.y),r=clamp(p.r*z,5,36);state.stats.visible++;
+        if(p.owner!==null){ctx.strokeStyle=empire(p.owner).color+"45";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(s.x,s.y,r*2.2,r*.72,p.rotation*.17,0,6.283);ctx.stroke()}
+        ctx.save();ctx.shadowColor=p.owner!==null?empire(p.owner).color:"#607394";ctx.shadowBlur=p.owner!==null?18:8;ctx.fillStyle=planetGradient(p,s,r);ctx.beginPath();ctx.arc(s.x,s.y,r,0,6.283);ctx.fill();ctx.restore();
+        if(z>.54&&p.owner!==null)drawSurface(p,s,r);
+        if(p.infra.defense&&p.owner!==null&&z>.42){ctx.strokeStyle=empire(p.owner).color+"68";ctx.lineWidth=1.2;for(let i=0;i<Math.min(3,p.infra.defense);i++){const start=p.rotation+i*2.05;ctx.beginPath();ctx.arc(s.x,s.y,r+7+i*2,start-.48,start+.48);ctx.stroke()}}
+        ctx.textAlign="center";ctx.fillStyle=p.owner!==null?"#eef5ff":"#8b9aba";ctx.font=`${z<.45?9:11}px Inter,system-ui`;ctx.fillText(z<.42?p.name.slice(0,1):p.name,s.x,s.y+r+15);
+        if(p.home){ctx.fillStyle=p.owner!==null?empire(p.owner).color:"#fff";ctx.font="10px sans-serif";ctx.fillText("✦",s.x,s.y-r-8)}
+      }
+    }
+    function drawSurface(p,s,r){const count=Math.min(18,p.infra.city*2+p.infra.mine+p.infra.factory*2+p.infra.defense+p.infra.training);for(let i=0;i<count;i++){const a=p.rotation+i*2.399,lat=Math.sin(i*1.71)*.7,front=Math.cos(a)*Math.cos(lat);if(front<-.12)continue;const x=s.x+Math.sin(a)*Math.cos(lat)*r*.78,y=s.y+Math.sin(lat)*r*.68;ctx.fillStyle=i<p.infra.city*2?"#72eaff":i<p.infra.city*2+p.infra.factory*2?"#ffb75c":"#dce8ff";ctx.globalAlpha=.45+front*.45;ctx.fillRect(x-1,y-1,2.2,2.2)}ctx.globalAlpha=1}
+    function drawSelection(){if(!state.selected)return;const p=state.selected,s=worldToScreen(p.x,p.y),r=clamp(p.r*state.camera.zoom,5,36)+13;ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(s.x,s.y,r+Math.sin(performance.now()/280)*2,0,6.283);ctx.stroke();ctx.setLineDash([])}
+
+    function renderPlanet(){
+      const p=state.selected;if(!p){$("planetName").textContent="No world selected";$("planetSubtitle").textContent="Select a world to inspect its living economy.";$("planetBody").innerHTML='<div class="empty-selection"><div><div class="orb"></div>Click a planet to inspect population pressure, resources, facilities, shortages, and delayed orders.</div></div>';return}
+      const e=p.owner!==null?empire(p.owner):null,intel=p.owner===0?1:p.intel;$("planetName").textContent=p.name;$("planetSubtitle").textContent=intel<.45?"Partial sensor contact":p.specialization;
+      const popRatio=p.pop/p.capacity,mineLoad=p.infra.mine/sustainableMines(p),orders=p.orders.filter(o=>o.status!=="filled");
+      const qualities=RESOURCES.map(r=>`<div class="resource-row"><span style="color:${RESOURCE_COLOR[r]}">${RESOURCE_LABEL[r]} <small>${intel<.45?"estimate":"quality"}</small></span><span class="stars">${intel<.25?"Unknown":"★".repeat(Math.max(1,Math.round(p.quality[r]*(intel<.65?.8:1))))}${intel>=.25?"☆".repeat(Math.max(0,5-Math.round(p.quality[r]*(intel<.65?.8:1)))):""}</span></div>`).join("");
+      const stock=p.owner===0?RESOURCES.map(r=>`<div class="resource-row"><span>${RESOURCE_LABEL[r]}</span><b class="${p.shortages.has(r)?"shortage":""}">${fmtStock(p.stock[r])}${p.shortages.has(r)?" · 50% income":""}</b></div>`).join(""):"";
+      const facilities=Object.entries(p.infra).filter(([,v])=>v>0).map(([k,v])=>`<div class="facility-row"><span>${({city:"Cities / Towns",mine:"Mining Complexes",factory:"Factories",training:"Training Centers",defense:"Defense Batteries",shipyard:"Shipyards",research:"Research Facilities"})[k]}</span><b>${roman(v)}</b></div>`).join("")||'<div class="subtle">No developed infrastructure.</div>';
+      const orderHtml=orders.length?orders.slice(0,6).map(o=>`<div class="order-row"><span>${o.label}<small>${o.status} · ${Math.floor(o.age)}s old</small></span><b>${Math.floor(o.filled)}/${Math.floor(o.amount)}</b></div>`).join(""):'<div class="subtle healthy">No outstanding local orders.</div>';
+      $("planetBody").innerHTML=`<div class="owner-row"><span class="owner-chip" style="color:${e?.color||"#8491aa"}"><i class="dot"></i>${e?.name||"Unclaimed"}</span><span class="status-chip">${p.home?"Capital":"World"}</span></div><div class="metric-grid"><div class="metric"><label>Population</label><b>${fmtNum(p.pop)} / ${fmtNum(p.capacity)}</b><div class="meter ${popRatio>1?"warning":""}"><i style="width:${clamp(popRatio*100,0,100)}%"></i></div></div><div class="metric"><label>Productivity</label><b>${Math.round(p.efficiency*100)}%</b><div class="meter ${p.efficiency<.7?"warning":""}"><i style="width:${p.efficiency*100}%"></i></div></div><div class="metric"><label>Mine Load</label><b>${Math.round(mineLoad*100)}% of cap</b><div class="meter ${mineLoad>1?"warning":""}"><i style="width:${clamp(mineLoad*100,0,100)}%"></i></div></div><div class="metric"><label>Factory Flow</label><b>${Math.round(p.factoryEfficiency*100)}%</b><div class="meter ${p.factoryEfficiency<.65?"warning":""}"><i style="width:${p.factoryEfficiency*100}%"></i></div></div></div><div class="section-label">Resource Quality</div><div class="resource-list">${qualities}</div>${p.owner===0?`<div class="section-label">Local Stockpiles</div><div class="resource-list">${stock}</div>`:""}<div class="section-label">Civilization</div><div class="facility-list">${facilities}</div>${p.owner===0?`<div class="section-label">Autonomous Orders</div><div class="order-list">${orderHtml}</div>`:""}`;
+    }
+    function renderEvents(){const events=state.events.filter(e=>e.empireId===0||e.tone==="danger").slice(0,12);$("events").innerHTML=events.map(e=>`<div class="event ${e.tone}">${e.text}<time>Year 1 · Day ${Math.floor(e.time/6)+1}</time></div>`).join("")||'<div class="event">The galaxy is quiet—for now.</div>'}
+    function updateHud(force=false){
+      const now=performance.now();if(!force&&now-state.lastHud<500)return;state.lastHud=now;const worlds=playerWorlds(),pop=totalPop(0),fleet=empireFleet(0),industry=empireIndustry(0),short=totalShortages(0),orders=worlds.reduce((n,p)=>n+p.orders.length,0),[stage]=stageInfo();
+      $("hudWorlds").textContent=worlds.length;$("hudPop").textContent=fmtNum(pop);$("hudFleet").textContent=Math.round(fleet);$("hudIndustry").textContent=industry.toFixed(1);$("hudLogistics").textContent=short?`${short} shortage${short>1?"s":""}`:orders?`${orders} orders`:"Stable";$("hudStage").textContent=stage;
+      const remain=Math.max(0,state.nextCommand-state.simTime);$("commandTime").textContent=`00:${String(Math.ceil(remain)).padStart(2,"0")}`;$("commandProgress").style.width=`${clamp(remain/state.commandCycle*100,0,100)}%`;renderPlanet();
+    }
+    function updateSpeedButtons(){document.querySelectorAll("[data-speed]").forEach(b=>b.classList.toggle("active",Number(b.dataset.speed)===state.speed))}
+
+    function saveGame(notify=true){
+      if(!state.running)return;try{const data={version:1,simTime:state.simTime,nextCommand:state.nextCommand,rngState:state.rngState,planets:state.planets.map(p=>({...p,shortages:[...p.shortages]})),ships:state.ships,empires:state.empires.map(e=>({...e,intel:[...e.intel]})),events:state.events,camera:state.camera,selected:state.selected?.id};localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(notify)showToast("Mandate saved locally") }catch(err){console.warn("Save failed",err);if(notify)showToast("Save could not be written")}
+    }
+    function loadGame(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d||d.version!==1)return false;state.simTime=d.simTime||0;state.nextCommand=d.nextCommand||state.simTime+45;state.rngState=d.rngState||937145;state.planets=d.planets.map(p=>({...p,shortages:new Set(p.shortages||[])}));state.ships=d.ships||[];state.empires=d.empires.map(e=>({...e,intel:new Set(e.intel||[])}));state.events=d.events||[];state.camera=d.camera||{x:1800,y:2600,zoom:.68};state.selected=state.planets.find(p=>p.id===d.selected)||state.planets[0];state.stars=Array.from({length:520},(_,i)=>({x:rand(0,WORLD.w),y:rand(0,WORLD.h),r:rand(.25,1.5),a:rand(.18,.8),layer:i%3}));recomputeLanes();return true}catch(err){console.warn("Load failed",err);return false}}
+    function startGame(load=false){if(!load)generateGalaxy();else if(!loadGame())generateGalaxy();state.running=true;state.speed=1;state.last=performance.now();$("startModal").hidden=true;updateSpeedButtons();renderEvents();renderPlanet();updateHud(true);if(!load)setTimeout(openCommandPhase,500)}
+
+    canvas.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY,cx:state.camera.x,cy:state.camera.y,moved:false};canvas.setPointerCapture(e.pointerId);canvas.classList.add("dragging")});
+    canvas.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;state.camera.x=clamp(drag.cx-dx/state.camera.zoom,0,WORLD.w);state.camera.y=clamp(drag.cy-dy/state.camera.zoom,0,WORLD.h)});
+    canvas.addEventListener("pointerup",e=>{if(drag&&!drag.moved){const rect=canvas.getBoundingClientRect(),w=screenToWorld(e.clientX-rect.left,e.clientY-rect.top);const nearest=state.planets.filter(p=>Math.hypot(p.x-w.x,p.y-w.y)<Math.max(34,p.r+18)/state.camera.zoom).sort((a,b)=>Math.hypot(a.x-w.x,a.y-w.y)-Math.hypot(b.x-w.x,b.y-w.y))[0];if(nearest){state.selected=nearest;nearest.intel=Math.min(1,nearest.intel+.1);renderPlanet();$("leftPanel").classList.add("open")}}drag=null;canvas.classList.remove("dragging")});
+    canvas.addEventListener("wheel",e=>{e.preventDefault();const before=screenToWorld(e.clientX,e.clientY),factor=Math.exp(-e.deltaY*.001);state.camera.zoom=clamp(state.camera.zoom*factor,.22,2.15);const after=screenToWorld(e.clientX,e.clientY);state.camera.x=clamp(state.camera.x+before.x-after.x,0,WORLD.w);state.camera.y=clamp(state.camera.y+before.y-after.y,0,WORLD.h)},{passive:false});
+    window.addEventListener("keydown",e=>{if(!["INPUT","TEXTAREA"].includes(e.target.tagName))state.keys.add(e.key.toLowerCase())});window.addEventListener("keyup",e=>state.keys.delete(e.key.toLowerCase()));
+    window.addEventListener("resize",resize);document.addEventListener("visibilitychange",()=>{state.last=performance.now()});
+    document.querySelectorAll("[data-speed]").forEach(btn=>btn.addEventListener("click",()=>{if(!$("commandModal").hidden)return;state.speed=Number(btn.dataset.speed);updateSpeedButtons()}));
+    $("issueBtn").addEventListener("click",issueCommands);$("newGameBtn").addEventListener("click",()=>startGame(false));$("continueBtn").addEventListener("click",()=>startGame(true));$("saveBtn").addEventListener("click",()=>saveGame(true));
+    $("homeBtn").addEventListener("click",()=>{const p=playerWorlds().find(p=>p.home)||playerWorlds()[0];if(p){state.camera.x=p.x;state.camera.y=p.y;state.camera.zoom=.85;state.selected=p;renderPlanet()}});$("planetToggle").addEventListener("click",()=>$("leftPanel").classList.toggle("open"));
+
+    function frame(now){
+      const realDt=Math.min(.1,(now-state.last)/1000||0);state.last=now;
+      if(state.running&&state.speed>0){state.acc+=realDt*state.speed;let steps=0;while(state.acc>=.12&&steps<8){simulate(.12);state.acc-=.12;steps++}}
+      const pan=620*realDt/Math.max(.35,state.camera.zoom);if(state.keys.has("w")||state.keys.has("arrowup"))state.camera.y-=pan;if(state.keys.has("s")||state.keys.has("arrowdown"))state.camera.y+=pan;if(state.keys.has("a")||state.keys.has("arrowleft"))state.camera.x-=pan;if(state.keys.has("d")||state.keys.has("arrowright"))state.camera.x+=pan;state.camera.x=clamp(state.camera.x,0,WORLD.w);state.camera.y=clamp(state.camera.y,0,WORLD.h);
+      updateHud();draw();requestAnimationFrame(frame)
+    }
+    resize();generateGalaxy();$("continueBtn").hidden=!localStorage.getItem(SAVE_KEY);renderEvents();renderPlanet();requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
