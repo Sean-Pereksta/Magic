@@ -1,0 +1,26 @@
+/* Second-pass cinematic polish layered over the core HUD styles. */
+#startOverlay{background:
+ radial-gradient(circle at 18% 18%,rgba(69,137,203,.18),transparent 28%),
+ radial-gradient(circle at 82% 25%,rgba(167,91,220,.16),transparent 30%),
+ radial-gradient(circle at 50% 90%,rgba(237,166,70,.08),transparent 32%),
+ linear-gradient(180deg,rgba(2,6,13,.72),rgba(2,5,11,.97));}
+#startOverlay::before,#startOverlay::after{content:"";position:absolute;inset:-20%;pointer-events:none;background-image:radial-gradient(circle,rgba(203,230,255,.55) 0 1px,transparent 1.4px);background-size:61px 61px;opacity:.18;animation:awStars 34s linear infinite}
+#startOverlay::after{background-size:97px 97px;opacity:.1;animation-duration:58s;animation-direction:reverse;transform:rotate(12deg)}
+@keyframes awStars{to{transform:translate3d(90px,55px,0)}}
+#startOverlay .panel{position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(10,18,32,.965),rgba(5,9,18,.985));box-shadow:0 40px 120px rgba(0,0,0,.68),0 0 80px rgba(82,139,207,.08),inset 0 1px rgba(255,255,255,.07)}
+#startOverlay .panel::before{content:"";position:absolute;width:540px;height:540px;border-radius:50%;right:-220px;top:-280px;border:1px solid rgba(154,207,255,.11);box-shadow:0 0 0 42px rgba(155,208,255,.018),0 0 0 88px rgba(182,131,255,.018),0 0 100px rgba(83,166,236,.1);animation:awRune 28s linear infinite;pointer-events:none}
+#startOverlay .panel::after{content:"✦   ◇   ✧   △   ✦   ◌   ✧";position:absolute;right:35px;top:48px;color:rgba(170,216,255,.12);font-size:22px;letter-spacing:17px;transform:rotate(27deg);pointer-events:none}
+@keyframes awRune{to{transform:rotate(360deg)}}
+.title{position:relative;z-index:1;text-shadow:0 0 38px rgba(101,167,255,.16);animation:titleBreathe 5s ease-in-out infinite}
+@keyframes titleBreathe{50%{filter:drop-shadow(0 4px 26px rgba(131,124,255,.28)) brightness(1.08)}}
+.hero-tags span{backdrop-filter:blur(8px);box-shadow:inset 0 1px rgba(255,255,255,.04)}
+.feature{position:relative;overflow:hidden;transition:transform .2s,border-color .2s,background .2s}.feature::after{content:"";position:absolute;inset:-60% auto -60% -40%;width:32%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);transform:rotate(15deg);transition:transform .5s}.feature:hover{transform:translateY(-2px);background:rgba(255,255,255,.058);border-color:rgba(164,207,255,.14)}.feature:hover::after{transform:translateX(380%) rotate(15deg)}
+.status-card,.room-card,.mini-map,.spell-bar,.gold-pill{box-shadow:0 14px 38px rgba(0,0,0,.34),0 0 25px rgba(90,151,218,.035),inset 0 1px rgba(255,255,255,.055)}
+.spell-slot{transition:transform .14s,filter .14s,border-color .14s}.spell-slot:hover{transform:translateY(-3px);filter:brightness(1.13)}.spell-slot .spell-icon{filter:drop-shadow(0 0 8px rgba(167,206,255,.3)) drop-shadow(0 2px 3px #000)}
+.card-choice{transition:transform .18s,filter .18s,box-shadow .18s}.card-choice::after{content:"";position:absolute;inset:-20%;background:linear-gradient(110deg,transparent 35%,color-mix(in srgb,var(--rar) 13%,transparent) 49%,transparent 63%);transform:translateX(-70%);transition:transform .5s;pointer-events:none}.card-choice:hover::after{transform:translateX(65%)}.card-choice:hover{filter:brightness(1.08);box-shadow:0 24px 64px rgba(0,0,0,.42),0 0 30px color-mix(in srgb,var(--rar) 8%,transparent)}
+.room-state.locked{box-shadow:0 0 15px rgba(255,70,80,.08)}.room-state.clear{box-shadow:0 0 15px rgba(77,222,135,.07)}.room-state.town{box-shadow:0 0 16px rgba(255,211,98,.08)}
+#bossHud.show{animation:bossArrival .35s ease-out}@keyframes bossArrival{from{opacity:0;transform:translate(-50%,-12px) scale(.95)}}
+.bossbar{box-shadow:0 8px 24px rgba(0,0,0,.35),0 0 18px rgba(192,74,222,.15)}.bossbar i{box-shadow:0 0 18px rgba(226,83,212,.35)}
+#roomFade{background:radial-gradient(circle at center,#101a2a,#02040a 62%)}
+#damageFlash{mix-blend-mode:screen}
+@media (max-width:780px),(pointer:coarse){#startOverlay .panel::after{display:none}#startOverlay .panel::before{opacity:.55}.stick-base{box-shadow:inset 0 0 32px rgba(98,168,244,.12),0 0 28px rgba(0,0,0,.18)}.stick-knob{box-shadow:0 4px 14px rgba(0,0,0,.3),inset 0 0 18px rgba(173,220,255,.12)}}
