@@ -56,3 +56,13 @@
 
   refreshMobileInteraction();
 })();
+
+/* Keep the optimization layer last in the script chain so it sees every runtime wrapper. */
+(function loadArcanePerformanceGovernor(){
+  if(document.querySelector('script[data-arcane-performance]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/performance.js';
+  script.async=false;
+  script.dataset.arcanePerformance='true';
+  document.body.appendChild(script);
+})();
