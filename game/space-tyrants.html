@@ -80,7 +80,7 @@
   <aside class="right-panel glass">
     <div class="panel-head"><div class="kicker">Empire Chronicle</div><h2>Live Intelligence</h2><div class="subtle">Consequences emerging from the simulation.</div></div>
     <div class="events" id="events"></div>
-    <div class="legend"><span>● Freighter</span><span>◆ Fleet</span><span>△ Colony</span><span>✦ Capital</span></div>
+    <div class="legend"><span>● Freighter</span><span>◈ Patrol</span><span>◆ Fleet</span><span>△ Colony</span><span>✦ Capital</span></div>
   </aside>
 
   <footer class="bottombar glass">
@@ -119,8 +119,8 @@
       ["Nyxian Synod","#b27aff"],["Orion Freeholds","#55ef9e"],["Sable Dominion","#ff80c8"],["Helion Ascendancy","#8aa1ff"]
     ];
     const WORLD_NAMES=["Aurelia","Koros","Vesta","Nyx","Eidolon","Cinder","Thale","Karthos","Rhex","Damaris","Vulcan","Eris","Veyra","Caligo","Prax","Iona","Tethys","Solis","Noctis","Umbra","Lys","Morrow","Orison","Drift","Orion","Pallas","Haven","Cygni","Astra","Boreal","Sable","Mordane","Ashara","Gloam","Vesper","Nadir","Helion","Crown","Meridian","Caelus","Ember","Radiant","Khepri","Argent","Titan","Farpoint","Zephyr","Talos","Obsidia","Mistral","Riven","Halcyon","Ophira","Tarn","Icarus","Perseus","Lacuna","Duskfall","Axiom","Myr","Osiris","Quillon","Arcadia"];
-    const TYPE_ICON={freighter:"●",liner:"▰",courier:"▹",migrant:"○",colony:"△",fleet:"◆",scout:"◇"};
-    const state={running:false,simTime:0,nextCommand:45,commandCycle:45,speed:1,preCommandSpeed:1,last:0,acc:0,lastHud:0,lastEconomy:0,lastGovernor:0,lastLogistics:0,lastCommerce:0,lastAI:0,lastAutosave:0,planets:[],ships:[],battles:[],effects:[],empires:[],events:[],stars:[],nebulae:[],selected:null,commandChoices:[],commandSelected:new Set(),camera:{x:1850,y:2600,zoom:.68},keys:new Set(),rngState:937145,stats:{visible:0,drawCalls:0},ended:false};
+    const TYPE_ICON={freighter:"●",liner:"▰",courier:"▹",migrant:"○",colony:"△",fleet:"◆",patrol:"◈",scout:"◇"};
+    const state={running:false,simTime:0,nextCommand:45,commandCycle:45,speed:1,preCommandSpeed:1,last:0,acc:0,lastHud:0,lastEconomy:0,lastGovernor:0,lastLogistics:0,lastCommerce:0,lastPatrol:0,lastAI:0,lastAutosave:0,planets:[],ships:[],battles:[],effects:[],empires:[],events:[],stars:[],nebulae:[],selected:null,commandChoices:[],commandSelected:new Set(),camera:{x:1850,y:2600,zoom:.68},keys:new Set(),rngState:937145,stats:{visible:0,drawCalls:0},ended:false};
     let drag=null,toastTimer=0;
 
     function random(){state.rngState=(state.rngState*1664525+1013904223)>>>0;return state.rngState/4294967296}
@@ -138,7 +138,7 @@
     function logEvent(text,tone="",empireId=0){state.events.unshift({text,tone,time:state.simTime,empireId});state.events=state.events.slice(0,32);if(empireId===0||tone==="danger")renderEvents()}
     function showToast(text){const el=$("toast");el.textContent=text;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),1800)}
 
-    function newEmpire(id){return {id,name:EMPIRE_DATA[id][0],color:EMPIRE_DATA[id][1],modifiers:{},directives:[],relations:{},tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0,commerce:0},intel:new Set(),fleetReserve:0,tradeBalance:0,lastTradeLog:-120,doctrine:pick(["expansion","industry","fortress","military"]),lastExpansion:0,lastAttack:0}}
+    function newEmpire(id){return {id,name:EMPIRE_DATA[id][0],color:EMPIRE_DATA[id][1],modifiers:{},directives:[],relations:{},tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0,commerce:0,orbital:0},intel:new Set(),fleetReserve:0,tradeBalance:0,lastTradeLog:-120,doctrine:pick(["expansion","industry","fortress","military"]),lastExpansion:0,lastAttack:0}}
     function makePlanet(name,x,y,owner=null,home=false,index=0){
       const q={};RESOURCES.forEach(r=>q[r]=1+Math.floor(random()*5));
       if(name==="Aurelia")Object.assign(q,{iron:4,helium:1,rare:2,titanium:3,uranium:2,silicates:4});
@@ -151,7 +151,7 @@
       const stock={components:home?90:25,equipment:home?25:5,trained:home?pop*.02:0};
       RESOURCES.forEach(r=>stock[r]=home?70+q[r]*18:18+q[r]*8);
       const reserve={};RESOURCES.forEach(r=>reserve[r]=(600+q[r]*620)*rand(.8,1.2));
-      return {id:`p${index}`,name,x,y,r:home?27:rand(14,23),owner,home,pop,capacity:cap,quality:q,reserve,stock,infra,rotation:rand(0,Math.PI*2),spin:rand(.025,.07),orders:[],buildQueue:[],efficiency:1,mineEfficiency:1,factoryEfficiency:1,trainingEfficiency:1,shortages:new Set(),garrison:home?32:owner!==null?12:0,specialization:"Frontier World",unrest:0,lastGov:0,lastLogistics:0,underAttack:false,intel:owner===0?1:owner===null?.35:.15,history:[],popTrend:0,lastPopSample:pop,lastPopSampleAt:0,visualPop:pop,popMomentum:owner===0?2.15:1,prosperity:0,tradeHub:0,tradeVolume:0,lastTradeAt:-20,mandateGlow:0,evacuating:false,scattered:false};
+      return {id:`p${index}`,name,x,y,r:home?27:rand(14,23),owner,home,pop,capacity:cap,quality:q,reserve,stock,infra,orbitals:{station:0,base:0},orbitalProject:null,rotation:rand(0,Math.PI*2),spin:rand(.025,.07),orders:[],buildQueue:[],efficiency:1,mineEfficiency:1,factoryEfficiency:1,trainingEfficiency:1,shortages:new Set(),garrison:home?32:owner!==null?12:0,specialization:"Frontier World",unrest:0,lastGov:0,lastLogistics:0,lastBaseLaunch:-90,underAttack:false,intel:owner===0?1:owner===null?.35:.15,history:[],popTrend:0,lastPopSample:pop,lastPopSampleAt:0,visualPop:pop,popMomentum:owner===0?2.15:1,prosperity:0,tradeHub:0,tradeVolume:0,lastTradeAt:-20,mandateGlow:0,evacuating:false,scattered:false};
     }
     function generateSpaceArt(){
       let seed=0x5f3759df;const vr=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
@@ -197,7 +197,7 @@
       const seen=new Set();state.planets.forEach((p,i)=>{let base=p.name,n=2;while(seen.has(p.name))p.name=`${base} ${roman(n++)}`;seen.add(p.name);p.id=`p${i}`});
       initializeRelations(false);
       generateSpaceArt();
-      state.simTime=0;state.nextCommand=45;state.lastGovernor=0;state.lastLogistics=0;state.lastCommerce=0;state.lastAI=0;state.lastAutosave=0;state.selected=state.planets[0];state.camera={x:1800,y:2600,zoom:.68};state.events=[];state.ended=false;
+      state.simTime=0;state.nextCommand=45;state.lastGovernor=0;state.lastLogistics=0;state.lastCommerce=0;state.lastPatrol=0;state.lastAI=0;state.lastAutosave=0;state.selected=state.planets[0];state.camera={x:1800,y:2600,zoom:.68};state.events=[];state.ended=false;
       logEvent("The Aurelian Mandate awakens on Aurelia. Its governors await strategic direction.","good");
       logEvent("Scouts report three nearby opportunities: fuel-rich Koros, iron-rich Vesta, and rare-earth-rich Nyx.","warning");
       recomputeLanes();
@@ -220,9 +220,23 @@
     function borderThreat(p){if(p.owner===null)return 0;let threat=0;state.planets.forEach(q=>{if(q.owner!==null&&q.owner!==p.owner){const d=dist(p,q);if(d<1300)threat+=clamp(1-d/1300,0,1)}});return threat}
     function empireResource(id,res){return owned(id).reduce((sum,p)=>sum+(p.stock[res]||0),0)}
     function empireIndustry(id){return owned(id).reduce((sum,p)=>sum+p.infra.factory*p.factoryEfficiency+p.infra.shipyard*.8,0)}
-    function empireFleet(id){return state.ships.filter(s=>s.owner===id&&s.type==="fleet").reduce((n,s)=>n+s.strength,0)+state.battles.reduce((n,b)=>n+(b.attacker===id?b.attackerStrength:0)+(b.defender===id?b.defenderStrength:0),0)+owned(id).reduce((n,p)=>n+p.garrison*.18,0)}
+    function empireFleet(id){return state.ships.filter(s=>s.owner===id&&(s.type==="fleet"||s.type==="patrol")).reduce((n,s)=>n+s.strength,0)+state.battles.reduce((n,b)=>n+(b.attacker===id?b.attackerStrength:0)+(b.defender===id?b.defenderStrength:0),0)+owned(id).reduce((n,p)=>n+p.garrison*.18+(p.orbitals?.station||0)*3+(p.orbitals?.base||0)*8,0)}
     function totalPop(id){return owned(id).reduce((n,p)=>n+p.pop,0)}
     function totalShortages(id){return owned(id).reduce((n,p)=>n+p.shortages.size,0)}
+    function empireDevelopment(e){const worlds=owned(e.id),research=worlds.reduce((n,p)=>n+(p.infra.research||0),0);return worlds.length*.75+empireIndustry(e.id)*.4+research*.65+(e.tech.orbital||0)*2}
+    function orbitalUnlocked(e,type="station"){const development=empireDevelopment(e);return type==="station"?(e.tech.orbital||0)>=.45&&development>=4:(e.tech.orbital||0)>=1.05&&development>=7.5}
+    function orbitalSupportAt(p,owner){return owned(owner).reduce((n,q)=>{const range=720+(q.orbitals?.base||0)*520+(q.orbitals?.station||0)*260;if(dist(p,q)>range)return n;return n+(q.orbitals?.station||0)*.045+(q.orbitals?.base||0)*.14},0)}
+    const ORBITAL_COST={station:{components:62,titanium:26,rare:15,helium:14},base:{components:125,titanium:48,equipment:30,trained:.012}};
+
+    function queueOrbitalProject(p,type,mandated=false){
+      if(!p||p.owner===null||p.orbitalProject||(p.orbitals?.[type]||0)>=2||!orbitalUnlocked(empire(p.owner),type))return false;
+      p.orbitals=p.orbitals||{station:0,base:0};p.orbitalProject={type,progress:0,need:{...ORBITAL_COST[type]},mandated};p.mandateGlow=1;
+      if(p.owner===0)logEvent(`${p.name} opened orders for a new ${type==="base"?"sector military base":"orbital space station"}. Shipyards and freighters are assembling the project.`,"good");return true
+    }
+    function tickOrbitalProject(p,dt){
+      const q=p.orbitalProject;if(!q)return;p.stock.components+=p.infra.factory*.08*(.65+p.factoryEfficiency*.35)*dt;Object.entries(q.need).forEach(([res,amt])=>{if((p.stock[res]||0)<amt)addOrder(p,res==="trained"?"crew":"construction",res,amt,5,`${q.type==="base"?"Military base":"Space station"} ${res} order`)});
+      if(Object.entries(q.need).every(([res,amt])=>(p.stock[res]||0)>=amt)){const orbital=e=>1+(e.tech.orbital||0)*.2,qSpeed=.0045*(1+p.infra.shipyard*.7+p.infra.factory*.28)*orbital(empire(p.owner))*(q.mandated?1.28:1);q.progress+=dt*qSpeed;if(q.progress>=1){Object.entries(q.need).forEach(([res,amt])=>consume(p,res,amt));p.orbitals[q.type]=(p.orbitals[q.type]||0)+1;p.garrison+=q.type==="base"?22:7;p.orbitalProject=null;p.mandateGlow=1;if(state.effects.length<140)state.effects.push({type:"launch",x:p.x,y:p.y,life:2,maxLife:2,size:34,color:empire(p.owner).color});if(p.owner===0)logEvent(`${p.name}'s ${q.type==="base"?"sector military base":"orbital space station"} is operational. Patrol command has assumed control of local space.`,"good")}}
+    }
 
     function addOrder(p,type,resource,amount,priority=1,label=""){
       const existing=p.orders.find(o=>o.type===type&&o.resource===resource&&o.status!=="in transit");
@@ -267,17 +281,19 @@
       p.trainingEfficiency=(trainNeed?clamp(gear/trainNeed,0,1)*laborEff:1)*modifier(e,"training");
       const recruits=Math.min(p.pop*.000002*dt,p.infra.training*.000013*p.trainingEfficiency*dt);p.pop-=recruits;p.stock.trained+=recruits;
       if(p.infra.training&&p.stock.equipment<5)addOrder(p,"equipment","equipment",15,2,"Training equipment order");
+      tickOrbitalProject(p,dt);
       tickBuildQueue(p,dt);
       p.orders.forEach(o=>o.age+=dt);p.orders=p.orders.filter(o=>o.age<180&&o.filled<o.amount*.98);
       p.rotation=(p.rotation+p.spin*dt)%(Math.PI*2);
       p.specialization=classifyPlanet(p);
     }
-    function classifyPlanet(p){const i=p.infra;if(i.defense>=Math.max(4,i.factory+1))return "Fortress World";if(i.shipyard>=3)return "Naval World";if(i.factory>=Math.max(3,i.mine))return "Forge World";if(i.mine>=Math.max(3,i.factory+1))return "Mining World";if(i.training>=3)return "Training World";if(i.research>=3)return "Research World";if(i.city>=4)return "Population Hub";return "Frontier World"}
+    function classifyPlanet(p){const i=p.infra;if((p.orbitals?.base||0)>0)return "Sector Command World";if((p.orbitals?.station||0)>0)return "Orbital Hub";if(i.defense>=Math.max(4,i.factory+1))return "Fortress World";if(i.shipyard>=3)return "Naval World";if(i.factory>=Math.max(3,i.mine))return "Forge World";if(i.mine>=Math.max(3,i.factory+1))return "Mining World";if(i.training>=3)return "Training World";if(i.research>=3)return "Research World";if(i.city>=4)return "Population Hub";return "Frontier World"}
     function tickBuildQueue(p,dt){
+      if(p.orbitalProject)return;
       if(!p.buildQueue.length&&p.infra.shipyard>0&&p.owner!==null){
-        const e=empire(p.owner),military=hasDirective(e,"fleet")||borderThreat(p)>.45;
-        const type=military?"fleet":(random()<.42?"freighter":"scout");
-        p.buildQueue.push({type,progress:0,need:{components:type==="fleet"?38:18,helium:type==="fleet"?18:9,titanium:type==="fleet"?15:5,trained:type==="fleet"?.009:0}});
+        const e=empire(p.owner),military=hasDirective(e,"fleet")||hasDirective(e,"patrolNetwork")||borderThreat(p)>.45;
+        const type=military?(random()<.62?"patrol":"fleet"):(random()<.42?"freighter":"scout"),combat=type==="fleet"||type==="patrol";
+        p.buildQueue.push({type,progress:0,need:{components:combat?(type==="patrol"?26:38):18,helium:combat?(type==="patrol"?12:18):9,titanium:combat?(type==="patrol"?9:15):5,trained:combat?(type==="patrol"?.005:.009):0}});
       }
       const q=p.buildQueue[0];if(!q)return;
       Object.entries(q.need).forEach(([res,amt])=>{if((p.stock[res]||0)<amt*.55)addOrder(p,res==="trained"?"crew":"ship",res,amt,3,`${q.type} construction order`)});
@@ -289,15 +305,29 @@
     function launchBuiltShip(p,type){
       if(state.ships.length>=190)return;
       const e=empire(p.owner),target=chooseShipTarget(p,type);
-      if(!target){if(type==="fleet")p.garrison+=12*(1+e.tech.weapons*.12);return}
-      createShip(type,p,target,p.owner,type==="fleet"?{strength:18*(1+e.tech.weapons*.15)}:{});
+      if(!target){if(type==="fleet"||type==="patrol")p.garrison+=(type==="patrol"?8:12)*(1+e.tech.weapons*.12);return}
+      const combat=type==="fleet"||type==="patrol",orbitalBoost=1+(p.orbitals?.station||0)*.08+(p.orbitals?.base||0)*.2;
+      createShip(type,p,target,p.owner,combat?{strength:(type==="patrol"?10:18)*(1+e.tech.weapons*.15)*orbitalBoost,home:p.id,speedBoost:1+(p.orbitals?.station||0)*.12+(p.orbitals?.base||0)*.38}:{});
       if(p.owner===0)logEvent(`${p.name} launched a new ${type}.`,"good")
     }
-    function chooseShipTarget(p,type){const e=empire(p.owner),own=owned(p.owner).filter(q=>q!==p);if(type==="scout")return state.planets.filter(q=>!e.intel.has(q.id)).sort((a,b)=>dist(p,a)-dist(p,b))[0]||pick(own);if(type==="fleet"){const invasion=hasDirective(e,"invasion");if(invasion)return state.planets.find(q=>q.id===invasion.target);return own.sort((a,b)=>borderThreat(b)-borderThreat(a))[0]}return own.length?pick(own):null}
+    function chooseShipTarget(p,type){const e=empire(p.owner),own=owned(p.owner).filter(q=>q!==p);if(type==="scout")return state.planets.filter(q=>!e.intel.has(q.id)).sort((a,b)=>dist(p,a)-dist(p,b))[0]||pick(own);if(type==="fleet"){const invasion=hasDirective(e,"invasion");if(invasion)return state.planets.find(q=>q.id===invasion.target);return own.sort((a,b)=>borderThreat(b)-borderThreat(a))[0]}if(type==="patrol")return own.filter(q=>dist(p,q)<1700).sort((a,b)=>borderThreat(b)-borderThreat(a)||dist(p,a)-dist(p,b))[0]||pick(own);return own.length?pick(own):null}
+
+    function bestOrbitalWorld(e,type,directive){
+      const target=directive?.target&&state.planets.find(p=>p.id===directive.target&&p.owner===e.id);if(target&&!target.orbitalProject)return target;
+      return owned(e.id).filter(p=>!p.orbitalProject&&p.infra.shipyard>0&&p.infra.factory>0&&(p.orbitals?.[type]||0)<2).sort((a,b)=>type==="base"?(borderThreat(b)-borderThreat(a))+(b.infra.defense-a.infra.defense)*.08:(b.infra.shipyard+b.infra.factory)-(a.infra.shipyard+a.infra.factory))[0]||null
+    }
+    function governOrbitalProjects(){
+      state.empires.forEach(e=>{const worlds=owned(e.id);if(!worlds.length)return;const research=worlds.reduce((n,p)=>n+(p.infra.research||0),0);e.tech.orbital=(e.tech.orbital||0)+research*.003+(worlds.length>=5?.0015:0);const development=empireDevelopment(e),active=worlds.filter(p=>p.orbitalProject).length;if(active>=2)return;
+        const stationDirective=hasDirective(e,"orbitalStation"),baseDirective=hasDirective(e,"militaryBase"),stations=worlds.reduce((n,p)=>n+(p.orbitals?.station||0)+(p.orbitalProject?.type==="station"?1:0),0),bases=worlds.reduce((n,p)=>n+(p.orbitals?.base||0)+(p.orbitalProject?.type==="base"?1:0),0),stationLimit=clamp(Math.floor((development-2.2)/2.5),0,6),baseLimit=clamp(Math.floor((development-6.2)/3),0,4);
+        if(orbitalUnlocked(e,"base")&&bases<baseLimit&&(baseDirective||random()<.2)){const target=bestOrbitalWorld(e,"base",baseDirective);if(queueOrbitalProject(target,"base",!!baseDirective))return}
+        if(orbitalUnlocked(e,"station")&&stations<stationLimit&&(stationDirective||random()<.24)){const target=bestOrbitalWorld(e,"station",stationDirective);queueOrbitalProject(target,"station",!!stationDirective)}
+      })
+    }
 
     function governorTick(){
+      governOrbitalProjects();
       state.planets.forEach(p=>{
-        if(p.owner===null)return;const e=empire(p.owner),threat=borderThreat(p),ratio=p.pop/p.capacity;let type=null;
+        if(p.owner===null||p.orbitalProject)return;const e=empire(p.owner),threat=borderThreat(p),ratio=p.pop/p.capacity;let type=null;
         if(ratio>.83)type="city";
         else if(threat>.5||hasDirective(e,"fortify"))type="defense";
         else if(hasDirective(e,"industry")&&p.infra.factory<5)type="factory";
@@ -365,9 +395,9 @@
     }
     function fillOrder(dest,o){
       const active=state.ships.some(s=>s.orderId===o.id);if(active)return;
-      const candidates=owned(dest.owner).filter(p=>p!==dest&&(p.stock[o.resource]||0)>Math.max(8,o.amount*.45)).sort((a,b)=>dist(a,dest)-dist(b,dest));
+      const reserve=o.priority>=5?10:Math.max(8,o.amount*.45),candidates=owned(dest.owner).filter(p=>p!==dest&&!(p.orbitalProject&&o.resource==="components")&&(p.stock[o.resource]||0)>reserve).sort((a,b)=>dist(a,dest)-dist(b,dest));
       const source=candidates[0];if(!source)return;
-      const amount=Math.min(o.amount-o.filled,(source.stock[o.resource]||0)*.55,70);if(amount<=.5)return;
+      const amount=Math.min(o.amount-o.filled,o.priority>=5?(source.stock[o.resource]||0)-reserve:(source.stock[o.resource]||0)*.55,70);if(amount<=.5)return;
       source.stock[o.resource]-=amount;o.status="in transit";createShip("freighter",source,dest,dest.owner,{cargo:{[o.resource]:amount},orderId:o.id});
     }
     function attemptExpansion(e){
@@ -380,13 +410,24 @@
       source.stock.components-=24;const pop=Math.min(.025,source.pop*.035);source.pop-=pop;createShip("colony",source,target,e.id,{cargo:{population:pop},strength:4});e.lastExpansion=state.simTime;
       if(e.id===0)logEvent(`A colony mission departed ${source.name} for ${target.name}.`,"good")
     }
+    function patrolTick(){
+      state.empires.forEach(e=>{const worlds=owned(e.id).filter(p=>!p.underAttack),stations=worlds.reduce((n,p)=>n+(p.orbitals?.station||0),0),bases=worlds.reduce((n,p)=>n+(p.orbitals?.base||0),0),naval=worlds.filter(p=>p.infra.shipyard>0).length,desired=Math.min(16,naval+stations*2+bases*3),active=state.ships.filter(s=>s.owner===e.id&&s.type==="patrol").length;if(active>=desired)return;
+        worlds.filter(p=>p.garrison>15&&(p.infra.shipyard>0||(p.orbitals?.station||0)+(p.orbitals?.base||0)>0)).sort((a,b)=>(b.orbitals?.base||0)-(a.orbitals?.base||0)||(b.infra.shipyard-a.infra.shipyard)).slice(0,Math.min(2,desired-active)).forEach(source=>{const target=chooseShipTarget(source,"patrol");if(!target)return;const strength=Math.min(10+(source.orbitals?.base||0)*5,source.garrison*.22);if(strength<4)return;source.garrison-=strength;createShip("patrol",source,target,e.id,{strength,home:source.id,speedBoost:1+(source.orbitals?.station||0)*.12+(source.orbitals?.base||0)*.38})})
+      })
+    }
+    function patrolArrival(s,p){
+      const battle=activeBattleAt(p);if(battle||p.owner!==s.owner){resolveFleetArrival(s,p);return}const candidates=owned(s.owner).filter(q=>q!==p&&!q.underAttack&&q.id!==s.from&&dist(p,q)<1900).sort((a,b)=>borderThreat(b)-borderThreat(a)||dist(p,a)-dist(p,b)),home=state.planets.find(q=>q.id===s.home&&q.owner===s.owner),next=pick(candidates.slice(0,Math.min(4,candidates.length)))||home;if(next&&next!==p)createShip("patrol",p,next,s.owner,{strength:s.strength,home:s.home||p.id,patrolLeg:(s.patrolLeg||0)+1,speedBoost:1+(p.orbitals?.station||0)*.08+(p.orbitals?.base||0)*.25})
+    }
+    function dispatchPatrolReinforcements(battle,p,owner){
+      const e=empire(owner),nearbyBases=owned(owner).filter(q=>(q.orbitals?.base||0)>0&&dist(q,p)<1900),range=1150*modifier(e,"responseRange")+(nearbyBases.length?650:0),limit=2+Math.min(3,nearbyBases.reduce((n,q)=>n+(q.orbitals?.base||0),0));state.ships.filter(s=>s.owner===owner&&s.type==="patrol"&&!s.responding&&Math.hypot(s.x-p.x,s.y-p.y)<range).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y)).slice(0,limit).forEach(s=>{s.responding=true;s.startX=s.x;s.startY=s.y;s.from=owned(owner).sort((a,b)=>Math.hypot(a.x-s.x,a.y-s.y)-Math.hypot(b.x-s.x,b.y-s.y))[0]?.id||p.id;s.to=p.id;s.progress=0;s.distance=Math.max(1,Math.hypot(s.x-p.x,s.y-p.y));s.speed*=1.45+(nearbyBases.length?.35:0);battle.reinforcementSources.push(s.id);if(owner===0)logEvent(`A patrol group broke formation and accelerated toward ${p.name}.`,"good")})
+    }
     function createShip(type,from,to,owner,extra={}){
-      if(!from||!to||state.ships.length>=240)return null;const d=dist(from,to),speed={freighter:88,liner:132,courier:155,migrant:74,colony:64,fleet:86,scout:118}[type]||72;
-      const ship={id:`s${Math.floor(random()*1e9)}`,type,from:from.id,to:to.id,x:from.x,y:from.y,progress:0,distance:d,speed:speed*(1+empire(owner).tech.propulsion*.08),owner,cargo:{},strength:0,phase:rand(0,6.28),...extra};state.ships.push(ship);return ship
+      if(!from||!to||state.ships.length>=240)return null;const d=dist(from,to),baseSpeed={freighter:88,liner:132,courier:155,migrant:74,colony:64,fleet:86,patrol:112,scout:118}[type]||72,speedBoost=extra.speedBoost||1;
+      const ship={id:`s${Math.floor(random()*1e9)}`,type,from:from.id,to:to.id,x:from.x,y:from.y,startX:from.x,startY:from.y,progress:0,distance:d,speed:baseSpeed*(1+empire(owner).tech.propulsion*.08)*speedBoost,owner,cargo:{},strength:0,phase:rand(0,6.28),...extra};state.ships.push(ship);return ship
     }
     function tickShips(dt){
       for(let i=state.ships.length-1;i>=0;i--){const s=state.ships[i],a=state.planets.find(p=>p.id===s.from),b=state.planets.find(p=>p.id===s.to);if(!a||!b){state.ships.splice(i,1);continue}
-        s.progress+=s.speed*dt/Math.max(1,s.distance);const t=clamp(s.progress,0,1),ease=t*t*(3-2*t);s.x=a.x+(b.x-a.x)*ease+Math.sin(t*Math.PI)*Math.sin(s.phase)*28;s.y=a.y+(b.y-a.y)*ease-Math.sin(t*Math.PI)*Math.cos(s.phase)*28;
+        s.progress+=s.speed*dt/Math.max(1,s.distance);const t=clamp(s.progress,0,1),ease=t*t*(3-2*t),sx=s.startX??a.x,sy=s.startY??a.y;s.x=sx+(b.x-sx)*ease+Math.sin(t*Math.PI)*Math.sin(s.phase)*28;s.y=sy+(b.y-sy)*ease-Math.sin(t*Math.PI)*Math.cos(s.phase)*28;
         if(s.progress>=1){arriveShip(s,b);state.ships.splice(i,1)}
       }
     }
@@ -401,6 +442,7 @@
         if(p.owner===null){p.owner=s.owner;p.pop=Math.max(.03,s.cargo.population||.02);p.capacity=Math.max(p.capacity,.16);p.infra={city:1,mine:1,factory:0,training:0,defense:0,shipyard:0,research:0};p.garrison=3;empire(s.owner).intel.add(p.id);if(s.owner===0)logEvent(`${p.name} joined the Mandate. Local government is now developing the colony.`,"good")}
         return
       }
+      if(s.type==="patrol"){patrolArrival(s,p);return}
       if(s.type==="fleet")resolveFleetArrival(s,p);
     }
     function activeBattleAt(p){return state.battles.find(b=>b.planetId===p.id)}
@@ -416,27 +458,28 @@
     }
     function startBattle(s,p){
       if(state.battles.length>=10){p.garrison=Math.max(2,p.garrison-s.strength*.45);return}
-      const defender=p.owner,defenderEmpire=empire(defender),fortification=1+p.infra.defense*.16;
+      const defender=p.owner,defenderEmpire=empire(defender),fortification=1+p.infra.defense*.16+(p.orbitals?.station||0)*.1+(p.orbitals?.base||0)*.28+orbitalSupportAt(p,defender);
       adjustRelation(s.owner,defender,-.28);
       const attack=s.strength*rand(.9,1.1),defense=Math.max(4,p.garrison*fortification*(1+defenderEmpire.tech.weapons*.1));p.garrison=0;p.underAttack=true;
       const battle={id:`b${Math.floor(random()*1e9)}`,planetId:p.id,attacker:s.owner,defender,attackerStrength:attack,defenderStrength:defense,attackerInitial:attack,defenderInitial:defense,elapsed:0,maxDuration:18+rand(3,10),fxClock:0,bursts:[],reinforcementSources:[]};state.battles.push(battle);
       if(s.owner===0||defender===0)logEvent(`${empire(s.owner).name} engaged the defense fleet above ${p.name}. Nearby commands are evaluating reinforcement routes.`,"danger");
       dispatchBattleReinforcements(battle,p,defender,false);
+      dispatchPatrolReinforcements(battle,p,defender);
       if(hasDirective(empire(s.owner),"rapidResponse")||hasDirective(empire(s.owner),"totalWar"))dispatchBattleReinforcements(battle,p,s.owner,true);
     }
     function dispatchBattleReinforcements(battle,p,owner,attacking){
       const e=empire(owner),range=1050*modifier(e,"responseRange"),fraction=clamp(.32*modifier(e,"reinforcement"),.22,.68);
-      const sources=owned(owner).filter(q=>q!==p&&!q.underAttack&&!activeBattleAt(q)&&q.garrison>10&&dist(q,p)<range&&!battle.reinforcementSources.includes(q.id)).sort((a,b)=>dist(a,p)-dist(b,p)).slice(0,attacking?1:2);
-      sources.forEach(q=>{const strength=Math.max(7,q.garrison*fraction);q.garrison-=strength;battle.reinforcementSources.push(q.id);createShip("fleet",q,p,owner,{strength,battleId:battle.id,reinforcement:true});if(owner===0)logEvent(`${q.name} released ${Math.round(strength)} fleet power to reinforce ${p.name}.`,"good")});
+      const sources=owned(owner).filter(q=>q!==p&&!q.underAttack&&!activeBattleAt(q)&&q.garrison>10&&dist(q,p)<range+(q.orbitals?.station||0)*280+(q.orbitals?.base||0)*620&&!battle.reinforcementSources.includes(q.id)).sort((a,b)=>dist(a,p)-dist(b,p)).slice(0,attacking?1:2+Math.min(2,owned(owner).reduce((n,q)=>n+(q.orbitals?.base||0),0)));
+      sources.forEach(q=>{const support=1+(q.orbitals?.station||0)*.08+(q.orbitals?.base||0)*.22,strength=Math.max(7,q.garrison*fraction)*support;q.garrison-=Math.min(q.garrison*.72,strength/support);battle.reinforcementSources.push(q.id);createShip("fleet",q,p,owner,{strength,battleId:battle.id,reinforcement:true,speedBoost:1+(q.orbitals?.station||0)*.15+(q.orbitals?.base||0)*.55});q.lastBaseLaunch=state.simTime;if(owner===0)logEvent(`${q.name} released ${Math.round(strength)} fleet power to reinforce ${p.name}${(q.orbitals?.base||0)?" under sector-base acceleration":""}.`,"good")});
     }
     function spawnBattleBurst(b,p){
       if(state.effects.length>=140)return;const angle=rand(0,Math.PI*2),radius=rand(25,95);state.effects.push({type:"burst",x:p.x+Math.cos(angle)*radius,y:p.y+Math.sin(angle)*radius,life:rand(.35,.8),maxLife:.8,size:rand(4,13),color:random()>.5?empire(b.attacker).color:empire(b.defender).color});
     }
     function tickBattles(dt){
       for(let i=state.battles.length-1;i>=0;i--){const b=state.battles[i],p=state.planets[+b.planetId.slice(1)];if(!p){state.battles.splice(i,1);continue}
-        b.elapsed+=dt;b.fxClock+=dt;const ae=empire(b.attacker),de=empire(b.defender),fort=1+p.infra.defense*.055;
-        const attackDps=(.16+b.attackerStrength*.006)*(1+ae.tech.weapons*.1+ae.tech.carriers*.06)*modifier(ae,"combat");
-        const defenseDps=(.17+b.defenderStrength*.0055)*fort*(1+de.tech.weapons*.1+de.tech.carriers*.05)*modifier(de,"defense");
+        b.elapsed+=dt;b.fxClock+=dt;const ae=empire(b.attacker),de=empire(b.defender),fort=1+p.infra.defense*.055+(p.orbitals?.station||0)*.06+(p.orbitals?.base||0)*.16,attackSupport=1+orbitalSupportAt(p,b.attacker),defenseSupport=1+orbitalSupportAt(p,b.defender);
+        const attackDps=(.16+b.attackerStrength*.006)*(1+ae.tech.weapons*.1+ae.tech.carriers*.06)*modifier(ae,"combat")*attackSupport;
+        const defenseDps=(.17+b.defenderStrength*.0055)*fort*(1+de.tech.weapons*.1+de.tech.carriers*.05)*modifier(de,"defense")*defenseSupport;
         b.defenderStrength=Math.max(0,b.defenderStrength-attackDps*dt*rand(.82,1.16));b.attackerStrength=Math.max(0,b.attackerStrength-defenseDps*dt*rand(.82,1.16));
         const civilianLoss=(attackDps+defenseDps)*.0000012*dt;p.pop=Math.max(.004,p.pop-civilianLoss);p.unrest=clamp(p.unrest+dt*.0012,0,1);
         if(b.fxClock>.38){b.fxClock=0;spawnBattleBurst(b,p)}
@@ -449,7 +492,7 @@
       if(attackerWins){
         const refuge=owned(oldOwner).filter(q=>q!==p&&!q.underAttack&&q.pop/q.capacity<.82).sort((a,c)=>dist(p,a)-dist(p,c))[0],refugees=Math.min(p.pop*.12,.06);
         if(refuge&&refugees>.002){p.pop-=refugees;createShip("migrant",p,refuge,oldOwner,{cargo:{population:refugees},refugees:true})}
-        p.owner=b.attacker;p.garrison=Math.max(4,b.attackerStrength*.58);p.pop*=rand(.9,.97);p.unrest=.65;empire(b.attacker).intel.add(p.id);
+        p.owner=b.attacker;p.garrison=Math.max(4,b.attackerStrength*.58);p.pop*=rand(.9,.97);p.unrest=.65;p.orbitals=p.orbitals||{station:0,base:0};p.orbitals.station=Math.max(0,p.orbitals.station-(random()<.45?1:0));p.orbitals.base=Math.max(0,p.orbitals.base-(random()<.7?1:0));p.orbitalProject=null;empire(b.attacker).intel.add(p.id);
         if(oldOwner===0||b.attacker===0)logEvent(`${p.name} fell to ${empire(b.attacker).name} after a ${Math.round(b.elapsed)}-second fleet battle.${refuge?` Refugees are fleeing to ${refuge.name}.`:""}`,b.attacker===0?"good":"danger")
       }else {p.garrison=Math.max(3,b.defenderStrength*.72);if(b.attacker===0||b.defender===0)logEvent(`${empire(b.defender).name} held ${p.name}; the attacking fleet broke apart under defensive fire.`,b.defender===0?"good":"warning")}
       p.underAttack=false;state.battles.splice(index,1);
@@ -458,6 +501,7 @@
     function aiTick(){
       state.empires.slice(1).forEach(e=>{
         e.directives=e.directives.filter(d=>d.until>state.simTime);
+        const worlds=owned(e.id),research=worlds.reduce((n,p)=>n+(p.infra.research||0),0);if(worlds.length>=3)e.tech.orbital=(e.tech.orbital||0)+.018+research*.004;if(orbitalUnlocked(e,"station")&&!worlds.some(p=>(p.orbitals?.station||0)>0||p.orbitalProject?.type==="station")&&random()<.5)addDirective(e,"orbitalStation",null,100);if(orbitalUnlocked(e,"base")&&!worlds.some(p=>(p.orbitals?.base||0)>0||p.orbitalProject?.type==="base")&&random()<.42)addDirective(e,"militaryBase",null,110);
         if(random()<.45){const type=pick(e.doctrine==="military"?["fleet","fortify","invasion"]:e.doctrine==="industry"?["industry","fleet","claim"]:["claim","population","explore","industry"]);addDirective(e,type,null,70)}
         if((hasDirective(e,"invasion")||state.simTime-e.lastAttack>55)&&owned(e.id).length)launchStrategicOffensive(e);
       });
@@ -476,6 +520,7 @@
       if(state.simTime-state.lastGovernor>=7){state.lastGovernor=state.simTime;governorTick()}
       if(state.simTime-state.lastLogistics>=3){state.lastLogistics=state.simTime;logisticsTick()}
       if(state.simTime-state.lastCommerce>=4){state.lastCommerce=state.simTime;commerceTick()}
+      if(state.simTime-state.lastPatrol>=5){state.lastPatrol=state.simTime;patrolTick()}
       if(state.simTime-state.lastAI>=12){state.lastAI=state.simTime;aiTick()}
       if(state.simTime-state.lastAutosave>=18){state.lastAutosave=state.simTime;saveGame(false)}
       if(state.simTime>=state.nextCommand&&$("commandModal").hidden)openCommandPhase();
@@ -520,13 +565,17 @@
       {id:"armsConversion",cat:"Industry",title:"Arms Conversion Program",desc:"Convert civilian production lines into weapons, defense craft, and field equipment.",effects:["Equipment output surges","Garrisons receive arms","Civil population growth slows"],score:()=>state.battles.length?87:47,apply:e=>{setModifier(e,"industry",1.3,75);setModifier(e,"growth",.8,75);playerWorlds().forEach(p=>{p.stock.equipment+=8;p.garrison+=Math.min(5,p.infra.factory*1.5)})}},
       {id:"sustainable",cat:"Resources",title:"Sustainable Extraction Act",desc:"Sacrifice some immediate digging speed to stretch strategic deposits and prevent future collapse.",effects:["Reserve depletion -48%","Mining output -12%","Extraction science advances"],score:()=>playerWorlds().some(p=>RESOURCES.some(r=>p.reserve[r]<p.quality[r]*180))?92:44,apply:e=>{setModifier(e,"depletion",.52,100);setModifier(e,"mining",.88,100);e.tech.extraction+=.12}},
       {id:"helium",cat:"Resources",title:"Helium-3 Fuel Corridor",desc:"Give fuel orders first claim on freighters so distant fleets and colony missions do not stall.",effects:["Helium orders gain priority","Propulsion research rises","Fuel-rich worlds expand mines"],score:()=>78-empireResource(0,"helium")*.25,apply:e=>{e.tech.propulsion+=.1;playerWorlds().forEach(p=>addOrder(p,"mandate","helium",55,4,"Helium-3 fuel corridor"));const rich=playerWorlds().filter(p=>p.quality.helium>=4);rich.forEach(p=>{if(p.infra.mine<sustainableMines(p))p.infra.mine++})}},
-      {id:"orbitalHabitats",cat:"Infrastructure",title:"Orbital Habitat Initiative",desc:"Build living space above the most crowded worlds without consuming additional planetary land.",effects:["Two crowded worlds gain housing","Growth pressure eases","Orbital lights become visible"],score:()=>mostCrowded()?72:0,target:()=>mostCrowded(),apply:(e,t)=>{playerWorlds().sort((a,b)=>b.pop/b.capacity-a.pop/a.capacity).slice(0,2).forEach(p=>{p.capacity+=.22;p.infra.city++});setModifier(e,"growth",1.12,80)}},
-      {id:"sensorWeb",cat:"Research",title:"Galactic Sensor Web",desc:"Link scouts, frontier stations, and civilian traffic into a clearer picture of distant space.",effects:["Planet intelligence improves","Reinforcement range rises","Hidden frontier worlds revealed"],score:()=>70-empire(0).intel.size*.6,apply:e=>{state.planets.forEach(p=>p.intel=Math.min(1,p.intel+.18));state.planets.slice().sort((a,b)=>dist(playerWorlds()[0],a)-dist(playerWorlds()[0],b)).slice(0,10).forEach(p=>e.intel.add(p.id));setModifier(e,"responseRange",1.25,95)}},
+      {id:"orbitalHabitats",cat:"Infrastructure",title:"Orbital Habitat Initiative",desc:"Build living space above the most crowded worlds without consuming additional planetary land.",effects:["Two crowded worlds gain housing","Growth pressure eases","Orbital engineering advances"],score:()=>mostCrowded()?72:0,target:()=>mostCrowded(),apply:(e,t)=>{playerWorlds().sort((a,b)=>b.pop/b.capacity-a.pop/a.capacity).slice(0,2).forEach(p=>{p.capacity+=.22;p.infra.city++});e.tech.orbital+=.12;setModifier(e,"growth",1.12,80)}},
+      {id:"sensorWeb",cat:"Research",title:"Galactic Sensor Web",desc:"Link scouts, frontier stations, and civilian traffic into a clearer picture of distant space.",effects:["Planet intelligence improves","Reinforcement range rises","Hidden frontier worlds revealed"],score:()=>70-empire(0).intel.size*.6,apply:e=>{state.planets.forEach(p=>p.intel=Math.min(1,p.intel+.18));state.planets.slice().sort((a,b)=>dist(playerWorlds()[0],a)-dist(playerWorlds()[0],b)).slice(0,10).forEach(p=>e.intel.add(p.id));e.tech.orbital+=.08;setModifier(e,"responseRange",1.25,95)}},
       {id:"emergencyRepair",cat:"Infrastructure",title:"Emergency Battle Repair",desc:"Route engineers, replacement armor, and repair craft directly into every active defensive battle.",effects:["Defending fleets regain strength","Batteries fire faster","Components are consumed"],score:()=>state.battles.some(b=>b.defender===0)?110:8,apply:e=>{state.battles.filter(b=>b.defender===0).forEach(b=>{b.defenderStrength+=12;b.defenderInitial+=12});playerWorlds().forEach(p=>consume(p,"components",Math.min(4,p.stock.components)));setModifier(e,"defense",1.25,55)}},
       {id:"tradeAccords",cat:"Infrastructure",title:"Inter-Empire Trade Accords",desc:"Normalize customs rules with the friendliest foreign power and let private merchants build the routes.",effects:["Foreign trade traffic +120%","Relations improve","Cross-border range expands"],score:()=>bestTradePartner()?64:0,target:()=>bestTradePartner(),apply:(e,t)=>{if(t)adjustRelation(e.id,t.id,.24);setModifier(e,"foreignTrade",2.2,120);setModifier(e,"tradeRange",1.45,120);e.tech.commerce+=.18;commerceTick()}},
       {id:"merchantMarine",cat:"Industry",title:"Merchant Marine Subsidies",desc:"Guarantee civilian hull construction and fill deep space with freighters, couriers, and passenger liners.",effects:["Commercial traffic +140%","Trade prosperity increases","Shipbuilding receives civilian orders"],score:()=>58+playerWorlds().length*2,apply:e=>{setModifier(e,"tradeTraffic",2.4,120);setModifier(e,"shipbuilding",1.12,90);e.tech.commerce+=.22;commerceTick();commerceTick()}},
       {id:"freePort",cat:"Infrastructure",title:"Declare an Imperial Free Port",desc:"Turn a populous world into a bright commercial hub for domestic and foreign civilian traffic.",effects:["Target becomes a trade hub","Prosperity rises immediately","More orbital traffic appears"],score:()=>playerWorlds().length?62:0,target:()=>playerWorlds().slice().sort((a,b)=>b.pop-a.pop)[0]||null,apply:(e,t)=>{if(t){t.tradeHub=(t.tradeHub||0)+1;t.tradeVolume=(t.tradeVolume||0)+24;t.prosperity=clamp((t.prosperity||0)+.35,0,1.5);t.capacity+=.04}setModifier(e,"foreignTrade",1.5,120);commerceTick()}},
-      {id:"businessTravel",cat:"Population",title:"Civilian Mobility Compact",desc:"Make routine business, education, and family travel between worlds part of everyday imperial life.",effects:["Passenger liners launch often","Prosperity supports growth","Migration responds faster"],score:()=>playerWorlds().length>1?66:28,apply:e=>{setModifier(e,"tradeTraffic",1.8,120);setModifier(e,"migration",1.45,120);setModifier(e,"growth",1.28,120);commerceTick()}}
+      {id:"businessTravel",cat:"Population",title:"Civilian Mobility Compact",desc:"Make routine business, education, and family travel between worlds part of everyday imperial life.",effects:["Passenger liners launch often","Prosperity supports growth","Migration responds faster"],score:()=>playerWorlds().length>1?66:28,apply:e=>{setModifier(e,"tradeTraffic",1.8,120);setModifier(e,"migration",1.45,120);setModifier(e,"growth",1.28,120);commerceTick()}},
+      {id:"orbitalEngineering",cat:"Research",title:"Deep-Space Engineering Program",desc:"Develop the construction, life-support, and command systems required for permanent orbital installations.",effects:["Orbital technology +55%","Station projects become possible","Propulsion research advances"],score:()=>playerWorlds().length>=3?72:16,apply:e=>{e.tech.orbital+=.55;e.tech.propulsion+=.08;setModifier(e,"shipbuilding",1.12,90)}},
+      {id:"spaceStation",cat:"Infrastructure",title:"Construct an Orbital Space Station",desc:"Authorize a developed naval world to gather materials and assemble a permanent station above the planet.",effects:["Visible orbital installation","Ships launch faster nearby","Patrol capacity increases"],score:()=>orbitalUnlocked(empire(0),"station")?84:0,target:()=>bestOrbitalWorld(empire(0),"station",null),apply:(e,t)=>{if(t){addDirective(e,"orbitalStation",t.id,150);queueOrbitalProject(t,"station",true)}}},
+      {id:"sectorBase",cat:"Military",title:"Establish a Sector Military Base",desc:"Create a high-technology fleet headquarters that strengthens nearby ships and races reserves toward threatened worlds.",effects:["Powerful regional fleet support","Rapid reinforcement launches","Additional patrol groups"],score:()=>orbitalUnlocked(empire(0),"base")?88:0,target:()=>bestOrbitalWorld(empire(0),"base",null),apply:(e,t)=>{if(t){addDirective(e,"militaryBase",t.id,170);queueOrbitalProject(t,"base",true)}}},
+      {id:"patrolNetwork",cat:"Military",title:"Activate Sector Patrol Network",desc:"Keep manned warships moving visibly between settled worlds instead of waiting invisibly in planetary reserves.",effects:["More continuous patrol flights","Patrols answer nearby battles","Response range +45%"],score:()=>playerWorlds().some(p=>p.infra.shipyard||(p.orbitals?.station||0)+(p.orbitals?.base||0))?74:12,apply:e=>{addDirective(e,"patrolNetwork",null,120);setModifier(e,"responseRange",1.45,120);setModifier(e,"reinforcement",1.22,120);patrolTick();patrolTick()}}
     ];
     function bestNeutral(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner===null).map(p=>({p,value:Object.values(p.quality).reduce((a,b)=>a+b,0)+Math.max(...Object.values(p.quality))*4-Math.min(...worlds.map(w=>dist(w,p)))/180})).sort((a,b)=>b.value-a.value)[0]?.p||null}
     function nearestEnemy(){const worlds=playerWorlds();return state.planets.filter(p=>p.owner!==null&&p.owner!==0).sort((a,b)=>Math.min(...worlds.map(w=>dist(w,a)))-Math.min(...worlds.map(w=>dist(w,b))))[0]||null}
@@ -549,7 +598,7 @@
       const colors={Military:"#ff6078",Industry:"#ffb75c",Resources:"#69e7ff",Population:"#63f0a4",Research:"#a987ff",Infrastructure:"#7ea3ff"},worlds=owned(e.id),populationStrength=c.id==="familyGrants"?3.4:c.id==="population"?2.65:1.85;
       worlds.forEach(p=>{p.mandateGlow=1;if(c.cat==="Population"){p.popMomentum=Math.max(p.popMomentum||1,populationStrength);if(p.capacity-p.pop<.035)p.capacity+=.012}else if(c.cat==="Industry"||c.cat==="Infrastructure")p.prosperity=clamp((p.prosperity||0)+.035,0,1.5)});
       worlds.slice(0,12).forEach((p,i)=>{if(state.effects.length<140)state.effects.push({type:"mandate",x:p.x,y:p.y,life:1.8+i*.06,maxLife:1.8+i*.06,size:24,color:colors[c.cat]||"#7ea3ff"})});
-      if(c.cat==="Population")logisticsTick();if(c.cat==="Industry"||c.cat==="Resources"||/trade|merchant|port|mobility/i.test(c.id)){logisticsTick();commerceTick()}
+      if(c.cat==="Population")logisticsTick();if(c.cat==="Industry"||c.cat==="Resources"||/trade|merchant|port|mobility/i.test(c.id)){logisticsTick();commerceTick()}if(/station|base|patrol|orbital/i.test(c.id)){governOrbitalProjects();patrolTick()}
     }
     function issueCommands(){const e=empire(0);state.commandSelected.forEach(i=>{const c=state.commandChoices[i];c.apply(e,c.targetObj);propagateMandate(c,e);logEvent(`MANDATE: ${c.title}${c.targetObj?` — ${c.targetObj.name}`:""}. Governors, businesses, and citizens are responding now.`,"good")});$("commandModal").hidden=true;state.nextCommand=state.simTime+state.commandCycle;state.speed=state.preCommandSpeed||1;updateSpeedButtons();updateHud(true);saveGame(false)}
 
@@ -561,7 +610,7 @@
     function draw(){
       const w=innerWidth,h=innerHeight,z=state.camera.zoom;ctx.setTransform(dpr(),0,0,dpr(),0,0);ctx.fillStyle="#030511";ctx.fillRect(0,0,w,h);state.stats.visible=0;state.stats.drawCalls=1;
       const neb=ctx.createRadialGradient(w*.56,h*.45,20,w*.56,h*.45,Math.max(w,h)*.75);neb.addColorStop(0,"rgba(42,35,104,.22)");neb.addColorStop(.45,"rgba(9,31,75,.12)");neb.addColorStop(1,"rgba(2,3,10,0)");ctx.fillStyle=neb;ctx.fillRect(0,0,w,h);
-      drawNebulae();drawStars();drawTerritories();drawLanes();drawTradeCorridors();drawShips();drawPlanets();drawBattles();drawEffects();drawSelection();
+      drawNebulae();drawStars();drawTerritories();drawLanes();drawTradeCorridors();drawPatrolCorridors();drawShips();drawPlanets();drawBattles();drawEffects();drawSelection();
       $("perf").textContent=`${state.stats.visible} visible · ${state.ships.length} ships · ${state.battles.length} battles`;
     }
     function drawNebulae(){
@@ -576,10 +625,14 @@
     function drawTradeCorridors(){
       ctx.save();ctx.setLineDash([2,9]);ctx.lineWidth=.7;for(const ship of state.ships){if(!ship.commercial)continue;const a=state.planets[+ship.from.slice(1)],b=state.planets[+ship.to.slice(1)];if(!a||!b||(!visible(a.x,a.y,180)&&!visible(b.x,b.y,180)&&!visible(ship.x,ship.y,80)))continue;const sa=worldToScreen(a.x,a.y),sb=worldToScreen(b.x,b.y),bend=Math.min(70,Math.hypot(sb.x-sa.x,sb.y-sa.y)*.12);ctx.strokeStyle=ship.crossBorder?"rgba(255,211,111,.18)":"rgba(109,224,255,.12)";ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.quadraticCurveTo((sa.x+sb.x)/2+bend,(sa.y+sb.y)/2-bend,sb.x,sb.y);ctx.stroke();state.stats.drawCalls++}ctx.restore();ctx.setLineDash([])
     }
+    function drawPatrolCorridors(){
+      ctx.save();ctx.setLineDash([7,12]);ctx.lineWidth=.8;for(const ship of state.ships){if(ship.type!=="patrol")continue;const target=state.planets[+ship.to.slice(1)];if(!target||(!visible(ship.x,ship.y,100)&&!visible(target.x,target.y,120)))continue;const a=worldToScreen(ship.x,ship.y),b=worldToScreen(target.x,target.y);ctx.strokeStyle=empire(ship.owner).color+(ship.responding?"66":"27");ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo((a.x+b.x)/2,(a.y+b.y)/2-22,b.x,b.y);ctx.stroke();state.stats.drawCalls++}ctx.restore();ctx.setLineDash([])
+    }
     function drawShips(){
       for(const s of state.ships){if(!visible(s.x,s.y,30))continue;const p=worldToScreen(s.x,s.y),target=state.planets[+s.to.slice(1)],ang=target?Math.atan2(target.y-s.y,target.x-s.x):0,color=s.commercial?(s.crossBorder?"#ffd36f":"#75eaff"):empire(s.owner).color,size=clamp((s.type==="liner"?3.8:s.type==="freighter"?3.1:2.8)*state.camera.zoom,2.2,6);
         ctx.save();ctx.translate(p.x,p.y);ctx.rotate(ang);if(s.commercial){ctx.strokeStyle=color;ctx.globalAlpha=.28;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(-size*2,0);ctx.lineTo(-size*7,0);ctx.stroke();ctx.globalAlpha=1}ctx.shadowColor=color;ctx.shadowBlur=s.commercial?12:8;ctx.fillStyle=color;
-        if(s.type==="fleet"){ctx.beginPath();ctx.moveTo(size*1.8,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.fill()}
+        if(s.type==="patrol"){ctx.beginPath();ctx.moveTo(size*2.1,0);ctx.lineTo(-size*.8,-size*.9);ctx.lineTo(-size*.25,0);ctx.lineTo(-size*.8,size*.9);ctx.closePath();ctx.fill();ctx.strokeStyle="#eafcff";ctx.globalAlpha=.65;ctx.beginPath();ctx.moveTo(-size*.2,-size*.65);ctx.lineTo(-size*1.4,-size*1.35);ctx.moveTo(-size*.2,size*.65);ctx.lineTo(-size*1.4,size*1.35);ctx.stroke();ctx.globalAlpha=1;if(s.responding){ctx.strokeStyle="#fff";ctx.globalAlpha=.45;ctx.beginPath();ctx.moveTo(-size*1.4,0);ctx.lineTo(-size*6,0);ctx.stroke();ctx.globalAlpha=1}}
+        else if(s.type==="fleet"){ctx.beginPath();ctx.moveTo(size*1.8,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.fill()}
         else if(s.type==="colony"){ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(size,0);ctx.lineTo(-size,-size);ctx.lineTo(-size,size);ctx.closePath();ctx.stroke()}
         else if(s.type==="liner"){ctx.beginPath();ctx.moveTo(size*2,0);ctx.lineTo(size*.3,-size*.7);ctx.lineTo(-size*1.8,-size*.45);ctx.lineTo(-size*1.8,size*.45);ctx.lineTo(size*.3,size*.7);ctx.closePath();ctx.fill();ctx.fillStyle="#ffffff";ctx.globalAlpha=.8;ctx.fillRect(-size*.8,-.5,size*1.5,1)}
         else if(s.type==="courier"){ctx.beginPath();ctx.moveTo(size*1.9,0);ctx.lineTo(-size,-size*.62);ctx.lineTo(-size*.35,0);ctx.lineTo(-size,size*.62);ctx.closePath();ctx.fill()}
@@ -587,10 +640,17 @@
       }
     }
     function planetGradient(p,s,r){const hue=(p.id.charCodeAt(1)*47+p.quality.rare*17)%360,g=ctx.createRadialGradient(s.x-r*.32,s.y-r*.34,r*.08,s.x,s.y,r);g.addColorStop(0,`hsl(${hue} 78% 77%)`);g.addColorStop(.22,`hsl(${hue} 58% 52%)`);g.addColorStop(.68,`hsl(${hue+24} 48% 24%)`);g.addColorStop(1,"#050917");return g}
+    function drawOrbitalInstallations(p,s,r){
+      const station=p.orbitals?.station||0,base=p.orbitals?.base||0,project=p.orbitalProject;if(!station&&!base&&!project||state.camera.zoom<.34)return;const color=empire(p.owner).color,time=performance.now()/2200;
+      ctx.save();if(project){const progress=clamp(project.progress||0,0,1),rr=r+15;ctx.strokeStyle=project.type==="base"?"rgba(255,111,131,.65)":"rgba(112,225,255,.6)";ctx.lineWidth=2;ctx.setLineDash([3,4]);ctx.beginPath();ctx.arc(s.x,s.y,rr,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);ctx.stroke();ctx.setLineDash([])}
+      for(let i=0;i<station;i++){const a=time+p.rotation+i*Math.PI,orbit=r+14+i*5,x=s.x+Math.cos(a)*orbit,y=s.y+Math.sin(a)*orbit*.48;ctx.strokeStyle=color+"55";ctx.lineWidth=.7;ctx.beginPath();ctx.ellipse(s.x,s.y,orbit,orbit*.48,0,0,6.283);ctx.stroke();ctx.save();ctx.translate(x,y);ctx.rotate(a+.45);ctx.shadowColor="#76eaff";ctx.shadowBlur=9;ctx.fillStyle="#dffaff";ctx.fillRect(-2.5,-2.5,5,5);ctx.fillStyle="#5b7eff";ctx.fillRect(-10,-1.5,6,3);ctx.fillRect(4,-1.5,6,3);ctx.restore()}
+      for(let i=0;i<base;i++){const a=-time*.72+p.rotation+i*Math.PI,orbit=r+23+i*6,x=s.x+Math.cos(a)*orbit,y=s.y+Math.sin(a)*orbit*.5,pulse=.5+.5*Math.sin(performance.now()/260);ctx.strokeStyle="rgba(255,98,128,.28)";ctx.beginPath();ctx.ellipse(s.x,s.y,orbit,orbit*.5,0,0,6.283);ctx.stroke();ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.shadowColor=color;ctx.shadowBlur=14;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(0,-5);ctx.lineTo(-7,0);ctx.lineTo(0,5);ctx.closePath();ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(-1.5,-1.5,3,3);ctx.strokeStyle="rgba(255,255,255,.5)";ctx.globalAlpha=.35+pulse*.35;ctx.beginPath();ctx.arc(0,0,9+pulse*3,0,6.283);ctx.stroke();ctx.restore()}ctx.restore();state.stats.drawCalls+=station*3+base*3+(project?1:0)
+    }
     function drawPlanets(){
       const z=state.camera.zoom;for(const p of state.planets){if(!visible(p.x,p.y,120))continue;const s=worldToScreen(p.x,p.y),r=clamp(p.r*z,5,36);state.stats.visible++;
         if(p.owner!==null){ctx.strokeStyle=empire(p.owner).color+"45";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(s.x,s.y,r*2.2,r*.72,p.rotation*.17,0,6.283);ctx.stroke()}
         ctx.save();ctx.shadowColor=p.owner!==null?empire(p.owner).color:"#607394";ctx.shadowBlur=p.owner!==null?18:8;ctx.fillStyle=planetGradient(p,s,r);ctx.beginPath();ctx.arc(s.x,s.y,r,0,6.283);ctx.fill();ctx.restore();
+        if(p.owner!==null)drawOrbitalInstallations(p,s,r);
         if((p.tradeVolume||0)>1&&z>.4){const traffic=clamp((p.tradeVolume||0)/28,.08,1),a=p.rotation*1.8+performance.now()/1800;ctx.save();ctx.strokeStyle=(p.tradeHub||0)>0?"rgba(255,211,111,.8)":"rgba(102,226,255,.55)";ctx.globalAlpha=.25+traffic*.45;ctx.lineWidth=1;ctx.beginPath();ctx.arc(s.x,s.y,r+10,a,a+Math.PI*(.6+traffic));ctx.stroke();ctx.fillStyle="#ffd36f";for(let i=0;i<Math.min(4,1+Math.floor(traffic*4));i++){const oa=a+i*1.7;ctx.fillRect(s.x+Math.cos(oa)*(r+10)-1,s.y+Math.sin(oa)*(r+10)*.45-1,2,2)}ctx.restore()}
         if(z>.54&&p.owner!==null){drawSurface(p,s,r);drawPopulationActivity(p,s,r)}
         if(p.infra.defense&&p.owner!==null&&z>.42){ctx.strokeStyle=empire(p.owner).color+"68";ctx.lineWidth=1.2;for(let i=0;i<Math.min(3,p.infra.defense);i++){const start=p.rotation+i*2.05;ctx.beginPath();ctx.arc(s.x,s.y,r+7+i*2,start-.48,start+.48);ctx.stroke()}}
@@ -621,6 +681,7 @@
     function drawEffects(){ctx.save();ctx.globalCompositeOperation="lighter";for(const fx of state.effects){if(!visible(fx.x,fx.y,45))continue;const s=worldToScreen(fx.x,fx.y),life=clamp(fx.life/fx.maxLife,0,1),progress=1-life,r=fx.size*(1-life*.35)*state.camera.zoom;ctx.globalAlpha=life;
         if(fx.type==="mandate"){ctx.strokeStyle=fx.color;ctx.lineWidth=1.5;for(let i=0;i<2;i++){ctx.globalAlpha=life*(.8-i*.25);ctx.beginPath();ctx.arc(s.x,s.y,Math.max(4,(fx.size+progress*55+i*9)*state.camera.zoom),0,6.283);ctx.stroke()}state.stats.visible++;continue}
         if(fx.type==="trade"){ctx.strokeStyle=fx.color;ctx.lineWidth=1;ctx.beginPath();ctx.arc(s.x,s.y,Math.max(4,(8+progress*28)*state.camera.zoom),0,6.283);ctx.stroke();ctx.fillStyle=fx.color;for(let i=0;i<4;i++){const a=progress*4+i*1.57;ctx.fillRect(s.x+Math.cos(a)*r-1,s.y+Math.sin(a)*r-1,2,2)}state.stats.visible++;continue}
+        if(fx.type==="launch"){ctx.strokeStyle=fx.color;ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.globalAlpha=life*(.8-i*.18);ctx.beginPath();ctx.arc(s.x,s.y,Math.max(5,(12+progress*55+i*8)*state.camera.zoom),i*2.05,i*2.05+1.3);ctx.stroke()}state.stats.visible++;continue}
         const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,Math.max(2,r));g.addColorStop(0,"#fff");g.addColorStop(.25,fx.color);g.addColorStop(1,"rgba(255,70,30,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(s.x,s.y,Math.max(2,r),0,6.283);ctx.fill();state.stats.visible++
       }ctx.restore();ctx.globalAlpha=1}
     function drawSelection(){if(!state.selected)return;const p=state.selected,s=worldToScreen(p.x,p.y),r=clamp(p.r*state.camera.zoom,5,36)+13;ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(s.x,s.y,r+Math.sin(performance.now()/280)*2,0,6.283);ctx.stroke();ctx.setLineDash([])}
@@ -628,14 +689,15 @@
     function renderPlanet(){
       const p=state.selected;if(!p){$("planetName").textContent="No world selected";$("planetSubtitle").textContent="Select a world to inspect its living economy.";$("planetBody").innerHTML='<div class="empty-selection"><div><div class="orb"></div>Click a planet to inspect population pressure, resources, facilities, shortages, and delayed orders.</div></div>';return}
       const e=p.owner!==null?empire(p.owner):null,intel=p.owner===0?1:p.intel,battle=activeBattleAt(p);$("planetName").textContent=p.name;$("planetSubtitle").textContent=battle?"ACTIVE ORBITAL BATTLE":intel<.45?"Partial sensor contact":p.specialization;
-      const popRatio=p.pop/p.capacity,mineLoad=p.infra.mine/sustainableMines(p),orders=p.orders.filter(o=>o.status!=="filled"),trend=p.popTrend||0,trendText=Math.abs(trend)<.00008?"Stable":`${trend>0?"+":"−"}${fmtNum(Math.abs(trend))}/min`,trafficShips=state.ships.filter(s=>s.commercial&&(s.from===p.id||s.to===p.id)),foreignPartners=[...new Set(trafficShips.filter(s=>s.crossBorder).map(s=>empire(s.owner)?.name).filter(Boolean))];
+      const popRatio=p.pop/p.capacity,mineLoad=p.infra.mine/sustainableMines(p),orders=p.orders.filter(o=>o.status!=="filled"),trend=p.popTrend||0,trendText=Math.abs(trend)<.00008?"Stable":`${trend>0?"+":"−"}${fmtNum(Math.abs(trend))}/min`,trafficShips=state.ships.filter(s=>s.commercial&&(s.from===p.id||s.to===p.id)),patrolShips=p.owner===null?[]:state.ships.filter(s=>s.type==="patrol"&&s.owner===p.owner&&(s.home===p.id||s.from===p.id||s.to===p.id)),foreignPartners=[...new Set(trafficShips.filter(s=>s.crossBorder).map(s=>empire(s.owner)?.name).filter(Boolean))];
       const qualities=RESOURCES.map(r=>`<div class="resource-row"><span style="color:${RESOURCE_COLOR[r]}">${RESOURCE_LABEL[r]} <small>${intel<.45?"estimate":"quality"}</small></span><span class="stars">${intel<.25?"Unknown":"★".repeat(Math.max(1,Math.round(p.quality[r]*(intel<.65?.8:1))))}${intel>=.25?"☆".repeat(Math.max(0,5-Math.round(p.quality[r]*(intel<.65?.8:1)))):""}</span></div>`).join("");
       const stock=p.owner===0?RESOURCES.map(r=>`<div class="resource-row"><span>${RESOURCE_LABEL[r]}</span><b class="${p.shortages.has(r)?"shortage":""}">${fmtStock(p.stock[r])}${p.shortages.has(r)?" · 50% income":""}</b></div>`).join(""):"";
       const facilities=Object.entries(p.infra).filter(([,v])=>v>0).map(([k,v])=>`<div class="facility-row"><span>${({city:"Cities / Towns",mine:"Mining Complexes",factory:"Factories",training:"Training Centers",defense:"Defense Batteries",shipyard:"Shipyards",research:"Research Facilities"})[k]}</span><b>${roman(v)}</b></div>`).join("")||'<div class="subtle">No developed infrastructure.</div>';
       const orderHtml=orders.length?orders.slice(0,6).map(o=>`<div class="order-row"><span>${o.label}<small>${o.status} · ${Math.floor(o.age)}s old</small></span><b>${Math.floor(o.filled)}/${Math.floor(o.amount)}</b></div>`).join(""):'<div class="subtle healthy">No outstanding local orders.</div>';
       const battleHtml=battle?`<div class="section-label">Orbital Battle</div><div class="order-list"><div class="order-row"><span style="color:${empire(battle.attacker).color}">${empire(battle.attacker).name}<small>Attacking fleet</small></span><b>${Math.round(battle.attackerStrength)}</b></div><div class="order-row"><span style="color:${empire(battle.defender).color}">${empire(battle.defender).name}<small>Planetary defenders</small></span><b>${Math.round(battle.defenderStrength)}</b></div></div>`:"";
       const tradeHtml=p.owner!==null?`<div class="section-label">Civilian Commerce</div><div class="order-list"><div class="order-row"><span>${(p.tradeHub||0)>0?"Imperial Free Port":"Commercial traffic"}<small>${foreignPartners.length?`Trading with ${foreignPartners.slice(0,2).join(", ")}`:"Domestic business network"}</small></span><b>${trafficShips.length} ship${trafficShips.length===1?"":"s"}</b></div></div>`:"";
-      $("planetBody").innerHTML=`<div class="owner-row"><span class="owner-chip" style="color:${e?.color||"#8491aa"}"><i class="dot"></i>${e?.name||"Unclaimed"}</span><span class="status-chip ${battle?"shortage":""}">${battle?"Battle":p.home?"Capital":p.scattered?"Rogue World":"World"}</span></div><div class="metric-grid"><div class="metric"><label>Population</label><b>${fmtNum(p.pop)} / ${fmtNum(p.capacity)}</b><div class="meter ${popRatio>1?"warning":""}"><i style="width:${clamp(popRatio*100,0,100)}%"></i></div></div><div class="metric"><label>Population Trend</label><b class="${trend<-.00008?"shortage":trend>.00008?"healthy":""}">${trendText}</b><div class="meter ${trend<-.00008?"warning":""}"><i style="width:${clamp(50+trend*35000,4,100)}%"></i></div></div><div class="metric"><label>Productivity</label><b>${Math.round(p.efficiency*100)}%</b><div class="meter ${p.efficiency<.7?"warning":""}"><i style="width:${p.efficiency*100}%"></i></div></div><div class="metric"><label>Mine Load</label><b>${Math.round(mineLoad*100)}% of cap</b><div class="meter ${mineLoad>1?"warning":""}"><i style="width:${clamp(mineLoad*100,0,100)}%"></i></div></div><div class="metric"><label>Factory Flow</label><b>${Math.round(p.factoryEfficiency*100)}%</b><div class="meter ${p.factoryEfficiency<.65?"warning":""}"><i style="width:${p.factoryEfficiency*100}%"></i></div></div><div class="metric"><label>Commerce</label><b class="${trafficShips.length?"healthy":""}">${trafficShips.length} active route${trafficShips.length===1?"":"s"}</b><div class="meter"><i style="width:${clamp((p.tradeVolume||0)*4,2,100)}%"></i></div></div></div>${battleHtml}${tradeHtml}<div class="section-label">Resource Quality</div><div class="resource-list">${qualities}</div>${p.owner===0?`<div class="section-label">Local Stockpiles</div><div class="resource-list">${stock}</div>`:""}<div class="section-label">Civilization</div><div class="facility-list">${facilities}</div>${p.owner===0?`<div class="section-label">Autonomous Orders</div><div class="order-list">${orderHtml}</div>`:""}`;
+      const orbitalTech=e?.tech.orbital||0,orbitalRows=[(p.orbitals?.station||0)?`<div class="facility-row"><span>Orbital Space Station<small>Fleet support and patrol control</small></span><b>${roman(p.orbitals.station)}</b></div>`:"",(p.orbitals?.base||0)?`<div class="facility-row"><span>Sector Military Base<small>Rapid launches and regional combat boost</small></span><b>${roman(p.orbitals.base)}</b></div>`:"",patrolShips.length?`<div class="facility-row"><span>Active Patrol Groups<small>${patrolShips.some(s=>s.responding)?"One or more responding to battle":"Continuous sector routes"}</small></span><b>${patrolShips.length}</b></div>`:"",p.orbitalProject?`<div class="facility-row"><span>${p.orbitalProject.type==="base"?"Military base":"Space station"} under construction<small>Materials delivered through local orders</small></span><b>${Math.floor((p.orbitalProject.progress||0)*100)}%</b></div>`:""].filter(Boolean).join("")||`<div class="subtle">${orbitalTech<.45?`Orbital installations locked · technology ${Math.round(orbitalTech*100)}% / 45%`:`No orbital installation commissioned here.`}</div>`;
+      $("planetBody").innerHTML=`<div class="owner-row"><span class="owner-chip" style="color:${e?.color||"#8491aa"}"><i class="dot"></i>${e?.name||"Unclaimed"}</span><span class="status-chip ${battle?"shortage":""}">${battle?"Battle":p.home?"Capital":p.scattered?"Rogue World":"World"}</span></div><div class="metric-grid"><div class="metric"><label>Population</label><b>${fmtNum(p.pop)} / ${fmtNum(p.capacity)}</b><div class="meter ${popRatio>1?"warning":""}"><i style="width:${clamp(popRatio*100,0,100)}%"></i></div></div><div class="metric"><label>Population Trend</label><b class="${trend<-.00008?"shortage":trend>.00008?"healthy":""}">${trendText}</b><div class="meter ${trend<-.00008?"warning":""}"><i style="width:${clamp(50+trend*35000,4,100)}%"></i></div></div><div class="metric"><label>Productivity</label><b>${Math.round(p.efficiency*100)}%</b><div class="meter ${p.efficiency<.7?"warning":""}"><i style="width:${p.efficiency*100}%"></i></div></div><div class="metric"><label>Mine Load</label><b>${Math.round(mineLoad*100)}% of cap</b><div class="meter ${mineLoad>1?"warning":""}"><i style="width:${clamp(mineLoad*100,0,100)}%"></i></div></div><div class="metric"><label>Factory Flow</label><b>${Math.round(p.factoryEfficiency*100)}%</b><div class="meter ${p.factoryEfficiency<.65?"warning":""}"><i style="width:${p.factoryEfficiency*100}%"></i></div></div><div class="metric"><label>Commerce</label><b class="${trafficShips.length?"healthy":""}">${trafficShips.length} active route${trafficShips.length===1?"":"s"}</b><div class="meter"><i style="width:${clamp((p.tradeVolume||0)*4,2,100)}%"></i></div></div></div>${battleHtml}${tradeHtml}<div class="section-label">Orbital Command</div><div class="facility-list">${orbitalRows}</div><div class="section-label">Resource Quality</div><div class="resource-list">${qualities}</div>${p.owner===0?`<div class="section-label">Local Stockpiles</div><div class="resource-list">${stock}</div>`:""}<div class="section-label">Civilization</div><div class="facility-list">${facilities}</div>${p.owner===0?`<div class="section-label">Autonomous Orders</div><div class="order-list">${orderHtml}</div>`:""}`;
     }
     function renderEvents(){const events=state.events.filter(e=>e.empireId===0||e.tone==="danger").slice(0,12);$("events").innerHTML=events.map(e=>`<div class="event ${e.tone}">${e.text}<time>Year 1 · Day ${Math.floor(e.time/6)+1}</time></div>`).join("")||'<div class="event">The galaxy is quiet—for now.</div>'}
     function updateHud(force=false){
@@ -646,10 +708,10 @@
     function updateSpeedButtons(){document.querySelectorAll("[data-speed]").forEach(b=>b.classList.toggle("active",Number(b.dataset.speed)===state.speed))}
 
     function saveGame(notify=true){
-      if(!state.running)return;try{const data={version:3,simTime:state.simTime,nextCommand:state.nextCommand,rngState:state.rngState,planets:state.planets.map(p=>({...p,shortages:[...p.shortages]})),ships:state.ships,battles:state.battles,empires:state.empires.map(e=>({...e,intel:[...e.intel]})),events:state.events,camera:state.camera,selected:state.selected?.id};localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(notify)showToast("Mandate saved locally") }catch(err){console.warn("Save failed",err);if(notify)showToast("Save could not be written")}
+      if(!state.running)return;try{const data={version:4,simTime:state.simTime,nextCommand:state.nextCommand,rngState:state.rngState,planets:state.planets.map(p=>({...p,shortages:[...p.shortages]})),ships:state.ships,battles:state.battles,empires:state.empires.map(e=>({...e,intel:[...e.intel]})),events:state.events,camera:state.camera,selected:state.selected?.id};localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(notify)showToast("Mandate saved locally") }catch(err){console.warn("Save failed",err);if(notify)showToast("Save could not be written")}
     }
     function rebalanceLegacyPopulation(version){if(version>=3)return;const playerPeak=Math.max(.11,...state.planets.filter(p=>p.owner===0).map(p=>p.pop)),homeCap=Math.max(.44,playerPeak*3.2),colonyCap=Math.max(.27,playerPeak*2.25);state.planets.forEach(p=>{if(p.owner>0){const cap=p.home?homeCap:colonyCap;if(p.pop>cap){p.pop=cap;p.visualPop=cap;p.lastPopSample=cap}p.capacity=Math.max(p.capacity,p.pop*1.35)}else if(p.owner===0)p.popMomentum=Math.max(p.popMomentum||1,2.15)})}
-    function loadGame(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d||![1,2,3].includes(d.version))return false;state.simTime=d.simTime||0;state.nextCommand=d.nextCommand||state.simTime+45;state.lastCommerce=state.simTime;state.rngState=d.rngState||937145;state.planets=d.planets.map(p=>({...p,shortages:new Set(p.shortages||[]),history:p.history||[],popTrend:p.popTrend||0,lastPopSample:p.lastPopSample??p.pop,lastPopSampleAt:p.lastPopSampleAt??state.simTime,visualPop:p.visualPop??p.pop,popMomentum:p.popMomentum??(p.owner===0?2.15:1),prosperity:p.prosperity||0,tradeHub:p.tradeHub||0,tradeVolume:p.tradeVolume||0,lastTradeAt:p.lastTradeAt??-20,mandateGlow:p.mandateGlow||0,evacuating:!!p.evacuating,scattered:!!p.scattered}));state.ships=d.ships||[];state.battles=d.battles||[];state.effects=[];state.empires=d.empires.map(e=>({...e,relations:e.relations||{},tradeBalance:e.tradeBalance||0,lastTradeLog:e.lastTradeLog??-120,tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0,commerce:0,...e.tech},intel:new Set(e.intel||[])}));rebalanceLegacyPopulation(d.version);initializeRelations(true);if(state.planets.length<63)addScatteredWorlds(63-state.planets.length);state.events=d.events||[];state.camera=d.camera||{x:1800,y:2600,zoom:.68};state.selected=state.planets.find(p=>p.id===d.selected)||state.planets[0];generateSpaceArt();recomputeLanes();return true}catch(err){console.warn("Load failed",err);return false}}
+    function loadGame(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d||![1,2,3,4].includes(d.version))return false;state.simTime=d.simTime||0;state.nextCommand=d.nextCommand||state.simTime+45;state.lastCommerce=state.simTime;state.lastPatrol=state.simTime;state.rngState=d.rngState||937145;state.planets=d.planets.map(p=>({...p,shortages:new Set(p.shortages||[]),orbitals:{station:0,base:0,...p.orbitals},orbitalProject:p.orbitalProject||null,lastBaseLaunch:p.lastBaseLaunch??-90,history:p.history||[],popTrend:p.popTrend||0,lastPopSample:p.lastPopSample??p.pop,lastPopSampleAt:p.lastPopSampleAt??state.simTime,visualPop:p.visualPop??p.pop,popMomentum:p.popMomentum??(p.owner===0?2.15:1),prosperity:p.prosperity||0,tradeHub:p.tradeHub||0,tradeVolume:p.tradeVolume||0,lastTradeAt:p.lastTradeAt??-20,mandateGlow:p.mandateGlow||0,evacuating:!!p.evacuating,scattered:!!p.scattered}));state.ships=(d.ships||[]).map(s=>({...s,startX:s.startX??s.x,startY:s.startY??s.y}));state.battles=d.battles||[];state.effects=[];state.empires=d.empires.map(e=>({...e,relations:e.relations||{},tradeBalance:e.tradeBalance||0,lastTradeLog:e.lastTradeLog??-120,tech:{automation:0,weapons:0,propulsion:0,extraction:0,medicine:0,carriers:0,commerce:0,orbital:0,...e.tech},intel:new Set(e.intel||[])}));rebalanceLegacyPopulation(d.version);initializeRelations(true);if(state.planets.length<63)addScatteredWorlds(63-state.planets.length);state.events=d.events||[];state.camera=d.camera||{x:1800,y:2600,zoom:.68};state.selected=state.planets.find(p=>p.id===d.selected)||state.planets[0];generateSpaceArt();recomputeLanes();return true}catch(err){console.warn("Load failed",err);return false}}
     function startGame(load=false){if(!load)generateGalaxy();else if(!loadGame())generateGalaxy();state.running=true;state.speed=1;state.last=performance.now();$("startModal").hidden=true;updateSpeedButtons();renderEvents();renderPlanet();updateHud(true);if(!load)setTimeout(openCommandPhase,500)}
 
     canvas.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY,cx:state.camera.x,cy:state.camera.y,moved:false};canvas.setPointerCapture(e.pointerId);canvas.classList.add("dragging")});
