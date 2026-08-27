@@ -6234,10 +6234,11 @@ function emitFactionMoveEffect(piece,fromX,fromY,toX,toY,moveMeta=null){
   if(special) floating(toX,toY,'PHASED',factions[piece.faction]?.aura||'#d8b4fe');
 }
 function announceFactionAction(factionIdx){
-  warTurn++;
   const stamp=performance.now();
   const changed=factionIdx!==lastActingFaction;
   lastActingFaction=factionIdx;
+  if(isAIName(rawNameForFaction(factionIdx))) return;
+  warTurn++;
   if(reduceMotion || !changed || stamp-lastTurnTransitionAt<650) return;
   const f=factions[factionIdx]; if(!f) return;
   lastTurnTransitionAt=stamp;
@@ -6595,7 +6596,7 @@ function conquerFaction(winner, loser, cx, cy){
     }
   }
   if(loser===PLAYER) pendingPlayerActions = [];
-  toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; ${removed} defeated pieces removed.`, 4200);
+  toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; ${removed} defeated pieces removed.`, 4200, {category:'elimination'});
 }
 function triggerDefeat(winner){
   playerDefeated = true;
