@@ -10,6 +10,7 @@ const STX_DS_VERSION=1;
 const STX_DS_MAX_BASES_PER_OWNER=6;
 const STX_DS_MAX_WRECKS=36;
 const STX_DS_VISIBLE_TRAFFIC=5;
+const STX_DS_MILITARY_INDUSTRY_UNLOCK=5;
 const STX_DS_FREIGHT_TYPES=new Set(["freighter","tanker","construction","miningBarge","supply","liner","luxury","courier","research"]);
 const STX_DS_BASE_TYPES={
   military:{name:"Frontier Military Base",short:"MILITARY BASE",color:"#ff786f",maxHp:150,supplyDecay:.00165,service:7,cost:{components:96,titanium:68,equipment:42,helium:34}},
@@ -33,6 +34,7 @@ function stxDSBases(owner=null,operationalOnly=false){return(state.deepSpaceBase
 function stxDSActiveBaseCount(owner){return stxDSBases(owner).filter(b=>b.status!=="wreck").length}
 function stxDSBase(id){return(state.deepSpaceBases||[]).find(b=>b.id===id)||null}
 function stxDSOperation(id){return(state.deepSpaceOperations||[]).find(o=>o.id===id&&o.active!==false)||null}
+function stxDSDisplayedIndustry(owner){return Number((Number(empireIndustry(owner))||0).toFixed(1))}
 function stxDSPointDistance(a,b){return Math.hypot((a?.x||0)-(b?.x||0),(a?.y||0)-(b?.y||0))}
 function stxDSOwnerAtWar(a,b){return a!==b&&typeof empiresAtWar==="function"&&empiresAtWar(a,b)}
 function stxDSNearestWorld(point,owner=null){return state.planets.filter(p=>owner===null||p.owner===owner).sort((a,b)=>stxDSPointDistance(a,point)-stxDSPointDistance(b,point))[0]||null}
@@ -85,7 +87,7 @@ function stxDSGenerateSites(p,type){
   while(raw.length<3){const a=(raw.length/3)*Math.PI*2+.7;raw.push({x:p.x+Math.cos(a)*(520+raw.length*90),y:p.y+Math.sin(a)*(520+raw.length*90),reason:"Covers an open strategic gap"})}
   return raw.slice(0,3).map((site,i)=>{const pos=stxDSClearSite(site.x,site.y),region=stxDSRegionName(pos.x,pos.y);return{...pos,region,name:stxDSBaseName(type,region),reason:site.reason,distance:Math.round(Math.hypot(pos.x-p.x,pos.y-p.y))}});
 }
-function stxDSCanSponsor(p,type){return!!p&&p.owner!==null&&!p.underAttack&&(p.infra?.factory||0)>=1&&(p.infra?.shipyard||0)>=1&&stxDSActiveBaseCount(p.owner)<STX_DS_MAX_BASES_PER_OWNER&&!stxDSBases(p.owner).some(b=>b.sponsorPlanetId===p.id&&b.type===type&&b.status==="construction")}
+function stxDSCanSponsor(p,type){const industryReady=type!=="military"||stxDSDisplayedIndustry(p?.owner)>=STX_DS_MILITARY_INDUSTRY_UNLOCK;return!!p&&p.owner!==null&&!p.underAttack&&(p.infra?.factory||0)>=1&&(p.infra?.shipyard||0)>=1&&industryReady&&stxDSActiveBaseCount(p.owner)<STX_DS_MAX_BASES_PER_OWNER&&!stxDSBases(p.owner).some(b=>b.sponsorPlanetId===p.id&&b.type===type&&b.status==="construction")}
 function stxDSProjectIncoming(base,r=null){return state.ships.filter(s=>s.stxDeepTransit&&s.deepBaseId===base.id&&s.stxDeepMission==="construction").reduce((n,s)=>n+(r?Number(s.cargo?.[r]||0):Object.values(s.cargo||{}).reduce((a,v)=>a+Number(v||0),0)),0)}
 function stxDSProjectRatio(base){const q=base.project,total=Object.values(q?.need||{}).reduce((n,v)=>n+v,0)||1,got=Object.keys(q?.need||{}).reduce((n,r)=>n+Math.min(q.need[r],q.delivered?.[r]||0),0);return clamp(got/total,0,1)}
 function stxDSProjectReady(base){const q=base.project;return!!q&&Object.keys(q.need||{}).every(r=>(q.delivered?.[r]||0)>=q.need[r]-.01)}
@@ -233,7 +235,7 @@ function stxDSAIObjectiveTick(){
   state.wars.filter(w=>w.active&&w.stxLimitedWar&&w.warGoal?.status==="active").forEach(w=>{const attacker=Number.isFinite(w.aggressor)?w.aggressor:w.a,defender=attacker===w.a?w.b:w.a;if(state.ships.some(s=>s.owner===attacker&&s.warId===w.id)||state.deepSpaceOperations.some(o=>o.active!==false&&o.owner===attacker))return;const fleet=stxDSBestIdleFleet(attacker);if(!fleet)return;const goal=w.warGoal;if(goal.type==="destroy-base"||goal.type==="break-trade-network"){const base=stxDSBase(goal.targetId);if(!base||base.status!=="operational"){goal.status="achieved";return stxDSCreatePeaceOffer(w)}stxDSDispatchFleet(fleet,{key:`deep-base:${base.id}`,type:"deepBase",id:base.id,name:base.name,base,planet:state.planets.find(p=>p.id===base.sponsorPlanetId)},goal.type==="destroy-base"?"assault":"raid",{warId:w.id,stxDeepMission:goal.type==="destroy-base"?"assault":"raid"})}else if(goal.type==="blockade"){const p=state.planets.find(x=>x.id===goal.targetId);if(p)stxDSDispatchFleet(fleet,{key:`planet:${p.id}`,type:"planet",id:p.id,name:p.name,planet:p},"blockade",{warId:w.id,stxDeepMission:"blockade"})}})
 }
 function stxDSAIBaseTick(){
-  state.empires.slice(1).forEach(e=>{if(state.simTime<(e.stxNextDeepBaseAt||0))return;e.stxNextDeepBaseAt=state.simTime+rand(125,210);if(stxDSActiveBaseCount(e.id)>=Math.min(STX_DS_MAX_BASES_PER_OWNER,1+Math.floor(owned(e.id).length/3)))return;const sponsor=owned(e.id).filter(p=>stxDSCanSponsor(p,"military")).sort((a,b)=>(b.infra.shipyard+b.infra.factory)-(a.infra.shipyard+a.infra.factory))[0];if(!sponsor)return;const policy=e.foreignPolicy||{},type=(policy.aggression||0)>.62?"military":(policy.commercialism||0)>.62?"trade":(policy.caution||0)>.65?"sensor":"logistics",site=stxDSGenerateSites(sponsor,type)[0];if(site)stxDSQueueBase(sponsor,type,site,false)})
+  state.empires.slice(1).forEach(e=>{if(state.simTime<(e.stxNextDeepBaseAt||0))return;e.stxNextDeepBaseAt=state.simTime+rand(125,210);if(stxDSActiveBaseCount(e.id)>=Math.min(STX_DS_MAX_BASES_PER_OWNER,1+Math.floor(owned(e.id).length/3)))return;const policy=e.foreignPolicy||{},type=(policy.aggression||0)>.62?"military":(policy.commercialism||0)>.62?"trade":(policy.caution||0)>.65?"sensor":"logistics",sponsor=owned(e.id).filter(p=>stxDSCanSponsor(p,type)).sort((a,b)=>(b.infra.shipyard+b.infra.factory)-(a.infra.shipyard+a.infra.factory))[0];if(!sponsor)return;const site=stxDSGenerateSites(sponsor,type)[0];if(site)stxDSQueueBase(sponsor,type,site,false)})
 }
 
 function stxDSTick(){
@@ -277,7 +279,7 @@ if(typeof stxFCADispatchFleet==="function"){
   stxFCADispatchFleet=function(f,destination,kind,meta={}){if(["raid","blockade"].includes(kind)||destination?.base||destination?.type==="deepBase"||f?.deepSpaceBaseId||f?.deepSpaceOperationId||state.ships.some(s=>s.fleetId===f?.id&&s.stxDeepTransit)){const ok=stxDSDispatchFleet(f,destination,kind,meta);if(ok)stxFCACommitted.add(f.id);return ok}return STX_DS_fcaDispatch(f,destination,kind,meta)};
 }
 
-globalThis.SpaceTyrantsDeepSpace={version:STX_DS_VERSION,generateSites:stxDSGenerateSites,queueBase:stxDSQueueBase,baseById:stxDSBase,ensureState:stxDSEnsureState,tick:stxDSTick,dispatchFleet:stxDSDispatchFleet,destroyBase:stxDSDestroyBase,launchBonus:stxDSLaunchBonus};
+globalThis.SpaceTyrantsDeepSpace={version:STX_DS_VERSION,generateSites:stxDSGenerateSites,queueBase:stxDSQueueBase,baseById:stxDSBase,canSponsor:stxDSCanSponsor,displayedIndustry:stxDSDisplayedIndustry,ensureState:stxDSEnsureState,tick:stxDSTick,dispatchFleet:stxDSDispatchFleet,destroyBase:stxDSDestroyBase,launchBonus:stxDSLaunchBonus};
 
 function stxDSAssaultTargets(owner=0){
   const foes=new Set(state.wars.filter(w=>w.active&&(w.a===owner||w.b===owner)).map(w=>w.a===owner?w.b:w.a));
@@ -335,8 +337,8 @@ function stxDSProjectCard(base){
   const q=base.project,ships=state.ships.filter(s=>s.stxDeepTransit&&s.deepBaseId===base.id),ratio=Math.round(stxDSProjectRatio(base)*100);return`<article class="project-row active stx-ds-project"><div class="stx-ol-phase">${stxDSEscape(q.phase).toUpperCase()} · ${stxDSEscape(base.region)}</div><div class="project-head"><strong>${stxDSEscape(base.name)}</strong><b>${Math.round(q.progress*100)}%</b></div><div class="project-desc">Independent ${stxDSEscape(stxDSBaseSpec(base).short.toLowerCase())}. ${ratio}% of required material has physically reached the deep-space construction site.</div><div class="stx-ds-materials">${stxDSProjectMaterials(base)}</div><div class="project-track"><i style="width:${Math.round(q.progress*100)}%"></i></div>${ships.map(s=>`<button class="stx-ds-transit" data-ds-focus-ship="${s.id}"><b>${stxDSEscape(s.vesselName)}</b><span>${fmtEta(Math.max(0,(1-s.progress)*s.distance/s.speed))} · ${Object.entries(s.cargo||{}).map(([r,v])=>`${Math.round(v)} ${RESOURCE_LABEL[r]||r}`).join(", ")}</span></button>`).join("")||'<div class="subtle">Sponsor stockpiles are assembling the next construction shipment.</div>'}</article>`
 }
 function stxDSPlanetConstructionBlock(p){
-  const projects=stxDSBases(p.owner).filter(b=>b.sponsorPlanetId===p.id&&b.status==="construction"),canBuild=p.owner===0&&(p.infra?.factory||0)>=1&&(p.infra?.shipyard||0)>=1,types=Object.keys(STX_DS_BASE_TYPES);if(!projects.length&&!canBuild)return"";
-  return`<section class="stx-ds-planet-block"><div class="section-label">Independent Deep-Space Infrastructure</div>${projects.map(stxDSProjectCard).join("")}${canBuild?`<div class="stx-ds-build-grid">${types.map(type=>{const spec=stxDSBaseSpec(type);return`<button class="choice-btn" data-ds-build="${type}" ${stxDSCanSponsor(p,type)?"":"disabled"}><b>${spec.short}</b><small>${type==="military"?"Frontier staging":type==="trade"?"Route intersection":type==="logistics"?"Long-haul relay":"Frontier detection"}</small></button>`}).join("")}</div><p class="subtle">Choose from three automatically generated strategic sites. Exact coordinates remain automatic.</p>`:""}</section>`;
+  const projects=stxDSBases(p.owner).filter(b=>b.sponsorPlanetId===p.id&&b.status==="construction"),canBuild=p.owner===0&&(p.infra?.factory||0)>=1&&(p.infra?.shipyard||0)>=1,types=Object.keys(STX_DS_BASE_TYPES),industry=stxDSDisplayedIndustry(p.owner);if(!projects.length&&!canBuild)return"";
+  return`<section class="stx-ds-planet-block"><div class="section-label">Independent Deep-Space Infrastructure</div>${projects.map(stxDSProjectCard).join("")}${canBuild?`<div class="stx-ds-build-grid">${types.map(type=>{const spec=stxDSBaseSpec(type),militaryLocked=type==="military"&&industry<STX_DS_MILITARY_INDUSTRY_UNLOCK;return`<button class="choice-btn" data-ds-build="${type}" ${stxDSCanSponsor(p,type)?"":"disabled"}${militaryLocked?` title="Requires Industry ${STX_DS_MILITARY_INDUSTRY_UNLOCK.toFixed(1)} or higher"`:""}><b>${spec.short}</b><small>${militaryLocked?`LOCKED · Industry ${industry.toFixed(1)} / ${STX_DS_MILITARY_INDUSTRY_UNLOCK.toFixed(1)}`:type==="military"?"Frontier staging":type==="trade"?"Route intersection":type==="logistics"?"Long-haul relay":"Frontier detection"}</small></button>`}).join("")}</div><p class="subtle">Military bases unlock when the empire-wide Industry number in the top bar reaches ${STX_DS_MILITARY_INDUSTRY_UNLOCK.toFixed(1)}. Choose from three automatically generated strategic sites.</p>`:""}</section>`;
 }
 function stxDSSupplyLabel(base){const n=base.supplyReadiness;return n>=.75?"Full capability":n>=.4?"Reduced service":n>=.15?"Emergency operations":"Minimal capability"}
 function stxDSBasePanel(base){
