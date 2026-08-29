@@ -8,12 +8,13 @@
   window.__arcaneWildsPerformanceLoaded=true;
 
   const perf={
-    low:false,
+    low:isTouch,
     frameMs:16.7,
     slowFrames:0,
     fastFrames:0,
-    particleCap:isTouch?130:210,
-    dprCap:isTouch?1.35:1.7
+    particleCap:isTouch?72:210,
+    dprCap:isTouch?1:1.7,
+    renderFps:isTouch?30:60
   };
   window.arcaneWildsPerformance=perf;
 
@@ -21,26 +22,51 @@
   let cachedSpellSignature='';
   let cachedMapSignature='';
   let lastHudPaint=0;
+  let resizeTimer=0;
+  let stableViewportW=innerWidth;
+  let stableViewportH=innerHeight;
 
   function clearRenderCaches(){cachedLight=null;}
-  function currentParticleCap(){return perf.low?(isTouch?90:145):perf.particleCap;}
+  function currentParticleCap(){return perf.low?(isTouch?60:145):perf.particleCap;}
 
-  function applyResolutionCap(){
-    const nextW=innerWidth,nextH=innerHeight;
-    const nextDpr=Math.min(devicePixelRatio||1,perf.low?Math.min(perf.dprCap,1.35):perf.dprCap);
+  function adoptViewport(nextW,nextH,force=false){
+    if(force||!isTouch)return true;
+    const orientationChanged=(nextW>nextH)!==(stableViewportW>stableViewportH);
+    const widthShift=Math.abs(nextW-stableViewportW)>48;
+    const heightShift=Math.abs(nextH-stableViewportH)>96;
+    return orientationChanged||widthShift||heightShift;
+  }
+
+  function applyResolutionCap(force=false){
+    const rawW=innerWidth,rawH=innerHeight;
+    if(adoptViewport(rawW,rawH,force)){
+      stableViewportW=rawW;
+      stableViewportH=rawH;
+    }
+    const nextW=isTouch?stableViewportW:rawW,nextH=isTouch?stableViewportH:rawH;
+    const lowDprCap=isTouch?1:Math.min(perf.dprCap,1.35);
+    const nextDpr=Math.min(devicePixelRatio||1,perf.low?lowDprCap:perf.dprCap);
     const pixelW=Math.floor(nextW*nextDpr),pixelH=Math.floor(nextH*nextDpr);
     if(W===nextW&&H===nextH&&Math.abs(dpr-nextDpr)<.01&&canvas.width===pixelW&&canvas.height===pixelH)return;
     W=nextW;H=nextH;dpr=nextDpr;
     canvas.width=pixelW;canvas.height=pixelH;
-    canvas.style.width=W+'px';canvas.style.height=H+'px';
+    canvas.style.width=isTouch?'100vw':W+'px';
+    canvas.style.height=isTouch?'100dvh':H+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.imageSmoothingEnabled=true;
     mouse.x=W/2;mouse.y=H/2;
     clearRenderCaches();
   }
 
-  addEventListener('resize',()=>requestAnimationFrame(applyResolutionCap));
-  applyResolutionCap();
+  function scheduleResolutionCap(force=false){
+    clearTimeout(resizeTimer);
+    resizeTimer=setTimeout(()=>requestAnimationFrame(()=>applyResolutionCap(force)),isTouch?180:0);
+  }
+
+  addEventListener('resize',()=>scheduleResolutionCap(false),{passive:true});
+  addEventListener('orientationchange',()=>scheduleResolutionCap(true),{passive:true});
+  if(window.visualViewport)visualViewport.addEventListener('resize',()=>scheduleResolutionCap(false),{passive:true});
+  applyResolutionCap(true);
 
   /* The original HUD rebuilt three spell buttons and the full 5x5 minimap on every
      animation frame. Keep those nodes and only rebuild when their structure changes. */
@@ -81,10 +107,24 @@
   const baseUpdateHUD=updateHUD;
   updateHUD=function(force=false){
     const now=performance.now();
-    const interval=perf.low?125:80;
+    const interval=isTouch?140:(perf.low?125:80);
     if(!force&&running&&!paused&&!modalPause&&now-lastHudPaint<interval)return;
     lastHudPaint=now;
     baseUpdateHUD();
+  };
+
+  /* Damage numbers are DOM nodes with CSS animation. Large chain/splash builds can
+     create a paint storm on phones even after canvas particles have been capped. */
+  const baseFloatText=floatText;
+  let lastFloatTextAt=0;
+  floatText=function(x,y,text,color){
+    if(isTouch){
+      const root=$('floatLayer'),now=performance.now(),cap=perf.low?8:12;
+      if(root.childElementCount>=cap)return;
+      if(root.childElementCount>4&&now-lastFloatTextAt<28)return;
+      lastFloatTextAt=now;
+    }
+    baseFloatText(x,y,text,color);
   };
 
   /* Math.hypot in every seeking-projectile target scan was avoidable. */
@@ -109,7 +149,8 @@
   const baseFx=fx;
   const cosmeticFx=new Set(['explosion','deathBurst','castRing','shockRing','summon','riftOpen','frostNova','lightning','soulLink','gustCone','muzzle','dashEcho','slash','shieldHit']);
   fx=function(kind,x,y,life,color,extra={}){
-    if(cosmeticFx.has(kind)&&game.effects.length>(perf.low?95:145))return;
+    const cap=isTouch?(perf.low?58:78):(perf.low?95:145);
+    if(cosmeticFx.has(kind)&&game.effects.length>cap)return;
     baseFx(kind,x,y,life,color,extra);
   };
 
@@ -117,7 +158,7 @@
      of radial gradients every frame before combat/projectile rendering even began. */
   drawAtmosphere=function(room,pal){
     ctx.save();
-    const moteCount=perf.low?(isTouch?4:6):(isTouch?7:10);
+    const moteCount=perf.low?(isTouch?3:6):(isTouch?6:10);
     ctx.globalAlpha=perf.low?.09:.13;
     ctx.fillStyle=colorAlpha(pal.accent,.32);
     for(let i=0;i<moteCount;i++){
@@ -139,7 +180,7 @@
       ctx.globalAlpha*=.62;
     }
 
-    const weatherCount=perf.low?7:12;
+    const weatherCount=perf.low?(isTouch?5:7):12;
     if(room.biome==='frost'||room.biome==='volcanic'||room.biome==='swamp'){
       ctx.globalAlpha=perf.low?.13:.2;
       ctx.fillStyle=room.biome==='frost'?'#dff8ff':room.biome==='volcanic'?'#ff875e':'#b9dd7c';
@@ -210,11 +251,16 @@
     if(running&&!paused&&!modalPause&&!roomTransition){
       const ms=Math.min(40,Math.max(1,dt*1000));
       perf.frameMs=perf.frameMs*.94+ms*.06;
-      if(perf.frameMs>23){perf.slowFrames++;perf.fastFrames=0;}
-      else if(perf.frameMs<18.2){perf.fastFrames++;perf.slowFrames=Math.max(0,perf.slowFrames-2);}
-      else{perf.slowFrames=Math.max(0,perf.slowFrames-1);perf.fastFrames=0;}
-      if(!perf.low&&perf.slowFrames>24){perf.low=true;perf.slowFrames=0;applyResolutionCap();}
-      else if(perf.low&&perf.fastFrames>220){perf.low=false;perf.fastFrames=0;applyResolutionCap();}
+      if(isTouch){
+        perf.low=true;
+        perf.fastFrames=0;
+      }else{
+        if(perf.frameMs>23){perf.slowFrames++;perf.fastFrames=0;}
+        else if(perf.frameMs<18.2){perf.fastFrames++;perf.slowFrames=Math.max(0,perf.slowFrames-2);}
+        else{perf.slowFrames=Math.max(0,perf.slowFrames-1);perf.fastFrames=0;}
+        if(!perf.low&&perf.slowFrames>24){perf.low=true;perf.slowFrames=0;applyResolutionCap();}
+        else if(perf.low&&perf.fastFrames>220){perf.low=false;perf.fastFrames=0;applyResolutionCap();}
+      }
     }
 
     baseUpdate(dt);
@@ -222,4 +268,31 @@
     const cap=currentParticleCap();
     if(game.particles.length>cap)game.particles.splice(0,game.particles.length-cap);
   };
+
+  /* Mobile browsers are much more stable when the game simulation stays responsive
+     but canvas presentation is capped. This also prevents 90/120 Hz phones from doing
+     nearly twice the render work of a typical desktop display. */
+  if(isTouch){
+    const targetRenderMs=1000/perf.renderFps;
+    let lastRenderedAt=0;
+    loop=function(now){
+      if(!running)return;
+      const dt=Math.min(.033,(now-last)/1000||0);
+      last=now;
+      update(dt);
+      if(!lastRenderedAt||now-lastRenderedAt>=targetRenderMs){
+        render();
+        lastRenderedAt=now;
+      }
+      requestAnimationFrame(loop);
+    };
+
+    const resetMobileClock=()=>{
+      last=performance.now();
+      lastRenderedAt=0;
+      scheduleResolutionCap(false);
+    };
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)resetMobileClock()},{passive:true});
+    addEventListener('pageshow',resetMobileClock,{passive:true});
+  }
 })();
