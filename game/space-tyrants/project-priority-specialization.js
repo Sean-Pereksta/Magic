@@ -84,7 +84,11 @@ tickPlanet=function(p,dt){
   }finally{
     STX_PS_RAW_RESOURCES.forEach(r=>p.quality[r]=baseQuality[r]);
   }
-  if(p.infra?.factory>0){
+  /* The final resource-trade layer owns explicit Mining / Balanced /
+     Components / Equipment allocation. Preserve the legacy inferred focus for
+     old saves that have not been migrated yet, but do not stack its bonus on
+     top of the player's visible allocation choice. */
+  if(p.infra?.factory>0&&!p.stxEconomicFocus){
     const flow=Math.max(0,p.infra.factory*.018*Math.max(0,p.factoryEfficiency||0)*dt);
     if(p.stxManufacturingFocus==="components")p.stock.components=(p.stock.components||0)+flow*1.35;
     else p.stock.equipment=(p.stock.equipment||0)+flow*.95;
