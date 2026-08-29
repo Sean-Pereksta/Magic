@@ -46,6 +46,7 @@ export const MAX_TRIGGER_DEPTH = DEFAULT_MAX_RESOLUTION_DEPTH;
 export const MAX_TRIGGER_STEPS = DEFAULT_MAX_RESOLUTION_STEPS;
 
 const supportedEvents = new Set(SUPPORTED_GAME_EVENTS);
+const PRESENTATION_EVENT_NAME = "warrealms:game-event";
 
 function nonNegativeInteger(value, fallback = 0) {
   const number = Number(value);
@@ -113,6 +114,41 @@ export function claimEventTrigger(event, triggerKey) {
   return true;
 }
 
+function presentationPayload(event) {
+  if (!event || typeof event !== "object") return null;
+  return {
+    id: String(event.id || ""),
+    type: String(event.type || ""),
+    chainId: String(event.chainId || ""),
+    depth: nonNegativeInteger(event.depth),
+    parentEventId: String(event.parentEventId || ""),
+    turnSerial: nonNegativeInteger(event.turnSerial),
+    round: Math.max(1, nonNegativeInteger(event.round, 1)),
+    sequence: nonNegativeInteger(event.sequence),
+    actorId: String(event.actorId || event.playerId || ""),
+    ownerId: String(event.ownerId || ""),
+    playerId: String(event.playerId || ""),
+    cardId: String(event.cardId || ""),
+    sourceCardId: String(event.sourceCardId || ""),
+    instanceId: String(event.instanceId || ""),
+    sourceInstanceId: String(event.sourceInstanceId || ""),
+    amount: Number(event.amount) || 0,
+    method: String(event.method || "")
+  };
+}
+
+function dispatchPresentationEvent(event) {
+  const payload = presentationPayload(event);
+  if (!payload) return;
+  const target = globalThis;
+  if (typeof target?.dispatchEvent !== "function" || typeof target?.CustomEvent !== "function") return;
+  try {
+    target.dispatchEvent(new target.CustomEvent(PRESENTATION_EVENT_NAME, { detail: payload }));
+  } catch {
+    // Presentation is optional and must never interrupt deterministic game resolution.
+  }
+}
+
 function recordEventHistory(game, event) {
   game.eventHistory.push({
     id: event.id,
@@ -130,6 +166,7 @@ function recordEventHistory(game, event) {
     method: String(event.method || "")
   });
   game.eventHistory = game.eventHistory.slice(-80);
+  dispatchPresentationEvent(event);
 }
 
 function warn(game, message, onWarning) {
