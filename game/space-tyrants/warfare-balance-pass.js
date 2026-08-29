@@ -8,8 +8,6 @@ const STX_WB_AI_REARM_MIN=28;
 const STX_WB_AI_REARM_MAX=58;
 const STX_WB_AI_REFIT_COOLDOWN=105;
 const STX_WB_AUDIT_INTERVAL=8;
-let stxWBManualMode=false;
-let stxWBManualFleetIds=new Set();
 
 function stxWBEnsureState(){
   const s=state.stxWarfareBalance||(state.stxWarfareBalance={version:STX_WB_VERSION,audit:[],lastAuditAt:-999,lastBreakdowns:{}});
@@ -83,103 +81,9 @@ issueCommands=function(){
   if(Array.isArray(stxFCAQueue)&&stxFCAQueue.length&&!stxFCAActive)stxFCAStart();
 };
 
-/* Never offer a wartime invasion card unless there is both a real target and a
-   fleet that can be allocated. Preserve peaceful military choices otherwise. */
-if(typeof stxFCAPostHand==="function"){
-  const STX_WB_stxFCAPostHand=stxFCAPostHand;
-  stxFCAPostHand=function(){
-    STX_WB_stxFCAPostHand();
-    const wars=stxFCAWars(),targets=stxFCATargets("invade"),free=stxFCAFree().length;
-    let changed=false;
-    state.commandChoices=state.commandChoices.map(c=>{
-      if(c?.stxFleetOrderKind!=="invade")return c;
-      if(wars.length&&targets.length&&free)return c;
-      changed=true;
-      if(wars.length&&!free){
-        return{id:`wb-invasion-readiness-${Math.floor(state.simTime)}`,cat:"Military",title:"Restore Invasion Readiness",desc:"No battle fleet is currently free to attack. Reorganize existing forces and reserves before another invasion order is offered.",effects:["Regroup idle formations first","Planetary reserves only if necessary","No phantom invasion order"],apply:e=>{if(typeof stxIFAAssembleActiveFleets==="function"&&stxIFAAssembleActiveFleets("Restore invasion readiness")>0)return true;addDirective(e,"fleet",null,48);setModifier(e,"militaryMorale",1.05,42);return true}};
-      }
-      return stxFCAChoice("concentrate");
-    });
-    if(changed){state.commandSelected.clear();renderCommands()}
-  };
-}
-
 function stxWBTargetDefense(p){
   if(typeof stxEWPTargetDefense==="function")return stxEWPTargetDefense(p);
   return (Number(p?.garrison)||0)+(p?.infra?.defense||0)*8+(p?.orbitals?.station||0)*9+(p?.orbitals?.base||0)*22;
-}
-function stxWBSelectedInvasionFleets(target,count){
-  const free=target?stxFCAFree(target):[];
-  if(stxWBManualMode&&stxWBManualFleetIds.size)return free.filter(f=>stxWBManualFleetIds.has(f.id));
-  return free.slice(0,Math.max(1,count||1));
-}
-function stxWBAssessment(attack,defense){const ratio=attack/Math.max(1,defense);return ratio>=1.55?"Favorable":ratio>=1.05?"Contested":"Risky"}
-
-function stxWBInstallAllocationUi(){
-  const box=$("stxFCAOrderModal")?.querySelector(".stx-fca-box");if(!box||$("stxWBAllocation"))return;
-  const block=document.createElement("div");block.id="stxWBAllocation";block.hidden=true;block.innerHTML=`<div class="stx-wb-mode-row"><button type="button" class="choice-btn stx-wb-mode active" data-wb-mode="recommended">Recommended Force</button><button type="button" class="choice-btn stx-wb-mode" data-wb-mode="manual">Manual Allocation</button></div><div id="stxWBIntel" class="stx-wb-intel"></div><div id="stxWBManualList" class="stx-wb-fleet-list" hidden></div>`;
-  const footer=box.querySelector(".command-footer");box.insertBefore(block,footer);
-  block.querySelectorAll("[data-wb-mode]").forEach(b=>b.onclick=()=>{
-    stxWBManualMode=b.dataset.wbMode==="manual";stxWBManualFleetIds.clear();
-    block.querySelectorAll("[data-wb-mode]").forEach(x=>x.classList.toggle("active",(x.dataset.wbMode==="manual")===stxWBManualMode));
-    $("stxWBManualList").hidden=!stxWBManualMode;stxWBRenderManualFleets();stxFCASyncUi();
-  });
-  const style=document.createElement("style");style.id="stxWBStyles";style.textContent=`
-  #stxWBAllocation{margin-top:12px;padding-top:11px;border-top:1px solid rgba(120,153,224,.14)}.stx-wb-mode-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}.stx-wb-mode{padding:7px 10px;font-size:.68rem}.stx-wb-mode.active{border-color:rgba(78,231,255,.55);background:rgba(78,231,255,.12)}.stx-wb-intel{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}.stx-wb-intel span,.stx-wb-fleet{padding:8px;border-radius:9px;background:rgba(80,108,169,.09);border:1px solid rgba(114,150,225,.1);font-size:.65rem}.stx-wb-intel label{display:block;color:#8298bd;font-size:.54rem;text-transform:uppercase;letter-spacing:.08em}.stx-wb-intel b{display:block;margin-top:2px}.stx-wb-fleet-list{display:grid;gap:5px;max-height:180px;overflow:auto;margin-top:8px}.stx-wb-fleet{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;cursor:pointer}.stx-wb-fleet small{display:block;color:#8398b8}.stx-wb-fleet input{width:auto!important;margin:0}.stx-wb-military-breakdown{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:7px 0;padding:7px;border-radius:8px;background:rgba(76,126,190,.055);border:1px solid rgba(111,156,255,.1)}.stx-wb-military-breakdown span{font:700 8px/1.25 system-ui;color:#9eb1c7}.stx-wb-military-breakdown b{display:block;color:#edf6ff;font-size:9px}.stx-wb-own-power{margin-top:9px;padding:9px;border-radius:9px;background:rgba(78,231,255,.055);border:1px solid rgba(78,231,255,.14);font:700 9px system-ui;color:#9fb3cb}.stx-wb-own-power b{color:#eef8ff}@media(max-width:650px){.stx-wb-intel,.stx-wb-military-breakdown{grid-template-columns:1fr 1fr}}
-  `;document.head.appendChild(style);
-}
-function stxWBRenderManualFleets(){
-  const list=$("stxWBManualList"),order=stxFCAQueue?.[0],target=state.planets.find(p=>p.id===$("stxFCATarget")?.value);if(!list)return;
-  if(!stxWBManualMode||order?.kind!=="invade"||!target){list.innerHTML="";return}
-  const fleets=stxFCAFree(target);list.innerHTML=fleets.map(f=>{const p=state.planets.find(x=>x.id===f.location),checked=stxWBManualFleetIds.has(f.id)?"checked":"";return`<label class="stx-wb-fleet"><input type="checkbox" data-wb-fleet="${f.id}" ${checked}><span><b>${f.name}</b><small>${p?.name||"Unknown"} · strength ${Math.round(f.strength||0)}</small></span><span>${p?Math.round(dist(p,target)):"?"}u</span></label>`}).join("");
-  list.querySelectorAll("[data-wb-fleet]").forEach(i=>i.onchange=()=>{i.checked?stxWBManualFleetIds.add(i.dataset.wbFleet):stxWBManualFleetIds.delete(i.dataset.wbFleet);stxFCASyncUi()});
-}
-stxWBInstallAllocationUi();
-
-if(typeof stxFCAShow==="function"){
-  const STX_WB_stxFCAShow=stxFCAShow;
-  stxFCAShow=function(){
-    stxWBManualMode=false;stxWBManualFleetIds.clear();STX_WB_stxFCAShow();stxWBInstallAllocationUi();
-    const o=stxFCAQueue?.[0],block=$("stxWBAllocation");if(!block)return;block.hidden=o?.kind!=="invade";
-    block.querySelectorAll("[data-wb-mode]").forEach(x=>x.classList.toggle("active",x.dataset.wbMode==="recommended"));
-    if(o?.kind==="invade"){
-      const targets=stxFCATargets("invade"),sel=$("stxFCATarget");
-      sel.innerHTML=`<option value="">Choose enemy planet...</option>`+targets.map(x=>`<option value="${x.id}">${x.name} · ${empire(x.owner)?.name||"Enemy"} · defense ${Math.round(stxWBTargetDefense(x))} · distance ${Math.round(typeof stxNearestPlayerDistance==="function"?stxNearestPlayerDistance(x):0)}</option>`).join("");
-      $("stxFCATitle").textContent="Choose the Planet to Invade";$("stxFCADesc").textContent="This mandate is not complete until you select an enemy world, allocate real fleets, review the force comparison, and confirm launch.";
-      stxFCASyncUi();
-    }
-  };
-}
-if(typeof stxFCASyncUi==="function"){
-  const STX_WB_stxFCASyncUi=stxFCASyncUi;
-  stxFCASyncUi=function(){
-    STX_WB_stxFCASyncUi();
-    const o=stxFCAQueue?.[0],intel=$("stxWBIntel");if(o?.kind!=="invade"||!intel)return;
-    const target=state.planets.find(p=>p.id===$("stxFCATarget")?.value),count=Math.max(1,Number($("stxFCACount")?.value)||1);stxWBRenderManualFleets();
-    if(!target){intel.innerHTML=`<span><label>Target</label><b>Choose a planet</b></span><span><label>Fleet allocation</label><b>${stxFCAFree().length} available</b></span><span><label>Status</label><b>Awaiting order</b></span>`;$("stxFCAConfirm").disabled=true;return}
-    const selected=stxWBSelectedInvasionFleets(target,count),attack=selected.reduce((n,f)=>n+(Number(f.strength)||0),0),defense=stxWBTargetDefense(target),assessment=stxWBAssessment(attack,defense);
-    intel.innerHTML=`<span><label>Attack strength</label><b>${Math.round(attack)} · ${selected.length} fleet${selected.length===1?"":"s"}</b></span><span><label>Known defense</label><b>${Math.round(defense)}</b></span><span><label>Assessment</label><b>${assessment}</b></span>`;
-    $("stxFCAPreview").textContent=selected.length?`${selected.map(f=>`${f.name} (${Math.round(f.strength||0)})`).join(" · ")} · ${assessment} against ${target.name}.`:"Select at least one fleet to continue.";
-    $("stxFCAConfirm").disabled=!selected.length;
-  };
-}
-
-if(typeof stxFCAExecuteInvade==="function"){
-  const STX_WB_stxFCAExecuteInvade=stxFCAExecuteInvade;
-  stxFCAExecuteInvade=function(target,count){
-    if(!stxWBManualMode)return STX_WB_stxFCAExecuteInvade(target,count);
-    const selected=stxWBSelectedInvasionFleets(target,count);if(!target||!selected.length||typeof stxQueueInvasion!=="function")return 0;
-    if(!stxQueueInvasion(target,`Manual invasion of ${target.name}`,false))return 0;
-    const plan=(empire(0).invasionPlans||[]).find(p=>p.targetId===target.id),war=getWar(0,target.owner);let launched=0,ids=[];
-    for(const f of selected){
-      if(!stxFCAFreeFleet(f))continue;const source=state.planets.find(p=>p.id===f.location);if(!source)continue;stxFCAClear(f);const old={location:f.location,status:f.status,readiness:f.readiness};f.location=null;f.readiness="inbound";f.status=`Invading ${target.name}`;
-      const ship=createShip("fleet",source,target,0,{strength:Math.max(5,f.strength||5),fleetId:f.id,vesselName:f.name,warId:war?.id,invasionPlanId:plan?.id,stxManualFleetOrder:true,speedBoost:1.08+(source.orbitals?.base||0)*.38});
-      if(!ship){Object.assign(f,old);continue}stxFCACommitted.add(f.id);launched++;ids.push(f.id);
-    }
-    if(plan&&launched){plan.stxManualAllocation=true;plan.stxRequestedFleetCount=launched;plan.stxAssignedFleetIds=ids;plan.stxManualLaunchedAt=state.simTime;plan.lastLaunchAt=state.simTime;plan.status="fleet inbound"}
-    if(launched){stxFCAUsedTargets.add(target.id);logEvent(`INVASION LAUNCHED: ${launched} manually selected fleet${launched===1?"":"s"} committed to ${target.name}.`,"warning");if(typeof stxActivity==="function")stxActivity(`${launched} manually selected fleet${launched===1?"":"s"} launched for ${target.name}.`,target.id,null,"warning");if(typeof stxRefreshFleetLocator==="function")stxRefreshFleetLocator()}
-    return launched;
-  };
 }
 
 /* Player modernization now has diminishing returns and a tech/yard ceiling.
