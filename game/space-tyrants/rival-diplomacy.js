@@ -10,6 +10,13 @@ const STX_RD_PLAYER_GRACE=95;
 const STX_RD_WAR_COOLDOWN=145;
 const STX_RD_REQUEST_LIMIT=2;
 const STX_RD_RESOURCES=["iron","titanium","rare","silicates","helium","components","equipment"];
+const STX_RD_DEFAULT_DIFFICULTY="standard";
+const STX_RD_DIFFICULTIES={
+  relaxed:{label:"Relaxed",description:"Rivals expand slowly and usually stop after a compact regional realm.",policyBias:-.12,strongShare:.17,cooldown:1.35,worldCap:4,intentBonus:-.04,development:1.18,reach:1750},
+  standard:{label:"Standard",description:"Mixed rival personalities create a steady, competitive colonial race.",policyBias:0,strongShare:.34,cooldown:1,worldCap:5,intentBonus:0,development:1,reach:2100},
+  hard:{label:"Hard",description:"More rivals prioritize territory, develop frontiers faster, and reach farther.",policyBias:.12,strongShare:.5,cooldown:.78,worldCap:7,intentBonus:.16,development:.8,reach:2450},
+  relentless:{label:"Relentless",description:"Most rivals race for neutral worlds and sustain large expansion programs.",policyBias:.22,strongShare:.67,cooldown:.6,worldCap:9,intentBonus:.3,development:.66,reach:2850}
+};
 let stxRDDeclarationContext=null;
 
 function stxRDEscape(value){return String(value??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c])}
@@ -18,6 +25,8 @@ function stxRDHash(text){let h=2166136261;for(const c of String(text)){h^=c.char
 function stxRDUnit(seed,salt=0){let x=(seed+Math.imul(salt+1,2654435761))>>>0;x^=x>>>16;x=Math.imul(x,2246822507);x^=x>>>13;return(x>>>0)/4294967295}
 function stxRDPairKey(a,b){return a<b?`${a}:${b}`:`${b}:${a}`}
 function stxRDRecent(items,limit=5){return(items||[]).filter(x=>state.simTime-(x.time||0)<380).slice(0,limit)}
+function stxRDDifficultyId(value=state.enemyExpansionDifficulty){return STX_RD_DIFFICULTIES[value]?value:STX_RD_DEFAULT_DIFFICULTY}
+function stxRDDifficultyProfile(value=state.enemyExpansionDifficulty){return STX_RD_DIFFICULTIES[stxRDDifficultyId(value)]}
 
 function stxRDPolicyArchetype(p){
   if(p.expansionism>=.72&&p.aggression>=.52)return"Expansionist Power";
@@ -30,9 +39,9 @@ function stxRDPolicyArchetype(p){
   return p.expansionism>=.55?"Regional Competitor":"Pragmatic State";
 }
 function stxRDBuildPolicy(e,strongExpansionist=false){
-  const seed=stxRDHash(`${e.name}:${e.id}:${e.doctrine}`),u=n=>stxRDUnit(seed,n),doctrine=e.doctrine;
+  const seed=stxRDHash(`${e.name}:${e.id}:${e.doctrine}`),u=n=>stxRDUnit(seed,n),doctrine=e.doctrine,difficulty=e.id===0?STX_RD_DIFFICULTIES.standard:stxRDDifficultyProfile(),baseExpansion=strongExpansionist ? .74+u(1)*.15 : clamp(.2+u(1)*.42+(doctrine==="expansion" ? .1 : 0),.14,.66);
   const p={
-    expansionism:strongExpansionist ? .74+u(1)*.15 : clamp(.2+u(1)*.42+(doctrine==="expansion" ? .1 : 0),.14,.66),
+    expansionism:clamp(baseExpansion+difficulty.policyBias,.08,.96),
     aggression:clamp((Number(e.aggression)||.45)*.72+u(2)*.28+(doctrine==="military" ? .08 : 0),.14,.9),
     pride:clamp(.24+u(3)*.64,.18,.9),patience:clamp(.24+u(4)*.62,.2,.9),
     opportunism:clamp(.2+u(5)*.68,.16,.9),
@@ -55,14 +64,14 @@ function stxRDPolicyDescriptors(e){
   return choices.sort((a,b)=>Math.abs(b[0]-.5)-Math.abs(a[0]-.5)).slice(0,3).map(x=>x[1]);
 }
 function stxRDAssignPolicies(){
-  const rivals=state.empires.filter(e=>e.id!==0),strongCount=clamp(Math.round(rivals.length/3),1,Math.max(1,Math.floor(rivals.length*.4)));
+  const rivals=state.empires.filter(e=>e.id!==0),difficulty=stxRDDifficultyProfile(),strongCount=clamp(Math.round(rivals.length*difficulty.strongShare),1,rivals.length);
   const strong=new Set(rivals.slice().sort((a,b)=>{
     const av=stxRDHash(a.name)%100+(a.doctrine==="expansion"?45:0),bv=stxRDHash(b.name)%100+(b.doctrine==="expansion"?45:0);return bv-av
   }).slice(0,strongCount).map(e=>e.id));
   state.empires.forEach(e=>{if(!e.foreignPolicy||e.foreignPolicy.version!==STX_RD_VERSION){e.foreignPolicy={...stxRDBuildPolicy(e,strong.has(e.id)),version:STX_RD_VERSION}}else{e.foreignPolicy.archetype=e.foreignPolicy.archetype||stxRDPolicyArchetype(e.foreignPolicy)}});
 }
 
-function stxRDNewState(){return{version:STX_RD_VERSION,createdAt:state.simTime,graceUntil:state.simTime+STX_RD_PLAYER_GRACE,relations:{},requests:[],incidents:[],contestedWorlds:[],agreements:[],nextPlayerRequestAt:state.simTime+rand(115,155),nextAIRequestAt:state.simTime+rand(130,180),lastTickAt:state.simTime}}
+function stxRDNewState(){return{version:STX_RD_VERSION,difficulty:stxRDDifficultyId(),createdAt:state.simTime,graceUntil:state.simTime+STX_RD_PLAYER_GRACE,relations:{},requests:[],incidents:[],contestedWorlds:[],agreements:[],nextPlayerRequestAt:state.simTime+rand(115,155),nextAIRequestAt:state.simTime+rand(130,180),lastTickAt:state.simTime}}
 function stxRDPair(a,b){
   const d=state.rivalDiplomacy,key=stxRDPairKey(a,b);if(!d)return null;
   if(!d.relations[key]){
@@ -72,18 +81,19 @@ function stxRDPair(a,b){
 }
 function stxRDEnsureState(reset=false){
   if(!state.empires?.length)return null;
+  const storedDifficulty=!reset&&(state.rivalDiplomacy?.difficulty||empire(0)?.rivalDiplomacy?.difficulty);state.enemyExpansionDifficulty=stxRDDifficultyId(storedDifficulty||state.enemyExpansionDifficulty);
   stxRDAssignPolicies();
   const saved=!reset&&empire(0)?.rivalDiplomacy;
   if(reset||!state.rivalDiplomacy||state.rivalDiplomacy.version!==STX_RD_VERSION)state.rivalDiplomacy=saved&&saved.version===STX_RD_VERSION?saved:stxRDNewState();
-  const d=state.rivalDiplomacy;d.relations=d.relations||{};d.requests=Array.isArray(d.requests)?d.requests:[];d.incidents=Array.isArray(d.incidents)?d.incidents:[];d.contestedWorlds=Array.isArray(d.contestedWorlds)?d.contestedWorlds:[];d.agreements=Array.isArray(d.agreements)?d.agreements:[];
+  const d=state.rivalDiplomacy;d.difficulty=stxRDDifficultyId(d.difficulty||state.enemyExpansionDifficulty);state.enemyExpansionDifficulty=d.difficulty;d.relations=d.relations||{};d.requests=Array.isArray(d.requests)?d.requests:[];d.incidents=Array.isArray(d.incidents)?d.incidents:[];d.contestedWorlds=Array.isArray(d.contestedWorlds)?d.contestedWorlds:[];d.agreements=Array.isArray(d.agreements)?d.agreements:[];
   for(let a=0;a<state.empires.length;a++)for(let b=a+1;b<state.empires.length;b++)stxRDPair(a,b);
   state.wars.forEach(w=>{if(!w.warCause)w.warCause={type:w.reason||"Legacy Conflict",detail:`An ongoing war inherited from an earlier save over ${w.reason||"an unresolved dispute"}.`,recordedAt:w.startedAt||state.simTime};w.aggressor=Number.isFinite(w.aggressor)?w.aggressor:w.a;if(!Array.isArray(w.strategicObjectives)){const target=stxRDObjective(w.aggressor,w.aggressor===w.a?w.b:w.a,w.warCause);w.strategicObjectives=target?[{planetId:target.id,label:target.name,type:w.warCause.type,status:"active"}]:[]}});
-  empire(0).rivalDiplomacy=d;return d;
+  empire(0).rivalDiplomacy=d;stxRDRefreshDifficultySelector();return d;
 }
-function stxRDPersist(){if(state.empires?.length&&state.rivalDiplomacy)empire(0).rivalDiplomacy=state.rivalDiplomacy}
+function stxRDPersist(){if(state.empires?.length&&state.rivalDiplomacy){state.rivalDiplomacy.difficulty=stxRDDifficultyId();empire(0).rivalDiplomacy=state.rivalDiplomacy}}
 
 const STX_RD_generateGalaxy=generateGalaxy;
-generateGalaxy=function(){STX_RD_generateGalaxy();state.rivalDiplomacy=null;stxRDEnsureState(true)};
+generateGalaxy=function(){STX_RD_generateGalaxy();state.rivalDiplomacy=null;stxRDEnsureState(true);const difficulty=stxRDDifficultyProfile();logEvent(`Rival expansion difficulty: ${difficulty.label}. ${difficulty.description}`,"warning")};
 const STX_RD_loadGame=loadGame;
 loadGame=function(){const ok=STX_RD_loadGame();if(ok){state.rivalDiplomacy=empire(0)?.rivalDiplomacy||null;stxRDEnsureState(false)}return ok};
 const STX_RD_saveGame=saveGame;
@@ -127,16 +137,19 @@ startExpansionProject=function(e,source,target,directed=false){
 function stxRDExpansionScore(e,p,sources){
   const nearest=Math.min(...sources.map(s=>dist(s,p))),quality=Object.values(p.quality||{}),resource=Math.max(...quality)*25+quality.reduce((n,v)=>n+v,0)*4,neighbors=state.planets.filter(q=>q!==p&&dist(q,p)<850).length,choke=neighbors>=4?24:0,frontier=owned(e.id).some(q=>dist(q,p)<850)?32:0,shipyard=(p.capacity||.2)*55+(p.quality?.titanium||1)*8;return resource+choke+frontier+shipyard-nearest*.055;
 }
+function stxRDExpansionRules(e,worldCount=owned(e.id).length){
+  const p=e.foreignPolicy||stxRDBuildPolicy(e,false),difficulty=e.id===0?STX_RD_DIFFICULTIES.standard:stxRDDifficultyProfile();return{maxWorlds:Math.max(worldCount,difficulty.worldCap+Math.round(p.expansionism*2)),cooldown:Math.max(24,(42+(1-p.expansionism)*112)*difficulty.cooldown),intent:clamp(.1+p.expansionism*.34+difficulty.intentBonus,.06,.94),reach:difficulty.reach,development:difficulty.development};
+}
 const STX_RD_attemptExpansion=attemptExpansion;
 attemptExpansion=function(e){
   if(!e||e.id===0)return STX_RD_attemptExpansion(e);
-  const p=e.foreignPolicy||stxRDBuildPolicy(e,false),worlds=owned(e.id),active=worlds.some(x=>x.expansionProject)||state.ships.some(s=>s.owner===e.id&&s.type==="colony");if(active)return;
-  const maxWorlds=p.expansionism>=.72?8:p.expansionism>=.5?6:Math.max(3,worlds.length);if(worlds.length>=maxWorlds)return;
-  const cooldown=42+(1-p.expansionism)*112;if(state.simTime-(e.lastExpansion||0)<cooldown)return;
-  const wants=worlds.length<3||p.expansionism>=.72||(p.expansionism>=.48&&random()<.38);if(!wants)return;
+  const p=e.foreignPolicy||stxRDBuildPolicy(e,false),worlds=owned(e.id),rules=stxRDExpansionRules(e,worlds.length),active=worlds.some(x=>x.expansionProject)||state.ships.some(s=>s.owner===e.id&&s.type==="colony");if(active)return;
+  if(worlds.length>=rules.maxWorlds)return;
+  if(state.simTime-(e.lastExpansion||0)<rules.cooldown)return;
+  const wants=worlds.length<3||p.expansionism>=.82||random()<rules.intent;if(!wants)return;
   const sources=worlds.filter(x=>!x.underAttack&&!x.expansionProject&&x.pop>.06).sort((a,b)=>b.pop-a.pop);if(!sources.length)return;
   const targets=state.planets.filter(x=>x.owner===null&&!stxRDActiveAgreement("non-colonization",e.id,x.id,null)).map(x=>({p:x,score:stxRDExpansionScore(e,x,sources)})).sort((a,b)=>b.score-a.score);const target=targets[0]?.p;if(!target)return;
-  const source=sources.sort((a,b)=>dist(a,target)-dist(b,target))[0];if(dist(source,target)>2100)return;if(startExpansionProject(e,source,target,true)){addDirective(e,"claim",target.id,115);e.lastExpansion=state.simTime}
+  const source=sources.sort((a,b)=>dist(a,target)-dist(b,target))[0];if(dist(source,target)>rules.reach)return;if(startExpansionProject(e,source,target,true)){addDirective(e,"claim",target.id,115);e.lastExpansion=state.simTime}
 };
 
 function stxRDBorderFleets(owner,foe){
@@ -301,7 +314,7 @@ function stxRDDetectContests(){
   const projects=state.planets.filter(p=>p.expansionProject).map(p=>({owner:p.owner,target:state.planets.find(x=>x.id===p.expansionProject.targetId)})).filter(x=>x.target);for(let i=0;i<projects.length;i++)for(let j=i+1;j<projects.length;j++)if(projects[i].owner!==projects[j].owner&&projects[i].target.id===projects[j].target.id)stxRDRegisterContest(projects[i].target,projects[i].owner,projects[j].owner,"competing physical colony missions");
 }
 function stxRDDevelopmentTick(){
-  state.empires.slice(1).forEach(e=>{const p=e.foreignPolicy;if(state.simTime<(e.rdNextDevelopmentAt||0))return;e.rdNextDevelopmentAt=state.simTime+rand(55,95)+(1-p.expansionism)*40;const worlds=owned(e.id);if(!worlds.length)return;const wars=state.wars.filter(w=>w.active&&(w.a===e.id||w.b===e.id)),foe=wars[0]&&(wars[0].a===e.id?wars[0].b:wars[0].a),border=foe!==undefined?stxRDBorderWorld(e.id,foe):worlds.slice().sort((a,b)=>borderThreat(b)-borderThreat(a))[0];
+  state.empires.slice(1).forEach(e=>{const p=e.foreignPolicy,rules=stxRDExpansionRules(e);if(state.simTime<(e.rdNextDevelopmentAt||0))return;e.rdNextDevelopmentAt=state.simTime+(rand(55,95)+(1-p.expansionism)*40)*rules.development;const worlds=owned(e.id);if(!worlds.length)return;const wars=state.wars.filter(w=>w.active&&(w.a===e.id||w.b===e.id)),foe=wars[0]&&(wars[0].a===e.id?wars[0].b:wars[0].a),border=foe!==undefined?stxRDBorderWorld(e.id,foe):worlds.slice().sort((a,b)=>borderThreat(b)-borderThreat(a))[0];
     if((wars.length||borderThreat(border)>.38)&&border&&!border.localProject&&border.infra.defense<4){startLocalProject(border,"defense","Rival frontier program");return}
     if(p.expansionism>=.6){const candidate=worlds.filter(x=>!x.localProject&&!x.underAttack).sort((a,b)=>(a.infra.mine+a.infra.factory)-(b.infra.mine+b.infra.factory))[0];if(candidate){const type=candidate.infra.factory<candidate.infra.mine?"factory":"mine";if(startLocalProject(candidate,type,"Rival expansion program"))return}}
     if(worlds.length>=4&&!stxRDBestYard(e.id)){const candidate=worlds.filter(x=>!x.localProject&&!x.underAttack).sort((a,b)=>(b.infra.factory+b.pop*6)-(a.infra.factory+a.pop*6))[0];if(candidate&&startLocalProject(candidate,"shipyard","Rival naval development"))return}
@@ -368,10 +381,21 @@ function stxRDDecorateRivals(){
 const STX_RD_renderRivals=renderRivals;
 renderRivals=function(){STX_RD_renderRivals();stxRDDecorateRivals()};
 
+function stxRDRefreshDifficultySelector(){
+  const box=$("stxRDDifficulty");if(!box)return;const id=stxRDDifficultyId(),profile=stxRDDifficultyProfile(id);box.querySelectorAll('input[name="stxEnemyExpansionDifficulty"]').forEach(input=>input.checked=input.value===id);const summary=$("stxRDDifficultySummary");if(summary)summary.textContent=`${profile.label}: ${profile.description}`;
+}
+function stxRDSetDifficulty(value){
+  const id=stxRDDifficultyId(value);state.enemyExpansionDifficulty=id;if(state.rivalDiplomacy&&!state.running)state.rivalDiplomacy.difficulty=id;stxRDRefreshDifficultySelector();return stxRDDifficultyProfile(id);
+}
+function stxRDInstallDifficultySelector(){
+  if($("stxRDDifficulty"))return;const actions=$("newGameBtn")?.parentElement;if(!actions)return;const box=document.createElement("fieldset");box.id="stxRDDifficulty";box.className="stx-rd-difficulty";box.innerHTML=`<legend>Difficulty · Rival Expansion</legend><div class="stx-rd-difficulty-grid">${Object.entries(STX_RD_DIFFICULTIES).map(([id,p])=>`<label><input type="radio" name="stxEnemyExpansionDifficulty" value="${id}"><span><b>${p.label}</b><small>${p.description}</small></span></label>`).join("")}</div><p id="stxRDDifficultySummary" aria-live="polite"></p><small class="stx-rd-difficulty-note">This changes enemy colonization pace, reach, and territorial ceiling. Rival personalities remain varied.</small>`;actions.before(box);box.addEventListener("change",event=>{const input=event.target;if(input?.matches?.('input[name="stxEnemyExpansionDifficulty"]'))stxRDSetDifficulty(input.value)});stxRDRefreshDifficultySelector();
+}
+
 function stxRDInstallStyles(){
   if($("stxRDStyles"))return;const style=document.createElement("style");style.id="stxRDStyles";style.textContent=`
-  .stx-rd-request{border-color:rgba(255,185,78,.28)!important}.stx-rd-ultimatum{border-color:rgba(255,75,105,.5)!important;box-shadow:0 0 24px rgba(255,75,105,.08)}.stx-rd-context{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:9px 0}.stx-rd-context span{padding:7px;border-radius:7px;background:rgba(255,255,255,.035);font:600 9px/1.35 system-ui;color:#9fb0c6}.stx-rd-context b{display:block;margin-bottom:3px;color:#e8f4ff;text-transform:uppercase;font-size:8px;letter-spacing:.08em}.stx-rd-profile{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}.stx-rd-tags{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.stx-rd-tags b{font:800 10px system-ui;color:#dcecff}.stx-rd-tags span{font:700 8px/1.3 system-ui;color:#8fa6bd;text-align:right}.stx-rd-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin:8px 0}.stx-rd-grid>span{padding:6px;border-radius:7px;background:rgba(5,12,28,.58)}.stx-rd-grid label{display:block;font:700 7px system-ui;letter-spacing:.08em;text-transform:uppercase;color:#7187a2}.stx-rd-grid b{font:800 9px system-ui;color:#e9f5ff}.stx-rd-grid .risk-high b,.stx-rd-grid .risk-critical b{color:#ff6f7f}.stx-rd-grid .risk-elevated b{color:#ffc466}.stx-rd-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;font:700 8px/1.3 system-ui}.stx-rd-line>b{color:#91a5bc}.stx-rd-line>span{color:#e4edf7;text-align:right}.stx-rd-line.good>span{color:#73e9a4}.stx-rd-why{display:grid;gap:3px;margin:7px 0;padding:7px;border-radius:7px;background:rgba(255,124,85,.055)}.stx-rd-why>b{font:800 8px system-ui;color:#ffbf73;text-transform:uppercase}.stx-rd-why>span{font:600 8px system-ui;color:#aebed0}.stx-rd-why>span:before{content:"• ";color:#ff8b72}.stx-rd-actions{margin-top:12px;padding:14px;border:1px solid rgba(255,185,78,.22);border-radius:12px;background:linear-gradient(145deg,rgba(255,185,78,.055),rgba(5,10,22,.78))}.stx-rd-actions h3{margin:5px 0 8px}.stx-rd-action-note{margin-top:8px}@media(max-width:720px){.stx-rd-context{grid-template-columns:1fr}.stx-rd-tags{flex-direction:column}.stx-rd-tags span{text-align:left}}
+  .stx-rd-request{border-color:rgba(255,185,78,.28)!important}.stx-rd-ultimatum{border-color:rgba(255,75,105,.5)!important;box-shadow:0 0 24px rgba(255,75,105,.08)}.stx-rd-context{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:9px 0}.stx-rd-context span{padding:7px;border-radius:7px;background:rgba(255,255,255,.035);font:600 9px/1.35 system-ui;color:#9fb0c6}.stx-rd-context b{display:block;margin-bottom:3px;color:#e8f4ff;text-transform:uppercase;font-size:8px;letter-spacing:.08em}.stx-rd-profile{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}.stx-rd-tags{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.stx-rd-tags b{font:800 10px system-ui;color:#dcecff}.stx-rd-tags span{font:700 8px/1.3 system-ui;color:#8fa6bd;text-align:right}.stx-rd-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin:8px 0}.stx-rd-grid>span{padding:6px;border-radius:7px;background:rgba(5,12,28,.58)}.stx-rd-grid label{display:block;font:700 7px system-ui;letter-spacing:.08em;text-transform:uppercase;color:#7187a2}.stx-rd-grid b{font:800 9px system-ui;color:#e9f5ff}.stx-rd-grid .risk-high b,.stx-rd-grid .risk-critical b{color:#ff6f7f}.stx-rd-grid .risk-elevated b{color:#ffc466}.stx-rd-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;font:700 8px/1.3 system-ui}.stx-rd-line>b{color:#91a5bc}.stx-rd-line>span{color:#e4edf7;text-align:right}.stx-rd-line.good>span{color:#73e9a4}.stx-rd-why{display:grid;gap:3px;margin:7px 0;padding:7px;border-radius:7px;background:rgba(255,124,85,.055)}.stx-rd-why>b{font:800 8px system-ui;color:#ffbf73;text-transform:uppercase}.stx-rd-why>span{font:600 8px system-ui;color:#aebed0}.stx-rd-why>span:before{content:"• ";color:#ff8b72}.stx-rd-actions{margin-top:12px;padding:14px;border:1px solid rgba(255,185,78,.22);border-radius:12px;background:linear-gradient(145deg,rgba(255,185,78,.055),rgba(5,10,22,.78))}.stx-rd-actions h3{margin:5px 0 8px}.stx-rd-action-note{margin-top:8px}.living-start{max-height:calc(100vh - 24px);overflow:auto}.stx-rd-difficulty{margin:12px 0 14px;padding:0;border:0}.stx-rd-difficulty legend{padding:0;margin-bottom:7px;color:#a9bee1;font:900 9px system-ui;letter-spacing:.14em;text-transform:uppercase}.stx-rd-difficulty-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.stx-rd-difficulty label{cursor:pointer;position:relative}.stx-rd-difficulty input{position:absolute;opacity:0;pointer-events:none}.stx-rd-difficulty label span{display:block;height:100%;padding:8px 9px;border:1px solid rgba(121,159,238,.18);border-radius:9px;background:rgba(35,55,103,.18);transition:.15s ease}.stx-rd-difficulty label b{display:block;color:#e5f1ff;font-size:10px}.stx-rd-difficulty label small{display:block;margin-top:2px;color:#8398b9;font:600 8px/1.3 system-ui}.stx-rd-difficulty input:checked+span{border-color:rgba(78,231,255,.62);background:linear-gradient(135deg,rgba(78,231,255,.13),rgba(111,87,255,.14));box-shadow:0 0 0 1px rgba(78,231,255,.09)}.stx-rd-difficulty input:focus-visible+span{outline:2px solid var(--cyan);outline-offset:2px}.stx-rd-difficulty>p{margin:7px 0 2px;color:#bcefff;font:700 9px/1.35 system-ui}.stx-rd-difficulty-note{display:block;color:#7188aa;font:600 8px/1.35 system-ui}@media(max-width:720px){.stx-rd-context{grid-template-columns:1fr}.stx-rd-tags{flex-direction:column}.stx-rd-tags span{text-align:left}.stx-rd-difficulty-grid{grid-template-columns:1fr 1fr}}
   `;document.head.appendChild(style);
 }
 
-stxRDEnsureState(false);stxRDInstallStyles();
+globalThis.SpaceTyrantsRivalDiplomacy={version:STX_RD_VERSION,difficulties:STX_RD_DIFFICULTIES,difficulty:stxRDDifficultyProfile,setDifficulty:stxRDSetDifficulty,buildPolicy:stxRDBuildPolicy,expansionRules:stxRDExpansionRules,ensureState:stxRDEnsureState};
+stxRDEnsureState(false);stxRDInstallStyles();stxRDInstallDifficultySelector();

@@ -65,6 +65,7 @@ function createHarness(){
     $:get,random,rand:(a,b)=>a+(b-a)*random(),clamp:(n,a,b)=>Math.max(a,Math.min(b,n)),
     roman:n=>["","I","II","III","IV"][n]||String(n),dist:(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),
     empire,owned,fleetRecord:id=>state.fleets.find(f=>f.id===id)||null,
+    empireIndustry:id=>state.industryOverride?.[id]??owned(id).reduce((sum,p)=>sum+(p.infra.factory||0)+(p.infra.shipyard||0)*.8,0),
     empiresAtWar:(a,b)=>!!getWar(a,b),getWar,relation:(a,b)=>empire(a)?.relations?.[b]||0,
     adjustRelation:(a,b,delta)=>{empire(a).relations[b]=(empire(a).relations[b]||0)+delta},
     declareWar:(a,b,reason="test war")=>{const existing=getWar(a,b);if(existing)return existing;const war={id:`w${state.wars.length+1}`,a,b,aggressor:a,active:true,startedAt:state.simTime,reason};state.wars.push(war);return war},
@@ -110,6 +111,18 @@ test("site suggestions are automatic, named, bounded, and independent of planets
     assert.ok(site.x>=180&&site.x<=4820&&site.y>=180&&site.y<=3820);
     assert.ok(Math.hypot(site.x-state.planets[0].x,site.y-state.planets[0].y)>220);
   }
+});
+
+test("military bases unlock from the one-decimal Industry value shown in the HUD",()=>{
+  const {state,api}=createHarness(),home=state.planets[0];
+  state.industryOverride={0:4.94};
+  assert.equal(api.displayedIndustry(0),4.9);
+  assert.equal(api.canSponsor(home,"military"),false);
+  assert.equal(api.canSponsor(home,"trade"),true);
+
+  state.industryOverride[0]=4.96;
+  assert.equal(api.displayedIndustry(0),5);
+  assert.equal(api.canSponsor(home,"military"),true);
 });
 
 test("construction requires physical cargo arrivals before commissioning",()=>{
