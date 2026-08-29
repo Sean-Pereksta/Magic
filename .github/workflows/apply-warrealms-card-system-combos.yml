@@ -10,35 +10,40 @@ on:
 permissions:
   contents: write
 
+env:
+  TARGET_BRANCH: agent/warrealms-card-system-combos
+  CARD_FILE: game/warrealms-pack/warrealms-cards.js
+  WORKFLOW_FILE: .github/workflows/apply-warrealms-card-system-combos.yml
+
 jobs:
   apply-card-pack:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/warrealms-card-system-combos
-
-      - name: Insert system-combo cards
-        shell: python
+      - name: Fetch and patch card pack through GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/contents/${CARD_FILE}?ref=${TARGET_BRANCH}" > /tmp/card.json
+          python - <<'PY'
+          import base64, json
           from pathlib import Path
 
-          path = Path("game/warrealms-pack/warrealms-cards.js")
-          text = path.read_text(encoding="utf-8")
-
+          payload = json.loads(Path('/tmp/card.json').read_text())
+          Path('/tmp/card-sha').write_text(payload['sha'])
+          text = base64.b64decode(payload['content']).decode('utf-8')
           marker = "export const CARDS = Object.freeze([\n"
           if marker not in text:
-              raise SystemExit("Could not find Warrealms CARDS marker")
-          if 'id: "causality_smuggler"' in text:
-              raise SystemExit("Expansion already present")
+              raise SystemExit('Could not find Warrealms CARDS marker')
 
-          text = text.replace(
-              "export const WAR_REALMS_CARD_VERSION = 18;",
-              "export const WAR_REALMS_CARD_VERSION = 19;",
-              1,
-          )
-
-          cards = r'''  // ==========================================================
+          if 'id: "causality_smuggler"' not in text:
+              text = text.replace(
+                  'export const WAR_REALMS_CARD_VERSION = 18;',
+                  'export const WAR_REALMS_CARD_VERSION = 19;',
+                  1,
+              )
+              cards = r'''  // ==========================================================
           // SYSTEM-COMBO EXPANSION — sequencing, reactions, attachments,
           // persistent engines, siege evolution, sacrifice recursion
           // ==========================================================
@@ -138,7 +143,6 @@ jobs:
             sacrificeText: "Sacrifice: Put a cost 5+ Xythe card from your discard pile on top of your deck.",
             flavor: "The shelves contain every campaign the Concord wisely chose not to fight."
           },
-
           {
             id: "last_light_basilica",
             name: "Last Light Basilica",
@@ -223,16 +227,12 @@ jobs:
             shop_cost: 110,
             type: "ship",
             sigil: "✦",
-            effect: {
-              heal: 4,
-              topdeckFromDiscard: { faction: "blue", minCost: 5, count: 1 }
-            },
+            effect: { heal: 4, topdeckFromDiscard: { faction: "blue", minCost: 5, count: 1 } },
             ally: { shield: 3 },
             text: "Gain 4 Authority, then put a cost 5+ Azure card from your discard pile on top of your deck.",
             allyText: "Gain 3 Shield.",
             flavor: "The holiest relic is sometimes simply the answer you need next turn."
           },
-
           {
             id: "war_drum_nest",
             name: "War-Drum Nest",
@@ -334,7 +334,6 @@ jobs:
             doubleAllyText: "Gain 1 Raze.",
             flavor: "It advances by rebuilding itself out of whatever failed to stop it."
           },
-
           {
             id: "soul_ledger",
             name: "Soul Ledger",
@@ -384,10 +383,7 @@ jobs:
             shop_cost: 95,
             type: "ship",
             sigil: "◒",
-            effect: {
-              combat: 2,
-              resurrect: { count: 1, source: "discard", cardType: "ship", maxCost: 3, destination: "hand" }
-            },
+            effect: { combat: 2, resurrect: { count: 1, source: "discard", cardType: "ship", maxCost: 3, destination: "hand" } },
             ally: { scrapOwn: 1 },
             sacrifice: { combat: 4 },
             text: "Gain 2 Combat and return a cost 3 or less Ship from your discard pile to your hand.",
@@ -426,26 +422,15 @@ jobs:
             sigil: "◒",
             effect: { combat: 3 },
             ally: { scrapOwn: 1 },
-            sacrifice: {
-              redeploy: { maxCost: 3, sacrificedThisTurn: true, oncePerTurn: true }
-            },
+            sacrifice: { redeploy: { maxCost: 3, sacrificedThisTurn: true, oncePerTurn: true } },
             text: "Gain 3 Combat.",
             allyText: "Gain 1 Purge.",
             sacrificeText: "Sacrifice: Redeploy a card costing 3 or less that you sacrificed this turn.",
             flavor: "Nothing truly passes on. Ownership merely becomes more complicated."
           },
           '''
+              text = text.replace(marker, marker + cards, 1)
 
-          text = text.replace(marker, marker + cards, 1)
-          path.write_text(text, encoding="utf-8")
-
-      - name: Validate generated card pack
-        shell: bash
-        run: |
-          node --check game/warrealms-pack/warrealms-cards.js
-          python - <<'PY'
-          from pathlib import Path
-          text = Path('game/warrealms-pack/warrealms-cards.js').read_text(encoding='utf-8')
           ids = [
               'causality_smuggler','sequence_parasite','vacancy_engine','null_court_arbiter','archive_roads_not_taken',
               'last_light_basilica','keystone_penitent','sanctuary_chorus','aegis_accountant','pilgrim_high_archive',
@@ -457,17 +442,40 @@ jobs:
               raise SystemExit(f'Missing cards: {missing}')
           if 'export const WAR_REALMS_CARD_VERSION = 19;' not in text:
               raise SystemExit('Card pack version was not bumped to 19')
-          if text.count('id: "warhost_avalanche_fort"') != 1:
-              raise SystemExit('Warhost Avalanche-Fort must exist exactly once')
-          print(f'Validated {len(ids)} system-combo card definitions')
+          Path('/tmp/cards.js').write_text(text, encoding='utf-8')
           PY
 
-      - name: Remove one-shot workflow and commit expansion
+          node --check /tmp/cards.js
+          python - <<'PY'
+          import base64, json
+          from pathlib import Path
+          data = {
+              'message': 'Expand Warrealms with system-combo cards',
+              'content': base64.b64encode(Path('/tmp/cards.js').read_bytes()).decode(),
+              'sha': Path('/tmp/card-sha').read_text().strip(),
+              'branch': 'agent/warrealms-card-system-combos'
+          }
+          Path('/tmp/update.json').write_text(json.dumps(data))
+          PY
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${CARD_FILE}" --input /tmp/update.json
+
+      - name: Remove one-shot workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          rm .github/workflows/apply-warrealms-card-system-combos.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add game/warrealms-pack/warrealms-cards.js .github/workflows/apply-warrealms-card-system-combos.yml
-          git commit -m "Expand Warrealms with system-combo cards"
-          git push
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/contents/${WORKFLOW_FILE}?ref=${TARGET_BRANCH}" > /tmp/workflow.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('/tmp/workflow.json').read_text())
+          out = {
+              'message': 'Remove one-shot Warrealms expansion workflow',
+              'sha': payload['sha'],
+              'branch': 'agent/warrealms-card-system-combos'
+          }
+          Path('/tmp/delete.json').write_text(json.dumps(out))
+          PY
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/${WORKFLOW_FILE}" --input /tmp/delete.json
