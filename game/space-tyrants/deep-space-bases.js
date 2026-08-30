@@ -13,10 +13,10 @@ const STX_DS_VISIBLE_TRAFFIC=5;
 const STX_DS_MILITARY_INDUSTRY_UNLOCK=5;
 const STX_DS_FREIGHT_TYPES=new Set(["freighter","tanker","construction","miningBarge","supply","liner","luxury","courier","research"]);
 const STX_DS_BASE_TYPES={
-  military:{name:"Frontier Military Base",short:"MILITARY BASE",color:"#ff786f",maxHp:150,supplyDecay:.00165,service:7,cost:{components:96,titanium:68,equipment:42,helium:34}},
-  trade:{name:"Deep-Space Trade Station",short:"TRADE STATION",color:"#ffd56f",maxHp:112,supplyDecay:.00135,service:10,cost:{components:82,titanium:38,equipment:30,rare:32,helium:24}},
-  logistics:{name:"Logistics Relay",short:"LOGISTICS RELAY",color:"#70e9ff",maxHp:122,supplyDecay:.00145,service:8,cost:{components:88,titanium:44,equipment:36,helium:42}},
-  sensor:{name:"Listening Outpost",short:"SENSOR OUTPOST",color:"#a98cff",maxHp:92,supplyDecay:.0011,service:11,cost:{components:72,titanium:30,equipment:28,rare:36,helium:20}}
+  military:{name:"Frontier Military Base",short:"MILITARY BASE",color:"#ff786f",maxHp:150,supplyDecay:.00165,service:7,cost:{components:32,equipment:36,titanium:68,iron:54,helium:34,silicates:16}},
+  trade:{name:"Deep-Space Trade Station",short:"TRADE STATION",color:"#ffd56f",maxHp:112,supplyDecay:.00135,service:10,cost:{components:30,equipment:24,iron:48,silicates:46,titanium:26,rare:14,helium:18}},
+  logistics:{name:"Logistics Relay",short:"LOGISTICS RELAY",color:"#70e9ff",maxHp:122,supplyDecay:.00145,service:8,cost:{components:30,equipment:28,iron:62,titanium:36,helium:36,silicates:18}},
+  sensor:{name:"Listening Outpost",short:"SENSOR OUTPOST",color:"#a98cff",maxHp:92,supplyDecay:.0011,service:11,cost:{components:28,equipment:22,titanium:34,rare:42,silicates:26,iron:18,helium:16}}
 };
 const STX_DS_NAME_PREFIX={
   military:["Frontier Bastion","March Citadel","Vanguard Hold","Sentinel Base","Aegis Station"],

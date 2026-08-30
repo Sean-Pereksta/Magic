@@ -27,7 +27,7 @@ function createElementRegistry(){
 function makePlanet(id,name,owner,x,y){
   return{
     id,name,owner,x,y,r:22,pop:6,underAttack:false,tradeVolume:18,orders:[],
-    infra:{factory:3,shipyard:3},stock:{components:600,titanium:600,equipment:600,helium:600,rare:600},
+    infra:{factory:3,shipyard:3},stock:{iron:600,silicates:600,components:600,titanium:600,equipment:600,helium:600,rare:600},
     specialization:owner===0?"Industrial Center":"Trade Hub"
   };
 }

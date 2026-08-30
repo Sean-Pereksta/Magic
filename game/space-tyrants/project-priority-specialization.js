@@ -95,25 +95,29 @@ tickPlanet=function(p,dt){
   }
 };
 
+// Cost is redistributed, not multiplied. Most recipes spend 70–76% on
+// strategic raw materials; training deliberately needs more Equipment.
+const STX_PS_RECIPES={
+  city:{iron:.34,silicates:.42,components:.18,equipment:.06},
+  mine:{iron:.44,titanium:.26,components:.10,equipment:.20},
+  factory:{iron:.34,silicates:.24,titanium:.12,rare:.04,components:.18,equipment:.08},
+  training:{iron:.52,titanium:.13,components:.10,equipment:.25},
+  defense:{titanium:.38,iron:.32,equipment:.20,components:.10},
+  shipyard:{titanium:.30,iron:.28,helium:.16,components:.16,equipment:.10},
+  research:{rare:.40,silicates:.26,helium:.06,components:.16,equipment:.12},
+  reconstruction:{iron:.36,silicates:.38,components:.12,equipment:.14},
+  expansion:{iron:.28,silicates:.24,helium:.20,titanium:.08,components:.16,equipment:.04}
+};
 function stxPSDiversifiedNeed(desc){
-  const q=desc.q||{};
-  if(desc.kind==="local"){
-    const c=Math.max(20,Number(q.cost||40)),type=q.type||"local";
-    if(type==="city")return{components:c*.42,silicates:c*.34,iron:c*.24};
-    if(type==="mine")return{components:c*.34,equipment:c*.24,iron:c*.32,titanium:c*.14};
-    if(type==="factory")return{components:c*.38,iron:c*.38,rare:c*.2,silicates:c*.18};
-    if(type==="training")return{components:c*.34,equipment:c*.38,iron:c*.16};
-    if(type==="defense")return{components:c*.34,titanium:c*.34,equipment:c*.24,iron:c*.14};
-    if(type==="shipyard")return{components:c*.36,titanium:c*.34,iron:c*.3,helium:c*.12};
-    if(type==="research")return{components:c*.3,rare:c*.34,silicates:c*.26,equipment:c*.14};
-  }
-  if(desc.kind==="reconstruction"){
-    const c=Math.max(18,Number(q.need||30));return{components:c*.4,silicates:c*.34,iron:c*.3,equipment:c*.12};
-  }
-  if(desc.kind==="expansion"){
-    const c=Math.max(18,Number(q.componentCost||24));return{components:c*.46,silicates:c*.3,helium:c*.22,titanium:c*.18};
-  }
-  return desc.need||{};
+  const q=desc.q||{},type=desc.kind==="local"?q.type:desc.kind,recipe=STX_PS_RECIPES[type];
+  if(!recipe)return desc.need||{};
+  if(q.stxRecipeNeed)return q.stxRecipeNeed;
+  const cost=Math.max(18,Number(desc.kind==="local"?q.cost:desc.kind==="expansion"?q.componentCost:q.need)||30);
+  const need=Object.fromEntries(Object.entries(recipe).map(([r,share])=>[r,cost*share]));
+  // Already delivered goods in old saves remain spent and credited. Never
+  // silently delete paid Components when lowering their share in a recipe.
+  for(const [r,paid] of Object.entries(q.stxSupply?.delivered||{}))if(paid>0)need[r]=Math.max(need[r]||0,paid);
+  q.stxRecipeNeed=need;return need;
 }
 function stxPSCleanNeed(need){
   return Object.fromEntries(Object.entries(need||{}).filter(([,v])=>Number(v)>0).map(([r,v])=>[r,r==="trained"?Number(v):Math.max(.5,Number(v))]));
