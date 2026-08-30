@@ -1,0 +1,39 @@
+name: Circuitbound interaction patch
+
+on:
+  push:
+    branches:
+      - feature/circuitbound-doors-ladders-ledges-menu
+    paths:
+      - scripts/patch-circuitbound-interactions.cjs
+      - .github/workflows/circuitbound-interaction-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/circuitbound-doors-ladders-ledges-menu
+          fetch-depth: 0
+      - name: Apply interaction patch
+        run: node scripts/patch-circuitbound-interactions.cjs
+      - name: Syntax check
+        run: node --check game/circuitbound/app.js
+      - name: Run Circuitbound tests
+        run: npm run test:circuitbound
+      - name: Commit finished game changes
+        run: |
+          rm -f scripts/patch-circuitbound-interactions.cjs .github/workflows/circuitbound-interaction-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Add Circuitbound doors ladders ledges and fabricator filters"
+            git push origin HEAD:feature/circuitbound-doors-ladders-ledges-menu
+          fi
