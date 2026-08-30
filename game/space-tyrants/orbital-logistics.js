@@ -83,13 +83,13 @@ function stxOLScaleNeed(need,mult){return Object.fromEntries(Object.entries(need
 function stxOLBuildCost(kind,p,option=null){
   const level=kind==="mining"?(p.infra.mine||0)+1:kind==="factory"?(p.infra.factory||0)+1:kind==="shipyard"?(p.infra.shipyard||0)+1:kind==="orbital"?((stxOLFacilityForPlanet(p,"station")?.tier||0)+1):kind==="military"?((stxOLFacilityForPlanet(p,"military")?.tier||0)+1):1;
   const mult=1+Math.max(0,level-1)*.42;
-  if(kind==="mining")return stxOLScaleNeed({components:34,equipment:22,iron:30,titanium:14},mult);
-  if(kind==="factory")return stxOLScaleNeed({components:42,iron:40,rare:22,silicates:24},mult);
-  if(kind==="shipyard")return stxOLScaleNeed({components:60,titanium:42,iron:34,helium:18},mult);
-  if(kind==="orbital")return stxOLScaleNeed({components:58,titanium:34,equipment:18,helium:16},mult);
-  if(kind==="military")return stxOLScaleNeed({components:72,titanium:48,equipment:28,helium:24},mult);
+  if(kind==="mining")return stxOLScaleNeed({components:10,equipment:20,iron:44,titanium:26},mult);
+  if(kind==="factory")return stxOLScaleNeed({components:22,equipment:10,iron:44,silicates:30,titanium:16,rare:6},mult);
+  if(kind==="shipyard")return stxOLScaleNeed({components:24,equipment:14,titanium:46,iron:44,helium:26},mult);
+  if(kind==="orbital")return stxOLScaleNeed({components:20,equipment:12,titanium:28,iron:28,silicates:24,helium:14},mult);
+  if(kind==="military")return stxOLScaleNeed({components:26,equipment:26,titanium:48,iron:44,helium:28},mult);
   if(kind==="module")return{...(STX_OL_MODULES[option?.moduleId]?.cost||{})};
-  if(kind==="repair"){const f=stxOLFacilityAt(option?.facilityId)?.f,damage=f?1-f.hp/Math.max(1,f.maxHp):.25;return stxOLScaleNeed({components:28,titanium:16,equipment:12},Math.max(.4,damage*1.8))}
+  if(kind==="repair"){const f=stxOLFacilityAt(option?.facilityId)?.f,damage=f?1-f.hp/Math.max(1,f.maxHp):.25;return stxOLScaleNeed({components:8,titanium:12,equipment:8,iron:16,silicates:12},Math.max(.4,damage*1.8))}
   return{components:35,iron:24};
 }
 function stxOLProjectName(kind,p,option){
@@ -419,7 +419,7 @@ function stxOLRivalActions(enemyId){
   const duration=Math.max(0,state.simTime-war.startedAt);return `<section class="stx-ol-rival-actions"><div class="stx-ol-phase">ACTIVE WAR FRONT · ${stxOLEscape(e.name)}</div><h3>${fmtEta(duration)} at war · conquests ${(war.conquests[0]||0)}–${(war.conquests[enemyId]||0)}</h3><div class="choice-row"><button class="choice-btn danger-choice" data-ol-target-mode="${enemyId}">Select Invasion Target</button><button class="choice-btn" data-ol-open-front="${enemyId}">Open War Front</button><button class="choice-btn" data-ol-war-stage="${enemyId}">Stage Fleets</button><button class="choice-btn" data-ol-peace="${enemyId}" ${empire(0).credits<tributeDemand(enemyId)?"disabled":""}>Offer ${tributeDemand(enemyId)} cr for Peace</button></div><div id="stxOlWarChoices"></div></section>`;
 }
 function stxOLDecorateRivals(){
-  const grid=$("rivalGrid");if(!grid)return;const rivals=state.empires.filter(e=>e.id!==0),cards=[...grid.querySelectorAll(".rival-card")];cards.forEach((card,i)=>{const e=rivals[i];if(!e)return;card.dataset.olRival=e.id;card.classList.toggle("stx-ol-selected-rival",e.id===state.stxSelectedRivalId);card.onclick=ev=>{if(ev.target.closest("button"))return;state.stxSelectedRivalId=e.id;stxOLDecorateRivals()}});
+  const grid=$("rivalGrid");if(!grid)return;const rivals=stxVisibleRivals(),cards=[...grid.querySelectorAll(".rival-card")];cards.forEach((card,i)=>{const e=rivals[i];if(!e)return;card.dataset.olRival=e.id;card.classList.toggle("stx-ol-selected-rival",e.id===state.stxSelectedRivalId);card.onclick=ev=>{if(ev.target.closest("button"))return;state.stxSelectedRivalId=e.id;stxOLDecorateRivals()}});
   let panel=$("stxOlRivalActions");if(!panel){panel=document.createElement("div");panel.id="stxOlRivalActions";grid.after(panel)}panel.innerHTML=stxOLRivalActions(state.stxSelectedRivalId);
   panel.querySelectorAll("[data-ol-declare]").forEach(b=>b.onclick=()=>{const id=Number(b.dataset.olDeclare),foe=empire(id),treaty=(state.simTime-(foe.lastTreaty??-999))<70,msg=`DECLARE WAR ON ${foe.name}?\n\nRelation: ${relationLabel(relation(0,id))}\nOur visible fleet: ${Math.round(empireFleet(0))}\nTheir estimated fleet: ${Math.round(empireFleet(id))}\nDeployable named fleets: ${stxOLFleetCandidates(0).length}\n${treaty?"ACTIVE PEACE GUARANTEE WILL BE BROKEN.\n":""}\nThis creates war state only; no invasion will launch.`;if(!confirm(msg))return;if(treaty){adjustRelation(0,id,-.18);foe.lastTreatyBrokenAt=state.simTime}const war=declareWar(0,id,treaty?"a broken peace guarantee":"a direct imperial declaration");if(war){showToast(`War declared on ${foe.name} · no invasion ordered`);renderRivals();updateHud(true)}});
   panel.querySelectorAll("[data-ol-target-mode]").forEach(b=>b.onclick=()=>{const box=$("stxOlWarChoices");box.innerHTML=`<div class="section-label">Choose an objective — selection does not launch until the war plan mobilizes</div>${stxOLWarTargetCards(Number(b.dataset.olTargetMode))}`;box.querySelectorAll("[data-ol-war-target]").forEach(x=>x.onclick=()=>{const p=state.planets.find(q=>q.id===x.dataset.olWarTarget);if(p&&stxQueueInvasion(p,"Direct Rival Powers war-front objective",false)){state.selected=p;state.stxSelectedFacilityId=null;stxFocusPoint(p.x,p.y,1.2);$("rivalsModal").hidden=true;renderPlanet();showToast(`${p.name} selected as invasion objective · fleets not yet launched`)}})});
