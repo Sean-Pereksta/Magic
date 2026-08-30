@@ -12,6 +12,11 @@
         const response=await fetch("./lobby-core.html",{cache:"no-store"});
         if(!response.ok)throw new Error(`Could not load Game Hub core (${response.status}).`);
         let html=await response.text();
+        const gamesMarker='const GAMES = [';
+        const circuitboundEntry='{key:"circuitbound",title:"Circuitbound",emoji:"⚙️⚡",desc:"Build programmable machines from conductive blocks, signals, motors, gears, pistons, conveyors, winches, and linked structures.",route:"/game/circuitbound.html",category:"Builder",modes:["single"],featured:true},';
+        if(html.includes(gamesMarker)&&!html.includes('key:"circuitbound"')){
+          html=html.replace(gamesMarker,`${gamesMarker}\n      ${circuitboundEntry}`);
+        }
         const patch='<script src="./lobby-catalog-organization.js" defer><\/script>';
         html=html.includes("</body>")?html.replace("</body>",patch+"</body>"):html+patch;
         document.open();
