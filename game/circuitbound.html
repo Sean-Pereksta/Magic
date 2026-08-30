@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Circuitbound</title>
+</head>
+<body>
+<script>
+(async()=>{
+  try{
+    const parts=Array.from({length:10},(_,i)=>`part-${String(i+1).padStart(2,'0')}.b64`);
+    const chunks=await Promise.all(parts.map(async name=>{
+      const response=await fetch(`/game/circuitbound/${name}`,{cache:"no-store"});
+      if(!response.ok)throw new Error(`Could not load Circuitbound source (${name}: ${response.status}).`);
+      return response.text();
+    }));
+    const binary=atob(chunks.join("").replace(/\s+/g,""));
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    const html=new TextDecoder().decode(bytes);
+    document.open();
+    document.write(html);
+    document.close();
+  }catch(error){
+    console.error("Circuitbound loader failed",error);
+    document.body.innerHTML='<main style="font-family:system-ui;padding:32px"><h1>Circuitbound could not load</h1><p>Refresh the page to try again.</p></main>';
+  }
+})();
+</script>
+</body>
+</html>
