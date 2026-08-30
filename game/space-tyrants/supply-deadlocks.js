@@ -75,7 +75,13 @@ function stxSDBottleneck(desc){
   return entries.map(([r,a])=>({resource:r,ratio:clamp(stxSDDelivered(desc,r)/a,0,1),remaining:stxSDRemaining(desc,r),incoming:stxSDIncomingAmount(desc,r)})).sort((a,b)=>a.ratio-b.ratio||b.remaining-a.remaining)[0]||null;
 }
 function stxSDReserveFor(resource,amount,priority=1){
-  if(resource==="trained")return priority>=5?Math.max(.001,Math.min(.0025,amount*.22)):Math.max(.002,Math.min(.004,amount*.45));
+  if(resource==="trained"){
+    const floor=priority>=5?.001:.002;
+    // Once a crew request reaches the reserve-sized tail, release nearly all of it.
+    // Otherwise a 5K patrol can deterministically strand around 4K forever.
+    if(amount<=floor*1.25)return Math.min(.00004,Math.max(0,amount*.08));
+    return priority>=5?Math.max(.001,Math.min(.0025,amount*.22)):Math.max(.002,Math.min(.004,amount*.45));
+  }
   if(resource==="components"||resource==="equipment")return priority>=5?Math.max(4,amount*.12):Math.max(8,amount*.28);
   return priority>=5?Math.max(7,amount*.14):Math.max(12,amount*.3);
 }
@@ -98,8 +104,11 @@ function stxSDEnsureOrders(desc){
   const sup=stxSDEnsureSupply(desc);
   Object.entries(desc.need||{}).forEach(([r,a])=>{
     const rem=stxSDRemaining(desc,r),incoming=stxSDIncomingAmount(desc,r),desired=Math.max(0,rem-incoming),existingId=sup.orderIds[r],existing=existingId&&desc.p.orders.find(o=>o.id===existingId);
-    if(desired<=Math.max(r==="trained"?.0002:.35,Number(a)*.003)){
-      if(existing&&!state.ships.some(s=>s.orderId===existing.id)){existing.filled=existing.amount;existing.status="filled"}
+    const hasCarrier=!!(existing&&state.ships.some(s=>s.orderId===existing.id));
+    // A destroyed/despawned transport used to leave the order permanently "in transit".
+    if(existing&&existing.status==="in transit"&&!hasCarrier)existing.status="waiting";
+    if(desired<=Math.max(r==="trained"?.00002:.35,Number(a)*.003)){
+      if(existing&&!hasCarrier){existing.filled=existing.amount;existing.status="filled"}
       return;
     }
     if(existing){existing.amount=Math.max(existing.filled,existing.filled+desired);existing.priority=Math.max(existing.priority,desc.priority);if(existing.status==="filled")existing.status="waiting";return}
@@ -116,16 +125,19 @@ function stxSDAllDelivered(desc){return Object.entries(desc.need||{}).every(([r,
 /* Resource-aware freight. Crew is measured in population units (.005 = ~5K),
    so trained-personnel orders use milliscale reserves rather than the generic 10-unit floor. */
 fillOrder=function(dest,o){
-  if(!dest||!o||o.status!=="waiting"||state.ships.some(s=>s.orderId===o.id))return;
+  if(!dest||!o)return;
+  const carrier=state.ships.some(s=>s.orderId===o.id);
+  if(o.status==="in transit"&&!carrier)o.status="waiting";
+  if(o.status!=="waiting"||carrier)return;
   if(!String(o.type||"").startsWith("stx-")&&dest.orders.some(x=>String(x.type||"").startsWith("stx-")&&x.resource===o.resource&&x.status!=="filled")&&["construction","ship","crew","sensor","trade-station","reconstruction"].includes(o.type))return;
   const remaining=Math.max(0,Number(o.amount||0)-Number(o.filled||0));if(remaining<=0){o.status="filled";return}
-  const reserve=stxSDReserveFor(o.resource,remaining,o.priority||1),sources=owned(dest.owner).filter(p=>p!==dest&&!p.underAttack&&(p.stock[o.resource]||0)>reserve+Math.max(o.resource==="trained"?.0002:.4,remaining*.04));
+  const reserve=stxSDReserveFor(o.resource,remaining,o.priority||1),sourceBuffer=Math.max(o.resource==="trained"?.00002:.4,remaining*.04),sources=owned(dest.owner).filter(p=>p!==dest&&!p.underAttack&&(p.stock[o.resource]||0)>reserve+sourceBuffer);
   sources.sort((a,b)=>{
     if(o.resource==="trained")return (b.infra.training||0)-(a.infra.training||0)||dist(a,dest)-dist(b,dest);
     return ((b.stock[o.resource]||0)-reserve)-((a.stock[o.resource]||0)-reserve)||dist(a,dest)-dist(b,dest);
   });
   const source=sources[0];if(!source){o.stxFailedAttempts=Math.max(o.stxFailedAttempts||0,Math.floor((o.age||0)/15));return}
-  const cap=o.resource==="trained"?.014:70,amount=Math.min(remaining,Math.max(0,(source.stock[o.resource]||0)-reserve),cap);if(amount<=Math.max(o.resource==="trained"?.0001:.25,remaining*.01))return;
+  const cap=o.resource==="trained"?.014:70,amount=Math.min(remaining,Math.max(0,(source.stock[o.resource]||0)-reserve),cap);if(amount<=Math.max(o.resource==="trained"?.00001:.25,remaining*.01))return;
   source.stock[o.resource]-=amount;const mobilized=(empire(dest.owner)?.stxEmergencyFreightUntil||0)>state.simTime,type=o.resource==="helium"?"tanker":o.resource==="trained"||o.resource==="equipment"?"supply":"freighter",projectId=String(o.type||"").startsWith("stx-")?String(o.type).slice(4):null;
   const ship=createShip(type,source,dest,dest.owner,{cargo:{[o.resource]:amount},orderId:o.id,stxProjectId:projectId,speedBoost:mobilized?1.55:1,vesselName:vesselName(type)});
   if(!ship){source.stock[o.resource]+=amount;return}o.status="in transit";o.stxLastAttempt=state.simTime;
