@@ -2,30 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#07111a" />
   <title>Circuitbound</title>
+  <link rel="stylesheet" href="/game/circuitbound/styles.css">
 </head>
 <body>
-<script>
-(async()=>{
-  try{
-    const parts=Array.from({length:10},(_,i)=>`part-${String(i+1).padStart(2,'0')}.b64`);
-    const chunks=await Promise.all(parts.map(async name=>{
-      const response=await fetch(`/game/circuitbound/${name}`,{cache:"no-store"});
-      if(!response.ok)throw new Error(`Could not load Circuitbound source (${name}: ${response.status}).`);
-      return response.text();
-    }));
-    const binary=atob(chunks.join("").replace(/\s+/g,""));
-    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
-    const html=new TextDecoder().decode(bytes);
-    document.open();
-    document.write(html);
-    document.close();
-  }catch(error){
-    console.error("Circuitbound loader failed",error);
-    document.body.innerHTML='<main style="font-family:system-ui;padding:32px"><h1>Circuitbound could not load</h1><p>Refresh the page to try again.</p></main>';
-  }
-})();
-</script>
+  <canvas id="game" aria-label="Circuitbound game world"></canvas>
+  <div id="hud">
+    <div class="topbar panel">
+      <div class="brand"><div class="logo">⚙</div><div class="wordmark"><b>Circuitbound</b><div class="eyebrow">The world is your machine</div></div><span class="tag">ENGINEERING 02</span></div>
+      <div class="bars">
+        <div class="meter"><div class="meter-label"><span>VITALITY</span><span id="healthText">100</span></div><div class="track"><div id="healthBar" class="fill health" style="width:100%"></div></div></div>
+        <div class="meter"><div class="meter-label"><span>GRID OUTPUT</span><span id="powerText">0 / 0</span></div><div class="track"><div id="powerBar" class="fill energy" style="width:0%"></div></div></div>
+      </div>
+      <div class="top-actions"><button id="lensBtn" class="icon-btn" aria-label="Toggle Engineer's Lens">Lens [C]</button><button id="manualBtn" class="icon-btn" aria-label="Open field manual">Manual [H]</button><button id="pauseBtn" class="icon-btn" aria-label="Pause game">Ⅱ</button></div>
+    </div>
+    <aside id="missions" class="panel"><div class="eyebrow">Field commission</div><div class="mission-title">Wake the Foundry</div><div id="missionList"></div></aside>
+    <aside id="lensPanel" class="panel"><div class="eyebrow">Engineer's Lens</div><div class="mission-title" id="inspectName">Aim at a block</div><div id="inspectProps"><p style="font-size:12px;color:#9fb6ad">Functional layers and material properties are now visible.</p></div></aside>
+    <div id="toast"></div><div id="cursorLabel" class="crosshair-label"></div>
+    <div id="hotbar" class="panel" aria-label="Build hotbar"></div>
+    <div class="hint">A/D move · SPACE jump · LEFT mine/use · RIGHT place/configure · E fabricate · R rotate · C lens</div>
+    <section id="craftPanel" class="panel modal" role="dialog" aria-modal="true" aria-label="Fabricator">
+      <div class="modal-head"><div><div class="eyebrow">Portable workbench</div><h2>Fabricator</h2><p>Make parts, then combine their rules in the world.</p></div><button class="close" data-close="craftPanel">Close [E]</button></div>
+      <div id="resourceChips" class="resources"></div><div id="recipes" class="recipes"></div>
+    </section>
+    <section id="manual" class="panel modal" role="dialog" aria-modal="true" aria-label="Field manual">
+      <div class="modal-head"><div><div class="eyebrow">Issue 02</div><h2>Field Manual</h2><p>You craft components. You invent the machine.</p></div><button class="close" data-close="manual">Close [H]</button></div>
+      <div class="manual-grid"></div>
+    </section>
+    <section id="pausePanel" class="panel modal" role="dialog" aria-modal="true" aria-label="Pause menu"><div class="eyebrow">Workshop suspended</div><h2>Paused</h2><p>Your world saves automatically on this device.</p><div class="big-actions"><button id="resumeBtn">Resume</button><button id="saveBtn">Save world</button><button id="newBtn">Generate new world</button></div></section>
+    <div id="touch"><div class="touch-pad left"><button class="touch-btn" data-touch="left">◀</button><button class="touch-btn" data-touch="right">▶</button></div><div class="touch-pad right"><button class="touch-btn" data-touch="jump">↑</button><button class="touch-btn" data-touch="mine">⛏</button><button class="touch-btn" data-touch="place">＋</button></div></div>
+  </div>
+<script src="/game/circuitbound/engineering.js"></script>
+<script src="/game/circuitbound/app.js"></script>
 </body>
 </html>
