@@ -6,9 +6,10 @@
   const E=CircuitEngineering;
   let engine=null, savedEngineering=null, lensMode='ports', linkMode='new', selectedAssembly=null;
   const camera={x:0,y:0,shake:0},keys={};
+  let ledgeDrop=0;
   const player={x:9*TILE,y:20*TILE,w:15,h:34,vx:0,vy:0,onGround:false,facing:1,health:100,walk:0};
   const stats={copperMined:0,crafted:0,motionEvents:0,coreFound:false,coreReached:false,started:Date.now()};
-  const STARTING={dirt:28,stone:24,wood:18,copper:12,iron:10,crystal:5,copperBlock:6,ironBlock:4,wire:16,signal:12,generator:1,switch:1,sensor:1,motor:1,shaft:8,gear:2,piston:1,lamp:2,conveyor:6,winch:1,platform:12};
+  const STARTING={dirt:28,stone:24,wood:18,copper:12,iron:10,crystal:5,copperBlock:6,ironBlock:4,wire:16,signal:12,generator:1,switch:1,sensor:1,motor:1,shaft:8,gear:2,piston:1,lamp:2,conveyor:6,winch:1,platform:12,door:2,ladder:8,ledge:8};
   const inventory={...STARTING};
   const T={AIR:0,GRASS:1,DIRT:2,STONE:3,WOOD:4,COPPER:5,IRON:6,CRYSTAL:7,OBSIDIAN:8,PLANK:9,COPPER_BLOCK:10,IRON_BLOCK:11,WIRE:12,SIGNAL:13,GENERATOR:14,SWITCH:15,SENSOR:16,MOTOR:17,SHAFT:18,GEAR:19,PISTON:20,LAMP:21,CONVEYOR:22,WINCH:23,PLATFORM:24,CORE:25};
   const defs={
@@ -36,6 +37,22 @@
     {key:'winch',name:'Winch',icon:'◎',out:1,cost:{iron:4,copper:2},desc:'Raises linked structures'}
   ];
   E.install(T,defs,items,recipes);
+  // Player-scale construction components live after the engineering catalog IDs.
+  const nextCustomTile=Math.max(...Object.values(T).filter(Number.isInteger))+1;
+  T.DOOR=nextCustomTile;T.LADDER=nextCustomTile+1;T.LEDGE=nextCustomTile+2;
+  defs[T.DOOR]={name:'Wood Door',solid:true,door:true,hard:.55,drop:'door',weight:2,strength:4,conduct:0};
+  defs[T.LADDER]={name:'Ladder',solid:false,ladder:true,hard:.35,drop:'ladder',weight:1,strength:2,conduct:0};
+  defs[T.LEDGE]={name:'Wood Ledge',solid:true,platform:true,ledge:true,hard:.35,drop:'ledge',weight:1,strength:3,conduct:0};
+  items.push(
+    {key:'door',tile:T.DOOR,name:'Door',icon:'▯',color:'#c88a50'},
+    {key:'ladder',tile:T.LADDER,name:'Ladder',icon:'H',color:'#d5a665'},
+    {key:'ledge',tile:T.LEDGE,name:'Ledge',icon:'▔',color:'#c89557'}
+  );
+  recipes.push(
+    {key:'door',name:'Wood Door',icon:'▯',out:1,cost:{wood:4,iron:1},desc:'Right-click to open or close',category:'structure'},
+    {key:'ladder',name:'Ladder',icon:'H',out:4,cost:{wood:2},desc:'Climb up or down with W/S',category:'structure'},
+    {key:'ledge',name:'Wood Ledge',icon:'▔',out:4,cost:{wood:1},desc:'Jump through; press down to drop through',category:'structure'}
+  );
   const palette={dirt:'#78543a',stone:'#647176',wood:'#a67240',copper:'#c77743',iron:'#8fa0a1',crystal:'#62e2e0',obsidian:'#352d49'};
   const missionDefs=[['copperMined','Mine 8 copper ore'],['crafted','Fabricate any machine part'],['grid','Power a crystal lamp'],['motionEvents','Move a linked structure'],['coreReached','Power the eastern Foundry Core']];
 
@@ -81,8 +98,11 @@
     else if(id===T.LAMP){ctx.fillStyle='#263c41';ctx.fillRect(7,16,10,6);const on=m&&m.powered&&m.signalOK;if(on){const g=ctx.createRadialGradient(12,10,1,12,10,18);g.addColorStop(0,'#fff9b5');g.addColorStop(1,'rgba(255,214,70,0)');ctx.fillStyle=g;ctx.fillRect(-8,-10,40,40)}ctx.fillStyle=on?'#fff172':'#71888a';ctx.fillRect(6,4,12,13);ctx.fillStyle=on?'#fffbd2':'#9bb0ad';ctx.fillRect(9,6,6,8)}
     else if(id===T.CONVEYOR){ctx.fillStyle='#354b50';ctx.fillRect(0,7,24,13);ctx.fillStyle=m&&m.running?'#63d6c7':'#789092';ctx.fillRect(0,5,24,5);ctx.fillStyle='#18292e';for(let q=3;q<24;q+=7)ctx.fillRect(q,12,3,5)}
     else if(id===T.WINCH){machineBox('#4b5552');ctx.strokeStyle=m&&m.running?'#f0cf70':'#a1aeaa';ctx.lineWidth=3;ctx.beginPath();ctx.arc(12,12,7,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#33291f';ctx.fillRect(10,10,4,14)}
+    else if(id===T.DOOR){ctx.fillStyle='#503724';ctx.fillRect(1,1,22,22);if(m&&m.open){ctx.fillStyle='#b97b43';ctx.fillRect(18,2,4,20);ctx.fillStyle='#f0c36c';ctx.fillRect(18,11,2,2)}else{ctx.fillStyle='#a96f3e';ctx.fillRect(3,2,18,20);ctx.fillStyle='#754925';ctx.fillRect(6,5,11,5);ctx.fillRect(6,13,11,6);ctx.fillStyle='#f0c36c';ctx.fillRect(17,11,2,2)}}
+    else if(id===T.LADDER){ctx.fillStyle='#b57b42';ctx.fillRect(4,0,3,24);ctx.fillRect(17,0,3,24);ctx.fillStyle='#d8a65d';for(let q=3;q<24;q+=6)ctx.fillRect(5,q,14,2)}
+    else if(id===T.LEDGE){ctx.fillStyle='#644327';ctx.fillRect(0,7,24,5);ctx.fillStyle='#d5a260';ctx.fillRect(0,5,24,3);ctx.fillStyle='#9b6838';ctx.fillRect(3,12,3,4);ctx.fillRect(18,12,3,4)}
     else if(id===T.CORE){ctx.fillStyle='#172f35';ctx.fillRect(0,0,24,24);ctx.strokeStyle=m&&m.powered?'#fff174':'#5de4df';ctx.lineWidth=2;ctx.strokeRect(3,3,18,18);ctx.save();ctx.translate(12,12);ctx.rotate(gameTime*.04);ctx.fillStyle=m&&m.powered?'#fff5a2':'#5de4df';ctx.fillRect(-3,-9,6,18);ctx.fillRect(-9,-3,18,6);ctx.restore()}
-    if(id>=26){machineBox(E.COLORS[defs[id].kind]);ctx.fillStyle='#10212b';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(defs[id].icon,12,16);ctx.textAlign='left'}
+    if(id>=26&&defs[id].kind){machineBox(E.COLORS[defs[id].kind]);ctx.fillStyle='#10212b';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(defs[id].icon,12,16);ctx.textAlign='left'}
     if(m&&m.linked&&lens){ctx.strokeStyle=assemblyColor(m.assembly);ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(1,1,22,22);ctx.setLineDash([])}if(lens&&m){if(m.powered){ctx.strokeStyle='#fff26a';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m.active){ctx.fillStyle='#ff5454';ctx.fillRect(9,1,6,3)}if(m.running){ctx.fillStyle='#5ff1dc';ctx.fillRect(1,19,22,3)}if(m.overload){ctx.fillStyle=gameTime%4<2?'#ff4d35':'#fff';ctx.fillRect(2,2,4,4);ctx.fillRect(18,17,3,3)}}drawEngineeringOverlay(id,m||{},x,y);ctx.restore();
     function machineBox(c){ctx.fillStyle=c;ctx.fillRect(1,2,22,20);ctx.fillStyle='#12272d';ctx.fillRect(3,4,3,3);ctx.fillRect(18,4,3,3);ctx.fillRect(3,17,3,3);ctx.fillRect(18,17,3,3)}
   }
@@ -92,8 +112,56 @@
   function drawTarget(){if(craftOpen||manualOpen||paused)return;const p=tileRect(pointer.tx,pointer.ty),reachable=distanceToTile(pointer.tx,pointer.ty)<6;ctx.strokeStyle=reachable?'rgba(255,245,180,.9)':'rgba(255,90,70,.7)';ctx.lineWidth=1;ctx.strokeRect(Math.floor(p.x)+.5,Math.floor(p.y)+.5,TILE-1,TILE-1)}
   function render(){drawSky();drawWorld();drawDrops();drawPlayer();drawTarget();if(camera.shake>0)camera.shake*=.88}
 
-  function rectCollides(x,y,w,h,dy=0){const left=Math.floor(x/TILE),right=Math.floor((x+w-1)/TILE),top=Math.floor(y/TILE),bottom=Math.floor((y+h-1)/TILE);for(let ty=top;ty<=bottom;ty++)for(let tx=left;tx<=right;tx++){const id=get(tx,ty),d=defs[id];if(d&&d.solid){if(d.platform&&dy<0)continue;if(d.platform&&y+h-dy>ty*TILE+5)continue;return true}}return false}
-  function movePlayer(dt){const dir=(keys.KeyA||keys.ArrowLeft||keys.touchleft?-1:0)+(keys.KeyD||keys.ArrowRight||keys.touchright?1:0),accel=player.onGround?1150:650;player.vx+=dir*accel*dt;player.vx*=Math.pow(player.onGround?0.0008:0.04,dt);player.vx=Math.max(-180,Math.min(180,player.vx));if(dir){player.facing=dir;player.walk+=dt*10}if((keys.Space||keys.KeyW||keys.ArrowUp||keys.touchjump)&&player.onGround){player.vy=-335;player.onGround=false;keys.Space=keys.KeyW=keys.ArrowUp=keys.touchjump=false}player.vy=Math.min(570,player.vy+920*dt);let nx=player.x+player.vx*dt;if(!rectCollides(nx,player.y,player.w,player.h,0))player.x=nx;else{const step=Math.sign(player.vx);for(let i=0;i<Math.abs(player.vx*dt);i++)if(!rectCollides(player.x+step,player.y,player.w,player.h,0))player.x+=step;else break;player.vx=0}player.onGround=false;let ny=player.y+player.vy*dt;if(!rectCollides(player.x,ny,player.w,player.h,player.vy))player.y=ny;else{const step=Math.sign(player.vy);for(let i=0;i<Math.abs(player.vy*dt);i++)if(!rectCollides(player.x,player.y+step,player.w,player.h,player.vy))player.y+=step;else break;if(player.vy>0)player.onGround=true;player.vy=0}if(player.y>WORLD_H*TILE){player.health-=10;player.x=9*TILE;player.y=(groundAt(9)-4)*TILE;player.vy=0;showToast('Recovered at the field camp')}player.x=Math.max(TILE,Math.min(WORLD_W*TILE-player.w-TILE,player.x));if(Math.abs(player.x/TILE-205)<4&&!stats.coreFound){stats.coreFound=true;showToast('Foundry Core found — connect a 6-power grid')}applyConveyors(dt);camera.x+=(player.x+player.w/2-vw*.5-camera.x)*Math.min(1,dt*6);camera.y+=(player.y+player.h/2-vh*.55-camera.y)*Math.min(1,dt*5);camera.x=Math.max(0,Math.min(WORLD_W*TILE-vw,camera.x));camera.y=Math.max(0,Math.min(WORLD_H*TILE-vh,camera.y))}
+  function rectCollides(x,y,w,h,dy=0){
+    const left=Math.floor(x/TILE),right=Math.floor((x+w-1)/TILE),top=Math.floor(y/TILE),bottom=Math.floor((y+h-1)/TILE);
+    for(let ty=top;ty<=bottom;ty++)for(let tx=left;tx<=right;tx++){
+      const id=get(tx,ty),d=defs[id],m=meta.get(idx(tx,ty));
+      if(d&&d.solid){
+        if(d.door&&m?.open)continue;
+        if(d.platform&&dy<0)continue;
+        if(d.platform&&ledgeDrop>0)continue;
+        if(d.platform&&y+h-dy>ty*TILE+5)continue;
+        return true;
+      }
+    }
+    return false;
+  }
+  function playerTouchesLadder(){
+    const tx=Math.floor((player.x+player.w/2)/TILE),top=Math.floor((player.y+3)/TILE),bottom=Math.floor((player.y+player.h-3)/TILE);
+    for(let ty=top;ty<=bottom;ty++)if(defs[get(tx,ty)]?.ladder)return true;
+    return false;
+  }
+  function standingOnPlatform(){
+    const ty=Math.floor((player.y+player.h+2)/TILE),left=Math.floor((player.x+2)/TILE),right=Math.floor((player.x+player.w-3)/TILE);
+    for(let tx=left;tx<=right;tx++)if(defs[get(tx,ty)]?.platform)return true;
+    return false;
+  }
+  function movePlayer(dt){
+    const left=keys.KeyA||keys.ArrowLeft||keys.touchleft,right=keys.KeyD||keys.ArrowRight||keys.touchright;
+    const up=keys.KeyW||keys.ArrowUp||keys.touchjump,down=keys.KeyS||keys.ArrowDown;
+    const dir=(left?-1:0)+(right?1:0),onLadder=playerTouchesLadder(),accel=player.onGround?1150:650;
+    ledgeDrop=Math.max(0,ledgeDrop-dt);
+    if(down&&player.onGround&&!onLadder&&standingOnPlatform()){ledgeDrop=.22;player.onGround=false;player.y+=3;player.vy=Math.max(player.vy,70)}
+    if(onLadder&&down)ledgeDrop=Math.max(ledgeDrop,.12);
+    player.vx+=dir*accel*dt;player.vx*=Math.pow(player.onGround?0.0008:0.04,dt);player.vx=Math.max(-180,Math.min(180,player.vx));
+    if(dir){player.facing=dir;player.walk+=dt*10}
+    if(onLadder){
+      if(keys.Space){player.vy=-270;player.onGround=false;keys.Space=false}
+      else if(up||down){player.vy=(down?1:-1)*125;player.onGround=false}
+      else{player.vy*=Math.pow(.002,dt);if(Math.abs(player.vy)<3)player.vy=0}
+    }else{
+      if((keys.Space||keys.KeyW||keys.ArrowUp||keys.touchjump)&&player.onGround){player.vy=-335;player.onGround=false;keys.Space=keys.KeyW=keys.ArrowUp=keys.touchjump=false}
+      player.vy=Math.min(570,player.vy+920*dt);
+    }
+    let nx=player.x+player.vx*dt;
+    if(!rectCollides(nx,player.y,player.w,player.h,0))player.x=nx;else{const step=Math.sign(player.vx);for(let i=0;i<Math.abs(player.vx*dt);i++)if(!rectCollides(player.x+step,player.y,player.w,player.h,0))player.x+=step;else break;player.vx=0}
+    player.onGround=false;let ny=player.y+player.vy*dt;
+    if(!rectCollides(player.x,ny,player.w,player.h,player.vy))player.y=ny;else{const step=Math.sign(player.vy);for(let i=0;i<Math.abs(player.vy*dt);i++)if(!rectCollides(player.x,player.y+step,player.w,player.h,player.vy))player.y+=step;else break;if(player.vy>0)player.onGround=true;player.vy=0}
+    if(player.y>WORLD_H*TILE){player.health-=10;player.x=9*TILE;player.y=(groundAt(9)-4)*TILE;player.vy=0;showToast('Recovered at the field camp')}
+    player.x=Math.max(TILE,Math.min(WORLD_W*TILE-player.w-TILE,player.x));
+    if(Math.abs(player.x/TILE-205)<4&&!stats.coreFound){stats.coreFound=true;showToast('Foundry Core found — connect a 6-power grid')}
+    applyConveyors(dt);camera.x+=(player.x+player.w/2-vw*.5-camera.x)*Math.min(1,dt*6);camera.y+=(player.y+player.h/2-vh*.55-camera.y)*Math.min(1,dt*5);camera.x=Math.max(0,Math.min(WORLD_W*TILE-vw,camera.x));camera.y=Math.max(0,Math.min(WORLD_H*TILE-vh,camera.y))
+  }
   function applyConveyors(dt){const footX=Math.floor((player.x+player.w/2)/TILE),footY=Math.floor((player.y+player.h+2)/TILE),m=meta.get(idx(footX,footY));if(get(footX,footY)===T.CONVEYOR&&m&&m.running){const nx=player.x+((m.rot||0)===2?-1:1)*Math.abs(m.speed||1)*75*dt;if(!rectCollides(nx,player.y,player.w,player.h))player.x=nx}}
   function distanceToTile(x,y){return Math.hypot(x+.5-(player.x+player.w/2)/TILE,y+.5-(player.y+player.h/2)/TILE)}
   function updatePointer(e){const r=canvas.getBoundingClientRect();pointer.x=(e.clientX-r.left)*vw/r.width;pointer.y=(e.clientY-r.top)*vh/r.height;pointer.wx=pointer.x+camera.x;pointer.wy=pointer.y+camera.y;pointer.tx=Math.floor(pointer.wx/TILE);pointer.ty=Math.floor(pointer.wy/TILE);updateInspector()}
@@ -109,7 +177,7 @@
     set(x,y,item.tile,defaultMeta(item.tile));inventory[item.key]--;renderHotbar();
     showToast(`${item.name} placed — ${['right','down','left','up'][rotation]}`);simulateNetworks();
   }
-  function defaultMeta(id){const m={rot:rotation,on:false,powered:false,active:false,running:false,linked:false};if(id===T.GEAR)m.mode=1;return m}
+  function defaultMeta(id){const m={rot:rotation,on:false,powered:false,active:false,running:false,linked:false};if(id===T.GEAR)m.mode=1;if(id===T.DOOR)m.open=false;return m}
   function playerOverlapsTile(x,y){return player.x<x*TILE+TILE&&player.x+player.w>x*TILE&&player.y<y*TILE+TILE&&player.y+player.h>y*TILE}
   function mineStep(dt){
     if(!pointer.down||pointer.button!==0||items[selected].key==='link'||craftOpen||paused)return;
@@ -199,6 +267,7 @@
   function assemblyColor(id){return `hsl(${((id||1)*137.5)%360} 80% 70%)`}
   function configureComponent(id,k,m){
     const mode=()=>{engine.revision++;simulateNetworks();updateInspector();return true};
+    if(id===T.DOOR){m.open=!m.open;meta.set(k,m);showToast(m.open?'Door opened':'Door closed');return mode()}
     if(id===T.SWITCH){m.on=!m.on;showToast(m.on?'Switch ON':'Switch OFF');return mode()}
     if(id===T.GEAR){m.mode=((m.mode??1)+1)%3;showToast(['Torque: ½ speed, 2× torque','Balanced: 1:1','Speed: 2× speed, ½ torque'][m.mode]);return mode()}
     if(id===T.TIMER||id===T.PULSE){m.delay=E.DELAYS[(E.DELAYS.indexOf(m.delay||1)+1)%E.DELAYS.length];m.timer=m.phase=0;showToast(`${defs[id].name}: ${m.delay}s`);return mode()}
@@ -312,7 +381,7 @@
     document.getElementById('hud').append(tools);
     const card=(title,text)=>{const el=document.createElement('div');el.className='manual-card';const h=document.createElement('h3'),p=document.createElement('p');h.textContent=title;p.textContent=text;el.append(h,p);return el};
     const manual=document.querySelector('.manual-grid');manual.replaceChildren(
-      card('Explore and fabricate','A/D moves, Space jumps. Left click mines; walk near dropped resources to collect. E opens the Fabricator. Crafting selects the new part. Right click places; R rotates before placing. Shift+R rotates the block under the cursor. The hotbar scrolls horizontally.'),
+      card('Explore and fabricate','A/D moves, Space jumps. W/S climbs ladders. Jump upward through ledges and press S/Down while standing on one to drop through. Right-click a door to open or close it. Left click mines; E opens the categorized, searchable Fabricator. Crafting selects the new part. Right click places; R rotates before placing. Shift+R rotates the block under the cursor.'),
       card('Read the ports','C equips the Lens. V or the View button changes modes. Arrows show input/output; squares are two-way. Yellow: electricity. Red: signals. Cyan: rotation. Green: items. Purple: joint. Matching ports must face each other. Motor rear = power, top = enable, front = shaft.'),
       card('Logic and memory','Default gate orientation: rear A, top B, front output. NOT inverts A. Latch: rear SET, top RESET (reset wins). Toggle flips on each rising edge. Counter counts rising edges, top resets. Right-click target 1–15. Unconnected gate inputs are OFF; a NOT with no input outputs ON.'),
       card('Timing','Timer requires a continuously high input for its selected delay. Pulse Generator repeats once per delay; rear input optionally enables it. Right-click cycles 0.25 / 0.5 / 1 / 2 / 5 / 10 seconds. Simulation uses 50ms steps. Insert a latch/toggle for feedback; unstable combinational loops are flagged.'),
@@ -325,11 +394,41 @@
       card('Try a sensor door','Lay a generator behind a motor, then a shaft into a piston. Place a sensor above the motor, rotated downward to face its enable port. Link a lightweight door in front of the piston, separately from the drive. For automatic return, power the motor continuously and connect the sensor to the piston enable instead.'),
       card('Try physical logistics','Drive a conveyor from below with an upward-facing motor. Face its output into a splitter and two storage bins with matching ports. Drop items to see alternating routing. Insert a filter to allow one material; rejected items wait upstream. The Item Lens explains blockage. Later expansions add sorting routers, drills, vehicles, factories, blueprints and fluids.')
     );
-    document.querySelector('.hint').textContent='A/D move · SPACE jump · E fabricate · R rotate · C lens · V view · L link mode · F take · X drop';
+    document.querySelector('.hint').textContent='A/D move · SPACE jump · W/S ladders · DOWN drop ledge · RIGHT door/place · E fabricate · R rotate · C lens';
   }
 
   function renderHotbar(){const el=document.getElementById('hotbar');el.innerHTML='';items.forEach((it,i)=>{const b=document.createElement('button');b.className='slot'+(i===selected?' selected':'');const key=i<9?i+1:i===9?'0':'';b.innerHTML=`<span class="key">${key}</span><span class="mini" style="color:${it.color}">${it.icon}</span><span class="count">${it.key==='link'?'∞':inventory[it.key]||0}</span><span class="name">${it.name}</span>`;b.title=it.name;b.setAttribute('aria-label',it.name);b.onclick=()=>{selected=i;renderHotbar();showToast(it.name)};el.appendChild(b)})}
-  function renderCraft(){const resources=['dirt','stone','wood','copper','iron','crystal'];document.getElementById('resourceChips').innerHTML=resources.map(k=>`<span class="chip" style="color:${palette[k]||'#fff'}">${k.toUpperCase()} ${inventory[k]||0}</span>`).join('');const el=document.getElementById('recipes');el.innerHTML='';recipes.forEach(r=>{const can=Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v),b=document.createElement('button');b.className='recipe';b.disabled=!can;b.innerHTML=`<span class="recipe-icon">${r.icon}</span><span><b>${r.name}</b><small>${Object.entries(r.cost).map(([k,v])=>`${v} ${k}`).join(' · ')}<br>${r.desc}</small></span><span class="make">+${r.out}</span>`;b.onclick=()=>{craft(r);selected=items.findIndex(i=>i.key===r.key);renderHotbar()};el.appendChild(b)})}
+  const craftState={category:'all',query:'',affordable:false};
+  const craftCategories=['all','structure','power','logic','motion','logistics'];
+  function recipeCategory(r){
+    if(r.category)return r.category;
+    const structure=new Set(['platform','copperBlock','ironBlock','frame','beam','door','ladder','ledge']);
+    const power=new Set(['wire','generator','lamp']);
+    const logic=new Set(['signal','switch','sensor','and','or','not','xor','nand','nor','timer','pulse','toggle','latch','counter','signalSplit']);
+    const motion=new Set(['motor','shaft','gear','piston','winch','clutch','belt','pulley','bevel','smallGear','largeGear','bearing','hinge']);
+    const logistics=new Set(['conveyor','hopper','storage','splitter','filter']);
+    if(structure.has(r.key))return 'structure';if(power.has(r.key))return 'power';if(logic.has(r.key))return 'logic';if(motion.has(r.key))return 'motion';if(logistics.has(r.key))return 'logistics';return 'structure';
+  }
+  function ensureCraftControls(){
+    if(document.getElementById('craftSearch'))return;
+    const controls=document.createElement('div');controls.className='craft-controls';
+    const search=document.createElement('input');search.id='craftSearch';search.type='search';search.placeholder='Search parts, uses, or materials…';search.autocomplete='off';search.addEventListener('input',()=>{craftState.query=search.value.trim().toLowerCase();renderCraft()});
+    const tabs=document.createElement('div');tabs.className='craft-tabs';
+    for(const category of craftCategories){const b=document.createElement('button');b.type='button';b.dataset.craftCategory=category;b.textContent=category==='all'?'All':category[0].toUpperCase()+category.slice(1);b.onclick=()=>{craftState.category=category;renderCraft()};tabs.appendChild(b)}
+    const filter=document.createElement('label');filter.className='craft-affordable';const cb=document.createElement('input');cb.type='checkbox';cb.onchange=()=>{craftState.affordable=cb.checked;renderCraft()};filter.append(cb,document.createTextNode(' Can craft now'));
+    const count=document.createElement('span');count.id='craftResultCount';count.className='craft-result-count';
+    controls.append(search,tabs,filter,count);document.getElementById('recipes').before(controls);
+  }
+  function renderCraft(){
+    ensureCraftControls();
+    const resources=['dirt','stone','wood','copper','iron','crystal'];document.getElementById('resourceChips').innerHTML=resources.map(k=>`<span class="chip" style="color:${palette[k]||'#fff'}">${k.toUpperCase()} ${inventory[k]||0}</span>`).join('');
+    document.querySelectorAll('[data-craft-category]').forEach(b=>b.classList.toggle('active',b.dataset.craftCategory===craftState.category));
+    const query=craftState.query,visible=recipes.filter(r=>{const can=Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v),category=recipeCategory(r),haystack=`${r.name} ${r.desc} ${Object.keys(r.cost).join(' ')} ${category}`.toLowerCase();return(craftState.category==='all'||category===craftState.category)&&(!query||haystack.includes(query))&&(!craftState.affordable||can)});
+    document.getElementById('craftResultCount').textContent=`${visible.length} of ${recipes.length} parts`;
+    const el=document.getElementById('recipes');el.innerHTML='';
+    if(!visible.length){const empty=document.createElement('div');empty.className='craft-empty';empty.textContent='No parts match those filters.';el.appendChild(empty);return}
+    visible.forEach(r=>{const can=Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v),b=document.createElement('button'),category=recipeCategory(r);b.className='recipe';b.disabled=!can;b.innerHTML=`<span class="recipe-icon">${r.icon}</span><span><span class="recipe-category">${category}</span><b>${r.name}</b><small>${Object.entries(r.cost).map(([k,v])=>`${v} ${k}`).join(' · ')}<br>${r.desc}</small></span><span class="make">+${r.out}</span>`;b.onclick=()=>{craft(r);selected=items.findIndex(i=>i.key===r.key);renderHotbar()};el.appendChild(b)});
+  }
   function craft(r){if(!Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v))return;for(const [k,v] of Object.entries(r.cost))inventory[k]-=v;inventory[r.key]=(inventory[r.key]||0)+r.out;stats.crafted++;renderCraft();renderHotbar();showToast(`${r.name} fabricated ×${r.out}`)}
   function renderMissions(){const grid=Array.from(meta.entries()).some(([k,m])=>world[k]===T.LAMP&&m.powered&&m.signalOK);let currentFound=false;document.getElementById('missionList').innerHTML=missionDefs.map(([key,label],i)=>{const done=key==='grid'?grid:key==='copperMined'?stats.copperMined>=8:key==='crafted'?stats.crafted>=1:key==='motionEvents'?stats.motionEvents>=1:!!stats[key],current=!done&&!currentFound;if(current)currentFound=true;return`<div class="mission ${done?'done':current?'current':''}"><span class="check">${done?'✓':i+1}</span><span>${label}${key==='copperMined'&&!done?` (${Math.min(8,stats.copperMined)}/8)`:''}</span></div>`}).join('')}
   function updatePowerHud(supply,load){document.getElementById('powerText').textContent=`${load} / ${supply}`;document.getElementById('powerBar').style.width=(supply?Math.min(100,load/supply*100):0)+'%'}
