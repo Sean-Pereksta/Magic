@@ -28,7 +28,11 @@ test('official save encrypts both base journey and expansion state without stori
   assert.match(source,/localStorage\.getItem\(SAVE_KEY\)/);
   assert.match(source,/localStorage\.getItem\(EXPANSION_SAVE_KEY\)/);
   assert.match(source,/JSON\.stringify\(\{format:AW_CLOUD_FORMAT,base,expansion\}\)/);
-  assert.doesNotMatch(source,/password\s*:/);
+  const recordStart=source.indexOf('firebase.setDoc(ref,{');
+  const recordEnd=source.indexOf('});',recordStart);
+  const firestoreRecord=source.slice(recordStart,recordEnd);
+  assert.ok(recordStart>=0&&recordEnd>recordStart);
+  assert.doesNotMatch(firestoreRecord,/\bpassword\b/i);
 });
 
 test('cloud reopen restores both save layers and exposes official save controls',()=>{
