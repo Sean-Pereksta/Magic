@@ -107,7 +107,7 @@ function stxSDEnsureOrders(desc){
     const hasCarrier=!!(existing&&state.ships.some(s=>s.orderId===existing.id));
     // A destroyed/despawned transport used to leave the order permanently "in transit".
     if(existing&&existing.status==="in transit"&&!hasCarrier)existing.status="waiting";
-    if(desired<=Math.max(r==="trained"?.00002:.35,Number(a)*.003)){
+    if(desired<=(r==="trained"?1e-9:1e-6)){
       if(existing&&!hasCarrier){existing.filled=existing.amount;existing.status="filled"}
       return;
     }
@@ -147,7 +147,8 @@ fillOrder=function(dest,o){
    not in one all-or-nothing charge at completion. */
 tickOrbitalProject=function(p,dt){
   const q=p.orbitalProject;if(!q)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;
-  p.stock.components+=p.infra.factory*.08*(.65+p.factoryEfficiency*.35)*dt;
+  // Construction consumes the manufacturing output already allocated above.
+  // It must not create a second, input-free stream of Components.
   stxSDEnsureOrders(d);stxSDAdvance(d,dt,orbitalProjectRate(p,q));
   if(q.progress<.999||!stxSDAllDelivered(d))return;
   q.progress=1;p.orbitals[q.type]=(p.orbitals[q.type]||0)+1;p.garrison+=q.type==="base"?22:7;p.orbitalProject=null;p.mandateGlow=1;state.effects.push({type:"launch",x:p.x,y:p.y,life:2,maxLife:2,size:34,color:empire(p.owner).color});

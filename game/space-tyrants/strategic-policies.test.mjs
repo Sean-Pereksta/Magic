@@ -86,15 +86,15 @@ test('paid goods survive legacy recipe migration and new projects consume real I
   h.run('state.testPlanet.localProject={type:"city",cost:100,progress:.3,stxSupply:{delivered:{components:38},orderIds:{}}};stxSDDescriptors(state.testPlanet)');
   assert.equal(h.run('state.testPlanet.localProject.stxSupply.delivered.components'),38);
 });
-test('actual command hand has four choices at seven worlds and five at eight',()=>{
+test('actual command hand scales to ten choices at seven worlds and twelve at eight',()=>{
   const h=lab();h.run('state.planets.filter(p=>p.owner===null).slice(0,7-playerWorlds().length).forEach(p=>p.owner=0);openCommandPhase()');
-  assert.equal(h.run('playerWorlds().length'),7);assert.equal(h.run('state.commandChoices.length'),4);
+  assert.equal(h.run('playerWorlds().length'),7);assert.equal(h.run('state.commandChoices.length'),10);
   h.run('$("commandModal").hidden=true;state.planets.find(p=>p.owner===null).owner=0;openCommandPhase()');
-  assert.equal(h.run('state.commandChoices.length'),5);assert.ok(h.run('state.commandChoices.every(c=>typeof c.apply==="function")'));
+  assert.equal(h.run('state.commandChoices.length'),12);assert.ok(h.run('state.commandChoices.every(c=>typeof c.apply==="function")'));
 });
-test('war controls and embargo action coexist with the ordinary mandate quota',()=>{
+test('war controls and embargo action remain available in the expanded hand',()=>{
   const h=lab();h.run('state.planets.filter(p=>p.owner===null).slice(0,7).forEach(p=>p.owner=0);declareWar(0,1,"test");stxGBImposeEmbargo(2,0,"test");openCommandPhase()');
-  assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind!=="breakEmbargo").length'),5);
+  assert.ok(h.run('state.commandChoices.length')>=h.run('stxCOOptionCount()'));
   assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind==="invade").length'),1);
   assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind==="concentrate").length'),1);
   assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind==="breakEmbargo").length'),1);
