@@ -69,6 +69,6 @@ Run `npm run test:space-tyrants` for the complete regression suite. The economy 
 
 The shared harness now supplies the Web APIs needed by the existing cloud-save module and supports deterministic campaign seeds. Stale tests referring to the former four/five-choice command hands and pre-cloud-save loader order were updated to the current runtime behavior; command-hand implementation is unchanged.
 
-Run `node game/space-tyrants/economy-campaigns.mjs 1800 docs/space-tyrants/economy-campaign-results.json` to reproduce three 30-minute campaigns. The runner uses the full simulation, including AI and combat. Its player controller only selects existing project priorities; it adds no resources, population, tech or speed advantages. It records phase snapshots, shortages, completions, population, production, freight, fleet power and station tiers.
+Run `node game/space-tyrants/economy-campaigns.mjs 1800` to reproduce three 30-minute campaigns and print a compact summary without creating a report file. The runner uses the full simulation, including AI and combat. Its player controller only selects existing project priorities; it adds no resources, population, tech or speed advantages.
 
-Campaign findings and limitations are recorded in [economy-balance-results.md](economy-balance-results.md). These simulations validate accounting and expose balance pressure; they are not a substitute for human strategic play or browser performance testing. No browser/HTML preview, deployment or merge is part of this change.
+These simulations validate accounting and expose balance pressure; they are not a substitute for human strategic play or browser performance testing. No browser/HTML preview, deployment or merge is part of this change.
