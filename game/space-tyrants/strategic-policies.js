@@ -158,7 +158,7 @@ tickPlanet=function(p,dt){
 function stxPolicyResearch(p,dt){
   if(!p.infra.research)return;
   const e=empire(p.owner),rate=stxPolicyValue(p.owner,"research",p),work=p.infra.research*Math.max(.1,p.efficiency||1)*rate;
-  const paid=stxPolicyPay(p,{rare:work*.012,equipment:work*.007},dt);
+  const paid=stxPolicyPay(p,{rare:work*.012,equipment:work*.007,credits:work*.004},dt);
   if(p.stock.rare<3)addOrder(p,"research","rare",14,2,"Research Rare Earth supply");
   if(p.stock.equipment<2)addOrder(p,"research","equipment",10,2,"Research Equipment supply");
   const military=["weapons","carriers","propulsion"],civil=["extraction","automation","commerce","medicine","orbital"];

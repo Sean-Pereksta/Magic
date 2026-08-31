@@ -2,8 +2,9 @@
 // as the shipping loader. No HTML preview or browser is generated.
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {webcrypto} from 'node:crypto';
 
-export function createSimulation(){
+export function createSimulation({seed=937145}={}){
   const elements=new Map();
   const paint=new Proxy({measureText:s=>({width:String(s).length*7}),createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(t,k)=>k in t?t[k]:(()=>{}),set:(t,k,v)=>(t[k]=v,true)});
   const make=(tag='div',id='')=>{
@@ -19,6 +20,9 @@ export function createSimulation(){
   for(const [,id] of core.matchAll(/id="([^"]+)"/g))elements.set(id,make('div',id));
   const doc={getElementById:id=>elements.get(id)||null,createElement:tag=>make(tag),head:make('head'),body:make('body'),documentElement:make('html'),querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}};
   const storage=new Map(),sandbox={console,document:doc,innerWidth:1200,innerHeight:800,devicePixelRatio:1,performance:{now:()=>0},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},requestAnimationFrame(){},cancelAnimationFrame(){},setTimeout(){},clearTimeout(){},setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=>'',overflowY:'auto'}),ResizeObserver:class{observe(){}},MutationObserver:class{observe(){}},navigator:{maxTouchPoints:0},location:{search:''},URLSearchParams};
+  Object.assign(sandbox,{TextEncoder,TextDecoder,crypto:webcrypto,Uint8Array,ArrayBuffer,btoa,atob});
+  const seededMath=Object.create(Math);seededMath.random=()=>.5;
+  Object.assign(sandbox,{Math:seededMath,Date:class extends Date{static now(){return seed}}});
   sandbox.window=sandbox;sandbox.globalThis=sandbox;
   const loader=readFileSync(new URL('../space-tyrants.html',import.meta.url),'utf8'),paths=[...loader.matchAll(/'\.\/space-tyrants\/([^']+\.js)'/g)].map(x=>x[1]);
   const patches=paths.map(p=>readFileSync(new URL(p,import.meta.url),'utf8')).join('\n');

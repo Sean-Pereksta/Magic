@@ -7,7 +7,7 @@
 // sponsoring planet remains the compatibility anchor for the older economy.
 
 const STX_DS_VERSION=1;
-const STX_DS_MAX_BASES_PER_OWNER=6;
+const STX_DS_MAX_BASES_PER_OWNER=32; // Technical bound; supply and capital constrain expansion.
 const STX_DS_MAX_WRECKS=36;
 const STX_DS_VISIBLE_TRAFFIC=5;
 const STX_DS_MILITARY_INDUSTRY_UNLOCK=5;
