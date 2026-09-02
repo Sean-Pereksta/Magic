@@ -13,11 +13,18 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out Warrealms files
         uses: actions/checkout@v4
         with:
           ref: warrealms/heat-payoff-cards
-          fetch-depth: 0
+          fetch-depth: 1
+          sparse-checkout: |
+            game/warrealms.html
+            game/warrealms-pack
+            game/warrealms
+            scripts/patch-warrealms-heat-payoffs.mjs
+            .github/workflows/apply-warrealms-heat-payoffs.yml
+          sparse-checkout-cone-mode: false
 
       - name: Apply Heat payoff patch
         run: node scripts/patch-warrealms-heat-payoffs.mjs
