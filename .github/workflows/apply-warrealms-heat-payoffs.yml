@@ -1,0 +1,35 @@
+name: Apply Warrealms Heat Payoffs
+
+on:
+  push:
+    branches:
+      - warrealms/heat-payoff-cards
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: warrealms/heat-payoff-cards
+          fetch-depth: 0
+
+      - name: Apply Heat payoff patch
+        run: node scripts/patch-warrealms-heat-payoffs.mjs
+
+      - name: Run Warrealms tests
+        run: node --test game/warrealms/tests/*.test.mjs
+
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: add Warrealms Heat payoff cards"
+          git push origin HEAD:warrealms/heat-payoff-cards
