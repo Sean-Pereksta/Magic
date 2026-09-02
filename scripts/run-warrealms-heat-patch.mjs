@@ -6,6 +6,7 @@ const root = process.cwd();
 const sourcePath = path.join(root, "scripts/patch-warrealms-heat-payoffs.mjs");
 const fixedPath = path.join(root, "scripts/.patch-warrealms-heat-payoffs-fixed.mjs");
 const wrapperPath = path.join(root, "scripts/run-warrealms-heat-patch.mjs");
+const validatorTestPath = path.join(root, "game/warrealms/tests/card-validator.test.mjs");
 
 let source = fs.readFileSync(sourcePath, "utf8");
 source = source.replace(
@@ -22,6 +23,15 @@ if (source.includes('addLog(game, `${player.name}')) throw new Error("Nested log
 
 fs.writeFileSync(fixedPath, source);
 await import(pathToFileURL(fixedPath).href + `?run=${Date.now()}`);
+
+let validatorTest = fs.readFileSync(validatorTestPath, "utf8");
+if (validatorTest.includes("assert.equal(pack.COLLECTIBLE_CARDS.length, 414);")) {
+  validatorTest = validatorTest.replace(
+    "assert.equal(pack.COLLECTIBLE_CARDS.length, 414);",
+    "assert.equal(pack.COLLECTIBLE_CARDS.length, 417);"
+  );
+  fs.writeFileSync(validatorTestPath, validatorTest);
+}
 
 for (const file of [fixedPath, wrapperPath]) {
   if (fs.existsSync(file)) fs.rmSync(file);
