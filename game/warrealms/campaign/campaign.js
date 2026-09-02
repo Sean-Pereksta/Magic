@@ -21,17 +21,20 @@ export function currentCampaignEncounter(profile) {
   const routeMultiplier = Math.max(.75, Number(node.enemyAuthorityMultiplier) || 1);
   const difficulty = boss
     ? (boss.difficulty === "mythic" ? "impossible" : boss.difficulty)
-    : profile.region <= 3
+    : profile.region <= 2
       ? (node.pathId === "rift_gambit" ? "medium" : "easy")
-      : profile.region <= 7
-        ? (node.type === "elite" ? "medium" : "easy")
-        : profile.region <= 12
-          ? (node.pathId === "rift_gambit" && profile.region >= 10 ? "hard" : "medium")
-          : profile.region <= 18
-            ? (node.type === "elite" ? "hard" : "medium")
-            : node.pathId === "rift_gambit" ? "impossible" : "hard";
+      : profile.region <= 5
+        ? (node.pathId === "rift_gambit" ? "hard" : "medium")
+        : profile.region <= 9
+          ? (node.type === "elite" ? "hard" : "medium")
+          : profile.region <= 14
+            ? (node.pathId === "rift_gambit" ? "impossible" : "hard")
+            : profile.region <= 18
+              ? (node.type === "elite" ? "impossible" : "hard")
+              : "impossible";
   const regionalShield = scaling.modifiers.filter(modifier => modifier.id === "armored_front").reduce((sum, modifier) => sum + modifier.rank * 3, 0);
   const configuredBaseTotal = Math.max(whole(node.enemyStartingBases), whole(scaling.enemyStartingBases));
+  const regionalAggression = 1 + Math.min(.2, Math.max(0, Number(profile.region) - 2) * .015);
   return {
     node,
     scaling,
@@ -50,7 +53,7 @@ export function currentCampaignEncounter(profile) {
     enemyBonusTrade: scaling.enemyBonusTrade + whole(node.enemyBonusTrade) + whole(boss?.economy?.bonusTrade),
     enemyBonusCombat: scaling.enemyBonusCombat + whole(node.enemyBonusCombat),
     enemyTradeLimit: boss ? Math.max(1, whole(boss.economy?.tradeLimit, 6)) : 99,
-    enemyAggression: Math.max(.75, Number(boss?.aggression) || (node.type === "elite" ? 1.08 : 1)),
+    enemyAggression: Math.max(.75, (Number(boss?.aggression) || (node.type === "elite" ? 1.08 : 1)) * regionalAggression),
     primaryFaction: boss?.faction || "",
     supportFaction: boss?.supportFaction || "",
     currencyBonus: whole(node.currencyBonus),
