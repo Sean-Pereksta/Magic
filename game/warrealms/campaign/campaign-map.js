@@ -2,6 +2,17 @@ import { CAMPAIGN_BOSSES, campaignBossForRegion } from "./campaign-bosses.js";
 
 export const CAMPAIGN_NODE_TYPES = Object.freeze(["path", "battle", "elite", "boss", "reward", "shop", "event", "rest"]);
 
+export const CAMPAIGN_NODE_ICONS = Object.freeze({
+  path: "⌁",
+  battle: "⚔",
+  elite: "✹",
+  boss: "♛",
+  reward: "◆",
+  shop: "⚒",
+  event: "?",
+  rest: "✦"
+});
+
 export const CAMPAIGN_PATHS = Object.freeze([
   Object.freeze({
     id: "vanguard",
@@ -70,6 +81,7 @@ export const CAMPAIGN_REGION_SEQUENCE = Object.freeze([
   Object.freeze({ type: "path", routeSlot: 2 }),
   Object.freeze({ type: "route", routeSlot: 2, choiceNode: 4 }),
   Object.freeze({ type: "routeReward", routeSlot: 2, choiceNode: 4 }),
+  Object.freeze({ type: "event", label: "Campaign Event" }),
   Object.freeze({ type: "shop", label: "War Camp" }),
   Object.freeze({ type: "elite", encounter: "regional_gate", enemyAuthorityMultiplier: 1.1, enemyShield: 4, enemyStartingBases: 1, enemyBonusCombat: 0 }),
   Object.freeze({ type: "reward", rarity: "rare", minCost: 4, maxCost: 6, overrideCostCap: true, milestone: "elite" }),
@@ -235,6 +247,21 @@ export function campaignNodeAt(profile) {
 export function campaignPathOptions(profile) {
   const node = campaignNodeAt(profile);
   return node?.type === "path" ? [...CAMPAIGN_PATHS] : [];
+}
+
+export function campaignNodePresentation(node, profile = {}) {
+  if (!node) return { icon: "?", state: "future", type: "unknown", label: "Unknown" };
+  const currentIndex = Math.max(0, Number(profile.nodeIndex) || 0);
+  const state = node.index < currentIndex ? "complete" : node.index === currentIndex ? "current" : "future";
+  return {
+    icon: CAMPAIGN_NODE_ICONS[node.type] || "◆",
+    state,
+    type: node.type,
+    label: node.label || node.type,
+    routeSlot: Math.max(0, Number(node.routeSlot) || 0),
+    pathId: String(node.pathId || ""),
+    boss: node.type === "boss"
+  };
 }
 
 export function chooseCampaignPath(profile, pathId, options = {}) {

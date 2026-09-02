@@ -1,5 +1,6 @@
 import { campaignNodeAt, campaignRegionScaling, advanceCampaignNode } from "./campaign-map.js";
 import { campaignBossForRegion, getCampaignBoss } from "./campaign-bosses.js";
+import { commanderBattleRules } from "./campaign-commanders.js";
 
 function whole(value, fallback = 0) {
   const number = Number(value);
@@ -76,13 +77,22 @@ export function recordCampaignBattleResult(profile, result = {}) {
 
   profile.battlesWon = whole(profile.battlesWon) + 1;
   profile.level = Math.max(whole(profile.level, 1), profile.battlesWon + 1);
+  profile.commanderLevel = Math.max(whole(profile.commanderLevel, 1), profile.level);
   const remaining = Math.max(1, whole(result.authorityRemaining, profile.authority || profile.maxAuthority));
   const maximum = Math.max(1, whole(profile.maxAuthority, 60));
   const standardRecovery = Math.max(15, Math.floor(maximum * .25));
   let recoveredAuthority = Math.min(maximum, remaining + standardRecovery);
   if (encounter.node.type === "elite") recoveredAuthority = Math.max(recoveredAuthority, Math.ceil(maximum * .7));
   profile.authority = Math.min(maximum, recoveredAuthority);
-  profile.currency = whole(profile.currency) + (encounter.node.type === "boss" ? 75 : encounter.node.type === "elite" ? 40 : 20) + Math.max(0, profile.region - 1) * 5 + whole(encounter.currencyBonus);
+  const commanderRules = commanderBattleRules(profile);
+  const baseCurrency = (encounter.node.type === "boss" ? 75 : encounter.node.type === "elite" ? 40 : 20)
+    + Math.max(0, profile.region - 1) * 5
+    + whole(encounter.currencyBonus);
+  const commanderCurrencyBonus = Math.floor(baseCurrency * whole(commanderRules.currencyBonusPercent) / 100);
+  profile.currency = whole(profile.currency) + baseCurrency + commanderCurrencyBonus;
+  if (encounter.node.type === "boss" && whole(commanderRules.rewardRerolls)) {
+    profile.rewardRerolls = whole(profile.rewardRerolls) + whole(commanderRules.rewardRerolls);
+  }
   if (encounter.boss) profile.bossesDefeated = [...new Set([...(profile.bossesDefeated || []), encounter.boss.id])];
   appendHistory(profile, {
     atMs: now,
@@ -94,7 +104,9 @@ export function recordCampaignBattleResult(profile, result = {}) {
     region: profile.region,
     authorityRemaining: remaining,
     authorityRecovered: profile.authority - remaining,
-    authorityAfterRecovery: profile.authority
+    authorityAfterRecovery: profile.authority,
+    commanderLevel: profile.commanderLevel,
+    commanderCurrencyBonus
   });
   advanceCampaignNode(profile);
   return profile;

@@ -1,4 +1,13 @@
 import "./presentation-polish.js";
+import { loadCampaignProfile } from "../campaign/campaign-state.js?v=5";
+import { campaignNodeAt, campaignRegionScaling } from "../campaign/campaign-map.js?v=5";
+import { campaignProgressSummary } from "../campaign/campaign.js?v=4";
+import {
+  commanderFactionLabel,
+  commanderImagePath,
+  commanderInitials,
+  getCampaignCommander
+} from "../campaign/campaign-commanders.js?v=1";
 
 const PLAY_LAUNCHER_ID = "warrealmsPlayLauncher";
 const PLAY_LAUNCHER_STYLE_ID = "warrealmsPlayLauncherStyles";
@@ -21,10 +30,16 @@ const BOT_DIFFICULTIES = Object.freeze([
 ]);
 
 let selectedMode = "single";
+let selectedView = "main";
 let selectedStrategy = "random";
 let selectedDifficulty = "medium";
 let showAllStrategies = false;
 let lastFocusedElement = null;
+let autoOpened = false;
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+}
 
 function clearLegacySingleplayerAutoPrompt() {
   if (typeof window === "undefined" || !window.history?.replaceState) return;
@@ -57,8 +72,18 @@ function injectStyles() {
     .wrStrategyNote{margin:7px 0 0;color:#d7bd54;font-size:7px;line-height:1.35}
     .wrPlayFoot{display:flex;align-items:center;gap:9px;margin-top:14px;padding-top:12px;border-top:1px solid #2b3948}.wrSelectionSummary{min-width:0;flex:1;color:#9aa8b7;font-size:8px;line-height:1.4}.wrSelectionSummary strong{color:#fff}.wrStartBtn,.wrMultiplayerBtn,.wrResumeBtn{min-height:40px;border:1px solid #c35369;border-radius:9px;background:#983047;padding:8px 14px;color:#fff;font-size:9px;font-weight:950;cursor:pointer}.wrStartBtn:hover,.wrMultiplayerBtn:hover{background:#ad3850}.wrResumeBtn{border-color:#405164;background:#1b2632}.wrResumeBtn:hover{background:#243240}
     .wrMultiplayerPane{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(220px,.9fr);gap:10px}.wrMultiplayerHero,.wrMultiplayerSteps{border:1px solid #354558;border-radius:12px;background:#101821;padding:14px}.wrMultiplayerHero h3,.wrMultiplayerSteps h3{margin:0 0 6px;font-size:13px}.wrMultiplayerHero p,.wrMultiplayerSteps p{margin:0;color:#95a4b3;font-size:8px;line-height:1.5}.wrMultiplayerHero .wrMultiplayerBtn{margin-top:12px}.wrMultiplayerSteps ol{margin:8px 0 0;padding-left:17px;color:#c4ced8;font-size:8px;line-height:1.7}
+    .wrWarTablePanel{width:min(980px,100%);max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #5e5131;border-radius:20px;background:radial-gradient(circle at 50% 32%,rgba(144,101,43,.18),transparent 34%),linear-gradient(145deg,#171c21,#080b0f 72%);box-shadow:0 32px 110px rgba(0,0,0,.82),inset 0 0 90px rgba(188,133,49,.06);color:#f4f7fb}
+    .wrWarTableHead{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:14px;padding:18px 21px 15px;border-bottom:1px solid #4b422d;background:linear-gradient(180deg,rgba(18,22,26,.99),rgba(12,15,19,.96));backdrop-filter:blur(12px)}
+    .wrWarTableCrest{width:54px;height:54px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #8b7336;border-radius:50%;background:radial-gradient(circle,#dfc66d 0 6%,#55451f 7% 25%,#171c22 26% 100%);box-shadow:0 0 28px rgba(220,180,67,.22);color:#f2d675;font-size:24px}.wrWarTableHeadCopy{min-width:0;flex:1}.wrWarTableTitle{margin:4px 0 2px;font:850 clamp(23px,4.6vw,38px)/1 var(--displayFont,"Cinzel",serif);letter-spacing:.03em}.wrWarTableSubtitle{margin:0;color:#9da8b5;font-size:9px;line-height:1.5}
+    .wrWarTableBody{padding:17px 21px 21px}.wrWarTableGrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(290px,.65fr);gap:11px}.wrWarTablePrimary,.wrWarTableStack{display:grid;gap:10px}.wrWarTableStack{grid-template-columns:1fr 1fr;align-content:start}.wrWarAction{position:relative;min-height:110px;overflow:hidden;border:1px solid #394858;border-radius:14px;background:linear-gradient(145deg,rgba(27,37,47,.96),rgba(10,15,21,.98));padding:14px;text-align:left;color:#edf2f7;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.wrWarAction:hover{transform:translateY(-2px);border-color:#a68b45;box-shadow:0 12px 32px rgba(0,0,0,.32)}.wrWarAction strong{display:block;font:850 14px/1.1 var(--displayFont,"Cinzel",serif);letter-spacing:.04em}.wrWarAction>span{display:block;margin-top:5px;color:#92a0ae;font-size:8px;line-height:1.45}.wrWarAction em{display:block;margin-top:8px;color:#ddc45e;font-size:7px;font-style:normal;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.wrWarActionIcon{position:absolute;right:12px;bottom:4px;color:rgba(229,202,85,.13);font-size:58px;font-weight:950;pointer-events:none}
+    .wrContinueCampaign{min-height:244px;border-color:#8c7336;background:radial-gradient(circle at 78% 32%,color-mix(in srgb,var(--commanderPrimary,#4d8ec2) 26%,transparent),transparent 34%),linear-gradient(145deg,#282618,#11171e 68%);box-shadow:inset 0 0 0 1px rgba(225,198,82,.12),0 18px 45px rgba(0,0,0,.28)}.wrContinueCampaign:hover{border-color:#e4c85a;box-shadow:inset 0 0 0 1px rgba(240,211,97,.23),0 18px 50px rgba(0,0,0,.4)}.wrContinueLayout{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:center;height:100%}.wrContinuePortrait{position:relative;width:132px;aspect-ratio:3/4;display:grid;place-items:center;overflow:hidden;border:1px solid color-mix(in srgb,var(--commanderPrimary,#558fc0) 72%,#fff);border-radius:14px;background:linear-gradient(150deg,var(--commanderPrimary,#315c7b),var(--commanderSecondary,#2d3a44));box-shadow:0 15px 34px rgba(0,0,0,.42)}.wrContinuePortrait img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.wrContinuePortrait b{font:900 34px/1 var(--displayFont,"Cinzel",serif);color:#fff;text-shadow:0 3px 12px #000}.wrContinueCopy{min-width:0}.wrContinueEyebrow{color:#e0c55a;font-size:8px;font-weight:950;letter-spacing:.16em;text-transform:uppercase}.wrContinueCopy h3{margin:7px 0 2px;font:900 clamp(19px,3vw,29px)/1.05 var(--displayFont,"Cinzel",serif)}.wrContinueCopy p{margin:0;color:#b0bcc8;font-size:9px}.wrCampaignFacts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:13px}.wrCampaignFact{border:1px solid rgba(116,132,148,.28);border-radius:8px;background:rgba(7,11,15,.52);padding:7px}.wrCampaignFact span{display:block;color:#7f8e9d;font-size:6px;text-transform:uppercase;letter-spacing:.08em}.wrCampaignFact b{display:block;margin-top:2px;color:#eef3f8;font-size:9px}.wrContinueCta{display:inline-flex;margin-top:12px;border:1px solid #c7a942;border-radius:8px;background:#9e7b23;padding:8px 11px;color:#fff;font-size:8px;font-weight:950;letter-spacing:.08em}
+    .wrNewCampaign{border-color:#6e5c31;background:linear-gradient(145deg,#242012,#10171e)}.wrQuickBattle{--actionAccent:#c45366}.wrMultiplayerAction{--actionAccent:#6d7ed7}.wrArmoryAction{--actionAccent:#d0b447}.wrWarAction:not(.wrContinueCampaign)::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--actionAccent,#9b8546)}
+    .wrWarSecondary{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid #2e3944}.wrWarSecondary button,.wrWarBack{min-height:34px;border:1px solid #354555;border-radius:8px;background:#111a23;padding:7px 11px;color:#aebbc8;font-size:8px;font-weight:900;cursor:pointer}.wrWarSecondary button:hover,.wrWarBack:hover{background:#1a2733;color:#fff}.wrWarBack{margin-right:8px}
+    .wrInfoPanel{display:grid;gap:10px}.wrInfoCard{border:1px solid #354555;border-radius:12px;background:#101821;padding:13px}.wrInfoCard h3{margin:0 0 7px;font-size:12px}.wrInfoCard p{margin:0;color:#91a0af;font-size:8px;line-height:1.55}.wrStatsGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.wrStatTile{border:1px solid #354555;border-radius:10px;background:#0c131b;padding:11px;color:#8d9baa;font-size:7px;text-transform:uppercase;letter-spacing:.07em}.wrStatTile b{display:block;margin-top:4px;color:#fff;font-size:18px;letter-spacing:0}.wrSettingRow{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #2e3b49;padding:11px 0}.wrSettingRow:first-child{border-top:0}.wrSettingRow span{color:#d5dde5;font-size:9px}.wrSettingRow small{display:block;margin-top:2px;color:#8291a0;font-size:7px}.wrSettingToggle{min-width:62px;border:1px solid #495b6d;border-radius:999px;background:#17222d;padding:6px 9px;color:#dfe7ee;font-size:7px;font-weight:950;cursor:pointer}.wrSettingToggle.active{border-color:#b79d48;background:#5b4a1b;color:#fff}
+    html.wrReduceMotion *,html.wrReduceMotion *::before,html.wrReduceMotion *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
     @media(max-width:650px){.wrDifficultyGrid{grid-template-columns:1fr 1fr}.wrMultiplayerPane{grid-template-columns:1fr}.wrPlayFoot{align-items:stretch;flex-direction:column}.wrStartBtn,.wrResumeBtn{width:100%}}
-    @media(max-width:480px){#${PLAY_LAUNCHER_ID}{padding:7px}.wrPlayPanel{max-height:calc(100dvh - 14px);border-radius:13px}.wrPlayHead{padding:13px}.wrPlayBody{padding:12px}.wrStrategyGrid{grid-template-columns:1fr}.wrModeTab span{display:none}}
+    @media(max-width:760px){.wrWarTableGrid{grid-template-columns:1fr}.wrContinueCampaign{min-height:220px}.wrWarTableStack{grid-template-columns:1fr 1fr}.wrWarAction{min-height:96px}}
+    @media(max-width:480px){#${PLAY_LAUNCHER_ID}{padding:7px}.wrPlayPanel,.wrWarTablePanel{max-height:calc(100dvh - 14px);border-radius:13px}.wrPlayHead,.wrWarTableHead{padding:13px}.wrPlayBody,.wrWarTableBody{padding:12px}.wrStrategyGrid{grid-template-columns:1fr}.wrModeTab span{display:none}.wrContinueLayout{grid-template-columns:88px minmax(0,1fr);gap:10px}.wrContinuePortrait{width:88px}.wrContinueCampaign{min-height:210px}.wrCampaignFacts{grid-template-columns:1fr}.wrCampaignFact:nth-child(n+3){display:none}.wrWarTableStack{grid-template-columns:1fr}.wrWarAction{min-height:82px}.wrStatsGrid{grid-template-columns:1fr 1fr}.wrWarTableCrest{width:42px;height:42px}}
   `;
   document.head.appendChild(style);
 }
@@ -79,6 +104,22 @@ function launcher() {
   root.setAttribute("aria-labelledby", "warrealmsPlayLauncherTitle");
   root.addEventListener("click", event => {
     if (event.target === root || event.target.closest("[data-wr-play-close]")) return closePlayLauncher();
+    const mainAction = event.target.closest("[data-wr-main-action]");
+    if (mainAction) {
+      handleWarTableAction(mainAction.dataset.wrMainAction);
+      return;
+    }
+    if (event.target.closest("[data-wr-back-main]")) {
+      selectedView = "main";
+      renderLauncher();
+      return;
+    }
+    const setting = event.target.closest("[data-wr-setting]");
+    if (setting) {
+      toggleWarTableSetting(setting.dataset.wrSetting);
+      renderLauncher();
+      return;
+    }
     const modeButton = event.target.closest("[data-wr-play-mode]");
     if (modeButton) {
       selectedMode = modeButton.dataset.wrPlayMode;
@@ -166,22 +207,135 @@ function renderMultiplayer() {
     </div>`;
 }
 
+function commanderPortrait(commander) {
+  const path = commanderImagePath(commander);
+  return `<span class="wrContinuePortrait" aria-label="${escapeHtml(commander?.name || "Commander portrait")}"><b>${escapeHtml(commanderInitials(commander))}</b>${path ? `<img src="${escapeHtml(path)}" alt="${escapeHtml(commander?.name || "Commander")}" onerror="this.remove()">` : ""}</span>`;
+}
+
+function activeCampaignDetails() {
+  const profile = loadCampaignProfile();
+  if (!profile) return { profile: null, commander: null, node: null, summary: null, scaling: null };
+  return {
+    profile,
+    commander: getCampaignCommander(profile.commanderId),
+    node: campaignNodeAt(profile),
+    summary: campaignProgressSummary(profile),
+    scaling: campaignRegionScaling(profile.region)
+  };
+}
+
+function warTableActionCard(id, title, description, meta, icon, className = "") {
+  return `<button type="button" class="wrWarAction ${className}" data-wr-main-action="${escapeHtml(id)}"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${meta ? `<em>${escapeHtml(meta)}</em>` : ""}<i class="wrWarActionIcon" aria-hidden="true">${escapeHtml(icon)}</i></button>`;
+}
+
+function renderWarTableMain() {
+  const { profile, commander, node, summary, scaling } = activeCampaignDetails();
+  const active = profile?.status === "active";
+  const primaryFaction = commander?.factions?.[0] || "blue";
+  const secondaryFaction = commander?.factions?.[1] || commander?.factions?.[0] || "green";
+  const continueCard = active ? `
+    <button type="button" class="wrWarAction wrContinueCampaign" data-wr-main-action="continue" style="--commanderPrimary:var(--${escapeHtml(primaryFaction)});--commanderSecondary:var(--${escapeHtml(secondaryFaction)})">
+      <span class="wrContinueLayout">${commanderPortrait(commander)}<span class="wrContinueCopy"><span class="wrContinueEyebrow">Continue Campaign · ${escapeHtml(scaling?.progressBand || "Realm Campaign")}</span><h3>${escapeHtml(commander?.name || "Commander")} · ${escapeHtml(commander?.title || "Field Commander")}</h3><p>${escapeHtml(commanderFactionLabel(commander))}</p><span class="wrCampaignFacts"><span class="wrCampaignFact"><span>Region</span><b>${summary?.region || 1} · ${escapeHtml(node?.label || "War Table")}</b></span><span class="wrCampaignFact"><span>Authority</span><b>${summary?.authority || 0} / ${summary?.maxAuthority || 60}</b></span><span class="wrCampaignFact"><span>Commander Level</span><b>${profile.commanderLevel || profile.level || 1}</b></span><span class="wrCampaignFact"><span>Battles Won</span><b>${summary?.battlesWon || 0}</b></span></span><span class="wrContinueCta">RETURN TO THE WAR TABLE →</span></span></span>
+    </button>` : warTableActionCard("new", profile?.status === "defeated" ? "Begin a New Campaign" : "Choose Your Commander", profile?.status === "defeated" ? `The previous campaign ended after ${profile.battlesWon || 0} victories.` : "Select a multi-faction commander and begin a military journey across the realm.", "Commander selection · persistent deck · branching routes", "♛", "wrContinueCampaign wrNewCampaign");
+  return `<div class="wrWarTableGrid"><div class="wrWarTablePrimary">${continueCard}${active ? warTableActionCard("new", "New Campaign", "Choose a different commander and replace the current run after confirmation.", "Six multi-faction commanders", "♛", "wrNewCampaign") : ""}</div><div class="wrWarTableStack">${warTableActionCard("quick", "Quick Battle", "Choose a bot archetype and difficulty for a standalone match.", "Solo practice", "⚔", "wrQuickBattle")}${warTableActionCard("multiplayer", "Multiplayer", "Create or join an online War Realms command room.", "Player vs player", "◎", "wrMultiplayerAction")}${warTableActionCard("armory", "Armory", "Manage command decks, browse cards, and inspect deck intelligence.", "Decks and collection", "◆", "wrArmoryAction")}</div></div><div class="wrWarSecondary"><button type="button" data-wr-main-action="help">? How to Play</button><button type="button" data-wr-main-action="statistics">▥ Statistics</button><button type="button" data-wr-main-action="settings">⚙ Settings</button>${document.body.classList.contains("battleMode") ? '<button type="button" data-wr-resume>Resume Battle</button>' : ""}</div>`;
+}
+
+function renderWarTableStatistics() {
+  const { profile, commander, summary } = activeCampaignDetails();
+  const mechanics = Object.values(profile?.stats || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  return `<button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrInfoPanel"><section class="wrInfoCard"><h3>Campaign Record</h3><p>${profile ? `${escapeHtml(commander?.name || "Your commander")} currently leads the campaign.` : "Begin a campaign to build a persistent military record."}</p><div class="wrStatsGrid" style="margin-top:10px"><div class="wrStatTile">Battles Won<b>${summary?.battlesWon || 0}</b></div><div class="wrStatTile">Region<b>${summary?.region || 0}</b></div><div class="wrStatTile">Bosses<b>${summary?.bossesDefeated || 0}</b></div><div class="wrStatTile">Deck Size<b>${summary?.deckSize || 0}</b></div><div class="wrStatTile">Commander Level<b>${profile?.commanderLevel || 0}</b></div><div class="wrStatTile">Mechanic Events<b>${mechanics}</b></div></div></section></div>`;
+}
+
+function reduceMotionEnabled() {
+  try { return localStorage.getItem("warRealms.reduceMotion") === "1"; } catch { return false; }
+}
+
+function applyStoredWarTableSettings() {
+  document.documentElement.classList.toggle("wrReduceMotion", reduceMotionEnabled());
+}
+
+function toggleWarTableSetting(setting) {
+  if (setting !== "reduce-motion") return;
+  const enabled = !reduceMotionEnabled();
+  try { localStorage.setItem("warRealms.reduceMotion", enabled ? "1" : "0"); } catch {}
+  applyStoredWarTableSettings();
+}
+
+function renderWarTableSettings() {
+  const reduced = reduceMotionEnabled();
+  return `<button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrInfoPanel"><section class="wrInfoCard"><h3>Presentation Settings</h3><div class="wrSettingRow"><span>Reduced motion<small>Shortens battle and menu animation without removing information.</small></span><button type="button" class="wrSettingToggle ${reduced ? "active" : ""}" data-wr-setting="reduce-motion">${reduced ? "ON" : "OFF"}</button></div></section><section class="wrInfoCard"><h3>Commander Artwork</h3><p>Portraits load from <code>graphics/warrealmscommanders/</code>. Missing files automatically fall back to commander initials and faction colors.</p></section></div>`;
+}
+
+function openArmoryDestination(destination, followupAction = "") {
+  const selector = `.primaryNavBtn[data-primary-destination="${destination}"] , #moreMenu [data-primary-destination="${destination}"]`;
+  const button = document.querySelector(selector);
+  if (!(button instanceof HTMLElement)) return;
+  closePlayLauncher();
+  button.click();
+  if (followupAction) setTimeout(() => document.querySelector(`[data-act="${followupAction}"]`)?.click(), 0);
+}
+
+function handleWarTableAction(action) {
+  if (action === "quick") {
+    selectedView = "quick";
+    selectedMode = "single";
+    renderLauncher();
+    return;
+  }
+  if (action === "continue") return openArmoryDestination("campaign", "continue-campaign");
+  if (action === "new") return openArmoryDestination("campaign", "new-campaign");
+  if (action === "multiplayer") return openExistingMultiplayerLobby();
+  if (action === "armory") return openArmoryDestination("store");
+  if (action === "help") {
+    closePlayLauncher();
+    document.getElementById("helpBtn")?.click();
+    return;
+  }
+  if (action === "statistics" || action === "settings") {
+    selectedView = action;
+    renderLauncher();
+  }
+}
+
 function renderLauncher() {
   const root = launcher();
+  if (selectedView !== "quick") {
+    const title = selectedView === "statistics" ? "Campaign statistics" : selectedView === "settings" ? "Command settings" : "The War Table";
+    const subtitle = selectedView === "main" ? "Choose a campaign, battle, or command destination." : "Review the realm before returning to command.";
+    const body = selectedView === "statistics" ? renderWarTableStatistics() : selectedView === "settings" ? renderWarTableSettings() : renderWarTableMain();
+    root.innerHTML = `
+      <section class="wrWarTablePanel">
+        <header class="wrWarTableHead"><span class="wrWarTableCrest" aria-hidden="true">♛</span><div class="wrWarTableHeadCopy"><div class="wrPlayEyebrow">War Realms · Campaign Command</div><h2 class="wrWarTableTitle" id="warrealmsPlayLauncherTitle">${escapeHtml(title)}</h2><p class="wrWarTableSubtitle">${escapeHtml(subtitle)}</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Close War Table">×</button></header>
+        <div class="wrWarTableBody">${body}</div>
+      </section>`;
+    return;
+  }
   root.innerHTML = `
     <section class="wrPlayPanel">
-      <header class="wrPlayHead"><div class="wrPlayHeadCopy"><div class="wrPlayEyebrow">War Realms · Play</div><h2 class="wrPlayTitle" id="warrealmsPlayLauncherTitle">Choose your battle</h2><p class="wrPlaySubtitle">One compact menu for solo practice, controlled matchups, and multiplayer.</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Close Play menu">×</button></header>
+      <header class="wrPlayHead"><button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrPlayHeadCopy"><div class="wrPlayEyebrow">War Realms · Quick Battle</div><h2 class="wrPlayTitle" id="warrealmsPlayLauncherTitle">Choose your battle</h2><p class="wrPlaySubtitle">Solo practice, controlled matchups, and multiplayer.</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Close Play menu">×</button></header>
       <div class="wrPlayBody"><div class="wrModeTabs" role="tablist" aria-label="Play mode"><button type="button" class="wrModeTab${selectedMode === "single" ? " active" : ""}" data-wr-play-mode="single"><strong>⚔ Solo</strong><span>Battle a bot</span></button><button type="button" class="wrModeTab${selectedMode === "multiplayer" ? " active" : ""}" data-wr-play-mode="multiplayer"><strong>◎ Multiplayer</strong><span>Create or join a room</span></button></div>${selectedMode === "single" ? renderSinglePlayer() : renderMultiplayer()}</div>
     </section>`;
 }
 
 function showPlayLauncher(mode = "single") {
+  selectedView = "quick";
   selectedMode = mode === "multiplayer" ? "multiplayer" : "single";
   lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const root = launcher();
   root.hidden = false;
   renderLauncher();
   requestAnimationFrame(() => root.querySelector(".wrModeTab.active")?.focus({ preventScroll: true }));
+}
+
+function showWarTable(options = {}) {
+  if (options.auto && autoOpened) return;
+  if (options.auto) autoOpened = true;
+  selectedView = "main";
+  lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const root = launcher();
+  root.hidden = false;
+  renderLauncher();
+  requestAnimationFrame(() => root.querySelector("[data-wr-main-action]")?.focus({ preventScroll: true }));
 }
 
 function closePlayLauncher() {
@@ -237,22 +391,24 @@ function relabelBattleAsPlay() {
   const playButton = document.querySelector('.primaryNavBtn[data-primary-destination="battle"]');
   if (!playButton) return;
   const label = playButton.querySelector("b");
-  if (label) label.textContent = "Play";
-  playButton.setAttribute("aria-label", "Play — choose single player or multiplayer");
-  playButton.title = "Play — single player or multiplayer";
+  if (label) label.textContent = "War Table";
+  playButton.setAttribute("aria-label", "War Table — campaign, quick battle, multiplayer, and armory");
+  playButton.title = "Open the War Table";
 }
 
 function installPlayLauncher() {
   relabelBattleAsPlay();
   injectStyles();
+  applyStoredWarTableSettings();
   document.addEventListener("click", event => {
     const playButton = event.target instanceof Element ? event.target.closest('.primaryNavBtn[data-primary-destination="battle"]') : null;
     if (!playButton) return;
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    showPlayLauncher("single");
+    showWarTable();
   }, true);
+  window.addEventListener("warrealms:open-war-table", event => showWarTable(event.detail || {}));
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && !document.getElementById(PLAY_LAUNCHER_ID)?.hidden) closePlayLauncher();
   });
@@ -264,4 +420,4 @@ if (typeof document !== "undefined") {
   else installPlayLauncher();
 }
 
-export { showPlayLauncher };
+export { showPlayLauncher, showWarTable };
