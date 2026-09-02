@@ -1,4 +1,4 @@
-import { CARDS } from "../../warrealms-pack/warrealms-cards.js";
+import { CARDS } from "../../warrealms-pack/warrealms-cards.js?v=20";
 import { queueEffectResolution } from "./effects.js";
 import { heatOverloadReady, resolveHeatValue } from "./heat.js";
 
