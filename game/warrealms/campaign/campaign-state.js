@@ -309,3 +309,14 @@ export function deleteCampaignProfile(storage = globalThis.localStorage) {
   storage.removeItem(CAMPAIGN_STORAGE_KEY);
   return true;
 }
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  import("./campaign-cloud-save.js?v=1")
+    .then(module => module.installCampaignCloudSave?.({
+      campaignSchema: CAMPAIGN_SCHEMA,
+      loadCampaignProfile,
+      normalizeCampaignProfile,
+      saveCampaignProfile
+    }))
+    .catch(error => console.warn("[War Realms campaign cloud save bootstrap]", error));
+}
