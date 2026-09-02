@@ -39,7 +39,7 @@ import {
   recordCampaignBattleResult
 } from "../campaign/campaign.js";
 import { evaluateCampaignUnlocks } from "../campaign/campaign-unlocks.js";
-import { resolveCampaignEventChoice } from "../campaign/campaign-events.js";
+import { campaignEventForNode, resolveCampaignEventChoice } from "../campaign/campaign-events.js";
 import {
   buyCampaignWarCampOption,
   buyCampaignShopCard,
@@ -79,8 +79,8 @@ test("campaign specialization replaces exactly one starter and saves new progres
 
 test("each region includes two routes, a War Camp, an elite, Rest, and a rotating boss", () => {
   const nodes = generateCampaignRegion(1, "test_run");
-  assert.deepEqual(nodes.map(node => node.type), ["path", "battle", "reward", "path", "battle", "reward", "shop", "elite", "reward", "rest", "boss", "reward"]);
-  assert.equal(nodes[10].bossId, CAMPAIGN_BOSSES[0].id);
+  assert.deepEqual(nodes.map(node => node.type), ["path", "battle", "reward", "path", "battle", "reward", "event", "shop", "elite", "reward", "rest", "boss", "reward"]);
+  assert.equal(nodes[11].bossId, CAMPAIGN_BOSSES[0].id);
   assert.equal(campaignRegionScaling(1).baseEnemyAuthority, 30);
   assert.equal(campaignRegionScaling(6).baseEnemyAuthority, 55);
   assert.equal(campaignRegionScaling(1).enemyBonusCombat, 0);
@@ -168,7 +168,7 @@ test("World Eater has a fixed attack deck, limited Trade, starting Bases, and a 
 test("beginner boss rewards are strong but bounded and the first grants an early relic", async () => {
   const pack = await loadCardPack();
   const profile = createCampaignProfile({ runId: "boss_reward_run", now: 100, random: 0 });
-  profile.nodeIndex = 11;
+  profile.nodeIndex = 12;
   const rewards = generateCampaignRewards(pack.CARDS, profile, campaignNodeAt(profile), { count: 3 });
   assert.equal(rewards.length, 3);
   assert.ok(rewards.every(reward => pack.ALL_CARD_MAP[reward.cardId].cost >= 3 && pack.ALL_CARD_MAP[reward.cardId].cost <= 5));
@@ -227,7 +227,7 @@ test("early elites receive exactly the configured total of one starting Base", (
   assert.equal(campaignEnemyStartingBaseCount(currentCampaignEncounter(routeElite)), 1);
 
   const gateElite = createCampaignProfile({ runId: "base_total_gate", now: 100, random: 0 });
-  gateElite.nodeIndex = 7;
+  gateElite.nodeIndex = 8;
   const encounter = currentCampaignEncounter(gateElite);
   assert.equal(encounter.node.type, "elite");
   assert.equal(encounter.difficulty, "easy");
@@ -236,7 +236,7 @@ test("early elites receive exactly the configured total of one starting Base", (
 
 test("Rest offers Recover, Purge, and Prepare as one clean choice", () => {
   const recover = createCampaignProfile({ runId: "rest_recover", now: 100, random: 0 });
-  recover.nodeIndex = 9;
+  recover.nodeIndex = 10;
   recover.authority = 10;
   assert.deepEqual(campaignRestChoices(recover).map(choice => choice.id), ["recover", "purge", "prepare"]);
   const recovered = resolveCampaignRestChoice(recover, "recover", { now: 200 });
@@ -245,20 +245,21 @@ test("Rest offers Recover, Purge, and Prepare as one clean choice", () => {
   assert.equal(campaignNodeAt(recover).type, "boss");
 
   const prepare = createCampaignProfile({ runId: "rest_prepare", now: 100, random: 0 });
-  prepare.nodeIndex = 9;
+  prepare.nodeIndex = 10;
   assert.equal(resolveCampaignRestChoice(prepare, "prepare").shield, 5);
   assert.equal(prepare.nextBattleShield, 5);
 
   const purge = createCampaignProfile({ runId: "rest_purge", now: 100, random: 0 });
-  purge.nodeIndex = 9;
+  purge.nodeIndex = 10;
+  const coinsBefore = purge.deck.filter(cardId => cardId === "starter_coin").length;
   assert.equal(resolveCampaignRestChoice(purge, "purge_coin").ok, true);
-  assert.equal(purge.deck.filter(cardId => cardId === "starter_coin").length, 5);
+  assert.equal(purge.deck.filter(cardId => cardId === "starter_coin").length, coinsBefore - 1);
 });
 
 test("War Camp spends campaign currency on focused one-time services", async () => {
   const pack = await loadCardPack();
   const profile = createCampaignProfile({ runId: "war_camp", now: 100, random: 0, specialization: "merchant" });
-  profile.nodeIndex = 6;
+  profile.nodeIndex = 7;
   profile.currency = 300;
   profile.authority = 40;
   assert.equal(campaignWarCampOptions(profile).length, 5);
@@ -302,6 +303,16 @@ test("a complete branched region uses War Camp and Rest before reaching the next
   chooseCampaignPath(profile, "rift_gambit");
   recordCampaignBattleResult(profile, { won: true, authorityRemaining: 48 });
   finishCampaignRewardNode(profile, { skipped: true });
+  const event = campaignEventForNode(campaignNodeAt(profile));
+  const safeChoiceByEvent = {
+    broken_caravan: "take_supplies",
+    ancient_forge: "strip",
+    fallen_fortress: "raise_wards",
+    ruined_observatory: "leave",
+    wounded_grukkin: "leave"
+  };
+  assert.equal(resolveCampaignEventChoice(profile, event.id, safeChoiceByEvent[event.id]).ok, true);
+  advanceCampaignNode(profile);
   assert.equal(campaignNodeAt(profile).type, "shop");
   finishCampaignWarCamp(profile);
   assert.equal(campaignNodeAt(profile).type, "elite");
@@ -333,4 +344,20 @@ test("campaign events and shops resolve from data without touching normal profil
   const removed = removeCampaignDeckCard(profile, offers[0].cardId, 10);
   assert.equal(removed.ok, true);
   assert.equal(profile.deck.length, beforeDeck);
+});
+
+test("a saved battle report survives victory advancement into the reward flow", () => {
+  const profile = createCampaignProfile({ runId: "report_continue", commanderId: "varek", now: 100, random: 0 });
+  chooseCampaignPath(profile, "vanguard");
+  profile.pendingBattleReport = {
+    battleId: "report_battle",
+    won: true,
+    enemyName: "Vanguard Host",
+    turns: 8,
+    authorityRemaining: 28
+  };
+  recordCampaignBattleResult(profile, { won: true, authorityRemaining: 28, now: 200 });
+  assert.equal(campaignNodeAt(profile).type, "reward");
+  assert.equal(profile.pendingBattleReport.battleId, "report_battle");
+  assert.equal(profile.battlesWon, 1);
 });

@@ -1,5 +1,3 @@
-import "./play-launcher.js";
-
 const SYSTEM_KEYS = Object.freeze([
   "trade", "combat", "draw", "authority", "shield", "purge", "marketErase", "disable", "raze",
   "sacrificeCards", "sacrificePayoffs", "tokenProducers", "tokenPayoffs", "heatCards", "heatConsumers",
@@ -102,6 +100,38 @@ function buildSynergies(metrics, factions, deckSize) {
   return notes;
 }
 
+function buildFeedback(metrics, factions, curve, scores, deckSize) {
+  if (!deckSize) return {
+    strengths: [],
+    warnings: ["Add cards to receive deck-specific strengths, risks, and curve guidance."]
+  };
+  const strengths = [];
+  const warnings = [];
+  const orderedFactions = Object.entries(factions).filter(([faction]) => faction !== "neutral").sort((a, b) => b[1] - a[1]);
+  const dominantCount = orderedFactions[0]?.[1] || 0;
+  const expensive = curve.high + curve.apex;
+
+  if (metrics.tokenProducers >= 3 && metrics.tokenPayoffs >= 2) strengths.push("Strong Token creation engine with multiple cards that reward Token play or sacrifice.");
+  if (metrics.sacrificeCards >= 3 && metrics.sacrificePayoffs >= 2) strengths.push("Sacrifice enablers are backed by enough payoffs to create repeatable momentum.");
+  if (scores.base >= 6) strengths.push("High Base density and support should establish a durable battlefield.");
+  if (metrics.ally + metrics.doubleAlly >= 4 && dominantCount / deckSize >= .45) strengths.push("Faction concentration gives Ally and Double Ally effects reliable support.");
+  if (scores.economy >= 6.5) strengths.push("Trade production is strong enough to reach expensive cards consistently.");
+  if (scores.cardFlow >= 6) strengths.push("Draw and deck-thinning tools should cycle the deck efficiently.");
+
+  const recommendedTradeSources = Math.max(3, Math.ceil(deckSize * .16));
+  if (metrics.trade < recommendedTradeSources) warnings.push(`Only ${metrics.trade} Trade-producing cards; expensive purchases may arrive too slowly.`);
+  if (expensive / deckSize > .38) warnings.push(`${expensive} cards cost 5+; the curve is top-heavy unless the economy is exceptional.`);
+  if (metrics.ally + metrics.doubleAlly >= 4 && dominantCount / deckSize < .38) warnings.push("Many Ally cards are competing with low faction concentration, reducing activation consistency.");
+  if (metrics.sacrificeCards >= 3 && metrics.sacrificePayoffs < 2) warnings.push("The deck sacrifices often but has too few persistent sacrifice payoffs.");
+  if (metrics.sacrificePayoffs >= 3 && metrics.sacrificeCards < 2) warnings.push("Sacrifice payoffs may sit idle because the deck has too few sacrifice enablers.");
+  if (metrics.attachments > metrics.attachmentTargets) warnings.push("There are more Attachments than reliable Base targets with open slots.");
+  if (metrics.heatCards >= 3 && !metrics.heatConsumers) warnings.push("Heat generation has no dependable cooling or spending outlet.");
+  if (metrics.tokenPayoffs >= 3 && metrics.tokenProducers < 2) warnings.push("Token payoffs outnumber the cards that can actually create Tokens.");
+  if (!strengths.length) strengths.push("Flexible card coverage leaves room to pivot as the market develops.");
+  if (!warnings.length) warnings.push("No major structural warning was detected in the current deck shape.");
+  return { strengths, warnings };
+}
+
 function archetypes(metrics, factions, scores) {
   const tags = [];
   const dominant = Object.entries(factions).filter(([faction]) => faction !== "neutral").sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -168,6 +198,7 @@ export function analyzeDeck(values = [], options = {}) {
     token: score(metrics.tokenProducers * .65 + metrics.tokenPayoffs * .9),
     heat: score(metrics.heatCards * .45 + metrics.heatConsumers * .7)
   };
+  const feedback = buildFeedback(metrics, factions, curve, scorecards, deckSize);
 
   return {
     cards,
@@ -184,6 +215,8 @@ export function analyzeDeck(values = [], options = {}) {
     metrics,
     scorecards,
     synergies: buildSynergies(metrics, factions, deckSize),
+    strengths: feedback.strengths,
+    warnings: feedback.warnings,
     archetypes: archetypes(metrics, factions, scorecards)
   };
 }

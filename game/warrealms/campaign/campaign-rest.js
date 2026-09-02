@@ -1,5 +1,6 @@
 import { advanceCampaignNode, campaignNodeAt } from "./campaign-map.js";
 import { removeCampaignDeckCardCopy } from "./campaign-state.js";
+import { commanderBattleRules } from "./campaign-commanders.js";
 
 function whole(value, fallback = 0) {
   const number = Number(value);
@@ -10,7 +11,8 @@ export function campaignRestRecovery(profile) {
   const maximum = Math.max(1, whole(profile?.maxAuthority, 60));
   const authority = Math.min(maximum, whole(profile?.authority));
   const normal = Math.max(15, Math.floor(maximum * .3));
-  return authority <= maximum * .35 ? Math.max(normal, Math.ceil(maximum * .45)) : normal;
+  const base = authority <= maximum * .35 ? Math.max(normal, Math.ceil(maximum * .45)) : normal;
+  return base + whole(commanderBattleRules(profile).restRecoveryBonus);
 }
 
 export function campaignRestChoices(profile) {
