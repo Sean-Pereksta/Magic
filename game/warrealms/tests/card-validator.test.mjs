@@ -15,7 +15,7 @@ test("the complete War Realms card pack validates cleanly", async () => {
   });
   assert.equal(result.errors.length, 0, JSON.stringify(result.errors, null, 2));
   assert.equal(result.warnings.length, 0, JSON.stringify(result.warnings, null, 2));
-  assert.equal(pack.COLLECTIBLE_CARDS.length, 417);
+  assert.equal(pack.COLLECTIBLE_CARDS.length, 421);
   assert.equal(pack.COLLECTIBLE_CARDS.some(card => card.campaignOnly), false);
   assert.match(result.info.at(-1).message, new RegExp(`Validated ${pack.CARDS.length + Object.keys(pack.STARTER_CARDS).length} War Realms card definitions`));
 });
@@ -23,7 +23,7 @@ test("the complete War Realms card pack validates cleanly", async () => {
 test("all Heat branching evolutions use and display Heat 3", async () => {
   const pack = await loadCardPack();
   const heatTransforms = pack.CARDS.filter(card => card.transform?.trigger === "heat");
-  assert.equal(heatTransforms.length, 24);
+  assert.equal(heatTransforms.length, 36);
   for (const card of heatTransforms) {
     assert.equal(card.transform.required, 3, `${card.id} must transform at Heat 3`);
     assert.match([card.text, card.transformText, card.heatText].filter(Boolean).join(" "), /Heat 3/i, `${card.id} must display Heat 3`);
