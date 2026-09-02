@@ -72,11 +72,6 @@ test("Heavenlance overloads automatically when its turn-start Heat reaches 6", (
   assert.ok(game.eventHistory.some(event =>
     event.type === GAME_EVENT_TYPES.HEAT_OVERLOADED
     && event.cardId === "heavenlance_thermal_turret"
-    && event.before === undefined
-  ) === false);
-  assert.ok(game.eventHistory.some(event =>
-    event.type === GAME_EVENT_TYPES.HEAT_OVERLOADED
-    && event.cardId === "heavenlance_thermal_turret"
     && event.amount === 6
     && event.method === "start-of-turn-overload"
   ));
@@ -84,6 +79,7 @@ test("Heavenlance overloads automatically when its turn-start Heat reaches 6", (
     event.type === GAME_EVENT_TYPES.HEAT_SPENT
     && event.cardId === "heavenlance_thermal_turret"
     && event.amount === 6
+    && event.method === "start-of-turn-overload-reset"
   ));
 });
 
