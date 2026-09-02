@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 19;
+export const WAR_REALMS_CARD_VERSION = 20;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -74,6 +74,101 @@ export const STARTER_CARDS = Object.freeze({
 });
 
 export const CARDS = Object.freeze([
+
+  // ==========================================================
+  // HEAT PAYOFF MINI-PACK — active-card Heat acceleration
+  // ==========================================================
+  {
+    id: "sanctum_core_imbuer",
+    name: "Sanctum-Core Imbuer",
+    image: "sanctum_core_imbuer.png",
+    faction: "blue",
+    cost: 7,
+    shop_cost: 120,
+    type: "ship",
+    sigil: "✦",
+    effect: {
+      addHeat: {
+        amount: 2,
+        target: "friendlyHeatCard",
+        excludeSelf: true
+      }
+    },
+    ally: { shield: 2 },
+    doubleAlly: {
+      or: [
+        {
+          id: "sanctum_core_imbuer_repair",
+          label: "Reinforce the Sanctum",
+          effect: { repair: { amount: 5 } }
+        },
+        {
+          id: "sanctum_core_imbuer_shield",
+          label: "Raise the Aegis",
+          effect: { shield: 5 }
+        }
+      ]
+    },
+    text: "Add 2 Heat to another friendly Heat card.",
+    allyText: "Gain 2 Shield.",
+    doubleAllyText: "Choose one: repair a Base for 5; or gain 5 Shield.",
+    flavor: "The Ascendancy does not create instability. It simply decides where instability belongs."
+  },
+  {
+    id: "heavenlance_thermal_turret",
+    name: "Heavenlance Thermal Turret",
+    image: "heavenlance_thermal_turret.png",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 90,
+    type: "base",
+    defense: 8,
+    outpost: false,
+    sigil: "✦",
+    effect: {},
+    heat: {
+      max: 6,
+      overload: {
+        at: 6,
+        optional: false,
+        reset: 0,
+        effect: { combat: 15 }
+      }
+    },
+    text: "This Base produces no Combat normally.",
+    heatText: "At 6 Heat, automatically spend all 6 Heat: gain 15 Combat, then reset to 0 Heat.",
+    flavor: "For six cycles, the weapon is silent. On the seventh, there is considerably less horizon."
+  },
+  {
+    id: "eightfold_drone_ark",
+    name: "Eightfold Drone Ark",
+    image: "eightfold_drone_ark.png",
+    faction: "yellow",
+    cost: 6,
+    shop_cost: 105,
+    type: "ship",
+    sigil: "◈",
+    effect: {},
+    heat: {
+      max: 8,
+      overload: {
+        at: 8,
+        optional: false,
+        reset: 0,
+        effect: {
+          createToken: {
+            id: "drone",
+            count: 4,
+            zone: "discard"
+          }
+        }
+      }
+    },
+    text: "This card has no immediate effect.",
+    heatText: "At 8 Heat, automatically spend all 8 Heat: create four Drones in your discard pile, then reset to 0 Heat.",
+    flavor: "The empty hangars are not empty. Their occupants simply have not happened yet."
+  },
+
   // ==========================================================
 // SYSTEM-COMBO EXPANSION — sequencing, reactions, attachments,
 // persistent engines, siege evolution, sacrifice recursion

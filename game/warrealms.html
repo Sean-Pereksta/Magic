@@ -1647,7 +1647,7 @@
   } from "./warrealms/engine/effects.js?v=1";
   // Version the module URL so browsers cannot reuse an older validator.
   const cardLibrary = await import(
-    "./warrealms-pack/warrealms-cards.js?v=18"
+    "./warrealms-pack/warrealms-cards.js?v=20"
   );
 
   const {
@@ -3781,6 +3781,42 @@
     return false;
   }
 
+  function queueAddHeatTargetChoice(game, player, config = {}, context = {}) {
+    const amount = Math.max(1, Math.floor(Number(config.amount) || 1));
+    const targetRule = String(config.target || "friendlyHeatCard");
+    const activeEntries = [
+      ...(player.played || []),
+      ...(player.bases || []),
+      ...(player.attachments || [])
+    ];
+    const targets = activeEntries.filter(entry => {
+      const targetCard = getCard(entry);
+      if (!targetCard?.heat) return false;
+      if ((config.excludeSelf !== false || targetRule === "friendlyHeatShip") && entry.instanceId === context.instanceId) return false;
+      if (targetRule === "friendlyHeatShip" && targetCard.type !== "ship") return false;
+      return (entry.heat || 0) < Math.max(0, Number(targetCard.heat.max) || 99);
+    });
+    const options = targets.map(entry => ({
+      label: getCard(entry).name + " · Heat " + (entry.heat || 0),
+      effect: {
+        __heatChange: {
+          instanceId: entry.instanceId,
+          delta: amount,
+          remainingTargets: Math.max(0, Math.floor(Number(config.targets) || 1) - 1),
+          targetMode: "add",
+          targetRule,
+          excludeSelf: config.excludeSelf !== false,
+          ifChangedEffect: clone(config.ifChangedEffect || {})
+        }
+      }
+    }));
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "addHeat" })) {
+      addLog(game, player.name + " had no eligible Heat card to empower.");
+      return false;
+    }
+    return true;
+  }
+
   function queueHeatTargetChoice(game, player, config = {}, context = {}) {
     const amount = Math.max(1, Math.floor(Number(config.amount) || 1));
     const targets = allPlayerEntries(player).filter(entry => getCard(entry)?.heat && (entry.heat || 0) > 0 && entry.instanceId !== context.instanceId);
@@ -3829,9 +3865,40 @@
         method: String(context.source || "heat-change")
       });
       if (instruction.ifChangedEffect && Object.keys(instruction.ifChangedEffect).length) applyEffect(game, player, instruction.ifChangedEffect, context);
-      if (entry.heat > before && resolveHeatTransformIfReady(game, player, entry, card)) return true;
+      if (entry.heat > before) {
+        for (const threshold of heatThresholdsReached(card.heat, entry.heat)) {
+          applyEffect(game, player, threshold.effect, { cardId: card.id, instanceId: entry.instanceId, source: "external-heat" });
+        }
+        if (resolveHeatTransformIfReady(game, player, entry, card)) return true;
+        const overload = card.heat.overload;
+        if (overload && heatOverloadReady(card.heat, entry.heat)) {
+          const overloadInstruction = {
+            instanceId: entry.instanceId,
+            reset: Math.max(0, Number(overload.reset) || 0),
+            selfDamage: Math.max(0, Number(overload.selfDamage) || 0),
+            effect: clone(overload.effect || {})
+          };
+          if (overload.optional) {
+            queueSpecialChoice(game, player, [
+              { label: "Overload", effect: { __heatOverload: overloadInstruction } },
+              { label: "Hold Heat", effect: { __noop: true } }
+            ], { cardId: card.id, instanceId: entry.instanceId, source: "heat-overload" });
+          } else {
+            resolveHeatOverload(game, player, overloadInstruction, { cardId: card.id, instanceId: entry.instanceId, source: "heat-overload" });
+          }
+        }
+      }
     }
-    if (instruction.remainingTargets > 0) queueHeatTargetChoice(game, player, { amount: Math.abs(Number(instruction.delta) || 1), targets: instruction.remainingTargets }, context);
+    if (instruction.remainingTargets > 0) {
+      const nextConfig = {
+        amount: Math.abs(Number(instruction.delta) || 1),
+        targets: instruction.remainingTargets,
+        target: instruction.targetRule,
+        excludeSelf: instruction.excludeSelf
+      };
+      if (instruction.targetMode === "add") queueAddHeatTargetChoice(game, player, nextConfig, context);
+      else queueHeatTargetChoice(game, player, nextConfig, context);
+    }
     return changed;
   }
 
@@ -7746,6 +7813,7 @@
     const createTokenConfig = normalized.createToken;
     const drawFromDrawPileConfig = normalized.drawFromDrawPile;
     const coolHeatConfig = normalized.coolHeat;
+    const addHeatConfig = normalized.addHeat;
     const armorConfig = normalized.armor;
     const repairConfig = normalized.repair;
     const constructionConfig = normalized.advanceConstruction;
@@ -7778,6 +7846,7 @@
     delete normalized.createToken;
     delete normalized.drawFromDrawPile;
     delete normalized.coolHeat;
+    delete normalized.addHeat;
     delete normalized.armor;
     delete normalized.repair;
     delete normalized.advanceConstruction;
@@ -7868,6 +7937,7 @@
     if (redeployConfig) queueRedeployChoice(game, player, redeployConfig, context);
     if (createTokenConfig) createTokenCards(game, player, createTokenConfig, context);
     if (coolHeatConfig) queueHeatTargetChoice(game, player, coolHeatConfig, context);
+    if (addHeatConfig) queueAddHeatTargetChoice(game, player, addHeatConfig, context);
     if (armorConfig) queueBaseTargetChoice(game, player, armorConfig, context, "armor");
     if (repairConfig) queueBaseTargetChoice(game, player, repairConfig, context, "repair");
     if (constructionConfig) queueBaseTargetChoice(game, player, constructionConfig, context, "construction");
@@ -10406,7 +10476,8 @@
       (normalized.armor ? Math.max(0, Number(normalized.armor.amount) || 0) * (normalized.armor.all ? 1.4 : .7) : 0) +
       (normalized.repair ? Math.max(0, Number(normalized.repair.amount) || 0) * .65 : 0) +
       (normalized.advanceConstruction ? Math.max(0, Number(normalized.advanceConstruction.amount) || 0) * 2.2 : 0) +
-      (normalized.coolHeat ? Math.max(0, Number(normalized.coolHeat.amount) || 0) * 1.1 : 0);
+      (normalized.coolHeat ? Math.max(0, Number(normalized.coolHeat.amount) || 0) * 1.1 : 0) +
+      (normalized.addHeat ? Math.max(0, Number(normalized.addHeat.amount) || 0) * 1.5 : 0);
     const options = choiceEffectOptions(effect);
     const bestChoice = options.length ? Math.max(...options.map(option => effectAiValue(option.effect))) : 0;
     return sharedValue + bestChoice;
