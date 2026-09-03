@@ -3,7 +3,7 @@ import {
   TEST_LAB_PRIORITY_MODES,
   TEST_LAB_STRATEGIES,
   getTestLabCards
-} from "./test-lab-simulator.js?v=2";
+} from "./test-lab-simulator.js?v=3";
 import { runTestLabWithHistory } from "./test-lab-runner.js?v=2";
 
 const cards = getTestLabCards();

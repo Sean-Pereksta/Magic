@@ -1862,6 +1862,70 @@
       baseBias: .08,
       defenseWeight: .06,
       drawPriority: true
+    }),
+    summoning: Object.freeze({
+      name: "Summoning",
+      preferredFactions: Object.freeze(["green", "yellow"]),
+      weights: Object.freeze({ createToken: 3.4, draw: 1.05, trade: .28, combat: .18, scrapOwn: .35 }),
+      coreAbilities: Object.freeze(["createToken", "draw"]),
+      secondaryAbilities: Object.freeze(["drawFromDrawPile", "combat"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 1, idealMax: 6, expensiveTolerance: .46, signatureChance: .48 }),
+      factionTargets: Object.freeze({ primary: .56, support: .26 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["createToken"]), min: 4 }), Object.freeze({ abilities: Object.freeze(["draw", "drawFromDrawPile"]), min: 4 })]),
+      playPriorities: Object.freeze(["createToken", "drawFromDrawPile", "draw"]),
+      baseTarget: 5,
+      baseBias: .12,
+      defenseWeight: .06,
+      drawPriority: true
+    }),
+    ascendents: Object.freeze({
+      name: "Ascendents",
+      preferredFactions: Object.freeze(["red", "green"]),
+      weights: Object.freeze({ addHeat: .72, draw: .48, combat: .25, trade: .2, shield: .18 }),
+      coreAbilities: Object.freeze(["draw", "addHeat"]),
+      secondaryAbilities: Object.freeze(["combat", "shield"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .64, signatureChance: .68 }),
+      factionTargets: Object.freeze({ primary: .56, support: .27 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["transform"]), min: 2 })]),
+      playPriorities: Object.freeze(["transform", "heat", "scaling"]),
+      baseTarget: 5,
+      baseBias: .18,
+      defenseWeight: .08,
+      drawPriority: false
+    }),
+    bastion: Object.freeze({
+      name: "Bastion",
+      preferredFactions: Object.freeze(["blue", "green"]),
+      weights: Object.freeze({ shield: 1.62, heal: 1.24, healPerBase: 1.42, repair: 1.28, combatPerBase: .48, tradePerBase: .46, drawPerBase: .62 }),
+      coreAbilities: Object.freeze(["shield", "heal", "repair"]),
+      secondaryAbilities: Object.freeze(["healPerBase", "combatPerBase", "tradePerBase"]),
+      preferredTypes: Object.freeze(["base", "attachment"]),
+      costProfile: Object.freeze({ idealMin: 3, idealMax: 8, expensiveTolerance: .68, signatureChance: .72 }),
+      factionTargets: Object.freeze({ primary: .58, support: .28 }),
+      minimumAbilities: Object.freeze([Object.freeze({ types: Object.freeze(["base"]), min: 10 }), Object.freeze({ abilities: Object.freeze(["shield", "heal", "repair", "healPerBase"]), min: 4 })]),
+      playPriorities: Object.freeze(["base", "shield", "heal", "repair"]),
+      baseTarget: 14,
+      baseBias: 1.62,
+      defenseWeight: .27,
+      drawPriority: false
+    }),
+    fleet: Object.freeze({
+      name: "Fleet",
+      preferredFactions: Object.freeze(["blue", "yellow"]),
+      weights: Object.freeze({ createToken: 2.35, draw: .68, combat: .36, shield: .22, trade: .18 }),
+      coreAbilities: Object.freeze(["createToken", "draw"]),
+      secondaryAbilities: Object.freeze(["combat", "shield"]),
+      preferredTypes: Object.freeze(["unit", "base"]),
+      costProfile: Object.freeze({ idealMin: 2, idealMax: 7, expensiveTolerance: .58, signatureChance: .62 }),
+      factionTargets: Object.freeze({ primary: .56, support: .27 }),
+      minimumAbilities: Object.freeze([Object.freeze({ abilities: Object.freeze(["createToken"]), min: 4 })]),
+      playPriorities: Object.freeze(["drone", "interceptor", "createToken"]),
+      baseTarget: 6,
+      baseBias: .22,
+      defenseWeight: .08,
+      drawPriority: true
     })
   });
   const DRAFT_BUDGET = 6;
@@ -10140,6 +10204,7 @@
   function effectHasBotAbility(effect = {}, ability) {
     const normalized = coreEffect(effect);
     if (ability === "drawFromDrawPile" && normalized.drawFromDrawPile) return true;
+    if (ability === "createToken" && normalized.createToken) return true;
     if (ability === "draw" && (Math.max(0, Number(normalized.draw) || 0) > 0 || normalized.drawFromDrawPile)) return true;
     if (ability === "reclaim" || ability === "redeploy") {
       if (normalized[ability]) return true;
@@ -10151,6 +10216,7 @@
     if (!card) return false;
     const normalizedType = card.type === "card" || card.type === "ship" ? "unit" : card.type;
     if (requirement.types?.length && requirement.types.includes(normalizedType)) return true;
+    if ((requirement.abilities || []).includes("transform") && card.transform) return true;
     return (requirement.abilities || []).some(ability => botCardEffectSources(card).some(effect => effectHasBotAbility(effect, ability)));
   }
 
@@ -10487,9 +10553,33 @@
     const normalized = coreEffect(effect);
     let value = Object.entries(weights).reduce((sum, [key, weight]) => sum + Math.max(0, Number(normalized[key]) || 0) * weight, 0);
     if (normalized.drawFromDrawPile) value += Math.max(1, Number(normalized.drawFromDrawPile.count) || 1) * Math.max(1, Number(weights.draw) || 2);
+    if (normalized.createToken) value += Math.max(1, Number(normalized.createToken.count) || 1) * Math.max(0, Number(weights.createToken) || 0);
     const choices = choiceEffectOptions(effect);
     if (choices.length) value += Math.max(...choices.map(option => strategyEffectValue(option.effect, weights)));
     return value;
+  }
+
+  function botCreatedTokenCount(value, wantedIds = null, seen = new WeakSet()) {
+    if (!value || typeof value !== "object") return 0;
+    if (seen.has(value)) return 0;
+    seen.add(value);
+    if (Array.isArray(value)) return value.reduce((total, child) => total + botCreatedTokenCount(child, wantedIds, seen), 0);
+    let total = 0;
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "createToken" && child && typeof child === "object") {
+        const tokenId = String(child.id || "").toLowerCase();
+        const count = Math.max(1, Number(child.count ?? child.amount) || 1);
+        if (!wantedIds?.length || wantedIds.includes(tokenId)) total += count;
+      }
+      total += botCreatedTokenCount(child, wantedIds, seen);
+    }
+    return total;
+  }
+
+  function botCardReferencesToken(card, tokenIds = []) {
+    if (!card || !tokenIds.length) return false;
+    const text = JSON.stringify(card).toLowerCase();
+    return tokenIds.some(tokenId => text.includes(String(tokenId).toLowerCase()));
   }
 
   function botStrategyCardValue(card, strategyKey) {
@@ -10508,7 +10598,9 @@
     if (chargeActions.length) {
       value += Math.max(...chargeActions.map(action => strategyEffectValue(action.effect || action.effectPerCharge, strategy.weights))) * .35;
     }
-    const createsToken = !!(card.effect?.createToken || card.ally?.createToken || card.recurring?.effect?.createToken);
+    const createsToken = botCreatedTokenCount(card) > 0;
+    const fleetTokenCount = botCreatedTokenCount(card, ["drone", "interceptor"]);
+    const pullsFromDrawPile = botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "drawFromDrawPile"));
     const recoversCard = !!(card.effect?.reclaim || card.effect?.redeploy || card.ally?.reclaim || card.ally?.redeploy);
     if (strategyKey === "engine") value += (card.heat ? 5 : 0) + (card.charge ? 4 : 0);
     if (strategyKey === "stronghold") value += (isExpansionBase(card) ? 6 : 0) + (card.type === "attachment" ? 4.5 : 0) + (card.effect?.armor || card.effect?.repair ? 3 : 0);
@@ -10516,6 +10608,10 @@
     if (strategyKey === "attrition") value += (card.sacrifice || card.sacrificeThresholds ? 5 : 0) + (card.effect?.reclaim ? 2 : 0);
     if (strategyKey === "vanguard" || strategyKey === "siege") value += createsToken ? 3.5 : 0;
     if (strategyKey === "marketeer") value += card.factionScaling || card.factionThresholds ? 3 : 0;
+    if (strategyKey === "summoning") value += botCreatedTokenCount(card) * 5.4 + (pullsFromDrawPile ? 6.2 : 0) + (botCardReferencesToken(card, ["token"]) ? 1.4 : 0);
+    if (strategyKey === "ascendents") value += card.transform ? 12 : 0;
+    if (strategyKey === "bastion") value += (card.type === "base" ? 4.5 : 0) + (isExpansionBase(card) ? 4 : 0) + (botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "shield") || effectHasBotAbility(effect, "heal") || effectHasBotAbility(effect, "repair")) ? 4.2 : 0);
+    if (strategyKey === "fleet") value += fleetTokenCount * 10 + (fleetTokenCount === 0 && botCardReferencesToken(card, ["drone", "interceptor"]) ? 4.6 : 0) + (createsToken ? 2 : 0);
     if (card.type === "base") value += strategy.baseBias + Math.max(0, Number(card.defense) || 0) * strategy.defenseWeight;
     return value;
   }
@@ -10554,11 +10650,14 @@
       if (isHiredLooterCardId(card.id) && sameCard >= 2) bonus -= 1.8 + (sameCard - 2) * .8;
       if (bot.botStrategy === "siege" && (opponent?.bases?.length || 0) > 1 && botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "destroyBase") || effectHasBotAbility(effect, "stun"))) bonus += 2 + opponent.bases.length * .55;
       if (bot.botStrategy === "attrition" && (opponent?.hand?.length || 0) >= 5 && botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "opponentDiscard"))) bonus += 2.4;
-      if (bot.botStrategy === "stronghold" && card.type === "base") {
+      if ((bot.botStrategy === "stronghold" || bot.botStrategy === "bastion") && card.type === "base") {
         const ownedBases = ownedIds.filter(cardId => getCard(cardId)?.type === "base").length;
-        bonus += ownedBases < strategy.baseTarget ? 3.1 : .4;
+        bonus += ownedBases < strategy.baseTarget ? (bot.botStrategy === "bastion" ? 4.2 : 3.1) : .4;
       }
-      if ((bot.botStrategy === "engine" || bot.botStrategy === "marketeer") && round <= 5) bonus += profile.income * .85;
+      if (bot.botStrategy === "summoning" && (botCreatedTokenCount(card) > 0 || botCardEffectSources(card).some(effect => effectHasBotAbility(effect, "drawFromDrawPile")))) bonus += 2.8;
+      if (bot.botStrategy === "ascendents" && card.transform) bonus += 4.5;
+      if (bot.botStrategy === "fleet" && botCreatedTokenCount(card, ["drone", "interceptor"]) > 0) bonus += 5.5;
+      if ((bot.botStrategy === "engine" || bot.botStrategy === "marketeer" || bot.botStrategy === "summoning") && round <= 5) bonus += profile.income * .85;
     }
     return bonus;
   }
@@ -10706,8 +10805,12 @@
       const availableFactionCount = card ? (factionCounts[card.faction] || 0) + activeFactionCount : 0;
       if (card && availableFactionCount > 1) score += 3;
       if (card && hasEffect(doubleAllyEffect(card)) && availableFactionCount > 2) score += 4;
-      if (hasAbility("draw")) score += strategyKey === "engine" || strategyKey === "cycle" || strategyKey === "marketeer" ? 8 : 5;
+      if (hasAbility("draw")) score += ["engine", "cycle", "marketeer", "summoning", "fleet"].includes(strategyKey) ? 8 : 5;
       if (hasAbility("trade")) score += strategyKey === "engine" || strategyKey === "marketeer" ? 4.5 : 1;
+      if (strategyKey === "summoning" && (hasAbility("createToken") || hasAbility("drawFromDrawPile"))) score += 6;
+      if (strategyKey === "ascendents" && card?.transform) score += 7;
+      if (strategyKey === "bastion" && (card?.type === "base" || hasAbility("shield") || hasAbility("heal") || hasAbility("repair"))) score += 5;
+      if (strategyKey === "fleet" && botCreatedTokenCount(card, ["drone", "interceptor"]) > 0) score += 8;
       if (hasAbility("scrapOwn")) score += strategyKey === "engine" || strategyKey === "cycle" ? 3.5 : 1;
       if (strategyKey === "vanguard" && hasAbility("combat")) score += availableFactionCount > 1 ? 3.5 : 1.2;
       if (strategyKey === "stronghold" && card?.type === "base") score += 3;

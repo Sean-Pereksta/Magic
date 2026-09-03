@@ -4,7 +4,7 @@ import {
   simulateTestLabGame,
   testLabCardRows,
   testLabSummary
-} from "./test-lab-simulator.js?v=2";
+} from "./test-lab-simulator.js?v=3";
 import {
   createStrategyAnalytics,
   recordStrategyGame,
