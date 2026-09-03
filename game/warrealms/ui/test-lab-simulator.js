@@ -35,13 +35,15 @@ export const TEST_LAB_DIFFICULTIES = Object.freeze([
   { id: "impossible", name: "Impossible", errorRate: .015, noise: .045 }
 ]);
 
+export const TEST_LAB_PRIORITY_MODES = Object.freeze([
+  { id: "prefer", name: "Prefer", bonus: 5.5, description: "A noticeable preference that can still lose to a much better purchase." },
+  { id: "strong", name: "Strong", bonus: 12, description: "A major preference for the selected cards whenever they are affordable." },
+  { id: "force", name: "Force when affordable", bonus: 40, description: "If a selected priority card is affordable, the bot buys a priority card first." }
+]);
+
 const STRATEGY_BY_ID = new Map(TEST_LAB_STRATEGIES.map(strategy => [strategy.id, strategy]));
 const DIFFICULTY_BY_ID = new Map(TEST_LAB_DIFFICULTIES.map(difficulty => [difficulty.id, difficulty]));
-
-const DIRECT_EFFECT_KEYS = new Set([
-  "trade", "combat", "draw", "heal", "authority", "shield", "scrapOwn", "purge",
-  "scrapMarket", "marketErase", "stun", "disable", "destroyBase", "repair", "createToken"
-]);
+const PRIORITY_BY_ID = new Map(TEST_LAB_PRIORITY_MODES.map(mode => [mode.id, mode]));
 
 function number(value) {
   const parsed = Number(value);
@@ -157,9 +159,6 @@ function cardOutput(card, handFactionCounts = {}, persistent = false) {
   if (card?.faction && card.faction !== "neutral" && sameFaction >= 1) addEffects(output, directEffect(card.ally || {}));
   if (card?.faction && card.faction !== "neutral" && sameFaction >= 2) addEffects(output, directEffect(card.doubleAlly || card.double_ally || card.ally2 || {}));
 
-  // Heat, Charge, sacrifice, transformation, and trigger engines are intentionally
-  // discounted rather than treated as free every turn. This keeps rapid simulations
-  // from over-crediting conditional text while still recognizing those card systems.
   const conditional = emptyOutput();
   if (card?.heat) addEffects(conditional, directEffect(card.heat), .18);
   if (card?.charge) addEffects(conditional, directEffect(card.charge), .2);
@@ -187,10 +186,10 @@ function cardOutput(card, handFactionCounts = {}, persistent = false) {
 function strategicTags(card) {
   return {
     economy: sumKey(card, "trade") + sumKey(card, "draw") * 1.2 + (hasKey(card, new Set(["scrapOwn", "purge", "purgeAndDraw"])) ? 1.4 : 0),
-    offense: sumKey(card, "combat") + (hasKey(card, new Set(["destroyBase", "combatAgainstBases", "damageAll"] )) ? 2 : 0),
+    offense: sumKey(card, "combat") + (hasKey(card, new Set(["destroyBase", "combatAgainstBases", "damageAll"])) ? 2 : 0),
     defense: number(card?.health || card?.defense) * (card?.type === "base" ? .25 : 0) + sumKey(card, "shield") + sumKey(card, "heal"),
-    control: (hasKey(card, new Set(["stun", "disable", "discard", "oppDiscard", "scrapMarket", "marketErase"])) ? 2.5 : 0),
-    engine: (hasKey(card, new Set(["addHeat", "charge", "createToken", "sacrifice", "transform", "construction", "attachment"])) ? 2.1 : 0)
+    control: hasKey(card, new Set(["stun", "disable", "discard", "oppDiscard", "scrapMarket", "marketErase"])) ? 2.5 : 0,
+    engine: hasKey(card, new Set(["addHeat", "charge", "createToken", "sacrifice", "transform", "construction", "attachment"])) ? 2.1 : 0
   };
 }
 
@@ -232,11 +231,21 @@ function intrinsicCardValue(card) {
   ) * recurring;
 }
 
+function normalizePriority(cardIds, enabled, mode) {
+  const ids = new Set((Array.isArray(cardIds) ? cardIds : []).filter(cardId => CARD_BY_ID.has(cardId)));
+  return {
+    enabled: enabled === true && ids.size > 0,
+    ids,
+    mode: PRIORITY_BY_ID.has(mode) ? mode : "prefer"
+  };
+}
+
 function purchaseScore(card, bot, difficulty, random) {
   const cost = Math.max(1, number(card?.cost));
   let score = intrinsicCardValue(card) + strategyBonus(card, bot.strategy);
   score += Math.min(3.5, cost * .18);
   if (bot.factionCounts[card.faction]) score += Math.min(2.6, bot.factionCounts[card.faction] * .13);
+  if (bot.priority.enabled && bot.priority.ids.has(card.id)) score += PRIORITY_BY_ID.get(bot.priority.mode)?.bonus || 0;
   if (difficulty.noise) score += (random() - .5) * difficulty.noise * 10;
   if (random() < difficulty.errorRate) score *= .45 + random() * .65;
   return score;
@@ -288,12 +297,13 @@ function createStarterDeck(random) {
   ], random);
 }
 
-function createBot(id, label, strategy, difficulty, random) {
+function createBot(id, label, strategy, difficulty, random, priority = {}) {
   return {
     id,
     label,
     strategy,
     difficulty,
+    priority: normalizePriority(priority.cardIds, priority.enabled, priority.mode),
     authority: 50,
     shield: 0,
     draw: createStarterDeck(random),
@@ -328,13 +338,11 @@ function deployAndResolveHand(bot, random) {
   const factions = factionCount(cards);
   const output = emptyOutput();
   const playedShips = [];
-  const baseIds = [];
 
   for (const card of cards) {
     if (card.type === "base") {
       const health = Math.max(1, number(card.health || card.defense || 5));
       bot.bases.push({ cardId: card.id, hp: health, maxHp: health, outpost: card.outpost === true });
-      baseIds.push(card.id);
     } else {
       addEffects(output, cardOutput(card, factions));
       playedShips.push(card.id);
@@ -356,7 +364,6 @@ function deployAndResolveHand(bot, random) {
     if (card.type === "base") {
       const health = Math.max(1, number(card.health || card.defense || 5));
       bot.bases.push({ cardId: card.id, hp: health, maxHp: health, outpost: card.outpost === true });
-      baseIds.push(card.id);
     } else {
       addEffects(output, cardOutput(card, baseFactions));
       playedShips.push(card.id);
@@ -441,6 +448,18 @@ function refillMarket(market, marketDeck) {
   while (market.length < 5 && marketDeck.length) market.push(marketDeck.pop());
 }
 
+function choosePurchase(affordable, bot, difficulty, random) {
+  affordable.forEach(entry => { entry.score = purchaseScore(entry.card, bot, difficulty, random); });
+  affordable.sort((a, b) => b.score - a.score);
+  if (bot.priority.enabled && bot.priority.mode === "force") {
+    const forced = affordable.filter(entry => bot.priority.ids.has(entry.cardId));
+    if (forced.length) return forced.sort((a, b) => b.score - a.score)[0];
+  }
+  return random() < difficulty.errorRate && affordable.length > 1
+    ? affordable[Math.floor(random() * Math.min(3, affordable.length))]
+    : affordable[0];
+}
+
 function buyCards(bot, trade, market, marketDeck, difficulty, random, purchases) {
   let remainingTrade = Math.max(0, trade);
   let safety = 12;
@@ -449,16 +468,13 @@ function buyCards(bot, trade, market, marketDeck, difficulty, random, purchases)
       .map((cardId, index) => ({ cardId, index, card: CARD_BY_ID.get(cardId) }))
       .filter(entry => entry.card && number(entry.card.cost) <= remainingTrade);
     if (!affordable.length) break;
-    affordable.forEach(entry => { entry.score = purchaseScore(entry.card, bot, difficulty, random); });
-    affordable.sort((a, b) => b.score - a.score);
-    const choice = random() < difficulty.errorRate && affordable.length > 1
-      ? affordable[Math.floor(random() * Math.min(3, affordable.length))]
-      : affordable[0];
+    const choice = choosePurchase(affordable, bot, difficulty, random);
     if (!choice?.card) break;
     remainingTrade -= Math.max(0, number(choice.card.cost));
     bot.discard.push(choice.card.id);
-    bot.purchases.push({ cardId: choice.card.id, turn: bot.turn });
-    purchases.push({ playerId: bot.id, cardId: choice.card.id, turn: bot.turn });
+    const priorityPurchase = bot.priority.enabled && bot.priority.ids.has(choice.card.id);
+    bot.purchases.push({ cardId: choice.card.id, turn: bot.turn, priority: priorityPurchase });
+    purchases.push({ playerId: bot.id, cardId: choice.card.id, turn: bot.turn, priority: priorityPurchase });
     if (choice.card.faction && choice.card.faction !== "neutral") bot.factionCounts[choice.card.faction] = (bot.factionCounts[choice.card.faction] || 0) + 1;
     market.splice(choice.index, 1);
     refillMarket(market, marketDeck);
@@ -509,8 +525,16 @@ export function simulateTestLabGame(options = {}, gameIndex = 0) {
   const strategyB = resolveStrategy(options.strategyB || "random", random);
   const difficultyA = DIFFICULTY_BY_ID.get(options.difficultyA || "hard") || DIFFICULTY_BY_ID.get("hard");
   const difficultyB = DIFFICULTY_BY_ID.get(options.difficultyB || "hard") || DIFFICULTY_BY_ID.get("hard");
-  const botA = createBot("a", "Bot A", strategyA, difficultyA.id, random);
-  const botB = createBot("b", "Bot B", strategyB, difficultyB.id, random);
+  const botA = createBot("a", "Bot A", strategyA, difficultyA.id, random, {
+    enabled: options.priorityAEnabled === true,
+    cardIds: options.priorityCardsA,
+    mode: options.priorityModeA
+  });
+  const botB = createBot("b", "Bot B", strategyB, difficultyB.id, random, {
+    enabled: options.priorityBEnabled === true,
+    cardIds: options.priorityCardsB,
+    mode: options.priorityModeB
+  });
   const bots = gameIndex % 2 === 0 ? [botA, botB] : [botB, botA];
   const marketDeck = gameMarketPool(strategyA, strategyB, options.experimentalCardIds, clamp(number(options.experimentalCopies) || 2, 1, 4), random);
   const market = [];
@@ -554,6 +578,10 @@ export function simulateTestLabGame(options = {}, gameIndex = 0) {
     rounds: Math.ceil(totalTurns / 2),
     strategies: { a: strategyA, b: strategyB },
     authority: { a: Math.max(0, botA.authority), b: Math.max(0, botB.authority) },
+    priorities: {
+      a: { enabled: botA.priority.enabled, mode: botA.priority.mode, cards: [...botA.priority.ids] },
+      b: { enabled: botB.priority.enabled, mode: botB.priority.mode, cards: [...botB.priority.ids] }
+    },
     purchases
   };
 }
