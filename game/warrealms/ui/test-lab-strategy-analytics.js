@@ -1,4 +1,4 @@
-import { getTestLabCard } from "./test-lab-simulator.js?v=2";
+import { getTestLabCard } from "./test-lab-simulator.js?v=3";
 
 function number(value) {
   const parsed = Number(value);

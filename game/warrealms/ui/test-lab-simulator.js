@@ -25,7 +25,11 @@ export const TEST_LAB_STRATEGIES = Object.freeze([
   { id: "cycle", name: "Cycle", primary: ["blue", "yellow"], support: ["red"], description: "Draw, purge, and repeated high-value turns." },
   { id: "siege", name: "Siege", primary: ["green", "yellow"], support: ["red"], description: "Combat, structural pressure, disable, and raze." },
   { id: "attrition", name: "Attrition", primary: ["red", "blue"], support: ["yellow"], description: "Discard pressure, sustain, and thinning." },
-  { id: "marketeer", name: "Marketeer", primary: ["yellow", "red"], support: ["blue"], description: "Trade, market control, and card flow." }
+  { id: "marketeer", name: "Marketeer", primary: ["yellow", "red"], support: ["blue"], description: "Trade, market control, and card flow." },
+  { id: "summoning", name: "Summoning", primary: ["green", "yellow"], support: ["blue"], description: "Token production, draw-pile pulls, and swarm value." },
+  { id: "ascendents", name: "Ascendents", primary: ["red", "green"], support: ["blue"], description: "Evolution, ascension, hatching, and other card transformations." },
+  { id: "bastion", name: "Bastion", primary: ["blue", "green"], support: ["yellow"], description: "Structures, repair, healing, Shield, and defensive engines." },
+  { id: "fleet", name: "Fleet", primary: ["blue", "yellow"], support: ["green"], description: "Drone and Interceptor token producers plus their supporting payoffs." }
 ]);
 
 export const TEST_LAB_DIFFICULTIES = Object.freeze([
@@ -183,13 +187,50 @@ function cardOutput(card, handFactionCounts = {}, persistent = false) {
   return output;
 }
 
+function createdTokenCount(value, wantedIds = null, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  if (Array.isArray(value)) return value.reduce((total, child) => total + createdTokenCount(child, wantedIds, seen), 0);
+  let total = 0;
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "createToken" && child && typeof child === "object") {
+      const tokenId = String(child.id || "").toLowerCase();
+      const count = Math.max(1, number(child.count ?? child.amount) || 1);
+      if (!wantedIds?.length || wantedIds.includes(tokenId)) total += count;
+    }
+    total += createdTokenCount(child, wantedIds, seen);
+  }
+  return total;
+}
+
+function cardReferencesTokens(card, tokenIds = []) {
+  if (!card || !tokenIds.length) return false;
+  const text = JSON.stringify(card).toLowerCase();
+  return tokenIds.some(tokenId => text.includes(String(tokenId).toLowerCase()));
+}
+
+function hasTransformPath(card) {
+  if (!card?.transform || typeof card.transform !== "object") return false;
+  return !!(card.transform.into || (Array.isArray(card.transform.choose) && card.transform.choose.length) || (card.transform.choose && typeof card.transform.choose === "object"));
+}
+
 function strategicTags(card) {
+  const summonedTokens = createdTokenCount(card);
+  const fleetTokens = createdTokenCount(card, ["drone", "interceptor"]);
+  const drawPilePulls = sumKey(card, "drawFromDrawPile");
+  const shield = sumKey(card, "shield");
+  const repair = sumKey(card, "repair");
   return {
-    economy: sumKey(card, "trade") + sumKey(card, "draw") * 1.2 + (hasKey(card, new Set(["scrapOwn", "purge", "purgeAndDraw"])) ? 1.4 : 0),
+    economy: sumKey(card, "trade") + sumKey(card, "draw") * 1.2 + drawPilePulls * 1.35 + (hasKey(card, new Set(["scrapOwn", "purge", "purgeAndDraw"])) ? 1.4 : 0),
     offense: sumKey(card, "combat") + (hasKey(card, new Set(["destroyBase", "combatAgainstBases", "damageAll"])) ? 2 : 0),
-    defense: number(card?.health || card?.defense) * (card?.type === "base" ? .25 : 0) + sumKey(card, "shield") + sumKey(card, "heal"),
+    defense: number(card?.health || card?.defense) * (card?.type === "base" ? .25 : 0) + shield + sumKey(card, "heal") + repair * .8,
     control: hasKey(card, new Set(["stun", "disable", "discard", "oppDiscard", "scrapMarket", "marketErase"])) ? 2.5 : 0,
-    engine: hasKey(card, new Set(["addHeat", "charge", "createToken", "sacrifice", "transform", "construction", "attachment"])) ? 2.1 : 0
+    engine: hasKey(card, new Set(["addHeat", "charge", "createToken", "sacrifice", "transform", "construction", "attachment"])) ? 2.1 : 0,
+    summoning: summonedTokens * 2.4 + drawPilePulls * 2.1 + (hasKey(card, new Set(["TOKEN_CREATED", "TOKEN_PLAYED", "tokenCombo", "tokenSacrificeTrigger"])) ? 1.4 : 0),
+    transform: hasTransformPath(card) ? 5.5 : 0,
+    bastion: (card?.type === "base" ? 2.8 : 0) + shield * 1.4 + sumKey(card, "heal") * 1.2 + repair * 1.35,
+    fleet: fleetTokens * 4.4 + (cardReferencesTokens(card, ["drone", "interceptor"]) ? 1.5 : 0)
   };
 }
 
@@ -207,9 +248,18 @@ function strategyBonus(card, strategyId) {
     case "siege": bonus += tags.offense * .78 + tags.control * .38; break;
     case "attrition": bonus += tags.control * .72 + tags.defense * .28 + tags.engine * .22; break;
     case "marketeer": bonus += tags.economy * .72 + tags.control * .5; break;
+    case "summoning": bonus += tags.summoning * 1.18 + tags.engine * .34 + tags.economy * .2; break;
+    case "ascendents": bonus += tags.transform * 2 + tags.engine * .45 + tags.economy * .15; break;
+    case "bastion": bonus += tags.bastion * 1.16 + tags.defense * .66 + (card.type === "base" ? 2.9 : 0); break;
+    case "fleet": bonus += tags.fleet * 1.65 + tags.summoning * .48 + tags.offense * .16; break;
     default: bonus += (tags.economy + tags.offense + tags.defense + tags.control + tags.engine) * .16;
   }
   return bonus;
+}
+
+export function testLabStrategyFit(cardOrId, strategyId) {
+  const card = typeof cardOrId === "string" ? CARD_BY_ID.get(cardOrId) : cardOrId;
+  return card ? strategyBonus(card, strategyId) : 0;
 }
 
 function intrinsicCardValue(card) {

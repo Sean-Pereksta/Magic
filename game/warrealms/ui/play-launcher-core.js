@@ -19,7 +19,11 @@ const BOT_STRATEGIES = Object.freeze([
   Object.freeze({ id: "cycle", name: "Cycle", icon: "↻", color: "#49a7e8", secondary: "#d6bb3d", factions: "Yellow + Blue", deck: "Draw · purge · rotation", description: "Draws aggressively and purges weak cards to repeat its best turns." }),
   Object.freeze({ id: "siege", name: "Siege", icon: "✹", color: "#67b64c", secondary: "#d6bb3d", factions: "Green + Yellow", deck: "Combat · stun · raze", description: "Breaks defensive boards and converts combat into structural damage." }),
   Object.freeze({ id: "attrition", name: "Attrition", icon: "☠", color: "#c2465d", secondary: "#49a7e8", factions: "Red + Blue", deck: "Discard · sustain · thinning", description: "Shrinks opposing options while surviving long enough to take over." }),
-  Object.freeze({ id: "marketeer", name: "Marketeer", icon: "◆", color: "#d6bb3d", secondary: "#c2465d", factions: "Yellow + Red", deck: "Trade · market control · flow", description: "Shapes the shared market while keeping cards and Trade flowing." })
+  Object.freeze({ id: "marketeer", name: "Marketeer", icon: "◆", color: "#d6bb3d", secondary: "#c2465d", factions: "Yellow + Red", deck: "Trade · market control · flow", description: "Shapes the shared market while keeping cards and Trade flowing." }),
+  Object.freeze({ id: "summoning", name: "Summoning", icon: "✦", color: "#67b64c", secondary: "#d6bb3d", factions: "Green + Yellow", deck: "Tokens · deck pulls · swarm", description: "Builds around token makers and cards that pull extra bodies from the draw pile." }),
+  Object.freeze({ id: "ascendents", name: "Ascendents", icon: "◇", color: "#c2465d", secondary: "#67b64c", factions: "Red + Green", deck: "Evolution · transformation · scaling", description: "Prioritizes cards that evolve, ascend, hatch, or transform into stronger forms." }),
+  Object.freeze({ id: "bastion", name: "Bastion", icon: "▣", color: "#49a7e8", secondary: "#67b64c", factions: "Blue + Green", deck: "Structures · healing · shields", description: "Commits heavily to Bases, repair, healing, Shield, and durable defensive engines." }),
+  Object.freeze({ id: "fleet", name: "Fleet", icon: "✧", color: "#49a7e8", secondary: "#d6bb3d", factions: "Blue + Yellow", deck: "Drones · Interceptors · token synergy", description: "A focused summoning plan that hunts Drone and Interceptor producers and their payoffs." })
 ]);
 
 const BOT_DIFFICULTIES = Object.freeze([
