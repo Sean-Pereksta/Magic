@@ -35,6 +35,8 @@ const CORE_FALLBACK = Object.freeze({
   legion: "vanguard",
   arsenal: "bastion"
 });
+const TEST_LAB_CARDS = Object.freeze(getTestLabCards());
+const RANKING_CACHE = new Map();
 
 function number(value) {
   const parsed = Number(value);
@@ -70,12 +72,17 @@ function legionFaction(seed, gameIndex, side) {
 function rankedStrategyCards(strategyId, options = {}) {
   if (!expandedStrategyById(strategyId)) return [];
   const wantedFaction = strategyId === "legion" ? options.legionFaction : "";
-  return getTestLabCards()
+  const cacheKey = `${strategyId}:${wantedFaction || "all"}`;
+  if (RANKING_CACHE.has(cacheKey)) return RANKING_CACHE.get(cacheKey);
+  const ranked = TEST_LAB_CARDS
     .map(card => ({ card, definition: getTestLabCard(card.id) }))
     .filter(entry => entry.definition && (!wantedFaction || entry.definition.faction === wantedFaction))
     .map(entry => ({ id: entry.card.id, score: expandedStrategyFit(entry.definition, strategyId), cost: number(entry.card.cost) }))
     .filter(entry => entry.score > 2.5)
     .sort((left, right) => right.score - left.score || left.cost - right.cost || left.id.localeCompare(right.id));
+  const cached = Object.freeze(ranked);
+  RANKING_CACHE.set(cacheKey, cached);
+  return cached;
 }
 
 export function testLabExtendedStrategyFit(cardOrId, strategyId) {
