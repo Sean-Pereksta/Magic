@@ -1,15 +1,17 @@
 import {
   TEST_LAB_DIFFICULTIES,
   TEST_LAB_STRATEGIES,
-  getTestLabCards,
-  runTestLabSimulation
+  getTestLabCards
 } from "./test-lab-simulator.js?v=1";
+import { runTestLabWithHistory } from "./test-lab-runner.js?v=1";
 
 const cards = getTestLabCards();
+const cardNameById = new Map(cards.map(card => [card.id, card.name]));
 const selectedCards = new Set();
 let activeController = null;
 let latestRows = [];
 let latestSummary = null;
+let latestRecentGames = [];
 let sortKey = "winRate";
 let sortDirection = -1;
 
@@ -31,6 +33,27 @@ function installSelectors() {
   $("strategyB").innerHTML = strategyOptions("random");
   $("difficultyA").innerHTML = difficultyOptions("hard");
   $("difficultyB").innerHTML = difficultyOptions("hard");
+}
+
+function installRecentMatchPanel() {
+  const resultsPanel = document.querySelector(".resultsPanel");
+  if (!resultsPanel || $("recentMatchesPanel")) return;
+  const style = document.createElement("style");
+  style.textContent = `
+    .recentMatchGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+    .recentMatch{border:1px solid #2f3e4d;border-radius:10px;background:#0c131a;padding:9px;min-width:0}
+    .recentMatchTop{display:flex;align-items:center;gap:7px;margin-bottom:7px}.recentMatchTop b{font:800 9px var(--display)}
+    .recentWinner{margin-left:auto;border:1px solid #3d4c5d;border-radius:999px;padding:4px 7px;font-size:6px;font-weight:950;text-transform:uppercase;letter-spacing:.06em}
+    .recentWinner.a{border-color:#3c789d;color:#85ccf5}.recentWinner.b{border-color:#884455;color:#f08a9c}.recentWinner.draw{color:#b0bac4}
+    .recentMeta{color:#788797;font-size:6px;margin-bottom:7px}.recentPurchases{display:grid;gap:5px}.recentPurchaseLine{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;font-size:6px;line-height:1.45}.recentPurchaseLine strong{color:#aeb9c5}.recentPurchaseLine span{color:#8795a5;overflow:hidden;text-overflow:ellipsis}
+    @media(max-width:700px){.recentMatchGrid{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(style);
+  const panel = document.createElement("section");
+  panel.className = "panel";
+  panel.id = "recentMatchesPanel";
+  panel.innerHTML = `<div class="panelHead"><div><h3>Recent Simulated Matches</h3><p>See who won and exactly what each bot purchased in the latest games.</p></div></div><div class="panelBody"><div class="recentMatchGrid" id="recentMatchGrid"><div class="emptyState">Recent match results will appear while the simulation runs.</div></div></div>`;
+  resultsPanel.parentElement.insertBefore(panel, resultsPanel);
 }
 
 function renderExperimentalCards() {
@@ -112,15 +135,43 @@ function renderTable() {
   });
 }
 
+function purchaseLine(game, playerId) {
+  const purchases = (game.purchases || []).filter(purchase => purchase.playerId === playerId);
+  if (!purchases.length) return "No purchases";
+  const shown = purchases.slice(0, 9).map(purchase => `${cardNameById.get(purchase.cardId) || purchase.cardId} (T${purchase.turn})`);
+  if (purchases.length > shown.length) shown.push(`+${purchases.length - shown.length} more`);
+  return shown.join(" · ");
+}
+
+function renderRecentGames(recentGames = []) {
+  latestRecentGames = recentGames;
+  const grid = $("recentMatchGrid");
+  if (!grid) return;
+  grid.innerHTML = recentGames.slice(0, 8).map(game => {
+    const winnerClass = game.winnerId || "draw";
+    const winnerLabel = game.winnerId === "a" ? "Bot A won" : game.winnerId === "b" ? "Bot B won" : "Turn-limit draw";
+    return `<article class="recentMatch">
+      <div class="recentMatchTop"><b>Game ${number(game.gameNumber)}</b><span class="recentWinner ${winnerClass}">${winnerLabel}</span></div>
+      <div class="recentMeta">${escapeHtml(game.strategies?.a || "?")} vs ${escapeHtml(game.strategies?.b || "?")} · ${number(game.totalTurns)} total turns · Authority ${Math.round(game.authority?.a || 0)}–${Math.round(game.authority?.b || 0)}</div>
+      <div class="recentPurchases">
+        <div class="recentPurchaseLine"><strong>Bot A</strong><span>${escapeHtml(purchaseLine(game, "a"))}</span></div>
+        <div class="recentPurchaseLine"><strong>Bot B</strong><span>${escapeHtml(purchaseLine(game, "b"))}</span></div>
+      </div>
+    </article>`;
+  }).join("") || `<div class="emptyState">Recent match results will appear while the simulation runs.</div>`;
+}
+
 function renderProgress(payload) {
   latestRows = payload.rows || [];
   latestSummary = payload.summary || null;
+  latestRecentGames = payload.recentGames || latestRecentGames;
   const ratio = payload.requested ? payload.completed / payload.requested : 0;
   $("progressFill").style.width = `${Math.min(100, ratio * 100)}%`;
   $("progressText").textContent = `${number(payload.completed)} / ${number(payload.requested)} games`;
   renderSummary(payload.summary);
   renderChart();
   renderTable();
+  renderRecentGames(latestRecentGames);
 }
 
 function gameCount() {
@@ -149,9 +200,11 @@ async function startSimulation() {
   activeController = new AbortController();
   latestRows = [];
   latestSummary = null;
+  latestRecentGames = [];
   renderSummary({});
   renderChart();
   renderTable();
+  renderRecentGames([]);
   $("progressFill").style.width = "0%";
   $("startTest").disabled = true;
   $("stopTest").disabled = false;
@@ -161,14 +214,16 @@ async function startSimulation() {
   $("progressText").textContent = `0 / ${number(options.games)} games`;
 
   try {
-    const result = await runTestLabSimulation(options, {
+    const result = await runTestLabWithHistory(options, {
       signal: activeController.signal,
       onProgress: renderProgress
     });
     latestRows = result.rows || latestRows;
     latestSummary = result.summary || latestSummary;
+    latestRecentGames = result.recentGames || latestRecentGames;
     renderChart();
     renderTable();
+    renderRecentGames(latestRecentGames);
     renderSummary(latestSummary || {});
     $("runState").textContent = activeController.signal.aborted ? "STOPPED" : "COMPLETE";
   } catch (error) {
@@ -237,8 +292,10 @@ function wireEvents() {
 }
 
 installSelectors();
+installRecentMatchPanel();
 renderExperimentalCards();
 renderSummary({});
 renderChart();
 renderTable();
+renderRecentGames([]);
 wireEvents();
