@@ -15,7 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            game/warrealms/
+            game/warrealms.html
+            game/warrealms-pack/
+            .github/workflows/tmp-warrealms-strategy-bots.yml
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -26,7 +32,7 @@ jobs:
           rm game/warrealms/patch-strategy-bots.py
           rm .github/workflows/tmp-warrealms-strategy-bots.yml
       - name: Run War Realms tests
-        run: npm test
+        run: node --test tests/*.test.mjs
         working-directory: game/warrealms
       - name: Commit generated changes
         run: |
