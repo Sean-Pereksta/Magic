@@ -13,6 +13,7 @@ import {
 } from "../ui/bot-strategy-expansion.js";
 import {
   EXTENDED_TEST_LAB_STRATEGIES,
+  simulateExtendedTestLabGame,
   testLabExtendedStrategyFit
 } from "../ui/test-lab-strategy-extension.js";
 
@@ -54,6 +55,22 @@ test("six mechanic-focused strategies are registered in the extended Test Lab", 
   assert.ok(testLabExtendedStrategyFit(legionCard, "legion") > testLabExtendedStrategyFit(legionCard, "architect"));
   assert.ok(testLabExtendedStrategyFit(arsenalCard, "arsenal") > testLabExtendedStrategyFit(arsenalCard, "reactor"));
   assert.ok(expandedStrategyFit(reactorCard, "reactor") > 5);
+});
+
+test("expanded Test Lab runs the new strategy IDs and reports them without fallback aliases", () => {
+  const result = simulateExtendedTestLabGame({
+    seed: 918273,
+    strategyA: "reactor",
+    strategyB: "legion",
+    difficultyA: "hard",
+    difficultyB: "hard",
+    maxTurns: 30
+  }, 0);
+  assert.equal(result.strategies.a, "reactor");
+  assert.equal(result.strategies.b, "legion");
+  assert.ok(Array.isArray(result.purchases));
+  assert.equal(result.priorities.a.enabled, false, "internal strategy targeting should not masquerade as a user priority");
+  assert.equal(result.priorities.b.enabled, false, "internal strategy targeting should not masquerade as a user priority");
 });
 
 test("Quick Play and the native Warbot keep the original strategy indices in lockstep", () => {
