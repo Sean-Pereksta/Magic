@@ -1,4 +1,4 @@
-import { overlaps, uid } from "../common.js";
+import { clamp, overlaps, uid } from "../common.js";
 import { damagePlayer } from "../physics.js";
 import { VIEW } from "../config.js";
 
@@ -23,7 +23,8 @@ const friendlyNames = {
 function laneData(arena, player) {
   const laneWidth = (arena.right - arena.left) / 5;
   const playerLane = Math.max(0, Math.min(4, Math.floor((player.x - arena.left) / laneWidth)));
-  const dangerous = [0, 1, 2, 3, 4].filter((lane) => lane !== (playerLane + 2) % 5);
+  const safeLane = clamp(playerLane + (playerLane >= 4 ? -1 : 1), 0, 4);
+  const dangerous = [0, 1, 2, 3, 4].filter((lane) => lane !== safeLane);
   return { laneWidth, dangerous };
 }
 
@@ -39,6 +40,8 @@ export function createAttackData(id, boss, player, arena) {
     direction,
     targetX: player.x + player.w / 2,
     targetY: player.y + player.h,
+    originX: boss.x + boss.w / 2,
+    originY: boss.y + boss.h / 2,
     executed: false,
     spawned: 0,
     hitPlayer: false,
@@ -46,8 +49,9 @@ export function createAttackData(id, boss, player, arena) {
   };
   if (id === "judgmentLanes") Object.assign(data, laneData(arena, player));
   if (id === "alternatingSafeZones") {
-    data.safeX = arena.left + 160 + ((boss.attackCount % 3) * 360);
     data.safeW = 210;
+    const shift = boss.attackCount % 2 ? 180 : -180;
+    data.safeX = clamp(player.x + shift, arena.left + 60, arena.right - data.safeW - 60);
   }
   return data;
 }
@@ -66,7 +70,7 @@ export function telegraphShapes(attack, arena) {
     case "fallingLight":
     case "fallingFire": return [-220, -70, 80, 230].map((offset) => ({ ...line, x: attack.targetX + offset }));
     case "alternatingSafeZones": return [{ type: "safe", x: attack.safeX, y: 0, w: attack.safeW, h: VIEW.floorY }];
-    case "radial": return [{ type: "circle", x: attack.targetX, y: attack.targetY - 50, radius: 150 }];
+    case "radial": return [{ type: "circle", x: attack.originX, y: attack.originY, radius: 150 }];
     case "sweep": return [{ type: "groundLine", x: arena.left, y: attack.targetY - 10, w: arena.right - arena.left, h: 20 }];
     default: return [line];
   }
