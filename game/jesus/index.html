@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101826">
+  <title>Jesus Run — Journey & Endless</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main id="shell">
+    <canvas id="gameCanvas" width="960" height="540" aria-label="Jesus Run platformer"></canvas>
+
+    <section id="gameHud" class="hidden" aria-live="polite">
+      <div class="hud-card status-card">
+        <div class="eyebrow"><span id="regionText">Galilee</span><span id="levelText">Journey</span></div>
+        <div class="status-line"><span>Distance <b id="distanceText">0</b></span><span id="heartsText" class="hearts">♥♥♥♥</span></div>
+        <div id="powerList" class="power-list"></div>
+      </div>
+    </section>
+
+    <section id="bossHud" aria-live="assertive">
+      <div class="boss-row"><strong id="bossName">THE WAR BEAST</strong><b id="bossPercent">100%</b></div>
+      <div class="boss-bar"><i id="bossFill"></i></div>
+      <div id="bossPhase" class="boss-phase">THE HUNT · IDLE</div>
+    </section>
+
+    <div id="banner"><strong>GALILEE</strong><span>THE JOURNEY BEGINS</span></div>
+
+    <nav id="topControls">
+      <button id="menuBtn" class="small-button">Menu</button>
+      <button id="pauseBtn" class="small-button">Pause</button>
+      <button id="fullscreenBtn" class="small-button">Fullscreen</button>
+    </nav>
+
+    <section id="mainMenu" class="screen visible">
+      <div class="menu-card">
+        <p class="kicker">A PLATFORMING JOURNEY</p>
+        <h1>JESUS <em>RUN</em></h1>
+        <p class="intro">Travel a branching road through Galilee, Jerusalem, Rome, the spiritual depths, and Heaven—or test how far you can survive.</p>
+        <div class="mode-grid">
+          <button id="continueJourneyBtn" class="mode-card journey" hidden>
+            <span class="mode-icon">✦</span><b>Continue Journey</b><small>Return to your latest unlocked route.</small>
+          </button>
+          <button id="newJourneyBtn" class="mode-card journey">
+            <span class="mode-icon">☀</span><b>New Journey</b><small>Routes, shrines, unique bosses, and lasting blessings.</small>
+          </button>
+          <button id="endlessBtn" class="mode-card endless">
+            <span class="mode-icon">∞</span><b>Endless Mode</b><small>Validated procedural rooms that become fair—and brutal.</small>
+          </button>
+        </div>
+        <div class="menu-actions"><button id="howBtn">How to Play</button><button id="scoresBtn">High Scores</button></div>
+      </div>
+    </section>
+
+    <section id="journeyMap" class="screen map-screen">
+      <header><p class="kicker">CHOOSE THE NEXT ROAD</p><h2>Journey Map</h2><p>Completed locations remain marked. Gold locations are reachable now.</p></header>
+      <div class="map-canvas">
+        <svg aria-hidden="true"></svg>
+        <div class="map-nodes"></div>
+      </div>
+      <button class="map-menu" onclick="document.getElementById('menuBtn').click()">Return to Menu</button>
+    </section>
+
+    <section id="infoOverlay" class="screen modal-screen">
+      <div class="modal-card">
+        <button id="overlayClose" class="close-button" aria-label="Close">×</button>
+        <p class="kicker">JESUS RUN</p>
+        <h2 id="overlayTitle">How to Play</h2>
+        <div id="overlayBody"></div>
+      </div>
+    </section>
+
+    <section id="gameOver" class="screen modal-screen">
+      <div class="modal-card game-over-card">
+        <p class="kicker">ENDLESS RUN COMPLETE</p>
+        <h2>Distance <span id="finalScore">0</span></h2>
+        <ol id="gameOverScores" class="score-list"></ol>
+        <div id="scoreEntry" class="score-entry">
+          <label for="scoreName">Top ten—record your name</label>
+          <div><input id="scoreName" maxlength="20" placeholder="Disciple name"><button id="saveScoreBtn" class="primary">Save</button></div>
+          <small id="scoreSaveStatus"></small>
+        </div>
+        <div class="menu-actions"><button id="gameOverRestart" class="primary">Run Again</button><button id="gameOverMenu">Main Menu</button></div>
+      </div>
+    </section>
+
+    <div id="pauseShade"><strong>PAUSED</strong><span>Press P, Escape, or Pause to continue</span></div>
+
+    <section id="mobileControls" aria-label="Touch controls">
+      <div id="joystick"><i id="stick"></i></div>
+      <div class="ability-buttons"><button id="lightBtn">LIGHT</button><button id="rainBtn">RAIN</button></div>
+      <button id="jumpBtn">JUMP</button>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script type="module" src="./js/game.js"></script>
+</body>
+</html>
+

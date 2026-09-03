@@ -1,0 +1,142 @@
+export const BOSS_ARENAS = {
+  romanArena: {
+    id: "romanArena",
+    region: "rome",
+    width: 1500,
+    left: 0,
+    right: 1500,
+    spawn: { x: 160, y: 406 },
+    bossSpawn: { x: 1130, y: 374 },
+    platforms: [
+      { x: 0, y: 468, w: 1500, h: 90, kind: "ground", oneWay: false },
+      { x: 380, y: 365, w: 180, h: 18, kind: "platform", oneWay: true },
+      { x: 760, y: 315, w: 180, h: 18, kind: "platform", oneWay: true },
+    ],
+    props: [
+      { type: "breakableColumn", x: 260, y: 300, w: 48, h: 168, hp: 1 },
+      { type: "breakableColumn", x: 1210, y: 300, w: 48, h: 168, hp: 1 },
+    ],
+  },
+  templeArena: {
+    id: "templeArena",
+    region: "jerusalem",
+    width: 1440,
+    left: 0,
+    right: 1440,
+    spawn: { x: 150, y: 406 },
+    bossSpawn: { x: 1080, y: 220 },
+    platforms: [
+      { x: 0, y: 468, w: 1440, h: 90, kind: "ground", oneWay: false },
+      { x: 240, y: 370, w: 220, h: 18, kind: "platform", oneWay: true },
+      { x: 610, y: 285, w: 220, h: 18, kind: "blessed", oneWay: true },
+      { x: 980, y: 370, w: 220, h: 18, kind: "platform", oneWay: true },
+    ],
+    props: [],
+  },
+  pitArena: {
+    id: "pitArena",
+    region: "hell",
+    width: 1500,
+    left: 0,
+    right: 1500,
+    spawn: { x: 150, y: 406 },
+    bossSpawn: { x: 1130, y: 364 },
+    platforms: [
+      { x: 0, y: 468, w: 330, h: 90, kind: "ground", oneWay: false },
+      { x: 420, y: 410, w: 230, h: 18, kind: "obsidian", oneWay: true },
+      { x: 735, y: 330, w: 210, h: 18, kind: "obsidian", oneWay: true },
+      { x: 1030, y: 410, w: 210, h: 18, kind: "obsidian", oneWay: true },
+      { x: 1320, y: 468, w: 180, h: 90, kind: "ground", oneWay: false },
+    ],
+    hazards: [{ type: "lava", x: 330, y: 476, w: 990, h: 64, always: true }],
+    props: [],
+  },
+  celestialArena: {
+    id: "celestialArena",
+    region: "heaven",
+    width: 1450,
+    left: 0,
+    right: 1450,
+    spawn: { x: 140, y: 406 },
+    bossSpawn: { x: 1080, y: 205 },
+    platforms: [
+      { x: 0, y: 468, w: 1450, h: 90, kind: "ground", oneWay: false },
+      { x: 250, y: 370, w: 190, h: 18, kind: "cloud", oneWay: true },
+      { x: 560, y: 285, w: 190, h: 18, kind: "blessed", oneWay: true },
+      { x: 870, y: 370, w: 190, h: 18, kind: "cloud", oneWay: true },
+    ],
+    props: [],
+  },
+};
+
+export const BOSS_DEFINITIONS = {
+  warBeast: {
+    id: "warBeast",
+    name: "THE WAR BEAST",
+    region: "rome",
+    arena: "romanArena",
+    size: { w: 90, h: 94 },
+    health: 18,
+    phases: [
+      { threshold: 1, name: "THE HUNT", speed: 1, attacks: ["charge", "slam", "arcVolley", "sweep"] },
+      { threshold: 0.7, name: "BROKEN COLUMNS", speed: 1.16, attacks: ["charge", "targetedLeap", "shockwave", "fallingDebris", "dashCombo"] },
+      { threshold: 0.35, name: "RELENTLESS PURSUIT", speed: 1.34, attacks: ["charge", "slam", "dashCombo", "shockwave", "fallingDebris", "sweep"] },
+    ],
+    exposingAttacks: ["charge", "slam", "targetedLeap"],
+    movement: ["pursue", "retreat", "shortDash", "targetedLeap"],
+    reward: "sandals",
+  },
+  templeJudge: {
+    id: "templeJudge",
+    name: "THE TEMPLE JUDGE",
+    region: "jerusalem",
+    arena: "templeArena",
+    size: { w: 76, h: 98 },
+    health: 20,
+    phases: [
+      { threshold: 1, name: "JUDGMENT", speed: 1, attacks: ["judgmentLanes", "orbVolley", "targetCircle", "sweep"] },
+      { threshold: 0.7, name: "THE HIGH COURT", speed: 1.14, attacks: ["judgmentLanes", "fallingLight", "radial", "alternatingSafeZones", "targetCircle"] },
+      { threshold: 0.35, name: "FINAL DECREE", speed: 1.3, attacks: ["judgmentLanes", "fallingLight", "radial", "alternatingSafeZones", "orbVolley", "sweep"] },
+    ],
+    exposingAttacks: ["judgmentLanes", "alternatingSafeZones", "fallingLight"],
+    movement: ["hover", "platformShift", "retreat", "stationaryCast"],
+    reward: "holyLight",
+  },
+  pitLord: {
+    id: "pitLord",
+    name: "THE PIT LORD",
+    region: "hell",
+    arena: "pitArena",
+    size: { w: 92, h: 104 },
+    health: 24,
+    phases: [
+      { threshold: 1, name: "EMBER WAKE", speed: 1, attacks: ["fireEruption", "slam", "fireVolley", "sweep"] },
+      { threshold: 0.7, name: "MOLTEN CROWN", speed: 1.16, attacks: ["fireEruption", "fallingFire", "shockwave", "movingHazard", "targetedLeap"] },
+      { threshold: 0.35, name: "THE ABYSS OPENS", speed: 1.34, attacks: ["fireEruption", "fallingFire", "radial", "movingHazard", "slam", "dashCombo"] },
+    ],
+    exposingAttacks: ["slam", "targetedLeap", "fireEruption"],
+    movement: ["pursue", "highJump", "wallToWall", "enragedChase"],
+    reward: "fireRain",
+  },
+  celestialTrial: {
+    id: "celestialTrial",
+    name: "THE CELESTIAL TRIAL",
+    region: "heaven",
+    arena: "celestialArena",
+    size: { w: 78, h: 92 },
+    health: 28,
+    phases: [
+      { threshold: 1, name: "ASCENT", speed: 1.04, attacks: ["orbVolley", "targetCircle", "judgmentLanes", "sweep"] },
+      { threshold: 0.7, name: "RADIANCE", speed: 1.2, attacks: ["fallingLight", "radial", "alternatingSafeZones", "orbVolley", "targetCircle"] },
+      { threshold: 0.35, name: "WINGS OF MORNING", speed: 1.38, attacks: ["radial", "fallingLight", "alternatingSafeZones", "judgmentLanes", "dashCombo"] },
+    ],
+    exposingAttacks: ["alternatingSafeZones", "judgmentLanes", "fallingLight"],
+    movement: ["hover", "circle", "platformShift", "wallToWall"],
+    reward: "wings",
+  },
+};
+
+export function bossForRegion(region) {
+  return Object.values(BOSS_DEFINITIONS).find((boss) => boss.region === region)?.id || "warBeast";
+}
+
