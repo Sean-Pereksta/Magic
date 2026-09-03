@@ -8,7 +8,6 @@ import { TEST_LAB_STRATEGIES, testLabStrategyFit } from "../ui/test-lab-simulato
 import {
   EXPANDED_BOT_STRATEGY_IDS,
   NATIVE_STRATEGY_ORDER,
-  expandStrategyFit as unusedExpandStrategyFit,
   extendNativeBotStrategyRegistry,
   expandedStrategyFit
 } from "../ui/bot-strategy-expansion.js";
@@ -16,8 +15,6 @@ import {
   EXTENDED_TEST_LAB_STRATEGIES,
   testLabExtendedStrategyFit
 } from "../ui/test-lab-strategy-extension.js";
-
-void unusedExpandStrategyFit;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const firstWaveIds = ["summoning", "ascendents", "bastion", "fleet"];
