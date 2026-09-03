@@ -1,10 +1,10 @@
 import {
   createTestLabAccumulator,
   recordTestLabGame,
-  simulateTestLabGame,
   testLabCardRows,
   testLabSummary
 } from "./test-lab-simulator.js?v=3";
+import { simulateExtendedTestLabGame as simulateTestLabGame } from "./test-lab-strategy-extension.js?v=1";
 import {
   createStrategyAnalytics,
   recordStrategyGame,
