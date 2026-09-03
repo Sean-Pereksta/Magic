@@ -5,9 +5,9 @@ import {
 import {
   EXPANDED_BOT_STRATEGIES,
   NATIVE_STRATEGY_ORDER,
-  expandedStrategyById,
-  installNativeBotStrategyBridge
+  expandedStrategyById
 } from "./bot-strategy-expansion.js?v=1";
+import { installNativeBotStrategyBridge } from "./native-bot-strategy-bridge.js?v=1";
 
 installNativeBotStrategyBridge();
 
