@@ -25,8 +25,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply strategy bot patch
-        run: python game/warrealms/patch-strategy-bots.py
+      - name: Fix patch locator and apply strategy bot patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('game/warrealms/patch-strategy-bots.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('native_pattern = re.compile(')
+          end = text.index('\n\n# Native helper scoring', start)
+          replacement = '''strategy_table_start = html.index('  const BOT_STRATEGIES = Object.freeze({')
+          marketeer_start = html.index('    marketeer: Object.freeze({', strategy_table_start)
+          strategy_table_end = html.index('\\n  });', marketeer_start)
+          if '    summoning: Object.freeze({' in html[strategy_table_start:strategy_table_end]:
+              raise RuntimeError('Native BOT_STRATEGIES already contains Summoning')
+          html = html[:strategy_table_end] + ',\\n' + native_strategies.lstrip('\\n') + html[strategy_table_end:]'''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+          python game/warrealms/patch-strategy-bots.py
       - name: Remove temporary patch machinery
         run: |
           rm game/warrealms/patch-strategy-bots.py
