@@ -1,0 +1,37 @@
+name: Temporary War Realms strategy bot patch
+
+on:
+  push:
+    branches:
+      - warrealms/summoning-ascendents-bastion-fleet-bots
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply strategy bot patch
+        run: python game/warrealms/patch-strategy-bots.py
+      - name: Remove temporary patch machinery
+        run: |
+          rm game/warrealms/patch-strategy-bots.py
+          rm .github/workflows/tmp-warrealms-strategy-bots.yml
+      - name: Run War Realms tests
+        run: npm test
+        working-directory: game/warrealms
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/warrealms.html game/warrealms/ui game/warrealms/tests game/warrealms/patch-strategy-bots.py .github/workflows/tmp-warrealms-strategy-bots.yml
+          git commit -m "Add Summoning Ascendents Bastion and Fleet bots"
+          git push origin HEAD:warrealms/summoning-ascendents-bastion-fleet-bots
