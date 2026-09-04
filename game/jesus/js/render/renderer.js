@@ -27,6 +27,104 @@ function drawBackground(ctx, region, cameraX) {
   ctx.restore();
 }
 
+function drawScenery(ctx, item, region, time, cameraX) {
+  if (item.x < cameraX - 300 || item.x > cameraX + VIEW.width + 300) return;
+  const s = item.scale || 1;
+  const far = item.depth !== "near";
+  const baseY = VIEW.floorY + (far ? 4 : 0);
+  ctx.save();
+  ctx.translate(item.x, baseY);
+  ctx.scale((item.flip ? -1 : 1) * s, s);
+  ctx.globalAlpha = far ? 0.42 : 0.72;
+
+  if (item.kind === "palm") {
+    ctx.strokeStyle = "#6f5a38";
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(8, -58, 1, -112); ctx.stroke();
+    ctx.strokeStyle = "#3f7c55";
+    ctx.lineWidth = 7;
+    for (let a = -2.5; a <= 2.5; a += 1) {
+      ctx.beginPath(); ctx.moveTo(2, -108); ctx.quadraticCurveTo(a * 22, -132 - Math.abs(a) * 3, a * 34, -112 + Math.abs(a) * 5); ctx.stroke();
+    }
+  } else if (item.kind === "reeds") {
+    ctx.strokeStyle = "#667a42";
+    ctx.lineWidth = 3;
+    for (let i = -4; i <= 4; i++) {
+      ctx.beginPath(); ctx.moveTo(i * 6, 0); ctx.quadraticCurveTo(i * 7 + Math.sin(time * 1.8 + item.phase) * 3, -26, i * 5, -52 - (i % 3) * 7); ctx.stroke();
+    }
+  } else if (item.kind === "boat") {
+    ctx.fillStyle = "#6a4d32";
+    ctx.beginPath(); ctx.moveTo(-44, -16); ctx.lineTo(44, -16); ctx.lineTo(28, 0); ctx.lineTo(-30, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#59442f"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(0, -78); ctx.stroke();
+    ctx.fillStyle = "rgba(236,221,181,.75)";
+    ctx.beginPath(); ctx.moveTo(3, -73); ctx.lineTo(34, -42); ctx.lineTo(3, -42); ctx.closePath(); ctx.fill();
+  } else if (item.kind === "village" || item.kind === "stoneHouse") {
+    ctx.fillStyle = region === "jerusalem" ? "#cbb58d" : "#b99b72";
+    ctx.fillRect(-34, -55, 68, 55);
+    ctx.fillStyle = "#826b50";
+    ctx.beginPath(); ctx.moveTo(-40, -55); ctx.lineTo(0, -78); ctx.lineTo(40, -55); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(60,48,39,.65)"; ctx.fillRect(-9, -30, 18, 30);
+  } else if (item.kind === "arch" || item.kind === "goldArch") {
+    ctx.strokeStyle = item.kind === "goldArch" ? "#e5c45f" : "#9f8166";
+    ctx.lineWidth = 13;
+    ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(-34, -54); ctx.quadraticCurveTo(0, -100, 34, -54); ctx.lineTo(34, 0); ctx.stroke();
+  } else if (item.kind === "column") {
+    ctx.fillStyle = "#b79a84";
+    ctx.fillRect(-10, -82, 20, 82);
+    ctx.fillRect(-18, -88, 36, 9);
+    ctx.fillRect(-18, -7, 36, 7);
+  } else if (item.kind === "banner") {
+    ctx.strokeStyle = "#6b5a4b"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -91); ctx.stroke();
+    ctx.fillStyle = "#7b3140";
+    ctx.beginPath(); ctx.moveTo(3, -83); ctx.lineTo(38, -76); ctx.lineTo(31, -48); ctx.lineTo(3, -54); ctx.closePath(); ctx.fill();
+  } else if (item.kind === "cypress" || item.kind === "olive") {
+    ctx.fillStyle = item.kind === "olive" ? "#5f7650" : "#426247";
+    ctx.beginPath(); ctx.ellipse(0, -58, item.kind === "olive" ? 30 : 19, item.kind === "olive" ? 42 : 61, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#756044"; ctx.fillRect(-4, -24, 8, 24);
+  } else if (item.kind === "lamp") {
+    ctx.strokeStyle = "#74614b"; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -62); ctx.stroke();
+    ctx.fillStyle = "#f0c75a";
+    ctx.beginPath(); ctx.arc(0, -68, 9 + Math.sin(time * 5 + item.phase), 0, Math.PI * 2); ctx.fill();
+  } else if (item.kind === "basalt" || item.kind === "ruin") {
+    ctx.fillStyle = "#2f252c";
+    ctx.beginPath(); ctx.moveTo(-38, 0); ctx.lineTo(-27, -48); ctx.lineTo(-5, -72); ctx.lineTo(8, -45); ctx.lineTo(32, -63); ctx.lineTo(40, 0); ctx.closePath(); ctx.fill();
+  } else if (item.kind === "emberVent") {
+    ctx.fillStyle = "#2d2227"; ctx.fillRect(-24, -10, 48, 10);
+    ctx.fillStyle = `rgba(255,112,61,${0.28 + Math.sin(time * 5 + item.phase) * 0.08})`;
+    ctx.beginPath(); ctx.moveTo(-15, -10); ctx.quadraticCurveTo(-3, -58, 0, -24); ctx.quadraticCurveTo(8, -70, 17, -10); ctx.closePath(); ctx.fill();
+  } else if (item.kind === "chain") {
+    ctx.strokeStyle = "#6f5e67"; ctx.lineWidth = 5;
+    for (let y = -110; y < 0; y += 17) {
+      ctx.beginPath(); ctx.ellipse(Math.sin(y) * 3, y, 7, 11, (y / 17) % 2 ? 0 : Math.PI / 2, 0, Math.PI * 2); ctx.stroke();
+    }
+  } else if (item.kind === "cloudSpire") {
+    ctx.fillStyle = "rgba(255,255,255,.88)";
+    for (const cloud of [[0,-22,33],[-26,-10,24],[27,-8,25],[2,-50,18]]) {
+      ctx.beginPath(); ctx.arc(cloud[0], cloud[1], cloud[2], 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (item.kind === "lightColumn") {
+    const glow = ctx.createLinearGradient(0, -135, 0, 0);
+    glow.addColorStop(0, "rgba(255,248,195,0)");
+    glow.addColorStop(1, "rgba(255,226,111,.45)");
+    ctx.fillStyle = glow; ctx.fillRect(-18, -140, 36, 140);
+  } else if (item.kind === "star") {
+    ctx.fillStyle = "#fff2a9";
+    ctx.translate(0, -70 + Math.sin(time * 2 + item.phase) * 7);
+    ctx.rotate(time * 0.35 + item.phase);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      const r = i % 2 ? 5 : 16;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPlatform(ctx, platform, region) {
   const palette = COLORS[region] || COLORS.galilee;
   if (platform.kind === "cloud" || platform.kind === "blessed") {
@@ -79,22 +177,92 @@ function drawHazard(ctx, hazard, time) {
   }
 }
 
+function drawLimb(ctx, x1, y1, x2, y2, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
 function drawPlayer(ctx, player, time) {
+  const speed = Math.min(1, Math.abs(player.vx) / 360);
+  const phase = time * (8 + speed * 7);
+  const airborne = !player.onGround;
+  const stride = airborne ? 6 : Math.sin(phase) * 8.5 * speed;
+  const armSwing = airborne ? -5 : Math.sin(phase + Math.PI) * 7 * speed;
+  const bob = airborne ? 0 : Math.abs(Math.sin(phase * 2)) * 1.4 * speed;
+  const hairSweep = Math.sin(time * 3.2) * 1.2 + Math.min(3, Math.abs(player.vx) / 150);
+  const centerX = player.x + player.w / 2;
+  const feetY = player.y + player.h;
+
   ctx.save();
   ctx.globalAlpha = player.invulnerable > 0 && Math.floor(time * 14) % 2 ? 0.45 : 1;
+  ctx.translate(centerX, feetY - bob);
+  ctx.scale(player.facing || 1, 1);
+
+  // Halo behind the head.
+  ctx.strokeStyle = "rgba(232,190,76,.72)";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, -49, 13.5, 0, Math.PI * 2); ctx.stroke();
+
+  // Hair mass behind the face with a little motion while running.
+  ctx.fillStyle = "#5b3828";
+  ctx.beginPath();
+  ctx.ellipse(-2 - hairSweep * 0.25, -49, 11, 15, -0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-8 - hairSweep, -39, 5.5, 12, -0.25, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8 - hairSweep * 0.5, -40, 5, 11, 0.2, 0, Math.PI * 2); ctx.fill();
+
+  // Back arm.
+  drawLimb(ctx, -8, -34, -12 - armSwing * 0.55, -21 + Math.abs(armSwing) * 0.15, "#c58d68", 5.5);
+  drawLimb(ctx, -12 - armSwing * 0.55, -21 + Math.abs(armSwing) * 0.15, -8 - armSwing, -10, "#c58d68", 4.5);
+
+  // Legs and sandals stay visually distinct from the robe.
+  const leftFootX = -5 + stride;
+  const rightFootX = 5 - stride;
+  drawLimb(ctx, -5, -14, leftFootX * 0.65, -6, "#c58d68", 6);
+  drawLimb(ctx, leftFootX * 0.65, -6, leftFootX, -1, "#c58d68", 5);
+  drawLimb(ctx, 5, -14, rightFootX * 0.65, -6, "#b97e5d", 6);
+  drawLimb(ctx, rightFootX * 0.65, -6, rightFootX, -1, "#b97e5d", 5);
+  drawLimb(ctx, leftFootX - 3, 0, leftFootX + 4, 0, "#6f4b34", 2.5);
+  drawLimb(ctx, rightFootX - 3, 0, rightFootX + 4, 0, "#6f4b34", 2.5);
+
+  // Robe/body.
   ctx.fillStyle = "#f5ead8";
-  roundedRect(ctx, player.x + 5, player.y + 17, player.w - 10, player.h - 17, 9);
-  ctx.fill();
-  ctx.fillStyle = "#734c35";
   ctx.beginPath();
-  ctx.arc(player.x + player.w / 2, player.y + 13, 12, 0, Math.PI * 2);
+  ctx.moveTo(-9, -39);
+  ctx.quadraticCurveTo(0, -42, 9, -39);
+  ctx.lineTo(13, -16);
+  ctx.quadraticCurveTo(6, -11, 0, -12);
+  ctx.quadraticCurveTo(-6, -11, -13, -16);
+  ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = "#d6af5e";
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#d9c8ae"; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.strokeStyle = "#d6af5e"; ctx.lineWidth = 2.3;
+  ctx.beginPath(); ctx.moveTo(-1, -38); ctx.lineTo(1, -14); ctx.stroke();
+  ctx.strokeStyle = "#b98d46"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-10, -24); ctx.lineTo(11, -24); ctx.stroke();
+
+  // Front arm swings opposite the legs.
+  drawLimb(ctx, 8, -34, 12 + armSwing * 0.55, -22 + Math.abs(armSwing) * 0.1, "#cf9870", 5.5);
+  drawLimb(ctx, 12 + armSwing * 0.55, -22 + Math.abs(armSwing) * 0.1, 9 + armSwing, -11, "#cf9870", 4.5);
+
+  // Face, beard, hairline and features.
+  ctx.fillStyle = "#d29a72";
+  ctx.beginPath(); ctx.ellipse(0, -50, 8.8, 10.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#5b3828";
   ctx.beginPath();
-  ctx.moveTo(player.x + player.w / 2, player.y + 28);
-  ctx.lineTo(player.x + player.w / 2, player.y + 53);
-  ctx.stroke();
+  ctx.arc(-2, -58, 8.5, Math.PI * 1.03, Math.PI * 1.92);
+  ctx.lineTo(8, -53); ctx.quadraticCurveTo(3, -60, -5, -58); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-6, -48); ctx.quadraticCurveTo(0, -40, 6, -48); ctx.quadraticCurveTo(5, -39, 0, -36); ctx.quadraticCurveTo(-5, -39, -6, -48); ctx.fill();
+  ctx.fillStyle = "#2f241f";
+  ctx.fillRect(-4, -51, 1.5, 1.5);
+  ctx.fillRect(3, -51, 1.5, 1.5);
+
   ctx.restore();
 }
 
@@ -170,6 +338,7 @@ export class Renderer {
     ctx.save();
     game.camera.transform(ctx);
 
+    for (const item of game.world.scenery || []) drawScenery(ctx, item, game.world.region, game.time, game.camera.x);
     for (const platform of game.world.platforms) drawPlatform(ctx, platform, game.world.region);
     for (const mover of game.world.movers) drawPlatform(ctx, mover, game.world.region);
     for (const prop of game.world.props || []) {
