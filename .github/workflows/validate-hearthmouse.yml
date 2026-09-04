@@ -1,0 +1,26 @@
+name: Validate Hearthmouse
+
+on:
+  pull_request:
+    paths:
+      - "game/hearthmouse/**"
+      - "package.json"
+      - ".github/workflows/validate-hearthmouse.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-hearthmouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run Hearthmouse regression suite
+        run: npm run test:hearthmouse
