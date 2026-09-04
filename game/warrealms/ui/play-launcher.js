@@ -1,3 +1,4 @@
+import "./armory-ui-polish.js?v=1";
 import {
   showPlayLauncher as showCorePlayLauncher,
   showWarTable as showCoreWarTable
