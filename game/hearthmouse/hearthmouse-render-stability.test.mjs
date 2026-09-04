@@ -36,7 +36,10 @@ function sceneNode(name, { mesh = false } = {}) {
     },
     traverse(visitor) {
       visitor(this);
-      for (const child of this.children) child.traverse?.(visitor) ?? visitor(child);
+      for (const child of this.children) {
+        if (typeof child.traverse === "function") child.traverse(visitor);
+        else visitor(child);
+      }
     },
     updateMatrix() {},
     updateWorldMatrix() {},
