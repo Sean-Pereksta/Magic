@@ -8,6 +8,25 @@
   window.__arcaneWildsMobileRuntimeLoaded=true;
   document.documentElement.classList.add('arcane-mobile-lite');
 
+  /* ui.js performs one synchronous render as soon as it finishes loading. On touch
+     devices that happens before the late performance governor is installed, so the
+     expensive base/visual-polish town renderer can hit the phone at full cost behind
+     the start overlay. Keep that bootstrap paint intentionally trivial; the normal
+     renderer resumes once the governor is loaded or gameplay is actually running. */
+  const baseStartupRender=render;
+  render=function(){
+    if(!running&&!window.__arcaneWildsPerformanceLoaded){
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle='#03060b';
+      ctx.fillRect(0,0,canvas.width||Math.max(1,W),canvas.height||Math.max(1,H));
+      ctx.restore();
+      return;
+    }
+    return baseStartupRender();
+  };
+
   /* The original stick handler called getBoundingClientRect() and changed CSS on every
      pointermove. Phones can deliver many pointer events per frame, forcing repeated
      layout + paint work while the canvas is also rendering combat. Cache geometry at
