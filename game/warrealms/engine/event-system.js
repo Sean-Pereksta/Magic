@@ -6,6 +6,7 @@ import {
   enqueueResolution,
   ensureResolutionState
 } from "./resolution-queue.js";
+import { queueStartOfTurnHeat } from "./heat-passives.js";
 
 export const GAME_EVENT_TYPES = Object.freeze({
   CARD_PLAYED: "CARD_PLAYED",
@@ -209,6 +210,9 @@ export function drainGameEvents(game, handlers = {}, options = {}) {
 
 export function emitGameEvent(game, input = {}, handlers = {}, options = {}) {
   const event = queueGameEvent(game, input);
+  if (event.type === GAME_EVENT_TYPES.TURN_STARTED) {
+    queueStartOfTurnHeat(game, event, queueGameEvent);
+  }
   const resolution = drainGameEvents(game, handlers, options);
   return { event, resolution };
 }
