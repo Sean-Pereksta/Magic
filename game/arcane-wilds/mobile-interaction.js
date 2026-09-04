@@ -56,3 +56,43 @@
 
   refreshMobileInteraction();
 })();
+
+/* Load the static/cached visual layer before the final performance wrappers capture it. */
+(function loadArcaneVisualDepth(){
+  if(document.querySelector('script[data-arcane-visual-depth]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/visual-depth.js';
+  script.async=false;
+  script.dataset.arcaneVisualDepth='true';
+  document.body.appendChild(script);
+})();
+
+/* Keep the optimization layer late in the script chain so it sees every cosmetic runtime wrapper. */
+(function loadArcanePerformanceGovernor(){
+  if(document.querySelector('script[data-arcane-performance]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/performance.js';
+  script.async=false;
+  script.dataset.arcanePerformance='true';
+  document.body.appendChild(script);
+})();
+
+/* Navigation clarity runs after the optional performance governor and owns final camera/door/spawn presentation. */
+(function loadArcaneNavigationClarity(){
+  if(document.querySelector('script[data-arcane-navigation-clarity]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/navigation-clarity.js';
+  script.async=false;
+  script.dataset.arcaneNavigationClarity='true';
+  document.body.appendChild(script);
+})();
+
+/* Final crash containment must wrap the completed render/update stack, not an earlier version. */
+(function loadArcaneRuntimeStability(){
+  if(document.querySelector('script[data-arcane-runtime-stability]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/runtime-stability.js';
+  script.async=false;
+  script.dataset.arcaneRuntimeStability='true';
+  document.body.appendChild(script);
+})();
