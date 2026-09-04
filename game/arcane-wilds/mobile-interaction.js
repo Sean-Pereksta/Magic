@@ -86,3 +86,13 @@
   script.dataset.arcaneNavigationClarity='true';
   document.body.appendChild(script);
 })();
+
+/* Final crash containment must wrap the completed render/update stack, not an earlier version. */
+(function loadArcaneRuntimeStability(){
+  if(document.querySelector('script[data-arcane-runtime-stability]'))return;
+  const script=document.createElement('script');
+  script.src='arcane-wilds/runtime-stability.js';
+  script.async=false;
+  script.dataset.arcaneRuntimeStability='true';
+  document.body.appendChild(script);
+})();
