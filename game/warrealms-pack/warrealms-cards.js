@@ -9171,7 +9171,7 @@ export const CARDS = Object.freeze([
   {
     id: "sovereign_dreadnought",
     name: "Sovereign Dreadnought",
-    image: "soveriegn_dreadnought.png",
+    image: "sovereign_dreadnought.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 90,
