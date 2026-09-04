@@ -28,8 +28,11 @@ test("Heat payoff mini-pack card definitions are present", () => {
   const ark = byId.get("eightfold_drone_ark");
   assert.ok(ark);
   assert.equal(ark.faction, "yellow");
-  assert.equal(ark.heat.max, 8);
-  assert.equal(ark.heat.overload.at, 8);
+  assert.equal(ark.cost, 6);
+  assert.equal(ark.heat.gain, 1);
+  assert.equal(ark.heat.max, 7);
+  assert.equal(ark.heat.overload.at, 7);
+  assert.equal(ark.heat.overload.reset, 0);
   assert.deepEqual(ark.heat.overload.effect.createToken, { id: "drone", count: 4, zone: "discard" });
 });
 
