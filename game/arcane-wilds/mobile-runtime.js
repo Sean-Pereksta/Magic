@@ -8,6 +8,47 @@
   window.__arcaneWildsMobileRuntimeLoaded=true;
   document.documentElement.classList.add('arcane-mobile-lite');
 
+  /* ui.js performs one synchronous render as soon as it finishes loading. On touch
+     devices that happens before the late performance governor is installed, so the
+     expensive base/visual-polish town renderer can hit the phone at full cost behind
+     the start overlay. Keep that bootstrap paint intentionally trivial; the normal
+     renderer resumes once the governor is loaded or gameplay is actually running. */
+  const baseStartupRender=render;
+  render=function(){
+    if(!running&&!window.__arcaneWildsPerformanceLoaded){
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle='#03060b';
+      ctx.fillRect(0,0,canvas.width||Math.max(1,W),canvas.height||Math.max(1,H));
+      ctx.restore();
+      return;
+    }
+    return baseStartupRender();
+  };
+
+  /* The final performance governor is intentionally loaded after all content wrappers.
+     On desktop that late load is harmless, but a fast tap on a phone can otherwise enter
+     beginWorld() before the governor has replaced the expensive render path. Keep the
+     start screen responsive and delay only the transition into live simulation until the
+     local governor script has completed. */
+  const baseBeginWorld=beginWorld;
+  let queuedWorldStart=false;
+  beginWorld=function(){
+    if(window.__arcaneWildsPerformanceLoaded)return baseBeginWorld();
+    if(queuedWorldStart)return;
+    queuedWorldStart=true;
+    const waitForGovernor=()=>{
+      if(window.__arcaneWildsPerformanceLoaded){
+        queuedWorldStart=false;
+        baseBeginWorld();
+        return;
+      }
+      requestAnimationFrame(waitForGovernor);
+    };
+    requestAnimationFrame(waitForGovernor);
+  };
+
   /* The original stick handler called getBoundingClientRect() and changed CSS on every
      pointermove. Phones can deliver many pointer events per frame, forcing repeated
      layout + paint work while the canvas is also rendering combat. Cache geometry at
