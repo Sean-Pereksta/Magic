@@ -10974,6 +10974,38 @@ export const CARDS = Object.freeze([
     allyText: "Gain 1 Trade.",
     flavor: "The first strike opens the mind. The second steals its answer."
   },
+  {
+  id: "mindfire_zealot",
+  name: "Mindfire Zealot",
+  image: "mindfire_zealot.png",
+  faction: "yellow",
+  collectible_edition: true,
+  cost: 4,
+  shop_cost: 30,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 3,
+    trade: 1
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  scrapEffect: {
+    combat: 4,
+    draw: 1
+  },
+
+  text: "Gain 3 Combat and 1 Trade.",
+  allyText: "Gain 2 Combat.",
+  scrapText: "Scrap this card to gain 4 Combat and draw 1 card.",
+
+  flavor:
+    "A thought held too tightly becomes faith. Faith sharpened enough becomes a weapon."
+},
 
   // BLUE — AZURE ASCENDANCY
   {
