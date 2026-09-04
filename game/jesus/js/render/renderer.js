@@ -1,5 +1,6 @@
 import { COLORS, VIEW } from "../config.js";
 import { telegraphShapes } from "../bosses/boss-attacks.js";
+import { drawEnemy as drawDetailedEnemy } from "./enemy-visuals.js";
 
 function roundedRect(ctx, x, y, w, h, radius) {
   ctx.beginPath();
@@ -50,7 +51,10 @@ function drawScenery(ctx, item, region, time, cameraX) {
     ctx.strokeStyle = "#667a42";
     ctx.lineWidth = 3;
     for (let i = -4; i <= 4; i++) {
-      ctx.beginPath(); ctx.moveTo(i * 6, 0); ctx.quadraticCurveTo(i * 7 + Math.sin(time * 1.8 + item.phase) * 3, -26, i * 5, -52 - (i % 3) * 7); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i * 6, 0);
+      ctx.quadraticCurveTo(i * 7 + Math.sin(time * 1.8 + item.phase) * 3, -26, i * 5, -52 - (i % 3) * 7);
+      ctx.stroke();
     }
   } else if (item.kind === "boat") {
     ctx.fillStyle = "#6a4d32";
@@ -64,7 +68,8 @@ function drawScenery(ctx, item, region, time, cameraX) {
     ctx.fillRect(-34, -55, 68, 55);
     ctx.fillStyle = "#826b50";
     ctx.beginPath(); ctx.moveTo(-40, -55); ctx.lineTo(0, -78); ctx.lineTo(40, -55); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "rgba(60,48,39,.65)"; ctx.fillRect(-9, -30, 18, 30);
+    ctx.fillStyle = "rgba(60,48,39,.65)";
+    ctx.fillRect(-9, -30, 18, 30);
   } else if (item.kind === "arch" || item.kind === "goldArch") {
     ctx.strokeStyle = item.kind === "goldArch" ? "#e5c45f" : "#9f8166";
     ctx.lineWidth = 13;
@@ -81,8 +86,11 @@ function drawScenery(ctx, item, region, time, cameraX) {
     ctx.beginPath(); ctx.moveTo(3, -83); ctx.lineTo(38, -76); ctx.lineTo(31, -48); ctx.lineTo(3, -54); ctx.closePath(); ctx.fill();
   } else if (item.kind === "cypress" || item.kind === "olive") {
     ctx.fillStyle = item.kind === "olive" ? "#5f7650" : "#426247";
-    ctx.beginPath(); ctx.ellipse(0, -58, item.kind === "olive" ? 30 : 19, item.kind === "olive" ? 42 : 61, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#756044"; ctx.fillRect(-4, -24, 8, 24);
+    ctx.beginPath();
+    ctx.ellipse(0, -58, item.kind === "olive" ? 30 : 19, item.kind === "olive" ? 42 : 61, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#756044";
+    ctx.fillRect(-4, -24, 8, 24);
   } else if (item.kind === "lamp") {
     ctx.strokeStyle = "#74614b"; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -62); ctx.stroke();
@@ -92,13 +100,17 @@ function drawScenery(ctx, item, region, time, cameraX) {
     ctx.fillStyle = "#2f252c";
     ctx.beginPath(); ctx.moveTo(-38, 0); ctx.lineTo(-27, -48); ctx.lineTo(-5, -72); ctx.lineTo(8, -45); ctx.lineTo(32, -63); ctx.lineTo(40, 0); ctx.closePath(); ctx.fill();
   } else if (item.kind === "emberVent") {
-    ctx.fillStyle = "#2d2227"; ctx.fillRect(-24, -10, 48, 10);
+    ctx.fillStyle = "#2d2227";
+    ctx.fillRect(-24, -10, 48, 10);
     ctx.fillStyle = `rgba(255,112,61,${0.28 + Math.sin(time * 5 + item.phase) * 0.08})`;
     ctx.beginPath(); ctx.moveTo(-15, -10); ctx.quadraticCurveTo(-3, -58, 0, -24); ctx.quadraticCurveTo(8, -70, 17, -10); ctx.closePath(); ctx.fill();
   } else if (item.kind === "chain") {
-    ctx.strokeStyle = "#6f5e67"; ctx.lineWidth = 5;
+    ctx.strokeStyle = "#6f5e67";
+    ctx.lineWidth = 5;
     for (let y = -110; y < 0; y += 17) {
-      ctx.beginPath(); ctx.ellipse(Math.sin(y) * 3, y, 7, 11, (y / 17) % 2 ? 0 : Math.PI / 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(Math.sin(y) * 3, y, 7, 11, (y / 17) % 2 ? 0 : Math.PI / 2, 0, Math.PI * 2);
+      ctx.stroke();
     }
   } else if (item.kind === "cloudSpire") {
     ctx.fillStyle = "rgba(255,255,255,.88)";
@@ -109,7 +121,8 @@ function drawScenery(ctx, item, region, time, cameraX) {
     const glow = ctx.createLinearGradient(0, -135, 0, 0);
     glow.addColorStop(0, "rgba(255,248,195,0)");
     glow.addColorStop(1, "rgba(255,226,111,.45)");
-    ctx.fillStyle = glow; ctx.fillRect(-18, -140, 36, 140);
+    ctx.fillStyle = glow;
+    ctx.fillRect(-18, -140, 36, 140);
   } else if (item.kind === "star") {
     ctx.fillStyle = "#fff2a9";
     ctx.translate(0, -70 + Math.sin(time * 2 + item.phase) * 7);
@@ -120,7 +133,8 @@ function drawScenery(ctx, item, region, time, cameraX) {
       const r = i % 2 ? 5 : 16;
       ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
-    ctx.closePath(); ctx.fill();
+    ctx.closePath();
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -153,7 +167,9 @@ function drawHazard(ctx, hazard, time) {
     ctx.fillStyle = "#c93f2f";
     ctx.fillRect(hazard.x, hazard.y, hazard.w, hazard.h);
     ctx.fillStyle = "#ffbd59";
-    for (let x = hazard.x + 8; x < hazard.x + hazard.w; x += 38) ctx.fillRect(x, hazard.y + 4 + Math.sin(time * 5 + x) * 3, 20, 4);
+    for (let x = hazard.x + 8; x < hazard.x + hazard.w; x += 38) {
+      ctx.fillRect(x, hazard.y + 4 + Math.sin(time * 5 + x) * 3, 20, 4);
+    }
     return;
   }
   if (hazard.type === "fireJet") {
@@ -203,24 +219,18 @@ function drawPlayer(ctx, player, time) {
   ctx.translate(centerX, feetY - bob);
   ctx.scale(player.facing || 1, 1);
 
-  // Halo behind the head.
   ctx.strokeStyle = "rgba(232,190,76,.72)";
   ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.arc(0, -49, 13.5, 0, Math.PI * 2); ctx.stroke();
 
-  // Hair mass behind the face with a little motion while running.
   ctx.fillStyle = "#5b3828";
-  ctx.beginPath();
-  ctx.ellipse(-2 - hairSweep * 0.25, -49, 11, 15, -0.12, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-2 - hairSweep * 0.25, -49, 11, 15, -0.12, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(-8 - hairSweep, -39, 5.5, 12, -0.25, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(8 - hairSweep * 0.5, -40, 5, 11, 0.2, 0, Math.PI * 2); ctx.fill();
 
-  // Back arm.
   drawLimb(ctx, -8, -34, -12 - armSwing * 0.55, -21 + Math.abs(armSwing) * 0.15, "#c58d68", 5.5);
   drawLimb(ctx, -12 - armSwing * 0.55, -21 + Math.abs(armSwing) * 0.15, -8 - armSwing, -10, "#c58d68", 4.5);
 
-  // Legs and sandals stay visually distinct from the robe.
   const leftFootX = -5 + stride;
   const rightFootX = 5 - stride;
   drawLimb(ctx, -5, -14, leftFootX * 0.65, -6, "#c58d68", 6);
@@ -230,7 +240,6 @@ function drawPlayer(ctx, player, time) {
   drawLimb(ctx, leftFootX - 3, 0, leftFootX + 4, 0, "#6f4b34", 2.5);
   drawLimb(ctx, rightFootX - 3, 0, rightFootX + 4, 0, "#6f4b34", 2.5);
 
-  // Robe/body.
   ctx.fillStyle = "#f5ead8";
   ctx.beginPath();
   ctx.moveTo(-9, -39);
@@ -240,41 +249,36 @@ function drawPlayer(ctx, player, time) {
   ctx.quadraticCurveTo(-6, -11, -13, -16);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = "#d9c8ae"; ctx.lineWidth = 1.2; ctx.stroke();
-  ctx.strokeStyle = "#d6af5e"; ctx.lineWidth = 2.3;
+  ctx.strokeStyle = "#d9c8ae";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.strokeStyle = "#d6af5e";
+  ctx.lineWidth = 2.3;
   ctx.beginPath(); ctx.moveTo(-1, -38); ctx.lineTo(1, -14); ctx.stroke();
-  ctx.strokeStyle = "#b98d46"; ctx.lineWidth = 2;
+  ctx.strokeStyle = "#b98d46";
+  ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(-10, -24); ctx.lineTo(11, -24); ctx.stroke();
 
-  // Front arm swings opposite the legs.
   drawLimb(ctx, 8, -34, 12 + armSwing * 0.55, -22 + Math.abs(armSwing) * 0.1, "#cf9870", 5.5);
   drawLimb(ctx, 12 + armSwing * 0.55, -22 + Math.abs(armSwing) * 0.1, 9 + armSwing, -11, "#cf9870", 4.5);
 
-  // Face, beard, hairline and features.
   ctx.fillStyle = "#d29a72";
   ctx.beginPath(); ctx.ellipse(0, -50, 8.8, 10.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#5b3828";
   ctx.beginPath();
   ctx.arc(-2, -58, 8.5, Math.PI * 1.03, Math.PI * 1.92);
-  ctx.lineTo(8, -53); ctx.quadraticCurveTo(3, -60, -5, -58); ctx.fill();
+  ctx.lineTo(8, -53);
+  ctx.quadraticCurveTo(3, -60, -5, -58);
+  ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(-6, -48); ctx.quadraticCurveTo(0, -40, 6, -48); ctx.quadraticCurveTo(5, -39, 0, -36); ctx.quadraticCurveTo(-5, -39, -6, -48); ctx.fill();
+  ctx.moveTo(-6, -48);
+  ctx.quadraticCurveTo(0, -40, 6, -48);
+  ctx.quadraticCurveTo(5, -39, 0, -36);
+  ctx.quadraticCurveTo(-5, -39, -6, -48);
+  ctx.fill();
   ctx.fillStyle = "#2f241f";
   ctx.fillRect(-4, -51, 1.5, 1.5);
   ctx.fillRect(3, -51, 1.5, 1.5);
-
-  ctx.restore();
-}
-
-function drawEnemy(ctx, enemy) {
-  ctx.save();
-  ctx.globalAlpha = enemy.dead ? Math.max(0, (enemy.fade || 0) / 0.3) : 1;
-  ctx.fillStyle = enemy.elite ? "#8d304a" : enemy.type.includes("fire") || enemy.type.includes("imp") ? "#a1392f" : "#5b5662";
-  roundedRect(ctx, enemy.x, enemy.y, enemy.w, enemy.h, 10);
-  ctx.fill();
-  ctx.fillStyle = "#f3d7b5";
-  ctx.fillRect(enemy.x + 10, enemy.y + 12, 5, 5);
-  ctx.fillRect(enemy.x + enemy.w - 15, enemy.y + 12, 5, 5);
   ctx.restore();
 }
 
@@ -282,7 +286,13 @@ function drawBoss(ctx, boss) {
   if (!boss) return;
   ctx.save();
   ctx.globalAlpha = boss.state === "DEFEATED" ? Math.max(0.12, boss.stateTime / 1.4) : 1;
-  ctx.fillStyle = boss.flash > 0 ? "#ffffff" : boss.definition.region === "hell" ? "#7f2734" : boss.definition.region === "heaven" ? "#f5dc88" : "#57485d";
+  ctx.fillStyle = boss.flash > 0
+    ? "#ffffff"
+    : boss.definition.region === "hell"
+      ? "#7f2734"
+      : boss.definition.region === "heaven"
+        ? "#f5dc88"
+        : "#57485d";
   roundedRect(ctx, boss.x, boss.y, boss.w, boss.h, 18);
   ctx.fill();
   ctx.strokeStyle = boss.state === "VULNERABLE" ? "#ffe26b" : "rgba(255,255,255,.55)";
@@ -305,13 +315,18 @@ function drawTelegraphs(ctx, game) {
   ctx.setLineDash([10, 8]);
   for (const shape of shapes) {
     if (shape.type === "circle") {
-      ctx.beginPath(); ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     } else if (shape.type === "safe") {
       ctx.fillStyle = "rgba(255,220,95,.18)";
       ctx.strokeStyle = "rgba(255,224,100,.92)";
-      ctx.fillRect(shape.x, shape.y, shape.w, shape.h); ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
+      ctx.fillRect(shape.x, shape.y, shape.w, shape.h);
+      ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
     } else {
-      ctx.fillRect(shape.x, shape.y, shape.w, shape.h); ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
+      ctx.fillRect(shape.x, shape.y, shape.w, shape.h);
+      ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
     }
   }
   ctx.restore();
@@ -351,14 +366,17 @@ export class Renderer {
     for (const hazard of game.world.bossHazards || []) drawBossHazard(ctx, hazard);
     for (const pickup of game.world.pickups) {
       if (pickup.collected) continue;
+      const float = Math.sin(game.time * 4 + pickup.x) * 4;
       ctx.fillStyle = "#f8d45a";
-      ctx.beginPath(); ctx.arc(pickup.x + 14, pickup.y + 14 + Math.sin(game.time * 4 + pickup.x) * 4, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pickup.x + 14, pickup.y + 14 + float, 12, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#fff";
       ctx.font = "bold 14px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("✦", pickup.x + 14, pickup.y + 19 + Math.sin(game.time * 4 + pickup.x) * 4);
+      ctx.fillText("✦", pickup.x + 14, pickup.y + 19 + float);
     }
-    for (const enemy of game.world.enemies) drawEnemy(ctx, enemy);
+    for (const enemy of game.world.enemies) drawDetailedEnemy(ctx, enemy, game.time);
     drawBoss(ctx, game.bossController?.boss);
     drawPlayer(ctx, game.player, game.time);
 
@@ -369,7 +387,9 @@ export class Renderer {
       const shrineBase = shrineSurface?.y || VIEW.floorY;
       ctx.fillStyle = game.checkpointActivated ? "#ffe16c" : "#ddd4bc";
       ctx.fillRect(game.world.checkpointX, shrineBase - 76, 12, 76);
-      ctx.beginPath(); ctx.arc(game.world.checkpointX + 6, shrineBase - 82, 18, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(game.world.checkpointX + 6, shrineBase - 82, 18, 0, Math.PI * 2);
+      ctx.fill();
     }
     if (!game.bossController?.boss) {
       ctx.fillStyle = "rgba(255,225,110,.75)";
@@ -394,13 +414,22 @@ export class Renderer {
       `Hazards: ${game.world.hazards.length + (game.world.bossHazards?.length || 0)}`,
       `Generated route valid: ${game.world.routeValid === false ? "NO" : "YES"}`,
     ];
-    if (boss) lines.push(`Boss: ${boss.definition.name}`, `Phase: ${boss.phase.name}`, `State: ${boss.state}`, `Attack: ${boss.currentAttack?.name || "—"}`, `State time: ${boss.stateTime.toFixed(2)}`, `HP: ${boss.health} / ${boss.maxHealth}`);
+    if (boss) {
+      lines.push(
+        `Boss: ${boss.definition.name}`,
+        `Phase: ${boss.phase.name}`,
+        `State: ${boss.state}`,
+        `Attack: ${boss.currentAttack?.name || "—"}`,
+        `State time: ${boss.stateTime.toFixed(2)}`,
+        `HP: ${boss.health} / ${boss.maxHealth}`,
+      );
+    }
     ctx.save();
     ctx.fillStyle = "rgba(8,12,20,.84)";
     ctx.fillRect(12, 136, 300, lines.length * 18 + 20);
     ctx.fillStyle = "#dff6ff";
     ctx.font = "12px ui-monospace, monospace";
-    lines.forEach((line, index) => ctx.fillText(line, 24, 158 + index * 18));
+    lines.forEach((lineText, index) => ctx.fillText(lineText, 24, 158 + index * 18));
     ctx.restore();
   }
 }
