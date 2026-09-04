@@ -27,6 +27,28 @@
     return baseStartupRender();
   };
 
+  /* The final performance governor is intentionally loaded after all content wrappers.
+     On desktop that late load is harmless, but a fast tap on a phone can otherwise enter
+     beginWorld() before the governor has replaced the expensive render path. Keep the
+     start screen responsive and delay only the transition into live simulation until the
+     local governor script has completed. */
+  const baseBeginWorld=beginWorld;
+  let queuedWorldStart=false;
+  beginWorld=function(){
+    if(window.__arcaneWildsPerformanceLoaded)return baseBeginWorld();
+    if(queuedWorldStart)return;
+    queuedWorldStart=true;
+    const waitForGovernor=()=>{
+      if(window.__arcaneWildsPerformanceLoaded){
+        queuedWorldStart=false;
+        baseBeginWorld();
+        return;
+      }
+      requestAnimationFrame(waitForGovernor);
+    };
+    requestAnimationFrame(waitForGovernor);
+  };
+
   /* The original stick handler called getBoundingClientRect() and changed CSS on every
      pointermove. Phones can deliver many pointer events per frame, forcing repeated
      layout + paint work while the canvas is also rendering combat. Cache geometry at
