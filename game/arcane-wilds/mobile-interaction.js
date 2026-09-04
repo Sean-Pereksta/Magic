@@ -57,6 +57,81 @@
   refreshMobileInteraction();
 })();
 
+/* Villages are checkpoints: death returns the hero to the most recently entered village. */
+(function installVillageCheckpoint(){
+  if(window.__arcaneVillageCheckpointLoaded)return;
+  window.__arcaneVillageCheckpointLoaded=true;
+
+  const CHECKPOINT_KEY='arcaneWilds:lastVillage:v1';
+  const defaultCheckpoint=()=>({x:0,y:0,name:'Sunmere Haven'});
+
+  function validCheckpoint(value){
+    return value&&Number.isFinite(value.x)&&Number.isFinite(value.y);
+  }
+
+  function readCheckpoint(){
+    try{
+      const saved=JSON.parse(localStorage.getItem(CHECKPOINT_KEY)||'null');
+      if(validCheckpoint(saved))return saved;
+    }catch(err){
+      console.warn('Arcane Wilds checkpoint read failed',err);
+    }
+    return defaultCheckpoint();
+  }
+
+  function rememberVillage(room){
+    if(!room?.town)return;
+    const checkpoint={x:room.x,y:room.y,name:room.name||'Village'};
+    game.lastVillage=checkpoint;
+    try{localStorage.setItem(CHECKPOINT_KEY,JSON.stringify(checkpoint));}
+    catch(err){console.warn('Arcane Wilds checkpoint save failed',err);}
+  }
+
+  const baseLoadRoom=loadRoom;
+  loadRoom=function(){
+    baseLoadRoom();
+    if(game.roomData?.town)rememberVillage(game.roomData);
+  };
+
+  const baseLoadGame=loadGame;
+  loadGame=function(){
+    const loaded=baseLoadGame();
+    if(!loaded)return false;
+    const current=getRoomData(game.room.x,game.room.y);
+    if(current?.town)rememberVillage(current);
+    else game.lastVillage=readCheckpoint();
+    return true;
+  };
+
+  const baseStartNewGame=startNewGame;
+  startNewGame=function(){
+    try{localStorage.removeItem(CHECKPOINT_KEY);}catch(err){}
+    game.lastVillage=defaultCheckpoint();
+    return baseStartNewGame();
+  };
+
+  playerDeath=function(){
+    paused=true;
+    modalPause=true;
+    const checkpoint=validCheckpoint(game.lastVillage)?{...game.lastVillage}:readCheckpoint();
+    saveGame();
+    setTimeout(()=>{
+      alert(`Your journey ended at level ${game.level}. ${checkpoint.name||'The last village'} restores you.`);
+      game.player.hp=game.player.maxHp;
+      game.room={x:checkpoint.x,y:checkpoint.y};
+      game.player.x=ROOM_W/2;
+      game.player.y=ROOM_H/2;
+      modalPause=false;
+      paused=false;
+      loadRoom();
+      saveGame();
+      toastMsg(`Returned to ${checkpoint.name||'your last village'}.`);
+    },120);
+  };
+
+  game.lastVillage=readCheckpoint();
+})();
+
 /* Load the static/cached visual layer before the final performance wrappers capture it. */
 (function loadArcaneVisualDepth(){
   if(document.querySelector('script[data-arcane-visual-depth]'))return;
