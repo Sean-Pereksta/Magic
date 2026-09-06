@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MTG Catalog & Deck Builder</title>
+<style>
+:root{--bg:#0d1117;--panel:#151b23;--panel2:#1b2430;--line:#2b3543;--text:#f4f7fb;--muted:#9aa8b8;--accent:#d97706;--good:#22c55e;--warn:#f59e0b;--bad:#ef4444;--blue:#3b82f6}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1d2835 0,#0d1117 45%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}.app{max-width:1600px;margin:0 auto;padding:18px}.topbar{display:flex;gap:14px;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap}.title{font-size:clamp(1.45rem,3vw,2.2rem);font-weight:900}.subtitle{color:var(--muted);font-size:.9rem}.actions{display:flex;gap:8px;flex-wrap:wrap}button,.btn,input,select{font:inherit}.btn,button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer}.btn.primary,button.primary{background:linear-gradient(135deg,#f59e0b,#b45309);border-color:#f59e0b}.btn:hover,button:hover{filter:brightness(1.08)}.layout{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(320px,.95fr);gap:16px}.panel{background:rgba(21,27,35,.94);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 45px rgba(0,0,0,.2);overflow:hidden}.panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}.panel-title{font-weight:900}.filters{display:grid;grid-template-columns:2fr repeat(5,minmax(110px,1fr));gap:8px;padding:12px;border-bottom:1px solid var(--line)}input,select{width:100%;border:1px solid var(--line);background:#0f151d;color:var(--text);border-radius:10px;padding:9px 10px;outline:none}.catalog-meta{padding:0 12px 10px;color:var(--muted);font-size:.82rem}.catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px;padding:12px;max-height:74vh;overflow:auto}.card{background:linear-gradient(180deg,#1a2330,#111821);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;gap:9px;min-height:180px}.card-top{display:flex;justify-content:space-between;gap:10px}.card-name{font-weight:900;line-height:1.15}.price{font-weight:900;color:#fbbf24}.meta{font-size:.78rem;color:var(--muted);line-height:1.35}.mana{font-weight:900;color:#cbd5e1}.oracle{font-size:.8rem;color:#d7dee8;line-height:1.35;max-height:5.4em;overflow:auto}.card-actions{display:flex;gap:8px;margin-top:auto}.card-actions button{padding:7px 9px;flex:1}.deck{display:flex;flex-direction:column;min-height:600px}.deck-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:12px}.stat{background:#0f151d;border:1px solid var(--line);border-radius:12px;padding:10px}.stat strong{display:block;font-size:1.18rem}.stat span{color:var(--muted);font-size:.76rem}.analysis{padding:0 12px 12px}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-weight:800;font-size:.76rem;border:1px solid var(--line);margin:2px}.pill.good{color:#bbf7d0;border-color:#166534;background:#052e16}.pill.warn{color:#fde68a;border-color:#92400e;background:#451a03}.pill.bad{color:#fecaca;border-color:#991b1b;background:#450a0a}.curve-wrap{padding:0 12px 12px}.curve{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;align-items:end;height:110px;padding:10px;background:#0f151d;border:1px solid var(--line);border-radius:12px}.bar-wrap{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}.bar{width:100%;min-height:2px;background:linear-gradient(180deg,#60a5fa,#1d4ed8);border-radius:5px 5px 2px 2px}.bar-label{font-size:.69rem;color:var(--muted)}.deck-list{padding:12px;display:grid;gap:7px;max-height:43vh;overflow:auto;border-top:1px solid var(--line)}.deck-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;background:#0f151d;border:1px solid var(--line);border-radius:10px;padding:8px}.qty{min-width:28px;text-align:center;font-weight:900}.deck-name{font-weight:800;font-size:.9rem}.deck-row .price{font-size:.82rem}.icon-btn{padding:5px 8px}.empty{padding:32px 18px;color:var(--muted);text-align:center}.footer-note{padding:10px 12px;color:var(--muted);font-size:.74rem;border-top:1px solid var(--line);line-height:1.4}.loading{padding:28px;color:var(--muted);text-align:center}.summary-line{padding:0 12px 10px;color:var(--muted);font-size:.8rem}.deck-controls{display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 12px}.deck-controls button{flex:1;min-width:110px}.view-toggle{display:flex;gap:6px}.hidden{display:none!important}.list-catalog .catalog{display:block}.list-catalog .card{margin-bottom:8px;min-height:auto;grid-template-columns:1.2fr .55fr 1fr auto;align-items:center}.list-catalog .oracle{max-height:3.3em}.list-catalog .card-actions{margin-top:0}.status{padding:0 12px 12px;font-size:.8rem;color:var(--muted)}
+@media(max-width:1050px){.layout{grid-template-columns:1fr}.catalog{max-height:52vh}.filters{grid-template-columns:repeat(2,1fr)}.filters input{grid-column:1/-1}}
+@media(max-width:620px){.app{padding:10px}.filters{grid-template-columns:1fr}.filters input{grid-column:auto}.catalog{grid-template-columns:1fr}.deck-stats{grid-template-columns:1fr 1fr}.list-catalog .card{display:grid;grid-template-columns:1fr}.list-catalog .card-actions{width:100%}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="topbar">
+    <div><div class="title">🃏 MTG Catalog & Deck Builder</div><div class="subtitle">Search Magic cards, track current market value, build a deck, and analyze land count + mana curve.</div></div>
+    <div class="actions"><a class="btn" href="/lobby/lobby.html">← Lobby</a><button id="saveBtn">Save Deck</button><button id="exportBtn">Export</button><button id="clearBtn">Clear</button></div>
+  </div>
+  <div class="layout">
+    <section class="panel" id="catalogPanel">
+      <div class="panel-head"><div class="panel-title">Card Catalog</div><div class="view-toggle"><button id="gridBtn">Grid</button><button id="listBtn">List</button></div></div>
+      <div class="filters">
+        <input id="search" placeholder="Search name, type, oracle text…">
+        <select id="color"><option value="">All colors</option><option value="W">White</option><option value="U">Blue</option><option value="B">Black</option><option value="R">Red</option><option value="G">Green</option><option value="C">Colorless</option></select>
+        <select id="type"><option value="">All types</option><option>Creature</option><option>Instant</option><option>Sorcery</option><option>Artifact</option><option>Enchantment</option><option>Planeswalker</option><option>Land</option><option>Battle</option></select>
+        <select id="rarity"><option value="">All rarities</option><option>common</option><option>uncommon</option><option>rare</option><option>mythic</option></select>
+        <select id="format"><option value="">Any format</option><option value="standard">Standard</option><option value="pioneer">Pioneer</option><option value="modern">Modern</option><option value="legacy">Legacy</option><option value="vintage">Vintage</option><option value="commander">Commander</option><option value="pauper">Pauper</option></select>
+        <select id="sort"><option value="name">Name</option><option value="usd-desc">Price high → low</option><option value="usd-asc">Price low → high</option><option value="cmc">Mana value</option></select>
+      </div>
+      <div class="catalog-meta" id="catalogMeta">Loading catalog…</div>
+      <div class="catalog" id="catalog"><div class="loading">Fetching Magic card data…</div></div>
+      <div class="status" id="status"></div>
+      <div class="footer-note">Catalog and USD prices are pulled from Scryfall. Prices are market snapshots and can be missing for some printings. Search results are intentionally capped for browser performance; refine filters to narrow the catalog.</div>
+    </section>
+
+    <aside class="panel deck">
+      <div class="panel-head"><div class="panel-title">Your Deck</div><div id="deckCount">0 cards</div></div>
+      <div class="deck-stats">
+        <div class="stat"><strong id="deckValue">$0.00</strong><span>Estimated deck value</span></div>
+        <div class="stat"><strong id="landCount">0</strong><span>Lands</span></div>
+        <div class="stat"><strong id="avgCmc">0.00</strong><span>Avg mana value (nonland)</span></div>
+        <div class="stat"><strong id="nonlandCount">0</strong><span>Nonland cards</span></div>
+      </div>
+      <div class="analysis" id="analysis"></div>
+      <div class="summary-line" id="manaSummary"></div>
+      <div class="curve-wrap"><div class="curve" id="curve"></div></div>
+      <div class="deck-controls"><button id="addLandsBtn">Suggest Lands</button><button id="importBtn">Import List</button></div>
+      <div class="deck-list" id="deckList"><div class="empty">Add cards from the catalog to start building.</div></div>
+      <div class="footer-note">Deck quality checks use practical heuristics, not format-specific tournament rules. Land guidance adjusts to deck size and average mana value; Commander-style 100-card decks are treated separately.</div>
+    </aside>
+  </div>
+</div>
+<script>
+const API='https://api.scryfall.com/cards/search';
+const FALLBACK='https://api.scryfall.com/cards/named';
+const state={cards:[],deck:loadDeck(),view:localStorage.getItem('mtg.view')||'grid',pending:null};
+const $=id=>document.getElementById(id);
+const money=n=>Number(n||0).toLocaleString(undefined,{style:'currency',currency:'USD'});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const debounce=(fn,ms=450)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}};
+function loadDeck(){try{return JSON.parse(localStorage.getItem('mtg.deck')||'{}')||{}}catch{return{}}}
+function saveDeck(){localStorage.setItem('mtg.deck',JSON.stringify(state.deck));$('status').textContent='Deck saved locally.'}
+function cardPrice(c){const p=c.prices||{};return Number(p.usd||p.usd_foil||p.usd_etched||0)}
+function isLand(c){return /(^|\s|—)Land(\s|$)/i.test(c.type_line||'')}
+function colorsText(c){const cs=c.colors||[];return cs.length?cs.join(''):isLand(c)?'Land':'C'}
+function queryString(){
+ const q=[]; const s=$('search').value.trim(); if(s) q.push(s.split(/\s+/).map(x=>x.length>2?x+'*':x).join(' ')); else q.push('game:paper');
+ const color=$('color').value;if(color==='C')q.push('c:c');else if(color)q.push('c:'+color);
+ const type=$('type').value;if(type)q.push('t:'+type.toLowerCase());
+ const rarity=$('rarity').value;if(rarity)q.push('r:'+rarity);
+ const format=$('format').value;if(format)q.push('f:'+format);
+ q.push('game:paper');return q.join(' ')
+}
+function sortParam(){const s=$('sort').value;if(s==='usd-desc')return '&order=usd&dir=desc';if(s==='usd-asc')return '&order=usd&dir=asc';if(s==='cmc')return '&order=cmc&dir=asc';return '&order=name&dir=asc'}
+async function fetchCards(){
+ const token=Symbol();state.pending=token;$('catalog').innerHTML='<div class="loading">Fetching cards…</div>';$('catalogMeta').textContent='Searching…';$('status').textContent='';
+ try{
+   const url=API+'?unique=prints&q='+encodeURIComponent(queryString())+sortParam();const r=await fetch(url,{headers:{Accept:'application/json'}});const data=await r.json();if(state.pending!==token)return;
+   if(!r.ok)throw new Error(data.details||'No cards found');
+   state.cards=(data.data||[]).slice(0,175);renderCatalog();$('catalogMeta').textContent=`Showing ${state.cards.length}${data.total_cards?` of ${data.total_cards}`:''} matching printings${data.has_more?' — refine search for more':''}.`;
+ }catch(err){if(state.pending!==token)return;state.cards=[];$('catalog').innerHTML=`<div class="empty">${esc(err.message||'Could not load cards.')}</div>`;$('catalogMeta').textContent='No results.'}
+}
+function renderCatalog(){
+ const root=$('catalog');root.innerHTML='';if(!state.cards.length){root.innerHTML='<div class="empty">No cards match these filters.</div>';return}
+ for(const c of state.cards){const el=document.createElement('article');el.className='card';el.innerHTML=`<div class="card-top"><div><div class="card-name">${esc(c.name)}</div><div class="meta">${esc(c.set_name||c.set?.toUpperCase()||'')} · ${esc(c.rarity||'')}</div></div><div class="price">${cardPrice(c)?money(cardPrice(c)):'—'}</div></div><div class="mana">${esc(c.mana_cost||'')} · MV ${Number(c.cmc||0)}</div><div class="meta">${esc(c.type_line||'')} · ${esc(colorsText(c))}</div><div class="oracle">${esc((c.oracle_text||c.card_faces?.map(f=>f.oracle_text).filter(Boolean).join(' // ')||'').slice(0,700))}</div><div class="card-actions"><button data-add>Add</button><button data-plus>+4</button></div>`;el.querySelector('[data-add]').onclick=()=>addCard(c,1);el.querySelector('[data-plus]').onclick=()=>addCard(c,4);root.appendChild(el)}
+}
+function addCard(c,qty){const id=c.id;const slim={id:c.id,name:c.name,type_line:c.type_line,mana_cost:c.mana_cost,cmc:c.cmc,colors:c.colors,prices:c.prices,set:c.set,set_name:c.set_name,oracle_text:c.oracle_text};state.deck[id]=state.deck[id]||{card:slim,qty:0};state.deck[id].qty+=qty;saveDeck();renderDeck()}
+function changeQty(id,delta){if(!state.deck[id])return;state.deck[id].qty+=delta;if(state.deck[id].qty<=0)delete state.deck[id];saveDeck();renderDeck()}
+function deckEntries(){return Object.values(state.deck).filter(x=>x?.qty>0&&x.card)}
+function deckTotals(){const e=deckEntries();let total=0,lands=0,value=0,cmcSum=0,nonlands=0;const curve=Array(8).fill(0);const colors={W:0,U:0,B:0,R:0,G:0,C:0};for(const x of e){const q=x.qty,c=x.card;total+=q;value+=cardPrice(c)*q;if(isLand(c)){lands+=q}else{nonlands+=q;cmcSum+=Number(c.cmc||0)*q;curve[Math.min(7,Math.max(0,Math.floor(Number(c.cmc||0))))]+=q;const cs=c.colors||[];if(!cs.length)colors.C+=q;else cs.forEach(k=>colors[k]=(colors[k]||0)+q)}}return{total,lands,value,nonlands,avg:nonlands?cmcSum/nonlands:0,curve,colors}}
+function recommendedLands(t){if(t.total>=90)return Math.round(35+(t.avg-3)*3);if(t.total>=55)return Math.round(24+(t.avg-3)*2.1);if(t.total>=35)return Math.round(t.total*.4+(t.avg-3)*1.3);return Math.max(0,Math.round(t.total*.38))}
+function curveRating(t){if(!t.nonlands)return['warn','Add spells to analyze curve.'];const low=t.curve[1]+t.curve[2]+t.curve[3],high=t.curve[5]+t.curve[6]+t.curve[7];if(t.avg>=2.2&&t.avg<=3.8&&low>=t.nonlands*.45&&high<=t.nonlands*.28)return['good','Mana curve looks balanced.'];if(t.avg>4||high>t.nonlands*.36)return['bad','Mana curve is top-heavy; consider more low-cost plays or ramp.'];if(t.avg<1.8)return['warn','Curve is extremely low; make sure the deck has enough impact and card advantage.'];return['warn','Mana curve is playable but could be smoother.']}
+function landRating(t){const rec=recommendedLands(t);if(t.total<20)return['warn',`Build more of the deck before judging lands. Current heuristic target: ~${rec}.`];const diff=t.lands-rec;if(Math.abs(diff)<=2)return['good',`Land count is in a healthy range (~${rec} suggested).`];if(diff<-2)return['bad',`Likely short on lands: ${t.lands} now, ~${rec} suggested.`];return['warn',`Possibly land-heavy: ${t.lands} now, ~${rec} suggested.`]}
+function renderDeck(){
+ const t=deckTotals();$('deckCount').textContent=`${t.total} card${t.total===1?'':'s'}`;$('deckValue').textContent=money(t.value);$('landCount').textContent=t.lands;$('avgCmc').textContent=t.avg.toFixed(2);$('nonlandCount').textContent=t.nonlands;
+ const lr=landRating(t),cr=curveRating(t);$('analysis').innerHTML=`<span class="pill ${lr[0]}">${esc(lr[1])}</span><span class="pill ${cr[0]}">${esc(cr[1])}</span>`;$('manaSummary').textContent=`Color demand: W ${t.colors.W} · U ${t.colors.U} · B ${t.colors.B} · R ${t.colors.R} · G ${t.colors.G} · C ${t.colors.C}`;
+ const max=Math.max(1,...t.curve);$('curve').innerHTML=t.curve.map((n,i)=>`<div class="bar-wrap"><div class="bar" style="height:${Math.max(2,(n/max)*78)}px" title="${n} cards"></div><div class="bar-label">${i===7?'7+':i}: ${n}</div></div>`).join('');
+ const list=$('deckList');const entries=deckEntries().sort((a,b)=>isLand(a.card)-isLand(b.card)||Number(a.card.cmc||0)-Number(b.card.cmc||0)||a.card.name.localeCompare(b.card.name));if(!entries.length){list.innerHTML='<div class="empty">Add cards from the catalog to start building.</div>';return}list.innerHTML='';for(const x of entries){const row=document.createElement('div');row.className='deck-row';row.innerHTML=`<div class="qty">${x.qty}×</div><div><div class="deck-name">${esc(x.card.name)}</div><div class="meta">${esc(x.card.type_line||'')} · MV ${Number(x.card.cmc||0)}</div></div><div class="price">${money(cardPrice(x.card)*x.qty)}</div><div><button class="icon-btn" data-minus>−</button> <button class="icon-btn" data-plus>+</button></div>`;row.querySelector('[data-minus]').onclick=()=>changeQty(x.card.id,-1);row.querySelector('[data-plus]').onclick=()=>changeQty(x.card.id,1);list.appendChild(row)}}
+async function addSuggestedLands(){const t=deckTotals();const need=Math.max(0,recommendedLands(t)-t.lands);if(!need){$('status').textContent='Land count already meets or exceeds the current recommendation.';return}const dominant=Object.entries(t.colors).filter(([k])=>k!=='C').sort((a,b)=>b[1]-a[1])[0]?.[0]||'G';const names={W:'Plains',U:'Island',B:'Swamp',R:'Mountain',G:'Forest'};try{const r=await fetch(FALLBACK+'?exact='+encodeURIComponent(names[dominant]));const c=await r.json();if(!r.ok)throw new Error(c.details||'Could not fetch basic land');addCard(c,need);$('status').textContent=`Added ${need} ${names[dominant]}${need===1?'':'s'} as a starting point. Adjust colors manually as needed.`}catch(e){$('status').textContent=e.message}}
+function exportDeck(){const lines=deckEntries().sort((a,b)=>a.card.name.localeCompare(b.card.name)).map(x=>`${x.qty} ${x.card.name}`);const blob=new Blob([lines.join('\n')],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mtg-deck.txt';a.click();URL.revokeObjectURL(a.href)}
+async function importDeck(){const raw=prompt('Paste one card per line, e.g. "4 Lightning Bolt". Existing deck will be kept.');if(!raw)return;const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);for(const line of lines){const m=line.match(/^(\d+)\s+(.+)$/);const qty=m?Number(m[1]):1,name=m?m[2]:line;try{const r=await fetch(FALLBACK+'?fuzzy='+encodeURIComponent(name));const c=await r.json();if(r.ok)addCard(c,qty)}catch{}}renderDeck()}
+function applyView(){document.body.classList.toggle('list-catalog',state.view==='list');localStorage.setItem('mtg.view',state.view)}
+const trigger=debounce(fetchCards,500);['search','color','type','rarity','format','sort'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',trigger));$('saveBtn').onclick=saveDeck;$('clearBtn').onclick=()=>{if(confirm('Clear this deck?')){state.deck={};saveDeck();renderDeck()}};$('exportBtn').onclick=exportDeck;$('importBtn').onclick=importDeck;$('addLandsBtn').onclick=addSuggestedLands;$('gridBtn').onclick=()=>{state.view='grid';applyView()};$('listBtn').onclick=()=>{state.view='list';applyView()};applyView();renderDeck();fetchCards();
+</script>
+</body>
+</html>
