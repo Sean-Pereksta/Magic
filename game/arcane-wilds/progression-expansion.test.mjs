@@ -39,10 +39,12 @@ test('adds eight rare or legendary spell-slot items and caps capacity at five',(
   assert.ok(!source.includes("minRarity:'Uncommon'"));
 });
 
-test('normal level-up evolution is restricted to exactly one active spell choice',()=>{
+test('normal level-up reserves exactly one active spell evolution or mastery choice',()=>{
   assert.match(levelChoices,/activeSpells\|\|\[\]\)\.slice\(0,awCurrentSpellLimit\(\)\)/);
   assert.match(levelChoices,/const upgradeable=awUpgradeableOwnedSpells\(\)/);
-  assert.match(levelChoices,/const remainingPool=pool\.filter\(id=>!ids\.includes\(id\)&&!active\.has\(id\)\)/);
+  assert.match(levelChoices,/const candidates=upgradeable\.length\?upgradeable:activeIds/);
+  assert.match(levelChoices,/ids\.push\(candidates\[irnd\(candidates\.length\)\]\)/);
+  assert.match(levelChoices,/pool\.filter\(id=>!ids\.includes\(id\)&&!active\.has\(id\)\)/);
   assert.match(levelChoices,/Evolve active spell • Slot/);
   assert.match(levelChoices,/if\(!awIsSpellActive\(id\)\)return openReplaceChoice\(id\)/);
 });
