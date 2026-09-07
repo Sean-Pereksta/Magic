@@ -1,5 +1,5 @@
 /* Arcane Wilds level-up spell drafting.
-   Normal level-ups reserve exactly one evolution choice for an equipped spell with a remaining mutation.
+   Normal level-ups reserve exactly one evolution/mastery choice for a currently equipped spell.
    The other choices cannot evolve active spells: they either unlock a new spell or reassign a known inactive spell.
    Known inactive spells keep every mutation they earned when they return to the loadout. */
 function awCurrentSpellLimit(){
@@ -21,12 +21,13 @@ function awUpgradeableOwnedSpells(){
 }
 
 function awLevelSpellChoices(free=false){
-  const pool=weightedSpellPool(),ids=[],active=new Set(awActiveSpellIds());
-  if(!free){
+  const pool=weightedSpellPool(),ids=[],activeIds=awActiveSpellIds(),active=new Set(activeIds);
+  if(!free&&activeIds.length){
     const upgradeable=awUpgradeableOwnedSpells();
-    if(upgradeable.length)ids.push(upgradeable[irnd(upgradeable.length)]);
+    const candidates=upgradeable.length?upgradeable:activeIds;
+    ids.push(candidates[irnd(candidates.length)]);
   }
-  const remainingPool=pool.filter(id=>!ids.includes(id)&&!active.has(id));
+  const remainingPool=free?pool.filter(id=>!ids.includes(id)):pool.filter(id=>!ids.includes(id)&&!active.has(id));
   return ids.concat(sampleUnique(remainingPool,3-ids.length));
 }
 
@@ -50,7 +51,7 @@ openLevelChoice=function(free=false){
   modalPause=true;
   $('levelTitle').textContent=free?'Arcane Seer':'Level Up • '+game.level;
   const hint=$('levelHint');
-  if(hint)hint.textContent=free?'Choose a spell vision. Known inactive spells return with their upgrades intact.':'Exactly one choice can evolve a currently equipped spell; the other choices unlock or reassign spells.';
+  if(hint)hint.textContent=free?'Choose a spell vision. Known inactive spells return with their upgrades intact.':'Exactly one choice evolves or masters a currently equipped spell; the other choices unlock or reassign spells.';
   const root=$('levelCards');root.innerHTML='';
   const ids=awLevelSpellChoices(free);
   for(const id of ids){
