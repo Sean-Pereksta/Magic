@@ -48,3 +48,11 @@ test("the in-game Save button can sync the bound Firebase slot after the local s
   assert.match(wrapper,/DwarfWorldCloud\.saveBound\(\{quiet:true,skipFlush:true\}\)/);
   assert.match(cloud,/function canAutoSave\(\)/);
 });
+
+test("combat and mining damage popups fade and are deleted after their lifetime",()=>{
+  assert.match(cloud,/function installFxLifecycleGuard\(\)/);
+  assert.match(cloud,/const remaining=Math\.max\(0,fx\.max-\(now-fx\.__dwFxBornAt\)\/1000\)/);
+  assert.match(cloud,/fx\.life=Math\.min\(fx\.life,remaining\)/);
+  assert.match(cloud,/if\(fx\.life<=0\)fxArray\.splice\(i,1\)/);
+  assert.match(cloud,/gameFrame\.addEventListener\("load"/);
+});
