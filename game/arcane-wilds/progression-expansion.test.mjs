@@ -46,19 +46,36 @@ test('normal level-up reserves exactly one active spell evolution or mastery cho
   assert.match(levelChoices,/ids\.push\(candidates\[irnd\(candidates\.length\)\]\)/);
   assert.match(levelChoices,/pool\.filter\(id=>!ids\.includes\(id\)&&!active\.has\(id\)\)/);
   assert.match(levelChoices,/Evolve active spell • Slot/);
-  assert.match(levelChoices,/if\(!awIsSpellActive\(id\)\)return openReplaceChoice\(id\)/);
+  assert.match(levelChoices,/if\(!awIsSpellActive\(id\)\)return awEquipSpellForFlow\(id,\(\)=>openUpgradeChoice\(id\)\)/);
 });
 
-test('known inactive spells retain mutations and reassign instead of evolving',()=>{
-  assert.match(levelChoices,/Reassign known spell • upgrades retained/);
-  assert.match(levelChoices,/if\(awIsSpellActive\(id\)\)openUpgradeChoice\(id\);\s*else openReplaceChoice\(id\)/s);
+test('known inactive spell selections equip instead of being treated as active ownership',()=>{
+  assert.match(levelChoices,/owned&&openSlot>=0\?`Equip known spell • fills Slot/);
+  assert.match(levelChoices,/if\(awIsSpellActive\(id\)\)openUpgradeChoice\(id\);\s*else awEquipSpellForFlow\(id\)/s);
   assert.match(levelChoices,/keeps all \$\{upgrades\} existing mutation/);
+  assert.match(levelChoices,/owned:active/);
 });
 
-test('known inactive spells can fill newly unlocked fourth and fifth slots',()=>{
+test('selected spells automatically fill an unlocked empty fourth or fifth slot',()=>{
+  assert.match(levelChoices,/function awFirstOpenSpellSlot\(\)/);
+  assert.match(levelChoices,/const open=awFirstOpenSpellSlot\(\)/);
+  assert.match(levelChoices,/if\(open>=0\)\{\s*awEquipSpellInSlot\(id,open\)/s);
+  assert.match(levelChoices,/game\.player\.unlocked\.push\(id\);\s*awEquipSpellForFlow\(id\)/s);
   assert.match(source,/function awOpenEmptySpellSlot\(slot\)/);
   assert.match(source,/n<4\|\|n>5\|\|n>awSpellSlotLimit\(\)/);
   assert.match(source,/Choose Spell/);
+});
+
+test('an inactive spell cannot be upgraded until it has become equipped',()=>{
+  assert.match(levelChoices,/function awEquipSpellForFlow\(id,onEquipped=null\)/);
+  assert.match(levelChoices,/if\(!awIsSpellActive\(id\)\)return awEquipSpellForFlow\(id,\(\)=>openUpgradeChoice\(id\)\)/);
+  assert.match(levelChoices,/openReplaceChoice\(id,onEquipped\)/);
+  assert.match(levelChoices,/if\(typeof onEquipped==='function'\)\{\s*saveGame\(\);\s*updateHUD\(\);\s*onEquipped\(i\)/s);
+});
+
+test('spell assignment only writes into currently unlocked active slots',()=>{
+  assert.match(levelChoices,/const limit=awCurrentSpellLimit\(\);\s*if\(!game\.player\|\|slot<0\|\|slot>=limit\)return false/s);
+  assert.match(levelChoices,/for\(let i=0;i<active\.length;i\+\+\)if\(i!==slot&&active\[i\]===id\)active\[i\]=null/);
 });
 
 test('villages are slightly more common and have additional names',()=>{
