@@ -313,6 +313,59 @@
   }
   function canAutoSave(){return !!(boundName&&secret&&!busy&&shell.isRunning())}
 
+  // The core game already fades combat/mining popups from `life / max`, but its
+  // update loop currently never advances/removes that private effect array. The
+  // frame guard captures the array on its first effect push, drives remaining
+  // lifetime from real elapsed time, and splices expired effects so labels such
+  // as wall-hit “-10” cannot stay on screen or accumulate in gameplay.
+  function installFxLifecycleGuard(){
+    const frame=document.getElementById("gameFrame");
+    const win=frame?.contentWindow;
+    if(!win||win.__dwarfWorldFxLifecycleGuard)return;
+    win.__dwarfWorldFxLifecycleGuard=true;
+
+    const proto=win.Array?.prototype;
+    if(!proto)return;
+    const originalPush=proto.push;
+    let fxArray=null;
+    const isFx=value=>!!value&&typeof value==="object"&&
+      typeof value.kind==="string"&&typeof value.life==="number"&&typeof value.max==="number"&&
+      (value.kind==="text"||value.kind==="slash"||value.kind==="beam"||value.kind==="burst");
+
+    proto.push=function(...items){
+      const result=originalPush.apply(this,items);
+      if(!fxArray&&items.some(isFx)){
+        fxArray=this;
+        proto.push=originalPush;
+      }
+      return result;
+    };
+
+    const step=now=>{
+      if(fxArray){
+        for(let i=fxArray.length-1;i>=0;i--){
+          const fx=fxArray[i];
+          if(!isFx(fx))continue;
+          if(!Number.isFinite(fx.__dwFxBornAt)){
+            try{Object.defineProperty(fx,"__dwFxBornAt",{value:now,writable:true,configurable:true})}
+            catch{fx.__dwFxBornAt=now}
+          }
+          const remaining=Math.max(0,fx.max-(now-fx.__dwFxBornAt)/1000);
+          fx.life=Math.min(fx.life,remaining);
+          if(fx.life<=0)fxArray.splice(i,1);
+        }
+      }
+      win.requestAnimationFrame(step);
+    };
+    win.requestAnimationFrame(step);
+  }
+
+  const gameFrame=document.getElementById("gameFrame");
+  if(gameFrame){
+    gameFrame.addEventListener("load",()=>setTimeout(installFxLifecycleGuard,0));
+    if(gameFrame.contentDocument?.readyState==="complete")setTimeout(installFxLifecycleGuard,0);
+  }
+
   window.DwarfWorldCloud={
     loadNamed,saveNamed,saveBound,officialSave,canAutoSave,
     openManager,closeManager,assignFromManager,forgetBinding,render,
