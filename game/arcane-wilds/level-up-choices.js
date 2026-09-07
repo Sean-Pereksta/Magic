@@ -1,6 +1,6 @@
 /* Arcane Wilds level-up spell drafting.
    Normal level-ups reserve exactly one evolution/mastery choice for a currently equipped spell.
-   The other choices cannot evolve active spells: they either unlock a new spell or reassign a known inactive spell.
+   The other choices cannot evolve active spells: they either unlock a new spell or equip/reassign a known inactive spell.
    Known inactive spells keep every mutation they earned when they return to the loadout. */
 function awCurrentSpellLimit(){
   return typeof window.awSpellSlotLimit==='function'?window.awSpellSlotLimit():3;
@@ -11,7 +11,21 @@ function awActiveSpellIds(){
   return [...new Set((game.player.activeSpells||[]).slice(0,awCurrentSpellLimit()).filter(Boolean))];
 }
 
-function awIsSpellActive(id){return awActiveSpellIds().includes(id)}
+function awActiveSpellSlot(id){
+  if(!game.player)return -1;
+  const active=game.player.activeSpells||[],limit=awCurrentSpellLimit();
+  for(let i=0;i<limit;i++)if(active[i]===id)return i;
+  return -1;
+}
+
+function awIsSpellActive(id){return awActiveSpellSlot(id)>=0}
+
+function awFirstOpenSpellSlot(){
+  if(!game.player)return -1;
+  const active=game.player.activeSpells||[],limit=awCurrentSpellLimit();
+  for(let i=0;i<limit;i++)if(!active[i])return i;
+  return -1;
+}
 
 function awUpgradeableOwnedSpells(){
   return awActiveSpellIds().filter(id=>{
@@ -39,9 +53,39 @@ function awFinishSpellFlow(){
 }
 
 function awEquipSpellInSlot(id,slot){
+  const limit=awCurrentSpellLimit();
+  if(!game.player||slot<0||slot>=limit)return false;
   const active=game.player.activeSpells||(game.player.activeSpells=[]);
   for(let i=0;i<active.length;i++)if(i!==slot&&active[i]===id)active[i]=null;
   active[slot]=id;
+  return true;
+}
+
+/*
+ * One gate for every level-up/select/upgrade path: an inactive spell must become
+ * equipped before the flow can finish or before its upgrade picker can open.
+ */
+function awEquipSpellForFlow(id,onEquipped=null){
+  const activeSlot=awActiveSpellSlot(id);
+  if(activeSlot>=0){
+    if(typeof onEquipped==='function')onEquipped(activeSlot);
+    return true;
+  }
+
+  const open=awFirstOpenSpellSlot();
+  if(open>=0){
+    awEquipSpellInSlot(id,open);
+    toastMsg(`${SPELLS[id].name} equipped in slot ${open+1}.`);
+    if(typeof onEquipped==='function'){
+      saveGame();
+      updateHUD();
+      onEquipped(open);
+    }else awFinishSpellFlow();
+    return true;
+  }
+
+  openReplaceChoice(id,onEquipped);
+  return false;
 }
 
 openLevelChoice=function(free=false){
@@ -51,13 +95,16 @@ openLevelChoice=function(free=false){
   modalPause=true;
   $('levelTitle').textContent=free?'Arcane Seer':'Level Up • '+game.level;
   const hint=$('levelHint');
-  if(hint)hint.textContent=free?'Choose a spell vision. Known inactive spells return with their upgrades intact.':'Exactly one choice evolves or masters a currently equipped spell; the other choices unlock or reassign spells.';
+  if(hint)hint.textContent=free?'Choose a spell vision. Any spell you select will be equipped before this choice finishes.':'Exactly one choice evolves or masters a currently equipped spell; every other selected spell is equipped before the level-up finishes.';
   const root=$('levelCards');root.innerHTML='';
-  const ids=awLevelSpellChoices(free);
+  const ids=awLevelSpellChoices(free),openSlot=awFirstOpenSpellSlot();
   for(const id of ids){
     const s=SPELLS[id],owned=game.player.unlocked.includes(id),active=awIsSpellActive(id);
-    const activeIndex=active?game.player.activeSpells.indexOf(id):-1;
-    const tag=active?`Evolve active spell • Slot ${activeIndex+1}`:owned?'Reassign known spell • upgrades retained':'Unlock spell';
+    const activeIndex=active?awActiveSpellSlot(id):-1;
+    const tag=active?`Evolve active spell • Slot ${activeIndex+1}`:
+      owned&&openSlot>=0?`Equip known spell • fills Slot ${openSlot+1}`:
+      owned?'Reassign known spell • upgrades retained':
+      openSlot>=0?`Unlock & equip • fills Slot ${openSlot+1}`:'Unlock spell • choose active slot';
     root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,tag,owned:active},()=>selectSpellChoice(id)));
   }
   $('levelOverlay').classList.remove('hidden');
@@ -67,25 +114,16 @@ selectSpellChoice=function(id){
   $('levelOverlay').classList.add('hidden');
   if(game.player.unlocked.includes(id)){
     if(awIsSpellActive(id))openUpgradeChoice(id);
-    else openReplaceChoice(id);
+    else awEquipSpellForFlow(id);
     return;
   }
   game.player.unlocked.push(id);
-  const limit=awCurrentSpellLimit();
-  let open=-1;
-  for(let i=0;i<limit;i++)if(!game.player.activeSpells[i]){open=i;break}
-  if(open>=0){
-    awEquipSpellInSlot(id,open);
-    toastMsg(`${SPELLS[id].name} unlocked in slot ${open+1}.`);
-    awFinishSpellFlow();
-  }else{
-    game.selectedSpell=id;openReplaceChoice(id);
-  }
+  awEquipSpellForFlow(id);
 };
 
 openUpgradeChoice=function(id){
-  /* Evolution is intentionally restricted to currently active spells. */
-  if(!awIsSpellActive(id))return openReplaceChoice(id);
+  /* Never mutate an inactive spell. Equip it first, using an empty bonus slot when available. */
+  if(!awIsSpellActive(id))return awEquipSpellForFlow(id,()=>openUpgradeChoice(id));
   game.selectedSpell=id;modalPause=true;
   $('upgradeTitle').textContent=`Evolve ${SPELLS[id].icon} ${SPELLS[id].name}`;
   const current=game.player.upgrades[id]||[],pool=(UPGRADE_POOLS[id]||[]).filter(u=>!current.includes(u[0]));
@@ -111,7 +149,7 @@ openUpgradeChoice=function(id){
   $('upgradeOverlay').classList.remove('hidden');
 };
 
-openReplaceChoice=function(id){
+openReplaceChoice=function(id,onEquipped=null){
   modalPause=true;
   const limit=awCurrentSpellLimit(),overlay=$('replaceOverlay'),root=$('replaceCards');root.innerHTML='';
   const title=overlay.querySelector('h2'),hint=overlay.querySelector('.overlay-head p');
@@ -127,10 +165,14 @@ openReplaceChoice=function(id){
       desc:s?`Put ${SPELLS[id].name} into active slot ${i+1}. ${s.name} remains learned with all of its mutations.`:`Put ${SPELLS[id].name} into active slot ${i+1}.`,
       tag:`Slot ${i+1}`
     },()=>{
-      awEquipSpellInSlot(id,i);
+      if(!awEquipSpellInSlot(id,i))return;
       overlay.classList.add('hidden');
-      toastMsg(`${SPELLS[id].name} equipped.`);
-      awFinishSpellFlow();
+      toastMsg(`${SPELLS[id].name} equipped in slot ${i+1}.`);
+      if(typeof onEquipped==='function'){
+        saveGame();
+        updateHUD();
+        onEquipped(i);
+      }else awFinishSpellFlow();
     }));
   }
   overlay.classList.remove('hidden');
