@@ -1,0 +1,31 @@
+name: Validate Dwarf World fortress expansion
+
+on:
+  pull_request:
+    paths:
+      - 'game/DwarfWorld.html'
+      - 'game/DwarfWorld-core.html'
+      - 'game/dwarf-world/**'
+      - '.github/workflows/validate-dwarf-world-expansion.yml'
+  push:
+    branches:
+      - feature/dwarf-world-fortress-command-expansion
+    paths:
+      - 'game/DwarfWorld.html'
+      - 'game/DwarfWorld-core.html'
+      - 'game/dwarf-world/**'
+      - '.github/workflows/validate-dwarf-world-expansion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Dwarf World save and expansion tests
+        run: node --test game/dwarf-world/cloud-save.test.mjs game/dwarf-world/fortress-command-expansion.test.mjs
