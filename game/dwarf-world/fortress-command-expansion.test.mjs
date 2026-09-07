@@ -3,13 +3,16 @@ import {readFileSync} from "node:fs";
 import test from "node:test";
 
 const runtime=readFileSync(new URL("./fortress-command-runtime.txt",import.meta.url),"utf8");
+const polish=readFileSync(new URL("./fortress-command-polish-runtime.txt",import.meta.url),"utf8");
 const loader=readFileSync(new URL("./fortress-command-expansion.js",import.meta.url),"utf8");
 const wrapper=readFileSync(new URL("../DwarfWorld.html",import.meta.url),"utf8");
 
-test("fortress expansion loader and injected runtime are valid JavaScript",()=>{
+test("fortress expansion loader and injected runtimes are valid JavaScript",()=>{
   assert.doesNotThrow(()=>new Function(loader));
   assert.doesNotThrow(()=>new Function(runtime));
+  assert.doesNotThrow(()=>new Function(polish));
   assert.match(loader,/fortress-command-runtime\.txt/);
+  assert.match(loader,/fortress-command-polish-runtime\.txt/);
   assert.match(wrapper,/DwarfWorldFortressExpansion\?\.prepareCore/);
   assert.match(wrapper,/frame\.srcdoc=await buildExpandedCore\(\)/);
 });
@@ -50,6 +53,11 @@ test("all requested civic building families and depth unlocks are represented",(
   assert.match(runtime,/depth:420/);
   assert.match(runtime,/depth:620/);
   assert.match(runtime,/depth:860/);
+  assert.match(polish,/dwxUpgradeBuilding/);
+  assert.match(polish,/b\.level>=3/);
+  assert.match(polish,/Protect Legendary\+/);
+  assert.match(polish,/DWX_BASE_BUILD_META\[BUILD_DEPOT\]/);
+  assert.match(polish,/DWX_BASE_BUILD_META\[BUILD_GUARD\]/);
 });
 
 test("unique relics are one-per-world discoveries and are protected from selling",()=>{
