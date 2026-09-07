@@ -1,254 +1,44 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Dwarven Fortress: Deepwild</title>
-  <style>
-    :root{color-scheme:dark;--bg:#06080b;--panel:#11161d;--panel2:#0c1117;--line:#2b3542;--text:#edf4fb;--muted:#9cacbd;--gold:#d7ab54;--cyan:#78dcff;--good:#7be0a4;--bad:#ff7d8e}
-    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
-    button,input{font:inherit}button{cursor:pointer}
-    #gameFrame{position:fixed;inset:0;width:100%;height:100%;border:0;background:#07090c}
-    #startScreen{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:
-      radial-gradient(circle at 50% 16%,rgba(215,171,84,.16),transparent 34%),
-      linear-gradient(180deg,#0a0d11 0%,#050608 100%)}
-    .start-card{width:min(760px,96vw);border:1px solid rgba(215,171,84,.28);border-radius:24px;background:linear-gradient(180deg,rgba(19,24,31,.97),rgba(9,12,16,.98));box-shadow:0 40px 120px #000c;overflow:hidden}
-    .hero{padding:34px 34px 24px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,rgba(215,171,84,.08),transparent 55%)}
-    .eyebrow{font-size:11px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
-    h1{margin:8px 0 8px;font-size:clamp(30px,6vw,54px);line-height:.95;letter-spacing:-.04em}.subtitle{color:var(--muted);font-size:14px;line-height:1.55;max-width:620px}
-    .menu-body{padding:24px 34px 32px;display:grid;gap:14px}
-    .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.choice{min-height:128px;padding:18px;text-align:left;border-radius:16px;border:1px solid var(--line);background:#10161d;color:var(--text);transition:.16s}
-    .choice:hover{transform:translateY(-1px);border-color:#4a596a;background:#151c25}.choice.primary{border-color:rgba(215,171,84,.42);background:linear-gradient(180deg,rgba(215,171,84,.12),rgba(19,22,27,.9))}
-    .choice b{display:block;font-size:18px;margin-bottom:6px}.choice span{display:block;color:var(--muted);font-size:12px;line-height:1.45}
-    #localContinue{grid-column:1/-1;min-height:auto;display:flex;align-items:center;justify-content:space-between;gap:14px}
-    #localContinue[hidden]{display:none}.local-copy{display:grid;gap:3px}.local-copy strong{font-size:13px}.local-copy small{color:var(--muted)}
-    .load-panel{display:none;padding:18px;border:1px solid var(--line);border-radius:16px;background:#0b1016}.load-panel.open{display:grid;gap:12px}
-    .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:grid;gap:6px}.field label{font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-    .field input{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;background:#070b10;color:var(--text);padding:0 12px;outline:none}.field input:focus{border-color:#5eaed0}
-    .actions{display:flex;gap:8px;flex-wrap:wrap}.btn{height:40px;border-radius:10px;border:1px solid var(--line);background:#151c25;color:var(--text);padding:0 14px;font-weight:850}.btn:hover{background:#1b2530}.btn.primary{border-color:rgba(120,220,255,.42);background:rgba(120,220,255,.11)}.btn.gold{border-color:rgba(215,171,84,.45);background:rgba(215,171,84,.12)}.btn.ghost{background:transparent}
-    .message{min-height:18px;font-size:12px;color:var(--muted)}.message.bad{color:var(--bad)}.privacy{font-size:11px;color:#718093;line-height:1.45}
-    #cloudDock{position:fixed;right:12px;bottom:12px;z-index:90;display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:13px;border:1px solid rgba(120,220,255,.24);background:rgba(7,12,18,.88);backdrop-filter:blur(12px);box-shadow:0 16px 40px #0008}
-    #cloudDock[hidden]{display:none}.cloud-dot{width:8px;height:8px;border-radius:50%;background:#748091;box-shadow:0 0 0 3px rgba(116,128,145,.12)}.cloud-dot.on{background:var(--good);box-shadow:0 0 0 3px rgba(123,224,164,.12)}.dock-copy{display:grid;gap:1px;max-width:210px}.dock-copy strong{font-size:11px}.dock-copy small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .dock-btn{height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:#121923;color:var(--text);font-size:10px;font-weight:900}
-    #cloudModal{position:fixed;inset:0;z-index:120;display:none;place-items:center;padding:20px;background:rgba(2,4,7,.78);backdrop-filter:blur(9px)}#cloudModal.open{display:grid}
-    .modal-card{width:min(540px,94vw);border:1px solid rgba(120,220,255,.25);border-radius:18px;background:linear-gradient(180deg,#121923,#090e14);box-shadow:0 28px 90px #000d;padding:22px}.modal-head{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.modal-head h2{margin:0 0 5px;font-size:22px}.modal-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}.close{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#111821;color:var(--text);font-size:18px}
-    #toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,20px);z-index:140;opacity:0;pointer-events:none;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:rgba(8,12,17,.95);font-size:12px;transition:.2s}#toast.show{opacity:1;transform:translate(-50%,0)}
-    .loading{position:fixed;inset:0;z-index:110;display:none;place-items:center;background:#07090c}.loading.show{display:grid}.loading-card{text-align:center;color:var(--muted);font-size:12px}.spinner{width:34px;height:34px;margin:0 auto 12px;border-radius:50%;border:3px solid #26303c;border-top-color:var(--gold);animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-    @media(max-width:620px){.hero,.menu-body{padding-left:20px;padding-right:20px}.menu-grid,.fields{grid-template-columns:1fr}.choice{min-height:108px}#localContinue{grid-column:auto;align-items:flex-start;flex-direction:column}#cloudDock{left:8px;right:8px;bottom:8px}.dock-copy{max-width:none;flex:1}}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dwarven Fortress: Deepwild</title>
+<style>
+:root{color-scheme:dark;--bg:#06080b;--panel:#11161d;--line:#2b3542;--text:#edf4fb;--muted:#9cacbd;--gold:#d7ab54;--cyan:#78dcff;--good:#7be0a4;--bad:#ff7d8e}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}button,input{font:inherit}button{cursor:pointer}#gameFrame{position:fixed;inset:0;width:100%;height:100%;border:0;background:#07090c}#startScreen{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 16%,rgba(215,171,84,.16),transparent 34%),linear-gradient(180deg,#0a0d11,#050608)}.start-card{width:min(780px,96vw);border:1px solid rgba(215,171,84,.28);border-radius:24px;background:linear-gradient(180deg,rgba(19,24,31,.97),rgba(9,12,16,.98));box-shadow:0 40px 120px #000c;overflow:hidden}.hero{padding:34px 34px 24px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,rgba(215,171,84,.08),transparent 55%)}.eyebrow{font-size:11px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}h1{margin:8px 0;font-size:clamp(30px,6vw,54px);line-height:.95;letter-spacing:-.04em}.subtitle{color:var(--muted);font-size:14px;line-height:1.55;max-width:650px}.menu-body{padding:24px 34px 32px;display:grid;gap:14px}.menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.choice{min-height:128px;padding:18px;text-align:left;border-radius:16px;border:1px solid var(--line);background:#10161d;color:var(--text);transition:.16s}.choice:hover{transform:translateY(-1px);border-color:#4a596a;background:#151c25}.choice.primary{border-color:rgba(215,171,84,.42);background:linear-gradient(180deg,rgba(215,171,84,.12),rgba(19,22,27,.9))}.choice b{display:block;font-size:18px;margin-bottom:6px}.choice span{display:block;color:var(--muted);font-size:12px;line-height:1.45}#localContinue{grid-column:1/-1;min-height:auto;display:flex;align-items:center;justify-content:space-between;gap:14px}#localContinue[hidden]{display:none}.local-copy{display:grid;gap:3px}.local-copy strong{font-size:13px}.local-copy small{color:var(--muted)}.load-panel{display:none;padding:18px;border:1px solid var(--line);border-radius:16px;background:#0b1016}.load-panel.open{display:grid;gap:12px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:grid;gap:6px}.field label{font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.field input{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;background:#070b10;color:var(--text);padding:0 12px;outline:none}.field input:focus{border-color:#5eaed0}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{height:40px;border-radius:10px;border:1px solid var(--line);background:#151c25;color:var(--text);padding:0 14px;font-weight:850}.btn.primary{border-color:rgba(120,220,255,.42);background:rgba(120,220,255,.11)}.btn.gold{border-color:rgba(215,171,84,.45);background:rgba(215,171,84,.12)}.btn.ghost{background:transparent}.message{min-height:18px;font-size:12px;color:var(--muted)}.message.bad{color:var(--bad)}.privacy{font-size:11px;color:#718093;line-height:1.45}#cloudDock{position:fixed;right:12px;bottom:12px;z-index:90;display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:13px;border:1px solid rgba(120,220,255,.24);background:rgba(7,12,18,.88);backdrop-filter:blur(12px);box-shadow:0 16px 40px #0008}#cloudDock[hidden]{display:none}.cloud-dot{width:8px;height:8px;border-radius:50%;background:#748091;box-shadow:0 0 0 3px rgba(116,128,145,.12)}.cloud-dot.on{background:var(--good);box-shadow:0 0 0 3px rgba(123,224,164,.12)}.dock-copy{display:grid;gap:1px;max-width:210px}.dock-copy strong{font-size:11px}.dock-copy small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dock-btn{height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:#121923;color:var(--text);font-size:10px;font-weight:900}#cloudModal{position:fixed;inset:0;z-index:120;display:none;place-items:center;padding:20px;background:rgba(2,4,7,.78);backdrop-filter:blur(9px)}#cloudModal.open{display:grid}.modal-card{width:min(540px,94vw);border:1px solid rgba(120,220,255,.25);border-radius:18px;background:linear-gradient(180deg,#121923,#090e14);box-shadow:0 28px 90px #000d;padding:22px}.modal-head{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.modal-head h2{margin:0 0 5px;font-size:22px}.modal-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}.close{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#111821;color:var(--text);font-size:18px}#toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,20px);z-index:140;opacity:0;pointer-events:none;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:rgba(8,12,17,.95);font-size:12px;transition:.2s}#toast.show{opacity:1;transform:translate(-50%,0)}.loading{position:fixed;inset:0;z-index:110;display:none;place-items:center;background:#07090c}.loading.show{display:grid}.loading-card{text-align:center;color:var(--muted);font-size:12px}.spinner{width:34px;height:34px;margin:0 auto 12px;border-radius:50%;border:3px solid #26303c;border-top-color:var(--gold);animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:620px){.hero,.menu-body{padding-left:20px;padding-right:20px}.menu-grid,.fields{grid-template-columns:1fr}.choice{min-height:108px}#localContinue{grid-column:auto;align-items:flex-start;flex-direction:column}#cloudDock{left:8px;right:8px;bottom:8px}.dock-copy{max-width:none;flex:1}}
+</style>
 </head>
 <body>
-  <iframe id="gameFrame" title="Dwarven Fortress: Deepwild" hidden></iframe>
-
-  <main id="startScreen">
-    <section class="start-card" aria-label="Dwarf World start menu">
-      <div class="hero">
-        <div class="eyebrow">Dwarf World</div>
-        <h1>Dwarven Fortress:<br>Deepwild</h1>
-        <div class="subtitle">Delve, build, arm your dwarves, and push deeper. Worlds can now be encrypted and saved to the same Firebase cloud used by Arcane Wilds and Space Tyrants.</div>
-      </div>
-      <div class="menu-body">
-        <div class="menu-grid">
-          <button id="newWorld" class="choice primary" type="button"><b>⛏ Start New World</b><span>Begin from a fresh fortress. Existing Firebase saves are never deleted when you start over locally.</span></button>
-          <button id="showLoad" class="choice" type="button"><b>☁ Load Game</b><span>Reopen an encrypted Firebase world by save name and password from this or another device.</span></button>
-          <button id="localContinue" class="choice" type="button" hidden>
-            <span class="local-copy"><strong>💾 Continue This Device</strong><small>A local Dwarf World save is available.</small></span>
-            <b>Continue →</b>
-          </button>
-        </div>
-
-        <section id="loadPanel" class="load-panel" aria-label="Load a Firebase save">
-          <div class="fields">
-            <div class="field"><label for="loadName">Save name</label><input id="loadName" autocomplete="off" maxlength="48" placeholder="My Deepwild"></div>
-            <div class="field"><label for="loadPassword">Password</label><input id="loadPassword" type="password" autocomplete="current-password" placeholder="At least 4 characters"></div>
-          </div>
-          <div class="actions">
-            <button id="loadCloud" class="btn primary" type="button">Load from Firebase</button>
-            <button id="cancelLoad" class="btn ghost" type="button">Cancel</button>
-          </div>
-          <div id="loadMessage" class="message" role="status"></div>
-          <div class="privacy">The password is used only on this device to decrypt the save. It is not stored in Firebase.</div>
-        </section>
-      </div>
-    </section>
-  </main>
-
-  <div id="cloudDock" hidden>
-    <span id="cloudDot" class="cloud-dot"></span>
-    <span class="dock-copy"><strong id="cloudTitle">Firebase save not linked</strong><small id="cloudDetail">Local saves still work.</small></span>
-    <button id="cloudSaveNow" class="dock-btn" type="button">☁ Save</button>
-    <button id="cloudManage" class="dock-btn" type="button">Manage</button>
-  </div>
-
-  <div id="cloudModal" role="dialog" aria-modal="true" aria-labelledby="cloudModalTitle">
-    <section class="modal-card">
-      <div class="modal-head">
-        <div><h2 id="cloudModalTitle">Firebase Save</h2><p>Assign a save name and password, or change the current cloud slot. Saving overwrites only that named encrypted slot.</p></div>
-        <button id="cloudClose" class="close" type="button" aria-label="Close">×</button>
-      </div>
-      <div class="fields" style="margin-top:16px">
-        <div class="field"><label for="cloudName">Save name</label><input id="cloudName" autocomplete="off" maxlength="48" placeholder="My Deepwild"></div>
-        <div class="field"><label for="cloudPassword">Password</label><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="At least 4 characters"></div>
-      </div>
-      <div class="actions" style="margin-top:12px">
-        <button id="cloudAssignSave" class="btn gold" type="button">Assign & Save Now</button>
-        <button id="cloudForget" class="btn ghost" type="button">Forget Binding</button>
-      </div>
-      <div id="cloudMessage" class="message" role="status" style="margin-top:9px"></div>
-      <div class="privacy">AES-GCM encryption + PBKDF2 key derivation happen before the save is uploaded. Large worlds are split into Firestore-safe encrypted chunks automatically.</div>
-    </section>
-  </div>
-
-  <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><div id="loadingText">Preparing the Deepwild…</div></div></div>
-  <div id="toast" role="status"></div>
-
-  <script>
-  (() => {
-    "use strict";
-    const SAVE_KEY="dwarven_fortress_deepwild_remaster_v1";
-    const BINDING_KEY="dwarfWorld.cloudSave.name.v1";
-    const frame=document.getElementById("gameFrame");
-    const $=id=>document.getElementById(id);
-    let running=false;
-    let loadRequested=false;
-    let suppressCloudHook=false;
-    let toastTimer=0;
-
-    function toast(message){
-      const el=$("toast");el.textContent=message;el.classList.add("show");
-      clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);
-    }
-    function setLoading(on,text){
-      $("loadingText").textContent=text||"Preparing the Deepwild…";
-      $("loading").classList.toggle("show",!!on);
-    }
-    function hasLocalSave(){return !!localStorage.getItem(SAVE_KEY)}
-    function refreshStart(){
-      $("localContinue").hidden=!hasLocalSave();
-      const bound=localStorage.getItem(BINDING_KEY)||"";
-      if(bound&&!$("loadName").value)$("loadName").value=bound;
-    }
-    function waitForCoreToast(match,timeout=15000){
-      return new Promise((resolve,reject)=>{
-        const doc=frame.contentDocument;
-        const el=doc?.getElementById("toast");
-        if(!el)return reject(new Error("Dwarf World save controls are not ready."));
-        let timer;
-        const done=(ok,value)=>{
-          observer.disconnect();clearTimeout(timer);
-          ok?resolve(value):reject(value instanceof Error?value:new Error(String(value)));
-        };
-        const check=()=>{
-          const text=(el.textContent||"").trim();
-          if(match.test(text))done(true,text);
-          else if(/failed|error|could not/i.test(text))done(false,new Error(text||"Dwarf World operation failed."));
-        };
-        const observer=new MutationObserver(check);
-        observer.observe(el,{childList:true,subtree:true,characterData:true});
-        timer=setTimeout(()=>done(false,new Error("Dwarf World took too long to finish the save operation.")),timeout);
-        check();
-      });
-    }
-    async function clickCoreControl(id,successPattern){
-      const doc=frame.contentDocument;
-      const btn=doc?.getElementById(id);
-      if(!btn)throw new Error("Dwarf World controls are not ready.");
-      const waiter=waitForCoreToast(successPattern);
-      btn.click();
-      return waiter;
-    }
-    async function flushLocalSave(){
-      if(!running)throw new Error("Start a world before saving it.");
-      suppressCloudHook=true;
-      try{
-        await clickCoreControl("btnSave",/Saved locally/i);
-      }finally{
-        suppressCloudHook=false;
-      }
-      const raw=localStorage.getItem(SAVE_KEY);
-      if(!raw)throw new Error("Dwarf World did not produce a local save.");
-      return raw;
-    }
-    async function restoreLocalSave(){
-      if(!hasLocalSave())throw new Error("There is no local Dwarf World save to load.");
-      await clickCoreControl("btnLoad",/Loaded|restored|save loaded/i);
-    }
-    function wireCoreSaveButton(){
-      const doc=frame.contentDocument;
-      const save=doc?.getElementById("btnSave");
-      if(!save||save.dataset.cloudWired)return;
-      save.dataset.cloudWired="1";
-      save.addEventListener("click",()=>{
-        if(suppressCloudHook||!window.DwarfWorldCloud?.canAutoSave())return;
-        waitForCoreToast(/Saved locally/i,15000)
-          .then(()=>window.DwarfWorldCloud.saveBound({quiet:true,skipFlush:true}))
-          .catch(()=>{});
-      });
-    }
-    function launchCore({load=false}={}){
-      setLoading(true,load?"Opening saved Deepwild…":"Carving a new Deepwild…");
-      $("startScreen").style.display="none";
-      frame.hidden=false;
-      loadRequested=load;
-      frame.src="./DwarfWorld-core.html";
-    }
-    frame.addEventListener("load",async()=>{
-      try{
-        running=true;
-        wireCoreSaveButton();
-        if(loadRequested)await restoreLocalSave();
-        $("cloudDock").hidden=false;
-        window.DwarfWorldCloud?.render();
-      }catch(err){
-        console.warn("[Dwarf World shell]",err);
-        toast(err.message||"Could not open the saved world.");
-      }finally{
-        setLoading(false);
-        loadRequested=false;
-      }
-    });
-
-    $("showLoad").addEventListener("click",()=>{
-      $("loadPanel").classList.add("open");
-      $("loadMessage").textContent="";
-      setTimeout(()=>($("loadName").value?$("loadPassword"):$("loadName")).focus(),0);
-    });
-    $("cancelLoad").addEventListener("click",()=>$("loadPanel").classList.remove("open"));
-    $("newWorld").addEventListener("click",()=>{
-      if(hasLocalSave()&&!confirm("Start a fresh local world? Your Firebase cloud saves will remain untouched."))return;
-      localStorage.removeItem(SAVE_KEY);
-      launchCore({load:false});
-    });
-    $("localContinue").addEventListener("click",()=>launchCore({load:true}));
-    $("loadCloud").addEventListener("click",async()=>{
-      const name=$("loadName").value,password=$("loadPassword").value,button=$("loadCloud");
-      $("loadMessage").classList.remove("bad");$("loadMessage").textContent="Contacting Firebase…";button.disabled=true;
-      try{
-        await window.DwarfWorldCloud.loadNamed(name,password);
-        $("loadMessage").textContent="Cloud world restored. Opening…";
-        launchCore({load:true});
-      }catch(err){
-        console.warn("[Dwarf World cloud load]",err);
-        $("loadMessage").classList.add("bad");$("loadMessage").textContent=err.message||"Firebase load failed.";
-      }finally{button.disabled=false}
-    });
-    $("cloudManage").addEventListener("click",()=>window.DwarfWorldCloud.openManager());
-    $("cloudSaveNow").addEventListener("click",()=>window.DwarfWorldCloud.officialSave());
-    $("cloudClose").addEventListener("click",()=>window.DwarfWorldCloud.closeManager());
-    $("cloudModal").addEventListener("click",e=>{if(e.target===$("cloudModal"))window.DwarfWorldCloud.closeManager()});
-    $("cloudAssignSave").addEventListener("click",()=>window.DwarfWorldCloud.assignFromManager());
-    $("cloudForget").addEventListener("click",()=>window.DwarfWorldCloud.forgetBinding());
-    window.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("cloudModal").classList.contains("open"))window.DwarfWorldCloud.closeManager()});
-
-    window.DwarfWorldShell={
-      SAVE_KEY,BINDING_KEY,$,toast,hasLocalSave,flushLocalSave,
-      readLocalSave:()=>localStorage.getItem(SAVE_KEY),
-      writeLocalSave:raw=>localStorage.setItem(SAVE_KEY,raw),
-      isRunning:()=>running
-    };
-    refreshStart();
-  })();
-  </script>
-  <script src="./dwarf-world/cloud-save.js"></script>
+<iframe id="gameFrame" title="Dwarven Fortress: Deepwild" hidden></iframe>
+<main id="startScreen"><section class="start-card"><div class="hero"><div class="eyebrow">Dwarf World</div><h1>Dwarven Fortress:<br>Deepwild</h1><div class="subtitle">Build a living underground civilization: equip individual dwarves, establish civic infrastructure, chart the explored Deepwild, discover unique relics, and keep pushing deeper. Firebase and local world saves remain compatible.</div></div><div class="menu-body"><div class="menu-grid"><button id="newWorld" class="choice primary" type="button"><b>⛏ Start New World</b><span>Begin from a fresh fortress. Existing Firebase saves are not deleted.</span></button><button id="showLoad" class="choice" type="button"><b>☁ Load Game</b><span>Open an encrypted Firebase world by save name and password.</span></button><button id="localContinue" class="choice" type="button" hidden><span class="local-copy"><strong>💾 Continue This Device</strong><small>A local Dwarf World save is available.</small></span><b>Continue →</b></button></div><section id="loadPanel" class="load-panel"><div class="fields"><div class="field"><label for="loadName">Save name</label><input id="loadName" autocomplete="off" maxlength="48" placeholder="My Deepwild"></div><div class="field"><label for="loadPassword">Password</label><input id="loadPassword" type="password" autocomplete="current-password" placeholder="At least 4 characters"></div></div><div class="actions"><button id="loadCloud" class="btn primary" type="button">Load from Firebase</button><button id="cancelLoad" class="btn ghost" type="button">Cancel</button></div><div id="loadMessage" class="message" role="status"></div><div class="privacy">The password is used only on this device to decrypt the save. It is not stored in Firebase.</div></section></div></section></main>
+<div id="cloudDock" hidden><span id="cloudDot" class="cloud-dot"></span><span class="dock-copy"><strong id="cloudTitle">Firebase save not linked</strong><small id="cloudDetail">Local saves still work.</small></span><button id="cloudSaveNow" class="dock-btn" type="button">☁ Save</button><button id="cloudManage" class="dock-btn" type="button">Manage</button></div>
+<div id="cloudModal" role="dialog" aria-modal="true" aria-labelledby="cloudModalTitle"><section class="modal-card"><div class="modal-head"><div><h2 id="cloudModalTitle">Firebase Save</h2><p>Assign a save name and password, or change the current cloud slot. The full expanded world is stored inside the existing encrypted Dwarf World payload.</p></div><button id="cloudClose" class="close" type="button" aria-label="Close">×</button></div><div class="fields" style="margin-top:16px"><div class="field"><label for="cloudName">Save name</label><input id="cloudName" autocomplete="off" maxlength="48" placeholder="My Deepwild"></div><div class="field"><label for="cloudPassword">Password</label><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="At least 4 characters"></div></div><div class="actions" style="margin-top:12px"><button id="cloudAssignSave" class="btn gold" type="button">Assign & Save Now</button><button id="cloudForget" class="btn ghost" type="button">Forget Binding</button></div><div id="cloudMessage" class="message" role="status" style="margin-top:9px"></div><div class="privacy">AES-GCM encryption + PBKDF2 key derivation happen before upload. Large worlds remain split into Firestore-safe encrypted chunks.</div></section></div>
+<div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><div id="loadingText">Preparing the Deepwild…</div></div></div><div id="toast" role="status"></div>
+<script src="./dwarf-world/fortress-command-expansion.js"></script>
+<script>
+(()=>{
+"use strict";
+const SAVE_KEY="dwarven_fortress_deepwild_remaster_v1",BINDING_KEY="dwarfWorld.cloudSave.name.v1",CORE_URL="./DwarfWorld-core.html";
+const frame=document.getElementById("gameFrame"),$=id=>document.getElementById(id);let running=false,loadRequested=false,suppressCloudHook=false,toastTimer=0,launching=false;
+function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200)}
+function setLoading(on,text){$("loadingText").textContent=text||"Preparing the Deepwild…";$("loading").classList.toggle("show",!!on)}
+function hasLocalSave(){return!!localStorage.getItem(SAVE_KEY)}
+function refreshStart(){$("localContinue").hidden=!hasLocalSave();const bound=localStorage.getItem(BINDING_KEY)||"";if(bound&&!$("loadName").value)$("loadName").value=bound}
+function waitForCoreToast(match,timeout=15000){return new Promise((resolve,reject)=>{const doc=frame.contentDocument,el=doc?.getElementById("toast");if(!el)return reject(new Error("Dwarf World save controls are not ready."));let timer;const done=(ok,v)=>{observer.disconnect();clearTimeout(timer);ok?resolve(v):reject(v instanceof Error?v:new Error(String(v)))};const check=()=>{const text=(el.textContent||"").trim();if(match.test(text))done(true,text);else if(/failed|error|could not/i.test(text))done(false,new Error(text||"Dwarf World operation failed."))};const observer=new MutationObserver(check);observer.observe(el,{childList:true,subtree:true,characterData:true});timer=setTimeout(()=>done(false,new Error("Dwarf World took too long to finish the save operation.")),timeout);check()})}
+async function clickCoreControl(id,successPattern){const doc=frame.contentDocument,btn=doc?.getElementById(id);if(!btn)throw new Error("Dwarf World controls are not ready.");const waiter=waitForCoreToast(successPattern);btn.click();return waiter}
+async function flushLocalSave(){if(!running)throw new Error("Start a world before saving it.");suppressCloudHook=true;try{await clickCoreControl("btnSave",/Saved locally/i)}finally{suppressCloudHook=false}const raw=localStorage.getItem(SAVE_KEY);if(!raw)throw new Error("Dwarf World did not produce a local save.");return raw}
+async function restoreLocalSave(){if(!hasLocalSave())throw new Error("There is no local Dwarf World save to load.");await clickCoreControl("btnLoad",/Loaded|restored|save loaded/i)}
+function wireCoreSaveButton(){const doc=frame.contentDocument;const save=doc?.getElementById("btnSave");if(!save||save.dataset.cloudWired)return;save.dataset.cloudWired="1";save.addEventListener("click",()=>{if(suppressCloudHook||!window.DwarfWorldCloud?.canAutoSave())return;waitForCoreToast(/Saved locally/i,15000).then(()=>window.DwarfWorldCloud.saveBound({quiet:true,skipFlush:true})).catch(()=>{})})}
+async function buildExpandedCore(){const response=await fetch(CORE_URL,{cache:"no-store"});if(!response.ok)throw new Error(`Could not load Dwarf World core (${response.status}).`);const source=await response.text();if(!window.DwarfWorldFortressExpansion?.prepareCore)throw new Error("Dwarf World fortress expansion loader is unavailable.");return window.DwarfWorldFortressExpansion.prepareCore(source)}
+async function launchCore({load=false}={}){if(launching)return;launching=true;setLoading(true,load?"Opening saved Deepwild…":"Carving a new Deepwild…");$("startScreen").style.display="none";frame.hidden=false;loadRequested=load;try{frame.srcdoc=await buildExpandedCore()}catch(err){console.warn("[Dwarf World expansion launch]",err);frame.hidden=true;$("startScreen").style.display="grid";toast(err.message||"Could not prepare Dwarf World.");setLoading(false);loadRequested=false;launching=false}}
+frame.addEventListener("load",async()=>{if(!frame.srcdoc)return;try{running=true;wireCoreSaveButton();if(loadRequested)await restoreLocalSave();$("cloudDock").hidden=false;window.DwarfWorldCloud?.render()}catch(err){console.warn("[Dwarf World shell]",err);toast(err.message||"Could not open the saved world.")}finally{setLoading(false);loadRequested=false;launching=false}});
+$("showLoad").addEventListener("click",()=>{$("loadPanel").classList.add("open");$("loadMessage").textContent="";setTimeout(()=>($("loadName").value?$("loadPassword"):$("loadName")).focus(),0)});$("cancelLoad").addEventListener("click",()=>$("loadPanel").classList.remove("open"));
+$("newWorld").addEventListener("click",()=>{if(hasLocalSave()&&!confirm("Start a fresh local world? Your Firebase cloud saves will remain untouched."))return;localStorage.removeItem(SAVE_KEY);launchCore({load:false})});$("localContinue").addEventListener("click",()=>launchCore({load:true}));
+$("loadCloud").addEventListener("click",async()=>{const name=$("loadName").value,password=$("loadPassword").value,button=$("loadCloud");$("loadMessage").classList.remove("bad");$("loadMessage").textContent="Contacting Firebase…";button.disabled=true;try{await window.DwarfWorldCloud.loadNamed(name,password);$("loadMessage").textContent="Cloud world restored. Opening…";launchCore({load:true})}catch(err){console.warn("[Dwarf World cloud load]",err);$("loadMessage").classList.add("bad");$("loadMessage").textContent=err.message||"Firebase load failed."}finally{button.disabled=false}});
+$("cloudManage").addEventListener("click",()=>window.DwarfWorldCloud.openManager());$("cloudSaveNow").addEventListener("click",()=>window.DwarfWorldCloud.officialSave());$("cloudClose").addEventListener("click",()=>window.DwarfWorldCloud.closeManager());$("cloudModal").addEventListener("click",e=>{if(e.target===$("cloudModal"))window.DwarfWorldCloud.closeManager()});$("cloudAssignSave").addEventListener("click",()=>window.DwarfWorldCloud.assignFromManager());$("cloudForget").addEventListener("click",()=>window.DwarfWorldCloud.forgetBinding());window.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("cloudModal").classList.contains("open"))window.DwarfWorldCloud.closeManager()});
+window.DwarfWorldShell={SAVE_KEY,BINDING_KEY,$,toast,hasLocalSave,flushLocalSave,readLocalSave:()=>localStorage.getItem(SAVE_KEY),writeLocalSave:raw=>localStorage.setItem(SAVE_KEY,raw),isRunning:()=>running};refreshStart();
+})();
+</script>
+<script src="./dwarf-world/cloud-save.js"></script>
 </body>
 </html>
