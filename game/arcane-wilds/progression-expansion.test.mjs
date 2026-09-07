@@ -39,11 +39,18 @@ test('adds eight rare or legendary spell-slot items and caps capacity at five',(
   assert.ok(!source.includes("minRarity:'Uncommon'"));
 });
 
-test('guaranteed normal level-up evolution comes from the active loadout',()=>{
+test('normal level-up evolution is restricted to exactly one active spell choice',()=>{
   assert.match(levelChoices,/activeSpells\|\|\[\]\)\.slice\(0,awCurrentSpellLimit\(\)\)/);
   assert.match(levelChoices,/const upgradeable=awUpgradeableOwnedSpells\(\)/);
-  assert.match(levelChoices,/Known spell • evolve & optionally reassign/);
-  assert.match(levelChoices,/awOpenReassignChoice\(id\)/);
+  assert.match(levelChoices,/const remainingPool=pool\.filter\(id=>!ids\.includes\(id\)&&!active\.has\(id\)\)/);
+  assert.match(levelChoices,/Evolve active spell • Slot/);
+  assert.match(levelChoices,/if\(!awIsSpellActive\(id\)\)return openReplaceChoice\(id\)/);
+});
+
+test('known inactive spells retain mutations and reassign instead of evolving',()=>{
+  assert.match(levelChoices,/Reassign known spell • upgrades retained/);
+  assert.match(levelChoices,/if\(awIsSpellActive\(id\)\)openUpgradeChoice\(id\);\s*else openReplaceChoice\(id\)/s);
+  assert.match(levelChoices,/keeps all \$\{upgrades\} existing mutation/);
 });
 
 test('known inactive spells can fill newly unlocked fourth and fifth slots',()=>{
