@@ -252,6 +252,13 @@ function renderChains() {
 function handleGameEvent(customEvent) {
   const event = customEvent?.detail;
   if (!event || typeof event !== "object") return;
+  // Transformations use the queued full-screen sequence in warrealms.html.
+  // Keep the event in the effect-chain summary, but do not add a competing
+  // in-place flip or floating label to the destination card.
+  if (event.type === "CARD_TRANSFORMED") {
+    updateChain(event);
+    return;
+  }
   const presentation = describePresentationEvent(event);
   const card = findCardForEvent(event);
   if (event.type === "CARD_PLAYED" && card) {
