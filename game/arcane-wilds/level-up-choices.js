@@ -1,7 +1,7 @@
 /* Arcane Wilds level-up spell drafting.
-   Normal level-ups reserve one choice for an equipped spell with a remaining mutation.
-   The other two choices keep the normal weighted draft, including known spellbook spells.
-   Known but unequipped spells retain their mutations and can be reassigned after evolving. */
+   Normal level-ups reserve exactly one evolution choice for an equipped spell with a remaining mutation.
+   The other choices cannot evolve active spells: they either unlock a new spell or reassign a known inactive spell.
+   Known inactive spells keep every mutation they earned when they return to the loadout. */
 function awCurrentSpellLimit(){
   return typeof window.awSpellSlotLimit==='function'?window.awSpellSlotLimit():3;
 }
@@ -21,12 +21,13 @@ function awUpgradeableOwnedSpells(){
 }
 
 function awLevelSpellChoices(free=false){
-  const pool=weightedSpellPool(),ids=[];
+  const pool=weightedSpellPool(),ids=[],active=new Set(awActiveSpellIds());
   if(!free){
     const upgradeable=awUpgradeableOwnedSpells();
     if(upgradeable.length)ids.push(upgradeable[irnd(upgradeable.length)]);
   }
-  return ids.concat(sampleUnique(pool.filter(id=>!ids.includes(id)),3-ids.length));
+  const remainingPool=pool.filter(id=>!ids.includes(id)&&!active.has(id));
+  return ids.concat(sampleUnique(remainingPool,3-ids.length));
 }
 
 function awFinishSpellFlow(){
@@ -42,35 +43,6 @@ function awEquipSpellInSlot(id,slot){
   active[slot]=id;
 }
 
-function awOpenReassignChoice(id){
-  const limit=awCurrentSpellLimit(),root=$('replaceCards'),overlay=$('replaceOverlay');
-  const title=overlay.querySelector('h2'),hint=overlay.querySelector('.overlay-head p');
-  game.selectedSpell=id;modalPause=true;root.innerHTML='';
-  if(title)title.textContent=`Reassign ${SPELLS[id].icon} ${SPELLS[id].name}?`;
-  if(hint)hint.textContent='This spell kept every mutation it had. Put it back into an active slot, or keep your current loadout.';
-  for(let i=0;i<limit;i++){
-    const old=game.player.activeSpells[i],oldSpell=old&&SPELLS[old];
-    root.appendChild(choiceCard({
-      rarity:SPELLS[id].rarity,
-      icon:oldSpell?oldSpell.icon:'＋',
-      name:oldSpell?`Replace ${oldSpell.name}`:`Fill empty slot ${i+1}`,
-      desc:oldSpell?`Equip ${SPELLS[id].name} in slot ${i+1}. ${oldSpell.name} stays unlocked in your spellbook.`:`Equip ${SPELLS[id].name} in the open slot.`,
-      tag:`Slot ${i+1}`
-    },()=>{
-      awEquipSpellInSlot(id,i);
-      overlay.classList.add('hidden');
-      toastMsg(`${SPELLS[id].name} equipped in slot ${i+1}.`);
-      awFinishSpellFlow();
-    }));
-  }
-  root.appendChild(choiceCard({
-    rarity:'Common',icon:'📖',name:'Keep Current Loadout',
-    desc:`Leave ${SPELLS[id].name} in the spellbook with its upgrades intact. You can bring it back later.`,
-    tag:'No slot change'
-  },()=>{overlay.classList.add('hidden');toastMsg(`${SPELLS[id].name} remains in your spellbook.`);awFinishSpellFlow()}));
-  overlay.classList.remove('hidden');
-}
-
 openLevelChoice=function(free=false){
   if(!game.player||modalPause)return;
   if(!free&&game.pendingLevelUps<=0)return;
@@ -78,21 +50,25 @@ openLevelChoice=function(free=false){
   modalPause=true;
   $('levelTitle').textContent=free?'Arcane Seer':'Level Up • '+game.level;
   const hint=$('levelHint');
-  if(hint)hint.textContent=free?'Choose from the Seer’s weighted spell visions.':'One choice is reserved for an equipped spell you can evolve; the other two are drawn normally.';
+  if(hint)hint.textContent=free?'Choose a spell vision. Known inactive spells return with their upgrades intact.':'Exactly one choice can evolve a currently equipped spell; the other choices unlock or reassign spells.';
   const root=$('levelCards');root.innerHTML='';
   const ids=awLevelSpellChoices(free);
   for(const id of ids){
     const s=SPELLS[id],owned=game.player.unlocked.includes(id),active=awIsSpellActive(id);
     const activeIndex=active?game.player.activeSpells.indexOf(id):-1;
-    const tag=active?`Evolve active spell • Slot ${activeIndex+1}`:owned?'Known spell • evolve & optionally reassign':'Unlock spell';
-    root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,tag,owned},()=>selectSpellChoice(id)));
+    const tag=active?`Evolve active spell • Slot ${activeIndex+1}`:owned?'Reassign known spell • upgrades retained':'Unlock spell';
+    root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,tag,owned:active},()=>selectSpellChoice(id)));
   }
   $('levelOverlay').classList.remove('hidden');
 };
 
 selectSpellChoice=function(id){
   $('levelOverlay').classList.add('hidden');
-  if(game.player.unlocked.includes(id)){openUpgradeChoice(id);return}
+  if(game.player.unlocked.includes(id)){
+    if(awIsSpellActive(id))openUpgradeChoice(id);
+    else openReplaceChoice(id);
+    return;
+  }
   game.player.unlocked.push(id);
   const limit=awCurrentSpellLimit();
   let open=-1;
@@ -107,14 +83,15 @@ selectSpellChoice=function(id){
 };
 
 openUpgradeChoice=function(id){
+  /* Evolution is intentionally restricted to currently active spells. */
+  if(!awIsSpellActive(id))return openReplaceChoice(id);
   game.selectedSpell=id;modalPause=true;
   $('upgradeTitle').textContent=`Evolve ${SPELLS[id].icon} ${SPELLS[id].name}`;
   const current=game.player.upgrades[id]||[],pool=(UPGRADE_POOLS[id]||[]).filter(u=>!current.includes(u[0]));
   const pick=sampleUnique(pool.map(u=>u[0]),3),root=$('upgradeCards');root.innerHTML='';
   const finish=(message)=>{
     $('upgradeOverlay').classList.add('hidden');
-    toastMsg(message);saveGame();updateHUD();
-    if(!awIsSpellActive(id)){setTimeout(()=>awOpenReassignChoice(id),60);return}
+    toastMsg(message);
     awFinishSpellFlow();
   };
   for(const uid of pick){
@@ -137,15 +114,16 @@ openReplaceChoice=function(id){
   modalPause=true;
   const limit=awCurrentSpellLimit(),overlay=$('replaceOverlay'),root=$('replaceCards');root.innerHTML='';
   const title=overlay.querySelector('h2'),hint=overlay.querySelector('.overlay-head p');
+  const known=game.player.unlocked.includes(id),upgrades=(game.player.upgrades[id]||[]).length;
   if(title)title.textContent=`Choose a Spell Slot • ${limit} Active`;
-  if(hint)hint.textContent=`${SPELLS[id].name} is unlocked in your spellbook. Choose which active slot it should occupy.`;
+  if(hint)hint.textContent=known&&upgrades?`${SPELLS[id].name} keeps all ${upgrades} existing mutation${upgrades===1?'':'s'}. Choose which active slot it should occupy.`:`${SPELLS[id].name} is unlocked in your spellbook. Choose which active slot it should occupy.`;
   for(let i=0;i<limit;i++){
     const old=game.player.activeSpells[i],s=old&&SPELLS[old];
     root.appendChild(choiceCard({
       rarity:s?.rarity||SPELLS[id].rarity,
       icon:s?.icon||'＋',
       name:s?`Replace ${s.name}`:`Fill empty slot ${i+1}`,
-      desc:s?`Put ${SPELLS[id].name} into active slot ${i+1}. ${s.name} remains unlocked with all of its mutations.`:`Put ${SPELLS[id].name} into active slot ${i+1}.`,
+      desc:s?`Put ${SPELLS[id].name} into active slot ${i+1}. ${s.name} remains learned with all of its mutations.`:`Put ${SPELLS[id].name} into active slot ${i+1}.`,
       tag:`Slot ${i+1}`
     },()=>{
       awEquipSpellInSlot(id,i);
