@@ -1566,6 +1566,8 @@
     transformationPresentation,
     transformationTimings
   } from "./warrealms/ui/card-presentation.js?v=1";
+  import { createCombatEffects, combatEffectsReduced } from "./warrealms/ui/combat-effects.js";
+  import { COMBAT_TYPES } from "./warrealms/ui/combat-effects-model.js";
   import { showWarTable } from "./warrealms/ui/play-launcher.js?v=3";
   import {
     buildBattleReport,
@@ -2068,9 +2070,26 @@
   let botThinking = false;
   let botRunToken = 0;
   let autoSingleplayerPrompted = false;
-  let visualEventsInitialized = false;
-  const seenVisualEventIds = new Set();
   let visualEventChain = Promise.resolve();
+  let visualGeneration = 0;
+  const combatEffects = createCombatEffects({
+    legacy: event => {
+      const generation = visualGeneration;
+      visualEventChain = visualEventChain.then(() => generation === visualGeneration ? animateVisualEvent(event) : undefined).catch(console.warn);
+      return visualEventChain;
+    },
+    makeCard: event => {
+      const card = getCard(event.cardId);
+      if (!card) return null;
+      const art = document.createElement("div");
+      art.className = "wrRazeArt";
+      const owner = state?.players?.find(player => player.id === event.targetId);
+      art.style.setProperty("--faction", `var(--${card.faction})`);
+      art.innerHTML = cardArtInnerHtml(card, true, event.collectibleEdition || playerUsesCollectibleEdition(owner, card.id));
+      hydrateCardArt(art);
+      return art;
+    }
+  });
   let transformationAnimationBusy = false;
   let modalReturnSnapshot = null;
 
@@ -2705,7 +2724,10 @@
     document.body.classList.toggle("battleMode", nextMode === "battle");
     document.documentElement.classList.toggle("armoryMode", nextMode === "armory");
     document.body.classList.toggle("armoryMode", nextMode === "armory");
-    if (nextMode !== "battle") document.body.classList.remove("targetingCombat");
+    if (nextMode !== "battle") {
+      document.body.classList.remove("targetingCombat");
+      resetCombatPresentation();
+    }
     if (nextMode !== "armory") {
       document.body.classList.remove("specialArmoryMode", "deckBuilderMode", "armoryLandingMode", "compactArmoryMode", "summaryDrawerOpen");
     }
@@ -3794,6 +3816,7 @@
     if (mode === "armor") {
       entry.armor = Math.max(0, Number(entry.armor) || 0) + amount;
       entry.armorExpiresTurn = Math.max(entry.armorExpiresTurn || 0, game.turnSerial + 1);
+      if (amount) pushVisualEvent(game, "armor-gain", { targetId: player.id, instanceId: entry.instanceId, cardId: entry.id, amount });
       addLog(game, `${getCard(entry)?.name || "A base"} gained ${amount} temporary Armor.`);
       return true;
     }
@@ -7569,7 +7592,7 @@
   }
 
   function pushVisualEvent(game, type, payload = {}) {
-    game.visualEvents = Array.isArray(game.visualEvents) ? game.visualEvents.slice(-11) : [];
+    game.visualEvents = Array.isArray(game.visualEvents) ? game.visualEvents.slice(-79) : [];
     game.visualEvents.push({ id: makeId("fx"), type, atMs: Date.now(), ...payload });
   }
 
@@ -7865,8 +7888,10 @@
     target.shield = Math.max(0, Number(target.shield) || 0);
     const absorbed = Math.min(target.shield, incoming);
     target.shield -= absorbed;
+    const shieldBroken = absorbed > 0 && target.shield === 0;
     const healthDamage = Math.min(target.health, incoming - absorbed);
     target.health = Math.max(0, target.health - healthDamage);
+    if (healthDamage || absorbed) pushVisualEvent(game, "health-loss", { sourceId, targetId: target.id, amount: healthDamage, absorbed, shieldBroken, lethal: target.health <= 0, sourceName });
     if (healthDamage) emitGameEvent(game, {
       type: GAME_EVENT_TYPES.AUTHORITY_LOST,
       actorId: sourceId,
@@ -7880,7 +7905,6 @@
       method: "damage"
     });
     if (healthDamage && target.bossId && target.health > 0) resolveCampaignBossPhases(game, target);
-    if (healthDamage || absorbed) pushVisualEvent(game, "health-loss", { sourceId, targetId: target.id, amount: healthDamage, absorbed, sourceName });
     if (absorbed) addLog(game, `${target.name}'s shield absorbed ${absorbed} damage.`);
     if (target.health <= 0) {
       target.eliminated = true;
@@ -7902,7 +7926,6 @@
     if (!ratio || damageDealt <= 0) return;
     const healed = healPlayer(game, player, Math.floor(damageDealt * ratio), { source: "lifelink" });
     if (healed) {
-      pushVisualEvent(game, "health-gain", { targetId: player.id, amount: healed, sourceName: "Lifelink" });
       addLog(game, `${player.name} restored ${healed} Authority through Lifelink.`);
     }
   }
@@ -8001,12 +8024,13 @@
     const combatGained = Math.max(0, (normalized.combat || 0) + activeBases * (normalized.combatPerBase || 0));
     player.trade += tradeGained;
     player.combat += combatGained;
+    if (tradeGained) pushVisualEvent(game, "stat-gain", { targetId: player.id, stat: "trade", amount: tradeGained });
+    if (combatGained) pushVisualEvent(game, "stat-gain", { targetId: player.id, stat: "combat", amount: combatGained });
     if (tradeGained || combatGained) recordBattleMetrics(game, player.id, {
       tradeGenerated: tradeGained,
       combatGenerated: combatGained
     }, { cardId: String(context.cardId || "") });
-    const healed = healPlayer(game, player, (normalized.heal || 0) + activeBases * (normalized.healPerBase || 0), context);
-    if (healed) pushVisualEvent(game, "health-gain", { targetId: player.id, amount: healed, sourceName: "Card effect" });
+    healPlayer(game, player, (normalized.heal || 0) + activeBases * (normalized.healPerBase || 0), context);
     player.stun += normalized.stun || 0;
     player.scrapMarket += normalized.scrapMarket || 0;
     player.scrapOwn += normalized.scrapOwn || 0;
@@ -8270,7 +8294,15 @@
   }
 
   function beginTurn(game, player) {
+    const previousTurn = game.turnSerial;
     game.turnSerial += 1;
+    for (const owner of game.players) {
+      for (const base of owner.bases || []) {
+        if (previousTurn > 0 && base.disabledTurn === previousTurn && !(base.stunTurns > 0)) {
+          pushVisualEvent(game, "card-enable", { targetId: owner.id, instanceId: base.instanceId, cardId: base.id });
+        }
+      }
+    }
     game.actionQueue = [];
     player.trade = 0;
     player.combat = 0;
@@ -8929,7 +8961,9 @@
         const base = target.bases.find(entry => entry.instanceId === action.instanceId);
         if (!base) return "That base no longer exists.";
         actor.stun -= 1;
+        const alreadyDisabled = base.stunTurns > 0 || base.disabledTurn === game.turnSerial;
         base.stunTurns = Math.max(1, base.stunTurns || 0);
+        if (!alreadyDisabled) pushVisualEvent(game, "card-disable", { actorId: actor.id, targetId: target.id, cardId: base.id, instanceId: base.instanceId });
         addLog(game, `${actor.name} disabled ${target.name}'s ${CARD_MAP[base.id]?.name || "base"} for its next turn.`);
         break;
       }
@@ -9304,7 +9338,7 @@
       directAction: options.canAttack ? "attack-base" : "",
       directTitle: options.canAttack ? `Attack ${card.name}` : "",
       dataAttributes: options.canAttack ? `data-target-id="${escapeHtml(player.id)}"` : "",
-      disabledBase: (entry.stunTurns || 0) > 0,
+      disabledBase: (entry.stunTurns || 0) > 0 || entry.disabledTurn === state?.turnSerial,
       collectibleEdition
     });
     const attachments = attachedEntriesForBase(player, entry.instanceId).map(attachment => battleCardHtml(attachment, {
@@ -9785,7 +9819,8 @@
     const nextCard = getCard(event.cardId);
     if (!fromCard || !nextCard || mode !== "battle") return;
 
-    const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    const reducedMotion = combatEffectsReduced();
+    const generation = visualGeneration;
     const timings = transformationTimings(reducedMotion);
     const presentation = transformationPresentation({
       fromName: fromCard.name,
@@ -9831,9 +9866,11 @@
           { left: `${center.x}px`, top: `${center.y}px`, opacity: 1, transform: "translate(-50%,-50%) scale(1)" }
         ], timings.travelIn, "cubic-bezier(.2,.78,.2,1)")
       ]);
+      if (generation !== visualGeneration) return;
       stage.classList.add("energized");
       await transformationDelay(timings.build);
 
+      if (generation !== visualGeneration) return;
       const flash = document.createElement("div");
       flash.className = "fxTransformFlash";
       flash.style.left = `${center.x}px`;
@@ -9848,6 +9885,7 @@
         { opacity: 0, transform: "translate(-50%,-50%) scale(1.65)" }
       ], timings.flash, "ease-out");
       flash.remove();
+      if (generation !== visualGeneration) return;
       stage.classList.remove("energized");
       face.innerHTML = cardArtInnerHtml(nextCard, true, newEdition);
       eyebrow.textContent = presentation.complete;
@@ -9855,6 +9893,7 @@
       stage.classList.add("revealed");
       hydrateCardArt(stage);
       await transformationDelay(timings.reveal);
+      if (generation !== visualGeneration) return;
 
       await Promise.all([
         animateTransformMotion(stage, [
@@ -9867,14 +9906,16 @@
       stage.remove();
       backdrop.remove();
       destinationElement?.classList.remove("wrTransformDestinationPending");
-      transformationAnimationBusy = false;
-      document.body.classList.remove("transformationBusy");
-      $("#battleView")?.removeAttribute("aria-busy");
+      if (generation === visualGeneration) {
+        transformationAnimationBusy = false;
+        document.body.classList.remove("transformationBusy");
+        $("#battleView")?.removeAttribute("aria-busy");
+      }
     }
   }
 
   async function animateVisualEvent(event) {
-    if (!event || mode !== "battle") return;
+    if (!event || mode !== "battle" || COMBAT_TYPES.has(event.type)) return;
     const playerSeat = playerId => [...document.querySelectorAll("[data-player-id]")].find(element => element.dataset.playerId === String(playerId || "")) || null;
     const sourceSeat = event.actorId || event.sourceId ? playerSeat(event.actorId || event.sourceId) : null;
     const targetSeat = event.targetId ? playerSeat(event.targetId) : null;
@@ -9952,26 +9993,6 @@
       await new Promise(resolve => setTimeout(resolve, 300));
       return;
     }
-    if (event.type === "health-loss" || event.type === "health-gain") {
-      const isHealing = event.type === "health-gain";
-      const commanderPortrait = document.querySelector(`[data-commander-player="${CSS.escape(String(event.targetId || ""))}"]`);
-      commanderPortrait?.classList.add(isHealing ? "commanderPortraitGlow" : "commanderPortraitHit");
-      setTimeout(() => commanderPortrait?.classList.remove("commanderPortraitGlow", "commanderPortraitHit"), 760);
-      if (!isHealing && sourceSeat) fireBeam(source, target);
-      if (!isHealing) {
-        targetSeat?.classList.add("hitPulse");
-        setTimeout(() => targetSeat?.classList.remove("hitPulse"), 600);
-      }
-      const damage = document.createElement("div");
-      damage.className = `fxDamage${isHealing ? " heal" : ""}`;
-      damage.style.left = `${target.x}px`;
-      damage.style.top = `${target.y}px`;
-      damage.textContent = isHealing ? `+${event.amount}` : event.amount > 0 ? `−${event.amount}` : `BLOCKED ${event.absorbed || 0}`;
-      $("#battleFxLayer").appendChild(damage);
-      setTimeout(() => damage.remove(), 950);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return;
-    }
     if (event.type === "card-resurrect") {
       fxCardGhost(event.cardId, target, false, collectibleEdition);
       targetSeat?.classList.add("playPulse");
@@ -9981,14 +10002,6 @@
     }
     if (event.type === "card-transform") {
       await animateCardTransformation(event);
-      return;
-    }
-    if (event.type === "card-destroy") {
-      if (sourceSeat) fireBeam(source, target);
-      fxCardGhost(event.cardId, target, true, collectibleEdition);
-      targetSeat?.classList.add("hitPulse");
-      setTimeout(() => targetSeat?.classList.remove("hitPulse"), 600);
-      await new Promise(resolve => setTimeout(resolve, 420));
       return;
     }
     if (event.type === "card-scrap") {
@@ -10003,18 +10016,19 @@
     }
   }
 
+  function resetCombatPresentation() {
+    visualGeneration += 1;
+    combatEffects.reset();
+    visualEventChain = Promise.resolve();
+    transformationAnimationBusy = false;
+    document.body.classList.remove("transformationBusy");
+    $("#battleView")?.removeAttribute("aria-busy");
+    $("#battleFxLayer")?.getAnimations({ subtree: true }).forEach(animation => animation.cancel());
+    $("#battleFxLayer")?.replaceChildren();
+  }
+
   function processVisualEvents() {
-    const events = Array.isArray(state?.visualEvents) ? state.visualEvents : [];
-    if (!visualEventsInitialized) {
-      events.forEach(event => seenVisualEventIds.add(event.id));
-      visualEventsInitialized = true;
-      return;
-    }
-    for (const event of events) {
-      if (!event?.id || seenVisualEventIds.has(event.id)) continue;
-      seenVisualEventIds.add(event.id);
-      visualEventChain = visualEventChain.then(() => animateVisualEvent(event)).catch(console.warn);
-    }
+    combatEffects.flush();
   }
 
   function choiceSourceLabel(source = "primary") {
@@ -10170,6 +10184,7 @@
 
   function renderBattle() {
     if (!state || mode !== "battle") return;
+    combatEffects.capture(state.visualEvents || [], myPlayer()?.id);
     const me = myPlayer();
     const active = currentPlayer();
     const enemies = me ? state.players.filter(player => player.id !== me.id) : [...state.players];
@@ -11366,8 +11381,7 @@
     botThinking = false;
     resetDockSplitTracking();
     lastRewardSummary = null;
-    visualEventsInitialized = false;
-    seenVisualEventIds.clear();
+    resetCombatPresentation();
     $("#modalOverlay").dataset.finishedShown = "";
     closeModal();
     state = normalizeGameState(createSinglePlayerGame(singlePlayerDifficulty));
@@ -11636,8 +11650,7 @@
     botThinking = false;
     resetDockSplitTracking();
     lastRewardSummary = null;
-    visualEventsInitialized = false;
-    seenVisualEventIds.clear();
+    resetCombatPresentation();
     $("#modalOverlay").dataset.finishedShown = "";
     closeModal();
     state = normalizeGameState(createCampaignSinglePlayerGame());
@@ -11741,8 +11754,7 @@
     singlePlayerMode = false;
     campaignBattleActive = false;
     resetDockSplitTracking();
-    visualEventsInitialized = false;
-    seenVisualEventIds.clear();
+    resetCombatPresentation();
     setMode("battle");
     setLoading("Preparing online deck selection…");
     const setupResult = await ensureOnlineDeckSetup();

@@ -1,0 +1,65 @@
+/* All transient VFX are inert, clipped to the viewport, and removed by one frame clock. */
+#wrCombatLayer{position:fixed;inset:0;z-index:128;overflow:hidden;pointer-events:none;contain:layout style}
+#wrCombatLayer *{pointer-events:none!important;box-sizing:border-box}
+.wrCombatNumber{position:absolute;z-index:8;color:var(--wr-color);background:rgba(8,13,20,.92);border:1px solid currentColor;border-radius:8px;padding:3px 7px;font:900 16px/1.2 system-ui,sans-serif;white-space:nowrap;text-shadow:0 2px 3px #000;box-shadow:0 3px 10px #0008;animation:wrNumberRise .95s ease-out both}
+.wrCombatNumber.medium{font-size:20px}.wrCombatNumber.heavy{font-size:26px}.wrCombatNumber.raze,.wrCombatNumber.disable,.wrCombatNumber.enable,.wrCombatNumber.death,.wrCombatNumber.shield-break{font-size:12px;letter-spacing:.06em}
+.wrCombatBloom{position:absolute;width:150px;height:150px;border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--wr-color) 38%,transparent),transparent 67%);animation:wrBloom .65s ease-out both}
+.wrCombatBloom.heavy{width:230px;height:230px}.wrCombatBloom.heal,.wrCombatBloom.repair,.wrCombatBloom.enable{background:repeating-conic-gradient(from 0deg,transparent 0deg 22deg,color-mix(in srgb,var(--wr-color) 18%,transparent) 24deg 28deg,transparent 30deg 45deg),radial-gradient(ellipse,color-mix(in srgb,var(--wr-color) 30%,transparent),transparent 70%);animation:wrRecoveryBloom .7s ease-out both}
+.wrCombatParticle{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--wr-color);box-shadow:0 0 6px var(--wr-color);animation:wrParticle .82s ease-out both}
+.wrCombatParticle.raze{width:3px;height:7px;border-radius:70% 30% 60% 40%;background:#ffcf6b;box-shadow:0 0 8px #ff651e}
+.wrCombatParticle.shield-break,.wrCombatParticle.shield-hit{border-radius:0;clip-path:polygon(50% 0,100% 100%,0 75%);width:9px;height:11px}
+.wrCombatParticle.heal,.wrCombatParticle.repair{background:#fff8c5;width:3px;height:6px}
+.wrCombatProjectile{position:absolute;width:14px;height:5px;border-radius:100%;background:#fff;box-shadow:0 0 6px #fff,0 0 14px 4px var(--wr-color);animation:wrProjectile .22s ease-in both}
+.wrCombatBarrier{position:absolute;border:2px solid var(--wr-color);border-radius:45%;background:radial-gradient(ellipse,transparent 45%,#a8e5ff22 80%);box-shadow:inset 0 0 18px #83d8ff44,0 0 12px #83d8ff55;animation:wrBarrier .64s ease-out both}
+.wrCombatBarrier.shield-break{border-radius:20%;background:repeating-conic-gradient(from 17deg,transparent 0deg 50deg,#c8efff77 51deg 53deg,transparent 55deg 73deg);animation:wrShieldFracture .64s ease-out both}
+.wrCombatBarrier.shield-gain{animation:wrShieldForm .64s ease-out both}
+.wrDisableSweep{position:absolute;overflow:hidden;border-radius:9px;transform:translate(-50%,-50%);animation:wrSweepFade .65s ease-out both}
+.wrDisableSweep::before{content:"";position:absolute;inset:-30%;background:linear-gradient(120deg,transparent 40%,#9c82ff66 45%,#f0eaff 49%,#9681ff88 53%,transparent 58%);animation:wrEnergySweep .58s ease-out both}
+.wrDisableSweep::after{content:"";position:absolute;inset:3px;border:2px dashed #c9bcff;border-radius:8px;clip-path:polygon(0 0,100% 0,100% 17%,22% 42%,90% 55%,10% 72%,100% 100%,0 100%);opacity:.7}
+.wrDisableSweep.enable::before{background:linear-gradient(120deg,transparent 40%,#90ffe277 45%,#fff9c4 50%,transparent 58%)}
+.wrRazeGhost{position:absolute;z-index:2;overflow:hidden;border:1px solid #be7654;border-radius:8px;background:#13151b;box-shadow:0 0 12px #c86b3044}
+.wrRazeGhost>.battleCardVisual,.wrRazeGhost>.wrRazeArt{width:100%;height:100%;position:absolute;inset:0;overflow:hidden}
+.wrRazeGhost.burning{animation:wrBaseBurn 1.12s linear both}
+.wrRazeGhost.burning::before{content:"";position:absolute;z-index:4;inset:-2px;background:radial-gradient(ellipse at 12% 85%,#ffed9577,transparent 22%),radial-gradient(ellipse at 88% 45%,#ff952677,transparent 26%);border:3px solid #ffb658;box-shadow:inset 0 0 20px #ff5a20,0 0 15px #ff6b22;animation:wrFireEdges 1.1s ease-out both}
+.wrBurnCracks{position:absolute;z-index:3;inset:0;background:linear-gradient(28deg,transparent 48%,#ffcf75 49%,#ff5d2a 50%,transparent 51%),linear-gradient(112deg,transparent 46%,#ffca65 47%,#ff5d2a 48%,transparent 49%),linear-gradient(165deg,transparent 59%,#ffdb86 60%,transparent 61%);animation:wrCracks 1.1s ease-out both}
+.wrCombatEdge{position:absolute;inset:0;box-shadow:inset 0 0 38px color-mix(in srgb,var(--wr-color) 24%,transparent);animation:wrEdge .55s ease-out both}
+/* Status is tied to the rendered game state; only the artwork loses color. */
+#battleView .gameCard.disabledBase .battleCardVisual{filter:saturate(.3) brightness(.72)}
+#battleView .gameCard.disabledBase{border-color:#9680ba;box-shadow:inset 0 0 0 1px #8c75ad55,0 0 8px #75669a22}
+#battleView .disabledBase .cardStatusChip.disabled{color:#e3d8ff;border-color:#a595cd;background:#231b35;animation:wrDisabledSignal 3.4s ease-in-out infinite}
+/* Engraved war-table edges and recessed play zones preserve the existing layout. */
+#battleView .battleShell{position:relative;border:1px solid #6d6470;border-radius:13px;background:radial-gradient(ellipse at 50% 0,#52668016,transparent 50%),linear-gradient(115deg,#10151d,#1d2029 48%,#11171f);box-shadow:inset 0 0 0 2px #151a23,inset 0 0 0 3px #80705a44,inset 0 0 28px #0009,0 8px 26px #0006}
+#battleView .battleShell::before,#battleView .battleShell::after{content:"";position:absolute;z-index:3;pointer-events:none;width:35px;height:35px;border:2px solid #b3a07c66;border-radius:3px}
+#battleView .battleShell::before{top:5px;left:5px;border-right:0;border-bottom:0}#battleView .battleShell::after{right:5px;bottom:5px;border-left:0;border-top:0}
+#battleView .attackTargetsPanel,#battleView .enemySnapshotPanel{border-color:#68515c;box-shadow:inset 0 2px 12px #0006,0 1px 0 #bc92951c;background:linear-gradient(180deg,#281d2522,#101820)}
+#battleView .attackTargetsScroller{background:radial-gradient(ellipse at 50% 25%,#84565812,transparent 72%),repeating-linear-gradient(135deg,#ffffff02 0 1px,transparent 1px 8px);box-shadow:inset 0 0 20px #0004}
+#battleView .marketBand{border-color:#7b694944;background:linear-gradient(180deg,#4e422322,#131b24);box-shadow:inset 0 1px 0 #d0b57822,inset 0 -2px 7px #0006}
+#battleView .playerDock{border-color:#496b79;box-shadow:inset 0 1px 0 #abd7e62b,inset 0 0 18px #0007}
+#battleView .handZone,#battleView .ownField{background:radial-gradient(ellipse at 50% 100%,#6c8fa019,transparent 75%);box-shadow:inset 0 2px 11px #0004}
+#battleView .battlePanelHead{border-bottom:1px solid #a4937233;background:linear-gradient(90deg,#8a785617,transparent 70%)}
+@keyframes wrNumberRise{0%{opacity:0;transform:translate(-50%,0) scale(.8)}15%{opacity:1;transform:translate(-50%,-4px) scale(1.06)}72%{opacity:1}100%{opacity:0;transform:translate(-50%,-34px) scale(.96)}}
+@keyframes wrBloom{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1.4)}}
+@keyframes wrRecoveryBloom{0%{opacity:0;transform:translate(-50%,-50%) scale(.7) rotate(-20deg)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1.35) rotate(35deg)}}
+@keyframes wrParticle{0%{opacity:0;transform:translate(var(--start-x),var(--start-y)) scale(.7)}12%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.15)}}
+@keyframes wrProjectile{0%{opacity:1;transform:translate(0,0) scale(.5)}85%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.3)}}
+@keyframes wrBarrier{0%{opacity:0;transform:translate(-50%,-50%) scale(.7)}20%{opacity:.9}100%{opacity:0;transform:translate(-50%,-50%) scale(1.25)}}
+@keyframes wrShieldForm{0%{opacity:0;transform:translate(-50%,-50%) scale(1.35) rotate(-18deg)}45%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.03)}}
+@keyframes wrShieldFracture{0%{opacity:.9;transform:translate(-50%,-50%) scale(.98)}35%{opacity:1;transform:translate(-50%,-50%) scale(1.08) rotate(5deg)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.5) rotate(-8deg)}}
+@keyframes wrEnergySweep{from{transform:translateX(-70%)}to{transform:translateX(70%)}}
+@keyframes wrSweepFade{0%{opacity:0}20%,65%{opacity:.85}100%{opacity:0}}
+@keyframes wrFireEdges{0%{opacity:0;transform:scale(.99)}20%{opacity:1}40%{opacity:.65;transform:scale(1.02)}60%{opacity:1}100%{opacity:0}}
+@keyframes wrCracks{0%,15%{opacity:0}35%,60%{opacity:1}100%{opacity:0}}
+@keyframes wrBaseBurn{0%{opacity:1;filter:brightness(1);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}18%{filter:brightness(1.7) sepia(.3)}42%{filter:brightness(.8) sepia(.9);opacity:1;clip-path:polygon(0 0,100% 0,100% 88%,85% 98%,65% 84%,50% 100%,30% 92%,0 96%)}65%{filter:brightness(.45) sepia(1);clip-path:polygon(0 0,100% 0,100% 45%,85% 62%,66% 44%,50% 73%,30% 51%,0 65%)}84%{opacity:.7;clip-path:polygon(0 0,100% 0,100% 7%,85% 22%,65% 5%,50% 26%,30% 12%,0 18%)}100%{opacity:0;filter:brightness(.15);clip-path:polygon(0 0,100% 0,100% 0,0 0)}}
+@keyframes wrEdge{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
+@keyframes wrDisabledSignal{0%,100%{opacity:.75}50%{opacity:1}}
+@keyframes wrStaticFeedback{0%{opacity:0}15%,75%{opacity:1}100%{opacity:0}}
+.wrFxReduced .wrCombatNumber{transform:translate(-50%,0);animation:wrStaticFeedback .95s linear both}
+.wrFxReduced .wrCombatBloom,.wrFxReduced .wrCombatBarrier{transform:translate(-50%,-50%);animation:wrStaticFeedback .65s linear both}
+.wrFxReduced .wrDisableSweep::before{animation:none}.wrFxReduced .wrRazeGhost.burning{animation:wrStaticFeedback .9s linear both}
+.wrReducedCombat #battleView .disabledBase .cardStatusChip.disabled,.wrReduceMotion #battleView .disabledBase .cardStatusChip.disabled{animation:none}
+@media(prefers-reduced-motion:reduce){#battleView .disabledBase .cardStatusChip.disabled{animation:none}}
+@media(max-width:700px){.wrCombatNumber{font-size:14px}.wrCombatNumber.medium{font-size:17px}.wrCombatNumber.heavy{font-size:21px}#battleView .battleShell{border-radius:8px}.wrCombatBloom.heavy{width:170px;height:170px}}
+
+.wrRepairSeal{position:absolute;transform:translate(-50%,-50%);background:linear-gradient(30deg,transparent 48%,#edffd6 49%,transparent 51%),linear-gradient(122deg,transparent 48%,#c1eca4 49%,transparent 51%);animation:wrRepairClose .64s ease-in both}
+@keyframes wrRepairClose{0%{opacity:.8;clip-path:inset(0)}100%{opacity:0;clip-path:inset(50%)}}
+.wrFxReduced .wrRepairSeal{animation:wrStaticFeedback .65s linear both}

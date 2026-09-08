@@ -255,7 +255,7 @@ function handleGameEvent(customEvent) {
   // Transformations use the queued full-screen sequence in warrealms.html.
   // Keep the event in the effect-chain summary, but do not add a competing
   // in-place flip or floating label to the destination card.
-  if (event.type === "CARD_TRANSFORMED") {
+  if (["CARD_TRANSFORMED", "BASE_DAMAGED", "BASE_REPAIRED", "BASE_DESTROYED", "CARD_DESTROYED", "AUTHORITY_GAINED", "AUTHORITY_LOST", "SHIELD_GAINED"].includes(event.type)) {
     updateChain(event);
     return;
   }
@@ -348,9 +348,8 @@ function observeHudValue(key, valueId, statId) {
 }
 
 function installHudObservers() {
-  observeHudValue("authority", "commanderAuthorityValue", "commanderAuthority");
-  observeHudValue("trade", "commanderTradeValue", "commanderTrade");
-  observeHudValue("combat", "commanderCombatValue", "commanderCombat");
+  // Health, Shield, Trade, and Combat use exact synchronized event amounts.
+  // Observing HUD deltas would mislabel turn resets and double-count healing.
   observeHudValue("control", "commanderControlValue", "commanderControl");
   observeHudValue("purge", "commanderPurgeValue", "commanderPurge");
 }

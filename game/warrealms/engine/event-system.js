@@ -1,3 +1,4 @@
+import { bridgeCombatEvent } from "./combat-visual-events.js";
 import {
   DEFAULT_MAX_RESOLUTION_DEPTH,
   DEFAULT_MAX_RESOLUTION_STEPS,
@@ -166,6 +167,11 @@ function recordEventHistory(game, event) {
     method: String(event.method || "")
   });
   game.eventHistory = game.eventHistory.slice(-80);
+  const visual = bridgeCombatEvent(event);
+  if (visual) {
+    game.visualEvents = Array.isArray(game.visualEvents) ? game.visualEvents.slice(-79) : [];
+    game.visualEvents.push(visual);
+  }
   dispatchPresentationEvent(event);
 }
 
