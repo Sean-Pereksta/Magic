@@ -2,7 +2,7 @@
    Keeps the simulation architecture intact while removing the visible 100%
    mission stall and making the selected-world / mandate UI react quickly. */
 
-const STX_MR_COMPLETE_AT=.995;
+const STX_MR_COMPLETE_AT=1;
 const STX_MR_HOT_HUD_MS=125;
 let stxMRLastHotHud=0;
 
@@ -15,12 +15,12 @@ function stxMRFinishReadyShips(){
   let completed=0;
   for(let i=state.ships.length-1;i>=0;i--){
     const s=state.ships[i];
-    if(!s||Number(s.progress||0)<STX_MR_COMPLETE_AT)continue;
+    if(!s||s.stxDeepTransit||s.stxStationed||Number(s.progress||0)<STX_MR_COMPLETE_AT)continue;
     const destination=state.planets.find(p=>p.id===s.to);
     if(!destination)continue;
     s.progress=1;s.x=destination.x;s.y=destination.y;
-    arriveShip(s,destination);
-    state.ships.splice(i,1);completed++;
+    const ok=typeof stxActionArrive==="function"?stxActionArrive(s,()=>arriveShip(s,destination)):(arriveShip(s,destination),true);
+    if(ok){const at=state.ships.indexOf(s);if(at>=0)state.ships.splice(at,1);completed++}
   }
   return completed;
 }

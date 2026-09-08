@@ -79,12 +79,12 @@ test("fleets already traveling when peace lands turn back instead of restarting 
   assert.ok(state.ships.some(s=>s.owner===1&&s.to==="p1"&&s.retreat));
 });
 
-test("manual invasion battle stays open until all assigned invasion ships arrive",()=>{
+test("surviving manual invasion force waits for its assigned ships at timeout",()=>{
   const {context,state,metrics}=createHarness();
   const plan={id:"ip1",targetId:"p1",stxManualAllocation:true,stxAssignedFleetIds:["early","late"]};
   state.empires[0].invasionPlans.push(plan);
   state.fleets.push({id:"early",owner:0,strength:2},{id:"late",owner:0,strength:15});
-  const battle={id:"b1",planetId:"p1",attacker:0,defender:1,attackerStrength:.2,defenderStrength:12,attackerFleetIds:["early"],defenderFleetIds:[],elapsed:9,maxDuration:20};
+  const battle={id:"b1",planetId:"p1",attacker:0,defender:1,attackerStrength:2,defenderStrength:12,attackerFleetIds:["early"],defenderFleetIds:[],elapsed:20,maxDuration:20};
   state.battles.push(battle);state.planets[1].underAttack=true;
   state.ships.push({id:"late-ship",type:"fleet",owner:0,fleetId:"late",to:"p1",invasionPlanId:"ip1",strength:15});
   context.resolveBattle(battle,state.planets[1],0);
@@ -96,16 +96,14 @@ test("manual invasion battle stays open until all assigned invasion ships arrive
   assert.equal(metrics.coreResolveCalls,1);
 });
 
-test("a displayed defensive victory waits for already committed enemy reinforcements",()=>{
+test("a defeated force resolves immediately even with reinforcements inbound",()=>{
   const {context,state,metrics}=createHarness();
   const battle={id:"b2",planetId:"p0",attacker:1,defender:0,attackerStrength:.3,defenderStrength:14,attackerFleetIds:["raider"],defenderFleetIds:[],elapsed:10,maxDuration:20};
   state.battles.push(battle);state.planets[0].underAttack=true;
   state.ships.push({id:"reinforcement",type:"fleet",owner:1,fleetId:"enemy-reinforcement",to:"p0",battleId:"b2",strength:20});
   context.resolveBattle(battle,state.planets[0],0);
-  assert.equal(metrics.coreResolveCalls,0);
-  assert.equal(state.battles.length,1);
-  state.ships.length=0;
-  context.resolveBattle(battle,state.planets[0],0);
+  assert.equal(state.battles.length,0);
+  assert.equal(battle.attackerStrength,.3);
   assert.equal(metrics.coreResolveCalls,1);
   assert.equal(state.planets[0].stxSecuredOwner,0);
   assert.equal(state.planets[0].stxSecuredFrom,1);

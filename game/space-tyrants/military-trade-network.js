@@ -69,8 +69,8 @@ launchBuiltShip=function(p,type){
     if(p.owner===0){logEvent(`${f.name} was commissioned at ${p.name} and entered permanent orbital service.`,"good");stxActivity(`${f.name} commissioned at ${p.name}; it will remain in orbit until assigned.`,p.id,f.id,"good");stxRefreshFleetLocator()}
     return f;
   }
-  const ship=deployFleet(p,target,p.owner,strength,{home:p.id,speedBoost:1+(p.orbitals?.station||0)*.12+(p.orbitals?.base||0)*.38,role:patrol?"patrol":"fleet"});
-  if(p.owner===0)logEvent(`${p.name} launched a new ${type}.`,"good");
+  const ship=createShip(type,p,target,p.owner,{strength,home:p.id,speedBoost:1+(p.orbitals?.station||0)*.12+(p.orbitals?.base||0)*.38,role:patrol?"patrol":"fleet"});
+  if(ship&&p.owner===0)logEvent(`${p.name} launched a new ${type}.`,"good");
   return ship;
 };
 

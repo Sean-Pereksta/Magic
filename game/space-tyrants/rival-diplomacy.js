@@ -284,6 +284,7 @@ function stxRDLaunchWarObjective(w,aggressor,defender){
 
 const STX_RD_declareWar=declareWar;
 declareWar=function(a,b,reason="border dispute"){
+  if(typeof stxConflictCanDeclare==="function"&&!stxConflictCanDeclare(a,b,reason))return null;
   const r=stxRDPair(a,b),physical=/contested frontier|station attack|station raid|imperial invasion order|direct imperial declaration|broken peace guarantee/i.test(reason),playerChoice=a===0;
   if(!playerChoice&&!stxRDDeclarationContext&&!physical&&((r?.escalationStage||0)<5||state.simTime-(r?.ultimatumRejectedAt||-999)>95||state.simTime-(r?.ultimatumRejectedAt||-999)<10))return null;
   const directCause=playerChoice&&/direct imperial|invasion order/i.test(reason)?{type:"Direct Imperial Declaration",detail:reason}:null,ctx=stxRDDeclarationContext,cause=ctx?.cause||directCause||stxRDWarCause(a,b),w=STX_RD_declareWar(a,b,cause?.detail||reason);if(!w)return w;
