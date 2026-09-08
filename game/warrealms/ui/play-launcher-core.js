@@ -1,3 +1,5 @@
+import { COMBAT_EFFECTS_KEY } from "./combat-effects-model.js";
+import { setCombatEffectsMode } from "./combat-effects.js";
 import "./presentation-polish.js";
 import { loadCampaignProfile } from "../campaign/campaign-state.js?v=5";
 import { campaignNodeAt, campaignRegionScaling } from "../campaign/campaign-map.js?v=5";
@@ -259,6 +261,12 @@ function applyStoredWarTableSettings() {
 }
 
 function toggleWarTableSetting(setting) {
+  if (setting === "combat-effects") {
+    let current = "full";
+    try { current = localStorage.getItem(COMBAT_EFFECTS_KEY) || "full"; } catch {}
+    setCombatEffectsMode(current === "reduced" ? "full" : "reduced");
+    return;
+  }
   if (setting !== "reduce-motion") return;
   const enabled = !reduceMotionEnabled();
   try { localStorage.setItem("warRealms.reduceMotion", enabled ? "1" : "0"); } catch {}
@@ -267,7 +275,9 @@ function toggleWarTableSetting(setting) {
 
 function renderWarTableSettings() {
   const reduced = reduceMotionEnabled();
-  return `<button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrInfoPanel"><section class="wrInfoCard"><h3>Presentation Settings</h3><div class="wrSettingRow"><span>Reduced motion<small>Shortens battle and menu animation without removing information.</small></span><button type="button" class="wrSettingToggle ${reduced ? "active" : ""}" data-wr-setting="reduce-motion">${reduced ? "ON" : "OFF"}</button></div></section><section class="wrInfoCard"><h3>Commander Artwork</h3><p>Portraits load from <code>graphics/warrealmscommanders/</code>. Missing files automatically fall back to commander initials and faction colors.</p></section></div>`;
+  let combatMode = "Full";
+  try { if (localStorage.getItem(COMBAT_EFFECTS_KEY) === "reduced") combatMode = "Reduced"; } catch {}
+  return `<button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrInfoPanel"><section class="wrInfoCard"><h3>Presentation Settings</h3><div class="wrSettingRow"><span>Combat Effects<small>Reduced keeps combat values and clear feedback with fewer particles and no shake. Reduced motion also applies.</small></span><button type="button" class="wrSettingToggle" data-wr-setting="combat-effects">${combatMode}</button></div><div class="wrSettingRow"><span>Reduced motion<small>Shortens battle and menu animation without removing information.</small></span><button type="button" class="wrSettingToggle ${reduced ? "active" : ""}" data-wr-setting="reduce-motion">${reduced ? "ON" : "OFF"}</button></div></section><section class="wrInfoCard"><h3>Commander Artwork</h3><p>Portraits load from <code>graphics/warrealmscommanders/</code>. Missing files automatically fall back to commander initials and faction colors.</p></section></div>`;
 }
 
 function openArmoryDestination(destination, followupAction = "") {
