@@ -181,7 +181,7 @@ stxDSCreateTransit=function(args){
   const ship=STX_IF_createTransit(args);if(ship&&freight)stxIFChargeFreight(ship,args.fromPoint,args.targetPoint);return ship;
 };
 const STX_IF_launchBuiltShip=launchBuiltShip;
-launchBuiltShip=function(p,type){const result=STX_IF_launchBuiltShip(p,type);if(["freighter","tanker","construction"].includes(type)){stxIFEnsurePlanet(p);p.stxFreightCapacity+=1}return result};
+launchBuiltShip=function(p,type){const result=STX_IF_launchBuiltShip(p,type);if(result&&["freighter","tanker","construction"].includes(type)){stxIFEnsurePlanet(p);p.stxFreightCapacity+=1}return result};
 // All domestic orders use one source-selection policy. Nearby available cargo
 // wins; lower-priority projects yield while factories/training keep their inputs.
 fillOrder=function(dest,o){
@@ -228,14 +228,13 @@ startExpansionProject=function(e,p,target,directed=false){
 tickExpansionProject=function(p,dt){
   const q=p.expansionProject;if(!q)return;q.goal=Math.max(.004,q.goal);const target=state.planets.find(x=>x.id===q.targetId);
   if(!target||target.owner!==null){
-    // Work is cancelled locally; unlaunched committed materials remain here.
-    for(const [r,a] of Object.entries(q.stxSupply?.delivered||{}))p.stock[r]=stxIFN(p.stock[r])+a;
-    p.expansionProject=null;return;
+    q.status="Blocked: destination is no longer unclaimed";stxActionSet(q,"BLOCKED",q.status);return;
   }
-  if(p.underAttack)return;
+  if(p.underAttack){stxActionSet(q,"BLOCKED","Construction paused during battle");return}
   const d=stxIFExpansionDescriptor(p);q.volunteers=Math.min(q.goal,q.volunteers+expansionRecruitRate(p,q)*dt*stxIFCapacityShare(d));stxSDEnsureOrders(d);
   q.status=q.volunteers<q.goal?"recruiting":stxSDAllDelivered(d)?"launch ready":"awaiting colony supplies";
   if(q.volunteers<q.goal||!stxSDAllDelivered(d))return;
+  if(typeof stxActionFinalizeColony==="function"){stxActionFinalizeColony(p,q,d,target);return}
   const settlers=Math.min(q.volunteers,Math.max(0,p.pop-.004));if(settlers<=0)return;
   const cargo={population:settlers,trained:stxIFN(d.need.trained)},ship=createShip("colony",p,target,p.owner,{cargo,strength:4,missionTitle:`Settlement of ${target.name}`,volunteers:settlers,stxIFColonyMission:true});
   if(!ship)return;
@@ -252,8 +251,7 @@ arriveShip=function(s,p){
     if(s.type==="colony"&&p.owner===s.owner){p.pop+=stxIFN(s.cargo.population);p.stock.trained=stxIFN(p.stock.trained)+stxIFN(s.cargo.trained);return}
     const home=owned(s.owner).filter(x=>!x.underAttack).sort((a,b)=>dist(p,a)-dist(p,b))[0];
     if(home){const returned=STX_IF_createShip("supply",p,home,s.owner,{cargo:{...s.cargo},stxIFReturnCargo:true,vesselName:`Returning ${s.vesselName}`,speedBoost:.75});if(returned)return}
-    // No controlled landing site/capacity: the cargo is lost; its demand reopens.
-    return;
+    s.stxArrivalBlocked="No safe landing site or return transport capacity";return;
   }
   const newColony=s.type==="colony"&&p.owner===null;
   const result=STX_IF_arriveShip(s,p);
@@ -527,7 +525,7 @@ function stxIFBottleneck(d){
 function stxIFUpgradePanel(base){
   if(!base||base.owner!==0||base.status!=="operational")return"";
   const q=base.upgradeProject,target=q?.targetTier||base.tier+1,cost=q?.need||(base.tier<3?stxIFUpgradeCost(base,target):{}),p=state.planets.find(x=>x.id===base.sponsorPlanetId),d=q&&p?stxIFRemoteDescriptor(base,p):null,priority=d&&empire(0).stxPriorityProjectId===d.id;
-  return `<div class="stx-if-upgrade"><b>TIER ${base.tier} · ${stxIFTierName(base)}</b><small>Readiness ${Math.round(base.supplyReadiness*100)}% · service capacity ${stxIFServiceCapacity(base)} fleets<br>Upkeep / cycle: ${Object.entries(stxIFUpkeep(base)).map(([r,a])=>`${(a*(state.commandCycle||45)).toFixed(1)} ${r==="credits"?"Credits":stxIFLabel(r)}`).join(" · ")}</small>${q?`<b>UPGRADING TO ${stxIFTierName(base,target)}</b><small>${Math.round(stxIFUpgradeRatio(q)*100)}% delivered to station · ${Math.round(q.progress*100)}% assembled. Station remains operational.</small><div class="stx-if-progress"><i style="width:${Math.round(q.progress*100)}%"></i></div><button class="choice-btn" data-stx-if-priority="${d?.id||""}" data-stx-if-planet="${p?.id||""}">${priority?"CLEAR IMPERIAL PRIORITY":"PRIORITIZE UPGRADE"}</button>`:base.tier<3?`<button class="choice-btn primary-choice" data-stx-if-upgrade="${base.id}">Authorize Tier ${target} · ${Math.ceil(Object.values(cost).reduce((n,v)=>n+v,0)*.09)} Credits</button>`:"<small>Maximum station tier.</small>"}<div class="stx-if-cost">${Object.entries(cost).map(([r,a])=>`<span>${stxIFLabel(r)} ${q?`${stxIFN(q.delivered[r]).toFixed(1)} / `:""}${Math.ceil(a)}${q?` · staged ${stxIFN(q.staged?.[r]).toFixed(1)} · inbound ${stxIFUpgradeIncoming(base,r).toFixed(1)}`:""}</span>`).join("")}</div>${d?`<small>${stxRTEscape(stxIFBottleneck(d))}</small>`:""}</div>`;
+  return `<div class="stx-if-upgrade"><b>TIER ${base.tier} · ${stxIFTierName(base)}</b><small>Readiness ${Math.round(base.supplyReadiness*100)}% · service capacity ${stxIFServiceCapacity(base)} fleets<br>Upkeep / cycle: ${Object.entries(stxIFUpkeep(base)).map(([r,a])=>`${(a*(state.commandCycle||45)).toFixed(1)} ${r==="credits"?"Credits":stxIFLabel(r)}`).join(" · ")}</small>${q?`<b>UPGRADING TO ${stxIFTierName(base,target)}</b><small>${Math.round(stxIFUpgradeRatio(q)*100)}% delivered to station · ${Math.min(99,Math.floor(q.progress*100))}% assembled. Station remains operational.</small><div class="stx-if-progress"><i style="width:${Math.min(99,Math.floor(q.progress*100))}%"></i></div><button class="choice-btn" data-stx-if-priority="${d?.id||""}" data-stx-if-planet="${p?.id||""}">${priority?"CLEAR IMPERIAL PRIORITY":"PRIORITIZE UPGRADE"}</button>`:base.tier<3?`<button class="choice-btn primary-choice" data-stx-if-upgrade="${base.id}">Authorize Tier ${target} · ${Math.ceil(Object.values(cost).reduce((n,v)=>n+v,0)*.09)} Credits</button>`:"<small>Maximum station tier.</small>"}<div class="stx-if-cost">${Object.entries(cost).map(([r,a])=>`<span>${stxIFLabel(r)} ${q?`${stxIFN(q.delivered[r]).toFixed(1)} / `:""}${Math.ceil(a)}${q?` · staged ${stxIFN(q.staged?.[r]).toFixed(1)} · inbound ${stxIFUpgradeIncoming(base,r).toFixed(1)}`:""}</span>`).join("")}</div>${d?`<small>${stxRTEscape(stxIFBottleneck(d))}</small>`:""}</div>`;
 }
 const STX_IF_basePanel=stxDSBasePanel;
 stxDSBasePanel=function(base){const html=STX_IF_basePanel(base);return html&&base?.status==="operational"?html.replace(/<\/section>\s*$/,`${stxIFUpgradePanel(base)}</section>`):html};

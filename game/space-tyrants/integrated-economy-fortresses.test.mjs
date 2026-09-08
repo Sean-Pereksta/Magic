@@ -92,8 +92,8 @@ test('shared industrial capacity slows parallel projects and favors the designat
 test('infrastructure completed during a mobilized tick survives temporary production scaling',()=>{
   const h=lab();h.run('state.p.localProject={type:"factory",cost:1,progress:.9999,stxRecipeNeed:{iron:1},stxSupply:{delivered:{iron:1},orderIds:{}}};startExpansionProject(empire(0),state.p,state.planets.find(p=>p.owner===null),true);tickPlanet(state.p,1)');assert.equal(h.run('state.p.infra.factory'),3);
 });
-test('empty manufacturing inputs produce neither Components nor emergency Equipment',()=>{
-  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=state.p.stock.equipment=0;empire(0).stxSupplyPrograms={equipment:{until:100,boost:1}};tickPlanet(state.p,1)');assert.equal(h.run('state.p.stock.components'),0);assert.equal(h.run('state.p.stock.equipment'),0);
+test('empty manufacturing inputs produce only the slow local recovery baseline',()=>{
+  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=state.p.stock.equipment=0;empire(0).stxSupplyPrograms={equipment:{until:100,boost:1}};tickPlanet(state.p,1)');approx(h.run('state.p.stock.components'),h.run('stxActionLocalRate(state.p,"components")'));approx(h.run('state.p.stock.equipment'),h.run('stxActionLocalRate(state.p,"equipment")'));
 });
 test('station upgrade remains tier one until physical deliveries and assembly finish',()=>{
   const h=lab();station(h);h.run('stxIFStartUpgrade(state.base.id);stxIFSourceUpgrade(state.base)');assert.equal(h.run('state.base.tier'),1);assert.equal(h.run('stxIFUpgradeRatio(state.base.upgradeProject)'),0);assert.ok(h.run('state.ships.some(s=>s.stxDeepMission==="fortress-upgrade")'));
@@ -168,6 +168,6 @@ test('a citadel requires two completed physical upgrades, never a direct tier ju
   for(const target of [2,3]){h.run('stxIFStartUpgrade(state.base.id);for(let i=0;i<350;i++){state.simTime++;tickShips(1);stxIFUpgradeTick(1)}');assert.equal(h.run('state.base.tier'),target);assert.equal(h.run('state.base.upgradeProject'),undefined)}
   assert.equal(h.run('stxIFStartUpgrade(state.base.id)'),false);assert.equal(h.run('stxIFTierName(state.base)'),'System Citadel');
 });
-test('orbital projects cannot create Components when manufacturing has no inputs',()=>{
-  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=0;state.p.orbitalProject={type:"station",need:{components:10},progress:0};tickPlanet(state.p,1)');assert.equal(h.run('state.p.stock.components'),0);assert.equal(h.run('state.p.orbitalProject.progress'),0);
+test('orbital projects add no Components beyond local recovery without manufacturing inputs',()=>{
+  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=0;state.p.orbitalProject={type:"station",need:{components:10},progress:0};tickPlanet(state.p,1)');approx(h.run('state.p.stock.components'),h.run('stxActionLocalRate(state.p,"components")'));assert.equal(h.run('state.p.orbitalProject.progress'),0);
 });

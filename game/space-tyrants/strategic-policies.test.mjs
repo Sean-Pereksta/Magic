@@ -93,7 +93,7 @@ test('actual command hand scales to ten choices at seven worlds and twelve at ei
   assert.equal(h.run('state.commandChoices.length'),12);assert.ok(h.run('state.commandChoices.every(c=>typeof c.apply==="function")'));
 });
 test('war controls and embargo action remain available in the expanded hand',()=>{
-  const h=lab();h.run('state.planets.filter(p=>p.owner===null).slice(0,7).forEach(p=>p.owner=0);declareWar(0,1,"test");stxGBImposeEmbargo(2,0,"test");openCommandPhase()');
+  const h=lab();h.run('state.planets.filter(p=>p.owner===null).slice(0,7).forEach(p=>p.owner=0);declareWar(0,1,"a direct imperial declaration");stxGBImposeEmbargo(2,0,"test");openCommandPhase()');
   assert.ok(h.run('state.commandChoices.length')>=h.run('stxCOOptionCount()'));
   assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind==="invade").length'),1);
   assert.equal(h.run('state.commandChoices.filter(c=>c.stxFleetOrderKind==="concentrate").length'),1);

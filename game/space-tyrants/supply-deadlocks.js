@@ -28,8 +28,8 @@ function stxSDPriorityLabel(n){return n>=7?"War-critical emergency":n>=6?"Explic
 function stxSDNeedMap(desc){return desc.need||{}}
 function stxSDProgress(desc){
   if(desc.kind==="expansion"){
-    const s=desc.q.stxSupply?.delivered||{},need=desc.need.components||1;
-    return Math.min(desc.q.volunteers/Math.max(.000001,desc.q.goal),s.components/Math.max(.000001,need));
+    const s=desc.q.stxSupply?.delivered||{};
+    return clamp(Math.min(desc.q.volunteers/Math.max(.000001,desc.q.goal),...Object.entries(desc.need||{}).filter(([,n])=>n>0).map(([r,n])=>(s[r]||0)/n)),0,1);
   }
   return clamp(Number(desc.q.progress||0),0,1);
 }
@@ -150,21 +150,21 @@ tickOrbitalProject=function(p,dt){
   // Construction consumes the manufacturing output already allocated above.
   // It must not create a second, input-free stream of Components.
   stxSDEnsureOrders(d);stxSDAdvance(d,dt,orbitalProjectRate(p,q));
-  if(q.progress<.999||!stxSDAllDelivered(d))return;
+  if(q.progress<1||!stxSDAllDelivered(d))return;
   q.progress=1;p.orbitals[q.type]=(p.orbitals[q.type]||0)+1;p.garrison+=q.type==="base"?22:7;p.orbitalProject=null;p.mandateGlow=1;state.effects.push({type:"launch",x:p.x,y:p.y,life:2,maxLife:2,size:34,color:empire(p.owner).color});
   if(p.owner===0)logEvent(`${p.name}'s ${q.type==="base"?"sector military base":"orbital space station"} is operational.`,"good");
   galacticNews(`${p.name.toUpperCase()} ORBITAL INSTALLATION OPERATIONAL`,`${q.type==="base"?"A sector military base":"An orbital space station"} has opened after progressive material deliveries and visible construction.`,"good",p.id);
 };
 tickLocalProject=function(p,dt){
   const q=p.localProject;if(!q)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;const rate=.0065*(1+p.infra.factory*.22)*(stxSDSourceIsImperial(q)?1.25:1);
-  stxSDEnsureOrders(d);stxSDAdvance(d,dt,rate);if(q.progress<.999||!stxSDAllDelivered(d))return;
+  stxSDEnsureOrders(d);stxSDAdvance(d,dt,rate);if(q.progress<1||!stxSDAllDelivered(d))return;
   q.progress=1;p.infra[q.type]++;if(q.type==="city")p.capacity+=.12+Math.sqrt(p.pop)*.05;if(q.type==="defense")p.garrison+=7;p.localProject=null;p.mandateGlow=1;
   if(p.owner===0)logEvent(`${p.name} completed its ${q.type} project.`,"good");if(["shipyard","research","factory"].includes(q.type))galacticNews(`${p.name.toUpperCase()} COMPLETES ${q.type.toUpperCase()} EXPANSION`,`${p.governor?.name||"The local government"} opened the completed facilities after progressive construction deliveries.`,"good",p.id);
 };
 tickReconstruction=function(p,dt){
   const q=p.reconstruction;if(!q)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);const moved=stxSDAdvance(d,dt,.0045*(1+p.infra.factory*.18));
   if(moved>0){p.warDamage=Math.max(0,p.warDamage-moved*.34);p.cityLights=clamp(1-p.warDamage*.78,.18,1)}
-  if(q.progress<.999||!stxSDAllDelivered(d))return;q.progress=1;p.warDamage=Math.max(0,p.warDamage-.48);p.reconstruction=null;p.unrest=Math.max(0,p.unrest-.2);galacticNews(`${p.name.toUpperCase()} REOPENS AFTER WAR`,"Reconstruction ships restored power, cleared orbital wreckage, and reopened civilian routes.","good",p.id);
+  if(q.progress<1||!stxSDAllDelivered(d))return;q.progress=1;p.warDamage=Math.max(0,p.warDamage-.48);p.reconstruction=null;p.unrest=Math.max(0,p.unrest-.2);galacticNews(`${p.name.toUpperCase()} REOPENS AFTER WAR`,"Reconstruction ships restored power, cleared orbital wreckage, and reopened civilian routes.","good",p.id);
 };
 tickBuildQueue=function(p,dt){
   if(!p.buildQueue.length&&p.infra.shipyard>0&&p.owner!==null){
@@ -173,7 +173,7 @@ tickBuildQueue=function(p,dt){
   }
   const q=p.buildQueue[0];if(!q)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);
   const orbitalLoad=p.orbitalProject?(p.orbitalProject.mandated?.48:.38):0,tradeLoad=p.tradeStationProject?.18:0,scanLoad=p.scanProject?.12:0,tech=(empire(p.owner).tech.automation||0),parallelBonus=Math.min(.34,Math.max(0,p.infra.shipyard-1)*.09+tech*.035),capacityShare=clamp(1-orbitalLoad-tradeLoad-scanLoad+parallelBonus,.28,1);
-  stxSDAdvance(d,dt,buildQueueRate(p)*capacityShare);if(q.progress<.999||!stxSDAllDelivered(d))return;q.progress=1;launchBuiltShip(p,q.type);p.buildQueue.shift();
+  stxSDAdvance(d,dt,buildQueueRate(p)*capacityShare);if(q.progress<1||!stxSDAllDelivered(d))return;q.progress=1;if(typeof stxActionFinalizeShip==="function"){stxActionFinalizeShip(p,q);return}if(launchBuiltShip(p,q.type))p.buildQueue.shift();
 };
 const STX_SD_tickExpansionProject=tickExpansionProject;
 tickExpansionProject=function(p,dt){
@@ -182,11 +182,11 @@ tickExpansionProject=function(p,dt){
   if(q.volunteers>=q.goal&&stxSDAllDelivered(d)){const settlers=Math.min(q.volunteers,p.pop*.07);p.pop=Math.max(.004,p.pop-settlers);const ship=createShip("colony",p,target,p.owner,{cargo:{population:settlers},strength:4,missionTitle:`Settlement of ${target.name}`,volunteers:settlers});p.expansionProject=null;if(ship&&p.owner===0)logEvent(`${fmtNum(settlers)} volunteers departed ${p.name} for ${target.name}.`,"good")}
 };
 if(typeof stxTickScanProject==="function")stxTickScanProject=function(p,dt){
-  const q=p.scanProject;if(!q||p.owner===null)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);stxSDAdvance(d,dt,.0052*(1+p.infra.factory*.28+p.infra.research*.52)*(q.mandated?1.35:1));if(q.progress<.999||!stxSDAllDelivered(d))return;
+  const q=p.scanProject;if(!q||p.owner===null)return;const d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);stxSDAdvance(d,dt,.0052*(1+p.infra.factory*.28+p.infra.research*.52)*(q.mandated?1.35:1));if(q.progress<1||!stxSDAllDelivered(d))return;
   q.progress=1;p.scanArray=(p.scanArray||0)+1;p.scanProject=null;p.mandateGlow=1;const e=empire(p.owner);e.tech.sensors=(e.tech.sensors||0)+.14;e.tech.orbital=(e.tech.orbital||0)+.04;state.effects.push({type:"shock",x:p.x,y:p.y,life:1.6,maxLife:1.6,size:48,color:e.color});if(p.owner===0){logEvent(`${p.name}'s sensor array is online. Enemy fleets can now be tracked much farther from the frontier.`,"good");galacticNews(`${p.name.toUpperCase()} SENSOR ARRAY ONLINE`,`Deep-space tracking coverage has expanded around ${p.name}.`,"good",p.id)}
 };
 if(typeof stxTickTradeStationProject==="function")stxTickTradeStationProject=function(p,dt){
-  const q=p.tradeStationProject;if(!q||p.owner===null)return;const spec=STX_TRADE_STATION_LEVELS[q.level-1],d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);stxSDAdvance(d,dt,.0036*(1+p.infra.factory*.24+p.infra.shipyard*.28)*(q.mandated?1.3:1));if(q.progress<.999||!stxSDAllDelivered(d))return;
+  const q=p.tradeStationProject;if(!q||p.owner===null)return;const spec=STX_TRADE_STATION_LEVELS[q.level-1],d=stxSDDescriptors(p).find(x=>x.q===q);if(!d)return;stxSDEnsureOrders(d);stxSDAdvance(d,dt,.0036*(1+p.infra.factory*.24+p.infra.shipyard*.28)*(q.mandated?1.3:1));if(q.progress<1||!stxSDAllDelivered(d))return;
   q.progress=1;p.tradeStation={level:q.level,name:spec.name,hp:spec.hp,maxHp:spec.hp,createdAt:p.tradeStation?.createdAt||state.simTime,lastIncomeAt:state.simTime};p.tradeStationProject=null;p.mandateGlow=1;const e=empire(p.owner);setModifier(e,"foreignTrade",1+spec.bonus,90);if(p.owner===0){logEvent(`${spec.name} opened above ${p.name}. Foreign merchants are offering better exchange terms.`,"good");galacticNews(`${p.name.toUpperCase()} OPENS ${spec.name.toUpperCase()}`,`The new trade station is drawing commercial traffic and improving negotiated exchange terms.`,"trade",p.id)}
 };
 

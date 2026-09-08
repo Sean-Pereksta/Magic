@@ -86,7 +86,7 @@ resolveBattle=function(b,p,index){
   const inbound=stxWCCCommittedInbound(b,p),attackerInbound=inbound.some(s=>s.owner===b.attacker),defenderInbound=inbound.some(s=>s.owner===b.defender);
   const attackerWaiting=b.attackerStrength<=.6&&attackerInbound,defenderWaiting=b.defenderStrength<=.6&&defenderInbound,timedOut=b.elapsed>=b.maxDuration&&inbound.length>0;
   const waitNeeded=attackerWaiting||defenderWaiting||timedOut;
-  if(waitNeeded){
+  if(waitNeeded&&b.attackerStrength>.6&&b.defenderStrength>.6){
     if(!Number.isFinite(b.stxContinuityWaitStarted))b.stxContinuityWaitStarted=state.simTime;
     if(state.simTime-b.stxContinuityWaitStarted<STX_WCC_MAX_REINFORCEMENT_WAIT){
       if(attackerWaiting)b.attackerStrength=Math.max(.65,b.attackerStrength);

@@ -36,8 +36,8 @@ function harness(progress=.996){
   return{context,state,ship,targetPlanet,hudCalls,setNow:v=>{now=v},arrivals:()=>arrivals};
 }
 
-test("missions at the visually complete threshold finish immediately",()=>{
-  const h=harness(.996);
+test("missions at the actual completion threshold finish immediately",()=>{
+  const h=harness(1);
   const count=h.context.SpaceTyrantsMissionResponsiveness.finishReadyShips();
   assert.equal(count,1);
   assert.equal(h.arrivals(),1);
@@ -48,7 +48,7 @@ test("missions at the visually complete threshold finish immediately",()=>{
 });
 
 test("missions below the completion threshold continue normally",()=>{
-  const h=harness(.994);
+  const h=harness(.999);
   assert.equal(h.context.SpaceTyrantsMissionResponsiveness.finishReadyShips(),0);
   assert.equal(h.arrivals(),0);
   assert.equal(h.state.ships.length,1);
