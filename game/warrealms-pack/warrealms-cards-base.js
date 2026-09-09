@@ -116,6 +116,27 @@ export const CARDS = Object.freeze([
     flavor: "The Ascendancy does not create instability. It simply decides where instability belongs."
   },
   {
+    id: "aethergraft",
+    name: "Aethergraft",
+    image: "aethergraft.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 350,
+    type: "ship",
+    sigil: "◈",
+    effect: {
+      addHeat: {
+        amount: 1,
+        target: "friendlyHeatCard",
+        excludeSelf: true
+      }
+    },
+    ally: { Trade: 1 },
+    text: "Add 1 Heat to another friendly Heat card.",
+    allyText: "Gain 1 trade.",
+    flavor: "To the Xythe, excess energy is merely potential without a vessel."
+  },
+  {
     id: "heavenlance_thermal_turret",
     name: "Heavenlance Thermal Turret",
     image: "heavenlance_thermal_turret.png",
