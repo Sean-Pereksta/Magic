@@ -133,7 +133,7 @@ export const CARDS = Object.freeze([
     },
     ally: { Trade: 1 },
     text: "Add 1 Heat to another friendly Heat card.",
-    allyText: "Gain 1 trade.",
+    allyText: "Gain 1 Trade.",
     flavor: "To the Xythe, excess energy is merely potential without a vessel."
   },
   {
