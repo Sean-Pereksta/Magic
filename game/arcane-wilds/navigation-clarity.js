@@ -9,7 +9,6 @@
  const ENTRY_SPAWN_BUFFER=4.15;
  const ENTRY_PLAYER_CLEARANCE=3.0;
  const oppositeSide={N:'S',S:'N',E:'W',W:'E'};
- const baseWorldToScreen=worldToScreen;
  const baseSpawnEnemy=spawnEnemy;
 
  function currentEntrySide(){return game.arcaneEntrySide||null}
@@ -45,19 +44,6 @@
   if(side==='E')return {x:2,y:ROOM_H/2};
   return {x:ROOM_W/2+3.2,y:ROOM_H/2};
  }
-
- /* Lock world projection to the hero while preserving the existing screen-shake signal. */
- worldToScreen=function(x,y,z=0){
-  const p=game.player;
-  if(!p)return baseWorldToScreen(x,y,z);
-  const roomCameraY=H*.46-((ROOM_W+ROOM_H)*TILE_H*.25);
-  const shakeX=camera.x-W/2;
-  const shakeY=camera.y-roomCameraY;
-  return {
-   x:W*.5+((x-y)-(p.x-p.y))*TILE_W*.5+shakeX,
-   y:H*.5+((x+y)-(p.x+p.y))*TILE_H*.5-z+shakeY
-  };
- };
 
  /* Record the actual destination entrance and place the hero before the room spawns. */
  transitionRoom=function(dx,dy,from){

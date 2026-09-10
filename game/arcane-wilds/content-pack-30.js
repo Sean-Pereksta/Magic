@@ -432,10 +432,9 @@
   }
 
   /* ---------- Render identities ---------- */
-  const baseDrawEffect=drawEffect;
   function prog(e){return clamp(1-e.life/e.maxLife,0,1)}function fade(e){return clamp(e.life/Math.min(.35,e.maxLife),0,1)}
   function drawLineWorld(ax,ay,bx,by,z=8){const a=worldToScreen(ax,ay,z),b=worldToScreen(bx,by,z);return {a,b}}
-  drawEffect=function(e,front){
+  function drawContentEffect(e,front){
     const t=prog(e),f=fade(e),s=worldToScreen(e.x,e.y,10);
     if(e.kind==='voidGuillotine'||e.kind==='voidSnap'){
       const d=e.dir||{x:1,y:0},g=drawLineWorld(e.x-d.x*e.span,e.y-d.y*e.span,e.x+d.x*e.span,e.y+d.y*e.span,8);ctx.save();ctx.globalCompositeOperation='lighter';ctx.shadowBlur=22;ctx.shadowColor=e.color;ctx.strokeStyle=colorAlpha(e.color,(e.kind==='voidSnap'?.95:.55)*f);ctx.lineWidth=e.kind==='voidSnap'?8:3+t*7;ctx.beginPath();ctx.moveTo(g.a.x,g.a.y-28);for(let i=1;i<7;i++){const q=i/7;ctx.lineTo(lerp(g.a.x,g.b.x,q)+Math.sin(i*5.1)*6,lerp(g.a.y,g.b.y,q)-28+Math.cos(i*3.2)*8)}ctx.lineTo(g.b.x,g.b.y-28);ctx.stroke();ctx.restore();return;
@@ -485,8 +484,8 @@
     if(e.kind==='burrowRidge'){
       ctx.save();ctx.fillStyle=colorAlpha(e.color,.55*f);ctx.shadowBlur=8;ctx.shadowColor=e.color;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(s.x+i*9,s.y);ctx.lineTo(s.x+i*9+5,s.y-13);ctx.lineTo(s.x+i*9+10,s.y);ctx.fill()}ctx.restore();return;
     }
-    return baseDrawEffect(e,front);
-  };
+  }
+  window.AWPresentation.registerEffects(Object.fromEntries(['voidGuillotine', 'voidSnap', 'thunderCathedral', 'dragonfireTorrent', 'crystalSpike', 'shardErupt', 'rootSpike', 'moonfall', 'moonImpact', 'meteorMantleShock', 'spiritStampede', 'worldrootBranch', 'puppetString', 'starbreakerBurst', 'sunforgedBurst', 'railAim', 'railBeam', 'runicBarrage', 'choirBellPulse', 'runeRay', 'frostbiteProc', 'starbreakerCast', 'sunMothBurst', 'mimicWake', 'cinderRicochet', 'stormRamCrash', 'ashChoirPulse', 'verdantBloom', 'bloomBreak', 'gravityRipple', 'mirrorFlash', 'mirrorBlock', 'riftStep', 'cinderheartBurst', 'mirrorClone', 'bogBubble', 'burrowRidge'].map(kind=>[kind,drawContentEffect])));
 
   const baseDrawProjectiles=drawProjectiles;
   drawProjectiles=function(){

@@ -294,7 +294,7 @@ WEAPON_BASES.push(
 const REGIONAL_WEAPON_TYPES=new Set(['crossbow','wand','greatblade','grimoire','scythe','handcannon','glaive','arcaneorb','daggers','repeater','sundisc','voidpike']);
 function regionalAcquireWeaponTarget(p,w){
   let target=null;
-  if(aimStick.active||mouse.active){
+  if(aimStick.active||mouse.active||window.AWInput?.aim.active){
     const dir=spellAim();let best=1.2;
     for(const e of game.enemies){
       if(e.dead)continue;
@@ -317,7 +317,7 @@ autoAttack=function(dt){
   const rate=(1/w.attack)*(p.haste>0?1.28:1);
   if(p.attackTimer>0)return;
   const target=regionalAcquireWeaponTarget(p,w);if(!target)return;
-  const d=norm(target.x-p.x,target.y-p.y);p.facing=d;p.attackTimer=Math.max(.14,rate);
+  const d=norm(target.x-p.x,target.y-p.y);p.facing=d;p.attackTimer=Math.max(.14,rate);window.AWPresentation?.event("attack",{weapon:w});
   if(w.type==='crossbow')regionalWeaponProjectile(p,w,d,{kind:'arrow',pierce:3,r:.12,damageMult:1.08});
   else if(w.type==='wand')regionalWeaponProjectile(p,w,d,{kind:'sparkBolt',seek:1.65,r:.085});
   else if(w.type==='greatblade')regionalWeaponProjectile(p,w,d,{kind:'bladeWave',pierce:2,r:.22,splash:.38});
@@ -364,6 +364,7 @@ merchantBuy=function(action){
 const _regionalBaseOpenNPCPanel=openNPCPanel;
 openNPCPanel=function(npc){
   if(npc?.role!=='Merchant')return _regionalBaseOpenNPCPanel(npc);
+  window.AWModernUI?.portrait(npc);
   $('npcName').textContent=`${npc.name} • ${npc.role}`;
   const body=$('npcBody');
   const tierButtons=Object.entries(REGIONAL_WEAPON_SHOP_TIERS).map(([key,t])=>`<button class="exp-buy" data-weapon-tier="${key}"><b>${key==='normal'?'⚔️':key==='advanced'?'✨':'🌟'} ${t.label}</b><span>${t.note}</span><strong>🪙 ${t.cost()}</strong></button>`).join('');

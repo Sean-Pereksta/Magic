@@ -314,6 +314,7 @@ function intensityImminentThreat(){
 }
 
 function intensityPerfectDodge(){
+  window.AWPresentation?.event("perfect",{});
   const st=intensityState(),p=game.player;
   intensityAddMomentum(14,'PERFECT DODGE');
   p.dodgeCd=Math.max(.35,p.dodgeCd-.32);
@@ -349,6 +350,7 @@ const INTENSITY_REACTIONS={
 function intensityReactionKey(a,b){return [a,b].sort().join('+')}
 
 function intensityTriggerReaction(kind){
+  window.AWPresentation?.event("reaction",{kind});
   const p=game.player;
   if(kind==='shatter'){
     for(const e of game.enemies){

@@ -68,7 +68,7 @@ function transitionRoom(dx,dy,from){
   $('roomFade').style.opacity='0';setTimeout(()=>roomTransition=false,220);
  },210);
 }
-function loadRoom(){
+function loadRoom(){window.AWPresentation?.roomChanged();window.AWInput?.clear();
  const room=getRoomData(game.room.x,game.room.y);game.roomData=room;room.seen=true;
  game.enemies.length=0;game.projectiles.length=0;game.hazards.length=0;game.telegraphs.length=0;game.summons.length=0;game.interactables.length=0;
  if(room.town){

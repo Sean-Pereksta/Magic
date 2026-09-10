@@ -1,0 +1,21 @@
+name: Arcane Wilds regressions
+on:
+  pull_request:
+    paths:
+      - 'game/arcane-wilds/**'
+      - 'game/arcane-wilds.html'
+      - '.github/workflows/arcane-wilds-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: game/arcane-wilds/package-lock.json
+      - run: npm ci --prefix game/arcane-wilds --ignore-scripts
+      - run: npm test --prefix game/arcane-wilds

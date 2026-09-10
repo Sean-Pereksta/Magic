@@ -64,6 +64,7 @@ test('mobile runtime still loads before ui startup render and governor remains i
   const mobile=html.indexOf('arcane-wilds/mobile-runtime.js');
   const ui=html.indexOf('arcane-wilds/ui.js');
   assert.ok(mobile>=0&&ui>mobile);
-  assert.ok(interaction.includes("script.src='arcane-wilds/performance.js'"));
-  assert.ok(interaction.includes("script.src='arcane-wilds/runtime-stability.js'"));
+  assert.ok(html.indexOf('arcane-wilds/performance.js')>html.indexOf('arcane-wilds/progression-expansion.js'));
+  assert.ok(!interaction.includes("document.createElement('script')"));
+  assert.ok(html.indexOf('arcane-wilds/runtime-stability.js')>html.indexOf('arcane-wilds/modern-ui.js'));
 });

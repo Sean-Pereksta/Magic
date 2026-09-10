@@ -56,8 +56,9 @@ test('a frame exception re-arms the animation loop instead of hard freezing',()=
 });
 
 test('runtime stability loads after the performance and navigation wrappers',()=>{
-  const performance=mobileInteraction.indexOf('arcane-wilds/performance.js');
-  const navigation=mobileInteraction.indexOf('arcane-wilds/navigation-clarity.js');
-  const stability=mobileInteraction.indexOf('arcane-wilds/runtime-stability.js');
+  const html=readFileSync(join(here,'..','arcane-wilds.html'),'utf8');
+  const performance=html.indexOf('arcane-wilds/performance.js');
+  const navigation=html.indexOf('arcane-wilds/navigation-clarity.js');
+  const stability=html.indexOf('arcane-wilds/runtime-stability.js');
   assert.ok(performance>=0&&navigation>performance&&stability>navigation);
 });

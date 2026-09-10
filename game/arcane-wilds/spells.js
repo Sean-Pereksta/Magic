@@ -3,15 +3,17 @@
 function hasUpgrade(spell,id){return (game.player.upgrades[spell]||[]).some(u=>u===id || UPGRADE_POOLS[spell]?.find(v=>v[0]===u)?.[4]===id)}
 function spellMods(spell){const arr=game.player.upgrades[spell]||[];return {count:arr.length,power:1+arr.length*.08,cdr:Math.max(.72,1-arr.length*.025)}}
 function spellAim(){
+ if(window.AWInput?.aim.active)return screenToWorldDir(window.AWInput.aim.x,window.AWInput.aim.y);
  if(aimStick.active&&Math.hypot(aimStick.x,aimStick.y)>.18)return screenToWorldDir(aimStick.x,aimStick.y);
  if(mouse.active){const ps=worldToScreen(game.player.x,game.player.y,18);return screenToWorldDir((mouse.x-ps.x)/TILE_W,(mouse.y-ps.y)/TILE_H)}
  const t=nearestEnemy(game.player,12);return t?norm(t.x-game.player.x,t.y-game.player.y):game.player.facing;
 }
 function aimPoint(range=6){const d=spellAim();return {x:clamp(game.player.x+d.x*range,.7,ROOM_W-.7),y:clamp(game.player.y+d.y*range,.7,ROOM_H-.7)}}
 function castSpell(slot){
- const id=game.player.activeSpells[slot];if(!id||paused||modalPause)return;
+ const id=game.player?.activeSpells[slot];if(!id||!running||roomTransition||paused||modalPause)return;
  const s=SPELLS[id], st=game.player.spellState[id]||(game.player.spellState[id]={cd:0});if(st.cd>0)return;
  const mods=spellMods(id);st.cd=s.cooldown*mods.cdr;game.player.facing=spellAim();
+ window.AWPresentation?.event("cast",{id,slot,spell:s});
  const fn=SPELL_CASTS[s.cast];if(fn)fn(id,s,mods);flashSpellSlot(slot);updateHUD();
 }
 function magicProjectile(opts){
