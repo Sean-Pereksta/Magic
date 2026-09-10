@@ -83,7 +83,6 @@ function stxTXEligibility(type,q,action='accept'){
     const cost=type==='military'?Math.max(0,Math.round(q.creditCost||0)):action==='autonomy'?Math.ceil((q.cost||0)*.45):(q.cost||0);
     const startsProject=type==='military'?q.type==='capital':!!q.project,total=cost+(startsProject?STX_TX_PROJECT_FEE:0);
     if(empire(0).credits<total)return no(`Need ${total} credits${startsProject?' including project authorization':''}; treasury ${Math.floor(empire(0).credits)}`);
-    if((q.type==='capital'||q.project)&&p.localProject)return no('Waiting for the current local project to finish');
     if(type==='military'&&q.type!=='capital'&&p.infra.shipyard<=0)return no('An operational shipyard is required');
   }else if(type==='trade'||type==='proposal'&&q.kind==='trade'){
     if(type==='trade'){

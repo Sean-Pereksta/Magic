@@ -7,7 +7,7 @@ tickPlanet=function(p,dt){const result=STX_ACTION_tickPlanet(p,dt);if(p.owner!==
 function stxActionFreightCheck(legs,payments={}){
   if(state.ships.length+legs.length>280)return "Vessel capacity is full";
   const counts={};for(const leg of legs)counts[leg.owner]=(counts[leg.owner]||0)+1;
-  for(const [id,n] of Object.entries(counts)){const owner=Number(id);if(stxIFFreightUsed(owner)+n>stxIFFreightLimit(owner))return "No freight capacity";if((empire(owner)?.credits||0)<n*.04+(payments[id]||0))return "Insufficient credits for payment and freight"}
+  for(const [id,n] of Object.entries(counts)){const owner=Number(id);if(stxIFFreightUsed(owner)+n>stxIFFreightLimit(owner))return "No freight capacity";if((empire(owner)?.credits||0)<(typeof stxLPPassiveIndustry==="function"&&owner===0?0:n*.04)+(payments[id]||0))return "Insufficient credits for payment and freight"}
   return "";
 }
 function stxActionTradePlan(seller,buyer,resource,amount,payment){
@@ -82,7 +82,7 @@ acceptTradeProposal=function(p,counter=false){
 function stxActionProposalCheck(p,action="accept"){
   if(!p||p.status!=="pending"||state.simTime>=p.expiresAt)return "Transmission has expired or closed";if(action==="decline")return "";
   if(p.kind==="trade"){const t=stxActionProposalTerms(p,action==="counter");return stxActionTradePlan(p.from,0,p.offer?.resource,t.amount,t.payment).error}
-  if(p.kind==="governor"){const world=state.planets.find(x=>x.id===p.planetId),cost=action==="autonomy"?Math.ceil(p.cost*.45):p.cost;if(!world||world.owner!==0)return "World is no longer under Imperial control";if(!Number.isFinite(cost)||cost<0||empire(0).credits<cost)return "Insufficient credits";if(p.project&&world.localProject)return "Existing local project must finish first";if(p.type==="rebuild"&&world.reconstruction)return "Reconstruction already underway"}
+  if(p.kind==="governor"){const world=state.planets.find(x=>x.id===p.planetId),cost=action==="autonomy"?Math.ceil(p.cost*.45):p.cost;if(!world||world.owner!==0)return "World is no longer under Imperial control";if(!Number.isFinite(cost)||cost<0||empire(0).credits<cost)return "Insufficient credits";if(p.type==="rebuild"&&world.reconstruction)return "Reconstruction already underway"}
   if(p.kind==="access"&&(!stxRTActiveEmpire(p.from)||empiresAtWar(0,p.from)||stxRTEmbargoed(0,p.from)))return "War or embargo blocks access";
   if(p.kind==="migration"){const target=state.planets.find(x=>x.id===p.planetId),source=owned(p.from).sort((a,b)=>b.pop/b.capacity-a.pop/a.capacity)[0];if(!target||target.owner!==0||target.underAttack||!source||!Number.isFinite(p.amount)||p.amount<=0||p.amount>source.pop*.04||state.ships.length>=280)return "Migration cannot embark or land safely"}
   return "";

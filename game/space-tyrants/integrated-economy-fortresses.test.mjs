@@ -47,18 +47,14 @@ test('all five priority stages escalate in simulation time and reset for a repla
   const h=lab();project(h);h.run('state.p.stock.iron=0');
   for(const [age,stage] of [[0,0],[12,1],[30,2],[50,3],[80,4]]){prioritize(h,age);assert.equal(h.run('stxIFPlans.get(0).stage'),stage)}
 });
-test('crew mobilization consumes matching civilian population and Equipment',()=>{
-  const h=lab();project(h,'trained',.005);h.run('state.donor.infra.training=2;state.p.stock.trained=state.donor.stock.trained=0;state.donor.stock.equipment=10');prioritize(h);
-  const before=h.run('({pop:state.donor.pop,gear:state.donor.stock.equipment})');h.run('stxIFCrewMobilization(1)');const crew=h.run('state.donor.stock.trained');assert.ok(crew>0);approx(before.pop-h.run('state.donor.pop'),crew);approx(before.gear-h.run('state.donor.stock.equipment'),crew*700);
-  h.run('stxIFRoutingTick()');assert.ok(h.run('state.ships.some(s=>s.to===state.p.id&&s.cargo.trained>0)'));assert.equal(h.run('state.p.stock.trained'),0);
+test('normal recruitment replenishes personnel without consuming civilian population or Equipment',()=>{
+  const h=lab();h.run('state.p.infra.training=2;stxLPEnsure(state.p);state.p.factoryModes=["components","components"];state.pop=state.p.pop;state.gear=state.p.stock.equipment;stxLPPassiveIndustry(state.p,10)');assert.ok(h.run('state.p.stock.trained')>0);approx(h.run('state.p.pop'),h.run('state.pop'));approx(h.run('state.p.stock.equipment'),h.run('state.gear'));
 });
-test('no Equipment means no emergency recruits and a real Equipment request',()=>{
-  const h=lab();project(h,'trained',.005);h.run('state.donor.infra.training=2;state.donor.stock.equipment=0');prioritize(h);h.run('stxIFCrewMobilization(1)');assert.equal(h.run('state.donor.stock.trained'),0);assert.equal(h.run('state.donor.pop'),1);assert.ok(h.run('state.donor.orders.some(o=>o.resource==="equipment")'));
+test('passive recruitment works with no Equipment and creates no upkeep order',()=>{
+  const h=lab();h.run('state.p.stock.equipment=0;state.p.infra.training=2;stxLPEnsure(state.p);stxLPPassiveIndustry(state.p,10)');assert.ok(h.run('state.p.stock.trained')>0);assert.equal(h.run('state.p.orders.some(o=>o.type==="equipment")'),false);
 });
-test('reasonable priority crew shortages resolve gradually without a population grant',()=>{
-  const h=lab();project(h,'trained',.005);h.run('state.donor.infra.training=2;state.p.stock.trained=0');prioritize(h);const before=h.run('state.donor.pop');
-  h.run('for(let i=0;i<90;i++){state.simTime+=1;stxIFPlan();stxIFCrewMobilization(1);stxIFRoutingTick();tickShips(1);stxSDAllocatePlanet(state.p)}');
-  assert.equal(h.run('stxSDAllDelivered(state.d)'),true);assert.ok(before-h.run('state.donor.pop')>=.00499);
+test('priority crew shortages resolve gradually through normal recruitment',()=>{
+  const h=lab();project(h,'trained',.001);prioritize(h);h.run('for(let i=0;i<200;i++){stxLPEnsure(state.p);stxLPPassiveIndustry(state.p,1);stxSDAllocatePlanet(state.p)}');assert.equal(h.run('stxSDAllDelivered(state.d)'),true);approx(h.run('state.p.pop'),1);
 });
 test('EXPORT releases deeper reserves; LOCAL retains stock across domestic order paths',()=>{
   for(const [mode,expect] of [['balanced',false],['project',false],['export',true]]){const h=lab();project(h);h.run(`state.p.stock.iron=0;owned(0).forEach(p=>{if(p!==state.donor)p.stock.iron=0});state.donor.stock.iron=20;state.donor.stxResourceRouting.iron='${mode}';stxSDEnsureOrders(state.d);fillOrder(state.p,state.p.orders.find(o=>o.id===state.d.q.stxSupply.orderIds.iron))`);assert.equal(h.run('state.ships.length>0'),expect)}
@@ -79,9 +75,9 @@ test('expansion actually reduces measured factory output and restores it afterwa
 test('colony launch never consumes settlers when the technical ship bound is full',()=>{
   const h=lab();h.run('state.target=state.planets.find(p=>p.owner===null);startExpansionProject(empire(0),state.p,state.target,true);state.p.stock.trained=1;stxSDAllocatePlanet(state.p);state.p.expansionProject.volunteers=state.p.expansionProject.goal;state.ships=Array.from({length:280},(_,i)=>({id:`limit${i}`}));tickExpansionProject(state.p,1)');assert.equal(h.run('state.p.pop'),1);assert.ok(h.run('state.p.expansionProject'));
 });
-test('new colony keeps exactly transported population and begins dependent on imports',()=>{
+test('new colony keeps exactly transported population and develops without upkeep',()=>{
   const h=lab();h.run('state.target=state.planets.find(p=>p.owner===null);state.target.x=state.p.x+150;startExpansionProject(empire(0),state.p,state.target,true);state.p.stock.trained=1;stxSDAllocatePlanet(state.p);state.p.expansionProject.volunteers=state.p.expansionProject.goal;tickExpansionProject(state.p,1);state.settlers=state.ships.find(s=>s.type==="colony").cargo.population;tickShips(30)');approx(h.run('state.target.pop'),h.run('state.settlers'));approx(h.run('state.p.pop+state.target.pop'),1);assert.equal(h.run('state.target.stock.components'),0);assert.equal(h.run('state.target.stxColony.stage'),'landing');
-  h.run('stxIFColonyTick(state.target,20)');assert.ok(h.run('state.target.orders.some(o=>o.type==="colony-support")'));assert.equal(h.run('state.target.stxColony.development'),0);
+  h.run('stxIFColonyTick(state.target,20)');assert.equal(h.run('state.target.orders.some(o=>o.type==="colony-support")'),false);assert.equal(h.run('state.target.stxColony.development'),20);
 });
 test('supplying a colony advances all development stages; isolation slows rather than deletes it',()=>{
   const h=lab();h.run('state.p.stxColony={stage:"landing",age:0,development:0,readiness:1,isolatedFor:0};stxIFColonyTick(state.p,70)');assert.equal(h.run('state.p.stxColony.stage'),'young colony');h.run('stxIFColonyTick(state.p,120)');assert.equal(h.run('state.p.stxColony.stage'),'established');h.run('stxIFColonyTick(state.p,180)');assert.equal(h.run('state.p.stxColony.stage'),'developed');
@@ -92,8 +88,8 @@ test('shared industrial capacity slows parallel projects and favors the designat
 test('infrastructure completed during a mobilized tick survives temporary production scaling',()=>{
   const h=lab();h.run('state.p.localProject={type:"factory",cost:1,progress:.9999,stxRecipeNeed:{iron:1},stxSupply:{delivered:{iron:1},orderIds:{}}};startExpansionProject(empire(0),state.p,state.planets.find(p=>p.owner===null),true);tickPlanet(state.p,1)');assert.equal(h.run('state.p.infra.factory'),3);
 });
-test('empty manufacturing inputs produce only the slow local recovery baseline',()=>{
-  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=state.p.stock.equipment=0;empire(0).stxSupplyPrograms={equipment:{until:100,boost:1}};tickPlanet(state.p,1)');approx(h.run('state.p.stock.components'),h.run('stxActionLocalRate(state.p,"components")'));approx(h.run('state.p.stock.equipment'),h.run('stxActionLocalRate(state.p,"equipment")'));
+test('installed factories produce with empty input stocks without recurring costs',()=>{
+  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=0;tickPlanet(state.p,1)');assert.ok(h.run('state.p.stock.components')>h.run('stxActionLocalRate(state.p,"components")'));for(const r of ['iron','silicates','rare'])approx(h.run(`state.p.stock.${r}`),h.run(`stxActionLocalRate(state.p,'${r}')`));
 });
 test('station upgrade remains tier one until physical deliveries and assembly finish',()=>{
   const h=lab();station(h);h.run('stxIFStartUpgrade(state.base.id);stxIFSourceUpgrade(state.base)');assert.equal(h.run('state.base.tier'),1);assert.equal(h.run('stxIFUpgradeRatio(state.base.upgradeProject)'),0);assert.ok(h.run('state.ships.some(s=>s.stxDeepMission==="fortress-upgrade")'));
@@ -109,14 +105,14 @@ test('station staging yields to a local Imperial priority needing the same mater
 test('the player can prioritize a station upgrade through the normal project control',()=>{
   const h=lab();station(h);h.run('stxIFStartUpgrade(state.base.id);state.remote=stxIFRemoteDescriptor(state.base,state.p);stxPSSetPriority(state.remote.id,state.p.id)');assert.equal(h.run('stxIFPriorityProject().kind'),'deep-upgrade');
 });
-test('tiers strengthen launch capability and service capacity while increasing upkeep',()=>{
-  const h=lab();station(h);const levels=[];for(const tier of [1,2,3])levels.push(h.run(`state.base.tier=${tier};({speed:stxDSLaunchBonus(state.base).speed,service:stxIFServiceCapacity(state.base),helium:stxIFUpkeep(state.base).helium})`));for(let i=1;i<3;i++){assert.ok(levels[i].speed>levels[i-1].speed);assert.ok(levels[i].service>levels[i-1].service);assert.ok(levels[i].helium>levels[i-1].helium)}
+test('tiers strengthen launch and service capacity without player upkeep',()=>{
+  const h=lab();station(h);const levels=[];for(const tier of [1,2,3]){h.run(`state.base.tier=${tier}`);levels.push(h.run('({speed:stxDSLaunchBonus(state.base).speed,capacity:stxIFServiceCapacity(state.base),cost:Object.keys(stxIFUpkeep(state.base)).length})'))}for(let i=1;i<3;i++){assert.ok(levels[i].speed>levels[i-1].speed);assert.ok(levels[i].capacity>levels[i-1].capacity)}assert.ok(levels.every(x=>x.cost===0));
 });
-test('unsupplied stations lose readiness and cannot provide full repair or free resupply',()=>{
-  const h=lab();station(h);h.run('state.base.nextSupplyAt=1e9;state.base.stxSupplyStock={};for(let i=0;i<100;i++){state.simTime++;stxDSTickBases(1)}');assert.ok(h.run('state.base.supplyReadiness')<.04);assert.equal(h.run('state.base.status'),'operational');const before=h.run('state.base.supplyReadiness');h.run('stxDSArriveSupply({owner:0,cargo:{},vesselName:"Empty"},state.base)');assert.equal(h.run('state.base.supplyReadiness'),before);
+test('player station readiness is maintained without reserve upkeep shipments',()=>{
+  const h=lab();station(h);h.run('state.base.stxSupplyStock={};empire(0).credits=0;for(let i=0;i<100;i++)stxDSTickBases(1)');assert.ok(h.run('state.base.supplyReadiness')>.99);assert.equal(h.run('state.ships.length'),0);
 });
-test('station maintenance consumes stored helium, Equipment and imperial Credits',()=>{
-  const h=lab();station(h);const before=h.run('({gear:state.base.stxSupplyStock.equipment,credits:empire(0).credits})');h.run('state.base.nextSupplyAt=1e9;stxDSTickBases(10)');assert.ok(h.run('state.base.stxSupplyStock.equipment')<before.gear);assert.ok(h.run('empire(0).credits')<before.credits);
+test('station maintenance preserves stored helium Equipment and imperial Credits',()=>{
+  const h=lab();station(h);h.run('state.before=JSON.stringify({stock:state.base.stxSupplyStock,credits:empire(0).credits});stxDSTickBases(10)');assert.equal(h.run('JSON.stringify({stock:state.base.stxSupplyStock,credits:empire(0).credits})'),h.run('state.before'));
 });
 test('logistics stations improve freight routes and finite freight capacity',()=>{
   const h=lab();const before=h.run('stxIFFreightLimit(0)');station(h,'logistics');h.run('state.base.x=state.p.x+100');assert.ok(h.run('stxIFFreightLimit(0)')>before);assert.ok(h.run('stxIFRouteBonus(state.p,state.donor,0)')>0);
@@ -160,14 +156,14 @@ test('emergency procurement preserves fractional crew instead of rounding to mil
 test('routine factory upgrades cannot drain a different Imperial priority',()=>{
   const h=lab();project(h,'components',10);h.run('state.p.stock.components=0;state.donor.stock.components=10;state.donor.localProject={type:"factory",cost:10,progress:0,stxRecipeNeed:{components:10}}');prioritize(h);h.run('stxSDAllocatePlanet(state.donor);stxIFRoutingTick()');assert.equal(h.run('state.donor.localProject.stxSupply.delivered.components'),0);assert.ok(h.run('state.ships.some(s=>s.to===state.p.id&&s.cargo.components===10)'));
 });
-test('crew priority without infrastructure builds a paid training camp before recruiting',()=>{
-  const h=lab();project(h,'trained',.005);h.run('owned(0).forEach(p=>{p.infra.training=0;p.infra.shipyard=0});state.beforeCampCredits=empire(0).credits');prioritize(h);h.run('stxIFCrewMobilization(1)');assert.ok(h.run('owned(0).some(p=>p.physicalProjects.some(q=>q.stxEmergencyTraining))'));assert.equal(h.run('empire(0).credits'),h.run('state.beforeCampCredits-3'));assert.equal(h.run('state.p.stock.trained+state.donor.stock.trained'),0);
+test('crew priority cannot authorize an unrequested paid training camp',()=>{
+  const h=lab();project(h,'trained',.005);h.run('owned(0).forEach(p=>{p.infra.training=0;p.infra.shipyard=0});state.beforeCampCredits=empire(0).credits');prioritize(h);h.run('stxIFCrewMobilization(1)');assert.equal(h.run('owned(0).some(p=>p.physicalProjects.some(q=>q.stxEmergencyTraining))'),false);assert.equal(h.run('empire(0).credits'),h.run('state.beforeCampCredits'));
 });
 test('a citadel requires two completed physical upgrades, never a direct tier jump',()=>{
   const h=lab();station(h);
   for(const target of [2,3]){h.run('stxIFStartUpgrade(state.base.id);for(let i=0;i<350;i++){state.simTime++;tickShips(1);stxIFUpgradeTick(1)}');assert.equal(h.run('state.base.tier'),target);assert.equal(h.run('state.base.upgradeProject'),undefined)}
   assert.equal(h.run('stxIFStartUpgrade(state.base.id)'),false);assert.equal(h.run('stxIFTierName(state.base)'),'System Citadel');
 });
-test('orbital projects add no Components beyond local recovery without manufacturing inputs',()=>{
-  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=0;state.p.orbitalProject={type:"station",need:{components:10},progress:0};tickPlanet(state.p,1)');approx(h.run('state.p.stock.components'),h.run('stxActionLocalRate(state.p,"components")'));assert.equal(h.run('state.p.orbitalProject.progress'),0);
+test('orbital projects cannot generate extra Components beyond normal factories and local recovery',()=>{
+  const h=lab();h.run('state.p.infra.mine=0;for(const r of RESOURCES)state.p.stock[r]=0;state.p.stock.components=0;state.p.orbitalProject={type:"station",need:{components:10},progress:0};tickPlanet(state.p,1)');approx(h.run('state.p.stock.components'),h.run('stxActionLocalRate(state.p,"components")+state.p.stxAllocationOutput.componentRate'));assert.equal(h.run('state.p.orbitalProject.progress'),0);
 });

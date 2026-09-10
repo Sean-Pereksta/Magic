@@ -105,11 +105,11 @@ test('issuing an immediate mandate never creates fallback construction',()=>{
   h.run('issueCommands()');assert.ok(h.run('stxPolicyHas(0,"crew-training")'));
   assert.equal(h.run('playerWorlds().filter(p=>p.localProject||p.orbitalProject||p.buildQueue.length).length'),before);
 });
-test('crew mandate increases real recruitment by 60% and consumes more Equipment',()=>{
+test('paid crew mandate increases real recruitment by 60% without normal training upkeep',()=>{
   const a=lab(),b=lab();b.run('stxPolicyActivate(0,"crew-training")');
   for(const h of [a,b])h.run('state.testPlanet.infra.factory=0;state.testPlanet.infra.research=0;tickPlanet(state.testPlanet,1)');
   const base=a.run('state.testPlanet.stxCrewRate'),fast=b.run('state.testPlanet.stxCrewRate');
-  assert.ok(fast/base>1.59&&fast/base<1.61);assert.ok(b.run('state.testPlanet.stock.equipment')<a.run('state.testPlanet.stock.equipment'));
+  assert.ok(fast/base>1.59&&fast/base<1.61);assert.equal(b.run('state.testPlanet.stock.equipment'),a.run('state.testPlanet.stock.equipment'));
   assert.ok(b.run('modifier(empire(0),"growth")')<1);
 });
 test('growth, mining specialization and Equipment-limited surge affect actual production',()=>{
@@ -122,14 +122,14 @@ test('growth, mining specialization and Equipment-limited surge affect actual pr
   assert.ok(mining.run('state.testPlanet.stock.silicates')<base.run('state.testPlanet.stock.silicates'));
   assert.equal(empty.run('state.testPlanet.stock.iron'),base.run('state.testPlanet.stock.iron'));
 });
-test('manufacturing policies alter both outputs and need extra inputs',()=>{
+test('paid manufacturing policies adjust assigned factory output without consuming raw stock',()=>{
   const a=lab(),b=lab();b.run('stxPolicyActivate(0,"component-drive")');
-  for(const h of [a,b])h.run('state.testPlanet.factoryEfficiency=1;stxRTProduceFactory(state.testPlanet,1)');
+  for(const h of [a,b])h.run('stxLPEnsure(state.testPlanet);state.testPlanet.factoryModes=["components","equipment"];stxRTProduceFactory(state.testPlanet,1)');
   assert.ok(b.run('state.testPlanet.stock.components')>a.run('state.testPlanet.stock.components'));
   assert.ok(b.run('state.testPlanet.stock.equipment')<a.run('state.testPlanet.stock.equipment'));
-  assert.ok(b.run('state.testPlanet.stock.iron')<a.run('state.testPlanet.stock.iron'));
-  const c=lab();c.run('state.testPlanet.factoryEfficiency=1;state.testPlanet.stock.titanium=0;stxRTProduceFactory(state.testPlanet,1)');
-  assert.equal(c.run('state.testPlanet.stock.equipment'),1000);assert.ok(c.run('state.testPlanet.stock.components')>1000);
+  assert.equal(b.run('state.testPlanet.stock.iron'),a.run('state.testPlanet.stock.iron'));
+  const c=lab();c.run('stxLPEnsure(state.testPlanet);state.testPlanet.factoryModes=["components","equipment"];state.testPlanet.stock.titanium=0;stxRTProduceFactory(state.testPlanet,1)');
+  assert.ok(c.run('state.testPlanet.stock.equipment')>1000);assert.ok(c.run('state.testPlanet.stock.components')>1000);
 });
 test('policies replace their category, refresh without stacking, and expire',()=>{
   const h=lab();h.run('stxPolicyActivate(0,"component-drive");stxPolicyActivate(0,"component-drive")');assert.equal(h.run('stxPolicyValue(0,"components")'),1.7);
@@ -159,9 +159,9 @@ test('player project priority outranks policies and receives foreign shipments',
   const h=lab();h.run('state.testPlanet.localProject={type:"shipyard",cost:100,progress:0};state.testDesc=stxSDDescriptors(state.testPlanet)[0];empire(0).stxPriorityProjectId=state.testDesc.id;empire(0).stxPriorityPlanetId=state.testPlanet.id;stxPolicyActivate(0,"strategic-supply")');
   assert.equal(h.run('stxSDDescriptors(state.testPlanet)[0].priority'),100);assert.equal(h.run('stxRTDestination(0,"iron").id'),h.run('state.testPlanet.id'));
 });
-test('research policies advance technology using real local Rare Earth and Equipment',()=>{
+test('paid research policies advance technology without passive input spending',()=>{
   const a=lab(),b=lab();b.run('stxPolicyActivate(0,"scientific-mobilization")');for(const h of [a,b])h.run('stxPolicyResearch(state.testPlanet,10)');
-  assert.ok(b.run('state.testPlanet.stxResearchRate')>a.run('state.testPlanet.stxResearchRate')*1.49);assert.ok(b.run('state.testPlanet.stock.rare')<a.run('state.testPlanet.stock.rare'));
+  assert.ok(b.run('state.testPlanet.stxResearchRate')>a.run('state.testPlanet.stxResearchRate')*1.49);assert.equal(b.run('state.testPlanet.stock.rare'),a.run('state.testPlanet.stock.rare'));
 });
 test('shortage context raises the appropriate policy score and AI uses the same paid policies',()=>{
   const h=lab();h.run('state.testPlanet.stock.iron=0;state.testPlanet.localProject={type:"factory",cost:180,progress:0};');

@@ -60,24 +60,27 @@ function stxGVDrawPlanet(p){
       ctx.strokeStyle=color+'55';ctx.lineWidth=development>=3?1.6:1;
       ctx.beginPath();ctx.ellipse(s.x,s.y,r*(1.65+development*.12),r*.64,-.24,0,6.283);ctx.stroke();
     }
-    if(detail){
-      const lights=Math.min(54,development*development*3+Math.floor((p.pop||0)*8));
+    if(detail||z>.45){
+      const lights=Math.min(detail?72:12,Math.floor(3+Math.sqrt(Math.max(0,p.pop||0))*24+Math.min(30,(p.infra?.city||0)*2)));
       const phase=stxGVHash(p.id)%628/100;
       ctx.save();ctx.beginPath();ctx.arc(s.x,s.y,r*.92,0,6.283);ctx.clip();
       for(let i=0;i<lights;i++){
-        const a=i*2.399+phase,rr=r*(.18+(i%7)*.105),x=s.x+Math.cos(a)*rr,y=s.y+Math.sin(a)*rr*.8;
+        // Stable world-specific settlement clusters on the night-facing hemisphere.
+        const seed=stxGVHash(`${p.id}:city:${Math.floor(i/5)}`),a=(seed%628)/100;
+        const cx=.18+((seed>>>8)%55)/100,cy=Math.sin(a)*.6;
+        const x=s.x+r*(cx+Math.cos(i*2.399+phase)*.095),y=s.y+r*(cy+Math.sin(i*2.399+phase)*.08);
         ctx.globalAlpha=clamp((p.cityLights??1)*(1-(p.warDamage||0))*(.35+(i%3)*.2),.05,1);
         ctx.fillStyle=i%4===0?color:'#ffd5a1';ctx.fillRect(x,y,i%5===0?2:1.1,1.1);
         if(development>=3&&i%5===0){ctx.globalAlpha=.16;ctx.fillRect(x-2,y,7,.7)}
       }
       ctx.restore();
-      if(['Terran','Ocean','Jungle','Toxic','Ice'].includes(family)){
+      if(detail&&['Terran','Ocean','Jungle','Toxic','Ice'].includes(family)){
         ctx.save();ctx.translate(s.x,s.y);ctx.rotate((stxGV.reduced?0:stxGV.time*.018)+phase);
         ctx.strokeStyle=palette[2]+'50';ctx.lineWidth=Math.max(1,r*.05);
         ctx.beginPath();ctx.ellipse(0,-r*.2,r*.84,r*.23,.3,.3,2.8);ctx.stroke();ctx.restore();
       }
       // Activity density reads actual recent trade volume and development.
-      const traffic=Math.min(7,Math.floor((p.tradeVolume||0)/4)+(p.tradeStation?1:0));
+      const traffic=Math.min(9,Math.floor((p.tradeVolume||0)/4)+Math.floor(Math.sqrt(Math.max(0,p.pop||0))*4)+(p.infra?.shipyard||0)+(p.tradeStation?1:0));
       for(let i=0;i<traffic;i++){
         if(stxGV.budget.civilians<1||!stxGVSpend('orbitTraffic')||!stxGVSpend('civilians'))break;
         const a=(stxGV.reduced?0:stxGV.time*.18)+i*2.1+phase,rr=r*(1.95+(i%2)*.25);
