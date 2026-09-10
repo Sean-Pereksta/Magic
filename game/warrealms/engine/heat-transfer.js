@@ -1,7 +1,6 @@
-import { CARD_MAP } from "../../warrealms-pack/warrealms-cards-base.js";
-
 const HEAT_TRANSFER_DELTA_OFFSET = 1000000;
 let pendingTransferIntents = 0;
+const registeredHeatCards = new Map();
 
 function positiveInteger(value, fallback = 1) {
   const number = Number(value);
@@ -38,6 +37,10 @@ export function clearMoveHeatTransferIntents() {
   pendingTransferIntents = 0;
 }
 
+export function clearRegisteredHeatCards() {
+  registeredHeatCards.clear();
+}
+
 function normalizeMoveHeatConfig(value) {
   if (typeof value === "number") return { amount: positiveInteger(value) };
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -50,6 +53,10 @@ function normalizeMoveHeatConfig(value) {
 function installAdapter(value, seen) {
   if (!value || typeof value !== "object" || seen.has(value)) return;
   seen.add(value);
+
+  if (!Array.isArray(value) && typeof value.id === "string" && value.heat && typeof value.heat === "object") {
+    registeredHeatCards.set(value.id, value);
+  }
 
   if (!Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, "moveHeat")) {
     const moveHeat = normalizeMoveHeatConfig(value.moveHeat);
@@ -96,7 +103,7 @@ function activeHeatEntries(player) {
 }
 
 function heatDefinition(entry) {
-  return CARD_MAP?.[entry?.id]?.heat || null;
+  return registeredHeatCards.get(String(entry?.id || ""))?.heat || null;
 }
 
 export function prepareMoveHeatDestination(game, input = {}) {
@@ -135,7 +142,7 @@ export function prepareMoveHeatDestination(game, input = {}) {
     subtitle: `Choose another friendly Heat card to receive ${amount} Heat.`,
     createdAtMs: Date.now(),
     options: targets.map((entry, index) => {
-      const card = CARD_MAP?.[entry.id];
+      const card = registeredHeatCards.get(String(entry.id || ""));
       return {
         label: `${card?.name || "Heat card"} · Heat ${nonNegativeInteger(entry.heat)}`,
         description: `Move ${amount} Heat here.`,
