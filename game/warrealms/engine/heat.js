@@ -1,3 +1,5 @@
+import { decodeHeatDelta } from "./heat-transfer.js";
+
 function number(value, fallback = 0) {
   const result = Number(value);
   return Number.isFinite(result) ? result : fallback;
@@ -6,7 +8,8 @@ function number(value, fallback = 0) {
 export function resolveHeatValue(heat = {}, current = 0, delta = 0) {
   const maximum = Math.max(0, Math.floor(number(heat.max, 99)));
   const before = Math.max(0, Math.min(maximum, Math.floor(number(current))));
-  const after = Math.max(0, Math.min(maximum, before + Math.floor(number(delta))));
+  const resolvedDelta = decodeHeatDelta(delta);
+  const after = Math.max(0, Math.min(maximum, before + Math.floor(number(resolvedDelta))));
   return {
     before,
     after,
