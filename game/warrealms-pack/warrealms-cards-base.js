@@ -183,6 +183,37 @@ export const CARDS = Object.freeze([
   flavor: "The Xythe do not waste excess energy. They redirect destiny."
 },
   {
+  id: "fluxblossom",
+  name: "Fluxblossom",
+  image: "fluxblossom.png",
+  faction: "yellow",
+  cost: 1,
+  shop_cost: 240,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {},
+
+  heat: {
+    gain: 2,
+    max: 6,
+    overload: {
+      at: 6,
+      optional: false,
+      reset: 0,
+      effect: { trade: 4 }
+    }
+  },
+
+  text: "When this card is played, add 2 Heat to itself.",
+  heatText: "At 6 Heat, spend all 6 Heat: gain 4 Trade, then reset to 0 Heat.",
+
+  ally: {},
+  allyText: "",
+
+  flavor: "It opens only when enough futures have gathered in one place."
+},
+  {
     id: "eightfold_drone_ark",
     name: "Eightfold Drone Ark",
     image: "eightfold_drone_ark.png",
