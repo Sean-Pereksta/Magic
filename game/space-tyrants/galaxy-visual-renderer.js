@@ -109,8 +109,8 @@ function stxGVDrawPlanet(p){
 }
 function stxGVDrawProjects(p,s,r,selected){
   if(state.camera.zoom<.7&&!selected)return;
-  const q=p.localProject||p.reconstruction||p.buildQueue?.[0]||p.orbitalProject||p.scanProject||p.tradeStationProject;
-  if(q)stxGVRing(s,r+7,'#78efff',.85,2,-Math.PI/2,-Math.PI/2+6.283*clamp(q.progress||0,0,1));
+  const projects=[...new Set([...(p.stxLocalProjects||[]),...(p.stxOrbitalProjects||[]),p.localProject,p.reconstruction,p.buildQueue?.[0],p.orbitalProject,p.scanProject,p.tradeStationProject].filter(Boolean))];
+  projects.slice(0,5).forEach((q,i)=>stxGVRing(s,r+7+i*3,q.imperialPriority==='Suspended'?'#8595a7':'#78efff',.8,1.5,-Math.PI/2,-Math.PI/2+6.283*clamp(q.progress||0,0,1)));
   let i=0;
   for(const project of (p.physicalProjects||[])){
     if(project.phase==='operations'||i>=3)continue;
@@ -153,12 +153,13 @@ function stxGVDrawStations(){
     stxGVHit(kind,id,s,Math.max(11,size*1.5),{...item});state.stats.visible++;
   }
 }
-function stxGVFormation(center,power,angle,color,{selected=false,seed=0,travel=false,veterans=0}={}){
+function stxGVFormation(center,power,angle,color,{selected=false,seed=0,travel=false,veterans=0,composition=null}={}){
   const tier=stxGVTier(power),z=state.camera.zoom,scale=clamp(z,.42,1.5);
   const desired=z<.45?Math.min(tier.count,1+STX_GV_TIERS.indexOf(tier)):
     Math.max(1,Math.round(tier.count*(z<.9?.58:1)*(selected?1:stxGV.quality)));
   const n=Math.min(desired,stxGV.budget.craft),span=tier.span*scale;
   const hullScale=clamp((1.5+STX_GV_TIERS.indexOf(tier)*.48)*scale,1.35,6);
+  const designed=composition&&Object.entries(composition).filter(([,n])=>n>0).flatMap(([k,n])=>Array(Math.min(500,n)).fill(STX_IFD_HULLS[k]?.hull||'frigate'));
   const groups=Math.ceil(n/8);let extent=span;
   for(let i=0;i<n;i++){
     if(!stxGVSpend('craft'))break;
@@ -173,7 +174,7 @@ function stxGVFormation(center,power,angle,color,{selected=false,seed=0,travel=f
     const x=center.x+Math.cos(angle)*forward-Math.sin(angle)*(lateral+wobble);
     const y=center.y+Math.sin(angle)*forward+Math.cos(angle)*(lateral+wobble);
     const capital=i===0||i%8===0&&power>=250;
-    const hull=capital?tier.hull:['fighter','corvette','frigate','destroyer'][Math.min(3,Math.floor(power/90)+(i%2))];
+    const hull=designed?.length?designed[Math.min(designed.length-1,Math.floor(i*designed.length/Math.max(1,n)))]:capital?tier.hull:['fighter','corvette','frigate','destroyer'][Math.min(3,Math.floor(power/90)+(i%2))];
     stxGVShip(x,y,angle,hullScale*(capital?1:.57),color,hull,travel?2+(selected?1:0):.4);
   }
   if(selected||veterans>.25){
@@ -202,7 +203,7 @@ function stxGVDrawFleets(){
     const angle=target?Math.atan2(target.y-pos.y,target.x-pos.x):(pos.orbitAngle||stxFleetPhase(f.id))+Math.PI/2;
     // Moving force strength, when present, is the actual deployed strength.
     const power=ship?.strength??f.strength,color=stxGVColor(f.owner);
-    const {span,count}=stxGVFormation(s,power,angle,color,{selected,seed:stxGVHash(f.id),travel:!!ship,veterans:f.veterans||0});
+    const {span,count}=stxGVFormation(s,power,angle,color,{selected,seed:stxGVHash(f.id),travel:!!ship,veterans:f.veterans||0,composition:f.imperialComposition});
     if(count===0){
       // Exhaustion reduces detail, never removes strategic force scale.
       stxGVRing(s,3+STX_GV_TIERS.indexOf(stxGVTier(power))*1.7,color,.8,2);

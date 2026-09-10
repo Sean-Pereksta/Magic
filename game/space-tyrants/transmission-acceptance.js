@@ -81,7 +81,7 @@ function stxTXEligibility(type,q,action='accept'){
     if(!p||p.owner!==0)return no('The requesting world is no longer controlled',true);
     if(p.underAttack)return no('The world is under attack');
     const cost=type==='military'?Math.max(0,Math.round(q.creditCost||0)):action==='autonomy'?Math.ceil((q.cost||0)*.45):(q.cost||0);
-    const startsProject=type==='military'?q.type==='capital':!!q.project,total=cost+(startsProject?STX_TX_PROJECT_FEE:0);
+    const startsProject=type==='military'?q.type==='capital':!!q.project,projectType=type==='military'?q.capitalKind:q.project,projectFee=startsProject&&!['factory','shipyard'].includes(projectType)?STX_TX_PROJECT_FEE:0,commissionFee=type==='military'&&q.type!=='capital'&&typeof stxECRFleetCreditCost==='function'?stxECRFleetCreditCost(q.type==='patrol'?6:15):0,total=Math.max(cost,commissionFee)+projectFee;
     if(empire(0).credits<total)return no(`Need ${total} credits${startsProject?' including project authorization':''}; treasury ${Math.floor(empire(0).credits)}`);
     if(type==='military'&&q.type!=='capital'&&p.infra.shipyard<=0)return no('An operational shipyard is required');
   }else if(type==='trade'||type==='proposal'&&q.kind==='trade'){
@@ -108,10 +108,11 @@ stxRespondMilitaryRequest=function(id,action){
   const check=stxTXEligibility('military',q);if(!check.ok){showToast(check.reason);return false}
   const p=state.planets.find(p=>p.id===q.planetId),cost=Math.max(0,Math.round(q.creditCost||0));
   return stxActionResponse(q,()=>{
+    const beforeCredits=empire(0).credits;
     const ok=q.type==='capital'?startLocalProject(p,q.capitalKind==='shipyard'?'shipyard':'defense','Approved local capital request'):
       stxQueueFleetCommission(p,q.type,'Approved Admiralty request');
     if(!ok)return false;
-    empire(0).credits-=cost;q.status='accepted';q.acceptedAt=state.simTime;q.respondedAt=state.simTime;
+    empire(0).credits-=q.type==='capital'?cost:Math.max(0,cost-(beforeCredits-empire(0).credits));q.status='accepted';q.acceptedAt=state.simTime;q.respondedAt=state.simTime;
     if(q.type!=='capital')setModifier(empire(0),'shipbuilding',1.22,70);
     return true;
   });
