@@ -1,4 +1,5 @@
 import * as cardLibrary from "./warrealms-cards-base.js";
+import { installMoveHeatRuntimeAdapter } from "../warrealms/engine/heat-transfer.js";
 
 const BALANCE_VERSION = 22;
 
@@ -94,6 +95,14 @@ mergeOnAttach("reliquary_repair_arm", {
   repair: { amount: 4, attachedBase: true }
 });
 prependRulesText("reliquary_repair_arm", "When attached, immediately repair that Base for 4.");
+
+// Keep moveHeat as the public card-design key. The adapter only exposes the
+// existing Heat-choice primitive while an effect is being cloned for runtime
+// resolution, so Armory text, validation, AI inspection, and authored card
+// definitions continue to see moveHeat normally.
+installMoveHeatRuntimeAdapter(cardLibrary.STARTER_CARDS);
+installMoveHeatRuntimeAdapter(cardLibrary.CARDS);
+installMoveHeatRuntimeAdapter(cardLibrary.COLLECTIBLE_CARDS);
 
 export const WAR_REALMS_CARD_VERSION = BALANCE_VERSION;
 export * from "./warrealms-cards-base.js";

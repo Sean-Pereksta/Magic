@@ -7,6 +7,7 @@ import {
   enqueueResolution,
   ensureResolutionState
 } from "./resolution-queue.js";
+import { prepareMoveHeatDestination } from "./heat-transfer.js";
 
 export const GAME_EVENT_TYPES = Object.freeze({
   CARD_PLAYED: "CARD_PLAYED",
@@ -214,6 +215,12 @@ export function drainGameEvents(game, handlers = {}, options = {}) {
 }
 
 export function emitGameEvent(game, input = {}, handlers = {}, options = {}) {
+  ensureGameEventState(game);
+  const moveHeat = prepareMoveHeatDestination(game, input);
+  if (moveHeat.refunded) {
+    const resolution = drainGameEvents(game, handlers, options);
+    return { event: null, resolution };
+  }
   const event = queueGameEvent(game, input);
   const resolution = drainGameEvents(game, handlers, options);
   return { event, resolution };
