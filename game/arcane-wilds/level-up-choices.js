@@ -88,20 +88,22 @@ function awEquipSpellForFlow(id,onEquipped=null){
   return false;
 }
 
+let awSeerSpellChoice=false;
 openLevelChoice=function(free=false){
   if(!game.player||modalPause)return;
   if(!free&&game.pendingLevelUps<=0)return;
   if(!free)game.pendingLevelUps--;
   modalPause=true;
+  awSeerSpellChoice=free;
   $('levelTitle').textContent=free?'Arcane Seer':'Level Up • '+game.level;
   const hint=$('levelHint');
-  if(hint)hint.textContent=free?'Choose a spell vision. Any spell you select will be equipped before this choice finishes.':'Exactly one choice evolves or masters a currently equipped spell; every other selected spell is equipped before the level-up finishes.';
+  if(hint)hint.textContent=free?'Choose a spell vision. Known spells are equipped AND receive an upgrade; new spells are unlocked and equipped.':'Exactly one choice evolves or masters a currently equipped spell; every other selected spell is equipped before the level-up finishes.';
   const root=$('levelCards');root.innerHTML='';
   const ids=awLevelSpellChoices(free),openSlot=awFirstOpenSpellSlot();
   for(const id of ids){
     const s=SPELLS[id],owned=game.player.unlocked.includes(id),active=awIsSpellActive(id);
     const activeIndex=active?awActiveSpellSlot(id):-1;
-    const tag=active?`Evolve active spell • Slot ${activeIndex+1}`:
+    const tag=free&&owned?'Equip & upgrade known spell':active?`Evolve active spell • Slot ${activeIndex+1}`:
       owned&&openSlot>=0?`Equip known spell • fills Slot ${openSlot+1}`:
       owned?'Reassign known spell • upgrades retained':
       openSlot>=0?`Unlock & equip • fills Slot ${openSlot+1}`:'Unlock spell • choose active slot';
@@ -111,9 +113,11 @@ openLevelChoice=function(free=false){
 };
 
 selectSpellChoice=function(id){
+  const seer=awSeerSpellChoice;
+  awSeerSpellChoice=false;
   $('levelOverlay').classList.add('hidden');
   if(game.player.unlocked.includes(id)){
-    if(awIsSpellActive(id))openUpgradeChoice(id);
+    if(seer||awIsSpellActive(id))openUpgradeChoice(id);
     else awEquipSpellForFlow(id);
     return;
   }
