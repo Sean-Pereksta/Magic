@@ -73,28 +73,6 @@
   const NEW_SPELL_IDS=Object.keys(NEW_SPELLS);
   const NEW_WEAPON_NAMES=new Set(NEW_WEAPONS.map(w=>w.name));
 
-  /* Make spell presses read immediately without increasing gameplay entity counts. */
-  const baseCastSpell=castSpell;
-  castSpell=function(slot){
-    const id=game.player?.activeSpells?.[slot];
-    const before=id?(game.player.spellState[id]?.cd||0):0;
-    baseCastSpell(slot);
-    if(!id)return;
-    const after=game.player.spellState[id]?.cd||0;
-    if(after<=before+.02)return;
-    const spell=SPELLS[id],rank=rarityRank[spell.rarity]||0;
-    shake=Math.max(shake,2.2+rank*.8);
-    fx('castRing',game.player.x,game.player.y,.18,rarityColors[spell.rarity],{r:.58+rank*.12});
-    burst(game.player.x,game.player.y,rarityColors[spell.rarity],6+rank*2,.7+rank*.08,12);
-    const button=$('spells')?.children?.[slot];
-    if(button){
-      button.animate([
-        {transform:'translateY(0) scale(1)',filter:'brightness(1)'},
-        {transform:'translateY(-3px) scale(1.1)',filter:'brightness(1.65)'},
-        {transform:'translateY(0) scale(1)',filter:'brightness(1)'}
-      ],{duration:145,easing:'ease-out'});
-    }
-  };
 
   /* Tone down constant weapon trails and muzzle flashes before the adaptive governor. */
   const baseMagicProjectile=magicProjectile;

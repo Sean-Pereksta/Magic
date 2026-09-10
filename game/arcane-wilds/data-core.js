@@ -1,7 +1,7 @@
 'use strict';
 
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d', { alpha:false });
+let ctx = canvas.getContext('2d', { alpha:false });
 const $ = id => document.getElementById(id);
 const TAU = Math.PI*2;
 const TILE_W = 96, TILE_H = 48;
@@ -40,7 +40,7 @@ function norm(x,y){const l=Math.hypot(x,y)||1;return {x:x/l,y:y/l}}
 function hash2(x,y,s=0){let h=(x*374761393+y*668265263+s*1442695041)|0;h=(h^(h>>>13))*1274126177;return ((h^(h>>>16))>>>0)/4294967295}
 function roomKey(x,y){return `${x},${y}`}
 function screenToWorldDir(sx,sy){return norm(sy+sx,sy-sx)}
-function worldToScreen(x,y,z=0){return {x:(x-y)*TILE_W*.5 + camera.x, y:(x+y)*TILE_H*.5 + camera.y - z}}
+function worldToScreen(x,y,z=0){if(window.AWWorld?.caching)return window.AWWorld.projectStatic(x,y,z);if(window.AWPresentation?.camera.ready)return window.AWPresentation.camera.project(x,y,z);return {x:(x-y)*TILE_W*.5 + camera.x, y:(x+y)*TILE_H*.5 + camera.y - z}}
 function colorAlpha(hex,a){if(hex.startsWith('#')){const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`}return hex}
 function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 

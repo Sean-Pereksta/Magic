@@ -216,6 +216,8 @@
     overlay.classList.remove('hidden');
   }
 
+  window.awOpenEmptySpellSlot=awOpenEmptySpellSlot;
+
   renderSpellBar=function(){
     if(!game.player)return;
     const root=$('spells'),limit=awSpellSlotLimit();root.innerHTML='';root.classList.toggle('aw-expanded-spells',limit>3);root.dataset.spellSlots=String(limit);
@@ -230,6 +232,7 @@
   };
 
   addEventListener('keydown',e=>{
+    if(window.AWInput)return;
     if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;
     const tag=e.target?.tagName?.toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
     const n=Number(e.key);if(n<4||n>5||n>awSpellSlotLimit())return;

@@ -14,20 +14,18 @@
     fastFrames:0,
     particleCap:isTouch?72:210,
     dprCap:isTouch?1:1.7,
-    renderFps:isTouch?30:60
+    renderFps:60
   };
   window.arcaneWildsPerformance=perf;
 
   let cachedLight=null;
-  let cachedSpellSignature='';
-  let cachedMapSignature='';
   let lastHudPaint=0;
   let resizeTimer=0;
   let stableViewportW=innerWidth;
   let stableViewportH=innerHeight;
 
   function clearRenderCaches(){cachedLight=null;}
-  function currentParticleCap(){return perf.low?(isTouch?60:145):perf.particleCap;}
+  function currentParticleCap(){const choice=window.AWPresentation?.settings.particles;if(choice==='off')return 0;if(choice==='low')return 35;if(choice==='medium')return 90;return perf.low?(isTouch?60:145):perf.particleCap;}
 
   function adoptViewport(nextW,nextH,force=false){
     if(force||!isTouch)return true;
@@ -67,41 +65,6 @@
   addEventListener('orientationchange',()=>scheduleResolutionCap(true),{passive:true});
   if(window.visualViewport)visualViewport.addEventListener('resize',()=>scheduleResolutionCap(false),{passive:true});
   applyResolutionCap(true);
-
-  /* The original HUD rebuilt three spell buttons and the full 5x5 minimap on every
-     animation frame. Keep those nodes and only rebuild when their structure changes. */
-  const baseRenderSpellBar=renderSpellBar;
-  renderSpellBar=function(){
-    const root=$('spells');
-    const ids=game.player?.activeSpells||[];
-    const signature=ids.slice(0,3).map(v=>v||'-').join('|');
-    if(signature!==cachedSpellSignature||root.children.length!==3){
-      cachedSpellSignature=signature;
-      baseRenderSpellBar();
-    }
-    for(let i=0;i<3;i++){
-      const id=ids[i],slot=root.children[i];
-      if(!id||!slot)continue;
-      const s=SPELLS[id],st=game.player.spellState[id]||(game.player.spellState[id]={cd:0});
-      const max=s.cooldown*spellMods(id).cdr,ratio=max?clamp(st.cd/max,0,1):0;
-      const shade=slot.querySelector('.cooldown'),text=slot.querySelector('.cooldown-text');
-      if(shade)shade.style.transform=`scaleY(${ratio})`;
-      if(text){const value=st.cd>.05?st.cd.toFixed(1):'';if(text.textContent!==value)text.textContent=value;}
-    }
-  };
-
-  const baseRenderMinimap=renderMinimap;
-  renderMinimap=function(){
-    const parts=[game.room.x,game.room.y];
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
-      const r=game.rooms[roomKey(game.room.x+dx,game.room.y+dy)];
-      parts.push(r?(r.seen?'s':'-')+(r.cleared?'c':'-')+(r.town?'t':'-')+(r.boss?'b':'-'):'----');
-    }
-    const signature=parts.join('|');
-    if(signature===cachedMapSignature)return;
-    cachedMapSignature=signature;
-    baseRenderMinimap();
-  };
 
   /* mobile-interaction.js wraps updateHUD too, so throttle the final wrapper here. */
   const baseUpdateHUD=updateHUD;
@@ -180,7 +143,8 @@
       ctx.globalAlpha*=.62;
     }
 
-    const weatherCount=perf.low?(isTouch?5:7):12;
+    const weather=window.AWPresentation?.settings.weather;
+    const weatherCount=weather==='off'?0:weather==='low'?4:weather==='medium'?8:perf.low?(isTouch?5:7):12;
     if(room.biome==='frost'||room.biome==='volcanic'||room.biome==='swamp'){
       ctx.globalAlpha=perf.low?.13:.2;
       ctx.fillStyle=room.biome==='frost'?'#dff8ff':room.biome==='volcanic'?'#ff875e':'#b9dd7c';
@@ -209,12 +173,13 @@
   }
 
   drawRoomLight=function(room,pal){
+    const lighting=window.AWPresentation?.settings.lighting;if(lighting==='off')return;
     ctx.save();
     ctx.globalCompositeOperation='screen';
     ctx.fillStyle=roomLightGradient(room,pal);
     ctx.fillRect(0,0,W,H);
 
-    if(!perf.low){
+    if(!perf.low&&lighting!=='low'){
       const lights=[];
       if(game.player?.armorGear?.aura){
         const a=game.player.armorGear.aura;
@@ -229,7 +194,7 @@
     }
     ctx.restore();
     if(!perf.low&&game.enemies.some(e=>e.boss)&&typeof drawBossArena==='function')drawBossArena();
-    if(!perf.low&&typeof drawForegroundWeather==='function')drawForegroundWeather(room,pal);
+    if(!perf.low&&window.AWPresentation?.settings.weather!=='off'&&typeof drawForegroundWeather==='function')drawForegroundWeather(room,pal);
   };
 
   drawParticles=function(){
@@ -251,7 +216,9 @@
     if(running&&!paused&&!modalPause&&!roomTransition){
       const ms=Math.min(40,Math.max(1,dt*1000));
       perf.frameMs=perf.frameMs*.94+ms*.06;
-      if(isTouch){
+      if(window.AWPresentation){
+        perf.low=window.AWPresentation.quality==='low';
+      }else if(isTouch){
         perf.low=true;
         perf.fastFrames=0;
       }else{
@@ -279,7 +246,8 @@
       if(!running)return;
       const dt=Math.min(.033,(now-last)/1000||0);
       last=now;
-      update(dt);
+      window.AWPresentation?.frame(now);
+      if(!window.AWPresentation?.frozen)update(dt);
       if(!lastRenderedAt||now-lastRenderedAt>=targetRenderMs){
         render();
         lastRenderedAt=now;

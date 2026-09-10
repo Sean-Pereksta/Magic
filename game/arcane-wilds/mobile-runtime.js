@@ -65,6 +65,7 @@
 
     function flush(){
       raf=0;
+      if(stick.pointer===null)return;
       const dx=pendingX-cx,dy=pendingY-cy,len=Math.hypot(dx,dy),max=43,k=Math.min(1,len/max);
       stick.x=len?dx/len*k:0;
       stick.y=len?dy/len*k:0;
@@ -79,6 +80,7 @@
     }
 
     zone.addEventListener('pointerdown',e=>{
+      if(stick.pointer!==null)return;window.AWInput?.useDevice('touch');
       stick.pointer=e.pointerId;
       refreshCenter();
       zone.setPointerCapture(e.pointerId);

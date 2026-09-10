@@ -198,7 +198,6 @@
     ancestorChoir:castAncestorChoir
   });
 
-  const baseDrawEffect=drawEffect;
 
   function effectProgress(e){return clamp(1-e.life/e.maxLife,0,1)}
   function effectFade(e){return clamp(e.life/Math.min(e.maxLife,.45),0,1)}
@@ -280,20 +279,19 @@
     ctx.save();ctx.globalCompositeOperation='lighter';for(let i=0;i<count;i++){const a=i/count*TAU+elapsed*.9,r=28+34*t,x=s.x+Math.cos(a)*r,y=s.y+Math.sin(a)*r*.45-10;ctx.strokeStyle=`rgba(210,246,255,${.5*fade})`;ctx.fillStyle=`rgba(185,222,255,${.12*fade})`;ctx.shadowBlur=10;ctx.shadowColor=e.color;ctx.beginPath();ctx.arc(x,y,7,0,TAU);ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(x-5,y+6);ctx.quadraticCurveTo(x,y+18+Math.sin(elapsed*5+i)*4,x+5,y+6);ctx.stroke()}ctx.restore();
   }
 
-  drawEffect=function(e,front){
-    if(e.kind==='solarBeam')return drawSolarBeam(e);
-    if(e.kind==='stormSpearCast')return drawStormSpearCast(e);
-    if(e.kind==='emberCometLaunch')return drawEmberCometLaunch(e);
-    if(e.kind==='emberCometImpact')return drawEmberCometImpact(e);
-    if(e.kind==='glassWinter')return drawGlassWinter(e);
-    if(e.kind==='briarCrown')return drawBriarCrown(e);
-    if(e.kind==='novaSwarm')return drawNovaSwarm(e);
-    if(e.kind==='cycloneWall')return drawCycloneWall(e);
-    if(e.kind==='mirrorAegis')return drawMirrorAegis(e);
-    if(e.kind==='heavenCircuit')return drawHeavenCircuit(e);
-    if(e.kind==='rotBloom')return drawRotBloom(e);
-    if(e.kind==='eclipseCast')return drawEclipseCast(e);
-    if(e.kind==='ancestorChoir')return drawAncestorChoir(e);
-    return baseDrawEffect(e,front);
-  };
+  window.AWPresentation.registerEffects({
+    solarBeam:drawSolarBeam,
+    stormSpearCast:drawStormSpearCast,
+    emberCometLaunch:drawEmberCometLaunch,
+    emberCometImpact:drawEmberCometImpact,
+    glassWinter:drawGlassWinter,
+    briarCrown:drawBriarCrown,
+    novaSwarm:drawNovaSwarm,
+    cycloneWall:drawCycloneWall,
+    mirrorAegis:drawMirrorAegis,
+    heavenCircuit:drawHeavenCircuit,
+    rotBloom:drawRotBloom,
+    eclipseCast:drawEclipseCast,
+    ancestorChoir:drawAncestorChoir
+  });
 })();

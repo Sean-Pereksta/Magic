@@ -9,10 +9,6 @@
   if(window.__arcaneWildsVisualDepthLoaded)return;
   window.__arcaneWildsVisualDepthLoaded=true;
 
-  const VISUAL_DECAL_CAP=isTouch?7:10;
-  const visualDecals=[];
-  window.arcaneWildsVisualDecals=visualDecals;
-
   const BIOME_VISUALS={
     meadow:{motif:'grass',horizon:'softHills',weather:'pollen'},
     forest:{motif:'roots',horizon:'canopy',weather:'leaves'},
@@ -96,23 +92,6 @@
     ctx.restore();
   }
 
-  function drawVisualDecals(){
-    if(!visualDecals.length)return;
-    for(const d of visualDecals){
-      const s=worldToScreen(d.x,d.y),a=clamp(d.life/d.maxLife,0,1);
-      ctx.save();ctx.translate(s.x,s.y);ctx.globalAlpha=.3*a;ctx.strokeStyle=d.color||'#d9e5ff';ctx.fillStyle=colorAlpha(d.color||'#d9e5ff',.08);ctx.lineWidth=1.2;
-      if(d.kind==='slash'){
-        ctx.beginPath();ctx.moveTo(-15,-4);ctx.lineTo(14,5);ctx.stroke();
-      }else if(d.kind==='frostNova'){
-        for(let i=0;i<6;i++){const t=i/6*TAU;ctx.beginPath();ctx.moveTo(Math.cos(t)*6,Math.sin(t)*3);ctx.lineTo(Math.cos(t)*19,Math.sin(t)*8);ctx.stroke()}
-      }else{
-        ctx.beginPath();ctx.ellipse(0,2,18+(1-a)*5,8+(1-a)*2,0,0,TAU);ctx.fill();ctx.stroke();
-        if(d.kind==='deathBurst'){ctx.beginPath();ctx.moveTo(-10,-4);ctx.lineTo(9,6);ctx.moveTo(8,-5);ctx.lineTo(-7,7);ctx.stroke()}
-      }
-      ctx.restore();
-    }
-  }
-
   /* Replace the old per-tile floor repaint with a deterministic, richer and much smaller mark set. */
   drawFloorDetails=function(room,pal){
     const data=ensureRoomVisualData(room),profile=visualProfile(room),limit=perfLow()?12:(isTouch?18:data.marks.length);
@@ -125,9 +104,9 @@
     }
     ctx.restore();
     if(room.biome==='town')drawTownRoads();
-    drawVisualDecals();
   };
 
+  window.awDrawBiomeHorizon=drawBiomeHorizon;
   function drawBiomeHorizon(room,pal){
     const data=ensureRoomVisualData(room),profile=visualProfile(room),h=H*.25;
     const count=perfLow()?4:(isTouch?6:8);
@@ -216,36 +195,6 @@
   const baseDrawProp=drawProp;
   drawProp=function(p,biome){baseDrawProp(p,biome);if(biome==='town')drawTownPropAccent(p)};
 
-  function weaponClass(player){
-    const w=player?.weapon||{},name=`${w.type||''} ${w.baseName||''} ${w.name||''}`.toLowerCase();
-    if(name.includes('bow'))return 'bow';if(name.includes('staff')||name.includes('wand'))return 'staff';if(name.includes('axe'))return 'axe';
-    if(name.includes('spear')||name.includes('lance'))return 'spear';if(name.includes('hammer')||name.includes('mace'))return 'hammer';if(name.includes('dagger'))return 'dagger';return 'blade';
-  }
-
-  function drawPlayerEquipment(player){
-    const s=worldToScreen(player.x,player.y),kind=weaponClass(player),w=player.weapon||{};
-    const c=rarityColors?.[w.rarity]||'#dfe9f5';
-    ctx.save();ctx.translate(s.x+11,s.y-18);ctx.rotate(-.48);ctx.strokeStyle=colorAlpha(c,.82);ctx.fillStyle=colorAlpha(c,.58);ctx.lineWidth=2;ctx.lineCap='round';
-    if(kind==='bow'){
-      ctx.beginPath();ctx.arc(0,0,12,-1.15,1.15);ctx.stroke();ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(5,-11);ctx.lineTo(5,11);ctx.stroke();
-    }else{
-      ctx.beginPath();ctx.moveTo(0,8);ctx.lineTo(0,-12);ctx.stroke();
-      if(kind==='staff'){ctx.beginPath();ctx.arc(0,-15,3.5,0,TAU);ctx.fill()}
-      else if(kind==='axe'){ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(8,-15);ctx.lineTo(8,-7);ctx.closePath();ctx.fill()}
-      else if(kind==='hammer'){ctx.fillRect(-5,-16,10,6)}
-      else if(kind==='spear'){ctx.beginPath();ctx.moveTo(0,-18);ctx.lineTo(4,-10);ctx.lineTo(-4,-10);ctx.closePath();ctx.fill()}
-      else if(kind==='dagger'||kind==='blade'){ctx.beginPath();ctx.moveTo(0,-19);ctx.lineTo(3,-9);ctx.lineTo(-3,-9);ctx.closePath();ctx.fill()}
-    }
-    const armor=String(player.armorGear?.name||'').toLowerCase();
-    ctx.rotate(.48);ctx.strokeStyle='rgba(224,236,248,.22)';ctx.lineWidth=2;
-    if(armor.includes('plate')||armor.includes('guard')||armor.includes('knight')){ctx.beginPath();ctx.arc(-11,4,7,Math.PI,TAU);ctx.arc(9,4,7,Math.PI,TAU);ctx.stroke()}
-    else if(armor.includes('robe')||armor.includes('cloth')){ctx.beginPath();ctx.moveTo(-7,5);ctx.lineTo(-12,15);ctx.moveTo(6,5);ctx.lineTo(11,15);ctx.stroke()}
-    ctx.restore();
-  }
-
-  const baseDrawPlayer=drawPlayer;
-  drawPlayer=function(player){baseDrawPlayer(player);drawPlayerEquipment(player)};
-
   const ENEMY_ACCENTS={
     thorn:new Set(['briarprowler','bloomhexer','rootjuggernaut','thorncolossus']),
     crystal:new Set(['prismscarab','glassoracle','shardram']),
@@ -296,19 +245,4 @@
     baseDrawProjectiles();
   };
 
-  const baseFx=fx;
-  fx=function(kind,x,y,life,color,extra={}){
-    if(['explosion','deathBurst','shockRing','frostNova','slash'].includes(kind)){
-      visualDecals.push({kind,x,y,color:color||'#d8e7ff',life:kind==='slash'?1.8:3.6,maxLife:kind==='slash'?1.8:3.6});
-      if(visualDecals.length>VISUAL_DECAL_CAP)visualDecals.splice(0,visualDecals.length-VISUAL_DECAL_CAP);
-    }
-    baseFx(kind,x,y,life,color,extra);
-  };
-
-  const baseUpdate=update;
-  update=function(dt){
-    baseUpdate(dt);
-    if(!running||paused||modalPause||roomTransition||!visualDecals.length)return;
-    for(let i=visualDecals.length-1;i>=0;i--){visualDecals[i].life-=dt;if(visualDecals[i].life<=0)visualDecals.splice(i,1)}
-  };
 })();

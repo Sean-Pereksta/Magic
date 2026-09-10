@@ -113,7 +113,7 @@ function makeRandomGear({source='enemy',crafted=false,forceSlot=null,rarity=null
  return rollAffixes(item,crafted);
 }
 function dropGearNow(source='enemy',opts={}){
- if(game.loot)return false;game.loot=makeRandomGear({source,...opts});setTimeout(openLootOverlay,180);return true;
+ if(game.loot)return false;game.loot=makeRandomGear({source,...opts});if(window.AWModernUI&&['enemy','elite','boss','cache'].includes(source))window.AWModernUI.offerLoot(game.loot);else setTimeout(openLootOverlay,180);return true;
 }
 
 function equippedItems(){if(!game.player)return [];return [game.player.weapon,game.player.armorGear,...(game.player.trinkets||[])].filter(Boolean)}
