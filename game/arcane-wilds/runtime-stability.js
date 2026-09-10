@@ -2,7 +2,7 @@
 
 /* Arcane Wilds runtime crash containment.
  * Loaded after the cosmetic/performance/navigation wrappers so a malformed optional
- * visual can never permanently kill the requestAnimationFrame chain.
+ * visual or transient movement state can never permanently kill the requestAnimationFrame chain.
  */
 (function(){
   if(window.__arcaneWildsRuntimeStabilityLoaded)return;
@@ -13,6 +13,30 @@
   let lastLoopFaultAt=0;
 
   function finite(v){return Number.isFinite(v)}
+  function finiteVector(v){return !!v&&typeof v==='object'&&finite(v.x)&&finite(v.y)}
+
+  /* playerMovement switches to p.dodgeDir while dodgeTime is active, then immediately
+     dereferences dir.x/dir.y. Older/transient player state can have dodgeTime > 0 without
+     a dodgeDir, which used to throw every frame and leave the world visually frozen while
+     menus still worked. Repair only the missing directional state before simulation. */
+  function normalizeMovementState(){
+    const p=game?.player;
+    if(p&&typeof p==='object'){
+      if(!finiteVector(p.facing))p.facing={x:1,y:0};
+      if(p.dodgeTime>0&&!finiteVector(p.dodgeDir))p.dodgeDir={x:p.facing.x,y:p.facing.y};
+    }
+
+    /* Input-manager normally owns these vectors, but startup/hot-reload timing should not
+       make core movement unsafe if a partial AWInput object is briefly visible. */
+    const input=window.AWInput;
+    if(input&&typeof input==='object'&&!finiteVector(input.move)){
+      try{input.move={x:0,y:0}}catch(_){}
+    }
+    if(input?.aim&&typeof input.aim==='object'){
+      if(!finite(input.aim.x))input.aim.x=0;
+      if(!finite(input.aim.y))input.aim.y=0;
+    }
+  }
 
   /* The Rift Puppeteer content-pack effect never supplied `branch`, while the shared
      Worldroot/Puppet renderer feeds it into Math.sin(). That becomes NaN and strict
@@ -60,11 +84,13 @@
 
   /* Both the original and mobile-optimized loops schedule the next frame only after
      update + render finish. One exception therefore used to stop Arcane Wilds forever.
-     Re-arm the frame chain after a fault; repeated faults also force cosmetic low mode. */
+     Normalize essential movement state before entering that wrapped loop, then retain
+     the existing last-resort frame re-arm for unrelated faults. */
   if(typeof loop==='function'){
     const baseLoop=loop;
     loop=function(now){
       try{
+        normalizeMovementState();
         const result=baseLoop(now);
         loopFaults=0;
         return result;
