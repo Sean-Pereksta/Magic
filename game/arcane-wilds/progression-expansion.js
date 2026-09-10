@@ -208,7 +208,7 @@
     if(hint)hint.textContent='Choose any known inactive spell. Its existing mutations are preserved.';
     for(const id of known){
       const s=SPELLS[id],ups=game.player.upgrades[id]||[];
-      root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,tag:`${ups.length} mutation${ups.length===1?'':'s'} retained`,owned:true},()=>{
+      root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,spellId:id,tag:`${ups.length} mutation${ups.length===1?'':'s'} retained`},()=>{
         awAssignSpell(id,slot);overlay.classList.add('hidden');modalPause=false;toastMsg(`${s.name} equipped in slot ${slot+1}.`);saveGame();updateHUD();
       }));
     }
@@ -246,15 +246,6 @@
       const text=item.spellSlotBonus>=2?'✦ +2 Active Spell Slots • unlocks slots 4 & 5':'✦ +1 Active Spell Slot • up to 5';
       const line=`<div class="aw-slot-grant">${text}</div>`;
       return html.includes('<div class="stats">')?html.replace('<div class="stats">',line+'<div class="stats">'):html.replace('</div>',line+'</div>');
-    };
-  }
-
-  if(typeof renderInventory==='function'){
-    const baseRenderInventory=renderInventory;
-    renderInventory=function(){
-      baseRenderInventory();const root=$('inventoryContent');if(!root)return;
-      const limit=awSpellSlotLimit(),gear=awEquippedSpellSlotGear();
-      root.insertAdjacentHTML('afterbegin',`<div class="aw-slot-summary"><b>✨ Active Spell Capacity: ${limit} / 5</b><span>${limit===3?'Find Rare or Legendary spell-channeling equipment to unlock slots 4 and 5.':`Granted by ${gear.map(i=>i.name).join(' • ')}.`}</span></div>`);
     };
   }
 

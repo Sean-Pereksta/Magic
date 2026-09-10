@@ -240,24 +240,9 @@
      but canvas presentation is capped. This also prevents 90/120 Hz phones from doing
      nearly twice the render work of a typical desktop display. */
   if(isTouch){
-    const targetRenderMs=1000/perf.renderFps;
-    let lastRenderedAt=0;
-    loop=function(now){
-      if(!running)return;
-      const dt=Math.min(.033,(now-last)/1000||0);
-      last=now;
-      window.AWPresentation?.frame(now);
-      if(!window.AWPresentation?.frozen)update(dt);
-      if(!lastRenderedAt||now-lastRenderedAt>=targetRenderMs){
-        render();
-        lastRenderedAt=now;
-      }
-      requestAnimationFrame(loop);
-    };
-
     const resetMobileClock=()=>{
       last=performance.now();
-      lastRenderedAt=0;
+      window.AWRuntime?.resetClock();
       scheduleResolutionCap(false);
     };
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)resetMobileClock()},{passive:true});

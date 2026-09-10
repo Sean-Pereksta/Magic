@@ -5,6 +5,7 @@
   const defaults={up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',dodge:'Space',interact:'KeyE',spell1:'Digit1',spell2:'Digit2',spell3:'Digit3',spell4:'Digit4',spell5:'Digit5',inventory:'KeyI',pause:'Escape'};
   const padDefaults={interact:0,spell1:2,spell2:3,spell3:1,spell4:4,spell5:5,dodge:7,inventory:8,pause:9};
   const held=new Set(),queue=new Map();
+  let gamepadUnavailable=false;
   let priorButtons=[],padIndex=null,binding=null,installed=false,device='keyboard',family='xbox';
   const move={x:0,y:0},aim={x:0,y:0,active:false};
   const settings=()=>window.AWPresentation.settings;
@@ -44,7 +45,11 @@
     }
   }
   function poll(){
-    const pads=typeof navigator.getGamepads==='function'?navigator.getGamepads():[];
+    // Embedded mobile browsers can expose this API while denying permission to read it.
+    let pads=[];
+    if(!gamepadUnavailable&&typeof navigator.getGamepads==='function'){
+      try{pads=navigator.getGamepads();}catch(_){gamepadUnavailable=true;padIndex=null;priorButtons=[];}
+    }
     const pad=Array.from(pads||[]).find(p=>p&&p.connected!==false);
     let pm={x:0,y:0},pa={x:0,y:0};
     if(pad){

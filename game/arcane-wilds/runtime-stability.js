@@ -9,8 +9,8 @@
   window.__arcaneWildsRuntimeStabilityLoaded=true;
 
   let effectFaults=0;
-  let loopFaults=0;
-  let lastLoopFaultAt=0;
+  const faults=new Map();
+  let lastRenderedAt=0;
 
   function finite(v){return Number.isFinite(v)}
 
@@ -58,28 +58,34 @@
     }
   }
 
-  /* Both the original and mobile-optimized loops schedule the next frame only after
-     update + render finish. One exception therefore used to stop Arcane Wilds forever.
-     Re-arm the frame chain after a fault; repeated faults also force cosmetic low mode. */
-  if(typeof loop==='function'){
-    const baseLoop=loop;
-    loop=function(now){
-      try{
-        const result=baseLoop(now);
-        loopFaults=0;
-        return result;
-      }catch(err){
-        const faultAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();
-        loopFaults=faultAt-lastLoopFaultAt<2000?loopFaults+1:1;
-        lastLoopFaultAt=faultAt;
-        purgeInvalidCosmetics();
-        if(window.arcaneWildsPerformance)window.arcaneWildsPerformance.low=true;
-        if(loopFaults<=3||loopFaults%60===0)console.error('Arcane Wilds recovered from a frame exception',err);
-        if(typeof toastMsg==='function'&&loopFaults===1){
-          try{toastMsg('Recovered from a graphics error.')}catch(_){}
-        }
-        if(running)requestAnimationFrame(loop);
-      }
-    };
+  // One frame owner. Optional input, presentation and HUD faults must not prevent
+  // the simulation stage from running; render faults must not kill the RAF chain.
+  function stage(name,fn){
+    try{fn();return true;}
+    catch(err){
+      const count=(faults.get(name)||0)+1;faults.set(name,count);
+      if(window.arcaneWildsPerformance)window.arcaneWildsPerformance.low=true;
+      if(count<=3||count%60===0)console.error('Arcane Wilds '+name+' exception',err);
+      return false;
+    }
   }
+  window.AWRuntime={
+    resetClock(){lastRenderedAt=0;},
+    frame(now){
+      if(!running)return;
+      const dt=Math.max(0,Math.min(.033,(now-last)/1000||0));last=now;
+      try{
+        stage('input',()=>window.AWInput?.poll());
+        const presented=stage('presentation',()=>window.AWPresentation?.frame(now));
+        if(!presented)window.AWPresentation?.releaseFreeze();
+        if(!window.AWPresentation?.frozen)stage('simulation',()=>update(dt));
+        stage('HUD',()=>{if(game.player)window.AWModernUI?.tick();});
+        const interval=isTouch?1000/(window.arcaneWildsPerformance?.renderFps||60):0;
+        if(!lastRenderedAt||now-lastRenderedAt>=interval-.5){
+          lastRenderedAt=now;
+          if(!stage('render',()=>render()))purgeInvalidCosmetics();
+        }
+      }finally{if(running)requestAnimationFrame(loop);}
+    }
+  };
 })();

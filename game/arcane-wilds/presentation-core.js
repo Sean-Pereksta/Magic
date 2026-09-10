@@ -40,11 +40,19 @@
   function pose(e){let s=poses.get(e);if(!s){s={state:'idle',until:0,x:e.x,y:e.y,stride:0,speed:0,recoilX:0,recoilY:0};poses.set(e,s);}return s;}
   function animate(e,state,duration=.25){if(!e)return;const s=pose(e);s.state=state;s.until=frameAt+duration*1000;}
   function ring(x,y,color,kind='cast',life=.4,size=1){return bursts.add({x,y,color,kind,life,size});}
-  const audio={context:null,voices:0,last:new Map(),ambience:null,
+  const audio={disabled:false,context:null,voices:0,last:new Map(),ambience:null,
     unlock(){
+      if(this.disabled)return;
       try{if(!this.context){const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;this.context=new Audio();}if(this.context.state==='suspended')this.context.resume().catch(()=>{});}catch(_){}
     },
+    disable(){
+      this.disabled=true;
+      try{this.context?.close()?.catch?.(()=>{});}catch(_){}
+      this.context=null;this.ambience=null;this.voices=0;
+    },
+    mute(){try{this.ambience?.gain.gain.setTargetAtTime(0,this.context.currentTime,.1);}catch(_){this.disable();}},
     play(kind,color=''){
+      try{
       const ac=this.context;if(!ac||ac.state!=='running'||settings.effects<=0||this.voices>=12)return;
       const now=ac.currentTime;if(now-(this.last.get(kind)??-10)<(kind==='hit'?.055:.09))return;this.last.set(kind,now);
       const pitch={attack:230,cast:480,hit:130,hurt:95,heal:650,dodge:320,perfect:940,reaction:740,death:90,level:880,loot:720,interact:420,boss:65,phase:110,step:70}[kind]||300;
@@ -53,8 +61,10 @@
       osc.frequency.setValueAtTime(pitch+(color.includes('ff99')?-50:0),now);osc.frequency.exponentialRampToValueAtTime(Math.max(30,pitch*(kind==='heal'||kind==='level'?1.8:.45)),now+length);
       gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(settings.effects*(kind==='step'?.035:.09),now+.008);gain.gain.exponentialRampToValueAtTime(.0001,now+length);
       osc.connect(gain);gain.connect(ac.destination);this.voices++;osc.onended=()=>{this.voices--;osc.disconnect();gain.disconnect();};osc.start();osc.stop(now+length+.02);
+      }catch(_){this.disable();}
     },
     ambient(biome){
+      try{
       const ac=this.context;if(!ac||ac.state!=='running')return;
       if(this.ambience?.biome===biome){this.ambience.gain.gain.setTargetAtTime(settings.music*.022,ac.currentTime,.25);return;}
       if(this.ambience){this.ambience.gain.gain.setTargetAtTime(0,ac.currentTime,.4);for(const o of this.ambience.osc)o.stop(ac.currentTime+2);}
@@ -62,6 +72,7 @@
       const base=/crypt|gloam|volcanic/.test(biome)?73.42:/town|meadow/.test(biome)?130.81:110;
       const osc=[1,1.5,2].map(f=>{const o=ac.createOscillator();o.type='sine';o.frequency.value=base*f;o.connect(gain);o.start();o.onended=()=>o.disconnect();return o;});
       this.ambience={biome,gain,osc};
+      }catch(_){this.disable();}
     }
   };
   function event(kind,data={}){
@@ -95,7 +106,7 @@
   function roomChanged(){camera.ready=false;roomRef=null;intro=null;hitPause=0;for(const pool of [decals,bursts,lights,deaths])pool.clear();window.AWWorld?.invalidate();}
   function frame(now){
     const raw=frameAt?Math.max(0,now-frameAt):16.7;frameAt=now;const dt=Math.min(.05,raw/1000);
-    if(!running||paused||modalPause||roomTransition||document.hidden){window.AWInput?.poll();window.AWInput?.queue.clear();audio.ambience?.gain.gain.setTargetAtTime(0,audio.context.currentTime,.1);return;}
+    if(!running||paused||modalPause||roomTransition||document.hidden){audio.mute();return;}
     // Real frame spacing, before simulation clamping. Hysteresis avoids quality oscillation.
     if(raw<250){frameMs=frameMs*.96+raw*.04;if(frameMs>23){slow+=dt;fast=0;}else if(frameMs<18.5){fast+=dt;slow=Math.max(0,slow-dt);}else{fast=0;slow=Math.max(0,slow-dt*.5);}}
     if(settings.quality==='auto'){
@@ -113,7 +124,7 @@
       if(e.boss&&!e.dead){const phase=e.hp/e.maxHp<.5?2:1,old=bosses.get(e)||1;if(phase>old){ring(e.x,e.y,e.color,'reaction',1,2.7);animate(e,'heavyCast',.6);window.AWModernUI?.announce(e.name,'PHASE II');audio.play('phase');}bosses.set(e,phase);}
     }
     const p=game.player,s=p&&pose(p);if(s?.speed>.25&&!intro){footstep+=dt;if(footstep>.22){footstep=0;decals.add({x:p.x,y:p.y,color:colorFor(priorBiome),life:1,kind:priorBiome==='swamp'?'ripple':'step',size:priorBiome==='swamp'?9:3});audio.play('step');}}
-    camera.tick(dt);window.AWInput?.poll();window.AWModernUI?.tick();
+    camera.tick(dt);
   }
   const fx={decals,bursts,lights,deaths,
     drawGround(){
@@ -140,6 +151,7 @@
     }
   };
   window.AWPresentation={settings,camera,fx,audio,pose,animate,event,frame,roomChanged,Pool,colorFor,effectRenderers,
+    releaseFreeze(){intro=null;hitPause=0;},
     registerEffects(entries){for(const [kind,render] of Object.entries(entries))effectRenderers.set(kind,render);},
     saveSettings(){try{localStorage.setItem(KEY,JSON.stringify(settings));}catch(_){}},
     get quality(){return quality;},get frameMs(){return frameMs;},get cinematic(){return !!intro;},get frozen(){return !!intro||hitPause>0;},get intro(){return intro;},

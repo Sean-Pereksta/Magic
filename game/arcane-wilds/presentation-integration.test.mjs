@@ -45,3 +45,74 @@ test('every spell cast and enemy family can render through the integrated regist
 test('quality degrades from real frame times without culling gameplay arrays',()=>{
  const h=runtime();try{h.run('startNewGame();window.AWPresentation.settings.quality="auto"');h.step(90,40);assert.equal(h.run('window.AWPresentation.quality'),'low');h.run('const referenceEnemies=game.enemies,referenceAttacks=game.projectiles,referenceHazards=game.hazards;window.AWPresentation.settings.particles="off";render()');assert.equal(h.run('game.enemies===referenceEnemies&&game.projectiles===referenceAttacks&&game.hazards===referenceHazards'),true);assert.deepEqual(h.errors,[]);}finally{h.close();}
 });
+
+test('mobile restricted Gamepad API cannot starve simulation or touch movement',()=>{
+ const h=runtime(true);try{
+ let reads=0;h.w.navigator.getGamepads=()=>{reads++;throw new h.w.DOMException('Blocked by permissions policy','SecurityError');};
+ h.run('startNewGame()');h.step(2);
+ const before=h.run('elapsed'),x=h.run('game.player.x');
+ h.run('moveStick.active=true;moveStick.x=1;moveStick.y=0');h.step(20);
+ assert.ok(h.run('elapsed')>before+.2);assert.ok(h.run('game.player.x')>x);
+ assert.equal(reads,1);assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});
+
+test('mobile optional audio failure cannot freeze a boss intro or combat',()=>{
+ const h=runtime(true);try{
+ h.w.AudioContext=class {state='running';currentTime=0;createOscillator(){throw new Error('Audio device unavailable');}createGain(){throw new Error('Audio device unavailable');}close(){return Promise.resolve();}};
+ h.run('startNewGame();AWPresentation.audio.unlock();game.roomData.town=false;spawnBoss(BOSSES[0],game.roomData);AWPresentation.roomChanged()');
+ h.step(140);assert.equal(h.run('AWPresentation.cinematic'),false);assert.ok(h.run('elapsed')>.2);
+ const before=h.run('elapsed');h.run('AWInput.press("spell1")');h.step(20);assert.ok(h.run('elapsed')>before);assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});
+
+test('optional presentation and HUD faults cannot prevent subsequent simulation frames',()=>{
+ const h=runtime(true);try{
+ h.run('startNewGame()');h.step(3);const before=h.run('elapsed');
+ h.run('AWPresentation.frame=()=>{throw new Error("Cosmetic fault")};AWModernUI.tick=()=>{throw new Error("HUD fault")}');
+ h.step(30);assert.ok(h.run('elapsed')>before+.4);assert.ok(h.errors.some(e=>e.includes('presentation exception')));assert.ok(h.errors.some(e=>e.includes('HUD exception')));
+ }finally{h.close();}
+});
+
+for(const touch of [false,true])test(`${touch?'mobile':'desktop'} inventory search and slot assignment preserve learned spells, mutations and cooldowns`,()=>{
+ const h=runtime(touch);try{
+ h.run('startNewGame();game.player.unlocked=["firebolt","frostnova","chain","meteor"];game.player.activeSpells=["firebolt","frostnova","chain"];game.player.upgrades.meteor=[UPGRADE_POOLS.meteor[0][0]];game.player.spellState.meteor={cd:4};renderInventory();showOverlay("inventoryOverlay")');
+ const doc=h.w.document;
+ assert.equal(doc.querySelectorAll('#inventoryContent .gear-card').length,5);
+ doc.querySelector('[data-page="spells"]').click();assert.equal(doc.querySelectorAll('[data-active-slot]').length,3);
+ const search=doc.querySelector('#awSpellSearch');search.value=h.run('UPGRADE_POOLS.meteor[0][1]');search.dispatchEvent(new h.w.Event('input'));
+ assert.equal(doc.querySelectorAll('[data-spell]').length,1);doc.querySelector('[data-spell="meteor"]').click();
+ assert.equal(doc.querySelectorAll('[data-equip-slot]').length,3);doc.querySelector('[data-equip-slot="1"]').click();
+ assert.equal(h.run('game.player.activeSpells[1]'),'meteor');assert.equal(h.run('game.player.spellState.meteor.cd'),4);
+ assert.equal(h.run('game.player.upgrades.meteor[0]'),h.run('UPGRADE_POOLS.meteor[0][0]'));assert.ok(h.run('game.player.unlocked.includes("frostnova")'));
+ assert.equal(h.run('modalPause'),true);assert.match(doc.querySelector('#awEquipStatus').textContent,/equipped in slot 2/);
+ h.run('game.player.armorGear.spellSlotBonus=2;recomputePlayerStats(false);renderInventory()');
+ assert.equal(doc.querySelectorAll('[data-active-slot]').length,5);assert.equal(doc.querySelectorAll('[data-equip-slot]').length,5);
+ doc.querySelector('[data-equip-slot="4"]').click();assert.equal(h.run('game.player.activeSpells[4]'),'meteor');assert.equal(h.run('game.player.activeSpells.filter(id=>id==="meteor").length'),1);
+ const filter=doc.querySelector('#awSpellFilter');filter.value='inactive';filter.dispatchEvent(new h.w.Event('change'));assert.equal(doc.querySelectorAll('[data-spell]').length,0);
+ doc.querySelector('[data-page="journal"]').click();assert.ok(doc.querySelector('.aw-materials').children.length>0);
+ doc.querySelector('[data-close="inventoryOverlay"]').click();const elapsed=h.run('elapsed');h.step(10);assert.ok(h.run('elapsed')>elapsed);
+ h.run('loadGame()');assert.equal(h.run('game.player.activeSpells[4]'),'meteor');assert.equal(h.run('game.player.upgrades.meteor[0]'),h.run('UPGRADE_POOLS.meteor[0][0]'));assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});
+
+test('reopening settings and closing nested inventory cannot leave a hidden pause behind',()=>{
+ const h=runtime(true);try{
+ h.run('startNewGame();AWModernUI.openSettings();AWModernUI.openSettings();AWModernUI.closeSettings()');
+ assert.equal(h.run('paused||modalPause'),false);
+ h.run('togglePause();renderInventory();showOverlay("inventoryOverlay");closeOverlay("inventoryOverlay")');assert.equal(h.run('paused&&modalPause'),true);
+ h.run('togglePause()');assert.equal(h.run('paused||modalPause'),false);const before=h.run('elapsed');h.step(15);assert.ok(h.run('elapsed')>before);assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});
+
+test('mobile level-up evolution retains its existing reward and resumes simulation',()=>{
+ const h=runtime(true);try{
+ h.run('startNewGame();game.pendingLevelUps=1;openLevelChoice()');
+ const doc=h.w.document,card=doc.querySelector('#levelCards .owned-mark').closest('button');
+ assert.equal(doc.querySelectorAll('#levelCards .owned-mark').length,1);assert.ok(card.querySelector('svg'));assert.match(card.textContent,/cooldown/);
+ card.click();const id=h.run('game.selectedSpell'),before=h.run('game.player.upgrades[game.selectedSpell]?.length||0');
+ doc.querySelector('#upgradeCards button').click();assert.equal(h.run('game.player.upgrades[game.selectedSpell]?.length||0'),before+1);
+ assert.ok(h.run(`awIsSpellActive(${JSON.stringify(id)})`));assert.equal(h.run('modalPause'),false);
+ const elapsed=h.run('elapsed');h.step(10);assert.ok(h.run('elapsed')>elapsed);assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});

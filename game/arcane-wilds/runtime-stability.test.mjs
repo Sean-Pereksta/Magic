@@ -14,7 +14,9 @@ function harness({frameThrows=false}={}){
   const context={
     window:{arcaneWildsPerformance:{low:false}},
     game:{effects:[],particles:[]},
-    running:true,
+    running:true,last:0,isTouch:true,
+    update(){},
+    render(){if(frameThrows)throw new Error('render exploded');},
     performance:{now:()=>1000},
     Date,
     Number,
@@ -27,7 +29,7 @@ function harness({frameThrows=false}={}){
         if(!Number.isFinite(x))throw new TypeError('non-finite canvas coordinate');
       }
     },
-    loop(){if(frameThrows)throw new Error('render exploded');}
+    loop(now){context.window.AWRuntime.frame(now);}
   };
   vm.createContext(context);
   vm.runInContext(source,context);

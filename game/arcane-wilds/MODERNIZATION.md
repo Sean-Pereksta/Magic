@@ -16,7 +16,8 @@ The entry document now declares the entire script order explicitly. `mobile-inte
 | HUD, comparison, settings, dialogue portrait and loot labels | `modern-ui.js` | Stable spell nodes; 3–5 slots; semantic menu controls |
 | Cosmetic budgets, viewport sizing and existing particles | `performance.js` | Uses presentation quality/preferences; keeps gameplay collections intact |
 | Door geometry and entrance spawn safety | `navigation-clarity.js` | Retained; camera projection now has one owner |
-| Frame crash containment | `runtime-stability.js` | Last initialization boundary |
+| Inventory and learned spell selection | `inventory-ui.js` | Equipment/spells/journal tabs; existing assignment gate and save functions |
+| Frame scheduling and crash containment | `runtime-stability.js` | Sole frame owner; independent input, presentation, simulation, HUD and render stages |
 
 Removed duplicate generic cast feedback, the second equipment overlay, independent decal allocation, stale three-slot HUD caching, and overwritten atmosphere/simulation copies. Existing gameplay extension wrappers remain where they implement catalog, combat, progression or save behavior; this is not an engine rewrite.
 
@@ -42,7 +43,17 @@ npm ci --prefix game/arcane-wilds --ignore-scripts
 npm test --prefix game/arcane-wilds
 ```
 
-45 checks cover existing cloud/content/progression regression contracts, real input-buffer behavior, gamepad edge/disconnect handling, mapping collisions, pool reuse, whole-script parsing, desktop/mobile DOM initialization, five-slot node stability, settings, loot comparison, old/new save restoration, boss lifecycle and all spell/enemy render paths. The integration harness validates canvas coordinates with a test context; it does not rasterize images or measure GPU performance.
+52 checks cover existing cloud/content/progression regression contracts, real input-buffer behavior, gamepad edge/disconnect handling, mapping collisions, pool reuse, whole-script parsing, desktop/mobile DOM initialization, five-slot node stability, settings, loot comparison, old/new save restoration, boss lifecycle and all spell/enemy render paths. The integration harness validates canvas coordinates with a test context; it does not rasterize images or measure GPU performance.
+
+## Mobile freeze and menu follow-up
+
+The regression harness reproduced a stationary world with responsive DOM menus when `navigator.getGamepads()` throws a permissions-policy `SecurityError`. Previously, the presentation frame polled it before simulation; the outer recovery loop repeatedly retried the same exception. The input manager now treats an inaccessible Gamepad API as unavailable for the page session while retaining touch and keyboard input.
+
+A second injected failure in WebAudio node creation could prevent a boss introduction from expiring. Optional audio now shuts down cleanly on device failures. The runtime owns a single frame pipeline and independently contains optional input, animation, HUD and rendering errors, allowing simulation and future frames to continue. Failed animation frames release cosmetic freeze flags. Simulation errors remain separately logged, and gameplay objects are not culled for performance.
+
+Inventory browsing now has Equipment, Spells and Journal tabs, larger mobile cards, a persistent close header, search by name/effect/mutation, equipped filters, explicit 3–5 slot assignment, and mutation details. Assignment uses the existing loadout gate and saves without resetting cooldowns, granting upgrades or discarding replaced learned spells. Evolution and replacement cards use the same elemental icons and readable cooldown labels. The obsolete inventory render copies were removed.
+
+Additional integration checks cover restricted controller access, unavailable audio, optional frame failures, nested menu pause state, spellbook search, slot assignment, retained mutations/cooldowns and save restoration on desktop and touch configurations. These reproduce concrete failure paths; they do not establish which browser exception occurred on the reporting device without its console log.
 
 ## Remaining validation and limits
 

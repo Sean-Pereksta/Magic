@@ -92,10 +92,10 @@ openLevelChoice=function(free=false){
   if(!game.player||modalPause)return;
   if(!free&&game.pendingLevelUps<=0)return;
   if(!free)game.pendingLevelUps--;
-  modalPause=true;
+  window.AWInput?.clear();modalPause=true;
   $('levelTitle').textContent=free?'Arcane Seer':'Level Up • '+game.level;
   const hint=$('levelHint');
-  if(hint)hint.textContent=free?'Choose a spell vision. Any spell you select will be equipped before this choice finishes.':'Exactly one choice evolves or masters a currently equipped spell; every other selected spell is equipped before the level-up finishes.';
+  if(hint)hint.textContent=free?'Choose a spell vision. Any spell you select will be equipped before this choice finishes.':'Evolve an equipped spell, or bring another spell into your loadout.';
   const root=$('levelCards');root.innerHTML='';
   const ids=awLevelSpellChoices(free),openSlot=awFirstOpenSpellSlot();
   for(const id of ids){
@@ -105,7 +105,7 @@ openLevelChoice=function(free=false){
       owned&&openSlot>=0?`Equip known spell • fills Slot ${openSlot+1}`:
       owned?'Reassign known spell • upgrades retained':
       openSlot>=0?`Unlock & equip • fills Slot ${openSlot+1}`:'Unlock spell • choose active slot';
-    root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,tag,owned:active},()=>selectSpellChoice(id)));
+    root.appendChild(choiceCard({rarity:s.rarity,icon:s.icon,name:s.name,desc:s.desc,spellId:id,tag,owned:active},()=>selectSpellChoice(id)));
   }
   $('levelOverlay').classList.remove('hidden');
 };
@@ -150,7 +150,7 @@ openUpgradeChoice=function(id){
 };
 
 openReplaceChoice=function(id,onEquipped=null){
-  modalPause=true;
+  window.AWInput?.clear();modalPause=true;
   const limit=awCurrentSpellLimit(),overlay=$('replaceOverlay'),root=$('replaceCards');root.innerHTML='';
   const title=overlay.querySelector('h2'),hint=overlay.querySelector('.overlay-head p');
   const known=game.player.unlocked.includes(id),upgrades=(game.player.upgrades[id]||[]).length;
@@ -161,6 +161,7 @@ openReplaceChoice=function(id,onEquipped=null){
     root.appendChild(choiceCard({
       rarity:s?.rarity||SPELLS[id].rarity,
       icon:s?.icon||'＋',
+      spellId:s?old:null,
       name:s?`Replace ${s.name}`:`Fill empty slot ${i+1}`,
       desc:s?`Put ${SPELLS[id].name} into active slot ${i+1}. ${s.name} remains learned with all of its mutations.`:`Put ${SPELLS[id].name} into active slot ${i+1}.`,
       tag:`Slot ${i+1}`

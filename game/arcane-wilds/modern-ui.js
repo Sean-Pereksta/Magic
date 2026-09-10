@@ -12,7 +12,7 @@
   const panel=node('div','awSettings','overlay hidden');panel.innerHTML='<div class="panel aw-settings-panel" role="dialog" aria-modal="true" aria-labelledby="awSettingsTitle"><div class="overlay-head"><h2 id="awSettingsTitle">Settings</h2><button class="btn secondary" id="awCloseSettings">Close</button></div><div id="awSettingsFields"></div></div>';
   $('awCloseSettings').onclick=closeSettings;
   function announce(title,subtitle=''){notice.innerHTML=`<strong>${escape(title)}</strong><span>${escape(subtitle)}</span>`;notice.classList.add('show');noticeUntil=performance.now()+1700;}
-  function openSettings(){previousFocus=document.activeElement;settingsPaused=paused;paused=true;I.clear();showOverlay('awSettings');refreshSettings();$('awCloseSettings').focus();}
+  function openSettings(){if(!panel.classList.contains('hidden'))return;previousFocus=document.activeElement;settingsPaused=paused;paused=true;I.clear();showOverlay('awSettings');refreshSettings();$('awCloseSettings').focus();}
   function closeSettings(){I.cancelBinding();panel.classList.add('hidden');const other=Array.from(document.querySelectorAll('.overlay')).some(n=>n!==panel&&!n.classList.contains('hidden'));modalPause=other;paused=settingsPaused;I.clear();previousFocus?.focus?.();}
   function refreshSettings(){
     const root=$('awSettingsFields');root.innerHTML='';
@@ -92,6 +92,6 @@
     if(buttons[9]&&!previous[9]&&overlay.id==='pauseOverlay')$('resumeBtn').click();
     return true;
   }
-  window.AWModernUI={portrait,menuGamepad,tick,announce,queued,openSettings,closeSettings,refreshSettings,compare,decorateComparison,offerLoot,groundTarget,inspectLoot,drawLoot};
+  window.AWModernUI={icon,portrait,menuGamepad,tick,announce,queued,openSettings,closeSettings,refreshSettings,compare,decorateComparison,offerLoot,groundTarget,inspectLoot,drawLoot};
   I.install();
 })();
