@@ -9,11 +9,15 @@ const here=dirname(fileURLToPath(import.meta.url));
 const source=readFileSync(join(here,'runtime-stability.js'),'utf8');
 const mobileInteraction=readFileSync(join(here,'mobile-interaction.js'),'utf8');
 
-function harness({frameThrows=false}={}){
+function harness({frameThrows=false,movementState=false,partialInput=false}={}){
   let scheduled=null;
   const context={
-    window:{arcaneWildsPerformance:{low:false}},
-    game:{effects:[],particles:[]},
+    window:{arcaneWildsPerformance:{low:false},...(partialInput?{AWInput:{}}:{})},
+    game:{
+      effects:[],
+      particles:[],
+      player:movementState?{x:4,y:5,dodgeTime:.2,facing:{x:0,y:1}}:null
+    },
     running:true,
     performance:{now:()=>1000},
     Date,
@@ -26,8 +30,21 @@ function harness({frameThrows=false}={}){
         const x=Math.sin(4+e.branch);
         if(!Number.isFinite(x))throw new TypeError('non-finite canvas coordinate');
       }
-    },
-    loop(){if(frameThrows)throw new Error('render exploded');}
+    }
+  };
+  context.loop=function(){
+    if(frameThrows)throw new Error('render exploded');
+    if(movementState){
+      const p=context.game.player;
+      let dir={x:0,y:0};
+      if(p.dodgeTime>0)dir=p.dodgeDir;
+      p.x+=dir.x;
+      p.y+=dir.y;
+    }
+    if(partialInput){
+      context.window.AWInput.move.x+=0;
+      context.window.AWInput.move.y+=0;
+    }
   };
   vm.createContext(context);
   vm.runInContext(source,context);
@@ -46,6 +63,22 @@ test('broken cosmetic effects are quarantined instead of escaping render',()=>{
   const effect={kind:'other',x:Number.NaN,y:5,life:.8};
   assert.doesNotThrow(()=>context.drawEffect(effect,false));
   assert.equal(effect.life,0);
+});
+
+test('active dodge without dodgeDir is repaired before playerMovement dereferences dir.x',()=>{
+  const {context}=harness({movementState:true});
+  assert.doesNotThrow(()=>context.loop(16));
+  assert.equal(context.game.player.dodgeDir.x,0);
+  assert.equal(context.game.player.dodgeDir.y,1);
+  assert.equal(context.game.player.x,4);
+  assert.equal(context.game.player.y,6);
+});
+
+test('partial AWInput state gets a neutral move vector before simulation',()=>{
+  const {context}=harness({partialInput:true});
+  assert.doesNotThrow(()=>context.loop(16));
+  assert.equal(context.window.AWInput.move.x,0);
+  assert.equal(context.window.AWInput.move.y,0);
 });
 
 test('a frame exception re-arms the animation loop instead of hard freezing',()=>{
