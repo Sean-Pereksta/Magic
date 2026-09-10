@@ -23,7 +23,7 @@ test('factory and shipyard recipes contain raw resources only',()=>{
     const need=json(h,`stxOLBuildCost('${type}',state.p,{})`);
     assert.equal('components' in need,false,type);
     assert.equal('equipment' in need,false,type);
-    assert.ok(Object.keys(need).every(r=>RESOURCES.includes(r)),type);
+    assert.ok(Object.keys(need).every(r=>json(h,'RESOURCES').includes(r)),type);
   }
 });
 

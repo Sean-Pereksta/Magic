@@ -7,7 +7,7 @@ function lab(){const h=createSimulation();h.run(`state.p=playerWorlds()[0];state
 test('two cities and a factory advance together and complete exactly once',()=>{
  const h=lab();h.run(`startLocalProject(state.p,'city');startLocalProject(state.p,'city');startLocalProject(state.p,'factory');state.cities=state.p.infra.city;state.cap=state.p.capacity;state.pop=state.p.pop;stxSDAllocatePlanet(state.p);tickLocalProject(state.p,10)`);
  assert.equal(h.run('state.p.stxLocalProjects.length'),3);assert.ok(h.run('state.p.stxLocalProjects.every(q=>q.progress>0)'));
- h.run('for(let i=0;i<600;i++){stxSDAllocatePlanet(state.p);tickLocalProject(state.p,1)}');assert.equal(h.run('state.p.stxLocalProjects.length'),0);assert.equal(h.run('state.p.infra.city'),h.run('state.cities+2'));near(h.run('state.p.capacity'),h.run('state.cap+2*state.p.stxCityCapacity'));near(h.run('state.p.pop'),h.run('state.pop'));
+ h.run('for(let i=0;i<600;i++){stxSDAllocatePlanet(state.p);tickLocalProject(state.p,1)}');assert.equal(h.run('state.p.stxLocalProjects.length'),0);assert.equal(h.run('state.p.infra.city'),h.run('state.cities+2'));near(h.run('state.p.capacity'),h.run('state.cap+2*state.p.stxCityCapacity*stxIDTrait(state.p,"housing")*state.p.imperialGeography.sizeFactor'));near(h.run('state.p.pop'),h.run('state.pop'));
  h.run('tickLocalProject(state.p,1000)');assert.equal(h.run('state.p.infra.city'),h.run('state.cities+2'));
 });
 test('parallel projects retain independent shortages and battle pause reasons',()=>{

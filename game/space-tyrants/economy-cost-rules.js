@@ -19,7 +19,7 @@ function stxECRRawRecipe(recipe){
   return Object.fromEntries(Object.entries(raw).map(([r,v])=>[r,Number((Number(v)/total).toFixed(6))]));
 }
 function stxECRScaleCost(cost,count=1){return Object.fromEntries(Object.entries(cost).map(([r,v])=>[r,Number(v)*count]))}
-function stxECRCostText(cost){return Object.entries(cost).map(([r,v])=>`${stxSDResourceLabel(r)} ${Number(v)%1?Number(v).toFixed(1):Number(v)}`).join(" · ")}
+function stxECRCostText(cost){return Object.entries(cost).map(([r,v])=>`${stxSDResourceLabel(r)} ${r==="trained"?Math.round(Number(v)*1e6).toLocaleString():Number(v).toLocaleString(undefined,{maximumFractionDigits:4})}`).join(" · ")}
 function stxECRFleetCreditCost(count){return Math.max(1,Math.ceil(Number(count)*STX_ECR_FLEET_CREDITS_PER_VESSEL))}
 function stxECRTransitCreditCost(from,to,count){return Math.max(1,Math.ceil(Number(count)/6)+Math.floor(dist(from,to)/1800))}
 

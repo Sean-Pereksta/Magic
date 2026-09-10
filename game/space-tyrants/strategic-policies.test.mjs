@@ -73,9 +73,9 @@ test('save and load preserve pending response times and active policy duration',
   assert.equal(h.run('JSON.stringify({request:state.resourceTradeEconomy.requests[0],active:stxPolicyActive(0)})'),before);
   h.run('state.simTime=31;stxRTBroadcastTick()');assert.ok(h.run('state.resourceTradeEconomy.requests[0].contacts.some(c=>c.responded)'));
 });
-test('all normal recipes are 65–80% raw materials and preserve distinct identities',()=>{
+test('factory and shipyard recipes are raw-only; other recipes preserve material diversity',()=>{
   const h=lab(),recipes=h.run('STX_PS_RECIPES');
-  for(const [kind,recipe] of Object.entries(recipes)){const raw=Object.entries(recipe).filter(([r])=>r!=='components'&&r!=='equipment').reduce((n,[,v])=>n+v,0);assert.ok(raw>=.65-1e-9&&raw<=.8+1e-9,`${kind}: ${raw}`);assert.ok(recipe.components>0&&recipe.equipment>0)}
+  for(const [kind,recipe] of Object.entries(recipes)){const raw=Object.entries(recipe).filter(([r])=>r!=='components'&&r!=='equipment').reduce((n,[,v])=>n+v,0);if(['factory','shipyard'].includes(kind)){assert.ok(Math.abs(raw-1)<1e-5);assert.equal(recipe.components,undefined);assert.equal(recipe.equipment,undefined)}else{assert.ok(raw>=.65-1e-9&&raw<=.8+1e-9,`${kind}: ${raw}`);assert.ok(recipe.components>0&&recipe.equipment>0)}}
   assert.ok(recipes.city.silicates>recipes.city.components);assert.ok(recipes.research.rare>recipes.research.iron||!recipes.research.iron);
   const ships=h.run('STX_RT_SHIP_RECIPES');assert.ok(ships.fleet.iron+ships.fleet.helium+ships.fleet.titanium>ships.fleet.components+ships.fleet.equipment);assert.ok(ships.tanker.helium>ships.freighter.helium);assert.ok(ships.research.rare>ships.fleet.rare);
 });
