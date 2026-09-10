@@ -19,6 +19,7 @@
     if(target.type==='forge')return '⚒ FORGE';
     if(target.type==='well')return '💧 HEAL';
     if(target.type==='seer')return '🔮 SEER';
+    if(target.type==='villagePortal')return '◉ TRAVEL';
     return '✦ USE';
   }
 

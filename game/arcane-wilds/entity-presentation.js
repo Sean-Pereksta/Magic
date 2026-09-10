@@ -49,9 +49,9 @@
     const wind=e.telegraph?clamp(1-e.stateTime/(e.telegraph.maxTime||1),0,1):0;
     if(/charger|ram|boar|brute|hound|wolf|beast/.test(ai+' '+e.type)){
       ctx.scale(1+wind*.18,1-wind*.2);ctx.rotate(side*(s.speed*.08+wind*.13));
-      for(let i=0;i<4;i++){const x=(i-1.5)*7,step=Math.sin(s.stride+(i%2)*Math.PI)*5*s.speed;line(x,0,x+step,9,e.color,3);}
+      if(!window.AWEnemyAnatomy)for(let i=0;i<4;i++){const x=(i-1.5)*7,step=Math.sin(s.stride+(i%2)*Math.PI)*5*s.speed;line(x,0,x+step,9,e.color,3);}
     }else if(/mage|summon|beam|spread|necro|witch|priest/.test(ai)){
-      ctx.translate(0,-wind*4);line(-12,-12,-19,-9-wind*17,e.color,4);line(12,-12,19,-9-wind*17,e.color,4);
+      ctx.translate(0,-wind*4);if(!window.AWEnemyAnatomy){line(-12,-12,-19,-9-wind*17,e.color,4);line(12,-12,19,-9-wind*17,e.color,4);}
       if(wind){ctx.strokeStyle=e.proj||e.color;ctx.beginPath();ctx.arc(0,-37,4+wind*7,0,TAU);ctx.stroke();}
     }else if(/orbiter|eye|fly|drake|phoenix|wisp/.test(ai)){
       ctx.translate(0,-6-Math.sin(elapsed*4+e.phase)*3);ctx.scale(1+Math.sin(elapsed*5+e.phase)*.04,1);
@@ -59,10 +59,10 @@
       ctx.scale(1+wind*.12,1-wind*.32);if(/burrow/.test(ai)&&wind)ctx.globalAlpha=Math.max(.3,1-wind*.6);
     }else if(/golem|giant|shield|turret/.test(ai)){
       ctx.rotate(Math.sin(s.stride)*s.speed*.055);ctx.translate(side*wind*3,wind*2);
-      line(-9,0,-10+Math.sin(s.stride)*3*s.speed,9,'#3c3940',5);line(9,0,10-Math.sin(s.stride)*3*s.speed,9,'#3c3940',5);
+      if(!window.AWEnemyAnatomy){line(-9,0,-10+Math.sin(s.stride)*3*s.speed,9,'#3c3940',5);line(9,0,10-Math.sin(s.stride)*3*s.speed,9,'#3c3940',5);}
     }else{
       ctx.scale(1+Math.sin(s.stride)*s.speed*.06,1-Math.sin(s.stride)*s.speed*.07);
-      line(-7,0,-9+Math.sin(s.stride)*4*s.speed,8,e.color,3);line(7,0,9-Math.sin(s.stride)*4*s.speed,8,e.color,3);
+      if(!window.AWEnemyAnatomy){line(-7,0,-9+Math.sin(s.stride)*4*s.speed,8,e.color,3);line(7,0,9-Math.sin(s.stride)*4*s.speed,8,e.color,3);}
     }
     if(e.boss&&P.intro?.boss===e){ctx.scale(1+Math.sin(P.intro.time*Math.PI)*.09,1+Math.sin(P.intro.time*Math.PI)*.09);}
   }

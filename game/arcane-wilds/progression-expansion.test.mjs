@@ -51,7 +51,7 @@ test('normal level-up reserves exactly one active spell evolution or mastery cho
 
 test('known inactive spell selections equip instead of being treated as active ownership',()=>{
   assert.match(levelChoices,/owned&&openSlot>=0\?`Equip known spell • fills Slot/);
-  assert.match(levelChoices,/if\(awIsSpellActive\(id\)\)openUpgradeChoice\(id\);\s*else awEquipSpellForFlow\(id\)/s);
+  assert.match(levelChoices,/if\(seer\|\|awIsSpellActive\(id\)\)openUpgradeChoice\(id\);\s*else awEquipSpellForFlow\(id\)/s);
   assert.match(levelChoices,/keeps all \$\{upgrades\} existing mutation/);
   assert.match(levelChoices,/owned:active/);
 });
@@ -89,3 +89,4 @@ test('progression expansion loads after cloud save integration so it owns final 
   assert.ok(cloud>=0&&progression>cloud);
   assert.ok(html.includes('Rare 4th & 5th spell slots'));
 });
+
