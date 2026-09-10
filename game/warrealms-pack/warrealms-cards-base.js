@@ -162,6 +162,27 @@ export const CARDS = Object.freeze([
     flavor: "For six cycles, the weapon is silent. On the seventh, there is considerably less horizon."
   },
   {
+  id: "psiweaver",
+  name: "Psiweaver",
+  image: "psiweaver.png",
+  faction: "yellow",
+  cost: 4,
+  shop_cost: 65,
+  type: "ship",
+  sigil: "◈",
+  effect: {
+    moveHeat: {
+      amount: 2,
+      from: "friendlyHeatCard",
+      to: "anotherFriendlyHeatCard"
+    }
+  },
+  ally: { trade: 2 },
+  text: "Move up to 2 Heat from one friendly Heat card to another.",
+  allyText: "Gain 2 Trade.",
+  flavor: "The Xythe do not waste excess energy. They redirect destiny."
+},
+  {
     id: "eightfold_drone_ark",
     name: "Eightfold Drone Ark",
     image: "eightfold_drone_ark.png",
