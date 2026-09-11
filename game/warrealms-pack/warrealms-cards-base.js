@@ -355,7 +355,88 @@ export const CARDS = Object.freeze([
   flavor:
     "Every drone marks a coordinate. Enough coordinates become a future."
 },
+{
+  id: "vharak_keeper_of_the_vowmaw",
+  name: "Vharak, Keeper of the Vowmaw",
+  image: "vharak_keeper_of_the_vowmaw.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 120,
+  type: "ship",
+  sigil: "◒",
 
+  effect: {
+    combat: 3,
+    trade: 1
+  },
+
+  heat: {
+    max: 5,
+
+    trigger: "cardSacrificed",
+    gain: 1,
+    perTurnCap: 3,
+
+    activated: {
+      cost: {
+        heat: 5
+      },
+      effect: {
+        createToken: {
+          id: "vowmaw",
+          count: 1,
+          zone: "hand"
+        }
+      }
+    }
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  text:
+    "Gain 3 Combat and 1 Trade.",
+
+  heatText:
+    "Whenever you sacrifice a card, add 1 Heat to Vharak, up to 3 Heat gained this way each turn. Spend 5 Heat: create a Vowmaw in your hand.",
+
+  allyText:
+    "Gain 2 Combat.",
+
+  flavor:
+    "He does not feed them flesh. Flesh is cheap. He feeds them promises that someone was willing to die breaking."
+},
+  {
+  id: "vowmaw",
+  name: "Vowmaw",
+  image: "vowmaw.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  cost: 0,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 12
+  },
+
+  sacrifice: {
+    raze: 2,
+    purge: 1
+  },
+
+  text:
+    "Token. Gain 5 Combat.",
+
+  sacrificeText:
+    "Sacrifice: Gain 2 Raze and 1 Purge.",
+
+  flavor:
+    "Every scale bears the shape of an oath somebody failed to keep."
+},
 
 // ==========================================================
 // 2. GREEN — BROODCHAIN WARCALLER
