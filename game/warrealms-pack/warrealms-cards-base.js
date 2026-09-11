@@ -214,6 +214,72 @@ export const CARDS = Object.freeze([
   flavor: "It opens only when enough futures have gathered in one place."
 },
   {
+  id: "malzyr_flame_eater",
+  name: "Malzyr, Flame-Eater",
+  image: "malzyr_flame_eater.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 55,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    or: [
+      {
+        id: "malzyr_siphon",
+        label: "Consume the Flame",
+        effect: {
+          siphonHeat: {
+            amount: 2,
+            from: "anotherFriendlyHeatCard",
+            to: "self"
+          }
+        }
+      },
+      {
+        id: "malzyr_redistribute",
+        label: "Spit the Flame",
+        effect: {
+          spendHeat: {
+            amount: 3,
+            from: "self",
+            then: {
+              addHeat: {
+                amount: 2,
+                target: "friendlyHeatCard",
+                excludeSelf: true,
+                targets: 2
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  heat: {
+    max: 6
+  },
+
+  doubleAlly: {
+    purgeAndGainHeat: {
+      purge: 1,
+      addHeat: {
+        amount: 1,
+        target: "self"
+      }
+    }
+  },
+
+  text: "Choose one: siphon 2 Heat from another friendly Heat card onto Malzyr; or spend 3 Heat from Malzyr to add 2 Heat to each of two other friendly Heat cards.",
+
+  heatText: "Malzyr generates no Heat on its own.",
+
+  doubleAllyText: "Double Ally — Purge a card from your deck or discard pile. Add 1 Heat to Malzyr.",
+
+  flavor: "Malzyr does not breathe flame. He remembers where others buried it."
+}
+  {
     id: "eightfold_drone_ark",
     name: "Eightfold Drone Ark",
     image: "eightfold_drone_ark.png",
