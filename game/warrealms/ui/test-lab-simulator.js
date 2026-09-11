@@ -16,6 +16,7 @@ const ELIGIBLE_CARDS = Object.freeze((Array.isArray(CARDS) ? CARDS : []).filter(
   !card.marketOnlyPermanent &&
   !card.hiredLooter
 ));
+const ELIGIBLE_CARD_IDS = new Set(ELIGIBLE_CARDS.map(card => card.id));
 
 export const TEST_LAB_STRATEGIES = Object.freeze([
   { id: "random", name: "Random", primary: [], support: [], description: "Randomly rotates through the available bot plans each game." },
@@ -340,6 +341,20 @@ function weightedCommandDeck(strategyId, random) {
   return result;
 }
 
+export function normalizeTestLabCommandDeck(cardIds) {
+  if (!Array.isArray(cardIds) || cardIds.length !== COMMAND_DECK_SIZE) return null;
+  const copies = new Map();
+  const result = [];
+  for (const cardId of cardIds) {
+    if (!ELIGIBLE_CARD_IDS.has(cardId)) return null;
+    const count = (copies.get(cardId) || 0) + 1;
+    if (count > 4) return null;
+    copies.set(cardId, count);
+    result.push(cardId);
+  }
+  return result;
+}
+
 function createStarterDeck(random) {
   return shuffle([
     ...Array.from({ length: 8 }, () => "starter_coin"),
@@ -561,9 +576,9 @@ function injectExperimentalCards(pool, experimentalCardIds, copies, random) {
   return result;
 }
 
-function gameMarketPool(strategyA, strategyB, experimentalCardIds, experimentalCopies, random) {
-  const sideA = weightedCommandDeck(strategyA, random);
-  const sideB = weightedCommandDeck(strategyB, random);
+function gameMarketPool(strategyA, strategyB, experimentalCardIds, experimentalCopies, random, commandDeckA, commandDeckB) {
+  const sideA = normalizeTestLabCommandDeck(commandDeckA) || weightedCommandDeck(strategyA, random);
+  const sideB = normalizeTestLabCommandDeck(commandDeckB) || weightedCommandDeck(strategyB, random);
   const combined = [...sideA, ...sideB];
   return shuffle(injectExperimentalCards(combined, experimentalCardIds, experimentalCopies, random), random);
 }
@@ -586,7 +601,17 @@ export function simulateTestLabGame(options = {}, gameIndex = 0) {
     mode: options.priorityModeB
   });
   const bots = gameIndex % 2 === 0 ? [botA, botB] : [botB, botA];
-  const marketDeck = gameMarketPool(strategyA, strategyB, options.experimentalCardIds, clamp(number(options.experimentalCopies) || 2, 1, 4), random);
+  const commandDeckA = normalizeTestLabCommandDeck(options.commandDeckA);
+  const commandDeckB = normalizeTestLabCommandDeck(options.commandDeckB);
+  const marketDeck = gameMarketPool(
+    strategyA,
+    strategyB,
+    options.experimentalCardIds,
+    clamp(number(options.experimentalCopies) || 2, 1, 4),
+    random,
+    commandDeckA,
+    commandDeckB
+  );
   const market = [];
   refillMarket(market, marketDeck);
   const purchases = [];
@@ -627,6 +652,7 @@ export function simulateTestLabGame(options = {}, gameIndex = 0) {
     totalTurns,
     rounds: Math.ceil(totalTurns / 2),
     strategies: { a: strategyA, b: strategyB },
+    commandDecks: { a: commandDeckA ? [...commandDeckA] : null, b: commandDeckB ? [...commandDeckB] : null },
     authority: { a: Math.max(0, botA.authority), b: Math.max(0, botB.authority) },
     priorities: {
       a: { enabled: botA.priority.enabled, mode: botA.priority.mode, cards: [...botA.priority.ids] },
