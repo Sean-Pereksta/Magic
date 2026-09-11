@@ -1,3 +1,4 @@
+import { battleStartTransition } from "./battle-staging.js";
 import "./armory-ui-polish.js?v=1";
 import {
   showPlayLauncher as showCorePlayLauncher,
@@ -22,6 +23,7 @@ function escapeHtml(value) {
 }
 
 function openTestLab() {
+  window.dispatchEvent(new Event("warrealms:export-test-decks"));
   window.location.assign("./warrealms/test-lab.html");
 }
 
@@ -53,6 +55,13 @@ function patchExpandedSelection(launcher) {
     difficultyGrid.after(note);
   }
 
+  const enemy = launcher.querySelector(".wrBattleStaging section:last-child");
+  if (enemy) {
+    const name = enemy.querySelector("h3"), deck = enemy.querySelector("strong"), factions = enemy.querySelector("p");
+    if (name && name.textContent !== strategy.name) name.textContent = strategy.name;
+    if (deck && deck.textContent !== strategy.deck) deck.textContent = strategy.deck;
+    if (factions && factions.textContent !== strategy.factions) factions.textContent = strategy.factions;
+  }
   const summary = launcher.querySelector(".wrSelectionSummary");
   if (summary && !summary.dataset.expandedStrategySummary) {
     const difficultyName = launcher.querySelector(".wrDifficulty.active strong")?.textContent || "Medium";
@@ -158,12 +167,13 @@ function forceExpandedStrategy(strategyId, run) {
   }
 }
 
-function startExpandedSinglePlayer(strategyId) {
+async function startExpandedSinglePlayer(strategyId) {
+  if (!await battleStartTransition(document.getElementById("warrealmsPlayLauncher"))) return;
   const nativeButton = document.getElementById("botChallengeBtn");
   if (!nativeButton) return;
   const launcher = document.getElementById("warrealmsPlayLauncher");
   const difficulty = launcher?.querySelector(".wrDifficulty.active")?.dataset.wrDifficulty || "medium";
-  nativeButton.click();
+  window.dispatchEvent(new Event("warrealms:configure-bot"));
   const nativeDifficulty = document.querySelector(`[data-act="start-bot"][data-difficulty="${difficulty === "easy" ? "medium" : difficulty}"]`);
   if (!(nativeDifficulty instanceof HTMLElement)) return;
   if (launcher) launcher.hidden = true;

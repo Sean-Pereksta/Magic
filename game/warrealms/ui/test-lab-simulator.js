@@ -8,8 +8,8 @@ const ALL_CARDS = Object.freeze([
   ...Object.values(STARTER_CARDS || {}),
   ...(Array.isArray(CARDS) ? CARDS : [])
 ]);
-const CARD_BY_ID = new Map(ALL_CARDS.map(card => [card.id, card]));
-const ELIGIBLE_CARDS = Object.freeze((Array.isArray(CARDS) ? CARDS : []).filter(card =>
+let CARD_BY_ID = new Map(ALL_CARDS.map(card => [card.id, card]));
+let ELIGIBLE_CARDS = Object.freeze((Array.isArray(CARDS) ? CARDS : []).filter(card =>
   card?.id &&
   Number(card.cost) > 0 &&
   card.token !== true &&
@@ -165,7 +165,12 @@ function cardOutput(card, handFactionCounts = {}, persistent = false) {
   if (card?.faction && card.faction !== "neutral" && sameFaction >= 2) addEffects(output, directEffect(card.doubleAlly || card.double_ally || card.ally2 || {}));
 
   const conditional = emptyOutput();
-  if (card?.heat) addEffects(conditional, directEffect(card.heat), .18);
+  if (card?.heat) {
+    addEffects(conditional, directEffect(card.heat), .18);
+    // Expected payoff per play in this accelerated model (not full live-engine heat timing).
+    const threshold = number(card.heat.overload?.at);
+    if (threshold > 0) addEffects(conditional, directEffect(card.heat.overload.effect), Math.min(1, number(card.heat.gain) / threshold));
+  }
   if (card?.charge) addEffects(conditional, directEffect(card.charge), .2);
   if (card?.trigger || card?.triggers) addEffects(conditional, directEffect({ trigger: card.trigger, triggers: card.triggers }), .22);
   if (card?.transform) addEffects(conditional, directEffect(card.transform), .12);
@@ -584,6 +589,37 @@ function gameMarketPool(strategyA, strategyB, experimentalCardIds, experimentalC
 }
 
 export function simulateTestLabGame(options = {}, gameIndex = 0) {
+  if (!Object.keys(options.mutations || {}).length) return simulateIsolatedGame(options, gameIndex);
+  const originalMap = CARD_BY_ID;
+  const originalEligible = ELIGIBLE_CARDS;
+  try {
+    CARD_BY_ID = new Map(originalMap);
+    for (const [id, changes] of Object.entries(options.mutations || {})) {
+      const original = originalMap.get(id);
+      if (!original) throw new Error(`Unknown mutation card: ${id}`);
+      const card = structuredClone(original);
+      for (const [path, value] of Object.entries(changes)) {
+        if (!["cost", "heat.overload.at", "heat.overload.effect.trade", "heat.overload.effect.combat", "effect.trade", "effect.combat", "heat.max"].includes(path) || !Number.isFinite(value) || value < 0 || value > 100) throw new Error("Invalid mutation field or value.");
+        const parts = path.split(".");
+        let target = card;
+        for (const part of parts.slice(0, -1)) {
+          if (!target[part] || typeof target[part] !== "object") throw new Error(`This card does not support ${path}.`);
+          target = target[part];
+        }
+        target[parts.at(-1)] = value;
+      }
+      if (card.heat?.overload && card.heat.overload.at > card.heat.max) card.heat.max = card.heat.overload.at;
+      CARD_BY_ID.set(id, card);
+    }
+    ELIGIBLE_CARDS = originalEligible.map(card => CARD_BY_ID.get(card.id));
+    return simulateIsolatedGame(options, gameIndex);
+  } finally {
+    CARD_BY_ID = originalMap;
+    ELIGIBLE_CARDS = originalEligible;
+  }
+}
+
+function simulateIsolatedGame(options = {}, gameIndex = 0) {
   const seedBase = Math.max(1, Number(options.seed) || 24681357);
   const random = mulberry32((seedBase + gameIndex * 2654435761) >>> 0);
   const strategyA = resolveStrategy(options.strategyA || "random", random);
@@ -600,7 +636,8 @@ export function simulateTestLabGame(options = {}, gameIndex = 0) {
     cardIds: options.priorityCardsB,
     mode: options.priorityModeB
   });
-  const bots = gameIndex % 2 === 0 ? [botA, botB] : [botB, botA];
+  const aFirst = options.firstPlayer ? options.firstPlayer === "a" : gameIndex % 2 === 0;
+  const bots = aFirst ? [botA, botB] : [botB, botA];
   const commandDeckA = normalizeTestLabCommandDeck(options.commandDeckA);
   const commandDeckB = normalizeTestLabCommandDeck(options.commandDeckB);
   const marketDeck = gameMarketPool(

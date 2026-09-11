@@ -1254,7 +1254,7 @@
           <div class="heroStat"><span>Record</span><b id="heroRecord">0–0</b><small id="heroWinRate">0% win rate</small></div>
         </div>
         <div class="heroActions heroDestinations">
-          <button class="btn primary" id="botChallengeBtn"><span>⚔</span> Start Battle</button>
+          <button class="btn primary" id="botChallengeBtn"><span>⚔</span> Go to War Table</button>
           <button class="btn" id="browseArmoryBtn"><span>◆</span> Browse Store &amp; Collection</button>
         </div>
         <button class="heroUtilityLink" id="singleplayerRulesBtn" type="button">Bot difficulty rules</button>
@@ -3969,6 +3969,8 @@
         amount: Math.abs(entry.heat - before),
         before,
         after: entry.heat,
+        sourceCardId: context.cardId || "",
+        sourceInstanceId: context.instanceId || "",
         method: String(context.source || "heat-change")
       });
       if (instruction.ifChangedEffect && Object.keys(instruction.ifChangedEffect).length) applyEffect(game, player, instruction.ifChangedEffect, context);
@@ -7297,6 +7299,11 @@
   }
 
   function drawCards(game, player, amount, sourceCardId = "") {
+    if ((player.pendingChoices || []).some(choice => choice.source === "cardSelection")) {
+      player.selectionDeferredDraws = player.selectionDeferredDraws || [];
+      player.selectionDeferredDraws.push({ amount, sourceCardId });
+      return;
+    }
     for (let index = 0; index < amount; index += 1) {
       if (!player.draw.length) {
         if (!player.discard.length) break;
@@ -7305,6 +7312,7 @@
       }
       const entry = player.draw.pop();
       player.hand.push(entry);
+      pushVisualEvent(game, "card-draw", { actorId: player.id, targetId: player.id, cardId: entry.id, instanceId: entry.instanceId, stagger: index });
       const card = getCard(entry);
       if (card) emitGameEvent(game, {
         type: GAME_EVENT_TYPES.CARD_DRAWN,
@@ -7946,6 +7954,47 @@
     return true;
   }
 
+  function queueCardSelection(game, player, selection, context = {}) {
+    const entries = selection.ids.map(id => (player[selection.zone] || []).find(entry => entry.instanceId === id)).filter(Boolean);
+    const selected = selection.selected || [];
+    const maximum = selection.max ?? entries.length;
+    const options = entries.map((entry, index) => ({
+      cardId: entry.id, instanceId: entry.instanceId,
+      label: `${selected.includes(entry.instanceId) ? "✓ Selected" : "Select"} · ${getCard(entry)?.name || "Card"}`,
+      description: `Position ${index + 1} · ${selected.includes(entry.instanceId) ? "Selected for movement" : "Stays in place"}`,
+      actionLabel: selected.includes(entry.instanceId) ? "✓ SELECTED — UNSELECT" : "SELECT",
+      effect: { __cardSelection: { ...selection, selected: selected.includes(entry.instanceId) ? selected.filter(id => id !== entry.instanceId) : selected.length < maximum ? [...selected, entry.instanceId] : selected } }
+    }));
+    if (!selection.destinations.length) options.forEach(option => { option.actionLabel = "CONTINUE"; option.effect = { __noop: true }; });
+    for (const destination of selected.length >= (selection.min || 0) ? selection.destinations : []) options.push({ label: `Place Selected in ${destination}`, effect: { __moveSelected: { ...selection, destination } } });
+    if (selection.reorder && entries.length > 1) options.push({ label: "Swap Order", effect: { __cardSelection: { ...selection, ids: [...selection.ids].reverse() } } });
+    if (!selection.min) options.push({ label: selection.destinations.length ? "Keep All / Confirm Top Order" : "Continue", effect: { __moveSelected: { ...selection, selected: [], destination: "top" } } });
+    queueSpecialChoice(game, player, options, { ...context, source: "cardSelection", title: "Inspect and choose cards", subtitle: selection.min ? `Select exactly ${selection.min} cards, then confirm the destination.` : "Select cards, then choose a destination. Position 1 is drawn first. Keep All confirms the displayed top order." });
+    // Keep an in-progress selection ahead of effects already waiting behind it.
+    if (String(context.source || "").startsWith("cardSelection")) player.pendingChoices.unshift(player.pendingChoices.pop());
+  }
+
+  function resolveSelectedCards(player, selection) {
+    const zone = player[selection.zone];
+    if (!Array.isArray(zone)) return;
+    const entries = selection.ids.map(id => zone.find(entry => entry.instanceId === id));
+    if (entries.some(entry => !entry)) return; // Never move a replacement copy after a stale choice.
+    const selected = new Set(selection.selected);
+    const moving = entries.filter(entry => selected.has(entry.instanceId));
+    const kept = entries.filter(entry => !selected.has(entry.instanceId));
+    const ids = new Set(selection.ids);
+    if (selection.zone === "draw") {
+      player.draw = zone.filter(entry => !ids.has(entry.instanceId));
+      player.draw.push(...kept.reverse());
+    } else player[selection.zone] = zone.filter(entry => !selected.has(entry.instanceId));
+    if (selection.destination === "bottom") player.draw.unshift(...moving.reverse());
+    else if (selection.destination === "top") player.draw.push(...moving.reverse());
+    else if (["hand", "discard", "scrapped"].includes(selection.destination)) {
+      player[selection.destination] = player[selection.destination] || [];
+      player[selection.destination].push(...moving);
+    }
+  }
+
   function applyEffect(game, player, effect = {}, context = {}) {
     const normalized = coreEffect(effect);
     const targetRule = String(normalized.target || context.target || "nextOpponent");
@@ -7980,7 +8029,14 @@
     const topdeckFromHand = Math.max(0, Math.floor(Number(normalized.topdeckFromHand) || 0));
     const repeatPrimaryChoice = Math.max(0, Math.floor(Number(normalized.repeatPrimaryChoice) || 0));
     const sacrificeRequired = Math.max(0, Math.floor(Number(normalized.sacrificeRequired) || 0));
-    const peekTop = Math.max(0, Math.floor(Number(normalized.peekTop) || 0));
+    const cardSelectionConfig = normalized.selectCards;
+    delete normalized.selectCards;
+    const peekConfig = normalized.peekTop;
+    const peekTop = Math.max(0, Math.floor(Number(peekConfig?.count ?? peekConfig) || 0));
+    const selectionUpdate = normalized.__cardSelection;
+    const selectionMove = normalized.__moveSelected;
+    delete normalized.__cardSelection;
+    delete normalized.__moveSelected;
     delete normalized.__resurrect;
     delete normalized.__reclaim;
     delete normalized.__redeploy;
@@ -8024,8 +8080,8 @@
     const combatGained = Math.max(0, (normalized.combat || 0) + activeBases * (normalized.combatPerBase || 0));
     player.trade += tradeGained;
     player.combat += combatGained;
-    if (tradeGained) pushVisualEvent(game, "stat-gain", { targetId: player.id, stat: "trade", amount: tradeGained });
-    if (combatGained) pushVisualEvent(game, "stat-gain", { targetId: player.id, stat: "combat", amount: combatGained });
+    if (tradeGained) pushVisualEvent(game, "stat-gain", { actorId: player.id, sourceCardId: context.cardId || "", sourceInstanceId: context.instanceId || "", targetId: player.id, stat: "trade", amount: tradeGained });
+    if (combatGained) pushVisualEvent(game, "stat-gain", { actorId: player.id, sourceCardId: context.cardId || "", sourceInstanceId: context.instanceId || "", targetId: player.id, stat: "combat", amount: combatGained });
     if (tradeGained || combatGained) recordBattleMetrics(game, player.id, {
       tradeGenerated: tradeGained,
       combatGenerated: combatGained
@@ -8103,12 +8159,32 @@
     if (constructionConfig) queueBaseTargetChoice(game, player, constructionConfig, context, "construction");
     if (selfDamage) damageAuthority(game, player, selfDamage, `${getCard(context.cardId)?.name || "A card"} effect`, player.id);
     if (topdeckFromHand && player.hand.length) {
-      const options = player.hand.map(entry => ({ label: getCard(entry)?.name || "Card", cardId: entry.id, instanceId: entry.instanceId, effect: { __topdeckHand: { instanceId: entry.instanceId } } }));
-      queueSpecialChoice(game, player, options, { ...context, source: "topdeck" });
+      const amount = Math.min(topdeckFromHand, player.hand.length);
+      queueCardSelection(game, player, { zone: "hand", ids: player.hand.map(entry => entry.instanceId), selected: [], destinations: ["top"], min: amount, max: amount }, context);
     }
     if (repeatPrimaryChoice) queueEffectChoice(game, player, primaryCardEffect(getCard(context.cardId)), { ...context, source: "repeatPrimary" });
     if (sacrificeRequired) queueSacrificeTarget(game, player, { thenEffect: {} }, context);
-    if (peekTop && player.draw.length) addLog(game, `${player.name} looked ahead and saw ${getCard(player.draw[player.draw.length - 1])?.name || "an unknown card"} on top of the deck.`);
+    if (cardSelectionConfig && ["draw", "hand", "discard"].includes(cardSelectionConfig.from)) {
+      const zone = cardSelectionConfig.from;
+      const candidates = zone === "draw" ? [...player.draw].reverse() : [...player[zone]];
+      const count = Math.max(0, Math.floor(Number(cardSelectionConfig.count) || candidates.length));
+      queueCardSelection(game, player, { zone, ids: candidates.slice(0, count).map(entry => entry.instanceId), selected: [],
+        destinations: (cardSelectionConfig.destinations || ["hand"]).filter(zone => ["hand", "discard", "top", "bottom", "scrapped"].includes(zone)),
+        reorder: cardSelectionConfig.reorder === true }, context);
+    }
+    if (selectionUpdate) queueCardSelection(game, player, selectionUpdate, context);
+    if (selectionMove) {
+      resolveSelectedCards(player, selectionMove);
+      if (!(player.pendingChoices || []).some(choice => choice.source === "cardSelection")) {
+        const deferred = player.selectionDeferredDraws || [];
+        player.selectionDeferredDraws = [];
+        for (const request of deferred) drawCards(game, player, request.amount, request.sourceCardId);
+      }
+    }
+    if (peekTop && player.draw.length) queueCardSelection(game, player, {
+      zone: "draw", ids: player.draw.slice(-peekTop).reverse().map(entry => entry.instanceId), selected: [],
+      destinations: peekConfig?.mayBottom ? ["bottom"] : [], reorder: peekConfig?.reorder === true
+    }, context);
     if (visualGlyphs.length) pushVisualEvent(game, "ability-burst", { actorId: player.id, targetId: player.id, cardId: context.cardId || "", source: context.source || "primary", abilities: visualGlyphs });
     queueEffectChoice(game, player, effect, context);
   }
@@ -8650,6 +8726,8 @@
         const option = choice.options[optionIndex];
         actor.pendingChoices.shift();
         applyEffect(game, actor, option.effect, { cardId: choice.cardId, source: `${choice.source || "primary"}-choice` });
+        // Checking a card or changing order is UI state, not a resolved game choice.
+        if (option.effect.__cardSelection) break;
         triggerChargeEvent(game, actor, "choiceMade", { cardId: choice.cardId, source: choice.source || "primary" });
         const cardName = getCard(choice.cardId)?.name || "Card";
         const summary = option.label || effectDisplaySummary(option.effect) || `Option ${optionIndex + 1}`;
@@ -9291,6 +9369,7 @@
       class="${classes}"
       data-act="${escapeHtml(articleAction)}"
       data-card-id="${escapeHtml(cardId || "")}"
+      data-heat-stage="${card.heat && entry ? heatOverloadReady(card.heat, entry.heat) ? "ready" : Number(entry.heat) >= 5 ? "high" : Number(entry.heat) >= 3 ? "medium" : Number(entry.heat) > 0 ? "low" : "none" : "none"}"
       data-collectible-edition="${collectibleEdition ? "1" : "0"}"
       ${intrinsicData}
       ${options.dataAttributes || ""}
@@ -9924,6 +10003,24 @@
     const editionPlayer = (state?.players || []).find(player => player.id === (event.targetId || event.actorId || event.sourceId));
     const collectibleEdition = event.collectibleEdition === true || playerUsesCollectibleEdition(editionPlayer, event.cardId);
 
+    if (event.type === "card-draw") {
+      // Private draws only reveal art to the owning player.
+      if (event.actorId !== myPlayer()?.id) return;
+      const destination = visibleCardInstance(event.instanceId);
+      const from = rectCenter($("#wrDrawPile"));
+      const to = destination ? rectCenter(destination) : rectCenter($("#handRow"));
+      const card = getCard(event.cardId);
+      const ghost = document.createElement("div");
+      ghost.className = "fxAcquiredCard";
+      ghost.style.left = `${from.x}px`; ghost.style.top = `${from.y}px`;
+      ghost.style.setProperty("--fxTravelX", `${to.x - from.x}px`);
+      ghost.style.setProperty("--fxTravelY", `${to.y - from.y}px`);
+      ghost.innerHTML = `<div class="fxGhostVisual">${card ? cardArtInnerHtml(card, true, collectibleEdition) : ""}</div><b>DRAW</b>`;
+      $("#battleFxLayer").appendChild(ghost);
+      setTimeout(() => ghost.remove(), 850);
+      await new Promise(resolve => setTimeout(resolve, combatEffectsReduced() ? 0 : 45));
+      return;
+    }
     if (event.type === "card-acquired") {
       const card = getCard(event.cardId);
       const marketPoint = rectCenter($(".marketRow"), { x: innerWidth / 2, y: innerHeight / 2 });
@@ -9989,7 +10086,13 @@
       return;
     }
     if (event.type === "card-discard") {
-      fxDiscardGhost(event.cardId, target, collectibleEdition);
+      const origin = event.actorId === myPlayer()?.id ? rectCenter($("#handRow")) : target;
+      const ghost = fxDiscardGhost(event.cardId, origin, collectibleEdition);
+      if (ghost && event.actorId === myPlayer()?.id && !combatEffectsReduced()) {
+        const destination = rectCenter($("#wrDiscardPile"));
+        ghost.style.animation = "none";
+        ghost.animate([{ transform: "translate(-50%,-50%) scale(1)", opacity: 1 }, { transform: `translate(calc(-50% + ${destination.x - origin.x}px),calc(-50% + ${destination.y - origin.y}px)) scale(.2)`, opacity: 0 }], { duration: 420, fill: "forwards", easing: "ease-in" });
+      }
       await new Promise(resolve => setTimeout(resolve, 300));
       return;
     }
@@ -10100,7 +10203,7 @@
           ? `Copy ${targetCard.name}'s Primary ability.`
           : option.label || `Select ${targetCard.name}.`;
         const defaultAction = selectingTransformTarget ? "EVOLVE" : resurrecting ? "RESURRECT" : graveEchoing ? "CHOOSE" : friendlySacrifice ? "DEVOUR" : "SELECT";
-        return `<article class="choiceOption cardTarget" style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})"><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">${escapeHtml(formText)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || defaultDescription)}</span></span><span class="choiceTargetActions">${cardInfoButtonHtml(targetCard.id, { instanceId: option.instanceId })}<button type="button" class="btn small good" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy || transformationAnimationBusy ? "disabled" : ""}>${escapeHtml(option.actionLabel || defaultAction)}</button></span></article>`;
+        return `<article class="choiceOption cardTarget ${source === "cardSelection" && option.effect?.__cardSelection?.selected?.includes(option.instanceId) === false ? "wrSelectedChoice" : ""}" ${source === "cardSelection" ? `data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}"` : ""} style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})"><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">${escapeHtml(formText)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || defaultDescription)}</span></span><span class="choiceTargetActions">${cardInfoButtonHtml(targetCard.id, { instanceId: option.instanceId })}<button type="button" class="btn small good" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy || transformationAnimationBusy ? "disabled" : ""}>${escapeHtml(option.actionLabel || defaultAction)}</button></span></article>`;
       }
       const promptClass = optionalFriendlySacrificePrompt ? " promptChoice" : "";
       return `<button class="choiceOption${promptClass}" style="--choiceFaction:var(--${card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceOptionTop"><span class="choiceOptionNumber">${index + 1}</span><strong>${escapeHtml(option.label || `Option ${index + 1}`)}</strong></span><span class="choiceOptionText">${escapeHtml(summary)}</span><span class="choiceOptionGlyphs">${glyphs.map(item => abilityGlyphHtml(item)).join("")}</span>${optionalFriendlySacrificePrompt ? `<span class="choiceActionLabel">${escapeHtml(option.actionLabel || option.label || "SELECT")}</span>` : ""}</button>`;
@@ -10257,7 +10360,7 @@
       bossBanner.textContent = "";
     }
     $("#dockTitle").textContent = me ? `${me.name}'s Realm` : "Spectating";
-    $("#dockStatus").textContent = state.log?.at(-1)?.text || "Battle synchronized.";
+    $("#dockStatus").innerHTML = `<span id="wrDrawPile">Deck ${me?.draw?.length || 0}</span> · <span id="wrDiscardPile">Discard ${me?.discard?.length || 0}</span> · ${escapeHtml(state.log?.at(-1)?.text || "Battle synchronized.")}`;
     $("#playAllBtn").disabled = !turnActionsAllowed || !me?.hand.length || actionBusy;
     $("#endTurnBtn").disabled = !turnActionsAllowed || actionBusy;
     $("#purgeBtn").disabled = !turnActionsAllowed || !(me?.scrapOwn > 0) || actionBusy;
@@ -10963,6 +11066,11 @@
 
   function chooseBotChoiceIndex(choice, bot, difficulty) {
     if (!choice?.options?.length) return -1;
+    if (choice.source === "cardSelection") {
+      // Finish inspection deterministically; toggles must never trap the bot in a loop.
+      const commit = choice.options.findIndex(option => option.effect.__moveSelected);
+      return commit >= 0 ? commit : choice.options.findIndex(option => option.effect.__cardSelection?.selected?.includes(option.instanceId));
+    }
     if (difficulty === "easy") return Math.floor(Math.random() * choice.options.length);
     return choice.options.map((option, index) => {
       const effect = coreEffect(option.effect);
@@ -11640,9 +11748,17 @@
     saveCampaignProfile(campaignProfile);
   }
 
-  async function startCampaignEncounter() {
+  async function startCampaignEncounter(confirmed = false) {
     const encounter = currentCampaignEncounter(campaignProfile);
     if (!campaignProfile || campaignProfile.status !== "active" || !encounter || !["battle", "elite", "boss"].includes(encounter.node.type)) return;
+    if (!confirmed) {
+      const commander = getCampaignCommander(campaignProfile.commanderId);
+      const enemy = encounter.boss?.name || encounter.node.label || "Enemy Warhost";
+      showWarTable({ battle: { title: "Campaign", onBegin: () => startCampaignEncounter(true),
+        content: `<div class="wrBattleStaging"><section><span>YOUR COMMANDER</span><h3>${escapeHtml(commander?.name || username)}</h3>${commander ? `<img src="${escapeHtml(commanderImagePath(commander))}" alt="" style="width:90px;height:120px;object-fit:cover">` : ""}<strong>Campaign Deck · ${(campaignProfile.deck || []).length} cards</strong><p>Authority ${campaignProfile.authority} · Prepared Shield ${campaignProfile.nextBattleShield || 0}</p></section><b class="wrStagingVS">VS</b><section><span>ENEMY COMMANDER</span><h3>${escapeHtml(enemy)}</h3><strong>${escapeHtml(encounter.node.type)}</strong><p>${escapeHtml(encounter.boss?.title || "Region " + campaignProfile.region)}</p></section></div><p class="wrStagingRules">Campaign · ${escapeHtml(encounter.difficulty)} · Region ${campaignProfile.region}<br>${escapeHtml(commander?.startingPassive?.description || "")}</p>`
+      } });
+      return;
+    }
     singlePlayerDifficulty = encounter.difficulty;
     singlePlayerMode = true;
     campaignBattleActive = true;
@@ -12195,7 +12311,18 @@
   $("#newDeckBtn").addEventListener("click", showNewDeckDialog);
   $("#assignActiveDeckBtn").addEventListener("click", assignActiveDeck);
   $("#saveDeckBtn").addEventListener("click", saveCommandDeck);
-  $("#botChallengeBtn").addEventListener("click", showBotDifficultySelector);
+  $("#botChallengeBtn").addEventListener("click", () => showWarTable());
+  window.addEventListener("warrealms:configure-bot", showBotDifficultySelector);
+  window.addEventListener("warrealms:battle-summary", event => {
+    const deck = activeDeckRecord();
+    Object.assign(event.detail, { commander: username, deck: deck?.name, count: deck?.cards?.length || 0,
+      cards: [...new Set(deck?.cards || [])].map(id => ({ id, name: getCard(id)?.name || id })),
+      opening: (deck?.openingCardIds || []).map(id => getCard(id)?.name || id).join(", "),
+      discounts: (deck?.discountCardIds || []).map(id => getCard(id)?.name || id).join(", ") });
+  });
+  window.addEventListener("warrealms:export-test-decks", () => {
+    try { sessionStorage.setItem("warrealms-test-decks", JSON.stringify(profileDeckEntries().filter(deck => deck.cards.length === COMMAND_DECK_SIZE).map(deck => ({ id: `saved:${deck.id}`, name: deck.name, cardIds: deck.cards })))); } catch {}
+  });
   $("#browseArmoryBtn").addEventListener("click", () => {
     armoryTab = "store";
     armoryLandingExpanded = false;
