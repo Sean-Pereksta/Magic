@@ -278,7 +278,67 @@ export const CARDS = Object.freeze([
   doubleAllyText: "Double Ally — Purge a card from your deck or discard pile. Add 1 Heat to Malzyr.",
 
   flavor: "Malzyr does not breathe flame. He remembers where others buried it."
-}
+},
+  {
+  id: "vaeloryn_aether_broker",
+  name: "Vaeloryn, the Aether Broker",
+  image: "vaeloryn_aether_broker.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◇",
+
+  effect: {
+    optional: {
+      siphonHeat: {
+        amount: 2,
+        from: "anotherFriendlyHeatCard",
+        to: "self"
+      }
+    }
+  },
+
+  heat: {
+    max: 30,
+
+    interest: [
+      {
+        minHeat: 3,
+        maxHeat: 7,
+        gainHeat: 2
+      },
+      {
+        minHeat: 8,
+        maxHeat: 14,
+        gainHeat: 4
+      },
+      {
+        minHeat: 15,
+        gainHeat: 5
+      }
+    ],
+
+    activated: {
+      cost: {
+        heat: 7
+      },
+      effect: {
+        addHeat: {
+          amount: 5,
+          target: "anyFriendlyHeatCard",
+          excludeSelf: true
+        }
+      }
+    }
+  },
+
+  text: "You may siphon 2 Heat from another friendly Heat card onto Vaeloryn.",
+
+  heatText: "Vaeloryn can hold up to 30 Heat. At the start of your turn, if Vaeloryn has 3–7 Heat, gain 2 Heat; 8–14 Heat, gain 4 Heat; or 15+ Heat, gain 5 Heat. You may spend 7 Heat from Vaeloryn to add 5 Heat to another friendly Heat card.",
+
+  flavor: "Every flame entrusted to Vaeloryn returns altered by the terms of its keeping."
+},
   {
     id: "eightfold_drone_ark",
     name: "Eightfold Drone Ark",
