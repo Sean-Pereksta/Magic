@@ -214,6 +214,698 @@ export const CARDS = Object.freeze([
   flavor: "It opens only when enough futures have gathered in one place."
 },
   {
+  id: "malzyr_flame_eater",
+  name: "Malzyr, Flame-Eater",
+  image: "malzyr_flame_eater.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 55,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    or: [
+      {
+        id: "malzyr_siphon",
+        label: "Consume the Flame",
+        effect: {
+          siphonHeat: {
+            amount: 2,
+            from: "anotherFriendlyHeatCard",
+            to: "self"
+          }
+        }
+      },
+      {
+        id: "malzyr_redistribute",
+        label: "Spit the Flame",
+        effect: {
+          spendHeat: {
+            amount: 3,
+            from: "self",
+            then: {
+              addHeat: {
+                amount: 2,
+                target: "friendlyHeatCard",
+                excludeSelf: true,
+                targets: 2
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  heat: {
+    max: 6
+  },
+
+  doubleAlly: {
+    purgeAndGainHeat: {
+      purge: 1,
+      addHeat: {
+        amount: 1,
+        target: "self"
+      }
+    }
+  },
+
+  text: "Choose one: siphon 2 Heat from another friendly Heat card onto Malzyr; or spend 3 Heat from Malzyr to add 2 Heat to each of two other friendly Heat cards.",
+
+  heatText: "Malzyr generates no Heat on its own.",
+
+  doubleAllyText: "Double Ally — Purge a card from your deck or discard pile. Add 1 Heat to Malzyr.",
+
+  flavor: "Malzyr does not breathe flame. He remembers where others buried it."
+},
+  // ==========================================================
+// 1. YELLOW — FRACTAL SWARM CARTOGRAPHER
+// Token Scaling + Faction Scaling + Token Threshold
+//
+// Rewards building a large Drone turn, but also improves naturally
+// in a heavily Yellow deck.
+// ==========================================================
+
+{
+  id: "fractal_swarm_cartographer",
+  name: "Fractal Swarm Cartographer",
+  image: "fractal_swarm_cartographer.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    trade: 1
+  },
+
+  tokenScaling: {
+    metric: "played",
+    tokenId: "drone",
+    per: 1,
+    maxUnits: 4,
+    effectPerUnit: {
+      trade: 1
+    }
+  },
+
+  factionScaling: {
+    metric: "playedBefore",
+    faction: "yellow",
+    per: 2,
+    maxUnits: 2,
+    effectPerUnit: {
+      combat: 1
+    }
+  },
+
+  tokenThresholds: [
+    {
+      metric: "playedBefore",
+      tokenId: "drone",
+      at: 3,
+      effect: {
+        draw: 1
+      }
+    },
+    {
+      metric: "playedBefore",
+      tokenId: "drone",
+      at: 5,
+      effect: {
+        peekTop: {
+          count: 3,
+          mayBottom: true
+        }
+      }
+    }
+  ],
+
+  text:
+    "Gain 1 Trade. Gain 1 additional Trade for each Drone played this turn, up to 4 additional Trade.",
+
+  factionText:
+    "Gain 1 Combat for every two Yellow cards played before this card this turn, up to 2 additional Combat.",
+
+  thresholdText:
+    "If three Drones were played before this, draw 1 card. If five were played before this, inspect the top 3 cards of your deck and you may put unwanted cards on the bottom.",
+
+  flavor:
+    "Every drone marks a coordinate. Enough coordinates become a future."
+},
+{
+  id: "vharak_keeper_of_the_vowmaw",
+  name: "Vharak, Keeper of the Vowmaw",
+  image: "vharak_keeper_of_the_vowmaw.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 120,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3,
+    trade: 1
+  },
+
+  heat: {
+    max: 5,
+
+    trigger: "cardSacrificed",
+    gain: 1,
+    perTurnCap: 3,
+
+    actions: [{
+      label: "Summon Vowmaw",
+      cost: 5,
+      effect: {
+        createToken: {
+          id: "vowmaw",
+          count: 1,
+          zone: "hand"
+        }
+      }
+    }]
+  },
+
+  ally: {
+    combat: 2
+  },
+
+  text:
+    "Gain 3 Combat and 1 Trade.",
+
+  heatText:
+    "Whenever you sacrifice a card, add 1 Heat to Vharak, up to 3 Heat gained this way each turn. At 5 Heat, click Summon Vowmaw to spend 5 Heat and create a Vowmaw in your hand.",
+
+  allyText:
+    "Gain 2 Combat.",
+
+  flavor:
+    "He does not feed them flesh. Flesh is cheap. He feeds them promises that someone was willing to die breaking."
+},
+  {
+  id: "vowmaw",
+  name: "Vowmaw",
+  image: "vowmaw.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  cost: 0,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 12
+  },
+
+  sacrifice: {
+    raze: 2,
+    purge: 1
+  },
+
+  text:
+    "Token. Gain 5 Combat.",
+
+  sacrificeText:
+    "Sacrifice: Gain 2 Raze and 1 Purge.",
+
+  flavor:
+    "Every scale bears the shape of an oath somebody failed to keep."
+},
+
+// ==========================================================
+// 2. GREEN — BROODCHAIN WARCALLER
+// Token Combo + Token Threshold + Faction Scaling
+//
+// Turns Spawn into a genuine combo resource rather than simply
+// disposable bodies.
+// ==========================================================
+
+{
+  id: "broodchain_warcaller",
+  name: "Broodchain Warcaller",
+  image: "broodchain_warcaller.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "⬢",
+
+  effect: {
+    combat: 3
+  },
+
+  factionScaling: {
+    metric: "playedBefore",
+    faction: "green",
+    per: 1,
+    maxUnits: 4,
+    effectPerUnit: {
+      combat: 1
+    }
+  },
+
+  tokenThresholds: [
+    {
+      metric: "playedBefore",
+      tokenId: "spawn",
+      at: 1,
+      effect: {
+        combat: 2
+      }
+    },
+    {
+      metric: "playedBefore",
+      tokenId: "spawn",
+      at: 2,
+      effect: {
+        createToken: {
+          id: "spawn",
+          count: 1,
+          zone: "hand"
+        }
+      }
+    }
+  ],
+
+  tokenCombo: {
+    id: "spawn",
+    count: 3,
+    oncePerTurn: true,
+    effect: {
+      combat: 5,
+      draw: 1
+    }
+  },
+
+  text:
+    "Gain 3 Combat, plus 1 Combat for each Green card played before this card this turn, up to 4 additional Combat.",
+
+  thresholdText:
+    "If a Spawn was played before this, gain 2 Combat. If two Spawn were played before this, create a Spawn in your hand.",
+
+  tokenComboText:
+    "Broodchain — If three Spawn have been played this turn, gain 5 additional Combat and draw 1 card.",
+
+  flavor:
+    "The Warcaller does not command the brood. It merely becomes the loudest hunger."
+},
+
+
+// ==========================================================
+// 3. BLUE — CHORUS OF THE RETURNING FORMATION
+// Echo + Token Threshold + Faction Threshold
+//
+// Blue sequencing card. Wants Interceptors first, then another
+// useful ship, then this card.
+// ==========================================================
+
+{
+  id: "chorus_returning_formation",
+  name: "Chorus of the Returning Formation",
+  image: "chorus_returning_formation.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 100,
+  type: "ship",
+  sigil: "✦",
+
+  effect: {
+    shield: 2
+  },
+
+  echo: {
+    target: "previousPlayedShip",
+    copy: "primary",
+    copyKeys: [
+      "trade",
+      "combat",
+      "shield",
+      "heal"
+    ],
+    maximumCopiedValue: 4,
+    excludeKeys: [
+      "draw",
+      "createToken",
+      "echo",
+      "transform"
+    ]
+  },
+
+  tokenThresholds: [
+    {
+      metric: "playedBefore",
+      tokenId: "interceptor",
+      at: 1,
+      effect: {
+        shield: 2
+      }
+    },
+    {
+      metric: "playedBefore",
+      tokenId: "interceptor",
+      at: 2,
+      effect: {
+        draw: 1
+      }
+    }
+  ],
+
+  factionThresholds: [
+    {
+      metric: "played",
+      faction: "blue",
+      at: 4,
+      oncePerTurn: true,
+      effect: {
+        createToken: {
+          id: "interceptor",
+          count: 1,
+          zone: "hand"
+        }
+      }
+    }
+  ],
+
+  text:
+    "Gain 2 Shield. Echo up to 4 points of the previous Ship's primary Trade, Combat, Shield, or Authority effect.",
+
+  thresholdText:
+    "If an Interceptor was played before this, gain 2 additional Shield. If two were played before this, draw 1 card.",
+
+  factionText:
+    "Fourth Blue: Create an Interceptor in your hand.",
+
+  flavor:
+    "Every returning wing carries the memory of the formation that flew before it."
+},
+
+
+// ==========================================================
+// 4. RED — CINDERSEQUENCE HARUSPEX
+// Echo + Sacrifice-adjacent Token Threshold + Faction Scaling
+//
+// Red version of sequencing: it copies violence and becomes stronger
+// as Emberlings are spent.
+// ==========================================================
+
+{
+  id: "cindersequence_haruspex",
+  name: "Cindersequence Haruspex",
+  image: "cindersequence_haruspex.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 100,
+  type: "ship",
+  sigil: "◒",
+
+  effect: {
+    combat: 3
+  },
+
+  echo: {
+    target: "previousPlayedShip",
+    copyKeys: [
+      "combat"
+    ],
+    maximumCopiedCombat: 6
+  },
+
+  factionScaling: {
+    metric: "playedBefore",
+    faction: "red",
+    per: 2,
+    maxUnits: 3,
+    effectPerUnit: {
+      combat: 1
+    }
+  },
+
+  sacrificeThresholds: [
+    {
+      at: 1,
+      requiresSacrificedId: "emberling",
+      effect: {
+        trade: 2
+      }
+    },
+    {
+      at: 2,
+      requiresSacrificedId: "emberling",
+      effect: {
+        draw: 1
+      }
+    },
+    {
+      at: 3,
+      requiresSacrificedId: "emberling",
+      effect: {
+        combat: 5
+      }
+    }
+  ],
+
+  text:
+    "Gain 3 Combat. Echo up to 6 Combat from the Ship played immediately before this.",
+
+  factionText:
+    "Gain 1 additional Combat for every two Red cards played before this card this turn, up to 3 additional Combat.",
+
+  thresholdText:
+    "First Emberling sacrificed this turn: gain 2 Trade. Second: draw 1 card. Third: gain 5 Combat.",
+
+  flavor:
+    "It reads the future in ash because the Covenant keeps providing fresh pages."
+},
+
+
+// ==========================================================
+// 5. BLUE — PROCESSION ENGINE
+// Token Scaling + Token Combo + Faction Scaling
+//
+// Gives Acolytes a more substantial 'go wide' payoff.
+// ==========================================================
+
+{
+  id: "procession_engine",
+  name: "Procession Engine",
+  image: "procession_engine.png",
+  faction: "blue",
+  cost: 6,
+  shop_cost: 115,
+  type: "base",
+  defense: 8,
+  outpost: false,
+  sigil: "✦",
+
+  effect: {
+    shield: 1
+  },
+
+  tokenScaling: {
+    metric: "played",
+    tokenId: "acolyte",
+    per: 1,
+    maxUnits: 4,
+    effectPerUnit: {
+      shield: 1
+    }
+  },
+
+  factionScaling: {
+    metric: "played",
+    faction: "blue",
+    per: 2,
+    maxUnits: 3,
+    effectPerUnit: {
+      heal: 1
+    }
+  },
+
+  tokenCombo: {
+    id: "acolyte",
+    count: 3,
+    oncePerTurn: true,
+    effect: {
+      draw: 1,
+      armor: {
+        amount: 2
+      }
+    }
+  },
+
+  text:
+    "Gain 1 Shield. Gain 1 additional Shield for each Acolyte played this turn, up to 4 additional Shield.",
+
+  factionText:
+    "Gain 1 Authority for every two Blue cards played this turn, up to 3 Authority.",
+
+  tokenComboText:
+    "Procession — After three Acolytes have been played this turn, draw 1 card and give one of your Bases 2 Armor.",
+
+  flavor:
+    "Three voices become a procession. A procession becomes doctrine. Doctrine becomes a wall."
+},
+
+
+// ==========================================================
+// 6. YELLOW/GREEN STYLE HYBRID — POSSIBILITY MENAGERIE
+// Echo + Token Combo + Token Scaling + Token Threshold
+//
+// A high-complexity payoff card intentionally designed as one of the
+// strongest sequencing puzzles in the pool.
+// ==========================================================
+
+{
+  id: "possibility_menagerie",
+  name: "Possibility Menagerie",
+  image: "possibility_menagerie.png",
+  faction: "yellow",
+  cost: 7,
+  shop_cost: 130,
+  type: "ship",
+  sigil: "◈",
+
+  effect: {
+    combat: 2,
+    trade: 1
+  },
+
+  echo: {
+    target: "previousPlayedShip",
+    copy: "primary",
+    copyKeys: [
+      "combat",
+      "trade"
+    ],
+    maximumCopiedValue: 5
+  },
+
+  tokenScaling: {
+    metric: "played",
+    tokenIds: [
+      "drone",
+      "spawn",
+      "interceptor",
+      "acolyte",
+      "emberling",
+      "worker"
+    ],
+    per: 1,
+    maxUnits: 5,
+    effectPerUnit: {
+      combat: 1
+    }
+  },
+
+  tokenThresholds: [
+    {
+      metric: "differentTokenTypesPlayed",
+      at: 2,
+      effect: {
+        trade: 2
+      }
+    },
+    {
+      metric: "differentTokenTypesPlayed",
+      at: 3,
+      effect: {
+        draw: 1
+      }
+    }
+  ],
+
+  tokenCombo: {
+    metric: "differentTokenTypesPlayed",
+    count: 4,
+    oncePerTurn: true,
+    effect: {
+      combat: 5,
+      trade: 3,
+      peekTop: {
+        count: 3,
+        mayBottom: true
+      }
+    }
+  },
+
+  text:
+    "Gain 2 Combat and 1 Trade. Echo up to 5 Combat or Trade from the previously played Ship. Gain 1 additional Combat for each Token played this turn, up to 5.",
+
+  thresholdText:
+    "If two different Token types were played this turn, gain 2 Trade. At three different Token types, draw 1 card.",
+
+  tokenComboText:
+    "Menagerie — If four different Token types were played this turn, gain 5 Combat and 3 Trade, then inspect the top 3 cards of your deck and you may put unwanted cards on the bottom.",
+
+  flavor:
+    "The Concord discovered that sufficiently different futures eventually begin cooperating."
+},
+  {
+  id: "vaeloryn_aether_broker",
+  name: "Vaeloryn, the Aether Broker",
+  image: "vaeloryn_aether_broker.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◇",
+
+  effect: {
+    optional: {
+      siphonHeat: {
+        amount: 2,
+        from: "anotherFriendlyHeatCard",
+        to: "self"
+      }
+    }
+  },
+
+  heat: {
+    max: 30,
+
+    interest: [
+      {
+        minHeat: 3,
+        maxHeat: 7,
+        gainHeat: 2
+      },
+      {
+        minHeat: 8,
+        maxHeat: 14,
+        gainHeat: 4
+      },
+      {
+        minHeat: 15,
+        gainHeat: 5
+      }
+    ],
+
+    activated: {
+      cost: {
+        heat: 7
+      },
+      effect: {
+        addHeat: {
+          amount: 5,
+          target: "anyFriendlyHeatCard",
+          excludeSelf: true
+        }
+      }
+    }
+  },
+
+  text: "You may siphon 2 Heat from another friendly Heat card onto Vaeloryn.",
+
+  heatText: "Vaeloryn can hold up to 30 Heat. At the start of your turn, if Vaeloryn has 3–7 Heat, gain 2 Heat; 8–14 Heat, gain 4 Heat; or 15+ Heat, gain 5 Heat. You may spend 7 Heat from Vaeloryn to add 5 Heat to another friendly Heat card.",
+
+  flavor: "Every flame entrusted to Vaeloryn returns altered by the terms of its keeping."
+},
+  {
     id: "eightfold_drone_ark",
     name: "Eightfold Drone Ark",
     image: "eightfold_drone_ark.png",

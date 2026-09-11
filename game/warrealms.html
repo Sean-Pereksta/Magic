@@ -1645,7 +1645,8 @@
     heatOverloadReady,
     heatThresholdsReached,
     heatTransformReady,
-    resolveHeatValue
+    resolveHeatValue,
+    resolveTriggeredHeatGain
   } from "./warrealms/engine/heat.js?v=1";
   import { emitSacrificeEvents } from "./warrealms/engine/sacrifice.js?v=1";
   import { resolveChargeGain } from "./warrealms/engine/charges.js?v=1";
@@ -4011,9 +4012,33 @@
     return changed;
   }
 
+  function triggerHeatEvent(game, player, trigger, event = {}) {
+    const sources = [...(player.played || []), ...(player.bases || []), ...(player.attachments || [])];
+    for (const entry of sources) {
+      const card = getCard(entry);
+      const heat = card?.heat;
+      const triggers = [heat?.trigger, ...(Array.isArray(heat?.triggers) ? heat.triggers : [])];
+      if (!heat || !triggers.includes(trigger) || entry.disabledTurn === game.turnSerial) continue;
+      if (isExpansionBase(card) && entry.constructionRemaining > 0) continue;
+      if (heat.sacrificedId && heat.sacrificedId !== event.cardId) continue;
+      if (entry.heatGainTurn !== game.turnSerial) {
+        entry.heatGainTurn = game.turnSerial;
+        entry.heatGainedThisTurn = 0;
+      }
+      const update = resolveTriggeredHeatGain(heat, entry.heat, entry.heatGainedThisTurn);
+      if (!update.gained) continue;
+      // Account before resolving effects, so nested triggers cannot evade the cap.
+      entry.heatGainedThisTurn += update.gained;
+      resolveHeatChange(game, player, { instanceId: entry.instanceId, delta: update.gained }, {
+        cardId: event.cardId || card.id, instanceId: event.sourceInstanceId || entry.instanceId, source: `trigger-${trigger}`
+      });
+    }
+  }
+
   function resolveHeatOnPlay(game, player, entry, card) {
     if (!card?.heat) return;
-    const update = resolveHeatValue(card.heat, entry.heat, Math.max(0, Number(card.heat.gain) || 0));
+    const triggered = card.heat.trigger || (Array.isArray(card.heat.triggers) && card.heat.triggers.length);
+    const update = resolveHeatValue(card.heat, entry.heat, Math.max(0, Number(triggered ? card.heat.playGain : card.heat.gain) || 0));
     const maximum = update.maximum;
     const heatBefore = update.before;
     entry.heat = update.after;
@@ -4094,7 +4119,7 @@
     const actions = Array.isArray(card?.heat?.actions) ? card.heat.actions : [];
     return actions.map((action, actionIndex) => {
       const cost = Math.max(1, Number(action.cost) || 1);
-      const enabled = canAct && (entry.heat || 0) >= cost && (!action.oncePerTurn || entry.heatActionTurn !== state?.turnSerial);
+      const enabled = canAct && entry.disabledTurn !== state?.turnSerial && (entry.heat || 0) >= cost && (!action.oncePerTurn || entry.heatActionTurn !== state?.turnSerial);
       return `<button class="btn small warning" data-act="use-heat" data-instance-id="${escapeHtml(entry.instanceId)}" data-action-index="${actionIndex}" ${enabled ? "" : "disabled"}>${escapeHtml(action.label || "Vent Heat")} · −${cost}♨</button>`;
     }).join("");
   }
@@ -4210,6 +4235,7 @@
     player.sacrificesThisTurn = Math.max(0, Number(player.sacrificesThisTurn) || 0) + 1;
     player.sacrificedIdsThisTurn = [...(player.sacrificedIdsThisTurn || []), card.id];
     triggerChargeEvent(game, player, "cardSacrificed", { cardId: card.id, tags: entryTags(entry), sourceInstanceId: entry.instanceId });
+    triggerHeatEvent(game, player, "cardSacrificed", { cardId: card.id, tags: entryTags(entry), sourceInstanceId: entry.instanceId });
     emitSacrificeEvents(game, player, entry, card, emitGameEvent, { tags: entryTags(entry) });
     for (const active of [...(player.played || []), ...(player.bases || []), ...(player.attachments || [])]) resolveCardThresholds(game, player, active, getCard(active));
   }
@@ -7965,7 +7991,7 @@
       actionLabel: selected.includes(entry.instanceId) ? "✓ SELECTED — UNSELECT" : "SELECT",
       effect: { __cardSelection: { ...selection, selected: selected.includes(entry.instanceId) ? selected.filter(id => id !== entry.instanceId) : selected.length < maximum ? [...selected, entry.instanceId] : selected } }
     }));
-    if (!selection.destinations.length) options.forEach(option => { option.actionLabel = "CONTINUE"; option.effect = { __noop: true }; });
+    if (!selection.destinations.length) options.forEach(option => { option.actionLabel = "CONTINUE"; option.effect = { __moveSelected: { ...selection, selected: [], destination: "top" } }; });
     for (const destination of selected.length >= (selection.min || 0) ? selection.destinations : []) options.push({ label: `Place Selected in ${destination}`, effect: { __moveSelected: { ...selection, destination } } });
     if (selection.reorder && entries.length > 1) options.push({ label: "Swap Order", effect: { __cardSelection: { ...selection, ids: [...selection.ids].reverse() } } });
     if (!selection.min) options.push({ label: selection.destinations.length ? "Keep All / Confirm Top Order" : "Continue", effect: { __moveSelected: { ...selection, selected: [], destination: "top" } } });
@@ -8996,7 +9022,7 @@
         const entry = actor.played.find(item => item.instanceId === action.instanceId);
         const card = getCard(entry);
         const heatAction = card?.heat?.actions?.[Number(action.actionIndex)];
-        if (!entry || !heatAction) return "That Heat ability is no longer available.";
+        if (!entry || !heatAction || entry.disabledTurn === game.turnSerial) return "That Heat ability is no longer available.";
         const cost = Math.max(1, Number(heatAction.cost) || 1);
         if ((entry.heat || 0) < cost) return "That card does not have enough Heat.";
         if (heatAction.oncePerTurn && entry.heatActionTurn === game.turnSerial) return "That Heat ability was already used this turn.";
