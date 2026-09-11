@@ -9,6 +9,10 @@ import {
   expandedStrategyById,
   expandedStrategyFit
 } from "./bot-strategy-expansion.js";
+import {
+  TEST_LAB_DECK_PRESETS,
+  getTestLabDeckPreset
+} from "./test-lab-deck-presets.js";
 
 const CORE_STRATEGY_IDS = new Set(TEST_LAB_STRATEGIES.map(strategy => strategy.id));
 const NAMED_EXTENDED_STRATEGIES = Object.freeze([
@@ -139,25 +143,33 @@ function restoreVisiblePriority(result, originalOptions) {
 
 export function simulateExtendedTestLabGame(options = {}, gameIndex = 0) {
   const seed = Math.max(1, number(options.seed) || 24681357);
-  const strategyA = resolvedStrategy(options.strategyA || "random", seed, gameIndex, "a");
-  const strategyB = resolvedStrategy(options.strategyB || "random", seed, gameIndex, "b");
+  const presetA = getTestLabDeckPreset(options.strategyA);
+  const presetB = getTestLabDeckPreset(options.strategyB);
+  const strategyA = resolvedStrategy(presetA?.strategyId || options.strategyA || "random", seed, gameIndex, "a");
+  const strategyB = resolvedStrategy(presetB?.strategyId || options.strategyB || "random", seed, gameIndex, "b");
   const internal = {
     ...options,
     strategyA: mappedCoreStrategy(strategyA),
-    strategyB: mappedCoreStrategy(strategyB)
+    strategyB: mappedCoreStrategy(strategyB),
+    ...(presetA ? { commandDeckA: [...presetA.cardIds] } : {}),
+    ...(presetB ? { commandDeckB: [...presetB.cardIds] } : {})
   };
 
   applyInternalPriority(internal, "a", strategyA, seed, gameIndex);
   applyInternalPriority(internal, "b", strategyB, seed, gameIndex);
 
   const injected = new Set(Array.isArray(options.experimentalCardIds) ? options.experimentalCardIds : []);
-  strategyMarketCards(strategyA, seed, gameIndex, "a").forEach(cardId => injected.add(cardId));
-  strategyMarketCards(strategyB, seed, gameIndex, "b").forEach(cardId => injected.add(cardId));
+  // A preset is already a complete 50-card market contribution. Do not add the
+  // expanded-strategy helper cards on top of it; only explicit user experiments
+  // are allowed to alter that fixed deck test.
+  if (!presetA) strategyMarketCards(strategyA, seed, gameIndex, "a").forEach(cardId => injected.add(cardId));
+  if (!presetB) strategyMarketCards(strategyB, seed, gameIndex, "b").forEach(cardId => injected.add(cardId));
   internal.experimentalCardIds = [...injected];
   internal.experimentalCopies = Math.max(2, Math.min(4, number(options.experimentalCopies) || 2));
 
   const result = simulateCoreTestLabGame(internal, gameIndex);
   result.strategies = { a: strategyA, b: strategyB };
+  result.deckPresets = { a: presetA?.id || "", b: presetB?.id || "" };
   restoreVisiblePriority(result, options);
   return result;
 }
@@ -175,6 +187,21 @@ function appendExpandedOptions() {
       option.textContent = strategy.name;
       option.title = strategy.description;
       select.appendChild(option);
+    }
+
+    let presetGroup = select.querySelector('optgroup[data-wr-test-decks="1"]');
+    if (!presetGroup) {
+      presetGroup = document.createElement("optgroup");
+      presetGroup.label = "Preset 50-card decks";
+      presetGroup.dataset.wrTestDecks = "1";
+      for (const preset of TEST_LAB_DECK_PRESETS) {
+        const option = document.createElement("option");
+        option.value = preset.value;
+        option.textContent = `Deck · ${preset.name}`;
+        option.title = `${preset.description} Uses a fixed 50-card command-deck contribution.`;
+        presetGroup.appendChild(option);
+      }
+      select.appendChild(presetGroup);
     }
     if (selected) select.value = selected;
   }
