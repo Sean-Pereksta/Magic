@@ -162,8 +162,8 @@ export function simulateExtendedTestLabGame(options = {}, gameIndex = 0) {
   // A preset is already a complete 50-card market contribution. Do not add the
   // expanded-strategy helper cards on top of it; only explicit user experiments
   // are allowed to alter that fixed deck test.
-  if (!presetA) strategyMarketCards(strategyA, seed, gameIndex, "a").forEach(cardId => injected.add(cardId));
-  if (!presetB) strategyMarketCards(strategyB, seed, gameIndex, "b").forEach(cardId => injected.add(cardId));
+  if (!presetA && !options.commandDeckA) strategyMarketCards(strategyA, seed, gameIndex, "a").forEach(cardId => injected.add(cardId));
+  if (!presetB && !options.commandDeckB) strategyMarketCards(strategyB, seed, gameIndex, "b").forEach(cardId => injected.add(cardId));
   internal.experimentalCardIds = [...injected];
   internal.experimentalCopies = Math.max(2, Math.min(4, number(options.experimentalCopies) || 2));
 

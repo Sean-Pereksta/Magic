@@ -33,3 +33,10 @@ export function heatThresholdsReached(heat = {}, heatValue = 0) {
 export function heatOverloadReady(heat = {}, heatValue = 0) {
   return !!heat.overload && Math.max(0, number(heatValue)) >= Math.max(1, number(heat.overload.at, 1));
 }
+
+// Triggered Heat uses the same persistent instance meter as ordinary play Heat.
+export function resolveTriggeredHeatGain(heat = {}, current = 0, gainedThisTurn = 0) {
+  const cap = Number.isFinite(Number(heat.perTurnCap)) ? Math.max(0, Math.floor(Number(heat.perTurnCap))) : Infinity;
+  const remaining = Math.max(0, cap - Math.max(0, Math.floor(number(gainedThisTurn))));
+  return resolveHeatValue(heat, current, Math.min(remaining, Math.max(0, Math.floor(number(heat.gain)))));
+}

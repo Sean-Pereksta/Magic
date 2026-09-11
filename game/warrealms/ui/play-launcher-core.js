@@ -1,3 +1,4 @@
+import { battleStagingSummary, battleStartTransition } from "./battle-staging.js";
 import { COMBAT_EFFECTS_KEY } from "./combat-effects-model.js";
 import { setCombatEffectsMode } from "./combat-effects.js";
 import "./presentation-polish.js";
@@ -108,8 +109,16 @@ function launcher() {
   root.setAttribute("role", "dialog");
   root.setAttribute("aria-modal", "true");
   root.setAttribute("aria-labelledby", "warrealmsPlayLauncherTitle");
-  root.addEventListener("click", event => {
+  root.addEventListener("click", async event => {
     if (event.target === root || event.target.closest("[data-wr-play-close]")) return closePlayLauncher();
+    if (event.target.closest("[data-wr-confirm-battle]")) {
+      const begin = root.beginBattle;
+      if (!begin || !await battleStartTransition(root)) return;
+      root.beginBattle = null;
+      closePlayLauncher();
+      begin();
+      return;
+    }
     const mainAction = event.target.closest("[data-wr-main-action]");
     if (mainAction) {
       handleWarTableAction(mainAction.dataset.wrMainAction);
@@ -179,6 +188,7 @@ function renderSinglePlayer() {
   const strategyLocked = Boolean(strategy);
   const difficultyName = BOT_DIFFICULTIES.find(item => item.id === selectedDifficulty)?.name || "Medium";
   return `
+    ${battleStagingSummary(strategy, difficultyName)}
     <div class="wrPlaySectionTitle"><h3>Difficulty</h3><span>Choose how efficiently the bot pilots its deck.</span></div>
     <div class="wrDifficultyGrid">
       ${BOT_DIFFICULTIES.map(difficulty => {
@@ -201,7 +211,7 @@ function renderSinglePlayer() {
     <div class="wrPlayFoot">
       <div class="wrSelectionSummary"><strong>${strategy ? strategy.name : "Random Bot"} · ${difficultyName}</strong><br>${strategy ? `${strategy.factions} — ${strategy.deck}` : "A strategy and faction pairing will be chosen when the match begins."}</div>
       ${document.body.classList.contains("battleMode") ? `<button type="button" class="wrResumeBtn" data-wr-resume>Resume Battle</button>` : ""}
-      <button type="button" class="wrStartBtn" data-wr-start-single>Start Battle</button>
+      <button type="button" class="wrStartBtn" data-wr-start-single>BEGIN BATTLE</button>
     </div>`;
 }
 
@@ -319,14 +329,14 @@ function renderLauncher() {
     const body = selectedView === "statistics" ? renderWarTableStatistics() : selectedView === "settings" ? renderWarTableSettings() : renderWarTableMain();
     root.innerHTML = `
       <section class="wrWarTablePanel">
-        <header class="wrWarTableHead"><span class="wrWarTableCrest" aria-hidden="true">♛</span><div class="wrWarTableHeadCopy"><div class="wrPlayEyebrow">War Realms · Campaign Command</div><h2 class="wrWarTableTitle" id="warrealmsPlayLauncherTitle">${escapeHtml(title)}</h2><p class="wrWarTableSubtitle">${escapeHtml(subtitle)}</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Close War Table">×</button></header>
+        <header class="wrWarTableHead"><span class="wrWarTableCrest" aria-hidden="true">♛</span><div class="wrWarTableHeadCopy"><div class="wrPlayEyebrow">War Realms · Campaign Command</div><h2 class="wrWarTableTitle" id="warrealmsPlayLauncherTitle">${escapeHtml(title)}</h2><p class="wrWarTableSubtitle">${escapeHtml(subtitle)}</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Back to Armory">Back</button></header>
         <div class="wrWarTableBody">${body}</div>
       </section>`;
     return;
   }
   root.innerHTML = `
     <section class="wrPlayPanel">
-      <header class="wrPlayHead"><button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrPlayHeadCopy"><div class="wrPlayEyebrow">War Realms · Quick Battle</div><h2 class="wrPlayTitle" id="warrealmsPlayLauncherTitle">Choose your battle</h2><p class="wrPlaySubtitle">Solo practice, controlled matchups, and multiplayer.</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Close Play menu">×</button></header>
+      <header class="wrPlayHead"><button type="button" class="wrWarBack" data-wr-back-main>← War Table</button><div class="wrPlayHeadCopy"><div class="wrPlayEyebrow">War Realms · Quick Battle</div><h2 class="wrPlayTitle" id="warrealmsPlayLauncherTitle">Choose your battle</h2><p class="wrPlaySubtitle">Solo practice, controlled matchups, and multiplayer.</p></div><button type="button" class="wrPlayClose" data-wr-play-close aria-label="Back to Armory">Back</button></header>
       <div class="wrPlayBody"><div class="wrModeTabs" role="tablist" aria-label="Play mode"><button type="button" class="wrModeTab${selectedMode === "single" ? " active" : ""}" data-wr-play-mode="single"><strong>⚔ Solo</strong><span>Battle a bot</span></button><button type="button" class="wrModeTab${selectedMode === "multiplayer" ? " active" : ""}" data-wr-play-mode="multiplayer"><strong>◎ Multiplayer</strong><span>Create or join a room</span></button></div>${selectedMode === "single" ? renderSinglePlayer() : renderMultiplayer()}</div>
     </section>`;
 }
@@ -348,8 +358,15 @@ function showWarTable(options = {}) {
   lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const root = launcher();
   root.hidden = false;
-  renderLauncher();
-  requestAnimationFrame(() => root.querySelector("[data-wr-main-action]")?.focus({ preventScroll: true }));
+  if (options.battle) {
+    root.beginBattle = options.battle.onBegin;
+    root.innerHTML = `<section class="wrPlayPanel"><header class="wrPlayHead"><button type="button" class="wrWarBack" data-wr-play-close>Back</button><h2 id="warrealmsPlayLauncherTitle">The War Table · ${escapeHtml(options.battle.title)}</h2></header><div class="wrPlayBody">${options.battle.content}<button type="button" class="wrStartBtn" data-wr-confirm-battle>BEGIN BATTLE</button></div></section>`;
+    requestAnimationFrame(() => root.querySelector("[data-wr-confirm-battle]")?.focus());
+  } else {
+    root.beginBattle = null;
+    renderLauncher();
+    requestAnimationFrame(() => root.querySelector("[data-wr-main-action]")?.focus({ preventScroll: true }));
+  }
 }
 
 function closePlayLauncher() {
@@ -382,11 +399,12 @@ function forceNextStrategy(strategyId, run) {
   }
 }
 
-function startSelectedSinglePlayer() {
+async function startSelectedSinglePlayer() {
+  if (!await battleStartTransition(document.getElementById(PLAY_LAUNCHER_ID))) return;
   if (selectedStrategy !== "random" && selectedDifficulty === "easy") selectedDifficulty = "medium";
   const nativeButton = document.getElementById("botChallengeBtn");
   if (!nativeButton) return;
-  nativeButton.click();
+  window.dispatchEvent(new Event("warrealms:configure-bot"));
   const nativeDifficulty = document.querySelector(`[data-act="start-bot"][data-difficulty="${selectedDifficulty}"]`);
   if (!(nativeDifficulty instanceof HTMLElement)) return;
   closePlayLauncher();

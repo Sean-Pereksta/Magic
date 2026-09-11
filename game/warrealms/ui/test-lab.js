@@ -1,3 +1,4 @@
+import { installExperiments, experimentOptions, renderExperimentResults } from "./test-lab-experiment-ui.js";
 import {
   TEST_LAB_DIFFICULTIES,
   TEST_LAB_PRIORITY_MODES,
@@ -302,6 +303,7 @@ function renderStrategyCardProfile(strategyId, rerenderRanking = false) {
 }
 
 function renderProgress(payload) {
+  renderExperimentResults(payload.deckRows || []);
   latestRows = payload.rows || [];
   latestSummary = payload.summary || null;
   latestRecentGames = payload.recentGames || latestRecentGames;
@@ -330,6 +332,7 @@ function buildOptions() {
     if ($("priorityEnabledB")?.checked) priorityCardsB.forEach(cardId => experimental.add(cardId));
   }
   return {
+    ...experimentOptions(),
     games: gameCount(),
     strategyA: $("strategyA").value,
     strategyB: $("strategyB").value,
@@ -352,6 +355,7 @@ function buildOptions() {
 }
 
 async function startSimulation() {
+  renderExperimentResults([]);
   activeController?.abort();
   activeController = new AbortController();
   latestRows = [];
@@ -377,6 +381,7 @@ async function startSimulation() {
       signal: activeController.signal,
       onProgress: renderProgress
     });
+    renderExperimentResults(result.deckRows || []);
     latestRows = result.rows || latestRows;
     latestSummary = result.summary || latestSummary;
     latestRecentGames = result.recentGames || latestRecentGames;
@@ -501,3 +506,5 @@ renderTable();
 renderRecentGames([]);
 renderStrategyAnalytics();
 wireEvents();
+
+installExperiments();

@@ -1,3 +1,4 @@
+import { combatEffectsReduced } from "./combat-effects.js";
 const WARREALMS_EVENT = "warrealms:game-event";
 const STYLE_ID = "warrealmsPresentationPolishStyles";
 const LAYER_ID = "warrealmsPresentationLayer";
@@ -261,6 +262,10 @@ function handleGameEvent(customEvent) {
   }
   const presentation = describePresentationEvent(event);
   const card = findCardForEvent(event);
+  if (event.type === "HEAT_GAINED" && card && event.sourceCardId && !combatEffectsReduced()) {
+    const source = findCardForEvent({ instanceId: event.sourceInstanceId, cardId: event.sourceCardId });
+    if (source && source !== card) showBeam(source, card, "#ffb34d");
+  }
   if (event.type === "CARD_PLAYED" && card) {
     lastSourceElement = card;
     lastSourceAt = performance.now();

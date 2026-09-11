@@ -1,3 +1,4 @@
+import { experimentSchedule, recordDeckResult } from "./test-lab-experiments.js";
 import {
   createTestLabAccumulator,
   recordTestLabGame,
@@ -32,10 +33,23 @@ export async function runTestLabWithHistory(options = {}, hooks = {}) {
   const accumulator = createTestLabAccumulator();
   const analytics = createStrategyAnalytics();
   const recentGames = [];
+  const schedule = experimentSchedule(options.decks || []);
+  const deckResults = new Map();
+  if (schedule.length > games) throw new Error(`Choose at least ${schedule.length} games to cover every selected matchup, or select fewer playstyles.`);
 
   for (let index = 0; index < games; index += 1) {
     if (hooks.signal?.aborted) break;
-    const result = simulateTestLabGame(options, index);
+    const scheduled = schedule.length ? schedule[index % schedule.length] : null;
+    const pair = scheduled;
+    const gameOptions = { ...options, firstPlayer: schedule.length ? (Math.floor(index / schedule.length) % 2 ? "b" : "a") : undefined };
+    if (pair) pair.forEach((deck, side) => {
+      if (!deck) return;
+      const suffix = side ? "B" : "A";
+      gameOptions[`strategy${suffix}`] = deck.style;
+      gameOptions[`commandDeck${suffix}`] = deck.cardIds;
+    });
+    const result = simulateTestLabGame(gameOptions, index);
+    recordDeckResult(deckResults, pair, result);
     recordTestLabGame(accumulator, result, index);
     if (strategyAnalyticsEnabled) recordStrategyGame(analytics, result, index);
     recentGames.unshift({
@@ -53,6 +67,7 @@ export async function runTestLabWithHistory(options = {}, hooks = {}) {
 
     if ((index + 1) % batchSize === 0 || index + 1 === games) {
       hooks.onProgress?.({
+        deckRows: [...deckResults.values()],
         accumulator,
         summary: testLabSummary(accumulator),
         rows: testLabCardRows(accumulator),
@@ -66,6 +81,7 @@ export async function runTestLabWithHistory(options = {}, hooks = {}) {
   }
 
   return {
+    deckRows: [...deckResults.values()],
     accumulator,
     summary: testLabSummary(accumulator),
     rows: testLabCardRows(accumulator),

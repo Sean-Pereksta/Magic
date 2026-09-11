@@ -377,10 +377,9 @@ export const CARDS = Object.freeze([
     gain: 1,
     perTurnCap: 3,
 
-    activated: {
-      cost: {
-        heat: 5
-      },
+    actions: [{
+      label: "Summon Vowmaw",
+      cost: 5,
       effect: {
         createToken: {
           id: "vowmaw",
@@ -388,7 +387,7 @@ export const CARDS = Object.freeze([
           zone: "hand"
         }
       }
-    }
+    }]
   },
 
   ally: {
@@ -399,7 +398,7 @@ export const CARDS = Object.freeze([
     "Gain 3 Combat and 1 Trade.",
 
   heatText:
-    "Whenever you sacrifice a card, add 1 Heat to Vharak, up to 3 Heat gained this way each turn. Spend 5 Heat: create a Vowmaw in your hand.",
+    "Whenever you sacrifice a card, add 1 Heat to Vharak, up to 3 Heat gained this way each turn. At 5 Heat, click Summon Vowmaw to spend 5 Heat and create a Vowmaw in your hand.",
 
   allyText:
     "Gain 2 Combat.",

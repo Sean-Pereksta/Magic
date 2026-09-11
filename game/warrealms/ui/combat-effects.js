@@ -190,6 +190,20 @@ export function createCombatEffects({ legacy = async () => {}, makeCard = () => 
     const rect = (event.instanceId ? rectOf(liveCard) || item.rect : rectOf(target) || item.rect) || { left: innerWidth / 2 - 45, top: innerHeight * .45, width: 90, height: 110 };
     const point = center(rect), kind = feedback.kind;
     const heavy = magnitude(feedback.amount) === "heavy";
+    if (event.type === "stat-gain" && !reduced()) {
+      const source = exactCard(event.sourceInstanceId) || (event.sourceCardId ? findVisible(`.gameCard[data-card-id="${CSS.escape(event.sourceCardId)}"]`) : null);
+      const sourceRect = rectOf(source);
+      if (sourceRect) {
+        const origin = center(sourceRect);
+        for (let particle = 0; particle < 5; particle++) {
+          const node = nodeAt("wrResourceTransfer", origin, COLORS[kind] || "#e4c65c", 650);
+          if (!node) break;
+          node.style.setProperty("--dx", `${point.x - origin.x}px`);
+          node.style.setProperty("--dy", `${point.y - origin.y}px`);
+          node.style.animationDelay = `${particle * 35}ms`;
+        }
+      }
+    }
     const color = themes.get(event.faction)?.[kind] || COLORS[kind];
     // Numbers occupy the top edge, leaving rules and controls readable.
     floating({ x: point.x, y: rect.top - 8 - index * 28 }, feedback.label, kind, feedback.amount);
