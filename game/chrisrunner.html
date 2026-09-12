@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chris Runner - Endless 3D Chase</title>
 <style>
   body {
@@ -606,6 +607,14 @@
     #twoPlayerScoreboard { transform: translateX(-50%) scale(.85); transform-origin: top center; }
   }
 
+
+  #energyWarning { position:fixed; inset:0; pointer-events:none; z-index:4; box-shadow:inset 0 0 90px #e965342b; opacity:0; transition:opacity .3s; }
+  #abilityIndicator { font-size:11px; letter-spacing:.4px; color:#bcefeb; margin-top:6px; }
+  #mobileSprint { touch-action:none; user-select:none; font-size:12px; line-height:1.4; }
+  #characterGrid { grid-template-columns:repeat(auto-fit,minmax(125px,1fr)); }
+  .characterStats { line-height:1.6; }
+  #bonusText, #flowText { display:none; }
+  .hudPrimary { flex-wrap:wrap; gap:4px; }
 </style>
 </head>
 <body>
@@ -616,6 +625,7 @@
     <div id="biomeText">Forest</div>
   </div>
   <div class="barWrap" aria-label="Energy"><div id="energyBar"></div></div>
+  <div id="abilityIndicator">Space · Special</div>
   <div class="hudSecondary">
     <span id="yardsText">0 yards</span>
     <span id="bonusText">+0 bonus</span>
@@ -659,9 +669,10 @@
   </div>
 </div>
 
+<div id="energyWarning" aria-hidden="true"></div>
 <div id="mobileControls">
   <div id="stickBase"><div id="stickKnob"></div></div>
-  <button id="mobileSprint" class="mobileAction" type="button">Sprint</button>
+  <button id="mobileSprint" class="mobileAction" type="button" aria-label="Hold to sprint. Tap for special ability.">HOLD · SPRINT<br>TAP · ABILITY</button>
 </div>
 
 
@@ -702,7 +713,7 @@
 <div id="menuOverlay">
   <div id="menuCard">
     <h1>Chris Runner</h1>
-    <h2>Endless 3D Chase</h2>
+    <h2>One road. Ten worlds. Five runners.</h2>
     <div id="menuLayout">
       <div id="menuMain">
         <h3 id="characterHeading">Choose your runner</h3>
@@ -730,8 +741,8 @@
         </div>
         <input id="replayFileInput" type="file" accept=".json,.chrisreplay.json" style="display:none">
         <div id="menuControls">
-          <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
-          <div>Player 2: IJKL movement, U sprint, O dodge</div>
+          <div>Player 1: WASD or Arrow Keys, Shift sprint, Space special ability</div>
+          <div>Player 2: IJKL movement, Enter sprint, O special ability</div>
         </div>
       </div>
       <div id="characterPreviewWrap" aria-label="Selected character preview">
@@ -754,6 +765,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="chris-runner/upgrade.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
@@ -897,6 +909,10 @@ const CHARACTER_PROFILES = {
     trait: "Fastest lateral runner with the longest and quickest-recharging dodge"
   }
 };
+Object.assign(CHARACTER_PROFILES, {
+  anthony: { ...CHARACTER_PROFILES.chris, id:"anthony", name:"Anthony", skin:0xb67c53, beard:false, modelScale:[.9,1.02,.9], roundness:.9, forwardSpeed:1.04, sprintSpeed:1.04, lateralSpeed:1.35, energyRegenMultiplier:1, trait:"Parkour · 50 energy. Agile terrain traversal; costly special ability." },
+  kevon: { ...CHARACTER_PROFILES.jay, id:"kevon", name:"Kevon", skin:0x42281f, hair:0x101014, afro:true, modelScale:[1.28,1.12,1.22], roundness:1.4, forwardSpeed:.78, sprintSpeed:.8, lateralSpeed:.9, trait:"Smash · 25 energy. Break amber barriers; slowest runner." }
+});
 let selectedCharacterKey = localStorage.getItem("chrisRunnerCharacter") || "chris";
 if (!CHARACTER_PROFILES[selectedCharacterKey]) selectedCharacterKey = "chris";
 let characterPreviewScene = null;
@@ -920,7 +936,7 @@ let roundEnding = false;
 let roundToastTimer = null;
 
 const CHRIS_REPLAY_VERSION = 1;
-const GAME_BUILD_VERSION = "chris-runner-readability-flow-v3";
+const GAME_BUILD_VERSION = "chris-runner-astra-sections-v4";
 
 let replayRecorder = null;
 let replayPlayback = null;
@@ -973,6 +989,13 @@ const BIOMES = {
   dream: { groundColor: 0x24164f, roadColor: 0x17112d, shoulderColor: 0x5b3c91, skyColor: 0x100824, fogColor: 0x2d1a55, hemiSky: 0x8b7cff, hemiGround: 0x27143f, sunColor: 0xe9d5ff, sunIntensity: 0.85, treeType: "dream", rockType: "dream", grassType: "dream", enemyTypeModifier: "spirit", decorationDensity: 1.15 }
 };
 
+Object.assign(BIOMES, {
+  rooftops: {...BIOMES.city, groundColor:0x3b4a5c, roadColor:0x465365, skyColor:0xe0a88e, fogColor:0xc5b3b3, sunColor:0xffc9a0},
+  construction: {...BIOMES.city, groundColor:0xa28761, roadColor:0x756956, skyColor:0xb4c8d3, fogColor:0xccd3cf, sunColor:0xffd69e},
+  industrial: {...BIOMES.city, groundColor:0x3f5556, roadColor:0x253737, skyColor:0x689493, fogColor:0x94b1a9, sunColor:0xffd49e},
+  tunnel: {...BIOMES.city, groundColor:0x28313f, roadColor:0x202b36, skyColor:0x233241, fogColor:0x354b59, sunIntensity:.7},
+  ruins: {...BIOMES.forest, groundColor:0x62614d, roadColor:0x666359, skyColor:0xafaaa0, fogColor:0xc3bbaa, sunColor:0xffdfae}
+});
 
 function detectMobileDevice() {
   return window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
@@ -1007,10 +1030,10 @@ function setupMobileControls() {
   if (!controls) return;
   controls.classList.toggle("mobile-visible", isMobileDevice);
 
+  if (controls.dataset.bound) return;
   const base = document.getElementById("stickBase");
   const knob = document.getElementById("stickKnob");
   const sprintBtn = document.getElementById("mobileSprint");
-  const dodgeBtn = document.getElementById("mobileDodge");
   let activeTouchId = null;
   const max = 46;
 
@@ -1057,15 +1080,35 @@ function setupMobileControls() {
   base.addEventListener("pointerup", e => { if (e.pointerType !== "touch") resetStick(); });
   base.addEventListener("pointercancel", resetStick);
 
-  const press = (btn, onDown, onUp) => {
-    btn.addEventListener("touchstart", e => { e.preventDefault(); onDown(); }, { passive: false });
-    btn.addEventListener("touchend", e => { e.preventDefault(); onUp && onUp(); }, { passive: false });
-    btn.addEventListener("pointerdown", e => { if (e.pointerType !== "touch") onDown(); });
-    btn.addEventListener("pointerup", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
-    btn.addEventListener("pointerleave", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
+  // Bind once; setup also runs on resize and each game start.
+  controls.dataset.bound = "true";
+  let sprintPointer = null, heldFor = 0, holdTimer = null;
+  const releaseSprint = (cancelled = false) => {
+    if (sprintPointer === null) return;
+    const tap = !cancelled && performance.now() - heldFor < 180;
+    clearTimeout(holdTimer); sprintPointer = null; mobileSprintDown = false;
+    if (keys.shift) { keys.shift = false; recordReplayInput("keyup", "shift"); }
+    if (tap && gameStarted && !gameOver && !replayMode) {
+      mobileDodgeQueued = true;
+      recordReplayInput("ability", " ");
+      // Queue survives until consumed by the next simulation step.
+    }
   };
-  if (sprintBtn) press(sprintBtn, () => mobileSprintDown = true, () => mobileSprintDown = false);
-  if (dodgeBtn) press(dodgeBtn, () => mobileDodgeQueued = true, () => {});
+  sprintBtn.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (sprintPointer !== null || replayMode) return;
+    sprintPointer = e.pointerId; heldFor = performance.now(); sprintBtn.setPointerCapture(e.pointerId);
+    holdTimer = setTimeout(() => {
+      if (sprintPointer !== null) { mobileSprintDown = true; keys.shift = true; recordReplayInput("keydown", "shift"); }
+    }, 180);
+  });
+  sprintBtn.addEventListener("pointerup", e => { if (e.pointerId === sprintPointer) releaseSprint(); });
+  sprintBtn.addEventListener("pointercancel", () => releaseSprint(true));
+  sprintBtn.addEventListener("lostpointercapture", () => releaseSprint(true));
+  const clearControls = () => { releaseSprint(true); resetStick(); mobileDodgeQueued = false; for (const key of Object.keys(keys)) { if (keys[key]) recordReplayInput("keyup", key); keys[key] = false; } };
+  controls.resetRunnerInput = clearControls;
+  window.addEventListener("blur", clearControls);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) clearControls(); });
 }
 
 function toggleFullScreen() {
@@ -1291,8 +1334,8 @@ function init() {
   camera.position.set(0, 14, -20);
   orientCameraUpright(new THREE.Vector3(0, 3, 8));
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer = new THREE.WebGLRenderer({ antialias: !detectMobileDevice(), powerPreference:"high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, detectMobileDevice() ? 1.15 : 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -1306,8 +1349,8 @@ function init() {
   sunLight = new THREE.DirectionalLight(0xffffff, 2.1);
   sunLight.position.set(30, 55, -30);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 1024;
-  sunLight.shadow.mapSize.height = 1024;
+  sunLight.shadow.mapSize.width = detectMobileDevice() ? 512 : 1024;
+  sunLight.shadow.mapSize.height = detectMobileDevice() ? 512 : 1024;
   sunLight.shadow.camera.left = -90;
   sunLight.shadow.camera.right = 90;
   sunLight.shadow.camera.top = 90;
@@ -1324,6 +1367,7 @@ function init() {
 
   window.addEventListener("keydown", e => {
     const key = e.key.toLowerCase();
+    if (gameStarted && [" ","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) e.preventDefault();
 
     if (replayMode) return;
 
@@ -1337,6 +1381,7 @@ function init() {
 
   window.addEventListener("keyup", e => {
     const key = e.key.toLowerCase();
+    if (gameStarted && [" ","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) e.preventDefault();
 
     if (replayMode) return;
 
@@ -1354,6 +1399,12 @@ function init() {
     replayInput.addEventListener("change", handleReplayFileSelected);
   }
 
+  const grid = document.getElementById("characterGrid");
+  grid.innerHTML = Object.values(CHARACTER_PROFILES).map(profile => {
+    const ability = RUNNER_ABILITIES[profile.id];
+    return `<button class="characterCard" type="button" data-character="${profile.id}" aria-pressed="false"><span class="characterName">${profile.name}</span><span class="characterBuild">${ability.name} · ${ability.cost} energy</span><span class="characterStats">${ability.description}<br>+ ${ability.strength}<br>− ${ability.weakness}</span></button>`;
+  }).join("");
+  grid.addEventListener("click", e => { const card = e.target.closest("[data-character]"); if (card) selectCharacter(card.dataset.character); });
   setupMobileControls();
   setupCharacterPreview();
   selectCharacter(selectedCharacterKey);
@@ -1534,7 +1585,7 @@ function updateEnvironmentSky(dt) {
 }
 
 function getBiomeLabel(biome) {
-  return ({ forest: "Forest Road", snow: "Frozen Pass", desert: "Desert Highway", city: "Night City", dream: "The Dream" })[biome] || biome;
+  return ({ rooftops:"Skyline Rooftops", construction:"Construction Yard", industrial:"Foundry District", tunnel:"Transit Tunnel", ruins:"Overgrown Ruins", forest: "Forest Road", snow: "Frozen Pass", desert: "Desert Highway", city: "Night City", dream: "The Dream" })[biome] || biome;
 }
 
 /* ============================================================
@@ -1564,7 +1615,7 @@ function selectCharacter(key) {
   const name = document.getElementById("previewCharacterName");
   const trait = document.getElementById("previewCharacterTrait");
   if (name) name.textContent = profile.name;
-  if (trait) trait.textContent = profile.trait;
+  if (trait) { const ability = RUNNER_ABILITIES[profile.id]; trait.textContent = `${ability.name} · ${ability.cost} energy. ${ability.description}. ${ability.strength}; ${ability.weakness.toLowerCase()}.`; }
   refreshCharacterPreview();
 }
 
@@ -1600,6 +1651,7 @@ function buildCharacterModel(profile, jerseyColor = 0x1d4ed8) {
   const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 8), hairMat);
   hair.position.set(0, 4.82, -0.03);
   hair.scale.set(profile.headScale[0], 0.38, profile.headScale[2] * 0.94);
+  if (profile.afro) { hair.scale.set(1.35, 1.05, 1.25); hair.position.y = 5.05; }
   hair.castShadow = true;
   rig.add(hair);
 
@@ -1659,7 +1711,7 @@ function setupCharacterPreview() {
 
   characterPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   characterPreviewRenderer.setClearColor(0x000000, 0);
-  characterPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  characterPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, detectMobileDevice() ? 1.15 : 1.5));
   characterPreviewRenderer.domElement.setAttribute("aria-hidden", "true");
   host.appendChild(characterPreviewRenderer.domElement);
 
@@ -2022,6 +2074,7 @@ function createSpiritDog(x, z) {
 
 function updateSpiritDogs(dt) {
   for (const dog of spiritDogs) {
+    if (dog?.runnerStun > 0) continue;
     if (!canEnemyDamage(dog)) continue;
     const target = getNearestActiveRunner(dog.rig.position);
     if (!target) continue;
@@ -2044,7 +2097,7 @@ function updateSpiritDogs(dt) {
     if (dist < 1.5) { if (tryShieldBlock(target,dog)) continue; handlePlayerCaught(target, "Player " + target.id + " was taken by a spirit dog!"); }
   }
   const leader = getLeaderRunner() || player;
-  spiritDogs = spiritDogs.filter(d => { const keep = canEnemyDamage(d) && d.rig.position.z > leader.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) scene.remove(d.rig); return keep; });
+  spiritDogs = spiritDogs.filter(d => { const keep = canEnemyDamage(d) && d.rig.position.z > leader.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) disposeRunnerObject(d.rig); return keep; });
 }
 
 function findDreamHazardPosition(zStart, radius) {
@@ -2225,13 +2278,9 @@ function updateFallingStars(dt) {
 ============================================================ */
 
 function getBiomeForZ(z) {
-  const tier = Math.max(0, Math.floor(z / 1000));
-  const cycle = tier % 5;
-  if (cycle === 0) return "forest";
-  if (cycle === 1) return "snow";
-  if (cycle === 2) return "desert";
-  if (cycle === 3) return "city";
-  return "dream";
+  // Chunk-aligned transitions prevent lighting and geometry disagreeing.
+  const route = ["forest", "city", "rooftops", "construction", "industrial", "tunnel", "ruins", "snow", "desert", "dream"];
+  return route[Math.max(0, Math.floor(z / (CHUNK_LENGTH * 6))) % route.length];
 }
 
 function getBiomeConfig(biome) {
@@ -2274,7 +2323,7 @@ function addReadableObstacleTreatment(obstacle, biome, options = {}) {
     if (obj.isMesh && !obj.userData?.isReadabilityEffect) originals.push(obj);
   });
 
-  for (const mesh of originals) {
+  for (const mesh of (detectMobileDevice() ? [] : originals)) {
     if (!mesh.geometry) continue;
     const shell = new THREE.Mesh(
       mesh.geometry,
@@ -2636,29 +2685,30 @@ function generateChunk(zStart) {
 
   addRoadSurface(chunk, zStart, biome);
   addRoadLines(chunk, zStart, biome);
-  addOuterTerrainDecor(chunk, zStart, biome);
-  addGridWallsWithGuaranteedPaths(chunk, zStart, biome);
+  if (["forest","snow","desert","dream"].includes(biome)) addOuterTerrainDecor(chunk, zStart, biome);
+  addRunnerArchitecture(chunk, zStart, biome);
+  const section = addRunnerSection(chunk, zStart, biome);
   addPickups(chunk, zStart);
-  if (biome !== "dream") addGrassPatches(chunk, zStart, biome);
-  if (biome === "dream") {
+  if (["forest","snow","desert","ruins"].includes(biome)) addGrassPatches(chunk, zStart, biome);
+  if (biome === "dream" && !section.recovery) {
     addFallingStars(chunk, zStart);
     const hazardCount = 1 + (gameRandom() < .35 ? 1 : 0);
     for (let i = 0; i < hazardCount; i++) createDreamHazard(chunk, zStart);
   }
 
-  if (zStart > 20 && enemies.length < MAX_ENEMIES) {
+  if (zStart > 84 && !section.recovery && enemies.length < MAX_ENEMIES) {
     const desiredEnemyCount = 1 + Math.floor(distance / 230);
     const availableSlots = MAX_ENEMIES - enemies.length;
-    const spawnCount = Math.min(desiredEnemyCount, 4, availableSlots);
+    const spawnCount = Math.min(desiredEnemyCount, section.kind === "encounter" ? 3 : 1, availableSlots);
 
     for (let i = 0; i < spawnCount; i++) {
       const ex = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
       const ez = zStart + rand(5, CHUNK_LENGTH - 8);
-      enemies.push(createEnemy(ex, ez));
+      if (!collidesWithWall(new THREE.Vector3(ex,0,ez),1.2)) enemies.push(configureRunnerEnemy(createEnemy(ex, ez), ez));
     }
   }
 
-  if (distance >= 1000 && zStart > 1000 && biome !== "dream" && dogs.length < MAX_DOGS) {
+  if (!section.recovery && distance >= 1000 && zStart > 1000 && biome !== "dream" && dogs.length < MAX_DOGS) {
     const desiredDogCount = 1 + Math.floor((distance - 1000) / 500);
     const availableDogSlots = MAX_DOGS - dogs.length;
     const spawnDogCount = Math.min(desiredDogCount, 2, availableDogSlots);
@@ -2670,7 +2720,7 @@ function generateChunk(zStart) {
     }
   }
 
-  if (zStart >= 2000 && biome === "desert" && desertStalkers.length < MAX_DESERT_STALKERS) {
+  if (!section.recovery && zStart >= 2000 && biome === "desert" && desertStalkers.length < MAX_DESERT_STALKERS) {
     const chance = zStart >= 3000 ? 0.6 : 0.45;
     if (gameRandom() < chance) {
       const sx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
@@ -2682,8 +2732,8 @@ function generateChunk(zStart) {
   }
 
 
-  if (zStart >= POLICE_SPAWN_START && biome === "city" && policeOfficers.length < MAX_POLICE) {
-    const desiredPoliceCount = 1 + Math.floor((distance - POLICE_SPAWN_START) / 600);
+  if (!section.recovery && zStart >= 250 && biome === "city" && policeOfficers.length < MAX_POLICE) {
+    const desiredPoliceCount = 1 + Math.max(0, Math.floor((distance - 250) / 600));
     const availablePoliceSlots = MAX_POLICE - policeOfficers.length;
     const spawnPoliceCount = Math.min(desiredPoliceCount, 2, availablePoliceSlots);
     for (let i = 0; i < spawnPoliceCount; i++) {
@@ -2693,7 +2743,7 @@ function generateChunk(zStart) {
     }
   }
 
-  if (biome === "dream" && spiritDogs.length < MAX_SPIRIT_DOGS) {
+  if (!section.recovery && biome === "dream" && spiritDogs.length < MAX_SPIRIT_DOGS) {
     const spawnCount = Math.min(1 + (distance > DREAM_START + 450 ? 1 : 0), MAX_SPIRIT_DOGS - spiritDogs.length);
     for (let i = 0; i < spawnCount; i++) {
       const sx = rand(-ROAD_WIDTH / 2 + 3, ROAD_WIDTH / 2 - 3);
@@ -2806,7 +2856,9 @@ function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
 }
 
 function addPickups(chunk, zStart) {
-  const amount = 3 + Math.floor(gameRandom() * 3);
+  const recovery = chunk.userData.section === "recovery";
+  const rewardRoute = ["shortcut", "parkour"].includes(chunk.userData.section);
+  const amount = recovery || rewardRoute ? 2 : 1;
 
   for (let i = 0; i < amount; i++) {
     const group = new THREE.Group();
@@ -2816,6 +2868,8 @@ function addPickups(chunk, zStart) {
     else if (roll > 0.955) pickupType = "blue";
     else if (roll > 0.925) pickupType = "gold";
     else if (roll > 0.895) pickupType = "red";
+    if (recovery) pickupType = "green";
+    if (rewardRoute && i === 0) pickupType = "gold";
 
     const style = {
       green: { orb: 0x22ff99, emissive: 0x0c9d5c, ringA: 0xfacc15, ringB: 0xd97706 },
@@ -2855,8 +2909,9 @@ function addPickups(chunk, zStart) {
       group.add(ringB);
     }
 
-    const x = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
-    const z = zStart + rand(5, CHUNK_LENGTH - 5);
+    const shortcut = ["shortcut", "parkour"].includes(chunk.userData.section);
+    const x = shortcut && i === 0 ? 9 : 0;
+    const z = zStart + (shortcut && i === 0 ? 36 : 10 + i * 16);
 
     group.position.set(x, 1.2, z);
     group.userData = {
@@ -2917,6 +2972,7 @@ function removeEnemyActor(enemy, list) {
   }
 
   if (enemy.handTorch) enemy.handTorch.visible = false;
+  disposeRunnerObject(enemy.rig); disposeRunnerObject(enemy.laser); disposeRunnerObject(enemy.warningMesh);
 
   recordReplayEvent("enemy_removed", { type: enemy?.type || "enemy", x: enemy?.rig ? Number(enemy.rig.position.x.toFixed(2)) : null, z: enemy?.rig ? Number(enemy.rig.position.z.toFixed(2)) : null });
 
@@ -2928,7 +2984,7 @@ function removeEnemyActor(enemy, list) {
 function createBurstEffect(pos, colorA, colorB, count = 18) { const group = new THREE.Group(); group.position.copy(pos); group.position.y += 1.5; const matA = new THREE.MeshBasicMaterial({ color: colorA }); const matB = new THREE.MeshBasicMaterial({ color: colorB }); for (let i = 0; i < count; i++) { const particle = new THREE.Mesh(new THREE.SphereGeometry(rand(0.08, 0.18), 6, 6), Math.random() > 0.5 ? matA : matB); particle.userData.velocity = new THREE.Vector3(rand(-8, 8), rand(2, 10), rand(-8, 8)); group.add(particle); } group.userData.life = 0.45; scene.add(group); if (!window.burstEffects) window.burstEffects = []; window.burstEffects.push(group); }
 function createRedImpactBurst(pos) { createBurstEffect(pos, 0xef4444, 0x7f1d1d, 24); }
 function createShieldBreakEffect(p) { const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) return; createBurstEffect(actor.rig.position, 0x38bdf8, 0xfacc15, 18); }
-function tryShieldBlock(targetPlayer, attacker) { if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; recordReplayEvent("shield_block", { playerId: targetPlayer?.id || 1, attackerType: attacker?.type || "unknown" }); targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); else if (attacker.type === "spiritDog") removeEnemyActor(attacker, spiritDogs); } return true; }
+function tryShieldBlock(targetPlayer, attacker) { if (targetPlayer?.abilityShield > 0 || targetPlayer?.traversal) return true; if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; recordReplayEvent("shield_block", { playerId: targetPlayer?.id || 1, attackerType: attacker?.type || "unknown" }); targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); else if (attacker.type === "spiritDog") removeEnemyActor(attacker, spiritDogs); } return true; }
 function handleShieldBlockControlledChaser(targetPlayer, chaserOwner) { if (!targetPlayer || !chaserOwner || !chaserOwner.controlledChaser) return false; if (!targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges = 0; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); const runnerActor = targetPlayer; const chaserActor = chaserOwner.controlledChaser; chaserActor.rig.position.z = runnerActor.rig.position.z + 100; chaserActor.rig.position.x = clamp(runnerActor.rig.position.x + rand(-8, 8), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3); chaserActor.velocity.set(0, 0, 0); showRoundToast("Shield blocked the chaser! Chaser warped ahead!"); return true; }
 function spawnDangerBehindPlayer(owner) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return; const spawnZ = Math.max(START_Z + 8, actor.rig.position.z - 28); const spawnX = clamp(actor.rig.position.x + rand(-10, 10), -WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4); if (enemies.length < MAX_ENEMIES) enemies.push(createEnemy(spawnX, spawnZ)); }
 function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; function addTarget(e, list) { if (!e || e.dead || e.removed || e.disabled) return; if (!e.rig || e.rig.visible === false) return; all.push({ actor: e, list }); } for (const e of enemies) addTarget(e, enemies); for (const d of dogs) addTarget(d, dogs); for (const s of desertStalkers) addTarget(s, desertStalkers); for (const p of policeOfficers) addTarget(p, policeOfficers); for (const spirit of spiritDogs) addTarget(spirit, spiritDogs); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
@@ -2936,8 +2992,8 @@ function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isCha
 function canEnemyDamage(enemy) { return !!(enemy && !enemy.dead && !enemy.removed && !enemy.disabled && enemy.canDamage !== false && enemy.rig && enemy.rig.visible !== false && enemy.rig.parent); }
 function createBlackGlobeProjectile(fromPos, toPos, onHit) { const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111827 })); mesh.position.copy(fromPos); mesh.position.y += 2.2; const target = toPos.clone(); target.y += 1.8; scene.add(mesh); blackGlobeProjectiles.push({ mesh, target, speed: 85, onHit }); }
 function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!source || !source.rig) return; const targets = getBlackGlobeTargets(owner, 5); for (const target of targets) { if (!target || !target.actor || target.actor.dead || target.actor.removed) continue; target.actor.dead = true; target.actor.disabled = true; target.actor.canDamage = false; target.actor.speed = 0; if (target.actor.velocity) target.actor.velocity.set(0, 0, 0); if (target.actor.rig) { target.actor.rig.userData.dead = true; target.actor.rig.userData.canDamage = false; } const targetPos = target.actor.rig && target.actor.rig.position ? target.actor.rig.position.clone() : source.rig.position.clone(); createBlackGlobeProjectile(source.rig.position, targetPos, () => { createRedImpactBurst(targetPos); removeEnemyActor(target.actor, target.list); }); } }
-function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { scene.remove(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
-function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { scene.remove(group); window.burstEffects.splice(i, 1); } } }
+function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { disposeRunnerObject(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
+function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { disposeRunnerObject(group); window.burstEffects.splice(i, 1); } } }
 function updatePlayerShieldVisuals(dt) { const playerList = gameMode === 2 ? players : [player]; for (const p of playerList) { if (!p || !p.shieldMesh) continue; const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) { p.shieldMesh.visible = false; continue; } p.shieldMesh.visible = !!p.shieldActive; if (p.shieldActive) { p.shieldMesh.position.copy(actor.rig.position); p.shieldMesh.position.y += 2.5; p.shieldMesh.rotation.y += dt * 1.7; p.shieldMesh.rotation.x += dt * 0.8; } } }
 function showRoundToast(text, duration = 1400) {
   const toast = document.getElementById("roundToast");
@@ -3134,6 +3190,7 @@ function resolveSlidingCollision(actor, oldPos, radius) {
   const attempted=actor.rig.position.clone();
   const hit=getCollidingWall(attempted,radius);
   if (!hit) return false;
+  if (tryRunnerAutoVault(actor, oldPos, hit)) return true;
   const dx=attempted.x-oldPos.x, dz=attempted.z-oldPos.z;
   const xOnly=oldPos.clone(); xOnly.x+=dx;
   const zOnly=oldPos.clone(); zOnly.z+=dz;
@@ -3175,7 +3232,9 @@ function updatePlayerActor(p, dt, controlSet) {
     move.z += mobileMoveVector.z;
   }
 
-  const sprinting = (keys[controlSet.sprint] || (p.id === 1 && mobileSprintDown)) && p.energy > 0;
+  if (p.energy <= .5) p.exhausted = true;
+  if (p.energy >= 25) p.exhausted = false;
+  const sprinting = (keys[controlSet.sprint] || (p.id === 1 && mobileSprintDown)) && !p.exhausted && p.energy > 0;
   let speed = sprinting ? actor.sprintSpeed : actor.speed;
 
   if (sprinting && move.lengthSq() > 0) {
@@ -3186,24 +3245,24 @@ function updatePlayerActor(p, dt, controlSet) {
 
   p.energy = clamp(p.energy, 0, 100);
 
-  const dodgePressed = keys[controlSet.dodge] || (p.id === 1 && mobileDodgeQueued);
-  const dodgeCost=p.dodgeCost || 18;
-  if (dodgePressed && actor.dodgeCooldown <= 0 && p.energy >= dodgeCost) {
-    actor.dodgeCooldown = p.dodgeCooldownDuration || 0.65;
-    mobileDodgeQueued = false;
-    p.energy -= dodgeCost;
-    const dodgeOldPos=actor.rig.position.clone();
-    const threatBefore=closestThreatDistance(dodgeOldPos);
-
-    if (move.lengthSq() === 0) move.z = 1;
-    move.normalize();
-
-    const dodgeDistance=p.dodgeDistance || 6;
-    actor.rig.position.x += move.x * dodgeDistance * (actor.lateralMultiplier || 1);
-    actor.rig.position.z += move.z * dodgeDistance;
-    actor.rig.position.x=clamp(actor.rig.position.x,-WORLD_WIDTH/2+2,WORLD_WIDTH/2-2);
-    resolveSlidingCollision(actor,dodgeOldPos,PLAYER_RADIUS);
-    evaluateDodgeBonus(p,threatBefore,closestThreatDistance(actor.rig.position));
+  p.abilityCooldown = Math.max(0, (p.abilityCooldown || 0) - dt);
+  p.abilityShield = Math.max(0, (p.abilityShield || 0) - dt);
+  p.abilityTime = Math.max(0, (p.abilityTime || 0) - dt);
+  const queued = p.id === 1 && mobileDodgeQueued;
+  const pressed = !!keys[controlSet.dodge];
+  if ((pressed && !p.abilityHeld) || queued) useRunnerAbility(p, actor, move);
+  p.abilityHeld = pressed;
+  if (queued) mobileDodgeQueued = false;
+  if (p.traversal) {
+    animateRunner(actor, dt, true, false);
+    updateRunnerTraversal(p, actor, dt);
+    if (actor.parts.torso) actor.parts.torso.rotation.x = p.characterKey === "kevon" ? .5 : -.2;
+    if (p.characterKey === "anthony" || p.characterKey === "kevon") {
+      if (actor.parts.leftArm) actor.parts.leftArm.rotation.x = -1.3;
+      if (actor.parts.rightArm) actor.parts.rightArm.rotation.x = -1.3;
+      if (p.characterKey === "anthony" && actor.parts.leftLeg) actor.parts.leftLeg.rotation.x = -1.2;
+    }
+    return;
   }
 
   actor.dodgeCooldown -= dt;
@@ -3283,6 +3342,8 @@ function animateRunner(actor, dt, isMoving, allowFarSkip) {
   if (parts.rightLeg) parts.rightLeg.rotation.x = oppositeSwing;
 
   if (parts.torso) {
+    parts.torso.rotation.x = actor.abilityTime > 0 ? .35 : isMoving ? .1 : 0;
+    parts.torso.scale.y = 1 + (actor.energy < 25 ? Math.sin(t * 1.4) * .025 : 0);
     parts.torso.rotation.z = Math.sin(t) * 0.04;
   }
 
@@ -3331,6 +3392,7 @@ function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
 
   for (const enemy of enemies) {
+    if (enemy?.runnerStun > 0) continue;
     if (!canEnemyDamage(enemy)) continue;
     const target = getNearestActiveRunner(enemy.rig.position);
     if (!target) continue;
@@ -3342,12 +3404,11 @@ function updateEnemies(dt) {
     } else {
       const prevPlayer = player;
       player = target;
-      chaseWithPathfinding(enemy, dt, enemy.speed, 0.95);
+      updateRunnerEnemy(enemy, target, dt);
       player = prevPlayer;
-      updateEnemyTorch(enemy, dt);
     }
 
-    if (canEnemyDamage(enemy) && !playerHiddenInGrass && distToTarget < 1.8) {
+    if (canEnemyDamage(enemy) && !playerHiddenInGrass && flatDistance(enemy.rig.position, target.rig.position) < 1.8 && !enemy.hop) {
       if (tryShieldBlock(target, enemy)) continue;
       handlePlayerCaught(target, "Player " + target.id + " got caught by a chaser!");
     }
@@ -3355,14 +3416,15 @@ function updateEnemies(dt) {
 
   const cleanupLeader = getLeaderRunner() || player;
   enemies = enemies.filter(e => {
-    if (!canEnemyDamage(e)) return false;
+    if (!canEnemyDamage(e)) { if (e.rig && !e.disabled) disposeRunnerObject(e.rig); return false; }
     const keep = e.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(e.rig);
+    if (!keep) disposeRunnerObject(e.rig);
     return keep;
   });
 }
 function updateDesertStalkers(dt) {
   for (const s of desertStalkers) {
+    if (s?.runnerStun > 0) continue;
     if (!canEnemyDamage(s)) continue;
     const target = getNearestActiveRunner(s.rig.position);
     if (!target) continue;
@@ -3391,13 +3453,14 @@ function updateDesertStalkers(dt) {
   desertStalkers = desertStalkers.filter(s => {
     if (!canEnemyDamage(s)) return false;
     const keep = s.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(s.rig);
+    if (!keep) disposeRunnerObject(s.rig);
     return keep;
   });
 }
 
 function updateDogs(dt) {
   for (const dog of dogs) {
+    if (dog?.runnerStun > 0) continue;
     if (!canEnemyDamage(dog)) continue;
     const target = getNearestActiveRunner(dog.rig.position);
     if (!target) continue;
@@ -3425,7 +3488,7 @@ function updateDogs(dt) {
   dogs = dogs.filter(d => {
     if (!canEnemyDamage(d)) return false;
     const keep = d.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(d.rig);
+    if (!keep) disposeRunnerObject(d.rig);
     return keep;
   });
 }
@@ -3695,7 +3758,7 @@ function updateTorches(dt) {
 
     if (p >= 1) {
       createFireZone(t.target);
-      scene.remove(t.group);
+      disposeRunnerObject(t.group);
       torches.splice(i, 1);
     }
   }
@@ -3805,7 +3868,7 @@ function updateFireZones(dt) {
     fire.group.children[0].material.opacity = lifePct * 0.8;
 
     if (fire.life <= 0) {
-      scene.remove(fire.group);
+      disposeRunnerObject(fire.group);
       fireZones.splice(i, 1);
     }
   }
@@ -4074,7 +4137,7 @@ function spawnPickupBurst(pos, pickupType = "green") {
 
     if (burst.userData.life <= 0) {
       clearInterval(interval);
-      scene.remove(burst);
+      disposeRunnerObject(burst);
     }
   }, 20);
 }
@@ -4228,6 +4291,7 @@ function updateCamera(dt) {
   }
 
   if (!desired || !focusPoint) return;
+  focusPoint.y = 0; // Vault height must not bob the follow camera.
 
   // Stable follow only: no bobbing, shaking, swaying, or camera roll.
   camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
@@ -4263,7 +4327,7 @@ function manageWorld() {
     const chunk = worldChunks[i];
 
     if (chunk.userData.zStart + CHUNK_LENGTH < worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE) {
-      scene.remove(chunk);
+      disposeRunnerObject(chunk);
       worldChunks.splice(i, 1);
     }
   }
@@ -4271,24 +4335,24 @@ function manageWorld() {
   walls = walls.filter(w => w.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
   pickups = pickups.filter(p => p.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
   grassPatches = grassPatches.filter(g => g.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
-  spiritDogs = spiritDogs.filter(d => { const keep=d.rig && d.rig.position.z > worldAnchor.position.z-CLEANUP_BEHIND_DISTANCE; if(!keep && d.rig) scene.remove(d.rig); return keep; });
+  spiritDogs = spiritDogs.filter(d => { const keep=d.rig && d.rig.position.z > worldAnchor.position.z-CLEANUP_BEHIND_DISTANCE; if(!keep && d.rig) disposeRunnerObject(d.rig); return keep; });
   dreamHazards = dreamHazards.filter(h => h.group && h.group.position.z > worldAnchor.position.z-CLEANUP_BEHIND_DISTANCE);
   fallingStars = fallingStars.filter(star => star.group && star.group.position.z > worldAnchor.position.z-CLEANUP_BEHIND_DISTANCE);
 
   torches = torches.filter(t => {
     const keep = t.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(t.group);
+    if (!keep) disposeRunnerObject(t.group);
     return keep;
   });
 
   fireZones = fireZones.filter(f => {
     const keep = f.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(f.group);
+    if (!keep) disposeRunnerObject(f.group);
     return keep;
   });
   desertStalkers = desertStalkers.filter(s => {
     const keep = s.rig.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(s.rig);
+    if (!keep) disposeRunnerObject(s.rig);
     return keep;
   });
 }
@@ -4298,6 +4362,11 @@ function manageWorld() {
 ============================================================ */
 
 function updateHUD() {
+  const ability = RUNNER_ABILITIES[player?.characterKey] || RUNNER_ABILITIES.chris;
+  const indicator = document.getElementById("abilityIndicator");
+  if (indicator) indicator.textContent = `${ability.name} · ${ability.cost} ⚡ · ${(player?.abilityCooldown || 0) > 0 ? player.abilityCooldown.toFixed(1) + "s" : energy < ability.cost ? "Recharge" : "Ready"}`;
+  document.getElementById("energyWarning").style.opacity = gameStarted && !gameOver && energy < 25 ? String((25 - energy) / 25) : "0";
+
   const energyBar=document.getElementById("energyBar");
   if (energyBar) {
     energyBar.style.width=clamp(energy,0,100)+"%";
@@ -4317,7 +4386,7 @@ function updateHUD() {
     const flowMultiplier=1+Math.min(4,Math.max(0,(focus?.flowStreak||0)-1))*.2;
     flowEl.textContent=(focus?.flowTimer||0)>0 && (focus?.flowStreak||0)>1?"FLOW x"+flowMultiplier.toFixed(1):"";
   }
-  const biomeEl=document.getElementById("biomeText"); if(biomeEl) biomeEl.textContent=getBiomeLabel(biome);
+  const biomeEl=document.getElementById("biomeText"); if(biomeEl) { const chunk = worldChunks.find(c => (player?.rig.position.z || 0) >= c.userData.zStart && (player?.rig.position.z || 0) < c.userData.zStart + CHUNK_LENGTH); biomeEl.textContent=getBiomeLabel(biome) + (chunk ? " · " + chunk.userData.section : ""); }
   const dangerEl=document.getElementById("dangerText");
   if (dangerEl) {
     let label="Clear",color="#bbf7d0";
@@ -4560,6 +4629,7 @@ function updatePoliceOfficers(dt) {
   const safeRemove = typeof removeEnemyActor === "function";
 
   for (const cop of policeOfficers) {
+    if (cop?.runnerStun > 0) continue;
     if (!cop || !cop.rig) continue;
 
     if (safeCanEnemyDamage && !canEnemyDamage(cop)) {
@@ -4724,7 +4794,7 @@ function updatePoliceOfficers(dt) {
           cop.laser.visible = false;
           scene.remove(cop.laser);
         }
-        scene.remove(cop.rig);
+        disposeRunnerObject(cop.rig);
       }
 
       return false;
@@ -4858,7 +4928,7 @@ function updatePoliceBullets(dt) {
     const keep = bullet.life > 0;
 
     if (!keep) {
-      scene.remove(bullet.mesh);
+      disposeRunnerObject(bullet.mesh);
     }
 
     return keep;
@@ -4915,7 +4985,7 @@ function updateTempEffects(dt) {
     const keep = effect.life > 0;
 
     if (!keep && effect.obj) {
-      scene.remove(effect.obj);
+      disposeRunnerObject(effect.obj);
     }
 
     return keep;
@@ -4942,7 +5012,6 @@ function animate() {
 
   if (replayMode && replayPaused) {
     renderer.render(scene, camera);
-    requestAnimationFrame(animate);
     return;
   }
 
@@ -4959,6 +5028,7 @@ function animate() {
   activeRunnerPlayers = getActiveRunners();
   syncGlobalEnergyForHUD();
   updateSpeedScaling();
+  for (const threat of getThreatActors()) threat.runnerStun = Math.max(0, (threat.runnerStun || 0) - dt);
   updateEnemies(dt);
   updateDogs(dt);
   updateSpiritDogs(dt);
@@ -5028,7 +5098,7 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, detectMobileDevice() ? 1.15 : 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   resizeCharacterPreview();
 }
@@ -5135,6 +5205,7 @@ function resetPlayerMovementStats(p) {
   p.speed = playerBaseSpeed * (p.forwardSpeedMultiplier || 1);
   p.sprintSpeed = playerBaseSprintSpeed * (p.sprintSpeedMultiplier || 1);
   p.energy = 100;
+  p.exhausted = false; p.traversal = null; p.abilityCooldown = 0; p.abilityShield = 0; p.abilityTime = 0; p.abilityHeld = false;
   p.velocity.set(0, 0, 0);
   p.dodgeCooldown = 0;
   p.burnCooldown = 0;
@@ -5276,9 +5347,9 @@ function clearObjectArray(arr, objectKey, removeExtraPoliceLaser = false) {
   for (const item of arr) {
     if (!item) continue;
     if (removeExtraPoliceLaser && item.laser) scene.remove(item.laser);
-    if (objectKey && item[objectKey]) scene.remove(item[objectKey]);
-    else if (!objectKey && item.isObject3D) scene.remove(item);
-    else if (!objectKey && item.group) scene.remove(item.group);
+    if (objectKey && item[objectKey]) disposeRunnerObject(item[objectKey]);
+    else if (!objectKey && item.isObject3D) disposeRunnerObject(item);
+    else if (!objectKey && item.group) disposeRunnerObject(item.group);
   }
 }
 function resetTwoPlayerMatch() {
@@ -5288,17 +5359,18 @@ function resetTwoPlayerMatch() {
   updateTwoPlayerScoreboard();
 }
 function resetWorldForNewTwoPlayerRound() {
-  clearObjectArray(enemies, "rig"); clearObjectArray(dogs, "rig"); clearObjectArray(spiritDogs, "rig"); clearObjectArray(desertStalkers, "rig"); clearObjectArray(policeOfficers, "rig", true); clearObjectArray(policeBullets, "mesh"); clearObjectArray(pickups, null); clearObjectArray(grassPatches, null); clearObjectArray(fireZones, "group");
-  for (const chunk of worldChunks) scene.remove(chunk);
+  clearObjectArray(enemies, "rig"); clearObjectArray(dogs, "rig"); clearObjectArray(spiritDogs, "rig"); clearObjectArray(desertStalkers, "rig"); clearObjectArray(policeOfficers, "rig", true); clearObjectArray(policeBullets, "mesh"); clearObjectArray(pickups, null); clearObjectArray(grassPatches, null); clearObjectArray(fireZones, "group"); clearObjectArray(torches, "group");
+  for (const effect of tempEffects) disposeRunnerObject(effect.obj); tempEffects = [];
+  for (const chunk of worldChunks) disposeRunnerObject(chunk);
   enemies = []; dogs = []; desertStalkers = []; policeOfficers = []; policeBullets = []; pickups = []; grassPatches = []; torches = []; fireZones = []; spiritDogs = []; dreamHazards = []; fallingStars = []; walls = []; worldChunks = [];
   distance = 0; bonusScore = 0; furthestChunkZ = 0; pickupCount = 0; currentSpeedTier = 0; enemyBaseSpeedBonus = 0;
   for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) generateChunk(i * CHUNK_LENGTH);
   furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
-  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? -2.8 : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
+  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? (gameMode === 2 ? -2.8 : 0) : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
   for (const p of players) { p.shieldActive = false; p.shieldCharges = 0; if (p.shieldMesh) p.shieldMesh.visible = false; }
-  for (const projectile of blackGlobeProjectiles) scene.remove(projectile.mesh);
+  for (const projectile of blackGlobeProjectiles) disposeRunnerObject(projectile.mesh);
   blackGlobeProjectiles = [];
-  if (window.burstEffects) { for (const effect of window.burstEffects) scene.remove(effect); window.burstEffects = []; }
+  if (window.burstEffects) { for (const effect of window.burstEffects) disposeRunnerObject(effect); window.burstEffects = []; }
   activeRunnerPlayers = players.slice(); player = players[0];
 }
 function showRoundTransition(reason) {
@@ -5354,6 +5426,12 @@ function endTwoPlayerRound(reason) {
   showRoundTransition(reason);
 }
 function startGame(mode) {
+  document.getElementById("mobileControls")?.resetRunnerInput?.();
+  keys = {}; mobileDodgeQueued = false; mobileSprintDown = false;
+  for (const previous of players) {
+    disposeRunnerObject(previous.rig); disposeRunnerObject(previous.arrow); disposeRunnerObject(previous.shieldMesh);
+    if (previous.controlledChaser) disposeRunnerObject(previous.controlledChaser.rig);
+  }
   gameMode = mode; lastPlayedMode = mode; gameStarted = true; gameOver = false; bonusScore = 0; cameraTrauma = 0; document.getElementById("menuOverlay").style.display = "none"; setupMobileControls();
   const characterName = getSelectedCharacterName().toUpperCase();
   const p1Name = document.getElementById("p1CharacterName");
@@ -5368,6 +5446,8 @@ function startGame(mode) {
   player = p1; players = mode === 2 ? [p1, p2] : [p1]; activeRunnerPlayers = players.slice();
   if (mode === 2) { resetTwoPlayerMatch(); document.getElementById("twoPlayerScoreboard").style.display = "flex"; }
   else { roundActive = false; roundEnding = false; document.getElementById("twoPlayerScoreboard").style.display = "none"; }
+  resetWorldForNewTwoPlayerRound();
+  clock.getDelta();
 
   // Start from a fully upright camera instead of easing out of the default
   // origin/quaternion, which could briefly or persistently invert the view.
@@ -5403,6 +5483,7 @@ function getReplayTime() {
 }
 
 function recordReplayInput(type, key) {
+  if (!replayRecorder || replayMode || !gameStarted || gameOver) return;
   replayRecorder.inputs.push({
     t: Number(getReplayTime().toFixed(4)),
     type,
@@ -5524,6 +5605,7 @@ function validateAndStartReplay(replay) {
     alert("This is not a valid Chris Runner replay file.");
     return;
   }
+  if (replay.gameBuild !== GAME_BUILD_VERSION) { alert("This replay uses a different level-generation build and cannot be played accurately in this version."); return; }
   if (!replay.seed) {
     alert("Replay file is missing its random seed.");
     return;
@@ -5619,7 +5701,8 @@ function seekReplay(targetTime) {
   replayPlayback.inputIndex = 0;
   while (replayPlayback.inputIndex < replay.inputs.length && replay.inputs[replayPlayback.inputIndex].t <= t) {
     const input = replay.inputs[replayPlayback.inputIndex];
-    keys[input.key] = input.type === "keydown";
+    if (input.type === "ability") mobileDodgeQueued = true;
+    else keys[input.key] = input.type === "keydown";
     replayPlayback.inputIndex++;
   }
 
@@ -5659,7 +5742,8 @@ function updateReplayPlayback() {
     replay.inputs[replayPlayback.inputIndex].t <= t
   ) {
     const input = replay.inputs[replayPlayback.inputIndex];
-    keys[input.key] = input.type === "keydown";
+    if (input.type === "ability") mobileDodgeQueued = true;
+    else keys[input.key] = input.type === "keydown";
     replayPlayback.inputIndex++;
   }
 
