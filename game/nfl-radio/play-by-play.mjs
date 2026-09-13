@@ -1,3 +1,11 @@
+import {
+  browserSpeechAvailable,
+  enqueueBrowserSpeech,
+  getBrowserSpeechQueueState,
+  removeQueuedSpeech,
+  unlockBrowserSpeech
+} from './speech-queue.mjs';
+
 const STORAGE_KEY='nfl-dial:livePlayByPlay';
 const ROTATION_KEY='nfl-dial:rotation';
 const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
@@ -85,68 +93,6 @@ async function fetchJson(url,{timeout=10000}={}){
   }finally{clearTimeout(timer);}
 }
 
-function speechAvailable(){
-  return 'speechSynthesis' in globalThis&&typeof SpeechSynthesisUtterance!=='undefined';
-}
-function defaultVoice(){
-  if(!speechAvailable())return null;
-  const voices=speechSynthesis.getVoices?.()||[];
-  return voices.find(v=>v.default&&/^en/i.test(v.lang))||voices.find(v=>/^en/i.test(v.lang))||voices.find(v=>v.default)||null;
-}
-function resumeSpeech(){
-  if(!speechAvailable())return false;
-  try{speechSynthesis.resume?.();}catch{}
-  return true;
-}
-function unlockSpeech(){
-  if(!resumeSpeech())return false;
-  try{
-    if(speechSynthesis.speaking||speechSynthesis.pending)return true;
-    const warmup=new SpeechSynthesisUtterance(' ');
-    warmup.lang='en-US';
-    warmup.volume=0;
-    warmup.rate=10;
-    const voice=defaultVoice();
-    if(voice)warmup.voice=voice;
-    speechSynthesis.speak(warmup);
-    return true;
-  }catch{return false;}
-}
-function speakQueued(text,{onStart,onEnd,onError}={}){
-  if(!text||!resumeSpeech())return false;
-  try{
-    const utterance=new SpeechSynthesisUtterance(text);
-    utterance.lang='en-US';
-    utterance.rate=1.08;
-    utterance.volume=1;
-    const voice=defaultVoice();
-    if(voice)utterance.voice=voice;
-    let finished=false,started=false;
-    const startTimer=setTimeout(()=>{
-      if(started||finished)return;
-      finished=true;
-      try{speechSynthesis.cancel();speechSynthesis.resume?.();}catch{}
-      onError?.('speech-did-not-start');
-    },3500);
-    const finish=(ok,error)=>{
-      if(finished)return;
-      finished=true;
-      clearTimeout(startTimer);
-      if(ok)onEnd?.();
-      else onError?.(error||'speech-error');
-    };
-    utterance.onstart=()=>{
-      started=true;
-      clearTimeout(startTimer);
-      onStart?.();
-    };
-    utterance.onend=()=>finish(true);
-    utterance.onerror=event=>finish(false,event?.error||'speech-error');
-    speechSynthesis.speak(utterance);
-    return true;
-  }catch{return false;}
-}
-
 function element(tag,text,attrs={}){
   const node=document.createElement(tag);
   if(text!=null)node.textContent=text;
@@ -170,14 +116,14 @@ export function installLivePlayByPlay(){
   const title=element('div',null,{class:'sectionTitle'});
   title.append(element('h2','Live play-by-play voice'),element('button','✕',{id:'closePlayByPlay','aria-label':'Close live play-by-play'}));
   dialog.append(title);
-  dialog.append(element('p','For every live game in your rotation, check for a different latest play about every 5 seconds. Each new play is spoken as “Team. Play…” and added behind anything already in the voice queue.',{class:'availability playByPlayIntro'}));
+  dialog.append(element('p','For every live game in your rotation, check for a different latest play about every 5 seconds. Each new play is added to the shared browser-voice queue and waits until any current announcement finishes.',{class:'availability playByPlayIntro'}));
 
   const controls=element('div',null,{class:'playByPlayControls'});
   const enabledLabel=element('label',null,{class:'playByPlayToggle'});
   const enabled=element('input',null,{id:'playByPlayEnabled',type:'checkbox'});
   enabledLabel.append(enabled,document.createTextNode(' Automatic live play-by-play'));
   controls.append(enabledLabel);
-  controls.append(element('p','This is a separate automatic-update mode. Turning it on switches the scheduled full-summary voice mode off so announcements do not overlap.',{class:'availability playByPlayNote'}));
+  controls.append(element('p','Play-by-play and scheduled game updates can both stay on. They share one FIFO browser-voice queue, so a new check never interrupts speech that is already playing.',{class:'availability playByPlayNote'}));
   dialog.append(controls);
 
   const actions=element('div',null,{class:'playByPlayActions'});
@@ -189,13 +135,10 @@ export function installLivePlayByPlay(){
   document.body.append(dialog);
 
   let settings=readPlayByPlaySettings();
-  let timer=null,polling=false,speaking=false,currentItem=null,generation=0;
+  let timer=null,polling=false,generation=0;
   const seenKeys=new Map();
-  const queue=[];
-  const retries=new Map();
 
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
-  const queueLabel=()=>queue.length?` ${queue.length} more queued.`:'';
   const liveCountLabel=count=>`${count} selected live game${count===1?'':'s'}`;
 
   const paint=message=>{
@@ -203,16 +146,14 @@ export function installLivePlayByPlay(){
     enabled.checked=!!settings.enabled;
     open.textContent=settings.enabled?'📣 Play-by-play ON':'📣 Play-by-play';
     open.classList.toggle('active',!!settings.enabled);
-    if(message){
-      status.textContent=message;
+    if(message){status.textContent=message;return;}
+    if(!browserSpeechAvailable()){
+      status.textContent='This browser does not expose text-to-speech.';
       return;
     }
-    if(!speechAvailable()){
-      status.textContent='This browser does not expose text-to-speech. Open Catnmice in a browser with speech support.';
-      return;
-    }
+    const voice=getBrowserSpeechQueueState();
     status.textContent=settings.enabled
-      ?`Watching ${count} selected game${count===1?'':'s'} for new plays about every 5 seconds.${queueLabel()}`
+      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
       :'Play-by-play is off.';
   };
 
@@ -221,72 +162,26 @@ export function installLivePlayByPlay(){
     timer=null;
     generation++;
   };
-  const clearPending=()=>{
-    queue.length=0;
-    currentItem=null;
-    retries.clear();
-  };
-
-  const drainQueue=()=>{
-    if(speaking)return;
-    while(queue.length){
-      const next=queue.shift();
-      if(!selectedGameIds().includes(next.gameId))continue;
-      speaking=true;
-      currentItem=next;
-      paint(`Speaking ${next.team||'latest'} play.${queueLabel()}`);
-
-      const started=speakQueued(next.speech,{
-        onStart:()=>paint(`Speaking ${next.team||'latest'} play.${queueLabel()}`),
-        onEnd:()=>{
-          retries.delete(next.key);
-          speaking=false;
-          currentItem=null;
-          if(settings.enabled)paint(`Play spoken.${queueLabel()}`);
-          else paint();
-          drainQueue();
-        },
-        onError:()=>{
-          speaking=false;
-          currentItem=null;
-          const attempts=retries.get(next.key)||0;
-          if(attempts<1&&settings.enabled){
-            retries.set(next.key,attempts+1);
-            resumeSpeech();
-            queue.unshift(next);
-            setTimeout(drainQueue,250);
-            return;
-          }
-          retries.delete(next.key);
-          paint('Voice could not start. Tap “Speak latest plays now” once to re-enable browser speech.');
-          drainQueue();
-        }
-      });
-
-      if(started)return;
-      speaking=false;
-      currentItem=null;
-      paint('Browser speech is unavailable on this device.');
-      return;
-    }
-    if(settings.enabled)paint();
-  };
 
   const enqueue=announcement=>{
-    if(!announcement?.speech)return;
-    if(currentItem?.gameId===announcement.gameId&&currentItem?.key===announcement.key)return;
-    if(queue.some(item=>item.gameId===announcement.gameId&&item.key===announcement.key))return;
-    queue.push(announcement);
-    drainQueue();
+    if(!announcement?.speech)return false;
+    const speechKey=`play-by-play:${announcement.gameId}:${announcement.key}`;
+    return enqueueBrowserSpeech(announcement.speech,{
+      source:'play-by-play',
+      key:speechKey,
+      rate:1.08,
+      shouldPlay:()=>settings.enabled&&selectedGameIds().includes(announcement.gameId),
+      onStart:()=>paint(`Speaking ${announcement.team||'latest'} play.`),
+      onEnd:()=>paint('Play spoken. Watching for the next new play.'),
+      onError:()=>paint('Browser voice could not speak that play. New plays will keep queuing normally.'),
+      onSkip:()=>paint()
+    });
   };
 
   const poll=async({prime=false,manual=false,token=generation}={})=>{
     if(polling&&!manual)return;
     const ids=selectedGameIds();
-    if(!ids.length){
-      paint('Add games to your rotation first.');
-      return;
-    }
+    if(!ids.length){paint('Add games to your rotation first.');return;}
     polling=true;
     if(manual)paint('Getting latest plays…');
     try{
@@ -294,25 +189,28 @@ export function installLivePlayByPlay(){
       if(token!==generation&&!manual)return;
       const events=(board.events||[]).filter(event=>ids.includes(String(event.id)));
       const live=events.filter(event=>gameState(event)==='in');
-      if(!live.length){
-        paint('None of your selected games are live right now.');
-        return;
-      }
+      if(!live.length){paint('None of your selected games are live right now.');return;}
 
+      let added=0;
       if(manual){
         for(const event of live){
           const announcement=latestPlayAnnouncement(event);
           if(!announcement)continue;
           seenKeys.set(announcement.gameId,announcement.key);
-          enqueue(announcement);
+          if(enqueue(announcement))added++;
         }
       }else{
         const announcements=collectNewPlayAnnouncements(live,ids,seenKeys,{announceInitial:false});
-        if(!prime)for(const announcement of announcements)enqueue(announcement);
+        if(!prime)for(const announcement of announcements)if(enqueue(announcement))added++;
       }
 
-      if(prime&&!speaking)paint(`Ready. Watching ${liveCountLabel(live.length)} for the next new play.`);
-      else if(!speaking&&!queue.length)paint(`Watching ${liveCountLabel(live.length)}. No new play yet.`);
+      if(prime)paint(`Ready. Watching ${liveCountLabel(live.length)} for the next new play.`);
+      else if(added){
+        const voice=getBrowserSpeechQueueState();
+        paint(`${added} new play${added===1?'':'s'} added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
+      }else{
+        paint(`Watching ${liveCountLabel(live.length)}. No new play yet.`);
+      }
     }catch{
       paint('Could not check live plays. Automatic play-by-play will retry on the next 5-second check.');
     }finally{
@@ -320,80 +218,45 @@ export function installLivePlayByPlay(){
     }
   };
 
-  const disableSummaryUpdates=()=>{
-    const summaryToggle=document.getElementById('updatesEnabled');
-    if(summaryToggle?.checked){
-      summaryToggle.checked=false;
-      summaryToggle.dispatchEvent(new Event('change',{bubbles:true}));
-    }
-  };
-
   const schedule=()=>{
     stopSchedule();
-    clearPending();
-    if(!settings.enabled){
-      paint();
-      return;
-    }
+    if(!settings.enabled){paint();return;}
     const token=generation;
     poll({prime:true,token});
-    timer=setInterval(()=>{
-      resumeSpeech();
-      poll({token});
-    },PLAY_POLL_MS);
+    timer=setInterval(()=>poll({token}),PLAY_POLL_MS);
     paint();
   };
 
   const setEnabled=value=>{
     settings={enabled:!!value};
     save();
-    if(settings.enabled){
-      unlockSpeech();
-      disableSummaryUpdates();
-    }
+    if(settings.enabled)unlockBrowserSpeech();
+    else removeQueuedSpeech(item=>item.source==='play-by-play');
     schedule();
   };
 
-  const rearmSpeechFromGesture=()=>{
-    if(settings.enabled)unlockSpeech();
-  };
-  document.addEventListener('pointerdown',rearmSpeechFromGesture,{passive:true});
-  document.addEventListener('keydown',rearmSpeechFromGesture);
+  const rearm=()=>{if(settings.enabled)unlockBrowserSpeech();};
+  document.addEventListener('pointerdown',rearm,{passive:true});
+  document.addEventListener('keydown',rearm);
 
   enabled.onchange=()=>setEnabled(enabled.checked);
   open.onclick=()=>{
     settings=readPlayByPlaySettings();
     enabled.checked=settings.enabled;
-    if(settings.enabled)unlockSpeech();
+    if(settings.enabled)unlockBrowserSpeech();
     paint();
     dialog.showModal();
   };
   document.getElementById('closePlayByPlay').onclick=()=>dialog.close();
   speakLatest.onclick=()=>{
-    unlockSpeech();
+    unlockBrowserSpeech();
     poll({manual:true,token:generation});
   };
 
-  document.addEventListener('change',event=>{
-    if(event.target?.id==='updatesEnabled'&&event.target.checked&&settings.enabled){
-      settings={enabled:false};
-      save();
-      stopSchedule();
-      clearPending();
-      enabled.checked=false;
-      paint('Play-by-play turned off because scheduled full game updates were enabled.');
-    }
-  });
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden&&settings.enabled){
-      resumeSpeech();
-      poll({token:generation});
-    }
+    if(!document.hidden&&settings.enabled)poll({token:generation});
   });
-  window.addEventListener('pagehide',()=>{
-    stopSchedule();
-    clearPending();
-  });
+  window.addEventListener('pagehide',()=>clearInterval(timer));
 
   enabled.checked=settings.enabled;
   paint();
