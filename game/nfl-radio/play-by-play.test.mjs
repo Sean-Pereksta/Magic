@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PLAY_POLL_MS,latestPlayAnnouncement,collectNewPlayAnnouncements,readPlayByPlaySettings,selectedGameIds} from './play-by-play.mjs';
+import {
+  PLAY_POLL_MS,
+  latestPlayAnnouncement,
+  collectNewPlayAnnouncements,
+  readPlayByPlaySettings,
+  selectedGameIds,
+  radioLabelMatchup,
+  matchupMatchesRadioLabel,
+  eventMatchesRadioLabel
+} from './play-by-play.mjs';
 
 const makeEvent=({id='g1',playId='p1',text='J. Goff pass complete to A. St. Brown for 12 yards.',playTeam='8',possession='8'}={})=>({
   id,
@@ -23,6 +32,7 @@ test('builds a concise team plus play announcement',()=>{
   assert.equal(out.team,'Lions');
   assert.match(out.speech,/^Lions\. J\. Goff pass complete/);
   assert.equal(out.gameId,'g1');
+  assert.deepEqual(out.matchup,['GB','DET']);
 });
 
 test('falls back to possession when the play has no explicit team',()=>{
@@ -51,9 +61,24 @@ test('ignores unselected and non-live games',()=>{
   assert.deepEqual(collectNewPlayAnnouncements([finalEvent],['g1'],seen,{announceInitial:true}),[]);
 });
 
-test('uses a fixed five-second poll and safe persisted settings',()=>{
+test('recognizes the matchup currently shown in the radio player',()=>{
+  const event=makeEvent();
+  assert.deepEqual(radioLabelMatchup('GB vs DET · LIVE'),['GB','DET']);
+  assert.equal(matchupMatchesRadioLabel(['GB','DET'],'GB vs DET · LIVE'),true);
+  assert.equal(matchupMatchesRadioLabel(['GB','DET'],'TB vs CIN · LIVE'),false);
+  assert.equal(eventMatchesRadioLabel(event,'GB vs DET · LIVE'),true);
+});
+
+test('uses a fixed five-second poll and persists radio ducking',()=>{
   assert.equal(PLAY_POLL_MS,5000);
-  const storage={getItem:key=>key.endsWith('livePlayByPlay')?'{"enabled":true}':'["g1","g2",3]'};
-  assert.equal(readPlayByPlaySettings(storage).enabled,true);
+  const storage={getItem:key=>key.endsWith('livePlayByPlay')?'{"enabled":true,"duckRadio":false}':'["g1","g2",3]'};
+  const settings=readPlayByPlaySettings(storage);
+  assert.equal(settings.enabled,true);
+  assert.equal(settings.duckRadio,false);
   assert.deepEqual(selectedGameIds(storage),['g1','g2']);
+});
+
+test('radio ducking defaults on when an older saved setting has no duck preference',()=>{
+  const storage={getItem:()=>'{"enabled":true}'};
+  assert.equal(readPlayByPlaySettings(storage).duckRadio,true);
 });
