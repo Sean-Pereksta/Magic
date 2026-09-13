@@ -5,6 +5,7 @@ import {
   removeQueuedSpeech,
   unlockBrowserSpeech
 } from './speech-queue.mjs';
+import {setRadioDucked} from './radio-audio-bridge.mjs';
 
 const STORAGE_KEY='nfl-dial:livePlayByPlay';
 const ROTATION_KEY='nfl-dial:rotation';
@@ -17,8 +18,8 @@ const canonical=value=>({WSH:'WAS',JAC:'JAX',LA:'LAR'}[value]||value);
 export function readPlayByPlaySettings(storage=globalThis.localStorage){
   try{
     const saved=JSON.parse(storage?.getItem(STORAGE_KEY)||'null')||{};
-    return {enabled:!!saved.enabled};
-  }catch{return {enabled:false};}
+    return {enabled:!!saved.enabled,duckRadio:saved.duckRadio!==false};
+  }catch{return {enabled:false,duckRadio:true};}
 }
 
 export function selectedGameIds(storage=globalThis.localStorage){
@@ -48,6 +49,20 @@ function playIdentity(play){
   const clock=play?.clock?.displayValue||'';
   return `${id||`${period}:${clock}`}|${text}`;
 }
+function eventMatchup(event){
+  const away=competitors(event).find(c=>c.homeAway==='away');
+  const home=competitors(event).find(c=>c.homeAway==='home');
+  return [canonical(away?.team?.abbreviation),canonical(home?.team?.abbreviation)].filter(Boolean);
+}
+export function radioLabelMatchup(label){
+  const match=clean(label).match(/^([A-Z]{2,3})\s+vs\s+([A-Z]{2,3})\b/);
+  return match?[canonical(match[1]),canonical(match[2])]:[];
+}
+export function matchupMatchesRadioLabel(matchup,label){
+  const current=radioLabelMatchup(label);
+  return current.length===2&&matchup?.length===2&&current[0]===canonical(matchup[0])&&current[1]===canonical(matchup[1]);
+}
+export function eventMatchesRadioLabel(event,label){return matchupMatchesRadioLabel(eventMatchup(event),label);}
 
 export function latestPlayAnnouncement(event){
   const c=competition(event);
@@ -63,6 +78,7 @@ export function latestPlayAnnouncement(event){
     gameId:String(event.id),
     key:playIdentity({...play,text}),
     team:teamName,
+    matchup:eventMatchup(event),
     play:text,
     speech:teamName?`${teamName}. ${text}`:text
   };
@@ -116,14 +132,19 @@ export function installLivePlayByPlay(){
   const title=element('div',null,{class:'sectionTitle'});
   title.append(element('h2','Live play-by-play voice'),element('button','✕',{id:'closePlayByPlay','aria-label':'Close live play-by-play'}));
   dialog.append(title);
-  dialog.append(element('p','For every live game in your rotation, check for a different latest play about every 5 seconds. Each new play is added to the shared browser-voice queue and waits until any current announcement finishes.',{class:'availability playByPlayIntro'}));
+  dialog.append(element('p','For every other live game in your rotation, check for a different latest play about every 5 seconds. The game currently selected on the radio is automatically excluded.',{class:'availability playByPlayIntro'}));
 
   const controls=element('div',null,{class:'playByPlayControls'});
   const enabledLabel=element('label',null,{class:'playByPlayToggle'});
   const enabled=element('input',null,{id:'playByPlayEnabled',type:'checkbox'});
   enabledLabel.append(enabled,document.createTextNode(' Automatic live play-by-play'));
   controls.append(enabledLabel);
-  controls.append(element('p','Play-by-play and scheduled game updates can both stay on. They share one FIFO browser-voice queue, so a new check never interrupts speech that is already playing.',{class:'availability playByPlayNote'}));
+
+  const duckLabel=element('label',null,{class:'playByPlayToggle'});
+  const duckRadio=element('input',null,{id:'playByPlayDuckRadio',type:'checkbox'});
+  duckLabel.append(duckRadio,document.createTextNode(' Quiet radio while play-by-play speaks'));
+  controls.append(duckLabel);
+  controls.append(element('p','When radio ducking is on, the station drops to a low background level only while a play-by-play announcement is speaking, then returns to its exact previous volume. Scheduled game updates and play-by-play still share one FIFO browser-voice queue.',{class:'availability playByPlayNote'}));
   dialog.append(controls);
 
   const actions=element('div',null,{class:'playByPlayActions'});
@@ -138,12 +159,14 @@ export function installLivePlayByPlay(){
   let timer=null,polling=false,generation=0;
   const seenKeys=new Map();
 
+  const currentRadioLabel=()=>document.getElementById('nowGame')?.textContent||'';
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
-  const liveCountLabel=count=>`${count} selected live game${count===1?'':'s'}`;
+  const liveCountLabel=count=>`${count} other selected live game${count===1?'':'s'}`;
+  const hydrate=()=>{enabled.checked=!!settings.enabled;duckRadio.checked=settings.duckRadio!==false;};
 
   const paint=message=>{
     const count=selectedGameIds().length;
-    enabled.checked=!!settings.enabled;
+    hydrate();
     open.textContent=settings.enabled?'📣 Play-by-play ON':'📣 Play-by-play';
     open.classList.toggle('active',!!settings.enabled);
     if(message){status.textContent=message;return;}
@@ -153,7 +176,7 @@ export function installLivePlayByPlay(){
     }
     const voice=getBrowserSpeechQueueState();
     status.textContent=settings.enabled
-      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
+      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds; the current radio game is excluded. Radio ducking ${settings.duckRadio?'ON':'OFF'}. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
       :'Play-by-play is off.';
   };
 
@@ -166,15 +189,25 @@ export function installLivePlayByPlay(){
   const enqueue=announcement=>{
     if(!announcement?.speech)return false;
     const speechKey=`play-by-play:${announcement.gameId}:${announcement.key}`;
+    const currentGameIsThis=()=>matchupMatchesRadioLabel(announcement.matchup,currentRadioLabel());
     return enqueueBrowserSpeech(announcement.speech,{
       source:'play-by-play',
       key:speechKey,
       rate:1.08,
-      shouldPlay:()=>settings.enabled&&selectedGameIds().includes(announcement.gameId),
-      onStart:()=>paint(`Speaking ${announcement.team||'latest'} play.`),
-      onEnd:()=>paint('Play spoken. Watching for the next new play.'),
-      onError:()=>paint('Browser voice could not speak that play. New plays will keep queuing normally.'),
-      onSkip:()=>paint()
+      shouldPlay:()=>settings.enabled&&selectedGameIds().includes(announcement.gameId)&&!currentGameIsThis(),
+      onStart:()=>{
+        if(settings.duckRadio)setRadioDucked(true);
+        paint(`Speaking ${announcement.team||'latest'} play${settings.duckRadio?' over quieted radio':''}.`);
+      },
+      onEnd:()=>{
+        setRadioDucked(false);
+        paint('Play spoken. Watching for the next new play.');
+      },
+      onError:()=>{
+        setRadioDucked(false);
+        paint('Browser voice could not speak that play. New plays will keep queuing normally.');
+      },
+      onSkip:()=>{setRadioDucked(false);paint();}
     });
   };
 
@@ -191,25 +224,41 @@ export function installLivePlayByPlay(){
       const live=events.filter(event=>gameState(event)==='in');
       if(!live.length){paint('None of your selected games are live right now.');return;}
 
+      const radioLabel=currentRadioLabel();
+      const suppressed=live.filter(event=>eventMatchesRadioLabel(event,radioLabel));
+      const eligible=live.filter(event=>!eventMatchesRadioLabel(event,radioLabel));
+
+      // Keep the current radio game's last-play key fresh so switching away never causes
+      // an old play heard on the radio to be announced retroactively.
+      for(const event of suppressed){
+        const announcement=latestPlayAnnouncement(event);
+        if(announcement)seenKeys.set(announcement.gameId,announcement.key);
+      }
+
+      if(!eligible.length){
+        paint('The only selected live game is the one currently on the radio, so play-by-play is staying silent for it.');
+        return;
+      }
+
       let added=0;
       if(manual){
-        for(const event of live){
+        for(const event of eligible){
           const announcement=latestPlayAnnouncement(event);
           if(!announcement)continue;
           seenKeys.set(announcement.gameId,announcement.key);
           if(enqueue(announcement))added++;
         }
       }else{
-        const announcements=collectNewPlayAnnouncements(live,ids,seenKeys,{announceInitial:false});
+        const announcements=collectNewPlayAnnouncements(eligible,ids,seenKeys,{announceInitial:false});
         if(!prime)for(const announcement of announcements)if(enqueue(announcement))added++;
       }
 
-      if(prime)paint(`Ready. Watching ${liveCountLabel(live.length)} for the next new play.`);
+      if(prime)paint(`Ready. Watching ${liveCountLabel(eligible.length)}; current radio game excluded.`);
       else if(added){
         const voice=getBrowserSpeechQueueState();
         paint(`${added} new play${added===1?'':'s'} added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
       }else{
-        paint(`Watching ${liveCountLabel(live.length)}. No new play yet.`);
+        paint(`Watching ${liveCountLabel(eligible.length)}. No new play yet; current radio game excluded.`);
       }
     }catch{
       paint('Could not check live plays. Automatic play-by-play will retry on the next 5-second check.');
@@ -228,11 +277,22 @@ export function installLivePlayByPlay(){
   };
 
   const setEnabled=value=>{
-    settings={enabled:!!value};
+    settings={...settings,enabled:!!value};
     save();
     if(settings.enabled)unlockBrowserSpeech();
-    else removeQueuedSpeech(item=>item.source==='play-by-play');
+    else{
+      removeQueuedSpeech(item=>item.source==='play-by-play');
+      setRadioDucked(false);
+    }
     schedule();
+  };
+
+  const setDuckRadio=value=>{
+    settings={...settings,duckRadio:!!value};
+    save();
+    const voice=getBrowserSpeechQueueState();
+    setRadioDucked(!!settings.duckRadio&&voice.current?.source==='play-by-play');
+    paint();
   };
 
   const rearm=()=>{if(settings.enabled)unlockBrowserSpeech();};
@@ -240,9 +300,10 @@ export function installLivePlayByPlay(){
   document.addEventListener('keydown',rearm);
 
   enabled.onchange=()=>setEnabled(enabled.checked);
+  duckRadio.onchange=()=>setDuckRadio(duckRadio.checked);
   open.onclick=()=>{
     settings=readPlayByPlaySettings();
-    enabled.checked=settings.enabled;
+    hydrate();
     if(settings.enabled)unlockBrowserSpeech();
     paint();
     dialog.showModal();
@@ -256,9 +317,9 @@ export function installLivePlayByPlay(){
   document.addEventListener('visibilitychange',()=>{
     if(!document.hidden&&settings.enabled)poll({token:generation});
   });
-  window.addEventListener('pagehide',()=>clearInterval(timer));
+  window.addEventListener('pagehide',()=>{clearInterval(timer);setRadioDucked(false);});
 
-  enabled.checked=settings.enabled;
+  hydrate();
   paint();
   schedule();
 }
