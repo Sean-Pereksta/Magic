@@ -21,6 +21,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            game/nfl-radio
+            game/nfl-radio.html
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
