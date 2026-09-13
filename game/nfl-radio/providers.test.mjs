@@ -27,13 +27,18 @@ test('NFL+ handoff is explicitly the provider portal, not a fabricated game deep
 test('automatic resolver orders free no-login providers before authenticated fallbacks',()=>{
  const sample=[
   {id:'audacy-dal',team:'DAL',name:'Dallas Sports Radio',provider:'audacy',kind:'flagship',language:'en',sourceUrl:'https://www.audacy.com/stations/example',access:'provider',note:'Official station page.'},
-  {id:'national',name:'Westwood One',provider:'westwood',kind:'national',language:'en',sourceUrl:'https://www.westwoodonesports.com/',access:'provider'}
+  {id:'national',name:'Westwood One',provider:'westwood',kind:'national',language:'en',sourceUrl:'https://www.westwoodonesports.com/',access:'provider',gameIds:['test']}
  ];
  const options=providerCandidates(sample,game,'DAL');
  assert.deepEqual(options.slice(0,2).map(o=>o.provider),['audacy','westwood']);
  assert.ok(options.slice(0,2).every(o=>o.auth==='none'&&o.cost==='free'));
  assert.deepEqual(options.slice(-2).map(o=>o.provider),['sirius','nfl']);
  assert.ok(options.slice(-2).every(o=>o.auth==='required'));
+});
+test('unmapped national directory pages are not auto-selected as game coverage',()=>{
+ const options=providerCandidates([{id:'westwood',name:'Westwood One',provider:'westwood',kind:'national',sourceUrl:'https://www.westwoodonesports.com/',access:'provider'}],game,'DAL');
+ assert.equal(options.some(o=>o.provider==='westwood'),false);
+ assert.equal(providerCandidates([{id:'westwood',name:'Westwood One',provider:'westwood',kind:'national',sourceUrl:'https://www.westwoodonesports.com/',access:'provider'}],game,'DAL','national').some(o=>o.provider==='westwood'),true);
 });
 test('all selectable provider modes declare whether login is required',()=>{
  for(const id of ['iheart','tunein','audacy','westwood']){assert.equal(PROVIDERS[id].free,true);assert.equal(PROVIDERS[id].requiresLogin,false);}
