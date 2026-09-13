@@ -1,0 +1,59 @@
+/* Compact desktop dock and purpose-built touch layouts. Loaded after legacy styles. */
+:root{--dock-height:250px}
+#commandPanel{left:10px;right:10px;bottom:max(10px,env(safe-area-inset-bottom));transform:none;width:auto;height:var(--dock-height);min-height:0;max-height:45dvh;grid-template-columns:230px 225px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 22px;padding:10px;gap:10px}
+#selectionCard{grid-column:1;grid-row:1;overflow:auto;padding:0 8px 0 0}
+#ordersPanel{grid-column:2;grid-row:1;overflow:auto}
+#contextPanel{grid-column:3;grid-row:1;overflow:auto;min-width:0}
+#selectionName{font-size:15px}#selectionMeta,#selectionOrder{display:block!important;font-size:11px;line-height:1.35;white-space:normal}
+#selectionOrder{color:#a9e5d2}#statusText{display:none}#cooldownGrid{display:none!important}
+#utilityButtons{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px}
+#utilityButtons .hudBtn{font-size:10px;min-height:36px;height:auto;padding:5px}
+#utilityButtons .hudBtn::after{content:none!important}
+#commandButtons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row;gap:5px}
+.cmdBtn,#commandButtons .cmdBtn{min-height:44px;height:auto;font-size:11px;padding:7px}
+.cmdBtn small{font-size:10px;display:block}
+#contextHeader{display:block;max-height:none;overflow:visible}#contextHeader>div:first-child{max-width:none}
+#contextSummary{font-size:11px;white-space:normal;line-height:1.3}
+#abilityButtons{display:flex;flex-wrap:wrap;max-width:none;overflow:visible;gap:6px}
+#abilityButtons .cmdBtn{position:relative;min-width:145px;flex:1;min-height:66px;height:auto;display:block;text-align:left;padding:8px;background:linear-gradient(to right,rgba(137,102,245,.25) var(--cooldown,0%),rgba(255,255,255,.06) var(--cooldown,0%))}
+#abilityButtons .assetThumb{display:none}#abilityButtons .abilityExplain{display:block;font-size:10px;line-height:1.3;-webkit-line-clamp:3}#abilityButtons small{display:block!important}
+#actionList,#actionList.actionGrid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important;grid-auto-flow:row;grid-auto-columns:auto;grid-template-rows:auto;overflow:auto;min-height:0;gap:6px!important}
+.actionCard,.actionGrid .actionCard{height:auto;min-height:92px;padding:7px}.actionTitle,.actionGrid .actionTitle{font-size:11px;margin:0;min-height:32px}.actionCost,.actionGrid .actionCost{position:static;font-size:10px;display:flex;margin:4px 0}.actionMeta,.actionGrid .actionMeta{display:block;font-size:10px;line-height:1.3}
+#productionQueue{min-height:0;max-height:none;flex-shrink:0}.queueInfo{font-size:10px}.queueInfo small{font-size:9px}.queueCircle{width:38px;height:38px}.queueCircle b{font-size:9px}
+#hintLine{display:block;grid-row:2;grid-column:1/-1;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#minimapDock{bottom:calc(var(--dock-height) + 30px)!important;width:160px!important}#minimap{width:146px!important;height:100px!important}
+#controlGroups{top:auto;bottom:calc(var(--dock-height) + 30px);left:10px;right:auto}.controlGroupChip{min-width:40px;height:38px}
+#battleAlerts{top:65px;width:min(420px,calc(100vw - 24px))}.battleAlert{font-size:12px;min-height:36px;padding:7px 12px}.battleAlert.info{background:#102c34;border-color:#73dbc5;color:#c2fff0}
+#mobileDockToggle{display:none}button:focus-visible{outline:2px solid #ffe1a1;outline-offset:2px}
+#commandPanel,#resourceHud{touch-action:pan-x pan-y}#game{touch-action:none}
+@media(max-width:760px),(max-height:520px) and (orientation:landscape){
+ :root{--dock-height:300px}
+ #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed),#commandPanel.mobileExpanded{left:5px;right:5px;bottom:max(5px,env(safe-area-inset-bottom));width:auto;height:var(--dock-height);min-height:0;max-height:48dvh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 52px minmax(0,1fr);gap:5px;padding:8px;border-radius:14px}
+ #mobileDockToggle{display:block;position:absolute;top:-45px;right:0;left:auto;transform:none;width:48px;height:44px;line-height:1;font-size:20px}
+ #selectionCard{grid-column:1;grid-row:1;display:block;padding:0;overflow:auto;max-height:80px}
+ #selectionName{font-size:13px;display:block;white-space:normal}#selectionMeta,#selectionOrder{font-size:10px;margin:2px 0}#selectionOrder{max-height:28px;overflow:auto}.hpTrack{height:4px;margin:3px 0}
+ #utilityButtons{display:flex;overflow-x:auto;gap:5px;margin:3px 0}#utilityButtons .hudBtn{flex:0 0 auto;font-size:11px;min-height:44px;padding:6px 10px}
+ #selectionCard #utilityButtons{display:none}
+ #ordersPanel{grid-column:1;grid-row:2;padding:0;border:0;overflow:hidden}#ordersPanel>.commandGroupTitle{display:none}
+ #commandButtons{display:flex;overflow-x:auto;height:52px;gap:5px}#commandButtons .cmdBtn{flex:0 0 88px;min-width:88px;font-size:11px;min-height:48px;padding:5px}#commandButtons .cmdBtn small{font-size:9px}
+ #contextPanel,#commandPanel.hasActions #contextPanel{grid-column:1;grid-row:3;overflow:auto;display:block;padding:0;border:0}
+ #contextHeader{display:block;max-height:none}#contextHeader>div:first-child{max-width:none}#contextSummary{font-size:10px;white-space:normal;margin:3px 0}#contextMenuTitle{font-size:10px}
+ #abilityButtons{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;max-width:none}#abilityButtons .cmdBtn{flex:0 0 180px;min-height:82px;font-size:11px}#abilityButtons .abilityExplain{font-size:10px}
+ #actionList,#actionList.actionGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-auto-flow:row;overflow:visible}#actionList .actionCard{min-width:0;min-height:90px;height:auto}#actionList .actionTitle{font-size:11px}#actionList .actionCost{font-size:10px}#actionList .actionMeta{font-size:10px;display:block}
+ #hintLine{display:none}#minimapDock{bottom:auto!important;top:58px!important;right:6px!important;width:110px!important}#minimap{width:96px!important;height:66px!important}.miniCollapse{min-width:44px;min-height:44px}
+ #controlGroups{bottom:calc(min(var(--dock-height),48dvh) + 16px);left:6px;top:auto}.controlGroupChip{min-width:44px;height:44px;font-size:10px}.controlGroupChip b{font-size:13px}
+ #battleAlerts{left:6px;transform:none;top:55px;width:calc(100vw - 145px)}.battleAlert{font-size:11px;min-height:44px}
+ #commandPanel.mobileCollapsed{height:72px!important;max-height:72px;min-height:72px;grid-template-columns:1fr;grid-template-rows:1fr;padding:8px}
+ #commandPanel.mobileCollapsed #selectionCard{display:block;max-height:none}#commandPanel.mobileCollapsed #selectionMeta,#commandPanel.mobileCollapsed #selectionOrder{display:block!important}
+ #commandPanel.mobileCollapsed #ordersPanel,#commandPanel.mobileCollapsed #contextPanel{display:none!important}
+ body:has(#commandPanel.mobileCollapsed) #controlGroups{bottom:90px}
+}
+@media(max-height:520px) and (orientation:landscape){
+ #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed),#commandPanel.mobileExpanded{left:auto;right:max(5px,env(safe-area-inset-right));top:8px;bottom:8px;width:min(310px,40vw);height:auto;max-height:none;grid-template-rows:auto 52px minmax(0,1fr)}
+ #mobileDockToggle{top:auto;bottom:0;right:calc(100% + 6px)}#minimapDock{left:6px!important;right:auto!important;top:60px!important}
+ #controlGroups{bottom:8px;left:6px}#battleAlerts{left:125px;top:58px;width:calc(60vw - 145px)}
+ #commandPanel.mobileCollapsed{top:auto;width:250px}#resourceHud{max-width:calc(60vw - 15px)}
+}
+/* Keep the collapse handle outside the dock and scrolling inside its sections. */
+#commandPanel{overflow:visible}#selectionCard,#ordersPanel,#contextPanel{min-height:0}
+@media(max-width:760px),(max-height:520px) and (orientation:landscape){#commandPanel:not(.mobileCollapsed) #selectionCard{min-height:58px}#commandPanel.mobileCollapsed #mobileDockToggle{display:block}}
