@@ -35,6 +35,17 @@ test('automatic resolver orders free no-login providers before authenticated fal
  assert.deepEqual(options.slice(-2).map(o=>o.provider),['sirius','nfl']);
  assert.ok(options.slice(-2).every(o=>o.auth==='required'));
 });
+test('in-app providers always outrank free browser handoffs',()=>{
+ const detGame={id:'det-test',away:'DET',home:'BUF',date:'2026-09-17T20:15:00-04:00'};
+ const sample=[{id:'audacy-det',team:'DET',name:'Detroit external',provider:'audacy',kind:'flagship',sourceUrl:'https://www.audacy.com/stations/971theticket',access:'provider'}];
+ const options=providerCandidates(sample,detGame,'DET');
+ assert.equal(options[0].type,'widget');
+ assert.equal(options[0].inApp,true);
+ const external=options.find(o=>o.catalogId==='audacy-det');
+ assert.ok(external);
+ assert.equal(external.inApp,false);
+ assert.ok(options.indexOf(options[0])<options.indexOf(external));
+});
 test('unmapped national directory pages are not auto-selected as game coverage',()=>{
  const options=providerCandidates([{id:'westwood',name:'Westwood One',provider:'westwood',kind:'national',sourceUrl:'https://www.westwoodonesports.com/',access:'provider'}],game,'DAL');
  assert.equal(options.some(o=>o.provider==='westwood'),false);
