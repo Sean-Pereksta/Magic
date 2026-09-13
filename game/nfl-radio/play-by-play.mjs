@@ -223,7 +223,7 @@ export function installLivePlayByPlay(){
           speaking=false;currentItem=null;
           const attempts=retries.get(next.key)||0;
           if(attempts<1&&settings.enabled){
-            retries.set(next.key,attempts+1);
+            retries.set(next.key,attempts+1;
             resumeSpeech();queue.unshift(next);
             setTimeout(drainQueue,250);
             return;
@@ -304,8 +304,16 @@ export function installLivePlayByPlay(){
     schedule();
   };
 
+  const rearmSpeechFromGesture=()=>{if(settings.enabled)unlockSpeech();};
+  document.addEventListener('pointerdown',rearmSpeechFromGesture,{passive:true});
+  document.addEventListener('keydown',rearmSpeechFromGesture);
+
   enabled.onchange=()=>setEnabled(enabled.checked);
-  open.onclick=()=>{settings=readPlayByPlaySettings();enabled.checked=settings.enabled;paint();dialog.showModal();};
+  open.onclick=()=>{
+    settings=readPlayByPlaySettings();enabled.checked=settings.enabled;
+    if(settings.enabled)unlockSpeech();
+    paint();dialog.showModal();
+  };
   document.getElementById('closePlayByPlay').onclick=()=>dialog.close();
   speakLatest.onclick=()=>{
     unlockSpeech();
