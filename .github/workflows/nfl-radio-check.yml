@@ -1,0 +1,38 @@
+name: NFL Radio checks
+
+on:
+  pull_request:
+    paths:
+      - 'game/nfl-radio.html'
+      - 'game/nfl-radio/**'
+      - '.github/workflows/nfl-radio-check.yml'
+  push:
+    paths:
+      - 'game/nfl-radio.html'
+      - 'game/nfl-radio/**'
+      - '.github/workflows/nfl-radio-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            game/nfl-radio
+            game/nfl-radio.html
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check game/nfl-radio/app-v2.mjs
+          node --check game/nfl-radio/station-discovery.mjs
+      - name: Radio regression tests
+        run: node --test game/nfl-radio/core.test.mjs game/nfl-radio/providers.test.mjs game/nfl-radio/station-discovery.test.mjs game/nfl-radio/game-updates.test.mjs

@@ -1,43 +1,45 @@
 # NFL Radio Dial
 
-Entry: `/game/nfl-radio.html`. Registered in `lobby/lobby-core.html`, loaded by
-`lobby/lobby.html`, under Apps and Tools & Learning. No build or backend required.
+Entry: `/game/nfl-radio.html`. The app is mobile-first, framework-free, and uses the existing ESPN schedule integration plus browser audio, voice commands, and spoken game updates.
 
-## Implemented
+## Playback contract
 
-- Current NFL scoreboard/week from ESPN's public scoreboard endpoint, refresh every
-  minute while visible, explicit failures, and up to 24 hours of labeled offline cache.
-- All 32 teams, city/nickname/abbreviation/opponent voice matching and shared-city
-  clarification; saved rotation, large game buttons, home/away/national/Spanish
-  switching, station selection and successful-playback team preferences.
-- Persistent single-stream player, immediate `play()` inside tap handlers,
-  cancellation of stale requests, bounded fallback and stall timeout, Media Session
-  controls, and explicit autoplay-policy recovery.
-- Hold/release speech recognition with spoken team confirmation. Browser support
-  varies; HTTPS and microphone permission are required. Typed commands are always
-  available. Browser speech recognition may send audio to its speech service.
-- Responsive mobile layout and scoped microphone/autoplay delegation from the
-  Catnmice outer iframe. No HTML previews were generated.
+`Play` means audio plays inside Catnmice. It must never mean “open a provider page.”
 
-## Provider integration update
+Automatic order:
 
-The app now offers official SiriusXM team listening links for all 32 teams, NFL+
-login/live-audio links, and provider-issued iHeart station widgets for Detroit and
-Philadelphia. See [PROVIDER-INTEGRATION.md](./PROVIDER-INTEGRATION.md) for the source
-verification, supported behavior, comparison and prepared partnership inquiry.
+1. Verified, authorized game-specific feeds from `feeds.json`.
+2. Free/no-login public HTTPS station streams discovered from Radio Browser using mapped NFL flagship and alternate station names/call signs.
+3. Only after every in-app candidate has failed, show the separate glowing **External options** button.
 
-**The exact nationwide instant in-app experience still needs a provider agreement.**
-SiriusXM/NFL+ login and playback remain on their own service. iHeart widgets may
-require a Play tap and local-market eligibility; they do not guarantee the station
-is carrying this game. No direct approved feed has been issued, so `feeds.json` is
-still empty. The UI labels these distinctions and never treats a loaded iframe or
-opened login page as confirmed audio playback.
+Provider pages, embeds, logins and subscriptions are not automatic playback. iHeartRadio/Audacy/TuneIn pages are not classified as an in-app success merely because an iframe or page loads. The main Play button never calls `window.open()`.
 
-## Connecting approved feeds
+## Free station discovery
 
-Publish provider-approved HTTPS audio URLs in `feeds.json` only after establishing
-embedding permission and game coverage. No secrets or subscriber credentials belong
-in this public file. Each feed must contain:
+`station-discovery.mjs` contains search aliases for all 32 NFL teams. It searches the public Radio Browser API for each mapped alias and keeps only candidates that:
+
+- were most recently marked online by the directory;
+- expose an HTTPS resolved stream URL;
+- do not report an SSL error;
+- report a browser-oriented audio codec such as MP3/AAC/OGG/Opus.
+
+Results are deduplicated by resolved stream URL and ordered by name match, directory votes, bitrate and codec preference. The browser audio element is still the final authority: if a candidate errors, stalls or times out, `RadioPlayer` advances to the next in-app stream.
+
+A healthy station stream is **not** proof that an NFL game is available on that internet stream. Stations and leagues may substitute programming or apply local-market, blackout, schedule or rights restrictions. The app labels public directory streams as station streams, not verified game audio.
+
+No protected provider URLs, subscriber sessions, credentials, geo bypasses or DRM workarounds are used.
+
+## Single-tap behavior
+
+Adding a game to the rotation starts warming both teams’ free station searches so likely candidates are already cached before the user presses Start or switches broadcasts. If discovery is still needed after a selection, the app searches the remaining in-app candidates and does not surface external options until that search has completed and the audio queue is exhausted.
+
+## External options
+
+External destinations remain available as a last resort, but only through the glowing **External options** button that appears after in-app exhaustion. Opening one is always a separate, explicit user action. This section can include official free provider pages as well as authenticated SiriusXM/NFL+ options.
+
+## Verified game feeds
+
+`feeds.json` remains the higher-confidence path for provider-approved game-specific streams. A feed should only be added when the provider has authorized embedding/direct playback and the game/time window is explicit:
 
 ```json
 {
@@ -51,38 +53,21 @@ in this public file. Each feed must contain:
   "gameAudio": true,
   "gameIds": ["ESPN_GAME_ID"],
   "streamUrl": "https://PROVIDER_APPROVED_AUDIO_URL",
-  "sourceUrl": "https://PROVIDER_AUTHORIZATION_AND_COVERAGE_SOURCE",
+  "sourceUrl": "https://PROVIDER_AUTHORIZATION_SOURCE",
   "verifiedAt": "ISO_TIMESTAMP",
   "availableFrom": "ISO_TIMESTAMP",
   "availableUntil": "ISO_TIMESTAMP"
 }
 ```
 
-`kind` supports `flagship`, `affiliate`, `national`; national feeds have no `team`.
-The time window must be current and gameIds must explicitly include the selected
-game. The provider must enforce any geographic/entitlement restrictions at its
-endpoint. Do not mark a provider-page URL or general sports-talk stream as direct
-game audio. Use native-browser supported HTTPS audio; HLS only works where supported
-natively (no HLS.js dependency is bundled). Playback latency depends on buffering;
-a browser can require a recovery tap for voice-triggered playback.
-
-A production provider should provide a secure server integration if it requires
-entitlements or ephemeral URLs. That is not replaced by flags in a public manifest.
-
 ## Validation
 
-Run `node --test game/nfl-radio/core.test.mjs game/nfl-radio/providers.test.mjs`.
-Tests use fake audio for dispatch, cancellation, failure, and autoplay behavior;
-they do not establish live broadcast availability. The ESPN endpoint returned HTTP
-200 with an accessible JSON schedule and an `Access-Control-Allow-Origin: *` header
-in this environment. It is an external dependency with no SLA for this app.
+Run:
 
-A Playwright DOM smoke check was attempted but could not run because this runtime
-has no installed Chromium executable. Real-device microphone, audio, background
-playback, and mobile layout verification remain release checks.
+```bash
+node --test game/nfl-radio/core.test.mjs game/nfl-radio/providers.test.mjs game/nfl-radio/station-discovery.test.mjs game/nfl-radio/game-updates.test.mjs
+node --check game/nfl-radio/app-v2.mjs
+node --check game/nfl-radio/station-discovery.mjs
+```
 
-Provider follow-up validation: 15 core/provider tests pass. A simulated DOM integration
-check passed for schedule rendering, command routing, widget replacement/stop,
-provider handoffs, popup-blocked recovery, station listing and persistent broadcast
-controls. This is not an end-to-end audio test. Installing Chromium was attempted
-but the browser download timed out; real-device testing still remains.
+Live stream availability is inherently time-dependent and should still be smoke-tested on the target mobile browser. The regression tests validate resolver ordering/filtering and player behavior, not broadcast rights or whether a specific station is carrying a specific game at test time.
