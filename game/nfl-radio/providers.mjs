@@ -6,7 +6,7 @@ export const PROVIDERS = {
  iheart:{name:'iHeartRadio',free:true,requiresLogin:false,description:'Uses a mapped official iHeart station widget when one is available. No Catnmice login is required; station schedules and geographic restrictions still apply.',infoUrl:'https://www.iheart.com/'},
  tunein:{name:'TuneIn',free:true,requiresLogin:false,description:'Uses a mapped official TuneIn station embed when available. Free station listening is preferred; premium or restricted feeds are never treated as free.',infoUrl:'https://tunein.com/radio/sports/'},
  audacy:{name:'Audacy',free:true,requiresLogin:false,description:'Opens a mapped official Audacy station page as a free listening option when available. Game rights and local restrictions remain with Audacy.',infoUrl:'https://www.audacy.com/sports'},
- westwood:{name:'Westwood One',free:true,requiresLogin:false,description:'Uses Westwood One as a free national fallback for games it is carrying. Availability depends on the published national schedule.',infoUrl:'https://www.westwoodonesports.com/'},
+ westwood:{name:'Westwood One',free:true,requiresLogin:false,description:'Uses Westwood One as a free national fallback only when that game is explicitly mapped to published national coverage. Availability depends on the published schedule.',infoUrl:'https://www.westwoodonesports.com/'},
  sirius:{name:'SiriusXM',free:false,requiresLogin:true,description:'Home and away calls for all 32 teams. Opens the official SiriusXM player; a compatible subscription and provider login are required.',loginUrl:'https://www.siriusxm.com/player/',infoUrl:'https://www.siriusxm.com/sports/nfl'},
  nfl:{name:'NFL+',free:false,requiresLogin:true,description:'Every game’s home, away and national calls in the US. Opens NFL+; sign in and select Live Audio there.',loginUrl:'https://www.nfl.com/plus/',infoUrl:'https://support.nfl.com/hc/en-us/articles/35869715432468-What-games-can-I-listen-to-with-live-audio-on-NFL'}
 };
@@ -76,7 +76,8 @@ const roleMatch=(item,game,teamId,role)=>{
  const target=role==='home'?game.home:role==='away'?game.away:teamId;
  if(role==='national')return item.kind==='national';
  if(role==='spanish')return item.language==='es'&&(!item.team||item.team===target);
- return item.team===target||item.kind==='national';
+ if(item.kind==='national')return Array.isArray(item.gameIds)&&item.gameIds.includes(game.id);
+ return item.team===target;
 };
 const catalogRank=item=>item.kind==='flagship'?40:item.kind==='affiliate'?50:item.kind==='national'?60:70;
 
