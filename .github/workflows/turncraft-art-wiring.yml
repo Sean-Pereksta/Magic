@@ -1,0 +1,38 @@
+name: TurnCraft art asset wiring
+
+on:
+  push:
+    branches:
+      - turncraft-art-asset-wiring
+
+permissions:
+  contents: write
+
+jobs:
+  wire-assets:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: turncraft-art-asset-wiring
+          fetch-depth: 0
+      - name: Enable dedicated troop and building art
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('game/turncraft.html')
+          text = path.read_text(encoding='utf-8')
+          old = "const GLYPH_ONLY_ASSETS=new Set(['supply depot.png','starport.png','spire.png','sunken colony.png','goliath.png','destructible rock.png','destructible crystal.png','neutral watchtower.png','mineral cache.png','gas cache.png']);"
+          new = "const GLYPH_ONLY_ASSETS=new Set(['destructible rock.png','destructible crystal.png','neutral watchtower.png','mineral cache.png','gas cache.png']);"
+          if old not in text:
+              raise SystemExit('Expected GLYPH_ONLY_ASSETS declaration was not found; refusing to edit.')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Commit wiring change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/turncraft.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Wire TurnCraft dedicated troop and building artwork"
+          git push origin HEAD:turncraft-art-asset-wiring
