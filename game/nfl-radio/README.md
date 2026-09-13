@@ -19,37 +19,19 @@ Entry: `/game/nfl-radio.html`. Registered in `lobby/lobby-core.html`, loaded by
 - Responsive mobile layout and scoped microphone/autoplay delegation from the
   Catnmice outer iframe. No HTML previews were generated.
 
-## Release blocker: game audio provider
+## Provider integration update
 
-**This is not yet a working nationwide game-audio service.** `feeds.json` intentionally
-contains no direct streams: no embeddable NFL game feeds were verified during this
-implementation. Selecting a game currently shows an unavailable state. Official
-provider destinations are available in Stations, but opening those destinations is
-not the requested instant in-app playback experience. This remains a draft until
-an authorized provider integration is supplied and tested.
+The app now offers official SiriusXM team listening links for all 32 teams, NFL+
+login/live-audio links, and provider-issued iHeart station widgets for Detroit and
+Philadelphia. See [PROVIDER-INTEGRATION.md](./PROVIDER-INTEGRATION.md) for the source
+verification, supported behavior, comparison and prepared partnership inquiry.
 
-The station catalog is a starter catalog, not complete national affiliate coverage.
-It identifies verified provider destinations for Detroit, Green Bay (including two
-major affiliates), Kansas City and Philadelphia (including Spanish), plus NFL+ and
-Westwood One. All 32 teams have official-site discovery links. The remaining flagship
-and affiliate inventory still needs source verification; affiliation alone does not
-prove permission to embed live game audio. Buffalo's recent network changes are a
-reason not to seed remembered station names as current facts.
-
-Sources checked September 13, 2026:
-- https://www.packers.com/video/radio-network
-- https://www.chiefs.com/listen/96-5-the-fan-the-kansas-city-chiefs-radio-network-stream
-- https://www.audacy.com/stations/971theticket
-- https://www.audacy.com/94wip/how-to-listen-to-philadelphia-eagles-games-on-the-radio
-- https://www.philadelphiaeagles.com/liveradio/
-- https://support.nfl.com/hc/en-us/articles/35869715432468-What-games-can-I-listen-to-with-live-audio-on-NFL
-- https://tunein.com/radio/NFL-c1736013/
-- https://www.westwoodonesports.com/
-
-NFL+ offers subscription home, away and national audio in its own ecosystem; there
-is no NFL+ session extraction in this application. TuneIn documents local-market
-limits for free team broadcasts. No proxy, login bypass, geo bypass, or scraped
-subscriber stream URLs are included.
+**The exact nationwide instant in-app experience still needs a provider agreement.**
+SiriusXM/NFL+ login and playback remain on their own service. iHeart widgets may
+require a Play tap and local-market eligibility; they do not guarantee the station
+is carrying this game. No direct approved feed has been issued, so `feeds.json` is
+still empty. The UI labels these distinctions and never treats a loaded iframe or
+opened login page as confirmed audio playback.
 
 ## Connecting approved feeds
 
@@ -89,7 +71,7 @@ entitlements or ephemeral URLs. That is not replaced by flags in a public manife
 
 ## Validation
 
-Run `node --test game/nfl-radio/core.test.mjs`.
+Run `node --test game/nfl-radio/core.test.mjs game/nfl-radio/providers.test.mjs`.
 Tests use fake audio for dispatch, cancellation, failure, and autoplay behavior;
 they do not establish live broadcast availability. The ESPN endpoint returned HTTP
 200 with an accessible JSON schedule and an `Access-Control-Allow-Origin: *` header
@@ -98,3 +80,9 @@ in this environment. It is an external dependency with no SLA for this app.
 A Playwright DOM smoke check was attempted but could not run because this runtime
 has no installed Chromium executable. Real-device microphone, audio, background
 playback, and mobile layout verification remain release checks.
+
+Provider follow-up validation: 15 core/provider tests pass. A simulated DOM integration
+check passed for schedule rendering, command routing, widget replacement/stop,
+provider handoffs, popup-blocked recovery, station listing and persistent broadcast
+controls. This is not an end-to-end audio test. Installing Chromium was attempted
+but the browser download timed out; real-device testing still remains.
