@@ -19,7 +19,7 @@
     "Gridbound Realms",
     "Chess Warlord"
   ]);
-  const TOOL_TITLES=new Set(["PDF Reader"]);
+  const TOOL_TITLES=new Set(["PDF Reader","NFL Radio Dial"]);
   const PROTOTYPE_ALIASES=new Set([
     "Mountain Blade Skirmish"
   ]);
