@@ -85,22 +85,58 @@ async function fetchJson(url,{timeout=10000}={}){
   }finally{clearTimeout(timer);}
 }
 
+function speechAvailable(){
+  return 'speechSynthesis' in globalThis&&typeof SpeechSynthesisUtterance!=='undefined';
+}
+
 function defaultVoice(){
-  if(!('speechSynthesis' in globalThis))return null;
+  if(!speechAvailable())return null;
   const voices=speechSynthesis.getVoices?.()||[];
   return voices.find(v=>v.default&&/^en/i.test(v.lang))||voices.find(v=>/^en/i.test(v.lang))||voices.find(v=>v.default)||null;
 }
 
-function speakQueued(text,onEnd){
-  if(!text||!('speechSynthesis' in globalThis)||typeof SpeechSynthesisUtterance==='undefined')return false;
-  const utterance=new SpeechSynthesisUtterance(text);
-  utterance.lang='en-US';utterance.rate=1.08;
-  const voice=defaultVoice();if(voice)utterance.voice=voice;
-  let finished=false;
-  const finish=()=>{if(finished)return;finished=true;onEnd?.();};
-  utterance.onend=finish;utterance.onerror=finish;
-  speechSynthesis.speak(utterance);
+function resumeSpeech(){
+  if(!speechAvailable())return false;
+  try{speechSynthesis.resume?.();}catch{}
   return true;
+}
+
+function unlockSpeech(){
+  if(!resumeSpeech())return false;
+  try{
+    if(speechSynthesis.speaking||speechSynthesis.pending)return true;
+    const warmup=new SpeechSynthesisUtterance(' ');
+    warmup.lang='en-US';warmup.volume=0;warmup.rate=10;
+    const voice=defaultVoice();if(voice)warmup.voice=voice;
+    speechSynthesis.speak(warmup);
+    return true;
+  }catch{return false;}
+}
+
+function speakQueued(text,{onStart,onEnd,onError}={}){
+  if(!text||!resumeSpeech())return false;
+  try{
+    const utterance=new SpeechSynthesisUtterance(text);
+    utterance.lang='en-US';utterance.rate=1.08;utterance.volume=1;
+    const voice=defaultVoice();if(voice)utterance.voice=voice;
+    let finished=false,started=false;
+    const startTimer=setTimeout(()=>{
+      if(started||finished)return;
+      finished=true;
+      try{speechSynthesis.cancel();speechSynthesis.resume?.();}catch{}
+      onError?.('speech-did-not-start');
+    },3500);
+    const finish=(ok,error)=>{
+      if(finished)return;
+      finished=true;clearTimeout(startTimer);
+      ok?onEnd?.():onError?.(error||'speech-error');
+    };
+    utterance.onstart=()=>{started=true;clearTimeout(startTimer);onStart?.();};
+    utterance.onend=()=>finish(true);
+    utterance.onerror=event=>finish(false,event?.error||'speech-error');
+    speechSynthesis.speak(utterance);
+    return true;
+  }catch{return false;}
 }
 
 function element(tag,text,attrs={}){
@@ -145,6 +181,7 @@ export function installLivePlayByPlay(){
   let timer=null,polling=false,speaking=false,currentItem=null,generation=0;
   const seenKeys=new Map();
   const queue=[];
+  const retries=new Map();
 
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
   const queueLabel=()=>queue.length?` ${queue.length} more queued.`:'';
@@ -156,13 +193,17 @@ export function installLivePlayByPlay(){
     open.textContent=settings.enabled?'📣 Play-by-play ON':'📣 Play-by-play';
     open.classList.toggle('active',!!settings.enabled);
     if(message){status.textContent=message;return;}
+    if(!speechAvailable()){
+      status.textContent='This browser does not expose text-to-speech. Open Catnmice in a browser with speech support.';
+      return;
+    }
     status.textContent=settings.enabled
       ?`Watching ${count} selected game${count===1?'':'s'} for new plays about every 5 seconds.${queueLabel()}`
       :'Play-by-play is off.';
   };
 
   const stopSchedule=()=>{clearInterval(timer);timer=null;generation++;};
-  const clearPending=()=>{queue.length=0;currentItem=null;};
+  const clearPending=()=>{queue.length=0;currentItem=null;retries.clear();};
 
   const drainQueue=()=>{
     if(speaking)return;
@@ -171,10 +212,26 @@ export function installLivePlayByPlay(){
       if(!selectedGameIds().includes(next.gameId))continue;
       speaking=true;currentItem=next;
       paint(`Speaking ${next.team||'latest'} play.${queueLabel()}`);
-      const started=speakQueued(next.speech,()=>{
-        speaking=false;currentItem=null;
-        if(settings.enabled)paint(`Play spoken.${queueLabel()}`);else paint();
-        drainQueue();
+      const started=speakQueued(next.speech,{
+        onStart:()=>paint(`Speaking ${next.team||'latest'} play.${queueLabel()}`),
+        onEnd:()=>{
+          retries.delete(next.key);speaking=false;currentItem=null;
+          if(settings.enabled)paint(`Play spoken.${queueLabel()}`);else paint();
+          drainQueue();
+        },
+        onError:()=>{
+          speaking=false;currentItem=null;
+          const attempts=retries.get(next.key)||0;
+          if(attempts<1&&settings.enabled){
+            retries.set(next.key,attempts+1);
+            resumeSpeech();queue.unshift(next);
+            setTimeout(drainQueue,250);
+            return;
+          }
+          retries.delete(next.key);
+          paint('Voice could not start. Tap “Speak latest plays now” once to re-enable browser speech.');
+          drainQueue();
+        }
       });
       if(started)return;
       speaking=false;currentItem=null;
@@ -234,20 +291,26 @@ export function installLivePlayByPlay(){
     if(!settings.enabled){paint();return;}
     const token=generation;
     poll({prime:true,token});
-    timer=setInterval(()=>poll({token}),PLAY_POLL_MS);
+    timer=setInterval(()=>{resumeSpeech();poll({token});},PLAY_POLL_MS);
     paint();
   };
 
   const setEnabled=value=>{
     settings={enabled:!!value};save();
-    if(settings.enabled)disableSummaryUpdates();
+    if(settings.enabled){
+      unlockSpeech();
+      disableSummaryUpdates();
+    }
     schedule();
   };
 
   enabled.onchange=()=>setEnabled(enabled.checked);
   open.onclick=()=>{settings=readPlayByPlaySettings();enabled.checked=settings.enabled;paint();dialog.showModal();};
   document.getElementById('closePlayByPlay').onclick=()=>dialog.close();
-  speakLatest.onclick=()=>poll({manual:true,token:generation});
+  speakLatest.onclick=()=>{
+    unlockSpeech();
+    poll({manual:true,token:generation});
+  };
 
   document.addEventListener('change',event=>{
     if(event.target?.id==='updatesEnabled'&&event.target.checked&&settings.enabled){
@@ -255,7 +318,9 @@ export function installLivePlayByPlay(){
       paint('Play-by-play turned off because scheduled full game updates were enabled.');
     }
   });
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&settings.enabled)poll({token:generation});});
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden&&settings.enabled){resumeSpeech();poll({token:generation});}
+  });
   window.addEventListener('pagehide',()=>{stopSchedule();clearPending();});
 
   enabled.checked=settings.enabled;paint();schedule();
