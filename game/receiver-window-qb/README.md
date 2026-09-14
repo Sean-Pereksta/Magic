@@ -25,3 +25,10 @@ Fourth-down throws, 10+ air-yard catches and touchdown catches qualify. Replays 
 With Playwright installed: `node game/receiver-window-qb/browser-smoke.cjs`. Optionally set `QB_CHROMIUM_PATH` to a Chromium executable. This serves the actual game with a test-only introspection hook, checks the menu/slots/drive reload, pause guards, loss rewards, replay isolation, jukes, catch variants, interceptions and mobile viewport overflow. It generates no preview files.
 
 Cloud tests use real Web Crypto with mocked Firebase transport; they do not write to production. Deployment still needs an end-to-end cloud save/load check against the live project's anonymous-auth settings and deployed rules.
+
+
+## Directional hands and full-body moves
+
+Jukes animate a shared visual rig so the helmet, jersey, limbs and secured ball turn together. Successful fakes add a short wrong-way impulse and visible balance recovery to the defender; cooldowns and defender resistance still apply. A thrown ball cancels the receiver juke pose so pursuit takes priority.
+
+Receivers aim both hands toward a nearby predicted interception over the next 0.24 seconds, including side and low reaches. Targets are converted to model-local coordinates, limited to 0.95 model units from each shoulder and approached smoothly. Existing hand-contact checks use those actual hand positions; normal catches remain ahead of rescue-only dives. The visual rig is included in the existing replay transform capture.
