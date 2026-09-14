@@ -43,6 +43,9 @@ function makePlayer(offense=true,appearance=null){
   const helmet=new THREE.Mesh(new THREE.SphereGeometry(.29,12,8,0,Math.PI*2,0,Math.PI*.63),helmetMat);helmet.position.y=1.98;root.add(helmet);
   const armGeo=new THREE.CapsuleGeometry(.085,.50,3,6),arms=[],hands=[];for(const x of[-.53,.53]){const arm=new THREE.Mesh(armGeo,jerseyMat);arm.position.set(x,1.22,.02);arm.rotation.z=x<0?-.08:.08;arm.castShadow=true;root.add(arm);arms.push(arm);const hand=new THREE.Mesh(new THREE.SphereGeometry(.105,8,7),headMat);hand.position.set(x,.86,.02);hand.castShadow=true;root.add(hand);hands.push(hand)}
   const legGeo=new THREE.CapsuleGeometry(.105,.42,3,6),feet=[],legs=[];for(const x of[-.22,.22]){const leg=new THREE.Mesh(legGeo,jerseyMat);leg.position.set(x,.50,0);root.add(leg);legs.push(leg);const foot=new THREE.Mesh(new THREE.BoxGeometry(.22,.13,.48),cleatMat);foot.position.set(x,.16,-.11);foot.castShadow=true;root.add(foot);feet.push(foot)}
+  const visualRig=new THREE.Group();
+  for(const part of [...root.children])visualRig.add(part);
+  root.add(visualRig);root.userData.visualRig=visualRig;
   root.scale.set(look.scaleX,look.scaleY,look.scaleZ);
   const shadow=new THREE.Mesh(new THREE.CircleGeometry(.5,14),shadowMat);shadow.rotation.x=-Math.PI/2;shadow.position.y=.016;shadow.scale.set(Math.max(.86,look.scaleX*.98),1,Math.max(.86,look.scaleZ*.98));root.add(shadow);let trackRing=null;if(offense){trackRing=new THREE.Mesh(new THREE.RingGeometry(.62,.82,24),new THREE.MeshBasicMaterial({color:0x62ff9c,transparent:true,opacity:.82,side:THREE.DoubleSide,depthWrite:false}));trackRing.rotation.x=-Math.PI/2;trackRing.position.y=.025;trackRing.visible=false;root.add(trackRing)}root.userData.arms=arms;root.userData.hands=hands;root.userData.feet=feet;root.userData.legs=legs;root.userData.body=body;root.userData.trackRing=trackRing;root.userData.appearance=look;return root;
 }
@@ -350,9 +353,49 @@ function receiverBallPlan(r){
 function defenderSeesBall(d){
   if(!ballLive)return false;const eye=d.mesh.position.clone().add(new THREE.Vector3(0,1.72,0)),to=ball.position.clone().sub(eye),dist=to.length();if(dist<.01)return true;const flat=to.clone().setY(0);if(flat.lengthSq()<.01)return true;flat.normalize();const facing=d.heading.dot(flat),skill=currentSkill();return facing>THREE.MathUtils.lerp(.18,-.12,skill)||(dist<THREE.MathUtils.lerp(3.0,5.8,skill)&&throwTime>d.reaction*.55);
 }
+// Predict a nearby intercept, not the eventual ground landing. The receiver's
+// physical pursuit remains authoritative; this only aims bounded arms/hands.
+function receiverHandTarget(a){
+  if(!a.profile||!ballLive||!a.trackingBall||a.hasBall)return null;
+  const chest=a.mesh.position.clone().add(new THREE.Vector3(0,1.35*a.mesh.scale.y,0));
+  let best=null,bestDistance=Infinity;
+  for(let t=0;t<=.2401;t+=.04){
+    const point=ball.position.clone().addScaledVector(ballVel,t);point.y-=4.905*t*t;
+    const future=chest.clone().addScaledVector(a.velocity,t);
+    const distance=point.distanceToSquared(future);
+    if(distance<bestDistance){bestDistance=distance;best=point;}
+  }
+  if(bestDistance>9)return null;
+  const space=a.mesh.userData.visualRig||a.mesh;
+  a.mesh.updateMatrixWorld(true);
+  return space.worldToLocal(best);
+}
+function trackReceiverHands(a,dt){
+  const hands=a.mesh.userData.hands||[],arms=a.mesh.userData.arms||[];
+  const target=receiverHandTarget(a);
+  if(!target){a.handTargets=null;return;}
+  a.catchPose=Math.max(a.catchPose||0,.7);
+  if(!a.handTargets)a.handTargets=hands.map(h=>h.position.clone());
+  for(let i=0;i<hands.length;i++){
+    const side=i===0?-1:1,shoulder=new THREE.Vector3(side*.48,1.48,.02);
+    const wanted=target.clone();wanted.x+=side*.10;
+    const offset=wanted.clone().sub(shoulder),maxReach=.95;
+    if(offset.length()>maxReach)offset.setLength(maxReach);
+    wanted.copy(shoulder).add(offset);
+    const delta=wanted.clone().sub(a.handTargets[i]),step=Math.max(0,dt)*8;
+    if(delta.length()>step)delta.setLength(step);
+    a.handTargets[i].add(delta);hands[i].position.copy(a.handTargets[i]);
+    // Orient the existing capsule along shoulder-to-hand, without stretching it.
+    if(arms[i]){
+      const direction=hands[i].position.clone().sub(shoulder);
+      arms[i].position.copy(shoulder).addScaledVector(direction,.5);
+      if(direction.lengthSq()>.0001)arms[i].quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
+    }
+  }
+}
 function animatePlayerContact(a,dt){
   a.shoveAnim=Math.max(0,(a.shoveAnim||0)-dt);const arms=a.mesh.userData.arms||[],hands=a.mesh.userData.hands||[],feet=a.mesh.userData.feet||[],legs=a.mesh.userData.legs||[];const shove=a.shoveAnim>0?Math.sin((1-a.shoveAnim/.34)*Math.PI):0,reach=THREE.MathUtils.clamp(Math.max(a.catchPose||0,a.swatPose||0),0,1),plant=THREE.MathUtils.clamp(a.plantPose||0,0,1),run=THREE.MathUtils.clamp(a.runIntensity||0,0,1),stride=Math.sin(a.runPhase||0)*.70*run;
-  for(let i=0;i<arms.length;i++){const side=i===0?-1:1,armRun=reach>.05?0:(i===0?stride:-stride)*.58;arms[i].rotation.x=shove*1.18-reach*.72+armRun;arms[i].rotation.z=side*.08*(1-shove*.5)+side*reach*.19;arms[i].position.set(side*(.53-reach*.11),1.22+reach*.44,shove*.27+reach*.22)}
+  for(let i=0;i<arms.length;i++){const side=i===0?-1:1,armRun=reach>.05?0:(i===0?stride:-stride)*.58;arms[i].rotation.y=0;arms[i].rotation.x=shove*1.18-reach*.72+armRun;arms[i].rotation.z=side*.08*(1-shove*.5)+side*reach*.19;arms[i].position.set(side*(.53-reach*.11),1.22+reach*.44,shove*.27+reach*.22)}
   for(let i=0;i<hands.length;i++){const side=i===0?-1:1;hands[i].position.set(side*(.53-reach*.23*(a.catchReach||1)),.86+reach*1.18*(a.catchReach||1),reach*.44*(a.catchReach||1)+shove*.18)}
   for(let i=0;i<legs.length;i++){legs[i].rotation.x=(i===0?stride:-stride);legs[i].position.z=(i===0?stride:-stride)*.10}
   for(let i=0;i<feet.length;i++){const side=i===0?-1:1,step=(i===0?stride:-stride);feet[i].rotation.x=step*.48;feet[i].rotation.y=side*plant*.58;feet[i].position.z=-.11+plant*(i===0?.10:-.08)+step*.18;feet[i].position.y=.16+Math.max(0,-step)*.05*run}
@@ -361,7 +404,7 @@ function animatePlayerContact(a,dt){
   const airborne=Math.min(1,(a.jumpY||0)*2),swat=(a.swatPose||0)>.2;
   if(body){body.rotation.x=shove*.12-plant*.16-run*.06-airborne*.16;
     body.rotation.z=plant*.035+move*side*.48;
-    body.rotation.y=a.jukeMove==='SPIN'&&move>0?(1-a.jukeAnim/a.jukeDuration)*Math.PI*2*side:move*side*.38;
+    body.rotation.y=0;
     body.position.y=1.18-move*.18;}
   for(let i=0;i<legs.length;i++){legs[i].rotation.z=move*(i===0?-.35:.35);legs[i].rotation.x-=airborne*.55;}
   for(let i=0;i<feet.length;i++)feet[i].position.x=(i===0?-1:1)*(.22+move*.18);
@@ -370,11 +413,22 @@ function animatePlayerContact(a,dt){
     if(airborne>0&&reach>.2){arms[i].position.y+=airborne*.14;arms[i].rotation.x-=airborne*.28;}
     if(swat){arms[i].rotation.x-=i===0?.6:.15;arms[i].rotation.z+=i===0?-.35:.25;}
   }
+  const rig=a.mesh.userData.visualRig;
+  if(rig){
+    const progress=a.jukeAnim>0?1-a.jukeAnim/(a.jukeDuration||.56):0;
+    const fooled=!a.profile&&a.fakeUntil>gameTime;
+    const stumble=fooled?Math.sin(Math.min(1,(a.fakeUntil-gameTime)/650)*Math.PI):0;
+    rig.rotation.y=a.jukeMove==='SPIN'&&a.jukeAnim>0?side*progress*Math.PI*2:side*move*.35;
+    rig.rotation.z=side*move*.16+(a.fakeSide||1)*stumble*.25;
+    rig.position.y=-move*.12-stumble*.10;
+    if(fooled){for(let i=0;i<arms.length;i++)arms[i].rotation.z+=(i===0?-1:1)*stumble*.7;}
+  }
   // Distinct one-arm swat, two-hand high point, and secured-ball tuck.
   for(let i=0;i<hands.length;i++){
     if(swat){hands[i].position.y+=i===0?.22:-.14;hands[i].position.x+=i===0?-.14:.18;}
     if(a.hasBall){hands[i].position.set(i===0?.12:.42,1.18,.32);arms[i].rotation.x=-.75;arms[i].position.y=1.18;}
   }
+  trackReceiverHands(a,dt);
 }
 
 function actorStrength(a){return THREE.MathUtils.clamp(a?.profile?(P.effective(a.profile.strength)||50)/100+P.traits(a.profile).bodyBonus:(a?.strength||50)/100,.01,1)}
@@ -599,7 +653,7 @@ function checkBallContact(){
 }
 
 
-function attachBallToCarrier(){if(!ballCarrier)return;const p=new THREE.Vector3(.34,1.18,.18);ballCarrier.mesh.localToWorld(p);ball.position.copy(p);ball.visible=true;ball.rotation.set(0,ballCarrier.mesh.rotation.y,Math.PI*.18);}
+function attachBallToCarrier(){if(!ballCarrier)return;const p=new THREE.Vector3(.34,1.18,.18);(ballCarrier.mesh.userData.visualRig||ballCarrier.mesh).localToWorld(p);ball.position.copy(p);ball.visible=true;ball.rotation.set(0,ballCarrier.mesh.rotation.y,Math.PI*.18);}
 function updateBallCarrier(r,dt){
   updateTricks(r,dt,true);
   r.runIntensity=THREE.MathUtils.lerp(r.runIntensity||0,1,Math.min(1,dt*12));r.runPhase=(r.runPhase||0)+dt*Math.max(10,r.velocity.length()*2.65);r.catchPose=Math.max(0,(r.catchPose||0)-dt*3.5);r.plantPose=Math.max(0,(r.plantPose||0)-dt*5);
@@ -799,13 +853,14 @@ function tryJuke(r,manual=false){
       beaten++;d.fakeUntil=gameTime+380+P.effective(r.profile.tricks)*3;
       d.fakeTarget=r.mesh.position.clone().add(new THREE.Vector3(-side*4,0,-1));
       d.plantPose=1;d.velocity.multiplyScalar(.48);
+      d.fakeSide=-side;d.impactVel.addScaledVector(new THREE.Vector3(-side,0,0),1.6);
     }
   }
   if(manual||r===ballCarrier)flashResult(beaten?r.jukeMove+' — BEAT '+beaten+'!':r.jukeMove+' — DEFENDER HELD',!!beaten,700);
   return true;
 }
 function updateTricks(r,dt,carrier){
-  r.jukeCooldown=Math.max(0,(r.jukeCooldown||0)-dt);r.jukeAnim=Math.max(0,(r.jukeAnim||0)-dt);
+  r.jukeCooldown=Math.max(0,(r.jukeCooldown||0)-dt);r.jukeAnim=ballLive?0:Math.max(0,(r.jukeAnim||0)-dt);
   // Players choose a moment near a defender. Chance is time based, not frame based.
   if(!ballLive&&(carrier||playState==='live')&&Math.random()<dt*(.5+P.effective(r.profile.tricks)*.009))tryJuke(r);
 }
@@ -878,3 +933,4 @@ function finishReplay(){
 $('skipReplay').onclick=finishReplay;
 addEventListener('beforeunload',saveFranchise);saveFranchise();
 })();
+
