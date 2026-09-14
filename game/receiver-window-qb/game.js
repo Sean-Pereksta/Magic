@@ -177,15 +177,20 @@ function renderManager(){$('cashPill').textContent=`$${franchise.cash}`;$('round
 function trainReceiver(slot,stat){const p=franchise.team[slot];if(!p)return;const result=P.train(p,stat,franchise.cash,randInt(4,8));if(!result.ok){$('managerStatus').textContent=result.reason;return}franchise.cash=result.cash;$('managerStatus').textContent=`${p.name}: ${statLabel(stat)} +${result.gain}.`;saveFranchise();renderManager()}
 function signReceiver(index){const p=franchise.market[index];if(!p)return;if(franchise.cash<p.price){$('managerStatus').textContent=`You need $${p.price-franchise.cash} more to sign ${escapeHTML(p.name)}.`;return}const old=franchise.team[selectedRosterIndex];franchise.cash-=p.price;franchise.team[selectedRosterIndex]=p;franchise.market[index]=newReceiver(true);$('managerStatus').textContent=`Signed ${escapeHTML(p.name)} to ${['X','H','Y','Z'][selectedRosterIndex]}, replacing ${old.name}.`;saveFranchise();renderManager()}
 function openManager(status='Manage your four starters before the next matchup.',locked=false){managerLocked=locked;playState=locked?'manager':playState;document.exitPointerLock?.();$('managerStatus').textContent=status;$('managerLayer').style.display='flex';$('continueBtn').textContent=locked?'CONTINUE TO NEXT MATCHUP':'RETURN TO FIELD';renderManager()}
-function closeManager(){if(managerLocked){managerLocked=false;playState='dead';$('managerLayer').style.display='none';resetDrive();setupPlay(true)}else {$('managerLayer').style.display='none';if(!menuOpen)setupPlay(false)}}
+function closeManager(){$('cloudOffer').hidden=true;if(managerLocked){managerLocked=false;playState='dead';$('managerLayer').style.display='none';resetDrive();setupPlay(true)}else {$('managerLayer').style.display='none';if(!menuOpen)setupPlay(false)}}
 function endMatchup(won){
+  const firstMatch=!franchise.wins&&!franchise.losses&&franchise.round===1;
+  const offerCloud=firstMatch&&!franchise.cloudSaveOffered;
   const opp=opponentForRound(franchise.round),payout=P.payout(won,franchise.round,seriesOffense);
   franchise.cash+=payout;
   if(won){franchise.wins++;franchise.round++;}else franchise.losses=(franchise.losses||0)+1;
   tournamentStage=franchise.round-1;
   const status=`MATCHUP ${won?'WON':'LOST'} vs ${opp.name} · +$${payout}${won?' victory':' participation'} & scoring payout. ${won?'Next':'Retry'} Round ${franchise.round}.`;
   seriesOffense=0;seriesDefense=0;resetDrive();franchise.market=freshMarket();checkpoint();
-  scheduleResult(()=>openManager(status,true),1400);
+  scheduleResult(()=>{
+    openManager(status,true);
+    if(offerCloud){franchise.cloudSaveOffered=true;saveFranchise();$('cloudOffer').hidden=false;}
+  },1400);
 }
 
 function resetDrive(){ballSpotYards=0;down=1;lineToGainYards=25;snapSpotYards=0;ballCarrier=null;tackler=null;tackleTimer=0;tackleSpotYards=0}
@@ -289,8 +294,8 @@ function ballApproach(point,maxTime=1.15){
 function receiverBallPlan(r){
   if(!ballLive||ballVel.lengthSq()<.01)return null;
   const landing=getBallLanding(),maxT=Math.min(3.25,landing?landing.time:3.25);
-  let best=null;
-  for(let t=.05;t<=maxT;t+=.065){
+  let best=null,inStride=null;
+  for(let t=.01;t<=maxT;t+=.04){
     const p=ball.position.clone().addScaledVector(ballVel,t);p.y-=.5*9.81*t*t;
     if(p.y<.24||p.y>P.traits(r.profile).highReach)continue;
     const dx=p.x-r.mesh.position.x,dz=p.z-r.mesh.position.z,flatDist=Math.hypot(dx,dz);
@@ -306,7 +311,8 @@ function receiverBallPlan(r){
     }
     const futureRoute=routePosition(r.path,r.distance+lookAhead),futureGap=Math.hypot(p.x-futureRoute.x,p.z-futureRoute.z);
     const inReceiverNeighborhood=routeGap<11.8||futureGap<14.8||(flatDist<7.0&&routeGap<16.5);
-    if(!inReceiverNeighborhood)continue;
+    // Once acquired, route progress must not veto a physically reachable pass.
+    if(!inReceiverNeighborhood&&!r.ballPursuit)continue;
 
     // A hard 180 still costs time. Forward/side pursuit gets a little more usable burst than a full comeback.
     const turnSkill=(r.profile?.turning||50)/100,turnFactorBase=facing<-.60?.72:facing<-.15?.82:facing<.35?.92:1,turnFactor=THREE.MathUtils.clamp(turnFactorBase+((turnSkill-.5)*.12)*(facing<.35?1:.25),.64,1.04);
@@ -315,10 +321,28 @@ function receiverBallPlan(r){
 
     const difficulty=(flatDist/Math.max(.01,usableReach))*1.15+routeGap*.035+Math.max(0,-facing)*.16+t*.035;
     const plan={point:p,time:t,routeGap,facing,flatDist,difficulty};
+    const strideGap=Math.hypot(dx-r.velocity.x*t,dz-r.velocity.z*t);
+    // A catchable ball already meeting his momentum needs no braking, burst or comeback.
+    if(r.velocity.length()>r.maxSpeed*.35&&facing>0&&p.y>=1.0&&strideGap<.55){
+      if(!inStride||strideGap<inStride.strideGap)inStride={...plan,strideGap,strideSpeed:r.velocity.length(),strideHeading:r.velocity.clone().setY(0).normalize()};
+    }
     // Earliest reachable window is preferred; among near-identical windows prefer the cleaner route fit.
     if(!best||t<best.time-.055||(Math.abs(t-best.time)<=.055&&difficulty<best.difficulty))best=plan;
   }
-  return best;
+  const plan=inStride||best;
+  if(plan){r.ballPursuit={...plan,expires:throwTime+plan.time};return plan;}
+  // Bridge brief sampling/reachability gaps, but never chase an expired catch window.
+  const previous=r.ballPursuit;
+  if(previous&&previous.expires>throwTime){
+    const time=previous.expires-throwTime,point=ball.position.clone().addScaledVector(ballVel,time);
+    point.y-=.5*9.81*time*time;
+    if(point.y>=.1&&point.y<=P.traits(r.profile).highReach){
+      const to=point.clone().sub(r.mesh.position).setY(0),flatDist=to.length();
+      return {point,time,flatDist,routeGap:previous.routeGap,facing:flatDist>.001?r.heading.dot(to.normalize()):1};
+    }
+  }
+  r.ballPursuit=null;
+  return null;
 }
 function defenderSeesBall(d){
   if(!ballLive)return false;const eye=d.mesh.position.clone().add(new THREE.Vector3(0,1.72,0)),to=ball.position.clone().sub(eye),dist=to.length();if(dist<.01)return true;const flat=to.clone().setY(0);if(flat.lengthSq()<.01)return true;flat.normalize();const facing=d.heading.dot(flat),skill=currentSkill();return facing>THREE.MathUtils.lerp(.18,-.12,skill)||(dist<THREE.MathUtils.lerp(3.0,5.8,skill)&&throwTime>d.reaction*.55);
@@ -340,13 +364,14 @@ function contestedStrengthBonus(receiver,defender,distance){if(!receiver||!defen
 function updateReceiver(r,dt,now){
   updateTricks(r,dt,false);
   r.shoveCooldown=Math.max(0,r.shoveCooldown-dt);r.shoveSlow=Math.max(0,r.shoveSlow-dt);r.stagger=Math.max(0,r.stagger-dt);r.burst=Math.max(0,(r.burst||0)-dt);r.runIntensity=THREE.MathUtils.lerp(r.runIntensity||0,.78,Math.min(1,dt*10));r.runPhase=(r.runPhase||0)+dt*Math.max(6,r.velocity.length()*2.25);r.catchPose=Math.max(0,(r.catchPose||0)-dt*4.8);r.comebackPlant=Math.max(0,(r.comebackPlant||0)-dt);r.plantPose=r.comebackPlant>0?Math.min(1,r.comebackPlant/.18):Math.max(0,(r.plantPose||0)-dt*5.5);
-  if(!ballLive){r.comebackActive=false;r.comebackPlant=0;r.underthrowDifficulty=0}
-  r.distance+=r.speed*dt;let target=routePosition(r.path,r.distance+1.45);r.trackingBall=false;
+  if(!ballLive){r.ballPursuit=null;r.comebackActive=false;r.comebackPlant=0;r.underthrowDifficulty=0}
+  r.distance+=r.speed*dt;let target=routePosition(r.path,r.distance+1.45);r.trackingBall=false;let stridePlan=null;
   if(ballLive){
     const plan=receiverBallPlan(r);
     if(plan){
       r.trackingBall=true;r.burst=Math.max(r.burst,.38);predictedLanding.copy(plan.point);predictedFlightTime=plan.time;
-      const underthrown=plan.facing<-.10;
+      stridePlan=plan.strideHeading?plan:null;
+      const underthrown=!stridePlan&&plan.facing<-.10;
       if(underthrown&&!r.comebackActive){
         r.comebackActive=true;
         const turnSkill=(r.profile?.turning||50)/100;r.comebackPlant=THREE.MathUtils.clamp((.14+r.velocity.length()*.012+(-plan.facing)*.075)*THREE.MathUtils.lerp(1.16,.78,turnSkill),.12,.34);
@@ -355,12 +380,13 @@ function updateReceiver(r,dt,now){
         r.comebackActive=false;r.underthrowDifficulty=0;
       }
       // During the plant he has to gather himself; immediately afterward he attacks the earliest reachable catch point.
-      if(r.comebackActive&&r.comebackPlant>0)target.copy(r.mesh.position).addScaledVector(r.heading,.38);else target.copy(plan.point);
+      if(stridePlan){r.comebackActive=false;r.comebackPlant=0;r.underthrowDifficulty=0;target.copy(r.mesh.position).add(stridePlan.strideHeading);}
+      else if(r.comebackActive&&r.comebackPlant>0)target.copy(r.mesh.position).addScaledVector(r.heading,.38);else target.copy(plan.point);
     }
   }
   const desired=target.clone().sub(r.mesh.position);desired.y=0;if(desired.lengthSq()>.0001)desired.normalize();else desired.copy(r.heading);
   const current=r.heading.clone().normalize(),angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1)),cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,turnRating=(r.profile?.turning||50)/100,turnRateBase=r.comebackPlant>0?2.25:r.comebackActive?8.8:(r.trackingBall?12.6:7.7),turnRate=turnRateBase*THREE.MathUtils.lerp(.76,1.22,turnRating),turn=Math.min(angle,turnRate*dt)*sign,c=Math.cos(turn),ss=Math.sin(turn);r.heading.set(current.x*c-current.z*ss,0,current.x*ss+current.z*c).normalize();
-  const contact=receiverContactFactors(r),cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.7),0,1),cutRating=(r.profile?.cutting||50)/100,slow=(r.shoveSlow>0?.68:1)*(r.stagger>0?.78:1),burst=r.trackingBall?P.traits(r.profile).pursuitBurst:1,plantSlow=r.comebackPlant>0?.27:1,speedCutLoss=THREE.MathUtils.lerp(.34,.16,cutRating),accelCutLoss=THREE.MathUtils.lerp(.40,.16,cutRating),desiredSpeed=r.maxSpeed*burst*(1-speedCutLoss*cutPenalty)*slow*plantSlow*contact.speed,desiredVel=r.heading.clone().multiplyScalar(desiredSpeed),accel=(r.trackingBall?34:20)*(1-accelCutLoss*cutPenalty)*(r.stagger>0?.62:1)*contact.accel,maxDv=accel*dt,dv=desiredVel.sub(r.velocity);if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.comebackPlant>0)r.velocity.multiplyScalar(Math.pow(.16,dt));r.mesh.position.addScaledVector(r.velocity,dt);r.mesh.position.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));
+  const contact=receiverContactFactors(r),cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.7),0,1),cutRating=(r.profile?.cutting||50)/100,slow=(r.shoveSlow>0?.68:1)*(r.stagger>0?.78:1),burst=r.trackingBall?P.traits(r.profile).pursuitBurst:1,plantSlow=r.comebackPlant>0?.27:1,speedCutLoss=THREE.MathUtils.lerp(.34,.16,cutRating),accelCutLoss=THREE.MathUtils.lerp(.40,.16,cutRating),desiredSpeed=(stridePlan?Math.min(stridePlan.strideSpeed,r.maxSpeed*burst):r.maxSpeed*burst)*(1-speedCutLoss*cutPenalty)*slow*plantSlow*contact.speed,desiredVel=r.heading.clone().multiplyScalar(desiredSpeed),accel=(r.trackingBall?34:20)*(1-accelCutLoss*cutPenalty)*(r.stagger>0?.62:1)*contact.accel,maxDv=accel*dt,dv=desiredVel.sub(r.velocity);if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.comebackPlant>0)r.velocity.multiplyScalar(Math.pow(.16,dt));r.mesh.position.addScaledVector(r.velocity,dt);r.mesh.position.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));
   const face=Math.atan2(r.heading.x,r.heading.z),delta=Math.atan2(Math.sin(face-r.mesh.rotation.y),Math.cos(face-r.mesh.rotation.y));r.mesh.rotation.y+=THREE.MathUtils.clamp(delta,-11.5*dt,11.5*dt);
   let shouldJump=false;if(ballLive){const catchPoint=r.mesh.position.clone().add(new THREE.Vector3(0,1.92*r.mesh.scale.y,0)),approach=ballApproach(catchPoint,.9);if(r.trackingBall&&approach&&approach.time<.58&&approach.dist<1.52)r.catchPose=1;const h=Math.hypot(ball.position.x-r.mesh.position.x,ball.position.z-r.mesh.position.z);shouldJump=r.trackingBall&&h<1.72&&ball.position.y>1.72&&ball.position.y<P.traits(r.profile).highReach&&ballVel.y<3.9}updateJump(r,dt,shouldJump);
   animatePlayerContact(r,dt);const ring=r.mesh.userData.trackRing;if(ring){ring.visible=r.trackingBall;ring.rotation.z+=dt*2.8}
@@ -658,6 +684,8 @@ $('audibleClose').addEventListener('click',e=>{e.stopPropagation();closeAudible(
 $('startBtn').addEventListener('click',resumeGame);$('startTeamBtn').addEventListener('click',()=>openManager('Train each attribute, sign prospects, and develop jukes, head fakes and stronger catches.',false));$('snapBtn').addEventListener('click',e=>{e.stopPropagation();beginCountdown()});$('newPlayBtn').addEventListener('click',e=>{e.stopPropagation();if(playState==='call')setupPlay(false)});$('cameraBtn').addEventListener('click',e=>{e.stopPropagation();resetAim()});
 $('teamBtn').addEventListener('click',e=>{e.stopPropagation();if(playState==='call')openManager('Train your receivers between snaps. ATH lifts jumping and diving; SIZE adds reach and leverage; TRICK sells jukes and head fakes.',false);else showMessage('FINISH THE PLAY','Team management is available between snaps and automatically between matchups.',950)});
 $('continueBtn').addEventListener('click',()=>closeManager());
+$('cloudOfferSave').onclick=()=>{$('cloudOffer').hidden=true;openSaves();$('cloudName').focus()};
+$('cloudOfferDismiss').onclick=()=>{$('cloudOffer').hidden=true};
 $('refreshMarketBtn').addEventListener('click',()=>{if(franchise.cash<175){$('managerStatus').textContent=`You need $${175-franchise.cash} more to refresh the market.`;return}franchise.cash-=175;franchise.market=freshMarket();$('managerStatus').textContent='Market refreshed with five new prospects.';saveFranchise();renderManager()});
 $('resetFranchiseBtn').addEventListener('click',()=>{$('managerLayer').style.display='none';showMainMenu();openSaves()});
 // Menu, saved franchises, visual themes and deterministic replay playback.
@@ -696,7 +724,7 @@ function renderSlots(){
 function activateFranchise(f,slot){
   if(replay)finishReplay();transition=null;clearPlayers();replayFrames=[];replayRecording=false;replayEligible=false;
   franchise=f;franchise.team=franchise.team.map(normalizeReceiver);franchise.market=franchise.market.map(normalizeReceiver);
-  activeSlot=slot;selectedRosterIndex=0;managerLocked=false;$('managerLayer').style.display='none';
+  $('cloudOffer').hidden=true;activeSlot=slot;selectedRosterIndex=0;managerLocked=false;$('managerLayer').style.display='none';
   score=0;catches=0;drops=0;ints=0;playState='dead';ball.visible=false;ballLive=false;restoreCheckpoint();saveFranchise();
   saveOpen=false;$('saveLayer').hidden=true;showMainMenu();
 }
@@ -714,7 +742,7 @@ async function cloudAction(mode){
   if(mode==='load'&&!confirm(`Load the cloud franchise into local slot ${activeSlot+1}? This replaces that local slot.`))return;
   cloudBusy=true;$('cloudSave').disabled=true;$('cloudLoad').disabled=true;renderSlots();$('cloudStatus').textContent=mode==='save'?'Encrypting and saving…':'Loading cloud franchise…';
   try{
-    if(mode==='save'){saveFranchise();await QBCloud.save(name,password,franchise);$('cloudStatus').textContent='Cloud save complete. Use this name and password on any device.'}
+    if(mode==='save'){saveFranchise();await QBCloud.save(name,password,{...franchise,cloudSaveOffered:true});franchise.cloudSaveOffered=true;saveFranchise();$('cloudStatus').textContent='Cloud save complete. Use this name and password on any device.'}
     else{const f=await QBCloud.load(name,password);activateFranchise(f,activeSlot);$('cloudStatus').textContent='Cloud franchise loaded.'}
   }catch(err){$('cloudStatus').textContent=`Cloud ${mode} failed: ${err.message}. Your local progress is still available.`}
   finally{cloudBusy=false;$('cloudSave').disabled=false;$('cloudLoad').disabled=false;$('cloudPassword').value='';renderSlots()}
