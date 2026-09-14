@@ -1,0 +1,77 @@
+name: Apply TurnCraft automatic gas mining fix
+
+on:
+  push:
+    branches:
+      - fix/turncraft-auto-gas-mining
+    paths:
+      - '.github/workflows/apply-turncraft-auto-gas-mining.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/turncraft-auto-gas-mining
+
+      - name: Patch automatic gas harvesting and regression coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          game_path = Path('game/turncraft.html')
+          text = game_path.read_text(encoding='utf-8')
+          old = """function gasStructureOn(node,faction){return entities.find(e=>e.alive!==false&&e.complete&&e.faction===faction&&e.kind==='structure'&&STRUCTURES[e.type]?.gas&&e.x===node.x&&e.y===node.y)}
+          function autoMiningNode(e){const mineral=nodeAt(e.x,e.y,'mineral');if(mineral&&resourceConnected(e.faction,mineral)&&(!mineral.reservedBy||mineral.reservedBy===e.id))return mineral;for(const [dx,dy] of ORTHO){const gas=nodeAt(e.x+dx,e.y+dy,'gas');if(gas&&resourceConnected(e.faction,gas)&&gasStructureOn(gas,e.faction))return gas}return null}
+          """
+          new = """function gasStructureOn(node,faction){const expected=FACTIONS[players[faction]?.factionId]?.gas;return entities.find(e=>e.alive!==false&&e.complete&&e.faction===faction&&e.kind==='structure'&&e.type===expected&&e.x===node.x&&e.y===node.y)}
+          function adjacentGasMiningNode(e){if(!isWorker(e))return null;for(const [dx,dy] of ORTHO){const gas=nodeAt(e.x+dx,e.y+dy,'gas');if(gas&&resourceConnected(e.faction,gas)&&gasStructureOn(gas,e.faction))return gas}return null}
+          function autoMiningNode(e){const gas=adjacentGasMiningNode(e);if(gas)return gas;const mineral=nodeAt(e.x,e.y,'mineral');if(mineral&&resourceConnected(e.faction,mineral)&&(!mineral.reservedBy||mineral.reservedBy===e.id))return mineral;return null}
+          """
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one mining block, found {text.count(old)}')
+          game_path.write_text(text.replace(old, new), encoding='utf-8')
+
+          test_path = Path('game/turncraft/tests/polish.test.cjs')
+          tests = test_path.read_text(encoding='utf-8')
+          title = "adjacent workers prefer valid in-range gas for every faction"
+          addition = r'''
+          test('adjacent workers prefer valid in-range gas for every faction',async()=>{const {browser,page,errors}=await setup();try{for(const spec of [['frontier','engineer','refinery','assimilator'],['ascendant','probe','assimilator','extractor'],['brood','drone','extractor','refinery']]){const result=await page.evaluate(([f,workerType,gasType,wrongGasType])=>{tc.start(f);const worker=tc.entities.find(e=>e.faction===0&&e.type===workerType),gas=tc.nodes.find(n=>n.type==='gas'),mineral=tc.nodes.find(n=>n.type==='mineral'),spot={x:gas.x+1,y:gas.y};mineral.x=spot.x;mineral.y=spot.y;worker.x=spot.x;worker.y=spot.y;worker.px=spot.x;worker.py=spot.y;worker.moveDestination=null;worker.targetId=null;worker.miningStopped=false;worker.miningNodeId=null;tc.addEntity('structure',wrongGasType,0,gas.x,gas.y);tc.updateMining();const wrongStructureMining=worker.miningNodeId;tc.addEntity('structure',gasType,0,gas.x,gas.y);tc.updateMining();return{wrongStructureMining,mineralId:mineral.id,gasMining:worker.miningNodeId,gasId:gas.id}},spec);assert.equal(result.wrongStructureMining,result.mineralId,`${spec[0]} should reject the wrong gas structure`);assert.equal(result.gasMining,result.gasId,`${spec[0]} worker should automatically prefer adjacent connected gas`)}assert.deepEqual(errors,[])}finally{await browser.close()}});
+          '''
+          if title not in tests:
+              test_path.write_text(tests.rstrip() + '\n\n' + addition.strip() + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate TurnCraft script syntax and gas rules
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('game/turncraft.html').read_text(encoding='utf-8')
+          assert "function adjacentGasMiningNode(e)" in text
+          assert "const expected=FACTIONS[players[faction]?.factionId]?.gas" in text
+          fn = re.search(r"function autoMiningNode\(e\)\{([^\n]+)\}", text)
+          assert fn, 'autoMiningNode missing'
+          body = fn.group(1)
+          assert body.index('adjacentGasMiningNode') < body.index("nodeAt(e.x,e.y,'mineral')"), 'gas must be checked before mineral'
+          script = re.search(r'<script type="module">([\s\S]*?)</script>', text)
+          assert script, 'module script missing'
+          Path('/tmp/turncraft-check.mjs').write_text(script.group(1), encoding='utf-8')
+          PY
+          node --check /tmp/turncraft-check.mjs
+
+      - name: Commit applied fix
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-turncraft-auto-gas-mining.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix TurnCraft automatic gas harvesting"
+          git push origin HEAD:fix/turncraft-auto-gas-mining
