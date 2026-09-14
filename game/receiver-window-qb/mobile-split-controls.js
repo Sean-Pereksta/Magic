@@ -61,7 +61,10 @@ function syntheticPointer(type,state,x=state.x,y=state.y){
 }
 
 function resetLookTimer(force=false){
-  if(!look||!live()||blocked())return;
+  // Keep the legacy touch hold age fresh before and during the snap. That removes
+  // the race where a left-side finger held through the countdown could become a
+  // throw the instant playState changes to live.
+  if(!look||blocked()||phase()==='call')return;
   const now=performance.now();
   if(!force&&now-lastLookReset<115)return;
   syntheticPointer('pointerdown',look);
