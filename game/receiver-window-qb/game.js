@@ -356,13 +356,31 @@ function animatePlayerContact(a,dt){
   for(let i=0;i<hands.length;i++){const side=i===0?-1:1;hands[i].position.set(side*(.53-reach*.23*(a.catchReach||1)),.86+reach*1.18*(a.catchReach||1),reach*.44*(a.catchReach||1)+shove*.18)}
   for(let i=0;i<legs.length;i++){legs[i].rotation.x=(i===0?stride:-stride);legs[i].position.z=(i===0?stride:-stride)*.10}
   for(let i=0;i<feet.length;i++){const side=i===0?-1:1,step=(i===0?stride:-stride);feet[i].rotation.x=step*.48;feet[i].rotation.y=side*plant*.58;feet[i].position.z=-.11+plant*(i===0?.10:-.08)+step*.18;feet[i].position.y=.16+Math.max(0,-step)*.05*run}
-  const body=a.mesh.userData.body;if(body){body.rotation.x=shove*.12-plant*.16-run*.06;body.rotation.z=plant*.035+(a.jukeAnim>0?Math.sin(a.jukeAnim*15)*.24:0)}
+  const body=a.mesh.userData.body;
+  const move=a.jukeAnim>0?Math.sin(Math.PI*(1-a.jukeAnim/(a.jukeDuration||.56))):0,side=a.jukeSide||1;
+  const airborne=Math.min(1,(a.jumpY||0)*2),swat=(a.swatPose||0)>.2;
+  if(body){body.rotation.x=shove*.12-plant*.16-run*.06-airborne*.16;
+    body.rotation.z=plant*.035+move*side*.48;
+    body.rotation.y=a.jukeMove==='SPIN'&&move>0?(1-a.jukeAnim/a.jukeDuration)*Math.PI*2*side:move*side*.38;
+    body.position.y=1.18-move*.18;}
+  for(let i=0;i<legs.length;i++){legs[i].rotation.z=move*(i===0?-.35:.35);legs[i].rotation.x-=airborne*.55;}
+  for(let i=0;i<feet.length;i++)feet[i].position.x=(i===0?-1:1)*(.22+move*.18);
+  for(let i=0;i<arms.length;i++){
+    arms[i].rotation.z+=move*side*.55;
+    if(airborne>0&&reach>.2){arms[i].position.y+=airborne*.14;arms[i].rotation.x-=airborne*.28;}
+    if(swat){arms[i].rotation.x-=i===0?.6:.15;arms[i].rotation.z+=i===0?-.35:.25;}
+  }
+  // Distinct one-arm swat, two-hand high point, and secured-ball tuck.
+  for(let i=0;i<hands.length;i++){
+    if(swat){hands[i].position.y+=i===0?.22:-.14;hands[i].position.x+=i===0?-.14:.18;}
+    if(a.hasBall){hands[i].position.set(i===0?.12:.42,1.18,.32);arms[i].rotation.x=-.75;arms[i].position.y=1.18;}
+  }
 }
 
-function actorStrength(a){return THREE.MathUtils.clamp(a?.profile?(a.P.effective(profile.strength)||50)/100+P.traits(a.profile).bodyBonus:(a?.strength||50)/100,.01,1)}
+function actorStrength(a){return THREE.MathUtils.clamp(a?.profile?(P.effective(a.profile.strength)||50)/100+P.traits(a.profile).bodyBonus:(a?.strength||50)/100,.01,1)}
 function nearestCornerContact(r,maxDist=1.24){let best=null,bestDist=maxDist;for(const d of defenders){if(d.kind!=='corner')continue;const dist=Math.hypot(d.mesh.position.x-r.mesh.position.x,d.mesh.position.z-r.mesh.position.z);if(dist<bestDist){best=d;bestDist=dist}}return best?{player:best,dist:bestDist}:null}
 function receiverContactFactors(r){const hit=nearestCornerContact(r);if(!hit)return{speed:1,accel:1,edge:0};const edge=actorStrength(r)-actorStrength(hit.player);return{speed:THREE.MathUtils.clamp(.92+edge*.42,.66,1.03),accel:THREE.MathUtils.clamp(.82+edge*.42,.54,1.04),edge}}
-function contestedStrengthBonus(receiver,defender,distance){if(!receiver||!defender||distance>=1.45)return 0;const rs=actorStrength(receiver),ds=actorStrength(defender),closeness=distance<.85?1:.62;return THREE.MathUtils.clamp(((rs-ds)*.24+(rs-.5)*.06+(receiver.profile?Math.max(0,receiver.P.effective(profile.size)-50)*.001:0))*closeness,-.11,.10)}
+function contestedStrengthBonus(receiver,defender,distance){if(!receiver||!defender||distance>=1.45)return 0;const rs=actorStrength(receiver),ds=actorStrength(defender),closeness=distance<.85?1:.62;return THREE.MathUtils.clamp(((rs-ds)*.24+(rs-.5)*.06+(receiver.profile?Math.max(0,P.effective(receiver.profile.size)-50)*.001:0))*closeness,-.11,.10)}
 
 function updateReceiver(r,dt,now){
   updateTricks(r,dt,false);
@@ -542,7 +560,7 @@ function poseReceiverDive(r){
 }
 function resolveDivingCatch(r){
   const catchZ=ball.position.z;markCatch(r);
-  ballLive=false;arcLine.visible=false;landRing.visible=false;predictedFlightTime=0;charging=false;playState='divecatch';catches++;r.hasBall=true;poseReceiverDive(r);ball.visible=false;
+  ballLive=false;arcLine.visible=false;landRing.visible=false;predictedFlightTime=0;charging=false;playState='divecatch';catches++;r.hasBall=true;poseReceiverDive(r);ball.visible=true;const secured=new THREE.Vector3(0,1.95,.45);r.mesh.localToWorld(secured);ball.position.copy(secured);
   flashResult('DIVING CATCH!',true,900);showMessage('DIVING CATCH!',`${r.label} laid out for a low ball that was outside his normal catch window. He is down at the catch spot.`,1050);updateScore();
   transition={at:gameTime+700,fn:()=>finishPlayAtSpot(catchZ,'DIVING CATCH')};
 }
@@ -760,18 +778,30 @@ addEventListener('blur',()=>{if(!menuOpen)showMainMenu()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelInput();saveFranchise()}});
 
 function tryJuke(r,manual=false){
-  if(!r||(r.jukeCooldown||0)>0||r.jumpY>.08||r.stagger>.1)return false;
-  const candidates=defenders.filter(d=>d.mesh.position.distanceTo(r.mesh.position)<4.4&&d.mesh.position.z<=r.mesh.position.z+1.5);
-  if(!candidates.length)return false;
+  if(!r||(r.jukeCooldown||0)>0||r.jumpY>.08||r.stagger>.1||ballLive)return false;
+  const candidates=defenders.filter(d=>d.mesh.position.distanceTo(r.mesh.position)<4.8&&d.mesh.position.z<=r.mesh.position.z+1.5&&d.fakeUntil<=gameTime);
+  if(!candidates.length){if(manual)flashResult('GET CLOSER TO A DEFENDER',true,550);return false}
   const nearest=candidates.reduce((a,b)=>a.mesh.position.distanceTo(r.mesh.position)<b.mesh.position.distanceTo(r.mesh.position)?a:b);
-  const side=nearest.mesh.position.x>=r.mesh.position.x?-1:1,traits=P.traits(r.profile);
-  r.jukeCooldown=traits.jukeCooldown;r.jukeAnim=.46;r.plantPose=1;r.velocity.multiplyScalar(.83);
-  const lateral=new THREE.Vector3(side,0,0);r.impactVel.addScaledVector(lateral,1.7+P.effective(r.profile.tricks)*.012);
+  let side=nearest.mesh.position.x>=r.mesh.position.x?-1:1;
+  if(r.mesh.position.x>22)side=-1;else if(r.mesh.position.x<-22)side=1;
+  const traits=P.traits(r.profile),distance=nearest.mesh.position.distanceTo(r.mesh.position);
+  r.jukeMove=distance<2.1?'SPIN':distance>3.5?'HESITATION':'HARD CUT';
+  r.jukeSide=side;r.jukeDuration=r.jukeMove==='SPIN'?.62:.56;
+  r.jukeCooldown=traits.jukeCooldown;r.jukeAnim=r.jukeDuration;r.plantPose=1;
+  r.velocity.multiplyScalar(r.jukeMove==='HESITATION'?.68:.86);
+  r.impactVel.addScaledVector(new THREE.Vector3(side,0,0),2.6+P.effective(r.profile.tricks)*.015);
+  let beaten=0;
   for(const d of candidates){
-    const chance=THREE.MathUtils.clamp(traits.jukeChance-currentSkill()*.20,.12,.82);
-    if(Math.random()<chance){d.fakeUntil=gameTime+260+P.effective(r.profile.tricks)*2.4;d.fakeTarget=r.mesh.position.clone().add(new THREE.Vector3(-side*3,0,-1));d.plantPose=1;d.velocity.multiplyScalar(.65)}
+    const gap=d.mesh.position.distanceTo(r.mesh.position);
+    const timing=gap>=2&&gap<=3.6?.12:0;
+    const chance=THREE.MathUtils.clamp(traits.jukeChance+.10+timing-currentSkill()*.22-(gap>4?.12:0),.15,.9);
+    if(Math.random()<chance){
+      beaten++;d.fakeUntil=gameTime+380+P.effective(r.profile.tricks)*3;
+      d.fakeTarget=r.mesh.position.clone().add(new THREE.Vector3(-side*4,0,-1));
+      d.plantPose=1;d.velocity.multiplyScalar(.48);
+    }
   }
-  if(manual)flashResult('JUKE!',true,450);
+  if(manual||r===ballCarrier)flashResult(beaten?r.jukeMove+' — BEAT '+beaten+'!':r.jukeMove+' — DEFENDER HELD',!!beaten,700);
   return true;
 }
 function updateTricks(r,dt,carrier){
