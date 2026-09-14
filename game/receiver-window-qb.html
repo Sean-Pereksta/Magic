@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Receiver Window QB — Franchise</title>
+<link rel="stylesheet" href="receiver-window-qb/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div class="topbar">
+    <div id="scorePanel" class="panel"><div id="score">0–0</div><div id="tournamentLine">Best of 5 · Opponent 1/8</div><div id="subscore">1st & 25 · Ball: 50 · Goal: 25 yards</div></div>
+    <div id="defensePanel" class="panel"><div id="defenseName">Defense loading…</div><div id="defenseDesc"></div></div>
+  </div>
+  <div id="centerMessage"><div id="headline">CALL THE PLAY</div><div id="detail">Routes are drawn on the field. Choose a concept, then tap Space or START PLAY.</div></div>
+  <div id="throwClock" class="panel">THROW CLOCK · 8.0</div>
+  <div id="resultFlash"></div>
+  <div id="crosshair"><div class="dot"></div></div>
+  <div id="throwQuality">PERFECT SPIRAL WINDOW</div><div id="chargeLabel">Throw Power</div><div id="chargeWrap"><div id="charge"></div></div>
+  <div id="routes" class="panel"></div>
+  <div id="controls" class="panel"><b>Mouse</b> look · <b>Tap Space</b> start play · <b>Hold Space</b> charge · <b>Release</b> throw<br><b>Pre-snap:</b> <b>X / H / Y / Z</b> opens that receiver's audible menu → <b>route letter</b> assigns · <b>1–8</b> play · <b>R</b> reset<br><b>Live:</b> <b>W</b> loft · <b>S</b> bullet</div>
+  <div id="playCallPanel" class="panel"><div class="playCallTitle">Choose the play, then audible any receiver before the snap</div><div id="playGrid" class="playGrid"></div><div class="playActions"><button id="snapBtn" class="snap">START PLAY</button><div class="hint">Mobile: tap a receiver on the field, then choose any route</div></div></div>
+  <div id="audiblePanel" class="panel"><div class="audibleTop"><div><div id="audibleTitle" class="audibleTitle">AUDIBLE</div><div class="audibleSub">Desktop: press X, H, Y, or Z to open that receiver, then press the route letter.</div></div><button id="audibleClose" class="audibleClose">✕</button></div><div id="audibleReceivers" class="audibleReceivers"></div><div id="audibleRouteGrid" class="audibleRouteGrid"></div></div>
+  <div id="toolbar"><button id="menuBtn">MENU</button><button id="teamBtn">TEAM</button><button id="newPlayBtn">RESET SNAP</button><button id="cameraBtn">RESET AIM</button></div>
+</div>
+<div id="startLayer">
+  <div id="startCard" class="panel">
+    <h1>RECEIVER WINDOW QB</h1>
+    <p>Build your receiving corps. Read the defense. Make the throw. Earn cash every matchup and develop elite hands, athleticism, size and deceptive moves.</p>
+    <div><span class="pill">50-yard drives</span><span class="pill">4 downs / 25 yards</span><span class="pill">live YAC + tackles</span><span class="pill">best of 5</span><span class="pill">infinite rounds</span><span class="pill">local + cloud saves</span><span class="pill">center-screen throws</span><span class="pill">rescue-only diving catches</span><span class="pill">receiver strength battles</span></div>
+    <div id="menuSummary" class="menuSummary"></div><div class="buttons" style="margin-top:18px"><button class="primary" id="startBtn">CONTINUE</button><button class="ghost" id="startTeamBtn">RECEIVER ROOM</button><button class="ghost" id="newGameBtn">NEW GAME</button><button class="ghost" id="savesBtn">SAVED GAMES</button><a class="menuLink" href="/lobby/lobby.html">Catnmice lobby</a></div>
+    <p id="mobileTip">Mobile: swipe to aim before charging. Hold to charge; while holding, drag up for more loft or down for a faster bullet. Release to throw.</p>
+  </div>
+</div>
+
+<div id="managerLayer">
+  <div id="managerCard" class="panel">
+    <div class="managerTop">
+      <div><h2>RECEIVER ROOM</h2><div id="managerStatus" class="managerBlurb">Manage your four starters before the next matchup.</div></div>
+      <div class="managerMeta"><span id="cashPill" class="moneyPill">$0</span><span id="roundPill" class="roundPill">Round 1</span><span id="savePill" class="savePill">LOCAL SAVE</span></div>
+    </div>
+    <div class="ratingLegend"><span>SPD = top speed</span><span>CUT = speed through cuts</span><span>TRN = redirect/comebacks</span><span>EVA = YAC avoidance</span><span>CAT = catch radius/hands</span><span>STR = contact</span><span>ATH = jumping + diving</span><span>SIZE = reach + body leverage</span><span>TRICK = jukes + head fakes</span></div>
+    <div class="sectionTitle">Starting Four — click a receiver to choose who a signing replaces</div>
+    <div id="rosterGrid" class="rosterGrid"></div>
+    <div class="sectionTitle">Receiver Market — five new prospects after every completed best-of-5</div>
+    <div id="marketGrid" class="marketGrid"></div>
+    <div class="managerActions"><button id="refreshMarketBtn" class="ghost">REFRESH MARKET · $175</button><button id="resetFranchiseBtn" class="ghost">NEW FRANCHISE</button><button id="continueBtn" class="continue">CONTINUE TO FIELD</button></div>
+    <div class="tinyNote">Training costs rise as each attribute grows. Each attribute can be trained 5 times. STR matters only in physical moments: press/release contact, shoves, body-to-body movement, and contested catches. It does not make a receiver faster in open space. Market players can be better, worse, or simply different from your starters.</div>
+  </div>
+</div>
+
+<div id="saveLayer" class="screen" hidden><section class="panel saveCard"><div class="managerTop"><h2>SAVED GAMES</h2><button id="closeSaves" class="ghost">CLOSE</button></div><p>Three local franchises. Cloud saves reopen on another device with the same name and password. Progress resumes before the next snap.</p><div id="saveSlots"></div><h3>Cloud franchise</h3><label>Save name<input id="cloudName" maxlength="48" autocomplete="username"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label><div class="buttons"><button id="cloudSave" class="primary">SAVE TO CLOUD</button><button id="cloudLoad" class="ghost">LOAD CLOUD GAME</button></div><p id="cloudStatus" role="status" aria-live="polite"></p></section></div>
+<div id="replayBar" hidden><span>INSTANT REPLAY · BALL CAM</span><button id="skipReplay">SKIP REPLAY</button></div><button id="jukeBtn" hidden>JUKE · J</button>
+<script src="receiver-window-qb/vendor/three.min.js"></script>
+<script src="receiver-window-qb/progression.js"></script>
+<script src="receiver-window-qb/cloud-save.js"></script>
+<script src="receiver-window-qb/game.js"></script>
+</body>
+</html>
