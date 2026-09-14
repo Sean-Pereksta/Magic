@@ -4,7 +4,7 @@ Singleplayer franchise game at `/game/receiver-window-qb.html`, registered in th
 
 ## Play
 
-Choose a play (1–8), optionally audible a receiver (X/H/Y/Z, then the route letter), then Space or Start Play to snap. Hold/release Space to throw; W/S adjusts loft. On touch, swipe to aim and hold/release to throw. Receivers run automatically after a catch; J or the Juke button attempts a move when a defender is nearby. They also use moves automatically. Menu pauses play. R resets only before the snap.
+Choose a play (1–8), optionally audible a receiver (X/H/Y/Z, then the route letter), then Space or Start Play to snap. Hold/release Space to throw; W/S adjusts loft. On touch devices, the field is split into two live-play control zones: drag on the left half to look around, and hold the right half to charge the throw. While holding the right half, drag up for more loft or down for a lower/faster bullet; release that right-side touch to throw. The two touch zones track separate pointers, so the player can aim with the left thumb while charging/adjusting with the right. Pre-snap receiver taps still open the audible picker. Receivers run automatically after a catch; J or the Juke button attempts a move when a defender is nearby. They also use moves automatically. Menu pauses play. R resets only before the snap.
 
 ## Progression and saves
 
