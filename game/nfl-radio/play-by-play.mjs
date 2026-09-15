@@ -11,15 +11,39 @@ const STORAGE_KEY='nfl-dial:livePlayByPlay';
 const ROTATION_KEY='nfl-dial:rotation';
 const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
 export const PLAY_POLL_MS=5000;
+export const DEFAULT_SCORE_INTERVAL_MINUTES=5;
+export const MAX_SCORE_INTERVAL_MINUTES=120;
 
 const clean=value=>String(value??'').replace(/\s+/g,' ').trim();
 const canonical=value=>({WSH:'WAS',JAC:'JAX',LA:'LAR'}[value]||value);
+const scoreNumber=value=>{
+  const number=Number(value);
+  return Number.isFinite(number)?number:0;
+};
+export function normalizeScoreInterval(value){
+  const number=Math.round(Number(value));
+  if(!Number.isFinite(number)||number<0)return DEFAULT_SCORE_INTERVAL_MINUTES;
+  return Math.min(number,MAX_SCORE_INTERVAL_MINUTES);
+}
+function normalizeScoreScope(value){return value==='all'?'all':'rotation';}
 
 export function readPlayByPlaySettings(storage=globalThis.localStorage){
   try{
     const saved=JSON.parse(storage?.getItem(STORAGE_KEY)||'null')||{};
-    return {enabled:!!saved.enabled,duckRadio:saved.duckRadio!==false};
-  }catch{return {enabled:false,duckRadio:true};}
+    return {
+      enabled:!!saved.enabled,
+      duckRadio:saved.duckRadio!==false,
+      scoreIntervalMinutes:normalizeScoreInterval(saved.scoreIntervalMinutes??DEFAULT_SCORE_INTERVAL_MINUTES),
+      scoreScope:normalizeScoreScope(saved.scoreScope)
+    };
+  }catch{
+    return {
+      enabled:false,
+      duckRadio:true,
+      scoreIntervalMinutes:DEFAULT_SCORE_INTERVAL_MINUTES,
+      scoreScope:'rotation'
+    };
+  }
 }
 
 export function selectedGameIds(storage=globalThis.localStorage){
@@ -99,6 +123,38 @@ export function collectNewPlayAnnouncements(events,selectedIds,seenKeys=new Map(
   return announcements;
 }
 
+function scoreStatusLabel(event){
+  const c=competition(event);
+  const state=gameState(event);
+  const detail=clean(c?.status?.type?.shortDetail||c?.status?.type?.detail||event?.status?.type?.shortDetail||event?.status?.type?.detail);
+  if(state==='post')return 'Final';
+  if(/half/i.test(detail))return 'Halftime';
+  return '';
+}
+
+export function scoreLine(event){
+  const state=gameState(event);
+  if(state==='pre')return '';
+  const away=competitors(event).find(c=>c.homeAway==='away');
+  const home=competitors(event).find(c=>c.homeAway==='home');
+  const awayName=teamLabel(away);
+  const homeName=teamLabel(home);
+  if(!awayName||!homeName)return '';
+  const prefix=scoreStatusLabel(event);
+  const line=`${awayName} ${scoreNumber(away?.score)}, ${homeName} ${scoreNumber(home?.score)}.`;
+  return prefix?`${prefix}: ${line}`:line;
+}
+
+export function buildScoreUpdateSpeech(events,{selectedIds=[],scope='rotation'}={}){
+  const selected=new Set((selectedIds||[]).map(String));
+  const lines=(events||[])
+    .filter(event=>gameState(event)!=='pre')
+    .filter(event=>scope==='all'||selected.has(String(event?.id??'')))
+    .map(scoreLine)
+    .filter(Boolean);
+  return lines.length?`NFL score update. ${lines.join(' ')}`:'';
+}
+
 async function fetchJson(url,{timeout=10000}={}){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),timeout);
@@ -142,27 +198,63 @@ export function installLivePlayByPlay(){
 
   const duckLabel=element('label',null,{class:'playByPlayToggle'});
   const duckRadio=element('input',null,{id:'playByPlayDuckRadio',type:'checkbox'});
-  duckLabel.append(duckRadio,document.createTextNode(' Quiet radio while play-by-play speaks'));
+  duckLabel.append(duckRadio,document.createTextNode(' Quiet radio while voice announcements speak'));
   controls.append(duckLabel);
-  controls.append(element('p','When radio ducking is on, the station drops to a low background level only while a play-by-play announcement is speaking, then returns to its exact previous volume. Scheduled game updates and play-by-play still share one FIFO browser-voice queue.',{class:'availability playByPlayNote'}));
+
+  const scoreRow=element('label',null,{class:'playByPlaySetting'});
+  const scoreText=element('span','Score update every');
+  const scoreInterval=element('input',null,{
+    id:'playByPlayScoreInterval',
+    type:'number',
+    min:0,
+    max:MAX_SCORE_INTERVAL_MINUTES,
+    step:1,
+    inputMode:'numeric',
+    'aria-label':'Score update interval in minutes'
+  });
+  scoreRow.append(scoreText,scoreInterval,document.createTextNode(' minute(s)'));
+  controls.append(scoreRow);
+
+  const scopeRow=element('label',null,{class:'playByPlaySetting'});
+  scopeRow.append(element('span','Score update games'));
+  const scoreScope=element('select',null,{id:'playByPlayScoreScope','aria-label':'Games included in score updates'});
+  scoreScope.append(element('option','Games in my rotation',{value:'rotation'}),element('option','All started NFL games',{value:'all'}));
+  scopeRow.append(scoreScope);
+  controls.append(scopeRow);
+
+  controls.append(element('p','Use 0 minutes to turn periodic score updates off. Score summaries enter the same FIFO browser-voice queue as play-by-play, so they never interrupt an announcement already speaking.',{class:'availability playByPlayNote'}));
   dialog.append(controls);
 
   const actions=element('div',null,{class:'playByPlayActions'});
   const speakLatest=element('button','Speak latest plays now',{id:'speakLatestPlays'});
-  actions.append(speakLatest);
+  const speakScores=element('button','Speak scores now',{id:'speakScoresNow'});
+  actions.append(speakLatest,speakScores);
   dialog.append(actions);
   const status=element('p','Play-by-play is off.',{id:'playByPlayStatus',class:'availability','aria-live':'polite'});
   dialog.append(status);
   document.body.append(dialog);
 
   let settings=readPlayByPlaySettings();
-  let timer=null,polling=false,generation=0;
+  let timer=null,polling=false,generation=0,nextScoreAt=0;
   const seenKeys=new Map();
 
   const currentRadioLabel=()=>document.getElementById('nowGame')?.textContent||'';
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
   const liveCountLabel=count=>`${count} other selected live game${count===1?'':'s'}`;
-  const hydrate=()=>{enabled.checked=!!settings.enabled;duckRadio.checked=settings.duckRadio!==false;};
+  const scoreIntervalLabel=()=>settings.scoreIntervalMinutes
+    ?`Scores every ${settings.scoreIntervalMinutes} minute${settings.scoreIntervalMinutes===1?'':'s'} (${settings.scoreScope==='all'?'all started games':'rotation'}).`
+    :'Periodic scores OFF.';
+  const hydrate=()=>{
+    enabled.checked=!!settings.enabled;
+    duckRadio.checked=settings.duckRadio!==false;
+    scoreInterval.value=String(settings.scoreIntervalMinutes);
+    scoreScope.value=settings.scoreScope;
+  };
+  const resetScoreClock=()=>{
+    nextScoreAt=settings.scoreIntervalMinutes
+      ?Date.now()+settings.scoreIntervalMinutes*60_000
+      :0;
+  };
 
   const paint=message=>{
     const count=selectedGameIds().length;
@@ -176,7 +268,7 @@ export function installLivePlayByPlay(){
     }
     const voice=getBrowserSpeechQueueState();
     status.textContent=settings.enabled
-      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds; the current radio game is excluded. Radio ducking ${settings.duckRadio?'ON':'OFF'}. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
+      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds; the current radio game is excluded. ${scoreIntervalLabel()} Radio ducking ${settings.duckRadio?'ON':'OFF'}. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
       :'Play-by-play is off.';
   };
 
@@ -186,7 +278,7 @@ export function installLivePlayByPlay(){
     generation++;
   };
 
-  const enqueue=announcement=>{
+  const enqueuePlay=announcement=>{
     if(!announcement?.speech)return false;
     const speechKey=`play-by-play:${announcement.gameId}:${announcement.key}`;
     const currentGameIsThis=()=>matchupMatchesRadioLabel(announcement.matchup,currentRadioLabel());
@@ -211,18 +303,69 @@ export function installLivePlayByPlay(){
     });
   };
 
-  const poll=async({prime=false,manual=false,token=generation}={})=>{
-    if(polling&&!manual)return;
+  const enqueueScoreUpdate=(events,{manual=false}={})=>{
+    const speech=buildScoreUpdateSpeech(events,{
+      selectedIds:selectedGameIds(),
+      scope:settings.scoreScope
+    });
+    if(!speech){
+      if(manual)paint(settings.scoreScope==='all'?'No NFL games have started yet.':'No games in your rotation have started yet.');
+      return false;
+    }
+    const bucket=settings.scoreIntervalMinutes
+      ?Math.floor(Date.now()/(settings.scoreIntervalMinutes*60_000))
+      :Date.now();
+    return enqueueBrowserSpeech(speech,{
+      source:'score-update',
+      key:`score-update:${settings.scoreScope}:${manual?'manual':bucket}`,
+      rate:1.05,
+      shouldPlay:()=>settings.enabled,
+      onStart:()=>{
+        if(settings.duckRadio)setRadioDucked(true);
+        paint(`Speaking NFL score update${settings.duckRadio?' over quieted radio':''}.`);
+      },
+      onEnd:()=>{
+        setRadioDucked(false);
+        paint('Score update spoken. Returning to live play-by-play.');
+      },
+      onError:()=>{
+        setRadioDucked(false);
+        paint('Browser voice could not speak that score update. Play-by-play will keep running.');
+      },
+      onSkip:()=>{setRadioDucked(false);paint();}
+    });
+  };
+
+  const poll=async({prime=false,manual=false,manualScores=false,token=generation}={})=>{
+    if(polling&&!manual&&!manualScores)return;
     const ids=selectedGameIds();
-    if(!ids.length){paint('Add games to your rotation first.');return;}
+    if(!ids.length&&!manualScores){paint('Add games to your rotation first.');return;}
     polling=true;
     if(manual)paint('Getting latest plays…');
+    if(manualScores)paint('Getting current scores…');
     try{
       const board=await fetchJson(SCOREBOARD_URL,{timeout:10000});
-      if(token!==generation&&!manual)return;
-      const events=(board.events||[]).filter(event=>ids.includes(String(event.id)));
+      if(token!==generation&&!manual&&!manualScores)return;
+      const allEvents=board.events||[];
+
+      if(manualScores){
+        if(enqueueScoreUpdate(allEvents,{manual:true})){
+          const voice=getBrowserSpeechQueueState();
+          paint(`Score update added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
+        }
+        return;
+      }
+
+      const events=allEvents.filter(event=>ids.includes(String(event.id)));
       const live=events.filter(event=>gameState(event)==='in');
-      if(!live.length){paint('None of your selected games are live right now.');return;}
+
+      if(settings.scoreIntervalMinutes&&nextScoreAt&&Date.now()>=nextScoreAt){
+        enqueueScoreUpdate(allEvents);
+        nextScoreAt+=settings.scoreIntervalMinutes*60_000;
+        if(nextScoreAt<=Date.now())nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60_000;
+      }
+
+      if(!live.length){paint(`None of your selected games are live right now. ${scoreIntervalLabel()}`);return;}
 
       const radioLabel=currentRadioLabel();
       const suppressed=live.filter(event=>eventMatchesRadioLabel(event,radioLabel));
@@ -234,7 +377,7 @@ export function installLivePlayByPlay(){
       }
 
       if(!eligible.length){
-        paint('The only selected live game is the one currently on the radio, so play-by-play is staying silent for it.');
+        paint(`The only selected live game is the one currently on the radio, so play-by-play is staying silent for it. ${scoreIntervalLabel()}`);
         return;
       }
 
@@ -244,22 +387,22 @@ export function installLivePlayByPlay(){
           const announcement=latestPlayAnnouncement(event);
           if(!announcement)continue;
           seenKeys.set(announcement.gameId,announcement.key);
-          if(enqueue(announcement))added++;
+          if(enqueuePlay(announcement))added++;
         }
       }else{
         const announcements=collectNewPlayAnnouncements(eligible,ids,seenKeys,{announceInitial:false});
-        if(!prime)for(const announcement of announcements)if(enqueue(announcement))added++;
+        if(!prime)for(const announcement of announcements)if(enqueuePlay(announcement))added++;
       }
 
-      if(prime)paint(`Ready. Watching ${liveCountLabel(eligible.length)}; current radio game excluded.`);
+      if(prime)paint(`Ready. Watching ${liveCountLabel(eligible.length)}; current radio game excluded. ${scoreIntervalLabel()}`);
       else if(added){
         const voice=getBrowserSpeechQueueState();
         paint(`${added} new play${added===1?'':'s'} added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
       }else{
-        paint(`Watching ${liveCountLabel(eligible.length)}. No new play yet; current radio game excluded.`);
+        paint(`Watching ${liveCountLabel(eligible.length)}. No new play yet; current radio game excluded. ${scoreIntervalLabel()}`);
       }
     }catch{
-      paint('Could not check live plays. Automatic play-by-play will retry on the next 5-second check.');
+      paint('Could not check live plays or scores. Automatic play-by-play will retry on the next 5-second check.');
     }finally{
       polling=false;
     }
@@ -267,6 +410,7 @@ export function installLivePlayByPlay(){
 
   const schedule=()=>{
     stopSchedule();
+    resetScoreClock();
     if(!settings.enabled){paint();return;}
     const token=generation;
     poll({prime:true,token});
@@ -279,7 +423,7 @@ export function installLivePlayByPlay(){
     save();
     if(settings.enabled)unlockBrowserSpeech();
     else{
-      removeQueuedSpeech(item=>item.source==='play-by-play');
+      removeQueuedSpeech(item=>item.source==='play-by-play'||item.source==='score-update');
       setRadioDucked(false);
     }
     schedule();
@@ -289,7 +433,20 @@ export function installLivePlayByPlay(){
     settings={...settings,duckRadio:!!value};
     save();
     const voice=getBrowserSpeechQueueState();
-    setRadioDucked(!!settings.duckRadio&&voice.current?.source==='play-by-play');
+    setRadioDucked(!!settings.duckRadio&&['play-by-play','score-update'].includes(voice.current?.source));
+    paint();
+  };
+
+  const setScoreInterval=value=>{
+    settings={...settings,scoreIntervalMinutes:normalizeScoreInterval(value)};
+    save();
+    resetScoreClock();
+    paint();
+  };
+
+  const setScoreScope=value=>{
+    settings={...settings,scoreScope:normalizeScoreScope(value)};
+    save();
     paint();
   };
 
@@ -299,6 +456,8 @@ export function installLivePlayByPlay(){
 
   enabled.onchange=()=>setEnabled(enabled.checked);
   duckRadio.onchange=()=>setDuckRadio(duckRadio.checked);
+  scoreInterval.onchange=()=>setScoreInterval(scoreInterval.value);
+  scoreScope.onchange=()=>setScoreScope(scoreScope.value);
   open.onclick=()=>{
     settings=readPlayByPlaySettings();
     hydrate();
@@ -310,6 +469,10 @@ export function installLivePlayByPlay(){
   speakLatest.onclick=()=>{
     unlockBrowserSpeech();
     poll({manual:true,token:generation});
+  };
+  speakScores.onclick=()=>{
+    unlockBrowserSpeech();
+    poll({manualScores:true,token:generation});
   };
 
   document.addEventListener('visibilitychange',()=>{
