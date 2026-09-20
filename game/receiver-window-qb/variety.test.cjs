@@ -42,3 +42,8 @@ test('pursuit predicts a bounded intercept without changing defender speed',()=>
   assert.equal(V.pursuitTime(0,50,0,-8,9),1.25);
   for(const speed of [0,5,10])assert.ok(Number.isFinite(V.pursuitTime(0,5,0,8,speed)));
 });
+test('tackle technique improves with rounds and stays bounded; swept entry precedes closest approach',()=>{
+  assert.ok(V.tackleTechnique(30,.98)>V.tackleTechnique(1,0)+.5);
+  assert.ok(V.tackleTechnique(100000,.98)<=1);
+  const crossing=V.sweptContact(-2,0,2,0,1);assert.equal(crossing.time,.5);assert.equal(crossing.entry,.25);
+});
