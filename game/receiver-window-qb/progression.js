@@ -54,7 +54,8 @@
   function payout(won,round,touchdowns){return (won?250+Math.min(500,(round-1)*25):100+Math.min(150,(round-1)*10))+Math.floor(clamp(touchdowns,0,3))*25;}
   function traits(p){
     p=Object.fromEntries(stats.map(k=>[k,effective(p[k])]));
-    return {jumpVelocity:2.8+p.athleticism*.014,highReach:3.18+p.athleticism*.005+p.size*.003,
+    const jumpVelocity=2.8+p.athleticism*.021;
+    return {jumpVelocity,highReach:2.4*(.94+p.size*.0018)+jumpVelocity*jumpVelocity/19.62,
       pursuitBurst:1.13+p.catching*.0014,diveReach:1.42+p.catching*.002+p.athleticism*.002,
       sizeScale:.94+p.size*.0018,bodyBonus:(p.size-50)*.0015,
       jukeChance:Math.min(.82,.20+p.tricks*.0045+p.evasion*.0015),jukeCooldown:3.8-p.tricks*.014};

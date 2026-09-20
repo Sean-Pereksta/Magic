@@ -6,7 +6,7 @@ function context(){
   const c=vm.createContext({THREE,P,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),throwTime:0,
     routePosition:()=>new THREE.Vector3(),updateTricks:()=>{},receiverContactFactors:()=>({speed:1,accel:1}),
     updateJump:()=>{},animatePlayerContact:()=>{},ballApproach:()=>null,predictedLanding:new THREE.Vector3(),predictedFlightTime:0});
-  for(const name of ['getBallLanding','receiverBallPlan','updateReceiver'])vm.runInContext(extract(name),c);
+  for(const name of ['wantsHighPoint','getBallLanding','receiverBallPlan','updateReceiver'])vm.runInContext(extract(name),c);
   return c;
 }
 function receiver(){return {profile:{speed:60,turning:60,cutting:60,catching:60,athleticism:60,size:60},
@@ -20,7 +20,7 @@ test('in-stride ball overrides a route turning away, preserving momentum across 
     const before=r.mesh.position.clone();c.updateReceiver(r,1/60,i*1000/60);
     assert.equal(r.trackingBall,true);assert.equal(r.comebackActive,false);
     assert.ok(r.velocity.z < -7.9);assert.ok(Math.abs(r.velocity.x)<.001);
-    assert.ok(r.mesh.position.distanceTo(before)<.14,'no teleport');
+    assert.ok(r.mesh.position.distanceTo(before)<.14,`no teleport at ${i}: speed ${r.velocity.length()}, dive ${!!r.catchDive}`);
     c.ball.position.addScaledVector(c.ballVel,1/60);c.ball.position.y-=.5*9.81/(60*60);c.ballVel.y-=9.81/60;c.throwTime+=1/60;
   }
 });
