@@ -66,6 +66,19 @@
     else {const disc=b*b-4*a*c;if(disc>=0){const r=Math.sqrt(disc),roots=[(-b-r)/(2*a),(-b+r)/(2*a)].filter(n=>n>=0);t=roots.length?Math.min(...roots):0;}}
     return clamp(t||0,0,1.25);
   }
-  const api={identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime};
+  function tackleTechnique(round,skill){
+    return clamp(.18+clamp(skill,0,1)*.55+.27*(1-Math.exp(-Math.max(0,round-1)/18)),.18,1);
+  }
+  // Closest point during a frame of relative motion; prevents contact tunneling.
+  function sweptContact(x0,z0,x1,z1,radius=0){
+    const dx=x1-x0,dz=z1-z0,den=dx*dx+dz*dz;
+    const time=den>1e-8?clamp(-(x0*dx+z0*dz)/den,0,1):0;
+    const distance=Math.hypot(x0+dx*time,z0+dz*time),startSquared=x0*x0+z0*z0;
+    let entry=time;
+    if(startSquared<=radius*radius)entry=0;
+    else if(den>1e-8&&distance<=radius){const dot=x0*dx+z0*dz;entry=clamp((-dot-Math.sqrt(Math.max(0,dot*dot-den*(startSquared-radius*radius))))/den,0,1);}
+    return {time,distance,entry};
+  }
+  const api={identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
   if(typeof module!=='undefined')module.exports=api;root.QBVariety=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
