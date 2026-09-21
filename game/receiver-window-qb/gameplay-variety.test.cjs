@@ -582,7 +582,7 @@ test('lane choice prefers clear forward gaps, tighter marker progress and sideli
 test('screen acceleration is designated, temporary and lost when the target is audibled',()=>{
   const c=game(),q=c.q;c.Math.random=()=>.999999;
   function sample(screen,age){q.run(`selectedPlay=14;setupPlay(false);playState='run';ballCarrier=receivers[1];gameTime=10000;defenders.forEach(d=>d.mesh.position.set(90,0,90));receivers[1].mesh.position.set(0,0,0);receivers[1].velocity.set(0,0,0);receivers[1].heading.set(0,0,-1);receivers[1].screenTarget=${screen};receivers[1].screenCatchAt=gameTime-${age};receivers[1].profile.cutting=80;receivers[1].maxSpeed=8;`);q.updateBallCarrier(q.state().receivers[1],.05);return q.state().receivers[1].velocity.length();}
-  const regular=sample(false,0),fresh=sample(true,0),expired=sample(true,1500);assert.ok(fresh>regular*1.15);assert.ok(Math.abs(expired-regular)<1e-8);
+  const regular=sample(false,0),fresh=sample(true,0),expired=sample(true,1900);assert.ok(fresh>regular*1.15);assert.ok(Math.abs(expired-regular)<1e-8);
   q.run("selectedPlay=14;setupPlay(false);audibleReceiverIndex=1;assignAudibleRoute('Go')");assert.equal(q.state().receivers[1].screenTarget,false);
 });
 test('blockers claim separate threats, establish carrier-side leverage and release holds',()=>{
@@ -615,4 +615,43 @@ test('new matchup memories migrate safely and survive save round trips',()=>{
   const q=game().q;const f=q.state().franchise;f.pumpMemory=[null,{target:0,concept:'Mesh'},{target:8,concept:'invalid'}];f.conceptMemory=['Mesh',null,8];
   const save=P.validateSave(JSON.stringify(f));assert.deepEqual(save.pumpMemory,[{target:0,concept:'Mesh'}]);assert.deepEqual(save.conceptMemory,['Mesh']);
   assert.equal(V.weather('Day').cut,1);assert.ok(V.weather('Light Rain').hands<=.03);assert.ok(V.weather('Cold').contact<1.05);assert.ok(V.weather('Windy').wind<.4);
+});
+
+
+test('strength and athleticism scale their own moves; evasion improves timely use',()=>{
+  const p={strength:30,athleticism:30,evasion:30};
+  const stiff=V.escapeOdds(p,'stiff'),hurdle=V.escapeOdds(p,'hurdle');
+  assert.ok(V.escapeOdds({...p,strength:95},'stiff').success>stiff.success+.4);
+  assert.equal(V.escapeOdds({...p,strength:95},'hurdle').success,hurdle.success);
+  assert.ok(V.escapeOdds({...p,athleticism:95},'hurdle').success>hurdle.success+.4);
+  assert.ok(V.escapeOdds({...p,evasion:95},'stiff').timing>stiff.timing+.4);
+  const screen=V.escapeOdds({strength:85,athleticism:85,evasion:85},'hurdle',80,.8,true);
+  assert.ok(screen.timing*screen.success>.75);assert.ok(screen.success<1);
+});
+test('stiff arm pushes one front defender, cools down, and cannot protect against support',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>0;
+  q.run("playState='run';ballCarrier=receivers[0];receivers[0].hasBall=true;receivers[0].mesh.position.set(0,0,0);receivers[0].heading.set(0,0,-1);receivers[0].velocity.set(0,0,-7);defenders[0].mesh.position.set(0,0,-1);defenders[1].mesh.position.set(.2,0,-.4)");
+  assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[0],'stiff')"),true);
+  assert.ok(q.state().defenders[0].mesh.position.z<-1.8);assert.ok(q.state().receivers[0].stiffArmTime>0);
+  assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[1],'stiff')"),false);
+  assert.ok(q.tackleContact(q.state().defenders[1],q.state().receivers[0]),'support still has contact');
+  q.run('animatePlayerContact(receivers[0],.016);attachBallToCarrier()');
+  assert.ok(q.ball.position.distanceTo(q.state().receivers[0].mesh.userData.hands[1].getWorldPosition(new THREE.Vector3()))<1e-8);
+});
+test('hurdles require a low threat, actual height at impact, and leave standing support dangerous',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>0;
+  q.run("playState='run';ballCarrier=receivers[0];receivers[0].mesh.position.set(0,0,0);receivers[0].velocity.set(0,0,-7);defenders[0].mesh.position.set(0,0,-3)");
+  assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[0],'hurdle')"),false,'no leap over upright defender');
+  q.run('defenders[0].diveTime=.28');assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[0],'hurdle')"),true);
+  q.run('updateJump(receivers[0],.14,false)');assert.ok(q.state().receivers[0].jumpY>.48);
+  q.run('defenders[0].mesh.position.set(0,0,-.5);defenders[0].divingThisStep=true;receivers[0].tacklePreviousY=0');
+  assert.ok(q.tackleContact(q.state().defenders[0],q.state().receivers[0]),'contact before clearance wins');
+  q.run('receivers[0].tacklePreviousY=.6');assert.equal(q.tackleContact(q.state().defenders[0],q.state().receivers[0]),null);
+  q.run('defenders[1].mesh.position.set(.1,0,-.5)');assert.ok(q.tackleContact(q.state().defenders[1],q.state().receivers[0]));
+});
+test('failed timely-use check is not retried every frame and new actors reset move state',()=>{
+  const c=game(),q=c.q;let rolls=0;c.Math.random=()=>{rolls++;return .999;};
+  q.run("playState='run';ballCarrier=receivers[0];receivers[0].mesh.position.set(0,0,0);defenders[0].mesh.position.set(0,0,-1);receivers[0].profile.evasion=1");
+  rolls=0;for(let i=0;i<120;i++)assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[0],'stiff')"),false);assert.equal(rolls,1);
+  q.setupPlay();assert.equal(q.state().receivers[0].stiffReads,undefined);
 });
