@@ -73,11 +73,11 @@ Tests cover launch gating and one-roll rarity, reachable first downs, goal dives
 
 ## Expanded playbook and roster identity
 
-The playbook has 44 concepts across seven tabs: Quick Game, Intermediate,
+The playbook has 72 concepts across seven tabs: Quick Game, Intermediate,
 Deep Shots, Screens, Bunch / Stack, Motion and Trick Plays. Original 1–8
 shortcuts remain; use arrows and Enter, mouse, or touch for every play and tab.
 New concepts have formation spacing, release depths, option reads, motion or
-screen assignments. Five trick concepts use bubble/wheel, tunnel/go, sluggo,
+screen assignments. Seven trick concepts use bubble/wheel, tunnel/go, sluggo,
 fake quick screen and motion reversal routes; they keep the standard QB throw.
 
 Screens identify one intended receiver and two lead blockers. Blockers begin
@@ -88,8 +88,13 @@ size, leverage and closing momentum determine contact effectiveness. Holds last
 almost immediately. A Blocking Receiver prioritizes useful seals.
 
 The designated screen target receives 1.8 seconds of +45% acceleration, +22%
-maximum speed and +28 percentage points of juke success. The runner favors nearby
-lead blockers before choosing an open lane. Changing that target's route with
+maximum speed and +28 percentage points of juke success. The runner evaluates the blocker's protected shoulder, nearby pursuit and open
+forward lanes. An early, useful developing block can prompt a brief 14% slowdown;
+that patience ends by 1.1 seconds, under immediate pressure, or in open space.
+Screen runners have a tighter 0.8-yard voluntary retreat limit. Before the throw,
+the receiver adjusts the outlet within a shallow window to avoid coverage and
+clutter in the throwing lane. Leads retain their assignment during a screen pass,
+while still reacting to a ball arriving directly at their hands. Changing that target's route with
 an audible removes screen eligibility. Repeated screen use improves recognition
 of observed shallow movement; defenders cannot see hidden route paths.
 
@@ -105,9 +110,13 @@ away from nearby coverage; YAC Specialist uses wider lanes/more moves; Power
 and Possession receivers favor forward progress over avoidance; Blocking Receiver
 prioritizes blocking leverage. The new Blocking archetype can appear in recruitment.
 
-Only designated Option routes make a coverage read. Cutting/turning control read
-speed and reliability: curl against deep coverage, continue vertically against
-underneath coverage, or break away from leverage. The route panel reports the read.
+Designated Option, Choice, Seam Read and Screen Choice routes make one coverage
+read before the throw. Cutting/turning and Football IQ affect timing and reliability.
+Choice settles or breaks away from leverage; Seam Read continues, bends inside or
+breaks outside against the visible cap; Screen Choice takes the bubble or tunnel
+based on edge coverage. The route panel reports the read. Option stems are run once,
+and ordinary routes retain their assignment. Whip and Pivot add opposite double
+breaks. All five new route types are available through the existing audible menu.
 
 Press **F** or tap **PUMP** during the eight-second QB window. It aims at the
 receiver nearest the camera direction and can cause at most one nearby defender
@@ -221,7 +230,7 @@ keep their native keyboard behavior.
   through flight, and contact recoveries brace the runner. Evasion shapes juke
   timing. Hand targeting runs after the new body pose so real glove contact
   remains authoritative; the established move-success rules still resolve contact.
-- **Playbook:** all seven categories and all 44 concepts remain. Suggested adds
+- **Playbook:** all seven categories and all original 44 concepts remain, with 28 additions. Suggested adds
   six situation-ranked options for short yardage, long downs and the red zone.
   Cards use actual route geometry and indicate the first read, blocks, options
   and motion. A larger diagram includes guidance; suggestions never restrict
@@ -258,3 +267,35 @@ node game/receiver-window-qb/franchise-browser.cjs
 Browser checks use Playwright and Chromium (or `QB_CHROMIUM_PATH`). They cover
 existing controls/contact/replays, uniform persistence, real-play stat commits,
 emoji decals, keyboard focus, bounded replay textures and phone/landscape layouts.
+
+
+## Motion, catches and evasion expansion
+
+The 28 appended plays preserve the original play indices and saved selection. New
+concepts include read screens on both sides, a stack slip, tunnel convoy, mesh/sit
+choices, seam reads, whip/pivot spacing, and motion fakes. Jet, return and orbit
+paths can use waypoints and staggered paired shifts. Longer motion gets enough
+countdown time to keep speed bounded; every route starts at its actual release
+point. Man corners shade observed motion slowly while zone defenders retain their
+landmarks. Field lines and playbook diagrams show the full motion path.
+
+Successful catches select nine contextual gather animations: snatch/tuck,
+high-point clamp, low scoop, sideline drag, body shield, one-hand reach/tuck,
+screen turn-up, back-shoulder spin/secure and over-shoulder basket. These poses
+start after the existing real glove-contact and securing checks. Hand targeting
+and joint constraints still run after the body pose; catch odds, contact volumes,
+sideline spots and tackle rules remain authoritative.
+
+Evasion now chooses among spin, hesitation, hard cut, speed cut, shoulder dip,
+dead leg, stutter-go and rocker step. Distance, closing speed, lateral pursuit,
+sideline position, congestion, playstyle and recent technique determine the move.
+Each has a distinct plant/body sequence, speed retention and lateral impulse.
+Exit shoulders are checked against support defenders. Existing cooldowns, strength,
+hurdles and stiff arms still apply; a juke can briefly fool at most one defender.
+Screen targets and leads stay on task before the catch instead of starting an
+unrelated automatic juke.
+
+Regression coverage includes low-rated screen reads, one-time options, complete
+motion trajectories, saved play 72, screen outlet and seal decisions, lead-blocker
+pass discipline, forward progress at 30/60/120 Hz, eight evasion contexts, nine
+catch poses, and desktop/phone diagrams for orbit and paired motion.

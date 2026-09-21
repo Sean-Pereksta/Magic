@@ -50,7 +50,7 @@ function normalize(f){
 function awareness(p){return Math.round(number((number(p.cutting)+number(p.turning)+number(p.catching))*.23+number(p.evasion)*.16+number(p.tricks)*.15,1,100));}
 function chemistry(p,concept){const c=p.chemistry||{};return number(Math.sqrt(number(c.xp)/10000)*.015+Math.sqrt(number(c.concepts?.[concept],0,1000)/1000)*.005,0,.02);}
 function chemistryLevel(p){return Math.round(Math.sqrt(number(p.chemistry?.xp)/10000)*100);}
-function primary(play){if(Number.isInteger(play.screen))return play.screen;const option=play.routes.indexOf('Option');if(option>=0)return option;return Math.max(0,play.routes.findIndex(r=>['Slant','Dig','Stick','Drag','Corner'].includes(r)));}
+function primary(play){if(Number.isInteger(play.screen))return play.screen;if(Number.isInteger(play.primary))return play.primary;const option=play.routes.findIndex(r=>['Option','Choice','Seam Read','Screen Choice'].includes(r));if(option>=0)return option;return Math.max(0,play.routes.findIndex(r=>['Slant','Dig','Stick','Drag','Corner'].includes(r)));}
 function suggestion(play,{down=1,toGo=25,spot=0}={}){
   const name=play.name.toLowerCase(),routes=play.routes||[];
   if(spot>=38)return {score:(/fade|bunch|rub|motion|stick|spacing|slant/.test(name)?12:0)+(routes.includes('Option')?3:0),reason:'Red zone: quick windows and traffic releases'};
