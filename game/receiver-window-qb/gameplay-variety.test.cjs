@@ -17,7 +17,7 @@ function game(){
     matchMedia:()=>({matches:false}),console,Math:Object.create(Math)});
   const hook=`globalThis.q={resumeGame,setupPlay,beginCountdown,update,throwBall,checkBallContact,resolveCatch,finishPlayAtSpot,activateFranchise,recordAttempt,
     pathFor,routePosition,defenderTarget,updateDefender,catchPlacement,animatePlayerContact,sampleContactRig,playerBallContacts,sweepLimb,deflectBall,finishSecuringCatch,wantsHighPoint,updateJump,updateBallCarrier,applyFieldTheme,setQuality,updateEnvironment,
-    captureReplay,startReplay,updateReplay,finishReplay,scenePose,drawTrajectory,assignAudibleRoute,tryJuke,updateRunAfterCatch,clearGoalLane,startDivingTackle,tackleContact,triggerTackle,updateTackle,markCatch,scheduleResult,loop,showMainMenu,
+    captureReplay,startReplay,updateReplay,finishReplay,scenePose,drawTrajectory,assignAudibleRoute,tryJuke,updateRunAfterCatch,clearGoalLane,startDivingTackle,tackleContact,triggerTackle,updateTackle,runnerFinishAbility,effortDivePlan,tryEffortDive,carriedBallFrontZ,poseFinishPlayer,markCatch,scheduleResult,loop,showMainMenu,
     state:()=>({franchise,receivers,defenders,playState,ballLive,currentDefense,snapMemory,replayFrames,replay,transition,qualityLevel,rain,renderer,arcGeo}),
     get ball(){return ball},get ballPrev(){return ballPrev},get ballVel(){return ballVel},get camera(){return camera},
     run(code){return eval(code)}};`;
@@ -160,7 +160,7 @@ test('touchdowns qualify from any distance, final tackle pose is recorded, and s
   q.run('gameTime+=720');q.updateTackle(.72);
   const frames=q.run('replayFrames');assert.ok(frames.length>=2);assert.equal(frames.at(-1).phase,'tackle');
   let calls=0;const cash=q.state().franchise.cash;q.startReplay(frames,()=>calls++);q.finishReplay();q.finishReplay();
-  assert.equal(calls,1);assert.equal(q.state().franchise.cash,cash);assert.ok(r2.mesh.rotation.x<-.9);
+  assert.equal(calls,1);assert.equal(q.state().franchise.cash,cash);assert.ok(Math.abs(r2.mesh.userData.visualRig.rotation.x)>.9,'jointed fall is captured on the visual rig');
 });
 
 // Contact regression fixtures use actual meshes, transforms and the same collision code as gameplay.
@@ -314,4 +314,128 @@ test('a ball already on the turf cannot be rescued by overlapping hands',()=>{
   const c=game(),q=c.q,r=contactScene(c);c.Math.random=()=>0;
   r.mesh.position.y=-.9;ballAtHand(q,r);q.ball.position.y=.1;q.ballPrev.copy(q.ball.position);q.ballVel.set(0,-1,0);
   q.update(1/120,9);assert.equal(q.state().ballLive,false);assert.equal(r.hasBall,false);
+});
+
+function effortScene(c,z=-7.4,goal=false){
+  const q=c.q,r=arrangeCarrier(c,0,z),d=q.state().defenders[0];
+  q.run(`lineToGainYards=${goal?50:25};ballSpotYards=${goal?45:20};snapSpotYards=ballSpotYards`);
+  Object.assign(r.profile,{athleticism:95,speed:90,strength:85,turning:90,evasion:90});r.catchStyleTime=0;r.securedHands=null;r.jukeAnim=0;r.mesh.rotation.y=Math.PI;
+  r.mesh.scale.set(1,1,1);r.velocity.set(0,0,-8);r.heading.set(0,0,-1);q.animatePlayerContact(r,0);q.run('attachBallToCarrier()');
+  d.mesh.position.set(0,0,z+1.7);d.velocity.set(0,0,-10);d.maxSpeed=10;d.heading.set(0,0,-1);d.technique=.5;d.fakeUntil=0;d.diveRecovery=0;
+  return {r,d};
+}
+function finishMotion(q,hz=60){let ticks=0;while(q.state().playState==='tackle'&&ticks<hz*3){ticks++;q.run(`gameTime+=${1000/hz}`);q.updateTackle(1/hz);}assert.ok(ticks<hz*3,'finish animation must terminate');}
+
+test('effort dives require a useful nearby marker, athleticism, forward speed and imminent contact',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);
+  assert.ok(q.effortDivePlan(r));d.mesh.position.z+=10;assert.equal(q.effortDivePlan(r),null);d.mesh.position.z-=10;
+  r.mesh.position.z=5;assert.equal(q.effortDivePlan(r),null);r.mesh.position.z=-10.5;assert.equal(q.effortDivePlan(r),null);r.mesh.position.z=-7.4;
+  r.profile.athleticism=50;assert.equal(q.effortDivePlan(r),null);r.profile.athleticism=95;
+  r.velocity.z=-2;assert.equal(q.effortDivePlan(r),null);r.velocity.z=-8;
+  r.mesh.position.x=25;assert.equal(q.effortDivePlan(r),null);r.mesh.position.x=0;
+  d.mesh.position.z=r.mesh.position.z+.8;assert.equal(q.effortDivePlan(r),null,'no late dive after contact is already established');
+});
+test('failed dive decisions are not retried every frame; a fresh play resets the opportunity',()=>{
+  const c=game(),q=c.q,{r}=effortScene(c);let rolls=0;c.Math.random=()=>{rolls++;return .99;};
+  assert.equal(q.tryEffortDive(r),false);for(let i=0;i<120;i++)assert.equal(q.tryEffortDive(r),false);assert.equal(rolls,1);
+  q.setupPlay();assert.equal(q.state().receivers[0].effortConsidered,undefined);
+});
+test('a dive commits its direction and extends the held ball through an attainable first down',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));
+  const launchZ=r.mesh.position.z;d.mesh.position.set(90,0,90);q.updateTackle(.22);
+  assert.ok(r.mesh.position.z<launchZ-1);assert.ok(r.finishPose.extend>.9);assert.ok(q.ball.position.z<r.mesh.position.z-.8);
+  assert.ok(Math.abs(r.mesh.position.x)<.001);finishMotion(q);
+  assert.equal(q.run('down'),1);assert.equal(q.run('lineToGainYards'),50);assert.ok(q.run('ballSpotYards')>=25);
+});
+test('goal dives work after already passing the first-down marker, and score only once after landing',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c,-57.7);q.run('ballSpotYards=40;snapSpotYards=40');
+  assert.equal(q.effortDivePlan(r).goal,true);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));d.mesh.position.set(90,0,90);
+  const before=q.run('seriesOffense');let crossed=false;
+  for(let i=0;i<90&&q.state().playState==='tackle';i++){
+    q.run('gameTime+=1000/120');q.updateTackle(1/120);
+    if(r.finishMotion.result==='TOUCHDOWN'){crossed=true;if(q.state().playState==='tackle')assert.equal(q.run('seriesOffense'),before);}
+  }
+  assert.ok(crossed);finishMotion(q);assert.equal(q.run('seriesOffense'),before+1);q.updateTackle(.5);assert.equal(q.run('seriesOffense'),before+1);
+});
+test('a head-on defender can stop an airborne dive short of the marker',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c,-7.0);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));
+  d.mesh.position.set(0,0,-7.9);d.heading.set(0,0,1);d.velocity.set(0,0,11);d.strength=100;d.diveTime=0;d.tackleCooldown=10;
+  q.updateTackle(1/120);assert.equal(r.finishMotion.freeDive,false);assert.equal(q.run('tackler'),d);
+  finishMotion(q);assert.ok(q.run('ballSpotYards')<25);assert.equal(q.run('down'),2);
+});
+test('tackle poses follow contact angle and speed; fast carriers retain bounded momentum',()=>{
+  const outcomes=[];
+  for(const kind of ['drag','side','hit','trip']){
+    const c=game(),q=c.q,r=arrangeCarrier(c),d=q.state().defenders[0];r.mesh.rotation.y=Math.PI;r.catchStyleTime=0;
+    d.mesh.position.copy(r.mesh.position).add(new THREE.Vector3(kind==='side'?.95:0,0,kind==='side'?0:kind==='drag'||kind==='trip'?1:-1));
+    d.velocity.set(0,0,kind==='hit'?10:-7);d.divingThisStep=kind==='trip';q.run('attachBallToCarrier()');q.triggerTackle(d);
+    assert.equal(r.finishMotion.kind,kind);const z=r.mesh.position.z;q.updateTackle(.18);outcomes.push([kind,r.finishPose.pitch,r.finishPose.roll]);
+    if(kind==='drag')assert.ok(r.mesh.position.z<z-.2,'momentum carries the receiver through contact');
+    assert.ok(r.mesh.position.distanceTo(r.tacklePrevious)<.2);assert.ok(r.finishMotion.velocity.length()<=7);
+    assert.equal(d.finishPose.wrapTarget,r);
+  }
+  assert.ok(Math.abs(outcomes[1][2])>Math.abs(outcomes[0][2]),'side contact rolls the body');
+  assert.ok(outcomes[2][1]<0,'head-on impact can knock the receiver backward');
+});
+test('the down spot is frozen before rolling/sliding, without a free yard for falling',()=>{
+  const c=game(),q=c.q,r=arrangeCarrier(c,0,-.2),d=q.state().defenders[0];q.run('ballSpotYards=20;snapSpotYards=20;lineToGainYards=25');
+  r.velocity.set(0,0,0);r.mesh.rotation.y=Math.PI;r.catchStyleTime=0;q.animatePlayerContact(r,0);q.run('attachBallToCarrier()');
+  d.mesh.position.set(0,0,-1);d.velocity.set(0,0,0);q.triggerTackle(d);q.updateTackle(.4);
+  assert.ok(r.finishMotion.down);const spot=r.finishMotion.spotZ;const position=r.mesh.position.clone();
+  q.updateTackle(.15);assert.equal(r.finishMotion.spotZ,spot);finishMotion(q);
+  assert.ok(q.run('ballSpotYards')<21,'no old minimum-one-yard spot bonus');assert.ok(Math.abs(q.run('ballSpotYards')-(40-spot)/2)<1e-6);
+});
+test('fall/dive outcomes are stable across 30, 60 and 120 Hz and shared joint geometry stays cached',()=>{
+  const spots=[];
+  for(const hz of [30,60,120]){
+    const c=game(),q=c.q,{r,d}=effortScene(c);c.Math.random=()=>0;const geo=r.mesh.userData.arms[0].geometry;
+    assert.ok(q.tryEffortDive(r));d.mesh.position.set(90,0,90);finishMotion(q,hz);spots.push(q.run('ballSpotYards'));
+    assert.equal(r.mesh.userData.arms[0].geometry,geo);assert.ok(Number.isFinite(r.mesh.position.length()));
+  }
+  assert.ok(Math.max(...spots)-Math.min(...spots)<.03);
+});
+test('ball contact/catch rules survive finish-play animation and replay captures the final landing',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);c.Math.random=()=>0;
+  q.run('replayRecording=true;captureReplay(true)');assert.ok(q.tryEffortDive(r));d.mesh.position.set(90,0,90);
+  while(q.state().playState==='tackle'){q.run('gameTime+=1000/60');q.updateTackle(1/60);q.captureReplay(false,1/60);}
+  q.state().transition.fn();assert.ok(q.state().replay);const last=q.state().replay.frames.at(-1);assert.equal(last.phase,'tackle');
+  const pose=r.mesh.userData.visualRig.quaternion.clone(),cash=q.state().franchise.cash,down=q.run('down');
+  q.updateReplay(.2);q.finishReplay();q.finishReplay();assert.equal(q.state().franchise.cash,cash);assert.equal(q.run('down'),down);
+  assert.equal(q.state().playState,'call');
+});
+
+test('stepping out before a goal-line reach ends the play short, without a touchdown',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c,-58.8,true);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));
+  d.mesh.position.set(90,0,90);r.mesh.position.x=25.58;r.finishMotion.velocity.set(8,0,-2);q.run('attachBallToCarrier()');
+  const score=q.run('seriesOffense');q.updateTackle(1/60);
+  assert.equal(r.finishMotion.result,'OUT OF BOUNDS');const spot=r.finishMotion.spotZ;assert.ok(spot>-60);
+  finishMotion(q);assert.equal(q.run('seriesOffense'),score);assert.ok(q.run('ballSpotYards')<50);
+});
+test('no extension after the down event can turn a failed reach into a first down',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));d.mesh.position.set(90,0,90);
+  r.finishMotion.velocity.set(0,0,0);r.finishMotion.downAt=.025;r.finishMotion.duration=.35;
+  q.updateTackle(.05);assert.ok(r.finishMotion.down);const spot=r.finishMotion.spotZ;assert.ok(spot>-10);
+  q.updateTackle(.2);assert.equal(r.finishMotion.spotZ,spot);finishMotion(q);assert.equal(q.run('down'),2);assert.ok(q.run('ballSpotYards')<25);
+});
+test('ratings influence effort frequency and resisted momentum without new save attributes',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);const high=q.effortDivePlan(r).chance;
+  Object.assign(r.profile,{athleticism:65,strength:30,turning:30,evasion:30});assert.ok(q.effortDivePlan(r).chance<high-.2);
+  const speeds=[];
+  for(const strength of [20,100]){
+    const r2=arrangeCarrier(c),d2=q.state().defenders[0];r2.profile.strength=strength;r2.profile.turning=70;r2.profile.evasion=70;r2.profile.size=50;
+    d2.mesh.position.copy(r2.mesh.position).add(new THREE.Vector3(0,0,1));d2.velocity.set(0,0,-7);d2.strength=70;
+    q.triggerTackle(d2);speeds.push(r2.finishMotion.velocity.length());
+  }
+  assert.ok(speeds[1]>speeds[0]);const saved=P.validateSave(JSON.stringify(q.state().franchise));assert.equal(saved.team.length,4);
+});
+test('new falls keep limbs above turf, football at the hands, and geometry cached',()=>{
+  const c=game(),q=c.q,{r,d}=effortScene(c);c.Math.random=()=>0;assert.ok(q.tryEffortDive(r));d.mesh.position.set(90,0,90);
+  const geometryCount=q.run('playerGeometryCache.size');
+  for(let i=0;i<65&&q.state().playState==='tackle';i++){
+    q.updateTackle(1/120);r.mesh.updateMatrixWorld(true);
+    const hand=r.mesh.userData.hands.map(h=>h.getWorldPosition(new THREE.Vector3()));
+    assert.ok(q.ball.position.distanceTo(hand[0].clone().lerp(hand[1],.5))<.01,'extension stays between the gloves');
+    for(const foot of r.mesh.userData.feet)assert.ok(foot.getWorldPosition(new THREE.Vector3()).y>0);
+  }
+  assert.equal(q.run('playerGeometryCache.size'),geometryCount);
 });
