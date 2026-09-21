@@ -64,6 +64,19 @@
       sizeScale:.94+p.size*.0018,bodyBonus:(p.size-50)*.0015,
       jukeChance:Math.min(.82,.20+p.tricks*.0045+p.evasion*.0015),jukeCooldown:3.8-p.tricks*.014};
   }
+  function matchRound(f){return Number.isSafeInteger(f.rematchRound)&&f.rematchRound>=1&&f.rematchRound<f.round?f.rematchRound:f.round;}
+  function matchPayout(f,won,touchdowns){return Math.floor(payout(won,matchRound(f),touchdowns)*(matchRound(f)<f.round?.2:1));}
+  function normalizeCompetition(f){
+    f.rematchRound=matchRound(f)<f.round?matchRound(f):null;
+    const results={};
+    for(const [key,value] of Object.entries(f.opponentResults||{})){
+      const n=Number(key);if(!Number.isSafeInteger(n)||n<1||n>f.round||!value||typeof value!=='object')continue;
+      results[n]={wins:Math.floor(clamp(value.wins,0,1000000)),losses:Math.floor(clamp(value.losses,0,1000000))};
+    }
+    f.opponentResults=results;
+    if(typeof f.matchInProgress!=='boolean'){const c=f.checkpoint;f.matchInProgress=!!c&&(c.down>1||c.ballSpotYards>0||c.seriesOffense>0||c.seriesDefense>0);}
+    return f;
+  }
   function validateSave(raw){
     const f=typeof raw==='string'?JSON.parse(raw):JSON.parse(JSON.stringify(raw));
     if(!f||!Array.isArray(f.team)||f.team.length!==4||!Array.isArray(f.market)||f.market.length!==5)throw new Error('This save is missing its roster or market.');
@@ -75,8 +88,8 @@
     for(const k of ['cash','round','wins'])if(!Number.isSafeInteger(f[k])||f[k]<(k==='round'?1:0))throw new Error('Invalid franchise progress.');
     if(f.checkpoint){const c=f.checkpoint;for(const k of ['seriesOffense','seriesDefense','ballSpotYards','down','lineToGainYards'])if(!Number.isFinite(c[k]))throw new Error('Invalid drive checkpoint.');
       if(c.seriesOffense<0||c.seriesOffense>2||c.seriesDefense<0||c.seriesDefense>2||!Number.isInteger(c.down)||c.down<1||c.down>4||c.ballSpotYards<0||c.ballSpotYards>=50||c.lineToGainYards<=c.ballSpotYards||c.lineToGainYards>50)throw new Error('Invalid drive checkpoint.');}
-    return f;
+    return normalizeCompetition(f);
   }
-  const api={stats,rating,effective,signingPrice,recruit,prestigeCost,prestige,defenseProgress,migratePlayer,train,payout,traits,validateSave};
+  const api={matchRound,matchPayout,normalizeCompetition,stats,rating,effective,signingPrice,recruit,prestigeCost,prestige,defenseProgress,migratePlayer,train,payout,traits,validateSave};
   if(typeof module!=='undefined')module.exports=api;root.QBProgression=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
