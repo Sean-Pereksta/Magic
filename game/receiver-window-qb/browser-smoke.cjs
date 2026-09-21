@@ -7,14 +7,14 @@ const server=http.createServer((req,res)=>{try{const path=root+req.url.split('?'
 await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'startBtn');
 await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>__qb.state.playState),'call');
 assert.equal(await page.locator('.playBtn').count(),44);
-assert.equal(await page.locator('[data-category]').count(),7);
+assert.equal(await page.locator('[data-category]').count(),8);
 await page.click('[data-category="Screens"]');
 await page.locator('.playBtn').nth(14).focus();await page.keyboard.press('Enter');
 assert.equal(await page.evaluate(()=>__qb.state.playState),'call');
-assert.equal(await page.locator('.playBtn.selected').innerText(),'WR Bubble\nSCREENS');
+assert.equal(await page.locator('.playBtn.selected > span').innerText(),'WR Bubble');
 await page.click('#teamBtn');await page.locator('[data-roster="1"]').focus();await page.keyboard.press('Enter');
 assert.equal(await page.locator('[data-roster="1"]').evaluate(el=>el===document.activeElement),true);
-await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.dataset.trainSlot),'1');
+await page.keyboard.press('ArrowDown');assert.equal(await page.locator('#managerLayer').evaluate(el=>el.contains(document.activeElement)),true);
 await page.click('#continueBtn');
 
 await page.evaluate(()=>{__qb.set({down:3,ballSpot:12,seriesOffense:1});__qb.checkpoint()});await page.reload();await page.click('#startBtn');assert.equal(await page.evaluate(()=>__qb.state.down),3);assert.equal(await page.evaluate(()=>__qb.state.seriesOffense),1);

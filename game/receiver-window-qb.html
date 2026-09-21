@@ -20,16 +20,16 @@
   <div id="throwQuality">PERFECT SPIRAL WINDOW</div><div id="chargeLabel">Throw Power</div><div id="chargeWrap"><div id="charge"></div></div>
   <div id="routes" class="panel"></div>
   <div id="controls" class="panel"><b>Mouse</b> look · <b>Tap Space</b> start play · <b>Hold Space</b> charge · <b>Release</b> throw<br><b>Pre-snap:</b> <b>X / H / Y / Z</b> opens that receiver's audible menu → <b>route letter</b> assigns · <b>1–8</b> play · <b>R</b> reset<br><b>Live:</b> <b>W</b> loft · <b>S</b> bullet</div>
-  <div id="playCallPanel" class="panel"><div class="playCallTitle">PLAYBOOK · Arrow keys to browse · Enter to select</div><div id="schemeHint" class="schemeHint"></div><div id="playTabs" class="playTabs" role="tablist" aria-label="Playbook categories"></div><div id="playGrid" class="playGrid"></div><div class="playActions"><button id="snapBtn" class="snap">START PLAY</button><div class="hint">Mobile: tap a receiver on the field, then choose any route</div></div></div>
+  <div id="playCallPanel" class="panel"><div class="playCallTitle">PLAYBOOK · Arrow keys to browse · Enter to select</div><div id="schemeHint" class="schemeHint"></div><div id="playTabs" class="playTabs" role="tablist" aria-label="Playbook categories"></div><div id="playGrid" class="playGrid"></div><details class="selectedPlayPanel"><summary>Selected play · diagram &amp; reads</summary><div id="selectedPlayDetail"></div></details><div class="playActions"><button id="snapBtn" class="snap">START PLAY</button><div class="hint">Mobile: tap a receiver on the field, then choose any route</div></div></div>
   <div id="audiblePanel" class="panel"><div class="audibleTop"><div><div id="audibleTitle" class="audibleTitle">AUDIBLE</div><div class="audibleSub">Desktop: press X, H, Y, or Z to open that receiver, then press the route letter.</div></div><button id="audibleClose" class="audibleClose">✕</button></div><div id="audibleReceivers" class="audibleReceivers"></div><div class="formationActions"><button id="formationwide">Widen</button><button id="formationtight">Tighten</button><button id="formationmotion">Motion</button></div><div id="audibleRouteGrid" class="audibleRouteGrid"></div></div>
   <div id="toolbar"><button id="menuBtn">MENU</button><button id="teamBtn">TEAM</button><button id="newPlayBtn">RESET SNAP</button><button id="watchReplayBtn" disabled title="Rewatch the last completed play">WATCH REPLAY</button><button id="cameraBtn">RESET AIM</button></div>
 </div>
 <div id="startLayer">
   <div id="startCard" class="panel">
-    <h1>RECEIVER WINDOW QB</h1>
-    <p>Build your receiving corps. Read the defense. Make the throw. Earn cash every matchup and develop elite hands, athleticism, size and deceptive moves.</p>
-    <div><span class="pill">50-yard drives</span><span class="pill">4 downs / 25 yards</span><span class="pill">live YAC + tackles</span><span class="pill">best of 5</span><span class="pill">infinite rounds</span><span class="pill">local + cloud saves</span><span class="pill">center-screen throws</span><span class="pill">rescue-only diving catches</span><span class="pill">receiver strength battles</span></div>
-    <div id="menuSummary" class="menuSummary"></div><div class="buttons" style="margin-top:18px"><button class="primary" id="startBtn">CONTINUE</button><button class="ghost" id="watchReplayMenu" disabled>WATCH REPLAY</button><button class="ghost" id="startTeamBtn">TEAM & OPPONENTS</button><button class="ghost" id="newGameBtn">NEW GAME</button><button class="ghost" id="savesBtn">SAVED GAMES</button><button class="ghost" id="qualityBtn">GRAPHICS · AUTO</button><a class="menuLink" href="/lobby/lobby.html">Catnmice lobby</a></div>
+    <div class="brandLine"><h1>RECEIVER WINDOW <span>QB</span></h1><span>FRANCHISE</span></div>
+    <p class="hubIntro">Choose your play. Read the defense. Build your legacy.</p>
+    <div id="franchiseHub"></div>
+    <div id="menuSummary" class="menuSummary"></div><div class="buttons" style="margin-top:18px"><button class="primary" id="startBtn">PLAY GAME</button><button class="ghost" id="watchReplayMenu" disabled>WATCH REPLAY</button><button class="ghost" id="startTeamBtn">TEAM & OPPONENTS</button><button class="ghost" id="menuPlaybookBtn">PLAYBOOK</button><button class="ghost" id="opponentsBtn">OPPONENTS</button><button class="ghost" id="uniformBtn">UNIFORM DESIGNER</button><button class="ghost" id="trainingBtn">TRAINING</button><button class="ghost" id="recruitBtn">FREE AGENTS</button><button class="ghost" id="recordsBtn">FRANCHISE RECORDS</button><button class="ghost" id="newGameBtn">NEW GAME</button><button class="ghost" id="savesBtn">SAVED GAMES</button><button class="ghost" id="qualityBtn">GRAPHICS · AUTO</button><a class="menuLink" href="/lobby/lobby.html">Catnmice lobby</a></div>
     <p id="mobileTip">Mobile: drag the LEFT half to look around. Hold the RIGHT half to charge the throw; while holding, slide up for more loft or down for a faster bullet. Release the right side to throw. The two sides work independently.</p>
   </div>
 </div>
@@ -40,13 +40,14 @@
       <div><h2>RECEIVER ROOM</h2><div id="managerStatus" class="managerBlurb">Manage your four starters before the next matchup.</div></div>
       <div class="managerMeta"><span id="cashPill" class="moneyPill">$0</span><span id="roundPill" class="roundPill">Round 1</span><span id="savePill" class="savePill">LOCAL SAVE</span></div>
     </div>
+    <div class="buttons teamStudioActions"><button id="teamUniformBtn" class="ghost">UNIFORM DESIGNER</button><button id="teamRecordsBtn" class="ghost">FRANCHISE RECORDS</button></div><div id="lastGameSummary"></div>
     <section id="cloudOffer" class="panel" hidden aria-labelledby="cloudOfferTitle" style="padding:14px;margin:12px 0">
       <h3 id="cloudOfferTitle">Save Your Franchise?</h3>
       <p>Save your team and franchise progress to the cloud so you can continue on another device.</p>
       <div class="buttons"><button id="cloudOfferSave" class="primary">SAVE TO CLOUD</button><button id="cloudOfferDismiss" class="ghost">NOT NOW</button></div>
     </section>
     <section class="opponentBrowser" aria-label="Opponent history and rematches">
-      <div class="sectionTitle">Opponent Tour · Between Matchups</div>
+      <div id="matchupPreview"></div><div class="sectionTitle">Opponent Tour · Between Matchups</div>
       <div class="opponentNavigation"><button id="opponentPrevious" class="ghost" aria-label="Previous opponent">← PREVIOUS</button><div><h3 id="opponentName"></h3><div id="opponentRecord"></div></div><button id="opponentNext" class="ghost" aria-label="Next opponent">NEXT →</button></div>
       <p id="opponentPrize"></p><button id="selectOpponent" class="primary">SELECTED</button><p id="opponentSelectionNote" class="tinyNote"></p>
     </section>
@@ -60,12 +61,16 @@
   </div>
 </div>
 
+<div id="franchiseLayer" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="franchiseTitle"><section class="panel franchiseCard"><div class="studioHeader"><h2 id="franchiseTitle"></h2><button id="closeFranchise" class="ghost">CLOSE</button></div><div id="franchiseContent"></div></section></div>
 <div id="saveLayer" class="screen" hidden><section class="panel saveCard"><div class="managerTop"><h2>SAVED GAMES</h2><button id="closeSaves" class="ghost">CLOSE</button></div><p>Three local franchises. Cloud saves reopen on another device with the same name and password. Progress resumes before the next snap.</p><div id="saveSlots"></div><h3>Cloud franchise</h3><label>Save name<input id="cloudName" maxlength="48" autocomplete="username"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label><div class="buttons"><button id="cloudSave" class="primary">SAVE TO CLOUD</button><button id="cloudLoad" class="ghost">LOAD CLOUD GAME</button></div><p id="cloudStatus" role="status" aria-live="polite"></p></section></div>
 <div id="replayBar" hidden><span aria-live="polite">REPLAY · QB VIEW</span><button id="replayPreviousCamera" aria-label="Previous replay camera">← VIEW</button><button id="replayNextCamera" aria-label="Next replay camera">VIEW →</button><button id="skipReplay">SKIP REPLAY</button></div><button id="pumpBtn" class="pumpBtn" hidden>PUMP · F</button><button id="jukeBtn" hidden>JUKE · J</button>
 <script src="receiver-window-qb/vendor/three.min.js"></script>
 <script src="receiver-window-qb/progression.js"></script>
 <script src="receiver-window-qb/cloud-save.js"></script>
 <script src="receiver-window-qb/variety.js"></script>
+<script src="receiver-window-qb/franchise.js"></script>
+<script src="receiver-window-qb/presentation.js"></script>
+<script src="receiver-window-qb/franchise-ui.js"></script>
 <script src="receiver-window-qb/game.js"></script>
 <script src="receiver-window-qb/mobile-split-controls.js"></script>
 <script src="receiver-window-qb/menu-navigation.js"></script>

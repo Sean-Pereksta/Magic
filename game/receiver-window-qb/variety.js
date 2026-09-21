@@ -139,16 +139,17 @@
   }
   function weather(name){return {cut:name==='Light Rain'?.96:1,hands:name==='Light Rain'?.025:0,wind:name==='Windy'?.32:0,contact:name==='Cold'?1.035:1};}
   // Score sampled forward corridors, not summed repulsion. Retreat is exceptional.
-  function lane({x,z,defenders,style,bestZ=z,goalZ=-60,markerZ=-10,lead=null}){
+  function lane({x,z,defenders,style,bestZ=z,goalZ=-60,markerZ=-10,lead=null,awareness=60}){
+    const iq=(clamp(awareness,1,100)-60)/500;
     const near=Math.min(Math.abs(z-markerZ),Math.abs(z-goalZ))<8,limit=near?1.2:3.2;
     const wide=style==='YAC Specialist',power=style==='Power Receiver'||style==='Possession Receiver';
     const angles=[0,-.32,.32,-.65,.65,-1,1,-1.35,1.35,-Math.PI/2,Math.PI/2];
     if(z-bestZ<limit&&!near&&!power)angles.push(-1.8,1.8);
     let best=null;
     for(const a of angles){const dx=Math.sin(a),dz=-Math.cos(a);let risk=0;
-      for(const d of defenders){for(const t of [.2,.5,.85]){const px=x+dx*6*t,pz=z+dz*6*t,dist=Math.hypot(px-d.x-(d.vx||0)*t*.5,pz-d.z-(d.vz||0)*t*.5);risk+=Math.max(0,2.7-dist)*(d.blocked?.3:1);}}
+      for(const d of defenders){for(const t of [.2,.5,.85]){const px=x+dx*6*t,pz=z+dz*6*t,dist=Math.hypot(px-d.x-(d.vx||0)*t*(.5+iq),pz-d.z-(d.vz||0)*t*(.5+iq));risk+=Math.max(0,2.7-dist)*(d.blocked?.3:1);}}
       const endX=x+dx*4,forward=-dz,back=dz>0;
-      let score=forward*(near?5:power?3.6:2.6)-risk*(power?.85:1.3)-Math.max(0,Math.abs(endX)-23)*2-(back?3.5+(z-bestZ)*2:0);
+      let score=forward*(near?5:power?3.6:2.6)-risk*(power?.85:1.3)-Math.max(0,Math.abs(endX)-(23-iq))*2-(back?3.5+(z-bestZ)*2:0);
       if(!wide)score-=Math.abs(dx)*.18;
       if(lead&&!back)score-=Math.hypot(x+dx*3-lead.x,z+dz*3-lead.z)*.15;
       if(!best||score>best.score)best={x:dx,z:dz,score,risk,limit};

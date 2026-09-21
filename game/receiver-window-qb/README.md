@@ -193,3 +193,68 @@ For the first 1.8 seconds after a designated screen catch, move recognition gain
 percentage points and execution gains 28 points (bounded below 100%). Early automatic
 juke opportunities also increase. Rating differences still matter, and the burst ends
 normally; audibles that remove screen eligibility remove these bonuses too.
+
+## Visual identity, animation and franchise dashboard
+
+The dashboard centers the next matchup, record, cash, last result and receiving
+corps. Team management includes side-by-side uniform previews and previous
+meetings; roster cards expose build, standout traits and a career/chemistry page.
+Arrow keys, Enter and Tab navigate all menus, including the new modal screens;
+Escape closes a franchise screen and restores focus. Text/color/select fields
+keep their native keyboard behavior.
+
+- **Uniform Designer:** independent Home and Away kits, with helmet, jersey,
+  secondary, pants, socks, shoes, numbers and accent colors; pick the active kit.
+  Choose a football emblem, open the larger collection, or paste an emoji.
+  Uniforms and franchise name travel with local slots and existing cloud saves.
+  Small emblems appear on both helmet sides and the chest, as well as menus,
+  scoreboard and opponent history. Jersey numbers stay distinct by roster slot.
+- **Opponent identity:** deterministic colors, emblems, pants, helmets, venue
+  templates and end-zone treatment keyed by opponent round. Rematches retain
+  identity and original difficulty. Six venue layouts include outdoor, bowl,
+  night, urban, classic and arena settings. Shared stadium props include benches,
+  sideline personnel, chain markers, photographers, tunnels and a live scoreboard.
+  The crowd is one instanced draw; low graphics disables crowd animation.
+- **Animation:** acceleration/deceleration lean, speed-driven strides, cut plants,
+  torso/shoulder rotation and ball-tracking heads build on the jointed rig.
+  Stiff-arm reactions reflect the strength difference; hurdles tuck and extend
+  through flight, and contact recoveries brace the runner. Evasion shapes juke
+  timing. Hand targeting runs after the new body pose so real glove contact
+  remains authoritative; the established move-success rules still resolve contact.
+- **Playbook:** all seven categories and all 44 concepts remain. Suggested adds
+  six situation-ranked options for short yardage, long downs and the red zone.
+  Cards use actual route geometry and indicate the first read, blocks, options
+  and motion. A larger diagram includes guidance; suggestions never restrict
+  selection or audibles.
+- **Personality:** derived Football IQ complements Evasion in option reads,
+  lane/sideline decisions, settling, block approach and marker awareness. Deep
+  threats release more aggressively, technicians/possession receivers seek
+  settling space, and the established YAC/power/blocking preferences remain.
+  Chemistry accumulates from completed concepts, targets, catches, contested
+  catches and touchdowns. Timing/tracking benefits cap at 2%; no training category
+  or additional control is introduced.
+- **Statistics:** QB attempts, completions, percentage, yards, TD, INT, Y/A and
+  longest completion; receiver targets, catches, yards, TD, YAC, Y/catch, drops,
+  contested catches, broken tackles, successful stiff arms/hurdles/jukes and
+  effective blocks. Outcomes commit once at the end of a play, then use the
+  existing between-snap checkpoint. Abandoned snaps and replay viewing do not
+  accumulate stats. Postgame summaries and career records retain released
+  receivers' contributions. Career records begin with this upgrade; prior wins
+  and campaign progress are preserved without inventing historical box scores.
+
+`franchise.js` owns normalization and statistics; `franchise-ui.js` renders the
+screens, and `presentation.js` owns procedural identity details and stadium props.
+Decal textures use reference counts, including detached replays, and release when
+neither a live model nor its saved replay uses them.
+
+Validation:
+
+```sh
+node --test game/receiver-window-qb/*.test.cjs
+node game/receiver-window-qb/browser-smoke.cjs
+node game/receiver-window-qb/franchise-browser.cjs
+```
+
+Browser checks use Playwright and Chromium (or `QB_CHROMIUM_PATH`). They cover
+existing controls/contact/replays, uniform persistence, real-play stat commits,
+emoji decals, keyboard focus, bounded replay textures and phone/landscape layouts.
