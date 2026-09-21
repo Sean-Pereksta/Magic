@@ -75,3 +75,41 @@ button:focus-visible,a:focus-visible,input:focus-visible,[tabindex]:focus-visibl
 @media(max-width:650px){#startCard{padding:18px;width:95vw;border-radius:17px}.brandLine>span{display:none}.hubMatchup .uniformPortrait{width:85px;flex-basis:85px;height:125px}.metricGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.metricGrid>div{padding:10px}.metricGrid strong{font-size:22px}#startCard>.buttons{grid-template-columns:repeat(2,minmax(0,1fr))}.hubBottom{font-size:10px}#franchiseLayer{padding:8px}.franchiseCard{padding:14px;max-height:96dvh;width:97vw}.studioHeader{top:-14px}.designerLayout{grid-template-columns:1fr;gap:15px}.designerLayout>div:first-child{padding:8px}#uniformPreview .uniformPortrait{height:180px}.colorGrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.matchupTeams{grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr);gap:4px}.matchupTeams article{padding:8px}.matchupTeams h3{font-size:13px}.matchupTeams .uniformPortrait{width:76px;height:104px}.matchupTeams .teamKicker{font-size:8px;letter-spacing:1px}.studioPlayLayout{grid-template-columns:1fr}.studioPlayGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.playerDetailHero{gap:10px}.playerDetailHero h3{font-size:15px}.playGrid{grid-template-columns:repeat(3,minmax(0,1fr));max-height:200px}.playBtn .playDiagram{max-height:77px}.playBtn>span{font-size:9px}.playBtn small{font-size:7px}}
 @media(max-height:520px){#startLayer{align-items:flex-start;padding:10px}.hubMatchup .uniformPortrait{height:100px}.hubMatchup h2{font-size:25px}.metricGrid{margin:8px 0}.metricGrid>div{padding:8px}#startCard{padding:16px}.hubIntro{margin-bottom:10px!important}.playGrid{max-height:155px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+/* Keep the mobile snap action outside the scrollable playbook. */
+@media(max-width:760px),(pointer:coarse){
+  #playCallPanel{
+    left:max(8px,env(safe-area-inset-left));
+    right:max(8px,env(safe-area-inset-right));
+    bottom:max(8px,env(safe-area-inset-bottom));
+    width:auto;transform:none;padding:8px;z-index:6;
+    --play-menu-height:min(70dvh,calc(100dvh - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  }
+  #playCallPanel .playMenuContent{
+    max-height:calc(var(--play-menu-height) - 68px);
+    overflow:auto;overscroll-behavior:contain;touch-action:pan-y;
+  }
+  #playCallPanel .playGrid{grid-template-columns:repeat(3,minmax(0,1fr));max-height:none;overflow:visible;gap:5px;padding:2px;}
+  #playCallPanel .playBtn{padding:5px!important;gap:2px;min-height:44px;}
+  #playCallPanel .playDiagram{max-height:54px;}
+  #playCallPanel .playBtn>span{font-size:9px;padding:2px 0;}
+  #playCallPanel .playBtn small{font-size:7px;}
+  #playCallPanel .schemeHint{min-height:0;font-size:10px;margin:4px 2px;}
+  #playCallPanel .playTabs{touch-action:pan-x;padding:4px 0;}
+  #playCallPanel .playTabs button{min-height:44px;padding:6px 8px;font-size:10px;}
+  #playCallPanel .selectedPlayPanel{max-height:none;overflow:visible;}
+  #playCallPanel .selectedPlayPanel .playDiagram{max-height:100px;}
+  #playCallPanel .playActions{margin-top:6px;}
+  #playCallPanel .playActions .hint{display:none;}
+  #playCallPanel #snapBtn{min-height:44px;}
+  body:is([data-phase="call"],[data-phase="countdown"]) #toolbar{
+    top:max(8px,env(safe-area-inset-top));bottom:auto;
+    left:auto;right:max(8px,env(safe-area-inset-right));z-index:7;
+  }
+  body:is([data-phase="call"],[data-phase="countdown"]) #toolbar button:not(#menuBtn){display:none;}
+}
+@media(max-height:540px) and (pointer:coarse){
+  #playCallPanel{--play-menu-height:calc(100dvh - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));}
+  #playCallPanel .playGrid{grid-template-columns:repeat(6,minmax(0,1fr));}
+  #playCallPanel .playDiagram{max-height:40px;}
+}
