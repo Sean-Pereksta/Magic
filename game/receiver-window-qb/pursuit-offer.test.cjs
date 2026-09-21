@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const THREE=require('./vendor/three.min.js'),P=require('./progression.js');
+const THREE=require('./vendor/three.min.js'),P=require('./progression.js'),F=require('./franchise.js');
 const source=fs.readFileSync(__dirname+'/game.js','utf8');
 function extract(name){const start=source.indexOf('function '+name+'(');assert.ok(start>=0);const next=source.indexOf('\nfunction ',start+1);return source.slice(start,next<0?undefined:next);}
 function context(){
-  const c=vm.createContext({THREE,P,V:require('./variety.js'),readOptionRoute:()=>{},matchWeather:()=>({name:'Day'}),ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),throwTime:0,
+  const c=vm.createContext({THREE,P,F,plays:[{name:'Test'}],selectedPlay:0,V:require('./variety.js'),readOptionRoute:()=>{},matchWeather:()=>({name:'Day'}),ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),throwTime:0,
     routePosition:()=>new THREE.Vector3(),updateTricks:()=>{},receiverContactFactors:()=>({speed:1,accel:1}),
     updateJump:()=>{},animatePlayerContact:()=>{},ballApproach:()=>null,predictedLanding:new THREE.Vector3(),predictedFlightTime:0});
   for(const name of ['wantsHighPoint','getBallLanding','receiverBallPlan','updateReceiver'])vm.runInContext(extract(name),c);
@@ -46,7 +46,7 @@ test('contact still slows an in-stride receiver',()=>{
   assert.ok(r.velocity.length()<8);
 });
 function matchContext(overrides={}){
-  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,franchise:P.normalizeCompetition({round:1,wins:0,cash:0,...overrides}),
+  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,F,franchise:F.normalize(P.normalizeCompetition({round:1,wins:0,cash:0,team:[],market:[],...overrides})),
     seriesOffense:1,seriesDefense:3,tournamentStage:0,opponentForRound:()=>({name:'Test'}),
     resetDrive:()=>{},freshMarket:()=>[],checkpoint:()=>{},saveFranchise:()=>{},openManager:()=>{},
     $:id=>els[id]});c.activeRound=()=>P.matchRound(c.franchise);c.scheduleResult=fn=>c.pending=fn;vm.runInContext(extract('endMatchup'),c);return {c,els};

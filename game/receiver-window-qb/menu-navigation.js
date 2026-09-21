@@ -3,10 +3,10 @@
   'use strict';
   const visible=el=>el&&!el.hidden&&el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden';
   function scope(){
-    for(const id of ['saveLayer','managerLayer','startLayer','replayBar','audiblePanel']){const el=document.getElementById(id);if(visible(el))return el;}
+    for(const id of ['franchiseLayer','saveLayer','managerLayer','startLayer','replayBar','audiblePanel']){const el=document.getElementById(id);if(visible(el))return el;}
     return document.body.dataset.phase==='call'?document.getElementById('hud'):null;
   }
-  const controls=root=>[...root.querySelectorAll('button:not(:disabled),a[href],input,[data-roster],[data-audible-receiver]')].filter(visible);
+  const controls=root=>[...root.querySelectorAll('button:not(:disabled),a[href],input,select,summary,[data-roster],[data-audible-receiver]')].filter(visible);
   function focus(el){el?.focus({preventScroll:true});el?.scrollIntoView({block:'nearest',inline:'nearest'});}
   // Restore the same logical control after training or roster selection rebuilds cards.
   document.addEventListener('keydown',e=>{
@@ -14,7 +14,7 @@
     if(root.id==='replayBar'&&e.key.startsWith('Arrow'))return;
     const list=controls(root);if(!list.length)return;
     const current=document.activeElement;
-    if(current?.tagName==='INPUT'&&e.key!=='Tab')return;
+    if(['INPUT','SELECT'].includes(current?.tagName)&&e.key!=='Tab')return;
     e.preventDefault();e.stopImmediatePropagation();
     const index=list.indexOf(current);
     if(e.key==='Enter'){

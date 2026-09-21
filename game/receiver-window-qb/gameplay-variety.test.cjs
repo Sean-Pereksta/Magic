@@ -7,11 +7,11 @@ function game(){
   const elements=new Map(),storage=new Map();
   function element(){return {style:{},dataset:{},hidden:false,children:[],classList:{toggle(){},add(){},remove(){}},
     setAttribute(){},addEventListener(){},appendChild(child){this.children.push(child)},replaceChildren(){this.children=[]},
-    querySelector(){return element()},getContext(){return {fillText(){}}},getBoundingClientRect(){return {left:0,top:0,width:1200,height:800}}};}
+    querySelector(){return element()},getContext(){return {fillText(){},clearRect(){},fillRect(){}}},getBoundingClientRect(){return {left:0,top:0,width:1200,height:800}}};}
   const document={body:element(),getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},
     createElement:element,querySelectorAll:()=>[],addEventListener(){},exitPointerLock(){}};
   class Renderer{constructor(){this.shadowMap={};}setPixelRatio(n){this.pixelRatio=n}setSize(){}render(){}}
-  const context=vm.createContext({THREE:{...THREE,WebGLRenderer:Renderer},QBProgression:P,QBVariety:V,document,
+  const context=vm.createContext({THREE:{...THREE,WebGLRenderer:Renderer},QBProgression:P,QBVariety:V,QBFranchise:require('./franchise.js'),document,
     localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},performance:{now:()=>0},
     innerWidth:1200,innerHeight:800,devicePixelRatio:1,requestAnimationFrame(){},addEventListener(){},setInterval(){},
     matchMedia:()=>({matches:false}),console,Math:Object.create(Math)});
@@ -21,6 +21,7 @@ function game(){
     state:()=>({franchise,receivers,defenders,playState,ballLive,currentDefense,snapMemory,replayFrames,replay,transition,qualityLevel,rain,renderer,arcGeo}),
     get ball(){return ball},get ballPrev(){return ballPrev},get ballVel(){return ballVel},get camera(){return camera},
     run(code){return eval(code)}};`;
+  vm.runInContext(fs.readFileSync(__dirname+'/presentation.js','utf8'),context);
   vm.runInContext(source.replace(/\}\)\(\);\s*$/,hook+'})();'),context);context.q.resumeGame();return context;
 }
 test('all routes and coverage identities run finite live physics near midfield and goal line',()=>{
