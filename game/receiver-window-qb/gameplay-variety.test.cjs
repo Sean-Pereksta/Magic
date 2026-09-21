@@ -439,3 +439,17 @@ test('new falls keep limbs above turf, football at the hands, and geometry cache
   }
   assert.equal(q.run('playerGeometryCache.size'),geometryCount);
 });
+
+test('saved market discounts are stable and signing charges the displayed reduced price',()=>{
+  const {q}=game();
+  q.run(`for(const k of P.stats)franchise.market[0][k]=100;franchise.market[0].price=13000;
+    localStorage.setItem(SAVE_KEY,JSON.stringify(franchise));franchise=loadFranchise();`);
+  const id=q.state().franchise.market[0].id;
+  assert.equal(q.state().franchise.market[0].price,8950);
+  q.run('activateFranchise(franchise,0);activateFranchise(franchise,0)');
+  assert.equal(q.state().franchise.market[0].price,8950);
+  q.run('franchise.cash=10000;selectedRosterIndex=0;signReceiver(0)');
+  assert.equal(q.state().franchise.cash,1050);assert.equal(q.state().franchise.team[0].id,id);
+  q.run('franchise.market[0].price=140;normalizeMarketReceiver(franchise.market[0])');
+  assert.equal(q.state().franchise.market[0].price,140);
+});

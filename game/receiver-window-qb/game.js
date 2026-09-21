@@ -180,10 +180,12 @@ function defaultFranchise(){return{cash:250,round:1,wins:0,team:Array.from({leng
 function fallbackReceiverStrength(p){const arch=archetypes.find(a=>a.name===p?.archetype),sizeBonus={Big:7,Tall:2,Balanced:0,Compact:-3,Lean:-4}[p?.appearance?.sizeName]||0,catchInfluence=((Number(p?.catching)||50)-50)*.08;return clampRating((arch?.b?.strength||65)+sizeBonus+catchInfluence)}
 function normalizeReceiver(p){if(!p||typeof p!=='object')return newReceiver(false);for(const k of ['speed','cutting','turning','evasion','catching'])p[k]=clampRating(Number(p[k])||50);p.strength=Number.isFinite(Number(p.strength))?clampRating(Number(p.strength)):fallbackReceiverStrength(p);p.trainings=Math.max(0,Number(p.trainings)||0);p.name=String(p.name||'').slice(0,80)||`${firstNames[randInt(0,firstNames.length-1)]} ${lastNames[randInt(0,lastNames.length-1)]}`;p.archetype=String(p.archetype||'Prospect').slice(0,40);p.id=p.id||`wr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;p.price=Math.max(100,Number(p.price)||200);p.appearance=normalizeAppearance(p.appearance,true);P.migratePlayer(p);return p}
 let localSaveAvailable=true;
-function loadFranchise(){try{const raw=localStorage.getItem(SAVE_KEY);if(!raw)return defaultFranchise();const f=JSON.parse(raw);f.cash=Math.max(0,Number(f.cash)||0);f.round=Math.max(1,Number(f.round)||1);f.wins=Math.max(0,Number(f.wins)||0);f.team=(Array.isArray(f.team)?f.team:[]).slice(0,4).map(normalizeReceiver);while(f.team.length<4)f.team.push(newReceiver(false));f.market=(Array.isArray(f.market)?f.market:[]).slice(0,5).map(normalizeReceiver);while(f.market.length<5)f.market.push(newReceiver(true));return f}catch(err){localSaveAvailable=false;return defaultFranchise()}}
+// Reprice saved listings without rerolling recruits or raising legacy bargain prices.
+function normalizeMarketReceiver(p){p=normalizeReceiver(p);p.price=Math.min(p.price,P.signingPrice(playerOverall(p)));return p}
+function loadFranchise(){try{const raw=localStorage.getItem(SAVE_KEY);if(!raw)return defaultFranchise();const f=JSON.parse(raw);f.cash=Math.max(0,Number(f.cash)||0);f.round=Math.max(1,Number(f.round)||1);f.wins=Math.max(0,Number(f.wins)||0);f.team=(Array.isArray(f.team)?f.team:[]).slice(0,4).map(normalizeReceiver);while(f.team.length<4)f.team.push(newReceiver(false));f.market=(Array.isArray(f.market)?f.market:[]).slice(0,5).map(normalizeMarketReceiver);while(f.market.length<5)f.market.push(newReceiver(true));return f}catch(err){localSaveAvailable=false;return defaultFranchise()}}
 let franchise;
 try{franchise=slots[activeSlot]?P.validateSave(slots[activeSlot].data):loadFranchise()}catch{franchise=loadFranchise()}
-franchise.team.forEach(normalizeReceiver);franchise.market.forEach(normalizeReceiver);
+franchise.team.forEach(normalizeReceiver);franchise.market.forEach(normalizeMarketReceiver);
 function saveFranchise(){
   const stamp=Date.now();franchise.updatedAt=stamp;
   slots[activeSlot]={name:slots[activeSlot]?.name||`Franchise ${activeSlot+1}`,updatedAt:stamp,data:JSON.parse(JSON.stringify(franchise))};
@@ -1355,7 +1357,7 @@ function renderSlots(){
 }
 function activateFranchise(f,slot){
   if(replay)finishReplay();transition=null;clearPlayers();replayFrames=[];replayRecording=false;replayEligible=false;
-  snapDefense=null;attemptPending=false;franchise=f;franchise.scouting=V.cleanHistory(franchise.scouting);franchise.team=franchise.team.map(normalizeReceiver);franchise.market=franchise.market.map(normalizeReceiver);
+  snapDefense=null;attemptPending=false;franchise=f;franchise.scouting=V.cleanHistory(franchise.scouting);franchise.team=franchise.team.map(normalizeReceiver);franchise.market=franchise.market.map(normalizeMarketReceiver);
   $('cloudOffer').hidden=true;activeSlot=slot;selectedRosterIndex=0;managerLocked=false;$('managerLayer').style.display='none';
   score=0;catches=0;drops=0;ints=0;playState='dead';ball.visible=false;ballLive=false;restoreCheckpoint();saveFranchise();
   saveOpen=false;$('saveLayer').hidden=true;showMainMenu();

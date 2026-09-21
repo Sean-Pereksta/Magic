@@ -24,13 +24,17 @@
 
   // Ratings remain uncapped; physical benefits above 100 taper to avoid broken movement.
   const effective=v=>v<=100?v:100+40*(1-Math.exp(-(v-100)/80));
+  function signingPrice(overall){
+    const target=Math.max(60,rating(overall));
+    return Math.round((target<80?300+(target-60)*20:target<90?1500+(target-80)*170:target<97?3500+(target-90)*350:7000+(target-97)*650)/10)*10;
+  }
   function recruit(p,roll=Math.random(),random=Math.random){
     const band=roll<.85?[60,79,'Prospect']:roll<.95?[80,89,'Star']:roll<.99?[90,96,'Elite']:[97,105,'Generational'];
     const target=band[0]+Math.floor(random()*(band[1]-band[0]+1));
     const mean=stats.reduce((n,k)=>n+p[k],0)/stats.length;
     for(const k of stats)p[k]=rating(p[k]+target-mean);
     p.rarity=band[2];
-    p.price=Math.round((target<80?350+(target-60)*25:target<90?1800+(target-80)*220:target<97?5000+(target-90)*500:10000+(target-97)*1000)/10)*10;
+    p.price=signingPrice(target);
     return p;
   }
   function prestigeCost(p){return Math.min(Number.MAX_SAFE_INTEGER,Math.round(7500*Math.pow(2.5,p.prestige||0)));}
@@ -51,7 +55,7 @@
       hands:.18*(1-Math.exp(-growth/2))};
   }
 
-  function payout(won,round,touchdowns){return (won?250+Math.min(500,(round-1)*25):100+Math.min(150,(round-1)*10))+Math.floor(clamp(touchdowns,0,3))*25;}
+  function payout(won,round,touchdowns){return (won?750+Math.min(1500,(round-1)*75):100+Math.min(150,(round-1)*10))+Math.floor(clamp(touchdowns,0,3))*25;}
   function traits(p){
     p=Object.fromEntries(stats.map(k=>[k,effective(p[k])]));
     const jumpVelocity=2.8+p.athleticism*.021;
@@ -73,6 +77,6 @@
       if(c.seriesOffense<0||c.seriesOffense>2||c.seriesDefense<0||c.seriesDefense>2||!Number.isInteger(c.down)||c.down<1||c.down>4||c.ballSpotYards<0||c.ballSpotYards>=50||c.lineToGainYards<=c.ballSpotYards||c.lineToGainYards>50)throw new Error('Invalid drive checkpoint.');}
     return f;
   }
-  const api={stats,rating,effective,recruit,prestigeCost,prestige,defenseProgress,migratePlayer,train,payout,traits,validateSave};
+  const api={stats,rating,effective,signingPrice,recruit,prestigeCost,prestige,defenseProgress,migratePlayer,train,payout,traits,validateSave};
   if(typeof module!=='undefined')module.exports=api;root.QBProgression=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
