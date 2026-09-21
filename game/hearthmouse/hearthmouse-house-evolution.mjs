@@ -139,7 +139,7 @@ function updateDawn(engine, state) {
   const fogTarget = hexRgb(0x8f7d72);
   setColorRgb(engine.scene?.background, mixRgb(state.baseBackground, skyTarget, eased * 0.74));
   setColorRgb(engine.scene?.fog?.color, mixRgb(state.baseFog, fogTarget, eased * 0.58));
-  if (engine.renderer) engine.renderer.toneMappingExposure = state.baseExposure * (1 + eased * 0.38);
+  if (engine.renderer) engine.renderer.toneMappingExposure = state.baseExposure * (1 + eased * 0.38) * (engine.__survival?.lightExposure ?? 1);
 
   const warm = hexRgb(0xffd6a0);
   for (let index = 0; index < state.lightBaselines.length; index++) {

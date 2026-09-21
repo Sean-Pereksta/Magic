@@ -246,10 +246,13 @@ function installManagerPatch() {
   if (typeof originalApplyRoomGroupVisibility !== "function") return false;
 
   prototype.applyRoomGroupVisibility = function hearthmouseStableRoomVisibility() {
-    extractPersistentRoomStructures(this);
+    const state = managerState(this);
+    const revision = this.engine.__expansion?.routeRevision ?? 0;
+    const needsAudit = !Number.isFinite(state.nextAudit) || this.clock >= state.nextAudit || state.revision !== revision;
+    if (needsAudit) { extractPersistentRoomStructures(this); state.nextAudit = this.clock + 0.8; state.revision = revision; }
     const result = Reflect.apply(originalApplyRoomGroupVisibility, this, arguments);
     applyPersistentStructureVisibility(this);
-    batchPersistentStructures(this);
+    if (needsAudit) batchPersistentStructures(this);
     return result;
   };
 

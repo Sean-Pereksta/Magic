@@ -1,0 +1,21 @@
+# Hearthmouse survival and performance upgrade
+
+The existing colony, campaign, procedural rigs, traps, secret routes and controls remain the foundation.
+
+- Actor routes survive repeated planning requests. Target movement, strategy/task changes, navigation revision, room changes, promotion and blocked waypoints invalidate them. Unreachable destinations have a retry delay. Distant cats navigate strategic room waypoints; local routing resumes when relevant.
+- The performance manager reserves a maximum of 20 sight rays per desktop frame, or 12 on touch devices. Player chases and close threats have priority; peers rotate fairly. Adjacent cats use two probes. Distant cats stop raycasting until relevant to the player or a nearby colony mouse. Skipped samples never expose a hidden target's current position.
+- Static scenery batches share materials and parent visibility. Original meshes remain in LOS indexes. Doors, hiding objects, dynamic props, food and actors stay independent. Structural audits run on navigation changes or every 0.8 seconds instead of every frame. Wall cuts rebuild their visual batches.
+- Each cat learns from its own witnessed room visits, food raids, paths, hiding places, furniture escapes and tunnel entries. Habits decay, need repeated encounters, and only occasionally bias patrols. One cat at a time may watch a learned approach, for at most four seconds; the nest's immediate area is excluded. Repeated food distractions become less effective.
+- Food has light, bulky and heavy loads. Heavy loads reduce top speed, acceleration, direction changes and jumps, increase noise, and cannot fit narrow tunnels or climb cords. Visual food size and the drop control communicate the load. Colony carrying speed also scales with load.
+- Drop immediately with **F**, **E / the existing interact action** outside the nest, or the on-screen **Drop Food** button. The item remains collectible; a short pickup grace period prevents accidental reattachment. Dropping inside a tunnel leaves the food at its entrance. Edible food can briefly distract a nearby cat, depending on temperament and previous distractions.
+- Walk toward hanging fabric or a cord to climb actual furniture. Keep moving to cross its top, jump short gaps, or drop from an edge. Low obstacles support automatic scrambling. The player collision check uses current elevation and nearby colliders; overhead furniture leaves a scurry space. Climbing can be cancelled by moving back. Paw motion, camera movement and landing motion show the action.
+- Cat catches now require a pounce/swat: windup, a short aim lock before launch, swept front-paw contact, then recovery. Cats cannot steer their flight toward a last-second dodge. Furniture interrupts the attack and lengthens recovery. Close-range swats still have a brief warning; tunnel/trap and dog behavior keep their own rules.
+- Occasional footsteps, lighting changes, refrigerator food opportunities, falling objects, TV noise, doors, vacuum passes, thunder and dropped food affect hearing, sight, routes or foraging. Door closure is warned, rejects occupied doorways and requires an alternate open route; temporary doors reopen after seven seconds or on night reset. Event food is bounded. One reused prop and one optional shadow-free light keep event costs small.
+- Darkness shortens identification distance and slows detection, but never prevents nearby identification or hearing. Illumination also changes exposure so the tradeoff is visible. Dawn restores visibility gradually.
+
+## Validation
+
+Run `npm run test:hearthmouse` and `npm run bench:hearthmouse`.
+The survival regressions use the bundled Three.js runtime for movement, geometry, paw collisions, raycasts and load tests. They cover global ray caps, door LOS invalidation, route reuse/invalidation, independent decaying memories, food drop/recovery, failed and successful pounces, wall-cut batching, traversal and alternate-route door rules.
+
+Headless browser scenarios cover boot, nights 1/4/11, one/two/three cats, pickup/drop grace, each household-event type, cord traversal, rendering and the actual per-frame ray cap. The tested house saves 113 static draw calls. Browser software rendering and synthetic benchmark timings are not device FPS measurements; play feel and hardware frame pacing still need human playtesting.

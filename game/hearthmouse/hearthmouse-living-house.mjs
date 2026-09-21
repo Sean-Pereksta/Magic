@@ -1,3 +1,4 @@
+import { foodLoad } from "./hearthmouse-survival-core.mjs";
 import { carveMouseOpening } from "./hearthmouse-habitat.mjs";
 import {
   ROOM_LAYOUT_BY_ID,
@@ -1119,6 +1120,7 @@ function assignTunnelExitStalk(engine, state, route, source, target, actorTarget
   const knewExit = knownRoutes.has(route.id);
   // A nearby, visible second mouth can be learned without omniscience.
   if (planarDistance(source, target) < 1 && (engine.targetVisibility?.(witness, actorTargetId, alternateExitPosition) ?? 0) > 0) knownRoutes.add(route.id);
+  const familiarity = engine.observeWitnessedTunnel?.(witness, route, source, target, knewExit) ?? 0;
   witness.targetId = null;
   witness.awareness = Math.max(witness.awareness ?? 0, 0.32);
   witness.investigation?.copy?.(exitPosition);
@@ -1137,7 +1139,7 @@ function assignTunnelExitStalk(engine, state, route, source, target, actorTarget
     alternateWaitPosition,
     until: now + authored.patience,
     switchAt: now + authored.switchAfter,
-    willSwitch: authored.willSwitch && knewExit,
+    willSwitch: (authored.willSwitch || familiarity >= 2.5) && knewExit,
     switched: false,
   };
   engine.planCatPath?.(witness, waitPosition);
@@ -1162,8 +1164,15 @@ function beginTunnelTransit(engine, state, route, source, target, position, acto
   if ((state.routeCooldowns.get(actorId) ?? 0) > now) return false;
   if (actorId === PLAYER_TARGET_ID ? state.playerTunnelTransit : state.mouseTunnelTransits.has(actorId)) return false;
 
+  const load = foodLoad(mouse?.carriedFood ?? (actorId === PLAYER_TARGET_ID ? engine.carriedFood : null));
+  if (load.bulk > (route.family === "furniture" ? 0.24 : 0.17)) {
+    if (!mouse && now >= (state.nextBurdenHint ?? 0)) { engine.showMessage?.("That food will not fit. Drop it with F / the drop button.", 2); state.nextBurdenHint = now + 4; }
+    if (mouse) { mouse.__secretPlanCooldownUntil = now + 3; mouse.__secretRoutePlan = null; }
+    return false;
+  }
+  if (!mouse && (engine.playerElevation ?? 0) > 0.12) return false;
   const wasKnown = state.discoveredRoutes.has(route.id);
-  const duration = tunnelTraversalDuration(route);
+  const duration = tunnelTraversalDuration(route) / load.speed;
   const actorTargetId = mouse?.member?.id ?? PLAYER_TARGET_ID;
   const sourcePosition = tunnelExitPosition(state.I, source);
   assignTunnelExitStalk(engine, state, route, source, target, actorTargetId, sourcePosition);

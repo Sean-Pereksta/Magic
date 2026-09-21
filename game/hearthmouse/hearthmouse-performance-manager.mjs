@@ -1,3 +1,4 @@
+import { SightBudget } from "./hearthmouse-survival-core.mjs";
 import {
   DOORWAY_CORRIDORS,
   ROOM_LAYOUTS,
@@ -99,6 +100,7 @@ export function shouldInvalidateLosSample(sample, current) {
   if (!sample) return true;
   if (sample.state !== current.state || sample.routeRevision !== current.routeRevision) return true;
   if (sample.catRoom !== current.catRoom || sample.targetRoom !== current.targetRoom) return true;
+  if (Math.abs((sample.targetY ?? 0) - (current.targetY ?? 0)) > 0.04) return true;
   if (!Number.isFinite(sample.time) || current.time < sample.time) return true;
   if (current.distanceSquared < 0.64) return true;
   const targetThreshold = current.state === "chase" ? 0.0025 : 0.0256;
@@ -205,6 +207,7 @@ export class HearthmousePerformanceManager {
       this.adjacency.get(first)?.push({ room: second, doorway });
       this.adjacency.get(second)?.push({ room: first, doorway });
     }
+    this.sightBudget = new SightBudget();
     this.clock = 0;
     this.frameId = 0;
     this.frameOpen = false;
@@ -257,6 +260,9 @@ export class HearthmousePerformanceManager {
       catLosChecks: 0,
       losRaycasts: 0,
       losCacheHits: 0,
+      losBudgetDeferrals: 0,
+      pathReuses: 0,
+      pathBuilds: 0,
       aiDecisionUpdates: 0,
       distantAiUpdatesSkipped: 0,
       catVisionScansSkipped: 0,
@@ -283,6 +289,8 @@ export class HearthmousePerformanceManager {
     this.stats.distantAnimationActors = 0;
     this.stats.sleepingVisualActors = 0;
     this.updateRoomVisibility();
+    this.sightBudget.begin(this.engine.cats ?? [], this.frameId, this.isTouchDevice ? 12 : 20,
+      cat => this.sightPriority(cat), cat => this.catIntelligenceTier(cat) === "distant" ? 0 : this.catIntelligenceTier(cat) === "adjacent" ? 2 : 5);
   }
 
   endFrame() {
@@ -664,9 +672,37 @@ export class HearthmousePerformanceManager {
     this.metadataFor(actor).shadowDirty = true;
   }
 
+  catIntelligenceTier(cat) {
+    const m = this.classifyActor(cat, "cat");
+    if (m.intelligenceFrame === this.frameId && m.intelligenceState === cat.state) return m.intelligenceTier;
+    m.intelligenceFrame = this.frameId; m.intelligenceState = cat.state;
+    const close = planarDistanceSquared(cat.rig?.root?.position, this.engine.playerPosition) < 12.25;
+    // Nearby colony mice keep off-screen encounters physical and responsive.
+    const colonyEncounter = (this.engine.mice ?? []).some(mouse => mouse.member?.alive &&
+      planarDistanceSquared(mouse.rig?.root?.position, cat.rig?.root?.position) < 6.25);
+    if (close || m.room === this.playerRoom || cat.state === "chase" || cat.pouncePhase === "windup" || cat.pouncePhase === "flight" || colonyEncounter) return m.intelligenceTier = "full";
+    return m.intelligenceTier = this.roomDistance(m.room) <= 1 ? "adjacent" : "distant";
+  }
+
+  sightPriority(cat) {
+    if (cat.state === "chase" && cat.targetId === "player") return 0;
+    if (planarDistanceSquared(cat.rig?.root?.position, this.engine.playerPosition) < 4) return 1;
+    if (ALERT_CAT_STATES.has(cat.state) || cat.state === "chase") return 2;
+    return this.catIntelligenceTier(cat) === "distant" ? 4 : 3;
+  }
+
+  takeSightRays(cat, count) {
+    // No unbounded fallback for probes made between visual frames.
+    if (this.sightBudget.take(cat, count)) return true;
+    this.record("losBudgetDeferrals");
+    return false;
+  }
+
   shouldScanCatVision(cat) {
     const metadata = this.classifyActor(cat, "cat");
-    const interval = catVisionIntervalSeconds(cat?.state, metadata.visualTier, this.isTouchDevice);
+    const intelligence = this.catIntelligenceTier(cat);
+    if (intelligence === "distant") { this.record("catVisionScansSkipped"); return false; }
+    const interval = intelligence === "adjacent" ? 0.32 : catVisionIntervalSeconds(cat?.state, metadata.visualTier, this.isTouchDevice);
     if (cat?.state === "chase") {
       metadata.lastVisionScanAt = this.clock;
       return true;
@@ -746,6 +782,11 @@ export class HearthmousePerformanceManager {
       aiDecisionUpdatesPerSecond: this.rates.aiDecisionUpdates,
       distantAiUpdatesSkippedPerSecond: this.rates.distantAiUpdatesSkipped,
       catVisionScansSkippedPerSecond: this.rates.catVisionScansSkipped,
+      sightRayBudget: this.sightBudget.limit,
+      sightRaysThisFrame: this.sightBudget.used,
+      sightDeferralsPerSecond: this.rates.losBudgetDeferrals,
+      pathReusesPerSecond: this.rates.pathReuses,
+      pathBuildsPerSecond: this.rates.pathBuilds,
       playerRoom: this.playerRoom,
       activeRoomIds: [...this.activeRenderRooms],
       visibleDoorwayIds: [...this.visibleDoorways],
