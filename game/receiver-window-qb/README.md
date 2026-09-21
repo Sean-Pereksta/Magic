@@ -73,19 +73,58 @@ Tests cover launch gating and one-roll rarity, reachable first downs, goal dives
 
 ## Expanded playbook and roster identity
 
-The playbook now has 18 concepts. Original 1–8 shortcuts remain; use arrows and
-Enter, mouse, or touch to select any play. Bunch Flood/Rub, Trips Sail, Quick
-Stick, Stack Switch, Deep Scissors, WR Bubble, Tunnel Screen, Motion Flood and
-Motion Cross use distinct alignments, routes or pre-snap motion. The playbook
-shows the read and useful roster attributes for each new concept.
+The playbook has 44 concepts across seven tabs: Quick Game, Intermediate,
+Deep Shots, Screens, Bunch / Stack, Motion and Trick Plays. Original 1–8
+shortcuts remain; use arrows and Enter, mouse, or touch for every play and tab.
+New concepts have formation spacing, release depths, option reads, motion or
+screen assignments. Five trick concepts use bubble/wheel, tunnel/go, sluggo,
+fake quick screen and motion reversal routes; they keep the standard QB throw.
 
-Bubble (H behind Y/Z) and Tunnel (X behind H/Y) settle behind the line. Throw
-early: nearby corners recognize a stalled receiver using delayed observations.
-After catches, nearby teammates seek brief front/side blocks. Strength, actual
-body size, facing and relative momentum control the slowdown and hold duration
-(0.12–0.85 seconds); defender recovery prevents repeated lockups. Screens follow
-nearby lead receivers briefly, then transition to normal pursuit and running.
-Audibles can replace screen/lead routes as usual.
+Screens identify one intended receiver and two lead blockers. Blockers begin
+positioning before the catch, claim separate threats, and approach the shoulder
+between defender and carrier. Other receivers also help during YAC. Strength,
+size, leverage and closing momentum determine contact effectiveness. Holds last
+0.12–0.85 seconds, followed by a defender recovery window; weak blocks can shed
+almost immediately. A Blocking Receiver prioritizes useful seals.
+
+The designated screen target receives 1.4 seconds of +22% acceleration, +10%
+maximum speed and +4.5 percentage points of juke success. The runner favors nearby
+lead blockers before choosing an open lane. Changing that target's route with
+an audible removes screen eligibility. Repeated screen use improves recognition
+of observed shallow movement; defenders cannot see hidden route paths.
+
+Post-catch movement scores forward and diagonal corridors against projected
+pursuit. Lateral movement is available, while backward cuts are penalized and
+voluntary retreat is limited to 1.6 yards from the best run position, or 0.6 yards
+within four yards of a first-down/goal marker. Physical contact impulses remain
+separate. A clear goal lane takes the runner straight into the end zone.
+
+Roster playstyles are derived from existing archetypes, preserving save data:
+Deep Threat acquires deep tracking windows earlier; Route Technician settles
+away from nearby coverage; YAC Specialist uses wider lanes/more moves; Power
+and Possession receivers favor forward progress over avoidance; Blocking Receiver
+prioritizes blocking leverage. The new Blocking archetype can appear in recruitment.
+
+Only designated Option routes make a coverage read. Cutting/turning control read
+speed and reliability: curl against deep coverage, continue vertically against
+underneath coverage, or break away from leverage. The route panel reports the read.
+
+Press **F** or tap **PUMP** during the eight-second QB window. It aims at the
+receiver nearest the camera direction and can cause at most one nearby defender
+to take a short false step. A 1.1-second cooldown and persisted matchup memory
+reduce success for repeat pumps, targets and concepts. Veterans bite less often;
+Gamblers/Ball Hawks jump observed routes more aggressively. Bullies, Track Team
+and Heavy Hitters vary physical strength, speed and coverage pools. Memories reset
+when the matchup finishes or changes, not when another play is called.
+
+Select a receiver pre-snap to **Widen**, **Tighten** (up to two yards from the
+concept's alignment), or set **Motion** on Motion/Bunch/Trick concepts. Both QB
+look controls now reach 90 degrees left/right; receiver facing follows movement.
+
+Light Rain reduces receiver and defender turning 4% and catch-control probability 2.5 percentage points.
+Windy adds at most 0.32 world units/s² of crosswind to elevated passes. Cold adds
+3.5% defender contact strength. Existing weather indices and neutral conditions
+retain their meanings; gameplay variation stays small.
 
 Speed, cutting acceleration and turning have wider rating differences, with
 prestige benefits still bounded. Player dimensions derive from SIZE and STR;

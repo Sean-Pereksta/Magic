@@ -3,7 +3,7 @@ const THREE=require('./vendor/three.min.js'),P=require('./progression.js');
 const source=fs.readFileSync(__dirname+'/game.js','utf8');
 function extract(name){const start=source.indexOf('function '+name+'(');assert.ok(start>=0);const next=source.indexOf('\nfunction ',start+1);return source.slice(start,next<0?undefined:next);}
 function context(){
-  const c=vm.createContext({THREE,P,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),throwTime:0,
+  const c=vm.createContext({THREE,P,V:require('./variety.js'),readOptionRoute:()=>{},matchWeather:()=>({name:'Day'}),ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),throwTime:0,
     routePosition:()=>new THREE.Vector3(),updateTricks:()=>{},receiverContactFactors:()=>({speed:1,accel:1}),
     updateJump:()=>{},animatePlayerContact:()=>{},ballApproach:()=>null,predictedLanding:new THREE.Vector3(),predictedFlightTime:0});
   for(const name of ['wantsHighPoint','getBallLanding','receiverBallPlan','updateReceiver'])vm.runInContext(extract(name),c);

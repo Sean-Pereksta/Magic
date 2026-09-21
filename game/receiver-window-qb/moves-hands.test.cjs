@@ -9,7 +9,7 @@ function actor(){
   mesh.userData={visualRig:rig,hands,arms,body:new THREE.Object3D(),feet:[],legs:[]};
   return {mesh,profile:P.migratePlayer({name:'Test',speed:80,cutting:80,turning:80,evasion:80,catching:80,strength:80,tricks:80}),velocity:new THREE.Vector3(),impactVel:new THREE.Vector3(),trackingBall:true,jumpY:0,stagger:0,fakeUntil:0};
 }
-function context(){const c=vm.createContext({THREE,P,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),gameTime:1000,defenders:[],ballCarrier:null,currentSkill:()=>.8,flashResult:()=>{},Math:Object.create(Math)});for(const name of ['poseJointedLimbs','receiverHandTarget','trackReceiverHands','animatePlayerContact','tryJuke','defenderTarget'])vm.runInContext(extract(name),c);return c;}
+function context(){const c=vm.createContext({THREE,P,V:require('./variety.js'),franchise:{conceptMemory:[]},plays:[{name:'Mesh'}],selectedPlay:0,activeRound:()=>1,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),gameTime:1000,defenders:[],ballCarrier:null,currentSkill:()=>.8,flashResult:()=>{},Math:Object.create(Math)});for(const name of ['poseJointedLimbs','receiverHandTarget','trackReceiverHands','animatePlayerContact','tryJuke','defenderTarget'])vm.runInContext(extract(name),c);return c;}
 test('hands reach left, right, low and high with bounded shoulders',()=>{
   for(const [x,y] of [[-1,1.4],[1,1.4],[0,.4],[0,2.7]]){
     const c=context(),r=actor();c.ball.position.set(x,y,.25);

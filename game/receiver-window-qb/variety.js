@@ -100,6 +100,68 @@
     {name:'Motion Flood',family:'Motion',xs:[-18,-4,8,18],routes:['Post','Flat','Out','Go'],motion:{slot:1,to:4},hint:'H motions right before the snap; read the three-level flood.'},
     {name:'Motion Cross',family:'Motion',xs:[-18,-8,4,18],routes:['Go','Drag','Wheel','Dig'],motion:{slot:2,to:-4},hint:'Y motions into a wheel while crossers attack underneath.'}
   ];
-  const api={concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
+  const categories=['Quick Game','Intermediate','Deep Shots','Screens','Bunch / Stack','Motion','Trick Plays'];
+  const category=p=>p.category||({Quick:'Quick Game',Bunch:'Bunch / Stack',Stack:'Bunch / Stack',Trips:'Intermediate',Shots:'Deep Shots'}[p.family])||(['Screens','Motion'].includes(p.family)?p.family:'Intermediate');
+  const add=(name,category,routes,xs,hint,extra={})=>concepts.push({name,category,routes,xs,hint,...extra});
+  add('Slant / Flat','Quick Game',['Slant','Flat','Stick','Fade'],[-19,-7,6,18],'Inside leverage opens the flat; outside leverage opens the slant.');
+  add('Spacing','Quick Game',['Stick','Flat','Stick','Curl'],[-18,-6,5,19],'Three short windows; catch, turn and protect the first down.');
+  add('Quick Outs','Quick Game',['Out','Stick','Flat','Out'],[-15,-5,5,15],'Sideline spacing with an inside outlet.');
+  add('Choice Stick','Quick Game',['Slant','Option','Flat','Go'],[-19,-6,6,18],'H reads leverage at five yards: curl, go, in or out.');
+  add('Shallow Mesh','Intermediate',['Drag','Dig','Go','Drag'],[-18,-8,7,19],'Crossers at different depths create a natural rub.',{depths:[0,1,0,3]});
+  add('Drive Over','Intermediate',['Dig','Drag','Corner','Curl'],[-19,-5,7,19],'Drag below the dig; curl holds the opposite corner.');
+  add('Levels Switch','Intermediate',['Dig','Stick','Dig','Post'],[-20,-8,5,16],'Layer the middle at three depths.',{depths:[0,3,0,2]});
+  add('Smash Choice','Intermediate',['Curl','Corner','Option','Fade'],[-20,-10,6,19],'Curl/corner high-low left; Y adjusts to leverage.');
+  add('Seam Verticals','Deep Shots',['Fade','Go','Go','Fade'],[-20,-7,7,20],'Wide fades stretch safeties away from the seams.');
+  add('Slot Fade','Deep Shots',['Curl','Fade','Post','Out'],[-20,-9,6,19],'Outside curl draws the corner under the slot fade.');
+  add('Post / Wheel','Deep Shots',['Post','Wheel','Drag','Go'],[-17,-8,6,19],'Post clears inside while the wheel climbs outside.');
+  add('Switch Verticals','Deep Shots',['Wheel','Post','Post','Wheel'],[-16,-9,9,16],'Cross the release lanes, then attack vertical space.');
+  add('Slip Screen','Screens',['Go','Slip','Lead','Lead'],[-19,3,8,14],'H slips behind two moving blockers; throw early.',{screen:1});
+  add('Left Bubble','Screens',['Lead','Lead','Bubble Left','Go'],[-18,-12,-7,19],'Y widens left behind X/H; wait for the lane.',{screen:2});
+  add('Middle Tunnel','Screens',['Go','Lead','Tunnel','Lead'],[-19,-4,8,15],'Y folds inside while H/Z seal pursuit.',{screen:2});
+  add('Bunch Cross','Bunch / Stack',['Go','Drag','Dig','Slant'],[-19,6,8.5,11],'Staggered releases separate underneath crossers.',{depths:[0,3,0,2]});
+  add('Stack Choice','Bunch / Stack',['Fade','Option','Go','Drag'],[-12,-12,12,12],'Back slot reads the coverage after the stack release.',{depths:[0,3,0,3]});
+  add('Bunch Screen','Bunch / Stack',['Post','Bubble','Lead','Lead'],[-19,5,9,13],'Compact spacing lets two strong receivers lead H.',{screen:1,depths:[0,3,0,1]});
+  add('Motion Mesh','Motion',['Drag','Dig','Drag','Fade'],[-18,-7,5,19],'Y crosses before the snap then joins the shallow mesh.',{motion:{slot:2,to:-3}});
+  add('Jet Bubble','Motion',['Lead','Bubble Left','Lead','Go'],[-18,5,-10,19],'H motions left into a screen behind X/Y.',{motion:{slot:1,to:-5},screen:1});
+  add('Motion Seam','Motion',['Out','Go','Option','Post'],[-18,-8,6,19],'H tightens into the seam; Y reads the underneath leverage.',{motion:{slot:1,to:-3}});
+  add('Fake Bubble → Wheel','Trick Plays',['Go','Bubble Wheel','Lead','Post'],[-19,5,11,18],'H sells a bubble before accelerating upfield. Pump once.',{trick:true});
+  add('Fake Tunnel → Shot','Trick Plays',['Tunnel Go','Lead','Corner','Post'],[-18,-10,5,19],'X flashes inside, then climbs vertically.',{trick:true});
+  add('Sluggo','Trick Plays',['Double Move','Flat','Dig','Fade'],[-18,-7,6,19],'Slant-and-go against route jumpers. Repeats lose surprise.',{trick:true});
+  add('Fake Quick Screen','Trick Plays',['Bubble Wheel','Lead','Dig','Go'],[-10,-18,6,19],'Show the screen, then attack the vacated sideline.',{trick:true});
+  add('Motion Misdirection','Trick Plays',['Post','Return','Wheel','Dig'],[-19,-7,7,19],'H motions right then reverses across the formation.',{motion:{slot:1,to:5},trick:true});
+  function playstyle(p){
+    const map={'Burner':'Deep Threat','Route Tech':'Route Technician','Comeback Artist':'Route Technician','Open-Field':'YAC Specialist','Raw Athlete':'YAC Specialist','Power Slot':'Power Receiver','Possession':'Possession Receiver','Sure Hands':'Possession Receiver','Blocking':'Blocking Receiver'};
+    return map[p.archetype]||((p.strength+p.size)/2>p.speed?'Blocking Receiver':'Route Technician');
+  }
+  function pumpChance(memory,target,concept,discipline=.5){
+    const h=Array.isArray(memory)?memory:[],same=h.filter(x=>x.target===target).length,route=h.filter(x=>x.concept===concept).length;
+    return clamp((.55-discipline*.4)*Math.exp(-h.length*.22-same*.35-route*.3),0,.55);
+  }
+  function weather(name){return {cut:name==='Light Rain'?.96:1,hands:name==='Light Rain'?.025:0,wind:name==='Windy'?.32:0,contact:name==='Cold'?1.035:1};}
+  // Score sampled forward corridors, not summed repulsion. Retreat is exceptional.
+  function lane({x,z,defenders,style,bestZ=z,goalZ=-60,markerZ=-10,lead=null}){
+    const near=Math.min(Math.abs(z-markerZ),Math.abs(z-goalZ))<8,limit=near?1.2:3.2;
+    const wide=style==='YAC Specialist',power=style==='Power Receiver'||style==='Possession Receiver';
+    const angles=[0,-.32,.32,-.65,.65,-1,1,-1.35,1.35,-Math.PI/2,Math.PI/2];
+    if(z-bestZ<limit&&!near&&!power)angles.push(-1.8,1.8);
+    let best=null;
+    for(const a of angles){const dx=Math.sin(a),dz=-Math.cos(a);let risk=0;
+      for(const d of defenders){for(const t of [.2,.5,.85]){const px=x+dx*6*t,pz=z+dz*6*t,dist=Math.hypot(px-d.x-(d.vx||0)*t*.5,pz-d.z-(d.vz||0)*t*.5);risk+=Math.max(0,2.7-dist)*(d.blocked?.3:1);}}
+      const endX=x+dx*4,forward=-dz,back=dz>0;
+      let score=forward*(near?5:power?3.6:2.6)-risk*(power?.85:1.3)-Math.max(0,Math.abs(endX)-23)*2-(back?3.5+(z-bestZ)*2:0);
+      if(!wide)score-=Math.abs(dx)*.18;
+      if(lead&&!back)score-=Math.hypot(x+dx*3-lead.x,z+dz*3-lead.z)*.15;
+      if(!best||score>best.score)best={x:dx,z:dz,score,risk,limit};
+    }
+    return best;
+  }
+  identities.push(
+    {name:'Gamblers',schemes:['robber','press','pressure'],speed:.1,strength:0,hands:.03,depth:-1,discipline:.15},
+    {name:'Bullies',schemes:['press','bracket'],speed:-.15,strength:14,hands:0,depth:0,discipline:.5},
+    {name:'Track Team',schemes:['match','twohigh'],speed:.45,strength:-12,hands:0,depth:0,discipline:.45},
+    {name:'Veterans',schemes:['disguise','match','deep'],speed:-.2,strength:2,hands:.03,depth:1,discipline:.95},
+    {name:'Heavy Hitters',schemes:['pressure','underzone'],speed:-.2,strength:16,hands:-.02,depth:0,discipline:.55});
+  identities[5].discipline=.25;
+  const api={categories,category,playstyle,pumpChance,weather,lane,concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
   if(typeof module!=='undefined')module.exports=api;root.QBVariety=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
