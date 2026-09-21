@@ -114,3 +114,24 @@ field/menu state without advancing downs, payouts or time. Replay data is not
 part of local/cloud saves and is cleared when switching franchises. One bounded
 recording and one detached actor set are retained, with owned resources disposed
 when replaced.
+
+## Opponent tour and rematches
+
+Open **Team & Opponents** from the main menu or **Team** between rounds. Previous /
+Next cycles through every defeated opponent and the current campaign opponent;
+select **Play Rematch**, then continue to the field. The card shows team number,
+defensive identity, recorded wins/losses and the three-touchdown win prize.
+Changing opponents is allowed only between matchups, never mid-drive or mid-series.
+
+Rematches use the earlier opponent's round for coverage identity, physical
+ratings, uniform and cash calculation. All rematch cash, including participation
+and touchdown bonuses, is 20% of that opponent's normal reward. They do not
+advance or erase campaign progress. After a rematch, the next campaign opponent
+is selected again; another rematch can be chosen in the room.
+
+The first eight opponents remain intact. The generated tour now combines 32
+names with 16 mascots for 512 additional teams: **520 unique teams**, followed by
+numbered leagues with continuing difficulty progression. This fixes the former
+16-name repetition. Existing saves infer defeated teams from campaign progress;
+new per-opponent results, selected rematch and match-in-progress state survive
+local/cloud saves. Historical losses before this update cannot be reconstructed.

@@ -135,11 +135,11 @@ const baseOpponents=[
   {name:'All-Pro DBs',skill:.80,schemes:['robber','match','pressure']},
   {name:'Championship Defense',skill:.92,schemes:['press','twohigh','robber','match','pressure']}
 ];
-const endlessAdjectives=['Iron','Night','Storm','Prime','Viper','Titan','Phantom','Cobalt','Crimson','Onyx','Apex','Metro','Crown','Blitz','Steel','Summit'];
+const endlessAdjectives=['Iron','Night','Storm','Prime','Viper','Titan','Phantom','Cobalt','Crimson','Onyx','Apex','Metro','Crown','Blitz','Steel','Summit','Arctic','Solar','Copper','Royal','Wild','Silver','Golden','Scarlet','Coastal','Granite','Midnight','Thunder','Emerald','Frost','Desert','Obsidian'];
 const endlessNouns=['Ballhawks','Shadows','Sentinels','Lockdown','Wardens','Jackals','Falcons','Guard','Hunters','Legion','Cyclones','Reapers','Stalkers','Titans','Rangers','Dragons'];
 function opponentForRound(round){
   if(round<=baseOpponents.length)return baseOpponents[round-1];
-  const i=round-1,name=`${endlessAdjectives[i%endlessAdjectives.length]} ${endlessNouns[(i*7+3)%endlessNouns.length]}`;
+  const i=round-baseOpponents.length-1,count=endlessAdjectives.length*endlessNouns.length,season=Math.floor(i/count),name=`${endlessAdjectives[i%endlessAdjectives.length]} ${endlessNouns[Math.floor(i/endlessAdjectives.length)%endlessNouns.length]}${season?' · League '+(season+1):''}`;
   const skill=Math.min(.98,.86+(round-baseOpponents.length)*.012);
   const schemeSets=[['press','robber','match'],['twohigh','match','pressure'],['press','twohigh','pressure'],['robber','match','pressure'],['press','twohigh','robber','match','pressure']];
   return{name,skill,schemes:schemeSets[i%schemeSets.length]};
@@ -189,6 +189,7 @@ function normalizeMarketReceiver(p){p=normalizeReceiver(p);p.price=Math.min(p.pr
 function loadFranchise(){try{const raw=localStorage.getItem(SAVE_KEY);if(!raw)return defaultFranchise();const f=JSON.parse(raw);f.cash=Math.max(0,Number(f.cash)||0);f.round=Math.max(1,Number(f.round)||1);f.wins=Math.max(0,Number(f.wins)||0);f.team=(Array.isArray(f.team)?f.team:[]).slice(0,4).map(normalizeReceiver);while(f.team.length<4)f.team.push(newReceiver(false));f.market=(Array.isArray(f.market)?f.market:[]).slice(0,5).map(normalizeMarketReceiver);while(f.market.length<5)f.market.push(newReceiver(true));return f}catch(err){localSaveAvailable=false;return defaultFranchise()}}
 let franchise;
 try{franchise=slots[activeSlot]?P.validateSave(slots[activeSlot].data):loadFranchise()}catch{franchise=loadFranchise()}
+P.normalizeCompetition(franchise);
 franchise.team.forEach(normalizeReceiver);franchise.market.forEach(normalizeMarketReceiver);
 function saveFranchise(){
   const stamp=Date.now();franchise.updatedAt=stamp;
@@ -198,8 +199,10 @@ function saveFranchise(){
 }
 function updateSavePill(){const el=$('savePill');if(el){el.textContent=localSaveAvailable?'LOCAL SAVE ✓':'LOCAL SAVE FAILED';el.style.color=localSaveAvailable?'#bdf8d2':'#ff8c91'}}
 franchise.scouting=V.cleanHistory(franchise.scouting);
-let currentDefense=defenses[0],currentOpponentUniform=opponentUniformForRound(franchise.round),receivers=[],defenders=[];
+let currentDefense=defenses[0],currentOpponentUniform=opponentUniformForRound(activeRound()),receivers=[],defenders=[];
 let tournamentStage=franchise.round-1,seriesOffense=0,seriesDefense=0,playNumber=1,score=0,catches=0,drops=0,ints=0,playState='dead';
+let browsedOpponent=1;
+function activeRound(){return P.matchRound(franchise)}
 let selectedRosterIndex=0,managerLocked=false,audibleReceiverIndex=null;
 let ballVel=new THREE.Vector3(),ballPrev=new THREE.Vector3(),ballLive=false,throwTime=0,spiralQuality=1,duckPhase=0,lastTime=performance.now(),snapTime=0,nextCount=0,charging=false,chargeStart=0,chargePower=0,messageTimer=0,resultFlashTimer=0;
 let throwClock=8,loftBias=0,keyLoft=false,keyBullet=false;
@@ -218,21 +221,48 @@ function swatchLineHTML(a){return `<div class="swatchLine"><span class="swatchGr
 function trainingCost(p){return 90+p.trainings*55}
 function rosterCardHTML(p,i){const cost=trainingCost(p),max=p.trainings>=5,a=playerLook(p);return `<div data-tier="${playerTier(p)}" class="playerCard ${i===selectedRosterIndex?'selected':''}" data-roster="${i}" tabindex="0" role="button" aria-label="Select ${escapeHTML(p.name)} as replacement slot"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${['X','H','Y','Z'][i]} · ${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)} · ${Object.values(p.trainingByStat).reduce((a,b)=>a+b,0)} sessions</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="trainGrid">${P.stats.map(k=>`<button data-train-slot="${i}" data-stat="${k}" ${p.trainingByStat[k]>=5?'disabled':''} title="$${90+p.trainingByStat[k]*55} · ${p.trainingByStat[k]}/5 sessions">+ ${statLabel(k)}</button>`).join('')}</div><div class="costLine">Training $90–310 per attribute · 5 sessions each · Prestige ${p.prestige||0}</div><button data-prestige="${i}" ${P.stats.some(k=>p.trainingByStat[k]>=5)?'':'disabled'}>PRESTIGE · ${P.prestigeCost(p).toLocaleString()}</button><div class="costLine">Keep ratings. Renew five sessions per attribute. Next prestige costs more.</div></div>`}
 function marketCardHTML(p,i){const a=playerLook(p);return `<div data-tier="${playerTier(p)}" class="playerCard"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)}</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="costLine">${escapeHTML(p.rarity||'Prospect')} · Signing cost: ${p.price}</div><button class="signBtn" data-sign="${i}">SIGN · REPLACE ${['X','H','Y','Z'][selectedRosterIndex]}</button></div>`}
-function renderManager(){$('cashPill').textContent=`$${franchise.cash}`;$('roundPill').textContent=`Round ${franchise.round} · ${franchise.wins} wins`;$('rosterGrid').innerHTML=franchise.team.map(rosterCardHTML).join('');$('marketGrid').innerHTML=franchise.market.map(marketCardHTML).join('');$('managerStatus').dataset.uniform=`Next opponent uniform: ${opponentUniformForRound(franchise.round).name}`;updateSavePill();document.querySelectorAll('[data-roster]').forEach(el=>el.addEventListener('click',()=>{selectedRosterIndex=Number(el.dataset.roster);renderManager()}));document.querySelectorAll('[data-train-slot]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();trainReceiver(Number(btn.dataset.trainSlot),btn.dataset.stat)}));document.querySelectorAll('[data-prestige]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();prestigeReceiver(Number(btn.dataset.prestige))}));document.querySelectorAll('[data-sign]').forEach(btn=>btn.addEventListener('click',()=>signReceiver(Number(btn.dataset.sign))))}
+function renderManager(){renderOpponentBrowser();$('cashPill').textContent=`$${franchise.cash}`;$('roundPill').textContent=`Round ${franchise.round} · ${franchise.wins} wins`;$('rosterGrid').innerHTML=franchise.team.map(rosterCardHTML).join('');$('marketGrid').innerHTML=franchise.market.map(marketCardHTML).join('');$('managerStatus').dataset.uniform=`Next opponent uniform: ${opponentUniformForRound(activeRound()).name}`;updateSavePill();document.querySelectorAll('[data-roster]').forEach(el=>el.addEventListener('click',()=>{selectedRosterIndex=Number(el.dataset.roster);renderManager()}));document.querySelectorAll('[data-train-slot]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();trainReceiver(Number(btn.dataset.trainSlot),btn.dataset.stat)}));document.querySelectorAll('[data-prestige]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();prestigeReceiver(Number(btn.dataset.prestige))}));document.querySelectorAll('[data-sign]').forEach(btn=>btn.addEventListener('click',()=>signReceiver(Number(btn.dataset.sign))))}
 function prestigeReceiver(slot){const p=franchise.team[slot];if(!p)return;const result=P.prestige(p,franchise.cash);if(!result.ok){$('managerStatus').textContent=result.reason;return}franchise.cash=result.cash;$('managerStatus').textContent=`${p.name} prestiged! Five sessions per attribute renewed; ratings retained.`;saveFranchise();renderManager()}
 function trainReceiver(slot,stat){const p=franchise.team[slot];if(!p)return;const result=P.train(p,stat,franchise.cash,randInt(4,8));if(!result.ok){$('managerStatus').textContent=result.reason;return}franchise.cash=result.cash;$('managerStatus').textContent=`${p.name}: ${statLabel(stat)} +${result.gain}.`;saveFranchise();renderManager()}
 function signReceiver(index){const p=franchise.market[index];if(!p)return;if(franchise.cash<p.price){$('managerStatus').textContent=`You need $${p.price-franchise.cash} more to sign ${escapeHTML(p.name)}.`;return}const old=franchise.team[selectedRosterIndex];franchise.cash-=p.price;franchise.team[selectedRosterIndex]=p;franchise.market[index]=newReceiver(true);$('managerStatus').textContent=`Signed ${escapeHTML(p.name)} to ${['X','H','Y','Z'][selectedRosterIndex]}, replacing ${old.name}.`;saveFranchise();renderManager()}
-function openManager(status='Manage your four starters before the next matchup.',locked=false){managerLocked=locked;playState=locked?'manager':playState;document.exitPointerLock?.();$('managerStatus').textContent=status;$('managerLayer').style.display='flex';$('continueBtn').textContent=locked?'CONTINUE TO NEXT MATCHUP':'RETURN TO FIELD';renderManager()}
+function openManager(status='Manage your four starters before the next matchup.',locked=false){managerLocked=locked;browsedOpponent=activeRound();playState=locked?'manager':playState;document.exitPointerLock?.();$('managerStatus').textContent=status;$('managerLayer').style.display='flex';$('continueBtn').textContent=locked?'CONTINUE TO NEXT MATCHUP':'RETURN TO FIELD';renderManager()}
 function closeManager(){$('cloudOffer').hidden=true;if(managerLocked){managerLocked=false;playState='dead';$('managerLayer').style.display='none';resetDrive();setupPlay(true)}else {$('managerLayer').style.display='none';if(!menuOpen)setupPlay(false)}}
+function canSelectOpponent(){return !transition&&!replay&&!cloudBusy&&!saveOpen&&(managerLocked||(!franchise.matchInProgress&&seriesOffense===0&&seriesDefense===0&&down===1&&ballSpotYards===0));}
+function renderOpponentBrowser(){
+  browsedOpponent=THREE.MathUtils.clamp(browsedOpponent,1,franchise.round);
+  const round=browsedOpponent,opp=opponentForRound(round),record=franchise.opponentResults[round],beaten=round<franchise.round;
+  const wins=record?.wins??(beaten?1:0),losses=record?.losses||0;
+  $('opponentName').textContent=`${round}. ${opp.name}`;
+  $('opponentRecord').textContent=`${beaten?'DEFEATED':franchise.matchInProgress&&round===activeRound()?'IN PROGRESS':'CAMPAIGN OPPONENT'} · ${wins}W / ${losses}L · ${V.identity(round).name}`;
+  const reward=P.payout(true,round,3),cash=beaten?Math.floor(reward/5):reward;
+  $('opponentPrize').textContent=`Win prize: $${cash.toLocaleString()}${beaten?' · 1/5 cash (20%), including scoring bonus':' · Full cash'} · 520 distinct teams, then new leagues`;
+  $('selectOpponent').textContent=round===activeRound()?'SELECTED':beaten?'PLAY REMATCH':'CONTINUE CAMPAIGN';
+  $('selectOpponent').disabled=!canSelectOpponent()||round===activeRound();
+  $('opponentPrevious').disabled=franchise.round<=1;$('opponentNext').disabled=franchise.round<=1;
+  $('opponentSelectionNote').textContent=canSelectOpponent()?`Campaign progress: Round ${franchise.round}. Rematches preserve progression and use the original opponent difficulty.`:'Finish this matchup before changing opponents.';
+}
+function browseOpponent(step){browsedOpponent=((browsedOpponent-1+step+franchise.round)%franchise.round)+1;renderOpponentBrowser();}
+function selectOpponent(){
+  if(!canSelectOpponent()||!Number.isInteger(browsedOpponent)||browsedOpponent<1||browsedOpponent>franchise.round)return;
+  franchise.rematchRound=browsedOpponent<franchise.round?browsedOpponent:null;
+  franchise.matchInProgress=false;franchise.scouting=[];franchise.matchWeather=null;franchise.lastCoverage=null;snapDefense=null;
+  seriesOffense=0;seriesDefense=0;resetDrive();setupPlay(true);renderOpponentBrowser();
+  $('managerStatus').textContent=`Selected ${opponentForRound(activeRound()).name}. Continue to the field to start.`;
+}
+$('opponentPrevious').onclick=()=>browseOpponent(-1);$('opponentNext').onclick=()=>browseOpponent(1);$('selectOpponent').onclick=selectOpponent;
 function endMatchup(won){
+  const playedRound=activeRound(),rematch=playedRound<franchise.round;
   const firstMatch=!franchise.wins&&!franchise.losses&&franchise.round===1;
   const offerCloud=firstMatch&&!franchise.cloudSaveOffered;
-  const opp=opponentForRound(franchise.round),payout=P.payout(won,franchise.round,seriesOffense);
+  const opp=opponentForRound(playedRound),payout=P.matchPayout(franchise,won,seriesOffense);
   franchise.cash+=payout;
-  if(won){franchise.wins++;franchise.round++;}else franchise.losses=(franchise.losses||0)+1;
+  const record=franchise.opponentResults[playedRound]||(franchise.opponentResults[playedRound]={wins:rematch?1:0,losses:0});
+  record[won?'wins':'losses']++;
+  if(won){franchise.wins++;if(!rematch)franchise.round++;}else franchise.losses=(franchise.losses||0)+1;
+  franchise.rematchRound=null;franchise.matchInProgress=false;
   franchise.scouting=[];franchise.matchWeather=null;franchise.lastCoverage=null;
   tournamentStage=franchise.round-1;
-  const status=`MATCHUP ${won?'WON':'LOST'} vs ${opp.name} · +$${payout}${won?' victory':' participation'} & scoring payout. ${won?'Next':'Retry'} Round ${franchise.round}.`;
+  const status=`MATCHUP ${won?'WON':'LOST'} vs ${opp.name} · +$${payout}${won?' victory':' participation'} & scoring payout. ${rematch?'Rematch paid 20%. Campaign remains at':won?'Next':'Retry'} Round ${franchise.round}.`;
   seriesOffense=0;seriesDefense=0;resetDrive();franchise.market=freshMarket();checkpoint();
   scheduleResult(()=>{
     openManager(status,true);
@@ -268,16 +298,16 @@ case'Wheel':{const side=x>=0?1:-1;return[new THREE.Vector3(x,0,z),new THREE.Vect
 default:return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-18),new THREE.Vector3(x,0,z-40)];}}
 function routePosition(points,distance){let left=distance;for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1],len=a.distanceTo(b);if(len<.00001)continue;if(left<=len)return a.clone().lerp(b,left/len);left-=len}const a=points[points.length-2],b=points[points.length-1],dir=b.clone().sub(a).normalize();return b.clone().addScaledVector(dir,left)}
 function clearPlayers(){replayObjects=null;for(const a of [...receivers,...defenders]){scene.remove(a.mesh);const geos=new Set(),mats=new Set();a.mesh.traverse(o=>{if(o.geometry&&!o.geometry.userData.sharedPlayer)geos.add(o.geometry);if(o.material&&o.material!==shadowMat)mats.add(o.material)});geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose())}receivers=[];defenders=[]}
-function currentSkill(){return opponentForRound(franchise.round).skill}
+function currentSkill(){return opponentForRound(activeRound()).skill}
 function chooseDefense(){
-  const opp=opponentForRound(franchise.round),identity=V.identity(franchise.round);
+  const opp=opponentForRound(activeRound()),identity=V.identity(activeRound());
   if(!snapDefense){
     snapMemory=V.tendencies(franchise.scouting);
     const id=V.chooseCoverage(identity,snapMemory,franchise.lastCoverage);
     snapDefense=defenses.find(d=>d.id===id);franchise.lastCoverage=id;
   }
-  currentDefense=snapDefense;currentOpponentUniform=opponentUniformForRound(franchise.round);
-  $('defenseName').textContent=`R${franchise.round} · ${opp.name} · ${identity.name}`;
+  currentDefense=snapDefense;currentOpponentUniform=opponentUniformForRound(activeRound());
+  $('defenseName').textContent=`R${activeRound()}${franchise.rematchRound?" REMATCH":""} · ${opp.name} · ${identity.name}`;
   $('defenseDesc').textContent=`${currentDefense.id==='disguise'?'Two-high shell — read the rotation.':currentDefense.name} · ${matchWeather().name}`;
 }
 function recordAttempt(receiver=null){
@@ -298,7 +328,7 @@ function setupPlay(increment=false){
     receivers.push({mesh,label:['X','H','Y','Z'][i],profile,route:play.routes[i],path:pathFor(play.routes[i],start),speed,maxSpeed:speed,catchReach,signature:V.signature(profile),distance:0,start,velocity:new THREE.Vector3(0,0,-speed*.15),impactVel:new THREE.Vector3(),heading:new THREE.Vector3(0,0,-1),history:[],shoveCooldown:0,shoveSlow:0,stagger:0,shoveAnim:0,jumpY:0,jumpVel:0,jumpCooldown:0,trackingBall:false,burst:0,catchPose:0,plantPose:0,comebackActive:false,comebackPlant:0,underthrowDifficulty:0,runPhase:Math.random()*Math.PI*2,runIntensity:0,hasBall:false});
   }
   receivers.forEach((r,i)=>{
-    const m=makePlayer(false,buildDefenderAppearance(franchise.round));scene.add(m);let start;if(currentDefense.corner==='press'||currentDefense.corner==='allout')start=new THREE.Vector3(r.start.x+(Math.random()-.5)*.8,0,r.start.z-1.6);else start=new THREE.Vector3(r.start.x+(Math.random()-.5)*1.6,0,r.start.z-5.5-Math.random()*1.7);m.position.copy(start);
+    const m=makePlayer(false,buildDefenderAppearance(activeRound()));scene.add(m);let start;if(currentDefense.corner==='press'||currentDefense.corner==='allout')start=new THREE.Vector3(r.start.x+(Math.random()-.5)*.8,0,r.start.z-1.6);else start=new THREE.Vector3(r.start.x+(Math.random()-.5)*1.6,0,r.start.z-5.5-Math.random()*1.7);m.position.copy(start);
     defenders.push(makeDefender(m,'corner',i,skill));
   });
   let sets;
@@ -306,18 +336,18 @@ function setupPlay(increment=false){
   else if(currentDefense.safety==='single')sets=[[0,losZ-30,'safety']];
   else if(currentDefense.safety==='aggressive')sets=[[0,losZ-24,'safety']];
   else sets=[[-12,losZ-28,'safety'],[12,losZ-28,'safety']];
-  for(const [x,z,kind] of sets){const m=makePlayer(false,buildDefenderAppearance(franchise.round));m.position.set(x,0,Math.max(ENDZONE_BACK_Z+2,z-snapMemory.depth-V.identity(franchise.round).depth));scene.add(m);defenders.push(makeDefender(m,kind,null,skill))}
+  for(const [x,z,kind] of sets){const m=makePlayer(false,buildDefenderAppearance(activeRound()));m.position.set(x,0,Math.max(ENDZONE_BACK_Z+2,z-snapMemory.depth-V.identity(activeRound()).depth));scene.add(m);defenders.push(makeDefender(m,kind,null,skill))}
   for(const a of [...receivers,...defenders])animatePlayerContact(a,0);
   snapSpotYards=ballSpotYards;playState='call';snapTime=0;nextCount=0;audibleReceiverIndex=null;$('audiblePanel').style.display='none';drawRouteVisuals();$('headline').textContent='CALL THE PLAY';$('detail').textContent=`${downLabel()} & ${Math.ceil(lineToGainYards-ballSpotYards)} from the ${Math.round(50-ballSpotYards)}. Selected: ${plays[selectedPlay].name}. Tap a receiver or press X / H / Y / Z to audible.`;$('playCallPanel').style.display='block';$('snapBtn').disabled=false;renderRoutes();updateScore();updatePlayButtons();checkpoint();
 }
 function beginCountdown(){
-  if(inputBlocked()||playState!=='call')return;closeAudible(true);playState='countdown';snapTime=gameTime+2200;nextCount=3;$('snapBtn').disabled=true;showMessage('READY',`${plays[selectedPlay].name} locked in — routes stay drawn until the snap.`,650);
+  if(inputBlocked()||playState!=='call')return;franchise.matchInProgress=true;checkpoint();closeAudible(true);playState='countdown';snapTime=gameTime+2200;nextCount=3;$('snapBtn').disabled=true;showMessage('READY',`${plays[selectedPlay].name} locked in — routes stay drawn until the snap.`,650);
 }
 function makeDefender(mesh,kind,target,skill){
-  const growth=P.defenseProgress(franchise.round),identity=V.identity(franchise.round);
+  const growth=P.defenseProgress(activeRound()),identity=V.identity(activeRound());
   const reaction=THREE.MathUtils.lerp(.34,.085,skill)+(Math.random()*.06-.03);const turnRate=THREE.MathUtils.lerp(3.7,7.3,skill);const accel=THREE.MathUtils.lerp(13,24,skill);const maxSpeed=THREE.MathUtils.lerp(7.4,9.05,skill)+(kind==='safety'?.15:0);
   const sizeName=mesh.userData?.appearance?.sizeName||'Balanced',sizeStrength={Big:8,Tall:3,Balanced:0,Compact:-3,Lean:-4}[sizeName]||0,strength=clampRating(50+skill*37+randInt(-9,9)+sizeStrength+(kind==='safety'?2:0));
-  return{mesh,kind,target,zoneX:mesh.position.x,pursuitRole:0,tackleCooldown:0,diveTime:0,diveRecovery:0,technique:V.tackleTechnique(franchise.round,skill),strength:strength+identity.strength,fakeUntil:0,velocity:new THREE.Vector3(),impactVel:new THREE.Vector3(),heading:new THREE.Vector3(0,0,-1),reaction:Math.max(.06,reaction),turnRate:turnRate+growth.turn,accel:accel+growth.accel,maxSpeed:maxSpeed+growth.speed+identity.speed,jumpVelocity:growth.jump,depth: growth.depth,smartDeep:Math.random()<growth.smartChance,hands:growth.hands+identity.hands,commit:0,lastDesired:new THREE.Vector3(),shoveCooldown:0,shoveSlow:0,stagger:0,shoveAnim:0,jumpY:0,jumpVel:0,jumpCooldown:0,swatPose:0,ballSeen:false,plantPose:0,runPhase:Math.random()*Math.PI*2,runIntensity:0};
+  return{mesh,kind,target,zoneX:mesh.position.x,pursuitRole:0,tackleCooldown:0,diveTime:0,diveRecovery:0,technique:V.tackleTechnique(activeRound(),skill),strength:strength+identity.strength,fakeUntil:0,velocity:new THREE.Vector3(),impactVel:new THREE.Vector3(),heading:new THREE.Vector3(0,0,-1),reaction:Math.max(.06,reaction),turnRate:turnRate+growth.turn,accel:accel+growth.accel,maxSpeed:maxSpeed+growth.speed+identity.speed,jumpVelocity:growth.jump,depth: growth.depth,smartDeep:Math.random()<growth.smartChance,hands:growth.hands+identity.hands,commit:0,lastDesired:new THREE.Vector3(),shoveCooldown:0,shoveSlow:0,stagger:0,shoveAnim:0,jumpY:0,jumpVel:0,jumpCooldown:0,swatPose:0,ballSeen:false,plantPose:0,runPhase:Math.random()*Math.PI*2,runIntensity:0};
 }
 function renderRoutes(){
   $('routes').innerHTML=`<div id="playName">${plays[selectedPlay].name} · AUDIBLES ON</div>`+receivers.map((r,i)=>`<div class="routeRow audibleTap" data-audible-receiver="${i}"><span class="routeName">${r.label} · ${escapeHTML(r.profile.name.split(' ')[0])}</span><span class="routeType">${r.route}${r.audibled?' *':''} · ${escapeHTML(r.signature||r.profile.archetype)}</span></div>`).join('');
@@ -345,7 +375,7 @@ function findReceiverAtScreen(clientX,clientY){
   if(playState!=='call'||!receivers.length)return-1;let best=-1,bestDist=Infinity;for(let i=0;i<receivers.length;i++){const p=receivers[i].mesh.position.clone();p.y+=1.15;p.project(camera);if(p.z<-1||p.z>1)continue;const sx=(p.x*.5+.5)*innerWidth,sy=(-p.y*.5+.5)*innerHeight,dist=Math.hypot(clientX-sx,clientY-sy);if(dist<bestDist){bestDist=dist;best=i}}const radius=matchMedia('(pointer:coarse)').matches?76:50;return bestDist<=radius?best:-1;
 }
 function updateThrowClock(){const el=$('throwClock');el.textContent=`THROW CLOCK · ${throwClock.toFixed(1)}`;el.classList.toggle('urgent',throwClock<=2.25&&playState==='live')}
-function updateScore(){const toGo=Math.max(0,Math.ceil(lineToGainYards-ballSpotYards)),opp=opponentForRound(franchise.round);$('score').textContent=`${seriesOffense}–${seriesDefense}`;$('tournamentLine').textContent=`Round ${franchise.round} · Best of 5 · ${opp.name} · $${franchise.cash}`;$('subscore').textContent=`${downLabel()} & ${toGo} · Ball: ${Math.round(50-ballSpotYards)} yd line · Drive ${Math.round(ballSpotYards)}/50 · ${catches} catches · ${ints} INT`}
+function updateScore(){const toGo=Math.max(0,Math.ceil(lineToGainYards-ballSpotYards)),opp=opponentForRound(activeRound());$('score').textContent=`${seriesOffense}–${seriesDefense}`;$('tournamentLine').textContent=`Round ${activeRound()}${franchise.rematchRound?" REMATCH · 20% CASH":""} · Best of 5 · ${opp.name} · $${franchise.cash}`;$('subscore').textContent=`${downLabel()} & ${toGo} · Ball: ${Math.round(50-ballSpotYards)} yd line · Drive ${Math.round(ballSpotYards)}/50 · ${catches} catches · ${ints} INT`}
 function showMessage(head,detail,ms=1300){$('headline').textContent=head;$('detail').textContent=detail||'';messageTimer=gameTime+ms}
 function flashResult(text,good=true,ms=900){const el=$('resultFlash');el.textContent=text;el.className=`${good?'good':'bad'} show`;resultFlashTimer=gameTime+ms}
 function updatePlayButtons(){$('schemeHint').textContent=plays[selectedPlay].hint||'Balanced spacing. Audible individual receivers to suit the coverage.';[...document.querySelectorAll('.playBtn')].forEach((b,i)=>b.classList.toggle('selected',i===selectedPlay))}
@@ -699,7 +729,7 @@ function defenderTarget(d,now){
     else if(currentDefense.safety==='aggressive'&&!seesBall){target.x*=.45;target.z-=4.5}
     else if(seesBall){const land=getBallLanding();target.lerp(land?land.point:ball.position,THREE.MathUtils.lerp(.45,.84,skill))}else{target.x*=.72;target.z-=6}
     if(!seesBall){
-      target.z-=snapMemory.depth+V.identity(franchise.round).depth;
+      target.z-=snapMemory.depth+V.identity(activeRound()).depth;
       if(bracket){target.x=th.p.x;target.z=th.p.z-4-snapMemory.depth;}
       if(currentDefense.safety==='rotate'){
         if(side<0){target.x*=.4;target.z=Math.min(los-16,th.p.z-9);}
@@ -1262,7 +1292,7 @@ function updateTackle(dt){
 
 function seriesResult(offenseWon){
   if(offenseWon)seriesOffense++;else seriesDefense++;updateScore();
-  if(seriesOffense>=3){showMessage('MATCHUP WON!',`You won Round ${franchise.round}. Cash payout and the receiver market are opening.`,1600);endMatchup(true);return true}
+  if(seriesOffense>=3){showMessage('MATCHUP WON!',`You won Round ${activeRound()}. Cash payout and the receiver market are opening.`,1600);endMatchup(true);return true}
   if(seriesDefense>=3){score=Math.max(0,score-7);showMessage('MATCHUP LOST',`The defense won the best-of-5. Your roster and money remain saved.`,1600);endMatchup(false);return true}return false;
 }
 function endBall(){pendingCatch=null;recordAttempt();captureReplay(true);replayRecording=false;ballLive=false;ball.visible=false;if(playState!=='run'&&playState!=='tackle')playState='dead';arcLine.visible=false;landRing.visible=false;predictedFlightTime=0}
@@ -1398,7 +1428,7 @@ function renderSlots(){
 }
 function activateFranchise(f,slot){
   if(replay)finishReplay();clearLastReplay();transition=null;clearPlayers();replayFrames=[];replayRecording=false;replayEligible=false;
-  snapDefense=null;attemptPending=false;franchise=f;franchise.scouting=V.cleanHistory(franchise.scouting);franchise.team=franchise.team.map(normalizeReceiver);franchise.market=franchise.market.map(normalizeMarketReceiver);
+  snapDefense=null;attemptPending=false;franchise=P.normalizeCompetition(f);franchise.scouting=V.cleanHistory(franchise.scouting);franchise.team=franchise.team.map(normalizeReceiver);franchise.market=franchise.market.map(normalizeMarketReceiver);
   $('cloudOffer').hidden=true;activeSlot=slot;selectedRosterIndex=0;managerLocked=false;$('managerLayer').style.display='none';
   score=0;catches=0;drops=0;ints=0;playState='dead';ball.visible=false;ballLive=false;restoreCheckpoint();saveFranchise();
   saveOpen=false;$('saveLayer').hidden=true;showMainMenu();
@@ -1525,11 +1555,11 @@ function updateEnvironment(dt,frameMs){
   }
 }
 function applyFieldTheme(){
-  const v=venues[(franchise.round+(franchise.losses||0)-1)%venues.length],w=matchWeather();
+  const v=venues[(activeRound()+(franchise.losses||0)-1)%venues.length],w=matchWeather();
   turf.material.color.set(v.turf);turf.material.roughness=w.name==='Light Rain'?.7:.95;endzone.material.color.set(v.end);
   scene.background.set(w.sky);scene.fog.color.set(w.sky);scene.fog.far=w.fog;sun.color.set(w.sun);sun.intensity=w.power;ambient.intensity=w.ambient;
   sun.position.set(w.name==='Sunset'?-55:-35,w.name==='Sunset'?22:55,25);
-  seats.color.set(v.end);banners.material.color.set(v.end);skyline.scale.y=1+((franchise.round-1)%3)*.22;
+  seats.color.set(v.end);banners.material.color.set(v.end);skyline.scale.y=1+((activeRound()-1)%3)*.22;
   rain.visible=w.name==='Light Rain'&&qualityLevel>0;$('defensePanel').title=`${v.name} · ${w.name}`;
 }
 let replayObjects=null,lastReplay=null,replayAngle='qb';

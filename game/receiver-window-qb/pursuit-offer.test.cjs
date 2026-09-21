@@ -46,10 +46,10 @@ test('contact still slows an in-stride receiver',()=>{
   assert.ok(r.velocity.length()<8);
 });
 function matchContext(overrides={}){
-  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,franchise:{round:1,wins:0,cash:0,...overrides},
+  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,franchise:P.normalizeCompetition({round:1,wins:0,cash:0,...overrides}),
     seriesOffense:1,seriesDefense:3,tournamentStage:0,opponentForRound:()=>({name:'Test'}),
     resetDrive:()=>{},freshMarket:()=>[],checkpoint:()=>{},saveFranchise:()=>{},openManager:()=>{},
-    $:id=>els[id]});c.scheduleResult=fn=>c.pending=fn;vm.runInContext(extract('endMatchup'),c);return {c,els};
+    $:id=>els[id]});c.activeRound=()=>P.matchRound(c.franchise);c.scheduleResult=fn=>c.pending=fn;vm.runInContext(extract('endMatchup'),c);return {c,els};
 }
 for(const won of [true,false])test(`first completed ${won?'win':'loss'} offers cloud once and survives serialization`,()=>{
   const {c,els}=matchContext();assert.equal(els.cloudOffer.hidden,true);

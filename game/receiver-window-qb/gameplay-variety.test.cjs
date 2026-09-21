@@ -516,3 +516,36 @@ test('replay archive replaces owned resources and blocks manual playback during 
   q.run("playState='live';watchLastReplay()");assert.equal(q.state().replay,null);
   q.run('clearLastReplay()');assert.equal(q.run('lastReplay'),null);
 });
+
+test('opponent tour has 520 unique teams and continues into additional leagues',()=>{
+  const q=game().q,names=new Set();
+  for(let n=1;n<=1040;n++){const o=q.run(`opponentForRound(${n})`);assert.ok(Number.isFinite(o.skill)&&o.skill>=0&&o.skill<=1);assert.ok(!names.has(o.name),o.name);names.add(o.name);}
+  assert.equal(q.run('opponentForRound(1).name'),'Rookie Secondary');
+});
+test('rematches use original difficulty, award one fifth cash, and never advance campaign',()=>{
+  const q=game().q;q.run('franchise.round=12;franchise.wins=11;franchise.cash=0;managerLocked=true;browsedOpponent=2;selectOpponent();');
+  assert.equal(q.run('activeRound()'),2);assert.equal(q.run('currentSkill()'),.13);
+  assert.equal(q.state().franchise.round,12);assert.ok(q.state().defenders[0].technique<.4);
+  q.run('seriesOffense=3;endMatchup(true)');assert.equal(q.state().franchise.cash,P.payout(true,2,3)/5);assert.equal(q.state().franchise.round,12);
+  assert.equal(q.state().franchise.rematchRound,null);assert.equal(q.state().franchise.opponentResults[2].wins,2);
+  q.run('transition=null;managerLocked=true;browsedOpponent=2;selectOpponent();seriesOffense=1;endMatchup(false)');
+  assert.equal(q.state().franchise.cash,(P.payout(true,2,3)+P.payout(false,2,1))/5);assert.equal(q.state().franchise.round,12);
+});
+test('opponent selection is blocked after snap and saved rematches restore original matchup',()=>{
+  const q=game().q;q.run('franchise.round=9;managerLocked=true;browsedOpponent=3;selectOpponent();managerLocked=false;beginCountdown();');
+  assert.equal(q.state().franchise.matchInProgress,true);
+  q.run('browsedOpponent=1;selectOpponent()');assert.equal(q.run('activeRound()'),3);
+  const loaded=P.validateSave(q.state().franchise);assert.equal(loaded.rematchRound,3);assert.equal(loaded.matchInProgress,true);
+  q.activateFranchise(loaded,0);assert.equal(q.run('activeRound()'),3);assert.equal(q.run('canSelectOpponent()'),false);
+});
+test('legacy saves unlock earlier victories and reject invalid rematch identifiers',()=>{
+  const f=P.normalizeCompetition({round:400,rematchRound:999,opponentResults:{bad:{wins:7},3:{wins:-4,losses:2}}});
+  assert.equal(f.rematchRound,null);assert.equal(P.matchRound(f),400);assert.equal(f.opponentResults[3].wins,0);assert.equal(f.opponentResults.bad,undefined);
+  const q=game().q;q.run('franchise.round=400;managerLocked=true;browsedOpponent=399;selectOpponent()');assert.equal(q.run('activeRound()'),399);
+  q.run('browsedOpponent=400;selectOpponent();seriesOffense=3;endMatchup(true)');assert.equal(q.state().franchise.round,401);
+});
+test('every literal game UI reference has a real HTML element',()=>{
+  const html=fs.readFileSync(__dirname+'/../receiver-window-qb.html','utf8');
+  for(const [,id] of source.matchAll(/\$\('([^']+)'\)/g))assert.ok(html.includes(`id="${id}"`),`Missing #${id}`);
+  for(const id of ['watchReplayBtn','watchReplayMenu','watchReplayTeam','opponentPrevious','opponentNext','selectOpponent'])assert.ok(html.includes(`id="${id}"`));
+});
