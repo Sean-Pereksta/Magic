@@ -24,8 +24,8 @@
     return earned&&scores[0][1]>=.85?scores[0][0]:null;
   }
   function movement(p){
-    return {speed:6.05+2.65*rating(p,'speed'),accel:14+12*rating(p,'cutting'),
-      turn:4.8+5*rating(p,'turning'),cutLoss:.48-.29*clamp(rating(p,'cutting'),0,1.4)};
+    return {speed:4.85+3.65*rating(p,'speed'),accel:11+16*rating(p,'cutting'),
+      turn:3.8+6*rating(p,'turning'),cutLoss:.48-.29*clamp(rating(p,'cutting'),0,1.4)};
   }
   function cleanHistory(raw){
     return (Array.isArray(raw)?raw:[]).slice(-12).filter(p=>p&&Number.isFinite(p.depth)&&Number.isInteger(p.target)&&p.target>=0&&p.target<4)
@@ -79,6 +79,27 @@
     else if(den>1e-8&&distance<=radius){const dot=x0*dx+z0*dz;entry=clamp((-dot-Math.sqrt(Math.max(0,dot*dot-den*(startSquared-radius*radius))))/den,0,1);}
     return {time,distance,entry};
   }
-  const api={identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
+  // Leverage and closing momentum matter; no automatic wins or permanent holds.
+  function blockOutcome({strength,size,defenseStrength,defenseSize,alignment,momentum}){
+    const edge=(strength-defenseStrength)*.007+(size-defenseSize)*.005+clamp(alignment,-1,1)*.24+clamp(momentum,-5,5)*.035;
+    return {duration:clamp(.32+edge*.65,.12,.85),slow:clamp(.76-edge*.45,.35,.94)};
+  }
+  function physique(p){
+    const size=clamp(rating(p,'size'),0,1.4),strength=clamp(rating(p,'strength'),0,1.4);
+    return {x:.82+size*.22+strength*.12,y:.88+size*.23,z:.86+size*.16+strength*.10};
+  }
+  const concepts=[
+    {name:'Bunch Flood',family:'Bunch',xs:[-18,8,10.5,13],depths:[0,2,0,3],routes:['Go','Flat','Out','Corner'],hint:'Read the right flat → out → corner. Turning and catching win.'},
+    {name:'Bunch Rub',family:'Bunch',xs:[-18,7,9.5,12],depths:[0,2,0,3],routes:['Post','Wheel','Drag','Slant'],hint:'Cross releases create traffic; quick cuts beat man coverage.'},
+    {name:'Trips Sail',family:'Trips',xs:[-18,5,12,20],routes:['Dig','Flat','Corner','Go'],hint:'Three right-side depths stretch zone coverage.'},
+    {name:'Quick Stick',family:'Quick',xs:[-19,-7,7,19],routes:['Slant','Stick','Flat','Fade'],hint:'Throw early to the settling slot or the flat.'},
+    {name:'Stack Switch',family:'Stack',xs:[-12,-12,12,12],depths:[0,3,0,3],routes:['Slant','Wheel','Slant','Wheel'],hint:'Stacked releases free speed down the sideline.'},
+    {name:'Deep Scissors',family:'Shots',xs:[-17,-6,6,17],routes:['Post','Corner','Corner','Post'],hint:'Cross deep landmarks; speed and high-point athleticism matter.'},
+    {name:'WR Bubble',family:'Screens',xs:[-18,7,12,18],depths:[0,3,0,0],routes:['Go','Bubble','Lead','Lead'],screen:1,hint:'H catches behind Y/Z. Release early; size and strength lead the way.'},
+    {name:'Tunnel Screen',family:'Screens',xs:[-19,-12,-6,18],depths:[2,0,0,0],routes:['Tunnel','Lead','Lead','Post'],screen:0,hint:'X slips inside behind H/Y. Late throws let the defense close.'},
+    {name:'Motion Flood',family:'Motion',xs:[-18,-4,8,18],routes:['Post','Flat','Out','Go'],motion:{slot:1,to:4},hint:'H motions right before the snap; read the three-level flood.'},
+    {name:'Motion Cross',family:'Motion',xs:[-18,-8,4,18],routes:['Go','Drag','Wheel','Dig'],motion:{slot:2,to:-4},hint:'Y motions into a wheel while crossers attack underneath.'}
+  ];
+  const api={concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
   if(typeof module!=='undefined')module.exports=api;root.QBVariety=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

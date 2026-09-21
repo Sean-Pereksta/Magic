@@ -70,3 +70,30 @@ Receivers with at least 65 athleticism can consider an automatic effort dive whi
 The held football follows the extending gloves. During tackles and dives, its forward progress is tracked until the down or boundary event; later cosmetic sliding cannot add yards. These finishes use the actual spot without the older minimum-one-yard gain. Goal-line and sideline events resolve in order. Touchdown accounting waits for the landing animation, happens once, and is included in the existing skippable replay. All attempted effort dives qualify for replay. Controls and save formats remain unchanged.
 
 Tests cover launch gating and one-roll rarity, reachable first downs, goal dives after passing the first-down marker, head-on dive stops, momentum and fall variants, exact down spots, boundary order, stable outcomes at 30/60/120 Hz, glove attachment, geometry reuse and full landing replay.
+
+## Expanded playbook and roster identity
+
+The playbook now has 18 concepts. Original 1–8 shortcuts remain; use arrows and
+Enter, mouse, or touch to select any play. Bunch Flood/Rub, Trips Sail, Quick
+Stick, Stack Switch, Deep Scissors, WR Bubble, Tunnel Screen, Motion Flood and
+Motion Cross use distinct alignments, routes or pre-snap motion. The playbook
+shows the read and useful roster attributes for each new concept.
+
+Bubble (H behind Y/Z) and Tunnel (X behind H/Y) settle behind the line. Throw
+early: nearby corners recognize a stalled receiver using delayed observations.
+After catches, nearby teammates seek brief front/side blocks. Strength, actual
+body size, facing and relative momentum control the slowdown and hold duration
+(0.12–0.85 seconds); defender recovery prevents repeated lockups. Screens follow
+nearby lead receivers briefly, then transition to normal pursuit and running.
+Audibles can replace screen/lead routes as usual.
+
+Speed, cutting acceleration and turning have wider rating differences, with
+prestige benefits still bounded. Player dimensions derive from SIZE and STR;
+large builds, taller players and compact players have different equipment.
+Roster cards use matching dimensions and distinguish star, elite and generational
+ratings. Existing local/cloud saves need no reset.
+
+Arrow keys navigate the top visible menu spatially, Enter activates, and Tab
+cycles its controls. This covers the main menu, roster/training/recruitment,
+saves, audibles, play selection and replay skip. Text fields keep native editing
+keys; live aiming and mobile split controls remain separate.
