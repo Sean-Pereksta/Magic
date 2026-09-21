@@ -75,7 +75,7 @@ test("persistent walls survive room-group culling while decor stays cullable", (
   assert.equal(wall.parent, roomRoot);
   assert.equal(trim.parent, roomRoot);
   assert.equal(chair.parent, roomGroup);
-  assert.equal(wall.frustumCulled, true);
+  assert.equal(wall.frustumCulled, false);
   assert.equal(wall.matrixAutoUpdate, false);
   assert.equal(trim.castShadow, false);
 
@@ -87,8 +87,8 @@ test("persistent walls survive room-group culling while decor stays cullable", (
 
   unlocked = false;
   applyPersistentStructureVisibility(manager);
-  assert.equal(wall.visible, false);
-  assert.equal(trim.visible, false);
+  assert.equal(wall.visible, true);
+  assert.equal(trim.visible, true);
 });
 
 test("stable resolution caps materially reduce high-DPI pixel work", () => {
@@ -117,3 +117,4 @@ test("patched governor clamps an existing high-quality renderer without touching
   assert.equal(pixelRatio, 1.2);
   assert.equal(fakeGovernor.effectivePixelRatio, 1.2);
 });
+

@@ -1,5 +1,5 @@
 const PLAYER_ID = "player";
-const PLAYER_SEEN_MEOW_COOLDOWN = 0.7;
+const PLAYER_SEEN_MEOW_COOLDOWN = 18;
 
 export function playPlayerSeenMeow(engine, AudioCtor = globalThis.Audio) {
   if (!engine || typeof AudioCtor !== "function") return false;
@@ -12,7 +12,7 @@ export function playPlayerSeenMeow(engine, AudioCtor = globalThis.Audio) {
   if (!audio) {
     audio = new AudioCtor(new URL("./audio/meow.mp3", import.meta.url).href);
     audio.preload = "auto";
-    audio.volume = 0.9;
+    audio.volume = 0.24;
     engine.__playerSeenMeowAudio = audio;
   }
 
@@ -39,7 +39,7 @@ export function installPlayerSeenMeow(I = globalThis.window?.HearthmouseInternal
     const result = coreProcessCatVision.call(this, cat, target, interval);
     const isChasingPlayer = cat?.state === "chase" && cat?.targetId === PLAYER_ID;
 
-    if (!wasChasingPlayer && isChasingPlayer && target?.id === PLAYER_ID) {
+    if (!wasChasingPlayer && isChasingPlayer && target?.id === PLAYER_ID && cat.hunt?.mode !== "stalk" && cat.hunt?.mode !== "ambush") {
       playPlayerSeenMeow(this);
     }
     return result;
@@ -56,3 +56,4 @@ function installWhenReady() {
 }
 
 if (typeof window !== "undefined") installWhenReady();
+

@@ -1,3 +1,4 @@
+import { isFoodPositionClear } from "./hearthmouse-habitat.mjs";
 import {
   HEARTHMOUSE_ROOM_DEFINITIONS,
   ROOM_LAYOUT_BY_ID,
@@ -406,7 +407,7 @@ const waitForEngineInstance = () => {
   mountColonyControls(engine);
 };
 
-function installEnginePatches(I) {
+export function installEnginePatches(I) {
   const proto = I.Engine.prototype;
   if (proto.__colonyExpansionInstalled) return;
   Object.defineProperty(proto, "__colonyExpansionInstalled", { value: true });
@@ -637,7 +638,7 @@ function installEnginePatches(I) {
 
   proto.updateFood = function indexedFoodUpdates(delta) {
     const expansion = ensureExpansion(this);
-    updateFoodTransformModes(this, expansion);
+    // Ground food sleeps until pickup; proximity alone need not thaw its matrix.
     const nearby = expansion.spatial.food.queryRadius(this.playerPosition.x, this.playerPosition.z, 0.14, expansion.scratch.foodObjects);
     let pickup = null;
     let pickupOrder = Infinity;
@@ -1343,11 +1344,14 @@ function auditAndCacheTextureAssets(engine, expansion) {
   const roots = [engine.world?.root, engine.playerView];
   for (let index = 0; index < (engine.mice?.length ?? 0); index++) roots.push(engine.mice[index].rig.root);
   for (let index = 0; index < (engine.cats?.length ?? 0); index++) roots.push(engine.cats[index].rig.root);
+  const audited = expansion.auditedTextureRoots ??= new WeakSet();
   const gpuLimit = engine.renderer?.capabilities?.maxTextureSize ?? 4096;
   const displayLimit = Math.max(1024, 2 ** Math.ceil(Math.log2(Math.max(engine.canvas?.width ?? 0, engine.canvas?.height ?? 0, 1024))));
   const maximumUsefulSize = Math.min(gpuLimit, displayLimit);
   for (let rootIndex = 0; rootIndex < roots.length; rootIndex++) {
     const root = roots[rootIndex];
+    if (!root || audited.has(root)) continue;
+    audited.add(root);
     if (!root?.traverse) continue;
     root.traverse((object) => {
       const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : null;
@@ -1775,7 +1779,21 @@ function spawnExpandedFood(engine, expansion, I) {
   const population = engine.startOfNightPopulation || engine.snapshot.population || 4;
   const plan = expansion.currentPlan ?? selectNightPlan(expansion.campaignSeed, night);
   const event = plan.event;
-  let spawns = engine.world.foodSpawns.filter((spawn) => {
+  const openSpawns = [];
+  for (const room of ROOM_LAYOUT_BY_ID.values()) {
+    if (!roomUnlocked(room.id, night, expansion.temporaryRoomId)) continue;
+    let added = 0;
+    for (const fx of [0.5, 0.3, 0.7]) for (const fz of [0.5, 0.28, 0.72]) {
+      if (added >= 4) continue;
+      const position = new I.Vector3(room.minX + (room.maxX - room.minX) * fx, 0.025, room.minZ + (room.maxZ - room.minZ) * fz);
+      if (!isFoodPositionClear(position, engine.world.colliders, 0.48)) continue;
+      const anchor = engine.world.foodSpawns.find(s => s.room === room.id);
+      if (!anchor || !I.lineClear(anchor.position, position, 0.06, engine.world.colliders, "mouse")) continue;
+      openSpawns.push({ position, room: room.id, kind: added % 2 ? "cracker" : "cereal", value: added % 2 ? 2 : 1, exposure: "open" });
+      added++;
+    }
+  }
+  let spawns = [...engine.world.foodSpawns, ...openSpawns].filter((spawn) => {
     if (!roomUnlocked(spawn.room, night, expansion.temporaryRoomId)) return false;
     if (spawn.prizeId && engine.claimedPrizeIds.has(spawn.prizeId)) return false;
     if (event.removeRooms?.includes(spawn.room)) return false;
@@ -1791,7 +1809,7 @@ function spawnExpandedFood(engine, expansion, I) {
   const prizes = spawns.filter((spawn) => spawn.prizeId);
   const ordinary = spawns.filter((spawn) => !spawn.prizeId);
   const desired = Math.min(ordinary.length, Math.max(12, Math.ceil(population * 0.78) + 7));
-  const weighted = ordinary
+  const ranked = ordinary
     .map((spawn, index) => {
       const identityWeight = ROOM_LAYOUT_BY_ID.get(spawn.room)?.gameplay?.foodWeight ?? 1;
       const roomWeight = (event.roomWeights?.[spawn.room] ?? 1) * identityWeight;
@@ -1799,8 +1817,12 @@ function spawnExpandedFood(engine, expansion, I) {
       return { spawn, rank };
     })
     .sort((a, b) => a.rank - b.rank)
-    .slice(0, desired)
     .map(({ spawn }) => spawn);
+  const exposed = ranked.filter(spawn => spawn.exposure === "open").slice(0, Math.round(desired * 0.6));
+  const selectedSet = new Set(exposed);
+  const weighted = [...exposed, ...ranked.filter(spawn => !selectedSet.has(spawn) && spawn.exposure !== "open")].slice(0, desired);
+  // Preserve the total when a room has fewer authored sheltered locations.
+  for (const spawn of ranked) if (weighted.length < desired && !weighted.includes(spawn)) weighted.push(spawn);
   const selected = [...weighted, ...prizes];
   const batches = population > 14 ? 2 : 1;
   let id = 0;
@@ -1813,6 +1835,7 @@ function spawnExpandedFood(engine, expansion, I) {
       mesh.position.copy(spawn.position);
       mesh.position.x += Math.cos(angle) * radius;
       mesh.position.z += Math.sin(angle) * radius;
+      if (!isFoodPositionClear(mesh.position, engine.world.colliders, 0.06)) mesh.position.copy(spawn.position);
       mesh.rotation.y = seededUnit(index * 83 + night * 29) * Math.PI * 2;
       if (spawn.prizeId) engine.decoratePrize(mesh, spawn.prizeEffect);
       engine.world.root.add(mesh);
@@ -1821,7 +1844,7 @@ function spawnExpandedFood(engine, expansion, I) {
         id: id++, kind: spawn.kind, value: spawn.value, mesh,
         reservedBy: null, carriedBy: null, deposited: false,
         prizeId: spawn.prizeId, prizeEffect: spawn.prizeEffect,
-        room: spawn.room, depth: roomDepth(spawn.room),
+        room: spawn.room, depth: roomDepth(spawn.room), exposure: spawn.exposure ?? "sheltered",
         nestDistance: mesh.position.distanceTo(engine.world.nestCenter),
       });
     }
@@ -2824,3 +2847,4 @@ function mountColonyControls(engine) {
 }
 
 if (typeof window !== "undefined") waitForGame();
+

@@ -97,7 +97,11 @@ function deactivateStaticDoorwayCollider(engine, expansion, collider) {
   if (!collider?.active) return false;
   collider.active = false;
   const mesh = collider.name ? engine.world?.root?.getObjectByName?.(collider.name) : null;
-  if (mesh) mesh.visible = false;
+  if (mesh) {
+    mesh.visible = false;
+    mesh.userData ??= {};
+    mesh.userData.__hearthmouseStructureRemoved = true;
+  }
   removeOccluder(expansion, mesh);
   return true;
 }
@@ -349,3 +353,4 @@ function installWhenReady() {
 }
 
 if (typeof window !== "undefined") installWhenReady();
+

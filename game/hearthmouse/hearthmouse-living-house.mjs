@@ -1,3 +1,4 @@
+import { carveMouseOpening } from "./hearthmouse-habitat.mjs";
 import {
   ROOM_LAYOUT_BY_ID,
   SECRET_ROUTE_ENTRANCES,
@@ -426,13 +427,14 @@ function tunnelStyleColors(style, discovered) {
 function createTunnelEntranceVisual(engine, state, route, entrance, discovered) {
   const axisX = entrance.axis === "x";
   const colors = tunnelStyleColors(entrance.style, discovered);
+  const carved = carveMouseOpening(engine, state.I, entrance);
   const frontX = entrance.x + entrance.normalX * 0.012;
   const frontZ = entrance.z + entrance.normalZ * 0.012;
   const opening = addBox(engine, state, {
     name: `mouse-hole-${entrance.id}`,
-    x: frontX,
+    x: frontX - entrance.normalX * (carved ? 0.24 : 0.04),
     y: 0.078,
-    z: frontZ,
+    z: frontZ - entrance.normalZ * (carved ? 0.24 : 0.04),
     w: axisX ? 0.026 : 0.28,
     h: 0.156,
     d: axisX ? 0.28 : 0.026,
@@ -440,6 +442,21 @@ function createTunnelEntranceVisual(engine, state, route, entrance, discovered) 
     roughness: 1,
     emissive: discovered ? 0x070907 : 0x000000,
     emissiveIntensity: discovered ? 0.16 : 0,
+  });
+  // Recessed side walls and uneven plaster expose a real sense of depth.
+  for (const side of [-1, 1]) addBox(engine, state, {
+    name: `mouse-hole-recess-${entrance.id}-${side}`,
+    x: entrance.x - entrance.normalX * 0.08 + (axisX ? 0 : side * 0.14),
+    y: 0.09, z: entrance.z - entrance.normalZ * 0.08 + (axisX ? side * 0.14 : 0),
+    w: axisX ? 0.24 : 0.028, h: 0.18, d: axisX ? 0.028 : 0.24, color: 0x504031,
+  });
+  for (let chip = 0; chip < 7; chip++) addBox(engine, state, {
+    name: `mouse-hole-chipped-plaster-${entrance.id}-${chip}`,
+    x: frontX + (axisX ? 0 : (chip - 3) * 0.047),
+    y: 0.184 + (chip % 3) * 0.005,
+    z: frontZ + (axisX ? (chip - 3) * 0.047 : 0),
+    w: 0.024, h: 0.018 + (chip % 2) * 0.014, d: 0.025, color: chip % 2 ? 0xb5a58b : 0x887455,
+    rotationY: chip * 0.61,
   });
   opening.userData.__mouseTunnelRoute = route.id;
   opening.userData.__mouseTunnelEntrance = entrance.id;
@@ -1073,7 +1090,7 @@ function tunnelExitPosition(I, entrance) {
 
 function catSawTunnelEntry(engine, cat, actorTargetId, sourcePosition) {
   if (!cat?.rig?.root?.position) return false;
-  if (cat.targetId === actorTargetId) return true;
+  if (cat.targetId === actorTargetId) return (engine.targetVisibility?.(cat, actorTargetId, sourcePosition) ?? 0) >= 0.22;
   if (cat.state === "chase" || planarDistance(cat.rig.root.position, sourcePosition) > 6.2) return false;
   return (engine.targetVisibility?.(cat, actorTargetId, sourcePosition) ?? 0) >= 0.22;
 }
@@ -1094,10 +1111,14 @@ function assignTunnelExitStalk(engine, state, route, source, target, actorTarget
 
   const now = engine.time ?? 0;
   const authored = tunnelStalkPlan(witness.id, route.id, now);
-  const exitPosition = tunnelExitPosition(state.I, target);
-  const alternateExitPosition = tunnelExitPosition(state.I, source);
-  const waitPosition = tunnelWaitPosition(state.I, target);
-  const alternateWaitPosition = tunnelWaitPosition(state.I, source);
+  const exitPosition = tunnelExitPosition(state.I, source);
+  const alternateExitPosition = tunnelExitPosition(state.I, target);
+  const waitPosition = tunnelWaitPosition(state.I, source);
+  const alternateWaitPosition = tunnelWaitPosition(state.I, target);
+  const knownRoutes = witness.__knownTunnelRoutes ??= new Set();
+  const knewExit = knownRoutes.has(route.id);
+  // A nearby, visible second mouth can be learned without omniscience.
+  if (planarDistance(source, target) < 1 && (engine.targetVisibility?.(witness, actorTargetId, alternateExitPosition) ?? 0) > 0) knownRoutes.add(route.id);
   witness.targetId = null;
   witness.awareness = Math.max(witness.awareness ?? 0, 0.32);
   witness.investigation?.copy?.(exitPosition);
@@ -1116,7 +1137,7 @@ function assignTunnelExitStalk(engine, state, route, source, target, actorTarget
     alternateWaitPosition,
     until: now + authored.patience,
     switchAt: now + authored.switchAfter,
-    willSwitch: authored.willSwitch,
+    willSwitch: authored.willSwitch && knewExit,
     switched: false,
   };
   engine.planCatPath?.(witness, waitPosition);
@@ -1169,7 +1190,8 @@ function beginTunnelTransit(engine, state, route, source, target, position, acto
     mouse.pathIndex = 0;
     mouse.__secretRoutePlan = null;
     mouse.__tunnelTransit = transit;
-    if (mouse.rig?.root) mouse.rig.root.visible = false;
+    mouse.__tunnelSqueeze = 1;
+    if (mouse.rig?.root) mouse.rig.root.visible = true;
     mouse.task = "tunneling";
     ensurePerformanceManager(engine).promoteActor(mouse, duration + 0.45);
     mouse.escapeCooldown = Math.max(mouse.escapeCooldown ?? 0, duration + 0.35);
@@ -1190,6 +1212,7 @@ function finishTunnelTransit(engine, state, transit) {
     const mouse = transit.mouse;
     state.mouseTunnelTransits.delete(transit.actorId);
     mouse.__tunnelTransit = null;
+    mouse.__tunnelSqueeze = 0;
     if (mouse.rig?.root) mouse.rig.root.visible = true;
     mouse.__secretRoutePlan = null;
     mouse.__secretPlanCooldownUntil = now + 0.72;
@@ -1229,6 +1252,11 @@ function advanceTunnelTransit(engine, state, transit) {
   transit.position.set(point.x, transit.position.y, point.z);
   transit.progress = progress;
   if (transit.mouse?.rig?.root) {
+    const rig = transit.mouse.rig;
+    rig.root.visible = progress < 0.12 || progress > 0.88;
+    transit.mouse.__tunnelSqueeze = Math.min(1, Math.min(progress, 1 - progress) * 12);
+    rig.body.scale.y = (rig.__livingProcedural?.baseScaleY ?? 0.037) * (1 - transit.mouse.__tunnelSqueeze * 0.28);
+    rig.headPivot.position.y = 0.067 - transit.mouse.__tunnelSqueeze * 0.015;
     const dx = point.x - previousX;
     const dz = point.z - previousZ;
     if (dx * dx + dz * dz > 1e-7) transit.mouse.rig.root.rotation.y = Math.atan2(-dx, -dz);
@@ -1684,3 +1712,4 @@ function installWhenReady() {
 }
 
 if (typeof window !== "undefined") installWhenReady();
+
