@@ -67,6 +67,8 @@
   function matchRound(f){return Number.isSafeInteger(f.rematchRound)&&f.rematchRound>=1&&f.rematchRound<f.round?f.rematchRound:f.round;}
   function matchPayout(f,won,touchdowns){return Math.floor(payout(won,matchRound(f),touchdowns)*(matchRound(f)<f.round?.2:1));}
   function normalizeCompetition(f){
+    f.pumpMemory=(Array.isArray(f.pumpMemory)?f.pumpMemory:[]).filter(x=>x&&Number.isInteger(x.target)&&x.target>=0&&x.target<4&&typeof x.concept==='string').slice(-64).map(x=>({target:x.target,concept:x.concept.slice(0,80)}));
+    f.conceptMemory=(Array.isArray(f.conceptMemory)?f.conceptMemory:[]).filter(x=>typeof x==='string').slice(-24).map(x=>x.slice(0,80));
     f.rematchRound=matchRound(f)<f.round?matchRound(f):null;
     const results={};
     for(const [key,value] of Object.entries(f.opponentResults||{})){

@@ -6,7 +6,7 @@ const source=fs.readFileSync(__dirname+'/game.js','utf8');
 function game(){
   const elements=new Map(),storage=new Map();
   function element(){return {style:{},dataset:{},hidden:false,children:[],classList:{toggle(){},add(){},remove(){}},
-    addEventListener(){},appendChild(child){this.children.push(child)},replaceChildren(){this.children=[]},
+    setAttribute(){},addEventListener(){},appendChild(child){this.children.push(child)},replaceChildren(){this.children=[]},
     querySelector(){return element()},getContext(){return {fillText(){}}},getBoundingClientRect(){return {left:0,top:0,width:1200,height:800}}};}
   const document={body:element(),getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},
     createElement:element,querySelectorAll:()=>[],addEventListener(){},exitPointerLock(){}};
@@ -456,8 +456,8 @@ test('saved market discounts are stable and signing charges the displayed reduce
 
 test('expanded concepts have finite routes, distinct alignments and bounded motion',()=>{
   const q=game().q;
-  assert.equal(q.run('plays.length'),18);
-  for(let i=8;i<18;i++)for(const spot of [0,46]){
+  assert.equal(q.run('plays.length'),44);
+  for(let i=8;i<44;i++)for(const spot of [0,46]){
     q.run(`selectedPlay=${i};ballSpotYards=${spot};setupPlay(false);beginCountdown();gameTime=snapTime;update(.016,gameTime)`);
     for(const r of q.state().receivers){assert.ok(r.path.every(p=>Number.isFinite(p.length())&&Math.abs(p.x)<=24.7));}
     if(i===16)assert.equal(q.state().receivers[1].start.x,4);
@@ -548,4 +548,71 @@ test('every literal game UI reference has a real HTML element',()=>{
   const html=fs.readFileSync(__dirname+'/../receiver-window-qb.html','utf8');
   for(const [,id] of source.matchAll(/\$\('([^']+)'\)/g))assert.ok(html.includes(`id="${id}"`),`Missing #${id}`);
   for(const id of ['watchReplayBtn','watchReplayMenu','watchReplayTeam','opponentPrevious','opponentNext','selectOpponent'])assert.ok(html.includes(`id="${id}"`));
+});
+
+test('seven populated play families keep screen assignments and route interactions distinct',()=>{
+  const q=game().q,plays=q.run('plays');
+  for(const category of V.categories)assert.ok(plays.filter(p=>V.category(p)===category).length>=4,category);
+  assert.equal(new Set(plays.map(p=>p.name)).size,plays.length);
+  for(const p of plays.filter(p=>p.screen!=null)){assert.equal(p.routes.filter(r=>r==='Lead').length,2);assert.notEqual(p.routes[p.screen],'Lead');}
+});
+test('all new plays simulate through motion and live route movement without non-finite actors',()=>{
+  const q=game().q;
+  for(let i=18;i<q.run('plays.length');i++){
+    q.run(`selectedPlay=${i};setupPlay(true);beginCountdown();gameTime=snapTime;update(.016,gameTime)`);
+    for(let frame=0;frame<150;frame++)q.run('gameTime+=1000/60;update(1/60,gameTime)');
+    for(const a of [...q.state().receivers,...q.state().defenders])assert.ok(Number.isFinite(a.mesh.position.length())&&a.velocity.length()<16,`play ${i}`);
+  }
+});
+test('packed front coverage cannot cause multi-yard voluntary retreat at 30/60/120 Hz',()=>{
+  for(const hz of [30,60,120]){
+    const c=game(),q=c.q;c.Math.random=()=>.999999;
+    q.run("playState='run';ballCarrier=receivers[0];receivers[0].mesh.position.set(0,0,0);receivers[0].heading.set(0,0,1);receivers[0].velocity.set(0,0,8);receivers[0].style='YAC Specialist';receivers[0].bestRunZ=0;defenders.forEach((d,i)=>{d.mesh.position.set((i-2)*1.3,0,-2);d.velocity.set(0,0,0)});");
+    const r=q.state().receivers[0];let maxLoss=0;
+    for(let i=0;i<hz*4;i++){q.run(`gameTime+=1000/${hz};updateBallCarrier(receivers[0],1/${hz})`);maxLoss=Math.max(maxLoss,r.mesh.position.z-r.bestRunZ);}
+    assert.ok(maxLoss<=3.21,`retreated ${maxLoss/2} yards at ${hz} Hz`);assert.ok(r.mesh.position.z<0,'eventually attacks forward');
+  }
+});
+test('lane choice prefers clear forward gaps, tighter marker progress and sideline safety',()=>{
+  let r=V.lane({x:0,z:0,bestZ:0,defenders:[{x:0,z:-3}],style:'YAC Specialist',markerZ:-30});
+  assert.ok(r.z<0&&Math.abs(r.x)>.1,'goes around the defender');
+  r=V.lane({x:0,z:0,bestZ:-1,defenders:[{x:0,z:-1}],style:'YAC Specialist',markerZ:-2});assert.ok(r.z<=0&&r.limit===1.2);
+  r=V.lane({x:24,z:0,defenders:[],style:'Power Receiver',markerZ:-30});assert.ok(r.x<=0&&r.z<0);
+});
+test('screen acceleration is designated, temporary and lost when the target is audibled',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.999999;
+  function sample(screen,age){q.run(`selectedPlay=14;setupPlay(false);playState='run';ballCarrier=receivers[1];gameTime=10000;defenders.forEach(d=>d.mesh.position.set(90,0,90));receivers[1].mesh.position.set(0,0,0);receivers[1].velocity.set(0,0,0);receivers[1].heading.set(0,0,-1);receivers[1].screenTarget=${screen};receivers[1].screenCatchAt=gameTime-${age};receivers[1].profile.cutting=80;receivers[1].maxSpeed=8;`);q.updateBallCarrier(q.state().receivers[1],.05);return q.state().receivers[1].velocity.length();}
+  const regular=sample(false,0),fresh=sample(true,0),expired=sample(true,1500);assert.ok(fresh>regular*1.15);assert.ok(Math.abs(expired-regular)<1e-8);
+  q.run("selectedPlay=14;setupPlay(false);audibleReceiverIndex=1;assignAudibleRoute('Go')");assert.equal(q.state().receivers[1].screenTarget,false);
+});
+test('blockers claim separate threats, establish carrier-side leverage and release holds',()=>{
+  const q=game().q;q.run("selectedPlay=14;setupPlay(false);playState='run';ballCarrier=receivers[1];receivers.forEach((r,i)=>r.mesh.position.set(i*2,0,0));defenders.forEach((d,i)=>d.mesh.position.set(i*2,0,-4));updateBlocking(.016)");
+  const blockers=q.state().receivers.filter(r=>r.blockAim);assert.ok(blockers.length>=2);assert.equal(new Set(blockers.map(r=>r.blockTarget)).size,blockers.length);
+  for(const b of blockers)assert.ok(b.blockAim.z>b.blockTarget.mesh.position.z,'between runner and defender');
+});
+test('option routes read deep and underneath coverage once; normal routes never change',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>0;
+  for(const [dz,expected] of [[-7,'Curl'],[2,'Go'],[-2,'Out']]){
+    q.run("selectedPlay=plays.findIndex(p=>p.name==='Choice Stick');setupPlay(false);playState='live';receivers[1].distance=12;receivers[1].profile.cutting=100;receivers[1].profile.turning=100;defenders.forEach(d=>d.mesh.position.set(90,0,90))");
+    const r=q.state().receivers[1],d=q.state().defenders[1];d.mesh.position.copy(r.mesh.position).add(new THREE.Vector3(1,0,dz));q.run('readOptionRoute(receivers[1])');assert.equal(r.route,expected);q.run('readOptionRoute(receivers[1])');assert.equal(r.route,expected);
+    const normal=q.state().receivers[0],route=normal.route;normal.distance=20;q.run('readOptionRoute(receivers[0])');assert.equal(normal.route,route);
+  }
+});
+test('pump cooldown and matchup memory resist repeat targets, concepts and disciplined opponents',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>0;q.run("playState='live';gameTime=5000");
+  assert.equal(q.run('pumpFake()'),true);assert.equal(q.run('pumpFake()'),false);assert.equal(q.state().franchise.pumpMemory.length,1);
+  const initial=V.pumpChance([],0,'Sluggo',.2),same=Array.from({length:6},()=>({target:0,concept:'Sluggo'}));
+  assert.ok(V.pumpChance(same,0,'Sluggo',.2)<initial*.02);assert.ok(V.pumpChance([],0,'Sluggo',.95)<initial);
+  assert.ok(q.state().defenders.filter(d=>d.fakeUntil>5000).length<=1);
+  q.setupPlay();assert.equal(q.state().franchise.pumpMemory.length,1);q.run('endMatchup(false)');assert.equal(q.state().franchise.pumpMemory.length,0);
+});
+test('formation adjustments are bounded, preserve defense and cannot edit a live play',()=>{
+  const q=game().q,d=q.state().currentDefense;q.run('audibleReceiverIndex=0;for(let i=0;i<8;i++)adjustFormation("wide")');assert.equal(q.state().receivers[0].start.x,-22);assert.equal(q.state().currentDefense,d);
+  q.run('playState="live";adjustFormation("tight")');assert.equal(q.state().receivers[0].start.x,-22);
+  q.run('selectedPlay=16;setupPlay(false);audibleReceiverIndex=1;adjustFormation("motion");beginCountdown();gameTime=snapTime;update(.016,gameTime)');assert.equal(q.state().receivers[1].start.x,2.2);
+});
+test('new matchup memories migrate safely and survive save round trips',()=>{
+  const q=game().q;const f=q.state().franchise;f.pumpMemory=[null,{target:0,concept:'Mesh'},{target:8,concept:'invalid'}];f.conceptMemory=['Mesh',null,8];
+  const save=P.validateSave(JSON.stringify(f));assert.deepEqual(save.pumpMemory,[{target:0,concept:'Mesh'}]);assert.deepEqual(save.conceptMemory,['Mesh']);
+  assert.equal(V.weather('Day').cut,1);assert.ok(V.weather('Light Rain').hands<=.03);assert.ok(V.weather('Cold').contact<1.05);assert.ok(V.weather('Windy').wind<.4);
 });
