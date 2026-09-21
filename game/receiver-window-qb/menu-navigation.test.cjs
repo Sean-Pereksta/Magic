@@ -14,3 +14,7 @@ test('arrows follow menu geometry, Enter activates once, Tab cycles',()=>{
 test('top modal traps navigation, text fields retain editing, live input is untouched',()=>{
  const f=fixture();f.panels.saveLayer.hidden=false;f.key('ArrowDown');assert.equal(f.doc.activeElement,f.input);assert.equal(f.key('ArrowLeft').prevented,undefined);f.panels.saveLayer.hidden=true;f.doc.body.dataset.phase='live';assert.equal(f.key('Enter').prevented,undefined);
 });
+test('replay arrow keys pass through menu navigation to the camera handler',()=>{
+ const f=fixture();f.panels.replayBar={id:'replayBar',hidden:false,getClientRects:()=>[1],querySelectorAll:()=>[f.a]};
+ assert.equal(f.key('ArrowRight').stopped,undefined);f.doc.activeElement=f.a;assert.equal(f.key('Enter').stopped,true);assert.equal(f.a.clicked,1);
+});
