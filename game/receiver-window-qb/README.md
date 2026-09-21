@@ -97,3 +97,20 @@ Arrow keys navigate the top visible menu spatially, Enter activates, and Tab
 cycles its controls. This covers the main menu, roster/training/recruitment,
 saves, audibles, play selection and replay skip. Text fields keep native editing
 keys; live aiming and mobile split controls remain separate.
+
+## Watch Replay and camera controls
+
+Every completed play, including short gains, incompletions, interceptions and
+expired throw clocks, makes its replay available through **Watch Replay** on the
+field toolbar, main menu and team screen. It retains the most recent completed
+play for repeated viewing during the current session; the next completed play
+replaces it. Existing automatic highlight replays remain skippable.
+
+During either replay type, Right/Down cycles QB view → sideline → angled overhead;
+Left/Up cycles backward. On-screen view buttons provide the same controls for
+mouse/touch. Space, Escape or Skip Replay exits. The selected view persists for
+subsequent replays. Manual replays pause the simulation and restore the exact
+field/menu state without advancing downs, payouts or time. Replay data is not
+part of local/cloud saves and is cleared when switching franchises. One bounded
+recording and one detached actor set are retained, with owned resources disposed
+when replaced.

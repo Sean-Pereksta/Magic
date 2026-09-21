@@ -11,6 +11,7 @@
   // Restore the same logical control after training or roster selection rebuilds cards.
   document.addEventListener('keydown',e=>{
     const root=scope();if(!root||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter','Tab'].includes(e.key))return;
+    if(root.id==='replayBar'&&e.key.startsWith('Arrow'))return;
     const list=controls(root);if(!list.length)return;
     const current=document.activeElement;
     if(current?.tagName==='INPUT'&&e.key!=='Tab')return;

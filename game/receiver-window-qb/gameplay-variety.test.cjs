@@ -487,3 +487,32 @@ test('rating physique controls the rendered dimensions independently of cosmetic
   q.run('franchise.team[0].size=20;franchise.team[0].strength=20;franchise.team[1].size=95;franchise.team[1].strength=95;setupPlay(false)');
   const [small,big]=q.state().receivers;assert.ok(big.mesh.scale.x>small.mesh.scale.x*1.2);assert.ok(big.mesh.scale.y>small.mesh.scale.y);
 });
+
+test('ordinary plays remain rewatchable after next snap setup without advancing franchise state',()=>{
+  const q=game().q;
+  q.run("replayEligible=false;replayRecording=true;gameTime=1000;captureReplay(true);gameTime=2000;receivers[0].mesh.position.z-=5;captureReplay(true);scheduleResult(()=>setupPlay(true),0);const next=transition.fn;transition=null;next();");
+  assert.equal(q.run('canWatchReplay()'),true);
+  const before=q.run('JSON.stringify(franchise)'),clock=q.run('gameTime'),pos=q.state().receivers[0].mesh.position.clone();
+  const archive=q.run('lastReplay');assert.ok(archive.frames.every(f=>f.objects.every(Boolean)));
+  assert.notEqual(archive.frames[0].objects[0],q.state().receivers[0].mesh);
+  for(let i=0;i<3;i++){
+    q.run('watchLastReplay()');assert.ok(q.state().replay);q.updateReplay(.4);q.finishReplay();
+    assert.equal(q.run('JSON.stringify(franchise)'),before);assert.equal(q.run('gameTime'),clock);
+    assert.ok(q.state().receivers[0].mesh.position.distanceTo(pos)<.00001);assert.equal(archive.group.visible,false);
+  }
+});
+test('replay cameras cycle QB, sideline and angled overhead without moving simulation',()=>{
+  const q=game().q;q.run('replayRecording=true;captureReplay(true);gameTime+=1000;captureReplay(true);startReplay(replayFrames,()=>{});updateReplay(0)');
+  const qb=q.camera.position.clone(),state=q.state().receivers[0].mesh.position.clone();
+  q.run('cycleReplayCamera(1)');assert.equal(q.state().replay.angle,'sideline');assert.equal(q.camera.position.x,32);
+  q.run('cycleReplayCamera(1)');assert.equal(q.state().replay.angle,'overhead');assert.equal(q.camera.position.y,32);
+  q.run('cycleReplayCamera(1)');assert.equal(q.state().replay.angle,'qb');assert.ok(q.camera.position.distanceTo(qb)<.00001);
+  q.run('cycleReplayCamera(-1)');assert.equal(q.state().replay.angle,'overhead');assert.ok(q.state().receivers[0].mesh.position.distanceTo(state)<.00001);
+});
+test('replay archive replaces owned resources and blocks manual playback during live action',()=>{
+  const q=game().q;q.run('replayRecording=true;captureReplay(true);gameTime+=1000;captureReplay(true);archiveReplay(replayFrames)');
+  const old=q.run('lastReplay');let disposed=0;old.geometries.forEach(g=>g.addEventListener('dispose',()=>disposed++));
+  q.run('archiveReplay(replayFrames)');assert.equal(disposed,old.geometries.length);assert.equal(old.group.parent,null);
+  q.run("playState='live';watchLastReplay()");assert.equal(q.state().replay,null);
+  q.run('clearLastReplay()');assert.equal(q.run('lastReplay'),null);
+});
