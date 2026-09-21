@@ -16,10 +16,14 @@ function diagram(play,index,paths){
  art+=`<polyline points="${pts}" fill="none" stroke="${palette[i]}" stroke-width="${i===primary?3:1.8}" ${block?'stroke-dasharray="3 3"':''}/><circle cx="${x(start.x)}" cy="${y(start.z)}" r="${i===primary?6:4}" fill="${palette[i]}"/><text x="${x(start.x)}" y="${y(start.z)+16}" text-anchor="middle" font-size="10" fill="white">${['X','H','Y','Z'][i]}</text>`;
  if(block)art+=`<path d="M${endX-5} ${endY}h10" stroke="${palette[i]}" stroke-width="3"/>`;
  else art+=`<path d="M${endX-3} ${endY+5}l3 -5 3 5" fill="none" stroke="${palette[i]}" stroke-width="2"/>`;
- if(route==='Option')art+=`<path d="M${endX-15} ${endY}h30" stroke="${palette[i]}" stroke-dasharray="4 3"/><text x="${endX}" y="${endY-6}" fill="white" font-size="10">?</text>`;
+ if(root.QBVariety.isOption(route))art+=`<path d="M${endX-15} ${endY}h30" stroke="${palette[i]}" stroke-dasharray="4 3"/><text x="${endX}" y="${endY-6}" fill="white" font-size="10">?</text>`;
  });
- if(play.motion){const start=paths[play.motion.slot][0];art+=`<path d="M${x(start.x)} ${y(start.z)+4}H${x(play.motion.to)}" stroke="white" stroke-dasharray="4 3" stroke-width="2"/>`;}
- return `<svg class="playDiagram" viewBox="0 0 200 196" role="img" aria-label="${esc(play.name)} routes. Primary ${['X','H','Y','Z'][primary]}. Dashed routes show blocks or options.">${art}</svg>`;
+ for(const motion of root.QBVariety.motions(play)){
+   const start={x:(play.xs||[-18,-6,6,18])[motion.slot],z:30+(play.depths?.[motion.slot]??(motion.slot%2)*.35)},points=root.QBVariety.motionPath(motion,start);
+   art+=`<polyline points="${points.map(p=>`${x(p.x).toFixed(1)},${Math.min(191,y(p.z)+3).toFixed(1)}`).join(' ')}" fill="none" stroke="white" stroke-dasharray="4 3" stroke-width="2"/><circle cx="${x(start.x)}" cy="${y(start.z)+3}" r="3" fill="none" stroke="white"/>`;
+ }
+
+ return `<svg class="playDiagram" viewBox="0 0 200 196" role="img" aria-label="${esc(play.name)} routes. Primary ${['X','H','Y','Z'][primary]}. Dashed routes show blocks, options or pre-snap motion.">${art}</svg>`;
 }
 function qbHTML(book){const q=book.qb;return `<div class="metricGrid">${[['COMP / ATT',`${q.completions} / ${q.attempts}`],['COMP %',q.attempts?n(q.completions/q.attempts*100)+'%':'—'],['PASS YARDS',n(q.yards)],['TD / INT',`${q.touchdowns} / ${q.interceptions}`],['YARDS / ATT',q.attempts?n(q.yards/q.attempts):'—'],['LONG',n(book.longest)]].map(([k,v])=>`<div><small>${k}</small><strong>${v}</strong></div>`).join('')}</div>`;}
 const statNames={targets:'Targets',catches:'Catches',yards:'Yards',touchdowns:'TD',yac:'YAC',drops:'Drops',contested:'Contested',brokenTackles:'Broken tackles',stiffArms:'Stiff arms',hurdles:'Hurdles',jukes:'Jukes',blocks:'Blocks'};

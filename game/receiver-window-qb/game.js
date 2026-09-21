@@ -87,7 +87,16 @@ const ball=makeBall();
 // Pre-snap route art stays on the field until the snap.
 const routeVisuals=new THREE.Group();scene.add(routeVisuals);const routeColors=[0x62d9ff,0xffd166,0x7cffae,0xff82c6];
 function clearRouteVisuals(){while(routeVisuals.children.length){const o=routeVisuals.children[0];o.geometry?.dispose();o.material?.dispose();routeVisuals.remove(o)}}
-function drawRouteVisuals(){clearRouteVisuals();receivers.forEach((r,i)=>{const pts=r.path.map(p=>new THREE.Vector3(p.x,.055,p.z));const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:routeColors[i],transparent:true,opacity:.92}));routeVisuals.add(line);if(pts.length>1){const end=pts[pts.length-1],prev=pts[pts.length-2],dir=end.clone().sub(prev).normalize();const arrow=new THREE.Mesh(new THREE.ConeGeometry(.36,.85,10),new THREE.MeshBasicMaterial({color:routeColors[i],transparent:true,opacity:.95}));arrow.position.copy(end).add(new THREE.Vector3(0,.16,0));arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.clone().setY(0).normalize());arrow.rotateX(Math.PI/2);routeVisuals.add(arrow)}});routeVisuals.visible=true}
+function drawRouteVisuals(){
+  clearRouteVisuals();
+  receivers.forEach((r,i)=>{
+    const motion=V.motions(plays[selectedPlay],formationMotion).find(m=>m.slot===i),end=motion?V.motionSample(motion,r.start,1):null;
+    const path=end?pathFor(r.route,new THREE.Vector3(end.x,0,end.z)):r.path,pts=path.map(p=>new THREE.Vector3(p.x,.055,p.z));
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:routeColors[i],transparent:true,opacity:.92}));routeVisuals.add(line);
+    if(pts.length>1){const end=pts[pts.length-1],prev=pts[pts.length-2],dir=end.clone().sub(prev).normalize();const arrow=new THREE.Mesh(new THREE.ConeGeometry(.36,.85,10),new THREE.MeshBasicMaterial({color:routeColors[i],transparent:true,opacity:.95}));arrow.position.copy(end).add(new THREE.Vector3(0,.16,0));arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.clone().setY(0).normalize());arrow.rotateX(Math.PI/2);routeVisuals.add(arrow);}
+    if(motion){const points=V.motionPath(motion,r.start).map(p=>new THREE.Vector3(p.x,.06,p.z)),line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color:0xffffff,transparent:true,opacity:.75,dashSize:.65,gapSize:.45}));line.computeLineDistances();routeVisuals.add(line);}
+  });routeVisuals.visible=true;
+}
 
 // Green trajectory preview.
 const arcMat=new THREE.LineBasicMaterial({color:0x62ff9c,transparent:true,opacity:.9});const arcGeo=new THREE.BufferGeometry();const arcPositions=new Float32Array(64*3);arcGeo.setAttribute('position',new THREE.BufferAttribute(arcPositions,3).setUsage(THREE.DynamicDrawUsage));const arcLine=new THREE.Line(arcGeo,arcMat);arcLine.visible=false;scene.add(arcLine);
@@ -95,7 +104,7 @@ const landRing=new THREE.Mesh(new THREE.RingGeometry(.45,.66,28),new THREE.MeshB
 
 const routeOptions=[
   {name:'Go',key:'G'},{name:'Slant',key:'S'},{name:'Out',key:'O'},{name:'Post',key:'P'},{name:'Corner',key:'C'},
-  {name:'Drag',key:'D'},{name:'Dig',key:'I'},{name:'Comeback',key:'B'},{name:'Flat',key:'F'},{name:'Wheel',key:'W'},{name:'Fade',key:'A'},{name:'Curl',key:'U'},{name:'Double Move',key:'M'},{name:'Stick',key:'T'},{name:'Bubble',key:'E'},{name:'Tunnel',key:'N'},{name:'Lead',key:'L'}
+  {name:'Drag',key:'D'},{name:'Dig',key:'I'},{name:'Comeback',key:'B'},{name:'Flat',key:'F'},{name:'Wheel',key:'W'},{name:'Fade',key:'A'},{name:'Curl',key:'U'},{name:'Double Move',key:'M'},{name:'Stick',key:'T'},{name:'Bubble',key:'E'},{name:'Tunnel',key:'N'},{name:'Lead',key:'L'},{name:'Whip',key:'V'},{name:'Pivot',key:'J'},{name:'Choice',key:'R'},{name:'Seam Read',key:'Q'},{name:'Screen Choice',key:'K'}
 ];
 const routePool=routeOptions.map(r=>r.name);
 const routeByKey=Object.fromEntries(routeOptions.map(r=>[r.key,r.name]));
@@ -111,7 +120,7 @@ const plays=[
   {name:'Sideline',routes:['Fade','Wheel','Wheel','Fade']}
 ];
 plays.push(...V.concepts);
-let selectedPlay=0,playCategory='Suggested',pumpReadyAt=0,formationMotion=null;
+let selectedPlay=0,playCategory='Suggested',pumpReadyAt=0,formationMotion=null,motionDuration=2200;
 plays.slice(0,8).forEach((p,i)=>p.category=[0,4,7].includes(i)?'Deep Shots':'Intermediate');
 const defenses=[
   {id:'off',name:'OFF MAN',desc:'Cushion at the snap; attack the space before corners close.',corner:'off',safety:'patient'},
@@ -283,6 +292,11 @@ function pathFor(type,start){
   return rawPathFor(type,start).map(p=>p.set(THREE.MathUtils.clamp(p.x,-24.7,24.7),0,Math.max(ENDZONE_BACK_Z+1,p.z)));
 }
 function rawPathFor(type,start){const x=start.x,z=start.z;switch(type){
+case'Choice':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-10)];
+case'Seam Read':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-18)];
+case'Screen Choice':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z+2.7)];
+case'Whip':{const side=Math.sign(x)||1;return[new THREE.Vector3(x,0,z),new THREE.Vector3(x-side*3.5,0,z-4),new THREE.Vector3(x+side*4,0,z-5),new THREE.Vector3(x+side*9,0,z-7)];}
+case'Pivot':{const side=Math.sign(x)||1;return[new THREE.Vector3(x,0,z),new THREE.Vector3(x+side*3,0,z-4),new THREE.Vector3(x-side*5,0,z-6),new THREE.Vector3(x-side*11,0,z-7)];}
 case'Option':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-10)];
 case'Bubble Left':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x-5,0,z+2.5),new THREE.Vector3(x-6,0,z+3)];
 case'Slip':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x+2,0,z-2),new THREE.Vector3(x+3,0,z+2)];
@@ -354,7 +368,7 @@ function setupPlay(increment=false){
   snapSpotYards=ballSpotYards;playState='call';snapTime=0;nextCount=0;audibleReceiverIndex=null;$('audiblePanel').style.display='none';drawRouteVisuals();$('headline').textContent='CALL THE PLAY';$('detail').textContent=`${downLabel()} & ${Math.ceil(lineToGainYards-ballSpotYards)} from the ${Math.round(50-ballSpotYards)}. Selected: ${plays[selectedPlay].name}. Tap a receiver or press X / H / Y / Z to audible.`;$('playCallPanel').style.display='block';$('snapBtn').disabled=false;renderRoutes();updateScore();updatePlayButtons();checkpoint();
 }
 function beginCountdown(){
-  if(inputBlocked()||playState!=='call')return;playLog=F.newPlay(plays[selectedPlay].name);franchise.matchInProgress=true;checkpoint();closeAudible(true);playState='countdown';snapTime=gameTime+2200;nextCount=3;$('snapBtn').disabled=true;showMessage('READY',`${plays[selectedPlay].name} locked in — routes stay drawn until the snap.`,650);
+  if(inputBlocked()||playState!=='call')return;playLog=F.newPlay(plays[selectedPlay].name);franchise.matchInProgress=true;checkpoint();closeAudible(true);playState='countdown';motionDuration=2200;for(const m of V.motions(plays[selectedPlay],formationMotion)){const r=receivers[m.slot],points=V.motionPath(m,r.start);let length=0;for(let i=1;i<points.length;i++)length+=Math.hypot(points[i].x-points[i-1].x,points[i].z-points[i-1].z);motionDuration=Math.max(motionDuration,length/(r.maxSpeed*1.15)*1500/Math.max(.1,(m.end??1)-(m.start||0)));}snapTime=gameTime+motionDuration;nextCount=Math.ceil(motionDuration/1000);$('snapBtn').disabled=true;showMessage('READY',`${plays[selectedPlay].name} locked in — routes stay drawn until the snap.`,650);
 }
 function makeDefender(mesh,kind,target,skill){
   const growth=P.defenseProgress(activeRound()),identity=V.identity(activeRound());
@@ -381,21 +395,27 @@ function openAudible(index){
 }
 function closeAudible(clearSelection=true){if(clearSelection)audibleReceiverIndex=null;$('audiblePanel').style.display='none';setAudibleRing()}
 function assignAudibleRoute(route){
-  if(playState!=='call'||audibleReceiverIndex==null||!routePool.includes(route))return;const r=receivers[audibleReceiverIndex],slot=audibleReceiverIndex;r.route=route;r.screenTarget=false;r.optionRead=true;r.path=pathFor(route,r.start);r.audibled=true;drawRouteVisuals();renderRoutes();
+  if(playState!=='call'||audibleReceiverIndex==null||!routePool.includes(route))return;const r=receivers[audibleReceiverIndex],slot=audibleReceiverIndex;r.route=route;r.screenTarget=false;r.optionRead=!V.isOption(route);r.path=pathFor(route,r.start);r.audibled=true;drawRouteVisuals();renderRoutes();
   showMessage('AUDIBLE SET',`${r.label} · ${r.profile.name.split(' ')[0]} → ${route}.`,900);closeAudible(true);
 }
 // Decisions occur only on explicitly designated option routes, before the throw.
 function readOptionRoute(r){
-  if(r.route!=='Option'||r.optionRead||ballLive||playState!=='live')return;
-  const skill=Math.min(1,(P.effective(r.profile.cutting)+P.effective(r.profile.turning))/200);
-  if(r.distance<(6+(1-skill)*5)*(1-F.chemistry(r.profile,plays[selectedPlay].name))+(1-F.awareness(r.profile)/100)*.3)return;
-  const d=defenders.filter(d=>d.kind==='corner').sort((a,b)=>a.mesh.position.distanceToSquared(r.mesh.position)-b.mesh.position.distanceToSquared(r.mesh.position))[0];
-  if(!d)return;
-  const pos=r.mesh.position,deep=d.mesh.position.z<pos.z-4,under=d.mesh.position.z>pos.z-1,inside=Math.abs(d.mesh.position.x)<Math.abs(pos.x);
-  // Lower route ratings read later and may choose the safe curl instead.
-  const route=Math.random()>skill*.8+.18?'Curl':deep?'Curl':under?'Go':inside?'Out':'Dig';
-  r.optionRead=true;r.route=route;r.path=pathFor(route,pos);r.distance=0;
-  if(route==='Curl')r.path=[pos.clone(),pos.clone().add(new THREE.Vector3(0,0,-2)),pos.clone().add(new THREE.Vector3(0,0,-1))];
+  if(!V.isOption(r.route)||r.optionRead||ballLive||playState!=='live')return;
+  const skill=Math.min(1,(P.effective(r.profile.cutting)+P.effective(r.profile.turning))/200),iq=F.awareness(r.profile),kind=r.route;
+  const depth=kind==='Screen Choice'?1.2+(1-skill)*1.4:V.optionDepths[kind]-1+(1-skill)*5;
+  if(r.distance<depth*(1-F.chemistry(r.profile,plays[selectedPlay].name))+(1-iq/100)*.3)return;
+  const pos=r.mesh.position,visible=defenders.filter(d=>d.mesh.position.distanceTo(pos)<32&&(kind!=='Option'||d.kind==='corner'));
+  if(!visible.length&&kind==='Option')return;
+  let route=V.optionDecision({kind,x:pos.x,z:pos.z,awareness:iq,toGo:lineToGainYards-ballSpotYards,defenders:visible.map(d=>({x:d.mesh.position.x,z:d.mesh.position.z}))});
+  // Lower ratings can settle early; a screen read always remains a short outlet.
+  if(kind!=='Screen Choice'&&Math.random()>skill*.8+.18)route='Curl';
+  r.optionRead=true;r.route=route;r.path=pathFor(route,pos);r.distance=0;r.screenOutlet=null;
+  const side=Math.sign(pos.x)||1,point=(x,z)=>new THREE.Vector3(THREE.MathUtils.clamp(x,-24.7,24.7),0,Math.max(ENDZONE_BACK_Z+1,z));
+  // The stem was already run. Make the break here instead of running it again.
+  if(['Curl','Stick'].includes(route))r.path=[pos.clone(),point(pos.x,pos.z-2),point(pos.x+side*(route==='Stick'?1.5:0),pos.z-1)];
+  if(route==='Out')r.path=[pos.clone(),point(pos.x+side*7,pos.z-1),point(pos.x+side*12,pos.z-3)];
+  if(route==='Dig')r.path=[pos.clone(),point(pos.x-side*7,pos.z-1),point(pos.x-side*16,pos.z-2)];
+  if(route==='Post')r.path=[pos.clone(),point(pos.x*.35,pos.z-12),point(0,pos.z-28)];
   showMessage('OPTION READ',`${r.label}: ${route.toUpperCase()}`,600);renderRoutes();
 }
 function adjustFormation(kind){
@@ -403,7 +423,7 @@ function adjustFormation(kind){
   const r=receivers[audibleReceiverIndex],side=Math.sign(r.start.x)||1,base=plays[selectedPlay].xs?.[audibleReceiverIndex]??[-18,-6,6,18][audibleReceiverIndex];
   if(kind==='motion'){
     if(!['Motion','Bunch / Stack','Trick Plays'].includes(V.category(plays[selectedPlay]))){showMessage('FIXED RELEASE','Motion is available in Motion, Bunch / Stack and Trick Plays.',900);return;}
-    formationMotion={slot:audibleReceiverIndex,to:THREE.MathUtils.clamp(-r.start.x*.55,-12,12)};showMessage('MOTION SET',`${r.label} crosses before the snap.`,700);return;
+    formationMotion={slot:audibleReceiverIndex,to:THREE.MathUtils.clamp(-r.start.x*.55,-12,12)};drawRouteVisuals();showMessage('MOTION SET',`${r.label} crosses before the snap.`,700);return;
   }
   const next=THREE.MathUtils.clamp(r.start.x+side*(kind==='wide'?2:-2),Math.max(-23,base-4),Math.min(23,base+4));
   if(receivers.some(a=>a!==r&&Math.abs(a.start.x-next)<1.3&&Math.abs(a.start.z-r.start.z)<1.3))return;
@@ -435,7 +455,7 @@ function updateScore(){const team=franchise.identity;stadiumDetails?.score(team,
 function showMessage(head,detail,ms=1300){$('headline').textContent=head;$('detail').textContent=detail||'';messageTimer=gameTime+ms}
 function flashResult(text,good=true,ms=900){const el=$('resultFlash');el.textContent=text;el.className=`${good?'good':'bad'} show`;resultFlashTimer=gameTime+ms}
 function suggestedPlays(){return plays.map((p,i)=>({i,...F.suggestion(p,{down,toGo:lineToGainYards-ballSpotYards,spot:ballSpotYards})})).sort((a,b)=>b.score-a.score).slice(0,6).map(p=>p.i);}
-function diagramPaths(p){return p.routes.map((route,i)=>pathFor(route,new THREE.Vector3((p.xs||[-18,-6,6,18])[i],0,30+(p.depths?.[i]||0))));}
+function diagramPaths(p){return p.routes.map((route,i)=>{const start=new THREE.Vector3((p.xs||[-18,-6,6,18])[i],0,30+(p.depths?.[i]??(i%2)*.35)),motion=V.motions(p).find(m=>m.slot===i);if(motion){const end=V.motionSample(motion,start,1);start.set(end.x,0,end.z);}return pathFor(route,start);});}
 function updatePlayButtons(){
   const p=plays[selectedPlay],suggested=suggestedPlays();$('schemeHint').textContent=playCategory==='Suggested'?F.suggestion(p,{down,toGo:lineToGainYards-ballSpotYards,spot:ballSpotYards}).reason:p.hint||'Balanced spacing. Audible individual receivers to suit the coverage.';
   document.querySelectorAll('.playBtn[data-play]').forEach(b=>{b.classList.toggle('selected',Number(b.dataset.play)===selectedPlay);b.hidden=playCategory==='Suggested'?!suggested.includes(Number(b.dataset.play)):V.category(plays[Number(b.dataset.play)])!==playCategory;});
@@ -694,12 +714,23 @@ function updateReceiver(r,dt,now){
   if(!ballLive){r.ballPursuit=null;r.comebackActive=false;r.comebackPlant=0;r.underthrowDifficulty=0}
   r.distance+=r.velocity.length()*dt;let target=routePosition(r.path,r.distance+1.45);
   let settle=1;
-  if(['Curl','Stick','Bubble','Bubble Left','Tunnel','Slip','Lead','Option'].includes(r.route)&&!ballLive){
+  if(['Curl','Stick','Bubble','Bubble Left','Tunnel','Slip','Lead','Option','Choice','Screen Choice'].includes(r.route)&&!ballLive){
     const end=r.path[r.path.length-1];let length=0;for(let i=1;i<r.path.length;i++)length+=r.path[i].distanceTo(r.path[i-1]);
     if(r.distance>length-2){target.copy(end);settle=THREE.MathUtils.clamp(r.mesh.position.distanceTo(end)/1.8,0,1);}
-  }r.trackingBall=false;let stridePlan=null;
+  }
+  if(r.screenTarget&&!ballLive&&!V.isOption(r.route)){
+    const anchor=r.path[r.path.length-1];
+    if(r.mesh.position.distanceTo(anchor)<4||r.screenOutlet){
+      if(!r.screenOutlet||now>=(r.screenReadAt||0)){r.screenOutlet=V.screenOutlet({anchor,losZ:worldZForYards(ballSpotYards),awareness:F.awareness(r.profile),defenders:defenders.map(d=>({x:d.mesh.position.x,z:d.mesh.position.z}))});r.screenReadAt=now+240;}
+      target.set(r.screenOutlet.x,0,r.screenOutlet.z);settle=THREE.MathUtils.clamp(target.distanceTo(r.mesh.position)/1.8,0,1);
+    }
+  }
+  r.trackingBall=false;let stridePlan=null;
   if(ballLive){
-    const plan=receiverBallPlan(r);
+    // A lead stays with its seal unless the ball is coming directly to its hands.
+    const blockPass=r.route==='Lead'&&r.blockAim?ballApproach(r.mesh.position.clone().add(new THREE.Vector3(0,1.6,0)),.32):null;
+    const stayBlocking=r.route==='Lead'&&r.blockAim&&!(blockPass&&blockPass.time<.32&&blockPass.dist<1.5);
+    const plan=stayBlocking?null:receiverBallPlan(r);
     if(plan){
       r.trackingBall=true;r.burst=Math.max(r.burst,.38);predictedLanding.copy(plan.point);predictedFlightTime=plan.time;
       stridePlan=plan.strideHeading?plan:null;
@@ -1047,7 +1078,7 @@ function checkBallContact(){
   const signature=actor.signature==='Sure Hands'?.025:0;
   const control=THREE.MathUtils.clamp(.64-V.weather(matchWeather().name).hands+signature+rating*.30+athletic*.07+(twoHands?.09:0)+spiralQuality*.04-Math.max(0,speed-24)*.006-(actor.stagger>0?.14:0)-(actor.comebackActive?(actor.underthrowDifficulty||0)*.3:0),.18,.99);
   if(hit.limb.hand&&aware&&!opponent&&!pendingCatch&&Math.random()<control){
-    if(!isDefense)actor.placement=catchPlacement(actor);
+    if(!isDefense){actor.placement=catchPlacement(actor);actor.catchOneHand=!twoHands;}
     actor.mesh.updateMatrixWorld(true);
     pendingCatch={actor,isDefense,limb:hit.limb,offset:hit.limb.mesh.worldToLocal(ball.position.clone()),remaining:twoHands?.045:.075};
     ballVel.copy(actor.velocity);actor.catchPose=1;
@@ -1120,8 +1151,12 @@ function updateBallCarrier(r,dt){
   const pos=r.mesh.position,openGoal=clearGoalLane(r),goal=new THREE.Vector3(openGoal?pos.x:0,0,GOAL_LINE_Z-3),desired=goal.clone().sub(pos);desired.y=0;if(desired.lengthSq()<.001)desired.set(0,0,-1);desired.normalize();
   r.bestRunZ=Math.min(r.bestRunZ??pos.z,pos.z);
   const screenBoost=earlyScreenRun(r);
-  const lead=screenBoost?receivers.filter(a=>a!==r&&a.blockAim&&a.mesh.position.z<pos.z-.8&&a.mesh.position.distanceTo(pos)<10).sort((a,b)=>a.mesh.position.distanceToSquared(pos)-b.mesh.position.distanceToSquared(pos))[0]:null;
-  const lane=V.lane({x:pos.x,z:pos.z,bestZ:r.bestRunZ,awareness:F.awareness(r.profile),style:r.style||V.playstyle(r.profile),goalZ:GOAL_LINE_Z,markerZ:worldZForYards(lineToGainYards),lead:lead?{x:lead.mesh.position.x,z:lead.mesh.position.z+1.5}:null,defenders:defenders.filter(d=>!(d.diveRecovery>0)).map(d=>({x:d.mesh.position.x,z:d.mesh.position.z,vx:d.velocity.x,vz:d.velocity.z,blocked:d.blockTime>0}))});
+  const threats=defenders.filter(d=>!(d.diveRecovery>0)).map(d=>({id:d,x:d.mesh.position.x,z:d.mesh.position.z,vx:d.velocity.x,vz:d.velocity.z,blocked:d.blockTime>0}));
+  const blockers=receivers.filter(a=>a!==r&&a.blockAim).map(a=>({x:a.mesh.position.x,z:a.mesh.position.z,target:a.blockTarget,engaged:a.blockPose>0}));
+  const screenPlan=r.screenTarget?V.screenRead({x:pos.x,z:pos.z,elapsed:(gameTime-(r.screenCatchAt??gameTime))/1000,awareness:F.awareness(r.profile),blockers,defenders:threats}):null;
+  r.screenPhase=screenPlan?.phase||null;
+  const lane=V.lane({x:pos.x,z:pos.z,bestZ:r.bestRunZ,awareness:F.awareness(r.profile),style:r.style||V.playstyle(r.profile),goalZ:GOAL_LINE_Z,markerZ:worldZForYards(lineToGainYards),lead:screenPlan?.lead,screen:!!r.screenTarget,blockers,previous:r.runLane,defenders:threats});
+  r.runLane={x:lane.x,z:lane.z};
   if(!openGoal)desired.set(lane.x,0,lane.z);
   else {desired.set(0,0,-1);r.impactVel.x*=Math.pow(.04,dt);}
   // Limit voluntary backward travel, including leftover momentum after a cut.
@@ -1129,7 +1164,7 @@ function updateBallCarrier(r,dt){
   const retreatLeft=Math.max(0,lane.limit-(pos.z-r.bestRunZ));
   if(retreatLeft<.3&&desired.z>0)desired.set(desired.x,0,-.4).normalize();
   const current=r.heading.clone().normalize(),angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1)),cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,turnRating=P.effective((r.profile?.turning||50))/100,turn=Math.min(angle,THREE.MathUtils.lerp(7.0,10.2,turnRating)*V.weather(matchWeather().name).cut*dt)*sign,c=Math.cos(turn),s=Math.sin(turn);r.heading.set(current.x*c-current.z*s,0,current.x*s+current.z*c).normalize();
-  const cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.70),0,1),cutRating=P.effective((r.profile?.cutting||50))/100,targetSpeed=r.maxSpeed*(screenBoost?1.22:1)*(r.signature==='YAC Specialist'?1.02:.98)*(1-THREE.MathUtils.lerp(.31,.15,cutRating)*cutPenalty),desiredVel=r.heading.clone().multiplyScalar(targetSpeed),dv=desiredVel.sub(r.velocity),maxDv=THREE.MathUtils.lerp(20,29,cutRating)*(screenBoost?1.45:1)*dt;if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.velocity.z>0)r.velocity.z=Math.min(r.velocity.z,retreatLeft/Math.max(dt,.001),2.4);pos.addScaledVector(r.velocity,dt);pos.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));r.mesh.rotation.y=Math.atan2(r.heading.x,r.heading.z);animatePlayerContact(r,dt);attachBallToCarrier();
+  const cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.70),0,1),cutRating=P.effective((r.profile?.cutting||50))/100,targetSpeed=r.maxSpeed*(screenBoost?1.22:1)*(openGoal?1:screenPlan?.pace||1)*(r.signature==='YAC Specialist'?1.02:.98)*(1-THREE.MathUtils.lerp(.31,.15,cutRating)*cutPenalty),desiredVel=r.heading.clone().multiplyScalar(targetSpeed),dv=desiredVel.sub(r.velocity),maxDv=THREE.MathUtils.lerp(20,29,cutRating)*(screenBoost?1.45:1)*dt;if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.velocity.z>0)r.velocity.z=Math.min(r.velocity.z,retreatLeft/Math.max(dt,.001),2.4);pos.addScaledVector(r.velocity,dt);pos.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));r.mesh.rotation.y=Math.atan2(r.heading.x,r.heading.z);animatePlayerContact(r,dt);attachBallToCarrier();
   if(!r.history.length||gameTime-r.history[r.history.length-1].t>=30){const sample=r.history.length>=32?r.history.shift():{p:new THREE.Vector3(),v:new THREE.Vector3()};sample.t=gameTime;sample.p.copy(pos);sample.v.copy(r.velocity);r.history.push(sample);}
 }
 function finishSeries(offenseWon,headline,detail){
@@ -1155,6 +1190,9 @@ function beginRunAfterCatch(player){
   ballLive=false;arcLine.visible=false;landRing.visible=false;predictedFlightTime=0;charging=false;
   player.securedHands=player.mesh.userData.hands.map(h=>h.position.clone());
   ballCarrier=player;player.hasBall=true;player.catchPose=.45;player.catchStyle=placement.kind;player.catchStyleTime=.6;
+  const nearest=defenders.slice().sort((a,b)=>a.mesh.position.distanceToSquared(player.mesh.position)-b.mesh.position.distanceToSquared(player.mesh.position))[0];
+  const side=nearest?Math.sign(player.mesh.position.x-nearest.mesh.position.x)||1:1;
+  player.catchAnimation=V.catchAnimation({kind:placement.kind,screen:player.screenTarget,oneHand:player.catchOneHand,catching:P.effective(player.profile.catching),side});player.catchAnimationTime=player.catchAnimation.duration;player.screenCatchAt=gameTime;
   player.velocity.multiplyScalar(placement.retention);playState='run';catches++;
   flashResult(placement.feedback,true,900);
   showMessage(placement.feedback,`${player.label} · ${placement.kind.toLowerCase()} · find space upfield.`,850);
@@ -1276,10 +1314,10 @@ function updateBlocking(dt,screenReceiver=null){
   for(const b of blockers){
     b.blockCooldown=Math.max(0,(b.blockCooldown||0)-dt);b.blockPose=Math.max(0,(b.blockPose||0)-dt);b.blockAim=null;
     if(!ballCarrier&&b.route!=='Lead')continue;
-    const pos=b.mesh.position;if(pos.distanceTo(carrier)>18)continue;
+    const pos=b.mesh.position;if(pos.distanceTo(carrier)>18){b.blockTarget=null;continue;}
     const useful=d=>!claimed.has(d)&&d.mesh.position.distanceTo(carrier)<16&&d.mesh.position.z<carrier.z+2&&d.diveRecovery<=0;
-    const score=d=>pos.distanceTo(d.mesh.position)*.65+carrier.distanceTo(d.mesh.position)*.55+Math.abs(d.mesh.position.x-carrier.x)*.3-(b.blockTarget===d?1.6:0);
-    const d=defenders.filter(useful).sort((a,c)=>score(a)-score(c))[0];if(!d)continue;
+    const score=d=>{const gap=carrier.distanceTo(d.mesh.position),closing=Math.max(1.5,-d.velocity.clone().sub(runner.velocity).dot(d.mesh.position.clone().sub(carrier).normalize()));return pos.distanceTo(d.mesh.position)*.65+gap*.35+Math.abs(d.mesh.position.x-carrier.x)*.24+Math.min(3,gap/closing)*.8-(b.blockTarget===d?1.6:0);};
+    const d=defenders.filter(useful).sort((a,c)=>score(a)-score(c))[0];if(!d){b.blockTarget=null;if(runner.screenTarget)b.blockAim=new THREE.Vector3(THREE.MathUtils.clamp(carrier.x+(b.start.x<runner.start.x?-3:3),-23,23),0,Math.max(ENDZONE_BACK_Z+1,carrier.z-5));continue;}
     claimed.add(d);b.blockTarget=d;
     // Approach the carrier-facing shoulder, then mirror pursuit to keep leverage.
     const toRunner=carrier.clone().sub(d.mesh.position).setY(0).normalize();
@@ -1457,9 +1495,17 @@ function update(dt,now){
   if(ballLive&&dt>1/120+.000001){const steps=Math.ceil(dt/(1/120)),step=dt/steps;for(let i=0;i<steps;i++)update(step,now-(steps-i-1)*step*1000);return;}
   if(ballLive){contactStep=dt;previousBallAxis.copy(footballAxis());for(const a of [...receivers,...defenders])sampleContactRig(a,true);}
   if(playState==='countdown'){
-    const motion=formationMotion||plays[selectedPlay].motion;
-    if(motion){const r=receivers[motion.slot],t=THREE.MathUtils.clamp(1-(snapTime-now)/2200,0,1);r.mesh.position.x=THREE.MathUtils.lerp(r.start.x,motion.to,t);r.mesh.rotation.y=Math.sign(motion.to-r.start.x)*Math.PI/2;r.runIntensity=.65;r.runPhase+=dt*10;animatePlayerContact(r,dt);
-      if(t===1){r.start.copy(r.mesh.position);r.path=pathFor(r.route,r.start);r.heading.set(0,0,-1);r.velocity.set(0,0,-r.speed*.15);}}
+    const progress=THREE.MathUtils.clamp(1-(snapTime-now)/motionDuration,0,1);
+    for(const motion of V.motions(plays[selectedPlay],formationMotion)){
+      const r=receivers[motion.slot],point=V.motionSample(motion,r.start,progress),dx=point.x-r.mesh.position.x,dz=point.z-r.mesh.position.z;
+      r.mesh.position.set(point.x,0,point.z);if(Math.hypot(dx,dz)>.001)r.mesh.rotation.y=Math.atan2(dx,dz);
+      r.runIntensity=point.done?0:.65;r.runPhase+=dt*10;animatePlayerContact(r,dt);
+      // Man corners shade observed motion at a bounded speed; zone shells hold their landmarks.
+      if(['off','press','allout','trail','under'].includes(currentDefense.corner))for(const d of defenders.filter(d=>d.kind==='corner'&&d.target===motion.slot)){
+        d.mesh.position.x+=THREE.MathUtils.clamp(r.mesh.position.x-d.mesh.position.x,-dt*2.4,dt*2.4);
+      }
+      if(progress===1){r.start.copy(r.mesh.position);r.path=pathFor(r.route,r.start);r.heading.set(0,0,-1);r.velocity.set(0,0,-r.speed*.15);}
+    }
 
     const left=Math.max(0,snapTime-now),count=Math.ceil(left/1000);if(count>0&&count!==nextCount){nextCount=count;showMessage(String(count),`${plays[selectedPlay].name} locked in.`,760)}
     if(now>=snapTime){replayFrames=[];replayPool=[];replayInterval=1/30;replayRecording=true;replaySample=0;replayEligible=down===4;captureReplay(true);playState='live';franchise.conceptMemory=[...(Array.isArray(franchise.conceptMemory)?franchise.conceptMemory:[]),plays[selectedPlay].name].slice(-24);throwClock=8;routeVisuals.visible=false;$('playCallPanel').style.display='none';updateThrowClock();showMessage('SNAP',`${downLabel()} & ${Math.ceil(lineToGainYards-ballSpotYards)}. Eight seconds to throw — a completed pass stays live until the runner is tackled or scores.`,950)}
@@ -1619,11 +1665,17 @@ function tryJuke(r,manual=false){
   let side=nearest.mesh.position.x>=r.mesh.position.x?-1:1;
   if(r.mesh.position.x>22)side=-1;else if(r.mesh.position.x<-22)side=1;
   const traits=P.traits(r.profile),distance=nearest.mesh.position.distanceTo(r.mesh.position);
-  r.jukeMove=distance<2.1?'SPIN':distance>3.5?'HESITATION':'HARD CUT';
-  r.jukeSide=side;r.jukeDuration=(r.jukeMove==='SPIN'?.62:.56)*THREE.MathUtils.clamp(1.12-P.effective(r.profile.evasion)*.002,.84,1.08);
+  // Evaluate both exit shoulders; avoid juking into a second tackler.
+  const exitRisk=s=>defenders.reduce((risk,d)=>risk+Math.max(0,3-Math.hypot(r.mesh.position.x+s*2-d.mesh.position.x,r.mesh.position.z-1.5-d.mesh.position.z)),0);
+  if(Math.abs(r.mesh.position.x)<21&&exitRisk(-side)+.6<exitRisk(side))side=-side;
+  const toward=nearest.mesh.position.clone().sub(r.mesh.position).setY(0).normalize(),closing=r.velocity.clone().sub(nearest.velocity).dot(toward);
+  const last=gameTime-(r.lastJukeAt??-Infinity)<4500?r.jukeMove:'';
+  const move=V.evasionMove({distance,side,closing,lateral:nearest.velocity.x-r.velocity.x,crowded:candidates.length>1,screen:!!r.screenTarget,nearSideline:Math.abs(r.mesh.position.x)>21,style:r.style,athleticism:P.effective(r.profile.athleticism),last});
+  r.jukeMove=move.name;r.lastJukeAt=gameTime;
+  r.jukeSide=side;r.jukeDuration=move.duration*THREE.MathUtils.clamp(1.12-P.effective(r.profile.evasion)*.002,.84,1.08);
   r.jukeCooldown=traits.jukeCooldown;r.jukeAnim=r.jukeDuration;r.plantPose=1;
-  r.velocity.multiplyScalar(r.jukeMove==='HESITATION'?.68:.86);
-  r.impactVel.addScaledVector(new THREE.Vector3(side,0,0),2.6+P.effective(r.profile.tricks)*.015);
+  r.velocity.multiplyScalar(move.retention);
+  r.impactVel.addScaledVector(new THREE.Vector3(side,0,0),(2.6+P.effective(r.profile.tricks)*.015)*move.impulse);
   let beaten=0;
   for(const d of [nearest]){
     const gap=d.mesh.position.distanceTo(r.mesh.position);
@@ -1644,7 +1696,7 @@ function tryJuke(r,manual=false){
 function updateTricks(r,dt,carrier){
   r.jukeCooldown=Math.max(0,(r.jukeCooldown||0)-dt);r.jukeAnim=ballLive?0:Math.max(0,(r.jukeAnim||0)-dt);
   // Players choose a moment near a defender. Chance is time based, not frame based.
-  if(!ballLive&&(!carrier||!clearGoalLane(r))&&(carrier||playState==='live')&&Math.random()<dt*(.5+P.effective(r.profile.tricks)*.009)*(carrier?(1+P.effective(r.profile.evasion)/100)*(earlyScreenRun(r)?2.8:1):1)*(.94+F.awareness(r.profile)*.0006)*(r.style==='YAC Specialist'?1.3:r.style==='Power Receiver'||r.style==='Possession Receiver'?.6:1))tryJuke(r);
+  if(!ballLive&&(carrier||(!r.screenTarget&&!r.blockAim&&r.route!=='Lead'))&&(!carrier||!clearGoalLane(r))&&(carrier||playState==='live')&&Math.random()<dt*(.5+P.effective(r.profile.tricks)*.009)*(carrier?(1+P.effective(r.profile.evasion)/100)*(earlyScreenRun(r)?2.8:1):1)*(.94+F.awareness(r.profile)*.0006)*(r.style==='YAC Specialist'?1.3:r.style==='Power Receiver'||r.style==='Possession Receiver'?.6:1))tryJuke(r);
 }
 $('jukeBtn').onclick=()=>{if(!inputBlocked()&&playState==='run')tryJuke(ballCarrier,true)};
 function updateHUD(){

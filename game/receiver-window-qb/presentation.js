@@ -52,6 +52,30 @@ function animate(a,dt,ball){
     if(a.trackingBall||a.ballSeen){const target=ball.position.clone();a.mesh.worldToLocal(target);yaw=T.MathUtils.clamp(Math.atan2(target.x,target.z),-.65,.65);pitch=T.MathUtils.clamp(-Math.atan2(target.y-1.9,Math.hypot(target.x,target.z)),-.4,.3);}
     u.headRig.rotation.y=T.MathUtils.lerp(u.headRig.rotation.y,yaw,Math.min(1,dt*9));u.headRig.rotation.x=pitch;
   }
+  if(a.jukeAnim>0){
+    const t=T.MathUtils.clamp(1-a.jukeAnim/(a.jukeDuration||.56),0,1),pulse=Math.sin(t*Math.PI),side=a.jukeSide||1;
+    const counter=Math.sin(t*Math.PI*2)*(1-t);
+    if(a.jukeMove==='DEAD LEG'){rig.rotation.z+=side*counter*.38;rig.position.y-=pulse*.08;u.feet[side>0?0:1].position.z-=pulse*.26;}
+    if(a.jukeMove==='ROCKER STEP'){rig.rotation.y+=side*counter*.65;rig.rotation.z+=side*counter*.25;u.hands[0].position.x-=counter*.12;}
+    if(a.jukeMove==='STUTTER GO'){rig.position.y+=Math.sin(t*Math.PI*6)*pulse*.055;rig.rotation.x+=t<.45?-pulse*.12:pulse*.19;for(let i=0;i<u.feet.length;i++)u.feet[i].position.z+=Math.sin(t*Math.PI*6+i*Math.PI)*pulse*.12;}
+    if(a.jukeMove==='SPEED CUT'){rig.rotation.z+=side*pulse*.2;rig.rotation.x+=pulse*.09;}
+    if(a.jukeMove==='SHOULDER DIP'){rig.position.y-=pulse*.13;rig.rotation.z+=side*pulse*.22;rig.rotation.x+=pulse*.18;}
+    if(a.jukeMove==='HESITATION'){rig.rotation.x-=pulse*.15;u.body.rotation.y+=side*counter*.28;}
+  }
+  // Catch variants begin only after the real glove-contact/secure sequence succeeds.
+  if(a.hasBall&&a.catchAnimationTime>0&&a.catchAnimation){
+    const {name,side,duration}=a.catchAnimation;a.catchAnimationTime=Math.max(0,a.catchAnimationTime-dt);
+    const t=1-a.catchAnimationTime/duration,pulse=Math.sin(t*Math.PI),gather=(1-t)*(1-t);
+    if(name==='SIDELINE DRAG'){rig.rotation.z+=side*pulse*.16;u.feet[0].position.z-=pulse*.24;u.feet[1].rotation.x+=pulse*.55;}
+    if(name==='HIGH-POINT CLAMP'){rig.rotation.x-=pulse*.12;for(const h of u.hands){h.position.y+=gather*.26;h.position.x*=1-pulse*.2;}}
+    if(name==='LOW SCOOP'){rig.position.y-=pulse*.15;rig.rotation.x+=pulse*.28;for(const h of u.hands){h.position.y-=gather*.2;h.position.z+=pulse*.12;}}
+    if(name==='BODY SHIELD'){rig.rotation.y+=side*pulse*.42;rig.rotation.z-=side*pulse*.14;for(const h of u.hands){h.position.x=side*(.22+pulse*.12);h.position.z-=pulse*.07;}}
+    if(name==='REACH & TUCK'){const hand=u.hands[side>0?1:0];hand.position.x+=side*gather*.16;hand.position.z+=gather*.14;rig.rotation.y+=side*pulse*.18;}
+    if(name==='SCREEN TURN-UP'){rig.rotation.y+=side*pulse*.32;rig.rotation.x+=pulse*.13;u.body.rotation.y-=side*pulse*.2;}
+    if(name==='SPIN & SECURE'){rig.rotation.y+=side*pulse*.72;rig.position.y-=pulse*.06;}
+    if(name==='BASKET CATCH'){for(const h of u.hands){h.position.y-=gather*.10;h.position.z+=gather*.12;}rig.rotation.x-=pulse*.06;}
+    if(name==='SNATCH & TUCK'){for(const h of u.hands)h.position.z+=gather*.16;rig.rotation.x+=pulse*.05;}
+  }
   if(a.stiffArmTime>0&&a.hasBall){const t=1-a.stiffArmTime/.42,envelope=Math.sin(Math.PI*Math.min(1,t));rig.rotation.z-=envelope*.15;rig.rotation.y-=envelope*.1;u.hands[1].position.set(.26,1.26,.27);}
   if(a.contactReaction>0){a.contactReaction=Math.max(0,a.contactReaction-dt);const p=Math.sin(Math.PI*a.contactReaction/(a.contactDuration||.7)),side=a.contactSide||1;rig.rotation.z+=side*p*(a.contactPower>.8?1.15:.48);rig.rotation.y+=side*p*.6;rig.position.y-=p*(a.contactPower>.8?.55:.16);}
   if(a.hurdleTime>0){const flight=T.MathUtils.clamp((a.jumpY||0)/.9,0,1);rig.rotation.x-=flight*.15;for(const h of u.hands)h.position.y+=flight*.25;}

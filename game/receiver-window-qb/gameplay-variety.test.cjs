@@ -457,8 +457,8 @@ test('saved market discounts are stable and signing charges the displayed reduce
 
 test('expanded concepts have finite routes, distinct alignments and bounded motion',()=>{
   const q=game().q;
-  assert.equal(q.run('plays.length'),44);
-  for(let i=8;i<44;i++)for(const spot of [0,46]){
+  assert.equal(q.run('plays.length'),72);
+  for(let i=8;i<72;i++)for(const spot of [0,46]){
     q.run(`selectedPlay=${i};ballSpotYards=${spot};setupPlay(false);beginCountdown();gameTime=snapTime;update(.016,gameTime)`);
     for(const r of q.state().receivers){assert.ok(r.path.every(p=>Number.isFinite(p.length())&&Math.abs(p.x)<=24.7));}
     if(i===16)assert.equal(q.state().receivers[1].start.x,4);
@@ -655,4 +655,82 @@ test('failed timely-use check is not retried every frame and new actors reset mo
   q.run("playState='run';ballCarrier=receivers[0];receivers[0].mesh.position.set(0,0,0);defenders[0].mesh.position.set(0,0,-1);receivers[0].profile.evasion=1");
   rolls=0;for(let i=0;i<120;i++)assert.equal(q.run("attemptCarrierMove(receivers[0],defenders[0],'stiff')"),false);assert.equal(rolls,1);
   q.setupPlay();assert.equal(q.state().receivers[0].stiffReads,undefined);
+});
+
+test('new screen options read early at low ratings, preserve the outlet and freeze after the throw',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>0;
+  q.run("selectedPlay=plays.findIndex(p=>p.name==='Read Screen Right');setupPlay(false);playState='live';defenders.forEach(d=>d.mesh.position.set(90,0,90));receivers[1].profile.cutting=10;receivers[1].profile.turning=10;");
+  const r=q.state().receivers[1],d=q.state().defenders[1];d.mesh.position.set(r.start.x+4,0,r.start.z-2);
+  for(let frame=0;frame<180&&!r.optionRead;frame++)q.run('gameTime+=1000/60;updateReceiver(receivers[1],1/60,gameTime)');
+  assert.equal(r.optionRead,true);assert.equal(r.route,'Tunnel');assert.equal(r.screenTarget,true);
+  assert.ok(r.path.every(p=>p.z>=r.start.z-5),'screen cannot acquire a deep stem');
+  q.run("receivers[1].route='Screen Choice';receivers[1].optionRead=false;receivers[1].distance=20;ballLive=true;readOptionRoute(receivers[1])");assert.equal(r.route,'Screen Choice');
+  q.run("ballLive=false;playState='call';audibleReceiverIndex=0;assignAudibleRoute('Choice');playState='live';receivers[0].distance=12;readOptionRoute(receivers[0])");assert.equal(q.state().receivers[0].optionRead,true);
+});
+test('seam and choice reads react to visible leverage without running a second stem',()=>{
+  assert.equal(V.optionDecision({kind:'Seam Read',x:9,z:0,defenders:[{x:18,z:-8}]}),'Go');
+  assert.equal(V.optionDecision({kind:'Seam Read',x:9,z:0,defenders:[{x:9,z:-10}]}),'Post');
+  assert.equal(V.optionDecision({kind:'Seam Read',x:9,z:0,defenders:[{x:9,z:-10},{x:0,z:-12}]}),'Out');
+  assert.equal(V.optionDecision({kind:'Choice',x:8,z:0,toGo:5,awareness:90,defenders:[{x:6,z:-1}]}),'Whip');
+  const c=game(),q=c.q;c.Math.random=()=>0;q.run("selectedPlay=plays.findIndex(p=>p.name==='Double Stick Choice');setupPlay(false);playState='live';receivers[1].distance=12;defenders.forEach(d=>d.mesh.position.set(90,0,90));receivers[1].profile.cutting=100;receivers[1].profile.turning=100;");
+  const r=q.state().receivers[1];q.state().defenders[1].mesh.position.copy(r.mesh.position).add(new THREE.Vector3(r.mesh.position.x>0?-1:1,0,-2));q.run('readOptionRoute(receivers[1])');assert.equal(r.route,'Out');assert.ok(r.path.at(-1).z>=r.mesh.position.z-3);
+});
+test('orbit, return and paired motion stay bounded, settle at release and preserve the chosen play on reload',()=>{
+  const q=game().q;
+  for(const name of ['Orbit Slip','Return Choice','Twin Shift Choice','Trade Motion Mesh']){
+    q.run(`selectedPlay=plays.findIndex(p=>p.name===${JSON.stringify(name)});setupPlay(false);beginCountdown()`);
+    const play=q.run('plays[selectedPlay]'),actors=q.state().receivers,motions=V.motions(play),starts=actors.map(r=>r.start.clone());let rearArc=false;
+    const duration=q.run('motionDuration');
+    for(let elapsed=0;elapsed<duration;elapsed+=1000/60){
+      const previous=actors.map(r=>r.mesh.position.clone());q.run(`gameTime=snapTime-motionDuration+${elapsed};update(1/60,gameTime)`);
+      for(const m of motions){const r=actors[m.slot];assert.ok(Math.abs(r.mesh.position.x)<=23);assert.ok(r.mesh.position.distanceTo(previous[m.slot])<=r.maxSpeed*1.15/60+.001);rearArc ||= r.mesh.position.z>starts[m.slot].z+2;}
+    }
+    q.run('gameTime=snapTime;update(1/60,gameTime)');assert.equal(q.state().playState,'live');
+    for(const m of motions){assert.equal(actors[m.slot].start.x,m.to);assert.equal(actors[m.slot].path[0].x,m.to);}
+    if(name.includes('Orbit'))assert.equal(rearArc,true);
+  }
+  q.run("selectedPlay=71;setupPlay(false);checkpoint();activateFranchise(P.validateSave(JSON.stringify(franchise)),0);resumeGame()");assert.equal(q.run('selectedPlay'),71);
+});
+test('screen outlets seek uncovered space and blocker reads release immediately into a free lane',()=>{
+  const base={anchor:{x:8,z:2},losZ:0,defenders:[{x:8,z:2}],awareness:90};
+  const outlet=V.screenOutlet(base);assert.ok(Math.abs(outlet.x-8)>1.5);assert.ok(outlet.z>=-1&&outlet.z<=5);
+  assert.deepEqual(V.screenOutlet(base),outlet,'static coverage produces a stable outlet');
+  const edge=V.screenOutlet({...base,anchor:{x:25,z:2},defenders:[]});assert.ok(edge.x<=23.4);
+  const context={x:0,z:0,elapsed:.2,blockers:[{x:0,z:-2,target:'edge',engaged:false}],defenders:[{id:'edge',x:1,z:-5}],awareness:90};
+  let read=V.screenRead(context);assert.equal(read.phase,'PRESS BLOCK');assert.ok(read.lead.x<0);assert.equal(read.pace,.86);
+  read=V.screenRead({...context,elapsed:1.2});assert.equal(read.pace,1);
+  read=V.screenRead({...context,defenders:[]});assert.equal(read.phase,'BURST');assert.equal(read.pace,1);assert.equal(read.lead,null);
+  read=V.screenRead({...context,defenders:[{id:'edge',x:0,z:-1.5}]});assert.equal(read.pace,1,'do not wait for a block during immediate contact');
+});
+test('lead blockers ignore nearby screen passes but remain eligible for a direct catch',()=>{
+  const q=game().q;q.run("selectedPlay=14;setupPlay(false);playState='thrown';ballLive=true;defenders.forEach(d=>d.mesh.position.set(90,0,90));globalThis.plans=0;receiverBallPlan=r=>{globalThis.plans++;return {point:r.mesh.position.clone().add(new THREE.Vector3(0,0,-1)),time:.1,facing:1,routeGap:0}};ballApproach=()=>({time:.6,dist:.2});receivers[0].route='Lead';receivers[0].blockAim=receivers[0].mesh.position.clone().add(new THREE.Vector3(0,0,-4));updateReceiver(receivers[0],1/60,0)");
+  const r=q.state().receivers[0];assert.equal(r.trackingBall,false);assert.equal(q.run('globalThis.plans'),0);assert.ok(r.velocity.z<0);
+  q.run('ballApproach=()=>({time:.1,dist:.2});updateReceiver(receivers[0],1/60,17)');assert.equal(r.trackingBall,true);assert.equal(q.run('globalThis.plans'),1);
+});
+test('screen carriers attack forward gaps at 30, 60 and 120 Hz without following blocks backward',()=>{
+  for(const hz of [30,60,120]){
+    const c=game(),q=c.q,r=arrangeCarrier(c,0,0);r.screenTarget=true;r.bestRunZ=0;r.heading.set(0,0,1);r.velocity.set(0,0,8);
+    q.state().defenders.forEach((d,i)=>d.mesh.position.set((i-2)*1.2,0,-3));let retreat=0;
+    for(let i=0;i<hz*3;i++){q.run(`gameTime+=1000/${hz};updateBallCarrier(receivers[0],1/${hz})`);retreat=Math.max(retreat,r.mesh.position.z-r.bestRunZ);}
+    assert.ok(retreat<=1.61);assert.ok(r.mesh.position.z<0);assert.ok(r.velocity.length()<r.maxSpeed*1.3);
+  }
+});
+test('context selects eight evasion techniques while contact, cooldowns and movement retain authority',()=>{
+  const contexts=[{distance:1.8},{distance:4},{distance:3},{distance:3,nearSideline:true},{distance:2.5,crowded:true,style:'Power Receiver'},{distance:3,lateral:3},{distance:4,screen:true},{distance:3,closing:6,athleticism:90}];
+  assert.equal(new Set(contexts.map(x=>V.evasionMove(x).name)).size,8);
+  assert.notEqual(V.evasionMove({distance:3,last:'HARD CUT'}).name,'HARD CUT');
+  const c=game(),q=c.q,r=arrangeCarrier(c,22,0);c.Math.random=()=>0;r.jukeCooldown=0;
+  q.state().defenders[0].mesh.position.set(22,0,-3);q.state().defenders[1].mesh.position.set(21,0,-3.5);const start=r.mesh.position.clone();
+  assert.equal(q.tryJuke(r),true);assert.equal(r.jukeMove,'SPEED CUT');assert.ok(r.jukeSide<0);assert.ok(r.impactVel.length()<5);assert.ok(r.mesh.position.equals(start),'move cannot teleport');assert.equal(q.tryJuke(r),false);assert.ok(q.state().defenders.filter(d=>d.fakeUntil>q.run('gameTime')).length<=1);
+});
+test('nine secured catch poses stay finite, keep the ball attached and reset on the next play',()=>{
+  const c=game(),q=c.q,names=new Set(),poses=new Set();
+  const variants=[{kind:'TOE TAP'},{kind:'HIGH POINT'},{kind:'LOW CATCH'},{kind:'CONTACT CATCH'},{kind:'CATCH AND TURN',oneHand:true},{kind:'CATCH AND TURN',screen:true},{kind:'BACK SHOULDER'},{kind:'OVER THE SHOULDER'},{kind:'CATCH AND TURN'}];
+  for(const variant of variants){const r=arrangeCarrier(c);r.catchAnimation=V.catchAnimation({...variant,catching:90});r.catchAnimationTime=r.catchAnimation.duration;names.add(r.catchAnimation.name);
+    for(let i=0;i<9;i++)q.run('animatePlayerContact(receivers[0],1/60);attachBallToCarrier()');
+    const u=r.mesh.userData;poses.add([u.visualRig.rotation.x,u.visualRig.rotation.y,u.visualRig.rotation.z,u.visualRig.position.y,...u.hands.flatMap(h=>h.position.toArray())].map(x=>x.toFixed(4)).join(','));
+    for(const h of u.hands)assert.ok(Number.isFinite(h.position.length()));assert.ok(q.ball.position.distanceTo(r.mesh.position)<3);
+    assert.equal(q.state().ballLive,false);
+  }
+  assert.equal(names.size,9);assert.equal(poses.size,9);q.setupPlay();assert.equal(q.state().receivers[0].catchAnimation,undefined);
 });

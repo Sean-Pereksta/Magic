@@ -6,7 +6,7 @@ const server=http.createServer((req,res)=>{try{const path=root+req.url.split('?'
 (async()=>{await new Promise(r=>server.listen(8765,'127.0.0.1',r));const browser=await chromium.launch({headless:true,executablePath:process.env.QB_CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:8765/game/receiver-window-qb.html');await page.waitForFunction(()=>!!window.__qb);assert.deepEqual(errors,[]);assert.equal(await page.locator('#startLayer').isVisible(),true);
 await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'startBtn');
 await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>__qb.state.playState),'call');
-assert.equal(await page.locator('.playBtn').count(),44);
+assert.equal(await page.locator('.playBtn').count(),72);
 assert.equal(await page.locator('[data-category]').count(),8);
 await page.click('[data-category="Screens"]');
 await page.locator('.playBtn').nth(14).focus();await page.keyboard.press('Enter');
