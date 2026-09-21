@@ -87,8 +87,8 @@ size, leverage and closing momentum determine contact effectiveness. Holds last
 0.12–0.85 seconds, followed by a defender recovery window; weak blocks can shed
 almost immediately. A Blocking Receiver prioritizes useful seals.
 
-The designated screen target receives 1.4 seconds of +22% acceleration, +10%
-maximum speed and +4.5 percentage points of juke success. The runner favors nearby
+The designated screen target receives 1.8 seconds of +45% acceleration, +22%
+maximum speed and +28 percentage points of juke success. The runner favors nearby
 lead blockers before choosing an open lane. Changing that target's route with
 an audible removes screen eligibility. Repeated screen use improves recognition
 of observed shallow movement; defenders cannot see hidden route paths.
@@ -174,3 +174,22 @@ numbered leagues with continuing difficulty progression. This fixes the former
 16-name repetition. Existing saves infer defeated teams from campaign progress;
 new per-opponent results, selected rematch and match-in-progress state survive
 local/cloud saves. Historical losses before this update cannot be reconstructed.
+
+
+## Stiff arms and hurdles
+
+Ball carriers automatically attempt stiff arms against close front/side upright
+tacklers and hurdles against approaching diving tacklers. Strength controls stiff-arm
+execution; athleticism controls hurdle execution and launch height. Evasion controls
+recognizing the right moment. Each threat gets one timing evaluation per move, with a
+shared 1.35-second move cooldown, so frame rate cannot turn failures into guaranteed wins.
+
+A stiff arm extends one hand, keeps the football tucked in the other, and physically
+pushes the defender away. A hurdle launches the runner and tucks the knees; the runner
+must actually be high enough at impact to clear the selected low defender. Upright
+support can still tackle, and another tackler remains dangerous after a stiff arm.
+
+For the first 1.8 seconds after a designated screen catch, move recognition gains 20
+percentage points and execution gains 28 points (bounded below 100%). Early automatic
+juke opportunities also increase. Rating differences still matter, and the burst ends
+normally; audibles that remove screen eligibility remove these bonuses too.

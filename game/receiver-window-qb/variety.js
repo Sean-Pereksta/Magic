@@ -162,6 +162,13 @@
     {name:'Veterans',schemes:['disguise','match','deep'],speed:-.2,strength:2,hands:.03,depth:1,discipline:.95},
     {name:'Heavy Hitters',schemes:['pressure','underzone'],speed:-.2,strength:16,hands:-.02,depth:0,discipline:.55});
   identities[5].discipline=.25;
-  const api={categories,category,playstyle,pumpChance,weather,lane,concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
+  // Evasion controls recognition; the move's own rating controls execution.
+  function escapeOdds(p,kind,defenderStrength=65,technique=.5,screen=false){
+    const skill=clamp(rating(p,kind==='hurdle'?'athleticism':'strength'),0,1.4),evade=clamp(rating(p,'evasion'),0,1.4);
+    const defense=kind==='hurdle'?clamp(technique,0,1):clamp(defenderStrength/100,0,1.4);
+    return {timing:clamp(.22+evade*.64+(screen?.20:0),.22,.97),
+      success:clamp(.18+skill*.68-defense*.23+(screen?.28:0),.10,.94)};
+  }
+  const api={escapeOdds,categories,category,playstyle,pumpChance,weather,lane,concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
   if(typeof module!=='undefined')module.exports=api;root.QBVariety=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
