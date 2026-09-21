@@ -453,3 +453,37 @@ test('saved market discounts are stable and signing charges the displayed reduce
   q.run('franchise.market[0].price=140;normalizeMarketReceiver(franchise.market[0])');
   assert.equal(q.state().franchise.market[0].price,140);
 });
+
+test('expanded concepts have finite routes, distinct alignments and bounded motion',()=>{
+  const q=game().q;
+  assert.equal(q.run('plays.length'),18);
+  for(let i=8;i<18;i++)for(const spot of [0,46]){
+    q.run(`selectedPlay=${i};ballSpotYards=${spot};setupPlay(false);beginCountdown();gameTime=snapTime;update(.016,gameTime)`);
+    for(const r of q.state().receivers){assert.ok(r.path.every(p=>Number.isFinite(p.length())&&Math.abs(p.x)<=24.7));}
+    if(i===16)assert.equal(q.state().receivers[1].start.x,4);
+    if(i===17)assert.equal(q.state().receivers[2].start.x,-4);
+  }
+});
+test('screens settle behind the line and block strength produces brief, bounded leverage',()=>{
+  const q=game().q;
+  q.run("selectedPlay=14;setupPlay(false);playState='live';");
+  for(let i=0;i<150;i++)q.run('gameTime+=16;updateReceiver(receivers[1],.016,gameTime)');
+  const r=q.state().receivers[1];assert.ok(r.mesh.position.z>r.start.z);
+  const weak=V.blockOutcome({strength:30,size:30,defenseStrength:90,defenseSize:85,alignment:1,momentum:0});
+  const strong=V.blockOutcome({strength:95,size:95,defenseStrength:60,defenseSize:55,alignment:1,momentum:2});
+  assert.ok(strong.duration>weak.duration&&strong.slow<weak.slow);assert.ok(strong.duration<=.85&&weak.duration>=.12);
+});
+test('blocking requires contact, expires and cannot immediately re-lock a defender',()=>{
+  const q=game().q;q.run(`setupPlay(false);ballCarrier=receivers[0];playState='run';
+    receivers.forEach((r,i)=>r.mesh.position.set(i*10,0,0));defenders.forEach(d=>d.mesh.position.set(20,0,-30));
+    receivers[1].mesh.position.set(0,0,-2);receivers[1].heading.set(0,0,-1);defenders[0].mesh.position.set(0,0,-2.9);defenders[0].heading.set(0,0,1);
+    updateBlocking(.016);`);
+  const d=q.state().defenders[0];assert.ok(d.blockTime>0);assert.ok(d.blockCooldown>d.blockTime);
+  q.run('updateBlocking(1)');assert.equal(d.blockTime,0);assert.ok(d.blockCooldown>0);
+  q.run('updateBlocking(.016)');assert.equal(d.blockTime,0);
+});
+test('rating physique controls the rendered dimensions independently of cosmetic saved build',()=>{
+  const q=game().q;
+  q.run('franchise.team[0].size=20;franchise.team[0].strength=20;franchise.team[1].size=95;franchise.team[1].strength=95;setupPlay(false)');
+  const [small,big]=q.state().receivers;assert.ok(big.mesh.scale.x>small.mesh.scale.x*1.2);assert.ok(big.mesh.scale.y>small.mesh.scale.y);
+});

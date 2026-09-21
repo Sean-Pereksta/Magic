@@ -70,6 +70,9 @@ function makePlayer(offense=true,appearance=null){
   hips.scale.set(1,.65,.8);hips.position.y=.91;root.add(hips);
   const faceguard=new THREE.Mesh(playerGeometry('faceguard',()=>new THREE.TorusGeometry(.23,.022,4,12,Math.PI)),blackMat);
   faceguard.position.set(0,1.87,.18);faceguard.rotation.z=Math.PI;root.add(faceguard);
+  if(look.scaleX>1.04){const pad=new THREE.Mesh(playerGeometry('backpad',()=>new THREE.BoxGeometry(.44,.23,.10)),accentMat);pad.position.set(0,.95,-.26);root.add(pad);}
+  if(look.scaleY>1.03){const visor=new THREE.Mesh(playerGeometry('visor',()=>new THREE.SphereGeometry(.245,8,4,0,Math.PI,Math.PI*.3,Math.PI*.3)),blackMat);visor.position.set(0,1.94,.04);root.add(visor);}
+  if(look.scaleX<1.02){const towel=new THREE.Mesh(playerGeometry('towel',()=>new THREE.BoxGeometry(.12,.34,.03)),whiteMat);towel.position.set(.20,.72,.22);root.add(towel);}
   const visualRig=new THREE.Group();
   for(const part of [...root.children])visualRig.add(part);
   root.add(visualRig);root.userData.visualRig=visualRig;
@@ -93,7 +96,7 @@ const landRing=new THREE.Mesh(new THREE.RingGeometry(.45,.66,28),new THREE.MeshB
 
 const routeOptions=[
   {name:'Go',key:'G'},{name:'Slant',key:'S'},{name:'Out',key:'O'},{name:'Post',key:'P'},{name:'Corner',key:'C'},
-  {name:'Drag',key:'D'},{name:'Dig',key:'I'},{name:'Comeback',key:'B'},{name:'Flat',key:'F'},{name:'Wheel',key:'W'},{name:'Fade',key:'A'},{name:'Curl',key:'U'},{name:'Double Move',key:'M'}
+  {name:'Drag',key:'D'},{name:'Dig',key:'I'},{name:'Comeback',key:'B'},{name:'Flat',key:'F'},{name:'Wheel',key:'W'},{name:'Fade',key:'A'},{name:'Curl',key:'U'},{name:'Double Move',key:'M'},{name:'Stick',key:'T'},{name:'Bubble',key:'E'},{name:'Tunnel',key:'N'},{name:'Lead',key:'L'}
 ];
 const routePool=routeOptions.map(r=>r.name);
 const routeByKey=Object.fromEntries(routeOptions.map(r=>[r.key,r.name]));
@@ -108,6 +111,7 @@ const plays=[
   {name:'Crossfire',routes:['Post','Slant','Slant','Corner']},
   {name:'Sideline',routes:['Fade','Wheel','Wheel','Fade']}
 ];
+plays.push(...V.concepts);
 let selectedPlay=0;
 const defenses=[
   {id:'off',name:'OFF MAN',desc:'Cushion at the snap; attack the space before corners close.',corner:'off',safety:'patient'},
@@ -205,13 +209,15 @@ function worldZForYards(yards){return FIELD_START_Z-THREE.MathUtils.clamp(yards,
 function yardsForWorldZ(z){return THREE.MathUtils.clamp((FIELD_START_Z-z)/WORLD_PER_YARD,0,50)}
 function downLabel(){return down===1?'1st':down===2?'2nd':down===3?'3rd':'4th'}
 
+function playerLook(p){const shape=V.physique(p);return {...p.appearance,scaleX:shape.x,scaleY:shape.y,scaleZ:shape.z,sizeName:p.size>=75?'Large':p.size<45?'Compact':'Balanced'};}
+function playerTier(p){const n=playerOverall(p);return n>=97?'generational':n>=90?'elite':n>=80?'star':'prospect';}
 function statLabel(k){return({speed:'SPD',cutting:'CUT',turning:'TRN',evasion:'EVA',catching:'CAT',strength:'STR',athleticism:'ATH',size:'SIZE',tricks:'TRICK'})[k]}
 function previewFigureHTML(a){return `<div class="playerVisual"><div class="miniPlayer" style="transform:translateX(-50%) scale(${a.scaleX},${a.scaleY})"><div class="miniHelmet" style="background:${a.helmetColor}"></div><div class="miniHead" style="background:${a.skinColor}"></div><div class="miniBody" style="background:${a.jerseyPrimary}"><span class="miniStripe" style="background:${a.jerseyAccent}"></span></div><div class="miniArm left" style="background:${a.skinColor}"></div><div class="miniArm right" style="background:${a.skinColor}"></div><div class="miniLeg left" style="background:${a.jerseyPrimary}"></div><div class="miniLeg right" style="background:${a.jerseyPrimary}"></div><div class="miniCleat left" style="background:${a.cleatColor}"></div><div class="miniCleat right" style="background:${a.cleatColor}"></div></div></div>`}
-function lookSummary(p){const a=p.appearance;return `Look: ${a.sizeName} build · ${a.skinName} skin · ${a.cleatName} cleats`}
+function lookSummary(p){const a=playerLook(p);return `Look: ${a.sizeName} build · ${a.skinName} skin · ${a.cleatName} cleats`}
 function swatchLineHTML(a){return `<div class="swatchLine"><span class="swatchGroup"><span class="swatch" style="background:${a.jerseyPrimary}"></span>Jersey</span><span class="swatchGroup"><span class="swatch" style="background:${a.jerseyAccent}"></span>Accent</span><span class="swatchGroup"><span class="swatch" style="background:${a.helmetColor}"></span>Helmet</span><span class="swatchGroup"><span class="swatch" style="background:${a.cleatColor}"></span>Cleats</span></div>`}
 function trainingCost(p){return 90+p.trainings*55}
-function rosterCardHTML(p,i){const cost=trainingCost(p),max=p.trainings>=5,a=p.appearance;return `<div class="playerCard ${i===selectedRosterIndex?'selected':''}" data-roster="${i}"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${['X','H','Y','Z'][i]} · ${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)} · ${Object.values(p.trainingByStat).reduce((a,b)=>a+b,0)} sessions</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="trainGrid">${P.stats.map(k=>`<button data-train-slot="${i}" data-stat="${k}" ${p.trainingByStat[k]>=5?'disabled':''} title="$${90+p.trainingByStat[k]*55} · ${p.trainingByStat[k]}/5 sessions">+ ${statLabel(k)}</button>`).join('')}</div><div class="costLine">Training $90–310 per attribute · 5 sessions each · Prestige ${p.prestige||0}</div><button data-prestige="${i}" ${P.stats.some(k=>p.trainingByStat[k]>=5)?'':'disabled'}>PRESTIGE · ${P.prestigeCost(p).toLocaleString()}</button><div class="costLine">Keep ratings. Renew five sessions per attribute. Next prestige costs more.</div></div>`}
-function marketCardHTML(p,i){const a=p.appearance;return `<div class="playerCard"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)}</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="costLine">${escapeHTML(p.rarity||'Prospect')} · Signing cost: ${p.price}</div><button class="signBtn" data-sign="${i}">SIGN · REPLACE ${['X','H','Y','Z'][selectedRosterIndex]}</button></div>`}
+function rosterCardHTML(p,i){const cost=trainingCost(p),max=p.trainings>=5,a=playerLook(p);return `<div data-tier="${playerTier(p)}" class="playerCard ${i===selectedRosterIndex?'selected':''}" data-roster="${i}" tabindex="0" role="button" aria-label="Select ${escapeHTML(p.name)} as replacement slot"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${['X','H','Y','Z'][i]} · ${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)} · ${Object.values(p.trainingByStat).reduce((a,b)=>a+b,0)} sessions</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="trainGrid">${P.stats.map(k=>`<button data-train-slot="${i}" data-stat="${k}" ${p.trainingByStat[k]>=5?'disabled':''} title="$${90+p.trainingByStat[k]*55} · ${p.trainingByStat[k]}/5 sessions">+ ${statLabel(k)}</button>`).join('')}</div><div class="costLine">Training $90–310 per attribute · 5 sessions each · Prestige ${p.prestige||0}</div><button data-prestige="${i}" ${P.stats.some(k=>p.trainingByStat[k]>=5)?'':'disabled'}>PRESTIGE · ${P.prestigeCost(p).toLocaleString()}</button><div class="costLine">Keep ratings. Renew five sessions per attribute. Next prestige costs more.</div></div>`}
+function marketCardHTML(p,i){const a=playerLook(p);return `<div data-tier="${playerTier(p)}" class="playerCard"><div class="playerHeader">${previewFigureHTML(a)}<div class="playerIdentity"><div class="playerName">${escapeHTML(p.name)}</div><div class="playerSub">${escapeHTML(p.archetype)}${V.signature(p)?' · '+V.signature(p):''} · OVR ${playerOverall(p)}</div><div class="lookLine">${lookSummary(p)}</div>${swatchLineHTML(a)}</div></div><div class="statRow"><span>Speed</span><b>${p.speed}</b><span>Cutting</span><b>${p.cutting}</b><span>Turning</span><b>${p.turning}</b><span>Evasion</span><b>${p.evasion}</b><span>Catch</span><b>${p.catching}</b><span>Strength</span><b>${p.strength}</b><span>Athleticism</span><b>${p.athleticism}</b><span>Size</span><b>${p.size}</b><span>Tricks</span><b>${p.tricks}</b></div><div class="costLine">${escapeHTML(p.rarity||'Prospect')} · Signing cost: ${p.price}</div><button class="signBtn" data-sign="${i}">SIGN · REPLACE ${['X','H','Y','Z'][selectedRosterIndex]}</button></div>`}
 function renderManager(){$('cashPill').textContent=`$${franchise.cash}`;$('roundPill').textContent=`Round ${franchise.round} · ${franchise.wins} wins`;$('rosterGrid').innerHTML=franchise.team.map(rosterCardHTML).join('');$('marketGrid').innerHTML=franchise.market.map(marketCardHTML).join('');$('managerStatus').dataset.uniform=`Next opponent uniform: ${opponentUniformForRound(franchise.round).name}`;updateSavePill();document.querySelectorAll('[data-roster]').forEach(el=>el.addEventListener('click',()=>{selectedRosterIndex=Number(el.dataset.roster);renderManager()}));document.querySelectorAll('[data-train-slot]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();trainReceiver(Number(btn.dataset.trainSlot),btn.dataset.stat)}));document.querySelectorAll('[data-prestige]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();prestigeReceiver(Number(btn.dataset.prestige))}));document.querySelectorAll('[data-sign]').forEach(btn=>btn.addEventListener('click',()=>signReceiver(Number(btn.dataset.sign))))}
 function prestigeReceiver(slot){const p=franchise.team[slot];if(!p)return;const result=P.prestige(p,franchise.cash);if(!result.ok){$('managerStatus').textContent=result.reason;return}franchise.cash=result.cash;$('managerStatus').textContent=`${p.name} prestiged! Five sessions per attribute renewed; ratings retained.`;saveFranchise();renderManager()}
 function trainReceiver(slot,stat){const p=franchise.team[slot];if(!p)return;const result=P.train(p,stat,franchise.cash,randInt(4,8));if(!result.ok){$('managerStatus').textContent=result.reason;return}franchise.cash=result.cash;$('managerStatus').textContent=`${p.name}: ${statLabel(stat)} +${result.gain}.`;saveFranchise();renderManager()}
@@ -242,6 +248,10 @@ function pathFor(type,start){
   return rawPathFor(type,start).map(p=>p.set(THREE.MathUtils.clamp(p.x,-24.7,24.7),0,Math.max(ENDZONE_BACK_Z+1,p.z)));
 }
 function rawPathFor(type,start){const x=start.x,z=start.z;switch(type){
+case'Bubble':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x+5,0,z+2.5),new THREE.Vector3(x+6,0,z+3)];
+case'Tunnel':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-2),new THREE.Vector3(x-Math.sign(x)*6,0,z+2)];
+case'Lead':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-3),new THREE.Vector3(x,0,z-5)];
+case'Stick':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-9),new THREE.Vector3(x+Math.sign(x)*2,0,z-9)];
 case'Fade':{const side=x>=0?1:-1;return[new THREE.Vector3(x,0,z),new THREE.Vector3(x+side*2,0,z-7),new THREE.Vector3(x+side*5,0,z-24),new THREE.Vector3(x+side*6,0,z-48)]}
 case'Curl':return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-17),new THREE.Vector3(x*.92,0,z-14)];
 case'Double Move':{const side=x>=0?1:-1;return[new THREE.Vector3(x,0,z),new THREE.Vector3(x,0,z-9),new THREE.Vector3(x-side*3.8,0,z-12),new THREE.Vector3(x,0,z-20),new THREE.Vector3(x+side*2,0,z-45)]}
@@ -281,9 +291,9 @@ function resetAim(){yaw=0;pitch=-.08;camera.position.set(0,2.25,worldZForYards(b
 function setupPlay(increment=false){
   pendingCatch=null;ballTumble=0;ballSpin=0;receiverDrop=false;ball.userData.spin.rotation.set(0,0,0);
   if(increment){playNumber++;snapDefense=null;}attemptPending=false;throwBobbles=0;transition=null;replayFrames=[];replayPool=[];replayInterval=1/30;replayRecording=false;replayEligible=false;applyFieldTheme();clearPlayers();clearRouteVisuals();ball.visible=false;ballLive=false;ballCarrier=null;tackler=null;tackleTimer=0;arcLine.visible=false;landRing.visible=false;charging=false;chargePower=0;loftBias=0;throwClock=8;predictedFlightTime=0;updateCharge();updateThrowClock();resetAim();chooseDefense();updateFieldMarkers();
-  const xs=[-18,-6,6,18],play=plays[selectedPlay],skill=currentSkill(),losZ=worldZForYards(ballSpotYards);
+  const play=plays[selectedPlay],xs=play.xs||[-18,-6,6,18],skill=currentSkill(),losZ=worldZForYards(ballSpotYards);
   for(let i=0;i<4;i++){
-    const start=new THREE.Vector3(xs[i],0,losZ-.9+(i%2)*.35),profile=franchise.team[i],mesh=makePlayer(true,profile.appearance);const sizeScale=P.traits(profile).sizeScale;mesh.scale.multiplyScalar(sizeScale);mesh.position.copy(start);scene.add(mesh);
+    const start=new THREE.Vector3(xs[i],0,losZ-.9+(play.depths?.[i]??(i%2)*.35)),profile=franchise.team[i],mesh=makePlayer(true,playerLook(profile));mesh.position.copy(start);scene.add(mesh);
     const speed=V.movement(profile).speed*(V.signature(profile)==='Deep Threat'?1.015:1),catchReach=THREE.MathUtils.lerp(.94,1.08,P.effective(profile.catching)/100);
     receivers.push({mesh,label:['X','H','Y','Z'][i],profile,route:play.routes[i],path:pathFor(play.routes[i],start),speed,maxSpeed:speed,catchReach,signature:V.signature(profile),distance:0,start,velocity:new THREE.Vector3(0,0,-speed*.15),impactVel:new THREE.Vector3(),heading:new THREE.Vector3(0,0,-1),history:[],shoveCooldown:0,shoveSlow:0,stagger:0,shoveAnim:0,jumpY:0,jumpVel:0,jumpCooldown:0,trackingBall:false,burst:0,catchPose:0,plantPose:0,comebackActive:false,comebackPlant:0,underthrowDifficulty:0,runPhase:Math.random()*Math.PI*2,runIntensity:0,hasBall:false});
   }
@@ -338,8 +348,8 @@ function updateThrowClock(){const el=$('throwClock');el.textContent=`THROW CLOCK
 function updateScore(){const toGo=Math.max(0,Math.ceil(lineToGainYards-ballSpotYards)),opp=opponentForRound(franchise.round);$('score').textContent=`${seriesOffense}–${seriesDefense}`;$('tournamentLine').textContent=`Round ${franchise.round} · Best of 5 · ${opp.name} · $${franchise.cash}`;$('subscore').textContent=`${downLabel()} & ${toGo} · Ball: ${Math.round(50-ballSpotYards)} yd line · Drive ${Math.round(ballSpotYards)}/50 · ${catches} catches · ${ints} INT`}
 function showMessage(head,detail,ms=1300){$('headline').textContent=head;$('detail').textContent=detail||'';messageTimer=gameTime+ms}
 function flashResult(text,good=true,ms=900){const el=$('resultFlash');el.textContent=text;el.className=`${good?'good':'bad'} show`;resultFlashTimer=gameTime+ms}
-function updatePlayButtons(){[...document.querySelectorAll('.playBtn')].forEach((b,i)=>b.classList.toggle('selected',i===selectedPlay))}
-function buildPlayButtons(){plays.forEach((p,i)=>{const b=document.createElement('button');b.className='playBtn';b.textContent=`${i+1}. ${escapeHTML(p.name)}`;b.title=`Desktop shortcut: ${i+1}`;b.addEventListener('click',e=>{e.stopPropagation();if(playState!=='call')return;selectedPlay=i;setupPlay(false)});$('playGrid').appendChild(b)});updatePlayButtons()}
+function updatePlayButtons(){$('schemeHint').textContent=plays[selectedPlay].hint||'Balanced spacing. Audible individual receivers to suit the coverage.';[...document.querySelectorAll('.playBtn')].forEach((b,i)=>b.classList.toggle('selected',i===selectedPlay))}
+function buildPlayButtons(){plays.forEach((p,i)=>{const b=document.createElement('button');b.className='playBtn';b.innerHTML=`<span>${i<8?i+1+'. ':''}${escapeHTML(p.name)}</span><small>${p.family||'Classic'}</small>`;b.title=p.hint||'Choose a concept, then adjust individual routes.';b.addEventListener('click',e=>{e.stopPropagation();if(playState!=='call')return;selectedPlay=i;setupPlay(false)});$('playGrid').appendChild(b)});updatePlayButtons()}
 buildPlayButtons();
 
 // Receivers run with real velocity/acceleration, so contact changes their path and momentum instead of being erased next frame.
@@ -554,7 +564,8 @@ function poseJointedLimbs(a){
     const side=i?1:-1,shoulder=new THREE.Vector3(side*.48,1.48,.02),hand=hands[i].position;
     if(!a.handTargets&&!a.hasBall&&!a.catchDive){
       const swing=Math.sin((a.runPhase||0)+i*Math.PI)*run;
-      if((a.catchPose||a.swatPose||0)<.2)hand.set(side*.51,1.05+Math.max(0,swing)*.16,swing*.32+.10);
+      if(a.blockPose>0)hand.set(side*.32,1.35,.65);
+      else if((a.catchPose||a.swatPose||0)<.2)hand.set(side*.51,1.05+Math.max(0,swing)*.16,swing*.32+.10);
     }
     const elbow=bendJoint(shoulder,hand,.44,.46,new THREE.Vector3(side*.7,-.65,-.55));
     poseBone(arms[i],shoulder,elbow);poseBone(forearms[i],elbow,hand);
@@ -578,7 +589,7 @@ function updateReceiver(r,dt,now){
   if(!ballLive){r.ballPursuit=null;r.comebackActive=false;r.comebackPlant=0;r.underthrowDifficulty=0}
   r.distance+=r.velocity.length()*dt;let target=routePosition(r.path,r.distance+1.45);
   let settle=1;
-  if(r.route==='Curl'&&!ballLive){
+  if(['Curl','Stick','Bubble','Tunnel','Lead'].includes(r.route)&&!ballLive){
     const end=r.path[r.path.length-1];let length=0;for(let i=1;i<r.path.length;i++)length+=r.path[i].distanceTo(r.path[i-1]);
     if(r.distance>length-2){target.copy(end);settle=THREE.MathUtils.clamp(r.mesh.position.distanceTo(end)/1.8,0,1);}
   }r.trackingBall=false;let stridePlan=null;
@@ -601,8 +612,8 @@ function updateReceiver(r,dt,now){
     }
   }
   const desired=target.clone().sub(r.mesh.position);desired.y=0;if(desired.lengthSq()>.0001)desired.normalize();else desired.copy(r.heading);
-  const current=r.heading.clone().normalize(),angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1)),cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,turnRating=P.effective((r.profile?.turning||50))/100,turnRateBase=r.comebackPlant>0?2.25:r.comebackActive?8.8:(r.trackingBall?12.6:(r.profile?4.8+5*turnRating:7.7)),turnRate=turnRateBase*THREE.MathUtils.lerp(.76,1.22,turnRating)*(r.signature==='Route Artist'?1.04:1),turn=Math.min(angle,turnRate*dt)*sign,c=Math.cos(turn),ss=Math.sin(turn);r.heading.set(current.x*c-current.z*ss,0,current.x*ss+current.z*c).normalize();
-  const contact=receiverContactFactors(r),cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.7),0,1),cutRating=P.effective((r.profile?.cutting||50))/100,slow=(r.shoveSlow>0?.68:1)*(r.stagger>0?.78:1),burst=r.trackingBall?P.traits(r.profile).pursuitBurst:1,plantSlow=r.comebackPlant>0?.27:1,speedCutLoss=THREE.MathUtils.lerp(.48,.19,cutRating),accelCutLoss=THREE.MathUtils.lerp(.40,.16,cutRating),desiredSpeed=(stridePlan?Math.min(stridePlan.strideSpeed,r.maxSpeed*burst):r.maxSpeed*burst)*(1-speedCutLoss*cutPenalty)*slow*plantSlow*contact.speed*settle,desiredVel=r.heading.clone().multiplyScalar(desiredSpeed),accel=(r.trackingBall?34:14+12*cutRating)*(1-accelCutLoss*cutPenalty)*(r.stagger>0?.62:1)*contact.accel,maxDv=accel*dt,dv=desiredVel.sub(r.velocity);if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.comebackPlant>0)r.velocity.multiplyScalar(Math.pow(.16,dt));r.mesh.position.addScaledVector(r.velocity,dt);r.mesh.position.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));
+  const current=r.heading.clone().normalize(),angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1)),cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,turnRating=P.effective((r.profile?.turning||50))/100,turnRateBase=r.comebackPlant>0?2.25:r.comebackActive?8.8:(r.trackingBall?12.6:(r.profile?3.8+6*turnRating:7.7)),turnRate=turnRateBase*THREE.MathUtils.lerp(.76,1.22,turnRating)*(r.signature==='Route Artist'?1.04:1),turn=Math.min(angle,turnRate*dt)*sign,c=Math.cos(turn),ss=Math.sin(turn);r.heading.set(current.x*c-current.z*ss,0,current.x*ss+current.z*c).normalize();
+  const contact=receiverContactFactors(r),cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.7),0,1),cutRating=P.effective((r.profile?.cutting||50))/100,slow=(r.shoveSlow>0?.68:1)*(r.stagger>0?.78:1),burst=r.trackingBall?P.traits(r.profile).pursuitBurst:1,plantSlow=r.comebackPlant>0?.27:1,speedCutLoss=THREE.MathUtils.lerp(.48,.19,cutRating),accelCutLoss=THREE.MathUtils.lerp(.40,.16,cutRating),desiredSpeed=(stridePlan?Math.min(stridePlan.strideSpeed,r.maxSpeed*burst):r.maxSpeed*burst)*(1-speedCutLoss*cutPenalty)*slow*plantSlow*contact.speed*settle,desiredVel=r.heading.clone().multiplyScalar(desiredSpeed),accel=(r.trackingBall?34:11+16*cutRating)*(1-accelCutLoss*cutPenalty)*(r.stagger>0?.62:1)*contact.accel,maxDv=accel*dt,dv=desiredVel.sub(r.velocity);if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);if(r.comebackPlant>0)r.velocity.multiplyScalar(Math.pow(.16,dt));r.mesh.position.addScaledVector(r.velocity,dt);r.mesh.position.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));
   const face=Math.atan2(r.heading.x,r.heading.z),delta=Math.atan2(Math.sin(face-r.mesh.rotation.y),Math.cos(face-r.mesh.rotation.y));r.mesh.rotation.y+=THREE.MathUtils.clamp(delta,-11.5*dt,11.5*dt);
   let shouldJump=false;if(ballLive){const catchPoint=r.mesh.position.clone().add(new THREE.Vector3(0,1.92*r.mesh.scale.y,0)),approach=ballApproach(catchPoint,.9);if(r.trackingBall&&approach&&approach.time<.58&&approach.dist<1.52)r.catchPose=1;shouldJump=wantsHighPoint(r)}updateJump(r,dt,shouldJump);
   if(ballLive&&!stridePlan&&!r.catchDive&&r.trackingBall&&r.jumpY<.03){
@@ -645,6 +656,11 @@ function defenderTarget(d,now){
     target.x=THREE.MathUtils.clamp(target.x,-25.4,25.4);target.z=Math.max(GOAL_LINE_Z-.5,target.z);return target;
   }
   const seesBall=ballLive&&defenderSeesBall(d),los=worldZForYards(snapSpotYards);
+  // Recognize a receiver waiting behind the line from delayed observations, not play metadata.
+  if(d.kind==='corner'&&now-snapTime>1700-skill*650){
+    const near=receivers.map(r=>observedReceiver(r,delay,now)).find(o=>o.p.z>los-.5&&Math.abs(o.p.x-d.zoneX)<8&&o.v.length()<3);
+    if(near)return near.p.clone().addScaledVector(near.v,.12);
+  }
   if(d.kind==='corner'&&(currentDefense.corner==='zone'||currentDefense.corner==='deepzone')){
     const depth=currentDefense.corner==='deepzone'?20:8;
     let target=new THREE.Vector3(d.zoneX,0,los-depth-snapMemory.depth),closest=null,gap=Infinity;
@@ -723,7 +739,7 @@ function updateDefender(d,target,dt){
   const current=d.heading.clone().normalize();let angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1));
   // Planting: a DB pointed the wrong way cannot instantly rotate 90–180 degrees. Big changes reduce usable speed and acceleration.
   const cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,maxTurn=d.turnRate*dt*(d.fakeUntil>gameTime?.65:1),turn=Math.min(angle,maxTurn)*sign;const c=Math.cos(turn),ss=Math.sin(turn);d.heading.set(current.x*c-current.z*ss,0,current.x*ss+current.z*c).normalize();
-  const plantPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.75),0,1);d.plantPose=plantPenalty>.48?THREE.MathUtils.clamp((plantPenalty-.48)*1.6,0,.85):Math.max(0,(d.plantPose||0)-dt*4.5);const slow=(d.shoveSlow>0?.67:1)*(d.stagger>0?.76:1),pursuitBoost=1,targetSpeed=d.maxSpeed*pursuitBoost*(1-.50*plantPenalty)*slow,desiredVel=d.heading.clone().multiplyScalar(targetSpeed),maxDv=d.accel*(1-.45*plantPenalty)*(d.stagger>0?.62:1)*dt,delta=desiredVel.sub(d.velocity);if(delta.length()>maxDv)delta.setLength(maxDv);d.velocity.add(delta);pos.addScaledVector(d.velocity,dt);pos.addScaledVector(d.impactVel,dt);d.impactVel.multiplyScalar(Math.pow(.055,dt));d.mesh.rotation.y=Math.atan2(d.heading.x,d.heading.z);
+  const plantPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.75),0,1);d.plantPose=plantPenalty>.48?THREE.MathUtils.clamp((plantPenalty-.48)*1.6,0,.85):Math.max(0,(d.plantPose||0)-dt*4.5);const slow=(d.shoveSlow>0?.67:1)*(d.stagger>0?.76:1),pursuitBoost=d.blockTime>0?d.blockSlow:1,targetSpeed=d.maxSpeed*pursuitBoost*(1-.50*plantPenalty)*slow,desiredVel=d.heading.clone().multiplyScalar(targetSpeed),maxDv=d.accel*(1-.45*plantPenalty)*(d.stagger>0?.62:1)*dt,delta=desiredVel.sub(d.velocity);if(delta.length()>maxDv)delta.setLength(maxDv);d.velocity.add(delta);pos.addScaledVector(d.velocity,dt);pos.addScaledVector(d.impactVel,dt);d.impactVel.multiplyScalar(Math.pow(.055,dt));d.mesh.rotation.y=Math.atan2(d.heading.x,d.heading.z);
   d.runIntensity=THREE.MathUtils.lerp(d.runIntensity||0,playState==='run'?1:.78,Math.min(1,dt*11));d.runPhase=(d.runPhase||0)+dt*Math.max(playState==='run'?10:6,d.velocity.length()*(playState==='run'?3.0:2.2));let shouldJump=false;if(ballLive){const handTarget=pos.clone().add(new THREE.Vector3(0,2.00*d.mesh.scale.y,0)),approach=ballApproach(handTarget,.72);if(d.ballSeen&&approach&&approach.time<.42&&approach.dist<THREE.MathUtils.lerp(1.02,1.38,currentSkill()))d.swatPose=1;shouldJump=wantsHighPoint(d)}updateJump(d,dt,shouldJump);animatePlayerContact(d,dt);
 }
 
@@ -951,6 +967,7 @@ function updateBallCarrier(r,dt){
   if(r.catchStyle==='TOE TAP'&&transition){r.velocity.set(0,0,0);animatePlayerContact(r,dt);return;}
   r.runIntensity=THREE.MathUtils.lerp(r.runIntensity||0,1,Math.min(1,dt*12));r.runPhase=(r.runPhase||0)+dt*Math.max(10,r.velocity.length()*2.65);r.catchPose=Math.max(0,(r.catchPose||0)-dt*3.5);r.plantPose=Math.max(0,(r.plantPose||0)-dt*5);
   const pos=r.mesh.position,openGoal=clearGoalLane(r),goal=new THREE.Vector3(openGoal?pos.x:0,0,GOAL_LINE_Z-3),desired=goal.clone().sub(pos);desired.y=0;if(desired.lengthSq()<.001)desired.set(0,0,-1);desired.normalize();
+  if(!openGoal&&['Bubble','Tunnel'].includes(r.route)&&gameTime-(r.screenCatchAt||0)<1800){const lead=receivers.filter(a=>a!==r&&a.mesh.position.z<pos.z&&a.mesh.position.distanceTo(pos)<9).sort((a,b)=>b.profile.strength-a.profile.strength)[0];if(lead)desired.copy(lead.mesh.position).add(new THREE.Vector3(0,0,1.8)).sub(pos).setY(0).normalize();}
   const evade=new THREE.Vector3();if(!openGoal)for(const d of defenders){const away=pos.clone().sub(d.mesh.position);away.y=0;const dist=away.length();if(dist>0&&dist<9){away.normalize();const ahead=d.mesh.position.z<pos.z?1.15:.72;evade.addScaledVector(away,(9-dist)/9*ahead)}}if(!openGoal&&Math.abs(pos.x)>21)evade.x+=-Math.sign(pos.x)*1.6;if(openGoal)r.impactVel.x*=Math.pow(.04,dt);const evadeRating=P.effective((r.profile?.evasion||50))/100;desired.addScaledVector(evade,THREE.MathUtils.lerp(.70,1.18,evadeRating)).normalize();
   const current=r.heading.clone().normalize(),angle=Math.acos(THREE.MathUtils.clamp(current.dot(desired),-1,1)),cross=current.x*desired.z-current.z*desired.x,sign=cross<0?-1:1,turnRating=P.effective((r.profile?.turning||50))/100,turn=Math.min(angle,THREE.MathUtils.lerp(7.0,10.2,turnRating)*dt)*sign,c=Math.cos(turn),s=Math.sin(turn);r.heading.set(current.x*c-current.z*s,0,current.x*s+current.z*c).normalize();
   const cutPenalty=THREE.MathUtils.clamp(angle/(Math.PI*.70),0,1),cutRating=P.effective((r.profile?.cutting||50))/100,targetSpeed=r.maxSpeed*(r.signature==='YAC Specialist'?1.02:.98)*(1-THREE.MathUtils.lerp(.31,.15,cutRating)*cutPenalty),desiredVel=r.heading.clone().multiplyScalar(targetSpeed),dv=desiredVel.sub(r.velocity),maxDv=THREE.MathUtils.lerp(20,29,cutRating)*dt;if(dv.length()>maxDv)dv.setLength(maxDv);r.velocity.add(dv);pos.addScaledVector(r.velocity,dt);pos.addScaledVector(r.impactVel,dt);r.impactVel.multiplyScalar(Math.pow(.055,dt));r.mesh.rotation.y=Math.atan2(r.heading.x,r.heading.z);animatePlayerContact(r,dt);attachBallToCarrier();
@@ -1087,16 +1104,36 @@ function triggerTackle(d,contactTime=1){
 }
 function carriedBallFrontZ(){return ball.position.z-(.19+.1425*Math.abs(footballAxis().z));}
 
+// Blocks require actual front/side contact. Each defender gets a recovery window.
+function updateBlocking(dt){
+  for(const d of defenders){d.blockTime=Math.max(0,(d.blockTime||0)-dt);d.blockCooldown=Math.max(0,(d.blockCooldown||0)-dt);}
+  for(const b of receivers){
+    if(b===ballCarrier)continue;
+    b.blockCooldown=Math.max(0,(b.blockCooldown||0)-dt);b.blockPose=Math.max(0,(b.blockPose||0)-dt);
+    const pos=b.mesh.position,carrier=ballCarrier.mesh.position;
+    const d=defenders.filter(d=>d.mesh.position.distanceTo(carrier)<12&&d.mesh.position.z<carrier.z+1&&!(d.blockTime>0)).sort((a,c)=>a.mesh.position.distanceToSquared(pos)-c.mesh.position.distanceToSquared(pos))[0];
+    if(!d||pos.distanceTo(carrier)>15||b.blockCooldown>0)continue;
+    const delta=d.mesh.position.clone().sub(pos).setY(0),dist=delta.length(),toward=delta.clone().normalize();
+    // Pursue a blocking angle rather than continue an irrelevant deep route.
+    if(dist>1.25){b.path=[pos.clone(),d.mesh.position.clone()];b.distance=0;continue;}
+    if(d.blockCooldown>0||d.diveTime>0||d.heading.dot(toward)> .45)continue;
+    const result=V.blockOutcome({strength:P.effective(b.profile.strength),size:P.effective(b.profile.size),defenseStrength:d.strength,defenseSize:(d.mesh.scale.x*d.mesh.scale.z-1)*100+55,alignment:b.heading.dot(toward),momentum:b.velocity.clone().sub(d.velocity).dot(toward)});
+    d.blockTime=result.duration;d.blockSlow=result.slow;d.blockCooldown=result.duration+2.2;b.blockCooldown=1.8;b.blockPose=result.duration;b.shoveAnim=.34;
+    b.velocity.multiplyScalar(.4);d.velocity.multiplyScalar(result.slow);d.impactVel.addScaledVector(toward,.3+(1-result.slow));
+  }
+}
 function updateRunAfterCatch(dt,now){
   if(!ballCarrier)return;
   const r=ballCarrier;
   if(tryEffortDive(r)){updateTackle(dt);return;}
   r.tacklePrevious=r.tacklePrevious||new THREE.Vector3();r.tacklePrevious.copy(r.mesh.position);
   for(const d of defenders){d.tacklePrevious=d.tacklePrevious||new THREE.Vector3();d.tacklePrevious.copy(d.mesh.position);d.divingThisStep=false;}
+  if(!r.screenCatchAt)r.screenCatchAt=gameTime;
+  updateBlocking(dt);
   assignPursuitRoles();
   for(const receiver of receivers){if(receiver===r)updateBallCarrier(receiver,dt);else updateReceiver(receiver,dt,now);}
   for(const d of defenders){
-    startDivingTackle(d,r);d.divingThisStep=d.diveTime>0;
+    if(!(d.blockTime>0))startDivingTackle(d,r);d.divingThisStep=d.diveTime>0;
     updateDefender(d,defenderTarget(d,now),dt);
   }
   attachBallToCarrier();
@@ -1239,6 +1276,10 @@ function update(dt,now){
   if(ballLive&&dt>1/120+.000001){const steps=Math.ceil(dt/(1/120)),step=dt/steps;for(let i=0;i<steps;i++)update(step,now-(steps-i-1)*step*1000);return;}
   if(ballLive){contactStep=dt;previousBallAxis.copy(footballAxis());for(const a of [...receivers,...defenders])sampleContactRig(a,true);}
   if(playState==='countdown'){
+    const motion=plays[selectedPlay].motion;
+    if(motion){const r=receivers[motion.slot],t=THREE.MathUtils.clamp(1-(snapTime-now)/2200,0,1);r.mesh.position.x=THREE.MathUtils.lerp(r.start.x,motion.to,t);r.mesh.rotation.y=Math.sign(motion.to-r.start.x)*Math.PI/2;r.runIntensity=.65;r.runPhase+=dt*10;animatePlayerContact(r,dt);
+      if(t===1){r.start.copy(r.mesh.position);r.path=pathFor(r.route,r.start);r.heading.set(0,0,-1);r.velocity.set(0,0,-r.speed*.15);}}
+
     const left=Math.max(0,snapTime-now),count=Math.ceil(left/1000);if(count>0&&count!==nextCount){nextCount=count;showMessage(String(count),`${plays[selectedPlay].name} locked in.`,760)}
     if(now>=snapTime){replayFrames=[];replayPool=[];replayInterval=1/30;replayRecording=true;replaySample=0;replayEligible=down===4;captureReplay(true);playState='live';throwClock=8;routeVisuals.visible=false;$('playCallPanel').style.display='none';updateThrowClock();showMessage('SNAP',`${downLabel()} & ${Math.ceil(lineToGainYards-ballSpotYards)}. Eight seconds to throw — a completed pass stays live until the runner is tackled or scores.`,950)}
   }
