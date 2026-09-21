@@ -3,7 +3,7 @@ import "./hearthmouse-controller-reliability.mjs";
 import "./hearthmouse-graphics-quality.mjs";
 import "./hearthmouse-expansion-startup-guard.mjs";
 import "./hearthmouse-desktop-look-guard.mjs";
-import "./hearthmouse-predator-upgrade.mjs";
+import "./hearthmouse-survival-upgrade.mjs";
 import { catCountForPopulation, ensureCatVisionResult } from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-performance-manager.mjs";

@@ -1,3 +1,4 @@
+import { foodLoad } from "./hearthmouse-survival-core.mjs";
 import { registerCharacterVisualStage, registerFrameVisualStage } from "./hearthmouse-performance-manager.mjs";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -138,7 +139,7 @@ export function poseCarriedFood(food, time, speed, firstPerson) {
   mesh.position.set(0, (firstPerson ? -0.12 - weight * 0.025 : -0.023 - weight * 0.009) - (1 - pickup) * 0.025 + bob,
     firstPerson ? -0.27 - weight * 0.065 : -0.103 - weight * 0.024);
   mesh.rotation.set(0.14 + weight * 0.08 + bob * 4, Math.sin(time * 5) * 0.018, bob * 5);
-  mesh.scale.setScalar(firstPerson ? 0.78 : 0.62);
+  mesh.scale.setScalar((firstPerson ? 0.78 : 0.62) * (1 + Math.max(0, foodLoad(food).bulk - 0.06) * 1.6));
 }
 
 registerCharacterVisualStage("living-procedural-characters", updateProceduralActor, 15);

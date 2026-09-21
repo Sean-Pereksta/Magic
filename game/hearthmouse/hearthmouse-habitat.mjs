@@ -64,7 +64,7 @@ export function carveMouseOpening(engine, I, entrance) {
   const walls = [];
   engine.world.root.updateWorldMatrix(true, true);
   engine.world.root.traverse(node => {
-    if (!node.isMesh || (!node.visible && !node.userData?.__hearthmouseBatchedStructure) || node.userData?.__hearthmouseStructureRemoved || node.userData?.mouseOpening) return;
+    if (!node.isMesh || (!node.visible && !node.userData?.__hearthmouseBatchedStructure && !node.userData?.__staticBatched) || node.userData?.__hearthmouseStructureRemoved || node.userData?.mouseOpening) return;
     if (!/(?:wall|partition|baseboard)/i.test(node.name) || /mouse-|nest|decor|paper/i.test(node.name)) return;
     if (node.geometry?.type === "BoxGeometry") walls.push(node);
   });

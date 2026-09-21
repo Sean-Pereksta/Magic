@@ -1,3 +1,4 @@
+import { canReuseActorPath, rememberActorPath, foodLoad } from "./hearthmouse-survival-core.mjs";
 import { isFoodPositionClear } from "./hearthmouse-habitat.mjs";
 import {
   HEARTHMOUSE_ROOM_DEFINITIONS,
@@ -616,17 +617,11 @@ export function installEnginePatches(I) {
       : ["returning", "home", "nesting-move"].includes(mouse.task)
         ? (mouse.nestActivityGoal ?? this.world.nestDeposit)
         : (mouse.targetFood?.mesh.position ?? this.world.nestCenter);
-    const result = buildSmartPath(this, ensureExpansion(this), I, mouse.rig.root.position, target, "mouse");
-    mouse.path = result.path;
-    mouse.pathIndex = 0;
+    planReusablePath(this, ensureExpansion(this), I, mouse, target, "mouse");
   };
 
   proto.planCatPath = function expandedCatPath(cat, target) {
-    const result = buildSmartPath(this, ensureExpansion(this), I, cat.rig.root.position, target, "cat");
-    cat.path = result.path;
-    cat.pathIndex = 0;
-    cat.pathReachable = result.reachedGoal;
-    cat.pathRemainingDistance = result.remainingDistance;
+    planReusablePath(this, ensureExpansion(this), I, cat, target, "cat");
   };
 
   proto.updateCats = function expandedCatAI(delta) {
@@ -645,8 +640,10 @@ export function installEnginePatches(I) {
     if (!this.carriedFood) {
       for (let index = 0; index < nearby.length; index++) {
         const food = nearby[index];
-        if (food.deposited || food.carriedBy || !food.mesh.visible) continue;
-        if (food.mesh.position.distanceToSquared(this.playerPosition) >= 0.018225) continue;
+        if (food.deposited || food.carriedBy || !food.mesh.visible || (food.__pickupBlockedUntil ?? 0) > this.time) continue;
+        const position = food.mesh.position;
+        const dy = position.y - this.playerPosition.y - (this.playerElevation ?? 0);
+        if ((position.x - this.playerPosition.x) ** 2 + (position.z - this.playerPosition.z) ** 2 + dy * dy >= 0.018225) continue;
         const order = expansion.foodCandidateCache.get(food)?.sourceOrder ?? index;
         if (order < pickupOrder) {
           pickup = food;
@@ -960,7 +957,7 @@ function thawTransform(object) {
   object.matrixWorldNeedsUpdate = true;
 }
 
-function rebuildStaticSpatialIndexes(engine, expansion) {
+export function rebuildStaticSpatialIndexes(engine, expansion) {
   const shelterGrid = expansion.spatial.shelters;
   shelterGrid.clear();
   for (let index = 0; index < engine.world.shelterPoints.length; index++) {
@@ -1045,7 +1042,7 @@ function rebuildPatrolRoomIndex(world, expansion) {
   }
 }
 
-function rebuildFoodIndexes(engine, expansion) {
+export function rebuildFoodIndexes(engine, expansion) {
   const grid = expansion.spatial.food;
   grid.clear();
   for (let index = 0; index < engine.foods.length; index++) {
@@ -1158,8 +1155,8 @@ function considerVisionTarget(engine, cat, maximumDistance, targetId, position, 
 function scanIndexedCatVision(engine, expansion, cat) {
   const performanceManager = ensurePerformanceManager(engine);
   if (!performanceManager.shouldScanCatVision(cat)) {
-    const cached = cat.__hearthmouseCachedVisionTarget;
-    if (cached?.id === "player" || cached?.id && expansion.scratch.mouseById.get(cached.id)?.member?.alive) return cached;
+    // Never pass a live target position off as a fresh observation when a
+    // scheduled sight check has been skipped.
     return null;
   }
   const maximumDistance = cat.state === "chase" ? 10.4 : 8.7;
@@ -1214,6 +1211,15 @@ function prepareCatSightFrame(engine, expansion, cat) {
   sight.cat = cat;
   sight.time = engine.time;
   cat.rig.eyeWorldPosition(sight.eye);
+  // The animated muzzle can protrude beyond the cat's collision capsule.
+  // Keep the sight origin inside that capsule so a face pressed against a
+  // closed door cannot raycast from the far side of the door.
+  const root = cat.rig.root.position;
+  const eyeOffset = Math.hypot(sight.eye.x - root.x, sight.eye.z - root.z);
+  if (eyeOffset > 0.17) {
+    sight.eye.x = root.x + (sight.eye.x - root.x) * 0.17 / eyeOffset;
+    sight.eye.z = root.z + (sight.eye.z - root.z) * 0.17 / eyeOffset;
+  }
   sight.forward.set(0, 0, -1).applyAxisAngle(sight.up, cat.yaw + cat.lookYaw * 0.5);
   return sight;
 }
@@ -1237,6 +1243,7 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
     catZ: catPosition.z,
     targetX: targetPosition.x,
     targetZ: targetPosition.z,
+    targetY: targetId === "player" ? (engine.playerElevation ?? 0) : targetPosition.y,
     yaw: cat.yaw + cat.lookYaw * 0.5,
     distanceSquared: dx * dx + dz * dz,
   };
@@ -1268,7 +1275,18 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
       probes[2].set(targetPosition.x - 0.035, 0.06, targetPosition.z + 0.018);
       probes[3].set(targetPosition.x + 0.035, 0.06, targetPosition.z + 0.018);
       probes[4].set(targetPosition.x, 0.038, targetPosition.z + 0.06);
-      for (let index = 0; index < probes.length; index++) {
+      if (targetId === "player") {
+        const height = Math.max(0, (engine.playerEyeY ?? 0.066) - 0.066);
+        for (const probe of probes) probe.y += height;
+      }
+      const tier = performanceManager.catIntelligenceTier(cat);
+      const probeCount = tier === "adjacent" ? 2 : 5;
+      if (tier === "distant" || !performanceManager.takeSightRays(cat, probeCount)) {
+        // A deferred observation must not reveal a moving target or see through
+        // a changed door. Retry on the next scheduled sample without caching 0.
+        return !shouldInvalidateLosSample(sample, current) && current.time - sample.time < 0.08 ? sample.visible : 0;
+      }
+      for (let index = 0; index < probeCount; index++) {
         const probe = probes[index];
         sight.rayDirection.copy(probe).sub(sight.eye);
         const distance = sight.rayDirection.length();
@@ -1283,7 +1301,7 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
         if (!sight.hits.length) visible++;
         sight.hits.length = 0;
       }
-      visible /= probes.length;
+      visible /= probeCount;
     }
   }
 
@@ -1434,6 +1452,7 @@ function buildExpandedHouse(engine, expansion, I) {
   const addBox = ({ name, roomId = undefined, x, y, z, w, h, d, color = 0x66574b, collide = false, catOnly = false, occlude = true, dynamicId = null, active = true }) => {
     const mesh = new I.Mesh(boxGeometry(w, h, d), material(color));
     mesh.name = name;
+    mesh.userData.staticScenery = !dynamicId && !/door|cover|gap|nest|passage|roof/i.test(name);
     mesh.position.set(x, y, z);
     mesh.visible = active;
     mesh.castShadow = false;
@@ -1763,7 +1782,7 @@ function setDynamicPropActive(expansion, id, active) {
   setWorldObjectActive(expansion, prop, active);
 }
 
-function setWorldObjectActive(expansion, object, active) {
+export function setWorldObjectActive(expansion, object, active) {
   object.mesh.visible = active;
   if (object.collider) object.collider.active = active;
   if (!object.occlude && object.occlude !== undefined) return;
@@ -1838,6 +1857,8 @@ function spawnExpandedFood(engine, expansion, I) {
       if (!isFoodPositionClear(mesh.position, engine.world.colliders, 0.06)) mesh.position.copy(spawn.position);
       mesh.rotation.y = seededUnit(index * 83 + night * 29) * Math.PI * 2;
       if (spawn.prizeId) engine.decoratePrize(mesh, spawn.prizeEffect);
+      const load = foodLoad(spawn);
+      mesh.scale.multiplyScalar(load.bulk > 0.2 ? 1.75 : load.bulk > 0.1 ? 1.3 : 1);
       engine.world.root.add(mesh);
       freezeStaticTransform(mesh);
       engine.foods.push({
@@ -2635,8 +2656,9 @@ function emitExpandedNoise(engine, expansion, position, rawStrength) {
   for (const cat of engine.cats) {
     if (cat.state === "chase") continue;
     const distance = cat.rig.root.position.distanceTo(position);
+    const response = engine.distractionResponse?.(cat) ?? 1;
     const personality = cat.personality === "hunter" ? 1 : 1.18;
-    let hearingRange = (0.65 + strength * 4.6) * personality * sensitivity;
+    let hearingRange = (0.65 + strength * 4.6) * personality * sensitivity * response;
     if (cat.leisureMode === "grooming") {
       const loudEnough = rawStrength >= 0.56 || distance < 0.72;
       if (!loudEnough) continue;
@@ -2646,13 +2668,39 @@ function emitExpandedNoise(engine, expansion, position, rawStrength) {
     const error = Math.max(0.06, distance * 0.055) / Math.max(0.45, strength);
     const angle = Math.random() * Math.PI * 2;
     cat.investigation.copy(position).add(engine.tempA.set(Math.cos(angle) * error, 0, Math.sin(angle) * error));
-    cat.awareness = Math.max(cat.awareness, Math.min(0.34, strength * 0.17));
+    cat.awareness = Math.max(cat.awareness, Math.min(0.34, strength * response * 0.17));
     cat.leisureMode = null;
     cat.leisureTimer = 0;
     ensurePerformanceManager(engine).promoteActor(cat, 0.75);
     if (cat.state === "relaxed" || cat.state === "cooldown") engine.setCatState(cat, "alert", cat.personality === "kitten" ? 0.28 : 0.52);
     else if (cat.state === "suspicious") cat.stateTimer = Math.max(cat.stateTimer, 2.6);
   }
+}
+
+function planReusablePath(engine, expansion, I, actor, target, agent) {
+  const manager = ensurePerformanceManager(engine);
+  const tier = agent === "cat" ? manager.catIntelligenceTier(actor) : manager.getActorSimulationTier(actor);
+  const context = { time: engine.time, revision: expansion.routeRevision, playerRoom: manager.playerRoom,
+    targetRoom: roomForPosition(target.x, target.z), tier,
+    intent: `${actor.state ?? actor.task}:${actor.hunt?.mode ?? ""}:${actor.targetId ?? actor.targetFood?.id ?? ""}`,
+    chasing: actor.state === "chase" || actor.task === "escaping" };
+  if (canReuseActorPath(actor, target, context, (a, b) => ILineClear(engine, expansion, a, b, agent))) {
+    manager.record("pathReuses");
+    return;
+  }
+  const start = actor.rig.root.position;
+  let result;
+  if (agent === "cat" && tier === "distant") {
+    // Strategically move through the room graph, with normal collider-aware
+    // locomotion. Detailed local routing resumes immediately on promotion.
+    const route = roomRoute(engine, expansion, roomForPosition(start.x, start.z), context.targetRoom, agent);
+    const waypoint = route.find(edge => start.distanceTo(edge.point) > 0.35)?.point ?? target;
+    result = { path: [waypoint.clone()], reachedGoal: true, remainingDistance: 0 };
+  } else result = buildSmartPath(engine, expansion, I, start, target, agent);
+  actor.path = result.path; actor.pathIndex = 0;
+  actor.pathReachable = result.reachedGoal; actor.pathRemainingDistance = result.remainingDistance;
+  rememberActorPath(actor, target, context);
+  manager.record("pathBuilds");
 }
 
 function cachedSmartPath(engine, expansion, I, start, target, agent, purpose) {
@@ -2681,7 +2729,9 @@ function buildSmartPath(engine, expansion, I, start, target, agent) {
   let remainingDistance = 0;
   for (let index = 0; index <= route.length; index++) {
     const waypoint = index < route.length ? route[index].point : target;
-    const leg = I.pathfind(cursor, waypoint, radius, engine.world.colliders, agent);
+    const leg = ILineClear(engine, expansion, cursor, waypoint, agent)
+      ? { path: [waypoint.clone()], reachedGoal: true, remainingDistance: 0 }
+      : I.pathfind(cursor, waypoint, radius, engine.world.colliders, agent);
     for (let pointIndex = 0; pointIndex < leg.path.length; pointIndex++) path.push(leg.path[pointIndex]);
     if (!leg.reachedGoal) {
       reachedGoal = false;
