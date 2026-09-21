@@ -1,3 +1,4 @@
+import { addNestHabitat } from "./hearthmouse-habitat.mjs";
 import { registerFrameVisualStage } from "./hearthmouse-performance-manager.mjs";
 
 const POLL_INTERVAL_MS = 40;
@@ -201,6 +202,7 @@ function ensureNestEvolution(engine, state, I) {
   addBox(I, group, { name: "nest-insulation-layer", x: n.x + 0.02, y: 0.075, z: n.z - 0.32, w: 0.92, h: 0.06, d: 0.18, color: 0x90766c, upgrade: "insulation" });
   addBox(I, group, { name: "nest-scout-board", x: n.x - 0.56, y: 0.21, z: n.z + 0.02, w: 0.04, h: 0.34, d: 0.42, color: 0xbca77a, upgrade: "scouts" });
   addBox(I, group, { name: "nest-tunnel-marker", x: n.x - 0.58, y: 0.11, z: n.z - 0.43, w: 0.22, h: 0.22, d: 0.1, color: 0x4e3828, upgrade: "tunnel" });
+  addNestHabitat(engine, I, group);
   state.nestGroup = group;
   return group;
 }
@@ -451,3 +453,4 @@ function installWhenReady(attempt = 0) {
 if (typeof window !== "undefined") {
   installWhenReady();
 }
+

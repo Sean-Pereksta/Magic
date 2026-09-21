@@ -3,6 +3,7 @@ import "./hearthmouse-controller-reliability.mjs";
 import "./hearthmouse-graphics-quality.mjs";
 import "./hearthmouse-expansion-startup-guard.mjs";
 import "./hearthmouse-desktop-look-guard.mjs";
+import "./hearthmouse-predator-upgrade.mjs";
 import { catCountForPopulation, ensureCatVisionResult } from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-expansion-core.mjs";
 export * from "./hearthmouse-performance-manager.mjs";
@@ -399,11 +400,14 @@ function installCatPressureHotfix(I) {
   };
 
   proto.updateCatChase = function staggerHeavyChaseReplans(cat, delta) {
+    const previousPath = cat.path;
+    const previousTimer = cat.pathTimer;
     const result = coreUpdateCatChase.call(this, cat, delta);
     if (
       cat.state === "chase" &&
       cat.pouncePhase === "none" &&
       cat.pathTimer > 0 &&
+      (cat.path !== previousPath || previousTimer <= 0) &&
       (cat.path?.length > 1 || cat.pathReachable === false)
     ) {
       cat.pathTimer = Math.max(cat.pathTimer, chaseReplanInterval(isTouchEngine(this), cat.id));
@@ -461,3 +465,4 @@ mouse.resumeTask = mouse.carriedFood ? "returning"
 Never discard gathered food
 mouse.task === "returning" && mouse.carriedFood
 */
+

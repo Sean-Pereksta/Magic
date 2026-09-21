@@ -71,7 +71,7 @@ test("tunnel interiors are enclosed by family and urgent mice prefer the safer e
   assert.match(source, /mouse-tunnel-interior-/);
   assert.match(source, /alcove-floor/);
   assert.match(source, /setActiveTunnelInterior/);
-  assert.match(source, /mouse\.rig\.root\.visible = false/);
+  assert.match(source, /rig\.root\.visible = progress < 0\.12 \|\| progress > 0\.88/);
   assert.match(source, /mouse\.rig\.root\.visible = true/);
 });
 
@@ -144,3 +144,4 @@ test("major living-house events cover lighting, guests, vacuum, dog, catnip, win
   assert.match(source, /territoryPatrol/);
   assert.match(source, /secretEntranceSearch/);
 });
+

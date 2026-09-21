@@ -1,3 +1,4 @@
+import { mergeStaticMeshes } from "./hearthmouse-habitat.mjs";
 import { normalizeGraphicsQuality } from "./hearthmouse-graphics-quality-core.mjs";
 import { HearthmousePerformanceGovernor } from "./hearthmouse-performance-governor.mjs";
 import { HearthmousePerformanceManager } from "./hearthmouse-performance-manager.mjs";
@@ -6,7 +7,7 @@ const MANAGER_PATCH_FLAG = Symbol.for("hearthmouse.renderStability.manager");
 const GOVERNOR_PATCH_FLAG = Symbol.for("hearthmouse.renderStability.governor");
 const persistentStructureState = new WeakMap();
 
-const STRUCTURE_TOKEN = /(?:^|[^a-z])(wall|baseboard|skirting|trim|molding|moulding|floor|ceiling|architrave|crown)(?:[^a-z]|$)/i;
+const STRUCTURE_TOKEN = /(?:^|[^a-z])(wall|baseboard|skirting|trim|molding|moulding|floor|ceiling|architrave|crown|partition|header)(?:[^a-z]|$)/i;
 const MICRO_SHADOW_TOKEN = /(?:^|[^a-z])(baseboard|skirting|trim|molding|moulding|architrave|crown)(?:[^a-z]|$)/i;
 
 export const HEARTHMOUSE_STABLE_PIXEL_RATIO_CAPS = Object.freeze({
@@ -50,10 +51,12 @@ function managerState(manager) {
   let state = persistentStructureState.get(manager);
   if (!state) {
     state = {
-      processedGroups: new WeakSet(),
+      processedGroups: new WeakMap(),
       nodesByRoom: new Map(),
       extractedNodes: 0,
       optimizedMeshes: 0,
+      batches: [],
+      batchSignature: "",
     };
     persistentStructureState.set(manager, state);
   }
@@ -99,7 +102,8 @@ export function optimizePersistentStructure(root) {
       object.matrixAutoUpdate = false;
     }
     if (!object.isMesh) return;
-    object.frustumCulled = true;
+    // Structural shells are cheap and must not vanish with stale bounds.
+    object.frustumCulled = false;
     if (MICRO_SHADOW_TOKEN.test(String(object.name ?? root.name ?? ""))) object.castShadow = false;
     optimized++;
   };
@@ -116,7 +120,8 @@ export function extractPersistentRoomStructures(manager) {
 
   for (const [roomId, groups] of registry) {
     for (const group of groups ?? []) {
-      if (!group || state.processedGroups.has(group) || !group.parent) continue;
+      if (!group || !group.parent) continue;
+      if (state.processedGroups.get(group) === group.children?.length) continue;
       const structures = [];
       collectTopLevelStructures(group, structures);
       let roomNodes = state.nodesByRoom.get(roomId);
@@ -127,7 +132,7 @@ export function extractPersistentRoomStructures(manager) {
 
       for (const node of structures) {
         const baseVisible = node.visible !== false;
-        if (!reparentPreservingTransform(node, group.parent)) continue;
+        if (!reparentPreservingTransform(node, manager.engine.world.root ?? group.parent)) continue;
         node.userData ??= {};
         node.userData.__hearthmousePersistentStructure = true;
         node.userData.__hearthmousePersistentBaseVisible = baseVisible;
@@ -136,7 +141,7 @@ export function extractPersistentRoomStructures(manager) {
         roomNodes.add(node);
         extracted++;
       }
-      state.processedGroups.add(group);
+      state.processedGroups.set(group, group.children?.length);
     }
   }
 
@@ -149,18 +154,66 @@ export function applyPersistentStructureVisibility(manager) {
   if (!state) return 0;
   let visible = 0;
   for (const [roomId, nodes] of state.nodesByRoom) {
-    const unlocked = manager?.roomUnlocked?.(roomId) !== false;
+    // Locked rooms still need opaque shells; only decor follows unlock state.
     for (const node of [...nodes]) {
       if (!node?.parent) {
         nodes.delete(node);
         continue;
       }
-      const shouldShow = unlocked && node.userData?.__hearthmousePersistentBaseVisible !== false;
-      if (node.visible !== shouldShow) node.visible = shouldShow;
+      const shouldShow = node.userData?.__hearthmousePersistentBaseVisible !== false && !node.userData?.__hearthmouseStructureRemoved;
+      const renderSource = shouldShow && !node.userData.__hearthmouseBatchedStructure;
+      if (node.visible !== renderSource) node.visible = renderSource;
       if (shouldShow) visible++;
     }
   }
   return visible;
+}
+
+// Keep original wall meshes in the collision/LOS indexes. Their visual copies
+// share static draw calls; this does not make walls depend on portal visibility.
+export function batchPersistentStructures(manager, I = globalThis.window?.HearthmouseInternals) {
+  const state = persistentStructureState.get(manager);
+  const root = manager?.engine?.world?.root;
+  if (!state || !root || !I?.Mesh || !I?.BoxGeometry) return 0;
+  const candidates = [];
+  let signature = "";
+  for (const nodes of state.nodesByRoom.values()) for (const node of nodes) {
+    if (!node.isMesh || Array.isArray(node.material) || node.parent !== root ||
+      node.userData.__hearthmousePersistentBaseVisible === false || node.userData.__hearthmouseStructureRemoved) continue;
+    if (!node.geometry?.attributes?.normal || !node.geometry.attributes.uv) continue;
+    candidates.push(node);
+    signature += `${node.id}:${node.geometry.uuid}:${node.material.uuid};`;
+  }
+  if (signature === state.batchSignature) return state.batches.length;
+  const groups = new Map();
+  for (const node of candidates) {
+    const key = `${node.material.uuid}:${node.castShadow}:${node.receiveShadow}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(node);
+  }
+  const batches = [];
+  for (const nodes of groups.values()) {
+    if (nodes.length < 2) continue;
+    const first = nodes[0];
+    const batch = new I.Mesh(mergeStaticMeshes(I, nodes, root), first.material);
+    batch.name = "persistent-structure-batch";
+    batch.castShadow = first.castShadow; batch.receiveShadow = first.receiveShadow;
+    batch.frustumCulled = false; batch.updateMatrix(); batch.matrixAutoUpdate = false;
+    batches.push(batch);
+  }
+  for (const batch of state.batches) { batch.removeFromParent(); batch.geometry.dispose(); }
+  for (const nodes of state.nodesByRoom.values()) for (const node of nodes) {
+    node.userData.__hearthmouseBatchedStructure = false;
+  }
+  for (const nodes of groups.values()) if (nodes.length >= 2) for (const node of nodes) {
+    node.userData.__hearthmouseBatchedStructure = true; node.visible = false;
+  }
+  for (const batch of batches) root.add(batch);
+  state.batches = batches;
+  state.batchSignature = signature;
+  applyPersistentStructureVisibility(manager);
+  if (manager.stats) manager.stats.structuralDraws = batches.length + [...groups.values()].filter(nodes => nodes.length === 1).length;
+  return batches.length;
 }
 
 function enforceStableShadowMaps(governor) {
@@ -196,6 +249,7 @@ function installManagerPatch() {
     extractPersistentRoomStructures(this);
     const result = Reflect.apply(originalApplyRoomGroupVisibility, this, arguments);
     applyPersistentStructureVisibility(this);
+    batchPersistentStructures(this);
     return result;
   };
 
@@ -275,3 +329,4 @@ export function installHearthmouseRenderStability() {
 }
 
 installHearthmouseRenderStability();
+

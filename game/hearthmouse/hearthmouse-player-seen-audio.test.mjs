@@ -24,7 +24,7 @@ class FakeAudio {
   }
 }
 
-test("plays meow.mp3 with a short duplicate-sighting cooldown", () => {
+test("plays meow.mp3 quietly with a long duplicate-sighting cooldown", () => {
   const engine = { time: 1 };
 
   assert.equal(playPlayerSeenMeow(engine, FakeAudio), true);
@@ -36,7 +36,10 @@ test("plays meow.mp3 with a short duplicate-sighting cooldown", () => {
   assert.equal(playPlayerSeenMeow(engine, FakeAudio), false);
   assert.equal(FakeAudio.instances[0].playCount, 1);
 
-  engine.time = 1.8;
+  assert.equal(FakeAudio.instances[0].volume, 0.24);
+  engine.time = 18;
+  assert.equal(playPlayerSeenMeow(engine, FakeAudio), false);
+  engine.time = 19.1;
   assert.equal(playPlayerSeenMeow(engine, FakeAudio), true);
   assert.equal(FakeAudio.instances[0].playCount, 2);
 });
@@ -78,3 +81,4 @@ test("cat vision meows only when the cat newly locks onto the player", () => {
     globalThis.Audio = previousAudio;
   }
 });
+
