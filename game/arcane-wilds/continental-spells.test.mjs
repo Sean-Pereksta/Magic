@@ -7,7 +7,7 @@ function enemy(h,x=12,y=7){h.run(`{const e=spawnEnemy('wolf',{x:${x},y:${y}});e.
 for(const touch of [false,true])test(`${touch?'touch':'desktop'}: all 30 additions cast, update and render with every mutation`,()=>{
   const h=start(touch);try{
     assert.equal(h.run('AWContinentalSpells.ids.length'),30);
-    assert.equal(h.run('Object.keys(SPELLS).length'),82);
+    assert.equal(h.run('Object.keys(SPELLS).length'),84);
     for(const id of h.run('AWContinentalSpells.ids'))for(const mutated of [false,true]){
       h.run(`loadRoom();game.enemies=[];game.player.x=8;game.player.y=7;game.player.hp=70;game.player.invuln=100;running=true;paused=false;modalPause=false;roomTransition=false;game.player.upgrades['${id}']=${mutated?`UPGRADE_POOLS['${id}'].map(u=>u[0])`:'[]'};`);
       enemy(h);enemy(h,11,8);cast(h,id);

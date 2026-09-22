@@ -69,7 +69,7 @@
   let fields=[],actors=[],pods=[],ricochets=[],anchor=null,phase=null,eclipse=0,marks=new Map(),poisons=new Map(),links=[],clock=0,sharing=false;
   const live=()=>running&&!paused&&!modalPause&&!roomTransition&&game.player?.hp>0;
   const point=o=>({x:o.x,y:o.y});
-  const area=(id,r)=>r*(hasUpgrade(id,'reach')?1.3:1);
+  const area=(id,r)=>r*(hasUpgrade(id,'reach')?1.3:1)*(window.AWRegionalContent?.spellArea(id)||1);
   const duration=(id,n)=>n*(hasUpgrade(id,'lasting')&&!direct.has(id)?1.4:1)*(SPELLS[id].damage===0&&hasUpgrade(id,'potency')?1.3:1);
   const power=(id,s,m)=>s.damage*m.power*(hasUpgrade(id,'potency')?1.3:1);
   const foes=(at,r)=>game.enemies.filter(e=>!e.dead&&dist(e,at)<=r+e.r);

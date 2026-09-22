@@ -4,25 +4,26 @@ import {runtime} from './runtime-test-helper.mjs';
 
 function start(touch=false){const h=runtime(touch);h.run('startNewGame()');h.step(3);return h;}
 function clear(h){
-  h.run(`for(const e of [...game.enemies]){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();game.pendingLevelUps=0;game.loot=null;document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));modalPause=false;paused=false;`);
+  h.run(`if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});for(const e of [...game.enemies]){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();game.pendingLevelUps=0;game.loot=null;document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));modalPause=false;paused=false;`);
 }
+function inside(h,room){const dir=h.run(`Object.keys(AWTravel.exits()).find(d=>AWTravel.exits()[d].id===game.campaign.current&&AWTravel.exits()[d].room===${room})`);assert.ok(dir,'internal dungeon connection to '+room);h.run(`transitionRoom(0,0,'${dir}')`);}
 function route(h,target){
-  const steps=h.run(`(()=>{const D=AWCampaignData,start=game.campaign.current,q=[[start]],seen=new Set([start]);while(q.length){const path=q.shift(),n=D.nodes[path.at(-1)];if(n.id===${JSON.stringify(target)})return path.slice(1);for(const id of n.connections)if(!seen.has(id)&&D.nodes[id].type!=='ruler'){seen.add(id);q.push([...path,id]);}}return null;})()`);
+  const steps=h.run(`(()=>{const D=AWCampaignData,start=game.campaign.current,q=[[start]],seen=new Set([start]);while(q.length){const path=q.shift(),n=D.nodes[path.at(-1)];if(n.id===${JSON.stringify(target)})return path.slice(1);for(const [dir,id] of Object.entries(n.exits||{}))if(!n.routeRequirements?.[dir]&&!seen.has(id)&&D.nodes[id].type!=='ruler'){seen.add(id);q.push([...path,id]);}}return null;})()`);
   assert.ok(steps,`route to ${target}`);
-  for(const id of steps){clear(h);if(h.run('AWCampaign.current().type==="dungeon"&&!game.campaign.cleared.includes(game.campaign.current)')){h.run('transitionRoom(0,-1,"N")');clear(h);h.run('transitionRoom(-1,0,"W")');clear(h);h.run('transitionRoom(0,-1,"N")');clear(h);}assert.equal(h.run(`AWCampaign.travel(${JSON.stringify(id)})`),true,`travel to ${id}`);h.step(2);}
+  for(const id of steps){clear(h);if(h.run('AWCampaign.current().type==="dungeon"&&!game.campaign.cleared.includes(game.campaign.current)')){inside(h,1);clear(h);inside(h,4);clear(h);}assert.equal(h.run(`AWCampaign.travel(${JSON.stringify(id)})`),true,`travel to ${id}`);h.step(2);}
 }
 
-test('all 63 locations form valid connected continents with distinct difficulty and services',()=>{
+test('all 210 locations form valid connected continents with distinct difficulty and services',()=>{
   const h=start();try{
-    assert.equal(h.run('Object.keys(AWCampaignData.nodes).length'),63);
-    assert.equal(h.run('Object.values(AWCampaignData.towns).length'),9);
+    assert.equal(h.run('Object.keys(AWCampaignData.nodes).length'),210);
+    assert.equal(h.run('Object.values(AWCampaignData.towns).length'),24);
     assert.equal(h.run(`AWCampaignData.continents.every(c=>{const seen=new Set([c.start]),q=[c.start];while(q.length)for(const id of AWCampaignData.nodes[q.shift()].connections){if(!seen.has(id)){seen.add(id);q.push(id);}}return c.requiredBosses.length===4&&c.nodes.every(id=>seen.has(id));})`),true);
     assert.equal(h.run('AWCampaignData.continents.every((c,i,a)=>!i||c.range[0]>a[i-1].range[1])'),true);
     assert.equal(h.run('Object.values(AWCampaignData.nodes).every(n=>AWCampaign.pool(n).length>0)'),true);
   }finally{h.close();}
 });
 
-for(const touch of [false,true])test(`${touch?'touch':'desktop'} map enforces adjacent discovery and visited-only portals`,()=>{
+for(const touch of [false,true])test(`${touch?'touch':'desktop'} map enforces adjacent discovery and activated waystones`,()=>{
   const h=start(touch);try{
     assert.equal(h.run('AWCampaign.travel("verdant-boss4")'),false);
     assert.equal(h.run('AWCampaign.travel("verdant-town","portal")'),false);
@@ -33,6 +34,8 @@ for(const touch of [false,true])test(`${touch?'touch':'desktop'} map enforces ad
     assert.equal(h.run('AWCampaign.travel("verdant-road")'),true);
     assert.equal(h.run('AWCampaign.travel("verdant-wood")'),false);
     clear(h);route(h,'verdant-town');
+    assert.equal(h.run('AWVillagePortals.travel("verdant-city")'),false);
+    h.run('game.campaign.waystones.push("verdant-town")');
     assert.equal(h.run('AWVillagePortals.travel("verdant-city")'),true);
     assert.equal(h.run('AWVillagePortals.travel("verdant-town")'),true);
     assert.equal(h.run('AWVillagePortals.travel("gloam-city")'),false);
@@ -45,7 +48,7 @@ test('all four seals gate each ruler; actual room clears unlock all three contin
   const h=start();try{
     for(const c of ['verdant','meridian','gloam']){
       assert.equal(h.run('AWCampaign.enterPortal()'),false);
-      for(let i=1;i<=4;i++){route(h,`${c}-boss${i}`);assert.ok(h.run('game.enemies.some(e=>e.boss)'));clear(h);}
+      for(let i=1;i<=4;i++){route(h,`${c}-boss${i}`);assert.ok(h.run('game.enemies.some(e=>e.boss)||game.campaign.cleared.includes(game.campaign.current)'));clear(h);assert.ok(h.run(`game.campaign.defeated.includes('${c}-boss${i}')`));}
       route(h,`${c}-city`);
       assert.equal(h.run(`AWCampaign.travel('${c}-ruler')`),false,'world map cannot bypass physical portal');
       assert.equal(h.run('AWCampaign.enterPortal()'),true);
@@ -67,10 +70,10 @@ test('dungeon cardinal links preserve room clears and require the guardian',()=>
   const h=start();try{
     route(h,'verdant-dungeon');assert.equal(h.run('game.campaign.room'),0);clear(h);
     assert.equal(h.run('game.campaign.cleared.includes("verdant-dungeon")'),false);
-    h.run('transitionRoom(0,-1,"N")');assert.equal(h.run('game.campaign.room'),1);clear(h);
-    h.run('transitionRoom(-1,0,"W")');assert.equal(h.run('game.campaign.room'),2);clear(h);
+    inside(h,1);assert.equal(h.run('game.campaign.room'),1);clear(h);
+    inside(h,2);assert.equal(h.run('game.campaign.room'),2);clear(h);
     assert.equal(h.run('game.player.unlocked.includes("spirits")'),true);
-    h.run('transitionRoom(0,-1,"N")');assert.equal(h.run('game.campaign.room'),4);
+    inside(h,1);inside(h,4);assert.equal(h.run('game.campaign.room'),4);
     assert.equal(h.run('game.enemies.some(e=>e.boss)'),true);clear(h);
     assert.equal(h.run('game.campaign.cleared.includes("verdant-dungeon")'),true);
     h.run('saveGame();loadGame();beginWorld()');

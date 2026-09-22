@@ -11,7 +11,7 @@
   function state(){return game.campaign;}
   function current(){return D.nodes[state()?.current];}
   function inCampaign(){return !!state()&&game.roomData?.campaignNode===state().current;}
-  function coordinates(id,room=0){const n=D.nodes[id];return id==='verdant-city'?{x:0,y:0}:{x:10000+n.index*10+room,y:10000+D.continents.indexOf(D.continent(n.continent))};}
+  function coordinates(id,room=0){if(D.coordinates&&id.startsWith('shadow:'))return D.coordinates(id,room);const n=D.nodes[id];return id==='verdant-city'?{x:0,y:0}:{x:10000+n.index*10+room,y:10000+D.continents.indexOf(D.continent(n.continent))};}
   function addUnique(list,id){if(!list.includes(id))list.push(id);}
   function setup(){
     const legacy=!game.campaign;game.campaign=D.normalize(game.campaign);
@@ -24,12 +24,12 @@
   }
   beginWorld=function(){setup();return originals.beginWorld();};
   getRoomData=function(x,y){
-    const at=state()&&coordIndex.get(roomKey(x,y));if(!at)return originals.getRoomData(x,y);
+    const at=state()&&(D.locate?.(x,y)||coordIndex.get(roomKey(x,y)));if(!at)return originals.getRoomData(x,y);
     const n=at.node,s=state(),c=D.continent(n.continent),key=roomKey(x,y);
     let r=game.rooms[key];
     if(!r||r.campaignNode!==n.id){
-      const old=r,town=D.isTown(n),safe=town||['shrine','landmark','mount','merchant','passage'].includes(n.type);
-      r={x,y,key,biome:n.biome,town,boss:['boss','ruler'].includes(n.type)||(n.type==='dungeon'&&at.room===4),elite:n.type==='danger'||n.type==='event'||at.room===3,difficulty:n.threat+at.room,name:n.name,seen:!!old?.seen,cleared:false,scenery:[],deco:[],chests:[],seed:Math.floor(hash2(x,y,game.seed)*1e9),campaignNode:n.id,campaignRoom:at.room,regionTier:D.continents.indexOf(c)+1,villageLevel:D.continents.indexOf(c)+1,challenge:n.type==='event'&&n.continent==='meridian'?'Arcane Crossfire':null,_expanded:true,_campaign:true};
+      const old=r,town=D.isTown(n),safe=town||['shrine','landmark','mount','merchant','passage','resource','treasure','puzzle','sanctuary'].includes(n.type);
+      r={x,y,key,biome:n.biome,town,boss:['boss','ruler','shadowBoss'].includes(n.type)||(n.type==='dungeon'&&at.room===4),elite:n.type==='danger'||n.type==='event'||at.room===3,difficulty:n.threat+at.room,name:n.name,seen:!!old?.seen,cleared:false,scenery:[],deco:[],chests:[],seed:Math.floor(hash2(x,y,game.seed)*1e9),campaignNode:n.id,campaignRoom:at.room,regionTier:D.continents.indexOf(c)+1,villageLevel:D.continents.indexOf(c)+1,challenge:n.type==='event'&&n.continent==='meridian'?'Arcane Crossfire':null,_expanded:true,_campaign:true};
       if(town){
         const theme=D.towns[n.town].theme,palette=`campaign_${n.town}`;
         biomePalette[palette]={...biomePalette[theme],name:n.name};
@@ -97,30 +97,31 @@
       const c=D.continent(n.continent);
       if(D.portalReady(s,c)&&!s.celebrated.includes(n.id)){addUnique(s.celebrated,n.id);r.portalIgnition=elapsed;burst(9,3.1,c.color,28,2.2);window.AWModernUI?.announce('THE PORTAL ACTIVATES',`${c.ruler} waits beyond the light.`);}
     }
-    if(['shrine','landmark','mount','merchant','passage'].includes(n.type)){
+    if(!n.shadow&&['shrine','landmark','mount','merchant','passage','resource','treasure','puzzle'].includes(n.type)){
       addUnique(s.cleared,n.id);game.interactables.push({type:'campaignSite',x:9,y:6,label:n.name});
     }
     if(s.cleared.includes(n.id))r.cleared=true;
-    if(n.type==='event'&&r.cleared)game.interactables.push({type:'campaignSite',x:9,y:6,label:'Explore the aftermath'});
+    if(!n.shadow&&n.type==='event'&&r.cleared)game.interactables.push({type:'campaignSite',x:9,y:6,label:'Explore the aftermath'});
     if(n.type==='ruler'&&!s.defeated.includes(n.id))window.AWModernUI?.announce(D.continent(n.continent).ruler,'Continent Ruler • break the three phases');
     if(s.rewards.length)toastMsg('A regional reward awaits in Character → Claim Reward.');
     recordLocationQuests();saveGame();updateHUD();
   };
-  function enter(id,room=0){
+  function enter(id,room=0,entry='S'){
     const n=D.nodes[id];if(!n||!game.player||roomTransition)return false;
     roomTransition=true;
     try{
       window.AWCampaignUI?.close();document.querySelectorAll('#npcPanel,#townPanel').forEach(el=>el.classList.add('hidden'));
       state().current=id;state().room=room;game.room=coordinates(id,room);
-      game.player.x=9;game.player.y=12;game.player.dodgeTime=0;game.player.invuln=Math.max(game.player.invuln||0,1);
-      game.arcaneEntrySide='S';game.effects.length=0;game.particles.length=0;
+      game.player.x=entry==='W'?.8:entry==='E'?ROOM_W-.8:ROOM_W/2;game.player.y=entry==='N'?.8:entry==='S'?ROOM_H-.8:ROOM_H/2;game.player.dodgeTime=0;game.player.invuln=Math.max(game.player.invuln||0,1);
+      game.arcaneEntrySide=entry;game.effects.length=0;game.particles.length=0;
       window.AWInput?.clear();modalPause=false;loadRoom();saveGame();return true;
     }finally{roomTransition=false;}
   }
   function travel(id,mode='road'){
     if(!running||paused||roomTransition||!inCampaign())return false;
     const reason=D.travelReason(state(),id,mode);if(reason){toastMsg(reason);return false;}
-    return enter(id);
+    const dir=Object.keys(current().exits||{}).find(d=>current().exits[d]===id);
+    return enter(id,0,D.opposite?.[dir]||'S');
   }
   function enterPortal(){
     const n=current(),c=D.continent(n?.continent),s=state();
@@ -131,10 +132,10 @@
     if(!inCampaign())return originals.transitionRoom(dx,dy,from);
     if(!game.roomData.cleared||roomTransition)return;
     const n=current(),next=n.type==='dungeon'?D.dungeonLinks[state().room][from]:undefined;
-    // Cardinal doors are internal dungeon links; all other exits open connected travel.
+    if(next!==undefined)return enter(n.id,next,D.opposite[from]);
+    const destination=n.type==='dungeon'?(state().room===0&&from==='S'?n.connections.find(id=>D.nodes[id]?.type!=='ruler'):null):n.exits?.[from];
+    if(destination){const reason=D.travelReason(state(),destination);if(!reason)return enter(destination,0,D.opposite[from]);toastMsg(reason);}
     game.player.x=clamp(game.player.x,.5,ROOM_W-.5);game.player.y=clamp(game.player.y,.5,ROOM_H-.5);
-    if(next!==undefined)return enter(n.id,next);
-    window.AWCampaignUI?.open('Map');
   };
   function unlockSpell(id){if(!SPELLS[id])return;addUnique(game.player.unlocked,id);game.player.spellState[id]||={cd:0};}
   function finish(n){
@@ -179,7 +180,7 @@
   acceptQuest=function(q){baseAccept(q);recordLocationQuests();saveGame();renderNPCPanelQuestList();};
   materialForEnemy=function(e){
     if(!inCampaign())return originals.materialForEnemy(e);
-    const n=current();return ({forest:'hide',meadow:'hide',thornwild:'hide',frost:'frost',crystal:'frost',volcanic:'ember',crypt:'bone',gloam:'bone',bloodroot:'bone',celestial:'dust',stormlands:'dust',desert:'iron',ruins:'iron',swamp:'hide'})[n.biome]||D.continent(n.continent).material;
+    const n=current();if(n.material&&MATERIALS[n.material])return n.material;return ({forest:'hide',meadow:'hide',thornwild:'hide',frost:'frost',crystal:'frost',volcanic:'ember',crypt:'bone',gloam:'bone',bloodroot:'bone',celestial:'dust',stormlands:'dust',desert:'iron',ruins:'iron',swamp:'hide'})[n.biome]||D.continent(n.continent).material;
   };
   function craftItem(id){
     const t=D.items[id];if(!t?.slot)return null;
@@ -216,7 +217,7 @@
     saveGame();toastMsg(s.riding?`${D.mounts[id].name} summoned. Dismount or dodge to fight.`:'Dismounted.');return true;
   }
   function claimSite(){
-    const n=current(),s=state();if(!inCampaign()||s.claimed.includes(n.id)||!['mount','landmark','shrine','merchant','event'].includes(n.type)||n.type==='event'&&!game.roomData.cleared)return false;
+    const n=current(),s=state();if(!inCampaign()||n.shadow||s.claimed.includes(n.id)||!['mount','landmark','shrine','merchant','event'].includes(n.type)||n.type==='event'&&!game.roomData.cleared)return false;
     if(n.type==='merchant'){window.AWCampaignUI?.openCamp();return true;}
     addUnique(s.claimed,n.id);
     if(n.type==='event'){game.gold+=90+n.threat*7;healPlayer(game.player.maxHp*.3);if(n.continent==='gloam')unlockSpell('starCauseway');toastMsg('The road is safer. Supplies and a traveler’s blessing are yours.');}
@@ -308,7 +309,7 @@
   renderMinimap=function(){
     if(!inCampaign())return originals.renderMinimap();
     const n=current(),c=D.continent(n.continent),stamp=[n.id,state().cleared.length,state().defeated.length].join('|');if(stamp===mapStamp)return;mapStamp=stamp;
-    const root=$('minimapGrid');root.style.display='block';root.textContent=`🗺 ${n.name} · ${D.sealCount(state(),c)}/4 seals`;
+    const root=$('minimapGrid');root.style.display='block';root.textContent=`🗺 ${n.name}${n.shadow?'':` · ${D.sealCount(state(),c)}/4 seals`}`;
     $('minimap').setAttribute('role','button');$('minimap').tabIndex=0;$('minimap').onclick=()=>window.AWCampaignUI?.open('Map');
     $('minimap').onkeydown=e=>{if(e.key==='Enter')window.AWCampaignUI?.open('Map');};
   };
@@ -391,5 +392,5 @@
     else if(town.theme==='thornwild'){ctx.beginPath();ctx.ellipse(0,-24,10,4,-.3,0,TAU);ctx.fill();}
     ctx.restore();
   };
-  window.AWCampaign={data:D,state,current,inCampaign,coordinates,pool,bossSummonType:(e,i)=>inCampaign()&&e.boss?pool(current())[i%pool(current()).length]:null,travel,enterPortal,mount,buy,buyMount,learn,claimSite,claimReward,craftItem,unlockSpell};
+  window.AWCampaign={enter,data:D,state,current,inCampaign,coordinates,pool,bossSummonType:(e,i)=>inCampaign()&&e.boss?pool(current())[i%pool(current()).length]:null,travel,enterPortal,mount,buy,buyMount,learn,claimSite,claimReward,craftItem,unlockSpell};
 })();
