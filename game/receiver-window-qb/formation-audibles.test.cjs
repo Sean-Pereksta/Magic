@@ -1,7 +1,9 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const A=require('./formation-audibles.js');
+const fs=require('node:fs');
+const path=require('node:path');
+const A=require('./formation-audibles-core.js');
 
 const spreadPass={name:'Mesh',routes:['Drag','Post','Corner','Drag'],xs:[-18,-6,6,18],category:'Intermediate'};
 const tripsScreen={name:'WR Bubble',family:'Screens',routes:['Go','Bubble','Lead','Lead'],xs:[-18,7,12,18],screen:1};
@@ -41,6 +43,7 @@ test('defensive adjustment remains bounded and recovers after the snap',()=>{
     assert.ok(defender.delay>=.1&&defender.delay<=1.45);
     assert.ok(defender.postSnapHold>=.03&&defender.postSnapHold<=.88);
     assert.ok(defender.bustChance<=.31);
+    assert.ok(defender.correctionAt>=defender.delay&&defender.correctionAt<=3.15);
     assert.ok(defender.assignmentIndex>=0&&defender.assignmentIndex<6);
     if(defender.role==='safety')assert.equal(defender.assignmentIndex,defender.index);
   }
@@ -59,4 +62,15 @@ test('recommended audibles prioritize a screen counter when the current call is 
   const recommended=A.recommendedPlays(catalog,current);
   assert.equal(recommended[0].screen,true);
   assert.ok(recommended.some(play=>play.shape!=='Spread'));
+});
+
+test('the browser entrypoint loads formation audibles before the game loop',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'../receiver-window-qb.html'),'utf8');
+  const audible=html.indexOf('receiver-window-qb/formation-audibles-core.js');
+  const runtime=html.indexOf('receiver-window-qb/formation-audibles-runtime.js');
+  const game=html.indexOf('receiver-window-qb/game.js');
+  assert.ok(audible>=0,'formation audible script is missing');
+  assert.ok(runtime>=0,'formation audible runtime is missing');
+  assert.ok(game>=0,'game script is missing');
+  assert.ok(audible<runtime&&runtime<game,'audible rules and runtime must load before game.js so scene actors can be observed');
 });
