@@ -30,7 +30,7 @@ NEW_TESTS=(work/'tests.cjs').read_text()
 start=source.index('function deflectBall(hit,contested=false){')
 end=source.index('function finishSecuringCatch(dt){',start)
 source=source[:start]+NEW_CONTACT+source[end:]
-source=replace_once(source,'a.profile?a.trackingBall:a.ballSeen','a.profile?receiverCatchAware(a):a.ballSeen')
+source=replace_once(source,'if(!ballLive||!(a.profile?a.trackingBall:a.ballSeen)||a.hasBall)return null;','if(!ballLive||!(a.profile?receiverCatchAware(a):a.ballSeen)||a.hasBall)return null;')
 source=replace_once(source,'a.profile?5+Math.min(1,P.effective(a.profile.athleticism)/100)*3:5+currentSkill()*3','a.profile?7.5+Math.min(1,P.effective(a.profile.athleticism)/100)*3.5:5+currentSkill()*3')
 source=replace_once(source,'r.trackingBall=true;r.burst','r.trackingBall=true;r.catchTrackingUntil=throwTime+.16;r.burst')
 source=replace_once(source,'{a.contactLock=false;a.contactRig=null;}','{a.contactLock=false;a.contactRig=null;a.catchTrackingUntil=0;a.gatherUntil=0;a.gatherUsed=false;}')
