@@ -1,0 +1,26 @@
+name: Stoney Relic tests
+on:
+  pull_request:
+    paths:
+      - 'game/stoney.html'
+      - 'game/dungeonmaster.html'
+      - 'game/stoney-relic/**'
+      - 'tests/stoney-*.test.mjs'
+      - '.github/workflows/stoney-relic.yml'
+  push:
+    paths:
+      - 'game/stoney-relic/**'
+      - 'tests/stoney-*.test.mjs'
+      - '.github/workflows/stoney-relic.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/stoney-relic.test.mjs tests/stoney-network.test.mjs
+      - run: for f in game/stoney-relic/*.mjs; do node --check "$f"; done
