@@ -39,7 +39,7 @@
         if(game.player.dodgeCd<=0){queue.delete(action);dodge();}
       }else{
         if(game.player.activeSpells[slot]!==intent.id){queue.delete(action);continue;}
-        if((game.player.spellState[intent.id]?.cd||0)<=0){queue.delete(action);castSpell(slot);}
+        if((game.player.spellState[intent.id]?.cd||0)<=0||window.AWContinentalSpells?.canRecast(intent.id)){queue.delete(action);castSpell(slot);}
       }
     }
   }

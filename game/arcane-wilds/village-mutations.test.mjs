@@ -63,7 +63,7 @@ for(const mode of ['active','bonus slot','replace','mastery','new spell','ordina
 test('all 46 spells gain a unique named mutation with observable behavior beyond numeric potency',()=>{
   const h=runtime();try{
     h.run('startNewGame()');
-    assert.equal(h.run('Object.keys(SPELLS).length'),52);
+    assert.equal(h.run('Object.keys(SPELLS).length - AWContinentalSpells.ids.length'),52);
     assert.equal(h.run('AWSpellMutations.ids.length'),46);
     assert.equal(h.run('new Set(AWSpellMutations.ids.map(id=>UPGRADE_POOLS[id].at(-1)[1])).size'),46);
     const ids=h.run('AWSpellMutations.ids');
