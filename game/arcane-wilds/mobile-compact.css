@@ -1,0 +1,117 @@
+/* Final mobile HUD layout. Keep gameplay controls separate from journal/dialog
+   sizing, and beat the older campaign/expanded-slot overrides deliberately. */
+@media (pointer:coarse),(max-width:780px){
+  body{
+    --aw-edge-top:max(4px,env(safe-area-inset-top));
+    --aw-edge-left:max(6px,env(safe-area-inset-left));
+    --aw-edge-right:max(6px,env(safe-area-inset-right));
+    --aw-edge-bottom:max(6px,env(safe-area-inset-bottom));
+    /* Safe two-row fallback for browsers without :has support. */
+    --aw-dock-height:136px;
+  }
+  body:has(#spells[data-spell-slots="3"]){--aw-dock-height:70px}
+
+  #hud .hud-top{
+    top:var(--aw-edge-top)!important;left:var(--aw-edge-left)!important;
+    right:var(--aw-edge-right)!important;gap:8px!important;
+  }
+  #hud .status-card{
+    width:min(145px,44vw)!important;max-width:145px!important;min-width:0!important;
+    padding:4px 5px!important;border-radius:7px!important;
+  }
+  #hud .status-line{font-size:9px!important;line-height:12px;gap:4px;margin-bottom:3px!important}
+  #hud #heroLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  #hud #hpText{white-space:nowrap;flex-shrink:0}
+  #hud .bar.hp{height:6px!important}
+  #hud .bar.xp{height:2px!important;margin-top:3px!important;border:0}
+  #hud .bar-label,#hud .status-bottom{display:none!important}
+  #hud .room-card{
+    width:min(118px,37vw)!important;min-width:0!important;max-width:118px!important;
+    padding:3px 5px!important;border-radius:6px!important;
+  }
+  #hud .room-name{font-size:9px!important;line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+  #hud .room-sub{display:none!important}
+  #hud .room-state{display:block!important;font-size:8px!important;line-height:11px;padding:0!important;margin-top:1px!important;border:0;background:none;letter-spacing:0}
+
+  /* Map and equipment details remain in the existing World Map / Journal buttons. */
+  #hud #minimap,#hud #materialsPill{display:none!important}
+  #hud #gold{
+    top:calc(var(--aw-edge-top) + 39px)!important;bottom:auto!important;
+    left:var(--aw-edge-left)!important;padding:2px 5px!important;font-size:9px!important;
+    line-height:12px;border-radius:6px;
+  }
+  #hud #buttons{
+    top:calc(var(--aw-edge-top) + 35px)!important;bottom:auto!important;left:auto!important;
+    right:var(--aw-edge-right)!important;display:grid!important;
+    grid-template-columns:repeat(3,30px)!important;gap:4px!important;
+  }
+  #hud #buttons .round-btn{
+    width:30px!important;height:30px!important;min-width:0!important;min-height:0!important;
+    padding:0!important;font-size:15px!important;border-radius:9px!important;
+  }
+  #hud #awShadowCounter{
+    top:calc(var(--aw-edge-top) + 59px)!important;left:var(--aw-edge-left)!important;
+    max-width:145px;font-size:8px!important;line-height:11px;padding:2px 5px!important;
+  }
+  #hud #bossHud{top:calc(var(--aw-edge-top) + 105px)!important;width:min(240px,65vw)!important}
+  #hud .boss-name{font-size:9px!important;line-height:12px;letter-spacing:.04em;margin-bottom:2px!important}
+  #hud .bossbar{height:6px!important}
+
+  /* Preserve/enlarge spell hit targets: never scale the whole HUD. */
+  #hud #spells,#hud #spells.aw-expanded-spells{
+    left:auto!important;right:var(--aw-edge-right)!important;
+    bottom:var(--aw-edge-bottom)!important;top:auto!important;transform:none!important;
+    display:grid!important;grid-template-columns:repeat(3,54px)!important;
+    grid-auto-flow:row!important;grid-auto-rows:60px;gap:6px!important;
+    padding:4px!important;border-radius:10px!important;max-width:none!important;
+    width:max-content!important;min-width:0!important;margin:0!important;
+  }
+  #hud #spells .spell-slot{
+    width:54px!important;min-width:54px!important;height:60px!important;min-height:60px!important;
+    padding:3px!important;border-radius:8px!important;align-items:center!important;
+    touch-action:manipulation;
+  }
+  #hud #spells .spell-icon{height:28px!important;font-size:26px!important;margin-top:1px!important}
+  #hud #spells .spell-icon svg{width:28px!important;height:28px!important}
+  #hud #spells .spell-name{max-width:48px!important;font-size:8px!important;line-height:10px!important;margin:1px auto!important}
+  #hud #spells .spell-key{display:none!important}
+  #hud #spells .cooldown-text{font-size:16px!important}
+
+  /* Smaller stick art, but enough drag area. Aim/dodge/use stay ABOVE the spell
+     dock; no spell tap can be captured by an overlapping joystick hit region. */
+  #mobileControls #moveZone,#mobileControls #aimZone{
+    width:88px!important;height:88px!important;top:auto!important;
+  }
+  #mobileControls #moveZone{left:var(--aw-edge-left)!important;right:auto!important;bottom:var(--aw-edge-bottom)!important}
+  #mobileControls #aimZone{
+    right:var(--aw-edge-right)!important;left:auto!important;
+    bottom:calc(var(--aw-edge-bottom) + var(--aw-dock-height) + 8px)!important;
+  }
+  #mobileControls .stick-zone .stick-base{width:64px!important;height:64px!important;left:12px!important;top:12px!important}
+  #mobileControls .stick-zone .stick-knob{width:28px!important;height:28px!important}
+  #mobileControls #mobileDodge,#mobileControls #mobileInteract{
+    left:auto!important;right:calc(var(--aw-edge-right) + 96px)!important;
+    width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;
+    padding:2px!important;border-radius:12px!important;font-size:9px!important;
+    line-height:11px!important;white-space:normal!important;
+  }
+  #mobileControls #mobileDodge{bottom:calc(var(--aw-edge-bottom) + var(--aw-dock-height) + 8px)!important}
+  #mobileControls #mobileInteract{bottom:calc(var(--aw-edge-bottom) + var(--aw-dock-height) + 60px)!important}
+  #awPrompt.aw-prompt{
+    bottom:calc(var(--aw-edge-bottom) + var(--aw-dock-height) + 112px)!important;
+    font-size:9px!important;line-height:12px;padding:4px 7px!important;max-width:80vw;
+  }
+  .aw-notice{padding:6px 12px!important;max-width:80vw!important}
+  .aw-notice strong{font-size:15px!important;letter-spacing:1px!important}
+  .aw-notice span{font-size:9px!important;letter-spacing:0!important;margin-top:3px!important}
+  #toast{font-size:10px!important;padding:5px 9px!important;max-width:80vw}
+}
+/* A single bottom row fits landscape without making any spell smaller. */
+@media (pointer:coarse) and (orientation:landscape) and (min-width:480px),
+       (max-width:780px) and (orientation:landscape) and (min-width:480px){
+  body,body:has(#spells[data-spell-slots="3"]){--aw-dock-height:70px}
+  #hud #spells,#hud #spells.aw-expanded-spells{
+    grid-template-columns:none!important;grid-auto-flow:column!important;grid-auto-columns:54px;
+  }
+  #hud #bossHud{top:var(--aw-edge-top)!important;width:min(220px,32vw)!important}
+}
