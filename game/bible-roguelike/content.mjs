@@ -1,7 +1,7 @@
 // Small data tables shared by the solo and cooperative rules engine.
 export const CATEGORY_KEYS = ['faith','hope','love','wisdom','courage','prayer','forgiveness','grace','truth','humility','repentance','endurance','temptation','fear','healing','justice','worship','warfare','providence','obedience'];
 export const VARIANTS = {
-  normal: {name:'', color:'#cbd5e1', hp:1, damage:1, effect:'physical', hint:'A steady attack after each verse.'},
+  normal: {name:'', color:'#cbd5e1', hp:1, damage:1, effect:'physical', hint:'Attacks after an incorrect verse. Correct answers block all damage.'},
   enraged: {name:'Enraged', color:'#fb6666', hp:1.05, damage:1.25, effect:'fire', hint:'Stronger attacks; a critical hit every third turn.'},
   deceiver: {name:'Deceiver', color:'#c084fc', hp:1.05, damage:1, effect:'fear', hint:'Weaknesses concealed until discovered. Discernment reveals them.'},
   corrupted: {name:'Corrupted', color:'#86efac', hp:1.1, damage:.85, effect:'poison', hint:'Every third attack poisons its target for two turns.'},

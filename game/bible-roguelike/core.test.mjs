@@ -46,7 +46,7 @@ test('downed players cannot act; total defeat ends the run; teammate Second Wind
   let s=make(2);s.players[1].hp=0;
   assert.throws(()=>act(s,'attack',{playerId:'p1',reference:'John 3:16'}),/downed/);
   s=act(s,'ability',{ability:'second-wind',target:'p1'});assert.ok(s.players[1].hp>0);
-  s.players.forEach(p=>p.hp=1);s.enemy.hp=1000;s.enemy.damage=100;
+  s.players.forEach(p=>p.hp=1);s.enemy.hp=1000;s.enemy.damage=100;s.enemy.weaknesses=[];
   s=act(s,'attack',{reference:'John 3:16'});assert.equal(s.phase,'battle');
   s=act(s,'attack',{playerId:'p1',reference:'John 8:32'});assert.equal(s.phase,'ended');
 });
@@ -72,7 +72,7 @@ test('abilities require owned equipped slots, recharge on personal verse turns, 
 });
 
 test('variant mechanics: truth breaks armor, poison ticks, frost chills, silence suppresses boss special',()=>{
-  let s=make(2);s.enemy.hp=1000;s.enemy.armor=true;s.enemy.variant='exalted';
+  let s=make(2);s.enemy.hp=1000;s.enemy.weaknesses=[];s.enemy.armor=true;s.enemy.variant='exalted';
   s=act(s,'attack',{reference:'John 8:32'});assert.equal(s.enemy.armor,false);
   s.enemy.variant='corrupted';s.enemy.turn=2;s=act(s,'attack',{reference:'John 3:16'});assert.equal(s.players[0].poison,2);
   const hp=s.players[0].hp;s=act(s,'attack',{reference:'Genesis 1:1'});assert.ok(s.players[0].hp<=hp-s.enemy.damage-3);
@@ -147,4 +147,57 @@ test('long runs stay serializable and bounded; seeded transactions replay determ
   }
   assert.ok(s.events.length<=40);assert.ok(s.actions.length<=100);assert.ok(JSON.stringify(s).length<100000);
   assert.deepEqual(JSON.parse(JSON.stringify(s)),s);assert.equal(s.floor,121);
+});
+
+
+test('correct answers block every damage source for solo and all five players, preserving defenses',()=>{
+  for(const count of [1,5]) for(const variant of Object.keys(VARIANTS)) {
+    let s=make(count);s.enemy.hp=s.enemy.maxHp=10000;s.enemy.boss=true;s.enemy.variant=variant;
+    s.enemy.weaknesses=[{concept:'love',multiplier:1}];s.enemy.turn=2;
+    const p=s.players[count-1];p.poison=2;p.chill=2;p.shield=11;p.guard=true;p.relics=['second-chance'];
+    const before=structuredClone(s);
+    const action=command(s,'attack',{playerId:p.id,reference:'John 3:16'});
+    const after=rules.reduce(s,action), actor=after.players[count-1];
+    assert.deepEqual(after.players.map(p=>p.hp),before.players.map(p=>p.hp),variant);
+    assert.equal(actor.shield,11);assert.equal(actor.guard,true);assert.equal(actor.battle.secondChance,true);
+    assert.equal(actor.poison,1);assert.equal(actor.chill,1);assert.equal(after.enemy.turn,3);
+    const event=after.events.find(e=>e.effect==='answer');
+    assert.equal(event.correct,true);assert.equal(event.reference,'John 3:16');assert.equal(event.playerId,p.id);
+    assert.equal(event.actionId,action.id);assert.equal(event.expiresAt,action.now+2800);
+    assert.strictEqual(rules.reduce(after,action),after);
+  }
+});
+
+test('wrong answers retain poison, special damage and boss pulse; successful defense is turn scoped',()=>{
+  let s=make(2);s.enemy.hp=10000;s.enemy.weaknesses=[{concept:'love',multiplier:1.3}];s.enemy.variant='corrupted';s.enemy.boss=true;
+  s=act(s,'attack',{reference:'John 3:16'});assert.equal(s.players[0].hp,100);
+  s.enemy.turn=2;s.players[1].poison=1;
+  const next=act(s,'attack',{playerId:'p1',reference:'Genesis 1:1'});
+  assert.ok(next.players[1].hp<100-next.enemy.damage);assert.ok(next.players[0].hp<100);
+  assert.equal(next.players[1].poison,2);
+  assert.equal(next.events.filter(e=>e.effect==='answer').at(-1).correct,false);
+});
+
+test('battle trials use correct protection and wrong-answer retaliation',()=>{
+  const s=make();s.enemy.hp=1000;s.players[0].poison=2;
+  s.players[0].quiz={kind:'book',answer:'John',relic:'book-hunter'};
+  const correct=act(s,'quiz',{answer:'John'}),wrong=act(s,'quiz',{answer:'Genesis'});
+  assert.equal(correct.players[0].hp,100);assert.ok(wrong.players[0].hp<100);
+  assert.equal(correct.events.find(e=>e.effect==='answer').correct,true);
+  assert.equal(wrong.events.find(e=>e.effect==='answer').reference,'Genesis');
+});
+
+test('old hint items and relics provide defense without revealing Scripture; v3 upgrades preserve progress',()=>{
+  for(const id of ['word-fragment','book-lantern','chapter-map','reference-compass']) {
+    const s=make();s.players[0].inventory=[id];const next=act(s,'item',{item:id});
+    assert.equal(next.players[0].shield,18);assert.equal(next.players[0].hint,'');
+    assert.ok(!rules.items[id].kind.startsWith('hint-'));
+  }
+  const s=make();s.players[0].relics=['verse-insight','scroll-of-context'];
+  const next=act(s,'insight');assert.equal(next.players[0].shield,12);assert.equal(next.players[0].hint,'');
+  assert.throws(()=>act(next,'insight'),/unavailable/);
+  const battle=forceRoom(next,'battle');assert.equal(battle.players[0].shield,20);assert.equal(battle.players[0].hint,'');
+  s.version=3;s.players[0].hint='John 3:16';s.players[0].hp=47;
+  const upgraded=rules.upgradeRun(s);assert.equal(upgraded.version,4);assert.equal(upgraded.players[0].hp,47);
+  assert.equal(upgraded.players[0].hint,'');assert.deepEqual(upgraded.events,[]);assert.equal(s.version,3);
 });

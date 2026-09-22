@@ -43,17 +43,20 @@ test('simultaneous initialization creates one shared run and binds both sessions
 });
 
 test('simultaneous identical verses have exactly one winner and never double counterattack',async t=>{
-  const {state,db,sean,alex}=await party(t);let s=state();s.enemy.hp=s.enemy.maxHp=1000;db.write('lobbies/test/roguelike/run',s);
+  const {state,db,sean,alex}=await party(t);let s=state();s.enemy.hp=s.enemy.maxHp=1000;s.enemy.weaknesses=[{concept:'love',multiplier:1.3}];db.write('lobbies/test/roguelike/run',s);
   const results=await Promise.allSettled([sean.dispatch(command(s,'attack',{reference:'John 3:16'})),alex.dispatch(command(s,'attack',{reference:'John 3:16',playerId:'p1'}))]);
   assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.match(results.find(r=>r.status==='rejected').reason.message,/used by/);
-  assert.equal(Object.keys(state().used).length,1);assert.equal(state().enemy.turn,1);assert.equal(state().players.filter(p=>p.hp<100).length,1);
+  assert.equal(Object.keys(state().used).length,1);assert.equal(state().enemy.turn,1);assert.equal(state().players.filter(p=>p.hp<100).length,0);
 });
 
 test('different concurrent verses both preserve damage and personal HP updates',async t=>{
-  const {state,db,sean,alex}=await party(t);let s=state();s.enemy.hp=s.enemy.maxHp=1000;db.write('lobbies/test/roguelike/run',s);
+  const {state,db,sean,alex}=await party(t);let s=state();s.enemy.hp=s.enemy.maxHp=1000;s.enemy.weaknesses=[{concept:'love',multiplier:1.3}];db.write('lobbies/test/roguelike/run',s);
   await Promise.all([sean.dispatch(command(s,'attack',{reference:'John 3:16'})),alex.dispatch(command(s,'attack',{reference:'John 8:32',playerId:'p1'}))]);
-  const after=state(),damage=after.events.filter(e=>e.reference).reduce((n,e)=>n+e.amount,0);
+  const after=state(),damage=after.events.filter(e=>e.reference && e.target==='enemy').reduce((n,e)=>n+e.amount,0);
   assert.equal(after.enemy.hp,1000-damage);assert.equal(Object.keys(after.used).length,2);assert.equal(after.enemy.turn,2);assert.equal(after.revision,2);
+  assert.equal(after.players[0].hp,100);assert.ok(after.players[1].hp<100);
+  const answers=after.events.filter(e=>e.effect==='answer');assert.equal(answers.length,2);
+  assert.equal(answers.find(e=>e.playerId==='p0').correct,true);assert.equal(answers.find(e=>e.playerId==='p1').correct,false);
 });
 
 test('concurrent finishing blows pay one reward; replayed action stays idempotent',async t=>{

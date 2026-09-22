@@ -1,6 +1,6 @@
 import {CATEGORY_KEYS, VARIANTS, ARCHETYPES, ENEMY_ARCHETYPES, ABILITIES, RELICS, CONSUMABLES, MERCHANTS} from './content.mjs';
 
-export const VERSION = 3;
+export const VERSION = 4;
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const normalizeName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 export function normalizeBook(value) {
@@ -39,17 +39,21 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
   const matches = (verse, key) => tagsCache.has(refKey(verse)) ? tagsCache.get(refKey(verse)).includes(key) : !!matchVerseConcept(verse.text,key);
   const items = {...legacyItems, ...CONSUMABLES};
   for (const [id, item] of Object.entries(items)) items[id] = {...item, cost:item.cost || ({common:12,uncommon:20,rare:32,epic:46})[item.rarity] || 20};
+  // Keep old inventory IDs usable without exposing answers.
+  for (const item of Object.values(items)) if (item.kind?.startsWith('hint-')) {
+    item.kind = 'shield'; item.desc = 'Gain 18 shield. Does not reveal Scripture.';
+  }
   items['armor-of-faith'] = {...items['armor-of-faith'], desc:'Absorb the next 18 damage.'};
   items['scroll-of-recall'] = {...items['scroll-of-recall'], desc:'Release one used verse for the whole team. A verse can be recalled once per encounter.'};
   items['great-recall'] = {...items['great-recall'], desc:'Release one used verse, restore 35% HP and gain 18 shield.'};
   const relics = {...Object.fromEntries(Object.entries(legacyRelics).map(([id, def]) => [id, {...def, cost:Math.round(def.cost * 2)}])), ...RELICS};
   // Keep all existing knowledge relics, with explicit, deterministic triggers.
   Object.assign(relics, {
-    'scroll-of-context':{...relics['scroll-of-context'],desc:'Reveal a matching reference and its text at the start of every encounter.'},
+    'scroll-of-context':{...relics['scroll-of-context'],desc:'Gain 8 shield at the start of every encounter.'},
     'book-hunter':{...relics['book-hunter'],desc:'One book challenge each encounter; correct answers deal 15 bonus damage.'},
     'testament-seal':{...relics['testament-seal'],desc:'One Testament challenge each encounter; correct answers deal 6 damage and give 8 shield.'},
     'verse-completion':{...relics['verse-completion'],desc:'One missing-word challenge each encounter; correct answers deal 12 damage and heal 6%.'},
-    'verse-insight':{...relics['verse-insight'],desc:'Inspect a matching verse and its neighbors once per encounter.'},
+    'verse-insight':{...relics['verse-insight'],desc:'Gain 12 shield once per encounter.'},
     'second-chance':{...relics['second-chance'],desc:'Block your first enemy hit each encounter.'},
     'psalm-mastery':{...relics['psalm-mastery'],desc:'Psalms deal +5 damage and restore 3 HP.'},
     'wisdom-shield':{...relics['wisdom-shield'],desc:'Correct Scripture challenges grant 8 shield.'}
@@ -151,9 +155,7 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
       for (const [relic, kind] of [['book-hunter','book'],['testament-seal','testament'],['verse-completion','completion']]) {
         if (has(p,relic)) { p.quiz = {...createChallenge(s,kind),relic}; break; }
       }
-      if (has(p,'scroll-of-context')) {
-        const hint = hintVerse(s); if (hint) p.hint = `${displayRef(hint)} — ${hint.text}`;
-      }
+      if (has(p,'scroll-of-context')) p.shield = Math.min(60,p.shield + 8);
     }
     log(s, `${elite ? 'Elite ' : ''}${meta.name ? meta.name + ' ' : ''}${base.name} — Floor ${s.floor}.`);
   }
@@ -227,12 +229,14 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
   function attack(s, p, action) {
     demand(s.phase === 'battle' && s.enemy.hp > 0, 'This encounter has already ended.');
     const verse = parseReference(action.reference);
-    demand(verse, 'Reference not found. Use the Verse Finder or enter a complete reference.');
+    demand(verse, 'Reference not found. Enter a complete Bible reference, such as John 3:16.');
     const key = refKey(verse);
     demand(!s.used[key], `That verse was used by ${s.used[key]?.name || 'a teammate'}. Choose another.`);
     // Validate before claiming: invalid or duplicate attempts spend no HP or turns.
     s.used[key] = {playerId:p.id,name:p.name};
     const {concept,multiplier,categories} = weaknessInfo(s,p,verse), book = normalizeBook(verse.book);
+    const correct = s.enemy.weaknesses.some(w => categories.includes(w.concept));
+    answerFeedback(s,p,displayRef(verse),correct,action);
     let raw = p.baseDamage + Math.min(8,p.streak);
     if (has(p,'first-light') && !p.battle.attacks) raw *= 1.15;
     if (has(p,'faith-spark') && categories.includes('faith') && !p.battle.faithUsed) { raw *= 1.2; p.battle.faithUsed = true; }
@@ -258,10 +262,19 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
     p.mastered = p.mastered.slice(-500);
     if (multiplier > 1) { p.battle.discovered ||= []; if (!p.battle.discovered.includes(concept)) p.battle.discovered.push(concept); }
     log(s, `${p.name} used ${displayRef(verse)} — ${dealt} damage${multiplier > 1 ? ` • ${concept.toUpperCase()} +${Math.round((multiplier-1)*100)}%` : multiplier < 1 ? ' • resisted' : ''}${critical ? ' • critical' : ''}`, {target:'enemy',effect:concept,amount:dealt,reference:key,playerId:p.id,critical});
-    if (s.enemy.hp <= 0) finishBattle(s); else retaliate(s,p);
+    if (s.enemy.hp <= 0) finishBattle(s);
+    else if (correct) {
+      // Knowledge blocks the entire response, including status ticks and boss pulses.
+      // Advance the attack rhythm without spending shields, guard or Second Chance.
+      s.enemy.turn++;
+      p.poison = Math.max(0,p.poison - 1); p.chill = Math.max(0,p.chill - 1);
+    } else retaliate(s,p);
   }
-  function hintVerse(s) {
-    return verses.find(v => !s.used[refKey(v)] && s.enemy.weaknesses.some(w => matches(v,w.concept))) || null;
+  function answerFeedback(s,p,reference,correct,action) {
+    log(s,`${p.name}: ${reference} — ${correct ? 'Correct · protected · 0 damage' : 'Incorrect · enemy may attack'}.`,{
+      effect:'answer',target:p.id,playerId:p.id,reference,correct,
+      actionId:action.id,createdAt:action.now,expiresAt:action.now + 2800
+    });
   }
   function recall(s, p, reference) {
     const verse = parseReference(reference), key = verse && refKey(verse);
@@ -324,11 +337,7 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
         demand(keys.length,'All categories are already present.');
         s.enemy.weaknesses.push(...keys.map(concept => ({concept,multiplier:1.25}))); s.enemy.revealed = true;
         message += `: ${keys.join(', ')} are now weaknesses.`;
-      } else {
-        const v = hintVerse(s); demand(v,'No unused matching verse was found.');
-        p.hint = def.kind === 'hint-words' ? v.text.split(/\s+/).slice(0,7).join(' ') : def.kind === 'hint-book' ? v.book : def.kind === 'hint-chapter' ? `${v.book} ${v.chapter}` : displayRef(v);
-        message += ` — ${p.hint}`;
-      }
+      } else throw new Error('This item has no combat effect.');
     }
     p.inventory.splice(p.inventory.indexOf(id),1); log(s,`${p.name}: ${message}`);
   }
@@ -406,6 +415,8 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
     const inBattle = action.type === 'quiz', q = inBattle ? p.quiz : s.room.challenge;
     demand(q && (inBattle ? s.phase === 'battle' : s.phase === 'scripture' && !p.roomClaimed),'That challenge is no longer available.');
     const correct = answerCorrect(q,action.answer,action.now);
+    const chosenVerse = ['find','timed'].includes(q.kind) && parseReference(action.answer);
+    answerFeedback(s,p,chosenVerse ? displayRef(chosenVerse) : String(action.answer).slice(0,100),correct,action);
     if (inBattle) {
       p.quiz = null;
       if (correct) {
@@ -414,7 +425,7 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
         if (q.relic === 'testament-seal') p.shield = Math.min(60,p.shield + 8);
         if (q.relic === 'verse-completion') heal(s,p,.06);
         log(s,`${p.name}: correct! ${dealt} bonus damage.`,{target:'enemy',effect:'wisdom',amount:dealt});
-      } else log(s,`${p.name}: the answer was ${q.answer}. No combat penalty.`);
+      } else retaliate(s,p);
     } else {
       p.roomClaimed = true;
       p.roomResult = correct ? 'Correct! +25 gold, 10% healing and 15% shop discount.' : `Not this time. ${q.answer ? 'Answer: ' + q.answer + '.' : 'Find a verse matching the requested category before time expires.'}`;
@@ -465,8 +476,8 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
     else if (action.type === 'answer' || action.type === 'quiz') answerChallenge(s,p,action);
     else if (action.type === 'insight') {
       demand(s.phase === 'battle' && has(p,'verse-insight') && !p.battle.insightUsed,'Verse Insight is unavailable.');
-      const verse = hintVerse(s); demand(verse,'No matching verse remains.'); p.battle.insightUsed = true;
-      p.hint = verses.filter(v => v.book === verse.book && v.chapter === verse.chapter && Math.abs(v.verse - verse.verse) <= 1).map(v => `${displayRef(v)} — ${v.text}`).join('\n\n');
+      p.battle.insightUsed = true; p.shield = Math.min(60,p.shield + 12);
+      log(s,`${p.name}: Verse Insight · +12 shield.`,{target:p.id,effect:'wisdom'});
     } else if (action.type === 'claim') {
       demand(['rest','treasure','risk'].includes(s.phase) && !p.roomClaimed && !p.roomDone,'That room reward has already been claimed.');
       if (s.phase === 'rest') {
@@ -483,6 +494,17 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
     } else if (action.type === 'continue') continueRoom(s,p,activeIds);
     else throw new Error('Unknown action.');
     s.revision++; s.actions.push(action.id); s.actions = s.actions.slice(-100);
+    return s;
+  }
+  function upgradeRun(snapshot) {
+    demand([3,VERSION].includes(snapshot?.version),'This run needs a compatible game version.');
+    const s = clone(snapshot);
+    if (s.version === 3) {
+      s.version = VERSION;
+      // Retire previously revealed hints, including their old log entries.
+      s.events = [];
+      for (const p of s.players) p.hint = '';
+    }
     return s;
   }
   function migrateLegacy(payload,{name,id,seed,now = 0}) {
@@ -505,5 +527,5 @@ export function createRules({verses, enemies, books, classes, legacyItems = {}, 
     for (const key of old.used || []) { const v = parseReference(key); if (v) s.used[refKey(v)] = {playerId:p.id,name:p.name}; }
     return s;
   }
-  return {create,reduce,migrateLegacy,parseReference,tags,matches,verseMap,items,relics,classes,classOptions,weaknessInfo};
+  return {create,reduce,upgradeRun,migrateLegacy,parseReference,tags,matches,verseMap,items,relics,classes,classOptions,weaknessInfo};
 }

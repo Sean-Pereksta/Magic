@@ -1,4 +1,4 @@
-import {clone, normalizeName, VERSION} from './core.mjs';
+import {normalizeName, VERSION} from './core.mjs';
 
 export const GAME_TYPE = 'bibleroguelike';
 export const PRESENCE_MS = 60000;
@@ -24,7 +24,7 @@ export function createCoopStore({api, db, gameId, username, uid, rules, newRun, 
       const lobby = await tx.get(lobbyRef), run = await tx.get(runRef);
       if (!lobby.exists()) throw new Error('This lobby no longer exists.');
       requireLobby(lobby.data(),username);
-      const state = run.exists() ? clone(run.data()) : rules.create({...candidate,names:lobbyNames(lobby.data())});
+      const state = run.exists() ? rules.upgradeRun(run.data()) : rules.create({...candidate,names:lobbyNames(lobby.data())});
       if (state.version !== VERSION) throw new Error('This run uses a different version. Return to the lobby.');
       const player = state.players.find(p => normalizeName(p.name) === normalizeName(username));
       if (!player) throw new Error('This run already has its roster. Rejoin with your original name or start a new lobby.');
@@ -39,7 +39,7 @@ export function createCoopStore({api, db, gameId, username, uid, rules, newRun, 
     onChange(joined.state);
     unsub = onSnapshot(runRef,{includeMetadataChanges:true},snapshot => {
       if (!snapshot.exists()) { onConnection(false,'Run missing. Return to the lobby.'); return; }
-      onChange(snapshot.data());
+      if (!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites) onChange(snapshot.data());
       onConnection(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites,snapshot.metadata.fromCache ? 'Reconnecting…' : 'Party synchronized');
     },error => onConnection(false,error.message || 'Connection lost. Reopen the run to reconnect.'));
     const pulse = () => {
