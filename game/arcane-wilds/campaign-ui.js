@@ -3,7 +3,7 @@
 (() => {
   const A=window.AWCampaign,D=A.data,overlay=$('inventoryOverlay'),panel=overlay.querySelector('.panel'),root=$('inventoryContent');
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const icons={wildland:'♣',danger:'⚔',town:'⌂',village:'⌂',portalCity:'◉',boss:'♜',ruler:'♛',dungeon:'▥',shrine:'✦',merchant:'⚖',landmark:'◆',mount:'♞',event:'!',passage:'⚓'};
+  const icons={wildland:'♣',danger:'⚔',town:'⌂',village:'⌂',portalCity:'◉',boss:'♜',ruler:'♛',dungeon:'▥',shrine:'✦',merchant:'⚖',landmark:'◆',mount:'♞',event:'!',passage:'⚓',resource:'⛏',treasure:'◆',tower:'▥',puzzle:'◇',sanctuary:'◈',challenge:'⚔',shadowBoss:'♜'};
   let page='Character',selectedSpell=null,category='All',search='',selectedNode=null,selectedContinent='verdant',travelMode='road',previousFocus=null;
   let view={x:0,y:0,zoom:.8},pointers=new Map(),gesture=null,dragged=false;
   panel.classList.add('aw-adventure-menu');panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label','Adventure menu');
@@ -20,18 +20,19 @@
   }
   function renderPage(next=page){
     page=next;window.AWInput?.clear();
-    root.innerHTML=`<nav class="aw-journal-tabs" aria-label="Journal pages">${['Character','Spellbook','Inventory','Map'].map(x=>`<button type="button" data-page="${x}" aria-current="${page===x?'page':'false'}">${x}</button>`).join('')}</nav><section id="awJournalPage" class="aw-journal-page"></section>`;
+    root.innerHTML=`<nav class="aw-journal-tabs" aria-label="Journal pages">${['Character','Spellbook','Inventory','Map','Glory'].map(x=>`<button type="button" data-page="${x}" aria-current="${page===x?'page':'false'}">${x}</button>`).join('')}</nav><section id="awJournalPage" class="aw-journal-page"></section>`;
     root.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>renderPage(b.dataset.page));
-    ({Character:renderCharacter,Spellbook:renderBook,Inventory:renderGear,Map:renderMap})[page]();
+    ({Character:renderCharacter,Spellbook:renderBook,Inventory:renderGear,Map:renderMap,Glory:()=>window.AWShadowUI?.journal(content())})[page]();
   }
   function content(){return $('awJournalPage');}
   function action(label,fn,parent=content(),cls='btn secondary'){const b=document.createElement('button');b.type='button';b.className=cls;b.textContent=label;b.onclick=fn;parent.appendChild(b);return b;}
   function renderCharacter(){
     const s=A.state(),n=A.current(),p=game.player;if(!s||!n)return;
-    content().innerHTML=`<div class="aw-journey-banner"><small>${esc(D.continent(n.continent).name)}</small><h2>Wanderer • Level ${game.level}</h2><p>${esc(n.name)} · ${Math.ceil(p.hp)} / ${Math.ceil(p.maxHp)} health · ${game.gold} gold</p><p>Sanctuary: ${esc(D.nodes[s.checkpoint].name)}</p></div><div class="aw-seal-grid">${D.continents.map(c=>`<section class="exp-card"><h3>${esc(c.name)}</h3><p>${D.sealCount(s,c)} / 4 regional seals</p><p>${s.defeated.includes(c.boss)?'✓ Ruler defeated':s.unlocked.includes(c.id)?'Journey in progress':'Awaiting passage'}</p></section>`).join('')}</div><h3>Companions</h3><div id="awMountList" class="aw-card-grid"></div><h3>Quest Journal</h3><div>${(game.quests?.active||[]).filter(q=>!q.claimed).map(q=>`<p>${esc(q.title)} · ${q.progress||0}/${q.target}${q.ready?' · Return to a Quest Keeper':''}</p>`).join('')||'<p>Visit a town’s Quest Keeper for local work.</p>'}</div>`;
+    content().innerHTML=`<div class="aw-journey-banner"><small>${esc(D.continent(n.continent).name)}</small><h2>Wanderer • Level ${game.level}</h2><p>${esc(n.name)} · ${Math.ceil(p.hp)} / ${Math.ceil(p.maxHp)} health · ${game.gold} gold</p><p>Sanctuary: ${esc(D.nodes[s.checkpoint].name)}</p></div><div class="aw-seal-grid">${D.continents.map(c=>`<section class="exp-card"><h3>${esc(c.name)}</h3><p>${D.sealCount(s,c)} / 4 regional seals</p><p>${s.defeated.includes(c.boss)?'✓ Ruler defeated':s.unlocked.includes(c.id)?'Journey in progress':'Awaiting passage'}</p></section>`).join('')}</div><h3>Mounts</h3><div id="awMountList" class="aw-card-grid"></div><h3>Quest Journal</h3><div>${(game.quests?.active||[]).filter(q=>!q.claimed).map(q=>`<p>${esc(q.title)} · ${q.progress||0}/${q.target}${q.ready?' · Return to a Quest Keeper':''}</p>`).join('')||'<p>Visit a town’s Quest Keeper for local work.</p>'}</div>`;
     const mountList=$('awMountList');
     if(!s.mounts.length)mountList.textContent='Find a Stablemaster or a hidden mount location to earn your first companion.';
-    for(const id of s.mounts){const m=D.mounts[id];action(`${m.icon} ${m.name} • ${s.activeMount===id&&s.riding?'Dismiss':'Ride'}`,()=>{A.mount(id);renderCharacter();},mountList);}
+    for(const id of s.mounts){const m=D.mounts[id];if(!m)continue;const card=document.createElement('section');card.className='exp-card';const title=document.createElement('b');title.textContent=m.icon+' '+m.name;card.appendChild(title);const desc=document.createElement('p');desc.textContent=m.desc;card.appendChild(desc);action(s.activeMount===id?'Active mount':'Set Active Mount',()=>{s.activeMount=id;s.riding=false;saveGame();renderCharacter();},card);mountList.appendChild(card);}
+    if(s.activeMount)action(s.riding?'Dismount':'Mount',()=>{A.mount();renderCharacter();},mountList);
     if(s.rewards.length)action(`Claim regional reward: ${D.items[s.rewards[0]].name}`,()=>{if(!A.claimReward())toastMsg('Inspect or leave pending loot first.');});
     if(game.loot)action(`Inspect pending loot: ${game.loot.name}`,()=>{close();openLootOverlay();});
     action('Save journey',()=>{saveGame();toastMsg('Journey saved on this device.');});
@@ -82,21 +83,22 @@
   function renderMap(){
     const s=A.state();if(!s)return;
     const c=D.continent(selectedContinent)||D.continent(A.current().continent);selectedContinent=c.id;
-    content().innerHTML=`<div class="aw-continent-tabs">${D.continents.map(x=>`<button data-continent="${x.id}" aria-pressed="${x.id===c.id}">${s.unlocked.includes(x.id)?'':'🔒 '}${esc(x.name)}</button>`).join('')}</div><div class="aw-map-title"><div><h2>${esc(c.name)}</h2><p>${esc(c.description)}</p></div><span>Threat ${c.range.join('–')} · ${D.sealCount(s,c)}/4 seals</span></div><div class="aw-map-tools"><button id="awMapMinus" aria-label="Zoom out">−</button><button id="awMapPlus" aria-label="Zoom in">+</button><button id="awMapCenter">Center</button><span>Drag to pan · Pinch or scroll to zoom · Arrows to explore</span></div><div class="aw-map-layout"><div id="awMapViewport" tabindex="0" aria-label="World map"><div id="awMapLayer"></div></div><section id="awNodeCard" class="aw-node-card" aria-live="polite"></section></div>`;
-    root.querySelectorAll('[data-continent]').forEach(b=>b.onclick=()=>{selectedContinent=b.dataset.continent;selectedNode=D.continent(selectedContinent).start;renderMap();});
-    const layer=$('awMapLayer'),visible=c.nodes.map(id=>D.nodes[id]).filter(n=>D.visible(s,n)||n.id===c.start),set=new Set(visible.map(n=>n.id));
+    content().innerHTML=`<div class="aw-continent-tabs">${[...D.continents,...(window.AWShadow?.state()?.unlocked?[AWShadow.continent]:[])].map(x=>`<button data-continent="${x.id}" aria-pressed="${x.id===c.id}">${s.unlocked.includes(x.id)||x.endless&&window.AWShadow?.state()?.unlocked?'':'🔒 '}${esc(x.name)}</button>`).join('')}</div><div class="aw-map-title"><div><h2>${esc(c.name)}</h2><p>${esc(c.description)}</p></div><span>${c.endless?'Depth '+AWShadow.state().lastDepth+' · Glory '+AWShadow.state().glory:'Threat '+c.range.join('–')+' · '+D.sealCount(s,c)+'/4 seals'}</span></div><div class="aw-map-tools"><button id="awMapMinus" aria-label="Zoom out">−</button><button id="awMapPlus" aria-label="Zoom in">+</button><button id="awMapCenter">Center</button><span>Drag to pan · Pinch or scroll to zoom · Arrows to explore</span></div><div class="aw-map-layout"><div id="awMapViewport" tabindex="0" aria-label="World map"><div id="awMapLayer"></div></div><section id="awNodeCard" class="aw-node-card" aria-live="polite"></section></div>`;
+    root.querySelectorAll('[data-continent]').forEach(b=>b.onclick=()=>{selectedContinent=b.dataset.continent;selectedNode=selectedContinent==='shadow'?(A.current()?.shadow?A.current().id:AWShadow.continent.nodes[0]):D.continent(selectedContinent).start;renderMap();});
+    const layer=$('awMapLayer'),visible=c.nodes.map(id=>D.nodes[id]).filter(n=>n&&(c.endless?(AWShadow.known(n.id)||A.current()?.connections.includes(n.id)||n.id===A.current()?.id):D.visible(s,n)||n.id===c.start)),set=new Set(visible.map(n=>n.id));
     let roads='';for(const n of visible)for(const id of n.connections)if(set.has(id)&&n.id<id&&D.nodes[id].type!=='ruler'&&n.type!=='ruler'){const other=D.nodes[id];roads+=`<path d="M ${n.x} ${n.y} Q ${(n.x+other.x)/2+20} ${(n.y+other.y)/2-15} ${other.x} ${other.y}" class="${s.visited.includes(n.id)&&s.visited.includes(id)?'known':''}"/>`;}
-    layer.innerHTML=`<svg class="aw-map-roads" viewBox="0 0 1220 820" aria-hidden="true"><path class="aw-landmass" d="M 85 235 Q 170 10 490 5 L 880 40 Q 1200 25 1190 345 L 1150 725 Q 960 825 665 750 L 220 770 Q 20 635 85 235 Z"/>${roads}</svg>`;
+    layer.style.width=(c.mapWidth||1220)+'px';layer.style.height=(c.mapHeight||820)+'px';layer.classList.toggle('aw-shadow-map',!!c.endless);
+    layer.innerHTML=`<svg class="aw-map-roads" viewBox="0 0 ${c.mapWidth||1220} ${c.mapHeight||820}" aria-hidden="true"><path class="aw-landmass" d="M 85 235 Q 170 10 490 5 L 880 40 Q 1200 25 1190 345 L 1150 725 Q 960 825 665 750 L 220 770 Q 20 635 85 235 Z"/>${roads}</svg>`;
     for(const n of visible){
-      const known=s.visited.includes(n.id)||s.scouted.includes(n.id),b=action(`${known?icons[n.type]:'?'} ${known?n.name:'Unexplored '+capitalize(n.biome)}`,()=>{if(dragged)return;selectedNode=n.id;renderNodeCard();},layer,'aw-map-node');
-      b.dataset.node=n.id;b.style.left=n.x+'px';b.style.top=n.y+'px';b.style.setProperty('--biome',biomePalette[n.biome]?.accent||c.color);b.classList.toggle('current',n.id===s.current);b.classList.toggle('cleared',s.cleared.includes(n.id));b.classList.toggle('unknown',!known);
-      if(s.cleared.includes(n.id))b.textContent+=' ✓';b.title=known?n.name:'Unexplored location';
+      const known=n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id),b=action(`${known?icons[n.type]:'?'} ${known?n.name:'Unexplored '+capitalize(n.biome)}`,()=>{if(dragged)return;selectedNode=n.id;renderNodeCard();},layer,'aw-map-node');
+      b.dataset.node=n.id;b.style.left=n.x+'px';b.style.top=n.y+'px';b.style.setProperty('--biome',biomePalette[n.biome]?.accent||c.color);b.classList.toggle('current',n.id===s.current);b.classList.toggle('cleared',n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id));b.classList.toggle('unknown',!known);
+      if(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))b.textContent+=' ✓';b.title=known?n.name:'Unexplored location';
     }
     $('awMapMinus').onclick=()=>zoomAt(view.zoom/1.2);$('awMapPlus').onclick=()=>zoomAt(view.zoom*1.2);$('awMapCenter').onclick=centerMap;
     bindMapGestures();centerMap();renderNodeCard();
   }
   function transformMap(){const layer=$('awMapLayer');if(!layer)return;layer.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.zoom})`;layer.style.setProperty('--node-scale',1/Math.max(.85,view.zoom));}
-  function centerMap(){const box=$('awMapViewport'),n=D.nodes[selectedNode]||D.nodes[D.continent(selectedContinent).start];view={zoom:.85,x:(box.clientWidth||600)/2-n.x*.85,y:(box.clientHeight||440)/2-n.y*.85};transformMap();}
+  function centerMap(){const box=$('awMapViewport'),n=D.nodes[selectedNode]||D.nodes[D.continent(selectedContinent).start]||D.nodes[D.continent(selectedContinent).nodes[0]];view={zoom:.85,x:(box.clientWidth||600)/2-n.x*.85,y:(box.clientHeight||440)/2-n.y*.85};transformMap();}
   function zoomAt(value,cx,cy){const box=$('awMapViewport');cx??=(box.clientWidth||600)/2;cy??=(box.clientHeight||440)/2;const old=view.zoom;view.zoom=clamp(value,.65,1.8);view.x=cx-(cx-view.x)*view.zoom/old;view.y=cy-(cy-view.y)*view.zoom/old;transformMap();}
   function bindMapGestures(){
     const box=$('awMapViewport');pointers.clear();gesture=null;
@@ -111,24 +113,26 @@
     const end=e=>{pointers.delete(e.pointerId);gesture=null;if(!pointers.size)setTimeout(()=>dragged=false,0);};box.onpointerup=end;box.onpointercancel=end;box.onlostpointercapture=end;
   }
   function renderNodeCard(){
-    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=s.visited.includes(n.id)||s.scouted.includes(n.id),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
+    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
     const reason=D.travelReason(s,n.id,travelMode);
-    card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[c.material].name)}</p>${known&&!n.town?`<p>Enemies: ${A.pool(n).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${s.cleared.includes(n.id)?'✓ Cleared':s.visited.includes(n.id)?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
+    card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[n.material||c.material].name)}</p>${known&&!n.town?`<p>Enemies: ${(n.shadow?AWShadow.exclusiveIds:A.pool(n)).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))?'✓ Cleared':known?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
+    if(n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
+    if(n.shadow)card.insertAdjacentHTML('beforeend',`<p>Depth ${n.depth}${n.modifier==='Greed'?' · Greed: enemies +40% health, loot/Glory +70%':n.modifier==='Safety'?' · Safety: standard enemies and rewards':''}</p>`);
     if(known&&n.rewardSpells?.length)card.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
     if(n.id===s.current){
-      card.insertAdjacentHTML('beforeend','<p>You are here.</p>');
+      card.insertAdjacentHTML('beforeend','<p><strong>YOU ARE HERE</strong></p>');
       if(n.type==='ruler'&&s.defeated.includes(n.id))action('Return to Portal City',()=>A.travel(c.portalCity),card);
       if(n.type==='dungeon'){card.insertAdjacentHTML('beforeend',`<p>Rooms cleared: ${(s.dungeonClears[n.id]||[]).length}/5. Use the doors inside to explore the branches.</p>`);}
-    }else{const b=action(travelMode==='portal'?'Use Town Portal':'Travel',()=>A.travel(n.id,travelMode),card,'btn');b.disabled=!!reason;if(reason)card.insertAdjacentHTML('beforeend',`<p class="aw-travel-reason">${esc(reason)}</p>`);}
+    }else{if(travelMode==='portal'||travelMode==='waystone'){const b=action('Use activated waystone',()=>A.travel(n.id,'waystone'),card,'btn');b.disabled=!!D.travelReason(s,n.id,'waystone');}else{const dir=Object.keys(A.current()?.exits||{}).find(d=>A.current().exits[d]===n.id);card.insertAdjacentHTML('beforeend',`<p>${dir?'Walk through the '+dir+' exit to travel here.':'Follow the connected roads to reach this location.'}</p>`);}if(reason)card.insertAdjacentHTML('beforeend',`<p class="aw-travel-reason">${esc(reason)}</p>`);}
     if(known&&n.town)card.insertAdjacentHTML('beforeend',`<p><b>Specialties:</b> ${D.towns[n.town].stock.map(id=>esc(D.items[id].name)).join(', ')}</p>`);
-    if(A.current().town){action(travelMode==='portal'?'Follow roads instead':'Visited town network',()=>{travelMode=travelMode==='portal'?'road':'portal';renderMap();},card);if(travelMode==='portal')for(const id of s.visited.filter(id=>D.isTown(D.nodes[id])&&id!==s.current))action(`⌂ ${D.nodes[id].name}`,()=>A.travel(id,'portal'),card);}
+    if(A.current().waystone)action('Arcane Waystones',()=>window.AWTravel?.openWaystone(),card);
   }
   function openTown(npc){
     const n=A.current(),town=D.towns[n.town];if(!town)return;
     $('npcName').textContent=`${npc.name} • ${npc.role} • ${town.name}`;const body=$('npcBody');body.innerHTML=`<p class="exp-dialogue">${esc(town.line)}</p><p>${esc(town.culture)} · ${game.gold} gold</p><div id="awTownServices" class="aw-card-grid"></div>`;
     const list=$('awTownServices'),role=npc.role;
     if(['Merchant','Weaponsmith','Armorer','Relic Dealer','Blacksmith','Enchanter','Alchemist'].includes(role)){
-      const stock=town.stock.filter(id=>{const t=D.items[id];if(role==='Weaponsmith')return t.slot==='weapon';if(role==='Armorer')return t.slot==='armor';if(role==='Alchemist')return t.kind==='heal'||t.kind==='material';if(role==='Relic Dealer'||role==='Enchanter')return t.slot==='trinket'||t.kind==='material';return true;});
+      const stock=town.stock.filter(id=>{const t=D.items[id];if(role==='Weaponsmith')return t.slot==='weapon';if(role==='Armorer')return t.slot==='armor';if(role==='Alchemist')return t.kind==='heal'||t.kind==='material'||t.kind==='provision';if(role==='Relic Dealer'||role==='Enchanter')return t.slot==='trinket'||t.kind==='material';return true;});
       for(const id of stock){const t=D.items[id],locked=t.requires&&!A.state().cleared.includes(t.requires);const b=action(`${t.name} · ${t.price} gold${t.cost?' + '+materialCostText(t.cost):''}${locked?' · Clear '+D.nodes[t.requires].name:''}`,()=>{if(A.buy(id)&&!t.slot)openTown(npc);},list,'exp-buy');b.disabled=!!locked;b.title=t.desc||'Regional material bundle';}
     }
     if(['Blacksmith','Weaponsmith','Armorer','Enchanter'].includes(role))action('Material forge',()=>{closeOverlay('npcPanel');openForgePanel();},list);
