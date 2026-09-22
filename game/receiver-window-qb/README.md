@@ -299,3 +299,33 @@ Regression coverage includes low-rated screen reads, one-time options, complete
 motion trajectories, saved play 72, screen outlet and seal decisions, lead-blocker
 pass discipline, forward progress at 30/60/120 Hz, eight evasion contexts, nine
 catch poses, and desktop/phone diagrams for orbit and paired motion.
+
+
+### Forgiving receiver catches
+
+Routine receiver glove contacts are substantially more reliable without increasing the
+collision shapes or awarding chest/helmet/proximity catches. In clear conditions, a
+70-effective-CATCH/70-effective-ATH receiver with a perfect spiral and no other
+modifiers has 98.85%, 98.55%, and 97.05% initial one-hand control at relative contact
+speeds of 24, 40, and 50 world units/second. These are conditional control probabilities,
+not overall completion rates; placement, real contact, coverage and securing still matter.
+
+- Receiver-only control uses a smaller bullet penalty above 38 units/second; weather,
+  staggering and underthrows remain relevant but less punitive. The ordinary cap is
+  99.5%; contested control is capped at 94%. Defender interception odds are unchanged.
+- Hand tracking moves faster within the same physical reach. A 160 ms simulation-time
+  awareness grace bridges short pursuit-planner gaps and resets on every throw.
+- An aware receiver may cushion one real wrist-side forearm impact per throw for up to
+  75 ms. This only damps relative velocity; it never attracts, teleports or awards the
+  ball. A rendered glove still has to touch it; expired/uncompleted gathers stay loose.
+- A later second-glove contact can join the same securing attempt. Receivers secure in
+  20 ms with two hands or 40 ms with one; defense retains its original timing.
+- Receiver-first contested hand contacts can succeed or be broken up. A successful
+  contest is evaluated once until the touching opponent separates, not every frame.
+  Defense-first contact, genuine tips, ground and boundary authority remain intact.
+- Uncontested receiver hand bobbles have softer rebounds and less tumble, making a real
+  second attempt practical. No extra per-frame retry or automatic recovery is added.
+
+Validation: `node --test game/receiver-window-qb/*.test.cjs`. The added regressions
+cover conditional odds, reset/expiration, real wrist and glove contacts, both outcomes
+of contact contests, second-hand arrivals, and moving catches at 30/60/120 Hz.
