@@ -1,0 +1,23 @@
+name: WarRealms card clarity
+on:
+  pull_request:
+    paths:
+      - 'game/warrealms.html'
+      - 'game/warrealms/ui/card-clarity.*'
+      - 'game/warrealms/tests/card-clarity*'
+      - '.github/workflows/warrealms-card-clarity.yml'
+permissions:
+  contents: read
+jobs:
+  presentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test game/warrealms/tests/card-clarity.test.mjs game/warrealms/tests/card-presentation.test.mjs game/warrealms/tests/transforms-and-bases.test.mjs
+      - run: npm install --prefix "$RUNNER_TEMP/wr-browser" --no-save --package-lock=false --ignore-scripts playwright@1.58.2
+      - run: node "$RUNNER_TEMP/wr-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - run: CODEX_PRIMARY_RUNTIME_NODE_MODULES="$RUNNER_TEMP/wr-browser/node_modules" node game/warrealms/tests/card-clarity.browser.mjs

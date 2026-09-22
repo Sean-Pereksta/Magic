@@ -1198,6 +1198,7 @@
     }
 
   </style>
+  <link rel="stylesheet" href="./warrealms/ui/card-clarity.css">
 </head>
 <body>
 <div class="app">
@@ -1483,8 +1484,8 @@
 </div>
 
 <div id="modalOverlay" class="overlay hidden">
-  <div class="modal">
-    <div class="modalHead"><div><h2 id="modalTitle">War Realms</h2><p id="modalSubtitle"></p></div><button class="modalClose" id="modalClose">✕</button></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modalHead"><div><h2 id="modalTitle">War Realms</h2><p id="modalSubtitle"></p></div><button class="modalClose" id="modalClose" aria-label="Close card information">✕</button></div>
     <div class="modalBody" id="modalBody"></div>
   </div>
 </div>
@@ -1566,6 +1567,7 @@
     transformationPresentation,
     transformationTimings
   } from "./warrealms/ui/card-presentation.js?v=1";
+  import { abilityReadiness, comparePrintedForms, readinessSummary } from "./warrealms/ui/card-clarity.js";
   import { createCombatEffects, combatEffectsReduced } from "./warrealms/ui/combat-effects.js";
   import { COMBAT_TYPES } from "./warrealms/ui/combat-effects-model.js";
   import { showWarTable } from "./warrealms/ui/play-launcher.js?v=3";
@@ -2743,6 +2745,7 @@
   }
 
   function openModal(title, subtitle, bodyHtml) {
+    inspectedCard = null;
     modalReturnSnapshot = null;
     $("#modalOverlay").classList.remove("cardInspectorMode", "choiceReturnInspector");
     $("#modalTitle").textContent = title;
@@ -2752,7 +2755,11 @@
   }
 
   function closeModal() {
+    inspectedCard = null;
+    const opener = inspectorOpener;
+    inspectorOpener = null;
     closeEffectHelp();
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
     if ($("#modalOverlay").classList.contains("cardInspectorMode") && modalReturnSnapshot) {
       const snapshot = modalReturnSnapshot;
       modalReturnSnapshot = null;
@@ -4353,9 +4360,169 @@
     return queueSpecialChoice(game, player, options, { cardId: card.id, source: "attachment" });
   }
 
+  // UI state stays outside synchronized saves. Inspection never mutates an entry.
+  let inspectedCard = null;
+  let inspectorOpener = null;
+  const expandedBaseGroups = new Set();
+  let seenAttachmentLinks = null;
+
+  function cardAbilityStatuses(game, owner, entry, card) {
+    if (!game || !owner || !entry || !card) return [];
+    const host = card.type === "attachment" ? owner.bases.find(base => base.instanceId === entry.attachedTo) : entry;
+    const activeZone = card.type === "base" ? "bases" : card.type === "attachment" ? "attachments" : "played";
+    const inPlay = (owner[activeZone] || []).some(item => item.instanceId === entry.instanceId);
+    const disabled = host?.disabledTurn === game.turnSerial;
+    const common = !inPlay ? "This card is not in play." : !host ? "No attached Base." : disabled ? "Base or card is disabled this turn." : "";
+    const turnReason = actionBusy && owner.id === myPlayer(game)?.id ? "Action is synchronizing." : game.phase !== "playing" ? "Battle is not active." : currentPlayer(game)?.id !== owner.id ? "Available during its owner's turn." : pendingChoiceFor(owner) ? "Resolve the pending choice first." : forcedDiscardRemaining(owner) ? "Complete the required discard first." : "";
+    const rows = [];
+    const add = (action, index, resource) => {
+      const stored = resource === "Heat" ? Number(entry.heat) || 0 : Number(entry.charges) || 0;
+      const required = resource === "Attachment" ? 0 : action.cost === "all" ? Math.max(1, Number(action.minimum) || 1) : Math.max(1, Number(action.cost) || 1);
+      const unsupportedZone = resource === "Charges" && card.type !== "base" || resource === "Heat" && activeZone !== "played";
+      const constructing = resource === "Charges" && isExpansionBase(card) && entry.constructionRemaining > 0;
+      const used = !!action.oncePerTurn && (resource === "Heat" ? entry.heatActionTurn : entry.chargeUsedTurn) === game.turnSerial;
+      const status = abilityReadiness({ blocked: common || (unsupportedZone ? "Ability is not available in this zone." : "") || (constructing ? `Construction: ${entry.constructionRemaining} remaining.` : "") || turnReason, used, stored, required });
+      if (status.missing) status.reason = `Requires ${status.missing} more ${resource}.`;
+      // Charge availability is authoritative for charge costs and per-turn limits.
+      if (resource === "Charges" && status.kind === "ready" && !chargeActionAvailability(game, owner, entry, action).allowed) Object.assign(status, { kind: "unavailable", icon: "⊘", reason: "Charge ability is unavailable." });
+      const effect = resource === "Charges" && owner.id === myPlayer(game)?.id ? chargeResolvedEffect(action, action.cost === "all" ? stored : required, owner) : action.effect || action.effectPerCharge || {};
+      const notes = [];
+      if (effect.repair || effect.advanceConstruction || effect.armor) {
+        const key = effect.repair ? "repair" : effect.advanceConstruction ? "construction" : "armor";
+        const raw = effect.repair || effect.advanceConstruction || effect.armor;
+        const config = typeof raw === "object" ? raw : {};
+        const targets = owner.bases.filter(base => (key === "armor" || isExpansionBase(getCard(base))) && (!config.attachedBase || !entry.attachedTo || base.instanceId === entry.attachedTo));
+        const useful = targets.some(base => key === "armor" || key === "repair" ? key === "armor" || base.currentHealth < effectiveExpansionHealthCap(owner, base) : base.constructionRemaining > 0 || config.repairFallback && base.currentHealth < effectiveExpansionHealthCap(owner, base));
+        if (!useful) notes.push(`No valid friendly Base for ${key}. The rules still allow activation; this part has no effect.`);
+      }
+      rows.push({ ...status, label: action.label || `${resource} ability ${index + 1}`, resource, index, required, stored,
+        cost: resource === "Attachment" ? "" : action.cost === "all" ? `All Charges (minimum ${required})` : `${required} ${resource}`,
+        effect: effectDisplaySummary(effect), notes });
+    };
+    (card.charge?.actions || []).forEach((action, index) => add(action, index, "Charges"));
+    (card.heat?.actions || []).forEach((action, index) => add(action, index, "Heat"));
+    if (card.attachment?.action) add(card.attachment.action, 0, "Attachment");
+    return rows;
+  }
+
+  function cardAllyStatuses(game, owner, entry, card) {
+    if (!game || !owner || !entry || card.faction === "neutral") return [];
+    const active = activeFactionEntries(game, owner, card.faction);
+    const activeSelf = active.some(item => item.instanceId === entry.instanceId);
+    return [["Ally", card.ally, 2, entry.allyTurn], ["Double Ally", doubleAllyEffect(card), 3, entry.doubleAllyTurn]].filter(([, effect]) => hasEffect(effect)).map(([label, effect, count, usedTurn]) => {
+      const others = active.filter(item => item.instanceId !== entry.instanceId).length;
+      const missing = Math.max(0, count - 1 - others);
+      const status = abilityReadiness({ blocked: !activeSelf ? "Card is not an active qualifying card." : "", used: usedTurn === game.turnSerial, stored: others, required: count - 1 });
+      return { ...status, label, reason: status.missing ? `Requires ${missing} more qualifying ${FACTIONS[card.faction].name} card${missing === 1 ? "" : "s"}.` : status.kind === "ready" ? "Faction requirement satisfied; triggers automatically." : status.reason };
+    });
+  }
+
+  function baseModifierDetails(owner, entry, card) {
+    if (!owner || !entry || card.type !== "base") return "";
+    const attachments = attachedEntriesForBase(owner, entry.instanceId);
+    const expanded = isExpansionBase(card);
+    const lines = [expanded ? `Printed Health ${card.health}; modified maximum ${effectiveExpansionMaxHealth(owner, entry)}; current construction cap ${effectiveExpansionHealthCap(owner, entry)}; remaining Health ${entry.currentHealth}.` : `Printed Defense ${card.defense}; current Defense ${effectiveBaseDefense(owner, entry)}.`];
+    if (entry.armor) lines.push(`Temporary Armor: ${entry.armor} (separate from printed defenses).`);
+    if (entry.campaignHealthMultiplier > 1) lines.push(`Campaign Health multiplier: ×${entry.campaignHealthMultiplier}.`);
+    return `<section class="wrInfoSection"><h4>Base & installed components</h4><p>${escapeHtml(lines.join(" "))}</p><p>${attachments.length}/${attachmentCapacity(card)} slots occupied · ${Math.max(0, attachmentCapacity(card) - attachments.length)} free</p>${attachments.map(attachment => {
+      const definition = getCard(attachment);
+      const mods = definition.attachment || {};
+      return `<div class="wrComponentLine">${cardInfoButtonHtml(definition.id, { instanceId: attachment.instanceId })}<b>${escapeHtml(definition.name)}</b><span>${escapeHtml([mods.defense ? `+${mods.defense} Defense` : "", mods.expansionHealth ? `+${mods.expansionHealth} maximum Health` : "", completeCardRules(definition)].filter(Boolean).join(" · "))}</span></div>`;
+    }).join("")}</section>`;
+  }
+
+  function inspectionStatusHtml(owner, entry, card) {
+    if (!entry || !owner) return "";
+    const rows = [...cardAbilityStatuses(state, owner, entry, card), ...cardAllyStatuses(state, owner, entry, card)];
+    const progress = card.transform ? `<p>Transformation: ${escapeHtml(card.transform.trigger)} · ${card.transform.trigger === "heat" ? entry.heat || 0 : peekTransformProgress(owner, entry, card)}/${card.transform.required || 1}${entry.transformPending ? " · awaiting branch selection" : ""}</p>` : "";
+    return `<section class="wrInfoSection" data-live-inspection><h4>Current status</h4><p>${escapeHtml([card.heat ? `Heat ${entry.heat || 0}` : "", card.charge ? `Charges ${entry.charges || 0}/${card.charge.max || "∞"}` : "", entry.cooldownRemaining ? `Cooldown ${entry.cooldownRemaining}` : "", entry.disabledTurn === state.turnSerial ? "Disabled this turn" : "", entry.stunTurns > 0 ? "Disabled for next owner turn" : ""].filter(Boolean).join(" · "))}</p>${progress}${rows.map(row => `<div class="wrAbilityStatus ${row.kind}"><b>${row.icon} ${escapeHtml(row.label)}${row.cost ? ` · ${escapeHtml(row.cost)}` : ""}</b><p>${escapeHtml(row.reason)}</p>${row.effect ? `<p>${escapeHtml(row.effect)}</p>` : ""}${(row.notes || []).map(note => `<p>${escapeHtml(note)}</p>`).join("")}</div>`).join("")}${!rows.length && !progress ? '<p>No activated or conditional ability status.</p>' : ""}${baseModifierDetails(owner, entry, card)}</section>`;
+  }
+
+  function refreshCardInspection() {
+    if (!inspectedCard || $("#modalOverlay").classList.contains("hidden")) return;
+    const { cardId, instanceId } = inspectedCard;
+    const card = getCard(cardId);
+    const owner = state?.players?.find(player => allPlayerEntries(player).some(entry => entry.instanceId === instanceId));
+    const visible = owner && (owner.id === myPlayer()?.id || ["played", "bases", "attachments", "discard"].some(zone => (owner[zone] || []).some(item => item.instanceId === instanceId)));
+    const entry = visible && findOwnedEntry(owner, instanceId);
+    const live = $("#modalBody [data-live-inspection]");
+    const scroll = $("#modalBody").scrollTop;
+    if (live) live.outerHTML = entry?.id === cardId ? inspectionStatusHtml(owner, entry, card) : '<section class="wrInfoSection" data-live-inspection><h4>Current status</h4><p>This instance has left this form or is no longer visible.</p></section>';
+    $("#modalBody").scrollTop = scroll;
+  }
+
+  function printedFormFacts(card) {
+    const facts = {
+      "Primary": effectDisplaySummary(primaryCardEffect(card)),
+      "Defense": card.defense ? String(card.defense) : "",
+      "Health": card.health ? String(card.health) : "",
+      "Construction": card.construction ? String(card.construction) : "",
+      "Outpost": card.outpost ? "Protects other targets" : "",
+      "Attachment slots": card.type === "base" ? String(attachmentCapacity(card)) : "",
+      "Ally": effectDisplaySummary(card.ally),
+      "Double Ally": effectDisplaySummary(doubleAllyEffect(card)),
+      "Sacrifice": effectDisplaySummary(card.sacrifice),
+      "Charge abilities": (card.charge?.actions || []).map(action => `${action.label || effectDisplaySummary(action.effect)} (${action.cost === "all" ? `all, minimum ${action.minimum || 1}` : action.cost} Charges)`).join("; "),
+      "Heat abilities": (card.heat?.actions || []).map(action => `${action.label || effectDisplaySummary(action.effect)} (${action.cost} Heat)`).join("; "),
+      "Future progression": card.transformText || (card.transform ? `${card.transform.trigger}: ${card.transform.required || 1}; ${transformTargetOptions(card.transform).map(option => option.label).join(" / ")}` : ""),
+      "Complete rules": completeCardRules(card)
+    };
+    return facts;
+  }
+
+  function evolutionComparisonHtml(choice, option) {
+    const instruction = option.effect?.__resolveTransformChoice;
+    if (!instruction) return "";
+    const before = getCard(instruction.sourceCardId);
+    const after = getCard(instruction.into);
+    if (!before || !after) return "";
+    const owner = myPlayer();
+    const entry = locateOwnedEntry(owner, instruction.sourceInstanceId)?.entry || state.scrapped?.find(item => item.instanceId === instruction.sourceInstanceId);
+    const preserve = instruction.preserve || {};
+    const recreated = !!instruction.destination || instruction.fromScrapped || before.type === "base" || after.type === "base";
+    const inherited = entry ? inheritedTransformState(entry, before, after, preserve) : {};
+    const notes = [];
+    for (const [key, label] of [["heat", "Heat"], ["charges", "Charges"], ["armor", "Armor"], ["constructionRemaining", "Construction"]]) {
+      if (entry?.[key] || inherited[key]) {
+        const next = inherited[key] ?? (recreated ? key === "constructionRemaining" ? after.construction || 0 : 0 : entry[key]);
+        notes.push(`${label}: ${entry[key] || 0} → ${next}.`);
+      }
+    }
+    if (entry?.currentHealth) notes.push(`Health: ${entry.currentHealth} → ${inherited.currentHealth ?? (recreated ? after.health || 0 : entry.currentHealth)} (before subsequent game effects).`);
+    if (before.type === "base") {
+      const count = attachedEntriesForBase(owner, instruction.sourceInstanceId).length;
+      const kept = !instruction.destination && preserve.attachments && after.type === "base" ? Math.min(count, attachmentCapacity(after)) : 0;
+      notes.push(`Attachments: ${kept} retained; ${count - kept} sent to discard${kept < count && kept ? " (capacity order)" : ""}.`);
+    }
+    notes.push(instruction.destination ? `Moves to ${instruction.destination}.` : "Transforms in its current zone.");
+    const rows = comparePrintedForms(printedFormFacts(before), printedFormFacts(after));
+    return `<div class="wrEvolutionCompare"><p><b>Current: ${escapeHtml(before.name)}</b> → ${escapeHtml(after.name)}</p><p>${escapeHtml([effectDisplaySummary(primaryCardEffect(after)), after.defense ? `${after.defense} Defense${after.outpost ? " Outpost" : ""}` : "", after.health ? `${after.health} Health` : ""].filter(Boolean).join(" · "))}</p><table><caption>Printed values and rules · changes highlighted</caption><thead><tr><th>Property</th><th>Current</th><th>Next</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.changed ? "changed" : ""}"><th>${escapeHtml(row.label)}${row.changed ? " Δ" : ""}</th><td>${escapeHtml(row.before)}</td><td>${escapeHtml(row.after)}</td></tr>`).join("")}</tbody></table><p>Requirement met: ${escapeHtml(before.transformText || `${before.transform?.trigger || instruction.trigger} · ${before.transform?.required || 1}`)}</p><p>${escapeHtml(notes.join(" "))}</p><p>Inspection is free. Only the Evolve button commits this choice.</p></div>`;
+  }
+
+  function toggleBaseGroup(instanceId) {
+    if (expandedBaseGroups.has(instanceId)) expandedBaseGroups.delete(instanceId);
+    else { if (matchMedia("(max-width:700px)").matches) expandedBaseGroups.clear(); expandedBaseGroups.add(instanceId); }
+    document.querySelectorAll("[data-base-group]").forEach(group => {
+      const open = expandedBaseGroups.has(group.dataset.baseGroup);
+      group.classList.toggle("wrBaseExpanded", open);
+      group.querySelector('[data-act="toggle-base-group"]')?.setAttribute("aria-expanded", String(open));
+    });
+  }
+
+  function animateNewAttachmentLinks() {
+    const current = new Set((state?.players || []).flatMap(player => (player.attachments || []).filter(entry => entry.attachedTo).map(entry => `${entry.instanceId}:${entry.attachedTo}`)));
+    if (seenAttachmentLinks && !combatEffectsReduced()) document.querySelectorAll("[data-attachment-link]").forEach(node => {
+      if (current.has(node.dataset.attachmentLink) && !seenAttachmentLinks.has(node.dataset.attachmentLink)) node.animate([{ outlineColor: "#b7ffe5", outlineWidth: "2px", outlineStyle: "solid" }, { outlineColor: "transparent", outlineWidth: "2px", outlineStyle: "solid" }], { duration: 380 });
+    });
+    seenAttachmentLinks = current;
+    const baseIds = new Set((state?.players || []).flatMap(player => (player.bases || []).map(entry => entry.instanceId)));
+    for (const id of expandedBaseGroups) if (!baseIds.has(id)) expandedBaseGroups.delete(id);
+  }
+
   function cardStatusTrayHtml(entry, card, options = {}) {
     if (!entry && !options.directAction && !options.personalDiscount && !options.disabledBase) return "";
     const owner = entry ? state?.players?.find(player => player.id === entry.ownerId) : null;
+    const hostDisabled = card?.type === "attachment" && owner?.bases?.some(base => base.instanceId === entry?.attachedTo && base.disabledTurn === state?.turnSerial);
     const ascension = entry?.transformPending ? null : ascensionTurnStatus(entry, card);
     const statuses = buildCompactCardStatuses({
       heat: entry && card?.heat ? Math.max(0, Number(entry.heat) || 0) : null,
@@ -4364,7 +4531,7 @@
       transformReady: entry?.transformPending === true,
       cooldown: Math.max(0, Number(entry?.cooldownRemaining) || Number(entry?.cooldownTurns) || 0),
       activated: Boolean(entry && state && state.turnSerial > 0 && ((entry.chargeUsedTurn || 0) === state.turnSerial || (entry.heatActionTurn || 0) === state.turnSerial)),
-      disabled: options.disabledBase || (entry?.disabledTurn === state?.turnSerial),
+      disabled: entry ? hostDisabled || entry.disabledTurn === state?.turnSerial : options.disabledBase,
       armor: Math.max(0, Number(entry?.armor) || 0),
       health: entry && isExpansionBase(card) ? {
         current: Math.max(0, Number(entry.currentHealth) || 0),
@@ -4380,8 +4547,27 @@
       personalDiscount: options.personalDiscount === true,
       directAction: options.directAction || ""
     });
-    if (!statuses.length) return "";
-    return `<div class="cardStatusTray" aria-label="Card statuses">${statuses.map(status => `<span class="cardStatusChip ${escapeHtml(status.kind)}" title="${escapeHtml(status.label)}" aria-label="${escapeHtml(status.label)}"><span aria-hidden="true">${escapeHtml(status.icon)}</span>${status.value ? `<b>${escapeHtml(status.value)}</b>` : ""}</span>`).join("")}</div>`;
+    const rows = cardAbilityStatuses(state, owner, entry, card);
+    const readiness = readinessSummary(rows);
+    if (entry?.stunTurns > 0 && entry.disabledTurn !== state?.turnSerial) statuses.unshift({ kind: "waiting", icon: "◷", value: "", label: "Disabled on next owner turn" });
+    if (readiness) statuses.unshift(readiness);
+    for (const row of cardAllyStatuses(state, owner, entry, card)) statuses.push({ ...row, value: row.label === "Ally" ? "A" : "2A", label: `${row.label}: ${row.reason}` });
+    if (entry && card.transform && card.transform.trigger !== "ownerTurnsElapsed" && !entry.transformPending) {
+      const progress = card.transform.trigger === "heat" ? entry.heat || 0 : peekTransformProgress(owner, entry, card);
+      statuses.push({ kind: "waiting", icon: "↟", value: `${progress}/${card.transform.required || 1}`, label: `${card.transform.trigger} progress: ${progress}/${card.transform.required || 1}` });
+    }
+    // A stored amount is not a shared activation threshold. Only use a fraction for a single cost.
+    if (rows.filter(row => row.resource === "Heat").length === 1) {
+      const heat = statuses.find(item => item.kind === "heat");
+      if (heat) statuses[statuses.indexOf(heat)] = { ...heat, value: `${entry.heat || 0}/${rows.find(row => row.resource === "Heat").required}` };
+    }
+    const disabledStatus = statuses.find(item => item.kind === "disabled");
+    const filtered = statuses.filter(item => !(readiness && item.kind === "activated")).map(item => disabledStatus && item.kind === "ready" ? { ...item, kind: "unavailable", icon: "⊘", label: `${item.label}; card disabled` } : item);
+    if (disabledStatus) { filtered.splice(filtered.indexOf(disabledStatus), 1); filtered.unshift(disabledStatus); }
+    const shown = filtered.slice(0, 5);
+    if (filtered.length > shown.length) shown.push({ kind: "more", icon: "+", value: filtered.length - shown.length, label: "More statuses in Info" });
+    if (!shown.length) return "";
+    return `<div class="cardStatusTray" aria-label="Card statuses">${shown.map(status => `<span class="cardStatusChip ${escapeHtml(status.kind)}" title="${escapeHtml(status.label)}" aria-label="${escapeHtml(status.label)}"><span aria-hidden="true">${escapeHtml(status.icon)}</span>${status.value ? `<b>${escapeHtml(status.value)}</b>` : ""}</span>`).join("")}</div>`;
   }
 
   function optionalSacrificeFriendlyCardConfig(card) {
@@ -7006,22 +7192,26 @@
       ? { title: $("#modalTitle").textContent, subtitle: $("#modalSubtitle").textContent, bodyHtml: $("#modalBody").innerHTML }
       : null;
     const owner = state?.players?.find(player => allPlayerEntries(player).some(entry => entry.instanceId === instanceId));
-    const instance = owner ? findOwnedEntry(owner, instanceId) : null;
+    const candidate = owner ? findOwnedEntry(owner, instanceId) : null;
+    const instance = candidate?.id === cardId && (owner.id === myPlayer()?.id || ["played", "bases", "attachments", "discard"].some(zone => (owner[zone] || []).some(item => item.instanceId === instanceId))) ? candidate : null;
     const useCollectibleEdition = collectibleEdition == null ? profileUsesCollectibleEdition(cardId) : !!collectibleEdition;
     const faction = FACTIONS[card.faction];
     const effect = effectDisplaySummary(primaryCardEffect(card));
     const ally = effectDisplaySummary(card.ally);
     const doubleAlly = effectDisplaySummary(doubleAllyEffect(card));
     const sacrifice = effectDisplaySummary(card.sacrifice);
+    const opener = inspectorOpener || document.activeElement;
+    const modalScroll = $("#modalBody").scrollTop;
     openModal(card.name, `${faction.name} · ${faction.title}`, `
       <div class="detailGrid" style="--faction:var(--${card.faction})">
-        <div class="detailArt" ${cardArtDataAttributes(card.id, useCollectibleEdition)}>${cardArtInnerHtml(card, true, useCollectibleEdition)}${cardStatusTrayHtml(instance, card)}</div>
+        <div class="detailArt" ${cardArtDataAttributes(card.id, useCollectibleEdition)}>${cardArtInnerHtml(card, true, useCollectibleEdition)}</div>
         <div class="detailCopy">
           <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" && !isExpansionBase(card) ? ` · ${card.defense} Defense` : ""}${isExpansionBase(card) ? ` · ${card.health} Health · Construction ${card.construction}` : ""}</div>
           <h3>${escapeHtml(card.name)}</h3>
           <p class="effectHint">Tap any highlighted effect term for a quick explanation. The icon row previews the card's abilities.</p>
           ${cardAbilityRailHtml(card, true)}
-          <div class="detailRules">${linkEffectTerms(completeCardRules(card))}</div>
+          <div class="detailRules"><h4>Complete printed rules</h4>${linkEffectTerms(completeCardRules(card))}</div>
+          <h4>Main & conditional effects</h4>
           ${effect ? `<div class="detailEffect"><b>${effectLabelHtml("Primary")}:</b> ${linkEffectTerms(effect)}</div>` : ""}
           ${ally ? `<div class="detailEffect"><b>${effectLabelHtml("Ally")}:</b> ${linkEffectTerms(ally)}</div>` : ""}
           ${doubleAlly ? `<div class="detailEffect"><b>${effectLabelHtml("Double Ally")}:</b> ${linkEffectTerms(doubleAlly)} <span style="color:#8fa0b2">(requires two other matching-faction cards)</span></div>` : ""}
@@ -7035,13 +7225,17 @@
           ${card.graveEchoText ? `<div class="detailEffect"><b>${effectLabelHtml("Grave Echo")}:</b> ${linkEffectTerms(card.graveEchoText)}</div>` : ""}
           ${card.heatText ? `<div class="detailEffect"><b>${effectLabelHtml("Heat")}:</b> ${linkEffectTerms(card.heatText)}</div>` : ""}
           ${card.redeployText ? `<div class="detailEffect"><b>${effectLabelHtml("Redeploy")}:</b> ${linkEffectTerms(card.redeployText)}</div>` : ""}
-          ${instance ? `<div class="detailEffect"><b>Persistent instance:</b> ${card.heat ? `Heat ${instance.heat || 0}` : ""}${card.charge ? ` · Charges ${instance.charges || 0}/${card.charge.max || "∞"}` : ""}${isExpansionBase(card) ? ` · Health ${instance.currentHealth}/${instance.maxHealth} · Construction ${instance.constructionRemaining}` : ""}${card.type === "base" ? ` · Attachments ${attachedEntriesForBase(state?.players?.find(player => player.id === instance.ownerId) || {}, instance.instanceId).length}/${attachmentCapacity(card)}` : ""}${instance.armor ? ` · Armor ${instance.armor}` : ""}${card.type === "attachment" && instance.attachedTo ? ` · Attached` : ""}</div>` : ""}
+          ${inspectionStatusHtml(owner, instance, card)}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
         </div>
       </div>
     `);
     modalReturnSnapshot = returnSnapshot;
+    inspectorOpener = opener;
+    inspectedCard = { cardId, instanceId };
+    $("#modalBody").scrollTop = returnSnapshot ? 0 : modalScroll;
+    $("#modalClose").focus({ preventScroll: true });
     $("#modalOverlay").classList.add("cardInspectorMode");
     $("#modalOverlay").classList.toggle("choiceReturnInspector", returnToChoice);
     loadCardArt(card.id, useCollectibleEdition).then(() => hydrateCardArt($("#modalBody"))).catch(console.warn);
@@ -8750,6 +8944,13 @@
         const optionIndex = Number(action.optionIndex);
         if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= choice.options.length) return "Select one of the available effects.";
         const option = choice.options[optionIndex];
+        const transformInstruction = option.effect?.__resolveTransformChoice;
+        if (transformInstruction) {
+          const source = transformInstruction.fromScrapped
+            ? (game.scrapped || []).find(entry => entry.instanceId === transformInstruction.sourceInstanceId && entry.originalOwnerId === actor.id)
+            : locateOwnedEntry(actor, transformInstruction.sourceInstanceId)?.entry;
+          if (!source || source.id !== transformInstruction.sourceCardId || !getCard(transformInstruction.into)) return "That transformation is no longer available.";
+        }
         actor.pendingChoices.shift();
         applyEffect(game, actor, option.effect, { cardId: choice.cardId, source: `${choice.source || "primary"}-choice` });
         // Checking a card or changing order is UI state, not a resolved game choice.
@@ -9388,7 +9589,7 @@
 
     const primaryAction = options.primaryAction || "";
     const articleAction = options.directAction || "details";
-    const directA11y = options.directAction ? 'role="button" tabindex="0"' : "";
+    const directA11y = 'role="button" tabindex="0"';
 
     return `
     <article
@@ -9415,7 +9616,7 @@
 
       <div class="cardActions">
         ${primaryAction}
-        ${options.directAction ? cardInfoButtonHtml(cardId, { instanceId: entry?.instanceId || "" }) : ""}
+        ${cardInfoButtonHtml(cardId, { instanceId: entry?.instanceId || "" })}
       </div>
     </article>
   `;
@@ -9446,13 +9647,23 @@
       disabledBase: (entry.stunTurns || 0) > 0 || entry.disabledTurn === state?.turnSerial,
       collectibleEdition
     });
-    const attachments = attachedEntriesForBase(player, entry.instanceId).map(attachment => battleCardHtml(attachment, {
+    const attachmentEntries = attachedEntriesForBase(player, entry.instanceId);
+    const attachments = attachmentEntries.map(attachment => battleCardHtml(attachment, {
       ownerName: player.name,
       zoneClass: "attachmentCard",
       locked: true,
       collectibleEdition: playerUsesCollectibleEdition(player, attachment.id)
     })).join("");
-    return `<div class="baseGroup">${baseHtml}${attachments ? `<div class="baseAttachments">${attachments}</div>` : ""}</div>`;
+    const slots = attachmentEntries.map(attachment => {
+      const definition = getCard(attachment);
+      const rows = cardAbilityStatuses(state, player, attachment, definition);
+      const status = readinessSummary(rows) || (entry.disabledTurn === state?.turnSerial ? { kind: "unavailable", icon: "⊘", label: "Host Base is disabled" } : null);
+      const mods = definition.attachment || {};
+      const bonus = [mods.defense ? `+${mods.defense} Def` : "", mods.expansionHealth ? `+${mods.expansionHealth} HP` : ""].filter(Boolean).join(" · ");
+      return `<div class="wrAttachmentTab" data-attachment-link="${escapeHtml(`${attachment.instanceId}:${entry.instanceId}`)}"><button type="button" data-act="card-info" data-card-id="${escapeHtml(attachment.id)}" data-instance-id="${escapeHtml(attachment.instanceId)}" aria-label="Inspect ${escapeHtml(definition.name)}">⌁ ${escapeHtml(definition.name)}${bonus ? `<small>${escapeHtml(bonus)}</small>` : ""}</button>${status ? `<span class="wrAttachmentReadiness ${status.kind}" title="${escapeHtml(status.label)}">${status.icon} ${status.kind}</span>` : ""}${options.mine && rows.length ? `<button type="button" class="btn small" data-act="use-attachment" data-instance-id="${escapeHtml(attachment.instanceId)}" ${!options.canAct || actionBusy || rows[0].kind !== "ready" ? "disabled" : ""}>Activate</button>` : ""}${options.mine && definition.sacrifice ? `<button type="button" class="btn small warning" data-act="sacrifice" data-zone="attachments" data-instance-id="${escapeHtml(attachment.instanceId)}" ${!options.canAct || actionBusy ? "disabled" : ""}>Sacrifice</button>` : ""}</div>`;
+    }).join("");
+    const remaining = Math.max(0, attachmentCapacity(card) - attachmentEntries.length);
+    return `<div class="baseGroup wrConnectedBase ${expandedBaseGroups.has(entry.instanceId) ? "wrBaseExpanded" : ""}" data-base-group="${escapeHtml(entry.instanceId)}">${baseHtml}<div class="wrBaseComponents"><button type="button" class="wrBaseToggle" data-act="toggle-base-group" data-instance-id="${escapeHtml(entry.instanceId)}" aria-expanded="${expandedBaseGroups.has(entry.instanceId)}">⌁ Components ${attachmentEntries.length}/${attachmentCapacity(card)} ▾</button><div class="wrAttachmentSlots">${slots}${remaining ? `<span class="wrEmptySlot">${remaining} open slot${remaining === 1 ? "" : "s"}</span>` : ""}</div><div class="baseAttachments">${attachments}</div></div></div>`;
   }
 
   function renderRealmSeat(player) {
@@ -10196,6 +10407,7 @@
     $("#choiceSubtitle").textContent = choice.subtitle || (selectingCard
       ? `Choose exactly one of ${choice.options.length} eligible cards.`
       : `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`);
+    $("#choiceGrid").classList.toggle("wrEvolutionGrid", selectingTransformTarget);
     $("#choiceGrid").innerHTML = choice.options.map((option, index) => {
       const summary = option.description || option.label || effectDisplaySummary(option.effect) || `Option ${index + 1}`;
       const glyphs = effectGlyphItems(option.effect, "choice").filter(item => item.key !== "choice");
@@ -10229,7 +10441,7 @@
           ? `Copy ${targetCard.name}'s Primary ability.`
           : option.label || `Select ${targetCard.name}.`;
         const defaultAction = selectingTransformTarget ? "EVOLVE" : resurrecting ? "RESURRECT" : graveEchoing ? "CHOOSE" : friendlySacrifice ? "DEVOUR" : "SELECT";
-        return `<article class="choiceOption cardTarget ${source === "cardSelection" && option.effect?.__cardSelection?.selected?.includes(option.instanceId) === false ? "wrSelectedChoice" : ""}" ${source === "cardSelection" ? `data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}"` : ""} style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})"><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">${escapeHtml(formText)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || defaultDescription)}</span></span><span class="choiceTargetActions">${cardInfoButtonHtml(targetCard.id, { instanceId: option.instanceId })}<button type="button" class="btn small good" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy || transformationAnimationBusy ? "disabled" : ""}>${escapeHtml(option.actionLabel || defaultAction)}</button></span></article>`;
+        return `<article class="choiceOption cardTarget ${source === "cardSelection" && option.effect?.__cardSelection?.selected?.includes(option.instanceId) === false ? "wrSelectedChoice" : ""}" ${source === "cardSelection" ? `data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}"` : ""} style="--choiceFaction:var(--${targetCard.faction || card?.faction || "neutral"})"><span class="choiceTargetArt">${artHtml}</span><span class="choiceTargetCopy"><strong>${escapeHtml(targetCard.name)}</strong><span class="choiceTargetForm">${escapeHtml(formText)}</span><span class="choiceTargetDescription">${escapeHtml(option.description || defaultDescription)}</span></span>${selectingTransformTarget ? evolutionComparisonHtml(choice, option) : ""}<span class="choiceTargetActions">${cardInfoButtonHtml(targetCard.id, { instanceId: option.instanceId })}<button type="button" class="btn small good" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy || transformationAnimationBusy ? "disabled" : ""}>${escapeHtml(option.actionLabel || defaultAction)}</button></span></article>`;
       }
       const promptClass = optionalFriendlySacrificePrompt ? " promptChoice" : "";
       return `<button class="choiceOption${promptClass}" style="--choiceFaction:var(--${card?.faction || "neutral"})" data-act="resolve-choice" data-choice-id="${escapeHtml(choice.id)}" data-choice-index="${index}" ${actionBusy ? "disabled" : ""}><span class="choiceOptionTop"><span class="choiceOptionNumber">${index + 1}</span><strong>${escapeHtml(option.label || `Option ${index + 1}`)}</strong></span><span class="choiceOptionText">${escapeHtml(summary)}</span><span class="choiceOptionGlyphs">${glyphs.map(item => abilityGlyphHtml(item)).join("")}</span>${optionalFriendlySacrificePrompt ? `<span class="choiceActionLabel">${escapeHtml(option.actionLabel || option.label || "SELECT")}</span>` : ""}</button>`;
@@ -10334,6 +10546,8 @@
     renderHandAndOwnField();
     renderOpponentQueue();
     renderPendingChoice();
+    refreshCardInspection();
+    animateNewAttachmentLinks();
 
     const forcedDiscard = forcedDiscardRemaining(me);
     const requiredChoice = pendingChoiceFor(me);
@@ -10425,7 +10639,8 @@
     const chargeRows = (card.charge?.actions || []).map((action, actionIndex) => {
       const availability = chargeActionAvailability(state, me, entry, action);
       const cost = action.cost === "all" ? `All Charges (minimum ${action.minimum || 1})` : `${action.cost} Charges`;
-      const reason = entry.disabledTurn === state.turnSerial ? "Base is disabled." : !availability.allowed ? `Needs ${action.cost === "all" ? action.minimum || 1 : action.cost} Charges; currently ${availability.charges}.` : !canAct ? "Available only during your turn." : "";
+      const status = cardAbilityStatuses(state, me, entry, card).filter(row => row.resource === "Charges")[actionIndex];
+      const reason = status.kind !== "ready" ? status.reason : !canAct ? "Finish the current action first." : "";
       return `<div class="baseAbilityRow ${reason ? "disabled" : ""}"><div><div class="baseAbilityName">${escapeHtml(action.label || "Charge Ability")} · ${cost}</div><div class="baseAbilityText">${escapeHtml(effectDisplaySummary(chargeResolvedEffect(action, availability.spend, me)) || "Special charged effect")}</div>${reason ? `<div class="baseAbilityReason">${escapeHtml(reason)}</div>` : ""}</div><button class="btn small blue" data-act="use-charge" data-instance-id="${entry.instanceId}" data-action-index="${actionIndex}" ${reason ? "disabled" : ""}>Activate</button></div>`;
     });
     const attachmentRows = attachedEntriesForBase(me, entry.instanceId).flatMap(attachment => {
@@ -12096,6 +12311,7 @@
       button.dataset.instanceId || "",
       Boolean(button.closest("#choiceOverlay"))
     );
+    if (action === "toggle-base-group") toggleBaseGroup(button.dataset.instanceId);
     if (action === "focus-enemy-targets") scrollEnemyTargetsIntoView(button.dataset.targetOwner);
     if (action === "effect-help") showEffectHelp(button.dataset.effectTerm);
     if (action === "buy-profile-card") purchaseProfileCard(button.dataset.cardId);
@@ -12187,7 +12403,16 @@
   });
 
   document.addEventListener("keydown", event => {
-    if ((event.key === "Enter" || event.key === " ") && event.target instanceof Element) {
+    if (!$("#modalOverlay").classList.contains("hidden") && $("#modalOverlay").classList.contains("cardInspectorMode") && $("#effectOverlay").classList.contains("hidden")) {
+      if (event.key === "Escape") { event.preventDefault(); closeModal(); return; }
+      if (event.key === "Tab") {
+        const controls = [...$("#modalOverlay").querySelectorAll('button:not(:disabled), [href], [tabindex="0"]')].filter(node => node.getClientRects().length);
+        const first = controls[0], last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus({ preventScroll: true }); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus({ preventScroll: true }); }
+      }
+    }
+    if ((event.key === "Enter" || event.key === " ") && event.target instanceof Element && !event.target.closest("button,input,select,textarea,a")) {
       const direct = event.target.closest('[role="button"][data-act]');
       if (direct && !(direct instanceof HTMLButtonElement)) {
         event.preventDefault();
@@ -12493,3 +12718,4 @@
 </script>
 </body>
 </html>
+
