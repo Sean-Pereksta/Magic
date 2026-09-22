@@ -268,3 +268,6 @@ export function installRpgItems({getRpg,getVerses,conceptKeys,conceptLabel,match
   installUi();
   return{reset,onSpawn,awardLoot,consumeShield,render,openPanel,closePanel,dropSummary,saveRun:()=>writeRunSave({manual:true,allowBetweenFights:true}),loadRun:manualLoad,clearRunSave,defs:ITEM_DEFS,relicDefs:STORE_RELICS,journeyEnemies:JOURNEY_ENEMIES,classDefs:CLASS_DEFS};
 }
+
+// Reused by the transactional solo/co-op roguelike. The legacy installer is not invoked there.
+export { ITEM_DEFS, STORE_RELICS, JOURNEY_ENEMIES, CLASS_DEFS };

@@ -12,6 +12,7 @@
   const SHOWCASE_TITLES=new Set([
     "War Realms",
     "Bible Game",
+    "Bible Game — Roguelike",
     "Arcane Wilds",
     "Space Tyrants: Galactic Mandate",
     "Cheesehold 3D",
