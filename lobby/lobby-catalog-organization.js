@@ -229,8 +229,8 @@
   function setCopy(){
     const singleTitle=document.querySelector("#view-singleplayer > .section-head .section-title");
     const singleSub=document.querySelector("#view-singleplayer > .section-head .section-sub");
-    if(singleTitle)singleTitle.textContent="Singleplayer Library";
-    if(singleSub)singleSub.textContent="Current showcase games first, established games next, and prototypes kept in a separate shelf.";
+    if(singleTitle)singleTitle.textContent="Game Library";
+    if(singleSub)singleSub.textContent="Every game in one place. Play solo, create a multiplayer lobby, or enter a shared online world.";
 
     const hostedTitle=document.querySelector("#view-multiplayer > .section-head .section-title");
     const hostedSub=document.querySelector("#view-multiplayer > .section-head .section-sub");
