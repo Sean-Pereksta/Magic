@@ -9,7 +9,7 @@ function actor(){
   mesh.userData={visualRig:rig,hands,arms,body:new THREE.Object3D(),feet:[],legs:[]};
   return {mesh,profile:P.migratePlayer({name:'Test',speed:80,cutting:80,turning:80,evasion:80,catching:80,strength:80,tricks:80}),velocity:new THREE.Vector3(),impactVel:new THREE.Vector3(),trackingBall:true,jumpY:0,stagger:0,fakeUntil:0};
 }
-function context(){const c=vm.createContext({THREE,P,R:null,F:require('./franchise.js'),playLog:null,V:require('./variety.js'),franchise:{conceptMemory:[]},plays:[{name:'Mesh'}],selectedPlay:0,activeRound:()=>1,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),gameTime:1000,defenders:[],ballCarrier:null,currentSkill:()=>.8,flashResult:()=>{},Math:Object.create(Math)});for(const name of ['poseJointedLimbs','receiverHandTarget','trackReceiverHands','animatePlayerContact','tryJuke','defenderTarget'])vm.runInContext(extract(name),c);return c;}
+function context(){const c=vm.createContext({THREE,P,R:null,F:require('./franchise.js'),playLog:null,V:require('./variety.js'),franchise:{conceptMemory:[]},plays:[{name:'Mesh'}],selectedPlay:0,activeRound:()=>1,ballLive:true,ball:{position:new THREE.Vector3()},ballVel:new THREE.Vector3(),gameTime:1000,throwTime:0,defenders:[],ballCarrier:null,currentSkill:()=>.8,flashResult:()=>{},Math:Object.create(Math)});for(const name of ['poseJointedLimbs','receiverCatchAware','receiverHandTarget','trackReceiverHands','animatePlayerContact','tryJuke','defenderTarget'])vm.runInContext(extract(name),c);return c;}
 test('hands reach left, right, low and high with bounded shoulders',()=>{
   for(const [x,y] of [[-1,1.4],[1,1.4],[0,.4],[0,2.7]]){
     const c=context(),r=actor();c.ball.position.set(x,y,.25);
@@ -26,7 +26,8 @@ test('hand motion is smooth and follows world position through rotation and scal
   const c=context(),r=actor();r.mesh.position.set(4,.5,3);r.mesh.scale.set(1.1,1.2,.9);r.mesh.rotation.y=Math.PI/2;
   r.mesh.updateMatrixWorld(true);c.ball.position.copy(r.mesh.localToWorld(new THREE.Vector3(.8,1.4,.3)));
   const before=r.mesh.userData.hands[0].position.clone();c.trackReceiverHands(r,1/60);
-  assert.ok(r.mesh.userData.hands[0].position.distanceTo(before)<=8/60+.0001);
+  const maxStep=(7.5+Math.min(1,P.effective(r.profile.athleticism)/100)*3.5)/60;
+  assert.ok(r.mesh.userData.hands[0].position.distanceTo(before)<=maxStep+.0001);
   for(let i=0;i<30;i++)c.trackReceiverHands(r,1/60);
   assert.ok(r.mesh.userData.hands.every(h=>h.position.x>0));
   c.ballLive=false;c.trackReceiverHands(r,1/60);assert.equal(r.handTargets,null);
@@ -35,6 +36,12 @@ test('unrelated balls and secured catches cannot acquire hand tracking',()=>{
   const c=context(),r=actor();c.ball.position.set(20,2,20);assert.equal(c.receiverHandTarget(r),null);
   c.ball.position.set(0,1,0);r.hasBall=true;assert.equal(c.receiverHandTarget(r),null);
   r.hasBall=false;r.trackingBall=false;assert.equal(c.receiverHandTarget(r),null);
+});
+test('hand targeting bridges a recent awareness gap but stops at its simulation-time deadline',()=>{
+  const c=context(),r=actor();c.ball.position.set(0,1,.2);r.trackingBall=false;r.catchTrackingUntil=.16;
+  c.throwTime=.08;assert.ok(c.receiverHandTarget(r));c.trackReceiverHands(r,1/60);assert.ok(r.handTargets);
+  c.throwTime=.16;c.trackReceiverHands(r,1/60);assert.equal(r.handTargets,null);
+  c.throwTime=.20;assert.equal(c.receiverHandTarget(r),null);
 });
 test('successful juke physically redirects a defender and full model spins, then resets',()=>{
   const c=context(),r=actor(),d=actor();delete d.profile;c.ballLive=false;c.Math.random=()=>0;d.mesh.position.set(0,0,-1.5);c.defenders=[d];c.ballCarrier=r;
