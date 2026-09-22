@@ -282,5 +282,6 @@
       success:clamp(.18+skill*.68-defense*.23+(screen?.28:0),.10,.94)};
   }
   const api={optionDepths,isOption,motions,motionPath,motionSample,optionDecision,screenOutlet,screenRead,evasionMove,catchAnimation,escapeOdds,categories,category,playstyle,pumpChance,weather,lane,concepts,blockOutcome,physique,identities,identity,signature,movement,cleanHistory,tendencies,remember,chooseCoverage,placement,pursuitTime,tackleTechnique,sweptContact};
+  api.tactics=root.QBTactics||(typeof require==='function'?require('./tactics.js'):null);
   if(typeof module!=='undefined')module.exports=api;root.QBVariety=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
