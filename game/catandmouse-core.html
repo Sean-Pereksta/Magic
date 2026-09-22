@@ -1342,7 +1342,7 @@
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
   <button id="musicToggleBtn" type="button" aria-label="Mute music" aria-pressed="false" title="Mute music">🔊</button>
   <div id="topHud" style="position:sticky;top:0;z-index:35;background:rgba(15,23,42,.92);color:#fff;padding:8px 10px;font-size:14px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;backdrop-filter:blur(6px);">
-    <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudBuild">🏗 Build: None</span><span id="hudRole">🎭 Spectator</span>
+    <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudBuild">🏗 Build: None</span><span id="hudRole">🎭 Spectator</span><button id="hudSync" type="button" title="Reconnect after a sync error" style="font:inherit;color:inherit;background:transparent;border:1px solid #475569;border-radius:12px;padding:0 8px">Connecting</button>
   </div>
   <div id="toastContainer" style="position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:6px;pointer-events:none;"></div>
 
@@ -1559,6 +1559,8 @@
   //   ✅ sign in anonymously
   //   ✅ move all game docs from /games/... to /lobbies/{gameId}/crowncouncil/...
   // ============================================================
+
+  import { createPatchWriter, stateFieldPatch, eligibleHostCandidate, reconcileKeyedNodes } from "./catandmouse/sync.mjs";
 
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -1799,10 +1801,52 @@
   let lastLobbyMaintenanceAt = 0;
   let lastLobbyStatus = "";
   let lastLobbyActiveCount = -1;
-  let pendingStateRuntimePatch = null;
-  let stateRuntimeWritePromise = null;
-  let lastStateRuntimeWriteAt = 0;
-  const lastRuntimePatchByShape = new Map();
+  let liveSnapshotReady = false;
+  let pageSuspended = false;
+  let listenerFailed = false;
+  const knownRealtimeDocs = new Map();
+  let observedHostUid = null;
+  let observedHostHeartbeatAt = 0;
+  let hostTransferPending = false;
+  let lastConnectionLabel = "";
+  const syncEnabled = () => liveSnapshotReady && !pageSuspended && navigator.onLine !== false;
+  const stateWriter = createPatchWriter({
+    minIntervalMs:250,
+    enabled:() => !soloMode && isHost && syncEnabled(),
+    write:patch => updateDoc(ccRef(ID.STATE), patch),
+    onError:reportSyncError
+  });
+  const playerWriter = createPatchWriter({
+    minIntervalMs:120,
+    enabled:() => !soloMode && syncEnabled(),
+    write:async patch => {
+      await updateDoc(ccRef(ID.player(uid)), patch);
+      lastPlayerWriteAt = Date.now();
+    },
+    onError:reportSyncError
+  });
+
+  function setConnectionStatus(label, connected = false){
+    if (lastConnectionLabel === label) return;
+    lastConnectionLabel = label;
+    const connection = document.getElementById("menuConnectionStatus");
+    if (connection){
+      connection.className = `menu-status-pill ${connected ? "connected" : "offline"}`;
+      connection.replaceChildren();
+      const dot = document.createElement("span");
+      dot.className = "status-dot";
+      const text = document.createElement("span");
+      text.textContent = label;
+      connection.append(dot, text);
+    }
+    const hud = document.getElementById("hudSync");
+    if (hud){ hud.textContent = label; hud.dataset.connected = String(connected); }
+  }
+
+  function reportSyncError(error){
+    console.warn("Cat & Mouse sync failed", error);
+    setConnectionStatus("Sync error — reconnect");
+  }
 
   function getRuntimeEntityList(docId){
     if (docId.startsWith("rat_")) return rats;
@@ -1926,32 +1970,8 @@
       return;
     }
     if (gameStarted && ref?.id === ID.STATE){
-      const stableData = Object.fromEntries(Object.entries(data).filter(([key]) => key !== "updatedAt"));
-      const shape = Object.keys(stableData).sort().join("|");
-      const signature = JSON.stringify(stableData);
-      const previous = lastRuntimePatchByShape.get(shape);
-      if (previous?.signature === signature && Date.now() - previous.at < 1200) return;
-      lastRuntimePatchByShape.set(shape, { signature, at:Date.now() });
-
-      pendingStateRuntimePatch = {
-        ...(pendingStateRuntimePatch || {}),
-        ...data,
-        ...((pendingStateRuntimePatch?.cat || data.cat) ? { cat:{ ...(pendingStateRuntimePatch?.cat || {}), ...(data.cat || {}) } } : {}),
-        ...((pendingStateRuntimePatch?.objectives || data.objectives) ? { objectives:{ ...(pendingStateRuntimePatch?.objectives || {}), ...(data.objectives || {}) } } : {})
-      };
-      if (!stateRuntimeWritePromise){
-        stateRuntimeWritePromise = (async () => {
-          while (pendingStateRuntimePatch){
-            const waitMs = Math.max(0, 250 - (Date.now() - lastStateRuntimeWriteAt));
-            if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-            const patch = pendingStateRuntimePatch;
-            pendingStateRuntimePatch = null;
-            await updateDoc(ref, patch);
-            lastStateRuntimeWriteAt = Date.now();
-          }
-        })().finally(() => { stateRuntimeWritePromise = null; });
-      }
-      return stateRuntimeWritePromise;
+      if (!isHost) return false;
+      return stateWriter.enqueue(stateFieldPatch(data));
     }
     return updateDoc(ref, data);
   }
@@ -2160,7 +2180,6 @@
   const PLAYER_HEARTBEAT_MS = 12000;
   const PLAYER_STALE_MS = 40000;
   const SELECTION_PLAYER_STALE_MS = 24000;
-  const PLAYER_SYNC_MIN_INTERVAL_MS = 120;
   const STALE_ENEMY_MS = 30000;
   const DEAD_ENEMY_CLEANUP_MS = 1500;
   const TILE_EFFECT_MS = 5000;
@@ -2231,6 +2250,8 @@
     const wrap = document.createElement("div");
     const baseVisual = visual || "iso-unknown-structure";
     wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""} ${opts.stinkDisabled ? "stink-disabled" : ""}`.trim();
+    wrap.dataset.gx = String(x);
+    wrap.dataset.gy = String(y);
     wrap.innerHTML = '<div class="iso-shadow"></div>';
     let artPath = symbol === "🏭" && opts.generatorOn ? GENERATOR_ON_ASSET : STRUCTURE_ASSETS[symbol];
     if (symbol === "🧊" && failedAssetPaths.has(artPath)) artPath = STRUCTURE_ASSETS["💎"];
@@ -2331,7 +2352,7 @@
   let myFleaCounter = 0;
 
   let lastPlayerWriteAt = 0;
-  let lastPlayerPayload = null;
+
   let nextRatWaveAt = null;
   let combatVfx = [];
   let lastGeneratorPayoutAt = Date.now();
@@ -2413,6 +2434,7 @@
   function applyLocalBuildLoadout(loadout){
     const clean = sanitizeBuildLoadout(loadout);
     if (!clean.length) return;
+    if (clean.join(",") === localBuildLoadout.join(",") && selectedBuild && clean.includes(selectedBuild) && isBuildUnlockedForLocalPlayer(selectedBuild)) return;
     localBuildLoadout = clean.slice(0, MAX_BUILD_SLOTS);
     mobileBuildOrder = localBuildLoadout.slice();
     selectedBuildSlots = localBuildLoadout.slice();
@@ -2442,6 +2464,9 @@
   if (!dock) return;
 
   const slots = getActiveBuildSlots();
+  const signature = JSON.stringify([slots, selectedBuild, failedAssetPaths.size, slots.map(id => [cheeseCount >= (BUILD_DEFS[id]?.cost || 0), isBuildUnlockedForLocalPlayer(id)])]);
+  if (dock.dataset.renderSignature === signature && dock.children.length === slots.length) return;
+  dock.dataset.renderSignature = signature;
 
   if (!Array.isArray(slots) || !slots.length) {
     dock.innerHTML = "";
@@ -2501,7 +2526,7 @@
     if (!dock) return;
     const slots = getActiveBuildSlots();
     const loadoutKey = slots.join(",");
-    const affordKey = slots.map(id => `${id}:${cheeseCount >= (BUILD_DEFS[id]?.cost || 0) ? 1 : 0}:${selectedBuild === id ? 1 : 0}:${isBuildUnlockedForLocalPlayer(id) ? 1 : 0}`).join("|");
+    const affordKey = failedAssetPaths.size + ":" + slots.map(id => `${id}:${cheeseCount >= (BUILD_DEFS[id]?.cost || 0) ? 1 : 0}:${selectedBuild === id ? 1 : 0}:${isBuildUnlockedForLocalPlayer(id) ? 1 : 0}`).join("|");
     if (loadoutKey === lastRenderedBuildLoadoutKey && affordKey === lastRenderedBuildAffordabilityKey && dock.children.length === slots.length) return;
     lastRenderedBuildLoadoutKey = loadoutKey;
     lastRenderedBuildAffordabilityKey = affordKey;
@@ -2539,8 +2564,7 @@
   let playerHeartbeatInterval = null;
   const wallHealQueue = new Map();
   let localPlayerSequence = 0;
-  let pendingPlayerPayload = null;
-  let playerWritePromise = null;
+  let lastRequestedPosition = null;
   const hostTaskLocks = new Set();
   const cheesePickupExpiryByCell = {};
 
@@ -2821,7 +2845,7 @@
 
   function triggerNestFiringVfx(x, y, durationMs = 380){
     const selector = `.iso-structure.iso-flea-nest[data-gx="${x}"][data-gy="${y}"]`;
-    const nestEl = entityLayer?.querySelector(selector);
+    const nestEl = persistentStructureLayer?.querySelector(selector);
     if (!nestEl) return;
     nestEl.classList.remove("nest-firing");
     void nestEl.offsetWidth;
@@ -2950,7 +2974,9 @@
     if (!soloMode || soloRuntimeActivated) return;
     soloRuntimeActivated = true;
     stopPlayerHeartbeat();
-    pendingPlayerPayload = null;
+    stateWriter.cancel();
+    playerWriter.cancel();
+    setConnectionStatus("Solo", true);
     cleanupFirebaseListeners();
     const me = players[uid] || {
       uid,
@@ -2965,11 +2991,6 @@
     };
     players = { [uid]:{ ...me, online:true, assetsReady:true } };
     isHost = true;
-    const connection = document.getElementById("menuConnectionStatus");
-    if (connection){
-      connection.className = "menu-status-pill connected";
-      connection.innerHTML = `<span class="status-dot"></span><span>Local solo</span>`;
-    }
     showToast("Solo mode: gameplay is running locally.");
   }
 
@@ -3331,10 +3352,15 @@
   // Rendering
   // ============================================================
   let renderQueued = false;
+  let hiddenRenderNeeded = false;
   let lastRenderAt = 0;
   const MIN_RENDER_INTERVAL_MS = 100;
   let persistentTileLayer = null;
   let persistentEntityLayer = null;
+  let persistentStructureLayer = null;
+  const structureNodes = new Map();
+  const tileNodes = [];
+  let playerStatusSignature = "";
   let persistentStageSignature = "";
   // ISOMETRIC VISUAL LAYER
   // GAMEPLAY GRID REMAINS UNCHANGED
@@ -3507,18 +3533,21 @@
   }
 
   function requestRender(reason = ""){
+    if (document.hidden || pageSuspended){ hiddenRenderNeeded = true; return; }
     if (renderQueued) return;
-
-    const now = Date.now();
-    const delay = Math.max(0, MIN_RENDER_INTERVAL_MS - (now - lastRenderAt));
-
+    const delay = Math.max(0, MIN_RENDER_INTERVAL_MS - (Date.now() - lastRenderAt));
     renderQueued = true;
-    setTimeout(() => {
+    setTimeout(() => requestAnimationFrame(() => {
       renderQueued = false;
+      if (document.hidden || pageSuspended){ hiddenRenderNeeded = true; return; }
       lastRenderAt = Date.now();
+      hiddenRenderNeeded = false;
       renderGrid();
-    }, delay);
+    }), delay);
   }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && hiddenRenderNeeded) requestRender("visibleAgain");
+  });
 
 
   function normalizeDirection(dx, dy){
@@ -3713,17 +3742,23 @@
   function renderIsoTiles(tileLayer){
     for (let row=0; row<gridSize; row++){
       for (let col=0; col<gridSize; col++){
-        tileLayer.appendChild(createIsoTile(col, row));
+        const tile = createIsoTile(col, row);
+        tileNodes[row * gridSize + col] = tile;
+        tileLayer.appendChild(tile);
       }
     }
   }
 
   function renderIsoStructures(entityLayer, structureEntries){
-    for (const entry of structureEntries){
-      const {x,y,symbol,hp,shield,generatorOn,cheeseBeaconTint,stinkDisabled} = entry;
-      const structureEl = renderStructureIso(symbol, x, y, hp, shield, { generatorOn, cheeseBeaconTint, stinkDisabled });
-      if (structureEl){ positionIsoElement(structureEl, x, y, 8); entityLayer.appendChild(structureEl); }
-    }
+    reconcileKeyedNodes(structureNodes, entityLayer, structureEntries,
+      entry => `${entry.x}_${entry.y}`,
+      entry => JSON.stringify(entry) + `|${failedAssetPaths.size}`,
+      entry => {
+        const {x,y,symbol,hp,shield,generatorOn,cheeseBeaconTint,stinkDisabled} = entry;
+        const node = renderStructureIso(symbol, x, y, hp, shield, {generatorOn,cheeseBeaconTint,stinkDisabled});
+        if (node) positionIsoElement(node, x, y, 8);
+        return node;
+      });
   }
 
   function renderPickupSprite(entityLayer, x, y, assetKey, cssKey, z = 7, extraClass = ""){
@@ -3816,13 +3851,19 @@
     const stageSignature = `${stageW}|${stageH}|${leftPad}|${topPad}`;
     if (!persistentTileLayer || !persistentEntityLayer || persistentStageSignature !== stageSignature){
       viewport.replaceChildren();
+      structureNodes.clear();
+      tileNodes.length = 0;
       persistentTileLayer = document.createElement("div");
       persistentTileLayer.id = "tileLayer";
       persistentTileLayer.style.position = "absolute";
       persistentEntityLayer = document.createElement("div");
       persistentEntityLayer.id = "entityLayer";
       persistentEntityLayer.style.position = "absolute";
+      persistentStructureLayer = document.createElement("div");
+      persistentStructureLayer.id = "structureLayer";
+      persistentStructureLayer.style.position = "absolute";
       viewport.appendChild(persistentTileLayer);
+      viewport.appendChild(persistentStructureLayer);
       viewport.appendChild(persistentEntityLayer);
       renderIsoTiles(persistentTileLayer);
       persistentStageSignature = stageSignature;
@@ -3833,6 +3874,8 @@
     tileLayer.style.top = `${topPad}px`;
     entityLayer.style.left = `${leftPad}px`;
     entityLayer.style.top = `${topPad}px`;
+    persistentStructureLayer.style.left = `${leftPad}px`;
+    persistentStructureLayer.style.top = `${topPad}px`;
     entityLayer.replaceChildren();
 
     const addEntityAt = (x, y, icon, opts = {}) => {
@@ -3853,23 +3896,21 @@
       for (let col=0; col<gridSize; col++){
         const x = col;
         const y = row;
-        const cell = document.getElementById(`cell-${x}-${y}`);
+        const cell = tileNodes[y * gridSize + x];
 
         if (x>=0 && x<gridSize && y>=0 && y<gridSize){
           const key = `${x}_${y}`;
           const symbol = grid[y][x];
 
-          cell.style.boxShadow = "";
-          cell.style.outline = "";
-          cell.style.filter = "";
+          let tileShadow = "", tileOutline = "", tileFilter = "";
           cell.style.backgroundColor = "#68b947";
           cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;
           if (beaconBoosted.has(key)){
-            cell.style.boxShadow = "inset 0 0 0 2px rgba(239,68,68,.82),0 0 7px rgba(239,68,68,.7)";
-            cell.style.filter = "saturate(1.15) brightness(1.06)";
+            tileShadow = "inset 0 0 0 2px rgba(239,68,68,.82),0 0 7px rgba(239,68,68,.7)";
+            tileFilter = "saturate(1.15) brightness(1.06)";
           } else if (generatorTriggers.has(key)){
-            cell.style.boxShadow = "inset 0 0 0 2px rgba(250,204,21,.9),0 0 7px rgba(250,204,21,.75)";
-            cell.style.filter = "brightness(1.12)";
+            tileShadow = "inset 0 0 0 2px rgba(250,204,21,.9),0 0 7px rgba(250,204,21,.75)";
+            tileFilter = "brightness(1.12)";
           }
 
           if (isCheesePickupCell(symbol)){
@@ -3891,34 +3932,41 @@
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
             renderPickupSprite(entityLayer, x, y, "supplyDrop", "supply-drop", 7);
-            cell.style.boxShadow = "0 0 10px #fde047";
+            tileShadow = "0 0 10px #fde047";
           }
           if (objectiveState.shrine?.active && objectiveState.shrine.x===x && objectiveState.shrine.y===y){
             renderPickupSprite(entityLayer, x, y, "weakeningShrine", "weakening-shrine", 7);
-            cell.style.outline = "2px solid #a855f7";
+            tileOutline = "2px solid #a855f7";
           }
           if (objectiveState.rescue?.active && objectiveState.rescue.x===x && objectiveState.rescue.y===y){
             renderPickupSprite(entityLayer, x, y, "rescueSpark", "rescue-spark", 7);
-            cell.style.outline = "2px solid #60a5fa";
+            tileOutline = "2px solid #60a5fa";
           }
 
           if (isTermiteSpawnWarningCell(x, y)) {
-            cell.style.boxShadow = "inset 0 0 0 2px rgba(239,68,68,.95), 0 0 13px rgba(220,38,38,.9)";
-            cell.style.filter = "saturate(1.45) brightness(1.08) hue-rotate(320deg)";
+            tileShadow = "inset 0 0 0 2px rgba(239,68,68,.95), 0 0 13px rgba(220,38,38,.9)";
+            tileFilter = "saturate(1.45) brightness(1.08) hue-rotate(320deg)";
           } else if (isInStinkAura(x, y)) {
-            cell.style.boxShadow = "inset 0 0 8px rgba(90, 60, 20, 0.9)";
-            cell.style.filter = "sepia(.35) hue-rotate(28deg) saturate(.85)";
+            tileShadow = "inset 0 0 8px rgba(90, 60, 20, 0.9)";
+            tileFilter = "sepia(.35) hue-rotate(28deg) saturate(.85)";
           }
 
           if (beaconWallBoosted.has(key)){
-            cell.style.outline = "2px solid #22d3ee";
-            cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.75), 0 0 8px rgba(34,211,238,0.8)";
+            tileOutline = "2px solid #22d3ee";
+            tileShadow = "inset 0 0 0 1px rgba(255,255,255,0.75), 0 0 8px rgba(34,211,238,0.8)";
+          }
+          const tileVisual = `${tileShadow}|${tileOutline}|${tileFilter}`;
+          if (cell.dataset.visual !== tileVisual){
+            cell.dataset.visual = tileVisual;
+            cell.style.boxShadow = tileShadow;
+            cell.style.outline = tileOutline;
+            cell.style.filter = tileFilter;
           }
       }
     }
     }
 
-    renderIsoStructures(entityLayer, structureEntries);
+    renderIsoStructures(persistentStructureLayer, structureEntries);
 
     tileLayer.querySelectorAll(".build-preview-valid,.build-preview-blocked").forEach(el => el.classList.remove("build-preview-valid","build-preview-blocked"));
     const previewCells = getBuildPreviewCells();
@@ -4112,14 +4160,18 @@
 
     // status list
     const statusDiv = document.getElementById("playerStatus");
-    statusDiv.innerHTML = "";
-    for (const p of Object.values(players)){
-      const sp = document.createElement("span");
-      sp.style.marginRight = "10px";
-      sp.style.fontWeight = "bold";
-      sp.style.color = ((p.alive ?? true) ? "green" : "red");
-      sp.textContent = `${(p.displayName||"mouse").toLowerCase()}: ${((p.alive ?? true) ? "ALIVE" : "DEAD")}`;
-      statusDiv.appendChild(sp);
+    const nextPlayerStatusSignature = JSON.stringify(Object.values(players).map(p => [p.uid,p.displayName,p.alive]));
+    if (playerStatusSignature !== nextPlayerStatusSignature){
+      playerStatusSignature = nextPlayerStatusSignature;
+      statusDiv.innerHTML = "";
+      for (const p of Object.values(players)){
+        const sp = document.createElement("span");
+        sp.style.marginRight = "10px";
+        sp.style.fontWeight = "bold";
+        sp.style.color = ((p.alive ?? true) ? "green" : "red");
+        sp.textContent = `${(p.displayName||"mouse").toLowerCase()}: ${((p.alive ?? true) ? "ALIVE" : "DEAD")}`;
+        statusDiv.appendChild(sp);
+      }
     }
     updateIsoCamera({
       worldW: stageW,
@@ -4163,7 +4215,7 @@
     if (facing) playerFacing = facing;
     playerPos = { x: newX, y: newY };
     if (players[uid]) Object.assign(players[uid], { x:newX, y:newY, facing:playerFacing || players[uid].facing || "se" });
-    savePosition();
+    savePosition().catch(()=>{});
     checkCheese().catch(()=>{});
     maybeTeleportOnCrystal().catch(()=>{});
     requestRender("movePlayer");
@@ -4426,52 +4478,29 @@
   // Firestore writes (UPDATED paths)
   // ============================================================
   function savePosition(){
-    const now = Date.now();
+    const position = { x:playerPos.x, y:playerPos.y, facing:playerFacing || "se" };
+    const signature = JSON.stringify(position);
+    if (lastRequestedPosition === signature) return Promise.resolve();
+    lastRequestedPosition = signature;
     localPlayerSequence += 1;
-    pendingPlayerPayload = {
-      kind:"player",
-      uid,
-      displayName:username,
-      nameKey:usernameNorm,
-      x:playerPos.x,
-      y:playerPos.y,
-      facing:playerFacing || "se",
-      alive:isAlive,
-      online:true,
+    const now = Date.now();
+    const payload = {
+      ...position,
       clientSeq:localPlayerSequence,
+      online:true,
       lastSeen:now,
       updatedAt:now
     };
-
+    // Movement never owns alive, cheese, identity or host combat fields.
     if (soloMode){
-      applyLocalRuntimeMutation("update", ccRef(ID.player(uid)), pendingPlayerPayload);
-      pendingPlayerPayload = null;
+      applyLocalRuntimeMutation("update", ccRef(ID.player(uid)), payload);
       lastPlayerWriteAt = now;
       return Promise.resolve();
     }
-
-    if (!playerWritePromise){
-      playerWritePromise = (async () => {
-        try{
-          while (pendingPlayerPayload){
-            const waitMs = Math.max(0, PLAYER_SYNC_MIN_INTERVAL_MS - (Date.now() - lastPlayerWriteAt));
-            if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-            const payload = pendingPlayerPayload;
-            pendingPlayerPayload = null;
-            await setDoc(ccRef(ID.player(uid)), payload, { merge:true });
-            lastPlayerWriteAt = Date.now();
-            lastPlayerPayload = {
-              x:payload.x, y:payload.y, facing:payload.facing,
-              alive:payload.alive, clientSeq:payload.clientSeq
-            };
-          }
-        } finally {
-          playerWritePromise = null;
-          if (pendingPlayerPayload) savePosition();
-        }
-      })();
-    }
-    return playerWritePromise;
+    return playerWriter.enqueue(payload).catch(error => {
+      lastRequestedPosition = null;
+      throw error;
+    });
   }
 
   async function upsertMyPlayerDoc(assetsReady = false, assetFailures = []){
@@ -4511,7 +4540,8 @@
 
 
   async function sendPlayerHeartbeat(){
-    if (soloMode) return;
+    if (soloMode || !syncEnabled()) return;
+    if (playerWriter.stats.inFlight || playerWriter.stats.pendingFields) return;
     if ((Date.now() - lastPlayerWriteAt) < 5000) return;
     await updateDoc(ccRef(ID.player(uid)), { online:true, lastSeen:Date.now(), updatedAt:Date.now() });
   }
@@ -6426,7 +6456,7 @@
   }
 
   async function objectiveSchedulerTick(){
-    if (!isHost || !gameStarted) return;
+    if (!canRunHostSimulation()) return;
     const now = Date.now();
     let changed = false;
 
@@ -6748,13 +6778,27 @@
   // ============================================================
   function listenToCrownCouncil(){
     cleanupFirebaseListeners();
-    const unsub = onSnapshot(ccCol, (snap) => {
+    listenerFailed = false;
+    liveSnapshotReady = false;
+    let reconciledServerSnapshot = false;
+    const unsub = onSnapshot(ccCol, { includeMetadataChanges:true }, (snap) => {
+      liveSnapshotReady = !snap.metadata.fromCache;
+      setConnectionStatus(liveSnapshotReady ? "Connected" : "Reconnecting", liveSnapshotReady);
       let snapshotNeedsRender = false;
-      const connection = document.getElementById("menuConnectionStatus");
-      if (connection){ connection.className = "menu-status-pill connected"; connection.innerHTML = `<span class="status-dot"></span><span>Connected</span>`; }
-      for (const ch of snap.docChanges()){
+      const changes = snap.docChanges();
+      if (liveSnapshotReady && !reconciledServerSnapshot){
+        reconciledServerSnapshot = true;
+        const present = new Set(snap.docs.map(doc => doc.id));
+        const removed = new Set(changes.filter(ch => ch.type === "removed").map(ch => ch.doc.id));
+        for (const [id, previous] of knownRealtimeDocs){
+          if (!present.has(id) && !removed.has(id)) changes.unshift({ type:"removed", doc:previous });
+        }
+      }
+      for (const ch of changes){
         const id = ch.doc.id;
         const data = ch.doc.data();
+        if (ch.type === "removed") knownRealtimeDocs.delete(id);
+        else knownRealtimeDocs.set(id, ch.doc);
 
         // removed
         if (ch.type === "removed"){
@@ -6828,14 +6872,19 @@
 
         // added / modified
         if (id === ID.STATE){
-          const beforeStateVisual = `${catPos.x}|${catPos.y}|${catHealth}|${catPower}|${ratPower}|${gameStarted}|${currentDifficulty}|${JSON.stringify(objectiveState)}`;
+          const beforeStateVisual = `${catPos.x}|${catPos.y}|${catFacingDir}|${catHealth}|${catPower}|${ratPower}|${gameStarted}|${currentDifficulty}|${JSON.stringify(objectiveState)}`;
           const previousCatHealth = catHealth;
           const wasHost = isHost;
+          const wasGameStarted = gameStarted;
           const hostUid = data.hostUid;
           const hostName = data.hostName;
           soloMode = data.runtimeMode === "solo";
           if (typeof data.matchId === "string") matchId = data.matchId;
+          observedHostUid = hostUid;
+          observedHostHeartbeatAt = data.hostHeartbeatAt || data.updatedAt || 0;
           isHost = (hostUid === uid);
+          if (wasHost && !isHost) stateWriter.cancel();
+          if (!ch.doc.metadata.hasPendingWrites) stateWriter.observe(stateFieldPatch(data));
           if (wasHost && !isHost && catMoveInterval){ clearInterval(catMoveInterval); catMoveInterval = null; }
           if (!wasHost && isHost && gameStarted){
             if (!hostInitialized) startHostLoops();
@@ -6875,8 +6924,8 @@
           updateHostDisplay(hostName);
           updateCatHealthBar();
           updateDifficultyUI();
-          renderSelectionOverlay();
-          const afterStateVisual = `${catPos.x}|${catPos.y}|${catHealth}|${catPower}|${ratPower}|${gameStarted}|${currentDifficulty}|${JSON.stringify(objectiveState)}`;
+          if (!gameStarted || !wasGameStarted) renderSelectionOverlay();
+          const afterStateVisual = `${catPos.x}|${catPos.y}|${catFacingDir}|${catHealth}|${catPower}|${ratPower}|${gameStarted}|${currentDifficulty}|${JSON.stringify(objectiveState)}`;
           if (beforeStateVisual !== afterStateVisual) snapshotNeedsRender = true;
         }
         else if (id.startsWith("player_")){
@@ -6897,7 +6946,9 @@
             assetManifestVersion: data.assetManifestVersion ?? 0,
             lastSeen: data.lastSeen ?? data.updatedAt ?? 0,
             joinedAt: data.joinedAt ?? data.createdAt ?? 0,
-            clientSeq: data.clientSeq ?? 0
+            clientSeq: data.clientSeq ?? 0,
+            slowedUntil: data.slowedUntil ?? 0,
+            slowMult: data.slowMult ?? 1
           };
           if (previousPlayer?.alive !== false && players[pu].alive === false) setTileEffect(players[pu].x, players[pu].y, "blood");
           if (!previousPlayer || previousPlayer.x !== players[pu].x || previousPlayer.y !== players[pu].y || previousPlayer.facing !== players[pu].facing || previousPlayer.cheese !== players[pu].cheese || previousPlayer.alive !== players[pu].alive || previousPlayer.online !== players[pu].online) snapshotNeedsRender = true;
@@ -6905,7 +6956,12 @@
           // Ignore stale position acknowledgements for the local player.
           if (pu === uid){
             const incomingSeq = data.clientSeq ?? 0;
-            if (incomingSeq >= localPlayerSequence){
+            const revived = previousPlayer?.alive === false && players[pu].alive;
+            if (!players[pu].alive || revived){
+              playerWriter.cancel();
+              lastRequestedPosition = null;
+            }
+            if (revived || incomingSeq >= localPlayerSequence){
               playerFacing = players[pu].facing || playerFacing;
               playerPos = { x: players[pu].x, y: players[pu].y };
             } else {
@@ -7078,13 +7134,18 @@
         }
       }
 
+      // Resume only after processing ownership/death changes in this snapshot.
+      stateWriter.resume();
+      playerWriter.resume();
+      if (isHost && gameStarted && !catMoveInterval) startCatBehaviorLoop();
       if (snapshotNeedsRender) requestRender("listenToCrownCouncilSnapshot");
       const playerCountEl = document.getElementById("menuPlayerCount");
       if (playerCountEl){ const count = getLobbyParticipants().length; playerCountEl.textContent = `👥 ${count} player${count === 1 ? "" : "s"}`; }
     }, err => {
       console.error("Realtime listener failed", err);
-      const connection = document.getElementById("menuConnectionStatus");
-      if (connection){ connection.className = "menu-status-pill offline"; connection.innerHTML = `<span class="status-dot"></span><span>Reconnecting</span>`; }
+      liveSnapshotReady = false;
+      listenerFailed = true;
+      setConnectionStatus("Sync error — reconnect");
     });
     addFirebaseListener(unsub);
   }
@@ -7142,6 +7203,8 @@
     if (sSnap.exists()){
       const s = sSnap.data();
       isHost = (s.hostUid === uid);
+      observedHostUid = s.hostUid;
+      observedHostHeartbeatAt = s.hostHeartbeatAt || s.updatedAt || 0;
       catPower = s.catPower ?? 0;
       ratPower = s.ratPower ?? 1;
       nextRatWaveAt = (typeof s.nextRatWave === "number") ? s.nextRatWave : nextRatWaveAt;
@@ -7163,33 +7226,33 @@
   }
 
   async function checkHostTransfer(){
+    if (soloMode || !syncEnabled() || hostTransferPending || isHost) return;
     const now = Date.now();
-    if (now - lastHostCheckAt < 3000) return;
+    if (now - lastHostCheckAt < 3000 || now - observedHostHeartbeatAt <= HOST_STALE_MS) return;
+    if (eligibleHostCandidate(players, isPlayerActive, observedHostUid) !== uid) return;
     lastHostCheckAt = now;
+    hostTransferPending = true;
     const sRef = ccRef(ID.STATE);
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(sRef);
-      if (!snap.exists()) return;
-      const data = snap.data();
-      const heartbeat = data.hostHeartbeatAt || data.updatedAt || 0;
-      const hostIsStale = Date.now() - heartbeat > HOST_STALE_MS;
-      if (!hostIsStale) return;
-      const active = Object.entries(players)
-        .filter(([, p]) => isPlayerActive(p))
-        .sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0));
-      const elected = active.length ? active[0] : null;
-      if (!elected) return;
-      tx.update(sRef, {
-        hostUid: elected[0],
-        hostName: elected[1].displayName || "mouse",
-        hostHeartbeatAt: Date.now(),
-        updatedAt: Date.now()
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(sRef);
+        if (!snap.exists() || !syncEnabled()) return;
+        const data = snap.data();
+        const heartbeat = data.hostHeartbeatAt || data.updatedAt || 0;
+        if (Date.now() - heartbeat <= HOST_STALE_MS) return;
+        if (eligibleHostCandidate(players, isPlayerActive, data.hostUid) !== uid) return;
+        tx.update(sRef, {
+          hostUid:uid,
+          hostName:username,
+          hostHeartbeatAt:Date.now(),
+          updatedAt:Date.now()
+        });
       });
-    });
+    } finally { hostTransferPending = false; }
   }
 
   async function hostSyncAssetLoadingBarrier(){
-    if (!isHost || gameStarted) return;
+    if (!isHost || gameStarted || !syncEnabled()) return;
     const active = getActiveSelectionParticipants();
     if (!active.length) return;
     const allReady = active.every(([,p]) => p.assetsReady === true);
@@ -7617,7 +7680,7 @@
     setInterval(() => { objectiveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { checkHostTransfer().catch(()=>{}); }, 3000);
     setInterval(() => {
-      if (!isHost || gameStarted) return;
+      if (!isHost || gameStarted || !syncEnabled()) return;
       updateDoc(ccRef(ID.STATE), { hostHeartbeatAt:Date.now(), updatedAt:Date.now() }).catch(()=>{});
     }, HOST_HEARTBEAT_MS);
     setInterval(() => {
@@ -7667,7 +7730,7 @@
   // Host loops (cat AI + spawns + enemy sim)
   // ============================================================
   function canRunHostSimulation(){
-    return (soloMode || isHost) && gameStarted && hostInitialized;
+    return (soloMode || (isHost && syncEnabled())) && !pageSuspended && gameStarted && hostInitialized;
   }
 
   async function scrubGhostEnemies() {
@@ -7926,13 +7989,11 @@
     // Cat state is already published by its authoritative movement tick.
 
     setInterval(async () => {
-      if (!isHost || !gameStarted) return;
+      if (!canRunHostSimulation()) return;
       await runtimeUpdateDoc(ccRef(ID.STATE), {
-        hostUid: uid,
-        hostName: username,
         hostHeartbeatAt: Date.now(),
         updatedAt: Date.now()
-      });
+      }).catch(reportSyncError);
     }, HOST_HEARTBEAT_MS);
   }
 
@@ -7994,6 +8055,8 @@
   hostCleanupStaleEntities = lockAsyncTask("cleanup", hostCleanupStaleEntities);
   scrubGhostEnemies = lockAsyncTask("ghostCleanup", scrubGhostEnemies);
 
+  window.__catMouseSyncStats = () => ({ state:stateWriter.stats, player:playerWriter.stats, connected:syncEnabled() });
+
   // ============================================================
   // Boot
   // ============================================================
@@ -8004,12 +8067,36 @@
     startPlayerHeartbeat();
 
     const markLocalPlayerOffline = () => {
+      if (pageSuspended) return;
+      pageSuspended = true;
+      liveSnapshotReady = false;
+      stateWriter.cancel();
+      playerWriter.cancel();
       stopPlayerHeartbeat();
       cleanupFirebaseListeners();
       if (!soloMode) void updateDoc(ccRef(ID.player(uid)), { online:false, lastSeen:Date.now(), updatedAt:Date.now() }).catch(()=>{});
     };
     window.addEventListener("pagehide", markLocalPlayerOffline);
     window.addEventListener("beforeunload", markLocalPlayerOffline);
+    window.addEventListener("pageshow", event => {
+      if (!event.persisted || !pageSuspended) return;
+      pageSuspended = false;
+      lastRequestedPosition = null;
+      if (!soloMode){ listenToCrownCouncil(); startPlayerHeartbeat(); }
+      requestRender("resumePage");
+    });
+    window.addEventListener("offline", () => {
+      liveSnapshotReady = false;
+      if (!soloMode) setConnectionStatus("Reconnecting");
+    });
+    window.addEventListener("online", () => {
+      if (!soloMode && listenerFailed && !pageSuspended) listenToCrownCouncil();
+    });
+    document.getElementById("hudSync")?.addEventListener("click", () => {
+      if (soloMode || pageSuspended) return;
+      if (listenerFailed) listenToCrownCouncil();
+      else { stateWriter.resume(); playerWriter.resume(); }
+    });
 
     const assetFailures = await preloadGameGraphics();
     await publishAssetReadiness(assetFailures);
@@ -8085,3 +8172,4 @@
 </script>
 </body>
 </html>
+
