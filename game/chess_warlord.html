@@ -549,12 +549,8 @@ let hudTickTime = 0;
 let particles = [];
 let floatingText = [];
 let factionMoveFx = [];
-let turnTransitionFx = null;
 let kingDefeatFx = null;
 let cameraImpulse = {strength:0,until:0,seed:0};
-let warTurn = 0;
-let lastActingFaction = null;
-let lastTurnTransitionAt = 0;
 // These effects are deliberately client-local: they celebrate the current player's input without adding network traffic or altering synced state.
 let localActionFx = [];
 // Local-only destruction scenes are reconstructed from authoritative piece removals, so every client sees the same capture as a crumble without extra Firebase traffic.
@@ -4209,7 +4205,6 @@ function setReduceMotion(next,persist=true){
   if(persist) localStorage.setItem(REDUCE_MOTION_KEY,reduceMotion?'1':'0');
   if(reduceMotion){
     factionMoveFx.length=0;
-    turnTransitionFx=null;
     cameraImpulse.strength=0;
     for(const p of pieces){ if(!p?.alive) continue; p.px=p.x; p.py=p.y; p.displayHp=p.hp; }
   }
@@ -6547,16 +6542,6 @@ function emitFactionMoveEffect(piece,fromX,fromY,toX,toY,moveMeta=null){
   factionMoveFx.push({start:now(),duration:special ? .42 : .26,fromX,fromY,toX,toY,factionId:factions[piece.faction]?.id||'',color:factions[piece.faction]?.color||'#fff',special,type:piece.type});
   if(special) floating(toX,toY,'PHASED',factions[piece.faction]?.aura||'#d8b4fe');
 }
-function announceFactionAction(factionIdx){
-  warTurn++;
-  const stamp=performance.now();
-  const changed=factionIdx!==lastActingFaction;
-  lastActingFaction=factionIdx;
-  if(reduceMotion || !changed || stamp-lastTurnTransitionAt<650) return;
-  const f=factions[factionIdx]; if(!f) return;
-  lastTurnTransitionAt=stamp;
-  turnTransitionFx={start:now(),duration:effectQualityTier()<2 ? .26 : .44,factionIdx,title:`${f.short.toUpperCase()} LEGION`,turn:warTurn,color:f.color};
-}
 function movePiece(piece,x,y,source='player'){
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
   const fromX=piece.x, fromY=piece.y;
@@ -6596,14 +6581,12 @@ function movePiece(piece,x,y,source='player'){
           applyFactionCapture(piece,fromX,fromY,landing.x,landing.y,'move',target);
           applyAuraTerritory(piece);
           floating(target.x,target.y,'SHIELD WALL HIT', factions[piece.faction]?.color || '#fff');
-          announceFactionAction(piece.faction);
           markStateDirty();
           return true;
         }
       }
       if(!pushShieldedPiece(piece,target,fromX,fromY)){
         setMoveCooldown(piece,fromX,fromY,x,y,!!target);
-        announceFactionAction(piece.faction);
         return true;
       }
       impactPushedId = target.id;
@@ -6616,7 +6599,6 @@ function movePiece(piece,x,y,source='player'){
     piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs;
     if((!!target || !!targetWall) && factions[piece.faction]?.id==='shadow') shadowStrikeEffect(piece,x,y);
     burst(x,y,factions[piece.faction]?.color || '#fff',14);
-    announceFactionAction(piece.faction);
     markStateDirty();
     return true;
   }
@@ -6647,7 +6629,6 @@ function movePiece(piece,x,y,source='player'){
   applyBuildingMoveEffects(piece,fromX,fromY);
   if(swept===0) burst(x,y,factions[piece.faction].color,4);
   if(source==='player' && hammerPushes) moveModeHint = `Hammer shockwave pushed ${hammerPushes} nearby foe${hammerPushes===1?'':'s'}.`;
-  announceFactionAction(piece.faction);
   markStateDirty();
   if(source==='player' && !hammerPushes) moveModeHint = factionCaptureHint(piece,swept);
   return true;
@@ -7214,7 +7195,7 @@ function createGame(){
   cam.zoom=1;
   if(king) centerOn(king.x,king.y);
   selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; factionMoveFx=[]; localActionFx=[]; destructionFx=[]; pendingPlayerActions=[];
-  turnTransitionFx=null; kingDefeatFx=null; warTurn=0; lastActingFaction=null; cameraImpulse.strength=0; abilityFeedbackByPiece.clear();
+  kingDefeatFx=null; cameraImpulse.strength=0; abilityFeedbackByPiece.clear();
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
   takeSoundKeys.clear();
   hasAppliedInitialRemoteAudioState = true;
@@ -10067,15 +10048,6 @@ function drawScreenEffects(){
   if(paused && !defeatActive){
     ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,innerWidth,innerHeight);
     ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 42px Inter'; ctx.fillText('PAUSED',innerWidth/2,innerHeight/2);
-  }
-  if(turnTransitionFx){
-    const age=t-turnTransitionFx.start;
-    if(age<turnTransitionFx.duration){
-      const u=clamp(age/turnTransitionFx.duration,0,1),fade=Math.sin(u*Math.PI);
-      ctx.save();ctx.globalAlpha=.72*fade;ctx.fillStyle='rgba(4,8,16,.78)';ctx.fillRect(0,innerHeight*.31,innerWidth,74);
-      ctx.globalAlpha=fade;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=turnTransitionFx.color;ctx.font='1000 23px Inter,system-ui,sans-serif';ctx.fillText(turnTransitionFx.title,innerWidth/2,innerHeight*.31+29);
-      ctx.fillStyle='#dbeafe';ctx.font='900 11px Inter,system-ui,sans-serif';ctx.fillText(`TURN ${turnTransitionFx.turn}`,innerWidth/2,innerHeight*.31+51);ctx.restore();
-    }else turnTransitionFx=null;
   }
   if(defeatActive){
     const age=t-kingDefeatFx.start,u=clamp(age/kingDefeatFx.duration,0,1),fade=Math.sin(u*Math.PI);
