@@ -1,3 +1,16 @@
+/* Load the isolated screen tuning before the player can leave the franchise menu. */
+(()=>{
+  'use strict';
+  const source='receiver-window-qb/screen-playability.js';
+  if(document.querySelector(`script[src="${source}"]`))return;
+  const start=document.getElementById('startBtn'),wasDisabled=!!start?.disabled;
+  if(start)start.disabled=true;
+  const script=document.createElement('script');script.src=source;script.async=false;
+  const release=()=>{if(start)start.disabled=wasDisabled;};script.onload=release;script.onerror=release;
+  const anchor=document.currentScript;
+  if(anchor?.parentNode)anchor.parentNode.insertBefore(script,anchor.nextSibling);else document.head.appendChild(script);
+})();
+
 /* Keyboard navigation is scoped to the top visible menu, never live aiming. */
 (()=>{
   'use strict';
