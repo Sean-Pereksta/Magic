@@ -1,0 +1,67 @@
+name: QB tactics regression and browser verification
+on:
+  push:
+    branches: [feat/qb-audible-sets-strength-blocking]
+    paths:
+      - .github/workflows/qb-tactics-review.yml
+      - game/receiver-window-qb/tactics-review.cjs
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/qb-audible-sets-strength-blocking
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply reviewed integration fixes
+        run: node game/receiver-window-qb/tactics-review.cjs
+      - name: Syntax, whitespace and complete unit regressions
+        run: |
+          set -euo pipefail
+          node --check game/receiver-window-qb/game.js
+          node --check game/receiver-window-qb/tactics.js
+          node --check game/receiver-window-qb/tactics-browser.cjs
+          git diff --check
+          node --test game/receiver-window-qb/*.test.cjs 2>&1 | tee /tmp/qb-tactics-tests.txt
+      - name: Install browser harness dependency
+        run: npm install --prefix /tmp/qb-browser playwright@1.57.0 --no-audit --no-fund
+      - name: Rendered desktop and mobile regressions
+        env:
+          NODE_PATH: /tmp/qb-browser/node_modules
+          QB_SCREENSHOT_DIR: /tmp/qb-tactics-screenshots
+        run: |
+          set -euo pipefail
+          export QB_CHROMIUM_PATH=$(command -v google-chrome || command -v chromium || true)
+          if [ -z "$QB_CHROMIUM_PATH" ]; then /tmp/qb-browser/node_modules/.bin/playwright install --with-deps chromium; fi
+          node game/receiver-window-qb/tactics-browser.cjs 2>&1 | tee /tmp/qb-tactics-browser.txt
+          node game/receiver-window-qb/browser-smoke.cjs 2>&1 | tee /tmp/qb-existing-browser.txt
+      - name: Package verification evidence
+        if: always()
+        run: tar -czf /tmp/qb-test-workspace.tar.gz game/receiver-window-qb game/receiver-window-qb.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qb-tactics-review
+          path: |
+            /tmp/qb-tactics-tests.txt
+            /tmp/qb-tactics-browser.txt
+            /tmp/qb-existing-browser.txt
+            /tmp/qb-tactics-screenshots
+            /tmp/qb-test-workspace.tar.gz
+      - name: Commit validated changes and remove temporary tooling
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/qb-tactics-review.yml game/receiver-window-qb/tactics-review.cjs
+          git add game/receiver-window-qb game/receiver-window-qb.html .github/workflows/qb-tactics-review.yml
+          git commit -m 'Validate sustained blocks and team audibles across runtime and desktop/mobile browsers'
+          git push origin HEAD:feat/qb-audible-sets-strength-blocking
