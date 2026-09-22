@@ -1,8 +1,15 @@
 import { foodLoad, clamp, distance } from "./hearthmouse-survival-core.mjs";
 import { isFoodPositionClear } from "./hearthmouse-habitat.mjs";
 
+// Ground-level cat-only volumes are exclusion zones, not mouse geometry (the
+// nest entrance is one). Raised cat-only furniture still becomes solid when
+// the mouse climbs to its height. Use the same floor tolerance as movement.
+export function isMousePassThroughCollider(collider) {
+  return Boolean(collider.catOnly) && (collider.minY ?? 0) <= 0.018;
+}
+
 export function pointSupported(point, collider, elevation) {
-  return collider.active !== false && Math.abs(collider.maxY - elevation) < 0.035 &&
+  return collider.active !== false && !isMousePassThroughCollider(collider) && Math.abs(collider.maxY - elevation) < 0.035 &&
     point.x >= collider.minX && point.x <= collider.maxX && point.z >= collider.minZ && point.z <= collider.maxZ;
 }
 
@@ -42,7 +49,7 @@ export function moveTraversingPlayer(engine, state, I, motion) {
   const candidates = engine.__expansion?.spatial?.colliders?.queryAabb(
     p.x - 0.35, p.z - 0.35, p.x + 0.35, p.z + 0.35, t.candidates) ?? engine.world.colliders;
   for (const c of candidates) {
-    if (c.active === false || c.catOnly && floor < (c.minY ?? 0) - 0.07) continue;
+    if (c.active === false || isMousePassThroughCollider(c) || c.catOnly && floor < (c.minY ?? 0) - 0.07) continue;
     if (c.maxY <= floor + 0.018 || (c.minY ?? 0) > floor + 0.11) continue;
     if (c.catOnly) {
       let solid = t.solidCopies.get(c); if (!solid) { solid = { ...c, catOnly: false }; t.solidCopies.set(c, solid); }
@@ -57,7 +64,7 @@ export function moveTraversingPlayer(engine, state, I, motion) {
     t.scratch.copy(t.previous).addScaledVector(motion, Math.max(1, 0.15 / attempted));
     const step = t.colliders.find(c => c.maxY > floor && c.maxY <= floor + 0.13 &&
       t.scratch.x > c.minX && t.scratch.x < c.maxX && t.scratch.z > c.minZ && t.scratch.z < c.maxZ);
-    if (step && isFoodPositionClear(t.scratch, engine.world.colliders.filter(c => c !== step && c.maxY > step.maxY && (c.minY ?? 0) < step.maxY + 0.12), 0.055)) {
+    if (step && isFoodPositionClear(t.scratch, engine.world.colliders.filter(c => c !== step && !isMousePassThroughCollider(c) && c.maxY > step.maxY && (c.minY ?? 0) < step.maxY + 0.12), 0.055)) {
       p.copy(t.scratch); t.elevation = step.maxY; t.motion = "scramble"; t.landingUntil = engine.time + 0.25;
     }
   }
