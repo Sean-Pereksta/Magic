@@ -846,3 +846,66 @@ test('forgiving routine hand catches still work through real moving-player physi
     assert.equal(q.state().playState,'run',`${hz} Hz: ${q.state().playState}, tips ${q.run('throwBobbles')}`);assert.equal(r.hasBall,true);
   }
 });
+
+// Whole-game coverage for physical audibles, linked blocks and tackle shielding.
+test('team audibles preserve actors, ratings and coverage while changing full formations',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.5;
+  const before=q.state(),rs=[...before.receivers],ds=[...before.defenders],positions=ds.map(d=>d.mesh.position.clone());
+  q.run("callPlay(plays.findIndex(p=>p.screen!=null&&p.xs))");
+  const s=q.state();assert.equal(s.currentDefense,before.currentDefense);
+  rs.forEach((r,i)=>assert.equal(r,s.receivers[i]));ds.forEach((d,i)=>{assert.equal(d,s.defenders[i]);assert.ok(d.mesh.position.distanceTo(positions[i])<1e-9);});
+  assert.equal(s.receivers.filter(r=>r.screenTarget).length,1);assert.ok(s.receivers.some(r=>r.setTarget));
+  assert.ok(s.defenders.every(d=>d.setRead.readyAt>0));
+});
+test('queued start waits for physical formation movement and keeps the play menu closed',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.5;
+  q.run("callPlay(plays.findIndex(p=>p.name==='Bunch Read Screen'))");q.beginCountdown();
+  assert.equal(q.run('queuedSnap'),true);assert.equal(q.run("$('playCallPanel').style.display"),'none');
+  let moved=0;
+  for(let i=0;i<1800&&q.state().playState==='call';i++){
+    const before=q.state().receivers.map(r=>r.mesh.position.clone());q.run('gameTime+=1000/120');q.update(1/120,q.run('gameTime'));
+    q.state().receivers.forEach((r,k)=>{const delta=r.mesh.position.distanceTo(before[k]);assert.ok(delta<.16,'no teleport while changing sets');moved+=delta;});
+  }
+  assert.ok(moved>10);assert.equal(q.state().playState,'countdown');assert.equal(q.run('queuedSnap'),false);
+});
+test('pending defensive formation reads survive repeated audibles without being restarted',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.5;
+  q.run("callPlay(plays.findIndex(p=>p.name==='Bunch Read Screen'))");
+  const deadlines=q.state().defenders.map(d=>d.setRead.readyAt);q.run('gameTime+=100;callPlay(0)');
+  q.state().defenders.forEach((d,i)=>assert.equal(d.setRead.readyAt,deadlines[i]));
+});
+function arrangeTacticalBlock(q,strength=95,defenseStrength=40){
+  q.run("setupPlay();playState='run';ballCarrier=receivers[0];receivers[0].hasBall=true;receivers[0].mesh.position.set(0,0,3);receivers[0].velocity.set(0,0,-4);for(const a of [...receivers.slice(1),...defenders])a.mesh.position.set(50,0,30);");
+  const b=q.state().receivers[1],d=q.state().defenders[0];
+  b.mesh.position.set(0,0,0);d.mesh.position.set(0,0,-1.2);b.heading.set(0,0,-1);b.mesh.rotation.y=Math.PI;d.heading.set(0,0,1);d.mesh.rotation.y=0;
+  b.velocity.set(0,0,0);d.velocity.set(0,0,0);b.profile.strength=strength;d.strength=defenseStrength;b.blockCooldown=0;d.blockCooldown=0;
+  q.run('updateBlocking(1/120)');return {b,d,r:q.state().receivers[0]};
+}
+test('linked blocking is sustained, faces the opponent and drives according to relative strength',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.999;
+  let {b,d}=arrangeTacticalBlock(q);assert.ok(b.blockEngagement);assert.equal(b.blockEngagement,d.blockEngagement);
+  const before=b.mesh.position.z;for(let i=0;i<30;i++)q.run('advanceBlockEngagements(1/120)');
+  assert.ok(b.mesh.position.z<before);assert.ok(d.mesh.position.z<b.mesh.position.z);assert.ok(Math.cos(b.mesh.rotation.y)<-.8);
+  ({b,d}=arrangeTacticalBlock(q,30,100));const next=b.mesh.position.z;
+  for(let i=0;i<30;i++)q.run('advanceBlockEngagements(1/120)');assert.ok(b.mesh.position.z>next);
+});
+test('a held block protects the carrier behind it but never hides an exposed support tackler',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.999;const {b,d,r}=arrangeTacticalBlock(q);
+  b.mesh.position.set(0,0,0);b.blockPrevious=b.mesh.position.clone();d.mesh.position.set(0,0,-.55);r.mesh.position.set(0,0,.55);
+  d.tacklePrevious=d.mesh.position.clone();r.tacklePrevious=r.mesh.position.clone();
+  assert.equal(q.tackleContact(d,r),null);
+  const support=q.state().defenders[1];support.mesh.position.set(.55,0,.55);support.tacklePrevious=support.mesh.position.clone();
+  assert.ok(q.tackleContact(support,r));
+  q.run('releaseBlock(receivers[1].blockEngagement)');assert.ok(q.tackleContact(d,r));
+});
+test('held defenders cannot dive or obtain a generic random shove through the blocker',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.999;const {b,d,r}=arrangeTacticalBlock(q);
+  d.velocity.set(0,0,8);assert.equal(q.startDivingTackle(d,r),false);
+  const before=b.mesh.position.clone();c.Math.random=()=>0;q.run('solvePlayerCollisions(1/120)');
+  assert.ok(b.mesh.position.distanceTo(before)<1e-9);assert.ok(b.blockEngagement);
+});
+test('block shedding releases both actors and enforces a recovery window',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.5;const {b,d}=arrangeTacticalBlock(q,30,100);
+  for(let i=0;i<600&&b.blockEngagement;i++)q.run('advanceBlockEngagements(1/120)');
+  assert.equal(b.blockEngagement,null);assert.equal(d.blockEngagement,null);assert.ok(d.blockCooldown>0);assert.equal(d.blockTime,0);
+});
