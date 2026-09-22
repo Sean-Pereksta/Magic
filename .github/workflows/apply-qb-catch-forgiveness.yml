@@ -1,0 +1,43 @@
+name: Apply and validate QB catch forgiveness
+
+on:
+  push:
+    branches: [fix/qb-forgiving-catches-20260922]
+    paths:
+      - '.github/qb-catch-work/**'
+      - '.github/workflows/apply-qb-catch-forgiveness.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qb-catch-forgiveness-20260922
+  cancel-in-progress: false
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/qb-forgiving-catches-20260922
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply guarded, catch-only patch
+        run: python3 .github/qb-catch-work/apply.py
+      - name: Validate runtime syntax and all QB regression tests
+        run: |
+          node --check game/receiver-window-qb/game.js
+          node --test game/receiver-window-qb/*.test.cjs
+          git diff --check
+      - name: Commit verified game changes and remove one-time assembly files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add game/receiver-window-qb/game.js game/receiver-window-qb/gameplay-variety.test.cjs game/receiver-window-qb/README.md
+          git rm -r .github/qb-catch-work
+          git rm .github/workflows/apply-qb-catch-forgiveness.yml
+          git commit -m 'Make QB receiver catches significantly more forgiving'
+          git push origin HEAD:fix/qb-forgiving-catches-20260922
