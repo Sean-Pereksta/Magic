@@ -1,0 +1,27 @@
+name: Game Library regression tests
+
+on:
+  pull_request:
+    paths:
+      - 'lobby/**'
+      - '.github/workflows/lobby-library-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lobby/**'
+      - '.github/workflows/lobby-library-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test real hub source and game launch actions
+        run: node --experimental-vm-modules --test lobby/tests/lobby-library.test.cjs
