@@ -64,6 +64,13 @@ test('recommended audibles prioritize a screen counter when the current call is 
   assert.ok(recommended.some(play=>play.shape!=='Spread'));
 });
 
+test('the presentation countdown cannot erase a quick-snap advantage',()=>{
+  const before=A.defensiveAdjustmentElapsed({startedAt:0,now:900});
+  const during=A.defensiveAdjustmentElapsed({startedAt:0,committedAt:900,now:3100,countdownScale:.22});
+  assert.equal(before,.9);
+  assert.ok(during>1.38&&during<1.39,'2.2 seconds of presentation countdown should add only about 0.48 defensive seconds');
+});
+
 test('the browser entrypoint loads formation audibles before the game loop',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'../receiver-window-qb.html'),'utf8');
   const audible=html.indexOf('receiver-window-qb/formation-audibles-core.js');
