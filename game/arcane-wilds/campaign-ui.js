@@ -114,6 +114,7 @@
     const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=s.visited.includes(n.id)||s.scouted.includes(n.id),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
     const reason=D.travelReason(s,n.id,travelMode);
     card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[c.material].name)}</p>${known&&!n.town?`<p>Enemies: ${A.pool(n).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${s.cleared.includes(n.id)?'✓ Cleared':s.visited.includes(n.id)?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
+    if(known&&n.rewardSpells?.length)card.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
     if(n.id===s.current){
       card.insertAdjacentHTML('beforeend','<p>You are here.</p>');
       if(n.type==='ruler'&&s.defeated.includes(n.id))action('Return to Portal City',()=>A.travel(c.portalCity),card);
@@ -151,6 +152,7 @@
   function openSite(){
     const n=A.current(),s=A.state(),c=D.continent(n.continent),body=$('npcBody');$('npcName').textContent=n.name;
     body.innerHTML=`<p class="exp-dialogue">${esc(({mount:'A wild companion watches you from the clearing.',landmark:'Old stones remember the roads between the continents.',shrine:'A forgotten spell waits in the light.',passage:c.travel,merchant:'A small caravan trades local supplies.',event:'The danger has passed. Search the aftermath for supplies and a traveler’s blessing.'})[n.type]||n.name)}</p>`;
+    if(n.rewardSpells?.length)body.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
     if(n.type==='passage'){
       const i=D.continents.indexOf(c);for(const target of D.continents.filter((_,j)=>Math.abs(j-i)===1)){const b=action(`Travel to ${target.name}`,()=>A.travel(target.start,'passage'),body,'btn');b.disabled=!s.unlocked.includes(target.id);}
       if(i===2)body.insertAdjacentHTML('beforeend','<p>The final horizon is yours. Return through the towns to finish optional discoveries.</p>');
