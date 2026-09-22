@@ -71,6 +71,12 @@ test('the presentation countdown cannot erase a quick-snap advantage',()=>{
   assert.ok(during>1.38&&during<1.39,'2.2 seconds of presentation countdown should add only about 0.48 defensive seconds');
 });
 
+test('the runtime follows the playbook selection instead of relying on a missing play-name element',()=>{
+  const source=fs.readFileSync(path.resolve(__dirname,'formation-audibles-runtime.js'),'utf8');
+  assert.match(source,/#playGrid \[data-play\]\.selected/);
+  assert.doesNotMatch(source,/getElementById\('playName'\)/);
+});
+
 test('the browser entrypoint loads formation audibles before the game loop',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'../receiver-window-qb.html'),'utf8');
   const audible=html.indexOf('receiver-window-qb/formation-audibles-core.js');
