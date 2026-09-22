@@ -61,7 +61,13 @@
   spawnRoomEnemies=function(room){
     const n=D.nodes[room.campaignNode];if(!n)return originals.spawnRoomEnemies(room);
     const st=intensityState();st.roomKey=room.key;st.hazards.length=0;st.lastSpell=null;st.reactionLock=0;
-    st.encounter={roomKey:room.key,wave:1,totalWaves:1,boss:room.boss,pending:null,grace:0,hazardCd:room.challenge?2.4:999};
+    // Keep short roads brief, but reconnect tougher nodes to the existing rift-wave lifecycle.
+    // World events with their own three-wave objective must not run a second wave scheduler.
+    const scriptedWaves=n.type==='event'&&['waves','defend'].includes(n.event);
+    const tough=room.elite||room.challenge||n.type==='dungeon'||room.difficulty>=6;
+    const totalWaves=room.boss||scriptedWaves||!tough?1:clamp(2+(room.difficulty>=6?1:0)+(room.difficulty>=10||room.challenge?1:0),2,4);
+    st.encounter={roomKey:room.key,wave:1,totalWaves,boss:room.boss,pending:null,grace:2.2,hazardCd:room.challenge?2.4:999,
+      spawnThreshold:2,waveSize:clamp(4+Math.floor(room.difficulty*.18)+(game.level>=12?1:0),4,7)};
     if(room.boss){
       const c=D.continent(n.continent),b=n.boss||[pool(n).at(-1),'bossGolem'];
       const e=spawnBoss({name:n.type==='ruler'?c.ruler:n.type==='dungeon'?`${n.name} Guardian`:n.name,base:b[0],ai:b[1],hp:n.type==='ruler'?7:4.5,damage:n.type==='ruler'?1.35:1.15,color:c.color},room);
@@ -77,6 +83,7 @@
       const e=spawnEnemy(list[j%list.length],randomEnemySpawn(),room.elite&&j===0);
       e.campaignRole=j<2?'guard':j%3===0?'flank':'ranged';
     }
+    intensityRefreshHud();
   };
   buildVillagePeople=function(room){
     const n=D.nodes[room.campaignNode];if(!n?.town)return originals.buildVillagePeople(room);
@@ -125,7 +132,7 @@
   }
   function enterPortal(){
     const n=current(),c=D.continent(n?.continent),s=state();
-    if(!inCampaign()||n.id!==c.portalCity||!D.portalReady(s,c)||s.defeated.includes(c.boss))return false;
+    if(!inCampaign()||n.id!==c.portalCity||!D.portalReady(state(),c)||s.defeated.includes(c.boss))return false;
     return enter(c.boss);
   }
   transitionRoom=function(dx,dy,from){
