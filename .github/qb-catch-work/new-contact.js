@@ -25,8 +25,9 @@ function tryReceiverGather(hit,aware,contested){
   ballPrev.copy(ball.position);return true;
 }
 function deflectBall(hit,contested=false){
-  const soft=!!hit.actor.profile&&hit.limb.hand&&!contested;
-  const surface=soft?hit.actor.velocity:hit.velocity;
+  const soft=!!hit.actor.profile&&hit.limb.hand&&!contested&&receiverCatchAware(hit.actor);
+  // Preserve moving-glove impulses, but bound the animation's extra kick on attempted catches.
+  const surface=soft?hit.actor.velocity.clone().add(hit.velocity.clone().sub(hit.actor.velocity).clampLength(0,3)):hit.velocity;
   const relative=ballVel.clone().sub(surface),normalSpeed=relative.dot(hit.normal);
   const restitution=soft?.12:hit.limb.hand?.30:.46;
   if(normalSpeed<0)relative.addScaledVector(hit.normal,-(1+restitution)*normalSpeed);
