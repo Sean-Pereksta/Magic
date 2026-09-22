@@ -1,4 +1,11 @@
 const RAW_CONCEPTS = {
+  endurance: {label: "Endurance",terms: ["endure", "endured", "endurance", "persevere", "perseverance", "steadfast", "patient", "patience"]},
+  temptation: {label: "Temptation",terms: ["temptation", "temptations", "tempted", "tempt", "lust", "desire", "snare"]},
+  fear: {label: "Fear",terms: ["fear", "afraid", "terror", "dread", "fear not", "do not fear"]},
+  healing: {label: "Healing",terms: ["heal", "healed", "healing", "restore", "restored", "bind up", "made whole"]},
+  worship: {label: "Worship",terms: ["worship", "worshipped", "worshiped", "praise", "praises", "glorify", "bow down"]},
+  warfare: {label: "Spiritual Warfare",terms: ["armor of God", "armour of God", "shield of faith", "sword of the Spirit", "resist the devil", "spiritual forces", "spiritual wickedness", "weapons of our warfare"]},
+  providence: {label: "Providence",terms: ["provide", "provided", "provision", "supply", "care for you", "cares for you", "daily bread", "works all things", "work together for good"]},
   god: {label: "God",terms: ["God", "Lord", "the Lord", "Almighty", "God Almighty", "Most High", "the Most High", "Yahweh"]},
   jesus: {label: "Jesus / Son of God",terms: ["Jesus", "Jesus Christ", "Christ Jesus", "Christ", "Son of God", "Son of Man", "Messiah", "Savior", "Saviour", "The Angel of the Lord"]},
   love: {label: "Love",terms: ["love", "loved", "loves", "loving", "charity", "beloved"]},
@@ -78,7 +85,7 @@ export const MULTIPLAYER_CATEGORY_KEYS = Object.freeze([
   "light", "holiness", "salvation", "resurrection", "life", "unity", "church", "freedom", "humility",
   "giving", "shepherd", "kingdom", "blood", "overcoming", "prayer", "spirit", "wisdom", "hope", "joy",
   "law", "word", "praise", "covenant", "righteousness", "cross", "eternal", "obedience", "repentance",
-  "courage", "justice", "patience", "thanksgiving", "family", "creation", "discipleship", "service"
+  "courage", "justice", "patience", "thanksgiving", "family", "creation", "discipleship", "service", "endurance", "temptation", "fear", "healing", "worship", "warfare", "providence"
 ]);
 
 export function getVerseConcept(key){
@@ -111,6 +118,12 @@ export function matchVerseConcept(text, key){
     }
   }
   return best;
+}
+
+// Classify once per verse for the roguelike index, avoiding 53 normalizations per row.
+export function classifyVerseKeys(text, keys = MULTIPLAYER_CATEGORY_KEYS){
+  const haystack = normalizeVerseText(text);
+  return keys.filter(key => VERSE_CONCEPTS[key]?.terms.some(term => haystack.includes(` ${term} `)));
 }
 
 export function matchVerseConcepts(text, keys = []){
