@@ -1438,7 +1438,7 @@ function carriedBallFrontZ(){return ball.position.z-(.19+.1425*Math.abs(football
 function releaseBlock(e){
   if(!e)return;const b=e.blocker,d=e.defender;
   if(b.blockEngagement===e){b.blockEngagement=null;b.blockPose=0;b.blockCooldown=Math.max(b.blockCooldown||0,.55);}
-  if(d.blockEngagement===e){d.blockEngagement=null;d.blockTime=0;d.blockSlow=1;d.blockCooldown=Math.max(d.blockCooldown||0,.85);}
+  if(d.blockEngagement===e){d.blockEngagement=null;d.blockPose=0;d.blockTime=0;d.blockSlow=1;d.blockCooldown=Math.max(d.blockCooldown||0,.85);}
 }
 function faceBlock(a,opponent,dt){
   const dx=opponent.mesh.position.x-a.mesh.position.x,dz=opponent.mesh.position.z-a.mesh.position.z;
@@ -1494,13 +1494,17 @@ function advanceBlockEngagements(dt){
     const leverage=-normal.dot(toRunner);
     if(gap>2.05||gap<.01||leverage<-.25||T.advanceEngagement(e,dt,leverage)){releaseBlock(e);continue;}
     b.blockPrevious=b.blockPrevious||new THREE.Vector3();b.blockPrevious.copy(b.mesh.position);
+    // Restore shoulder spacing after third-party contact without overriding the strength contest.
+    const overlap=Math.max(0,.40*(b.mesh.scale.x+d.mesh.scale.x)+.04-gap),separation=Math.min(overlap,dt*4);
+    const resistance=THREE.MathUtils.clamp(.5+e.edge*.4,.15,.85);
+    b.mesh.position.addScaledVector(normal,-separation*(1-resistance));d.mesh.position.addScaledVector(normal,separation*resistance);
     // The pair translates together: a weak defender cannot shove through a strong blocker.
     const velocity=normal.clone().multiplyScalar(e.driveSpeed),dx=velocity.x*dt,dz=velocity.z*dt;
     const safeX=THREE.MathUtils.clamp(dx,-24.9-Math.min(b.mesh.position.x,d.mesh.position.x),24.9-Math.max(b.mesh.position.x,d.mesh.position.x));
     b.mesh.position.x+=safeX;d.mesh.position.x+=safeX;b.mesh.position.z+=dz;d.mesh.position.z+=dz;
     b.velocity.copy(velocity);d.velocity.copy(velocity);b.impactVel.multiplyScalar(Math.pow(.01,dt));d.impactVel.multiplyScalar(Math.pow(.01,dt));
     b.heading.copy(normal);d.heading.copy(normal).negate();faceBlock(b,d,dt);faceBlock(d,b,dt);
-    b.blockPose=Math.max(.01,e.duration-e.elapsed);d.blockTime=b.blockPose;
+    b.blockPose=Math.max(.01,e.duration-e.elapsed);d.blockTime=b.blockPose;d.blockPose=b.blockPose;
     for(const a of [b,d]){a.runIntensity=Math.min(.65,Math.abs(e.driveSpeed)/3+.12);a.runPhase+=dt*(4+Math.abs(e.driveSpeed)*2);updateJump(a,dt,false);animatePlayerContact(a,dt);}
   }
 }
@@ -1671,7 +1675,7 @@ function update(dt,now){
   // Bound physics work to five substeps at the existing .035-second frame cap.
   if(ballLive&&dt>1/120+.000001){const steps=Math.ceil(dt/(1/120)),step=dt/steps;for(let i=0;i<steps;i++)update(step,now-(steps-i-1)*step*1000);return;}
   if(ballLive){contactStep=dt;previousBallAxis.copy(footballAxis());for(const a of [...receivers,...defenders])sampleContactRig(a,true);}
-  if(playState==='call'){updateFormationShift(dt,now);updatePreSnapDefense(dt,now);}
+  if(playState==='call'){updateFormationShift(dt,now);if(playState==='call')updatePreSnapDefense(dt,now);}
   if(playState==='countdown'){
     const progress=THREE.MathUtils.clamp(1-(snapTime-now)/motionDuration,0,1);
     for(const motion of V.motions(plays[selectedPlay],formationMotion)){

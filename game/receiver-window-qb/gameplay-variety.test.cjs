@@ -475,12 +475,13 @@ test('screens settle behind the line and block strength produces brief, bounded 
   assert.ok(strong.duration>weak.duration&&strong.slow<weak.slow);assert.ok(strong.duration<=.85&&weak.duration>=.12);
 });
 test('blocking requires contact, expires and cannot immediately re-lock a defender',()=>{
-  const q=game().q;q.run(`setupPlay(false);ballCarrier=receivers[0];playState='run';
-    receivers.forEach((r,i)=>r.mesh.position.set(i*10,0,0));defenders.forEach(d=>d.mesh.position.set(20,0,-30));
-    receivers[1].mesh.position.set(0,0,-2);receivers[1].heading.set(0,0,-1);defenders[0].mesh.position.set(0,0,-2.9);defenders[0].heading.set(0,0,1);
-    updateBlocking(.016);`);
-  const d=q.state().defenders[0];assert.ok(d.blockTime>0);assert.ok(d.blockCooldown>d.blockTime);
-  q.run('updateBlocking(1)');assert.equal(d.blockTime,0);assert.ok(d.blockCooldown>0);
+  const c=game(),q=c.q;c.Math.random=()=>.999;
+  q.run("setupPlay(false);ballCarrier=receivers[0];playState='run';receivers.forEach((r,i)=>r.mesh.position.set(i*10,0,0));defenders.forEach(d=>d.mesh.position.set(20,0,-30));receivers[1].mesh.position.set(0,0,-2);receivers[1].heading.set(0,0,-1);receivers[1].mesh.rotation.y=Math.PI;defenders[0].mesh.position.set(0,0,-5);defenders[0].heading.set(0,0,1);updateBlocking(.016)");
+  const b=q.state().receivers[1],d=q.state().defenders[0];assert.equal(d.blockTime,0,'no block without contact');
+  d.mesh.position.set(0,0,-2.9);q.run('updateBlocking(.016)');
+  assert.ok(d.blockTime>0);assert.equal(d.blockEngagement,b.blockEngagement);
+  for(let i=0;i<600&&d.blockEngagement;i++)q.run('advanceBlockEngagements(1/120)');
+  assert.equal(d.blockTime,0);assert.ok(d.blockCooldown>0);
   q.run('updateBlocking(.016)');assert.equal(d.blockTime,0);
 });
 test('rating physique controls the rendered dimensions independently of cosmetic saved build',()=>{
@@ -891,7 +892,7 @@ test('linked blocking is sustained, faces the opponent and drives according to r
 });
 test('a held block protects the carrier behind it but never hides an exposed support tackler',()=>{
   const c=game(),q=c.q;c.Math.random=()=>.999;const {b,d,r}=arrangeTacticalBlock(q);
-  b.mesh.position.set(0,0,0);b.blockPrevious=b.mesh.position.clone();d.mesh.position.set(0,0,-.55);r.mesh.position.set(0,0,.55);
+  b.mesh.scale.x=1;d.mesh.scale.x=1;r.mesh.scale.x=1;b.mesh.position.set(0,0,0);b.blockPrevious=b.mesh.position.clone();d.mesh.position.set(0,0,-.38);r.mesh.position.set(0,0,.38);
   d.tacklePrevious=d.mesh.position.clone();r.tacklePrevious=r.mesh.position.clone();
   assert.equal(q.tackleContact(d,r),null);
   const support=q.state().defenders[1];support.mesh.position.set(.55,0,.55);support.tacklePrevious=support.mesh.position.clone();
@@ -908,4 +909,17 @@ test('block shedding releases both actors and enforces a recovery window',()=>{
   const c=game(),q=c.q;c.Math.random=()=>.5;const {b,d}=arrangeTacticalBlock(q,30,100);
   for(let i=0;i<600&&b.blockEngagement;i++)q.run('advanceBlockEngagements(1/120)');
   assert.equal(b.blockEngagement,null);assert.equal(d.blockEngagement,null);assert.ok(d.blockCooldown>0);assert.equal(d.blockTime,0);
+});
+
+test('a lead blocker releases a held engagement to receive a pass into his hands',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.999;const {b,d}=arrangeTacticalBlock(q);
+  q.run("ballCarrier=null;playState='thrown';ballLive=true;receivers[1].route='Lead';ball.position.copy(receivers[1].mesh.position).add(new THREE.Vector3(0,1.6,.5));ballVel.set(0,0,-10)");
+  q.run('updateReceiver(receivers[1],1/120,gameTime)');
+  assert.equal(b.blockEngagement,null);assert.equal(d.blockEngagement,null);assert.ok(b.blockCooldown>0);
+});
+test('a queued audible snap does not wait for every defensive reassignment to finish',()=>{
+  const c=game(),q=c.q;c.Math.random=()=>.5;q.run("callPlay(plays.findIndex(p=>p.name==='Bunch Read Screen'))");
+  q.state().defenders.forEach(d=>{d.setRead.readyAt=100000;});q.beginCountdown();
+  for(let i=0;i<1800&&['call','countdown'].includes(q.state().playState);i++){q.run('gameTime+=1000/120');q.update(1/120,q.run('gameTime'));}
+  assert.equal(q.state().playState,'live');assert.ok(q.state().defenders.every(d=>d.setRead.readyAt>q.run('gameTime')));
 });

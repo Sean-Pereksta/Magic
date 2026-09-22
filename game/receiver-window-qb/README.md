@@ -329,3 +329,16 @@ not overall completion rates; placement, real contact, coverage and securing sti
 Validation: `node --test game/receiver-window-qb/*.test.cjs`. The added regressions
 cover conditional odds, reset/expiration, real wrist and glove contacts, both outcomes
 of contact contests, second-hand arrivals, and moving catches at 30/60/120 Hz.
+
+
+### Physical team audibles and strength blocking
+
+Choose another play in the pre-snap playbook to call its entire formation and assignments, including screens and lead blockers. The same receivers and defenders remain on the field. Receivers move into their new set with acceleration and turning limits; selecting Start while they move queues the snap and immediately hides the play menu. Once the offense is set, a team audible uses a short cadence instead of waiting for the defense. Motion plays retain the time needed for their motion paths.
+
+Defensive adjustments use delayed observed spacing, staggered reaction times and the existing coverage shell. Zone defenders shade their landmarks instead of knowing the called play; man defenders physically follow their assignments. Repeated audibles cannot restart an already-pending read. There is no defensive player or rating reroll.
+
+A block requires useful leverage, contact and the blocker facing the opponent. Both players stay in a shared engagement: relative strength controls duration, shedding rate, constrained tackle reach and drive direction. A defender without a strength advantage cannot obtain a random bull-rush through the held blocker. Stronger defenders can shed sooner or drive the pair backward; a stronger blocker can drive forward. Blocks always expire, lose effectiveness with time, release when leverage is lost, and have a re-engagement cooldown. A lead can release the block to catch an incoming pass.
+
+Carrier lane decisions use the same tackle reach as live contact checks, forecast crossing defenders and distinguish a physically protected block side from an exposed shoulder. Sidelines, pursuit, extra tacklers, and the existing retreat limits remain dangerous/authoritative. Existing screen outlet, burst and catching improvements are retained.
+
+Validation: run `node --test game/receiver-window-qb/*.test.cjs`. With Playwright installed, run `node game/receiver-window-qb/tactics-browser.cjs`; `QB_CHROMIUM_PATH` optionally selects the browser executable. This exercises desktop and mobile-touch layouts.
