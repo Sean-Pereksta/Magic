@@ -79,7 +79,7 @@
   function getPendingEnemyCount`, 'enemy caps');
 
     html = replacePattern(html,
-      /  function getEnemyScaling\(waveNumber = Math\.max\(1, catPower \|\| ratPower \|\| 1\)\)\{[\s\S]*?\n  \}\n  function scaleEnemyStats/,
+      /  function getEnemyScaling\(waveNumber = Math\.max\(1, catPower \|\| ratPower \|\| 1\)\)\{[\s\S]*?\n  function scaleEnemyStats/,
 `  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){
     const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;
     return {
@@ -204,7 +204,7 @@
       /  async function rabbitDenTick\(\)\{\s*\/\/ spawn rabbits from dens\s*if \(!window\.__lastRabbitSpawnAt\) window\.__lastRabbitSpawnAt = \{\};\s*for \(const den of getStructuresByType\("🐇"\)\)\{/,
       '  async function rabbitDenTick(){\n    // Friendly helpers also get a global ceiling so large den networks cannot create runaway simulation load.\n    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};\n    let livingRabbitCount = rabbits.filter(r => (r.health ?? 0) > 0).length;\n    for (const den of getStructuresByType("🐇")){\n      if (livingRabbitCount >= MAX_FRIENDLY_RABBITS) break;', 'rabbit global cap');
     html = replacePattern(html,
-      /(await runtimeSetDoc\(ccRef\(ID\.rabbit\(id\)\), \{ kind:"rabbit", id, x, y, health:5, createdAt:Date\.now\(\) \}, \{ merge:true \} \);\s*)(window\.__lastRabbitSpawnAt\[denKey\] = Date\.now\(\);)/,
+      /(await runtimeSetDoc\(ccRef\(ID\.rabbit\(id\)\), \{ kind:"rabbit", id, x, y, health:5, createdAt:Date\.now\(\) \}, \{ merge:true \}\s*\);\s*)(window\.__lastRabbitSpawnAt\[denKey\] = Date\.now\(\);)/,
       '$1livingRabbitCount++;\n      $2', 'rabbit counter');
 
     html = replaceExact(html,
@@ -276,3 +276,4 @@
 </script>
 </body>
 </html>
+
