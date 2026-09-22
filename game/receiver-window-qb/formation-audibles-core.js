@@ -137,6 +137,12 @@
       offenseBaseSeconds:clamp(.48+mismatch*.20,.48,.72)};
   }
 
+  function defensiveAdjustmentElapsed({now,startedAt,committedAt=0,countdownScale=.22}){
+    const pre=Math.max(0,((committedAt||now)-startedAt)/1000);
+    if(!committedAt)return pre;
+    return pre+Math.max(0,(now-committedAt)/1000)*clamp(countdownScale,0,1);
+  }
+
   function moveTowards(position,target,maxDistance){
     const dx=target.x-position.x,dy=(target.y||0)-(position.y||0),dz=target.z-position.z;
     const distance=Math.hypot(dx,dy,dz);
@@ -160,5 +166,5 @@
     return [...catalog].sort((a,b)=>score(b)-score(a)||a.index-b.index).slice(0,12);
   }
 
-  return {clamp,lerp,smooth,normalize,BASE_PLAYS,GROUP_ORDER,hashString,seededRandom,isScreenPlay,formationShape,playMeta,buildCatalog,setMismatch,coverageTraits,defenseResponsePlan,moveTowards,recommendedPlays};
+  return {clamp,lerp,smooth,normalize,BASE_PLAYS,GROUP_ORDER,hashString,seededRandom,isScreenPlay,formationShape,playMeta,buildCatalog,setMismatch,coverageTraits,defenseResponsePlan,defensiveAdjustmentElapsed,moveTowards,recommendedPlays};
 });
