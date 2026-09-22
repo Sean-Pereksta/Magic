@@ -3,7 +3,7 @@
   'use strict';
   const C=root.QBFormationAudibles,doc=root.document,THREE=root.THREE;
   if(!C||!doc||!THREE||root.__qbFormationAudiblesInstalled)return;
-  const {clamp,lerp,smooth,normalize,GROUP_ORDER,buildCatalog,recommendedPlays,hashString,defenseResponsePlan,moveTowards}=C;
+  const {clamp,lerp,smooth,normalize,GROUP_ORDER,buildCatalog,recommendedPlays,hashString,defenseResponsePlan,defensiveAdjustmentElapsed,moveTowards}=C;
   function installBrowser(){
     const doc=root.document,THREE=root.THREE;
     if(!doc||!THREE||root.__qbFormationAudiblesInstalled)return;
@@ -155,7 +155,7 @@
         return {mesh,start,target,correctTarget:ownTarget,rule,lastControlled:{...start},released:false,corrected:!rule.busted,caughtAtSnap:false};
       }).filter(move=>move.mesh);
       const snap=doc.getElementById('snapBtn'),wasDisabled=!!snap?.disabled;if(snap)snap.disabled=true;
-      transition={...context,startedAt:now,lastAt:now,offenseDuration,offense,defense,offenseReady:false,snapWasDisabled:wasDisabled,snapAt:0,liveAt:0,phase:'call'};
+      transition={...context,startedAt:now,lastAt:now,offenseDuration,offense,defense,offenseReady:false,snapWasDisabled:wasDisabled,commitAt:0,liveAt:0,phase:'call'};
       const late=context.plan.defenders.filter(d=>d.delay>.65||d.busted).length;
       status(`<b>${context.from.setLabel.toUpperCase()} → ${context.to.setLabel.toUpperCase()}</b><br>Offense changing sets · defense communicating (${late} late reads)`,{quick:false});
     }
@@ -167,18 +167,23 @@
 
     function updateCallShift(now,dt,phaseName){
       if(!transition)return;
-      if(['live','thrown','run','tackle'].includes(phaseName)){
-        if(!transition.liveAt){
-          transition.liveAt=now;
-          for(const move of transition.defense){
-            const distance=Math.hypot(move.mesh.position.x-move.correctTarget.x,move.mesh.position.z-move.correctTarget.z);
-            move.caughtAtSnap=!move.corrected||distance>1.25;
-          }
+      const captureSnapCommit=()=>{
+        if(transition.commitAt)return;
+        transition.commitAt=now;
+        for(const move of transition.defense){
+          const distance=Math.hypot(move.mesh.position.x-move.correctTarget.x,move.mesh.position.z-move.correctTarget.z);
+          move.caughtAtSnap=!move.corrected||distance>1.25;
         }
+      };
+      if(phaseName==='countdown')captureSnapCommit();
+      if(['live','thrown','run','tackle'].includes(phaseName)){
+        captureSnapCommit();
+        transition.liveAt=transition.liveAt||now;
         updateLiveShift(now,dt);return;
       }
       if(!['call','countdown'].includes(phaseName)){cancelTransition(false);return}
-      const elapsed=(now-transition.startedAt)/1000;
+      const elapsed=defensiveAdjustmentElapsed({now,startedAt:transition.startedAt,committedAt:transition.commitAt,countdownScale:.22});
+      const defenseDt=phaseName==='countdown'?dt*.22:dt;
       if(phaseName==='call'){
         let offenseReady=true;
         for(const move of transition.offense){
@@ -200,7 +205,7 @@
         }
         const correcting=!rule.busted||elapsed>=rule.correctionAt,target=correcting?move.correctTarget:move.target;
         const current={x:move.mesh.position.x,y:move.mesh.position.y,z:move.mesh.position.z};
-        const next=moveTowards(current,target,rule.speed*dt);setPosition(move.mesh,next);faceMovement(move.mesh,current,next,.24);move.lastControlled={x:next.x,y:next.y,z:next.z};
+        const next=moveTowards(current,target,rule.speed*defenseDt);setPosition(move.mesh,next);faceMovement(move.mesh,current,next,.24);move.lastControlled={x:next.x,y:next.y,z:next.z};
         if(rule.busted&&correcting&&next.reached)move.corrected=true;
         if(rule.busted&&!move.corrected)busted++;
         if(!next.reached)moving++;
