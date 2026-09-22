@@ -1,3 +1,16 @@
+/* Load the isolated screen tuning before the player can enter or start gameplay. */
+(()=>{
+  'use strict';
+  const source='receiver-window-qb/screen-playability.js';
+  if(document.querySelector(`script[src="${source}"]`))return;
+  const gates=['startBtn','continueBtn','snapBtn'].map(id=>document.getElementById(id)).filter(Boolean).map(el=>({el,disabled:el.disabled}));
+  gates.forEach(({el})=>{el.disabled=true;});
+  const script=document.createElement('script');script.src=source;script.async=false;
+  const release=()=>gates.forEach(({el,disabled})=>{el.disabled=disabled;});script.onload=release;script.onerror=release;
+  const anchor=document.currentScript;
+  if(anchor?.parentNode)anchor.parentNode.insertBefore(script,anchor.nextSibling);else document.head.appendChild(script);
+})();
+
 /* Keyboard navigation is scoped to the top visible menu, never live aiming. */
 (()=>{
   'use strict';
