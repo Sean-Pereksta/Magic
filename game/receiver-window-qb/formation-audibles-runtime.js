@@ -34,9 +34,9 @@
     const phase=()=>doc.body?.dataset?.phase||'';
 
     function currentPlayIndex(){
-      const text=doc.getElementById('playName')?.textContent||'';
-      const found=catalog.find(play=>text.startsWith(play.name)||normalize(text).startsWith(normalize(play.name)));
-      return found?found.index:currentIndex;
+      const selected=doc.querySelector('#playGrid [data-play].selected');
+      if(selected&&Number.isInteger(Number(selected.dataset.play)))return Number(selected.dataset.play);
+      return currentIndex;
     }
 
     function injectStyles(){
@@ -114,10 +114,8 @@
     function hideStatus(){const node=doc.getElementById('audibleShiftStatus');node?.classList.remove('active','quick');statusHideAt=0}
 
     function findPlayButton(index){
-      const buttons=[...doc.querySelectorAll('#playGrid button')];
-      if(buttons[index])return buttons[index];
-      const name=normalize(catalog[index]?.name);
-      return buttons.find(button=>normalize(button.textContent).includes(name));
+      return doc.querySelector(`#playGrid [data-play="${index}"]`)||
+        [...doc.querySelectorAll('#playGrid button')].find(button=>normalize(button.textContent).includes(normalize(catalog[index]?.name)));
     }
 
     function callTeamAudible(targetIndex){
@@ -256,8 +254,8 @@
 
     function init(){
       injectStyles();catalog=buildCatalog(root.QBVariety?.concepts||[]);ensureUI();
-      const playName=doc.getElementById('playName');
-      if(playName)new MutationObserver(()=>{currentIndex=currentPlayIndex()}).observe(playName,{childList:true,subtree:true,characterData:true});
+      const playGrid=doc.getElementById('playGrid');
+      if(playGrid)new MutationObserver(()=>{currentIndex=currentPlayIndex()}).observe(playGrid,{subtree:true,attributes:true,attributeFilter:['class']});
       doc.addEventListener('keydown',event=>{
         if(event.shiftKey&&event.code==='KeyA'&&phase()==='call'&&!event.repeat){event.preventDefault();event.stopImmediatePropagation();openTeamAudibles();return}
         if(transition&&!transition.offenseReady&&phase()==='call'&&event.code==='Space'){
