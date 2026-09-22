@@ -4,7 +4,20 @@ import {runtime} from './runtime-test-helper.mjs';
 
 function start(touch=false){const h=runtime(touch);h.run('startNewGame()');h.step(3);return h;}
 function clear(h){
-  h.run(`if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});for(const e of [...game.enemies]){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();game.pendingLevelUps=0;game.loot=null;document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));modalPause=false;paused=false;`);
+  // Routing tests finish the real intensity waves; timing and early-clear guards
+  // have their own focused regression coverage in campaign-waves.test.mjs.
+  h.run(`
+    if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});
+    for(let wave=0;wave<4&&!game.roomData.cleared;wave++){
+      for(const e of [...game.enemies]){e.hp=0;e.dead=true;}
+      game.enemies=[];markRoomCleared();
+      if(!game.roomData.cleared){intensityTickEncounter(3);intensityTickEncounter(1.1);}
+    }
+    game.pendingLevelUps=0;game.loot=null;
+    document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));
+    modalPause=false;paused=false;
+  `);
+  assert.equal(h.run('game.roomData.cleared'),true,'all encounter waves completed');
 }
 function inside(h,room){const dir=h.run(`Object.keys(AWTravel.exits()).find(d=>AWTravel.exits()[d].id===game.campaign.current&&AWTravel.exits()[d].room===${room})`);assert.ok(dir,'internal dungeon connection to '+room);h.run(`transitionRoom(0,0,'${dir}')`);}
 function route(h,target){
