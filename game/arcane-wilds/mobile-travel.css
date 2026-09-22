@@ -1,0 +1,164 @@
+/* Mobile-only final overrides. High specificity intentionally wins over the older
+ * campaign layout and dynamically injected HUD styles without scaling tap targets.
+ * Keep the original desktop HUD and all full-screen menus available.
+ */
+#awMobileMenuToggle { display: none; }
+html.aw-mobile-compact {
+  --aw-mobile-left: calc(4px + env(safe-area-inset-left, 0px));
+  --aw-mobile-right: calc(4px + env(safe-area-inset-right, 0px));
+  --aw-mobile-top: calc(4px + env(safe-area-inset-top, 0px));
+  --aw-mobile-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  --aw-mobile-dock-height: calc(var(--aw-mobile-spell-rows, 1) * 65px + 3px);
+}
+html.aw-mobile-compact body #hud .hud-top {
+  top: var(--aw-mobile-top) !important;
+  left: var(--aw-mobile-left) !important;
+  right: var(--aw-mobile-right) !important;
+  gap: 6px !important;
+}
+html.aw-mobile-compact body #hud .status-card {
+  width: 132px !important; max-width: 43vw !important; min-width: 0 !important;
+  padding: 4px 5px !important; border-radius: 6px !important;
+}
+html.aw-mobile-compact body #hud .status-line {
+  gap: 3px !important; font-size: 9px !important; line-height: 12px !important;
+  margin-bottom: 3px !important;
+}
+html.aw-mobile-compact body #heroLabel {
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 8px !important;
+}
+html.aw-mobile-compact body #hpText { flex-shrink: 0; font-size: 9px !important; }
+html.aw-mobile-compact body #hud .bar.hp { height: 6px !important; }
+html.aw-mobile-compact body #hud .bar.xp { height: 2px !important; margin-top: 2px !important; }
+html.aw-mobile-compact body #hpBarLabel,
+html.aw-mobile-compact body #hud .status-bottom,
+html.aw-mobile-compact body #roomSub,
+html.aw-mobile-compact body #minimap,
+html.aw-mobile-compact body #materialsPill,
+html.aw-mobile-compact body #awPrompt { display: none !important; }
+html.aw-mobile-compact body #hud .room-card {
+  width: 104px !important; max-width: 34vw !important; min-width: 0 !important;
+  padding: 3px 5px !important; border-radius: 6px !important;
+}
+html.aw-mobile-compact body #roomName {
+  font-size: 9px !important; line-height: 12px !important; letter-spacing: 0 !important;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+html.aw-mobile-compact body #roomState {
+  display: block !important; padding: 0 !important; margin-top: 1px !important;
+  font-size: 8px !important; line-height: 11px !important; letter-spacing: 0 !important;
+  border: 0 !important; background: none !important;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+html.aw-mobile-compact body #gold {
+  left: var(--aw-mobile-left) !important; right: auto !important;
+  top: calc(var(--aw-mobile-top) + 36px) !important; bottom: auto !important;
+  font-size: 9px !important; padding: 2px 4px !important; border-radius: 4px !important;
+}
+html.aw-mobile-compact body #awShadowCounter {
+  top: calc(var(--aw-mobile-top) + 56px) !important; left: var(--aw-mobile-left) !important;
+  max-width: 38vw !important; font-size: 8px !important; line-height: 11px !important;
+  padding: 2px 4px !important; border-radius: 4px !important;
+}
+html.aw-mobile-compact body #bossHud {
+  top: calc(var(--aw-mobile-top) + 79px) !important;
+  width: min(190px, 48vw) !important;
+}
+html.aw-mobile-compact body #bossHud .boss-name {
+  font-size: 9px !important; line-height: 12px !important;
+  letter-spacing: 0 !important; margin-bottom: 2px !important;
+}
+html.aw-mobile-compact body #bossHud .bossbar { height: 5px !important; }
+/* Secondary tools occupy one small button until explicitly expanded. */
+html.aw-mobile-compact body #awMobileMenuToggle {
+  display: grid; position: absolute; pointer-events: auto;
+  right: var(--aw-mobile-right); top: calc(var(--aw-mobile-top) + 34px);
+  width: 32px; height: 32px; min-width: 0; min-height: 0;
+  padding: 0; font-size: 11px; letter-spacing: -1px; border-radius: 8px;
+}
+html.aw-mobile-compact body #buttons {
+  display: none !important; left: auto !important;
+  top: calc(var(--aw-mobile-top) + 34px) !important; bottom: auto !important;
+  right: calc(var(--aw-mobile-right) + 38px) !important;
+  grid-template-columns: repeat(3, 32px) !important;
+  gap: 5px !important; padding: 5px !important; border-radius: 8px;
+  background: #08101bf5; border: 1px solid #a9997355; z-index: 2;
+}
+html.aw-mobile-compact.aw-mobile-tools-open body #buttons { display: grid !important; }
+html.aw-mobile-compact body #buttons .round-btn {
+  width: 32px !important; height: 32px !important; min-width: 0 !important; min-height: 0 !important;
+  font-size: 16px !important; padding: 0 !important;
+}
+/* Spells are NOT scaled down: every slot remains 54 x 60 CSS pixels. */
+html.aw-mobile-compact body #hud #spells {
+  display: grid !important; grid-template-columns: repeat(3, 54px) !important;
+  grid-auto-rows: 60px; justify-content: end; gap: 5px !important;
+  left: auto !important; right: var(--aw-mobile-right) !important;
+  bottom: var(--aw-mobile-bottom) !important; top: auto !important;
+  transform: none !important; padding: 3px !important; margin: 0 !important;
+  width: max-content !important; max-width: none !important;
+  border-radius: 10px !important; pointer-events: auto;
+}
+html.aw-mobile-compact body #hud #spells .spell-slot {
+  width: 54px !important; height: 60px !important; min-width: 54px !important; min-height: 60px !important;
+  padding: 3px !important; border-radius: 8px !important;
+}
+html.aw-mobile-compact body #hud #spells .spell-icon {
+  height: 29px !important; margin-top: 4px !important; font-size: 24px !important;
+}
+html.aw-mobile-compact body #hud #spells .spell-icon svg { width: 27px !important; height: 27px !important; }
+html.aw-mobile-compact body #hud #spells .spell-name {
+  font-size: 8px !important; line-height: 10px !important; max-width: 46px !important; margin: 1px 0 !important;
+}
+html.aw-mobile-compact body #hud #spells .cooldown-text { font-size: 16px !important; }
+/* Keep aiming above the spell dock, movement at lower-left and utility actions
+ * alongside aim. Explicit min sizes override the old 58px Dodge minimum. */
+html.aw-mobile-compact body #moveZone,
+html.aw-mobile-compact body #aimZone {
+  width: 88px !important; height: 88px !important; top: auto !important;
+  transform: none !important; opacity: .65;
+}
+html.aw-mobile-compact body #moveZone {
+  bottom: var(--aw-mobile-bottom) !important; left: var(--aw-mobile-left) !important; right: auto !important;
+}
+html.aw-mobile-compact body #aimZone {
+  bottom: calc(var(--aw-mobile-bottom) + var(--aw-mobile-dock-height) + 10px) !important;
+  right: var(--aw-mobile-right) !important; left: auto !important;
+}
+html.aw-mobile-compact body #mobileControls .stick-base {
+  width: 64px !important; height: 64px !important; top: 12px !important; left: 12px !important;
+}
+html.aw-mobile-compact body #mobileControls .stick-knob { width: 24px !important; height: 24px !important; }
+html.aw-mobile-compact body #mobileDodge,
+html.aw-mobile-compact body #mobileInteract {
+  left: auto !important; right: calc(var(--aw-mobile-right) + 98px) !important;
+  top: auto !important; width: 44px !important; height: 40px !important;
+  min-width: 0 !important; min-height: 0 !important;
+  font-size: 8px !important; line-height: 11px !important;
+  padding: 2px !important; white-space: normal !important; border-radius: 10px !important;
+}
+html.aw-mobile-compact body #mobileDodge {
+  bottom: calc(var(--aw-mobile-bottom) + var(--aw-mobile-dock-height) + 10px) !important;
+}
+html.aw-mobile-compact body #mobileInteract {
+  bottom: calc(var(--aw-mobile-bottom) + var(--aw-mobile-dock-height) + 58px) !important;
+}
+html.aw-mobile-compact body #toast {
+  top: calc(var(--aw-mobile-top) + 105px) !important; bottom: auto !important;
+  max-width: 65vw !important; padding: 4px 7px !important; font-size: 10px !important;
+}
+html.aw-mobile-compact body .aw-notice { padding: 5px 10px !important; }
+html.aw-mobile-compact body .aw-notice strong { font-size: 15px !important; letter-spacing: 1px !important; }
+html.aw-mobile-compact body .aw-notice span { font-size: 9px !important; margin-top: 3px !important; }
+@media (orientation: portrait), (max-width: 479px) {
+  html.aw-mobile-compact body #hud #spells[data-spell-slots="4"] .spell-slot:nth-child(4) { grid-column: 3; }
+  html.aw-mobile-compact body #hud #spells[data-spell-slots="5"] .spell-slot:nth-child(4) { grid-column: 2; }
+}
+@media (orientation: landscape) and (min-width: 480px) {
+  html.aw-mobile-compact body #buttons { grid-template-columns: repeat(6, 32px) !important; }
+  html.aw-mobile-compact { --aw-mobile-dock-height: 68px; }
+  html.aw-mobile-compact body #hud #spells {
+    grid-template-columns: none !important; grid-auto-flow: column; grid-auto-columns: 54px;
+  }
+}
