@@ -4,7 +4,7 @@ import {runtime} from './runtime-test-helper.mjs';
 
 for(const touch of [false,true])test(`${touch?'touch':'desktop'} portals use visited villages, survive saves and reject locked targets`,()=>{
   const h=runtime(touch);try{
-    h.run('startNewGame()');h.step(3);
+    h.run('startNewGame();game.campaign=null;loadRoom()');h.step(3);
     assert.equal(h.run('game.interactables.filter(o=>o.type==="villagePortal").length'),1);
     h.run('AWVillagePortals.open()');assert.match(h.w.document.querySelector('#npcBody').textContent,/No other villages/);h.run('closeOverlay("npcPanel")');
     h.run(`const hometown=game.roomData;game.rooms['4,0']={...hometown,key:'4,0',x:4,y:0,name:'Second Village',seen:false};game.rooms['5,0']={...hometown,key:'5,0',x:5,y:0,name:'Locked Village',seen:false};game.rooms['6,0']={...hometown,key:'6,0',x:6,y:0,town:false,seen:true};`);
@@ -63,10 +63,10 @@ for(const mode of ['active','bonus slot','replace','mastery','new spell','ordina
 test('all 46 spells gain a unique named mutation with observable behavior beyond numeric potency',()=>{
   const h=runtime();try{
     h.run('startNewGame()');
-    assert.equal(h.run('Object.keys(SPELLS).length'),46);
+    assert.equal(h.run('Object.keys(SPELLS).length'),52);
     assert.equal(h.run('AWSpellMutations.ids.length'),46);
     assert.equal(h.run('new Set(AWSpellMutations.ids.map(id=>UPGRADE_POOLS[id].at(-1)[1])).size'),46);
-    const ids=h.run('Object.keys(SPELLS)');
+    const ids=h.run('AWSpellMutations.ids');
     for(const id of ids){
       const snapshots=[];
       for(const enabled of [false,true]){

@@ -23,7 +23,7 @@
       if(!this.ready){this.x=tx;this.y=ty;this.ready=true;}
       const blend=1-Math.exp(-dt*(game.enemies.length?13:9));
       this.x=lerp(this.x,tx,blend);this.y=lerp(this.y,ty,blend);
-      const target=game.enemies.length>14?.93:game.enemies.some(e=>e.boss)?.96:1;
+      const target=game.campaign?.riding?.88:game.enemies.length>14?.93:game.enemies.some(e=>e.boss)?.96:1;
       this.kick=Math.max(0,this.kick-dt*.22);this.zoom=lerp(this.zoom,target+this.kick,1-Math.exp(-dt*6));
       this.shakeX=Math.sin(frameAt*.073)*Math.min(8,shake)*settings.shake;
       this.shakeY=Math.sin(frameAt*.097)*Math.min(5,shake)*settings.shake;
@@ -59,7 +59,8 @@
       if(this.ambience?.biome===biome){this.ambience.gain.gain.setTargetAtTime(settings.music*.022,ac.currentTime,.25);return;}
       if(this.ambience){this.ambience.gain.gain.setTargetAtTime(0,ac.currentTime,.4);for(const o of this.ambience.osc)o.stop(ac.currentTime+2);}
       const gain=ac.createGain();gain.gain.value=0;gain.connect(ac.destination);gain.gain.setTargetAtTime(settings.music*.022,ac.currentTime,.6);
-      const base=/crypt|gloam|volcanic/.test(biome)?73.42:/town|meadow/.test(biome)?130.81:110;
+      const theme=window.AWCampaignData?.towns[biome.replace('campaign_','')]?.theme||biome;
+      const base=/crypt|gloam|volcanic/.test(theme)?73.42:/celestial/.test(theme)?164.81:/crystal|frost/.test(theme)?146.83:/storm/.test(theme)?98:/town|meadow|forest|thornwild/.test(theme)?130.81:110;
       const osc=[1,1.5,2].map(f=>{const o=ac.createOscillator();o.type='sine';o.frequency.value=base*f;o.connect(gain);o.start();o.onended=()=>o.disconnect();return o;});
       this.ambience={biome,gain,osc};
     }
