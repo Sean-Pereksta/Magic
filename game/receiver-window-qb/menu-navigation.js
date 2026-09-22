@@ -1,12 +1,12 @@
-/* Load the isolated screen tuning before the player can leave the franchise menu. */
+/* Load the isolated screen tuning before the player can enter or start gameplay. */
 (()=>{
   'use strict';
   const source='receiver-window-qb/screen-playability.js';
   if(document.querySelector(`script[src="${source}"]`))return;
-  const start=document.getElementById('startBtn'),wasDisabled=!!start?.disabled;
-  if(start)start.disabled=true;
+  const gates=['startBtn','continueBtn','snapBtn'].map(id=>document.getElementById(id)).filter(Boolean).map(el=>({el,disabled:el.disabled}));
+  gates.forEach(({el})=>{el.disabled=true;});
   const script=document.createElement('script');script.src=source;script.async=false;
-  const release=()=>{if(start)start.disabled=wasDisabled;};script.onload=release;script.onerror=release;
+  const release=()=>gates.forEach(({el,disabled})=>{el.disabled=disabled;});script.onload=release;script.onerror=release;
   const anchor=document.currentScript;
   if(anchor?.parentNode)anchor.parentNode.insertBefore(script,anchor.nextSibling);else document.head.appendChild(script);
 })();
