@@ -47,7 +47,7 @@ tests=tests[:start]+block+tests[end:]
 name="test('another actual hand contact breaks a provisional catch and can be intercepted after separation'"
 start=tests.index(name);end=tests.index('\ntest(',start+1)
 block=tests[start:end]
-block=replace_once(block,'q.ballPrev.copy(q.ball.position);','q.ballPrev.copy(q.ball.position);c.Math.random=()=>.999;')
+block=replace_once(block,'q.sampleContactRig(d,true);q.ballPrev.copy(q.ball.position);','q.sampleContactRig(d,true);q.ballPrev.copy(q.ball.position);c.Math.random=()=>.999;')
 block=replace_once(block,'ballAtHand(q,d);assert.ok','c.Math.random=()=>0;ballAtHand(q,d);assert.ok')
 tests=tests[:start]+block+tests[end:]+NEW_TESTS
 
