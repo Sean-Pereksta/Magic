@@ -495,6 +495,7 @@
     .card.power .card-center{font-size:10px;padding-top:9px}
   }
 </style>
+<link rel="stylesheet" href="./thegame/match.css">
 </head>
 <body>
 <div class="app" id="app">
@@ -580,11 +581,13 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction
+  getFirestore, doc, getDoc, onSnapshot, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   getAuth, signInAnonymously, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+import { revisionOf, sameVersion, decorateCommit } from "./thegame/sync.mjs";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -633,6 +636,45 @@ let resolvingVote = false;
 let voteTick = null;
 let unsubLobby = null;
 let unsubGame = null;
+let serverReady = false;
+let confirmedRevision = -1;
+let listenerFailed = false;
+let activeIntent = null;
+const $sync = document.createElement("button");
+$sync.type = "button";
+$sync.className = "sync-status";
+$sync.setAttribute("aria-live","polite");
+document.querySelector(".top-row").appendChild($sync);
+function syncStatus() {
+  $sync.textContent = listenerFailed ? "Connection failed · Retry" : !navigator.onLine ? "Offline · moves paused" : !serverReady ? "Reconnecting…" : actionBusy ? "Saving move…" : "● Live";
+  $sync.dataset.ready = String(serverReady && navigator.onLine && !actionBusy);
+}
+function canSend() { return serverReady && navigator.onLine && !listenerFailed; }
+$sync.addEventListener("click",() => { if (listenerFailed) startSubscriptions(); });
+window.addEventListener("offline",() => { serverReady = false; syncStatus(); if (G) renderAll(); });
+window.addEventListener("online",() => startSubscriptions());
+syncStatus();
+
+// Pin each input to the snapshot the player actually saw. Firebase may retry
+// callbacks; a stale input must never be reinterpreted against a later turn.
+async function commitAction(callback, strict = true) {
+  const expected = (strict && activeIntent?.state) || G;
+  const id = (strict && activeIntent?.id) || crypto.randomUUID();
+  return runTransaction(db,async native => {
+    const snap = await native.get(gameRef);
+    if (!snap.exists()) throw new Error("Game room is missing.");
+    const state = snap.data();
+    if (state.lastAction?.id === id) return;
+    if (!(state.players || []).includes(me)) throw new Error("You are not in this match.");
+    if (strict && !sameVersion(state,expected)) throw new Error("The match changed. Review the board and try again.");
+    const write = (ref,patch,replace) => {
+      const data = decorateCommit(state,patch,{id,actor:me},replace);
+      data.committedAt = serverTimestamp();
+      if (replace) native.set(ref,data); else native.update(ref,data);
+    };
+    await callback({get:async () => snap,update:(ref,patch) => write(ref,patch,false),set:(ref,patch) => write(ref,patch,true)});
+  });
+}
 
 const el = id => document.getElementById(id);
 const $players = el("players");
@@ -823,30 +865,43 @@ function buildGame2(players,host) {
 }
 
 async function ensureRoom() {
+  // A running match owns its roster even if the lobby changes during a disconnect.
+  const savedMatch = await getDoc(gameRef);
+  if (savedMatch.exists()) {
+    if (!(savedMatch.data().players || []).includes(me)) throw new Error("You are not in this match.");
+    return;
+  }
   const lobbySnap = await getDoc(lobbyRef);
   if (!lobbySnap.exists()) throw new Error("Lobby not found.");
   LOBBY = lobbySnap.data();
   const players = lobbyPlayers(LOBBY);
   if (!players.length) throw new Error("This lobby has no players.");
-  if (!players.includes(me)) toast("Your username is not listed in this lobby.",2600);
-
-  const gameSnap = await getDoc(gameRef);
-  if (gameSnap.exists()) return;
+  if (!players.includes(me)) throw new Error("Your username is not listed in this lobby.");
 
   const host = lobbyHostName(LOBBY) || players[0];
   if (host !== me) return;
-  const startedAt = Date.now();
-  await setDoc(gameRef,{
-    phase:"voting",host,players,votes:{},startedAt,deadline:startedAt + 20000,
-    choice:null,log:[makeLog("Voting opened for Classic or Game 2.0.")],updatedAt:Date.now()
+  await runTransaction(db,async transaction => {
+    const existing = await transaction.get(gameRef);
+    const freshLobby = await transaction.get(lobbyRef);
+    if (existing.exists()) return;
+    if (!freshLobby.exists()) throw new Error("Lobby not found.");
+    const players = lobbyPlayers(freshLobby.data());
+    const host = lobbyHostName(freshLobby.data()) || players[0];
+    if (host !== me || !players.includes(me)) return;
+    const startedAt = Date.now();
+    transaction.set(gameRef,{
+      phase:"voting",host,players,votes:{},startedAt,deadline:startedAt + 20000,
+      revision:1,matchId:crypto.randomUUID(),committedAt:serverTimestamp(),
+      choice:null,log:[makeLog("Voting opened for Classic or Game 2.0.")],updatedAt:startedAt
+    });
   });
 }
 
 async function resolveVoteIfReady(forceTimeout = false) {
-  if (resolvingVote) return;
+  if (resolvingVote || !canSend() || !G?.players?.includes(me)) return;
   resolvingVote = true;
   try {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) return;
       const state = snap.data();
@@ -861,17 +916,19 @@ async function resolveVoteIfReady(forceTimeout = false) {
       const choice = tally.game2 > tally.classic ? "game2" : "classic";
       const next = choice === "game2" ? buildGame2(players,state.host) : buildClassic(players,state.host);
       transaction.set(gameRef,{...next,choice});
-    });
+    },false);
   } finally {
     resolvingVote = false;
   }
 }
 
 async function castVote(choice) {
-  if (actionBusy) return;
+  if (actionBusy || !canSend()) return;
   actionBusy = true;
+  syncStatus();
+  renderControls();
   try {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -879,29 +936,62 @@ async function castVote(choice) {
       if (!(state.players || []).includes(me)) throw new Error("You are not in this game.");
       const votes = {...(state.votes || {}),[me]:choice};
       transaction.update(gameRef,{votes,updatedAt:Date.now()});
-    });
+    },false);
     await resolveVoteIfReady(false);
   } catch (error) {
     toast(error.message || "Could not vote.");
   } finally {
     actionBusy = false;
+    syncStatus();
+    renderControls();
   }
 }
 
 function startSubscriptions() {
-  unsubLobby = onSnapshot(lobbyRef,snapshot => {
-    if (snapshot.exists()) LOBBY = snapshot.data();
-  },error => toast(`Lobby connection: ${error.message}`,2600));
-
-  unsubGame = onSnapshot(gameRef,snapshot => {
+  unsubLobby?.();
+  unsubGame?.();
+  clearTimeout(voteTick);
+  serverReady = false;
+  listenerFailed = false;
+  syncStatus();
+  if (G) renderAll();
+  // The roster is frozen in the match document; no second live lobby listener.
+  unsubGame = onSnapshot(gameRef,{includeMetadataChanges:true},snapshot => {
+    const confirmed = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
+    serverReady = confirmed && navigator.onLine;
+    syncStatus();
     if (!snapshot.exists()) {
+      G = null;
+      serverReady = false;
+      syncStatus();
       renderConnecting("Waiting for the host to create the game…");
       return;
     }
-    G = snapshot.data();
+    const next = snapshot.data();
+    if (snapshot.metadata.hasPendingWrites) { renderControls(); return; }
+    if (!confirmed && G) { renderAll(); return; }
+    if (confirmed && revisionOf(next) < confirmedRevision) {
+      serverReady = false;
+      syncStatus();
+      renderAll();
+      return;
+    }
+    const previous = G;
+    const changed = !previous || !sameVersion(previous,next);
+    if (confirmed) confirmedRevision = revisionOf(next);
+    G = next;
+    if (changed) { clearSelection(); closePowersSheet(); }
     if (G.phase !== "voting") clearTimeout(voteTick);
     renderAll();
-  },error => toast(`Game connection: ${error.message}`,3000));
+    if (confirmed && changed && previous) animateMatchChange(previous,G);
+  },error => {
+    listenerFailed = true;
+    serverReady = false;
+    clearTimeout(voteTick);
+    syncStatus();
+    if (G) renderAll();
+    toast(`Game connection: ${error.message}`,3000);
+  });
 }
 
 function renderConnecting(message) {
@@ -923,11 +1013,12 @@ function renderAll() {
   renderMessage();
   renderLog();
   renderControls();
+  syncStatus();
 }
 
 function renderMode() {
   if (!G) return;
-  $modeLabel.textContent = G.phase === "game2" ? "Game 2.0" : G.phase === "game" ? "Classic" : "Mode vote";
+  $modeLabel.textContent = G.phase === "voting" ? "Mode vote" : G.mode === "game2" ? "Game 2.0" : "Classic";
 }
 
 function renderVote() {
@@ -942,6 +1033,7 @@ function renderVote() {
   const remaining = Math.max(0,Number(G.deadline || 0) - Date.now());
   $voteTimer.textContent = `${Math.ceil(remaining / 1000)}s`;
   clearTimeout(voteTick);
+  if (!canSend()) return;
   if (remaining <= 0) {
     resolveVoteIfReady(true)
       .catch(error => toast(error.message || "Could not start game."))
@@ -964,7 +1056,12 @@ function renderPlayers() {
     chip.className = "player-chip";
     if (player === me) chip.classList.add("me");
     if (player === current && !["voting","won","lost"].includes(G.phase)) chip.classList.add("live");
-    chip.textContent = `${player} · ${(G.hands?.[player] || []).length}`;
+    chip.dataset.player = player;
+    const avatar = document.createElement("span");
+    avatar.className = "player-avatar";
+    avatar.textContent = player.slice(0,2).toUpperCase();
+    avatar.style.setProperty("--avatar-hue",String(players.indexOf(player)*67+160));
+    chip.append(avatar,document.createTextNode(`${player} · ${(G.hands?.[player] || []).length}`));
     if (pending?.type === "TRADE" && player !== me && isMyTurn) {
       chip.classList.add("clickable");
       chip.addEventListener("click",() => playTrade(player),{once:true});
@@ -980,6 +1077,9 @@ function renderDrawStack() {
   const remaining = G ? totalRemaining(G) : 0;
   $drawStackCount.textContent = deckCount;
   $remainingCount.textContent = remaining;
+  const cleared = G?.totalCards ? Math.round(100*(G.totalCards-remaining)/G.totalCards) : 0;
+  document.querySelector(".draw-area").style.setProperty("--cleared",`${cleared}%`);
+  document.querySelector(".draw-area").title = `${cleared}% of the deck cleared`;
   $totalCount.textContent = G?.totalCards ? ` of ${G.totalCards}` : "";
 }
 
@@ -994,6 +1094,8 @@ function renderPiles() {
     container.type = "button";
     container.className = "pile";
     container.dataset.id = id;
+    container.dataset.direction = pile.dir;
+    container.classList.toggle("armed",pileHasBungee(pile));
 
     const dir = document.createElement("div");
     dir.className = "pile-dir";
@@ -1003,6 +1105,7 @@ function renderPiles() {
     const card = document.createElement("div");
     card.className = "pile-card";
     card.textContent = pile.top;
+    card.dataset.value = pile.top;
     const hue = cardHue(Number(pile.top),max);
     card.style.borderColor = `hsl(${hue} 76% 55%)`;
     card.style.background = `linear-gradient(145deg,#ffffff,hsl(${hue} 82% 91%))`;
@@ -1046,7 +1149,7 @@ function makeNumberCard(value,max,playable) {
   if (!playable) button.classList.add("blocked");
   if (!isMyTurn) button.classList.add("not-turn");
   if (mySelected === value) button.classList.add("selected");
-  button.disabled = !isMyTurn || !playable || actionBusy;
+  button.disabled = !canSend() || !isMyTurn || !playable || actionBusy;
   button.addEventListener("click",() => {
     mySelected = mySelected === value ? null : value;
     pending = null;
@@ -1066,7 +1169,7 @@ function makePowerCard(type) {
   if (isMyTurn) button.classList.add("playable-turn");
   else button.classList.add("not-turn");
   if (mySelected === type) button.classList.add("selected");
-  button.disabled = !isMyTurn || actionBusy;
+  button.disabled = !canSend() || !isMyTurn || actionBusy;
   button.addEventListener("click",() => openPowersSheet(type));
   return button;
 }
@@ -1197,6 +1300,8 @@ function renderLog() {
 }
 
 function renderControls() {
+  $restartBtn.disabled = !canSend() || actionBusy;
+  $optClassic.disabled = $optNew.disabled = !canSend() || actionBusy;
   const ended = ["won","lost"].includes(G?.phase);
   $restartBtn.style.display = ended && G?.host === me ? "inline-block" : "none";
   $powersBtn.style.display = G?.phase === "game2" ? "inline-block" : "none";
@@ -1214,7 +1319,7 @@ function renderControls() {
   $end.textContent = !actionsRemain && !minimumMet && !early ? "No Moves — End Game" : "End Turn";
   $end.classList.toggle("bad",!actionsRemain && !minimumMet && !early);
   $end.classList.toggle("good",actionsRemain || minimumMet || early);
-  $end.disabled = !isMyTurn || actionBusy || (actionsRemain && !minimumMet && !early);
+  $end.disabled = !canSend() || !isMyTurn || actionBusy || (actionsRemain && !minimumMet && !early);
 }
 
 function openPowersSheet(preselect = null) {
@@ -1242,7 +1347,7 @@ function openPowersSheet(preselect = null) {
       use.className = "btn";
       use.type = "button";
       use.textContent = isMyTurn ? `Use ${meta.label}` : "Not your turn";
-      use.disabled = !isMyTurn || actionBusy;
+      use.disabled = !canSend() || !isMyTurn || actionBusy;
       use.addEventListener("click",() => {
         mySelected = type;
         if (type === POWERS.TIMEWARP) {
@@ -1273,6 +1378,46 @@ function clearSelection() {
   pending = null;
 }
 
+function animateMatchChange(before,after) {
+  if (document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const reduced = matchMedia("(max-width: 600px)").matches;
+  const pulse = (node,frames,duration=480) => node?.animate?.(frames,{duration,easing:"cubic-bezier(.2,.7,.3,1)"});
+  for (const id of ["U1","U2","D1","D2"]) {
+    const old = before.piles?.[id], next = after.piles?.[id];
+    if (!old || !next || JSON.stringify(old) === JSON.stringify(next)) continue;
+    const pile = [...$piles.children].find(node => node.dataset.id === id);
+    const flip = old.dir !== next.dir;
+    pulse(pile?.querySelector(".pile-card"),[
+      {transform:flip ? "perspective(600px) rotateY(-100deg) scale(.85)" : "translateY(-24px) rotate(-9deg) scale(.85)",opacity:.25},
+      {transform:"translateY(3px) scale(1.05)",opacity:1,offset:.65},
+      {transform:"none",opacity:1}
+    ],560);
+    flashPile(id);
+    // Short, bounded DOM sparks. No animation loop, network writes, or physics.
+    const backward = old.dir === UP ? next.top < old.top : next.top > old.top;
+    for (let i=0; i<(reduced ? 4 : 8); i++) {
+      const spark = document.createElement("i");
+      spark.className = "match-spark";
+      spark.style.background = backward ? "#fbbf24" : flip ? "#c4b5fd" : "#6ee7b7";
+      pile?.appendChild(spark);
+      const angle = i*Math.PI*2/(reduced ? 4 : 8);
+      const animation = spark.animate([
+        {transform:"translate(0,0) scale(1)",opacity:1},
+        {transform:`translate(${Math.cos(angle)*65}px,${Math.sin(angle)*65}px) scale(0)`,opacity:0}
+      ],{duration:650,easing:"ease-out"});
+      animation.onfinish = animation.oncancel = () => spark.remove();
+    }
+  }
+  if (currentPlayerFrom(before) !== currentPlayerFrom(after) || before.phase === "voting") {
+    pulse($turnRibbon,[{transform:"translateY(-6px)",opacity:.4},{transform:"none",opacity:1}]);
+  }
+  if (before.deck?.length !== after.deck?.length) pulse(document.querySelector(".draw-stack"),[{transform:"rotate(-8deg) scale(1.15)"},{transform:"none"}]);
+  if (JSON.stringify(before.hands?.[me]) !== JSON.stringify(after.hands?.[me])) pulse($hand,[{transform:"translateY(10px)",opacity:.5},{transform:"none",opacity:1}]);
+  if (after.phase !== before.phase && ["won","lost"].includes(after.phase)) pulse($message,[{transform:"scale(.94)",opacity:.3},{transform:"scale(1)",opacity:1}],700);
+  const event = after.log?.at(-1)?.message;
+  if (event) toast(event,2400);
+}
+
 function flashPile(id) {
   const pile = document.querySelector(`.pile[data-id="${id}"]`);
   if (!pile) return;
@@ -1281,7 +1426,7 @@ function flashPile(id) {
 }
 
 function onPileTap(id) {
-  if (!isMyTurn || mySelected == null || actionBusy) return;
+  if (!canSend() || !isMyTurn || mySelected == null || actionBusy) return;
   if (isNumberCard(mySelected)) return playNumber(mySelected,id);
   if (mySelected === POWERS.FLIP) return playFlip(id);
   if (mySelected === POWERS.BUNGEE) return playBungee(id);
@@ -1302,22 +1447,26 @@ function onPileTap(id) {
 }
 
 async function performAction(callback,errorMessage) {
-  if (actionBusy) return;
+  if (actionBusy || !canSend()) return;
   actionBusy = true;
-  renderControls();
+  activeIntent = {id:crypto.randomUUID(),state:G};
+  syncStatus();
+  renderAll();
   try {
     await callback();
   } catch (error) {
     toast(error.message || errorMessage);
   } finally {
     actionBusy = false;
-    renderControls();
+    activeIntent = null;
+    syncStatus();
+    renderAll();
   }
 }
 
 async function playNumber(card,pileId) {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1336,7 +1485,7 @@ async function playNumber(card,pileId) {
 
       const previous = pile.top;
       pile.top = card;
-      if (hasBungee && Math.abs(previous - card) === 20) {
+      if (hasBungee && (pile.dir === UP ? previous-card === 20 : card-previous === 20)) {
         const effect = pile.effects.find(item => item.type === "bungee" && item.charges > 0);
         effect.charges--;
         pile.effects = pile.effects.filter(item => item.type !== "bungee" || item.charges > 0);
@@ -1346,7 +1495,7 @@ async function playNumber(card,pileId) {
       const hands = {...state.hands,[me]:hand};
       const log = normalizedLog(state.log);
       const backward10 = (pile.dir === UP && previous - card === 10) || (pile.dir === DOWN && card - previous === 10);
-      const backward20 = hasBungee && Math.abs(previous - card) === 20;
+      const backward20 = hasBungee && (pile.dir === UP ? previous-card === 20 : card-previous === 20);
       log.push(makeLog(`${me} played ${card} on ${pileId}${backward10 ? " using the ±10 jump" : ""}${backward20 ? " using Bungee ±20" : ""}.`));
       const updated = {
         piles,hands,turnPlays:Number(state.turnPlays || 0) + 1,
@@ -1360,13 +1509,12 @@ async function playNumber(card,pileId) {
       transaction.update(gameRef,updated);
     });
     clearSelection();
-    flashPile(pileId);
   },"Could not play that card.");
 }
 
 async function playFlip(pileId) {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1384,13 +1532,12 @@ async function playFlip(pileId) {
       transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
     });
     clearSelection();
-    flashPile(pileId);
   },"Could not use Flip.");
 }
 
 async function playBungee(pileId) {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1410,13 +1557,12 @@ async function playBungee(pileId) {
       transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
     });
     clearSelection();
-    flashPile(pileId);
   },"Could not use Bungee.");
 }
 
 async function playSwap(firstId,secondId) {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1427,7 +1573,7 @@ async function playSwap(firstId,secondId) {
       const second = piles[secondId];
       const hand = [...(state.hands?.[me] || [])];
       const index = hand.indexOf(POWERS.SWAP);
-      if (!first || !second || index < 0) throw new Error("Swap is no longer available.");
+      if (firstId === secondId || !first || !second || index < 0) throw new Error("Swap is no longer available.");
       hand.splice(index,1);
       [first.top,second.top] = [second.top,first.top];
       const log = normalizedLog(state.log);
@@ -1435,14 +1581,12 @@ async function playSwap(firstId,secondId) {
       transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
     });
     clearSelection();
-    flashPile(firstId);
-    flashPile(secondId);
   },"Could not use Swap.");
 }
 
 async function playTrade(target) {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1474,7 +1618,7 @@ async function playTrade(target) {
 
 async function playTimeWarp() {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1500,7 +1644,7 @@ function currentPlayerFrom(state) {
 
 async function endTurn() {
   await performAction(async () => {
-    await runTransaction(db,async transaction => {
+    await commitAction(async transaction => {
       const snap = await transaction.get(gameRef);
       if (!snap.exists()) throw new Error("Game room is missing.");
       const state = snap.data();
@@ -1531,8 +1675,11 @@ async function endTurn() {
       mine.sort(sortCards);
       hands[me] = mine;
       const drawn = mine.length - before;
-      const next = (index + 1) % players.length;
-      const turnNum = next === 0 ? Number(state.turnNum || 1) + 1 : Number(state.turnNum || 1);
+      let next = (index + 1) % players.length;
+      if (!deck.length) {
+        for (let skipped=0; skipped<players.length-1 && !hands[players[next]]?.length; skipped++) next = (next+1)%players.length;
+      }
+      const turnNum = next <= index ? Number(state.turnNum || 1) + 1 : Number(state.turnNum || 1);
       const debts = {...(state.debts || {})};
       let timewarpPass = state.timewarpPass || null;
       if (timewarpPass === current) timewarpPass = null;
@@ -1550,11 +1697,14 @@ async function endTurn() {
 async function restartGame() {
   if (G?.host !== me || actionBusy) return;
   await performAction(async () => {
-    const players = G.players || lobbyPlayers(LOBBY);
-    const startedAt = Date.now();
-    await setDoc(gameRef,{
-      phase:"voting",host:G.host || me,players,votes:{},startedAt,deadline:startedAt+20000,
-      choice:null,log:[makeLog("A new mode vote was opened.")],updatedAt:Date.now()
+    await commitAction(async transaction => {
+      const state = (await transaction.get(gameRef)).data();
+      if (state.host !== me || !["won","lost"].includes(state.phase)) throw new Error("Only the host can restart a finished match.");
+      const startedAt = Date.now();
+      transaction.set(gameRef,{
+        phase:"voting",host:state.host,players:state.players,votes:{},startedAt,deadline:startedAt+20000,
+        matchId:crypto.randomUUID(),choice:null,log:[makeLog("A new mode vote was opened.")],updatedAt:startedAt
+      });
     });
     clearSelection();
   },"Could not restart the game.");
@@ -1602,9 +1752,10 @@ document.addEventListener("visibilitychange",() => {
 window.addEventListener("beforeunload",() => {
   unsubLobby?.();
   unsubGame?.();
+  clearTimeout(voteTick);
 });
 
-signInAnonymously(auth).catch(error => toast(`Authentication failed: ${error.message}`,3200));
+if (!auth.currentUser) signInAnonymously(auth).catch(error => toast(`Authentication failed: ${error.message}`,3200));
 onAuthStateChanged(auth,async user => {
   if (!user || window.__theGameStarted) return;
   window.__theGameStarted = true;
@@ -1612,7 +1763,8 @@ onAuthStateChanged(auth,async user => {
     await ensureRoom();
     startSubscriptions();
   } catch (error) {
-    renderConnecting(error.message || "Could not open the game.");
+    window.__theGameStarted = false;
+    renderConnecting(error.message || "Could not open the game. Refresh to retry.");
     toast(error.message || "Could not open the game.",3200);
   }
 });
