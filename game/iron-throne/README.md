@@ -111,6 +111,33 @@ Local caps cannot turn a paid-tier project into a free-tier project.
 No private keys are accepted or stored by the browser. Disabling the Gemini checkbox
 returns to the scripted council. The treaty desk remains available in every mode.
 
+### Diagnose a failed conversation
+
+If an attempted Gemini message uses local diplomacy, a **Diagnostics** button
+appears beside **Send envoy** in both the compact chat and full council. It opens
+the captured failure, including its stage, HTTP status, safe error code, suggested
+next step, and separate results for `GEMINI_API_KEY`, `TURNSTILE_SECRET`, and
+`BUDGET`. **Copy report** copies that information for troubleshooting; if clipboard
+access is blocked, the report stays selectable for manual copying.
+
+Deploy **both the game files and the Worker** for the full breakdown. In particular,
+a `/session` 503 with `CONFIG_MISSING` lists each missing runtime setting. Add the
+two secrets to the Worker’s runtime Variables and Secrets, and bind `BUDGET` to
+`DiplomacyBudget` using the included Wrangler configuration. A successful build
+alone does not prove these runtime settings are installed. Session establishment
+does not call Gemini, so a failure there cannot establish a Google billing issue.
+After a successful session, the report distinguishes Google-reported billing,
+key/permission, model and quota failures from the game’s own request allowances.
+
+“Present” means configured, not validated or funded. With an older Worker, blocked
+connection or unreadable CORS response, unobservable settings are **Unknown**;
+the report does not guess which secret or binding is missing. Reopen the council
+to retry verification after fixing configuration. A successful Gemini reply hides
+the button. Opening/copying a report never sends a verification/model request or
+consumes a dispatch. Reports live only in page memory, contain no secret values,
+tokens, IP addresses, message text, campaign data or raw provider error bodies,
+and are not included in saves or exports.
+
 ### Cost and failure behavior
 
 - Player messages and submitted structured offers may call Gemini. After a turn,

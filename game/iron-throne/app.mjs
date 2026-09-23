@@ -4,6 +4,7 @@ import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident
 import { isPlayerPromise } from './promises.mjs';
 import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
 import { DiplomacyClient } from './chat.mjs';
+import { CHECK_NAMES, CHECK_LABELS, diagnosticDetails, diagnosticReport } from './diagnostics.mjs';
 import { WorldMap } from './map.mjs';
 
 const $ = id => document.getElementById(id), SAVE_KEY = 'catnmice.iron-throne.v1';
@@ -13,6 +14,7 @@ let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', o
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let sending = false, compactCouncil = false;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
+let geminiAttempted = false, configurationFailure = false;
 try {
   const saved = localStorage.getItem(SAVE_KEY);
   if (saved) { state = parseSave(saved); restored = true; }
@@ -174,7 +176,38 @@ function updateChatControls() {
   $('send-chat').disabled = sending || !!state.outcome || a.remaining === 0;
   $('send-chat').textContent = sending ? 'Envoy travelling…' : 'Send envoy →';
   $('offer-form').querySelector('button[type="submit"]').disabled = sending || !!state.outcome || a.remaining === 0;
+  updateDiagnostics();
 }
+function updateDiagnostics() {
+  $('gemini-diagnostics').hidden = !geminiAttempted || !client.lastDiagnostic;
+  if ($('gemini-diagnostics-dialog').open && client.lastDiagnostic) fillDiagnostics();
+}
+function fillDiagnostics() {
+  const record = client.lastDiagnostic; if (!record) return;
+  const info = diagnosticDetails(record);
+  $('diagnostics-stage').textContent = info.stage;
+  $('diagnostics-reason').textContent = info.reason;
+  $('diagnostics-action').textContent = info.action;
+  for (const name of CHECK_NAMES) {
+    const cell = $(`diagnostics-${name}`);
+    cell.textContent = CHECK_LABELS[record.checks[name]]; cell.dataset.state = record.checks[name];
+  }
+  $('diagnostics-report').value = diagnosticReport(record, client.endpoint, location.origin, { endpoint: !!client.endpoint, siteKey: !!config.turnstileSiteKey });
+  $('diagnostics-copy-status').textContent = '';
+}
+$('gemini-diagnostics').onclick = () => {
+  if (!client.lastDiagnostic) return;
+  fillDiagnostics(); $('gemini-diagnostics-dialog').showModal();
+};
+$('copy-diagnostics').onclick = async () => {
+  const report = $('diagnostics-report'); let copied = false;
+  try { await navigator.clipboard.writeText(report.value); copied = true; }
+  catch {
+    report.focus(); report.select();
+    try { copied = document.execCommand('copy'); } catch { /* Leave the report selected for manual copy. */ }
+  }
+  $('diagnostics-copy-status').textContent = copied ? 'Report copied.' : 'Copy unavailable. The report is selected; use your device’s Copy command.';
+};
 function renderProposals() {
   $('proposals').innerHTML = proposals.map((i, index) => {
     const v = evaluateDeal(state, activeRuler, i), promise = isPlayerPromise(i);
@@ -250,6 +283,7 @@ async function sendDiplomatic(message, proposal = null) {
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
   if (!proposal) applySpeech(campaign, rulerId, message);
   sending = true;
+  geminiAttempted ||= $('use-gemini').checked || configurationFailure;
   const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal });
   appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();
   try {
@@ -263,16 +297,15 @@ async function sendDiplomatic(message, proposal = null) {
     const candidates = [proposal, ...response.intents, response.proposal, response.counterProposal, response.promiseDetected].filter(Boolean);
     const unique = [...new Map(candidates.map(i => [JSON.stringify(i), i])).values()].slice(0, 4);
     state.diplomacy.offers ||= {}; state.diplomacy.offers[rulerId] = unique;
-    if (rulerId === activeRuler) { proposals = unique; $('chat-notice').textContent = response.notice; }
+    if (rulerId === activeRuler) { proposals = unique; $('chat-notice').textContent = response.notice + (configurationFailure ? ' Open Diagnostics for connection details.' : ''); }
     if (rulerId !== activeRuler || !$('diplomacy').open) kingdom(state, rulerId).relations[PLAYER].unread = Math.min(99, kingdom(state, rulerId).relations[PLAYER].unread + 1);
     $('ai-status').textContent = response.source === 'gemini' ? 'Gemini council connected' : 'Local council ready';
     save();
   } finally {
     sending = false; challengeToken = '';
     if ($('diplomacy').open) renderDiplomacy(); renderDispatches();
-    // A successful conversation preserves the session. Only expiry/invalidity
-    // asks for a fresh challenge; quota/network failures keep local play running.
-    if ($('use-gemini').checked && !client.hasSession() && $('diplomacy').open) enableGemini();
+    // Preserve the captured failure. Reopening the council retries verification;
+    // a failed message must not immediately reset the widget and hide its cause.
   }
 }
 function loadVerification() {
@@ -314,7 +347,8 @@ async function enableGemini() {
         challengeToken = '';
         $('turnstile').hidden = ready || !$('use-gemini').checked;
         $('ai-status').textContent = ready ? 'Gemini council connected' : 'Local council ready';
-        $('chat-notice').textContent = ready ? 'Gemini ready. Your diplomacy session is active.' : 'Verification could not establish a session. Local diplomacy is available; reopen the council to retry.';
+        $('chat-notice').textContent = ready ? 'Gemini ready. Your diplomacy session is active.' : `${diagnosticDetails(client.lastDiagnostic).reason} Local diplomacy is available; reopen the council to retry.`;
+        updateDiagnostics();
       },
       'expired-callback': () => {
         challengeToken = '';
@@ -323,19 +357,26 @@ async function enableGemini() {
           globalThis.turnstile?.reset(turnstileWidget);
         }
       },
-      'error-callback': () => { challengeToken = ''; $('chat-notice').textContent = 'Verification unavailable. Local diplomacy remains available.'; }
+      'error-callback': () => {
+        challengeToken = ''; client.recordFailure('TURNSTILE_WIDGET_FAILED', {}, '/verification');
+        $('chat-notice').textContent = 'Verification unavailable. Local diplomacy remains available.'; updateDiagnostics();
+      }
     });
     else if (!challengeToken) globalThis.turnstile.reset(turnstileWidget);
   } catch {
     if (!$('use-gemini').checked || !$('diplomacy').open) return;
+    client.recordFailure('TURNSTILE_LOAD_FAILED', {}, '/verification'); updateDiagnostics();
     $('chat-notice').textContent = 'Verification could not load. Local diplomacy remains available; reopen the council to retry.';
     $('ai-status').textContent = 'Gemini verification unavailable';
   }
 }
 $('use-gemini').onchange = () => { geminiChoiceMade = true; enableGemini(); };
-fetch('./config.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(data => {
+let configStatus;
+fetch('./config.json', { cache: 'no-store' }).then(r => { configStatus = r.status; if (!r.ok) throw new Error('config'); return r.json(); }).catch(() => { configurationFailure = true; return {}; }).then(data => {
   config = data || {}; client = new DiplomacyClient({ endpoint: config.diplomacyEndpoint }); configReady = true;
   const available = !!client.endpoint && !!config.turnstileSiteKey;
+  if (configurationFailure) client.recordFailure('CONFIG_LOAD_FAILED', { httpStatus: configStatus }, '/config.json');
+  else if (!available && (config.diplomacyEndpoint || config.turnstileSiteKey)) { configurationFailure = true; client.recordFailure('CLIENT_CONFIG', {}, '/config.json'); }
   $('use-gemini').disabled = !available;
   if (!geminiChoiceMade) $('use-gemini').checked = available;
   enableGemini();
