@@ -1,3 +1,6 @@
+> The economy and warfare expansion is documented in [EXPANSION.md](./EXPANSION.md), including regional production, construction tiers, contracts, recruitment and battle reports.
+> [STRATEGY.md](./STRATEGY.md) explains player orders, autonomous rival turns, economic planning, campaigns and the Rival Turns reports.
+
 # The Iron Throne Engine
 
 A playable singleplayer kingdom strategy game for Cat'N Mice. Open
@@ -263,8 +266,8 @@ Gameplay message allowances do not raise the operator's Gemini budget. The
 conservative 20/day, 4/minute global and 2/minute per-client defaults remain;
 local diplomacy supplies responses after those budgets are exhausted.
 
-Campaign format is version 2. Version 1 imports and the existing browser save key
-migrate automatically without changing the board, resources or conversations.
+Campaign format is version 3. Version 1/2 imports and the existing browser save key
+migrate automatically, retaining the board, existing resources and conversations while defaulting new expansion fields.
 New relations, causal history, trade, civilian units, confirmed oaths, proposals,
 unread messages and model interpretations survive export/import. Authentication
 credentials and transient battle particles are deliberately outside saves.

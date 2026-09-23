@@ -132,6 +132,7 @@ export class MapArt {
         for(let i=0;i<4;i++)line(g,[[-9+i,13-i*3],[2,13-i*3]],'#836f52',1.5);
         g.fillStyle='#efb763';g.fillRect(-5,-3,2,3);
       }
+      if(!['city','town','fort','farm','lumber','quarry','mine'].includes(t.building)){cottage(g,0,3,1.4,'#806853');tower(g,13,5,15);}
       if(t.walls>0) {line(g,[[-19,-5],[-19,10],[0,16],[20,9],[20,-6]],'#546e6c',5);line(g,[[-19,-5],[-19,8],[0,14],[20,7],[20,-6]],'#d4ccb1',2);tower(g,-18,8,12);tower(g,18,7,12);}
       if(extras.includes('market')) {poly(g,[[8,8],[17,7],[20,12],[10,14]],'#bb6651');line(g,[[10,14],[10,18]],'#e0c794');line(g,[[20,12],[20,16]],'#e0c794');}
       if(extras.includes('envoy')) {cottage(g,16,2,.55,'#6f789a');line(g,[[17,-3],[17,-15]],'#efd69b');poly(g,[[17,-15],[24,-13],[17,-9]],'#e6cf9b');}

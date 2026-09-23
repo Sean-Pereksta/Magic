@@ -1,15 +1,18 @@
-import { HOUSES, INTENT_TYPES, RESOURCES } from './data.mjs';
+import { finishStrategyRound } from './strategy.mjs';
+import { HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
 
 export const LABELS = { ALLIANCE: 'Alliance', PEACE: 'Peace treaty', TRADE: 'Trade agreement', EXCHANGE: 'Resource exchange', AID: 'Gift / military aid', JOINT_WAR: 'Joint war', DEFEND: 'Defend a settlement', POSITION: 'Position an army', WITHDRAW: 'Withdraw troops', BUILD_DEFENSES: 'Build a fort', TERRITORY: 'Request a province', TRIBUTE: 'Demand tribute', VASSALAGE: 'Request allegiance', PROMISE: 'Promise a later payment', WAR: 'Declare war', BETRAY: 'Break treaties and declare war', RECURRING: 'Recurring resource trade', LOAN: 'Loan with repayment', NON_AGGRESSION: 'Non-aggression pact', ACCESS: 'Open borders / military access', EMBARGO: 'Embargo a third House', GUARANTEE: 'Guarantee independence', PLEDGE_WAR: 'Promise to enter a war', PLEDGE_ATTACK: 'Promise an attack', PLEDGE_DEFEND: 'Promise to defend a location', PLEDGE_WITHDRAW: 'Promise border withdrawal', PLEDGE_BUILD: 'Promise to build a fort', PLEDGE_PEACE: 'Promise not to attack' };
-const VALUES = { food: 1, wood: 1.2, stone: 1.5, iron: 2, gold: 1.5 };
+const VALUES = RESOURCE_VALUES;
+import { aiResourceTrade, contractAnchors, contractCheck, economicNeeds, scheduleTrade, tradeRoute } from './trade.mjs';
 const TYPES = new Set(INTENT_TYPES);
-const FIELDS = new Set(['type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId']);
+const FIELDS = new Set(['type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId', 'tradeKind']);
 export function validateIntent(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !TYPES.has(value.type) || Object.keys(value).some(k => !FIELDS.has(k))) return null;
   const i = { type: value.type, duration: value.duration ?? 10, giveResource: value.giveResource ?? 'gold', giveAmount: value.giveAmount ?? 0, receiveResource: value.receiveResource ?? 'food', receiveAmount: value.receiveAmount ?? 0, targetId: value.targetId ?? '' };
+  if(value.tradeKind!==undefined){if(!['immediate','recurring','purchase','strategic','emergency','preferential'].includes(value.tradeKind))return null;i.tradeKind=value.tradeKind;}
   if (value.conditionHouseId !== undefined) i.conditionHouseId = value.conditionHouseId;
   if (i.conditionHouseId !== undefined && (typeof i.conditionHouseId !== 'string' || !HOUSES.some(h => h.id === i.conditionHouseId) || !['PLEDGE_WAR', 'GUARANTEE'].includes(i.type))) return null;
   if (!Number.isInteger(i.duration) || i.duration < (isPlayerPromise(i) ? 1 : 2) || i.duration > 20 || !RESOURCES.includes(i.giveResource) || !RESOURCES.includes(i.receiveResource) || !Number.isInteger(i.giveAmount) || i.giveAmount < 0 || i.giveAmount > 1000 || !Number.isInteger(i.receiveAmount) || i.receiveAmount < 0 || i.receiveAmount > 1000 || typeof i.targetId !== 'string' || i.targetId.length > 60) return null;
@@ -87,13 +90,18 @@ export function evaluateDeal(s, rulerId, raw) {
   }
   if (i.type === 'PEACE' && !atWar(s, PLAYER, rulerId)) return reject('You are already at peace.');
   const treatyType = { ALLIANCE: 'alliance', TRADE: 'trade', VASSALAGE: 'vassalage', NON_AGGRESSION: 'non-aggression', ACCESS: 'access', RECURRING: 'recurring' }[i.type];
-  if (treatyType && treaty(s, PLAYER, rulerId, treatyType)) return reject('This agreement is already active.');
+  if (treatyType && treatyType!=='recurring' && treaty(s, PLAYER, rulerId, treatyType)) return reject('This agreement is already active.');
   if (i.type === 'AID') {
     if (i.giveAmount < 10) return reject('A meaningful gift is at least 10 resources.');
     if (k.lastGiftTurn === s.turn) return reject('This ruler has already received a gift this turn.');
     return { status: 'accept', reason: 'Aid matters most during genuine need. Repeated gifts quickly lose diplomatic influence.', intent };
   }
   if (['EXCHANGE', 'RECURRING'].includes(i.type) && (!i.giveAmount || !i.receiveAmount || i.giveResource === i.receiveResource)) return reject('Offer two different resources, each with a positive amount.');
+  if(i.type==='EXCHANGE'&&!tradeRoute(s,PLAYER,rulerId).safe)return reject('No safe trade route is available.');
+  if(i.type==='RECURRING'&&s.treaties.some(t=>t.type==='recurring'&&t.expires>s.turn&&t.parties.includes(PLAYER)&&t.parties.includes(rulerId)&&t.intent.giveResource===i.giveResource&&t.intent.receiveResource===i.receiveResource&&t.intent.giveAmount===i.giveAmount&&t.intent.receiveAmount===i.receiveAmount))return reject('An identical supply agreement is already active.');
+  if(i.type==='RECURRING'){const why=contractCheck(s,PLAYER,rulerId,i);if(why)return reject(why);}
+  if(i.tradeKind==='purchase'&&![i.giveResource,i.receiveResource].includes('gold'))return reject('A purchase must include gold.');
+  if(['strategic','preferential','recurring'].includes(i.tradeKind)&&i.type!=='RECURRING')return reject('These supply terms require a recurring contract.');
   if (i.type === 'LOAN' && (i.giveAmount < 10 || i.receiveResource !== i.giveResource || i.receiveAmount < i.giveAmount || i.receiveAmount > Math.floor(i.giveAmount * 1.5))) return reject('A loan needs at least 10 resources and repayment of 100–150% in the same resource.');
   if (i.type === 'LOAN' && s.pledges.some(p => p.debtor === rulerId && p.creditor === PLAYER && p.status === 'pending' && p.loan)) return reject('This House must repay its existing loan first.');
   if (i.type === 'EMBARGO') {
@@ -147,7 +155,7 @@ export function evaluateDeal(s, rulerId, raw) {
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) utility += (playerPower - rulerPower) * .7 + (r.fear || 0) * .25;
   if (['EXCHANGE', 'RECURRING'].includes(i.type)) {
     // Friendship never permits arbitrage: resource value must balance independently.
-    utility = Math.min(value, material) - (r.trust < -30 ? Math.ceil(-r.trust * k.honor * (1 - k.greed) * .12) : 0); threshold = 0;
+    utility = Math.min(value, material) - (i.tradeKind==='emergency'&&k.resources[i.receiveResource]<40?Math.ceil(i.receiveAmount*VALUES[i.receiveResource]*.2):0) - (r.trust < -30 ? Math.ceil(-r.trust * k.honor * (1 - k.greed) * .12) : 0); threshold = 0;
   }
   if (i.type === 'WITHDRAW' && !atWar(s, PLAYER, rulerId)) utility = 100;
   if (i.type === 'LOAN') utility = i.giveAmount - (i.receiveAmount - i.giveAmount) * (2 + k.greed);
@@ -178,7 +186,7 @@ export function commitDeal(s, rulerId, raw) {
   if (i.receiveAmount && i.type !== 'LOAN') recordTrade(s, rulerId, PLAYER, i.receiveResource, i.receiveAmount, i.type.toLowerCase());
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) changeRelation(s, rulerId, PLAYER, { fear: 10, trust: -5, opinion: -8, grievance: 10 }, 'Coercion secured concessions, not friendship.');
   if (isPlayerPromise(i)) createPlayerPromise(s, rulerId, i);
-  if (i.type === 'RECURRING') Object.assign(s.treaties.at(-1), { intent: i, payer: PLAYER, lastPaid: s.turn });
+  if (i.type === 'RECURRING') { const route=tradeRoute(s,PLAYER,rulerId);if(i.tradeKind==='preferential')route.fee=0;Object.assign(s.treaties.at(-1), { intent: i, payer: PLAYER, lastPaid: s.turn, anchors: contractAnchors(s,PLAYER,rulerId), legacyRoute:false, routeStatus:route.status });for(const party of [player,k])pay(party,{gold:route.fee}); }
   if (i.type === 'EMBARGO') {
     addTreaty(s, PLAYER, rulerId, 'embargo', i.duration); s.treaties.at(-1).targetId = i.targetId;
     s.treaties = s.treaties.filter(t => !(['trade', 'recurring'].includes(t.type) && t.parties.includes(i.targetId) && t.parties.some(id => [PLAYER, rulerId].includes(id))));
@@ -253,7 +261,14 @@ export function resolveRecurringTrade(s) {
   for (const t of s.treaties.filter(t => t.type === 'recurring' && t.expires > s.turn && t.lastPaid < s.turn)) {
     const [payer, receiver] = [kingdom(s, t.payer), kingdom(s, t.parties.find(id => id !== t.payer))], i = t.intent;
     if (!alive(s, payer.id) || !alive(s, receiver.id) || atWar(s, payer.id, receiver.id) || tradeBlocked(s, payer.id, receiver.id)) { t.expires = s.turn; continue; }
+    const route=t.legacyRoute?{fee:0,status:'Legacy supply'}:tradeRoute(s,payer.id,receiver.id);
+    const blocked=t.legacyRoute?null:contractCheck(s,payer.id,receiver.id,i,{existing:true,anchors:t.anchors||[]});
+    if(i.tradeKind==='preferential')route.fee=0;
+    t.routeStatus=blocked||route.status;
+    if(blocked){t.lastPaid=s.turn;t.disrupted=(t.disrupted||0)+1;if(t.disrupted>=3)t.expires=s.turn;continue;}
+    t.disrupted=0;
     const give = { [i.giveResource]: i.giveAmount }, receive = { [i.receiveResource]: i.receiveAmount };
+    give.gold=(give.gold||0)+route.fee;receive.gold=(receive.gold||0)+route.fee;
     if (!canAfford(payer, give) || !canAfford(receiver, receive)) {
       const failed = !canAfford(payer, give) ? payer : receiver, harmed = failed === payer ? receiver : payer;
       changeRelation(s, harmed.id, failed.id, { trust: -8, grievance: 8 }, 'A recurring shipment failed; the agreement ended.');
@@ -263,7 +278,7 @@ export function resolveRecurringTrade(s) {
       t.expires = s.turn; continue;
     }
     // Both sides are checked before either is charged. No partial or repeated payment.
-    pay(payer, give); pay(receiver, give, 1); pay(receiver, receive); pay(payer, receive, 1); t.lastPaid = s.turn;
+    pay(payer, give); pay(receiver, {[i.giveResource]:i.giveAmount}, 1); pay(receiver, receive); pay(payer, {[i.receiveResource]:i.receiveAmount}, 1); t.lastPaid = s.turn;
     recordTrade(s, payer.id, receiver.id, i.giveResource, i.giveAmount, 'recurring'); recordTrade(s, receiver.id, payer.id, i.receiveResource, i.receiveAmount, 'recurring');
     for (const [a, b] of [[payer, receiver], [receiver, payer]]) changeRelation(s, a.id, b.id, { opinion: relation(s, a.id, b.id).opinion < 45 ? 1 : 0, trust: relation(s, a.id, b.id).trust < 35 ? 1 : 0 }, 'A reciprocal trade shipment arrived.');
   }
@@ -296,8 +311,9 @@ export function endTurn(s) {
   if (s.outcome) return s;
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   updatePoliticalState(s, { sendDispatches: false });
-  aiDiplomacy(s); strategyTurn(s); resolveMovement(s); resolveEconomy(s); resolveAmbassadors(s);
-  s.turn++; resolveRecurringTrade(s); verifyPledges(s); updatePoliticalState(s);
+  aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveMovement(s); resolveEconomy(s); resolveAmbassadors(s);
+  finishStrategyRound(s);
+  s.turn++; resolveRecurringTrade(s); verifyPledges(s); updatePoliticalState(s); scheduleTrade(s);
   s.diplomacy.messages = { turn: s.turn, regular: 0, hosts: {} }; s.diplomacy.processedTurn = s.turn;
   s.treaties = s.treaties.filter(t => t.expires > s.turn && t.parties.every(id => alive(s, id)));
   checkVictory(s); rebuildTerritory(s);
@@ -313,7 +329,7 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
   // The current game has a public board, but a rival treasury, orders and private
   // conversations are not public intelligence. Never ship the whole campaign.
   const houses = rows.map(h => ({ id: h.id, name: h.name, armyStrength: Math.round(armiesOf(s, h.id).reduce((n, a) => n + strength(a), 0) / 10) * 10, settlements: settlements(s, h.id).slice(0, 8).map(t => ({ id: t.id, name: String(t.name || '').slice(0, 45), capital: t.capital === h.id })), atWarWith: rows.filter(o => atWar(s, h.id, o.id)).map(o => o.id), allies: rows.filter(o => o.id !== h.id && treaty(s, h.id, o.id, 'alliance')).map(o => o.id) }));
-  const self = { resources: { ...k.resources }, production: grossProduction(s, rulerId), shortages: RESOURCES.filter(resource => k.resources[resource] < 40), buildings: Object.values(s.tiles).filter(t => t.owner === rulerId && t.building).slice(0, 18).map(t => ({ id: t.id, type: t.building, walls: t.walls, market: t.market, envoyOffice: !!t.envoyOffice, chancery: !!t.chancery })), armies: armiesOf(s, rulerId).slice(0, 16).map(a => ({ id: a.id, tile: a.tile, strength: Math.round(strength(a)), order: a.order, target: a.target })), strategicGoal: k.goal, priorities: diplomaticPriorities(s, rulerId) };
+  const self = { economicNeeds: economicNeeds(s,rulerId), constructionPlan:k.economicPlan||null, resources: { ...k.resources }, production: grossProduction(s, rulerId), shortages: RESOURCES.filter(resource => k.resources[resource] < 40), buildings: Object.values(s.tiles).filter(t => t.owner === rulerId && t.building).slice(0, 18).map(t => ({ id: t.id, type: t.building, walls: t.walls, market: t.market, envoyOffice: !!t.envoyOffice, chancery: !!t.chancery })), armies: armiesOf(s, rulerId).slice(0, 16).map(a => ({ id: a.id, tile: a.tile, strength: Math.round(strength(a)), order: a.order, target: a.target })), strategicGoal: k.goal, priorities: diplomaticPriorities(s, rulerId) };
   const relationship = Object.fromEntries(['opinion', 'trust', 'respect', 'fear', 'wariness', 'dependency', 'grievance', 'reliability', 'generosity', 'aggression'].map(key => [key, r[key] ?? 0]));
   const context = {
     turn: s.turn, rulerId, message: message.slice(0, 600),

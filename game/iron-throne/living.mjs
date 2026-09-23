@@ -1,3 +1,4 @@
+import { buildingLevel, productionPlan } from './economy.mjs';
 // Political state belongs to the simulation. Model output is never an action.
 import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, kingdom, log, moveCost, neighbors, passable, pay, relation, remember, settlements, strength, treaty } from './core.mjs';
@@ -134,16 +135,7 @@ export function applyGift(s, giver, receiver, resource, amount) {
   if (need) recordPoliticalMemory(s, receiver, giver, 'relief', `${houseName(s, giver)} supplied ${amount} ${resource} during our shortage.`, 9);
 }
 
-export function grossProduction(s, owner) {
-  const output = Object.fromEntries(RESOURCES.map(r => [r, 0]));
-  for (const t of Object.values(s.tiles)) if (t.owner === owner) {
-    for (const [r, n] of Object.entries(BUILDINGS[t.building]?.yield || {})) output[r] += n + (t.building === 'farm' && t.resource === 'food' ? 4 : 0);
-    if (['town', 'city'].includes(t.building)) { output.food += t.building === 'city' ? 14 : 8; output.gold += t.building === 'city' ? 8 : 5; }
-    if (t.market) output.gold += 12;
-    if (t.workshop) output.iron += 3;
-  }
-  return output;
-}
+export function grossProduction(s,owner) { return productionPlan(s,owner).gross; }
 export function recordTrade(s, from, to, resource, amount, kind = 'exchange') {
   if (!amount) return;
   const history = s.diplomacy.tradeHistory;
@@ -155,7 +147,7 @@ export function economicRelationship(s, observer, subject) {
   const imports = Object.fromEntries(RESOURCES.map(r => [r, trades.filter(t => t.to === observer && t.resource === r).reduce((n, t) => n + t.amount, 0)]));
   const exports = Object.fromEntries(RESOURCES.map(r => [r, trades.filter(t => t.from === observer && t.resource === r).reduce((n, t) => n + t.amount, 0)]));
   const production = grossProduction(s, observer);
-  const dependency = Math.round(Math.max(0, ...RESOURCES.map(r => imports[r] / Math.max(1, production[r] * 8 + imports[r]) * 100)));
+  const dependency = Math.round(Math.max(0, ...RESOURCES.map(r => imports[r] / Math.max(1, production[r] * 8 + s.diplomacy.tradeHistory.filter(t=>t.to===observer&&t.resource===r&&s.turn-t.turn<8).reduce((n,t)=>n+t.amount,0)) * 100)));
   return { imports, exports, dependency, majorPartner: dependency >= 20, recent: trades.slice(-8), recurring: s.treaties.filter(t => t.type === 'recurring' && t.expires > s.turn && t.parties.includes(observer) && t.parties.includes(subject)).map(t => ({ intent: t.intent, expires: t.expires })) };
 }
 export function tradeBlocked(s, a, b) {
@@ -211,7 +203,7 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
     if (fresh && sendDispatches) {
       if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `Your banners are close to ${capitalOf(s, observer.id)?.name}. Tell me their purpose, Regent. Friendship needs more than courteous words.`);
       else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Your army has withdrawn. I noticed. Perhaps your intentions deserve another hearing.');
-      if (observer.resources.food < 35) contact(s, observer.id, 'shortage', 'Our grain stores are running low. A food shipment would carry more weight than another declaration of friendship.', 6);
+
       if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8);
       if (r.trust > 40 && !atWar(s, observer.id, PLAYER) && !treaty(s, observer.id, PLAYER, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10);
     }
@@ -230,7 +222,7 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
 }
 export function relationDescriptions(s, rulerId) {
   const r = relation(s, rulerId, PLAYER), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === PLAYER && p.creditor === rulerId && p.status === 'pending');
-  return [ ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, PLAYER, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, PLAYER, rulerId) ? [['Envoy report', RESOURCES.map(resource => `${resource}: ${k.resources[resource]}`).join(' · ')]] : []) ];
+  return [ ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, PLAYER, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, PLAYER, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
 export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }
@@ -301,7 +293,8 @@ export function resolveAmbassadors(s) {
     if (['dead', 'detained'].includes(a.status)) continue;
     if (!alive(s, a.owner)) { a.status = 'idle'; a.path = []; a.host = null; continue; }
     if (a.host && (!alive(s, a.host) || capitalOf(s, a.host)?.id !== a.target)) assignAmbassador(s, a.owner, a.id, null);
-    let budget = diplomaticCapacity(s, a.owner) === 5 ? 12 : 9;
+    const office=Math.max(1,...settlements(s,a.owner).map(t=>buildingLevel(t,'envoyOffice')));
+    let budget = (diplomaticCapacity(s, a.owner) === 5 ? 12 : 9) + (office-1)*2;
     while (a.path.length && budget > 0) {
       const next = s.tiles[a.path[0]], current = s.tiles[a.tile];
       if (!passable(next) || distance(current, next) !== 1) { a.path = []; a.status = 'idle'; a.host = null; break; }
