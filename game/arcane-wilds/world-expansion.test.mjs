@@ -7,7 +7,7 @@ function equip(h,id){h.run(`{const item=AWCampaign.craftItem('${id}');if(item.sl
 
 test('expanded geography is reciprocal, spatially correct and traversable without mounts',()=>{
   const h=start();try{
-    assert.equal(h.run('AWCampaignData.continents.map(c=>c.nodes.length).join()'),'56,70,84');
+    assert.equal(h.run('AWCampaignData.continents.map(c=>c.nodes.length).join()'),'57,70,84');
     assert.equal(h.run(`Object.values(AWCampaignData.nodes).filter(n=>n.type!=='ruler').every(n=>Object.entries(n.exits).every(([d,id])=>{const t=AWCampaignData.nodes[id];return t.exits[AWCampaignData.opposite[d]]===n.id&&(d==='N'?t.x===n.x&&t.y<n.y:d==='S'?t.x===n.x&&t.y>n.y:d==='E'?t.y===n.y&&t.x>n.x:t.y===n.y&&t.x<n.x);}));`),true);
     assert.equal(h.run(`AWCampaignData.continents.every(c=>{const seen=new Set([c.start]),q=[c.start];while(q.length){const n=AWCampaignData.nodes[q.shift()];for(const [dir,id] of Object.entries(n.exits))if(!n.routeRequirements?.[dir]&&!seen.has(id)){seen.add(id);q.push(id);}}return c.nodes.every(id=>id===c.boss||seen.has(id));})`),true);
     assert.equal(h.run(`AWCampaignData.continents.every(c=>new Set(c.nodes.map(id=>AWCampaignData.nodes[id]).filter(n=>n.town).map(n=>n.region)).size>=4)`),true,'settlements span regions');

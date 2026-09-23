@@ -113,9 +113,11 @@
     const end=e=>{pointers.delete(e.pointerId);gesture=null;if(!pointers.size)setTimeout(()=>dragged=false,0);};box.onpointerup=end;box.onpointercancel=end;box.onlostpointercapture=end;
   }
   function renderNodeCard(){
-    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
+    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=n.homestead|| (n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id)),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
     const reason=D.travelReason(s,n.id,travelMode);
-    card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[n.material||c.material].name)}</p>${known&&!n.town?`<p>Enemies: ${(n.shadow?AWShadow.exclusiveIds:A.pool(n)).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))?'✓ Cleared':known?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
+    card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[n.material||c.material].name)}</p>${known&&!n.town&&!n.homestead?`<p>Enemies: ${(n.shadow?AWShadow.exclusiveIds:A.pool(n)).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))?'✓ Cleared':known?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
+    if(n.homestead)card.insertAdjacentHTML('beforeend','<p><b>Your permanent home:</b> a safe cottage clearing, garden, orchard and workshop. Follow the western road from Sunmere.</p>');
+    if(known&&n.multiWave)card.insertAdjacentHTML('beforeend','<p><b>Multi-wave encounter:</b> clear all reinforcements for homestead supplies.</p>');
     if(n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
     if(n.shadow)card.insertAdjacentHTML('beforeend',`<p>Depth ${n.depth}${n.modifier==='Greed'?' · Greed: enemies +40% health, loot/Glory +70%':n.modifier==='Safety'?' · Safety: standard enemies and rewards':''}</p>`);
     if(known&&n.rewardSpells?.length)card.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
@@ -196,6 +198,6 @@
     }
   },true);
   // Keep all spell controls routed through the existing buffered action input.
-  $('mobileDodge').onclick=()=>window.AWInput.press('dodge');
+  window.AWInput.bindAction($('mobileDodge'),'dodge');
   window.AWCampaignUI={open,close,isOpen,openTown,openPortal,openSite,openCamp,assign,categories};
 })();

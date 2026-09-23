@@ -115,7 +115,7 @@ function intensityScheduleWave(enc){
   if(!room || enc.pending || enc.wave>=enc.totalWaves)return;
   const next=enc.wave+1;
   const count=clamp(enc.waveSize+(next===enc.totalWaves?1:0),4,8);
-  const pool=intensityAvailablePool(room);
+  const pool=enc.pool?.filter(id=>ENEMY_TYPES[id])||intensityAvailablePool(room);
   const ids=intensitySquadIds(pool,count,room,next);
   const points=intensityWavePoints(ids.length);
   enc.pending={time:1.05,wave:next,ids,points};
