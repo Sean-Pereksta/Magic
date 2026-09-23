@@ -76,6 +76,10 @@
     function queuePoint(e){
       pendingX=e.clientX;
       pendingY=e.clientY;
+      // Sample intent immediately so a second finger can dodge before the next paint.
+      // Only the knob's CSS transform remains frame-batched.
+      const dx=pendingX-cx,dy=pendingY-cy,len=Math.hypot(dx,dy),k=Math.min(1,len/43);
+      stick.x=len?dx/len*k:0;stick.y=len?dy/len*k:0;stick.active=true;
       if(!raf)raf=requestAnimationFrame(flush);
     }
 
@@ -83,7 +87,7 @@
       if(stick.pointer!==null)return;window.AWInput?.useDevice('touch');
       stick.pointer=e.pointerId;
       refreshCenter();
-      zone.setPointerCapture(e.pointerId);
+      try{zone.setPointerCapture?.(e.pointerId);}catch(_){}
       queuePoint(e);
       e.preventDefault();
     },{passive:false});

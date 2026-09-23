@@ -82,7 +82,7 @@ async function awCloudFirebase(){
     if(!app)app=appMod.initializeApp(AW_CLOUD_FIREBASE_CONFIG,AW_CLOUD_APP_NAME);
     const auth=authMod.getAuth(app);
     if(!auth.currentUser)await authMod.signInAnonymously(auth);
-    return{db:fireMod.getFirestore(app),doc:fireMod.doc,getDoc:fireMod.getDoc,setDoc:fireMod.setDoc,serverTimestamp:fireMod.serverTimestamp,Bytes:fireMod.Bytes};
+    return{db:fireMod.getFirestore(app),auth,doc:fireMod.doc,getDoc:fireMod.getDoc,getDocFromServer:fireMod.getDocFromServer,runTransaction:fireMod.runTransaction,setDoc:fireMod.setDoc,serverTimestamp:fireMod.serverTimestamp,Bytes:fireMod.Bytes};
   })().catch(err=>{awCloudFirebaseCache=null;throw err});
   return awCloudFirebaseCache;
 }
@@ -151,7 +151,7 @@ async function awCloudSaveNamed(name,password){
   awCloudBind(clean,password);awCloudLastSavedAt=now;awCloudRenderStatus();return clean;
 }
 async function awCloudLoadNamed(name,password){
-  const clean=awCloudValidateCredentials(name,password),firebase=await awCloudFirebase(),id=await awCloudDocumentId(clean),ref=firebase.doc(firebase.db,AW_CLOUD_COLLECTION,id),snap=await firebase.getDoc(ref);
+  const clean=awCloudValidateCredentials(name,password),firebase=await awCloudFirebase(),id=await awCloudDocumentId(clean),ref=firebase.doc(firebase.db,AW_CLOUD_COLLECTION,id),snap=await (firebase.getDocFromServer||firebase.getDoc)(ref);
   if(!snap.exists())throw new Error("No Arcane Wilds cloud save exists with that name.");
   const record=snap.data();
   if(record.gameType!==AW_CLOUD_GAME_TYPE)throw new Error("That name does not belong to an Arcane Wilds cloud save.");
@@ -165,6 +165,7 @@ async function awCloudLoadNamed(name,password){
   }
   if(!loadGame())throw new Error("The restored journey could not be opened.");
   if(typeof loadExpansion==="function")loadExpansion();
+  window.AWHomeCloud?.loaded(clean,record);
   awCloudBind(clean,password);awCloudLastSavedAt=Number(record.updatedAtMs)||Date.now();
   document.querySelectorAll(".overlay").forEach(o=>o.classList.add("hidden"));
   awCloudCloseModal(true);beginWorld();awCloudRenderStatus();return clean;

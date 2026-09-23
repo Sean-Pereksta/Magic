@@ -4,8 +4,14 @@ import {runtime} from './runtime-test-helper.mjs';
 
 function start(touch=false){const h=runtime(touch);h.run('startNewGame()');h.step(3);return h;}
 function clear(h){
-  h.run(`if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});for(const e of [...game.enemies]){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();game.pendingLevelUps=0;game.loot=null;document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));modalPause=false;paused=false;`);
+  h.run(`if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});
+    for(let guard=0;guard<8&&!game.roomData.cleared;guard++){
+      for(const e of game.enemies){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();
+      if(!game.roomData.cleared){intensityTickEncounter(3);intensityTickEncounter(1.1);}
+    }
+    game.pendingLevelUps=0;game.loot=null;document.querySelectorAll('.overlay').forEach(o=>o.classList.add('hidden'));modalPause=false;paused=false;`);
 }
+
 function inside(h,room){const dir=h.run(`Object.keys(AWTravel.exits()).find(d=>AWTravel.exits()[d].id===game.campaign.current&&AWTravel.exits()[d].room===${room})`);assert.ok(dir,'internal dungeon connection to '+room);h.run(`transitionRoom(0,0,'${dir}')`);}
 function route(h,target){
   const steps=h.run(`(()=>{const D=AWCampaignData,start=game.campaign.current,q=[[start]],seen=new Set([start]);while(q.length){const path=q.shift(),n=D.nodes[path.at(-1)];if(n.id===${JSON.stringify(target)})return path.slice(1);for(const [dir,id] of Object.entries(n.exits||{}))if(!n.routeRequirements?.[dir]&&!seen.has(id)&&D.nodes[id].type!=='ruler'){seen.add(id);q.push([...path,id]);}}return null;})()`);
@@ -13,9 +19,9 @@ function route(h,target){
   for(const id of steps){clear(h);if(h.run('AWCampaign.current().type==="dungeon"&&!game.campaign.cleared.includes(game.campaign.current)')){inside(h,1);clear(h);inside(h,4);clear(h);}assert.equal(h.run(`AWCampaign.travel(${JSON.stringify(id)})`),true,`travel to ${id}`);h.step(2);}
 }
 
-test('all 210 locations form valid connected continents with distinct difficulty and services',()=>{
+test('all 211 locations form valid connected continents with distinct difficulty and services',()=>{
   const h=start();try{
-    assert.equal(h.run('Object.keys(AWCampaignData.nodes).length'),210);
+    assert.equal(h.run('Object.keys(AWCampaignData.nodes).length'),211);
     assert.equal(h.run('Object.values(AWCampaignData.towns).length'),24);
     assert.equal(h.run(`AWCampaignData.continents.every(c=>{const seen=new Set([c.start]),q=[c.start];while(q.length)for(const id of AWCampaignData.nodes[q.shift()].connections){if(!seen.has(id)){seen.add(id);q.push(id);}}return c.requiredBosses.length===4&&c.nodes.every(id=>seen.has(id));})`),true);
     assert.equal(h.run('AWCampaignData.continents.every((c,i,a)=>!i||c.range[0]>a[i-1].range[1])'),true);

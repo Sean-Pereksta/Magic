@@ -4,13 +4,53 @@
   if(window.AWInput)return;
   const defaults={up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',dodge:'Space',interact:'KeyE',spell1:'Digit1',spell2:'Digit2',spell3:'Digit3',spell4:'Digit4',spell5:'Digit5',inventory:'KeyI',pause:'Escape'};
   const padDefaults={interact:0,spell1:2,spell2:3,spell3:1,spell4:4,spell5:5,dodge:7,inventory:8,pause:9};
-  const held=new Set(),queue=new Map();
+  const held=new Set(),queue=new Map(),actionPointers=new Map(),actionBindings=new WeakMap();
   let priorButtons=[],padIndex=null,binding=null,installed=false,device='keyboard',family='xbox';
   const move={x:0,y:0},aim={x:0,y:0,active:false};
   const settings=()=>window.AWPresentation.settings;
   function useDevice(next){device=next;if(next!=='mouse')mouse.active=false;}
   function blocked(){return !running||!game.player||paused||modalPause||roomTransition||document.hidden||window.AWPresentation.cinematic;}
-  function clear(){held.clear();keys.clear();queue.clear();move.x=move.y=0;aim.x=aim.y=0;aim.active=false;for(const stick of [moveStick,aimStick]){stick.active=false;stick.x=stick.y=0;stick.pointer=null;}for(const id of ['moveKnob','aimKnob']){const el=$(id);if(el)el.style.transform='translate(-50%,-50%)';}}
+  function clear(){
+    held.clear();keys.clear();queue.clear();move.x=move.y=0;aim.x=aim.y=0;aim.active=false;
+    for(const [id,button] of actionPointers){actionPointers.delete(id);button.classList.remove('aw-input-held');try{if(button.hasPointerCapture?.(id))button.releasePointerCapture(id);}catch(_){}}
+    for(const [stick,id,knob] of [[moveStick,'moveZone','moveKnob'],[aimStick,'aimZone','aimKnob']]){
+      const pointer=stick.pointer;stick.active=false;stick.x=stick.y=0;stick.pointer=null;
+      try{if(pointer!==null&&$(id)?.hasPointerCapture?.(pointer))$(id).releasePointerCapture(pointer);}catch(_){}
+      if($(knob))$(knob).style.transform='translate(-50%,-50%)';
+    }
+  }
+  // Buttons own only their own pointers. Secondary touch contacts are valid actions.
+  // Keep native keyboard/assistive clicks, but never fire the compatibility click twice.
+  function bindAction(button,action){
+    if(!button)return;
+    actionBindings.get(button)?.();
+    button.onclick=null;
+    button.style.touchAction='none';
+    const activate=()=>typeof action==='function'?action():press(action);
+    const down=e=>{
+      if(button.disabled||(e.pointerType==='mouse'&&e.button!==0))return;
+      e.preventDefault();e.stopPropagation();
+      if([...actionPointers.values()].includes(button))return;
+      actionPointers.set(e.pointerId,button);button.classList.add('aw-input-held');
+      useDevice(e.pointerType==='touch'||e.pointerType==='pen'?'touch':'mouse');
+      try{button.setPointerCapture?.(e.pointerId);}catch(_){}
+      // Read the latest stick position even when the press arrives before the next frame.
+      if(moveStick.active){const m=radial(moveStick.x,moveStick.y,.06);move.x=m.x;move.y=m.y;}
+      if(aimStick.active){const a=radial(aimStick.x,aimStick.y,.08);aim.x=a.x;aim.y=a.y;aim.active=!!(a.x||a.y);}
+      activate();
+    };
+    const end=e=>{
+      if(actionPointers.get(e.pointerId)!==button)return;
+      actionPointers.delete(e.pointerId);button.classList.remove('aw-input-held');
+      try{if(button.hasPointerCapture?.(e.pointerId))button.releasePointerCapture(e.pointerId);}catch(_){}
+    };
+    button.addEventListener('pointerdown',down,{passive:false});
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,end);
+    const click=e=>{if(e.detail===0&&!e.pointerType&&!button.disabled)activate();else e.preventDefault();};
+    button.addEventListener('click',click);
+    actionBindings.set(button,()=>{button.removeEventListener('pointerdown',down);button.removeEventListener('click',click);for(const type of ['pointerup','pointercancel','lostpointercapture'])button.removeEventListener(type,end);});
+  }
+
   function radial(x,y,deadzone){const length=Math.hypot(x,y);if(length<=deadzone)return {x:0,y:0};const amount=Math.min(1,(length-deadzone)/(1-deadzone));return {x:x/length*amount,y:y/length*amount};}
   function mapping(){return {...defaults,...settings().keys};}
   function padMapping(){return {...padDefaults,...settings().buttons};}
@@ -94,7 +134,7 @@
       if(action||e.code.startsWith('Arrow')){e.preventDefault();held.add(e.code);useDevice('keyboard');if(!e.repeat&&action&&!['up','down','left','right'].includes(action))press(action);}
     });
     addEventListener('keyup',e=>held.delete(e.code));
-    addEventListener('blur',clear);document.addEventListener('visibilitychange',clear);
+    addEventListener('blur',clear);addEventListener('orientationchange',clear);document.addEventListener('visibilitychange',clear);
     addEventListener('gamepaddisconnected',()=>{priorButtons=[];padIndex=null;clear();});
     canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.active=true;device='mouse';});
     canvas.addEventListener('mouseleave',()=>mouse.active=false);
@@ -102,5 +142,5 @@
     document.addEventListener('pointerdown',()=>window.AWPresentation.audio.unlock(),{passive:true});
     if(typeof requestAnimationFrame==='function'){const menuPoll=()=>{if(!running)poll();requestAnimationFrame(menuPoll);};requestAnimationFrame(menuPoll);}
   }
-  window.AWInput={move,aim,press,poll,flush,clear,install,prompt,useDevice,radial,remap,mapping,padMapping,queue,get device(){return device;},get binding(){return binding;},bind(kind,action){clear();binding={kind,action};},cancelBinding(){binding=null;}};
+  window.AWInput={move,aim,press,poll,flush,clear,bindAction,install,prompt,useDevice,radial,remap,mapping,padMapping,queue,get device(){return device;},get binding(){return binding;},bind(kind,action){clear();binding={kind,action};},cancelBinding(){binding=null;}};
 })();

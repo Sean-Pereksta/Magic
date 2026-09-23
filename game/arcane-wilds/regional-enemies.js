@@ -15,9 +15,11 @@
     const all=rows.filter(r=>r[2]===n.continent).map(r=>r[0]);
     const groups={verdant:[['packAlpha','thornrunner','thornrunner','groveShaman'],['mossbackGuardian','briarWitch','sporeling','sporeling']],meridian:[['stormCaptain','thunderRam','shardcaster','cinderWasp'],['prismMimic','frostRevenant','emberburrower','shardcaster']],gloam:[['voidShepherd','starboundOracle','soulLeech','eclipseKnight'],['gloamDevourer','riftStalker','astralArcher','soulLeech']]};
     if(n.index%3===0){oldSpawn(room);return;}
-    const st=intensityState();st.roomKey=room.key;st.encounter={roomKey:room.key,wave:1,totalWaves:1,pending:null,grace:0,hazardCd:999};
+    // Regional squads share the campaign wave controller and its save checkpoints.
+    const enc=AWCampaign.setupEncounter(room,n);enc.pool=all;
     const ids=groups[n.continent][n.index%2];ids.forEach((id,i)=>spawnEnemy(id,randomEnemySpawn(),room.elite&&i===0));
     if(n.type==='danger')spawnEnemy(all[n.index%all.length],randomEnemySpawn(),true);
+    intensityRefreshHud();
   };
   function strike(e,range){if(range<e.r+game.player.r+.65&&e.attack<=0){damagePlayer(e.damage);e.attack=1.2;fx('slash',e.x,e.y,.25,e.color,{dir:enemyDir(e)});}}
   function windup(e,time,at=game.player){e.regionalAim={x:at.x,y:at.y};e.state='regionalWind';e.stateTime=time;telegraph('circle',at.x,at.y,1.1,time,e.color);}
