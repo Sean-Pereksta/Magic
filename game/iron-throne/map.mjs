@@ -1,6 +1,7 @@
 import { HOUSES, BUILDINGS } from './data.mjs';
 import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
 
+import { BattleEffects } from './battle-effects.mjs';
 import { MapArt } from './art.mjs';
 
 const DIRECTIONS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
@@ -16,7 +17,7 @@ export function pixelHex(x, y) {
 export class WorldMap {
   constructor(canvas, { getState, onSelect }) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.getState = getState; this.onSelect = onSelect;
-    this.art = new MapArt(); this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.art = new MapArt(); this.effects = new BattleEffects(); this.reducedEffects = false; this.motion = matchMedia('(prefers-reduced-motion: reduce)');
     this.zoom = 1; this.x = 0; this.y = 0; this.selected = '5,6'; this.armyId = null; this.pointers = new Map(); this.drag = null; this.moved = false; this.frame = null;
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     canvas.addEventListener('pointerdown', e => {
@@ -84,6 +85,8 @@ export class WorldMap {
   render() {
     if (!this.width || !this.height) return;
     const c=this.ctx,s=this.getState(), now=performance.now();
+    this.effects ||= new BattleEffects(); this.effects.ingest(s, now);
+    const reduced = this.motion.matches || this.reducedEffects;
     const focus=`${s.seed}:${s.turn}:${this.selected}`;
     if(this.focus!==focus){this.focus=focus;this.pulseUntil=now+650;}
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
@@ -151,6 +154,9 @@ export class WorldMap {
       const selected=group.some(a=>a.id===this.armyId),total=group.reduce((n,a)=>n+sizeOf(a),0),color=colors[army.owner];
       const badgeScale=Math.max(1,.55/this.zoom), badgeY=p.y+17+row*23;
       this.hits.push({tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale});
+      const units=Object.fromEntries(['levy','archer','cavalry','siege'].map(u=>[u,group.reduce((n,a)=>n+a.units[u],0)]));
+      const marching=group.some(a=>a.path.length)&&!reduced&&now<this.pulseUntil;
+      this.art.formation(c,units,p.x,p.y+4+row*23,color,HOUSES.find(h=>h.id===army.owner).sigil,this.zoom>.65,marching?Math.sin(now/75)*.7:0);
       c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
       c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
       c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();
@@ -158,14 +164,16 @@ export class WorldMap {
       c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>a.units.siege)?'♜':group.some(a=>a.units.cavalry)?'♞':'⚔',-12,2);
       c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
     }
-    // Highlight recent battles without creating particles or unbounded animation loops.
-    for(const event of (s.militaryEvents||[]).filter(e=>e.turn>=s.turn-1).slice(-8)){
-      const tile=s.tiles[event.tile];if(!tile)continue;const p=hexPixel(tile);if(!inView(p))continue;
-      c.strokeStyle='#f5a077';c.lineWidth=2;this.hex(p.x,p.y,22);c.stroke();
-      c.fillStyle='#ffc395';c.font='bold 12px Georgia';c.textAlign='center';c.fillText('⚔',p.x+21,p.y-15);
+    for(const envoy of (s.ambassadors||[]).filter(a=>a.status!=='dead')) {
+      const tile=s.tiles[envoy.tile],p=tile&&hexPixel(tile);if(!p||!inView(p))continue;
+      c.save();c.translate(p.x-23,p.y+3);c.scale(Math.max(1,.6/this.zoom),Math.max(1,.6/this.zoom));
+      c.fillStyle='#122c39';c.strokeStyle=colors[envoy.owner];c.lineWidth=1.3;c.beginPath();c.roundRect(-9,-11,18,23,5);c.fill();c.stroke();
+      c.fillStyle=colors[envoy.owner];c.font='bold 14px Georgia';c.textAlign='center';c.fillText(envoy.status==='detained'?'⊠':'⚜',0,5);c.restore();
+      this.hits.push({tile:envoy.tile,left:p.x-34,right:p.x-12,top:p.y-12,bottom:p.y+17});
     }
+    this.effects.drawWorld(c,s,hexPixel,inView,now,reduced,this.zoom);
     const selected=s.tiles[this.selected];
-    if(selected){const p=hexPixel(selected);const pulse=this.motion.matches?0:Math.max(0,(this.pulseUntil-now)/650);this.hex(p.x,p.y,24);c.lineWidth=4;c.strokeStyle='#172d38';c.stroke();c.lineWidth=2;c.strokeStyle='#fff0b4';c.stroke();
+    if(selected){const p=hexPixel(selected);const pulse=reduced?0:Math.max(0,(this.pulseUntil-now)/650);this.hex(p.x,p.y,24);c.lineWidth=4;c.strokeStyle='#172d38';c.stroke();c.lineWidth=2;c.strokeStyle='#fff0b4';c.stroke();
       if(pulse){this.hex(p.x,p.y,24+(1-pulse)*12);c.globalAlpha=pulse*.55;c.stroke();c.globalAlpha=1;}
     }
     for(const t of visible.filter(t=>['city','town'].includes(t.building))){
@@ -178,6 +186,9 @@ export class WorldMap {
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.height*.3,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#061b2400');vignette.addColorStop(1,'#06111a66');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
     // Restrained cartographic compass, entirely non-interactive.
     if(this.width>500&&this.height>240){const x=this.width-42,y=this.height-68;c.strokeStyle='#dcc89590';c.lineWidth=1;c.beginPath();c.arc(x,y,18,0,Math.PI*2);c.stroke();c.fillStyle='#e6d6a6';c.beginPath();c.moveTo(x,y-16);c.lineTo(x-5,y+7);c.lineTo(x,y+3);c.lineTo(x+5,y+7);c.closePath();c.fill();c.font='10px Georgia';c.textAlign='center';c.fillText('N',x,y-24);}
-    if(!this.motion.matches&&!document.hidden&&now<this.pulseUntil)this.draw();
+    this.effects.drawResults(c,s,this.width,this.height,now);
+    if(!document.hidden&&((!reduced&&now<this.pulseUntil)||this.effects.animating(now,reduced)))this.draw();
+    // A single expiry timer clears a result without running idle animation.
+    if(this.effects.results.length&&!this.resultTimer)this.resultTimer=setTimeout(()=>{this.resultTimer=null;this.draw();},5600);
   }
 }

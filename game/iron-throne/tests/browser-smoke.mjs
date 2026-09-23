@@ -23,7 +23,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
 try {
-  for (const viewport of (process.env.IRON_THRONE_CHAT_ONLY ? [] : [{ width: 1280, height: 850 }, { width: 390, height: 844 }, { width: 844, height: 390 }])) {
+  for (const viewport of (process.env.IRON_THRONE_CHAT_ONLY ? [] : [{ width: 1280, height: 850 }, { width: 390, height: 844 }, { width: 844, height: 390 }].filter(v => !process.env.IRON_THRONE_VIEWPORT || String(v.width) === process.env.IRON_THRONE_VIEWPORT))) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
     const page = await context.newPage(), errors = [], external = [];
@@ -51,14 +51,30 @@ try {
     assert.equal(saved.armies.find(a => a.owner === 'ashen').tile, '5,7');
     await page.locator('[data-tab="council"]').click(); await page.locator('[data-talk="wintermere"]').click();
     await page.locator('#chat-message').fill('An alliance for 60 gold'); await page.locator('#send-chat').click();
-    await page.waitForFunction(() => !document.getElementById('send-chat').disabled);
-    assert.match(await page.locator('#chat-notice').textContent(), /Scripted council/);
+    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
+    assert.match(await page.locator('#chat-notice').textContent(), /local diplomacy/i);
     assert.equal(await page.locator('#use-gemini').isChecked(), false);
     assert.equal(await page.locator('#use-gemini').isDisabled(), true);
     await page.locator('[data-ratify]').first().click();
     assert.match(await page.locator('#messages').textContent(), /ratified/);
     await page.locator('[data-close="diplomacy"]').click(); await page.locator('[data-tab="ledger"]').click();
     assert.match(await page.locator('#panel').textContent(), /alliance/);
+    await page.locator('[data-dispatch="wintermere"]').click();
+    assert.equal(await page.locator('#diplomacy').evaluate(el => el.classList.contains('compact')),true);
+    assert.match(await page.locator('#messages').textContent(),/ratified/);
+    await page.locator('#chat-message').fill("I'll send you 20 food next turn."); await page.locator('#send-chat').click();
+    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
+    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges.length,0);
+    await page.getByRole('button',{name:'Give My Word',exact:true}).click();
+    const oath=await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges[0]);assert.equal(oath.status,'pending');
+    await page.locator('#expand-council').click();assert.equal(await page.locator('#diplomacy').evaluate(el=>el.classList.contains('compact')),false);
+    assert.match(await page.locator('#messages').textContent(),/20 food/);
+    await page.locator('#chat-message').fill('Thank you.');await page.locator('#send-chat').click();
+    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
+    assert.equal(await page.locator('#send-chat').isDisabled(),true);assert.match(await page.locator('#message-allowance').textContent(),/0\/3/);
+    await page.locator('#quick-promises').click();await page.locator('#council-records-body [data-deliver]').click();
+    assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges[0].status,'fulfilled');
+    await page.locator('[data-close="diplomacy"]').click();
     await page.reload(); await page.locator('#resume').click();
     assert.equal(await page.locator('#turn').textContent(), 'Turn 3');
     const resumed = await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
@@ -79,7 +95,7 @@ try {
   for (const verificationFails of [false, true]) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
-    const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, configRoute;
+    const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, sessionCalls=0, configRoute;
     page.on('pageerror', e => errors.push(e.message));
     // Hold configuration until a council is already open to exercise startup races.
     await page.route('**/game/iron-throne/config.json', route => { configRoute=route; });
@@ -88,10 +104,16 @@ try {
       if(verificationFails) return route.abort();
       await route.fulfill({ contentType:'text/javascript', body:`let options;window.testVerificationCount=0;const done=()=>{options.callback('test-token');window.testVerificationCount++;};window.turnstile={render(el,o){options=o;setTimeout(done,0);return 'widget';},reset(){setTimeout(done,0);}};` });
     });
+    await page.route('https://worker.example/session', async route => {
+      if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,authorization'}});
+      sessionCalls++;assert.equal(route.request().postDataJSON().turnstileToken,'test-token');
+      await route.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{token:'signed-browser-session',expires:Date.now()+1800000}});
+    });
     await page.route('https://worker.example/diplomacy', async route => {
-      if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type'}});
+      if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,authorization'}});
       modelCalls++;
-      assert.equal(route.request().postDataJSON().turnstileToken,'test-token');
+      assert.equal(route.request().postDataJSON().turnstileToken,undefined);
+      assert.equal(route.request().headers().authorization,'Bearer signed-browser-session');
       await route.fulfill(modelCalls===1?{headers:{'Access-Control-Allow-Origin':'*'},json:{reply:'The banners of Wintermere hear your envoy.',tone:'neutral',intents:[]}}:{status:429,headers:{'Access-Control-Allow-Origin':'*','Retry-After':'300'},body:''});
     });
     await page.goto(`${base}/game/iron-throne/index.html`);
@@ -105,19 +127,19 @@ try {
     await page.waitForFunction(fails => document.getElementById('chat-notice').textContent.includes(fails?'could not load':'Gemini ready'),verificationFails);
     assert.equal(modelCalls,0,'opening a council must not consume Gemini quota');
     await page.locator('#chat-message').fill('Greetings, Queen.');await page.locator('#send-chat').click();
-    await page.waitForFunction(() => !document.getElementById('send-chat').disabled);
+    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     if(verificationFails){assert.equal(modelCalls,0);assert.match(await page.locator('#chat-notice').textContent(),/verification/i);}
     else {
       assert.equal(modelCalls,1, await page.locator('#chat-notice').textContent());assert.match(await page.locator('#messages').textContent(),/banners of Wintermere/);
-      await page.waitForFunction(() => window.testVerificationCount>=2);
+      assert.equal(await page.evaluate(() => window.testVerificationCount),1);assert.equal(sessionCalls,1);
       await page.locator('#chat-message').fill('Would you consider peace?');await page.locator('#send-chat').click();
-      await page.waitForFunction(() => !document.getElementById('send-chat').disabled);
+      await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
       assert.equal(modelCalls,2);assert.match(await page.locator('#chat-notice').textContent(),/quota reached/);assert.match(await page.locator('#messages').textContent(),/Wintermere/);
-      assert.match(await page.locator('#ai-status').textContent(),/Scripted/);
+      assert.match(await page.locator('#ai-status').textContent(),/Local/);
     }
     await page.locator('#use-gemini').uncheck();const callsBefore=modelCalls;
     await page.locator('#chat-message').fill('An alliance for 60 gold');await page.locator('#send-chat').click();
-    await page.waitForFunction(() => !document.getElementById('send-chat').disabled);
+    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal(modelCalls,callsBefore);assert.equal(await page.locator('#privacy').isVisible(),false);
     await page.locator('[data-close="diplomacy"]').click();await page.locator('[data-talk="wintermere"]').click();
     assert.equal(await page.locator('#use-gemini').isChecked(),false,'manual opt-out survives reopening the council');
@@ -129,7 +151,7 @@ try {
     assert.equal(await page.locator('#use-gemini').isChecked(),true,'a new session defaults to Gemini on resume');
     assert.equal(modelCalls,callsBefore);
     assert.deepEqual(errors,[]);
-    console.log(`PASS Gemini default: delayed config, ${verificationFails?'verification failure':'verified reply and quota fallback'}, opt-out, resume, no automatic model calls`);
+    console.log(`PASS Gemini default: delayed config, ${verificationFails?'verification failure':'single verification, session reuse and quota fallback'}, opt-out, resume, no automatic model calls`);
     await context.close(); await browser.close(); browser=null;
   }
   browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });

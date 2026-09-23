@@ -1,5 +1,7 @@
 import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
 
+import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
+
 export const PLAYER = 'ashen';
 const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 export const tileId = (q, r) => `${q},${r}`;
@@ -28,20 +30,23 @@ export function remember(s, owner, text, importance = 5) {
     k.memorySummary = `${k.memorySummary} ${old.slice(0, 3).map(m => `T${m.turn}: ${m.text}`).join(' ')}`.slice(-900);
   }
 }
-export function shiftRelation(s, a, b, opinion, trust = 0) {
-  const r = relation(s, a, b); if (!r) return;
-  r.opinion = Math.max(-100, Math.min(100, r.opinion + opinion));
-  r.trust = Math.max(-100, Math.min(100, r.trust + trust));
+export function shiftRelation(s, a, b, opinion, trust = 0, reason = 'Diplomatic relations changed.') {
+  changeRelation(s, a, b, { opinion, trust }, reason);
 }
 export function declareWar(s, a, b) {
   if (!alive(s, a) || !alive(s, b) || a === b || atWar(s, a, b)) return false;
   const broken = s.treaties.filter(t => t.parties.includes(a) && t.parties.includes(b));
   s.treaties = s.treaties.filter(t => !broken.includes(t));
   if (broken.length) {
-    for (const k of s.kingdoms.filter(k => k.id !== a)) shiftRelation(s, k.id, a, -12, -20);
+    for (const k of s.kingdoms.filter(k => k.id !== a)) changeRelation(s, k.id, a, { opinion: -12, trust: -20, grievance: 20, aggression: 15 }, 'A signed treaty was broken by a declaration of war.');
     remember(s, b, `${kingdom(s, a).name} broke our treaty.`, 10);
   }
-  s.wars.push(pair(a, b)); shiftRelation(s, b, a, -30, -20);
+  s.diplomacy.warHistory.push({ id: s.nextId++, turn: s.turn, attacker: a, defender: b });
+  s.diplomacy.warHistory = s.diplomacy.warHistory.slice(-80);
+  s.wars.push(pair(a, b)); changeRelation(s, b, a, { opinion: -30, trust: -20, grievance: 25, aggression: 20 }, 'War declared against our House.');
+  recordPoliticalMemory(s, b, a, 'war', `${kingdom(s, a).name} declared war on us.`, 9);
+  for (const k of s.kingdoms.filter(k => ![a, b].includes(k.id) && treaty(s, k.id, b, 'alliance'))) changeRelation(s, k.id, a, { opinion: -20, trust: -12, grievance: 20 }, `Attacked our ally, ${kingdom(s, b).name}.`);
+  for (const p of s.pledges.filter(p => p.status === 'pending' && p.debtor === a && p.creditor === b)) p.breached = true;
   log(s, `${kingdom(s, a).name} declares war on ${kingdom(s, b).name}.`, 'war');
   return true;
 }
@@ -83,7 +88,7 @@ export function createGame(seed = 8147, preset = 'crossroads') {
   }
   rebuildTerritory(s);
   log(s, 'Six houses contest the crown. Unite three rival houses for three turns, or control 60% of settlements.', 'council');
-  return s;
+  return initializeLiving(s);
 }
 
 export function rebuildTerritory(s) {
@@ -108,11 +113,12 @@ export function buildCheck(s, owner, id, type) {
   if (s.armies.some(a => a.tile === id && atWar(s, owner, a.owner))) return 'Enemy troops occupy this tile.';
   if (k.commands < 1) return 'No construction orders left this turn.';
   if (type === 'road' && t.road) return 'This tile already has a road.';
-  if (['wall', 'market', 'workshop'].includes(type)) {
+  if (['wall', 'market', 'workshop', 'envoyOffice', 'chancery'].includes(type)) {
     if (!['city', 'town'].includes(t.building)) return 'Select a town or city.';
     if (type === 'wall' ? t.walls >= 60 : t[type]) return 'This improvement is already complete.';
   } else if (type === 'city') { if (t.building !== 'town') return 'Select a town to upgrade.'; }
   else if (type !== 'road' && t.building) return 'This tile already has a building.';
+  if (type === 'chancery' && !t.envoyOffice) return 'Complete an Envoy Office in this settlement first.';
   if (b.terrain && !b.terrain.includes(t.terrain)) return `Requires ${b.terrain.join(' or ')} terrain.`;
   if (b.resource && t.resource !== b.resource) return `Requires a ${b.resource} deposit.`;
   if (type === 'town' && settlements(s).some(c => distance(c, t) < 4)) return 'Towns must be at least 4 hexes apart.';
@@ -137,7 +143,7 @@ export function recruit(s, owner, id, type) {
   pay(k, u.cost); k.population -= u.count; k.commands--; army.units[type] += u.count;
   return { ok: true, armyId: army.id };
 }
-export function canEnter(s, owner, t) { return !!(passable(t) && (!t.owner || t.owner === owner || atWar(s, owner, t.owner) || treaty(s, owner, t.owner, 'alliance') || treaty(s, owner, t.owner, 'vassalage'))); }
+export function canEnter(s, owner, t) { return !!(passable(t) && (!t.owner || t.owner === owner || atWar(s, owner, t.owner) || treaty(s, owner, t.owner, 'alliance') || treaty(s, owner, t.owner, 'vassalage') || treaty(s, owner, t.owner, 'access'))); }
 export function moveCost(a, b) { return (a.road && b.road ? .5 : TERRAINS[b.terrain].cost) + (a.river !== b.river && (a.river || b.river) && !(a.road && b.road) ? 1 : 0); }
 export function findPath(s, startId, endId, owner, roadsOnly = false) {
   const start = s.tiles[startId], goal = s.tiles[endId];
@@ -157,7 +163,7 @@ export function findPath(s, startId, endId, owner, roadsOnly = false) {
     closed.add(current);
     for (const n of neighbors(s, s.tiles[current])) {
       const exiting = exitOwner && n.owner === exitOwner && s.tiles[current].owner === exitOwner;
-      if (!passable(n) || (roadsOnly ? !n.road || (n.owner && n.owner !== owner && !treaty(s, owner, n.owner, 'trade') && !treaty(s, owner, n.owner, 'alliance')) : !canEnter(s, owner, n) && !exiting)) continue;
+      if (!passable(n) || (roadsOnly ? !n.road || (n.owner && n.owner !== owner && (tradeBlocked(s, owner, n.owner) || (!treaty(s, owner, n.owner, 'trade') && !treaty(s, owner, n.owner, 'alliance')))) : !canEnter(s, owner, n) && !exiting)) continue;
       const cost = costs.get(current) + moveCost(s.tiles[current], n);
       if (cost >= (costs.get(n.id) ?? Infinity)) continue;
       costs.set(n.id, cost); came.set(n.id, current);
@@ -206,21 +212,25 @@ function retreat(s, a, from) {
   else casualties(a, .6);
 }
 function battle(s, attacker, defender, t) {
-  s.militaryEvents.push({ turn: s.turn, attacker: attacker.owner, defender: defender.owner, tile: t.id, action: 'battle' });
+  const event = { id: s.nextId++, turn: s.turn, attacker: attacker.owner, defender: defender.owner, attackerArmyId: attacker.id, defenderArmyId: defender.id, tile: t.id, from: attacker.tile, action: 'battle', before: [sizeOf(attacker), sizeOf(defender)] };
+  s.militaryEvents.push(event);
   const A = strength(attacker, false, t), D = strength(defender, true, t), won = random(s) < A / Math.max(1, A + D);
   const before = sizeOf(attacker) + sizeOf(defender);
   casualties(attacker, won ? .12 + .13 * D / Math.max(1, A + D) : .28 + .2 * D / Math.max(1, A + D));
   casualties(defender, won ? .28 + .2 * A / Math.max(1, A + D) : .12 + .13 * A / Math.max(1, A + D));
   if (won && sizeOf(defender) < sizeOf(attacker) * .55) retreat(s, defender, t);
+  event.after = [sizeOf(attacker), sizeOf(defender)]; event.winner = won ? attacker.owner : defender.owner; event.retreat = defender.tile !== t.id ? defender.tile : null;
   log(s, `${kingdom(s, attacker.owner).name} clashes with ${kingdom(s, defender.owner).name} at ${t.name || t.id}; ${before - sizeOf(attacker) - sizeOf(defender)} casualties.`, 'battle');
   s.armies = s.armies.filter(a => sizeOf(a) > 0);
 }
 function capture(s, a, t) {
   if (!t.owner || t.owner === a.owner || !atWar(s, a.owner, t.owner)) return true;
   if (t.walls > 0) {
-    s.militaryEvents.push({ turn: s.turn, attacker: a.owner, defender: t.owner, tile: t.id, action: 'siege' });
+    const event = { id: s.nextId++, turn: s.turn, attacker: a.owner, defender: t.owner, tile: t.id, from: a.tile, action: 'siege', before: [sizeOf(a), t.walls] };
+    s.militaryEvents.push(event);
     t.walls = Math.max(0, t.walls - Math.max(2, a.units.siege * 9));
     casualties(a, a.units.siege ? .015 : .06);
+    event.after = [sizeOf(a), t.walls];
     log(s, `${kingdom(s, a.owner).name} besieges ${t.name || t.id}: ${t.walls} wall strength remains.`, 'battle');
     return false;
   }
@@ -228,7 +238,8 @@ function capture(s, a, t) {
     const defense = t.building === 'city' ? 14 : 8;
     if (strength(a, false, t) < defense) { casualties(a, .12); return false; }
     casualties(a, .08); const previous = t.owner;
-    s.militaryEvents.push({ turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, action: 'capture' });
+    s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner });
+    changeRelation(s, previous, a.owner, { opinion: -15, grievance: 20, aggression: 12 }, `${t.name || 'A settlement'} was captured.`);
     t.owner = a.owner; t.project = null;
     log(s, `${kingdom(s, a.owner).name} captures ${t.name || 'a fort'} from ${kingdom(s, previous).name}.`, 'war');
     remember(s, previous, `${kingdom(s, a.owner).name} captured ${t.name || t.id}.`, 10);
@@ -280,7 +291,7 @@ export function economyProjection(s, owner) {
   income.food -= Math.ceil(k.population / 12);
   for (const a of armiesOf(s, owner)) { income.food -= Math.ceil(sizeOf(a) / 6); income.gold -= Math.ceil(sizeOf(a) / 9); }
   // Each connected pair pays once to each eligible kingdom, never per path tile.
-  const partners = settlements(s).filter(t => t.owner === owner || treaty(s, owner, t.owner, 'trade'));
+  const partners = settlements(s).filter(t => t.owner === owner || (treaty(s, owner, t.owner, 'trade') && !tradeBlocked(s, owner, t.owner)));
   const seen = new Set(); let routes = 0;
   for (const a of towns) for (const b of partners) {
     const key = pair(a.id, b.id);
@@ -296,7 +307,7 @@ export function resolveEconomy(s) {
     if (--t.project.remaining <= 0) {
       const type = t.project.type;
       if (type === 'wall') t.walls = 60;
-      else if (['road', 'market', 'workshop'].includes(type)) t[type] = true;
+      else if (['road', 'market', 'workshop', 'envoyOffice', 'chancery'].includes(type)) t[type] = true;
       else { t.building = type; if (['town', 'city'].includes(type)) { t.road = true; t.name ||= `Outpost ${t.q}.${t.r}`; } }
       if (t.owner === PLAYER) log(s, `${BUILDINGS[type].name} completed at ${t.name || t.id}.`, 'economy');
       t.project = null;
@@ -336,6 +347,10 @@ function militaryTarget(s, k, a) {
   }
   const threatened = settlements(s, k.id).filter(t => strategicThreat(s, k.id, t) > 3).sort((x, y) => strategicThreat(s, k.id, y) - strategicThreat(s, k.id, x));
   if (threatened[0]) { k.goal = 'DEFEND'; return threatened[0]; }
+  const partner = s.kingdoms.find(other => other.id !== k.id && treaty(s, k.id, other.id, 'alliance') && relation(s, k.id, other.id).trust >= 40 && settlements(s, other.id).some(t => strategicThreat(s, other.id, t) > 8));
+  if (partner) { k.goal = 'SUPPORT_ALLY'; return settlements(s, partner.id).sort((x, y) => strategicThreat(s, partner.id, y) - strategicThreat(s, partner.id, x))[0]; }
+  const wary = s.kingdoms.filter(other => other.id !== k.id).find(other => relation(s, k.id, other.id).wariness >= 25 && relation(s, k.id, other.id).trust < 35);
+  if (wary && !s.wars.some(w => w.split(':').includes(k.id))) { k.goal = 'GUARD_FRONTIER'; return settlements(s, k.id).sort((x, y) => Math.min(...armiesOf(s, wary.id).map(e => distance(x, s.tiles[e.tile]))) - Math.min(...armiesOf(s, wary.id).map(e => distance(y, s.tiles[e.tile]))))[0]; }
   const enemies = s.armies.filter(e => atWar(s, k.id, e.owner));
   const targets = [...enemies.map(e => s.tiles[e.tile]), ...settlements(s).filter(t => atWar(s, k.id, t.owner))];
   targets.sort((x, y) => distance(s.tiles[a.tile], x) - distance(s.tiles[a.tile], y));
@@ -360,9 +375,12 @@ export function strategyTurn(s) {
       if (candidate) { build(s, k.id, candidate.id, 'town'); k.goal = 'EXPAND'; }
     }
     const home = settlements(s, k.id)[0];
+    const alarmed = Object.values(k.relations).some(r => r.wariness >= 30 || (r.fear >= 40 && r.trust < 15) || r.grievance >= 50);
+    if (alarmed && home.walls < 60) build(s, k.id, home.id, 'wall');
+    if (s.turn >= 4 && !home.envoyOffice && k.resources.gold > 90) build(s, k.id, home.id, 'envoyOffice');
     if (s.turn % 3 === 0 && armiesOf(s, k.id).reduce((n, a) => n + sizeOf(a), 0) < 90) recruit(s, k.id, home.id, s.turn % 9 === 0 ? 'siege' : s.turn % 6 === 0 ? 'archer' : 'levy');
     if (s.turn > 9 && s.turn % 8 === HOUSES.findIndex(h => h.id === k.id) && k.aggression > .5) {
-      const rival = s.kingdoms.filter(e => e.id !== k.id && alive(s, e.id) && !treaty(s, k.id, e.id) && !atWar(s, k.id, e.id)).sort((a, b) => relation(s, k.id, a.id).opinion - relation(s, k.id, b.id).opinion)[0];
+      const rival = s.kingdoms.filter(e => e.id !== k.id && alive(s, e.id) && !treaty(s, k.id, e.id) && !atWar(s, k.id, e.id) && relation(s, k.id, e.id).dependency < 25 && relation(s, k.id, e.id).trust < 45).sort((a, b) => (relation(s, k.id, a.id).opinion - relation(s, k.id, a.id).grievance) - (relation(s, k.id, b.id).opinion - relation(s, k.id, b.id).grievance))[0];
       if (rival && armiesOf(s, k.id).reduce((n, a) => n + strength(a), 0) > armiesOf(s, rival.id).reduce((n, a) => n + strength(a), 0) * .8) declareWar(s, k.id, rival.id);
     }
     for (const a of armiesOf(s, k.id)) {
@@ -386,7 +404,7 @@ export function parseSave(raw) {
   if (typeof raw !== 'string' || raw.length > 2000000) throw new Error('Save is too large or unreadable.');
   const s = JSON.parse(raw);
   const number = (n, min = 0, max = 100000) => Number.isFinite(n) && n >= min && n <= max;
-  if (s?.version !== SAVE_VERSION || s.width !== 40 || s.height !== 30 || !Number.isInteger(s.turn) || !number(s.turn, 1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== 1200 || !Array.isArray(s.kingdoms) || s.kingdoms.length !== 6) throw new Error('Unsupported or damaged campaign save.');
+  if (![1, SAVE_VERSION].includes(s?.version) || s.width !== 40 || s.height !== 30 || !Number.isInteger(s.turn) || !number(s.turn, 1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== 1200 || !Array.isArray(s.kingdoms) || s.kingdoms.length !== 6) throw new Error('Unsupported or damaged campaign save.');
   for (const h of HOUSES) {
     const k = kingdom(s, h.id);
     if (!k || !RESOURCES.every(r => number(k.resources?.[r])) || !['low', 'medium', 'high'].includes(k.tax) || !number(k.population) || !number(k.commands, 0, 8) || !number(k.happiness, 0, 100) || !Array.isArray(k.memories) || k.memories.length > 30 || k.memories.some(m => typeof m.text !== 'string' || m.text.length > 1000 || !number(m.turn) || !number(m.importance, 0, 10)) || typeof k.memorySummary !== 'string' || k.memorySummary.length > 900) throw new Error('Damaged kingdom data.');
@@ -401,11 +419,13 @@ export function parseSave(raw) {
   if (!Array.isArray(s.armies) || s.armies.length > 500 || new Set(s.armies.map(a => a.id)).size !== s.armies.length) throw new Error('Damaged army data.');
   for (const a of s.armies) if (!kingdom(s, a.owner) || !s.tiles[a.tile] || !number(a.morale, .1, 1) || !Object.keys(UNITS).every(u => Number.isInteger(a.units?.[u]) && number(a.units[u])) || !Array.isArray(a.path) || a.path.length > 1200 || a.path.some(id => !s.tiles[id])) throw new Error('Damaged army orders.');
   for (const list of ['treaties', 'pledges', 'wars', 'events']) if (!Array.isArray(s[list]) || s[list].length > 1000) throw new Error('Damaged campaign history.');
-  for (const t of s.treaties) if (!['alliance', 'peace', 'trade', 'vassalage'].includes(t.type) || t.parties?.length !== 2 || t.parties.some(id => !kingdom(s, id)) || !number(t.expires)) throw new Error('Damaged treaty data.');
-  for (const p of s.pledges) if (!kingdom(s, p.debtor) || !kingdom(s, p.creditor) || !p.intent || !INTENT_TYPES.includes(p.intent.type) || !number(p.intent.giveAmount, 0, 1000) || !RESOURCES.includes(p.intent.giveResource) || !number(p.deadline) || !number(p.created) || !number(p.held, 0, 2) || !['pending', 'fulfilled', 'broken'].includes(p.status)) throw new Error('Damaged pledge data.');
+  for (const t of s.treaties) if (!['alliance', 'peace', 'trade', 'vassalage', 'non-aggression', 'access', 'embargo', 'recurring'].includes(t.type) || t.parties?.length !== 2 || t.parties.some(id => !kingdom(s, id)) || !number(t.expires)) throw new Error('Damaged treaty data.');
+  for (const p of s.pledges) if (!kingdom(s, p.debtor) || !kingdom(s, p.creditor) || !p.intent || !INTENT_TYPES.includes(p.intent.type) || !number(p.intent.giveAmount, 0, 1000) || !RESOURCES.includes(p.intent.giveResource) || !number(p.deadline) || !number(p.created) || !number(p.held, 0, 2) || !['pending', 'fulfilled', 'broken', 'released'].includes(p.status)) throw new Error('Damaged pledge data.');
   if (s.outcome && (typeof s.outcome.won !== 'boolean' || typeof s.outcome.reason !== 'string')) throw new Error('Damaged result.');
   if (!Array.isArray(s.militaryEvents) || s.militaryEvents.length > 100 || s.militaryEvents.some(e => !kingdom(s, e.attacker) || !kingdom(s, e.defender) || !number(e.turn) || !s.tiles[e.tile])) throw new Error('Damaged military history.');
   if (!s.conversations || typeof s.conversations !== 'object' || !number(s.diplomaticTurns, 0, 3)) throw new Error('Damaged campaign data.');
   for (const history of Object.values(s.conversations)) if (!Array.isArray(history) || history.length > 60 || history.some(m => typeof m.text !== 'string' || m.text.length > 2000 || !['player', 'ruler', 'council'].includes(m.role))) throw new Error('Damaged conversation data.');
+  if (s.version === 1) { initializeLiving(s); s.version = SAVE_VERSION; }
+  validateLivingSave(s);
   return s;
 }
