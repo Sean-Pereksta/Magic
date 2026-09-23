@@ -17,7 +17,7 @@ const registry = html => {
 const games = registry(core);
 const byKey = Object.fromEntries(games.map(game => [game.key, game]));
 
-for (const key of ['receiverwindowqb', 'arcanewilds']) {
+for (const key of ['receiverwindowqb', 'arcanewilds', 'ironthrone']) {
   test(`${key}: singleplayer offers only Play`, () => {
     assert.deepEqual(library.getActions(byKey[key]), [{ type: 'single', label: 'Play' }]);
   });

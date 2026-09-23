@@ -1,0 +1,22 @@
+name = "iron-throne-diplomacy"
+main = "worker.mjs"
+compatibility_date = "2026-09-01"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+ALLOWED_ORIGINS = "https://catnmice.com,https://www.catnmice.com"
+# Local budgets, NOT claims about Google's allowance. Set below your AI Studio limits.
+DAILY_LIMIT = "20"
+REQUESTS_PER_MINUTE = "4"
+CLIENT_PER_MINUTE = "2"
+
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "DiplomacyBudget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiplomacyBudget"]
+
+# Install GEMINI_API_KEY and TURNSTILE_SECRET with `wrangler secret put`.
+# Use a Gemini Free Tier project without billing. No keys belong in this file.
