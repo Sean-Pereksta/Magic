@@ -33,6 +33,13 @@ test('conversations cache exact state, make one request, and do not mutate the c
   assert.equal(first.source, 'gemini'); assert.equal(second.source, 'gemini'); assert.equal(requests, 1); assert.equal(JSON.stringify(s), original);
   s.turn++; await c.send(s, 'wintermere', 'alliance', 'token', true); assert.equal(requests, 2);
 });
+test('browser fetch is invoked without binding the diplomacy client as its receiver', async () => {
+  let calls = 0;
+  const fetcher = function () { assert.equal(this, undefined); calls++; return Promise.resolve(Response.json(reply)); };
+  const client = new DiplomacyClient({ endpoint: 'https://worker.example/diplomacy', fetcher });
+  const result = await client.send(createGame(), 'wintermere', 'An alliance?', 'verified-token', true);
+  assert.equal(result.source, 'gemini'); assert.equal(calls, 1);
+});
 test('client rejects credentials and insecure or malformed proxy URLs', () => {
   for (const u of ['http://bad.example/diplomacy', 'https://key:secret@bad.example/diplomacy', 'javascript:alert(1)', 'https://x.example/diplomacy?key=oops']) assert.equal(validEndpoint(u), '');
   assert.equal(validEndpoint('https://x.example/diplomacy'), 'https://x.example/diplomacy');

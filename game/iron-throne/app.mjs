@@ -9,6 +9,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const costText = cost => Object.entries(cost).map(([r, n]) => `${n} ${r}`).join(' · ');
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
+let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 try {
   const saved = localStorage.getItem(SAVE_KEY);
   if (saved) { state = parseSave(saved); restored = true; }
@@ -145,6 +146,7 @@ function openDiplomacy(id) {
   activeRuler = id; proposals = []; state.conversations[id] ||= [];
   $('give-amount').value = '60'; $('receive-amount').value = '0'; $('offer-type').value = atWar(state, PLAYER, id) ? 'PEACE' : 'ALLIANCE';
   updateOfferFields(); renderDiplomacy(); $('diplomacy').showModal();
+  if (configReady) enableGemini();
 }
 function renderDiplomacy() {
   const k = kingdom(state, activeRuler), r = k.relations[PLAYER];
@@ -215,26 +217,69 @@ $('chat-form').addEventListener('submit', async e => {
     $('ai-status').textContent = response.source === 'gemini' ? 'Gemini council connected' : 'Scripted council ready';
   } finally {
     $('send-chat').disabled = false; $('send-chat').textContent = 'Send envoy →';
-    challengeToken = ''; if (turnstileWidget !== null) globalThis.turnstile?.reset(turnstileWidget);
+    challengeToken = ''; if (turnstileWidget !== null && $('use-gemini').checked && $('diplomacy').open) globalThis.turnstile?.reset(turnstileWidget);
   }
 });
-async function enableGemini() {
-  $('privacy').hidden = !$('use-gemini').checked;
-  if (!$('use-gemini').checked) { $('turnstile').hidden = true; return; }
-  $('turnstile').hidden = false;
-  if (!client.endpoint || !config.turnstileSiteKey) { $('chat-notice').textContent = 'Gemini is not connected for this site yet. Use the scripted council and treaty desk.'; $('use-gemini').checked = false; $('privacy').hidden = true; return; }
-  try {
-    if (!globalThis.turnstile) await new Promise((resolve, reject) => {
-      let script = document.getElementById('turnstile-script');
-      if (script) script.remove();
-      script = document.createElement('script'); script.id = 'turnstile-script'; script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; script.onload = resolve; script.onerror = reject; document.head.append(script);
-    });
-    if (turnstileWidget === null) turnstileWidget = globalThis.turnstile.render($('turnstile'), { sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark', callback: token => { challengeToken = token; }, 'expired-callback': () => { challengeToken = ''; }, 'error-callback': () => { challengeToken = ''; $('chat-notice').textContent = 'Verification unavailable. Scripted diplomacy still works.'; } });
-    $('chat-notice').textContent = 'Gemini conversations use a limited shared allowance. The treaty desk is always available.';
-  } catch { $('chat-notice').textContent = 'Verification could not load. Scripted diplomacy still works.'; $('use-gemini').checked = false; }
+function loadVerification() {
+  if (typeof globalThis.turnstile?.render === 'function') return Promise.resolve();
+  if (verificationLoad) return verificationLoad;
+  verificationLoad = new Promise((resolve, reject) => {
+    document.getElementById('turnstile-script')?.remove();
+    const script = document.createElement('script');
+    script.id = 'turnstile-script'; script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true;
+    const timeout = setTimeout(() => { script.remove(); reject(new Error('Verification timed out')); }, 12000);
+    script.onload = () => { clearTimeout(timeout); resolve(); };
+    script.onerror = () => { clearTimeout(timeout); script.remove(); reject(new Error('Verification unavailable')); };
+    document.head.append(script);
+  }).finally(() => { verificationLoad = null; });
+  return verificationLoad;
 }
-$('use-gemini').onchange = enableGemini;
-fetch('./config.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).then(data => { config = data; client = new DiplomacyClient({ endpoint: config.diplomacyEndpoint }); if (client.endpoint && config.turnstileSiteKey) $('ai-status').textContent = 'Gemini available · opt in at the council'; }).catch(() => {});
+async function enableGemini() {
+  const enabled = $('use-gemini').checked && !!client.endpoint && !!config.turnstileSiteKey;
+  $('privacy').hidden = !enabled; $('turnstile').hidden = !enabled;
+  $('ai-status').textContent = enabled ? 'Gemini council enabled' : 'Scripted council ready';
+  if (!enabled) {
+    challengeToken = '';
+    $('chat-notice').textContent = 'Scripted council. The treaty desk sets exact terms.';
+    return;
+  }
+  // Verification starts when a visible council opens, not behind the welcome dialog.
+  // No Gemini request is made until the player sends a message.
+  if (!$('diplomacy').open) return;
+  $('chat-notice').textContent = client.now() < client.cooldownUntil ? 'Gemini is resting after a rate limit or connection error. Scripted diplomacy is available.' : challengeToken ? 'Gemini ready. Send your envoy to begin.' : 'Gemini is enabled. Preparing verification…';
+  try {
+    await loadVerification();
+    if (!$('use-gemini').checked || !$('diplomacy').open) return;
+    if (turnstileWidget === null) turnstileWidget = globalThis.turnstile.render($('turnstile'), {
+      sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark',
+      callback: token => {
+        challengeToken = token;
+        if (/preparing|expired|unavailable/i.test($('chat-notice').textContent) && client.now() >= client.cooldownUntil) $('chat-notice').textContent = 'Gemini ready. Send your envoy to begin.';
+      },
+      'expired-callback': () => {
+        challengeToken = '';
+        if ($('use-gemini').checked && $('diplomacy').open) {
+          $('chat-notice').textContent = 'Verification expired. Preparing a new challenge…';
+          globalThis.turnstile?.reset(turnstileWidget);
+        }
+      },
+      'error-callback': () => { challengeToken = ''; $('chat-notice').textContent = 'Verification unavailable. Scripted diplomacy still works.'; }
+    });
+    else if (!challengeToken) globalThis.turnstile.reset(turnstileWidget);
+  } catch {
+    if (!$('use-gemini').checked || !$('diplomacy').open) return;
+    $('chat-notice').textContent = 'Verification could not load. Scripted diplomacy still works; reopen the council to retry.';
+    $('ai-status').textContent = 'Gemini verification unavailable';
+  }
+}
+$('use-gemini').onchange = () => { geminiChoiceMade = true; enableGemini(); };
+fetch('./config.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(data => {
+  config = data || {}; client = new DiplomacyClient({ endpoint: config.diplomacyEndpoint }); configReady = true;
+  const available = !!client.endpoint && !!config.turnstileSiteKey;
+  $('use-gemini').disabled = !available;
+  if (!geminiChoiceMade) $('use-gemini').checked = available;
+  enableGemini();
+});
 $('resume').hidden = !restored;
 if (restored) $('start-game').textContent = 'Replace save & begin a new reign';
 render(); $('welcome').showModal();
