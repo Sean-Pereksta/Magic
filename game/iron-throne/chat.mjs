@@ -6,7 +6,9 @@ export function validEndpoint(value) {
 }
 export class DiplomacyClient {
   constructor({ endpoint = '', fetcher = fetch, now = Date.now } = {}) {
-    this.endpoint = validEndpoint(endpoint); this.fetcher = fetcher; this.now = now;
+    this.endpoint = validEndpoint(endpoint);
+    // Native browser fetch must not receive this DiplomacyClient as its receiver.
+    this.fetcher = (...args) => fetcher(...args); this.now = now;
     this.cooldownUntil = 0; this.busy = false; this.cache = new Map(); this.controller = null;
   }
   cancel() { this.controller?.abort(); }

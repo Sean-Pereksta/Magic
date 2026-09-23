@@ -40,8 +40,10 @@ access can still withdraw out of the former partner's territory.
 
 **The static game is playable immediately. Live Gemini chat is disabled until a
 site operator deploys the included Worker and configures it.** This repository
-does not contain an API key or a deployed proxy URL. No live provider request or
-Cloudflare deployment was performed as part of this implementation.
+contains only public connection settings; private keys stay in Cloudflare.
+When both connection settings are present, Gemini is enabled automatically on
+new sessions, including resumed campaigns. Verification loads when a council
+opens; starting a game never sends a model request.
 
 This uses the **Gemini Developer API free tier from Google AI Studio**, not the
 consumer Gemini chat website or a consumer chat subscription. A consumer chat
@@ -87,11 +89,11 @@ Local caps cannot turn a paid-tier project into a free-tier project.
    ```
 
 6. Publish that configuration through the site's normal GitHub workflow. Enter a
-   ruler's council chamber, opt into **Gemini conversation**, complete Turnstile,
+   ruler's council chamber, leave **Gemini conversation** enabled, complete Turnstile,
    and send an envoy. Verify that the reply is marked Gemini, inspect the proposed
    terms, and ratify one. Check the pledge ledger and next turn's movement.
 
-No keys are accepted or stored by the browser. Disabling the Gemini checkbox
+No private keys are accepted or stored by the browser. Disabling the Gemini checkbox
 returns to the scripted council. The treaty desk remains available in every mode.
 
 ### Cost and failure behavior
@@ -113,9 +115,9 @@ returns to the scripted council. The treaty desk remains available in every mode
 - Provider quota errors activate a shared cooldown. The client also backs off on
   errors. Timeout, rate limit, missing configuration, invalid JSON or interrupted
   network returns the scripted council without preventing turns or deals.
-- Free-tier chat content may be used to improve Google's products. The opt-in UI
-  discloses this. Messages and fictional state go to the configured Worker and
-  Gemini only when the player selects that mode. There is no game telemetry.
+- Free-tier chat content may be used to improve Google's products. The council UI
+  discloses this while Gemini is enabled. Messages and fictional state go to the
+  configured Worker and Gemini only when the player sends a message in that mode. There is no game telemetry.
 
 The proxy limits spending attempts and validates the output shape; the **game
 rules are authoritative**. This is a local singleplayer campaign, not a secure
@@ -171,3 +173,16 @@ ongoing trade revenue requires actual connected roads. Territorial deals are
 limited to adjacent, unoccupied noncapital settlements/forts; capitals and last
 settlements cannot be purchased. General roleplay threats have no hidden power:
 only the reviewed, ratified supported intent can change the simulation.
+
+## Map presentation
+
+Terrain and buildings use native canvas artwork cached in a bounded sprite cache.
+Six terrain types have deterministic surface textures; production sites, towns,
+forts and cities have distinct artwork. Walls, markets, workshops and construction
+progress reflect real tile state. Roads, bridges, coastlines and house frontiers
+are layered beneath structures; army badges retain readable troop counts.
+
+Only visible tiles and armies render. Detail reduces at world zoom, display scale
+is capped at 2×, and selection pulses stop after 650 ms (disabled for reduced
+motion and hidden tabs). There is no continuous idle animation or external art
+download. The welcome citadel is a bundled SVG, and existing saves are unchanged.
