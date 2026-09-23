@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121b20">
+  <title>The Iron Throne Engine · Cat'N Mice</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="hub" href="../../lobby/lobby.html" aria-label="Return to game lobby">‹ Lobby</a>
+    <div class="brand"><span class="crown">♛</span><div><small>A KINGDOM OF WORDS & WAR</small><h1>The Iron Throne Engine</h1></div></div>
+    <div class="turn"><small id="season">SPRING · YEAR 1</small><strong id="turn">Turn 1</strong></div>
+    <button id="end-turn" class="primary">End turn <span>→</span></button>
+    <button id="menu-button" class="icon-button" aria-label="Campaign menu">☰</button>
+  </header>
+  <section id="resources" class="resources" aria-label="Kingdom resources"></section>
+  <main>
+    <section class="map-wrap" aria-label="World map">
+      <canvas id="map" tabindex="0" aria-label="Hex strategy map. Drag to pan, pinch or scroll to zoom. Arrow keys select nearby tiles; Enter inspects a tile."></canvas>
+      <div class="map-caption"><span class="eyebrow">THE SIX HOUSES</span><span id="objective">A crown is won by the sword—or a promise kept.</span></div>
+      <div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="home" aria-label="Center on your capital">⌂</button><button id="fit-map">World</button></div>
+      <div id="order-hint" class="order-hint" hidden></div>
+      <div class="map-bottom"><span>Drag to explore · Select a banner to command</span><span id="coordinates">Emberkeep</span></div>
+    </section>
+    <aside class="side-panel">
+      <nav class="tabs" aria-label="Kingdom panels"><button data-tab="land" class="active">Land</button><button data-tab="realm">Realm</button><button data-tab="council">Houses</button><button data-tab="ledger">Pledges</button></nav>
+      <div id="panel" class="panel-scroll"></div>
+      <div class="chronicle"><span class="eyebrow">THE CHRONICLE</span><div id="latest-events"></div></div>
+    </aside>
+  </main>
+  <footer><span id="save-status">Local campaign</span><span id="ai-status">Scripted council ready</span><button id="help">How to rule</button></footer>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="welcome" class="welcome">
+    <div class="welcome-art" aria-hidden="true"><span>♛</span><i></i><i></i><i></i></div>
+    <div class="dialog-body"><span class="eyebrow">SINGLEPLAYER GRAND STRATEGY</span><h2>Words forge alliances.<br>Armies decide their worth.</h2><p>Raise House Ashen from its border keep. Build a realm, bargain with five rival rulers, and turn their promises into orders on the map.</p>
+      <div class="win-rules"><p><strong>THE SWORD</strong>Control 60% of settlements.</p><p><strong>THE ACCORD</strong>Ally with a majority of rival houses for 3 turns.</p></div>
+      <form id="new-game-form"><div class="form-row"><label>World<select id="preset"><option value="crossroads">The Crossroads</option><option value="highlands">The Broken Highlands</option></select></label><label>Map seed<input id="seed" type="number" min="1" max="4294967295" value="8147"></label></div><div class="button-row"><button type="button" id="resume" hidden>Resume campaign</button><button class="primary" type="submit" id="start-game">Begin your reign</button></div></form>
+      <p class="fine">Your campaign saves on this device. The full strategy game and treaty desk work without an AI connection.</p><p id="load-warning" class="warning" hidden></p>
+    </div>
+  </dialog>
+  <dialog id="diplomacy" class="diplomacy">
+    <header class="dialog-header"><div class="ruler-mark" id="ruler-mark">❄</div><div><span class="eyebrow" id="ruler-house"></span><h2 id="ruler-name"></h2><small id="ruler-relation"></small></div><button class="close" data-close="diplomacy" aria-label="Close diplomacy">×</button></header>
+    <div class="diplomacy-grid">
+      <section class="conversation"><p class="motto" id="ruler-motto"></p><div id="messages" class="messages" role="log" aria-label="Ruler conversation"></div><div id="proposals"></div>
+        <form id="chat-form"><label for="chat-message" class="eyebrow">ADDRESS THE RULER</label><textarea id="chat-message" maxlength="600" rows="2" placeholder="What would you need to support my claim to the crown?"></textarea><div class="button-row"><label class="toggle"><input type="checkbox" id="use-gemini">Gemini conversation</label><button id="send-chat" type="submit">Send envoy →</button></div><div id="turnstile"></div><p id="chat-notice" class="fine">Scripted council. The treaty desk sets exact terms.</p><p class="fine" id="privacy" hidden>Gemini receives your conversation and fictional game state. Free-tier inputs may be used to improve Google's products. Keep personal information out of messages.</p></form>
+      </section>
+      <section class="treaty-desk"><span class="eyebrow">THE TREATY DESK</span><h3>Give your words weight.</h3><p class="fine">Review an offer, then ratify it. Only ratified terms change the world.</p><form id="offer-form">
+        <label>Agreement<select id="offer-type"></select></label><label id="target-label">Target<select id="offer-target"></select></label>
+        <div class="form-row"><label>You offer<input id="give-amount" type="number" min="0" max="1000" step="1" value="60"></label><label>Resource<select id="give-resource"></select></label></div>
+        <div class="form-row" id="receive-fields"><label>You request<input id="receive-amount" type="number" min="0" max="1000" step="1" value="0"></label><label>Resource<select id="receive-resource"></select></label></div>
+        <label>Duration / deadline (turns)<input id="duration" type="number" min="2" max="20" value="10"></label><button class="primary" type="submit">Review terms</button>
+      </form><div class="council-note"><strong>Promises have consequences.</strong><p>Rulers remember gifts, broken oaths and invasions. Armies must travel to their destinations; a pledge can fail.</p></div></section>
+    </div>
+  </dialog>
+  <dialog id="menu" class="small-dialog"><header class="dialog-header"><h2>Your campaign</h2><button class="close" data-close="menu" aria-label="Close menu">×</button></header><div class="dialog-body menu-actions"><button id="save-now">Save campaign</button><button id="export-save">Export save file</button><label class="file-button">Import save file<input id="import-save" type="file" accept="application/json,.json"></label><button id="new-campaign">Start a new campaign…</button><a href="../../lobby/lobby.html">Return to lobby</a><p class="fine">Export a copy to move your kingdom between devices. Browser storage can be cleared by the browser.</p></div></dialog>
+  <dialog id="help-dialog" class="small-dialog"><header class="dialog-header"><h2>Your first council</h2><button class="close" data-close="help-dialog" aria-label="Close help">×</button></header><div class="dialog-body"><ol class="help-steps"><li><strong>Grow your realm.</strong> Select a gold-bordered tile and build. Farms feed people and armies; forests and hills provide materials. Each turn gives 3 construction or recruitment orders. Workshops add more.</li><li><strong>Command your banners.</strong> Select an army, press March, then select its destination. Roads speed travel. Declare war before entering a rival's land, or negotiate an alliance for access.</li><li><strong>Win the council.</strong> Open Houses, speak to a ruler, and use the treaty desk. Gifts build trust. Review counteroffers, then ratify. Gemini is optional; every treaty is available without it.</li><li><strong>Keep your word.</strong> Open Pledges to deliver promised resources. Allies march, defend, withdraw and build under the same rules as you.</li><li><strong>Take the crown.</strong> Hold 60% of settlements, or keep alliances with a majority of surviving rivals for 3 turns. Losing your final settlement ends the campaign.</li></ol><p class="fine">City walls require a siege. Infantry can wear walls down slowly at a high cost. Mixed armies travel at the speed of their slowest unit. Drag or pinch the map; use +/− to zoom. Arrow keys select tiles, Enter inspects, Home centers your capital.</p></div></dialog>
+  <dialog id="outcome" class="small-dialog"><div class="dialog-body"><span class="eyebrow">THE CHRONICLES WILL REMEMBER</span><h2 id="outcome-title"></h2><p id="outcome-reason"></p><div class="button-row"><button data-close="outcome">Inspect the realm</button><button class="primary" id="play-again">New campaign</button></div></div></dialog>
+  <noscript>This game requires JavaScript. Enable it to play the singleplayer campaign.</noscript>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
