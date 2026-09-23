@@ -1,0 +1,78 @@
+name: Apply tested Hearthglade source
+
+on:
+  push:
+    branches: [feature/arcane-wilds-hearthglade]
+    paths: ['.github/workflows/apply-hearthglade-source.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/feature/arcane-wilds-hearthglade'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/arcane-wilds-hearthglade
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/arcane-wilds/
+            /game/arcane-wilds.html
+            /.github/hearthglade-transfer/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify and apply source patch
+        shell: python
+        run: |
+          import base64, hashlib, lzma, pathlib, subprocess
+          root = pathlib.Path('.github/hearthglade-transfer')
+          encoded = ''.join((root / f'part-{i}.b64').read_text().strip() for i in range(1, 5))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          expected = 'a4d138988f9a08062557ce5eaab307cde260053eb4a2211fc167c7e76a8eaf02'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Source transfer checksum mismatch'
+          for line in patch.decode().splitlines():
+              if line.startswith('+++ b/'):
+                  path = line[6:]
+                  assert path == 'game/arcane-wilds.html' or path.startswith('game/arcane-wilds/'), path
+          target = '/tmp/hearthglade.patch'
+          pathlib.Path(target).write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--unidiff-zero', target], check=True)
+          subprocess.run(['git', 'apply', '--unidiff-zero', target], check=True)
+          subprocess.run(['git', 'diff', '--check'], check=True)
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: game/arcane-wilds
+      - name: Run complete Arcane Wilds regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee /tmp/hearthglade-tests.log
+        working-directory: game/arcane-wilds
+      - name: Commit tested game source and remove transfer payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = feature/arcane-wilds-hearthglade
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add game/arcane-wilds game/arcane-wilds.html
+          git rm .github/hearthglade-transfer/part-*.b64
+          git diff --cached --check
+          git commit -m 'Build Hearthglade homestead, farming, portals, cloud persistence, multi-touch and regional waves'
+          git push origin HEAD:refs/heads/feature/arcane-wilds-hearthglade
+          git rev-parse HEAD > /tmp/hearthglade-commit.txt
+          git show --format= --name-only HEAD -- game/arcane-wilds game/arcane-wilds.html | while IFS= read -r path; do
+            test -z "$path" || sha256sum "$path"
+          done > /tmp/hearthglade-manifest.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearthglade-validation
+          path: |
+            /tmp/hearthglade-tests.log
+            /tmp/hearthglade-commit.txt
+            /tmp/hearthglade-manifest.txt
+          retention-days: 7
