@@ -47,6 +47,21 @@ test('construction rejects missing tools, wrong terrain, and unmet local project
  const mine=Object.values(s.tiles).find(t=>t.owner===PLAYER&&t.building==='mine');kingdom(s,PLAYER).resources.tools=0;assert.match(buildCheck(s,PLAYER,mine.id,'mine'),/tools/);
  assert.match(buildCheck(s,PLAYER,home.id,'harbor'),/coastal/);assert.match(buildCheck(s,PLAYER,'17,4','market'),/borders/);
 });
+test('harbors and diplomatic offices require towns or cities while forts retain military construction',()=>{
+ for(const type of ['harbor','envoyOffice','chancery'])for(const level of [0,1,2]){
+  const s=createGame();stocked(s);const t=s.tiles['6,6'];
+  Object.assign(t,{building:'fort',terrain:'coast',levels:{fort:1,envoyOffice:1},envoyOffice:true});
+  t[type]=level>0;t.levels[type]=level;
+  const before=structuredClone(s);
+  assert.deepEqual(build(s,PLAYER,t.id,type),{ok:false,error:'Requires a town or city.'});
+  assert.deepEqual(s,before,'rejected construction must not spend resources or orders');
+  for(const building of ['town','city']){
+   t.building=building;assert.equal(buildCheck(s,PLAYER,t.id,type),null,`${type} level ${level+1} in a ${building}`);
+  }
+ }
+ const s=createGame();stocked(s);const t=s.tiles['6,6'];Object.assign(t,{building:'fort',levels:{fort:1}});
+ assert.equal(build(s,PLAYER,t.id,'barracks').ok,true);
+});
 test('new military units require their local tier and real horses and arms',()=>{
  const s=createGame();stocked(s);const home=s.tiles['5,6'];assert.match(recruit(s,PLAYER,home.id,'knight').error,/Knightly Hall/);
  home.stable=true;home.levels.stable=3;kingdom(s,PLAYER).resources.horses=0;assert.match(recruit(s,PLAYER,home.id,'knight').error,/horses/);
@@ -70,6 +85,22 @@ test('archers resolve before melee, hill defense matters, and forest limits char
  const plain=resolveFieldBattle(a(),d(),terrain()),forest=resolveFieldBattle(a(),d(),terrain('forest')),hill=resolveFieldBattle(a(),d(),terrain('hills'));
  assert.deepEqual(plain.phases.map(p=>p.name),['Positioning','Missile Fire','Charge / Engagement','Main Melee','Flanking','Morale','Pursuit']);
  assert.ok(plain.phases[1].loss[1]>forest.phases[1].loss[1]);assert.ok(plain.phases[1].loss[1]>hill.phases[1].loss[1]);
+});
+test('each watchtower tier reduces actual battle casualties',()=>{
+ const reports=[0,1,2,3].map(level=>resolveFieldBattle(army({archer:40,levy:40}),army({levy:80},'balanced','wintermere'),terrain('plains',{building:level?'watchtower':null,levels:{watchtower:level}})));
+ for(let level=1;level<=3;level++){
+  assert.ok(reports[level].phases[1].loss[1]<reports[level-1].phases[1].loss[1],`tier ${level} protects against volleys`);
+  assert.ok(reports[level].casualties[1].levy<reports[level-1].casualties[1].levy,`tier ${level} reduces total defender losses`);
+ }
+});
+test('watchtower protection contributes to the final battle outcome',()=>{
+ const fight=building=>{
+  const defender=army({levy:1},'balanced','wintermere');defender.morale=.75;
+  return resolveFieldBattle(army({levy:1}),defender,terrain('plains',{owner:null,building,levels:{watchtower:3}}));
+ };
+ const open=fight(null),tower=fight('watchtower');
+ assert.ok([...open.phases,...tower.phases].every(p=>p.loss.every(n=>n===0)),'isolate combat power from casualties');
+ assert.equal(open.winner,0);assert.equal(tower.winner,1);
 });
 test('cavalry flanks and pursues routed armies; army losses and morale are recorded by class',()=>{
  const a=army({knight:45,lightCavalry:25},'flanking'),d=army({levy:60},'balanced','wintermere');d.morale=.4;

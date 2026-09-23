@@ -1,3 +1,4 @@
+import { finishStrategyRound } from './strategy.mjs';
 import { HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
@@ -311,6 +312,7 @@ export function endTurn(s) {
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   updatePoliticalState(s, { sendDispatches: false });
   aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveMovement(s); resolveEconomy(s); resolveAmbassadors(s);
+  finishStrategyRound(s);
   s.turn++; resolveRecurringTrade(s); verifyPledges(s); updatePoliticalState(s); scheduleTrade(s);
   s.diplomacy.messages = { turn: s.turn, regular: 0, hosts: {} }; s.diplomacy.processedTurn = s.turn;
   s.treaties = s.treaties.filter(t => t.expires > s.turn && t.parties.every(id => alive(s, id)));

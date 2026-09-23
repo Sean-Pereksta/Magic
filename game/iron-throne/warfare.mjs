@@ -41,7 +41,7 @@ export function inflict(a,damage,{piercing=false,exposed=false}={}) {
 }
 function protection(t,defending) {
   if(!defending)return 1;
-  return TERRAINS[t.terrain].defense*(t.building==='fort'?1+.25*buildingLevel(t,'fort'):t.building==='city'?1.12:1)*(t.walls>0?1.65:1);
+  return TERRAINS[t.terrain].defense*(t.building==='fort'?1+.25*buildingLevel(t,'fort'):t.building==='city'?1.12:1)*(t.walls>0?1.65:1)*(t.building==='watchtower'?1+.15*buildingLevel(t,'watchtower'):1);
 }
 function spearCounter(target) {return 1/(1+(target.units.spearman||0)/Math.max(1,troopTotal(target))*3.5*(target.formation==='spearWall'?1.8:1));}
 export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossing=false,surrounded=[false,false]}={}) {

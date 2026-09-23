@@ -1,4 +1,5 @@
 > The economy and warfare expansion is documented in [EXPANSION.md](./EXPANSION.md), including regional production, construction tiers, contracts, recruitment and battle reports.
+> [STRATEGY.md](./STRATEGY.md) explains player orders, autonomous rival turns, economic planning, campaigns and the Rival Turns reports.
 
 # The Iron Throne Engine
 

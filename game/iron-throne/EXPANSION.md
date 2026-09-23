@@ -35,6 +35,8 @@ Storage starts at 600 for materials; storehouses add 400 per level. Farms and gr
 
 Costs are paid once at the start, one project occupies a tile, and the existing tier operates until completion. A captured project is cancelled. Repairing maximum-level walls/forts costs 40% of the tier cost and two turns. Advanced timberworks/workshops shorten eligible projects. Royal Highway can upgrade an entire existing, owned road corridor between settlements in one paid project order; every tile completes its own remaining staged work before the corridor bonus applies.
 
+Harbors, Envoy Offices and Chanceries require towns or cities, where their trade and diplomatic effects operate. Forts support military infrastructure. Watchtower tiers apply their 15% per-level defense multiplier to both phased-battle casualties and final combat power.
+
 Select land for categorized construction and local recruitment. Locked options state their reason. Commercial connections display income and offer a reviewable highway project. Settlement improvements appear in inspection and as compact map art.
 
 ## Trade
@@ -57,6 +59,8 @@ Caravans cost up to two gold per party per recurring shipment. Outposts reduce t
 Dependence is the largest resource share supplied by a partner over the recent trade window, divided by production plus imports from **all** suppliers. Diversification lowers that share and the existing political dependence statistic continues influencing wars and diplomacy. Foreign treasury totals are not exposed in the player UI; qualitative shortages and surpluses are public.
 
 ## Armies and combat
+
+Every surviving rival takes a complete strategy turn when the player ends the round. [STRATEGY.md](./STRATEGY.md) documents the shared rules, economic reserves, ranked construction and recruitment, war decisions, coordinated military orders and visible six-round activity history.
 
 There are 14 recruitable classes plus the old `siege` class retained for saves. Local building levels and materials unlock recruitment. Splits/merges retain every class. Mounted and siege families affect movement and upkeep. Formation controls support Balanced, Defensive Line, Spear Wall, Aggressive Charge, Skirmish and Flanking; spears/cavalry are required for the specialized formations.
 

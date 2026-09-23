@@ -4,6 +4,7 @@ import { PLAYER, buildCheck, findPath, kingdom, recruitCheck, recruitmentCost, s
 import { buildingLevel, buildingSpec, constructionSpec, productionPlan, storageCapacity, tileProduction, wallMaximum } from './economy.mjs';
 import { economicRelationship } from './living.mjs';
 import { publicEconomy, tradeInfrastructure, tradeRoute } from './trade.mjs';
+import { STRATEGY_GOALS } from './strategy.mjs';
 export const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cost=c=>Object.entries(c).map(([r,n])=>`${n} ${r}`).join(' · ');
 export const art=(url,alt,cls='catalog-art')=>`<img class="${cls}" src="${url}" alt="${esc(alt)}" loading="lazy">`;
@@ -42,6 +43,19 @@ export function commercialConnections(s,t){
 }
 export function economySummary(s){const p=productionPlan(s,PLAYER);return `${systemTitle('treasury')}<div class="stat-grid">${RESOURCES.map(r=>`<span>${r} storage</span><b>${kingdom(s,PLAYER).resources[r]} / ${storageCapacity(s,PLAYER,r)}</b>`).join('')}</div>${p.stalls.length?`<p class="negative">${p.stalls.length} workshops lack manufacturing inputs.</p>`:''}`;}
 export function foreignEconomy(s,id){const e=publicEconomy(s,id);return `<p class="fine">${esc(e.specialty)}<br>Seeking: ${e.imports.join(', ')||'No major shortages'} · Offering: ${e.exports.join(', ')||'No major surplus'}</p>`;}
+export function rivalTurnReports(s){
+ const rounds=(s.strategy?.history||[]).slice().reverse();
+ const place=id=>esc(s.tiles[id]?.name||id),action=a=>{
+  if(a.kind==='build'||a.kind==='complete')return `${a.kind==='build'?'Started':'Completed'} ${esc(buildingSpec(a.building,a.level).name)} at ${place(a.tile)}.`;
+  if(a.kind==='recruit')return `Recruited ${a.count} ${esc(UNITS[a.unit].name)} at ${place(a.tile)}.`;
+  if(a.kind==='march')return a.arrivedAt===null?`An army ordered toward ${place(a.tile)} was lost.`:a.arrivedAt&&a.arrivedAt!==a.from?`Marched from ${place(a.from)} to ${place(a.arrivedAt)}${a.arrivedAt===a.tile?'':`, toward ${place(a.tile)}`}.`:`Ordered toward ${place(a.tile)}; the army held or fought at ${place(a.from)}.`;
+  if(a.kind==='hold')return `Held position at ${place(a.tile)}.`;
+  if(a.kind==='merge')return `Combined armies at ${place(a.tile)}.`;
+  if(a.kind==='tax')return `Set ${esc(a.policy)} taxes.`;
+  return `${a.kind==='war'?'Declared war on':'Agreed to peace with'} ${esc(kingdom(s,a.house).name)}.`;
+ };
+ return `<section aria-label="Rival turns"><div class="section-label">RIVAL TURNS</div><p class="fine">End Turn gives every surviving rival one turn. Houses pay for their own projects and troops, then all armies move and every realm collects production.</p>${rounds.length?rounds.map((round,i)=>`<details class="battle-report" ${i===0?'open':''}><summary>Round ${round.turn} · ${round.houses.filter(h=>h.goal!=='ELIMINATED').length} rival councils acted</summary>${round.houses.map(h=>`<details class="realm-card" data-rival-turn="${h.owner}"><summary>${esc(kingdom(s,h.owner).name)} · ${esc(STRATEGY_GOALS[h.goal])}</summary><p class="fine">${esc(h.reason)} ${h.orders} construction / recruitment orders used.</p>${h.actions.length?`<ul>${h.actions.map(a=>`<li>${action(a)}</li>`).join('')}</ul>`:''}${h.omitted?'<p class="fine">Additional army activity is visible on the map.</p>':''}</details>`).join('')}</details>`).join(''):'<p class="fine">The first rival turn report appears after you end round 1.</p>'}</section>`;
+}
 export function battleReports(s){
  const events=s.militaryEvents.filter(e=>[e.attacker,e.defender].includes(PLAYER)).slice(-12).reverse();
  return `${systemTitle('battle')}${events.length?events.map(e=>`<details class="battle-report"><summary>T${e.turn} · ${esc(s.tiles[e.tile]?.name||e.tile)} · ${e.winner?esc(kingdom(s,e.winner).name)+' victory':e.breach?'Breach opened':'Siege'}</summary>${e.composition?`<div class="report-scroll"><table><thead><tr><th>Troops</th><th>${esc(kingdom(s,e.attacker).name)}</th><th>${esc(kingdom(s,e.defender).name)}</th></tr></thead><tbody>${Object.entries(UNITS).filter(([id])=>e.composition.some(a=>a[id])).map(([id,u])=>`<tr><td>${u.name}</td>${[0,1].map(i=>`<td>${e.composition[i][id]||0} · lost ${e.casualties[i][id]||0}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:''}${(e.phases||[]).map(p=>`<p><strong>${esc(p.name)}</strong><br>${p.notes.map(esc).join(' ')}${p.loss?` <small>Losses: ${p.loss.join(' / ')}</small>`:''}</p>`).join('')}${e.retreat?`<p>Retreat: ${esc(kingdom(s,e.retreatOwner||e.defender).name)} to ${esc(e.retreat)}.</p>`:''}</details>`).join(''):'<p class="fine">Battle phases and casualties will appear here after a clash.</p>'}`;

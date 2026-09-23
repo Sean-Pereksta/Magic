@@ -1,9 +1,11 @@
-import { BUILDINGS, HOUSES, INTENT_TYPES, REGIONS, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
+import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
 import { buildingLevel, buildingSpec, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, regionalize, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
-import { armySpeed, chooseFormation, familyCount, inflict, resolveFieldBattle, siegeStep } from './warfare.mjs';
+import { armySpeed, familyCount, inflict, resolveFieldBattle, siegeStep } from './warfare.mjs';
+
+import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
 
 export const PLAYER = 'ashen';
 const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -93,6 +95,7 @@ export function createGame(seed = 8147, preset = 'crossroads') {
   }
   rebuildTerritory(s);
   log(s, 'Six houses contest the crown. Unite three rival houses for three turns, or control 60% of settlements.', 'council');
+  initializeStrategy(s);
   return initializeLiving(s);
 }
 
@@ -119,6 +122,7 @@ export function buildCheck(s, owner, id, type) {
   if(k.commands<1)return 'No construction orders left this turn.';
   const spec=constructionSpec(t,type);
   if(!spec)return 'Maximum level reached.';
+  if(['harbor','envoyOffice','chancery'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
   if(b.settlement&&!['city','town','fort'].includes(t.building))return 'Requires a town, city or fort.';
   if(type==='city'&&t.building!=='town')return 'Select a town to upgrade.';
   if(!b.settlement&&!['road','city'].includes(type)&&t.building&&t.building!==type)return 'This tile already has a different building.';
@@ -177,7 +181,7 @@ export function recruit(s,owner,id,type) {
 }
 export function canEnter(s, owner, t) { return !!(passable(t) && (!t.owner || t.owner === owner || atWar(s, owner, t.owner) || treaty(s, owner, t.owner, 'alliance') || treaty(s, owner, t.owner, 'vassalage') || treaty(s, owner, t.owner, 'access'))); }
 export function moveCost(a, b) { return (a.road && b.road ? [.5,.5,.4,.3][Math.min(buildingLevel(a,'road'),buildingLevel(b,'road'))] : TERRAINS[b.terrain].cost) + (a.river !== b.river && (a.river || b.river) && !(a.road && b.road) ? 1 : 0); }
-export function findPath(s, startId, endId, owner, roadsOnly = false) {
+export function findPath(s, startId, endId, owner, roadsOnly = false, avoid = null) {
   const start = s.tiles[startId], goal = s.tiles[endId];
   if (!start || !goal || !passable(goal)) return [];
   // Peace or an expired alliance must let stranded armies leave. This grants
@@ -194,6 +198,7 @@ export function findPath(s, startId, endId, owner, roadsOnly = false) {
     }
     closed.add(current);
     for (const n of neighbors(s, s.tiles[current])) {
+      if (avoid?.has(n.id)) continue;
       const exiting = exitOwner && n.owner === exitOwner && s.tiles[current].owner === exitOwner;
       if (!passable(n) || (roadsOnly ? !n.road || (n.owner && n.owner !== owner && (tradeBlocked(s, owner, n.owner) || (!treaty(s, owner, n.owner, 'trade') && !treaty(s, owner, n.owner, 'alliance')))) : !canEnter(s, owner, n) && !exiting)) continue;
       const cost = costs.get(current) + moveCost(s.tiles[current], n);
@@ -205,11 +210,11 @@ export function findPath(s, startId, endId, owner, roadsOnly = false) {
   }
   return [];
 }
-export function orderArmy(s, owner, armyId, targetId, order = 'move') {
+export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = null) {
   const a = s.armies.find(a => a.id === armyId && a.owner === owner);
   if (s.outcome || !a || !['move', 'attack', 'retreat', 'hold'].includes(order)) return { ok: false, error: 'Select one of your armies.' };
   if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.order = 'hold'; return { ok: true }; }
-  const path = findPath(s, a.tile, targetId, owner);
+  const path = findPath(s, a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
   a.path = path; a.target = targetId; a.order = order;
   return { ok: true, path };
@@ -332,6 +337,7 @@ export function resolveEconomy(s) {
     if (t.project.owner !== t.owner) { t.project = null; continue; }
     if (--t.project.remaining <= 0) {
       const name=buildingSpec(t.project.type,t.project.level||1).name;
+      recordStrategyAction(s,t.owner,{kind:'complete',tile:t.id,building:t.project.type,level:t.project.level||1});
       completeConstruction(t);
       if(t.owner===PLAYER)log(s,`${name} completed at ${t.name||t.id}.`,'economy');
     }
@@ -361,63 +367,7 @@ export function resolveEconomy(s) {
 export function strategicThreat(s, owner, t) {
   return s.armies.reduce((value, a) => value + (a.owner === owner ? -1 : atWar(s, a.owner, owner) ? 1 : 0) * strength(a) / (1 + distance(t, s.tiles[a.tile])), 0);
 }
-function militaryTarget(s, k, a) {
-  const pledge = s.pledges.find(p => p.debtor === k.id && p.status === 'pending' && ['DEFEND', 'POSITION', 'WITHDRAW', 'JOINT_WAR', 'BUILD_DEFENSES'].includes(p.intent.type));
-  if (pledge) {
-    const intent = pledge.intent;
-    if (intent.type === 'JOINT_WAR') return settlements(s, intent.targetId).sort((x, y) => distance(s.tiles[a.tile], x) - distance(s.tiles[a.tile], y))[0];
-    if (intent.type === 'WITHDRAW') return settlements(s, k.id)[0];
-    return s.tiles[intent.targetId];
-  }
-  const threatened = settlements(s, k.id).filter(t => strategicThreat(s, k.id, t) > 3).sort((x, y) => strategicThreat(s, k.id, y) - strategicThreat(s, k.id, x));
-  if (threatened[0]) { k.goal = 'DEFEND'; return threatened[0]; }
-  const partner = s.kingdoms.find(other => other.id !== k.id && treaty(s, k.id, other.id, 'alliance') && relation(s, k.id, other.id).trust >= 40 && settlements(s, other.id).some(t => strategicThreat(s, other.id, t) > 8));
-  if (partner) { k.goal = 'SUPPORT_ALLY'; return settlements(s, partner.id).sort((x, y) => strategicThreat(s, partner.id, y) - strategicThreat(s, partner.id, x))[0]; }
-  const wary = s.kingdoms.filter(other => other.id !== k.id).find(other => relation(s, k.id, other.id).wariness >= 25 && relation(s, k.id, other.id).trust < 35);
-  if (wary && !s.wars.some(w => w.split(':').includes(k.id))) { k.goal = 'GUARD_FRONTIER'; return settlements(s, k.id).sort((x, y) => Math.min(...armiesOf(s, wary.id).map(e => distance(x, s.tiles[e.tile]))) - Math.min(...armiesOf(s, wary.id).map(e => distance(y, s.tiles[e.tile]))))[0]; }
-  const enemies = s.armies.filter(e => atWar(s, k.id, e.owner));
-  const targets = [...enemies.map(e => s.tiles[e.tile]), ...settlements(s).filter(t => atWar(s, k.id, t.owner))];
-  targets.sort((x, y) => distance(s.tiles[a.tile], x) - distance(s.tiles[a.tile], y));
-  const target = targets.find(t => strength(a) >= Math.max(10, strategicThreat(s, k.id, t)) * (1.35 - k.aggression * .5));
-  if (target) k.goal = 'ATTACK';
-  return target;
-}
-export function strategyTurn(s) {
-  for (const k of s.kingdoms.filter(k => k.id !== PLAYER && alive(s, k.id))) {
-    const owned = Object.values(s.tiles).filter(t => t.owner === k.id && passable(t));
-    k.goal = 'ECONOMY';
-    const defensePledge = s.pledges.find(p => p.debtor === k.id && p.status === 'pending' && p.intent.type === 'BUILD_DEFENSES');
-    if (defensePledge) build(s, k.id, defensePledge.intent.targetId, 'fort');
-    const projection=economyProjection(s,k.id).income,home=settlements(s,k.id)[0],specialty=REGIONS[k.id];
-    const alarmed=Object.values(k.relations).some(r=>r.wariness>=30||r.grievance>=50);
-    if(alarmed&&buildingLevel(home,'wall')<3)build(s,k.id,home.id,'wall');
-    const priority=projection.food<3?'farm':k.resources.wood<55?'lumber':k.resources.stone<45?'quarry':k.resources.iron<30?'mine':k.resources.tools<20?'workshop':k.resources.arms<15?'armory':specialty.troops==='cavalry'&&k.resources.horses<20?'ranch':null;
-    const desired=priority|| (s.turn%4===0?'tradeOutpost':specialty.troops==='cavalry'?'stable':specialty.troops==='archer'?'range':'barracks');
-    const sites=owned.filter(t=>constructionSpec(t,desired)&&(!BUILDINGS[desired].settlement||['city','town','fort'].includes(t.building))&&(!BUILDINGS[desired].terrain||BUILDINGS[desired].terrain.includes(t.terrain))&&(!BUILDINGS[desired].resource||BUILDINGS[desired].resource===t.resource)&&(!t.building||t.building===desired||BUILDINGS[desired].settlement));
-    sites.sort((a,b)=>(buildingLevel(b,desired)?10:0)-(buildingLevel(a,desired)?10:0)+strategicThreat(s,k.id,a)-strategicThreat(s,k.id,b));
-    k.economicPlan=sites[0]?{tile:sites[0].id,type:desired}:null;
-    const candidate=sites.find(t=>!buildCheck(s,k.id,t.id,desired));if(candidate)build(s,k.id,candidate.id,desired);
-    if(s.turn%5===0&&settlements(s,k.id).length<4){const tile=Object.values(s.tiles).find(t=>!buildCheck(s,k.id,t.id,'town'));if(tile){build(s,k.id,tile.id,'town');k.goal='EXPAND';}}
-    if(s.turn>=4&&!home.envoyOffice&&k.resources.gold>90)build(s,k.id,home.id,'envoyOffice');
-    if(s.turn%4===1&&!home.project){const utility=home.workshop?'armory':'workshop';build(s,k.id,home.id,utility);}
-    if(s.turn%6===0&&!home.project){const infrastructure=s.wars.some(w=>w.split(':').includes(k.id))?'siegeWorks':'market';build(s,k.id,home.id,infrastructure);}
-    if(s.turn%3===0&&armiesOf(s,k.id).reduce((n,a)=>n+sizeOf(a),0)<120){
-      const types=specialty.troops==='cavalry'?['knight','cavalry','lightCavalry','spearman','levy']:specialty.troops==='archer'?['crossbow','veteranArcher','archer','spearman','levy']:['heavyInfantry','menAtArms','spearman','archer','levy'];
-      if(s.wars.some(w=>w.split(':').includes(k.id)))types.unshift('trebuchet','catapult','ram');
-      const type=types.find(type=>!recruitCheck(s,k.id,home.id,type));if(type)recruit(s,k.id,home.id,type);
-    }
-    if (s.turn > 9 && s.turn % 8 === HOUSES.findIndex(h => h.id === k.id) && k.aggression > .5) {
-      const rival = s.kingdoms.filter(e => e.id !== k.id && alive(s, e.id) && !treaty(s, k.id, e.id) && !atWar(s, k.id, e.id) && relation(s, k.id, e.id).dependency < 25 && relation(s, k.id, e.id).trust < 45).sort((a, b) => (relation(s, k.id, a.id).opinion - relation(s, k.id, a.id).grievance) - (relation(s, k.id, b.id).opinion - relation(s, k.id, b.id).grievance))[0];
-      if (rival && armiesOf(s, k.id).reduce((n, a) => n + strength(a), 0) > armiesOf(s, rival.id).reduce((n, a) => n + strength(a), 0) * .8) declareWar(s, k.id, rival.id);
-    }
-    for (const a of armiesOf(s, k.id)) {
-      const near=s.armies.filter(e=>atWar(s,k.id,e.owner)).sort((x,y)=>distance(s.tiles[a.tile],s.tiles[x.tile])-distance(s.tiles[a.tile],s.tiles[y.tile]))[0];
-      a.formation=chooseFormation(a,near,s.tiles[a.tile]);
-      const target = militaryTarget(s, k, a);
-      if (target) orderArmy(s, k.id, a.id, target.id, 'move');
-    }
-  }
-}
+export function strategyTurn(s) { return runStrategyTurn(s); }
 export function checkVictory(s) {
   if (!alive(s, PLAYER)) { s.outcome = { won: false, reason: 'Your last settlement has fallen. Your house survives in the chronicles.' }; return; }
   const cities = settlements(s), owned = settlements(s, PLAYER);
@@ -460,5 +410,6 @@ export function parseSave(raw) {
   s.version=SAVE_VERSION;
   validateLivingSave(s);
   validateExpansion(s);
+  validateStrategySave(s);
   return s;
 }

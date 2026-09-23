@@ -44,7 +44,13 @@ try {
     assert.match(await page.locator('#panel').textContent(), /Farmstead underway/);
     await page.locator('#end-turn').click(); assert.equal(await page.locator('#turn').textContent(), 'Turn 2');
     assert.ok(!(await page.locator('#panel').textContent()).includes('Farmstead underway'));
-    await page.locator('[data-tab="realm"]').click(); await page.locator('[data-goto="5,6"]').first().click();
+    await page.locator('[data-tab="realm"]').click();
+    assert.equal(await page.locator('[data-rival-turn]').count(),5);
+    await page.locator('[data-rival-turn="wintermere"] > summary').click();
+    assert.match(await page.locator('[data-rival-turn="wintermere"]').textContent(),/Started|Recruited/);
+    const firstRound=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).strategy);
+    assert.equal(firstRound.lastTurn,1);assert.equal(firstRound.history[0].houses.length,5);
+    await page.locator('[data-goto="5,6"]').first().click();
     await page.locator('[data-recruit="levy"]').click(); assert.match(await page.locator('#panel').textContent(), /36 troops/);
     await page.locator('[data-order]').first().click(); await page.locator('#map').focus(); await page.keyboard.press('ArrowDown'); await page.locator('#end-turn').click();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
