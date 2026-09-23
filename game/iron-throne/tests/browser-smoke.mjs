@@ -126,17 +126,24 @@ try {
     assert.equal(await page.locator('#privacy').isVisible(),true);
     await page.waitForFunction(fails => document.getElementById('chat-notice').textContent.includes(fails?'could not load':'Gemini ready'),verificationFails);
     assert.equal(modelCalls,0,'opening a council must not consume Gemini quota');
+    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false,'diagnostics appear after an attempted message');
     await page.locator('#chat-message').fill('Greetings, Queen.');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     if(verificationFails){assert.equal(modelCalls,0);assert.match(await page.locator('#chat-notice').textContent(),/verification/i);}
     else {
       assert.equal(modelCalls,1, await page.locator('#chat-notice').textContent());assert.match(await page.locator('#messages').textContent(),/banners of Wintermere/);
+      assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false);
       assert.equal(await page.evaluate(() => window.testVerificationCount),1);assert.equal(sessionCalls,1);
       await page.locator('#chat-message').fill('Would you consider peace?');await page.locator('#send-chat').click();
       await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
       assert.equal(modelCalls,2);assert.match(await page.locator('#chat-notice').textContent(),/quota reached/);assert.match(await page.locator('#messages').textContent(),/Wintermere/);
       assert.match(await page.locator('#ai-status').textContent(),/Local/);
     }
+    await page.locator('#gemini-diagnostics').click();
+    const failureReport=await page.locator('#diagnostics-report').inputValue();
+    assert.ok(failureReport.includes(verificationFails?'TURNSTILE_LOAD_FAILED':'RATE_LIMIT_UNKNOWN'));
+    assert.match(failureReport,/GEMINI_API_KEY: Unknown/);
+    await page.locator('[data-close="gemini-diagnostics-dialog"]').click();
     await page.locator('#use-gemini').uncheck();const callsBefore=modelCalls;
     await page.locator('#chat-message').fill('An alliance for 60 gold');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
@@ -153,6 +160,75 @@ try {
     assert.deepEqual(errors,[]);
     console.log(`PASS Gemini default: delayed config, ${verificationFails?'verification failure':'single verification, session reuse and quota fallback'}, opt-out, resume, no automatic model calls`);
     await context.close(); await browser.close(); browser=null;
+  }
+  // Capture the reported /session 503, copy it without a request, then recover.
+  for (const viewport of [{ width: 1280, height: 850 }, { width: 390, height: 844 }]) {
+    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
+    const context=await browser.newContext({viewport,reducedMotion:'reduce'}), page=await context.newPage(), errors=[];
+    let configured=false, billingFailure=true, sessionCalls=0, modelCalls=0;
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.addInitScript(()=>{
+      Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copiedDiagnostics=text;}},configurable:true});
+      window.testTimeOffset=0;const now=Date.now;Date.now=()=>now()+window.testTimeOffset;
+    });
+    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'public-test-key'}}));
+    await page.route('https://challenges.cloudflare.com/**',route=>route.fulfill({contentType:'text/javascript',body:`let options;const done=()=>options.callback('private-test-token');window.turnstile={render(el,o){options=o;setTimeout(done,0);return 'widget';},reset(){setTimeout(done,0);}};`}));
+    const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,authorization','Access-Control-Expose-Headers':'Retry-After'};
+    await page.route('https://worker.example/session',async route=>{
+      if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:cors});
+      sessionCalls++;
+      return route.fulfill(configured ? {headers:cors,json:{token:'private-test-session',expires:Date.now()+1800000}}
+        : {status:503,headers:cors,json:{fallback:true,diagnostics:{version:1,code:'CONFIG_MISSING',checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'missing',BUDGET:'present'}}}});
+    });
+    await page.route('https://worker.example/diplomacy',async route=>{
+      if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:cors});
+      modelCalls++;
+      return route.fulfill(billingFailure ? {status:503,headers:{...cors,'Retry-After':'60'},json:{fallback:true,diagnostics:{version:1,code:'GEMINI_BILLING',providerStatus:402,checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'present',BUDGET:'verified'}}}}
+        : {headers:cors,json:{reply:'Your claim deserves a hearing. Let us speak of terms.',tone:'neutral',intents:[]}});
+    });
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#start-game').click();
+    if(viewport.width>700){await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();}
+    else await page.locator('[data-dispatch="wintermere"]').click();
+    await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Missing from the running Worker'));
+    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false);
+    await page.locator('#chat-message').fill('What would you need to support my claim?');await page.locator('#send-chat').click();
+    await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
+    assert.equal(sessionCalls,1,'a failed send must not reset verification automatically');assert.equal(modelCalls,0);
+    await page.locator('#gemini-diagnostics').click();
+    assert.match(await page.locator('#diagnostics-TURNSTILE_SECRET').textContent(),/Missing/);
+    assert.match(await page.locator('#diagnostics-GEMINI_API_KEY').textContent(),/Present/);
+    assert.match(await page.locator('#diagnostics-BUDGET').textContent(),/Present/);
+    const captured=await page.locator('#diagnostics-report').inputValue();
+    assert.match(captured,/Request: \/session/);assert.match(captured,/HTTP status: 503/);assert.match(captured,/CONFIG_MISSING/);
+    assert.doesNotMatch(captured,/private-|support my claim/);
+    await page.locator('#copy-diagnostics').click();assert.equal(await page.evaluate(()=>window.copiedDiagnostics),captured);
+    assert.match(await page.locator('#diagnostics-copy-status').textContent(),/Report copied/);
+    await page.evaluate(()=>{navigator.clipboard.writeText=async()=>{throw new Error('denied');};document.execCommand=()=>false;});
+    await page.locator('#copy-diagnostics').click();
+    assert.match(await page.locator('#diagnostics-copy-status').textContent(),/report is selected/);
+    assert.equal(await page.locator('#diagnostics-report').evaluate(el=>el.selectionEnd-el.selectionStart),captured.length);
+    assert.equal(await page.locator('#gemini-diagnostics-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth),true,'diagnostics fit a mobile dialog');
+    assert.equal(sessionCalls,1);assert.equal(modelCalls,0,'opening and copying use no requests');
+    await page.locator('[data-close="gemini-diagnostics-dialog"]').click();await page.locator('[data-close="diplomacy"]').click();
+    configured=true;await page.locator('[data-dispatch="wintermere"]').click();
+    await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Gemini ready'));
+    await page.locator('#chat-message').fill('Name your terms.');await page.locator('#send-chat').click();
+    await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
+    await page.locator('#gemini-diagnostics').click();
+    assert.match(await page.locator('#diagnostics-report').inputValue(),/Google HTTP status: 402/);
+    assert.match(await page.locator('#diagnostics-report').inputValue(),/GEMINI_BILLING/);
+    assert.match(await page.locator('#diagnostics-action').textContent(),/prepay/);
+    await page.locator('[data-close="gemini-diagnostics-dialog"]').click();
+    billingFailure=false;await page.evaluate(()=>{window.testTimeOffset=61000;});
+    await page.locator('#chat-message').fill('Can we agree?');await page.locator('#send-chat').click();
+    await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
+    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false,'a successful Gemini reply clears diagnostics');
+    assert.match(await page.locator('#messages').textContent(),/claim deserves a hearing/);
+    assert.equal(sessionCalls,2);assert.equal(modelCalls,2);
+    assert.doesNotMatch(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1')),/CONFIG_MISSING|GEMINI_BILLING|private-test-/);
+    assert.deepEqual(errors,[]);
+    console.log(`PASS ${viewport.width}×${viewport.height} diagnostics: session 503, three settings, copy, manual copy, no extra requests, billing 402, recovery`);
+    await context.close();await browser.close();browser=null;
   }
   browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
   const artPage=await browser.newPage();

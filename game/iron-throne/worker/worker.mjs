@@ -1,6 +1,7 @@
 import { HOUSES, INTENT_TYPES, RESOURCES } from '../data.mjs';
 import { issueSession, reserveSessionBudget, verifySession } from './session.mjs';
 import { validateIntent, validateResponse } from '../diplomacy.mjs';
+import { makeDiagnostic, workerChecks } from '../diagnostics.mjs';
 
 export const RESPONSE_SCHEMA = {
   type: 'OBJECT', required: ['reply', 'intents', 'tone'], properties: {
@@ -70,18 +71,35 @@ export async function reserveBudget(storage, env, clientId, now = Date.now()) {
   return storage.transaction(async txn => {
     let b = await txn.get('budget');
     if (!b || b.day !== day) b = { day, used: 0, minute, calls: 0, clients: {}, cooldownUntil: 0 };
-    if (b.cooldownUntil > now) return { ok: false, retryAfter: Math.ceil((b.cooldownUntil - now) / 1000), reason: 'Gemini is cooling down. Scripted diplomacy is available.' };
-    if (b.used >= boundedInt(env.DAILY_LIMIT, 20, 10000)) return { ok: false, retryAfter: 3600, reason: 'The daily conversation budget has been used. Scripted diplomacy is available.' };
+    if (b.cooldownUntil > now) return { ok: false, code: 'PROVIDER_COOLDOWN', retryAfter: Math.ceil((b.cooldownUntil - now) / 1000), reason: 'Gemini is cooling down. Scripted diplomacy is available.' };
+    if (b.used >= boundedInt(env.DAILY_LIMIT, 20, 10000)) return { ok: false, code: 'DAILY_LIMIT', retryAfter: 3600, reason: 'The daily conversation budget has been used. Scripted diplomacy is available.' };
     if (b.minute !== minute) { b.minute = minute; b.calls = 0; b.clients = {}; }
-    if (b.calls >= boundedInt(env.REQUESTS_PER_MINUTE, 4, 60) || (b.clients[clientId] || 0) >= boundedInt(env.CLIENT_PER_MINUTE, 2, 20)) return { ok: false, retryAfter: 60, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
+    if (b.calls >= boundedInt(env.REQUESTS_PER_MINUTE, 4, 60)) return { ok: false, code: 'GLOBAL_RATE_LIMIT', retryAfter: 60, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
+    if ((b.clients[clientId] || 0) >= boundedInt(env.CLIENT_PER_MINUTE, 2, 20)) return { ok: false, code: 'CLIENT_RATE_LIMIT', retryAfter: 60, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
     b.used++; b.calls++; b.clients[clientId] = (b.clients[clientId] || 0) + 1;
     await txn.put('budget', b);
     return { ok: true, remaining: boundedInt(env.DAILY_LIMIT, 20, 10000) - b.used };
   });
 }
+async function providerFailure(response) {
+  // Inspect bounded provider output only to select a fixed diagnostic code.
+  // Its text/details can contain credentials or user content and are never returned.
+  let error = {};
+  try { error = (await readLimitedJSON(response, 16000))?.error || {}; } catch { /* Non-JSON provider error. */ }
+  const reasons = Array.isArray(error.details) ? error.details.map(d => d?.reason) : [];
+  const message = typeof error.message === 'string' ? error.message.slice(0, 2000) : '';
+  // Generic quota errors also say "check your plan and billing details". That
+  // wording alone is not evidence of a billing/prepay failure.
+  const billingRequired = /\b(?:prepay(?:ment)?|prepaid)\b.{0,100}\b(?:required|exhausted|depleted|insufficient|balance|not (?:set up|configured))\b|\b(?:billing|payment)\b.{0,30}\b(?:disabled|not (?:enabled|active|configured)|required)\b|\b(?:credits?|balance)\b.{0,30}\b(?:depleted|exhausted|insufficient)\b/i.test(message);
+  const code = response.status === 402 || reasons.some(r => ['BILLING_DISABLED', 'BILLING_NOT_ACTIVE'].includes(r)) || billingRequired ? 'GEMINI_BILLING'
+    : response.status === 401 || reasons.some(r => ['API_KEY_INVALID', 'API_KEY_EXPIRED', 'API_KEY_REVOKED'].includes(r)) ? 'GEMINI_KEY_INVALID'
+    : response.status === 403 ? 'GEMINI_PERMISSION' : response.status === 429 ? 'GEMINI_QUOTA'
+    : response.status === 404 ? 'GEMINI_MODEL' : response.status === 400 ? 'GEMINI_REQUEST' : 'GEMINI_UNAVAILABLE';
+  return Object.assign(new Error('provider'), { status: response.status, diagnosticCode: code });
+}
 export async function callGemini(context, env, fetcher = fetch) {
   const model = env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
-  if (!/^[a-zA-Z0-9._-]{1,80}$/.test(model)) throw new Error('configuration');
+  if (!/^[a-zA-Z0-9._-]{1,80}$/.test(model)) throw Object.assign(new Error('configuration'), { diagnosticCode: 'GEMINI_MODEL' });
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
   try {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -89,13 +107,19 @@ export async function callGemini(context, env, fetcher = fetch) {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(context.rulerId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: .75, maxOutputTokens: 700 } })
     });
-    if (!upstream.ok) { const error = new Error('provider'); error.status = upstream.status; throw error; }
-    const result = await readLimitedJSON(upstream, 50000);
-    const candidate = result.candidates?.[0];
-    if (candidate?.finishReason !== 'STOP') throw new Error('incomplete');
-    const response = validateResponse(candidate.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join(''));
-    if (!response) throw new Error('invalid');
+    if (!upstream.ok) throw await providerFailure(upstream);
+    let result;
+    try { result = await readLimitedJSON(upstream, 50000); }
+    catch { throw Object.assign(new Error('invalid'), { diagnosticCode: controller.signal.aborted ? 'GEMINI_TIMEOUT' : 'GEMINI_RESPONSE_INVALID', status: upstream.status }); }
+    const candidate = result?.candidates?.[0];
+    if (candidate?.finishReason !== 'STOP') throw Object.assign(new Error('incomplete'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', status: upstream.status });
+    const parts = candidate.content?.parts;
+    const response = Array.isArray(parts) ? validateResponse(parts.filter(p => p && !p.thought).map(p => typeof p.text === 'string' ? p.text : '').join('')) : null;
+    if (!response) throw Object.assign(new Error('invalid'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', status: upstream.status });
     return response;
+  } catch (error) {
+    if (!error.diagnosticCode) error.diagnosticCode = controller.signal.aborted ? 'GEMINI_TIMEOUT' : 'GEMINI_UNAVAILABLE';
+    throw error;
   } finally { clearTimeout(timer); }
 }
 
@@ -109,23 +133,26 @@ export class DiplomacyBudget {
     const hit = cache.find(c => c.key === cacheKey && c.expires > now);
     if (hit) return json({ ...hit.response, cached: true });
     const reservation = await reserveBudget(this.state.storage, this.env, clientId, now);
-    if (!reservation.ok) return json({ fallback: true, message: reservation.reason, retryAfter: reservation.retryAfter }, 429, { 'Retry-After': String(reservation.retryAfter) });
+    if (!reservation.ok) return json({ fallback: true, message: reservation.reason, retryAfter: reservation.retryAfter, diagnostics: makeDiagnostic(reservation.code, { checks: { ...workerChecks(this.env), BUDGET: 'verified' } }) }, 429, { 'Retry-After': String(reservation.retryAfter) });
+    let response;
     try {
-      const response = await callGemini(context, this.env);
-      await this.state.storage.transaction(async txn => {
-        const entries = (await txn.get('responses') || []).filter(c => c.expires > now && c.key !== cacheKey).slice(-39);
-        entries.push({ key: cacheKey, expires: now + 1800000, response });
-        await txn.put('responses', entries);
-      });
-      return json({ ...response, remaining: reservation.remaining });
+      response = await callGemini(context, this.env);
     } catch (error) {
       if (error.status === 429) await this.state.storage.transaction(async txn => {
         const b = await txn.get('budget'); if (b) { b.cooldownUntil = Date.now() + 300000; await txn.put('budget', b); }
       });
       // Never leak provider bodies, request text, or credentials. Failed attempts
       // still consume the reserved allowance; no retries or paid-provider failover.
-      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter: error.status === 429 ? 300 : 60 }, 503);
+      const retryAfter = error.status === 429 ? 300 : 60;
+      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status }) }, 503, { 'Retry-After': String(retryAfter) });
     }
+    // Storage failures propagate to the outer binding handler, not Gemini errors.
+    await this.state.storage.transaction(async txn => {
+      const entries = (await txn.get('responses') || []).filter(c => c.expires > now && c.key !== cacheKey).slice(-39);
+      entries.push({ key: cacheKey, expires: now + 1800000, response });
+      await txn.put('responses', entries);
+    });
+    return json({ ...response, remaining: reservation.remaining });
   }
 }
 
@@ -133,46 +160,74 @@ export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const allowed = (env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
-    if (!allowed.includes(origin)) return json({ error: 'Origin not allowed.' }, 403);
+    if (!allowed.includes(origin)) return json({ error: 'Origin not allowed.', diagnostics: makeDiagnostic('ORIGIN_DENIED') }, 403);
     const headers = { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', 'Access-Control-Max-Age': '600', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Expose-Headers': 'Retry-After, X-Diplomacy-Session, X-Diplomacy-Expires' };
     const respond = (body, status = 200, extra = {}) => json(body, status, { ...headers, ...extra });
+    const checks = workerChecks(env);
+    const fail = (code, status, details = {}, extra = {}) => respond({ fallback: true, diagnostics: makeDiagnostic(code, { checks, ...details }) }, status, extra);
     const path = new URL(request.url).pathname;
-    if (!['/diplomacy', '/session'].includes(path)) return respond({ error: 'Not found.' }, 404);
+    if (!['/diplomacy', '/session'].includes(path)) return fail('WORKER_ROUTE_MISSING', 404);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-    if (request.method !== 'POST') return respond({ error: 'POST required.' }, 405);
-    if (!env.GEMINI_API_KEY || !env.TURNSTILE_SECRET || !env.BUDGET) return respond({ fallback: true, message: 'AI diplomacy is not configured. Scripted diplomacy is available.' }, 503);
-    if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return respond({ error: 'JSON required.' }, 415);
+    if (request.method !== 'POST') return fail('REQUEST_INVALID', 405);
+    if (Object.values(checks).includes('missing')) return fail('CONFIG_MISSING', 503);
+    if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return fail('REQUEST_INVALID', 415);
+    let failure = 'REQUEST_INVALID';
     try {
       const body = await readLimitedJSON(request, path === '/session' ? 3000 : 24000);
       const ip = request.headers.get('CF-Connecting-IP');
-      if (!ip) return respond({ error: 'Request identity unavailable.' }, 403);
+      if (!ip) return fail('IDENTITY_MISSING', 403);
       const clientId = await hash(`${origin}:${ip}`);
       const authorization = request.headers.get('Authorization') || '';
       const credential = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
       const session = credential ? await verifySession(credential, env, origin, clientId) : null;
       if (path === '/session') {
-        if (authorization && !session) return respond({ error: 'Diplomacy session expired or invalid.' }, 401);
-        if (!session && (typeof body.turnstileToken !== 'string' || !body.turnstileToken || body.turnstileToken.length > 2048)) return respond({ error: 'Verification required.' }, 400);
+        if (authorization && !session) return fail('SESSION_EXPIRED', 401);
+        if (!session && (typeof body?.turnstileToken !== 'string' || !body.turnstileToken || body.turnstileToken.length > 2048)) return fail('SESSION_NOT_READY', 400);
+        failure = 'BUDGET_FAILED';
         const stub = env.BUDGET.get(env.BUDGET.idFromName('global-gemini-budget-v1'));
         const permit = await stub.fetch('https://budget.internal/session-budget', { method: 'POST', body: JSON.stringify({ clientId }) });
-        if (!(await permit.json()).ok) return respond({ error: 'Please wait before verifying again.' }, 429, { 'Retry-After': '60' });
+        if (!permit.ok) throw new Error('binding');
+        const permitValue = await readLimitedJSON(permit, 1000);
+        if (typeof permitValue?.ok !== 'boolean') throw new Error('binding');
+        checks.BUDGET = 'verified';
+        if (!permitValue.ok) return fail('SESSION_RATE_LIMIT', 429, {}, { 'Retry-After': '60' });
         if (!session) {
+          failure = 'TURNSTILE_UNAVAILABLE';
           const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: body.turnstileToken, remoteip: ip }), signal: AbortSignal.timeout(5000) });
+          if (!verification.ok) return fail('TURNSTILE_UNAVAILABLE', 503);
           const challenge = await readLimitedJSON(verification, 10000);
-          if (!verification.ok || !challenge.success || challenge.action !== 'iron-throne' || challenge.hostname !== new URL(origin).hostname) return respond({ error: 'Verification was not accepted.' }, 403);
+          if (typeof challenge?.success !== 'boolean') return fail('TURNSTILE_UNAVAILABLE', 503);
+          if (!challenge.success) {
+            const turnstileCodes = Array.isArray(challenge?.['error-codes']) ? challenge['error-codes'] : [];
+            const secretRejected = turnstileCodes.some(code => ['invalid-input-secret', 'missing-input-secret'].includes(code));
+            if (secretRejected) checks.TURNSTILE_SECRET = 'rejected';
+            if (turnstileCodes.includes('internal-error')) return fail('TURNSTILE_UNAVAILABLE', 503, { turnstileCodes });
+            const code = secretRejected ? 'TURNSTILE_SECRET_INVALID' : turnstileCodes.includes('timeout-or-duplicate') ? 'TURNSTILE_TOKEN_EXPIRED' : 'TURNSTILE_REJECTED';
+            return fail(code, 403, { turnstileCodes });
+          }
+          checks.TURNSTILE_SECRET = 'verified';
+          if (challenge.hostname !== new URL(origin).hostname) return fail('TURNSTILE_HOSTNAME', 403);
+          if (challenge.action !== 'iron-throne') return fail('TURNSTILE_ACTION', 403);
         }
-        return respond(await issueSession(env, origin, clientId, Date.now(), session));
+        // A renewed session proves prior verification, not a fresh secret check.
+        failure = 'SESSION_ISSUE_FAILED';
+        return respond({ ...await issueSession(env, origin, clientId, Date.now(), session), checks });
       }
       // A Turnstile token is accepted only at /session, never reused for a message.
-      if (!session) return respond({ error: 'Diplomacy session expired or invalid.' }, 401);
+      if (!session) return fail('SESSION_EXPIRED', 401);
       const context = sanitizeContext(body);
-      if (!context) return respond({ error: 'Invalid conversation.' }, 400);
+      if (!context) return fail('REQUEST_INVALID', 400);
+      failure = 'BUDGET_FAILED';
       const stub = env.BUDGET.get(env.BUDGET.idFromName('global-gemini-budget-v1'));
       const result = await stub.fetch('https://budget.internal/diplomacy', { method: 'POST', body: JSON.stringify({ context, origin, clientId }) });
+      if (result.status >= 500 && !result.headers.get('content-type')?.includes('application/json')) throw new Error('binding');
+      checks.BUDGET = 'verified';
+      failure = 'SESSION_ISSUE_FAILED';
       const fresh = await issueSession(env, origin, clientId, Date.now(), session);
       return new Response(result.body, { status: result.status, headers: { ...Object.fromEntries(result.headers), ...headers, 'X-Diplomacy-Session': fresh.token, 'X-Diplomacy-Expires': String(fresh.expires) } });
     } catch {
-      return respond({ fallback: true, message: 'The conversation could not be completed. Scripted diplomacy is available.' }, 400);
+      if (failure === 'BUDGET_FAILED') checks.BUDGET = 'failed';
+      return fail(failure, failure === 'REQUEST_INVALID' ? 400 : 503);
     }
   }
 };
