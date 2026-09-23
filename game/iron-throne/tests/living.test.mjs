@@ -1,3 +1,4 @@
+import { tradeRoute } from '../trade.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HOUSES, RESOURCES, SAVE_VERSION } from '../data.mjs';
@@ -166,7 +167,9 @@ test('only the detaining House can release or execute a detained ambassador', ()
   assert.equal(ambassadorIncident(s, PLAYER, id, 'release').ok, true); assert.equal(a.status, 'returning');
 });
 test('recurring exchanges conserve resources, pay once, and fail atomically when either side cannot pay', () => {
-  const s = createGame(); ratify(s, 'wintermere', 'RECURRING', { giveAmount: 20, receiveAmount: 25, duration: 4 });
+  const s = createGame();
+  for(const [id,owner] of [['6,6',PLAYER],['18,4','wintermere']]) Object.assign(s.tiles[id],{owner,building:'tradeOutpost',levels:{tradeOutpost:2,road:1},road:true});
+  for(const id of tradeRoute(s,PLAYER,'wintermere').path){s.tiles[id].road=true;s.tiles[id].levels.road=1;} ratify(s, 'wintermere', 'RECURRING', { giveAmount: 20, receiveAmount: 25, duration: 4 });
   const a = kingdom(s, PLAYER), b = kingdom(s, 'wintermere'), total = () => a.resources.gold + b.resources.gold + a.resources.food + b.resources.food;
   const before = total(); s.turn++; const gold = a.resources.gold; resolveRecurringTrade(s);
   assert.equal(a.resources.gold, gold - 20); assert.equal(total(), before);

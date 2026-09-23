@@ -1,4 +1,7 @@
-import { HOUSES, BUILDINGS } from './data.mjs';
+import { ART, AssetCache } from './asset-manifest.mjs';
+import { buildingLevel } from './economy.mjs';
+import { familyCount } from './warfare.mjs';
+import { HOUSES, BUILDINGS, UNITS } from './data.mjs';
 import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
 
 import { BattleEffects } from './battle-effects.mjs';
@@ -17,7 +20,7 @@ export function pixelHex(x, y) {
 export class WorldMap {
   constructor(canvas, { getState, onSelect }) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.getState = getState; this.onSelect = onSelect;
-    this.art = new MapArt(); this.effects = new BattleEffects(); this.reducedEffects = false; this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.art = new MapArt(); this.assets=new AssetCache(()=>this.draw()); this.effects = new BattleEffects(); this.reducedEffects = false; this.motion = matchMedia('(prefers-reduced-motion: reduce)');
     this.zoom = 1; this.x = 0; this.y = 0; this.selected = '5,6'; this.armyId = null; this.pointers = new Map(); this.drag = null; this.moved = false; this.frame = null;
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     canvas.addEventListener('pointerdown', e => {
@@ -85,6 +88,7 @@ export class WorldMap {
   render() {
     if (!this.width || !this.height) return;
     const c=this.ctx,s=this.getState(), now=performance.now();
+    this.assets ||= new AssetCache(()=>this.draw());
     this.effects ||= new BattleEffects(); this.effects.ingest(s, now);
     const reduced = this.motion.matches || this.reducedEffects;
     const focus=`${s.seed}:${s.turn}:${this.selected}`;
@@ -116,7 +120,7 @@ export class WorldMap {
       if(t.road){
         for(const [dq,dr] of DIRECTIONS.slice(0,3)){
           const n=s.tiles[tileId(t.q+dq,t.r+dr)];if(!n?.road)continue;const v=hexPixel(n);
-          c.beginPath();c.moveTo(p.x,p.y);c.lineTo(v.x,v.y);c.strokeStyle='#40504c';c.lineWidth=4;c.stroke();c.strokeStyle='#cfbf8d';c.lineWidth=2;c.stroke();
+          c.beginPath();c.moveTo(p.x,p.y);c.lineTo(v.x,v.y);c.strokeStyle='#40504c';c.lineWidth=4;c.stroke();c.strokeStyle='#cfbf8d';c.lineWidth=Math.min(buildingLevel(t,'road'),buildingLevel(n,'road'))+1;c.stroke();
           c.setLineDash([1,3]);c.strokeStyle='#f3dfac';c.lineWidth=.6;c.stroke();c.setLineDash([]);
         }
         if(t.river){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
@@ -125,7 +129,12 @@ export class WorldMap {
     for(const t of visible){
       const p=hexPixel(t);
       if(this.zoom>.38&&!t.building)this.art.terrain(c,t,p.x,p.y);
-      if(t.building)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');
+      if(t.building){
+        const rendered=this.assets.draw(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62);
+        if(!rendered)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');
+        if(['city','town','fort'].includes(t.building)&&this.zoom>.65){const improvements=Object.keys(BUILDINGS).filter(id=>BUILDINGS[id].settlement&&buildingLevel(t,id)).sort((a,b)=>buildingLevel(t,b)-buildingLevel(t,a)).slice(0,3);improvements.forEach((id,i)=>this.assets.draw(c,ART.structures[id][buildingLevel(t,id)],p.x-33+i*23,p.y-8,25,25));}
+        if(t.siege){c.fillStyle='#d58e63';c.font='bold 9px system-ui';c.fillText(t.walls+(t.fortIntegrity||0)>0?'SIEGE':'BREACH',p.x,p.y+28);}
+      }
       if(t.resource&&!t.building&&this.zoom>.8&&t.resource!=='wood'){
         c.fillStyle='#e7d9a5';c.strokeStyle='#243a3a';c.lineWidth=2;c.font='10px Georgia';c.textAlign='center';const label={iron:'⚒',stone:'◆',food:'ˇˇˇ'}[t.resource]||'';c.strokeText(label,p.x,p.y+17);c.fillText(label,p.x,p.y+17);
       }
@@ -134,7 +143,8 @@ export class WorldMap {
         // Scaffolding and a remaining-turn meter communicate actual construction state.
         for(const x of [-13,13]){c.beginPath();c.moveTo(x,-13);c.lineTo(x,8);c.stroke();}
         c.beginPath();c.moveTo(-13,-12);c.lineTo(13,-12);c.lineTo(-13,7);c.lineTo(13,7);c.stroke();
-        const progress=1-t.project.remaining/BUILDINGS[t.project.type].turns;
+        const progress=1-t.project.remaining/t.project.total;
+        this.assets.draw(c,ART.construction[Math.min(2,Math.floor(progress*3))],-26,-35,52,52);
         c.fillStyle='#152d32';c.fillRect(-15,19,30,4);c.fillStyle='#f2cd7e';c.fillRect(-15,19,30*Math.max(.08,progress),4);c.restore();
       }
     }
@@ -154,14 +164,16 @@ export class WorldMap {
       const selected=group.some(a=>a.id===this.armyId),total=group.reduce((n,a)=>n+sizeOf(a),0),color=colors[army.owner];
       const badgeScale=Math.max(1,.55/this.zoom), badgeY=p.y+17+row*23;
       this.hits.push({tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale});
-      const units=Object.fromEntries(['levy','archer','cavalry','siege'].map(u=>[u,group.reduce((n,a)=>n+a.units[u],0)]));
+      const units=Object.fromEntries(Object.keys(UNITS).map(u=>[u,group.reduce((n,a)=>n+(a.units[u]||0),0)]));
       const marching=group.some(a=>a.path.length)&&!reduced&&now<this.pulseUntil;
-      this.art.formation(c,units,p.x,p.y+4+row*23,color,HOUSES.find(h=>h.id===army.owner).sigil,this.zoom>.65,marching?Math.sin(now/75)*.7:0);
+      this.art.formation(c,{levy:familyCount({units},'infantry'),archer:familyCount({units},'ranged'),cavalry:familyCount({units},'mounted'),siege:familyCount({units},'siege')},p.x,p.y+4+row*23,color,HOUSES.find(h=>h.id===army.owner).sigil,this.zoom>.65,marching?Math.sin(now/75)*.7:0);
+      const dominant=Object.keys(units).filter(u=>units[u]>0).sort((a,b)=>(units[b]*(UNITS[b].family==='siege'?8:1))-(units[a]*(UNITS[a].family==='siege'?8:1)))[0];
+      if(this.zoom>.65)this.assets.draw(c,ART.units[dominant],p.x-19,p.y-36+row*23,38,38);
       c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
       c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
       c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();
       c.fillStyle=color;c.beginPath();c.moveTo(-16,-5);c.lineTo(-8,-5);c.lineTo(-8,3);c.lineTo(-12,7);c.lineTo(-16,3);c.closePath();c.fill();
-      c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>a.units.siege)?'♜':group.some(a=>a.units.cavalry)?'♞':'⚔',-12,2);
+      c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
       c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
     }
     for(const envoy of (s.ambassadors||[]).filter(a=>a.status!=='dead')) {

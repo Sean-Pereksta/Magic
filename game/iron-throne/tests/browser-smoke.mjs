@@ -41,9 +41,9 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'viewport must not overflow horizontally');
     await page.locator('#map').focus(); await page.keyboard.press('ArrowDown');
     await page.locator('[data-build="farm"]').click();
-    assert.match(await page.locator('#panel').textContent(), /Farm underway/);
+    assert.match(await page.locator('#panel').textContent(), /Farmstead underway/);
     await page.locator('#end-turn').click(); assert.equal(await page.locator('#turn').textContent(), 'Turn 2');
-    assert.ok(!(await page.locator('#panel').textContent()).includes('Farm underway'));
+    assert.ok(!(await page.locator('#panel').textContent()).includes('Farmstead underway'));
     await page.locator('[data-tab="realm"]').click(); await page.locator('[data-goto="5,6"]').first().click();
     await page.locator('[data-recruit="levy"]').click(); assert.match(await page.locator('#panel').textContent(), /36 troops/);
     await page.locator('[data-order]').first().click(); await page.locator('#map').focus(); await page.keyboard.press('ArrowDown'); await page.locator('#end-turn').click();
@@ -88,6 +88,35 @@ try {
     assert.equal(await page.locator('#coordinates').textContent(), before);
     assert.deepEqual(errors, []); assert.deepEqual(external, [], 'scripted mode should make no outside requests');
     console.log(`PASS ${viewport.width}×${viewport.height}: build, recruit, march, turns, council, treaty, autosave/resume, layout`);
+    // Expanded controls use the same saved campaign and authoritative actions.
+    await page.evaluate(async()=>{
+      const {createGame}=await import('./core.mjs'),{scheduleTrade}=await import('./trade.mjs');
+      const s=createGame(511);s.turn=2;
+      for(const k of s.kingdoms){for(const r of Object.keys(k.resources))k.resources[r]=400;k.commands=8;k.population=140;}
+      s.kingdoms.find(k=>k.id==='wintermere').resources.iron=0;s.kingdoms.find(k=>k.id==='wintermere').resources.wood=550;
+      s.tiles['5,6'].stable=true;s.tiles['5,6'].levels.stable=3;s.armies[0].units.spearman=10;
+      scheduleTrade(s);localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(s));
+    });
+    await page.reload();await page.locator('#resume').click();
+    await page.locator('[data-recruit="knight"]').click();
+    await page.locator('[data-formation]').first().selectOption('flanking');
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).armies[0].formation),'flanking');
+    await page.locator('[data-tab="realm"]').click();
+    assert.equal(await page.locator('[data-trade-review]').count(),1);
+    const beforeReview=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources);
+    await page.locator('[data-trade-review]').click();
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources),beforeReview);
+    await page.locator('[data-ratify]').first().click();
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).commerce.offers[0].status),'accepted');
+    await page.locator('[data-close="diplomacy"]').click();
+    await page.locator('[data-goto="5,6"]').first().click();await page.locator('#map').focus();await page.keyboard.press('ArrowRight');
+    await page.locator('[data-build="farm"]').click();
+    assert.match(await page.locator('#panel').textContent(),/Agricultural Estate underway/);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).tiles['6,6'].levels.farm),1);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    const loaded=await page.locator('.catalog-art').first().evaluate(image=>image.complete&&image.naturalWidth>0);assert.equal(loaded,true);
+    assert.deepEqual(errors,[]);
+    console.log(`PASS ${viewport.width}×${viewport.height}: knights, formation, trade review/ratification, level upgrade, artwork, layout`);
     await context.close();
     await browser.close(); browser = null;
   }

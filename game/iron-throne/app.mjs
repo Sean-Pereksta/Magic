@@ -1,5 +1,9 @@
+import { ART } from './asset-manifest.mjs';
+import { buildingLevel } from './economy.mjs';
+import { setFormation } from './warfare.mjs';
+import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, systemTitle, tradePanel } from './expansion-ui.mjs';
 import { BUILDINGS, HOUSES, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
-import { PLAYER, alive, armiesOf, atWar, build, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
+import { PLAYER, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
 import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
 import { isPlayerPromise } from './promises.mjs';
 import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
@@ -12,7 +16,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const costText = cost => Object.entries(cost).map(([r, n]) => `${n} ${r}`).join(' · ');
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
-let sending = false, compactCouncil = false;
+let sending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 let geminiAttempted = false, configurationFailure = false;
 try {
@@ -43,7 +47,7 @@ function render() {
   const k = kingdom(state, PLAYER), { income } = economyProjection(state, PLAYER);
   $('turn').textContent = `Turn ${state.turn}`;
   $('season').textContent = `${['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'][(state.turn - 1) % 4]} · YEAR ${Math.floor((state.turn - 1) / 4) + 1}`;
-  $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${escape(r)}: ${income[r] >= 0 ? '+' : ''}${income[r]} next turn"><span class="resource-icon">${RESOURCE_ICONS[r]}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]} / turn</span></div></div>`).join('') + `<div class="resource"><span class="resource-icon">♟</span><div><small>Population</small><b>${k.population}</b><span class="income">${k.happiness}% content</span></div></div>`;
+  $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${escape(r)}: ${income[r] >= 0 ? '+' : ''}${income[r]} next turn"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]} / turn</span></div></div>`).join('') + `<div class="resource"><span class="resource-icon">♟</span><div><small>Population</small><b>${k.population}</b><span class="income">${k.happiness}% content</span></div></div>`;
   const rivals = state.kingdoms.filter(h => h.id !== PLAYER && alive(state, h.id)), allies = rivals.filter(h => treaty(state, PLAYER, h.id, 'alliance') || treaty(state, PLAYER, h.id, 'vassalage'));
   $('objective').textContent = `${settlements(state, PLAYER).length}/${Math.ceil(settlements(state).length * .6)} settlements · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${state.diplomaticTurns}/3 turns`;
   $('end-turn').disabled = !!state.outcome;
@@ -65,32 +69,25 @@ function render() {
 }
 function landPanel() {
   const t = state.tiles[selected], k = kingdom(state, PLAYER), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected);
-  let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.resource} deposits` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
-  if (t.building) html += `<div class="realm-card"><strong>${BUILDINGS[t.building]?.name || 'City'}</strong><div class="fine">${t.walls ? `Walls ${t.walls}/60 · ` : ''}${t.market ? 'Market · ' : ''}${t.workshop ? 'Workshop · ' : ''}${t.envoyOffice ? 'Envoy Office · ' : ''}${t.chancery ? 'Royal Chancery · ' : ''}Defense ×${(TERRAINS[t.terrain].defense * (t.building === 'fort' ? 1.6 : 1) * (t.walls ? 1.6 : 1)).toFixed(1)}</div></div>`;
-  if (t.project) html += `<div class="realm-card"><strong>${BUILDINGS[t.project.type].name} underway</strong><div class="fine">${t.project.remaining} turn${t.project.remaining === 1 ? '' : 's'} until completion</div><div class="progress"><span style="width:${100 * (1 - t.project.remaining / (BUILDINGS[t.project.type].turns + 1))}%"></span></div></div>`;
-  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `<div class="button-row"><button data-order="${a.id}">March</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
+  let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
+  html += buildingInspection(state,t);
+  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   if (t.owner === PLAYER && ['city', 'town', 'fort'].includes(t.building)) {
-    html += `<div class="section-label">MUSTER TROOPS · ${k.commands} ORDERS LEFT</div><div class="build-list">${Object.entries(UNITS).map(([id, u]) => `<button class="build-card" data-recruit="${id}" ${state.outcome || !k.commands ? 'disabled' : ''}><span class="build-title">${u.icon} ${u.count} ${u.name}</span><span class="build-cost">${costText(u.cost)}</span><span class="build-desc">${u.description}</span></button>`).join('')}</div>`;
+    html += musterBrowser(state,t);
   }
   if (t.owner === PLAYER || !t.owner) {
-    const relevant = Object.keys(BUILDINGS).filter(type => {
-      if (['wall', 'market', 'workshop', 'envoyOffice', 'chancery'].includes(type)) return ['city', 'town'].includes(t.building);
-      if (type === 'city') return t.building === 'town';
-      if (type === 'road') return !t.road;
-      if (t.building) return false;
-      const b = BUILDINGS[type]; return !b.terrain || b.terrain.includes(t.terrain);
-    });
-    html += `<div class="section-label">CONSTRUCTION · ${k.commands}/${commandLimit(state, PLAYER)} ORDERS</div><div class="build-list">${relevant.map(type => { const b = BUILDINGS[type], why = buildCheck(state, PLAYER, selected, type); return `<button class="build-card" data-build="${type}" ${why ? 'disabled' : ''} title="${escape(why || b.description)}"><span class="build-title">${b.icon} ${b.name} <small>· ${b.turns}t</small></span><span class="build-cost">${costText(b.cost)}</span><span class="build-desc">${escape(why || b.description)}</span></button>`; }).join('')}</div>`;
+    html += constructionBrowser(state,t);
   } else html += `<div class="realm-card"><p class="fine">${atWar(state, PLAYER, t.owner) ? 'Enemy territory. March an army here to invade.' : 'Neutral borders. Negotiate an alliance for military access, or declare war.'}</p><button class="full" data-talk="${t.owner}">Visit ${escape(owner.name)}</button></div>`;
+  if(t.owner===PLAYER && (['city','town','tradeOutpost'].includes(t.building)||t.market))html+=tradePanel(state,t)+commercialConnections(state,t);
   html += ambassadorCards(state.ambassadors.filter(a => a.tile === selected && a.status !== 'dead'));
   return html;
 }
 function realmPanel() {
   const k = kingdom(state, PLAYER), { income, routes } = economyProjection(state, PLAYER);
-  return `<span class="eyebrow">HOUSE ASHEN</span><h2>Your realm</h2><div class="stat-grid"><span>Construction orders</span><b>${k.commands}/${commandLimit(state, PLAYER)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, PLAYER).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, PLAYER).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, PLAYER).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
+  return `${systemTitle('kingdom')}<span class="eyebrow">HOUSE ASHEN</span><h2>Your realm</h2><div class="stat-grid"><span>Construction orders</span><b>${k.commands}/${commandLimit(state, PLAYER)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, PLAYER).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, PLAYER).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, PLAYER).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${economySummary(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
-  return `<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== PLAYER).map(k => { const r = k.relations[PLAYER], status = !alive(state, k.id) ? 'Fallen' : atWar(state, PLAYER, k.id) ? 'At war' : treaty(state, PLAYER, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p><button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
+  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== PLAYER).map(k => { const r = k.relations[PLAYER], status = !alive(state, k.id) ? 'Fallen' : atWar(state, PLAYER, k.id) ? 'At war' : treaty(state, PLAYER, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
 function ledgerPanel(rulerId = null) {
   const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(PLAYER) && (!rulerId || [p.debtor, p.creditor].includes(rulerId)));
@@ -101,6 +98,10 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
+  if(d.tradeDecline){const offer=state.commerce.offers.find(o=>o.id===Number(d.tradeDecline));if(offer)offer.status='declined';changed();}
+  if(d.tradeReview||d.tradeCounter){const offer=state.commerce.offers.find(o=>o.id===Number(d.tradeReview||d.tradeCounter)&&o.expires>=state.turn&&o.status==='pending');if(offer){openDiplomacy(offer.from,false);reviewedTrade=offer.id;proposals=[offer.intent];storeOffers();save();renderProposals();if(d.tradeCounter)loadOffer(offer.intent);}}
+
+  if(d.highwayFrom){const copy=structuredClone(state),preview=buildHighway(copy,PLAYER,d.highwayFrom,d.highwayTo);if(!preview.ok)toast(preview.error);else if(confirm(`Upgrade ${preview.tiles} road hexes to Royal Highway? Cost: ${costText(preview.cost)}. Construction takes up to 5 turns.`))result(buildHighway(state,PLAYER,d.highwayFrom,d.highwayTo));}
   if (d.build) result(build(state, PLAYER, selected, d.build));
   if (d.recruit) { const r = recruit(state, PLAYER, selected, d.recruit); if (r.ok) selectedArmy = r.armyId; result(r); }
   if (d.order) { selectedArmy = d.order; orderMode = 'move'; map.armyId = selectedArmy; render(); toast('Select a destination on the map.'); }
@@ -111,7 +112,7 @@ $('panel').addEventListener('click', e => {
   if (d.talk) openDiplomacy(d.talk);
   if (d.deliver) result(deliverPledge(state, d.deliver));
 });
-$('panel').addEventListener('change', e => { if (e.target.id === 'tax' && !state.outcome) { kingdom(state, PLAYER).tax = e.target.value; changed(); } });
+$('panel').addEventListener('change', e => { if(e.target.dataset.formation){result(setFormation(state,PLAYER,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { kingdom(state, PLAYER).tax = e.target.value; changed(); } });
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
 $('end-turn').addEventListener('click', () => { orderMode = null; endTurn(state); changed(); voiceNextDispatch(); });
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
@@ -151,7 +152,8 @@ $('import-save').addEventListener('change', async e => {
 
 function openDiplomacy(id, compact = false) {
   if (!alive(state, id)) return;
-  activeRuler = id; proposals = state.diplomacy.offers?.[id] || []; state.conversations[id] ||= [];
+  reviewedTrade=null; activeRuler = id; proposals = state.diplomacy.offers?.[id] || []; state.conversations[id] ||= [];
+  const incoming=state.commerce.offers.find(o=>o.from===id&&o.status==='pending'&&o.expires>=state.turn);if(incoming&&!proposals.length){proposals=[incoming.intent];reviewedTrade=incoming.id;}
   markRead(state, id); compactCouncil = compact;
   $('give-amount').value = '60'; $('receive-amount').value = '0'; $('offer-type').value = atWar(state, PLAYER, id) ? 'PEACE' : 'ALLIANCE';
   updateOfferFields(); setCouncilMode(compact); renderDiplomacy(); renderDispatches(); save();
@@ -219,6 +221,7 @@ function loadOffer(i) {
   setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
   $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
   $('receive-resource').value = i.receiveResource; $('receive-amount').value = i.receiveAmount;
+  $('trade-kind').value=i.tradeKind||'immediate';
   $('duration').value = i.duration; $('offer-target').value = i.targetId;
   if (i.conditionHouseId) $('condition-target').value = i.conditionHouseId;
   $('offer-form').scrollIntoView({ block: 'nearest' });
@@ -239,7 +242,7 @@ $('proposals').addEventListener('click', e => {
     const index = Number(b.dataset.ratify ?? b.dataset.ratifyCounter);
     const proposal = b.dataset.ratifyCounter !== undefined ? evaluateDeal(state, activeRuler, proposals[index]).counter : proposals[index];
     const r = commitDeal(state, activeRuler, proposal);
-    if (r.ok) { appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
+    if (r.ok) { if(reviewedTrade){const offer=state.commerce.offers.find(o=>o.id===reviewedTrade);if(offer)offer.status='accepted';reviewedTrade=null;} appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
     result(r);
   }
 });
@@ -249,6 +252,7 @@ for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOUR
 $('give-resource').value = 'gold';
 function updateOfferFields() {
   const type = $('offer-type').value;
+  $('trade-kind-label').hidden=!['EXCHANGE','RECURRING'].includes(type);
   $('receive-fields').hidden = !['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(type);
   if ($('receive-fields').hidden) $('receive-amount').value = '0';
   if ((['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE'].includes(type) || (isPlayerPromise({type}) && type !== 'PROMISE'))) $('give-amount').value = '0';
@@ -268,9 +272,11 @@ function updateOfferFields() {
   $('offer-target').innerHTML = choices.map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join('');
 }
 $('offer-type').onchange = updateOfferFields;
+$('trade-kind').onchange=()=>{const kind=$('trade-kind').value;$('offer-type').value=['recurring','strategic','preferential'].includes(kind)?'RECURRING':'EXCHANGE';if(kind==='purchase')$('give-resource').value='gold';updateOfferFields();};
 $('offer-form').addEventListener('submit', e => {
   e.preventDefault();
   const raw = { type: $('offer-type').value, giveResource: $('give-resource').value, giveAmount: Number($('give-amount').value), receiveResource: $('receive-resource').value, receiveAmount: Number($('receive-amount').value), targetId: $('target-label').hidden ? '' : $('offer-target').value, duration: Number($('duration').value) };
+  if(!$('trade-kind-label').hidden) raw.tradeKind=$('trade-kind').value;
   if (!$('condition-label').hidden && $('condition-target').value) raw.conditionHouseId = $('condition-target').value;
   const i = validateIntent(raw);
   if (!i) { toast('Use whole resource amounts and valid terms (1–20 turns for a promise, 2–20 for agreements).'); return; }
@@ -385,7 +391,7 @@ function renderDispatches() {
   $('dispatch-bar').innerHTML = state.kingdoms.filter(k => k.id !== PLAYER && alive(state, k.id)).map(k => {
     const r = k.relations[PLAYER], messages = state.conversations[k.id] || [], last = messages.filter(m => m.role === 'ruler').at(-1);
     const urgent = state.pledges.some(p => p.creditor === k.id && p.debtor === PLAYER && p.status === 'pending' && p.deadline - state.turn <= 2);
-    return `<button class="dispatch-house ${urgent ? 'urgent' : ''}" data-dispatch="${k.id}" style="--house:${k.color}" aria-label="Open ${escape(k.name)} conversation${r.unread ? `, ${r.unread} unread` : ''}"><span class="dispatch-sigil">${k.sigil}</span><span><b>${escape(k.name.replace('House ', ''))}<i class="relation-dot ${r.trust < 0 ? 'distrust' : r.opinion > 25 ? 'friendly' : ''}"></i>${r.unread ? `<em>${r.unread}</em>` : ''}${urgent ? ' ⏳' : ''}</b><small>${escape(last?.text.slice(0, 64) || k.ruler)}</small></span></button>`;
+    return `<button class="dispatch-house ${urgent ? 'urgent' : ''}" data-dispatch="${k.id}" style="--house:${k.color}" aria-label="Open ${escape(k.name)} conversation${r.unread ? `, ${r.unread} unread` : ''}"><span class="dispatch-sigil">${k.sigil}</span><span><b>${escape(k.name.replace('House ', ''))}<i class="relation-dot ${r.trust < 0 ? 'distrust' : r.opinion > 25 ? 'friendly' : ''}"></i>${r.unread ? `<em>${r.unread}</em>` : ''}${urgent ? ' ⏳' : ''}${state.commerce.offers.some(o=>o.from===k.id&&o.status==='pending'&&o.expires>=state.turn)?' ⚖':''}</b><small>${escape(last?.text.slice(0, 64) || k.ruler)}</small></span></button>`;
   }).join('');
 }
 function setCouncilMode(compact) {

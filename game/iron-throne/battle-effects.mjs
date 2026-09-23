@@ -46,6 +46,7 @@ export class BattleEffects {
         c.beginPath(); c.moveTo(x, -29); c.lineTo(x + side * (9 + Math.sin(progress * 42) * 1.3), -27); c.lineTo(x, -22); c.fill();
       }
       const siege = e.action === 'siege' || e.action === 'capture';
+      const arrows = siege || (e.composition||[]).some(a=>(a.archer||0)+(a.veteranArcher||0)+(a.crossbow||0)>0);
       for (const particle of effect.particles) {
         const drift = progress * particle.speed;
         c.globalAlpha = (1 - progress) * .7;
@@ -55,7 +56,7 @@ export class BattleEffects {
       }
       c.globalAlpha = Math.max(0, 1 - progress);
       // Bounded arrows / siege projectile arcs and brief weapon flashes.
-      for (let i = 0; i < (siege ? 2 : 4); i++) {
+      for (let i = 0; i < (siege ? 2 : arrows ? 4 : 0); i++) {
         const flight = (progress * 2 + i * .22) % 1;
         c.strokeStyle = '#f4d49a'; c.lineWidth = siege ? 2 : 1;
         c.beginPath(); c.moveTo(-22 + flight * 44, -5 - Math.sin(flight * Math.PI) * (siege ? 35 : 17)); c.lineTo(-18 + flight * 44, -7 - Math.sin(flight * Math.PI) * (siege ? 35 : 17)); c.stroke();
@@ -83,7 +84,7 @@ export class BattleEffects {
       c.fillText(fit(`${e.action === 'siege' ? 'Walls' : name(e.defender)}: ${e.before[1]} → ${e.after[1]}`), 10, 70);
     }
     c.fillStyle = '#b1bec0'; c.font = '10px system-ui';
-    c.fillText(fit(e.retreat ? `${name(e.defender)} retreats to ${s.tiles[e.retreat]?.name || e.retreat}.` : this.results.length > 1 ? `${this.results.length} recent encounters · full record in Chronicle` : 'Orders are available.'), 10, 88);
+    c.fillText(fit(e.retreat ? `${name(e.retreatOwner||e.defender)} retreats to ${s.tiles[e.retreat]?.name || e.retreat}.` : this.results.length > 1 ? `${this.results.length} recent encounters · full report in Realm` : 'Orders are available.'), 10, 88);
     c.restore();
   }
   animating(now, reduced) { return !reduced && this.active.some(e => now - e.start < 2000); }
