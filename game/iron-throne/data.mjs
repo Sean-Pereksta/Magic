@@ -27,6 +27,8 @@ export const BUILDINGS = {
   city: { name: 'City upgrade', icon: '♛', cost: { wood: 70, stone: 85, gold: 100 }, turns: 4, description: 'Upgrade a town. More food, income, population capacity and defense.' },
   wall: { name: 'City walls', icon: '▥', cost: { stone: 60, gold: 35 }, turns: 3, description: '60 wall strength. Siege engines breach walls before an assault.' },
   market: { name: 'Market', icon: '⚖', cost: { wood: 40, stone: 25, gold: 40 }, turns: 2, description: '+12 gold each turn in this settlement.' },
+  envoyOffice: { name: 'Envoy Office', icon: '✉', cost: { gold: 50, wood: 35 }, turns: 2, description: 'Four shared dispatches per turn and capacity for one ambassador.' },
+  chancery: { name: 'Royal Chancery', icon: '⚜', cost: { gold: 100, wood: 50, stone: 30 }, turns: 3, description: 'Requires an Envoy Office here. Five shared dispatches, three ambassadors, faster travel.' },
   workshop: { name: 'Workshop', icon: '⚙', cost: { wood: 40, iron: 25, gold: 45 }, turns: 2, description: '+1 construction/recruitment order per turn, +3 iron.' }
 };
 export const UNITS = {
@@ -35,5 +37,5 @@ export const UNITS = {
   cavalry: { name: 'Cavalry', icon: '♞', attack: 2.7, defense: 1.8, count: 4, cost: { food: 16, iron: 12, gold: 32 }, description: 'Four riders. Fast alone; strong on open ground.' },
   siege: { name: 'Siege engines', icon: '♜', attack: .8, defense: .5, count: 2, cost: { wood: 30, iron: 16, gold: 35 }, description: 'Two engines. Break walls; slow army movement.' }
 };
-export const INTENT_TYPES = ['ALLIANCE', 'PEACE', 'TRADE', 'EXCHANGE', 'AID', 'JOINT_WAR', 'DEFEND', 'POSITION', 'WITHDRAW', 'BUILD_DEFENSES', 'TERRITORY', 'TRIBUTE', 'VASSALAGE', 'PROMISE', 'WAR', 'BETRAY'];
-export const SAVE_VERSION = 1;
+export const INTENT_TYPES = ['ALLIANCE', 'PEACE', 'TRADE', 'EXCHANGE', 'AID', 'JOINT_WAR', 'DEFEND', 'POSITION', 'WITHDRAW', 'BUILD_DEFENSES', 'TERRITORY', 'TRIBUTE', 'VASSALAGE', 'PROMISE', 'WAR', 'BETRAY', 'RECURRING', 'LOAN', 'NON_AGGRESSION', 'ACCESS', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_WITHDRAW', 'PLEDGE_BUILD', 'PLEDGE_PEACE'];
+export const SAVE_VERSION = 2;

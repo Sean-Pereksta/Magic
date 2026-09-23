@@ -1,6 +1,8 @@
 import { BUILDINGS, HOUSES, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, build, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
-import { LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
+import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
+import { isPlayerPromise } from './promises.mjs';
+import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
 import { DiplomacyClient } from './chat.mjs';
 import { WorldMap } from './map.mjs';
 
@@ -9,6 +11,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const costText = cost => Object.entries(cost).map(([r, n]) => `${n} ${r}`).join(' · ');
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
+let sending = false, compactCouncil = false;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 try {
   const saved = localStorage.getItem(SAVE_KEY);
@@ -21,7 +24,7 @@ function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = `Saved on this device · turn ${state.turn}`; restored = true; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
-function changed() { epoch++; proposals = []; save(); render(); }
+function changed() { epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
 function result(action) { if (!action.ok) toast(action.error); else changed(); return action.ok; }
 function selectTile(id) {
   if (orderMode && selectedArmy) {
@@ -49,7 +52,8 @@ function render() {
   $('latest-events').innerHTML = state.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = state.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
   $('order-hint').hidden = !orderMode; $('order-hint').textContent = 'Select a destination · Esc cancels';
-  map.armyId = selectedArmy; map.selected = selected; map.draw();
+  map.armyId = selectedArmy; map.selected = selected; map.reducedEffects = !!state.presentation?.reducedEffects; map.draw();
+  renderDispatches();
   if ($('diplomacy').open) renderDiplomacy();
   if (state.outcome && !outcomeShown) {
     outcomeShown = true; $('outcome-title').textContent = state.outcome.won ? 'The crown is yours.' : 'A dynasty falls.';
@@ -60,7 +64,7 @@ function render() {
 function landPanel() {
   const t = state.tiles[selected], k = kingdom(state, PLAYER), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected);
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.resource} deposits` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
-  if (t.building) html += `<div class="realm-card"><strong>${BUILDINGS[t.building]?.name || 'City'}</strong><div class="fine">${t.walls ? `Walls ${t.walls}/60 · ` : ''}${t.market ? 'Market · ' : ''}${t.workshop ? 'Workshop · ' : ''}Defense ×${(TERRAINS[t.terrain].defense * (t.building === 'fort' ? 1.6 : 1) * (t.walls ? 1.6 : 1)).toFixed(1)}</div></div>`;
+  if (t.building) html += `<div class="realm-card"><strong>${BUILDINGS[t.building]?.name || 'City'}</strong><div class="fine">${t.walls ? `Walls ${t.walls}/60 · ` : ''}${t.market ? 'Market · ' : ''}${t.workshop ? 'Workshop · ' : ''}${t.envoyOffice ? 'Envoy Office · ' : ''}${t.chancery ? 'Royal Chancery · ' : ''}Defense ×${(TERRAINS[t.terrain].defense * (t.building === 'fort' ? 1.6 : 1) * (t.walls ? 1.6 : 1)).toFixed(1)}</div></div>`;
   if (t.project) html += `<div class="realm-card"><strong>${BUILDINGS[t.project.type].name} underway</strong><div class="fine">${t.project.remaining} turn${t.project.remaining === 1 ? '' : 's'} until completion</div><div class="progress"><span style="width:${100 * (1 - t.project.remaining / (BUILDINGS[t.project.type].turns + 1))}%"></span></div></div>`;
   html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `<div class="button-row"><button data-order="${a.id}">March</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   if (t.owner === PLAYER && ['city', 'town', 'fort'].includes(t.building)) {
@@ -68,7 +72,7 @@ function landPanel() {
   }
   if (t.owner === PLAYER || !t.owner) {
     const relevant = Object.keys(BUILDINGS).filter(type => {
-      if (['wall', 'market', 'workshop'].includes(type)) return ['city', 'town'].includes(t.building);
+      if (['wall', 'market', 'workshop', 'envoyOffice', 'chancery'].includes(type)) return ['city', 'town'].includes(t.building);
       if (type === 'city') return t.building === 'town';
       if (type === 'road') return !t.road;
       if (t.building) return false;
@@ -76,19 +80,20 @@ function landPanel() {
     });
     html += `<div class="section-label">CONSTRUCTION · ${k.commands}/${commandLimit(state, PLAYER)} ORDERS</div><div class="build-list">${relevant.map(type => { const b = BUILDINGS[type], why = buildCheck(state, PLAYER, selected, type); return `<button class="build-card" data-build="${type}" ${why ? 'disabled' : ''} title="${escape(why || b.description)}"><span class="build-title">${b.icon} ${b.name} <small>· ${b.turns}t</small></span><span class="build-cost">${costText(b.cost)}</span><span class="build-desc">${escape(why || b.description)}</span></button>`; }).join('')}</div>`;
   } else html += `<div class="realm-card"><p class="fine">${atWar(state, PLAYER, t.owner) ? 'Enemy territory. March an army here to invade.' : 'Neutral borders. Negotiate an alliance for military access, or declare war.'}</p><button class="full" data-talk="${t.owner}">Visit ${escape(owner.name)}</button></div>`;
+  html += ambassadorCards(state.ambassadors.filter(a => a.tile === selected && a.status !== 'dead'));
   return html;
 }
 function realmPanel() {
   const k = kingdom(state, PLAYER), { income, routes } = economyProjection(state, PLAYER);
-  return `<span class="eyebrow">HOUSE ASHEN</span><h2>Your realm</h2><div class="stat-grid"><span>Construction orders</span><b>${k.commands}/${commandLimit(state, PLAYER)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, PLAYER).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, PLAYER).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, PLAYER).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
+  return `<span class="eyebrow">HOUSE ASHEN</span><h2>Your realm</h2><div class="stat-grid"><span>Construction orders</span><b>${k.commands}/${commandLimit(state, PLAYER)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, PLAYER).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, PLAYER).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, PLAYER).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
   return `<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== PLAYER).map(k => { const r = k.relations[PLAYER], status = !alive(state, k.id) ? 'Fallen' : atWar(state, PLAYER, k.id) ? 'At war' : treaty(state, PLAYER, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p><button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
-function ledgerPanel() {
-  const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(PLAYER));
-  const treaties = state.treaties.filter(t => t.parties.includes(PLAYER));
-  return `<span class="eyebrow">A WORD IS A DEBT</span><h2>Oaths & treaties</h2><p class="fine">Allies must travel, gather troops and finish construction. Delays can break a promise. Defenders must stay on station for two turns.</p>${treaties.map(t => `<div class="pledge-card"><strong>${escape(t.type)} · ${escape(kingdom(state, t.parties.find(p => p !== PLAYER)).name)}</strong><p>Expires on turn ${t.expires} (${t.expires - state.turn} left)</p></div>`).join('')}${pledges.length ? pledges.slice().reverse().map(p => `<div class="pledge-card"><strong>${escape(LABELS[p.intent.type])}</strong><p>${escape(kingdom(state, p.debtor).name)} → ${escape(kingdom(state, p.creditor).name)}</p><p>${escape(describeIntent(p.intent))}</p><p class="${p.status}">${escape(p.status.toUpperCase())} · Due turn ${p.deadline}${p.intent.type === 'DEFEND' ? ` · On station ${p.held}/2` : ''}</p>${p.status === 'pending' && p.debtor === PLAYER ? `<button class="full" data-deliver="${p.id}">Deliver promised resources</button>` : ''}</div>`).join('') : '<p class="empty">No military or payment pledges yet. Negotiate one with a ruler.</p>'}`;
+function ledgerPanel(rulerId = null) {
+  const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(PLAYER) && (!rulerId || [p.debtor, p.creditor].includes(rulerId)));
+  const treaties = state.treaties.filter(t => t.parties.includes(PLAYER) && (!rulerId || t.parties.includes(rulerId)));
+  return `<span class="eyebrow">A WORD IS A DEBT</span><h2>Oaths & treaties</h2><p class="fine">Allies must travel, gather troops and finish construction. Delays can break a promise. Defenders must stay on station for two turns.</p>${treaties.map(t => `<div class="pledge-card"><strong>${escape(t.type)} · ${escape(kingdom(state, t.parties.find(p => p !== PLAYER)).name)}</strong><p>Expires on turn ${t.expires} (${t.expires - state.turn} left)</p></div>`).join('')}${pledges.length ? pledges.slice().reverse().map(p => `<div class="pledge-card"><strong>${escape(LABELS[p.intent.type])}</strong><p>${escape(kingdom(state, p.debtor).name)} → ${escape(kingdom(state, p.creditor).name)}</p><p>${escape(describeIntent(p.intent))}</p><p class="${p.status}">${escape(p.status.toUpperCase())} · Due turn ${p.deadline}${['DEFEND', 'PLEDGE_DEFEND'].includes(p.intent.type) ? ` · On station ${p.held}/2` : ''}</p>${p.status === 'pending' && p.debtor === PLAYER && p.intent.type === 'PROMISE' ? `<button class="full" data-deliver="${p.id}">Deliver promised resources</button>` : ''}</div>`).join('') : '<p class="empty">No military or payment pledges yet. Negotiate one with a ruler.</p>'}`;
 }
 
 $('panel').addEventListener('click', e => {
@@ -106,7 +111,7 @@ $('panel').addEventListener('click', e => {
 });
 $('panel').addEventListener('change', e => { if (e.target.id === 'tax' && !state.outcome) { kingdom(state, PLAYER).tax = e.target.value; changed(); } });
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
-$('end-turn').addEventListener('click', () => { orderMode = null; endTurn(state); changed(); });
+$('end-turn').addEventListener('click', () => { orderMode = null; endTurn(state); changed(); voiceNextDispatch(); });
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
@@ -142,10 +147,12 @@ $('import-save').addEventListener('change', async e => {
   finally { e.target.value = ''; }
 });
 
-function openDiplomacy(id) {
-  activeRuler = id; proposals = []; state.conversations[id] ||= [];
+function openDiplomacy(id, compact = false) {
+  if (!alive(state, id)) return;
+  activeRuler = id; proposals = state.diplomacy.offers?.[id] || []; state.conversations[id] ||= [];
+  markRead(state, id); compactCouncil = compact;
   $('give-amount').value = '60'; $('receive-amount').value = '0'; $('offer-type').value = atWar(state, PLAYER, id) ? 'PEACE' : 'ALLIANCE';
-  updateOfferFields(); renderDiplomacy(); $('diplomacy').showModal();
+  updateOfferFields(); setCouncilMode(compact); renderDiplomacy(); renderDispatches(); save();
   if (configReady) enableGemini();
 }
 function renderDiplomacy() {
@@ -155,71 +162,119 @@ function renderDiplomacy() {
   $('ruler-relation').textContent = `Opinion ${r.opinion} · Trust ${r.trust} · ${atWar(state, PLAYER, k.id) ? 'At war' : 'At peace'}`;
   $('messages').innerHTML = (state.conversations[activeRuler] || []).map(m => `<div class="message ${escape(m.role)}"><small>${m.role === 'player' ? 'YOU · HOUSE ASHEN' : m.role === 'council' ? 'COUNCIL RULING' : escape(k.ruler.toUpperCase())}</small>${escape(m.text)}</div>`).join('') || `<div class="message"><small>${escape(k.ruler.toUpperCase())}</small>You have my attention, Regent. What brings your envoy to my court?</div>`;
   $('messages').scrollTop = $('messages').scrollHeight;
-  renderProposals();
+  if ($('diplomacy').open) markRead(state, activeRuler);
+  $('relations-summary').innerHTML = relationDescriptions(state, activeRuler).map(([label, text]) => `<div><b>${escape(label)}</b><span>${escape(text)}</span></div>`).join('');
+  const economics = economicRelationship(state, activeRuler, PLAYER);
+  $('council-records-body').innerHTML = ledgerPanel(activeRuler) + '<h3>Recent shipments</h3>' + (economics.recent.map(t => `<p class="fine">Turn ${t.turn} · ${escape(kingdom(state, t.from).name)} → ${escape(kingdom(state, t.to).name)} · ${t.amount} ${escape(t.resource)}</p>`).join('') || '<p class="fine">No recent resource shipments.</p>') + ambassadorPanel();
+  renderProposals(); updateChatControls();
+}
+function updateChatControls() {
+  const a = messageAllowance(state, activeRuler);
+  $('message-allowance').textContent = a.hosted ? `Ambassador: ${a.remaining}/10 · shared dispatches: ${a.regularRemaining}/${diplomaticCapacity(state)}` : `Shared dispatches: ${a.remaining}/${a.limit} this turn`;
+  $('send-chat').disabled = sending || !!state.outcome || a.remaining === 0;
+  $('send-chat').textContent = sending ? 'Envoy travelling…' : 'Send envoy →';
+  $('offer-form').querySelector('button[type="submit"]').disabled = sending || !!state.outcome || a.remaining === 0;
 }
 function renderProposals() {
   $('proposals').innerHTML = proposals.map((i, index) => {
-    const v = evaluateDeal(state, activeRuler, i);
-    return `<div class="proposal ${v.status}"><h4>${escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p><p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Ratify these terms'}</button>` : v.status === 'counter' ? `<button data-counter="${index}">Review counteroffer (${v.counter.giveAmount} ${v.counter.giveResource})</button>` : ''}</div>`;
+    const v = evaluateDeal(state, activeRuler, i), promise = isPlayerPromise(i);
+    return `<div class="proposal ${v.status}"><h4>${promise ? 'PROPOSED PROMISE' : escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p>${promise ? `<p><strong>Deadline: Turn ${state.turn + i.duration}</strong></p>` : ''}<p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${promise ? 'Give My Word' : ['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Accept & Ratify'}</button>` : v.status === 'counter' ? `<div class="counter-terms"><strong>${escape(kingdom(state, activeRuler).name)} counteroffer</strong><p>${escape(describeIntent(v.counter))}</p><button class="primary" data-ratify-counter="${index}">Accept & Ratify</button><button data-counter="${index}">Review counteroffer</button></div>` : ''}<div class="button-row"><button data-modify="${index}">${promise ? 'Clarify' : 'Modify Offer'}</button><button data-reply="${index}">${promise ? 'I Make No Such Promise' : 'Reply'}</button></div></div>`;
   }).join('');
+}
+function storeOffers() { state.diplomacy.offers ||= {}; state.diplomacy.offers[activeRuler] = proposals.slice(0, 4); }
+function loadOffer(i) {
+  setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
+  $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
+  $('receive-resource').value = i.receiveResource; $('receive-amount').value = i.receiveAmount;
+  $('duration').value = i.duration; $('offer-target').value = i.targetId;
+  if (i.conditionHouseId) $('condition-target').value = i.conditionHouseId;
+  $('offer-form').scrollIntoView({ block: 'nearest' });
 }
 $('proposals').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.counter !== undefined) {
     const index = Number(b.dataset.counter), v = evaluateDeal(state, activeRuler, proposals[index]);
-    if (v.counter) proposals[index] = v.counter; renderProposals();
+    if (v.counter) proposals[index] = v.counter; storeOffers(); save(); renderProposals();
   }
-  if (b.dataset.ratify !== undefined) {
-    const index = Number(b.dataset.ratify), proposal = proposals[index];
+  if (b.dataset.modify !== undefined) loadOffer(proposals[Number(b.dataset.modify)]);
+  if (b.dataset.reply !== undefined) {
+    const i = proposals[Number(b.dataset.reply)];
+    if (isPlayerPromise(i)) { sendDiplomatic('I make no such promise. Let us clarify what you need.'); }
+    else { $('chat-message').value = 'Let us discuss those terms. '; $('chat-message').focus(); }
+  }
+  if (b.dataset.ratify !== undefined || b.dataset.ratifyCounter !== undefined) {
+    const index = Number(b.dataset.ratify ?? b.dataset.ratifyCounter);
+    const proposal = b.dataset.ratifyCounter !== undefined ? evaluateDeal(state, activeRuler, proposals[index]).counter : proposals[index];
     const r = commitDeal(state, activeRuler, proposal);
-    if (r.ok) { appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Agreement ratified. Check Pledges for any orders or promises.'); }
+    if (r.ok) { appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
     result(r);
   }
 });
-function appendMessage(rulerId, role, text) {
-  state.conversations[rulerId] ||= []; state.conversations[rulerId].push({ role, text: text.slice(0, 2000) }); state.conversations[rulerId] = state.conversations[rulerId].slice(-50);
-}
+function appendMessage(rulerId, role, text) { return appendConversation(state, rulerId, role, text); }
 $('offer-type').innerHTML = Object.entries(LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
 function updateOfferFields() {
   const type = $('offer-type').value;
-  $('receive-fields').hidden = !['EXCHANGE', 'TRIBUTE'].includes(type);
+  $('receive-fields').hidden = !['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(type);
   if ($('receive-fields').hidden) $('receive-amount').value = '0';
-  if (['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE'].includes(type)) $('give-amount').value = '0';
-  $('give-amount').disabled = ['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE'].includes(type);
-  $('target-label').hidden = !['JOINT_WAR', 'DEFEND', 'POSITION', 'BUILD_DEFENSES', 'TERRITORY'].includes(type);
+  if ((['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE'].includes(type) || (isPlayerPromise({type}) && type !== 'PROMISE'))) $('give-amount').value = '0';
+  $('give-amount').disabled = (['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE'].includes(type) || (isPlayerPromise({type}) && type !== 'PROMISE'));
+  $('target-label').hidden = !['JOINT_WAR', 'DEFEND', 'POSITION', 'BUILD_DEFENSES', 'TERRITORY', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_BUILD', 'PLEDGE_PEACE'].includes(type);
   let choices = [];
-  if (type === 'JOINT_WAR') choices = state.kingdoms.filter(k => ![PLAYER, activeRuler].includes(k.id) && alive(state, k.id)).map(k => [k.id, k.name]);
+  if (['JOINT_WAR', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_PEACE'].includes(type)) choices = state.kingdoms.filter(k => ![PLAYER, activeRuler].includes(k.id) && alive(state, k.id)).map(k => [k.id, k.name]);
   if (type === 'DEFEND') choices = Object.values(state.tiles).filter(t => t.owner === PLAYER && ['city', 'town', 'fort'].includes(t.building)).map(t => [t.id, `${t.name || 'Fort'} (${t.id})`]);
   if (type === 'POSITION') choices = [[selected, `Selected map tile (${selected})`], ...settlements(state).filter(t => [PLAYER, activeRuler].includes(t.owner) && t.id !== selected).map(t => [t.id, `${t.name} (${t.id})`])];
   if (type === 'BUILD_DEFENSES') choices = Object.values(state.tiles).filter(t => t.owner === activeRuler && !t.building && Number.isFinite(TERRAINS[t.terrain].cost)).slice(0, 60).map(t => [t.id, `${TERRAINS[t.terrain].name} (${t.id})`]);
   if (type === 'TERRITORY') choices = Object.values(state.tiles).filter(t => t.owner === activeRuler && ['city', 'town', 'fort'].includes(t.building) && !t.capital).map(t => [t.id, `${t.name || 'Fort'} (${t.id})`]);
+  if (type === 'PLEDGE_DEFEND') choices = Object.values(state.tiles).filter(t => t.owner === activeRuler && ['city', 'town', 'fort'].includes(t.building)).map(t => [t.id, `${t.name || 'Fort'} (${t.id})`]);
+  if (type === 'PLEDGE_BUILD') choices = Object.values(state.tiles).filter(t => t.owner === PLAYER && !t.building && !t.project && Number.isFinite(TERRAINS[t.terrain].cost)).slice(0, 60).map(t => [t.id, `Fort at ${t.id}`]);
+  if (type === 'PLEDGE_ATTACK') choices = [...state.armies.filter(a => ![PLAYER, activeRuler].includes(a.owner)).map(a => [a.id, `${kingdom(state, a.owner).name} army at ${a.tile}`]), ...settlements(state).filter(t => ![PLAYER, activeRuler].includes(t.owner)).map(t => [t.id, `${t.name} (${t.id})`])];
+  $('condition-label').hidden = type !== 'PLEDGE_WAR';
+  $('condition-target').innerHTML = '<option value="">Unconditional commitment</option>' + state.kingdoms.filter(k => ![PLAYER, activeRuler].includes(k.id) && alive(state, k.id)).map(k => `<option value="${k.id}">Only if ${escape(k.name)} attacks this House</option>`).join('');
   $('offer-target').innerHTML = choices.map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join('');
 }
 $('offer-type').onchange = updateOfferFields;
 $('offer-form').addEventListener('submit', e => {
-  e.preventDefault(); const i = validateIntent({ type: $('offer-type').value, giveResource: $('give-resource').value, giveAmount: Number($('give-amount').value), receiveResource: $('receive-resource').value, receiveAmount: Number($('receive-amount').value), targetId: $('target-label').hidden ? '' : $('offer-target').value, duration: Number($('duration').value) });
-  if (!i) { toast('Use whole resource amounts and a duration between 2 and 20 turns.'); return; }
-  proposals = [i]; renderProposals(); $('proposals').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  e.preventDefault();
+  const raw = { type: $('offer-type').value, giveResource: $('give-resource').value, giveAmount: Number($('give-amount').value), receiveResource: $('receive-resource').value, receiveAmount: Number($('receive-amount').value), targetId: $('target-label').hidden ? '' : $('offer-target').value, duration: Number($('duration').value) };
+  if (!$('condition-label').hidden && $('condition-target').value) raw.conditionHouseId = $('condition-target').value;
+  const i = validateIntent(raw);
+  if (!i) { toast('Use whole resource amounts and valid terms (1–20 turns for a promise, 2–20 for agreements).'); return; }
+  sendDiplomatic(describeIntent(i), i);
 });
-$('chat-form').addEventListener('submit', async e => {
-  e.preventDefault(); const message = $('chat-message').value.trim();
-  if (!message || client.busy || state.outcome) return;
+$('chat-form').addEventListener('submit', e => { e.preventDefault(); sendDiplomatic($('chat-message').value.trim()); });
+async function sendDiplomatic(message, proposal = null) {
+  if (!message || sending || state.outcome) return;
+  const spent = consumeMessage(state, activeRuler); if (!spent.ok) { toast(spent.error); return; }
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
-  const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked);
-  appendMessage(rulerId, 'player', message); $('chat-message').value = ''; $('send-chat').disabled = true; $('send-chat').textContent = 'Envoy travelling…'; renderDiplomacy();
+  if (!proposal) applySpeech(campaign, rulerId, message);
+  sending = true;
+  const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal });
+  appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();
   try {
     const response = await pending;
-    if (epoch !== requestEpoch || campaign !== state) { toast('The world changed while your envoy travelled. Send a new message for current terms.'); return; }
-    appendMessage(rulerId, 'ruler', response.reply); save();
-    if (rulerId === activeRuler) { proposals = response.intents; $('chat-notice').textContent = response.notice; renderDiplomacy(); }
-    $('ai-status').textContent = response.source === 'gemini' ? 'Gemini council connected' : 'Scripted council ready';
+    if (epoch !== requestEpoch || campaign !== state) {
+      if (campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
+      return;
+    }
+    appendMessage(rulerId, 'ruler', response.reply);
+    if (response.source === 'gemini') acceptRulerMemories(state, rulerId, response);
+    const candidates = [proposal, ...response.intents, response.proposal, response.counterProposal, response.promiseDetected].filter(Boolean);
+    const unique = [...new Map(candidates.map(i => [JSON.stringify(i), i])).values()].slice(0, 4);
+    state.diplomacy.offers ||= {}; state.diplomacy.offers[rulerId] = unique;
+    if (rulerId === activeRuler) { proposals = unique; $('chat-notice').textContent = response.notice; }
+    if (rulerId !== activeRuler || !$('diplomacy').open) kingdom(state, rulerId).relations[PLAYER].unread = Math.min(99, kingdom(state, rulerId).relations[PLAYER].unread + 1);
+    $('ai-status').textContent = response.source === 'gemini' ? 'Gemini council connected' : 'Local council ready';
+    save();
   } finally {
-    $('send-chat').disabled = false; $('send-chat').textContent = 'Send envoy →';
-    challengeToken = ''; if (turnstileWidget !== null && $('use-gemini').checked && $('diplomacy').open) globalThis.turnstile?.reset(turnstileWidget);
+    sending = false; challengeToken = '';
+    if ($('diplomacy').open) renderDiplomacy(); renderDispatches();
+    // A successful conversation preserves the session. Only expiry/invalidity
+    // asks for a fresh challenge; quota/network failures keep local play running.
+    if ($('use-gemini').checked && !client.hasSession() && $('diplomacy').open) enableGemini();
   }
-});
+}
 function loadVerification() {
   if (typeof globalThis.turnstile?.render === 'function') return Promise.resolve();
   if (verificationLoad) return verificationLoad;
@@ -236,39 +291,44 @@ function loadVerification() {
 }
 async function enableGemini() {
   const enabled = $('use-gemini').checked && !!client.endpoint && !!config.turnstileSiteKey;
-  $('privacy').hidden = !enabled; $('turnstile').hidden = !enabled;
+  $('privacy').hidden = !enabled; $('turnstile').hidden = !enabled || client.hasSession();
   $('ai-status').textContent = enabled ? 'Gemini council enabled' : 'Scripted council ready';
   if (!enabled) {
     challengeToken = '';
-    $('chat-notice').textContent = 'Scripted council. The treaty desk sets exact terms.';
+    $('chat-notice').textContent = 'Local diplomacy is ready. Your terms still need ratification.';
     return;
   }
   // Verification starts when a visible council opens, not behind the welcome dialog.
   // No Gemini request is made until the player sends a message.
   if (!$('diplomacy').open) return;
+  if (client.hasSession()) { $('turnstile').hidden = true; $('chat-notice').textContent = 'Gemini ready. Your diplomacy session is active.'; return; }
   $('chat-notice').textContent = client.now() < client.cooldownUntil ? 'Gemini is resting after a rate limit or connection error. Scripted diplomacy is available.' : challengeToken ? 'Gemini ready. Send your envoy to begin.' : 'Gemini is enabled. Preparing verification…';
   try {
     await loadVerification();
     if (!$('use-gemini').checked || !$('diplomacy').open) return;
     if (turnstileWidget === null) turnstileWidget = globalThis.turnstile.render($('turnstile'), {
       sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark',
-      callback: token => {
+      callback: async token => {
         challengeToken = token;
-        if (/preparing|expired|unavailable/i.test($('chat-notice').textContent) && client.now() >= client.cooldownUntil) $('chat-notice').textContent = 'Gemini ready. Send your envoy to begin.';
+        const ready = await client.openSession(token);
+        challengeToken = '';
+        $('turnstile').hidden = ready || !$('use-gemini').checked;
+        $('ai-status').textContent = ready ? 'Gemini council connected' : 'Local council ready';
+        $('chat-notice').textContent = ready ? 'Gemini ready. Your diplomacy session is active.' : 'Verification could not establish a session. Local diplomacy is available; reopen the council to retry.';
       },
       'expired-callback': () => {
         challengeToken = '';
-        if ($('use-gemini').checked && $('diplomacy').open) {
+        if ($('use-gemini').checked && $('diplomacy').open && !client.hasSession()) {
           $('chat-notice').textContent = 'Verification expired. Preparing a new challenge…';
           globalThis.turnstile?.reset(turnstileWidget);
         }
       },
-      'error-callback': () => { challengeToken = ''; $('chat-notice').textContent = 'Verification unavailable. Scripted diplomacy still works.'; }
+      'error-callback': () => { challengeToken = ''; $('chat-notice').textContent = 'Verification unavailable. Local diplomacy remains available.'; }
     });
     else if (!challengeToken) globalThis.turnstile.reset(turnstileWidget);
   } catch {
     if (!$('use-gemini').checked || !$('diplomacy').open) return;
-    $('chat-notice').textContent = 'Verification could not load. Scripted diplomacy still works; reopen the council to retry.';
+    $('chat-notice').textContent = 'Verification could not load. Local diplomacy remains available; reopen the council to retry.';
     $('ai-status').textContent = 'Gemini verification unavailable';
   }
 }
@@ -280,6 +340,72 @@ fetch('./config.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).ca
   if (!geminiChoiceMade) $('use-gemini').checked = available;
   enableGemini();
 });
+function renderDispatches() {
+  $('dispatch-bar').innerHTML = state.kingdoms.filter(k => k.id !== PLAYER && alive(state, k.id)).map(k => {
+    const r = k.relations[PLAYER], messages = state.conversations[k.id] || [], last = messages.filter(m => m.role === 'ruler').at(-1);
+    const urgent = state.pledges.some(p => p.creditor === k.id && p.debtor === PLAYER && p.status === 'pending' && p.deadline - state.turn <= 2);
+    return `<button class="dispatch-house ${urgent ? 'urgent' : ''}" data-dispatch="${k.id}" style="--house:${k.color}" aria-label="Open ${escape(k.name)} conversation${r.unread ? `, ${r.unread} unread` : ''}"><span class="dispatch-sigil">${k.sigil}</span><span><b>${escape(k.name.replace('House ', ''))}<i class="relation-dot ${r.trust < 0 ? 'distrust' : r.opinion > 25 ? 'friendly' : ''}"></i>${r.unread ? `<em>${r.unread}</em>` : ''}${urgent ? ' ⏳' : ''}</b><small>${escape(last?.text.slice(0, 64) || k.ruler)}</small></span></button>`;
+  }).join('');
+}
+function setCouncilMode(compact) {
+  compactCouncil = compact;
+  const dialog = $('diplomacy'); if (dialog.open) dialog.close();
+  dialog.classList.toggle('compact', compact); $('expand-council').textContent = compact ? 'Expand' : 'Compact';
+  if (compact) dialog.show(); else dialog.showModal();
+}
+$('dispatch-bar').addEventListener('click', e => { const b = e.target.closest('[data-dispatch]'); if (b) openDiplomacy(b.dataset.dispatch, true); });
+$('expand-council').onclick = () => { setCouncilMode(!compactCouncil); renderDiplomacy(); };
+$('quick-offer').onclick = () => { setCouncilMode(false); $('offer-type').value = 'EXCHANGE'; updateOfferFields(); $('offer-form').scrollIntoView({ block: 'nearest' }); };
+$('quick-request').onclick = () => { setCouncilMode(false); $('offer-type').value = 'DEFEND'; updateOfferFields(); $('offer-form').scrollIntoView({ block: 'nearest' }); };
+$('quick-promises').onclick = () => { setCouncilMode(false); $('council-records').open = true; $('council-records').scrollIntoView({ block: 'start' }); };
+$('diplomacy').addEventListener('close', () => { save(); renderDispatches(); });
+$('council-records-body').addEventListener('click', e => { const b = e.target.closest('[data-deliver]'); if (b) result(deliverPledge(state, b.dataset.deliver)); });
+
+function ambassadorCards(envoys) {
+  return envoys.map(a => `<article class="envoy-card"><strong>⚜ ${escape(kingdom(state, a.owner).name)} ambassador</strong><p class="fine">${escape(a.status)} · ${escape(a.tile)}${a.host ? ` · Assigned to ${escape(kingdom(state, a.host).name)}` : ''}${a.status === 'detained' ? ` · Held by ${escape(kingdom(state, a.detainedBy)?.name)}` : ''}</p>${a.owner === PLAYER ? `<div class="button-row"><button data-envoy-goto="${a.tile}">Locate</button><button data-envoy-recall="${a.id}" ${a.status === 'detained' ? 'disabled' : ''}>Recall</button></div><label>Assign to a capital<select data-envoy-destination="${a.id}">${state.kingdoms.filter(k => k.id !== PLAYER && alive(state, k.id)).map(k => `<option value="${k.id}" ${a.host === k.id ? 'selected' : ''}>${escape(k.name)}</option>`).join('')}</select></label><button class="full" data-envoy-assign="${a.id}" ${a.status === 'detained' ? 'disabled' : ''}>Send ambassador</button>` : `<div class="button-row">${['passage', 'turn-away', 'expel', 'detain', 'release', 'execute'].map(action => `<button class="${action === 'execute' ? 'danger' : ''}" data-envoy-incident="${a.id}" data-incident="${action}">${{passage:'Allow passage','turn-away':'Turn away',expel:'Expel',detain:'Detain',release:'Release',execute:'Execute…'}[action]}</button>`).join('')}</div>`}</article>`).join('');
+}
+function ambassadorPanel() {
+  const envoys = state.ambassadors.filter(a => a.status !== 'dead' && (a.owner === PLAYER || state.tiles[a.tile]?.owner === PLAYER));
+  return `<div class="section-label">AMBASSADORS · ${state.ambassadors.filter(a => a.owner === PLAYER && a.status !== 'dead').length}/${ambassadorCapacity(state)}</div><p class="fine">${diplomaticCapacity(state)} shared dispatches per turn. A resident ambassador grants 10 separate messages with their host.</p><button class="full" data-envoy-recruit="true" ${!ambassadorCapacity(state) || state.outcome ? 'disabled' : ''}>Recruit ambassador · 35 gold, 15 wood, 1 order</button>${ambassadorCards(envoys)}`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (b.dataset.envoyRecruit) result(recruitAmbassador(state));
+  if (b.dataset.envoyGoto) { if ($('diplomacy').open) $('diplomacy').close(); goTo(b.dataset.envoyGoto); }
+  if (b.dataset.envoyRecall) result(assignAmbassador(state, PLAYER, b.dataset.envoyRecall));
+  if (b.dataset.envoyAssign) result(assignAmbassador(state, PLAYER, b.dataset.envoyAssign, b.closest('.envoy-card').querySelector('select').value));
+  if (b.dataset.envoyIncident) {
+    const action = b.dataset.incident;
+    const confirmed = action !== 'execute' || confirm('Execute this ambassador? Their House will declare war, cancel its treaties and suffer enormous losses of trust. Every other House will remember this violation of diplomatic immunity.');
+    if (confirmed) result(ambassadorIncident(state, PLAYER, b.dataset.envoyIncident, action, action === 'execute'));
+  }
+});
+$('reduced-effects').checked = !!state.presentation?.reducedEffects;
+$('reduced-effects').onchange = () => { state.presentation = { reducedEffects: $('reduced-effects').checked }; map.reducedEffects = state.presentation.reducedEffects; save(); map.draw(); };
+
+async function voiceNextDispatch() {
+  if (!$('use-gemini').checked || !client.hasSession() || client.now() < client.cooldownUntil || state.diplomacy.voicedTurn === state.turn) return;
+  const chosen = state.kingdoms.slice(1).map(k => ({ id: k.id, entry: state.conversations[k.id]?.findLast(m => m.role === 'ruler' && m.kind && m.turn >= state.turn - 1 && !m.voiced) })).find(c => c.entry);
+  if (!chosen) return;
+  // One optional incoming voice request per turn. The local dispatch already
+  // exists, so rendering and turn resolution never wait on the model.
+  const campaign = state, requestEpoch = epoch;
+  state.diplomacy.voicedTurn = state.turn; chosen.entry.voiced = true;
+  const voice = new DiplomacyClient({ endpoint: client.endpoint }); voice.session = client.session;
+  const response = await voice.send(campaign, chosen.id, 'Deliver the supplied diplomatic dispatch in your own voice.', '', true, { event: chosen.entry.text });
+  client.cooldownUntil = Math.max(client.cooldownUntil, voice.cooldownUntil);
+  if (voice.hasSession()) client.session = voice.session;
+  if (campaign !== state || epoch !== requestEpoch || response.source !== 'gemini') return;
+  chosen.entry.fact = chosen.entry.text; chosen.entry.text = response.reply;
+  save(); renderDispatches(); if ($('diplomacy').open && activeRuler === chosen.id) renderDiplomacy();
+}
+let lastSessionActivity = 0;
+document.addEventListener('pointerdown', () => {
+  if ($('use-gemini').checked && client.hasSession() && Date.now() - lastSessionActivity > 60000) {
+    lastSessionActivity = Date.now(); client.openSession();
+  }
+}, { passive: true });
+
 $('resume').hidden = !restored;
 if (restored) $('start-game').textContent = 'Replace save & begin a new reign';
 render(); $('welcome').showModal();

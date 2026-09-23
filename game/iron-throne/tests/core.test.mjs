@@ -117,7 +117,7 @@ test('joint-war pledges need actual combat, not just standing at the target bord
   const s = createGame(); kingdom(s, PLAYER).resources.gold = 1000;
   assert.equal(commitDeal(s, 'wintermere', accepted(s, 'wintermere', offer('JOINT_WAR', { targetId: 'thornwall', giveAmount: 100 }))).ok, true);
   const p = s.pledges[0]; verifyPledges(s); assert.equal(p.status, 'pending');
-  s.militaryEvents.push({ turn: s.turn, attacker: 'wintermere', defender: 'thornwall', tile: '31,5', action: 'siege' });
+  s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: 'wintermere', defender: 'thornwall', tile: '31,5', action: 'siege' });
   verifyPledges(s); assert.equal(p.status, 'fulfilled');
 });
 test('promised payment has no immediate trust reward and delivers exactly once', () => {

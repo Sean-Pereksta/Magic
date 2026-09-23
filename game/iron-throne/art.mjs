@@ -76,9 +76,35 @@ export class MapArt {
       if(t.terrain==='hills') { rock(g,-6,1,13,10); rock(g,7,10,14,14); for(let i=0;i<3;i++) ellipse(g,random()*23-12,random()*14,1.7,1,'#c3be9280'); }
     }),x-48,y-48,96,96);
   }
+  formation(c, units, x, y, color, sigil, detail = true, phase = 0) {
+    const total = Object.values(units).reduce((n, v) => n + v, 0);
+    const ranks = total > 70 ? 3 : total > 24 ? 2 : 1;
+    const mounted = units.cavalry > Math.max(0, units.levy + units.archer) / 2;
+    const archers = units.archer > units.levy, siege = units.siege > 0;
+    const key = `formation:${color}:${ranks}:${mounted}:${archers}:${siege}:${detail}`;
+    const sprite = this.sprite(key, g => {
+      ellipse(g, 1, 5, 18, 7, '#091b2870');
+      const count = detail ? ranks * 4 : 3;
+      for (let i = 0; i < count; i++) {
+        const px = (i % 4) * 7 - 11, py = Math.floor(i / 4) * 6 - 5;
+        if (mounted && detail) { ellipse(g, px, py + 2, 4, 2, '#7c644d'); line(g, [[px-2,py+3],[px-3,py+6]], '#302e2d'); line(g, [[px+2,py+3],[px+3,py+6]], '#302e2d'); }
+        ellipse(g, px, py - 5, 1.8, 1.8, '#e3d4b1');
+        g.fillStyle = color; g.fillRect(px - 2, py - 3, 4, 5);
+        line(g, [[px-1,py+2],[px-2,py+5]], '#1c2b33'); line(g, [[px+1,py+2],[px+2,py+5]], '#1c2b33');
+        if (!detail) continue;
+        if (archers) { g.beginPath(); g.ellipse(px+3,py-2,2,4,0,-Math.PI/2,Math.PI/2); g.strokeStyle='#dab680'; g.lineWidth=.7; g.stroke(); }
+        else { line(g, [[px+3,py+2],[px+3,py-11]], '#e8e2c6', .7); ellipse(g,px-2,py-1,2,2.6,'#c3c7ba'); }
+      }
+      if (siege && detail) { line(g,[[-8,8],[8,8]],'#896b47',3); line(g,[[0,8],[0,-4],[7,-8]],'#d1ba82',2); ellipse(g,-5,10,2,2,'#24303a');ellipse(g,5,10,2,2,'#24303a'); }
+    });
+    c.drawImage(sprite, x - 48, y - 48 + phase, 96, 96);
+    line(c, [[x+2,y+1],[x+2,y-25]], '#e5d8b6', 1);
+    poly(c, [[x+2,y-25],[x+16,y-23+phase],[x+14,y-12+phase],[x+2,y-15]], color, '#12232e');
+    c.fillStyle='#182a34'; c.font='bold 9px Georgia'; c.textAlign='center';c.fillText(sigil,x+9,y-17+phase);
+  }
   building(c,t,x,y,color) {
-    const extras=[...(t.market?['market']:[]), ...(t.workshop?['workshop']:[])];
-    const key=`building:${t.building}:${!!t.walls}:${!!t.capital}:${extras.includes('market')}:${extras.includes('workshop')}`;
+    const extras=[...(t.envoyOffice?['envoy']:[]), ...(t.chancery?['chancery']:[]),...(t.market?['market']:[]), ...(t.workshop?['workshop']:[])];
+    const key=`building:${t.building}:${!!t.walls}:${!!t.capital}:${extras.includes('market')}:${extras.includes('workshop')}:${extras.includes('envoy')}:${extras.includes('chancery')}`;
     c.drawImage(this.sprite(key,g=>{
       ellipse(g,3,8,21,8,'#122d3c60');
       if(['city','fort'].includes(t.building)) {
@@ -108,6 +134,8 @@ export class MapArt {
       }
       if(t.walls>0) {line(g,[[-19,-5],[-19,10],[0,16],[20,9],[20,-6]],'#546e6c',5);line(g,[[-19,-5],[-19,8],[0,14],[20,7],[20,-6]],'#d4ccb1',2);tower(g,-18,8,12);tower(g,18,7,12);}
       if(extras.includes('market')) {poly(g,[[8,8],[17,7],[20,12],[10,14]],'#bb6651');line(g,[[10,14],[10,18]],'#e0c794');line(g,[[20,12],[20,16]],'#e0c794');}
+      if(extras.includes('envoy')) {cottage(g,16,2,.55,'#6f789a');line(g,[[17,-3],[17,-15]],'#efd69b');poly(g,[[17,-15],[24,-13],[17,-9]],'#e6cf9b');}
+      if(extras.includes('chancery')) {tower(g,-22,-2,16,true);}
       if(extras.includes('workshop')) {cottage(g,-13,8,.6,'#647880');g.fillStyle='#d1c09a';g.fillRect(-13,-3,3,7);ellipse(g,-12,-7,2,3,'#d0d9cd45');}
     }),x-48,y-48,96,96);
     if(['city','town','fort'].includes(t.building)) {

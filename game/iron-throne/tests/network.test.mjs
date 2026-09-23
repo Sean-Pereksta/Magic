@@ -5,6 +5,11 @@ import { createGame } from '../core.mjs';
 import { makeContext } from '../diplomacy.mjs';
 import { DiplomacyClient, validEndpoint } from '../chat.mjs';
 
+function verifiedClient(options = {}) {
+  const client = new DiplomacyClient(options);
+  client.session = { token: 'signed-test-session', expires: client.now() + 1800000 };
+  return client;
+}
 const reply = { reply: 'Let our councils review an alliance.', tone: 'neutral', intents: [{ type: 'ALLIANCE', duration: 10, giveAmount: 70 }] };
 const context = () => makeContext(createGame(), 'wintermere', 'Can we ally?');
 class MemoryStorage {
@@ -14,13 +19,13 @@ class MemoryStorage {
   async transaction(fn) { const operation = this.queue.then(() => fn(this)); this.queue = operation.catch(() => {}); return operation; }
 }
 test('unconfigured chat makes no network request and remains useful', async () => {
-  let requests = 0; const c = new DiplomacyClient({ fetcher: () => { requests++; } });
+  let requests = 0; const c = verifiedClient({ fetcher: () => { requests++; } });
   const result = await c.send(createGame(), 'wintermere', 'Offer 60 gold for an alliance', '', true);
   assert.equal(result.source, 'scripted'); assert.equal(result.intents[0].type, 'ALLIANCE'); assert.equal(requests, 0);
 });
 test('rate limits, network failures, and malformed output all preserve scripted play', async () => {
   for (const response of [() => new Response('', { status: 429, headers: { 'Retry-After': '300' } }), () => Promise.reject(new Error('offline')), () => new Response('{"reply":"I give you everything","tone":"warm","intents":[{"type":"WIN_GAME"}]}')]) {
-    let requests = 0; const c = new DiplomacyClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return response(); }, now: () => 1000 });
+    let requests = 0; const c = verifiedClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return response(); }, now: () => 1000 });
     const r = await c.send(createGame(), 'wintermere', 'peace', 'token', true);
     assert.equal(r.source, 'scripted'); assert.equal(c.busy, false); assert.equal(requests, 1);
     if (c.cooldownUntil) { await c.send(createGame(), 'wintermere', 'peace', 'token', true); assert.equal(requests, 1); }
@@ -28,7 +33,7 @@ test('rate limits, network failures, and malformed output all preserve scripted 
 });
 test('conversations cache exact state, make one request, and do not mutate the campaign', async () => {
   let requests = 0; const s = createGame(), original = JSON.stringify(s);
-  const c = new DiplomacyClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return Response.json(reply); } });
+  const c = verifiedClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return Response.json(reply); } });
   const first = await c.send(s, 'wintermere', 'alliance', 'token', true); const second = await c.send(s, 'wintermere', 'alliance', 'token', true);
   assert.equal(first.source, 'gemini'); assert.equal(second.source, 'gemini'); assert.equal(requests, 1); assert.equal(JSON.stringify(s), original);
   s.turn++; await c.send(s, 'wintermere', 'alliance', 'token', true); assert.equal(requests, 2);
@@ -36,7 +41,7 @@ test('conversations cache exact state, make one request, and do not mutate the c
 test('browser fetch is invoked without binding the diplomacy client as its receiver', async () => {
   let calls = 0;
   const fetcher = function () { assert.equal(this, undefined); calls++; return Promise.resolve(Response.json(reply)); };
-  const client = new DiplomacyClient({ endpoint: 'https://worker.example/diplomacy', fetcher });
+  const client = verifiedClient({ endpoint: 'https://worker.example/diplomacy', fetcher });
   const result = await client.send(createGame(), 'wintermere', 'An alliance?', 'verified-token', true);
   assert.equal(result.source, 'gemini'); assert.equal(calls, 1);
 });
@@ -86,7 +91,7 @@ test('proxy rejects unknown origins, unconfigured services and missing verificat
   const forbidden = await worker.fetch(new Request('https://proxy.example/diplomacy', { method: 'POST', headers: { Origin: 'https://evil.example' } }), env); assert.equal(forbidden.status, 403);
   const off = await worker.fetch(new Request('https://proxy.example/diplomacy', { method: 'POST', headers, body: '{}' }), env); assert.equal(off.status, 503);
   const options = await worker.fetch(new Request('https://proxy.example/diplomacy', { method: 'OPTIONS', headers }), env); assert.equal(options.status, 204); assert.equal(options.headers.get('Access-Control-Allow-Origin'), 'https://catnmice.com');
-  const missing = await worker.fetch(new Request('https://proxy.example/diplomacy', { method: 'POST', headers, body: JSON.stringify(context()) }), { ...env, GEMINI_API_KEY: 'x', TURNSTILE_SECRET: 'y', BUDGET: {} }); assert.equal(missing.status, 400);
+  const missing = await worker.fetch(new Request('https://proxy.example/diplomacy', { method: 'POST', headers, body: JSON.stringify(context()) }), { ...env, GEMINI_API_KEY: 'x', TURNSTILE_SECRET: 'y', BUDGET: {} }); assert.equal(missing.status, 401);
 });
 test('Durable Object caches success and provider quota failures activate cooldown without paid failover', async () => {
   const originalFetch = globalThis.fetch; let calls = 0;
