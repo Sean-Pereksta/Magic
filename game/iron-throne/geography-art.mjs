@@ -1,4 +1,5 @@
 import { maskEdges, shorelineRuns } from './geography.mjs';
+import { geographyLayers } from './geography-assets.mjs';
 
 export const HEX_RADIUS=25, APOTHEM=HEX_RADIUS*Math.sqrt(3)/2;
 const polar=(r,angle)=>[r*Math.cos(angle*Math.PI/180),r*Math.sin(angle*Math.PI/180)];
@@ -75,6 +76,11 @@ export function riverDrawing(mask,mouthMask=0,active=true) {
     layers.push(layer('M -1.3 -.6 Q 0 -1.5 1.3 -.6',null,'#c8e3d0',.45));
   }
   for(const d of paths) layers.push(layer(d,null,'#b5d7c7',.4,{dash:[1.8,2.4]}));
+  return layers.concat(mouthDrawing(mouthMask));
+}
+
+export function mouthDrawing(mouthMask=1) {
+  const layers=[];
   // A mouth widens into the shoreline water, covers the beach/surf, and
   // finishes flush at the sea edge. It is a filled channel, not an end cap.
   for(const edge of maskEdges(mouthMask)) {
@@ -93,8 +99,19 @@ export function drawingSVG(layers) {
 
 export class GeographyArt {
   constructor() { this.cache=new Map(); }
-  draw(c,g,x,y) {
+  draw(c,g,x,y,assets,urls) {
     if(!g.coastMask&&!g.hasRiver) return;
+    // Wait for the entire set so a missing PNG never produces a partial river.
+    if(assets&&urls) {
+      const layers=geographyLayers(g).map(layer=>({...layer,image:assets.get(urls[layer.name])}));
+      if(layers.length&&layers.every(layer=>layer.image)) {
+        for(const layer of layers) {
+          c.save();c.translate(x,y);c.rotate(layer.rotation*Math.PI/3);
+          c.drawImage(layer.image,-25,-25,50,50);c.restore();
+        }
+        return;
+      }
+    }
     const style=['hills','mountain'].includes(g.ground)?'cliff':'beach';
     const key=`${g.coastMask}:${g.riverMask}:${g.mouthMask}:${g.hasRiver}:${style}`;
     let sprite=this.cache.get(key);

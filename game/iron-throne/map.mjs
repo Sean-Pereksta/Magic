@@ -136,7 +136,7 @@ export class WorldMap {
         const n=s.tiles[tileId(t.q+dq,t.r+dr)];
         if(t.owner&&n?.owner!==t.owner){this.edge(p,i);c.strokeStyle='#122630a0';c.lineWidth=3.5;c.stroke();c.strokeStyle=colors[t.owner];c.lineWidth=1.6;c.stroke();}
       });
-      this.geographyArt.draw(c,geography.get(t.id),p.x,p.y);
+      this.geographyArt.draw(c,geography.get(t.id),p.x,p.y,this.assets,ART.geography);
       if(t.road){
         const roadRendered=this.structureArt(c,ART.structures.road[buildingLevel(t,'road')],p.x-22,p.y-16,44,32,colors[t.owner]);
         if(!roadRendered)for(const [dq,dr] of DIRECTIONS.slice(0,3)){

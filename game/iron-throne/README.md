@@ -282,7 +282,7 @@ Session protocol references:
 
 ## Cloudflare PNG artwork
 
-`asset-manifest.mjs` defines the R2 base URL and all 130 active relative PNG keys. Opening
+`asset-manifest.mjs` defines the R2 base URL and all 171 active relative PNG keys (including 41 directional geography overlays). Opening
 Iron Thrones loads and decodes the entire manifest before enabling Begin/Resume,
 with a progress meter, six concurrent requests, ten seconds per request, and a
 45-second startup budget. The lumber camp is attempted first. Missing or stalled
@@ -393,19 +393,30 @@ Shared endpoints and endpoint tangents keep shore curves continuous across tiles
 The bounded 256-sprite cache draws before roads, bridges, buildings and units.
 Topology is cached and invalidates on actual geography changes, including imports.
 
-The 45 replacement SVG assets in `assets/geography/` are exported from the exact
-same geometry used at runtime, with no remote art dependency. They are code-drawn
-vector overlays, not new photographic PNG scenes. Run:
+The graphics are delivered separately in `Iron_Thrones_Cloudflare_Geography.zip`:
+41 transparent 1024×1024 PNG overlays. Extract the ZIP and upload the `geography`
+folder at the root of the existing R2 bucket, preserving filenames. For example:
+`https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/geography/coast_beach_01.png`.
+Do not upload the ZIP itself as an image. Reload the game after uploading.
+
+`geography-assets.mjs` is the shared catalog for the ZIP paths and image selection.
+The map loads Cloudflare images, rotates canonical masks in 60-degree steps and
+composites shore, river and mouth layers. If any required layer is unavailable,
+the entire tile overlay uses its connection-preserving native fallback. Uploaded
+PNGs are preferred as soon as the full set is decoded; no mixed partial rivers.
+Images are deliberately not committed to the PR. The code includes the original
+vector drawing definitions and an SVG export script for reproducible PNG packaging:
+
 
 ```sh
-node game/iron-throne/assets/generate-geography.mjs
+node game/iron-throne/assets/generate-geography.mjs /absolute/output-directory
 node --test game/iron-throne/tests/geography.test.mjs
 ```
 
 Hexadecimal filenames encode canonical six-bit masks; `canonicalMask()` supplies
-the clockwise rotation needed to reproduce any of the 64 configurations. Mouth
-files have the sea at edge E and the inlet specified by their numeric suffix.
-Runtime drawing supports every mouth direction directly. The retired coast PNGs
+the clockwise rotation needed to reproduce any of the 64 configurations. The mouth
+overlay opens toward E and rotates to any sea edge; it composes with ordinary
+river assets so junctions also support sea mouths. The retired coast PNGs
 and three river PNGs are no longer selected or included in the startup preload.
 
 Existing saves are not rewritten. Their river booleans define the original graph.

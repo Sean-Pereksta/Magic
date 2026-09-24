@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { GEOGRAPHY_PATHS, geographyLayers } from '../geography-assets.mjs';
 import { buildGeography, waterMask, maskEdges, canonicalMask, rotateMask, HEX_DIRECTIONS, neighborId, oppositeEdge, GeographyCache, riverKind } from '../geography.mjs';
 import { edgePort, shoreGeometry, coastDrawing, riverDrawing } from '../geography-art.mjs';
 import { createGame, parseSave } from '../core.mjs';
@@ -78,7 +78,14 @@ test('cache invalidates on in-place geography edits and coast bases follow mainl
   const next=cache.get(tiles);tiles['0,0'].river=true;assert.notEqual(cache.get(tiles),next);
   assert.ok(cache.get(tiles).get('0,0').hasRiver);
 });
-test('replacement SVG set contains canonical coasts, bends, forks, source and mouth',async()=>{
-  const files=['coast_beach_01','coast_beach_03','coast_beach_15','coast_beach_1f','coast_cliff_01','river_00','river_01','river_03','river_05','river_09','river_15','river_mouth_3'];
-  for(const file of files) assert.match(await readFile(new URL(`../assets/geography/${file}.svg`,import.meta.url),'utf8'),/clip-path="url\(#hex\)"/);
+test('Cloudflare catalog covers every mask and rotation with no missing object keys',()=>{
+  assert.equal(Object.keys(GEOGRAPHY_PATHS).length,41);
+  for(let mask=0;mask<64;mask++) for(const ground of ['plains','hills']) {
+    const layers=geographyLayers({coastMask:mask,riverMask:mask,mouthMask:mask?mask&-mask:0,hasRiver:true,ground});
+    for(const layer of layers) assert.ok(GEOGRAPHY_PATHS[layer.name]?.startsWith('geography/'));
+    const river=layers.find(l=>/^river_[0-9a-f]{2}$/.test(l.name));
+    assert.equal(rotateMask(parseInt(river.name.slice(-2),16),river.rotation),mask);
+    const coast=layers.find(l=>l.name.startsWith('coast_'));
+    if(mask) assert.equal(rotateMask(parseInt(coast.name.slice(-2),16),coast.rotation),mask);
+  }
 });
