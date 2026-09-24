@@ -38,13 +38,18 @@ export function shoreGeometry(mask) {
   });
 }
 
-export function coastDrawing(mask,style='beach') {
+// Subtract each sea cutout from the land, preserving the existing shared shore curves.
+export function landClipPaths(mask) {
+  return shoreGeometry(mask).map(g=>HEX_PATH+' '+g.water);
+}
+
+export function coastDrawing(mask,style='beach',texturedWater=false) {
   const layers=[],rocky=style==='cliff';
   for(const g of shoreGeometry(mask)) {
     layers.push(layer(g.shore,null,rocky?'#4e5b51':'#6a7950',8));
     layers.push(layer(g.shore,null,rocky?'#aba38a':'#d2bc89',5.5));
     layers.push(layer(g.shore,null,rocky?'#d2c8ab':'#eddbad',3.2));
-    layers.push(layer(g.water,'#286579',null,0,{fillRule:'evenodd'}));
+    if(!texturedWater) layers.push(layer(g.water,'#286579',null,0,{fillRule:'evenodd'}));
     layers.push(layer(g.shore,null,'#78b5af',1.9));
     layers.push(layer(g.shore,null,'#e0e8cb',.65));
     // Broken inner surf catches the light without changing the edge contract.
@@ -98,11 +103,25 @@ export function drawingSVG(layers) {
 }
 
 export class GeographyArt {
-  constructor() { this.cache=new Map(); }
+  constructor() { this.cache=new Map(); this.landClips=new Map(); }
+  clipLand(c,mask,x,y) {
+    if(!mask)return;
+    if(!this.landClips.has(mask)) this.landClips.set(mask,landClipPaths(mask).map(d=>new Path2D(d)));
+    c.translate(x,y);
+    for(const path of this.landClips.get(mask))c.clip(path,'evenodd');
+    c.translate(-x,-y);
+  }
   draw(c,g,x,y,assets,urls) {
     if(!g.coastMask&&!g.hasRiver) return;
+    // Coast PNGs contain opaque painted water. Keep the existing shoreline geometry
+    // as a transparent rim so the terrain/water_01.png underlay stays visible.
+    if(g.coastMask&&g.hasRiver) {
+      this.draw(c,{...g,hasRiver:false},x,y);
+      this.draw(c,{...g,coastMask:0},x,y,assets,urls);
+      return;
+    }
     // Wait for the entire set so a missing PNG never produces a partial river.
-    if(assets&&urls) {
+    if(!g.coastMask&&assets&&urls) {
       const layers=geographyLayers(g).map(layer=>({...layer,image:assets.get(urls[layer.name])}));
       if(layers.length&&layers.every(layer=>layer.image)) {
         for(const layer of layers) {
@@ -119,7 +138,7 @@ export class GeographyArt {
       sprite=document.createElement('canvas');sprite.width=sprite.height=208;
       const ctx=sprite.getContext('2d');ctx.scale(4,4);ctx.translate(26,26);
       ctx.lineCap=ctx.lineJoin='round';ctx.clip(new Path2D(HEX_PATH));
-      for(const p of [...coastDrawing(g.coastMask,style),...riverDrawing(g.riverMask,g.mouthMask,g.hasRiver)]) {
+      for(const p of [...coastDrawing(g.coastMask,style,true),...riverDrawing(g.riverMask,g.mouthMask,g.hasRiver)]) {
         const path=new Path2D(p.d);
         if(p.fill){ctx.fillStyle=p.fill;ctx.fill(path,p.fillRule||'nonzero');}
         if(p.stroke){ctx.strokeStyle=p.stroke;ctx.lineWidth=p.width;ctx.setLineDash(p.dash||[]);ctx.stroke(path);}

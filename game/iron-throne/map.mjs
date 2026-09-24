@@ -87,12 +87,17 @@ export class WorldMap {
     const c = this.ctx; c.beginPath();
     for (let j=0;j<2;j++) {const a=(60*(i+j)-30)*Math.PI/180; const x=p.x+Math.cos(a)*RADIUS,y=p.y+Math.sin(a)*RADIUS; if(j)c.lineTo(x,y);else c.moveTo(x,y);}
   }
-  groundArt(c,t,x,y) {
+  groundArt(c,t,x,y,coastMask=0) {
     // The photographic hexes have transparent margins. Fill the exact tile first,
     // then clip the inland texture so there are no ocean-colored gaps on dry land.
     c.save();this.hex(x,y);c.clip();
+    if(coastMask) {
+      this.art.ground(c,{...t,terrain:'water'},x,y);
+      this.assets.draw(c,ART.terrain.water[0],x-25,y-25,50,50);
+      this.geographyArt.clipLand(c,coastMask,x,y);
+    }
     this.art.ground(c,t,x,y);
-    const loaded=this.assets.draw(c,ART.terrain[t.terrain]?.[tileVariant(t)%6],x-25,y-25,50,50);
+    const loaded=this.assets.draw(c,ART.terrain[t.terrain]?.[t.terrain==='water'?0:tileVariant(t)%6],x-25,y-25,50,50);
     if(!loaded&&this.zoom>.38&&!t.building)this.art.terrain(c,t,x,y);
     c.restore();
   }
@@ -127,7 +132,7 @@ export class WorldMap {
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
     // Separate ground and object passes keep roads, borders and taller sprites coherent.
-    for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y);}
+    for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y,g.coastMask);}
     for(const t of visible){
       const p=hexPixel(t);
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
