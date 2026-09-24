@@ -12,13 +12,14 @@ Storage starts at 600 for materials; storehouses add 400 per level. Farms and gr
 
 ## Construction and military infrastructure
 
-`data.mjs` contains 28 construction families and 72 completed tier definitions. Most families have three levels. Town/city foundations and the four named great projects are single major projects. Inspection shows the exact next cost, remaining turns, production, requirements and tier artwork.
+`data.mjs` defines the construction families and their completed tiers. Most families have three levels. Cities have a base level plus three upgrades; town foundations and the four named great projects remain single major projects. Inspection shows the exact next cost, remaining turns, production, requirements and tier artwork.
 
 | System | Progression / behavior |
 | --- | --- |
 | Food, wood, stone, iron, horses | Three production levels, affected by deposit quality |
 | Market | Market → Merchant Quarter → Grand Bazaar; gold and contract slots |
 | Workshop | Three manufacturing levels; tools and additional construction orders |
+| City | City → Chartered City → Grand City → Royal City; growth, food, gold, capacity and additional build/recruit orders |
 | Armory | Three arms manufacturing levels; Royal Arsenal adds a larger production chain |
 | Storehouse | Storehouse → Warehouse → Royal Granary; Great Granary adds 2,400 food storage |
 | Trade Outpost | Trading Post → Merchant Outpost → Grand Exchange; 2/3/4 turns, gold, shipment and contract capacity |
@@ -38,6 +39,36 @@ Costs are paid once at the start, one project occupies a tile, and the existing 
 Harbors, Envoy Offices and Chanceries require towns or cities, where their trade and diplomatic effects operate. Forts support military infrastructure. Watchtower tiers apply their 15% per-level defense multiplier to both phased-battle casualties and final combat power.
 
 Select land for categorized construction and local recruitment. Locked options state their reason. Commercial connections display income and offer a reviewable highway project. Settlement improvements appear in inspection and as compact map art.
+
+### Three city upgrades
+
+Promoting a town creates a level-1 city. Existing cities can then be upgraded
+three times through Government in the construction panel:
+
+| City level | Upgrades used | Base growth/turn | Population capacity | Food/turn | Gold/turn | Extra kingdom build/recruit orders |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| City (1) | 0/3 | +3 | 150 | +14 | +8 | 0 |
+| Chartered City (2) | 1/3 | +4 | 200 | +18 | +12 | +1 |
+| Grand City (3) | 2/3 | +5 | 250 | +22 | +16 | +2 |
+| Royal City (4) | 3/3 | +6 | 300 | +26 | +20 | +3 |
+
+Food and gold above are city production before regional bonuses, improvements,
+taxes and upkeep. Other growth bonuses and shortage penalties still apply;
+positive kingdom growth remains capped at 24 per turn. Capacity is separate
+from growth speed. City orders combine with workshops under the existing
+eight-order kingdom limit. A lone Royal City without workshops permits six
+orders instead of three, so it can muster six normal groups in a round if the
+kingdom has the people and materials. Unit prices, population costs, upkeep,
+the 20-civilian floor and military-building prerequisites are unchanged.
+
+Upgrades use the normal paid construction system: materials and one order are
+charged once, and the old tier stays active until completion. The three upgrades
+take 5/6/7 turns before existing construction-efficiency bonuses, with costs
+shown before purchase. Capturing or losing a city changes which House receives
+its benefits; active projects retain the usual ownership checks. The same rules
+apply to AI and online commands. Older saves keep their existing city at level 1.
+All four levels reuse the supplied city artwork; no new Cloudflare images are
+needed. Inspection, construction and muster panels show the tier and benefits.
 
 ## Trade
 

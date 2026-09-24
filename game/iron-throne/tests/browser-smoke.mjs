@@ -123,8 +123,14 @@ try {
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).tiles['6,6'].levels.farm),1);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     const loaded=await page.locator('.catalog-art').first().evaluate(image=>image.complete&&image.naturalWidth>0);assert.equal(loaded,true);
+    await page.locator('[data-tab="realm"]').click();await page.locator('[data-goto="5,6"]').first().click();
+    await page.locator('.catalog-group').filter({has:page.locator('summary',{hasText:'Government'})}).locator('summary').click();
+    assert.match(await page.locator('[data-build="city"]').textContent(),/Chartered City.*1 \/ 3 city upgrades/);
+    await page.locator('[data-build="city"]').click();
+    assert.match(await page.locator('#panel').textContent(),/Chartered City underway/);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).tiles['5,6'].project.level),2);
     assert.deepEqual(errors,[]);
-    console.log(`PASS ${viewport.width}×${viewport.height}: knights, formation, trade review/ratification, level upgrade, artwork, layout`);
+    console.log(`PASS ${viewport.width}×${viewport.height}: knights, formation, trade review/ratification, farm and city upgrades, artwork, layout`);
     await context.close();
     await browser.close(); browser = null;
   }

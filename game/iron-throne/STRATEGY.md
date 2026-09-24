@@ -48,9 +48,11 @@ Tax policy responds to treasury pressure and happiness.
 Military recruitment considers the current force mix, enemy mounted troops,
 the strength of defended targets and the cost of supporting another regiment.
 Siege equipment has its own requirement, so a full field army can still recruit
-the engines needed to open a walled campaign. Peacetime recruiting is limited
-to one action per round; war or immediate danger permits two, within the same
-shared order allowance.
+the engines needed to open a walled campaign. Peacetime recruiting starts at
+one action per round; war or immediate danger permits two. Completed city
+upgrades raise those limits by their extra orders, still within the kingdom's
+eight-order maximum, civilian floor, desired army size and economic reserves.
+Healthy AI Houses also consider paid city upgrades from turn 12 onward.
 
 ## Different Houses
 

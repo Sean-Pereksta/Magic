@@ -24,7 +24,7 @@ export const BUILDINGS = {
   road: { name: 'Road', icon: '═', cost: { stone: 5, gold: 3 }, turns: 1, description: 'Half-point movement. Connect settlements and trade partners for gold.' },
   fort: { name: 'Fort', icon: '♜', cost: { wood: 35, stone: 50, gold: 40 }, turns: 3, description: '+60% defense, control nearby land, and stop adjacent enemy movement.' },
   town: { name: 'Town', icon: '♖', cost: { wood: 60, stone: 40, gold: 70 }, terrain: ['plains', 'coast'], turns: 3, description: 'Found a settlement at least 4 hexes from another settlement.' },
-  city: { name: 'City upgrade', icon: '♛', cost: { wood: 70, stone: 85, gold: 100 }, turns: 4, description: 'Upgrade a town. More food, income, population capacity and defense.' },
+  city: { name: 'City', icon: '♛', cost: { wood: 70, stone: 85, gold: 100 }, turns: 4, description: 'Promote a town, then upgrade the city three times for more growth, food, gold, population capacity and recruitment orders.' },
   wall: { name: 'City walls', icon: '▥', cost: { stone: 60, gold: 35 }, turns: 3, description: '60 wall strength. Siege engines breach walls before an assault.' },
   market: { name: 'Market', icon: '⚖', cost: { wood: 40, stone: 25, gold: 40 }, turns: 2, description: '+12 gold each turn in this settlement.' },
   envoyOffice: { name: 'Envoy Office', icon: '✉', cost: { gold: 50, wood: 35 }, turns: 2, description: 'Four shared dispatches per turn and capacity for one ambassador.' },
@@ -73,6 +73,7 @@ Object.assign(BUILDINGS, {
 const tierNames = {
   intelligenceOffice: ['Whisper Office', 'Intelligence Bureau', 'Royal Whisper Network'],
   farm: ['Farmstead', 'Agricultural Estate', 'Great Estate'], lumber: ['Logging Camp', 'Sawmill', 'Royal Timberworks'], quarry: ['Quarry', 'Stoneworks', 'Grand Quarry'], mine: ['Iron Mine', 'Deep Mine', 'Royal Mine'], ranch: ['Horse Ranch', 'Horse Estate', 'Royal Stud'],
+  city: ['City', 'Chartered City', 'Grand City', 'Royal City'],
   road: ['Road', 'Stone Road', 'Royal Highway'], fort: ['Fort', 'Stone Fortress', 'Great Fortress'], wall: ['City Walls', 'Reinforced Walls', 'Citadel Walls'],
   market: ['Market', 'Merchant Quarter', 'Grand Bazaar'], workshop: ['Workshop', 'Engineering Works', 'Royal Works'], storehouse: ['Storehouse', 'Warehouse', 'Royal Granary'],
   tradeOutpost: ['Trading Post', 'Merchant Outpost', 'Grand Exchange'], barracks: ['Barracks', 'Veteran Barracks', 'Royal Barracks'], range: ['Archery Range', 'Veteran Range', 'Royal Bowyer'], stable: ['Military Stables', 'Cavalry Stables', 'Knightly Hall'], siegeWorks: ['Siege Workshop', 'Siege Yard', 'Trebuchet Works'], armory: ['Armory', 'Arsenal', 'Grand Arsenal'],
@@ -80,7 +81,7 @@ const tierNames = {
 };
 const categories = {farm:'Economy', lumber:'Economy', quarry:'Economy', mine:'Economy', market:'Economy', workshop:'Economy', road:'Trade', fort:'Defense', wall:'Defense', town:'Government', city:'Government', envoyOffice:'Government', chancery:'Government'};
 for (const [id, b] of Object.entries(BUILDINGS)) {
-  b.category ||= categories[id]; b.maxLevel ||= tierNames[id] ? 3 : 1;
+  b.category ||= categories[id]; b.maxLevel ||= tierNames[id]?.length || 1;
   if (['wall','market','workshop','envoyOffice','chancery'].includes(id)) b.settlement = true;
   if (id === 'workshop') { b.recipe = {input:{wood:3, iron:2}, output:{tools:5}}; delete b.yield; }
   if (id === 'market') b.yield = {gold:12};
@@ -91,6 +92,8 @@ for (const [id, b] of Object.entries(BUILDINGS)) {
     return {name: tierNames[id]?.[n] || b.name, cost, turns: Math.min(8, b.turns+n+(id === 'fort' && n ? 1 : 0)), level};
   });
 }
+// A base city plus three paid upgrades. These values also drive forecasts and UI.
+BUILDINGS.city.levels.forEach((tier,n)=>Object.assign(tier,{growth:3+n,capacity:150+n*50,food:14+n*4,gold:8+n*4,orders:n}));
 BUILDINGS.chancery.requires = {envoyOffice: 1};
 BUILDINGS.fort.levels[2].turns = 6;
 BUILDINGS.road.levels[2].cost.gold = 18;

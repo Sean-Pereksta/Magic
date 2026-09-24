@@ -115,6 +115,7 @@ can show **Population: 80/166 · +6 next turn**.
 | Contribution | Growth per turn | Capacity |
 | --- | ---: | ---: |
 | Each city | +3 | 150 |
+| Each completed city upgrade (up to three per city) | +1 | +50 |
 | Each town | +2 | 80 |
 | Each farm level | No direct growth bonus | +8 |
 | Net food income at least 5 / 15 / 35 | +1 / +2 / +3 | — |
@@ -128,6 +129,11 @@ surviving settlement, more than 20 food after upkeep, and at least 35% happiness
 The Realm breakdown identifies every bonus, penalty and blocker, including the
 growth limit and remaining capacity. Forecasts include construction completing
 next turn; new orders or battles can change them.
+
+Cities also gain +4 food, +4 gold and +1 kingdom build/recruit order with each
+upgrade. Orders remain capped at eight per kingdom, and mustering still pays
+the normal troop and population costs. See [EXPANSION.md](./EXPANSION.md#three-city-upgrades)
+for the four city levels.
 
 Recruitment costs are unchanged (a levy still consumes eight population). The
 existing food/gold-shortage population loss, civilian floor, happiness loss and
