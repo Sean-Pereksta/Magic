@@ -282,7 +282,7 @@ Session protocol references:
 
 ## Cloudflare PNG artwork
 
-`asset-manifest.mjs` defines the R2 base URL and all 139 relative PNG keys. Opening
+`asset-manifest.mjs` defines the R2 base URL and all 130 active relative PNG keys. Opening
 Iron Thrones loads and decodes the entire manifest before enabling Begin/Resume,
 with a progress meter, six concurrent requests, ten seconds per request, and a
 45-second startup budget. The lumber camp is attempted first. Missing or stalled
@@ -375,3 +375,43 @@ Google quota errors retain their existing cooldown, and request allowances remai
 Deploy both the Worker and game files for the shorter retry wait: older game code
 imposes a minimum 30-second wait even when the Worker asks for less. Live Gemini
 latency depends on Google; mocked regression tests do not measure production speed.
+
+## Connected rivers and coastlines
+
+The map now derives six-bit edge masks in clockwise E, SE, SW, W, NW, NE order.
+`geography.mjs` derives reciprocal river links and coast masks from actual neighboring
+terrain. Missing board neighbors count as the surrounding ocean. All land types
+receive shores when they face water, even if they are not labeled `coast`.
+Coast terrain uses adjacent mainland textures, with mountain neighbors mapped to
+foothills. Terrain underfill removes the transparent gaps around photographic hexes.
+
+`geography-art.mjs` draws transparent overlays at exact shared edge coordinates.
+Straight channels, both bend angles, all fork/junction masks, springs, and flared
+mouths share the same port width. Coast curves include single shores, corners,
+disjoint inlets, peninsulas and islands, with beach and rocky cliff treatments.
+Shared endpoints and endpoint tangents keep shore curves continuous across tiles.
+The bounded 256-sprite cache draws before roads, bridges, buildings and units.
+Topology is cached and invalidates on actual geography changes, including imports.
+
+The 45 replacement SVG assets in `assets/geography/` are exported from the exact
+same geometry used at runtime, with no remote art dependency. They are code-drawn
+vector overlays, not new photographic PNG scenes. Run:
+
+```sh
+node game/iron-throne/assets/generate-geography.mjs
+node --test game/iron-throne/tests/geography.test.mjs
+```
+
+Hexadecimal filenames encode canonical six-bit masks; `canonicalMask()` supplies
+the clockwise rotation needed to reproduce any of the 64 configurations. Mouth
+files have the sea at edge E and the inlet specified by their numeric suffix.
+Runtime drawing supports every mouth direction directly. The retired coast PNGs
+and three river PNGs are no longer selected or included in the startup preload.
+
+Existing saves are not rewritten. Their river booleans define the original graph.
+One outlet per connected component prefers adjacent sea; a bounded search can
+extend through at most two unoccupied coastal land tiles to repair the old
+one-tile gap. The remaining endpoints are explicit springs/pools. Legacy data
+contains no elevation: equal-length outlet routes use a stable southern preference.
+This is a visual topology system, not a drainage/elevation simulation; river
+crossing costs, resources and terrain remain unchanged.

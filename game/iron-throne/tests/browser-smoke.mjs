@@ -16,7 +16,8 @@ const server = http.createServer(async (req, res) => {
     const file = path.resolve(root, '.' + pathname);
     if (!file.startsWith(root)) throw new Error('outside root');
     const mime = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': mime }); res.end(await readFile(file));
+    const body = await readFile(file);
+    res.writeHead(200, { 'Content-Type': mime }); res.end(body);
   } catch { res.writeHead(404); res.end('Not found'); }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

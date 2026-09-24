@@ -6,8 +6,10 @@ import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
 
 import { BattleEffects } from './battle-effects.mjs';
 import { MapArt, tileVariant } from './art.mjs';
+import { HEX_DIRECTIONS, GeographyCache } from './geography.mjs';
+import { GeographyArt } from './geography-art.mjs';
 
-const DIRECTIONS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+const DIRECTIONS = HEX_DIRECTIONS;
 const RADIUS = 25, SQRT3 = Math.sqrt(3);
 export const hexPixel = t => ({ x: RADIUS * SQRT3 * (t.q + t.r / 2), y: RADIUS * 1.5 * t.r });
 export function pixelHex(x, y) {
@@ -86,7 +88,13 @@ export class WorldMap {
     for (let j=0;j<2;j++) {const a=(60*(i+j)-30)*Math.PI/180; const x=p.x+Math.cos(a)*RADIUS,y=p.y+Math.sin(a)*RADIUS; if(j)c.lineTo(x,y);else c.moveTo(x,y);}
   }
   groundArt(c,t,x,y) {
-    if(!this.assets.draw(c,ART.terrain[t.terrain]?.[tileVariant(t)%6],x-25,y-25,50,50))this.art.ground(c,t,x,y);
+    // The photographic hexes have transparent margins. Fill the exact tile first,
+    // then clip the inland texture so there are no ocean-colored gaps on dry land.
+    c.save();this.hex(x,y);c.clip();
+    this.art.ground(c,t,x,y);
+    const loaded=this.assets.draw(c,ART.terrain[t.terrain]?.[tileVariant(t)%6],x-25,y-25,50,50);
+    if(!loaded&&this.zoom>.38&&!t.building)this.art.terrain(c,t,x,y);
+    c.restore();
   }
   structureArt(c,url,x,y,w,h,color) {
     return this.assets.drawOutlined(c,url,x,y,w,h,color,this.zoom,this.dpr);
@@ -102,14 +110,12 @@ export class WorldMap {
     if(this.structureArt(c,ART.units[dominant],x-22,y-36+phase,44,44,color))return;
     this.art.formation(c,{levy:familyCount({units},'infantry'),archer:familyCount({units},'ranged'),cavalry:familyCount({units},'mounted'),siege:familyCount({units},'siege')},x,y+4,color,sigil,this.zoom>.65,phase);
   }
-  riverArt(t,s) {
-    const edges=DIRECTIONS.map(([dq,dr],i)=>s.tiles[tileId(t.q+dq,t.r+dr)]?.river?i:-1).filter(i=>i>=0);
-    return edges.length>2?'river_fork':edges.length===2&&Math.abs(edges[0]-edges[1])!==3?'river_bend':'river_straight';
-  }
   render() {
     if (!this.width || !this.height) return;
     const c=this.ctx,s=this.getState(), now=performance.now();
     this.assets ||= new AssetCache(()=>this.draw());
+    this.geography ||= new GeographyCache();this.geographyArt ||= new GeographyArt();
+    const geography=this.geography.get(s.tiles);
     this.effects ||= new BattleEffects(); this.effects.ingest(s, now);
     const reduced = this.motion.matches || this.reducedEffects;
     const focus=`${s.seed}:${s.turn}:${this.selected}`;
@@ -121,23 +127,16 @@ export class WorldMap {
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
     // Separate ground and object passes keep roads, borders and taller sprites coherent.
-    for(const t of visible){const p=hexPixel(t);this.groundArt(c,t,p.x,p.y);}
+    for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y);}
     for(const t of visible){
       const p=hexPixel(t);
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
       if(t.owner){c.fillStyle=`${colors[t.owner]}12`;c.fill();}
       DIRECTIONS.forEach(([dq,dr],i)=>{
         const n=s.tiles[tileId(t.q+dq,t.r+dr)];
-        if(t.terrain!=='water'&&n?.terrain==='water'){
-          this.edge(p,i);c.strokeStyle='#143e4c';c.lineWidth=5;c.stroke();
-          c.strokeStyle='#d6d5a7';c.lineWidth=2.2;c.stroke();c.strokeStyle='#edf0ca80';c.lineWidth=.7;c.stroke();
-        }
         if(t.owner&&n?.owner!==t.owner){this.edge(p,i);c.strokeStyle='#122630a0';c.lineWidth=3.5;c.stroke();c.strokeStyle=colors[t.owner];c.lineWidth=1.6;c.stroke();}
       });
-      if(t.river&&t.terrain!=='water'&&!this.assets.draw(c,ART.overlays[this.riverArt(t,s)],p.x-25,p.y-25,50,50)){
-        c.beginPath();c.moveTo(p.x-10.825,p.y-18.75);c.bezierCurveTo(p.x+6,p.y-9,p.x-6,p.y+9,p.x+10.825,p.y+18.75);
-        c.strokeStyle='#254c55';c.lineWidth=6;c.stroke();c.strokeStyle='#6eb0bf';c.lineWidth=3.4;c.stroke();c.strokeStyle='#b1d8d580';c.lineWidth=.8;c.stroke();
-      }
+      this.geographyArt.draw(c,geography.get(t.id),p.x,p.y);
       if(t.road){
         const roadRendered=this.structureArt(c,ART.structures.road[buildingLevel(t,'road')],p.x-22,p.y-16,44,32,colors[t.owner]);
         if(!roadRendered)for(const [dq,dr] of DIRECTIONS.slice(0,3)){
@@ -145,12 +144,11 @@ export class WorldMap {
           c.beginPath();c.moveTo(p.x,p.y);c.lineTo(v.x,v.y);c.strokeStyle='#40504c';c.lineWidth=4;c.stroke();c.strokeStyle='#cfbf8d';c.lineWidth=Math.min(buildingLevel(t,'road'),buildingLevel(n,'road'))+1;c.stroke();
           c.setLineDash([1,3]);c.strokeStyle='#f3dfac';c.lineWidth=.6;c.stroke();c.setLineDash([]);
         }
-        if(t.river&&!this.structureArt(c,ART.overlays[buildingLevel(t,'road')>1?'bridge_stone':'bridge_wood'],p.x-22,p.y-16,44,32,colors[t.owner])){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
+        if(geography.get(t.id).hasRiver&&!this.structureArt(c,ART.overlays[buildingLevel(t,'road')>1?'bridge_stone':'bridge_wood'],p.x-22,p.y-16,44,32,colors[t.owner])){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
       }
     }
     for(const t of visible){
       const p=hexPixel(t);
-      if(this.zoom>.38&&!t.building&&!this.assets.get(ART.terrain[t.terrain]?.[tileVariant(t)%6]))this.art.terrain(c,t,p.x,p.y);
       if(t.building){
         const rendered=this.structureArt(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62,colors[t.owner]);
         if(!rendered)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');

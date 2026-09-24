@@ -29,9 +29,14 @@ test('PNG army and construction sprites replace procedural versions, with fallba
  ready=false;map.armyArt(c,{levy:10},0,0,'#fff','A',0);map.constructionArt(c,.6,'#fff');assert.equal(formations,1);assert.ok(strokes>0);
 });
 
-test('terrain chooses exactly one background renderer',()=>{
- const map=Object.create(WorldMap.prototype);let ready=true,oldGround=0,newGround=0;
- map.assets={draw(){newGround++;return ready;}};map.art={ground(){oldGround++;}};
- map.groundArt({}, {terrain:'plains',q:1,r:2},0,0);assert.equal(newGround,1);assert.equal(oldGround,0);
- ready=false;map.groundArt({}, {terrain:'plains',q:1,r:2},0,0);assert.equal(oldGround,1);
+test('terrain fills transparent margins and clips textures to the exact hex',()=>{
+ const map=Object.create(WorldMap.prototype);let ready=true,underfill=0,texture=0,details=0;const calls=[];
+ map.zoom=1;map.hex=()=>calls.push('hex');
+ map.assets={draw(){texture++;return ready;}};map.art={ground(){underfill++;},terrain(){details++;}};
+ const c={save(){calls.push('save');},clip(){calls.push('clip');},restore(){calls.push('restore');}};
+ map.groundArt(c,{terrain:'plains',q:1,r:2},0,0);
+ assert.equal(texture,1);assert.equal(underfill,1);assert.equal(details,0);
+ assert.deepEqual(calls,['save','hex','clip','restore']);
+ ready=false;map.groundArt(c,{terrain:'plains',q:1,r:2},0,0);
+ assert.equal(underfill,2);assert.equal(texture,2);assert.equal(details,1);
 });
