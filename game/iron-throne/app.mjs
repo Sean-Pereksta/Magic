@@ -74,9 +74,9 @@ function selectTile(id) {
   selected = id; map.selected = id;
   const army = state.armies.find(a => a.tile === id && a.owner === localHouse);
   if (!orderMode && army) selectedArmy = army.id;
-  tab = 'land'; render();
+  tab = 'land'; $('panel').scrollTop = 0; render();
 }
-function goTo(id, armyId) { selected = id; selectedArmy = armyId || state.armies.find(a => a.tile === id && a.owner === localHouse)?.id || null; tab = 'land'; map.selected = id; map.center(id); render(); }
+function goTo(id, armyId) { selected = id; selectedArmy = armyId || state.armies.find(a => a.tile === id && a.owner === localHouse)?.id || null; tab = 'land'; map.selected = id; map.center(id); $('panel').scrollTop = 0; render(); }
 function render() {
   const k = kingdom(state,localHouse),{income}=economyProjection(state,localHouse),population=populationProjection(state,localHouse);
   $('turn').textContent = state.phase==='founding'?'Founding':`Turn ${state.turn}`;
@@ -105,12 +105,12 @@ function render() {
   }
 }
 function landPanel() {
-  const t = state.tiles[selected], k = kingdom(state, localHouse), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected);
+  const t = state.tiles[selected], k = kingdom(state, localHouse), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected).sort((a,b) => Number(b.owner === localHouse)-Number(a.owner === localHouse) || Number(b.id === selectedArmy)-Number(a.id === selectedArmy));
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
+  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === localHouse ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   html += buildingInspection(state,t);
   html += battlePreview(state,selectedArmy,selected);
   html += structureActions(state,t,selectedArmy);
-  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === localHouse ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   if (t.owner === localHouse && ['city', 'town', 'fort'].includes(t.building)) {
     html += musterBrowser(state,t);
   }
