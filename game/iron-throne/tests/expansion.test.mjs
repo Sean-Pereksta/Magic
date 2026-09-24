@@ -103,7 +103,9 @@ test('watchtower protection contributes to the final battle outcome',()=>{
  assert.equal(open.winner,0);assert.equal(tower.winner,1);
 });
 test('cavalry flanks and pursues routed armies; army losses and morale are recorded by class',()=>{
- const a=army({knight:45,lightCavalry:25},'flanking'),d=army({levy:60},'balanced','wintermere');d.morale=.4;
+ // This force leaves opponents for the later phases; the old overwhelming
+ // fixture now destroys every defender before flanking without casualty caps.
+ const a=army({knight:10,lightCavalry:10},'flanking'),d=army({levy:60},'balanced','wintermere');d.morale=.4;
  const report=resolveFieldBattle(a,d,terrain());assert.ok(report.phases[4].loss[1]>0);assert.equal(report.routed,true);assert.ok(report.phases[6].loss[1]>0);assert.equal(report.casualties[1].levy,60-d.units.levy);assert.ok(d.morale<.4);assert.equal(d.retreats,1);
 });
 test('siege equipment differs against high walls and a fort cannot be walked into',()=>{

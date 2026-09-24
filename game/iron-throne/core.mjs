@@ -270,20 +270,51 @@ function battle(s,attacker,defender,t) {
   const from=s.tiles[attacker.tile];
   const result=resolveFieldBattle(attacker,defender,t,{roll:()=>random(s),riverCrossing:from.river!==t.river&&(from.river||t.river)&&!(buildingLevel(from,'road')>=2&&buildingLevel(t,'road')>=2),surrounded:[attacker,defender].map(a=>neighbors(s,s.tiles[a.tile]).filter(n=>canEnter(s,a.owner,n)&&!s.armies.some(e=>e.tile===n.id&&atWar(s,e.owner,a.owner))).length===0)});
   const loser=result.loser===0?attacker:defender;
-  retreat(s,loser,s.tiles[loser.tile]);
+  const retreatFrom=loser.tile;
+  if(sizeOf(loser)>0)retreat(s,loser,s.tiles[loser.tile]);
   if(loser===attacker){attacker.path=[];attacker.order='hold';attacker.structureTarget=null;attacker.target=null;}
-  Object.assign(event,result,{winner:result.winner===0?attacker.owner:defender.owner,after:[sizeOf(attacker),sizeOf(defender)],retreat:loser.tile,retreatOwner:loser.owner});
+  Object.assign(event,result,{winner:result.winner===0?attacker.owner:defender.owner,after:[sizeOf(attacker),sizeOf(defender)],retreat:sizeOf(loser)>0&&loser.tile!==retreatFrom?loser.tile:null,retreatOwner:loser.owner});
   event.casualties=[attacker,defender].map((a,i)=>Object.fromEntries(Object.entries(event.composition[i]).map(([id,n])=>[id,n-(a.units[id]||0)])));
   s.militaryEvents.push(event);
-  log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle');
+  log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${sizeOf(loser)===0?'the opposing army is destroyed':result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle');
   s.armies=s.armies.filter(a=>sizeOf(a)>0);
 }
 function besiege(s,a,t,defender=null) {
   const event={id:s.nextId++,turn:s.turn,attacker:a.owner,defender:t.owner,tile:t.id,from:a.tile,action:'siege',before:[sizeOf(a),t.walls+(t.fortIntegrity??fortMaximum(t))]};
+  const defendersBefore=defender?sizeOf(defender):0;
   const result=siegeStep(s,a,t,defender,()=>random(s));
+  event.troopLosses=[event.before[0]-sizeOf(a),defendersBefore-(defender?sizeOf(defender):0)];
   event.after=[sizeOf(a),t.walls+(t.fortIntegrity||0)];event.phases=[{name:'Siege',notes:result.notes,loss:[event.before[0]-event.after[0],result.damage]}];event.breach=event.after[1]===0;
   s.militaryEvents.push(event);log(s,`${kingdom(s,a.owner).name} besieges ${t.name||t.id}: ${event.after[1]} fortification strength remains.`,'battle');
   return false;
+}
+// Read-only estimates use the actual clash + retreat resolver, with isolated
+// armies, event lists and RNG. Nothing is read from or written to campaign RNG.
+export function projectedBattleLosses(s,armyId,targetId) {
+  const attacker=s.armies.find(a=>a.id===armyId&&sizeOf(a)>0),t=s.tiles[targetId];
+  if(!attacker||!t||attacker.order==='bombard')return null;
+  const enemies=s.armies.filter(a=>a.tile===targetId&&sizeOf(a)>0&&atWar(s,attacker.owner,a.owner));
+  const defender=enemies[0];if(!defender)return null;
+  const path=attacker.tile===targetId?[]:findPath(s,attacker.tile,targetId,attacker.owner);
+  if(attacker.tile!==targetId&&!path.length)return null;
+  const approach=path.length>1?path.at(-2):attacker.tile;
+  const siege=attacker.tile!==targetId&&t.owner===defender.owner&&(t.walls>0||(t.fortIntegrity??fortMaximum(t))>0);
+  const samples=[[],[]],before=[sizeOf(attacker),sizeOf(defender)];
+  for(let i=0;i<32;i++){
+    const simulation={...s,armies:structuredClone(s.armies),events:[],militaryEvents:[],rng:Math.imul(i+1,0x9e3779b1)>>>0};
+    const a=simulation.armies.find(x=>x.id===armyId),d=simulation.armies.find(x=>x.id===defender.id);
+    a.tile=approach;
+    if(siege)besiege(simulation,a,structuredClone(t),d);else battle(simulation,a,d,t);
+    [a,d].forEach((x,side)=>samples[side].push(before[side]-sizeOf(x)));
+  }
+  const ranges=samples.map((values,side)=>{
+    const low=Math.min(...values),high=Math.max(...values);
+    // A small envelope avoids implying sampled extrema are guaranteed bounds.
+    const padding=high>low?Math.max(1,Math.ceil((high-low)*.15)):0;
+    return {low:Math.max(0,low-padding),high:Math.min(before[side],high+padding)};
+  });
+  return {kind:siege?'siege':'battle',attackerId:armyId,defenderId:defender.id,enemyOwner:defender.owner,
+    yours:ranges[0],theirs:ranges[1],multipleDefenders:enemies.length>1};
 }
 function capture(s, a, t) {
   if (!t.owner || t.owner === a.owner || !atWar(s, a.owner, t.owner)) return true;
@@ -291,8 +322,8 @@ function capture(s, a, t) {
   if (['city', 'town', 'fort', 'watchtower'].includes(t.building)) {
     const defense = (t.building === 'city' ? 14 : 8)*(t.building==='fort'?buildingLevel(t,'fort'):1);
     if (strength(a, false, t) < defense) { casualties(a, .12); return false; }
-    casualties(a, .08); const previous = t.owner;
-    s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner });
+    const before=sizeOf(a);casualties(a, .08); const previous = t.owner;
+    s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner, troopLosses:[before-sizeOf(a),0] });
     changeRelation(s, previous, a.owner, { opinion: -15, grievance: 20, aggression: 12 }, `${t.name || 'A settlement'} was captured.`);
     t.owner = a.owner; t.project = null; t.siege = null;
     log(s, `${kingdom(s, a.owner).name} captures ${t.name || 'a fort'} from ${kingdom(s, previous).name}.`, 'war');

@@ -3,6 +3,7 @@ import { assignSpy, paySpyRansom, recruitSpy, resolveCaptive } from './espionage
 import { ART, preloadAllArt, installArtFallbacks } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { setFormation } from './warfare.mjs';
+import { battlePreview } from './battle-preview.mjs';
 import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, rivalTurnReports, systemTitle, tradePanel } from './expansion-ui.mjs';
 import { BUILDINGS, HOUSES, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, orderStructureAttack, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
@@ -84,6 +85,7 @@ function landPanel() {
   const t = state.tiles[selected], k = kingdom(state, PLAYER), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected);
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
   html += buildingInspection(state,t);
+  html += battlePreview(state,selectedArmy,selected);
   html += structureActions(state,t,selectedArmy);
   html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   if (t.owner === PLAYER && ['city', 'town', 'fort'].includes(t.building)) {

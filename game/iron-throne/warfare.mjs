@@ -2,6 +2,7 @@ import { FORMATIONS, TERRAINS, UNITS } from './data.mjs';
 import { buildingLevel, fortMaximum, wallMaximum } from './economy.mjs';
 
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const BATTLE_TEMPO=1.8;
 export const troopTotal = a => Object.values(a.units).reduce((n,v)=>n+v,0);
 export const familyCount = (a,family) => Object.entries(a.units).reduce((n,[u,v])=>n+(UNITS[u]?.family===family?v:0),0);
 export const unitPower = (a,stat) => Object.entries(a.units).reduce((n,[u,v])=>n+v*(UNITS[u]?.[stat]||0),0);
@@ -36,6 +37,14 @@ export function inflict(a,damage,{piercing=false,exposed=false}={}) {
   for(const g of groups){const exact=remaining*g.weight/Math.max(1,total);g.loss=Math.min(g.n,Math.floor(exact));g.remainder=exact-g.loss;}
   remaining-=groups.reduce((n,g)=>n+g.loss,0);
   for(const g of groups.sort((a,b)=>b.remainder-a.remainder||a.id.localeCompare(b.id))){if(remaining>0&&g.loss<g.n){g.loss++;remaining--;}}
+  while(remaining>0){
+    const available=groups.filter(g=>g.loss<g.n);
+    if(!available.length)break;
+    const weight=available.reduce((n,g)=>n+g.weight,0),budget=remaining;
+    // Redistribute damage when a lightly armored class has already been wiped out.
+    for(const g of available){const exact=budget*g.weight/weight,extra=Math.min(g.n-g.loss,Math.floor(exact));g.loss+=extra;remaining-=extra;g.remainder=exact-Math.floor(exact);}
+    for(const g of available.sort((a,b)=>b.remainder-a.remainder||a.id.localeCompare(b.id))){if(remaining>0&&g.loss<g.n){g.loss++;remaining--;}}
+  }
   for(const g of groups){a.units[g.id]-=g.loss;casualties[g.id]=g.loss;}
   return casualties;
 }
@@ -51,26 +60,29 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
     const count=armies.map(troopTotal),loss=[0,0];
     for(let side=0;side<2;side++){
       const target=1-side,a=armies[target],defense=protection(t,target===1)*(a.formation==='defensive'?1.25:1);
-      const damage=powers[side]*(.88+roll()*.24)*armies[side].morale/defense;
-      inflict(a,Math.min(count[target]*.32,damage),{piercing:options.piercing?.[side],exposed:a.formation==='charge'||name==='Missile Fire'&&a.formation==='spearWall'});
+      const exposed=a.formation==='charge'||name==='Missile Fire'&&a.formation==='spearWall';
+      const tempo=name==='Pursuit'?1.4:name==='Charge / Engagement'?1.25:BATTLE_TEMPO;
+      const damage=powers[side]*(.88+roll()*.24)*armies[side].morale/defense*tempo;
+      inflict(a,damage,{piercing:options.piercing?.[side],exposed});
       loss[target]=count[target]-troopTotal(a);
     }
     phases.push({name,loss,notes});
   };
-  const flank = armies.map((a,i)=>familyCount(a,'mounted')*(a.formation==='flanking'?1.7:1)*cavalryTerrain/(1+familyCount(armies[1-i],'infantry')/Math.max(1,troopTotal(armies[1-i]))));
   phases.push({name:'Positioning',loss:[0,0],notes:[`${terrain}: defender protection ×${protection(t,true).toFixed(2)}.`,`${FORMATIONS[attacker.formation||'balanced'].name} attacks ${FORMATIONS[defender.formation||'balanced'].name}.`,...(riverCrossing?['An undeveloped river crossing disrupts the attacking line.']:[]),...armies.map((a,i)=>a.units.scout?`${i?'Defending':'Attacking'} scouts screen the approach (${a.units.scout}).`:null).filter(Boolean)]});
   phase('Missile Fire',armies.map((a,i)=>unitPower(a,'ranged')*.11*(terrain==='forest'?.5:1)*(i===1&&terrain==='hills'?1.3:1)*(i===1&&t.walls>0?1.4:1)*(a.formation==='skirmish'?1.25:1)),['Volleys hit before contact; forest cover shortens bow range.'],{piercing:armies.map(a=>(a.units.crossbow||0)>familyCount(a,'ranged')*.35)});
   phase('Charge / Engagement',armies.map((a,i)=>unitPower(a,'charge')*.10*cavalryTerrain*spearCounter(armies[1-i])*(a.formation==='charge'?1.35:1)*(i===0&&riverCrossing?.6:1)),[...(armies.some(a=>a.units.spearman)?['Spearmen brace against mounted charges.']:[]),`${terrain==='plains'?'Open ground supports shock cavalry.':'Broken ground reduces cavalry impact.'}`]);
   phase('Main Melee',armies.map((a,i)=>Object.entries(a.units).reduce((n,[id,v])=>n+v*UNITS[id].attack*(UNITS[id].family==='ranged'?.4:UNITS[id].family==='siege'?.15:1),0)*.17*(i===0&&riverCrossing?.65:1)),['Professional infantry sustain the line; armor reduces their share of losses.']);
+  const flank = armies.map((a,i)=>familyCount(a,'mounted')*(a.formation==='flanking'?1.7:1)*cavalryTerrain/(1+familyCount(armies[1-i],'infantry')/Math.max(1,troopTotal(armies[1-i]))));
   phase('Flanking',flank.map((n,i)=>n*.17/(1+(armies[1-i].units.scout||0)*.04)),['Mounted wings exploit open flanks; scouts reduce surprises.']);
   for(let i=0;i<2;i++){
     const a=armies[i],lost=(before[i]-troopTotal(a))/Math.max(1,before[i]);
     const elite=(a.units.knight||0)+(a.units.heavyInfantry||0);
-    a.morale=clamp(a.morale-lost*.85+(t.owner===a.owner?.04:0)+Math.min(.06,elite*.004)-(surrounded[i]?.1:0)-(a.retreats||0)*.012,.1,1);
+    a.morale=clamp(a.morale-lost*1.15+(t.owner===a.owner?.04:0)+Math.min(.06,elite*.004)-(surrounded[i]?.1:0)-(a.retreats||0)*.025,.1,1);
   }
   const power=armies.map((a,i)=>unitPower(a,'attack')*a.morale*protection(t,i===1));
   const winner=power[0]*(.94+roll()*.12)>power[1]?0:1,loser=1-winner;
-  const routed=armies[loser].morale<.55||troopTotal(armies[loser])<before[loser]*.65||power[winner]>power[loser]*1.65;
+  armies[loser].morale=clamp(armies[loser].morale-.10,.1,1);
+  const routed=armies[loser].morale<.6||troopTotal(armies[loser])<before[loser]*.7||power[winner]>power[loser]*1.65;
   phases.push({name:'Morale',loss:[0,0],notes:armies.map((a,i)=>`${i?'Defender':'Attacker'} morale ${Math.round(a.morale*100)}%: ${i===loser?(routed?'rout':'withdrawal'):a.morale<.7?'shaken, holds':'holds'}.`)});
   const pursuit=armies.map((a,i)=>i===winner&&routed?unitPower(a,'pursuit')*.13*(armies[loser].formation==='skirmish'?.55:1):0);
   phase('Pursuit',pursuit,[routed?'Fast troops pursue the broken army.':'The losing army withdraws in order; no rout pursuit.']);

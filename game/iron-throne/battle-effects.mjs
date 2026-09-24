@@ -1,7 +1,15 @@
 import { HOUSES } from './data.mjs';
+import { PLAYER } from './core.mjs';
 const color = id => HOUSES.find(h => h.id === id)?.color || '#eee2c4';
 const name = id => HOUSES.find(h => h.id === id)?.name.replace('House ', '') || id;
 const eventKey = (e, index) => e.id || `${e.turn}:${e.attacker}:${e.defender}:${e.tile}:${e.action}:${index}`;
+export function eventTroopLosses(e) {
+  if(e.action==='battle'&&e.before?.length===2&&e.after?.length===2)
+    return e.before.map((n,i)=>Math.max(0,n-e.after[i]));
+  // Siege before/after contains wall strength, never treat that as soldiers.
+  if(e.troopLosses?.length===2)return e.troopLosses.map(n=>Math.max(0,n));
+  return null;
+}
 
 // Presentation consumes completed simulation events. It never rolls combat,
 // changes unit positions, or blocks input. Each clash lives for two seconds.
@@ -24,13 +32,15 @@ export class BattleEffects {
     this.results = this.results.filter(e => e.expires > now).slice(-3);
   }
   drawWorld(c, s, pixel, inView, now, reduced, zoom) {
+    const rows=new Map();
     for (const effect of this.active) {
       const e = effect.event, t = s.tiles[e.tile], p = t && pixel(t);
       if (!p || !inView(p)) continue;
       const progress = Math.min(1, (now - effect.start) / 2000);
+      const row=rows.get(e.tile)||0;rows.set(e.tile,row+1);
       c.save(); c.translate(p.x, p.y);
       if (reduced || zoom < .45) {
-        c.strokeStyle = '#f1af74'; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, 22, 0, Math.PI * 2); c.stroke(); c.restore(); continue;
+        c.strokeStyle = '#f1af74'; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, 22, 0, Math.PI * 2); c.stroke(); this.drawLosses(c,e,progress,zoom,reduced,row);c.restore(); continue;
       }
       const impact = Math.sin(Math.min(1, progress * 3) * Math.PI / 2), retreat = progress > .7 && e.retreat ? (progress - .7) * 40 : 0;
       // Opposed ranks close, collide, and recoil; their banners retain House colors.
@@ -66,8 +76,21 @@ export class BattleEffects {
         c.beginPath(); c.moveTo(-5, -7); c.lineTo(5, 4); c.moveTo(5, -7); c.lineTo(-5, 4); c.stroke();
         if (siege) { c.strokeStyle = '#3f3530'; c.lineWidth = 2; c.beginPath(); c.moveTo(3, -18); c.lineTo(-2, -10); c.lineTo(3, -7); c.lineTo(0, 3); c.stroke(); }
       }
+      this.drawLosses(c,e,progress,zoom,reduced,row);
       c.restore();
     }
+  }
+  drawLosses(c,e,progress,zoom,reduced,row) {
+    const losses=eventTroopLosses(e);if(!losses)return;
+    c.save();c.scale(Math.max(1,.85/zoom),Math.max(1,.85/zoom));
+    c.globalAlpha=Math.max(0,1-progress);c.font='bold 12px system-ui';c.textAlign='center';
+    c.lineJoin='round';c.lineWidth=4;c.strokeStyle='#081923';
+    const y=-43-(reduced?0:progress*25)-row*34;
+    [e.attacker,e.defender].forEach((owner,i)=>{
+      const label=`${owner===PLAYER?'You':name(owner)} −${losses[i]}`;
+      c.fillStyle=color(owner);c.strokeText(label,0,y+i*15);c.fillText(label,0,y+i*15);
+    });
+    c.restore();
   }
   drawResults(c, s, width, height, now) {
     const result = this.results.at(-1); if (!result) return;
@@ -87,5 +110,5 @@ export class BattleEffects {
     c.fillText(fit(e.retreat ? `${name(e.retreatOwner||e.defender)} retreats to ${s.tiles[e.retreat]?.name || e.retreat}.` : this.results.length > 1 ? `${this.results.length} recent encounters · full report in Realm` : 'Orders are available.'), 10, 88);
     c.restore();
   }
-  animating(now, reduced) { return !reduced && this.active.some(e => now - e.start < 2000); }
+  animating(now, reduced) { return this.active.some(e => now - e.start < 2000&&(!reduced||eventTroopLosses(e.event))); }
 }

@@ -60,6 +60,10 @@ Dependence is the largest resource share supplied by a partner over the recent t
 
 ## Armies and combat
 
+Field battles use 1.8× missile, melee and flanking damage, 1.25× charge damage and 1.4× pursuit damage, plus stronger casualty/defeat morale penalties. There are no percentage casualty limits or guaranteed survivors: overwhelming forces can destroy an army. Terrain, formations, unit counters and retreat routes still matter; siege breach rates are unchanged.
+
+Selecting an enemy with one of your armies selected shows estimated troop-loss ranges for both sides before ending the turn. Estimates sample the real battle/retreat or siege resolver with independent random seeds and current forces; they do not change the campaign or predict future reinforcements. Actual troop losses appear as labeled, floating, fading numbers above each clash; reduced-motion mode keeps them stationary.
+
 Every surviving rival takes a complete strategy turn when the player ends the round. [STRATEGY.md](./STRATEGY.md) documents the shared rules, economic reserves, ranked construction and recruitment, war decisions, coordinated military orders and visible six-round activity history.
 
 There are 14 recruitable classes plus the old `siege` class retained for saves. Local building levels and materials unlock recruitment. Splits/merges retain every class. Mounted and siege families affect movement and upkeep. Formation controls support Balanced, Defensive Line, Spear Wall, Aggressive Charge, Skirmish and Flanking; spears/cavalry are required for the specialized formations.
