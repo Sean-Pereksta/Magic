@@ -1,5 +1,5 @@
 import { foundingPanel } from './founding-ui.mjs';
-import { foundCity, foundAIKingdoms, CAPITAL_NAMES } from './founding.mjs';
+import { foundCity, foundAIKingdoms } from './founding.mjs';
 import { mapOptions } from './map-profiles.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { populationBreakdown } from './population.mjs';
@@ -141,7 +141,7 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
-  if(d.foundCity&&confirm(`Found ${CAPITAL_NAMES[localHouse]} here? This is your permanent starting capital.`)){
+  if(d.foundCity){
     perform('found',{tile:d.foundCity},()=>{
       const next=structuredClone(state);let r=foundCity(next,localHouse,d.foundCity);
       if(r.ok)r=foundAIKingdoms(next);
