@@ -1,3 +1,4 @@
+import { foundCity, foundAIKingdoms } from './founding.mjs';
 import { build, buildHighway, recruit, orderArmy, orderStructureAttack, splitArmy, mergeArmies, kingdom, alive } from './core.mjs';
 import { setFormation } from './warfare.mjs';
 import { recruitSpy, assignSpy, paySpyRansom, resolveCaptive } from './espionage.mjs';
@@ -8,7 +9,7 @@ import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -17,9 +18,12 @@ export function commandError(s, meta, command) {
   if(command.epoch!==meta.epoch)return 'The controller changed. Review and submit this order again.';
   if(command.turn!==s.turn)return 'This order belongs to an earlier round.';
   if(!Number.isSafeInteger(command.stateVersion)||command.stateVersion<1||command.stateVersion>meta.stateVersion)return 'Invalid campaign version.';
-  if(meta.phase!=='planning'||s.outcome)return 'Orders are closed while the round resolves.';
+  if(s.outcome)return 'This campaign has ended.';
+  if(meta.phase==='founding'){
+    if(s.phase!=='founding'||command.type!=='found')return 'Found all six kingdoms before issuing orders.';
+  }else if(meta.phase!=='planning'||command.type==='found')return 'Orders are closed for this campaign phase.';
   if(meta.ready[command.actorHouseId]&&!['ready','read'].includes(command.type))return 'Unready your House before issuing more orders.';
-  if(!alive(s,command.actorHouseId))return 'This House has lost its last settlement.';
+  if(meta.phase!=='founding'&&!alive(s,command.actorHouseId))return 'This House has lost its last settlement.';
   if((meta.sequences[`${command.uid}:${command.clientId}`]||0)>=command.sequence)return 'This command has already been processed.';
   return null;
 }
@@ -31,6 +35,19 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   let result;
   const validTarget=()=>houseIds.includes(target)&&target!==a&&alive(s,target);
   switch(c.type){
+    case 'found':{
+      // Work on a copy: any placement/AI failure leaves the authoritative state untouched.
+      const next=structuredClone(s);result=foundCity(next,a,p.tile);
+      if(result.ok)result=foundAIKingdoms(next);
+      if(result.ok){
+        Object.assign(s,next);
+        if(s.phase==='playing'){
+          meta.phase='planning';meta.turn=1;meta.ready={};meta.planningAt=now;
+          meta.deadline=meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;
+        }
+      }
+      break;
+    }
     case 'build':result=build(s,a,p.tile,p.building);break;
     case 'highway':result=buildHighway(s,a,p.from,p.to);break;
     case 'recruit':result=recruit(s,a,p.tile,p.unit);break;

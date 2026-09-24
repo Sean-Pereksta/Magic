@@ -13,6 +13,12 @@ The host sets the seed, map, optional 2/5/10-minute timer, and absent-ruler poli
 Unclaimed seats become AI when the host starts. A private one-human campaign is
 also supported. The shared lobby lists this browser's saved online campaigns.
 
+New campaigns begin with **Found your kingdom** before Turn 1. The default Random
+map chooses one of six profiles from a fresh campaign seed. Each human confirms a
+capital at least eight hexes from existing capitals; AI Houses then found in the
+remaining regions. Turn timers start only after all six capitals exist. See
+[FOUNDING.md](FOUNDING.md) for geography, starting packages and save compatibility.
+
 Issue orders, then press **Ready**. The round advances when all eligible human
 rulers are ready, or when its timer expires. A human who is connected retains
 their orders even if they miss the timer. Disconnected seats stay reserved; their
@@ -158,11 +164,12 @@ npx playwright install chromium
 cd ../../..
 npm run test:iron-throne:online
 npm run test:iron-throne:browser
+npm run test:iron-throne:founding-browser
 npm run test:iron-throne:intelligence-browser
 ```
 
 The online suite uses the real Firebase SDK with Auth/Firestore emulators and
-independent browser contexts. It covers concurrent seat claims, private rules,
+independent browser contexts. It covers concurrent seat and capital claims, founding reconnects, private rules,
 ownership, human diplomacy, recruitment, synchronized two- and six-human rounds,
 offline UI, same-UID refresh, and actual controller-browser closure/failover.
 Pure engine tests additionally cover timers, temporary/permanent takeover,

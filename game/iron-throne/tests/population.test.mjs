@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame,kingdom,populationProjection,resolveEconomy,recruit,parseSave} from '../core.mjs';
+import { kingdom, populationProjection, resolveEconomy, recruit, parseSave } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import {calculatePopulationChange,populationCapacity,MAX_GROWTH_PER_TURN} from '../population.mjs';
 
 test('a healthy starting kingdom gains six population and the forecast matches resolution for every House',()=>{

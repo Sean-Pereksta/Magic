@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, declareWar, projectedBattleLosses, resolveMovement, sizeOf } from '../core.mjs';
+import { declareWar, projectedBattleLosses, resolveMovement, sizeOf } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { emptyUnits } from '../economy.mjs';
 import { battlePreview } from '../battle-preview.mjs';
 import { BattleEffects, eventTroopLosses } from '../battle-effects.mjs';

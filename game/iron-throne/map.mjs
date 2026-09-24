@@ -1,3 +1,5 @@
+import { CAPITAL_SEPARATION, foundedCapitals } from './founding.mjs';
+import { distance as hexDistance } from './world-hex.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { ART, AssetCache } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
@@ -77,7 +79,7 @@ export class WorldMap {
   }
   setZoom(zoom) { this.zoom = Math.min(2.8, Math.max(.22, zoom)); this.draw(); }
   center(id) { const t = this.getState().tiles[id]; if (!t) return; const p = hexPixel(t); this.x = p.x; this.y = p.y; this.draw(); }
-  home() { this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), localHouseId(this.getState()))[0]?.id || '5,6'); }
+  home() { if(this.getState().phase==='founding'&&!settlements(this.getState(),localHouseId(this.getState())).length){this.fit();return;} this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), localHouseId(this.getState()))[0]?.id || '5,6'); }
   fit() { const bottom = hexPixel({ q: 39, r: 29 }); this.x = bottom.x / 2; this.y = bottom.y / 2; this.setZoom(Math.min(this.width / (bottom.x + 100), this.height / (bottom.y + 100))); }
   draw() { if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); }); }
   hex(x, y, radius = RADIUS) {
@@ -132,6 +134,7 @@ export class WorldMap {
     const colors=Object.fromEntries(HOUSES.map(h=>[h.id,h.color]));
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
+    const foundingCapitals=s.phase==='founding'?foundedCapitals(s):[];
     // Separate ground and object passes keep roads, borders and taller sprites coherent.
     for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y,g.coastMask);}
     for(const t of visible){
@@ -140,6 +143,7 @@ export class WorldMap {
       const coastMask=geography.get(t.id).coastMask;
       if(coastMask){c.translate(p.x,p.y);c.clip(landClipPath(coastMask),'evenodd');c.translate(-p.x,-p.y);}
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
+      if(s.phase==='founding'&&foundingCapitals.some(cap=>hexDistance(cap,t)<CAPITAL_SEPARATION)){c.fillStyle='#b83e434a';c.fill();}
       if(t.owner){c.fillStyle=`${colors[t.owner]}12`;c.fill();}
       DIRECTIONS.forEach(([dq,dr],i)=>{
         const n=s.tiles[tileId(t.q+dq,t.r+dr)];

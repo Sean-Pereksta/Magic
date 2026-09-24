@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RESOURCES } from '../data.mjs';
-import { PLAYER, armiesOf, atWar, commandLimit, createGame, declareWar, kingdom, parseSave, recruitmentCost, resolveMovement, settlements, sizeOf, strategyTurn } from '../core.mjs';
+import { PLAYER, armiesOf, atWar, commandLimit, declareWar, kingdom, parseSave, recruitmentCost, resolveMovement, settlements, sizeOf, strategyTurn } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { constructionSpec, emptyUnits } from '../economy.mjs';
 import { endTurn } from '../diplomacy.mjs';
 import { rivalTurnReports } from '../expansion-ui.mjs';

@@ -311,7 +311,7 @@ function aiDiplomacy(s) {
   }
 }
 export function endTurn(s) {
-  if (s.outcome) return s;
+  if (s.outcome || s.phase==='founding') return s;
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   updatePoliticalState(s, { sendDispatches: false });
   for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BUILDINGS, HOUSES, UNITS } from '../data.mjs';
-import { PLAYER, atWar, build, buildCheck, canEnter, checkVictory, createGame, declareWar, economyProjection, findPath, kingdom, moveCost, neighbors, orderArmy, parseSave, passable, recruit, resolveEconomy, resolveMovement, settlements, sizeOf } from '../core.mjs';
+import { PLAYER, atWar, build, buildCheck, canEnter, checkVictory, declareWar, economyProjection, findPath, kingdom, moveCost, neighbors, orderArmy, parseSave, passable, recruit, resolveEconomy, resolveMovement, settlements, sizeOf } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { commitDeal, deliverPledge, endTurn, evaluateDeal, validateIntent, validateResponse, verifyPledges } from '../diplomacy.mjs';
 
 const offer = (type, extra = {}) => ({ type, giveAmount: 60, giveResource: 'gold', duration: 20, ...extra });

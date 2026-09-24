@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { DiplomacyBudget, callGemini, readLimitedJSON, reserveBudget, sanitizeContext, systemPrompt } from '../worker/worker.mjs';
-import { createGame } from '../core.mjs';
+import {  } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { makeContext } from '../diplomacy.mjs';
 import { DiplomacyClient, validEndpoint } from '../chat.mjs';
 
