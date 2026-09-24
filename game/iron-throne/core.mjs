@@ -9,7 +9,7 @@ import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNI
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
-import { buildingLevel, buildingSpec, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, regionalize, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
+import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, regionalize, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
 import { armySpeed, familyCount, inflict, resolveFieldBattle, siegeStep } from './warfare.mjs';
 
 import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
@@ -117,7 +117,7 @@ export function rebuildTerritory(s) {
     t.owner = candidates[0]?.a.owner || null;
   }
 }
-export function commandLimit(s, owner) { return Math.min(8, 3 + Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
+export function commandLimit(s, owner) { return Math.min(8, 3 + cityOrderBonus(s,owner) + Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
 export function buildCheck(s, owner, id, type) {
   const t=s.tiles[id],k=kingdom(s,owner),b=BUILDINGS[type];
   if(s.outcome)return 'This campaign has ended.';
@@ -132,7 +132,7 @@ export function buildCheck(s, owner, id, type) {
   if(!spec)return 'Maximum level reached.';
   if(['harbor','envoyOffice','chancery','intelligenceOffice'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
   if(b.settlement&&!['city','town','fort'].includes(t.building))return 'Requires a town, city or fort.';
-  if(type==='city'&&t.building!=='town')return 'Select a town to upgrade.';
+  if(type==='city'&&!['town','city'].includes(t.building))return 'Select a town or city to upgrade.';
   if(!b.settlement&&!['road','city'].includes(type)&&t.building&&t.building!==type)return 'This tile already has a different building.';
   if(b.terrain&&!b.terrain.includes(t.terrain))return `Requires ${b.terrain.join(' or ')} terrain.`;
   if(b.resource&&t.resource!==b.resource)return `Requires a ${b.resource} deposit.`;

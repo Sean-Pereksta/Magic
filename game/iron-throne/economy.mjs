@@ -8,6 +8,8 @@ export function buildingLevel(t, type) {
   return present ? t.levels?.[type] || 1 : 0;
 }
 export const buildingSpec = (type, level = 1) => BUILDINGS[type]?.levels[Math.max(0, level - 1)];
+export const cityBenefits = t => t?.building === 'city' ? buildingSpec('city',buildingLevel(t,'city')) : null;
+export const cityOrderBonus = (s,owner) => Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+(cityBenefits(t)?.orders||0),0);
 export function wallMaximum(t) { return buildingLevel(t, 'wall') * 60; }
 export function fortMaximum(t) { return t.building === 'fort' ? [0, 45, 100, 180][buildingLevel(t, 'fort')] : 0; }
 export function constructionSpec(t, type) {
@@ -27,8 +29,9 @@ export function tileProduction(t, owner) {
     for (const [r,n] of Object.entries(b.yield)) output[r] += Math.round((n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65) * quality * industry);
   }
   if (['town','city'].includes(t.building)) {
-    output.food += t.building === 'city' ? 14 : 8;
-    output.gold += (t.building === 'city' ? 8 : 5) + (['sunspire','vesper'].includes(t.region) ? 6 : 0);
+    const city=cityBenefits(t);
+    output.food += city?.food ?? 8;
+    output.gold += (city?.gold ?? 5) + (['sunspire','vesper'].includes(t.region) ? 6 : 0);
   }
   return output;
 }

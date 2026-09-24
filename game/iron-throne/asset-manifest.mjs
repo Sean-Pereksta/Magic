@@ -5,7 +5,9 @@ import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
 export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev';
 export const ironThronesAsset = path => `${IRON_THRONES_ASSET_BASE}/${path.replace(/^\/+/, '')}`;
 const local = path => new URL(`./assets/${path}.svg`, import.meta.url).href;
-const levels = (id, b) => b.levels.map(l => `buildings/${id === 'intelligenceOffice' ? 'chancery' : id}_${l.level}.png`);
+// City tiers reuse the supplied city artwork; no additional PNGs are required.
+const buildingPath = (id,level) => `buildings/${id === 'intelligenceOffice' ? 'chancery' : id}_${id === 'city' ? 1 : level}.png`;
+const levels = (id, b) => [...new Set(b.levels.map(l => buildingPath(id,l.level)))];
 export const IRON_THRONES_ART = {
   buildings: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, levels(id,b)])),
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
@@ -18,7 +20,7 @@ export const IRON_THRONES_ART = {
 const flatten = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(flatten);
 export const ALL_ART_PATHS = [...new Set(flatten(IRON_THRONES_ART))];
 export const ART = {
-  structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(`buildings/${id === 'intelligenceOffice' ? 'chancery' : id}_${l.level}.png`)]))])),
+  structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(buildingPath(id,l.level))]))])),
   units: Object.fromEntries(Object.entries(IRON_THRONES_ART.troops).map(([id,p]) => [id,ironThronesAsset(p)])),
   resources: Object.fromEntries(Object.entries(IRON_THRONES_ART.resources).map(([id,p]) => [id,ironThronesAsset(p)])),
   terrain: Object.fromEntries(Object.entries(IRON_THRONES_ART.terrain).map(([id,ps]) => [id,ps.map(ironThronesAsset)])),
@@ -28,7 +30,7 @@ export const ART = {
   construction: IRON_THRONES_ART.construction.map(ironThronesAsset)
 };
 const fallbacks = new Map();
-for (const [id,b] of Object.entries(BUILDINGS)) for (const l of b.levels) fallbacks.set(ART.structures[id][l.level],local(`structures/${id === 'intelligenceOffice' ? 'chancery' : id}_${l.level}`));
+for (const [id,b] of Object.entries(BUILDINGS)) for (const l of b.levels) fallbacks.set(ART.structures[id][l.level],local(`structures/${id === 'intelligenceOffice' ? 'chancery' : id}_${id === 'city' ? 1 : l.level}`));
 for (const id of Object.keys(UNITS)) fallbacks.set(ART.units[id],local(`units/${id}`));
 for (const id of RESOURCES) fallbacks.set(ART.resources[id],local(`resources/${id}`));
 ART.construction.forEach((url,i) => fallbacks.set(url,local(`construction/stage_${i+1}`)));

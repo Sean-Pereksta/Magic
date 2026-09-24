@@ -2,7 +2,7 @@ import { isAiHouse } from './house-control.mjs';
 import { activePlan, createPlan, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
 import { runAISpies } from './espionage.mjs';
 import { BUILDINGS, HOUSES, QUALITY, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
-import { buildingLevel, constructionSpec, fortMaximum, tileProduction } from './economy.mjs';
+import { buildingLevel, cityOrderBonus, constructionSpec, fortMaximum, tileProduction } from './economy.mjs';
 import { chooseFormation, familyCount } from './warfare.mjs';
 import { PLAYER, alive, armiesOf, atWar, build, buildCheck, canAfford, canEnter, declareWar, distance, economyProjection, findPath, kingdom, log, makePeace, mergeArmies, neighbors, orderArmy, passable, recruit, recruitCheck, recruitmentCost, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
 
@@ -121,7 +121,7 @@ function buildingCandidates(s, k, c) {
     watchtower: (c.war || c.wary) && totalLevel('watchtower') < c.towns.length ? 42 : 0,
     envoyOffice: s.turn >= 4 && !totalLevel('envoyOffice') ? 28 + k.honor * 10 : 0,
     chancery: s.turn >= 16 && !totalLevel('chancery') ? 22 : 0,
-    city: s.turn >= 12 && !c.crisis ? 32 : 0,
+    city: s.turn >= 12 && !c.crisis && !c.threats.length ? 54 : 0,
     storehouse: RESOURCES.some(r => r !== 'gold' && k.resources[r] > 540) && totalLevel('storehouse') < c.towns.length ? 28 : 0,
     town: !c.crisis && !c.threats.length && k.population >= 70 && c.towns.length + pending('town') < Math.min(6, 2 + Math.floor(s.turn / 12)) ? 62 + k.ambition * 15 : 0
   };
@@ -174,7 +174,7 @@ function buildingCandidates(s, k, c) {
 }
 
 function recruitmentCandidates(s, k, c, recruited) {
-  if (recruited >= (c.war || c.threats.length ? 2 : 1) || k.population < (c.threats.length ? 28 : 42)) return [];
+  if (recruited >= Math.min(8,(c.war || c.threats.length ? 2 : 1)+cityOrderBonus(s,k.id)) || k.population < (c.threats.length ? 28 : 42)) return [];
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p));
   const count = troopCount(c.forces);
   const weakestDefense = c.enemyTowns.length ? Math.min(...c.enemyTowns.map(t => c.enemies.filter(e => e.tile === t.id).reduce((n, e) => n + strength(e, true, t), 0) + 14)) : 0;
