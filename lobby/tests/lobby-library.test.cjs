@@ -17,7 +17,7 @@ const registry = html => {
 const games = registry(core);
 const byKey = Object.fromEntries(games.map(game => [game.key, game]));
 
-for (const key of ['receiverwindowqb', 'arcanewilds', 'ironthrone']) {
+for (const key of ['receiverwindowqb', 'arcanewilds']) {
   test(`${key}: singleplayer offers only Play`, () => {
     assert.deepEqual(library.getActions(byKey[key]), [{ type: 'single', label: 'Play' }]);
   });
@@ -27,7 +27,7 @@ for (const key of ['cat', 'chesswarlord', 'stoneyrelic']) {
     assert.deepEqual(library.getActions(byKey[key]), [{ type: 'lobby', label: 'Create Lobby' }]);
   });
 }
-for (const key of ['warrealms', 'biblegame', 'bibleroguelike', 'turncraft']) {
+for (const key of ['warrealms', 'biblegame', 'bibleroguelike', 'turncraft', 'ironthrone']) {
   test(`${key}: both Play Offline and Create Lobby are available`, () => {
     assert.deepEqual(library.getActions(byKey[key]), [
       { type: 'single', label: 'Play Offline' }, { type: 'lobby', label: 'Create Lobby' }

@@ -1,12 +1,14 @@
 > The economy and warfare expansion is documented in [EXPANSION.md](./EXPANSION.md), including regional production, construction tiers, contracts, recruitment and battle reports.
 > [STRATEGY.md](./STRATEGY.md) explains player orders, autonomous rival turns, economic planning, campaigns and the Rival Turns reports.
+> [MULTIPLAYER.md](./MULTIPLAYER.md) covers online campaigns, deployment, synchronization, population growth and emulator tests.
 
 # The Iron Throne Engine
 
-A playable singleplayer kingdom strategy game for Cat'N Mice. Open
-`/game/iron-throne/index.html`, or choose **The Iron Throne Engine → Play** in
-the lobby's Game Library / Strategy category. It does not create a multiplayer
-lobby, require Firebase, or need a build step.
+A kingdom strategy game for Cat'N Mice with local single player and persistent
+online campaigns for one to six human rulers. Open `/game/iron-throne/index.html`
+for single player, which needs neither Firebase nor a build step. Choose
+**Iron Thrones → Online Multiplayer** in the shared lobby for House selection
+and synchronized rounds; unclaimed Houses use the same existing AI engine.
 
 ## Play now
 

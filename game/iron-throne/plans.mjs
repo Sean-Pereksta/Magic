@@ -1,3 +1,4 @@
+import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, RESOURCES } from './data.mjs';
 import { buildingLevel, fortMaximum, tileProduction } from './economy.mjs';
 import { familyCount } from './warfare.mjs';
@@ -66,8 +67,8 @@ export function preparePlans(s,k,c) {
     if(tile)createPlan(s,k.id,'infrastructure',{target,targetTile:tile.id,structure:tile.building,objective:`Disrupt ${kingdom(s,target).name}'s ${BUILDINGS[tile.building].name} production or defenses.`,requiredForces:16,requiredSiege:tile.building==='fort'?2:0,delay:1});
   }
   if(!plans().some(p=>!militaryPlan(p))) {
-    const ally=s.kingdoms.find(o=>![PLAYER,k.id].includes(o.id)&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&relation(s,o.id,k.id).trust>=25&&!treaty(s,k.id,o.id,'alliance'));
-    const partner=s.kingdoms.find(o=>![PLAYER,k.id].includes(o.id)&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade'));
+    const ally=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&relation(s,o.id,k.id).trust>=25&&!treaty(s,k.id,o.id,'alliance'));
+    const partner=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade'));
     const rival=s.kingdoms.find(o=>o.id!==k.id&&alive(s,o.id)&&relation(s,k.id,o.id).grievance>=50&&relation(s,k.id,o.id).dependency<20&&!protectedPeace(s,k.id,o.id)&&!tradeBlocked(s,k.id,o.id));
     if(c.threats.length)createPlan(s,k.id,'defendFrontier',{targetTile:c.threats[0].tile.id,objective:`Defend ${c.threats[0].tile.name||c.threats[0].tile.id}.`,delay:0});
     else if(c.crisis){const resource=k.resources.food<40?'food':'gold';createPlan(s,k.id,'acquireResource',{resource,objective:`Rebuild ${resource} reserves.`,requiredResources:{[resource]:70},building:resource==='food'?'farm':'market'});}
@@ -106,7 +107,7 @@ export function preparePlans(s,k,c) {
 }
 function executePoliticalPlan(s,p) {
   const k=kingdom(s,p.actor),r=relation(s,p.actor,p.target);
-  if(p.target===PLAYER){transitionPlan(s,p,'Abandoned','Player agreements require ratification in council.');return;}
+  if(!isAiHouse(s,p.target)){transitionPlan(s,p,'Abandoned','Player agreements require ratification in council.');return;}
   if(atWar(s,p.actor,p.target)&&p.type!=='embargo'){transitionPlan(s,p,'Abandoned','War prevents peaceful negotiation.');return;}
   const type={seekAlliance:'alliance',secureTrade:'trade',embargo:'embargo'}[p.type];
   const partner=p.type==='embargo'?p.allies[0]:p.target;
@@ -161,12 +162,12 @@ export function finishPlans(s) {
   }
 }
 // Human attack orders are real intentions too; AI spies may discover them.
-export function recordPlayerPlans(s) {
-  for(const a of armiesOf(s,PLAYER))if(['attack','bombard'].includes(a.order)&&s.tiles[a.target]?.owner&&atWar(s,PLAYER,s.tiles[a.target].owner)) {
-    const p=createPlan(s,PLAYER,a.structureTarget?'infrastructure':'invasion',{target:s.tiles[a.target].owner,targetTile:a.target,structure:a.structureTarget||null,objective:`Attack ${s.tiles[a.target].name||a.target}.`,delay:0,requiredForces:1});
+export function recordPlayerPlans(s, actorHouseId = PLAYER) {
+  for(const a of armiesOf(s,actorHouseId))if(['attack','bombard'].includes(a.order)&&s.tiles[a.target]?.owner&&atWar(s,actorHouseId,s.tiles[a.target].owner)) {
+    const p=createPlan(s,actorHouseId,a.structureTarget?'infrastructure':'invasion',{target:s.tiles[a.target].owner,targetTile:a.target,structure:a.structureTarget||null,objective:`Attack ${s.tiles[a.target].name||a.target}.`,delay:0,requiredForces:1});
     if(p){p.assignedArmies=[a.id];transitionPlan(s,p,'Executing','Player attack orders recorded.');}
   }
-  for(const p of s.intrigue.plans.filter(p=>p.actor===PLAYER&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
+  for(const p of s.intrigue.plans.filter(p=>p.actor===actorHouseId&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
 }
 export function validatePlans(s) {
   initializePlans(s);const fail=()=>{throw new Error('Damaged strategic plans.');};

@@ -4,45 +4,45 @@ import { borderThreat, capitalOf } from './living.mjs';
 
 export const PLAYER_PROMISES = new Set(['PROMISE', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_WITHDRAW', 'PLEDGE_BUILD', 'PLEDGE_PEACE']);
 export const isPlayerPromise = i => PLAYER_PROMISES.has(i?.type);
-export function playerPromiseCheck(s, rulerId, i) {
+export function playerPromiseCheck(s, rulerId, i, actorHouseId = PLAYER) {
   if (!isPlayerPromise(i)) return 'Unknown promise.';
-  if (s.pledges.filter(p => p.debtor === PLAYER && p.creditor === rulerId && p.status === 'pending').length >= 3) return 'Resolve your existing promises to this House before making another.';
-  if (s.pledges.some(p => p.debtor === PLAYER && p.creditor === rulerId && p.status === 'pending' && p.intent.type === i.type && p.intent.targetId === i.targetId)) return 'This oath is already in your ledger.';
+  if (s.pledges.filter(p => p.debtor === actorHouseId && p.creditor === rulerId && p.status === 'pending').length >= 3) return 'Resolve your existing promises to this House before making another.';
+  if (s.pledges.some(p => p.debtor === actorHouseId && p.creditor === rulerId && p.status === 'pending' && p.intent.type === i.type && p.intent.targetId === i.targetId)) return 'This oath is already in your ledger.';
   if (i.receiveAmount) return 'A promise cannot withdraw resources from another treasury.';
   if (i.type !== 'PROMISE' && i.giveAmount) return 'A military promise has no upfront resource transfer.';
   if (i.conditionHouseId && (!['GUARANTEE', 'PLEDGE_WAR'].includes(i.type) || i.conditionHouseId !== i.targetId)) return 'Conditional oaths must name the House whose attack triggers your promise.';
   if (i.type === 'PROMISE') return i.giveAmount < 10 || i.giveAmount > 250 ? 'Pledge between 10 and 250 resources.' : null;
   if (['GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_PEACE'].includes(i.type)) {
-    if (!alive(s, i.targetId) || [PLAYER, rulerId].includes(i.targetId) && i.type !== 'PLEDGE_PEACE') return 'Name a surviving third House.';
-    if (i.targetId === PLAYER) return 'Choose a foreign House.';
-    if (i.type !== 'PLEDGE_PEACE' && treaty(s, PLAYER, i.targetId)) return 'Existing treaties prevent this military oath.';
-    if (i.type === 'PLEDGE_PEACE' && atWar(s, PLAYER, i.targetId)) return 'Make peace before promising not to attack that House.';
-    if (i.type === 'PLEDGE_WAR' && !i.conditionHouseId && atWar(s, PLAYER, i.targetId)) return 'You have already declared war. Promise actual combat instead.';
+    if (!alive(s, i.targetId) || [actorHouseId, rulerId].includes(i.targetId) && i.type !== 'PLEDGE_PEACE') return 'Name a surviving third House.';
+    if (i.targetId === actorHouseId) return 'Choose a foreign House.';
+    if (i.type !== 'PLEDGE_PEACE' && treaty(s, actorHouseId, i.targetId)) return 'Existing treaties prevent this military oath.';
+    if (i.type === 'PLEDGE_PEACE' && atWar(s, actorHouseId, i.targetId)) return 'Make peace before promising not to attack that House.';
+    if (i.type === 'PLEDGE_WAR' && !i.conditionHouseId && atWar(s, actorHouseId, i.targetId)) return 'You have already declared war. Promise actual combat instead.';
     if ((i.type === 'GUARANTEE' || i.conditionHouseId) && atWar(s, rulerId, i.targetId)) return 'That war is already underway. Make an unconditional promise of assistance.';
   }
   if (i.type === 'PLEDGE_ATTACK') {
     const army = s.armies.find(a => a.id === i.targetId), tile = s.tiles[i.targetId];
     const owner = army?.owner || tile?.owner;
-    if (!owner || [PLAYER, rulerId].includes(owner) || treaty(s, PLAYER, owner)) return 'Name an enemy army or enemy-held map location that treaties allow you to attack.';
-    if (!armiesOf(s, PLAYER).length) return 'You have no army to commit.';
+    if (!owner || [actorHouseId, rulerId].includes(owner) || treaty(s, actorHouseId, owner)) return 'Name an enemy army or enemy-held map location that treaties allow you to attack.';
+    if (!armiesOf(s, actorHouseId).length) return 'You have no army to commit.';
   }
   if (i.type === 'PLEDGE_DEFEND') {
     const t = s.tiles[i.targetId];
     if (!t || t.owner !== rulerId || !['city', 'town', 'fort'].includes(t.building)) return 'Select a settlement or fort belonging to this ruler.';
     if (i.duration < 2) return 'Defense requires two turns on station.';
-    if (!armiesOf(s, PLAYER).some(a => a.tile === t.id || findPath(s, a.tile, t.id, PLAYER).length)) return 'Obtain military access before pledging defense of this location.';
+    if (!armiesOf(s, actorHouseId).some(a => a.tile === t.id || findPath(s, a.tile, t.id, actorHouseId).length)) return 'Obtain military access before pledging defense of this location.';
   }
   if (i.type === 'PLEDGE_BUILD') {
     const t = s.tiles[i.targetId];
-    if (i.duration < 3 || !t || t.owner !== PLAYER || !passable(t) || t.building || t.project) return 'Select empty owned land and allow at least three turns to build a fort.';
+    if (i.duration < 3 || !t || t.owner !== actorHouseId || !passable(t) || t.building || t.project) return 'Select empty owned land and allow at least three turns to build a fort.';
   }
-  if (i.type === 'PLEDGE_WITHDRAW' && !borderThreat(s, rulerId, PLAYER).nearby.length) return 'There are no Ashen armies near this House to withdraw.';
+  if (i.type === 'PLEDGE_WITHDRAW' && !borderThreat(s, rulerId, actorHouseId).nearby.length) return 'There are no armies of your House near this House to withdraw.';
   return null;
 }
-export function createPlayerPromise(s, rulerId, intent) {
+export function createPlayerPromise(s, rulerId, intent, actorHouseId = PLAYER) {
   const i = { ...intent };
-  const p = { id: `pledge-${s.nextId++}`, debtor: PLAYER, creditor: rulerId, intent: i, created: s.turn, deadline: s.turn + i.duration, status: 'pending', delivered: false, held: 0, breached: false, eventAfter: s.nextId - 1, conditionHouseId: i.conditionHouseId || (i.type === 'GUARANTEE' ? i.targetId : null), triggered: !(i.conditionHouseId || i.type === 'GUARANTEE'), activatedTurn: null };
-  if (i.type === 'PLEDGE_WITHDRAW') p.trackedArmies = borderThreat(s, rulerId, PLAYER).nearby.map(a => a.id);
+  const p = { id: `pledge-${s.nextId++}`, debtor: actorHouseId, creditor: rulerId, intent: i, created: s.turn, deadline: s.turn + i.duration, status: 'pending', delivered: false, held: 0, breached: false, eventAfter: s.nextId - 1, conditionHouseId: i.conditionHouseId || (i.type === 'GUARANTEE' ? i.targetId : null), triggered: !(i.conditionHouseId || i.type === 'GUARANTEE'), activatedTurn: null };
+  if (i.type === 'PLEDGE_WITHDRAW') p.trackedArmies = borderThreat(s, rulerId, actorHouseId).nearby.map(a => a.id);
   if (i.type === 'PLEDGE_ATTACK') { const a = s.armies.find(a => a.id === i.targetId); p.targetOwner = a?.owner || s.tiles[i.targetId]?.owner; }
   s.pledges.push(p);
   return p;
@@ -79,11 +79,11 @@ export function promiseProgress(s, p) {
 
 // Scripted interpretation deliberately requires an explicit first-person commitment.
 // Even a confidently parsed statement produces a proposal, never a ledger entry.
-export function detectPromise(s, rulerId, message) {
+export function detectPromise(s, rulerId, message, actorHouseId = PLAYER) {
   const text = message.toLowerCase().replace(/[’]/g, "'");
   if (!/\b(?:i will|i'll|i promise|i pledge|i give my word|i won't|i will not)\b/.test(text) || /\b(?:might|maybe|perhaps|could|would|not sure|don't promise|do not promise)\b/.test(text)) return null;
   if (/\bi (?:will not|won't)\s+(?!attack\b)/.test(text)) return null;
-  const named = HOUSES.filter(h => h.id !== PLAYER && text.includes(h.id));
+  const named = HOUSES.filter(h => h.id !== actorHouseId && text.includes(h.id));
   const third = named.find(h => h.id !== rulerId);
   const duration = /next turn/.test(text) ? 1 : Number(text.match(/(?:in|within|give me)\s+(\d{1,2})\s+turn/)?.[1] || 5);
   const deadline = text.match(/(?:before|by)(?: the end of)? turn\s+(\d{1,6})/);
@@ -103,7 +103,7 @@ export function detectPromise(s, rulerId, message) {
     const tile = text.match(/\b\d{1,2},\d{1,2}\b/)?.[0];
     if (tile) Object.assign(i, { type: 'PLEDGE_BUILD', targetId: tile });
   } else if (/\battack\b/.test(text)) {
-    const target = s.armies.find(a => a.owner !== PLAYER && text.includes(a.id))?.id || text.match(/\b\d{1,2},\d{1,2}\b/)?.[0];
+    const target = s.armies.find(a => a.owner !== actorHouseId && text.includes(a.id))?.id || text.match(/\b\d{1,2},\d{1,2}\b/)?.[0];
     if (target) Object.assign(i, { type: 'PLEDGE_ATTACK', targetId: target });
   }
   return i.type && i.duration >= 1 && i.duration <= 20 && RESOURCES.includes(i.giveResource) ? i : null;
