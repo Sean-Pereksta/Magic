@@ -1,3 +1,4 @@
+import { updateAttitudes, politicalAttitude } from './politics.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
 // Political state belongs to the simulation. Model output is never an action.
 import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES } from './data.mjs';
@@ -219,10 +220,12 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
       k.memorySummary = `${k.name} views Ashen with ${r.trust < 0 ? 'distrust' : r.trust > 40 ? 'confidence' : 'caution'}. ${r.wariness >= 20 ? 'Ashen forces threaten our frontier.' : 'No immediate Ashen border concentration.'} ${economic.majorPartner ? 'Ashen is an important supplier.' : 'Trade dependence is limited.'} Ashen has kept ${kingdom(s, PLAYER).reputation.kept} oaths and broken ${kingdom(s, PLAYER).reputation.broken}. ${k.memories.filter(m => m.importance >= 8 && m.verified !== false).slice(-3).map(m => m.text).join(' ')}`.slice(0, 900);
     }
   }
+  updateAttitudes(s);
 }
 export function relationDescriptions(s, rulerId) {
   const r = relation(s, rulerId, PLAYER), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === PLAYER && p.creditor === rulerId && p.status === 'pending');
-  return [ ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, PLAYER, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, PLAYER, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
+  const posture=politicalAttitude(s,rulerId,PLAYER);
+  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, PLAYER, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, PLAYER, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
 export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }

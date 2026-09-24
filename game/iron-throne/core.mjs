@@ -1,3 +1,7 @@
+import { initializePlans, validatePlans } from './plans.mjs';
+import { initializeEspionage, spyUpkeep, validateEspionage } from './espionage.mjs';
+import { updateAttitudes, validatePolitics } from './politics.mjs';
+import { damageStructure, structureAttackCheck, structuresAt, validateStructures } from './structures.mjs';
 import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
@@ -96,7 +100,8 @@ export function createGame(seed = 8147, preset = 'crossroads') {
   rebuildTerritory(s);
   log(s, 'Six houses contest the crown. Unite three rival houses for three turns, or control 60% of settlements.', 'council');
   initializeStrategy(s);
-  return initializeLiving(s);
+  initializeLiving(s); initializePlans(s); initializeEspionage(s); updateAttitudes(s);
+  return s;
 }
 
 export function rebuildTerritory(s) {
@@ -122,7 +127,7 @@ export function buildCheck(s, owner, id, type) {
   if(k.commands<1)return 'No construction orders left this turn.';
   const spec=constructionSpec(t,type);
   if(!spec)return 'Maximum level reached.';
-  if(['harbor','envoyOffice','chancery'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
+  if(['harbor','envoyOffice','chancery','intelligenceOffice'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
   if(b.settlement&&!['city','town','fort'].includes(t.building))return 'Requires a town, city or fort.';
   if(type==='city'&&t.building!=='town')return 'Select a town to upgrade.';
   if(!b.settlement&&!['road','city'].includes(type)&&t.building&&t.building!==type)return 'This tile already has a different building.';
@@ -210,13 +215,25 @@ export function findPath(s, startId, endId, owner, roadsOnly = false, avoid = nu
   }
   return [];
 }
+export function orderStructureAttack(s, owner, armyId, targetId, type, mode = 'attack', avoid = null) {
+  const a = s.armies.find(a => a.id === armyId && a.owner === owner), t = s.tiles[targetId];
+  const error = structureAttackCheck(s, a, t, type, mode);
+  if (error) return {ok:false,error};
+  const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(s,a.tile,targetId,owner,false,avoid);
+  if (mode === 'attack' && a.tile !== targetId && !path.length) return {ok:false,error:'No legal route to this structure.'};
+  a.path = path; a.target = targetId; a.order = mode; a.structureTarget = type;
+  return {ok:true,path};
+}
 export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = null) {
   const a = s.armies.find(a => a.id === armyId && a.owner === owner);
   if (s.outcome || !a || !['move', 'attack', 'retreat', 'hold'].includes(order)) return { ok: false, error: 'Select one of your armies.' };
-  if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.order = 'hold'; return { ok: true }; }
+  const t = s.tiles[targetId];
+  if (order === 'attack' && targetId === a.tile && t?.owner && atWar(s, owner, t.owner) && structuresAt(t).length)
+    return orderStructureAttack(s,owner,armyId,targetId,structuresAt(t).find(type => type !== 'road') || 'road');
+  if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; return { ok: true }; }
   const path = findPath(s, a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
-  a.path = path; a.target = targetId; a.order = order;
+  a.path = path; a.target = targetId; a.structureTarget = null; a.order = order;
   return { ok: true, path };
 }
 export function mergeArmies(s, owner, id) {
@@ -224,8 +241,8 @@ export function mergeArmies(s, owner, id) {
   const group = armiesOf(s, owner).filter(a => a.tile === id);
   if (group.length < 2) return { ok: false, error: 'Bring two armies to the same tile first.' };
   const base = group[0];
-  for (const a of group.slice(1)) { for (const u of Object.keys(UNITS)) base.units[u] = (base.units[u]||0) + (a.units[u]||0); s.armies = s.armies.filter(x => x !== a); }
-  base.path = []; base.order = 'hold'; return { ok: true };
+  for (const a of group.slice(1)) { for (const u of Object.keys(UNITS)) base.units[u] = (base.units[u]||0) + (a.units[u]||0); s.armies = s.armies.filter(x => x !== a); for (const p of s.intrigue?.plans || []) if (p.assignedArmies.includes(a.id)) p.assignedArmies = [...new Set(p.assignedArmies.map(id => id === a.id ? base.id : id))]; }
+  base.path = []; base.order = 'hold'; base.target = null; base.structureTarget = null; return { ok: true };
 }
 export function splitArmy(s, owner, armyId) {
   if (s.outcome) return { ok: false, error: 'This campaign has ended.' };
@@ -233,7 +250,7 @@ export function splitArmy(s, owner, armyId) {
   if (!a || sizeOf(a) < 12) return { ok: false, error: 'At least 12 soldiers are needed to split an army.' };
   const b = { ...a, id: `army-${s.nextId++}`, units: {}, path: [], target: null, order: 'hold' };
   for (const u of Object.keys(UNITS)) { b.units[u] = Math.floor((a.units[u]||0) / 2); a.units[u] = (a.units[u]||0) - b.units[u]; }
-  a.path = []; a.order = 'hold'; s.armies.push(b); return { ok: true, armyId: b.id };
+  a.path = []; a.order = 'hold'; a.target = null; a.structureTarget = null; b.structureTarget = null; s.armies.push(b); return { ok: true, armyId: b.id };
 }
 export function strength(a, defending = false, t = null) {
   let total = Object.entries(a.units).reduce((n, [type, count]) => n + count * (UNITS[type]?.[defending ? 'defense' : 'attack']||0), 0) * a.morale;
@@ -245,7 +262,7 @@ function casualties(a, ratio) { inflict(a, Math.ceil(sizeOf(a)*ratio)); }
 function retreat(s, a, from) {
   const tiles = neighbors(s, from).filter(t => canEnter(s, a.owner, t) && t.id !== a.tile && !s.armies.some(e => e.tile === t.id && atWar(s, e.owner, a.owner)));
   tiles.sort((x, y) => Number(y.owner === a.owner) - Number(x.owner === a.owner));
-  if (tiles[0]) { a.tile = tiles[0].id; a.path = []; a.order = 'hold'; a.morale = Math.max(.1,a.morale-.04); }
+  if (tiles[0]) { a.tile = tiles[0].id; a.path = []; a.order = 'hold'; a.structureTarget = null; a.target = null; a.morale = Math.max(.1,a.morale-.04); }
   else casualties(a, .6);
 }
 function battle(s,attacker,defender,t) {
@@ -254,7 +271,7 @@ function battle(s,attacker,defender,t) {
   const result=resolveFieldBattle(attacker,defender,t,{roll:()=>random(s),riverCrossing:from.river!==t.river&&(from.river||t.river)&&!(buildingLevel(from,'road')>=2&&buildingLevel(t,'road')>=2),surrounded:[attacker,defender].map(a=>neighbors(s,s.tiles[a.tile]).filter(n=>canEnter(s,a.owner,n)&&!s.armies.some(e=>e.tile===n.id&&atWar(s,e.owner,a.owner))).length===0)});
   const loser=result.loser===0?attacker:defender;
   retreat(s,loser,s.tiles[loser.tile]);
-  if(loser===attacker){attacker.path=[];attacker.order='hold';}
+  if(loser===attacker){attacker.path=[];attacker.order='hold';attacker.structureTarget=null;attacker.target=null;}
   Object.assign(event,result,{winner:result.winner===0?attacker.owner:defender.owner,after:[sizeOf(attacker),sizeOf(defender)],retreat:loser.tile,retreatOwner:loser.owner});
   event.casualties=[attacker,defender].map((a,i)=>Object.fromEntries(Object.entries(event.composition[i]).map(([id,n])=>[id,n-(a.units[id]||0)])));
   s.militaryEvents.push(event);
@@ -293,6 +310,16 @@ export function resolveMovement(s) {
   if (s.turn % 2 === 0) armies.reverse();
   for (const a of armies) {
     if (!s.armies.includes(a) || sizeOf(a) === 0) continue;
+    if (a.structureTarget) {
+      const t = s.tiles[a.target];
+      if (structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
+      else if (a.order === 'bombard' || a.tile === a.target) {
+        const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s,a.owner,e.owner));
+        if (enemy && a.order === 'attack') battle(s,a,enemy,t);
+        else damageStructure(s,a,t,a.structureTarget,a.order);
+        continue;
+      }
+    }
     const startingBudget = armySpeed(a);
     let budget = startingBudget;
     while (a.path.length && budget > 0) {
@@ -303,11 +330,12 @@ export function resolveMovement(s) {
       const cost = moveCost(from, t); if (cost > budget && budget !== startingBudget) break;
       const enemy = s.armies.find(e => e.tile === t.id && atWar(s, a.owner, e.owner));
       if (enemy) { if(t.owner===enemy.owner&&(t.walls>0||(t.fortIntegrity??fortMaximum(t))>0))besiege(s,a,t,enemy);else battle(s,a,enemy,t); break; }
-      if (!capture(s, a, t)) break;
+      if (!(a.structureTarget && a.target === t.id) && !capture(s, a, t)) break;
       a.tile = t.id; a.path.shift(); budget -= cost;
       if (zoneOfControl(s, a, t)) break;
     }
-    if (!a.path.length) a.order = 'hold';
+    if (a.structureTarget && a.tile === a.target) damageStructure(s,a,s.tiles[a.target],a.structureTarget,a.order);
+    if (!a.path.length && !a.structureTarget) a.order = 'hold';
     a.morale = Math.min(1, a.morale + .04);
   }
   s.armies = s.armies.filter(a => sizeOf(a) > 0);
@@ -317,6 +345,7 @@ export function resolveMovement(s) {
 export function economyProjection(s, owner) {
   const k = kingdom(s, owner), {income,gross,stalls}=productionPlan(s,owner), towns=settlements(s,owner);
   for(const t of Object.values(s.tiles).filter(t=>t.owner===owner)) if(t.building)income.gold--;
+  income.gold -= spyUpkeep(s, owner);
   income.gold += Math.floor(k.population * ({ low: .08, medium: .17, high: .28 }[k.tax]));
   income.food -= Math.ceil(k.population / 12);
   for (const a of armiesOf(s, owner)) { income.food -= Math.ceil(sizeOf(a) / 6); income.gold -= Math.ceil((sizeOf(a)+familyCount(a,'mounted')+familyCount(a,'siege')*2) / 9); }
@@ -411,5 +440,7 @@ export function parseSave(raw) {
   validateLivingSave(s);
   validateExpansion(s);
   validateStrategySave(s);
+  validateStructures(s);
+  validatePlans(s); validateEspionage(s); validatePolitics(s);
   return s;
 }

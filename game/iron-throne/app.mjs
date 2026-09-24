@@ -1,9 +1,11 @@
+import { intelligencePanel, politicalCard, structureActions } from './intelligence-ui.mjs';
+import { assignSpy, paySpyRansom, recruitSpy, resolveCaptive } from './espionage.mjs';
 import { ART, preloadAllArt, installArtFallbacks } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { setFormation } from './warfare.mjs';
 import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, rivalTurnReports, systemTitle, tradePanel } from './expansion-ui.mjs';
 import { BUILDINGS, HOUSES, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
-import { PLAYER, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
+import { PLAYER, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, orderStructureAttack, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
 import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
 import { isPlayerPromise } from './promises.mjs';
 import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
@@ -46,7 +48,7 @@ function result(action) { if (!action.ok) toast(action.error); else changed(); r
 function selectTile(id) {
   if (orderMode && selectedArmy) {
     const ok = result(orderArmy(state, PLAYER, selectedArmy, id, orderMode));
-    if (ok) { toast('Marching orders issued. Armies move when you end the turn.'); orderMode = null; }
+    if (ok) { toast('Army orders issued. They resolve when you end the turn.'); orderMode = null; }
   }
   selected = id; map.selected = id;
   const army = state.armies.find(a => a.tile === id && a.owner === PLAYER);
@@ -64,7 +66,7 @@ function render() {
   $('end-turn').disabled = !!state.outcome;
   document.querySelectorAll('[data-tab]').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
-  $('panel').innerHTML = tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : ledgerPanel();
+  $('panel').innerHTML = tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : ledgerPanel();
   $('panel').scrollTop = scroll;
   $('latest-events').innerHTML = state.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = state.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
@@ -82,7 +84,8 @@ function landPanel() {
   const t = state.tiles[selected], k = kingdom(state, PLAYER), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected);
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
   html += buildingInspection(state,t);
-  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
+  html += structureActions(state,t,selectedArmy);
+  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === PLAYER ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === PLAYER).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   if (t.owner === PLAYER && ['city', 'town', 'fort'].includes(t.building)) {
     html += musterBrowser(state,t);
   }
@@ -98,7 +101,7 @@ function realmPanel() {
   return `${systemTitle('kingdom')}<span class="eyebrow">HOUSE ASHEN</span><h2>Your realm</h2><div class="stat-grid"><span>Construction orders</span><b>${k.commands}/${commandLimit(state, PLAYER)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, PLAYER).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, PLAYER).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, PLAYER).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
-  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== PLAYER).map(k => { const r = k.relations[PLAYER], status = !alive(state, k.id) ? 'Fallen' : atWar(state, PLAYER, k.id) ? 'At war' : treaty(state, PLAYER, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
+  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== PLAYER).map(k => { const r = k.relations[PLAYER], status = !alive(state, k.id) ? 'Fallen' : atWar(state, PLAYER, k.id) ? 'At war' : treaty(state, PLAYER, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
 function ledgerPanel(rulerId = null) {
   const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(PLAYER) && (!rulerId || [p.debtor, p.creditor].includes(rulerId)));
@@ -109,6 +112,14 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
+  if(d.openIntelligence){tab='intelligence';render();}
+  if('recruitSpy' in d)result(recruitSpy(state,PLAYER));
+  if(d.assignSpy)result(assignSpy(state,PLAYER,d.assignSpy,document.querySelector(`[data-spy-host="${d.assignSpy}"]`).value,document.querySelector(`[data-spy-mission="${d.assignSpy}"]`).value));
+  if(d.recallSpy)result(assignSpy(state,PLAYER,d.recallSpy,null));
+  if(d.payRansom)result(paySpyRansom(state,PLAYER,d.payRansom));
+  if(d.captiveSpy && (d.captiveAction!=='execute'||confirm('Execute this captive spy? Their House will remember this; executing an allied spy in peacetime causes a major diplomatic incident.')))result(resolveCaptive(state,PLAYER,d.captiveSpy,d.captiveAction));
+  if(d.structureArmy)result(orderStructureAttack(state,PLAYER,d.structureArmy,d.structureTile,d.structureType,d.structureMode));
+  if(d.attackOrder){selectedArmy=d.attackOrder;orderMode='attack';map.armyId=selectedArmy;render();toast('Select an enemy tile to attack. For a specific building, select it and use Structure Targets.');}
   if(d.tradeDecline){const offer=state.commerce.offers.find(o=>o.id===Number(d.tradeDecline));if(offer)offer.status='declined';changed();}
   if(d.tradeReview||d.tradeCounter){const offer=state.commerce.offers.find(o=>o.id===Number(d.tradeReview||d.tradeCounter)&&o.expires>=state.turn&&o.status==='pending');if(offer){openDiplomacy(offer.from,false);reviewedTrade=offer.id;proposals=[offer.intent];storeOffers();save();renderProposals();if(d.tradeCounter)loadOffer(offer.intent);}}
 
