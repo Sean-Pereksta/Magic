@@ -161,8 +161,8 @@ function orderBombardment(s,k,a,t,avoid) {
 }
 export function proposeInvasion(s,k,target,tile) {
   const allies=s.kingdoms.filter(o=>o.id!==k.id&&treaty(s,k.id,o.id,'alliance')&&atWar(s,o.id,target)).map(o=>o.id);
-  return createPlan(s,k.id,allies.length?'jointWar':'invasion',{target,targetTile:tile.id,allies,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,
-    delay:3});
+  if(allies.length){const op=createJointOperation(s,k.id,allies[0],target,{targetTile:tile.id});return op&&s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor===k.id)||null;}
+  return createPlan(s,k.id,'invasion',{target,targetTile:tile.id,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,delay:3});
 }
 export function infrastructureTarget(s,actor,target,origin) {
   const mounted=armiesOf(s,target).some(a=>familyCount(a,'mounted')>sizeOf(a)*.3);
@@ -219,7 +219,7 @@ export function preparePlans(s,k,c) {
       }
     } else {
       if(p.status==='Considering')transitionPlan(s,p,'Preparing','Council preparing this objective.');
-      if(['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)executePoliticalPlan(s,p);
+      // Political plans are intentions only. diplomacy.mjs negotiates them through the same acceptance/counteroffer rules used by players.
       if(p.type==='acquireResource'&&canAfford(k,p.requiredResources))transitionPlan(s,p,'Completed','Required reserves secured.');
       if(p.type==='defendFrontier'&&!c.threats.length)transitionPlan(s,p,'Completed','No enemy force threatens the frontier.');
       if(p.type==='recruitMilitary'&&c.forces.reduce((n,a)=>n+sizeOf(a),0)>=p.requiredForces)transitionPlan(s,p,'Completed','Required military strength mustered.');
