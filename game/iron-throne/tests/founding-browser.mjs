@@ -20,7 +20,7 @@ async function select(page,id){
 try{
  for(const viewport of [{width:1280,height:850},{width:390,height:844},{width:844,height:390}]){
   const context=await browser.newContext({viewport,hasTouch:viewport.width<900}),page=await context.newPage(),errors=[];
-  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>{assert.match(dialog.message(),/^Found Emberkeep here/);void dialog.accept();});
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>{errors.push(`Unexpected prompt: ${dialog.message()}`);void dialog.dismiss();});
   await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{}}));
   await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#preset').selectOption('great-basin');await page.locator('#start-game').click();
   assert.equal(await page.locator('#turn').textContent(),'Founding');assert.equal(await page.locator('#end-turn').isDisabled(),true);assert.equal(await page.locator('#preset option').count(),7);
@@ -36,6 +36,6 @@ try{
   await page.locator('[data-recruit="levy"]').click();assert.match(await page.locator('#panel').textContent(),/36 troops/);
   await page.locator('#end-turn').click();assert.equal(await page.locator('#turn').textContent(),'Turn 2');
   await page.reload();await page.locator('#resume').click();assert.equal(await page.locator('#turn').textContent(),'Turn 2');
-  assert.deepEqual(errors,[]);console.log(`PASS ${viewport.width}×${viewport.height}: map selection, founding preview, invalid land, confirmation, six capitals, untouched terrain, recruit, turn and resume`);await context.close();
+  assert.deepEqual(errors,[]);console.log(`PASS ${viewport.width}×${viewport.height}: map selection, founding preview, invalid land, one-click founding without prompts, six capitals, untouched terrain, recruit, turn and resume`);await context.close();
  }
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

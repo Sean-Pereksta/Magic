@@ -22,8 +22,9 @@ apart. Failed worlds retry deterministically without carving corrective corridor
 
 A new campaign starts at turn zero in `phase: 'founding'`. Click or keyboard-select
 a tile to see Food, Wood, Stone and Iron outlooks for the surrounding four hexes,
-terrain prevalence, and the planned starter structure locations. Confirming
-**FOUND CITY** establishes the permanent starting capital. Gameplay orders,
+terrain prevalence, and the planned starter structure locations. Clicking
+**FOUND CITY** near the top of the panel immediately establishes the permanent
+starting capital without a confirmation prompt. Gameplay orders,
 round timers, economy and victory do not run during founding.
 
 The shared legality check rejects water, mountains, occupied sites, foreign
@@ -46,7 +47,7 @@ farm/lumber/quarry/mine production. Existing extra starting structures are retai
 Vesper's workshop). These extras preserve the old starting inventory; no new
 House-specific stockpile or deposit bonuses are introduced.
 
-Humans confirm first. AI chooses from the remaining legal land using local food,
+Humans found first. AI chooses from the remaining legal land using local food,
 wood, minerals, expansion space, defense and diversity, with deterministic ties.
 All six capitals must exist before **THE REALM IS FOUNDED** begins Turn 1.
 

@@ -83,7 +83,7 @@ test('a healthy AI can plan and buy another city tier through the normal constru
 test('city cards describe tiers and muster orders using the existing city artwork',()=>{
  const s=createGame();stock(s);const t=s.tiles['5,6'];t.levels.city=4;
  assert.match(buildingInspection(s,t),/Royal City.*Level 4/);assert.match(buildingInspection(s,t),/3 \/ 3 city upgrades/);assert.match(musterBrowser(s,t),/\+3 kingdom build\/recruit orders/);
- assert.match(constructionBrowser(s,t),/Maximum level reached/);
+ assert.doesNotMatch(constructionBrowser(s,t),/data-build="city"/);
  for(let level=1;level<=4;level++){assert.equal(ART.structures.city[level],ART.structures.city[1]);assert.match(fallbackArtURL(ART.structures.city[level]),/city_1.svg$/);}
  assert.equal(ALL_ART_PATHS.filter(p=>/^buildings\/city_/.test(p)).length,1);
 });
