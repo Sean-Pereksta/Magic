@@ -109,9 +109,9 @@ test('cavalry flanks and pursues routed armies; army losses and morale are recor
  const a=army({knight:10,lightCavalry:10},'flanking'),d=army({levy:60},'balanced','wintermere');d.morale=.4;
  const report=resolveFieldBattle(a,d,terrain());assert.ok(report.phases[4].loss[1]>0);assert.equal(report.routed,true);assert.ok(report.phases[6].loss[1]>0);assert.equal(report.casualties[1].levy,60-d.units.levy);assert.ok(d.morale<.4);assert.equal(d.retreats,1);
 });
-test('siege equipment differs against high walls and a fort cannot be walked into',()=>{
+test('siege equipment differs against high walls and an empty fort can be occupied',()=>{
  const t=terrain('plains',{building:'fort',levels:{fort:3,wall:3},walls:180});assert.ok(siegePower(army({trebuchet:2}),t)>siegePower(army({catapult:2}),t));assert.ok(siegePower(army({catapult:2}),t)>siegePower(army({ram:2}),t));
- const s=createGame(),a=s.armies[0],target=s.tiles['6,6'];Object.assign(target,{owner:'wintermere',building:'fort',levels:{fort:3},walls:0,fortIntegrity:180});declareWar(s,PLAYER,'wintermere');a.path=[target.id];a.units.siege=0;resolveMovement(s);assert.equal(a.tile,'5,6');assert.equal(target.owner,'wintermere');assert.equal(target.fortIntegrity,179);
+ const s=createGame(),a=s.armies[0],target=s.tiles['6,6'];Object.assign(target,{owner:'wintermere',building:'fort',levels:{fort:3},walls:0,fortIntegrity:180});declareWar(s,PLAYER,'wintermere');a.path=[target.id];a.units.siege=0;resolveMovement(s);assert.equal(a.tile,'6,6');assert.equal(target.owner,PLAYER);assert.equal(target.fortIntegrity,180);
 });
 test('wall upgrades add persistent strength and can be repaired through construction',()=>{
  const s=createGame();stocked(s);const t=s.tiles['5,6'];t.walls=30;t.levels.wall=3;assert.equal(build(s,PLAYER,t.id,'wall').ok,true);assert.equal(t.project.repair,true);resolveEconomy(s);assert.equal(t.walls,30);resolveEconomy(s);assert.equal(t.walls,180);

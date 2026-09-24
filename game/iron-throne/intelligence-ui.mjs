@@ -1,7 +1,7 @@
 import { localHouseId } from './house-control.mjs';
 import { BUILDINGS } from './data.mjs';
 import { alive, atWar, kingdom, sizeOf } from './core.mjs';
-import { buildingLevel, buildingSpec } from './economy.mjs';
+import { buildingLevel, buildingSpec, fortMaximum } from './economy.mjs';
 import { MISSIONS, detectionRisk, knownRelationships, officeLevel, spyCapacity, spyUpkeep, visiblePlans } from './espionage.mjs';
 import { stationedAmbassador } from './living.mjs';
 import { politicalAttitude } from './politics.mjs';
@@ -17,9 +17,9 @@ export function structureActions(s,t,armyId) {
   const a=s.armies.find(a=>a.id===armyId&&a.owner===localHouseId(s));
   if(!a||!t.owner||!atWar(s,localHouseId(s),t.owner)||!structuresAt(t).length)return '';
   const guarded=s.armies.some(e=>e.tile===t.id&&atWar(s,localHouseId(s),e.owner)&&sizeOf(e)>0);
-  return `<section aria-label="Structure attacks"><div class="section-label">STRUCTURE TARGETS</div><p class="fine">${esc(a.id)} selected.${guarded?' Defenders protect these structures. Defeat them before damaging infrastructure.':''}</p>${structuresAt(t).map(type=>{
+  return `<section aria-label="Structure attacks"><div class="section-label">STRUCTURE TARGETS</div><p class="fine">${esc(a.id)} selected.${guarded?' Assault the defenders now, or bombard walls and forts to reduce their protection. Defeat the garrison before damaging other infrastructure.':''}</p>${structuresAt(t).map(type=>{
     const name=buildingSpec(type,buildingLevel(t,type)).name,why=structureAttackCheck(s,a,t,type,'bombard');
-    return `<article class="realm-card"><strong>${esc(name)}</strong><p class="fine">Durability ${structureHealth(t,type)} / ${structureMaximum(t,type)}</p><div class="button-row"><button data-structure-army="${a.id}" data-structure-tile="${t.id}" data-structure-type="${type}" data-structure-mode="attack">Attack ${esc(name)}</button>${bombardRange(a)?`<button data-structure-army="${a.id}" data-structure-tile="${t.id}" data-structure-type="${type}" data-structure-mode="bombard" ${why?'disabled':''} title="${esc(why||'Bombard without moving')}">Bombard ${esc(name)}</button>`:''}</div>${why&&bombardRange(a)?`<p class="fine">${esc(why)}</p>`:''}</article>`;
+    return `<article class="realm-card"><strong>${esc(name)}</strong><p class="fine">Durability ${structureHealth(t,type)} / ${structureMaximum(t,type)}${type==='fort'?` · Defensive integrity ${t.fortIntegrity??fortMaximum(t)} / ${fortMaximum(t)}`:''}</p><div class="button-row"><button data-structure-army="${a.id}" data-structure-tile="${t.id}" data-structure-type="${type}" data-structure-mode="attack">${guarded&&['city','town','fort','wall'].includes(type)?'Assault defenders':`Attack ${esc(name)}`}</button>${bombardRange(a)?`<button data-structure-army="${a.id}" data-structure-tile="${t.id}" data-structure-type="${type}" data-structure-mode="bombard" ${why?'disabled':''} title="${esc(why||'Bombard without moving')}">Bombard ${esc(name)}</button>`:''}</div>${why&&bombardRange(a)?`<p class="fine">${esc(why)}</p>`:''}</article>`;
   }).join('')}</section>`;
 }
 function reportCard(r,s) {

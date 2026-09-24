@@ -82,10 +82,11 @@ usual development plan.
   morale, and favor targets they can plausibly defeat. Reinforcements gather at
   safe forward settlements. Co-located armies combine through the ordinary merge
   action.
-- Offensive routing can avoid overwhelming enemy stacks and fortifications that
-  require siege support. These are ordinary legal paths, resolved by the same
+- Offensive routing avoids defending forces whose strength and projected losses
+  make an assault unsafe; empty fortifications never block a route. These are ordinary legal paths, resolved by the same
   movement rules the player uses. The planner cannot pass through closed neutral
-  borders or teleport to a target.
+  borders or teleport to a target. Fortified campaigns compare immediate assaults
+  with bombardment and reinforcement, reassessing after integrity or troop changes.
 - A prolonged exhausted or inactive rival-versus-rival war can end in an
   eight-turn truce. Peace involving the player continues to require ratification.
 - Safe holding and saving are valid choices. A House does not need to spend every

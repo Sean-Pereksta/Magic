@@ -56,7 +56,7 @@ test('structure combat covers every catalog entry, preserves unrelated add-ons a
 test('siege uses per-unit range, blocks mountains and cannot attack friendly or peaceful structures',()=>{
   const {s,a,t}=hostileStructure();a.tile='16,3';
   assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,false);
-  a.units={...emptyUnits(),ram:8};assert.equal(bombardRange(a),0);assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,false);
+  a.units={...emptyUnits(),ram:8};assert.equal(bombardRange(a),1);assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,false);
   a.units.catapult=2;s.tiles['17,3'].terrain='plains';assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,true);
   const pos=a.tile;resolveMovement(s);assert.equal(a.tile,pos);assert.ok(structureHealth(t,'lumber')<60);
   s.turn++;s.tiles['17,3'].terrain='mountain';assert.match(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').error,/Mountains/);
@@ -66,9 +66,9 @@ test('siege uses per-unit range, blocks mountains and cannot attack friendly or 
   t.owner=PLAYER;assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber').ok,false);
 });
 test('ranged engines do not gain distant damage from rams or shorter-range siege',()=>{
-  const {s,a,t}=hostileStructure('fort');a.tile='15,3';s.tiles['16,3'].terrain=s.tiles['17,3'].terrain='plains';
+  const {s,a,t}=hostileStructure('fort');t.fortIntegrity=45;a.tile='15,3';s.tiles['16,3'].terrain=s.tiles['17,3'].terrain='plains';
   a.units={...emptyUnits(),trebuchet:1,catapult:50,ram:50};orderStructureAttack(s,PLAYER,a.id,t.id,'fort','bombard');resolveMovement(s);
-  assert.equal(structureHealth(t,'fort'),102,'only the trebuchet reaches three hexes');
+  assert.equal(t.fortIntegrity,21,'only the trebuchet reaches three hexes');assert.equal(structureHealth(t,'fort'),150,'bombardment weakens the fort without demolishing it');
 });
 test('surviving defenders protect structure durability from occupying and ranged attackers',()=>{
   for(const ranged of [false,true]) {
@@ -112,9 +112,11 @@ test('committed invasion plans declare real wars and issue real marching orders'
   strategyTurn(s);assert.equal(p.status,'Preparing');assert.equal(atWar(s,k.id,'thornwall'),false);
   s.turn+=2;strategyTurn(s);assert.equal(atWar(s,k.id,'thornwall'),true);assert.equal(p.status,'Executing');assert.equal(a.target,'31,5');assert.ok(a.path.length);assert.ok(p.assignedArmies.includes(a.id));
 });
-test('siege requirements make plans build and recruit their actual equipment',()=>{
+test('a difficult defended fortress makes plans build actual siege equipment',()=>{
   const s=createGame();stock(s);s.turn=12;const k=kingdom(s,'wintermere'),home=s.tiles['17,4'];
   home.workshop=true;home.levels.workshop=1;
+  Object.assign(s.tiles['31,5'],{walls:180,levels:{...s.tiles['31,5'].levels,wall:3}});
+  armiesOf(s,'thornwall')[0].units={...emptyUnits(),levy:100};
   const p=createPlan(s,k.id,'invasion',{target:'thornwall',targetTile:'31,5',requiredForces:20,requiredSiege:2,delay:1});
   strategyTurn(s);assert.equal(p.status,'Preparing');assert.equal(home.project?.type,'siegeWorks');
   assert.ok(s.intrigue.audit.some(e=>e.planId===p.id&&/build: siegeWorks/.test(e.message)));

@@ -93,7 +93,7 @@ test('an army attacks and captures another bot’s vulnerable settlement through
   const {s,k,a,tile} = frontier();
   strategyTurn(s); assert.equal(a.target, tile.id); assert.equal(a.order, 'attack');
   const troops = sizeOf(a); resolveMovement(s);
-  assert.equal(tile.owner, k.id); assert.ok(sizeOf(a) < troops, 'capture uses ordinary combat losses');
+  assert.equal(tile.owner, k.id); assert.equal(sizeOf(a),troops,'empty settlements inflict no automatic casualties');
   assert.ok(s.militaryEvents.some(e => e.action === 'capture' && e.attacker === k.id && e.defender === 'thornwall'));
 });
 
@@ -106,24 +106,19 @@ test('a threatened defender holds a fortified settlement instead of charging an 
   assert.equal(a.tile,'17,4'); assert.equal(a.order,'hold'); assert.equal(a.formation,'defensive');
 });
 
-test('an offensive route goes around fortifications the army cannot yet besiege', () => {
+test('an offensive route takes an empty fortified town without waiting for engines', () => {
   const {s,a,tile}=frontier({walls:60});
   strategyTurn(s);
-  assert.equal(a.target,'31,5','the reachable unwalled enemy capital remains a viable target');
-  assert.ok(a.path.length>0);assert.ok(!a.path.includes(tile.id),'infantry avoids the intervening walled town');
+  assert.equal(a.target,tile.id);assert.ok(a.path.includes(tile.id));
+  resolveMovement(s);assert.equal(tile.owner,a.owner);assert.equal(tile.walls,60);
 });
 
-test('wall campaigns build and recruit siege support before attacking fortifications', () => {
-  const {s,k,a,tile} = frontier({walls:60}); stock(k); s.turn = 12;
+test('an empty walled target does not force an infantry army to wait for siege recruitment', () => {
+  const {s,k,a,tile}=frontier({walls:60});stock(k);s.turn=12;
   for(const t of settlements(s,'thornwall')){t.walls=60;t.levels.wall=1;}
-  const home = s.tiles['17,4']; home.workshop = true; home.levels.workshop = 1;
-  strategyTurn(s);
-  assert.equal(home.project?.type,'siegeWorks');
-  assert.equal(a.path.length,0,'infantry waits for siege support');
-  for(let i=0;i<6;i++){for(const other of s.kingdoms)if(other.id!==k.id)other.commands=0;endTurn(s);}
-  assert.ok(s.strategy.history.some(r=>r.houses.some(h=>h.owner===k.id&&h.actions.some(a=>a.kind==='recruit'&&['ram','catapult','trebuchet'].includes(a.unit)))));
-  assert.ok(s.militaryEvents.some(e=>e.action==='siege'&&e.attacker===k.id&&e.tile===tile.id));
-  assert.ok(tile.walls < 60);
+  const home=s.tiles['17,4'];home.workshop=true;home.levels.workshop=1;
+  strategyTurn(s);assert.equal(a.target,tile.id);assert.ok(a.path.length);
+  resolveMovement(s);assert.equal(tile.owner,k.id);assert.equal(tile.walls,60);
 });
 
 test('peace and non-aggression treaties constrain even a strong hostile bot', () => {

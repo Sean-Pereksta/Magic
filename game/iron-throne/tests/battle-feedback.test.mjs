@@ -32,12 +32,12 @@ test('forecasts include the real trapped-retreat penalty and match a sampled act
   const e=copy.militaryEvents.find(e=>e.action==='battle'),losses=eventTroopLosses(e);
   for(const [i,r] of [forecast.yours,forecast.theirs].entries())assert.ok(losses[i]>=r.low&&losses[i]<=r.high);
 });
-test('siege projections and floating losses never count walls as troops',()=>{
+test('fortified assault projections and floating losses never count walls as troops',()=>{
   const {s,a,d}=encounter();Object.assign(s.tiles[d.tile],{building:'city',walls:100,levels:{city:1,wall:2}});
   const before=structuredClone(s),forecast=projectedBattleLosses(s,a.id,d.tile);
-  assert.equal(forecast.kind,'siege');assert.deepEqual(forecast.theirs,{low:0,high:0});assert.deepEqual(s,before);
-  resolveMovement(s);const e=s.militaryEvents.find(e=>e.action==='siege');
-  assert.deepEqual(eventTroopLosses(e),e.troopLosses);
+  assert.equal(forecast.kind,'battle');assert.ok(forecast.theirs.high>0);assert.deepEqual(s,before);
+  resolveMovement(s);const e=s.militaryEvents.find(e=>e.action==='battle');
+  assert.deepEqual(eventTroopLosses(e),e.before.map((n,i)=>n-e.after[i]));
   assert.equal(eventTroopLosses({action:'siege',before:[100,100],after:[97,50]}),null);
   assert.equal(eventTroopLosses({action:'structure',damage:40}),null);
 });

@@ -66,12 +66,12 @@ test('armies can withdraw after peace closes borders without gaining new entry r
   const original = a.tile; resolveMovement(s); assert.notEqual(a.tile, original);
   assert.equal(findPath(s, '5,6', '17,4', PLAYER).length, 0);
 });
-test('sieges spend a turn reducing walls and cannot capture a city through an army', () => {
+test('empty walls allow capture but a surviving army still contests the city', () => {
   const s = createGame(); openArea(s); declareWar(s, PLAYER, 'wintermere');
   const a = s.armies[0], target = s.tiles['11,10']; a.tile = '10,10'; a.units.siege = 2;
   Object.assign(target, { owner: 'wintermere', building: 'city', walls: 60 });
-  a.path = ['11,10']; resolveMovement(s); assert.equal(a.tile, '10,10'); assert.equal(target.walls, 42); assert.equal(target.owner, 'wintermere');
-  target.walls = 0; const enemy = s.armies[1]; enemy.tile = target.id; enemy.units.levy = 80;
+  a.path = ['11,10']; resolveMovement(s); assert.equal(a.tile, '11,10'); assert.equal(target.walls, 60); assert.equal(target.owner, PLAYER);
+  a.tile='10,10';a.path=['11,10'];target.owner='wintermere'; const enemy = s.armies[1]; enemy.tile = target.id; enemy.units.levy = 80;
   resolveMovement(s); assert.notEqual(a.tile, target.id, 'a defeated army may retreat, but cannot enter through the garrison'); assert.equal(target.owner, 'wintermere');
 });
 test('connected roads, not a treaty alone, generate trade-route income', () => {

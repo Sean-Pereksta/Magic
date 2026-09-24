@@ -1,7 +1,8 @@
 import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, RESOURCES } from './data.mjs';
 import { buildingLevel, fortMaximum, tileProduction } from './economy.mjs';
-import { familyCount } from './warfare.mjs';
+import { familyCount, fortificationDefense, resolveFieldBattle, troopTotal } from './warfare.mjs';
+import { bombardRange, structureAttackCheck } from './structures.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, findPath, kingdom, log, orderArmy, orderStructureAttack, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
 import { changeRelation, tradeBlocked } from './living.mjs';
 
@@ -42,10 +43,50 @@ export function prunePlans(s) {
 }
 const protectedPeace=(s,a,b)=>['peace','non-aggression','alliance','vassalage'].some(type=>treaty(s,a,b,type));
 const totalPower=(s,id)=>armiesOf(s,id).reduce((n,a)=>n+strength(a),0);
+export function assaultAssessment(s,k,a,t) {
+  const defenders=s.armies.filter(e=>e.tile===t.id&&e.owner!==a.owner&&sizeOf(e)>0&&(e.owner===t.owner||atWar(s,a.owner,e.owner)));
+  if(!defenders.length)return {assault:true,bombard:false,defense:0,lossFraction:0,empty:true};
+  const defense=defenders.reduce((n,e)=>n+strength(e,true,t),0),attack=strength(a,false,t);
+  // Aggregate stacked garrisons conservatively and sample the actual phases.
+  // This never consumes campaign RNG and avoids running 32 UI forecasts per AI tile.
+  const garrison={...defenders[0],units:{},morale:Math.max(...defenders.map(e=>e.morale)),formation:defenders.some(e=>e.formation==='defensive')?'defensive':defenders[0].formation};
+  for(const e of defenders)for(const [id,n] of Object.entries(e.units))garrison.units[id]=(garrison.units[id]||0)+n;
+  let losses=0,wins=0;
+  for(const roll of [.15,.5,.85]){
+    const army=structuredClone(a),enemy=structuredClone(garrison);
+    const result=resolveFieldBattle(army,enemy,t,{roll:()=>roll});
+    losses=Math.max(losses,sizeOf(a)-troopTotal(army));
+    if(result.winner===0)wins++;
+  }
+  const importance=t.capital?.04:['city','fort'].includes(t.building)?.02:0;
+  const lossFraction=losses/Math.max(1,sizeOf(a));
+  const assault=attack>=defense*(1.35-k.aggression*.3)&&wins>=2&&lossFraction<=.32+k.aggression*.12+importance;
+  const breached={...t,walls:0,fortIntegrity:0};
+  const bombard=!assault&&fortificationDefense(t).bonus>0&&bombardRange(a)>0&&assaultAssessment(s,k,a,breached).assault;
+  return {assault,bombard,defense,lossFraction,empty:false};
+}
+export function dangerousTiles(s,k,a) {
+  const tiles=new Set(s.armies.filter(e=>e.owner!==a.owner&&sizeOf(e)>0&&atWar(s,a.owner,e.owner)).map(e=>e.tile));
+  return new Set([...tiles].filter(id=>!assaultAssessment(s,k,a,s.tiles[id]).assault));
+}
+function orderBombardment(s,k,a,t,avoid) {
+  const type=t.walls>0?'wall':fortMaximum(t)&&(t.fortIntegrity??fortMaximum(t))>0?'fort':null;
+  if(!type)return {ok:false};
+  if(!structureAttackCheck(s,a,t,type,'bombard'))return orderStructureAttack(s,k.id,a.id,t.id,type,'bombard');
+  // March to a legal firing position without marching through the garrison.
+  const blocked=new Set([...avoid,t.id]);
+  const positions=Object.values(s.tiles).filter(tile=>tile.id!==t.id&&!blocked.has(tile.id)&&distance(tile,t)<=bombardRange(a)&&!structureAttackCheck(s,{...a,tile:tile.id},t,type,'bombard'))
+    .sort((x,y)=>distance(s.tiles[a.tile],x)-distance(s.tiles[a.tile],y)||distance(y,t)-distance(x,t)||x.id.localeCompare(y.id));
+  for(const tile of positions){
+    if(!findPath(s,a.tile,tile.id,k.id,false,blocked).length)continue;
+    const result=orderArmy(s,k.id,a.id,tile.id,'move',blocked);if(result.ok)return result;
+  }
+  return {ok:false};
+}
 export function proposeInvasion(s,k,target,tile) {
   const allies=s.kingdoms.filter(o=>o.id!==k.id&&treaty(s,k.id,o.id,'alliance')&&atWar(s,o.id,target)).map(o=>o.id);
   return createPlan(s,k.id,allies.length?'jointWar':'invasion',{target,targetTile:tile.id,allies,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,
-    requiredSiege:tile.walls>0||fortMaximum(tile)?2:0,delay:3});
+    delay:3});
 }
 export function infrastructureTarget(s,actor,target,origin) {
   const mounted=armiesOf(s,target).some(a=>familyCount(a,'mounted')>sizeOf(a)*.3);
@@ -58,9 +99,9 @@ export function preparePlans(s,k,c) {
   initializePlans(s);
   const plans=()=>s.intrigue.plans.filter(p=>p.actor===k.id&&activePlan(p));
   if(c.war&&!plans().some(militaryPlan)&&!c.threats.length) {
-    const engines=c.forces.reduce((n,a)=>n+familyCount(a,'siege'),0);
-    const target=[...c.enemyTowns].sort((a,b)=>Number((a.walls>0||fortMaximum(a)>0)&&engines<2)-Number((b.walls>0||fortMaximum(b)>0)&&engines<2)||distance(c.home,a)-distance(c.home,b))[0];
-    if(target)createPlan(s,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,requiredSiege:target.walls>0||fortMaximum(target)?2:0,delay:0});
+    const ranked=c.enemyTowns.map(t=>({t,ready:c.forces.some(a=>assaultAssessment(s,k,a,t).assault)}));
+    const target=ranked.sort((a,b)=>Number(b.ready)-Number(a.ready)||distance(c.home,a.t)-distance(c.home,b.t))[0]?.t;
+    if(target)createPlan(s,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,delay:0});
   }
   if(c.war&&!c.threats.length&&!plans().some(p=>p.type==='infrastructure')&&plans().length<3) {
     const target=c.enemyTowns[0]?.owner, tile=target&&infrastructureTarget(s,k.id,target,c.home);
@@ -88,8 +129,13 @@ export function preparePlans(s,k,c) {
       if(p.assignedArmies.length&&!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.owner===k.id))){transitionPlan(s,p,'Abandoned','The assigned army was destroyed.');continue;}
       if((c.crisis||totalPower(s,p.target)>Math.max(1,totalPower(s,k.id))*3)&&s.turn>p.createdTurn+2){transitionPlan(s,p,'Abandoned',c.crisis?'Resources ran out; the realm must recover.':'Enemy military strength became overwhelming.');continue;}
       if(p.status==='Considering')transitionPlan(s,p,'Preparing','Gathering supplies and troops.');
-      const forces=armiesOf(s,k.id),ready=forces.some(a=>sizeOf(a)>=p.requiredForces&&familyCount(a,'siege')>=p.requiredSiege)&&canAfford(k,p.requiredResources);
-      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing')transitionPlan(s,p,'Committed','Required troops, siege support and supplies are ready.');
+      const forces=armiesOf(s,k.id),target=s.tiles[p.targetTile];
+      const assessments=forces.map(a=>({a,assessment:assaultAssessment(s,k,a,target)}));
+      // Keep the saved field as an equipment preference for recruitment, never
+      // as permission to attack. Re-evaluate old plans against the real garrison.
+      p.requiredSiege=fortificationDefense(target).bonus>0&&!assessments.some(x=>x.assessment.assault)?2:0;
+      const ready=assessments.some(({a,assessment})=>(assessment.empty||sizeOf(a)>=p.requiredForces)&&(assessment.assault||assessment.bombard))&&canAfford(k,p.requiredResources);
+      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing')transitionPlan(s,p,'Committed','A viable assault or bombardment and supplies are ready.');
       if(p.status==='Committed'&&!atWar(s,k.id,p.target)) {
         const probe={...s,wars:[...s.wars,[k.id,p.target].sort().join(':')]};
         if(!findPath(probe,c.home.id,p.targetTile,k.id).length){transitionPlan(s,p,'Abandoned','No legal route to the objective.');continue;}
@@ -124,10 +170,10 @@ function executePoliticalPlan(s,p) {
 export function plannedArmyOrder(s,k,a,c) {
   // Keep the field army at its muster point while the primary nearby siege
   // objective is preparing; do not send it away on a secondary economic raid.
-  const pending=s.intrigue.plans.find(p=>p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&p.requiredSiege>familyCount(a,'siege')&&distance(c.home,s.tiles[p.targetTile])<=6);
+  const pending=s.intrigue.plans.find(p=>p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&distance(c.home,s.tiles[p.targetTile])<=6&&!assaultAssessment(s,k,a,s.tiles[p.targetTile]).assault);
   if(pending&&sizeOf(a)>=pending.requiredForces) {
     if(orderArmy(s,k.id,a.id,c.home.id,'move').ok) {
-      if(!pending.assignedArmies.includes(a.id)){pending.assignedArmies.push(a.id);audit(s,pending,`${a.id} mustering at ${c.home.id} for siege equipment.`);}
+      if(!pending.assignedArmies.includes(a.id)){pending.assignedArmies.push(a.id);audit(s,pending,`${a.id} mustering at ${c.home.id} for reinforcements or siege support.`);}
       return pending;
     }
   }
@@ -135,15 +181,14 @@ export function plannedArmyOrder(s,k,a,c) {
   plans.sort((p,q)=>distance(s.tiles[a.tile],s.tiles[p.targetTile])-distance(s.tiles[a.tile],s.tiles[q.targetTile])||(p.type==='infrastructure'?1:-1));
   for(const p of plans) {
     const t=s.tiles[p.targetTile];
-    if(!atWar(s,k.id,p.target)||t.owner!==p.target||sizeOf(a)<p.requiredForces||familyCount(a,'siege')<p.requiredSiege)continue;
-    const defense=s.armies.filter(e=>e.tile===t.id&&atWar(s,k.id,e.owner)).reduce((n,e)=>n+strength(e,true,t),0)+(t.building==='city'?14:8);
-    if(strength(a)<defense*(1.35-k.aggression*.3))continue;
-    const avoid=new Set(Object.values(s.tiles).filter(tile=>tile.id!==t.id&&atWar(s,k.id,tile.owner)&&(tile.walls>0||(tile.fortIntegrity??fortMaximum(tile))>0)&&familyCount(a,'siege')<2).map(t=>t.id));
-    for(const e of c.enemies)if(e.tile!==t.id&&strength(e,true,s.tiles[e.tile])>strength(a))avoid.add(e.tile);
-    const result=p.type==='infrastructure'?orderStructureAttack(s,k.id,a.id,t.id,p.structure,'attack',avoid):orderArmy(s,k.id,a.id,t.id,'attack',avoid);
+    if(!atWar(s,k.id,p.target)||t.owner!==p.target)continue;
+    const assessment=assaultAssessment(s,k,a,t);
+    if(!assessment.empty&&sizeOf(a)<p.requiredForces||!assessment.assault&&!assessment.bombard)continue;
+    const avoid=dangerousTiles(s,k,a);if(assessment.assault)avoid.delete(t.id);
+    const result=assessment.bombard?orderBombardment(s,k,a,t,avoid):p.type==='infrastructure'?orderStructureAttack(s,k.id,a.id,t.id,p.structure,'attack',avoid):orderArmy(s,k.id,a.id,t.id,'attack',avoid);
     if(!result.ok)continue;
     if(!p.assignedArmies.includes(a.id)){p.assignedArmies.push(a.id);audit(s,p,`${a.id} assigned to ${t.id}.`);}
-    transitionPlan(s,p,'Executing','Real attack orders issued.');return p;
+    transitionPlan(s,p,'Executing',assessment.bombard?'Bombardment approach or firing orders issued to reduce assault losses.':'Real assault orders issued.');return p;
   }
   return null;
 }

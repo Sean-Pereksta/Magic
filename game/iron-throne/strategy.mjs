@@ -1,5 +1,5 @@
 import { isAiHouse } from './house-control.mjs';
-import { activePlan, createPlan, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
+import { activePlan, assaultAssessment, createPlan, dangerousTiles, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
 import { runAISpies } from './espionage.mjs';
 import { BUILDINGS, HOUSES, QUALITY, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
 import { buildingLevel, cityOrderBonus, constructionSpec, fortMaximum, tileProduction } from './economy.mjs';
@@ -101,7 +101,7 @@ function buildingCandidates(s, k, c) {
   const specialty = REGIONS[k.id].troops;
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p));
   const campaign=plans.some(militaryPlan);
-  const fortifications = c.enemyTowns.some(t => t.walls > 0 || fortMaximum(t)) || plans.some(p=>p.requiredSiege>0);
+  const fortifications = c.enemyTowns.some(t => (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && c.enemies.some(e=>e.tile===t.id)) || plans.some(p=>p.requiredSiege>0);
   const need = (resource, stock, flow) => c.income[resource] < 0 ? 105 + Math.min(35, -c.income[resource] * 3) :
     k.resources[resource] + c.income[resource] * 2 < stock ? 85 : c.income[resource] < flow ? 48 : 0;
   const weights = {
@@ -183,7 +183,7 @@ function recruitmentCandidates(s, k, c, recruited) {
   const totals = Object.fromEntries(['infantry','ranged','mounted','siege'].map(f => [f, c.forces.reduce((n, a) => n + familyCount(a, f), 0)]));
   const specialty = REGIONS[k.id].troops, mountedEnemy = c.enemies.reduce((n, a) => n + familyCount(a, 'mounted'), 0) > troopCount(c.enemies) * .25;
   const proportions = specialty === 'cavalry' ? {infantry:.45,ranged:.15,mounted:.4} : specialty === 'archer' ? {infantry:.45,ranged:.45,mounted:.1} : {infantry:.65,ranged:.25,mounted:.1};
-  const siegeNeeded = (c.war && c.enemyTowns.some(t => t.walls > 0 || fortMaximum(t)) || plans.some(p=>p.requiredSiege>0)) && totals.siege < 4 && totals.infantry >= 12;
+  const siegeNeeded = (c.war && c.enemyTowns.some(t => (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && c.enemies.some(e=>e.tile===t.id)) || plans.some(p=>p.requiredSiege>0)) && totals.siege < 4 && totals.infantry >= 12;
   const candidates = [];
   for (const tile of c.tiles.filter(t => ['town','city','fort'].includes(t.building))) for (const [type, unit] of Object.entries(UNITS)) {
     if (unit.legacy || recruitCheck(s, k.id, tile.id, type) || unit.family === 'siege' && !siegeNeeded || unit.family !== 'siege' && count >= desired) continue;
@@ -249,27 +249,22 @@ function directArmies(s, k, c) {
     }
     if (c.threats.length) {
       const danger = c.threats[0], invader = nearby(s, c.enemies, danger.tile, 5).sort((x, y) => distance(location, s.tiles[x.tile]) - distance(location, s.tiles[y.tile]))[0];
-      const intercept = invader && !s.tiles[invader.tile].walls && strength(a) > strength(invader, true, s.tiles[invader.tile]) * 1.2;
+      const intercept = invader && assaultAssessment(s,k,a,s.tiles[invader.tile]).assault;
       if (command(s, k, a, intercept ? s.tiles[invader.tile] : danger.tile, intercept ? 'attack' : 'move')) continue;
     }
     const plan=plannedArmyOrder(s,k,a,c);
     if(plan){recordStrategyAction(s,k.id,{kind:a.path.length?'march':'hold',army:a.id,from:a.tile,tile:a.target||a.tile});continue;}
     if (c.war) {
-      const avoid = new Set(Object.values(s.tiles).filter(t => atWar(s, k.id, t.owner) &&
-        (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && familyCount(a, 'siege') < 2).map(t => t.id));
-      for (const enemy of c.enemies) if (strength(enemy, true, s.tiles[enemy.tile]) > strength(a)) avoid.add(enemy.tile);
+      const avoid = dangerousTiles(s,k,a);
       const candidates = [...new Set([...c.enemyTowns, ...c.enemies.map(e => s.tiles[e.tile])])].map(tile => {
-        const defenders = c.enemies.filter(e => e.tile === tile.id);
-        const defense = defenders.reduce((n, e) => n + strength(e, true, tile), 0) + (tile.building === 'city' ? 14 : tile.building ? 8 : 0);
-        return { tile, defense, score: distance(location, tile) + defense / Math.max(1, strength(a)) * 8 - (a.target === tile.id ? 3 : 0) };
-      }).filter(x => strength(a) >= Math.max(16, x.defense * (1.35 - k.aggression * .3)) &&
-        (!(x.tile.walls > 0 || (x.tile.fortIntegrity ?? fortMaximum(x.tile)) > 0) || familyCount(a, 'siege') >= 2))
-        .sort((x, y) => x.score - y.score || x.tile.id.localeCompare(y.tile.id));
+        const assessment=assaultAssessment(s,k,a,tile);
+        return { tile, assessment, score: distance(location,tile)+assessment.lossFraction*8-(tile.capital?2:0)-(a.target===tile.id?3:0) };
+      }).filter(x=>x.assessment.assault).sort((x,y)=>x.score-y.score||x.tile.id.localeCompare(y.tile.id));
       let moved = false;
       for (const { tile } of candidates.slice(0, 3)) {
         if (!findPath(s, a.tile, tile.id, k.id, false, avoid).length) continue;
         if (command(s, k, a, tile, 'attack', avoid)) {
-          const plan=atWar(s,k.id,tile.owner)&&createPlan(s,k.id,'invasion',{target:tile.owner,targetTile:tile.id,objective:`Attack ${tile.name||tile.id}.`,delay:0,requiredForces:16,requiredSiege:tile.walls>0?2:0});
+          const plan=atWar(s,k.id,tile.owner)&&createPlan(s,k.id,'invasion',{target:tile.owner,targetTile:tile.id,objective:`Attack ${tile.name||tile.id}.`,delay:0,requiredForces:16});
           if(plan){if(!plan.assignedArmies.includes(a.id))plan.assignedArmies.push(a.id);transitionPlan(s,plan,'Executing','A favorable field objective received real attack orders.');}
           moved = true; break;
         }

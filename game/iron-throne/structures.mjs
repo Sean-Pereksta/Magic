@@ -1,6 +1,7 @@
 import { BUILDINGS, UNITS } from './data.mjs';
 import { buildingLevel, buildingSpec, fortMaximum, wallMaximum } from './economy.mjs';
-import { atWar, distance, kingdom, log, sizeOf } from './core.mjs';
+import { atWar, distance, kingdom, log, random, sizeOf } from './core.mjs';
+import { siegeStep } from './warfare.mjs';
 
 export const structuresAt = t => Object.keys(BUILDINGS).filter(type => buildingLevel(t, type) > 0);
 export function structureMaximum(t, type) {
@@ -35,17 +36,35 @@ export function structureAttackCheck(s, a, t, type, mode = 'attack') {
   if (!['attack','bombard'].includes(mode)) return 'Choose Attack or Bombard.';
   if (mode === 'bombard') {
     const range = bombardRange(a), d = distance(s.tiles[a.tile], t);
-    if (!range) return 'Ranged bombardment requires catapults, trebuchets or legacy siege engines.';
+    if (!range) return 'Bombardment requires rams, catapults, trebuchets or legacy siege engines.';
     if (d > range) return `Outside bombardment range (${range} hexes).`;
     if (!clearShot(s, s.tiles[a.tile], t)) return 'Mountains block this line of fire.';
+    if (type === 'wall' && !t.walls || type === 'fort' && !(t.fortIntegrity ?? fortMaximum(t))) return 'These fortifications are breached. Assault the defenders or choose another structure.';
   }
   return null;
 }
 export function damageStructure(s, a, t, type, mode = 'attack') {
   const error = structureAttackCheck(s, a, t, type, mode);
   if (error || mode === 'attack' && a.tile !== t.id || a.lastStructureTurn === s.turn) return false;
-  if (s.armies.some(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s, a.owner, e.owner))) return false;
+  const defenders=s.armies.filter(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s, a.owner, e.owner));
   const d = distance(s.tiles[a.tile], t);
+  // Bombardment weakens protection even with a garrison present. It neither
+  // occupies the tile from range nor destroys the underlying fort building.
+  if(mode==='bombard'&&['wall','fort'].includes(type)){
+    const before=sizeOf(a),defendersBefore=defenders.reduce((n,e)=>n+sizeOf(e),0);
+    const integrityBefore=t.walls+(t.fortIntegrity??fortMaximum(t));
+    const garrison=defenders.length?{units:Object.fromEntries(Object.keys(UNITS).map(id=>[id,defenders.reduce((n,e)=>n+(e.units[id]||0),0)])),morale:Math.max(...defenders.map(e=>e.morale))}:null;
+    const result=siegeStep(s,a,t,garrison,()=>random(s),{range:d,type});
+    if(result.surrendered)for(const e of defenders)for(const id of Object.keys(e.units))e.units[id]=0;
+    a.lastStructureTurn=s.turn;
+    const integrityAfter=t.walls+(t.fortIntegrity??fortMaximum(t));
+    s.militaryEvents.push({id:s.nextId++,turn:s.turn,attacker:a.owner,defender:t.owner,attackerArmyId:a.id,tile:t.id,from:a.tile,action:'siege',structure:type,damage:result.damage,before:[before,integrityBefore],after:[sizeOf(a),integrityAfter],breach:integrityAfter===0,
+      troopLosses:[before-sizeOf(a),result.surrendered?defendersBefore:0],phases:[{name:'Bombardment',notes:result.notes,loss:[before-sizeOf(a),result.damage]}]});
+    log(s,`${kingdom(s,a.owner).name} bombards ${t.name||t.id}: ${result.damage} fortification damage.`,'battle');
+    if(structureAttackCheck(s,a,t,type,mode)){a.structureTarget=null;a.target=null;a.path=[];a.order='hold';}
+    return true;
+  }
+  if (defenders.length) return false;
   const engines = Object.entries(a.units).reduce((n, [id, count]) => n + count * (UNITS[id].breach || 0) *
     (mode === 'attack' || (UNITS[id].bombardRange || 0) >= d && UNITS[id].bombardRange > 0 ? 1 : 0), 0);
   const fortified = ['wall','fort','city','town','watchtower'].includes(type);
