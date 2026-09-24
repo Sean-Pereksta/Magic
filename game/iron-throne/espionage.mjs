@@ -1,3 +1,4 @@
+import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, HOUSES, RESOURCES, UNITS } from './data.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
 import { PLAYER, alive, armiesOf, atWar, distance, kingdom, log, pay, random, relation, settlements, sizeOf, treaty } from './core.mjs';
@@ -55,7 +56,7 @@ export function detectionRisk(s,a) {
 function incident(s,a,action,actor) {
   const item={turn:s.turn,spyId:a.id,owner:a.owner,actor,action};
   s.intelligence.incidents.push(item);s.intelligence.incidents=s.intelligence.incidents.slice(-60);
-  if([a.owner,actor].includes(PLAYER))log(s,`${a.name}: ${action} by ${kingdom(s,actor).name}.`, 'intelligence');
+  if(!s.controllers && [a.owner,actor].includes(PLAYER))log(s,`${a.name}: ${action} by ${kingdom(s,actor).name}.`, 'intelligence');
 }
 export function captureSpy(s,a) {
   if(!a||!['Embedded','Traveling','Compromised'].includes(a.status)||a.mission==='counter'||!a.assignedHouse||a.assignedHouse===a.owner)return false;
@@ -74,7 +75,7 @@ export function resolveCaptive(s,captor,id,action) {
     a.status='Dead';changeRelation(s,a.owner,captor,{trust:-harm,opinion:-harm,grievance:harm},'Our captured spy was executed.');
   } else {
     if(action==='ransom') {
-      if(a.owner===PLAYER)return {ok:false,error:'The player must choose to pay this ransom from their captive agent card.'};
+      if(!isAiHouse(s,a.owner))return {ok:false,error:'The player must choose to pay this ransom from their captive agent card.'};
       if(owner.resources.gold<40)return {ok:false,error:'The owning House cannot pay the 40 gold ransom.'};
       pay(owner,{gold:40});pay(kingdom(s,captor),{gold:40},1);
     }
@@ -160,9 +161,9 @@ export function resolveEspionage(s,{roll=()=>random(s)}={}) {
     if(!alive(s,a.owner)){a.status='Dead';continue;}
     if(['Captured','Imprisoned'].includes(a.status)) {
       if(!alive(s,a.captor)){release(a);continue;}
-      if(a.captor!==PLAYER&&a.capturedTurn<s.turn&&a.status==='Captured') {
+      if(isAiHouse(s,a.captor)&&a.capturedTurn<s.turn&&a.status==='Captured') {
         const captor=kingdom(s,a.captor);
-        const action=atWar(s,a.owner,a.captor)&&captor.honor<.4?'execute':s.intelligence.agents.some(b=>b.owner===a.captor&&b.captor===a.owner&&['Captured','Imprisoned'].includes(b.status))?'exchange':captor.honor>=.8?'expel':a.owner!==PLAYER&&kingdom(s,a.owner).resources.gold>=40?'ransom':'imprison';
+        const action=atWar(s,a.owner,a.captor)&&captor.honor<.4?'execute':s.intelligence.agents.some(b=>b.owner===a.captor&&b.captor===a.owner&&['Captured','Imprisoned'].includes(b.status))?'exchange':captor.honor>=.8?'expel':isAiHouse(s,a.owner)&&kingdom(s,a.owner).resources.gold>=40?'ransom':'imprison';
         resolveCaptive(s,a.captor,a.id,action);
       }
       continue;

@@ -1,8 +1,9 @@
+import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { ART, AssetCache } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { familyCount } from './warfare.mjs';
 import { HOUSES, BUILDINGS, UNITS } from './data.mjs';
-import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
+import { settlements, sizeOf, tileId } from './core.mjs';
 
 import { BattleEffects } from './battle-effects.mjs';
 import { MapArt, tileVariant } from './art.mjs';
@@ -76,7 +77,7 @@ export class WorldMap {
   }
   setZoom(zoom) { this.zoom = Math.min(2.8, Math.max(.22, zoom)); this.draw(); }
   center(id) { const t = this.getState().tiles[id]; if (!t) return; const p = hexPixel(t); this.x = p.x; this.y = p.y; this.draw(); }
-  home() { this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), PLAYER)[0]?.id || '5,6'); }
+  home() { this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), localHouseId(this.getState()))[0]?.id || '5,6'); }
   fit() { const bottom = hexPixel({ q: 39, r: 29 }); this.x = bottom.x / 2; this.y = bottom.y / 2; this.setZoom(Math.min(this.width / (bottom.x + 100), this.height / (bottom.y + 100))); }
   draw() { if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); }); }
   hex(x, y, radius = RADIUS) {
@@ -213,7 +214,7 @@ export class WorldMap {
       if(pulse){this.hex(p.x,p.y,24+(1-pulse)*12);c.globalAlpha=pulse*.55;c.stroke();c.globalAlpha=1;}
     }
     for(const t of visible.filter(t=>['city','town'].includes(t.building))){
-      if(this.zoom<.65&&!t.capital)continue;const p=hexPixel(t),label=t.name||'Town';
+      if(this.zoom<.65&&!t.capital)continue;const p=hexPixel(t),label=(t.name||'Town')+(s.controllers&&isHumanHouse(s,t.owner)?' · HUMAN':'');
       c.save();c.translate(p.x,p.y-(t.building==='city'?49:34));c.scale(Math.max(1,.6/this.zoom),Math.max(1,.6/this.zoom));
       c.font=t.capital?'bold 10px Georgia':'9px Georgia';c.textAlign='center';const w=c.measureText(label).width;
       c.fillStyle='#112733eb';c.beginPath();c.roundRect(-w/2-7,-10,w+14,16,3);c.fill();c.fillStyle=colors[t.owner]||'#eddfb9';c.fillRect(-w/2-3,5,w+6,.8);c.fillText(label,0,1);c.restore();

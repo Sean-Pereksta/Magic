@@ -708,14 +708,7 @@
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-      authDomain: "bible-game-246c0.firebaseapp.com",
-      projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.appspot.com",
-      messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-    };
+    import { firebaseConfig } from "./firebase-config.mjs";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -730,7 +723,7 @@
     // One registry drives routes, cards, categories, limits, lobby labels, and featured content.
     // Add imagePath:"graphics/your-image.png" to any game to use artwork; omit it to keep the emoji fallback.
     const GAMES = [
-      {key:"ironthrone",title:"Iron Thrones",emoji:"♛⚔️",imagePath:"/graphics/titlegraphics/iron_thrones.png",desc:"Rule a kingdom, build on a hex world, command armies and negotiate with five rival houses. Treaties become real orders. Optional Gemini conversations; full scripted diplomacy and local saves.",route:"/game/iron-throne/index.html",category:"Strategy",modes:["single"],featured:false},
+      {key:"ironthrone",title:"Iron Thrones",emoji:"♛⚔️",imagePath:"/graphics/titlegraphics/iron_thrones.png",desc:"Rule a kingdom, build on a hex world, command armies and negotiate with five rival houses. Treaties become real orders. Play solo or rule alongside 1–6 humans; unclaimed kingdoms remain living AI powers. Online campaigns persist across reconnects.",route:"/game/iron-throne/index.html",category:"Strategy",modes:["single","multi"],launchMode:"lobby",minPlayers:1,maxPlayers:6,autoRedirect:true,autoUsername:true,featured:false},
       {key:"nflradio",title:"NFL Radio Dial",emoji:"🏈📻",desc:"Choose an NFL game rotation, switch authorized game audio with a tap, and hold to talk for team or broadcast selection.",route:"/game/nfl-radio.html",category:"Apps",modes:["single"],featured:false},
       {key:"cat",title:"Cat & Mouse",emoji:"🐭",imagePath:"/graphics/titlegraphics/cat and mouse.png",desc:"Classic multiplayer chase.",route:"/game/catandmouse.html",category:"Party",modes:["multi"],autoRedirect:true},
       {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"/graphics/titlegraphics/grass realms.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
@@ -1439,6 +1432,17 @@
       syncLobbyBrowserPolling();
       void refreshLobbyBrowser({force:true});
     }
+    async function loadIronCampaigns(){
+      if(!auth.currentUser)return;
+      let panel=$('ironSavedCampaigns');if(!panel){panel=document.createElement('section');panel.id='ironSavedCampaigns';panel.className='card card-pad';$('currentLobbyPanel').appendChild(panel);}
+      try{
+        const results=await getDocs(query(collection(db,'lobbies'),where('gameType','==','ironthrone'),limit(100)));
+        const campaigns=results.docs.filter(d=>d.data().status==='started'&&d.data().members?.[auth.currentUser.uid]);
+        panel.hidden=!campaigns.length;
+        panel.innerHTML='<strong>Iron Thrones · Saved campaigns</strong>'+campaigns.map(d=>`<p><button class="btn secondary" data-resume-iron="${escapeHtml(d.id)}">Resume ${escapeHtml(d.data().name)}</button></p>`).join('');
+        panel.querySelectorAll('[data-resume-iron]').forEach(b=>b.onclick=()=>requestJoinLobby(b.dataset.resumeIron));
+      }catch(error){panel.hidden=true;console.warn('Saved campaign list unavailable',error);}
+    }
     function visibleLobby(lobby){
       const visibility=lobby.visibility||"public";if(visibility!=="private")return true;if(!username)return false;
       return lobby.host===username||(lobby.players||[]).includes(username)||[...inviteCache.values()].some(i=>i.lobbyId===lobby.id&&i.status!=="declined");
@@ -1486,15 +1490,22 @@
       try{
         await runTransaction(db,async tx=>{
           const snap=await tx.get(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
-          const d=snap.data();if(d.status!=="waiting")throw new Error("This lobby has already started.");
+          const d=snap.data();if(d.status!=="waiting"){
+            if(d.gameType==="ironthrone"&&d.members?.[auth.currentUser.uid])return;
+            throw new Error("This lobby has already started.");
+          }
           if(getLaunchMode(getGame(d.gameType))!==MULTIPLAYER_LAUNCH_MODES.LOBBY)throw new Error("This game no longer uses hosted lobbies. Enter it from Join Online Games.");
           const players=Array.isArray(d.players)?d.players:[],cap=getMaxPlayers(d.gameType);
           if(!players.includes(username)&&Number.isFinite(cap)&&players.length>=cap)throw new Error("This lobby is full.");
-          if(!players.includes(username))tx.update(ref,{players:[...players,username],updatedAt:Date.now()});
+          if(d.gameType==="ironthrone"){
+            const members=d.members||{},uid=auth.currentUser.uid;
+            if(!members[uid]&&Object.keys(members).length>=6)throw new Error("This campaign has six rulers.");
+            tx.update(ref,{players:[...new Set([...players,username])],members:{...members,[uid]:username},updatedAt:Date.now()});
+          }else if(!players.includes(username))tx.update(ref,{players:[...players,username],updatedAt:Date.now()});
         });
         if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});
         const snap=await getDoc(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
-        currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=currentLobbyData.host===username;
+        currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=currentLobbyData.gameType==="ironthrone"?currentLobbyData.hostUid===auth.currentUser?.uid:currentLobbyData.host===username;
         save(SK.lastLobby,id);save(SK.lastGame,currentLobbyData.gameType);listenToCurrentLobby();renderLobbyBrowser();toast(`Joined ${currentLobbyData.name}.`,"good");
         if(matchMedia("(max-width:1020px)").matches)setTimeout(()=>$("currentLobbyPanel").scrollIntoView({behavior:"smooth",block:"start"}),80);
       }catch(e){toast(e.message||"Unable to join lobby.","bad");if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});}
@@ -1523,7 +1534,7 @@
       setBusy($("createLobbySubmit"),true,"Creating…");
       try{
         if(currentLobbyId)await leaveLobby();
-        const created=await addDoc(collection(db,"lobbies"),{name,gameType:game.key,status:"waiting",players:[username],host:username,createdAt:Date.now(),updatedAt:Date.now(),visibility:selectedVisibility});
+        const created=await addDoc(collection(db,"lobbies"),{name,gameType:game.key,status:"waiting",players:[username],host:username,...(game.key==="ironthrone"?{hostUid:auth.currentUser.uid,members:{[auth.currentUser.uid]:username}}:{}),createdAt:Date.now(),updatedAt:Date.now(),visibility:selectedVisibility});
         currentLobbyId=created.id;isHost=true;save(SK.lastLobby,created.id);save(SK.lastGame,game.key);closeModal();listenToCurrentLobby();toast("Lobby created.","good");
       }catch(e){setMessage("createLobbyMessage",e.message||"Unable to create lobby.","error");}
       finally{setBusy($("createLobbySubmit"),false);}
@@ -1557,9 +1568,9 @@
           return;
         }
         const data=snapshot.data(),players=Array.isArray(data.players)?data.players:[];
-        if(!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        if(data.gameType==="ironthrone"?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
         const changed=currentLobbyStateKey(currentLobbyData)!==currentLobbyStateKey(data);
-        currentLobbyData={id:lobbyId,...data};isHost=data.host===username;if(changed)renderCurrentLobby();
+        currentLobbyData={id:lobbyId,...data};isHost=data.gameType==="ironthrone"?data.hostUid===auth.currentUser?.uid:data.host===username;if(changed)renderCurrentLobby();
         if(data.status==="started"){
           redirectStartedGame(lobbyId,data);
           void cleanupInvitesForLobby(lobbyId).catch(()=>{});
@@ -1576,8 +1587,8 @@
         if(currentLobbyId!==lobbyId)return;
         if(!snap.exists()){clearCurrentLobby("That lobby has closed.");void cleanupInvitesForLobby(lobbyId).catch(()=>{});return;}
         const data=snap.data(),players=Array.isArray(data.players)?data.players:[];
-        if(!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
-        currentLobbyData={id:snap.id,...data};isHost=data.host===username;renderCurrentLobby();
+        if(data.gameType==="ironthrone"?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        currentLobbyData={id:snap.id,...data};isHost=data.gameType==="ironthrone"?data.hostUid===auth.currentUser?.uid:data.host===username;renderCurrentLobby();
         if(data.status==="started"){
           // Launch first. iPhone Safari can delay or suspend Firestore work during navigation,
           // so invite cleanup must never block the game redirect.
@@ -1660,7 +1671,7 @@
         const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
         launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
       }
-      launchGameUrl(`${game.route}?${launchQuery}`,"lobby-started");
+      launchGameUrl(`${game.route}?${launchQuery}${game.key==="ironthrone"?`&returnUrl=${encodeURIComponent(location.pathname)}`:""}`,"lobby-started");
     }
     async function removePlayerFromLobby(id,playerName){
       if(!id||!playerName)return {removed:false,closed:false};
@@ -1669,6 +1680,13 @@
         const snap=await tx.get(ref);
         if(!snap.exists())return {removed:false,closed:true};
         const data=snap.data(),existing=Array.isArray(data.players)?data.players:[];
+        if(data.gameType==="ironthrone"){
+          if(data.status!=="waiting")return {removed:false,closed:false};
+          const uid=auth.currentUser?.uid,members={...(data.members||{})};
+          if(!uid||!members[uid])return {removed:false,closed:false};
+          if(data.hostUid===uid){tx.delete(ref);return {removed:true,closed:true};}
+          delete members[uid];tx.update(ref,{members,players:Object.values(members),updatedAt:Date.now()});return {removed:true,closed:false};
+        }
         if(!existing.includes(playerName))return {removed:false,closed:false};
         const players=existing.filter(player=>player!==playerName);
         if(!players.length){tx.delete(ref);return {removed:true,closed:true};}
@@ -1840,7 +1858,7 @@
       authUser=user;firebaseAuthReady=true;firebaseAuthError="";
       const firstSessionInitialization=!authSessionInitialized;
       if(firstSessionInitialization)authSessionInitialized=true;
-      loadGameStats();startLobbyBrowser();loadLeaderboard();
+      loadGameStats();startLobbyBrowser();loadLeaderboard();void loadIronCampaigns();
       // The listener is the fast path; this explicit server read is the correctness path.
       await refreshLobbyBrowser({force:true});
       if(firstSessionInitialization){

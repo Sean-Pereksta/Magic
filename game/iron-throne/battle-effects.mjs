@@ -1,5 +1,5 @@
 import { HOUSES } from './data.mjs';
-import { PLAYER } from './core.mjs';
+import { localHouseId } from './house-control.mjs';
 const color = id => HOUSES.find(h => h.id === id)?.color || '#eee2c4';
 const name = id => HOUSES.find(h => h.id === id)?.name.replace('House ', '') || id;
 const eventKey = (e, index) => e.id || `${e.turn}:${e.attacker}:${e.defender}:${e.tile}:${e.action}:${index}`;
@@ -14,8 +14,9 @@ export function eventTroopLosses(e) {
 // Presentation consumes completed simulation events. It never rolls combat,
 // changes unit positions, or blocks input. Each clash lives for two seconds.
 export class BattleEffects {
-  constructor() { this.seen = new Set(); this.active = []; this.results = []; this.seed = null; this.turn = 0; }
+  constructor() { this.localHouseId='ashen'; this.seen = new Set(); this.active = []; this.results = []; this.seed = null; this.turn = 0; }
   ingest(s, now) {
+    this.localHouseId=localHouseId(s);
     const events = s.militaryEvents.slice(-100);
     if (this.seed !== s.seed || s.turn < this.turn) {
       this.seed = s.seed; this.seen = new Set(events.map(eventKey)); this.active = []; this.results = [];
@@ -87,7 +88,7 @@ export class BattleEffects {
     c.lineJoin='round';c.lineWidth=4;c.strokeStyle='#081923';
     const y=-43-(reduced?0:progress*25)-row*34;
     [e.attacker,e.defender].forEach((owner,i)=>{
-      const label=`${owner===PLAYER?'You':name(owner)} −${losses[i]}`;
+      const label=`${owner===this.localHouseId?'You':name(owner)} −${losses[i]}`;
       c.fillStyle=color(owner);c.strokeText(label,0,y+i*15);c.fillText(label,0,y+i*15);
     });
     c.restore();

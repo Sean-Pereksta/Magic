@@ -1,3 +1,4 @@
+import { isAiHouse } from './house-control.mjs';
 import { activePlan, createPlan, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
 import { runAISpies } from './espionage.mjs';
 import { BUILDINGS, HOUSES, QUALITY, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
@@ -291,7 +292,7 @@ function directArmies(s, k, c) {
 function considerRivalPeace(s) {
   for (const war of [...s.wars]) {
     const [a, b] = war.split(':');
-    if ([a, b].includes(PLAYER) || !alive(s, a) || !alive(s, b)) continue; // The player ratifies their own peace.
+    if ([a, b].some(id=>!isAiHouse(s,id)) || !alive(s, a) || !alive(s, b)) continue; // The player ratifies their own peace.
     const start = s.diplomacy.warHistory.filter(w => [w.attacker, w.defender].includes(a) && [w.attacker, w.defender].includes(b)).at(-1)?.turn ?? s.turn;
     const recent = s.militaryEvents.some(e => e.turn > s.turn - 6 && [e.attacker, e.defender].includes(a) && [e.attacker, e.defender].includes(b));
     const exhausted = [a, b].every(id => troopCount(armiesOf(s, id)) < 18);
@@ -314,12 +315,12 @@ export function runStrategyTurn(s) {
   if (s.outcome) return;
   initializeStrategy(s);
   if (s.strategy.lastTurn >= s.turn) return;
-  const rivals = s.kingdoms.filter(k => k.id !== PLAYER);
+  const rivals = s.kingdoms.filter(k => isAiHouse(s,k.id));
   const round = { turn: s.turn, houses: rivals.map(k => ({ owner: k.id, goal: 'ECONOMY', reason: '', orders: 0, actions: [], omitted: 0 })) };
   s.strategy.history.push(round); s.strategy.history = s.strategy.history.slice(-HISTORY_LIMIT);
   // Every living House acts exactly once; the starting House rotates so
   // contested decisions do not always favor the same kingdom.
-  const offset = (s.turn - 1) % rivals.length;
+  const offset = (s.turn - 1) % Math.max(1,rivals.length);
   for (const k of [...rivals.slice(offset), ...rivals.slice(0, offset)]) {
     const report = reportFor(s, k.id);
     if (!alive(s, k.id)) { report.goal = 'ELIMINATED'; report.reason = 'No settlements remain.'; continue; }
@@ -358,10 +359,10 @@ export function validateStrategySave(s) {
   if (!integer(state.lastTurn, 0, s.turn) || !Array.isArray(state.history) || state.history.length > HISTORY_LIMIT) fail();
   let previous = 0;
   for (const round of state.history) {
-    if (!round || !integer(round.turn, previous + 1, state.lastTurn) || !Array.isArray(round.houses) || round.houses.length !== HOUSES.length - 1 || new Set(round.houses.map(h => h?.owner)).size !== HOUSES.length - 1) fail();
+    if (!round || !integer(round.turn, previous + 1, state.lastTurn) || !Array.isArray(round.houses) || round.houses.length > HOUSES.length || new Set(round.houses.map(h => h?.owner)).size !== round.houses.length) fail();
     previous = round.turn;
     for (const h of round.houses) {
-      if (!h || h.owner === PLAYER || !HOUSES.some(k => k.id === h.owner) || !Object.hasOwn(STRATEGY_GOALS, h.goal) || typeof h.reason !== 'string' || h.reason.length > 240 ||
+      if (!h || (!s.controllers && h.owner === PLAYER) || !HOUSES.some(k => k.id === h.owner) || !Object.hasOwn(STRATEGY_GOALS, h.goal) || typeof h.reason !== 'string' || h.reason.length > 240 ||
         !integer(h.orders, 0, 8) || !integer(h.omitted, 0, 1000) || !Array.isArray(h.actions) || h.actions.length > ACTION_LIMIT) fail();
       for (const a of h.actions) {
         if (!a || !['build','complete','recruit','march','hold','merge','war','peace','tax','spy'].includes(a.kind)) fail();

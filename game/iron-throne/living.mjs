@@ -1,3 +1,4 @@
+import { isHumanHouse, isAiHouse, humanControlledHouseIds, court } from './house-control.mjs';
 import { updateAttitudes, politicalAttitude } from './politics.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
 // Political state belongs to the simulation. Model output is never an action.
@@ -25,17 +26,17 @@ export function initializeLiving(s) {
   return s;
 }
 
-export function appendConversation(s, rulerId, role, text, { unread = false, kind = '', proposal = null } = {}) {
-  const history = s.conversations[rulerId] ||= [];
+export function appendConversation(s, rulerId, role, text, { unread = false, kind = '', proposal = null, actorHouseId = PLAYER } = {}) {
+  const history = court(s, actorHouseId).conversations[rulerId] ||= [];
   const entry = { role, text: String(text).slice(0, 1600), turn: s.turn, kind };
   if (proposal) entry.proposal = proposal;
   history.push(entry);
   // Important actions live in the ledger and structured memory after chat rolls off.
   if (history.length > 50) history.splice(0, history.length - 50);
-  if (unread) relation(s, rulerId, PLAYER).unread = Math.min(99, (relation(s, rulerId, PLAYER).unread || 0) + 1);
+  if (unread) relation(s, rulerId, actorHouseId).unread = Math.min(99, (relation(s, rulerId, actorHouseId).unread || 0) + 1);
   return entry;
 }
-export function markRead(s, rulerId) { relation(s, rulerId, PLAYER).unread = 0; }
+export function markRead(s, rulerId, actorHouseId = PLAYER) { relation(s, rulerId, actorHouseId).unread = 0; }
 export function changeRelation(s, observer, subject, changes, reason) {
   const r = relation(s, observer, subject);
   if (!r) return;
@@ -50,9 +51,9 @@ export function changeRelation(s, observer, subject, changes, reason) {
   r.history ||= [];
   r.history.push({ turn: s.turn, changes: applied, reason: String(reason).slice(0, 220) });
   r.history = r.history.slice(-24);
-  if (subject === PLAYER && observer !== PLAYER) {
+  if (isHumanHouse(s,subject) && observer !== subject) {
     const significant = Object.entries(applied).filter(([, n]) => Math.abs(n) >= 4);
-    if (significant.length) appendConversation(s, observer, 'council', `${significant.map(([key, n]) => `${key.toUpperCase()} ${n > 0 ? '+' : ''}${n}`).join(' · ')} — ${reason}`, { kind: 'relationship' });
+    if (significant.length) appendConversation(s, observer, 'council', `${significant.map(([key, n]) => `${key.toUpperCase()} ${n > 0 ? '+' : ''}${n}`).join(' · ')} — ${reason}`, { kind: 'relationship', actorHouseId: subject });
   }
 }
 export function recordPoliticalMemory(s, observer, subject, kind, text, importance = 7) {
@@ -60,14 +61,14 @@ export function recordPoliticalMemory(s, observer, subject, kind, text, importan
   const memory = kingdom(s, observer).memories.at(-1);
   memory.subject = subject; memory.kind = kind; memory.verified = true;
 }
-export function contact(s, rulerId, key, text, cooldown = 4) {
-  if (rulerId === PLAYER || !alive(s, rulerId)) return false;
-  const r = relation(s, rulerId, PLAYER), last = r.contacts?.[key];
+export function contact(s, rulerId, key, text, cooldown = 4, actorHouseId = PLAYER) {
+  if (rulerId === actorHouseId || !alive(s, rulerId)) return false;
+  const r = relation(s, rulerId, actorHouseId), last = r.contacts?.[key];
   if (last !== undefined && s.turn - last < cooldown) return false;
   r.contacts ||= {}; r.contacts[key] = s.turn;
   // Keep per-event contact IDs bounded, even in a very long campaign.
   r.contacts = Object.fromEntries(Object.entries(r.contacts).sort((a, b) => b[1] - a[1]).slice(0, 36));
-  appendConversation(s, rulerId, 'ruler', text, { unread: true, kind: key });
+  appendConversation(s, rulerId, s.controllers&&isHumanHouse(s,rulerId)?'council':'ruler', text, { unread: true, kind: key, actorHouseId });
   return true;
 }
 
@@ -79,19 +80,19 @@ export function stationedAmbassador(s, owner, host) {
   const capital = capitalOf(s, host);
   return !!capital && s.ambassadors?.some(a => a.owner === owner && a.host === host && a.status === 'stationed' && a.tile === capital.id && !a.path.length);
 }
-export function messageAllowance(s, rulerId) {
-  const recorded = s.diplomacy?.messages;
+export function messageAllowance(s, rulerId, actorHouseId = PLAYER) {
+  const recorded = court(s, actorHouseId).messages;
   const used = recorded?.turn === s.turn ? recorded : { regular: 0, hosts: {} };
-  const hosted = stationedAmbassador(s, PLAYER, rulerId);
-  const limit = hosted ? 10 : diplomaticCapacity(s);
-  return { hosted, limit, used: hosted ? used.hosts[rulerId] || 0 : used.regular, remaining: Math.max(0, limit - (hosted ? used.hosts[rulerId] || 0 : used.regular)), regularRemaining: Math.max(0, diplomaticCapacity(s) - used.regular) };
+  const hosted = stationedAmbassador(s, actorHouseId, rulerId);
+  const limit = hosted ? 10 : diplomaticCapacity(s, actorHouseId);
+  return { hosted, limit, used: hosted ? used.hosts[rulerId] || 0 : used.regular, remaining: Math.max(0, limit - (hosted ? used.hosts[rulerId] || 0 : used.regular)), regularRemaining: Math.max(0, diplomaticCapacity(s, actorHouseId) - used.regular) };
 }
-export function consumeMessage(s, rulerId) {
-  if (s.outcome || rulerId === PLAYER || !alive(s, rulerId)) return { ok: false, error: 'This council is unavailable.' };
-  const allowance = messageAllowance(s, rulerId);
+export function consumeMessage(s, rulerId, actorHouseId = PLAYER) {
+  if (s.outcome || rulerId === actorHouseId || !alive(s, rulerId)) return { ok: false, error: 'This council is unavailable.' };
+  const allowance = messageAllowance(s, rulerId, actorHouseId);
   if (!allowance.remaining) return { ok: false, error: allowance.hosted ? 'Your ambassador has used all 10 messages with this House. End the turn to continue.' : 'Your dispatches are used for this turn. End the turn or station an ambassador.' };
-  if (s.diplomacy.messages.turn !== s.turn) s.diplomacy.messages = { turn: s.turn, regular: 0, hosts: {} };
-  const used = s.diplomacy.messages;
+  if (court(s, actorHouseId).messages.turn !== s.turn) court(s, actorHouseId).messages = { turn: s.turn, regular: 0, hosts: {} };
+  const used = court(s, actorHouseId).messages;
   if (allowance.hosted) used.hosts[rulerId] = (used.hosts[rulerId] || 0) + 1;
   else used.regular++;
   return { ok: true };
@@ -107,21 +108,21 @@ export function speechKind(message) {
   if (/\b(?:amazing|respect|friend|honou?r|admire|great ruler|wonderful)\b/.test(text)) return 'praise';
   return 'negotiation';
 }
-export function applySpeech(s, rulerId, message) {
-  const r = relation(s, rulerId, PLAYER), kind = speechKind(message);
+export function applySpeech(s, rulerId, message, actorHouseId = PLAYER) {
+  const r = relation(s, rulerId, actorHouseId), kind = speechKind(message);
   if (kind === 'negotiation') return;
   r.speech ||= {};
   const old = r.speech[kind] || { count: 0, turn: 0 };
   r.speech[kind] = { count: Math.min(99, old.count + 1), turn: s.turn };
   if (['praise', 'apology', 'reassurance'].includes(kind)) {
-    const threatened = borderThreat(s, rulerId, PLAYER).score >= 20;
+    const threatened = borderThreat(s, rulerId, actorHouseId).score >= 20;
     const gain = threatened || r.trust < 0 || r.grievance > 25 ? 0 : Math.max(0, Math.min(2 - old.count, 4 - (r.wordGain || 0)));
-    if (gain) { r.wordGain = (r.wordGain || 0) + gain; changeRelation(s, rulerId, PLAYER, { opinion: gain }, 'Courteous words; deeds are still expected.'); }
+    if (gain) { r.wordGain = (r.wordGain || 0) + gain; changeRelation(s, rulerId, actorHouseId, { opinion: gain }, 'Courteous words; deeds are still expected.'); }
   } else {
     // Fear is leverage, never friendship. Words alone cannot create military fear.
-    const fear = kind === 'threat' && powerOf(s, PLAYER) > powerOf(s, rulerId) ? 4 : 0;
-    changeRelation(s, rulerId, PLAYER, { opinion: -3, trust: -2, grievance: 3, fear }, kind === 'threat' ? 'A threat made in council.' : 'An insult made in council.');
-    recordPoliticalMemory(s, rulerId, PLAYER, kind, `Ashen ${kind === 'threat' ? 'threatened' : 'insulted'} our House in council: “${message.slice(0, 180)}”`, 8);
+    const fear = kind === 'threat' && powerOf(s, actorHouseId) > powerOf(s, rulerId) ? 4 : 0;
+    changeRelation(s, rulerId, actorHouseId, { opinion: -3, trust: -2, grievance: 3, fear }, kind === 'threat' ? 'A threat made in council.' : 'An insult made in council.');
+    recordPoliticalMemory(s, rulerId, actorHouseId, kind, `${houseName(s, actorHouseId)} ${kind === 'threat' ? 'threatened' : 'insulted'} our House in council: “${message.slice(0, 180)}”`, 8);
   }
 }
 export function applyGift(s, giver, receiver, resource, amount) {
@@ -200,13 +201,13 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
     r.sharedEnemies = threat.sharedEnemies;
     r.movements = Object.fromEntries(threat.nearby.filter(a => ['approaching', 'withdrawing'].includes(a.movement)).slice(0, 80).map(a => [a.id, { direction: a.movement, turn: s.turn }]));
     changeRelation(s, observer.id, subject.id, { wariness: threat.score - r.wariness, dependency: economic.dependency - r.dependency, fear: clamp((threat.relativeStrength - 1) * 25 + threat.score * .35) - r.fear }, threat.score > wasWary ? `Armies approached ${capitalOf(s, observer.id)?.name || 'our frontier'}.` : threat.score < wasWary ? 'Foreign forces withdrew from the frontier.' : 'Trade and military circumstances changed.');
-    const fresh = subject.id === PLAYER && observer.id !== PLAYER;
+    const fresh = isHumanHouse(s,subject.id) && isAiHouse(s,observer.id);
     if (fresh && sendDispatches) {
-      if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `Your banners are close to ${capitalOf(s, observer.id)?.name}. Tell me their purpose, Regent. Friendship needs more than courteous words.`);
-      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Your army has withdrawn. I noticed. Perhaps your intentions deserve another hearing.');
+      if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `Your banners are close to ${capitalOf(s, observer.id)?.name}. Tell me their purpose, Regent. Friendship needs more than courteous words.`, 4, subject.id);
+      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Your army has withdrawn. I noticed. Perhaps your intentions deserve another hearing.', 4, subject.id);
 
-      if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8);
-      if (r.trust > 40 && !atWar(s, observer.id, PLAYER) && !treaty(s, observer.id, PLAYER, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10);
+      if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8, subject.id);
+      if (r.trust > 40 && !atWar(s, observer.id, subject.id) && !treaty(s, observer.id, subject.id, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10, subject.id);
     }
     r.observations = Object.fromEntries(armiesOf(s, subject.id).slice(0, 80).map(a => {
       const border = Object.values(s.tiles).filter(t => t.owner === observer.id);
@@ -215,17 +216,19 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
   }
   for (const k of s.kingdoms) {
     k.priorities = diplomaticPriorities(s, k.id);
-    if (k.id !== PLAYER) {
-      const r = relation(s, k.id, PLAYER), economic = economicRelationship(s, k.id, PLAYER);
-      k.memorySummary = `${k.name} views Ashen with ${r.trust < 0 ? 'distrust' : r.trust > 40 ? 'confidence' : 'caution'}. ${r.wariness >= 20 ? 'Ashen forces threaten our frontier.' : 'No immediate Ashen border concentration.'} ${economic.majorPartner ? 'Ashen is an important supplier.' : 'Trade dependence is limited.'} Ashen has kept ${kingdom(s, PLAYER).reputation.kept} oaths and broken ${kingdom(s, PLAYER).reputation.broken}. ${k.memories.filter(m => m.importance >= 8 && m.verified !== false).slice(-3).map(m => m.text).join(' ')}`.slice(0, 900);
+    k.relationshipSummaries ||= {};
+    for (const actor of humanControlledHouseIds(s).filter(id=>id!==k.id)) {
+      const r=relation(s,k.id,actor),economic=economicRelationship(s,k.id,actor),name=houseName(s,actor);
+      k.relationshipSummaries[actor]=`${k.name} views ${name} with ${r.trust<0?'distrust':r.trust>40?'confidence':'caution'}. ${r.wariness>=20?'Their forces threaten our frontier.':'No immediate border concentration.'} ${economic.majorPartner?'An important supplier.':'Trade dependence is limited.'} ${name} has kept ${kingdom(s,actor).reputation.kept} oaths and broken ${kingdom(s,actor).reputation.broken}. ${k.memories.filter(m=>m.subject===actor&&m.importance>=8&&m.verified!==false).slice(-3).map(m=>m.text).join(' ')}`.slice(0,900);
     }
+    k.memorySummary = k.relationshipSummaries[PLAYER] || k.memories.filter(m=>m.importance>=8).slice(-3).map(m=>m.text).join(' ').slice(0,900);
   }
   updateAttitudes(s);
 }
-export function relationDescriptions(s, rulerId) {
-  const r = relation(s, rulerId, PLAYER), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === PLAYER && p.creditor === rulerId && p.status === 'pending');
-  const posture=politicalAttitude(s,rulerId,PLAYER);
-  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, PLAYER, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, PLAYER, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
+export function relationDescriptions(s, rulerId, actorHouseId = PLAYER) {
+  const r = relation(s, rulerId, actorHouseId), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === actorHouseId && p.creditor === rulerId && p.status === 'pending');
+  const posture=politicalAttitude(s,rulerId,actorHouseId);
+  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
 export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }
@@ -278,7 +281,7 @@ export function ambassadorIncident(s, actor, id, action, confirmed = false) {
       const victim = observer.id === a.owner;
       changeRelation(s, observer.id, actor, { opinion: victim ? -80 : -Math.round(12 + observer.honor * 20), trust: victim ? -90 : -Math.round(15 + observer.honor * 25), grievance: victim ? 75 : 20, aggression: 40, fear: 10 }, `${houseName(s, actor)} executed an ambassador under diplomatic immunity.`);
       recordPoliticalMemory(s, observer.id, actor, 'ambassador-execution', `${houseName(s, actor)} executed ${houseName(s, a.owner)}'s ambassador.`, 10);
-      if (actor === PLAYER) contact(s, observer.id, `execution-${a.id}`, victim ? 'You killed the envoy who came under my protection. Our treaties are ashes. My banners will answer this crime.' : 'We have heard what happened to the ambassador. Do not expect our courts to forget it.', 100000);
+      if (isHumanHouse(s,actor)) contact(s, observer.id, `execution-${a.id}`, victim ? 'You killed the envoy who came under my protection. Our treaties are ashes. My banners will answer this crime.' : 'We have heard what happened to the ambassador. Do not expect our courts to forget it.', 100000, actor);
     }
     s.treaties = s.treaties.filter(t => !(t.parties.includes(actor) && t.parties.includes(a.owner)));
     declareWar(s, a.owner, actor);
@@ -306,16 +309,17 @@ export function resolveAmbassadors(s) {
     }
     if (!a.path.length && ['travelling', 'returning'].includes(a.status)) {
       a.status = a.host && capitalOf(s, a.host)?.id === a.tile ? 'stationed' : 'idle';
-      if (a.status === 'stationed' && a.owner === PLAYER) {
-        appendConversation(s, a.host, 'council', 'AMBASSADOR ARRIVED — 10 messages per turn with this court.', { unread: true, kind: 'ambassador' });
-        contact(s, a.host, 'ambassador-arrival', 'Your envoy has arrived safely. There is now a direct channel between our courts.', 2);
+      if (a.status === 'stationed' && isHumanHouse(s,a.owner)) {
+        appendConversation(s, a.host, 'council', 'AMBASSADOR ARRIVED — 10 messages per turn with this court.', { unread: true, kind: 'ambassador', actorHouseId: a.owner });
+        contact(s, a.host, 'ambassador-arrival', 'Your envoy has arrived safely. There is now a direct channel between our courts.', 2, a.owner);
       }
     }
   }
   // Recruit at most one foreign envoy per resolution; total unit count stays bounded.
   if (s.turn % 3 === 0) {
-    const k = s.kingdoms.slice(1).find(k => alive(s, k.id) && ambassadorCapacity(s, k.id) && !s.ambassadors.some(a => a.owner === k.id && a.status !== 'dead'));
-    if (k && alive(s, PLAYER) && !atWar(s, k.id, PLAYER)) { const result = recruitAmbassador(s, k.id); if (result.ok) assignAmbassador(s, k.id, result.ambassadorId, PLAYER); }
+    const k = s.kingdoms.filter(k=>isAiHouse(s,k.id)).find(k => alive(s, k.id) && ambassadorCapacity(s, k.id) && !s.ambassadors.some(a => a.owner === k.id && a.status !== 'dead'));
+    const host = k && s.kingdoms.filter(h=>h.id!==k.id&&alive(s,h.id)&&!atWar(s,k.id,h.id)).sort((a,b)=>relation(s,k.id,b.id).trust-relation(s,k.id,a.id).trust)[0];
+    if (host) { const result=recruitAmbassador(s,k.id); if(result.ok)assignAmbassador(s,k.id,result.ambassadorId,host.id); }
   }
   s.ambassadors = s.ambassadors.filter(a => a.status !== 'dead' || s.diplomacy.incidents.slice(-12).some(e => e.ambassadorId === a.id));
 }

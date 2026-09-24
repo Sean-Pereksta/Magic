@@ -60,7 +60,132 @@ service cloud.firestore {
     }
 
     match /lobbies/{gameId} {
-      allow read, write: if isAuthed();
+      allow read: if isAuthed();
+      allow create: if isAuthed() && (request.resource.data.get('gameType','') != 'ironthrone' || (
+        request.resource.data.hostUid == request.auth.uid && request.resource.data.members.keys().hasOnly([request.auth.uid])
+        && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting'));
+      allow update: if isAuthed() && (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
+        resource.data.get('gameType','') == 'ironthrone' && request.resource.data.get('gameType','') == 'ironthrone' && (
+          (resource.data.status == 'waiting' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','players','updatedAt'])
+            && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.members.size() <= 6)
+          || (resource.data.hostUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']))
+          || (ironController() && ironAfter().hostUid == request.auth.uid && request.resource.data.hostUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','host','updatedAt']))
+        )));
+      allow delete: if isAuthed() && (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting');
+      // Iron Thrones uses UID seats and a lease-fenced simulation. These rules
+      // intentionally exclude its paths from the legacy recursive lobby grant.
+      function ironLobby() { return get(/databases/$(database)/documents/lobbies/$(gameId)).data; }
+      function ironMeta() { return get(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne/meta).data; }
+      function ironAfter() { return getAfter(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne/meta).data; }
+      function ironMember() { return isAuthed() && ironLobby().gameType == 'ironthrone' && request.auth.uid in ironLobby().members; }
+      function ironHouse(id) { return id in ['ashen','wintermere','thornwall','sunspire','vesper','redharbor']; }
+      function ironControls(m) { return m.lease != null && m.lease.uid == request.auth.uid && m.lease.expiresAt > request.time; }
+      function ironController() { return ironMember() && ironControls(ironMeta()); }
+      function ironSeat(m, id) { return ironHouse(id) && m.seats[id].kind == 'human' && m.seats[id].uid == request.auth.uid; }
+      function ironHasSeat(m) {
+        return m.seats.ashen.uid == request.auth.uid || m.seats.wintermere.uid == request.auth.uid || m.seats.thornwall.uid == request.auth.uid
+          || m.seats.sunspire.uid == request.auth.uid || m.seats.vesper.uid == request.auth.uid || m.seats.redharbor.uid == request.auth.uid;
+      }
+      function ironOwnSeatCount(m) {
+        return (m.seats.ashen.uid == request.auth.uid ? 1 : 0) + (m.seats.wintermere.uid == request.auth.uid ? 1 : 0) + (m.seats.thornwall.uid == request.auth.uid ? 1 : 0) + (m.seats.sunspire.uid == request.auth.uid ? 1 : 0) + (m.seats.vesper.uid == request.auth.uid ? 1 : 0) + (m.seats.redharbor.uid == request.auth.uid ? 1 : 0);
+      }
+      function ironSeatChange(before, after, id) {
+        let a=before.seats[id]; let b=after.seats[id];
+        return a == b || (b.keys().hasOnly(['kind','uid','name','substitute']) && b.name is string && b.name.size() <= 40 && (
+          (a.uid == request.auth.uid && b.kind == 'open' && b.uid == null)
+          || (a.kind == 'open' && b.kind == 'human' && b.uid == request.auth.uid && b.substitute == false)
+          || (before.hostUid == request.auth.uid && a.uid == null && b.uid == null && b.kind in ['ai','open'])
+        ));
+      }
+      function ironLeaseValid(m) {
+        return m.lease.uid == request.auth.uid && m.lease.token is string && m.lease.token.size() <= 64
+          && m.lease.expiresAt > request.time && m.lease.expiresAt <= request.time + duration.value(45,'s');
+      }
+      function ironHostAbsent(m) {
+        return !exists(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne_presence/$(m.hostUid))
+          || get(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne_presence/$(m.hostUid)).data.at < request.time - duration.value(90,'s');
+      }
+      function ironSnapshotWrite() {
+        let m=ironAfter();
+        return ironMember() && ironControls(m) && request.resource.data.keys().hasOnly(['stateVersion','turn','epoch','payload'])
+          && request.resource.data.stateVersion == m.stateVersion && request.resource.data.turn == m.turn && request.resource.data.epoch == m.epoch
+          && request.resource.data.payload.format in ['gzip','json'] && request.resource.data.payload.data is string && request.resource.data.payload.data.size() < 750000;
+      }
+      function ironClaimUpdate(a,b) {
+        return a.phase == 'setup' && b.phase == 'setup' && b.seats.keys().toSet() == a.seats.keys().toSet()
+          && ironOwnSeatCount(b) <= 1
+          && ironSeatChange(a,b,'ashen') && ironSeatChange(a,b,'wintermere') && ironSeatChange(a,b,'thornwall')
+          && ironSeatChange(a,b,'sunspire') && ironSeatChange(a,b,'vesper') && ironSeatChange(a,b,'redharbor');
+      }
+      function ironLeaseUpdate(a,b) {
+        return ironHasSeat(a) && ironLeaseValid(b)
+          && (b.hostUid == a.hostUid || b.hostUid == request.auth.uid && ironHostAbsent(a))
+          && ((a.lease == null || a.lease.expiresAt <= request.time) && b.epoch == a.epoch + 1
+            || a.lease != null && a.lease.uid == request.auth.uid && a.lease.token == b.lease.token && b.epoch == a.epoch);
+      }
+      function ironStartUpdate(a,b) {
+        return a.hostUid == request.auth.uid && b.phase == 'planning' && b.stateVersion == 1 && b.turn == 1
+          && ironLeaseValid(b) && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne/state).data.stateVersion == 1;
+      }
+      function ironCommitUpdate(a,b,fields) {
+        return ironControls(a) && b.lease == a.lease && b.epoch == a.epoch && b.hostUid == a.hostUid && b.options == a.options
+          && ((b.stateVersion == a.stateVersion + 1 && b.turn >= a.turn && b.turn <= a.turn + 1
+            && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne/state).data.stateVersion == b.stateVersion)
+            || fields.hasOnly(['phase']) && a.phase == 'planning' && b.phase == 'resolving');
+      }
+      function ironMetaUpdate() {
+        let a=resource.data; let b=request.resource.data; let fields=b.diff(a).affectedKeys();
+        // Route by the changed fields so invalid requests cannot exhaust the rule
+        // expression budget by evaluating every unrelated operation.
+        return fields.hasOnly(['seats','ready']) ? ironClaimUpdate(a,b)
+          : fields.hasOnly(['options']) ? a.phase == 'setup' && a.hostUid == request.auth.uid
+          : fields.hasOnly(['lease','epoch','hostUid']) ? ironLeaseUpdate(a,b)
+          : a.phase == 'setup' ? ironStartUpdate(a,b) : ironCommitUpdate(a,b,fields);
+      }
+      match /iron_throne/{docId} {
+        allow read: if ironMember() && (docId in ['meta','world'] || docId == 'state' && (ironController() || ironMeta().phase == 'setup' && ironMeta().hostUid == request.auth.uid));
+        allow create: if docId == 'meta' && ironMember() && request.resource.data.hostUid == ironLobby().hostUid
+          && request.resource.data.phase == 'setup' && request.resource.data.stateVersion == 0 && request.resource.data.epoch == 0
+          && request.resource.data.turn == 0 && request.resource.data.lease == null
+          && request.resource.data.seats.keys().hasOnly(['ashen','wintermere','thornwall','sunspire','vesper','redharbor'])
+          && request.resource.data.seats.values().hasOnly([{'kind':'open','uid':null,'name':''}]);
+        allow update: if docId == 'meta' && ironMember() && ironMetaUpdate();
+        allow create: if docId in ['state','world'] && ironSnapshotWrite() && request.resource.data.stateVersion == 1;
+        allow update: if docId in ['state','world'] && ironSnapshotWrite() && request.resource.data.stateVersion == resource.data.stateVersion + 1;
+      }
+      match /iron_throne_private/{houseId} {
+        allow read: if ironHouse(houseId) && ironMember() && (ironSeat(ironMeta(),houseId) || ironController());
+        allow create: if ironHouse(houseId) && ironSnapshotWrite() && request.resource.data.stateVersion == 1;
+        allow update: if ironHouse(houseId) && ironSnapshotWrite() && request.resource.data.stateVersion == resource.data.stateVersion + 1;
+      }
+      match /iron_throne_presence/{uid} {
+        allow read: if ironMember();
+        allow create, update: if ironMember() && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid','name','at']) && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name is string && request.resource.data.name.size() <= 40 && request.resource.data.at == request.time;
+      }
+      match /iron_throne_commands/{commandId} {
+        allow get: if ironMember() && (!exists(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne_commands/$(commandId))
+          || resource.data.uid == request.auth.uid || ironController());
+        allow list: if ironMember() && (resource.data.uid == request.auth.uid || ironController());
+        allow create: if ironMember() && request.resource.data.uid == request.auth.uid && request.resource.data.id == commandId
+          && request.resource.data.keys().hasOnly(['id','clientId','sequence','uid','actorHouseId','turn','stateVersion','epoch','type','args','status','createdAt'])
+          && ironSeat(ironMeta(),request.resource.data.actorHouseId) && !ironMeta().seats[request.resource.data.actorHouseId].substitute
+          && ironMeta().phase == 'planning' && request.resource.data.turn == ironMeta().turn && request.resource.data.epoch == ironMeta().epoch
+          && request.resource.data.stateVersion is int && request.resource.data.stateVersion >= 1 && request.resource.data.stateVersion <= ironMeta().stateVersion
+          && request.resource.data.sequence is int && request.resource.data.sequence > 0 && request.resource.data.clientId is string && request.resource.data.clientId.size() <= 64
+          && request.resource.data.type in ['build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover']
+          && request.resource.data.args is map && request.resource.data.args.size() <= 12 && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time;
+        allow update: if ironController() && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','error','stateVersionApplied','resolvedAt'])
+          && request.resource.data.status in ['accepted','rejected'] && request.resource.data.resolvedAt == request.time;
+      }
+      match /iron_throne_snapshots/{slot} {
+        allow read: if ironController();
+        allow write: if slot in ['0','1','2'] && ironSnapshotWrite();
+      }
+
 
       match /crowncouncil/{docId} {
         allow read, write: if isAuthed();
@@ -85,8 +210,9 @@ service cloud.firestore {
       // Grass Realms and War Realms keep their synchronized match snapshot on
       // this lobby document and authenticated readiness/deck data in presence/{uid}.
       // Academy and other lobby-backed games also use authenticated subcollections.
-      match /{document=**} {
-        allow read, write: if isAuthed() && gameId != 'world_quest';
+      match /{subcollection}/{document=**} {
+        allow read, write: if isAuthed() && gameId != 'world_quest'
+          && !(subcollection in ['iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
       }
     }
 

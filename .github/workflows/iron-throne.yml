@@ -5,11 +5,16 @@ on:
     paths:
       - 'game/iron-throne/**'
       - 'lobby/**'
+      - 'firestore.rules'
+      - 'firebase.iron-throne-test.json'
       - '.github/workflows/iron-throne.yml'
   push:
     branches: [main]
     paths:
       - 'game/iron-throne/**'
+      - 'lobby/**'
+      - 'firestore.rules'
+      - 'firebase.iron-throne-test.json'
       - '.github/workflows/iron-throne.yml'
 
 permissions:
@@ -26,3 +31,23 @@ jobs:
           node-version: '22'
       - run: npm run test:iron-throne
       - run: node --experimental-vm-modules --test lobby/tests/lobby-library.test.cjs
+  firebase-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: game/iron-throne/tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci --prefix game/iron-throne/tests
+      - run: npx playwright install --with-deps chromium
+        working-directory: game/iron-throne/tests
+      - run: npm run test:iron-throne:online
+      - run: npm run test:iron-throne:browser
+      - run: npm run test:iron-throne:intelligence-browser

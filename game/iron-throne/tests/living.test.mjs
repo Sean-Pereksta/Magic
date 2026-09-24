@@ -245,7 +245,7 @@ test('battle presentation consumes actual events without mutating the simulation
   for (let i = 0; i < 30; i++) s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: PLAYER, defender: 'wintermere', tile: '17,4', action: 'battle', before: [28, 28], after: [20, 15], winner: PLAYER });
   const before = JSON.stringify(s); fx.ingest(s, 100);
   assert.equal(fx.active.length, 6); assert.ok(fx.active.reduce((n, e) => n + e.particles.length, 0) <= 72); assert.equal(JSON.stringify(s), before);
-  assert.equal(fx.animating(200, true), false); fx.ingest(s, 7000); assert.equal(fx.active.length, 0); assert.equal(fx.results.length, 0);
+  assert.equal(fx.animating(200, true), true, 'Reduced effects retain fading casualty numbers'); fx.ingest(s, 7000); assert.equal(fx.active.length, 0); assert.equal(fx.results.length, 0);
 });
 test('honorable and mercantile rulers weigh the same profitable offer differently after broken trust', () => {
   const s = createGame();

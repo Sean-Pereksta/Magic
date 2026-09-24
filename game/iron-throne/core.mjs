@@ -1,3 +1,6 @@
+import { calculatePopulationChange, populationCapacity } from './population.mjs';
+export { populationCapacity } from './population.mjs';
+import { isHumanHouse } from './house-control.mjs';
 import { initializePlans, validatePlans } from './plans.mjs';
 import { initializeEspionage, spyUpkeep, validateEspionage } from './espionage.mjs';
 import { updateAttitudes, validatePolitics } from './politics.mjs';
@@ -392,6 +395,16 @@ export function economyProjection(s, owner) {
   }
   return { income, gross, stalls, routes };
 }
+// Forecast completed construction, using the same calculation as resolution.
+export function populationProjection(s, owner) {
+  let projected=s;
+  if(Object.values(s.tiles).some(t=>t.project?.owner===owner&&t.project.remaining===1)){
+    projected=structuredClone(s);
+    for(const t of Object.values(projected.tiles))if(t.project&&t.project.owner===t.owner&&t.project.remaining===1)completeConstruction(t);
+    rebuildTerritory(projected);
+  }
+  return {...calculatePopulationChange(projected,owner,economyProjection(projected,owner).income),capacity:populationCapacity(s,owner),nextCapacity:populationCapacity(projected,owner)};
+}
 export function resolveEconomy(s) {
   for (const t of Object.values(s.tiles)) if (t.project) {
     if (t.project.owner !== t.owner) { t.project = null; continue; }
@@ -399,24 +412,23 @@ export function resolveEconomy(s) {
       const name=buildingSpec(t.project.type,t.project.level||1).name;
       recordStrategyAction(s,t.owner,{kind:'complete',tile:t.id,building:t.project.type,level:t.project.level||1});
       completeConstruction(t);
-      if(t.owner===PLAYER)log(s,`${name} completed at ${t.name||t.id}.`,'economy');
+      if(isHumanHouse(s,t.owner))log(s,`${name} completed at ${t.name||t.id}.`,'economy');
     }
   }
   rebuildTerritory(s);
   for (const k of s.kingdoms) {
     if (!alive(s, k.id)) continue;
     const { income } = economyProjection(s, k.id);
+    const population=calculatePopulationChange(s,k.id,income);
     for (const r of RESOURCES) k.resources[r] = Math.min(Math.max(k.resources[r],storageCapacity(s,k.id,r)), k.resources[r]+income[r]);
-    const deficit = k.resources.food < 0 || k.resources.gold < 0;
+    const deficit = population.shortage;
     if (deficit) {
       const protection=Object.values(s.tiles).some(t=>t.owner===k.id&&buildingLevel(t,'greatGranary'))?.5:1;
       for (const a of armiesOf(s, k.id)) {casualties(a, .06*protection);a.morale=Math.max(.1,a.morale-.12*protection);}
-      k.happiness = Math.max(5, k.happiness - 6); k.population = Math.max(20, k.population - 3);
-      if (k.id === PLAYER) log(s, 'Food or gold ran out. Soldiers deserted and population fell.', 'economy');
+      k.happiness = population.happinessAfter; k.population = population.nextPopulation;
+      if (isHumanHouse(s,k.id)) log(s, `${k.name}: Food or gold ran out. Soldiers deserted and population fell.`, 'economy');
     } else {
-      k.happiness = Math.max(5, Math.min(100, k.happiness + (k.tax === 'high' ? -3 : k.tax === 'low' ? 3 : 1)));
-      const cap = settlements(s, k.id).reduce((n,t)=>n+(t.building==='city'?150:80),0)+Object.values(s.tiles).filter(t=>t.owner===k.id).reduce((n,t)=>n+buildingLevel(t,'farm')*8,0);
-      if (k.resources.food > 20 && k.happiness >= 35) k.population = Math.min(cap, k.population + (k.tax === 'low' ? 4 : k.tax === 'high' ? 1 : 2));
+      k.happiness = population.happinessAfter; k.population = population.nextPopulation;
     }
     for (const r of RESOURCES) k.resources[r] = Math.max(0, Math.min(99999, k.resources[r]));
     k.commands = commandLimit(s, k.id);
@@ -429,14 +441,18 @@ export function strategicThreat(s, owner, t) {
 }
 export function strategyTurn(s) { return runStrategyTurn(s); }
 export function checkVictory(s) {
-  if (!alive(s, PLAYER)) { s.outcome = { won: false, reason: 'Your last settlement has fallen. Your house survives in the chronicles.' }; return; }
-  const cities = settlements(s), owned = settlements(s, PLAYER);
-  if (owned.length >= Math.ceil(cities.length * .6)) s.outcome = { won: true, reason: 'Conquest: your banners fly above at least 60% of all settlements.' };
-  const rivals = s.kingdoms.filter(k => k.id !== PLAYER && alive(s, k.id));
-  const supporters = rivals.filter(k => treaty(s, PLAYER, k.id, 'alliance') || treaty(s, PLAYER, k.id, 'vassalage'));
-  if (supporters.length > rivals.length / 2 && supporters.length > 0) s.diplomaticTurns++;
-  else s.diplomaticTurns = 0;
-  if (s.diplomaticTurns >= 3) s.outcome = { won: true, reason: 'The Crown Accord: a majority of surviving houses recognizes your leadership for three turns.' };
+  if (!s.controllers && !alive(s, PLAYER)) { s.outcome={won:false,reason:'Your last settlement has fallen. Your house survives in the chronicles.'}; return; }
+  const houses=s.controllers?s.kingdoms.filter(k=>alive(s,k.id)).map(k=>k.id):[PLAYER];
+  s.crownProgress ||= {};
+  for(const actor of houses){
+    const cities=settlements(s),owned=settlements(s,actor),rivals=s.kingdoms.filter(k=>k.id!==actor&&alive(s,k.id));
+    const allies=rivals.filter(k=>treaty(s,actor,k.id,'alliance')||treaty(s,actor,k.id,'vassalage')).map(k=>k.id);
+    const progress=s.controllers?(s.crownProgress[actor]||0):s.diplomaticTurns;
+    const next=allies.length>rivals.length/2&&allies.length>0?Math.min(3,progress+1):0;
+    s.crownProgress[actor]=next;if(actor===PLAYER)s.diplomaticTurns=next;
+    const conquest=owned.length>=Math.ceil(cities.length*.6),accord=next>=3;
+    if(!s.outcome&&(conquest||accord))s.outcome={won:actor===PLAYER||allies.includes(PLAYER),winnerHouseId:actor,coalition:accord?[actor,...allies]:[actor],reason:s.controllers?`${kingdom(s,actor).name} claims the crown through ${accord?'the Crown Accord':'territorial dominance'}.${accord?` Allied victors: ${allies.map(id=>kingdom(s,id).name).join(', ')}.`:''}`:conquest?'Conquest: your banners fly above at least 60% of all settlements.':'The Crown Accord: a majority of surviving houses recognizes your leadership for three turns.'};
+  }
 }
 
 export function parseSave(raw) {

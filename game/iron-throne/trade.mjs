@@ -1,3 +1,4 @@
+import { isHumanHouse, isAiHouse } from './house-control.mjs';
 import { BUILDINGS, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
 import { buildingLevel, constructionSpec, productionPlan } from './economy.mjs';
 import { PLAYER, alive, atWar, canAfford, economyProjection, kingdom, neighbors, passable, pay, relation, settlements, treaty } from './core.mjs';
@@ -88,33 +89,33 @@ function candidate(s,from,to) {
       const intent={type:'EXCHANGE',duration:5,giveResource:n.resource,giveAmount:amount,receiveResource:give.resource,receiveAmount:receive,tradeKind:n.resource==='food'&&a.resources.food<30?'emergency':'immediate'};
       // Sustainable supply needs may become recurring proposals. Both stores
       // and forecast production must cover the offered five-turn obligation.
-      if(to===PLAYER&&tradeInfrastructure(s,from).level&&tradeInfrastructure(s,to).level&&s.turn%4===0&&give.surplus+give.production*5>=receive*5&&surplus+supplies.find(x=>x.resource===n.resource).production*5>=amount*5&&!contractCheck(s,to,from,{...intent,type:'RECURRING'})) {intent.type='RECURRING';intent.tradeKind='recurring';}
-      if(to===PLAYER){let verdict=evaluateDeal(s,from,intent);if(verdict.status==='counter'){Object.assign(intent,verdict.counter);verdict=evaluateDeal(s,from,intent);}if(verdict.status!=='accept')continue;}
+      if(isHumanHouse(s,to)&&tradeInfrastructure(s,from).level&&tradeInfrastructure(s,to).level&&s.turn%4===0&&give.surplus+give.production*5>=receive*5&&surplus+supplies.find(x=>x.resource===n.resource).production*5>=amount*5&&!contractCheck(s,to,from,{...intent,type:'RECURRING'})) {intent.type='RECURRING';intent.tradeKind='recurring';}
+      if(isHumanHouse(s,to)){let verdict=evaluateDeal(s,from,intent,to);if(verdict.status==='counter'){Object.assign(intent,verdict.counter);verdict=evaluateDeal(s,from,intent,to);}if(verdict.status!=='accept')continue;}
       if(!best||score>best.score)best={score,intent,reason:`${a.name} seeks ${n.resource} for ${a.economicPlan?BUILDINGS[a.economicPlan.type].name:'its population and military plans'} and offers surplus ${give.resource}.`,route};
     }
   }
   return best;
 }
-export function scheduleTrade(s) {
-  const c=s.commerce;c.offers=c.offers.filter(o=>o.expires>=s.turn).slice(-12);
-  if(c.lastOfferTurn===s.turn)return;
+export function scheduleTrade(s, actorHouseId = PLAYER) {
+  const c=s.commerce;c.offers=c.offers.filter(o=>o.expires>=s.turn).slice(s.controllers?-72:-12);
+  if((s.controllers ? c.lastOfferByHouse?.[actorHouseId] : c.lastOfferTurn)===s.turn)return;
   const candidates=[];
-  for(const k of s.kingdoms.filter(k=>k.id!==PLAYER&&alive(s,k.id))){
+  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id))){
     const crisis=k.resources.food<25,cooldown=crisis?2:4;
-    if(s.turn-(c.cooldowns[k.id]??-9)<cooldown||c.offers.some(o=>o.from===k.id&&o.status==='pending'))continue;
+    if(s.turn-(c.cooldowns[`${actorHouseId}:${k.id}`]??-9)<cooldown||c.offers.some(o=>o.from===k.id&&(o.to||PLAYER)===actorHouseId&&o.status==='pending'))continue;
     if(!crisis&&s.turn%2)continue;
-    const offer=candidate(s,k.id,PLAYER);if(offer&&offer.score>=18)candidates.push({...offer,from:k.id});
+    const offer=candidate(s,k.id,actorHouseId);if(offer&&offer.score>=18)candidates.push({...offer,from:k.id});
   }
   candidates.sort((a,b)=>b.score-a.score||a.from.localeCompare(b.from));const best=candidates[0];if(!best)return;
-  const offer={id:s.nextId++,from:best.from,intent:best.intent,reason:best.reason,created:s.turn,expires:s.turn+3,status:'pending'};
-  c.offers.push(offer);c.cooldowns[best.from]=s.turn;c.lastOfferTurn=s.turn;
-  appendConversation(s,best.from,'ruler',`${offer.reason} We request ${offer.intent.giveAmount} ${offer.intent.giveResource} for ${offer.intent.receiveAmount} ${offer.intent.receiveResource}${offer.intent.type==='RECURRING'?` each turn for ${offer.intent.duration} turns`:''}.`,{unread:true,kind:'trade-dispatch',proposal:offer.intent});
+  const offer={id:s.nextId++,from:best.from,to:actorHouseId,intent:best.intent,reason:best.reason,created:s.turn,expires:s.turn+3,status:'pending'};
+  c.offers.push(offer);c.cooldowns[`${actorHouseId}:${best.from}`]=s.turn;c.lastOfferTurn=s.turn;c.lastOfferByHouse||={};c.lastOfferByHouse[actorHouseId]=s.turn;
+  appendConversation(s,best.from,'ruler',`${offer.reason} We request ${offer.intent.giveAmount} ${offer.intent.giveResource} for ${offer.intent.receiveAmount} ${offer.intent.receiveResource}${offer.intent.type==='RECURRING'?` each turn for ${offer.intent.duration} turns`:''}.`,{unread:true,kind:'trade-dispatch',proposal:offer.intent,actorHouseId});
 }
 export function aiResourceTrade(s) {
   if(s.turn%3)return;
-  for(const k of s.kingdoms.filter(k=>k.id!==PLAYER&&alive(s,k.id))){
+  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id))){
     if(s.turn-(s.commerce.aiTrades[k.id]||0)<4)continue;
-    const options=s.kingdoms.filter(o=>![PLAYER,k.id].includes(o.id)&&alive(s,o.id)).map(o=>({partner:o.id,offer:candidate(s,k.id,o.id)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
+    const options=s.kingdoms.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)).map(o=>({partner:o.id,offer:candidate(s,k.id,o.id)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
     const best=options[0];if(!best)continue;
     const other=kingdom(s,best.partner),i=best.offer.intent;
     if(!canAfford(other,{[i.giveResource]:i.giveAmount})||!canAfford(k,{[i.receiveResource]:i.receiveAmount}))continue;
