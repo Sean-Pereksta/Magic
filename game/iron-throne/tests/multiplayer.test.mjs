@@ -7,7 +7,7 @@ import {splitCampaign,joinCampaign,playerView,packCampaign,encodePayload,decodeP
 import {kingdom,settlements,treaty,atWar,declareWar,parseSave,createGame} from '../core.mjs';
 import {commitDeal,makeContext,endTurn,acceptRulerMemories} from '../diplomacy.mjs';
 import {consumeMessage,appendConversation} from '../living.mjs';
-function setup(count=2){const meta=setupMeta({hostUid:'u0'},1000);for(let i=0;i<count;i++)claimSeat(meta,`u${i}`,`Ruler ${i}`,houseIds[i]);const state=startCampaign(meta,'u0',1000);meta.epoch=1;return {state,meta};}
+import { onlineGame as setup } from './fixtures/online-game.mjs';
 let serial=0;
 function command(s,m,actor,type,args={}){const i=++serial;return {id:`cmd-${i}`,clientId:'test-client',sequence:i,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,type,args};}
 const terms=(type,fields={})=>({type,duration:10,giveAmount:0,giveResource:'gold',receiveAmount:0,receiveResource:'food',targetId:'',...fields});
@@ -29,8 +29,8 @@ test('six humans can rule all six Houses without normal strategy running for any
  assert.equal(parseSave(JSON.stringify(s)).turn,2);
 });
 test('orders cannot spend another House resources or take another army, and replay/turn/epoch checks fail closed',()=>{
- const {state:s,meta:m}=setup();const before=JSON.stringify(s);
- for(const [type,args]of [['recruit',{tile:'17,4',unit:'levy'}],['order',{army:s.armies[1].id,tile:'17,4',order:'hold'}],['build',{tile:'17,4',building:'market'}]])assert.equal(applyCommand(s,m,command(s,m,'ashen',type,args)).ok,false);
+ const {state:s,meta:m}=setup();const before=JSON.stringify(s),foreign=settlements(s,'wintermere')[0].id;
+ for(const [type,args]of [['recruit',{tile:foreign,unit:'levy'}],['order',{army:s.armies[1].id,tile:foreign,order:'hold'}],['build',{tile:foreign,building:'market'}]])assert.equal(applyCommand(s,m,command(s,m,'ashen',type,args)).ok,false);
  assert.equal(JSON.stringify(s),before);
  const c=command(s,m,'ashen','tax',{policy:'low'});assert.equal(applyCommand(s,m,c).ok,true);assert.equal(applyCommand(s,m,c).ok,false);
  for(const patch of [{uid:'u1'},{turn:0},{epoch:0},{stateVersion:m.stateVersion+1}])assert.equal(applyCommand(s,m,{...command(s,m,'ashen','tax',{policy:'high'}),...patch}).ok,false);

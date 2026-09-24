@@ -72,7 +72,8 @@ export function economicNeeds(s,owner) {
 }
 export function publicEconomy(s,owner) {
   const needs=economicNeeds(s,owner);
-  return {region:REGIONS[owner].name,specialty:REGIONS[owner].description,imports:needs.filter(n=>n.need>5).map(n=>n.resource),exports:needs.filter(n=>n.surplus>30).map(n=>n.resource)};
+  const capital=Object.values(s.tiles).find(t=>t.owner===owner&&t.capital),region=s.worldGeneration?s.regions?.[capital?.region]:REGIONS[owner];
+  return {region:region?.name||'Unfounded realm',specialty:region?.description||'Choose a starting region.',imports:needs.filter(n=>n.need>5).map(n=>n.resource),exports:needs.filter(n=>n.surplus>30).map(n=>n.resource)};
 }
 function candidate(s,from,to) {
   const route=tradeRoute(s,from,to);if(!route.safe)return null;

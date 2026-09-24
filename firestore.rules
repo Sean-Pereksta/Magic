@@ -125,7 +125,7 @@ service cloud.firestore {
             || a.lease != null && a.lease.uid == request.auth.uid && a.lease.token == b.lease.token && b.epoch == a.epoch);
       }
       function ironStartUpdate(a,b) {
-        return a.hostUid == request.auth.uid && b.phase == 'planning' && b.stateVersion == 1 && b.turn == 1
+        return a.hostUid == request.auth.uid && b.phase == 'founding' && b.stateVersion == 1 && b.turn == 0
           && ironLeaseValid(b) && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/iron_throne/state).data.stateVersion == 1;
       }
       function ironCommitUpdate(a,b,fields) {
@@ -172,10 +172,12 @@ service cloud.firestore {
         allow create: if ironMember() && request.resource.data.uid == request.auth.uid && request.resource.data.id == commandId
           && request.resource.data.keys().hasOnly(['id','clientId','sequence','uid','actorHouseId','turn','stateVersion','epoch','type','args','status','createdAt'])
           && ironSeat(ironMeta(),request.resource.data.actorHouseId) && !ironMeta().seats[request.resource.data.actorHouseId].substitute
-          && ironMeta().phase == 'planning' && request.resource.data.turn == ironMeta().turn && request.resource.data.epoch == ironMeta().epoch
+          && ((ironMeta().phase == 'founding' && request.resource.data.type == 'found')
+            || (ironMeta().phase == 'planning' && request.resource.data.type != 'found'))
+          && request.resource.data.turn == ironMeta().turn && request.resource.data.epoch == ironMeta().epoch
           && request.resource.data.stateVersion is int && request.resource.data.stateVersion >= 1 && request.resource.data.stateVersion <= ironMeta().stateVersion
           && request.resource.data.sequence is int && request.resource.data.sequence > 0 && request.resource.data.clientId is string && request.resource.data.clientId.size() <= 64
-          && request.resource.data.type in ['build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover']
+          && request.resource.data.type in ['found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover']
           && request.resource.data.args is map && request.resource.data.args.size() <= 12 && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time;
         allow update: if ironController() && resource.data.status == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','error','stateVersionApplied','resolvedAt'])

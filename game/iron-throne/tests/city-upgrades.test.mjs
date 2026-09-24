@@ -1,7 +1,9 @@
+import { onlineGame } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {BUILDINGS,RESOURCES} from '../data.mjs';
-import {createGame,kingdom,build,buildCheck,commandLimit,populationProjection,resolveEconomy,recruit,parseSave,strategyTurn,declareWar} from '../core.mjs';
+import { kingdom, build, buildCheck, commandLimit, populationProjection, resolveEconomy, recruit, parseSave, strategyTurn, declareWar } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import {buildingLevel,cityBenefits,constructionSpec,tileProduction} from '../economy.mjs';
 import {calculatePopulationChange,populationCapacity} from '../population.mjs';
 import {ART,ALL_ART_PATHS,fallbackArtURL} from '../asset-manifest.mjs';
@@ -55,10 +57,10 @@ test('town promotion, old cities, completed tiers and pending upgrades survive s
  copy.tiles[t.id].levels.city=5;assert.throws(()=>parseSave(JSON.stringify(copy)));
 });
 test('foreign or occupied cities cannot be upgraded, and online commands use the same paid upgrade',()=>{
- const meta=setupMeta({hostUid:'u0'},1000);claimSeat(meta,'u0','A','ashen');claimSeat(meta,'u1','B','wintermere');const s=startCampaign(meta,'u0',1000);meta.epoch=1;stock(s,'wintermere');
- const c={id:'city-upgrade',clientId:'city-test-client',sequence:1,uid:'u1',actorHouseId:'wintermere',turn:1,stateVersion:1,epoch:1,type:'build',args:{tile:'17,4',building:'city'}};
- const before=JSON.stringify(s);assert.equal(applyCommand(s,meta,{...c,args:{tile:'5,6',building:'city'}}).ok,false);assert.equal(JSON.stringify(s),before);
- assert.equal(applyCommand(s,meta,c).ok,true);assert.equal(s.tiles['17,4'].project.level,2);assert.equal(applyCommand(s,meta,c).ok,false);
+ const {state:s,meta}=onlineGame();stock(s,'wintermere');const home=s.founding.houses.wintermere.capital,foreign=s.founding.houses.ashen.capital;
+ const c={id:'city-upgrade',clientId:'city-test-client',sequence:1,uid:'u1',actorHouseId:'wintermere',turn:1,stateVersion:meta.stateVersion,epoch:1,type:'build',args:{tile:home,building:'city'}};
+ const before=JSON.stringify(s);assert.equal(applyCommand(s,meta,{...c,args:{tile:foreign,building:'city'}}).ok,false);assert.equal(JSON.stringify(s),before);
+ assert.equal(applyCommand(s,meta,c).ok,true);assert.equal(s.tiles[home].project.level,2);assert.equal(applyCommand(s,meta,c).ok,false);
  const lone=createGame();stock(lone);declareWar(lone,'ashen','wintermere');lone.armies[1].tile='5,6';assert.match(buildCheck(lone,'ashen','5,6','city'),/Enemy troops/);
 });
 test('AI recruits with upgraded city orders while retaining its resource and population constraints',()=>{

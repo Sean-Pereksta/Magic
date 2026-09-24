@@ -1,3 +1,6 @@
+import { generateWorld } from './world-generation.mjs';
+import { initializeFounding, validateFoundingSave, STARTING_RADIUS } from './founding.mjs';
+import { MAP_PROFILES } from './map-profiles.mjs';
 import { calculatePopulationChange, populationCapacity } from './population.mjs';
 export { populationCapacity } from './population.mjs';
 import { isHumanHouse } from './house-control.mjs';
@@ -9,21 +12,18 @@ import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNI
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
-import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, regionalize, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
+import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
 import { armySpeed, familyCount, inflict, resolveFieldBattle, siegeStep } from './warfare.mjs';
 
 import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
 
 export const PLAYER = 'ashen';
-const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-export const tileId = (q, r) => `${q},${r}`;
-export const distance = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+import { tileId, distance, neighbors, passable } from './world-hex.mjs';
+export { tileId, distance, neighbors, passable } from './world-hex.mjs';
 export const getTile = (s, id) => s.tiles[id];
 export const kingdom = (s, id) => s.kingdoms.find(k => k.id === id);
 export const settlements = (s, owner) => Object.values(s.tiles).filter(t => ['city', 'town'].includes(t.building) && (!owner || t.owner === owner));
 export const armiesOf = (s, owner) => s.armies.filter(a => a.owner === owner);
-export const neighbors = (s, t) => DIRS.map(([q, r]) => s.tiles[tileId(t.q + q, t.r + r)]).filter(Boolean);
-export const passable = t => !!t && Number.isFinite(TERRAINS[t.terrain]?.cost);
 export const sizeOf = a => Object.values(a.units).reduce((sum, n) => sum + n, 0);
 export const alive = (s, id) => settlements(s, id).length > 0;
 export const pair = (a, b) => [a, b].sort().join(':');
@@ -67,47 +67,24 @@ export function makePeace(s, a, b) {
   for (const army of s.armies) if ((army.owner === a || army.owner === b) && army.path.length) army.path = [];
 }
 
-export function createGame(seed = 8147, preset = 'crossroads') {
+export function createGame(seed = 8147, preset = 'random') {
   seed = Number(seed) >>> 0 || 8147;
-  const s = { version: SAVE_VERSION, width: 40, height: 30, seed, rng: seed, preset, turn: 1, nextId: 1, tiles: {}, kingdoms: [], armies: [], treaties: [], wars: [], pledges: [], events: [], militaryEvents: [], conversations: {}, diplomaticTurns: 0, outcome: null };
-  for (let r = 0; r < s.height; r++) for (let q = 0; q < s.width; q++) {
-    const n = random(s), edge = r === 0 || q === 0 || q === 39 || r === 29;
-    let terrain = edge ? 'water' : n < .10 ? 'mountain' : n < .34 ? 'forest' : n < .54 ? 'hills' : 'plains';
-    if (!edge && (q === 1 || r === 1 || q === 38 || r === 28)) terrain = 'coast';
-    if (preset === 'highlands' && n < .22 && !edge) terrain = 'mountain';
-    const resource = terrain === 'hills' ? (random(s) < .45 ? 'iron' : 'stone') : terrain === 'forest' ? 'wood' : terrain === 'plains' && random(s) < .4 ? 'food' : null;
-    const t = { id: tileId(q, r), q, r, terrain, resource, owner: null, building: null, road: false, river: q === 19 && r > 1 && r < 28, walls: 0, market: false, workshop: false, project: null, capital: null };
-    s.tiles[t.id] = t;
-  }
-  const starts = [[5, 6], [17, 4], [31, 5], [32, 21], [20, 24], [5, 22]];
-  HOUSES.forEach((house, i) => {
+  const s = { version: SAVE_VERSION, width: 40, height: 30, seed, rng: seed, preset, turn: 0, nextId: 1, tiles: {}, kingdoms: [], armies: [], treaties: [], wars: [], pledges: [], events: [], militaryEvents: [], conversations: {}, diplomaticTurns: 0, outcome: null };
+  for (const house of HOUSES) {
     const k = { ...house, resources: { food: 140, wood: 110, stone: 90, iron: 50, gold: 200, horses: 12, tools: 0, arms: 0 }, population: 80, happiness: 70, tax: 'medium', commands: 3, relations: {}, memories: [], memorySummary: '', goal: 'ECONOMY', lastGiftTurn: -1 };
     for (const other of HOUSES) if (other.id !== k.id) k.relations[other.id] = { opinion: k.honor > .8 ? 18 : k.aggression > .8 ? -12 : 5, trust: 15 };
     s.kingdoms.push(k);
-    const [q, r] = starts[i], capital = s.tiles[tileId(q, r)];
-    Object.assign(capital, { terrain: 'plains', building: 'city', owner: k.id, capital: k.id, road: true, resource: null, name: ['Emberkeep', 'Frostwatch', 'Briarhold', 'Solstice', 'Moonveil', 'Redhaven'][i] });
-    const ring = neighbors(s, capital);
-    ring.forEach((t, j) => Object.assign(t, { terrain: ['plains', 'forest', 'hills', 'hills', 'plains', 'plains'][j], resource: ['food', 'wood', 'stone', 'iron', 'food', null][j], building: ['farm', 'lumber', 'quarry', 'mine', null, null][j], road: true, owner: k.id }));
-    s.armies.push({ id: `army-${s.nextId++}`, owner: k.id, tile: capital.id, units: {...emptyUnits(), levy: 20, archer: 6, cavalry: 2}, formation: 'balanced', retreats: 0, morale: 1, order: 'hold', path: [], target: null });
-  });
-  regionalize(s, random);
-  s.commerce = {offers:[],lastOfferTurn:0,cooldowns:{},aiTrades:{}};
-  // Guaranteed connected corridors retain hills/forests, but clear impassable hexes.
-  for (let i = 0; i < starts.length; i++) {
-    let t = s.tiles[tileId(...starts[i])]; const goal = s.tiles[tileId(...starts[(i + 1) % starts.length])];
-    while (t.id !== goal.id) {
-      t = neighbors(s, t).sort((a, b) => distance(a, goal) - distance(b, goal))[0];
-      if (!passable(t)) { t.terrain = 'plains'; t.resource = 'food'; }
-    }
   }
-  rebuildTerritory(s);
-  log(s, 'Six houses contest the crown. Unite three rival houses for three turns, or control 60% of settlements.', 'council');
-  initializeStrategy(s);
-  initializeLiving(s); initializePlans(s); initializeEspionage(s); updateAttitudes(s);
+  initializeFounding(s);
+  generateWorld(s, preset);
+  s.commerce = {offers:[],lastOfferTurn:0,cooldowns:{},aiTrades:{}};
+  log(s, 'FOUND YOUR KINGDOM. Inspect the world, then choose your capital. Starting capitals must be at least 8 hexes apart.', 'council');
+  initializeStrategy(s); initializeLiving(s); initializePlans(s); initializeEspionage(s); updateAttitudes(s);
   return s;
 }
 
 export function rebuildTerritory(s) {
+  if(s.worldGeneration)return rebuildRegionalTerritory(s);
   const anchors = Object.values(s.tiles).filter(t => t.owner && ['city', 'town', 'fort', 'watchtower'].includes(t.building));
   for (const t of Object.values(s.tiles)) {
     if (anchors.includes(t)) continue;
@@ -117,9 +94,28 @@ export function rebuildTerritory(s) {
     t.owner = candidates[0]?.a.owner || null;
   }
 }
+// New worlds spread influence along usable land. Legacy saves keep their original rules.
+function rebuildRegionalTerritory(s) {
+  const tiles=Object.values(s.tiles),anchors=tiles.filter(t=>t.owner&&['city','town','fort','watchtower'].includes(t.building)),claims=new Map();
+  for(const a of anchors){
+    const radius=a.building==='fort'?2:a.building==='watchtower'?1:a.capital?STARTING_RADIUS:3;
+    const queue=[a],seen=new Set([a.id]);
+    for(let i=0;i<queue.length;i++){
+      const t=queue[i],d=distance(a,t);if(d>radius)continue;
+      const before=claims.get(t.id);
+      if(!before||d<before.d||d===before.d&&(a.owner===t.owner&&before.a.owner!==t.owner||a.owner!==t.owner&&before.a.owner!==t.owner&&a.id<before.a.id))claims.set(t.id,{a,d});
+      for(const n of neighbors(s,t))if(passable(n)&&!seen.has(n.id)&&distance(a,n)<=radius){seen.add(n.id);queue.push(n);}
+    }
+  }
+  for(const t of tiles){
+    if(anchors.includes(t)||t.project&&t.project.owner===t.owner&&['town','fort'].includes(t.project.type))continue;
+    t.owner=claims.get(t.id)?.a.owner||null;
+  }
+}
 export function commandLimit(s, owner) { return Math.min(8, 3 + cityOrderBonus(s,owner) + Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
 export function buildCheck(s, owner, id, type) {
   const t=s.tiles[id],k=kingdom(s,owner),b=BUILDINGS[type];
+  if(s.phase==='founding')return 'Found all six kingdoms before construction begins.';
   if(s.outcome)return 'This campaign has ended.';
   if(!b||!k||!t)return 'Unknown construction.';
   const frontier=type==='town'&&!t.owner&&neighbors(s,t).some(n=>n.owner===owner);
@@ -168,6 +164,7 @@ export function buildHighway(s,owner,fromId,toId) {
   return {ok:true,tiles:projects.length,cost};
 }
 export function recruitCheck(s,owner,id,type) {
+  if(s.phase==='founding')return 'Found all six kingdoms before recruitment begins.';
   const t=s.tiles[id],k=kingdom(s,owner),u=UNITS[type];
   if(s.outcome||!u||!k||t?.owner!==owner||!['city','town','fort'].includes(t.building))return 'Muster at an owned town, city or fort.';
   if(s.armies.some(a=>a.tile===id&&atWar(s,owner,a.owner)))return 'The muster ground is under attack.';
@@ -441,6 +438,7 @@ export function strategicThreat(s, owner, t) {
 }
 export function strategyTurn(s) { return runStrategyTurn(s); }
 export function checkVictory(s) {
+  if(s.phase==='founding')return;
   if (!s.controllers && !alive(s, PLAYER)) { s.outcome={won:false,reason:'Your last settlement has fallen. Your house survives in the chronicles.'}; return; }
   const houses=s.controllers?s.kingdoms.filter(k=>alive(s,k.id)).map(k=>k.id):[PLAYER];
   s.crownProgress ||= {};
@@ -459,7 +457,7 @@ export function parseSave(raw) {
   if (typeof raw !== 'string' || raw.length > 2000000) throw new Error('Save is too large or unreadable.');
   const s = JSON.parse(raw);
   const number = (n, min = 0, max = 100000) => Number.isFinite(n) && n >= min && n <= max;
-  if (![1, 2, SAVE_VERSION].includes(s?.version) || s.width !== 40 || s.height !== 30 || !Number.isInteger(s.turn) || !number(s.turn, 1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== 1200 || !Array.isArray(s.kingdoms) || s.kingdoms.length !== 6) throw new Error('Unsupported or damaged campaign save.');
+  if (![1, 2, SAVE_VERSION].includes(s?.version) || s.width !== 40 || s.height !== 30 || !Number.isInteger(s.turn) || !number(s.turn, s.phase==='founding'?0:1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== 1200 || !Array.isArray(s.kingdoms) || s.kingdoms.length !== 6) throw new Error('Unsupported or damaged campaign save.');
   const oldVersion=s.version;
   if(oldVersion<3) migrateEconomy(s);
   for (const h of HOUSES) {
@@ -485,6 +483,8 @@ export function parseSave(raw) {
   if (oldVersion === 1) initializeLiving(s);
   s.version=SAVE_VERSION;
   validateLivingSave(s);
+  validateFoundingSave(s);
+  if(s.worldGeneration&&(!Object.hasOwn(MAP_PROFILES,s.mapProfile)||!Number.isInteger(s.seed)||!Number.isInteger(s.generation?.attempt)||s.generation.attempt<0||s.generation.attempt>=96))throw new Error('Damaged regional world metadata.');
   validateExpansion(s);
   validateStrategySave(s);
   validateStructures(s);

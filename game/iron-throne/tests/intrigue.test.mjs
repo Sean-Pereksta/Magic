@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BUILDINGS, RESOURCES } from '../data.mjs';
-import { PLAYER, armiesOf, atWar, createGame, declareWar, economyProjection, kingdom, makePeace, mergeArmies, orderArmy, orderStructureAttack, parseSave, relation, resolveMovement, settlements, strategyTurn, treaty } from '../core.mjs';
+import { PLAYER, armiesOf, atWar, declareWar, economyProjection, kingdom, makePeace, mergeArmies, orderArmy, orderStructureAttack, parseSave, relation, resolveMovement, settlements, strategyTurn, treaty } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { buildingLevel, emptyUnits, tileProduction } from '../economy.mjs';
 import { endTurn, makeContext, scriptedReply } from '../diplomacy.mjs';
 import { activePlan, createPlan, finishPlans, prunePlans, recordPlayerPlans, transitionPlan } from '../plans.mjs';

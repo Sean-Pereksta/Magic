@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import worker, { DiplomacyBudget } from '../worker/worker.mjs';
 import { issueSession, reserveSessionBudget, verifySession } from '../worker/session.mjs';
 import { DiplomacyClient } from '../chat.mjs';
-import { createGame } from '../core.mjs';
+import {  } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 import { makeContext } from '../diplomacy.mjs';
 
 const origin = 'https://catnmice.com';

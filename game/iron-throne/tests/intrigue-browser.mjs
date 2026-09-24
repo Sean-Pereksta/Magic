@@ -27,7 +27,7 @@ try {
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#start-game').click();
     await page.evaluate(async()=>{
-      const {createGame,declareWar}=await import('./core.mjs');const s=createGame(100);
+      const {declareWar}=await import('./core.mjs');const {createGame}=await import('./tests/fixtures/legacy-game.mjs');const s=createGame(100);
       const t=s.tiles['5,6'];t.intelligenceOffice=true;t.levels.intelligenceOffice=3;
       for(const k of s.kingdoms){k.commands=0;k.resources.gold=400;}s.kingdoms[0].commands=8;
       s.armies=s.armies.filter(a=>a.owner==='ashen');s.armies[0].tile='18,3';declareWar(s,'ashen','wintermere');

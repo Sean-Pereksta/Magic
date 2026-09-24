@@ -1,3 +1,6 @@
+import { foundingPanel } from './founding-ui.mjs';
+import { foundCity, foundAIKingdoms, CAPITAL_NAMES } from './founding.mjs';
+import { mapOptions } from './map-profiles.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { populationBreakdown } from './population.mjs';
 import { FirebaseCampaign, multiplayerRoute } from './multiplayer-firebase.mjs';
@@ -26,6 +29,7 @@ function applyLobbyReturnUrl(){
   try{const value=new URLSearchParams(location.search).get('returnUrl');if(!value)return;const url=new URL(value,location.href);if(url.origin===location.origin)document.querySelectorAll('a[href="../../lobby/lobby.html"]').forEach(a=>a.href=url.href);}catch{}
 }
 applyLobbyReturnUrl();
+$('preset').innerHTML=mapOptions();
 let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
@@ -52,11 +56,12 @@ const map = new WorldMap($('map'), { getState: () => state, onSelect: selectTile
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); }
 function save() {
   if(onlineOptions)return !!online?.online;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = `Saved on this device · turn ${state.turn}`; restored = true; return true; }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
 function changed() { if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
 function perform(type,args,localAction) {
+  if(state.phase==='founding'&&type!=='found'){toast('Found all six kingdoms before issuing orders.');return false;}
   if(onlineOptions){if(!online){toast('Connecting to the campaign…');return false;} online.submit(type,args).catch(e=>toast(e.message));return true;}
   return result(localAction());
 }
@@ -74,15 +79,17 @@ function selectTile(id) {
 function goTo(id, armyId) { selected = id; selectedArmy = armyId || state.armies.find(a => a.tile === id && a.owner === localHouse)?.id || null; tab = 'land'; map.selected = id; map.center(id); render(); }
 function render() {
   const k = kingdom(state,localHouse),{income}=economyProjection(state,localHouse),population=populationProjection(state,localHouse);
-  $('turn').textContent = `Turn ${state.turn}`;
-  $('season').textContent = `${['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'][(state.turn - 1) % 4]} · YEAR ${Math.floor((state.turn - 1) / 4) + 1}`;
-  $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${escape(r)}: ${income[r] >= 0 ? '+' : ''}${income[r]} next turn"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]} / turn</span></div></div>`).join('') + `<div class="resource population-resource" title="${escape(populationBreakdown(population))}"><span class="resource-icon">♟</span><div><b class="population-label">Population: ${k.population}/${population.capacity} · ${population.change>=0?'+':''}${population.change} next turn</b><small>${k.happiness}% content · breakdown in Realm</small></div></div>`;
+  $('turn').textContent = state.phase==='founding'?'Founding':`Turn ${state.turn}`;
+  $('season').textContent = state.phase==='founding'?'BEFORE TURN 1':`${['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'][(state.turn - 1) % 4]} · YEAR ${Math.floor((state.turn - 1) / 4) + 1}`;
+  const founding=state.phase==='founding';
+  $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${founding?'Starting supplies':`${escape(r)}: ${income[r]>=0?'+':''}${income[r]} next turn`}"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${!founding&&income[r]<0?'negative':''}">${founding?'Starting supplies':`${income[r]>=0?'+':''}${income[r]} / turn`}</span></div></div>`).join('') + `<div class="resource population-resource" title="${founding?'Population growth begins on Turn 1.':escape(populationBreakdown(population))}"><span class="resource-icon">♟</span><div><b class="population-label">${founding?`Population: ${k.population} · ready to settle`:`Population: ${k.population}/${population.capacity} · ${population.change>=0?'+':''}${population.change} next turn`}</b><small>${k.happiness}% content · ${founding?'Awaiting Turn 1':'breakdown in Realm'}</small></div></div>`;
   const rivals = state.kingdoms.filter(h => h.id !== localHouse && alive(state, h.id)), allies = rivals.filter(h => treaty(state, localHouse, h.id, 'alliance') || treaty(state, localHouse, h.id, 'vassalage'));
-  $('objective').textContent = `${settlements(state, localHouse).length}/${Math.ceil(settlements(state).length * .6)} settlements · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
-  $('end-turn').disabled = !!state.outcome;
-  document.querySelectorAll('[data-tab]').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
+  $('objective').textContent = state.phase==='founding'?`${Object.values(state.founding.houses).filter(h=>h.founded).length}/6 capitals founded · choose your region`:`${settlements(state, localHouse).length}/${Math.ceil(settlements(state).length * .6)} settlements · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
+  $('end-turn').disabled = !!state.outcome || state.phase==='founding';
+  if(!onlineOptions)$('end-turn').textContent=state.phase==='founding'?'Found all kingdoms':'End turn';
+  document.querySelectorAll('[data-tab]').forEach(b => { b.disabled=state.phase==='founding'; b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
-  $('panel').innerHTML = tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : ledgerPanel();
+  $('panel').innerHTML = state.phase==='founding'?foundingPanel(state,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : ledgerPanel();
   $('panel').scrollTop = scroll;
   $('latest-events').innerHTML = state.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = state.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
@@ -134,6 +141,14 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
+  if(d.foundCity&&confirm(`Found ${CAPITAL_NAMES[localHouse]} here? This is your permanent starting capital.`)){
+    perform('found',{tile:d.foundCity},()=>{
+      const next=structuredClone(state);let r=foundCity(next,localHouse,d.foundCity);
+      if(r.ok)r=foundAIKingdoms(next);
+      if(r.ok){state=next;selectedArmy=state.armies.find(a=>a.owner===localHouse)?.id||null;map.home();if(state.phase==='playing')toast('THE REALM IS FOUNDED. Turn 1 begins.');}
+      return r;
+    });return;
+  }
   if(d.openIntelligence){tab='intelligence';render();}
   if('recruitSpy' in d)perform('recruitSpy',{},()=>recruitSpy(state,localHouse));
   if(d.assignSpy)perform('assignSpy',{spy:d.assignSpy,host:document.querySelector(`[data-spy-host="${d.assignSpy}"]`).value,mission:document.querySelector(`[data-spy-mission="${d.assignSpy}"]`).value},()=>assignSpy(state,localHouse,d.assignSpy,document.querySelector(`[data-spy-host="${d.assignSpy}"]`).value,document.querySelector(`[data-spy-mission="${d.assignSpy}"]`).value));
@@ -158,7 +173,7 @@ $('panel').addEventListener('click', e => {
 });
 $('panel').addEventListener('change', e => { if(e.target.dataset.formation){perform('formation',{army:e.target.dataset.formation,formation:e.target.value},()=>setFormation(state,localHouse,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { perform('tax',{policy:e.target.value},()=>{kingdom(state,localHouse).tax=e.target.value;return {ok:true};}); } });
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
-$('end-turn').addEventListener('click', () => { orderMode=null;if(onlineOptions){perform('ready',{ready:!onlineStatus?.meta?.ready[localHouse]},()=>({ok:true}));return;}endTurn(state);changed();voiceNextDispatch(); });
+$('end-turn').addEventListener('click', () => { if(state.phase==='founding')return;orderMode=null;if(onlineOptions){perform('ready',{ready:!onlineStatus?.meta?.ready[localHouse]},()=>({ok:true}));return;}endTurn(state);changed();voiceNextDispatch(); });
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
@@ -175,8 +190,8 @@ function showNewCampaign() {
 $('new-campaign').onclick = showNewCampaign; $('play-again').onclick = showNewCampaign;
 $('new-game-form').addEventListener('submit', e => {
   e.preventDefault(); if(onlineOptions)return; client.cancel(); state = createGame(Number($('seed').value), $('preset').value); epoch++;
-  selected = '5,6'; selectedArmy = state.armies[0].id; tab = 'land'; orderMode = null; outcomeShown = false;
-  $('welcome').close(); $('load-warning').hidden = true; map.home(); changed(); toast('Your reign begins. Select land to build, or visit Houses to negotiate.');
+  selected = '5,6'; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
+  $('welcome').close(); $('load-warning').hidden = true; map.home(); changed(); toast('Explore the map and choose where to found your kingdom.');
 });
 $('resume').onclick = () => { $('welcome').close(); map.home(); render(); if (state.outcome) $('outcome').showModal(); };
 function downloadSave() {
@@ -197,6 +212,7 @@ $('import-save').addEventListener('change', async e => {
 });
 
 function openDiplomacy(id, compact = false) {
+  if(state.phase==='founding')return;
   if(!alive(state,id)||id===localHouse)return;
   if(onlineOptions)perform('read',{targetHouseId:id},()=>({ok:true}));
   reviewedTrade=null; activeRuler = id; proposals = state.diplomacy.offers?.[id] || []; state.conversations[id] ||= [];
@@ -533,10 +549,10 @@ if(onlineOptions){
   $('save-now').textContent='Campaign saves automatically';$('save-now').disabled=true;
   let received=false;
   online=new FirebaseCampaign({...onlineOptions,onState:next=>{
-    const changedHouse=localHouse!==localHouseId(next);localHouse=localHouseId(next);state=next;epoch++;
-    if(!received||changedHouse){selected=settlements(state,localHouse)[0]?.id||'5,6';selectedArmy=state.armies.find(a=>a.owner===localHouse)?.id||null;activeRuler=state.kingdoms.find(k=>k.id!==localHouse).id;map.home();received=true;}
+    const changedHouse=localHouse!==localHouseId(next),newCapital=!state.founding?.houses[localHouse]?.founded&&next.founding?.houses[localHouse]?.founded,realmFounded=received&&state.phase==='founding'&&next.phase==='playing';localHouse=localHouseId(next);state=next;epoch++;
+    if(!received||changedHouse||newCapital){selected=settlements(state,localHouse)[0]?.id||'5,6';selectedArmy=state.armies.find(a=>a.owner===localHouse)?.id||null;activeRuler=state.kingdoms.find(k=>k.id!==localHouse).id;map.home();received=true;}
     if(!state.armies.some(a=>a.id===selectedArmy))selectedArmy=state.armies.find(a=>a.owner===localHouse&&a.tile===selected)?.id||null;
-    proposals=state.diplomacy.offers[activeRuler]||[];render();
+    proposals=state.diplomacy.offers[activeRuler]||[];render();if(realmFounded)toast('THE REALM IS FOUNDED. Turn 1 begins.');
   },onStatus:status=>{onlineStatus=status;onlineUI?.render(status,state);},onError:message=>toast(message)});
   onlineUI=new MultiplayerUI(online,toast);applyLobbyReturnUrl();
   onlineUI.render({online:false,pending:0,presence:{}},state);

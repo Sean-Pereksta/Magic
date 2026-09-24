@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import worker, { DiplomacyBudget } from '../worker/worker.mjs';
 import { DiplomacyClient } from '../chat.mjs';
 import { CHECK_NAMES, diagnosticReport, makeDiagnostic, readDiagnostic } from '../diagnostics.mjs';
-import { createGame } from '../core.mjs';
+import {  } from '../core.mjs';
+import { createGame } from './fixtures/legacy-game.mjs';
 
 const origin = 'https://catnmice.com', endpoint = 'https://worker.example/diplomacy';
 const reply = { reply: 'Let us discuss the price of your claim.', tone: 'guarded', intents: [] };

@@ -12,7 +12,8 @@ and synchronized rounds; unclaimed Houses use the same existing AI engine.
 
 ## Play now
 
-- Six original houses on a seeded 40 × 30 hex world; Crossroads and Highlands presets.
+- Six original houses on a seeded 40 × 30 hex world with six regional map profiles.
+- Found your kingdom before Turn 1: choose a natural starting region, keep capitals at least 8 hexes apart, and let AI settle the remaining land. See [FOUNDING.md](FOUNDING.md).
 - Food, wood, stone, iron, gold, population, happiness and three tax policies.
 - Farms, lumber camps, quarries, iron mines, roads, forts, towns, city upgrades,
   walls, markets and workshops. Locations, costs and construction time matter.

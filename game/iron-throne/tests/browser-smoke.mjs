@@ -1,3 +1,4 @@
+import { createGame as legacyGame } from './fixtures/legacy-game.mjs';
 // Functional browser checks only: no generated previews, screenshots or assets.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -27,13 +28,14 @@ try {
   for (const viewport of (process.env.IRON_THRONE_CHAT_ONLY ? [] : [{ width: 1280, height: 850 }, { width: 390, height: 844 }, { width: 844, height: 390 }].filter(v => !process.env.IRON_THRONE_VIEWPORT || String(v.width) === process.env.IRON_THRONE_VIEWPORT))) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
+    await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = [], external = [];
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', r => { if (!r.url().startsWith(base)) external.push(r.url()); });
     await page.route('**/game/iron-throne/config.json', route => route.fulfill({ json: {} }));
     await page.goto(`${base}/game/iron-throne/index.html`);
-    await page.locator('#start-game').click();
+    await page.locator('#resume').click();
     assert.equal(await page.locator('#turn').textContent(), 'Turn 1');
     await page.locator('#map').focus(); await page.keyboard.press('ArrowRight'); await page.locator('#home').click();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -98,7 +100,7 @@ try {
     console.log(`PASS ${viewport.width}×${viewport.height}: build, recruit, march, turns, council, treaty, autosave/resume, layout`);
     // Expanded controls use the same saved campaign and authoritative actions.
     await page.evaluate(async()=>{
-      const {createGame}=await import('./core.mjs'),{scheduleTrade}=await import('./trade.mjs');
+      const {createGame}=await import('./tests/fixtures/legacy-game.mjs'),{scheduleTrade}=await import('./trade.mjs');
       const s=createGame(511);s.turn=2;
       for(const k of s.kingdoms){for(const r of Object.keys(k.resources))k.resources[r]=400;k.commands=8;k.population=140;}
       s.kingdoms.find(k=>k.id==='wintermere').resources.iron=0;s.kingdoms.find(k=>k.id==='wintermere').resources.wood=550;
@@ -138,6 +140,7 @@ try {
   for (const verificationFails of [false, true]) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+    await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, sessionCalls=0, configRoute;
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', e => errors.push(e.message));
@@ -161,7 +164,7 @@ try {
       await route.fulfill(modelCalls===1?{headers:{'Access-Control-Allow-Origin':'*'},json:{reply:'The banners of Wintermere hear your envoy.',tone:'neutral',intents:[]}}:{status:429,headers:{'Access-Control-Allow-Origin':'*','Retry-After':'300'},body:''});
     });
     await page.goto(`${base}/game/iron-throne/index.html`);
-    await page.locator('#start-game').click();
+    await page.locator('#resume').click();
     await page.locator('[data-tab="council"]').click(); await page.locator('[data-talk="wintermere"]').click();
     assert.equal(modelCalls,0);assert.equal(scriptLoads,0);
     await configRoute.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'public-test-key'}});
@@ -209,6 +212,7 @@ try {
   for (const viewport of [{ width: 1280, height: 850 }, { width: 390, height: 844 }]) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context=await browser.newContext({viewport,reducedMotion:'reduce'}), page=await context.newPage(), errors=[];
+    await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     let configured=false, billingFailure=true, sessionCalls=0, modelCalls=0;
     page.on('pageerror',error=>errors.push(error.message));
@@ -231,7 +235,7 @@ try {
       return route.fulfill(billingFailure ? {status:503,headers:{...cors,'Retry-After':'60'},json:{fallback:true,diagnostics:{version:1,code:'GEMINI_BILLING',providerStatus:402,checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'present',BUDGET:'verified'}}}}
         : {headers:cors,json:{reply:'Your claim deserves a hearing. Let us speak of terms.',tone:'neutral',intents:[]}});
     });
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#start-game').click();
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
     if(viewport.width>700){await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();}
     else await page.locator('[data-dispatch="wintermere"]').click();
     await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Missing from the running Worker'));
@@ -281,7 +285,7 @@ try {
   await artPage.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
   await artPage.goto(`${base}/game/iron-throne/index.html`);
   const graphics=await artPage.evaluate(async()=>{
-    const {MapArt}=await import('../iron-throne/art.mjs');const {WorldMap}=await import('../iron-throne/map.mjs');const {createGame}=await import('../iron-throne/core.mjs');
+    const {MapArt}=await import('../iron-throne/art.mjs');const {WorldMap}=await import('../iron-throne/map.mjs');const {createGame}=await import('../iron-throne/tests/fixtures/legacy-game.mjs');
     const art=new MapArt(),canvas=document.createElement('canvas');canvas.width=100;canvas.height=100;const c=canvas.getContext('2d');
     const fingerprint=()=>Array.from(c.getImageData(0,0,100,100).data).reduce((a,v,i)=>(a+v*(i%97+1))>>>0,0);
     const terrains=['plains','forest','mountain','hills','water','coast'].map(terrain=>{c.clearRect(0,0,100,100);art.ground(c,{terrain,q:1,r:2},50,50);art.terrain(c,{terrain,q:1,r:2},50,50);return fingerprint();});

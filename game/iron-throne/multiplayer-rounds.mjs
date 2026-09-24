@@ -1,3 +1,5 @@
+import { hash } from './world-hex.mjs';
+import { MAP_PROFILES } from './map-profiles.mjs';
 import { HOUSES } from './data.mjs';
 import { alive, createGame } from './core.mjs';
 import { endTurn } from './diplomacy.mjs';
@@ -12,7 +14,7 @@ export const ownsLease = (meta, uid, token, now) => meta?.lease?.uid === uid && 
 export function setupMeta(lobby, now) {
   return { schema:1, phase:'setup', turn:0, stateVersion:0, epoch:0, hostUid:lobby.hostUid,
     seats:Object.fromEntries(houseIds.map(id=>[id,{kind:'open',uid:null,name:''}])), ready:{}, sequences:{},
-    options:{seed:8147,preset:'crossroads',timerSeconds:0,absent:'hold'}, planningAt:now, deadline:0, lease:null };
+    options:{seed:hash(now,'online-world',lobby.hostUid)||8147,preset:'random',timerSeconds:0,absent:'hold'}, planningAt:now, deadline:0, lease:null };
 }
 export function claimSeat(meta, uid, name, houseId) {
   if(meta.phase!=='setup'||!houseIds.includes(houseId))throw new Error('House selection is locked.');
@@ -30,7 +32,7 @@ export function configureSeat(meta, uid, houseId, kind) {
 export function configureCampaign(meta, uid, options) {
   if(meta.phase!=='setup'||meta.hostUid!==uid)throw new Error('Only the host can configure this campaign.');
   const {seed,preset,timerSeconds,absent}=options;
-  if(!Number.isInteger(seed)||seed<1||seed>4294967295||!['crossroads','highlands'].includes(preset)||![0,120,300,600].includes(timerSeconds)||!['hold','ai'].includes(absent))throw new Error('Choose a valid seed, map and round timer.');
+  if(!Number.isInteger(seed)||seed<1||seed>4294967295||!['random','crossroads','highlands',...Object.keys(MAP_PROFILES)].includes(preset)||![0,120,300,600].includes(timerSeconds)||!['hold','ai'].includes(absent))throw new Error('Choose a valid seed, map and round timer.');
   meta.options={seed,preset,timerSeconds,absent};return meta;
 }
 export function startCampaign(meta, uid, now) {
@@ -39,8 +41,8 @@ export function startCampaign(meta, uid, now) {
   const state=createGame(meta.options.seed,meta.options.preset);
   state.controllers=structuredClone(meta.seats);state.courts={};state.humanProposals=[];
   for(const id of houseIds)court(state,id);
-  meta.phase='planning';meta.turn=state.turn;meta.stateVersion=1;meta.ready={};
-  meta.startedAt=now;meta.planningAt=now;meta.deadline=meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;
+  meta.phase='founding';meta.mapProfile=state.mapProfile;meta.seed=state.seed;meta.turn=state.turn;meta.stateVersion=1;meta.ready={};
+  meta.startedAt=now;meta.planningAt=now;meta.deadline=0;
   return state;
 }
 export function requiredRulers(meta, presence, now, state) {
@@ -60,7 +62,7 @@ export function resolutionDue(meta, presence, now, state) {
   return required.length ? required.every(id=>meta.ready[id]) : humans.some(id=>meta.seats[id].substitute);
 }
 export function resolveRound(state, meta, presence, now) {
-  if(meta.phase!=='resolving'||meta.turn!==state.turn)throw new Error('This round is not locked for resolution.');
+  if(state.phase==='founding'||meta.phase!=='resolving'||meta.turn!==state.turn)throw new Error('This round is not locked for resolution.');
   for(const id of houseIds){
     const seat=meta.seats[id];
     seat.substitute=seat.kind==='human'&&(!!seat.forcedSubstitute||!present(presence[seat.uid],now)&&meta.options.absent==='ai');

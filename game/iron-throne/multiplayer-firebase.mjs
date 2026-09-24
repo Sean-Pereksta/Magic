@@ -53,12 +53,13 @@ export class FirebaseCampaign {
       // Restores pending indicators after a refresh without resubmitting commands.
       for(const d of snap.docs)this.watchReceipt(d.id);
     },e=>this.error(e)));
-    await this.heartbeat();await this.renewLease();
+    // Install recovery before the first heartbeat: a transient offline SDK
+    // response during refresh must not leave this tab without a retry timer.
     this.timer=setInterval(()=>void this.tick(),HEARTBEAT_MS);
     this.pumpTimer=setInterval(()=>void this.pump(),1500);
     this.wake=()=>void this.tick();window.addEventListener('online',this.wake);
     this.offline=()=>{this.online=false;this.emit();};window.addEventListener('offline',this.offline);
-    this.connected=true;return this;
+    this.connected=true;await this.tick();return this;
   }
   ref(collection,id){return this.f.doc(this.db,'lobbies',this.lobbyId,collection,id);}
   transaction(fn){return this.f.runTransaction(this.db,fn);}
@@ -89,7 +90,7 @@ export class FirebaseCampaign {
       if(meta.hostUid!==this.uid&&now-Math.max(millis(host.data()?.at),meta.startedAt??meta.planningAt)>GRACE_MS){
         meta.hostUid=this.uid;tx.update(this.lobbyRef,{hostUid:this.uid,host:this.username,updatedAt:now});
       }
-      tx.set(this.metaRef,meta);
+      tx.update(this.metaRef,{lease:meta.lease,epoch:meta.epoch,hostUid:meta.hostUid});
     });
   }
   watchHouse(){
@@ -124,7 +125,8 @@ export class FirebaseCampaign {
       else if(action==='seat')configureSeat(m,this.uid,args.houseId,args.kind);
       else if(action==='configure')configureCampaign(m,this.uid,args);
       else throw new Error('Unknown lobby action.');
-      tx.set(this.metaRef,m);
+      // Keep seat/options edits independent of concurrent lease heartbeats.
+      tx.update(this.metaRef,action==='configure'?{options:m.options}:{seats:m.seats,ready:m.ready});
     });
     await this.renewLease();
   }
@@ -141,7 +143,12 @@ export class FirebaseCampaign {
   writeCampaign(tx,packed,meta){
     tx.set(this.stateRef,packed.canonical);tx.set(this.worldRef,packed.world);
     for(const id of houseIds)tx.set(this.ref('iron_throne_private',id),packed.privateByHouse[id]);
-    tx.set(this.metaRef,meta);
+    if(meta.stateVersion===1)tx.set(this.metaRef,meta);
+    else {
+      // Renewals may extend this lease while a snapshot is being packed. Keep
+      // the fresh expiry; epoch/host checks still fence a replaced controller.
+      const {lease,...commit}=meta;tx.update(this.metaRef,commit);
+    }
   }
   async readCampaign(tx){
     const docs=await Promise.all([tx.get(this.stateRef),...houseIds.map(id=>tx.get(this.ref('iron_throne_private',id)))]);
@@ -163,14 +170,14 @@ export class FirebaseCampaign {
     this.pending.set(id,off);
   }
   async submit(type,args={}){
-    if(!this.online||!this.state||this.meta?.phase!=='planning')throw new Error('Reconnecting or resolving. Wait for the current campaign state.');
+    if(!this.online||!this.state||!['planning','founding'].includes(this.meta?.phase))throw new Error('Reconnecting or resolving. Wait for the current campaign state.');
     const id=`${this.token}_${++this.sequence}`,ref=this.ref('iron_throne_commands',id);
     const c={id,clientId:this.token,sequence:this.sequence,uid:this.uid,actorHouseId:seatFor(this.meta,this.uid),turn:this.state.turn,stateVersion:this.lastVersion,epoch:this.meta.epoch,type,args,status:'pending',createdAt:this.f.serverTimestamp()};
     // Offline transactions fail instead of queuing stale game orders for replay.
     await this.transaction(async tx=>{
       const [meta,existing]=await Promise.all([tx.get(this.metaRef),tx.get(ref)]);
       if(existing.exists())return;
-      if(meta.data().phase!=='planning'||meta.data().turn!==c.turn||meta.data().epoch!==c.epoch)throw new Error('The round or controller changed. Review and submit again.');
+      if(meta.data().phase!==(type==='found'?'founding':'planning')||meta.data().turn!==c.turn||meta.data().epoch!==c.epoch)throw new Error('The round or controller changed. Review and submit again.');
       tx.set(ref,c);
     });
     this.watchReceipt(id);void this.pump();return id;
@@ -179,7 +186,7 @@ export class FirebaseCampaign {
     if(this.stopped||this.busy||!this.online||!ownsLease(this.meta,this.uid,this.token,this.now())||this.meta.phase==='setup'||this.meta.phase==='ended')return;
     this.busy=true;
     try{
-      if(this.meta.phase==='planning'&&this.commandDirty){
+      if(['planning','founding'].includes(this.meta.phase)&&this.commandDirty){
         this.commandDirty=false;
         const pending=await this.f.getDocs(this.f.query(this.f.collection(this.db,'lobbies',this.lobbyId,'iron_throne_commands'),this.f.where('status','==','pending')));
         const docs=pending.docs.sort((a,b)=>millis(a.data().createdAt)-millis(b.data().createdAt)||a.data().sequence-b.data().sequence||a.id.localeCompare(b.id));
@@ -187,7 +194,7 @@ export class FirebaseCampaign {
         if(docs.length>12)this.commandDirty=true;
       }
       if(this.meta.phase==='resolving'||this.state&&resolutionDue(this.meta,this.presence,this.now(),this.state))await this.advance();
-    }catch(e){this.error(e);}finally{this.busy=false;}
+    }catch(e){this.commandDirty=true;this.error(e);}finally{this.busy=false;}
   }
   async process(id){
     await this.transaction(async tx=>{
@@ -212,7 +219,7 @@ export class FirebaseCampaign {
       if(m.phase==='planning'){
         if(!resolutionDue(m,presence,now,state))return;
         // The lock is a durable phase. A new lease owner resumes this exact turn.
-        m.phase='resolving';tx.set(this.metaRef,m);return;
+        m.phase='resolving';tx.update(this.metaRef,{phase:m.phase});return;
       }
       applyBoundaryTakeovers(m);resolveRound(state,m,presence,now);m.stateVersion++;
       this.writeCampaign(tx,await packCampaign(state,m),m);

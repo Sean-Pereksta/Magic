@@ -25,7 +25,7 @@ export function tileProduction(t, owner) {
     const level = buildingLevel(t, id); if (!level || !b.yield) continue;
     const resourceSite = ['farm','lumber','quarry','mine','ranch'].includes(id);
     const quality = resourceSite && (t.resource === Object.keys(b.yield)[0] || id === 'farm' && t.river) ? QUALITY[t.quality || 'normal'] : 1;
-    const industry = REGIONS[owner]?.industry === id ? 1.12 : 1;
+    const industry = !t.biome && REGIONS[owner]?.industry === id ? 1.12 : 1;
     for (const [r,n] of Object.entries(b.yield)) output[r] += Math.round((n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65) * quality * industry);
   }
   if (['town','city'].includes(t.building)) {
@@ -45,7 +45,7 @@ export function productionPlan(s, owner) {
   // Stable tile/catalog order, with a shared input budget, prevents double spending.
   for (const t of tiles) for (const [id,b] of Object.entries(BUILDINGS)) {
     const level = buildingLevel(t,id); if (!level || !b.recipe) continue;
-    const multiplier = level + (REGIONS[owner]?.industry === id ? 1 : 0);
+    const multiplier = level + (!t.biome && REGIONS[owner]?.industry === id ? 1 : 0);
     const input = Object.fromEntries(Object.entries(b.recipe.input).map(([r,n])=>[r,n*multiplier]));
     if (Object.entries(input).some(([r,n])=>k.resources[r]+income[r]<n)) {stalls.push({tile:t.id,type:id,input}); continue;}
     for (const [r,n] of Object.entries(input)) income[r] -= n;
@@ -118,7 +118,7 @@ export function migrateEconomy(s) {
 export function validateExpansion(s) {
   const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max, fail=()=>{throw new Error('Damaged expansion data.');};
   for(const t of Object.values(s.tiles)) {
-    if(!Object.hasOwn(QUALITY,t.quality)||!Object.hasOwn(REGIONS,t.region)||!t.levels||Array.isArray(t.levels))fail();
+    if(!Object.hasOwn(QUALITY,t.quality)||!(s.worldGeneration ? Object.hasOwn(s.regions||{},t.region) : Object.hasOwn(REGIONS,t.region))||!t.levels||Array.isArray(t.levels))fail();
     for(const [id,n] of Object.entries(t.levels))if(!BUILDINGS[id]||!integer(n,1,BUILDINGS[id].maxLevel))fail();
     if(t.fortIntegrity!==undefined&&!integer(t.fortIntegrity,0,180))fail();
     if(t.siege && (!integer(t.siege.turns,0,100000)||!Number.isFinite(t.siege.morale)||t.siege.morale<0||t.siege.morale>1))fail();
