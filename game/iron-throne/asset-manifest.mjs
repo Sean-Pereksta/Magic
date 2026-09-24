@@ -1,3 +1,5 @@
+// Cloudflare directional artwork has a local, connection-preserving fallback.
+import { GEOGRAPHY_PATHS } from './geography-assets.mjs';
 import { SpriteOutlines } from './sprite-outline.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
 export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev';
@@ -7,10 +9,11 @@ const levels = (id, b) => b.levels.map(l => `buildings/${id === 'intelligenceOff
 export const IRON_THRONES_ART = {
   buildings: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, levels(id,b)])),
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
-  terrain: Object.fromEntries(['plains','forest','hills','mountain','water','coast'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id}_${String(i+1).padStart(2,'0')}.png`)])),
+  terrain: Object.fromEntries(['plains','forest','hills','mountain','water'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id}_${String(i+1).padStart(2,'0')}.png`)])),
   resources: Object.fromEntries(RESOURCES.map(id => [id, `resources/${id}.png`])),
+  geography: GEOGRAPHY_PATHS,
   construction: [1,2,3].map(n => `construction/stage_${n}.png`),
-  overlays: Object.fromEntries(['river_straight','river_bend','river_fork','bridge_wood','bridge_stone'].map(id => [id, `overlays/${id}.png`]))
+  overlays: Object.fromEntries(['bridge_wood','bridge_stone'].map(id => [id, `overlays/${id}.png`]))
 };
 const flatten = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(flatten);
 export const ALL_ART_PATHS = [...new Set(flatten(IRON_THRONES_ART))];
@@ -20,6 +23,7 @@ export const ART = {
   resources: Object.fromEntries(Object.entries(IRON_THRONES_ART.resources).map(([id,p]) => [id,ironThronesAsset(p)])),
   terrain: Object.fromEntries(Object.entries(IRON_THRONES_ART.terrain).map(([id,ps]) => [id,ps.map(ironThronesAsset)])),
   overlays: Object.fromEntries(Object.entries(IRON_THRONES_ART.overlays).map(([id,p]) => [id,ironThronesAsset(p)])),
+  geography: Object.fromEntries(Object.entries(GEOGRAPHY_PATHS).map(([name,path])=>[name,ironThronesAsset(path)])),
   titles: Object.fromEntries(['kingdom','trade','construction','army','battle','diplomacy','treasury','great_projects'].map(id => [id,local(`titles/${id}`)])),
   construction: IRON_THRONES_ART.construction.map(ironThronesAsset)
 };
