@@ -89,13 +89,12 @@ Local caps cannot turn a paid-tier project into a free-tier project.
 
    Wrangler may require account login. Paste secrets into its interactive prompt,
    never into a source file, URL, commit, browser setting or shell command argument.
-4. In Cloudflare → `iron-throne-diplomacy` → Settings → Variables and Secrets,
-   set the runtime variable `GEMINI_MODEL` to an available text model with a
-   free tier in your project, then deploy. The Worker fallback model is
-   `gemini-2.5-flash-lite`; it is configurable because models and availability
-   change. `keep_vars = true` and the absence of a TOML model override preserve
-   your dashboard model selection on future code deployments. A value that was
-   already overwritten must be restored once; this change cannot recover it.
+4. The deployment config and Worker fallback both use `gemini-3.5-flash`,
+   the confirmed working model for this installation. Deploy the updated Worker
+   to replace the old `gemini-2.5-flash-lite` runtime setting. The explicit
+   `GEMINI_MODEL` in `worker/wrangler.toml` is the deployment source of truth;
+   future model changes should update it and `DEFAULT_GEMINI_MODEL` together.
+   `keep_vars = true` preserves unrelated dashboard variables.
    Set `ALLOWED_ORIGINS` to the exact production origins, with no paths or
    trailing slash. Keep `DAILY_LIMIT`, `REQUESTS_PER_MINUTE` and
    `CLIENT_PER_MINUTE` below your verified provider allowances. Supplied budgets
@@ -310,13 +309,16 @@ A Google 404 on `/diplomacy` means Google could not serve the selected model.
 The game reaching this step already reached the Worker and its budget binding.
 The old Wrangler file explicitly pinned `gemini-2.5-flash-lite`; redeploying that
 file could overwrite a working dashboard model selection. The current config
-preserves the dashboard selection instead. The diagnostics now report the
+and code fallback both use the user-confirmed working `gemini-3.5-flash`.
+The diagnostics now report the
 normalized model ID and whether it came from the runtime setting or the default.
 The last expansion changed the diplomacy prompt/schema, not the selected model;
 that does not prove which model the live Worker was using during an old failure.
 
-Restore the working model under the Worker's runtime Variables and Secrets and
-choose Deploy. If its ID is unknown, set `GEMINI_API_KEY` in a local environment
+Deploy the updated Worker to apply `GEMINI_MODEL=gemini-3.5-flash`. For an
+immediate dashboard correction, set that same value under the Worker's runtime
+Variables and Secrets and choose Deploy. If availability still fails, set
+`GEMINI_API_KEY` in a local environment
 using the same project key as the Worker and run from the repository root:
 
 ```sh

@@ -7,9 +7,9 @@ import { listTextModels } from '../worker/check-models.mjs';
 import { makeDiagnostic,readDiagnostic,diagnosticReport } from '../diagnostics.mjs';
 const context={rulerId:'wintermere',message:'Greetings',turn:1,history:[],memories:[],summary:'',world:{}};
 const success=()=>Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({reply:'We hear you.',tone:'neutral',intents:[]})}]}}]});
-test('runtime model choice survives deployment configuration and normalizes Google names',async()=>{
+test('deployment and fallback use the confirmed 3.5 model and normalize Google names',async()=>{
  const config=await readFile(new URL('../worker/wrangler.toml',import.meta.url),'utf8');
- assert.match(config,/^keep_vars\s*=\s*true/m);assert.doesNotMatch(config,/^\s*GEMINI_MODEL\s*=/m);
+ assert.match(config,/^keep_vars\s*=\s*true/m);assert.match(config,/^GEMINI_MODEL = "gemini-3\.5-flash"$/m);assert.equal(DEFAULT_GEMINI_MODEL,'gemini-3.5-flash');
  assert.deepEqual(geminiModelSetting({}),{model:DEFAULT_GEMINI_MODEL,modelSource:'default'});
  const env={GEMINI_MODEL:'  models/gemini-working-model  ',GEMINI_API_KEY:'private-key'};let calls=0;
  await callGemini(context,env,async(url,options)=>{calls++;assert.equal(url,'https://generativelanguage.googleapis.com/v1beta/models/gemini-working-model:generateContent');assert.equal(options.headers['x-goog-api-key'],'private-key');return success();});assert.equal(calls,1);
@@ -41,4 +41,13 @@ test('model listing filters generation support, follows pagination and sends key
   return Response.json(calls===1?{models:[{name:'models/gemini-a',supportedGenerationMethods:['generateContent']},{name:'models/gemini-b',supportedGenerationMethods:['embedContent']}],nextPageToken:'page&2'}:{models:[{name:'models/gemini-c',supportedGenerationMethods:['generateContent']},{name:'https://bad.example',supportedGenerationMethods:['generateContent']}]});
  });assert.deepEqual(models,['gemini-a','gemini-c']);assert.equal(calls,2);
  await assert.rejects(listTextModels('private-key',async()=>Response.json({error:'private-key'},{status:403})),error=>error.message.includes('403')&&!error.message.includes('private-key'));
+});
+
+test('default generation calls Gemini 3.5 with the existing structured-output contract',async()=>{
+ let calls=0;
+ const result=await callGemini(context,{GEMINI_API_KEY:'private-key'},async(url,options)=>{
+  calls++;assert.equal(url,'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent');
+  const body=JSON.parse(options.body);assert.equal(body.generationConfig.responseMimeType,'application/json');assert.ok(body.generationConfig.responseSchema.properties.intents);
+  return success();
+ });assert.equal(result.reply,'We hear you.');assert.equal(calls,1);
 });

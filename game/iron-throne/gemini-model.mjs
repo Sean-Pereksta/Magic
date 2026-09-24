@@ -1,5 +1,5 @@
 // Shared model-ID validation. Never accept a URL, query string or API credential.
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 export function normalizeGeminiModel(value) {
   if (typeof value !== 'string') return null;
   const model=value.trim().replace(/^models\//,'');
