@@ -68,6 +68,7 @@ async function hash(text) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
 }
 export async function reserveBudget(storage, env, clientId, now = Date.now()) {
+  const minuteRetry = Math.max(1, Math.ceil((60000 - now % 60000) / 1000));
   const day = new Date(now).toISOString().slice(0, 10), minute = Math.floor(now / 60000);
   // A Durable Object transaction serializes concurrent reservations across all users.
   return storage.transaction(async txn => {
@@ -76,8 +77,8 @@ export async function reserveBudget(storage, env, clientId, now = Date.now()) {
     if (b.cooldownUntil > now) return { ok: false, code: 'PROVIDER_COOLDOWN', retryAfter: Math.ceil((b.cooldownUntil - now) / 1000), reason: 'Gemini is cooling down. Scripted diplomacy is available.' };
     if (b.used >= boundedInt(env.DAILY_LIMIT, 20, 10000)) return { ok: false, code: 'DAILY_LIMIT', retryAfter: 3600, reason: 'The daily conversation budget has been used. Scripted diplomacy is available.' };
     if (b.minute !== minute) { b.minute = minute; b.calls = 0; b.clients = {}; }
-    if (b.calls >= boundedInt(env.REQUESTS_PER_MINUTE, 4, 60)) return { ok: false, code: 'GLOBAL_RATE_LIMIT', retryAfter: 60, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
-    if ((b.clients[clientId] || 0) >= boundedInt(env.CLIENT_PER_MINUTE, 2, 20)) return { ok: false, code: 'CLIENT_RATE_LIMIT', retryAfter: 60, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
+    if (b.calls >= boundedInt(env.REQUESTS_PER_MINUTE, 4, 60)) return { ok: false, code: 'GLOBAL_RATE_LIMIT', retryAfter: minuteRetry, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
+    if ((b.clients[clientId] || 0) >= boundedInt(env.CLIENT_PER_MINUTE, 2, 20)) return { ok: false, code: 'CLIENT_RATE_LIMIT', retryAfter: minuteRetry, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
     b.used++; b.calls++; b.clients[clientId] = (b.clients[clientId] || 0) + 1;
     await txn.put('budget', b);
     return { ok: true, remaining: boundedInt(env.DAILY_LIMIT, 20, 10000) - b.used };
@@ -107,17 +108,21 @@ export async function callGemini(context, env, fetcher = fetch) {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(context.rulerId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: .75, maxOutputTokens: 700 } })
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(context.rulerId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, maxOutputTokens: 2048, ...(model === 'gemini-3.5-flash' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}) } })
     });
     if (!upstream.ok) throw await providerFailure(upstream);
     let result;
     try { result = await readLimitedJSON(upstream, 50000); }
     catch { throw Object.assign(new Error('invalid'), { diagnosticCode: controller.signal.aborted ? 'GEMINI_TIMEOUT' : 'GEMINI_RESPONSE_INVALID', status: upstream.status }); }
     const candidate = result?.candidates?.[0];
-    if (candidate?.finishReason !== 'STOP') throw Object.assign(new Error('incomplete'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', status: upstream.status });
+    if (candidate?.finishReason !== 'STOP') throw Object.assign(new Error('incomplete'), { diagnosticCode: candidate?.finishReason === 'MAX_TOKENS' ? 'GEMINI_RESPONSE_TRUNCATED' : 'GEMINI_RESPONSE_INVALID', replyIssue: candidate?.finishReason === 'MAX_TOKENS' ? 'output_limit' : 'generation_not_complete', status: upstream.status });
     const parts = candidate.content?.parts;
-    const response = Array.isArray(parts) ? validateResponse(parts.filter(p => p && !p.thought).map(p => typeof p.text === 'string' ? p.text : '').join('')) : null;
-    if (!response) throw Object.assign(new Error('invalid'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', status: upstream.status });
+    const text = Array.isArray(parts) ? parts.filter(p => p && !p.thought).map(p => typeof p.text === 'string' ? p.text : '').join('') : '';
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch { throw Object.assign(new Error('invalid'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', replyIssue: text.trim() ? 'invalid_json' : 'empty_reply', status: upstream.status }); }
+    const response = validateResponse(parsed);
+    if (!response) throw Object.assign(new Error('invalid'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', replyIssue: 'invalid_schema', status: upstream.status });
     return response;
   } catch (error) {
     error.model = model; error.modelSource = modelSource;
@@ -146,8 +151,8 @@ export class DiplomacyBudget {
       });
       // Never leak provider bodies, request text, or credentials. Failed attempts
       // still consume the reserved allowance; no retries or paid-provider failover.
-      const retryAfter = error.status === 429 ? 300 : 60;
-      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status, model: error.model, modelSource: error.modelSource }) }, 503, { 'Retry-After': String(retryAfter) });
+      const retryAfter = error.status === 429 ? 300 : ['GEMINI_RESPONSE_INVALID','GEMINI_RESPONSE_TRUNCATED'].includes(error.diagnosticCode) ? 5 : 60;
+      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status, model: error.model, modelSource: error.modelSource, replyIssue: error.replyIssue }) }, 503, { 'Retry-After': String(retryAfter) });
     }
     // Storage failures propagate to the outer binding handler, not Gemini errors.
     await this.state.storage.transaction(async txn => {

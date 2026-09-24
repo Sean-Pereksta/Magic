@@ -1,3 +1,4 @@
+import { SpriteOutlines } from './sprite-outline.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
 export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev';
 export const ironThronesAsset = path => `${IRON_THRONES_ASSET_BASE}/${path.replace(/^\/+/, '')}`;
@@ -83,7 +84,7 @@ export async function preloadAllArt(onProgress=()=>{}, {concurrency=6,timeout=10
   return {completed,total,failed};
 }
 export class AssetCache {
-  constructor(redraw=()=>{}) { this.redraw=redraw; this.pending=new Set(); }
+  constructor(redraw=()=>{}) { this.redraw=redraw; this.pending=new Set(); this.outlines=new SpriteOutlines(); }
   get(url) {
     if(!url)return null;
     const record=records.get(url);
@@ -91,6 +92,11 @@ export class AssetCache {
     if(record?.failed)return this.get(fallbacks.get(url));
     if(!this.pending.has(url)) { this.pending.add(url); loadArt(url).then(()=>{this.pending.delete(url);this.redraw();}); }
     return null;
+  }
+  drawOutlined(c,url,x,y,w,h,color,zoom=1,dpr=1) {
+    const image=this.get(url);if(!image)return false;
+    const sprite=this.outlines.get(image,url,w,h,color||'#d7d3b5',zoom,dpr);
+    c.drawImage(sprite.canvas,x-sprite.pad,y-sprite.pad,sprite.width,sprite.height);return true;
   }
   draw(c,url,x,y,w,h) {
     const image=this.get(url);if(!image)return false;

@@ -157,7 +157,7 @@ and are not included in saves or exports.
   private conversations are excluded. Payloads remain below 22 KB before auth.
   Generated memory candidates and summaries are labelled unverified interpretations;
   they cannot replace board facts or grant resources, trust or completed oaths.
-- Replies have a 700-token output ceiling and a validated JSON intent schema.
+- Replies have a 2,048-token output ceiling and a validated JSON intent schema.
 - A single SQLite Durable Object reserves attempts transactionally before each
   upstream call. Concurrent visitors cannot race a KV counter past the global cap.
 - Server-derived, hashed IP identity controls short-term per-client limits.
@@ -334,3 +334,44 @@ the cooldown confirms actual generation; metadata alone does not verify quota,
 billing, or response-schema compatibility. Model names with surrounding spaces
 or Google's `models/` prefix are normalized. Invalid IDs fail before an upstream
 request. There is no automatic retry or switch to another model/provider.
+
+
+### Map artwork visibility
+
+Ready terrain PNGs replace procedural ground; troop sprites replace procedural
+formations, and construction-stage sprites replace procedural scaffolding.
+Fallbacks run only when the corresponding image is unavailable. Road sprites
+also replace their procedural road strokes. Army badges, ownership boundaries,
+selection indicators and construction progress meters remain gameplay UI.
+
+Constructed buildings, settlement improvements, roads, bridges, construction
+stages and troops have an alpha-shaped faction-color contour with a thin dark
+outer edge. The original artwork is drawn once over the contour. This follows
+transparent PNG silhouettes instead of outlining their rectangular bounds.
+Opaque-background assets must have transparent backgrounds for that effect.
+Contours use canvas compositing without pixel readback, so remote R2 sprites
+need no additional CORS headers. Small display-sized outline surfaces are cached
+with a 192-entry limit; faction changes invalidate the color variant, and zoom
+and display-density buckets keep the edge readable without rebuilding each frame.
+
+### Gemini 3.5 reply speed and invalid replies
+
+Gemini 3.5 Flash requests use `thinkingConfig.thinkingLevel = MINIMAL` and a
+2,048-token output cap (previously 700). Google counts thinking tokens toward
+that cap. The cap is a maximum, not a requested reply length. Sampling overrides
+are omitted as recommended for Gemini 3.5. The 1,600-character visible-reply
+limit and strict intent validation remain enforced.
+
+An HTTP 200 from Google followed by `GEMINI_RESPONSE_INVALID` is a reply validation
+failure, not proof of rate limiting. Diagnostics distinguish an output-limit stop,
+other incomplete generation, empty reply, malformed JSON, and invalid schema.
+Truncated responses get `GEMINI_RESPONSE_TRUNCATED`. Neither partial replies nor
+invalid intents are accepted. These reply failures use a five-second manual retry
+wait; there is no automatic extra request. Per-minute local limits now return the
+actual seconds until their next window instead of an extra fixed minute. Genuine
+Google quota errors retain their existing cooldown, and request allowances remain
+2/client/minute, 4 globally/minute and 20/day unless explicitly configured otherwise.
+
+Deploy both the Worker and game files for the shorter retry wait: older game code
+imposes a minimum 30-second wait even when the Worker asks for less. Live Gemini
+latency depends on Google; mocked regression tests do not measure production speed.

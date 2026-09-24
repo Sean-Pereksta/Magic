@@ -45,9 +45,11 @@ const CODES = {
   GEMINI_REQUEST: ['Gemini request', 'Google rejected the request format or parameters.', 'Check the Worker’s model and response-schema configuration.'],
   GEMINI_TIMEOUT: ['Gemini request', 'The Gemini request timed out.', 'Try again after the cooldown. Check provider availability if it continues.'],
   GEMINI_UNAVAILABLE: ['Gemini request', 'The Worker could not obtain a successful Gemini response.', 'Check provider availability and Worker logs; the upstream status is included when available.'],
+  GEMINI_RESPONSE_TRUNCATED: ['Gemini reply', 'Gemini hit its output-token limit before completing the JSON reply.', 'Deploy the Worker with MINIMAL thinking for Gemini 3.5 and the larger output budget. Try another message after the short retry wait.'],
   GEMINI_RESPONSE_INVALID: ['Gemini reply', 'Gemini returned an incomplete or invalid structured reply.', 'Retry after the cooldown. If repeated, check the Worker response schema and output limit.'],
   REQUEST_CANCELLED: ['Gemini request', 'The conversation request was cancelled.', 'Send a new message when the campaign is ready.']
 };
+const REPLY_ISSUES = { output_limit: 'Output-token limit reached', generation_not_complete: 'Generation did not finish normally', empty_reply: 'No visible reply text', invalid_json: 'Reply text was not valid JSON', invalid_schema: 'JSON did not match the diplomacy contract' };
 const TURNSTILE_CODES = ['missing-input-secret', 'invalid-input-secret', 'missing-input-response', 'invalid-input-response', 'bad-request', 'timeout-or-duplicate', 'internal-error'];
 export function workerChecks(env) {
   return Object.fromEntries(CHECK_NAMES.map(name => [name, env[name] ? 'present' : 'missing']));
@@ -59,6 +61,7 @@ export function makeDiagnostic(code, details = {}) {
     ...(Number.isInteger(details.providerStatus) && details.providerStatus >= 100 && details.providerStatus <= 599 ? { providerStatus: details.providerStatus } : {}),
     ...(normalizeGeminiModel(details.model) ? { model: normalizeGeminiModel(details.model) } : {}),
     ...(['configured','default'].includes(details.modelSource) ? { modelSource: details.modelSource } : {}),
+    ...(Object.hasOwn(REPLY_ISSUES,details.replyIssue || '') ? { replyIssue: details.replyIssue } : {}),
     turnstileCodes: [...new Set((Array.isArray(details.turnstileCodes) ? details.turnstileCodes : []).filter(c => TURNSTILE_CODES.includes(c)))].slice(0, 7)
   };
 }
@@ -83,6 +86,7 @@ export function diagnosticReport(record, endpoint = '', origin = '', clientSetti
     `Game origin: ${safeOrigin(origin)}`, `Worker: ${safeOrigin(endpoint)}`, `Failed step: ${info.stage}`, `Request: ${path || 'Not sent'}`,
     `HTTP status: ${Number.isInteger(record.httpStatus) && record.httpStatus >= 100 && record.httpStatus <= 599 ? record.httpStatus : 'Unavailable'}`,
     ...(d.providerStatus ? [`Google HTTP status: ${d.providerStatus}`] : []), `Error code: ${d.code}`, `Reason: ${info.reason}`, '',
+    ...(d.replyIssue ? [`Reply validation: ${REPLY_ISSUES[d.replyIssue]}`] : []),
     ...(d.model ? [`Gemini model: ${d.model}`] : []),
     ...(d.modelSource ? [`Model setting: ${d.modelSource === 'configured' ? 'Cloudflare GEMINI_MODEL' : 'Worker default (GEMINI_MODEL not set)'}`] : []),
     ...CHECK_NAMES.map(name => `${name}: ${CHECK_LABELS[d.checks[name]]}`),

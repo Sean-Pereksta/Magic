@@ -85,7 +85,7 @@ export class DiplomacyClient {
     if (!useGemini) return fallback('', false);
     if (!this.endpoint) { this.recordFailure('CLIENT_CONFIG'); return fallback(); }
     if (this.busy) return fallback('An envoy is already travelling.', false);
-    if (this.now() < this.cooldownUntil) return fallback('Gemini is resting; your conversation continues.');
+    if (this.now() < this.cooldownUntil) return fallback(`Gemini can be tried again in ${Math.ceil((this.cooldownUntil-this.now())/1000)} seconds. ${this.lastDiagnostic ? diagnosticDetails(this.lastDiagnostic).reason : ''}`);
     if (!this.hasSession() && !token && !this.sessionRequest) {
       if (!this.lastDiagnostic) this.recordFailure(this.session ? 'SESSION_EXPIRED' : 'SESSION_NOT_READY');
       return fallback();
@@ -104,7 +104,7 @@ export class DiplomacyClient {
       const fresh = response.headers.get('X-Diplomacy-Session'), expires = Number(response.headers.get('X-Diplomacy-Expires'));
       if (fresh && fresh.length <= 1600 && Number.isSafeInteger(expires) && expires > this.now()) this.session = { token: fresh, expires };
       if (!response.ok) {
-        const seconds = Math.min(3600, Math.max(30, Number(response.headers.get('Retry-After')) || (response.status === 429 ? 300 : 60)));
+        const seconds = Math.min(3600, Math.max(1, Number(response.headers.get('Retry-After')) || (response.status === 429 ? 300 : 60)));
         if (response.status !== 401) this.cooldownUntil = this.now() + seconds * 1000;
         await this.readFailure(response, '/diplomacy', this.cooldownUntil);
         if (response.status === 401) { this.session = null; return fallback('Your diplomacy session needs verification.'); }
@@ -112,7 +112,7 @@ export class DiplomacyClient {
       }
       let parsed;
       try { parsed = validateResponse(await readJSON(response, 10000)); } catch (error) { if (controller.signal.aborted) throw error; /* Invalid reply is handled below. */ }
-      if (!parsed) { this.cooldownUntil = this.now() + 60000; this.recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status, retryAt: this.cooldownUntil }, '/diplomacy'); return fallback(); }
+      if (!parsed) { this.cooldownUntil = this.now() + 5000; this.recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status, retryAt: this.cooldownUntil }, '/diplomacy'); return fallback(); }
       if (this.cache.size >= 30) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, parsed);
       this.lastDiagnostic = null;
