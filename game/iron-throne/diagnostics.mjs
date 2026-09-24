@@ -1,3 +1,4 @@
+import { normalizeGeminiModel } from './gemini-model.mjs';
 // Only these codes and states cross the diagnostics boundary. Never copy raw
 // provider errors, request bodies, credentials, or exception messages into a report.
 export const CHECK_NAMES = ['GEMINI_API_KEY', 'TURNSTILE_SECRET', 'BUDGET'];
@@ -39,7 +40,8 @@ const CODES = {
   GEMINI_PERMISSION: ['Gemini request', 'Google refused this project or key access.', 'Check the API key restrictions, enabled API, project access, and account eligibility in Google AI Studio.'],
   GEMINI_BILLING: ['Gemini billing', 'Google reported that payment, billing, or prepaid credits are required.', 'Check billing for the project attached to this API key in Google AI Studio, including any required prepay setup and available balance.'],
   GEMINI_QUOTA: ['Gemini request', 'Google reported an exhausted quota or rate limit.', 'Review the project’s model quotas in Google AI Studio and wait for the relevant reset.'],
-  GEMINI_MODEL: ['Gemini request', 'Google could not find or provide the configured model.', 'Check GEMINI_MODEL and model availability for this API project.'],
+  GEMINI_MODEL: ['Gemini request', 'Google could not find or provide the configured model.', 'In Cloudflare → iron-throne-diplomacy → Settings → Variables and Secrets, restore GEMINI_MODEL to a model available for this API key with generateContent support, then deploy. Use worker/check-models.mjs to list available models; a code redeploy alone cannot restore an overwritten value.'],
+  GEMINI_MODEL_CONFIG: ['Worker configuration', 'GEMINI_MODEL is not a valid Gemini model ID.', 'Set GEMINI_MODEL to a model ID such as gemini-2.5-flash-lite or models/gemini-2.5-flash-lite, not a URL or API key. Verify availability for your project, then deploy.'],
   GEMINI_REQUEST: ['Gemini request', 'Google rejected the request format or parameters.', 'Check the Worker’s model and response-schema configuration.'],
   GEMINI_TIMEOUT: ['Gemini request', 'The Gemini request timed out.', 'Try again after the cooldown. Check provider availability if it continues.'],
   GEMINI_UNAVAILABLE: ['Gemini request', 'The Worker could not obtain a successful Gemini response.', 'Check provider availability and Worker logs; the upstream status is included when available.'],
@@ -55,6 +57,8 @@ export function makeDiagnostic(code, details = {}) {
     version: 1, code: typeof code === 'string' && Object.hasOwn(CODES, code) ? code : 'WORKER_UNAVAILABLE',
     checks: Object.fromEntries(CHECK_NAMES.map(name => [name, STATES.includes(details.checks?.[name]) ? details.checks[name] : 'unknown'])),
     ...(Number.isInteger(details.providerStatus) && details.providerStatus >= 100 && details.providerStatus <= 599 ? { providerStatus: details.providerStatus } : {}),
+    ...(normalizeGeminiModel(details.model) ? { model: normalizeGeminiModel(details.model) } : {}),
+    ...(['configured','default'].includes(details.modelSource) ? { modelSource: details.modelSource } : {}),
     turnstileCodes: [...new Set((Array.isArray(details.turnstileCodes) ? details.turnstileCodes : []).filter(c => TURNSTILE_CODES.includes(c)))].slice(0, 7)
   };
 }
@@ -79,6 +83,8 @@ export function diagnosticReport(record, endpoint = '', origin = '', clientSetti
     `Game origin: ${safeOrigin(origin)}`, `Worker: ${safeOrigin(endpoint)}`, `Failed step: ${info.stage}`, `Request: ${path || 'Not sent'}`,
     `HTTP status: ${Number.isInteger(record.httpStatus) && record.httpStatus >= 100 && record.httpStatus <= 599 ? record.httpStatus : 'Unavailable'}`,
     ...(d.providerStatus ? [`Google HTTP status: ${d.providerStatus}`] : []), `Error code: ${d.code}`, `Reason: ${info.reason}`, '',
+    ...(d.model ? [`Gemini model: ${d.model}`] : []),
+    ...(d.modelSource ? [`Model setting: ${d.modelSource === 'configured' ? 'Cloudflare GEMINI_MODEL' : 'Worker default (GEMINI_MODEL not set)'}`] : []),
     ...CHECK_NAMES.map(name => `${name}: ${CHECK_LABELS[d.checks[name]]}`),
     'Present means configured, not proof that a key is valid or funded.',
     `Game endpoint configured: ${clientSettings.endpoint ? 'Yes' : 'No'}`, `Public Turnstile site key configured: ${clientSettings.siteKey ? 'Yes' : 'No'}`,

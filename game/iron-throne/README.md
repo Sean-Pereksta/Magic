@@ -89,10 +89,14 @@ Local caps cannot turn a paid-tier project into a free-tier project.
 
    Wrangler may require account login. Paste secrets into its interactive prompt,
    never into a source file, URL, commit, browser setting or shell command argument.
-4. In `worker/wrangler.toml`, set `GEMINI_MODEL` to an available text model with a
-   free tier in your project. The supplied starting model is
+4. In Cloudflare → `iron-throne-diplomacy` → Settings → Variables and Secrets,
+   set the runtime variable `GEMINI_MODEL` to an available text model with a
+   free tier in your project, then deploy. The Worker fallback model is
    `gemini-2.5-flash-lite`; it is configurable because models and availability
-   change. Set `ALLOWED_ORIGINS` to the exact production origins, with no paths or
+   change. `keep_vars = true` and the absence of a TOML model override preserve
+   your dashboard model selection on future code deployments. A value that was
+   already overwritten must be restored once; this change cannot recover it.
+   Set `ALLOWED_ORIGINS` to the exact production origins, with no paths or
    trailing slash. Keep `DAILY_LIMIT`, `REQUESTS_PER_MINUTE` and
    `CLIENT_PER_MINUTE` below your verified provider allowances. Supplied budgets
    of 20/day, 4/minute globally and 2/minute per IP are conservative application
@@ -298,3 +302,33 @@ requests; failed requests always log their full URL. Change only
 Checks: `node --test game/iron-throne/tests/art.test.mjs` and, with Playwright and
 Chromium installed, `node game/iron-throne/tests/art-browser.mjs`. The browser
 check mocks PNG availability, including a missing file, on desktop and mobile.
+
+
+### Repeated `GEMINI_MODEL` / Google 404 after a deployment
+
+A Google 404 on `/diplomacy` means Google could not serve the selected model.
+The game reaching this step already reached the Worker and its budget binding.
+The old Wrangler file explicitly pinned `gemini-2.5-flash-lite`; redeploying that
+file could overwrite a working dashboard model selection. The current config
+preserves the dashboard selection instead. The diagnostics now report the
+normalized model ID and whether it came from the runtime setting or the default.
+The last expansion changed the diplomacy prompt/schema, not the selected model;
+that does not prove which model the live Worker was using during an old failure.
+
+Restore the working model under the Worker's runtime Variables and Secrets and
+choose Deploy. If its ID is unknown, set `GEMINI_API_KEY` in a local environment
+using the same project key as the Worker and run from the repository root:
+
+```sh
+node game/iron-throne/worker/check-models.mjs
+```
+
+This calls Google's paginated model-list endpoint, filters for `generateContent`,
+and prints IDs only. It never calls generation, changes the Worker, or prints
+keys/provider error bodies. Select a compatible text model with an available
+free tier in your project, update runtime `GEMINI_MODEL`, and deploy the Worker.
+Do not paste API keys into chat or commit them. One normal in-game message after
+the cooldown confirms actual generation; metadata alone does not verify quota,
+billing, or response-schema compatibility. Model names with surrounding spaces
+or Google's `models/` prefix are normalized. Invalid IDs fail before an upstream
+request. There is no automatic retry or switch to another model/provider.

@@ -1,3 +1,4 @@
+import { geminiModelSetting } from '../gemini-model.mjs';
 import { HOUSES, INTENT_TYPES, RESOURCES } from '../data.mjs';
 import { issueSession, reserveSessionBudget, verifySession } from './session.mjs';
 import { validateIntent, validateResponse } from '../diplomacy.mjs';
@@ -99,8 +100,8 @@ async function providerFailure(response) {
   return Object.assign(new Error('provider'), { status: response.status, diagnosticCode: code });
 }
 export async function callGemini(context, env, fetcher = fetch) {
-  const model = env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
-  if (!/^[a-zA-Z0-9._-]{1,80}$/.test(model)) throw Object.assign(new Error('configuration'), { diagnosticCode: 'GEMINI_MODEL' });
+  const { model, modelSource } = geminiModelSetting(env);
+  if (!model) throw Object.assign(new Error('configuration'), { diagnosticCode: 'GEMINI_MODEL_CONFIG', modelSource });
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
   try {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -119,6 +120,7 @@ export async function callGemini(context, env, fetcher = fetch) {
     if (!response) throw Object.assign(new Error('invalid'), { diagnosticCode: 'GEMINI_RESPONSE_INVALID', status: upstream.status });
     return response;
   } catch (error) {
+    error.model = model; error.modelSource = modelSource;
     if (!error.diagnosticCode) error.diagnosticCode = controller.signal.aborted ? 'GEMINI_TIMEOUT' : 'GEMINI_UNAVAILABLE';
     throw error;
   } finally { clearTimeout(timer); }
@@ -145,7 +147,7 @@ export class DiplomacyBudget {
       // Never leak provider bodies, request text, or credentials. Failed attempts
       // still consume the reserved allowance; no retries or paid-provider failover.
       const retryAfter = error.status === 429 ? 300 : 60;
-      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status }) }, 503, { 'Retry-After': String(retryAfter) });
+      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status, model: error.model, modelSource: error.modelSource }) }, 503, { 'Retry-After': String(retryAfter) });
     }
     // Storage failures propagate to the outer binding handler, not Gemini errors.
     await this.state.storage.transaction(async txn => {
