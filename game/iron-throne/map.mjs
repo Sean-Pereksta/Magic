@@ -157,7 +157,10 @@ export class WorldMap {
         if(geography.get(t.id).hasRiver&&!this.structureArt(c,ART.overlays[buildingLevel(t,'road')>1?'bridge_stone':'bridge_wood'],p.x-22,p.y-16,44,32,colors[t.owner])){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
       }
     }
-    for(const t of visible){
+    // Rows define front-to-back depth. Within a row, cities cover buildings
+    // on either side; a later row can still cover a city from the foreground.
+    const objectTiles=[...visible].sort((a,b)=>a.r-b.r||Number(a.building==='city')-Number(b.building==='city')||a.q-b.q);
+    for(const t of objectTiles){
       const p=hexPixel(t);
       if(t.building){
         const rendered=this.structureArt(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62,colors[t.owner]);
