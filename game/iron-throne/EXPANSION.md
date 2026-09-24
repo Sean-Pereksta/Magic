@@ -60,7 +60,9 @@ Dependence is the largest resource share supplied by a partner over the recent t
 
 ## Armies and combat
 
-Field battles use 1.8× missile, melee and flanking damage, 1.25× charge damage and 1.4× pursuit damage, plus stronger casualty/defeat morale penalties so losses force meaningful withdrawals sooner. Main combat is limited to 50% of each army's starting troops; rout pursuit can raise total field-battle losses to at most 60%. This keeps survivors available to retreat and rebuild, including against overwhelming forces. Separate losses from being trapped without a retreat route, later engagements, shortages and sieges still apply. Terrain, formations and unit counters remain relevant; siege breach rates are unchanged.
+Field battles use 1.8× missile, melee and flanking damage, 1.25× charge damage and 1.4× pursuit damage, plus stronger casualty/defeat morale penalties. There are no percentage casualty limits or guaranteed survivors: overwhelming forces can destroy an army. Terrain, formations, unit counters and retreat routes still matter; siege breach rates are unchanged.
+
+Selecting an enemy with one of your armies selected shows estimated troop-loss ranges for both sides before ending the turn. Estimates sample the real battle/retreat or siege resolver with independent random seeds and current forces; they do not change the campaign or predict future reinforcements. Actual troop losses appear as labeled, floating, fading numbers above each clash; reduced-motion mode keeps them stationary.
 
 Every surviving rival takes a complete strategy turn when the player ends the round. [STRATEGY.md](./STRATEGY.md) documents the shared rules, economic reserves, ranked construction and recruitment, war decisions, coordinated military orders and visible six-round activity history.
 
