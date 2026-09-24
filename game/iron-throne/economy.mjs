@@ -58,6 +58,7 @@ export function storageCapacity(s, owner, resource) {
 }
 export function completeConstruction(t) {
   const p=t.project, type=p.type;
+  if (t.structureDamage) delete t.structureDamage[type];
   t.levels ||= {}; t.levels[type]=p.level || 1;
   if(type==='wall') t.walls=wallMaximum(t);
   else if(type==='road' || BUILDINGS[type].settlement) t[type]=true;

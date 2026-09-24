@@ -45,7 +45,7 @@ export class BattleEffects {
         c.beginPath(); c.moveTo(x - 1, -13); c.lineTo(x - 1, -30); c.stroke();
         c.beginPath(); c.moveTo(x, -29); c.lineTo(x + side * (9 + Math.sin(progress * 42) * 1.3), -27); c.lineTo(x, -22); c.fill();
       }
-      const siege = e.action === 'siege' || e.action === 'capture';
+      const siege = e.action === 'siege' || e.action === 'capture' || e.action === 'structure';
       const arrows = siege || (e.composition||[]).some(a=>(a.archer||0)+(a.veteranArcher||0)+(a.crossbow||0)>0);
       for (const particle of effect.particles) {
         const drift = progress * particle.speed;
@@ -76,9 +76,9 @@ export class BattleEffects {
     c.beginPath(); c.roundRect(0, 0, boxWidth, 101, 5); c.fill(); c.stroke();
     c.textAlign = 'left'; c.fillStyle = '#f0d8a3'; c.font = 'bold 10px system-ui';
     const fit = (text, max = boxWidth - 20) => { while (c.measureText(text).width > max && text.length) text = text.slice(0, -1); return text; };
-    c.fillText(fit(`${e.action === 'siege' ? 'SIEGE' : 'BATTLE'} OF ${(tile?.name || e.tile).toUpperCase()}`), 10, 18);
+    c.fillText(fit(`${e.action === 'structure' ? 'STRUCTURE ATTACK' : e.action === 'siege' ? 'SIEGE' : 'BATTLE'} OF ${(tile?.name || e.tile).toUpperCase()}`), 10, 18);
     c.font = '11px system-ui'; c.fillStyle = '#eceddf';
-    c.fillText(fit(e.winner ? `${name(e.winner)} ${e.action === 'capture' ? 'takes the settlement' : 'wins the clash'}` : 'The siege continues'), 10, 37);
+    c.fillText(fit(e.winner ? `${name(e.winner)} ${e.action === 'capture' ? 'takes the settlement' : 'wins the clash'}` : e.action === 'structure' ? (e.destroyed ? 'Structure destroyed' : 'Structure damaged') : 'The siege continues'), 10, 37);
     if (e.before && e.after) {
       c.fillText(fit(`${name(e.attacker)}: ${e.before[0]} → ${e.after[0]}`), 10, 54);
       c.fillText(fit(`${e.action === 'siege' ? 'Walls' : name(e.defender)}: ${e.before[1]} → ${e.after[1]}`), 10, 70);

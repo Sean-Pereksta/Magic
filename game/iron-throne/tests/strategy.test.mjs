@@ -163,5 +163,7 @@ test('public rival reports describe actions without exposing foreign treasuries 
   report(s,'wintermere').reason='<img src=x onerror=alert(1)>';
   const html=rivalTurnReports(s);
   assert.match(html,/5 rival councils acted/);assert.match(html,/Started/);assert.match(html,/Completed/);
-  assert.doesNotMatch(html,/98765|<img src=x/);assert.match(html,/&lt;img/);
+  assert.doesNotMatch(html,/98765|<img src=x|&lt;img/);assert.match(html,/Private priorities/);
+  s.tiles['17,4'].name='<img src=x onerror=alert(1)>';const escaped=rivalTurnReports(s);
+  assert.match(escaped,/&lt;img/);assert.doesNotMatch(escaped,/<img src=x/);
 });

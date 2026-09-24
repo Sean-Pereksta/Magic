@@ -1,3 +1,6 @@
+import { finishPlans, recordPlayerPlans } from './plans.mjs';
+import { resolveEspionage, visiblePlans } from './espionage.mjs';
+import { politicalAttitude } from './politics.mjs';
 import { finishStrategyRound } from './strategy.mjs';
 import { HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
@@ -311,7 +314,7 @@ export function endTurn(s) {
   if (s.outcome) return s;
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   updatePoliticalState(s, { sendDispatches: false });
-  aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveMovement(s); resolveEconomy(s); resolveAmbassadors(s);
+  recordPlayerPlans(s); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
   finishStrategyRound(s);
   s.turn++; resolveRecurringTrade(s); verifyPledges(s); updatePoliticalState(s); scheduleTrade(s);
   s.diplomacy.messages = { turn: s.turn, regular: 0, hosts: {} }; s.diplomacy.processedTurn = s.turn;
@@ -338,6 +341,9 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
     world: {
       knowledge: 'Public map; approximate foreign strength. Foreign treasuries, private chats and unobserved orders are unknown.',
       houses, self, relationship, economicRelationship: economy,
+      politicalPosture: politicalAttitude(s,rulerId,PLAYER),
+      disclosedPlans: visiblePlans(s,PLAYER,rulerId).slice(0,3).map(r=>({planId:r.planId,observedTurn:r.turn,...r.snapshot})),
+      intelligenceIncidents: (s.intelligence?.incidents||[]).filter(i=>[i.owner,i.actor].includes(rulerId)&&[i.owner,i.actor].includes(PLAYER)).slice(-4),
       conversationInterpretation: k.conversationSummary ? `Unverified ruler interpretation: ${k.conversationSummary}` : '',
       knownPlayerConstruction: Object.values(s.tiles).filter(t => t.owner === PLAYER && (t.building || t.project)).slice(0, 16).map(t => ({ tile: t.id, building: t.building, construction: t.project?.type || null })),
       militaryRelationship: { ...military, nearby: military.nearby.slice(0, 12) },
@@ -389,6 +395,15 @@ export function scriptedReply(s, rulerId, message, options = {}) {
     const verdict = evaluateDeal(s, rulerId, options.proposal), i = verdict.intent;
     const opening = k.greed > .8 ? 'Let us speak of terms that profit both courts.' : k.honor > .8 ? 'I weigh the obligations as carefully as the payment.' : 'There is a price to committing my House.';
     return { reply: `${opening} ${verdict.reason}`, tone: verdict.status === 'reject' ? 'cold' : 'guarded', intents: i ? [i] : [], speechAct: verdict.status === 'counter' ? 'counteroffer' : verdict.status, ...(verdict.counter ? { counterProposal: verdict.counter } : {}) };
+  }
+  const posture=politicalAttitude(s,rulerId,PLAYER);
+  if (/\b(?:spy|spies|espionage|intelligence)\b/.test(text) && !/allian|peace|truce|trade|gift|aid|declar.*war|attack you/.test(text)) {
+    const incident=(s.intelligence?.incidents||[]).filter(i=>[i.owner,i.actor].includes(rulerId)&&[i.owner,i.actor].includes(PLAYER)).at(-1);
+    return {reply:incident?`Our courts remember the ${incident.action} incident from turn ${incident.turn}. Such actions affect confidence between our Houses.`:'Our secrets remain our own. We can discuss the concerns and obligations between our courts.',tone:'guarded',intents:[]};
+  }
+  if (/\b(?:plans?|schemes?|intentions?|priority|priorities)\b/.test(text) && !/allian|peace|truce|trade|gift|aid|declar.*war|attack you/.test(text)) {
+    const known=visiblePlans(s,PLAYER,rulerId)[0];
+    return {reply:known?`Your report from turn ${known.turn} concerns ${known.text} Intentions can change when circumstances do.`:`${posture.label}: ${diplomaticPriorities(s,rulerId)[0]} I will not disclose private military preparations.`,tone:'guarded',intents:[]};
   }
   const military = borderThreat(s, rulerId, PLAYER), economic = economicRelationship(s, rulerId, PLAYER);
   const third = HOUSES.find(h => ![PLAYER, rulerId].includes(h.id) && text.includes(h.id));

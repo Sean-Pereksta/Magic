@@ -3,7 +3,7 @@
 Every surviving rival House takes one deterministic strategy turn whenever the
 player presses **End Turn**. The simulation runs locally, including when Gemini
 is disabled or unavailable. `strategy.mjs` owns the planner; `diplomacy.mjs`
-owns the round sequence; `core.mjs` remains the authority for actions and costs.
+owns the round sequence; `core.mjs` remains the authority for actions and costs. Persistent objectives and intelligence are described in [INTELLIGENCE.md](INTELLIGENCE.md).
 
 ## One complete round
 
@@ -92,9 +92,9 @@ usual development plan.
 ## What the player sees
 
 **Realm → Rival Turns** stores the latest six rounds, with a report for every
-rival. Each report shows its goal, a plain-language reason, paid orders, started
-and completed projects, actual recruitment, army orders and resolved movement,
-war declarations and truces. Battle details remain in the battle reports.
+rival. Public reports show visible construction, war declarations and truces. Private
+priorities, recruitment decisions and future army orders remain in the internal
+audit; discover strategic intentions through ambassadors and spies. Battle details remain in the battle reports.
 Foreign treasury balances stay private. **How to rule** explains the shared
 round sequence and how to prepare and supply the player's own campaigns.
 

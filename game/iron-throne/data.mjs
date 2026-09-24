@@ -53,6 +53,7 @@ export const REGIONS = {
 };
 const add = (name, category, cost, turns, extra = {}) => ({ name, category, cost, turns, icon: '◆', description: name, ...extra });
 Object.assign(BUILDINGS, {
+  intelligenceOffice: add('Whisper Office', 'Government', {gold:60,wood:35,stone:20}, 3, {settlement:true,description:'Supports 1 / 3 / 5 spies. Level II unlocks counterintelligence; Level III strengthens networks.'}),
   ranch: add('Horse Ranch', 'Economy', {wood: 30, gold: 30}, 2, {terrain: ['plains', 'coast'], yield: {horses: 4}}),
   storehouse: add('Storehouse', 'Economy', {wood: 30, stone: 20, gold: 20}, 2, {settlement: true}),
   tradeOutpost: add('Trading Post', 'Trade', {wood: 30, stone: 20, gold: 40}, 2, {yield: {gold: 5}}),
@@ -70,6 +71,7 @@ Object.assign(BUILDINGS, {
   siegeFoundry: add('Siege Foundry', 'Great Projects', {wood: 100, iron: 80, tools: 40, gold: 140}, 6, {settlement: true, requires: {siegeWorks: 3}, maxLevel: 1})
 });
 const tierNames = {
+  intelligenceOffice: ['Whisper Office', 'Intelligence Bureau', 'Royal Whisper Network'],
   farm: ['Farmstead', 'Agricultural Estate', 'Great Estate'], lumber: ['Logging Camp', 'Sawmill', 'Royal Timberworks'], quarry: ['Quarry', 'Stoneworks', 'Grand Quarry'], mine: ['Iron Mine', 'Deep Mine', 'Royal Mine'], ranch: ['Horse Ranch', 'Horse Estate', 'Royal Stud'],
   road: ['Road', 'Stone Road', 'Royal Highway'], fort: ['Fort', 'Stone Fortress', 'Great Fortress'], wall: ['City Walls', 'Reinforced Walls', 'Citadel Walls'],
   market: ['Market', 'Merchant Quarter', 'Grand Bazaar'], workshop: ['Workshop', 'Engineering Works', 'Royal Works'], storehouse: ['Storehouse', 'Warehouse', 'Royal Granary'],
@@ -115,8 +117,8 @@ Object.assign(UNITS, {
   cavalry: unit('Heavy Cavalry','mounted',2.7,1.8,4,{horses:4,food:16,iron:12,arms:4,gold:32},{stable:2},{charge:5,armor:.25,pursuit:2}),
   knight: unit('Mounted Knights','mounted',4.5,4,3,{horses:3,arms:9,iron:15,food:20,gold:55},{stable:3},{charge:8,armor:.5,pursuit:2.5,discipline:1.4}),
   ram: unit('Battering Rams','siege',.2,.5,2,{wood:30,tools:6,gold:25},{siegeWorks:1},{breach:7}),
-  catapult: unit('Catapults','siege',.8,.5,2,{wood:35,iron:16,tools:10,gold:40},{siegeWorks:2},{breach:12,ranged:2}),
-  trebuchet: unit('Trebuchets','siege',.6,.5,1,{wood:45,iron:20,tools:18,gold:50},{siegeWorks:3},{breach:24,ranged:2.5}),
-  siege: unit('Legacy Siege Engines','siege',.8,.5,2,{wood:30,iron:16,gold:35},{siegeWorks:2},{breach:9,legacy:true})
+  catapult: unit('Catapults','siege',.8,.5,2,{wood:35,iron:16,tools:10,gold:40},{siegeWorks:2},{breach:12,ranged:2,bombardRange:2}),
+  trebuchet: unit('Trebuchets','siege',.6,.5,1,{wood:45,iron:20,tools:18,gold:50},{siegeWorks:3},{breach:24,ranged:2.5,bombardRange:3}),
+  siege: unit('Legacy Siege Engines','siege',.8,.5,2,{wood:30,iron:16,gold:35},{siegeWorks:2},{breach:9,legacy:true,bombardRange:2})
 });
 for (const u of Object.values(UNITS)) u.description = `${u.count} per base muster. ${Object.entries(u.requires).map(([b,l])=>`${BUILDINGS[b].levels[l-1].name} required`).join(', ')}. ${u.family === 'siege' ? 'Slow; attacks walls over successive turns.' : u.antiCavalry ? 'Counters cavalry charges.' : u.piercing ? 'Armor-piercing volleys.' : u.family === 'mounted' ? 'Charge, flank and pursue; weak in forests and against spears.' : u.family === 'ranged' ? 'Volleys precede melee; protected by hills and walls.' : 'Holds the main battle line.'}`;
