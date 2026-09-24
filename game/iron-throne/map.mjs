@@ -7,7 +7,7 @@ import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
 import { BattleEffects } from './battle-effects.mjs';
 import { MapArt, tileVariant } from './art.mjs';
 import { HEX_DIRECTIONS, GeographyCache } from './geography.mjs';
-import { GeographyArt } from './geography-art.mjs';
+import { GeographyArt, landClipPath } from './geography-art.mjs';
 
 const DIRECTIONS = HEX_DIRECTIONS;
 const RADIUS = 25, SQRT3 = Math.sqrt(3);
@@ -87,12 +87,17 @@ export class WorldMap {
     const c = this.ctx; c.beginPath();
     for (let j=0;j<2;j++) {const a=(60*(i+j)-30)*Math.PI/180; const x=p.x+Math.cos(a)*RADIUS,y=p.y+Math.sin(a)*RADIUS; if(j)c.lineTo(x,y);else c.moveTo(x,y);}
   }
-  groundArt(c,t,x,y) {
+  groundArt(c,t,x,y,coastMask=0) {
     // The photographic hexes have transparent margins. Fill the exact tile first,
     // then clip the inland texture so there are no ocean-colored gaps on dry land.
     c.save();this.hex(x,y);c.clip();
+    if(coastMask) {
+      this.art.ground(c,{...t,terrain:'water'},x,y);
+      this.assets.draw(c,ART.terrain.water[0],x-25,y-25,50,50);
+      c.translate(x,y);c.clip(landClipPath(coastMask),'evenodd');c.translate(-x,-y);
+    }
     this.art.ground(c,t,x,y);
-    const loaded=this.assets.draw(c,ART.terrain[t.terrain]?.[tileVariant(t)%6],x-25,y-25,50,50);
+    const loaded=this.assets.draw(c,ART.terrain[t.terrain]?.[t.terrain==='water'?0:tileVariant(t)%6],x-25,y-25,50,50);
     if(!loaded&&this.zoom>.38&&!t.building)this.art.terrain(c,t,x,y);
     c.restore();
   }
@@ -127,15 +132,19 @@ export class WorldMap {
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
     // Separate ground and object passes keep roads, borders and taller sprites coherent.
-    for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y);}
+    for(const t of visible){const p=hexPixel(t),g=geography.get(t.id);this.groundArt(c,{...t,terrain:g.ground},p.x,p.y,g.coastMask);}
     for(const t of visible){
       const p=hexPixel(t);
+      c.save();
+      const coastMask=geography.get(t.id).coastMask;
+      if(coastMask){c.translate(p.x,p.y);c.clip(landClipPath(coastMask),'evenodd');c.translate(-p.x,-p.y);}
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
       if(t.owner){c.fillStyle=`${colors[t.owner]}12`;c.fill();}
       DIRECTIONS.forEach(([dq,dr],i)=>{
         const n=s.tiles[tileId(t.q+dq,t.r+dr)];
         if(t.owner&&n?.owner!==t.owner){this.edge(p,i);c.strokeStyle='#122630a0';c.lineWidth=3.5;c.stroke();c.strokeStyle=colors[t.owner];c.lineWidth=1.6;c.stroke();}
       });
+      c.restore();
       this.geographyArt.draw(c,geography.get(t.id),p.x,p.y,this.assets,ART.geography);
       if(t.road){
         const roadRendered=this.structureArt(c,ART.structures.road[buildingLevel(t,'road')],p.x-22,p.y-16,44,32,colors[t.owner]);
