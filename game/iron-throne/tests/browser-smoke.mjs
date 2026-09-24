@@ -27,6 +27,7 @@ try {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
     const page = await context.newPage(), errors = [], external = [];
+    await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', r => { if (!r.url().startsWith(base)) external.push(r.url()); });
     await page.route('**/game/iron-throne/config.json', route => route.fulfill({ json: {} }));
@@ -92,7 +93,7 @@ try {
       for (const [type, x, y, id] of [['pointerdown', 110, 100, 1], ['pointermove', 170, 140, 1], ['pointerup', 170, 140, 1]]) canvas.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: rect.left + x, clientY: rect.top + y, bubbles: true }));
     });
     assert.equal(await page.locator('#coordinates').textContent(), before);
-    assert.deepEqual(errors, []); assert.deepEqual(external, [], 'scripted mode should make no outside requests');
+    assert.deepEqual(errors, []); assert.deepEqual(external.filter(url=>!url.startsWith('https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/')), [], 'scripted mode should only request remote artwork');
     console.log(`PASS ${viewport.width}×${viewport.height}: build, recruit, march, turns, council, treaty, autosave/resume, layout`);
     // Expanded controls use the same saved campaign and authoritative actions.
     await page.evaluate(async()=>{
@@ -131,6 +132,7 @@ try {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
     const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, sessionCalls=0, configRoute;
+    await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', e => errors.push(e.message));
     // Hold configuration until a council is already open to exercise startup races.
     await page.route('**/game/iron-throne/config.json', route => { configRoute=route; });
@@ -200,6 +202,7 @@ try {
   for (const viewport of [{ width: 1280, height: 850 }, { width: 390, height: 844 }]) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context=await browser.newContext({viewport,reducedMotion:'reduce'}), page=await context.newPage(), errors=[];
+    await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     let configured=false, billingFailure=true, sessionCalls=0, modelCalls=0;
     page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(()=>{
@@ -267,6 +270,7 @@ try {
   }
   browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
   const artPage=await browser.newPage();
+  await artPage.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
   await artPage.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
   await artPage.goto(`${base}/game/iron-throne/index.html`);
   const graphics=await artPage.evaluate(async()=>{

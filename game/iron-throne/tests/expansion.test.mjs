@@ -8,7 +8,7 @@ import { commitDeal, endTurn, evaluateDeal, resolveRecurringTrade, makeContext }
 import { economicRelationship, recordTrade } from '../living.mjs';
 import { aiResourceTrade, contractCheck, economicNeeds, scheduleTrade, tradeInfrastructure, tradeRoute } from '../trade.mjs';
 import { armySpeed, resolveFieldBattle, setFormation, siegePower } from '../warfare.mjs';
-import { ART, AssetCache } from '../asset-manifest.mjs';
+import { ART, fallbackArtURL } from '../asset-manifest.mjs';
 const stocked=s=>{for(const k of s.kingdoms){for(const r of RESOURCES)k.resources[r]=400;k.commands=8;k.population=140;}};
 const army=(units,formation='balanced',owner=PLAYER)=>({units:{...emptyUnits(),...units},formation,morale:1,retreats:0,owner});
 const terrain=(name='plains',extra={})=>({terrain:name,owner:'wintermere',walls:0,building:null,levels:{},...extra});
@@ -149,13 +149,10 @@ test('new save fields reject invalid levels, formations, construction timers and
 test('expanded simulation resumes deterministically and dialogue hides foreign treasuries',()=>{
  const s=createGame(78);for(let i=0;i<6;i++)endTurn(s);const r=parseSave(JSON.stringify(s));for(let i=0;i<5;i++){endTurn(s);endTurn(r);}assert.deepEqual(s,r);const context=makeContext(s,'wintermere','What are you building?');assert.ok(context.world.self.economicNeeds);assert.ok(context.world.houses.every(h=>!h.resources));
 });
-test('every catalog tier, unit, resource, title and construction stage has repository artwork',async()=>{
+test('every remote catalog asset retains repository fallback artwork',async()=>{
  const paths=[...Object.values(ART.structures).flatMap(Object.values),...Object.values(ART.units),...Object.values(ART.resources),...Object.values(ART.titles),...ART.construction];
- for(const path of paths){await access(new URL(path));const svg=await readFile(new URL(path),'utf8');assert.match(svg,/<svg/);assert.doesNotMatch(svg,/https?:\/\/(?!www.w3.org)/);}
+ for(const path of paths){const fallback=fallbackArtURL(path)||path;await access(new URL(fallback));const svg=await readFile(new URL(fallback),'utf8');assert.match(svg,/<svg/);assert.doesNotMatch(svg,/https?:\/\/(?!www.w3.org)/);}
  assert.ok(paths.length>100);
-});
-test('asset cache bounds live images and missing assets return to procedural rendering',()=>{
- const original=globalThis.Image;globalThis.Image=class{complete=false;naturalWidth=0;};try{const cache=new AssetCache();for(let n=0;n<180;n++)cache.get(`asset-${n}`);assert.equal(cache.images.size,128);cache.images.get('asset-179').onerror();assert.equal(cache.get('asset-179'),null);}finally{globalThis.Image=original;}
 });
 
 test('Royal Highway upgrades a complete owned corridor atomically and activates after construction',()=>{

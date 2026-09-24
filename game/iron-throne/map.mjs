@@ -5,7 +5,7 @@ import { HOUSES, BUILDINGS, UNITS } from './data.mjs';
 import { PLAYER, settlements, sizeOf, tileId } from './core.mjs';
 
 import { BattleEffects } from './battle-effects.mjs';
-import { MapArt } from './art.mjs';
+import { MapArt, tileVariant } from './art.mjs';
 
 const DIRECTIONS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
 const RADIUS = 25, SQRT3 = Math.sqrt(3);
@@ -85,6 +85,10 @@ export class WorldMap {
     const c = this.ctx; c.beginPath();
     for (let j=0;j<2;j++) {const a=(60*(i+j)-30)*Math.PI/180; const x=p.x+Math.cos(a)*RADIUS,y=p.y+Math.sin(a)*RADIUS; if(j)c.lineTo(x,y);else c.moveTo(x,y);}
   }
+  riverArt(t,s) {
+    const edges=DIRECTIONS.map(([dq,dr],i)=>s.tiles[tileId(t.q+dq,t.r+dr)]?.river?i:-1).filter(i=>i>=0);
+    return edges.length>2?'river_fork':edges.length===2&&Math.abs(edges[0]-edges[1])!==3?'river_bend':'river_straight';
+  }
   render() {
     if (!this.width || !this.height) return;
     const c=this.ctx,s=this.getState(), now=performance.now();
@@ -100,7 +104,7 @@ export class WorldMap {
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
     // Separate ground and object passes keep roads, borders and taller sprites coherent.
-    for(const t of visible){const p=hexPixel(t);this.art.ground(c,t,p.x,p.y);}
+    for(const t of visible){const p=hexPixel(t);this.art.ground(c,t,p.x,p.y);this.assets.draw(c,ART.terrain[t.terrain]?.[tileVariant(t)%6],p.x-25,p.y-25,50,50);}
     for(const t of visible){
       const p=hexPixel(t);
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
@@ -113,7 +117,7 @@ export class WorldMap {
         }
         if(t.owner&&n?.owner!==t.owner){this.edge(p,i);c.strokeStyle='#122630a0';c.lineWidth=3.5;c.stroke();c.strokeStyle=colors[t.owner];c.lineWidth=1.6;c.stroke();}
       });
-      if(t.river&&t.terrain!=='water'){
+      if(t.river&&t.terrain!=='water'&&!this.assets.draw(c,ART.overlays[this.riverArt(t,s)],p.x-25,p.y-25,50,50)){
         c.beginPath();c.moveTo(p.x-10.825,p.y-18.75);c.bezierCurveTo(p.x+6,p.y-9,p.x-6,p.y+9,p.x+10.825,p.y+18.75);
         c.strokeStyle='#254c55';c.lineWidth=6;c.stroke();c.strokeStyle='#6eb0bf';c.lineWidth=3.4;c.stroke();c.strokeStyle='#b1d8d580';c.lineWidth=.8;c.stroke();
       }
@@ -123,19 +127,20 @@ export class WorldMap {
           c.beginPath();c.moveTo(p.x,p.y);c.lineTo(v.x,v.y);c.strokeStyle='#40504c';c.lineWidth=4;c.stroke();c.strokeStyle='#cfbf8d';c.lineWidth=Math.min(buildingLevel(t,'road'),buildingLevel(n,'road'))+1;c.stroke();
           c.setLineDash([1,3]);c.strokeStyle='#f3dfac';c.lineWidth=.6;c.stroke();c.setLineDash([]);
         }
-        if(t.river){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
+        this.assets.draw(c,ART.structures.road[buildingLevel(t,'road')],p.x-22,p.y-16,44,32);
+        if(t.river&&!this.assets.draw(c,ART.overlays[buildingLevel(t,'road')>1?'bridge_stone':'bridge_wood'],p.x-22,p.y-16,44,32)){c.save();c.translate(p.x,p.y);c.rotate(-.5);c.fillStyle='#ad9973';c.fillRect(-8,-3,16,6);c.strokeStyle='#efdab1';c.lineWidth=.8;c.strokeRect(-8,-3,16,6);c.restore();}
       }
     }
     for(const t of visible){
       const p=hexPixel(t);
-      if(this.zoom>.38&&!t.building)this.art.terrain(c,t,p.x,p.y);
+      if(this.zoom>.38&&!t.building&&!this.assets.get(ART.terrain[t.terrain]?.[tileVariant(t)%6]))this.art.terrain(c,t,p.x,p.y);
       if(t.building){
         const rendered=this.assets.draw(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62);
         if(!rendered)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');
         if(['city','town','fort'].includes(t.building)&&this.zoom>.65){const improvements=Object.keys(BUILDINGS).filter(id=>BUILDINGS[id].settlement&&buildingLevel(t,id)).sort((a,b)=>buildingLevel(t,b)-buildingLevel(t,a)).slice(0,3);improvements.forEach((id,i)=>this.assets.draw(c,ART.structures[id][buildingLevel(t,id)],p.x-33+i*23,p.y-8,25,25));}
         if(t.siege){c.fillStyle='#d58e63';c.font='bold 9px system-ui';c.fillText(t.walls+(t.fortIntegrity||0)>0?'SIEGE':'BREACH',p.x,p.y+28);}
       }
-      if(t.resource&&!t.building&&this.zoom>.8&&t.resource!=='wood'){
+      if(t.resource&&!t.building&&this.zoom>.8&&t.resource!=='wood'&&!this.assets.draw(c,ART.resources[t.resource],p.x-7,p.y+9,14,14)){
         c.fillStyle='#e7d9a5';c.strokeStyle='#243a3a';c.lineWidth=2;c.font='10px Georgia';c.textAlign='center';const label={iron:'⚒',stone:'◆',food:'ˇˇˇ'}[t.resource]||'';c.strokeText(label,p.x,p.y+17);c.fillText(label,p.x,p.y+17);
       }
       if(t.project){

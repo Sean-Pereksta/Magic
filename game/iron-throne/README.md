@@ -275,3 +275,26 @@ credentials and transient battle particles are deliberately outside saves.
 Session protocol references:
 - [Turnstile tokens: single use and server validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
 - [Cloudflare Workers Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)
+
+
+## Cloudflare PNG artwork
+
+`asset-manifest.mjs` defines the R2 base URL and all 139 relative PNG keys. Opening
+Iron Thrones loads and decodes the entire manifest before enabling Begin/Resume,
+with a progress meter, six concurrent requests, ten seconds per request, and a
+45-second startup budget. The lumber camp is attempted first. Missing or stalled
+images do not block the campaign: catalog items use bundled SVGs and terrain and
+overlays use procedural drawing. Failed remote keys are retried on the next page
+opening, so uploading a listed PNG needs no code change.
+
+The page shares decoded images across canvas renderers and retains them for the
+session; panning does not start new downloads. Terrain variants are coordinate
+stable. Sprites preserve aspect ratio and alpha. Resource and catalog images are
+decorative and do not capture input. Titles without supplied PNG keys remain SVG.
+Set `globalThis.IRON_THRONES_ART_DEBUG = true` before loading to log successful
+requests; failed requests always log their full URL. Change only
+`IRON_THRONES_ASSET_BASE` to move the bucket to a custom domain.
+
+Checks: `node --test game/iron-throne/tests/art.test.mjs` and, with Playwright and
+Chromium installed, `node game/iron-throne/tests/art-browser.mjs`. The browser
+check mocks PNG availability, including a missing file, on desktop and mobile.
