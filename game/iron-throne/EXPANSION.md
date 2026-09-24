@@ -91,9 +91,9 @@ Dependence is the largest resource share supplied by a partner over the recent t
 
 ## Armies and combat
 
-Field battles use 1.8× missile, melee and flanking damage, 1.25× charge damage and 1.4× pursuit damage, plus stronger casualty/defeat morale penalties. There are no percentage casualty limits or guaranteed survivors: overwhelming forces can destroy an army. Terrain, formations, unit counters and retreat routes still matter; siege breach rates are unchanged.
+Field battles use 1.8× missile, melee and flanking damage, 1.25× charge damage and 1.4× pursuit damage, plus stronger casualty/defeat morale penalties. There are no percentage casualty limits or guaranteed survivors: overwhelming forces can destroy an army. Terrain, formations, unit counters and retreat routes still matter.
 
-Selecting an enemy with one of your armies selected shows estimated troop-loss ranges for both sides before ending the turn. Estimates sample the real battle/retreat or siege resolver with independent random seeds and current forces; they do not change the campaign or predict future reinforcements. Actual troop losses appear as labeled, floating, fading numbers above each clash; reduced-motion mode keeps them stationary.
+Selecting an enemy with one of your armies selected shows estimated troop-loss ranges for both sides before ending the turn. Estimates sample the real assault/retreat resolver with independent random seeds and current forces; they do not change the campaign or predict future reinforcements. Actual troop losses appear as labeled, floating, fading numbers above each clash; reduced-motion mode keeps them stationary.
 
 Every surviving rival takes a complete strategy turn when the player ends the round. [STRATEGY.md](./STRATEGY.md) documents the shared rules, economic reserves, ranked construction and recruitment, war decisions, coordinated military orders and visible six-round activity history.
 
@@ -101,7 +101,11 @@ There are 14 recruitable classes plus the old `siege` class retained for saves. 
 
 Every field encounter records positioning, missile fire, charge, melee, flanking, morale and pursuit. Combat uses campaign RNG exclusively. Spears counter mounted charges; forests reduce volleys and mounted attacks; hills and cities favor defenders; undeveloped river crossings disrupt attacks. Armor, crossbows, scouts, elite morale, casualties, homeland defense, isolation and past retreats affect resolution. Rams have negligible field power. The losing side withdraws or routs, and mounted troops can pursue a rout. Reports under Realm show starting composition, losses by class and causal phase notes.
 
-Walls and intrinsic fort strength are attacked before a defending army can be assaulted. Rams, catapults and trebuchets have distinct breach performance, especially against tier-III defenses. Garrison missiles can destroy equipment. Siege morale declines across turns, with exhausted weak garrisons able to surrender. A breach permits an assault on a later order resolution. Short result-driven effects respect reduced motion and never block simulation.
+Fortifications require troops to hold a tile. Empty cities, towns, forts and watchtowers transfer on arrival with no automatic casualties and with remaining integrity intact. Defeating or driving away the final defending army permits occupation and capture during the same movement resolution. Surviving trapped or additional defenders still contest the tile. Capture cancels construction, clears siege state and recalculates territory through the usual rules.
+
+Tier I / II / III walls grant +25% / +40% / +55% protection at full integrity, scaled linearly by wall HP. Forts grant +25% per level, also scaled by integrity; the two modifiers multiply alongside terrain, formations and existing city/tower bonuses. The wall advantage to defending missile fire scales with the same wall bonus. Forecasts display integrity, fortification protection and actual assault-loss ranges; empty targets display capture on arrival.
+
+Assault orders always fight the troops immediately. Successful assaults cause incidental damage (1% of surviving infantry, with 2% extra for heavy infantry, plus engine breach power, rounded down). Bombardment is an explicit structure order: rams reach one hex, catapults and legacy engines two, trebuchets three. Only engines in range contribute. Tier III defenses retain 70% ram / 85% other-engine breach effectiveness, while trebuchets gain 35%. Bombardment damages wall HP or fort integrity even with defenders present, preserving the underlying fort for occupation or repair. Each army bombards at most once per turn. There is no automatic percentage attrition; nearby defending missile troops can cause casualties. Weak exhausted garrisons can surrender without erasing remaining fortifications. Short result-driven effects respect reduced motion and never block simulation.
 
 ## Artwork, saves and validation
 

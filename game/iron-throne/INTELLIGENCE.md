@@ -11,11 +11,11 @@ completed primary building, road and settlement add-on, with durability and
 the army's current tile remains an attack. Move on the current tile still holds.
 
 Catapults and legacy engines bombard up to two hexes; trebuchets reach three.
-Rams operate on the occupied tile. Mountains block ranged fire. Only the siege
+Rams can batter fortifications from one hex away. Mountains block ranged fire. Only the siege
 units that reach the target contribute damage. Orders recheck ownership, war,
 range, equipment and target existence when resolved. Enemy armies protect a
-structure until defeated; existing fortified approaches retain siege and terrain
-bonuses. Bombardment against a guarded structure waits for defenders to be cleared.
+economic structure until defeated. Walls and fort integrity can be bombarded
+while guarded, and armies can assault their defenders at any remaining integrity.
 Each army damages a structure at most once per turn.
 
 Economic structures have 60 / 90 / 120 durability; forts and settlement cores
@@ -47,8 +47,9 @@ with an explanation after 24 turns. Merging armies transfers plan assignments.
 
 Infrastructure targets are ranked by their actual production, defensive value,
 distance and the enemy's mounted-army dependence. A primary nearby siege campaign
-keeps its field army at the muster point while equipment is built. Secondary
-raids cannot pull that army away from the preparing siege.
+evaluates actual defenders, integrity-scaled protection and sampled assault losses.
+Empty targets never wait for equipment. Difficult targets may prompt safe firing
+positions, bombardment or reinforcement; saved `requiredSiege` values are advisory.
 
 A bounded internal audit retains creation, paid preparations, army assignments,
 discoveries, execution and abandonment. This audit and private army orders are

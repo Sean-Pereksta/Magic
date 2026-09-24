@@ -48,9 +48,19 @@ export function inflict(a,damage,{piercing=false,exposed=false}={}) {
   for(const g of groups){a.units[g.id]-=g.loss;casualties[g.id]=g.loss;}
   return casualties;
 }
-function protection(t,defending) {
+// Shared by combat, AI and forecasts. Intact tiers provide 25/40/55% wall
+// protection; a breach gradually removes that benefit instead of unlocking entry.
+export function fortificationDefense(t) {
+  const wallMax=wallMaximum(t),fortMax=fortMaximum(t);
+  const wallIntegrity=wallMax?clamp((t.walls||0)/wallMax,0,1):0;
+  const fortIntegrity=fortMax?clamp((t.fortIntegrity??fortMax)/fortMax,0,1):0;
+  const wallBonus=([0,.25,.40,.55][buildingLevel(t,'wall')]||0)*wallIntegrity;
+  const fortBonus=.25*buildingLevel(t,'fort')*fortIntegrity;
+  return {wallIntegrity,fortIntegrity,wallBonus,fortBonus,bonus:(1+wallBonus)*(1+fortBonus)-1};
+}
+export function protection(t,defending=true) {
   if(!defending)return 1;
-  return TERRAINS[t.terrain].defense*(t.building==='fort'?1+.25*buildingLevel(t,'fort'):t.building==='city'?1.12:1)*(t.walls>0?1.65:1)*(t.building==='watchtower'?1+.15*buildingLevel(t,'watchtower'):1);
+  return TERRAINS[t.terrain].defense*(1+fortificationDefense(t).bonus)*(t.building==='city'?1.12:1)*(t.building==='watchtower'?1+.15*buildingLevel(t,'watchtower'):1);
 }
 function spearCounter(target) {return 1/(1+(target.units.spearman||0)/Math.max(1,troopTotal(target))*3.5*(target.formation==='spearWall'?1.8:1));}
 export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossing=false,surrounded=[false,false]}={}) {
@@ -69,7 +79,7 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
     phases.push({name,loss,notes});
   };
   phases.push({name:'Positioning',loss:[0,0],notes:[`${terrain}: defender protection ×${protection(t,true).toFixed(2)}.`,`${FORMATIONS[attacker.formation||'balanced'].name} attacks ${FORMATIONS[defender.formation||'balanced'].name}.`,...(riverCrossing?['An undeveloped river crossing disrupts the attacking line.']:[]),...armies.map((a,i)=>a.units.scout?`${i?'Defending':'Attacking'} scouts screen the approach (${a.units.scout}).`:null).filter(Boolean)]});
-  phase('Missile Fire',armies.map((a,i)=>unitPower(a,'ranged')*.11*(terrain==='forest'?.5:1)*(i===1&&terrain==='hills'?1.3:1)*(i===1&&t.walls>0?1.4:1)*(a.formation==='skirmish'?1.25:1)),['Volleys hit before contact; forest cover shortens bow range.'],{piercing:armies.map(a=>(a.units.crossbow||0)>familyCount(a,'ranged')*.35)});
+  phase('Missile Fire',armies.map((a,i)=>unitPower(a,'ranged')*.11*(terrain==='forest'?.5:1)*(i===1&&terrain==='hills'?1.3:1)*(i===1?1+fortificationDefense(t).wallBonus*.7:1)*(a.formation==='skirmish'?1.25:1)),['Volleys hit before contact; forest cover shortens bow range.'],{piercing:armies.map(a=>(a.units.crossbow||0)>familyCount(a,'ranged')*.35)});
   phase('Charge / Engagement',armies.map((a,i)=>unitPower(a,'charge')*.10*cavalryTerrain*spearCounter(armies[1-i])*(a.formation==='charge'?1.35:1)*(i===0&&riverCrossing?.6:1)),[...(armies.some(a=>a.units.spearman)?['Spearmen brace against mounted charges.']:[]),`${terrain==='plains'?'Open ground supports shock cavalry.':'Broken ground reduces cavalry impact.'}`]);
   phase('Main Melee',armies.map((a,i)=>Object.entries(a.units).reduce((n,[id,v])=>n+v*UNITS[id].attack*(UNITS[id].family==='ranged'?.4:UNITS[id].family==='siege'?.15:1),0)*.17*(i===0&&riverCrossing?.65:1)),['Professional infantry sustain the line; armor reduces their share of losses.']);
   const flank = armies.map((a,i)=>familyCount(a,'mounted')*(a.formation==='flanking'?1.7:1)*cavalryTerrain/(1+familyCount(armies[1-i],'infantry')/Math.max(1,troopTotal(armies[1-i]))));
@@ -90,20 +100,32 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
   armies[loser].retreats=(armies[loser].retreats||0)+1;
   return {winner,loser,routed,phases,composition:initial,casualties:armies.map((a,i)=>Object.fromEntries(Object.entries(initial[i]).map(([id,n])=>[id,n-(a.units[id]||0)]))),morale:armies.map(a=>a.morale)};
 }
-export function siegePower(a,t) {
+export function siegePower(a,t,{range=0,assault=false}={}) {
   const level=Math.max(buildingLevel(t,'wall'),buildingLevel(t,'fort'));
-  return Math.max(1,Math.floor(Object.entries(a.units).reduce((sum,[id,n])=>sum+n*(UNITS[id]?.breach||0)*(level>=3?(id==='trebuchet'?1.35:id==='ram'?.35:.65):1),0)));
+  const engines=Object.entries(a.units).reduce((sum,[id,n])=>sum+(range>0&&(UNITS[id]?.bombardRange||0)<range?0:n*(UNITS[id]?.breach||0)*(level>=3?(id==='trebuchet'?1.35:id==='ram'?.7:.85):1)),0);
+  const infantry=assault?familyCount(a,'infantry')*.01+(a.units.heavyInfantry||0)*.02:0;
+  return Math.max(0,Math.floor(engines+infantry));
 }
-export function siegeStep(s,a,t,defender,roll) {
+export function damageFortifications(t,damage,type=t.walls>0?'wall':'fort') {
+  const before=type==='wall'?(t.walls||0):(t.fortIntegrity??fortMaximum(t));
+  const actual=Math.min(before,Math.max(0,Math.floor(damage)));
+  if(type==='wall')t.walls=before-actual;
+  else if(fortMaximum(t))t.fortIntegrity=before-actual;
+  return actual;
+}
+export function siegeStep(s,a,t,defender,roll=()=>.5,{range=1,type}={}) {
   t.siege ||= {turns:0,morale:1};t.siege.turns++;
-  const damage=siegePower(a,t),walls=t.walls,fort=t.fortIntegrity??fortMaximum(t);
-  if(walls>0)t.walls=Math.max(0,walls-damage);
-  else t.fortIntegrity=Math.max(0,fort-damage);
+  const damage=damageFortifications(t,siegePower(a,t,{range}),type);
   t.siege.morale=clamp(t.siege.morale-(damage/Math.max(60,wallMaximum(t)+fortMaximum(t)))*.23-.018,0,1);
-  const notes=[`Fortifications take ${damage} damage.`,`${t.walls+(t.fortIntegrity||0)} strength remains; assault follows a breach.`];
-  inflict(a,troopTotal(a)*(familyCount(a,'siege')?.01:.035));
-  if(defender&&familyCount(defender,'ranged')&&roll()<.3){const engine=Object.keys(a.units).find(id=>UNITS[id].family==='siege'&&a.units[id]>0);if(engine){a.units[engine]--;notes.push('Defending missiles destroyed a siege engine.');}}
-  const surrendered=t.siege.morale<.15&&(!defender||defender.morale<.45);
-  if(surrendered){t.walls=0;t.fortIntegrity=0;notes.push('The exhausted garrison surrenders.');if(defender)inflict(defender,troopTotal(defender));}
+  const notes=[`Fortifications take ${damage} damage.`,`Defender fortification protection +${Math.round(fortificationDefense(t).bonus*100)}%; an assault is possible at any integrity.`];
+  // Only real defending missile troops can hurt a nearby besieger. Standing
+  // outside an empty fortress never creates casualties or phantom defenders.
+  if(defender&&troopTotal(defender)>0&&range<=1){
+    const before=troopTotal(a);
+    inflict(a,unitPower(defender,'ranged')*.035*defender.morale*(.88+roll()*.24)*(1+fortificationDefense(t).wallBonus*.7));
+    if(before>troopTotal(a))notes.push(`Defending missiles inflict ${before-troopTotal(a)} casualties.`);
+  }
+  const surrendered=!!defender&&troopTotal(defender)>0&&t.siege.morale<.15&&defender.morale<.45;
+  if(surrendered){notes.push('The exhausted garrison surrenders; remaining fortifications stand.');inflict(defender,troopTotal(defender));}
   return {damage,notes,surrendered};
 }

@@ -12,8 +12,8 @@ import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNI
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
-import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, fortMaximum, migrateEconomy, productionPlan, storageCapacity, validateExpansion, wallMaximum } from './economy.mjs';
-import { armySpeed, familyCount, inflict, resolveFieldBattle, siegeStep } from './warfare.mjs';
+import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, migrateEconomy, productionPlan, storageCapacity, validateExpansion } from './economy.mjs';
+import { armySpeed, damageFortifications, familyCount, fortificationDefense, inflict, protection, resolveFieldBattle, siegePower } from './warfare.mjs';
 
 import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
 
@@ -254,7 +254,7 @@ export function splitArmy(s, owner, armyId) {
 }
 export function strength(a, defending = false, t = null) {
   let total = Object.entries(a.units).reduce((n, [type, count]) => n + count * (UNITS[type]?.[defending ? 'defense' : 'attack']||0), 0) * a.morale;
-  if (defending && t) total *= TERRAINS[t.terrain].defense * (t.building === 'fort' ? 1.35 + buildingLevel(t,'fort')*.25 : 1) * (t.walls > 0 ? 1.6 : 1) * (t.building === 'watchtower' ? 1 + buildingLevel(t,'watchtower')*.15 : 1) * (['fort', 'city'].includes(t.building) ? 1 + Math.min(.25, familyCount(a,'ranged') / Math.max(1, sizeOf(a))) : 1);
+  if (defending && t) total *= protection(t) * (a.formation === 'defensive' ? 1.25 : 1) * (1 + fortificationDefense(t).wallBonus * .7 * familyCount(a,'ranged') / Math.max(1,sizeOf(a)));
   if (!defending && t?.terrain === 'plains') total *= 1 + Math.min(.25, familyCount(a,'mounted') / Math.max(1, sizeOf(a)));
   return total;
 }
@@ -277,34 +277,34 @@ function battle(s,attacker,defender,t) {
   event.casualties=[attacker,defender].map((a,i)=>Object.fromEntries(Object.entries(event.composition[i]).map(([id,n])=>[id,n-(a.units[id]||0)])));
   s.militaryEvents.push(event);
   log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${sizeOf(loser)===0?'the opposing army is destroyed':result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle');
+  if(result.winner===0&&sizeOf(attacker)>0&&t.owner!==attacker.owner){
+    const damage=damageFortifications(t,siegePower(attacker,t,{assault:true}));
+    if(damage)event.phases[0].notes.push(`Successful assault damages fortifications by ${damage}.`);
+  }
   s.armies=s.armies.filter(a=>sizeOf(a)>0);
-}
-function besiege(s,a,t,defender=null) {
-  const event={id:s.nextId++,turn:s.turn,attacker:a.owner,defender:t.owner,tile:t.id,from:a.tile,action:'siege',before:[sizeOf(a),t.walls+(t.fortIntegrity??fortMaximum(t))]};
-  const defendersBefore=defender?sizeOf(defender):0;
-  const result=siegeStep(s,a,t,defender,()=>random(s));
-  event.troopLosses=[event.before[0]-sizeOf(a),defendersBefore-(defender?sizeOf(defender):0)];
-  event.after=[sizeOf(a),t.walls+(t.fortIntegrity||0)];event.phases=[{name:'Siege',notes:result.notes,loss:[event.before[0]-event.after[0],result.damage]}];event.breach=event.after[1]===0;
-  s.militaryEvents.push(event);log(s,`${kingdom(s,a.owner).name} besieges ${t.name||t.id}: ${event.after[1]} fortification strength remains.`,'battle');
-  return false;
+  return result;
 }
 // Read-only estimates use the actual clash + retreat resolver, with isolated
 // armies, event lists and RNG. Nothing is read from or written to campaign RNG.
 export function projectedBattleLosses(s,armyId,targetId) {
   const attacker=s.armies.find(a=>a.id===armyId&&sizeOf(a)>0),t=s.tiles[targetId];
-  if(!attacker||!t||attacker.order==='bombard')return null;
+  if(!attacker||!t)return null;
   const enemies=s.armies.filter(a=>a.tile===targetId&&sizeOf(a)>0&&atWar(s,attacker.owner,a.owner));
-  const defender=enemies[0];if(!defender)return null;
+  const defender=enemies[0];
+  const fortifications=fortificationDefense(t);
+  if(!defender){
+    if(!t.owner||!atWar(s,attacker.owner,t.owner)||!['city','town','fort','watchtower'].includes(t.building)||attacker.tile!==targetId&&!findPath(s,attacker.tile,targetId,attacker.owner).length)return null;
+    return {kind:'capture',enemyOwner:t.owner,fortifications,yours:{low:0,high:0},theirs:{low:0,high:0}};
+  }
   const path=attacker.tile===targetId?[]:findPath(s,attacker.tile,targetId,attacker.owner);
   if(attacker.tile!==targetId&&!path.length)return null;
   const approach=path.length>1?path.at(-2):attacker.tile;
-  const siege=attacker.tile!==targetId&&t.owner===defender.owner&&(t.walls>0||(t.fortIntegrity??fortMaximum(t))>0);
   const samples=[[],[]],before=[sizeOf(attacker),sizeOf(defender)];
   for(let i=0;i<32;i++){
     const simulation={...s,armies:structuredClone(s.armies),events:[],militaryEvents:[],rng:Math.imul(i+1,0x9e3779b1)>>>0};
     const a=simulation.armies.find(x=>x.id===armyId),d=simulation.armies.find(x=>x.id===defender.id);
     a.tile=approach;
-    if(siege)besiege(simulation,a,structuredClone(t),d);else battle(simulation,a,d,t);
+    battle(simulation,a,d,structuredClone(t));
     [a,d].forEach((x,side)=>samples[side].push(before[side]-sizeOf(x)));
   }
   const ranges=samples.map((values,side)=>{
@@ -313,17 +313,15 @@ export function projectedBattleLosses(s,armyId,targetId) {
     const padding=high>low?Math.max(1,Math.ceil((high-low)*.15)):0;
     return {low:Math.max(0,low-padding),high:Math.min(before[side],high+padding)};
   });
-  return {kind:siege?'siege':'battle',attackerId:armyId,defenderId:defender.id,enemyOwner:defender.owner,
+  return {kind:'battle',fortifications,attackerId:armyId,defenderId:defender.id,enemyOwner:defender.owner,
     yours:ranges[0],theirs:ranges[1],multipleDefenders:enemies.length>1};
 }
 function capture(s, a, t) {
   if (!t.owner || t.owner === a.owner || !atWar(s, a.owner, t.owner)) return true;
-  if (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) return besiege(s,a,t);
+  if (!sizeOf(a) || s.armies.some(e=>e.tile===t.id&&sizeOf(e)>0&&atWar(s,a.owner,e.owner))) return false;
   if (['city', 'town', 'fort', 'watchtower'].includes(t.building)) {
-    const defense = (t.building === 'city' ? 14 : 8)*(t.building==='fort'?buildingLevel(t,'fort'):1);
-    if (strength(a, false, t) < defense) { casualties(a, .12); return false; }
-    const before=sizeOf(a);casualties(a, .08); const previous = t.owner;
-    s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner, troopLosses:[before-sizeOf(a),0] });
+    const previous = t.owner;
+    s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner, troopLosses:[0,0] });
     changeRelation(s, previous, a.owner, { opinion: -15, grievance: 20, aggression: 12 }, `${t.name || 'A settlement'} was captured.`);
     t.owner = a.owner; t.project = null; t.siege = null;
     log(s, `${kingdom(s, a.owner).name} captures ${t.name || 'a fort'} from ${kingdom(s, previous).name}.`, 'war');
@@ -333,7 +331,7 @@ function capture(s, a, t) {
   return true;
 }
 function zoneOfControl(s, a, t) {
-  return neighbors(s, t).some(n => (['fort','watchtower'].includes(n.building) && n.owner && atWar(s, a.owner, n.owner)) || s.armies.some(e => e.tile === n.id && atWar(s, a.owner, e.owner)));
+  return neighbors(s, t).some(n => s.armies.some(e => e.tile === n.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner)));
 }
 export function resolveMovement(s) {
   // Stable, alternating initiative avoids one house always moving first.
@@ -346,7 +344,10 @@ export function resolveMovement(s) {
       if (structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
       else if (a.order === 'bombard' || a.tile === a.target) {
         const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s,a.owner,e.owner));
-        if (enemy && a.order === 'attack') battle(s,a,enemy,t);
+        if (enemy && a.order === 'attack') {
+          const result=battle(s,a,enemy,t);
+          if(result.winner===0&&sizeOf(a)&&['city','town','fort','watchtower'].includes(t.building)&&capture(s,a,t)){a.path=[];a.target=null;a.structureTarget=null;a.order='hold';}
+        }
         else damageStructure(s,a,t,a.structureTarget,a.order);
         continue;
       }
@@ -359,14 +360,26 @@ export function resolveMovement(s) {
       if ((!canEnter(s, a.owner, t) && !exiting) || !t || distance(from, t) !== 1) { a.path = []; break; }
       // A slow siege stack can spend its entire turn crossing one costly edge.
       const cost = moveCost(from, t); if (cost > budget && budget !== startingBudget) break;
-      const enemy = s.armies.find(e => e.tile === t.id && atWar(s, a.owner, e.owner));
-      if (enemy) { if(t.owner===enemy.owner&&(t.walls>0||(t.fortIntegrity??fortMaximum(t))>0))besiege(s,a,t,enemy);else battle(s,a,enemy,t); break; }
-      if (!(a.structureTarget && a.target === t.id) && !capture(s, a, t)) break;
+      const occupy=['city','town','fort','watchtower'].includes(t.building);
+      const structureAttack=a.structureTarget&&a.target===t.id;
+      const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner));
+      if (enemy) {
+        const result=battle(s,a,enemy,t);
+        // Occupy in this resolution only after every hostile army has left. A
+        // trapped or second defender still contests the tile, regardless of HP.
+        if(result.winner!==0||!sizeOf(a)||s.armies.some(e=>e.tile===t.id&&sizeOf(e)>0&&atWar(s,a.owner,e.owner)))break;
+        if((occupy||!structureAttack)&&!capture(s,a,t))break;
+        a.tile=t.id;a.path.shift();
+        if(occupy&&structureAttack){a.structureTarget=null;a.target=null;a.path=[];}
+        break;
+      }
+      if ((occupy || !structureAttack) && !capture(s, a, t)) break;
+      if(occupy&&t.owner===a.owner&&structureAttack)a.structureTarget=null;
       a.tile = t.id; a.path.shift(); budget -= cost;
       if (zoneOfControl(s, a, t)) break;
     }
     if (a.structureTarget && a.tile === a.target) damageStructure(s,a,s.tiles[a.target],a.structureTarget,a.order);
-    if (!a.path.length && !a.structureTarget) a.order = 'hold';
+    if (!a.path.length && !a.structureTarget) { a.order = 'hold'; a.target = null; }
     a.morale = Math.min(1, a.morale + .04);
   }
   s.armies = s.armies.filter(a => sizeOf(a) > 0);
