@@ -3,7 +3,7 @@ import { BUILDINGS, HOUSES, RESOURCES, UNITS } from './data.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
 import { PLAYER, alive, armiesOf, atWar, distance, kingdom, log, pay, random, relation, settlements, sizeOf, treaty } from './core.mjs';
 import { changeRelation, recordPoliticalMemory, stationedAmbassador } from './living.mjs';
-import { activePlan, audit, militaryPlan, PLAN_STATUSES } from './plans.mjs';
+import { activePlan, audit, militaryPlan, operationForPlan, PLAN_STATUSES } from './plans.mjs';
 import { politicalAttitude } from './politics.mjs';
 
 export const MISSIONS = {
@@ -107,18 +107,28 @@ function addReport(s,a,data) {
 }
 export function discoverPlan(s,a,p) {
   if(!p||!s.intrigue?.plans.includes(p)||!s.intelligence?.agents.includes(a)||p.actor!==a.assignedHouse||a.status!=='Embedded'||a.network<MISSIONS.plans.network)return null;
-  const detail=a.network>=80?3:a.network>=60?2:1;
+  const op=operationForPlan(s,p),effective=a.network+Math.round((op?.exposure||0)*.35)-Math.round(counterStrength(s,p.actor)*100);
+  const detail=effective>=80?3:effective>=58?2:1;
   p.discoveredBy ||= [];
   if(detail>=2&&activePlan(p)&&militaryPlan(p)&&p.target===a.owner&&!p.discoveredBy.includes(a.owner)){
     p.discoveredBy.push(a.owner);
     changeRelation(s,a.owner,p.actor,{trust:-6,grievance:8},'Verified intelligence revealed hostile military preparations.');
     recordPoliticalMemory(s,a.owner,p.actor,'hostile-plan',`Intelligence identified hostile preparations by ${kingdom(s,p.actor).name}.`,8);
   }
-  const snapshot={actor:p.actor,target:p.target,status:p.status,createdTurn:p.createdTurn,observedTurn:s.turn};
-  if(detail>=2)snapshot.type=p.type;
-  if(detail>=3)Object.assign(snapshot,{objective:p.objective,targetTile:p.targetTile,structure:p.structure,assignedArmies:[...p.assignedArmies],desiredExecutionTurn:p.desiredExecutionTurn,requiredSiege:p.requiredSiege,cancellationReason:p.cancellationReason});
+  const snapshot={actor:p.actor,status:p.status,createdTurn:p.createdTurn,observedTurn:s.turn};
+  if(detail>=2)Object.assign(snapshot,{target:p.target,type:p.type});
+  if(op&&detail>=2)snapshot.operation={id:op.id,participants:[...op.participants],exposure:op.exposure};
+  if(detail>=3){
+    Object.assign(snapshot,{objective:p.objective,targetTile:p.targetTile,structure:p.structure,assignedArmies:[...p.assignedArmies],desiredExecutionTurn:p.desiredExecutionTurn,requiredSiege:p.requiredSiege,cancellationReason:p.cancellationReason});
+    if(op)Object.assign(snapshot.operation,{name:op.name,targetTile:op.targetTile,roles:{...op.roles},rallyPoints:{...op.rallyPoints},requiredForces:{...op.requiredForces},requiredSiege:op.requiredSiege,
+      attackWindow:[...op.attackWindow],supply:structuredClone(op.supply),status:op.status});
+  }
   const name=kingdom(s,p.actor).name,target=p.target?kingdom(s,p.target).name:'its own realm';
-  const description=detail===1?`${name} has ${militaryPlan(p)?'military':'political or economic'} preparations concerning ${target}.`:
+  let description;
+  if(op)description=detail===1?`${name} appears to be preparing a military operation.`:
+    detail===2?`${op.participants.map(id=>kingdom(s,id).name).join(' and ')} appear to be coordinating against ${target}.`:
+      `${op.name}: ${op.objective} Participants: ${op.participants.map(id=>kingdom(s,id).name).join(', ')}. Target: ${s.tiles[op.targetTile].name||op.targetTile}. Planned attack window: turns ${op.attackWindow[0]}–${op.attackWindow[1]}. Status: ${op.status}; observed exposure ${op.exposure}%.`;
+  else description=detail===1?`${name} has ${militaryPlan(p)?'military':'political or economic'} preparations.`:
     detail===2?`${name} has a ${p.type==='infrastructure'?'resource infrastructure attack':p.type} plan concerning ${target}.`:
       `${name}: ${p.objective} Status: ${p.status}. ${p.targetTile?`Target: ${s.tiles[p.targetTile].name||p.targetTile}. `:''}${p.assignedArmies.length?`Forces: ${p.assignedArmies.join(', ')}. `:''}Desired execution: turn ${p.desiredExecutionTurn}; conditions may change.${p.cancellationReason?` Abandoned: ${p.cancellationReason}`:''}`;
   const report=addReport(s,a,{planId:p.id,detail,snapshot,text:description});
@@ -177,6 +187,9 @@ export function resolveEspionage(s,{roll=()=>random(s)}={}) {
     pay(k,{gold:cost});
     a.network=Math.min(100,a.network+5+Math.floor(a.skill/20)+officeLevel(s,a.owner)*2);
     a.experience++;a.skill=Math.min(100,a.skill+(a.experience%5===0?1:0));a.risk=detectionRisk(s,a);
+    const counter=a.mission!=='counter'?counterStrength(s,a.assignedHouse):0;
+    if(counter>=.08&&roll()<Math.min(.3,counter*.8)&&!s.intelligence.incidents.some(i=>i.turn===s.turn&&i.spyId===a.id&&i.action.startsWith('Counterintelligence detected')))
+      incident(s,a,`Counterintelligence detected ${kingdom(s,a.owner).name} investigating ${MISSIONS[a.mission].name.toLowerCase()}`,a.assignedHouse);
     if(a.mission!=='counter'&&roll()<a.risk) {
       if(roll()<.8)captureSpy(s,a);else {a.status='Compromised';incident(s,a,'Compromised; returning home',a.assignedHouse);}
       continue;
@@ -224,8 +237,14 @@ export function validateEspionage(s) {
     if(!r||typeof r.id!=='string'||r.id.length>80||!kingdom(s,r.owner)||!kingdom(s,r.house)||!integer(r.turn,1,s.turn)||!Object.hasOwn(MISSIONS,r.mission)||typeof r.spyId!=='string'||typeof r.text!=='string'||r.text.length>1200||!r.snapshot||typeof r.snapshot!=='object'||Array.isArray(r.snapshot)||JSON.stringify(r.snapshot).length>14000)fail();
     if(r.planId) {
       const p=s.intrigue.plans.find(p=>p.id===r.planId),x=r.snapshot;
-      if(!p||p.actor!==r.house||x.actor!==p.actor||x.target!==p.target||x.createdTurn!==p.createdTurn||x.observedTurn!==r.turn||r.turn<p.createdTurn||!PLAN_STATUSES.includes(x.status)||!integer(r.detail,1,3)||r.detail>=2&&x.type!==p.type||r.detail>=3&&(x.targetTile!==p.targetTile||x.structure!==p.structure||x.objective!==p.objective||x.desiredExecutionTurn!==p.desiredExecutionTurn||x.requiredSiege!==p.requiredSiege||x.cancellationReason!==p.cancellationReason&&x.status==='Abandoned'||!Array.isArray(x.assignedArmies)||x.assignedArmies.length>500||x.assignedArmies.some(id=>typeof id!=='string'||id.length>80)))fail();
+      if(!p||p.actor!==r.house||x.actor!==p.actor||x.target!==undefined&&x.target!==p.target||x.createdTurn!==p.createdTurn||x.observedTurn!==r.turn||r.turn<p.createdTurn||!PLAN_STATUSES.includes(x.status)||!integer(r.detail,1,3)||r.detail>=2&&(x.target!==p.target||x.type!==p.type)||r.detail>=3&&(x.targetTile!==p.targetTile||x.structure!==p.structure||x.objective!==p.objective||x.desiredExecutionTurn!==p.desiredExecutionTurn||x.requiredSiege!==p.requiredSiege||x.cancellationReason!==p.cancellationReason&&x.status==='Abandoned'||!Array.isArray(x.assignedArmies)||x.assignedArmies.length>500||x.assignedArmies.some(id=>typeof id!=='string'||id.length>80)))fail();
       if(r.detail<3&&['targetTile','structure','assignedArmies','objective','desiredExecutionTurn'].some(key=>Object.hasOwn(x,key))||r.detail<2&&Object.hasOwn(x,'type'))fail();
+      if(x.operation!==undefined){
+        const op=operationForPlan(s,p),o=x.operation;
+        if(!op||r.detail<2||!o||o.id!==op.id||!Array.isArray(o.participants)||o.participants.some((id,i)=>id!==op.participants[i])||!integer(o.exposure,0,100))fail();
+        if(r.detail>=3&&(!text(o.name,100)||o.targetTile!==op.targetTile||!o.roles||!o.rallyPoints||!o.requiredForces||!integer(o.requiredSiege,0,100000)||!Array.isArray(o.attackWindow)||o.attackWindow.length!==2||o.attackWindow.some(v=>!integer(v,1,100020))||!o.supply||!PLAN_STATUSES.includes(o.status)))fail();
+        if(r.detail<3&&['name','targetTile','roles','rallyPoints','requiredForces','requiredSiege','attackWindow','supply','status'].some(key=>Object.hasOwn(o,key)))fail();
+      }
     } else {
       const x=r.snapshot, text=(v,max=240)=>typeof v==='string'&&v.length<=max, list=(v,max)=>Array.isArray(v)&&v.length<=max;
       if(r.mission==='plans'){if(x.activePlans!==0)fail();}
