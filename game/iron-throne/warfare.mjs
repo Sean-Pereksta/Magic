@@ -2,6 +2,9 @@ import { FORMATIONS, TERRAINS, UNITS } from './data.mjs';
 import { buildingLevel, fortMaximum, wallMaximum } from './economy.mjs';
 
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+// Faster field engagements, with survivors left to withdraw. Pursuit has its
+// own headroom; exposure cannot bypass the whole-engagement casualty limit.
+const BATTLE_TEMPO=1.8, MAIN_LOSS_LIMIT=.5, TOTAL_LOSS_LIMIT=.6;
 export const troopTotal = a => Object.values(a.units).reduce((n,v)=>n+v,0);
 export const familyCount = (a,family) => Object.entries(a.units).reduce((n,[u,v])=>n+(UNITS[u]?.family===family?v:0),0);
 export const unitPower = (a,stat) => Object.entries(a.units).reduce((n,[u,v])=>n+v*(UNITS[u]?.[stat]||0),0);
@@ -51,8 +54,15 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
     const count=armies.map(troopTotal),loss=[0,0];
     for(let side=0;side<2;side++){
       const target=1-side,a=armies[target],defense=protection(t,target===1)*(a.formation==='defensive'?1.25:1);
-      const damage=powers[side]*(.88+roll()*.24)*armies[side].morale/defense;
-      inflict(a,Math.min(count[target]*.32,damage),{piercing:options.piercing?.[side],exposed:a.formation==='charge'||name==='Missile Fire'&&a.formation==='spearWall'});
+      const exposed=a.formation==='charge'||name==='Missile Fire'&&a.formation==='spearWall';
+      // Charge rises less to keep spear counters below the phase damage cap.
+      const tempo=name==='Pursuit'?1.4:name==='Charge / Engagement'?1.25:BATTLE_TEMPO;
+      const damage=powers[side]*(.88+roll()*.24)*armies[side].morale/defense*tempo;
+      // Mounted wings retain a little headroom for the flanking phase.
+      const reserve=name!=='Flanking'&&familyCount(armies[side],'mounted')>0?.05:0;
+      const limit=name==='Pursuit'?TOTAL_LOSS_LIMIT:MAIN_LOSS_LIMIT-reserve;
+      const remaining=Math.max(0,Math.floor(before[target]*limit)-(before[target]-count[target]));
+      inflict(a,Math.min(remaining,Math.min(count[target]*.32,damage)*(exposed?1.2:1)),{piercing:options.piercing?.[side]});
       loss[target]=count[target]-troopTotal(a);
     }
     phases.push({name,loss,notes});
@@ -66,11 +76,12 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
   for(let i=0;i<2;i++){
     const a=armies[i],lost=(before[i]-troopTotal(a))/Math.max(1,before[i]);
     const elite=(a.units.knight||0)+(a.units.heavyInfantry||0);
-    a.morale=clamp(a.morale-lost*.85+(t.owner===a.owner?.04:0)+Math.min(.06,elite*.004)-(surrounded[i]?.1:0)-(a.retreats||0)*.012,.1,1);
+    a.morale=clamp(a.morale-lost*1.15+(t.owner===a.owner?.04:0)+Math.min(.06,elite*.004)-(surrounded[i]?.1:0)-(a.retreats||0)*.025,.1,1);
   }
   const power=armies.map((a,i)=>unitPower(a,'attack')*a.morale*protection(t,i===1));
   const winner=power[0]*(.94+roll()*.12)>power[1]?0:1,loser=1-winner;
-  const routed=armies[loser].morale<.55||troopTotal(armies[loser])<before[loser]*.65||power[winner]>power[loser]*1.65;
+  armies[loser].morale=clamp(armies[loser].morale-.10,.1,1);
+  const routed=armies[loser].morale<.6||troopTotal(armies[loser])<before[loser]*.7||power[winner]>power[loser]*1.65;
   phases.push({name:'Morale',loss:[0,0],notes:armies.map((a,i)=>`${i?'Defender':'Attacker'} morale ${Math.round(a.morale*100)}%: ${i===loser?(routed?'rout':'withdrawal'):a.morale<.7?'shaken, holds':'holds'}.`)});
   const pursuit=armies.map((a,i)=>i===winner&&routed?unitPower(a,'pursuit')*.13*(armies[loser].formation==='skirmish'?.55:1):0);
   phase('Pursuit',pursuit,[routed?'Fast troops pursue the broken army.':'The losing army withdraws in order; no rout pursuit.']);
