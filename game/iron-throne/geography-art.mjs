@@ -38,6 +38,15 @@ export function shoreGeometry(mask) {
   });
 }
 
+// Reuse the shoreline's exact water cutouts, including islands and split shores.
+const landClips=new Map();
+export function landClipPath(mask) {
+  if(!landClips.has(mask)) landClips.set(mask,new Path2D(
+    HEX_PATH+' '+shoreGeometry(mask).map(g=>g.water).join(' ')
+  ));
+  return landClips.get(mask);
+}
+
 export function coastDrawing(mask,style='beach') {
   const layers=[],rocky=style==='cliff';
   for(const g of shoreGeometry(mask)) {
@@ -101,6 +110,10 @@ export class GeographyArt {
   constructor() { this.cache=new Map(); }
   draw(c,g,x,y,assets,urls) {
     if(!g.coastMask&&!g.hasRiver) return;
+    // Render the existing shore transparently; opaque coast PNGs would hide water_01.
+    if(g.coastMask) this.drawNative(c,{...g,hasRiver:false,riverMask:0,mouthMask:0},x,y);
+    if(!g.hasRiver) return;
+    g={...g,coastMask:0};
     // Wait for the entire set so a missing PNG never produces a partial river.
     if(assets&&urls) {
       const layers=geographyLayers(g).map(layer=>({...layer,image:assets.get(urls[layer.name])}));
@@ -112,6 +125,9 @@ export class GeographyArt {
         return;
       }
     }
+    this.drawNative(c,g,x,y);
+  }
+  drawNative(c,g,x,y) {
     const style=['hills','mountain'].includes(g.ground)?'cliff':'beach';
     const key=`${g.coastMask}:${g.riverMask}:${g.mouthMask}:${g.hasRiver}:${style}`;
     let sprite=this.cache.get(key);
@@ -121,7 +137,12 @@ export class GeographyArt {
       ctx.lineCap=ctx.lineJoin='round';ctx.clip(new Path2D(HEX_PATH));
       for(const p of [...coastDrawing(g.coastMask,style),...riverDrawing(g.riverMask,g.mouthMask,g.hasRiver)]) {
         const path=new Path2D(p.d);
-        if(p.fill){ctx.fillStyle=p.fill;ctx.fill(path,p.fillRule||'nonzero');}
+        if(p.fill){
+          ctx.save();
+          // Erase only the coast sprite's sea side, revealing the water beneath.
+          if(p.fillRule==='evenodd')ctx.globalCompositeOperation='destination-out';
+          ctx.fillStyle=p.fill;ctx.fill(path,p.fillRule||'nonzero');ctx.restore();
+        }
         if(p.stroke){ctx.strokeStyle=p.stroke;ctx.lineWidth=p.width;ctx.setLineDash(p.dash||[]);ctx.stroke(path);}
       }
       if(this.cache.size>=256) this.cache.delete(this.cache.keys().next().value);
