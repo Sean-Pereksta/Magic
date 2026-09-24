@@ -85,7 +85,7 @@ export function createJointOperation(s,lead,partner,target,{duration=8,targetTil
     const other=participants.find(x=>x!==id),p=createPlan(s,id,'jointWar',{target,targetTile:objectiveTile.id,allies:[other],objective:op.objective,
       requiredForces:op.requiredForces[id],requiredSiege:siege,requiredResources:{...op.supply[id]},delay:start-s.turn,operationId:op.id});
     if(!p){op.status='Abandoned';op.cancellationReason='A participant could not reserve a strategic plan slot.';break;}
-    p.role=op.roles[id];p.rallyPoint=rallyPoints[id];op.planIds.push(p.id);
+    p.role=op.roles[id];p.rallyPoint=rallyPoints[id];transitionPlan(s,p,'Preparing','Joint operation ratified; forces are gathering for the shared objective.');op.planIds.push(p.id);
   }
   audit(s,null,`${op.name} created for ${participants.map(id=>kingdom(s,id).name).join(' + ')} against ${kingdom(s,target).name}.`);
   prunePlans(s);return op;
@@ -100,6 +100,12 @@ export function refreshOperations(s) {
   for(const op of s.intrigue.operations){
     if(['Completed','Abandoned'].includes(op.status))continue;
     const tile=s.tiles[op.targetTile],plans=op.planIds.map(id=>s.intrigue.plans.find(p=>p.id===id)).filter(Boolean);
+    for(const p of plans.filter(p=>!isAiHouse(s,p.actor)&&activePlan(p))){
+      const forces=armiesOf(s,p.actor),rally=s.tiles[op.rallyPoints[p.actor]],ready=forces.some(a=>sizeOf(a)>=p.requiredForces&&rally&&distance(s.tiles[a.tile],rally)<=1)&&canAfford(kingdom(s,p.actor),p.requiredResources);
+      if(p.status==='Considering')transitionPlan(s,p,'Preparing','Joint operation ratified; forces are gathering for the shared objective.');
+      if(p.status==='Preparing'&&ready&&s.turn>=p.desiredExecutionTurn)transitionPlan(s,p,'Committed','The pledged force and supplies are assembled at the rally point.');
+      if(p.status==='Committed'&&s.turn>=op.attackWindow[0]&&!atWar(s,p.actor,p.target)&&declareWar(s,p.actor,p.target)){p.wasAtWar=true;audit(s,p,'Declared war when the agreed attack window opened.');}
+    }
     if(!alive(s,op.target)||op.participants.some(id=>!alive(s,id))){op.status='Abandoned';op.cancellationReason='A participating House or target realm no longer survives.';op.updatedTurn=s.turn;continue;}
     if(tile&&op.participants.includes(tile.owner)){op.status='Completed';op.updatedTurn=s.turn;continue;}
     if(tile&&tile.owner!==op.target){op.status='Abandoned';op.cancellationReason='The objective changed hands outside the coalition.';op.updatedTurn=s.turn;continue;}
