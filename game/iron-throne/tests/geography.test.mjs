@@ -78,14 +78,24 @@ test('cache invalidates on in-place geography edits and coast bases follow mainl
   const next=cache.get(tiles);tiles['0,0'].river=true;assert.notEqual(cache.get(tiles),next);
   assert.ok(cache.get(tiles).get('0,0').hasRiver);
 });
-test('Cloudflare catalog covers every mask and rotation with no missing object keys',()=>{
-  assert.equal(Object.keys(GEOGRAPHY_PATHS).length,41);
-  for(let mask=0;mask<64;mask++) for(const ground of ['plains','hills']) {
-    const layers=geographyLayers({coastMask:mask,riverMask:mask,mouthMask:mask?mask&-mask:0,hasRiver:true,ground});
-    for(const layer of layers) assert.ok(GEOGRAPHY_PATHS[layer.name]?.startsWith('geography/'));
-    const river=layers.find(l=>/^river_[0-9a-f]{2}$/.test(l.name));
-    assert.equal(rotateMask(parseInt(river.name.slice(-2),16),river.rotation),mask);
-    const coast=layers.find(l=>l.name.startsWith('coast_'));
-    if(mask) assert.equal(rotateMask(parseInt(coast.name.slice(-2),16),coast.rotation),mask);
+test('illustrated PNG selection preserves masks and uses native fallback for missing shapes',()=>{
+  assert.equal(Object.keys(GEOGRAPHY_PATHS).length,47);
+  const shapes={coast_single:1,coast_corner:3,coast_bay:7,coast_point:31,river_source:1,river_bend:5,river_straight:9,river_fork:21};
+  for(let mask=0;mask<64;mask++) for(const type of ['coast','river']) {
+    const g={coastMask:type==='coast'?mask:0,riverMask:mask,mouthMask:0,hasRiver:type==='river'};
+    const layers=geographyLayers(g);
+    const supported=Object.entries(shapes).some(([name,m])=>name.startsWith(type)&&canonicalMask(mask).mask===m);
+    assert.equal(layers.length,supported?1:0);
+    for(const l of layers) {
+      assert.ok(GEOGRAPHY_PATHS[l.name]?.startsWith('geography-v2/'));
+      const [,shape,degrees]=l.name.match(/^(.*)_(\d{3})$/);
+      assert.equal(rotateMask(shapes[shape],Number(degrees)/60),mask);
+      assert.equal(l.rotation,0,'do not rotate a baked rotation twice');
+    }
   }
+  for(let edge=0;edge<6;edge++) {
+    const g={coastMask:0,riverMask:(1<<edge)|(1<<((edge+3)%6)),mouthMask:1<<edge,hasRiver:true};
+    assert.deepEqual(geographyLayers(g),[{name:`river_mouth_${String(edge*60).padStart(3,'0')}`,rotation:0}]);
+  }
+  assert.deepEqual(geographyLayers({coastMask:1,riverMask:21,mouthMask:1,hasRiver:true}),[],'branched mouths use connected native art');
 });

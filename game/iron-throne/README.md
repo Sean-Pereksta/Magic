@@ -282,7 +282,7 @@ Session protocol references:
 
 ## Cloudflare PNG artwork
 
-`asset-manifest.mjs` defines the R2 base URL and all 171 active relative PNG keys (including 41 directional geography overlays). Opening
+`asset-manifest.mjs` defines the R2 base URL and all 177 active relative PNG keys (including 47 illustrated geography rotations). Opening
 Iron Thrones loads and decodes the entire manifest before enabling Begin/Resume,
 with a progress meter, six concurrent requests, ten seconds per request, and a
 45-second startup budget. The lumber camp is attempted first. Missing or stalled
@@ -393,31 +393,30 @@ Shared endpoints and endpoint tangents keep shore curves continuous across tiles
 The bounded 256-sprite cache draws before roads, bridges, buildings and units.
 Topology is cached and invalidates on actual geography changes, including imports.
 
-The graphics are delivered separately in `Iron_Thrones_Cloudflare_Geography.zip`:
-41 transparent 1024×1024 PNG overlays. Extract the ZIP and upload the `geography`
-folder at the root of the existing R2 bucket, preserving filenames. For example:
-`https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/geography/coast_beach_01.png`.
-Do not upload the ZIP itself as an image. Reload the game after uploading.
+The replacement artwork is delivered separately in `Iron_Thrones_Rivers_and_Coast_Tiles.zip`.
+It contains five river drawings (straight, bend, fork, source, mouth) and four
+coast drawings (single edge, corner, three-edge shore/bay, peninsula). The 47
+1024×1024 RGBA PNGs include baked clockwise 60-degree rotations. Upload the
+`geography-v2` folder at the R2 bucket root, preserving names; for example:
+`https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/geography-v2/coast_single_000.png`.
+Do not upload the ZIP as an image. Reload after the upload. The PNGs are supplied
+outside git; the PR contains only the selector, renderer changes and tests.
 
-`geography-assets.mjs` is the shared catalog for the ZIP paths and image selection.
-The map loads Cloudflare images, rotates canonical masks in 60-degree steps and
-composites shore, river and mouth layers. If any required layer is unavailable,
-the entire tile overlay uses its connection-preserving native fallback. Uploaded
-PNGs are preferred as soon as the full set is decoded; no mixed partial rivers.
-Images are deliberately not committed to the PR. The code includes the original
-vector drawing definitions and an SVG export script for reproducible PNG packaging:
+`geography-assets.mjs` selects an exact supported edge mask and an already
+rotated PNG, without rotating it twice. Full mouth artwork replaces the ordinary
+straight channel when its sea-facing edge matches. The renderer clips all art
+to the hex. Missing downloads and unsupported masks (including disjoint shores,
+islands, tight bends, irregular junctions and branched mouths) use the existing
+native connection-preserving drawing. A partial image set never drops a layer.
+The original native geometry and SVG export remain available for fallback work;
+they do not reproduce this illustrated artwork.
 
-
-```sh
-node game/iron-throne/assets/generate-geography.mjs /absolute/output-directory
-node --test game/iron-throne/tests/geography.test.mjs
-```
-
-Hexadecimal filenames encode canonical six-bit masks; `canonicalMask()` supplies
-the clockwise rotation needed to reproduce any of the 64 configurations. The mouth
-overlay opens toward E and rotates to any sea edge; it composes with ordinary
-river assets so junctions also support sea mouths. The retired coast PNGs
-and three river PNGs are no longer selected or included in the startup preload.
+The image files have been verified as real transparent raster PNGs. The mask
+selector is tested exhaustively. Browser checks verify all supported river ports
+and six mouth orientations at desktop and mobile widths. Spring and straight
+channel placement includes measured alignment corrections. Painted coastline
+joins still need visual seam review before release; shape masks do not guarantee
+pixel-exact shoreline endpoints.
 
 Existing saves are not rewritten. Their river booleans define the original graph.
 One outlet per connected component prefers adjacent sea; a bounded search can

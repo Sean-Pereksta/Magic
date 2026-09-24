@@ -19,7 +19,7 @@ for(const width of [1280,390]){
  await page.route('**/config.json',r=>r.fulfill({json:{}}));
  await page.goto(`http://127.0.0.1:${server.address().port}/game/iron-throne/index.html`);
  await page.waitForFunction(()=>!document.getElementById('start-game').disabled);
- assert.equal(new Set(requests).size,171);assert.ok(requests[0].endsWith('buildings/lumber_1.png'));
+ assert.equal(new Set(requests).size,177);assert.ok(requests[0].endsWith('buildings/lumber_1.png'));
  assert.match(await page.locator('#art-status').textContent(),/1 unavailable/);
  await page.locator('#start-game').click();await page.waitForTimeout(200);
  assert.equal(await page.locator('#turn').textContent(),'Turn 1');
@@ -27,7 +27,7 @@ for(const width of [1280,390]){
  await page.locator('#map').click({position:{x:120,y:140}});
  await page.mouse.move(180,240);await page.mouse.down();await page.mouse.move(250,290);await page.mouse.up();
  await page.locator('#home').click();await page.waitForTimeout(100);
- assert.equal(new Set(requests).size,171);assert.deepEqual(errors,[]);
+ assert.equal(new Set(requests).size,177);assert.deepEqual(errors,[]);
  console.log(`PASS ${width}px: preload, missing fallback, campaign, HUD, selection, pan, no repeat PNGs`);
  await page.close();
 }

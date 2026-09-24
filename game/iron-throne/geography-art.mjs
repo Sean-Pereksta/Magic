@@ -106,7 +106,15 @@ export class GeographyArt {
       const layers=geographyLayers(g).map(layer=>({...layer,image:assets.get(urls[layer.name])}));
       if(layers.length&&layers.every(layer=>layer.image)) {
         for(const layer of layers) {
-          c.save();c.translate(x,y);c.rotate(layer.rotation*Math.PI/3);
+          c.save();c.translate(x,y);c.clip(new Path2D(HEX_PATH));c.rotate(layer.rotation*Math.PI/3);
+          // Generated spring art has a measured 58px vertical offset on its
+          // 1024px canvas. Rotate that correction with the baked sprite.
+          const angle=Number(layer.name.slice(-3))*Math.PI/180;
+          if(layer.name.startsWith('river_straight_')) {
+            c.rotate(angle);c.transform(1,-.02424,0,1,0,-1.57);c.rotate(-angle);
+          }
+          if(layer.name.startsWith('river_source_'))
+            c.translate(Math.sin(angle)*2.83,-Math.cos(angle)*2.83);
           c.drawImage(layer.image,-25,-25,50,50);c.restore();
         }
         return;
