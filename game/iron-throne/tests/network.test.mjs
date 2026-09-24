@@ -83,7 +83,7 @@ test('Gemini uses a server-side key, structured output, bounded tokens and no to
   });
   assert.equal(result.reply, reply.reply); assert.equal(request.headers['x-goog-api-key'], 'server-only-test-key');
   assert.ok(!request.url.includes('server-only')); const body = JSON.parse(request.body);
-  assert.equal(body.generationConfig.responseMimeType, 'application/json'); assert.equal(body.generationConfig.maxOutputTokens, 700); assert.equal(body.tools, undefined);
+  assert.equal(body.generationConfig.responseMimeType, 'application/json'); assert.equal(body.generationConfig.maxOutputTokens, 2048); assert.equal(body.tools, undefined);
   await assert.rejects(() => callGemini(context(), { GEMINI_API_KEY: 'x' }, async () => Response.json({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: JSON.stringify(reply) }] } }] })), /incomplete/);
 });
 test('proxy rejects unknown origins, unconfigured services and missing verification before Gemini', async () => {
