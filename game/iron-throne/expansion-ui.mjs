@@ -1,13 +1,13 @@
 import { BUILDINGS, FORMATIONS, REGIONS, RESOURCES, UNITS } from './data.mjs';
-import { ART } from './asset-manifest.mjs';
+import { ART, displayArtURL } from './asset-manifest.mjs';
 import { PLAYER, buildCheck, findPath, kingdom, recruitCheck, recruitmentCost, settlements, treaty } from './core.mjs';
 import { buildingLevel, buildingSpec, constructionSpec, productionPlan, storageCapacity, tileProduction, wallMaximum } from './economy.mjs';
 import { economicRelationship } from './living.mjs';
 import { publicEconomy, tradeInfrastructure, tradeRoute } from './trade.mjs';
 import { STRATEGY_GOALS } from './strategy.mjs';
 export const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const cost=c=>Object.entries(c).map(([r,n])=>`${n} ${r}`).join(' · ');
-export const art=(url,alt,cls='catalog-art')=>`<img class="${cls}" src="${url}" alt="${esc(alt)}" loading="lazy">`;
+const cost=c=>Object.entries(c).map(([r,n])=>`${art(ART.resources[r],r,'cost-art')} ${n} ${r}`).join(' · ');
+export const art=(url,alt,cls='catalog-art')=>`<img class="${cls}" data-iron-art src="${esc(displayArtURL(url))}" alt="${esc(alt)}" loading="lazy">`;
 export const systemTitle=id=>art(ART.titles[id],id.replaceAll('_',' '),'system-art');
 export function buildingInspection(s,t){
   let html=`<p class="fine">${esc(REGIONS[t.region]?.name)} · ${esc(REGIONS[t.region]?.description)}</p>`;

@@ -1,4 +1,4 @@
-import { ART } from './asset-manifest.mjs';
+import { ART, preloadAllArt, installArtFallbacks } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { setFormation } from './warfare.mjs';
 import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, rivalTurnReports, systemTitle, tradePanel } from './expansion-ui.mjs';
@@ -23,6 +23,17 @@ try {
   const saved = localStorage.getItem(SAVE_KEY);
   if (saved) { state = parseSave(saved); restored = true; }
 } catch (error) { $('load-warning').hidden = false; $('load-warning').textContent = `Your saved campaign could not be loaded: ${error.message} Starting a new reign will replace it.`; }
+installArtFallbacks(document);
+$('resume').hidden = !restored;
+$('start-game').disabled = $('resume').disabled = true;
+$('welcome').addEventListener('cancel', event => { if ($('start-game').disabled) event.preventDefault(); });
+$('welcome').showModal();
+const artResult = await preloadAllArt(({completed,total,failed}) => {
+  $('art-progress').max = total; $('art-progress').value = completed;
+  $('art-status').textContent = `Loading artwork ${completed} / ${total}${failed ? ` · ${failed} unavailable` : ''}`;
+});
+$('art-status').textContent = artResult.failed ? `Artwork ready · ${artResult.failed} unavailable images will use fallback art.` : 'All artwork ready';
+$('start-game').disabled = $('resume').disabled = false;
 const map = new WorldMap($('map'), { getState: () => state, onSelect: selectTile });
 
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); }
