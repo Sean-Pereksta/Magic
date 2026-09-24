@@ -104,7 +104,8 @@ export class DiplomacyClient {
       const fresh = response.headers.get('X-Diplomacy-Session'), expires = Number(response.headers.get('X-Diplomacy-Expires'));
       if (fresh && fresh.length <= 1600 && Number.isSafeInteger(expires) && expires > this.now()) this.session = { token: fresh, expires };
       if (!response.ok) {
-        const seconds = Math.min(3600, Math.max(1, Number(response.headers.get('Retry-After')) || (response.status === 429 ? 300 : 60)));
+        // The shared daily budget can require waiting until the next UTC day.
+        const seconds = Math.min(86400, Math.max(1, Number(response.headers.get('Retry-After')) || (response.status === 429 ? 300 : 60)));
         if (response.status !== 401) this.cooldownUntil = this.now() + seconds * 1000;
         await this.readFailure(response, '/diplomacy', this.cooldownUntil);
         if (response.status === 401) { this.session = null; return fallback('Your diplomacy session needs verification.'); }

@@ -135,6 +135,21 @@ does not call Gemini, so a failure there cannot establish a Google billing issue
 After a successful session, the report distinguishes Google-reported billing,
 key/permission, model and quota failures from the game’s own request allowances.
 
+`DAILY_LIMIT` means the Worker stopped the request before contacting Google. The
+default is **20 attempts per UTC day across all players, origins and models**;
+failed upstream attempts also count. Changing models, refreshing the game or
+redeploying the Worker does not clear the stored counter. It resets at 00:00 UTC,
+and the retry time reflects that boundary. Updated diagnostics show the configured
+limit and attempts used. A limit of zero disables Gemini calls until reconfigured.
+
+To increase this app allowance, choose a limit within your project's verified
+provider allowance and update `DAILY_LIMIT` in both the Worker's runtime Variables
+and Secrets and `worker/wrangler.toml`. Deploy the Worker and refresh the game to
+clear the browser's previous cooldown. The explicit Wrangler value is reapplied
+on future deploys, even with `keep_vars = true`; keep it in sync with the dashboard.
+This setting does not increase Google's quota. Scripted diplomacy remains available
+while the app allowance is exhausted.
+
 “Present” means configured, not validated or funded. With an older Worker, blocked
 connection or unreadable CORS response, unobservable settings are **Unknown**;
 the report does not guess which secret or binding is missing. Reopen the council

@@ -114,8 +114,52 @@ test('local budgets have distinct diagnostics and consume no model calls', async
       await client.send(createGame(), 'wintermere', 'My claim?');
       assert.equal(client.lastDiagnostic.code, code); assert.equal(client.lastDiagnostic.httpStatus, 429);
       assert.equal(client.lastDiagnostic.providerStatus, undefined);
+      if (setting === 'DAILY_LIMIT') {
+        assert.deepEqual(client.lastDiagnostic.dailyBudget, { limit: 0, used: 0 });
+        assert.match(report(client), /disabled by the Worker’s DAILY_LIMIT of 0/);
+      }
     }
   } finally { globalThis.fetch = original; }
+});
+
+test('daily exhaustion preserves the midnight retry through the Worker, client and report', async t => {
+  let now = Date.parse('2026-09-24T14:28:40Z'), modelCalls = 0;
+  const midnight = Date.parse('2026-09-25T00:00:00Z');
+  t.mock.method(Date, 'now', () => now);
+  const { env, storage } = environment();
+  await storage.put('budget', { day: '2026-09-24', used: 20, minute: Math.floor(now / 60000), calls: 0, clients: {}, cooldownUntil: 0 });
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.includes('siteverify')) return verified();
+    modelCalls++; return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(reply) }] } }] });
+  });
+  const client = clientFor(env), state = createGame();
+  await client.openSession('token');
+  assert.equal((await client.send(state, 'wintermere', 'My claim?')).source, 'scripted');
+  assert.deepEqual(client.lastDiagnostic.dailyBudget, { limit: 20, used: 20 });
+  assert.equal(client.cooldownUntil, midnight);
+  assert.match(report(client), /Shared Worker daily limit \(DAILY_LIMIT\): 20/);
+  assert.match(report(client), /Attempts used this UTC day: 20/);
+  assert.match(report(client), /Retry after: 2026-09-25T00:00:00.000Z/);
+  assert.equal(modelCalls, 0);
+  now += 3600000;
+  assert.equal((await client.send(state, 'wintermere', 'After an hour?')).source, 'scripted');
+  assert.equal(client.lastDiagnostic.at, Date.parse('2026-09-24T14:28:40Z'));
+  assert.equal(modelCalls, 0);
+  now = midnight;
+  await client.openSession('fresh-token');
+  assert.equal((await client.send(state, 'wintermere', 'A new day?')).source, 'gemini');
+  assert.equal(client.lastDiagnostic, null); assert.equal(modelCalls, 1);
+  assert.equal((await storage.get('budget')).used, 1);
+});
+
+test('daily budget diagnostics allow only bounded counts and strip unrelated fields', () => {
+  assert.deepEqual(makeDiagnostic('DAILY_LIMIT', { dailyBudget: { limit: 20, used: 20, message: 'private-message', clients: 'private-client' } }).dailyBudget, { limit: 20, used: 20 });
+  for (const dailyBudget of [null, 'private-key', { limit: '20', used: 20 }, { limit: 20, used: -1 }, { limit: 10001, used: 20 }, { limit: 20, used: 1.5 }]) {
+    const record = makeDiagnostic('DAILY_LIMIT', { dailyBudget });
+    assert.equal(record.dailyBudget, undefined);
+    assert.doesNotMatch(diagnosticReport(record), /private-|Attempts used/);
+  }
+  assert.equal(makeDiagnostic('GEMINI_QUOTA', { dailyBudget: { limit: 20, used: 20 } }).dailyBudget, undefined);
 });
 
 test('storage errors after Gemini succeeds are not misreported as provider errors', async () => {
