@@ -1,3 +1,5 @@
+import { emotionalEvent, validateEmotions } from './emotions.mjs';
+import { marriageWar, validateMarriage } from './marriage.mjs';
 import { initializeFog, validateFog, knowledgeView, visionTiles, refreshKnowledge } from './fog.mjs';
 import { initializeCooperation } from './cooperation-state.mjs';
 import { validateCooperation } from './cooperation-validation.mjs';
@@ -51,6 +53,8 @@ export function shiftRelation(s, a, b, opinion, trust = 0, reason = 'Diplomatic 
 }
 export function declareWar(s, a, b) {
   if (!alive(s, a) || !alive(s, b) || a === b || atWar(s, a, b)) return false;
+  emotionalEvent(s,b,a,'betrayal',{key:`war:${s.turn}`,text:'Declared war after our shared diplomatic history.'});
+  marriageWar(s,a,b);
   const broken = s.treaties.filter(t => t.parties.includes(a) && t.parties.includes(b));
   s.treaties = s.treaties.filter(t => !broken.includes(t));
   if (broken.length) {
@@ -284,6 +288,17 @@ function battle(s,attacker,defender,t) {
   Object.assign(event,result,{winner:result.winner===0?attacker.owner:defender.owner,after:[sizeOf(attacker),sizeOf(defender)],retreat:sizeOf(loser)>0&&loser.tile!==retreatFrom?loser.tile:null,retreatOwner:loser.owner});
   event.casualties=[attacker,defender].map((a,i)=>Object.fromEntries(Object.entries(event.composition[i]).map(([id,n])=>[id,n-(a.units[id]||0)])));
   s.militaryEvents.push(event); refreshKnowledge(s);
+  if(!s.projectionOnly){
+    const winner=event.winner,losing=winner===attacker.owner?defender.owner:attacker.owner;
+    for(const [a,b]of [[winner,losing],[losing,winner]])changeRelation(s,a,b,{respect:3},'Faced this rival in battle.');
+    emotionalEvent(s,losing,winner,'defeat',{key:`battle:${event.id}`,scale:Math.min(2,Math.max(.25,event.before.reduce((a,b)=>a+b,0)/160)),text:`Defeated our army at ${t.name||t.id}.`});
+    emotionalEvent(s,winner,losing,'victory',{key:`battle:${event.id}`,text:`Faced a rival in battle at ${t.name||t.id}.`});
+    for(const ally of s.kingdoms.filter(k=>![winner,losing].includes(k.id)&&treaty(s,k.id,winner,'alliance')&&atWar(s,k.id,losing))){
+      const home=settlements(s,ally.id).find(t=>t.capital===ally.id);
+      const saved=home&&distance(home,t)<=2&&event.before.reduce((a,b)=>a+b,0)>=120;
+      if(saved)emotionalEvent(s,ally.id,winner,'rescue',{key:`rescue:${s.turn}`,text:`Broke the enemy army threatening our capital, ${home.name||home.id}.`});
+    }
+  }
   log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${sizeOf(loser)===0?'the opposing army is destroyed':result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle',{audience:s.kingdoms.filter(k=>[event.attacker,event.defender].includes(k.id)||s.fog?.houses[k.id]?.battles.includes(event.id)).map(k=>k.id)});
   if(result.winner===0&&sizeOf(attacker)>0&&t.owner!==attacker.owner){
     const damage=damageFortifications(t,siegePower(attacker,t,{assault:true}));
@@ -329,6 +344,7 @@ function capture(s, a, t) {
   if (!sizeOf(a) || s.armies.some(e=>e.tile===t.id&&sizeOf(e)>0&&atWar(s,a.owner,e.owner))) return false;
   if (['city', 'town', 'fort', 'watchtower'].includes(t.building)) {
     const previous = t.owner;
+    emotionalEvent(s,previous,a.owner,t.capital===previous?'capitalLost':'defeat',{key:`capture:${t.id}:${s.turn}`,text:`Captured ${t.name||t.id}${t.capital===previous?', our capital':''}.`});
     s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner, troopLosses:[0,0] });
     changeRelation(s, previous, a.owner, { opinion: -15, grievance: 20, aggression: 12 }, `${t.name || 'A settlement'} was captured.`);
     t.owner = a.owner; t.project = null; t.siege = null;
@@ -508,6 +524,7 @@ export function parseSave(raw) {
   if (oldVersion === 1) initializeLiving(s);
   s.version=SAVE_VERSION;
   validateLivingSave(s);
+  validateEmotions(s); validateMarriage(s);
   validateFoundingSave(s);
   if(s.worldGeneration&&(!Object.hasOwn(MAP_PROFILES,s.mapProfile)||!Number.isInteger(s.seed)||!Number.isInteger(s.generation?.attempt)||s.generation.attempt<0||s.generation.attempt>=96))throw new Error('Damaged regional world metadata.');
   validateExpansion(s);

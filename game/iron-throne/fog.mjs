@@ -1,3 +1,4 @@
+import { marriageSupport } from './marriage.mjs';
 import { economyProjection, populationProjection } from './core.mjs';
 import { operationProgress } from './operations.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
@@ -23,7 +24,7 @@ export function visionTiles(s,viewer,{allied=true}={}) {
   for(const a of s.armies)if(a.owner===viewer)sources.push([a.tile,armyVision(a)]);
   // Strong alliances share their own settlements and major forces, never the
   // ally's explored map, spy reports, or the vision of its other allies.
-  const allies=(allied?s.treaties||[]:[]).filter(t=>t.type==='alliance'&&t.expires>s.turn&&t.parties.includes(viewer)).map(t=>t.parties.find(id=>id!==viewer)).filter(id=>(s.kingdoms.find(k=>k.id===id)?.relations[viewer]?.trust||0)>=50);
+  const allies=(allied?s.treaties||[]:[]).filter(t=>t.type==='alliance'&&t.expires>s.turn&&t.parties.includes(viewer)).map(t=>t.parties.find(id=>id!==viewer)).filter(id=>(s.kingdoms.find(k=>k.id===id)?.relations[viewer]?.trust||0)+marriageSupport(s,id,viewer)>=50);
   for(const t of Object.values(s.tiles))if(allies.includes(t.owner)&&['city','town','fort'].includes(t.building))sources.push([t.id,1]);
   for(const a of s.armies)if(allies.includes(a.owner)&&size(a)>=20)sources.push([a.tile,1]);
   for(const [id,radius] of sources)area(id,radius);
@@ -97,6 +98,10 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.pledges=(v.pledges||[]).filter(p=>[p.debtor,p.creditor].includes(viewer)||p.operationId&&v.cooperation.operations.some(o=>o.id===p.operationId));
   v.commerce={...v.commerce,offers:(v.commerce?.offers||[]).filter(o=>(o.to||'ashen')===viewer),aiTrades:{},cooldowns:{}};
   v.strategy={...v.strategy,history:(v.strategy?.history||[]).map(round=>({...round,houses:round.houses.map(h=>({...h,goal:'UNKNOWN',reason:'',orders:0,omitted:0,actions:h.actions.filter((a,i)=>['war','peace'].includes(a.kind)||k.actions.includes(`${round.turn}:${h.owner}:${i}`))}))}))};
+  if(v.royalBonds){
+    v.royalBonds.negotiations=Object.fromEntries(Object.entries(v.royalBonds.negotiations).filter(([,n])=>[n.proposer,n.host].includes(viewer)));
+    v.royalBonds.marriages=v.royalBonds.marriages.map(m=>m.parties.includes(viewer)?m:{id:m.id,parties:m.parties,members:m.members,status:m.status,turn:m.turn});
+  }
   v.diplomacy={...v.diplomacy,tradeHistory:(v.diplomacy?.tradeHistory||[]).filter(x=>[x.from,x.to].includes(viewer))};
   const c=s.controllers?s.courts?.[viewer]:{conversations:s.conversations,offers:s.diplomacy.offers,messages:s.diplomacy.messages};
   v.courts=c?{[viewer]:clone(c)}:{};v.conversations=clone(c?.conversations||{});v.diplomacy.offers=clone(c?.offers||{});v.diplomacy.messages=clone(c?.messages||{turn:s.turn,regular:0,hosts:{}});
@@ -107,8 +112,10 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     h.knownAlive=Object.values(s.tiles).some(t=>t.owner===h.id&&['city','town'].includes(t.building));
     for(const r of Object.values(h.id===viewer?{}:h.relations)){r.observations={};r.movements={};r.contacts={};r.history=[];}
     if(h.id===viewer)continue;
+    for(const [id,r]of Object.entries(h.relations))if(id!==viewer)delete r.personal;
+    h.confidantConcerns=h.relations[viewer]?.personal?.bonds.includes('Trusted Confidant')?(h.priorities||[]).slice(0,2).map(text=>text.replace(/\s*\(\d+\)/g,'')):[];
     h.resources=Object.fromEntries(RESOURCES.map(r=>[r,0]));h.population=0;h.happiness=0;h.commands=0;h.goal='UNKNOWN';delete h.economicPlan;
-    h.memories=h.memories.filter(m=>m.subject===viewer&&['interpretation','speech','agreement','cooperation','war','espionage','threat','insult','relief','trade-interrupted','promise-fulfilled','promise-broken','promise-released'].includes(m.kind));h.memorySummary='';h.priorities=[];h.relationshipSummaries={};h.conversationSummaries={[viewer]:h.conversationSummaries?.[viewer]||''};if(s.controllers)h.conversationSummary='';
+    h.memories=h.memories.filter(m=>m.subject===viewer&&['interpretation','speech','agreement','cooperation','war','espionage','threat','insult','relief','trade-interrupted','promise-fulfilled','promise-broken','promise-released','marriage','marriage-strained','marriage-broken'].includes(m.kind));h.memorySummary='';h.priorities=[];h.relationshipSummaries={};h.conversationSummaries={[viewer]:h.conversationSummaries?.[viewer]||''};if(s.controllers)h.conversationSummary='';
     h.resourcesUnknown=true;
   }
   return v;

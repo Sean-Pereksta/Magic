@@ -1,3 +1,5 @@
+import { emotionalEvent, personalContext, personalOpening, personalWillingness } from './emotions.mjs';
+import { MARRIAGE_FIELDS, normalizeMarriageTerms, evaluateMarriage, commitMarriage, marriageContext, marriageReply, marriageSupport, resolveMarriages, strainMarriage } from './marriage.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { refreshKnowledge, knowledgeView } from './fog.mjs';
 import { operationPledgeProgress, updateOperations, supplyOperation } from './operations.mjs';
@@ -12,14 +14,16 @@ import { appendConversation, applyGift, borderThreat, changeRelation, contact, d
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
 
-export const LABELS = { ALLIANCE: 'Alliance', PEACE: 'Peace treaty', TRADE: 'Trade agreement', EXCHANGE: 'Resource exchange', AID: 'Gift / military aid', JOINT_WAR: 'Joint war', DEFEND: 'Defend a settlement', POSITION: 'Position an army', WITHDRAW: 'Withdraw troops', BUILD_DEFENSES: 'Build a fort', TERRITORY: 'Request a province', TRIBUTE: 'Demand tribute', VASSALAGE: 'Request allegiance', PROMISE: 'Promise a later payment', WAR: 'Declare war', BETRAY: 'Break treaties and declare war', RECURRING: 'Recurring resource trade', LOAN: 'Loan with repayment', NON_AGGRESSION: 'Non-aggression pact', ACCESS: 'Open borders / military access', EMBARGO: 'Embargo a third House', GUARANTEE: 'Guarantee independence', PLEDGE_WAR: 'Promise to enter a war', PLEDGE_ATTACK: 'Promise an attack', PLEDGE_DEFEND: 'Promise to defend a location', PLEDGE_WITHDRAW: 'Promise border withdrawal', PLEDGE_BUILD: 'Promise to build a fort', PLEDGE_PEACE: 'Promise not to attack' };
+export const LABELS = { MARRIAGE: 'Royal marriage settlement', ALLIANCE: 'Alliance', PEACE: 'Peace treaty', TRADE: 'Trade agreement', EXCHANGE: 'Resource exchange', AID: 'Gift / military aid', JOINT_WAR: 'Joint war', DEFEND: 'Defend a settlement', POSITION: 'Position an army', WITHDRAW: 'Withdraw troops', BUILD_DEFENSES: 'Build a fort', TERRITORY: 'Request a province', TRIBUTE: 'Demand tribute', VASSALAGE: 'Request allegiance', PROMISE: 'Promise a later payment', WAR: 'Declare war', BETRAY: 'Break treaties and declare war', RECURRING: 'Recurring resource trade', LOAN: 'Loan with repayment', NON_AGGRESSION: 'Non-aggression pact', ACCESS: 'Open borders / military access', EMBARGO: 'Embargo a third House', GUARANTEE: 'Guarantee independence', PLEDGE_WAR: 'Promise to enter a war', PLEDGE_ATTACK: 'Promise an attack', PLEDGE_DEFEND: 'Promise to defend a location', PLEDGE_WITHDRAW: 'Promise border withdrawal', PLEDGE_BUILD: 'Promise to build a fort', PLEDGE_PEACE: 'Promise not to attack' };
 const VALUES = RESOURCE_VALUES;
 import { aiResourceTrade, contractAnchors, contractCheck, economicNeeds, scheduleTrade, tradeRoute } from './trade.mjs';
 const TYPES = new Set(INTENT_TYPES);
-const FIELDS = new Set(['type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId', 'tradeKind']);
+const FIELDS = new Set([...MARRIAGE_FIELDS, 'type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId', 'tradeKind']);
 export function validateIntent(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !TYPES.has(value.type) || Object.keys(value).some(k => !FIELDS.has(k))) return null;
   const i = { type: value.type, duration: value.duration ?? 10, giveResource: value.giveResource ?? 'gold', giveAmount: value.giveAmount ?? 0, receiveResource: value.receiveResource ?? 'food', receiveAmount: value.receiveAmount ?? 0, targetId: value.targetId ?? '' };
+  if(value.type==='MARRIAGE'){if(value.tradeKind!==undefined)return null;const terms=normalizeMarriageTerms(value);if(!terms)return null;Object.assign(i,terms);}
+  else if(MARRIAGE_FIELDS.some(key=>value[key]!==undefined))return null;
   if(value.tradeKind!==undefined){if(!['immediate','recurring','purchase','strategic','emergency','preferential'].includes(value.tradeKind))return null;i.tradeKind=value.tradeKind;}
   if (value.conditionHouseId !== undefined) i.conditionHouseId = value.conditionHouseId;
   if (i.conditionHouseId !== undefined && (typeof i.conditionHouseId !== 'string' || !CAMPAIGN_HOUSES.some(h => h.id === i.conditionHouseId) || !['PLEDGE_WAR', 'GUARANTEE'].includes(i.type))) return null;
@@ -57,6 +61,7 @@ export function validateResponse(raw) {
   } catch { return null; }
 }
 export function describeIntent(i) {
+  if(i.type==='MARRIAGE')return `Royal marriage: proposer’s ${i.actorMember} and receiving House’s ${i.rulerMember} (adults) · ${i.giveAmount} ${i.giveResource} upfront · mutual peace for ${i.duration} turns${i.shipmentAmount?` · proposer sends ${i.shipmentAmount} ${i.shipmentResource} per turn for ${i.shipmentTurns} turns`:''}${i.defense?' · mutual defense: respond to an attack within 3 turns during the peace term':''}${i.trade?' · trade agreement for the peace term':''}. Breaches can strain or break the family bond.`;
   const timing = i.type === 'RECURRING' ? ' each turn' : isPlayerPromise(i) ? ' by the deadline' : ' now';
   const duration = ['EXCHANGE', 'AID', 'WAR', 'BETRAY', 'TRIBUTE', 'TERRITORY'].includes(i.type) ? 'Immediate' : `${i.duration} turn${i.duration === 1 ? '' : 's'}`;
   return `${LABELS[i.type]}${i.targetId ? ` · ${i.targetId}` : ''}${i.giveAmount ? ` · Proposer gives ${i.giveAmount} ${i.giveResource}${timing}` : ''}${i.receiveAmount ? ` · Proposer receives ${i.receiveAmount} ${i.receiveResource}${i.type === 'LOAN' ? ' on the deadline' : i.type === 'RECURRING' ? ' each turn' : ' now'}` : ''} · ${duration}${i.conditionHouseId || i.type === 'GUARANTEE' ? ` · only if ${i.conditionHouseId || i.targetId} attacks this House` : ''}`;
@@ -81,6 +86,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   const reject = reason => ({ status: 'reject', reason, intent, factors });
   if (s.outcome) return reject('The campaign is over.');
   if (!intent || !k || rulerId === actorHouseId || !alive(s, rulerId)) return reject('The proposed terms are invalid.');
+  if(intent.type==='MARRIAGE')return evaluateMarriage(s,rulerId,intent,actorHouseId,{consentingHuman});
   const i = intent, r = relation(s, rulerId, actorHouseId), value = i.giveAmount * VALUES[i.giveResource] - i.receiveAmount * VALUES[i.receiveResource];
   if (!isPlayerPromise(i) && !canAfford(player, { [i.giveResource]: i.giveAmount })) return reject('Your treasury cannot cover this offer.');
   if (i.type !== 'LOAN' && !canAfford(k, { [i.receiveResource]: i.receiveAmount })) return reject('That house does not possess the requested resources.');
@@ -156,6 +162,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   const material = i.giveAmount * VALUES[i.giveResource] * scarcity(i.giveResource) - i.receiveAmount * VALUES[i.receiveResource] * scarcity(i.receiveResource);
   let utility = material * (.7 + k.greed * .35) + r.opinion * .5 + r.trust * (.4 + k.honor * .6) + economic.dependency * .3 - (r.grievance || 0) * k.honor * .4 - military.score * k.paranoia * .4 + ((r.reliability ?? 50) - 50) * k.honor * .35;
   utility += ((r.respect ?? 15) - 15) * .1 + (r.generosity || 0) * .1 - (r.aggression || 0) * k.paranoia * .1;
+  if(['ALLIANCE','DEFEND','POSITION','BUILD_DEFENSES','JOINT_WAR','ACCESS'].includes(i.type))utility+=personalWillingness(s,rulerId,actorHouseId)+marriageSupport(s,rulerId,actorHouseId);
   if (military.sharedEnemies.length) utility += 12 + k.ambition * 8;
   if (i.type === 'JOINT_WAR') utility += atWar(s, rulerId, i.targetId) ? 25 : -economicRelationship(s, rulerId, i.targetId).dependency;
   if (i.type === 'EMBARGO') utility -= economicRelationship(s, rulerId, i.targetId).dependency * 2;
@@ -185,16 +192,20 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
   const verdict = evaluateDeal(s, rulerId, raw, actorHouseId, options);
   if (verdict.status !== 'accept') return { ok: false, error: verdict.reason };
   const i = verdict.intent, k = kingdom(s, rulerId), player = kingdom(s, actorHouseId);
+  if(i.type==='MARRIAGE')return commitMarriage(s,rulerId,i,actorHouseId);
   if (!isPlayerPromise(i)) { pay(player, { [i.giveResource]: i.giveAmount }); pay(k, { [i.giveResource]: i.giveAmount }, 1); }
   if (i.receiveAmount && i.type !== 'LOAN') { pay(k, { [i.receiveResource]: i.receiveAmount }); pay(player, { [i.receiveResource]: i.receiveAmount }, 1); }
   if (['WAR', 'BETRAY'].includes(i.type)) declareWar(s, actorHouseId, rulerId);
   if (i.type === 'PEACE') { makePeace(s, actorHouseId, rulerId); addTreaty(s, actorHouseId, rulerId, 'peace', i.duration); }
   const type = { ALLIANCE: 'alliance', TRADE: 'trade', VASSALAGE: 'vassalage', NON_AGGRESSION: 'non-aggression', ACCESS: 'access', RECURRING: 'recurring' }[i.type];
   if (type) addTreaty(s, actorHouseId, rulerId, type, i.duration);
+  if(type==='alliance')for(const observer of s.kingdoms.filter(h=>![actorHouseId,rulerId].includes(h.id)&&atWar(s,h.id,rulerId)))
+    if(relation(s,observer.id,actorHouseId)?.personal?.feelings.attachment>=25)emotionalEvent(s,observer.id,actorHouseId,'jealousy',{key:`alliance:${s.turn}:${rulerId}`,text:`Joined in alliance with our rival, ${k.name}.`});
   if (i.type === 'TERRITORY') { stateTransfer(s, i.targetId, actorHouseId); }
   if (i.type === 'AID') { k.lastGiftTurn = s.turn; applyGift(s, actorHouseId, rulerId, i.giveResource, i.giveAmount); }
   if (!isPlayerPromise(i) && i.giveAmount) recordTrade(s, actorHouseId, rulerId, i.giveResource, i.giveAmount, i.type.toLowerCase());
   if (i.receiveAmount && i.type !== 'LOAN') recordTrade(s, rulerId, actorHouseId, i.receiveResource, i.receiveAmount, i.type.toLowerCase());
+  if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) emotionalEvent(s,rulerId,actorHouseId,'coercion',{scale:Math.max(.5,Math.min(2,i.receiveAmount/100)),text:'Forced tribute or submission from our House.'});
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) changeRelation(s, rulerId, actorHouseId, { fear: 10, trust: -5, opinion: -8, grievance: 10 }, 'Coercion secured concessions, not friendship.');
   if (isPlayerPromise(i)) createPlayerPromise(s, rulerId, i, actorHouseId);
   if (i.type === 'RECURRING') { const route=tradeRoute(s,actorHouseId,rulerId);if(i.tradeKind==='preferential')route.fee=0;Object.assign(s.treaties.at(-1), { intent: i, payer: actorHouseId, lastPaid: s.turn, anchors: contractAnchors(s,actorHouseId,rulerId), legacyRoute:false, routeStatus:route.status });for(const party of [player,k])pay(party,{gold:route.fee}); }
@@ -227,6 +238,9 @@ function finishPledge(s, p, fulfilled) {
   p.status = fulfilled ? 'fulfilled' : 'broken';
   const observer = kingdom(s, p.creditor), debtor = kingdom(s, p.debtor);
   debtor.reputation[fulfilled ? 'kept' : 'broken']++;
+  const militaryPromise=['JOINT_WAR','DEFEND','PLEDGE_WAR','PLEDGE_ATTACK','PLEDGE_DEFEND','GUARANTEE'].includes(p.intent.type);
+  emotionalEvent(s,p.creditor,p.debtor,fulfilled?'promise':militaryPromise?'betrayal':'abandonment',{key:p.id,scale:militaryPromise?1.5:p.intent.type==='PROMISE'?Math.min(1,p.intent.giveAmount/60):.7,text:`${debtor.name} ${p.status} the promise: ${LABELS[p.intent.type]}.`});
+  if(!fulfilled)strainMarriage(s,p.creditor,p.debtor,'Failed a sworn obligation to the House joined to our family.',{key:p.id});
   const trust = fulfilled ? Math.round(6 + observer.honor * 6) : -Math.ceil(13 + observer.honor * 12);
   changeRelation(s, p.creditor, p.debtor, { opinion: fulfilled ? 8 : -18, trust, respect: fulfilled ? 8 : -10, grievance: fulfilled ? -3 : 20, reliability: fulfilled ? 8 : -18 }, `${LABELS[p.intent.type]} promise ${p.status}.`);
   if (!fulfilled && !p.operationId) for (const k of s.kingdoms.filter(k => ![p.creditor, p.debtor].includes(k.id))) changeRelation(s, k.id, p.debtor, { opinion: -5, trust: -7, reliability: -4 }, 'A public oath to another House was broken.');
@@ -323,7 +337,7 @@ export function endTurn(s, onProgress = () => {}) {
   updatePoliticalState(s, { sendDispatches: false });
   for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s, onProgress); onProgress({phase:'resolving'}); resolveEspionage(s); resolveMovement(s); verifyPledges(s,{operationsOnly:true}); updateOperations(s,{afterMovement:true}); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
   finishStrategyRound(s); refreshKnowledge(s);
-  s.turn++; resolveRecurringTrade(s); verifyPledges(s,{skipOperations:true}); updatePoliticalState(s); for (const actor of humanControlledHouseIds(s)) scheduleTrade(s,actor);
+  s.turn++; resolveRecurringTrade(s); resolveMarriages(s); verifyPledges(s,{skipOperations:true}); updatePoliticalState(s); for (const actor of humanControlledHouseIds(s)) scheduleTrade(s,actor);
   resetMessages(s); s.diplomacy.processedTurn = s.turn;
   s.treaties = s.treaties.filter(t => t.expires > s.turn && t.parties.every(id => alive(s, id)));
   checkVictory(s); rebuildTerritory(s); refreshKnowledge(s);
@@ -338,6 +352,7 @@ export const negotiationKey=(rulerId,raw)=>`${rulerId}:${JSON.stringify(validate
 export function disclosedDeal(s,rulerId,raw,actorHouseId=PLAYER) {
   if(s.knowledgeView)return s.negotiationVerdicts?.[negotiationKey(rulerId,raw)]||{status:'pending',intent:validateIntent(raw),reason:'Awaiting the court’s review.',factors:[]};
   const v=evaluateDeal(s,rulerId,raw,actorHouseId);
+  if(v.intent?.type==='MARRIAGE')return {...v,factors:[]};
   return {...v,factors:[],reason:v.status==='accept'?'The council accepts these terms; ratification makes them binding.':v.status==='counter'?'The council offers these revised terms.':'The council declines these terms. Adjust the offer or gather intelligence.'};
 }
 export function makeContext(s, rulerId, message, { proposal = null, event = null, actorHouseId = PLAYER } = {}) {
@@ -357,6 +372,9 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
     world: {
       knowledge: 'Fog of war. Army totals include only currently observed troops, never the whole enemy military. Capital locations are public; unobserved ownership, resources, buildings, troops and private plans are unknown. Dated reports may be stale.',
       houses, self, relationship, economicRelationship: economy,
+      personalRelationship: {...personalContext(s,rulerId,actorHouseId),confidantConcerns:k.confidantConcerns||[]},
+      familyRelationship: marriageContext(s,rulerId,actorHouseId),
+      marriageDiscussion: marriageReply(source,rulerId,message,actorHouseId,proposal),
       politicalPosture: politicalAttitude(s,rulerId,actorHouseId),
       disclosedPlans: visiblePlans(s,actorHouseId,rulerId).slice(0,3).map(r=>({planId:r.planId,observedTurn:r.turn,...r.snapshot})),
       sharedOperations: (s.cooperation?.operations||[]).filter(o=>[rulerId,actorHouseId].every(id=>operationMember(o,id)?.status==='accepted')).slice(-2).map(o=>({name:o.name,status:o.status,target:o.target,targetTile:o.targetTile,attackStart:o.attackStart,attackEnd:o.attackEnd,roles:o.participants.filter(p=>p.status==='accepted').map(p=>({house:p.house,role:p.role,rally:p.rally}))})),
@@ -411,6 +429,8 @@ export function acceptRulerMemories(s, rulerId, response, actorHouseId = PLAYER)
 }
 export function scriptedReply(s, rulerId, message, options = {}) {
   const actorHouseId = options.actorHouseId || PLAYER;
+  const familyReply=marriageReply(s,rulerId,message,actorHouseId,options.proposal);
+  if(familyReply)return familyReply;
   const source=s;s=knowledgeView(s,actorHouseId,{refresh:false});
   const k = kingdom(s, rulerId), r = relation(s, rulerId, actorHouseId), text = message.toLowerCase();
   const proposedPromise = detectPromise(s, rulerId, message, actorHouseId);
@@ -447,6 +467,14 @@ export function scriptedReply(s, rulerId, message, options = {}) {
   const amount = Number(text.match(/\b(\d{1,4})\s*(?:gold|coins)\b/)?.[1] || (type === 'AID' ? 25 : 0));
   const intent = type ? validateIntent({ type, giveAmount: amount, duration: 10 }) : null;
   const repeated = Object.entries(r.speech || {}).some(([kind, value]) => ['praise', 'reassurance', 'apology'].includes(kind) && value.count >= 3);
-  const opening = military.score >= 20 ? `Your soldiers stand close to ${settlements(s, rulerId)[0]?.name || 'our frontier'}. Explain their purpose before you speak of friendship.` : r.trust < 0 ? 'We remember the word you failed to keep. What deed will follow this speech?' : repeated ? 'You have praised our honor often enough, Regent. I would prefer to hear concrete terms.' : k.honor > .8 ? 'Your deeds give weight to your word in this hall.' : k.greed > .8 ? 'Prosperity is a language we both understand.' : k.aggression > .7 ? 'Speak plainly. My captains are waiting.' : 'I am listening, Regent.';
+  const opening = (military.score<20&&!(repeated&&!r.personal?.deedTurns.length)?personalOpening(s,rulerId,actorHouseId):'') || (military.score >= 20 ? `Your soldiers stand close to ${settlements(s, rulerId)[0]?.name || 'our frontier'}. Explain their purpose before you speak of friendship.` : r.trust < 0 ? 'We remember the word you failed to keep. What deed will follow this speech?' : repeated ? 'You have praised our honor often enough, Regent. I would prefer to hear concrete terms.' : k.honor > .8 ? 'Your deeds give weight to your word in this hall.' : k.greed > .8 ? 'Prosperity is a language we both understand.' : k.aggression > .7 ? 'Speak plainly. My captains are waiting.' : 'I am listening, Regent.');
   return { reply: `${opening} ${intent ? disclosedDeal(source, rulerId, intent, actorHouseId).reason : economic.majorPartner ? 'Our people benefit from your trade. Tell me what you seek in return.' : diplomaticPriorities(s, rulerId)[0]}`, intents: intent ? [intent] : [], tone: military.score >= 20 || r.trust < 0 ? 'guarded' : r.opinion > 0 ? 'neutral' : 'cold' };
+}
+
+export function relationshipResponse(s,rulerId,message,response,options={}) {
+  const family=marriageReply(s,rulerId,message,options.actorHouseId||PLAYER,options.proposal);
+  const out={...response,intents:response.intents.filter(i=>i.type!=='MARRIAGE')};
+  for(const key of ['proposal','counterProposal'])if(out[key]?.type==='MARRIAGE')delete out[key];
+  if(family)out.intents=[...family.intents,...out.intents].slice(0,3);
+  return out;
 }

@@ -1,3 +1,4 @@
+import { emotionalEvent } from './emotions.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { alive, armiesOf, atWar, canAfford, canEnter, declareWar, distance, findPath, kingdom, orderArmy, pay, relation, settlements, sizeOf, treaty } from './core.mjs';
 import { isAiHouse } from './house-control.mjs';
@@ -48,6 +49,10 @@ function acceptMember(s,o,p) {
   if(!plan)return fail('No strategic plan slot is available.');
   p.status='accepted';p.planId=plan.id;p.acceptedTurn=s.turn;
   transitionPlan(s,plan,'Preparing','A shared operation was accepted.');
+  for(const other of acceptedMembers(o))if(other.house!==p.house){
+    emotionalEvent(s,other.house,p.house,'private',{key:`private:${o.id}`,text:`Entrusted us with preparations for ${o.name}.`});
+    emotionalEvent(s,p.house,other.house,'private',{key:`private:${o.id}`,text:`Entrusted us with preparations for ${o.name}.`});
+  }
   bindCommitments(s,o,p);
   if(p.house!==o.owner)bindCommitments(s,o,operationMember(o,o.owner));
   return {ok:true};
@@ -113,6 +118,8 @@ function stopOrders(s,p) {
   for(const a of armiesOf(s,p.house).filter(a=>plan?.assignedArmies.includes(a.id)))orderArmy(s,p.house,a.id,a.tile,'hold');
 }
 function closeOperation(s,o,status,reason) {
+  if(status==='Completed'&&o.launchedTurn!==null)for(const a of acceptedMembers(o))for(const b of acceptedMembers(o))if(a.house!==b.house&&operationPledges(s,o).some(p=>p.debtor===b.house&&(p.delivered||p.status==='fulfilled')))
+    emotionalEvent(s,a.house,b.house,'campaign',{key:`campaign:${o.id}`,text:`Completed the shared campaign ${o.name}.`});
   o.status=status;o.reason=reason;o.updatedTurn=s.turn;
   for(const p of o.participants) {
     const plan=currentPlan(s,p);

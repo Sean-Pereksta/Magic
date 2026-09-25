@@ -1,3 +1,4 @@
+import { relationshipResponse } from './diplomacy.mjs';
 import { makeContext, scriptedReply, validateResponse } from './diplomacy.mjs';
 import { diagnosticDetails, makeDiagnostic, readDiagnostic } from './diagnostics.mjs';
 
@@ -113,6 +114,7 @@ export class DiplomacyClient {
       let parsed;
       try { parsed = validateResponse(await readJSON(response, 10000)); } catch (error) { if (controller.signal.aborted) throw error; /* Invalid reply is handled below. */ }
       if (!parsed) { this.cooldownUntil = this.now() + 5000; this.recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status, retryAt: this.cooldownUntil }, '/diplomacy'); return fallback(); }
+      parsed=relationshipResponse(state,rulerId,message,parsed,options);
       if (this.cache.size >= 30) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, parsed);
       this.lastDiagnostic = null;

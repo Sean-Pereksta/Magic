@@ -1,3 +1,4 @@
+import { MARRIAGE_FIELDS, marriageContext, continueMarriageReview } from './marriage.mjs';
 import { resolveTurnInWorker, showTurnProgress } from './turn-progress.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { warRoomPanel } from './war-room.mjs';
@@ -154,7 +155,9 @@ function ledgerPanel(rulerId = null) {
   const state=displayedState;
   const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(localHouse) && (!rulerId || [p.debtor, p.creditor].includes(rulerId)));
   const treaties = state.treaties.filter(t => t.parties.includes(localHouse) && (!rulerId || t.parties.includes(rulerId)));
-  return `<span class="eyebrow">A WORD IS A DEBT</span><h2>Oaths & treaties</h2><p class="fine">Allies must travel, gather troops and finish construction. Delays can break a promise. Defenders must stay on station for two turns.</p>${treaties.map(t => `<div class="pledge-card"><strong>${escape(t.type)} · ${escape(kingdom(state, t.parties.find(p => p !== localHouse)).name)}</strong><p>Expires on turn ${t.expires} (${t.expires - state.turn} left)</p></div>`).join('')}${pledges.length ? pledges.slice().reverse().map(p => `<div class="pledge-card"><strong>${escape(LABELS[p.intent.type])}</strong><p>${escape(kingdom(state, p.debtor).name)} → ${escape(kingdom(state, p.creditor).name)}</p><p>${escape(describeIntent(p.intent))}</p><p class="${p.status}">${escape(p.status.toUpperCase())} · Due turn ${p.deadline}${['DEFEND', 'PLEDGE_DEFEND'].includes(p.intent.type) ? ` · On station ${p.held}/2` : ''}</p>${p.status === 'pending' && p.debtor === localHouse && p.intent.type === 'PROMISE' ? `<button class="full" data-deliver="${p.id}">Deliver promised resources</button>` : ''}</div>`).join('') : '<p class="empty">No military or payment pledges yet. Negotiate one with a ruler.</p>'}`;
+  const marriages=(state.royalBonds?.marriages||[]).filter(m=>m.parties.includes(localHouse)&&(!rulerId||m.parties.includes(rulerId)));
+  const familyCards=marriages.map(m=>`<div class="pledge-card"><strong>Royal marriage · ${escape(m.status)}</strong><p>${m.members.map(x=>`${escape(kingdom(state,x.house).name)}: ${escape(x.role)}`).join(' &amp; ')}</p><p>${escape(describeIntent(m.terms))}</p><p>Joined on turn ${m.turn} · peace/defense term ends on turn ${m.turn+m.terms.duration}${m.terms.shipmentAmount?` · ${Math.max(0,m.terms.shipmentTurns-m.shipmentsPaid)} scheduled shipments remain`:''}</p></div>`).join('');
+  return `${familyCards}<span class="eyebrow">A WORD IS A DEBT</span><h2>Oaths & treaties</h2><p class="fine">Allies must travel, gather troops and finish construction. Delays can break a promise. Defenders must stay on station for two turns.</p>${treaties.map(t => `<div class="pledge-card"><strong>${escape(t.type)} · ${escape(kingdom(state, t.parties.find(p => p !== localHouse)).name)}</strong><p>Expires on turn ${t.expires} (${t.expires - state.turn} left)</p></div>`).join('')}${pledges.length ? pledges.slice().reverse().map(p => `<div class="pledge-card"><strong>${escape(LABELS[p.intent.type])}</strong><p>${escape(kingdom(state, p.debtor).name)} → ${escape(kingdom(state, p.creditor).name)}</p><p>${escape(describeIntent(p.intent))}</p><p class="${p.status}">${escape(p.status.toUpperCase())} · Due turn ${p.deadline}${['DEFEND', 'PLEDGE_DEFEND'].includes(p.intent.type) ? ` · On station ${p.held}/2` : ''}</p>${p.status === 'pending' && p.debtor === localHouse && p.intent.type === 'PROMISE' ? `<button class="full" data-deliver="${p.id}">Deliver promised resources</button>` : ''}</div>`).join('') : '<p class="empty">No military or payment pledges yet. Negotiate one with a ruler.</p>'}`;
 }
 
 $('panel').addEventListener('click', e => {
@@ -337,7 +340,13 @@ $('copy-diagnostics').onclick = async () => {
   }
   $('diagnostics-copy-status').textContent = copied ? 'Report copied.' : 'Copy unavailable. The report is selected; use your device’s Copy command.';
 };
+function enableMarriageOffer(){
+  if(!$('offer-type').querySelector('option[value="MARRIAGE"]')){const option=document.createElement('option');option.value='MARRIAGE';option.textContent='Discussed marriage settlement';$('offer-type').append(option);}
+}
 function renderProposals() {
+  const family=marriageContext(currentView(),activeRuler,localHouse);
+  if(family.discussion)enableMarriageOffer();
+  else{const option=$('offer-type').querySelector('option[value="MARRIAGE"]');if(option){option.remove();updateOfferFields();}}
   if(onlineOptions&&isHumanHouse(state,activeRuler)){
     $('proposals').innerHTML=humanProposals(state,activeRuler,localHouse)+proposals.filter(i=>['WAR','BETRAY'].includes(i.type)).map((i,index)=>`<div class="proposal"><p>${escape(describeIntent(i))}</p><button class="danger" data-human-war="${index}">Declare war with these consequences</button></div>`).join('');return;
   }
@@ -348,10 +357,12 @@ function renderProposals() {
 }
 function storeOffers() { state.diplomacy.offers ||= {}; state.diplomacy.offers[activeRuler] = proposals.slice(0, 4); }
 function loadOffer(i) {
+  if(i.type==='MARRIAGE')enableMarriageOffer();
   setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
   $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
   $('receive-resource').value = i.receiveResource; $('receive-amount').value = i.receiveAmount;
   $('trade-kind').value=i.tradeKind||'immediate';
+  if(i.type==='MARRIAGE')for(const key of MARRIAGE_FIELDS){const el=$(`marriage-${key}`);if(el.type==='checkbox')el.checked=i[key];else el.value=i[key];}
   $('duration').value = i.duration; $('offer-target').value = i.targetId;
   if (i.conditionHouseId) $('condition-target').value = i.conditionHouseId;
   $('offer-form').scrollIntoView({ block: 'nearest' });
@@ -380,12 +391,15 @@ $('proposals').addEventListener('click', e => {
   }
 });
 function appendMessage(rulerId, role, text) { return appendConversation(state,rulerId,role,text,{actorHouseId:localHouse}); }
-$('offer-type').innerHTML = Object.entries(LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+$('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>id!=='MARRIAGE').map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
 function updateOfferFields() {
   const state=currentView();
   const type = $('offer-type').value;
+  $('marriage-fields').hidden=type!=='MARRIAGE';
+  $('duration').min=type==='MARRIAGE'?'10':'1';
+  if(type==='MARRIAGE'&&Number($('duration').value)<10)$('duration').value=12;
   $('trade-kind-label').hidden=!['EXCHANGE','RECURRING'].includes(type);
   $('receive-fields').hidden = !['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(type);
   if ($('receive-fields').hidden) $('receive-amount').value = '0';
@@ -410,6 +424,7 @@ $('trade-kind').onchange=()=>{const kind=$('trade-kind').value;$('offer-type').v
 $('offer-form').addEventListener('submit', e => {
   e.preventDefault();
   const raw = { type: $('offer-type').value, giveResource: $('give-resource').value, giveAmount: Number($('give-amount').value), receiveResource: $('receive-resource').value, receiveAmount: Number($('receive-amount').value), targetId: $('target-label').hidden ? '' : $('offer-target').value, duration: Number($('duration').value) };
+  if(raw.type==='MARRIAGE')for(const key of MARRIAGE_FIELDS){const el=$(`marriage-${key}`);raw[key]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value;}
   if(!$('trade-kind-label').hidden) raw.tradeKind=$('trade-kind').value;
   if (!$('condition-label').hidden && $('condition-target').value) raw.conditionHouseId = $('condition-target').value;
   const i = validateIntent(raw);
@@ -439,6 +454,7 @@ async function sendDiplomatic(message, proposal = null) {
   const spent = consumeMessage(state,activeRuler,localHouse); if (!spent.ok) { toast(spent.error); return; }
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
   if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
+  else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse);
   sending = true;
   const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal, actorHouseId:localHouse });
   appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();
