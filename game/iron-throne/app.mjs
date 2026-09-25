@@ -41,7 +41,8 @@ let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidg
 let turnBusy = false;
 let sending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
-let geminiAttempted = false, configurationFailure = false;
+let configurationFailure = false;
+const replyDiagnostics = new Map();
 try {
   const saved = onlineOptions ? null : localStorage.getItem(SAVE_KEY);
   if (saved) { state = parseSave(saved); restored = true; }
@@ -102,7 +103,7 @@ function render() {
   const scroll = $('panel').scrollTop;
   $('panel').innerHTML = state.phase==='founding'?foundingPanel(view,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(view) : tab === 'war-room' ? warRoomPanel(view) : ledgerPanel();
   $('panel').scrollTop = scroll;
-  $('latest-events').innerHTML = view.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
+  $('latest-events').innerHTML = view.events.map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = view.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
   $('order-hint').hidden = !orderMode; $('order-hint').textContent = 'Select a destination · Esc cancels';
   map.armyId = selectedArmy; map.selected = selected; map.reducedEffects = !!state.presentation?.reducedEffects; map.draw();
@@ -230,6 +231,7 @@ $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { orderMode = null; render(); } });
+$('chronicle-button').onclick = () => $('chronicle-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).close()));
 $('menu-button').onclick = () => $('menu').showModal();
 $('help').onclick = () => $('help-dialog').showModal();
@@ -241,7 +243,7 @@ function showNewCampaign() {
 }
 $('new-campaign').onclick = showNewCampaign; $('play-again').onclick = showNewCampaign;
 $('new-game-form').addEventListener('submit', e => {
-  e.preventDefault(); if(onlineOptions)return; client.cancel(); state = createGame(Number($('seed').value), $('preset').value, Number($('game-size').value)); epoch++;
+  e.preventDefault(); if(onlineOptions)return; client.cancel(); replyDiagnostics.clear(); state = createGame(Number($('seed').value), $('preset').value, Number($('game-size').value)); epoch++;
   selected = '5,6'; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
   $('welcome').close(); $('load-warning').hidden = true; changed(); map.home(); toast('Explore the map and choose where to found your kingdom.');
 });
@@ -260,7 +262,7 @@ $('import-save').addEventListener('change', async e => {
     const imported = parseSave(await file.text());
     if(turnBusy || epoch!==importEpoch)return;
     if (!confirm('Replace your current campaign with this imported save? Export your current save first if you want to keep it.')) return;
-    client.cancel(); state = imported; selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
+    client.cancel(); replyDiagnostics.clear(); state = imported; selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
   } catch (error) { toast(`Import failed: ${error.message}`); }
   finally { e.target.value = ''; }
 });
@@ -298,12 +300,19 @@ function updateChatControls() {
   $('offer-form').querySelector('button[type="submit"]').disabled = sending || !!state.outcome || a.remaining === 0;
   updateDiagnostics();
 }
+function recordReplyDiagnostic(rulerId, response) {
+  // Verification alone never exposes diagnostics; only a failed council reply does.
+  const record = response.source !== 'gemini' && (response.diagnostic || (configurationFailure && client.lastDiagnostic));
+  if (record) replyDiagnostics.set(rulerId, record);
+  else replyDiagnostics.delete(rulerId);
+}
 function updateDiagnostics() {
-  $('gemini-diagnostics').hidden = !geminiAttempted || !client.lastDiagnostic;
-  if ($('gemini-diagnostics-dialog').open && client.lastDiagnostic) fillDiagnostics();
+  const record = replyDiagnostics.get(activeRuler);
+  $('gemini-diagnostics').hidden = sending || !record || isHumanHouse(state, activeRuler);
+  if ($('gemini-diagnostics-dialog').open && record) fillDiagnostics();
 }
 function fillDiagnostics() {
-  const record = client.lastDiagnostic; if (!record) return;
+  const record = replyDiagnostics.get(activeRuler); if (!record) return;
   const info = diagnosticDetails(record);
   $('diagnostics-stage').textContent = info.stage;
   $('diagnostics-reason').textContent = info.reason;
@@ -316,7 +325,7 @@ function fillDiagnostics() {
   $('diagnostics-copy-status').textContent = '';
 }
 $('gemini-diagnostics').onclick = () => {
-  if (!client.lastDiagnostic) return;
+  if (!replyDiagnostics.has(activeRuler)) return;
   fillDiagnostics(); $('gemini-diagnostics-dialog').showModal();
 };
 $('copy-diagnostics').onclick = async () => {
@@ -418,6 +427,7 @@ async function sendDiplomatic(message, proposal = null) {
     sending=true;const rulerId=activeRuler,turn=state.turn;updateChatControls();
     try{
       const response=await client.send(state,rulerId,message,challengeToken,$('use-gemini').checked,{proposal,actorHouseId:localHouse});
+      recordReplyDiagnostic(rulerId, response);
       if(state.turn!==turn){toast('The round advanced. Review your message before sending again.');return;}
       const {reply,intents,tone,counterProposal,promiseDetected,relationshipSummary,memoryCandidates}=response;
       const model=Object.fromEntries(Object.entries({reply,intents,tone,counterProposal,promiseDetected,relationshipSummary,memoryCandidates}).filter(([,v])=>v!==undefined));
@@ -430,7 +440,6 @@ async function sendDiplomatic(message, proposal = null) {
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
   if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
   sending = true;
-  geminiAttempted ||= $('use-gemini').checked || configurationFailure;
   const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal, actorHouseId:localHouse });
   appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();
   try {
@@ -439,6 +448,7 @@ async function sendDiplomatic(message, proposal = null) {
       if (!turnBusy && campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
       return;
     }
+    recordReplyDiagnostic(rulerId, response);
     appendMessage(rulerId, 'ruler', response.reply);
     if (response.source === 'gemini') acceptRulerMemories(state,rulerId,response,localHouse);
     const candidates = [proposal, ...response.intents, response.proposal, response.counterProposal, response.promiseDetected].filter(Boolean);

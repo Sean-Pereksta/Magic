@@ -199,23 +199,26 @@ export class WorldMap {
       const end=hexPixel(s.tiles[a.path.at(-1)]);this.hex(end.x,end.y,9);c.fillStyle='#f4d58a38';c.fill();c.strokeStyle='#ffdf90';c.lineWidth=1.5;c.stroke();
     }
     this.hits=[];
-    const grouped=new Map(),offsets=new Map();
+    const grouped=new Map(),offsets=new Map(),troopBadges=[];
     for(const army of s.armies){const key=`${army.tile}:${army.owner}`;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(army);}
     for(const group of grouped.values()){
       const army=group[0],p=hexPixel(s.tiles[army.tile]);if(!inView(p))continue;
       const row=offsets.get(army.tile)||0;offsets.set(army.tile,row+1);
       const selected=group.some(a=>a.id===this.armyId),total=group.reduce((n,a)=>n+sizeOf(a),0),color=colors[army.owner];
       const badgeScale=Math.max(1,.55/this.zoom), badgeY=p.y+17+row*23;
-      this.hits.push({tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale});
+      const hit={tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale};
       const units=Object.fromEntries(Object.keys(UNITS).map(u=>[u,group.reduce((n,a)=>n+(a.units[u]||0),0)]));
       const marching=group.some(a=>a.path.length)&&!reduced&&now<this.pulseUntil;
       this.armyArt(c,units,p.x,p.y+row*23,color,s.kingdoms.find(h=>h.id===army.owner).sigil,marching?Math.sin(now/75)*.7:0);
-      c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
-      c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
-      c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();
-      c.fillStyle=color;c.beginPath();c.moveTo(-16,-5);c.lineTo(-8,-5);c.lineTo(-8,3);c.lineTo(-12,7);c.lineTo(-16,3);c.closePath();c.fill();
-      c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
-      c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
+      troopBadges.push(() => {
+        this.hits.push(hit);
+        c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
+        c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
+        c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();
+        c.fillStyle=color;c.beginPath();c.moveTo(-16,-5);c.lineTo(-8,-5);c.lineTo(-8,3);c.lineTo(-12,7);c.lineTo(-16,3);c.closePath();c.fill();
+        c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
+        c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
+      });
     }
     for(const envoy of (s.ambassadors||[]).filter(a=>a.status!=='dead')) {
       const tile=s.tiles[envoy.tile],p=tile&&hexPixel(tile);if(!p||!inView(p))continue;
@@ -235,6 +238,8 @@ export class WorldMap {
       c.font=t.capital?'bold 10px Georgia':'9px Georgia';c.textAlign='center';const w=c.measureText(label).width;
       c.fillStyle='#112733eb';c.beginPath();c.roundRect(-w/2-7,-10,w+14,16,3);c.fill();c.fillStyle=colors[t.owner]||'#eddfb9';c.fillRect(-w/2-3,5,w+6,.8);c.fillText(label,0,1);c.restore();
     }
+    // Troop counts are the final world overlay, above selections and area names.
+    for(const drawBadge of troopBadges)drawBadge();
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.height*.3,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#061b2400');vignette.addColorStop(1,'#06111a66');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
     // Restrained cartographic compass, entirely non-interactive.
