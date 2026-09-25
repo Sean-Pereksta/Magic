@@ -76,19 +76,21 @@ async function hash(text) {
 }
 export async function reserveBudget(storage, env, clientId, now = Date.now()) {
   const minuteRetry = Math.max(1, Math.ceil((60000 - now % 60000) / 1000));
+  const dailyLimit = boundedInt(env.DAILY_LIMIT, 20, 10000);
+  const dailyRetry = Math.max(1, Math.ceil((86400000 - now % 86400000) / 1000));
   const day = new Date(now).toISOString().slice(0, 10), minute = Math.floor(now / 60000);
   // A Durable Object transaction serializes concurrent reservations across all users.
   return storage.transaction(async txn => {
     let b = await txn.get('budget');
     if (!b || b.day !== day) b = { day, used: 0, minute, calls: 0, clients: {}, cooldownUntil: 0 };
     if (b.cooldownUntil > now) return { ok: false, code: 'PROVIDER_COOLDOWN', retryAfter: Math.ceil((b.cooldownUntil - now) / 1000), reason: 'Gemini is cooling down. Scripted diplomacy is available.' };
-    if (b.used >= boundedInt(env.DAILY_LIMIT, 20, 10000)) return { ok: false, code: 'DAILY_LIMIT', retryAfter: 3600, reason: 'The daily conversation budget has been used. Scripted diplomacy is available.' };
+    if (b.used >= dailyLimit) return { ok: false, code: 'DAILY_LIMIT', retryAfter: dailyRetry, dailyBudget: { limit: dailyLimit, used: b.used }, reason: 'The shared daily conversation budget has been used. Scripted diplomacy is available.' };
     if (b.minute !== minute) { b.minute = minute; b.calls = 0; b.clients = {}; }
     if (b.calls >= boundedInt(env.REQUESTS_PER_MINUTE, 4, 60)) return { ok: false, code: 'GLOBAL_RATE_LIMIT', retryAfter: minuteRetry, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
     if ((b.clients[clientId] || 0) >= boundedInt(env.CLIENT_PER_MINUTE, 2, 20)) return { ok: false, code: 'CLIENT_RATE_LIMIT', retryAfter: minuteRetry, reason: 'The council is busy. Use scripted diplomacy or try again in a minute.' };
     b.used++; b.calls++; b.clients[clientId] = (b.clients[clientId] || 0) + 1;
     await txn.put('budget', b);
-    return { ok: true, remaining: boundedInt(env.DAILY_LIMIT, 20, 10000) - b.used };
+    return { ok: true, remaining: dailyLimit - b.used };
   });
 }
 async function providerFailure(response) {
@@ -148,7 +150,7 @@ export class DiplomacyBudget {
     const hit = cache.find(c => c.key === cacheKey && c.expires > now);
     if (hit) return json({ ...hit.response, cached: true });
     const reservation = await reserveBudget(this.state.storage, this.env, clientId, now);
-    if (!reservation.ok) return json({ fallback: true, message: reservation.reason, retryAfter: reservation.retryAfter, diagnostics: makeDiagnostic(reservation.code, { checks: { ...workerChecks(this.env), BUDGET: 'verified' } }) }, 429, { 'Retry-After': String(reservation.retryAfter) });
+    if (!reservation.ok) return json({ fallback: true, message: reservation.reason, retryAfter: reservation.retryAfter, diagnostics: makeDiagnostic(reservation.code, { dailyBudget: reservation.dailyBudget, checks: { ...workerChecks(this.env), BUDGET: 'verified' } }) }, 429, { 'Retry-After': String(reservation.retryAfter) });
     let response;
     try {
       response = await callGemini(context, this.env);

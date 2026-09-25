@@ -101,8 +101,10 @@ Local caps cannot turn a paid-tier project into a free-tier project.
    Set `ALLOWED_ORIGINS` to the exact production origins, with no paths or
    trailing slash. Keep `DAILY_LIMIT`, `REQUESTS_PER_MINUTE` and
    `CLIENT_PER_MINUTE` below your verified provider allowances. Supplied budgets
-   of 20/day, 4/minute globally and 2/minute per IP are conservative application
-   defaults, not Google quota claims. A zero daily limit disables upstream calls.
+   in `worker/wrangler.toml` are application limits, not Google quota claims.
+   The Worker bounds daily calls to 10,000, global calls to 60/minute and per-IP
+   calls to 20/minute; larger settings are clamped. A zero daily limit disables
+   upstream calls.
 5. Update `game/iron-throne/config.json` with public configuration only:
 
    ```json
@@ -137,6 +139,23 @@ alone does not prove these runtime settings are installed. Session establishment
 does not call Gemini, so a failure there cannot establish a Google billing issue.
 After a successful session, the report distinguishes Google-reported billing,
 key/permission, model and quota failures from the game’s own request allowances.
+
+`DAILY_LIMIT` means the Worker stopped the request before contacting Google. The
+allowance is shared **across all players, origins and models**; failed upstream
+attempts also count. The deployment config sets 1,500 attempts per UTC day; the
+Worker falls back to 20 if `DAILY_LIMIT` is not configured. Changing models,
+refreshing the game or
+redeploying the Worker does not clear the stored counter. It resets at 00:00 UTC,
+and the retry time reflects that boundary. Updated diagnostics show the configured
+limit and attempts used. A limit of zero disables Gemini calls until reconfigured.
+
+To increase this app allowance, choose a limit within your project's verified
+provider allowance and update `DAILY_LIMIT` in both the Worker's runtime Variables
+and Secrets and `worker/wrangler.toml`. Deploy the Worker and refresh the game to
+clear the browser's previous cooldown. The explicit Wrangler value is reapplied
+on future deploys, even with `keep_vars = true`; keep it in sync with the dashboard.
+This setting does not increase Google's quota. Scripted diplomacy remains available
+while the app allowance is exhausted.
 
 “Present” means configured, not validated or funded. With an older Worker, blocked
 connection or unreadable CORS response, unobservable settings are **Unknown**;
