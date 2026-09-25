@@ -1,3 +1,4 @@
+import { refreshKnowledge } from '../fog.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RESOURCES } from '../data.mjs';
@@ -158,8 +159,9 @@ test('public rival reports describe actions without exposing foreign treasuries 
   for(const k of s.kingdoms.slice(1))k.resources.gold=98765;
   report(s,'wintermere').reason='<img src=x onerror=alert(1)>';
   const html=rivalTurnReports(s);
-  assert.match(html,/5 rival councils acted/);assert.match(html,/Started/);assert.match(html,/Completed/);
+  assert.match(html,/5 rival councils acted/);assert.doesNotMatch(html,/Started|Completed/);
   assert.doesNotMatch(html,/98765|<img src=x|&lt;img/);assert.match(html,/Private priorities/);
-  s.tiles['17,4'].name='<img src=x onerror=alert(1)>';const escaped=rivalTurnReports(s);
+  s.tiles['17,4'].name='<img src=x onerror=alert(1)>';s.armies[0].tile='17,4';
+  s.turn=s.strategy.history.at(-1).turn;refreshKnowledge(s);const escaped=rivalTurnReports(s);
   assert.match(escaped,/&lt;img/);assert.doesNotMatch(escaped,/<img src=x/);
 });

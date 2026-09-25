@@ -1,10 +1,10 @@
-import { CAPITAL_SEPARATION, foundedCapitals } from './founding.mjs';
+import { capitalSeparation, foundedCapitals } from './founding.mjs';
 import { distance as hexDistance } from './world-hex.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { ART, AssetCache } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { familyCount } from './warfare.mjs';
-import { HOUSES, BUILDINGS, UNITS } from './data.mjs';
+import { BUILDINGS, UNITS } from './data.mjs';
 import { settlements, sizeOf, tileId } from './core.mjs';
 
 import { BattleEffects } from './battle-effects.mjs';
@@ -77,10 +77,10 @@ export class WorldMap {
     this.dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     this.canvas.width = Math.round(this.width * this.dpr); this.canvas.height = Math.round(this.height * this.dpr); this.draw();
   }
-  setZoom(zoom) { this.zoom = Math.min(2.8, Math.max(.22, zoom)); this.draw(); }
+  setZoom(zoom) { this.zoom = Math.min(2.8, Math.max(.08, zoom)); this.draw(); }
   center(id) { const t = this.getState().tiles[id]; if (!t) return; const p = hexPixel(t); this.x = p.x; this.y = p.y; this.draw(); }
   home() { if(this.getState().phase==='founding'&&!settlements(this.getState(),localHouseId(this.getState())).length){this.fit();return;} this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), localHouseId(this.getState()))[0]?.id || '5,6'); }
-  fit() { const bottom = hexPixel({ q: 39, r: 29 }); this.x = bottom.x / 2; this.y = bottom.y / 2; this.setZoom(Math.min(this.width / (bottom.x + 100), this.height / (bottom.y + 100))); }
+  fit() { const bottom = hexPixel({ q: this.getState().width-1, r: this.getState().height-1 }); this.x = bottom.x / 2; this.y = bottom.y / 2; this.setZoom(Math.min(this.width / (bottom.x + 100), this.height / (bottom.y + 100))); }
   draw() { if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); }); }
   hex(x, y, radius = RADIUS) {
     const c = this.ctx; c.beginPath();
@@ -131,7 +131,7 @@ export class WorldMap {
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
     const sea=c.createLinearGradient(0,0,this.width,this.height);sea.addColorStop(0,'#193a4a');sea.addColorStop(1,'#0e222e');c.fillStyle=sea;c.fillRect(0,0,this.width,this.height);
     c.translate(this.width/2,this.height/2);c.scale(this.zoom,this.zoom);c.translate(-this.x,-this.y);
-    const colors=Object.fromEntries(HOUSES.map(h=>[h.id,h.color]));
+    const colors=Object.fromEntries(s.kingdoms.map(h=>[h.id,h.color]));
     const inView=p=>Math.abs(p.x-this.x)<this.width/this.zoom/2+90&&Math.abs(p.y-this.y)<this.height/this.zoom/2+90;
     const visible=Object.values(s.tiles).filter(t=>inView(hexPixel(t)));
     const foundingCapitals=s.phase==='founding'?foundedCapitals(s):[];
@@ -143,7 +143,7 @@ export class WorldMap {
       const coastMask=geography.get(t.id).coastMask;
       if(coastMask){c.translate(p.x,p.y);c.clip(landClipPath(coastMask),'evenodd');c.translate(-p.x,-p.y);}
       this.hex(p.x,p.y);c.strokeStyle='#122f3326';c.lineWidth=.55;c.stroke();
-      if(s.phase==='founding'&&foundingCapitals.some(cap=>hexDistance(cap,t)<CAPITAL_SEPARATION)){c.fillStyle='#b83e434a';c.fill();}
+      if(s.phase==='founding'&&foundingCapitals.some(cap=>hexDistance(cap,t)<capitalSeparation(s))){c.fillStyle='#b83e434a';c.fill();}
       if(t.owner){c.fillStyle=`${colors[t.owner]}12`;c.fill();}
       DIRECTIONS.forEach(([dq,dr],i)=>{
         const n=s.tiles[tileId(t.q+dq,t.r+dr)];
@@ -166,7 +166,7 @@ export class WorldMap {
     const objectTiles=[...visible].sort((a,b)=>a.r-b.r||Number(a.building==='city')-Number(b.building==='city')||a.q-b.q);
     for(const t of objectTiles){
       const p=hexPixel(t);
-      if(t.building){
+      if(t.building&&!t.knownCapital){
         const rendered=this.structureArt(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62,colors[t.owner]);
         if(!rendered)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');
         if(rendered&&['city','town','fort'].includes(t.building)&&this.zoom>.65){const improvements=Object.keys(BUILDINGS).filter(id=>BUILDINGS[id].settlement&&buildingLevel(t,id)).sort((a,b)=>buildingLevel(t,b)-buildingLevel(t,a)).slice(0,3);improvements.forEach((id,i)=>this.structureArt(c,ART.structures[id][buildingLevel(t,id)],p.x-33+i*23,p.y-8,25,25,colors[t.owner]));}
@@ -181,6 +181,15 @@ export class WorldMap {
         this.constructionArt(c,progress,colors[t.owner]);
         c.fillStyle='#152d32';c.fillRect(-15,19,30,4);c.fillStyle='#f2cd7e';c.fillRect(-15,19,30*Math.max(.08,progress),4);c.restore();
       }
+    }
+    // The fog is drawn over already-filtered objects. Unknown tiles contain no
+    // structures/resources to expose through labels, hit tests or animation.
+    for(const t of visible)if(t.fog&&t.fog!=='visible'){
+      const p=hexPixel(t);this.hex(p.x,p.y);c.fillStyle=t.fog==='unknown'?'rgba(5,13,24,.88)':'rgba(18,27,40,.56)';c.fill();
+      if(t.knownCapital){c.textAlign='center';c.font='bold 21px Georgia';c.fillStyle=colors[t.knownCapital];c.fillText('♛',p.x,p.y);}
+    }
+    for(const report of s.lastSeenArmies||[]){const t=s.tiles[report.tile],p=t&&hexPixel(t);if(!p||!inView(p))continue;
+      c.save();c.translate(p.x,p.y+20);c.scale(Math.max(1,.6/this.zoom),Math.max(1,.6/this.zoom));c.globalAlpha=Math.max(.3,.75-(s.turn-report.turn)*.025);c.fillStyle='#a3b2bd';c.font='10px system-ui';c.textAlign='center';c.fillText(`⚑ Last seen T${report.turn}`,0,0);c.restore();
     }
     const a=s.armies.find(a=>a.id===this.armyId);
     if(a?.path.length){
@@ -200,7 +209,7 @@ export class WorldMap {
       this.hits.push({tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale});
       const units=Object.fromEntries(Object.keys(UNITS).map(u=>[u,group.reduce((n,a)=>n+(a.units[u]||0),0)]));
       const marching=group.some(a=>a.path.length)&&!reduced&&now<this.pulseUntil;
-      this.armyArt(c,units,p.x,p.y+row*23,color,HOUSES.find(h=>h.id===army.owner).sigil,marching?Math.sin(now/75)*.7:0);
+      this.armyArt(c,units,p.x,p.y+row*23,color,s.kingdoms.find(h=>h.id===army.owner).sigil,marching?Math.sin(now/75)*.7:0);
       c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
       c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
       c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();

@@ -1,7 +1,6 @@
 import { MAP_PROFILES, selectMapProfile } from './map-profiles.mjs';
 import { hash, seededRandom, sample, distance, neighbors, passable, tileId } from './world-hex.mjs';
 import { planFoundings } from './founding.mjs';
-import { HOUSES } from './data.mjs';
 
 function noise(seed,x,y,scale) {
   x/=scale;y/=scale;const q=Math.floor(x),r=Math.floor(y),smooth=n=>n*n*(3-2*n),a=smooth(x-q),b=smooth(y-r);
@@ -18,10 +17,10 @@ export function generateRegions(s,profile,seed) {
   const roll=seededRandom(hash(seed,'regions')),regions=[];
   // Large jittered region cells with broad boundaries. Detail is coherent noise,
   // so exceptions become small clearings/hill groups rather than white-noise hexes.
-  for(let r=0;r<3;r++)for(let q=0;q<4;q++){
+  for(let r=0;r<Math.ceil(s.height/10);r++)for(let q=0;q<Math.ceil(s.width/10);q++){
     const n=roll(),terrain=n<profile.forest?'forest':n<profile.forest+profile.hills?'hills':'plains';
     const t={q:4+q*10+(roll()-.5)*5,r:4+r*10+(roll()-.5)*5};
-    regions.push({...t,id:`region-${r*4+q}`,terrain,name:regionName(t,s.width,s.height,terrain),description:`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`});
+    regions.push({...t,id:`region-${r*Math.ceil(s.width/10)+q}`,terrain,name:regionName(t,s.width,s.height,terrain),description:`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`});
   }
   // Every world has a broad forest, plains and highland region, independent of Houses.
   for(const [i,terrain]of [[0,'forest'],[6,'plains'],[10,'hills']]){regions[i].terrain=terrain;regions[i].name=regionName(regions[i],s.width,s.height,terrain);regions[i].description=`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`;}
@@ -41,7 +40,7 @@ export function generateRegions(s,profile,seed) {
     const west=1+noise(hash(seed,'west'),r,0,8)*coast,east=1+noise(hash(seed,'east'),r,0,8)*coast;
     const north=1+noise(hash(seed,'north'),q,0,9)*coast,south=1+noise(hash(seed,'south'),q,0,9)*coast;
     if(q<west||q>s.width-1-east||r<north||r>s.height-1-south)t.terrain='water';
-    if(profile.basin&&Math.hypot((q-20)*.8,r-15)<profile.basin)t.terrain='water';
+    if(profile.basin&&Math.hypot((q-s.width/2)*.8,r-s.height/2)<profile.basin)t.terrain='water';
     s.tiles[t.id]=t;
   }
 }
@@ -50,7 +49,7 @@ export function generateMountainRanges(s,profile,seed) {
   for(let i=0;i<profile.ranges;i++){
     const horizontal=profile.axis==='horizontal',diagonal=profile.axis==='diagonal';
     const length=horizontal?s.width:s.height;
-    const center=horizontal?5+i*6:profile.ranges===1?s.width*.5:9+i*19+(roll()-.5)*3;
+    const center=horizontal?(5+i*6)*s.height/30:profile.ranges===1?s.width*.5:(9+i*19)*s.width/40+(roll()-.5)*3;
     const phase=roll()*Math.PI*2,amplitude=1.5+roll()*2,passOffset=3+Math.floor(roll()*4),points=[];
     for(let n=5;n<length-5;n++){
       const cross=center+Math.sin(n/5+phase)*amplitude+(diagonal?(n-length/2)*.22:0);
@@ -87,7 +86,7 @@ export function generateRivers(s,seed) {
       t.river=true;if(depth.get(t.id)===0)break;
       t=neighbors(s,t).filter(n=>depth.get(n.id)<depth.get(t.id)).sort((a,b)=>(a.terrain==='hills'?1:0)-(b.terrain==='hills'?1:0)||sample(seed,'river',a.id)-sample(seed,'river',b.id))[0];
     }
-    if(used.length===4)break;
+    if(used.length===Math.round(s.width*s.height/300))break;
   }
 }
 export function generateResources(s,seed) {
@@ -116,8 +115,8 @@ export function validateWorld(s) {
   const reached=new Set([land[0].id]),queue=[land[0]];
   for(let i=0;i<queue.length;i++)for(const n of neighbors(s,queue[i]))if(passable(n)&&!reached.has(n.id)){reached.add(n.id);queue.push(n);}
   if(reached.size!==land.length)return {ok:false,reason:'Land routes are disconnected.'};
-  const plan=planFoundings(s,HOUSES.map(h=>h.id));
-  return plan?{ok:true,sites:plan.map(p=>p.capital)}:{ok:false,reason:'Six separated starting packages do not fit.'};
+  const plan=planFoundings(s,s.kingdoms.map(h=>h.id));
+  return plan?{ok:true,sites:plan.map(p=>p.capital)}:{ok:false,reason:'Separated starting packages do not fit.'};
 }
 export function generateWorld(s,requested='random') {
   s.mapProfile=selectMapProfile(s.seed,requested);s.preset=s.mapProfile;s.worldGeneration=1;
@@ -128,5 +127,5 @@ export function generateWorld(s,requested='random') {
     const validation=validateWorld(s);
     if(validation.ok){s.generation={attempt,seed};return s;}
   }
-  throw new Error('Unable to generate a viable six-kingdom world for this seed. Try a different map seed.');
+  throw new Error('Unable to generate a viable world for this seed. Try a different map seed.');
 }

@@ -8,6 +8,16 @@ export const HOUSES = [
   { id: 'vesper', name: 'House Vesper', ruler: 'Duchess Nyra', color: '#b29cc9', sigil: '☾', motto: 'A whispered word can end a war.', aggression: .65, honor: .25, greed: .6, ambition: .95, paranoia: .75 },
   { id: 'redharbor', name: 'House Redharbor', ruler: 'King Oren', color: '#d67878', sigil: '⚑', motto: 'The tide bows to no throne.', aggression: .85, honor: .5, greed: .65, ambition: .8, paranoia: .35 }
 ];
+// Multiplayer retains its original six Houses. Additional Houses are campaign-only.
+export const CAMPAIGN_HOUSES = [...HOUSES,
+  {id:'stormholt',name:'House Stormholt',ruler:'Lady Maera',color:'#79b6ae',sigil:'ϟ',motto:'Stand against the storm.',aggression:.4,honor:.8,greed:.35,ambition:.6,paranoia:.65},
+  {id:'goldmere',name:'House Goldmere',ruler:'Duke Lucan',color:'#d1c071',sigil:'♢',motto:'Prosperity endures.',aggression:.2,honor:.6,greed:.9,ambition:.7,paranoia:.45},
+  {id:'ravenfell',name:'House Ravenfell',ruler:'Queen Sera',color:'#a09eb8',sigil:'♠',motto:'We remember.',aggression:.6,honor:.35,greed:.5,ambition:.85,paranoia:.9},
+  {id:'oakwarden',name:'House Oakwarden',ruler:'Lord Edric',color:'#b0bb80',sigil:'♧',motto:'Deep roots, strong oaths.',aggression:.25,honor:.9,greed:.3,ambition:.45,paranoia:.55},
+  {id:'dawnreach',name:'House Dawnreach',ruler:'Princess Alia',color:'#e6ac9e',sigil:'✦',motto:'Beyond every horizon.',aggression:.7,honor:.6,greed:.55,ambition:.9,paranoia:.3},
+  {id:'saltwynd',name:'House Saltwynd',ruler:'King Torren',color:'#87a6bd',sigil:'≋',motto:'Our sails know no borders.',aggression:.65,honor:.5,greed:.8,ambition:.65,paranoia:.4}
+];
+export const WORLD_SIZES = {6:{width:40,height:30},8:{width:48,height:36},10:{width:56,height:40},12:{width:64,height:44}};
 export const TERRAINS = {
   plains: { name: 'Plains', cost: 1, defense: 1, color: '#5d7350' },
   forest: { name: 'Forest', cost: 2, defense: 1.25, color: '#345c4e' },
@@ -51,6 +61,7 @@ export const REGIONS = {
   vesper: { name: 'Veiled Cities', weights: [2, 2, 2, 2, 1], industry: 'workshop', troops: 'infantry', description: 'Efficient manufacturing and urban trade; modest raw deposits.' },
   redharbor: { name: 'Tidal Pastures', weights: [7, 3, 1, 1, 7], industry: 'ranch', troops: 'cavalry', description: 'Fertile coastal pastures, horses and shipping; scarce stone and iron.' }
 };
+for(const [id,base] of Object.entries({stormholt:'thornwall',goldmere:'sunspire',ravenfell:'vesper',oakwarden:'wintermere',dawnreach:'ashen',saltwynd:'redharbor'})) REGIONS[id]={...REGIONS[base]};
 const add = (name, category, cost, turns, extra = {}) => ({ name, category, cost, turns, icon: '◆', description: name, ...extra });
 Object.assign(BUILDINGS, {
   intelligenceOffice: add('Whisper Office', 'Government', {gold:60,wood:35,stone:20}, 3, {settlement:true,description:'Supports 1 / 3 / 5 spies. Level II unlocks counterintelligence; Level III strengthens networks.'}),
@@ -64,7 +75,7 @@ Object.assign(BUILDINGS, {
   stable: add('Military Stables', 'Military', {wood: 40, stone: 15, horses: 6, gold: 35}, 2, {settlement: true}),
   siegeWorks: add('Siege Workshop', 'Military', {wood: 55, iron: 20, tools: 10, gold: 45}, 3, {settlement: true, requires: {workshop: 1}}),
   armory: add('Armory', 'Military', {wood: 35, stone: 25, iron: 20, gold: 45}, 3, {settlement: true, recipe: {input: {iron: 4, wood: 2}, output: {arms: 4}}}),
-  watchtower: add('Watchtower', 'Defense', {wood: 25, stone: 20, gold: 25}, 2),
+  watchtower: add('Watchtower', 'Defense', {wood: 25, stone: 20, gold: 25}, 2, {description:'Continuously observes 6 hexes at Level I, 7 at Level II, and 8 at Level III.'}),
   greatGranary: add('Great Granary', 'Great Projects', {wood: 100, stone: 100, tools: 35, gold: 100}, 6, {settlement: true, requires: {storehouse: 3}, maxLevel: 1}),
   royalArsenal: add('Royal Arsenal', 'Great Projects', {iron: 100, tools: 40, gold: 140}, 6, {settlement: true, requires: {armory: 3}, recipe: {input: {iron: 8, wood: 4}, output: {arms: 12}}, maxLevel: 1}),
   greatStable: add('Great Stable', 'Great Projects', {horses: 30, wood: 100, tools: 20, gold: 130}, 5, {settlement: true, requires: {stable: 3}, yield: {horses: 5}, maxLevel: 1}),
@@ -124,4 +135,4 @@ Object.assign(UNITS, {
   trebuchet: unit('Trebuchets','siege',.6,.5,1,{wood:45,iron:20,tools:18,gold:50},{siegeWorks:3},{breach:24,ranged:2.5,bombardRange:3}),
   siege: unit('Legacy Siege Engines','siege',.8,.5,2,{wood:30,iron:16,gold:35},{siegeWorks:2},{breach:9,legacy:true,bombardRange:2})
 });
-for (const u of Object.values(UNITS)) u.description = `${u.count} per base muster. ${Object.entries(u.requires).map(([b,l])=>`${BUILDINGS[b].levels[l-1].name} required`).join(', ')}. ${u.family === 'siege' ? 'Slow; attacks walls over successive turns.' : u.antiCavalry ? 'Counters cavalry charges.' : u.piercing ? 'Armor-piercing volleys.' : u.family === 'mounted' ? 'Charge, flank and pursue; weak in forests and against spears.' : u.family === 'ranged' ? 'Volleys precede melee; protected by hills and walls.' : 'Holds the main battle line.'}`;
+for (const u of Object.values(UNITS)) u.description = `${u.count} per base muster. Vision ${['Scouts','Light Cavalry'].includes(u.name)?5:u.family==='mounted'?4:u.family==='ranged'?3:u.family==='siege'?1:2} hexes. ${Object.entries(u.requires).map(([b,l])=>`${BUILDINGS[b].levels[l-1].name} required`).join(', ')}. ${u.family === 'siege' ? 'Slow; attacks walls over successive turns.' : u.antiCavalry ? 'Counters cavalry charges.' : u.piercing ? 'Armor-piercing volleys.' : u.family === 'mounted' ? 'Charge, flank and pursue; weak in forests and against spears.' : u.family === 'ranged' ? 'Volleys precede melee; protected by hills and walls.' : 'Holds the main battle line.'}`;

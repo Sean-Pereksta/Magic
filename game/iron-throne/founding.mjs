@@ -1,8 +1,10 @@
-import { BUILDINGS, HOUSES, QUALITY, TERRAINS } from './data.mjs';
+import { refreshKnowledge } from './fog.mjs';
+import { BUILDINGS, CAMPAIGN_HOUSES, QUALITY, TERRAINS } from './data.mjs';
 import { emptyUnits } from './economy.mjs';
 import { distance, neighbors, passable, sample } from './world-hex.mjs';
 export const STARTING_RADIUS=4, CAPITAL_SEPARATION=8;
-export const CAPITAL_NAMES=Object.fromEntries(HOUSES.map((h,i)=>[h.id,['Emberkeep','Frostwatch','Briarhold','Solstice','Moonveil','Redhaven'][i]]));
+export const capitalSeparation=s=>CAPITAL_SEPARATION+(s.kingdoms.length-6)/2;
+export const CAPITAL_NAMES=Object.fromEntries(CAMPAIGN_HOUSES.map((h,i)=>[h.id,['Emberkeep','Frostwatch','Briarhold','Solstice','Moonveil','Redhaven','Stormwatch','Gildenspire','Ravenhold','Oakheart','Dawnkeep','Saltwatch'][i]]));
 const BASE=['farm','lumber','quarry','mine'];
 // Retain the old opening structures, plus the four guaranteed basic producers.
 // Resource stocks and deposit quality never depend on the House.
@@ -11,10 +13,10 @@ export const STARTING_BUILDINGS={
   sunspire:[...BASE,'ranch'],vesper:BASE,redharbor:[...BASE,'farm','ranch','ranch']
 };
 export const foundedCapitals=s=>Object.values(s.founding?.houses||{}).filter(h=>h.founded).map(h=>s.tiles[h.capital]).filter(Boolean);
-export const unFoundedHouses=s=>HOUSES.map(h=>h.id).filter(id=>!s.founding?.houses[id]?.founded);
+export const unFoundedHouses=s=>s.kingdoms.map(h=>h.id).filter(id=>!s.founding?.houses[id]?.founded);
 export function initializeFounding(s) {
   s.phase='founding';s.turn=0;
-  s.founding={houses:Object.fromEntries(HOUSES.map(h=>[h.id,{founded:false,capital:null}]))};
+  s.founding={houses:Object.fromEntries(s.kingdoms.map(h=>[h.id,{founded:false,capital:null}]))};
 }
 // Reachable territory prevents claims and starter roads jumping mountains, seas or other borders.
 export function startingArea(s,capital,owner,blocked=new Set()) {
@@ -58,11 +60,11 @@ export function foundingOutlook(s,id) {
 }
 function basicError(s,owner,id,capitals=foundedCapitals(s)) {
   const t=s.tiles[id];
-  if(!HOUSES.some(h=>h.id===owner)||!t)return 'Select a tile on the map.';
+  if(!s.kingdoms.some(h=>h.id===owner)||!t)return 'Select a tile on the map.';
   if(t.terrain==='water')return 'A starting city cannot be founded on water.';
   if(t.terrain==='mountain')return 'A starting city cannot be founded on mountains.';
   if(t.building||t.project)return 'This tile already contains a settlement or structure.';
-  if(capitals.some(c=>distance(t,c)<CAPITAL_SEPARATION))return 'Too close to another kingdom. Starting capitals must be at least 8 hexes apart.';
+  if(capitals.some(c=>distance(t,c)<capitalSeparation(s)))return `Too close to another kingdom. Starting capitals must be at least ${capitalSeparation(s)} hexes apart.`;
   if(t.owner&&t.owner!==owner)return 'A starting city cannot be founded in another kingdom’s territory.';
   return null;
 }
@@ -84,7 +86,7 @@ export function planFoundings(s,owners=unFoundedHouses(s),fixed=[]) {
     const owner=owners[index];
     for(const t of candidates.get(owner)){
       if(--budget<0)return null;
-      if(taken.has(t.id)||capitals.some(c=>distance(c,t)<CAPITAL_SEPARATION))continue;
+      if(taken.has(t.id)||capitals.some(c=>distance(c,t)<capitalSeparation(s)))continue;
       const footprint=startingFootprint(s,owner,t,{blocked:taken});if(!footprint)continue;
       const next=new Set([...taken,...footprint.territory]);
       const remaining=visit(index+1,next,[...capitals,t]);
@@ -120,13 +122,14 @@ export function finishFounding(s) {
   if(s.phase!=='founding'||unFoundedHouses(s).length)return false;
   s.phase='playing';s.turn=1;s.diplomacy.messages.turn=1;
   for(const c of Object.values(s.courts||{}))if(c.messages)c.messages.turn=1;
-  s.events.unshift({turn:1,message:'THE REALM IS FOUNDED. Six houses contest the crown.',kind:'council'});
+  refreshKnowledge(s);
+  s.events.unshift({public:true,turn:1,message:`THE REALM IS FOUNDED. ${s.kingdoms.length} houses contest the crown.`,kind:'council'});
   return true;
 }
 export function foundCity(s,owner,id) {
   const error=foundingCheck(s,owner,id);if(error)return {ok:false,error};
   placeStartingFootprint(s,owner,startingFootprint(s,owner,s.tiles[id]));
-  finishFounding(s);return {ok:true};
+  finishFounding(s);refreshKnowledge(s);return {ok:true};
 }
 export function foundAIKingdoms(s) {
   const pending=unFoundedHouses(s);
@@ -135,7 +138,7 @@ export function foundAIKingdoms(s) {
   const plan=planFoundings(s,pending);
   if(!plan)return {ok:false,error:'No viable founding plan remains.'};
   for(const footprint of plan)placeStartingFootprint(s,footprint.owner,footprint);
-  finishFounding(s);return {ok:true};
+  finishFounding(s);refreshKnowledge(s);return {ok:true};
 }
 export function validateFoundingSave(s) {
   const fail=()=>{throw new Error('Damaged founding data.');};
@@ -143,12 +146,12 @@ export function validateFoundingSave(s) {
   if(s.worldGeneration!==1||!['founding','playing'].includes(s.phase)||!s.regions||!s.founding?.houses)fail();
   if(s.phase==='founding'&&s.turn!==0||s.phase==='playing'&&s.turn<1)fail();
   const capitals=[];
-  for(const h of HOUSES){
+  for(const h of s.kingdoms){
     const f=s.founding.houses[h.id];if(!f||typeof f.founded!=='boolean')fail();
     if(!f.founded){if(f.capital!==null||s.phase!=='founding'||s.armies.some(a=>a.owner===h.id)||Object.values(s.tiles).some(t=>t.owner===h.id))fail();continue;}
-    const t=s.tiles[f.capital];if(!t||!passable(t)||capitals.some(c=>distance(c,t)<CAPITAL_SEPARATION))fail();
+    const t=s.tiles[f.capital];if(!t||!passable(t)||capitals.some(c=>distance(c,t)<capitalSeparation(s)))fail();
     if(s.phase==='founding'&&(t.capital!==h.id||t.owner!==h.id||t.building!=='city'))fail();
     capitals.push(t);
   }
-  if(s.phase==='founding'&&capitals.length===6)fail();
+  if(s.phase==='founding'&&capitals.length===s.kingdoms.length)fail();
 }

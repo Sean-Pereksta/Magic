@@ -1,4 +1,4 @@
-import { HOUSES, RESOURCES } from './data.mjs';
+import { RESOURCES } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, distance, findPath, kingdom, passable, settlements, treaty } from './core.mjs';
 import { borderThreat, capitalOf } from './living.mjs';
 
@@ -83,7 +83,7 @@ export function detectPromise(s, rulerId, message, actorHouseId = PLAYER) {
   const text = message.toLowerCase().replace(/[’]/g, "'");
   if (!/\b(?:i will|i'll|i promise|i pledge|i give my word|i won't|i will not)\b/.test(text) || /\b(?:might|maybe|perhaps|could|would|not sure|don't promise|do not promise)\b/.test(text)) return null;
   if (/\bi (?:will not|won't)\s+(?!attack\b)/.test(text)) return null;
-  const named = HOUSES.filter(h => h.id !== actorHouseId && text.includes(h.id));
+  const named = s.kingdoms.filter(h => h.id !== actorHouseId && text.includes(h.id));
   const third = named.find(h => h.id !== rulerId);
   const duration = /next turn/.test(text) ? 1 : Number(text.match(/(?:in|within|give me)\s+(\d{1,2})\s+turn/)?.[1] || 5);
   const deadline = text.match(/(?:before|by)(?: the end of)? turn\s+(\d{1,6})/);

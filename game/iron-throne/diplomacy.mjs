@@ -1,9 +1,12 @@
+import { refreshKnowledge, knowledgeView } from './fog.mjs';
+import { operationPledgeProgress, updateOperations, supplyOperation } from './operations.mjs';
+import { operationFor, operationMember } from './cooperation-state.mjs';
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court, resetMessages } from './house-control.mjs';
 import { finishPlans, recordPlayerPlans } from './plans.mjs';
-import { resolveEspionage, visiblePlans } from './espionage.mjs';
+import { resolveEspionage, knownRelationships, visiblePlans, visibleOperations } from './espionage.mjs';
 import { politicalAttitude } from './politics.mjs';
 import { finishStrategyRound } from './strategy.mjs';
-import { HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
+import { CAMPAIGN_HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
@@ -18,7 +21,7 @@ export function validateIntent(value) {
   const i = { type: value.type, duration: value.duration ?? 10, giveResource: value.giveResource ?? 'gold', giveAmount: value.giveAmount ?? 0, receiveResource: value.receiveResource ?? 'food', receiveAmount: value.receiveAmount ?? 0, targetId: value.targetId ?? '' };
   if(value.tradeKind!==undefined){if(!['immediate','recurring','purchase','strategic','emergency','preferential'].includes(value.tradeKind))return null;i.tradeKind=value.tradeKind;}
   if (value.conditionHouseId !== undefined) i.conditionHouseId = value.conditionHouseId;
-  if (i.conditionHouseId !== undefined && (typeof i.conditionHouseId !== 'string' || !HOUSES.some(h => h.id === i.conditionHouseId) || !['PLEDGE_WAR', 'GUARANTEE'].includes(i.type))) return null;
+  if (i.conditionHouseId !== undefined && (typeof i.conditionHouseId !== 'string' || !CAMPAIGN_HOUSES.some(h => h.id === i.conditionHouseId) || !['PLEDGE_WAR', 'GUARANTEE'].includes(i.type))) return null;
   if (!Number.isInteger(i.duration) || i.duration < (isPlayerPromise(i) ? 1 : 2) || i.duration > 20 || !RESOURCES.includes(i.giveResource) || !RESOURCES.includes(i.receiveResource) || !Number.isInteger(i.giveAmount) || i.giveAmount < 0 || i.giveAmount > 1000 || !Number.isInteger(i.receiveAmount) || i.receiveAmount < 0 || i.receiveAmount > 1000 || typeof i.targetId !== 'string' || i.targetId.length > 60) return null;
   return i;
 }
@@ -204,12 +207,13 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
     s.pledges.push({ id: `pledge-${s.nextId++}`, debtor: rulerId, creditor: actorHouseId, eventAfter: s.nextId - 1, intent: i, deadline: s.turn + i.duration, status: 'pending', delivered: false, created: s.turn, held: 0, breached: false });
   }
   recordPoliticalMemory(s, rulerId, actorHouseId, 'agreement', `${LABELS[i.type]} agreed with ${player.name}; ${i.giveAmount} ${i.giveResource}${i.type === 'PROMISE' ? ' promised' : ' paid'}.`, 7);
-  log(s, `${LABELS[i.type]} with ${k.name} ratified.`, 'diplomacy');
+  log(s, `${LABELS[i.type]} with ${k.name} ratified.`, 'diplomacy', {audience:[actorHouseId,rulerId]});
   return { ok: true };
 }
 function stateTransfer(s, tileId, owner) { s.tiles[tileId].owner = owner; rebuildTerritory(s); }
 export function deliverPledge(s, id, actorHouseId = PLAYER) {
   const p = s.pledges.find(p => p.id === id && p.debtor === actorHouseId && p.status === 'pending');
+  if(p?.operationId)return supplyOperation(s,actorHouseId,p.operationId);
   if (s.outcome || !p || p.intent.type !== 'PROMISE') return { ok: false, error: 'That promise is no longer pending.' };
   const cost = { [p.intent.giveResource]: p.intent.giveAmount }, player = kingdom(s, actorHouseId);
   if (!canAfford(player, cost)) return { ok: false, error: 'You cannot afford this delivery yet.' };
@@ -223,21 +227,26 @@ function finishPledge(s, p, fulfilled) {
   debtor.reputation[fulfilled ? 'kept' : 'broken']++;
   const trust = fulfilled ? Math.round(6 + observer.honor * 6) : -Math.ceil(13 + observer.honor * 12);
   changeRelation(s, p.creditor, p.debtor, { opinion: fulfilled ? 8 : -18, trust, respect: fulfilled ? 8 : -10, grievance: fulfilled ? -3 : 20, reliability: fulfilled ? 8 : -18 }, `${LABELS[p.intent.type]} promise ${p.status}.`);
-  if (!fulfilled) for (const k of s.kingdoms.filter(k => ![p.creditor, p.debtor].includes(k.id))) changeRelation(s, k.id, p.debtor, { opinion: -5, trust: -7, reliability: -4 }, 'A public oath to another House was broken.');
+  if (!fulfilled && !p.operationId) for (const k of s.kingdoms.filter(k => ![p.creditor, p.debtor].includes(k.id))) changeRelation(s, k.id, p.debtor, { opinion: -5, trust: -7, reliability: -4 }, 'A public oath to another House was broken.');
   recordPoliticalMemory(s, p.creditor, p.debtor, `promise-${p.status}`, `${debtor.name} ${p.status} a promise: ${LABELS[p.intent.type]}${p.intent.targetId ? ` against/at ${p.intent.targetId}` : ''}.`, 10);
-  remember(s, p.debtor, `Our ${LABELS[p.intent.type]} pledge was ${p.status}.`, 8);
+  if(!p.operationId)remember(s, p.debtor, `Our ${LABELS[p.intent.type]} pledge was ${p.status}.`, 8);
   if (isHumanHouse(s, p.debtor)) contact(s, p.creditor, `oath-${p.id}`, fulfilled ? 'Your word was followed by deeds. We remember who stood by us when it mattered.' : `You gave your word: ${LABELS[p.intent.type]}. The deadline passed without your help. Do not expect another courteous speech to repair this.`, 100000, p.debtor);
   else if (isHumanHouse(s, p.creditor)) contact(s, p.debtor, `oath-${p.id}`, fulfilled ? 'Our council has fulfilled the terms we agreed. Let the record show that our word was kept.' : 'We have failed to meet our obligation. I will not pretend otherwise.', 100000, p.creditor);
-  log(s, `${debtor.name}: ${LABELS[p.intent.type]} pledge ${p.status}.`, 'diplomacy');
+  if(!p.operationId)log(s, `${debtor.name}: ${LABELS[p.intent.type]} pledge ${p.status}.`, 'diplomacy', {audience:[p.debtor,p.creditor]});
+  if(p.operationId&&!fulfilled&&relation(s,p.creditor,p.debtor).trust<0)s.treaties=s.treaties.filter(t=>!(['alliance','access'].includes(t.type)&&t.parties.includes(p.creditor)&&t.parties.includes(p.debtor)));
 }
-export function verifyPledges(s) {
-  for (const p of s.pledges.filter(p => p.status === 'pending')) {
+export function verifyPledges(s,{operationsOnly=false,skipOperations=false}={}) {
+  for (const p of s.pledges.filter(p => p.status === 'pending'&&(!operationsOnly||p.operationId)&&(!skipOperations||!p.operationId))) {
     const i = p.intent, forces = armiesOf(s, p.debtor), target = s.tiles[i.targetId];
     if (p.loan && s.turn >= p.deadline && canAfford(kingdom(s, p.debtor), { [i.giveResource]: i.giveAmount })) {
       pay(kingdom(s, p.debtor), { [i.giveResource]: i.giveAmount }); pay(kingdom(s, p.creditor), { [i.giveResource]: i.giveAmount }, 1); p.delivered = true;
       recordTrade(s, p.debtor, p.creditor, i.giveResource, i.giveAmount, 'repayment');
     }
-    if (isPlayerPromise(i)) {
+    if(p.operationId){
+      const progress=operationPledgeProgress(s,p);
+      if(progress==='released')p.status='released';
+      else if(progress!=='pending')finishPledge(s,p,progress==='fulfilled');
+    } else if (isPlayerPromise(i)) {
       const triggered = p.triggered, progress = promiseProgress(s, p);
       if (!triggered && p.triggered) contact(s, p.creditor, `called-${p.id}`, `${kingdom(s, p.conditionHouseId).name} has attacked us. Your oath is now called. We expect your banners by turn ${p.deadline}.`, 100000, p.debtor);
       if (progress === 'released') { p.status = 'released'; appendConversation(s, p.creditor, 'council', 'Conditional oath expired without its trigger. No penalty or reward.', { kind: 'pledge', actorHouseId: p.debtor }); }
@@ -261,7 +270,7 @@ export function verifyPledges(s) {
       if (p.lastReminder !== s.turn) { appendConversation(s, p.creditor, 'council', `PROMISE DUE IN ${p.deadline - s.turn} TURNS`, { kind: 'pledge', actorHouseId: p.debtor }); p.lastReminder = s.turn; }
     }
   }
-  s.pledges = s.pledges.filter((p, i, all) => p.status === 'pending' || i >= all.length - 60);
+  s.pledges = s.pledges.filter((p, i, all) => p.operationId || p.status === 'pending' || i >= all.length - 60);
 }
 export function resolveRecurringTrade(s) {
   for (const t of s.treaties.filter(t => t.type === 'recurring' && t.expires > s.turn && t.lastPaid < s.turn)) {
@@ -291,11 +300,6 @@ export function resolveRecurringTrade(s) {
 function aiDiplomacy(s) {
   if (s.turn % 6 !== 0) return;
   for (const k of s.kingdoms.filter(k => isAiHouse(s,k.id) && alive(s,k.id))) {
-    const danger = s.kingdoms.find(o => o.id!==k.id && alive(s,o.id) && relation(s,k.id,o.id).fear>35 && relation(s,k.id,o.id).trust<10);
-    if (danger) {
-      const partner = s.kingdoms.find(o => isAiHouse(s,o.id) && ![k.id,danger.id].includes(o.id) && alive(s,o.id) && !atWar(s,k.id,o.id) && !treaty(s,k.id,o.id,'alliance') && (atWar(s,o.id,danger.id)||relation(s,o.id,danger.id).trust<0));
-      if(partner){addTreaty(s,k.id,partner.id,'alliance',10);log(s,`${k.name} and ${partner.name} form a defensive alliance against ${danger.name}.`,'diplomacy');}
-    }
     for (const enemy of s.kingdoms.filter(o=>o.id!==k.id && alive(s,o.id))) {
       if(relation(s,k.id,enemy.id).grievance>=50 && k.resources.food>=80){
         const recipient=s.kingdoms.find(o=>![enemy.id,k.id].includes(o.id)&&alive(s,o.id)&&atWar(s,o.id,enemy.id)&&!atWar(s,o.id,k.id)&&!tradeBlocked(s,o.id,k.id));
@@ -306,62 +310,71 @@ function aiDiplomacy(s) {
         if(ratio>2.2 && relation(s,k.id,enemy.id).opinion<25){declareWar(s,k.id,enemy.id);s.pledges.filter(p=>p.debtor===k.id&&p.creditor===enemy.id&&p.status==='pending').forEach(p=>{p.breached=true;});}
       }
     }
-    const other=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade')&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id));
-    if(other){addTreaty(s,k.id,other.id,'trade',12);log(s,`${k.name} and ${other.name} sign a trade accord.`,'diplomacy');}
+
   }
 }
 export function endTurn(s) {
   if (s.outcome || s.phase==='founding') return s;
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   updatePoliticalState(s, { sendDispatches: false });
-  for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
-  finishStrategyRound(s);
-  s.turn++; resolveRecurringTrade(s); verifyPledges(s); updatePoliticalState(s); for (const actor of humanControlledHouseIds(s)) scheduleTrade(s,actor);
+  for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); verifyPledges(s,{operationsOnly:true}); updateOperations(s,{afterMovement:true}); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
+  finishStrategyRound(s); refreshKnowledge(s);
+  s.turn++; resolveRecurringTrade(s); verifyPledges(s,{skipOperations:true}); updatePoliticalState(s); for (const actor of humanControlledHouseIds(s)) scheduleTrade(s,actor);
   resetMessages(s); s.diplomacy.processedTurn = s.turn;
   s.treaties = s.treaties.filter(t => t.expires > s.turn && t.parties.every(id => alive(s, id)));
-  checkVictory(s); rebuildTerritory(s);
+  checkVictory(s); rebuildTerritory(s); refreshKnowledge(s);
   return s;
 }
 export function retrieveMemories(s, rulerId, message, actorHouseId = PLAYER) {
   const words = new Set(message.toLowerCase().split(/\W+/).filter(w => w.length > 3));
   return kingdom(s, rulerId).memories.filter(m=>!m.subject||m.subject===actorHouseId).map(m => ({ ...m, score: .5 * Math.exp(-(s.turn - m.turn) / 20) + .3 * m.importance / 10 + .2 * m.text.toLowerCase().split(/\W+/).filter(w => words.has(w)).length })).sort((a, b) => b.score - a.score).slice(0, 5).map(m => `Turn ${m.turn}: ${m.text}`);
 }
+export const negotiationKey=(rulerId,raw)=>`${rulerId}:${JSON.stringify(validateIntent(raw))}`;
+export function disclosedDeal(s,rulerId,raw,actorHouseId=PLAYER) {
+  if(s.knowledgeView)return s.negotiationVerdicts?.[negotiationKey(rulerId,raw)]||{status:'pending',intent:validateIntent(raw),reason:'Awaiting the court’s review.',factors:[]};
+  const v=evaluateDeal(s,rulerId,raw,actorHouseId);
+  return {...v,factors:[],reason:v.status==='accept'?'The council accepts these terms; ratification makes them binding.':v.status==='counter'?'The council offers these revised terms.':'The council declines these terms. Adjust the offer or gather intelligence.'};
+}
 export function makeContext(s, rulerId, message, { proposal = null, event = null, actorHouseId = PLAYER } = {}) {
+  const source=s;s=knowledgeView(s,actorHouseId,{refresh:false});
   const k = kingdom(s, rulerId), r = relation(s, rulerId, actorHouseId), military = borderThreat(s, rulerId, actorHouseId), economy = economicRelationship(s, rulerId, actorHouseId);
   const interpretation = s.controllers ? k.conversationSummaries?.[actorHouseId] || '' : k.conversationSummary;
   const rows = s.kingdoms.filter(h => alive(s, h.id));
-  // The current game has a public board, but a rival treasury, orders and private
-  // conversations are not public intelligence. Never ship the whole campaign.
-  const houses = rows.map(h => ({ id: h.id, name: h.name, armyStrength: Math.round(armiesOf(s, h.id).reduce((n, a) => n + strength(a), 0) / 10) * 10, settlements: settlements(s, h.id).slice(0, 8).map(t => ({ id: t.id, name: String(t.name || '').slice(0, 45), capital: t.capital === h.id })), atWarWith: rows.filter(o => atWar(s, h.id, o.id)).map(o => o.id), allies: rows.filter(o => o.id !== h.id && treaty(s, h.id, o.id, 'alliance')).map(o => o.id) }));
-  const self = { economicNeeds: economicNeeds(s,rulerId), constructionPlan:k.economicPlan||null, resources: { ...k.resources }, production: grossProduction(s, rulerId), shortages: RESOURCES.filter(resource => k.resources[resource] < 40), buildings: Object.values(s.tiles).filter(t => t.owner === rulerId && t.building).slice(0, 18).map(t => ({ id: t.id, type: t.building, walls: t.walls, market: t.market, envoyOffice: !!t.envoyOffice, chancery: !!t.chancery })), armies: armiesOf(s, rulerId).slice(0, 16).map(a => ({ id: a.id, tile: a.tile, strength: Math.round(strength(a)), order: a.order, target: a.target })), strategicGoal: k.goal, priorities: diplomaticPriorities(s, rulerId) };
+  // Dialogue receives only the viewer’s observations and disclosed agreements.
+  // The authoritative court can judge terms without disclosing its private inputs.
+  const houses = rows.map(h => ({ id: h.id, name: h.name, observedArmyStrength: Math.round(armiesOf(s, h.id).reduce((n, a) => n + strength(a), 0) / 10) * 10, knownCapital:s.founding?.houses[h.id]?.capital||Object.values(s.tiles).find(t=>t.capital===h.id)?.id||null, settlements: settlements(s, h.id).slice(0, 8).map(t => ({ id: t.id, name: String(t.name || '').slice(0, 45), capital: t.capital === h.id })), atWarWith: rows.filter(o => atWar(s, h.id, o.id)).map(o => o.id), allies: rows.filter(o => o.id !== h.id && treaty(s, h.id, o.id, 'alliance')).map(o => o.id) }));
+  const self = {knowledge:'Only player-observed forces and dated reports may be discussed. Private strategy and treasury are unknown.',buildings:[],armies:armiesOf(s,rulerId).map(a=>({id:a.id,tile:a.tile,strength:Math.round(strength(a))})),priorities:[]};
   const relationship = Object.fromEntries(['opinion', 'trust', 'respect', 'fear', 'wariness', 'dependency', 'grievance', 'reliability', 'generosity', 'aggression'].map(key => [key, r[key] ?? 0]));
   const context = {
     turn: s.turn, rulerId, actorHouseId, targetHouseId: rulerId, message: message.slice(0, 600),
     history: (court(s, actorHouseId).conversations[rulerId] || []).slice(-12).map(m => ({ role: m.role, text: m.text.slice(0, 600) })),
     memories: retrieveMemories(s, rulerId, message, actorHouseId).map(m => m.slice(0, 500)), summary: (k.relationshipSummaries?.[actorHouseId] || k.memorySummary).slice(0, 900),
     world: {
-      knowledge: 'Public map; approximate foreign strength. Foreign treasuries, private chats and unobserved orders are unknown.',
+      knowledge: 'Fog of war. Army totals include only currently observed troops, never the whole enemy military. Capital locations are public; unobserved ownership, resources, buildings, troops and private plans are unknown. Dated reports may be stale.',
       houses, self, relationship, economicRelationship: economy,
       politicalPosture: politicalAttitude(s,rulerId,actorHouseId),
       disclosedPlans: visiblePlans(s,actorHouseId,rulerId).slice(0,3).map(r=>({planId:r.planId,observedTurn:r.turn,...r.snapshot})),
+      sharedOperations: (s.cooperation?.operations||[]).filter(o=>[rulerId,actorHouseId].every(id=>operationMember(o,id)?.status==='accepted')).slice(-2).map(o=>({name:o.name,status:o.status,target:o.target,targetTile:o.targetTile,attackStart:o.attackStart,attackEnd:o.attackEnd,roles:o.participants.filter(p=>p.status==='accepted').map(p=>({house:p.house,role:p.role,rally:p.rally}))})),
+      discoveredOperations: visibleOperations(s,actorHouseId).filter(r=>r.house===rulerId).slice(0,2).map(r=>({observedTurn:r.turn,...r.snapshot})),
       intelligenceIncidents: (s.intelligence?.incidents||[]).filter(i=>[i.owner,i.actor].includes(rulerId)&&[i.owner,i.actor].includes(actorHouseId)).slice(-4),
       conversationInterpretation: interpretation ? `Unverified ruler interpretation: ${interpretation}` : '',
       knownPlayerConstruction: Object.values(s.tiles).filter(t => t.owner === actorHouseId && (t.building || t.project)).slice(0, 16).map(t => ({ tile: t.id, building: t.building, construction: t.project?.type || null })),
       militaryRelationship: { ...military, nearby: military.nearby.slice(0, 12) },
       recentChanges: (r.history || []).slice(-5),
       playerReputation: { ...kingdom(s, actorHouseId).reputation },
-      openNegotiations: (court(s, actorHouseId).offers?.[rulerId] || []).slice(0, 3).map(i => { const v = evaluateDeal(s, rulerId, i, actorHouseId); return { proposal: v.intent, status: v.status, reason: v.reason, counter: v.counter || null }; }),
+      openNegotiations: (court(s, actorHouseId).offers?.[rulerId] || []).slice(0, 3).map(i => { const v = disclosedDeal(source, rulerId, i, actorHouseId); return { proposal: v.intent, status: v.status, reason: v.reason, counter: v.counter || null }; }),
       wars: s.wars.slice(0, 15), treaties: s.treaties.filter(t => t.parties.includes(rulerId) && t.expires > s.turn).slice(-12).map(t => ({ type: t.type, parties: t.parties, expires: t.expires, targetId: t.targetId })),
-      pledges: s.pledges.filter(p => [p.debtor, p.creditor].includes(rulerId)).slice(-8).map(p => ({ debtor: p.debtor, creditor: p.creditor, intent: p.intent, deadline: p.deadline, status: p.status, triggered: p.triggered, held: p.held })),
+      pledges: s.pledges.filter(p => [p.debtor, p.creditor].includes(rulerId)&&(!p.operationId||operationMember(operationFor(s,p.operationId),actorHouseId)?.status==='accepted')).slice(-8).map(p => ({ debtor: p.debtor, creditor: p.creditor, intent: p.intent, deadline: p.deadline, status: p.status, triggered: p.triggered, held: p.held })),
       recentMilitaryEvents: s.militaryEvents.filter(e => [e.attacker, e.defender].includes(rulerId) || e.attacker === actorHouseId).slice(-6),
-      otherHouseRelations: rows.filter(h => ![rulerId, actorHouseId].includes(h.id)).map(h => ({ id: h.id, opinion: relation(s, rulerId, h.id).opinion, trust: relation(s, rulerId, h.id).trust, alliance: !!treaty(s, rulerId, h.id, 'alliance') })),
+      otherHouseRelations: knownRelationships(s,actorHouseId,rulerId),
       ambassadorPresent: stationedAmbassador(s, actorHouseId, rulerId),
       persuasion: { kind: message ? message.toLowerCase().includes('sorry') ? 'apology' : 'conversation' : 'event', repeated: Object.entries(r.speech || {}).filter(([, value]) => value.count >= 2).map(([key]) => key) }
     }
   };
   if (proposal) {
-    const v = evaluateDeal(s, rulerId, proposal, actorHouseId);
-    context.world.negotiation = { proposal: v.intent, status: v.status, counter: v.counter || null, reason: v.reason, factors: v.factors || [] };
+    const v = disclosedDeal(source, rulerId, proposal, actorHouseId);
+    if(v.status==='pending')context.world.proposedTerms=v.intent;
+    else context.world.negotiation = { proposal: v.intent, status: v.status, counter: v.counter || null, reason: v.reason, factors: v.factors || [] };
   }
   if (event) context.world.dispatch = String(event).slice(0, 500);
   // Fixed collections plus a final whole-payload bound prevent save growth from
@@ -393,12 +406,13 @@ export function acceptRulerMemories(s, rulerId, response, actorHouseId = PLAYER)
 }
 export function scriptedReply(s, rulerId, message, options = {}) {
   const actorHouseId = options.actorHouseId || PLAYER;
+  const source=s;s=knowledgeView(s,actorHouseId,{refresh:false});
   const k = kingdom(s, rulerId), r = relation(s, rulerId, actorHouseId), text = message.toLowerCase();
   const proposedPromise = detectPromise(s, rulerId, message, actorHouseId);
   if (proposedPromise) return { reply: `Then let us be precise. ${describeIntent(proposedPromise)}. The deadline is turn ${s.turn + proposedPromise.duration}. Is that your word?`, tone: 'guarded', intents: [], promiseDetected: proposedPromise, speechAct: 'promise' };
   if (/\b(?:might|maybe|perhaps|could|would)\b/.test(text) && /help|promise|aid|join|send/.test(text)) return { reply: 'Are you offering a firm commitment, Regent? Name what you will do, where, and by which turn. I will not mistake a possibility for your oath.', tone: 'guarded', intents: [], speechAct: 'question' };
   if (options.proposal) {
-    const verdict = evaluateDeal(s, rulerId, options.proposal, actorHouseId), i = verdict.intent;
+    const verdict = disclosedDeal(source, rulerId, options.proposal, actorHouseId), i = verdict.intent;
     const opening = k.greed > .8 ? 'Let us speak of terms that profit both courts.' : k.honor > .8 ? 'I weigh the obligations as carefully as the payment.' : 'There is a price to committing my House.';
     return { reply: `${opening} ${verdict.reason}`, tone: verdict.status === 'reject' ? 'cold' : 'guarded', intents: i ? [i] : [], speechAct: verdict.status === 'counter' ? 'counteroffer' : verdict.status, ...(verdict.counter ? { counterProposal: verdict.counter } : {}) };
   }
@@ -412,7 +426,7 @@ export function scriptedReply(s, rulerId, message, options = {}) {
     return {reply:known?`Your report from turn ${known.turn} concerns ${known.text} Intentions can change when circumstances do.`:`${posture.label}: ${diplomaticPriorities(s,rulerId)[0]} I will not disclose private military preparations.`,tone:'guarded',intents:[]};
   }
   const military = borderThreat(s, rulerId, actorHouseId), economic = economicRelationship(s, rulerId, actorHouseId);
-  const third = HOUSES.find(h => ![actorHouseId, rulerId].includes(h.id) && text.includes(h.id));
+  const third = s.kingdoms.find(h => ![actorHouseId, rulerId].includes(h.id) && text.includes(h.id));
   if (third && /think|feel|why|abandon|enemy|tell|opinion/.test(text)) {
     const other = relation(s, rulerId, third.id);
     const stance = atWar(s, rulerId, third.id) ? 'Their banners threaten us; aid against them would have weight.' : treaty(s, rulerId, third.id, 'alliance') ? 'We have a sworn alliance. I will not discard it for a pleasant conversation.' : other.opinion < 0 ? 'We have cause to distrust them.' : 'There is room for cooperation when our interests align.';
@@ -421,7 +435,7 @@ export function scriptedReply(s, rulerId, message, options = {}) {
   if (/your (?:army|armies|soldiers|troops|banners)/.test(text) && /border|near/.test(text)) {
     const forces = borderThreat(s, actorHouseId, rulerId).nearby;
     const pledge = s.pledges.find(p => p.debtor === rulerId && p.creditor === actorHouseId && p.status === 'pending');
-    return { reply: forces.length ? `Our banners stand at ${forces.slice(0, 3).map(a => a.tile).join(', ')}. ${pledge ? 'Their orders serve the military obligation we agreed.' : atWar(s, rulerId, actorHouseId) ? 'We are at war, Regent. Their purpose should be clear.' : 'My captains are protecting the interests of this House. We can discuss access or a withdrawal on exact terms.'}` : 'Our armies are not concentrated at your frontier. If you have a particular destination in mind, name it.', tone: 'guarded', intents: [] };
+    return { reply: forces.length ? `Our banners stand at ${forces.slice(0, 3).map(a => a.tile).join(', ')}. ${pledge ? 'Their orders serve the military obligation we agreed.' : atWar(s, rulerId, actorHouseId) ? 'We are at war, Regent. Their purpose should be clear.' : 'My captains are protecting the interests of this House. We can discuss access or a withdrawal on exact terms.'}` : 'You have no current observation of our forces here. If you have a particular destination in mind, name it.', tone: 'guarded', intents: [] };
   }
   if (/need|want|concern|soldiers near|army near/.test(text)) return { reply: `${diplomaticPriorities(s, rulerId).join(' ')}${economic.majorPartner ? ' Your shipments matter to us; I would prefer to preserve them.' : ''}`, intents: [], tone: 'neutral' };
   let type = /allian|ally|friend/.test(text) ? 'ALLIANCE' : /peace|truce/.test(text) ? 'PEACE' : /trade|commerce/.test(text) ? 'TRADE' : /gift|aid|donat/.test(text) ? 'AID' : (/declar.*war|attack you/.test(text) && !/\b(?:not|won't|never)\b/.test(text)) ? 'WAR' : null;
@@ -429,5 +443,5 @@ export function scriptedReply(s, rulerId, message, options = {}) {
   const intent = type ? validateIntent({ type, giveAmount: amount, duration: 10 }) : null;
   const repeated = Object.entries(r.speech || {}).some(([kind, value]) => ['praise', 'reassurance', 'apology'].includes(kind) && value.count >= 3);
   const opening = military.score >= 20 ? `Your soldiers stand close to ${settlements(s, rulerId)[0]?.name || 'our frontier'}. Explain their purpose before you speak of friendship.` : r.trust < 0 ? 'We remember the word you failed to keep. What deed will follow this speech?' : repeated ? 'You have praised our honor often enough, Regent. I would prefer to hear concrete terms.' : k.honor > .8 ? 'Your deeds give weight to your word in this hall.' : k.greed > .8 ? 'Prosperity is a language we both understand.' : k.aggression > .7 ? 'Speak plainly. My captains are waiting.' : 'I am listening, Regent.';
-  return { reply: `${opening} ${intent ? evaluateDeal(s, rulerId, intent, actorHouseId).reason : economic.majorPartner ? 'Our people benefit from your trade. Tell me what you seek in return.' : diplomaticPriorities(s, rulerId)[0]}`, intents: intent ? [intent] : [], tone: military.score >= 20 || r.trust < 0 ? 'guarded' : r.opinion > 0 ? 'neutral' : 'cold' };
+  return { reply: `${opening} ${intent ? disclosedDeal(source, rulerId, intent, actorHouseId).reason : economic.majorPartner ? 'Our people benefit from your trade. Tell me what you seek in return.' : diplomaticPriorities(s, rulerId)[0]}`, intents: intent ? [intent] : [], tone: military.score >= 20 || r.trust < 0 ? 'guarded' : r.opinion > 0 ? 'neutral' : 'cold' };
 }

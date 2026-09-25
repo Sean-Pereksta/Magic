@@ -81,6 +81,11 @@ try{
  await assertFails(setDoc(doc(b,path('iron_throne_commands','late-found')),{...command,id:'late-found',turn:1,stateVersion:3}));
  const playingCommand={...command,id:'planning-tax',turn:1,stateVersion:3,type:'tax',args:{policy:'low'}};
  await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',playingCommand.id)),playingCommand));
+ for(const type of ['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer']){
+   const id=`planning-${type}`;
+   await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',id)),{...playingCommand,id,type,args:{}}));
+   await assertFails(setDoc(doc(b,path('iron_throne_commands',`${id}-forged`)),{...playingCommand,id:`${id}-forged`,type,actorHouseId:'ashen',args:{}}));
+ }
  await assertFails(getDoc(doc(a,path('iron_throne_private','unknown-house'))));
  await assertSucceeds(setDoc(doc(a,path('iron_throne_presence','a')),{uid:'a',name:'A',at:serverTimestamp()}));
  await assertFails(setDoc(doc(b,path('iron_throne_presence','a')),{uid:'a',name:'A',at:serverTimestamp()}));

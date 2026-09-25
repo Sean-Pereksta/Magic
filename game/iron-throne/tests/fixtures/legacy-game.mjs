@@ -1,3 +1,5 @@
+import { initializeFog } from '../../fog.mjs';
+import { initializeCooperation } from '../../cooperation-state.mjs';
 // Pre-regional fixture for legacy campaign gameplay/migration regression coverage.
 import { HOUSES, SAVE_VERSION } from '../../data.mjs';
 import { tileId, random, neighbors, passable, distance, rebuildTerritory, log } from '../../core.mjs';
@@ -43,6 +45,6 @@ export function createGame(seed = 8147, preset = 'crossroads') {
   rebuildTerritory(s);
   log(s, 'Six houses contest the crown. Unite three rival houses for three turns, or control 60% of settlements.', 'council');
   initializeStrategy(s);
-  initializeLiving(s); initializePlans(s); initializeEspionage(s); updateAttitudes(s);
+  initializeFog(s); initializeLiving(s); initializePlans(s); initializeCooperation(s); initializeEspionage(s); updateAttitudes(s);
   return s;
 }

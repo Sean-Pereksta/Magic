@@ -1,3 +1,4 @@
+import { memberOperation } from './cooperation-state.mjs';
 import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, RESOURCES } from './data.mjs';
 import { buildingLevel, fortMaximum, tileProduction } from './economy.mjs';
@@ -5,6 +6,9 @@ import { familyCount, fortificationDefense, resolveFieldBattle, troopTotal } fro
 import { bombardRange, structureAttackCheck } from './structures.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, findPath, kingdom, log, orderArmy, orderStructureAttack, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
 import { changeRelation, tradeBlocked } from './living.mjs';
+import { negotiatePoliticalPlan, cooperationInterest } from './strategic-diplomacy.mjs';
+import { proposeJointOperation } from './operations.mjs';
+import { rankObjectives, strategicLocation } from './strategic-geography.mjs';
 
 export const PLAN_TYPES = ['invasion','jointWar','infrastructure','defendFrontier','seekAlliance','secureTrade','acquireResource','embargo','buildDefenses','recruitMilitary','expandTerritory'];
 export const PLAN_STATUSES = ['Considering','Preparing','Committed','Executing','Completed','Abandoned'];
@@ -22,15 +26,16 @@ export function transitionPlan(s,p,status,reason='') {
   if(status==='Abandoned')p.cancellationReason=reason || 'The strategic situation changed.';
   audit(s,p,`${status}${reason?`: ${reason}`:''}`);
 }
-export function createPlan(s,actor,type,{target=null,targetTile=null,structure=null,resource=null,objective='',allies=[],requiredForces=20,requiredSiege=0,requiredResources={food:24,gold:18},delay=2,building=null}={}) {
+export function createPlan(s,actor,type,{target=null,targetTile=null,structure=null,resource=null,objective='',allies=[],requiredForces=20,requiredSiege=0,requiredResources={food:24,gold:18},delay=2,building=null,operationId=null}={}) {
   initializePlans(s);
   if(!PLAN_TYPES.includes(type)||!kingdom(s,actor)||target&&(!kingdom(s,target)||target===actor)||targetTile&&!s.tiles[targetTile])return null;
-  const existing=s.intrigue.plans.find(p=>p.actor===actor&&p.type===type&&p.target===target&&p.targetTile===targetTile&&activePlan(p));
+  const existing=s.intrigue.plans.find(p=>p.actor===actor&&p.type===type&&p.target===target&&p.targetTile===targetTile&&(p.operationId||null)===operationId&&activePlan(p));
   if(existing)return existing;
   if(s.intrigue.plans.filter(p=>p.actor===actor&&activePlan(p)).length>=4)return null;
   const p={id:`PLAN-${s.nextId++}`,actor,target,type,objective:objective.slice(0,200),targetTile,structure,resource,building,
     createdTurn:s.turn,desiredExecutionTurn:s.turn+delay,updatedTurn:s.turn,status:'Considering',requiredForces,requiredSiege,
     requiredResources,assignedArmies:[],allies:[...allies],discoveredBy:[],conditions:['Honor active treaties','Defend the capital first'],cancellationReason:null,wasAtWar:target?atWar(s,actor,target):false};
+  if(operationId)p.operationId=operationId;
   s.intrigue.plans.push(p);audit(s,p,`Created: ${p.objective || type}`);prunePlans(s);return p;
 }
 export function prunePlans(s) {
@@ -84,32 +89,33 @@ function orderBombardment(s,k,a,t,avoid) {
   return {ok:false};
 }
 export function proposeInvasion(s,k,target,tile) {
-  const allies=s.kingdoms.filter(o=>o.id!==k.id&&treaty(s,k.id,o.id,'alliance')&&atWar(s,o.id,target)).map(o=>o.id);
-  return createPlan(s,k.id,allies.length?'jointWar':'invasion',{target,targetTile:tile.id,allies,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,
+  const operation=proposeJointOperation(s,k,target,tile);
+  if(operation)return s.intrigue.plans.find(p=>p.operationId===operation.id&&p.actor===k.id);
+  return createPlan(s,k.id,'invasion',{target,targetTile:tile.id,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,
     delay:3});
 }
 export function infrastructureTarget(s,actor,target,origin) {
   const mounted=armiesOf(s,target).some(a=>familyCount(a,'mounted')>sizeOf(a)*.3);
   return Object.values(s.tiles).filter(t=>t.owner===target&&t.building&&!['city','town'].includes(t.building)).map(t=>{
     const production=tileProduction(t,target),value=Object.values(production).reduce((n,v)=>n+v,0);
-    return {t,score:value+(t.building==='fort'?25:0)+(mounted&&t.building==='ranch'?25:0)-distance(origin,t)*2};
+    return {t,score:strategicLocation(s,t,actor).value+value+(t.building==='fort'?25:0)+(mounted&&t.building==='ranch'?25:0)-distance(origin,t)*2};
   }).sort((a,b)=>b.score-a.score||a.t.id.localeCompare(b.t.id))[0]?.t;
 }
 export function preparePlans(s,k,c) {
   initializePlans(s);
   const plans=()=>s.intrigue.plans.filter(p=>p.actor===k.id&&activePlan(p));
   if(c.war&&!plans().some(militaryPlan)&&!c.threats.length) {
-    const ranked=c.enemyTowns.map(t=>({t,ready:c.forces.some(a=>assaultAssessment(s,k,a,t).assault)}));
-    const target=ranked.sort((a,b)=>Number(b.ready)-Number(a.ready)||distance(c.home,a.t)-distance(c.home,b.t))[0]?.t;
-    if(target)createPlan(s,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,delay:0});
+    const ranked=rankObjectives(s,k.id,c.enemyTowns,c.home).map(x=>({...x,ready:c.forces.some(a=>assaultAssessment(s,k,a,x.tile).assault)}));
+    const target=ranked.sort((a,b)=>Number(b.ready)-Number(a.ready)||b.score-a.score)[0]?.tile;
+    if(target&&!proposeJointOperation(s,k,target.owner,target))createPlan(s,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,delay:0});
   }
   if(c.war&&!c.threats.length&&!plans().some(p=>p.type==='infrastructure')&&plans().length<3) {
     const target=c.enemyTowns[0]?.owner, tile=target&&infrastructureTarget(s,k.id,target,c.home);
     if(tile)createPlan(s,k.id,'infrastructure',{target,targetTile:tile.id,structure:tile.building,objective:`Disrupt ${kingdom(s,target).name}'s ${BUILDINGS[tile.building].name} production or defenses.`,requiredForces:16,requiredSiege:tile.building==='fort'?2:0,delay:1});
   }
   if(!plans().some(p=>!militaryPlan(p))) {
-    const ally=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&relation(s,o.id,k.id).trust>=25&&!treaty(s,k.id,o.id,'alliance'));
-    const partner=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade'));
+    const ally=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&relation(s,o.id,k.id).trust>=25&&!treaty(s,k.id,o.id,'alliance')).sort((a,b)=>cooperationInterest(s,k.id,b.id,'alliance').score-cooperationInterest(s,k.id,a.id,'alliance').score)[0];
+    const partner=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade')).sort((a,b)=>cooperationInterest(s,k.id,b.id,'trade').score-cooperationInterest(s,k.id,a.id,'trade').score)[0];
     const rival=s.kingdoms.find(o=>o.id!==k.id&&alive(s,o.id)&&relation(s,k.id,o.id).grievance>=50&&relation(s,k.id,o.id).dependency<20&&!protectedPeace(s,k.id,o.id)&&!tradeBlocked(s,k.id,o.id));
     if(c.threats.length)createPlan(s,k.id,'defendFrontier',{targetTile:c.threats[0].tile.id,objective:`Defend ${c.threats[0].tile.name||c.threats[0].tile.id}.`,delay:0});
     else if(c.crisis){const resource=k.resources.food<40?'food':'gold';createPlan(s,k.id,'acquireResource',{resource,objective:`Rebuild ${resource} reserves.`,requiredResources:{[resource]:70},building:resource==='food'?'farm':'market'});}
@@ -120,6 +126,7 @@ export function preparePlans(s,k,c) {
       targetTile:c.home.id,building:c.wary?'wall':'town',objective:c.wary?'Strengthen frontier defenses.':'Expand a sustainable realm.',requiredForces:36});
   }
   for(const p of plans()) {
+    if(p.operationId)continue; // Shared readiness, consent and deadlines govern these plans.
     if(!alive(s,k.id)||p.target&&!alive(s,p.target)){transitionPlan(s,p,'Abandoned','A participating House lost its final settlement.');continue;}
     if(militaryPlan(p)) {
       if(protectedPeace(s,k.id,p.target)||p.wasAtWar&&!atWar(s,k.id,p.target)){transitionPlan(s,p,'Abandoned','A treaty or peace agreement prevents the attack.');continue;}
@@ -143,7 +150,7 @@ export function preparePlans(s,k,c) {
       }
     } else {
       if(p.status==='Considering')transitionPlan(s,p,'Preparing','Council preparing this objective.');
-      if(['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)executePoliticalPlan(s,p);
+      if(['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)negotiatePoliticalPlan(s,p);
       if(p.type==='acquireResource'&&canAfford(k,p.requiredResources))transitionPlan(s,p,'Completed','Required reserves secured.');
       if(p.type==='defendFrontier'&&!c.threats.length)transitionPlan(s,p,'Completed','No enemy force threatens the frontier.');
       if(p.type==='recruitMilitary'&&c.forces.reduce((n,a)=>n+sizeOf(a),0)>=p.requiredForces)transitionPlan(s,p,'Completed','Required military strength mustered.');
@@ -151,33 +158,18 @@ export function preparePlans(s,k,c) {
     if(activePlan(p)&&s.turn-p.createdTurn>24)transitionPlan(s,p,'Abandoned','Preparation stalled for 24 turns.');
   }
 }
-function executePoliticalPlan(s,p) {
-  const k=kingdom(s,p.actor),r=relation(s,p.actor,p.target);
-  if(!isAiHouse(s,p.target)){transitionPlan(s,p,'Abandoned','Player agreements require ratification in council.');return;}
-  if(atWar(s,p.actor,p.target)&&p.type!=='embargo'){transitionPlan(s,p,'Abandoned','War prevents peaceful negotiation.');return;}
-  const type={seekAlliance:'alliance',secureTrade:'trade',embargo:'embargo'}[p.type];
-  const partner=p.type==='embargo'?p.allies[0]:p.target;
-  if(p.type==='seekAlliance'&&(r.trust<35||relation(s,partner,p.actor).trust<25)||p.type==='secureTrade'&&tradeBlocked(s,p.actor,p.target)||p.type==='embargo'&&(!partner||atWar(s,p.actor,partner)||protectedPeace(s,p.actor,p.target)||relation(s,partner,p.target).opinion>0)) {
-    transitionPlan(s,p,'Abandoned','The other court or an existing agreement no longer supports these terms.');return;
-  }
-  transitionPlan(s,p,'Committed','Both councils support compatible terms.');
-  if(!treaty(s,p.actor,partner,type))s.treaties.push({id:`treaty-${s.nextId++}`,type,parties:[p.actor,partner],expires:s.turn+12,...(type==='embargo'?{targetId:p.target}:{})});
-  if(type==='alliance'&&!treaty(s,p.actor,partner,'access'))s.treaties.push({id:`treaty-${s.nextId++}`,type:'access',parties:[p.actor,partner],expires:s.turn+12});
-  for(const [a,b] of [[p.actor,partner],[partner,p.actor]])changeRelation(s,a,b,{trust:4,respect:3},`Courts concluded a ${type} agreement.`);
-  log(s,`${k.name} and ${kingdom(s,partner).name} sign a ${type} accord.`, 'diplomacy');
-  transitionPlan(s,p,'Completed','The agreement is now binding.');
-}
 export function plannedArmyOrder(s,k,a,c) {
   // Keep the field army at its muster point while the primary nearby siege
   // objective is preparing; do not send it away on a secondary economic raid.
-  const pending=s.intrigue.plans.find(p=>p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&distance(c.home,s.tiles[p.targetTile])<=6&&!assaultAssessment(s,k,a,s.tiles[p.targetTile]).assault);
+  const pending=s.intrigue.plans.find(p=>!p.operationId&&p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&distance(c.home,s.tiles[p.targetTile])<=6&&!assaultAssessment(s,k,a,s.tiles[p.targetTile]).assault);
   if(pending&&sizeOf(a)>=pending.requiredForces) {
     if(orderArmy(s,k.id,a.id,c.home.id,'move').ok) {
       if(!pending.assignedArmies.includes(a.id)){pending.assignedArmies.push(a.id);audit(s,pending,`${a.id} mustering at ${c.home.id} for reinforcements or siege support.`);}
       return pending;
     }
   }
-  const plans=s.intrigue.plans.filter(p=>p.actor===k.id&&militaryPlan(p)&&['Committed','Executing'].includes(p.status));
+  const shared=memberOperation(s,k.id);
+  const plans=s.intrigue.plans.filter(p=>p.actor===k.id&&militaryPlan(p)&&(!shared||p.operationId===shared.id)&&['Committed','Executing'].includes(p.status));
   plans.sort((p,q)=>distance(s.tiles[a.tile],s.tiles[p.targetTile])-distance(s.tiles[a.tile],s.tiles[q.targetTile])||(p.type==='infrastructure'?1:-1));
   for(const p of plans) {
     const t=s.tiles[p.targetTile];
@@ -199,7 +191,7 @@ export function recordPlanAction(s,owner,a) {
   }
 }
 export function finishPlans(s) {
-  for(const p of s.intrigue?.plans||[])if(activePlan(p)&&militaryPlan(p)) {
+  for(const p of s.intrigue?.plans||[])if(!p.operationId&&activePlan(p)&&militaryPlan(p)) {
     const event=s.militaryEvents.find(e=>e.turn>=p.createdTurn&&e.attacker===p.actor&&e.tile===p.targetTile&&
       (p.type==='infrastructure'?e.action==='structure'&&e.destroyed&&e.structure===p.structure:e.action==='capture'));
     if(event)transitionPlan(s,p,'Completed','The assigned military objective was achieved.');
@@ -208,11 +200,11 @@ export function finishPlans(s) {
 }
 // Human attack orders are real intentions too; AI spies may discover them.
 export function recordPlayerPlans(s, actorHouseId = PLAYER) {
-  for(const a of armiesOf(s,actorHouseId))if(['attack','bombard'].includes(a.order)&&s.tiles[a.target]?.owner&&atWar(s,actorHouseId,s.tiles[a.target].owner)) {
+  for(const a of armiesOf(s,actorHouseId))if(['attack','bombard'].includes(a.order)&&s.tiles[a.target]?.owner&&atWar(s,actorHouseId,s.tiles[a.target].owner)&&!s.intrigue.plans.some(p=>p.operationId&&p.actor===actorHouseId&&activePlan(p)&&p.targetTile===a.target)) {
     const p=createPlan(s,actorHouseId,a.structureTarget?'infrastructure':'invasion',{target:s.tiles[a.target].owner,targetTile:a.target,structure:a.structureTarget||null,objective:`Attack ${s.tiles[a.target].name||a.target}.`,delay:0,requiredForces:1});
     if(p){p.assignedArmies=[a.id];transitionPlan(s,p,'Executing','Player attack orders recorded.');}
   }
-  for(const p of s.intrigue.plans.filter(p=>p.actor===actorHouseId&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
+  for(const p of s.intrigue.plans.filter(p=>!p.operationId&&p.actor===actorHouseId&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
 }
 export function validatePlans(s) {
   initializePlans(s);const fail=()=>{throw new Error('Damaged strategic plans.');};
@@ -222,8 +214,8 @@ export function validatePlans(s) {
   for(const p of ps) {
     if(!p||typeof p.id!=='string'||!/^PLAN-\d+$/.test(p.id)||!kingdom(s,p.actor)||p.target&&(!kingdom(s,p.target)||p.target===p.actor)||!PLAN_TYPES.includes(p.type)||!PLAN_STATUSES.includes(p.status)||typeof p.objective!=='string'||p.objective.length>200||p.targetTile&&!s.tiles[p.targetTile]||p.structure&&!Object.hasOwn(BUILDINGS,p.structure)||p.building&&!Object.hasOwn(BUILDINGS,p.building)||p.resource&&!RESOURCES.includes(p.resource))fail();
     if(!integer(p.createdTurn,1,s.turn)||!integer(p.updatedTurn,p.createdTurn,s.turn)||!integer(p.desiredExecutionTurn,p.createdTurn)||!integer(p.requiredForces,1,100000)||!integer(p.requiredSiege,0,100000)||!p.requiredResources||typeof p.requiredResources!=='object'||Array.isArray(p.requiredResources)||Object.entries(p.requiredResources).some(([r,n])=>!RESOURCES.includes(r)||!integer(n)))fail();
-    if(!Array.isArray(p.assignedArmies)||p.assignedArmies.length>500||p.assignedArmies.some(id=>typeof id!=='string'||id.length>80)||!Array.isArray(p.allies)||p.allies.length>5||p.allies.some(id=>!kingdom(s,id)||id===p.actor)||!Array.isArray(p.conditions)||p.conditions.length>4||p.conditions.some(x=>typeof x!=='string'||x.length>160)||p.cancellationReason!==null&&(typeof p.cancellationReason!=='string'||p.cancellationReason.length>240)||p.status==='Abandoned'&&!p.cancellationReason||typeof p.wasAtWar!=='boolean')fail();
-    if(p.discoveredBy!==undefined&&(!Array.isArray(p.discoveredBy)||p.discoveredBy.length>6||p.discoveredBy.some(id=>!kingdom(s,id))))fail();
+    if(!Array.isArray(p.assignedArmies)||p.assignedArmies.length>500||p.assignedArmies.some(id=>typeof id!=='string'||id.length>80)||!Array.isArray(p.allies)||p.allies.length>s.kingdoms.length-1||p.allies.some(id=>!kingdom(s,id)||id===p.actor)||!Array.isArray(p.conditions)||p.conditions.length>4||p.conditions.some(x=>typeof x!=='string'||x.length>160)||p.cancellationReason!==null&&(typeof p.cancellationReason!=='string'||p.cancellationReason.length>240)||p.status==='Abandoned'&&!p.cancellationReason||typeof p.wasAtWar!=='boolean')fail();
+    if(p.discoveredBy!==undefined&&(!Array.isArray(p.discoveredBy)||p.discoveredBy.length>s.kingdoms.length||p.discoveredBy.some(id=>!kingdom(s,id))))fail();
     if(militaryPlan(p)&&(!p.target||!p.targetTile)||p.type==='infrastructure'&&!p.structure)fail();
   }
   for(const a of s.intrigue.audit)if(!a||!integer(a.turn,1,s.turn)||a.planId&&!ps.some(p=>p.id===a.planId)||typeof a.message!=='string'||a.message.length>240)fail();

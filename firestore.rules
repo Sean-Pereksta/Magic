@@ -177,7 +177,7 @@ service cloud.firestore {
           && request.resource.data.turn == ironMeta().turn && request.resource.data.epoch == ironMeta().epoch
           && request.resource.data.stateVersion is int && request.resource.data.stateVersion >= 1 && request.resource.data.stateVersion <= ironMeta().stateVersion
           && request.resource.data.sequence is int && request.resource.data.sequence > 0 && request.resource.data.clientId is string && request.resource.data.clientId.size() <= 64
-          && request.resource.data.type in ['found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover']
+          && request.resource.data.type in ['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover']
           && request.resource.data.args is map && request.resource.data.args.size() <= 12 && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time;
         allow update: if ironController() && resource.data.status == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','error','stateVersionApplied','resolvedAt'])
