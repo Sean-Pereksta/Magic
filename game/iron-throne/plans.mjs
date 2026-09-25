@@ -69,20 +69,46 @@ export function operationForPlan(s,p) {return p?.operationId?(s.intrigue?.operat
 export function createJointOperation(s,lead,partner,target,{duration=8,targetTile=null}={}) {
   initializePlans(s);
   if(!kingdom(s,lead)||!kingdom(s,partner)||!kingdom(s,target)||new Set([lead,partner,target]).size!==3||![lead,partner,target].every(id=>alive(s,id)))return null;
+  const proposed=[lead,partner],active=s.intrigue.operations.filter(o=>o.target===target&&!['Completed','Abandoned'].includes(o.status));
+  const exact=active.find(o=>proposed.every(id=>o.participants.includes(id)));
+  if(exact)return exact;
+  // A second bilateral agreement may join an existing coalition before its attack
+  // window opens. This keeps one authoritative operation instead of parallel wars.
+  const expandable=active.find(o=>o.status==='Preparing'&&s.turn<o.attackWindow[0]&&o.participants.length<5&&
+    proposed.some(id=>o.participants.includes(id))&&proposed.some(id=>!o.participants.includes(id)));
+  if(expandable){
+    const newcomers=proposed.filter(id=>!expandable.participants.includes(id));
+    for(const id of newcomers){
+      if(s.intrigue.plans.filter(p=>p.actor===id&&activePlan(p)).length>=4)return null;
+      const rally=nearestOwned(s,id,s.tiles[expandable.targetTile]);if(!rally)return null;
+      expandable.participants.push(id);expandable.roles[id]=expandable.requiredSiege?'Siege support':'Supporting flank';
+      expandable.rallyPoints[id]=rally.id;expandable.requiredForces[id]=18;expandable.supply[id]={food:20,gold:14};
+      const p=createPlan(s,id,'jointWar',{target,targetTile:expandable.targetTile,allies:expandable.participants.filter(x=>x!==id).slice(0,4),objective:expandable.objective,
+        requiredForces:expandable.requiredForces[id],requiredSiege:expandable.requiredSiege,requiredResources:{...expandable.supply[id]},
+        delay:Math.max(0,expandable.attackWindow[0]-s.turn),operationId:expandable.id});
+      if(!p){expandable.participants=expandable.participants.filter(x=>x!==id);delete expandable.roles[id];delete expandable.rallyPoints[id];delete expandable.requiredForces[id];delete expandable.supply[id];return null;}
+      p.role=expandable.roles[id];p.rallyPoint=rally.id;transitionPlan(s,p,'Preparing','Joined the coalition; forces are gathering for the shared objective.');expandable.planIds.push(p.id);
+    }
+    for(const id of expandable.participants){
+      const p=expandable.planIds.map(pid=>s.intrigue.plans.find(x=>x.id===pid)).find(p=>p?.actor===id);
+      if(p)p.allies=expandable.participants.filter(x=>x!==id).slice(0,4);
+    }
+    expandable.updatedTurn=s.turn;expandable.exposure=Math.min(100,expandable.exposure+newcomers.length*5);
+    audit(s,null,`${newcomers.map(id=>kingdom(s,id).name).join(' + ')} joined ${expandable.name} against ${kingdom(s,target).name}.`);
+    prunePlans(s);return expandable;
+  }
   const participants=[lead,partner];
-  const existing=s.intrigue.operations.find(o=>o.target===target&&o.participants.length===2&&participants.every(id=>o.participants.includes(id))&&!['Completed','Abandoned'].includes(o.status));
-  if(existing)return existing;
   const objectiveTile=targetTile&&s.tiles[targetTile]?.owner===target?s.tiles[targetTile]:settlements(s,target).slice().sort((a,b)=>strategicValue(s,lead,b,nearestOwned(s,lead,b))-strategicValue(s,lead,a,nearestOwned(s,lead,a))||a.id.localeCompare(b.id))[0];
   if(!objectiveTile||participants.some(id=>s.intrigue.plans.filter(p=>p.actor===id&&activePlan(p)).length>=4))return null;
   const start=s.turn+3,end=Math.min(s.turn+Math.max(4,duration),start+2),siege=fortificationDefense(objectiveTile).bonus>0?2:0;
   const rallyPoints=Object.fromEntries(participants.map(id=>[id,nearestOwned(s,id,objectiveTile)?.id||null]));
   if(Object.values(rallyPoints).some(id=>!id))return null;
   const op={id:`OP-${s.nextId++}`,name:operationName(s,objectiveTile),target,targetTile:objectiveTile.id,objective:`Capture ${objectiveTile.name||objectiveTile.id}.`,
-    participants,roles:{[lead]:'Main assault',[partner]:'Supporting flank'},rallyPoints,requiredForces:{[lead]:28,[partner]:18},requiredSiege:siege,
+    participants,roles:{[lead]:'Main assault',[partner]:siege?'Siege support':'Supporting flank'},rallyPoints,requiredForces:{[lead]:28,[partner]:18},requiredSiege:siege,
     supply:{[lead]:{food:28,gold:20},[partner]:{food:20,gold:14}},attackWindow:[start,end],commitments:[],planIds:[],createdTurn:s.turn,updatedTurn:s.turn,status:'Preparing',exposure:8,cancellationReason:null};
   s.intrigue.operations.push(op);
   for(const id of participants){
-    const other=participants.find(x=>x!==id),p=createPlan(s,id,'jointWar',{target,targetTile:objectiveTile.id,allies:[other],objective:op.objective,
+    const p=createPlan(s,id,'jointWar',{target,targetTile:objectiveTile.id,allies:participants.filter(x=>x!==id),objective:op.objective,
       requiredForces:op.requiredForces[id],requiredSiege:siege,requiredResources:{...op.supply[id]},delay:start-s.turn,operationId:op.id});
     if(!p){op.status='Abandoned';op.cancellationReason='A participant could not reserve a strategic plan slot.';break;}
     p.role=op.roles[id];p.rallyPoint=rallyPoints[id];transitionPlan(s,p,'Preparing','Joint operation ratified; forces are gathering for the shared objective.');op.planIds.push(p.id);
