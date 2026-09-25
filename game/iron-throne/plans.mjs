@@ -3,7 +3,7 @@ import { BUILDINGS, RESOURCES } from './data.mjs';
 import { buildingLevel, fortMaximum, tileProduction } from './economy.mjs';
 import { familyCount, fortificationDefense, resolveFieldBattle, troopTotal } from './warfare.mjs';
 import { bombardRange, structureAttackCheck } from './structures.mjs';
-import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, findPath, kingdom, log, neighbors, orderArmy, orderStructureAttack, passable, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
+import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, findPath, kingdom, log, neighbors, orderArmy, orderStructureAttack, passable, pay, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
 import { changeRelation, tradeBlocked } from './living.mjs';
 
 export const PLAN_TYPES = ['invasion','jointWar','infrastructure','defendFrontier','seekAlliance','secureTrade','acquireResource','embargo','buildDefenses','recruitMilitary','expandTerritory'];
@@ -84,7 +84,7 @@ export function createJointOperation(s,lead,partner,target,{duration=8,targetTil
       expandable.participants.push(id);expandable.roles[id]=expandable.requiredSiege?'Siege support':'Supporting flank';
       expandable.rallyPoints[id]=rally.id;expandable.requiredForces[id]=18;expandable.supply[id]={food:20,gold:14};
       const p=createPlan(s,id,'jointWar',{target,targetTile:expandable.targetTile,allies:expandable.participants.filter(x=>x!==id).slice(0,4),objective:expandable.objective,
-        requiredForces:expandable.requiredForces[id],requiredSiege:expandable.requiredSiege,requiredResources:{...expandable.supply[id]},
+        requiredForces:expandable.requiredForces[id],requiredSiege:expandable.roles[id]==='Siege support'?expandable.requiredSiege:0,requiredResources:{...expandable.supply[id]},
         delay:Math.max(0,expandable.attackWindow[0]-s.turn),operationId:expandable.id});
       if(!p){expandable.participants=expandable.participants.filter(x=>x!==id);delete expandable.roles[id];delete expandable.rallyPoints[id];delete expandable.requiredForces[id];delete expandable.supply[id];return null;}
       p.role=expandable.roles[id];p.rallyPoint=rally.id;transitionPlan(s,p,'Preparing','Joined the coalition; forces are gathering for the shared objective.');expandable.planIds.push(p.id);
@@ -109,7 +109,7 @@ export function createJointOperation(s,lead,partner,target,{duration=8,targetTil
   s.intrigue.operations.push(op);
   for(const id of participants){
     const p=createPlan(s,id,'jointWar',{target,targetTile:objectiveTile.id,allies:participants.filter(x=>x!==id),objective:op.objective,
-      requiredForces:op.requiredForces[id],requiredSiege:siege,requiredResources:{...op.supply[id]},delay:start-s.turn,operationId:op.id});
+      requiredForces:op.requiredForces[id],requiredSiege:op.roles[id]==='Siege support'?siege:0,requiredResources:{...op.supply[id]},delay:start-s.turn,operationId:op.id});
     if(!p){op.status='Abandoned';op.cancellationReason='A participant could not reserve a strategic plan slot.';break;}
     p.role=op.roles[id];p.rallyPoint=rallyPoints[id];transitionPlan(s,p,'Preparing','Joint operation ratified; forces are gathering for the shared objective.');op.planIds.push(p.id);
   }
@@ -127,16 +127,30 @@ export function refreshOperations(s) {
     if(['Completed','Abandoned'].includes(op.status))continue;
     const tile=s.tiles[op.targetTile],plans=op.planIds.map(id=>s.intrigue.plans.find(p=>p.id===id)).filter(Boolean);
     for(const p of plans.filter(p=>!isAiHouse(s,p.actor)&&activePlan(p))){
-      const forces=armiesOf(s,p.actor),rally=s.tiles[op.rallyPoints[p.actor]],ready=forces.some(a=>sizeOf(a)>=p.requiredForces&&rally&&distance(s.tiles[a.tile],rally)<=1)&&canAfford(kingdom(s,p.actor),p.requiredResources);
+      const forces=armiesOf(s,p.actor),rally=s.tiles[op.rallyPoints[p.actor]],role=op.roles[p.actor];
+      const forceReady=forces.some(a=>sizeOf(a)>=p.requiredForces&&rally&&distance(s.tiles[a.tile],rally)<=1&&(role!=='Siege support'||familyCount(a,'siege')>=Math.max(1,p.requiredSiege)));
+      const ready=forceReady&&(p.suppliesCommitted||canAfford(kingdom(s,p.actor),p.requiredResources));
       if(p.status==='Considering')transitionPlan(s,p,'Preparing','Joint operation ratified; forces are gathering for the shared objective.');
-      if(p.status==='Preparing'&&ready&&s.turn>=p.desiredExecutionTurn)transitionPlan(s,p,'Committed','The pledged force and supplies are assembled at the rally point.');
-      if(p.status==='Committed'&&s.turn>=op.attackWindow[0]&&!atWar(s,p.actor,p.target)&&declareWar(s,p.actor,p.target)){p.wasAtWar=true;audit(s,p,'Declared war when the agreed attack window opened.');}
+      if(p.status==='Preparing'&&ready&&s.turn>=p.desiredExecutionTurn){
+        if(!p.suppliesCommitted){pay(kingdom(s,p.actor),p.requiredResources);p.suppliesCommitted=true;audit(s,p,'Committed operation supplies: '+Object.entries(p.requiredResources).map(([r,n])=>`${n} ${r}`).join(', ')+'.');}
+        transitionPlan(s,p,'Committed',role==='Siege support'?'Siege engines, escort troops and supplies are assembled at the rally point.':'The pledged force and supplies are assembled at the rally point.');
+      }
     }
     if(!alive(s,op.target)||op.participants.some(id=>!alive(s,id))){op.status='Abandoned';op.cancellationReason='A participating House or target realm no longer survives.';op.updatedTurn=s.turn;continue;}
     if(tile&&op.participants.includes(tile.owner)){op.status='Completed';op.updatedTurn=s.turn;continue;}
     if(tile&&tile.owner!==op.target){op.status='Abandoned';op.cancellationReason='The objective changed hands outside the coalition.';op.updatedTurn=s.turn;continue;}
     if(plans.length&&plans.every(p=>p.status==='Abandoned')){op.status='Abandoned';op.cancellationReason=plans.map(p=>p.cancellationReason).filter(Boolean).at(-1)||'The coalition abandoned the operation.';op.updatedTurn=s.turn;continue;}
-    op.status=plans.some(p=>p.status==='Executing')?'Executing':plans.length&&plans.every(p=>['Committed','Executing','Completed'].includes(p.status))?'Committed':'Preparing';
+    const coordinatedReady=plans.length===op.participants.length&&plans.every(p=>['Committed','Executing','Completed'].includes(p.status));
+    if(!coordinatedReady&&s.turn>op.attackWindow[1]){
+      op.status='Abandoned';op.cancellationReason='The coalition failed to assemble its pledged forces, siege support and supplies inside the agreed attack window.';op.updatedTurn=s.turn;
+      for(const p of plans.filter(activePlan))transitionPlan(s,p,'Abandoned',op.cancellationReason);
+      for(const pledge of (s.pledges||[]).filter(p=>p.operationId===op.id&&p.status==='pending'))pledge.breached=true;
+      continue;
+    }
+    if(coordinatedReady&&s.turn>=op.attackWindow[0]&&s.turn<=op.attackWindow[1])for(const p of plans.filter(p=>['Committed','Executing'].includes(p.status))){
+      if(!atWar(s,p.actor,p.target)&&declareWar(s,p.actor,p.target)){p.wasAtWar=true;audit(s,p,`Entered the war as ${op.roles[p.actor]} when ${op.name}'s attack window opened.`);}
+    }
+    op.status=plans.some(p=>p.status==='Executing')?'Executing':coordinatedReady?'Committed':'Preparing';
     let obvious=8+op.participants.length*5+op.commitments.length*3;
     for(const id of op.participants){
       const rally=s.tiles[op.rallyPoints[id]],forces=armiesOf(s,id);
@@ -150,6 +164,19 @@ export function refreshOperations(s) {
       (s.intelligence?.agents||[]).filter(a=>a.owner===id&&a.assignedHouse===id&&a.status==='Embedded'&&a.mission==='counter').length*7,0);
     op.exposure=Math.max(0,Math.min(100,Math.round(obvious-counter)));op.updatedTurn=s.turn;
   }
+}
+export function operationPledgeComplete(s,pledge) {
+  const op=(s.intrigue?.operations||[]).find(o=>o.id===pledge?.operationId);
+  if(!op||!op.participants.includes(pledge.debtor))return null;
+  const role=op.roles[pledge.debtor],plan=op.planIds.map(id=>s.intrigue.plans.find(p=>p.id===id)).find(p=>p?.actor===pledge.debtor),target=s.tiles[op.targetTile];
+  const events=s.militaryEvents.filter(e=>e.turn>=pledge.created&&(pledge.eventAfter===undefined||(e.id||0)>pledge.eventAfter)&&e.attacker===pledge.debtor&&e.defender===op.target);
+  const attacked=events.some(e=>['battle','capture','siege','structure'].includes(e.action));
+  if(role==='Main assault')return attacked&&!!plan?.suppliesCommitted;
+  const near=armiesOf(s,pledge.debtor).filter(a=>target&&distance(s.tiles[a.tile],target)<=2&&sizeOf(a)>=Math.max(1,Math.ceil((op.requiredForces[pledge.debtor]||1)*.7)));
+  const rolePresent=role==='Siege support'?near.some(a=>familyCount(a,'siege')>=Math.max(1,op.requiredSiege)):near.length>0;
+  if(pledge.lastVerified!==s.turn){pledge.held=rolePresent?Math.min(2,(pledge.held||0)+1):0;pledge.lastVerified=s.turn;}
+  const siegeAction=role==='Siege support'&&events.some(e=>e.action==='siege'||e.action==='structure');
+  return !!plan?.suppliesCommitted&&(attacked||siegeAction||pledge.held>=2);
 }
 export function assaultAssessment(s,k,a,t) {
   const defenders=s.armies.filter(e=>e.tile===t.id&&e.owner!==a.owner&&sizeOf(e)>0&&(e.owner===t.owner||atWar(s,a.owner,e.owner)));
@@ -241,10 +268,15 @@ export function preparePlans(s,k,c) {
       const assessments=forces.map(a=>({a,assessment:assaultAssessment(s,k,a,target)}));
       // Keep the saved field as an equipment preference for recruitment, never
       // as permission to attack. Re-evaluate old plans against the real garrison.
-      p.requiredSiege=fortificationDefense(target).bonus>0&&!assessments.some(x=>x.assessment.assault)?2:0;
-      const ready=(p.type==='jointWar'?forces.some(a=>sizeOf(a)>=p.requiredForces):assessments.some(({a,assessment})=>(assessment.empty||sizeOf(a)>=p.requiredForces)&&(assessment.assault||assessment.bombard)))&&canAfford(k,p.requiredResources);
-      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing')transitionPlan(s,p,'Committed','A viable assault or bombardment and supplies are ready.');
-      if(p.status==='Committed'&&!atWar(s,k.id,p.target)) {
+      const op=operationForPlan(s,p),role=op?.roles?.[k.id];
+      p.requiredSiege=op?(role==='Siege support'?op.requiredSiege:0):fortificationDefense(target).bonus>0&&!assessments.some(x=>x.assessment.assault)?2:0;
+      const operationForceReady=forces.some(a=>sizeOf(a)>=p.requiredForces&&(role!=='Siege support'||familyCount(a,'siege')>=Math.max(1,p.requiredSiege)));
+      const ready=(p.type==='jointWar'?operationForceReady:assessments.some(({a,assessment})=>(assessment.empty||sizeOf(a)>=p.requiredForces)&&(assessment.assault||assessment.bombard)))&&(p.suppliesCommitted||canAfford(k,p.requiredResources));
+      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing'){
+        if(op&&!p.suppliesCommitted){pay(k,p.requiredResources);p.suppliesCommitted=true;audit(s,p,'Committed operation supplies: '+Object.entries(p.requiredResources).map(([r,n])=>`${n} ${r}`).join(', ')+'.');}
+        transitionPlan(s,p,'Committed',role==='Siege support'?'Siege engines and operation supplies are ready.':'A viable force and operation supplies are ready.');
+      }
+      if(p.status==='Committed'&&!op&&!atWar(s,k.id,p.target)) {
         const probe={...s,wars:[...s.wars,[k.id,p.target].sort().join(':')]};
         if(!findPath(probe,c.home.id,p.targetTile,k.id).length){transitionPlan(s,p,'Abandoned','No legal route to the objective.');continue;}
         if(declareWar(s,k.id,p.target)){p.wasAtWar=true;audit(s,p,'Declared war to execute the campaign.');}
@@ -336,7 +368,7 @@ export function validatePlans(s) {
     if(!integer(p.createdTurn,1,s.turn)||!integer(p.updatedTurn,p.createdTurn,s.turn)||!integer(p.desiredExecutionTurn,p.createdTurn)||!integer(p.requiredForces,1,100000)||!integer(p.requiredSiege,0,100000)||!p.requiredResources||typeof p.requiredResources!=='object'||Array.isArray(p.requiredResources)||Object.entries(p.requiredResources).some(([r,n])=>!RESOURCES.includes(r)||!integer(n)))fail();
     if(!Array.isArray(p.assignedArmies)||p.assignedArmies.length>500||p.assignedArmies.some(id=>typeof id!=='string'||id.length>80)||!Array.isArray(p.allies)||p.allies.length>5||p.allies.some(id=>!kingdom(s,id)||id===p.actor)||!Array.isArray(p.conditions)||p.conditions.length>4||p.conditions.some(x=>typeof x!=='string'||x.length>160)||p.cancellationReason!==null&&(typeof p.cancellationReason!=='string'||p.cancellationReason.length>240)||p.status==='Abandoned'&&!p.cancellationReason||typeof p.wasAtWar!=='boolean')fail();
     if(p.discoveredBy!==undefined&&(!Array.isArray(p.discoveredBy)||p.discoveredBy.length>6||p.discoveredBy.some(id=>!kingdom(s,id))))fail();
-    if(p.operationId!==undefined&&p.operationId!==null&&!ops.some(o=>o.id===p.operationId)||p.role!==undefined&&(typeof p.role!=='string'||p.role.length>80)||p.rallyPoint!==undefined&&p.rallyPoint!==null&&!s.tiles[p.rallyPoint]||p.playerOrderTracked!==undefined&&typeof p.playerOrderTracked!=='boolean')fail();
+    if(p.operationId!==undefined&&p.operationId!==null&&!ops.some(o=>o.id===p.operationId)||p.role!==undefined&&(typeof p.role!=='string'||p.role.length>80)||p.rallyPoint!==undefined&&p.rallyPoint!==null&&!s.tiles[p.rallyPoint]||p.playerOrderTracked!==undefined&&typeof p.playerOrderTracked!=='boolean'||p.suppliesCommitted!==undefined&&typeof p.suppliesCommitted!=='boolean')fail();
     if(militaryPlan(p)&&(!p.target||!p.targetTile)||p.type==='infrastructure'&&!p.structure)fail();
   }
   for(const o of ops){
