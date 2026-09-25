@@ -198,6 +198,10 @@ export class WorldMap {
       c.strokeStyle='#142c32';c.lineWidth=5;c.stroke();c.setLineDash([5,4]);c.lineWidth=2.2;c.strokeStyle='#ffe6a3';c.stroke();c.setLineDash([]);
       const end=hexPixel(s.tiles[a.path.at(-1)]);this.hex(end.x,end.y,9);c.fillStyle='#f4d58a38';c.fill();c.strokeStyle='#ffdf90';c.lineWidth=1.5;c.stroke();
     }
+    // Keep buildings below the selection and troops above it: sprites occlude\n    // the rear outline while its unobstructed front edge remains visible.\n    const selected=s.tiles[this.selected];
+    if(selected){const p=hexPixel(selected);const pulse=reduced?0:Math.max(0,(this.pulseUntil-now)/650);this.hex(p.x,p.y,24);c.lineWidth=4;c.strokeStyle='#172d38';c.stroke();c.lineWidth=2;c.strokeStyle='#fff0b4';c.stroke();
+      if(pulse){this.hex(p.x,p.y,24+(1-pulse)*12);c.globalAlpha=pulse*.55;c.stroke();c.globalAlpha=1;}
+    }
     this.hits=[];
     const grouped=new Map(),offsets=new Map(),troopBadges=[];
     for(const army of s.armies){const key=`${army.tile}:${army.owner}`;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(army);}
@@ -228,10 +232,6 @@ export class WorldMap {
       this.hits.push({tile:envoy.tile,left:p.x-34,right:p.x-12,top:p.y-12,bottom:p.y+17});
     }
     this.effects.drawWorld(c,s,hexPixel,inView,now,reduced,this.zoom);
-    const selected=s.tiles[this.selected];
-    if(selected){const p=hexPixel(selected);const pulse=reduced?0:Math.max(0,(this.pulseUntil-now)/650);this.hex(p.x,p.y,24);c.lineWidth=4;c.strokeStyle='#172d38';c.stroke();c.lineWidth=2;c.strokeStyle='#fff0b4';c.stroke();
-      if(pulse){this.hex(p.x,p.y,24+(1-pulse)*12);c.globalAlpha=pulse*.55;c.stroke();c.globalAlpha=1;}
-    }
     for(const t of visible.filter(t=>['city','town'].includes(t.building))){
       if(this.zoom<.65&&!t.capital)continue;const p=hexPixel(t),label=(t.name||'Town')+(s.controllers&&isHumanHouse(s,t.owner)?' · HUMAN':'');
       c.save();c.translate(p.x,p.y-(t.building==='city'?49:34));c.scale(Math.max(1,.6/this.zoom),Math.max(1,.6/this.zoom));
