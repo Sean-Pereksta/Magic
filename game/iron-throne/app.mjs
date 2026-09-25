@@ -1,3 +1,4 @@
+import { resolveTurnInWorker, showTurnProgress } from './turn-progress.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { warRoomPanel } from './war-room.mjs';
 import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
@@ -20,7 +21,7 @@ import { BUILDINGS, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mj
 import { populationProjection, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, orderStructureAttack, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
 import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
 import { isPlayerPromise } from './promises.mjs';
-import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, disclosedDeal, validateIntent } from './diplomacy.mjs';
+import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, disclosedDeal, validateIntent } from './diplomacy.mjs';
 import { DiplomacyClient } from './chat.mjs';
 import { CHECK_NAMES, CHECK_LABELS, diagnosticDetails, diagnosticReport } from './diagnostics.mjs';
 import { WorldMap } from './map.mjs';
@@ -37,6 +38,7 @@ $('preset').innerHTML=mapOptions();
 let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
+let turnBusy = false;
 let sending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 let geminiAttempted = false, configurationFailure = false;
@@ -65,8 +67,9 @@ function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
-function changed() { refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
+function changed() { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
 function perform(type,args,localAction) {
+  if(turnBusy)return false;
   if(state.phase==='founding'&&type!=='found'){toast('Found all kingdoms before issuing orders.');return false;}
   if(onlineOptions){if(!online){toast('Connecting to the campaign…');return false;} online.submit(type,args).catch(e=>toast(e.message));return true;}
   return result(localAction());
@@ -93,7 +96,7 @@ function render() {
   $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${founding?'Starting supplies':`${escape(r)}: ${income[r]>=0?'+':''}${income[r]} next turn`}"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${!founding&&income[r]<0?'negative':''}">${founding?'Starting supplies':`${income[r]>=0?'+':''}${income[r]} / turn`}</span></div></div>`).join('') + `<div class="resource population-resource" title="${founding?'Population growth begins on Turn 1.':escape(populationBreakdown(population))}"><span class="resource-icon">♟</span><div><b class="population-label">${founding?`Population: ${k.population} · ready to settle`:`Population: ${k.population}/${population.capacity} · ${population.change>=0?'+':''}${population.change} next turn`}</b><small>${k.happiness}% content · ${founding?'Awaiting Turn 1':'breakdown in Realm'}</small></div></div>`;
   const rivals = state.kingdoms.filter(h => h.id !== localHouse && alive(state, h.id)), allies = rivals.filter(h => treaty(state, localHouse, h.id, 'alliance') || treaty(state, localHouse, h.id, 'vassalage'));
   $('objective').textContent = state.phase==='founding'?`${Object.values(state.founding.houses).filter(h=>h.founded).length}/${state.kingdoms.length} capitals founded · choose your region`:`${settlements(state, localHouse).length} settlements · crown requires 60% of the realm · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
-  $('end-turn').disabled = !!state.outcome || state.phase==='founding';
+  $('end-turn').disabled = turnBusy || !!state.outcome || state.phase==='founding';
   if(!onlineOptions)$('end-turn').textContent=state.phase==='founding'?'Found all kingdoms':'End turn';
   document.querySelectorAll('[data-tab]').forEach(b => { b.disabled=state.phase==='founding'; b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
@@ -201,7 +204,28 @@ $('panel').addEventListener('change', e => {
   if(e.target.name==='role'&&e.target.closest('[data-operation-house]')){const row=e.target.closest('[data-operation-house]');if(e.target.value==='supply'){row.querySelector('[name=troops]').value=0;row.querySelector('[name=food]').value=30;}else{if(Number(row.querySelector('[name=troops]').value)===0)row.querySelector('[name=troops]').value=20;if(e.target.value==='siege'&&Number(row.querySelector('[name=siege]').value)===0)row.querySelector('[name=siege]').value=2;}return;}
   if(e.target.dataset.formation){perform('formation',{army:e.target.dataset.formation,formation:e.target.value},()=>setFormation(state,localHouse,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { perform('tax',{policy:e.target.value},()=>{kingdom(state,localHouse).tax=e.target.value;return {ok:true};}); } });
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
-$('end-turn').addEventListener('click', () => { if(state.phase==='founding')return;orderMode=null;if(onlineOptions){perform('ready',{ready:!onlineStatus?.meta?.ready[localHouse]},()=>({ok:true}));return;}endTurn(state);changed();voiceNextDispatch(); });
+// Prevent orders, imports, or a second turn while a worker owns the round snapshot.
+for (const type of ['click','submit','change','keydown']) document.addEventListener(type, event => {
+  if (turnBusy) { event.preventDefault(); event.stopImmediatePropagation(); }
+}, true);
+$('end-turn').addEventListener('click', async () => {
+  if(turnBusy || state.outcome || state.phase==='founding')return;
+  orderMode=null;
+  if(onlineOptions){perform('ready',{ready:!onlineStatus?.meta?.ready[localHouse]},()=>({ok:true}));return;}
+  turnBusy=true; epoch++; client.cancel(); $('end-turn').disabled=true;
+  showTurnProgress({phase:'preparing'});
+  try {
+    const next = await resolveTurnInWorker(state, showTurnProgress);
+    state=next; changed();
+    showTurnProgress({phase:'complete',ended:!!state.outcome});
+  } catch(error) {
+    showTurnProgress(null);
+    toast(`Turn could not finish. Your campaign is unchanged; try End turn again. ${error.message}`);
+  } finally {
+    turnBusy=false; render();
+  }
+  voiceNextDispatch();
+});
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
@@ -232,7 +256,9 @@ $('import-save').addEventListener('change', async e => {
   if(onlineOptions)return; const file = e.target.files[0]; if (!file) return;
   try {
     if (file.size > 12000000) throw new Error('Save files must be smaller than 12 MB.');
+    const importEpoch = epoch;
     const imported = parseSave(await file.text());
+    if(turnBusy || epoch!==importEpoch)return;
     if (!confirm('Replace your current campaign with this imported save? Export your current save first if you want to keep it.')) return;
     client.cancel(); state = imported; selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
   } catch (error) { toast(`Import failed: ${error.message}`); }
@@ -410,7 +436,7 @@ async function sendDiplomatic(message, proposal = null) {
   try {
     const response = await pending;
     if (epoch !== requestEpoch || campaign !== state) {
-      if (campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
+      if (!turnBusy && campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
       return;
     }
     appendMessage(rulerId, 'ruler', response.reply);

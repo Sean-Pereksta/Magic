@@ -322,7 +322,7 @@ function considerRivalPeace(s) {
   }
 }
 
-export function runStrategyTurn(s) {
+export function runStrategyTurn(s, onProgress = () => {}) {
   if (s.outcome) return;
   initializeStrategy(s);
   if (s.strategy.lastTurn >= s.turn) return;
@@ -336,6 +336,9 @@ export function runStrategyTurn(s) {
   s.strategy.history.push(round); s.strategy.history = s.strategy.history.slice(-HISTORY_LIMIT);
   // Every living House acts exactly once; the starting House rotates so
   // contested decisions do not always favor the same kingdom.
+  const total = rivals.filter(k => alive(s,k.id)).length;
+  let completed = 0;
+  onProgress({phase:'ai',completed,total});
   const offset = (s.turn - 1) % Math.max(1,rivals.length);
   for (const k of [...rivals.slice(offset), ...rivals.slice(0, offset)]) {
     const report = reportFor(s, k.id);
@@ -354,6 +357,7 @@ export function runStrategyTurn(s) {
     if (!report.orders && !report.actions.some(a => ['march','war'].includes(a.kind))) report.reason =
       c.tiles.some(t => t.project) ? 'Existing projects are underway; holding positions and rebuilding reserves.' :
         k.economicPlan ? 'Saving for the next project while maintaining the army.' : 'Holding secure positions and rebuilding population and reserves.';
+    onProgress({phase:'ai',completed:++completed,total});
   }
   considerRivalPeace(s);
   s.strategy.lastTurn = s.turn;
