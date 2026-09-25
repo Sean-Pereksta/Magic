@@ -6,6 +6,7 @@ import { populationBreakdown } from './population.mjs';
 import { FirebaseCampaign, multiplayerRoute } from './multiplayer-firebase.mjs';
 import { MultiplayerUI, humanProposals } from './multiplayer-ui.mjs';
 import { intelligencePanel, politicalCard, structureActions } from './intelligence-ui.mjs';
+import { warRoomPanel } from './war-room-ui.mjs';
 import { assignSpy, paySpyRansom, recruitSpy, resolveCaptive } from './espionage.mjs';
 import { ART, preloadAllArt, installArtFallbacks } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
@@ -89,7 +90,7 @@ function render() {
   if(!onlineOptions)$('end-turn').textContent=state.phase==='founding'?'Found all kingdoms':'End turn';
   document.querySelectorAll('[data-tab]').forEach(b => { b.disabled=state.phase==='founding'; b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
-  $('panel').innerHTML = state.phase==='founding'?foundingPanel(state,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : ledgerPanel();
+  $('panel').innerHTML = state.phase==='founding'?foundingPanel(state,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : tab === 'operations' ? warRoomPanel(state) : ledgerPanel();
   $('panel').scrollTop = scroll;
   $('latest-events').innerHTML = state.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = state.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
