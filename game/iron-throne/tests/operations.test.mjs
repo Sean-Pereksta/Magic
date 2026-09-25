@@ -31,6 +31,15 @@ test('ratified joint war creates one shared operation, linked plans and reciproc
   assert.deepEqual(new Set(op.commitments),new Set(pledges.map(p=>p.id)));assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
 });
 
+test('additional agreements can expand one operation to a multi-House coalition',()=>{
+  const s=createGame(2208);stock(s);
+  const first=createJointOperation(s,PLAYER,'wintermere','thornwall',{targetTile:'31,5'});
+  const joined=createJointOperation(s,'wintermere','sunspire','thornwall');
+  assert.equal(joined.id,first.id);assert.equal(joined.participants.length,3);assert.ok(joined.participants.includes('sunspire'));
+  assert.equal(joined.planIds.length,3);assert.ok(s.intrigue.plans.some(p=>p.operationId===joined.id&&p.actor==='sunspire'&&p.status==='Preparing'));
+  assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
+});
+
 test('a human coalition commitment declares war only after real rally preparation and the agreed attack window',()=>{
   const s=createGame(2202);stock(s);commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
   const op=s.intrigue.operations[0],plan=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor===PLAYER),a=armiesOf(s,PLAYER)[0];
