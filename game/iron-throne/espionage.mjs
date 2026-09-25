@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { recordSpyMapIntelligence } from './fog.mjs';
 import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
@@ -43,7 +44,8 @@ export function assignSpy(s,owner,id,host,mission='court') {
   if(mission==='counter'&&officeLevel(s,owner)<2)return {ok:false,error:'Counterintelligence requires a Level II Intelligence Bureau.'};
   if(!spyCapacity(s,owner))return {ok:false,error:'An active Intelligence Office is required.'};
   if(a.assignedHouse===host&&a.status==='Embedded'){a.mission=mission;a.risk=detectionRisk(s,a);return {ok:true};}
-  const home=settlements(s,owner)[0],target=settlements(s,host)[0];
+  const view=planningView(s,owner),home=settlements(view,owner)[0],target=settlements(view,host)[0];
+  if(!home||!target)return {ok:false,error:'No known destination for this mission.'};
   Object.assign(a,{assignedHouse:host,mission,network:0,status:host===owner?'Embedded':'Traveling',arrivalTurn:host===owner?s.turn:s.turn+Math.max(1,Math.ceil(distance(home,target)/5)),risk:0});
   return {ok:true};
 }
@@ -230,12 +232,13 @@ export function runAISpies(s,k) {
   initializeEspionage(s);if(!officeLevel(s,k.id))return false;
   const own=s.intelligence.agents.filter(a=>a.owner===k.id&&a.status!=='Dead');
   let recruited=false;
-  if(own.length<Math.min(2,spyCapacity(s,k.id))&&k.resources.gold>100&&k.commands>1){const r=recruitSpy(s,k.id);recruited=r.ok;if(r.ok)own.push(s.intelligence.agents.find(a=>a.id===r.spyId));}
+  if(own.length<Math.min(2,spyCapacity(s,k.id))&&k.resources.gold>(s.wars.some(w=>w.split(':').includes(k.id))?75:100)&&k.commands>1){const r=recruitSpy(s,k.id);recruited=r.ok;if(r.ok)own.push(s.intelligence.agents.find(a=>a.id===r.spyId));}
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p));
-  const target=plans.find(militaryPlan)?.target||Object.entries(k.relations).filter(([id])=>alive(s,id)).sort((a,b)=>(b[1].fear+b[1].wariness+b[1].dependency)-(a[1].fear+a[1].wariness+a[1].dependency))[0]?.[0];
+  const target=plans.find(militaryPlan)?.target||Object.entries(k.relations).filter(([id])=>alive(s,id)).sort((a,b)=>(b[1].fear+b[1].wariness+b[1].dependency+(atWar(s,k.id,b[0])?80:0))-(a[1].fear+a[1].wariness+a[1].dependency+(atWar(s,k.id,a[0])?80:0)))[0]?.[0];
   for(const [i,a] of own.entries())if(operational(a)) {
     if(i===1&&officeLevel(s,k.id)>=2&&a.mission!=='counter')assignSpy(s,k.id,a.id,k.id,'counter');
-    else if(target&&a.status==='Available')assignSpy(s,k.id,a.id,target,relation(s,k.id,target).dependency>=20?'diplomacy':'plans');
+    else if(target&&a.status==='Embedded'&&a.assignedHouse===target&&s.wars.some(w=>w.split(':').includes(k.id))&&a.mission!=='military')assignSpy(s,k.id,a.id,target,'military');
+    else if(target&&a.status==='Available')assignSpy(s,k.id,a.id,target,s.wars.some(w=>w.split(':').includes(k.id))?'military':relation(s,k.id,target).dependency>=20?'diplomacy':'plans');
   }
   return recruited;
 }

@@ -224,10 +224,10 @@ export function findPath(s, startId, endId, owner, roadsOnly = false, avoid = nu
 }
 export function orderStructureAttack(s, owner, armyId, targetId, type, mode = 'attack', avoid = null) {
   const a = s.armies.find(a => a.id === armyId && a.owner === owner), t = s.tiles[targetId];
-  if(isHumanHouse(s,owner)&&!visionTiles(s,owner).has(targetId))return {ok:false,error:'Observe this location before targeting a structure.'};
+  if(!visionTiles(s,owner).has(targetId))return {ok:false,error:'Observe this location before targeting a structure.'};
   const error = structureAttackCheck(s, a, t, type, mode);
   if (error) return {ok:false,error};
-  const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(isHumanHouse(s,owner)?knowledgeView(s,owner):s,a.tile,targetId,owner,false,avoid);
+  const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(knowledgeView(s,owner),a.tile,targetId,owner,false,avoid);
   if (mode === 'attack' && a.tile !== targetId && !path.length) return {ok:false,error:'No legal route to this structure.'};
   a.path = path; a.target = targetId; a.order = mode; a.structureTarget = type;
   return {ok:true,path};
@@ -239,7 +239,7 @@ export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = nu
   if (order === 'attack' && targetId === a.tile && t?.owner && atWar(s, owner, t.owner) && structuresAt(t).length)
     return orderStructureAttack(s,owner,armyId,targetId,structuresAt(t).find(type => type !== 'road') || 'road');
   if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; return { ok: true }; }
-  const path = findPath(isHumanHouse(s,owner)?knowledgeView(s,owner):s, a.tile, targetId, owner, false, avoid);
+  const path = findPath(knowledgeView(s,owner), a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
   a.path = path; a.target = targetId; a.structureTarget = null; a.order = order;
   return { ok: true, path };
@@ -349,7 +349,7 @@ export function resolveMovement(s) {
     if (!s.armies.includes(a) || sizeOf(a) === 0) continue;
     if (a.structureTarget) {
       const t = s.tiles[a.target];
-      if (isHumanHouse(s,a.owner)&&!visionTiles(s,a.owner).has(a.target)||structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
+      if (!visionTiles(s,a.owner).has(a.target)||structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
       else if (a.order === 'bombard' || a.tile === a.target) {
         const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s,a.owner,e.owner));
         if (enemy && a.order === 'attack') {
@@ -457,6 +457,7 @@ export function resolveEconomy(s) {
 }
 
 export function strategicThreat(s, owner, t) {
+  s=knowledgeView(s,owner);
   return s.armies.reduce((value, a) => value + (a.owner === owner ? -1 : atWar(s, a.owner, owner) ? 1 : 0) * strength(a) / (1 + distance(t, s.tiles[a.tile])), 0);
 }
 export function strategyTurn(s) { return runStrategyTurn(s); }

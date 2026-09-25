@@ -113,11 +113,13 @@ test('committed invasion plans declare real wars and issue real marching orders'
   strategyTurn(s);assert.equal(p.status,'Preparing');assert.equal(atWar(s,k.id,'thornwall'),false);
   s.turn+=2;strategyTurn(s);assert.equal(atWar(s,k.id,'thornwall'),true);assert.equal(p.status,'Executing');assert.equal(a.target,'31,5');assert.ok(a.path.length);assert.ok(p.assignedArmies.includes(a.id));
 });
-test('a difficult defended fortress makes plans build actual siege equipment',()=>{
+test('a scouted difficult defended fortress makes plans build actual siege equipment',()=>{
   const s=createGame();stock(s);s.turn=12;const k=kingdom(s,'wintermere'),home=s.tiles['17,4'];
   home.workshop=true;home.levels.workshop=1;
   Object.assign(s.tiles['31,5'],{walls:180,levels:{...s.tiles['31,5'].levels,wall:3}});
   armiesOf(s,'thornwall')[0].units={...emptyUnits(),levy:100};
+  // Siege requirements must come from a real observation of the enemy fortress.
+  s.armies.push({...structuredClone(armiesOf(s,k.id)[0]),id:'siege-scout',tile:'29,5',units:{...emptyUnits(),scout:1},path:[],target:null,order:'hold'});
   const p=createPlan(s,k.id,'invasion',{target:'thornwall',targetTile:'31,5',requiredForces:20,requiredSiege:2,delay:1});
   strategyTurn(s);assert.equal(p.status,'Preparing');assert.equal(home.project?.type,'siegeWorks');
   assert.ok(s.intrigue.audit.some(e=>e.planId===p.id&&/build: siegeWorks/.test(e.message)));

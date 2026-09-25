@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { isHumanHouse, isAiHouse } from './house-control.mjs';
 import { BUILDINGS, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
 import { buildingLevel, constructionSpec, productionPlan } from './economy.mjs';
@@ -76,8 +77,9 @@ export function publicEconomy(s,owner) {
   return {region:region?.name||'Unfounded realm',specialty:region?.description||'Choose a starting region.',imports:needs.filter(n=>n.need>5).map(n=>n.resource),exports:needs.filter(n=>n.surplus>30).map(n=>n.resource)};
 }
 function candidate(s,from,to) {
+  s=planningView(s,from);
   const route=tradeRoute(s,from,to);if(!route.safe)return null;
-  const a=kingdom(s,from),needs=economicNeeds(s,from),supplies=economicNeeds(s,to);
+  const a=kingdom(s,from),needs=economicNeeds(s,from),supplies=RESOURCES.map(resource=>({resource,surplus:36,production:0}));
   let best=null;
   for(const n of needs.filter(n=>n.need>=8)){
     const surplus=supplies.find(x=>x.resource===n.resource).surplus;if(surplus<8)continue;
@@ -90,8 +92,7 @@ function candidate(s,from,to) {
       const intent={type:'EXCHANGE',duration:5,giveResource:n.resource,giveAmount:amount,receiveResource:give.resource,receiveAmount:receive,tradeKind:n.resource==='food'&&a.resources.food<30?'emergency':'immediate'};
       // Sustainable supply needs may become recurring proposals. Both stores
       // and forecast production must cover the offered five-turn obligation.
-      if(isHumanHouse(s,to)&&tradeInfrastructure(s,from).level&&tradeInfrastructure(s,to).level&&s.turn%4===0&&give.surplus+give.production*5>=receive*5&&surplus+supplies.find(x=>x.resource===n.resource).production*5>=amount*5&&!contractCheck(s,to,from,{...intent,type:'RECURRING'})) {intent.type='RECURRING';intent.tradeKind='recurring';}
-      if(isHumanHouse(s,to)){let verdict=evaluateDeal(s,from,intent,to);if(verdict.status==='counter'){Object.assign(intent,verdict.counter);verdict=evaluateDeal(s,from,intent,to);}if(verdict.status!=='accept')continue;}
+      if(isHumanHouse(s,to)&&tradeInfrastructure(s,from).level&&tradeInfrastructure(s,to).level&&s.turn%4===0&&give.surplus+give.production*5>=receive*5&&surplus+supplies.find(x=>x.resource===n.resource).production*5>=amount*5) {intent.type='RECURRING';intent.tradeKind='recurring';}
       if(!best||score>best.score)best={score,intent,reason:`${a.name} seeks ${n.resource} for ${a.economicPlan?BUILDINGS[a.economicPlan.type].name:'its population and military plans'} and offers surplus ${give.resource}.`,route};
     }
   }
@@ -119,6 +120,7 @@ export function aiResourceTrade(s) {
     const options=s.kingdoms.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)).map(o=>({partner:o.id,offer:candidate(s,k.id,o.id)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
     const best=options[0];if(!best)continue;
     const other=kingdom(s,best.partner),i=best.offer.intent;
+    if(economicNeeds(s,other.id).find(n=>n.resource===i.giveResource).surplus<i.giveAmount)continue;
     if(!canAfford(other,{[i.giveResource]:i.giveAmount})||!canAfford(k,{[i.receiveResource]:i.receiveAmount}))continue;
     pay(other,{[i.giveResource]:i.giveAmount});pay(k,{[i.giveResource]:i.giveAmount},1);pay(k,{[i.receiveResource]:i.receiveAmount});pay(other,{[i.receiveResource]:i.receiveAmount},1);
     recordTrade(s,other.id,k.id,i.giveResource,i.giveAmount,'ai-trade');recordTrade(s,k.id,other.id,i.receiveResource,i.receiveAmount,'ai-trade');s.commerce.aiTrades[k.id]=s.turn;

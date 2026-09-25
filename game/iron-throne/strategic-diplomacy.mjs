@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { alive, armiesOf, atWar, distance, kingdom, log, relation, settlements, strength, treaty } from './core.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { changeRelation, recordPoliticalMemory, tradeBlocked } from './living.mjs';
@@ -9,6 +10,7 @@ const power=(s,id)=>armiesOf(s,id).reduce((n,a)=>n+strength(a),0)+settlements(s,
 const sharedEnemies=(s,a,b)=>s.kingdoms.filter(k=>atWar(s,a,k.id)&&atWar(s,b,k.id)).length;
 const separation=(s,a,b)=>Math.min(...settlements(s,a).flatMap(x=>settlements(s,b).map(y=>distance(x,y))));
 export function cooperationInterest(s,observer,partner,kind,target=null) {
+  s=planningView(s,observer);
   const k=kingdom(s,observer),r=relation(s,observer,partner),common=sharedEnemies(s,observer,partner),near=separation(s,observer,partner)<=14;
   const reasons=[];
   let score=r.trust*.6+r.reliability*.16-r.grievance*.6+common*20+(near?8:-8);
@@ -98,17 +100,19 @@ export function runStrategicDiplomacy(s) {
     respondCooperation(s,actor,p.id,decision);
   }
   if(s.turn>=6&&s.turn%4===2) {
-    const ranked=s.kingdoms.filter(k=>alive(s,k.id)).map(k=>({id:k.id,power:power(s,k.id)})).sort((a,b)=>b.power-a.power||a.id.localeCompare(b.id));
-    const dominant=ranked[0],total=ranked.reduce((n,k)=>n+k.power,0);
     s.cooperation.balance=[];
-    if(dominant&&dominant.power/total>=.36&&dominant.power>ranked[1]?.power*1.6)for(const k of s.kingdoms.filter(k=>k.id!==dominant.id&&alive(s,k.id)&&isAiHouse(s,k.id))) {
+    for(const k of s.kingdoms.filter(k=>alive(s,k.id)&&isAiHouse(s,k.id))) {
+      const view=planningView(s,k.id);
+      const ranked=view.kingdoms.filter(h=>alive(view,h.id)).map(h=>({id:h.id,power:power(view,h.id)})).sort((a,b)=>b.power-a.power||a.id.localeCompare(b.id));
+      const dominant=ranked[0],total=ranked.reduce((n,h)=>n+h.power,0);
+      if(!dominant || dominant.id===k.id || dominant.power/total<.36 || dominant.power<=ranked[1]?.power*1.6)continue;
       const response=balanceResponse(s,k.id,dominant.id);
       s.cooperation.balance.push({house:k.id,dominant:dominant.id,response,turn:s.turn});
       if(response==='neutral')continue;
       const home=settlements(s,k.id)[0];
       if(response==='align'){proposeCooperation(s,k.id,dominant.id,'alliance',{reason:'Seek security by aligning with the strongest House.'});continue;}
       const frontier=settlements(s,k.id).sort((a,b)=>separationFrom(a)-separationFrom(b))[0];
-      function separationFrom(t){return Math.min(...settlements(s,dominant.id).map(x=>distance(t,x)));}
+      function separationFrom(t){return Math.min(...settlements(view,dominant.id).map(x=>distance(t,x)));}
       if(!s.intrigue.plans.some(p=>p.actor===k.id&&activePlan(p)&&p.type==='buildDefenses'))createPlan(s,k.id,'buildDefenses',{targetTile:frontier?.id||home.id,building:'wall',objective:'Fortify against the growing regional power.',delay:0});
       if(response==='coalition') {
         const partner=s.kingdoms.filter(o=>![k.id,dominant.id].includes(o.id)&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&!treaty(s,o.id,dominant.id,'alliance'))

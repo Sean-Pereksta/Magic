@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { refreshKnowledge, knowledgeView } from './fog.mjs';
 import { operationPledgeProgress, updateOperations, supplyOperation } from './operations.mjs';
 import { operationFor, operationMember } from './cooperation-state.mjs';
@@ -117,8 +118,9 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
     if (s.treaties.some(t => t.type === 'embargo' && t.expires > s.turn && t.parties.includes(actorHouseId) && t.parties.includes(rulerId) && t.targetId === i.targetId)) return reject('This embargo is already active.');
   }
   if (i.type === 'TRIBUTE' && !i.receiveAmount) return reject('Specify the tribute you demand.');
-  const playerPower = armiesOf(s, actorHouseId).reduce((n, a) => n + strength(a), 0), rulerPower = armiesOf(s, rulerId).reduce((n, a) => n + strength(a), 0);
-  if (i.type === 'VASSALAGE' && !consentingHuman && (playerPower < rulerPower * 1.8 || settlements(s, actorHouseId).length < 2)) return reject('Allegiance requires at least two settlements and overwhelming military strength.');
+  const known=planningView(s,rulerId);
+  const playerPower = armiesOf(known, actorHouseId).reduce((n, a) => n + strength(a), 0), rulerPower = armiesOf(s, rulerId).reduce((n, a) => n + strength(a), 0);
+  if (i.type === 'VASSALAGE' && !consentingHuman && (playerPower < rulerPower * 1.8 || settlements(known, actorHouseId).length < 2)) return reject('Allegiance requires at least two settlements and overwhelming military strength.');
   if (i.type === 'ALLIANCE' && !consentingHuman && r.trust < 0 && (k.honor >= .6 || r.trust < -60)) return reject('Rebuild trust before requesting an alliance.');
   if (i.type === 'TERRITORY') {
     const t = s.tiles[i.targetId];
@@ -142,7 +144,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
     if (i.type === 'BUILD_DEFENSES') {
       const why = buildCheck(s, rulerId, target.id, 'fort'); if (why) return reject(why);
     } else {
-      const reachable = armiesOf(s, rulerId).some(a => a.tile === target.id || findPath(s, a.tile, target.id, rulerId).length > 0);
+      const reachable = armiesOf(s, rulerId).some(a => a.tile === target.id || findPath(known, a.tile, target.id, rulerId).length > 0);
       if (!reachable) return reject('No army can legally reach that destination.');
     }
   }
@@ -171,7 +173,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   if (['TRIBUTE', 'VASSALAGE', 'WITHDRAW'].includes(i.type)) return reject('Your leverage does not justify this demand.');
   const extra = Math.ceil((threshold - utility) / (VALUES[i.giveResource] * (['EXCHANGE', 'RECURRING'].includes(i.type) ? 1 : .7 + k.greed * .35))) + 2;
   const counter = { ...i, giveAmount: i.giveAmount + extra };
-  if (counter.giveAmount <= 1000 && canAfford(player, { [counter.giveResource]: counter.giveAmount })) return { status: 'counter', reason: `${factors.slice(0, 2).join(' ')} We can accept ${counter.giveAmount} ${counter.giveResource}${i.type === 'RECURRING' ? ' each turn' : ' upfront'} for these obligations.`.trim(), intent, counter, factors };
+  if (counter.giveAmount <= 1000) return { status: 'counter', reason: `${factors.slice(0, 2).join(' ')} We can accept ${counter.giveAmount} ${counter.giveResource}${i.type === 'RECURRING' ? ' each turn' : ' upfront'} for these obligations.`.trim(), intent, counter, factors };
   return reject('The terms are too costly for this house.');
 }
 
@@ -306,7 +308,7 @@ function aiDiplomacy(s) {
         if(recipient){pay(k,{food:15});pay(recipient,{food:15},1);recordTrade(s,k.id,recipient.id,'food',15,'war-aid');recordPoliticalMemory(s,k.id,enemy.id,'war-aid',`We supplied ${recipient.name} against ${enemy.name}.`,8);}
       }
       if(k.honor<.4 && k.ambition>.8 && treaty(s,k.id,enemy.id,'alliance')){
-        const ratio=armiesOf(s,k.id).reduce((n,a)=>n+strength(a),0)/Math.max(1,armiesOf(s,enemy.id).reduce((n,a)=>n+strength(a),0));
+        const ratio=armiesOf(s,k.id).reduce((n,a)=>n+strength(a),0)/Math.max(1,armiesOf(planningView(s,k.id),enemy.id).reduce((n,a)=>n+strength(a),0));
         if(ratio>2.2 && relation(s,k.id,enemy.id).opinion<25){declareWar(s,k.id,enemy.id);s.pledges.filter(p=>p.debtor===k.id&&p.creditor===enemy.id&&p.status==='pending').forEach(p=>{p.breached=true;});}
       }
     }
@@ -316,6 +318,7 @@ function aiDiplomacy(s) {
 export function endTurn(s) {
   if (s.outcome || s.phase==='founding') return s;
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
+  refreshKnowledge(s);
   updatePoliticalState(s, { sendDispatches: false });
   for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); verifyPledges(s,{operationsOnly:true}); updateOperations(s,{afterMovement:true}); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
   finishStrategyRound(s); refreshKnowledge(s);
