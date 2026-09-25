@@ -242,7 +242,7 @@ export function validateEspionage(s) {
       if(x.operation!==undefined){
         const op=operationForPlan(s,p),o=x.operation;
         if(!op||r.detail<2||!o||o.id!==op.id||!Array.isArray(o.participants)||o.participants.some((id,i)=>id!==op.participants[i])||!integer(o.exposure,0,100))fail();
-        if(r.detail>=3&&(!text(o.name,100)||o.targetTile!==op.targetTile||!o.roles||!o.rallyPoints||!o.requiredForces||!integer(o.requiredSiege,0,100000)||!Array.isArray(o.attackWindow)||o.attackWindow.length!==2||o.attackWindow.some(v=>!integer(v,1,100020))||!o.supply||!PLAN_STATUSES.includes(o.status)))fail();
+        if(r.detail>=3&&(!(typeof o.name==='string'&&o.name.length<=100)||o.targetTile!==op.targetTile||!o.roles||!o.rallyPoints||!o.requiredForces||!integer(o.requiredSiege,0,100000)||!Array.isArray(o.attackWindow)||o.attackWindow.length!==2||o.attackWindow.some(v=>!integer(v,1,100020))||!o.supply||!PLAN_STATUSES.includes(o.status)))fail();
         if(r.detail<3&&['name','targetTile','roles','rallyPoints','requiredForces','requiredSiege','attackWindow','supply','status'].some(key=>Object.hasOwn(o,key)))fail();
       }
     } else {
