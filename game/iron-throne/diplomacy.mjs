@@ -1,5 +1,5 @@
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court, resetMessages } from './house-control.mjs';
-import { activePlan, createJointOperation, finishPlans, linkOperationCommitment, recordPlayerPlans, transitionPlan } from './plans.mjs';
+import { activePlan, createJointOperation, finishPlans, linkOperationCommitment, operationPledgeComplete, recordPlayerPlans, transitionPlan } from './plans.mjs';
 import { resolveEspionage, visiblePlans } from './espionage.mjs';
 import { politicalAttitude } from './politics.mjs';
 import { finishStrategyRound } from './strategy.mjs';
@@ -257,7 +257,7 @@ export function verifyPledges(s) {
       }
       if (i.type === 'WITHDRAW') complete = !forces.some(a => s.tiles[a.tile].owner === p.creditor);
       if (i.type === 'BUILD_DEFENSES') complete = target?.owner === p.debtor && target.building === 'fort';
-      if (i.type === 'JOINT_WAR') complete = s.militaryEvents.some(e => e.turn >= p.created && (p.eventAfter === undefined || (e.id || 0) > p.eventAfter) && e.attacker === p.debtor && e.defender === i.targetId);
+      if (i.type === 'JOINT_WAR') complete = p.operationId ? operationPledgeComplete(s,p) : s.militaryEvents.some(e => e.turn >= p.created && (p.eventAfter === undefined || (e.id || 0) > p.eventAfter) && e.attacker === p.debtor && e.defender === i.targetId);
       if (!alive(s, p.debtor) || p.breached) finishPledge(s, p, false);
       else if (complete) finishPledge(s, p, true);
       else if (s.turn >= p.deadline) finishPledge(s, p, false);
