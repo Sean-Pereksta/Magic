@@ -173,7 +173,7 @@ export function operationPledgeComplete(s,pledge) {
   const attacked=events.some(e=>['battle','capture','siege','structure'].includes(e.action));
   if(role==='Main assault')return attacked&&!!plan?.suppliesCommitted;
   const near=armiesOf(s,pledge.debtor).filter(a=>target&&distance(s.tiles[a.tile],target)<=2&&sizeOf(a)>=Math.max(1,Math.ceil((op.requiredForces[pledge.debtor]||1)*.7)));
-  const rolePresent=role==='Siege support'?near.some(a=>familyCount(a,'siege')>=Math.max(1,op.requiredSiege)):near.length>0;
+  const rolePresent=atWar(s,pledge.debtor,op.target)&&(role==='Siege support'?near.some(a=>familyCount(a,'siege')>=Math.max(1,op.requiredSiege)):near.length>0);
   if(pledge.lastVerified!==s.turn){pledge.held=rolePresent?Math.min(2,(pledge.held||0)+1):0;pledge.lastVerified=s.turn;}
   const siegeAction=role==='Siege support'&&events.some(e=>e.action==='siege'||e.action==='structure');
   return !!plan?.suppliesCommitted&&(attacked||siegeAction||pledge.held>=2);
