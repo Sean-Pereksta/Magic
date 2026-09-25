@@ -1,3 +1,5 @@
+import { personalWillingness } from './emotions.mjs';
+import { marriageSupport } from './marriage.mjs';
 import { planningView, scoutOrder, requestAlliedIntelligence, refreshHouseKnowledge } from './ai-knowledge.mjs';
 import { operationArmyOrder, prepareOperationAI, updateOperations } from './operations.mjs';
 import { memberOperation, operationMember } from './cooperation-state.mjs';
@@ -291,7 +293,7 @@ function directArmies(s, k, c) {
       if (command(world, k, a, rally)) continue;
     }
     const ally = settlements(s).filter(t => t.owner !== k.id && treaty(s, k.id, t.owner, 'alliance') &&
-      relation(s, k.id, t.owner).trust >= 40 && nearby(s, c.enemies, t, 4).length).sort((x, y) => distance(location, x) - distance(location, y))[0];
+      relation(s, k.id, t.owner).trust + personalWillingness(s,k.id,t.owner) + marriageSupport(s,k.id,t.owner) >= 40 && nearby(s, c.enemies, t, 4).length).sort((x, y) => distance(location, x) - distance(location, y))[0];
     if (ally && command(world, k, a, ally)) { k.goal = 'SUPPORT_ALLY'; continue; }
     if (!command(world, k, a, refuge)) command(world, k, a, location, 'hold');
   }

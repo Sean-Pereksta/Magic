@@ -47,7 +47,7 @@ export const UNITS = {
   cavalry: { name: 'Cavalry', icon: '♞', attack: 2.7, defense: 1.8, count: 4, cost: { food: 16, iron: 12, gold: 32 }, description: 'Four riders. Fast alone; strong on open ground.' },
   siege: { name: 'Siege engines', icon: '♜', attack: .8, defense: .5, count: 2, cost: { wood: 30, iron: 16, gold: 35 }, description: 'Two engines. Break walls; slow army movement.' }
 };
-export const INTENT_TYPES = ['ALLIANCE', 'PEACE', 'TRADE', 'EXCHANGE', 'AID', 'JOINT_WAR', 'DEFEND', 'POSITION', 'WITHDRAW', 'BUILD_DEFENSES', 'TERRITORY', 'TRIBUTE', 'VASSALAGE', 'PROMISE', 'WAR', 'BETRAY', 'RECURRING', 'LOAN', 'NON_AGGRESSION', 'ACCESS', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_WITHDRAW', 'PLEDGE_BUILD', 'PLEDGE_PEACE'];
+export const INTENT_TYPES = ['MARRIAGE', 'ALLIANCE', 'PEACE', 'TRADE', 'EXCHANGE', 'AID', 'JOINT_WAR', 'DEFEND', 'POSITION', 'WITHDRAW', 'BUILD_DEFENSES', 'TERRITORY', 'TRIBUTE', 'VASSALAGE', 'PROMISE', 'WAR', 'BETRAY', 'RECURRING', 'LOAN', 'NON_AGGRESSION', 'ACCESS', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_WITHDRAW', 'PLEDGE_BUILD', 'PLEDGE_PEACE'];
 export const SAVE_VERSION = 3;
 
 // Shared catalogs drive construction, inspections, AI, manufacture and artwork.

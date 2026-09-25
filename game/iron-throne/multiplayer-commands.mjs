@@ -1,3 +1,5 @@
+import { relationshipResponse } from './diplomacy.mjs';
+import { discussMarriage, continueMarriageReview } from './marriage.mjs';
 import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
 import { respondCooperation } from './strategic-diplomacy.mjs';
 import { foundCity, foundAIKingdoms } from './founding.mjs';
@@ -94,12 +96,15 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       const spent=consumeMessage(s,target,a);if(!spent.ok)return spent;
       appendConversation(s,target,'player',p.message,{actorHouseId:a});
       if(isHumanHouse(s,target)){
+        discussMarriage(s,target,p.message,a);
         appendConversation(s,a,'ruler',p.message,{actorHouseId:target,unread:true,kind:'human'});
       }else{
         if(!p.proposal)applySpeech(s,target,p.message,a);
+        else if(p.proposal.type==='MARRIAGE')continueMarriageReview(s,target,a);
         // A model reply is untrusted dialogue/proposals. Rule checks run only on ratification.
         const model=p.response&&validateResponse(p.response);
-        const response=model||scriptedReply(s,target,p.message,{actorHouseId:a,proposal:p.proposal||null});
+        const options={actorHouseId:a,proposal:p.proposal||null};
+        const response=relationshipResponse(s,target,p.message,model||scriptedReply(s,target,p.message,options),options);
         appendConversation(s,target,'ruler',response.reply,{actorHouseId:a,unread:true});
         if(model)acceptRulerMemories(s,target,model,a);
         const candidates=[p.proposal,...response.intents,response.proposal,response.counterProposal,response.promiseDetected].filter(Boolean);
@@ -113,6 +118,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       s.humanProposals||=[];
       if(s.humanProposals.filter(o=>o.status==='pending'&&o.from===a).length>=10)return fail('Resolve outstanding proposals before sending more.');
       const spent=consumeMessage(s,target,a);if(!spent.ok)return spent;
+      if(intent.type==='MARRIAGE')continueMarriageReview(s,target,a);
       s.humanProposals.push({id:c.id,from:a,to:target,intent,turn:s.turn,expires:s.turn+3,status:'pending'});
       for(const [actor,other] of [[a,target],[target,a]])appendConversation(s,other,'council',`Proposal from ${kingdom(s,a).name}: ${describeIntent(intent)}. Awaiting ${kingdom(s,target).name}.`,{actorHouseId:actor,unread:actor===target,kind:'human-proposal'});
       result=ok();break;

@@ -34,7 +34,7 @@ function spy(s,owner,host,network=90){
 test('shared operations require consent, link individual jointWar plans and survive saves',()=>{
   const f=setup(),{s,o}=f;assert.equal(o.status,'Preparing');assert.equal(s.intrigue.plans.filter(p=>p.operationId===o.id).length,1);assert.equal(s.pledges.filter(p=>p.operationId).length,0);
   assert.equal(respondOperation(s,'sunspire',o.id,'accept','wintermere').ok,false);
-  accept(f);assert.equal(s.intrigue.plans.filter(p=>p.operationId===o.id).length,2);assert.equal(s.pledges.filter(p=>p.operationId).length,4);
+  accept(f);assert.equal(relation(s,'ashen','wintermere').personal.campaigns.length,0);assert.equal(s.intrigue.plans.filter(p=>p.operationId===o.id).length,2);assert.equal(s.pledges.filter(p=>p.operationId).length,4);
   assert.equal(respondOperation(s,'wintermere',o.id,'accept').ok,false);assert.equal(s.pledges.length,4);
   assert.equal(parseSave(JSON.stringify(s)).cooperation.operations[0].name,o.name);
 });
@@ -87,6 +87,8 @@ test('a shared campaign issues real orders, captures its objective and records f
     if(atWar(s,'ashen',o.target))orderArmy(s,'ashen',armiesOf(s,'ashen')[0].id,o.targetTile,'attack');
     endTurn(s);parseSave(JSON.stringify(s));
   }
+  assert.ok(relation(s,'ashen','wintermere').personal.campaigns.includes(`campaign:${o.id}`),'completed cooperation must count separately from its planning memory');
+  assert.ok(relation(s,'wintermere','ashen').personal.campaigns.includes(`campaign:${o.id}`));
   assert.equal(o.status,'Completed');assert.ok(o.launchedTurn>=o.attackStart&&o.launchedTurn<=o.attackEnd);
   assert.ok(s.militaryEvents.some(e=>e.tile===o.targetTile&&e.action==='capture'&&['ashen','wintermere'].includes(e.attacker)));
   assert.ok(s.pledges.some(p=>p.operationId===o.id&&p.operationTask==='attack'&&p.status==='fulfilled'));

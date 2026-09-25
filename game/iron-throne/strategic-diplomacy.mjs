@@ -1,3 +1,5 @@
+import { personalWillingness } from './emotions.mjs';
+import { marriageSupport } from './marriage.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { alive, armiesOf, atWar, distance, kingdom, log, relation, settlements, strength, treaty } from './core.mjs';
 import { isAiHouse } from './house-control.mjs';
@@ -14,6 +16,7 @@ export function cooperationInterest(s,observer,partner,kind,target=null) {
   const k=kingdom(s,observer),r=relation(s,observer,partner),common=sharedEnemies(s,observer,partner),near=separation(s,observer,partner)<=14;
   const reasons=[];
   let score=r.trust*.6+r.reliability*.16-r.grievance*.6+common*20+(near?8:-8);
+  score+=personalWillingness(s,observer,partner)+marriageSupport(s,observer,partner);
   if(r.trust>=30)reasons.push('Trust in this court');
   if(r.grievance>=25)reasons.push('Unresolved grievances');
   if(common)reasons.push('Shared enemies');

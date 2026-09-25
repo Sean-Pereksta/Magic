@@ -1,3 +1,4 @@
+import { marriageSupport } from './marriage.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { armyVision } from './fog.mjs';
 import { atWar, distance, findPath, kingdom, orderArmy, settlements, sizeOf, splitArmy } from './core.mjs';
@@ -85,7 +86,7 @@ export function requestAlliedIntelligence(world, owner) {
   if (!ours) return 0;
   let shared=0;
   const allies=world.treaties.filter(t=>t.type==='alliance'&&t.expires>world.turn&&t.parties.includes(owner))
-    .map(t=>t.parties.find(id=>id!==owner)).filter(id=>(kingdom(world,id)?.relations[owner]?.trust||0)>=50);
+    .map(t=>t.parties.find(id=>id!==owner)).filter(id=>(kingdom(world,id)?.relations[owner]?.trust||0)+marriageSupport(world,id,owner)>=50);
   for (const ally of allies) {
     const source=world.fog.houses[ally]; if(!source)continue;
     for (const [id,r] of Object.entries(source.armies)) {

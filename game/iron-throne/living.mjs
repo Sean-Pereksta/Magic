@@ -1,3 +1,5 @@
+import { emotionalEvent, initializeEmotions, personalContext, updateEmotions } from './emotions.mjs';
+import { discussMarriage, normalizeMarriageTerms, initializeMarriage, marriageBetween, marriageSupport, strainMarriage } from './marriage.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court } from './house-control.mjs';
 import { updateAttitudes, politicalAttitude } from './politics.mjs';
@@ -13,6 +15,7 @@ const powerOf = (s, owner) => armiesOf(s, owner).reduce((n, a) => n + strength(a
 const houseName = (s, id) => kingdom(s, id)?.name || id;
 
 export function initializeLiving(s) {
+  initializeEmotions(s); initializeMarriage(s);
   s.ambassadors ||= [];
   s.diplomacy ||= { messages: { turn: s.turn, regular: 0, hosts: {} }, tradeHistory: [], incidents: [], warHistory: [], offers: {}, processedTurn: 0 };
   for (const k of s.kingdoms) {
@@ -110,7 +113,13 @@ export function speechKind(message) {
   return 'negotiation';
 }
 export function applySpeech(s, rulerId, message, actorHouseId = PLAYER) {
+  discussMarriage(s,rulerId,message,actorHouseId);
   const r = relation(s, rulerId, actorHouseId), kind = speechKind(message);
+  if(['praise','apology','reassurance'].includes(kind))emotionalEvent(s,rulerId,actorHouseId,'courtesy',{text:'Respectful conversation, still awaiting deeds.'});
+  if(['insult','threat'].includes(kind)){
+    emotionalEvent(s,rulerId,actorHouseId,kind,{text:kind==='insult'?'Insulted our ruler in council.':'Threatened our House in council.'});
+    if(kind==='insult')strainMarriage(s,rulerId,actorHouseId,'Humiliated our ruler despite our family bond.',{key:`insult:${s.turn}`});
+  }
   if (kind === 'negotiation') return;
   r.speech ||= {};
   const old = r.speech[kind] || { count: 0, turn: 0 };
@@ -134,6 +143,10 @@ export function applyGift(s, giver, receiver, resource, amount) {
   const factor = 1 / (1 + r.gifts.length * r.gifts.length);
   const opinion = Math.floor(Math.min(need ? 18 : 8, amount / 5) * factor);
   changeRelation(s, receiver, giver, { opinion, trust: need ? Math.floor(4 * factor) : 0, generosity: Math.floor(8 * factor) }, need ? `Relief supplied during a ${resource} shortage.` : 'Foreign aid received.');
+  if(factor>=.2){
+    emotionalEvent(s,receiver,giver,need?'relief':'aid',{scale:Math.min(1,amount/40)*factor,text:need?`Supplied ${amount} ${resource} when our stores were low.`:`Sent ${amount} ${resource} in aid.`});
+    emotionalEvent(s,giver,receiver,'support',{text:'Supported this House with our own resources.'});
+  }
   r.gifts.push({ turn: s.turn, resource, amount }); r.gifts = r.gifts.slice(-12);
   if (need) recordPoliticalMemory(s, receiver, giver, 'relief', `${houseName(s, giver)} supplied ${amount} ${resource} during our shortage.`, 9);
 }
@@ -141,6 +154,7 @@ export function applyGift(s, giver, receiver, resource, amount) {
 export function grossProduction(s,owner) { return productionPlan(s,owner).gross; }
 export function recordTrade(s, from, to, resource, amount, kind = 'exchange') {
   if (!amount) return;
+  if(['recurring','ai-trade'].includes(kind)&&amount>=10&&!atWar(s,from,to))emotionalEvent(s,to,from,'cooperation',{text:`A dependable ${resource} shipment arrived.`});
   const history = s.diplomacy.tradeHistory;
   history.push({ turn: s.turn, from, to, resource, amount, kind });
   s.diplomacy.tradeHistory = history.filter(t => s.turn - t.turn < 12).slice(-120);
@@ -175,12 +189,13 @@ export function borderThreat(s, observer, subject) {
   const expansion = s.militaryEvents.filter(e => e.attacker === subject && e.action === 'capture' && s.turn - e.turn <= 6 && capital && distance(s.tiles[e.tile], capital) <= 8).length;
   score += expansion * 8;
   const k = kingdom(s, observer);
-  score *= (.7 + k.paranoia * .7) * (stationedAmbassador(s, subject, observer) ? .9 : 1);
+  score *= (marriageSupport(s,observer,subject)>0?.7:1) * (.7 + k.paranoia * .7) * (stationedAmbassador(s, subject, observer) ? .9 : 1);
   return { score: Math.round(clamp(score)), nearby, relativeStrength: Math.round(powerOf(s, subject) / Math.max(1, powerOf(s, observer)) * 10) / 10, permitted, sharedEnemies: shared, recentConquests: expansion };
 }
 export function diplomaticPriorities(s, owner) {
   s=planningView(s,owner);
   const k = kingdom(s, owner), tasks = [];
+  if(k.resourcesUnknown&&k.confidantConcerns?.length)return k.confidantConcerns;
   if(k.resourcesUnknown)return ['Discuss commitments, trade, or mutual security with our court.'];
   const production = grossProduction(s, owner);
   for (const resource of RESOURCES) if (k.resources[resource] < (resource === 'food' ? 40 : 20)) tasks.push(`Acquire ${resource}; stores are low (${k.resources[resource]}).`);
@@ -196,6 +211,7 @@ export function diplomaticPriorities(s, owner) {
   return tasks.slice(0, 4);
 }
 export function updatePoliticalState(s, { sendDispatches = true } = {}) {
+  updateEmotions(s);
   const views=new Map(s.kingdoms.map(k=>[k.id,planningView(s,k.id)]));
   for (const observer of s.kingdoms) for (const subject of s.kingdoms) {
     if (observer.id === subject.id || !alive(s, observer.id) || !alive(s, subject.id)) continue;
@@ -233,7 +249,8 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
 export function relationDescriptions(s, rulerId, actorHouseId = PLAYER) {
   const r = relation(s, rulerId, actorHouseId), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === actorHouseId && p.creditor === rulerId && p.status === 'pending');
   const posture=politicalAttitude(s,rulerId,actorHouseId);
-  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.resourcesUnknown?'Private · Discuss cooperation or gather intelligence':k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
+  const personal=personalContext(s,rulerId,actorHouseId),marriage=marriageBetween(s,rulerId,actorHouseId);
+  return [ ['Political attitude', posture.label], ['Personal feelings',personal.feelings.join(' · ')||'Still getting to know you'], ...(personal.bonds.length?[['Personal bonds',personal.bonds.join(' · ')]]:[]), ...(marriage?[['Family bond',`Royal marriage · ${marriage.status}`]]:[]), ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.resourcesUnknown?'Private · Discuss cooperation or gather intelligence':k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
 export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }
@@ -341,6 +358,7 @@ export function validateLivingSave(s) {
   if (!object(d) || !object(d.messages) || !int(d.messages.turn) || !int(d.messages.regular, 5) || !object(d.messages.hosts) || Object.keys(d.messages.hosts).some(id => !house(id) || !int(d.messages.hosts[id], 10)) || !list(d.tradeHistory, 120) || !list(d.incidents, 40) || !list(d.warHistory, 80) || !int(d.processedTurn)) fail();
   if (!object(d.offers) || Object.keys(d.offers).some(id => !house(id))) fail();
   for (const offers of Object.values(d.offers)) if (!list(offers, 4) || offers.some(i => !object(i) || !INTENT_TYPES.includes(i.type) || !RESOURCES.includes(i.giveResource) || !RESOURCES.includes(i.receiveResource) || !int(i.giveAmount, 1000) || !int(i.receiveAmount, 1000) || !int(i.duration, 20) || i.duration < 1 || !text(i.targetId, 60))) fail();
+  for(const offers of Object.values(d.offers))for(const i of offers)if(i.type==='MARRIAGE'&&!normalizeMarriageTerms(i))fail();
   if (s.presentation !== undefined && (!object(s.presentation) || typeof s.presentation.reducedEffects !== 'boolean')) fail();
   for (const t of d.tradeHistory) if (!object(t) || !int(t.turn) || !house(t.from) || !house(t.to) || !RESOURCES.includes(t.resource) || !int(t.amount, 1000) || !text(t.kind, 30)) fail();
   for (const e of d.warHistory) if (!object(e) || !int(e.id, 10000000) || !int(e.turn) || !house(e.attacker) || !house(e.defender)) fail();
