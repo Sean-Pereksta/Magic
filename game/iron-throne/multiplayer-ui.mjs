@@ -1,3 +1,4 @@
+import { showTurnProgress } from './turn-progress.mjs';
 import { mapOptions, MAP_PROFILES } from './map-profiles.mjs';
 import {HOUSES} from './data.mjs';
 import {alive,treaty} from './core.mjs';
@@ -39,6 +40,7 @@ export class MultiplayerUI {
     if(!status)return;this.status=status;this.state=state;
     const {meta,uid,online,pending,presence}=status;
     const button=document.getElementById('end-turn');
+    showTurnProgress(meta?.phase==='resolving'?{phase:'resolving'}:null);
     for(const b of document.querySelectorAll('[data-found-city]'))b.disabled=b.dataset.siteValid!=='true'||!online||!this.network.state||this.network.lastVersion!==meta?.stateVersion||pending>0||meta?.phase!=='founding';
     if(!meta){this.bar.textContent='CONNECTING…';button.disabled=true;return;}
     const actor=seatFor(meta,uid),host=meta.hostUid===uid,now=this.network.now(),setup=meta.phase==='setup';

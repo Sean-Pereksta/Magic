@@ -315,17 +315,19 @@ function aiDiplomacy(s) {
 
   }
 }
-export function endTurn(s) {
+export function endTurn(s, onProgress = () => {}) {
   if (s.outcome || s.phase==='founding') return s;
+  onProgress({phase:'preparing'});
   s.treaties = s.treaties.filter(t => t.expires > s.turn);
   refreshKnowledge(s);
   updatePoliticalState(s, { sendDispatches: false });
-  for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s); resolveEspionage(s); resolveMovement(s); verifyPledges(s,{operationsOnly:true}); updateOperations(s,{afterMovement:true}); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
+  for (const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id))) recordPlayerPlans(s,actor); aiDiplomacy(s); aiResourceTrade(s); strategyTurn(s, onProgress); onProgress({phase:'resolving'}); resolveEspionage(s); resolveMovement(s); verifyPledges(s,{operationsOnly:true}); updateOperations(s,{afterMovement:true}); finishPlans(s); resolveEconomy(s); resolveAmbassadors(s);
   finishStrategyRound(s); refreshKnowledge(s);
   s.turn++; resolveRecurringTrade(s); verifyPledges(s,{skipOperations:true}); updatePoliticalState(s); for (const actor of humanControlledHouseIds(s)) scheduleTrade(s,actor);
   resetMessages(s); s.diplomacy.processedTurn = s.turn;
   s.treaties = s.treaties.filter(t => t.expires > s.turn && t.parties.every(id => alive(s, id)));
   checkVictory(s); rebuildTerritory(s); refreshKnowledge(s);
+  onProgress({phase:'complete'});
   return s;
 }
 export function retrieveMemories(s, rulerId, message, actorHouseId = PLAYER) {

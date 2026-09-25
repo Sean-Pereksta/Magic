@@ -460,7 +460,7 @@ export function strategicThreat(s, owner, t) {
   s=knowledgeView(s,owner);
   return s.armies.reduce((value, a) => value + (a.owner === owner ? -1 : atWar(s, a.owner, owner) ? 1 : 0) * strength(a) / (1 + distance(t, s.tiles[a.tile])), 0);
 }
-export function strategyTurn(s) { return runStrategyTurn(s); }
+export function strategyTurn(s, onProgress) { return runStrategyTurn(s, onProgress); }
 export function checkVictory(s) {
   if(s.phase==='founding')return;
   if (!s.controllers && !alive(s, PLAYER)) { s.outcome={won:false,reason:'Your last settlement has fallen. Your house survives in the chronicles.'}; return; }
