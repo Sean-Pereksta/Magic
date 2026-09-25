@@ -99,11 +99,13 @@ test('political attitudes use all-House relations, persist through small changes
   declareWar(s,'thornwall','wintermere');assert.match(politicalAttitude(s,'wintermere','thornwall').label,/Hostile|Vengeful|Mortal Enemy/);
   assert.notDeepEqual(relation(s,'wintermere','thornwall'),relation(s,'wintermere','sunspire'));
 });
-test('plans form real AI alliances and military access after preparation',()=>{
+test('political plans negotiate through diplomacy before treaties are ratified',()=>{
   const s=createGame();for(const k of s.kingdoms)k.commands=0;
-  relation(s,'wintermere','thornwall').trust=60;relation(s,'thornwall','wintermere').trust=60;
+  Object.assign(relation(s,'wintermere','thornwall'),{trust:70,opinion:50,reliability:90});
+  Object.assign(relation(s,'thornwall','wintermere'),{trust:100,opinion:100,reliability:100});
   strategyTurn(s);const p=s.intrigue.plans.find(p=>p.actor==='wintermere'&&p.type==='seekAlliance');assert.ok(p);assert.equal(p.status,'Preparing');
-  s.turn+=2;strategyTurn(s);assert.equal(p.status,'Completed');assert.ok(treaty(s,'wintermere','thornwall','alliance'));assert.ok(treaty(s,'wintermere','thornwall','access'));
+  assert.equal(treaty(s,'wintermere','thornwall','alliance'),undefined);
+  s.turn=p.desiredExecutionTurn;endTurn(s);assert.equal(p.status,'Completed');assert.ok(treaty(s,'wintermere','thornwall','alliance'));
 });
 test('committed invasion plans declare real wars and issue real marching orders',()=>{
   const s=createGame();stock(s);s.turn=12;const k=kingdom(s,'wintermere'),a=armiesOf(s,k.id)[0];a.units={...emptyUnits(),knight:100};
