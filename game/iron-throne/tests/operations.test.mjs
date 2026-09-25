@@ -41,14 +41,14 @@ test('a human coalition commitment declares war only after real rally preparatio
 });
 
 test('visible mobilization and siege preparation raise operation exposure',()=>{
-  const s=createGame(2203);stock(s),op=createJointOperation(s,PLAYER,'wintermere','thornwall',{targetTile:'31,5'});
+  const s=createGame(2203);stock(s);const op=createJointOperation(s,PLAYER,'wintermere','thornwall',{targetTile:'31,5'});
   refreshOperations(s);const quiet=op.exposure;
   for(const id of op.participants){const a=armiesOf(s,id)[0];a.tile=op.targetTile;a.target=op.targetTile;a.path=['31,5'];a.units={...emptyUnits(),levy:40,ram:3};}
   refreshOperations(s);assert.ok(op.exposure>quiet,'expected exposure above '+quiet+', got '+op.exposure);assert.ok(op.exposure>=40);
 });
 
 test('operation intelligence progresses from suspicion to participants to exact attack window without fabricating state',()=>{
-  const s=createGame(2204);stock(s),op=createJointOperation(s,'wintermere','sunspire',PLAYER,{targetTile:'5,6'});
+  const s=createGame(2204);stock(s);const op=createJointOperation(s,'wintermere','sunspire',PLAYER,{targetTile:'5,6'});
   const p=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor==='wintermere'),spy=embeddedSpy(s,'wintermere',40);
   let r=discoverPlan(s,spy,p);assert.equal(r.detail,1);assert.match(r.text,/preparing a military operation/);assert.equal(r.snapshot.target,undefined);assert.equal(r.snapshot.operation,undefined);
   spy.network=60;r=discoverPlan(s,spy,p);assert.equal(r.detail,2);assert.equal(r.snapshot.target,PLAYER);assert.deepEqual(r.snapshot.operation.participants,op.participants);assert.equal(r.snapshot.operation.attackWindow,undefined);
@@ -57,7 +57,7 @@ test('operation intelligence progresses from suspicion to participants to exact 
 });
 
 test('War Room never reads an undiscovered enemy operation directly',()=>{
-  const s=createGame(2205);stock(s),op=createJointOperation(s,'wintermere','sunspire',PLAYER,{targetTile:'5,6'}),p=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor==='wintermere');
+  const s=createGame(2205);stock(s);const op=createJointOperation(s,'wintermere','sunspire',PLAYER,{targetTile:'5,6'}),p=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor==='wintermere');
   let html=warRoomPanel(s);assert.doesNotMatch(html,new RegExp(op.name));assert.match(html,/No enemy operation has been discovered/);
   const spy=embeddedSpy(s,'wintermere',40);discoverPlan(s,spy,p);html=warRoomPanel(s);assert.match(html,/Suspected operation/);assert.doesNotMatch(html,new RegExp(op.name));
   spy.network=100;discoverPlan(s,spy,p);html=warRoomPanel(s);assert.match(html,new RegExp(op.name));assert.match(html,new RegExp('T'+op.attackWindow[0]+'–T'+op.attackWindow[1]));
