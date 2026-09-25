@@ -325,7 +325,7 @@ function aiDiplomacy(s) {
       const rDanger=relation(s,k.id,danger.id),joinPower=danger===unusuallyPowerful&&k.ambition>.7&&k.paranoia<.55&&rDanger.trust>15;
       const partners=living.filter(o=>isAiHouse(s,o.id)&&![k.id,danger.id].includes(o.id)&&!atWar(s,k.id,o.id)).map(o=>{
         const r=relation(s,k.id,o.id),shared=atWar(s,o.id,danger.id)||relation(s,o.id,danger.id).opinion<0?20:0;
-        return {o,score:r.trust+r.opinion*.45+r.reliability*.25+shared-economicRelationship(s,k.id,o.id).dependency*.15};
+        return {o,score:r.trust+r.opinion*.45+(r.reliability??50)*.25+shared-economicRelationship(s,k.id,o.id).dependency*.15};
       }).sort((a,b)=>b.score-a.score||a.o.id.localeCompare(b.o.id));
       const partner=partners[0]?.o;
       if(joinPower&&!treaty(s,k.id,danger.id,'alliance')&&!atWar(s,k.id,danger.id))attemptAIDeal(s,k.id,danger.id,{type:'ALLIANCE',targetId:'',duration:10,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0});
