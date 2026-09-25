@@ -37,6 +37,13 @@ try {
     await page.goto(`${base}/game/iron-throne/index.html`);
     await page.locator('#resume').click();
     assert.equal(await page.locator('#turn').textContent(), 'Turn 1');
+    assert.equal(await page.locator('#latest-events').isVisible(), false);
+    await page.locator('#chronicle-button').click();
+    assert.equal(await page.locator('#latest-events').isVisible(), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#chronicle-dialog').isVisible(), false);
+    assert.equal(await page.locator('#ai-status').isVisible(), false);
+    assert.equal(await page.locator('#chat-notice').isVisible(), false);
     await page.locator('#map').focus(); await page.keyboard.press('ArrowRight'); await page.locator('#home').click();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const bounds=await page.locator('#map').boundingBox(), zoom=bounds.width<600?.85:1.25;
