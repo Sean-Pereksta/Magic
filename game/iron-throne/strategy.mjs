@@ -1,5 +1,5 @@
 import { isAiHouse } from './house-control.mjs';
-import { activePlan, assaultAssessment, createPlan, dangerousTiles, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
+import { activePlan, assaultAssessment, createPlan, dangerousTiles, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, strategicValue, transitionPlan } from './plans.mjs';
 import { runAISpies } from './espionage.mjs';
 import { BUILDINGS, HOUSES, QUALITY, REGIONS, RESOURCES, RESOURCE_VALUES, UNITS } from './data.mjs';
 import { buildingLevel, cityOrderBonus, constructionSpec, fortMaximum, tileProduction } from './economy.mjs';
@@ -69,15 +69,17 @@ function protectedPeace(s, a, b) {
 }
 function considerWar(s, k, c) {
   if (s.intrigue?.plans.some(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)) || s.turn < 10 || c.war || c.crisis || c.threats.length || troopCount(c.forces) < 30) return;
-  const ours = forcePower(c.forces);
-  const candidates = s.kingdoms.filter(o => o.id !== k.id && alive(s, o.id) && !protectedPeace(s, k.id, o.id)).map(o => {
-    const r = relation(s, k.id, o.id), theirForces = armiesOf(s, o.id);
+  const ours = forcePower(c.forces),living=s.kingdoms.filter(o=>alive(s,o.id));
+  const realmPower=id=>forcePower(armiesOf(s,id))+settlements(s,id).length*22+(kingdom(s,id).population||0)*.08;
+  const average=living.reduce((n,o)=>n+realmPower(o.id),0)/Math.max(1,living.length);
+  const candidates = living.filter(o => o.id !== k.id && !protectedPeace(s, k.id, o.id)).map(o => {
+    const r = relation(s, k.id, o.id), theirForces = armiesOf(s, o.id),balanceThreat=realmPower(o.id)>average*1.45;
     const allyAttacked = s.kingdoms.some(ally => ally.id !== k.id && treaty(s, k.id, ally.id, 'alliance') &&
       relation(s, k.id, ally.id).trust >= 45 && atWar(s, o.id, ally.id));
-    const motive = r.grievance >= 40 || r.opinion < -20 || k.aggression >= .75 && r.opinion < 10 || allyAttacked;
-    if (!motive || r.dependency >= 30 || r.trust >= 45 || ours < forcePower(theirForces) * (1.45 - k.aggression * .4)) return null;
-    const tile = settlements(s, o.id).sort((a, b) => distance(c.home, a) - distance(c.home, b))[0];
-    return { type: o.id, tile, score: r.grievance - r.opinion + (allyAttacked ? 35 : 0) - distance(c.home, tile) * 3 };
+    const motive = r.grievance >= 40 || r.opinion < -20 || k.aggression >= .75 && r.opinion < 10 || allyAttacked || balanceThreat&&(k.paranoia>.55||k.honor>.8);
+    if (!motive || r.dependency >= (balanceThreat?45:30) || r.trust >= 45 || ours < forcePower(theirForces) * (1.45 - k.aggression * .4)) return null;
+    const tile = settlements(s, o.id).slice().sort((a,b)=>strategicValue(s,k.id,b,c.home)-strategicValue(s,k.id,a,c.home)||a.id.localeCompare(b.id))[0];
+    return { type: o.id, tile, score: r.grievance - r.opinion + (allyAttacked ? 35 : 0)+(balanceThreat?22*(k.paranoia+k.honor):0)+strategicValue(s,k.id,tile,c.home) };
   }).filter(Boolean).sort(stableScore);
   for (const candidate of candidates.slice(0, 2)) {
     // Probe geography without crossing a third party's closed borders. The
@@ -241,7 +243,7 @@ function directArmies(s, k, c) {
       if (!command(s, k, a, refuge, 'retreat')) command(s, k, a, location, 'hold');
       continue;
     }
-    const pledge = c.pledges.find(p => p.intent.type !== 'BUILD_DEFENSES' && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
+    const pledge = c.pledges.find(p => p.intent.type !== 'BUILD_DEFENSES' && !(p.intent.type==='JOINT_WAR'&&p.operationId) && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
     if (pledge) {
       const target = pledge.intent.type === 'WITHDRAW' ? refuge : pledge.intent.type === 'JOINT_WAR' ?
         settlements(s, pledge.intent.targetId).sort((x, y) => distance(location, x) - distance(location, y))[0] : s.tiles[pledge.intent.targetId];

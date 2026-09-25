@@ -1,5 +1,5 @@
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court, resetMessages } from './house-control.mjs';
-import { finishPlans, recordPlayerPlans } from './plans.mjs';
+import { activePlan, createJointOperation, finishPlans, linkOperationCommitment, operationPledgeComplete, recordPlayerPlans, transitionPlan } from './plans.mjs';
 import { resolveEspionage, visiblePlans } from './espionage.mjs';
 import { politicalAttitude } from './politics.mjs';
 import { finishStrategyRound } from './strategy.mjs';
@@ -180,6 +180,8 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
   const verdict = evaluateDeal(s, rulerId, raw, actorHouseId, options);
   if (verdict.status !== 'accept') return { ok: false, error: verdict.reason };
   const i = verdict.intent, k = kingdom(s, rulerId), player = kingdom(s, actorHouseId);
+  const jointOperation=i.type==='JOINT_WAR'?createJointOperation(s,actorHouseId,rulerId,i.targetId,{duration:i.duration}):null;
+  if(i.type==='JOINT_WAR'&&!jointOperation)return {ok:false,error:'The courts could not form a viable shared operation around a reachable strategic objective.'};
   if (!isPlayerPromise(i)) { pay(player, { [i.giveResource]: i.giveAmount }); pay(k, { [i.giveResource]: i.giveAmount }, 1); }
   if (i.receiveAmount && i.type !== 'LOAN') { pay(k, { [i.receiveResource]: i.receiveAmount }); pay(player, { [i.receiveResource]: i.receiveAmount }, 1); }
   if (['WAR', 'BETRAY'].includes(i.type)) declareWar(s, actorHouseId, rulerId);
@@ -200,8 +202,12 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
   }
   if (i.type === 'LOAN') s.pledges.push({ id: `pledge-${s.nextId++}`, debtor: rulerId, creditor: actorHouseId, intent: { ...i, type: 'PROMISE', giveAmount: i.receiveAmount, giveResource: i.giveResource, receiveAmount: 0 }, created: s.turn, deadline: s.turn + i.duration, status: 'pending', delivered: false, held: 0, breached: false, loan: true });
   if (['JOINT_WAR', 'DEFEND', 'POSITION', 'WITHDRAW', 'BUILD_DEFENSES'].includes(i.type)) {
-    if (i.type === 'JOINT_WAR') { declareWar(s, actorHouseId, i.targetId); declareWar(s, rulerId, i.targetId); }
-    s.pledges.push({ id: `pledge-${s.nextId++}`, debtor: rulerId, creditor: actorHouseId, eventAfter: s.nextId - 1, intent: i, deadline: s.turn + i.duration, status: 'pending', delivered: false, created: s.turn, held: 0, breached: false });
+    const addMilitaryPledge=(debtor,creditor)=>{
+      const p={ id: `pledge-${s.nextId++}`, debtor, creditor, eventAfter: s.nextId - 1, intent: {...i}, deadline: s.turn + i.duration, status: 'pending', delivered: false, created: s.turn, held: 0, breached: false, ...(jointOperation?{operationId:jointOperation.id}:{}) };
+      s.pledges.push(p);if(jointOperation)linkOperationCommitment(s,jointOperation.id,p.id);return p;
+    };
+    addMilitaryPledge(rulerId,actorHouseId);
+    if(i.type==='JOINT_WAR'&&!s.pledges.some(p=>p.status==='pending'&&p.debtor===actorHouseId&&p.creditor===rulerId&&p.intent.type==='JOINT_WAR'&&p.intent.targetId===i.targetId))addMilitaryPledge(actorHouseId,rulerId);
   }
   recordPoliticalMemory(s, rulerId, actorHouseId, 'agreement', `${LABELS[i.type]} agreed with ${player.name}; ${i.giveAmount} ${i.giveResource}${i.type === 'PROMISE' ? ' promised' : ' paid'}.`, 7);
   log(s, `${LABELS[i.type]} with ${k.name} ratified.`, 'diplomacy');
@@ -251,7 +257,7 @@ export function verifyPledges(s) {
       }
       if (i.type === 'WITHDRAW') complete = !forces.some(a => s.tiles[a.tile].owner === p.creditor);
       if (i.type === 'BUILD_DEFENSES') complete = target?.owner === p.debtor && target.building === 'fort';
-      if (i.type === 'JOINT_WAR') complete = s.militaryEvents.some(e => e.turn >= p.created && (p.eventAfter === undefined || (e.id || 0) > p.eventAfter) && e.attacker === p.debtor && e.defender === i.targetId);
+      if (i.type === 'JOINT_WAR') complete = p.operationId ? operationPledgeComplete(s,p) : s.militaryEvents.some(e => e.turn >= p.created && (p.eventAfter === undefined || (e.id || 0) > p.eventAfter) && e.attacker === p.debtor && e.defender === i.targetId);
       if (!alive(s, p.debtor) || p.breached) finishPledge(s, p, false);
       else if (complete) finishPledge(s, p, true);
       else if (s.turn >= p.deadline) finishPledge(s, p, false);
@@ -288,17 +294,49 @@ export function resolveRecurringTrade(s) {
     for (const [a, b] of [[payer, receiver], [receiver, payer]]) changeRelation(s, a.id, b.id, { opinion: relation(s, a.id, b.id).opinion < 45 ? 1 : 0, trust: relation(s, a.id, b.id).trust < 35 ? 1 : 0 }, 'A reciprocal trade shipment arrived.');
   }
 }
+function attemptAIDeal(s,actorId,rulerId,intent) {
+  if(!isAiHouse(s,actorId)||!isAiHouse(s,rulerId)||actorId===rulerId||atWar(s,actorId,rulerId))return {ok:false};
+  let verdict=evaluateDeal(s,rulerId,intent,actorId);
+  if(verdict.status==='counter'&&verdict.counter)verdict=evaluateDeal(s,rulerId,verdict.counter,actorId);
+  if(verdict.status!=='accept')return {ok:false,reason:verdict.reason};
+  return commitDeal(s,rulerId,verdict.intent,actorId);
+}
 function aiDiplomacy(s) {
-  if (s.turn % 6 !== 0) return;
-  for (const k of s.kingdoms.filter(k => isAiHouse(s,k.id) && alive(s,k.id))) {
-    const danger = s.kingdoms.find(o => o.id!==k.id && alive(s,o.id) && relation(s,k.id,o.id).fear>35 && relation(s,k.id,o.id).trust<10);
-    if (danger) {
-      const partner = s.kingdoms.find(o => isAiHouse(s,o.id) && ![k.id,danger.id].includes(o.id) && alive(s,o.id) && !atWar(s,k.id,o.id) && !treaty(s,k.id,o.id,'alliance') && (atWar(s,o.id,danger.id)||relation(s,o.id,danger.id).trust<0));
-      if(partner){addTreaty(s,k.id,partner.id,'alliance',10);log(s,`${k.name} and ${partner.name} form a defensive alliance against ${danger.name}.`,'diplomacy');}
+  // First act on strategic intentions produced by strategy.mjs. Every agreement
+  // still passes through the same deterministic acceptance/counteroffer rules.
+  for(const p of (s.intrigue?.plans||[]).filter(p=>isAiHouse(s,p.actor)&&activePlan(p)&&['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)){
+    const ruler=p.type==='embargo'?p.allies[0]:p.target;
+    const intent=p.type==='seekAlliance'?{type:'ALLIANCE',targetId:'',duration:12,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0}:
+      p.type==='secureTrade'?{type:'TRADE',targetId:'',duration:12,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0}:
+      {type:'EMBARGO',targetId:p.target,duration:10,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0};
+    const result=ruler&&attemptAIDeal(s,p.actor,ruler,intent);
+    if(result?.ok)transitionPlan(s,p,'Completed','The proposed cooperation was accepted and ratified.');
+    else if(s.turn-p.desiredExecutionTurn>=4)transitionPlan(s,p,'Abandoned',result?.reason||'The other court would not accept workable terms.');
+  }
+  if (s.turn % 4 !== 0) return;
+  const living=s.kingdoms.filter(k=>alive(s,k.id)),power=id=>armiesOf(s,id).reduce((n,a)=>n+strength(a),0)+settlements(s,id).length*22+(kingdom(s,id).population||0)*.08;
+  const average=living.reduce((n,k)=>n+power(k.id),0)/Math.max(1,living.length);
+  const dominant=living.slice().sort((a,b)=>power(b.id)-power(a.id)||a.id.localeCompare(b.id))[0];
+  const unusuallyPowerful=dominant&&power(dominant.id)>average*1.45?dominant:null;
+  for (const k of living.filter(k=>isAiHouse(s,k.id))) {
+    const danger=(unusuallyPowerful?.id!==k.id&&unusuallyPowerful)||living.filter(o=>o.id!==k.id).sort((a,b)=>
+      (relation(s,k.id,b.id).fear+relation(s,k.id,b.id).wariness+relation(s,k.id,b.id).grievance)-(relation(s,k.id,a.id).fear+relation(s,k.id,a.id).wariness+relation(s,k.id,a.id).grievance))[0];
+    if(danger){
+      const rDanger=relation(s,k.id,danger.id),joinPower=danger===unusuallyPowerful&&k.ambition>.7&&k.paranoia<.55&&rDanger.trust>15;
+      const partners=living.filter(o=>isAiHouse(s,o.id)&&![k.id,danger.id].includes(o.id)&&!atWar(s,k.id,o.id)).map(o=>{
+        const r=relation(s,k.id,o.id),shared=atWar(s,o.id,danger.id)||relation(s,o.id,danger.id).opinion<0?20:0;
+        return {o,score:r.trust+r.opinion*.45+(r.reliability??50)*.25+shared-economicRelationship(s,k.id,o.id).dependency*.15};
+      }).sort((a,b)=>b.score-a.score||a.o.id.localeCompare(b.o.id));
+      const partner=partners[0]?.o;
+      if(joinPower&&!treaty(s,k.id,danger.id,'alliance')&&!atWar(s,k.id,danger.id))attemptAIDeal(s,k.id,danger.id,{type:'ALLIANCE',targetId:'',duration:10,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0});
+      else if(partner&&!treaty(s,k.id,partner.id,'alliance')&&(rDanger.fear>30||danger===unusuallyPowerful)&&(k.paranoia>.45||k.honor>.7))
+        attemptAIDeal(s,k.id,partner.id,{type:'ALLIANCE',targetId:'',duration:10,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0});
+      if(partner&&!atWar(s,k.id,danger.id)&&!treaty(s,k.id,danger.id)&&!treaty(s,partner.id,danger.id)&&(rDanger.grievance>=40||k.aggression>.7&&rDanger.opinion<10||danger===unusuallyPowerful&&k.paranoia>.7))
+        attemptAIDeal(s,k.id,partner.id,{type:'JOINT_WAR',targetId:danger.id,duration:8,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0});
     }
-    for (const enemy of s.kingdoms.filter(o=>o.id!==k.id && alive(s,o.id))) {
+    for (const enemy of living.filter(o=>o.id!==k.id)) {
       if(relation(s,k.id,enemy.id).grievance>=50 && k.resources.food>=80){
-        const recipient=s.kingdoms.find(o=>![enemy.id,k.id].includes(o.id)&&alive(s,o.id)&&atWar(s,o.id,enemy.id)&&!atWar(s,o.id,k.id)&&!tradeBlocked(s,o.id,k.id));
+        const recipient=living.find(o=>![enemy.id,k.id].includes(o.id)&&atWar(s,o.id,enemy.id)&&!atWar(s,o.id,k.id)&&!tradeBlocked(s,o.id,k.id));
         if(recipient){pay(k,{food:15});pay(recipient,{food:15},1);recordTrade(s,k.id,recipient.id,'food',15,'war-aid');recordPoliticalMemory(s,k.id,enemy.id,'war-aid',`We supplied ${recipient.name} against ${enemy.name}.`,8);}
       }
       if(k.honor<.4 && k.ambition>.8 && treaty(s,k.id,enemy.id,'alliance')){
@@ -306,8 +344,8 @@ function aiDiplomacy(s) {
         if(ratio>2.2 && relation(s,k.id,enemy.id).opinion<25){declareWar(s,k.id,enemy.id);s.pledges.filter(p=>p.debtor===k.id&&p.creditor===enemy.id&&p.status==='pending').forEach(p=>{p.breached=true;});}
       }
     }
-    const other=s.kingdoms.find(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade')&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id));
-    if(other){addTreaty(s,k.id,other.id,'trade',12);log(s,`${k.name} and ${other.name} sign a trade accord.`,'diplomacy');}
+    const tradePartner=living.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&!atWar(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade')&&!tradeBlocked(s,k.id,o.id)).map(o=>({o,score:relation(s,k.id,o.id).opinion+relation(s,k.id,o.id).trust*.5+economicRelationship(s,k.id,o.id).dependency*(.5+k.greed)})).sort((a,b)=>b.score-a.score||a.o.id.localeCompare(b.o.id))[0];
+    if(tradePartner?.score>15)attemptAIDeal(s,k.id,tradePartner.o.id,{type:'TRADE',targetId:'',duration:12,giveResource:'gold',giveAmount:0,receiveResource:'food',receiveAmount:0});
   }
 }
 export function endTurn(s) {
