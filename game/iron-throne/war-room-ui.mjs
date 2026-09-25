@@ -11,7 +11,7 @@ function ownOperationCard(s,op,viewer){
   const participants=op.participants.map(id=>{
     const p=plans.find(p=>p.actor===id),rally=s.tiles[op.rallyPoints[id]];
     const ready=armiesOf(s,id).filter(a=>rally&&distance(s.tiles[a.tile],rally)<=1).reduce((n,a)=>n+sizeOf(a),0);
-    return `<div class="realm-card"><strong>${esc(kingdom(s,id).name)} · ${esc(op.roles[id])}</strong><p class="fine">${esc(p?.status||'Preparing')} · Rally: ${esc(rally?.name||op.rallyPoints[id])} · ${ready}/${op.requiredForces[id]} troops assembled</p><p class="fine">Supply commitment: ${esc(supplies(op.supply[id]))}</p></div>`;
+    return `<div class="realm-card"><strong>${esc(kingdom(s,id).name)} · ${esc(op.roles[id])}</strong><p class="fine">${esc(p?.status||'Preparing')} · Rally: ${esc(rally?.name||op.rallyPoints[id])} · ${ready}/${op.requiredForces[id]} troops assembled</p><p class="fine">Supplies: ${p?.suppliesCommitted?'Allocated':'Not yet allocated'} · ${esc(supplies(op.supply[id]))}</p></div>`;
   }).join('');
   const commitments=op.commitments.map(id=>s.pledges.find(p=>p.id===id)).filter(Boolean);
   const pledgeRows=commitments.length?commitments.map(p=>`<p class="${statusClass(p.status)}"><strong>${esc(kingdom(s,p.debtor).name)}</strong> → ${esc(kingdom(s,p.creditor).name)} · ${esc(p.status==='fulfilled'?'Fulfilled':p.status==='broken'?'Broken':'Unfulfilled')}</p>`).join(''):'<p class="fine">No separate oath entries are attached to this operation.</p>';
