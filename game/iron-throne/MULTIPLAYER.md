@@ -51,9 +51,9 @@ Every lobby uses these isolated paths:
 | Path below `lobbies/{id}` | Purpose and read access |
 | --- | --- |
 | `iron_throne/meta` | Seats, options, phase, ready flags, lease, version and epoch; members |
-| `iron_throne/world` | Public projection; members |
+| `iron_throne/world` | Bare terrain, known capital sites and public diplomacy; members |
 | `iron_throne/state` | Compressed canonical simulation; current controller |
-| `iron_throne_private/{houseId}` | Court, reports, owned/captured spies and proposals; owner and controller |
+| `iron_throne_private/{houseId}` | House-specific fog view, court, observations, reports, spies, proposals and authoritative negotiation verdicts; owner and controller |
 | `iron_throne_commands/{id}` | Immutable request and final receipt; issuer and controller |
 | `iron_throne_presence/{uid}` | Server-timestamped heartbeat; members |
 | `iron_throne_snapshots/{0,1,2}` | Three rotating completed-round recovery snapshots; controller |

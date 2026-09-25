@@ -1,9 +1,11 @@
+import { knowledgeView } from './fog.mjs';
 import { localHouseId } from './house-control.mjs';
 import { kingdom, projectedBattleLosses } from './core.mjs';
 import { buildingLevel, buildingSpec, fortMaximum, wallMaximum } from './economy.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function battlePreview(s,armyId,targetId) {
+export function battlePreview(s,armyId,targetId) {s=knowledgeView(s,localHouseId(s));
   if(!s.armies.some(a=>a.id===armyId&&a.owner===localHouseId(s)))return '';
+  if(s.tiles[targetId]?.fog!=='visible')return '<p class="fine">Scout this location before estimating battle losses.</p>';
   const forecast=projectedBattleLosses(s,armyId,targetId);if(!forecast)return '';
   const range=r=>`${r.low}–${r.high}`;
   const t=s.tiles[targetId],fortified=wallMaximum(t)||fortMaximum(t);

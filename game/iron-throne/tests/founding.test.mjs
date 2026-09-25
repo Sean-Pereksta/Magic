@@ -103,7 +103,9 @@ test('authoritative founding rejects conflicting stale claims and reconnect snap
  const packed=await packCampaign(s,m),canon=await decodePayload(packed.canonical.payload),publicState=await decodePayload(packed.world.payload);
  const priv=Object.fromEntries(await Promise.all(Object.entries(packed.privateByHouse).map(async([id,p])=>[id,await decodePayload(p.payload)])));
  const restored=joinCampaign(canon,priv),view=playerView(publicState,priv.wintermere,'wintermere');
- for(const field of ['seed','mapProfile','phase','founding','tiles'])assert.deepEqual(view[field],s[field]);
+ for(const field of ['seed','mapProfile','phase','founding'])assert.deepEqual(view[field],s[field]);
+ assert.deepEqual(Object.fromEntries(Object.entries(view.tiles).map(([id,{fog,observedTurn,...t}])=>[id,t])),s.tiles);
+ assert.ok(Object.values(playerView(publicState,priv.ashen,'ashen').tiles).some(t=>t.fog==='unknown'));
  assert.deepEqual(restored.founding,s.founding);
  const second=planFoundings(restored).find(p=>p.owner==='wintermere').capital;
  assert.equal(applyCommand(restored,m,c('wintermere',second,2),{now:2000}).ok,true);

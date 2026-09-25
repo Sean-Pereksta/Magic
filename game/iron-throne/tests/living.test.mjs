@@ -207,7 +207,7 @@ test('model snapshot contains current board, history and reasons but no private 
   kingdom(s, PLAYER).resources.gold = 12345; kingdom(s, 'sunspire').resources.gold = 23456;
   const context = makeContext(s, 'wintermere', 'Explain your counteroffer.', { proposal: terms('EXCHANGE', { giveAmount: 1, receiveAmount: 60 }) });
   const json = JSON.stringify(context); assert.ok(!json.includes('SECRET-DISCUSSION')); assert.ok(!json.includes('12345')); assert.ok(!json.includes('23456'));
-  assert.ok(context.world.self.production.food > 0); assert.equal(context.world.negotiation.status, 'counter');
+  assert.equal(context.world.self.production,undefined);assert.equal(context.world.self.resources,undefined); assert.equal(context.world.negotiation.status, 'counter');
   assert.equal(validateIntent(context.world.negotiation.counter).receiveResource, 'food');
   assert.ok(new TextEncoder().encode(json).length < 22000);
 });

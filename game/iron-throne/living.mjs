@@ -2,7 +2,7 @@ import { isHumanHouse, isAiHouse, humanControlledHouseIds, court } from './house
 import { updateAttitudes, politicalAttitude } from './politics.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
 // Political state belongs to the simulation. Model output is never an action.
-import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES } from './data.mjs';
+import { BUILDINGS, INTENT_TYPES, RESOURCES } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, kingdom, log, moveCost, neighbors, passable, pay, relation, remember, settlements, strength, treaty } from './core.mjs';
 
 export const RELATION_DEFAULTS = { respect: 15, fear: 0, grievance: 0, dependency: 0, wariness: 0, reliability: 50, generosity: 0, aggression: 0 };
@@ -178,6 +178,7 @@ export function borderThreat(s, observer, subject) {
 }
 export function diplomaticPriorities(s, owner) {
   const k = kingdom(s, owner), tasks = [];
+  if(k.resourcesUnknown)return ['Discuss commitments, trade, or mutual security with our court.'];
   const production = grossProduction(s, owner);
   for (const resource of RESOURCES) if (k.resources[resource] < (resource === 'food' ? 40 : 20)) tasks.push(`Acquire ${resource}; stores are low (${k.resources[resource]}).`);
   const threat = s.kingdoms.filter(o => o.id !== owner && alive(s, o.id)).map(o => ({ id: o.id, r: relation(s, owner, o.id) })).sort((a, b) => b.r.wariness - a.r.wariness)[0];
@@ -228,7 +229,7 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
 export function relationDescriptions(s, rulerId, actorHouseId = PLAYER) {
   const r = relation(s, rulerId, actorHouseId), k = kingdom(s, rulerId), pending = s.pledges.find(p => p.debtor === actorHouseId && p.creditor === rulerId && p.status === 'pending');
   const posture=politicalAttitude(s,rulerId,actorHouseId);
-  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
+  return [ ['Political attitude', posture.label], ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.resourcesUnknown?'Private · Discuss cooperation or gather intelligence':k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
 export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }
@@ -328,7 +329,7 @@ export function validateLivingSave(s) {
   const fail = () => { throw new Error('Damaged living diplomacy data.'); };
   const number = (v, max = 100000) => Number.isFinite(v) && v >= 0 && v <= max;
   const int = (v, max = 100000) => Number.isInteger(v) && number(v, max);
-  const house = id => HOUSES.some(h => h.id === id);
+  const house = id => s.kingdoms.some(h => h.id === id);
   const list = (value, max) => Array.isArray(value) && value.length <= max;
   const object = v => v && typeof v === 'object' && !Array.isArray(v);
   const text = (v, max) => typeof v === 'string' && v.length <= max;
@@ -343,7 +344,7 @@ export function validateLivingSave(s) {
   for (const k of s.kingdoms) {
     if (!text(k.conversationSummary, 360) || !object(k.reputation) || !['kept', 'broken', 'envoysKilled'].every(key => int(k.reputation[key])) || !list(k.priorities, 4) || k.priorities.some(p => !text(p, 240))) fail();
     for (const r of Object.values(k.relations)) {
-      if (!Object.keys(RELATION_DEFAULTS).every(key => number(r[key], 100)) || !list(r.history, 24) || !list(r.gifts, 12) || !int(r.wordGain, 4) || !int(r.unread, 99) || !object(r.speech) || !object(r.contacts) || !object(r.observations) || !list(r.sharedEnemies, 4) || r.sharedEnemies.some(id => !house(id)) || !object(r.movements)) fail();
+      if (!Object.keys(RELATION_DEFAULTS).every(key => number(r[key], 100)) || !list(r.history, 24) || !list(r.gifts, 12) || !int(r.wordGain, 4) || !int(r.unread, 99) || !object(r.speech) || !object(r.contacts) || !object(r.observations) || !list(r.sharedEnemies, s.kingdoms.length-2) || r.sharedEnemies.some(id => !house(id)) || !object(r.movements)) fail();
       for (const h of r.history) if (!object(h) || !int(h.turn) || !text(h.reason, 220) || !object(h.changes) || Object.entries(h.changes).some(([key, value]) => !['opinion', 'trust', ...Object.keys(RELATION_DEFAULTS)].includes(key) || !Number.isFinite(value) || Math.abs(value) > 200)) fail();
       if (Object.entries(r.speech).some(([key, v]) => !['praise', 'apology', 'reassurance', 'insult', 'threat'].includes(key) || !object(v) || !int(v.count, 99) || !int(v.turn))) fail();
       if (Object.keys(r.contacts).length > 36 || Object.entries(r.contacts).some(([key, turn]) => !text(key, 100) || !int(turn))) fail();
@@ -354,7 +355,7 @@ export function validateLivingSave(s) {
     for (const m of k.memories) if ((m.subject !== undefined && !house(m.subject)) || (m.kind !== undefined && !text(m.kind, 40)) || (m.verified !== undefined && typeof m.verified !== 'boolean')) fail();
   }
   if (!list(s.ambassadors, 40) || new Set(s.ambassadors.map(a => a.id)).size !== s.ambassadors.length) fail();
-  for (const a of s.ambassadors) if (!object(a) || !text(a.id, 60) || !house(a.owner) || !s.tiles[a.tile] || (a.host !== null && !house(a.host)) || (a.target !== null && !s.tiles[a.target]) || !list(a.path, 1200) || a.path.some(id => !s.tiles[id]) || !['idle', 'travelling', 'returning', 'stationed', 'detained', 'dead'].includes(a.status) || (a.detainedBy !== null && !house(a.detainedBy)) || (a.status === 'detained' && !a.detainedBy)) fail();
+  for (const a of s.ambassadors) if (!object(a) || !text(a.id, 60) || !house(a.owner) || !s.tiles[a.tile] || (a.host !== null && !house(a.host)) || (a.target !== null && !s.tiles[a.target]) || !list(a.path, s.width*s.height) || a.path.some(id => !s.tiles[id]) || !['idle', 'travelling', 'returning', 'stationed', 'detained', 'dead'].includes(a.status) || (a.detainedBy !== null && !house(a.detainedBy)) || (a.status === 'detained' && !a.detainedBy)) fail();
   for (const t of Object.values(s.tiles)) for (const key of ['envoyOffice', 'chancery']) if (t[key] !== undefined && typeof t[key] !== 'boolean') fail();
   for (const p of s.pledges) {
     if (p.conditionHouseId !== undefined && p.conditionHouseId !== null && !house(p.conditionHouseId)) fail();

@@ -1,3 +1,5 @@
+import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
+import { respondCooperation } from './strategic-diplomacy.mjs';
 import { foundCity, foundAIKingdoms } from './founding.mjs';
 import { build, buildHighway, recruit, orderArmy, orderStructureAttack, splitArmy, mergeArmies, kingdom, alive } from './core.mjs';
 import { setFormation } from './warfare.mjs';
@@ -9,7 +11,7 @@ import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -48,6 +50,11 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       }
       break;
     }
+    case 'operationCreate':result=createOperation(s,a,p);break;
+    case 'operationAnswer':result=respondOperation(s,a,p.id,p.decision,p.member||a);break;
+    case 'operationSupply':result=supplyOperation(s,a,p.id);break;
+    case 'operationLeave':result=leaveOperation(s,a,p.id);break;
+    case 'cooperationAnswer':result=respondCooperation(s,a,p.id,p.decision);break;
     case 'build':result=build(s,a,p.tile,p.building);break;
     case 'highway':result=buildHighway(s,a,p.from,p.to);break;
     case 'recruit':result=recruit(s,a,p.tile,p.unit);break;

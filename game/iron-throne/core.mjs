@@ -1,5 +1,9 @@
+import { initializeFog, validateFog, knowledgeView, visionTiles, refreshKnowledge } from './fog.mjs';
+import { initializeCooperation } from './cooperation-state.mjs';
+import { validateCooperation } from './cooperation-validation.mjs';
+import { recordOperationAction } from './operations.mjs';
 import { generateWorld } from './world-generation.mjs';
-import { initializeFounding, validateFoundingSave, STARTING_RADIUS } from './founding.mjs';
+import { initializeFounding, validateFoundingSave, STARTING_RADIUS, capitalSeparation } from './founding.mjs';
 import { MAP_PROFILES } from './map-profiles.mjs';
 import { calculatePopulationChange, populationCapacity } from './population.mjs';
 export { populationCapacity } from './population.mjs';
@@ -8,7 +12,7 @@ import { initializePlans, validatePlans } from './plans.mjs';
 import { initializeEspionage, spyUpkeep, validateEspionage } from './espionage.mjs';
 import { updateAttitudes, validatePolitics } from './politics.mjs';
 import { damageStructure, structureAttackCheck, structuresAt, validateStructures } from './structures.mjs';
-import { BUILDINGS, HOUSES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
+import { BUILDINGS, CAMPAIGN_HOUSES, WORLD_SIZES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
 
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
@@ -25,13 +29,13 @@ export const kingdom = (s, id) => s.kingdoms.find(k => k.id === id);
 export const settlements = (s, owner) => Object.values(s.tiles).filter(t => ['city', 'town'].includes(t.building) && (!owner || t.owner === owner));
 export const armiesOf = (s, owner) => s.armies.filter(a => a.owner === owner);
 export const sizeOf = a => Object.values(a.units).reduce((sum, n) => sum + n, 0);
-export const alive = (s, id) => settlements(s, id).length > 0;
+export const alive = (s, id) => s.knowledgeView ? !!kingdom(s,id)?.knownAlive : settlements(s, id).length > 0;
 export const pair = (a, b) => [a, b].sort().join(':');
 export const atWar = (s, a, b) => a !== b && s.wars.includes(pair(a, b));
 export const treaty = (s, a, b, type) => s.treaties.find(t => t.parties.includes(a) && t.parties.includes(b) && (!type || t.type === type) && t.expires > s.turn);
 export const canAfford = (k, cost) => Object.entries(cost).every(([r, n]) => Number.isFinite(n) && n >= 0 && k.resources[r] >= n);
 export function pay(k, cost, sign = -1) { for (const [r, n] of Object.entries(cost)) k.resources[r] += sign * n; }
-export function log(s, message, kind = 'world') { s.events.unshift({ turn: s.turn, message, kind }); s.events = s.events.slice(0, 100); }
+export function log(s, message, kind = 'world', visibility = {}) { s.events.unshift({ turn: s.turn, message, kind, ...visibility }); s.events = s.events.slice(0, 100); }
 export function random(s) { let x = s.rng >>> 0; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; s.rng = x >>> 0; return s.rng / 4294967296; }
 export function relation(s, a, b) { return kingdom(s, a).relations[b]; }
 export function remember(s, owner, text, importance = 5) {
@@ -59,7 +63,7 @@ export function declareWar(s, a, b) {
   recordPoliticalMemory(s, b, a, 'war', `${kingdom(s, a).name} declared war on us.`, 9);
   for (const k of s.kingdoms.filter(k => ![a, b].includes(k.id) && treaty(s, k.id, b, 'alliance'))) changeRelation(s, k.id, a, { opinion: -20, trust: -12, grievance: 20 }, `Attacked our ally, ${kingdom(s, b).name}.`);
   for (const p of s.pledges.filter(p => p.status === 'pending' && p.debtor === a && p.creditor === b)) p.breached = true;
-  log(s, `${kingdom(s, a).name} declares war on ${kingdom(s, b).name}.`, 'war');
+  log(s, `${kingdom(s, a).name} declares war on ${kingdom(s, b).name}.`, 'war', {public:true});
   return true;
 }
 export function makePeace(s, a, b) {
@@ -67,19 +71,21 @@ export function makePeace(s, a, b) {
   for (const army of s.armies) if ((army.owner === a || army.owner === b) && army.path.length) army.path = [];
 }
 
-export function createGame(seed = 8147, preset = 'random') {
+export function createGame(seed = 8147, preset = 'random', houseCount = 6) {
+  if(!Object.hasOwn(WORLD_SIZES,houseCount))throw new Error('Choose 6, 8, 10 or 12 Houses.');
+  const roster=CAMPAIGN_HOUSES.slice(0,Number(houseCount));
   seed = Number(seed) >>> 0 || 8147;
-  const s = { version: SAVE_VERSION, width: 40, height: 30, seed, rng: seed, preset, turn: 0, nextId: 1, tiles: {}, kingdoms: [], armies: [], treaties: [], wars: [], pledges: [], events: [], militaryEvents: [], conversations: {}, diplomaticTurns: 0, outcome: null };
-  for (const house of HOUSES) {
+  const s = { version: SAVE_VERSION, ...WORLD_SIZES[houseCount], seed, rng: seed, preset, turn: 0, nextId: 1, tiles: {}, kingdoms: [], armies: [], treaties: [], wars: [], pledges: [], events: [], militaryEvents: [], conversations: {}, diplomaticTurns: 0, outcome: null };
+  for (const house of roster) {
     const k = { ...house, resources: { food: 140, wood: 110, stone: 90, iron: 50, gold: 200, horses: 12, tools: 0, arms: 0 }, population: 80, happiness: 70, tax: 'medium', commands: 3, relations: {}, memories: [], memorySummary: '', goal: 'ECONOMY', lastGiftTurn: -1 };
-    for (const other of HOUSES) if (other.id !== k.id) k.relations[other.id] = { opinion: k.honor > .8 ? 18 : k.aggression > .8 ? -12 : 5, trust: 15 };
+    for (const other of roster) if (other.id !== k.id) k.relations[other.id] = { opinion: k.honor > .8 ? 18 : k.aggression > .8 ? -12 : 5, trust: 15 };
     s.kingdoms.push(k);
   }
   initializeFounding(s);
   generateWorld(s, preset);
   s.commerce = {offers:[],lastOfferTurn:0,cooldowns:{},aiTrades:{}};
-  log(s, 'FOUND YOUR KINGDOM. Inspect the world, then choose your capital. Starting capitals must be at least 8 hexes apart.', 'council');
-  initializeStrategy(s); initializeLiving(s); initializePlans(s); initializeEspionage(s); updateAttitudes(s);
+  log(s, `FOUND YOUR KINGDOM. Inspect the world, then choose your capital. Starting capitals must be at least ${capitalSeparation(s)} hexes apart.`, 'council', {public:true});
+  initializeFog(s); initializeStrategy(s); initializeLiving(s); initializePlans(s); initializeCooperation(s); initializeEspionage(s); updateAttitudes(s);
   return s;
 }
 
@@ -115,7 +121,7 @@ function rebuildRegionalTerritory(s) {
 export function commandLimit(s, owner) { return Math.min(8, 3 + cityOrderBonus(s,owner) + Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
 export function buildCheck(s, owner, id, type) {
   const t=s.tiles[id],k=kingdom(s,owner),b=BUILDINGS[type];
-  if(s.phase==='founding')return 'Found all six kingdoms before construction begins.';
+  if(s.phase==='founding')return 'Found all kingdoms before construction begins.';
   if(s.outcome)return 'This campaign has ended.';
   if(!b||!k||!t)return 'Unknown construction.';
   const frontier=type==='town'&&!t.owner&&neighbors(s,t).some(n=>n.owner===owner);
@@ -164,7 +170,7 @@ export function buildHighway(s,owner,fromId,toId) {
   return {ok:true,tiles:projects.length,cost};
 }
 export function recruitCheck(s,owner,id,type) {
-  if(s.phase==='founding')return 'Found all six kingdoms before recruitment begins.';
+  if(s.phase==='founding')return 'Found all kingdoms before recruitment begins.';
   const t=s.tiles[id],k=kingdom(s,owner),u=UNITS[type];
   if(s.outcome||!u||!k||t?.owner!==owner||!['city','town','fort'].includes(t.building))return 'Muster at an owned town, city or fort.';
   if(s.armies.some(a=>a.tile===id&&atWar(s,owner,a.owner)))return 'The muster ground is under attack.';
@@ -182,6 +188,7 @@ export function recruit(s,owner,id,type) {
   const bonus=u.family==='infantry'?Math.min(k.population-u.count-20,Math.max(0,buildingLevel(t,'barracks')-1)):0;
   pay(k,recruitmentCost(t,type));k.population-=u.count+bonus;k.commands--;army.units[type]=(army.units[type]||0)+u.count+bonus;
   army.morale=Math.min(1,army.morale+(buildingLevel(t,'barracks')>=2?.04:0)+(buildingLevel(t,'greatStable')&&u.family==='mounted'?.05:0));
+  recordOperationAction(s,owner,{kind:"recruit",unit:type,count:u.count+bonus});
   return {ok:true,armyId:army.id};
 }
 export function canEnter(s, owner, t) { return !!(passable(t) && (!t.owner || t.owner === owner || atWar(s, owner, t.owner) || treaty(s, owner, t.owner, 'alliance') || treaty(s, owner, t.owner, 'vassalage') || treaty(s, owner, t.owner, 'access'))); }
@@ -217,9 +224,10 @@ export function findPath(s, startId, endId, owner, roadsOnly = false, avoid = nu
 }
 export function orderStructureAttack(s, owner, armyId, targetId, type, mode = 'attack', avoid = null) {
   const a = s.armies.find(a => a.id === armyId && a.owner === owner), t = s.tiles[targetId];
+  if(isHumanHouse(s,owner)&&!visionTiles(s,owner).has(targetId))return {ok:false,error:'Observe this location before targeting a structure.'};
   const error = structureAttackCheck(s, a, t, type, mode);
   if (error) return {ok:false,error};
-  const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(s,a.tile,targetId,owner,false,avoid);
+  const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(isHumanHouse(s,owner)?knowledgeView(s,owner):s,a.tile,targetId,owner,false,avoid);
   if (mode === 'attack' && a.tile !== targetId && !path.length) return {ok:false,error:'No legal route to this structure.'};
   a.path = path; a.target = targetId; a.order = mode; a.structureTarget = type;
   return {ok:true,path};
@@ -231,7 +239,7 @@ export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = nu
   if (order === 'attack' && targetId === a.tile && t?.owner && atWar(s, owner, t.owner) && structuresAt(t).length)
     return orderStructureAttack(s,owner,armyId,targetId,structuresAt(t).find(type => type !== 'road') || 'road');
   if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; return { ok: true }; }
-  const path = findPath(s, a.tile, targetId, owner, false, avoid);
+  const path = findPath(isHumanHouse(s,owner)?knowledgeView(s,owner):s, a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
   a.path = path; a.target = targetId; a.structureTarget = null; a.order = order;
   return { ok: true, path };
@@ -275,8 +283,8 @@ function battle(s,attacker,defender,t) {
   if(loser===attacker){attacker.path=[];attacker.order='hold';attacker.structureTarget=null;attacker.target=null;}
   Object.assign(event,result,{winner:result.winner===0?attacker.owner:defender.owner,after:[sizeOf(attacker),sizeOf(defender)],retreat:sizeOf(loser)>0&&loser.tile!==retreatFrom?loser.tile:null,retreatOwner:loser.owner});
   event.casualties=[attacker,defender].map((a,i)=>Object.fromEntries(Object.entries(event.composition[i]).map(([id,n])=>[id,n-(a.units[id]||0)])));
-  s.militaryEvents.push(event);
-  log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${sizeOf(loser)===0?'the opposing army is destroyed':result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle');
+  s.militaryEvents.push(event); refreshKnowledge(s);
+  log(s,`${kingdom(s,event.winner).name} wins at ${t.name||t.id}; ${sizeOf(loser)===0?'the opposing army is destroyed':result.routed?'the opposing line routs':'the opposing line withdraws'}.`,'battle',{audience:s.kingdoms.filter(k=>[event.attacker,event.defender].includes(k.id)||s.fog?.houses[k.id]?.battles.includes(event.id)).map(k=>k.id)});
   if(result.winner===0&&sizeOf(attacker)>0&&t.owner!==attacker.owner){
     const damage=damageFortifications(t,siegePower(attacker,t,{assault:true}));
     if(damage)event.phases[0].notes.push(`Successful assault damages fortifications by ${damage}.`);
@@ -301,7 +309,7 @@ export function projectedBattleLosses(s,armyId,targetId) {
   const approach=path.length>1?path.at(-2):attacker.tile;
   const samples=[[],[]],before=[sizeOf(attacker),sizeOf(defender)];
   for(let i=0;i<32;i++){
-    const simulation={...s,armies:structuredClone(s.armies),events:[],militaryEvents:[],rng:Math.imul(i+1,0x9e3779b1)>>>0};
+    const simulation={...s,projectionOnly:true,armies:structuredClone(s.armies),events:[],militaryEvents:[],rng:Math.imul(i+1,0x9e3779b1)>>>0};
     const a=simulation.armies.find(x=>x.id===armyId),d=simulation.armies.find(x=>x.id===defender.id);
     a.tile=approach;
     battle(simulation,a,d,structuredClone(t));
@@ -324,7 +332,7 @@ function capture(s, a, t) {
     s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: previous, tile: t.id, from: a.tile, action: 'capture', winner: a.owner, troopLosses:[0,0] });
     changeRelation(s, previous, a.owner, { opinion: -15, grievance: 20, aggression: 12 }, `${t.name || 'A settlement'} was captured.`);
     t.owner = a.owner; t.project = null; t.siege = null;
-    log(s, `${kingdom(s, a.owner).name} captures ${t.name || 'a fort'} from ${kingdom(s, previous).name}.`, 'war');
+    log(s, `${kingdom(s, a.owner).name} captures ${t.name || 'a fort'} from ${kingdom(s, previous).name}.`, 'war', {audience:[a.owner,previous]});
     remember(s, previous, `${kingdom(s, a.owner).name} captured ${t.name || t.id}.`, 10);
     rebuildTerritory(s);
   } else { t.owner = a.owner; t.project = null; t.siege = null; }
@@ -341,7 +349,7 @@ export function resolveMovement(s) {
     if (!s.armies.includes(a) || sizeOf(a) === 0) continue;
     if (a.structureTarget) {
       const t = s.tiles[a.target];
-      if (structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
+      if (isHumanHouse(s,a.owner)&&!visionTiles(s,a.owner).has(a.target)||structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
       else if (a.order === 'bombard' || a.tile === a.target) {
         const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s,a.owner,e.owner));
         if (enemy && a.order === 'attack') {
@@ -369,13 +377,13 @@ export function resolveMovement(s) {
         // trapped or second defender still contests the tile, regardless of HP.
         if(result.winner!==0||!sizeOf(a)||s.armies.some(e=>e.tile===t.id&&sizeOf(e)>0&&atWar(s,a.owner,e.owner)))break;
         if((occupy||!structureAttack)&&!capture(s,a,t))break;
-        a.tile=t.id;a.path.shift();
+        a.tile=t.id;a.path.shift();refreshKnowledge(s);
         if(occupy&&structureAttack){a.structureTarget=null;a.target=null;a.path=[];}
         break;
       }
       if ((occupy || !structureAttack) && !capture(s, a, t)) break;
       if(occupy&&t.owner===a.owner&&structureAttack)a.structureTarget=null;
-      a.tile = t.id; a.path.shift(); budget -= cost;
+      a.tile = t.id; a.path.shift(); budget -= cost; refreshKnowledge(s);
       if (zoneOfControl(s, a, t)) break;
     }
     if (a.structureTarget && a.tile === a.target) damageStructure(s,a,s.tiles[a.target],a.structureTarget,a.order);
@@ -387,6 +395,7 @@ export function resolveMovement(s) {
 }
 
 export function economyProjection(s, owner) {
+  if(s.knowledgeView===owner&&s.ownAccounting)return structuredClone(s.ownAccounting.economy);
   const k = kingdom(s, owner), {income,gross,stalls}=productionPlan(s,owner), towns=settlements(s,owner);
   for(const t of Object.values(s.tiles).filter(t=>t.owner===owner)) if(t.building)income.gold--;
   income.gold -= spyUpkeep(s, owner);
@@ -407,6 +416,7 @@ export function economyProjection(s, owner) {
 }
 // Forecast completed construction, using the same calculation as resolution.
 export function populationProjection(s, owner) {
+  if(s.knowledgeView===owner&&s.ownAccounting)return structuredClone(s.ownAccounting.population);
   let projected=s;
   if(Object.values(s.tiles).some(t=>t.project?.owner===owner&&t.project.remaining===1)){
     projected=structuredClone(s);
@@ -422,7 +432,7 @@ export function resolveEconomy(s) {
       const name=buildingSpec(t.project.type,t.project.level||1).name;
       recordStrategyAction(s,t.owner,{kind:'complete',tile:t.id,building:t.project.type,level:t.project.level||1});
       completeConstruction(t);
-      if(isHumanHouse(s,t.owner))log(s,`${name} completed at ${t.name||t.id}.`,'economy');
+      if(isHumanHouse(s,t.owner))log(s,`${name} completed at ${t.name||t.id}.`,'economy',{audience:[t.owner]});
     }
   }
   rebuildTerritory(s);
@@ -436,7 +446,7 @@ export function resolveEconomy(s) {
       const protection=Object.values(s.tiles).some(t=>t.owner===k.id&&buildingLevel(t,'greatGranary'))?.5:1;
       for (const a of armiesOf(s, k.id)) {casualties(a, .06*protection);a.morale=Math.max(.1,a.morale-.12*protection);}
       k.happiness = population.happinessAfter; k.population = population.nextPopulation;
-      if (isHumanHouse(s,k.id)) log(s, `${k.name}: Food or gold ran out. Soldiers deserted and population fell.`, 'economy');
+      if (isHumanHouse(s,k.id)) log(s, `${k.name}: Food or gold ran out. Soldiers deserted and population fell.`, 'economy',{audience:[k.id]});
     } else {
       k.happiness = population.happinessAfter; k.population = population.nextPopulation;
     }
@@ -467,25 +477,26 @@ export function checkVictory(s) {
 }
 
 export function parseSave(raw) {
-  if (typeof raw !== 'string' || raw.length > 2000000) throw new Error('Save is too large or unreadable.');
+  if (typeof raw !== 'string' || raw.length > 12000000) throw new Error('Save is too large or unreadable.');
   const s = JSON.parse(raw);
+  delete s.knowledgeView; delete s.projectionOnly; delete s.ownAccounting; delete s.lastSeenArmies;
   const number = (n, min = 0, max = 100000) => Number.isFinite(n) && n >= min && n <= max;
-  if (![1, 2, SAVE_VERSION].includes(s?.version) || s.width !== 40 || s.height !== 30 || !Number.isInteger(s.turn) || !number(s.turn, s.phase==='founding'?0:1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== 1200 || !Array.isArray(s.kingdoms) || s.kingdoms.length !== 6) throw new Error('Unsupported or damaged campaign save.');
+  if (![1, 2, SAVE_VERSION].includes(s?.version) || !WORLD_SIZES[s.kingdoms?.length] || s.width !== WORLD_SIZES[s.kingdoms.length].width || s.height !== WORLD_SIZES[s.kingdoms.length].height || !!s.controllers && s.kingdoms.length !== 6 || !Number.isInteger(s.turn) || !number(s.turn, s.phase==='founding'?0:1) || !number(s.rng, 0, 4294967295) || !number(s.nextId, 1) || !s.tiles || Object.keys(s.tiles).length !== s.width*s.height || !Array.isArray(s.kingdoms) || new Set(s.kingdoms.map(k=>k?.id)).size !== s.kingdoms.length) throw new Error('Unsupported or damaged campaign save.');
   const oldVersion=s.version;
   if(oldVersion<3) migrateEconomy(s);
-  for (const h of HOUSES) {
+  for (const h of CAMPAIGN_HOUSES.slice(0,s.kingdoms.length)) {
     const k = kingdom(s, h.id);
     if (!k || !RESOURCES.every(r => number(k.resources?.[r])) || !['low', 'medium', 'high'].includes(k.tax) || !number(k.population) || !number(k.commands, 0, 8) || !number(k.happiness, 0, 100) || !Array.isArray(k.memories) || k.memories.length > 30 || k.memories.some(m => typeof m.text !== 'string' || m.text.length > 1000 || !number(m.turn) || !number(m.importance, 0, 10)) || typeof k.memorySummary !== 'string' || k.memorySummary.length > 900) throw new Error('Damaged kingdom data.');
-    for (const other of HOUSES.filter(o => o.id !== h.id)) if (!number(k.relations?.[other.id]?.opinion, -100, 100) || !number(k.relations?.[other.id]?.trust, -100, 100)) throw new Error('Damaged diplomacy data.');
+    for (const other of CAMPAIGN_HOUSES.slice(0,s.kingdoms.length).filter(o => o.id !== h.id)) if (!number(k.relations?.[other.id]?.opinion, -100, 100) || !number(k.relations?.[other.id]?.trust, -100, 100)) throw new Error('Damaged diplomacy data.');
     Object.assign(k, h); // Presentation/personality comes from trusted content, not save strings.
   }
-  for (let r = 0; r < 30; r++) for (let q = 0; q < 40; q++) {
+  for (let r = 0; r < s.height; r++) for (let q = 0; q < s.width; q++) {
     const t = s.tiles[tileId(q, r)];
     if (!t || t.id !== tileId(q, r) || t.q !== q || t.r !== r || !Object.hasOwn(TERRAINS, t.terrain) || (t.owner && !kingdom(s, t.owner)) || (t.building && (!Object.hasOwn(BUILDINGS,t.building)||BUILDINGS[t.building].settlement||['road','wall'].includes(t.building))) || !number(t.walls, 0, 180)) throw new Error('Damaged map data.');
     if (t.project && (!Object.hasOwn(BUILDINGS, t.project.type) || !number(t.project.remaining, 1, 8) || !kingdom(s, t.project.owner))) throw new Error('Damaged construction data.');
   }
   if (!Array.isArray(s.armies) || s.armies.length > 500 || new Set(s.armies.map(a => a.id)).size !== s.armies.length) throw new Error('Damaged army data.');
-  for (const a of s.armies) if (!kingdom(s, a.owner) || !s.tiles[a.tile] || !number(a.morale, .1, 1) || !Object.keys(UNITS).every(u => Number.isInteger(a.units?.[u]) && number(a.units[u])) || !Array.isArray(a.path) || a.path.length > 1200 || a.path.some(id => !s.tiles[id])) throw new Error('Damaged army orders.');
+  for (const a of s.armies) if (!kingdom(s, a.owner) || !s.tiles[a.tile] || !number(a.morale, .1, 1) || !Object.keys(UNITS).every(u => Number.isInteger(a.units?.[u]) && number(a.units[u])) || !Array.isArray(a.path) || a.path.length > s.width*s.height || a.path.some(id => !s.tiles[id])) throw new Error('Damaged army orders.');
   for (const list of ['treaties', 'pledges', 'wars', 'events']) if (!Array.isArray(s[list]) || s[list].length > 1000) throw new Error('Damaged campaign history.');
   for (const t of s.treaties) if (!['alliance', 'peace', 'trade', 'vassalage', 'non-aggression', 'access', 'embargo', 'recurring'].includes(t.type) || t.parties?.length !== 2 || t.parties.some(id => !kingdom(s, id)) || !number(t.expires)) throw new Error('Damaged treaty data.');
   for (const p of s.pledges) if (!kingdom(s, p.debtor) || !kingdom(s, p.creditor) || !p.intent || !INTENT_TYPES.includes(p.intent.type) || !number(p.intent.giveAmount, 0, 1000) || !RESOURCES.includes(p.intent.giveResource) || !number(p.deadline) || !number(p.created) || !number(p.held, 0, 2) || !['pending', 'fulfilled', 'broken', 'released'].includes(p.status)) throw new Error('Damaged pledge data.');
@@ -501,6 +512,6 @@ export function parseSave(raw) {
   validateExpansion(s);
   validateStrategySave(s);
   validateStructures(s);
-  validatePlans(s); validateEspionage(s); validatePolitics(s);
+  validatePlans(s); validateCooperation(s); validateEspionage(s); validatePolitics(s); validateFog(s);
   return s;
 }

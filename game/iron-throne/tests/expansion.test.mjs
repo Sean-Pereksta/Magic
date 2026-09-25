@@ -150,7 +150,7 @@ test('new save fields reject invalid levels, formations, construction timers and
  for(const mutate of [s=>s.tiles['6,6'].levels.farm=9,s=>s.armies[0].formation='infinite',s=>s.tiles['6,6'].project={type:'farm',owner:PLAYER,level:2,total:99,remaining:2},s=>s.commerce.offers.push({id:1,from:'wintermere',created:1,expires:4,status:'pending',reason:'x',intent:{type:'WAR',giveResource:'gold',receiveResource:'food',giveAmount:1,receiveAmount:1,duration:2}})]){const s=createGame();mutate(s);assert.throws(()=>parseSave(JSON.stringify(s)));}
 });
 test('expanded simulation resumes deterministically and dialogue hides foreign treasuries',()=>{
- const s=createGame(78);for(let i=0;i<6;i++)endTurn(s);const r=parseSave(JSON.stringify(s));for(let i=0;i<5;i++){endTurn(s);endTurn(r);}assert.deepEqual(s,r);const context=makeContext(s,'wintermere','What are you building?');assert.ok(context.world.self.economicNeeds);assert.ok(context.world.houses.every(h=>!h.resources));
+ const s=createGame(78);for(let i=0;i<6;i++)endTurn(s);const r=parseSave(JSON.stringify(s));for(let i=0;i<5;i++){endTurn(s);endTurn(r);}assert.deepEqual(s,r);const context=makeContext(s,'wintermere','What are you building?');assert.equal(context.world.self.economicNeeds,undefined);assert.match(context.world.knowledge,/Fog of war/);assert.ok(context.world.houses.every(h=>!h.resources));
 });
 test('every remote catalog asset retains repository fallback artwork',async()=>{
  const paths=[...Object.values(ART.structures).flatMap(Object.values),...Object.values(ART.units),...Object.values(ART.resources),...Object.values(ART.titles),...ART.construction];

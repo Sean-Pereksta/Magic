@@ -137,6 +137,6 @@ export function validateExpansion(s) {
     if(t.anchors!==undefined&&(!Array.isArray(t.anchors)||t.anchors.length>4||t.anchors.some(a=>!a||!s.tiles[a.tile]||!s.kingdoms.some(k=>k.id===a.owner)||!['harbor','tradeOutpost'].includes(a.type)||!integer(a.level,1,3))))fail();
   }
   const c=s.commerce;if(!c||!Array.isArray(c.offers)||c.offers.length>(s.controllers?72:12)||!integer(c.lastOfferTurn,0,100000)||!c.cooldowns||!c.aiTrades)fail();
-  for(const times of [c.cooldowns,c.aiTrades])if(Object.entries(times).length>36||Object.values(times).some(n=>!integer(n,0,100000)))fail();
+  for(const times of [c.cooldowns,c.aiTrades])if(Object.entries(times).length>s.kingdoms.length*s.kingdoms.length||Object.values(times).some(n=>!integer(n,0,100000)))fail();
   for(const o of c.offers)if(!integer(o.id,1,10000000)||!s.kingdoms.some(k=>k.id===o.from)||!integer(o.created,0,100000)||!integer(o.expires,0,100000)||!['pending','reviewed','declined','accepted'].includes(o.status)||typeof o.reason!=='string'||o.reason.length>600||!o.intent||!RESOURCES.includes(o.intent.giveResource)||!RESOURCES.includes(o.intent.receiveResource)||!integer(o.intent.giveAmount,1,1000)||!integer(o.intent.receiveAmount,1,1000)||!integer(o.intent.duration,2,20)||!['EXCHANGE','RECURRING'].includes(o.intent.type))fail();
 }

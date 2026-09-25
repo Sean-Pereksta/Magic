@@ -57,7 +57,7 @@ test('siege uses per-unit range, blocks mountains and cannot attack friendly or 
   const {s,a,t}=hostileStructure();a.tile='16,3';
   assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,false);
   a.units={...emptyUnits(),ram:8};assert.equal(bombardRange(a),1);assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,false);
-  a.units.catapult=2;s.tiles['17,3'].terrain='plains';assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,true);
+  a.units.catapult=2;a.units.scout=1;s.tiles['17,3'].terrain='plains';assert.equal(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').ok,true);
   const pos=a.tile;resolveMovement(s);assert.equal(a.tile,pos);assert.ok(structureHealth(t,'lumber')<60);
   s.turn++;s.tiles['17,3'].terrain='mountain';assert.match(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').error,/Mountains/);
   s.tiles['17,3'].terrain='plains';a.tile='15,3';assert.match(orderStructureAttack(s,PLAYER,a.id,t.id,'lumber','bombard').error,/range/);
@@ -67,7 +67,7 @@ test('siege uses per-unit range, blocks mountains and cannot attack friendly or 
 });
 test('ranged engines do not gain distant damage from rams or shorter-range siege',()=>{
   const {s,a,t}=hostileStructure('fort');t.fortIntegrity=45;a.tile='15,3';s.tiles['16,3'].terrain=s.tiles['17,3'].terrain='plains';
-  a.units={...emptyUnits(),trebuchet:1,catapult:50,ram:50};orderStructureAttack(s,PLAYER,a.id,t.id,'fort','bombard');resolveMovement(s);
+  a.units={...emptyUnits(),trebuchet:1,catapult:50,ram:50,scout:1};orderStructureAttack(s,PLAYER,a.id,t.id,'fort','bombard');resolveMovement(s);
   assert.equal(t.fortIntegrity,21,'only the trebuchet reaches three hexes');assert.equal(structureHealth(t,'fort'),150,'bombardment weakens the fort without demolishing it');
 });
 test('surviving defenders protect structure durability from occupying and ranged attackers',()=>{
@@ -99,11 +99,12 @@ test('political attitudes use all-House relations, persist through small changes
   declareWar(s,'thornwall','wintermere');assert.match(politicalAttitude(s,'wintermere','thornwall').label,/Hostile|Vengeful|Mortal Enemy/);
   assert.notDeepEqual(relation(s,'wintermere','thornwall'),relation(s,'wintermere','sunspire'));
 });
-test('plans form real AI alliances and military access after preparation',()=>{
+test('plans form real AI alliances and military access after preparation and a court response',()=>{
   const s=createGame();for(const k of s.kingdoms)k.commands=0;
   relation(s,'wintermere','thornwall').trust=60;relation(s,'thornwall','wintermere').trust=60;
   strategyTurn(s);const p=s.intrigue.plans.find(p=>p.actor==='wintermere'&&p.type==='seekAlliance');assert.ok(p);assert.equal(p.status,'Preparing');
-  s.turn+=2;strategyTurn(s);assert.equal(p.status,'Completed');assert.ok(treaty(s,'wintermere','thornwall','alliance'));assert.ok(treaty(s,'wintermere','thornwall','access'));
+  s.turn+=2;strategyTurn(s);assert.equal(p.status,'Committed');assert.equal(treaty(s,'wintermere','thornwall','alliance'),undefined);
+  s.turn++;strategyTurn(s);assert.equal(p.status,'Completed');assert.ok(treaty(s,'wintermere','thornwall','alliance'));assert.ok(treaty(s,'wintermere','thornwall','access'));
 });
 test('committed invasion plans declare real wars and issue real marching orders',()=>{
   const s=createGame();stock(s);s.turn=12;const k=kingdom(s,'wintermere'),a=armiesOf(s,k.id)[0];a.units={...emptyUnits(),knight:100};

@@ -48,7 +48,7 @@ export function politicalAttitude(s,observer,subject) {
   if (r.fear >= 35) reasons.push('Their military strength concerns our court.');
   reasons.push(...(r.history || []).filter(h=>Object.values(h.changes).some(n=>Math.abs(n)>=4)).slice(-2).map(h=>h.reason));
   if (!reasons.length) reasons.push('Limited dealings; our court is still judging their intentions.');
-  const intelligence=(s.intelligence?.reports||[]).some(report=>report.owner===observer&&report.house===subject&&report.detail>=2&&report.snapshot.target===observer&&['invasion','infrastructure','jointWar'].includes(report.snapshot.type)&&s.turn-report.turn<=6);
+  const intelligence=(s.intelligence?.reports||[]).some(report=>report.owner===observer&&report.house===subject&&report.detail>=2&&report.snapshot.target===observer&&(report.operationId||['invasion','infrastructure','jointWar'].includes(report.snapshot.type))&&s.turn-report.turn<=6);
   return {label,tone:intelligence?'Concerned by recent intelligence':r.wariness >= 20?'Concerned about your armies':r.grievance >= 30?'Unresolved grievances':r.trust >= 45?'Confident in your word':r.dependency >= 20?'Protective of trade':'Guarded',reasons:[...new Set(reasons)].slice(0,4)};
 }
 export function validatePolitics(s) {

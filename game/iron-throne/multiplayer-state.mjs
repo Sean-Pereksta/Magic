@@ -1,3 +1,5 @@
+import { disclosedDeal, negotiationKey } from './diplomacy.mjs';
+import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { houseIds } from './multiplayer-rounds.mjs';
 import { court } from './house-control.mjs';
 
@@ -29,23 +31,18 @@ export async function decodePayload(payload) {
 // Full simulation is controller-readable; courts and report histories are separate
 // documents. A lease successor reassembles these before executing any command.
 export function splitCampaign(state) {
+  refreshKnowledge(state,houseIds);
   const canonical=clone(state),privateByHouse={};
   for(const id of houseIds){
-    privateByHouse[id]={rulerKnowledge:Object.fromEntries(state.kingdoms.filter(k=>k.id!==id).map(k=>[k.id,{memories:clone(k.memories.filter(m=>!m.subject||m.subject===id)),summary:k.relationshipSummaries?.[id]||'',interpretation:k.conversationSummaries?.[id]||'',priorities:k.priorities}])),court:clone(court(state,id)),reports:clone((state.intelligence?.reports||[]).filter(r=>r.owner===id)),
-      proposals:clone((state.humanProposals||[]).filter(p=>p.from===id||p.to===id)),
-      agents:clone((state.intelligence?.agents||[]).filter(a=>a.owner===id||a.captor===id)),
-      incidents:clone((state.intelligence?.incidents||[]).filter(i=>i.owner===id||i.actor===id))};
+    const view=knowledgeView(state,id,{refresh:false});
+    view.negotiationVerdicts=Object.fromEntries(Object.entries(court(state,id).offers).flatMap(([ruler,offers])=>offers.flatMap(intent=>{const verdict=disclosedDeal(state,ruler,intent,id);return [[negotiationKey(ruler,intent),verdict],...(verdict.counter?[[negotiationKey(ruler,verdict.counter),disclosedDeal(state,ruler,verdict.counter,id)]]:[])];})));
+    privateByHouse[id]={view,court:clone(court(state,id)),reports:clone((state.intelligence?.reports||[]).filter(r=>r.owner===id)),proposals:clone((state.humanProposals||[]).filter(p=>p.from===id||p.to===id)),agents:view.intelligence.agents,incidents:view.intelligence.incidents,operations:view.cooperation.operations,strategicProposals:view.cooperation.proposals,operationPledges:view.pledges.filter(p=>p.operationId)};
   }
   delete canonical.viewHouseId;delete canonical.presentation;delete canonical.courts;
   canonical.conversations={};canonical.diplomacy.offers={};canonical.humanProposals=[];
   canonical.intelligence.reports=[];
-  const world=clone(canonical);
-  world.intelligence={agents:[],reports:[],incidents:[],lastTurn:state.intelligence.lastTurn};
-  world.intrigue={plans:[],audit:[]};world.events=world.events.filter(e=>e.kind!=='intelligence');
-  world.commerce.offers=[]; // Incoming offers are put in the recipient's private document.
-  for(const id of houseIds)privateByHouse[id].tradeOffers=clone(state.commerce.offers.filter(o=>(o.to||'ashen')===id));
-  for(const k of world.kingdoms){k.memories=[];k.memorySummary='';k.conversationSummary='';k.conversationSummaries={};k.relationshipSummaries={};k.priorities=[];delete k.economicPlan;}
-  world.strategy.history=world.strategy.history.map(r=>({...r,houses:r.houses.map(h=>({...h,reason:'',actions:h.actions.filter(a=>['build','complete','war','peace'].includes(a.kind))}))}));
+  const world=knowledgeView(state,'public',{refresh:false});
+  delete world.knowledgeView;delete world.viewHouseId;
   return {canonical,world,privateByHouse};
 }
 export function joinCampaign(canonical, privateByHouse) {
@@ -60,14 +57,17 @@ export function joinCampaign(canonical, privateByHouse) {
 }
 export function playerView(world, privateData, houseId) {
   if(!houseIds.includes(houseId)||!privateData)throw new Error('This ruler has no reserved House.');
+  if(privateData.view){const view=clone(privateData.view);view.viewHouseId=houseId;if(view.outcome)view.outcome.won=(view.outcome.coalition||[view.outcome.winnerHouseId]).includes(houseId);return view;}
   const s=clone(world),p=clone(privateData);s.viewHouseId=houseId;
   s.courts={[houseId]:p.court};s.conversations=p.court.conversations;
   s.diplomacy.offers=p.court.offers;s.diplomacy.messages=p.court.messages;
   s.intelligence.agents=p.agents;s.intelligence.reports=p.reports;s.intelligence.incidents=p.incidents;
+  s.cooperation={operations:p.operations||[],proposals:p.strategicProposals||[],balance:[],lastDiplomacyTurn:0};
+  s.pledges.push(...(p.operationPledges||[]));
   s.humanProposals=p.proposals;s.commerce.offers=p.tradeOffers;
   for(const k of s.kingdoms){const known=p.rulerKnowledge?.[k.id];if(known){k.memories=known.memories;k.memorySummary=known.summary;k.conversationSummaries={[houseId]:known.interpretation||''};k.relationshipSummaries={[houseId]:known.summary};k.priorities=known.priorities;}}
   if(s.outcome)s.outcome.won=(s.outcome.coalition||[s.outcome.winnerHouseId]).includes(houseId);
-  return s;
+  return knowledgeView(s,houseId);
 }
 export async function packCampaign(state, meta) {
   const {canonical,world,privateByHouse}=splitCampaign(state);

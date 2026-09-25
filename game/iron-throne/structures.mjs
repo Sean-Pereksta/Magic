@@ -60,7 +60,7 @@ export function damageStructure(s, a, t, type, mode = 'attack') {
     const integrityAfter=t.walls+(t.fortIntegrity??fortMaximum(t));
     s.militaryEvents.push({id:s.nextId++,turn:s.turn,attacker:a.owner,defender:t.owner,attackerArmyId:a.id,tile:t.id,from:a.tile,action:'siege',structure:type,damage:result.damage,before:[before,integrityBefore],after:[sizeOf(a),integrityAfter],breach:integrityAfter===0,
       troopLosses:[before-sizeOf(a),result.surrendered?defendersBefore:0],phases:[{name:'Bombardment',notes:result.notes,loss:[before-sizeOf(a),result.damage]}]});
-    log(s,`${kingdom(s,a.owner).name} bombards ${t.name||t.id}: ${result.damage} fortification damage.`,'battle');
+    log(s,`${kingdom(s,a.owner).name} bombards ${t.name||t.id}: ${result.damage} fortification damage.`,'battle',{audience:[a.owner,t.owner]});
     if(structureAttackCheck(s,a,t,type,mode)){a.structureTarget=null;a.target=null;a.path=[];a.order='hold';}
     return true;
   }
@@ -90,7 +90,7 @@ export function damageStructure(s, a, t, type, mode = 'attack') {
   s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: a.owner, defender: owner, attackerArmyId: a.id,
     tile: t.id, from: a.tile, action: 'structure', structure: type, damage: actual, destroyed,
     phases: [{ name: destroyed ? 'Structure destroyed' : 'Structure attack', notes: [`${name}: ${actual} damage; ${destroyed ? 'destroyed' : `${structureHealth(t,type)} durability remains`}.`], loss: [0,actual] }] });
-  log(s, `${kingdom(s,a.owner).name} ${destroyed ? 'destroyed' : 'damaged'} ${kingdom(s,owner).name}’s ${name} at ${t.name || t.id}${destroyed && type === 'city' ? '; the settlement is reduced to a town' : ''}.`, 'war');
+  log(s, `${kingdom(s,a.owner).name} ${destroyed ? 'destroyed' : 'damaged'} ${kingdom(s,owner).name}’s ${name} at ${t.name || t.id}${destroyed && type === 'city' ? '; the settlement is reduced to a town' : ''}.`, 'war', {audience:[a.owner,owner]});
   return true;
 }
 export function validateStructures(s) {

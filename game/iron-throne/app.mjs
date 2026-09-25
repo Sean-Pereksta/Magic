@@ -1,3 +1,7 @@
+import { knowledgeView, refreshKnowledge } from './fog.mjs';
+import { warRoomPanel } from './war-room.mjs';
+import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
+import { respondCooperation } from './strategic-diplomacy.mjs';
 import { foundingPanel } from './founding-ui.mjs';
 import { foundCity, foundAIKingdoms } from './founding.mjs';
 import { mapOptions } from './map-profiles.mjs';
@@ -12,11 +16,11 @@ import { buildingLevel } from './economy.mjs';
 import { setFormation } from './warfare.mjs';
 import { battlePreview } from './battle-preview.mjs';
 import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, rivalTurnReports, systemTitle, tradePanel } from './expansion-ui.mjs';
-import { BUILDINGS, HOUSES, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
+import { BUILDINGS, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
 import { populationProjection, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, orderStructureAttack, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
 import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
 import { isPlayerPromise } from './promises.mjs';
-import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, evaluateDeal, validateIntent } from './diplomacy.mjs';
+import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, endTurn, disclosedDeal, validateIntent } from './diplomacy.mjs';
 import { DiplomacyClient } from './chat.mjs';
 import { CHECK_NAMES, CHECK_LABELS, diagnosticDetails, diagnosticReport } from './diagnostics.mjs';
 import { WorldMap } from './map.mjs';
@@ -51,17 +55,19 @@ const artResult = await preloadAllArt(({completed,total,failed}) => {
 });
 $('art-status').textContent = artResult.failed ? `Artwork ready · ${artResult.failed} unavailable images will use fallback art.` : 'All artwork ready';
 $('start-game').disabled = $('resume').disabled = false;
-const map = new WorldMap($('map'), { getState: () => state, onSelect: selectTile });
+let displayedState=knowledgeView(state,localHouse);
+const map = new WorldMap($('map'), { getState: () => displayedState, onSelect: selectTile });
 
+function currentView() { displayedState=knowledgeView(state,localHouse);return displayedState; }
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); }
 function save() {
   if(onlineOptions)return !!online?.online;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
-function changed() { if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
+function changed() { refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
 function perform(type,args,localAction) {
-  if(state.phase==='founding'&&type!=='found'){toast('Found all six kingdoms before issuing orders.');return false;}
+  if(state.phase==='founding'&&type!=='found'){toast('Found all kingdoms before issuing orders.');return false;}
   if(onlineOptions){if(!online){toast('Connecting to the campaign…');return false;} online.submit(type,args).catch(e=>toast(e.message));return true;}
   return result(localAction());
 }
@@ -78,21 +84,23 @@ function selectTile(id) {
 }
 function goTo(id, armyId) { selected = id; selectedArmy = armyId || state.armies.find(a => a.tile === id && a.owner === localHouse)?.id || null; tab = 'land'; map.selected = id; map.center(id); $('panel').scrollTop = 0; render(); }
 function render() {
+  refreshKnowledge(state);displayedState=knowledgeView(state,localHouse);
+  const view=displayedState;
   const k = kingdom(state,localHouse),{income}=economyProjection(state,localHouse),population=populationProjection(state,localHouse);
   $('turn').textContent = state.phase==='founding'?'Founding':`Turn ${state.turn}`;
   $('season').textContent = state.phase==='founding'?'BEFORE TURN 1':`${['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'][(state.turn - 1) % 4]} · YEAR ${Math.floor((state.turn - 1) / 4) + 1}`;
   const founding=state.phase==='founding';
   $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${founding?'Starting supplies':`${escape(r)}: ${income[r]>=0?'+':''}${income[r]} next turn`}"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${!founding&&income[r]<0?'negative':''}">${founding?'Starting supplies':`${income[r]>=0?'+':''}${income[r]} / turn`}</span></div></div>`).join('') + `<div class="resource population-resource" title="${founding?'Population growth begins on Turn 1.':escape(populationBreakdown(population))}"><span class="resource-icon">♟</span><div><b class="population-label">${founding?`Population: ${k.population} · ready to settle`:`Population: ${k.population}/${population.capacity} · ${population.change>=0?'+':''}${population.change} next turn`}</b><small>${k.happiness}% content · ${founding?'Awaiting Turn 1':'breakdown in Realm'}</small></div></div>`;
   const rivals = state.kingdoms.filter(h => h.id !== localHouse && alive(state, h.id)), allies = rivals.filter(h => treaty(state, localHouse, h.id, 'alliance') || treaty(state, localHouse, h.id, 'vassalage'));
-  $('objective').textContent = state.phase==='founding'?`${Object.values(state.founding.houses).filter(h=>h.founded).length}/6 capitals founded · choose your region`:`${settlements(state, localHouse).length}/${Math.ceil(settlements(state).length * .6)} settlements · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
+  $('objective').textContent = state.phase==='founding'?`${Object.values(state.founding.houses).filter(h=>h.founded).length}/${state.kingdoms.length} capitals founded · choose your region`:`${settlements(state, localHouse).length} settlements · crown requires 60% of the realm · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
   $('end-turn').disabled = !!state.outcome || state.phase==='founding';
   if(!onlineOptions)$('end-turn').textContent=state.phase==='founding'?'Found all kingdoms':'End turn';
   document.querySelectorAll('[data-tab]').forEach(b => { b.disabled=state.phase==='founding'; b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
-  $('panel').innerHTML = state.phase==='founding'?foundingPanel(state,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(state) : ledgerPanel();
+  $('panel').innerHTML = state.phase==='founding'?foundingPanel(view,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(view) : tab === 'war-room' ? warRoomPanel(view) : ledgerPanel();
   $('panel').scrollTop = scroll;
-  $('latest-events').innerHTML = state.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
-  const t = state.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
+  $('latest-events').innerHTML = view.events.slice(0, 3).map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
+  const t = view.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
   $('order-hint').hidden = !orderMode; $('order-hint').textContent = 'Select a destination · Esc cancels';
   map.armyId = selectedArmy; map.selected = selected; map.reducedEffects = !!state.presentation?.reducedEffects; map.draw();
   renderDispatches();
@@ -105,9 +113,13 @@ function render() {
   }
 }
 function landPanel() {
+  const state=displayedState;
   const t = state.tiles[selected], k = kingdom(state, localHouse), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected).sort((a,b) => Number(b.owner === localHouse)-Number(a.owner === localHouse) || Number(b.id === selectedArmy)-Number(a.id === selectedArmy));
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
-  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : 'Holding position'}</p>${a.owner === localHouse ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
+  const observations=(state.lastSeenArmies||[]).filter(a=>a.tile===selected).map(a=>`<article class="realm-card last-seen"><strong>${escape(kingdom(state,a.owner).name)} army · Last seen T${a.turn}</strong><p>${state.turn-a.turn} turns ago · Estimated strength when observed: ${a.minimum}–${a.maximum}${a.intelligenceFresh?' · Recent spy report':''}</p>${a.objective?`<p>Reported objective: ${escape(a.objective)} (T${a.turn})</p>`:''}<p class="fine">The army may have moved or changed strength.</p></article>`).join('');
+  if(t.fog!=='visible')return html+`<p class="fog-notice">${t.fog==='unknown'?'UNEXPLORED · Scout this region to discover resources and settlements.':`LAST OBSERVED TURN ${t.observedTurn} · Geography and structures are remembered. Ownership and defenses may have changed.${t.intelligenceFresh?' Recent spy access.':''}`}</p>${t.knownCapital?`<p>Known starting capital of ${escape(kingdom(state,t.knownCapital).name)}. Current ownership, buildings and garrison are unknown.</p>`:t.building?`<p>Last known structure: ${escape(BUILDINGS[t.building].name)}</p>`:''}${observations}<p class="fine">Send an army here to scout. Current battle losses and structure targets require observation.</p>`;
+  html += observations;
+  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : a.owner===localHouse?'Holding position':'Observed here · orders unknown'}</p>${a.owner === localHouse ? `${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   html += buildingInspection(state,t);
   html += battlePreview(state,selectedArmy,selected);
   html += structureActions(state,t,selectedArmy);
@@ -126,13 +138,16 @@ function populationPanel(){
   return `<details class="population-details" open><summary>Population: ${p.population}/${p.capacity} · ${p.change>=0?'+':''}${p.change} next turn</summary><ul>${[...p.bonuses,...p.penalties].filter(b=>b.amount).map(b=>`<li>${escape(b.label)}: ${b.amount>0?'+':''}${b.amount}</li>`).join('')}</ul>${p.blockers.map(b=>`<p class="negative">${escape(b)}</p>`).join('')}<p class="fine">Capacity: 150 per city +50 per city upgrade, 80 per town, +8 per farm level. Growth is capped at ${p.limit} per turn.${p.nextCapacity!==p.capacity?` Capacity after construction: ${p.nextCapacity}.`:''} Forecast assumes current orders and resources; battles or new orders can change it.</p></details>`;
 }
 function realmPanel() {
+  const state=displayedState;
   const k = kingdom(state, localHouse), { income, routes } = economyProjection(state, localHouse);
   return `${systemTitle('kingdom')}<span class="eyebrow">${escape(k.name.toUpperCase())}</span><h2>Your realm</h2><div class="stat-grid"><span>Build / recruit orders</span><b>${k.commands}/${commandLimit(state, localHouse)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, localHouse).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, localHouse).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, localHouse).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${populationPanel()}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
-  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">FIVE RULERS. FIVE AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
+  const state=displayedState;
+  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">${state.kingdoms.length-1} RULERS. MANY AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
 function ledgerPanel(rulerId = null) {
+  const state=displayedState;
   const pledges = state.pledges.filter(p => [p.debtor, p.creditor].includes(localHouse) && (!rulerId || [p.debtor, p.creditor].includes(rulerId)));
   const treaties = state.treaties.filter(t => t.parties.includes(localHouse) && (!rulerId || t.parties.includes(rulerId)));
   return `<span class="eyebrow">A WORD IS A DEBT</span><h2>Oaths & treaties</h2><p class="fine">Allies must travel, gather troops and finish construction. Delays can break a promise. Defenders must stay on station for two turns.</p>${treaties.map(t => `<div class="pledge-card"><strong>${escape(t.type)} · ${escape(kingdom(state, t.parties.find(p => p !== localHouse)).name)}</strong><p>Expires on turn ${t.expires} (${t.expires - state.turn} left)</p></div>`).join('')}${pledges.length ? pledges.slice().reverse().map(p => `<div class="pledge-card"><strong>${escape(LABELS[p.intent.type])}</strong><p>${escape(kingdom(state, p.debtor).name)} → ${escape(kingdom(state, p.creditor).name)}</p><p>${escape(describeIntent(p.intent))}</p><p class="${p.status}">${escape(p.status.toUpperCase())} · Due turn ${p.deadline}${['DEFEND', 'PLEDGE_DEFEND'].includes(p.intent.type) ? ` · On station ${p.held}/2` : ''}</p>${p.status === 'pending' && p.debtor === localHouse && p.intent.type === 'PROMISE' ? `<button class="full" data-deliver="${p.id}">Deliver promised resources</button>` : ''}</div>`).join('') : '<p class="empty">No military or payment pledges yet. Negotiate one with a ruler.</p>'}`;
@@ -149,6 +164,10 @@ $('panel').addEventListener('click', e => {
       return r;
     });return;
   }
+  if(d.operationAnswer)perform('operationAnswer',{id:d.operationAnswer,decision:d.decision,member:d.member||localHouse},()=>respondOperation(state,localHouse,d.operationAnswer,d.decision,d.member||localHouse));
+  if(d.cooperationAnswer)perform('cooperationAnswer',{id:d.cooperationAnswer,decision:d.decision},()=>respondCooperation(state,localHouse,d.cooperationAnswer,d.decision));
+  if(d.operationSupply)perform('operationSupply',{id:d.operationSupply},()=>supplyOperation(state,localHouse,d.operationSupply));
+  if(d.operationLeave)perform('operationLeave',{id:d.operationLeave},()=>leaveOperation(state,localHouse,d.operationLeave));
   if(d.openIntelligence){tab='intelligence';render();}
   if('recruitSpy' in d)perform('recruitSpy',{},()=>recruitSpy(state,localHouse));
   if(d.assignSpy)perform('assignSpy',{spy:d.assignSpy,host:document.querySelector(`[data-spy-host="${d.assignSpy}"]`).value,mission:document.querySelector(`[data-spy-mission="${d.assignSpy}"]`).value},()=>assignSpy(state,localHouse,d.assignSpy,document.querySelector(`[data-spy-host="${d.assignSpy}"]`).value,document.querySelector(`[data-spy-mission="${d.assignSpy}"]`).value));
@@ -171,7 +190,16 @@ $('panel').addEventListener('click', e => {
   if (d.talk) openDiplomacy(d.talk);
   if (d.deliver) perform('deliver',{pledge:d.deliver},()=>deliverPledge(state,d.deliver,localHouse));
 });
-$('panel').addEventListener('change', e => { if(e.target.dataset.formation){perform('formation',{army:e.target.dataset.formation,formation:e.target.value},()=>setFormation(state,localHouse,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { perform('tax',{policy:e.target.value},()=>{kingdom(state,localHouse).tax=e.target.value;return {ok:true};}); } });
+$('panel').addEventListener('submit',e=>{
+  if(e.target.id!=='operation-form')return;e.preventDefault();
+  const form=e.target,field=name=>form.elements.namedItem(name).value;
+  const participants=[...form.querySelectorAll('[data-operation-house]')].filter(row=>row.dataset.operationHouse===localHouse||row.querySelector('[name=include]').checked).map(row=>{const value=name=>row.querySelector(`[name=${name}]`).value;return {house:row.dataset.operationHouse,role:value('role'),rally:value('rally'),requiredTroops:Number(value('troops')),requiredSiege:Number(value('siege')),food:Number(value('food'))};});
+  const terms={name:field('operationName'),targetTile:field('objective'),attackStart:Number(field('attackStart')),attackEnd:Number(field('attackEnd')),participants};
+  perform('operationCreate',terms,()=>createOperation(state,localHouse,terms));
+});
+$('panel').addEventListener('change', e => {
+  if(e.target.name==='role'&&e.target.closest('[data-operation-house]')){const row=e.target.closest('[data-operation-house]');if(e.target.value==='supply'){row.querySelector('[name=troops]').value=0;row.querySelector('[name=food]').value=30;}else{if(Number(row.querySelector('[name=troops]').value)===0)row.querySelector('[name=troops]').value=20;if(e.target.value==='siege'&&Number(row.querySelector('[name=siege]').value)===0)row.querySelector('[name=siege]').value=2;}return;}
+  if(e.target.dataset.formation){perform('formation',{army:e.target.dataset.formation,formation:e.target.value},()=>setFormation(state,localHouse,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { perform('tax',{policy:e.target.value},()=>{kingdom(state,localHouse).tax=e.target.value;return {ok:true};}); } });
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
 $('end-turn').addEventListener('click', () => { if(state.phase==='founding')return;orderMode=null;if(onlineOptions){perform('ready',{ready:!onlineStatus?.meta?.ready[localHouse]},()=>({ok:true}));return;}endTurn(state);changed();voiceNextDispatch(); });
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
@@ -189,9 +217,9 @@ function showNewCampaign() {
 }
 $('new-campaign').onclick = showNewCampaign; $('play-again').onclick = showNewCampaign;
 $('new-game-form').addEventListener('submit', e => {
-  e.preventDefault(); if(onlineOptions)return; client.cancel(); state = createGame(Number($('seed').value), $('preset').value); epoch++;
+  e.preventDefault(); if(onlineOptions)return; client.cancel(); state = createGame(Number($('seed').value), $('preset').value, Number($('game-size').value)); epoch++;
   selected = '5,6'; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
-  $('welcome').close(); $('load-warning').hidden = true; map.home(); changed(); toast('Explore the map and choose where to found your kingdom.');
+  $('welcome').close(); $('load-warning').hidden = true; changed(); map.home(); toast('Explore the map and choose where to found your kingdom.');
 });
 $('resume').onclick = () => { $('welcome').close(); map.home(); render(); if (state.outcome) $('outcome').showModal(); };
 function downloadSave() {
@@ -203,10 +231,10 @@ $('export-save').onclick = downloadSave;
 $('import-save').addEventListener('change', async e => {
   if(onlineOptions)return; const file = e.target.files[0]; if (!file) return;
   try {
-    if (file.size > 2000000) throw new Error('Save files must be smaller than 2 MB.');
+    if (file.size > 12000000) throw new Error('Save files must be smaller than 12 MB.');
     const imported = parseSave(await file.text());
     if (!confirm('Replace your current campaign with this imported save? Export your current save first if you want to keep it.')) return;
-    client.cancel(); state = imported; selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); map.home(); changed(); toast('Campaign imported.');
+    client.cancel(); state = imported; selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
   } catch (error) { toast(`Import failed: ${error.message}`); }
   finally { e.target.value = ''; }
 });
@@ -223,6 +251,7 @@ function openDiplomacy(id, compact = false) {
   if (configReady) enableGemini();
 }
 function renderDiplomacy() {
+  const state=currentView();
   const k = kingdom(state, activeRuler), r = k.relations[localHouse];
   $('diplomacy').style.setProperty('--house', k.color);
   $('ruler-mark').textContent = k.sigil; $('ruler-house').textContent = k.name; $('ruler-name').textContent=onlineOptions&&isHumanHouse(state,k.id)?`${state.controllers[k.id].name} · HUMAN`:k.ruler; $('ruler-motto').textContent = `“${k.motto}”`;
@@ -278,7 +307,7 @@ function renderProposals() {
     $('proposals').innerHTML=humanProposals(state,activeRuler,localHouse)+proposals.filter(i=>['WAR','BETRAY'].includes(i.type)).map((i,index)=>`<div class="proposal"><p>${escape(describeIntent(i))}</p><button class="danger" data-human-war="${index}">Declare war with these consequences</button></div>`).join('');return;
   }
   $('proposals').innerHTML = proposals.map((i, index) => {
-    const v = evaluateDeal(state,activeRuler,i,localHouse), promise = isPlayerPromise(i);
+    const v = disclosedDeal(state,activeRuler,i,localHouse), promise = isPlayerPromise(i);
     return `<div class="proposal ${v.status}"><h4>${promise ? 'PROPOSED PROMISE' : escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p>${promise ? `<p><strong>Deadline: Turn ${state.turn + i.duration}</strong></p>` : ''}<p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${promise ? 'Give My Word' : ['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Accept & Ratify'}</button>` : v.status === 'counter' ? `<div class="counter-terms"><strong>${escape(kingdom(state, activeRuler).name)} counteroffer</strong><p>${escape(describeIntent(v.counter))}</p><button class="primary" data-ratify-counter="${index}">Accept & Ratify</button><button data-counter="${index}">Review counteroffer</button></div>` : ''}<div class="button-row"><button data-modify="${index}">${promise ? 'Clarify' : 'Modify Offer'}</button><button data-reply="${index}">${promise ? 'I Make No Such Promise' : 'Reply'}</button></div></div>`;
   }).join('');
 }
@@ -297,7 +326,7 @@ $('proposals').addEventListener('click', e => {
   if(b.dataset.humanAccept||b.dataset.humanDecline){perform('respondProposal',{id:b.dataset.humanAccept||b.dataset.humanDecline,decision:b.dataset.humanAccept?'accept':'decline'},()=>({ok:true}));return;}
   if(b.dataset.humanWar!==undefined){perform('ratify',{targetHouseId:activeRuler,intent:proposals.filter(i=>['WAR','BETRAY'].includes(i.type))[Number(b.dataset.humanWar)]},()=>({ok:true}));return;}
   if (b.dataset.counter !== undefined) {
-    const index = Number(b.dataset.counter), v = evaluateDeal(state,activeRuler,proposals[index],localHouse);
+    const index = Number(b.dataset.counter), v = disclosedDeal(state,activeRuler,proposals[index],localHouse);
     if (v.counter) proposals[index] = v.counter; storeOffers(); save(); renderProposals();
   }
   if (b.dataset.modify !== undefined) loadOffer(proposals[Number(b.dataset.modify)]);
@@ -308,7 +337,7 @@ $('proposals').addEventListener('click', e => {
   }
   if (b.dataset.ratify !== undefined || b.dataset.ratifyCounter !== undefined) {
     const index = Number(b.dataset.ratify ?? b.dataset.ratifyCounter);
-    const proposal = b.dataset.ratifyCounter !== undefined ? evaluateDeal(state,activeRuler,proposals[index],localHouse).counter : proposals[index];
+    const proposal = b.dataset.ratifyCounter !== undefined ? disclosedDeal(state,activeRuler,proposals[index],localHouse).counter : proposals[index];
     if(onlineOptions){perform('ratify',{targetHouseId:activeRuler,intent:proposal,tradeId:reviewedTrade},()=>({ok:true}));return;}
     const r = commitDeal(state,activeRuler,proposal,localHouse);
     if (r.ok) { if(reviewedTrade){const offer=state.commerce.offers.find(o=>o.id===reviewedTrade);if(offer)offer.status='accepted';reviewedTrade=null;} appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
@@ -320,6 +349,7 @@ $('offer-type').innerHTML = Object.entries(LABELS).map(([id, label]) => `<option
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
 function updateOfferFields() {
+  const state=currentView();
   const type = $('offer-type').value;
   $('trade-kind-label').hidden=!['EXCHANGE','RECURRING'].includes(type);
   $('receive-fields').hidden = !['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(type);
@@ -473,6 +503,7 @@ fetch('./config.json', { cache: 'no-store' }).then(r => { configStatus = r.statu
   enableGemini();
 });
 function renderDispatches() {
+  const state=currentView();
   $('dispatch-bar').innerHTML = state.kingdoms.filter(k => k.id !== localHouse && alive(state, k.id)).map(k => {
     const r = k.relations[localHouse], messages = state.conversations[k.id] || [], last = messages.filter(m => m.role === 'ruler').at(-1);
     const urgent = state.pledges.some(p => p.creditor === k.id && p.debtor === localHouse && p.status === 'pending' && p.deadline - state.turn <= 2);
@@ -494,9 +525,11 @@ $('diplomacy').addEventListener('close', () => { save(); renderDispatches(); });
 $('council-records-body').addEventListener('click', e => { const b = e.target.closest('[data-deliver]'); if (b) perform('deliver',{pledge:b.dataset.deliver},()=>deliverPledge(state,b.dataset.deliver,localHouse)); });
 
 function ambassadorCards(envoys) {
+  const state=displayedState;
   return envoys.map(a => `<article class="envoy-card"><strong>⚜ ${escape(kingdom(state, a.owner).name)} ambassador</strong><p class="fine">${escape(a.status)} · ${escape(a.tile)}${a.host ? ` · Assigned to ${escape(kingdom(state, a.host).name)}` : ''}${a.status === 'detained' ? ` · Held by ${escape(kingdom(state, a.detainedBy)?.name)}` : ''}</p>${a.owner === localHouse ? `<div class="button-row"><button data-envoy-goto="${a.tile}">Locate</button><button data-envoy-recall="${a.id}" ${a.status === 'detained' ? 'disabled' : ''}>Recall</button></div><label>Assign to a capital<select data-envoy-destination="${a.id}">${state.kingdoms.filter(k => k.id !== localHouse && alive(state, k.id)).map(k => `<option value="${k.id}" ${a.host === k.id ? 'selected' : ''}>${escape(k.name)}</option>`).join('')}</select></label><button class="full" data-envoy-assign="${a.id}" ${a.status === 'detained' ? 'disabled' : ''}>Send ambassador</button>` : `<div class="button-row">${['passage', 'turn-away', 'expel', 'detain', 'release', 'execute'].map(action => `<button class="${action === 'execute' ? 'danger' : ''}" data-envoy-incident="${a.id}" data-incident="${action}">${{passage:'Allow passage','turn-away':'Turn away',expel:'Expel',detain:'Detain',release:'Release',execute:'Execute…'}[action]}</button>`).join('')}</div>`}</article>`).join('');
 }
 function ambassadorPanel() {
+  const state=displayedState;
   const envoys = state.ambassadors.filter(a => a.status !== 'dead' && (a.owner === localHouse || state.tiles[a.tile]?.owner === localHouse));
   return `<div class="section-label">AMBASSADORS · ${state.ambassadors.filter(a => a.owner === localHouse && a.status !== 'dead').length}/${ambassadorCapacity(state, localHouse)}</div><p class="fine">${diplomaticCapacity(state, localHouse)} shared dispatches per turn. A resident ambassador grants 10 separate messages with their host.</p><button class="full" data-envoy-recruit="true" ${!ambassadorCapacity(state, localHouse) || state.outcome ? 'disabled' : ''}>Recruit ambassador · 35 gold, 15 wood, 1 order</button>${ambassadorCards(envoys)}`;
 }

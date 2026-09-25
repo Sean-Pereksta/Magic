@@ -1,7 +1,7 @@
-import { HOUSES } from './data.mjs';
+import { CAMPAIGN_HOUSES } from './data.mjs';
 import { localHouseId } from './house-control.mjs';
-const color = id => HOUSES.find(h => h.id === id)?.color || '#eee2c4';
-const name = id => HOUSES.find(h => h.id === id)?.name.replace('House ', '') || id;
+const color = id => CAMPAIGN_HOUSES.find(h => h.id === id)?.color || '#eee2c4';
+const name = id => CAMPAIGN_HOUSES.find(h => h.id === id)?.name.replace('House ', '') || id;
 const eventKey = (e, index) => e.id || `${e.turn}:${e.attacker}:${e.defender}:${e.tile}:${e.action}:${index}`;
 export function eventTroopLosses(e) {
   if(e.action==='battle'&&e.before?.length===2&&e.after?.length===2)
