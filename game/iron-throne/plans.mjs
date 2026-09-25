@@ -270,7 +270,7 @@ export function preparePlans(s,k,c) {
       // as permission to attack. Re-evaluate old plans against the real garrison.
       const op=operationForPlan(s,p),role=op?.roles?.[k.id];
       p.requiredSiege=op?(role==='Siege support'?op.requiredSiege:0):fortificationDefense(target).bonus>0&&!assessments.some(x=>x.assessment.assault)?2:0;
-      const operationForceReady=forces.some(a=>sizeOf(a)>=p.requiredForces&&(role!=='Siege support'||familyCount(a,'siege')>=Math.max(1,p.requiredSiege)));
+      const rally=op&&s.tiles[op.rallyPoints[k.id]],operationForceReady=forces.some(a=>sizeOf(a)>=p.requiredForces&&(!rally||distance(s.tiles[a.tile],rally)<=1)&&(role!=='Siege support'||familyCount(a,'siege')>=Math.max(1,p.requiredSiege)));
       const ready=(p.type==='jointWar'?operationForceReady:assessments.some(({a,assessment})=>(assessment.empty||sizeOf(a)>=p.requiredForces)&&(assessment.assault||assessment.bombard)))&&(p.suppliesCommitted||canAfford(k,p.requiredResources));
       if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing'){
         if(op&&!p.suppliesCommitted){pay(k,p.requiredResources);p.suppliesCommitted=true;audit(s,p,'Committed operation supplies: '+Object.entries(p.requiredResources).map(([r,n])=>`${n} ${r}`).join(', ')+'.');}
