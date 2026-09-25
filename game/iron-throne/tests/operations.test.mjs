@@ -40,13 +40,16 @@ test('additional agreements can expand one operation to a multi-House coalition'
   assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
 });
 
-test('a human coalition commitment declares war only after real rally preparation and the agreed attack window',()=>{
+test('a coalition declares war only after every role reaches its rally point and allocates supplies inside the attack window',()=>{
   const s=createGame(2202);stock(s);commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
-  const op=s.intrigue.operations[0],plan=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor===PLAYER),a=armiesOf(s,PLAYER)[0];
+  const op=s.intrigue.operations[0],plan=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor===PLAYER),partner=s.intrigue.plans.find(p=>p.operationId===op.id&&p.actor==='wintermere'),a=armiesOf(s,PLAYER)[0];
+  const before={...kingdom(s,PLAYER).resources};
   a.units={...emptyUnits(),levy:Math.max(40,plan.requiredForces)};a.tile=op.rallyPoints[PLAYER];
+  partner.status='Committed';partner.suppliesCommitted=true;
   refreshOperations(s);assert.equal(atWar(s,PLAYER,'thornwall'),false);assert.equal(plan.status,'Preparing');
   s.turn=op.attackWindow[0];refreshOperations(s);
-  assert.equal(plan.status,'Committed');assert.equal(atWar(s,PLAYER,'thornwall'),true);
+  assert.equal(plan.status,'Committed');assert.equal(plan.suppliesCommitted,true);assert.equal(kingdom(s,PLAYER).resources.food,before.food-plan.requiredResources.food);
+  assert.equal(atWar(s,PLAYER,'thornwall'),true);assert.equal(atWar(s,'wintermere','thornwall'),true);
 });
 
 test('visible mobilization and siege preparation raise operation exposure',()=>{
@@ -72,10 +75,20 @@ test('War Room never reads an undiscovered enemy operation directly',()=>{
   spy.network=100;discoverPlan(s,spy,p);html=warRoomPanel(s);assert.match(html,new RegExp(op.name));assert.match(html,new RegExp('T'+op.attackWindow[0]+'–T'+op.attackWindow[1]));
 });
 
+test('supporting-flank pledges can be fulfilled by holding the assigned flank near the objective',()=>{
+  const s=createGame(2209);stock(s);commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
+  const op=s.intrigue.operations[0],p=s.pledges.find(p=>p.operationId===op.id&&p.debtor==='wintermere'),plan=s.intrigue.plans.find(x=>x.operationId===op.id&&x.actor==='wintermere');
+  assert.equal(op.roles.wintermere,'Supporting flank');plan.suppliesCommitted=true;
+  const a=armiesOf(s,'wintermere')[0];a.units={...emptyUnits(),levy:Math.max(30,op.requiredForces.wintermere)};a.tile=op.targetTile;
+  s.turn=op.attackWindow[0];verifyPledges(s);assert.equal(p.status,'pending');assert.equal(p.held,1);
+  s.turn++;verifyPledges(s);assert.equal(p.status,'fulfilled');
+});
+
 test('operation pledges change reputation and trust according to actual performance',()=>{
   for(const fulfilled of [true,false]){
     const s=createGame(2206+(fulfilled?1:0));stock(s);commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
     const p=s.pledges.find(p=>p.operationId&&p.debtor==='wintermere'),before=relation(s,PLAYER,'wintermere').trust;
+    s.intrigue.plans.find(plan=>plan.operationId===p.operationId&&plan.actor==='wintermere').suppliesCommitted=true;
     if(fulfilled)s.militaryEvents.push({id:s.nextId++,turn:s.turn,attacker:'wintermere',defender:'thornwall',tile:s.intrigue.operations[0].targetTile,action:'battle'});
     s.turn=p.deadline;verifyPledges(s);
     assert.equal(p.status,fulfilled?'fulfilled':'broken');assert.equal(relation(s,PLAYER,'wintermere').trust>before,fulfilled);assert.ok(kingdom(s,'wintermere').reputation[fulfilled?'kept':'broken']>0);
