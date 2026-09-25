@@ -26,7 +26,7 @@ try {
     if(remote) await page.addInitScript(()=>{const OriginalImage=Image;window.Image=class extends OriginalImage {constructor(...args){super(...args);this.crossOrigin='anonymous';}};});
     await page.route('https://pub-*.r2.dev/**',async route=>{
       const pathname=new URL(route.request().url()).pathname;
-      if(remote&&pathname.startsWith('/geography/')) return route.fulfill({headers:{'Access-Control-Allow-Origin':'*'},contentType:'image/png',body:await readFile(path.join(process.env.IRON_GEOGRAPHY_PACK,path.basename(pathname)))});
+      if(remote&&pathname.startsWith('/geography-v2/')) return route.fulfill({headers:{'Access-Control-Allow-Origin':'*'},contentType:'image/png',body:await readFile(path.join(process.env.IRON_GEOGRAPHY_PACK,path.basename(pathname)))});
       return route.fulfill({status:404,body:''});
     });
     await page.route('**/config.json',route=>route.fulfill({json:{}}));
@@ -34,14 +34,21 @@ try {
     await page.locator('#start-game').click();
     const result=await page.evaluate(async(remote)=>{
       const {GeographyArt,edgePort}=await import('../iron-throne/geography-art.mjs');
-      const {HEX_DIRECTIONS,oppositeEdge}=await import('../iron-throne/geography.mjs');
+      const {HEX_DIRECTIONS,oppositeEdge,maskEdges}=await import('../iron-throne/geography.mjs');
       const {AssetCache,ART,loadArt}=await import('../iron-throne/asset-manifest.mjs');
       const assets=remote?new AssetCache():undefined;
       if(remote) await Promise.all(Object.values(ART.geography).map(url=>loadArt(url)));
       const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
       const c=canvas.getContext('2d'),art=new GeographyArt(),failures=[];
       const paint=(g,x,y)=>art.draw(c,g,x,y,assets,ART.geography);
-      const seaAt=(x,y)=>{const p=c.getImageData(Math.round(x),Math.round(y),1,1).data;return p[2]>p[0]+10&&p[1]>p[0]+25;};
+      const seaAt=(x,y)=>{
+        // The illustrated water contains white foam. Require blue water in
+        // a 5px neighborhood (1.25 map units), smaller than the river width.
+        const pixels=c.getImageData(Math.round(x)-2,Math.round(y)-2,5,5).data;
+        for(let i=0;i<pixels.length;i+=4)
+          if(pixels[i+2]>pixels[i]+10&&pixels[i+1]>pixels[i]+25) return true;
+        return false;
+      };
       // Sample every shared river port on both sides of all six boundaries.
       for(let edge=0;edge<6;edge++) {
         c.setTransform(1,0,0,1,0,0);c.fillStyle='#87935e';c.fillRect(0,0,512,512);
@@ -55,6 +62,15 @@ try {
           if(!seaAt(x,y)) failures.push(`river ${edge}/${offset}`);
         }
       }
+      // Every supported illustrated river shape must meet its stated ports.
+      for(const mask of [1,2,4,8,16,32,5,10,20,40,17,34,9,18,36,21,42]) {
+        c.setTransform(1,0,0,1,0,0);c.fillStyle='#87935e';c.fillRect(0,0,512,512);c.setTransform(4,0,0,4,256,256);
+        paint({coastMask:0,riverMask:mask,mouthMask:0,hasRiver:true,ground:'plains'},0,0);
+        for(const edge of maskEdges(mask)) {
+          const p=edgePort(edge),k=(Math.hypot(...p)-.75)/Math.hypot(...p);
+          if(!seaAt(256+4*p[0]*k,256+4*p[1]*k)) failures.push(`shape ${mask}/edge ${edge}`);
+        }
+      }
       // Mouths must cut through the beach on every orientation.
       for(let edge=0;edge<6;edge++) {
         c.setTransform(1,0,0,1,0,0);c.fillStyle='#87935e';c.fillRect(0,0,512,512);c.setTransform(4,0,0,4,256,256);
@@ -66,7 +82,7 @@ try {
       for(let coastMask=0;coastMask<64;coastMask++) for(let riverMask=0;riverMask<6;riverMask++) paint({coastMask,riverMask,hasRiver:!!riverMask,mouthMask:0,ground:'plains'},0,0);
       return {failures,cacheSize:art.cache.size};
     },remote);
-    if(remote) assert.equal(result.cacheSize,0,'uploaded PNGs must render without the native fallback');
+    if(remote) assert.ok(result.cacheSize>0,'unsupported masks retain native fallback');
     assert.deepEqual(result.failures,[]);assert.ok(result.cacheSize<=256);assert.deepEqual(errors,[]);
     await page.locator('#home').click();await page.locator('#map').click({position:{x:100,y:100}});
     assert.deepEqual(errors,[]);
