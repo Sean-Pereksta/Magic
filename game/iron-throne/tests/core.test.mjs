@@ -114,11 +114,13 @@ test('a valuable frontier town can be ceded, but never a capital or last settlem
   assert.equal(commitDeal(s, 'wintermere', proposal).ok, true); assert.equal(t.owner, PLAYER);
   assert.equal(commitDeal(s, 'wintermere', offer('TERRITORY', { targetId: '17,4', giveAmount: 1000 })).ok, false);
 });
-test('joint-war pledges need actual combat, not just standing at the target border', () => {
+test('joint-war assault pledges need committed supplies and real combat, not just a diplomatic signature', () => {
   const s = createGame(); kingdom(s, PLAYER).resources.gold = 1000;
   assert.equal(commitDeal(s, 'wintermere', accepted(s, 'wintermere', offer('JOINT_WAR', { targetId: 'thornwall', giveAmount: 100 }))).ok, true);
-  const p = s.pledges[0]; verifyPledges(s); assert.equal(p.status, 'pending');
-  s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: 'wintermere', defender: 'thornwall', tile: '31,5', action: 'siege' });
+  const p = s.pledges[0], plan=s.intrigue.plans.find(x=>x.operationId===p.operationId&&x.actor===p.debtor);
+  verifyPledges(s); assert.equal(p.status, 'pending');
+  plan.suppliesCommitted=true;
+  s.militaryEvents.push({ id: s.nextId++, turn: s.turn, attacker: 'wintermere', defender: 'thornwall', tile: s.intrigue.operations[0].targetTile, action: 'siege' });
   verifyPledges(s); assert.equal(p.status, 'fulfilled');
 });
 test('promised payment has no immediate trust reward and delivers exactly once', () => {
