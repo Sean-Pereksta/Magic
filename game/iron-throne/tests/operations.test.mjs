@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLAYER, armiesOf, atWar, kingdom, parseSave, relation, settlements } from '../core.mjs';
+import { PLAYER, armiesOf, atWar, declareWar, kingdom, parseSave, relation, settlements } from '../core.mjs';
 import { RESOURCES } from '../data.mjs';
 import { emptyUnits } from '../economy.mjs';
 import { commitDeal, verifyPledges } from '../diplomacy.mjs';
@@ -76,10 +76,10 @@ test('War Room never reads an undiscovered enemy operation directly',()=>{
 });
 
 test('supporting-flank pledges can be fulfilled by holding the assigned flank near the objective',()=>{
-  const s=createGame(2209);stock(s);commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
+  const s=createGame(2209);stock(s);for(const t of settlements(s,'thornwall')){t.walls=0;t.fortIntegrity=0;delete t.levels.wall;delete t.levels.fort;}commitDeal(s,'wintermere',jointIntent('thornwall'),PLAYER,{consentingHuman:true});
   const op=s.intrigue.operations[0],p=s.pledges.find(p=>p.operationId===op.id&&p.debtor==='wintermere'),plan=s.intrigue.plans.find(x=>x.operationId===op.id&&x.actor==='wintermere');
   assert.equal(op.roles.wintermere,'Supporting flank');plan.suppliesCommitted=true;
-  const a=armiesOf(s,'wintermere')[0];a.units={...emptyUnits(),levy:Math.max(30,op.requiredForces.wintermere)};a.tile=op.targetTile;
+  const a=armiesOf(s,'wintermere')[0];a.units={...emptyUnits(),levy:Math.max(30,op.requiredForces.wintermere)};a.tile=op.targetTile;declareWar(s,'wintermere','thornwall');
   s.turn=op.attackWindow[0];verifyPledges(s);assert.equal(p.status,'pending');assert.equal(p.held,1);
   s.turn++;verifyPledges(s);assert.equal(p.status,'fulfilled');
 });
