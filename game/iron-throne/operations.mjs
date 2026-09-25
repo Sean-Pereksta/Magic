@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { alive, armiesOf, atWar, canAfford, canEnter, declareWar, distance, findPath, kingdom, orderArmy, pay, relation, settlements, sizeOf, treaty } from './core.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { familyCount } from './warfare.mjs';
@@ -16,6 +17,7 @@ export const operationPledges = (s,o) => s.pledges.filter(p => p.operationId ===
 const currentPlan = (s,p) => s.intrigue.plans.find(x => x.id === p.planId);
 
 export function defaultRally(s, house, targetTile, role='assault') {
+  s=planningView(s,house);
   const target=s.tiles[targetTile];
   return settlements(s,house).sort((a,b) => role==='flank' ? b.r-a.r || distance(a,target)-distance(b,target) : distance(a,target)-distance(b,target))[0]?.id;
 }
@@ -181,8 +183,9 @@ export function updateOperations(s,{afterMovement=false}={}) {
       p.status='withdrawn';const plan=currentPlan(s,p);if(plan)transitionPlan(s,plan,'Abandoned','The alliance ended or the House was defeated.');stopOrders(s,p);
     }
     if(!ongoingOperation(o))continue;
-    const tile=s.tiles[o.targetTile],members=acceptedMembers(o);
-    if(tile.owner!==o.target) {
+    const members=acceptedMembers(o),tile=s.tiles[o.targetTile];
+    const observed=members.some(p=>planningView(s,p.house).tiles[o.targetTile]?.fog==='visible');
+    if(observed && tile.owner!==o.target) {
       // Verify the last combat before closing and releasing redundant obligations.
       for(const row of pendingPledges(s,o))if(operationPledgeProgress(s,row)==='fulfilled')row.delivered=true;
       closeOperation(s,o,members.some(p=>p.house===tile.owner)?'Completed':'Abandoned','The objective changed hands.');continue;
@@ -196,7 +199,7 @@ export function updateOperations(s,{afterMovement=false}={}) {
     if(afterMovement||o.status!=='Preparing')continue;
     if(s.turn>=o.attackStart&&members.length>=2&&members.every(p=>operationProgress(s,o,p).ready)) {
       const fighters=members.filter(attackRole);
-      const legal=fighters.every(p=>{const probe={...s,wars:[...s.wars,[p.house,o.target].sort().join(':')]};return armiesOf(s,p.house).some(a=>findPath(probe,a.tile,o.targetTile,p.house).length||a.tile===o.targetTile);});
+      const legal=fighters.every(p=>{const probe={...planningView(s,p.house),wars:[...s.wars,[p.house,o.target].sort().join(':')]};return armiesOf(s,p.house).some(a=>findPath(probe,a.tile,o.targetTile,p.house).length||a.tile===o.targetTile);});
       if(!legal){o.reason='Waiting for legal routes to the objective.';continue;}
       for(const p of fighters){if(!atWar(s,p.house,o.target))declareWar(s,p.house,o.target);const plan=currentPlan(s,p);plan.wasAtWar=true;transitionPlan(s,plan,'Committed','Shared attack window opened; the operation is ready.');}
       for(const p of members.filter(p=>!attackRole(p)))transitionPlan(s,currentPlan(s,p),'Executing','Shared support commitments are on station.');
@@ -214,7 +217,7 @@ export function operationArmyOrder(s,k,a,c) {
   if(o.status==='Preparing'||!attackRole(p)) {
     orderArmy(s,k.id,a.id,p.rally,a.tile===p.rally?'hold':'move');return plan;
   }
-  const t=s.tiles[o.targetTile],assessment=assaultAssessment(s,k,a,t);
+  const t=planningView(s,k.id).tiles[o.targetTile],assessment=assaultAssessment(s,k,a,t);
   if(assessment.assault&&atWar(s,k.id,o.target)) {
     const avoid=dangerousTiles(s,k,a);avoid.delete(t.id);
     if(orderArmy(s,k.id,a.id,t.id,'attack',avoid).ok){transitionPlan(s,plan,'Executing','Shared assault orders issued.');return plan;}
@@ -233,7 +236,8 @@ export function prepareOperationAI(s,k) {
       const benefit=(atWar(s,k.id,o.target)?25:0)+enemy.grievance*.35+enemy.fear*.2+k.aggression*12;
       const troops=armiesOf(s,k.id).reduce((n,a)=>n+sizeOf(a),0);
       const score=r.trust*.5+r.reliability*.15-r.grievance*.5+benefit-enemy.dependency*.5;
-      const decision=score<20||memberError(s,o,p)?'decline':p.requiredTroops>troops&&p.requiredTroops>1?'counter':'accept';
+      const uncertain=planningView(s,k.id).tiles[o.targetTile]?.fog!=='visible';
+      const decision=score-(uncertain?12:0)<20||memberError(planningView(s,k.id),o,p)?'decline':p.requiredTroops>troops&&p.requiredTroops>1?'counter':'accept';
       respondOperation(s,k.id,o.id,decision);
     }
   }
@@ -241,20 +245,23 @@ export function prepareOperationAI(s,k) {
   if(own&&pendingPledges(s,own,k.id).some(p=>p.operationTask==='supply'&&!p.delivered)&&kingdom(s,k.id).resources.food>=operationMember(own,k.id).food+30)supplyOperation(s,k.id,own.id);
 }
 export function proposeJointOperation(s,k,target,tile) {
-  const partners=s.kingdoms.filter(h=>h.id!==k.id&&h.id!==target&&alive(s,h.id)&&treaty(s,k.id,h.id,'alliance')&&!protectedPeace(s,h.id,target)&&!memberOperation(s,h.id)&&relation(s,h.id,k.id).trust>=20)
+  const world=s; s=planningView(world,k.id);
+  const partners=s.kingdoms.filter(h=>h.id!==k.id&&h.id!==target&&alive(s,h.id)&&treaty(s,k.id,h.id,'alliance')&&!protectedPeace(s,h.id,target)&&relation(s,k.id,h.id).trust>=20)
     .sort((a,b)=>Number(atWar(s,b.id,target))-Number(atWar(s,a.id,target))||a.id.localeCompare(b.id)).slice(0,2);
   if(!partners.length)return null;
   const participants=[{house:k.id,role:'assault',requiredTroops:30,requiredSiege:0,food:0},...partners.map((h,i)=>({house:h.id,role:i===1?'supply':'flank',requiredTroops:i===1?0:20,requiredSiege:0,food:i===1?30:0}))];
   for(const p of participants)p.rally=defaultRally(s,p.house,tile.id,p.role);
+  if(participants.some(p=>!s.tiles[p.rally]))return null;
   const travel=Math.max(...participants.map(p=>distance(s.tiles[p.rally],tile)));
   const attackStart=s.turn+Math.min(12,Math.max(3,Math.ceil(travel/3)));
-  const result=createOperation(s,k.id,{name:`Operation ${tile.name||'Iron Gate'}`.slice(0,60),targetTile:tile.id,attackStart,attackEnd:attackStart+3,participants});
-  return result.ok?operationFor(s,result.operationId):null;
+  const result=createOperation(world,k.id,{name:`Operation ${tile.name||'Iron Gate'}`.slice(0,60),targetTile:tile.id,attackStart,attackEnd:attackStart+3,participants});
+  return result.ok?operationFor(world,result.operationId):null;
 }
 export function publicMobilizations(s,viewer) {
+  s=planningView(s,viewer);
   const border=Object.values(s.tiles).filter(t=>t.owner===viewer);
   return s.kingdoms.filter(k=>k.id!==viewer).flatMap(k=>{
-    const forces=armiesOf(s,k.id).filter(a=>(s.knowledgeView||a.path.length)&&border.some(t=>distance(s.tiles[a.tile],t)<=4));
+    const forces=armiesOf(s,k.id).filter(a=>!a.remembered&&(s.knowledgeView||a.path.length)&&border.some(t=>distance(s.tiles[a.tile],t)<=4));
     const count=forces.reduce((n,a)=>n+sizeOf(a),0),siege=forces.reduce((n,a)=>n+familyCount(a,'siege'),0);
     return count>=40||siege>=2?[{house:k.id,text:`${k.name}: ${count} troops${siege?` including ${siege} siege engines`:''} observed near your frontier. Their objective is unknown.`}]:[];
   });

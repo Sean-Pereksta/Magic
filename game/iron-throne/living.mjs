@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court } from './house-control.mjs';
 import { updateAttitudes, politicalAttitude } from './politics.mjs';
 import { buildingLevel, productionPlan } from './economy.mjs';
@@ -8,7 +9,7 @@ import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, kingdo
 export const RELATION_DEFAULTS = { respect: 15, fear: 0, grievance: 0, dependency: 0, wariness: 0, reliability: 50, generosity: 0, aggression: 0 };
 export const clamp = (n, low = 0, high = 100) => Math.max(low, Math.min(high, n));
 export const capitalOf = (s, owner) => settlements(s, owner).find(t => t.capital === owner) || settlements(s, owner)[0];
-const powerOf = (s, owner) => armiesOf(s, owner).reduce((n, a) => n + strength(a), 0);
+const powerOf = (s, owner) => armiesOf(s, owner).reduce((n, a) => n + strength(a)*(a.confidence??1), 0);
 const houseName = (s, id) => kingdom(s, id)?.name || id;
 
 export function initializeLiving(s) {
@@ -120,7 +121,7 @@ export function applySpeech(s, rulerId, message, actorHouseId = PLAYER) {
     if (gain) { r.wordGain = (r.wordGain || 0) + gain; changeRelation(s, rulerId, actorHouseId, { opinion: gain }, 'Courteous words; deeds are still expected.'); }
   } else {
     // Fear is leverage, never friendship. Words alone cannot create military fear.
-    const fear = kind === 'threat' && powerOf(s, actorHouseId) > powerOf(s, rulerId) ? 4 : 0;
+    const fear = kind === 'threat' && powerOf(planningView(s,rulerId), actorHouseId) > powerOf(s, rulerId) ? 4 : 0;
     changeRelation(s, rulerId, actorHouseId, { opinion: -3, trust: -2, grievance: 3, fear }, kind === 'threat' ? 'A threat made in council.' : 'An insult made in council.');
     recordPoliticalMemory(s, rulerId, actorHouseId, kind, `${houseName(s, actorHouseId)} ${kind === 'threat' ? 'threatened' : 'insulted'} our House in council: “${message.slice(0, 180)}”`, 8);
   }
@@ -157,6 +158,7 @@ export function tradeBlocked(s, a, b) {
 }
 
 export function borderThreat(s, observer, subject) {
+  s=planningView(s,observer);
   const border = Object.values(s.tiles).filter(t => t.owner === observer);
   const capital = capitalOf(s, observer), forces = armiesOf(s, subject);
   const permitted = !!(treaty(s, observer, subject, 'alliance') || treaty(s, observer, subject, 'access') || treaty(s, observer, subject, 'vassalage'));
@@ -166,7 +168,7 @@ export function borderThreat(s, observer, subject) {
     const t = s.tiles[a.tile];
     const borderDistance = border.length ? Math.min(...border.map(b => distance(t, b))) : 100;
     const capitalDistance = capital ? distance(t, capital) : 100;
-    return { id: a.id, tile: a.tile, strength: Math.round(strength(a)), borderDistance, capitalDistance, inside: t.owner === observer, movement: previous[a.id] === undefined ? 'unobserved' : borderDistance < previous[a.id] ? 'approaching' : borderDistance > previous[a.id] ? 'withdrawing' : (relation(s, observer, subject)?.movements?.[a.id]?.turn === s.turn ? relation(s, observer, subject).movements[a.id].direction : 'holding'), sharedDestination: !!a.target && shared.includes(s.tiles[a.target]?.owner) };
+    return { id: a.id, tile: a.tile, strength: Math.round(strength(a)*(a.confidence??1)), borderDistance, capitalDistance, inside: t.owner === observer, movement: a.remembered ? 'uncertain' : previous[a.id] === undefined ? 'unobserved' : borderDistance < previous[a.id] ? 'approaching' : borderDistance > previous[a.id] ? 'withdrawing' : (relation(s, observer, subject)?.movements?.[a.id]?.turn === s.turn ? relation(s, observer, subject).movements[a.id].direction : 'holding'), sharedDestination: !!a.target && shared.includes(s.tiles[a.target]?.owner) };
   }).filter(a => a.borderDistance <= 3);
   const localPower = Math.max(20, powerOf(s, observer));
   let score = nearby.reduce((n, a) => n + a.strength / localPower * (a.inside ? 28 : 20 / (1 + a.borderDistance)) * (a.capitalDistance <= 3 ? 1.4 : 1) * (permitted ? a.sharedDestination ? .2 : .45 : 1) * (a.movement === 'approaching' ? 1.2 : 1), 0);
@@ -177,6 +179,7 @@ export function borderThreat(s, observer, subject) {
   return { score: Math.round(clamp(score)), nearby, relativeStrength: Math.round(powerOf(s, subject) / Math.max(1, powerOf(s, observer)) * 10) / 10, permitted, sharedEnemies: shared, recentConquests: expansion };
 }
 export function diplomaticPriorities(s, owner) {
+  s=planningView(s,owner);
   const k = kingdom(s, owner), tasks = [];
   if(k.resourcesUnknown)return ['Discuss commitments, trade, or mutual security with our court.'];
   const production = grossProduction(s, owner);
@@ -193,9 +196,10 @@ export function diplomaticPriorities(s, owner) {
   return tasks.slice(0, 4);
 }
 export function updatePoliticalState(s, { sendDispatches = true } = {}) {
+  const views=new Map(s.kingdoms.map(k=>[k.id,planningView(s,k.id)]));
   for (const observer of s.kingdoms) for (const subject of s.kingdoms) {
     if (observer.id === subject.id || !alive(s, observer.id) || !alive(s, subject.id)) continue;
-    const r = relation(s, observer.id, subject.id), threat = borderThreat(s, observer.id, subject.id), economic = economicRelationship(s, observer.id, subject.id);
+    const view=views.get(observer.id),r = relation(s, observer.id, subject.id), threat = borderThreat(view, observer.id, subject.id), economic = economicRelationship(view, observer.id, subject.id);
     const wasWary = r.wariness;
     const newShared = threat.sharedEnemies.filter(id => !(r.sharedEnemies || []).includes(id));
     if (newShared.length) changeRelation(s, observer.id, subject.id, { opinion: 2 }, 'A shared enemy creates a limited common interest.');
@@ -205,18 +209,18 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
     const fresh = isHumanHouse(s,subject.id) && isAiHouse(s,observer.id);
     if (fresh && sendDispatches) {
       if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `Your banners are close to ${capitalOf(s, observer.id)?.name}. Tell me their purpose, Regent. Friendship needs more than courteous words.`, 4, subject.id);
-      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Your army has withdrawn. I noticed. Perhaps your intentions deserve another hearing.', 4, subject.id);
+      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Our latest observations no longer confirm the same border concentration. We are seeking an updated report.', 4, subject.id);
 
       if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8, subject.id);
       if (r.trust > 40 && !atWar(s, observer.id, subject.id) && !treaty(s, observer.id, subject.id, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10, subject.id);
     }
-    r.observations = Object.fromEntries(armiesOf(s, subject.id).slice(0, 80).map(a => {
+    r.observations = Object.fromEntries(armiesOf(view, subject.id).slice(0, 80).map(a => {
       const border = Object.values(s.tiles).filter(t => t.owner === observer.id);
       return [a.id, border.length ? Math.min(...border.map(t => distance(t, s.tiles[a.tile]))) : 100];
     }));
   }
   for (const k of s.kingdoms) {
-    k.priorities = diplomaticPriorities(s, k.id);
+    k.priorities = diplomaticPriorities(views.get(k.id), k.id);
     k.relationshipSummaries ||= {};
     for (const actor of humanControlledHouseIds(s).filter(id=>id!==k.id)) {
       const r=relation(s,k.id,actor),economic=economicRelationship(s,k.id,actor),name=houseName(s,actor);

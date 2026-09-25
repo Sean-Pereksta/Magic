@@ -1,4 +1,4 @@
-# Campaign scale and player knowledge
+# Campaign scale and House knowledge
 
 Single-player setup offers 6, 8, 10 and 12 Houses. Multiplayer keeps the six
 original Houses, its 40 × 30 map, seats, round system and starting balance.
@@ -17,8 +17,8 @@ personalities, colors and capital names. Map fitting uses actual dimensions.
 
 ## Observations, not a cosmetic mask
 
-`fog.mjs` keeps bounded, dated tile and army observations for human-controlled
-Houses. The founding preview is completely visible until that player confirms
+`fog.mjs` keeps bounded, dated tile and army observations for every human and AI-controlled
+House. The founding preview is completely visible until that player confirms
 Found City, and does not populate exploration memory. After confirmation, even
 while other humans are still founding, normal knowledge restrictions apply.
 
@@ -34,7 +34,7 @@ while other humans are still founding, normal knowledge restrictions apply.
 `knowledgeView` is the shared boundary for the map, UI helpers and dialogue.
 Tooltips, targeting choices, forecasts, rival reports, battle effects, alerts and
 War Room objectives receive this projection. Structure targeting requires current
-observation. Human routes use remembered geography; actual movement still checks
+observation. All army routes use remembered geography; actual movement still checks
 real borders, roads, enemies and terrain. Exploration is recorded at each movement
 step. Battle forecasts cannot write simulated observations to the campaign.
 Own economy forecasts are computed authoritatively and carried as private totals,
@@ -56,12 +56,15 @@ remain public political information.
 | City / town | 3 / 2 |
 | Fort, levels I–III | 3–5 |
 | Watchtower, levels I–III | 6–8 |
-| Ordinary production building | Its own tile |
+| Controlled territory / production building | Its own tile |
 
 Mixed armies use their best surviving scouting unit. Sight does not yet model
 terrain obstruction. Strong alliances (the ally has at least 50 trust) share
 one hex around their settlements/forts and armies of at least 20 troops. This
-never shares the ally's exploration history, spy reports or other allies' sight.
+never automatically shares another ally's sight. Trusted courts can also answer
+intelligence requests with dated first-hand army observations (including spy
+observations). These retain the original timestamp and source House; copied
+reports cannot be forwarded again or made fresh by repeated requests.
 
 Economic spy missions observe a region near an actual enemy settlement. Military
 missions also observe actual major armies. Network access controls radius and
@@ -88,10 +91,46 @@ lease transfer. This preserves the existing controller trust model.
 Existing saves migrate with empty exploration history and current local sight.
 House count, dimensions, roster, snapshots and bounds are validated. Single-player
 imports allow up to 12 MB; multiplayer retains its compressed document limits.
-Simulation AI continues using the authoritative strategy systems; Gemini never
-creates or executes hidden strategy.
+AI strategy uses `planningView` from `ai-knowledge.mjs`, a detached derivative of
+the same `knowledgeView` used by people. It does not contain the true fog store,
+foreign private plans, treasury, construction or orders. The ruler's own memories
+and public political events remain available. Known capital locations are
+explicitly treated as assumed objectives until their ownership is observed.
+Gemini never creates or executes hidden strategy.
+
+## AI decisions under uncertainty
+
+* Army estimates stay at their last observed tile. Confidence declines over 12
+  turns (to a 5% floor), strength ranges widen, and possible travel distance grows.
+  Contacts expire after 20 turns, or immediately when a new observation disproves
+  their old location. Hidden destruction does not erase an observer's memory.
+* Threat, invasion, retreat, formation, recruitment, infrastructure targeting,
+  council leverage, cooperation and balance-of-power decisions use observed or
+  estimated forces. Unobserved garrisons are uncertain, never confirmed empty.
+  Older reports contribute less to border fear; disappearance is not proof of a
+  withdrawal. Foreign private opinions are unavailable without a spy disclosure.
+* AI scouts explore and investigate missing contacts. Mounted forces can detach
+  a small screen ahead of the main army. Urgent defense, pledged operations and
+  low reserves take priority. Towers favor sites that reveal unknown terrain;
+  military spies and intelligence offices become more valuable during war.
+* Trade proposals ask for bounded amounts based on the requesting House's needs
+  and known routes. They do not inspect the recipient's inventory to optimize a
+  request. Recipients and authoritative transaction checks can reject proposals.
+* Joint operations use each participant's known routes and readiness reports.
+  Secret changes at a distant objective do not cancel an operation until observed.
+  Structure attacks require sight for humans and AI alike; a remembered raid can
+  first march to investigate the site.
+
+The authoritative simulation still resolves movement, encounters, combat,
+construction, mission discovery and transaction legality. These are rules checks,
+not a knowledge source for choosing a ruler's target. Existing games initialize
+AI knowledge from current sight, without inventing earlier exploration.
 
 ## Verification
+
+`node --test game/iron-throne/tests/ai-knowledge.test.mjs` checks paired worlds
+whose hidden armies, infrastructure and plans differ while AI observations match.
+It also checks stale reports, allied sharing, spies, scouting and save/load.
 
 `npm run test:iron-throne` covers generation, diplomacy, operations, deterministic
 reloading, fog privacy and multiplayer projections. `npm run test:iron-throne:fog-browser` checks twelve-House setup, founding, remembered

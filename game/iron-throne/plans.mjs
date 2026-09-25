@@ -1,3 +1,4 @@
+import { planningView } from './ai-knowledge.mjs';
 import { memberOperation } from './cooperation-state.mjs';
 import { isAiHouse, court } from './house-control.mjs';
 import { BUILDINGS, RESOURCES } from './data.mjs';
@@ -49,8 +50,12 @@ export function prunePlans(s) {
 const protectedPeace=(s,a,b)=>['peace','non-aggression','alliance','vassalage'].some(type=>treaty(s,a,b,type));
 const totalPower=(s,id)=>armiesOf(s,id).reduce((n,a)=>n+strength(a),0);
 export function assaultAssessment(s,k,a,t) {
+  if(!s.knowledgeView) { s=planningView(s,k.id); t=s.tiles[t.id]; }
   const defenders=s.armies.filter(e=>e.tile===t.id&&e.owner!==a.owner&&sizeOf(e)>0&&(e.owner===t.owner||atWar(s,a.owner,e.owner)));
-  if(!defenders.length)return {assault:true,bombard:false,defense:0,lossFraction:0,empty:true};
+  if(!defenders.length) {
+    if(t.fog && t.fog!=='visible' && t.owner!==k.id) return {assault:true,bombard:false,defense:0,lossFraction:.15,empty:false,uncertain:true};
+    return {assault:true,bombard:false,defense:0,lossFraction:0,empty:true};
+  }
   const defense=defenders.reduce((n,e)=>n+strength(e,true,t),0),attack=strength(a,false,t);
   // Aggregate stacked garrisons conservatively and sample the actual phases.
   // This never consumes campaign RNG and avoids running 32 UI forecasts per AI tile.
@@ -71,20 +76,22 @@ export function assaultAssessment(s,k,a,t) {
   return {assault,bombard,defense,lossFraction,empty:false};
 }
 export function dangerousTiles(s,k,a) {
+  s=planningView(s,k.id);
   const tiles=new Set(s.armies.filter(e=>e.owner!==a.owner&&sizeOf(e)>0&&atWar(s,a.owner,e.owner)).map(e=>e.tile));
   return new Set([...tiles].filter(id=>!assaultAssessment(s,k,a,s.tiles[id]).assault));
 }
 function orderBombardment(s,k,a,t,avoid) {
+  const world=s; s=planningView(world,k.id);
   const type=t.walls>0?'wall':fortMaximum(t)&&(t.fortIntegrity??fortMaximum(t))>0?'fort':null;
   if(!type)return {ok:false};
-  if(!structureAttackCheck(s,a,t,type,'bombard'))return orderStructureAttack(s,k.id,a.id,t.id,type,'bombard');
+  if(!structureAttackCheck(s,a,t,type,'bombard'))return orderStructureAttack(world,k.id,a.id,t.id,type,'bombard');
   // March to a legal firing position without marching through the garrison.
   const blocked=new Set([...avoid,t.id]);
   const positions=Object.values(s.tiles).filter(tile=>tile.id!==t.id&&!blocked.has(tile.id)&&distance(tile,t)<=bombardRange(a)&&!structureAttackCheck(s,{...a,tile:tile.id},t,type,'bombard'))
     .sort((x,y)=>distance(s.tiles[a.tile],x)-distance(s.tiles[a.tile],y)||distance(y,t)-distance(x,t)||x.id.localeCompare(y.id));
   for(const tile of positions){
     if(!findPath(s,a.tile,tile.id,k.id,false,blocked).length)continue;
-    const result=orderArmy(s,k.id,a.id,tile.id,'move',blocked);if(result.ok)return result;
+    const result=orderArmy(world,k.id,a.id,tile.id,'move',blocked);if(result.ok)return result;
   }
   return {ok:false};
 }
@@ -95,6 +102,7 @@ export function proposeInvasion(s,k,target,tile) {
     delay:3});
 }
 export function infrastructureTarget(s,actor,target,origin) {
+  s=planningView(s,actor);
   const mounted=armiesOf(s,target).some(a=>familyCount(a,'mounted')>sizeOf(a)*.3);
   return Object.values(s.tiles).filter(t=>t.owner===target&&t.building&&!['city','town'].includes(t.building)).map(t=>{
     const production=tileProduction(t,target),value=Object.values(production).reduce((n,v)=>n+v,0);
@@ -102,74 +110,76 @@ export function infrastructureTarget(s,actor,target,origin) {
   }).sort((a,b)=>b.score-a.score||a.t.id.localeCompare(b.t.id))[0]?.t;
 }
 export function preparePlans(s,k,c) {
-  initializePlans(s);
-  const plans=()=>s.intrigue.plans.filter(p=>p.actor===k.id&&activePlan(p));
+  const world=s; s=planningView(world,k.id);
+  initializePlans(world);
+  const plans=()=>world.intrigue.plans.filter(p=>p.actor===k.id&&activePlan(p));
   if(c.war&&!plans().some(militaryPlan)&&!c.threats.length) {
     const ranked=rankObjectives(s,k.id,c.enemyTowns,c.home).map(x=>({...x,ready:c.forces.some(a=>assaultAssessment(s,k,a,x.tile).assault)}));
     const target=ranked.sort((a,b)=>Number(b.ready)-Number(a.ready)||b.score-a.score)[0]?.tile;
-    if(target&&!proposeJointOperation(s,k,target.owner,target))createPlan(s,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,delay:0});
+    if(target&&!proposeJointOperation(world,k,target.owner,target))createPlan(world,k.id,'invasion',{target:target.owner,targetTile:target.id,objective:`Capture ${target.name||target.id}.`,requiredForces:20,delay:0});
   }
   if(c.war&&!c.threats.length&&!plans().some(p=>p.type==='infrastructure')&&plans().length<3) {
     const target=c.enemyTowns[0]?.owner, tile=target&&infrastructureTarget(s,k.id,target,c.home);
-    if(tile)createPlan(s,k.id,'infrastructure',{target,targetTile:tile.id,structure:tile.building,objective:`Disrupt ${kingdom(s,target).name}'s ${BUILDINGS[tile.building].name} production or defenses.`,requiredForces:16,requiredSiege:tile.building==='fort'?2:0,delay:1});
+    if(tile)createPlan(world,k.id,'infrastructure',{target,targetTile:tile.id,structure:tile.building,objective:`Disrupt ${kingdom(s,target).name}'s ${BUILDINGS[tile.building].name} production or defenses.`,requiredForces:16,requiredSiege:tile.building==='fort'?2:0,delay:1});
   }
   if(!plans().some(p=>!militaryPlan(p))) {
-    const ally=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&relation(s,o.id,k.id).trust>=25&&!treaty(s,k.id,o.id,'alliance')).sort((a,b)=>cooperationInterest(s,k.id,b.id,'alliance').score-cooperationInterest(s,k.id,a.id,'alliance').score)[0];
+    const ally=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).trust>=35&&!treaty(s,k.id,o.id,'alliance')).sort((a,b)=>cooperationInterest(s,k.id,b.id,'alliance').score-cooperationInterest(s,k.id,a.id,'alliance').score)[0];
     const partner=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&relation(s,k.id,o.id).opinion>=0&&!tradeBlocked(s,k.id,o.id)&&!treaty(s,k.id,o.id,'trade')).sort((a,b)=>cooperationInterest(s,k.id,b.id,'trade').score-cooperationInterest(s,k.id,a.id,'trade').score)[0];
     const rival=s.kingdoms.find(o=>o.id!==k.id&&alive(s,o.id)&&relation(s,k.id,o.id).grievance>=50&&relation(s,k.id,o.id).dependency<20&&!protectedPeace(s,k.id,o.id)&&!tradeBlocked(s,k.id,o.id));
-    if(c.threats.length)createPlan(s,k.id,'defendFrontier',{targetTile:c.threats[0].tile.id,objective:`Defend ${c.threats[0].tile.name||c.threats[0].tile.id}.`,delay:0});
-    else if(c.crisis){const resource=k.resources.food<40?'food':'gold';createPlan(s,k.id,'acquireResource',{resource,objective:`Rebuild ${resource} reserves.`,requiredResources:{[resource]:70},building:resource==='food'?'farm':'market'});}
-    else if(ally)createPlan(s,k.id,'seekAlliance',{target:ally.id,objective:`Seek an alliance with ${ally.name}.`});
-    else if(rival&&partner)createPlan(s,k.id,'embargo',{target:rival.id,allies:[partner.id],objective:`Restrict trade with ${rival.name}.`});
-    else if(partner)createPlan(s,k.id,'secureTrade',{target:partner.id,objective:`Secure commerce with ${partner.name}.`});
-    else createPlan(s,k.id,c.wary?'buildDefenses':c.forces.reduce((n,a)=>n+sizeOf(a),0)<30?'recruitMilitary':'expandTerritory',{
+    if(c.threats.length)createPlan(world,k.id,'defendFrontier',{targetTile:c.threats[0].tile.id,objective:`Defend ${c.threats[0].tile.name||c.threats[0].tile.id}.`,delay:0});
+    else if(c.crisis){const resource=k.resources.food<40?'food':'gold';createPlan(world,k.id,'acquireResource',{resource,objective:`Rebuild ${resource} reserves.`,requiredResources:{[resource]:70},building:resource==='food'?'farm':'market'});}
+    else if(ally)createPlan(world,k.id,'seekAlliance',{target:ally.id,objective:`Seek an alliance with ${ally.name}.`});
+    else if(rival&&partner)createPlan(world,k.id,'embargo',{target:rival.id,allies:[partner.id],objective:`Restrict trade with ${rival.name}.`});
+    else if(partner)createPlan(world,k.id,'secureTrade',{target:partner.id,objective:`Secure commerce with ${partner.name}.`});
+    else createPlan(world,k.id,c.wary?'buildDefenses':c.forces.reduce((n,a)=>n+sizeOf(a),0)<30?'recruitMilitary':'expandTerritory',{
       targetTile:c.home.id,building:c.wary?'wall':'town',objective:c.wary?'Strengthen frontier defenses.':'Expand a sustainable realm.',requiredForces:36});
   }
   for(const p of plans()) {
     if(p.operationId)continue; // Shared readiness, consent and deadlines govern these plans.
-    if(!alive(s,k.id)||p.target&&!alive(s,p.target)){transitionPlan(s,p,'Abandoned','A participating House lost its final settlement.');continue;}
+    if(!alive(s,k.id)||p.target&&!alive(s,p.target)){transitionPlan(world,p,'Abandoned','A participating House lost its final settlement.');continue;}
     if(militaryPlan(p)) {
-      if(protectedPeace(s,k.id,p.target)||p.wasAtWar&&!atWar(s,k.id,p.target)){transitionPlan(s,p,'Abandoned','A treaty or peace agreement prevents the attack.');continue;}
-      if(c.threats.some(t=>t.tile.id===c.home.id)){transitionPlan(s,p,'Abandoned','Enemy armies threaten the capital; forces recalled to defend it.');continue;}
-      if(s.tiles[p.targetTile]?.owner!==p.target){transitionPlan(s,p,s.tiles[p.targetTile]?.owner===k.id?'Completed':'Abandoned','The target changed ownership.');continue;}
-      if(p.structure&&!buildingLevel(s.tiles[p.targetTile],p.structure)){transitionPlan(s,p,'Completed','The target structure no longer stands.');continue;}
-      if(p.assignedArmies.length&&!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.owner===k.id))){transitionPlan(s,p,'Abandoned','The assigned army was destroyed.');continue;}
-      if((c.crisis||totalPower(s,p.target)>Math.max(1,totalPower(s,k.id))*3)&&s.turn>p.createdTurn+2){transitionPlan(s,p,'Abandoned',c.crisis?'Resources ran out; the realm must recover.':'Enemy military strength became overwhelming.');continue;}
-      if(p.status==='Considering')transitionPlan(s,p,'Preparing','Gathering supplies and troops.');
+      if(protectedPeace(s,k.id,p.target)||p.wasAtWar&&!atWar(s,k.id,p.target)){transitionPlan(world,p,'Abandoned','A treaty or peace agreement prevents the attack.');continue;}
+      if(c.threats.some(t=>t.tile.id===c.home.id)){transitionPlan(world,p,'Abandoned','Enemy armies threaten the capital; forces recalled to defend it.');continue;}
+      if(s.tiles[p.targetTile]?.owner!==p.target && s.tiles[p.targetTile]?.fog==='visible'){transitionPlan(world,p,s.tiles[p.targetTile]?.owner===k.id?'Completed':'Abandoned','The target changed ownership.');continue;}
+      if(p.structure&&s.tiles[p.targetTile]?.fog==='visible'&&!buildingLevel(s.tiles[p.targetTile],p.structure)){transitionPlan(world,p,'Completed','The target structure no longer stands.');continue;}
+      if(p.assignedArmies.length&&!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.owner===k.id))){transitionPlan(world,p,'Abandoned','The assigned army was destroyed.');continue;}
+      if((c.crisis||totalPower(s,p.target)>Math.max(1,totalPower(s,k.id))*3)&&s.turn>p.createdTurn+2){transitionPlan(world,p,'Abandoned',c.crisis?'Resources ran out; the realm must recover.':'Enemy military strength became overwhelming.');continue;}
+      if(p.status==='Considering')transitionPlan(world,p,'Preparing','Gathering supplies and troops.');
       const forces=armiesOf(s,k.id),target=s.tiles[p.targetTile];
       const assessments=forces.map(a=>({a,assessment:assaultAssessment(s,k,a,target)}));
       // Keep the saved field as an equipment preference for recruitment, never
-      // as permission to attack. Re-evaluate old plans against the real garrison.
+      // as permission to attack. Re-evaluate old plans against the observed or estimated garrison.
       p.requiredSiege=fortificationDefense(target).bonus>0&&!assessments.some(x=>x.assessment.assault)?2:0;
       const ready=assessments.some(({a,assessment})=>(assessment.empty||sizeOf(a)>=p.requiredForces)&&(assessment.assault||assessment.bombard))&&canAfford(k,p.requiredResources);
-      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing')transitionPlan(s,p,'Committed','A viable assault or bombardment and supplies are ready.');
+      if(ready&&s.turn>=p.desiredExecutionTurn&&p.status==='Preparing')transitionPlan(world,p,'Committed','A viable assault or bombardment and supplies are ready.');
       if(p.status==='Committed'&&!atWar(s,k.id,p.target)) {
         const probe={...s,wars:[...s.wars,[k.id,p.target].sort().join(':')]};
-        if(!findPath(probe,c.home.id,p.targetTile,k.id).length){transitionPlan(s,p,'Abandoned','No legal route to the objective.');continue;}
-        if(declareWar(s,k.id,p.target)){p.wasAtWar=true;audit(s,p,'Declared war to execute the campaign.');}
+        if(!findPath(probe,c.home.id,p.targetTile,k.id).length){transitionPlan(world,p,'Abandoned','No legal route to the objective.');continue;}
+        if(declareWar(world,k.id,p.target)){p.wasAtWar=true;audit(world,p,'Declared war to execute the campaign.');}
       }
     } else {
-      if(p.status==='Considering')transitionPlan(s,p,'Preparing','Council preparing this objective.');
-      if(['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)negotiatePoliticalPlan(s,p);
-      if(p.type==='acquireResource'&&canAfford(k,p.requiredResources))transitionPlan(s,p,'Completed','Required reserves secured.');
-      if(p.type==='defendFrontier'&&!c.threats.length)transitionPlan(s,p,'Completed','No enemy force threatens the frontier.');
-      if(p.type==='recruitMilitary'&&c.forces.reduce((n,a)=>n+sizeOf(a),0)>=p.requiredForces)transitionPlan(s,p,'Completed','Required military strength mustered.');
+      if(p.status==='Considering')transitionPlan(world,p,'Preparing','Council preparing this objective.');
+      if(['seekAlliance','secureTrade','embargo'].includes(p.type)&&s.turn>=p.desiredExecutionTurn)negotiatePoliticalPlan(world,p);
+      if(p.type==='acquireResource'&&canAfford(k,p.requiredResources))transitionPlan(world,p,'Completed','Required reserves secured.');
+      if(p.type==='defendFrontier'&&!c.threats.length)transitionPlan(world,p,'Completed','No enemy force threatens the frontier.');
+      if(p.type==='recruitMilitary'&&c.forces.reduce((n,a)=>n+sizeOf(a),0)>=p.requiredForces)transitionPlan(world,p,'Completed','Required military strength mustered.');
     }
-    if(activePlan(p)&&s.turn-p.createdTurn>24)transitionPlan(s,p,'Abandoned','Preparation stalled for 24 turns.');
+    if(activePlan(p)&&s.turn-p.createdTurn>24)transitionPlan(world,p,'Abandoned','Preparation stalled for 24 turns.');
   }
 }
 export function plannedArmyOrder(s,k,a,c) {
+  const world=s; s=planningView(world,k.id);
   // Keep the field army at its muster point while the primary nearby siege
   // objective is preparing; do not send it away on a secondary economic raid.
-  const pending=s.intrigue.plans.find(p=>!p.operationId&&p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&distance(c.home,s.tiles[p.targetTile])<=6&&!assaultAssessment(s,k,a,s.tiles[p.targetTile]).assault);
+  const pending=world.intrigue.plans.find(p=>!p.operationId&&p.actor===k.id&&['invasion','jointWar'].includes(p.type)&&p.status==='Preparing'&&distance(c.home,s.tiles[p.targetTile])<=6&&!assaultAssessment(s,k,a,s.tiles[p.targetTile]).assault);
   if(pending&&sizeOf(a)>=pending.requiredForces) {
-    if(orderArmy(s,k.id,a.id,c.home.id,'move').ok) {
-      if(!pending.assignedArmies.includes(a.id)){pending.assignedArmies.push(a.id);audit(s,pending,`${a.id} mustering at ${c.home.id} for reinforcements or siege support.`);}
+    if(orderArmy(world,k.id,a.id,c.home.id,'move').ok) {
+      if(!pending.assignedArmies.includes(a.id)){pending.assignedArmies.push(a.id);audit(world,pending,`${a.id} mustering at ${c.home.id} for reinforcements or siege support.`);}
       return pending;
     }
   }
   const shared=memberOperation(s,k.id);
-  const plans=s.intrigue.plans.filter(p=>p.actor===k.id&&militaryPlan(p)&&(!shared||p.operationId===shared.id)&&['Committed','Executing'].includes(p.status));
+  const plans=world.intrigue.plans.filter(p=>p.actor===k.id&&militaryPlan(p)&&(!shared||p.operationId===shared.id)&&['Committed','Executing'].includes(p.status));
   plans.sort((p,q)=>distance(s.tiles[a.tile],s.tiles[p.targetTile])-distance(s.tiles[a.tile],s.tiles[q.targetTile])||(p.type==='infrastructure'?1:-1));
   for(const p of plans) {
     const t=s.tiles[p.targetTile];
@@ -177,10 +187,10 @@ export function plannedArmyOrder(s,k,a,c) {
     const assessment=assaultAssessment(s,k,a,t);
     if(!assessment.empty&&sizeOf(a)<p.requiredForces||!assessment.assault&&!assessment.bombard)continue;
     const avoid=dangerousTiles(s,k,a);if(assessment.assault)avoid.delete(t.id);
-    const result=assessment.bombard?orderBombardment(s,k,a,t,avoid):p.type==='infrastructure'?orderStructureAttack(s,k.id,a.id,t.id,p.structure,'attack',avoid):orderArmy(s,k.id,a.id,t.id,'attack',avoid);
+    const result=assessment.bombard?orderBombardment(world,k,a,t,avoid):p.type==='infrastructure'?(t.fog==='visible'?orderStructureAttack(world,k.id,a.id,t.id,p.structure,'attack',avoid):orderArmy(world,k.id,a.id,t.id,'move',avoid)):orderArmy(world,k.id,a.id,t.id,'attack',avoid);
     if(!result.ok)continue;
-    if(!p.assignedArmies.includes(a.id)){p.assignedArmies.push(a.id);audit(s,p,`${a.id} assigned to ${t.id}.`);}
-    transitionPlan(s,p,'Executing',assessment.bombard?'Bombardment approach or firing orders issued to reduce assault losses.':'Real assault orders issued.');return p;
+    if(!p.assignedArmies.includes(a.id)){p.assignedArmies.push(a.id);audit(world,p,`${a.id} assigned to ${t.id}.`);}
+    transitionPlan(world,p,'Executing',assessment.bombard?'Bombardment approach or firing orders issued to reduce assault losses.':'Real assault orders issued.');return p;
   }
   return null;
 }
