@@ -294,7 +294,16 @@ function renderDiplomacy() {
   const k = kingdom(state, activeRuler), r = k.relations[localHouse];
   $('diplomacy').style.setProperty('--house', k.color);
   $('ruler-mark').textContent = k.sigil; $('ruler-house').textContent = k.name; $('ruler-name').textContent=onlineOptions&&isHumanHouse(state,k.id)?`${state.controllers[k.id].name} · HUMAN`:k.ruler; $('ruler-motto').textContent = `“${k.motto}”`;
-  $('ruler-relation').textContent = `Opinion ${r.opinion} · Trust ${r.trust} · ${atWar(state, localHouse, k.id) ? 'At war' : 'At peace'}`;
+  const allegiance = treaty(state, localHouse, k.id, 'vassalage');
+  const statuses = atWar(state, localHouse, k.id) ? ['Enemy · At war'] : [
+    allegiance && (allegiance.vassal === k.id ? 'Your vassal' : allegiance.liege === k.id ? 'Your liege' : 'Vassalage pact'),
+    treaty(state, localHouse, k.id, 'alliance') && 'Ally',
+    treaty(state, localHouse, k.id, 'non-aggression') && 'Non-aggression pact',
+    treaty(state, localHouse, k.id, 'peace') && 'Peace treaty',
+    treaty(state, localHouse, k.id, 'trade') && 'Trade partner',
+    treaty(state, localHouse, k.id, 'access') && 'Military access'
+  ].filter(Boolean);
+  $('ruler-relation').textContent = `${statuses.length ? statuses.join(' · ') : 'At peace'} · Opinion ${r.opinion} · Trust ${r.trust}`;
   $('messages').innerHTML = (state.conversations[activeRuler] || []).map(m => `${m.dispatch?`<div class="dispatch-divider" role="separator"><b>NEW DISPATCH · TURN ${m.turn}</b><span>${escape(dispatchTitle(m.dispatch.reason||m.kind))}</span></div>`:''}<div class="message ${escape(m.role)} ${m.kind==='relationship'?'relationship-notice':''}"><small>${m.role === 'player' ? `YOU · ${kingdom(state,localHouse).name.toUpperCase()}` : m.role === 'council' ? 'COUNCIL RULING' : escape(k.ruler.toUpperCase())}</small><span class="message-turn">${Number.isInteger(m.turn)?`Turn ${m.turn}`:''}</span>${escape(m.text)}</div>`).join('') || `<div class="message"><small>${escape(k.ruler.toUpperCase())}</small>You have my attention, Regent. What brings your envoy to my court?</div>`;
   $('messages').scrollTop = $('messages').scrollHeight;
   if ($('diplomacy').open) markRead(state, activeRuler, localHouse);
