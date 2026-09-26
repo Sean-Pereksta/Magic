@@ -1,3 +1,5 @@
+import { councilForActor, sendCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
+import { consumeDiplomaticMessage, expireFollowups, grantFollowup, privateConversation } from './proposal-followup.mjs';
 import { relationshipResponse } from './diplomacy.mjs';
 import { discussMarriage, continueMarriageReview } from './marriage.mjs';
 import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
@@ -6,14 +8,14 @@ import { foundCity, foundAIKingdoms } from './founding.mjs';
 import { build, buildHighway, recruit, orderArmy, orderStructureAttack, splitArmy, mergeArmies, kingdom, alive } from './core.mjs';
 import { setFormation } from './warfare.mjs';
 import { recruitSpy, assignSpy, paySpyRansom, resolveCaptive } from './espionage.mjs';
-import { recruitAmbassador, assignAmbassador, ambassadorIncident, appendConversation, consumeMessage, applySpeech, markRead } from './living.mjs';
+import { recruitAmbassador, assignAmbassador, ambassadorIncident, appendConversation, applySpeech, markRead } from './living.mjs';
 import { commitDeal, deliverPledge, scriptedReply, validateIntent, validateResponse, acceptRulerMemories, describeIntent } from './diplomacy.mjs';
 import { court, isHumanHouse } from './house-control.mjs';
 import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -26,7 +28,7 @@ export function commandError(s, meta, command) {
   if(meta.phase==='founding'){
     if(s.phase!=='founding'||command.type!=='found')return 'Found all six kingdoms before issuing orders.';
   }else if(meta.phase!=='planning'||command.type==='found')return 'Orders are closed for this campaign phase.';
-  if(meta.ready[command.actorHouseId]&&!['ready','read'].includes(command.type))return 'Unready your House before issuing more orders.';
+  if(meta.ready[command.actorHouseId]&&!['ready','read','councilRead'].includes(command.type))return 'Unready your House before issuing more orders.';
   if(meta.phase!=='founding'&&!alive(s,command.actorHouseId))return 'This House has lost its last settlement.';
   if((meta.sequences[`${command.uid}:${command.clientId}`]||0)>=command.sequence)return 'This command has already been processed.';
   return null;
@@ -39,6 +41,17 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   let result;
   const validTarget=()=>houseIds.includes(target)&&target!==a&&alive(s,target);
   switch(c.type){
+    case 'councilOpen': {
+      const council=councilForActor(s,a,p.councilId,true);
+      if(!council)return fail('This council is unavailable.');
+      council.read[a]=council.sequence;result=ok();break;
+    }
+    case 'councilRead': {
+      const council=s.allianceCouncils?.find(x=>x.id===p.councilId&&x.participants.includes(a));
+      if(!council)return fail('This council is unavailable.');
+      council.read[a]=council.sequence;result=ok();break;
+    }
+    case 'councilChat': result=sendCouncilMessage(s,a,p.councilId,p.message,p.response);break;
     case 'found':{
       // Work on a copy: any placement/AI failure leaves the authoritative state untouched.
       const next=structuredClone(s);result=foundCity(next,a,p.tile);
@@ -83,6 +96,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
         const offer=s.commerce.offers.find(o=>o.id===p.tradeId&&o.from===target&&(o.to||'ashen')===a);
         if(offer)offer.status='accepted';
         appendConversation(s,target,'council',`${describeIntent(i)} — ratified on turn ${s.turn}.`,{actorHouseId:a});
+        announceCouncilAgreement(s,a,target,p.conversationId,i);
         court(s,a).offers[target]=[];
       }break;
     }
@@ -92,12 +106,15 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
     }
     case 'chat':{
       if(!validTarget()||typeof p.message!=='string'||!p.message.trim()||p.message.length>TEXT_LIMIT)return fail('Enter a message of up to 600 characters.');
-      if(p.proposal&&!validateIntent(p.proposal))return fail('Invalid terms.');
-      const spent=consumeMessage(s,target,a);if(!spent.ok)return spent;
-      appendConversation(s,target,'player',p.message,{actorHouseId:a});
+      if(p.proposal&&(!validateIntent(p.proposal)||p.message!==describeIntent(validateIntent(p.proposal))))return fail('Submit the requested structured terms without a separate chat message.');
+      const spent=consumeDiplomaticMessage(s,target,a,p.proposal||null,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
+      if(!p.proposal)expireFollowups(s,a,privateConversation(target));
+      appendConversation(s,target,'player',p.message,{actorHouseId:a,kind:p.proposal?'proposal':''});
       if(isHumanHouse(s,target)){
         discussMarriage(s,target,p.message,a);
         appendConversation(s,a,'ruler',p.message,{actorHouseId:target,unread:true,kind:'human'});
+        const prior=court(s,target).conversations[a]?.findLast(m=>m.role==='player'&&m.turn===s.turn);
+        if(prior&&!prior.kind&&!prior.followupGranted&&grantFollowup(s,target,a,privateConversation(a),prior.text,{reply:p.message},{paid:true}))prior.followupGranted=true;
       }else{
         if(!p.proposal)applySpeech(s,target,p.message,a);
         else if(p.proposal.type==='MARRIAGE')continueMarriageReview(s,target,a);
@@ -106,6 +123,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
         const options={actorHouseId:a,proposal:p.proposal||null};
         const response=relationshipResponse(s,target,p.message,model||scriptedReply(s,target,p.message,options),options);
         appendConversation(s,target,'ruler',response.reply,{actorHouseId:a,unread:true});
+        grantFollowup(s,a,target,p.conversationId||privateConversation(target),p.message,response,{paid:!p.proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
         if(model)acceptRulerMemories(s,target,model,a);
         const candidates=[p.proposal,...response.intents,response.proposal,response.counterProposal,response.promiseDetected].filter(Boolean);
         court(s,a).offers[target]=[...new Map(candidates.map(i=>[JSON.stringify(i),i])).values()].slice(0,4);
@@ -117,9 +135,9 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       const intent=validateIntent(p.intent);if(!intent||['WAR','BETRAY'].includes(intent.type))return fail('Declare war directly from the council.');
       s.humanProposals||=[];
       if(s.humanProposals.filter(o=>o.status==='pending'&&o.from===a).length>=10)return fail('Resolve outstanding proposals before sending more.');
-      const spent=consumeMessage(s,target,a);if(!spent.ok)return spent;
+      const spent=consumeDiplomaticMessage(s,target,a,intent,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
       if(intent.type==='MARRIAGE')continueMarriageReview(s,target,a);
-      s.humanProposals.push({id:c.id,from:a,to:target,intent,turn:s.turn,expires:s.turn+3,status:'pending'});
+      s.humanProposals.push({id:c.id,from:a,to:target,intent,turn:s.turn,expires:s.turn+3,status:'pending',conversationId:typeof p.conversationId==='string'?p.conversationId:null});
       for(const [actor,other] of [[a,target],[target,a]])appendConversation(s,other,'council',`Proposal from ${kingdom(s,a).name}: ${describeIntent(intent)}. Awaiting ${kingdom(s,target).name}.`,{actorHouseId:actor,unread:actor===target,kind:'human-proposal'});
       result=ok();break;
     }
@@ -128,6 +146,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       if(!offer||!['accept','decline'].includes(p.decision))return fail('This proposal is no longer available.');
       if(p.decision==='accept'){
         result=commitDeal(s,a,offer.intent,offer.from,{consentingHuman:true});if(!result.ok)return result;
+        announceCouncilAgreement(s,offer.from,a,offer.conversationId,offer.intent);
       }
       offer.status=p.decision==='accept'?'accepted':'declined';offer.resolvedTurn=s.turn;
       for(const [actor,other] of [[a,offer.from],[offer.from,a]])appendConversation(s,other,'council',`${describeIntent(offer.intent)} — ${offer.status}.`,{actorHouseId:actor,unread:true});

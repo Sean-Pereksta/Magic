@@ -1,3 +1,7 @@
+import { dispatchTitle } from './conversation-context.mjs';
+import { installAllianceCouncil, allianceButtons } from './alliance-council-ui.mjs';
+import { councilForActor, beginCouncilMessage, finishCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
+import { consumeDiplomaticMessage, grantFollowup, followupCredit, privateConversation } from './proposal-followup.mjs';
 import { MARRIAGE_FIELDS, marriageContext, continueMarriageReview } from './marriage.mjs';
 import { resolveTurnInWorker, showTurnProgress } from './turn-progress.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
@@ -20,7 +24,7 @@ import { battlePreview } from './battle-preview.mjs';
 import { art, battleReports, buildingInspection, commercialConnections, constructionBrowser, economySummary, foreignEconomy, formationControl, musterBrowser, rivalTurnReports, systemTitle, tradePanel } from './expansion-ui.mjs';
 import { BUILDINGS, RESOURCE_ICONS, RESOURCES, TERRAINS, UNITS } from './data.mjs';
 import { populationProjection, alive, armiesOf, atWar, build, buildHighway, buildCheck, commandLimit, createGame, economyProjection, kingdom, mergeArmies, orderArmy, orderStructureAttack, parseSave, recruit, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
-import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, consumeMessage, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
+import { appendConversation, applySpeech, ambassadorCapacity, ambassadorIncident, assignAmbassador, diplomaticCapacity, economicRelationship, markRead, messageAllowance, recruitAmbassador, relationDescriptions } from './living.mjs';
 import { isPlayerPromise } from './promises.mjs';
 import { acceptRulerMemories, LABELS, commitDeal, deliverPledge, describeIntent, disclosedDeal, validateIntent } from './diplomacy.mjs';
 import { DiplomacyClient } from './chat.mjs';
@@ -40,6 +44,8 @@ let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let turnBusy = false;
+let proposalConversation = null;
+let allianceUI = null;
 let sending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 let configurationFailure = false;
@@ -69,7 +75,7 @@ function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
-function changed() { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; state.diplomacy.offers = {}; save(); render(); }
+function changed(preserveOffers=false) { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; if(!preserveOffers)state.diplomacy.offers = {}; save(); render(); }
 function perform(type,args,localAction) {
   if(turnBusy)return false;
   if(state.phase==='founding'&&type!=='found'){toast('Found all kingdoms before issuing orders.');return false;}
@@ -111,6 +117,7 @@ function render() {
   renderDispatches();
   onlineUI?.render(onlineStatus,state);
   if ($('diplomacy').open) renderDiplomacy();
+  allianceUI?.render();
   if (state.outcome && !outcomeShown) {
     outcomeShown = true; $('outcome-title').textContent = state.outcome.won ? 'The crown is yours.' : 'A dynasty falls.';
     $('outcome-reason').textContent = state.outcome.reason;
@@ -149,7 +156,7 @@ function realmPanel() {
 }
 function councilPanel() {
   const state=displayedState;
-  return `${systemTitle('diplomacy')}${tradePanel(state)}<span class="eyebrow">${state.kingdoms.length-1} RULERS. MANY AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
+  return `${systemTitle('diplomacy')}${allianceButtons(state,localHouse)}${tradePanel(state)}<span class="eyebrow">${state.kingdoms.length-1} RULERS. MANY AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
 function ledgerPanel(rulerId = null) {
   const state=displayedState;
@@ -220,7 +227,7 @@ $('end-turn').addEventListener('click', async () => {
   showTurnProgress({phase:'preparing'});
   try {
     const next = await resolveTurnInWorker(state, showTurnProgress);
-    state=next; changed();
+    state=next; changed(true);
     showTurnProgress({phase:'complete',ended:!!state.outcome});
   } catch(error) {
     showTurnProgress(null);
@@ -274,6 +281,7 @@ function openDiplomacy(id, compact = false) {
   if(state.phase==='founding')return;
   if(!alive(state,id)||id===localHouse)return;
   if(onlineOptions)perform('read',{targetHouseId:id},()=>({ok:true}));
+  proposalConversation=null; $('diplomacy').classList.remove('council-terms');
   reviewedTrade=null; activeRuler = id; proposals = state.diplomacy.offers?.[id] || []; state.conversations[id] ||= [];
   const incoming=state.commerce.offers.find(o=>o.from===id&&o.status==='pending'&&o.expires>=state.turn);if(incoming&&!proposals.length){proposals=[incoming.intent];reviewedTrade=incoming.id;}
   markRead(state, id, localHouse); compactCouncil = compact;
@@ -287,7 +295,7 @@ function renderDiplomacy() {
   $('diplomacy').style.setProperty('--house', k.color);
   $('ruler-mark').textContent = k.sigil; $('ruler-house').textContent = k.name; $('ruler-name').textContent=onlineOptions&&isHumanHouse(state,k.id)?`${state.controllers[k.id].name} · HUMAN`:k.ruler; $('ruler-motto').textContent = `“${k.motto}”`;
   $('ruler-relation').textContent = `Opinion ${r.opinion} · Trust ${r.trust} · ${atWar(state, localHouse, k.id) ? 'At war' : 'At peace'}`;
-  $('messages').innerHTML = (state.conversations[activeRuler] || []).map(m => `<div class="message ${escape(m.role)}"><small>${m.role === 'player' ? `YOU · ${kingdom(state,localHouse).name.toUpperCase()}` : m.role === 'council' ? 'COUNCIL RULING' : escape(k.ruler.toUpperCase())}</small>${escape(m.text)}</div>`).join('') || `<div class="message"><small>${escape(k.ruler.toUpperCase())}</small>You have my attention, Regent. What brings your envoy to my court?</div>`;
+  $('messages').innerHTML = (state.conversations[activeRuler] || []).map(m => `${m.dispatch?`<div class="dispatch-divider" role="separator"><b>NEW DISPATCH · TURN ${m.turn}</b><span>${escape(dispatchTitle(m.dispatch.reason||m.kind))}</span></div>`:''}<div class="message ${escape(m.role)} ${m.kind==='relationship'?'relationship-notice':''}"><small>${m.role === 'player' ? `YOU · ${kingdom(state,localHouse).name.toUpperCase()}` : m.role === 'council' ? 'COUNCIL RULING' : escape(k.ruler.toUpperCase())}</small><span class="message-turn">${Number.isInteger(m.turn)?`Turn ${m.turn}`:''}</span>${escape(m.text)}</div>`).join('') || `<div class="message"><small>${escape(k.ruler.toUpperCase())}</small>You have my attention, Regent. What brings your envoy to my court?</div>`;
   $('messages').scrollTop = $('messages').scrollHeight;
   if ($('diplomacy').open) markRead(state, activeRuler, localHouse);
   $('relations-summary').innerHTML = relationDescriptions(state, activeRuler, localHouse).map(([label, text]) => `<div><b>${escape(label)}</b><span>${escape(text)}</span></div>`).join('');
@@ -300,7 +308,9 @@ function updateChatControls() {
   $('message-allowance').textContent = a.hosted ? `Ambassador: ${a.remaining}/10 · shared dispatches: ${a.regularRemaining}/${diplomaticCapacity(state, localHouse)}` : `Shared dispatches: ${a.remaining}/${a.limit} this turn`;
   $('send-chat').disabled = sending || !!state.outcome || a.remaining === 0;
   $('send-chat').textContent = sending ? 'Envoy travelling…' : 'Send envoy →';
-  $('offer-form').querySelector('button[type="submit"]').disabled = sending || !!state.outcome || a.remaining === 0;
+  const credit=followupCredit(state,localHouse,activeRuler,proposalConversation||privateConversation(activeRuler));
+  if(credit)$('message-allowance').textContent+=' · Requested proposal: no extra envoy';
+  $('offer-form').querySelector('button[type="submit"]').disabled = sending || !!state.outcome || a.remaining === 0 && !credit;
   updateDiagnostics();
 }
 function recordReplyDiagnostic(rulerId, response) {
@@ -384,9 +394,9 @@ $('proposals').addEventListener('click', e => {
   if (b.dataset.ratify !== undefined || b.dataset.ratifyCounter !== undefined) {
     const index = Number(b.dataset.ratify ?? b.dataset.ratifyCounter);
     const proposal = b.dataset.ratifyCounter !== undefined ? disclosedDeal(state,activeRuler,proposals[index],localHouse).counter : proposals[index];
-    if(onlineOptions){perform('ratify',{targetHouseId:activeRuler,intent:proposal,tradeId:reviewedTrade},()=>({ok:true}));return;}
+    if(onlineOptions){perform('ratify',{targetHouseId:activeRuler,intent:proposal,tradeId:reviewedTrade,conversationId:proposalConversation},()=>({ok:true}));return;}
     const r = commitDeal(state,activeRuler,proposal,localHouse);
-    if (r.ok) { if(reviewedTrade){const offer=state.commerce.offers.find(o=>o.id===reviewedTrade);if(offer)offer.status='accepted';reviewedTrade=null;} appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
+    if (r.ok) { announceCouncilAgreement(state,localHouse,activeRuler,proposalConversation,proposal); if(reviewedTrade){const offer=state.commerce.offers.find(o=>o.id===reviewedTrade);if(offer)offer.status='accepted';reviewedTrade=null;} appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
     result(r);
   }
 });
@@ -437,7 +447,7 @@ async function sendDiplomatic(message, proposal = null) {
     if(!online?.online||!message||sending||state.outcome)return;
     if(isHumanHouse(state,activeRuler)){
       if(proposal&&['WAR','BETRAY'].includes(proposal.type)){proposals=[proposal];renderProposals();return;}
-      try{await online.submit(proposal?'humanProposal':'chat',proposal?{targetHouseId:activeRuler,intent:proposal}:{targetHouseId:activeRuler,message});$('chat-message').value='';}catch(e){toast(e.message);}return;
+      try{await online.submit(proposal?'humanProposal':'chat',proposal?{targetHouseId:activeRuler,intent:proposal,conversationId:proposalConversation||privateConversation(activeRuler)}:{targetHouseId:activeRuler,message});$('chat-message').value='';}catch(e){toast(e.message);}return;
     }
     sending=true;const rulerId=activeRuler,turn=state.turn;updateChatControls();
     try{
@@ -446,12 +456,14 @@ async function sendDiplomatic(message, proposal = null) {
       if(state.turn!==turn){toast('The round advanced. Review your message before sending again.');return;}
       const {reply,intents,tone,counterProposal,promiseDetected,relationshipSummary,memoryCandidates}=response;
       const model=Object.fromEntries(Object.entries({reply,intents,tone,counterProposal,promiseDetected,relationshipSummary,memoryCandidates}).filter(([,v])=>v!==undefined));
-      await online.submit('chat',{targetHouseId:rulerId,message,proposal,response:model});
+      await online.submit('chat',{targetHouseId:rulerId,message,proposal,response:model,conversationId:proposal?proposalConversation||privateConversation(rulerId):privateConversation(rulerId)});
       $('chat-message').value='';$('chat-notice').textContent=response.notice;
     }catch(e){toast(e.message);}finally{sending=false;challengeToken='';if($('diplomacy').open)renderDiplomacy();}return;
   }
-  if (!message || sending || state.outcome) return;
-  const spent = consumeMessage(state,activeRuler,localHouse); if (!spent.ok) { toast(spent.error); return; }
+  if (!message || sending || turnBusy || state.outcome) return;
+  if(!proposal)proposalConversation=null;
+  const conversation=proposalConversation||privateConversation(activeRuler);
+  const spent = consumeDiplomaticMessage(state,activeRuler,localHouse,proposal,conversation); if (!spent.ok) { toast(spent.error); return; }
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
   if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
   else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse);
@@ -466,6 +478,7 @@ async function sendDiplomatic(message, proposal = null) {
     }
     recordReplyDiagnostic(rulerId, response);
     appendMessage(rulerId, 'ruler', response.reply);
+    grantFollowup(state,localHouse,rulerId,conversation,message,response,{paid:!proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
     if (response.source === 'gemini') acceptRulerMemories(state,rulerId,response,localHouse);
     const candidates = [proposal, ...response.intents, response.proposal, response.counterProposal, response.promiseDetected].filter(Boolean);
     const unique = [...new Map(candidates.map(i => [JSON.stringify(i), i])).values()].slice(0, 4);
@@ -496,7 +509,7 @@ function loadVerification() {
   return verificationLoad;
 }
 async function enableGemini() {
-  const enabled = !(onlineOptions&&isHumanHouse(state,activeRuler)) && $('use-gemini').checked && !!client.endpoint && !!config.turnstileSiteKey;
+  const enabled = (allianceUI?.dialog.open || !(onlineOptions&&isHumanHouse(state,activeRuler))) && $('use-gemini').checked && !!client.endpoint && !!config.turnstileSiteKey;
   $('privacy').hidden = !enabled; $('turnstile').hidden = !enabled || client.hasSession();
   $('ai-status').textContent = enabled ? 'Gemini council enabled' : 'Scripted council ready';
   if (!enabled) {
@@ -506,12 +519,12 @@ async function enableGemini() {
   }
   // Verification starts when a visible council opens, not behind the welcome dialog.
   // No Gemini request is made until the player sends a message.
-  if (!$('diplomacy').open) return;
+  if (!($('diplomacy').open || allianceUI?.dialog.open)) return;
   if (client.hasSession()) { $('turnstile').hidden = true; $('chat-notice').textContent = 'Gemini ready. Your diplomacy session is active.'; return; }
   $('chat-notice').textContent = client.now() < client.cooldownUntil ? 'Gemini is resting after a rate limit or connection error. Scripted diplomacy is available.' : challengeToken ? 'Gemini ready. Send your envoy to begin.' : 'Gemini is enabled. Preparing verification…';
   try {
     await loadVerification();
-    if (!$('use-gemini').checked || !$('diplomacy').open) return;
+    if (!$('use-gemini').checked || !($('diplomacy').open || allianceUI?.dialog.open)) return;
     if (turnstileWidget === null) turnstileWidget = globalThis.turnstile.render($('turnstile'), {
       sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark',
       callback: async token => {
@@ -525,7 +538,7 @@ async function enableGemini() {
       },
       'expired-callback': () => {
         challengeToken = '';
-        if ($('use-gemini').checked && $('diplomacy').open && !client.hasSession()) {
+        if ($('use-gemini').checked && ($('diplomacy').open || allianceUI?.dialog.open) && !client.hasSession()) {
           $('chat-notice').textContent = 'Verification expired. Preparing a new challenge…';
           globalThis.turnstile?.reset(turnstileWidget);
         }
@@ -537,7 +550,7 @@ async function enableGemini() {
     });
     else if (!challengeToken) globalThis.turnstile.reset(turnstileWidget);
   } catch {
-    if (!$('use-gemini').checked || !$('diplomacy').open) return;
+    if (!$('use-gemini').checked || !($('diplomacy').open || allianceUI?.dialog.open)) return;
     client.recordFailure('TURNSTILE_LOAD_FAILED', {}, '/verification'); updateDiagnostics();
     $('chat-notice').textContent = 'Verification could not load. Local diplomacy remains available; reopen the council to retry.';
     $('ai-status').textContent = 'Gemini verification unavailable';
@@ -556,7 +569,7 @@ fetch('./config.json', { cache: 'no-store' }).then(r => { configStatus = r.statu
 });
 function renderDispatches() {
   const state=currentView();
-  $('dispatch-bar').innerHTML = state.kingdoms.filter(k => k.id !== localHouse && alive(state, k.id)).map(k => {
+  $('dispatch-bar').innerHTML = allianceButtons(state,localHouse) + state.kingdoms.filter(k => k.id !== localHouse && alive(state, k.id)).map(k => {
     const r = k.relations[localHouse], messages = state.conversations[k.id] || [], last = messages.filter(m => m.role === 'ruler').at(-1);
     const urgent = state.pledges.some(p => p.creditor === k.id && p.debtor === localHouse && p.status === 'pending' && p.deadline - state.turn <= 2);
     return `<button class="dispatch-house ${urgent ? 'urgent' : ''}" data-dispatch="${k.id}" style="--house:${k.color}" aria-label="Open ${escape(k.name)} conversation${r.unread ? `, ${r.unread} unread` : ''}"><span class="dispatch-sigil">${k.sigil}</span><span><b>${escape(k.name.replace('House ', ''))}<i class="relation-dot ${r.trust < 0 ? 'distrust' : r.opinion > 25 ? 'friendly' : ''}"></i>${r.unread ? `<em>${r.unread}</em>` : ''}${urgent ? ' ⏳' : ''}${state.commerce.offers.some(o=>o.from===k.id&&o.status==='pending'&&o.expires>=state.turn)?' ⚖':''}</b><small>${escape(last?.text.slice(0, 64) || k.ruler)}</small></span></button>`;
@@ -597,20 +610,71 @@ document.addEventListener('click', e => {
     if (confirmed) perform('ambassadorIncident',{envoy:b.dataset.envoyIncident,action,confirmed:action==='execute'},()=>ambassadorIncident(state,localHouse,b.dataset.envoyIncident,action,action==='execute'));
   }
 });
+const verificationHome=document.createComment('Shared diplomacy verification');
+$('turnstile').before(verificationHome);
+allianceUI=installAllianceCouncil(document,{
+  getState:()=>state,getActor:()=>localHouse,isBusy:()=>sending||turnBusy,
+  gemini:()=>({enabled:$('use-gemini').checked,available:!$('use-gemini').disabled}),
+  setGemini:enabled=>{$('use-gemini').checked=enabled;geminiChoiceMade=true;enableGemini();},
+  error:toast,changed:()=>{save();renderDispatches();},
+  onOpen:holder=>{holder.append($('turnstile'));if(configReady)enableGemini();},
+  onClose:()=>{verificationHome.after($('turnstile'));save();renderDispatches();},
+  open:async id=>{
+    if(turnBusy||state.phase==='founding')return null;
+    if(onlineOptions){await online.submit('councilOpen',id?{councilId:id}:{});}
+    const c=councilForActor(state,localHouse,id||null,!onlineOptions);
+    if(!c)throw Error('The coalition changed. Open its current council.');
+    c.read[localHouse]=c.sequence;save();return c.id;
+  },
+  read:async id=>{
+    const c=state.allianceCouncils?.find(c=>c.id===id);if(!c||c.read[localHouse]>=c.sequence)return;
+    if(onlineOptions)await online.submit('councilRead',{councilId:id});
+    else{c.read[localHouse]=c.sequence;save();}
+  },
+  send:async(id,message)=>{
+    if(sending||turnBusy)return {ok:false,error:'An envoy is already travelling.'};
+    const campaign=state,turn=state.turn,requestEpoch=epoch;
+    const c=councilForActor(state,localHouse,id);if(!c)return {ok:false,error:'This coalition is no longer active.'};
+    const start=onlineOptions?null:beginCouncilMessage(state,localHouse,id,message);
+    if(start&&!start.ok)return start;
+    sending=true;save();allianceUI.render();
+    try{
+      const response=await client.send(campaign,c.participants.find(x=>x!==localHouse),message,challengeToken,$('use-gemini').checked,{councilId:id,actorHouseId:localHouse});
+      if(state.turn!==turn||!onlineOptions&&(state!==campaign||epoch!==requestEpoch))return {ok:false,error:'Circumstances changed while the envoy travelled. Open the current council.'};
+      let result;
+      if(onlineOptions){await online.submit('councilChat',{councilId:id,message,response:{responses:response.responses}});result={ok:true};}
+      else result=finishCouncilMessage(state,localHouse,start,message,response);
+      return {...result,notice:response.notice};
+    }finally{sending=false;challengeToken='';save();renderDispatches();}
+  },
+  openTerms:(ruler,id,intent)=>{
+    openDiplomacy(ruler,false);proposalConversation=id;
+    const credit=followupCredit(state,localHouse,ruler,id);
+    if(!intent&&credit)intent=validateIntent({type:credit.type,targetId:credit.targetId});
+    $('diplomacy').classList.add('council-terms');allianceUI.dialog.classList.add('has-terms');
+    // Reuse the exact Treaty Desk controls and authoritative submission path.
+    setTimeout(()=>{$('quick-offer').click();if(intent)loadOffer(intent);updateChatControls();},0);
+  }
+});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-alliance]');if(b&&!b.disabled)allianceUI.open(b.dataset.alliance);});
+document.addEventListener('click',e=>{if(e.target.closest('.treaty-drawer-close')&&$('diplomacy').classList.contains('council-terms'))$('diplomacy').close();});
+$('diplomacy').addEventListener('close',()=>{
+  if(!$('diplomacy').open){$('diplomacy').classList.remove('council-terms');allianceUI.dialog.classList.remove('has-terms');proposalConversation=null;allianceUI.render();}
+});
 $('reduced-effects').checked = !!state.presentation?.reducedEffects;
 $('reduced-effects').onchange = () => { state.presentation = { reducedEffects: $('reduced-effects').checked }; map.reducedEffects = state.presentation.reducedEffects; save(); map.draw(); };
 
 async function voiceNextDispatch() {
   if(onlineOptions)return;
   if (!$('use-gemini').checked || !client.hasSession() || client.now() < client.cooldownUntil || state.diplomacy.voicedTurn === state.turn) return;
-  const chosen = state.kingdoms.slice(1).map(k => ({ id: k.id, entry: state.conversations[k.id]?.findLast(m => m.role === 'ruler' && m.kind && m.turn >= state.turn - 1 && !m.voiced) })).find(c => c.entry);
+  const chosen = state.kingdoms.slice(1).map(k => ({ id: k.id, entry: state.conversations[k.id]?.findLast(m => m.role === 'ruler' && m.kind && m.turn === state.turn && !!m.dispatch && !m.voiced) })).find(c => c.entry);
   if (!chosen) return;
   // One optional incoming voice request per turn. The local dispatch already
   // exists, so rendering and turn resolution never wait on the model.
   const campaign = state, requestEpoch = epoch;
   state.diplomacy.voicedTurn = state.turn; chosen.entry.voiced = true;
   const voice = new DiplomacyClient({ endpoint: client.endpoint }); voice.session = client.session;
-  const response = await voice.send(campaign, chosen.id, 'Deliver the supplied diplomatic dispatch in your own voice.', '', true, { event: chosen.entry.text, actorHouseId:localHouse });
+  const response = await voice.send(campaign, chosen.id, 'Deliver the supplied diplomatic dispatch in your own voice.', '', true, { event: chosen.entry.dispatch, actorHouseId:localHouse });
   client.cooldownUntil = Math.max(client.cooldownUntil, voice.cooldownUntil);
   if (voice.hasSession()) client.session = voice.session;
   if (campaign !== state || epoch !== requestEpoch || response.source !== 'gemini') return;

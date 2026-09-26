@@ -1,3 +1,4 @@
+import { recordWarBaseline, validateWarBaselines } from './war-desperation.mjs';
 import { emotionalEvent, validateEmotions } from './emotions.mjs';
 import { marriageWar, validateMarriage } from './marriage.mjs';
 import { initializeFog, validateFog, knowledgeView, visionTiles, refreshKnowledge } from './fog.mjs';
@@ -16,6 +17,7 @@ import { updateAttitudes, validatePolitics } from './politics.mjs';
 import { damageStructure, structureAttackCheck, structuresAt, validateStructures } from './structures.mjs';
 import { BUILDINGS, CAMPAIGN_HOUSES, WORLD_SIZES, INTENT_TYPES, RESOURCES, SAVE_VERSION, TERRAINS, UNITS } from './data.mjs';
 
+import { validateCouncilSave } from './council-state.mjs';
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
 import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, migrateEconomy, productionPlan, storageCapacity, validateExpansion } from './economy.mjs';
@@ -63,7 +65,7 @@ export function declareWar(s, a, b) {
   }
   s.diplomacy.warHistory.push({ id: s.nextId++, turn: s.turn, attacker: a, defender: b });
   s.diplomacy.warHistory = s.diplomacy.warHistory.slice(-80);
-  s.wars.push(pair(a, b)); changeRelation(s, b, a, { opinion: -30, trust: -20, grievance: 25, aggression: 20 }, 'War declared against our House.');
+  s.wars.push(pair(a, b)); recordWarBaseline(s,a,b); changeRelation(s, b, a, { opinion: -30, trust: -20, grievance: 25, aggression: 20 }, 'War declared against our House.');
   recordPoliticalMemory(s, b, a, 'war', `${kingdom(s, a).name} declared war on us.`, 9);
   for (const k of s.kingdoms.filter(k => ![a, b].includes(k.id) && treaty(s, k.id, b, 'alliance'))) changeRelation(s, k.id, a, { opinion: -20, trust: -12, grievance: 20 }, `Attacked our ally, ${kingdom(s, b).name}.`);
   for (const p of s.pledges.filter(p => p.status === 'pending' && p.debtor === a && p.creditor === b)) p.breached = true;
@@ -71,6 +73,7 @@ export function declareWar(s, a, b) {
   return true;
 }
 export function makePeace(s, a, b) {
+  if(s.warBaselines)delete s.warBaselines[pair(a,b)];
   s.wars = s.wars.filter(w => w !== pair(a, b));
   for (const army of s.armies) if ((army.owner === a || army.owner === b) && army.path.length) army.path = [];
 }
@@ -523,13 +526,13 @@ export function parseSave(raw) {
   for (const history of Object.values(s.conversations)) if (!Array.isArray(history) || history.length > 60 || history.some(m => typeof m.text !== 'string' || m.text.length > 2000 || !['player', 'ruler', 'council'].includes(m.role))) throw new Error('Damaged conversation data.');
   if (oldVersion === 1) initializeLiving(s);
   s.version=SAVE_VERSION;
-  validateLivingSave(s);
+  validateLivingSave(s); validateCouncilSave(s);
   validateEmotions(s); validateMarriage(s);
   validateFoundingSave(s);
   if(s.worldGeneration&&(!Object.hasOwn(MAP_PROFILES,s.mapProfile)||!Number.isInteger(s.seed)||!Number.isInteger(s.generation?.attempt)||s.generation.attempt<0||s.generation.attempt>=96))throw new Error('Damaged regional world metadata.');
   validateExpansion(s);
   validateStrategySave(s);
   validateStructures(s);
-  validatePlans(s); validateCooperation(s); validateEspionage(s); validatePolitics(s); validateFog(s);
+  validatePlans(s); validateCooperation(s); validateEspionage(s); validatePolitics(s); validateFog(s); validateWarBaselines(s);
   return s;
 }

@@ -1,10 +1,11 @@
+import { worstWarPosition } from './war-desperation.mjs';
 import { personalWillingness } from './emotions.mjs';
 import { marriageSupport } from './marriage.mjs';
 import { planningView, scoutOrder, requestAlliedIntelligence, refreshHouseKnowledge } from './ai-knowledge.mjs';
 import { operationArmyOrder, prepareOperationAI, updateOperations } from './operations.mjs';
 import { memberOperation, operationMember } from './cooperation-state.mjs';
 import { rankObjectives, strategicLocation } from './strategic-geography.mjs';
-import { runStrategicDiplomacy } from './strategic-diplomacy.mjs';
+import { runStrategicDiplomacy, proposeCooperation } from './strategic-diplomacy.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { activePlan, assaultAssessment, createPlan, dangerousTiles, militaryPlan, plannedArmyOrder, preparePlans, proposeInvasion, recordPlanAction, transitionPlan } from './plans.mjs';
 import { runAISpies } from './espionage.mjs';
@@ -39,6 +40,7 @@ export function recordStrategyAction(s, owner, action) {
 }
 
 function assess(s, k) {
+  const desperation=worstWarPosition(s,k.id);
   s = planningView(s, k.id);
   const tiles = Object.values(s.tiles).filter(t => t.owner === k.id && passable(t));
   const towns = settlements(s, k.id), forces = armiesOf(s, k.id);
@@ -61,10 +63,11 @@ function assess(s, k) {
   reserves.food += s.pledges.filter(p=>p.debtor===k.id&&p.operationTask==='supply'&&p.status==='pending'&&!p.delivered).reduce((n,p)=>n+p.intent.giveAmount,0);
   reserves.gold += Math.max(18, -income.gold * 3);
   const crisis = k.resources.food + income.food * 3 < 30 || k.resources.gold + income.gold * 3 < 20;
-  return { tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, crisis, war: enemyTowns.length > 0 };
+  return { desperation, tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, crisis, war: enemyTowns.length > 0 };
 }
 
 function chooseGoal(c) {
+  if(c.desperation?.score>=55)return ['DEFEND','Military losses make preserving the remaining realm our first duty.'];
   if (c.threats.length) return ['DEFEND', 'Enemy forces threaten a settlement.'];
   if (c.pledges.length) return ['HONOR_PLEDGE', 'A ratified agreement takes priority.'];
   if (c.crisis) return ['RECOVER', 'Food and treasury reserves need rebuilding.'];
@@ -77,6 +80,7 @@ function protectedPeace(s, a, b) {
   return ['peace', 'non-aggression', 'alliance', 'vassalage'].some(type => treaty(s, a, b, type));
 }
 function considerWar(s, k, c) {
+  if(c.desperation?.score>=30)return;
   const world=s; s=planningView(world,k.id);
   if (s.intrigue?.plans.some(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)) || s.turn < 10 || c.war || c.crisis || c.threats.length || troopCount(c.forces) < 30) return;
   const ours = forcePower(c.forces);
@@ -255,6 +259,14 @@ function directArmies(s, k, c) {
       if (!command(world, k, a, refuge, 'retreat')) command(world, k, a, location, 'hold');
       continue;
     }
+    if(c.desperation?.score>=55){
+      const home=c.home,localEnemy=nearby(s,c.enemies,home,3).find(e=>!e.remembered&&assaultAssessment(s,k,a,s.tiles[e.tile]).assault);
+      if(c.desperation.score<75&&localEnemy&&command(world,k,a,s.tiles[localEnemy.tile],'attack'))continue;
+      const homeSafe=forcePower(nearby(s,c.enemies,home,1))<forcePower(c.forces)*1.3;
+      const shelter=homeSafe?home:refuge;
+      if(!command(world,k,a,shelter,a.tile===shelter.id?'hold':'retreat'))command(world,k,a,location,'hold');
+      continue;
+    }
     if (scoutOrder(world,k,a,c)) { recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target}); continue; }
     const pledge = c.pledges.find(p => p.intent.type !== 'BUILD_DEFENSES' && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
     if (pledge) {
@@ -347,13 +359,19 @@ export function runStrategyTurn(s, onProgress = () => {}) {
     if (!alive(s, k.id)) { report.goal = 'ELIMINATED'; report.reason = 'No settlements remain.'; continue; }
     refreshHouseKnowledge(s,k.id);
     let c = assess(s, k);
-    preparePlans(s,k,c);
+    if(c.desperation?.score>=55){
+      const partner=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&!treaty(s,k.id,o.id,'alliance')&&atWar(s,o.id,c.desperation.enemy)&&relation(s,k.id,o.id).trust>=10)
+        .sort((a,b)=>relation(s,k.id,b.id).trust-relation(s,k.id,a.id).trust)[0];
+      if(partner)proposeCooperation(s,k.id,partner.id,'alliance',{target:c.desperation.enemy,reason:'Military losses threaten our survival; seek a reliable partner against our shared enemy.'});
+    }
+    if(c.desperation?.score>=75){for(const p of s.intrigue.plans.filter(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)))transitionPlan(s,p,'Abandoned','Preserve the remaining realm after catastrophic military losses.');}
+    else preparePlans(s,k,c);
     considerWar(s, k, c); c = assess(s, k);
     [k.goal, report.reason] = chooseGoal(c);
     const tax = k.happiness < 40 ? 'low' : c.income.gold < 2 && k.resources.gold < 70 && k.happiness >= 60 ? 'high' : 'medium';
     if (tax !== k.tax) { k.tax = tax; recordStrategyAction(s, k.id, { kind: 'tax', policy: tax }); }
     develop(s, k);
-    preparePlans(s,k,assess(s,k));
+    if(!c.desperation||c.desperation.score<55)preparePlans(s,k,assess(s,k));
     directArmies(s, k, assess(s, k));
     report.goal = k.goal;
     if (!report.orders && !report.actions.some(a => ['march','war'].includes(a.kind))) report.reason =

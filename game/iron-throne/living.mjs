@@ -1,3 +1,4 @@
+import { dispatchContext } from './conversation-context.mjs';
 import { emotionalEvent, initializeEmotions, personalContext, updateEmotions } from './emotions.mjs';
 import { discussMarriage, normalizeMarriageTerms, initializeMarriage, marriageBetween, marriageSupport, strainMarriage } from './marriage.mjs';
 import { planningView } from './ai-knowledge.mjs';
@@ -34,6 +35,7 @@ export function appendConversation(s, rulerId, role, text, { unread = false, kin
   const history = court(s, actorHouseId).conversations[rulerId] ||= [];
   const entry = { role, text: String(text).slice(0, 1600), turn: s.turn, kind };
   if (proposal) entry.proposal = proposal;
+  if(unread&&role==='ruler'&&kind&&!kind.startsWith('human'))entry.dispatch=dispatchContext({text:entry.text,kind},s.turn,rulerId,actorHouseId);
   history.push(entry);
   // Important actions live in the ledger and structured memory after chat rolls off.
   if (history.length > 50) history.splice(0, history.length - 50);
@@ -221,11 +223,11 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
     if (newShared.length) changeRelation(s, observer.id, subject.id, { opinion: 2 }, 'A shared enemy creates a limited common interest.');
     r.sharedEnemies = threat.sharedEnemies;
     r.movements = Object.fromEntries(threat.nearby.filter(a => ['approaching', 'withdrawing'].includes(a.movement)).slice(0, 80).map(a => [a.id, { direction: a.movement, turn: s.turn }]));
-    changeRelation(s, observer.id, subject.id, { wariness: threat.score - r.wariness, dependency: economic.dependency - r.dependency, fear: clamp((threat.relativeStrength - 1) * 25 + threat.score * .35) - r.fear }, threat.score > wasWary ? `Armies approached ${capitalOf(s, observer.id)?.name || 'our frontier'}.` : threat.score < wasWary ? 'Foreign forces withdrew from the frontier.' : 'Trade and military circumstances changed.');
+    changeRelation(s, observer.id, subject.id, { wariness: threat.score - r.wariness, dependency: economic.dependency - r.dependency, fear: clamp((threat.relativeStrength - 1) * 25 + threat.score * .35) - r.fear }, threat.score > wasWary ? `${subject.name} armies approached ${observer.name} territory near ${capitalOf(s, observer.id)?.name || 'the frontier'}.` : threat.score < wasWary ? `${subject.name} forces withdrew from ${observer.name} territory.` : 'Trade and military circumstances changed.');
     const fresh = isHumanHouse(s,subject.id) && isAiHouse(s,observer.id);
     if (fresh && sendDispatches) {
-      if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `Your banners are close to ${capitalOf(s, observer.id)?.name}. Tell me their purpose, Regent. Friendship needs more than courteous words.`, 4, subject.id);
-      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', 'Our latest observations no longer confirm the same border concentration. We are seeking an updated report.', 4, subject.id);
+      if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `${subject.name}'s armies are approaching ${observer.name}'s territory near ${capitalOf(s, observer.id)?.name}. Tell me their current purpose, Regent.`, 4, subject.id);
+      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', `Our scouts no longer confirm the same concentration of ${subject.name}'s forces near ${observer.name}'s territory. We are seeking a current report.`, 4, subject.id);
 
       if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8, subject.id);
       if (r.trust > 40 && !atWar(s, observer.id, subject.id) && !treaty(s, observer.id, subject.id, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10, subject.id);

@@ -429,3 +429,54 @@ one-tile gap. The remaining endpoints are explicit springs/pools. Legacy data
 contains no elevation: equal-length outlet routes use a stable southern preference.
 This is a visual topology system, not a drainage/elevation simulation; river
 crossing costs, resources and terrain remain unchanged.
+
+
+## Alliance councils and current diplomacy
+
+Active allies can meet in a shared Alliance Council. Its bounded transcript has
+an immutable audience; changing the coalition starts a separate conversation.
+Rulers use directional relationships, shared observations and their own coarse
+concerns to disagree, ask for assurances, or suggest existing Treaty Desk terms.
+One council message consumes one shared dispatch and at most one Gemini request
+for one to three AI replies. Local responses use the same rules when Gemini is
+unavailable. Human rulers are never voiced by the model.
+
+An explicit request for a proposal can grant one continuation for that ruler,
+conversation, subject, target and turn. Reviewing those terms requires no extra
+envoy; it does not replenish itself or ratify anything. Private conversations use
+the same rule. AI council openings have a per-turn ceiling and topic cooldowns.
+Particularly successful expired alliances may invite renewal through normal terms.
+
+Every dialogue entry sent to Gemini includes its turn. The current turn and the
+previous two turns are active conversation; older speech is historical memory.
+AI-initiated dispatches include a current reason and a `NEW DISPATCH · TURN N`
+divider. Border events identify both the army owner and territory owner.
+Relationship changes remain separate system notices. Old undated messages are
+historical, never assumed to have just been spoken.
+
+Wars keep a small opening baseline of settlements, army strength and capital.
+Desperation is derived from material losses, observed enemy pressure, capital
+condition, defeats and available allied relief. It affects survival priorities,
+peace proposals and qualitative dialogue without exposing a numerical meter.
+Wartime vassalage requires catastrophic material collapse and decisive military
+superiority, then a separate willingness check. Fear or persuasive language alone
+cannot bypass this gate. Ratifying eligible capitulation ends the war and creates
+vassalage together. Legacy wars infer only losses supported by recorded history.
+
+Council commands follow the existing authenticated multiplayer path. Council
+transcripts and facts are projected only to their participants; private chats,
+spy reports, hidden force totals and private pledges are excluded from group
+model context. Existing schema-3 saves remain supported.
+
+Deploy the updated game files, Gemini Worker, and Firestore rules together.
+No additional endpoint, model session, artwork or conversation backend is needed.
+Focused checks:
+
+```sh
+node --test game/iron-throne/tests/alliance-council.test.mjs game/iron-throne/tests/conversation-context.test.mjs game/iron-throne/tests/war-desperation.test.mjs
+node game/iron-throne/tests/alliance-council-browser.mjs
+```
+
+The browser check requires Playwright with Chromium; `IRON_THRONE_CHROMIUM` can
+select an existing binary. It exercises desktop and mobile without producing
+previews or screenshots.

@@ -1,3 +1,5 @@
+import { makeCouncilContext, scriptedCouncil, validateCouncilResponse } from './alliance-council.mjs';
+import { isAiHouse } from './house-control.mjs';
 import { relationshipResponse } from './diplomacy.mjs';
 import { makeContext, scriptedReply, validateResponse } from './diplomacy.mjs';
 import { diagnosticDetails, makeDiagnostic, readDiagnostic } from './diagnostics.mjs';
@@ -78,12 +80,14 @@ export class DiplomacyClient {
     return this.sessionRequest;
   }
   async send(state, rulerId, message, token = '', useGemini = true, options = {}) {
+    const council = options.councilId && state.allianceCouncils?.find(c=>c.id===options.councilId);
+    const aiIds = council?.participants.filter(id=>id!==options.actorHouseId&&isAiHouse(state,id));
     const fallback = (detail = '', includeDiagnostic = true) => {
       const diagnostic = includeDiagnostic ? this.lastDiagnostic : null;
-      return { ...scriptedReply(state, rulerId, message, options), source: 'scripted', diagnostic,
+      return { ...(council ? scriptedCouncil(state,council,options.actorHouseId,message) : scriptedReply(state, rulerId, message, options)), source: 'scripted', diagnostic,
         notice: `Council response delivered through local diplomacy.${detail ? ` ${detail}` : diagnostic ? ` ${diagnosticDetails(diagnostic).reason}` : ''}${diagnostic ? ' Open Diagnostics for details.' : ''}` };
     };
-    if (!useGemini) return fallback('', false);
+    if (!useGemini || council && !aiIds.length) return fallback('', false);
     if (!this.endpoint) { this.recordFailure('CLIENT_CONFIG'); return fallback(); }
     if (this.busy) return fallback('An envoy is already travelling.', false);
     if (this.now() < this.cooldownUntil) return fallback(`Gemini can be tried again in ${Math.ceil((this.cooldownUntil-this.now())/1000)} seconds. ${this.lastDiagnostic ? diagnosticDetails(this.lastDiagnostic).reason : ''}`);
@@ -91,7 +95,9 @@ export class DiplomacyClient {
       if (!this.lastDiagnostic) this.recordFailure(this.session ? 'SESSION_EXPIRED' : 'SESSION_NOT_READY');
       return fallback();
     }
-    const context = makeContext(state, rulerId, message, options), key = JSON.stringify(context);
+    const context = council ? makeCouncilContext(state,council,options.actorHouseId,message) : makeContext(state, rulerId, message, options);
+    if(!context)return fallback('Council context is unavailable.',false);
+    const key = JSON.stringify(context);
     this.busy = true; this.controller = new AbortController();
     let timedOut = false;
     const controller = this.controller, timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 18000);
@@ -112,9 +118,9 @@ export class DiplomacyClient {
         return fallback(response.status === 429 ? 'Conversation quota reached.' : 'Gemini is temporarily unavailable.');
       }
       let parsed;
-      try { parsed = validateResponse(await readJSON(response, 10000)); } catch (error) { if (controller.signal.aborted) throw error; /* Invalid reply is handled below. */ }
+      try { const raw=await readJSON(response, 10000); parsed = council ? validateCouncilResponse(raw,council.participants,aiIds) : validateResponse(raw); } catch (error) { if (controller.signal.aborted) throw error; /* Invalid reply is handled below. */ }
       if (!parsed) { this.cooldownUntil = this.now() + 5000; this.recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status, retryAt: this.cooldownUntil }, '/diplomacy'); return fallback(); }
-      parsed=relationshipResponse(state,rulerId,message,parsed,options);
+      if(!council)parsed=relationshipResponse(state,rulerId,message,parsed,options);
       if (this.cache.size >= 30) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, parsed);
       this.lastDiagnostic = null;
