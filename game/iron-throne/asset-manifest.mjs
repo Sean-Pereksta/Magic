@@ -1,7 +1,7 @@
 // Cloudflare directional artwork has a local, connection-preserving fallback.
 import { GEOGRAPHY_PATHS } from './geography-assets.mjs';
 import { SpriteOutlines } from './sprite-outline.mjs';
-import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
+import { BUILDINGS, RESOURCES, UNITS, CAMPAIGN_HOUSES } from './data.mjs';
 export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev';
 export const ironThronesAsset = path => `${IRON_THRONES_ASSET_BASE}/${path.replace(/^\/+/, '')}`;
 const local = path => new URL(`./assets/${path}.svg`, import.meta.url).href;
@@ -13,6 +13,7 @@ export const IRON_THRONES_ART = {
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
   terrain: Object.fromEntries(['plains','forest','hills','mountain','water'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id}_${String(i+1).padStart(2,'0')}.png`)])),
   resources: Object.fromEntries(RESOURCES.map(id => [id, `resources/${id}.png`])),
+  portraits: Object.fromEntries(CAMPAIGN_HOUSES.map(h => [h.id, `portraits/${h.id}.png`])),
   geography: GEOGRAPHY_PATHS,
   construction: [1,2,3].map(n => `construction/stage_${n}.png`),
   overlays: Object.fromEntries(['bridge_wood','bridge_stone'].map(id => [id, `overlays/${id}.png`]))
@@ -23,6 +24,7 @@ export const ART = {
   structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(buildingPath(id,l.level))]))])),
   units: Object.fromEntries(Object.entries(IRON_THRONES_ART.troops).map(([id,p]) => [id,ironThronesAsset(p)])),
   resources: Object.fromEntries(Object.entries(IRON_THRONES_ART.resources).map(([id,p]) => [id,ironThronesAsset(p)])),
+  portraits: Object.fromEntries(Object.entries(IRON_THRONES_ART.portraits).map(([id,p]) => [id,ironThronesAsset(p)])),
   terrain: Object.fromEntries(Object.entries(IRON_THRONES_ART.terrain).map(([id,ps]) => [id,ps.map(ironThronesAsset)])),
   overlays: Object.fromEntries(Object.entries(IRON_THRONES_ART.overlays).map(([id,p]) => [id,ironThronesAsset(p)])),
   geography: Object.fromEntries(Object.entries(GEOGRAPHY_PATHS).map(([name,path])=>[name,ironThronesAsset(path)])),
@@ -74,16 +76,18 @@ export function installArtFallbacks(root) {
 export async function preloadAllArt(onProgress=()=>{}, {concurrency=6,timeout=10000,budget=45000}={}) {
   let completed=0,failed=0;
   const deadline=Date.now()+budget;
-  const total=ALL_ART_PATHS.length;
+  // Optional portraits load on demand. Missing uploads must not delay startup.
+  const startupPaths=ALL_ART_PATHS.filter(path=>!path.startsWith('portraits/'));
+  const total=startupPaths.length;
   const load = async path => {
     const image = await loadArt(ironThronesAsset(path),{timeout:Math.max(1,Math.min(timeout,deadline-Date.now()))});
     if (!image) failed++;
     onProgress({completed:++completed,total,failed,path});
   };
   onProgress({completed,total,failed,path:'buildings/lumber_1.png'});
-  // Probe the requested lumber image first, then load every remaining PNG.
+  // Probe the requested lumber image first, then load every remaining startup PNG.
   await load('buildings/lumber_1.png');
-  const queue=ALL_ART_PATHS.filter(p=>p!=='buildings/lumber_1.png'); let index=0;
+  const queue=startupPaths.filter(p=>p!=='buildings/lumber_1.png'); let index=0;
   await Promise.all(Array.from({length:Math.max(1,Math.min(12,concurrency))},async()=>{
     while(index<queue.length) await load(queue[index++]);
   }));

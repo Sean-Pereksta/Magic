@@ -1,0 +1,176 @@
+/* Scoped progressive enhancement; no map, engine, or other dialog styling. */
+#diplomacy[data-correspondence-ready] {
+  --portrait-size: 64px;
+  --desk-width: 0px;
+  width: min(1480px, 96vw);
+  height: min(920px, 92dvh);
+  max-height: 92dvh;
+  overflow: hidden;
+  padding: 0;
+}
+#diplomacy[data-correspondence-ready][open] { display: flex; flex-direction: column; }
+#diplomacy[data-correspondence-ready].compact {
+  --portrait-size: 52px;
+  width: min(880px, calc(100vw - 28px));
+  height: min(760px, calc(100dvh - 116px));
+  max-height: calc(100dvh - 116px);
+  overflow: hidden;
+}
+#diplomacy[data-correspondence-ready] .dialog-header {
+  flex: none; padding: 13px 20px; gap: 14px;
+}
+#diplomacy[data-correspondence-ready] .dialog-header > div:not(.ruler-mark) { min-width: 0; }
+#diplomacy[data-correspondence-ready] #ruler-name { overflow-wrap: anywhere; }
+#diplomacy[data-correspondence-ready] #ruler-mark {
+  border: 0; border-radius: 2px; width: var(--portrait-size); height: var(--portrait-size);
+  background: none; box-shadow: none;
+}
+#diplomacy[data-correspondence-ready] .leader-portrait {
+  position: relative; display: inline-grid; place-items: center;
+  width: var(--portrait-size); height: var(--portrait-size); flex: 0 0 var(--portrait-size);
+  border-radius: 2px; overflow: hidden; background: #132329;
+  box-shadow: 0 2px 7px #0005; color: var(--speaker-color, var(--house, var(--gold)));
+}
+#diplomacy[data-correspondence-ready] .leader-portrait img {
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+  object-fit: contain; image-rendering: pixelated;
+}
+#diplomacy[data-correspondence-ready] .leader-sigil { font-size: 30px; line-height: 1; }
+#diplomacy[data-correspondence-ready] .portrait-loaded .leader-sigil { visibility: hidden; }
+#diplomacy[data-correspondence-ready] .council-tools { flex: none; padding: 7px 20px; }
+#diplomacy[data-correspondence-ready] .relations-details {
+  flex: none; max-height: 24dvh; overflow: auto; padding: 3px 20px;
+}
+#diplomacy[data-correspondence-ready] .diplomacy-grid {
+  display: grid; position: relative; grid-template-columns: minmax(0, 1fr) var(--desk-width);
+  gap: 0; min-height: 0; flex: 1; overflow: hidden;
+  transition: grid-template-columns 180ms ease;
+}
+#diplomacy[data-correspondence-ready].treaty-open { --desk-width: clamp(300px, 30vw, 410px); }
+#diplomacy[data-correspondence-ready] .conversation {
+  position: relative; display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; padding: 12px 22px;
+}
+#diplomacy[data-correspondence-ready] .motto {
+  flex: none; display: block; margin: 0 0 8px; font-size: 14px; line-height: 1.35;
+}
+#diplomacy[data-correspondence-ready] .correspondence-scroll {
+  flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  scrollbar-gutter: stable; padding: 10px 6px 8px; overflow-anchor: none;
+}
+#diplomacy[data-correspondence-ready] #messages {
+  height: auto; max-height: none; overflow: visible; padding: 0; scroll-behavior: auto;
+}
+#diplomacy[data-correspondence-ready] .message {
+  display: flex; align-items: flex-start; gap: 12px; padding: 0;
+  margin: 0 0 15px; width: 100%; background: none; border: 0;
+  box-shadow: none; white-space: normal; font-size: 14px;
+}
+#diplomacy[data-correspondence-ready] .correspondence-body {
+  width: fit-content; min-width: 0; max-width: min(75%, 72ch);
+  border: 1px solid #5d696044; border-left: 2px solid var(--speaker-color, var(--house));
+  border-radius: 2px 5px 5px 2px; background: linear-gradient(115deg, #2b3a3c, #223137);
+  padding: 10px 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#diplomacy[data-correspondence-ready] .message small {
+  margin: 0 0 5px; color: var(--speaker-color, var(--house)); font-size: 10px;
+  line-height: 1.4; letter-spacing: .8px; white-space: normal;
+}
+#diplomacy[data-correspondence-ready] .correspondence-player { justify-content: flex-end; }
+#diplomacy[data-correspondence-ready] .correspondence-player .leader-portrait { order: 2; }
+#diplomacy[data-correspondence-ready] .correspondence-player .correspondence-body {
+  background: linear-gradient(115deg, #343b32, #2c352f); border-left: 1px solid #5d696044;
+  border-right: 2px solid var(--speaker-color, var(--gold)); border-radius: 5px 2px 2px 5px;
+}
+#diplomacy[data-correspondence-ready] .message-continuation { margin-top: -8px; }
+#diplomacy[data-correspondence-ready] .message-continuation .leader-portrait { visibility: hidden; }
+#diplomacy[data-correspondence-ready] .message-continuation small { display: none; }
+#diplomacy[data-correspondence-ready] .correspondence-system { justify-content: center; margin: 15px 0; }
+#diplomacy[data-correspondence-ready] .correspondence-system .correspondence-body {
+  border: 0; border-top: 1px solid #78817344; border-bottom: 1px solid #78817344;
+  background: none; color: var(--muted); text-align: center; font-size: 11px;
+  max-width: 80%; padding: 8px 15px;
+}
+#diplomacy[data-correspondence-ready] .correspondence-system small { color: var(--muted); }
+#diplomacy[data-correspondence-ready] .correspondence-proposal {
+  max-width: min(78%, 72ch); margin: 12px 0 16px calc(var(--portrait-size) + 12px);
+  border: 1px solid #b19b6555; border-left: 3px solid var(--house);
+  border-radius: 3px; padding: 13px 16px; background: linear-gradient(125deg, #393d32, #2b352f);
+  box-shadow: 0 4px 12px #0002; font-size: 12px; overflow-wrap: anywhere;
+}
+#diplomacy[data-correspondence-ready] .correspondence-proposal h4 {
+  margin: 0 0 5px; color: var(--house); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+}
+#diplomacy[data-correspondence-ready] .correspondence-proposal p { margin: 7px 0; }
+#diplomacy[data-correspondence-ready] .correspondence-proposal .button-row { margin-top: 10px; }
+#diplomacy[data-correspondence-ready] .correspondence-proposal button { flex: 0 1 auto; min-height: 38px; }
+#diplomacy[data-correspondence-ready] .correspondence-counter { border-left: 2px solid var(--house); padding-left: 9px; }
+#diplomacy[data-correspondence-ready] .correspondence-promise h4 { color: var(--gold); }
+#diplomacy[data-correspondence-ready] .correspondence-latest {
+  position: absolute; right: 30px; bottom: 160px; z-index: 1; font-size: 11px;
+  box-shadow: 0 3px 12px #0008;
+}
+#diplomacy[data-correspondence-ready] #chat-form {
+  flex: none; margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
+  max-height: 44%; overflow-y: auto; overscroll-behavior: contain;
+}
+#diplomacy[data-correspondence-ready] #chat-message { min-height: 58px; max-height: 120px; }
+#diplomacy[data-correspondence-ready] #privacy { margin: 6px 0 0; }
+#diplomacy[data-correspondence-ready] .treaty-desk {
+  display: block; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  border: 0; padding: 0; visibility: hidden; transform: translateX(20px);
+  transition: transform 180ms ease, visibility 180ms; position: relative;
+}
+#diplomacy[data-correspondence-ready].treaty-open .treaty-desk {
+  visibility: visible; transform: translateX(0); padding: 0 18px 20px; border-left: 1px solid var(--line);
+}
+#diplomacy[data-correspondence-ready] .treaty-drawer-heading {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px;
+  background: #192c33; border-bottom: 1px solid var(--line); padding: 12px 0; margin-bottom: 12px;
+}
+#diplomacy[data-correspondence-ready] .treaty-drawer-heading h3 { margin: 0; flex: 1; font-size: 21px; }
+#diplomacy[data-correspondence-ready] .treaty-drawer-close { width: 40px; min-height: 40px; padding: 0; font-size: 25px; }
+#diplomacy[data-correspondence-ready] .treaty-desk > .eyebrow,
+#diplomacy[data-correspondence-ready] .treaty-desk > h3 { display: none; }
+#diplomacy[data-correspondence-ready] #proposals { max-height: none; overflow: visible; }
+#diplomacy[data-correspondence-ready] .reviewing-proposal { outline: 2px solid var(--house); outline-offset: 2px; }
+#diplomacy[data-correspondence-ready] #council-records { display: block; padding: 10px 0; }
+#diplomacy[data-correspondence-ready] .treaty-desk button { white-space: normal; }
+#diplomacy[data-correspondence-ready] .treaty-desk fieldset { min-width: 0; margin-inline: 0; }
+#diplomacy[data-correspondence-ready] .treaty-desk input[type=checkbox] { width: auto; }
+#diplomacy[data-correspondence-ready] .correspondence-scroll:focus-visible,
+#diplomacy[data-correspondence-ready] .proposal:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+@media (max-width: 760px) {
+  #diplomacy[data-correspondence-ready], #diplomacy[data-correspondence-ready].compact {
+    --portrait-size: 44px; width: calc(100vw - 12px); max-width: none;
+  }
+  #diplomacy[data-correspondence-ready] .diplomacy-grid { grid-template-columns: minmax(0, 1fr); }
+  #diplomacy[data-correspondence-ready] .conversation { padding: 8px 10px; }
+  #diplomacy[data-correspondence-ready] .dialog-header { padding: 9px 11px; gap: 9px; }
+  #diplomacy[data-correspondence-ready] .dialog-header h2 { font-size: 19px; }
+  #diplomacy[data-correspondence-ready] .dialog-header .eyebrow { font-size: 8px; letter-spacing: .7px; }
+  #diplomacy[data-correspondence-ready] .council-tools { padding: 5px 11px; gap: 5px; }
+  #diplomacy[data-correspondence-ready] .council-tools > span { flex-basis: 100%; min-width: 0; }
+  #diplomacy[data-correspondence-ready] .relations-details { padding: 2px 11px; }
+  #diplomacy[data-correspondence-ready] .message { gap: 8px; font-size: 13px; }
+  #diplomacy[data-correspondence-ready] .correspondence-body { max-width: calc(100% - 52px); padding: 8px 10px; }
+  #diplomacy[data-correspondence-ready] .correspondence-proposal { margin-left: 0; max-width: 100%; }
+  #diplomacy[data-correspondence-ready] .treaty-desk {
+    position: absolute; inset: 0; width: 100%; z-index: 5; transform: translateX(102%);
+    background: #192c33; box-shadow: -8px 0 24px #0005;
+  }
+  #diplomacy[data-correspondence-ready].treaty-open .treaty-desk { transform: translateX(0); }
+  #diplomacy[data-correspondence-ready] #chat-message { font-size: 16px; }
+  #diplomacy[data-correspondence-ready] .motto { font-size: 12px; }
+  #diplomacy[data-correspondence-ready] .correspondence-latest { right: 18px; bottom: 165px; }
+}
+@media (max-height: 500px) {
+  #diplomacy[data-correspondence-ready] { height: 96dvh; max-height: 96dvh; }
+  #diplomacy[data-correspondence-ready] .dialog-header { padding-block: 5px; }
+  #diplomacy[data-correspondence-ready] .motto { display: none; }
+  #diplomacy[data-correspondence-ready] #chat-form { max-height: 45%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #diplomacy[data-correspondence-ready] .diplomacy-grid,
+  #diplomacy[data-correspondence-ready] .treaty-desk { transition: none; }
+}
