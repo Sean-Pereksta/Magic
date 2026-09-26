@@ -1,3 +1,4 @@
+import { projectCouncils } from './council-state.mjs';
 import { marriageSupport } from './marriage.mjs';
 import { economyProjection, populationProjection } from './core.mjs';
 import { operationProgress } from './operations.mjs';
@@ -75,6 +76,10 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   if(refresh)refreshKnowledge(s,[viewer]);
   const v=clone({...s,fog:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
   v.knowledgeView=viewer;v.viewHouseId=viewer;delete v.fog;
+  v.allianceCouncils=projectCouncils(s,viewer);
+  v.councilFacts={};delete v.councilInitiationTurns;
+  delete v.warBaselines; delete v.warPositions;
+  v.proposalFollowups=Object.fromEntries(Object.entries(s.proposalFollowups||{}).filter(([,c])=>c.actor===viewer&&c.turn===s.turn));
   if(s.kingdoms.some(k=>k.id===viewer))v.ownAccounting={economy:economyProjection(s,viewer),population:populationProjection(s,viewer)};
   v.tiles=Object.fromEntries(Object.values(s.tiles).map(t=>{
     if(seen.has(t.id))return [t.id,{...clone(t),fog:'visible',observedTurn:s.turn}];
