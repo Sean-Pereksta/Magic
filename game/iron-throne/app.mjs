@@ -1,3 +1,5 @@
+import { renderCourtOptions } from './court-options-ui.mjs';
+import { prepareCourtInquiry } from './court-intelligence.mjs';
 import { dispatchTitle } from './conversation-context.mjs';
 import { installAllianceCouncil, allianceButtons } from './alliance-council-ui.mjs';
 import { councilForActor, beginCouncilMessage, finishCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
@@ -363,6 +365,7 @@ function enableMarriageOffer(){
   if(!$('offer-type').querySelector('option[value="MARRIAGE"]')){const option=document.createElement('option');option.value='MARRIAGE';option.textContent='Discussed marriage settlement';$('offer-type').append(option);}
 }
 function renderProposals() {
+  renderCourtOptions(state,activeRuler,localHouse);
   const family=marriageContext(currentView(),activeRuler,localHouse);
   if(family.discussion)enableMarriageOffer();
   else{const option=$('offer-type').querySelector('option[value="MARRIAGE"]');if(option){option.remove();updateOfferFields();}}
@@ -376,6 +379,7 @@ function renderProposals() {
 }
 function storeOffers() { state.diplomacy.offers ||= {}; state.diplomacy.offers[activeRuler] = proposals.slice(0, 4); }
 function loadOffer(i) {
+  if(i.type==='INTELLIGENCE'){toast('A report quote is not editable. Ask the ruler for different disclosure terms, or ratify the exact quoted report.');return;}
   if(i.type==='MARRIAGE')enableMarriageOffer();
   setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
   $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
@@ -410,7 +414,7 @@ $('proposals').addEventListener('click', e => {
   }
 });
 function appendMessage(rulerId, role, text) { return appendConversation(state,rulerId,role,text,{actorHouseId:localHouse}); }
-$('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>id!=='MARRIAGE').map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+$('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>!['MARRIAGE','INTELLIGENCE'].includes(id)).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
 function updateOfferFields() {
@@ -477,6 +481,7 @@ async function sendDiplomatic(message, proposal = null) {
   if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
   else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse);
   sending = true;
+  prepareCourtInquiry(campaign,rulerId,message,localHouse);
   const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal, actorHouseId:localHouse });
   appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();
   try {

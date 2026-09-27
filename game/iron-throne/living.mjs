@@ -1,3 +1,4 @@
+import { initializeCourtIntelligence, recordCourtConversation } from './court-intelligence.mjs';
 import { dispatchContext } from './conversation-context.mjs';
 import { emotionalEvent, initializeEmotions, personalContext, updateEmotions } from './emotions.mjs';
 import { discussMarriage, normalizeMarriageTerms, initializeMarriage, marriageBetween, marriageSupport, strainMarriage } from './marriage.mjs';
@@ -17,7 +18,7 @@ const powerOf = (s, owner) => armiesOf(s, owner).reduce((n, a) => n + strength(a
 const houseName = (s, id) => kingdom(s, id)?.name || id;
 
 export function initializeLiving(s) {
-  initializeEmotions(s); initializeMarriage(s);
+  initializeEmotions(s); initializeMarriage(s); initializeCourtIntelligence(s);
   s.ambassadors ||= [];
   s.diplomacy ||= { messages: { turn: s.turn, regular: 0, hosts: {} }, tradeHistory: [], incidents: [], warHistory: [], offers: {}, processedTurn: 0 };
   for (const k of s.kingdoms) {
@@ -33,6 +34,7 @@ export function initializeLiving(s) {
 }
 
 export function appendConversation(s, rulerId, role, text, { unread = false, kind = '', proposal = null, actorHouseId = PLAYER } = {}) {
+  if (role === 'player') recordCourtConversation(s, rulerId, actorHouseId, String(text), { kind });
   const history = court(s, actorHouseId).conversations[rulerId] ||= [];
   const entry = { role, text: String(text).slice(0, 1600), turn: s.turn, kind };
   if (proposal) entry.proposal = proposal;

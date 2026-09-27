@@ -124,7 +124,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
         const response=relationshipResponse(s,target,p.message,model||scriptedReply(s,target,p.message,options),options);
         appendConversation(s,target,'ruler',response.reply,{actorHouseId:a,unread:true});
         grantFollowup(s,a,target,p.conversationId||privateConversation(target),p.message,response,{paid:!p.proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
-        if(model)acceptRulerMemories(s,target,model,a);
+        if(model)acceptRulerMemories(s,target,response,a);
         const candidates=[p.proposal,...response.intents,response.proposal,response.counterProposal,response.promiseDetected].filter(Boolean);
         court(s,a).offers[target]=[...new Map(candidates.map(i=>[JSON.stringify(i),i])).values()].slice(0,4);
       }
