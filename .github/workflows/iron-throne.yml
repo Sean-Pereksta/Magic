@@ -23,7 +23,7 @@ permissions:
 jobs:
   rules:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +31,21 @@ jobs:
           node-version: '22'
       - run: npm run test:iron-throne
       - run: node --experimental-vm-modules --test lobby/tests/lobby-library.test.cjs
+  court-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: game/iron-throne/tests/package-lock.json
+      - run: npm ci --prefix game/iron-throne/tests
+      - run: npx playwright install --with-deps chromium
+        working-directory: game/iron-throne/tests
+      - run: node game/iron-throne/tests/relationships-browser.mjs
+      - run: node game/iron-throne/tests/court-access-browser.mjs
   firebase-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -50,6 +65,5 @@ jobs:
         working-directory: game/iron-throne/tests
       - run: npm run test:iron-throne:online
       - run: npm run test:iron-throne:browser
-      - run: node game/iron-throne/tests/relationships-browser.mjs
       - run: npm run test:iron-throne:founding-browser
       - run: npm run test:iron-throne:intelligence-browser
