@@ -1,0 +1,37 @@
+name: Iron Thrones source review snapshot
+on:
+  push:
+    branches: ['codex/iron-thrones-private-knowledge-marriage']
+    paths: ['.github/workflows/iron-throne-source-review.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            game/iron-throne
+            lobby
+            .github/workflows
+      - name: Package only tracked source and test text
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, zipfile
+          names = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
+          allowed = {'.mjs','.js','.cjs','.json','.md','.css','.html','.rules','.yml'}
+          with zipfile.ZipFile('iron-throne-source.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for name in names:
+                  p=pathlib.Path(name)
+                  scoped=name.startswith(('game/iron-throne/','lobby/','.github/workflows/')) or '/' not in name or name in ('game/AGENTS.md',)
+                  if scoped and p.is_file() and p.suffix in allowed:
+                      z.write(p,name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iron-throne-source-review
+          path: iron-throne-source.zip
+          retention-days: 1
