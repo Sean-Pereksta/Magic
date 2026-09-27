@@ -1,10 +1,11 @@
+import { tradeBriefing } from './trade-negotiation.mjs';
 import { qualitativeWarPosition } from './war-desperation.mjs';
 import { councilFacts } from './alliance-council.mjs';
 import { councilActive, ownCouncil } from './council-state.mjs';
 import { disclosedDeal, negotiationKey } from './diplomacy.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { houseIds } from './multiplayer-rounds.mjs';
-import { court, humanControlledHouseIds } from './house-control.mjs';
+import { court, humanControlledHouseIds, isHumanHouse } from './house-control.mjs';
 
 export const MAX_DOCUMENT_BYTES=750000;
 const clone=value=>structuredClone(value);
@@ -40,6 +41,7 @@ export function splitCampaign(state) {
   const facts=Object.fromEntries((state.allianceCouncils||[]).filter(c=>councilActive(state,c)).map(c=>[c.id,councilFacts(state,c)]));
   for(const id of houseIds){
     const view=knowledgeView(state,id,{refresh:false});
+    if(isHumanHouse(state,id))view.tradeBriefings=Object.fromEntries(state.kingdoms.filter(k=>k.id!==id).map(k=>[k.id,tradeBriefing(state,k.id,id)]).filter(([,b])=>b));
     view.warPositions=Object.fromEntries(state.kingdoms.filter(k=>k.id!==id).map(k=>[`${k.id}:${id}`,qualitativeWarPosition(state,k.id,id)]).filter(([,p])=>p));
     view.councilFacts=Object.fromEntries(view.allianceCouncils.filter(c=>facts[c.id]).map(c=>[c.id,facts[c.id]]));
     view.negotiationVerdicts=Object.fromEntries(Object.entries(court(state,id).offers).flatMap(([ruler,offers])=>offers.flatMap(intent=>{const verdict=disclosedDeal(state,ruler,intent,id);return [[negotiationKey(ruler,intent),verdict],...(verdict.counter?[[negotiationKey(ruler,verdict.counter),disclosedDeal(state,ruler,verdict.counter,id)]]:[])];})));

@@ -24,8 +24,8 @@ export function topicIntent(s, message) {
     : /\b(?:vassal|allegiance|capitulation|submit)\b/i.test(message) ? 'VASSALAGE'
     : /\b(?:alliance|ally|renew|pact)\b/i.test(message) ? 'ALLIANCE'
     : /\b(?:peace|truce)\b/i.test(message) ? 'PEACE'
-    : /\b(?:aid|gift|resources|supplies)\b/i.test(message) ? 'AID'
-    : /\btrad\w*\b/i.test(message) ? 'TRADE' : null;
+    : /\b(?:trad\w*|exchange|barter|commerce)\b/i.test(message) || /\bwhat\b.{0,60}\bneed\b/i.test(message) && /\b(?:food|wood|iron|gold|resources?|neighbou?rs?)\b/i.test(message) ? 'TRADE'
+    : /\b(?:aid|gift|resources|supplies)\b/i.test(message) ? 'AID' : null;
   return type ? validateIntent({type, targetId:['JOINT_WAR'].includes(type)?target.id:['DEFEND','POSITION','BUILD_DEFENSES'].includes(type)?tile:''}) : null;
 }
 export function grantFollowup(s, actor, ruler, conversation, message, response, { paid = false, requestedIntent = null } = {}) {
@@ -44,7 +44,7 @@ export function followupCredit(s, actor, ruler, conversation = privateConversati
     if (!councilActive(s,council) || ![actor,ruler].every(id => council.participants.includes(id))) return null;
   }
   const i = proposal && validateIntent(proposal);
-  return !proposal || i && i.type === c.type && i.targetId === c.targetId ? c : null;
+  return !proposal || i && (i.type === c.type || c.type === 'TRADE' && ['EXCHANGE','RECURRING'].includes(i.type)) && i.targetId === c.targetId ? c : null;
 }
 export function consumeDiplomaticMessage(s, ruler, actor, proposal = null, conversation = privateConversation(ruler)) {
   if (proposal && !validateIntent(proposal)) return {ok:false,error:'Invalid proposal terms.'};

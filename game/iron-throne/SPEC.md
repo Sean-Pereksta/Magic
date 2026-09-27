@@ -78,3 +78,51 @@ become HTML. Model messages, recent history and state summaries are bounded.
 Free-tier limits are operator configuration. The transactionally reserved global
 budget counts attempts, including failures. Gemini is optional and never gates
 the playable campaign.
+
+
+## Interest-led trade negotiation
+
+`TRADE` is a road-commerce charter, `EXCHANGE` is an immediate swap, and
+`RECURRING` is a supply obligation. Exploring a neighbor's needs is not a request
+for a paid audience and creates no charter, gift, loan or oath. A fair swap does
+not require a separate charter. Real transport fees remain contract costs.
+
+`trade-negotiation.mjs` evaluates commercial interests, cautious commitment and
+specific concerns. Connected roads give a mutual-benefit reason to accept a
+no-payment charter. A short charter, useful resource concession, smaller swap,
+or shorter supply obligation can be a counteroffer; every advertised alternative
+must independently pass `evaluateDeal`. Gold is a concession when it addresses
+an actual need, not the automatic default for an empty offer. Severe grievances
+and observable frontier threats cannot be paid away to secure a lasting charter.
+
+Authorized player speech can record bounded arguments: mutual interest, relevant
+supply, a limited trial, a ledger-verified kept promise/withdrawal, or acknowledgment
+of an existing grievance. Arguments last through their turn and the next two
+turns, contribute at most 10 commercial willingness points, and only apply while
+their factual preconditions remain true. Repeating/paraphrasing an argument or
+cycling previously offered shortage resources cannot refresh it. New speech
+can earn at most 6 opinion and 3 trust over that directional relationship's
+lifetime. Threats revoke active influence without resetting repetition limits.
+Offers and apologies are not shipments or fulfilled obligations. These optional
+save fields are bounded and validated; older saves need no migration.
+
+Resource swaps retain an independent base/scarcity value floor: relationships
+and persuasion may reduce a bargaining premium but can never create arbitrage.
+All transfers still require explicit ratification and fresh resource, route,
+embargo, strategic-trust and human-consent checks.
+
+`trade-economy.mjs` holds the existing read-only route, infrastructure and needs
+functions and is re-exported by `trade.mjs`. This keeps relationship speech from
+introducing an evaluator import cycle. The model receives only voluntary coarse
+imports/exports and concerns, never private quantities or plans. Multiplayer
+publishes the same dated briefing to the relevant human court; projected zero
+inventories must never be treated as real shortages. Single-player, scripted
+fallback and authoritative multiplayer use the same evaluator and response guard.
+Compatible model character voice is retained alongside the exact court ruling;
+model output cannot manufacture relationship gains or execute a deal. There is
+no additional model call. A scoped, single-use invitation to submit commercial
+terms covers a charter, barter or recurring proposal without another envoy fee.
+
+The Worker system prompt changes with this feature. Deploy the updated Worker
+through the existing release process when releasing the updated game client;
+opening/merging a code PR does not itself assert that the live Worker was deployed.
