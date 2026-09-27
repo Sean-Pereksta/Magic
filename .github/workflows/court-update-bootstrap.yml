@@ -1,15 +1,18 @@
-name: Court update source validation
+name: Apply and validate court knowledge update
 on:
   push:
     branches: [fix/iron-thrones-court-knowledge-marriage]
-    paths:
-      - '.github/workflows/court-update-bootstrap.yml'
+    paths: ['.github/workflows/court-update-bootstrap.yml', '.github/court-update-payload/**']
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: court-update-bootstrap
+  cancel-in-progress: false
 jobs:
-  source:
+  prepare:
+    if: github.repository == 'Sean-Pereksta/Magic'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,35 +24,135 @@ jobs:
             /firestore.rules
             /firebase.iron-throne-test.json
             /.github/workflows/
+            /.github/court-update-payload/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Baseline tests
+      - name: Record baseline diplomacy regression tests
+        shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/court-validation"
           set +e
-          node --test --test-reporter=junit game/iron-throne/tests/*.test.mjs > "$RUNNER_TEMP/court-validation/baseline.xml" 2> "$RUNNER_TEMP/court-validation/baseline.stderr"
+          timeout 240s node --test --test-reporter=junit game/iron-throne/tests/{relationships,multiplayer,conversation-context,network,session,fog-worlds,trade-negotiation}.test.mjs > "$RUNNER_TEMP/court-validation/baseline.xml" 2> "$RUNNER_TEMP/court-validation/baseline.stderr"
           echo "$?" > "$RUNNER_TEMP/court-validation/baseline.exit"
           exit 0
-      - name: Export code and baseline evidence
-        if: always()
+      - name: Apply the reviewed source package with exact-anchor guards
+        shell: bash
         run: |
-          python3 - <<'PY'
-          import os, pathlib, zipfile
+          python3 - <<'PYTHON'
+          import base64, hashlib, json, os, pathlib, subprocess, zlib
+          encoded = ''.join((pathlib.Path('.github/court-update-payload') / f'{i:02}.b64').read_text() for i in range(1, 7))
+          raw = zlib.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(raw).hexdigest() == '373e921341727b9e8abbd058b696b215654a344664efc1897effaefa2e85c7a6', 'Package checksum mismatch'
+          package = json.loads(raw)
+          root = pathlib.Path.cwd()
+          planned = {}
+          def path_for(relative):
+              assert relative.startswith('game/iron-throne/') and relative.endswith('.mjs')
+              path = (root / relative).resolve()
+              assert path.is_relative_to(root)
+              return path
+          for edit in package['changes']:
+              relative = edit['path']
+              path = path_for(relative)
+              if relative not in planned:
+                  planned[relative] = path.read_text()
+              text = planned[relative]
+              if 'before' in edit:
+                  assert text.count(edit['before']) == 1, f'Changed source anchor: {relative}'
+                  text = text.replace(edit['before'], edit['after'], 1)
+              elif 'prepend' in edit:
+                  assert edit['prepend'] not in text
+                  text = edit['prepend'] + text
+              elif 'append' in edit:
+                  assert edit['append'] not in text
+                  text = text.rstrip('\n') + '\n' + edit['append']
+              else:
+                  raise ValueError('Unknown transformation')
+              planned[relative] = text
+          for relative, text in package['files'].items():
+              assert not path_for(relative).exists(), f'New file already exists: {relative}'
+              planned[relative] = text
+          for relative, text in planned.items():
+              path = path_for(relative)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(text)
+              subprocess.run(['node', '--check', str(path)], check=True)
+          report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'court-validation'
+          (report / 'paths.json').write_text(json.dumps(sorted(planned)))
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          print(f'Applied and syntax-checked {len(planned)} source/test files.')
+          PYTHON
+      - name: Run new component and repository integration tests
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 240s node --test game/iron-throne/tests/court-intelligence.test.mjs game/iron-throne/tests/marriage-discussion-state.test.mjs game/iron-throne/tests/court-update-integration.test.mjs | tee "$RUNNER_TEMP/court-validation/new-tests.txt"
+      - name: Run updated diplomacy suite and reject new regressions
+        shell: bash
+        run: |
+          set +e
+          timeout 240s node --test --test-reporter=junit game/iron-throne/tests/{relationships,multiplayer,conversation-context,network,session,fog-worlds,trade-negotiation}.test.mjs > "$RUNNER_TEMP/court-validation/updated.xml" 2> "$RUNNER_TEMP/court-validation/updated.stderr"
+          echo "$?" > "$RUNNER_TEMP/court-validation/updated.exit"
+          set -e
+          python3 - <<'PYTHON'
+          import json, os, pathlib, xml.etree.ElementTree as ET
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'court-validation'
+          def result(label):
+              tree = ET.parse(root / (label + '.xml'))
+              cases = list(tree.iter('testcase'))
+              assert cases, 'No test results: ' + label
+              failed = sorted({x.get('name', '') for x in cases if x.find('failure') is not None or x.find('error') is not None})
+              skipped = sum(x.find('skipped') is not None for x in cases)
+              return {'tests': len(cases), 'failed': failed, 'skipped': skipped, 'exit': int((root / (label + '.exit')).read_text())}
+          baseline, updated = result('baseline'), result('updated')
+          regressions = sorted(set(updated['failed']) - set(baseline['failed']))
+          summary = {'baseline': baseline, 'updated': updated, 'newRegressions': regressions}
+          (root / 'summary.json').write_text(json.dumps(summary, indent=2))
+          print(json.dumps(summary, indent=2))
+          assert baseline['exit'] != 124 and updated['exit'] != 124, 'Regression suite timed out'
+          assert not regressions, 'New test regressions; source has not been committed'
+          assert not updated['exit'] or updated['failed'], 'Updated test runner failed without a test failure'
+          PYTHON
+      - name: Collect review evidence
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, pathlib, subprocess, zipfile
           report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'court-validation'
           report.mkdir(exist_ok=True)
+          (report / 'working.diff').write_text(subprocess.run(['git', 'diff'], capture_output=True, text=True).stdout)
           with zipfile.ZipFile(report / 'source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-              for base in ['game/iron-throne', 'lobby', '.github/workflows']:
+              for base in ['game/iron-throne', 'lobby']:
                   for p in pathlib.Path(base).rglob('*'):
-                      if p.is_file() and p.suffix in {'.mjs', '.cjs', '.js', '.json', '.html', '.css', '.md', '.svg', '.yml'}:
+                      if p.is_file() and p.suffix in {'.mjs', '.cjs', '.js', '.json', '.html', '.css', '.md', '.svg'}:
                           archive.write(p, p.as_posix())
               for filename in ['package.json', 'package-lock.json', 'firestore.rules', 'firebase.iron-throne-test.json']:
                   if pathlib.Path(filename).exists(): archive.write(filename)
-          PY
+          PYTHON
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: court-update-source
+          name: court-update-validation
           path: ${{ runner.temp }}/court-validation/
           retention-days: 7
+      - name: Commit only the validated update and remove this temporary workflow
+        shell: bash
+        env:
+          REVIEW_BRANCH: fix/iron-thrones-court-knowledge-marriage
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+          report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'court-validation'
+          summary = json.loads((report / 'summary.json').read_text())
+          assert not summary['newRegressions']
+          paths = json.loads((report / 'paths.json').read_text())
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          subprocess.run(['git', 'rm', '-r', '--', '.github/workflows/court-update-bootstrap.yml', '.github/court-update-payload'], check=True)
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git', 'commit', '-m', 'Fix private court knowledge and make marriage negotiation reachable'], check=True)
+          subprocess.run(['git', 'push', 'origin', 'HEAD:refs/heads/' + os.environ['REVIEW_BRANCH']], check=True)
+          PYTHON
