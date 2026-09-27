@@ -1,3 +1,4 @@
+import { projectRulerKnowledge, validateRulerKnowledge } from './ruler-knowledge.mjs';
 import { projectCouncils } from './council-state.mjs';
 import { marriageSupport } from './marriage.mjs';
 import { economyProjection, populationProjection } from './core.mjs';
@@ -76,6 +77,9 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   if(refresh)refreshKnowledge(s,[viewer]);
   const v=clone({...s,fog:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
   v.knowledgeView=viewer;v.viewHouseId=viewer;delete v.fog;
+  // The controller retains every ruler's memories; clients receive only approved
+  // quote metadata and delivered accounts, never undisclosed facts or motives.
+  v.rulerDisclosures=projectRulerKnowledge(s,viewer);delete v.rulerKnowledge;
   v.allianceCouncils=projectCouncils(s,viewer);
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;
@@ -127,6 +131,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
 }
 const capitalName=id=>({ashen:'Emberkeep',wintermere:'Frostwatch',thornwall:'Briarhold',sunspire:'Solstice',vesper:'Moonveil',redharbor:'Redhaven',stormholt:'Stormwatch',goldmere:'Gildenspire',ravenfell:'Ravenhold',oakwarden:'Oakheart',dawnreach:'Dawnkeep',saltwynd:'Saltwatch'}[id]||'Known capital');
 export function validateFog(s) {
+  if(!validateRulerKnowledge(s))throw new Error('Damaged private correspondence data.');
   initializeFog(s);const fail=()=>{throw new Error('Damaged exploration data.');},f=s.fog;
   const obj=x=>x&&typeof x==='object'&&!Array.isArray(x),turn=n=>Number.isInteger(n)&&n>=0&&n<=s.turn;
   if(f.version!==1||!obj(f.houses)||Object.keys(f.houses).some(id=>!s.kingdoms.some(k=>k.id===id)))fail();

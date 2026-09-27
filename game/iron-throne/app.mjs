@@ -1,3 +1,4 @@
+import { recordRulerSpeech } from './ruler-knowledge.mjs';
 import { dispatchTitle } from './conversation-context.mjs';
 import { installAllianceCouncil, allianceButtons } from './alliance-council-ui.mjs';
 import { councilForActor, beginCouncilMessage, finishCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
@@ -309,7 +310,9 @@ function renderDiplomacy() {
   if ($('diplomacy').open) markRead(state, activeRuler, localHouse);
   $('relations-summary').innerHTML = relationDescriptions(state, activeRuler, localHouse).map(([label, text]) => `<div><b>${escape(label)}</b><span>${escape(text)}</span></div>`).join('');
   const economics = economicRelationship(state, activeRuler, localHouse);
-  $('council-records-body').innerHTML = ledgerPanel(activeRuler) + '<h3>Recent shipments</h3>' + (economics.recent.map(t => `<p class="fine">Turn ${t.turn} · ${escape(kingdom(state, t.from).name)} → ${escape(kingdom(state, t.to).name)} · ${t.amount} ${escape(t.resource)}</p>`).join('') || '<p class="fine">No recent resource shipments.</p>') + ambassadorPanel();
+  const accounts=(state.rulerDisclosures?.receipts||[]).filter(x=>x.seller===activeRuler);
+  const intelligence=accounts.length?'<h3>Disclosed correspondence</h3>'+accounts.map(x=>`<p class="fine">${x.kind==='shared'?'Shared':'Bought'} on turn ${x.turn} · ${x.price} gold</p><p>${escape(x.report)}</p>`).join(''):'';
+  $('council-records-body').innerHTML = intelligence + ledgerPanel(activeRuler) + '<h3>Recent shipments</h3>' + (economics.recent.map(t => `<p class="fine">Turn ${t.turn} · ${escape(kingdom(state, t.from).name)} → ${escape(kingdom(state, t.to).name)} · ${t.amount} ${escape(t.resource)}</p>`).join('') || '<p class="fine">No recent resource shipments.</p>') + ambassadorPanel();
   renderProposals(); updateChatControls();
 }
 function updateChatControls() {
@@ -324,7 +327,7 @@ function updateChatControls() {
 }
 function recordReplyDiagnostic(rulerId, response) {
   // Verification alone never exposes diagnostics; only a failed council reply does.
-  const record = response.source !== 'gemini' && (response.diagnostic || (configurationFailure && client.lastDiagnostic));
+  const record = !['gemini','rules'].includes(response.source) && (response.diagnostic || (configurationFailure && client.lastDiagnostic));
   if (record) replyDiagnostics.set(rulerId, record);
   else replyDiagnostics.delete(rulerId);
 }
@@ -360,22 +363,24 @@ $('copy-diagnostics').onclick = async () => {
   $('diagnostics-copy-status').textContent = copied ? 'Report copied.' : 'Copy unavailable. The report is selected; use your device’s Copy command.';
 };
 function enableMarriageOffer(){
-  if(!$('offer-type').querySelector('option[value="MARRIAGE"]')){const option=document.createElement('option');option.value='MARRIAGE';option.textContent='Discussed marriage settlement';$('offer-type').append(option);}
+  if(!$('offer-type').querySelector('option[value="MARRIAGE"]')){const option=document.createElement('option');option.value='MARRIAGE';option.textContent='Royal marriage settlement';$('offer-type').append(option);}
 }
 function renderProposals() {
-  const family=marriageContext(currentView(),activeRuler,localHouse);
-  if(family.discussion)enableMarriageOffer();
-  else{const option=$('offer-type').querySelector('option[value="MARRIAGE"]');if(option){option.remove();updateOfferFields();}}
+  enableMarriageOffer();
+  if($('offer-type').value==='MARRIAGE')updateMarriageFields();
   if(onlineOptions&&isHumanHouse(state,activeRuler)){
     $('proposals').innerHTML=humanProposals(state,activeRuler,localHouse)+proposals.filter(i=>['WAR','BETRAY'].includes(i.type)).map((i,index)=>`<div class="proposal"><p>${escape(describeIntent(i))}</p><button class="danger" data-human-war="${index}">Declare war with these consequences</button></div>`).join('');return;
   }
   $('proposals').innerHTML = proposals.map((i, index) => {
     const v = disclosedDeal(state,activeRuler,i,localHouse), promise = isPlayerPromise(i);
-    return `<div class="proposal ${v.status}"><h4>${promise ? 'PROPOSED PROMISE' : escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p>${promise ? `<p><strong>Deadline: Turn ${state.turn + i.duration}</strong></p>` : ''}<p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${promise ? 'Give My Word' : ['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Accept & Ratify'}</button>` : v.status === 'counter' ? `<div class="counter-terms"><strong>${escape(kingdom(state, activeRuler).name)} counteroffer</strong><p>${escape(describeIntent(v.counter))}</p><button class="primary" data-ratify-counter="${index}">Accept & Ratify</button><button data-counter="${index}">Review counteroffer</button></div>` : ''}<div class="button-row"><button data-modify="${index}">${promise ? 'Clarify' : 'Modify Offer'}</button><button data-reply="${index}">${promise ? 'I Make No Such Promise' : 'Reply'}</button></div></div>`;
+    return `<div class="proposal ${v.status}"><h4>${promise ? 'PROPOSED PROMISE' : escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p>${promise ? `<p><strong>Deadline: Turn ${state.turn + i.duration}</strong></p>` : ''}<p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${promise ? 'Give My Word' : ['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Accept & Ratify'}</button>` : v.status === 'counter' ? `<div class="counter-terms"><strong>${escape(kingdom(state, activeRuler).name)} counteroffer</strong><p>${escape(describeIntent(v.counter))}</p><button class="primary" data-ratify-counter="${index}">Accept & Ratify</button><button data-counter="${index}">Review counteroffer</button></div>` : ''}<div class="button-row"><button data-modify="${index}">${i.type==='INTELLIGENCE'?'Review quotation':promise ? 'Clarify' : 'Modify Offer'}</button><button data-reply="${index}">${promise ? 'I Make No Such Promise' : 'Reply'}</button></div></div>`;
   }).join('');
 }
 function storeOffers() { state.diplomacy.offers ||= {}; state.diplomacy.offers[activeRuler] = proposals.slice(0, 4); }
 function loadOffer(i) {
+  if(i.type==='INTELLIGENCE'){
+    $('offer-form').hidden=true;$('proposals').scrollIntoView({block:'nearest'});return;
+  }
   if(i.type==='MARRIAGE')enableMarriageOffer();
   setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
   $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
@@ -398,7 +403,7 @@ $('proposals').addEventListener('click', e => {
   if (b.dataset.reply !== undefined) {
     const i = proposals[Number(b.dataset.reply)];
     if (isPlayerPromise(i)) { sendDiplomatic('I make no such promise. Let us clarify what you need.'); }
-    else { $('chat-message').value = 'Let us discuss those terms. '; $('chat-message').focus(); }
+    else { if(i.type==='INTELLIGENCE')document.querySelector('.treaty-drawer-close')?.click();$('chat-message').value = 'Let us discuss those terms. '; $('chat-message').focus(); }
   }
   if (b.dataset.ratify !== undefined || b.dataset.ratifyCounter !== undefined) {
     const index = Number(b.dataset.ratify ?? b.dataset.ratifyCounter);
@@ -410,13 +415,28 @@ $('proposals').addEventListener('click', e => {
   }
 });
 function appendMessage(rulerId, role, text) { return appendConversation(state,rulerId,role,text,{actorHouseId:localHouse}); }
-$('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>id!=='MARRIAGE').map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+$('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>!['MARRIAGE','INTELLIGENCE'].includes(id)).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+enableMarriageOffer();
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
+function updateMarriageFields(){
+  const family=marriageContext(currentView(),activeRuler,localHouse);
+  for(const [field,side] of [['actorMember','speaker'],['rulerMember','ruler']]){
+    const el=$(`marriage-${field}`);
+    for(const option of el.options)option.disabled=!family.available[side].includes(option.value);
+  }
+  const human=onlineOptions&&isHumanHouse(state,activeRuler),n=family.discussion;
+  $('marriage-readiness').textContent=family.marriage?`Royal marriage already recorded: ${family.marriage.status}.`
+    :human?'The receiving player must accept the exact named match. Reviewing or discussing terms does not marry anyone or transfer resources.'
+    :n&&state.turn<=n.started?`Court deliberating: review from turn ${n.started+1}. No marriage or payment has occurred.`
+    :'Choose available adults and review the settlement. AI courts weigh proven deeds, trust and shared purpose; a new match needs a later-turn review. Ratification alone completes the marriage.';
+}
 function updateOfferFields() {
+  $('offer-form').hidden=false;
   const state=currentView();
   const type = $('offer-type').value;
   $('marriage-fields').hidden=type!=='MARRIAGE';
+  if(type==='MARRIAGE')updateMarriageFields();
   $('duration').min=type==='MARRIAGE'?'10':'1';
   if(type==='MARRIAGE'&&Number($('duration').value)<10)$('duration').value=12;
   $('trade-kind-label').hidden=!['EXCHANGE','RECURRING'].includes(type);
@@ -474,8 +494,10 @@ async function sendDiplomatic(message, proposal = null) {
   const conversation=proposalConversation||privateConversation(activeRuler);
   const spent = consumeDiplomaticMessage(state,activeRuler,localHouse,proposal,conversation); if (!spent.ok) { toast(spent.error); return; }
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
-  if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
-  else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse);
+  if (!proposal){
+    applySpeech(campaign,rulerId,message,localHouse);
+    recordRulerSpeech(campaign,rulerId,message,localHouse);
+  }else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse,proposal);
   sending = true;
   const pending = client.send(campaign, rulerId, message, challengeToken, $('use-gemini').checked, { proposal, actorHouseId:localHouse });
   appendMessage(rulerId, 'player', message); $('chat-message').value = ''; save(); renderDiplomacy(); renderDispatches();

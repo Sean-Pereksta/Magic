@@ -44,3 +44,34 @@ Old schema-3 campaigns gain empty personal history and no fabricated marriages w
 - `node game/iron-throne/tests/relationships-browser.mjs` (Playwright; functional checks without screenshots or previews)
 
 The new scenarios cover word farming, real promises, rescue/debt, betrayal prerequisites, personality, deliberation, settlement variability, family availability, atomic payment and replay protection, scheduled/defaulted shipments, conflicting defense duties, context privacy, migration/corrupt saves, battle projections, and multiplayer consent.
+
+
+## Direct marriage access and authoritative replies
+
+**Royal marriage settlement** is always available in the Treaty Desk. Selecting
+it is the player's initiative, not an unsolicited AI suggestion. The form lists
+the available adult ruler, adult daughter, and adult son roles, explains the next
+step, and records the exact two adults when terms are submitted. A different match
+requires fresh consideration. No marriage, payment, or obligation exists until
+ratification succeeds.
+
+An AI court considers a proposed match until a later turn. A marriage may qualify
+through the existing long personal relationship, or through an earned strategic
+relationship: at least four turns of history, deeds on two distinct turns, trust
+of at least 40, reliability of at least 60, respect of at least 25, and an actual
+alliance or shared enemy. The remaining personality/relationship score and
+unhealed grievances still matter. Mere compliments and gold cannot replace these
+deeds. The personal route retains its longer history and four-deed requirement.
+
+When a human recipient explicitly accepts exact lawful terms, AI courtship and
+waiting gates do not overrule that player's choice. Adult availability, peace,
+funds, immutable offers, and recipient authorization still apply. A human proposer
+cannot accept on the recipient's behalf.
+
+Marriage dialogue now uses the engine's real decision and legal counteroffer.
+A model cannot announce a wedding, invent different terms, or veto an otherwise
+accepted match with contradictory prose. Existing effects remain real: settlement
+transfer, recorded adult partners, mutual peace, optional trade and shipments,
+defensive obligations, relationship support, and consequences for breaches. The
+bond persists after its initial peace term; it is not automatic allegiance,
+automatic conquest, or a simulated dynasty.

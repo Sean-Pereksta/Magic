@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {CAMPAIGN_HOUSES} from '../data.mjs';
 import {ALL_ART_PATHS,ART,ironThronesAsset,preloadAllArt,AssetCache,loadArt,displayArtURL} from '../asset-manifest.mjs';
 test('complete manifest matches supplied PNGs and game catalogs',async()=>{
   assert.equal(new Set(ALL_ART_PATHS).size,ALL_ART_PATHS.length);
-  assert.equal(ALL_ART_PATHS.length,171);
+  assert.equal(ALL_ART_PATHS.filter(path=>!path.startsWith('portraits/')).length,171);
+  assert.equal(ALL_ART_PATHS.filter(path=>path.startsWith('portraits/')).length,CAMPAIGN_HOUSES.length);
   assert.equal(ironThronesAsset('/buildings/lumber_1.png'),ART.structures.lumber[1]);
   assert.equal(ART.terrain.mountain.length,6);
   assert.ok(!ALL_ART_PATHS.some(path=>/^(terrain\/coast_|overlays\/river_)/.test(path)), 'replaced scenic art is not preloaded');
 });
 test('preload probes lumber first, bounds concurrency, decodes and reuses every image',async()=>{
+  const startup=ALL_ART_PATHS.filter(path=>!path.startsWith('portraits/'));
   const requests=[];let active=0,peak=0;
   globalThis.Image=class {
     naturalWidth=200;naturalHeight=100;
@@ -17,12 +20,13 @@ test('preload probes lumber first, bounds concurrency, decodes and reuses every 
     async decode(){}
   };
   const progress=[];const result=await preloadAllArt(p=>progress.push(p));
-  assert.equal(result.failed,0);assert.equal(result.completed,ALL_ART_PATHS.length);
+  assert.equal(result.failed,0);assert.equal(result.completed,startup.length);
+  assert.ok(requests.every(url=>!url.includes('/portraits/')), 'portraits remain lazy-loaded by correspondence');
   assert.equal(requests[0],ART.structures.lumber[1]);assert.ok(peak<=6);
   const draw=[];const cache=new AssetCache();cache.draw({drawImage:(...args)=>draw.push(args)},ART.structures.lumber[1],0,0,40,40);
   assert.deepEqual(draw[0].slice(1),[0,10,40,20]);
-  await preloadAllArt();assert.equal(requests.length,ALL_ART_PATHS.length);
-  assert.equal(progress.at(-1).completed,ALL_ART_PATHS.length);
+  await preloadAllArt();assert.equal(requests.length,startup.length);
+  assert.equal(progress.at(-1).completed,startup.length);
 });
 test('missing, stalled, and undecodable images settle safely',async()=>{
   globalThis.Image=class {set src(url){if(url.includes('missing'))queueMicrotask(()=>this.onerror?.());if(url.includes('decode'))queueMicrotask(()=>this.onload?.());} async decode(){throw Error('corrupt');}};

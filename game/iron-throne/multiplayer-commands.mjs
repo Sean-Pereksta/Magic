@@ -1,3 +1,4 @@
+import { recordRulerSpeech } from './ruler-knowledge.mjs';
 import { councilForActor, sendCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
 import { consumeDiplomaticMessage, expireFollowups, grantFollowup, privateConversation } from './proposal-followup.mjs';
 import { relationshipResponse } from './diplomacy.mjs';
@@ -110,6 +111,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       const spent=consumeDiplomaticMessage(s,target,a,p.proposal||null,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
       if(!p.proposal)expireFollowups(s,a,privateConversation(target));
       appendConversation(s,target,'player',p.message,{actorHouseId:a,kind:p.proposal?'proposal':''});
+      if(!p.proposal)recordRulerSpeech(s,target,p.message,a);
       if(isHumanHouse(s,target)){
         discussMarriage(s,target,p.message,a);
         appendConversation(s,a,'ruler',p.message,{actorHouseId:target,unread:true,kind:'human'});
@@ -117,14 +119,14 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
         if(prior&&!prior.kind&&!prior.followupGranted&&grantFollowup(s,target,a,privateConversation(a),prior.text,{reply:p.message},{paid:true}))prior.followupGranted=true;
       }else{
         if(!p.proposal)applySpeech(s,target,p.message,a);
-        else if(p.proposal.type==='MARRIAGE')continueMarriageReview(s,target,a);
+        else if(p.proposal.type==='MARRIAGE')continueMarriageReview(s,target,a,p.proposal);
         // A model reply is untrusted dialogue/proposals. Rule checks run only on ratification.
         const model=p.response&&validateResponse(p.response);
         const options={actorHouseId:a,proposal:p.proposal||null};
         const response=relationshipResponse(s,target,p.message,model||scriptedReply(s,target,p.message,options),options);
         appendConversation(s,target,'ruler',response.reply,{actorHouseId:a,unread:true});
         grantFollowup(s,a,target,p.conversationId||privateConversation(target),p.message,response,{paid:!p.proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
-        if(model)acceptRulerMemories(s,target,model,a);
+        if(model)acceptRulerMemories(s,target,response,a);
         const candidates=[p.proposal,...response.intents,response.proposal,response.counterProposal,response.promiseDetected].filter(Boolean);
         court(s,a).offers[target]=[...new Map(candidates.map(i=>[JSON.stringify(i),i])).values()].slice(0,4);
       }
@@ -136,7 +138,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       s.humanProposals||=[];
       if(s.humanProposals.filter(o=>o.status==='pending'&&o.from===a).length>=10)return fail('Resolve outstanding proposals before sending more.');
       const spent=consumeDiplomaticMessage(s,target,a,intent,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
-      if(intent.type==='MARRIAGE')continueMarriageReview(s,target,a);
+      if(intent.type==='MARRIAGE')continueMarriageReview(s,target,a,intent);
       s.humanProposals.push({id:c.id,from:a,to:target,intent,turn:s.turn,expires:s.turn+3,status:'pending',conversationId:typeof p.conversationId==='string'?p.conversationId:null});
       for(const [actor,other] of [[a,target],[target,a]])appendConversation(s,other,'council',`Proposal from ${kingdom(s,a).name}: ${describeIntent(intent)}. Awaiting ${kingdom(s,target).name}.`,{actorHouseId:actor,unread:actor===target,kind:'human-proposal'});
       result=ok();break;

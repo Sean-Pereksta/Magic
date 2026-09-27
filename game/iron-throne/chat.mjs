@@ -1,3 +1,4 @@
+import { disclosureReply } from './ruler-knowledge.mjs';
 import { makeCouncilContext, scriptedCouncil, validateCouncilResponse } from './alliance-council.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { relationshipResponse } from './diplomacy.mjs';
@@ -82,6 +83,10 @@ export class DiplomacyClient {
   async send(state, rulerId, message, token = '', useGemini = true, options = {}) {
     const council = options.councilId && state.allianceCouncils?.find(c=>c.id===options.councilId);
     const aiIds = council?.participants.filter(id=>id!==options.actorHouseId&&isAiHouse(state,id));
+    if(!council&&!options.event){
+      const account=disclosureReply(state,rulerId,message,options.actorHouseId||'ashen',options.proposal);
+      if(account)return {...account,source:'rules',diagnostic:null,notice:'Private court review · information purchases require exact ratification.'};
+    }
     const fallback = (detail = '', includeDiagnostic = true) => {
       const diagnostic = includeDiagnostic ? this.lastDiagnostic : null;
       return { ...(council ? scriptedCouncil(state,council,options.actorHouseId,message) : scriptedReply(state, rulerId, message, options)), source: 'scripted', diagnostic,

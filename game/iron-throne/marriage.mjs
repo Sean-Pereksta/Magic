@@ -26,9 +26,9 @@ export function normalizeMarriageTerms(v) {
   return i;
 }
 export function isMarriageTopic(message) {
-  return /\b(?:marry|marriage|betroth\w*|wedding|dowry)\b|(?:join|unit[ei]|bind)\w* (?:our |the |both )?famil|hand of your (?:daughter|son)|our houses.*(?:bond permanent|permanent bond)/i.test(message);
+  return /\b(?:marry|married|marriage|wed|betroth\w*|wedding|dowry)\b|(?:join|unit[ei]|bind)\w* (?:our |the |both )?famil|hand of your (?:daughter|son)|our houses.*(?:bond permanent|permanent bond)/i.test(message);
 }
-const declinesMarriage=text=>/\b(?:not interested in|no interest in|don't want|do not want)\b.*\b(?:marriage|marry|joining)\b|\b(?:never|not|don't|do not|won't) (?:wish to |want to )?(?:marry|discuss marriage)|(?:withdraw|cancel|decline|reject) (?:the |our |my )?(?:marriage|match|proposal)/i.test(text);
+const declinesMarriage=text=>/\b(?:not interested in|no interest in|don't want|do not want)\b.*\b(?:marriage|marry|married|wed|joining)\b|\b(?:never|not|don't|do not|won't) (?:wish to |want to )?(?:marry|wed|(?:get|be) married|discuss marriage)|(?:withdraw|cancel|decline|reject) (?:the |our |my )?(?:marriage|match|proposal)/i.test(text.replace(/[’‘]/g,"'"));
 function marriageDiscussion(s,host,message,actor,proposal=null){
   const n=negotiation(s,actor,host);
   return isMarriageTopic(message)||!!(n&&declinesMarriage(message))||proposal?.type==='MARRIAGE'||!!(n&&s.turn-n.lastDiscussed<=3&&/\b(?:settlement|terms|offer|gold|food|iron|horses|shipments|defense|trade|consider|accept|agree)\b/i.test(message));
@@ -39,8 +39,9 @@ export function discussMarriage(s,host,message,actor=PLAYER) {
   if(declinesMarriage(message)){if(s.royalBonds)delete s.royalBonds.negotiations[keyFor(actor,host)];return null;}
   initializeMarriage(s);
   const key=keyFor(actor,host),old=negotiation(s,actor,host);
-  const actorRole=message.match(/\bmy (daughter|son)\b/i)?.[1]?.toLowerCase();
-  const hostRole=message.match(/\byour (daughter|son)\b/i)?.[1]?.toLowerCase()||(/\bmarry (?:you|me)\b/i.test(message)?'ruler':null);
+  const actorRole=message.match(/\bmy (?:adult )?(daughter|son)\b/i)?.[1]?.toLowerCase();
+  const rulerMatch=/\b(?:marry|wed) (?:you|me)\b|\b(?:we|us)\b.{0,24}\b(?:marry|wed|get married)\b|\bmarriage between (?:you and me|us)\b/i.test(message);
+  const hostRole=message.match(/\byour (?:adult )?(daughter|son)\b/i)?.[1]?.toLowerCase()||(rulerMatch?'ruler':null);
   const n=old&&s.turn-old.lastDiscussed<=12?old:{proposer:actor,host,started:s.turn,lastDiscussed:s.turn,rounds:0,
     actorMember:actorRole||'ruler',rulerMember:hostRole||'daughter'};
   if(actorRole)n.actorMember=actorRole;if(hostRole)n.rulerMember=hostRole;
@@ -49,8 +50,17 @@ export function discussMarriage(s,host,message,actor=PLAYER) {
   s.royalBonds.negotiations[key]=n;
   return n;
 }
-export function continueMarriageReview(s,host,actor=PLAYER){
-  if(negotiation(s,actor,host))discussMarriage(s,host,'Let us discuss marriage.',actor);
+export function continueMarriageReview(s,host,actor=PLAYER,proposal=null){
+  // Selecting marriage in the Treaty Desk is an explicit player initiation,
+  // not an unsolicited AI suggestion. Changing the adults starts a new review.
+  const terms=proposal?.type==='MARRIAGE'?normalizeMarriageTerms(proposal):null;
+  if(proposal&&!terms)return null;
+  const n=discussMarriage(s,host,'Let us discuss marriage.',actor);
+  if(n&&terms&&(n.actorMember!==terms.actorMember||n.rulerMember!==terms.rulerMember)){
+    n.actorMember=terms.actorMember;n.rulerMember=terms.rulerMember;
+    n.started=s.turn;n.lastDiscussed=s.turn;n.rounds=1;
+  }
+  return n;
 }
 function eligibility(s,host,actor,{consentingHuman=false}={}) {
   const r=relation(s,host,actor),p=r.personal,k=kingdom(s,host);
@@ -58,11 +68,14 @@ function eligibility(s,host,actor,{consentingHuman=false}={}) {
   if(marriageBetween(s,actor,host))return 'Our Houses already have a recorded marriage. Its history cannot be erased by another proposal.';
   if(!consentingHuman){
     if(r.grievance>=35||r.trust<25||p?.feelings.betrayedFriendship>=25)return 'There are wounds between our Houses that a marriage settlement cannot buy away.';
-    if(!p||s.turn-p.started<8||p.deedTurns.length<4||r.reliability<60||r.respect<25)return 'This is premature. I need a longer record of dependable deeds before placing my family in your trust.';
+    const sharedPurpose=!!treaty(s,actor,host,'alliance')||s.kingdoms.some(h=>atWar(s,host,h.id)&&atWar(s,actor,h.id));
+    const established=p&&s.turn-p.started>=8&&p.deedTurns.length>=4;
+    const politicalMatch=p&&s.turn-p.started>=4&&p.deedTurns.length>=2&&r.trust>=40&&sharedPurpose;
+    if((!established&&!politicalMatch)||r.reliability<60||r.respect<25)return 'This is premature. Honor obligations on different turns and build dependable trust. An established personal relationship, or a proven partnership with an alliance or shared enemy, can make a marriage possible.';
     const personal=p.feelings.affection*.35+p.feelings.admiration*.2+p.feelings.attachment*.2;
     const usefulness=(treaty(s,actor,host,'alliance')?15:0)+s.kingdoms.filter(h=>atWar(s,host,h.id)&&atWar(s,actor,h.id)).length*8;
     const score=r.trust*.45+r.reliability*.15+r.respect*.15+personal+usefulness+personalWillingness(s,host,actor)-k.paranoia*12-r.grievance*.6;
-    if(score<52)return 'I can see the political possibility, but trust, personal regard, and mutual purpose must grow further.';
+    if(score<(politicalMatch?45:52))return 'I can see the political possibility, but trust, personal regard, and mutual purpose must grow further.';
     if(s.pledges.some(p=>p.debtor===actor&&p.creditor===host&&p.status==='pending'&&p.breached))return 'First answer for the promise you have already broken.';
   }
   return null;
@@ -80,10 +93,14 @@ function requiredSettlement(s,host,actor) {
 export function evaluateMarriage(s,host,i,actor=PLAYER,options={}) {
   const reject=reason=>({status:'reject',reason,intent:i,factors:[]});
   const n=negotiation(s,actor,host);
-  if(!n||s.turn-n.lastDiscussed>12)return reject('Raise the possibility of joining your families in conversation first.');
-  if(n.rounds<2||s.turn<=n.started)return reject('I will consider this privately. Return to the subject on a later turn; my family is not a passing bargain.');
+  // Explicit consent from the receiving human replaces AI courtship gates,
+  // never adult availability, peace, exact terms, affordability or ratification.
+  if(!options.consentingHuman){
+    if(!n||s.turn-n.lastDiscussed>12)return reject('Raise marriage in conversation or submit a named match through the Treaty Desk first.');
+    if(s.turn<=n.started)return reject(`I will consider this privately. Review these terms on a later turn, from turn ${n.started+1}; my family is not a passing bargain.`);
+  }
   if(!availableFamily(s,actor).includes(i.actorMember)||!availableFamily(s,host).includes(i.rulerMember))return reject('One of the named adults is already bound by a royal marriage.');
-  if(i.actorMember!==n.actorMember||i.rulerMember!==n.rulerMember)return reject('Discuss the named family members with this court before changing the proposed match.');
+  if(!options.consentingHuman&&(i.actorMember!==n.actorMember||i.rulerMember!==n.rulerMember))return reject('Discuss the named family members with this court before changing the proposed match.');
   const why=eligibility(s,host,actor,options);if(why)return reject(why);
   if(i.targetId||i.receiveAmount||i.duration<10||!['gold','food','iron','horses'].includes(i.giveResource)||i.shipmentTurns>i.duration)return reject('A marriage requires 10–20 turns of mutual peace, a clear settlement, and shipments within that period.');
   if(!canAfford(kingdom(s,actor),{[i.giveResource]:i.giveAmount}))return reject('Your treasury cannot cover the marriage settlement.');
@@ -119,7 +136,7 @@ export function marriageReply(s,host,message,actor=PLAYER,proposal=null) {
   }
   // Read-only preview for the online client; only the authoritative chat command records discussion.
   const preview=structuredClone(s);delete preview.knowledgeView;
-  if(proposal?.type==='MARRIAGE')continueMarriageReview(preview,host,actor);
+  if(proposal?.type==='MARRIAGE')continueMarriageReview(preview,host,actor,proposal);
   else discussMarriage(preview,host,message,actor);
   const i=proposal||marriageProposal(preview,host,message,actor);
   if(!i)return {reply:'If you wish to discuss a marriage, tell me which members of our families you have in mind.',tone:'guarded',intents:[]};

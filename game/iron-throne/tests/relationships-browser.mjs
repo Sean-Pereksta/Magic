@@ -37,14 +37,14 @@ try{
     const open=async()=>{await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();};
     const send=async text=>{await page.locator('#chat-message').fill(text);await page.locator('#send-chat').click();await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');};
     const saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
-    await open();assert.equal(await page.locator('#offer-type option[value="MARRIAGE"]').count(),0);
+    await open();assert.equal(await page.locator('#offer-type option[value="MARRIAGE"]').count(),1);
     await send('Would you consider joining our families? I seek the hand of your daughter.');
     assert.match(await page.locator('#messages').textContent(),/later turn/);assert.equal((await saved()).royalBonds.marriages.length,0);
     assert.equal(await page.locator('#offer-type option[value="MARRIAGE"]').count(),1);
     await page.locator('[data-close="diplomacy"]').click();await page.locator('#end-turn').click();
     await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 11');
     await open();await send('Let us discuss the marriage settlement.');
-    await page.locator('#proposals [data-modify]').first().click();
+    await page.locator('.correspondence-cards').getByRole('button',{name:'Review Terms',exact:true}).first().click();
     assert.equal(await page.locator('#marriage-fields').isVisible(),true);
     assert.equal(await page.locator('#marriage-rulerMember').inputValue(),'daughter');
     await page.locator('#marriage-shipmentResource').selectOption('iron');
