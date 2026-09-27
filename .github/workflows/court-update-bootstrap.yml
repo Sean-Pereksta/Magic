@@ -1,0 +1,55 @@
+name: Court update source validation
+on:
+  push:
+    branches: [fix/iron-thrones-court-knowledge-marriage]
+    paths:
+      - '.github/workflows/court-update-bootstrap.yml'
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /game/iron-throne/
+            /lobby/
+            /package.json
+            /package-lock.json
+            /firestore.rules
+            /firebase.iron-throne-test.json
+            /.github/workflows/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Baseline tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/court-validation"
+          set +e
+          node --test --test-reporter=junit game/iron-throne/tests/*.test.mjs > "$RUNNER_TEMP/court-validation/baseline.xml" 2> "$RUNNER_TEMP/court-validation/baseline.stderr"
+          echo "$?" > "$RUNNER_TEMP/court-validation/baseline.exit"
+          exit 0
+      - name: Export code and baseline evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile
+          report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'court-validation'
+          report.mkdir(exist_ok=True)
+          with zipfile.ZipFile(report / 'source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for base in ['game/iron-throne', 'lobby', '.github/workflows']:
+                  for p in pathlib.Path(base).rglob('*'):
+                      if p.is_file() and p.suffix in {'.mjs', '.cjs', '.js', '.json', '.html', '.css', '.md', '.svg', '.yml'}:
+                          archive.write(p, p.as_posix())
+              for filename in ['package.json', 'package-lock.json', 'firestore.rules', 'firebase.iron-throne-test.json']:
+                  if pathlib.Path(filename).exists(): archive.write(filename)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: court-update-source
+          path: ${{ runner.temp }}/court-validation/
+          retention-days: 7
