@@ -1,0 +1,36 @@
+name: Iron Thrones negotiation workspace
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/iron-throne-negotiation-workspace.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    if: github.head_ref == 'codex/iron-thrones-trade-persuasion'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/iron-throne/
+            /lobby/
+            /package.json
+            /firestore.rules
+            /firebase.iron-throne-test.json
+      - name: Package source-only validation workspace
+        shell: bash
+        run: |
+          git ls-files -- game/iron-throne lobby package.json firestore.rules firebase.iron-throne-test.json | grep -E '\.(mjs|cjs|js|json|md|css|html|rules|yml)$' > /tmp/negotiation-files.txt
+          tar -czf iron-throne-negotiation-source.tar.gz -T /tmp/negotiation-files.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iron-throne-negotiation-source
+          path: iron-throne-negotiation-source.tar.gz
+          retention-days: 1
