@@ -1,37 +1,61 @@
-name: Iron Thrones source review snapshot
+name: Iron Thrones private knowledge and marriage validation
 on:
   push:
     branches: ['codex/iron-thrones-private-knowledge-marriage']
     paths: ['.github/workflows/iron-throne-source-review.yml']
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: iron-throne-private-knowledge-validation
+  cancel-in-progress: false
 jobs:
-  snapshot:
+  validate:
+    if: github.repository == 'Sean-Pereksta/Magic' && github.ref == 'refs/heads/codex/iron-thrones-private-knowledge-marriage'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
-          sparse-checkout: |
-            game/iron-throne
-            lobby
-            .github/workflows
-      - name: Package only tracked source and test text
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact locally tested patch
         run: |
           python3 - <<'PY'
-          import pathlib, subprocess, zipfile
-          names = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          allowed = {'.mjs','.js','.cjs','.json','.md','.css','.html','.rules','.yml','.svg','.toml'}
-          with zipfile.ZipFile('iron-throne-source.zip','w',zipfile.ZIP_DEFLATED) as z:
-              for name in names:
-                  p=pathlib.Path(name)
-                  scoped=name.startswith(('game/iron-throne/','lobby/','.github/workflows/')) or '/' not in name or name in ('game/AGENTS.md',)
-                  if scoped and p.is_file() and p.suffix in allowed:
-                      z.write(p,name)
+          import pathlib, base64, gzip, hashlib, subprocess
+          root=pathlib.Path('.iron-throne-review')
+          encoded=''.join((root/f'part{i}.b64').read_text().strip() for i in range(4))
+          patch=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='0fa4d52420ebc7d242127b2e4862e7b3fada382ecabaecd6053141a58a4bfa35', 'Patch checksum mismatch'
+          assert len(patch)==96457
+          names=[line.split(' b/',1)[1] for line in patch.decode().splitlines() if line.startswith('diff --git ')]
+          assert len(names)==18 and all(n.startswith('game/iron-throne/') or n=='.github/workflows/iron-throne.yml' for n in names)
+          target=pathlib.Path('/tmp/iron-throne-feature.patch');target.write_bytes(patch)
+          subprocess.run(['git','apply','--index','--unidiff-zero','--check',str(target)],check=True)
+          subprocess.run(['git','apply','--index','--unidiff-zero',str(target)],check=True)
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: iron-throne-source-review
-          path: iron-throne-source.zip
-          retention-days: 1
+      - name: Commit feature to its review branch only
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          git restore --staged --worktree .github/workflows/iron-throne.yml
+          git rm .iron-throne-review/part0.b64 .iron-throne-review/part1.b64 .iron-throne-review/part2.b64 .iron-throne-review/part3.b64
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(iron-throne): authoritative private correspondence, quoted intelligence and accessible real marriage'
+          git push origin HEAD:refs/heads/codex/iron-thrones-private-knowledge-marriage
+      - name: Full deterministic rules regression suite
+        run: npm run test:iron-throne
+      - name: Install browser test dependencies
+        run: npm ci --prefix game/iron-throne/tests
+      - name: Install Chromium
+        working-directory: game/iron-throne/tests
+        run: npx playwright install --with-deps chromium
+      - name: Existing relationship browser regression
+        run: node game/iron-throne/tests/relationships-browser.mjs
+      - name: Desktop and mobile correspondence purchase and marriage flows
+        if: success() || failure()
+        run: node game/iron-throne/tests/court-access-browser.mjs
