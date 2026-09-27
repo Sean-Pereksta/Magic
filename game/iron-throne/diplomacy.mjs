@@ -16,6 +16,7 @@ import { CAMPAIGN_HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './dat
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
+import { COMMERCIAL_TYPES, evaluateCommercial, tradeBriefing, isTradeDiscussion, parseCommercialOffer, explorationReply } from './trade-negotiation.mjs';
 
 export const LABELS = { MARRIAGE: 'Royal marriage settlement', ALLIANCE: 'Alliance', PEACE: 'Peace treaty', TRADE: 'Trade agreement', EXCHANGE: 'Resource exchange', AID: 'Gift / military aid', JOINT_WAR: 'Joint war', DEFEND: 'Defend a settlement', POSITION: 'Position an army', WITHDRAW: 'Withdraw troops', BUILD_DEFENSES: 'Build a fort', TERRITORY: 'Request a province', TRIBUTE: 'Demand tribute', VASSALAGE: 'Request allegiance', PROMISE: 'Promise a later payment', WAR: 'Declare war', BETRAY: 'Break treaties and declare war', RECURRING: 'Recurring resource trade', LOAN: 'Loan with repayment', NON_AGGRESSION: 'Non-aggression pact', ACCESS: 'Open borders / military access', EMBARGO: 'Embargo a third House', GUARANTEE: 'Guarantee independence', PLEDGE_WAR: 'Promise to enter a war', PLEDGE_ATTACK: 'Promise an attack', PLEDGE_DEFEND: 'Promise to defend a location', PLEDGE_WITHDRAW: 'Promise border withdrawal', PLEDGE_BUILD: 'Promise to build a fort', PLEDGE_PEACE: 'Promise not to attack' };
 const VALUES = RESOURCE_VALUES;
@@ -83,16 +84,16 @@ export function dealFactors(s, rulerId, i, actorHouseId = PLAYER) {
   if (k.greed > .8) factors.push('Profitable, immediate payment carries great weight at this court.');
   return factors.slice(0, 6);
 }
-export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentingHuman = false } = {}) {
+export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentingHuman = false, allowCounter = true } = {}) {
   const intent = validateIntent(raw), k = kingdom(s, rulerId), player = kingdom(s, actorHouseId);
-  const factors = intent && k && rulerId !== actorHouseId ? dealFactors(s, rulerId, intent, actorHouseId) : [];
+  const factors = intent && k && rulerId !== actorHouseId && !COMMERCIAL_TYPES.has(intent.type) ? dealFactors(s, rulerId, intent, actorHouseId) : [];
   const reject = reason => ({ status: 'reject', reason, intent, factors });
   if (s.outcome) return reject('The campaign is over.');
   if (!intent || !k || rulerId === actorHouseId || !alive(s, rulerId)) return reject('The proposed terms are invalid.');
   if(intent.type==='MARRIAGE')return evaluateMarriage(s,rulerId,intent,actorHouseId,{consentingHuman});
   const wartime=atWar(s,actorHouseId,rulerId), war=wartime?warDesperation(s,rulerId,actorHouseId):null;
   const surrender=wartime&&intent.type==='VASSALAGE'?capitulationCheck(s,rulerId,actorHouseId,intent):null;
-  const i = intent, r = relation(s, rulerId, actorHouseId), value = i.giveAmount * VALUES[i.giveResource] - i.receiveAmount * VALUES[i.receiveResource];
+  const i = intent, r = relation(s, rulerId, actorHouseId);
   if (!isPlayerPromise(i) && !canAfford(player, { [i.giveResource]: i.giveAmount })) return reject('Your treasury cannot cover this offer.');
   if (i.type !== 'LOAN' && !canAfford(k, { [i.receiveResource]: i.receiveAmount })) return reject('That house does not possess the requested resources.');
   if (!['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(i.type) && i.receiveAmount !== 0) return reject('Use an exchange, recurring trade, loan or tribute to specify received resources.');
@@ -122,7 +123,18 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   if (['EXCHANGE', 'RECURRING'].includes(i.type) && (!i.giveAmount || !i.receiveAmount || i.giveResource === i.receiveResource)) return reject('Offer two different resources, each with a positive amount.');
   if(i.type==='EXCHANGE'&&!tradeRoute(s,actorHouseId,rulerId).safe)return reject('No safe trade route is available.');
   if(i.type==='RECURRING'&&s.treaties.some(t=>t.type==='recurring'&&t.expires>s.turn&&t.parties.includes(actorHouseId)&&t.parties.includes(rulerId)&&t.intent.giveResource===i.giveResource&&t.intent.receiveResource===i.receiveResource&&t.intent.giveAmount===i.giveAmount&&t.intent.receiveAmount===i.receiveAmount))return reject('An identical supply agreement is already active.');
-  if(i.type==='RECURRING'){const why=contractCheck(s,actorHouseId,rulerId,i);if(why)return reject(why);}
+  if(i.type==='RECURRING'){
+    const why=contractCheck(s,actorHouseId,rulerId,i);
+    if(why){
+      if(allowCounter&&!consentingHuman&&!['strategic','preferential'].includes(i.tradeKind)){
+        const scale=Math.min(1,12/Math.max(i.giveAmount,i.receiveAmount));
+        const trial={...i,type:'EXCHANGE',tradeKind:'immediate',duration:2,giveAmount:Math.ceil(i.giveAmount*scale),receiveAmount:Math.max(1,Math.floor(i.receiveAmount*scale))};
+        const v=evaluateDeal(s,rulerId,trial,actorHouseId,{allowCounter:false});
+        if(v.status==='accept')return {status:'counter',intent,counter:v.intent,factors:[why],reason:`${why} A small immediate exchange is possible instead; it does not create a recurring contract.`};
+      }
+      return reject(why);
+    }
+  }
   if(i.tradeKind==='purchase'&&![i.giveResource,i.receiveResource].includes('gold'))return reject('A purchase must include gold.');
   if(['strategic','preferential','recurring'].includes(i.tradeKind)&&i.type!=='RECURRING')return reject('These supply terms require a recurring contract.');
   if (i.type === 'LOAN' && (i.giveAmount < 10 || i.receiveResource !== i.giveResource || i.receiveAmount < i.giveAmount || i.receiveAmount > Math.floor(i.giveAmount * 1.5))) return reject('A loan needs at least 10 resources and repayment of 100–150% in the same resource.');
@@ -133,6 +145,10 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
     if (s.treaties.some(t => t.type === 'embargo' && t.expires > s.turn && t.parties.includes(actorHouseId) && t.parties.includes(rulerId) && t.targetId === i.targetId)) return reject('This embargo is already active.');
   }
   if (i.type === 'TRIBUTE' && !i.receiveAmount) return reject('Specify the tribute you demand.');
+  if(COMMERCIAL_TYPES.has(i.type)){
+    if(consentingHuman)return {status:'accept',reason:'Both rulers must accept these exact terms.',intent,factors};
+    return evaluateCommercial(s,rulerId,i,actorHouseId,candidate=>evaluateDeal(s,rulerId,candidate,actorHouseId,{allowCounter:false}),allowCounter);
+  }
   const known=planningView(s,rulerId);
   const playerPower = armiesOf(known, actorHouseId).reduce((n, a) => n + strength(a), 0), rulerPower = armiesOf(s, rulerId).reduce((n, a) => n + strength(a), 0);
   if (i.type === 'VASSALAGE' && !consentingHuman && (playerPower < rulerPower * 1.8 || settlements(known, actorHouseId).length < 2)) return reject('Allegiance requires at least two settlements and overwhelming military strength.');
@@ -181,10 +197,6 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   if(i.type==='TERRITORY'&&war?.score>=55)utility+=(war.score-30)*6;
   if (i.type === 'JOINT_WAR') utility += k.aggression * 30;
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) utility += (playerPower - rulerPower) * .7 + (r.fear || 0) * .25;
-  if (['EXCHANGE', 'RECURRING'].includes(i.type)) {
-    // Friendship never permits arbitrage: resource value must balance independently.
-    utility = Math.min(value, material) - (i.tradeKind==='emergency'&&k.resources[i.receiveResource]<40?Math.ceil(i.receiveAmount*VALUES[i.receiveResource]*.2):0) - (r.trust < -30 ? Math.ceil(-r.trust * k.honor * (1 - k.greed) * .12) : 0); threshold = 0;
-  }
   if (i.type === 'WITHDRAW' && !atWar(s, actorHouseId, rulerId)) utility = 100;
   if (i.type === 'LOAN') utility = i.giveAmount - (i.receiveAmount - i.giveAmount) * (2 + k.greed);
   if (utility >= threshold) return { status: 'accept', reason: `${factors.slice(0, 2).join(' ')} The council accepts these terms; ratification makes them binding.`.trim(), intent, factors };
@@ -375,11 +387,65 @@ export const negotiationKey=(rulerId,raw)=>`${rulerId}:${JSON.stringify(validate
 export function disclosedDeal(s,rulerId,raw,actorHouseId=PLAYER) {
   if(s.knowledgeView)return s.negotiationVerdicts?.[negotiationKey(rulerId,raw)]||{status:'pending',intent:validateIntent(raw),reason:'Awaiting the court’s review.',factors:[]};
   const v=evaluateDeal(s,rulerId,raw,actorHouseId);
+  if(COMMERCIAL_TYPES.has(v.intent?.type))return v;
   if(v.intent?.type==='MARRIAGE')return {...v,factors:[]};
   return {...v,factors:[],reason:v.status==='accept'?'The council accepts these terms; ratification makes them binding.':v.status==='counter'?'The council offers these revised terms.':'The council declines these terms. Adjust the offer or gather intelligence.'};
 }
+export function commercialDiscussion(s,rulerId,message,{proposal=null,event=null,actorHouseId=PLAYER}={}) {
+  if(event||proposal&&!COMMERCIAL_TYPES.has(proposal.type)||s.controllers&&isHumanHouse(s,rulerId))return null;
+  if(!proposal&&/\b(?:marriage|marry|wedding|betroth\w*|join(?:ing)? our families)\b/i.test(message))return null;
+  let terms=proposal||parseCommercialOffer(message);
+  if(!terms){
+    if(!isTradeDiscussion(s,rulerId,message,actorHouseId)||detectPromise(s,rulerId,message,actorHouseId))return null;
+    // Only revisit exact terms discussed within the active conversation. Old
+    // offers are not a new request, and an exploratory needs question is not a charter.
+    const recent=(court(s,actorHouseId).conversations[rulerId]||[]).filter(m=>m.role==='player'&&Number.isInteger(m.turn)&&m.turn>=s.turn-2&&m.turn<=s.turn);
+    if(!/\b(?:what|which|anything)\b.{0,60}\b(?:need|seek|lack|interest)\b/i.test(message))
+      terms=(court(s,actorHouseId).offers?.[rulerId]||[]).find(i=>COMMERCIAL_TYPES.has(i.type)&&recent.some(m=>m.text===describeIntent(i)||m.proposal&&JSON.stringify(validateIntent(m.proposal))===JSON.stringify(validateIntent(i))||JSON.stringify(validateIntent(parseCommercialOffer(m.text)))===JSON.stringify(validateIntent(i))));
+  }
+  const briefing=tradeBriefing(s,rulerId,actorHouseId);
+  const verdict=terms?disclosedDeal(s,rulerId,terms,actorHouseId):null;
+  const reply=verdict&&verdict.status!=='pending'?`${verdict.reason}${verdict.counter?` Proposed alternative: ${describeIntent(verdict.counter)}. Review and ratify these revised terms separately.`:''}`:explorationReply(briefing);
+  return {phase:terms?'negotiation':'exploration',briefing,proposal:terms?validateIntent(terms):null,verdict,reply};
+}
+function commercialVoice(response,discussion) {
+  const v=discussion.verdict, act=v.status==='counter'?'counteroffer':v.status;
+  // Retain the model's character voice only when it explicitly agrees with the
+  // ruling and introduces no different structured terms or numbered payments.
+  // The exact engine reason and counter remain visible and binding on the UI.
+  const proposals=[...response.intents,...['proposal','counterProposal','promiseDetected'].map(k=>response[k]).filter(Boolean)];
+  const legal=[v.intent,v.counter].filter(Boolean).map(i=>JSON.stringify(validateIntent(i)));
+  const monetaryNumbers=[...response.reply.matchAll(/\b(\d+)\s+(food|grain|wood|timber|stone|iron|gold|coins?|horses|tools|arms|weapons)\b/gi)];
+  const aliases={grain:'food',timber:'wood',coin:'gold',coins:'gold',weapons:'arms'};
+  const amounts=[v.intent,v.counter].filter(Boolean).flatMap(i=>[[i.giveAmount,i.giveResource],[i.receiveAmount,i.receiveResource]]);
+  const forbidden=/\b(?:already (?:sent|paid|signed|ratified|delivered)|payment (?:is )?required before|initiation fee|entrance fee|permission fee)\b/i;
+  if(response.speechAct!==act||proposals.some(i=>!legal.includes(JSON.stringify(validateIntent(i))))||forbidden.test(response.reply)
+    ||monetaryNumbers.some(m=>!amounts.some(([n,r])=>n===Number(m[1])&&r===(aliases[m[2].toLowerCase()]||m[2].toLowerCase()))))return discussion.reply;
+  const voice=response.reply.trim();
+  if(!voice||voice===discussion.reply)return discussion.reply;
+  const budget=Math.max(0,1598-discussion.reply.length);
+  return budget>=80?`${voice.slice(0,Math.min(600,budget))}\n\n${discussion.reply}`:discussion.reply;
+}
+function commercialResponse(s,rulerId,message,response,options){
+  const discussion=commercialDiscussion(s,rulerId,message,options);
+  if(!discussion)return response;
+  const out={...response,intents:[]};
+  // An exploratory question is not an offer of a gift, loan, oath or charter.
+  for(const key of ['proposal','counterProposal','promiseDetected'])delete out[key];
+  if(discussion.verdict&&discussion.verdict.status!=='pending'){
+    const v=discussion.verdict;
+    return {...out,reply:commercialVoice(response,discussion),intents:v.intent?[v.intent]:[],speechAct:v.status==='counter'?'counteroffer':v.status,tone:v.status==='accept'?'warm':'guarded',...(v.counter?{counterProposal:v.counter}:{})};
+  }
+  // A provider on an older prompt must not reintroduce a mandatory entrance fee.
+  // Keep free-form character dialogue otherwise; factual briefs guide its wording.
+  const text=response.reply;
+  const entryFee=/words? (?:without|with no) coin|(?:upfront|initiation|entrance|entry|permission).{0,50}(?:gold|coin|pay|fee)|(?:pay|payment|fee).{0,70}(?:before|to open|to trade|permission)|(?:gold|coins?).{0,50}(?:upfront|before we trade)/i.test(text);
+  const unsupportedGold=/\b(?:need|require|demand|pay|payment)\b.{0,40}\b(?:gold|coin)\b/i.test(text)&&!discussion.briefing?.imports.includes('gold');
+  if(entryFee||unsupportedGold)out.reply=discussion.reply;
+  return out;
+}
 export function makeContext(s, rulerId, message, { proposal = null, event = null, actorHouseId = PLAYER } = {}) {
-  const source=s;s=knowledgeView(s,actorHouseId,{refresh:false});
+  const source=s,commerce=commercialDiscussion(s,rulerId,message,{proposal,event,actorHouseId});s=knowledgeView(s,actorHouseId,{refresh:false});
   const k = kingdom(s, rulerId), r = relation(s, rulerId, actorHouseId), military = borderThreat(s, rulerId, actorHouseId), economy = economicRelationship(s, rulerId, actorHouseId);
   const interpretation = s.controllers ? k.conversationSummaries?.[actorHouseId] || '' : k.conversationSummary;
   const rows = s.kingdoms.filter(h => alive(s, h.id));
@@ -387,6 +453,7 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
   // The authoritative court can judge terms without disclosing its private inputs.
   const houses = rows.map(h => ({ id: h.id, name: h.name, observedArmyStrength: Math.round(armiesOf(s, h.id).reduce((n, a) => n + strength(a), 0) / 10) * 10, knownCapital:s.founding?.houses[h.id]?.capital||Object.values(s.tiles).find(t=>t.capital===h.id)?.id||null, settlements: settlements(s, h.id).slice(0, 8).map(t => ({ id: t.id, name: String(t.name || '').slice(0, 45), capital: t.capital === h.id })), atWarWith: rows.filter(o => atWar(s, h.id, o.id)).map(o => o.id), allies: rows.filter(o => o.id !== h.id && treaty(s, h.id, o.id, 'alliance')).map(o => o.id) }));
   const self = {knowledge:'Only player-observed forces and dated reports may be discussed. Private strategy and treasury are unknown.',buildings:[],armies:armiesOf(s,rulerId).map(a=>({id:a.id,tile:a.tile,strength:Math.round(strength(a))})),priorities:[]};
+  if(commerce?.briefing){self.economicNeeds={imports:commerce.briefing.imports,exports:commerce.briefing.exports};self.tradeBriefing=commerce.briefing;}
   const relationship = Object.fromEntries(['opinion', 'trust', 'respect', 'fear', 'wariness', 'dependency', 'grievance', 'reliability', 'generosity', 'aggression'].map(key => [key, r[key] ?? 0]));
   const window=conversationWindow(court(s,actorHouseId).conversations[rulerId]||[],s.turn);
   const dispatch=dispatchContext(event,s.turn,rulerId,actorHouseId);
@@ -396,6 +463,7 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
     memories: [...window.historical,...retrieveMemories(s, rulerId, message, actorHouseId).map(m => m.slice(0, 500))].slice(0,5), summary: (k.relationshipSummaries?.[actorHouseId] || k.memorySummary).slice(0, 900),
     world: {
       conversationMode:dispatch?'ai-initiated-dispatch':'player-message',
+      ...(commerce?{tradeDiscussion:{phase:commerce.phase,verdict:commerce.verdict}}:{}),
       currentTurn:s.turn,activeConversationSince:Math.max(0,s.turn-2),
       warPosition: qualitativeWarPosition(source,rulerId,actorHouseId),
       knowledge: 'Fog of war. Army totals include only currently observed troops, never the whole enemy military. Capital locations are public; unobserved ownership, resources, buildings, troops and private plans are unknown. Dated reports may be stale.',
@@ -461,6 +529,11 @@ export function scriptedReply(s, rulerId, message, options = {}) {
   const warPosition=qualitativeWarPosition(s,rulerId,actorHouseId);
   const familyReply=marriageReply(s,rulerId,message,actorHouseId,options.proposal);
   if(familyReply)return familyReply;
+  const commerce=commercialDiscussion(s,rulerId,message,options);
+  if(commerce){
+    const v=commerce.verdict;
+    return {reply:commerce.reply,intents:v?.intent?[v.intent]:[],tone:v?.status==='accept'?'warm':'guarded',speechAct:v?.status==='counter'?'counteroffer':v?.status==='accept'?'accept':v?.status==='reject'?'reject':'question',...(v?.counter?{counterProposal:v.counter}:{})};
+  }
   const source=s;s=knowledgeView(s,actorHouseId,{refresh:false});
   const k = kingdom(s, rulerId), r = relation(s, rulerId, actorHouseId), text = message.toLowerCase();
   const proposedPromise = detectPromise(s, rulerId, message, actorHouseId);
@@ -519,5 +592,5 @@ export function relationshipResponse(s,rulerId,message,response,options={}) {
   const out={...response,intents:response.intents.filter(i=>i.type!=='MARRIAGE')};
   for(const key of ['proposal','counterProposal'])if(out[key]?.type==='MARRIAGE')delete out[key];
   if(family)out.intents=[...family.intents,...out.intents].slice(0,3);
-  return out;
+  return family?out:commercialResponse(s,rulerId,message,out,options);
 }

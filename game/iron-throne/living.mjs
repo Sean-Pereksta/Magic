@@ -8,6 +8,7 @@ import { buildingLevel, productionPlan } from './economy.mjs';
 // Political state belongs to the simulation. Model output is never an action.
 import { BUILDINGS, INTENT_TYPES, RESOURCES } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, declareWar, distance, kingdom, log, moveCost, neighbors, passable, pay, relation, remember, settlements, strength, treaty } from './core.mjs';
+import { applyTradeSpeech, validateNegotiation } from './trade-negotiation.mjs';
 
 export const RELATION_DEFAULTS = { respect: 15, fear: 0, grievance: 0, dependency: 0, wariness: 0, reliability: 50, generosity: 0, aggression: 0 };
 export const clamp = (n, low = 0, high = 100) => Math.max(low, Math.min(high, n));
@@ -117,6 +118,7 @@ export function speechKind(message) {
 export function applySpeech(s, rulerId, message, actorHouseId = PLAYER) {
   discussMarriage(s,rulerId,message,actorHouseId);
   const r = relation(s, rulerId, actorHouseId), kind = speechKind(message);
+  applyTradeSpeech(s,rulerId,message,actorHouseId,['insult','threat'].includes(kind));
   if(['praise','apology','reassurance'].includes(kind))emotionalEvent(s,rulerId,actorHouseId,'courtesy',{text:'Respectful conversation, still awaiting deeds.'});
   if(['insult','threat'].includes(kind)){
     emotionalEvent(s,rulerId,actorHouseId,kind,{text:kind==='insult'?'Insulted our ruler in council.':'Threatened our House in council.'});
@@ -369,6 +371,7 @@ export function validateLivingSave(s) {
     if (!text(k.conversationSummary, 360) || !object(k.reputation) || !['kept', 'broken', 'envoysKilled'].every(key => int(k.reputation[key])) || !list(k.priorities, 4) || k.priorities.some(p => !text(p, 240))) fail();
     for (const r of Object.values(k.relations)) {
       if (!Object.keys(RELATION_DEFAULTS).every(key => number(r[key], 100)) || !list(r.history, 24) || !list(r.gifts, 12) || !int(r.wordGain, 4) || !int(r.unread, 99) || !object(r.speech) || !object(r.contacts) || !object(r.observations) || !list(r.sharedEnemies, s.kingdoms.length-2) || r.sharedEnemies.some(id => !house(id)) || !object(r.movements)) fail();
+      if (!validateNegotiation(r.negotiation,s.turn)) fail();
       for (const h of r.history) if (!object(h) || !int(h.turn) || !text(h.reason, 220) || !object(h.changes) || Object.entries(h.changes).some(([key, value]) => !['opinion', 'trust', ...Object.keys(RELATION_DEFAULTS)].includes(key) || !Number.isFinite(value) || Math.abs(value) > 200)) fail();
       if (Object.entries(r.speech).some(([key, v]) => !['praise', 'apology', 'reassurance', 'insult', 'threat'].includes(key) || !object(v) || !int(v.count, 99) || !int(v.turn))) fail();
       if (Object.keys(r.contacts).length > 36 || Object.entries(r.contacts).some(([key, turn]) => !text(key, 100) || !int(turn))) fail();

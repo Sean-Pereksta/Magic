@@ -117,7 +117,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     h.knownAlive=Object.values(s.tiles).some(t=>t.owner===h.id&&['city','town'].includes(t.building));
     for(const r of Object.values(h.id===viewer?{}:h.relations)){r.observations={};r.movements={};r.contacts={};r.history=[];}
     if(h.id===viewer)continue;
-    for(const [id,r]of Object.entries(h.relations))if(id!==viewer)delete r.personal;
+    for(const [id,r]of Object.entries(h.relations))if(id!==viewer){delete r.personal;delete r.negotiation;}
     h.confidantConcerns=h.relations[viewer]?.personal?.bonds.includes('Trusted Confidant')?(h.priorities||[]).slice(0,2).map(text=>text.replace(/\s*\(\d+\)/g,'')):[];
     h.resources=Object.fromEntries(RESOURCES.map(r=>[r,0]));h.population=0;h.happiness=0;h.commands=0;h.goal='UNKNOWN';delete h.economicPlan;
     h.memories=h.memories.filter(m=>m.subject===viewer&&['interpretation','speech','agreement','cooperation','war','espionage','threat','insult','relief','trade-interrupted','promise-fulfilled','promise-broken','promise-released','marriage','marriage-strained','marriage-broken'].includes(m.kind));h.memorySummary='';h.priorities=[];h.relationshipSummaries={};h.conversationSummaries={[viewer]:h.conversationSummaries?.[viewer]||''};if(s.controllers)h.conversationSummary='';
