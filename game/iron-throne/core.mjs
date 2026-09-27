@@ -1,3 +1,4 @@
+import { validateCourtIntelligence } from './court-intelligence.mjs';
 import { recordWarBaseline, validateWarBaselines } from './war-desperation.mjs';
 import { emotionalEvent, validateEmotions } from './emotions.mjs';
 import { marriageWar, validateMarriage } from './marriage.mjs';
@@ -527,7 +528,7 @@ export function parseSave(raw) {
   if (oldVersion === 1) initializeLiving(s);
   s.version=SAVE_VERSION;
   validateLivingSave(s); validateCouncilSave(s);
-  validateEmotions(s); validateMarriage(s);
+  validateEmotions(s); validateMarriage(s); validateCourtIntelligence(s);
   validateFoundingSave(s);
   if(s.worldGeneration&&(!Object.hasOwn(MAP_PROFILES,s.mapProfile)||!Number.isInteger(s.seed)||!Number.isInteger(s.generation?.attempt)||s.generation.attempt<0||s.generation.attempt>=96))throw new Error('Damaged regional world metadata.');
   validateExpansion(s);

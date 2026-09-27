@@ -1,5 +1,6 @@
+import { projectCourtIntelligence } from './court-intelligence.mjs';
 import { projectCouncils } from './council-state.mjs';
-import { marriageSupport } from './marriage.mjs';
+import { marriageSupport, marriageReadiness } from './marriage.mjs';
 import { economyProjection, populationProjection } from './core.mjs';
 import { operationProgress } from './operations.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
@@ -76,6 +77,9 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   if(refresh)refreshKnowledge(s,[viewer]);
   const v=clone({...s,fog:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
   v.knowledgeView=viewer;v.viewHouseId=viewer;delete v.fog;
+  v.courtIntelligence=projectCourtIntelligence(s,viewer);
+  v.marriageBriefings=s.kingdoms.some(h=>h.id===viewer)
+    ? Object.fromEntries(s.kingdoms.filter(h=>h.id!==viewer).map(h=>[h.id,marriageReadiness(s,h.id,viewer)])) : {};
   v.allianceCouncils=projectCouncils(s,viewer);
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;

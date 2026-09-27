@@ -1,3 +1,4 @@
+import { marriageDiscussionFor } from './marriage-discussion-state.mjs';
 import { RESOURCE_VALUES } from './data.mjs';
 import { PLAYER, alive, armiesOf, atWar, canAfford, kingdom, log, pay, relation, strength, treaty } from './core.mjs';
 import { planningView } from './ai-knowledge.mjs';
@@ -33,7 +34,7 @@ function marriageDiscussion(s,host,message,actor,proposal=null){
   const n=negotiation(s,actor,host);
   return isMarriageTopic(message)||!!(n&&declinesMarriage(message))||proposal?.type==='MARRIAGE'||!!(n&&s.turn-n.lastDiscussed<=3&&/\b(?:settlement|terms|offer|gold|food|iron|horses|shipments|defense|trade|consider|accept|agree)\b/i.test(message));
 }
-function negotiation(s,a,b){const n=s.royalBonds?.negotiations[keyFor(a,b)];return n?.proposer===a&&n.host===b?n:null;}
+function negotiation(s,a,b){return marriageDiscussionFor(s,a,b);}
 export function discussMarriage(s,host,message,actor=PLAYER) {
   if(s.knowledgeView||s.projectionOnly||!marriageDiscussion(s,host,message,actor)||actor===host)return null;
   if(declinesMarriage(message)){if(s.royalBonds)delete s.royalBonds.negotiations[keyFor(actor,host)];return null;}
@@ -97,7 +98,7 @@ export function evaluateMarriage(s,host,i,actor=PLAYER,options={}) {
 export function marriageProposal(s,host,message,actor=PLAYER) {
   const n=negotiation(s,actor,host);if(!n)return null;
   const previous=(s.controllers?s.courts?.[actor]?.offers:s.diplomacy?.offers)?.[host]?.find(i=>i.type==='MARRIAGE');
-  const required=s.knowledgeView?{value:50,defense:false,need:null}:requiredSettlement(s,host,actor);
+  const required=s.knowledgeView?{value:0,defense:false,need:null}:requiredSettlement(s,host,actor);
   const i={type:'MARRIAGE',duration:12,giveResource:'gold',giveAmount:required.value,receiveResource:'food',receiveAmount:0,targetId:'',
     actorMember:n.actorMember,rulerMember:n.rulerMember,shipmentResource:required.need||'food',shipmentAmount:required.shipmentAmount||0,shipmentTurns:required.shipmentTurns||0,defense:required.defense,trade:false,...previous};
   i.actorMember=n.actorMember;i.rulerMember=n.rulerMember;
@@ -121,6 +122,9 @@ export function marriageReply(s,host,message,actor=PLAYER,proposal=null) {
   const preview=structuredClone(s);delete preview.knowledgeView;
   if(proposal?.type==='MARRIAGE')continueMarriageReview(preview,host,actor);
   else discussMarriage(preview,host,message,actor);
+  // Restore the projection marker before drafting: redacted zero treasuries
+  // are not real court needs and must not invent dowries or shortages.
+  if(s.knowledgeView)preview.knowledgeView=s.knowledgeView;
   const i=proposal||marriageProposal(preview,host,message,actor);
   if(!i)return {reply:'If you wish to discuss a marriage, tell me which members of our families you have in mind.',tone:'guarded',intents:[]};
   if(s.knowledgeView)return {reply:'Our court will weigh the proposed match and its obligations. Nothing is settled until both Houses ratify the terms.',tone:'guarded',intents:[i]};
@@ -130,7 +134,7 @@ export function marriageReply(s,host,message,actor=PLAYER,proposal=null) {
 }
 export function marriageContext(s,host,actor=PLAYER) {
   const m=marriageBetween(s,actor,host),n=negotiation(s,actor,host);
-  return {discussion:n?{...n}:null,available:{speaker:availableFamily(s,actor),ruler:availableFamily(s,host)},marriage:m?{status:m.status,turn:m.turn,members:m.members,terms:m.terms}:null,
+  return {discussion:n?{...n}:null,readiness:marriageReadiness(s,host,actor),available:{speaker:availableFamily(s,actor),ruler:availableFamily(s,host)},marriage:m?{status:m.status,turn:m.turn,members:m.members,terms:m.terms}:null,
     rule:'Never initiate or suggest marriage. Only discuss it when the player raises it. Adults only. Discussion, consent, and exact ratification are separate. Do not invent relatives or wedding events.'};
 }
 export function commitMarriage(s,host,i,actor=PLAYER) {
@@ -215,4 +219,38 @@ export function validateMarriage(s) {
     }
   }
   for(const p of s.pledges)if(p.marriageId&&!ids.has(p.marriageId))fail();
+}
+
+// One public readiness description for the dialogue, the Treaty Desk and online
+// projections. It never exposes the court's hidden treasury or exact utility.
+export function marriageReadiness(s, host, actor = PLAYER) {
+  if (s.knowledgeView || s.projectionOnly) return s.marriageBriefings?.[host] || {
+    status: 'unknown', label: 'Awaiting court review', reason: 'Raise marriage in conversation to obtain the court’s current requirements.', requirements: []
+  };
+  const available = { speaker: availableFamily(s, actor), ruler: availableFamily(s, host) };
+  const m = marriageBetween(s, actor, host), n = negotiation(s, actor, host);
+  if (m) return { status: 'married', label: `Family bond ${m.status}`, available, requirements: [],
+    reason: m.status === 'active' ? 'The marriage is recorded. Its settlement, shipments and defense obligations remain real commitments.' : 'The marriage remains in the record; broken obligations must be addressed rather than erased by another proposal.' };
+  const r = relation(s, host, actor), p = r.personal;
+  const human = (s.controllers?.[host]?.kind || (host === 'ashen' ? 'human' : 'ai')) === 'human';
+  const requirements = [
+    { met: !atWar(s, actor, host), label: 'Make peace before joining families.' },
+    { met: !!available.speaker.length && !!available.ruler.length, label: 'Both Houses need an available adult family member.' },
+    { met: !!n && s.turn - n.lastDiscussed <= 12, label: 'Raise marriage and identify the family members in conversation.' },
+    { met: !!n && n.rounds >= 2 && s.turn > n.started, label: 'Return to the subject on a later turn; a single conversation cannot finalize a marriage.' }
+  ];
+  if (!human) requirements.push(
+    { met: r.trust >= 25 && r.grievance < 35 && (p?.feelings.betrayedFriendship || 0) < 25, label: 'Repair distrust and serious grievances; gold cannot buy away a betrayal.' },
+    { met: !!p && s.turn - p.started >= 8, label: 'Build a relationship over at least eight turns.' },
+    { met: !!p && p.deedTurns.length >= 4, label: 'Demonstrate dependable deeds on at least four different turns.' },
+    { met: r.reliability >= 60 && r.respect >= 25, label: 'Keep recorded promises and earn the court’s respect.' }
+  );
+  const why = eligibility(s, host, actor, { consentingHuman: human });
+  const first = requirements.find(item => !item.met);
+  const roleMismatch = !!n && (!available.speaker.includes(n.actorMember) || !available.ruler.includes(n.rulerMember));
+  const blocked = first?.label || (roleMismatch ? 'One of the discussed family members is no longer available.' : why);
+  return { status: !n ? 'not-discussed' : blocked ? 'building' : 'ready',
+    label: !n ? 'Not yet discussed' : blocked ? 'Conditions to meet' : 'Ready to negotiate terms',
+    reason: blocked || (human ? 'The other human ruler must explicitly accept the exact settlement.' : 'The court is willing to consider a settlement. Review its counteroffer and ratify the exact terms; discussion alone does not create a marriage.'),
+    available, requirements };
 }
