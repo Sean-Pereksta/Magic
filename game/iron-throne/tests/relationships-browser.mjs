@@ -44,6 +44,7 @@ try{
     await page.locator('[data-close="diplomacy"]').click();await page.locator('#end-turn').click();
     await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 11');
     await open();await send('Let us discuss the marriage settlement.');
+    await page.locator('#quick-offer').click();
     await page.locator('#proposals [data-modify]').first().click();
     assert.equal(await page.locator('#marriage-fields').isVisible(),true);
     assert.equal(await page.locator('#marriage-rulerMember').inputValue(),'daughter');

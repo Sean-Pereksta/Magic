@@ -30,6 +30,8 @@ try {
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
     await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = [], external = [];
+    // Startup artwork has a bounded 45-second fallback budget, including reloads.
+    page.setDefaultNavigationTimeout(60000);
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', r => { if (!r.url().startsWith(base)) external.push(r.url()); });
@@ -53,17 +55,20 @@ try {
     await page.locator('#map').focus(); await page.keyboard.press('ArrowDown');
     await page.locator('[data-build="farm"]').click();
     assert.match(await page.locator('#panel').textContent(), /Farmstead underway/);
-    await page.locator('#end-turn').click(); assert.equal(await page.locator('#turn').textContent(), 'Turn 2');
+    await page.locator('#end-turn').click();
+    await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 2'&&!document.getElementById('end-turn').disabled);
     assert.ok(!(await page.locator('#panel').textContent()).includes('Farmstead underway'));
     await page.locator('[data-tab="realm"]').click();
     assert.equal(await page.locator('[data-rival-turn]').count(),5);
     await page.locator('[data-rival-turn="wintermere"] > summary').click();
-    assert.match(await page.locator('[data-rival-turn="wintermere"]').textContent(),/Started|Recruited/);
+    assert.match(await page.locator('[data-rival-turn="wintermere"]').textContent(),/Private priorities and unobserved orders require intelligence/);
     const firstRound=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).strategy);
     assert.equal(firstRound.lastTurn,1);assert.equal(firstRound.history[0].houses.length,5);
+    assert.ok(firstRound.history[0].houses.find(h=>h.owner==='wintermere')?.actions.length, 'the canonical council still acts behind its private report');
     await page.locator('[data-goto="5,6"]').first().click();
     await page.locator('[data-recruit="levy"]').click(); assert.match(await page.locator('#panel').textContent(), /36 troops/);
     await page.locator('[data-order]').first().click(); await page.locator('#map').focus(); await page.keyboard.press('ArrowDown'); await page.locator('#end-turn').click();
+    await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 3'&&!document.getElementById('end-turn').disabled);
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(saved.armies.find(a => a.owner === 'ashen').tile, '5,7');
     await page.locator('[data-tab="council"]').click(); await page.locator('[data-talk="wintermere"]').click();
@@ -72,7 +77,8 @@ try {
     assert.match(await page.locator('#chat-notice').textContent(), /local diplomacy/i);
     assert.equal(await page.locator('#use-gemini').isChecked(), false);
     assert.equal(await page.locator('#use-gemini').isDisabled(), true);
-    await page.locator('[data-ratify]').first().click();
+    await page.locator('#quick-offer').click();await page.locator('[data-ratify]').first().click();
+    await page.locator('.treaty-drawer-close').click();
     assert.match(await page.locator('#messages').textContent(), /ratified/);
     await page.locator('[data-close="diplomacy"]').click(); await page.locator('[data-tab="ledger"]').click();
     assert.match(await page.locator('#panel').textContent(), /alliance/);
@@ -82,15 +88,17 @@ try {
     await page.locator('#chat-message').fill("I'll send you 20 food next turn."); await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges.length,0);
-    await page.getByRole('button',{name:'Give My Word',exact:true}).click();
-    const oath=await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges[0]);assert.equal(oath.status,'pending');
     await page.locator('#expand-council').click();assert.equal(await page.locator('#diplomacy').evaluate(el=>el.classList.contains('compact')),false);
+    await page.locator('#quick-offer').click();await page.getByRole('button',{name:'Give My Word',exact:true}).click();
+    await page.locator('.treaty-drawer-close').click();
+    const oath=await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges[0]);assert.equal(oath.status,'pending');
     assert.match(await page.locator('#messages').textContent(),/20 food/);
     await page.locator('#chat-message').fill('Thank you.');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal(await page.locator('#send-chat').isDisabled(),true);assert.match(await page.locator('#message-allowance').textContent(),/0\/3/);
     await page.locator('#quick-promises').click();await page.locator('#council-records-body [data-deliver]').click();
     assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges[0].status,'fulfilled');
+    await page.locator('.treaty-drawer-close').click();
     await page.locator('[data-close="diplomacy"]').click();
     await page.reload(); await page.locator('#resume').click();
     assert.equal(await page.locator('#turn').textContent(), 'Turn 3');
@@ -123,9 +131,11 @@ try {
     const beforeReview=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources);
     await page.locator('[data-trade-review]').click();
     assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources),beforeReview);
+    if(await page.locator('#treaty-drawer').getAttribute('aria-hidden')==='true')await page.locator('#quick-offer').click();
     await page.locator('[data-ratify]').first().click();
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).commerce.offers[0].status),'accepted');
-    await page.locator('[data-close="diplomacy"]').click();
+    await page.locator('.treaty-drawer-close').click();
+    if(await page.locator('#diplomacy').isVisible())await page.locator('[data-close="diplomacy"]').click();
     await page.locator('[data-goto="5,6"]').first().click();await page.locator('#map').focus();await page.keyboard.press('ArrowRight');
     await page.locator('[data-build="farm"]').click();
     assert.match(await page.locator('#panel').textContent(),/Agricultural Estate underway/);
@@ -149,6 +159,7 @@ try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
     await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, sessionCalls=0, configRoute;
+    page.setDefaultNavigationTimeout(60000);
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', e => errors.push(e.message));
     // Hold configuration until a council is already open to exercise startup races.

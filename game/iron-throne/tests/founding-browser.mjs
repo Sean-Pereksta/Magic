@@ -34,7 +34,7 @@ try{
   const founded=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.equal(Object.values(founded.founding.houses).filter(h=>h.founded).length,6);assert.equal(founded.founding.houses.ashen.capital,site);
   const natural=s=>Object.values(s.tiles).map(t=>[t.id,t.terrain,t.resource,t.quality,t.river]);assert.deepEqual(natural(founded),natural(saved));
   await page.locator('[data-recruit="levy"]').click();assert.match(await page.locator('#panel').textContent(),/36 troops/);
-  await page.locator('#end-turn').click();assert.equal(await page.locator('#turn').textContent(),'Turn 2');
+  await page.locator('#end-turn').click();await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 2'&&!document.getElementById('end-turn').disabled);
   await page.reload();await page.locator('#resume').click();assert.equal(await page.locator('#turn').textContent(),'Turn 2');
   assert.deepEqual(errors,[]);console.log(`PASS ${viewport.width}×${viewport.height}: map selection, founding preview, invalid land, one-click founding without prompts, six capitals, untouched terrain, recruit, turn and resume`);await context.close();
  }
