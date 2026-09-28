@@ -38,6 +38,7 @@ try {
     await page.locator('[data-tab="realm"]').click();await page.locator('[data-goto="18,3"]').click();
     await page.locator('[data-structure-type="lumber"][data-structure-mode="attack"]').click();
     await page.locator('#end-turn').click();
+    await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 2'&&!document.getElementById('end-turn').disabled);
     let save=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.ok(save.tiles['18,3'].structureDamage.lumber>0);assert.equal(save.armies[0].order,'attack');
     await page.locator('[data-tab="intelligence"]').click();await page.locator('[data-recruit-spy]').click();

@@ -81,6 +81,8 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.marriageBriefings=s.kingdoms.some(h=>h.id===viewer)
     ? Object.fromEntries(s.kingdoms.filter(h=>h.id!==viewer).map(h=>[h.id,marriageReadiness(s,h.id,viewer)])) : {};
   v.allianceCouncils=projectCouncils(s,viewer);
+  v.commanders={...(s.commanders||{}),roster:(s.commanders?.roster||[]).filter(g=>g.owner===viewer).map(clone),candidates:(s.commanders?.candidates||[]).filter(g=>g.owner===viewer).map(clone),nextOffer:{[viewer]:s.commanders?.nextOffer?.[viewer]||0}};
+  v.fealty=Object.fromEntries(Object.entries(s.fealty||{}).filter(([,f])=>[f.liege,f.vassal].includes(viewer)).map(([id,f])=>[id,clone(f)]));
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;
   v.proposalFollowups=Object.fromEntries(Object.entries(s.proposalFollowups||{}).filter(([,c])=>c.actor===viewer&&c.turn===s.turn));
@@ -94,7 +96,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     if(capital&&!old){known.capital=capital;known.knownCapital=capital;known.building='city';known.name=capitalName(capital);known.levels={city:1};}
     return [t.id,known];
   }));
-  v.armies=s.armies.filter(a=>a.owner===viewer||seen.has(a.tile)).map(a=>a.owner===viewer?clone(a):{id:a.id,owner:a.owner,tile:a.tile,units:clone(a.units),formation:a.formation,morale:a.morale,retreats:0,path:[],target:null,order:'observed'});
+  v.armies=s.armies.filter(a=>a.owner===viewer||seen.has(a.tile)).map(a=>a.owner===viewer?clone(a):{id:a.id,owner:a.owner,tile:a.tile,units:clone(a.units),formation:a.formation,morale:a.morale,commandBonus:a.commandBonus||0,retreats:0,path:[],target:null,order:'observed'});
   v.lastSeenArmies=Object.values(k.armies).filter(a=>!v.armies.some(x=>x.id===a.id)).map(a=>({...clone(a),intelligenceFresh:spyCurrent(s,a,viewer)}));
   v.militaryEvents=(s.militaryEvents||[]).filter(e=>[e.attacker,e.defender].includes(viewer)||k.battles.includes(e.id));
   v.events=(s.events||[]).filter(e=>e.public||e.audience?.includes(viewer)||setup||e.turn===0&&e.message.includes('founds '));
@@ -103,6 +105,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   for(const a of v.intelligence.agents)if(a.owner===viewer){a.risk=0;delete a.investigation;}
   v.intrigue={plans:(v.intrigue?.plans||[]).filter(p=>p.actor===viewer),audit:[]};
   v.cooperation={...v.cooperation,operations:(v.cooperation?.operations||[]).filter(o=>o.owner===viewer||o.participants.some(p=>p.house===viewer&&['invited','accepted','counter'].includes(p.status))),proposals:(v.cooperation?.proposals||[]).filter(p=>[p.from,p.to].includes(viewer)),balance:[]};
+  v.cooperation.vassalOrders=(s.cooperation?.vassalOrders||[]).filter(o=>[o.liege,o.vassal].includes(viewer)).map(clone);
   for(const o of v.cooperation.operations)for(const member of o.participants)member.reportedProgress=operationProgress(s,o,member);
   v.pledges=(v.pledges||[]).filter(p=>[p.debtor,p.creditor].includes(viewer)||p.operationId&&v.cooperation.operations.some(o=>o.id===p.operationId));
   v.commerce={...v.commerce,offers:(v.commerce?.offers||[]).filter(o=>(o.to||'ashen')===viewer),aiTrades:{},cooldowns:{}};
@@ -114,7 +117,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.diplomacy={...v.diplomacy,tradeHistory:(v.diplomacy?.tradeHistory||[]).filter(x=>[x.from,x.to].includes(viewer))};
   const c=s.controllers?s.courts?.[viewer]:{conversations:s.conversations,offers:s.diplomacy.offers,messages:s.diplomacy.messages};
   v.courts=c?{[viewer]:clone(c)}:{};v.conversations=clone(c?.conversations||{});v.diplomacy.offers=clone(c?.offers||{});v.diplomacy.messages=clone(c?.messages||{turn:s.turn,regular:0,hosts:{}});
-  v.treaties=v.treaties.map(t=>t.parties.includes(viewer)?t:{type:t.type,parties:t.parties,expires:t.expires});
+  v.treaties=v.treaties.map(t=>t.parties.includes(viewer)?t:{type:t.type,parties:t.parties,expires:t.expires,...(t.type==='vassalage'?{liege:t.liege,vassal:t.vassal}:{})});
   v.crownProgress={[viewer]:s.crownProgress?.[viewer]||0};
   v.humanProposals=(v.humanProposals||[]).filter(p=>[p.from,p.to].includes(viewer));
   for(const h of v.kingdoms){

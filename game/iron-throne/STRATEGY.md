@@ -5,13 +5,17 @@ player presses **End Turn**. The simulation runs locally, including when Gemini
 is disabled or unavailable. `strategy.mjs` owns the planner; `diplomacy.mjs`
 owns the round sequence; `core.mjs` remains the authority for actions and costs. Persistent objectives and intelligence are described in [INTELLIGENCE.md](INTELLIGENCE.md).
 
+The table below describes local play. Online campaigns use the saved House
+activation sequence in [MULTIPLAYER.md](MULTIPLAYER.md), calling the same planner
+for exactly one active AI House at a time.
+
 ## One complete round
 
 | Phase | What happens |
 | --- | --- |
 | Player orders | House Ashen chooses construction, recruitment, taxes, army destinations, formations and diplomatic agreements. Construction and recruitment spend available orders and materials immediately. Army orders are queued. |
 | Political assessment | Expired treaties are removed and political observations update. Existing rival diplomacy and resource trading run on their scheduled turns. |
-| Rival councils | Each living rival assesses its own economy and the public board, chooses priorities, spends its remaining orders and issues army orders. The first acting House rotates each round. |
+| Rival councils | Each living rival assesses its own economy and legitimate current/dated observations, chooses priorities, spends its remaining orders and issues army orders. The first acting House rotates each round. |
 | Military resolution | Every army, including the player's, uses the same movement, borders, terrain, formation, siege and combat rules. Initiative alternates. |
 | Economy | Projects advance one turn, finished tiers activate, territory updates, production and upkeep resolve, and each House receives its next order allowance. Ambassadors travel. |
 | Next round | Supply contracts, pledges, relations and trade proposals update; dispatch allowances reset and victory is checked. |
@@ -54,6 +58,35 @@ upgrades raise those limits by their extra orders, still within the kingdom's
 eight-order maximum, civilian floor, desired army size and economic reserves.
 Healthy AI Houses also consider paid city upgrades from turn 12 onward.
 
+## Difficulty and expansion
+
+`difficulty.mjs` changes decision thresholds only. Existing saves default to
+Medium. No setting changes income, troop statistics, starting packages or fog.
+
+| Setting | Decision emphasis |
+| --- | --- |
+| Easy | Later, cautious opportunities; forgiving negotiation; simpler coordination. |
+| Medium | Balanced development and prepared expansion. |
+| Hard | Preserve civilians and save for legal settlements; build a recruiting economy before discretionary conquest; coordinate credible allied campaigns. |
+| Insane | Greater land ambitions and earlier strategic opportunities, more coordinated operations and firmer bargaining, subject to the same economic and information limits. |
+
+Settlement ambition considers known usable land, world size per House,
+population, projected food and elapsed rounds. There is no fixed six-town
+founding ceiling. Captured territory has never been restricted by that founding
+threshold. A worthwhile invasion creates a preparation plan before the required
+army exists; recruitment and siege construction address its actual shortfall.
+Harder councils can save for a town instead of continuously spending its reserve
+on cheaper regiments. Persistent assigned-army objectives resist small ranking
+changes; battle survivors regroup before returning.
+
+Run the full-engine comparison with `npm run test:iron-throne:difficulty`.
+`IRON_BENCHMARK_SEED` and `IRON_BENCHMARK_DIFFICULTY` select individual runs. It
+compares identical worlds on Heartlands, Great Divide and Highland Crown and
+records founded settlements, captures, completed campaigns, shortage House-rounds
+and old active objectives. All Houses are AI so the measurement includes bot
+versus bot conquest; stronger opposing defenses can reduce capture counts on an
+individual seed. See [COMMANDS.md](COMMANDS.md) for the verification record.
+
 ## Different Houses
 
 | House | Priorities |
@@ -77,7 +110,9 @@ usual development plan.
   allied-defense motive, a viable route and a favorable public strength estimate.
   The planner avoids opening a second discretionary war and honors active peace,
   non-aggression, alliance and vassalage agreements. Existing low-honor betrayal
-  behavior still applies the game's treaty-breaking consequences.
+  behavior still applies the game's treaty-breaking consequences. AI vassals
+  additionally require the explicit history, warning and opportunity safeguards
+  described in [COMMANDS.md](COMMANDS.md), independent of difficulty.
 - Armies prioritize immediate defense and ratified military orders, recover low
   morale, and favor targets they can plausibly defeat. Reinforcements gather at
   safe forward settlements. Co-located armies combine through the ordinary merge

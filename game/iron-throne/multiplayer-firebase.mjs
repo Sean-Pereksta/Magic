@@ -172,12 +172,13 @@ export class FirebaseCampaign {
   async submit(type,args={}){
     if(!this.online||!this.state||!['planning','founding'].includes(this.meta?.phase))throw new Error('Reconnecting or resolving. Wait for the current campaign state.');
     const id=`${this.token}_${++this.sequence}`,ref=this.ref('iron_throne_commands',id);
-    const c={id,clientId:this.token,sequence:this.sequence,uid:this.uid,actorHouseId:seatFor(this.meta,this.uid),turn:this.state.turn,stateVersion:this.lastVersion,epoch:this.meta.epoch,type,args,status:'pending',createdAt:this.f.serverTimestamp()};
+    const c={id,clientId:this.token,sequence:this.sequence,uid:this.uid,actorHouseId:seatFor(this.meta,this.uid),turn:this.state.turn,stateVersion:this.lastVersion,epoch:this.meta.epoch,activationId:this.meta.activationId||0,type,args,status:'pending',createdAt:this.f.serverTimestamp()};
     // Offline transactions fail instead of queuing stale game orders for replay.
     await this.transaction(async tx=>{
       const [meta,existing]=await Promise.all([tx.get(this.metaRef),tx.get(ref)]);
       if(existing.exists())return;
-      if(meta.data().phase!==(type==='found'?'founding':'planning')||meta.data().turn!==c.turn||meta.data().epoch!==c.epoch)throw new Error('The round or controller changed. Review and submit again.');
+      if(meta.data().phase!==(type==='found'?'founding':'planning')||meta.data().turn!==c.turn||meta.data().epoch!==c.epoch||(meta.data().activationId||0)!==c.activationId)throw new Error('The round or controller changed. Review and submit again.');
+      if(type!=='found'&&!['read','councilRead','takeover'].includes(type)&&meta.data().activeHouse!==c.actorHouseId)throw new Error('It is another House’s turn. Your draft can wait until your activation.');
       tx.set(ref,c);
     });
     this.watchReceipt(id);void this.pump();return id;
@@ -186,6 +187,7 @@ export class FirebaseCampaign {
     if(this.stopped||this.busy||!this.online||!ownsLease(this.meta,this.uid,this.token,this.now())||this.meta.phase==='setup'||this.meta.phase==='ended')return;
     this.busy=true;
     try{
+      if(this.meta.phase==='planning'&&!this.meta.activeHouse){await this.advance();return;}
       if(['planning','founding'].includes(this.meta.phase)&&this.commandDirty){
         this.commandDirty=false;
         const pending=await this.f.getDocs(this.f.query(this.f.collection(this.db,'lobbies',this.lobbyId,'iron_throne_commands'),this.f.where('status','==','pending')));

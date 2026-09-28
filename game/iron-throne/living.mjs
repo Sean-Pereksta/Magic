@@ -74,6 +74,8 @@ export function contact(s, rulerId, key, text, cooldown = 4, actorHouseId = PLAY
   if (rulerId === actorHouseId || !alive(s, rulerId)) return false;
   const r = relation(s, rulerId, actorHouseId), last = r.contacts?.[key];
   if (last !== undefined && s.turn - last < cooldown) return false;
+  const repeated=(court(s,actorHouseId).conversations[rulerId]||[]).some(m=>m.role==='ruler'&&m.text===text&&s.turn-m.turn<12);
+  if(repeated)return false;
   r.contacts ||= {}; r.contacts[key] = s.turn;
   // Keep per-event contact IDs bounded, even in a very long campaign.
   r.contacts = Object.fromEntries(Object.entries(r.contacts).sort((a, b) => b[1] - a[1]).slice(0, 36));

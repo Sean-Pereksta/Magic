@@ -90,21 +90,21 @@ export function balanceResponse(s,observer,dominant) {
   if(k.aggression>=.7)return 'support';
   return 'fortify';
 }
-export function runStrategicDiplomacy(s) {
+export function runStrategicDiplomacy(s,onlyOwner=null) {
   initializeCooperation(s);
-  if(s.cooperation.lastDiplomacyTurn>=s.turn)return;
+  if(!onlyOwner&&s.cooperation.lastDiplomacyTurn>=s.turn)return;
   for(const p of s.cooperation.proposals.filter(p=>['pending','counter'].includes(p.status))) {
     if(s.turn>p.expires){finish(s,p,'expired','The negotiation expired without consent.');continue;}
     if(p.updated>=s.turn)continue;
     const actor=p.status==='counter'?p.from:p.to,other=actor===p.from?p.to:p.from;
-    if(!isAiHouse(s,actor))continue;
+    if(!isAiHouse(s,actor)||onlyOwner&&actor!==onlyOwner)continue;
     const interest=cooperationInterest(s,actor,other,p.kind,p.target);
     const decision=interest.score>=38?'accept':interest.score>=20&&p.status==='pending'?'counter':interest.score>=25&&p.status==='counter'?'accept':'decline';
     respondCooperation(s,actor,p.id,decision);
   }
   if(s.turn>=6&&s.turn%4===2) {
-    s.cooperation.balance=[];
-    for(const k of s.kingdoms.filter(k=>alive(s,k.id)&&isAiHouse(s,k.id))) {
+    s.cooperation.balance=onlyOwner?s.cooperation.balance.filter(b=>b.house!==onlyOwner):[];
+    for(const k of s.kingdoms.filter(k=>alive(s,k.id)&&isAiHouse(s,k.id)&&(!onlyOwner||k.id===onlyOwner))) {
       const view=planningView(s,k.id);
       const ranked=view.kingdoms.filter(h=>alive(view,h.id)).map(h=>({id:h.id,power:power(view,h.id)})).sort((a,b)=>b.power-a.power||a.id.localeCompare(b.id));
       const dominant=ranked[0],total=ranked.reduce((n,h)=>n+h.power,0);

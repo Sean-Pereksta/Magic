@@ -480,3 +480,19 @@ node game/iron-throne/tests/alliance-council-browser.mjs
 The browser check requires Playwright with Chromium; `IRON_THRONE_CHROMIUM` can
 select an existing binary. It exercises desktop and mobile without producing
 previews or screenshots.
+
+## Living commands and online House turns
+
+Campaign creation now includes Easy, Medium, Hard and Insane AI difficulty.
+Portraits preload and decode with the shared artwork cache and stable fallbacks.
+Ruler follow-ups retain unresolved terms, state useful objections and report
+verified campaign progress.
+
+Rare city generals can lead approved campaigns, retain detachments and converse
+through the existing Gemini session without spending envoys. Your Vassals shows
+persistent commands and event-based Fealty. Online campaigns now use one active
+House at a time, with economy effects once per complete round.
+
+See [COMMANDS.md](COMMANDS.md) for rules, costs, privacy and verification,
+[STRATEGY.md](STRATEGY.md) for difficulty, and [MULTIPLAYER.md](MULTIPLAYER.md) for
+activation authority and migration.

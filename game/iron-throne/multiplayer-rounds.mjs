@@ -2,7 +2,10 @@ import { hash } from './world-hex.mjs';
 import { MAP_PROFILES } from './map-profiles.mjs';
 import { HOUSES } from './data.mjs';
 import { alive, createGame } from './core.mjs';
-import { endTurn } from './diplomacy.mjs';
+import { finishRound, resolveHouseActivation, activateWarCommitments } from './diplomacy.mjs';
+import { initializeSequential, syncSequential, activeHouse } from './sequential.mjs';
+import { prepareGenerals } from './generals.mjs';
+import { DIFFICULTIES } from './difficulty.mjs';
 import { court } from './house-control.mjs';
 
 export const LEASE_MS = 30000, HEARTBEAT_MS = 10000, ONLINE_MS = 35000, GRACE_MS = 90000;
@@ -12,9 +15,9 @@ export const present = (p, now) => !!p && now - millis(p.at) < ONLINE_MS;
 export const seatFor = (meta, uid) => houseIds.find(id => meta?.seats[id]?.uid === uid && meta.seats[id].kind === 'human');
 export const ownsLease = (meta, uid, token, now) => meta?.lease?.uid === uid && meta.lease.token === token && millis(meta.lease.expiresAt) > now;
 export function setupMeta(lobby, now) {
-  return { schema:1, phase:'setup', turn:0, stateVersion:0, epoch:0, hostUid:lobby.hostUid,
+  return { schema:2,activeHouse:null,activationId:0,turnOrder:[], phase:'setup', turn:0, stateVersion:0, epoch:0, hostUid:lobby.hostUid,
     seats:Object.fromEntries(houseIds.map(id=>[id,{kind:'open',uid:null,name:''}])), ready:{}, sequences:{},
-    options:{seed:hash(now,'online-world',lobby.hostUid)||8147,preset:'random',timerSeconds:0,absent:'hold'}, planningAt:now, deadline:0, lease:null };
+    options:{seed:hash(now,'online-world',lobby.hostUid)||8147,preset:'random',difficulty:'medium',timerSeconds:0,absent:'hold'}, planningAt:now, deadline:0, lease:null };
 }
 export function claimSeat(meta, uid, name, houseId) {
   if(meta.phase!=='setup'||!houseIds.includes(houseId))throw new Error('House selection is locked.');
@@ -31,14 +34,14 @@ export function configureSeat(meta, uid, houseId, kind) {
 }
 export function configureCampaign(meta, uid, options) {
   if(meta.phase!=='setup'||meta.hostUid!==uid)throw new Error('Only the host can configure this campaign.');
-  const {seed,preset,timerSeconds,absent}=options;
-  if(!Number.isInteger(seed)||seed<1||seed>4294967295||!['random','crossroads','highlands',...Object.keys(MAP_PROFILES)].includes(preset)||![0,120,300,600].includes(timerSeconds)||!['hold','ai'].includes(absent))throw new Error('Choose a valid seed, map and round timer.');
-  meta.options={seed,preset,timerSeconds,absent};return meta;
+  const {seed,preset,timerSeconds,absent}=options;const difficulty=options.difficulty||'medium';
+  if(!Object.hasOwn(DIFFICULTIES,difficulty)||!Number.isInteger(seed)||seed<1||seed>4294967295||!['random','crossroads','highlands',...Object.keys(MAP_PROFILES)].includes(preset)||![0,120,300,600].includes(timerSeconds)||!['hold','ai'].includes(absent))throw new Error('Choose a valid seed, map and round timer.');
+  meta.options={seed,preset,timerSeconds,absent,difficulty};return meta;
 }
 export function startCampaign(meta, uid, now) {
   if(meta.phase!=='setup'||meta.hostUid!==uid||!seatFor(meta,uid))throw new Error('The host must choose a House before starting.');
   for(const id of houseIds)if(meta.seats[id].kind==='open')meta.seats[id]={kind:'ai',uid:null,name:''};
-  const state=createGame(meta.options.seed,meta.options.preset);
+  const state=createGame(meta.options.seed,meta.options.preset,6,meta.options.difficulty||'medium');
   state.controllers=structuredClone(meta.seats);state.courts={};state.humanProposals=[];
   for(const id of houseIds)court(state,id);
   meta.phase='founding';meta.mapProfile=state.mapProfile;meta.seed=state.seed;meta.turn=state.turn;meta.stateVersion=1;meta.ready={};
@@ -53,33 +56,40 @@ export function requiredRulers(meta, presence, now, state) {
     return now-Math.max(millis(presence[seat.uid]?.at),meta.startedAt??meta.planningAt)<GRACE_MS;
   });
 }
-export function resolutionDue(meta, presence, now, state) {
+export function resolutionDue(meta,presence,now,state) {
   if(meta.phase!=='planning'||state.outcome)return false;
   const humans=houseIds.filter(id=>meta.seats[id].kind==='human'&&alive(state,id));
-  if(!humans.some(id=>present(presence[meta.seats[id].uid],now)))return false; // Pause when everyone leaves.
+  if(!humans.some(id=>present(presence[meta.seats[id].uid],now)))return false;
+  if(!state.sequential||!meta.activeHouse)return true;
+  const seat=meta.seats[meta.activeHouse];
+  if(!alive(state,meta.activeHouse)||seat.kind==='ai'||seat.substitute)return true;
+  if(meta.ready[meta.activeHouse])return true;
   if(meta.deadline&&now>=meta.deadline)return true;
-  const required=requiredRulers(meta,presence,now,state);
-  return required.length ? required.every(id=>meta.ready[id]) : humans.some(id=>meta.seats[id].substitute);
+  return now-Math.max(millis(presence[seat.uid]?.at),meta.planningAt)>=GRACE_MS;
 }
-export function resolveRound(state, meta, presence, now) {
-  if(state.phase==='founding'||meta.phase!=='resolving'||meta.turn!==state.turn)throw new Error('This round is not locked for resolution.');
-  for(const id of houseIds){
-    const seat=meta.seats[id];
-    seat.substitute=seat.kind==='human'&&(!!seat.forcedSubstitute||!present(presence[seat.uid],now)&&meta.options.absent==='ai');
-    delete seat.forcedSubstitute;
+export function resolveRound(state,meta,presence,now) {
+  if(state.phase==='founding'||meta.phase!=='resolving'||meta.turn!==state.turn)throw new Error('This activation is not locked for resolution.');
+  if(!state.sequential){
+    initializeSequential(state,meta,{migrate:true});meta.phase='planning';meta.planningAt=now;meta.deadline=meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;return state;
+  }
+  if(meta.activationId!==state.sequential.id||meta.activeHouse!==activeHouse(state))throw new Error('The active House changed.');
+  const actor=activeHouse(state),seat=meta.seats[actor];
+  if(seat.kind==='human'){
+    seat.substitute=!!seat.forcedSubstitute||!present(presence[seat.uid],now)&&meta.options.absent==='ai';delete seat.forcedSubstitute;
   }
   state.controllers=structuredClone(meta.seats);
-  endTurn(state);
-  // Return control only at the new planning boundary, never halfway through an AI turn.
-  for(const id of houseIds){
-    const seat=meta.seats[id];
-    if(seat.kind==='human'&&present(presence[seat.uid],now))seat.substitute=false;
-  }
+  if(alive(state,actor))resolveHouseActivation(state,actor);
+  const q=state.sequential;q.id++;q.index++;
+  if(q.index>=q.order.length){q.index=0;finishRound(state);q.round=state.turn;}
+  // Eliminated Houses are skipped without creating another economy boundary.
+  let checked=0;while(!alive(state,activeHouse(state))&&checked++<q.order.length&&!state.outcome){q.index++;if(q.index>=q.order.length){q.index=0;finishRound(state);q.round=state.turn;}}
+  const next=meta.seats[activeHouse(state)];
+  if(next.kind==='human'&&present(presence[next.uid],now)&&!next.forcedSubstitute)next.substitute=false;
   state.controllers=structuredClone(meta.seats);
   state.humanProposals=(state.humanProposals||[]).filter(p=>p.status==='pending'&&p.expires>=state.turn||p.resolvedTurn>=state.turn-3).slice(-60);
-  meta.turn=state.turn;meta.phase=state.outcome?'ended':'planning';meta.ready={};meta.planningAt=now;
-  meta.deadline=meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;
-  return state;
+  syncSequential(state,meta);meta.turn=state.turn;meta.phase=state.outcome?'ended':'planning';meta.ready={};meta.planningAt=now;
+  meta.deadline=next.kind==='human'&&!next.substitute&&meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;
+  activateWarCommitments(state,activeHouse(state));prepareGenerals(state,activeHouse(state));return state;
 }
 export function requestTakeover(meta, uid, houseId, presence, now, permanent=false) {
   const seat=meta.seats[houseId];

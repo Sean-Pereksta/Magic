@@ -1,3 +1,4 @@
+import { markPlayerOverride } from './command-state.mjs';
 import { FORMATIONS, TERRAINS, UNITS } from './data.mjs';
 import { buildingLevel, fortMaximum, wallMaximum } from './economy.mjs';
 
@@ -8,7 +9,7 @@ export const familyCount = (a,family) => Object.entries(a.units).reduce((n,[u,v]
 export const unitPower = (a,stat) => Object.entries(a.units).reduce((n,[u,v])=>n+v*(UNITS[u]?.[stat]||0),0);
 export function armySpeed(a) {
   const base = a.units.trebuchet ? 1.5 : familyCount(a,'siege') ? 2 : familyCount(a,'mounted')===troopTotal(a) ? 5 : 3;
-  return base*(a.formation==='defensive'?.8:1);
+  return base*(a.formation==='defensive'?.8:1)+Math.max(0,Math.min(2,a.commandMove||0));
 }
 export function formationCheck(a,formation) {
   if(!Object.hasOwn(FORMATIONS,formation))return 'Unknown formation.';
@@ -20,7 +21,7 @@ export function setFormation(s,owner,id,formation) {
   const a=s.armies.find(a=>a.id===id&&a.owner===owner);
   if(!a||s.outcome)return {ok:false,error:'Select an active army.'};
   const error=formationCheck(a,formation);if(error)return {ok:false,error};
-  a.formation=formation;return {ok:true};
+  a.formation=formation;markPlayerOverride(s,a);return {ok:true};
 }
 export function chooseFormation(a,enemy,t) {
   if((a.units.spearman||0)>troopTotal(a)*.25&&enemy&&familyCount(enemy,'mounted')>troopTotal(enemy)*.2)return 'spearWall';
@@ -72,13 +73,13 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
       const target=1-side,a=armies[target],defense=protection(t,target===1)*(a.formation==='defensive'?1.25:1);
       const exposed=a.formation==='charge'||name==='Missile Fire'&&a.formation==='spearWall';
       const tempo=name==='Pursuit'?1.4:name==='Charge / Engagement'?1.25:BATTLE_TEMPO;
-      const damage=powers[side]*(.88+roll()*.24)*armies[side].morale/defense*tempo;
+      const damage=powers[side]*(1+Math.max(0,Math.min(.25,armies[side].commandBonus||0)))*(.88+roll()*.24)*armies[side].morale/defense*tempo;
       inflict(a,damage,{piercing:options.piercing?.[side],exposed});
       loss[target]=count[target]-troopTotal(a);
     }
     phases.push({name,loss,notes});
   };
-  phases.push({name:'Positioning',loss:[0,0],notes:[`${terrain}: defender protection ×${protection(t,true).toFixed(2)}.`,`${FORMATIONS[attacker.formation||'balanced'].name} attacks ${FORMATIONS[defender.formation||'balanced'].name}.`,...(riverCrossing?['An undeveloped river crossing disrupts the attacking line.']:[]),...armies.map((a,i)=>a.units.scout?`${i?'Defending':'Attacking'} scouts screen the approach (${a.units.scout}).`:null).filter(Boolean)]});
+  phases.push({name:'Positioning',loss:[0,0],notes:[...armies.map((a,i)=>`${i?'Defender':'Attacker'} command effectiveness +${Math.round((a.commandBonus||0)*100)}%.`),`${terrain}: defender protection ×${protection(t,true).toFixed(2)}.`,`${FORMATIONS[attacker.formation||'balanced'].name} attacks ${FORMATIONS[defender.formation||'balanced'].name}.`,...(riverCrossing?['An undeveloped river crossing disrupts the attacking line.']:[]),...armies.map((a,i)=>a.units.scout?`${i?'Defending':'Attacking'} scouts screen the approach (${a.units.scout}).`:null).filter(Boolean)]});
   phase('Missile Fire',armies.map((a,i)=>unitPower(a,'ranged')*.11*(terrain==='forest'?.5:1)*(i===1&&terrain==='hills'?1.3:1)*(i===1?1+fortificationDefense(t).wallBonus*.7:1)*(a.formation==='skirmish'?1.25:1)),['Volleys hit before contact; forest cover shortens bow range.'],{piercing:armies.map(a=>(a.units.crossbow||0)>familyCount(a,'ranged')*.35)});
   phase('Charge / Engagement',armies.map((a,i)=>unitPower(a,'charge')*.10*cavalryTerrain*spearCounter(armies[1-i])*(a.formation==='charge'?1.35:1)*(i===0&&riverCrossing?.6:1)),[...(armies.some(a=>a.units.spearman)?['Spearmen brace against mounted charges.']:[]),`${terrain==='plains'?'Open ground supports shock cavalry.':'Broken ground reduces cavalry impact.'}`]);
   phase('Main Melee',armies.map((a,i)=>Object.entries(a.units).reduce((n,[id,v])=>n+v*UNITS[id].attack*(UNITS[id].family==='ranged'?.4:UNITS[id].family==='siege'?.15:1),0)*.17*(i===0&&riverCrossing?.65:1)),['Professional infantry sustain the line; armor reduces their share of losses.']);
@@ -89,7 +90,7 @@ export function resolveFieldBattle(attacker,defender,t,{roll=()=>.5,riverCrossin
     const elite=(a.units.knight||0)+(a.units.heavyInfantry||0);
     a.morale=clamp(a.morale-lost*1.15+(t.owner===a.owner?.04:0)+Math.min(.06,elite*.004)-(surrounded[i]?.1:0)-(a.retreats||0)*.025,.1,1);
   }
-  const power=armies.map((a,i)=>unitPower(a,'attack')*a.morale*protection(t,i===1));
+  const power=armies.map((a,i)=>unitPower(a,'attack')*a.morale*protection(t,i===1)*(1+Math.max(0,Math.min(.25,a.commandBonus||0))));
   const winner=power[0]*(.94+roll()*.12)>power[1]?0:1,loser=1-winner;
   armies[loser].morale=clamp(armies[loser].morale-.10,.1,1);
   const routed=armies[loser].morale<.6||troopTotal(armies[loser])<before[loser]*.7||power[winner]>power[loser]*1.65;

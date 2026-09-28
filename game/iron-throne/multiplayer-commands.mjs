@@ -1,3 +1,6 @@
+import { initializeSequential } from './sequential.mjs';
+import { hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, recordGeneralConversation } from './generals.mjs';
+import { issueVassalCommand, acceptVassalRequest } from './vassals.mjs';
 import { councilForActor, sendCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
 import { consumeDiplomaticMessage, expireFollowups, grantFollowup, privateConversation } from './proposal-followup.mjs';
 import { relationshipResponse } from './diplomacy.mjs';
@@ -15,7 +18,7 @@ import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -28,7 +31,11 @@ export function commandError(s, meta, command) {
   if(meta.phase==='founding'){
     if(s.phase!=='founding'||command.type!=='found')return 'Found all six kingdoms before issuing orders.';
   }else if(meta.phase!=='planning'||command.type==='found')return 'Orders are closed for this campaign phase.';
-  if(meta.ready[command.actorHouseId]&&!['ready','read','councilRead'].includes(command.type))return 'Unready your House before issuing more orders.';
+  if(meta.phase==='planning'){
+    const readOnly=['read','councilRead','takeover'].includes(command.type);
+    if(!readOnly&&(!s.sequential||command.activationId!==meta.activationId||command.activationId!==s.sequential.id||meta.activeHouse!==command.actorHouseId))return 'Wait for your active House turn, then review and submit this order again.';
+    if(!readOnly&&meta.ready[command.actorHouseId])return 'Your activation has been committed.';
+  }
   if(meta.phase!=='founding'&&!alive(s,command.actorHouseId))return 'This House has lost its last settlement.';
   if((meta.sequences[`${command.uid}:${command.clientId}`]||0)>=command.sequence)return 'This command has already been processed.';
   return null;
@@ -41,6 +48,14 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   let result;
   const validTarget=()=>houseIds.includes(target)&&target!==a&&alive(s,target);
   switch(c.type){
+    case 'generalHire':result=hireGeneral(s,a,p.id);break;
+    case 'generalAssign':result=assignGeneral(s,a,p.id,p.army);break;
+    case 'generalDetach':result=detachGeneral(s,a,p.id,p.army||null,p.dismiss===true,p.confirmed===true);break;
+    case 'generalOrder':result=approveGeneralOrder(s,a,p.id,p.order);break;
+    case 'generalChat':result=recordGeneralConversation(s,a,p.id,p.message,p.response);break;
+    case 'vassalCommand':result=issueVassalCommand(s,a,p.vassal,p.order);break;
+    case 'vassalAccept':result=acceptVassalRequest(s,a,p.id);break;
+    case 'endActivation':meta.ready[a]=true;result=ok();break;
     case 'councilOpen': {
       const council=councilForActor(s,a,p.councilId,true);
       if(!council)return fail('This council is unavailable.');
@@ -59,7 +74,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       if(result.ok){
         Object.assign(s,next);
         if(s.phase==='playing'){
-          meta.phase='planning';meta.turn=1;meta.ready={};meta.planningAt=now;
+          initializeSequential(s,meta);meta.phase='planning';meta.turn=1;meta.ready={};meta.planningAt=now;
           meta.deadline=meta.options.timerSeconds?now+meta.options.timerSeconds*1000:0;
         }
       }
@@ -152,7 +167,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       for(const [actor,other] of [[a,offer.from],[offer.from,a]])appendConversation(s,other,'council',`${describeIntent(offer.intent)} — ${offer.status}.`,{actorHouseId:actor,unread:true});
       result=ok();break;
     }
-    case 'ready':if(typeof p.ready!=='boolean')return fail('Invalid readiness.');meta.ready[a]=p.ready;result=ok();break;
+    case 'ready':return fail('This campaign uses sequential turns. Review your orders, then end your activation.');
     case 'takeover':try{requestTakeover(meta,c.uid,p.houseId,presence,now,p.permanent===true);result=ok();}catch(e){return fail(e.message);}break;
     default:return fail('Unknown order.');
   }

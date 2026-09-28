@@ -27,7 +27,7 @@ function hostileStructure(type='lumber',level=1) {
 
 test('current-tile Attack damages hostile lumber while Move and Hold remain Hold',()=>{
   const {s,a,t}=hostileStructure();
-  for(const order of ['move','hold']){assert.equal(orderArmy(s,PLAYER,a.id,t.id,order).ok,true);assert.equal(a.order,'hold');resolveMovement(s);assert.equal(structureHealth(t,'lumber'),60);}
+  for(const order of ['move','hold']){assert.equal(orderArmy(s,PLAYER,a.id,t.id,order).ok,true);assert.equal(a.order,'hold');resolveMovement(s);assert.equal(structureHealth(t,'lumber'),60);s.turn++;}
   assert.equal(orderArmy(s,PLAYER,a.id,t.id,'attack').ok,true);assert.equal(a.order,'attack');assert.equal(a.structureTarget,'lumber');
   resolveMovement(s);assert.ok(structureHealth(t,'lumber')<60);assert.equal(a.order,'attack');
   const before=structureHealth(t,'lumber');resolveMovement(s);assert.equal(structureHealth(t,'lumber'),before,'one damage action per army per turn');

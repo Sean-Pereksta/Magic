@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setupMeta,claimSeat,startCampaign,houseIds,resolutionDue,resolveRound,applyBoundaryTakeovers,requestTakeover,seatFor,ownsLease,GRACE_MS} from '../multiplayer-rounds.mjs';
@@ -9,27 +10,28 @@ import {commitDeal,makeContext,endTurn,acceptRulerMemories} from '../diplomacy.m
 import {consumeMessage,appendConversation} from '../living.mjs';
 import { onlineGame as setup } from './fixtures/online-game.mjs';
 let serial=0;
-function command(s,m,actor,type,args={}){const i=++serial;return {id:`cmd-${i}`,clientId:'test-client',sequence:i,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,type,args};}
+function command(s,m,actor,type,args={}){const i=++serial;return {id:`cmd-${i}`,clientId:'test-client',sequence:i,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,activationId:m.activationId,type,args};}
 const terms=(type,fields={})=>({type,duration:10,giveAmount:0,giveResource:'gold',receiveAmount:0,receiveResource:'food',targetId:'',...fields});
 
-test('two humans get distinct orders and four full AI turns in several deterministic rounds',()=>{
- const one=setup(),two=setup();
- for(const {state:s,meta:m} of [one,two])for(let turn=1;turn<=3;turn++){
-  for(const id of houseIds.slice(0,2)){const cap=settlements(s,id)[0];assert.equal(applyCommand(s,m,command(s,m,id,'recruit',{tile:cap.id,unit:'levy'})).ok,true);}
-  const humanTax=kingdom(s,'wintermere').tax='low';m.phase='resolving';resolveRound(s,m,{u0:{at:1000},u1:{at:1000}},1000);
-  assert.equal(s.strategy.history.at(-1).houses.length,4);assert.equal(kingdom(s,'wintermere').tax,humanTax);assert.equal(s.turn,turn+1);
+test('two humans receive separate activations and four AI Houses each act once per complete round',()=>{
+ const one=setup(),two=setup(),presence={u0:{at:1000},u1:{at:1000}};
+ for(const {state:s,meta:m} of [one,two])for(let round=1;round<=3;round++){
+  for(let step=0;step<6;step++){
+   const id=m.activeHouse;
+   if(m.seats[id].kind==='human'){const cap=settlements(s,id)[0];assert.equal(applyCommand(s,m,command(s,m,id,'recruit',{tile:cap.id,unit:'levy'})).ok,true);}
+   m.phase='resolving';resolveRound(s,m,presence,1000);
+  }
+  assert.equal(s.turn,round+1);assert.equal(s.strategy.history.at(-1).houses.length,4);
  }
  assert.deepEqual(one.state,two.state);
 });
-test('six humans can rule all six Houses without normal strategy running for any of them',()=>{
- const {state:s,meta:m}=setup(6);
- for(const id of houseIds)assert.equal(applyCommand(s,m,command(s,m,id,'tax',{policy:'low'})).ok,true);
- m.phase='resolving';resolveRound(s,m,Object.fromEntries(houseIds.map((id,i)=>[`u${i}`,{at:1000}])),1000);
- assert.deepEqual(aiControlledHouseIds(s),[]);assert.equal(s.strategy.history.at(-1).houses.length,0);assert.ok(s.kingdoms.every(k=>k.tax==='low'));
- assert.equal(parseSave(JSON.stringify(s)).turn,2);
+test('six human activations complete a round without any House receiving an AI turn',()=>{
+ const {state:s,meta:m}=setup(6),presence=Object.fromEntries(houseIds.map((id,i)=>[`u${i}`,{at:1000}]));
+ for(let step=0;step<6;step++){const actor=m.activeHouse;assert.equal(applyCommand(s,m,command(s,m,actor,'tax',{policy:'low'})).ok,true);m.phase='resolving';resolveRound(s,m,presence,1000);}
+ assert.deepEqual(aiControlledHouseIds(s),[]);assert.equal(s.strategy.history.length,0);assert.ok(s.kingdoms.every(k=>k.tax==='low'));assert.equal(parseSave(JSON.stringify(s)).turn,2);
 });
 test('orders cannot spend another House resources or take another army, and replay/turn/epoch checks fail closed',()=>{
- const {state:s,meta:m}=setup();const before=JSON.stringify(s),foreign=settlements(s,'wintermere')[0].id;
+ const {state:s,meta:m}=setup();activateForTest(s,m,'ashen');const before=JSON.stringify(s),foreign=settlements(s,'wintermere')[0].id;
  for(const [type,args]of [['recruit',{tile:foreign,unit:'levy'}],['order',{army:s.armies[1].id,tile:foreign,order:'hold'}],['build',{tile:foreign,building:'market'}]])assert.equal(applyCommand(s,m,command(s,m,'ashen',type,args)).ok,false);
  assert.equal(JSON.stringify(s),before);
  const c=command(s,m,'ashen','tax',{policy:'low'});assert.equal(applyCommand(s,m,c).ok,true);assert.equal(applyCommand(s,m,c).ok,false);
@@ -40,16 +42,16 @@ test('seat claims reject a second claimant and one UID can move but cannot hold 
  claimSeat(m,'u0','A','wintermere');assert.equal(m.seats.ashen.uid,null);assert.equal(seatFor(m,'u0'),'wintermere');
  startCampaign(m,'u0',1000);assert.throws(()=>claimSeat(m,'u1','B','ashen'),/locked/);assert.throws(()=>startCampaign(m,'u0',1000));
 });
-test('all Ready and timers resolve once; absence is reserved, AI substitutes act at the boundary, reconnect returns control',()=>{
- const {state:s,meta:m}=setup();const p={u0:{at:1000},u1:{at:1000}};
- m.ready.ashen=true;assert.equal(resolutionDue(m,p,1000,s),false);m.ready.wintermere=true;assert.equal(resolutionDue(m,p,1000,s),true);
- m.phase='resolving';resolveRound(s,m,p,1000);assert.equal(resolutionDue(m,p,1000,s),false);
+test('only the active human timer applies and temporary substitutes return control on their next activation',()=>{
+ const {state:s,meta:m}=setup(),p={u0:{at:1000},u1:{at:1000}};activateForTest(s,m,'ashen');
+ m.ready.wintermere=true;assert.equal(resolutionDue(m,p,1000,s),false);m.ready.ashen=true;assert.equal(resolutionDue(m,p,1000,s),true);
+ m.phase='resolving';resolveRound(s,m,p,1000);assert.equal(m.activeHouse,'wintermere');assert.equal(resolutionDue(m,p,1000,s),false);
  m.options.absent='ai';m.deadline=1100;assert.equal(resolutionDue(m,p,1100,s),true);
  m.phase='resolving';resolveRound(s,m,{u0:{at:200000},u1:{at:1000}},200000);
  assert.equal(s.controllers.wintermere.uid,'u1');assert.equal(s.controllers.wintermere.substitute,true);assert.ok(s.strategy.history.at(-1).houses.some(h=>h.owner==='wintermere'));
  assert.equal(applyCommand(s,m,command(s,m,'wintermere','tax',{policy:'low'})).ok,false);
- m.phase='resolving';resolveRound(s,m,{u0:{at:200000},u1:{at:200000}},200000);assert.equal(s.controllers.wintermere.substitute,false);
- assert.equal(applyCommand(s,m,command(s,m,'wintermere','tax',{policy:'low'})).ok,true);
+ for(let n=0;n<6&&m.activeHouse!=='wintermere';n++){m.phase='resolving';resolveRound(s,m,{u0:{at:200000},u1:{at:200000}},200000);}
+ assert.equal(s.controllers.wintermere.substitute,false);assert.equal(applyCommand(s,m,command(s,m,'wintermere','tax',{policy:'low'})).ok,true);
 });
 test('host takeover waits for the grace period and permanent surrender releases the UID',()=>{
  const {state:s,meta:m}=setup();assert.throws(()=>requestTakeover(m,'u0','wintermere',{u1:{at:1000}},1001));
@@ -58,12 +60,12 @@ test('host takeover waits for the grace period and permanent surrender releases 
  m.phase='resolving';resolveRound(s,m,{u0:{at:1001+GRACE_MS}},1001+GRACE_MS);assert.ok(aiControlledHouseIds(s).includes('wintermere'));
 });
 test('human chat cannot ratify a treaty; exact structured terms require the receiver and are charged once',()=>{
- const {state:s,meta:m}=setup();const a='ashen',b='wintermere';
+ const {state:s,meta:m}=setup();const a='ashen',b='wintermere';activateForTest(s,m,a);
  assert.equal(applyCommand(s,m,command(s,m,a,'chat',{targetHouseId:b,message:'We are allies now.'})).ok,true);assert.equal(treaty(s,a,b,'alliance'),undefined);
  assert.equal(commitDeal(s,b,terms('ALLIANCE'),a).ok,false);
  const c=command(s,m,a,'humanProposal',{targetHouseId:b,intent:terms('ALLIANCE',{giveAmount:20})});assert.equal(applyCommand(s,m,c).ok,true);
  assert.equal(applyCommand(s,m,command(s,m,a,'respondProposal',{id:c.id,decision:'accept'})).ok,false);
- const gold=kingdom(s,a).resources.gold;const accept=command(s,m,b,'respondProposal',{id:c.id,decision:'accept'});
+ activateForTest(s,m,b);const gold=kingdom(s,a).resources.gold;const accept=command(s,m,b,'respondProposal',{id:c.id,decision:'accept'});
  assert.equal(applyCommand(s,m,accept).ok,true);assert.ok(treaty(s,a,b,'alliance'));assert.equal(kingdom(s,a).resources.gold,gold-20);
  assert.equal(applyCommand(s,m,{...accept,id:'another',sequence:++serial}).ok,false);
  assert.equal(applyCommand(s,m,command(s,m,b,'ratify',{targetHouseId:a,intent:terms('WAR')})).ok,true);assert.ok(atWar(s,a,b));

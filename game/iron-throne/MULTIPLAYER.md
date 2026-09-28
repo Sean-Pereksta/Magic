@@ -9,7 +9,8 @@ write or load the single-player localStorage save.
 
 Create Iron Thrones from the shared lobby, invite up to five other people, and
 launch House selection. Each anonymous Firebase UID can claim one of six Houses.
-The host sets the seed, map, optional 2/5/10-minute timer, and absent-ruler policy.
+The host sets the seed, map, AI difficulty, optional 2/5/10-minute House timer,
+and absent-ruler policy.
 Unclaimed seats become AI when the host starts. A private one-human campaign is
 also supported. The shared lobby lists this browser's saved online campaigns.
 
@@ -19,16 +20,33 @@ capital at least eight hexes from existing capitals; AI Houses then found in the
 remaining regions. Turn timers start only after all six capitals exist. See
 [FOUNDING.md](FOUNDING.md) for geography, starting packages and save compatibility.
 
-Issue orders, then press **Ready**. The round advances when all eligible human
-rulers are ready, or when its timer expires. A human who is connected retains
-their orders even if they miss the timer. Disconnected seats stay reserved; their
-readiness is waived after 90 seconds. The host may then request temporary or
-permanent AI takeover. Temporary control changes happen at round boundaries;
-the same UID regains its reserved House at the next boundary after reconnecting.
-The campaign pauses when no living human ruler is connected.
+Only the **active House** can make binding decisions. Issue orders, then press
+**End House turn**. Its movement and combat resolve once, and the next living
+House becomes active. AI Houses use the same sequence, each acting once. The
+canonical House order is rotated by `hash(seed, 'first-house') % 6`; this saved
+starting offset gives each seat a reproducible starting opportunity. Reconnects
+never redraw the order. The status bar shows the round, active and next House,
+and your position; the player list is numbered in turn order.
+
+One round is a complete cycle. Income, construction, population, all upkeep,
+paid general mustering, treaty durations and recurring obligations advance only
+at that boundary. Passive combat defense does not give the defender another
+activation. Generals prepare visible orders when their owner's activation opens;
+manual changes remain protected until that activation ends.
+
+The timer applies only to the active human. Timeout commits the current orders;
+it does not grant another House concurrent control. Disconnected seats stay
+reserved, with a 90-second grace period for that activation. The host can request
+temporary or permanent AI takeover. A temporary substitute acts only when that
+House is active, and a returning UID regains control at its next activation.
+The campaign pauses when no living human ruler is connected. Waiting players
+can inspect permitted information, read correspondence and prepare order drafts.
+Binding chat, proposal acceptance, recruitment and orders wait for their turn.
 
 Human chat is private and cannot execute treaties. A structured proposal must be
-accepted by its recipient, with costs and legality checked at that moment.
+accepted during its recipient's activation, with costs and legality checked at
+that moment. Joint-war agreements queue waiting participants' declarations for
+their own activations and recheck intervening treaties.
 Declarations of war are unilateral. AI conversations retain the existing rule
 evaluator, optional Gemini voice, confirmed promises, military pledges and
 scripted fallback. AI strategy runs for every AI House and temporary substitute,
@@ -50,13 +68,13 @@ Every lobby uses these isolated paths:
 
 | Path below `lobbies/{id}` | Purpose and read access |
 | --- | --- |
-| `iron_throne/meta` | Seats, options, phase, ready flags, lease, version and epoch; members |
+| `iron_throne/meta` | Seats, difficulty, phase, round, turn order, active House, activation ID, lease, version and epoch; members |
 | `iron_throne/world` | Bare terrain, known capital sites and public diplomacy; members |
 | `iron_throne/state` | Compressed canonical simulation; current controller |
 | `iron_throne_private/{houseId}` | House-specific fog view, court, observations, reports, spies, proposals and authoritative negotiation verdicts; owner and controller |
 | `iron_throne_commands/{id}` | Immutable request and final receipt; issuer and controller |
 | `iron_throne_presence/{uid}` | Server-timestamped heartbeat; members |
-| `iron_throne_snapshots/{0,1,2}` | Three rotating completed-round recovery snapshots; controller |
+| `iron_throne_snapshots/{0,1,2}` | Three rotating round slots, updated after committed activations; controller |
 
 A transaction claims seats and starts the world exactly once. One browser holds
 a 30-second simulation lease renewed every 10 seconds. Its random per-tab token
@@ -65,14 +83,16 @@ the epoch; commands from older epochs require review and resubmission.
 Administrative hosting can transfer after the original host's 90-second absence.
 
 The controller loads the latest canonical/private snapshots in a transaction,
-validates each command's UID, House, turn, sequence, version, epoch and arguments,
+validates each command's UID, active House, activation ID, round, sequence,
+version, epoch and arguments,
 and calls the shared engine. State, private projections, version and receipt
 commit atomically. Costs, resource totals, RNG and battle results come from the
 engine. A stale or duplicate receipt cannot apply again. Invalid arguments are
 rejected without saving partial mutations or stopping the queue.
 
-Round resolution first commits a durable `resolving` phase. A successor can
-resume that exact turn; the completed turn and its snapshot commit atomically.
+Activation resolution first commits a durable `resolving` phase. A successor can
+resume that exact activation; its completed state, next activation and snapshot
+commit atomically. A committed activation cannot be made Ready or reopened.
 Observers render only matching public/private versions. Network failure pauses
 orders and shows **RECONNECTING…**; there is no local simulation fork.
 
@@ -96,7 +116,8 @@ its receipts, once that campaign will no longer be resumed.
    rules do not provide Iron Thrones' ownership and privacy guarantees.
 2. Publish the static game modules and shared lobby changes together.
 3. Deploy the existing Iron Thrones Gemini Worker update if live chat is enabled;
-   it now accepts an explicit speaking House. Scripted diplomacy needs no Worker.
+   it accepts an explicit speaking House and general conversation mode. Generals
+   reuse the same verified session and quota; local commands need no Worker.
 
 No new Firebase project, credentials, server or paid Gemini quota is required by
 these changes. The emulator configuration is strictly for `demo-iron-thrones`;
@@ -106,10 +127,27 @@ For operator recovery from malformed data, first stop clients, export the curren
 lobby documents, and choose a valid rotating snapshot. Decode its `payload` with
 `decodePayload`, use `packCampaign` to rebuild public/private documents, and
 restore them together with metadata at a **new**, larger state version and epoch.
-Set phase/turn to the restored planning boundary, clear ready flags, sequences
+Restore `turnOrder`, `activeHouse` and `activationId` from the saved sequential
+state. Set phase/turn to that planning boundary, clear commit flags, sequences
 and the lease, and reject outstanding commands from the old epoch. Perform this
 as an administrative batch; normal clients intentionally cannot roll versions
 backward. There is no in-game destructive restore button.
+
+## Existing online campaigns
+
+Metadata advances to schema 2 without rebuilding the world. The controller first
+locks and commits a migration boundary. It saves the seeded sequence, clears old
+Ready flags and obsolete movement queues, and retains each queued destination as
+`legacyOrder`. Army cards offer **Review previous order** for explicit
+revalidation during the owner's activation. Old simultaneous requests lack the
+new activation identity and are rejected, never silently executed. Resources,
+settlements, histories and spent movement are preserved. Existing saves default
+to **Medium** difficulty.
+
+Private general conversations, candidates, cooldowns, objectives and vassal
+command details are projected only to their permitted House/participants.
+Observed commander bonuses can appear in battle estimates; enemy objectives and
+future orders do not. The controller retains the existing full-state trust model.
 
 ## Population growth
 
@@ -166,11 +204,13 @@ npm run test:iron-throne:online
 npm run test:iron-throne:browser
 npm run test:iron-throne:founding-browser
 npm run test:iron-throne:intelligence-browser
+npm run test:iron-throne:command-browser
 ```
 
 The online suite uses the real Firebase SDK with Auth/Firestore emulators and
 independent browser contexts. It covers concurrent seat and capital claims, founding reconnects, private rules,
-ownership, human diplomacy, recruitment, synchronized two- and six-human rounds,
+ownership, sequential human diplomacy and recruitment, active-House exclusivity,
+complete two- and six-human rounds,
 offline UI, same-UID refresh, and actual controller-browser closure/failover.
 Pure engine tests additionally cover timers, temporary/permanent takeover,
 duplicate/stale orders, useful AI pledges, coalition victory, save compatibility,

@@ -8,6 +8,7 @@ export { tradeInfrastructure, tradeRoute, contractCheck, contractAnchors, econom
 import { tradeInfrastructure, tradeRoute, economicNeeds } from './trade-economy.mjs';
 
 function candidate(s,from,to) {
+  if(from===to||!alive(s,to))return null;
   s=planningView(s,from);
   const route=tradeRoute(s,from,to);if(!route.safe)return null;
   const a=kingdom(s,from),needs=economicNeeds(s,from),supplies=RESOURCES.map(resource=>({resource,surplus:36,production:0}));
@@ -44,9 +45,9 @@ export function scheduleTrade(s, actorHouseId = PLAYER) {
   c.offers.push(offer);c.cooldowns[`${actorHouseId}:${best.from}`]=s.turn;c.lastOfferTurn=s.turn;c.lastOfferByHouse||={};c.lastOfferByHouse[actorHouseId]=s.turn;
   appendConversation(s,best.from,'ruler',`${offer.reason} We request ${offer.intent.giveAmount} ${offer.intent.giveResource} for ${offer.intent.receiveAmount} ${offer.intent.receiveResource}${offer.intent.type==='RECURRING'?` each turn for ${offer.intent.duration} turns`:''}.`,{unread:true,kind:'trade-dispatch',proposal:offer.intent,actorHouseId});
 }
-export function aiResourceTrade(s) {
+export function aiResourceTrade(s,onlyOwner=null) {
   if(s.turn%3)return;
-  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id))){
+  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id)&&(!onlyOwner||k.id===onlyOwner))){
     if(s.turn-(s.commerce.aiTrades[k.id]||0)<4)continue;
     const options=s.kingdoms.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)).map(o=>({partner:o.id,offer:candidate(s,k.id,o.id)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
     const best=options[0];if(!best)continue;
