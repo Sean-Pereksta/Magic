@@ -1,3 +1,4 @@
+import { initializeSequential, syncSequential } from '../../sequential.mjs';
 import assert from 'node:assert/strict';
 import { setupMeta, claimSeat, startCampaign, houseIds } from '../../multiplayer-rounds.mjs';
 import { planFoundings } from '../../founding.mjs';
@@ -17,4 +18,10 @@ export function onlineGame(count=2) {
     assert.equal(state.turn,1);assert.equal(meta.phase,'planning');ready.set(count,{state,meta});
   }
   return structuredClone(ready.get(count));
+}
+
+// Isolate a command handler in a valid activation. Sequence/round behavior has
+// dedicated full-controller tests; handler tests explicitly arrange their actor.
+export function activateForTest(s,m,actor){
+  initializeSequential(s,m);s.sequential.index=s.sequential.order.indexOf(actor);s.sequential.id++;s.sequential.round=s.turn;syncSequential(s,m);m.turn=s.turn;m.ready={};m.phase='planning';
 }

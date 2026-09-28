@@ -1,3 +1,4 @@
+import { displayArtURL } from './asset-manifest.mjs';
 // Presentation only. The original proposal nodes and their delegated handlers
 // remain authoritative. This module never evaluates, submits or ratifies a deal.
 export function houseFromLabel(label, houses) {
@@ -145,7 +146,7 @@ export function installCorrespondence(doc, { portraits = {}, houses = [] } = {})
     frame.dataset.houseId = house?.id || '';
     const sigil = make('span', 'leader-sigil', house?.sigil || '♜');
     sigil.setAttribute('aria-hidden', 'true'); frame.append(sigil);
-    const url = house && portraits[house.id];
+    const url = house && displayArtURL(portraits[house.id]);
     if (url) {
       const image = make('img'); image.alt = ''; image.setAttribute('aria-hidden', 'true');
       image.width = 64; image.height = 64; image.decoding = 'async';

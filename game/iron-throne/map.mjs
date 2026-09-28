@@ -235,7 +235,7 @@ export class WorldMap {
         c.fillStyle='#081c2999';c.beginPath();c.ellipse(2,7,22,7,0,0,Math.PI*2);c.fill();
         c.beginPath();c.roundRect(-19,-8,38,20,4);const plate=c.createLinearGradient(0,-8,0,12);plate.addColorStop(0,'#344b55');plate.addColorStop(1,'#102932');c.fillStyle=plate;c.fill();c.strokeStyle=selected?'#fff0b5':color;c.lineWidth=selected?2:1.3;c.stroke();
         c.fillStyle=color;c.beginPath();c.moveTo(-16,-5);c.lineTo(-8,-5);c.lineTo(-8,3);c.lineTo(-12,7);c.lineTo(-16,3);c.closePath();c.fill();
-        c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
+        c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(s.treaties?.some(t=>t.type==='vassalage'&&t.vassal===army.owner&&t.expires>s.turn)?'♛':group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
         c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
       });
     }

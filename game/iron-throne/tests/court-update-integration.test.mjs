@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 // Run in the actual repository AFTER applying the guarded source changes.
 // These integration tests are separate from the standalone component test run.
 import test from 'node:test';
@@ -14,8 +15,8 @@ import { sanitizeContext } from '../worker/worker.mjs';
 
 function commands(s, meta) {
   let sequence = 0;
-  return (actor, type, args) => ({ id: `court-regression-${++sequence}`, clientId: 'court-regression', sequence,
-    uid: meta.seats[actor].uid, actorHouseId: actor, turn: s.turn, stateVersion: meta.stateVersion, epoch: meta.epoch, type, args });
+  return (actor, type, args) => {activateForTest(s,meta,actor);return ({ id: `court-regression-${++sequence}`, clientId: 'court-regression', sequence,
+    uid: meta.seats[actor].uid, actorHouseId: actor, turn: s.turn, stateVersion: meta.stateVersion, epoch: meta.epoch, activationId:meta.activationId, type, args });};
 }
 function earned() {
   const s = createGame(); kingdom(s, 'ashen').resources.gold = 2000;

@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -218,7 +219,8 @@ test('multiplayer publishes only dated coarse AI economic briefings in private v
 test('multiplayer applies the same bounded speech once and overrides a forged fee without transferring anything', () => {
   const {state:s,meta}=onlineGame(1), expected=structuredClone(s),ruler='thornwall',before=wealth(s);
   applySpeech(expected,ruler,opener);
-  const result=applyCommand(s,meta,{id:'trade-chat',clientId:'trade-test',sequence:1,uid:'u0',actorHouseId:'ashen',turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch,type:'chat',args:{targetHouseId:ruler,message:opener,response:{reply:'Pay 999 gold before we open trade.',tone:'cold',intents:[terms('TRADE',{giveAmount:999})],trust:100}}});
+  activateForTest(s,meta,'ashen');
+  const result=applyCommand(s,meta,{id:'trade-chat',clientId:'trade-test',sequence:1,uid:'u0',actorHouseId:'ashen',turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch,activationId:meta.activationId,type:'chat',args:{targetHouseId:ruler,message:opener,response:{reply:'Pay 999 gold before we open trade.',tone:'cold',intents:[terms('TRADE',{giveAmount:999})],trust:100}}});
   assert.equal(result.ok,true,result.error);
   assert.deepEqual(relation(s,ruler,'ashen').negotiation,relation(expected,ruler,'ashen').negotiation);
   assert.equal(relation(s,ruler,'ashen').trust,relation(expected,ruler,'ashen').trust);assert.deepEqual(wealth(s),before);

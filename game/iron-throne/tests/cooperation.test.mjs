@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -151,7 +152,8 @@ test('save validation rejects forged operation references and leaks in low-detai
 test('multiplayer operation commands honor authenticated ownership and reject forged replies',()=>{
   const {state:s,meta}=onlineGame(2);const [owner,partner]=Object.keys(meta.seats).filter(id=>meta.seats[id].kind==='human');ally(s,owner,partner);const target=s.kingdoms.find(k=>![owner,partner].includes(k.id)).id,targetTile=settlements(s,target)[0].id;
   const args={name:'Online Iron Gate',targetTile,attackStart:4,attackEnd:7,participants:[owner,partner].map((house,i)=>({house,role:i?'flank':'assault',rally:defaultRally(s,house,targetTile),requiredTroops:10,requiredSiege:0,food:0}))};
-  const envelope={id:'operation-command',clientId:'cooperation-test',sequence:1,uid:meta.seats[owner].uid,actorHouseId:owner,turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch};
+  activateForTest(s,meta,owner);
+  const envelope={id:'operation-command',clientId:'cooperation-test',sequence:1,uid:meta.seats[owner].uid,actorHouseId:owner,turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch,activationId:meta.activationId};
   const result=applyCommand(s,meta,{...envelope,type:'operationCreate',args});assert.equal(result.ok,true,result.error);
   const forged=applyCommand(s,meta,{...envelope,id:'forged',sequence:2,type:'operationAnswer',args:{id:result.operationId,member:partner,decision:'accept'}});assert.equal(forged.ok,false);assert.equal(operationMember(operationFor(s,result.operationId),partner).status,'invited');
 });

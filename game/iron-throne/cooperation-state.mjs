@@ -7,6 +7,7 @@ export const operationMember = (o, house) => o?.participants.find(p => p.house =
 export const memberOperation = (s, house) => s.cooperation?.operations.find(o => ongoingOperation(o) && operationMember(o, house)?.status === 'accepted');
 export function initializeCooperation(s) {
   s.cooperation ??= {operations:[],proposals:[],balance:[],lastDiplomacyTurn:0};
+  s.cooperation.vassalOrders??=[];
 }
 export function pruneCooperation(s) {
   initializeCooperation(s);

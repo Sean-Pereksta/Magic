@@ -76,8 +76,8 @@ export function installArtFallbacks(root) {
 export async function preloadAllArt(onProgress=()=>{}, {concurrency=6,timeout=10000,budget=45000}={}) {
   let completed=0,failed=0;
   const deadline=Date.now()+budget;
-  // Optional portraits load on demand. Missing uploads must not delay startup.
-  const startupPaths=ALL_ART_PATHS.filter(path=>!path.startsWith('portraits/'));
+  // Portraits share the decoded cache and bounded startup timeout with map art.
+  const startupPaths=ALL_ART_PATHS;
   const total=startupPaths.length;
   const load = async path => {
     const image = await loadArt(ironThronesAsset(path),{timeout:Math.max(1,Math.min(timeout,deadline-Date.now()))});

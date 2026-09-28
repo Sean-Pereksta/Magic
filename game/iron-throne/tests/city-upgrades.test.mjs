@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import { onlineGame } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -58,7 +59,8 @@ test('town promotion, old cities, completed tiers and pending upgrades survive s
 });
 test('foreign or occupied cities cannot be upgraded, and online commands use the same paid upgrade',()=>{
  const {state:s,meta}=onlineGame();stock(s,'wintermere');const home=s.founding.houses.wintermere.capital,foreign=s.founding.houses.ashen.capital;
- const c={id:'city-upgrade',clientId:'city-test-client',sequence:1,uid:'u1',actorHouseId:'wintermere',turn:1,stateVersion:meta.stateVersion,epoch:1,type:'build',args:{tile:home,building:'city'}};
+ activateForTest(s,meta,'wintermere');
+ const c={id:'city-upgrade',clientId:'city-test-client',sequence:1,uid:'u1',actorHouseId:'wintermere',turn:1,stateVersion:meta.stateVersion,epoch:1,activationId:meta.activationId,type:'build',args:{tile:home,building:'city'}};
  const before=JSON.stringify(s);assert.equal(applyCommand(s,meta,{...c,args:{tile:foreign,building:'city'}}).ok,false);assert.equal(JSON.stringify(s),before);
  assert.equal(applyCommand(s,meta,c).ok,true);assert.equal(s.tiles[home].project.level,2);assert.equal(applyCommand(s,meta,c).ok,false);
  const lone=createGame();stock(lone);declareWar(lone,'ashen','wintermere');lone.armies[1].tile='5,6';assert.match(buildCheck(lone,'ashen','5,6','city'),/Enemy troops/);

@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -159,7 +160,7 @@ test('battle projections cannot modify personal state',()=>{
 });
 test('multiplayer supports a non-Ashen human proposer, receiver consent, and private negotiation snapshots',()=>{
   const {state:s,meta:m}=onlineGame(2),from='wintermere',to='ashen';let seq=0;
-  const command=(actor,type,args)=>({id:`family-${++seq}`,clientId:'family-test',sequence:seq,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,type,args});
+  const command=(actor,type,args)=>{activateForTest(s,m,actor);return ({id:`family-${++seq}`,clientId:'family-test',sequence:seq,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,activationId:m.activationId,type,args});};
   const send=text=>applyCommand(s,m,command(from,'chat',{targetHouseId:to,message:text}));
   assert.equal(send('Would you consider joining our families?').ok,true);s.turn++;
   assert.equal(send('Let us discuss marriage.').ok,true);

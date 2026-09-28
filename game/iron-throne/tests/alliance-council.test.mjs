@@ -1,3 +1,4 @@
+import { activateForTest } from './fixtures/online-game.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -19,7 +20,7 @@ const allies=(s,ids=['wintermere','thornwall'])=>{
 const setup=()=>{const s=createGame(),c=allies(s);return {s,c};};
 const reply={responses:[{speakerHouseId:'wintermere',message:'I would consider it. Put the terms before me.',requestedIntent:{type:'JOINT_WAR',targetId:'vesper'}}]};
 let sequence=0;
-const command=(s,m,actor,type,args)=>({id:`council-test-${++sequence}`,clientId:'council-test',sequence,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,type,args});
+const command=(s,m,actor,type,args)=>{activateForTest(s,m,actor);return ({id:`council-test-${++sequence}`,clientId:'council-test',sequence,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,activationId:m.activationId,type,args});};
 
 test('a shared council charges once, speaks only as independent AI rulers and never executes terms',()=>{
   const {s,c}=setup();

@@ -1,8 +1,9 @@
+import { difficultyOptions } from './difficulty.mjs';
 import { showTurnProgress } from './turn-progress.mjs';
 import { mapOptions, MAP_PROFILES } from './map-profiles.mjs';
 import {HOUSES} from './data.mjs';
 import {alive,treaty} from './core.mjs';
-import {present,seatFor,requiredRulers,millis,GRACE_MS} from './multiplayer-rounds.mjs';
+import {present,seatFor,millis,GRACE_MS} from './multiplayer-rounds.mjs';
 import {describeIntent} from './diplomacy.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function humanProposals(s,other,actor){
@@ -27,7 +28,7 @@ export class MultiplayerUI {
     });
     this.dialog.addEventListener('submit',e=>{
       if(e.target.id!=='online-settings')return;e.preventDefault();const f=new FormData(e.target);
-      run(()=>network.setup('configure',{seed:Number(f.get('seed')),preset:f.get('preset'),timerSeconds:Number(f.get('timerSeconds')),absent:f.get('absent')}));
+      run(()=>network.setup('configure',{seed:Number(f.get('seed')),preset:f.get('preset'),timerSeconds:Number(f.get('timerSeconds')),absent:f.get('absent'),difficulty:f.get('difficulty')}));
     });
     this.bar.addEventListener('click',e=>{
       const b=e.target.closest('[data-takeover]');if(!b)return;
@@ -49,7 +50,7 @@ export class MultiplayerUI {
       if(seat.kind==='open')return 'Open';if(seat.kind==='ai')return 'AI';
       if(meta.phase==='founding')return `${seat.name} · ${state?.founding?.houses[id]?.founded?'Capital founded':'Choosing a home'}`;
       if(state&&!alive(state,id))return `${seat.name} · House fallen`;
-      return `${seat.name} · ${seat.substitute?'AI substitute':present(presence[seat.uid],now)?meta.ready[id]?'Ready':'Planning':'Disconnected'}`;
+      return `${seat.name} · ${seat.substitute?'AI substitute':present(presence[seat.uid],now)?meta.activeHouse===id?'Active turn':'Waiting':'Disconnected'}`;
     };
     if(setup){
       if(!this.dialog.open)this.dialog.showModal();
@@ -63,18 +64,19 @@ export class MultiplayerUI {
       if(optSig!==this.optionSignature){
         this.optionSignature=optSig;
         const o=meta.options;
-        document.getElementById('online-options').innerHTML=host?`<form id="online-settings"><div class="form-row"><label>World<select name="preset">${mapOptions(o.preset)}</select></label><label>Map seed<input name="seed" type="number" min="1" max="4294967295" value="${o.seed}" required></label></div><div class="form-row"><label>Round timer<select name="timerSeconds">${[0,120,300,600].map(n=>`<option value="${n}" ${o.timerSeconds===n?'selected':''}>${n?n/60+' minutes':'No timer'}</option>`).join('')}</select></label><label>Absent rulers<select name="absent"><option value="hold" ${o.absent==='hold'?'selected':''}>Hold remaining orders</option><option value="ai" ${o.absent==='ai'?'selected':''}>Temporary AI substitute</option></select></label></div><button>Save campaign options</button></form>`:`<p>Map seed ${o.seed} · ${o.preset} · ${o.timerSeconds?o.timerSeconds/60+' minute rounds':'No timer'}</p>`;
+        document.getElementById('online-options').innerHTML=host?`<form id="online-settings"><div class="form-row"><label>World<select name="preset">${mapOptions(o.preset)}</select></label><label>Map seed<input name="seed" type="number" min="1" max="4294967295" value="${o.seed}" required></label></div><div class="form-row"><label>AI difficulty<select name="difficulty">${difficultyOptions(o.difficulty)}</select></label><label>House turn timer<select name="timerSeconds">${[0,120,300,600].map(n=>`<option value="${n}" ${o.timerSeconds===n?'selected':''}>${n?n/60+' minutes':'No timer'}</option>`).join('')}</select></label><label>Absent rulers<select name="absent"><option value="hold" ${o.absent==='hold'?'selected':''}>Hold remaining orders</option><option value="ai" ${o.absent==='ai'?'selected':''}>Temporary AI substitute</option></select></label></div><button>Save campaign options</button></form>`:`<p>Map seed ${o.seed} · ${o.preset} · ${o.timerSeconds?o.timerSeconds/60+' minute turns':'No timer'}</p>`;
       }
       document.getElementById('online-start').hidden=!host;
       document.getElementById('online-start').disabled=!actor||!online;
     }else if(this.dialog.open)this.dialog.close();
-    const ready=requiredRulers(meta,presence,now,state),count=ready.filter(id=>meta.ready[id]).length;
+    const order=meta.turnOrder||[],position=order.indexOf(meta.activeHouse);
+    const nextHouse=[...order.slice(position+1),...order.slice(0,position+1)].find(id=>!state||alive(state,id));
     const seconds=meta.deadline?Math.max(0,Math.ceil((meta.deadline-now)/1000)):0;
     const remaining=meta.deadline?`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} left`:'No timer';
     const expanded=this.bar.querySelector('details')?.open;
-    this.bar.innerHTML=`<div role="status"><strong>${!online?'RECONNECTING…':meta.phase==='resolving'?'Resolving Turn…':meta.phase==='ended'?'Campaign complete':setup?'Kingdom selection':meta.phase==='founding'?'Found your kingdom':`Turn ${meta.turn} · Planning`}</strong><span>${actor?`${esc(meta.seats[actor].name)} · ${esc(HOUSES.find(h=>h.id===actor).name)}`:'Choose a House'} · ${meta.phase==='founding'?`${Object.values(state?.founding?.houses||{}).filter(h=>h.founded).length}/6 capitals · ${esc(MAP_PROFILES[meta.mapProfile]?.name||'')} · Seed ${meta.seed}`:`${count} / ${ready.length} rulers ready · ${remaining}`}${pending?` · ${pending} pending order${pending===1?'':'s'}`:''}</span></div><details ${expanded?'open':''}><summary>Players / Kingdoms</summary><div class="online-rulers">${HOUSES.map(h=>{const s=meta.seats[h.id],absent=s.uid&&!present(presence[s.uid],now),canTake=host&&meta.phase==='planning'&&s.kind==='human'&&now-Math.max(millis(presence[s.uid]?.at),meta.startedAt??meta.planningAt)>=GRACE_MS;return `<div style="--house:${h.color}"><strong>${h.sigil} ${esc(h.name)}</strong><span>${esc(statusFor(h.id))}${state&&actor!==h.id&&treaty(state,actor,h.id,'alliance')?' · Allied':''}</span>${canTake?`<button data-takeover="${h.id}">AI substitute next round</button><button data-takeover="${h.id}" data-permanent="true">Surrender to AI…</button>`:absent?'<small>Seat reserved</small>':''}</div>`;}).join('')}</div></details>`;
-    button.textContent=meta.phase==='founding'?'Found all kingdoms':meta.phase==='resolving'?'Resolving…':meta.ready[actor]?'Unready':'Ready';
-    button.disabled=!online||!this.network.state||this.network.state.turn!==meta.turn||pending>0||meta.phase!=='planning'||!actor||!!meta.seats[actor]?.substitute||state&&!alive(state,actor);
+    this.bar.innerHTML=`<div role="status"><strong>${!online?'RECONNECTING…':meta.phase==='resolving'?'Resolving Turn…':meta.phase==='ended'?'Campaign complete':setup?'Kingdom selection':meta.phase==='founding'?'Found your kingdom':`Round ${meta.turn} · ${esc(HOUSES.find(h=>h.id===meta.activeHouse)?.name||'Preparing')} is active`}</strong><span>${actor?`${esc(meta.seats[actor].name)} · ${esc(HOUSES.find(h=>h.id===actor).name)}`:'Choose a House'} · ${meta.phase==='founding'?`${Object.values(state?.founding?.houses||{}).filter(h=>h.founded).length}/6 capitals · ${esc(MAP_PROFILES[meta.mapProfile]?.name||'')} · Seed ${meta.seed}`:`Your place: ${(meta.turnOrder||[]).indexOf(actor)+1} / ${(meta.turnOrder||[]).length} · Next: ${esc(HOUSES.find(h=>h.id===nextHouse)?.name||'—')} · ${remaining}`}${pending?` · ${pending} pending order${pending===1?'':'s'}`:''}</span></div><details ${expanded?'open':''}><summary>Players / Kingdoms</summary><div class="online-rulers">${[...HOUSES].sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id)).map(h=>{const s=meta.seats[h.id],absent=s.uid&&!present(presence[s.uid],now),canTake=host&&meta.phase==='planning'&&s.kind==='human'&&now-Math.max(millis(presence[s.uid]?.at),meta.startedAt??meta.planningAt)>=GRACE_MS;return `<div style="--house:${h.color}"><strong>${order.length?`${order.indexOf(h.id)+1}. `:''}${h.sigil} ${esc(h.name)}</strong><span>${esc(statusFor(h.id))}${state&&actor!==h.id&&treaty(state,actor,h.id,'alliance')?' · Allied':''}</span>${canTake?`<button data-takeover="${h.id}">AI substitute next activation</button><button data-takeover="${h.id}" data-permanent="true">Surrender to AI…</button>`:absent?'<small>Seat reserved</small>':''}</div>`;}).join('')}</div></details>`;
+    button.textContent=meta.phase==='founding'?'Found all kingdoms':meta.phase==='resolving'?'Resolving…':meta.activeHouse===actor?(meta.ready[actor]?'Turn committed':'End House turn'):'Waiting for active House';
+    button.disabled=!online||!this.network.state||this.network.state.turn!==meta.turn||pending>0||meta.phase!=='planning'||!actor||meta.activeHouse!==actor||!!meta.ready[actor]||!!meta.seats[actor]?.substitute||state&&!alive(state,actor);
     document.getElementById('save-status').textContent=online?meta.phase==='founding'?'Online founding progress saved':`Online campaign saved · turn ${meta.turn}`:'RECONNECTING… Orders paused';
   }
 }

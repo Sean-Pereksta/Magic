@@ -1,3 +1,4 @@
+import { difficulty } from './difficulty.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { memberOperation } from './cooperation-state.mjs';
 import { isAiHouse, court } from './house-control.mjs';
@@ -80,23 +81,23 @@ export function dangerousTiles(s,k,a) {
   const tiles=new Set(s.armies.filter(e=>e.owner!==a.owner&&sizeOf(e)>0&&atWar(s,a.owner,e.owner)).map(e=>e.tile));
   return new Set([...tiles].filter(id=>!assaultAssessment(s,k,a,s.tiles[id]).assault));
 }
-function orderBombardment(s,k,a,t,avoid) {
+export function orderBombardment(s,k,a,t,avoid,source='player') {
   const world=s; s=planningView(world,k.id);
   const type=t.walls>0?'wall':fortMaximum(t)&&(t.fortIntegrity??fortMaximum(t))>0?'fort':null;
   if(!type)return {ok:false};
-  if(!structureAttackCheck(s,a,t,type,'bombard'))return orderStructureAttack(world,k.id,a.id,t.id,type,'bombard');
+  if(!structureAttackCheck(s,a,t,type,'bombard'))return orderStructureAttack(world,k.id,a.id,t.id,type,'bombard',null,source);
   // March to a legal firing position without marching through the garrison.
   const blocked=new Set([...avoid,t.id]);
   const positions=Object.values(s.tiles).filter(tile=>tile.id!==t.id&&!blocked.has(tile.id)&&distance(tile,t)<=bombardRange(a)&&!structureAttackCheck(s,{...a,tile:tile.id},t,type,'bombard'))
     .sort((x,y)=>distance(s.tiles[a.tile],x)-distance(s.tiles[a.tile],y)||distance(y,t)-distance(x,t)||x.id.localeCompare(y.id));
   for(const tile of positions){
     if(!findPath(s,a.tile,tile.id,k.id,false,blocked).length)continue;
-    const result=orderArmy(world,k.id,a.id,tile.id,'move',blocked);if(result.ok)return result;
+    const result=orderArmy(world,k.id,a.id,tile.id,'move',blocked,source);if(result.ok)return result;
   }
   return {ok:false};
 }
 export function proposeInvasion(s,k,target,tile) {
-  const operation=proposeJointOperation(s,k,target,tile);
+  const operation=difficulty(s).coordination>=2&&proposeJointOperation(s,k,target,tile);
   if(operation)return s.intrigue.plans.find(p=>p.operationId===operation.id&&p.actor===k.id);
   return createPlan(s,k.id,'invasion',{target,targetTile:tile.id,objective:`Capture ${tile.name||tile.id}.`,requiredForces:30,
     delay:3});
@@ -135,7 +136,7 @@ export function preparePlans(s,k,c) {
       targetTile:c.home.id,building:c.wary?'wall':'town',objective:c.wary?'Strengthen frontier defenses.':'Expand a sustainable realm.',requiredForces:36});
   }
   for(const p of plans()) {
-    if(p.operationId)continue; // Shared readiness, consent and deadlines govern these plans.
+    if(p.operationId||p.vassalCommand)continue; // Shared readiness, consent and deadlines govern these plans.
     if(!alive(s,k.id)||p.target&&!alive(s,p.target)){transitionPlan(world,p,'Abandoned','A participating House lost its final settlement.');continue;}
     if(militaryPlan(p)) {
       if(protectedPeace(s,k.id,p.target)||p.wasAtWar&&!atWar(s,k.id,p.target)){transitionPlan(world,p,'Abandoned','A treaty or peace agreement prevents the attack.');continue;}
@@ -180,7 +181,7 @@ export function plannedArmyOrder(s,k,a,c) {
   }
   const shared=memberOperation(s,k.id);
   const plans=world.intrigue.plans.filter(p=>p.actor===k.id&&militaryPlan(p)&&(!shared||p.operationId===shared.id)&&['Committed','Executing'].includes(p.status));
-  plans.sort((p,q)=>distance(s.tiles[a.tile],s.tiles[p.targetTile])-distance(s.tiles[a.tile],s.tiles[q.targetTile])||(p.type==='infrastructure'?1:-1));
+  plans.sort((p,q)=>Number(q.assignedArmies.includes(a.id))-Number(p.assignedArmies.includes(a.id))||distance(s.tiles[a.tile],s.tiles[p.targetTile])-distance(s.tiles[a.tile],s.tiles[q.targetTile])||(p.type==='infrastructure'?1:-1));
   for(const p of plans) {
     const t=s.tiles[p.targetTile];
     if(!atWar(s,k.id,p.target)||t.owner!==p.target)continue;
@@ -201,7 +202,7 @@ export function recordPlanAction(s,owner,a) {
   }
 }
 export function finishPlans(s) {
-  for(const p of s.intrigue?.plans||[])if(!p.operationId&&activePlan(p)&&militaryPlan(p)) {
+  for(const p of s.intrigue?.plans||[])if(!p.operationId&&!p.vassalCommand&&activePlan(p)&&militaryPlan(p)) {
     const event=s.militaryEvents.find(e=>e.turn>=p.createdTurn&&e.attacker===p.actor&&e.tile===p.targetTile&&
       (p.type==='infrastructure'?e.action==='structure'&&e.destroyed&&e.structure===p.structure:e.action==='capture'));
     if(event)transitionPlan(s,p,'Completed','The assigned military objective was achieved.');
@@ -214,7 +215,7 @@ export function recordPlayerPlans(s, actorHouseId = PLAYER) {
     const p=createPlan(s,actorHouseId,a.structureTarget?'infrastructure':'invasion',{target:s.tiles[a.target].owner,targetTile:a.target,structure:a.structureTarget||null,objective:`Attack ${s.tiles[a.target].name||a.target}.`,delay:0,requiredForces:1});
     if(p){p.assignedArmies=[a.id];transitionPlan(s,p,'Executing','Player attack orders recorded.');}
   }
-  for(const p of s.intrigue.plans.filter(p=>!p.operationId&&p.actor===actorHouseId&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
+  for(const p of s.intrigue.plans.filter(p=>!p.operationId&&!p.vassalCommand&&p.actor===actorHouseId&&activePlan(p)))if(!p.assignedArmies.some(id=>s.armies.some(a=>a.id===id&&a.target===p.targetTile&&['attack','bombard'].includes(a.order))))transitionPlan(s,p,'Abandoned','Player changed the assigned orders.');
 }
 export function validatePlans(s) {
   initializePlans(s);const fail=()=>{throw new Error('Damaged strategic plans.');};

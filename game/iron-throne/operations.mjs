@@ -24,7 +24,7 @@ export function defaultRally(s, house, targetTile, role='assault') {
 }
 function memberError(s, o, p) {
   if (!p || !alive(s,p.house) || p.house===o.target || !Object.hasOwn(OPERATION_ROLES,p.role)) return 'Choose a living participant and a role.';
-  if (p.house!==o.owner && (!treaty(s,o.owner,p.house,'alliance') || atWar(s,o.owner,p.house))) return 'Participating Houses must be allied to the operation leader.';
+  if (p.house!==o.owner && (!treaty(s,o.owner,p.house,'alliance')&&!treaty(s,o.owner,p.house,'vassalage') || atWar(s,o.owner,p.house))) return 'Participating Houses must be allied to the operation leader.';
   if (protectedPeace(s,p.house,o.target)) return 'A participant has a treaty protecting the target.';
   const rally=s.tiles[p.rally];
   if (!rally || !canEnter(s,p.house,rally) || ![p.house,o.owner].includes(rally.owner)) return 'Choose a reachable rally point in your or the leader’s territory.';
@@ -184,7 +184,7 @@ function refreshExposure(s,o) {
 export function updateOperations(s,{afterMovement=false}={}) {
   initializeCooperation(s);
   for(const o of s.cooperation.operations.filter(ongoingOperation)) {
-    for(const p of acceptedMembers(o))if(!alive(s,p.house)||p.house!==o.owner&&!treaty(s,o.owner,p.house,'alliance')) {
+    for(const p of acceptedMembers(o))if(!alive(s,p.house)||p.house!==o.owner&&!treaty(s,o.owner,p.house,'alliance')&&!treaty(s,o.owner,p.house,'vassalage')) {
       for(const row of pendingPledges(s,o,p.house))row.breached=true;
       if(p.house===o.owner){closeOperation(s,o,'Abandoned','The leading House was defeated.');break;}
       p.status='withdrawn';const plan=currentPlan(s,p);if(plan)transitionPlan(s,plan,'Abandoned','The alliance ended or the House was defeated.');stopOrders(s,p);
@@ -197,7 +197,7 @@ export function updateOperations(s,{afterMovement=false}={}) {
       for(const row of pendingPledges(s,o))if(operationPledgeProgress(s,row)==='fulfilled')row.delivered=true;
       closeOperation(s,o,members.some(p=>p.house===tile.owner)?'Completed':'Abandoned','The objective changed hands.');continue;
     }
-    if(members.some(p=>protectedPeace(s,p.house,o.target)||o.launchedTurn!==null&&attackRole(p)&&!atWar(s,p.house,o.target))) {closeOperation(s,o,'Abandoned','A peace agreement prevents the shared campaign.');continue;}
+    if(members.some(p=>protectedPeace(s,p.house,o.target)||o.launchedTurn!==null&&attackRole(p)&&currentPlan(s,p)?.wasAtWar&&!atWar(s,p.house,o.target))) {closeOperation(s,o,'Abandoned','A peace agreement prevents the shared campaign.');continue;}
     if(s.turn>o.attackEnd+(o.launchedTurn===null?0:8)) {
       for(const row of pendingPledges(s,o))if(s.turn>=row.deadline&&operationPledgeProgress(s,row)!=='fulfilled')row.breached=true;
       closeOperation(s,o,'Abandoned',o.launchedTurn===null?'The attack window passed without preparations.':'The campaign stalled after the attack window.');continue;
@@ -208,7 +208,7 @@ export function updateOperations(s,{afterMovement=false}={}) {
       const fighters=members.filter(attackRole);
       const legal=fighters.every(p=>{const probe={...planningView(s,p.house),wars:[...s.wars,[p.house,o.target].sort().join(':')]};return armiesOf(s,p.house).some(a=>findPath(probe,a.tile,o.targetTile,p.house).length||a.tile===o.targetTile);});
       if(!legal){o.reason='Waiting for legal routes to the objective.';continue;}
-      for(const p of fighters){if(!atWar(s,p.house,o.target))declareWar(s,p.house,o.target);const plan=currentPlan(s,p);plan.wasAtWar=true;transitionPlan(s,plan,'Committed','Shared attack window opened; the operation is ready.');}
+      for(const p of fighters){if((!s.sequential||s.sequential.order[s.sequential.index]===p.house)&&!atWar(s,p.house,o.target))declareWar(s,p.house,o.target);const plan=currentPlan(s,p);plan.wasAtWar=atWar(s,p.house,o.target);transitionPlan(s,plan,'Committed','Shared attack window opened; the operation is ready.');}
       for(const p of members.filter(p=>!attackRole(p)))transitionPlan(s,currentPlan(s,p),'Executing','Shared support commitments are on station.');
       o.status='Executing';o.launchedTurn=s.turn;o.updatedTurn=s.turn;o.reason='Coordinated orders released to participating armies.';
     }
@@ -224,6 +224,7 @@ export function operationArmyOrder(s,k,a,c) {
   if(o.status==='Preparing'||!attackRole(p)) {
     orderArmy(s,k.id,a.id,p.rally,a.tile===p.rally?'hold':'move');return plan;
   }
+  if(s.sequential&&s.sequential.order[s.sequential.index]===k.id&&!atWar(s,k.id,o.target)&&!protectedPeace(s,k.id,o.target)){declareWar(s,k.id,o.target);plan.wasAtWar=true;}
   const t=planningView(s,k.id).tiles[o.targetTile],assessment=assaultAssessment(s,k,a,t);
   if(assessment.assault&&atWar(s,k.id,o.target)) {
     const avoid=dangerousTiles(s,k,a);avoid.delete(t.id);

@@ -79,9 +79,14 @@ try{
  assert.equal(await processFounding(nextCommand.id),true);
  const complete=(await getDoc(doc(a,path('iron_throne','meta')))).data();assert.equal(complete.turn,1);assert.equal(complete.phase,'planning');
  await assertFails(setDoc(doc(b,path('iron_throne_commands','late-found')),{...command,id:'late-found',turn:1,stateVersion:3}));
- const playingCommand={...command,id:'planning-tax',turn:1,stateVersion:3,type:'tax',args:{policy:'low'}};
+ // Arrange one active human seat; rules exercise the envelope independently of
+ // the canonical controller, which validates the same identity against state.
+ await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),path('iron_throne','meta')),{activeHouse:'wintermere'}));
+ const playingCommand={...command,id:'planning-tax',turn:1,stateVersion:3,activationId:complete.activationId,type:'tax',args:{policy:'low'}};
  await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',playingCommand.id)),playingCommand));
- for(const type of ['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer']){
+ await assertFails(setDoc(doc(a,path('iron_throne_commands','waiting-house')),{...playingCommand,id:'waiting-house',uid:'a',actorHouseId:'ashen'}));
+ await assertFails(setDoc(doc(b,path('iron_throne_commands','late-activation')),{...playingCommand,id:'late-activation',activationId:complete.activationId-1}));
+ for(const type of ['operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation']){
    const id=`planning-${type}`;
    await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',id)),{...playingCommand,id,type,args:{}}));
    await assertFails(setDoc(doc(b,path('iron_throne_commands',`${id}-forged`)),{...playingCommand,id:`${id}-forged`,type,actorHouseId:'ashen',args:{}}));

@@ -19,12 +19,12 @@ test('foreign labels and IDs resolve without guessing the player House', () => {
 test('pages without the council are left untouched', () => {
   assert.equal(installCorrespondence({getElementById: () => null}), undefined);
 });
-test('optional portrait registry uses the shared R2 path resolver and cannot delay startup', async () => {
+test('portrait registry is included in the bounded shared startup loader', async () => {
   const code = await readFile(new URL('../asset-manifest.mjs', import.meta.url), 'utf8');
   assert.match(code, /portraits: Object\.fromEntries\(CAMPAIGN_HOUSES\.map/);
   assert.match(code, /`portraits\/\$\{h\.id\}\.png`/);
   assert.match(code, /Object\.entries\(IRON_THRONES_ART\.portraits\).*ironThronesAsset/);
-  assert.match(code, /startupPaths=ALL_ART_PATHS\.filter\(path=>!path\.startsWith\('portraits\/'\)\)/);
+  assert.match(code, /startupPaths=ALL_ART_PATHS;/);
 });
 test('entry points enhance the existing app instead of replacing it', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');

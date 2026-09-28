@@ -1,3 +1,7 @@
+import { initializeCommanders } from './command-state.mjs';
+import { difficulty, settlementAmbition, validateDifficulty } from './difficulty.mjs';
+import { recruitAIGeneral, prepareGenerals, prepareAIGeneralObjectives } from './generals.mjs';
+import { vassalOrder, vassalArmyOrder } from './vassals.mjs';
 import { worstWarPosition } from './war-desperation.mjs';
 import { personalWillingness } from './emotions.mjs';
 import { marriageSupport } from './marriage.mjs';
@@ -26,7 +30,7 @@ const forcePower = forces => forces.reduce((n, a) => n + strength(a) * (a.confid
 const nearby = (s, forces, tile, radius) => forces.filter(a => distance(s.tiles[a.tile], tile) <= radius);
 const stableScore = (a, b) => b.score - a.score || a.tile.id.localeCompare(b.tile.id) || a.type.localeCompare(b.type);
 
-export function initializeStrategy(s) { s.strategy ??= { lastTurn: 0, history: [] }; }
+export function initializeStrategy(s) { validateDifficulty(s);initializeCommanders(s); s.strategy ??= { lastTurn: 0, history: [] }; s.strategy.acted??={}; }
 function reportFor(s, owner) {
   const round = s.strategy?.history.at(-1);
   return round?.turn === s.turn ? round.houses.find(h => h.owner === owner) : null;
@@ -82,24 +86,33 @@ function protectedPeace(s, a, b) {
 function considerWar(s, k, c) {
   if(c.desperation?.score>=30)return;
   const world=s; s=planningView(world,k.id);
-  if (s.intrigue?.plans.some(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)) || s.turn < 10 || c.war || c.crisis || c.threats.length || troopCount(c.forces) < 30) return;
+  if (s.intrigue?.plans.some(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)) || s.turn < difficulty(s).warTurn || vassalOrder(s,k.id) || c.war || c.crisis || c.threats.length || troopCount(c.forces) < 20) return;
+  // Establish a recruiting economy before discretionary conquest. A larger
+  // aggression score must not consume the population needed for expansion.
+  if(difficulty(s).coordination>=2&&c.towns.length<2&&settlementAmbition(s,k,c)>1)return;
+  if(difficulty(s).coordination>=2&&c.towns.length<3&&settlementAmbition(s,k,c)>=3&&Object.values(s.tiles).some(t=>{
+    if(t.fog==='unknown')return false;const error=buildCheck(s,k.id,t.id,'town');return !error||error.startsWith('Missing ');
+  }))return;
   const ours = forcePower(c.forces);
   const candidates = s.kingdoms.filter(o => o.id !== k.id && alive(s, o.id) && !protectedPeace(s, k.id, o.id)).map(o => {
     const r = relation(s, k.id, o.id), theirForces = armiesOf(s, o.id);
     const allyAttacked = s.kingdoms.some(ally => ally.id !== k.id && treaty(s, k.id, ally.id, 'alliance') &&
       relation(s, k.id, ally.id).trust >= 45 && atWar(s, o.id, ally.id));
-    const motive = r.grievance >= 40 || r.opinion < -20 || k.aggression >= .75 && r.opinion < 10 || allyAttacked;
-    if (!motive || r.dependency >= 30 || r.trust >= 45 || ours < Math.max(40,forcePower(theirForces)) * (1.45 - k.aggression * .4)) return null;
+    const opportunity=k.ambition+difficulty(s).ambition>1.05&&r.opinion<30&&r.trust<40;
+    const motive = opportunity || r.grievance >= 40 || r.opinion < -20 || k.aggression >= .75 && r.opinion < 10 || allyAttacked;
+    if (!motive || r.dependency >= 30 || r.trust >= 45 ) return null;
     const tile = rankObjectives(s,k.id,settlements(s,o.id),c.home)[0]?.tile;
     if (!tile) return null;
     return { type: o.id, tile, score: r.grievance - r.opinion + (allyAttacked ? 35 : 0) - distance(c.home, tile) * 3 };
   }).filter(Boolean).sort(stableScore);
   for (const candidate of candidates.slice(0, 2)) {
+    // Commit to preparation before sufficient troops exist; paid recruitment resolves the shortfall.
     // Probe geography without crossing a third party's closed borders. The
     // hypothetical war is read-only; real declarations use the shared rules.
     const probe = { ...s, wars: [...s.wars, [k.id, candidate.type].sort().join(':')] };
     if (!findPath(probe, c.home.id, candidate.tile.id, k.id).length) continue;
-    proposeInvasion(world,k,candidate.type,candidate.tile);
+    const plan=proposeInvasion(world,k,candidate.type,candidate.tile);
+    if(plan){plan.requiredForces=Math.min(300,Math.max(30,Math.ceil(troopCount(armiesOf(s,candidate.type))*difficulty(s).preparation)));plan.preparationReason=ours<forcePower(armiesOf(s,candidate.type))?'Recruit and concentrate before declaring war.':'Prepare supplies and a legal route.';}
     break;
   }
 }
@@ -116,6 +129,8 @@ function buildingCandidates(s, k, c) {
   const specialty = REGIONS[k.id].troops;
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p));
   const campaign=plans.some(militaryPlan);
+  const strategic=difficulty(s).coordination>=2;
+  const grow=strategic&&!c.crisis&&!c.threats.length&&c.towns.length+pending('town')<settlementAmbition(s,k,c);
   const fortifications = c.enemyTowns.some(t => (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && c.enemies.some(e=>e.tile===t.id)) || plans.some(p=>p.requiredSiege>0);
   const need = (resource, stock, flow) => c.income[resource] < 0 ? 105 + Math.min(35, -c.income[resource] * 3) :
     k.resources[resource] + c.income[resource] * 2 < stock ? 85 : c.income[resource] < flow ? 48 : 0;
@@ -124,21 +139,21 @@ function buildingCandidates(s, k, c) {
     ranch: specialty === 'cavalry' ? need('horses', 20, 3) : 0,
     workshop: !totalLevel('workshop') ? 98 : need('tools', 22, 3),
     armory: !totalLevel('armory') ? 60 : need('arms', 16, 3),
-    market: need('gold', 80, 6) || (k.greed > .7 ? 35 : 15),
+    market: need('gold', strategic?150:80, strategic?12:6) || (k.greed > .7 ? 35 : 15),
     tradeOutpost: totalLevel('tradeOutpost') < (s.turn > 16 ? 3 : 1) ? 35 + k.greed * 15 : 0,
     harbor: !totalLevel('harbor') ? 35 + k.greed * 15 : 0,
     barracks: highestLevel('barracks') < tier ? (c.war ? 90 : 50) : 0,
     range: specialty === 'archer' && highestLevel('range') < tier ? (c.war ? 95 : 65) : 0,
     stable: specialty === 'cavalry' && highestLevel('stable') < tier ? (c.war ? 95 : 65) : !totalLevel('stable') && s.turn>=6 ? 68 : 0,
     siegeWorks: (c.war || campaign) && fortifications && highestLevel('siegeWorks') < (c.enemyTowns.some(t => t.walls >= 120) ? 3 : 1) ? 140 : 0,
-    intelligenceOffice: s.turn>=6 && highestLevel('intelligenceOffice')< (s.turn>=24?3:s.turn>=14?2:1) ? (c.war || c.wary ? 100 : 45) : 0,
-    wall: c.threats.length || c.wary ? 220 : c.war ? 75 : 0,
+    intelligenceOffice: s.turn>=6 && (!strategic||c.towns.length>=2&&k.resources.gold>=140) && highestLevel('intelligenceOffice')< (s.turn>=24?3:s.turn>=14?2:1) ? (c.war || c.wary ? 100 : 45) : 0,
+    wall: c.threats.length ? 220 : c.wary ? (strategic?85:220) : c.war ? 75 : 0,
     watchtower: (c.war || c.wary) && totalLevel('watchtower') < c.towns.length*2 ? 82 : 0,
     envoyOffice: s.turn >= 4 && !totalLevel('envoyOffice') ? 28 + k.honor * 10 : 0,
     chancery: s.turn >= 16 && !totalLevel('chancery') ? 22 : 0,
     city: s.turn >= 12 && !c.crisis && !c.threats.length ? 54 : 0,
     storehouse: RESOURCES.some(r => r !== 'gold' && k.resources[r] > 540) && totalLevel('storehouse') < c.towns.length ? 28 : 0,
-    town: !c.crisis && !c.threats.length && k.population >= 70 && c.towns.length + pending('town') < Math.min(6, 2 + Math.floor(s.turn / 12)) ? 62 + k.ambition * 15 : 0
+    town: !c.crisis && !c.threats.length && k.population >= (strategic?50:70) && c.towns.length + pending('town') < settlementAmbition(s,k,c) ? 60 + k.ambition * 15 + (difficulty(s).expansion-1)*55 + (grow?28:0) : 0
   };
   for(const p of plans) if(p.building && weights[p.building]>0) weights[p.building]+=35;
   const defensePledge = c.pledges.find(p => p.intent.type === 'BUILD_DEFENSES');
@@ -190,12 +205,13 @@ function buildingCandidates(s, k, c) {
 }
 
 function recruitmentCandidates(s, k, c, recruited) {
-  if (recruited >= Math.min(8,(c.war || c.threats.length ? 2 : 1)+cityOrderBonus(s,k.id)) || k.population < (c.threats.length ? 28 : 42)) return [];
+  if (recruited >= Math.min(8,(c.war || c.threats.length || (s.intrigue?.plans||[]).some(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p)) ? 2 : 1)+cityOrderBonus(s,k.id)) || k.population < (c.threats.length ? 28 : 42)) return [];
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p)&&militaryPlan(p));
   const count = troopCount(c.forces);
+  if(difficulty(s).coordination>=2&&!c.threats.length&&k.population<58&&count>=30)return [];
   const weakestDefense = c.enemyTowns.length ? Math.min(...c.enemyTowns.map(t => c.enemies.filter(e => e.tile === t.id).reduce((n, e) => n + strength(e, true, t), 0) + 14)) : 0;
   const commitment=operationMember(memberOperation(s,k.id),k.id);
-  const desired = c.war || plans.length ? Math.min(200, Math.max(60, commitment?.requiredTroops||0, troopCount(c.enemies) * 1.1, weakestDefense * 1.3 / Math.max(.8, forcePower(c.forces) / Math.max(1, count)))) : 24 + c.towns.length * 12;
+  const desired = c.war || plans.length ? Math.min(350, Math.max(60, ...plans.map(p=>p.requiredForces), commitment?.requiredTroops||0, troopCount(c.enemies) * 1.1, weakestDefense * 1.3 / Math.max(.8, forcePower(c.forces) / Math.max(1, count)))) : 24 + c.towns.length * 12;
   if (!c.threats.length && (c.crisis || c.income.food < 0 && k.resources.food < 100)) return [];
   const totals = Object.fromEntries(['infantry','ranged','mounted','siege'].map(f => [f, c.forces.reduce((n, a) => n + familyCount(a, f), 0)]));
   const specialty = REGIONS[k.id].troops, mountedEnemy = c.enemies.reduce((n, a) => n + familyCount(a, 'mounted'), 0) > troopCount(c.enemies) * .25;
@@ -205,7 +221,7 @@ function recruitmentCandidates(s, k, c, recruited) {
   for (const tile of c.tiles.filter(t => ['town','city','fort'].includes(t.building))) for (const [type, unit] of Object.entries(UNITS)) {
     if (unit.legacy || recruitCheck(s, k.id, tile.id, type) || unit.family === 'siege' && !siegeNeeded || unit.family !== 'siege' && count >= desired) continue;
     const shortage = (proportions[unit.family] || 0) - totals[unit.family] / Math.max(1, count);
-    const score = (c.threats.length ? 145 : c.war ? 90 : 52) + shortage * 60 + unit.attack * 2 +
+    const score = (c.threats.length ? 145 : c.war || plans.length ? 90 : 52) + shortage * 60 + unit.attack * 2 +
       (unit.family === 'siege' && siegeNeeded ? 45 + (unit.breach || 0) : 0) + (type === 'spearman' && mountedEnemy ? 25 : 0) + (type==='scout' && !c.forces.some(a=>a.units.scout>0||a.units.lightCavalry>0) ? 100 : 0);
     candidates.push({ kind: 'recruit', type, tile, cost: recruitmentCost(tile, type), score, essential: c.threats.length > 0 });
   }
@@ -222,7 +238,13 @@ function develop(s, k) {
     // affordable alternative is the right use of this round's resources.
     k.economicPlan = buildings[0] ? { type: buildings[0].type, tile: buildings[0].tile.id } : null;
     const options = [...buildings, ...recruitmentCandidates(view, k, c, recruited)].sort(stableScore);
-    const choice = options.find(o => canSpend(k, c, o.cost, o.essential) && (o.kind !== 'build' || !buildCheck(view, k.id, o.tile.id, o.type)));
+    const expansion=difficulty(s).coordination>=2&&!c.threats.length&&buildings.find(b=>b.type==='town');
+    // Save for an actual legal settlement instead of buying an endless stream
+    // of cheaper troops. Production that resolves its material shortfall and
+    // emergency defenses remain eligible while those reserves accumulate.
+    const saving=expansion&&!canSpend(k,c,expansion.cost);
+    const developsSupply=o=>o.kind==='build'&&Object.keys(BUILDINGS[o.type].yield||{}).some(r=>k.resources[r]<expansion.cost[r]||c.income[r]<3);
+    const choice = expansion&&canSpend(k,c,expansion.cost)?expansion:options.find(o => canSpend(k, c, o.cost, o.essential) && (!saving||o.essential||developsSupply(o)) && (o.kind !== 'build' || !buildCheck(view, k.id, o.tile.id, o.type)));
     if (!choice) break;
     const before = troopCount(armiesOf(s, k.id));
     const result = choice.kind === 'build' ? build(s, k.id, choice.tile.id, choice.type) : recruit(s, k.id, choice.tile.id, choice.type);
@@ -233,7 +255,7 @@ function develop(s, k) {
     if (choice.type === 'town' && k.goal === 'ECONOMY') k.goal = 'EXPAND';
   }
   const report = reportFor(s, k.id);
-  report.orders = available - k.commands;
+  if(report)report.orders = available - k.commands;
 }
 
 function command(s, k, a, target, order = 'move', avoid = null) {
@@ -255,7 +277,10 @@ function directArmies(s, k, c) {
     a.formation = chooseFormation(a, nearestEnemy, location);
     const safeTowns = c.towns.filter(t => forcePower(nearby(s, c.enemies, t, 1)) < strength(a, true, t)).sort((x, y) => distance(location, x) - distance(location, y));
     const refuge = safeTowns[0] || c.home;
-    if (a.morale < .55 || !canEnter(s, k.id, location)) {
+    if(a.retreats>(a.lastRegroupRetreats||0)){a.regroupTarget=Math.max(24,Math.ceil(sizeOf(a)*1.4));a.lastRegroupRetreats=a.retreats;}
+    if(a.regroupTarget&&sizeOf(a)>=a.regroupTarget&&a.morale>=.8)delete a.regroupTarget;
+    if(vassalArmyOrder(world,k,a,c))continue;
+    if (a.regroupTarget || a.morale < .55 || !canEnter(s, k.id, location)) {
       if (!command(world, k, a, refuge, 'retreat')) command(world, k, a, location, 'hold');
       continue;
     }
@@ -267,6 +292,7 @@ function directArmies(s, k, c) {
       if(!command(world,k,a,shelter,a.tile===shelter.id?'hold':'retreat'))command(world,k,a,location,'hold');
       continue;
     }
+    if(!c.threats.length&&a.commandId&&s.commanders?.roster.some(g=>g.commandId===a.commandId&&g.objective))continue;
     if (scoutOrder(world,k,a,c)) { recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target}); continue; }
     const pledge = c.pledges.find(p => p.intent.type !== 'BUILD_DEFENSES' && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
     if (pledge) {
@@ -336,18 +362,19 @@ function considerRivalPeace(s) {
   }
 }
 
-export function runStrategyTurn(s, onProgress = () => {}) {
+export function runStrategyTurn(s, onProgress = () => {}, onlyOwner = null) {
   if (s.outcome) return;
   initializeStrategy(s);
-  if (s.strategy.lastTurn >= s.turn) return;
-  for (const k of s.kingdoms) refreshHouseKnowledge(s,k.id);
-  for (const k of s.kingdoms) requestAlliedIntelligence(s,k.id);
-  runStrategicDiplomacy(s);
-  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id)))prepareOperationAI(s,k);
+  if (onlyOwner?s.strategy.acted[onlyOwner]>=s.turn:s.strategy.lastTurn>=s.turn) return;
+  for (const k of s.kingdoms.filter(k=>!onlyOwner||k.id===onlyOwner)) refreshHouseKnowledge(s,k.id);
+  for (const k of s.kingdoms.filter(k=>!onlyOwner||k.id===onlyOwner)) requestAlliedIntelligence(s,k.id);
+  runStrategicDiplomacy(s,onlyOwner);
+  for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id)&&(!onlyOwner||k.id===onlyOwner)))prepareOperationAI(s,k);
   updateOperations(s);
-  const rivals = s.kingdoms.filter(k => isAiHouse(s,k.id));
-  const round = { turn: s.turn, houses: rivals.map(k => ({ owner: k.id, goal: 'ECONOMY', reason: '', orders: 0, actions: [], omitted: 0 })) };
-  s.strategy.history.push(round); s.strategy.history = s.strategy.history.slice(-HISTORY_LIMIT);
+  const rivals = s.kingdoms.filter(k => isAiHouse(s,k.id)&&(!onlyOwner||k.id===onlyOwner));
+  let round=s.strategy.history.find(r=>r.turn===s.turn);
+  if(!round){round={turn:s.turn,houses:[]};s.strategy.history.push(round);s.strategy.history=s.strategy.history.slice(-HISTORY_LIMIT);}
+  for(const k of rivals)if(!round.houses.some(h=>h.owner===k.id))round.houses.push({owner:k.id,goal:'ECONOMY',reason:'',orders:0,actions:[],omitted:0});
   // Every living House acts exactly once; the starting House rotates so
   // contested decisions do not always favor the same kingdom.
   const total = rivals.filter(k => alive(s,k.id)).length;
@@ -355,6 +382,8 @@ export function runStrategyTurn(s, onProgress = () => {}) {
   onProgress({phase:'ai',completed,total});
   const offset = (s.turn - 1) % Math.max(1,rivals.length);
   for (const k of [...rivals.slice(offset), ...rivals.slice(0, offset)]) {
+    if(s.strategy.acted[k.id]>=s.turn)continue;
+    s.strategy.acted[k.id]=s.turn;
     const report = reportFor(s, k.id);
     if (!alive(s, k.id)) { report.goal = 'ELIMINATED'; report.reason = 'No settlements remain.'; continue; }
     refreshHouseKnowledge(s,k.id);
@@ -370,16 +399,18 @@ export function runStrategyTurn(s, onProgress = () => {}) {
     [k.goal, report.reason] = chooseGoal(c);
     const tax = k.happiness < 40 ? 'low' : c.income.gold < 2 && k.resources.gold < 70 && k.happiness >= 60 ? 'high' : 'medium';
     if (tax !== k.tax) { k.tax = tax; recordStrategyAction(s, k.id, { kind: 'tax', policy: tax }); }
-    develop(s, k);
+    develop(s, k); recruitAIGeneral(s,k.id);
     if(!c.desperation||c.desperation.score<55)preparePlans(s,k,assess(s,k));
+    if(!vassalOrder(s,k.id)&&!c.threats.length)prepareAIGeneralObjectives(s,k.id);
     directArmies(s, k, assess(s, k));
+    if(!vassalOrder(s,k.id)&&!c.threats.length&&(!c.desperation||c.desperation.score<55))prepareGenerals(s,k.id);
     report.goal = k.goal;
     if (!report.orders && !report.actions.some(a => ['march','war'].includes(a.kind))) report.reason =
       c.tiles.some(t => t.project) ? 'Existing projects are underway; holding positions and rebuilding reserves.' :
         k.economicPlan ? 'Saving for the next project while maintaining the army.' : 'Holding secure positions and rebuilding population and reserves.';
     onProgress({phase:'ai',completed:++completed,total});
   }
-  considerRivalPeace(s);
+  if(!onlyOwner)considerRivalPeace(s);
   s.strategy.lastTurn = s.turn;
 }
 
@@ -397,6 +428,7 @@ export function validateStrategySave(s) {
   const fail = () => { throw new Error('Damaged rival strategy data.'); };
   const integer = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
   const state = s.strategy;
+  if(!state.acted||typeof state.acted!=='object'||Array.isArray(state.acted)||Object.entries(state.acted).some(([id,turn])=>!s.kingdoms.some(k=>k.id===id)||!integer(turn,0,s.turn)))fail();
   if (!integer(state.lastTurn, 0, s.turn) || !Array.isArray(state.history) || state.history.length > HISTORY_LIMIT) fail();
   let previous = 0;
   for (const round of state.history) {

@@ -63,7 +63,13 @@ try{
  if(m.seats.ashen.uid===b.uid){await b.page.locator('[data-claim="wintermere"]').click();await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).seats.ashen.kind==='open');await a.page.locator('[data-claim="ashen"]').click();}
  else await b.page.locator('[data-claim="wintermere"]').click();
  await eventually(async()=>{const m=await read(`${prefix}/iron_throne/meta`);return m.seats.ashen.uid===a.uid&&m.seats.wintermere.uid===b.uid;});
- console.log('Seats claimed in separate browser contexts');await a.page.locator('#online-start').click();
+ console.log('Seats claimed in separate browser contexts');
+ await a.page.locator('#online-settings [name="seed"]').fill('5');
+ await a.page.locator('#online-settings [name="preset"]').selectOption('heartlands');
+ await a.page.locator('#online-settings [name="difficulty"]').selectOption('hard');
+ await a.page.locator('#online-settings button').click();
+ await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).options.seed===5);
+ await a.page.locator('#online-start').click();
  await Promise.all([a.page.locator('#online-lobby').waitFor({state:'hidden'}),b.page.locator('#online-lobby').waitFor({state:'hidden'})]);
  await eventually(async()=>(await b.page.locator('#turn').textContent())==='Founding');
  let founding=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);
@@ -84,27 +90,44 @@ try{
  await a.page.locator('[data-tab="realm"]').click();await b.page.locator('[data-tab="realm"]').click();
  await a.page.locator(`[data-goto="${capA}"]`).first().click();await b.page.locator(`[data-goto="${capB}"]`).first().click();
  await Promise.all([a.page.locator('[data-recruit="levy"]').click(),b.page.locator('[data-recruit="levy"]').click()]);
- await eventually(async()=>{const s=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);return s.kingdoms[0].population===72&&s.kingdoms[1].population===72;});
- console.log('Both recruitment commands persisted');await a.page.locator('[data-dispatch="wintermere"]').click();await b.page.locator('[data-dispatch="ashen"]').click();
+ await eventually(async()=>{const s=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);return s.kingdoms[0].population===72&&s.kingdoms[1].population===80;});
+ assert.equal((await read(`${prefix}/iron_throne/meta`)).activeHouse,'ashen');
+ assert.equal(await b.page.locator('#end-turn').isDisabled(),true);
+ console.log('Only the active browser recruitment persisted');await a.page.locator('[data-dispatch="wintermere"]').click();await b.page.locator('[data-dispatch="ashen"]').click();
  await a.page.locator('#chat-message').fill('Let us form an alliance.');await a.page.locator('#send-chat').click();
  await eventually(async()=>(await b.page.locator('#messages').textContent()).includes('Let us form an alliance.'));
  assert.equal((await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).treaties.length,0);
- await a.page.locator('#expand-council').click();await a.page.locator('#offer-type').selectOption('ALLIANCE');await a.page.locator('#give-amount').fill('0');await a.page.locator('#offer-form button[type="submit"]').click();
+ await a.page.locator('#quick-offer').click();await a.page.locator('#offer-type').selectOption('ALLIANCE');await a.page.locator('#give-amount').fill('0');await a.page.locator('#offer-form button[type="submit"]').click();
+ await b.page.locator('#quick-offer').click();
  await b.page.locator('[data-human-accept]').waitFor();await b.page.locator('[data-human-accept]').click();
+ assert.equal((await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).treaties.length,0);
+ await a.page.locator('[data-close="diplomacy"]').click();
+ await a.page.locator('#end-turn').click();
+ await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).activeHouse==='wintermere');
+ await eventually(async()=>b.page.locator('#end-turn').isEnabled());
+ await b.page.locator('[data-human-accept]').click();
  await eventually(async()=>!!(await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).treaties.find(t=>t.type==='alliance'));
- for(const r of [a,b])await r.page.locator('[data-close="diplomacy"]').click();
- await eventually(async()=>(await a.page.locator('#end-turn').isEnabled())&&(await b.page.locator('#end-turn').isEnabled()));
- await a.page.locator('#end-turn').click();await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).ready.ashen);
- assert.equal((await read(`${prefix}/iron_throne/meta`)).turn,1);
- await b.page.locator('#end-turn').click();await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).turn===2);
+ await b.page.locator('.treaty-drawer-close').click();
+ await b.page.locator('[data-close="diplomacy"]').click();
+ await b.page.locator('[data-tab="realm"]').click();await b.page.locator(`[data-goto="${capB}"]`).first().click();
+ await b.page.locator('[data-recruit="levy"]').click();
+ await eventually(async()=>(await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).kingdoms[1].population===72);
+ await eventually(async()=>b.page.locator('#end-turn').isEnabled());await b.page.locator('#end-turn').click();
+ await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).turn===2,60000);
  let canonical=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);assert.equal(canonical.strategy.history.at(-1).houses.length,4);
- console.log('PASS two independent browsers: seat race, ownership, recruiting, private chat, accepted alliance, Ready round, four AI rulers, mobile layout');
+ assert.equal(canonical.difficulty,'hard');assert.equal(canonical.sequential.id,7);assert.equal(canonical.roundFinished,1);
+ console.log('PASS two independent browsers: only active House can recruit or ratify; six activations, four AI turns and one economy boundary; mobile layout');
  // Native offline/online behavior: no divergent local save and no enabled orders.
  await b.context.setOffline(true);await eventually(async()=>(await b.page.locator('.online-bar').textContent()).includes('RECONNECTING'));
  assert.equal(await b.page.locator('#end-turn').isDisabled(),true);
  await b.context.setOffline(false);await eventually(async()=>!(await b.page.locator('.online-bar').textContent()).includes('RECONNECTING'));
  const reconnectUid=b.uid;await b.page.reload();await b.page.locator('#online-lobby').waitFor({state:'hidden'});await eventually(async()=>(await b.page.locator('#coordinates').textContent()).includes(capB)&&!(await b.page.locator('.online-bar').textContent()).includes('RECONNECTING'));
  assert.equal((await read(`${prefix}/iron_throne/meta`)).seats.wintermere.uid,reconnectUid);
+ // Leave the second human active before closing the controller. Waiting for a
+ // lease never grants another activation or bypasses the House turn gate.
+ await a.page.locator('#end-turn').click();
+ await eventually(async()=>(await read(`${prefix}/iron_throne/meta`)).activeHouse==='wintermere');
+ await eventually(async()=>b.page.locator('#end-turn').isEnabled());
  // Closing the actual controller browser exercises lease expiry and takeover.
  m=await read(`${prefix}/iron_throne/meta`);const oldEpoch=m.epoch,oldVersion=m.stateVersion,oldTurn=m.turn;
  assert.equal(m.lease.uid,a.uid);await a.context.close();
@@ -128,9 +151,14 @@ try{
   await selectTile(r.page,site);await r.page.locator('[data-found-city]').click();
   await eventually(async()=>!!(await decodePayload((await read(`${sixRoot}/iron_throne/state`)).payload)).founding.houses[houses[i]].founded);
  }
- for(const r of six){await eventually(async()=>await r.page.locator('#end-turn').isEnabled());await r.page.locator('#end-turn').click();}
+ for(let i=0;i<6;i++){
+  const meta=await read(`${sixRoot}/iron_throne/meta`),r=six[houses.indexOf(meta.activeHouse)],activation=meta.activationId;
+  for(const waiting of six.filter(x=>x!==r))assert.equal(await waiting.page.locator('#end-turn').isDisabled(),true);
+  await eventually(async()=>r.page.locator('#end-turn').isEnabled());await r.page.locator('#end-turn').click();
+  await eventually(async()=>(await read(`${sixRoot}/iron_throne/meta`)).activationId>activation);
+ }
  await eventually(async()=>(await read(`${sixRoot}/iron_throne/meta`)).turn===2,45000);
- canonical=await decodePayload((await read(`${sixRoot}/iron_throne/state`)).payload);assert.equal(canonical.strategy.history.at(-1).houses.length,0);assert.equal(new Set(Object.values(canonical.controllers).map(s=>s.uid)).size,6);
+ canonical=await decodePayload((await read(`${sixRoot}/iron_throne/state`)).payload);assert.equal(canonical.strategy.history.reduce((n,r)=>n+r.houses.length,0),0);assert.equal(new Set(Object.values(canonical.controllers).map(s=>s.uid)).size,6);
  console.log('PASS six independent browsers: six different UID seats, one synchronized round, no human House executes AI strategy');
  for(const r of six)await r.context.close();
  assert.deepEqual(errors,[]);
