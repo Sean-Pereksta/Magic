@@ -10,9 +10,9 @@ resources, buildings and ownership.
 
 | Vessel | Resources | Population | Turns | Troop capacity | Ocean / river movement |
 | --- | --- | ---: | ---: | ---: | ---: |
-| War Canoe | 22 wood, 12 food | 4 | 1 | 0 | 10 / 13 |
-| Transport | 35 wood | 6 | 1 | 25 | 9 / 10 |
-| Warship | 55 wood, 24 iron, 12 arms | 10 | 2 | 0 | 9 / 9 |
+| War Canoe | 22 wood, 12 food | 4 | 1 | 0 | 7.5 / 7.5 |
+| Transport | 35 wood | 6 | 1 | 25 | 7.5 / 7.5 |
+| Warship | 55 wood, 24 iron, 12 arms | 10 | 2 | 0 | 7.5 / 7.5 |
 
 Shipyards cost 60 wood, 35 stone, 25 iron and 55 gold, taking 3 turns.
 They are standalone buildings on empty owned land with navigable ocean or river
@@ -36,17 +36,29 @@ upgrade cost/time/production formulas.
 
 Select a fleet on the map or through **Your realm → Your fleets**. Its panel shows
 vessel counts, individual hull/crew, troop capacity, remaining movement and orders.
-Move, Unload, Escort, Intercept, Blockade and Hold use the existing end-of-turn
-resolution. Move into hostile vessels to attack. Blockade requires a Warship.
+Board, Move, Attack / bombard, Unload, Escort, Intercept, Blockade and Hold use
+end-of-turn resolution. Boarding occurs before sailing. Blockade requires a Warship.
+Persistent arrows, loading/unloading badges and two red crossed swords show orders
+and turns to arrival even while deselected. They render above water, terrain, fog
+and unit artwork; private enemy orders are never shown.
+
+Every vessel has a 7.5-hex ocean/river budget: 2.5 times standard infantry on open
+ground. Continuous journeys retain the half hex, sailing seven then eight hexes
+over two turns. Combat and unloading consume the remaining activation.
 An Unload order can target a distant legal shore: the fleet sails there over
 multiple turns and attempts a landing on arrival.
 
-Embark from friendly, accessible or unclaimed shores. A 47-troop army requires
-two Transports; a 72-troop army requires three. Whole armies load only if enough
-capacity exists. Embarking removes the army object from `state.armies` and puts
-that same army in exactly one fleet's `cargo`. Per-ship manifests account for
-every troop and never exceed 25. General identity and bonuses travel with it.
-Embarked armies remain in military-strength and upkeep accounting.
+Embark from friendly, accessible or unclaimed shores. Boarding reserves available
+seats and displays how many troops will board and remain ashore. One Transport
+can take 25 from a 70-troop force, leaving 45. Three stacked Transports show 0/75
+and can take all 70. Ready friendly stacks on the same water node combine when
+boarding (maximum 100 vessels), preserving the selected fleet's sailing order.
+Cancel boarding using the army's Hold/Cancel boarding control.
+
+Boarding rechecks contact, occupancy, capacity and activation at resolution. Whole
+armies keep their identity aboard; partial boarding creates one detachment and
+leaves the original army and its general ashore. Per-ship manifests account for
+every troop and never exceed 25. Cargo remains in strength and upkeep accounting.
 
 An army cannot take land orders while aboard. Landing uses the existing battle
 and capture rules and consumes the army's action; a repulsed army's surviving
@@ -56,6 +68,15 @@ movement. Fleets sharing an owner's position render as one compact stack.
 
 ## Combat and blockades
 
+Warships fire at visible enemy fleets or land armies/structures from two hexes.
+Transports and War Canoes must reach connected adjacent water. Only in-range
+weapons contribute to damage or return fire. Ranged fire cannot capture land.
+Archers, Veteran Archers, Crossbowmen, Catapults and legacy ranged siege engines
+can target ships at two hexes; Trebuchets can fire from three. Battering Rams and
+melee troops cannot shoot ships. Use **Fire on ships** on the army card. Mountains
+block fire and targets require current vision (scouts can spot for siege units).
+Orders recheck vision, hostility, range and line of fire at resolution.
+
 Vessel attacks account for class, hull condition, surviving crew, fleet morale,
 command bonuses and the canoe's river advantage. Escorts take incoming hull
 damage before Transports. Large groups can overcome stronger individual ships.
@@ -64,9 +85,8 @@ fight crews and other embarked troops. Retreats use connected unoccupied water
 positions. Interception is limited to connected water edges and one reaction per
 fleet per turn.
 
-A sinking Transport kills 80% of its assigned troops. Survivors transfer into
-spare capacity on surviving transports in their fleet or another friendly fleet
-at the same naval position. Overflow dies; survivors never become water armies.
+A sunk Transport loses every troop on its pre-clash manifest. No survivors move
+to other transports or become armies on water. Troops on surviving ships remain.
 Battle reports record sunk vessels, boarding, troop casualties and retreats.
 
 An on-station enemy Warship blockade suspends adjacent Fishing Dock output and
@@ -104,8 +124,8 @@ the existing authenticated, lease-fenced sequential command controller. Naval
 commands require the exact current state version as well as the active House,
 activation, epoch and command sequence. The controller computes all movement,
 casualties, resource changes and cargo transfers. No client submits replacement
-fleet state. Deploy the updated `firestore.rules` with the client update to admit
-these command types; this PR does not deploy production rules.
+fleet state. Land ranged attacks use the existing authenticated `order` command;
+this update introduces no new Firebase command types or rule changes.
 
 Schema-3 campaigns gain `navalVersion: 1`, `fleets`, `shipQueues`, and construction
 tick accounting. Import checks unique identities, owners, hull/crew bounds,

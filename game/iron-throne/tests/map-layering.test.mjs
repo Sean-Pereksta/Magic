@@ -18,13 +18,14 @@ for (const reduced of [false, true]) test(`map completes with ordered layers (re
   }});
   const tile = { id: '0,0', q: 0, r: 0, owner: 'ashen', building: 'city', terrain: 'plains', name: 'Capital' };
   const state = { seed: 1, turn: 1, tiles: { '0,0': tile }, kingdoms: [{ id: 'ashen', color: '#ff0000', sigil: 'A' }], armies: [{ id: 'army', tile: '0,0', owner: 'ashen', units: { levy: 12 }, path: [] }] };
-  const scope = { performance: { now: () => 100 }, document: { hidden: true }, HEX_DIRECTIONS: [], BUILDINGS: {}, UNITS: { levy: {} }, ART: { structures: { city: { 1: 'city' } } }, buildingLevel: () => 1, sizeOf: () => 12, familyCount: () => 0 };
+  state.fleets=[{id:'fleet-1',tile:'0,0',node:'river:0,0'}];
+  const scope = { drawFleets:()=>calls.push('ships'), drawOrderIndicators:()=>calls.push('orders'), performance: { now: () => 100 }, document: { hidden: true }, HEX_DIRECTIONS: [], BUILDINGS: {}, UNITS: { levy: {} }, ART: { structures: { city: { 1: 'city' } } }, buildingLevel: () => 1, sizeOf: () => 12, familyCount: () => 0 };
   vm.createContext(scope);
   vm.runInContext(source + '\nglobalThis.MapClass = WorldMap;', scope);
   const map = Object.create(scope.MapClass.prototype);
   Object.assign(map, { width: 400, height: 300, dpr: 1, zoom: 1, x: 0, y: 0, selected: '0,0', armyId: 'army', ctx, getState: () => state, motion: { matches: reduced }, assets: {}, geography: { get: () => new Map([['0,0', { ground: 'plains' }]]) }, geographyArt: { draw: () => calls.push('overlay') }, effects: { ingest() {}, drawWorld() {}, drawResults() { calls.push('complete'); }, results: [] }, groundArt: () => calls.push('tile'), structureArt: () => { calls.push('building'); return true; }, armyArt: () => calls.push('troop') });
   map.render();
-  for (const [lower, upper] of [['tile','overlay'], ['overlay','building'], ['building','selection'], ['label','selection'], ['selection','troop'], ['troop','count'], ['count','complete']]) {
+  for (const [lower, upper] of [['tile','overlay'], ['overlay','building'], ['building','selection'], ['label','selection'], ['selection','troop'], ['troop','ships'], ['ships','orders'], ['orders','count'], ['count','complete']]) {
     assert.ok(calls.indexOf(lower) >= 0 && calls.lastIndexOf(lower) < calls.indexOf(upper), `${lower} must render before ${upper}: ${calls}`);
   }
   assert.equal(map.hits.at(-1).tile, '0,0');

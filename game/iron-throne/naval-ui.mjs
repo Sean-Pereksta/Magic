@@ -1,7 +1,8 @@
+import { fleetArrivalTurns } from './map-orders.mjs';
 import { ART } from './asset-manifest.mjs';
 import { buildingLevel } from './economy.mjs';
 import { SHIPS, cargoCount, fleetCapacity, fleetSpeed, troopCount } from './naval-state.mjs';
-import { shipBuildCheck, embarkCheck } from './naval.mjs';
+import { shipBuildCheck, embarkCheck, boardingCount, reservedCargo, boardingFleet, boardingStack } from './naval.mjs';
 import { adjacentShore } from './naval-graph.mjs';
 const escape=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cost=spec=>`${Object.entries(spec.cost).map(([r,n])=>`${n} ${r}`).join(' · ')} · ${spec.crew} population`;
@@ -18,17 +19,18 @@ export function shipyardPanel(s,tile,owner) {
 export function fleetPanel(s,tile,owner) {
   const local=s.fleets||[],fleets=local.filter(f=>f.tile===tile||f.owner===owner&&s.armies.some(a=>a.tile===tile&&a.owner===owner)&&adjacentShore(s,f,tile));
   const remembered=(s.lastSeenFleets||[]).filter(f=>f.tile===tile).map(f=>`<p class="fine">Fleet last seen T${f.turn}: ${escape(counts(f))}. Current position and cargo unknown.</p>`).join('');
-  return remembered+fleets.map(f=>{
+  return remembered+fleets.filter(f=>f.owner!==owner||boardingStack(s,f)[0].id===f.id).map(f=>{
     const own=f.owner===owner,house=s.kingdoms.find(k=>k.id===f.owner),acted=f.resolvedTurn===s.turn?'This fleet has already acted this turn.':'';
-    const troops=own?`${cargoCount(f)} / ${fleetCapacity(f)} capacity`:'Cargo unknown';
-    let html=`<section class="naval-panel" style="--fleet-color:${house.color}"><h3>${escape(house.name)} fleet</h3><p>${escape(counts(f))}</p><p><b>${troops}</b> · ${f.node.startsWith('river:')?'River':'Ocean'} ${escape(f.tile)}</p>`;
+    const stack=own?boardingFleet(s,f):f;
+    const troops=own?`${cargoCount(stack)}/${fleetCapacity(stack)} troops aboard`:'Cargo unknown';
+    let html=`<section class="naval-panel" style="--fleet-color:${house.color}"><h3>${escape(house.name)} fleet</h3><p>${escape(counts(stack))}</p><p><b>${troops}</b> · ${f.node.startsWith('river:')?'River':'Ocean'} ${escape(f.tile)}</p>`;
     if(!own)return html+'<p class="fine">Observed vessels. Troop manifests and orders are private.</p></section>';
-    html+=`<p class="fine">Movement: ${Math.max(0,Math.round(fleetSpeed(f,f.node.startsWith('river:'))*(1-(f.movementTurn===s.turn?f.movementSpent:0))))} / ${fleetSpeed(f,f.node.startsWith('river:'))} · ${escape(f.order)}${f.landing?` to land ${escape(f.landing)}`:f.target?` to ${escape(f.target.split(':')[1])}`:''}</p><details><summary>Hull, crew and cargo</summary>${f.ships.map(v=>`<p class="fine">${SHIPS[v.type].name}: ${v.hp}/${SHIPS[v.type].hull} hull · ${v.crew}/${SHIPS[v.type].crew} crew${v.type==='transport'?` · ${(v.cargo||[]).reduce((n,a)=>n+a.count,0)}/25 troops`:''}</p>`).join('')}${f.cargo.map(a=>`<p class="fine">${troopCount(a)} troops · ${escape(a.id)}${a.commandId?' · General aboard':''}</p>`).join('')}</details><div class="button-row">${['move','unload','intercept','blockade','hold'].map(action=>button({move:'Move',unload:'Unload',intercept:'Intercept',blockade:'Blockade',hold:'Hold'}[action],action,f.id,'',acted||(action==='unload'&&!cargoCount(f)?'No troops aboard.':action==='blockade'&&!f.ships.some(v=>v.type==='warship')?'A blockade requires a Warship.':''))).join('')}</div>`;
+    html+=`<p class="fine">${reservedCargo(s,f)?`${reservedCargo(s,f)} troops boarding at end of turn. `:''}${f.order!=='hold'?`Order: ${escape(f.order)} · ${fleetArrivalTurns(f)===1?'END OF THIS TURN':`${fleetArrivalTurns(f)} turns`}. `:''}Warship range: 2 hexes · other vessels: adjacent water. Sailing: 2.5× standard infantry.</p><p class="fine">Movement: ${Math.max(0,Math.floor((fleetSpeed(f)+(f.sailingCarry||0))*(f.resolvedTurn===s.turn?0:1)))} / ${fleetSpeed(f,f.node.startsWith('river:'))} · ${escape(f.order)}${f.attackTile?` firing at ${escape(f.attackTile)}`:f.landing?` to land ${escape(f.landing)}`:f.target?` to ${escape(f.target.split(':')[1])}`:''}</p><details><summary>Hull, crew and cargo</summary>${stack.ships.map(v=>`<p class="fine">${SHIPS[v.type].name}: ${v.hp}/${SHIPS[v.type].hull} hull · ${v.crew}/${SHIPS[v.type].crew} crew${v.type==='transport'?` · ${(v.cargo||[]).reduce((n,a)=>n+a.count,0)}/25 troops`:''}</p>`).join('')}${stack.cargo.map(a=>`<p class="fine">${troopCount(a)} troops · ${escape(a.id)}${a.commandId?' · General aboard':''}</p>`).join('')}</details><div class="button-row">${['move','attack','unload','intercept','blockade','hold'].map(action=>button({move:'Move',attack:'Attack / bombard',unload:'Unload',intercept:'Intercept',blockade:'Blockade',hold:'Hold'}[action],action,f.id,'',acted||(action==='unload'&&!cargoCount(f)?'No troops aboard.':action==='blockade'&&!f.ships.some(v=>v.type==='warship')?'A blockade requires a Warship.':''))).join('')}</div>`;
     const armies=s.armies.filter(a=>a.owner===owner&&adjacentShore(s,f,a.tile));
-    if(armies.length)html+=`<h4>Embark an army</h4>${armies.map(a=>{const reason=embarkCheck(s,owner,a.id,f.id);return `<p>${troopCount(a)} troops · ${Math.ceil(troopCount(a)/25)} Transports required</p>${button('Embark','embark',f.id,`data-army="${a.id}"`,reason)}${reason?`<p class="fine negative">${escape(reason)}</p>`:''}`;}).join('')}`;
+    if(armies.length)html+=`<h4>Board troops</h4>${armies.map(a=>{const reason=embarkCheck(s,owner,a.id,f.id),count=boardingCount(s,a,f),pending=a.embarkOrder?.fleet===f.id;return `<p>${troopCount(a)} troops ashore · ${count} can board · ${troopCount(a)-count} stay ashore</p>${button(pending?`Boarding ${a.embarkOrder.count} · end turn`:`Board ${count}`,'embark',f.id,`data-army="${a.id}"`,pending?'Boarding is already queued. Use the army’s Cancel boarding button to cancel.':reason)}${reason?`<p class="fine negative">${escape(reason)}</p>`:''}`;}).join('')}`;
     const others=local.filter(x=>x.owner===owner&&x.id!==f.id&&x.order!=='escort');
     if(others.length)html+=`<label>Friendly fleet<select data-fleet-partner="${f.id}">${others.map(x=>`<option value="${x.id}">${escape(x.id)} · ${escape(x.tile)} · ${x.ships.length} vessels</option>`).join('')}</select></label><div class="button-row">${button('Escort','escort',f.id,'',acted)}${button('Combine here','merge',f.id,'',acted)}</div>`;
-    return html+'<p class="fine">Move and unload orders resolve at the end of your turn. Vessels remain on the water.</p></section>';
+    return html+'<p class="fine">Boarding, sailing, attacks and unloading resolve at the end of your turn. All troops on a sunk transport are lost. Vessels remain on water.</p></section>';
   }).join('');
 }
 export function navalOverview(s,owner) {

@@ -1,3 +1,4 @@
+import { drawOrderIndicators } from './map-orders.mjs';
 import { drawFleets } from './naval-art.mjs';
 import { capitalSeparation, foundedCapitals } from './founding.mjs';
 import { distance as hexDistance } from './world-hex.mjs';
@@ -241,6 +242,7 @@ export class WorldMap {
       });
     }
     if(s.fleets?.length||s.lastSeenFleets?.length)drawFleets(this,c,s,hexPixel,inView,colors);
+    drawOrderIndicators(this,c,s,hexPixel,inView);
     // Troop counts are the final world overlay, above selections and area names.
     for(const drawBadge of troopBadges)drawBadge();
     c.setTransform(this.dpr,0,0,this.dpr,0,0);

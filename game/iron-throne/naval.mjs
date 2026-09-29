@@ -1,9 +1,12 @@
 import { FORMATIONS, UNITS } from './data.mjs';
-import { atWar, canAfford, canEnter, kingdom, pay, resolveAmphibiousLanding } from './core.mjs';
+import { atWar, distance, canAfford, canEnter, kingdom, pay, resolveAmphibiousLanding } from './core.mjs';
 import { buildingLevel } from './economy.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
-import { SHIPS, initializeNaval, cargoCount, fleetCapacity, fleetSpeed, syncCargo, distributeCargo, troopCount } from './naval-state.mjs';
+import { SHIPS, initializeNaval, cargoCount, fleetCapacity, fleetSpeed, syncCargo, distributeCargo, troopCount, fleetAttackRange } from './naval-state.mjs';
 import { navalGraph, navalNode, navalPath, nodeTile, shoreNodes, adjacentShore } from './naval-graph.mjs';
+import { clearShot } from './structures.mjs';
+import { coastalTarget, resolveCoastalAttack } from './naval-ranged.mjs';
+import { markPlayerOverride } from './command-state.mjs';
 import { resolveNavalCombat } from './naval-combat.mjs';
 export { SHIPS, fleetCapacity, cargoCount } from './naval-state.mjs';
 const fail=error=>({ok:false,error});
@@ -72,6 +75,11 @@ export function resolveShipConstruction(s) {
     s.shipQueues=s.shipQueues.filter(x=>x!==q);syncCargo(fleet);
   }
 }
+export const boardingStack=(s,f)=>{const group=s.fleets.filter(x=>x.owner===f.owner&&x.node===f.node&&x.resolvedTurn!==s.turn);return group.includes(f)&&group.reduce((n,x)=>n+x.ships.length,0)<=100?group:[f];};
+export const boardingFleet=(s,f)=>({...f,ships:boardingStack(s,f).flatMap(x=>x.ships),cargo:boardingStack(s,f).flatMap(x=>x.cargo)});
+function combineBoardingStack(s,f){const orders={path:f.path,target:f.target,order:f.order,landing:f.landing,escort:f.escort,attackTile:f.attackTile};for(const other of boardingStack(s,f))if(other!==f)mergeFleets(s,f.owner,f.id,other.id);Object.assign(f,orders);}
+export const reservedCargo=(s,f,except=null)=>s.armies.filter(a=>a.id!==except&&boardingStack(s,f).some(x=>a.embarkOrder?.fleet===x.id)).reduce((n,a)=>n+Math.min(a.embarkOrder.count,troopCount(a)),0);
+export const boardingCount=(s,a,f)=>Math.max(0,Math.min(troopCount(a),fleetCapacity(boardingFleet(s,f))-cargoCount(boardingFleet(s,f))-reservedCargo(s,f,a.id)));
 export function embarkCheck(s,owner,armyId,fleetId) {
   const error=actionError(s,owner);if(error)return error;
   const a=s.armies.find(a=>a.id===armyId&&a.owner===owner),f=owned(s,owner,fleetId);
@@ -80,23 +88,48 @@ export function embarkCheck(s,owner,armyId,fleetId) {
   if(!adjacentShore(s,f,a.tile)||!canEnter(s,owner,s.tiles[a.tile])||s.tiles[a.tile].owner&&atWar(s,owner,s.tiles[a.tile].owner))return 'Embark from an adjacent friendly or unclaimed shoreline.';
   if(s.armies.some(e=>e.tile===a.tile&&atWar(s,owner,e.owner)))return 'Clear enemy troops from the embarkation shore first.';
   if(a.resolvedTurn===s.turn||f.resolvedTurn===s.turn)return 'This force has already acted this turn.';
-  const need=troopCount(a)+cargoCount(f);
-  if(need>fleetCapacity(f))return `${need} troops require ${Math.ceil(need/25)} Transports. Current capacity: ${fleetCapacity(f)}.`;
+  const count=boardingCount(s,a,f);
+  if(!count)return 'No unreserved transport space. Each Transport holds 25 troops.';
+  if(count<troopCount(a)&&s.armies.length+s.fleets.reduce((n,x)=>n+x.cargo.length,0)>=500)return 'The campaign army limit prevents splitting this force.';
   return null;
 }
-export function embarkArmy(s,owner,armyId,fleetId) {
+export function orderEmbark(s,owner,armyId,fleetId) {
+  if(s.armies.find(a=>a.id===armyId&&a.owner===owner)?.embarkOrder)return fail('Boarding is already queued; cancel it before issuing another boarding order.');
   const error=embarkCheck(s,owner,armyId,fleetId);if(error)return fail(error);
-  const a=s.armies.find(a=>a.id===armyId),f=owned(s,owner,fleetId);
-  s.armies=s.armies.filter(x=>x!==a);a.path=[];a.target=null;a.structureTarget=null;a.order='embarked';a.resolvedTurn=s.turn;
-  f.cargo.push(a);syncCargo(f);refreshKnowledge(s);return {ok:true};
+  const a=s.armies.find(a=>a.id===armyId),f=owned(s,owner,fleetId),count=boardingCount(s,a,f);
+  combineBoardingStack(s,f);a.embarkOrder={fleet:f.id,count};a.path=[];a.target=null;a.structureTarget=null;a.order='hold';markPlayerOverride(s,a);
+  return {ok:true,count,remaining:troopCount(a)-count};
+}
+export function embarkArmy(s,owner,armyId,fleetId,limit=Infinity) {
+  const error=embarkCheck(s,owner,armyId,fleetId);if(error)return fail(error);
+  const a=s.armies.find(a=>a.id===armyId),f=owned(s,owner,fleetId),count=Math.min(limit,boardingCount(s,a,f)),total=troopCount(a);
+  combineBoardingStack(s,f);let boarded=a;delete a.embarkOrder;
+  if(count<total){
+    boarded={...a,id:`army-${s.nextId++}`,units:Object.fromEntries(Object.keys(UNITS).map(u=>[u,0]))};
+    let left=count;for(const u of Object.keys(UNITS)){const n=Math.min(left,a.units[u]);boarded.units[u]=n;a.units[u]-=n;left-=n;}
+    // A partial detachment leaves its general with the original force.
+    delete boarded.commandId;delete boarded.commandBonus;delete boarded.commandMove;
+    const baseline=a.commandBaseline||total;boarded.commandBaseline=Math.floor(baseline*count/total);a.commandBaseline=baseline-boarded.commandBaseline;
+    a.path=[];a.target=null;a.structureTarget=null;a.order='hold';a.resolvedTurn=s.turn;
+  }else s.armies=s.armies.filter(x=>x!==a);
+  boarded.path=[];boarded.target=null;boarded.structureTarget=null;boarded.order='embarked';boarded.resolvedTurn=s.turn;
+  f.cargo.push(boarded);f.loadedTurn=s.turn;syncCargo(f);refreshKnowledge(s);return {ok:true,count,remaining:total-count};
+}
+export function resolveEmbarkOrders(s,owner=null) {
+  for(const a of [...s.armies].sort((a,b)=>a.id.localeCompare(b.id))){
+    if(!a.embarkOrder||owner&&a.owner!==owner)continue;
+    const {fleet,count}=a.embarkOrder;const result=embarkArmy(s,a.owner,a.id,fleet,count);
+    // Failed boarding cannot silently become a march or steal a later turn.
+    if(!result.ok)delete a.embarkOrder;
+  }
 }
 export function orderFleet(s,owner,id,target,order='move') {
   const error=actionError(s,owner);if(error)return fail(error);
   const f=owned(s,owner,id);if(!f||!['move','attack','unload','escort','intercept','blockade','hold'].includes(order))return fail('Select one of your fleets and a valid order.');
   if(f.resolvedTurn===s.turn)return fail('This fleet has already acted this turn.');
-  if(order==='hold'){Object.assign(f,{path:[],target:null,order,landing:null,escort:null});return {ok:true};}
+  if(order==='hold'){Object.assign(f,{path:[],target:null,order,landing:null,escort:null,attackTile:null});return {ok:true};}
   if(order==='blockade'&&!f.ships.some(v=>v.type==='warship'))return fail('A blockade requires a Warship.');
-  const view=knowledgeView(s,owner),graph=navalGraph(view);let landing=null,escort=null,ends=[];
+  const view=knowledgeView(s,owner),graph=navalGraph(view);let landing=null,escort=null,attackTile=null,ends=[];
   if(order==='escort'){
     const leader=view.fleets.find(x=>x.id===target&&x.owner===owner&&x.id!==id&&x.order!=='escort');
     if(!leader)return fail('Choose another friendly fleet to escort.');
@@ -105,13 +138,20 @@ export function orderFleet(s,owner,id,target,order='move') {
     if(!cargoCount(f))return fail('This fleet has no embarked troops.');
     if(!canEnter(view,owner,view.tiles[target]))return fail('Choose a legal land destination; neutral borders require access or war.');
     landing=target;ends=shoreNodes(view,target,graph);
+  }else if(order==='attack'){
+    if(view.tiles[target]?.fog!=='visible')return fail('Observe this location before ordering an attack.');
+    const enemy=view.fleets.find(e=>e.tile===target&&atWar(view,owner,e.owner));
+    const coast=!enemy&&coastalTarget(view,owner,target);
+    if(!enemy&&!coast)return fail('Select a visible enemy fleet, army or coastal structure at war with your House.');
+    if(coast&&!f.ships.some(v=>v.type==='warship'))return fail('Only Warships can bombard land from the water.');
+    attackTile=target;const range=fleetAttackRange(f);
+    ends=[...graph.keys()].filter(node=>{const t=view.tiles[nodeTile(node)],d=distance(t,view.tiles[target]);return d<=range&&clearShot(view,t,view.tiles[target])&&(coast||d>1||node===enemy.node||graph.get(node)?.includes(enemy.node));});
   }else{
     const node=navalNode(view,target,graph);if(node)ends=[node];
-    if(order==='attack'&&!view.fleets.some(e=>e.node===node&&atWar(view,owner,e.owner)))return fail('Select a visible enemy fleet at war with your House.');
   }
   const routes=ends.map(end=>({end,path:navalPath(view,f.node,end,{graph})})).filter(x=>x.path!==null).sort((a,b)=>a.path.length-b.path.length||a.end.localeCompare(b.end));
   if(!routes.length)return fail('No connected water route is known. Ships can only sail on ocean or connected rivers; scout farther first.');
-  Object.assign(f,{path:routes[0].path,target:routes[0].end,order,landing,escort});return {ok:true};
+  Object.assign(f,{path:routes[0].path,target:routes[0].end,order,landing,escort,attackTile});return {ok:true};
 }
 export function mergeFleets(s,owner,id,otherId) {
   const error=actionError(s,owner);if(error)return fail(error);
@@ -119,10 +159,11 @@ export function mergeFleets(s,owner,id,otherId) {
   if(!f||!other||f===other||f.node!==other.node||f.ships.length+other.ships.length>100)return fail('Bring two friendly fleets to the same water position (maximum 100 vessels).');
   if(f.resolvedTurn===s.turn||other.resolvedTurn===s.turn)return fail('A fleet has already acted this turn.');
   f.movementSpent=Math.max(f.movementTurn===s.turn?f.movementSpent:0,other.movementTurn===s.turn?other.movementSpent:0);f.movementTurn=s.turn;
-  f.ships.push(...other.ships);f.cargo.push(...other.cargo);s.fleets=s.fleets.filter(x=>x!==other);Object.assign(f,{path:[],target:null,order:'hold',landing:null,escort:null});syncCargo(f);return {ok:true};
+  for(const a of s.armies)if(a.embarkOrder?.fleet===other.id)a.embarkOrder.fleet=f.id;
+  f.ships.push(...other.ships);f.cargo.push(...other.cargo);s.fleets=s.fleets.filter(x=>x!==other);Object.assign(f,{path:[],target:null,order:'hold',landing:null,escort:null,attackTile:null});syncCargo(f);return {ok:true};
 }
 export function resolveFleetMovement(s,owner=null) {
-  initializeNaval(s);const graph=navalGraph(s);
+  initializeNaval(s);resolveEmbarkOrders(s,owner);const graph=navalGraph(s);
   const fleets=s.fleets.filter(f=>!owner||f.owner===owner).sort((a,b)=>Number(a.order!=='escort')-Number(b.order!=='escort')||a.id.localeCompare(b.id));
   for(const f of fleets){
     if(!s.fleets.includes(f)||f.resolvedTurn===s.turn)continue;f.resolvedTurn=s.turn;
@@ -136,10 +177,20 @@ export function resolveFleetMovement(s,owner=null) {
       const view=knowledgeView(s,f.owner),enemy=view.fleets.filter(e=>atWar(s,f.owner,e.owner)).map(e=>({e,path:navalPath(view,f.node,e.node)})).filter(x=>x.path!==null&&x.path.length<=fleetSpeed(f)).sort((a,b)=>a.path.length-b.path.length)[0];
       if(enemy){f.path=enemy.path;f.target=enemy.e.node;}
     }
+    const sailingBudget=fleetSpeed(f)+(f.sailingCarry||0);
     let fought=false;
-    while(f.path.length&&f.movementSpent<1){
+    const fire=()=>{
+      if(f.order!=='attack'||!f.attackTile)return false;
+      const view=knowledgeView(s,f.owner),enemy=view.fleets.find(e=>e.tile===f.attackTile&&atWar(s,f.owner,e.owner));
+      if(enemy){const actual=s.fleets.find(x=>x.id===enemy.id);if(resolveNavalCombat(s,f,actual,{contact:distance(s.tiles[f.tile],s.tiles[actual.tile])<=1}).ok)return true;}
+      else if(coastalTarget(view,f.owner,f.attackTile)&&resolveCoastalAttack(s,f,f.attackTile))return true;
+      return false;
+    };
+    if(fire()){fought=true;f.movementSpent=1;f.path=[];}
+
+    while(!fought&&f.path.length&&f.movementSpent<1){
       const next=f.path[0];if(!graph.get(f.node)?.includes(next)){f.path=[];break;}
-      const cost=1/fleetSpeed(f,next.startsWith('river:'));
+      const cost=1/sailingBudget;
       if(f.movementSpent+cost>1+1e-8)break;
       // A guarding fleet may intercept at the connected next position, never across land.
       const enemies=s.fleets.filter(e=>e!==f&&atWar(s,f.owner,e.owner)&&(e.node===next||['intercept','blockade','escort'].includes(e.order)&&graph.get(next)?.includes(e.node)&&e.interceptedTurn!==s.turn));
@@ -149,8 +200,10 @@ export function resolveFleetMovement(s,owner=null) {
         const origin=f.node;resolveNavalCombat(s,f,enemy,{contact:true});f.movementSpent=1;fought=true;
         if(s.fleets.includes(f)&&f.node===origin&&f.node!==next&&!s.fleets.some(e=>e.node===next&&atWar(s,f.owner,e.owner))){f.node=next;f.tile=nodeTile(next);f.path.shift();syncCargo(f);}break;}
       f.node=next;f.tile=nodeTile(next);f.path.shift();f.movementSpent+=cost;syncCargo(f);refreshKnowledge(s);
+      if(fire()){fought=true;f.movementSpent=1;f.path=[];break;}
     }
     if(!s.fleets.includes(f))continue;
+    f.sailingCarry=!fought&&f.path.length?Math.max(0,sailingBudget*(1-f.movementSpent)):0;
     // Same-position contact can occur on imported games or at a river meeting.
     const enemy=s.fleets.find(e=>e!==f&&e.node===f.node&&atWar(s,e.owner,f.owner));
     if(enemy&&!fought){resolveNavalCombat(s,f,enemy,{contact:true});f.movementSpent=1;fought=true;}
@@ -159,9 +212,9 @@ export function resolveFleetMovement(s,owner=null) {
       for(const a of [...f.cargo]){
         if(resolveAmphibiousLanding(s,a,f.landing)){f.cargo=f.cargo.filter(x=>x!==a);delete a.embarkedFleetId;s.armies.push(a);}
       }
-      syncCargo(f);f.movementSpent=1;f.landing=null;f.order='hold';f.target=null;
+      syncCargo(f);f.movementSpent=1;f.unloadedTurn=s.turn;f.landing=null;f.order='hold';f.target=null;
     }
-    if(!f.path.length&&['move','attack'].includes(f.order)){f.order='hold';f.target=null;}
+    if(!f.path.length&&['move','attack'].includes(f.order)){f.order='hold';f.target=null;f.attackTile=null;}
     refreshKnowledge(s);
   }
 }
@@ -180,13 +233,15 @@ export function validateNaval(s) {
     if(!f||!house(f.owner)||!graph.has(f.node)||f.tile!==nodeTile(f.node)||!Array.isArray(f.ships)||!f.ships.length||f.ships.length>100||!Array.isArray(f.cargo)||!Array.isArray(f.path)||f.path.length>graph.size||!['move','attack','unload','escort','intercept','blockade','hold'].includes(f.order)||!Number.isFinite(f.morale)||f.morale<.2||f.morale>1)fail();
     unique(f.id,'fleet');
     if(!Number.isFinite(f.movementSpent)||f.movementSpent<0||f.movementSpent>1.00001||!int(f.movementTurn,0,s.turn))fail();
-    for(const field of ['resolvedTurn','interceptedTurn'])if(f[field]!==undefined&&!int(f[field],0,s.turn))fail();
+    for(const field of ['resolvedTurn','interceptedTurn','loadedTurn','unloadedTurn'])if(f[field]!==undefined&&!int(f[field],0,s.turn))fail();
     if(f.target!==null&&!graph.has(f.target)||f.landing!=null&&(!s.tiles[f.landing]||!canEnter({...s,wars:s.kingdoms.filter(k=>k.id!==f.owner).map(k=>[k.id,f.owner].sort().join(':'))},f.owner,s.tiles[f.landing])))fail();
+    if(f.sailingCarry!==undefined&&(!Number.isFinite(f.sailingCarry)||f.sailingCarry<0||f.sailingCarry>=1+1e-8))fail();
+    if(f.attackTile!=null&&(!s.tiles[f.attackTile]||f.order!=='attack'))fail();
     if(f.escort!=null&&(typeof f.escort!=='string'||f.escort===f.id||f.escort.length>80))fail();
     let previous=f.node;for(const node of f.path){if(!graph.get(previous)?.includes(node))fail();previous=node;}
     if(f.path.length&&f.path.at(-1)!==f.target)fail();
     for(const a of f.cargo){
-      if(!a||typeof a.id!=='string'||!/^army-\d+$/.test(a.id)||armies.has(a.id)||a.owner!==f.owner||a.tile!==f.tile||a.embarkedFleetId!==f.id||!Object.hasOwn(FORMATIONS,a.formation)||!int(a.retreats)||!Number.isFinite(a.morale)||a.morale<.1||a.morale>1||!a.units||Object.keys(a.units).length!==Object.keys(UNITS).length||Object.keys(UNITS).some(u=>!int(a.units[u]))||!Array.isArray(a.path)||a.path.length||a.target!==null||a.structureTarget||a.order!=='embarked'||!troopCount(a))fail();
+      if(!a||typeof a.id!=='string'||!/^army-\d+$/.test(a.id)||armies.has(a.id)||a.owner!==f.owner||a.tile!==f.tile||a.embarkedFleetId!==f.id||!Object.hasOwn(FORMATIONS,a.formation)||!int(a.retreats)||!Number.isFinite(a.morale)||a.morale<.1||a.morale>1||!a.units||Object.keys(a.units).length!==Object.keys(UNITS).length||Object.keys(UNITS).some(u=>!int(a.units[u]))||!Array.isArray(a.path)||a.path.length||a.target!==null||a.structureTarget||a.order!=='embarked'||a.embarkOrder||!troopCount(a))fail();
       armies.add(a.id);
     }
     for(const v of f.ships){const spec=SHIPS[v?.type];if(!Object.hasOwn(SHIPS,v?.type)||!spec||!int(v.hp,1,spec.hull)||!int(v.crew,1,spec.crew)||!Array.isArray(v.cargo))fail();unique(v.id,'ship');}
@@ -194,6 +249,8 @@ export function validateNaval(s) {
     const copy=structuredClone(f);distributeCargo(copy);
     if(JSON.stringify(f.ships.map(v=>v.cargo))!==JSON.stringify(copy.ships.map(v=>v.cargo)))fail();
   }
+  for(const a of s.armies)if(a.order==='ranged'&&(!s.tiles[a.target]||a.path.length||a.structureTarget))fail();
+  for(const a of s.armies)if(a.embarkOrder&&(s.fleets.some(f=>f.id===a.embarkOrder.fleet&&f.owner!==a.owner)||typeof a.embarkOrder.fleet!=='string'||!/^fleet-\d+$/.test(a.embarkOrder.fleet)||!int(a.embarkOrder.count,1,100000)||a.order!=='hold'||a.path.length||a.target!==null))fail();
   if(s.armies.some(a=>a.embarkedFleetId||s.tiles[a.tile]?.terrain==='water')||armies.size>500||s.fleets.reduce((n,f)=>n+f.ships.length,0)+s.shipQueues.length>500)fail();
   for(const q of s.shipQueues){if(!q||!Object.hasOwn(SHIPS,q.type)||!house(q.owner)||!s.tiles[q.tile]||!int(q.remaining,0,SHIPS[q.type].turns)||q.total!==SHIPS[q.type].turns||!int(q.lastTickTurn,0,s.turn))fail();unique(q.id,'ship-order');}
 }

@@ -1,3 +1,4 @@
+import { orderLandNavalAttack, resolveLandNavalAttack } from './naval-ranged.mjs';
 import { initializeNaval, allArmies, syncCargo, SHIPS } from './naval-state.mjs';
 import { shoreNodes } from './naval-graph.mjs';
 import { validateNaval, resolveShipConstruction } from './naval.mjs';
@@ -256,19 +257,23 @@ export function orderStructureAttack(s, owner, armyId, targetId, type, mode = 'a
   if (error) return {ok:false,error};
   const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(knowledgeView(s,owner),a.tile,targetId,owner,false,avoid);
   if (mode === 'attack' && a.tile !== targetId && !path.length) return {ok:false,error:'No legal route to this structure.'};
+  delete a.embarkOrder;
   a.path = path; a.target = targetId; a.order = mode; a.structureTarget = type;
   if(source==='player')markPlayerOverride(s,a);
   return {ok:true,path};
 }
 export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = null, source = 'player') {
   const a = s.armies.find(a => a.id === armyId && a.owner === owner);
-  if (s.outcome || !a || !['move', 'attack', 'retreat', 'hold'].includes(order)) return { ok: false, error: 'Select one of your armies.' };
+  if (s.outcome || !a || !['move', 'attack', 'retreat', 'hold', 'ranged'].includes(order)) return { ok: false, error: 'Select one of your armies.' };
   const t = s.tiles[targetId];
+  if(order==='ranged')return orderLandNavalAttack(s,owner,a,targetId);
+  if(order==='attack'&&knowledgeView(s,owner).fleets.some(f=>f.tile===targetId&&atWar(s,owner,f.owner))&&t?.terrain==='water')return orderLandNavalAttack(s,owner,a,targetId);
   if (order === 'attack' && targetId === a.tile && t?.owner && atWar(s, owner, t.owner) && structuresAt(t).length)
     return orderStructureAttack(s,owner,armyId,targetId,structuresAt(t).find(type => type !== 'road') || 'road','attack',avoid,source);
-  if (order === 'hold' || targetId === a.tile) { a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; if(source==='player')markPlayerOverride(s,a); return { ok: true }; }
+  if (order === 'hold' || targetId === a.tile) { delete a.embarkOrder;a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; if(source==='player')markPlayerOverride(s,a); return { ok: true }; }
   const path = findPath(knowledgeView(s,owner), a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
+  delete a.embarkOrder;
   a.path = path; a.target = targetId; a.structureTarget = null; a.order = order;
   if(source==='player')markPlayerOverride(s,a);
   return { ok: true, path };
@@ -278,6 +283,7 @@ export function mergeArmies(s, owner, id, source = 'player') {
   const group = armiesOf(s, owner).filter(a => a.tile === id);
   if (group.length < 2) return { ok: false, error: 'Bring two armies to the same tile first.' };
   if(new Set(group.map(a=>a.commandId||null)).size>1)return {ok:false,error:'Return armies to the same command or manual control before merging.'};
+  if(group.some(a=>a.embarkOrder))return {ok:false,error:'Cancel boarding before combining armies.'};
   const base = group[0];
   base.movementSpent=Math.max(...group.map(a=>a.movementTurn===s.turn?a.movementSpent||0:0));base.movementTurn=s.turn;
   if(group.some(a=>a.resolvedTurn===s.turn))base.resolvedTurn=s.turn;
@@ -290,6 +296,7 @@ export function splitArmy(s, owner, armyId, source = 'player') {
   if (s.outcome) return { ok: false, error: 'This campaign has ended.' };
   const a = s.armies.find(a => a.id === armyId && a.owner === owner);
   if (!a || sizeOf(a) < 12) return { ok: false, error: 'At least 12 soldiers are needed to split an army.' };
+  if(a.embarkOrder)return {ok:false,error:'Cancel boarding before splitting this army.'};
   const b = { ...a, id: `army-${s.nextId++}`, units: {}, path: [], target: null, order: 'hold' };
   for (const u of Object.keys(UNITS)) { b.units[u] = Math.floor((a.units[u]||0) / 2); a.units[u] = (a.units[u]||0) - b.units[u]; }
   a.path = []; a.order = 'hold'; a.target = null; a.structureTarget = null; b.structureTarget = null; s.armies.push(b); const baseline=a.commandBaseline||sizeOf(a)+sizeOf(b);b.commandBaseline=Math.floor(baseline/2);a.commandBaseline=baseline-b.commandBaseline; if(source==='player'){markPlayerOverride(s,a);markPlayerOverride(s,b);} return { ok: true, armyId: b.id };
@@ -405,6 +412,8 @@ export function resolveMovement(s, owner = null) {
     if (!s.armies.includes(a) || sizeOf(a) === 0 || a.resolvedTurn===s.turn) continue;
     a.resolvedTurn=s.turn;
     if(a.movementTurn!==s.turn){a.movementTurn=s.turn;a.movementSpent=0;}
+    if(a.order==='ranged'){resolveLandNavalAttack(s,a);continue;}
+    if(a.embarkOrder)continue;
     if (a.structureTarget) {
       const t = s.tiles[a.target];
       if (!visionTiles(s,a.owner).has(a.target)||structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
