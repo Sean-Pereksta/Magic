@@ -1,3 +1,4 @@
+import { militaryArmiesOf } from './core.mjs';
 import { initializeCourtIntelligence, recordCourtConversation } from './court-intelligence.mjs';
 import { dispatchContext } from './conversation-context.mjs';
 import { emotionalEvent, initializeEmotions, personalContext, updateEmotions } from './emotions.mjs';
@@ -14,7 +15,7 @@ import { applyTradeSpeech, validateNegotiation } from './trade-negotiation.mjs';
 export const RELATION_DEFAULTS = { respect: 15, fear: 0, grievance: 0, dependency: 0, wariness: 0, reliability: 50, generosity: 0, aggression: 0 };
 export const clamp = (n, low = 0, high = 100) => Math.max(low, Math.min(high, n));
 export const capitalOf = (s, owner) => settlements(s, owner).find(t => t.capital === owner) || settlements(s, owner)[0];
-const powerOf = (s, owner) => armiesOf(s, owner).reduce((n, a) => n + strength(a)*(a.confidence??1), 0);
+const powerOf = (s, owner) => militaryArmiesOf(s, owner).reduce((n, a) => n + strength(a)*(a.confidence??1), 0);
 const houseName = (s, id) => kingdom(s, id)?.name || id;
 
 export function initializeLiving(s) {

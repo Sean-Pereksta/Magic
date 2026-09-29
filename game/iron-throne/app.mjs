@@ -1,3 +1,5 @@
+import { fleetPanel, shipyardPanel, navalOverview } from './naval-ui.mjs';
+import { queueShip, cancelShip, embarkArmy, orderFleet, mergeFleets } from './naval.mjs';
 import { difficultyOptions } from './difficulty.mjs';
 import { generalArmyControls, generalRoster, vassalPanel, installCommandUI } from './command-ui.mjs';
 import { renderCourtOptions } from './court-options-ui.mjs';
@@ -44,7 +46,7 @@ function applyLobbyReturnUrl(){
 }
 applyLobbyReturnUrl();
 $('preset').innerHTML=mapOptions();$('difficulty').innerHTML=difficultyOptions();
-let commandUI=null;
+let commandUI=null, navalOrder=null;
 const generalControlHomes=new Map();
 function showGeneralVerification(host){
   for(const node of [$('use-gemini').closest('label'),$('turnstile'),$('chat-notice'),$('privacy')]){
@@ -102,6 +104,8 @@ function perform(type,args,localAction) {
 }
 function result(action) { if (!action.ok) toast(action.error); else changed(); return action.ok; }
 function selectTile(id) {
+  if(navalOrder){const {fleet,order}=navalOrder;const ok=perform('fleetOrder',{fleet,tile:id,order},()=>orderFleet(state,localHouse,fleet,id,order));if(ok){navalOrder=null;toast('Fleet orders issued. They resolve when you end your turn.');}selected=id;map.selected=id;tab='land';render();return;}
+
   if (orderMode && selectedArmy) {
     const ok = perform('order',{army:selectedArmy,tile:id,order:orderMode},()=>orderArmy(state,localHouse,selectedArmy,id,orderMode));
     if (ok) { toast('Army orders issued. They resolve when you end the turn.'); orderMode = null; }
@@ -130,7 +134,7 @@ function render() {
   $('panel').scrollTop = scroll;
   $('latest-events').innerHTML = view.events.map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
   const t = view.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
-  $('order-hint').hidden = !orderMode; $('order-hint').textContent = 'Select a destination · Esc cancels';
+  $('order-hint').hidden = !orderMode&&!navalOrder; $('order-hint').textContent = 'Select a destination · Esc cancels';
   map.armyId = selectedArmy; map.selected = selected; map.reducedEffects = !!state.presentation?.reducedEffects; map.draw();
   renderDispatches();
   onlineUI?.render(onlineStatus,state);
@@ -147,8 +151,8 @@ function landPanel() {
   const t = state.tiles[selected], k = kingdom(state, localHouse), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected).sort((a,b) => Number(b.owner === localHouse)-Number(a.owner === localHouse) || Number(b.id === selectedArmy)-Number(a.id === selectedArmy));
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
   const observations=(state.lastSeenArmies||[]).filter(a=>a.tile===selected).map(a=>`<article class="realm-card last-seen"><strong>${escape(kingdom(state,a.owner).name)} army · Last seen T${a.turn}</strong><p>${state.turn-a.turn} turns ago · Estimated strength when observed: ${a.minimum}–${a.maximum}${a.intelligenceFresh?' · Recent spy report':''}</p>${a.objective?`<p>Reported objective: ${escape(a.objective)} (T${a.turn})</p>`:''}<p class="fine">The army may have moved or changed strength.</p></article>`).join('');
-  if(t.fog!=='visible')return html+`<p class="fog-notice">${t.fog==='unknown'?'UNEXPLORED · Scout this region to discover resources and settlements.':`LAST OBSERVED TURN ${t.observedTurn} · Geography and structures are remembered. Ownership and defenses may have changed.${t.intelligenceFresh?' Recent spy access.':''}`}</p>${t.knownCapital?`<p>Known starting capital of ${escape(kingdom(state,t.knownCapital).name)}. Current ownership, buildings and garrison are unknown.</p>`:t.building?`<p>Last known structure: ${escape(BUILDINGS[t.building].name)}</p>`:''}${observations}<p class="fine">Send an army here to scout. Current battle losses and structure targets require observation.</p>`;
-  html += observations;
+  if(t.fog!=='visible')return html+`<p class="fog-notice">${t.fog==='unknown'?'UNEXPLORED · Scout this region to discover resources and settlements.':`LAST OBSERVED TURN ${t.observedTurn} · Geography and structures are remembered. Ownership and defenses may have changed.${t.intelligenceFresh?' Recent spy access.':''}`}</p>${t.knownCapital?`<p>Known starting capital of ${escape(kingdom(state,t.knownCapital).name)}. Current ownership, buildings and garrison are unknown.</p>`:t.building?`<p>Last known structure: ${escape(BUILDINGS[t.building].name)}</p>`:''}${observations}${fleetPanel(state,selected,localHouse)}<p class="fine">Send a force here to scout. Current battle losses and structure targets require observation.</p>`;
+  html += observations + fleetPanel(state,selected,localHouse) + shipyardPanel(state,selected,localHouse);
   html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(kingdom(state, a.owner).name)}${treaty(state,localHouse,a.owner,'vassalage')?'<span class="vassal-marker"> ♛↔♛ Vassal</span>':''}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : a.owner===localHouse?'Holding position':'Observed here · orders unknown'}</p>${a.owner === localHouse ? `${generalArmyControls(state,a)}${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">Hold</button><button data-split="${a.id}">Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   html += buildingInspection(state,t);
   html += battlePreview(state,selectedArmy,selected);
@@ -170,7 +174,7 @@ function populationPanel(){
 function realmPanel() {
   const state=displayedState;
   const k = kingdom(state, localHouse), { income, routes } = economyProjection(state, localHouse);
-  return `${systemTitle('kingdom')}<span class="eyebrow">${escape(k.name.toUpperCase())}</span><h2>Your realm</h2><div class="stat-grid"><span>Build / recruit orders</span><b>${k.commands}/${commandLimit(state, localHouse)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, localHouse).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, localHouse).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, localHouse).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${generalRoster(state,localHouse)}${vassalPanel(state,localHouse)}${populationPanel()}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
+  return `${systemTitle('kingdom')}<span class="eyebrow">${escape(k.name.toUpperCase())}</span><h2>Your realm</h2><div class="stat-grid"><span>Build / recruit orders</span><b>${k.commands}/${commandLimit(state, localHouse)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, localHouse).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, localHouse).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, localHouse).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${navalOverview(state,localHouse)}${generalRoster(state,localHouse)}${vassalPanel(state,localHouse)}${populationPanel()}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
   const state=displayedState;
@@ -188,6 +192,16 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
+  if(d.navalAction){
+    const action=d.navalAction,fleet=d.fleet;
+    if(['move','unload','intercept','blockade'].includes(action)){orderMode=null;navalOrder={fleet,order:action};toast(action==='unload'?'Select a land destination beside known navigable water.':'Select a water or river destination.');render();return;}
+    if(action==='build')perform('shipBuild',{tile:d.tile,ship:d.ship},()=>queueShip(state,localHouse,d.tile,d.ship));
+    if(action==='cancel')perform('shipCancel',{id:d.id},()=>cancelShip(state,localHouse,d.id));
+    if(action==='embark')perform('fleetEmbark',{army:d.army,fleet},()=>embarkArmy(state,localHouse,d.army,fleet));
+    if(action==='hold'){navalOrder=null;perform('fleetOrder',{fleet,order:'hold'},()=>orderFleet(state,localHouse,fleet,null,'hold'));}
+    if(action==='escort'||action==='merge'){const partner=document.querySelector(`[data-fleet-partner="${fleet}"]`)?.value;if(partner){if(action==='escort')perform('fleetOrder',{fleet,tile:partner,order:'escort'},()=>orderFleet(state,localHouse,fleet,partner,'escort'));else perform('fleetMerge',{fleet,other:partner},()=>mergeFleets(state,localHouse,fleet,partner));}}
+    return;
+  }
   if(d.foundCity){
     perform('found',{tile:d.foundCity},()=>{
       const next=structuredClone(state);let r=foundCity(next,localHouse,d.foundCity);
@@ -233,14 +247,14 @@ $('panel').addEventListener('submit',e=>{
 $('panel').addEventListener('change', e => {
   if(e.target.name==='role'&&e.target.closest('[data-operation-house]')){const row=e.target.closest('[data-operation-house]');if(e.target.value==='supply'){row.querySelector('[name=troops]').value=0;row.querySelector('[name=food]').value=30;}else{if(Number(row.querySelector('[name=troops]').value)===0)row.querySelector('[name=troops]').value=20;if(e.target.value==='siege'&&Number(row.querySelector('[name=siege]').value)===0)row.querySelector('[name=siege]').value=2;}return;}
   if(e.target.dataset.formation){perform('formation',{army:e.target.dataset.formation,formation:e.target.value},()=>setFormation(state,localHouse,e.target.dataset.formation,e.target.value));return;} if (e.target.id === 'tax' && !state.outcome) { perform('tax',{policy:e.target.value},()=>{kingdom(state,localHouse).tax=e.target.value;return {ok:true};}); } });
-document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null; $('panel').scrollTop = 0; render(); }));
+document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null;navalOrder=null; $('panel').scrollTop = 0; render(); }));
 // Prevent orders, imports, or a second turn while a worker owns the round snapshot.
 for (const type of ['click','submit','change','keydown']) document.addEventListener(type, event => {
   if (turnBusy) { event.preventDefault(); event.stopImmediatePropagation(); }
 }, true);
 $('end-turn').addEventListener('click', async () => {
   if(turnBusy || state.outcome || state.phase==='founding')return;
-  orderMode=null;
+  orderMode=null;navalOrder=null;
   if(onlineOptions){perform('endActivation',{},()=>({ok:true}));return;}
   turnBusy=true; epoch++; client.cancel(); $('end-turn').disabled=true;
   showTurnProgress({phase:'preparing'});
@@ -259,7 +273,7 @@ $('end-turn').addEventListener('click', async () => {
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { orderMode = null; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { orderMode = null;navalOrder=null; render(); } });
 $('chronicle-button').onclick = () => $('chronicle-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).close()));
 $('menu-button').onclick = () => $('menu').showModal();

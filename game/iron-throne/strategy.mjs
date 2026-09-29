@@ -1,3 +1,4 @@
+import { prepareNavalEconomy, directNavalForces, navalInvasionReady } from './naval-ai.mjs';
 import { initializeCommanders } from './command-state.mjs';
 import { difficulty, settlementAmbition, validateDifficulty } from './difficulty.mjs';
 import { recruitAIGeneral, prepareGenerals, prepareAIGeneralObjectives } from './generals.mjs';
@@ -110,7 +111,10 @@ function considerWar(s, k, c) {
     // Probe geography without crossing a third party's closed borders. The
     // hypothetical war is read-only; real declarations use the shared rules.
     const probe = { ...s, wars: [...s.wars, [k.id, candidate.type].sort().join(':')] };
-    if (!findPath(probe, c.home.id, candidate.tile.id, k.id).length) continue;
+    if (!findPath(probe, c.home.id, candidate.tile.id, k.id).length) {
+      if(navalInvasionReady(s,k.id,candidate.type)){declareWar(world,k.id,candidate.type);recordStrategyAction(world,k.id,{kind:'war',target:candidate.type,reason:'A prepared fleet opens an amphibious front.'});break;}
+      continue;
+    }
     const plan=proposeInvasion(world,k,candidate.type,candidate.tile);
     if(plan){plan.requiredForces=Math.min(300,Math.max(30,Math.ceil(troopCount(armiesOf(s,candidate.type))*difficulty(s).preparation)));plan.preparationReason=ours<forcePower(armiesOf(s,candidate.type))?'Recruit and concentrate before declaring war.':'Prepare supplies and a legal route.';}
     break;
@@ -399,11 +403,12 @@ export function runStrategyTurn(s, onProgress = () => {}, onlyOwner = null) {
     [k.goal, report.reason] = chooseGoal(c);
     const tax = k.happiness < 40 ? 'low' : c.income.gold < 2 && k.resources.gold < 70 && k.happiness >= 60 ? 'high' : 'medium';
     if (tax !== k.tax) { k.tax = tax; recordStrategyAction(s, k.id, { kind: 'tax', policy: tax }); }
-    develop(s, k); recruitAIGeneral(s,k.id);
+    prepareNavalEconomy(s,k.id);develop(s, k); recruitAIGeneral(s,k.id);
     if(!c.desperation||c.desperation.score<55)preparePlans(s,k,assess(s,k));
     if(!vassalOrder(s,k.id)&&!c.threats.length)prepareAIGeneralObjectives(s,k.id);
     directArmies(s, k, assess(s, k));
     if(!vassalOrder(s,k.id)&&!c.threats.length&&(!c.desperation||c.desperation.score<55))prepareGenerals(s,k.id);
+    directNavalForces(s,k.id);
     report.goal = k.goal;
     if (!report.orders && !report.actions.some(a => ['march','war'].includes(a.kind))) report.reason =
       c.tiles.some(t => t.project) ? 'Existing projects are underway; holding positions and rebuilding reserves.' :

@@ -5,7 +5,8 @@ export const MAP_PROFILES = Object.freeze({
   'highland-crown': {name:'Highland Crown',description:'Northern ranges and mineral-rich foothills above lowland kingdoms.',forest:.38,hills:.28,ranges:2,axis:'horizontal',ridgeWidth:1.2,coast:1.2,basin:0},
   'verdant-kingdoms': {name:'Verdant Kingdoms',description:'Extensive forests, open clearings and wooded river valleys.',forest:.58,hills:.16,ranges:2,axis:'diagonal',ridgeWidth:1,coast:1.5,basin:0},
   'great-basin': {name:'Great Basin',description:'An inland lake and fertile basin framed by highland ridges.',forest:.3,hills:.28,ranges:2,axis:'vertical',ridgeWidth:1.2,coast:1.2,basin:2.4},
-  'broken-coast': {name:'Broken Coast',description:'Deep coastal inlets around connected inland plains and forests.',forest:.38,hills:.2,ranges:2,axis:'diagonal',ridgeWidth:1,coast:4.8,basin:0}
+  'broken-coast': {name:'Broken Coast',description:'Broad bays, peninsulas and offshore realms divided by navigable channels.',forest:.38,hills:.2,ranges:2,axis:'diagonal',ridgeWidth:1,coast:4.8,basin:0,fragmented:true},
+  'shattered-realms': {name:'Shattered Realms',description:'Several substantial realms separated by sea channels. Fleets are essential for conquest.',forest:.38,hills:.22,ranges:2,axis:'diagonal',ridgeWidth:1,coast:2,basin:0,fragmented:true,shattered:true}
 });
 const LEGACY_PROFILES={crossroads:'heartlands',highlands:'highland-crown'};
 export function selectMapProfile(seed, requested='random') {

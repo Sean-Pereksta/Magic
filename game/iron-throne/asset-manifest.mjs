@@ -6,10 +6,11 @@ export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3
 export const ironThronesAsset = path => `${IRON_THRONES_ASSET_BASE}/${path.replace(/^\/+/, '')}`;
 const local = path => new URL(`./assets/${path}.svg`, import.meta.url).href;
 // City tiers reuse the supplied city artwork; no additional PNGs are required.
-const buildingPath = (id,level) => `buildings/${id === 'intelligenceOffice' ? 'chancery' : id}_${id === 'city' ? 1 : level}.png`;
+const buildingPath = (id,level) => `buildings/${id === 'intelligenceOffice' ? 'chancery' : id === 'fishingDock' ? 'fishing_dock' : id}_${id === 'city' ? 1 : level}.png`;
 const levels = (id, b) => [...new Set(b.levels.map(l => buildingPath(id,l.level)))];
 export const IRON_THRONES_ART = {
   buildings: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, levels(id,b)])),
+  ships: {warCanoe:'ships/war_canoe.png',transport:'ships/transport.png',warship:'ships/warship.png'},
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
   terrain: Object.fromEntries(['plains','forest','hills','mountain','water'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id}_${String(i+1).padStart(2,'0')}.png`)])),
   resources: Object.fromEntries(RESOURCES.map(id => [id, `resources/${id}.png`])),
@@ -22,6 +23,7 @@ const flatten = value => typeof value === 'string' ? [value] : Object.values(val
 export const ALL_ART_PATHS = [...new Set(flatten(IRON_THRONES_ART))];
 export const ART = {
   structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(buildingPath(id,l.level))]))])),
+  ships: Object.fromEntries(Object.entries(IRON_THRONES_ART.ships).map(([id,p])=>[id,ironThronesAsset(p)])),
   units: Object.fromEntries(Object.entries(IRON_THRONES_ART.troops).map(([id,p]) => [id,ironThronesAsset(p)])),
   resources: Object.fromEntries(Object.entries(IRON_THRONES_ART.resources).map(([id,p]) => [id,ironThronesAsset(p)])),
   portraits: Object.fromEntries(Object.entries(IRON_THRONES_ART.portraits).map(([id,p]) => [id,ironThronesAsset(p)])),
@@ -32,7 +34,7 @@ export const ART = {
   construction: IRON_THRONES_ART.construction.map(ironThronesAsset)
 };
 const fallbacks = new Map();
-for (const [id,b] of Object.entries(BUILDINGS)) for (const l of b.levels) fallbacks.set(ART.structures[id][l.level],local(`structures/${id === 'intelligenceOffice' ? 'chancery' : id}_${id === 'city' ? 1 : l.level}`));
+for (const [id,b] of Object.entries(BUILDINGS)) for (const l of b.levels) fallbacks.set(ART.structures[id][l.level],local(`structures/${['shipyard','fishingDock'].includes(id) ? 'harbor' : id === 'intelligenceOffice' ? 'chancery' : id}_${id === 'city' ? 1 : l.level}`));
 for (const id of Object.keys(UNITS)) fallbacks.set(ART.units[id],local(`units/${id}`));
 for (const id of RESOURCES) fallbacks.set(ART.resources[id],local(`resources/${id}`));
 ART.construction.forEach((url,i) => fallbacks.set(url,local(`construction/stage_${i+1}`)));

@@ -496,3 +496,9 @@ House at a time, with economy effects once per complete round.
 See [COMMANDS.md](COMMANDS.md) for rules, costs, privacy and verification,
 [STRATEGY.md](STRATEGY.md) for difficulty, and [MULTIPLAYER.md](MULTIPLAYER.md) for
 activation authority and migration.
+
+## Naval and river expansion
+
+See [NAVAL.md](NAVAL.md) for Shipyards, three vessel classes, transport capacity,
+river navigation, amphibious landings, Fishing Docks, naval AI, new maps and
+multiplayer/save integration.
