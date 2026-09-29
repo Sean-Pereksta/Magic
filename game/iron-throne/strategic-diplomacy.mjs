@@ -1,3 +1,4 @@
+import { militaryArmiesOf } from './core.mjs';
 import { personalWillingness } from './emotions.mjs';
 import { marriageSupport } from './marriage.mjs';
 import { planningView } from './ai-knowledge.mjs';
@@ -8,7 +9,7 @@ import { activePlan, createPlan, transitionPlan } from './plans.mjs';
 import { initializeCooperation, pruneCooperation } from './cooperation-state.mjs';
 
 export const NEGOTIATION_KINDS=['alliance','trade','embargo'];
-const power=(s,id)=>armiesOf(s,id).reduce((n,a)=>n+strength(a),0)+settlements(s,id).length*35;
+const power=(s,id)=>militaryArmiesOf(s,id).reduce((n,a)=>n+strength(a),0)+settlements(s,id).length*35;
 const sharedEnemies=(s,a,b)=>s.kingdoms.filter(k=>atWar(s,a,k.id)&&atWar(s,b,k.id)).length;
 const separation=(s,a,b)=>Math.min(...settlements(s,a).flatMap(x=>settlements(s,b).map(y=>distance(x,y))));
 export function cooperationInterest(s,observer,partner,kind,target=null) {

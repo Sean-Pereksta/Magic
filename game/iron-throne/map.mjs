@@ -1,3 +1,4 @@
+import { drawFleets } from './naval-art.mjs';
 import { capitalSeparation, foundedCapitals } from './founding.mjs';
 import { distance as hexDistance } from './world-hex.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
@@ -239,6 +240,7 @@ export class WorldMap {
         c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
       });
     }
+    if(s.fleets?.length||s.lastSeenFleets?.length)drawFleets(this,c,s,hexPixel,inView,colors);
     // Troop counts are the final world overlay, above selections and area names.
     for(const drawBadge of troopBadges)drawBadge();
     c.setTransform(this.dpr,0,0,this.dpr,0,0);

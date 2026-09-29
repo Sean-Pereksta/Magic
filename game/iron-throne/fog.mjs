@@ -1,3 +1,4 @@
+import { fleetVision, publicFleet, SHIPS } from './naval-state.mjs';
 import { projectCourtIntelligence } from './court-intelligence.mjs';
 import { projectCouncils } from './council-state.mjs';
 import { marriageSupport, marriageReadiness } from './marriage.mjs';
@@ -24,11 +25,13 @@ export function visionTiles(s,viewer,{allied=true}={}) {
   const area=(id,radius)=>{const center=s.tiles[id];if(!center)return;for(let r=center.r-radius;r<=center.r+radius;r++)for(let q=center.q-radius;q<=center.q+radius;q++){const t=s.tiles[`${q},${r}`];if(t&&distance(center,t)<=radius)seen.add(t.id);}};
   for(const t of Object.values(s.tiles))if(t.owner===viewer){sources.push([t.id,structureVision(t)]);}
   for(const a of s.armies)if(a.owner===viewer)sources.push([a.tile,armyVision(a)]);
+  for(const f of s.fleets||[])if(f.owner===viewer)sources.push([f.tile,fleetVision(f)]);
   // Strong alliances share their own settlements and major forces, never the
   // ally's explored map, spy reports, or the vision of its other allies.
   const allies=(allied?s.treaties||[]:[]).filter(t=>t.type==='alliance'&&t.expires>s.turn&&t.parties.includes(viewer)).map(t=>t.parties.find(id=>id!==viewer)).filter(id=>(s.kingdoms.find(k=>k.id===id)?.relations[viewer]?.trust||0)+marriageSupport(s,id,viewer)>=50);
   for(const t of Object.values(s.tiles))if(allies.includes(t.owner)&&['city','town','fort'].includes(t.building))sources.push([t.id,1]);
   for(const a of s.armies)if(allies.includes(a.owner)&&size(a)>=20)sources.push([a.tile,1]);
+  for(const f of s.fleets||[])if(allies.includes(f.owner))sources.push([f.tile,1]);
   for(const [id,radius] of sources)area(id,radius);
   return seen;
 }
@@ -36,6 +39,9 @@ const geographyKeys=['id','q','r','terrain','resource','quality','owner','buildi
 function rememberedTile(t) { return Object.fromEntries(geographyKeys.filter(k=>t[k]!==undefined).map(k=>[k,clone(t[k])])); }
 function record(s,viewer) { return initializeFog(s).houses[viewer]??={tiles:{},armies:{},battles:[],actions:[]}; }
 function observe(s,k,seen,source='sight',spy=null) {
+  k.fleets||={};
+  for(const [id,f] of Object.entries(k.fleets))if(seen.has(f.tile)&&!(s.fleets||[]).some(x=>x.id===id&&x.tile===f.tile))delete k.fleets[id];
+  for(const f of s.fleets||[])if(seen.has(f.tile))k.fleets[f.id]={...publicFleet(f),turn:s.turn,source};
   for(const id of seen) k.tiles[id]={turn:s.turn,source,spyId:spy?.id||null,host:spy?.assignedHouse||null,mission:spy?.mission||null,tile:rememberedTile(s.tiles[id])};
   for(const [id,a] of Object.entries(k.armies))if(seen.has(a.tile)&&!s.armies.some(x=>x.id===id&&x.tile===a.tile))delete k.armies[id];
   for(const a of s.armies.filter(a=>seen.has(a.tile))){const n=size(a),spread=source==='spy'?Math.max(5,Math.ceil(n*.1)):Math.max(2,Math.ceil(n*.05));k.armies[a.id]={id:a.id,owner:a.owner,tile:a.tile,turn:s.turn,minimum:Math.max(0,n-spread),maximum:n+spread,source,...(spy?{spyId:spy.id,host:spy.assignedHouse}:{}),...(spy&&spy.network>=85&&a.target?{objective:a.target}:{})};}
@@ -59,6 +65,7 @@ export function refreshKnowledge(s,viewers=s.kingdoms.map(k=>k.id)) {
     }
     k.actions=k.actions.filter(id=>Number(id.split(':')[0])>=s.turn-12).slice(-384);
     // Bounded history; a lost army marker never follows the current army.
+    for(const [id,f]of Object.entries(k.fleets||{}))if(f.owner===viewer||s.turn-f.turn>20)delete k.fleets[id];
     for(const [id,a]of Object.entries(k.armies))if(a.owner===viewer||s.turn-a.turn>20)delete k.armies[id];
   }
 }
@@ -96,6 +103,9 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     if(capital&&!old){known.capital=capital;known.knownCapital=capital;known.building='city';known.name=capitalName(capital);known.levels={city:1};}
     return [t.id,known];
   }));
+  v.fleets=(s.fleets||[]).filter(f=>f.owner===viewer||seen.has(f.tile)).map(f=>f.owner===viewer?clone(f):publicFleet(f));
+  v.shipQueues=(s.shipQueues||[]).filter(q=>q.owner===viewer).map(clone);
+  v.lastSeenFleets=Object.values(k.fleets||{}).filter(f=>!v.fleets.some(x=>x.id===f.id)).map(clone);
   v.armies=s.armies.filter(a=>a.owner===viewer||seen.has(a.tile)).map(a=>a.owner===viewer?clone(a):{id:a.id,owner:a.owner,tile:a.tile,units:clone(a.units),formation:a.formation,morale:a.morale,commandBonus:a.commandBonus||0,retreats:0,path:[],target:null,order:'observed'});
   v.lastSeenArmies=Object.values(k.armies).filter(a=>!v.armies.some(x=>x.id===a.id)).map(a=>({...clone(a),intelligenceFresh:spyCurrent(s,a,viewer)}));
   v.militaryEvents=(s.militaryEvents||[]).filter(e=>[e.attacker,e.defender].includes(viewer)||k.battles.includes(e.id));
@@ -141,6 +151,10 @@ export function validateFog(s) {
     if(!obj(k)||!obj(k.tiles)||Object.keys(k.tiles).length>s.width*s.height||!obj(k.armies)||Object.keys(k.armies).length>500||!Array.isArray(k.battles)||k.battles.length>100||!Array.isArray(k.actions)||k.actions.length>384)fail();
     for(const [id,x]of Object.entries(k.tiles)){
       const t=x?.tile;if(!s.tiles[id]||!turn(x.turn)||!['sight','spy','ally'].includes(x.source)||!obj(t)||t.id!==id||t.q!==s.tiles[id].q||t.r!==s.tiles[id].r||t.terrain!==s.tiles[id].terrain||Object.keys(t).some(key=>!geographyKeys.includes(key))||t.owner&&!s.kingdoms.some(h=>h.id===t.owner)||t.building&&!Object.hasOwn(BUILDINGS,t.building)||t.name!==undefined&&(typeof t.name!=='string'||t.name.length>100)||!obj(t.levels)||Object.entries(t.levels).some(([id,n])=>!BUILDINGS[id]||!Number.isInteger(n)||n<1||n>BUILDINGS[id].maxLevel))fail();
+    }
+    if(k.fleets!==undefined){
+      if(!obj(k.fleets)||Object.keys(k.fleets).length>500)fail();
+      for(const [id,f] of Object.entries(k.fleets))if(!f||f.id!==id||!/^fleet-\d+$/.test(id)||!s.tiles[f.tile]||!turn(f.turn)||!s.kingdoms.some(h=>h.id===f.owner)||!Array.isArray(f.ships)||f.ships.length>100||f.ships.some(v=>!v||!Object.hasOwn(SHIPS,v.type)||Object.keys(v).length!==1)||f.cargo!==undefined||f.cargoUnknown!==true||Object.keys(f).some(k=>!['id','owner','tile','node','ships','cargoUnknown','order','turn','source'].includes(k)))fail();
     }
     for(const [id,a]of Object.entries(k.armies))if(!a||id!==a.id||typeof id!=='string'||id.length>80||!s.tiles[a.tile]||!turn(a.turn)||!s.kingdoms.some(h=>h.id===a.owner)||!Number.isInteger(a.minimum)||!Number.isInteger(a.maximum)||a.minimum<0||a.maximum<a.minimum||a.maximum>2000000||a.objective&&!s.tiles[a.objective])fail();
     if(k.battles.some(id=>!Number.isInteger(id))||k.actions.some(id=>typeof id!=='string'||id.length>80))fail();

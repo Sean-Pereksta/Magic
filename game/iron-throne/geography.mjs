@@ -87,7 +87,9 @@ export function buildGeography(tiles) {
         for (let edge=0;edge<6;edge++) {
           const next=neighborId(t,edge), n=tiles[next];
           if (!n || n.terrain==='water') { candidates.push({...item,edge,distance:item.path.length}); continue; }
-          if (item.path.length>=2 || visited.has(next) || riverTiles.has(next) || n.building || n.terrain==='mountain') continue;
+          // Buildings share the river's land hex; construction must not erase
+          // an existing navigable outlet or strand vessels using that channel.
+          if (item.path.length>=2 || visited.has(next) || riverTiles.has(next) || n.terrain==='mountain') continue;
           if (n.terrain!=='coast' && !waterMask(tiles,n)) continue;
           visited.add(next); pending.push({id:next,path:[...item.path,{id:item.id,edge,next}]});
         }
@@ -112,7 +114,7 @@ export function buildGeography(tiles) {
 export class GeographyCache {
   get(tiles) {
     // Terrain is mutable; object identity or turn number alone misses editor/import changes.
-    const signature=Object.values(tiles).map(t=>`${t.id}:${t.q}:${t.r}:${t.terrain}:${t.river?1:0}:${t.building||''}`).join('|');
+    const signature=Object.values(tiles).map(t=>`${t.id}:${t.q}:${t.r}:${t.terrain}:${t.river?1:0}`).join('|');
     if (this.signature!==signature) { this.signature=signature; this.value=buildGeography(tiles); }
     return this.value;
   }

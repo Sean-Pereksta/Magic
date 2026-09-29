@@ -1,3 +1,5 @@
+import { resolveFleetMovement } from './naval.mjs';
+import { militaryArmiesOf } from './core.mjs';
 import { difficulty } from './difficulty.mjs';
 import { musterGenerals, refreshGeneralCandidates, prepareGenerals } from './generals.mjs';
 import { updateFealty, updateVassalProgress } from './vassals.mjs';
@@ -157,7 +159,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
     return evaluateCommercial(s,rulerId,i,actorHouseId,candidate=>evaluateDeal(s,rulerId,candidate,actorHouseId,{allowCounter:false}),allowCounter);
   }
   const known=planningView(s,rulerId);
-  const playerPower = armiesOf(known, actorHouseId).reduce((n, a) => n + strength(a), 0), rulerPower = armiesOf(s, rulerId).reduce((n, a) => n + strength(a), 0);
+  const playerPower = militaryArmiesOf(known, actorHouseId).reduce((n, a) => n + strength(a), 0), rulerPower = militaryArmiesOf(s, rulerId).reduce((n, a) => n + strength(a), 0);
   if (i.type === 'VASSALAGE' && !consentingHuman && (playerPower < rulerPower * 1.8 || settlements(known, actorHouseId).length < 2)) return reject('Allegiance requires at least two settlements and overwhelming military strength.');
   if (i.type === 'ALLIANCE' && !consentingHuman && r.trust < 0 && (k.honor >= .6 || r.trust < -60)) return reject('Rebuild trust before requesting an alliance.');
   if (i.type === 'TERRITORY') {
@@ -407,7 +409,7 @@ export function resolveHouseActivation(s,owner) {
   if(isAiHouse(s,owner)){
     updateFealty(s);aiDiplomacy(s,owner);aiResourceTrade(s,owner);runStrategyTurn(s,()=>{},owner);
   } else recordPlayerPlans(s,owner);
-  resolveMovement(s,owner);verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);refreshKnowledge(s);
+  resolveFleetMovement(s,owner);resolveMovement(s,owner);verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);refreshKnowledge(s);
   return s;
 }
 export function finishRound(s) {
@@ -431,7 +433,7 @@ export function endTurn(s,onProgress=()=>{}) {
   onProgress({phase:'preparing'});prepareRound(s);
   for(const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id)))recordPlayerPlans(s,actor);
   aiDiplomacy(s);aiResourceTrade(s);strategyTurn(s,onProgress);onProgress({phase:'resolving'});
-  resolveMovement(s);verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);
+  resolveFleetMovement(s);resolveMovement(s);verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);
   finishRound(s);
   for(const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id)))prepareGenerals(s,actor);
   onProgress({phase:'complete'});return s;

@@ -50,7 +50,7 @@ for(const profile of Object.keys(MAP_PROFILES))test(`${profile}: three seeds hav
  const first=natural(world(1,profile)),second=natural(world(42,profile));assert.ok(first.filter((t,i)=>t[1]!==second[i][1]).length>200);
 });
 test('random map selection derives from each campaign seed and explicit profiles win',()=>{
- const selected=new Set(Array.from({length:100},(_,i)=>selectMapProfile(i+1)));assert.equal(selected.size,6);
+ const selected=new Set(Array.from({length:100},(_,i)=>selectMapProfile(i+1)));assert.equal(selected.size,Object.keys(MAP_PROFILES).length);
  const m=setupMeta({hostUid:'a'},1),other=setupMeta({hostUid:'a'},2);assert.notEqual(m.options.seed,other.options.seed);
  assert.equal(m.options.preset,'random');claimSeat(m,'a','A','ashen');configureCampaign(m,'a',{seed:42,preset:'great-basin',timerSeconds:120,absent:'hold'});
  const s=startCampaign(m,'a',1);assert.equal(s.mapProfile,'great-basin');assert.equal(m.mapProfile,s.mapProfile);assert.equal(m.seed,42);assert.equal(m.deadline,0);

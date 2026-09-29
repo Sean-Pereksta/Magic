@@ -1,3 +1,4 @@
+import { allArmies } from './naval-state.mjs';
 // Pure state helpers shared by the engine, projections and UI.
 export const GENERAL_QUALITIES = [
   {name:'Capable',cost:75,upkeep:1,bonus:.05}, {name:'Veteran',cost:125,upkeep:1,bonus:.10},
@@ -20,7 +21,7 @@ export function markPlayerOverride(s,a) {
 }
 export function syncCommanders(s) {
   initializeCommanders(s);
-  for(const a of s.armies){
+  for(const a of allArmies(s)){
     const g=generalForArmy(s,a),q=g&&GENERAL_QUALITIES[g.quality];
     if(!g){delete a.commandId;delete a.commandBonus;delete a.commandMove;continue;}
     a.commandBonus=q?.bonus||0;
@@ -42,7 +43,7 @@ export function validateCommanders(s) {
     if(g.lastMuster!==undefined&&!int(g.lastMuster,0,s.turn)||g.lastPlanned!==undefined&&!int(g.lastPlanned,0,s.turn))fail();
     if(g.objective){const o=g.objective;if(o.army!==undefined&&(o.kind!=='reinforce'||typeof o.army!=='string'||!/^army-\d+$/.test(o.army)))fail();if(!COMMAND_KINDS.includes(o.kind)||!Array.isArray(o.targets)||o.targets.length<1||o.targets.length>3||new Set(o.targets).size!==o.targets.length||o.targets.some(id=>!s.tiles[id])||!int(o.lossLimit,15,65)||typeof o.allowSplit!=='boolean'||!int(o.approvedTurn,0,s.turn)||!COMMAND_STATUSES.includes(o.status)||typeof o.reason!=='string'||o.reason.length>500)fail();}
   }
-  for(const a of s.armies){
+  for(const a of allArmies(s)){
     if(a.commandId&&!c.roster.some(g=>g.commandId===a.commandId&&g.owner===a.owner))delete a.commandId;
     if(a.commandBaseline!==undefined&&!int(a.commandBaseline,0,100000)||a.regrouping!==undefined&&typeof a.regrouping!=='boolean')fail();
     if(a.movementSpent!==undefined&&(!Number.isFinite(a.movementSpent)||a.movementSpent<0||a.movementSpent>30))fail();

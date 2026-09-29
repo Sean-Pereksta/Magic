@@ -1,3 +1,4 @@
+import { blockadeAt } from './naval.mjs';
 import { BUILDINGS, FORMATIONS, QUALITY, REGIONS, RESOURCES, UNITS } from './data.mjs';
 
 export const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
@@ -40,6 +41,10 @@ export function productionPlan(s, owner) {
   const tiles = Object.values(s.tiles).filter(t=>t.owner === owner);
   for (const t of tiles) {
     const production = tileProduction(t, owner);
+    if((buildingLevel(t,'fishingDock')||buildingLevel(t,'harbor'))&&blockadeAt(s,t.id,owner)){
+      for(const id of ['fishingDock','harbor']){const level=buildingLevel(t,id);if(level)for(const [r,n] of Object.entries(BUILDINGS[id].yield))production[r]-=Math.round(n*(1+(level-1)*.65));}
+      stalls.push({tile:t.id,type:'blockade',input:{}});
+    }
     for (const r of RESOURCES) { income[r] += production[r]; gross[r] += production[r]; }
   }
   // Stable tile/catalog order, with a shared input budget, prevents double spending.

@@ -17,7 +17,8 @@ export const CAMPAIGN_HOUSES = [...HOUSES,
   {id:'dawnreach',name:'House Dawnreach',ruler:'Princess Alia',color:'#e6ac9e',sigil:'✦',motto:'Beyond every horizon.',aggression:.7,honor:.6,greed:.55,ambition:.9,paranoia:.3},
   {id:'saltwynd',name:'House Saltwynd',ruler:'King Torren',color:'#87a6bd',sigil:'≋',motto:'Our sails know no borders.',aggression:.65,honor:.5,greed:.8,ambition:.65,paranoia:.4}
 ];
-export const WORLD_SIZES = {6:{width:40,height:30},8:{width:48,height:36},10:{width:56,height:40},12:{width:64,height:44}};
+export const LEGACY_WORLD_SIZES = {6:{width:40,height:30},8:{width:48,height:36},10:{width:56,height:40},12:{width:64,height:44}};
+export const WORLD_SIZES = {6:{width:44,height:34},8:{width:52,height:40},10:{width:60,height:44},12:{width:68,height:48}};
 export const TERRAINS = {
   plains: { name: 'Plains', cost: 1, defense: 1, color: '#5d7350' },
   forest: { name: 'Forest', cost: 2, defense: 1.25, color: '#345c4e' },
@@ -64,6 +65,8 @@ export const REGIONS = {
 for(const [id,base] of Object.entries({stormholt:'thornwall',goldmere:'sunspire',ravenfell:'vesper',oakwarden:'wintermere',dawnreach:'ashen',saltwynd:'redharbor'})) REGIONS[id]={...REGIONS[base]};
 const add = (name, category, cost, turns, extra = {}) => ({ name, category, cost, turns, icon: '◆', description: name, ...extra });
 Object.assign(BUILDINGS, {
+  shipyard: add('Shipyard', 'Military', {wood:60,stone:35,iron:25,gold:55}, 3, {settlement:true,navigable:true,description:'Construct river and ocean vessels. Crew is paid from population.'}),
+  fishingDock: add('Fishing Dock', 'Economy', {wood:30,stone:15,gold:18}, 2, {navigable:true,yield:{food:14},description:'+14 food from navigable water, independent of fertility. Blockades suspend fishing.'}),
   intelligenceOffice: add('Whisper Office', 'Government', {gold:60,wood:35,stone:20}, 3, {settlement:true,description:'Supports 1 / 3 / 5 spies. Level II unlocks counterintelligence; Level III strengthens networks.'}),
   ranch: add('Horse Ranch', 'Economy', {wood: 30, gold: 30}, 2, {terrain: ['plains', 'coast'], yield: {horses: 4}}),
   storehouse: add('Storehouse', 'Economy', {wood: 30, stone: 20, gold: 20}, 2, {settlement: true}),
@@ -82,6 +85,7 @@ Object.assign(BUILDINGS, {
   siegeFoundry: add('Siege Foundry', 'Great Projects', {wood: 100, iron: 80, tools: 40, gold: 140}, 6, {settlement: true, requires: {siegeWorks: 3}, maxLevel: 1})
 });
 const tierNames = {
+  shipyard:['Shipyard','Naval Yard','Royal Naval Yard'], fishingDock:['Fishing Dock','Fishing Wharf','Fishing Port'],
   intelligenceOffice: ['Whisper Office', 'Intelligence Bureau', 'Royal Whisper Network'],
   farm: ['Farmstead', 'Agricultural Estate', 'Great Estate'], lumber: ['Logging Camp', 'Sawmill', 'Royal Timberworks'], quarry: ['Quarry', 'Stoneworks', 'Grand Quarry'], mine: ['Iron Mine', 'Deep Mine', 'Royal Mine'], ranch: ['Horse Ranch', 'Horse Estate', 'Royal Stud'],
   city: ['City', 'Chartered City', 'Grand City', 'Royal City'],

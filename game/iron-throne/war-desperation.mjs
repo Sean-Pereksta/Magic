@@ -1,4 +1,4 @@
-import { alive, armiesOf, atWar, distance, kingdom, pair, relation, settlements, strength, treaty } from './core.mjs';
+import { alive, militaryArmiesOf as armiesOf, atWar, distance, kingdom, pair, relation, settlements, strength, treaty } from './core.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { appendConversation, contact } from './living.mjs';
 import { court, isAiHouse, humanControlledHouseIds } from './house-control.mjs';

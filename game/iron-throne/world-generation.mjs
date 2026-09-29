@@ -37,10 +37,16 @@ export function generateRegions(s,profile,seed) {
     else if(region.terrain==='plains'&&detail<.38)t.terrain='forest';
     // Coast depth is sampled smoothly along each edge; never cut a random corridor.
     const coast=profile.coast;
-    const west=1+noise(hash(seed,'west'),r,0,8)*coast,east=1+noise(hash(seed,'east'),r,0,8)*coast;
-    const north=1+noise(hash(seed,'north'),q,0,9)*coast,south=1+noise(hash(seed,'south'),q,0,9)*coast;
+    const west=4+noise(hash(seed,'west'),r,0,8)*coast*.45,east=4+noise(hash(seed,'east'),r,0,8)*coast*.45;
+    const north=4+noise(hash(seed,'north'),q,0,9)*coast*.45,south=4+noise(hash(seed,'south'),q,0,9)*coast*.45;
     if(q<west||q>s.width-1-east||r<north||r>s.height-1-south)t.terrain='water';
     if(profile.basin&&Math.hypot((q-s.width/2)*.8,r-s.height/2)<profile.basin)t.terrain='water';
+    if(profile.fragmented){
+      // Coherent channels split substantial landmasses, never isolated random pixels.
+      const channel=s.width*(profile.shattered?.48:.28)+Math.sin(r/7+(seed%9))*(profile.shattered?1.6:2.4);
+      if(Math.abs(q-channel)<(profile.shattered?1.05:.65))t.terrain='water';
+      if(profile.shattered&&q>channel&&Math.abs(r-s.height*.52-Math.sin(q/8)*1.2)<.9)t.terrain='water';
+    }
     s.tiles[t.id]=t;
   }
 }
@@ -100,7 +106,7 @@ export function generateResources(s,seed) {
 }
 export function validateWorld(s) {
   const tiles=Object.values(s.tiles),land=tiles.filter(passable),counts=Object.fromEntries(['plains','forest','hills','mountain'].map(type=>[type,tiles.filter(t=>t.terrain===type).length]));
-  if(land.length<650||counts.plains<130||counts.forest<110||counts.hills<110||counts.mountain<20)return {ok:false,reason:'Insufficient geographic diversity.'};
+  if(land.length<(MAP_PROFILES[s.mapProfile]?.fragmented?550:650)||counts.plains<130||counts.forest<110||counts.hills<110||counts.mountain<20)return {ok:false,reason:'Insufficient geographic diversity.'};
   if(tiles.filter(t=>t.resource==='iron').length<40||tiles.filter(t=>t.resource==='stone').length<40)return {ok:false,reason:'Insufficient minerals.'};
   for(const [terrain,minimum] of [['forest',45],['plains',55],['hills',40],['mountain',15]]){
     const seen=new Set();let largest=0;
@@ -114,7 +120,12 @@ export function validateWorld(s) {
   }
   const reached=new Set([land[0].id]),queue=[land[0]];
   for(let i=0;i<queue.length;i++)for(const n of neighbors(s,queue[i]))if(passable(n)&&!reached.has(n.id)){reached.add(n.id);queue.push(n);}
-  if(reached.size!==land.length)return {ok:false,reason:'Land routes are disconnected.'};
+  if(reached.size!==land.length&&!MAP_PROFILES[s.mapProfile]?.fragmented)return {ok:false,reason:'Land routes are disconnected.'};
+  if(MAP_PROFILES[s.mapProfile]?.fragmented){
+    const seen=new Set(),groups=[];
+    for(const t of land){if(seen.has(t.id))continue;const group=[t];seen.add(t.id);for(let i=0;i<group.length;i++)for(const n of neighbors(s,group[i]))if(passable(n)&&!seen.has(n.id)){seen.add(n.id);group.push(n);}groups.push(group);}
+    if(groups.length<2||groups.some(g=>g.length<45))return {ok:false,reason:'Separated realms need meaningful land and expansion space.'};
+  }
   const plan=planFoundings(s,s.kingdoms.map(h=>h.id));
   return plan?{ok:true,sites:plan.map(p=>p.capital)}:{ok:false,reason:'Separated starting packages do not fit.'};
 }

@@ -1,3 +1,4 @@
+import { blockadeAt } from './naval.mjs';
 // Shared read-only trade economy. Kept separate from proposal generation so
 // living diplomacy can inspect needs without importing the deal evaluator.
 import { BUILDINGS, REGIONS, RESOURCES, UNITS } from './data.mjs';
@@ -15,8 +16,8 @@ export function tradeRoute(s,from,to) {
   if(atWar(s,from,to)||tradeBlocked(s,from,to))return {safe:false,status:'War / embargo',path:[]};
   const starts=settlements(s,from),ends=new Set(settlements(s,to).map(t=>t.id));
   const occupied=t=>s.armies.some(a=>a.tile===t.id&&(atWar(s,from,a.owner)||atWar(s,to,a.owner)));
-  const ports=starts.filter(t=>buildingLevel(t,'harbor')&&!occupied(t));
-  const destination=settlements(s,to).find(t=>buildingLevel(t,'harbor')&&!occupied(t));
+  const ports=starts.filter(t=>buildingLevel(t,'harbor')&&!occupied(t)&&!blockadeAt(s,t.id,t.owner));
+  const destination=settlements(s,to).find(t=>buildingLevel(t,'harbor')&&!occupied(t)&&!blockadeAt(s,t.id,t.owner));
   if(ports.length&&destination)return {safe:true,status:'Coastal shipping',path:[ports[0].id,destination.id],capacity:72,fee:0,anchors:[ports[0].id,destination.id]};
   for(const roadsOnly of [true,false]) {
     const queue=starts.filter(t=>!occupied(t)&&(!roadsOnly||t.road)).map(t=>t.id),came=new Map(queue.map(id=>[id,null]));
