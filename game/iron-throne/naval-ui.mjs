@@ -10,7 +10,7 @@ const button=(label,action,fleet,extra='',reason='')=>`<button data-naval-action
 export function shipyardPanel(s,tile,owner) {
   const t=s.tiles[tile];if(t?.owner!==owner||!buildingLevel(t,'shipyard'))return '';
   let wait=0;
-  return `<section class="naval-panel"><h3>Build ships</h3><p class="fine">One vessel at a time per Shipyard. Crew and resources are paid when queued.</p><div class="naval-build-list">${Object.entries(SHIPS).map(([id,spec])=>{
+  return `<section class="naval-panel"><h3>Build ships</h3><p class="fine">One vessel at a time per Shipyard. Crew and resources are paid when queued. Launches into nearby water, joining a friendly fleet or using the nearest open connected position.</p><div class="naval-build-list">${Object.entries(SHIPS).map(([id,spec])=>{
     const reason=shipBuildCheck(s,owner,tile,id);
     return `<article class="naval-build"><img data-iron-art src="${ART.ships[id]}" alt=""><div><strong>${spec.name}</strong><p>${spec.turns} turn${spec.turns>1?'s':''}${spec.capacity?' · 25 troop capacity':''}</p><p class="fine">${cost(spec)}</p>${button('Build','build','',`data-ship="${id}" data-tile="${tile}"`,reason)}${reason?`<p class="fine negative">${escape(reason)}</p>`:''}</div></article>`;
   }).join('')}</div><h4>Construction queue</h4>${s.shipQueues.filter(q=>q.tile===tile&&q.owner===owner).map(q=>{wait+=q.remaining;return `<div class="naval-queue"><span><b>${SHIPS[q.type].name}</b> · ${q.remaining===0?'Awaiting clear launch water':`${wait} turn${wait===1?'':'s'} until launch`}<br><small>${cost(SHIPS[q.type])} · paid</small></span>${button('Cancel','cancel','',`data-id="${q.id}"`)}</div>`;}).join('')||'<p class="fine">No vessels under construction.</p>'}</section>`;
@@ -33,5 +33,5 @@ export function fleetPanel(s,tile,owner) {
 }
 export function navalOverview(s,owner) {
   const fleets=(s.fleets||[]).filter(f=>f.owner===owner);
-  return `<div class="section-label">YOUR FLEETS</div>${fleets.map(f=>`<button class="full" data-goto="${f.tile}">⚓ ${f.ships.length} vessels · ${cargoCount(f)}/${fleetCapacity(f)} troops · ${f.tile}</button>`).join('')||'<p class="fine">Build a Shipyard at a town or city beside ocean or river water to construct your first fleet.</p>'}`;
+  return `<div class="section-label">YOUR FLEETS</div>${fleets.map(f=>`<button class="full" data-goto="${f.tile}">⚓ ${f.ships.length} vessels · ${cargoCount(f)}/${fleetCapacity(f)} troops · ${f.tile}</button>`).join('')||'<p class="fine">Build a standalone Shipyard on an empty owned land tile beside ocean or river water to construct your first fleet.</p>'}`;
 }

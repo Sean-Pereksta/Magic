@@ -7,16 +7,18 @@ import { cargoCount, fleetCapacity } from './naval-state.mjs';
 import { embarkArmy, orderFleet, queueShip, shipBuildCheck } from './naval.mjs';
 import { recordStrategyAction } from './strategy.mjs';
 
+const portsOf=(s,owner)=>Object.values(s.tiles).filter(t=>t.owner===owner&&(['town','city'].includes(t.building)||buildingLevel(t,'shipyard')));
+
 // Every target and route is selected from this House's observation projection.
 // Only normal command handlers receive the authoritative state to commit an order.
 export function prepareNavalEconomy(world,owner) {
   const view=planningView(world,owner),k=view.kingdoms.find(k=>k.id===owner),d=difficulty(view);
   if(!k||view.turn<Math.ceil(5/d.expansion))return;
-  const ports=settlements(view,owner).filter(t=>shoreNodes(view,t.id).length).sort((a,b)=>a.id.localeCompare(b.id));
+  const graph=navalGraph(view),ports=Object.values(view.tiles).filter(t=>t.owner===owner&&shoreNodes(view,t.id,graph).length).sort((a,b)=>a.id.localeCompare(b.id));
   if(!ports.length)return;
   const yard=ports.find(t=>buildingLevel(t,'shipyard'));
   const construct=(tile,type)=>{if(buildCheck(view,owner,tile,type))return false;const result=build(world,owner,tile,type);if(result.ok)recordStrategyAction(world,owner,{kind:'build',tile,building:type,level:1});return result.ok;};
-  if(!yard){construct(ports.find(t=>!t.project)?.id,'shipyard');return;}
+  if(!yard){if(!ports.some(t=>t.project?.type==='shipyard')){const site=ports.find(t=>!buildCheck(view,owner,t.id,'shipyard'));if(site)construct(site.id,'shipyard');}return;}
   const fleets=view.fleets.filter(f=>f.owner===owner),queued=view.shipQueues.filter(q=>q.owner===owner),ships=[...fleets.flatMap(f=>f.ships),...queued];
   const army=view.armies.filter(a=>a.owner===owner&&!a.commandId).sort((a,b)=>sizeOf(b)-sizeOf(a))[0];
   const desired=Math.ceil(Math.min(100,army?sizeOf(army):25)/25);
@@ -25,7 +27,7 @@ export function prepareNavalEconomy(world,owner) {
     queueShip(world,owner,yard.id,type);return;
   }
   if(!Object.values(view.tiles).some(t=>t.owner===owner&&(t.building==='fishingDock'||t.project?.type==='fishingDock'))){
-    const site=Object.values(view.tiles).filter(t=>t.owner===owner&&!t.building&&!t.project&&shoreNodes(view,t.id).length).sort((a,b)=>a.id.localeCompare(b.id)).find(t=>!buildCheck(view,owner,t.id,'fishingDock'));
+    const site=ports.find(t=>!t.building&&!t.project&&!buildCheck(view,owner,t.id,'fishingDock'));
     if(site)construct(site.id,'fishingDock');
   }
 }
@@ -57,7 +59,7 @@ export function directNavalForces(world,owner) {
       const plan=landingPlan(view,f);
       if(plan){orderFleet(world,owner,f.id,plan.tile,'unload');continue;}
       // Peace or a changed objective returns the army to a safe friendly shore.
-      const home=settlements(view,owner).find(t=>shoreNodes(view,t.id).some(node=>navalPath(view,f.node,node)!==null));
+      const home=portsOf(view,owner).find(t=>shoreNodes(view,t.id).some(node=>navalPath(view,f.node,node)!==null));
       if(home)orderFleet(world,owner,f.id,home.id,'unload');
       continue;
     }
@@ -68,7 +70,7 @@ export function directNavalForces(world,owner) {
     const enemy=enemies.find(e=>e.ships.length<=fighters*(1+difficulty(view).expansion)&&navalPath(view,f.node,e.node)!==null);
     if(enemy&&fighters){orderFleet(world,owner,f.id,enemy.tile,'attack');continue;}
     if(fleetCapacity(f)){
-      const ports=settlements(view,owner).filter(t=>shoreNodes(view,t.id).includes(f.node));
+      const ports=portsOf(view,owner).filter(t=>shoreNodes(view,t.id).includes(f.node));
       const port=ports[0];
       if(port){
         let army=view.armies.filter(a=>a.owner===owner&&!a.commandId).sort((a,b)=>Number(b.tile===port.id)-Number(a.tile===port.id)||sizeOf(b)-sizeOf(a))[0];
@@ -84,7 +86,7 @@ export function directNavalForces(world,owner) {
         }
       }
       else{
-        const home=settlements(view,owner).find(t=>buildingLevel(t,'shipyard')&&shoreNodes(view,t.id).some(n=>navalPath(view,f.node,n)!==null));
+        const home=portsOf(view,owner).find(t=>buildingLevel(t,'shipyard')&&shoreNodes(view,t.id).some(n=>navalPath(view,f.node,n)!==null));
         if(home){const node=shoreNodes(view,home.id).find(n=>navalPath(view,f.node,n)!==null);orderFleet(world,owner,f.id,nodeTile(node));continue;}
       }
     }
