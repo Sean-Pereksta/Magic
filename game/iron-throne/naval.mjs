@@ -17,7 +17,7 @@ function actionError(s,owner) {
 export function shipBuildCheck(s,owner,tile,type) {
   const error=actionError(s,owner);if(error)return error;
   const t=s.tiles[tile],k=kingdom(s,owner),spec=SHIPS[type];
-  if(!Object.hasOwn(SHIPS,type)||!spec||t?.owner!==owner||!buildingLevel(t,'shipyard')||!['town','city'].includes(t.building))return 'Build vessels at an owned Shipyard.';
+  if(!Object.hasOwn(SHIPS,type)||!spec||t?.owner!==owner||!buildingLevel(t,'shipyard'))return 'Build vessels at an owned Shipyard.';
   if(!shoreNodes(s,tile).length)return 'This Shipyard has no navigable water access.';
   if(s.armies.some(a=>a.tile===tile&&atWar(s,owner,a.owner)))return 'Enemy troops occupy this Shipyard.';
   if((s.shipQueues||[]).filter(q=>q.tile===tile).length>=12)return 'The Shipyard queue is full (12 ships).';
@@ -38,6 +38,23 @@ export function cancelShip(s,owner,id) {
   if(!q)return fail('This construction order is unavailable.');
   pay(kingdom(s,owner),SHIPS[q.type].cost,1);kingdom(s,owner).population+=SHIPS[q.type].crew;s.shipQueues=s.shipQueues.filter(x=>x!==q);return {ok:true};
 }
+export function shipLaunchNode(s,owner,tile,graph=navalGraph(s)) {
+  let frontier=shoreNodes(s,tile,graph);const seen=new Set(frontier),occupants=new Map();
+  for(const f of s.fleets||[]){if(!occupants.has(f.node))occupants.set(f.node,[]);occupants.get(f.node).push(f);}
+  while(frontier.length){
+    // Prefer a friendly stack among equally near positions; never spawn into
+    // another House's fleet. Full friendly stacks can share a new fleet node.
+    const open=frontier.filter(node=>(occupants.get(node)||[]).every(f=>f.owner===owner));
+    open.sort((a,b)=>Number((occupants.get(b)||[]).some(f=>f.ships.length<100))-Number((occupants.get(a)||[]).some(f=>f.ships.length<100))||a.localeCompare(b));
+    if(open.length)return open[0];
+    const next=[];
+    // A surrounded yard searches beyond occupied nodes, but only along its
+    // connected waterway: never across land or into a separate lake.
+    for(const node of frontier)for(const neighbor of graph.get(node)||[])if(!seen.has(neighbor)){seen.add(neighbor);next.push(neighbor);}
+    frontier=next;
+  }
+  return null;
+}
 export function resolveShipConstruction(s) {
   initializeNaval(s);if(s.navalConstructionTurn===s.turn)return;s.navalConstructionTurn=s.turn;
   const graph=navalGraph(s),yards=new Set();
@@ -47,8 +64,8 @@ export function resolveShipConstruction(s) {
     if(yards.has(q.tile))continue;yards.add(q.tile);
     if(q.lastTickTurn===s.turn)continue;q.lastTickTurn=s.turn;q.remaining=Math.max(0,q.remaining-1);
     if(q.remaining)continue;
-    const node=shoreNodes(s,q.tile,graph).sort((a,b)=>Number(s.fleets.some(f=>f.node===b&&f.owner===q.owner))-Number(s.fleets.some(f=>f.node===a&&f.owner===q.owner))||a.localeCompare(b)).find(node=>!s.fleets.some(f=>f.node===node&&atWar(s,q.owner,f.owner)));
-    if(!node)continue; // Launch is blocked; the paid ship waits at the yard.
+    const node=shipLaunchNode(s,q.owner,q.tile,graph);
+    if(!node)continue; // Only a fully occupied connected waterway delays launch.
     let fleet=s.fleets.find(f=>f.owner===q.owner&&f.node===node&&f.ships.length<100);
     if(!fleet){fleet={id:`fleet-${s.nextId++}`,owner:q.owner,node,tile:nodeTile(node),ships:[],cargo:[],morale:1,path:[],target:null,order:'hold',landing:null,movementTurn:s.turn,movementSpent:0,resolvedTurn:s.turn};s.fleets.push(fleet);}
     const spec=SHIPS[q.type];fleet.ships.push({id:`ship-${s.nextId++}`,type:q.type,hp:spec.hull,crew:spec.crew,cargo:[]});

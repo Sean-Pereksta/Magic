@@ -65,7 +65,7 @@ export const REGIONS = {
 for(const [id,base] of Object.entries({stormholt:'thornwall',goldmere:'sunspire',ravenfell:'vesper',oakwarden:'wintermere',dawnreach:'ashen',saltwynd:'redharbor'})) REGIONS[id]={...REGIONS[base]};
 const add = (name, category, cost, turns, extra = {}) => ({ name, category, cost, turns, icon: '◆', description: name, ...extra });
 Object.assign(BUILDINGS, {
-  shipyard: add('Shipyard', 'Military', {wood:60,stone:35,iron:25,gold:55}, 3, {settlement:true,navigable:true,description:'Construct river and ocean vessels. Crew is paid from population.'}),
+  shipyard: add('Shipyard', 'Military', {wood:60,stone:35,iron:25,gold:55}, 3, {navigable:true,description:'Standalone vessel construction on owned land beside ocean or river water. No town or city required. Crew is paid from population.'}),
   fishingDock: add('Fishing Dock', 'Economy', {wood:30,stone:15,gold:18}, 2, {navigable:true,yield:{food:14},description:'+14 food from navigable water, independent of fertility. Blockades suspend fishing.'}),
   intelligenceOffice: add('Whisper Office', 'Government', {gold:60,wood:35,stone:20}, 3, {settlement:true,description:'Supports 1 / 3 / 5 spies. Level II unlocks counterintelligence; Level III strengthens networks.'}),
   ranch: add('Horse Ranch', 'Economy', {wood: 30, gold: 30}, 2, {terrain: ['plains', 'coast'], yield: {horses: 4}}),

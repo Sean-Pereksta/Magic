@@ -18,8 +18,8 @@ let browser;
 try{
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   for(const viewport of [{width:1280,height:850},{width:390,height:844}]){
-    const s=createGame(),port=s.tiles['5,6'];port.shipyard=true;port.levels.shipyard=1;
-    for(const id of ['1,6','2,6','3,6','4,6','5,6'])s.tiles[id].river=true;
+    const s=createGame(),port=s.tiles['6,6'];port.building='shipyard';port.levels={shipyard:1};s.armies[0].tile=port.id;
+    for(const id of ['1,6','2,6','3,6','4,6','5,6','6,6'])s.tiles[id].river=true;
     s.armies[0].units={...emptyUnits(),levy:47};s.kingdoms[0].resources.wood=500;
     const f={id:`fleet-${s.nextId++}`,owner:'ashen',tile:port.id,node:`river:${port.id}`,ships:[{id:`ship-${s.nextId++}`,type:'transport',hp:70,crew:6,cargo:[]}],cargo:[],morale:1,path:[],target:null,order:'hold',landing:null,movementTurn:1,movementSpent:0,resolvedTurn:0};s.fleets.push(f);refreshKnowledge(s);
     const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
@@ -41,9 +41,9 @@ try{
     await page.locator('[data-naval-action="unload"]').click();const canvas=await page.locator('#map').boundingBox();await page.mouse.click(canvas.x+canvas.width/2,canvas.y+canvas.height/2);
     assert.equal((await saved()).fleets[0].order,'unload');
     await page.locator('#end-turn').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).turn===3);
-    next=await saved();assert.equal(next.fleets[0].node,'river:5,6');assert.equal(next.fleets[0].cargo.length,0);assert.equal(next.armies.find(a=>a.id===s.armies[0].id).tile,'5,6');
+    next=await saved();assert.equal(next.fleets[0].node,`river:${port.id}`);assert.equal(next.fleets[0].cargo.length,0);assert.equal(next.armies.find(a=>a.id===s.armies[0].id).tile,port.id);
     assert.equal(await page.locator('#panel').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
-    assert.deepEqual(errors,[]);console.log(`PASS naval construction, capacity, embark, unload, fallback rendering and panel width ${viewport.width}`);
+    assert.deepEqual(errors,[]);console.log(`PASS standalone shipyard construction, capacity, embark, unload, fallback rendering and panel width ${viewport.width}`);
     await context.close();
   }
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

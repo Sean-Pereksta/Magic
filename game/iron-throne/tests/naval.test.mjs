@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame as legacyGame } from './fixtures/legacy-game.mjs';
 import { onlineGame, activateForTest } from './fixtures/online-game.mjs';
-import { createGame, parseSave, buildCheck, economyProjection, militaryArmiesOf, orderArmy, resolveMovement, sizeOf } from '../core.mjs';
-import { emptyUnits, tileProduction, productionPlan } from '../economy.mjs';
+import { createGame, parseSave, build, buildCheck, economyProjection, militaryArmiesOf, orderArmy, resolveMovement, sizeOf } from '../core.mjs';
+import { emptyUnits, tileProduction, productionPlan, completeConstruction, buildingLevel } from '../economy.mjs';
+import { damageStructure } from '../structures.mjs';
 import { SHIPS, cargoCount, fleetCapacity, distributeCargo, syncCargo } from '../naval-state.mjs';
 import { navalGraph, navalNode, navalPath, shoreNodes, nodeTile } from '../naval-graph.mjs';
-import { queueShip, shipBuildCheck, cancelShip, resolveShipConstruction, embarkArmy, orderFleet, resolveFleetMovement, mergeFleets, blockadeAt } from '../naval.mjs';
+import { queueShip, shipBuildCheck, cancelShip, resolveShipConstruction, shipLaunchNode, embarkArmy, orderFleet, resolveFleetMovement, mergeFleets, blockadeAt } from '../naval.mjs';
 import { resolveNavalCombat, sinkShips } from '../naval-combat.mjs';
 import { prepareNavalEconomy, directNavalForces } from '../naval-ai.mjs';
 import { knowledgeView, refreshKnowledge } from '../fog.mjs';
@@ -42,10 +43,55 @@ test('construction queue is serial, cancellation refunds once, and capture canno
   assert.equal(cancelShip(s,'ashen',id).ok,true);assert.equal(cancelShip(s,'ashen',id).ok,false);assert.equal(s.kingdoms[0].population,before-10);
   s.tiles['1,6'].owner='wintermere';s.turn++;resolveShipConstruction(s);assert.equal(s.fleets.length,0);assert.equal(s.shipQueues.length,0);
 });
-test('shipyard requires town/city water access; fishing docks require connected water',()=>{
-  const s=world();assert.equal(buildCheck(s,'ashen','5,6','shipyard'),'Requires access to navigable ocean or river water.');
-  s.tiles['1,6'].shipyard=false;delete s.tiles['1,6'].levels.shipyard;assert.equal(buildCheck(s,'ashen','1,6','shipyard'),null);
-  const inland=s.tiles['6,6'];inland.building=null;inland.owner='ashen';inland.terrain='plains';assert.match(buildCheck(s,'ashen',inland.id,'fishingDock'),/navigable/);
+test('standalone shipyards build on owned coastal land and produce vessels without a settlement',()=>{
+  const s=world(),t=s.tiles['1,6'];Object.assign(t,{building:null,shipyard:false,levels:{}});
+  assert.equal(build(s,'ashen',t.id,'shipyard').ok,true);assert.equal(t.project.remaining,3);completeConstruction(t);
+  assert.equal(t.building,'shipyard');assert.equal(buildingLevel(t,'shipyard'),1);
+  assert.equal(queueShip(s,'ashen',t.id,'transport').ok,true);assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
+  resolveShipConstruction(s);assert.ok(shoreNodes(s,t.id).includes(s.fleets[0].node));assert.equal(s.shipQueues.length,0);
+  const inland=s.tiles['6,6'];inland.building=null;inland.owner='ashen';inland.terrain='plains';
+  for(const type of ['shipyard','fishingDock'])assert.match(buildCheck(s,'ashen',inland.id,type),/navigable/);
+  assert.match(buildCheck(s,'ashen','5,6','shipyard'),/different building/);
+});
+test('legacy shipyard queues and upgrades preserve towns; destruction removes only the yard',()=>{
+  for(const standalone of [false,true]){
+    const s=world(),t=s.tiles['1,6'];if(standalone){t.building='shipyard';delete t.shipyard;t.levels={shipyard:1};}
+    else{t.shipyard=false;delete t.levels.shipyard;t.project={type:'shipyard',level:1};completeConstruction(t);assert.equal(t.building,'town');}
+    assert.equal(build(s,'ashen',t.id,'shipyard').ok,true);completeConstruction(t);assert.equal(buildingLevel(t,'shipyard'),2);
+    queueShip(s,'ashen',t.id,'transport');assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
+    war(s);s.armies=s.armies.filter(a=>a.owner!=='ashen');const attacker=s.armies.find(a=>a.owner==='wintermere');
+    attacker.tile=t.id;attacker.units={...emptyUnits(),levy:1000};attacker.morale=1;
+    assert.equal(damageStructure(s,attacker,t,'shipyard'),true);assert.equal(t.building,standalone?null:'town');assert.equal(buildingLevel(t,'shipyard'),0);
+    resolveShipConstruction(s);assert.equal(s.shipQueues.length,0);assert.equal(s.fleets.length,0);
+  }
+});
+test('launch joins nearby friendly stacks or creates a separate stack when full',()=>{
+  for(const count of [1,100]){
+    const s=world(),f=fleet(s,Array(count).fill('transport'));queueShip(s,'ashen','1,6','transport');resolveShipConstruction(s);
+    assert.equal(s.fleets.length,count===100?2:1);assert.equal(f.ships.length,count===100?100:2);
+    assert.ok(s.fleets.every(x=>x.node===f.node));
+  }
+});
+test('surrounded shipyards launch at the nearest available connected water, not distant friendly fleets',()=>{
+  const s=world(),t=s.tiles['1,6'],graph=navalGraph(s),near=shoreNodes(s,t.id,graph);
+  for(const node of near)fleet(s,['warship'],'wintermere',nodeTile(node));
+  const next=[...new Set(near.flatMap(n=>graph.get(n)))].filter(n=>!near.includes(n));assert.ok(next.length);
+  const distant=fleet(s,['transport'],'ashen','0,20');queueShip(s,'ashen',t.id,'transport');resolveShipConstruction(s);
+  const launched=s.fleets.find(f=>f.owner==='ashen'&&f.id!==distant.id);assert.ok(next.includes(launched.node));assert.equal(distant.ships.length,1);
+  assert.ok(graph.has(launched.node));assert.equal(s.tiles[launched.tile].terrain,'water');assert.equal(s.shipQueues.length,0);
+});
+test('fully occupied waterways retain paid ships and retry without crossing land to another lake',()=>{
+  const s=world(),t=s.tiles['1,6'];s.tiles=Object.fromEntries(['1,6','0,6','0,5','10,10'].map(id=>[id,s.tiles[id]]));
+  Object.assign(s.tiles['10,10'],{terrain:'water',building:null,river:false});
+  for(const id of ['0,6','0,5'])fleet(s,['warship'],'wintermere',id);
+  assert.equal(shipLaunchNode(s,'ashen',t.id),null);queueShip(s,'ashen',t.id,'transport');const paid=s.kingdoms[0].population;
+  resolveShipConstruction(s);assert.equal(s.shipQueues[0].remaining,0);assert.equal(s.fleets.length,2);
+  s.fleets.pop();s.turn++;resolveShipConstruction(s);assert.equal(s.shipQueues.length,0);assert.equal(s.fleets.at(-1).node,'sea:0,5');assert.equal(s.kingdoms[0].population,paid);
+});
+test('standalone river shipyards launch into river nodes without changing land terrain',()=>{
+  const s=world(),t=s.tiles['6,6'];Object.assign(t,{owner:'ashen',building:'shipyard',levels:{shipyard:1},river:true});
+  const terrain=t.terrain;assert.equal(queueShip(s,'ashen',t.id,'warCanoe').ok,true);resolveShipConstruction(s);
+  assert.equal(s.fleets[0].node,`river:${t.id}`);assert.equal(t.terrain,terrain);assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
 });
 test('capacity is exactly 25; 26 needs two transports; cargo exists exactly once',()=>{
   const s=world(),f=fleet(s),a=s.armies[0];a.units.levy=26;const before=JSON.stringify(s);
@@ -116,8 +162,15 @@ test('fog hides fleets, cargo, queues and unseen changes; visible enemies only r
   const own=knowledgeView(s,'ashen');assert.equal(cargoCount(own.fleets[0]),25);
   enemy.tile='17,4';refreshKnowledge(s);assert.equal(knowledgeView(s,'wintermere').lastSeenFleets[0].tile,'0,6');f.tile='0,8';f.node='sea:0,8';syncCargo(f);assert.equal(knowledgeView(s,'wintermere').lastSeenFleets[0].tile,'0,6');
 });
-test('AI constructs vessels and transports 72 troops using at least three transports into an invasion',()=>{
-  const s=world();s.turn=10;s.difficulty='hard';s.tiles['1,6'].owner='wintermere';s.armies[0].owner='wintermere';s.armies[0].units.levy=72;
+test('AI builds one standalone yard on owned water access and does not duplicate an unfinished yard',()=>{
+  const s=world();s.turn=10;s.difficulty='hard';Object.assign(s.tiles['1,6'],{building:null,shipyard:false,levels:{}});
+  prepareNavalEconomy(s,'ashen');const yards=()=>Object.values(s.tiles).filter(t=>t.project?.type==='shipyard');
+  assert.equal(yards().length,1);assert.equal(yards()[0].building,null);assert.ok(shoreNodes(s,yards()[0].id).length);
+  prepareNavalEconomy(s,'ashen');assert.equal(yards().length,1);
+  completeConstruction(yards()[0]);prepareNavalEconomy(s,'ashen');assert.equal(s.shipQueues.length,1);
+});
+test('AI constructs vessels at standalone yards and transports 72 troops using at least three transports into an invasion',()=>{
+  const s=world();s.turn=10;s.difficulty='hard';Object.assign(s.tiles['1,6'],{owner:'wintermere',building:'shipyard',shipyard:false,levels:{shipyard:1}});s.armies[0].owner='wintermere';s.armies[0].units.levy=72;
   const initial=s.kingdoms[1].population;prepareNavalEconomy(s,'wintermere');assert.equal(s.shipQueues[0].type,'warCanoe');assert.equal(s.kingdoms[1].population,initial-4);
   for(let i=0;i<5;i++){resolveShipConstruction(s);s.turn++;s.kingdoms[1].commands=8;prepareNavalEconomy(s,'wintermere');}
   assert.ok(s.fleets[0].ships.filter(v=>v.type==='transport').length>=3);

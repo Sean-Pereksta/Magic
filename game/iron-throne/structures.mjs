@@ -81,7 +81,7 @@ export function damageStructure(s, a, t, type, mode = 'attack') {
     delete t.levels[type]; delete t.structureDamage[type];
     if (t.project?.type === type) t.project = null;
     if (type === 'wall') t.walls = 0;
-    else if (type === 'road' || BUILDINGS[type].settlement) t[type] = false;
+    else if (type === 'road' || BUILDINGS[type].settlement || type==='shipyard'&&t.building!=='shipyard') t[type] = false;
     else if (type === 'city') { t.building = 'town'; t.levels.town = 1; }
     else { t.building = null; if (type === 'town') t.capital = null; }
     if (type === 'fort') { t.fortIntegrity = 0; t.siege = null; }

@@ -15,12 +15,17 @@ resources, buildings and ownership.
 | Warship | 55 wood, 24 iron, 12 arms | 10 | 2 | 0 | 9 / 9 |
 
 Shipyards cost 60 wood, 35 stone, 25 iron and 55 gold, taking 3 turns.
-They are settlement additions requiring navigable water beside a town or city.
+They are standalone buildings on empty owned land with navigable ocean or river
+access. No town or city is required. Earlier settlement-added Shipyards and their
+existing queues remain usable and upgradeable without replacing the settlement.
 Each yard builds one ship at a time; its queue holds up to 12 vessels. Resources,
 crew and one construction order are paid when queued. A yard cannot recruit crew
 below the existing 20-civilian floor. Cancellation refunds resources and crew
-once. Captured or destroyed yards lose their queue. A finished ship waits if all
-launch positions are blocked by hostile fleets.
+once. Captured or destroyed yards lose their queue. A finished ship launches into
+adjacent navigable water, preferring a friendly stack at that distance. If all adjacent positions are occupied by other Houses,
+it searches outward along connected water for the nearest empty or friendly
+position. It never spawns on land or in a disconnected lake. Only a completely
+occupied connected waterway leaves the finished ship waiting; it retries next round.
 
 Fishing Docks cost 30 wood, 15 stone and 18 gold, taking 2 turns. They occupy a
 land site beside navigable water and produce 14 food at level I. Fertility does

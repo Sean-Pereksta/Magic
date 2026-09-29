@@ -170,7 +170,7 @@ export class WorldMap {
       if(t.building&&!t.knownCapital){
         const rendered=this.structureArt(c,ART.structures[t.building]?.[buildingLevel(t,t.building)],p.x-31,p.y-45,62,62,colors[t.owner]);
         if(!rendered)this.art.building(c,t,p.x,p.y,colors[t.owner]||'#d7d3b5');
-        if(rendered&&['city','town','fort'].includes(t.building)&&this.zoom>.65){const improvements=Object.keys(BUILDINGS).filter(id=>BUILDINGS[id].settlement&&buildingLevel(t,id)).sort((a,b)=>buildingLevel(t,b)-buildingLevel(t,a)).slice(0,3);improvements.forEach((id,i)=>this.structureArt(c,ART.structures[id][buildingLevel(t,id)],p.x-33+i*23,p.y-8,25,25,colors[t.owner]));}
+        if(rendered&&['city','town','fort'].includes(t.building)&&this.zoom>.65){const improvements=Object.keys(BUILDINGS).filter(id=>(BUILDINGS[id].settlement||id==='shipyard')&&buildingLevel(t,id)).sort((a,b)=>buildingLevel(t,b)-buildingLevel(t,a)).slice(0,3);improvements.forEach((id,i)=>this.structureArt(c,ART.structures[id][buildingLevel(t,id)],p.x-33+i*23,p.y-8,25,25,colors[t.owner]));}
         if(t.siege){c.fillStyle='#d58e63';c.font='bold 9px system-ui';c.fillText(t.walls+(t.fortIntegrity||0)>0?'SIEGE':'BREACH',p.x,p.y+28);}
       }
       if(t.resource&&!t.building&&this.zoom>.8&&t.resource!=='wood'&&!this.assets.draw(c,ART.resources[t.resource],p.x-7,p.y+9,14,14)){

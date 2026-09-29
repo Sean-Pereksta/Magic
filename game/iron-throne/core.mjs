@@ -150,10 +150,10 @@ export function buildCheck(s, owner, id, type) {
   if(k.commands<1)return 'No construction orders left this turn.';
   const spec=constructionSpec(t,type);
   if(!spec)return 'Maximum level reached.';
-  if(['shipyard','harbor','envoyOffice','chancery','intelligenceOffice'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
+  if(['harbor','envoyOffice','chancery','intelligenceOffice'].includes(type)&&!['city','town'].includes(t.building))return 'Requires a town or city.';
   if(b.settlement&&!['city','town','fort'].includes(t.building))return 'Requires a town, city or fort.';
   if(type==='city'&&!['town','city'].includes(t.building))return 'Select a town or city to upgrade.';
-  if(!b.settlement&&!['road','city'].includes(type)&&t.building&&t.building!==type)return 'This tile already has a different building.';
+  if(!b.settlement&&!['road','city'].includes(type)&&t.building&&t.building!==type&&!(type==='shipyard'&&buildingLevel(t,'shipyard')))return 'This tile already has a different building.';
   if(b.terrain&&!b.terrain.includes(t.terrain))return `Requires ${b.terrain.join(' or ')} terrain.`;
   if(b.navigable&&!shoreNodes(s,id).length)return 'Requires access to navigable ocean or river water.';
   if(b.resource&&t.resource!==b.resource)return `Requires a ${b.resource} deposit.`;

@@ -5,6 +5,8 @@ export const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]
 export const emptyUnits = () => Object.fromEntries(Object.keys(UNITS).map(u => [u, 0]));
 export function buildingLevel(t, type) {
   if (!t) return 0;
+  // Preserve shipyards already built as settlement additions in older saves.
+  if(type==='shipyard'&&t.shipyard===true&&['town','city'].includes(t.building))return t.levels?.shipyard||1;
   const present = type === 'wall' ? (t.walls > 0 || t.levels?.wall) : type === 'road' ? t.road : BUILDINGS[type]?.settlement ? t[type] : t.building === type;
   return present ? t.levels?.[type] || 1 : 0;
 }
@@ -69,7 +71,7 @@ export function completeConstruction(t) {
   if (t.structureDamage) delete t.structureDamage[type];
   t.levels ||= {}; t.levels[type]=p.level || 1;
   if(type==='wall') t.walls=wallMaximum(t);
-  else if(type==='road' || BUILDINGS[type].settlement) t[type]=true;
+  else if(type==='road' || BUILDINGS[type].settlement || type==='shipyard'&&['town','city'].includes(t.building)) t[type]=true;
   else {t.building=type; if(['town','city'].includes(type)) {t.road=true;t.levels.road ||= 1;t.name ||= `Outpost ${t.q}.${t.r}`;}}
   if(type==='fort') t.fortIntegrity=fortMaximum(t);
   t.project=null;
@@ -124,6 +126,7 @@ export function validateExpansion(s) {
   const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max, fail=()=>{throw new Error('Damaged expansion data.');};
   for(const t of Object.values(s.tiles)) {
     if(!Object.hasOwn(QUALITY,t.quality)||!(s.worldGeneration ? Object.hasOwn(s.regions||{},t.region) : Object.hasOwn(REGIONS,t.region))||!t.levels||Array.isArray(t.levels))fail();
+    if(t.shipyard!==undefined&&typeof t.shipyard!=='boolean')fail();
     for(const [id,n] of Object.entries(t.levels))if(!BUILDINGS[id]||!integer(n,1,BUILDINGS[id].maxLevel))fail();
     if(t.fortIntegrity!==undefined&&!integer(t.fortIntegrity,0,180))fail();
     if(t.siege && (!integer(t.siege.turns,0,100000)||!Number.isFinite(t.siege.morale)||t.siege.morale<0||t.siege.morale>1))fail();
