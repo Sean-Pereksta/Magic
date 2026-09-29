@@ -100,9 +100,9 @@ export class BattleEffects {
     c.beginPath(); c.roundRect(0, 0, boxWidth, 101, 5); c.fill(); c.stroke();
     c.textAlign = 'left'; c.fillStyle = '#f0d8a3'; c.font = 'bold 10px system-ui';
     const fit = (text, max = boxWidth - 20) => { while (c.measureText(text).width > max && text.length) text = text.slice(0, -1); return text; };
-    c.fillText(fit(`${e.action === 'structure' ? 'STRUCTURE ATTACK' : e.action === 'siege' ? 'SIEGE' : 'BATTLE'} OF ${(tile?.name || e.tile).toUpperCase()}`), 10, 18);
+    c.fillText(fit(`${e.ranged ? 'RANGED FIRE' : e.action === 'structure' ? 'STRUCTURE ATTACK' : e.action === 'siege' ? 'SIEGE' : 'BATTLE'} OF ${(tile?.name || e.tile).toUpperCase()}`), 10, 18);
     c.font = '11px system-ui'; c.fillStyle = '#eceddf';
-    c.fillText(fit(e.winner ? `${name(e.winner)} ${e.action === 'capture' ? 'takes the settlement' : 'wins the clash'}` : e.action === 'structure' ? (e.destroyed ? 'Structure destroyed' : 'Structure damaged') : 'The siege continues'), 10, 37);
+    c.fillText(fit(e.ranged ? 'Ranged exchange resolved' : e.winner ? `${name(e.winner)} ${e.action === 'capture' ? 'takes the settlement' : 'wins the clash'}` : e.action === 'structure' ? (e.destroyed ? 'Structure destroyed' : 'Structure damaged') : 'The siege continues'), 10, 37);
     if (e.before && e.after) {
       c.fillText(fit(`${name(e.attacker)}: ${e.before[0]} → ${e.after[0]}`), 10, 54);
       c.fillText(fit(`${e.action === 'siege' ? 'Walls' : name(e.defender)}: ${e.before[1]} → ${e.after[1]}`), 10, 70);

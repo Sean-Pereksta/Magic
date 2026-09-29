@@ -100,7 +100,7 @@ export function validateStructures(s) {
   }
   for (const a of s.armies) {
     if (a.structureTarget && (!s.tiles[a.target] || !Object.hasOwn(BUILDINGS,a.structureTarget) || !['attack','bombard'].includes(a.order))) throw new Error('Damaged structure orders.');
-    if (!['move','attack','retreat','hold','bombard'].includes(a.order) || a.order === 'bombard' && !a.structureTarget) throw new Error('Damaged army orders.');
+    if (!['move','attack','retreat','hold','bombard','ranged'].includes(a.order) || a.order === 'bombard' && !a.structureTarget) throw new Error('Damaged army orders.');
     if (a.lastStructureTurn !== undefined && (!Number.isInteger(a.lastStructureTurn) || a.lastStructureTurn < 1 || a.lastStructureTurn > s.turn)) throw new Error('Damaged structure orders.');
   }
 }

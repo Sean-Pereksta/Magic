@@ -7,7 +7,7 @@ import { emptyUnits, tileProduction, productionPlan, completeConstruction, build
 import { damageStructure } from '../structures.mjs';
 import { SHIPS, cargoCount, fleetCapacity, distributeCargo, syncCargo } from '../naval-state.mjs';
 import { navalGraph, navalNode, navalPath, shoreNodes, nodeTile } from '../naval-graph.mjs';
-import { queueShip, shipBuildCheck, cancelShip, resolveShipConstruction, shipLaunchNode, embarkArmy, orderFleet, resolveFleetMovement, mergeFleets, blockadeAt } from '../naval.mjs';
+import { queueShip, shipBuildCheck, cancelShip, resolveShipConstruction, shipLaunchNode, orderEmbark, resolveEmbarkOrders, embarkArmy, orderFleet, resolveFleetMovement, mergeFleets, blockadeAt } from '../naval.mjs';
 import { resolveNavalCombat, sinkShips } from '../naval-combat.mjs';
 import { prepareNavalEconomy, directNavalForces } from '../naval-ai.mjs';
 import { knowledgeView, refreshKnowledge } from '../fog.mjs';
@@ -94,8 +94,7 @@ test('standalone river shipyards launch into river nodes without changing land t
   assert.equal(s.fleets[0].node,`river:${t.id}`);assert.equal(t.terrain,terrain);assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
 });
 test('capacity is exactly 25; 26 needs two transports; cargo exists exactly once',()=>{
-  const s=world(),f=fleet(s),a=s.armies[0];a.units.levy=26;const before=JSON.stringify(s);
-  assert.match(embarkArmy(s,'ashen',a.id,f.id).error,/2 Transports/);assert.equal(JSON.stringify(s),before);
+  const s=world(),f=fleet(s),a=s.armies[0];a.units.levy=26;
   const other=fleet(s);assert.equal(mergeFleets(s,'ashen',f.id,other.id).ok,true);assert.equal(fleetCapacity(f),50);
   const accounting=economyProjection(s,'ashen').income;assert.equal(embarkArmy(s,'ashen',a.id,f.id).ok,true);
   assert.equal(s.armies.some(x=>x.id===a.id),false);assert.equal(militaryArmiesOf(s,'ashen').filter(x=>x.id===a.id).length,1);
@@ -111,7 +110,7 @@ test('ocean and reciprocal river navigation never changes land terrain or permit
   for(const [node,edges]of graph)for(const edge of edges)assert.ok(graph.get(edge).includes(node));
 });
 test('ships move farther than infantry and cannot move twice in a turn',()=>{
-  const s=world(),f=fleet(s,['transport']);assert.equal(orderFleet(s,'ashen',f.id,'0,20').ok,true);resolveFleetMovement(s,'ashen');assert.equal(f.tile,'0,15');
+  const s=world(),f=fleet(s,['transport']);assert.equal(orderFleet(s,'ashen',f.id,'0,20').ok,true);resolveFleetMovement(s,'ashen');assert.equal(f.tile,'0,13');
   const after=f.tile;resolveFleetMovement(s,'ashen');assert.equal(f.tile,after);assert.equal(orderFleet(s,'ashen',f.id,'0,21').ok,false);assert.equal(orderFleet(s,'ashen',f.id,'5,6').ok,false);
 });
 test('building beside a legacy river outlet cannot erase its navigable water position',()=>{
@@ -141,9 +140,9 @@ test('naval combat damages warships, sinks transports, and boarding needs contac
   df.node=af.node;df.tile=af.tile;
   const contact=resolveNavalCombat(t,af,df,{contact:true});assert.equal(contact.boarding,true);assert.ok(cargoCount(af)<25);
 });
-test('sinking losses use each transport manifest, transfer survivors only into free capacity, and never create water armies',()=>{
+test('sinking kills the exact transport manifest and never creates survivors or water armies',()=>{
   const s=world(),f=fleet(s,['transport','transport','transport']);cargo(s,f,63);f.ships[0].hp=0;sinkShips(s,f);
-  assert.equal(fleetCapacity(f),50);assert.equal(cargoCount(f),43);assert.equal(s.armies.some(a=>a.tile==='0,6'),false);
+  assert.equal(fleetCapacity(f),50);assert.equal(cargoCount(f),38);assert.equal(s.armies.some(a=>a.tile==='0,6'),false);
   f.ships.forEach(v=>v.hp=0);sinkShips(s,f);assert.equal(cargoCount(f),0);assert.equal(s.fleets.includes(f),false);
   const t=world(),full=fleet(t,['transport','transport','transport']);cargo(t,full,75);full.ships[0].hp=0;sinkShips(t,full);assert.equal(cargoCount(full),50);
 });
@@ -203,12 +202,12 @@ test('multiplayer validates active owner, exact version and command replay for n
 });
 test('fleet and shipyard UI expose capacity, queue cost, blocked reasons and private cargo correctly',()=>{
   const s=world(),f=fleet(s);s.armies[0].units.levy=26;refreshKnowledge(s);const view=knowledgeView(s,'ashen');
-  assert.match(fleetPanel(view,'0,6','ashen'),/2 Transports required/);assert.match(fleetPanel(view,'0,6','ashen'),/Current capacity: 25/);
+  assert.match(fleetPanel(view,'0,6','ashen'),/25 can board · 1 stay ashore/);assert.match(fleetPanel(view,'0,6','ashen'),/0\/25 troops aboard/);
   queueShip(s,'ashen','1,6','warship');assert.match(shipyardPanel(s,'1,6','ashen'),/2 turns until launch/);assert.match(shipyardPanel(s,'1,6','ashen'),/10 population/);
 });
-test('sinking survivors can be rescued by another friendly stack at the same naval location',()=>{
-  const s=world(),f=fleet(s),rescue=fleet(s);cargo(s,f,25);f.ships[0].hp=0;sinkShips(s,f);
-  assert.equal(cargoCount(rescue),5);assert.equal(s.fleets.includes(f),false);assert.equal(rescue.cargo[0].embarkedFleetId,rescue.id);
+test('nearby friendly transports cannot rescue any troops from a sunk transport',()=>{
+  const s=world(),f=fleet(s);cargo(s,f,25);const rescue=fleet(s);f.ships[0].hp=0;sinkShips(s,f);
+  assert.equal(cargoCount(rescue),0);assert.equal(s.fleets.includes(f),false);assert.equal(f.cargo.length,0);
   assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
 });
 test('failed amphibious landings retain surviving cargo and cannot duplicate or walk it onto land',()=>{
@@ -248,6 +247,7 @@ test('multiplayer embark and unload reject stale commands and preserve one army 
   assert.equal(applyCommand(s,m,command).ok,true);m.stateVersion++;
   assert.equal(applyCommand(s,m,command).ok,false);
   assert.equal(applyCommand(s,m,{...command,id:'duplicate-02',stateVersion:m.stateVersion,sequence:11}).ok,false);
+  const queued=splitCampaign(s),restored=joinCampaign(queued.canonical,queued.privateByHouse);assert.equal(restored.armies.find(x=>x.id===a.id).embarkOrder.count,26);resolveEmbarkOrders(s,'ashen');
   const split=splitCampaign(s),joined=joinCampaign(split.canonical,split.privateByHouse);assert.equal(joined.fleets[0].cargo[0].id,a.id);assert.equal(joined.armies.some(x=>x.id===a.id),false);assert.equal(split.world.fleets.length,0);
   const unload={...command,id:'unload-03',type:'fleetOrder',stateVersion:m.stateVersion,sequence:12,args:{fleet:f.id,tile:port.id,order:'unload'}};
   assert.equal(applyCommand(s,m,unload).ok,true);resolveFleetMovement(s,'ashen');assert.equal(s.armies.filter(x=>x.id===a.id).length,1);resolveFleetMovement(s,'ashen');assert.equal(s.armies.filter(x=>x.id===a.id).length,1);assert.equal(f.cargo.length,0);
