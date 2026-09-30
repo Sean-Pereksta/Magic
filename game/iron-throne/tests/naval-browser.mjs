@@ -38,6 +38,9 @@ try{
     assert.equal(await page.locator('[data-naval-action="embark"]').isDisabled(),false);
     assert.match(await page.locator('#panel').textContent(),/70 troops ashore · 25 can board · 45 stay ashore/);
     await page.locator(`[data-order="${s.armies[0].id}"]`).click();{const box=await page.locator('#map').boundingBox();await page.mouse.click(box.x+box.width/2,box.y+box.height/2);}
+    assert.match(await page.locator('#boarding-preview-counts').textContent(),/70 troops selected · 25 will board · 45 will remain/);
+    assert.equal((await saved()).armies[0].embarkOrder,undefined);
+    await page.locator('#boarding-preview-confirm').click();
     assert.equal((await saved()).armies[0].embarkOrder.count,25);assert.equal((await saved()).fleets[0].cargo.length,0);
     await page.waitForFunction(()=>window.__routes.includes('#8ee8ad'));
     await page.locator(`[data-hold="${s.armies[0].id}"]`).click();

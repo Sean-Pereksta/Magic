@@ -103,24 +103,24 @@ export function planGeneral(s,g,{force=false}={}) {
   if(!all.length){status(s,g,'Blocked','No army assigned. Assign forces before the campaign can proceed.');return;}
   if(o.army){
     const ally=view.armies.find(a=>a.id===o.army&&!a.remembered);
-    if(!ally||ally.owner!==g.owner&&!['alliance','vassalage'].some(type=>treaty(s,g.owner,ally.owner,type))){for(const a of all)if(!manualOverride(s,a))order(s,g,a,view.tiles[a.tile],'hold');status(s,g,'Blocked','The designated army is no longer observed as a friendly force. Holding position until you review it.');return;}
+    if(!ally||ally.owner!==g.owner&&!['alliance','vassalage'].some(type=>treaty(s,g.owner,ally.owner,type))){for(const a of all)if(!manualOverride(s,a)&&!a.embarkOrder)order(s,g,a,view.tiles[a.tile],'hold');status(s,g,'Blocked','The designated army is no longer observed as a friendly force. Holding position until you review it.');return;}
     o.targets=[ally.tile];
   }
   const targets=o.targets.map(id=>view.tiles[id]),attack=['attack','siege'].includes(o.kind);
   const remaining=attack?targets.filter(t=>t.owner!==g.owner):targets;
   if(attack&&!remaining.length){
-    for(const a of all)if(!manualOverride(s,a))order(s,g,a,view.tiles[a.tile],'hold');
+    for(const a of all)if(!manualOverride(s,a)&&!a.embarkOrder)order(s,g,a,view.tiles[a.tile],'hold');
     status(s,g,'Completed','The designated settlements are ours; detachments hold their positions.');return;
   }
-  if(attack&&remaining.some(t=>!t.owner||!atWar(s,g.owner,t.owner))){for(const a of all)if(!manualOverride(s,a))order(s,g,a,view.tiles[a.tile],'hold');status(s,g,'Blocked','Peace or changed ownership prevents this attack. Review the objective.');return;}
-  const editable=all.filter(a=>!manualOverride(s,a));
-  if(!editable.length){status(s,g,'Preparing','Player overrides remain authoritative for this activation.');return;}
+  if(attack&&remaining.some(t=>!t.owner||!atWar(s,g.owner,t.owner))){for(const a of all)if(!manualOverride(s,a)&&!a.embarkOrder)order(s,g,a,view.tiles[a.tile],'hold');status(s,g,'Blocked','Peace or changed ownership prevents this attack. Review the objective.');return;}
+  const editable=all.filter(a=>!manualOverride(s,a)&&!a.embarkOrder);
+  if(!editable.length){status(s,g,'Preparing','Player overrides and queued boarding orders remain authoritative.');return;}
   // Rejoin same-command forces only. Core merging conserves the greatest spent budget.
   for(const tile of new Set(editable.map(a=>a.tile))) {
     const here=armiesOf(s,g.owner).filter(a=>a.tile===tile);
-    if(here.length>1&&here.every(a=>a.commandId===g.commandId&&!manualOverride(s,a)))mergeArmies(s,g.owner,tile,'general');
+    if(here.length>1&&here.every(a=>a.commandId===g.commandId&&!manualOverride(s,a)&&!a.embarkOrder))mergeArmies(s,g.owner,tile,'general');
   }
-  const current=forces(s,g).filter(a=>!manualOverride(s,a)),maxDetachments=g.quality>=3?3:2;
+  const current=forces(s,g).filter(a=>!manualOverride(s,a)&&!a.embarkOrder),maxDetachments=g.quality>=3?3:2;
   // A divided command needs two independently viable forces on legal routes.
   if(o.allowSplit&&attack&&remaining.length>1&&current.length===1&&all.length<maxDetachments){
     const a=current[0],half={...a,units:Object.fromEntries(Object.entries(a.units).map(([u,n])=>[u,Math.floor(n/2)]))};
@@ -129,7 +129,7 @@ export function planGeneral(s,g,{force=false}={}) {
     if(safe)splitArmy(s,g.owner,a.id,'general');
   }
   let blocked='',marching=0,engaged=false,regrouping=false;
-  const active=forces(s,g).filter(a=>!manualOverride(s,a));
+  const active=forces(s,g).filter(a=>!manualOverride(s,a)&&!a.embarkOrder);
   for(const [i,a] of active.entries()){
     const tile=view.tiles[a.tile],target=remaining[Math.min(i,remaining.length-1)],loss=1-sizeOf(a)/Math.max(1,a.commandBaseline||sizeOf(a));
     const threatened=settlements(view,g.owner).find(t=>t.capital===g.owner&&view.armies.some(e=>atWar(view,g.owner,e.owner)&&distance(t,view.tiles[e.tile])<=2));

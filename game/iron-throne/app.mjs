@@ -1,8 +1,8 @@
 import { installArmySortUI } from './army-sort-ui.mjs';
 import { armyName } from './army-organization.mjs';
 import { armyShipClick } from './ship-click.mjs';
-import { fleetPanel, shipyardPanel, navalOverview } from './naval-ui.mjs';
-import { queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './naval.mjs';
+import { boardingSummary, fleetPanel, shipyardPanel, navalOverview } from './naval-ui.mjs';
+import { boardingPlan, queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './naval.mjs';
 import { difficultyOptions } from './difficulty.mjs';
 import { generalArmyControls, generalRoster, vassalPanel, installCommandUI } from './command-ui.mjs';
 import { renderCourtOptions } from './court-options-ui.mjs';
@@ -107,13 +107,34 @@ function perform(type,args,localAction) {
   return result(localAction());
 }
 function result(action) { if (!action.ok) toast(action.error); else changed(); return action.ok; }
+let pendingBoarding=null;
+function requestBoarding(armyId,fleetId) {
+  const view=currentView(),plan=boardingPlan(view,localHouse,armyId,fleetId);
+  if(!plan.ok){toast(plan.error);return false;}
+  const args={army:armyId,fleet:fleetId,count:plan.count};
+  if(plan.remaining){
+    pendingBoarding=args;
+    $('boarding-preview-counts').textContent=`${plan.count+plan.remaining} troops selected · ${plan.count} will board · ${plan.remaining} will remain ashore.`;
+    $('boarding-preview').showModal();return false;
+  }
+  return submitBoarding(args);
+}
+function submitBoarding(args) {
+  const ok=perform('fleetEmbark',args,()=>orderEmbark(state,localHouse,args.army,args.fleet,args.count));
+  if(ok){orderMode=null;toast('Boarding order queued. Troops will march to the transport and board automatically.');}
+  return ok;
+}
+$('boarding-preview-confirm').addEventListener('click',()=>{
+  const args=pendingBoarding;pendingBoarding=null;$('boarding-preview').close();if(args)submitBoarding(args);render();
+});
+$('boarding-preview').addEventListener('close',()=>{pendingBoarding=null;});
 function selectTile(id) {
   if(navalOrder){const {fleet,order}=navalOrder;const ok=perform('fleetOrder',{fleet,tile:id,order},()=>orderFleet(state,localHouse,fleet,id,order));if(ok){navalOrder=null;toast('Fleet orders issued. They resolve when you end your turn.');}selected=id;map.selected=id;tab='land';render();return;}
 
   const shipAction=selectedArmy&&(orderMode||state.armies.some(a=>a.id===selectedArmy&&a.tile===selected))?armyShipClick(currentView(),localHouse,selectedArmy,id,orderMode):null;
   if(shipAction){
-    const p=shipAction.args;const ok=perform(shipAction.type,p,()=>shipAction.type==='fleetEmbark'?orderEmbark(state,localHouse,p.army,p.fleet):orderArmy(state,localHouse,p.army,p.tile,p.order));
-    if(ok){orderMode=null;toast(shipAction.type==='fleetEmbark'?'Boarding queued for the end of your turn.':'Ranged attack queued for the end of your turn.');}
+    const p=shipAction.args;const ok=shipAction.type==='fleetEmbark'?requestBoarding(p.army,p.fleet):perform(shipAction.type,p,()=>orderArmy(state,localHouse,p.army,p.tile,p.order));
+    if(ok){orderMode=null;if(shipAction.type!=='fleetEmbark')toast('Ranged attack queued for the end of your turn.');}
     selected=id;map.selected=id;tab='land';render();return;
   }
   if (orderMode && selectedArmy) {
@@ -163,7 +184,7 @@ function landPanel() {
   const observations=(state.lastSeenArmies||[]).filter(a=>a.tile===selected).map(a=>`<article class="realm-card last-seen"><strong>${escape(kingdom(state,a.owner).name)} army · Last seen T${a.turn}</strong><p>${state.turn-a.turn} turns ago · Estimated strength when observed: ${a.minimum}–${a.maximum}${a.intelligenceFresh?' · Recent spy report':''}</p>${a.objective?`<p>Reported objective: ${escape(a.objective)} (T${a.turn})</p>`:''}<p class="fine">The army may have moved or changed strength.</p></article>`).join('');
   if(t.fog!=='visible')return html+`<p class="fog-notice">${t.fog==='unknown'?'UNEXPLORED · Scout this region to discover resources and settlements.':`LAST OBSERVED TURN ${t.observedTurn} · Geography and structures are remembered. Ownership and defenses may have changed.${t.intelligenceFresh?' Recent spy access.':''}`}</p>${t.knownCapital?`<p>Known starting capital of ${escape(kingdom(state,t.knownCapital).name)}. Current ownership, buildings and garrison are unknown.</p>`:t.building?`<p>Last known structure: ${escape(BUILDINGS[t.building].name)}</p>`:''}${observations}${fleetPanel(state,selected,localHouse)}<p class="fine">Send a force here to scout. Current battle losses and structure targets require observation.</p>`;
   html += observations + fleetPanel(state,selected,localHouse) + shipyardPanel(state,selected,localHouse);
-  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(a.name||kingdom(state, a.owner).name)}${treaty(state,localHouse,a.owner,'vassalage')?'<span class="vassal-marker"> ♛↔♛ Vassal</span>':''}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.embarkOrder?`Boarding ${a.embarkOrder.count} troops at end of turn · ${sizeOf(a)-a.embarkOrder.count} stay ashore`:a.order==='ranged'?`Firing on ships at ${escape(a.target)} at end of turn`:a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : a.owner===localHouse?'Holding position':'Observed here · orders unknown'}</p>${a.owner === localHouse ? `${generalArmyControls(state,a)}${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">${a.embarkOrder?'Cancel boarding':'Hold'}</button><button data-sort-army="${a.id}">Sort Army</button><button data-quick-split="${a.id}">Quick Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
+  html += armies.map(a => `<div class="army-card ${a.id === selectedArmy ? 'selected' : ''}"><div class="army-name"><strong>${escape(a.name||kingdom(state, a.owner).name)}${treaty(state,localHouse,a.owner,'vassalage')?'<span class="vassal-marker"> ♛↔♛ Vassal</span>':''}</strong><span class="badge">${sizeOf(a)} troops</span></div><div class="army-stats">${Object.entries(a.units).filter(([, n]) => n > 0).map(([u, n]) => `<span>${UNITS[u].icon} ${n} ${UNITS[u].name}</span>`).join('')}</div><p class="fine">Strength ${Math.round(strength(a))} · ${a.embarkOrder?escape(boardingSummary(displayedState,a)):a.order==='ranged'?`Firing on ships at ${escape(a.target)} at end of turn`:a.structureTarget ? `${a.order==='bombard'?'Bombarding':'Attacking'} ${escape(BUILDINGS[a.structureTarget].name)} at ${escape(a.target)}` : a.path.length ? `Marching toward ${escape(a.target)} (${a.path.length} hexes)` : a.owner===localHouse?'Holding position':'Observed here · orders unknown'}</p>${a.boardingNotice?`<p class="fine negative">${escape(a.boardingNotice)}</p>`:''}${a.owner === localHouse ? `${generalArmyControls(state,a)}${formationControl(a)}<div class="button-row"><button data-order="${a.id}">March</button><button data-attack-order="${a.id}">Attack tile</button><button data-hold="${a.id}">${a.embarkOrder?'Cancel boarding':'Hold'}</button><button data-sort-army="${a.id}">Sort Army</button><button data-quick-split="${a.id}">Quick Split</button></div>${armies.filter(x => x.owner === localHouse).length > 1 ? '<button class="full" data-merge="true">Combine armies here</button>' : ''}` : `<button class="full" data-talk="${a.owner}">Speak to ruler</button>`}</div>`).join('');
   html += buildingInspection(state,t);
   html += battlePreview(state,selectedArmy,selected);
   html += structureActions(state,t,selectedArmy);
@@ -207,7 +228,7 @@ $('panel').addEventListener('click', e => {
     if(['move','attack','unload','intercept','blockade'].includes(action)){orderMode=null;navalOrder={fleet,order:action};toast(action==='unload'?'Select a land destination beside known navigable water.':action==='attack'?'Select an enemy fleet or coastal target. Warships fire from up to 2 hexes.':'Select a water or river destination.');render();return;}
     if(action==='build')perform('shipBuild',{tile:d.tile,ship:d.ship},()=>queueShip(state,localHouse,d.tile,d.ship));
     if(action==='cancel')perform('shipCancel',{id:d.id},()=>cancelShip(state,localHouse,d.id));
-    if(action==='embark')perform('fleetEmbark',{army:d.army,fleet},()=>orderEmbark(state,localHouse,d.army,fleet));
+    if(action==='embark')requestBoarding(d.army,fleet);
     if(action==='hold'){navalOrder=null;perform('fleetOrder',{fleet,order:'hold'},()=>orderFleet(state,localHouse,fleet,null,'hold'));}
     if(action==='escort'||action==='merge'){const partner=document.querySelector(`[data-fleet-partner="${fleet}"]`)?.value;if(partner){if(action==='escort')perform('fleetOrder',{fleet,tile:partner,order:'escort'},()=>orderFleet(state,localHouse,fleet,partner,'escort'));else perform('fleetMerge',{fleet,other:partner},()=>mergeFleets(state,localHouse,fleet,partner));}}
     return;

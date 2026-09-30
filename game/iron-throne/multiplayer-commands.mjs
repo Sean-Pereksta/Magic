@@ -53,7 +53,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   switch(c.type){
     case 'shipBuild':result=queueShip(s,a,p.tile,p.ship);break;
     case 'shipCancel':result=cancelShip(s,a,p.id);break;
-    case 'fleetEmbark':result=orderEmbark(s,a,p.army,p.fleet);break;
+    case 'fleetEmbark':result=orderEmbark(s,a,p.army,p.fleet,p.count??null);break;
     case 'fleetOrder':result=orderFleet(s,a,p.fleet,p.tile,p.order);break;
     case 'fleetMerge':result=mergeFleets(s,a,p.fleet,p.other);break;
     case 'reorganize':result=reorganizeArmy(s,a,p);break;
