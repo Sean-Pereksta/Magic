@@ -168,3 +168,28 @@ test('saves retain bounded council history and only unused same-turn continuatio
   const old=createGame();assert.equal(parseSave(JSON.stringify(old)).allianceCouncils,undefined);
   c.messages[0].speakerHouseId='vesper';assert.throws(()=>parseSave(JSON.stringify(s)),/council/);
 });
+
+test('automatic council voices retain their event, audience, speakers and simulation state',async()=>{
+  const {nextCouncilDispatch,makeCouncilDispatchContext,applyCouncilDispatch}=await import('../council-dispatch.mjs');
+  const {s,c}=setup();for(const t of s.treaties)t.expires=s.turn+1;
+  initiateCouncilDiscussions(s);const dispatch=nextCouncilDispatch(s,'ashen');assert.ok(dispatch);
+  const context=makeCouncilDispatchContext(s,c,'ashen',dispatch);assert.ok(sanitizeContext(context));
+  assert.equal(context.world.conversationMode,'ai-initiated-council');assert.equal(context.world.dispatch.reason,'expiry');
+  const wars=JSON.stringify(s.wars),treaties=JSON.stringify(s.treaties),sequence=c.sequence,allowance=s.diplomacy.messages.regular;
+  const response={responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:`${e.speakerHouseId} considers renewing our northern alliance.`}))};
+  const forged=structuredClone(response);forged.responses[0].speakerHouseId='ashen';assert.equal(applyCouncilDispatch(s,'ashen',dispatch,forged),false);
+  const intent=structuredClone(response);intent.responses[0].requestedIntent={type:'ALLIANCE',duration:10};assert.equal(applyCouncilDispatch(s,'ashen',dispatch,intent),false);
+  assert.equal(applyCouncilDispatch(s,'ashen',dispatch,response),true);
+  assert.equal(c.sequence,sequence);assert.equal(s.diplomacy.messages.regular,allowance);assert.equal(JSON.stringify(s.wars),wars);assert.equal(JSON.stringify(s.treaties),treaties);
+  assert.equal(c.messages.find(m=>m.initiated).source,'gemini');assert.equal(nextCouncilDispatch(s,'ashen'),null);
+});
+
+test('late automatic council replies cannot overwrite a player response or a changed coalition',async()=>{
+  const {nextCouncilDispatch,applyCouncilDispatch,makeCouncilDispatchContext}=await import('../council-dispatch.mjs');
+  const {s,c}=setup();for(const t of s.treaties)t.expires=s.turn+1;
+  initiateCouncilDiscussions(s);const dispatch=nextCouncilDispatch(s,'ashen');assert.ok(dispatch);
+  const response={responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:'An old background reply.'}))};
+  beginCouncilMessage(s,'ashen',c.id,'I will help defend the north.');
+  const before=JSON.stringify(c.messages);assert.equal(applyCouncilDispatch(s,'ashen',dispatch,response),false);assert.equal(JSON.stringify(c.messages),before);
+  assert.equal(makeCouncilDispatchContext(s,c,'ashen',dispatch),null);
+});

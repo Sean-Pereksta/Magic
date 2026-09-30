@@ -109,3 +109,10 @@ test('Durable Object caches success and provider quota failures activate cooldow
     const denied = await reserveBudget(storage, env, 'other'); assert.equal(denied.ok, false); assert.ok(denied.retryAfter > 0); assert.equal(calls, 2);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('configured 50-request client allowance is honored and the 51st is rejected', async () => {
+  const storage=new MemoryStorage(),env={DAILY_LIMIT:'5000',REQUESTS_PER_MINUTE:'60',CLIENT_PER_MINUTE:'50'};
+  const now=Date.parse('2026-09-30T22:00:00Z');
+  const results=await Promise.all(Array.from({length:51},()=>reserveBudget(storage,env,'same-client',now)));
+  assert.equal(results.filter(r=>r.ok).length,50);assert.equal(results[50].code,'CLIENT_RATE_LIMIT');
+});
