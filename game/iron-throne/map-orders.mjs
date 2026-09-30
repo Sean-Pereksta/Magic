@@ -41,20 +41,15 @@ function swords(c) {
   for(const sign of [-1,1]){c.save();c.rotate(sign*.72);c.beginPath();c.moveTo(-2,1);c.lineTo(-2,-7);c.lineTo(0,-10);c.lineTo(2,-7);c.lineTo(2,1);c.closePath();c.fill();c.beginPath();c.moveTo(-4,2);c.lineTo(4,2);c.moveTo(0,2);c.lineTo(0,7);c.stroke();c.restore();}
 }
 export function drawOrderIndicators(map,c,s,pixel,inView) {
-  const orders=mapOrders(s),rows=new Map();
+  const orders=mapOrders(s);
   // Runs after water, terrain, fog and every unit sprite. Selection is irrelevant.
   for(const o of orders){
     const from=pixel(s.tiles[o.from]),to=pixel(s.tiles[o.target]),color=o.kind==='attack'?'#ff626a':o.kind==='load'?'#8ee8ad':o.kind==='unload'?'#ffd17d':'#84ddff';
     c.save();c.beginPath();c.moveTo(from.x,from.y);
     for(const id of o.path){const p=pixel(s.tiles[id]);c.lineTo(p.x,p.y);}
     c.lineTo(to.x,to.y);c.strokeStyle='#071b2d';c.lineWidth=5;c.stroke();c.setLineDash([6,4]);c.strokeStyle=color;c.lineWidth=2;c.stroke();c.setLineDash([]);
-    if(inView(to)){
-      const row=rows.get(o.target)||0;rows.set(o.target,row+1);
-      c.translate(to.x,to.y-30-row*23);const scale=Math.max(1,.75/map.zoom);c.scale(scale,scale);
-      c.font='bold 8px system-ui';c.textAlign='left';const w=c.measureText(o.label).width+29;
-      c.fillStyle='#071b2df2';c.strokeStyle=color;c.lineWidth=1.3;c.beginPath();c.roundRect(-w/2,-12,w,22,5);c.fill();c.stroke();
-      c.save();c.translate(-w/2+12,0);if(o.kind==='attack')swords(c);else{c.fillStyle=color;c.font='bold 16px system-ui';c.textAlign='center';c.fillText(o.kind==='load'?'↥':o.kind==='unload'?'↧':'➜',0,5);}c.restore();
-      c.fillStyle=color;c.fillText(o.label,-w/2+25,3);
+    if(o.kind==='attack'&&inView(to)){
+      c.translate(to.x,to.y-13);const scale=Math.max(1,.6/map.zoom);c.scale(scale,scale);swords(c);
     }
     c.restore();
   }
