@@ -18,8 +18,9 @@ function aidOffer(text) {
   // keyword (which also occurs in requests, refusals and third-party claims).
   return normalize(text).split(/[.!?;]|\bbut\b/).some(clause => {
     const offer = clause.match(/\b(?:i|we)(?:'ll|'d|\s+(?:can|could|will|would|shall|am willing to|are willing to|want to|offer to))\s+(.{0,180})/);
-    return offer && !/\b(?:not|never|cannot|can't|won't|wouldn't|don't)\b/.test(offer[1]) &&
-      /^(?:(?:provide|offer|send|bring|give)\b.{0,65}\b(?:aid|assistance|help|support|reinforcements|troops|soldiers|supplies|food|gold|wood|iron)\b|(?:help|aid|assist|support|reinforce|defend|protect)\b)/.test(offer[1]);
+    const offered = offer?.[1].split(/\b(?:if|unless|provided|as long as)\b/)[0];
+    return offered && !/\b(?:not|no|never|cannot|can't|won't|wouldn't|don't)\b/.test(offered) &&
+      /^(?:(?:provide|offer|send|bring|give)\b.{0,65}\b(?:aid|assistance|help|support|reinforcements|troops|soldiers|supplies|food|gold|wood|iron)\b|(?:help|aid|assist|support|reinforce|defend|protect)\b)/.test(offered);
   });
 }
 
@@ -47,7 +48,7 @@ export function councilDiscussion(facts, c, actor, message, turn) {
   return {history, addressed, offeringAid, continuation:!!continuation, clarification,
     amount:offerText.match(/\b\d{1,4}\s*(?:troops|soldiers|spearmen|archers|cavalry|food|gold|wood|iron)\b/i)?.[0],
     timing:offerText.match(/\b(?:(?:next|this) turn|(?:in|within) \d{1,2} turns?|by turn \d{1,5})\b/i)?.[0],
-    conditional:/\b(?:if|provided|as long as|on condition|in return)\b/.test(continuation ? `${previousPlayer.message} ${text}` : text),
+    conditional:/\b(?:if|unless|provided|as long as|on condition|in return)\b/.test(continuation ? `${previousPlayer.message} ${text}` : text),
     details, withdrawn, question:/\?|\b(?:why|what|where|when|how)\b/.test(text)};
 }
 

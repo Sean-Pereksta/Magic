@@ -89,6 +89,8 @@ test('requests, negation, third-party speech and stale or unrelated topics are n
 test('conditional offers, existing alliances and sovereign constraints keep their meaning',()=>{
   const {s,c}=setup();
   assert.match(answer(scriptedCouncil(s,c,'ashen','King Oren, I will send 25 troops if we agree on a defensive plan.')),/conditions.*agreement/i);
+  assert.match(answer(scriptedCouncil(s,c,'ashen',"King Oren, I will provide aid if you don't start another war.")),/conditions.*agreement/i);
+  assert.match(answer(scriptedCouncil(s,c,'ashen','King Oren, I can provide aid unless you invade our lands.')),/conditions.*agreement/i);
   kingdom(s,'redharbor').resources.food=0;
   assert.match(answer(scriptedCouncil(s,c,'ashen','King Oren, strengthen our alliance.')),/already allied/i);
   assert.match(answer(scriptedCouncil(s,c,'ashen','King Oren, attack Vesper.')),/food/i);
