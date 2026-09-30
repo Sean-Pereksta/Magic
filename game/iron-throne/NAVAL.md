@@ -38,8 +38,8 @@ Select a fleet on the map or through **Your realm → Your fleets**. Its panel s
 vessel counts, individual hull/crew, troop capacity, remaining movement and orders.
 Board, Move, Attack / bombard, Unload, Escort, Intercept, Blockade and Hold use
 end-of-turn resolution. Boarding occurs before sailing. Blockade requires a Warship.
-Persistent arrows, loading/unloading badges and two red crossed swords show orders
-and turns to arrival even while deselected. They render above water, terrain, fog
+Clean route lines and small red crossed swords show queued orders immediately,
+even while deselected. Turn estimates remain in the side panel, with no map text banners. They render above water, terrain, fog
 and unit artwork; private enemy orders are never shown.
 
 Every vessel has a 7.5-hex ocean/river budget: 2.5 times standard infantry on open
@@ -73,7 +73,8 @@ Transports and War Canoes must reach connected adjacent water. Only in-range
 weapons contribute to damage or return fire. Ranged fire cannot capture land.
 Archers, Veteran Archers, Crossbowmen, Catapults and legacy ranged siege engines
 can target ships at two hexes; Trebuchets can fire from three. Battering Rams and
-melee troops cannot shoot ships. Use **Fire on ships** on the army card. Mountains
+melee troops cannot shoot ships. Select a ranged army and click a visible enemy ship to fire. March → click a
+friendly transport queues boarding, including partial boarding when seats are limited. Mountains
 block fire and targets require current vision (scouts can spot for siege units).
 Orders recheck vision, hostility, range and line of fire at resolution.
 

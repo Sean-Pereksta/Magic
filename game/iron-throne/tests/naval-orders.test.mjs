@@ -1,3 +1,4 @@
+import { armyShipClick } from '../ship-click.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -89,8 +90,18 @@ test('orders stay visible without selection, distinguish loading and unloading, 
   const s=world(),a=s.armies[0],f=fleet(s);orderEmbark(s,'ashen',a.id,f.id);orderFleet(s,'ashen',f.id,'0,15');
   const view=knowledgeView(s,'ashen'),orders=mapOrders(view);assert.ok(orders.some(o=>o.kind==='sail'&&o.turns===2));assert.ok(orders.some(o=>o.kind==='load'));
   const calls=[],c=new Proxy({},{get:(o,k)=>k==='measureText'?()=>({width:80}):k==='fillText'?(text)=>calls.push(text):()=>{}});
-  drawOrderIndicators({zoom:1,selected:'17,4'},c,view,t=>({x:t.q*40,y:t.r*40}),()=>true);assert.ok(calls.includes('SAIL 2 TURNS'));assert.ok(calls.some(x=>x.startsWith('LOAD 25')));
+  drawOrderIndicators({zoom:1,selected:'17,4'},c,view,t=>({x:t.q*40,y:t.r*40}),()=>true);assert.deepEqual(calls,[],'Map routes must not draw text banners');
   assert.equal(mapOrders(knowledgeView(s,'wintermere')).length,0);
   resolveEmbarkOrders(s,'ashen');orderFleet(s,'ashen',f.id,'1,6','unload');assert.ok(mapOrders(knowledgeView(s,'ashen')).some(o=>o.kind==='unload'&&o.turns===1));
   const t=world();t.armies[0].path=['1,7'];t.armies[0].target='1,7';t.armies[0].order='attack';assert.ok(mapOrders(t).some(o=>o.kind==='attack'&&o.turns===1));
+});
+
+test('ship clicks infer ranged fire or March boarding using visible ships only',()=>{
+  const s=world(),a=s.armies[0],friendly=fleet(s);a.units={...emptyUnits(),archer:70};const enemy=fleet(s,['warship'],'wintermere','0,8');refreshKnowledge(s);
+  let view=knowledgeView(s,'ashen');
+  assert.deepEqual(armyShipClick(view,'ashen',a.id,enemy.tile),{type:'order',args:{army:a.id,tile:enemy.tile,order:'ranged'}});
+  assert.equal(armyShipClick(view,'ashen',a.id,friendly.tile),null);
+  assert.deepEqual(armyShipClick(view,'ashen',a.id,friendly.tile,'move'),{type:'fleetEmbark',args:{army:a.id,fleet:friendly.id}});
+  assert.equal(armyShipClick(view,'ashen',a.id,'5,6','move'),null);
+  enemy.tile='0,25';enemy.node='sea:0,25';refreshKnowledge(s);view=knowledgeView(s,'ashen');assert.equal(armyShipClick(view,'ashen',a.id,enemy.tile),null);
 });

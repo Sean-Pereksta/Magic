@@ -193,13 +193,6 @@ export class WorldMap {
     for(const report of s.lastSeenArmies||[]){const t=s.tiles[report.tile],p=t&&hexPixel(t);if(!p||!inView(p))continue;
       c.save();c.translate(p.x,p.y+20);c.scale(Math.max(1,.6/this.zoom),Math.max(1,.6/this.zoom));c.globalAlpha=Math.max(.3,.75-(s.turn-report.turn)*.025);c.fillStyle='#a3b2bd';c.font='10px system-ui';c.textAlign='center';c.fillText(`⚑ Last seen T${report.turn}`,0,0);c.restore();
     }
-    const a=s.armies.find(a=>a.id===this.armyId);
-    if(a?.path.length){
-      c.beginPath();const from=hexPixel(s.tiles[a.tile]);c.moveTo(from.x,from.y);
-      for(const id of a.path){const p=hexPixel(s.tiles[id]);c.lineTo(p.x,p.y);}
-      c.strokeStyle='#142c32';c.lineWidth=5;c.stroke();c.setLineDash([5,4]);c.lineWidth=2.2;c.strokeStyle='#ffe6a3';c.stroke();c.setLineDash([]);
-      const end=hexPixel(s.tiles[a.path.at(-1)]);this.hex(end.x,end.y,9);c.fillStyle='#f4d58a38';c.fill();c.strokeStyle='#ffdf90';c.lineWidth=1.5;c.stroke();
-    }
     this.hits=[];
     for(const envoy of (s.ambassadors||[]).filter(a=>a.status!=='dead')) {
       const tile=s.tiles[envoy.tile],p=tile&&hexPixel(tile);if(!p||!inView(p))continue;
