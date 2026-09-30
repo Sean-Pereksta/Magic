@@ -1,17 +1,18 @@
+import { UNITS } from './data.mjs';
+import { GENERAL_ROSTER, generalTemperament, generalTraits } from './general-roster.mjs';
+import { allArmies } from './naval-state.mjs';
 import { hash } from './world-hex.mjs';
 import { knowledgeView } from './fog.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { difficulty } from './difficulty.mjs';
-import { GENERAL_QUALITIES, GENERAL_PERSONALITIES, COMMAND_KINDS, initializeCommanders, syncCommanders, manualOverride, markPlayerOverride } from './command-state.mjs';
+import { GENERAL_QUALITIES, COMMAND_KINDS, initializeCommanders, syncCommanders, manualOverride, markPlayerOverride } from './command-state.mjs';
 import { armiesOf, atWar, canAfford, distance, economyProjection, findPath, kingdom, mergeArmies, orderArmy, pay, recruitLocalMustering, settlements, sizeOf, splitArmy, strength, treaty } from './core.mjs';
 import { assaultAssessment, dangerousTiles, orderBombardment } from './plans.mjs';
 
 const fail=error=>({ok:false,error});
 const own=(s,owner,id)=>s.commanders?.roster.find(g=>g.id===id&&g.owner===owner);
 const forces=(s,g)=>armiesOf(s,g.owner).filter(a=>a.commandId===g.commandId);
-const names=['Aveline','Rowan','Gareth','Ysella','Edric','Mara','Oswin','Tamsin','Cedric','Brienne','Corvin','Elspeth'];
-const surnames=['Greywatch','Stonehand','Ashford','Riverward','Blackthorn','Dawnward','Stormwatch','Redoak'];
 export function generalMessage(s,g,role,text){g.history.push({turn:s.turn,role,text:String(text).slice(0,1600)});g.history=g.history.slice(-40);}
 
 // One deterministic opportunity per House, bounded by a realm-wide cooldown.
@@ -22,10 +23,13 @@ export function refreshGeneralCandidates(s) {
   for(const k of s.kingdoms){
     const cities=settlements(s,k.id).filter(t=>t.building==='city').sort((a,b)=>a.id.localeCompare(b.id));
     s.commanders.nextOffer[k.id]??=3+hash(s.seed||s.rng,k.id,'first-general')%6;
-    if(!cities.length||s.turn<s.commanders.nextOffer[k.id]||s.commanders.candidates.some(g=>g.owner===k.id)||s.commanders.roster.filter(g=>g.owner===k.id).length>=4)continue;
+    if(!cities.length||s.turn<s.commanders.nextOffer[k.id]||s.commanders.candidates.some(g=>g.owner===k.id)||s.commanders.roster.filter(g=>g.owner===k.id).length>=16)continue;
     const seed=hash(s.seed||s.rng,k.id,s.turn),roll=seed%100;
-    const quality=roll<65?0:roll<88?1:roll<96?2:roll<99?3:4,id=`general-${s.nextId++}`;
-    s.commanders.candidates.push({id,commandId:`command-${id}`,owner:k.id,name:`${names[(seed>>>5)%names.length]} ${surnames[(seed>>>10)%surnames.length]}`,quality,personality:GENERAL_PERSONALITIES[(seed>>>15)%5],specialty:['battle','movement','mustering'][(seed>>>18)%3],city:cities[(seed>>>20)%cities.length].id,expires:s.turn+4,history:[],objective:null,lastMuster:0,lastPlanned:0});
+    const used=[...s.commanders.roster,...s.commanders.candidates,...(s.commanders.retired||[])];
+    const pool=GENERAL_ROSTER.filter(x=>!used.some(g=>g.characterId===x.characterId));if(!pool.length)continue;
+    const identity=pool[seed%pool.length],quality=roll<65?0:roll<88?1:roll<96?2:roll<99?3:4;
+    let id=`general-${identity.slot}`;while(used.some(g=>g.id===id))id=`general-${s.nextId++}`;
+    s.commanders.candidates.push({id,commandId:`command-${id}`,owner:k.id,name:identity.name,characterId:identity.characterId,quality,personality:identity.personality,specialty:identity.specialty,city:cities[(seed>>>20)%cities.length].id,expires:s.turn+4,history:[],objective:null,lastMuster:0,lastPlanned:0});
     s.commanders.nextOffer[k.id]=s.turn+14+(seed%10);
   }
 }
@@ -39,20 +43,23 @@ export function hireGeneral(s,owner,id) {
   generalMessage(s,g,'general',`I am ready for an army and an objective. My upkeep is ${q.upkeep} gold per round, including while unassigned.`);
   return {ok:true,generalId:id};
 }
-export function assignGeneral(s,owner,id,armyId) {
+export function assignGeneral(s,owner,id,armyId,transfer=false) {
   const g=own(s,owner,id),a=s.armies.find(a=>a.id===armyId&&a.owner===owner);
   if(s.outcome||!g||!a)return fail('Select your general and an owned army.');
   if(a.commandId&&a.commandId!==g.commandId)return fail('Return this army to manual control before changing commanders.');
+  const previous=allArmies(s).filter(x=>x.commandId===g.commandId&&x.id!==a.id);
+  if(previous.length&&!transfer)return fail(`${g.name} already commands ${previous.map(x=>x.name||x.id).join(', ')}. Confirm Transfer Command.`);
+  for(const x of previous){delete x.commandId;x.path=[];x.order=x.embarkedFleetId?'embarked':'hold';x.target=null;x.structureTarget=null;delete x.embarkOrder;markPlayerOverride(s,x);}
   a.commandId=g.commandId;a.commandBaseline??=sizeOf(a);syncCommanders(s);
   if(g.objective)planGeneral(s,g,{force:true});return {ok:true};
 }
 export function detachGeneral(s,owner,id,armyId=null,dismiss=false,confirmed=false) {
   const g=own(s,owner,id);if(!g||s.outcome)return fail('This general is unavailable.');
   if(dismiss&&!confirmed)return fail('Confirm dismissal. Troops remain and future general upkeep stops.');
-  if(armyId&&!forces(s,g).some(a=>a.id===armyId))return fail('This army is not in this general’s command.');
-  for(const a of forces(s,g).filter(a=>!armyId||a.id===armyId)){delete a.commandId;markPlayerOverride(s,a);}
+  if(armyId&&!allArmies(s).some(a=>a.commandId===g.commandId&&a.id===armyId))return fail('This army is not in this general’s command.');
+  for(const a of allArmies(s).filter(a=>a.commandId===g.commandId&&(!armyId||a.id===armyId))){delete a.commandId;markPlayerOverride(s,a);}
   if(!armyId)g.objective=null;
-  if(dismiss)s.commanders.roster=s.commanders.roster.filter(x=>x!==g);
+  if(dismiss){(s.commanders.retired??=[]).push(g);s.commanders.roster=s.commanders.roster.filter(x=>x!==g);}
   syncCommanders(s);return {ok:true};
 }
 export function validateGeneralOrder(s,owner,id,raw) {
@@ -204,15 +211,17 @@ export function interpretGeneralOrder(s,owner,id,message) {
 }
 export function generalContext(s,owner,id,message) {
   const g=own(s,owner,id);if(!g)return null;
-  const view=planningView(s,owner),all=forces(view,g);
+  const view=planningView(s,owner),all=allArmies(view).filter(a=>a.commandId===g.commandId);
   const visibleTargets=Object.values(view.tiles).filter(t=>t.fog!=='unknown'&&(t.building==='city'||t.building==='town'||g.objective?.targets.includes(t.id))).sort((a,b)=>Math.min(...all.map(x=>distance(view.tiles[x.tile],a)),99)-Math.min(...all.map(x=>distance(view.tiles[x.tile],b)),99)).slice(0,18);
-  return {mode:'general',actorHouseId:owner,generalId:id,turn:s.turn,message:String(message).slice(0,600),history:g.history.slice(-8).map(m=>({...m,text:m.text.slice(0,600)})),world:{general:{name:g.name,personality:g.personality,quality:GENERAL_QUALITIES[g.quality].name,specialty:g.specialty},objective:g.objective,forces:all.slice(0,24).map(a=>({id:a.id,tile:a.tile,troops:sizeOf(a),morale:a.morale,order:a.order,target:a.target,playerOverride:manualOverride(s,a)})),locations:visibleTargets.map(t=>({id:t.id,name:t.name||t.id,owner:t.owner,observedTurn:t.observedTurn??s.turn,visible:t.fog==='visible',enemies:view.armies.filter(a=>a.tile===t.id&&atWar(view,owner,a.owner)).slice(0,6).map(a=>({troops:sizeOf(a),estimated:!!a.remembered}))})),friendlyArmies:view.armies.filter(a=>!a.remembered&&(a.owner===owner||['alliance','vassalage'].some(type=>treaty(view,owner,a.owner,type)))).slice(0,18).map(a=>({id:a.id,owner:a.owner,tile:a.tile})),supportedOrders:COMMAND_KINDS,proposedOrder:interpretGeneralOrder(s,owner,id,message)}};
+  return {mode:'general',actorHouseId:owner,generalId:id,turn:s.turn,message:String(message).slice(0,600),history:g.history.slice(-8).map(m=>({...m,text:m.text.slice(0,600)})),world:{general:{name:g.name,personality:generalTemperament(g),traits:generalTraits(g),quality:GENERAL_QUALITIES[g.quality].name,specialty:g.specialty},objective:g.objective,forces:all.slice(0,24).map(a=>({id:a.id,name:a.name||a.id,tile:a.tile,units:{...a.units},strength:Math.round(strength(a)),troops:sizeOf(a),morale:a.morale,formation:a.formation,order:a.order,target:a.target,losses:Math.max(0,(a.commandBaseline||sizeOf(a))-sizeOf(a)),playerOverride:manualOverride(s,a)})),locations:visibleTargets.map(t=>({id:t.id,name:t.name||t.id,owner:t.owner,observedTurn:t.observedTurn??s.turn,visible:t.fog==='visible',enemies:view.armies.filter(a=>a.tile===t.id&&atWar(view,owner,a.owner)).slice(0,6).map(a=>({troops:sizeOf(a),estimated:!!a.remembered}))})),friendlyArmies:view.armies.filter(a=>!a.remembered&&(a.owner===owner||['alliance','vassalage'].some(type=>treaty(view,owner,a.owner,type)))).slice(0,18).map(a=>({id:a.id,owner:a.owner,tile:a.tile})),nearbyEnemies:view.armies.filter(a=>atWar(view,owner,a.owner)&&all.some(f=>distance(view.tiles[f.tile],view.tiles[a.tile])<=5)).slice(0,12).map(a=>({id:a.id,tile:a.tile,troops:sizeOf(a),estimated:!!a.remembered})),wars:view.wars.filter(w=>w.split(':').includes(owner)),supplies:{food:kingdom(view,owner).resources.food},recentBattles:view.militaryEvents.filter(e=>[e.attacker,e.defender].includes(owner)&&s.turn-e.turn<=3).slice(-5).map(e=>({turn:e.turn,tile:e.tile,before:e.before,after:e.after,winner:e.winner})),supportedOrders:COMMAND_KINDS,proposedOrder:interpretGeneralOrder(s,owner,id,message)}};
 }
 export function localGeneralReply(s,owner,id,message) {
   const g=own(s,owner,id);if(!g)return {reply:'This commander is unavailable.',order:null};
   const order=interpretGeneralOrder(s,owner,id,message),o=g.objective;
+  const all=allArmies(s).filter(a=>a.commandId===g.commandId),composition=Object.entries(all.reduce((units,a)=>{for(const [u,n] of Object.entries(a.units))units[u]=(units[u]||0)+n;return units;},{})).filter(([,n])=>n>0).map(([u,n])=>`${n} ${UNITS[u]?.name||u}`).join(', ');
+  const summary=all.length?`I command ${composition}. ${all.some(a=>Object.entries(a.units).some(([u,n])=>n>0&&UNITS[u]?.family==='siege'))?'Siege support is available.':'We have no siege engines; fortified assaults need careful review.'} `:'';
   const preference={aggressive:'I favor pressing a confirmed advantage within your loss limit.',cautious:'Fresh observations and a safe route should precede the assault.',methodical:'I prefer concentrating our forces and reducing walls before the decisive assault.',opportunistic:'Exposed objectives may justify two viable detachments; uncertain defenses do not.',protective:'I will preserve a retreat route and cover immediate threats to our capital.'}[g.personality];
-  return {reply:order?`I propose: ${describeGeneralOrder(order)}. Review and approve the order before it changes our campaign.`:o?`${o.status}: ${o.reason} Our objective remains ${o.kind} at ${o.targets.join(', ')}. ${preference} ${/divid|split/.test(message)?'Detachments require two viable forces, current observations and legal routes. Approve splitting in the orders panel to permit it.':'Your manual orders remain authoritative.'}`:`Assign an army, then name a known location and an objective. ${preference} I can prepare an attack, defense, rally, reinforcement, siege support or withdrawal for your approval.`,order};
+  return {reply:summary+(order?`I propose: ${describeGeneralOrder(order)}. Review and approve the order before it changes our campaign.`:o?`${o.status}: ${o.reason} Our objective remains ${o.kind} at ${o.targets.join(', ')}. ${preference} ${/divid|split/.test(message)?'Detachments require two viable forces, current observations and legal routes. Approve splitting in the orders panel to permit it.':'Your manual orders remain authoritative.'}`:`Assign an army, then name a known location and an objective. ${preference} I can prepare an attack, defense, rally, reinforcement, siege support or withdrawal for your approval.`),order};
 }
 export function validateGeneralResponse(raw) {
   if(!raw||typeof raw.reply!=='string'||!raw.reply.trim()||raw.reply.length>1600)return null;

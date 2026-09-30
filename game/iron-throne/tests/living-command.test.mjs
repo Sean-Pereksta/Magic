@@ -36,7 +36,7 @@ test('command identity, soldiers and spent movement survive splits and merges; d
   const s=createGame(),g=hire(s,'ashen',3,'movement'),a=s.armies[0],count=sizeOf(a);
   a.movementTurn=s.turn;a.movementSpent=2;a.resolvedTurn=s.turn;
   const speed=armySpeed(a),r=splitArmy(s,'ashen',a.id);assert.equal(r.ok,true);
-  const b=s.armies.find(x=>x.id===r.armyId);assert.equal(b.commandId,g.commandId);assert.equal(a.movementSpent,b.movementSpent);
+  const b=s.armies.find(x=>x.id===r.armyId);assert.equal(b.commandId,undefined);assert.equal(a.commandId,g.commandId);assert.equal(a.movementSpent,b.movementSpent);
   assert.equal(sizeOf(a)+sizeOf(b),count);assert.equal(s.commanders.roster.length,1);
   mergeArmies(s,'ashen',a.tile);assert.equal(sizeOf(a),count);assert.equal(a.movementSpent,2);assert.equal(armySpeed(a),speed);
   assert.equal(detachGeneral(s,'ashen',g.id,null,true,false).ok,false);
