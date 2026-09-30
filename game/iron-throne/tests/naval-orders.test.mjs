@@ -39,9 +39,9 @@ test('boarding reservations cannot overbook, repeat, or survive an explicit canc
   assert.equal(orderArmy(s,'ashen',a.id,a.tile,'hold').ok,true);assert.equal(orderEmbark(s,'ashen',b.id,f.id).count,20);
   resolveEmbarkOrders(s,'ashen');assert.equal(cargoCount(f),20);assert.equal(a.units.levy,70);
 });
-test('invalid boarding rechecks shore contact and leaves all troops on land',()=>{
+test('moved transport retains its boarding target and repaths the army',()=>{
   const s=world(),a=s.armies[0],f=fleet(s);orderEmbark(s,'ashen',a.id,f.id);f.tile='0,20';f.node='sea:0,20';resolveEmbarkOrders(s,'ashen');
-  assert.equal(cargoCount(f),0);assert.equal(a.units.levy,70);assert.equal(a.embarkOrder,undefined);
+  assert.equal(cargoCount(f),0);assert.equal(a.units.levy,70);assert.equal(a.embarkOrder.fleet,f.id);assert.ok(a.path.length);
 });
 test('sailing averages exactly 2.5 times standard infantry with fractional distance carried forward',()=>{
   const s=world(),f=fleet(s);assert.equal(fleetSpeed(f),7.5);orderFleet(s,'ashen',f.id,'0,29');resolveFleetMovement(s,'ashen');
@@ -51,7 +51,7 @@ test('sailing averages exactly 2.5 times standard infantry with fractional dista
 test('warships fire from two hexes without moving or taking out-of-range transport return fire',()=>{
   const s=world(),f=fleet(s,['warship']),e=fleet(s,['transport'],'wintermere','0,8'),hp=f.ships[0].hp;
   assert.equal(orderFleet(s,'ashen',f.id,e.tile,'attack').ok,true);assert.deepEqual(f.path,[]);
-  assert.ok(mapOrders(knowledgeView(s,'ashen')).some(o=>o.kind==='attack'&&o.turns===1));
+  assert.ok(mapOrders(knowledgeView(s,'ashen')).some(o=>o.kind==='attack'&&o.turns===0));
   resolveFleetMovement(s,'ashen');assert.equal(f.tile,'0,6');assert.equal(f.ships[0].hp,hp);assert.ok(e.ships[0].hp<70);
   const after=e.ships[0].hp;resolveFleetMovement(s,'ashen');assert.equal(e.ships[0].hp,after);assert.doesNotThrow(()=>parseSave(JSON.stringify(s)));
   const t=world(),transport=fleet(t),target=fleet(t,['transport'],'wintermere','0,8');assert.equal(resolveNavalCombat(t,transport,target).ok,false);
@@ -88,12 +88,12 @@ test('ranged targeting respects fog, range, war and mountains, and cancels when 
 });
 test('orders stay visible without selection, distinguish loading and unloading, and hide enemy plans',()=>{
   const s=world(),a=s.armies[0],f=fleet(s);orderEmbark(s,'ashen',a.id,f.id);orderFleet(s,'ashen',f.id,'0,15');
-  const view=knowledgeView(s,'ashen'),orders=mapOrders(view);assert.ok(orders.some(o=>o.kind==='sail'&&o.turns===2));assert.ok(orders.some(o=>o.kind==='load'));
+  const view=knowledgeView(s,'ashen'),orders=mapOrders(view);assert.ok(orders.some(o=>o.kind==='sail'&&o.turns===1));assert.ok(orders.some(o=>o.kind==='load'));
   const calls=[],c=new Proxy({},{get:(o,k)=>k==='measureText'?()=>({width:80}):k==='fillText'?(text)=>calls.push(text):()=>{}});
   drawOrderIndicators({zoom:1,selected:'17,4'},c,view,t=>({x:t.q*40,y:t.r*40}),()=>true);assert.deepEqual(calls,[],'Map routes must not draw text banners');
   assert.equal(mapOrders(knowledgeView(s,'wintermere')).length,0);
-  resolveEmbarkOrders(s,'ashen');orderFleet(s,'ashen',f.id,'1,6','unload');assert.ok(mapOrders(knowledgeView(s,'ashen')).some(o=>o.kind==='unload'&&o.turns===1));
-  const t=world();t.armies[0].path=['1,7'];t.armies[0].target='1,7';t.armies[0].order='attack';assert.ok(mapOrders(t).some(o=>o.kind==='attack'&&o.turns===1));
+  resolveEmbarkOrders(s,'ashen');orderFleet(s,'ashen',f.id,'1,6','unload');assert.ok(mapOrders(knowledgeView(s,'ashen')).some(o=>o.kind==='unload'&&o.turns===0));
+  const t=world();t.armies[0].path=['1,7'];t.armies[0].target='1,7';t.armies[0].order='attack';assert.ok(mapOrders(t).some(o=>o.kind==='attack'&&o.turns===0));
 });
 
 test('ship clicks infer ranged fire or March boarding using visible ships only',()=>{

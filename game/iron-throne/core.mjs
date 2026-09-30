@@ -1,7 +1,8 @@
+import { movementBudget, canSpendMovement } from './movement-timing.mjs';
 import { orderLandNavalAttack, resolveLandNavalAttack } from './naval-ranged.mjs';
 import { initializeNaval, allArmies, syncCargo, SHIPS } from './naval-state.mjs';
 import { shoreNodes } from './naval-graph.mjs';
-import { validateNaval, resolveShipConstruction } from './naval.mjs';
+import { revalidateBoardingOrder, resolveArmyBoarding, validateNaval, resolveShipConstruction } from './naval.mjs';
 import { validateSequential } from './sequential.mjs';
 import { validateVassals } from './vassals.mjs';
 import { validateDifficulty } from './difficulty.mjs';
@@ -257,7 +258,7 @@ export function orderStructureAttack(s, owner, armyId, targetId, type, mode = 'a
   if (error) return {ok:false,error};
   const path = mode === 'bombard' || a.tile === targetId ? [] : findPath(knowledgeView(s,owner),a.tile,targetId,owner,false,avoid);
   if (mode === 'attack' && a.tile !== targetId && !path.length) return {ok:false,error:'No legal route to this structure.'};
-  delete a.embarkOrder;
+  delete a.embarkOrder;delete a.boardingNotice;
   a.path = path; a.target = targetId; a.order = mode; a.structureTarget = type;
   if(source==='player')markPlayerOverride(s,a);
   return {ok:true,path};
@@ -270,10 +271,10 @@ export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = nu
   if(order==='attack'&&knowledgeView(s,owner).fleets.some(f=>f.tile===targetId&&atWar(s,owner,f.owner))&&t?.terrain==='water')return orderLandNavalAttack(s,owner,a,targetId);
   if (order === 'attack' && targetId === a.tile && t?.owner && atWar(s, owner, t.owner) && structuresAt(t).length)
     return orderStructureAttack(s,owner,armyId,targetId,structuresAt(t).find(type => type !== 'road') || 'road','attack',avoid,source);
-  if (order === 'hold' || targetId === a.tile) { delete a.embarkOrder;a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; if(source==='player')markPlayerOverride(s,a); return { ok: true }; }
+  if (order === 'hold' || targetId === a.tile) { delete a.embarkOrder;delete a.boardingNotice;a.path = []; a.target = null; a.structureTarget = null; a.order = 'hold'; if(source==='player')markPlayerOverride(s,a); return { ok: true }; }
   const path = findPath(knowledgeView(s,owner), a.tile, targetId, owner, false, avoid);
   if (!path.length) return { ok: false, error: 'No legal route. Neutral borders require an alliance or a declaration of war.' };
-  delete a.embarkOrder;
+  delete a.embarkOrder;delete a.boardingNotice;
   a.path = path; a.target = targetId; a.structureTarget = null; a.order = order;
   if(source==='player')markPlayerOverride(s,a);
   return { ok: true, path };
@@ -405,7 +406,7 @@ export function resolveAmphibiousLanding(s,a,targetId) {
   if(!capture(s,a,t))return false;
   a.tile=targetId;a.path=[];a.target=null;a.structureTarget=null;a.order='hold';a.resolvedTurn=s.turn;a.movementTurn=s.turn;a.movementSpent=armySpeed(a);return true;
 }
-function zoneOfControl(s, a, t) {
+export function zoneOfControl(s, a, t) {
   return neighbors(s, t).some(n => s.armies.some(e => e.tile === n.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner)));
 }
 export function resolveMovement(s, owner = null) {
@@ -415,10 +416,11 @@ export function resolveMovement(s, owner = null) {
   if (s.turn % 2 === 0) armies.reverse();
   for (const a of armies) {
     if (!s.armies.includes(a) || sizeOf(a) === 0 || a.resolvedTurn===s.turn) continue;
+    if(a.embarkOrder&&!revalidateBoardingOrder(s,a))continue;
     a.resolvedTurn=s.turn;
     if(a.movementTurn!==s.turn){a.movementTurn=s.turn;a.movementSpent=0;}
     if(a.order==='ranged'){resolveLandNavalAttack(s,a);continue;}
-    if(a.embarkOrder)continue;
+    if(a.embarkOrder&&!a.path.length){resolveArmyBoarding(s,a);continue;}
     if (a.structureTarget) {
       const t = s.tiles[a.target];
       if (!visionTiles(s,a.owner).has(a.target)||structureAttackCheck(s,a,t,a.structureTarget,a.order)) { a.path=[]; a.target=null; a.structureTarget=null; a.order='hold'; }
@@ -432,14 +434,14 @@ export function resolveMovement(s, owner = null) {
         a.movementSpent=armySpeed(a);continue;
       }
     }
-    const startingBudget = Math.max(0,armySpeed(a)-(a.movementSpent||0));
+    const startingBudget = movementBudget(s,a);
     let budget = startingBudget;
     while (a.path.length && budget > 0) {
       const t = s.tiles[a.path[0]], from = s.tiles[a.tile];
       const exiting = from.owner && !canEnter(s, a.owner, from) && s.tiles[a.target]?.owner !== from.owner && t?.owner === from.owner;
       if ((!canEnter(s, a.owner, t) && !exiting) || !t || distance(from, t) !== 1) { a.path = []; break; }
       // A slow siege stack can spend its entire turn crossing one costly edge.
-      const cost = moveCost(from, t); if (cost > budget && budget !== startingBudget) break;
+      const cost = moveCost(from, t); if (!canSpendMovement(cost,budget,startingBudget)) break;
       const occupy=['city','town','fort','watchtower'].includes(t.building);
       const structureAttack=a.structureTarget&&a.target===t.id;
       const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner));
@@ -461,6 +463,7 @@ export function resolveMovement(s, owner = null) {
     }
     if (a.structureTarget && a.tile === a.target) damageStructure(s,a,s.tiles[a.target],a.structureTarget,a.order);
     if (!a.path.length && !a.structureTarget) { a.order = 'hold'; a.target = null; }
+    if(a.embarkOrder)resolveArmyBoarding(s,a);
     a.morale = Math.min(1, a.morale + .04);
   }
   s.armies = s.armies.filter(a => sizeOf(a) > 0);

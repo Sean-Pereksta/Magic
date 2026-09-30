@@ -1,3 +1,4 @@
+import { orderEmbark } from '../naval.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from './fixtures/legacy-game.mjs';
@@ -58,6 +59,15 @@ test('general replies do not execute; manual orders survive replanning and late 
   recordGeneralConversation(s,'ashen',g.id,'Where now?',{reply:'A new plan.',order});assert.equal(a.order,'hold');
   const view=knowledgeView(s,'wintermere');assert.equal(view.commanders.roster.length,0);assert.ok(!JSON.stringify(view).includes('Gather at '+target.id));
   assert.ok(sanitizeContext(generalContext(s,'ashen',g.id,'Why have you stopped?')));
+});
+test('multi-turn boarding remains a player order when a general replans next turn',()=>{
+  const s=createGame(),g=hire(s),a=s.armies[0];
+  for(const t of Object.values(s.tiles))if(t.q>0&&t.q<12&&t.r>=8&&t.r<=12){t.owner='ashen';t.terrain='plains';t.road=false;t.river=false;if(t.levels)delete t.levels.road;}
+  a.tile='10,10';refreshKnowledge(s);
+  assert.equal(approveGeneralOrder(s,'ashen',g.id,{kind:'rally',targets:['5,10'],lossLimit:35,allowSplit:false}).ok,true);
+  const f={id:`fleet-${s.nextId++}`,owner:'ashen',tile:'0,10',node:'sea:0,10',ships:[{id:`ship-${s.nextId++}`,type:'transport',hp:70,crew:6,cargo:[]}],cargo:[],morale:1,path:[],target:null,order:'hold',landing:null,movementTurn:s.turn,movementSpent:0,resolvedTurn:0};s.fleets.push(f);refreshKnowledge(s);
+  assert.equal(orderEmbark(s,'ashen',a.id,f.id).ok,true);const path=[...a.path];
+  s.turn++;prepareGenerals(s,'ashen');assert.equal(a.embarkOrder.fleet,f.id);assert.deepEqual(a.path,path);
 });
 test('battle calculations use one command bonus and imported bonuses cannot be forged',()=>{
   const s=createGame(),g=hire(s,'ashen',4,'battle'),a=s.armies[0],enemy=s.armies[1];syncCommanders(s);

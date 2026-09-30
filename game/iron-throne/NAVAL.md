@@ -37,10 +37,15 @@ upgrade cost/time/production formulas.
 Select a fleet on the map or through **Your realm → Your fleets**. Its panel shows
 vessel counts, individual hull/crew, troop capacity, remaining movement and orders.
 Board, Move, Attack / bombard, Unload, Escort, Intercept, Blockade and Hold use
-end-of-turn resolution. Boarding occurs before sailing. Blockade requires a Warship.
+end-of-turn resolution. Adjacent armies board before sailing; distant armies march
+and board automatically after land movement. Blockade requires a Warship.
 Clean route lines and small red crossed swords show queued orders immediately,
-even while deselected. Turn estimates remain in the side panel, with no map text banners. They render above water, terrain, fog
-and unit artwork; private enemy orders are never shown.
+even while deselected. Selecting an army adds a small numeric badge halfway along
+the visible route: **0** means this resolution, **1** the next, and so on. Boarding
+uses a green route; ordinary marches use blue. Badges use terrain/road/river costs,
+formation and general speed, spent movement, known zones of control and planned
+sailing. Attack counts mean arrival at contact, not completion of a battle. Routes
+and badges render above water, terrain, fog and unit artwork; enemy orders stay private.
 
 Every vessel has a 7.5-hex ocean/river budget: 2.5 times standard infantry on open
 ground. Continuous journeys retain the half hex, sailing seven then eight hexes
@@ -53,7 +58,18 @@ seats and displays how many troops will board and remain ashore. One Transport
 can take 25 from a 70-troop force, leaving 45. Three stacked Transports show 0/75
 and can take all 70. Ready friendly stacks on the same water node combine when
 boarding (maximum 100 vessels), preserving the selected fleet's sailing order.
-Cancel boarding using the army's Hold/Cancel boarding control.
+Select Army → March → click a friendly transport anywhere on a known reachable
+route. The order stores the fleet ID, land route and embark position across turns,
+saves and multiplayer snapshots. Partial boarding shows a compact count preview
+before accepting the order; the whole army marches to the embark point and the
+remainder stays ashore there. Cancel using Hold/Cancel boarding.
+
+The route replans toward the same fleet when it moves. Lost capacity or an
+unreachable shore pauses boarding with a reason in the army card and Chronicle;
+it retries on the next resolution. A destroyed or foreign fleet cancels the order
+and leaves troops safely on land. General replanning preserves queued boarding.
+No troops teleport, duplicate or bypass transport capacity. ETA is recalculated
+from current observation state; a saved estimate is never the display authority.
 
 Boarding rechecks contact, occupancy, capacity and activation at resolution. Whole
 armies keep their identity aboard; partial boarding creates one detachment and
