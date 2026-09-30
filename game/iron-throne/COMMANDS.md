@@ -5,7 +5,7 @@
 Candidates appear only in owned cities. Their saved, seeded schedule offers at
 most one candidate per House, starting in rounds 3–8 with 14–23 rounds between
 opportunities. Offers last through their displayed deadline (four rounds after
-appearance). At most four generals may serve a House. Opening a city, refreshing
+appearance). The campaign has sixteen named general identities shared across all Houses. Opening a city, refreshing
 or reconnecting cannot reroll a candidate. Quality probabilities are 65%, 23%,
 8%, 3% and 1%, respectively; AI pays the same prices and upkeep.
 
@@ -33,7 +33,7 @@ round's opportunity. Splits, reassignments and repeated visits cannot farm it.
 Hiring a mustering general authorizes this disclosed, bounded recurring expense;
 campaign objectives authorize no further autonomous spending or new wars.
 
-Assign from an army card; **Orders conversation** displays the actual objective,
+Assign from an army card; **Chat** and **Orders** display the actual objective,
 status, constraints and history. Discussing a plan creates no game action. Review
 the interpreted objective, known locations (or observed friendly army to
 reinforce), loss threshold and permission to split, then approve those exact
@@ -49,7 +49,7 @@ objectives and at least 24 or 32 troops per detachment. Quality bounds autonomou
 detachments to two or three. Same-command forces can reunite; unrelated human
 armies are never silently absorbed.
 
-Army command identity survives splitting and merging. Movement expenditure and
+The primary army retains its commander after a manual split; new formations begin under manual control. Approved autonomous detachments retain command identity. Merging commanded forces asks which general will lead. Movement expenditure and
 already-resolved flags stay attached to troops. Manual movement, hold, formation
 and split/merge choices are protected for the current activation. Unassigning,
 detaching or confirmed dismissal preserves every soldier and spent movement;
@@ -63,6 +63,8 @@ local dialogue. Engine validation and separate approval control every action.
 An expired activation's reply cannot submit commands. General histories are
 private and bounded to 40 entries; model context uses eight short recent entries,
 owned forces and limited current/dated observations.
+
+See [Army organization](ARMY_ORGANIZATION.md) for the Sort Army editor, commander transfers, portraits and save migration.
 
 ## Vassals
 

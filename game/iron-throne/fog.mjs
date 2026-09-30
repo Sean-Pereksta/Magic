@@ -88,7 +88,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.marriageBriefings=s.kingdoms.some(h=>h.id===viewer)
     ? Object.fromEntries(s.kingdoms.filter(h=>h.id!==viewer).map(h=>[h.id,marriageReadiness(s,h.id,viewer)])) : {};
   v.allianceCouncils=projectCouncils(s,viewer);
-  v.commanders={...(s.commanders||{}),roster:(s.commanders?.roster||[]).filter(g=>g.owner===viewer).map(clone),candidates:(s.commanders?.candidates||[]).filter(g=>g.owner===viewer).map(clone),nextOffer:{[viewer]:s.commanders?.nextOffer?.[viewer]||0}};
+  v.commanders={...(s.commanders||{}),retired:(s.commanders?.retired||[]).filter(g=>g.owner===viewer).map(clone),roster:(s.commanders?.roster||[]).filter(g=>g.owner===viewer).map(clone),candidates:(s.commanders?.candidates||[]).filter(g=>g.owner===viewer).map(clone),nextOffer:{[viewer]:s.commanders?.nextOffer?.[viewer]||0}};
   v.fealty=Object.fromEntries(Object.entries(s.fealty||{}).filter(([,f])=>[f.liege,f.vassal].includes(viewer)).map(([id,f])=>[id,clone(f)]));
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;

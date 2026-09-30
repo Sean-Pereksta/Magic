@@ -278,19 +278,24 @@ export function orderArmy(s, owner, armyId, targetId, order = 'move', avoid = nu
   if(source==='player')markPlayerOverride(s,a);
   return { ok: true, path };
 }
-export function mergeArmies(s, owner, id, source = 'player') {
+export function mergeArmies(s, owner, id, source = 'player', generalId = undefined) {
   if (s.outcome) return { ok: false, error: 'This campaign has ended.' };
   const group = armiesOf(s, owner).filter(a => a.tile === id);
   if (group.length < 2) return { ok: false, error: 'Bring two armies to the same tile first.' };
-  if(new Set(group.map(a=>a.commandId||null)).size>1)return {ok:false,error:'Return armies to the same command or manual control before merging.'};
+  const commands=[...new Set(group.map(a=>a.commandId).filter(Boolean))];
+  const chosen=generalId===undefined?(commands.length===1?commands[0]:null):s.commanders?.roster.find(g=>g.owner===owner&&g.id===generalId)?.commandId;
+  if(commands.length>1&&!commands.includes(chosen))return {ok:false,error:'Choose the commanding general before combining these armies.',chooseCommander:true};
+  if(generalId!==undefined&&!commands.includes(chosen))return {ok:false,error:'Choose a general already commanding one of these armies.'};
   if(group.some(a=>a.embarkOrder))return {ok:false,error:'Cancel boarding before combining armies.'};
   const base = group[0];
+  for(const x of allArmies(s))if(commands.includes(x.commandId)&&x.commandId!==chosen){delete x.commandId;x.path=[];x.target=null;x.order=x.embarkedFleetId?'embarked':'hold';x.structureTarget=null;delete x.embarkOrder;markPlayerOverride(s,x);}
+  if(chosen)base.commandId=chosen;
   base.movementSpent=Math.max(...group.map(a=>a.movementTurn===s.turn?a.movementSpent||0:0));base.movementTurn=s.turn;
   if(group.some(a=>a.resolvedTurn===s.turn))base.resolvedTurn=s.turn;
   base.commandBaseline=group.reduce((n,a)=>n+(a.commandBaseline||sizeOf(a)),0);
   if(group.some(a=>a.playerOverride===`${s.turn}:${owner}`)||source==='player')markPlayerOverride(s,base);
   for (const a of group.slice(1)) { for (const u of Object.keys(UNITS)) base.units[u] = (base.units[u]||0) + (a.units[u]||0); s.armies = s.armies.filter(x => x !== a); for (const p of s.intrigue?.plans || []) if (p.assignedArmies.includes(a.id)) p.assignedArmies = [...new Set(p.assignedArmies.map(id => id === a.id ? base.id : id))]; }
-  base.path = []; base.order = 'hold'; base.target = null; base.structureTarget = null; return { ok: true };
+  base.path = []; base.order = 'hold'; base.target = null; base.structureTarget = null; syncCommanders(s); return { ok: true };
 }
 export function splitArmy(s, owner, armyId, source = 'player') {
   if (s.outcome) return { ok: false, error: 'This campaign has ended.' };
@@ -299,7 +304,7 @@ export function splitArmy(s, owner, armyId, source = 'player') {
   if(a.embarkOrder)return {ok:false,error:'Cancel boarding before splitting this army.'};
   const b = { ...a, id: `army-${s.nextId++}`, units: {}, path: [], target: null, order: 'hold' };
   for (const u of Object.keys(UNITS)) { b.units[u] = Math.floor((a.units[u]||0) / 2); a.units[u] = (a.units[u]||0) - b.units[u]; }
-  a.path = []; a.order = 'hold'; a.target = null; a.structureTarget = null; b.structureTarget = null; s.armies.push(b); const baseline=a.commandBaseline||sizeOf(a)+sizeOf(b);b.commandBaseline=Math.floor(baseline/2);a.commandBaseline=baseline-b.commandBaseline; if(source==='player'){markPlayerOverride(s,a);markPlayerOverride(s,b);} return { ok: true, armyId: b.id };
+  a.path = []; a.order = 'hold'; a.target = null; a.structureTarget = null; b.structureTarget = null; s.armies.push(b); const baseline=a.commandBaseline||sizeOf(a)+sizeOf(b);b.commandBaseline=Math.floor(baseline/2);a.commandBaseline=baseline-b.commandBaseline; if(source==='player'){delete b.commandId;delete b.commandBonus;delete b.commandMove;markPlayerOverride(s,a);markPlayerOverride(s,b);} return { ok: true, armyId: b.id };
 }
 export function strength(a, defending = false, t = null) {
   let total = Object.entries(a.units).reduce((n, [type, count]) => n + count * (UNITS[type]?.[defending ? 'defense' : 'attack']||0), 0) * a.morale;
@@ -315,7 +320,7 @@ function retreat(s, a, from) {
   else casualties(a, .6);
 }
 function battle(s,attacker,defender,t,{amphibious=false}={}) {
-  const event={id:s.nextId++,turn:s.turn,attacker:attacker.owner,defender:defender.owner,attackerArmyId:attacker.id,defenderArmyId:defender.id,tile:t.id,from:attacker.tile,action:'battle',before:[sizeOf(attacker),sizeOf(defender)]};
+  const event={id:s.nextId++,turn:s.turn,attacker:attacker.owner,defender:defender.owner,attackerArmyId:attacker.id,defenderArmyId:defender.id,attackerArmyName:attacker.name||attacker.id,defenderArmyName:defender.name||defender.id,tile:t.id,from:attacker.tile,action:'battle',before:[sizeOf(attacker),sizeOf(defender)]};
   const from=s.tiles[attacker.tile];
   const result=resolveFieldBattle(attacker,defender,t,{roll:()=>random(s),riverCrossing:from.river!==t.river&&(from.river||t.river)&&!(buildingLevel(from,'road')>=2&&buildingLevel(t,'road')>=2),surrounded:[attacker,defender].map(a=>neighbors(s,s.tiles[a.tile]).filter(n=>canEnter(s,a.owner,n)&&!s.armies.some(e=>e.tile===n.id&&atWar(s,e.owner,a.owner))).length===0)});
   const loser=result.loser===0?attacker:defender;

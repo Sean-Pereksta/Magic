@@ -1,3 +1,4 @@
+import { GENERAL_ROSTER } from './general-roster.mjs';
 // Cloudflare directional artwork has a local, connection-preserving fallback.
 import { GEOGRAPHY_PATHS } from './geography-assets.mjs';
 import { SpriteOutlines } from './sprite-outline.mjs';
@@ -9,6 +10,7 @@ const local = path => new URL(`./assets/${path}.svg`, import.meta.url).href;
 const buildingPath = (id,level) => `buildings/${id === 'intelligenceOffice' ? 'chancery' : id === 'fishingDock' ? 'fishing_dock' : id}_${id === 'city' ? 1 : level}.png`;
 const levels = (id, b) => [...new Set(b.levels.map(l => buildingPath(id,l.level)))];
 export const IRON_THRONES_ART = {
+  generals: Object.fromEntries(GENERAL_ROSTER.map(g=>[g.characterId,g.portrait])),
   buildings: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, levels(id,b)])),
   ships: {warCanoe:'ships/war_canoe.png',transport:'ships/transport.png',warship:'ships/warship.png'},
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
@@ -22,6 +24,7 @@ export const IRON_THRONES_ART = {
 const flatten = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(flatten);
 export const ALL_ART_PATHS = [...new Set(flatten(IRON_THRONES_ART))];
 export const ART = {
+  generals: Object.fromEntries(Object.entries(IRON_THRONES_ART.generals).map(([id,p])=>[id,ironThronesAsset(p)])),
   structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(buildingPath(id,l.level))]))])),
   ships: Object.fromEntries(Object.entries(IRON_THRONES_ART.ships).map(([id,p])=>[id,ironThronesAsset(p)])),
   units: Object.fromEntries(Object.entries(IRON_THRONES_ART.troops).map(([id,p]) => [id,ironThronesAsset(p)])),

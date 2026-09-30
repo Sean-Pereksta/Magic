@@ -1,3 +1,4 @@
+import { reorganizeArmy } from './army-organization.mjs';
 import { queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './naval.mjs';
 import { initializeSequential } from './sequential.mjs';
 import { hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, recordGeneralConversation } from './generals.mjs';
@@ -19,7 +20,7 @@ import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -28,7 +29,7 @@ export function commandError(s, meta, command) {
   if(command.epoch!==meta.epoch)return 'The controller changed. Review and submit this order again.';
   if(command.turn!==s.turn)return 'This order belongs to an earlier round.';
   if(!Number.isSafeInteger(command.stateVersion)||command.stateVersion<1||command.stateVersion>meta.stateVersion)return 'Invalid campaign version.';
-  if(['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge'].includes(command.type)&&command.stateVersion!==meta.stateVersion)return 'The fleet state changed. Refresh and submit your order again.';
+  if(['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize'].includes(command.type)&&command.stateVersion!==meta.stateVersion)return 'The fleet state changed. Refresh and submit your order again.';
   if(s.outcome)return 'This campaign has ended.';
   if(meta.phase==='founding'){
     if(s.phase!=='founding'||command.type!=='found')return 'Found all six kingdoms before issuing orders.';
@@ -55,8 +56,9 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
     case 'fleetEmbark':result=orderEmbark(s,a,p.army,p.fleet);break;
     case 'fleetOrder':result=orderFleet(s,a,p.fleet,p.tile,p.order);break;
     case 'fleetMerge':result=mergeFleets(s,a,p.fleet,p.other);break;
+    case 'reorganize':result=reorganizeArmy(s,a,p);break;
     case 'generalHire':result=hireGeneral(s,a,p.id);break;
-    case 'generalAssign':result=assignGeneral(s,a,p.id,p.army);break;
+    case 'generalAssign':result=assignGeneral(s,a,p.id,p.army,p.transfer===true);break;
     case 'generalDetach':result=detachGeneral(s,a,p.id,p.army||null,p.dismiss===true,p.confirmed===true);break;
     case 'generalOrder':result=approveGeneralOrder(s,a,p.id,p.order);break;
     case 'generalChat':result=recordGeneralConversation(s,a,p.id,p.message,p.response);break;
@@ -98,7 +100,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
     case 'order':result=orderArmy(s,a,p.army,p.tile,p.order);break;
     case 'structure':result=orderStructureAttack(s,a,p.army,p.tile,p.structure,p.mode);break;
     case 'split':result=splitArmy(s,a,p.army);break;
-    case 'merge':result=mergeArmies(s,a,p.tile);break;
+    case 'merge':result=mergeArmies(s,a,p.tile,'player',p.generalId);break;
     case 'formation':result=setFormation(s,a,p.army,p.formation);break;
     case 'tax':if(!['low','medium','high'].includes(p.policy))return fail('Invalid tax policy.');kingdom(s,a).tax=p.policy;result=ok();break;
     case 'recruitSpy':result=recruitSpy(s,a);break;
