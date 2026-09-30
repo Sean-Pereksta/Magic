@@ -6,6 +6,7 @@ import { appendConversation, diplomaticCapacity, borderThreat } from './living.m
 import { validateIntent, describeIntent } from './diplomacy.mjs';
 import { councilParticipants, councilActive, ownCouncil, appendCouncil } from './council-state.mjs';
 import { expireFollowups, grantFollowup, topicIntent } from './proposal-followup.mjs';
+import { councilDiscussion, aidCouncilLines, freshCouncilLine, dialogueKey, recentCouncilHistory } from './council-dialogue.mjs';
 
 export const COUNCIL_MOODS = ['Cooperative','Cordial','Uneasy','Somber','Heated','Uncontrolled'];
 const relationFields = ['opinion','trust','reliability','respect','grievance','fear','wariness'];
@@ -63,7 +64,7 @@ export function makeCouncilContext(s, c, actor, message) {
   const facts = councilFacts(s,c);
   if (!facts) return null;
   const context = {mode:'allianceCouncil',turn:s.turn,actorHouseId:actor,councilId:c.id,participants:c.participants,
-    message:message.slice(0,600),history:c.messages.filter(m=>m.turn>=s.turn-2).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450)})),world:{...structuredClone(facts),historicalDiscussion:c.messages.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
+    message:message.slice(0,600),history:recentCouncilHistory(c,actor,message,s.turn).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450)})),world:{...structuredClone(facts),historicalDiscussion:c.messages.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
   // Twelve-House games still use one bounded request.
   const bytes = () => new TextEncoder().encode(JSON.stringify(context)).length;
   while (bytes() > 22000 && context.history.length) context.history.shift();
@@ -84,7 +85,7 @@ export function validateCouncilResponse(raw, participants, aiIds = participants)
     if (!value || !Array.isArray(value.responses) || value.responses.length < 1 || value.responses.length > 3) return null;
     const responses = [];
     for (const r of value.responses) {
-      if (!r || !participants.includes(r.speakerHouseId) || !aiIds.includes(r.speakerHouseId) || typeof r.message !== 'string' || !r.message.trim() || r.message.length > 900) return null;
+      if (!r || !participants.includes(r.speakerHouseId) || !aiIds.includes(r.speakerHouseId) || responses.some(previous=>previous.speakerHouseId===r.speakerHouseId) || typeof r.message !== 'string' || !r.message.trim() || r.message.length > 900) return null;
       const intent = r.requestedIntent == null ? null : validateIntent(r.requestedIntent);
       if (r.requestedIntent != null && !intent) return null;
       responses.push({speakerHouseId:r.speakerHouseId,message:r.message,...(intent?{requestedIntent:intent}:{})});
@@ -93,31 +94,98 @@ export function validateCouncilResponse(raw, participants, aiIds = participants)
   } catch { return null; }
 }
 
-export function scriptedCouncil(s,c,actor,message) {
+export function scriptedCouncil(s,c,actor,message,speakers=null) {
   const facts = councilFacts(s,c), intent = topicIntent(s,message), responses = [];
   if (!facts) return {responses};
-  const eligible = facts.participants.filter(p => p.ai && p.id !== actor);
+  const discussion = councilDiscussion(facts,c,actor,message,s.turn);
+  const eligible = facts.participants.filter(p => p.ai && p.id !== actor && (!speakers || speakers.includes(p.id)))
+    .sort((a,b) => Number(discussion.addressed.includes(b.id))-Number(discussion.addressed.includes(a.id)));
+  const recipient = discussion.addressed.length === 1 ? facts.participants.find(p=>p.id===discussion.addressed[0]) : null;
+  const militaryRequest = intent && ['JOINT_WAR','DEFEND','POSITION','BUILD_DEFENSES'].includes(intent.type);
   const rel = (a,b) => { const row = facts.relationships.find(r => r[0] === a && r[1] === b); return Object.fromEntries(relationFields.map((f,i) => [f,row?.[i+2] || 0])); };
   const candidates = eligible.map(p => {
     const r = rel(p.id,actor), rival = facts.participants.find(o => o.id !== p.id && o.id !== actor && (rel(p.id,o.id).grievance >= 40 || rel(p.id,o.id).trust < -20));
-    let stance = 'discuss', text;
-    if (intent?.targetId === p.id) {stance='refuse';text='You invite me to council to plan an attack on my own House? I will hear no such terms.';}
-    else if (intent?.type === 'JOINT_WAR' && treaty(s,p.id,intent.targetId,'alliance')) {stance='refuse';text=`I am also sworn to ${name(s,intent.targetId)}. I will not betray that pact for this campaign.`;}
-    else if (r.grievance >= 45 || r.trust < -25) {stance='refuse';text='Our grievances remain unanswered. I will not promise more soldiers on the strength of words.';}
-    else if (intent && ['war survival','frontier threatened','forces committed elsewhere','food shortage'].includes(p.concern)) {stance='constrained';text=p.concern==='war survival'?'My realm is fighting for its survival. I need help defending what remains, not another offensive.':p.concern==='frontier threatened'?'My frontier is threatened. I cannot strip its defenses for another offensive.':p.concern==='food shortage'?'My people need food before I can sustain another campaign. Can this council arrange supplies?':'My forces already have sworn duties. We must account for those before adding another campaign.';}
-    else if (rival) {stance='conditional';text=`I want assurances from ${name(s,rival.id)} first. Our history gives me little confidence that their banners will move when ours do.`;}
-    else if (intent) {stance='support';text=p.personality.honor >= .7?'I will consider a shared duty, but a ruler must know what is being promised. Put the terms before me.':'There may be advantage for my House in this. Send me your proposal; the burden and reward must be clear.';}
-    else {text=facts.mood==='Somber'?'We have suffered enough to weigh our next move carefully. Which frontier needs our help first?':'Name the objective and the part you ask my House to play. Our common cause still leaves each of us duties at home.';}
-    return {speakerHouseId:p.id,message:text,stance,...(stance==='support'?{requestedIntent:intent}:{})};
+    const prior = discussion.history.findLast(m=>m.speakerHouseId===p.id);
+    const addressed = discussion.addressed.includes(p.id);
+    let stance = 'discuss', lines, requestedIntent;
+    if (discussion.offeringAid) {
+      stance = recipient && recipient.id !== p.id ? 'coordinate-aid' : 'receive-aid';
+      lines = (!recipient || recipient.id === p.id) && (r.grievance >= 45 || r.trust < -25) ? [
+        'I hear your offer of help, but our grievances still stand. What exactly are you offering, and on what conditions?',
+        'Assistance could matter, but I cannot treat words as relief already delivered. Explain how you intend to help.',
+        'Your offer deserves an answer: I need clear terms before I can rely on your support.'
+      ] : aidCouncilLines(p,discussion,recipient);
+    }
+    else if (discussion.withdrawn) {stance='clarify';lines=[
+      'Then I will not count on that support. What part of the plan are you still willing to discuss?',
+      'Understood. We must revise our expectations. Is there another form of cooperation you would consider?',
+      'Let us be clear about the limit you have set before we ask any House to commit.'
+    ];}
+    else if (intent?.targetId === p.id) {stance='refuse';lines=[
+      'You invite me to council to plan an attack on my own House? I will hear no such terms.',
+      'My answer remains no: my House will not join a campaign against itself. Name a different objective.',
+      'We must settle this threat to my realm before discussing a common campaign.'
+    ];}
+    else if (intent?.type === 'JOINT_WAR' && treaty(s,p.id,intent.targetId,'alliance')) {stance='refuse';lines=[
+      `I am also sworn to ${name(s,intent.targetId)}. I will not betray that pact for this campaign.`,
+      `My pact with ${name(s,intent.targetId)} still stands. Can we find an objective that does not require breaking it?`,
+      'Repeating the request does not release me from my sworn alliance. What other course do you propose?'
+    ];}
+    else if (r.grievance >= 45 || r.trust < -25) {stance='refuse';lines=[
+      'Our grievances remain unanswered. I will not promise more soldiers on the strength of words.',
+      'Before discussing further duties, tell me how you intend to address the breach between our Houses.',
+      'I have heard your argument. What assurance can you offer that we will not face the same grievance again?'
+    ];}
+    else if (militaryRequest && ['war survival','frontier threatened','forces committed elsewhere','food shortage'].includes(p.concern)) {
+      stance='constrained';
+      const concern = p.concern==='war survival'?'My realm is fighting for its survival. I need help defending what remains.'
+        :p.concern==='frontier threatened'?'My frontier is threatened. I cannot strip its defenses for another offensive.'
+        :p.concern==='food shortage'?'My people need food before I can sustain another campaign.'
+        :'My forces already have sworn duties. We must account for those before adding another campaign.';
+      lines=[`${concern} Can your House provide relief?`,
+        `${concern} Could you take the leading role while my House holds its ground?`,
+        `The obstacle remains: ${concern.charAt(0).toLowerCase()+concern.slice(1)} What change to the plan would address it?`];
+    }
+    else if (rival) {stance='conditional';lines=[
+      `I want assurances from ${name(s,rival.id)} first. Our history gives me little confidence that their banners will move when ours do.`,
+      `${name(s,rival.id)}, what duty would you take upon yourself? We need more than a common enemy to settle our doubts.`,
+      `My concern with ${name(s,rival.id)} remains. Can we agree on separate, clear responsibilities before proceeding?`
+    ];}
+    else if (intent?.type === 'ALLIANCE' && treaty(s,p.id,actor,'alliance')) {stance='allied';lines=[
+      'Our Houses are already allied. What should that alliance do next: secure a frontier, arrange supplies, or prepare a common campaign?',
+      'Our pact gives us a starting point. Which objective should come first, and what role do you want my House to take?',
+      'Let us make our existing alliance useful. Name the immediate need so we can agree on responsibilities.'
+    ];}
+    else if (intent) {
+      stance='support'; requestedIntent=intent;
+      lines=[p.personality.honor >= .7?'I will consider a shared duty, but a ruler must know what is being promised. Put the terms before me.':'There may be advantage for my House in this. Send me your proposal; the burden and reward must be clear.',
+        'We have the subject before us. Put the terms before me, with the duties and timing you propose.',
+        'I am ready to weigh a concrete offer. Send me your proposal so we can settle the remaining details.'];
+    }
+    else if (prior && discussion.question) {stance='clarify';lines=[
+      `${p.concern==='food shortage'?'Food is my immediate concern.':p.concern==='frontier threatened'||p.concern==='war survival'?'Securing my lands comes first.':'We need to settle our respective duties.'} Are you asking what my House needs, or what it can contribute?`,
+      'I do not want to mistake your meaning. Which part should we settle first: the destination, the forces, or the timing?',
+      'Tell me which duty you have in mind for my House, and we can discuss its limits.'
+    ];}
+    else {lines=[facts.mood==='Somber'?'We have suffered enough to weigh our next move carefully. Which frontier needs our help first?':'Name the objective and the part you ask my House to play. Our common cause still leaves each of us duties at home.',
+      'Let us take one decision at a time. Are we discussing defense, supplies, or a joint advance?',
+      'I am listening. What should our Houses settle before this council ends?'];}
+    return {speakerHouseId:p.id,message:freshCouncilLine(discussion.history,p.id,lines),stance,addressed,...(requestedIntent?{requestedIntent}:{})};
   });
-  // Prefer different positions; do not make every ruler repeat assent.
-  for (const p of candidates) if (!responses.length || !responses.some(r => r.stance === p.stance)) {responses.push(p);if(responses.length===3)break;}
+  // The addressed ruler answers first, even when another ruler shares a stance.
+  // Other Houses speak only when they have a distinct position to contribute.
+  for (const p of candidates) if (p.addressed || !responses.length || !responses.some(r => r.stance === p.stance)) {
+    responses.push(p);if(responses.length===3)break;
+  }
   const challenger = responses.find(r => r.stance === 'conditional');
   if (challenger && responses.length < 3) {
-    const target = eligible.find(p => p.id !== challenger.speakerHouseId && (rel(challenger.speakerHouseId,p.id).grievance >= 40 || rel(challenger.speakerHouseId,p.id).trust < -20));
-    if (target) responses.push({speakerHouseId:target.id,message:`${name(s,challenger.speakerHouseId)}, accusations will not defend either realm. State the assurance you want, and let us judge the same terms.`});
+    const target = eligible.find(p => !responses.some(r=>r.speakerHouseId===p.id) && (rel(challenger.speakerHouseId,p.id).grievance >= 40 || rel(challenger.speakerHouseId,p.id).trust < -20));
+    if (target) responses.push({speakerHouseId:target.id,message:freshCouncilLine(discussion.history,target.id,[
+      `${name(s,challenger.speakerHouseId)}, accusations will not defend either realm. State the assurance you want, and let us judge the same terms.`,
+      `${name(s,challenger.speakerHouseId)}, let us settle our duties plainly. What would answer your concern?`
+    ])});
   }
-  return {responses:responses.map(({stance,...r})=>r)};
+  return {responses:responses.map(({stance,addressed,...r})=>r)};
 }
 
 export function councilForActor(s,actor,id,create=false) {
@@ -142,8 +210,17 @@ export function finishCouncilMessage(s,actor,start,message,raw) {
   if (!c || c.sequence !== start.entryId || c.messages.at(-1)?.turn !== s.turn) return fail('The council changed while the envoy travelled.');
   const aiIds = c.participants.filter(id => id !== actor && isAiHouse(s,id));
   const response = validateCouncilResponse(raw,c.participants,aiIds) || scriptedCouncil(s,c,actor,message);
-  for (const r of response.responses) {
+  const history = recentCouncilHistory(c,actor,message,s.turn), spoken = new Set();
+  for (let r of response.responses) {
+    // Do not spend another model request to repair a repeated answer. Replace
+    // only that speaker's line with a grounded, history-aware local reply.
+    const previous = history.findLast(m=>m.speakerHouseId===r.speakerHouseId);
+    if (dialogueKey(previous?.message || '') === dialogueKey(r.message) || spoken.has(dialogueKey(r.message))) {
+      r = scriptedCouncil(s,c,actor,message,[r.speakerHouseId]).responses[0];
+      if (!r) continue;
+    }
     appendCouncil(s,c,r.speakerHouseId,r.message,r.requestedIntent?{requestedIntent:r.requestedIntent}:{});
+    spoken.add(dialogueKey(r.message));
     grantFollowup(s,actor,r.speakerHouseId,c.id,message,r,{paid:true,requestedIntent:r.requestedIntent});
   }
   c.read[actor]=c.sequence;
