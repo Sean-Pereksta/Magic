@@ -437,6 +437,15 @@ Active allies can meet in a shared Alliance Council. Its bounded transcript has
 an immutable audience; changing the coalition starts a separate conversation.
 Rulers use directional relationships, shared observations and their own coarse
 concerns to disagree, ask for assurances, or suggest existing Treaty Desk terms.
+Local council dialogue distinguishes offers of aid from requests for an ally's
+troops, recognizes ruler and House names, and lets the addressed ruler answer
+first. Recent exchanges guide clarification, concrete aid details, and follow-up
+questions; an existing alliance is treated as an existing pact. Conditional
+offers remain conditional, and conversation alone changes no troops, resources,
+trust, or agreements. Local phrasing varies with recent history. Repeated model
+replies are replaced per speaker without another request or dispatch charge.
+These local improvements work when Gemini is unavailable; the matching Gemini
+conversation instructions require redeploying the diplomacy Worker.
 One council message consumes one shared dispatch and at most one Gemini request
 for one to three AI replies. Local responses use the same rules when Gemini is
 unavailable. Human rulers are never voiced by the model.
