@@ -35,13 +35,13 @@ export class DiplomacyClient {
   constructor({ endpoint = '', fetcher = fetch, now = Date.now } = {}) {
     this.endpoint = validEndpoint(endpoint);
     this.fetcher = (...args) => fetcher(...args); this.now = now;
-    this.cooldownUntil = 0; this.busy = false; this.cache = new Map(); this.controller = null;
+    this.cooldownUntil = 0; this.cooldownDiagnostic = null; this.busy = false; this.cache = new Map(); this.controllers = new Set();
     // Never serialize authentication into a campaign, export, or localStorage.
     this.session = null; this.sessionRequest = null; this.sessionController = null;
     this.lastDiagnostic = null; this.queue = new DiplomacyQueue();
   }
   hasSession() { return !!this.session && this.session.expires > this.now() + 5000; }
-  cancel() { this.queue.cancel(); this.controller?.abort(); }
+  cancel() { this.queue.cancel(); for (const controller of this.controllers) controller.abort(); }
   recordFailure(code, details = {}, path = '') {
     this.lastDiagnostic = { ...makeDiagnostic(code, details), at: this.now(), path,
       ...(Number.isInteger(details.httpStatus) ? { httpStatus: details.httpStatus } : {}),
@@ -85,61 +85,105 @@ export class DiplomacyClient {
   send(state, rulerId, message, token = '', useGemini = true, options = {}) {
     const council = state.allianceCouncils?.find(c => c.id === options.councilId);
     const queuedAI = useGemini && this.endpoint && council?.participants.some(id => id !== options.actorHouseId && isAiHouse(state, id));
+    // Only Alliance Council uses a queue. A slow/background council request
+    // must not serialize private ruler conversations or general conversations.
+    if (!queuedAI) return this.sendDirect(state, rulerId, message, token, useGemini, options);
     if (queuedAI && token && !this.hasSession() && !this.sessionRequest) void this.openSession(token);
-    let retries = 0;
-    return this.queue.enqueue(async () => {
-      const response = await this.sendNow(state, rulerId, message, queuedAI ? '' : token, useGemini, options);
-      // Allowance refusals occur before a model call. Keep that unsent message
-      // queued. Retry a provider rate limit at most twice, never a Google 400.
-      const code = response.diagnostic?.code;
-      if (queuedAI && response.diagnostic) options.onDiagnostic?.(response.diagnostic);
-      if (queuedAI && ['CLIENT_RATE_LIMIT', 'GLOBAL_RATE_LIMIT', 'PROVIDER_COOLDOWN'].includes(code)) return {source:'deferred'};
-      if (queuedAI && code === 'GEMINI_QUOTA' && retries++ < 2) return {source:'deferred'};
-      return response;
-    }, {...options, ...(queuedAI ? {ready: () => this.now() < this.cooldownUntil ? 'cooldown'
-      : !this.hasSession() ? 'verification' : true} : {})});
+    return this.sendCouncil(state, council, rulerId, message, useGemini, options);
+  }
+  async sendDirect(state, rulerId, message, token, useGemini, options) {
+    const generation = this.queue.generation;
+    const current = () => generation === this.queue.generation && (!options.isCurrent || options.isCurrent());
+    if (!current()) return this.queue.cancelled();
+    const response = await this.sendNow(state, rulerId, message, token, useGemini, options);
+    return current() ? response : this.queue.cancelled();
+  }
+  async sendCouncil(state, council, rulerId, message, useGemini, options) {
+    const context = options.councilDispatch ? makeCouncilDispatchContext(state,council,options.actorHouseId,options.councilDispatch)
+      : makeCouncilContext(state,council,options.actorHouseId,message,options.location,options.formalDecision);
+    if (!context) return this.queue.cancelled();
+    const eligible = context.world.participants.filter(p => p.ai && p.id !== options.actorHouseId).map(p => p.id);
+    const speakers = options.councilDispatch ? options.councilDispatch.entries.map(e => e.speakerHouseId) : eligible;
+    const generation = this.queue.generation, responses = [];
+    let failure = null;
+    for (const speaker of speakers) {
+      // This is the existing Worker contract: only the current leader is
+      // eligible to speak. Earlier leaders' replies become shared history.
+      const leaderContext = structuredClone(context);
+      for (const p of leaderContext.world.participants) p.ai = p.id === speaker && eligible.includes(p.id);
+      leaderContext.history.push(...responses.map(r => ({speakerHouseId:r.speakerHouseId,message:r.message.slice(0,450),turn:context.turn})));
+      leaderContext.history = leaderContext.history.slice(-10);
+      if (leaderContext.world.dispatch) leaderContext.world.dispatch.entries = leaderContext.world.dispatch.entries.filter(e => e.speakerHouseId === speaker);
+      while (new TextEncoder().encode(JSON.stringify(leaderContext)).length > 22000 && leaderContext.history.length) leaderContext.history.shift();
+      const response = await this.queue.enqueue(async () => {
+        const result = await this.sendNow(state,rulerId,message,'',useGemini,{...options,leaderContext,speaker});
+        if (result.diagnostic) options.onDiagnostic?.(result.diagnostic);
+        // Worker allowance refusals did not reach Google. Wait for their real
+        // reset; do not retry paid generation or format/validation failures.
+        if (['CLIENT_RATE_LIMIT','GLOBAL_RATE_LIMIT','PROVIDER_COOLDOWN'].includes(result.diagnostic?.code)) return {source:'deferred'};
+        return result;
+      }, {...options,isCurrent:()=>generation===this.queue.generation&&(!options.isCurrent||options.isCurrent()),
+        ready:()=>this.now()<this.cooldownUntil?'cooldown':!this.hasSession()?'verification':true});
+      if (response.source === 'cancelled') return response;
+      const row = response.responses?.find(r => r.speakerHouseId === speaker);
+      if (row) responses.push({...row,source:response.source});
+      if (response.diagnostic) failure = response;
+    }
+    const source = responses.every(r=>r.source==='gemini') ? 'gemini' : responses.some(r=>r.source==='gemini') ? 'mixed' : 'scripted';
+    return {responses,source,diagnostic:failure?.diagnostic || null,
+      notice:failure?.notice || 'Gemini council · proposals await your word'};
   }
   async sendNow(state, rulerId, message, token = '', useGemini = true, options = {}) {
     const general=options.generalId;
     const council = options.councilId && state.allianceCouncils?.find(c=>c.id===options.councilId);
-    const aiIds = council?.participants.filter(id=>id!==options.actorHouseId&&isAiHouse(state,id));
+    const aiIds = options.speaker ? [options.speaker] : council?.participants.filter(id=>id!==options.actorHouseId&&isAiHouse(state,id));
+    let requestDiagnostic = null;
+    const recordFailure = (...args) => (requestDiagnostic = this.recordFailure(...args));
     const fallback = (detail = '', includeDiagnostic = true) => {
-      const diagnostic = includeDiagnostic ? this.lastDiagnostic : null;
-      return { ...(options.formalDecision ? {responses:[{speakerHouseId:options.formalDecision.house,message:state.cooperation?.formalProposals?.find(p=>p.id===options.formalDecision.proposalId)?.responses[options.formalDecision.house]?.message||'The recorded decision stands.'}]} : general ? localGeneralReply(state,options.actorHouseId,general,message) : council ? scriptedCouncil(state,council,options.actorHouseId,message,options.location) : scriptedReply(state, rulerId, message, options)), source: 'scripted', diagnostic,
+      const diagnostic = includeDiagnostic ? requestDiagnostic : null;
+      const local = options.formalDecision ? {responses:[{speakerHouseId:options.formalDecision.house,message:state.cooperation?.formalProposals?.find(p=>p.id===options.formalDecision.proposalId)?.responses[options.formalDecision.house]?.message||'The recorded decision stands.'}]} : general ? localGeneralReply(state,options.actorHouseId,general,message) : council ? scriptedCouncil(state,council,options.actorHouseId,message,options.location) : scriptedReply(state, rulerId, message, options);
+      if (options.speaker) local.responses = [local.responses?.find(r=>r.speakerHouseId===options.speaker) || {speakerHouseId:options.speaker,message:'A Gemini reply could not be delivered. Please try this council again.'}];
+      return { ...local, source: 'scripted', diagnostic,
         notice: `Council response delivered through local diplomacy.${detail ? ` ${detail}` : ''}${diagnostic ? ` ${diagnosticDetails(diagnostic).reason} [${diagnostic.code}]` : ''}${diagnostic ? ' Open Diagnostics for details.' : ''}` };
     };
     if (!useGemini || council && !aiIds.length) return fallback('', false);
-    if (!this.endpoint) { this.recordFailure('CLIENT_CONFIG'); return fallback(); }
-    if (this.now() < this.cooldownUntil) return fallback(`Gemini can be tried again in ${Math.ceil((this.cooldownUntil-this.now())/1000)} seconds.`);
+    if (!this.endpoint) { recordFailure('CLIENT_CONFIG'); return fallback(); }
+    if (this.now() < this.cooldownUntil) { requestDiagnostic = this.cooldownDiagnostic; return fallback(`Gemini can be tried again in ${Math.ceil((this.cooldownUntil-this.now())/1000)} seconds.`); }
     if (!this.hasSession() && !token && !this.sessionRequest) {
-      if (!this.lastDiagnostic) this.recordFailure(this.session ? 'SESSION_EXPIRED' : 'SESSION_NOT_READY');
+      requestDiagnostic = this.lastDiagnostic?.path === '/session' ? this.lastDiagnostic : recordFailure(this.session ? 'SESSION_EXPIRED' : 'SESSION_NOT_READY');
       return fallback();
     }
-    const context = general ? generalContext(state,options.actorHouseId,general,message) : council ? options.councilDispatch ? makeCouncilDispatchContext(state,council,options.actorHouseId,options.councilDispatch) : makeCouncilContext(state,council,options.actorHouseId,message,options.location,options.formalDecision) : makeContext(state, rulerId, message, options);
+    const context = options.leaderContext || (general ? generalContext(state,options.actorHouseId,general,message) : council ? makeCouncilContext(state,council,options.actorHouseId,message,options.location,options.formalDecision) : makeContext(state, rulerId, message, options));
     if(!context)return fallback('Council context is unavailable.',false);
     const key = JSON.stringify(context);
-    this.busy = true; this.controller = new AbortController();
+    this.busy = true;
     let timedOut = false;
-    const controller = this.controller, timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 18000);
+    const controller = new AbortController(), timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 18000);
+    this.controllers.add(controller);
     try {
       if (this.sessionRequest) await this.sessionRequest;
       else if (token || (this.hasSession() && this.session.expires < this.now() + 5 * 60000)) await this.openSession(token);
-      if (!this.hasSession()) { if (!this.lastDiagnostic) this.recordFailure('SESSION_NOT_READY'); return fallback(); }
-      if (controller.signal.aborted) { this.recordFailure(timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED'); return fallback(); }
+      if (!this.hasSession()) { requestDiagnostic = this.lastDiagnostic || recordFailure('SESSION_NOT_READY'); return fallback(); }
+      if (controller.signal.aborted) { recordFailure(timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED'); return fallback(); }
       if (this.cache.has(key)) { this.lastDiagnostic = null; return { ...this.cache.get(key), source: 'gemini', notice: 'Gemini council · proposals await your word' }; }
       const response = await this.fetcher(this.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.session.token}` }, credentials: 'omit', signal: controller.signal, body: JSON.stringify(context) });
       const fresh = response.headers.get('X-Diplomacy-Session'), expires = Number(response.headers.get('X-Diplomacy-Expires'));
       if (fresh && fresh.length <= 1600 && Number.isSafeInteger(expires) && expires > this.now()) this.session = { token: fresh, expires };
       if (!response.ok) {
-        const seconds = Math.min(3600, Math.max(1, Number(response.headers.get('Retry-After')) || (response.status === 429 ? 300 : 60)));
-        if (response.status !== 401) this.cooldownUntil = this.now() + seconds * 1000;
-        await this.readFailure(response, '/diplomacy', this.cooldownUntil);
+        requestDiagnostic = await this.readFailure(response, '/diplomacy');
+        const limited = response.status === 429 || requestDiagnostic.providerStatus === 429 || ['DAILY_LIMIT','CLIENT_RATE_LIMIT','GLOBAL_RATE_LIMIT','PROVIDER_COOLDOWN','GEMINI_QUOTA'].includes(requestDiagnostic.code);
+        if (limited) {
+          const seconds = Math.min(3600, Math.max(1, Number(response.headers.get('Retry-After')) || 300));
+          this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + seconds * 1000);
+          requestDiagnostic = recordFailure(requestDiagnostic.code, {...requestDiagnostic,retryAt:this.cooldownUntil}, '/diplomacy');
+          this.cooldownDiagnostic = requestDiagnostic;
+        }
         if (response.status === 401) { this.session = null; return fallback('Your diplomacy session needs verification.'); }
         return fallback();
       }
       let parsed;
       try { const raw=await readJSON(response, 10000); parsed = general ? validateGeneralResponse(raw) : council ? validateCouncilResponse(raw,council.participants,aiIds) : validateResponse(raw); } catch (error) { if (controller.signal.aborted) throw error; /* Invalid reply is handled below. */ }
-      if (!parsed) { this.cooldownUntil = this.now() + 5000; this.recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status, retryAt: this.cooldownUntil }, '/diplomacy'); return fallback(); }
+      if (!parsed || options.speaker && parsed.responses.length !== 1) { recordFailure('GEMINI_RESPONSE_INVALID', { httpStatus: response.status }, '/diplomacy'); return fallback(); }
       if(!council&&!general&&!options.formalDecision)parsed=relationshipResponse(state,rulerId,message,parsed,options);
       if (this.cache.size >= 30) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, parsed);
@@ -147,9 +191,8 @@ export class DiplomacyClient {
       return { ...parsed, source: 'gemini', notice: 'Gemini council · proposals await your word' };
     } catch {
       if(controller.signal.aborted && !timedOut)return this.queue.cancelled();
-      this.cooldownUntil = this.now() + 60000;
-      this.recordFailure(controller.signal.aborted ? (timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED') : 'NETWORK_UNREADABLE', { retryAt: this.cooldownUntil }, '/diplomacy'); return fallback();
+      recordFailure(controller.signal.aborted ? (timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED') : 'NETWORK_UNREADABLE', {}, '/diplomacy'); return fallback();
     }
-    finally { clearTimeout(timeout); this.busy = false; this.controller = null; }
+    finally { clearTimeout(timeout); this.controllers.delete(controller); this.busy = this.controllers.size > 0; }
   }
 }

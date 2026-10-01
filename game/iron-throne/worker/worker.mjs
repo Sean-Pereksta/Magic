@@ -6,7 +6,7 @@ import { issueSession, reserveSessionBudget, verifySession } from './session.mjs
 import { validateIntent } from '../diplomacy.mjs';
 import { makeDiagnostic, workerChecks } from '../diagnostics.mjs';
 
-const REQUEST_FORMAT = 'openapi-flat-v1';
+const REQUEST_FORMAT = 'pre-council-queue-v1';
 
 export { RESPONSE_SCHEMA } from './reply-contract.mjs';
 import { RESPONSE_SCHEMA, INTENT_SCHEMA as intentSchema, normalizeModelIntent, validateModelResponse } from './reply-contract.mjs';
@@ -14,7 +14,7 @@ export const COUNCIL_RESPONSE_SCHEMA = {
   type:'OBJECT', required:['responses'], properties:{responses:{type:'ARRAY',minItems:1,maxItems:3,items:{
     type:'OBJECT',required:['speakerHouseId','message'],properties:{
       speakerHouseId:{type:'STRING',enum:CAMPAIGN_HOUSES.map(h=>h.id)},
-      message:{type:'STRING',minLength:1,maxLength:900,description:'One concise ruler response, at most 900 characters.'},
+      message:{type:'STRING',description:'One concise ruler response, at most 900 characters.'},
       requestedIntent:{...intentSchema,nullable:true}
     }
   }}}
@@ -22,6 +22,7 @@ export const COUNCIL_RESPONSE_SCHEMA = {
 export function councilResponseSchema(context) {
   const schema=structuredClone(COUNCIL_RESPONSE_SCHEMA);
   schema.properties.responses.items.properties.speakerHouseId.enum=context.world.participants.filter(p=>p.ai&&p.id!==context.actorHouseId&&context.participants.includes(p.id)).map(p=>p.id);
+  schema.properties.responses.maxItems=Math.min(3,schema.properties.responses.items.properties.speakerHouseId.enum.length);
   if (context.world.conversationMode === 'ai-initiated-council' || context.world.formalDecision) {
     // These requests only voice already-recorded facts. A treaty schema is
     // unnecessary and adds many nested alternatives to Google's grammar.
@@ -74,7 +75,7 @@ export async function readLimitedJSON(request, maxBytes = 24000) {
   for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.byteLength; }
   return JSON.parse(new TextDecoder().decode(all));
 }
-export const GENERAL_RESPONSE_SCHEMA={type:'OBJECT',required:['reply'],properties:{reply:{type:'STRING',minLength:1,maxLength:1600},order:{type:'OBJECT',nullable:true,required:['kind','targets','lossLimit','allowSplit'],properties:{kind:{type:'STRING',enum:['attack','defend','hold','move','rally','reinforce','siege','withdraw','frontier']},targets:{type:'ARRAY',minItems:1,maxItems:3,items:{type:'STRING'}},lossLimit:{type:'INTEGER',minimum:15,maximum:65},allowSplit:{type:'BOOLEAN'},army:{type:'STRING',nullable:true,description:'For reinforcement only: an exact observed friendly army ID.'}}}}};
+export const GENERAL_RESPONSE_SCHEMA={type:'OBJECT',required:['reply'],properties:{reply:{type:'STRING'},order:{type:'OBJECT',nullable:true,required:['kind','targets','lossLimit','allowSplit'],properties:{kind:{type:'STRING',enum:['attack','defend','hold','move','rally','reinforce','siege','withdraw','frontier']},targets:{type:'ARRAY',minItems:1,maxItems:3,items:{type:'STRING'}},lossLimit:{type:'INTEGER',minimum:15,maximum:65},allowSplit:{type:'BOOLEAN'},army:{type:'STRING',nullable:true,description:'For reinforcement only: an exact observed friendly army ID.'}}}}};
 export function sanitizeGeneralContext(body){
   if(!body||body.mode!=='general'||!CAMPAIGN_HOUSES.some(h=>h.id===body.actorHouseId)||!/^general-\d+$/.test(body.generalId)||!Number.isInteger(body.turn)||body.turn<1||body.turn>100000||typeof body.message!=='string'||!body.message.trim()||body.message.length>600||!Array.isArray(body.history)||body.history.length>10||body.history.some(m=>!m||!['player','general','council'].includes(m.role)||typeof m.text!=='string'||m.text.length>1600||!Number.isInteger(m.turn)||m.turn<0||m.turn>body.turn)||!body.world||typeof body.world!=='object'||JSON.stringify(body.world).length>14000)return null;
   return {mode:'general',actorHouseId:body.actorHouseId,generalId:body.generalId,turn:body.turn,message:body.message.trim(),history:body.history,world:body.world};

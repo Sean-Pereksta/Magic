@@ -73,7 +73,7 @@ let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidg
 let turnBusy = false;
 let proposalConversation = null;
 let allianceUI = null, formalUI=null;
-let sending = false, compactCouncil = false, reviewedTrade = null;
+let sending = false, councilSending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 let configurationFailure = false;
 const replyDiagnostics = new Map();
@@ -627,7 +627,7 @@ async function enableGemini() {
   // After verification, an eligible automatic dispatch may also be voiced.
   if (!($('diplomacy').open || allianceUI?.dialog.open || $('general-orders')?.open)) return;
   if (client.hasSession()) { $('turnstile').hidden = true; $('chat-notice').textContent = 'Gemini ready. Your diplomacy session is active.'; return; }
-  $('chat-notice').textContent = client.now() < client.cooldownUntil ? 'Gemini is resting after a rate limit or connection error. Scripted diplomacy is available.' : challengeToken ? 'Gemini ready. Send your envoy to begin.' : 'Gemini is enabled. Preparing verification…';
+  $('chat-notice').textContent = client.now() < client.cooldownUntil ? 'Gemini reported a rate limit. Scripted diplomacy is available.' : challengeToken ? 'Gemini ready. Send your envoy to begin.' : 'Gemini is enabled. Preparing verification…';
   try {
     await loadVerification();
     if (!$('use-gemini').checked || !($('diplomacy').open || allianceUI?.dialog.open || $('general-orders')?.open)) return;
@@ -724,7 +724,7 @@ allianceUI=installAllianceCouncil(document,{
   pickLocation:options=>strategicPicker.openStrategicMapPicker(options),
   planLocation:location=>{allianceUI.dialog.close();tab='war-room';render();const form=$('operation-form');if(!form){toast('Form an alliance before planning an operation.');return;}form.closest('details').open=true;form.elements.objectiveType.value=location.objectiveType;const select=form.elements.objective;let option=[...select.options].find(o=>o.value===location.targetTile);if(!option){option=document.createElement('option');option.value=location.targetTile;option.textContent=`Hex ${location.targetTile}`;select.append(option);}select.value=location.targetTile;form.scrollIntoView({block:'start'});},
   offerRequest:id=>formalUI.open({councilId:id}),
-  getState:()=>state,getActor:()=>localHouse,isBusy:()=>sending||turnBusy,
+  getState:()=>state,getActor:()=>localHouse,isBusy:()=>councilSending||turnBusy,
   gemini:()=>({enabled:$('use-gemini').checked,available:!$('use-gemini').disabled}),
   setGemini:enabled=>{$('use-gemini').checked=enabled;geminiChoiceMade=true;enableGemini();allianceUI.render();},
   queued:(id,messageId)=>[...councilJobs.values()].some(j=>j.pending&&j.dispatch.councilId===id&&j.dispatch.entries.some(e=>e.id===messageId)),
@@ -747,12 +747,12 @@ allianceUI=installAllianceCouncil(document,{
     else{c.read[localHouse]=c.sequence;save();}
   },
   send:async(id,message,location)=>{
-    if(sending||turnBusy)return {ok:false,error:'An envoy is already travelling.'};
+    if(councilSending||turnBusy)return {ok:false,error:'An envoy is already travelling.'};
     const campaign=state,turn=state.turn,requestEpoch=epoch;
     const c=councilForActor(state,localHouse,id);if(!c)return {ok:false,error:'This coalition is no longer active.'};
     const start=onlineOptions?null:beginCouncilMessage(state,localHouse,id,message,location);
     if(start&&!start.ok)return start;
-    sending=true;save();allianceUI.render();
+    councilSending=true;save();allianceUI.render();
     try{
       const response=await client.send(campaign,c.participants.find(x=>x!==localHouse),message,challengeToken,$('use-gemini').checked,{councilId:id,location,actorHouseId:localHouse,isCurrent:()=>state.turn===turn&&(onlineOptions?councilForActor(state,localHouse,id)?.sequence===c.sequence:state===campaign&&epoch===requestEpoch),onStatus:status=>{allianceUI.setStatus(queueNotice(status));resumeCouncilVerification(status);},onDiagnostic:diagnostic=>{recordReplyDiagnostic(`council:${id}`,{source:'scripted',diagnostic});allianceUI.render();}});
       if(response.source==='cancelled'||state.turn!==turn||!onlineOptions&&(state!==campaign||epoch!==requestEpoch))return {ok:false,error:'Circumstances changed while the envoy travelled. Open the current council.'};
@@ -761,7 +761,7 @@ allianceUI=installAllianceCouncil(document,{
       if(onlineOptions){await online.submit('councilChat',{councilId:id,message,location,response:{responses:response.responses,source:response.source}});result={ok:true};}
       else result=finishCouncilMessage(state,localHouse,start,message,response);
       return {...result,notice:response.notice};
-    }finally{sending=false;challengeToken='';save();renderDispatches();}
+    }finally{councilSending=false;challengeToken='';save();renderDispatches();}
   },
   openTerms:(ruler,id,intent)=>{
     openDiplomacy(ruler,false);proposalConversation=id;
@@ -807,8 +807,14 @@ async function voiceNextDispatch(retry = false) {
       .then(async response => {
         if (!isCurrent() || response.source === 'cancelled') return;
         recordReplyDiagnostic(`council:${currentDispatch.councilId}`,response);
-        if (response.source === 'gemini') {
-          if (onlineOptions) await online.submit('councilVoice',{dispatch:currentDispatch,response:{responses:response.responses}},{waitForApplied:true});
+        if (response.source === 'gemini' || response.source === 'mixed') {
+          if (response.source === 'mixed') {
+            // Keep a failed reaction excluded until an explicit reopen/retry,
+            // even when successful speakers change this dispatch's first ID.
+            const remaining={...currentDispatch,entries:currentDispatch.entries.filter(e=>response.responses.find(r=>r.speakerHouseId===e.speakerHouseId)?.source!=='gemini')};
+            if(remaining.entries.length)councilJobs.set(councilDispatchKey(remaining),{dispatch:remaining,pending:false});
+          }
+          if (onlineOptions) await online.submit('councilVoice',{dispatch:currentDispatch,response:{responses:response.responses,source:response.source}},{waitForApplied:true});
           else if (!applyCouncilDispatch(state,localHouse,currentDispatch,response)) {
             const diagnostic=client.recordFailure('GEMINI_RESPONSE_INVALID');
             recordReplyDiagnostic(`council:${currentDispatch.councilId}`,{source:'scripted',diagnostic});
@@ -822,7 +828,7 @@ async function voiceNextDispatch(retry = false) {
   }
   allianceUI?.render();
   // Private dispatches retain their optional once-per-turn budget. Council
-  // openings all enter the shared queue, even before verification is ready.
+  // openings enter the council-only queue, even before verification is ready.
   if (onlineOptions || !client.hasSession() || client.now() < client.cooldownUntil || state.diplomacy.voicedTurn === state.turn) return;
   const chosen = state.kingdoms.slice(1).map(k => ({ id: k.id, entry: state.conversations[k.id]?.findLast(m => m.role === 'ruler' && m.kind && m.turn === state.turn && !!m.dispatch && !m.voiced) })).find(c => c.entry);
   if (!chosen) return;

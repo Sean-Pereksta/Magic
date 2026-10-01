@@ -1,4 +1,4 @@
-// One scheduler per game client. Running requests finish; player messages go
+// Alliance Council scheduler only. Running requests finish; player messages go
 // ahead of waiting background dispatches. Unready jobs remain queued without
 // occupying the transport; wake() also runs after verification completes.
 export class DiplomacyQueue {

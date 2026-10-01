@@ -175,12 +175,11 @@ and are not included in saves or exports.
 - Successful exact-context replies are cached for 30 minutes (at most 40 entries).
   Different state, history, memory, model or origin creates a different cache key.
 - Failed provider attempts consume budget. Council requests wait through local
-  per-minute limits and retry Google quota failures at most twice after the stated
-  cooldown. Format, key and billing errors are not retried automatically. No paid
+  per-minute limits. Provider failures are not retried automatically. No paid
   upgrade, grounding, other provider or model download is performed.
-- Provider quota errors activate a shared cooldown. The client also backs off on
-  errors. Waiting Council requests remain queued through verification and cooldowns.
-  Daily exhaustion, permanent errors or failed bounded retries retain local dialogue
+- Actual rate limits activate a shared cooldown. Format, invalid-reply and network
+  errors do not impose a browser cooldown on other chats. Waiting Council requests
+  remain queued through verification and actual rate limits. Failed requests retain local dialogue
   and diagnostics without preventing turns or deals.
 - Free-tier chat content may be used to improve Google's products. The council UI
   discloses this while Gemini is enabled. Messages and fictional state go to the
@@ -440,8 +439,11 @@ Active allies can meet in a shared Alliance Council. Its bounded transcript has
 an immutable audience; changing the coalition starts a separate conversation.
 Rulers use directional relationships, shared observations and their own coarse
 concerns to disagree, ask for assurances, or suggest existing Treaty Desk terms.
-One council message consumes one shared dispatch and at most one Gemini request
-for one to three AI replies (a quota refusal can be retried after cooldown). Local responses use the same rules when Gemini is
+One council message consumes one shared dispatch. The game client sends one
+Gemini request per AI leader, in sequence, with earlier replies in the next
+leader's history. Human participants receive no generated voice. This uses more
+provider requests than the previous combined response; existing budgets still apply.
+Local responses use the same rules when Gemini is
 unavailable. Human rulers are never voiced by the model.
 
 An explicit request for a proposal can grant one continuation for that ruler,
@@ -515,15 +517,17 @@ No new secret or binding is required. Deploy `firestore.rules` too for the new
 `councilVoice` command in online campaigns; it uses the same active-House and
 authenticated-controller checks as other gameplay commands.
 
-Player diplomacy, general chat and optional background voices now share one
-in-page request queue and session. One generation runs at a time; player messages
-precede waiting background jobs. Already-running generation finishes normally.
-Changing the campaign cancels obsolete queued work. The queue does not coordinate
-separate browser tabs or players; the Worker's atomic shared budgets still do that.
-Council messages wait for verification and honor `Retry-After` before sending.
-Local per-minute refusals leave the message queued; Google quota failures get at
-most two retries. Google 400, key, billing, daily-budget and malformed-output
-failures remain visible in Diagnostics, without automatic provider retries.
+Only Alliance Council requests enter the in-page queue. Each leader finishes
+before the next request starts; player Council work precedes waiting background
+Council jobs. Private ruler chats and generals send directly and keep using the
+same verified session. The Council send button has its own pending state, so a
+queued Council does not disable private chat. Changing campaigns cancels all
+active requests and obsolete queued work.
+Council messages wait for verification and actual `Retry-After` rate limits.
+A malformed reply, Google 400 or connection failure does not delay the next
+leader or an explicit retry. Only Worker allowance refusals are rescheduled
+without a model attempt. There are no automatic retries of failed generation.
+Mixed-success exchanges keep each leader's Gemini/local label and diagnostic.
 
 Alliance Council exposes the captured safe error code, a live cooldown countdown,
 and a Diagnostics / Copy report dialog. Successful player replies clear that
@@ -543,22 +547,40 @@ voicing commits through the authenticated `councilVoice` command during the
 player’s activation. Turning Gemini off or replacing the campaign cancels waiting
 requests. Reopening the council can retry an unsuccessful background voice.
 
-Google HTTP 400 describes rejected request parameters, not simultaneous calls.
-All conversation modes use the same typed `responseSchema` request format.
-Intent objects are flat: the Worker no longer repeats nested intent unions under
-each proposal field or converts Council intents to a different schema dialect.
-The existing prompts and strict reply validators still enforce which terms are
-legal for each intent. Turn-start and recorded-decision Council voices use a
-small schema containing only speakers and messages, without treaty alternatives.
-Google errors naming schema or thinking settings produce safe `GEMINI_SCHEMA`
-or `GEMINI_THINKING` codes; provider error text is never exposed. The existing
-model, thinking settings, budgets and sequential queue remain unchanged. See the [Google request reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
-Deploy the Worker as well as the game; a game-only deployment cannot change the
-Google request. New provider failure reports include `Worker request format:
-openapi-flat-v1`; older Workers report no format. A generic `GEMINI_REQUEST` does
-not establish exactly which parameter Google rejected.
-An authenticated production generation is still needed to confirm the deployed
-model accepts these settings for the operator’s project.
+The October 1 recovery restores the private-chat provider schema from commit
+`66ff3a2` (the main branch immediately before PR #1653). The regression test checks
+its exact JSON fingerprint. Council and general schemas also drop the later text
+constraints; current speaker filtering and existing game validation remain.
+The Worker does not queue leaders. Model selection, thinking configuration,
+2,048-token output limit, secrets, Turnstile, bindings and budget settings are
+unchanged. Current gameplay and deterministic treaty validation remain intact.
+The restored provider schema describes single-resource proposals, as it did
+before the regression; the game's multi-item Offer / Request controls and
+validation still support resource packages.
+
+The actual historical changes were:
+
+- PR #1653 (September 30): a shared client queue for private, general and Council
+  requests, plus Worker Council prompting and allowance changes.
+- PR #1655: a new structured-reply contract; PR #1657 changed Council schema
+  handling, and PR #1658 replaced that with `openapi-flat-v1`.
+- The 5-second invalid-reply and 60-second request/network waits already existed
+  before #1653. Sharing the client spread those waits across conversation types.
+
+Google HTTP 400 is a rejected request. Google 200 with
+`GEMINI_RESPONSE_INVALID` means generation returned but validation failed.
+Neither failure demonstrates excessive concurrent calls, and waiting cannot
+repair its format. Raw provider error text is never exposed.
+
+Release the game files and deploy the checked-in Worker restoration using the
+existing Cloudflare account and secrets (`npx wrangler deploy` from
+`game/iron-throne/worker`). A game-only release cannot restore the already-deployed
+provider schema. Failure reports identify this version as
+`Worker request format: pre-council-queue-v1`. Do not change the model or increase
+budgets as part of this recovery. Merging the PR does not deploy Cloudflare.
+A live authenticated private reply and multi-leader Council exchange must still
+be checked after release; controlled-response tests cannot prove Google accepts
+a request for the production project.
 
 `CLIENT_PER_MINUTE` now supports values through 60, matching the existing shared
 per-minute ceiling, so the configured value of 50 is honored. Lower configured
