@@ -199,7 +199,7 @@ try {
       assert.equal(await page.evaluate(() => window.testVerificationCount),1);assert.equal(sessionCalls,1);
       await page.locator('#chat-message').fill('Would you consider peace?');await page.locator('#send-chat').click();
       await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
-      assert.equal(modelCalls,2);assert.match(await page.locator('#chat-notice').textContent(),/quota reached/);assert.match(await page.locator('#messages').textContent(),/Wintermere/);
+      assert.equal(modelCalls,2);assert.match(await page.locator('#chat-notice').textContent(),/rate-limited.*RATE_LIMIT_UNKNOWN/);assert.match(await page.locator('#messages').textContent(),/Wintermere/);
       assert.match(await page.locator('#ai-status').textContent(),/Local/);
     }
     await page.locator('#gemini-diagnostics').click();
