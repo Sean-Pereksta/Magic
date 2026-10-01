@@ -38,7 +38,7 @@ try{
   await page.locator('[data-modify]').first().click();assert.equal(await page.locator('#give-items [data-trade-row]').count(),2);
   await page.locator('#give-items [data-remove-resource]').first().click();assert.equal(await page.locator('#give-items [data-trade-row]').count(),1);assert.equal(await page.locator('#give-resource').count(),1);
   await page.locator('#offer-type').selectOption('AID');assert.equal(await page.locator('[data-add-resource="give"]').isVisible(),false);
-  await page.locator('#quick-offer').click();assert.equal(await page.locator('[data-add-resource="give"]').isVisible(),true);
+  await page.locator('#offer-type').selectOption('EXCHANGE');assert.equal(await page.locator('[data-add-resource="give"]').isVisible(),true);
   assert.deepEqual(errors,[]);await context.close();
  }
  console.log('Trade package desktop/mobile DOM checks passed.');
