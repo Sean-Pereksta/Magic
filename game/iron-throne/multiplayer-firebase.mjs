@@ -12,7 +12,7 @@ export function multiplayerRoute(search) {
 export class FirebaseCampaign {
   constructor({lobbyId,username,onState=()=>{},onStatus=()=>{},onError=()=>{}}){
     Object.assign(this,{lobbyId,username,onState,onStatus,onError});
-    this.token=crypto.randomUUID();this.sequence=0;this.pending=new Map();this.unsubs=[];
+    this.token=crypto.randomUUID();this.sequence=0;this.pending=new Map();this.unsubs=[];this.appliedWaiters=new Set();
     this.online=false;this.meta=null;this.presence={};this.stopped=false;this.busy=false;this.lastVersion=0;
   }
   now(){return Date.now()+(this.clockOffset||0);}
@@ -116,6 +116,7 @@ export class FirebaseCampaign {
       const [w,p]=await Promise.all([decodePayload(world.payload),decodePayload(priv.payload)]);
       if(world.stateVersion<=this.lastVersion||id!==this.watchedHouse)return;
       this.lastVersion=world.stateVersion;this.state=playerView(w,p,id);this.onState(this.state);this.emit();
+      for(const waiter of this.appliedWaiters)waiter.check();
     }catch(e){this.error(e);}
   }
   async setup(action,args={}){
@@ -169,7 +170,20 @@ export class FirebaseCampaign {
     },e=>this.error(e));
     this.pending.set(id,off);
   }
-  async submit(type,args={}){
+  waitForApplied(id){
+    return new Promise((resolve,reject)=>{
+      let receipt,off,timer;
+      const finish=(error)=>{clearTimeout(timer);off?.();this.appliedWaiters.delete(waiter);error?reject(error):resolve({ok:true});};
+      const waiter={check:()=>{if(receipt?.status==='accepted'&&this.lastVersion>=receipt.stateVersionApplied)finish();},cancel:()=>finish(new Error('Campaign connection closed.'))};
+      this.appliedWaiters.add(waiter);
+      timer=setTimeout(()=>finish(new Error('Still waiting for the campaign. Check the proposal status before submitting again.')),30000);
+      off=this.f.onSnapshot(this.ref('iron_throne_commands',id),snap=>{
+        if(!snap.exists()||snap.metadata.fromCache||snap.metadata.hasPendingWrites)return;
+        receipt=snap.data();if(receipt.status==='rejected')finish(new Error(receipt.error||'Order rejected.'));else waiter.check();
+      },finish);
+    });
+  }
+  async submit(type,args={}, {waitForApplied=false}={}){
     if(!this.online||!this.state||!['planning','founding'].includes(this.meta?.phase))throw new Error('Reconnecting or resolving. Wait for the current campaign state.');
     const id=`${this.token}_${++this.sequence}`,ref=this.ref('iron_throne_commands',id);
     const c={id,clientId:this.token,sequence:this.sequence,uid:this.uid,actorHouseId:seatFor(this.meta,this.uid),turn:this.state.turn,stateVersion:this.lastVersion,epoch:this.meta.epoch,activationId:this.meta.activationId||0,type,args,status:'pending',createdAt:this.f.serverTimestamp()};
@@ -181,7 +195,7 @@ export class FirebaseCampaign {
       if(type!=='found'&&!['read','councilRead','takeover'].includes(type)&&meta.data().activeHouse!==c.actorHouseId)throw new Error('It is another House’s turn. Your draft can wait until your activation.');
       tx.set(ref,c);
     });
-    this.watchReceipt(id);void this.pump();return id;
+    this.watchReceipt(id);void this.pump();return waitForApplied?this.waitForApplied(id):id;
   }
   async pump(){
     if(this.stopped||this.busy||!this.online||!ownsLease(this.meta,this.uid,this.token,this.now())||this.meta.phase==='setup'||this.meta.phase==='ended')return;
@@ -230,6 +244,7 @@ export class FirebaseCampaign {
   }
   close(){
     this.stopped=true;clearInterval(this.timer);clearInterval(this.pumpTimer);
+    for(const waiter of this.appliedWaiters)waiter.cancel();
     for(const off of this.unsubs)off();this.privateUnsub?.();this.commandUnsub?.();for(const off of this.pending.values())off?.();
     window.removeEventListener('online',this.wake);window.removeEventListener('offline',this.offline);
   }

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { localHouseId } from '../house-control.mjs';
+import { strategicMarkers } from '../strategic-locations.mjs';
 
 // Execute the real render method with a recording canvas and deterministic art.
 const source = readFileSync(process.env.MAP_SOURCE || new URL('../map.mjs', import.meta.url), 'utf8')
@@ -21,6 +23,7 @@ for (const reduced of [false, true]) test(`map completes with ordered layers (re
   state.fleets=[{id:'fleet-1',tile:'0,0',node:'river:0,0'}];
   const scope = { drawFleets:()=>calls.push('ships'), drawOrderIndicators:()=>calls.push('orders'), performance: { now: () => 100 }, document: { hidden: true }, HEX_DIRECTIONS: [], BUILDINGS: {}, UNITS: { levy: {} }, ART: { structures: { city: { 1: 'city' } } }, buildingLevel: () => 1, sizeOf: () => 12, familyCount: () => 0 };
   vm.createContext(scope);
+  Object.assign(scope,{strategicMarkers,localHouseId});
   vm.runInContext(source + '\nglobalThis.MapClass = WorldMap;', scope);
   const map = Object.create(scope.MapClass.prototype);
   Object.assign(map, { width: 400, height: 300, dpr: 1, zoom: 1, x: 0, y: 0, selected: '0,0', armyId: 'army', ctx, getState: () => state, motion: { matches: reduced }, assets: {}, geography: { get: () => new Map([['0,0', { ground: 'plains' }]]) }, geographyArt: { draw: () => calls.push('overlay') }, effects: { ingest() {}, drawWorld() {}, drawResults() { calls.push('complete'); }, results: [] }, groundArt: () => calls.push('tile'), structureArt: () => { calls.push('building'); return true; }, armyArt: () => calls.push('troop') });

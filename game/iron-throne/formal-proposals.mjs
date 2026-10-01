@@ -8,6 +8,7 @@ import { councilActive, appendCouncil } from './council-state.mjs';
 import { operationFor, operationMember, memberOperation } from './cooperation-state.mjs';
 import { respondOperation } from './operations.mjs';
 import { economicNeeds } from './trade.mjs';
+import { packageTrade, tradeItems, withItems } from './trade-package.mjs';
 import { consumeDiplomaticMessage, privateConversation } from './proposal-followup.mjs';
 
 const fail=error=>({ok:false,error});
@@ -18,7 +19,9 @@ const record=(s,id)=>s.cooperation?.formalProposals?.find(p=>p.id===id);
 const targetOf=(s,p,house)=>{const view=knowledgeView(s,house);return validHouse(s,p.intent?.targetId)?p.intent.targetId:view.tiles[p.intent?.targetId]?.owner||view.tiles[p.intent?.targetId]?.knownCapital||null;};
 const RECEIVER_ACTIONS=new Set(['DEFEND','POSITION','BUILD_DEFENSES','WITHDRAW','EMBARGO']);
 export const defaultProposalDirection=i=>RECEIVER_ACTIONS.has(i?.type)||i?.type==='JOINT_WAR'?'request':'offer';
-const parties=(p,house)=>(p.direction==='request'&&(isPlayerPromise(p.intent)||p.intent.type==='AID')||p.direction==='offer'&&RECEIVER_ACTIONS.has(p.intent.type))?{actor:house,ruler:p.proposer}:{actor:p.proposer,ruler:house};
+const requestedSender=i=>isPlayerPromise(i)||['AID','EXCHANGE','RECURRING','LOAN'].includes(i?.type);
+const parties=(p,house)=>(p.direction==='request'&&requestedSender(p.intent)||p.direction==='offer'&&RECEIVER_ACTIONS.has(p.intent.type))?{actor:house,ruler:p.proposer}:{actor:p.proposer,ruler:house};
+const reversePackage=i=>withItems(i,tradeItems(i,'receive'),tradeItems(i,'give'));
 const audience=(s,actor,councilId,requested)=>{
   const c=councilId&&s.allianceCouncils?.find(c=>c.id===councilId);
   if(councilId&&(!c||!councilActive(s,c)||!c.participants.includes(actor)))return null;
@@ -26,7 +29,7 @@ const audience=(s,actor,councilId,requested)=>{
   if(!c&&requested.length!==1)return null;
   return c?c.participants:[actor,...requested];
 };
-export function formalDescription(p){return p.operationId?`Join ${p.operationId}`:`${p.direction==='request'&&(isPlayerPromise(p.intent)||p.intent.type==='AID')?'Requested commitment: ':''}${describeIntent(p.intent)}${p.targetTile?` · Exact hex ${p.targetTile}`:''}`;}
+export function formalDescription(p){const requested=p.direction==='request'&&requestedSender(p.intent);return p.operationId?`Join ${p.operationId}`:`${requested?'Requested commitment: ':''}${requested?describeIntent(p.intent).replaceAll('Proposer','Requested House'):describeIntent(p.intent)}${p.targetTile?` · Exact hex ${p.targetTile}`:''}`;}
 function initialize(s){s.cooperation??={operations:[],proposals:[],balance:[],lastDiplomacyTurn:0};s.cooperation.formalProposals??=[];}
 function trim(s){const rows=s.cooperation.formalProposals;while(rows.length>40){const i=rows.findIndex(p=>['resolved','dismissed'].includes(p.status));if(i<0)break;rows.splice(i,1);}}
 export function submitFormalProposal(s,actor,raw,{inferred=false}={}){
@@ -78,12 +81,17 @@ export function evaluateCouncilProposal(s,house,p){
     else if(k.resources.food<20){code='food_shortage';reason='My people and armies need food before I can sustain another campaign.';}
     else if(!armiesOf(s,house).length){code='no_forces';reason='I have no army available to make this commitment.';}
   }
-  if(!reason&&isAiHouse(s,house)&&p.direction==='request'&&(isPlayerPromise(i)||i?.type==='AID'||p.operationId)&&r.trust+r.reliability*.25-r.grievance<30){code='insufficient_trust';reason='Our relationship does not justify that commitment.';}
+  if(!reason&&isAiHouse(s,house)&&p.direction==='request'&&(isPlayerPromise(i)||['AID','LOAN'].includes(i?.type)||p.operationId)&&r.trust+r.reliability*.25-r.grievance<30){code='insufficient_trust';reason='Our relationship does not justify that commitment.';}
+  if(!reason&&isAiHouse(s,house)&&p.direction==='request'&&i?.type==='LOAN'&&i.giveAmount>(economicNeeds(s,house).find(n=>n.resource===i.giveResource)?.surplus||0)){code='resources_reserved';reason='Those resources are needed by my realm; I cannot lend them.';}
   if(reason){const alternativeIntents=alternatives(s,house,p);return {decision:alternativeIntents.length?'alternative':'declined',reasonCodes:[code,...(alternativeIntents.length?['willing_to_supply']:[])],reason,alternativeIntents};}
   if(p.operationId)return {decision:'accepted',reasonCodes:['shared_operation'],reason:'I accept the role and exact rally point in this operation.'};
   const who=parties(p,house),view=knowledgeView(s,who.actor),tile=p.targetTile&&view.tiles[p.targetTile];
   if(tile?.fog==='unknown'&&!tile.knownCapital&&isPlayerPromise(i)&&i.type!=='PLEDGE_PEACE')return {decision:'invalid',reasonCodes:['unknown_target'],reason:'The location is identified, but I need legitimate knowledge before making this specific promise.'};
-  const verdict=evaluateDeal(s,who.ruler,i,who.actor,{consentingHuman:who.actor===house||!isAiHouse(s,house),formalSupport:true});
+  // Judge commercial requests from the requested ruler's economic perspective,
+  // then restore the approved orientation for counters and actual transfers.
+  const reversed=who.actor===house&&isAiHouse(s,house)&&packageTrade(i);
+  const verdict=reversed?evaluateDeal(s,house,reversePackage(i),p.proposer,{formalSupport:true}):evaluateDeal(s,who.ruler,i,who.actor,{consentingHuman:who.actor===house||!isAiHouse(s,house),formalSupport:true});
+  if(reversed&&verdict.counter)verdict.counter=reversePackage(verdict.counter);
   return {decision:verdict.status==='accept'?'accepted':verdict.status==='counter'?'counter':'declined',reasonCodes:verdict.status==='accept'?['valid_terms',r.trust>=60?'high_trust':'mutual_interest']:['terms_unacceptable'],reason:verdict.status==='accept'?'I accept these exact terms. My commitment is active.':verdict.reason,counterIntent:verdict.counter||null};
 }
 function commit(s,p,house,intent=p.intent){

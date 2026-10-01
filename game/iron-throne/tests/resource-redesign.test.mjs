@@ -37,7 +37,8 @@ test('duplicate package rows merge, malformed and over-limit amounts reject, and
  assert.deepEqual(normalizeItems([{resource:'iron',amount:15},{resource:'iron',amount:5}]),[{resource:'iron',amount:20}]);
  for(const bad of [[],[{resource:'iron',amount:-1}],[{resource:'iron',amount:1.5}],[{resource:'unknown',amount:1}],[{resource:'iron',amount:900},{resource:'iron',amount:200}]])assert.equal(normalizeItems(bad),null);
  const i=offer([{resource:'iron',amount:15},{resource:'wood',amount:30}],[{resource:'food',amount:100}]);assert.ok(i);assert.match(describeIntent(i),/30 wood \+ 15 iron/);assert.match(describeIntent(i),/100 food/);
- assert.equal(validateIntent({type:'AID',giveItems:i.giveItems}),null);
+ assert.deepEqual(validateIntent({type:'AID',giveItems:i.giveItems}).giveItems,i.giveItems);
+ assert.equal(validateIntent({type:'AID',giveItems:[{resource:'wood',amount:-1}]}),null);
  assert.deepEqual(parseBarter('I give 15 iron and 30 wood for 100 food').giveItems,i.giveItems);
  assert.equal(parseBarter('I might give 15 iron and 30 wood for 100 food'),null);
 });

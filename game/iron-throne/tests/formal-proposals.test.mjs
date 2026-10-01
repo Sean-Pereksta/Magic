@@ -6,14 +6,14 @@ import { onlineGame, activateForTest } from './fixtures/online-game.mjs';
 import { atWar, kingdom, relation, parseSave, settlements } from '../core.mjs';
 import { refreshKnowledge, knowledgeView } from '../fog.mjs';
 import { ownCouncil } from '../council-state.mjs';
-import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, evaluateCouncilProposal, answerFormalProposal, inferFormalProposal, stageConversationProposal, runFormalResponseQueue, recordFormalVoice } from '../formal-proposals.mjs';
+import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, evaluateCouncilProposal, answerFormalProposal, inferFormalProposal, stageConversationProposal, runFormalResponseQueue, recordFormalVoice, formalDescription } from '../formal-proposals.mjs';
 import { pruneCooperation } from '../cooperation-state.mjs';
 import { grantFollowup } from '../proposal-followup.mjs';
 import { makeCouncilContext } from '../alliance-council.mjs';
 import { sanitizeContext } from '../worker/worker.mjs';
 import { splitCampaign } from '../multiplayer-state.mjs';
 import { applyCommand, COMMAND_TYPES } from '../multiplayer-commands.mjs';
-import { commitDeal, validateIntent, makeContext } from '../diplomacy.mjs';
+import { commitDeal, validateIntent, makeContext, resolveRecurringTrade, verifyPledges } from '../diplomacy.mjs';
 function setup(){const s=createGame(311);for(const h of ['wintermere','redharbor','thornwall']){s.treaties.push({id:`ally-${h}`,type:'alliance',parties:['ashen',h],expires:100});Object.assign(relation(s,h,'ashen'),{trust:95,opinion:95,reliability:95,grievance:0});Object.assign(relation(s,'ashen',h),{trust:95,opinion:95,reliability:95,grievance:0});}for(const k of s.kingdoms){k.resources.food=k.resources.gold=k.resources.iron=500;k.commands=0;}refreshKnowledge(s);return {s,c:ownCouncil(s,'ashen',true)};}
 const proposal=(s,id)=>s.cooperation.formalProposals.find(p=>p.id===id);
 const request=(c,intent,houses=['wintermere','redharbor','thornwall'])=>({councilId:c.id,requestedHouses:houses,direction:'request',intent});
@@ -126,4 +126,39 @@ test('Firestore accepts the same authenticated command vocabulary as the control
  const rules=await readFile(new URL('../../../firestore.rules',import.meta.url),'utf8');
  const allowlist=[...rules.matchAll(/request\.resource\.data\.type in \[([^\]]+)\]/g)].find(m=>m[1].includes("'generalHire'"))[1];
  assert.deepEqual([...allowlist.matchAll(/'([^']+)'/g)].map(m=>m[1]).sort(),[...COMMAND_TYPES].sort());
+});
+
+for(const direction of ['request','offer'])for(const type of ['EXCHANGE','RECURRING','LOAN'])test(`${direction} ${type} transfers and obligations follow the selected sender exactly once`,()=>{
+ const {s,c}=setup(),sender=direction==='request'?'wintermere':'ashen',receiver=direction==='request'?'ashen':'wintermere',price=direction==='request'?10:1;
+ const intent=type==='LOAN'?{type,giveResource:'gold',giveAmount:20,receiveResource:'gold',receiveAmount:22,duration:2}:{type,giveItems:[{resource:'food',amount:2},{resource:'iron',amount:1}],receiveItems:[{resource:'gold',amount:price}],duration:2};
+ const r=submitFormalProposal(s,'ashen',{...request(c,intent,['wintermere']),direction});assert.equal(r.ok,true,r.error);
+ const p=proposal(s,r.proposalId),before=Object.fromEntries([sender,receiver].map(h=>[h,{...kingdom(s,h).resources}]));
+ resolveFormalResponse(s,'ashen',p.id,'wintermere');assert.equal(p.responses.wintermere.status,'accepted',p.responses.wintermere.message);
+ if(type==='LOAN'){
+  assert.equal(kingdom(s,sender).resources.gold,before[sender].gold-20);assert.equal(kingdom(s,receiver).resources.gold,before[receiver].gold+20);
+  const loan=s.pledges.find(x=>x.formalProposalId===p.id);assert.equal(loan.debtor,receiver);assert.equal(loan.creditor,sender);
+  s.turn+=2;verifyPledges(s);assert.equal(loan.status,'fulfilled');assert.equal(kingdom(s,sender).resources.gold,before[sender].gold+2);assert.equal(kingdom(s,receiver).resources.gold,before[receiver].gold-2);
+ }else{
+  assert.equal(kingdom(s,sender).resources.food,before[sender].food-2);assert.equal(kingdom(s,receiver).resources.food,before[receiver].food+2);
+  assert.equal(kingdom(s,sender).resources.iron,before[sender].iron-1);assert.equal(kingdom(s,receiver).resources.iron,before[receiver].iron+1);
+  if(type==='EXCHANGE'){assert.equal(kingdom(s,sender).resources.gold,before[sender].gold+price);assert.equal(kingdom(s,receiver).resources.gold,before[receiver].gold-price);}
+  else {assert.equal(s.treaties.find(t=>t.type==='recurring').payer,sender);s.turn++;resolveRecurringTrade(s);assert.equal(kingdom(s,sender).resources.food,before[sender].food-4);assert.equal(kingdom(s,receiver).resources.food,before[receiver].food+4);}
+ }
+ const once=JSON.stringify(s);resolveRecurringTrade(s);verifyPledges(s);assert.equal(resolveFormalResponse(s,'ashen',p.id,'wintermere').ok,false);assert.equal(JSON.stringify(s),once);
+ assert.match(formalDescription(p),direction==='request'?/Requested House gives/:/Proposer gives/);
+});
+test('requested trades retain AI economic judgment and counteroffers retain their transfer direction',()=>{
+ const {s,c}=setup(),r=submitFormalProposal(s,'ashen',request(c,{type:'EXCHANGE',giveResource:'food',giveAmount:100,receiveResource:'gold',receiveAmount:1},['wintermere']));
+ const before=JSON.stringify(s.kingdoms.map(k=>k.resources));resolveFormalResponse(s,'ashen',r.proposalId,'wintermere');const row=proposal(s,r.proposalId).responses.wintermere;
+ assert.equal(row.status,'counter');assert.equal(JSON.stringify(s.kingdoms.map(k=>k.resources)),before);
+ const counter=row.counterIntent,resources={...kingdom(s,'wintermere').resources};assert.equal(counter.giveItems[0].resource,'food');
+ assert.equal(answerFormalProposal(s,'ashen',r.proposalId,'wintermere','accept').ok,true);
+ for(const item of counter.giveItems)assert.equal(kingdom(s,'wintermere').resources[item.resource],resources[item.resource]-item.amount);
+ for(const item of counter.receiveItems)assert.equal(kingdom(s,'wintermere').resources[item.resource],resources[item.resource]+item.amount);
+});
+test('requested loans do not lend domestic reserves or bypass a ruler’s distrust',()=>{
+ for(const scarce of [false,true]){const {s,c}=setup();if(scarce)kingdom(s,'wintermere').resources.gold=20;else Object.assign(relation(s,'wintermere','ashen'),{trust:-80,reliability:0});
+  const r=submitFormalProposal(s,'ashen',request(c,{type:'LOAN',giveResource:'gold',giveAmount:20,receiveResource:'gold',receiveAmount:22},['wintermere'])),before=kingdom(s,'wintermere').resources.gold;
+  resolveFormalResponse(s,'ashen',r.proposalId,'wintermere');assert.notEqual(proposal(s,r.proposalId).responses.wintermere.status,'accepted');assert.equal(kingdom(s,'wintermere').resources.gold,before);assert.equal(s.pledges.length,0);
+ }
 });
