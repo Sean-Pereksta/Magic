@@ -5,6 +5,8 @@ export const CHECK_NAMES = ['GEMINI_API_KEY', 'TURNSTILE_SECRET', 'BUDGET'];
 const STATES = ['unknown', 'missing', 'present', 'verified', 'rejected', 'failed'];
 export const CHECK_LABELS = { unknown: 'Unknown — no readable result', missing: 'Missing from the running Worker', present: 'Present — not yet validated', verified: 'Verified during this request', rejected: 'Rejected by the service', failed: 'Present, but its operation failed' };
 const CODES = {
+  GEMINI_SCHEMA: ['Gemini request', 'Google rejected the response schema.', 'Deploy the updated Worker, which uses a smaller voice-only Council schema and native JSON Schema for Council intents.'],
+  GEMINI_THINKING: ['Gemini request', 'Google rejected the thinking configuration for this model.', 'Check GEMINI_MODEL and its supported thinking settings in the deployed Worker.'],
   CONFIG_MISSING: ['Worker configuration', 'Required Worker configuration is missing.', 'Open Cloudflare → iron-throne-diplomacy → Settings → Variables and Secrets for the two secrets, and Bindings for BUDGET. Deploy your changes. Build-only variables are unavailable at runtime.'],
   CLIENT_CONFIG: ['Game configuration', 'The game has no usable Gemini connection settings.', 'Check config.json for an HTTPS diplomacyEndpoint and a public turnstileSiteKey.'],
   CONFIG_LOAD_FAILED: ['Game configuration', 'The game could not load config.json.', 'Check that config.json was published with the game, then refresh the page.'],

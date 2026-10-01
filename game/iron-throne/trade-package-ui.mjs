@@ -8,9 +8,9 @@ export function mountTradeItems(form) {
     const box=document.createElement('div');box.id=`${side}-items`;initial.replaceWith(box);box.append(initial);
     containers[side]=box;
     const more=document.createElement('button');more.type='button';more.textContent='+ Add Resource';more.dataset.addResource=side;box.append(more);
-    initial.dataset.tradeRow=side;
+    initial.dataset.tradeRow=side;initial.classList.add('trade-item-row');
     initial.querySelector('input').dataset.amount='';initial.querySelector('select').dataset.resource='';
-    const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.dataset.removeResource=side;initial.append(remove);
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','Remove resource');remove.title='Remove resource';remove.dataset.removeResource=side;initial.append(remove);
   }
   function update(){
     for(const [side,box] of Object.entries(containers)){
@@ -28,7 +28,7 @@ export function mountTradeItems(form) {
     const label=document.createElement('label');label.textContent='Amount';const input=document.createElement('input');input.type='number';input.min='1';input.max='1000';input.step='1';input.value=String(item.amount);input.dataset.amount='';label.append(input);
     const resLabel=document.createElement('label');resLabel.textContent='Resource';const select=document.createElement('select');select.dataset.resource='';
     for(const resource of RESOURCES){const option=document.createElement('option');option.value=resource;option.textContent=resource;select.append(option);}select.value=item.resource;resLabel.append(select);
-    const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.dataset.removeResource=side;
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','Remove resource');remove.title='Remove resource';remove.dataset.removeResource=side;
     row.append(label,resLabel,remove);box.insertBefore(row,box.querySelector('[data-add-resource]'));update();
   }
   form.addEventListener('click',e=>{

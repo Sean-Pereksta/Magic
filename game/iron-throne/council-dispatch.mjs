@@ -1,28 +1,47 @@
 import { councilForActor, makeCouncilContext, validateCouncilResponse } from './alliance-council.mjs';
 import { isAiHouse } from './house-control.mjs';
 
-export function nextCouncilDispatch(s, actor) {
+export const councilDispatchKey = d => `${d.turn}:${d.councilId}:${d.entries[0].id}`;
+function automaticEntries(s, c, index) {
+  const opening=c.messages[index],reaction=c.messages[index+1],entries=[opening];
+  if (reaction && !reaction.initiated && reaction.turn === opening.turn && reaction.source === 'scripted' && isAiHouse(s,reaction.speakerHouseId)) entries.push(reaction);
+  return entries;
+}
+export function nextCouncilDispatch(s, actor, excluded = new Set()) {
   for (const c of s.allianceCouncils || []) {
     if (!councilForActor(s, actor, c.id)) continue;
-    const opening = c.messages.findLast(m => m.initiated && m.turn === s.turn && !m.voiced);
-    if (!opening) continue;
-    const entries = c.messages.filter(m => m.id >= opening.id);
-    if (!entries.length || entries.length > 3 || entries.some(m => m.turn !== s.turn || !isAiHouse(s, m.speakerHouseId))) continue;
-    return { councilId: c.id, turn: s.turn, sequence: c.sequence, reason: opening.reason,
-      entries: entries.map(m => ({ id: m.id, speakerHouseId: m.speakerHouseId, message: m.message })) };
+    for (let i = 0; i < c.messages.length; i++) {
+      const opening = c.messages[i];
+      if (!opening.initiated || opening.turn !== s.turn || opening.voiced || opening.source !== 'scripted' || !isAiHouse(s,opening.speakerHouseId)) continue;
+      // Only the automatic opening and its reaction belong to this dispatch.
+      // Later player dialogue must neither be overwritten nor starve this job.
+      const entries = automaticEntries(s,c,i);
+      const dispatch = { councilId: c.id, turn: s.turn, reason: opening.reason,
+        entries: entries.map(m => ({ id: m.id, speakerHouseId: m.speakerHouseId, message: m.message })) };
+      if (!excluded.has(councilDispatchKey(dispatch))) return dispatch;
+    }
   }
   return null;
 }
 export function councilDispatchCurrent(s, actor, dispatch) {
+  if (!dispatch || !Array.isArray(dispatch.entries) || !dispatch.entries.length || dispatch.entries.length > 3 ||
+    dispatch.entries.some(e => !e || !Number.isSafeInteger(e.id) || typeof e.message !== 'string')) return false;
   const c = councilForActor(s, actor, dispatch.councilId);
-  return !!c && s.turn === dispatch.turn && c.sequence === dispatch.sequence && dispatch.entries.every(e =>
-    isAiHouse(s,e.speakerHouseId) && c.messages.some(m => m.id === e.id && m.message === e.message));
+  const index=c?.messages.findIndex(m=>m.id===dispatch.entries[0].id&&m.initiated&&m.reason===dispatch.reason) ?? -1;
+  if (!c || s.turn !== dispatch.turn || index < 0) return false;
+  const entries=automaticEntries(s,c,index);
+  return entries.length===dispatch.entries.length && entries.every((m,i)=>{
+    const e=dispatch.entries[i];
+    return isAiHouse(s,e.speakerHouseId)&&m.id===e.id&&m.speakerHouseId===e.speakerHouseId&&m.turn===dispatch.turn&&!m.voiced&&m.source==='scripted'&&m.message===e.message;
+  });
 }
 export function makeCouncilDispatchContext(s, c, actor, dispatch) {
   if (!councilDispatchCurrent(s, actor, dispatch)) return null;
   const context = makeCouncilContext(s, c, actor, 'Voice the supplied council event and the other rulers’ reactions.');
   if (!context) return null;
-  context.history = context.history.filter(m => !dispatch.entries.some(e => e.speakerHouseId === m.speakerHouseId && e.message.slice(0,450) === m.message && m.turn === dispatch.turn));
+  // Subsequent dialogue is not part of an earlier automatic opening.
+  context.history = c.messages.filter(m => m.id < dispatch.entries[0].id && m.turn >= s.turn - 2).slice(-10)
+    .map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450)}));
   context.world.conversationMode = 'ai-initiated-council';
   context.world.dispatch = { reason: dispatch.reason, turn: dispatch.turn, entries: dispatch.entries };
   while (new TextEncoder().encode(JSON.stringify(context)).length > 22000 && context.history.length) context.history.shift();

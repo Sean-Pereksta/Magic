@@ -1,4 +1,5 @@
 import { reorganizeArmy } from './army-organization.mjs';
+import { applyCouncilDispatch } from './council-dispatch.mjs';
 import { queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './naval.mjs';
 import { initializeSequential } from './sequential.mjs';
 import { hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, recordGeneralConversation } from './generals.mjs';
@@ -21,7 +22,7 @@ import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, reso
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalResolve','formalAnswer','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalResolve','formalAnswer','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilVoice','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -83,6 +84,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       council.read[a]=council.sequence;result=ok();break;
     }
     case 'councilChat': result=sendCouncilMessage(s,a,p.councilId,p.message,p.response,p.location);break;
+    case 'councilVoice': result=applyCouncilDispatch(s,a,p.dispatch,p.response)?ok():fail('The council dispatch changed.');break;
     case 'found':{
       // Work on a copy: any placement/AI failure leaves the authoritative state untouched.
       const next=structuredClone(s);result=foundCity(next,a,p.tile);
