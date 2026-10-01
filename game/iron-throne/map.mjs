@@ -1,3 +1,4 @@
+import { strategicMarkers } from './strategic-locations.mjs';
 import { drawOrderIndicators } from './map-orders.mjs';
 import { drawFleets } from './naval-art.mjs';
 import { capitalSeparation, foundedCapitals } from './founding.mjs';
@@ -25,7 +26,8 @@ export function pixelHex(x, y) {
   return tileId(rq, rr);
 }
 export class WorldMap {
-  constructor(canvas, { getState, onSelect }) {
+  constructor(canvas, { getState, onSelect, onStrategicMarker=null, selectionOnly=false }) {
+    this.selectionOnly=selectionOnly; this.onStrategicMarker=onStrategicMarker; this.hovered=null;
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.getState = getState; this.onSelect = onSelect;
     this.art = new MapArt(); this.assets=new AssetCache(()=>this.draw()); this.effects = new BattleEffects(); this.reducedEffects = false; this.motion = matchMedia('(prefers-reduced-motion: reduce)');
     this.zoom = 1; this.x = 0; this.y = 0; this.selected = '5,6'; this.armyId = null; this.pointers = new Map(); this.drag = null; this.moved = false; this.frame = null;
@@ -36,7 +38,10 @@ export class WorldMap {
       this.moved = this.pointers.size > 1; this.pinch = this.pinchDistance();
     });
     canvas.addEventListener('pointermove', e => {
-      if (!this.pointers.has(e.pointerId)) return;
+      if (!this.pointers.has(e.pointerId)) {
+        if(this.selectionOnly){const rect=canvas.getBoundingClientRect();this.hovered=pixelHex((e.clientX-rect.left-this.width/2)/this.zoom+this.x,(e.clientY-rect.top-this.height/2)/this.zoom+this.y);this.draw();}
+        return;
+      }
       const old = this.pointers.get(e.pointerId); this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 2) {
         const d = this.pinchDistance(); if (this.pinch > 0) this.setZoom(this.zoom * d / this.pinch); this.pinch = d; this.moved = true;
@@ -54,9 +59,10 @@ export class WorldMap {
         const rect = canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left - this.width / 2) / this.zoom + this.x;
         const y = (e.clientY - rect.top - this.height / 2) / this.zoom + this.y;
-        const badge = this.hits?.findLast(h => x >= h.left && x <= h.right && y >= h.top && y <= h.bottom);
+        const badge = !this.selectionOnly && this.hits?.findLast(h => x >= h.left && x <= h.right && y >= h.top && y <= h.bottom);
         const id = badge?.tile || pixelHex(x, y);
-        if (this.getState().tiles[id]) this.onSelect(id);
+        if(badge?.strategic && this.onStrategicMarker)this.onStrategicMarker(badge.strategic);
+        else if (this.getState().tiles[id]) this.onSelect(id);
       }
       if (!this.pointers.size) this.drag = null;
       else { const p = [...this.pointers.values()][0]; this.drag = { ...p, startX: p.x, startY: p.y }; this.moved = true; }
@@ -65,8 +71,8 @@ export class WorldMap {
     canvas.addEventListener('wheel', e => { e.preventDefault(); this.setZoom(this.zoom * Math.exp(-e.deltaY * .001)); }, { passive: false });
     canvas.addEventListener('keydown', e => {
       const delta = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-      if (delta) { e.preventDefault(); const s = this.getState(), t = s.tiles[this.selected], next = s.tiles[tileId(t.q + delta[0], t.r + delta[1])]; if (next) { this.selected = next.id; this.center(next.id); this.onSelect(next.id); } }
-      if (e.key === 'Enter') { e.preventDefault(); this.onSelect(this.selected); }
+      if (delta) { e.preventDefault(); const s = this.getState(), t = s.tiles[this.selected]||s.tiles[pixelHex(this.x,this.y)]||Object.values(s.tiles)[0], next = s.tiles[tileId(t.q + delta[0], t.r + delta[1])]; if (next) { this.selected = next.id; this.center(next.id); this.onSelect(next.id); } }
+      if (e.key === 'Enter' && this.selected) { e.preventDefault(); this.onSelect(this.selected); }
       if (e.key === '+' || e.key === '=') this.setZoom(this.zoom * 1.2);
       if (e.key === '-') this.setZoom(this.zoom / 1.2);
       if (e.key === 'Home') { e.preventDefault(); this.home(); }
@@ -208,6 +214,13 @@ export class WorldMap {
       c.font=t.capital?'bold 10px Georgia':'9px Georgia';c.textAlign='center';const w=c.measureText(label).width;
       c.fillStyle='#112733eb';c.beginPath();c.roundRect(-w/2-7,-10,w+14,16,3);c.fill();c.fillStyle=colors[t.owner]||'#eddfb9';c.fillRect(-w/2-3,5,w+6,.8);c.fillText(label,0,1);c.restore();
     }
+    if(!this.selectionOnly)for(const marker of strategicMarkers(s,localHouseId(s))){
+      const t=s.tiles[marker.tileId],p=t&&hexPixel(t);if(!p||!inView(p))continue;
+      const x=p.x+17,y=p.y-17;
+      c.save();c.fillStyle='#142b36ee';c.strokeStyle='#efd68b';c.lineWidth=1.5;c.beginPath();c.arc(x,y,10,0,Math.PI*2);c.fill();c.stroke();c.fillStyle='#fff0b4';c.font='bold 12px system-ui';c.textAlign='center';c.fillText(['defend','hold','reinforce'].includes(marker.type)?'⛨':marker.type==='rally'?'⚑':['move','flank'].includes(marker.type)?'➜':'⚔',x,y+4);c.restore();
+      this.hits.push({tile:marker.tileId,left:x-10,right:x+10,top:y-10,bottom:y+10,strategic:marker});
+    }
+    if(this.selectionOnly&&s.tiles[this.hovered]&&this.hovered!==this.selected){const p=hexPixel(s.tiles[this.hovered]);this.hex(p.x,p.y,24);c.strokeStyle='#e1d9b9';c.lineWidth=1.5;c.stroke();}
     // Final world passes: selection above buildings and labels, then troops.
     const selected=s.tiles[this.selected];
     if(selected){const p=hexPixel(selected);const pulse=reduced?0:Math.max(0,(this.pulseUntil-now)/650);this.hex(p.x,p.y,24);c.lineWidth=4;c.strokeStyle='#172d38';c.stroke();c.lineWidth=2;c.strokeStyle='#fff0b4';c.stroke();

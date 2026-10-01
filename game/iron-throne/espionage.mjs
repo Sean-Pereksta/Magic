@@ -139,7 +139,7 @@ export function discoverOperation(s,a,o) {
   let text=`${kingdom(s,a.assignedHouse).name} appears to be preparing a military operation.`;
   if(detail>=2){
     Object.assign(snapshot,{target:o.target,participants:acceptedMembers(o).map(p=>p.house)});
-    text=`${snapshot.participants.map(id=>kingdom(s,id).name).join(' and ')} are coordinating against ${kingdom(s,o.target).name}.`;
+    text=`${snapshot.participants.map(id=>kingdom(s,id).name).join(' and ')} are coordinating against ${kingdom(s,o.target)?.name||'a strategic position'}.`;
     if(o.target===a.owner&&!s.intelligence.reports.some(r=>r.owner===a.owner&&r.operationId===o.id&&r.detail>=2)){
       changeRelation(s,a.owner,a.assignedHouse,{trust:-6,grievance:8,wariness:8},'Verified intelligence revealed a hostile shared operation.');
       recordPoliticalMemory(s,a.owner,a.assignedHouse,'hostile-plan','Intelligence identified hostile coalition preparations.',8);

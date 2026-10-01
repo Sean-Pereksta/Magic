@@ -17,10 +17,11 @@ import { recruitAmbassador, assignAmbassador, ambassadorIncident, appendConversa
 import { commitDeal, deliverPledge, scriptedReply, validateIntent, validateResponse, acceptRulerMemories, describeIntent } from './diplomacy.mjs';
 import { court, isHumanHouse } from './house-control.mjs';
 import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
+import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, answerFormalProposal, recordFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalResolve','formalAnswer','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -51,6 +52,12 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   let result;
   const validTarget=()=>houseIds.includes(target)&&target!==a&&alive(s,target);
   switch(c.type){
+    case 'formalSubmit':result=submitFormalProposal(s,a,p);break;
+    case 'formalRatify':result=ratifyFormalProposal(s,a,p.id);break;
+    case 'formalDismiss':result=dismissFormalProposal(s,a,p.id);break;
+    case 'formalResolve':result=resolveFormalResponse(s,a,p.id,p.house);break;
+    case 'formalAnswer':result=answerFormalProposal(s,a,p.id,p.house,p.decision);break;
+    case 'formalVoice':result=recordFormalVoice(s,a,p.id,p.house,p.message);break;
     case 'shipBuild':result=queueShip(s,a,p.tile,p.ship);break;
     case 'shipCancel':result=cancelShip(s,a,p.id);break;
     case 'fleetEmbark':result=orderEmbark(s,a,p.army,p.fleet,p.count??null);break;
@@ -75,7 +82,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       if(!council)return fail('This council is unavailable.');
       council.read[a]=council.sequence;result=ok();break;
     }
-    case 'councilChat': result=sendCouncilMessage(s,a,p.councilId,p.message,p.response);break;
+    case 'councilChat': result=sendCouncilMessage(s,a,p.councilId,p.message,p.response,p.location);break;
     case 'found':{
       // Work on a copy: any placement/AI failure leaves the authoritative state untouched.
       const next=structuredClone(s);result=foundCity(next,a,p.tile);
@@ -132,7 +139,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       if(!validTarget()||typeof p.message!=='string'||!p.message.trim()||p.message.length>TEXT_LIMIT)return fail('Enter a message of up to 600 characters.');
       if(p.proposal&&(!validateIntent(p.proposal)||p.message!==describeIntent(validateIntent(p.proposal))))return fail('Submit the requested structured terms without a separate chat message.');
       const spent=consumeDiplomaticMessage(s,target,a,p.proposal||null,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
-      if(!p.proposal)expireFollowups(s,a,privateConversation(target));
+      if(!p.proposal){expireFollowups(s,a,privateConversation(target));stageConversationProposal(s,a,p.message,{ruler:target});}
       appendConversation(s,target,'player',p.message,{actorHouseId:a,kind:p.proposal?'proposal':''});
       if(isHumanHouse(s,target)){
         discussMarriage(s,target,p.message,a);

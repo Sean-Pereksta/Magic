@@ -1,3 +1,4 @@
+import { normalizeLocation, OBJECTIVE_TYPES } from './strategic-locations.mjs';
 import { vassalBond } from './vassal-role.mjs';
 import { worstWarPosition, qualitativeWarPosition } from './war-desperation.mjs';
 import { alive, atWar, kingdom, relation, treaty } from './core.mjs';
@@ -7,6 +8,7 @@ import { appendConversation, diplomaticCapacity, borderThreat } from './living.m
 import { validateIntent, describeIntent } from './diplomacy.mjs';
 import { councilParticipants, councilActive, ownCouncil, appendCouncil } from './council-state.mjs';
 import { expireFollowups, grantFollowup, topicIntent } from './proposal-followup.mjs';
+import { stageConversationProposal } from './formal-proposals.mjs';
 
 export const COUNCIL_MOODS = ['Cooperative','Cordial','Uneasy','Somber','Heated','Uncontrolled'];
 const relationFields = ['opinion','trust','reliability','respect','grievance','fear','wariness'];
@@ -53,18 +55,24 @@ export function councilFacts(s, c) {
       p.operationId && s.cooperation?.operations.some(o => o.id === p.operationId && c.participants.every(id => o.participants.some(p => p.house === id && p.status === 'accepted'))))
       .slice(-8).map(p => ({debtor:p.debtor,creditor:p.creditor,type:p.intent.type,status:p.status,deadline:p.deadline})),
     operations:(s.cooperation?.operations||[]).filter(o => c.participants.every(id => o.participants.some(p => p.house === id && p.status === 'accepted'))).slice(-3)
-      .map(o => ({name:o.name,status:o.status,attackStart:o.attackStart,attackEnd:o.attackEnd,roles:o.participants.filter(p => p.status === 'accepted').map(p => ({house:p.house,role:p.role}))})),
+      .map(o => ({name:o.name,status:o.status,targetTile:o.targetTile,targetHouse:o.targetHouse??o.target,objectiveType:o.objectiveType||'attack',attackStart:o.attackStart,attackEnd:o.attackEnd,roles:o.participants.filter(p => p.status === 'accepted').map(p => ({house:p.house,role:p.role}))})),
     events:events.map(e => ({turn:e.turn,attacker:e.attacker,defender:e.defender,winner:e.winner,action:e.action})),
     observedForces:s.armies.filter(a => views.every(v => v.armies.some(x => x.id === a.id))).slice(0,12).map(a => ({owner:a.owner,tile:a.tile})),
     locations:visibleTiles.filter(t => t.building).slice(0,16).map(t => ({id:t.id,owner:t.owner,building:t.building,name:t.name})),
     knowledge:'Only listed observations are shared knowledge. Never reveal stores, spy reports, exact troop totals, private conversations, or unlisted plans. Player claims are unverified. Concerns are voluntary coarse disclosures by their owner.'};
 }
 
-export function makeCouncilContext(s, c, actor, message) {
+export function makeCouncilContext(s, c, actor, message, location=null, formalDecision=null) {
   const facts = councilFacts(s,c);
   if (!facts) return null;
   const context = {mode:'allianceCouncil',turn:s.turn,actorHouseId:actor,councilId:c.id,participants:c.participants,
-    message:message.slice(0,600),history:c.messages.filter(m=>m.turn>=s.turn-2).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450)})),world:{...structuredClone(facts),historicalDiscussion:c.messages.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
+    message:message.slice(0,600),history:c.messages.filter(m=>m.turn>=s.turn-2).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450),...(m.location?{location:normalizeLocation(s,m.location)}:{})})),world:{...structuredClone(facts),locationProposal:normalizeLocation(s,location),historicalDiscussion:c.messages.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
+  if(formalDecision){
+    const proposal=s.cooperation?.formalProposals?.find(p=>p.id===formalDecision.proposalId&&p.councilId===c.id&&p.proposer===actor),row=proposal?.responses[formalDecision.house];
+    if(!row||!proposal.approved||['waiting','awaiting-human'].includes(row.status))return null;
+    context.world.formalDecision={house:formalDecision.house,status:row.status,reason:row.message,reasonCodes:row.reasonCodes,targetTile:proposal.targetTile,intent:proposal.intent,alternativeIntents:row.alternativeIntents||[],counterIntent:row.counterIntent||null};
+    for(const participant of context.world.participants)participant.ai=participant.id===formalDecision.house&&participant.ai;
+  }
   // Twelve-House games still use one bounded request.
   const bytes = () => new TextEncoder().encode(JSON.stringify(context)).length;
   while (bytes() > 22000 && context.history.length) context.history.shift();
@@ -94,8 +102,9 @@ export function validateCouncilResponse(raw, participants, aiIds = participants)
   } catch { return null; }
 }
 
-export function scriptedCouncil(s,c,actor,message) {
-  const facts = councilFacts(s,c), intent = topicIntent(s,message), responses = [];
+export function scriptedCouncil(s,c,actor,message,location=null) {
+  location=normalizeLocation(s,location)||c.messages.findLast(m=>m.speakerHouseId===actor&&m.message===message&&m.turn===s.turn)?.location||null;
+  const facts = councilFacts(s,c), intent = location?(['defend','hold','reinforce','rally','flank','move'].includes(location.objectiveType)?validateIntent({type:'POSITION',targetId:location.targetTile}):null):topicIntent(s,message), responses = [];
   if (!facts) return {responses};
   const eligible = facts.participants.filter(p => p.ai && p.id !== actor);
   const rel = (a,b) => { const row = facts.relationships.find(r => r[0] === a && r[1] === b); return Object.fromEntries(relationFields.map((f,i) => [f,row?.[i+2] || 0])); };
@@ -110,6 +119,7 @@ export function scriptedCouncil(s,c,actor,message) {
     else if (rival) {stance='conditional';text=`I want assurances from ${name(s,rival.id)} first. Our history gives me little confidence that their banners will move when ours do.`;}
     else if (intent) {stance='support';text=p.personality.honor >= .7?'I will consider a shared duty, but a ruler must know what is being promised. Put the terms before me.':'There may be advantage for my House in this. Send me your proposal; the burden and reward must be clear.';}
     else {text=facts.mood==='Somber'?'We have suffered enough to weigh our next move carefully. Which frontier needs our help first?':'Name the objective and the part you ask my House to play. Our common cause still leaves each of us duties at home.';}
+    if(location)text=`${OBJECTIVE_TYPES[location.objectiveType]} at Hex ${location.targetTile}: ${text} This identifies a position; its unseen conditions remain unknown.`;
     return {speakerHouseId:p.id,message:text,stance,...(stance==='support'?{requestedIntent:intent}:{})};
   });
   // Prefer different positions; do not make every ruler repeat assent.
@@ -126,17 +136,19 @@ export function councilForActor(s,actor,id,create=false) {
   const c = id ? s.allianceCouncils?.find(c=>c.id===id) : ownCouncil(s,actor,create);
   return c && c.participants.includes(actor) && councilActive(s,c) ? c : null;
 }
-export function beginCouncilMessage(s,actor,id,message) {
+export function beginCouncilMessage(s,actor,id,message,location=null) {
   const c = councilForActor(s,actor,id,true);
   if (!c || s.outcome || s.phase==='founding' || !alive(s,actor)) return fail('This alliance council is no longer active.');
   if (typeof message !== 'string' || !message.trim() || message.length > 600) return fail('Enter a message of up to 600 characters.');
+  const attached=location==null?null:normalizeLocation(s,location);if(location!=null&&!attached)return fail('Choose a valid action and map location.');
   const record = court(s,actor), used = record.messages.turn===s.turn?record.messages:{turn:s.turn,regular:0,hosts:{}};
   if (used.regular >= diplomaticCapacity(s,actor)) return fail('Your shared dispatches are used for this turn.');
   record.messages = used; if (!s.controllers) s.diplomacy.messages = used; used.regular++;
   // A council uses one shared dispatch, never one per recipient or an unrelated
   // resident ambassador's private allowance.
   for (const member of c.participants) expireFollowups(s,member,c.id);
-  const entry = appendCouncil(s,c,actor,message.trim()); c.read[actor]=c.sequence;
+  const entry = appendCouncil(s,c,actor,message.trim(),attached?{location:attached}:{}); c.read[actor]=c.sequence;
+  stageConversationProposal(s,actor,message,{councilId:c.id,location:attached});
   return {ok:true,councilId:c.id,entryId:entry.id};
 }
 export function finishCouncilMessage(s,actor,start,message,raw) {
@@ -152,8 +164,8 @@ export function finishCouncilMessage(s,actor,start,message,raw) {
   c.read[actor]=c.sequence;
   return {ok:true};
 }
-export function sendCouncilMessage(s,actor,id,message,response=null) {
-  const start=beginCouncilMessage(s,actor,id,message);return start.ok?finishCouncilMessage(s,actor,start,message,response):start;
+export function sendCouncilMessage(s,actor,id,message,response=null,location=null) {
+  const start=beginCouncilMessage(s,actor,id,message,location);return start.ok?finishCouncilMessage(s,actor,start,message,response):start;
 }
 
 export function initiateCouncilDiscussions(s) {

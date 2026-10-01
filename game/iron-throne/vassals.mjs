@@ -7,7 +7,7 @@ import { appendConversation } from './living.mjs';
 import { armiesOf, atWar, declareWar, distance, kingdom, orderArmy, relation, settlements, sizeOf, strength, treaty } from './core.mjs';
 
 const fail=error=>({ok:false,error});
-const standingCommand=o=>['defend','frontier'].includes(o.kind)||o.kind==='reinforce'&&!!o.army;
+const standingCommand=o=>['defend','hold','frontier'].includes(o.kind)||o.kind==='reinforce'&&!!o.army;
 import { vassalBond } from './vassal-role.mjs';
 export { vassalBond } from './vassal-role.mjs';
 export const vassalOrder=(s,vassal)=>s.cooperation?.vassalOrders?.find(o=>o.vassal===vassal&&o.status!=='Completed');
@@ -32,6 +32,7 @@ export function issueVassalCommand(s,liege,vassal,raw){
   if(raw.army&&(raw.kind!=='reinforce'||!support||support.owner!==liege&&!['alliance','vassalage'].some(type=>treaty(s,liege,support.owner,type))))return fail('Choose an observed friendly army to reinforce.');
   if(!tile||tile.fog==='unknown')return fail('Observe the objective before issuing a command.');
   if(['attack','siege'].includes(raw.kind)&&(!tile.owner||!atWar(s,liege,tile.owner)||!atWar(s,vassal,tile.owner)))return fail('Both Houses must already be at war with this target. Arrange war separately.');
+  if(raw.kind==='siege'&&!['city','town','fort'].includes(tile.building))return fail('A siege requires an observed city, town or fort.');
   const old=vassalOrder(s,vassal),oldPlan=old&&s.intrigue.plans.find(p=>p.id===old.planId);
   // Replace the old objective only after the new plan is legal and has capacity.
   if(s.intrigue.plans.filter(p=>p.actor===vassal&&activePlan(p)&&p!==oldPlan).length>=4)return fail('The vassal must finish an existing strategic commitment first.');

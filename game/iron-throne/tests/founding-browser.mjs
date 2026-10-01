@@ -23,7 +23,7 @@ try{
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>{errors.push(`Unexpected prompt: ${dialog.message()}`);void dialog.dismiss();});
   await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{}}));
   await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#preset').selectOption('great-basin');await page.locator('#start-game').click();
-  assert.equal(await page.locator('#turn').textContent(),'Founding');assert.equal(await page.locator('#end-turn').isDisabled(),true);assert.equal(await page.locator('#preset option').count(),7);
+  assert.equal(await page.locator('#turn').textContent(),'Founding');assert.equal(await page.locator('#end-turn').isDisabled(),true);assert.equal(await page.locator('#preset option').count(),8);
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.equal(saved.mapProfile,'great-basin');assert.equal(saved.turn,0);
   await select(page,'0,0');assert.equal(await page.locator('[data-found-city]').isDisabled(),true);assert.match(await page.locator('#panel').textContent(),/cannot be founded on water/);
   await page.reload();await page.locator('#resume').click();assert.equal(await page.locator('#turn').textContent(),'Founding');

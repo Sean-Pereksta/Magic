@@ -57,7 +57,7 @@ function assess(s, k) {
   const wary = (s.intelligence?.reports||[]).filter(r=>r.owner===k.id&&r.detail>=2&&r.snapshot.target===k.id&&(r.operationId||['invasion','jointWar','infrastructure'].includes(r.snapshot.type))&&(!r.snapshot.status||['Preparing','Committed','Executing'].includes(r.snapshot.status))&&s.turn-r.turn<=6).at(-1)?.house || Object.entries(k.relations).filter(([id, r]) => alive(s, id) && r.wariness >= 30 && r.trust < 35)
     .sort((a, b) => b[1].wariness - a[1].wariness)[0]?.[0];
   const pledges = s.pledges.filter(p => p.debtor === k.id && p.status === 'pending' && !p.breached && !p.operationId &&
-    ['DEFEND', 'POSITION', 'WITHDRAW', 'JOINT_WAR', 'BUILD_DEFENSES'].includes(p.intent.type)).sort((a, b) => a.deadline - b.deadline);
+    (['DEFEND', 'POSITION', 'WITHDRAW', 'JOINT_WAR', 'BUILD_DEFENSES'].includes(p.intent.type)||p.formalProposalId&&['PLEDGE_ATTACK','PLEDGE_DEFEND','PLEDGE_BUILD','PLEDGE_WITHDRAW'].includes(p.intent.type))).sort((a, b) => a.deadline - b.deadline);
   const { income } = economyProjection(s, k.id);
   const needs=economicNeeds(s,k.id);
   const reserves=Object.fromEntries(needs.map(n=>[n.resource,n.reserve+n.obligations]));
@@ -156,7 +156,7 @@ function buildingCandidates(s, k, c) {
     town: !c.crisis && !c.threats.length && k.population >= (strategic?50:70) && c.towns.length + pending('town') < settlementAmbition(s,k,c) ? 60 + k.ambition * 15 + (difficulty(s).expansion-1)*55 + (grow?28:0) : 0
   };
   for(const p of plans) if(p.building && weights[p.building]>0) weights[p.building]+=35;
-  const defensePledge = c.pledges.find(p => p.intent.type === 'BUILD_DEFENSES');
+  const defensePledge = c.pledges.find(p => ['BUILD_DEFENSES','PLEDGE_BUILD'].includes(p.intent.type));
   const candidates = [];
   const sites = weights.town ? [...c.tiles, ...Object.values(s.tiles).filter(t => !t.owner && passable(t) && neighbors(s, t).some(n => n.owner === k.id))] : c.tiles;
   for (const [type, weight] of Object.entries(weights)) {
@@ -294,11 +294,11 @@ function directArmies(s, k, c) {
     }
     if(!c.threats.length&&a.commandId&&s.commanders?.roster.some(g=>g.commandId===a.commandId&&g.objective))continue;
     if (scoutOrder(world,k,a,c)) { recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target}); continue; }
-    const pledge = c.pledges.find(p => p.intent.type !== 'BUILD_DEFENSES' && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
+    const pledge = c.pledges.find(p => !['BUILD_DEFENSES','PLEDGE_BUILD'].includes(p.intent.type) && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
     if (pledge) {
-      const target = pledge.intent.type === 'WITHDRAW' ? refuge : pledge.intent.type === 'JOINT_WAR' ?
+      const target = ['WITHDRAW','PLEDGE_WITHDRAW'].includes(pledge.intent.type) ? refuge : pledge.intent.type === 'JOINT_WAR' ?
         settlements(s, pledge.intent.targetId).sort((x, y) => distance(location, x) - distance(location, y))[0] : s.tiles[pledge.intent.targetId];
-      if (target && command(world, k, a, target)) { assignedPledges.add(pledge.id); continue; }
+      if (target && command(world, k, a, target,pledge.intent.type==='PLEDGE_ATTACK'?'attack':'move')) { assignedPledges.add(pledge.id); continue; }
     }
     if (c.threats.length) {
       const danger = c.threats[0], invader = nearby(s, c.enemies, danger.tile, 5).sort((x, y) => distance(location, s.tiles[x.tile]) - distance(location, s.tiles[y.tile]))[0];

@@ -69,6 +69,21 @@ test('multi-turn boarding remains a player order when a general replans next tur
   assert.equal(orderEmbark(s,'ashen',a.id,f.id).ok,true);const path=[...a.path];
   s.turn++;prepareGenerals(s,'ashen');assert.equal(a.embarkOrder.fleet,f.id);assert.deepEqual(a.path,path);
 });
+test('dangerous but legal ruler attacks execute despite personality, morale and casualty warnings',()=>{
+ const s=createGame(),g=hire(s),a=s.armies[0],enemy=s.armies.find(a=>a.owner==='wintermere');
+ g.personality='protective';a.tile='7,6';a.morale=.4;enemy.tile='8,6';enemy.units=Object.fromEntries(Object.keys(enemy.units).map(u=>[u,100]));
+ Object.assign(s.tiles['7,6'],{terrain:'plains',owner:'ashen',river:false});
+ Object.assign(s.tiles['8,6'],{terrain:'plains',owner:'wintermere',building:'fort',walls:100,river:false});
+ declareWar(s,'ashen','wintermere');refreshKnowledge(s);orderArmy(s,'ashen',a.id,a.tile,'hold');
+ const result=approveGeneralOrder(s,'ashen',g.id,{kind:'attack',targets:['8,6'],lossLimit:35,allowSplit:false,source:'explicit'});
+ assert.equal(result.ok,true,result.error);assert.equal(a.order,'attack');assert.equal(a.target,'8,6');assert.ok(a.path.length);assert.ok(g.objective.advice);assert.notEqual(g.objective.status,'Blocked');
+ assert.equal(g.objective.source,'explicit');assert.ok(parseSave(JSON.stringify(s)));
+});
+test('an unreachable ruler command reports a real route block and clears obsolete movement',()=>{
+ const s=createGame(),g=hire(s),a=s.armies[0];refreshKnowledge(s);
+ const result=approveGeneralOrder(s,'ashen',g.id,{kind:'move',targets:['0,0'],lossLimit:35,allowSplit:false});
+ assert.equal(result.ok,true);assert.equal(g.objective.status,'Blocked');assert.match(g.objective.reason,/water|route|land|reach/i);assert.equal(a.path.length,0);
+});
 test('battle calculations use one command bonus and imported bonuses cannot be forged',()=>{
   const s=createGame(),g=hire(s,'ashen',4,'battle'),a=s.armies[0],enemy=s.armies[1];syncCommanders(s);
   const plain=structuredClone(a);delete plain.commandBonus;

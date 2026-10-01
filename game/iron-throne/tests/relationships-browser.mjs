@@ -50,10 +50,13 @@ try{
     assert.equal(await page.locator('#marriage-rulerMember').inputValue(),'daughter');
     await page.locator('#marriage-shipmentResource').selectOption('iron');
     await page.locator('#marriage-shipmentAmount').fill('2');await page.locator('#marriage-shipmentTurns').fill('3');
-    await page.locator('#offer-form button[type="submit"]').click();
-    await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
-    assert.match(await page.locator('#proposals').textContent(),/2 iron per turn for 3 turns/);
-    const before=await saved();await page.locator('#proposals [data-ratify], #proposals [data-ratify-counter]').first().click();
+    const before=await saved();await page.locator('#offer-form button[type="submit"]').click();
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation.formalProposals?.at(-1)?.status==='resolved');
+    await page.locator('.treaty-drawer-close').click();
+    assert.match(await page.locator('#private-formal-proposals').textContent(),/2 iron per turn for 3 turns/);
+    const response=(await saved()).cooperation.formalProposals.at(-1).responses.wintermere;
+    if(response.status==='counter')await page.locator('[data-formal-answer][data-decision=accept]').click();
+    else assert.equal(response.status,'accepted',response.message);
     const after=await saved();assert.equal(after.royalBonds.marriages.length,1);
     const m=after.royalBonds.marriages[0];assert.equal(m.status,'active');assert.equal(m.terms.shipmentAmount,2);assert.equal(m.terms.shipmentTurns,3);
     assert.equal(after.kingdoms[0].resources.gold,before.kingdoms[0].resources.gold-m.terms.giveAmount);

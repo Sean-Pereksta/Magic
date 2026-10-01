@@ -60,6 +60,11 @@ try{
   await page.locator('#general-chat-form textarea').fill('Why have you stopped?');await page.locator('#general-chat-form button').click();
   await page.waitForFunction(()=>document.querySelector('.general-history').textContent.includes('Your manual orders remain authoritative'));
   assert.equal(models,1);assert.equal((await saved()).armies[0].order,'hold');
+  await page.locator('[data-toggle-orders]').click();
+  await page.locator('#general-order-form [name=kind]').selectOption('move');await page.locator('#general-order-form [name=targets]').selectOption(target.id);
+  await page.locator('#general-order-form [type=submit]').click();state=await saved();assert.equal(state.armies[0].target,target.id);assert.equal(state.commanders.roster[0].objective.source,'explicit');assert.equal(await page.locator('[data-general-approve]').count(),0);
+  await page.locator('#general-chat-form textarea').fill(`Hold ${army.tile}`);await page.locator('#general-chat-form button').click();await page.locator('.interpreted-order').waitFor();assert.equal((await saved()).armies[0].target,target.id);
+  await page.locator('[data-general-dismiss-draft]').click();assert.equal((await saved()).armies[0].target,target.id);
   await page.locator('[data-general-close]').click();await page.locator('[data-tab="realm"]').click();
   const before=(await saved()).armies.map(a=>a.units);await page.locator('[data-general-dismiss]').click();state=await saved();
   assert.equal(state.commanders.roster.length,0);assert.deepEqual(state.armies.map(a=>a.units),before);assert.equal(state.armies[0].commandId,undefined);

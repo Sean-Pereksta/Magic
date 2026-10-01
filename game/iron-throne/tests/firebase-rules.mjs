@@ -86,7 +86,7 @@ try{
  await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',playingCommand.id)),playingCommand));
  await assertFails(setDoc(doc(a,path('iron_throne_commands','waiting-house')),{...playingCommand,id:'waiting-house',uid:'a',actorHouseId:'ashen'}));
  await assertFails(setDoc(doc(b,path('iron_throne_commands','late-activation')),{...playingCommand,id:'late-activation',activationId:complete.activationId-1}));
- for(const type of ['shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation']){
+ for(const type of ['formalSubmit','formalRatify','formalDismiss','formalResolve','formalAnswer','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation']){
    const id=`planning-${type}`;
    await assertSucceeds(setDoc(doc(b,path('iron_throne_commands',id)),{...playingCommand,id,type,args:{}}));
    await assertFails(setDoc(doc(b,path('iron_throne_commands',`${id}-forged`)),{...playingCommand,id:`${id}-forged`,type,actorHouseId:'ashen',args:{}}));

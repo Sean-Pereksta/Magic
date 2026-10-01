@@ -7,7 +7,8 @@ export const GENERAL_QUALITIES = [
   {name:'Legendary',cost:450,upkeep:4,bonus:.25}
 ];
 export const GENERAL_PERSONALITIES=['aggressive','cautious','methodical','opportunistic','protective'];
-export const COMMAND_KINDS=['attack','defend','rally','reinforce','siege','withdraw','frontier'];
+export const COMMAND_KINDS=['attack','defend','hold','rally','reinforce','siege','withdraw','move','frontier'];
+export const COMMAND_LABELS={attack:'Attack',defend:'Defend / Protect Settlement',hold:'Hold Position',rally:'Rally',reinforce:'Reinforce / Support Allied Army',siege:'Siege',withdraw:'Withdraw',move:'Move to Position',frontier:'Protect Frontier'};
 export const COMMAND_STATUSES=['Preparing','Marching','Engaged','Holding','Blocked','Completed'];
 export const activationKey=(s,owner)=>`${s.turn}:${owner}`;
 export function initializeCommanders(s) {
@@ -53,7 +54,7 @@ export function validateCommanders(s) {
     seen.add(g.id);
     if(g.history.some(m=>!m||!['player','general','council'].includes(m.role)||typeof m.text!=='string'||m.text.length>1600||!int(m.turn,0,s.turn)))fail();
     if(g.lastMuster!==undefined&&!int(g.lastMuster,0,s.turn)||g.lastPlanned!==undefined&&!int(g.lastPlanned,0,s.turn))fail();
-    if(g.objective){const o=g.objective;if(o.army!==undefined&&(o.kind!=='reinforce'||typeof o.army!=='string'||!/^army-\d+$/.test(o.army)))fail();if(!COMMAND_KINDS.includes(o.kind)||!Array.isArray(o.targets)||o.targets.length<1||o.targets.length>3||new Set(o.targets).size!==o.targets.length||o.targets.some(id=>!s.tiles[id])||!int(o.lossLimit,15,65)||typeof o.allowSplit!=='boolean'||!int(o.approvedTurn,0,s.turn)||!COMMAND_STATUSES.includes(o.status)||typeof o.reason!=='string'||o.reason.length>500)fail();}
+    if(g.objective){const o=g.objective;if(o.army!==undefined&&(o.kind!=='reinforce'||typeof o.army!=='string'||!/^army-\d+$/.test(o.army)))fail();if(o.source!==undefined&&!['explicit','conversation_inferred'].includes(o.source)||o.advice!==undefined&&(typeof o.advice!=='string'||o.advice.length>500)||!COMMAND_KINDS.includes(o.kind)||!Array.isArray(o.targets)||o.targets.length<1||o.targets.length>3||new Set(o.targets).size!==o.targets.length||o.targets.some(id=>!s.tiles[id])||!int(o.lossLimit,15,65)||typeof o.allowSplit!=='boolean'||!int(o.approvedTurn,0,s.turn)||!COMMAND_STATUSES.includes(o.status)||typeof o.reason!=='string'||o.reason.length>500)fail();}
   }
   for(const a of allArmies(s)){
     if(a.name!==undefined&&(typeof a.name!=='string'||a.name.length>60))fail();

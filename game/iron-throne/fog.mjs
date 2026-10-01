@@ -118,6 +118,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   for(const a of v.intelligence.agents)if(a.owner===viewer){a.risk=0;delete a.investigation;}
   v.intrigue={plans:(v.intrigue?.plans||[]).filter(p=>p.actor===viewer),audit:[]};
   v.cooperation={...v.cooperation,operations:(v.cooperation?.operations||[]).filter(o=>o.owner===viewer||o.participants.some(p=>p.house===viewer&&['invited','accepted','counter'].includes(p.status))),proposals:(v.cooperation?.proposals||[]).filter(p=>[p.from,p.to].includes(viewer)),balance:[]};
+  v.cooperation.formalProposals=(s.cooperation?.formalProposals||[]).filter(p=>p.status==='draft'||p.status==='dismissed'?p.proposer===viewer:p.audience.includes(viewer)).map(clone);
   v.cooperation.vassalOrders=(s.cooperation?.vassalOrders||[]).filter(o=>[o.liege,o.vassal].includes(viewer)).map(clone);
   for(const o of v.cooperation.operations)for(const member of o.participants)member.reportedProgress=operationProgress(s,o,member);
   v.pledges=(v.pledges||[]).filter(p=>[p.debtor,p.creditor].includes(viewer)||p.operationId&&v.cooperation.operations.some(o=>o.id===p.operationId));
