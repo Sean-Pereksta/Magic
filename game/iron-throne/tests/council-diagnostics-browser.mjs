@@ -33,14 +33,16 @@ try {
     const context=await browser.newContext({viewport});
     await context.addInitScript(s=>{
       localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(s));
-      globalThis.turnstile={render:(_el,options)=>{queueMicrotask(()=>options.callback('test-token'));return 1;},reset:()=>{}};
+      const realNow=Date.now;globalThis.testTimeShift=0;Date.now=()=>realNow()+globalThis.testTimeShift;
+      let verification;globalThis.turnstile={render:(_el,options)=>{verification=options;queueMicrotask(()=>options.callback('test-token'));return 1;},reset:()=>queueMicrotask(()=>verification.callback('fresh-test-token'))};
     },s);
-    const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));let calls=0;
+    const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));let calls=0,sessions=0;
     await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'test-public-key'}}));
-    await page.route('https://worker.example/session',r=>r.fulfill({json:{token:'test-session',expires:Date.now()+1800000}}));
+    await page.route('https://worker.example/session',async r=>{sessions++;return r.fulfill({json:{token:'test-session',expires:await page.evaluate(()=>Date.now()+1800000)}});});
     await page.route('https://worker.example/diplomacy',r=>{
-      calls++;return calls===1?r.fulfill({status:503,headers:{'Retry-After':'1','Access-Control-Expose-Headers':'Retry-After'},json:{diagnostics:{version:1,code:'GEMINI_SCHEMA',providerStatus:400,checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'verified',BUDGET:'verified'}}}})
+      calls++;if(r.request().postDataJSON().world.formalDecision)return r.fulfill({json:{responses:[{speakerHouseId:'wintermere',message:'Your offered aid is welcome. The recorded agreement stands.'}]}});
+      return calls===1?r.fulfill({status:503,headers:{'Retry-After':'1','Access-Control-Expose-Headers':'Retry-After'},json:{diagnostics:{version:1,code:'GEMINI_SCHEMA',providerStatus:400,checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'verified',BUDGET:'verified'}}}})
         :r.fulfill({json:{responses:[{speakerHouseId:'wintermere',message:'Your northern relief force is welcome; my scouts will watch the pass.'}]}});
     });
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
@@ -60,6 +62,15 @@ try {
     await page.waitForFunction(()=>document.querySelector('.alliance-history').textContent.includes('Your northern relief force'));
     assert.equal(await page.locator('.alliance-diagnostics').isVisible(),false);assert.equal(calls,2);
     assert.match(await page.locator('.alliance-history').textContent(),/Gemini/);
+    // A formal decision must restart verification itself after session expiry.
+    await page.evaluate(()=>globalThis.testTimeShift=1810000);
+    await page.locator('.alliance-offer-request').click();
+    const builder=page.locator('#formal-proposal-builder');
+    await builder.locator('[name=type]').selectOption('AID');await builder.locator('[name=direction]').selectOption('offer');
+    await builder.locator('[name=resource0]').selectOption('food');await builder.locator('[name=amount0]').fill('1');await builder.locator('[type=submit]').click();
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation?.formalProposals?.[0]?.responses.wintermere.voice?.includes('offered aid'));
+    assert.equal(sessions,2,'formal voice renewed verification without reopening Council');assert.equal(calls,3);
+    assert.doesNotMatch(await page.locator('.alliance-formal-proposals').textContent(),/Considering/);
     assert.deepEqual(errors,[]);console.log(`Council diagnostics, cooldown and Gemini recovery passed at ${viewport.width}px`);
     await context.close();await browser.close();browser=null;
   }
