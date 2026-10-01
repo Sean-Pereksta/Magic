@@ -6,6 +6,8 @@ import { issueSession, reserveSessionBudget, verifySession } from './session.mjs
 import { validateIntent } from '../diplomacy.mjs';
 import { makeDiagnostic, workerChecks } from '../diagnostics.mjs';
 
+const REQUEST_FORMAT = 'openapi-flat-v1';
+
 export { RESPONSE_SCHEMA } from './reply-contract.mjs';
 import { RESPONSE_SCHEMA, INTENT_SCHEMA as intentSchema, normalizeModelIntent, validateModelResponse } from './reply-contract.mjs';
 export const COUNCIL_RESPONSE_SCHEMA = {
@@ -17,16 +19,6 @@ export const COUNCIL_RESPONSE_SCHEMA = {
     }
   }}}
 };
-// Use native JSON Schema for Council unions. In particular, optional intent
-// objects must not combine an unspecified OpenAPI type with nullable + anyOf.
-function jsonSchema(schema) {
-  const out = {...schema}; delete out.nullable;
-  if (out.type) out.type = out.type.toLowerCase();
-  if (out.properties) out.properties = Object.fromEntries(Object.entries(out.properties).map(([k,v])=>[k,jsonSchema(v)]));
-  if (out.items) out.items = jsonSchema(out.items);
-  if (out.anyOf) out.anyOf = out.anyOf.map(jsonSchema);
-  return schema.nullable ? {anyOf:[out,{type:'null'}]} : out;
-}
 export function councilResponseSchema(context) {
   const schema=structuredClone(COUNCIL_RESPONSE_SCHEMA);
   schema.properties.responses.items.properties.speakerHouseId.enum=context.world.participants.filter(p=>p.ai&&p.id!==context.actorHouseId&&context.participants.includes(p.id)).map(p=>p.id);
@@ -36,7 +28,7 @@ export function councilResponseSchema(context) {
     delete schema.properties.responses.items.properties.requestedIntent;
     if (context.world.formalDecision) schema.properties.responses.maxItems = 1;
   }
-  return jsonSchema(schema);
+  return schema;
 }
 function normalizeCouncilReply(raw) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw))return raw;
@@ -63,7 +55,7 @@ world.locationProposal and history location fields identify exact strategic coor
 When world.conversationMode is ai-initiated-council, rewrite world.dispatch.entries in the same speaker order, one response per entry, preserving the initiating ruler and event in world.dispatch.reason. These are an automatic ruler opening and reaction, not a new player request. Do not say "You ask" or ask the player to repeat an objective already stated. Include no requestedIntent in these automatic voices. Preserve the supplied facts but vary wording with personality and recent conversation.
 When world.formalDecision exists, voice ONLY that House’s recorded decision. Status, reasonCodes, reason, exact target and offered terms are authoritative. Do not change acceptance, invent costs or promises, or output requestedIntent. An accepted decision is already active; a declined one creates no obligation. A counter or support offer still awaits the player. Return one response, with personality and no unlisted facts.
 For player messages, recognize reports of movement, offers of aid, questions and requests as different speech acts. Acknowledge the specific help or plan offered before asking for missing details. Do not repeatedly demand formal terms for a simple update. React to what other rulers just said and avoid repeating earlier replies.
-Let different rulers disagree or demand assurances. Loyal allies still have duties at home. Do not give generic adviser speeches. If a ruler invites a formal proposal, use an explicit invitation such as "Put the terms before me" and include requestedIntent only when the subject and target are supplied. Use existing intent types. JOINT_WAR targets a third House, DEFEND/POSITION/BUILD_DEFENSES target supplied locations. Resource terms describe payments from the speaking player to the replying ruler. Proposals, pledges and operations require separate deterministic review and human ratification. Nothing is accepted, transferred, executed or renewed by this conversation. Never say forces have moved because someone suggested it. Never suggest marriage unless the player raised it. Return only JSON.`;
+Let different rulers disagree or demand assurances. Loyal allies still have duties at home. Do not give generic adviser speeches. If a ruler invites a formal proposal, use an explicit invitation such as "Put the terms before me" and include requestedIntent only when the subject and target are supplied. Use existing intent types. Omit optional terms that do not apply: marriage fields belong only to MARRIAGE, item arrays only to EXCHANGE/RECURRING, and conditionHouseId only to GUARANTEE/PLEDGE_WAR. Durations are 2–20 turns, or 1–20 for player promises. JOINT_WAR targets a third House, DEFEND/POSITION/BUILD_DEFENSES target supplied locations. Resource terms describe payments from the speaking player to the replying ruler. Proposals, pledges and operations require separate deterministic review and human ratification. Nothing is accepted, transferred, executed or renewed by this conversation. Never say forces have moved because someone suggested it. Never suggest marriage unless the player raised it. Return only JSON.`;
 }
 const json = (value, status = 200, headers = {}) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } });
 const boundedInt = (value, fallback, max) => Number.isInteger(Number(value)) && Number(value) >= 0 ? Math.min(max, Number(value)) : fallback;
@@ -168,7 +160,7 @@ export async function callGemini(context, env, fetcher = fetch) {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: context.mode==='general'?generalSystemPrompt():context.mode==='allianceCouncil'?councilSystemPrompt():systemPrompt(context.rulerId, context.actorHouseId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', ...(context.mode==='allianceCouncil' ? {responseJsonSchema:councilResponseSchema(context)} : {responseSchema:context.mode==='general'?GENERAL_RESPONSE_SCHEMA:RESPONSE_SCHEMA}), maxOutputTokens: 2048, ...(model === 'gemini-3.5-flash' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}) } })
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: context.mode==='general'?generalSystemPrompt():context.mode==='allianceCouncil'?councilSystemPrompt():systemPrompt(context.rulerId, context.actorHouseId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: context.mode==='allianceCouncil' ? councilResponseSchema(context) : context.mode==='general' ? GENERAL_RESPONSE_SCHEMA : RESPONSE_SCHEMA, maxOutputTokens: 2048, ...(model === 'gemini-3.5-flash' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}) } })
     });
     if (!upstream.ok) throw await providerFailure(upstream);
     let result;
@@ -215,7 +207,7 @@ export class DiplomacyBudget {
       // Never leak provider bodies, request text, or credentials. Failed attempts
       // still consume the reserved allowance; no retries or paid-provider failover.
       const retryAfter = error.status === 429 ? 300 : ['GEMINI_RESPONSE_INVALID','GEMINI_RESPONSE_TRUNCATED'].includes(error.diagnosticCode) ? 5 : 60;
-      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status, model: error.model, modelSource: error.modelSource, replyIssue: error.replyIssue }) }, 503, { 'Retry-After': String(retryAfter) });
+      return json({ fallback: true, message: 'Gemini is unavailable. Scripted diplomacy is ready.', retryAfter, diagnostics: makeDiagnostic(error.diagnosticCode || 'GEMINI_UNAVAILABLE', { checks: { ...workerChecks(this.env), BUDGET: 'verified', ...(error.diagnosticCode === 'GEMINI_KEY_INVALID' ? { GEMINI_API_KEY: 'rejected' } : {}) }, providerStatus: error.status, model: error.model, modelSource: error.modelSource, replyIssue: error.replyIssue, requestFormat: REQUEST_FORMAT }) }, 503, { 'Retry-After': String(retryAfter) });
     }
     // Storage failures propagate to the outer binding handler, not Gemini errors.
     await this.state.storage.transaction(async txn => {

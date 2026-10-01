@@ -5,7 +5,7 @@ export const CHECK_NAMES = ['GEMINI_API_KEY', 'TURNSTILE_SECRET', 'BUDGET'];
 const STATES = ['unknown', 'missing', 'present', 'verified', 'rejected', 'failed'];
 export const CHECK_LABELS = { unknown: 'Unknown — no readable result', missing: 'Missing from the running Worker', present: 'Present — not yet validated', verified: 'Verified during this request', rejected: 'Rejected by the service', failed: 'Present, but its operation failed' };
 const CODES = {
-  GEMINI_SCHEMA: ['Gemini request', 'Google rejected the response schema.', 'Deploy the updated Worker, which uses a smaller voice-only Council schema and native JSON Schema for Council intents.'],
+  GEMINI_SCHEMA: ['Gemini request', 'Google rejected the response schema.', 'Deploy the updated Worker with the flat response schema. Confirm this report shows Worker request format: openapi-flat-v1.'],
   GEMINI_THINKING: ['Gemini request', 'Google rejected the thinking configuration for this model.', 'Check GEMINI_MODEL and its supported thinking settings in the deployed Worker.'],
   CONFIG_MISSING: ['Worker configuration', 'Required Worker configuration is missing.', 'Open Cloudflare → iron-throne-diplomacy → Settings → Variables and Secrets for the two secrets, and Bindings for BUDGET. Deploy your changes. Build-only variables are unavailable at runtime.'],
   CLIENT_CONFIG: ['Game configuration', 'The game has no usable Gemini connection settings.', 'Check config.json for an HTTPS diplomacyEndpoint and a public turnstileSiteKey.'],
@@ -44,7 +44,7 @@ const CODES = {
   GEMINI_QUOTA: ['Gemini request', 'Google reported an exhausted quota or rate limit.', 'Review the project’s model quotas in Google AI Studio and wait for the relevant reset.'],
   GEMINI_MODEL: ['Gemini request', 'Google could not find or provide the configured model.', 'In Cloudflare → iron-throne-diplomacy → Settings → Variables and Secrets, set GEMINI_MODEL to gemini-3.5-flash and deploy the updated Worker. If it still fails, use worker/check-models.mjs to verify availability for this API key.'],
   GEMINI_MODEL_CONFIG: ['Worker configuration', 'GEMINI_MODEL is not a valid Gemini model ID.', 'Set GEMINI_MODEL to a model ID such as gemini-3.5-flash or models/gemini-3.5-flash, not a URL or API key. Verify availability for your project, then deploy.'],
-  GEMINI_REQUEST: ['Gemini request', 'Google rejected the request format or parameters.', 'Check the Worker’s model and response-schema configuration.'],
+  GEMINI_REQUEST: ['Gemini request', 'Google rejected the request format or parameters.', 'Deploy the updated Worker and confirm Worker request format: openapi-flat-v1. If Google still returns 400, verify model access with worker/check-models.mjs and inspect the rejected parameters in a controlled provider test.'],
   GEMINI_TIMEOUT: ['Gemini request', 'The Gemini request timed out.', 'Try again after the cooldown. Check provider availability if it continues.'],
   GEMINI_UNAVAILABLE: ['Gemini request', 'The Worker could not obtain a successful Gemini response.', 'Check provider availability and Worker logs; the upstream status is included when available.'],
   GEMINI_RESPONSE_TRUNCATED: ['Gemini reply', 'Gemini hit its output-token limit before completing the JSON reply.', 'Deploy the Worker with MINIMAL thinking for Gemini 3.5 and the larger output budget. Try another message after the short retry wait.'],
@@ -63,6 +63,7 @@ export function makeDiagnostic(code, details = {}) {
     ...(Number.isInteger(details.providerStatus) && details.providerStatus >= 100 && details.providerStatus <= 599 ? { providerStatus: details.providerStatus } : {}),
     ...(normalizeGeminiModel(details.model) ? { model: normalizeGeminiModel(details.model) } : {}),
     ...(['configured','default'].includes(details.modelSource) ? { modelSource: details.modelSource } : {}),
+    ...(details.requestFormat === 'openapi-flat-v1' ? { requestFormat: details.requestFormat } : {}),
     ...(Object.hasOwn(REPLY_ISSUES,details.replyIssue || '') ? { replyIssue: details.replyIssue } : {}),
     turnstileCodes: [...new Set((Array.isArray(details.turnstileCodes) ? details.turnstileCodes : []).filter(c => TURNSTILE_CODES.includes(c)))].slice(0, 7)
   };
@@ -91,6 +92,7 @@ export function diagnosticReport(record, endpoint = '', origin = '', clientSetti
     ...(d.replyIssue ? [`Reply validation: ${REPLY_ISSUES[d.replyIssue]}`] : []),
     ...(d.model ? [`Gemini model: ${d.model}`] : []),
     ...(d.modelSource ? [`Model setting: ${d.modelSource === 'configured' ? 'Cloudflare GEMINI_MODEL' : 'Worker default (GEMINI_MODEL not set)'}`] : []),
+    `Worker request format: ${d.requestFormat || 'Unknown — not reported by this Worker'}`,
     ...CHECK_NAMES.map(name => `${name}: ${CHECK_LABELS[d.checks[name]]}`),
     'Present means configured, not proof that a key is valid or funded.',
     `Game endpoint configured: ${clientSettings.endpoint ? 'Yes' : 'No'}`, `Public Turnstile site key configured: ${clientSettings.siteKey ? 'Yes' : 'No'}`,

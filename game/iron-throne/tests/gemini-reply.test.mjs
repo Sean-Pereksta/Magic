@@ -64,13 +64,49 @@ test('Gemini proposals preserve complete multi-resource packages and reject mean
   await assert.rejects(callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,[field]:value}))),e=>e.replyIssue===issue);
  }
 });
-test('provider schema separates incompatible terms and bounds optional interpretation',()=>{
- const branches=RESPONSE_SCHEMA.properties.intents.items.anyOf;
- const matching=type=>branches.find(b=>b.properties.type.enum.includes(type));
- assert.equal(matching('ALLIANCE').properties.giveItems,undefined);assert.equal(matching('ALLIANCE').properties.actorMember,undefined);
- assert.equal(matching('EXCHANGE').properties.giveItems.minItems,1);assert.equal(matching('ALLIANCE').properties.duration.minimum,2);
- assert.equal(matching('PROMISE').properties.duration.minimum,1);assert.equal(matching('MARRIAGE').properties.tradeKind,undefined);
- assert.equal(matching('PLEDGE_ATTACK').properties.conditionHouseId,undefined);assert.ok(matching('PLEDGE_WAR').properties.conditionHouseId);
- assert.ok(RESPONSE_SCHEMA.properties.promiseDetected.anyOf.every(b=>b.properties.type.enum.every(t=>t==='PROMISE'||t==='GUARANTEE'||t.startsWith('PLEDGE_'))));
+test('flat provider schema retains bounded terms, promise types and interpretation',()=>{
+ const terms=RESPONSE_SCHEMA.properties.intents.items.properties;
+ assert.equal(terms.giveItems.minItems,1);assert.equal(terms.giveItems.maxItems,8);
+ assert.equal(terms.duration.minimum,1);assert.equal(terms.duration.maximum,20);
+ assert.ok(RESPONSE_SCHEMA.properties.promiseDetected.properties.type.enum.every(t=>t==='PROMISE'||t==='GUARANTEE'||t.startsWith('PLEDGE_')));
  assert.equal(RESPONSE_SCHEMA.properties.reply.maxLength,1600);assert.equal(RESPONSE_SCHEMA.properties.memoryCandidates.items.maxLength,180);
+});
+
+test('all conversation modes serialize one typed schema format and make exactly one provider request',async()=>{
+ const council={...context,mode:'allianceCouncil',actorHouseId:'ashen',participants:['ashen','wintermere'],world:{participants:[{id:'ashen',ai:false},{id:'wintermere',ai:true}]}};
+ const councilReply={responses:[{speakerHouseId:'wintermere',message:'Our scouts stand ready.'}]};
+ const cases=[
+  [context,reply],
+  [council,{responses:[{...councilReply.responses[0],requestedIntent:{type:'JOINT_WAR',targetId:'vesper'}}]}],
+  [{...council,world:{...council.world,conversationMode:'ai-initiated-council'}},councilReply],
+  [{...council,world:{...council.world,formalDecision:{status:'accepted'}}},councilReply],
+  [{...context,mode:'general'},{reply:'We await your orders.'}]
+ ];
+ // Check the actual wire body, not only exported schema objects. This is a
+ // regression guard for the selected request subset, not a live Google test.
+ function typedSchema(schema){
+  assert.ok(['OBJECT','ARRAY','STRING','INTEGER','NUMBER','BOOLEAN'].includes(schema.type));
+  assert.equal(schema.anyOf,undefined);
+  if(schema.nullable!==undefined)assert.equal(typeof schema.nullable,'boolean');
+  if(schema.properties)for(const child of Object.values(schema.properties))typedSchema(child);
+  if(schema.items)typedSchema(schema.items);
+ }
+ for(const [input,response] of cases){
+  let calls=0;
+  const result=await callGemini(input,{GEMINI_MODEL:'gemini-3.5-flash'},async(url,options)=>{
+   calls++;assert.match(url,/\/models\/gemini-3\.5-flash:generateContent$/);
+   const body=JSON.parse(options.body),config=body.generationConfig;
+   assert.equal(config.responseMimeType,'application/json');assert.equal(config.responseJsonSchema,undefined);
+   typedSchema(config.responseSchema);assert.deepEqual(JSON.parse(body.contents[0].parts[0].text),input);
+   if(input.mode==='allianceCouncil'){
+    const speakers=config.responseSchema.properties.responses;
+    assert.deepEqual(speakers.items.properties.speakerHouseId.enum,['wintermere']);
+    if(input.world.conversationMode||input.world.formalDecision)assert.equal(speakers.items.properties.requestedIntent,undefined);
+    else assert.equal(speakers.items.properties.requestedIntent.type,'OBJECT');
+    if(input.world.formalDecision)assert.equal(speakers.maxItems,1);
+   }
+   return output('STOP',JSON.stringify(response));
+  });
+  assert.equal(calls,1);assert.ok(result);
+ }
 });

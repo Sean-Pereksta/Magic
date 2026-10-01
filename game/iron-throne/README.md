@@ -544,12 +544,19 @@ player’s activation. Turning Gemini off or replacing the campaign cancels wait
 requests. Reopening the council can retry an unsuccessful background voice.
 
 Google HTTP 400 describes rejected request parameters, not simultaneous calls.
-Council requests now use the documented native `responseJsonSchema` field with
-explicit JSON null alternatives. Turn-start and recorded-decision voices use a
+All conversation modes use the same typed `responseSchema` request format.
+Intent objects are flat: the Worker no longer repeats nested intent unions under
+each proposal field or converts Council intents to a different schema dialect.
+The existing prompts and strict reply validators still enforce which terms are
+legal for each intent. Turn-start and recorded-decision Council voices use a
 small schema containing only speakers and messages, without treaty alternatives.
 Google errors naming schema or thinking settings produce safe `GEMINI_SCHEMA`
 or `GEMINI_THINKING` codes; provider error text is never exposed. The existing
-model and thinking settings remain unchanged. See the [Google request reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
+model, thinking settings, budgets and sequential queue remain unchanged. See the [Google request reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
+Deploy the Worker as well as the game; a game-only deployment cannot change the
+Google request. New provider failure reports include `Worker request format:
+openapi-flat-v1`; older Workers report no format. A generic `GEMINI_REQUEST` does
+not establish exactly which parameter Google rejected.
 An authenticated production generation is still needed to confirm the deployed
 model accepts these settings for the operator’s project.
 

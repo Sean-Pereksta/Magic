@@ -98,6 +98,8 @@ test('Google billing, quota, key, permission and model failures reach the client
       assert.equal((await client.send(createGame(), 'wintermere', 'private-message')).source, 'scripted');
       assert.equal(client.lastDiagnostic.code, code); assert.equal(client.lastDiagnostic.httpStatus, 503);
       assert.equal(client.lastDiagnostic.providerStatus, status); assert.equal(client.lastDiagnostic.checks.BUDGET, 'verified');
+      assert.equal(client.lastDiagnostic.requestFormat, 'openapi-flat-v1');
+      assert.match(report(client), /Worker request format: openapi-flat-v1/);
       assert.equal(client.lastDiagnostic.checks.GEMINI_API_KEY, code === 'GEMINI_KEY_INVALID' ? 'rejected' : 'present');
       assert.equal(modelCalls, 1); assert.equal((await storage.get('budget')).used, 1);
       assert.doesNotMatch(report(client), /private-|192\.0\.2\.42/);
@@ -151,12 +153,14 @@ test('legacy, blocked and non-JSON responses leave server settings unknown rathe
 });
 
 test('diagnostic reports reject injected fields, credentials, query strings and arbitrary error codes', () => {
-  const value = { ...makeDiagnostic('CONFIG_MISSING'), checks: { GEMINI_API_KEY: 'private-key', BUDGET: 'missing' }, providerStatus: 'private-data', turnstileCodes: ['private-token'], message: 'private-message' };
+  const value = { ...makeDiagnostic('CONFIG_MISSING'), checks: { GEMINI_API_KEY: 'private-key', BUDGET: 'missing' }, providerStatus: 'private-data', requestFormat: 'private-format', turnstileCodes: ['private-token'], message: 'private-message' };
   const record = { ...readDiagnostic(value), at: Date.now(), path: '/session?token=private-token', httpStatus: 'private-status' };
   const text = diagnosticReport(record, 'https://name:private-key@worker.example/diplomacy', 'https://catnmice.com/?key=private-key');
   assert.doesNotMatch(text, /private-|name:|\?key=/); assert.match(text, /GEMINI_API_KEY: Unknown/); assert.match(text, /BUDGET: Missing/);
   assert.equal(readDiagnostic({ version: 1, code: { toString: null } }), null);
   assert.equal(readDiagnostic({ version: 1, code: 'private-code' }), null);
+  assert.equal(readDiagnostic(value).requestFormat, undefined);
+  assert.match(diagnosticReport(makeDiagnostic('GEMINI_REQUEST')), /Worker request format: Unknown/);
 });
 
 test('intentional local play has no diagnostic, malformed Gemini output is diagnosed, and recovery clears it', async () => {

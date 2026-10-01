@@ -15,32 +15,26 @@ const itemList = { type: 'ARRAY', minItems: 1, maxItems: 8, items: {
     resource: { type: 'STRING', enum: RESOURCES }, amount: { ...amount, minimum: 1 }
   }
 } };
-const branch = (types, minimum, extra = {}) => ({ type: 'OBJECT', required: ['type'], properties: {
-  type: { type: 'STRING', enum: types }, ...common, duration: { type: 'INTEGER', minimum, maximum: 20 }, ...extra
-} });
-const conditional = ['GUARANTEE', 'PLEDGE_WAR'];
-const promises = [
-  branch([...PLAYER_PROMISES].filter(t => !conditional.includes(t)), 1, { tradeKind }),
-  branch(conditional, 1, { tradeKind, conditionHouseId: { type: 'STRING', enum: CAMPAIGN_HOUSES.map(h => h.id) } })
-];
-// Separate incompatible intent fields instead of inviting the model to fill every
-// field in one generic object. The engine still validates all generated terms.
-export const INTENT_SCHEMA = { anyOf: [
-  branch(INTENT_TYPES.filter(t => !PLAYER_PROMISES.has(t) && !['MARRIAGE', 'EXCHANGE', 'RECURRING'].includes(t)), 2, { tradeKind }),
-  branch(['EXCHANGE', 'RECURRING'], 2, { tradeKind, giveItems: itemList, receiveItems: itemList }),
-  branch(['MARRIAGE'], 2, {
-    actorMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] }, rulerMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] },
-    shipmentResource: { type: 'STRING', enum: ['gold', 'food', 'iron', 'horses'] },
-    shipmentAmount: { type: 'INTEGER', minimum: 0, maximum: 100 }, shipmentTurns: { type: 'INTEGER', minimum: 0, maximum: 20 },
-    defense: { type: 'BOOLEAN' }, trade: { type: 'BOOLEAN' }
-  }), ...promises
-] };
+// Keep the provider grammar flat and explicitly typed. Repeating a union of
+// every intent under intents/proposal/counterProposal/promiseDetected makes the
+// generation schema much larger. Prompts and the unchanged engine validator
+// enforce which optional terms belong to each intent and its minimum duration.
+export const INTENT_SCHEMA = { type: 'OBJECT', required: ['type'], properties: {
+  type: { type: 'STRING', enum: INTENT_TYPES }, ...common,
+  duration: { type: 'INTEGER', minimum: 1, maximum: 20 }, tradeKind,
+  conditionHouseId: { type: 'STRING', enum: CAMPAIGN_HOUSES.map(h => h.id) },
+  giveItems: itemList, receiveItems: itemList,
+  actorMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] }, rulerMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] },
+  shipmentResource: { type: 'STRING', enum: ['gold', 'food', 'iron', 'horses'] },
+  shipmentAmount: { type: 'INTEGER', minimum: 0, maximum: 100 }, shipmentTurns: { type: 'INTEGER', minimum: 0, maximum: 20 },
+  defense: { type: 'BOOLEAN' }, trade: { type: 'BOOLEAN' }
+} };
 export const RESPONSE_SCHEMA = { type: 'OBJECT', required: ['reply', 'intents', 'tone'], properties: {
   reply: { ...text(1600), minLength: 1, description: 'Concise in-character reply. Terms await council validation and player ratification.' },
   tone: { type: 'STRING', enum: ['warm', 'neutral', 'cold', 'hostile', 'guarded'] },
   intents: { type: 'ARRAY', maxItems: 3, items: INTENT_SCHEMA },
   proposal: { ...INTENT_SCHEMA, nullable: true }, counterProposal: { ...INTENT_SCHEMA, nullable: true },
-  promiseDetected: { anyOf: promises, nullable: true },
+  promiseDetected: { ...INTENT_SCHEMA, nullable: true, properties: { ...INTENT_SCHEMA.properties, type: { type: 'STRING', enum: [...PLAYER_PROMISES] } } },
   relationshipSummary: { ...text(360), nullable: true, description: 'Conversation interpretation; never rewrite verified history.' },
   speechAct: { type: 'STRING', nullable: true, enum: ['statement', 'question', 'accept', 'reject', 'counteroffer', 'promise', 'warning', 'gratitude'] },
   relationshipSignals: { type: 'ARRAY', nullable: true, maxItems: 4, items: text(180) },
