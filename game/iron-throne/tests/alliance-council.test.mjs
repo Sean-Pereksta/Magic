@@ -107,7 +107,7 @@ test('a council makes one model request and uses the existing session, schema an
   const fallback=await client.send(s,'wintermere','Attack Vesper.','',false,{actorHouseId:'ashen',councilId:c.id});
   assert.equal(calls,1);assert.equal(fallback.source,'scripted');assert.ok(fallback.responses.length);
   await callGemini(makeCouncilContext(s,c,'ashen','Attack Vesper.'),{GEMINI_API_KEY:'test'},async(url,options)=>{
-    const body=JSON.parse(options.body);assert.ok(body.generationConfig.responseJsonSchema.properties.responses);
+    const body=JSON.parse(options.body);assert.ok(body.generationConfig.responseSchema.properties.responses);
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(reply)}]}}]});
   });
 });
@@ -174,7 +174,7 @@ test('automatic council voices retain their event, audience, speakers and simula
   const {s,c}=setup();for(const t of s.treaties)t.expires=s.turn+1;
   initiateCouncilDiscussions(s);const dispatch=nextCouncilDispatch(s,'ashen');assert.ok(dispatch);
   const context=makeCouncilDispatchContext(s,c,'ashen',dispatch);assert.ok(sanitizeContext(context));
-  const schema=councilResponseSchema(context);assert.equal(schema.type,'object');
+  const schema=councilResponseSchema(context);assert.equal(schema.type,'OBJECT');
   assert.equal(schema.properties.responses.items.properties.requestedIntent,undefined);
   assert.equal(context.world.conversationMode,'ai-initiated-council');assert.equal(context.world.dispatch.reason,'expiry');
   const wars=JSON.stringify(s.wars),treaties=JSON.stringify(s.treaties),sequence=c.sequence,allowance=s.diplomacy.messages.regular;
@@ -221,7 +221,7 @@ test('council Gemini replies with absent optional terms survive the Worker, clie
  const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,options)=>{
   const context=sanitizeContext(JSON.parse(options.body));assert.ok(context);
   const response=await callGemini(context,{},async(url,options)=>{
-   calls++;const schema=JSON.parse(options.body).generationConfig.responseJsonSchema;
+   calls++;const schema=JSON.parse(options.body).generationConfig.responseSchema;
    assert.deepEqual(schema.properties.responses.items.properties.speakerHouseId.enum.sort(),['thornwall','wintermere']);
    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({responses:[{speakerHouseId:'wintermere',message:'Our frontier scouts will support the shared campaign.',requestedIntent:{type:'ALLIANCE',giveItems:[],actorMember:null}}]})}]}}]});
   });
