@@ -1,3 +1,4 @@
+import { vassalBond } from './vassal-role.mjs';
 import { militaryArmiesOf } from './core.mjs';
 import { initializeCourtIntelligence, recordCourtConversation } from './court-intelligence.mjs';
 import { dispatchContext } from './conversation-context.mjs';
@@ -28,7 +29,7 @@ export function initializeLiving(s) {
     for (const r of Object.values(k.relations)) {
       for (const [key, value] of Object.entries(RELATION_DEFAULTS)) r[key] ??= value;
       r.history ||= []; r.speech ||= {}; r.wordGain ??= 0; r.unread ??= 0;
-      r.contacts ||= {}; r.observations ||= {}; r.gifts ||= []; r.sharedEnemies ||= []; r.movements ||= {};
+      r.contacts ||= {}; r.observations ||= {}; r.gifts ||= []; r.sharedEnemies ||= []; r.movements ||= {}; r.observedArmyTiles ||= {};
     }
   }
   return s;
@@ -184,26 +185,46 @@ export function borderThreat(s, observer, subject) {
   s=planningView(s,observer);
   const border = Object.values(s.tiles).filter(t => t.owner === observer);
   const capital = capitalOf(s, observer), forces = armiesOf(s, subject);
+  const liege = !!vassalBond(s,subject,observer);
   const permitted = !!(treaty(s, observer, subject, 'alliance') || treaty(s, observer, subject, 'access') || treaty(s, observer, subject, 'vassalage'));
   const shared = s.kingdoms.filter(k => atWar(s, observer, k.id) && atWar(s, subject, k.id)).map(k => k.id);
-  const previous = relation(s, observer, subject)?.observations || {};
-  const nearby = forces.map(a => {
-    const t = s.tiles[a.tile];
-    const borderDistance = border.length ? Math.min(...border.map(b => distance(t, b))) : 100;
-    const capitalDistance = capital ? distance(t, capital) : 100;
-    return { id: a.id, tile: a.tile, strength: Math.round(strength(a)*(a.confidence??1)), borderDistance, capitalDistance, inside: t.owner === observer, movement: a.remembered ? 'uncertain' : previous[a.id] === undefined ? 'unobserved' : borderDistance < previous[a.id] ? 'approaching' : borderDistance > previous[a.id] ? 'withdrawing' : (relation(s, observer, subject)?.movements?.[a.id]?.turn === s.turn ? relation(s, observer, subject).movements[a.id].direction : 'holding'), sharedDestination: !!a.target && shared.includes(s.tiles[a.target]?.owner) };
-  }).filter(a => a.borderDistance <= 3);
+  const recentCaptures = s.militaryEvents.filter(e => e.attacker === subject && e.action === 'capture' && s.turn-e.turn >= 0 && s.turn-e.turn <= 6 && s.tiles[e.tile]);
+  const sharedVictories = permitted ? recentCaptures.filter(e => shared.includes(e.defender) && s.tiles[e.tile].owner === subject) : [];
+  const losses = recentCaptures.filter(e => e.defender === observer);
+  const previous = relation(s, observer, subject)?.observedArmyTiles || {};
+  const borderDistanceOf = t => border.length ? Math.min(...border.map(b => distance(t, b))) : 100;
+  const observed = forces.map(a => {
+    const t = s.tiles[a.tile], before = s.tiles[previous[a.id]];
+    const borderDistance = borderDistanceOf(t), capitalDistance = capital ? distance(t, capital) : 100;
+    // Compare positions against the SAME border. A conquered border moves even
+    // when an army holds its ground; that is neither approach nor withdrawal.
+    const oldDistance = before ? borderDistanceOf(before) : null;
+    const movement = a.remembered ? 'uncertain' : oldDistance === null ? 'unobserved'
+      : borderDistance < oldDistance ? 'approaching' : borderDistance > oldDistance ? 'withdrawing'
+      : 'holding';
+    const sharedDestination = !!a.target && shared.includes(s.tiles[a.target]?.owner);
+    const cooperating = liege || permitted && t.owner !== observer && (shared.includes(t.owner) || sharedDestination || sharedVictories.some(e => e.tile === a.tile));
+    return { id: a.id, tile: a.tile, strength: Math.round(strength(a)*(a.confidence??1)), borderDistance, capitalDistance, inside: t.owner === observer, movement, sharedDestination, cooperating };
+  });
+  const nearby = observed.filter(a => a.borderDistance <= 3);
   const localPower = Math.max(20, powerOf(s, observer));
-  let score = nearby.reduce((n, a) => n + a.strength / localPower * (a.inside ? 28 : 20 / (1 + a.borderDistance)) * (a.capitalDistance <= 3 ? 1.4 : 1) * (permitted ? a.sharedDestination ? .2 : .45 : 1) * (a.movement === 'approaching' ? 1.2 : 1), 0);
-  const expansion = s.militaryEvents.filter(e => e.attacker === subject && e.action === 'capture' && s.turn - e.turn <= 6 && capital && distance(s.tiles[e.tile], capital) <= 8).length;
+  let score = nearby.filter(a => !a.cooperating).reduce((n, a) => n + a.strength / localPower * (a.inside ? 28 : 20 / (1 + a.borderDistance)) * (a.capitalDistance <= 3 ? 1.4 : 1) * (permitted ? .45 : 1) * (a.movement === 'approaching' ? 1.2 : 1), 0);
+  // An ally taking our common enemy's land is assistance, not expansion against us.
+  const expansion = liege ? 0 : recentCaptures.filter(e => !sharedVictories.includes(e) && capital && distance(s.tiles[e.tile], capital) <= 8).length;
   score += expansion * 8;
   const k = kingdom(s, observer);
   score *= (marriageSupport(s,observer,subject)>0?.7:1) * (.7 + k.paranoia * .7) * (stationedAmbassador(s, subject, observer) ? .9 : 1);
-  return { score: Math.round(clamp(score)), nearby, relativeStrength: Math.round(powerOf(s, subject) / Math.max(1, powerOf(s, observer)) * 10) / 10, permitted, sharedEnemies: shared, recentConquests: expansion };
+  return { score: Math.round(clamp(score)), nearby, withdrawalObserved: observed.some(a => a.movement === 'withdrawing'),
+    relativeStrength: Math.round(powerOf(s, subject) / Math.max(1, powerOf(s, observer)) * 10) / 10,
+    permitted, liege, sharedEnemies: shared, recentConquests: expansion,
+    losses: losses.map(e => ({tile:e.tile,turn:e.turn,capital:s.tiles[e.tile].capital===observer})),
+    sharedVictories: sharedVictories.map(e => ({tile:e.tile,turn:e.turn,defender:e.defender})) };
 }
 export function diplomaticPriorities(s, owner) {
   s=planningView(s,owner);
   const k = kingdom(s, owner), tasks = [];
+  const bond=s.treaties.find(t=>t.type==='vassalage'&&t.vassal===owner&&t.expires>s.turn);
+  if(bond)tasks.push(`Serve ${houseName(s,bond.liege)} under our sworn vassalage and prepare forces for their lawful commands.`);
   if(k.resourcesUnknown&&k.confidantConcerns?.length)return k.confidantConcerns;
   if(k.resourcesUnknown)return ['Discuss commitments, trade, or mutual security with our court.'];
   const production = grossProduction(s, owner);
@@ -213,7 +234,7 @@ export function diplomaticPriorities(s, owner) {
   const enemies = s.kingdoms.filter(o => atWar(s, owner, o.id));
   if (enemies.length > 1) tasks.push('Avoid a war on several fronts; seek peace with one enemy.');
   if (enemies[0]) tasks.push(`Weaken ${enemies[0].name} and obtain military support.`);
-  const loss = s.militaryEvents.filter(e => e.defender === owner && e.action === 'capture' && s.tiles[e.tile]?.owner !== owner).at(-1);
+  const loss = s.militaryEvents.filter(e => e.defender === owner && e.action === 'capture' && s.tiles[e.tile]?.owner !== owner && !vassalBond(s,e.attacker,owner)).at(-1);
   if (loss) tasks.push(`Recover ${s.tiles[loss.tile].name || loss.tile}.`);
   if (!tasks.length) tasks.push(k.greed > .8 ? 'Secure profitable imports and preserve trade routes.' : k.ambition > .8 ? 'Gain territory and isolate vulnerable rivals.' : 'Preserve peace and dependable alliances.');
   if (production.iron < 8 && k.aggression > .5) tasks.push('Secure iron for a stronger army.');
@@ -230,15 +251,27 @@ export function updatePoliticalState(s, { sendDispatches = true } = {}) {
     if (newShared.length) changeRelation(s, observer.id, subject.id, { opinion: 2 }, 'A shared enemy creates a limited common interest.');
     r.sharedEnemies = threat.sharedEnemies;
     r.movements = Object.fromEntries(threat.nearby.filter(a => ['approaching', 'withdrawing'].includes(a.movement)).slice(0, 80).map(a => [a.id, { direction: a.movement, turn: s.turn }]));
-    changeRelation(s, observer.id, subject.id, { wariness: threat.score - r.wariness, dependency: economic.dependency - r.dependency, fear: clamp((threat.relativeStrength - 1) * 25 + threat.score * .35) - r.fear }, threat.score > wasWary ? `${subject.name} armies approached ${observer.name} territory near ${capitalOf(s, observer.id)?.name || 'the frontier'}.` : threat.score < wasWary ? `${subject.name} forces withdrew from ${observer.name} territory.` : 'Trade and military circumstances changed.');
+    const loss = threat.losses.filter(e=>e.turn===s.turn), victory = threat.sharedVictories.filter(e=>e.turn===s.turn);
+    const reason = loss.length ? `${subject.name} captured ${loss.map(e=>s.tiles[e.tile].name||e.tile).join(', ')} from ${observer.name}.`
+      : victory.length ? `${subject.name} captured land from our shared enemy in support of the war.`
+      : threat.score < wasWary && threat.withdrawalObserved ? `${subject.name} forces withdrew from ${observer.name} territory.`
+      : threat.score > wasWary && threat.nearby.some(a=>a.movement==='approaching'&&!a.cooperating) ? `${subject.name} armies approached ${observer.name} territory near ${capitalOf(s, observer.id)?.name || 'the frontier'}.`
+      : 'Trade and military circumstances changed; border concern was reassessed.';
+    changeRelation(s, observer.id, subject.id, { wariness: threat.score - r.wariness, dependency: economic.dependency - r.dependency, fear: clamp((threat.relativeStrength - 1) * 25 + threat.score * .35) - r.fear }, reason);
     const fresh = isHumanHouse(s,subject.id) && isAiHouse(s,observer.id);
     if (fresh && sendDispatches) {
-      if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `${subject.name}'s armies are approaching ${observer.name}'s territory near ${capitalOf(s, observer.id)?.name}. Tell me their current purpose, Regent.`, 4, subject.id);
-      else if (wasWary >= 20 && threat.score < wasWary - 12) contact(s, observer.id, 'withdrawal', `Our scouts no longer confirm the same concentration of ${subject.name}'s forces near ${observer.name}'s territory. We are seeking a current report.`, 4, subject.id);
+      if (!threat.liege && loss.length) contact(s, observer.id, 'territory-loss', `Your forces captured ${loss.slice(-3).map(e=>`${s.tiles[e.tile].name||e.tile}${e.capital?', our capital':''}`).join('; ')}. This is a serious military loss for our House. We must confront what this defeat means for the war.`, 1, subject.id);
+      else if (threat.score >= 20 && threat.score > wasWary + 8) contact(s, observer.id, 'border', `${subject.name}'s armies stand near ${observer.name}'s territory near ${capitalOf(s, observer.id)?.name || 'the frontier'}. Tell me their current purpose, Regent.`, 4, subject.id);
+      else if (victory.length) contact(s, observer.id, 'shared-victory', `Your capture of ${victory.slice(-3).map(e=>s.tiles[e.tile].name||e.tile).join(', ')} has struck our common enemy. Your forces there are serving our shared war. Let us discuss the next objective.`, 1, subject.id);
+      else if (!threat.liege && wasWary >= 20 && threat.score < wasWary - 12) {
+        if (threat.withdrawalObserved) contact(s, observer.id, 'withdrawal', `Our scouts observed ${subject.name}'s forces moving away from our frontier. We recognize that withdrawal.`, 4, subject.id);
+        else contact(s, observer.id, 'border-report', `Our current observations do not confirm the earlier concentration of ${subject.name}'s forces. Their current position is uncertain; we are seeking a fresh report.`, 4, subject.id);
+      }
 
-      if (threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8, subject.id);
-      if (r.trust > 40 && !atWar(s, observer.id, subject.id) && !treaty(s, observer.id, subject.id, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10, subject.id);
+      if (!threat.liege && threat.sharedEnemies.length && r.trust >= 0) contact(s, observer.id, 'shared-enemy', `${houseName(s, threat.sharedEnemies[0])} threatens us both. Shall we agree on actual military aid?`, 8, subject.id);
+      if (!threat.liege && r.trust > 40 && !atWar(s, observer.id, subject.id) && !treaty(s, observer.id, subject.id, 'alliance')) contact(s, observer.id, 'alliance', 'You have given us reason to rely on your word. Let us discuss an alliance and its obligations.', 10, subject.id);
     }
+    r.observedArmyTiles = Object.fromEntries(armiesOf(view, subject.id).slice(0, 80).map(a=>[a.id,a.tile]));
     r.observations = Object.fromEntries(armiesOf(view, subject.id).slice(0, 80).map(a => {
       const border = Object.values(s.tiles).filter(t => t.owner === observer.id);
       return [a.id, border.length ? Math.min(...border.map(t => distance(t, s.tiles[a.tile]))) : 100];
@@ -381,6 +414,7 @@ export function validateLivingSave(s) {
       if (Object.entries(r.speech).some(([key, v]) => !['praise', 'apology', 'reassurance', 'insult', 'threat'].includes(key) || !object(v) || !int(v.count, 99) || !int(v.turn))) fail();
       if (Object.keys(r.contacts).length > 36 || Object.entries(r.contacts).some(([key, turn]) => !text(key, 100) || !int(turn))) fail();
       if (Object.keys(r.observations).length > 80 || Object.entries(r.observations).some(([key, n]) => !text(key, 60) || !number(n, 100))) fail();
+      if (r.observedArmyTiles !== undefined && (!object(r.observedArmyTiles) || Object.keys(r.observedArmyTiles).length > 80 || Object.entries(r.observedArmyTiles).some(([id,tile]) => !text(id,60) || typeof tile !== 'string' || !s.tiles[tile]))) fail();
       if (Object.keys(r.movements).length > 80 || Object.entries(r.movements).some(([id, m]) => !text(id, 60) || !object(m) || !['approaching', 'withdrawing'].includes(m.direction) || !int(m.turn))) fail();
       for (const gift of r.gifts) if (!object(gift) || !int(gift.turn) || !RESOURCES.includes(gift.resource) || !int(gift.amount, 1000)) fail();
     }

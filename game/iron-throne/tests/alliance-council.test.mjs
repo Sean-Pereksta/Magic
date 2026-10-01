@@ -193,3 +193,30 @@ test('late automatic council replies cannot overwrite a player response or a cha
   const before=JSON.stringify(c.messages);assert.equal(applyCouncilDispatch(s,'ashen',dispatch,response),false);assert.equal(JSON.stringify(c.messages),before);
   assert.equal(makeCouncilDispatchContext(s,c,'ashen',dispatch),null);
 });
+
+test('council Gemini replies with absent optional terms survive the Worker, client and conversation log',async()=>{
+ const {s,c}=setup();let calls=0;
+ const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,options)=>{
+  const context=sanitizeContext(JSON.parse(options.body));assert.ok(context);
+  const response=await callGemini(context,{},async(url,options)=>{
+   calls++;const schema=JSON.parse(options.body).generationConfig.responseSchema;
+   assert.deepEqual(schema.properties.responses.items.properties.speakerHouseId.enum.sort(),['thornwall','wintermere']);
+   return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({responses:[{speakerHouseId:'wintermere',message:'Our frontier scouts will support the shared campaign.',requestedIntent:{type:'ALLIANCE',giveItems:[],actorMember:null}}]})}]}}]});
+  });
+  return Response.json(response);
+ }});
+ client.session={token:'test',expires:Date.now()+1800000};
+ const start=beginCouncilMessage(s,'ashen',c.id,'Let us coordinate.');assert.equal(start.ok,true);
+ const response=await client.send(s,'wintermere','Let us coordinate.','',true,{actorHouseId:'ashen',councilId:c.id});
+ assert.equal(calls,1);assert.equal(response.source,'gemini');assert.equal(client.lastDiagnostic,null);
+ assert.equal(finishCouncilMessage(s,'ashen',start,'Let us coordinate.',response).ok,true);
+ assert.equal(c.messages.at(-1).source,'gemini');assert.match(c.messages.at(-1).message,/frontier scouts/);
+ assert.equal(c.messages.at(-1).requestedIntent.giveItems,undefined);
+});
+test('a vassal in council acknowledges lawful service even with negative feelings',()=>{
+ const s=createGame(),c=allies(s,['wintermere']);s.treaties.push({type:'vassalage',parties:['ashen','wintermere'],liege:'ashen',vassal:'wintermere',expires:20});
+ Object.assign(relation(s,'wintermere','ashen'),{grievance:75,trust:-60});
+ const response=scriptedCouncil(s,c,'ashen','Attack Vesper.');const vassal=response.responses.find(r=>r.speakerHouseId==='wintermere');
+ assert.ok(vassal);assert.match(vassal.message,/My liege/);assert.doesNotMatch(vassal.message,/grievances remain unanswered/);
+ const bond=makeCouncilContext(s,c,'ashen','Attack Vesper.').world.treaties.find(t=>t.type==='vassalage');assert.equal(bond.liege,'ashen');
+});

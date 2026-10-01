@@ -1,3 +1,5 @@
+import { isAiHouse } from './house-control.mjs';
+import { vassalBond, vassalMuster } from './vassal-role.mjs';
 import { fleetVision, publicFleet, SHIPS } from './naval-state.mjs';
 import { projectCourtIntelligence } from './court-intelligence.mjs';
 import { projectCouncils } from './council-state.mjs';
@@ -89,6 +91,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     ? Object.fromEntries(s.kingdoms.filter(h=>h.id!==viewer).map(h=>[h.id,marriageReadiness(s,h.id,viewer)])) : {};
   v.allianceCouncils=projectCouncils(s,viewer);
   v.commanders={...(s.commanders||{}),retired:(s.commanders?.retired||[]).filter(g=>g.owner===viewer).map(clone),roster:(s.commanders?.roster||[]).filter(g=>g.owner===viewer).map(clone),candidates:(s.commanders?.candidates||[]).filter(g=>g.owner===viewer).map(clone),nextOffer:{[viewer]:s.commanders?.nextOffer?.[viewer]||0}};
+  v.vassalReports=Object.fromEntries(s.kingdoms.filter(h=>isAiHouse(s,h.id)&&vassalBond(s,viewer,h.id)).map(h=>[h.id,vassalMuster(s,viewer,h.id)]));
   v.fealty=Object.fromEntries(Object.entries(s.fealty||{}).filter(([,f])=>[f.liege,f.vassal].includes(viewer)).map(([id,f])=>[id,clone(f)]));
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;
@@ -132,7 +135,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.humanProposals=(v.humanProposals||[]).filter(p=>[p.from,p.to].includes(viewer));
   for(const h of v.kingdoms){
     h.knownAlive=Object.values(s.tiles).some(t=>t.owner===h.id&&['city','town'].includes(t.building));
-    for(const r of Object.values(h.id===viewer?{}:h.relations)){r.observations={};r.movements={};r.contacts={};r.history=[];}
+    for(const r of Object.values(h.id===viewer?{}:h.relations)){r.observations={};r.observedArmyTiles={};r.movements={};r.contacts={};r.history=[];}
     if(h.id===viewer)continue;
     for(const [id,r]of Object.entries(h.relations))if(id!==viewer){delete r.personal;delete r.negotiation;}
     h.confidantConcerns=h.relations[viewer]?.personal?.bonds.includes('Trusted Confidant')?(h.priorities||[]).slice(0,2).map(text=>text.replace(/\s*\(\d+\)/g,'')):[];

@@ -1,3 +1,4 @@
+import { vassalBond } from './vassal-role.mjs';
 import { worstWarPosition, qualitativeWarPosition } from './war-desperation.mjs';
 import { alive, atWar, kingdom, relation, treaty } from './core.mjs';
 import { knowledgeView } from './fog.mjs';
@@ -46,7 +47,7 @@ export function councilFacts(s, c) {
       concern:worstWarPosition(s,id)?.score>=55?'war survival':frontierThreats.length?'frontier threatened':k.resources.food < 20?'food shortage':committed?'forces committed elsewhere':'available to discuss support'};
   });
   return {mood:councilMood(s,c.participants,events),participants,relationshipFields:relationFields,relationships,
-    wars:s.wars, treaties:s.treaties.filter(t => t.parties.every(id => c.participants.includes(id))).slice(-16).map(t => ({type:t.type,parties:t.parties,expires:t.expires})),
+    wars:s.wars, treaties:s.treaties.filter(t => t.parties.every(id => c.participants.includes(id))).slice(-16).map(t => ({type:t.type,parties:t.parties,expires:t.expires,...(t.type==='vassalage'?{liege:t.liege,vassal:t.vassal}:{})})),
     family:(s.royalBonds?.marriages||[]).filter(m => m.parties.every(id => c.participants.includes(id))).map(m => ({parties:m.parties,status:m.status})).slice(-6),
     commitments:s.pledges.filter(p => c.participants.every(id => [p.debtor,p.creditor].includes(id)) ||
       p.operationId && s.cooperation?.operations.some(o => o.id === p.operationId && c.participants.every(id => o.participants.some(p => p.house === id && p.status === 'accepted'))))
@@ -103,6 +104,7 @@ export function scriptedCouncil(s,c,actor,message) {
     let stance = 'discuss', text;
     if (intent?.targetId === p.id) {stance='refuse';text='You invite me to council to plan an attack on my own House? I will hear no such terms.';}
     else if (intent?.type === 'JOINT_WAR' && treaty(s,p.id,intent.targetId,'alliance')) {stance='refuse';text=`I am also sworn to ${name(s,intent.targetId)}. I will not betray that pact for this campaign.`;}
+    else if (vassalBond(s,actor,p.id)) {stance='support';text='My liege, I acknowledge your objective. I will prepare to serve it and report any practical obstacle; formal military orders await your command.';}
     else if (r.grievance >= 45 || r.trust < -25) {stance='refuse';text='Our grievances remain unanswered. I will not promise more soldiers on the strength of words.';}
     else if (intent && ['war survival','frontier threatened','forces committed elsewhere','food shortage'].includes(p.concern)) {stance='constrained';text=p.concern==='war survival'?'My realm is fighting for its survival. I need help defending what remains, not another offensive.':p.concern==='frontier threatened'?'My frontier is threatened. I cannot strip its defenses for another offensive.':p.concern==='food shortage'?'My people need food before I can sustain another campaign. Can this council arrange supplies?':'My forces already have sworn duties. We must account for those before adding another campaign.';}
     else if (rival) {stance='conditional';text=`I want assurances from ${name(s,rival.id)} first. Our history gives me little confidence that their banners will move when ours do.`;}

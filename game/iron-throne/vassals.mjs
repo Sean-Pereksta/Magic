@@ -8,7 +8,8 @@ import { armiesOf, atWar, declareWar, distance, kingdom, orderArmy, relation, se
 
 const fail=error=>({ok:false,error});
 const standingCommand=o=>['defend','frontier'].includes(o.kind)||o.kind==='reinforce'&&!!o.army;
-export const vassalBond=(s,liege,vassal)=>s.treaties.find(t=>t.type==='vassalage'&&t.liege===liege&&t.vassal===vassal&&t.expires>s.turn);
+import { vassalBond } from './vassal-role.mjs';
+export { vassalBond } from './vassal-role.mjs';
 export const vassalOrder=(s,vassal)=>s.cooperation?.vassalOrders?.find(o=>o.vassal===vassal&&o.status!=='Completed');
 export function initializeVassals(s){initializeCooperation(s);s.cooperation.vassalOrders??=[];s.fealty??={};}
 function notice(s,o,status,reason){

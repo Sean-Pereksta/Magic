@@ -46,6 +46,9 @@ test('catastrophic defeat enables a single ratified surrender that ends war and 
   assert.equal(commitDeal(s,ruler,intent).ok,true);assert.equal(atWar(s,'ashen',ruler),false);
   assert.ok(treaty(s,'ashen',ruler,'peace'));assert.equal(treaty(s,'ashen',ruler,'vassalage').vassal,ruler);
   assert.equal(treaty(s,'ashen',ruler,'vassalage').liege,'ashen');
+  assert.equal(makeContext(s,ruler,'Greetings.').world.politicalPosture.label,'Sworn Vassal');
+  assert.equal(relation(s,ruler,'ashen').wariness,0);
+  assert.match(scriptedReply(s,ruler,'What are your full forces numbers?').reply,/My liege/);
 });
 test('desperation and submission resistance are distinct; promises cannot bypass the hard gate',()=>{
   const {s,ruler}=devastated();Object.assign(kingdom(s,ruler),{honor:1,ambition:1,aggression:1,paranoia:1});

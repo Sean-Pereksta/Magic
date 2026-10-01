@@ -49,7 +49,7 @@ const CODES = {
   GEMINI_RESPONSE_INVALID: ['Gemini reply', 'Gemini returned an incomplete or invalid structured reply.', 'Retry after the cooldown. If repeated, check the Worker response schema and output limit.'],
   REQUEST_CANCELLED: ['Gemini request', 'The conversation request was cancelled.', 'Send a new message when the campaign is ready.']
 };
-const REPLY_ISSUES = { output_limit: 'Output-token limit reached', generation_not_complete: 'Generation did not finish normally', empty_reply: 'No visible reply text', invalid_json: 'Reply text was not valid JSON', invalid_schema: 'JSON did not match the diplomacy contract' };
+const REPLY_ISSUES = { output_limit: 'Output-token limit reached', generation_not_complete: 'Generation did not finish normally', empty_reply: 'No visible reply text', invalid_json: 'Reply text was not valid JSON', invalid_schema: 'JSON did not match the diplomacy contract', invalid_reply: 'Reply was missing, empty, or exceeded the text limit', invalid_intent: 'A proposed intent did not match its allowed terms', invalid_metadata: 'Tone or conversation metadata did not match the contract' };
 const TURNSTILE_CODES = ['missing-input-secret', 'invalid-input-secret', 'missing-input-response', 'invalid-input-response', 'bad-request', 'timeout-or-duplicate', 'internal-error'];
 export function workerChecks(env) {
   return Object.fromEntries(CHECK_NAMES.map(name => [name, env[name] ? 'present' : 'missing']));

@@ -16,7 +16,7 @@ export function planningView(world, owner) {
     // explicit disclosures, never permission to inspect the underlying court.
     for (const id of Object.keys(k.relations)) k.relations[id] = {
       opinion: 0, trust: 0, fear: 0, wariness: 0, grievance: 0, dependency: 0,
-      reliability: 50, respect: 15, observations: {}, movements: {}, contacts: {}, history: []
+      reliability: 50, respect: 15, observations: {}, observedArmyTiles: {}, movements: {}, contacts: {}, history: []
     };
     for (const report of view.intelligence.reports.filter(r => r.house === k.id && world.turn-r.turn <= 6))
       for (const r of report.snapshot.relations || []) if (k.relations[r.house]) Object.assign(k.relations[r.house], r);
