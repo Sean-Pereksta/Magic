@@ -1,7 +1,7 @@
 import { alive, armiesOf, atWar, kingdom, relation, treaty } from './core.mjs';
 import { knowledgeView } from './fog.mjs';
 import { evaluateDeal, commitDeal, validateIntent, describeIntent } from './diplomacy.mjs';
-import { isPlayerPromise } from './promises.mjs';
+import { isPlayerPromise, detectPromise } from './promises.mjs';
 import { isAiHouse, court } from './house-control.mjs';
 import { appendConversation, borderThreat, diplomaticCapacity } from './living.mjs';
 import { councilActive, appendCouncil } from './council-state.mjs';
@@ -149,6 +149,8 @@ const words={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:
 export function inferFormalProposal(s,actor,message,{councilId=null,ruler=null,location=null}={}){
   if(typeof message!=='string'||/\b(?:do not|don't|never|cancel)\b/i.test(message))return null;
   const text=message.toLowerCase(),view=knowledgeView(s,actor),number=x=>/^\d+$/.test(x)?Number(x):words[x];
+  const promise=ruler&&detectPromise(view,ruler,message,actor);
+  if(promise)return {intent:validateIntent(promise),direction:'offer',councilId,requestedHouses:[ruler]};
   const turn=text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)\s+turns?\b/),duration=Math.min(20,Math.max(2,turn?number(turn[1]):10));
   const tile=location?.targetTile&&view.tiles[location.targetTile]||Object.values(view.tiles).find(t=>(t.fog!=='unknown'||t.knownCapital)&&t.name&&text.includes(t.name.toLowerCase()))||view.tiles[text.match(/\b\d+,\d+\b/)?.[0]];
   const house=view.kingdoms.find(k=>new RegExp(`\\b${k.id}\\b`,'i').test(text)),resources=text.match(/\b(\d+|twenty|thirty|forty|fifty|sixty|hundred)\s+(food|iron|wood|gold|stone|arms|tools|horses)\b/);

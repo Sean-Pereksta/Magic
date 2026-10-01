@@ -162,3 +162,12 @@ test('requested loans do not lend domestic reserves or bypass a ruler’s distru
   resolveFormalResponse(s,'ashen',r.proposalId,'wintermere');assert.notEqual(proposal(s,r.proposalId).responses.wintermere.status,'accepted');assert.equal(kingdom(s,'wintermere').resources.gold,before);assert.equal(s.pledges.length,0);
  }
 });
+
+test('a next-turn payment promise preserves its debtor and deadline without becoming immediate aid',()=>{
+ const {s}=setup(),before=kingdom(s,'ashen').resources.food;
+ const result=stageConversationProposal(s,'ashen',"I'll send you 20 food next turn.",{ruler:'wintermere'}),p=proposal(s,result.proposalId);
+ assert.equal(p.intent.type,'PROMISE');assert.equal(p.intent.duration,1);assert.equal(p.direction,'offer');assert.equal(p.approved,false);
+ assert.equal(ratifyFormalProposal(s,'ashen',p.id).ok,true);resolveFormalResponse(s,'ashen',p.id,'wintermere');
+ assert.equal(p.responses.wintermere.status,'accepted');assert.equal(kingdom(s,'ashen').resources.food,before);
+ const oath=s.pledges.at(-1);assert.equal(oath.debtor,'ashen');assert.equal(oath.creditor,'wintermere');assert.equal(oath.deadline,s.turn+1);
+});

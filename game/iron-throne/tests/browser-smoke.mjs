@@ -26,7 +26,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
 try {
   for (const viewport of (process.env.IRON_THRONE_CHAT_ONLY ? [] : [{ width: 1280, height: 850 }, { width: 390, height: 844 }, { width: 844, height: 390 }].filter(v => !process.env.IRON_THRONE_VIEWPORT || String(v.width) === process.env.IRON_THRONE_VIEWPORT))) {
-    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
+    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
     await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = [], external = [];
@@ -89,12 +89,10 @@ try {
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges.length,0);
     await page.locator('#expand-council').click();assert.equal(await page.locator('#diplomacy').evaluate(el=>el.classList.contains('compact')),false);
-    await page.locator('#quick-offer').click();await page.getByRole('button',{name:'Give My Word',exact:true}).click();
-    await page.locator('.treaty-drawer-close').click();
+    await page.locator('[data-formal-ratify]').click();
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges.length===1);
     const oath=await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges[0]);assert.equal(oath.status,'pending');
     assert.match(await page.locator('#messages').textContent(),/20 food/);
-    await page.locator('#chat-message').fill('Thank you.');await page.locator('#send-chat').click();
-    await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal(await page.locator('#send-chat').isDisabled(),true);assert.match(await page.locator('#message-allowance').textContent(),/0\/3/);
     await page.locator('#quick-promises').click();await page.locator('#council-records-body [data-deliver]').click();
     assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges[0].status,'fulfilled');
@@ -155,7 +153,7 @@ try {
   }
   // Real browser behavior with fake verification/model responses: never consumes live quota.
   for (const verificationFails of [false, true]) {
-    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
+    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
     await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     const page = await context.newPage(), errors = []; let modelCalls=0, scriptLoads=0, sessionCalls=0, configRoute;
@@ -228,7 +226,7 @@ try {
   }
   // Capture the reported /session 503, copy it without a request, then recover.
   for (const viewport of [{ width: 1280, height: 850 }, { width: 390, height: 844 }]) {
-    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
+    browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--no-zygote', '--disable-dev-shm-usage'] : [])] });
     const context=await browser.newContext({viewport,reducedMotion:'reduce'}), page=await context.newPage(), errors=[];
     await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
@@ -297,7 +295,7 @@ try {
     console.log(`PASS ${viewport.width}×${viewport.height} diagnostics: session 503, three settings, copy, manual copy, no extra requests, billing 402, recovery`);
     await context.close();await browser.close();browser=null;
   }
-  browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process', '--no-zygote', '--disable-dev-shm-usage'] : [])] });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--no-zygote', '--disable-dev-shm-usage'] : [])] });
   const artPage=await browser.newPage();
   await artPage.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
   await artPage.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
