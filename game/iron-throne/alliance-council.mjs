@@ -141,9 +141,10 @@ export function finishCouncilMessage(s,actor,start,message,raw) {
   const c = councilForActor(s,actor,start.councilId);
   if (!c || c.sequence !== start.entryId || c.messages.at(-1)?.turn !== s.turn) return fail('The council changed while the envoy travelled.');
   const aiIds = c.participants.filter(id => id !== actor && isAiHouse(s,id));
-  const response = validateCouncilResponse(raw,c.participants,aiIds) || scriptedCouncil(s,c,actor,message);
+  const validated = validateCouncilResponse(raw,c.participants,aiIds);
+  const response = validated || scriptedCouncil(s,c,actor,message);
   for (const r of response.responses) {
-    appendCouncil(s,c,r.speakerHouseId,r.message,r.requestedIntent?{requestedIntent:r.requestedIntent}:{});
+    appendCouncil(s,c,r.speakerHouseId,r.message,{...(!validated||raw?.source==='scripted'?{source:'scripted'}:raw?.source==='gemini'?{source:'gemini'}:{}),...(r.requestedIntent?{requestedIntent:r.requestedIntent}:{})});
     grantFollowup(s,actor,r.speakerHouseId,c.id,message,r,{paid:true,requestedIntent:r.requestedIntent});
   }
   c.read[actor]=c.sequence;
@@ -181,10 +182,10 @@ export function initiateCouncilDiscussions(s) {
     }
     if (!topic) continue;
     for (const id of c.participants) {expireFollowups(s,id,c.id);if(!isAiHouse(s,id))s.councilInitiationTurns[id]=s.turn;}
-    appendCouncil(s,c,topic.speaker,topic.text,{initiated:true,reason:topic.key.split(':')[0]});c.initiatedTurn=s.turn;c.topics[topic.key]=s.turn;
+    appendCouncil(s,c,topic.speaker,topic.text,{initiated:true,source:'scripted',reason:topic.key.split(':')[0]});c.initiatedTurn=s.turn;c.topics[topic.key]=s.turn;
     c.topics=Object.fromEntries(Object.entries(c.topics).sort((a,b)=>b[1]-a[1]).slice(0,20));
     const answer=scriptedCouncil(s,c,topic.speaker,topic.text).responses.find(r=>r.speakerHouseId!==topic.speaker);
-    if(answer)appendCouncil(s,c,answer.speakerHouseId,answer.message);
+    if(answer)appendCouncil(s,c,answer.speakerHouseId,answer.message,{source:'scripted'});
   }
 }
 

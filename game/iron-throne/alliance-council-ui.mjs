@@ -1,3 +1,4 @@
+import { diagnosticDetails } from './diagnostics.mjs';
 import { ART } from './asset-manifest.mjs';
 import { councilParticipants, councilActive, councilUnread, ownCouncil } from './council-state.mjs';
 import { councilFacts } from './alliance-council.mjs';
@@ -23,12 +24,18 @@ export function installAllianceCouncil(doc, options) {
     <button class="alliance-latest" hidden>Latest council messages ↓</button>
     <form class="alliance-compose"><label class="eyebrow" for="alliance-message">ADDRESS THE COUNCIL</label><textarea id="alliance-message" maxlength="600" rows="2" required placeholder="Name the goal and the role you ask each House to play…"></textarea>
     <div class="button-row"><label class="toggle"><input class="alliance-gemini" type="checkbox">Gemini conversation</label><small class="alliance-allowance"></small><button type="submit" class="primary">Send envoy →</button></div>
-    <div class="alliance-verification"></div><p class="fine alliance-notice" role="status"></p><p class="fine alliance-privacy" hidden>Gemini receives the council conversation and shared fictional game context. Keep personal information out of messages.</p></form>`;
+    <button type="button" class="alliance-diagnostics" hidden>Diagnostics</button><p class="fine alliance-ai-status" role="status"></p><div class="alliance-verification"></div><p class="fine alliance-notice" role="status"></p><p class="fine alliance-privacy" hidden>Gemini receives the council conversation and shared fictional game context. Keep personal information out of messages.</p></form>`;
   doc.body.append(dialog);
   const el=selector=>dialog.querySelector(selector), history=el('.alliance-history');
-  let currentId=null, signature='', pinned=true, busy=false, readSequence=-1;
+  let currentId=null, signature='', pinned=true, busy=false, readSequence=-1,statusTimer=null;
   el('.close').onclick=()=>dialog.close();
-  dialog.addEventListener('close',()=>options.onClose?.());
+  dialog.addEventListener('close',()=>{clearInterval(statusTimer);statusTimer=null;options.onClose?.();});
+  el('.alliance-diagnostics').onclick=()=>options.openDiagnostics?.(currentId);
+  function updateStatus(){
+    const diagnostic=options.diagnostic?.(currentId),seconds=options.cooldown?.()||0;
+    el('.alliance-diagnostics').hidden=!diagnostic;
+    el('.alliance-ai-status').textContent=diagnostic ? `${diagnosticDetails(diagnostic).reason} [${diagnostic.code}]${seconds?` Retry in ${seconds}s.`:' You can try another message.'}` : seconds ? `Gemini cooldown · retry in ${seconds}s.` : '';
+  }
   history.addEventListener('scroll',()=>{pinned=history.scrollHeight-history.clientHeight-history.scrollTop<48;el('.alliance-latest').hidden=pinned;},{passive:true});
   el('.alliance-latest').onclick=()=>{pinned=true;history.scrollTop=history.scrollHeight;el('.alliance-latest').hidden=true;};
   el('.alliance-gemini').onchange=e=>options.setGemini(e.target.checked);
@@ -48,11 +55,12 @@ export function installAllianceCouncil(doc, options) {
     try {
       currentId=await options.open(id);if(!currentId)return;
       signature='';readSequence=-1;pinned=true;
-      if(!dialog.open)dialog.showModal();render();options.onOpen?.(el('.alliance-verification'));el('textarea').focus();
+      if(!dialog.open)dialog.showModal();clearInterval(statusTimer);statusTimer=setInterval(updateStatus,1000);render();options.onOpen?.(el('.alliance-verification'));el('textarea').focus();
     } catch(e){options.error(e.message);}
   }
   function render() {
     if(!dialog.open)return;
+    updateStatus();
     const s=options.getState(),actor=options.getActor(),c=s.allianceCouncils?.find(c=>c.id===currentId&&c.participants.includes(actor));
     if(!c){dialog.close();return;}
     const active=councilActive(s,c),facts=councilFacts(s,c);
@@ -63,7 +71,7 @@ export function installAllianceCouncil(doc, options) {
       signature=next;const top=history.scrollTop;
       history.innerHTML=c.messages.map(m=>{
         const h=s.kingdoms.find(k=>k.id===m.speakerHouseId),credit=followupCredit(s,actor,h.id,c.id);
-        return `${m.initiated?`<div class="dispatch-divider" role="separator"><b>NEW DISPATCH · TURN ${m.turn}</b><span>Alliance Council · ${esc(m.reason||"Council Concern")}</span></div>`:''}<article class="alliance-message ${h.id===actor?'from-player':''}" style="--speaker-color:${h.color}">${portrait(h)}<div><small>${esc(h.id===actor?'YOU':h.ruler)} · ${esc(h.name)} · Turn ${m.turn}</small><p>${esc(m.message)}</p>${m.requestedIntent&&h.id!==actor&&active?`<button type="button" data-alliance-terms="${h.id}" data-message="${m.id}">${credit?'Requested terms · no extra envoy':'Review terms'}</button>`:''}</div></article>`;
+        return `${m.initiated?`<div class="dispatch-divider" role="separator"><b>NEW DISPATCH · TURN ${m.turn}</b><span>Alliance Council · ${esc(m.reason||"Council Concern")}</span></div>`:''}<article class="alliance-message ${h.id===actor?'from-player':''}" style="--speaker-color:${h.color}">${portrait(h)}<div><small>${esc(h.id===actor?'YOU':h.ruler)} · ${esc(h.name)} · Turn ${m.turn}${m.source==='gemini'?' · Gemini':m.source==='scripted'||m.initiated?' · Local dialogue':''}</small><p>${esc(m.message)}</p>${m.requestedIntent&&h.id!==actor&&active?`<button type="button" data-alliance-terms="${h.id}" data-message="${m.id}">${credit?'Requested terms · no extra envoy':'Review terms'}</button>`:''}</div></article>`;
       }).join('')||'<p class="fine alliance-empty">The allied rulers await your first proposal. Each House speaks for its own interests.</p>';
       history.scrollTop=pinned?history.scrollHeight:top;el('.alliance-latest').hidden=pinned;
     }
@@ -74,5 +82,5 @@ export function installAllianceCouncil(doc, options) {
     const gemini=options.gemini();el('.alliance-gemini').checked=gemini.enabled;el('.alliance-gemini').disabled=!gemini.available;el('.alliance-privacy').hidden=!gemini.enabled;
     if(readSequence!==c.sequence){readSequence=c.sequence;options.read(c.id).catch(e=>options.error(e.message));}
   }
-  return {dialog,open,render};
+  return {dialog,open,render,setStatus:message=>{el('.alliance-notice').textContent=message;}};
 }

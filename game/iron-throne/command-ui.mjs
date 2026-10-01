@@ -74,7 +74,7 @@ export function installCommandUI({getState,getView,getOwner,perform,send,toast,c
     sending=true;
     try{
       const response=await send(id,message);
-      if(getState().turn!==turn||getState().sequential?.id!==activation||!canAct()){toast('The activation ended. Review your message before sending again.');return;}
+      if(response?.source==='cancelled'||getState().turn!==turn||getState().sequential?.id!==activation||!canAct()){toast('The activation ended. Review your message before sending again.');return;}
       const reply=response||localGeneralReply(s,owner,id,message);
       perform('generalChat',{id,message,response:reply},()=>recordGeneralConversation(s,owner,id,message,reply));
       if(id===current&&reply.order&&validateGeneralOrder(getState(),owner,id,reply.order).ok){draft=reply.order;dialog.classList.add('show-orders');}

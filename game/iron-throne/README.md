@@ -502,3 +502,43 @@ activation authority and migration.
 See [NAVAL.md](NAVAL.md) for Shipyards, three vessel classes, transport capacity,
 river navigation, amphibious landings, Fishing Docks, naval AI, new maps and
 multiplayer/save integration.
+
+### Alliance Council Gemini queue and diagnostics
+
+Deploy both the static game files and `game/iron-throne/worker` for this update.
+From the Worker directory, run `npx wrangler deploy` using the existing Cloudflare
+account and runtime secrets. The game deployment alone does not update the Worker.
+No new secret or binding is required.
+
+Player diplomacy, general chat and optional background voices now share one
+in-page request queue and session. One generation runs at a time; player messages
+precede waiting background jobs. Already-running generation finishes normally.
+Changing the campaign cancels obsolete queued work. The queue does not coordinate
+separate browser tabs or players; the Worker's atomic shared budgets still do that.
+Provider errors are not automatically retried, and provider cooldowns remain in force.
+
+Alliance Council exposes the captured safe error code, a live cooldown countdown,
+and a Diagnostics / Copy report dialog. Successful player replies clear that
+council's failure display. Gemini and local player-response messages are labeled.
+
+In single-player, up to one eligible automatic exchange per turn is voiced after
+verification, preferring a current Alliance Council event over a private dispatch.
+The triggering event, ruler personalities and shared observations are supplied.
+Voicing replaces only the matching current scripted entries and never grants
+proposal credits, spends player dispatches, or executes treaties, wars or orders.
+If the player has already answered, the coalition changed, or the reply names the
+wrong speakers, the background replacement is discarded. Online automatic
+exchanges retain deterministic text; player-initiated online council chat uses
+Gemini through the shared client queue as before.
+
+`CLIENT_PER_MINUTE` now supports values through 60, matching the existing shared
+per-minute ceiling, so the configured value of 50 is honored. Lower configured
+limits remain enforced. These are local safety budgets, not Google quota grants.
+Check the actual project's Google allowance when choosing deployment values.
+
+Targeted checks:
+
+```sh
+node --test game/iron-throne/tests/diplomacy-queue.test.mjs game/iron-throne/tests/alliance-council.test.mjs game/iron-throne/tests/network.test.mjs game/iron-throne/tests/diagnostics.test.mjs game/iron-throne/tests/session.test.mjs
+node game/iron-throne/tests/council-diagnostics-browser.mjs
+```
