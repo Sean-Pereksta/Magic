@@ -1,3 +1,5 @@
+import { foodAccounting } from './food-security.mjs';
+import { migrateTradePackages } from './trade-package.mjs';
 import { movementBudget, canSpendMovement } from './movement-timing.mjs';
 import { orderLandNavalAttack, resolveLandNavalAttack } from './naval-ranged.mjs';
 import { initializeNaval, allArmies, syncCargo, SHIPS } from './naval-state.mjs';
@@ -476,10 +478,11 @@ export function economyProjection(s, owner) {
   for(const t of Object.values(s.tiles).filter(t=>t.owner===owner)) if(t.building)income.gold--;
   income.gold -= spyUpkeep(s, owner) + generalUpkeep(s,owner);
   income.gold += Math.floor(k.population * ({ low: .08, medium: .17, high: .28 }[k.tax]));
-  income.food -= Math.ceil(k.population / 12);
-  for (const a of militaryArmiesOf(s, owner)) { income.food -= Math.ceil(sizeOf(a) / 6); income.gold -= Math.ceil((sizeOf(a)+familyCount(a,'mounted')+familyCount(a,'siege')*2) / 9); }
+  const food=foodAccounting(s,owner,gross.food);
+  income.food=food.net;
+  for (const a of militaryArmiesOf(s, owner)) { income.gold -= Math.ceil((sizeOf(a)+familyCount(a,'mounted')+familyCount(a,'siege')*2) / 9); }
   const crew=(s.fleets||[]).filter(f=>f.owner===owner).reduce((n,f)=>n+f.ships.reduce((m,v)=>m+v.crew,0),0)+(s.shipQueues||[]).filter(q=>q.owner===owner).reduce((n,q)=>n+SHIPS[q.type].crew,0);
-  income.food-=Math.ceil(crew/6);income.gold-=Math.ceil(crew/9);
+  income.gold-=Math.ceil(crew/9);
   // Each connected pair pays once to each eligible kingdom, never per path tile.
   const partners = settlements(s).filter(t => t.owner === owner || (treaty(s, owner, t.owner, 'trade') && !tradeBlocked(s, owner, t.owner)));
   const seen = new Set(); let routes = 0;
@@ -490,7 +493,7 @@ export function economyProjection(s, owner) {
     const route=findPath(s,a.id,b.id,owner,true);
     if (route.length) { const quality=Math.min(buildingLevel(a,'road'),...route.map(id=>buildingLevel(s.tiles[id],'road')));income.gold += (quality-1)*4; income.gold += (b.owner === owner ? 6 : 10) + buildingLevel(a,'market')*2 + buildingLevel(a,'merchantGuild')*3; routes++; }
   }
-  return { income, gross, stalls, routes };
+  return { income, gross, stalls, routes, food };
 }
 // Forecast completed construction, using the same calculation as resolution.
 export function populationProjection(s, owner) {
@@ -589,6 +592,7 @@ export function parseSave(raw) {
   for (const history of Object.values(s.conversations)) if (!Array.isArray(history) || history.length > 60 || history.some(m => typeof m.text !== 'string' || m.text.length > 2000 || !['player', 'ruler', 'council'].includes(m.role))) throw new Error('Damaged conversation data.');
   if (oldVersion === 1) initializeLiving(s);
   s.version=SAVE_VERSION;
+  migrateTradePackages(s);
   validateNaval(s);validateCommanders(s);
   validateLivingSave(s); validateCouncilSave(s);
   validateEmotions(s); validateMarriage(s); validateCourtIntelligence(s);

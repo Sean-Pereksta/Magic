@@ -21,6 +21,7 @@ export const LEGACY_WORLD_SIZES = {6:{width:40,height:30},8:{width:48,height:36}
 export const WORLD_SIZES = {6:{width:44,height:34},8:{width:52,height:40},10:{width:60,height:44},12:{width:68,height:48}};
 export const TERRAINS = {
   plains: { name: 'Plains', cost: 1, defense: 1, color: '#5d7350' },
+  desert: { name: 'Desert', cost: 1, defense: 1, color: '#c7aa70' },
   forest: { name: 'Forest', cost: 2, defense: 1.25, color: '#345c4e' },
   hills: { name: 'Hills', cost: 2, defense: 1.35, color: '#7e7c60' },
   mountain: { name: 'Mountains', cost: Infinity, defense: 1.6, color: '#616b72' },
@@ -28,13 +29,13 @@ export const TERRAINS = {
   coast: { name: 'Coast', cost: 1, defense: 1, color: '#9a9673' }
 };
 export const BUILDINGS = {
-  farm: { name: 'Farm', icon: '♧', cost: { wood: 20, gold: 10 }, terrain: ['plains'], yield: { food: 12 }, turns: 1, description: '+12 food. Fertile land produces +4 more.' },
+  farm: { name: 'Farm', icon: '♧', cost: { wood: 20, gold: 10 }, terrain: ['plains','desert'], yield: { food: 12 }, turns: 1, description: '+12 food. Fertile land produces +4 more.' },
   lumber: { name: 'Lumber camp', icon: '♣', cost: { wood: 10, gold: 15 }, terrain: ['forest'], yield: { wood: 9 }, turns: 1, description: '+9 wood from forests.' },
-  quarry: { name: 'Quarry', icon: '◆', cost: { wood: 20, gold: 15 }, terrain: ['hills'], yield: { stone: 8 }, turns: 2, description: '+8 stone from hills.' },
-  mine: { name: 'Iron mine', icon: '⚒', cost: { wood: 25, stone: 15, gold: 20 }, terrain: ['hills'], resource: 'iron', yield: { iron: 7 }, turns: 2, description: '+7 iron. Requires an iron deposit.' },
+  quarry: { name: 'Quarry', icon: '◆', cost: { wood: 20, gold: 15 }, terrain: ['hills','desert'], yield: { stone: 8 }, turns: 2, description: '+8 stone from hills.' },
+  mine: { name: 'Iron mine', icon: '⚒', cost: { wood: 25, stone: 15, gold: 20 }, terrain: ['hills','desert'], resource: 'iron', yield: { iron: 7 }, turns: 2, description: '+7 iron. Requires an iron deposit.' },
   road: { name: 'Road', icon: '═', cost: { stone: 5, gold: 3 }, turns: 1, description: 'Half-point movement. Connect settlements and trade partners for gold.' },
   fort: { name: 'Fort', icon: '♜', cost: { wood: 35, stone: 50, gold: 40 }, turns: 3, description: 'Integrity-scaled defender protection and control of nearby land. Troops are needed to stop enemy movement.' },
-  town: { name: 'Town', icon: '♖', cost: { wood: 60, stone: 40, gold: 70 }, terrain: ['plains', 'coast'], turns: 3, description: 'Found a settlement at least 4 hexes from another settlement.' },
+  town: { name: 'Town', icon: '♖', cost: { wood: 60, stone: 40, gold: 70, food: 30 }, terrain: ['plains', 'coast','desert'], turns: 3, description: 'Found a settlement at least 4 hexes from another settlement.' },
   city: { name: 'City', icon: '♛', cost: { wood: 70, stone: 85, gold: 100 }, turns: 4, description: 'Promote a town, then upgrade the city three times for more growth, food, gold, population capacity and recruitment orders.' },
   wall: { name: 'City walls', icon: '▥', cost: { stone: 60, gold: 35 }, turns: 3, description: '60 wall strength. Protects defending troops; bombardment reduces protection. Empty settlements can be occupied.' },
   market: { name: 'Market', icon: '⚖', cost: { wood: 40, stone: 25, gold: 40 }, turns: 2, description: '+12 gold each turn in this settlement.' },
@@ -139,4 +140,5 @@ Object.assign(UNITS, {
   trebuchet: unit('Trebuchets','siege',.6,.5,1,{wood:45,iron:20,tools:18,gold:50},{siegeWorks:3},{breach:24,ranged:2.5,bombardRange:3}),
   siege: unit('Legacy Siege Engines','siege',.8,.5,2,{wood:30,iron:16,gold:35},{siegeWorks:2},{breach:9,legacy:true,bombardRange:2})
 });
+for (const u of Object.values(UNITS)) u.cost.food ??= Math.max(4,u.count*2);
 for (const u of Object.values(UNITS)) u.description = `${u.count} per base muster. Vision ${['Scouts','Light Cavalry'].includes(u.name)?5:u.family==='mounted'?4:u.family==='ranged'?3:u.family==='siege'?1:2} hexes. ${Object.entries(u.requires).map(([b,l])=>`${BUILDINGS[b].levels[l-1].name} required`).join(', ')}. ${u.family === 'siege' ? 'Slow; attacks walls over successive turns.' : u.antiCavalry ? 'Counters cavalry charges.' : u.piercing ? 'Armor-piercing volleys.' : u.family === 'mounted' ? 'Charge, flank and pursue; weak in forests and against spears.' : u.family === 'ranged' ? 'Volleys precede melee; protected by hills and walls.' : 'Holds the main battle line.'}`;

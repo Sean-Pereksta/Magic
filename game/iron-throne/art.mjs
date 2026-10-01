@@ -1,5 +1,6 @@
 // Native canvas artwork: bounded, reusable sprites; no downloads or per-frame randomness.
 const PALETTE = {
+  desert: ['#dfc78e','#c5a96c','#a78a54'],
   plains: ['#8c9b65', '#657f50', '#4d6647'], forest: ['#547b58', '#365e48', '#294939'],
   hills: ['#a5a17b', '#7d8464', '#626d53'], mountain: ['#889395', '#677777', '#4a5d60'],
   water: ['#427a8d', '#2c5b74', '#1c3c57'], coast: ['#c5bc89', '#a29e72', '#7f8c69']

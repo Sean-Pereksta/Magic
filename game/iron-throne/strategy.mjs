@@ -1,3 +1,4 @@
+import { economicNeeds } from './trade-economy.mjs';
 import { prepareNavalEconomy, directNavalForces, navalInvasionReady } from './naval-ai.mjs';
 import { initializeCommanders } from './command-state.mjs';
 import { difficulty, settlementAmbition, validateDifficulty } from './difficulty.mjs';
@@ -58,17 +59,10 @@ function assess(s, k) {
   const pledges = s.pledges.filter(p => p.debtor === k.id && p.status === 'pending' && !p.breached && !p.operationId &&
     ['DEFEND', 'POSITION', 'WITHDRAW', 'JOINT_WAR', 'BUILD_DEFENSES'].includes(p.intent.type)).sort((a, b) => a.deadline - b.deadline);
   const { income } = economyProjection(s, k.id);
-  // Reserve two deliveries of ratified supply obligations as well as upkeep.
-  const reserves = Object.fromEntries(RESOURCES.map(r => [r, 0]));
-  for (const t of s.treaties.filter(t => t.type === 'recurring' && t.expires > s.turn && t.parties.includes(k.id))) {
-    const payer = t.payer === k.id;
-    reserves[payer ? t.intent.giveResource : t.intent.receiveResource] += 2 * (payer ? t.intent.giveAmount : t.intent.receiveAmount);
-  }
-  reserves.food += Math.max(24, -income.food * 3);
-  reserves.food += s.pledges.filter(p=>p.debtor===k.id&&p.operationTask==='supply'&&p.status==='pending'&&!p.delivered).reduce((n,p)=>n+p.intent.giveAmount,0);
-  reserves.gold += Math.max(18, -income.gold * 3);
-  const crisis = k.resources.food + income.food * 3 < 30 || k.resources.gold + income.gold * 3 < 20;
-  return { desperation, tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, crisis, war: enemyTowns.length > 0 };
+  const needs=economicNeeds(s,k.id);
+  const reserves=Object.fromEntries(needs.map(n=>[n.resource,n.reserve+n.obligations]));
+  const crisis=needs.some(n=>['food','gold'].includes(n.resource)&&n.state==='Critical');
+  return { desperation, tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, needs, crisis, war: enemyTowns.length > 0 };
 }
 
 function chooseGoal(c) {
@@ -136,8 +130,10 @@ function buildingCandidates(s, k, c) {
   const strategic=difficulty(s).coordination>=2;
   const grow=strategic&&!c.crisis&&!c.threats.length&&c.towns.length+pending('town')<settlementAmbition(s,k,c);
   const fortifications = c.enemyTowns.some(t => (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && c.enemies.some(e=>e.tile===t.id)) || plans.some(p=>p.requiredSiege>0);
-  const need = (resource, stock, flow) => c.income[resource] < 0 ? 105 + Math.min(35, -c.income[resource] * 3) :
-    k.resources[resource] + c.income[resource] * 2 < stock ? 85 : c.income[resource] < flow ? 48 : 0;
+  const need = (resource, stock, flow) => {
+    const n=c.needs.find(n=>n.resource===resource);
+    return n.state==='Critical'?140:n.state==='Needed'?100: n.state==='Useful'?65:n.production<flow?35:0;
+  };
   const weights = {
     farm: need('food', 70, 5), lumber: need('wood', 60, 6), quarry: need('stone', 50, 5), mine: need('iron', 35, 4),
     ranch: specialty === 'cavalry' ? need('horses', 20, 3) : 0,
@@ -182,7 +178,7 @@ function buildingCandidates(s, k, c) {
         score += (tileProduction(copy, k.id)[r] - tileProduction(tile, k.id)[r]) * .7;
       }
       if (type === 'watchtower') score += Object.values(s.tiles).filter(t=>t.fog==='unknown'&&distance(tile,t)<=6).length*.6;
-      if (type === 'town') score += neighbors(s, tile).reduce((n, t) => n + (t.resource ? QUALITY[t.quality] || 1 : 0), 0) + quality;
+      if (type === 'town') score += neighbors(s, tile).reduce((n,t)=>n+(t.resource?(QUALITY[t.quality]||1)*Math.min(8,c.needs.find(x=>x.resource===t.resource)?.value||1):0),0)+quality;
       if (type === 'wall') score += c.threats.find(t => t.tile.id === tile.id)?.enemy || (tile.id === c.home.id ? 5 : 0);
       if (nearby(s, c.enemies, tile, 2).length && !['wall','watchtower'].includes(type)) score -= 90;
       candidates.push({ type, tile, score, cost: spec.cost, level: spec.level, kind: 'build', essential: type === 'farm' && c.crisis || type === 'market' && c.income.gold < 0 });

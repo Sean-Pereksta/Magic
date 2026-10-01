@@ -140,15 +140,15 @@ test('a genuine treasury need can justify gold terms; healthy treasuries do not 
   assert.equal(evaluateDeal(s,'sunspire',v.counter).status,'accept');
 });
 
-test('a limited trial can soften a greedy bargaining margin but never the material-value floor', () => {
-  const s=createGame(),offer=terms('EXCHANGE',{giveResource:'food',giveAmount:12,receiveResource:'wood',receiveAmount:10}),r=relation(s,'sunspire','ashen');
+test('a limited trial can soften a greedy bargaining margin but never fair package value', () => {
+  const s=createGame(),offer=terms('EXCHANGE',{giveResource:'food',giveAmount:11,receiveResource:'wood',receiveAmount:10}),r=relation(s,'sunspire','ashen');
   assert.notEqual(evaluateDeal(s,'sunspire',offer).status,'accept');
   applySpeech(s,'sunspire','Let us start trade with a small trial exchange.');
   // The ruler can still bargain: a second distinct substantive point closes the small premium.
   applySpeech(s,'sunspire',opener);
   assert.equal(evaluateDeal(s,'sunspire',offer).status,'accept');
   r.trust=100;r.opinion=100;
-  assert.notEqual(evaluateDeal(s,'sunspire',{...offer,giveAmount:1}).status,'accept');
+  assert.notEqual(evaluateDeal(s,'sunspire',{...offer,giveItems:[{resource:'food',amount:1}],giveAmount:1}).status,'accept');
 });
 
 test('every generated counter is legal, affordable, and immediately re-evaluates to acceptance', () => {

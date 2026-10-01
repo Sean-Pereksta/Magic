@@ -119,7 +119,7 @@ test('wall upgrades add persistent strength and can be repaired through construc
 test('need scheduler is bounded, respects per-House cooldown and never spends player resources',()=>{
  const s=createGame();stocked(s);kingdom(s,'wintermere').resources.iron=0;kingdom(s,'wintermere').resources.wood=550;kingdom(s,PLAYER).resources.iron=450;
  const initial=structuredClone(kingdom(s,PLAYER).resources);s.turn=2;scheduleTrade(s);assert.equal(s.commerce.offers.length,1);assert.equal(s.commerce.offers[0].from,'wintermere');assert.match(s.commerce.offers[0].reason,/iron/);assert.deepEqual(kingdom(s,PLAYER).resources,initial);
- scheduleTrade(s);assert.equal(s.commerce.offers.length,1);s.commerce.offers[0].status='declined';s.turn=4;scheduleTrade(s);assert.equal(s.commerce.offers.length,1);s.turn=6;scheduleTrade(s);assert.equal(s.commerce.offers.at(-1).created,6);
+ scheduleTrade(s);assert.equal(s.commerce.offers.length,1);s.commerce.offers[0].status='declined';s.turn=4;scheduleTrade(s);assert.equal(s.commerce.offers.length,1);s.turn=7;scheduleTrade(s);assert.equal(s.commerce.offers.at(-1).created,7);
 });
 test('outposts expand capacity; multiple contracts remain atomic and expire on lost infrastructure',()=>{
  const s=createGame();stocked(s);const capacity=tradeInfrastructure(s,PLAYER).capacity;routes(s);assert.ok(tradeInfrastructure(s,PLAYER).capacity>capacity);

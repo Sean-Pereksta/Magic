@@ -103,7 +103,7 @@ test('resource exchanges conserve resources and high friendship cannot enable ar
   const s = createGame(); kingdom(s, 'wintermere').relations[PLAYER] = { opinion: 100, trust: 100 };
   assert.notEqual(evaluateDeal(s, 'wintermere', offer('EXCHANGE', { giveAmount: 1, receiveAmount: 100, receiveResource: 'food' })).status, 'accept');
   const before = s.kingdoms.reduce((n, k) => n + k.resources.gold + k.resources.food, 0);
-  assert.equal(commitDeal(s, 'wintermere', offer('EXCHANGE', { giveAmount: 20, receiveAmount: 25, receiveResource: 'food' })).ok, true);
+  assert.equal(commitDeal(s, 'wintermere', offer('EXCHANGE', { giveAmount: 60, receiveAmount: 25, receiveResource: 'food' })).ok, true);
   assert.equal(s.kingdoms.reduce((n, k) => n + k.resources.gold + k.resources.food, 0), before);
 });
 test('a valuable frontier town can be ceded, but never a capital or last settlement', () => {

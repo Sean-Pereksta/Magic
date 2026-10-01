@@ -4,8 +4,8 @@ import { kingdom, populationProjection, resolveEconomy, recruit, parseSave } fro
 import { createGame } from './fixtures/legacy-game.mjs';
 import {calculatePopulationChange,populationCapacity,MAX_GROWTH_PER_TURN} from '../population.mjs';
 
-test('a healthy starting kingdom gains six population and the forecast matches resolution for every House',()=>{
- const s=createGame(),expected=s.kingdoms.map(k=>populationProjection(s,k.id));assert.equal(expected[0].change,6);
+test('a healthy starting kingdom gains five population and the forecast matches resolution for every House',()=>{
+ const s=createGame(),expected=s.kingdoms.map(k=>populationProjection(s,k.id));assert.equal(expected[0].change,5);
  resolveEconomy(s);s.kingdoms.forEach((k,i)=>assert.equal(k.population,expected[i].nextPopulation));
 });
 test('cities and towns add growth while farms and settlements independently add capacity',()=>{

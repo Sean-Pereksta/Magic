@@ -1,9 +1,10 @@
+import { foodAccounting, foodSecurity } from './food-security.mjs';
 import { buildingLevel, cityBenefits } from './economy.mjs';
 
 export const MAX_GROWTH_PER_TURN = 24;
 // Capacity is housing/farm support. It never acts as a multiplier on birth rate.
 export function populationCapacity(s, owner) {
-  return Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+(cityBenefits(t)?.capacity??(t.building==='town'?80:0))+buildingLevel(t,'farm')*8,0);
+  return Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+Math.round((cityBenefits(t)?.capacity??(t.building==='town'?80:0))*(t.terrain==='desert'?.75:1))+buildingLevel(t,'farm')*8,0);
 }
 export function calculatePopulationChange(s, owner, income) {
   const k=s.kingdoms.find(k=>k.id===owner),tiles=Object.values(s.tiles).filter(t=>t.owner===owner);
@@ -14,7 +15,10 @@ export function calculatePopulationChange(s, owner, income) {
   const bonuses=[{label:`Cities (${cities} × 3)`,amount:cities*3},{label:`Towns (${towns} × 2)`,amount:towns*2}];
   bonuses.push({label:'City upgrades',amount:tiles.reduce((n,t)=>n+((cityBenefits(t)?.growth??3)-3),0)});
   const penalties=[],blockers=[];
+  const foodStatus=foodSecurity(k.resources.food,income.food,foodAccounting(s,owner,0).consumption);
   const foodBonus=income.food>=35?3:income.food>=15?2:income.food>=5?1:0;
+  if(foodStatus==='Strained')penalties.push({label:'Strained food supply',amount:-2});
+  if(foodStatus==='Shortage')blockers.push('Food shortage stops growth until reserves recover.');
   bonuses.push({label:'Food surplus',amount:foodBonus},{label:'High happiness',amount:happinessAfter>=85?2:happinessAfter>=65?1:0},{label:'Low taxes',amount:k.tax==='low'?2:0});
   if(k.tax==='high')penalties.push({label:'High taxes',amount:-1});
   if(happinessAfter>=35&&happinessAfter<50)penalties.push({label:'Low happiness',amount:-1});
@@ -28,7 +32,7 @@ export function calculatePopulationChange(s, owner, income) {
   if(!blockers.length&&growth<Math.min(rawGrowth,MAX_GROWTH_PER_TURN))penalties.push({label:'Remaining population capacity',amount:growth-Math.min(rawGrowth,MAX_GROWTH_PER_TURN)});
   // Preserve the existing shortage loss and civilian floor, including over-cap saves.
   if(shortage){growth=Math.max(20,k.population-3)-k.population;penalties.push({label:'Food or gold shortage',amount:growth});blockers.push('Shortage stops growth; the existing desertion penalty also applies.');}
-  return {population:k.population,capacity,change:growth,nextPopulation:k.population+growth,happinessAfter,shortage,foodSurplus:income.food,bonuses,penalties,blockers,limit:MAX_GROWTH_PER_TURN};
+  return {foodStatus,population:k.population,capacity,change:growth,nextPopulation:k.population+growth,happinessAfter,shortage,foodSurplus:income.food,bonuses,penalties,blockers,limit:MAX_GROWTH_PER_TURN};
 }
 export function populationBreakdown(p) {
   return [...p.bonuses.filter(b=>b.amount),...p.penalties.filter(b=>b.amount)].map(b=>`${b.label}: ${b.amount>0?'+':''}${b.amount}`).concat(p.blockers).join(' · ');

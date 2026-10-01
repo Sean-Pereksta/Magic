@@ -14,7 +14,7 @@ export const IRON_THRONES_ART = {
   buildings: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, levels(id,b)])),
   ships: {warCanoe:'ships/war_canoe.png',transport:'ships/transport.png',warship:'ships/warship.png'},
   troops: Object.fromEntries(Object.keys(UNITS).map(id => [id, `troops/${id}.png`])),
-  terrain: Object.fromEntries(['plains','forest','hills','mountain','water'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id}_${String(i+1).padStart(2,'0')}.png`)])),
+  terrain: Object.fromEntries(['plains','forest','hills','mountain','water','desert'].map(id => [id, Array.from({length:6},(_,i) => `terrain/${id==='desert'?'sand':id}_${String(i+1).padStart(2,'0')}.png`)])),
   resources: Object.fromEntries(RESOURCES.map(id => [id, `resources/${id}.png`])),
   portraits: Object.fromEntries(CAMPAIGN_HOUSES.map(h => [h.id, `portraits/${h.id}.png`])),
   geography: GEOGRAPHY_PATHS,
