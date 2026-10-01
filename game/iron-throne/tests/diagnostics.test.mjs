@@ -98,14 +98,15 @@ test('Google billing, quota, key, permission and model failures reach the client
       assert.equal((await client.send(createGame(), 'wintermere', 'private-message')).source, 'scripted');
       assert.equal(client.lastDiagnostic.code, code); assert.equal(client.lastDiagnostic.httpStatus, 503);
       assert.equal(client.lastDiagnostic.providerStatus, status); assert.equal(client.lastDiagnostic.checks.BUDGET, 'verified');
-      assert.equal(client.lastDiagnostic.requestFormat, 'openapi-flat-v1');
-      assert.match(report(client), /Worker request format: openapi-flat-v1/);
+      assert.equal(client.lastDiagnostic.requestFormat, 'pre-council-queue-v1');
+      assert.match(report(client), /Worker request format: pre-council-queue-v1/);
       assert.equal(client.lastDiagnostic.checks.GEMINI_API_KEY, code === 'GEMINI_KEY_INVALID' ? 'rejected' : 'present');
       assert.equal(modelCalls, 1); assert.equal((await storage.get('budget')).used, 1);
       assert.doesNotMatch(report(client), /private-|192\.0\.2\.42/);
       const captured = client.lastDiagnostic;
       await client.send(createGame(), 'wintermere', 'another message');
-      assert.equal(client.lastDiagnostic, captured); assert.equal(modelCalls, 1, 'diagnostics and cooldown do not retry the provider');
+      if (status === 429) { assert.equal(client.lastDiagnostic, captured); assert.equal(modelCalls, 1); }
+      else { assert.equal(client.cooldownUntil, 0); assert.equal(client.lastDiagnostic.code, code); assert.equal(modelCalls, 2, 'an explicit message can retry without a synthetic cooldown'); }
     }
   } finally { globalThis.fetch = original; }
 });

@@ -3,45 +3,34 @@ import { validateIntent, validateResponse } from '../diplomacy.mjs';
 import { MARRIAGE_FIELDS } from '../marriage.mjs';
 import { PLAYER_PROMISES } from '../promises.mjs';
 
-const text = maxLength => ({ type: 'STRING', maxLength });
-const amount = { type: 'INTEGER', minimum: 0, maximum: 1000 };
-const common = {
-  targetId: text(60), giveResource: { type: 'STRING', enum: RESOURCES }, giveAmount: amount,
-  receiveResource: { type: 'STRING', enum: RESOURCES }, receiveAmount: amount
-};
-const tradeKind = { type: 'STRING', enum: ['immediate', 'recurring', 'purchase', 'strategic', 'emergency', 'preferential'] };
-const itemList = { type: 'ARRAY', minItems: 1, maxItems: 8, items: {
-  type: 'OBJECT', required: ['resource', 'amount'], properties: {
-    resource: { type: 'STRING', enum: RESOURCES }, amount: { ...amount, minimum: 1 }
+// Provider schema restored from 66ff3a2, before the September 30 queue change.
+// Keep game validation separate from the provider grammar.
+export const RESPONSE_SCHEMA = {
+  type: 'OBJECT', required: ['reply', 'intents', 'tone'], properties: {
+    reply: { type: 'STRING', description: 'In-character response, at most 1600 characters. Terms are proposals awaiting council validation and player ratification.' },
+    tone: { type: 'STRING', enum: ['warm', 'neutral', 'cold', 'hostile', 'guarded'] },
+    intents: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', required: ['type'], properties: {
+      actorMember:{type:'STRING',enum:['ruler','daughter','son']}, rulerMember:{type:'STRING',enum:['ruler','daughter','son']},
+      shipmentResource:{type:'STRING',enum:['gold','food','iron','horses']}, shipmentAmount:{type:'INTEGER',minimum:0,maximum:100}, shipmentTurns:{type:'INTEGER',minimum:0,maximum:20}, defense:{type:'BOOLEAN'}, trade:{type:'BOOLEAN'},
+      type: { type: 'STRING', enum: INTENT_TYPES }, targetId: { type: 'STRING' },
+      giveResource: { type: 'STRING', enum: RESOURCES }, giveAmount: { type: 'INTEGER', minimum: 0, maximum: 1000 },
+      receiveResource: { type: 'STRING', enum: RESOURCES }, receiveAmount: { type: 'INTEGER', minimum: 0, maximum: 1000 },
+      tradeKind: {type:'STRING', enum:['immediate','recurring','purchase','strategic','emergency','preferential']},
+      duration: { type: 'INTEGER', minimum: 1, maximum: 20 }, conditionHouseId: { type: 'STRING', enum: CAMPAIGN_HOUSES.map(h => h.id) }
+    } } }
   }
-} };
-// Keep the provider grammar flat and explicitly typed. Repeating a union of
-// every intent under intents/proposal/counterProposal/promiseDetected makes the
-// generation schema much larger. Prompts and the unchanged engine validator
-// enforce which optional terms belong to each intent and its minimum duration.
-export const INTENT_SCHEMA = { type: 'OBJECT', required: ['type'], properties: {
-  type: { type: 'STRING', enum: INTENT_TYPES }, ...common,
-  duration: { type: 'INTEGER', minimum: 1, maximum: 20 }, tradeKind,
-  conditionHouseId: { type: 'STRING', enum: CAMPAIGN_HOUSES.map(h => h.id) },
-  giveItems: itemList, receiveItems: itemList,
-  actorMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] }, rulerMember: { type: 'STRING', enum: ['ruler', 'daughter', 'son'] },
-  shipmentResource: { type: 'STRING', enum: ['gold', 'food', 'iron', 'horses'] },
-  shipmentAmount: { type: 'INTEGER', minimum: 0, maximum: 100 }, shipmentTurns: { type: 'INTEGER', minimum: 0, maximum: 20 },
-  defense: { type: 'BOOLEAN' }, trade: { type: 'BOOLEAN' }
-} };
-export const RESPONSE_SCHEMA = { type: 'OBJECT', required: ['reply', 'intents', 'tone'], properties: {
-  reply: { ...text(1600), minLength: 1, description: 'Concise in-character reply. Terms await council validation and player ratification.' },
-  tone: { type: 'STRING', enum: ['warm', 'neutral', 'cold', 'hostile', 'guarded'] },
-  intents: { type: 'ARRAY', maxItems: 3, items: INTENT_SCHEMA },
-  proposal: { ...INTENT_SCHEMA, nullable: true }, counterProposal: { ...INTENT_SCHEMA, nullable: true },
-  promiseDetected: { ...INTENT_SCHEMA, nullable: true, properties: { ...INTENT_SCHEMA.properties, type: { type: 'STRING', enum: [...PLAYER_PROMISES] } } },
-  relationshipSummary: { ...text(360), nullable: true, description: 'Conversation interpretation; never rewrite verified history.' },
-  speechAct: { type: 'STRING', nullable: true, enum: ['statement', 'question', 'accept', 'reject', 'counteroffer', 'promise', 'warning', 'gratitude'] },
-  relationshipSignals: { type: 'ARRAY', nullable: true, maxItems: 4, items: text(180) },
-  memoryCandidates: { type: 'ARRAY', nullable: true, maxItems: 4, items: { ...text(180), description: 'Short interpretation; do not invent past actions.' } }
-} };
+};
+export const INTENT_SCHEMA = RESPONSE_SCHEMA.properties.intents.items;
+const intentSchema = INTENT_SCHEMA;
+Object.assign(RESPONSE_SCHEMA.properties, {
+  proposal: { ...intentSchema, nullable: true }, counterProposal: { ...intentSchema, nullable: true }, promiseDetected: { ...intentSchema, nullable: true },
+  relationshipSummary: { type: 'STRING', description: 'Optional rolling conversation interpretation, at most 360 characters. Never rewrite verified history.' },
+  speechAct: { type: 'STRING', enum: ['statement', 'question', 'accept', 'reject', 'counteroffer', 'promise', 'warning', 'gratitude'] },
+  relationshipSignals: { type: 'ARRAY', maxItems: 4, items: { type: 'STRING' } },
+  memoryCandidates: { type: 'ARRAY', maxItems: 4, items: { type: 'STRING', description: 'Short conversation interpretation, at most 180 characters; do not invent past actions.' } }
+});
 
-const optionalIntentFields = [...Object.keys(common), 'duration', 'tradeKind', 'conditionHouseId', ...MARRIAGE_FIELDS, 'giveItems', 'receiveItems'];
+const optionalIntentFields = ['targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'tradeKind', 'conditionHouseId', ...MARRIAGE_FIELDS, 'giveItems', 'receiveItems'];
 export function normalizeModelIntent(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const intent = { ...value };

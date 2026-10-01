@@ -57,7 +57,7 @@ try {
     assert.match(await page.locator('#diagnostics-report').inputValue(),/Google HTTP status: 400/);
     assert.doesNotMatch(await page.locator('#diagnostics-report').inputValue(),/test-session|test-token/);
     await page.locator('#gemini-diagnostics-dialog .close').click();
-    // The next envoy may be submitted during cooldown; it waits instead of falling back.
+    // A request-format failure imposes no cooldown on the next envoy.
     await page.locator('#alliance-message').fill('My relief force will approach the northern pass.');await page.locator('.alliance-compose button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.alliance-history').textContent.includes('Your northern relief force'));
     assert.equal(await page.locator('.alliance-diagnostics').isVisible(),false);assert.equal(calls,2);

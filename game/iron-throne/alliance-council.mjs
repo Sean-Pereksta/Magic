@@ -73,7 +73,7 @@ export function makeCouncilContext(s, c, actor, message, location=null, formalDe
     context.world.formalDecision={house:formalDecision.house,status:row.status,reason:row.message,reasonCodes:row.reasonCodes,targetTile:proposal.targetTile,intent:proposal.intent,alternativeIntents:row.alternativeIntents||[],counterIntent:row.counterIntent||null};
     for(const participant of context.world.participants)participant.ai=participant.id===formalDecision.house&&participant.ai;
   }
-  // Twelve-House games still use one bounded request.
+  // Each leader receives this same bounded shared context.
   const bytes = () => new TextEncoder().encode(JSON.stringify(context)).length;
   while (bytes() > 22000 && context.history.length) context.history.shift();
   // Many simultaneous wars can outweigh chat history in a twelve-House game.
@@ -90,7 +90,7 @@ export function makeCouncilContext(s, c, actor, message, location=null, formalDe
 export function validateCouncilResponse(raw, participants, aiIds = participants) {
   try {
     const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (!value || !Array.isArray(value.responses) || value.responses.length < 1 || value.responses.length > 3) return null;
+    if (!value || !Array.isArray(value.responses) || value.responses.length < 1 || value.responses.length > Math.min(12,aiIds.length)) return null;
     const responses = [];
     for (const r of value.responses) {
       if (!r || !participants.includes(r.speakerHouseId) || !aiIds.includes(r.speakerHouseId) || typeof r.message !== 'string' || !r.message.trim() || r.message.length > 900) return null;
@@ -158,7 +158,9 @@ export function finishCouncilMessage(s,actor,start,message,raw) {
   const validated = validateCouncilResponse(raw,c.participants,aiIds);
   const response = validated || scriptedCouncil(s,c,actor,message);
   for (const r of response.responses) {
-    appendCouncil(s,c,r.speakerHouseId,r.message,{...(!validated||raw?.source==='scripted'?{source:'scripted'}:raw?.source==='gemini'?{source:'gemini'}:{}),...(r.requestedIntent?{requestedIntent:r.requestedIntent}:{})});
+    const source = !validated || raw?.source === 'scripted' ? 'scripted' : raw?.source === 'gemini' ? 'gemini'
+      : raw?.source === 'mixed' ? (raw.responses.find(entry=>entry.speakerHouseId===r.speakerHouseId)?.source === 'gemini' ? 'gemini' : 'scripted') : undefined;
+    appendCouncil(s,c,r.speakerHouseId,r.message,{...(source?{source}:{}),...(r.requestedIntent?{requestedIntent:r.requestedIntent}:{})});
     grantFollowup(s,actor,r.speakerHouseId,c.id,message,r,{paid:true,requestedIntent:r.requestedIntent});
   }
   c.read[actor]=c.sequence;

@@ -98,14 +98,14 @@ test('model and worker validation reject nonparticipants, human impersonation an
   assert.equal(validateCouncilResponse({responses:Array(4).fill(reply.responses[0])},c.participants),null);
   assert.equal(sanitizeContext({...ctx,participants:['ashen','ashen']}),null);
 });
-test('a council makes one model request and uses the existing session, schema and fallback',async()=>{
+test('a council requests each leader separately using the existing session, schema and fallback',async()=>{
   const {s,c}=setup();let calls=0;
-  const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,options)=>{calls++;assert.equal(JSON.parse(options.body).mode,'allianceCouncil');return Response.json(reply);}});
+  const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,options)=>{calls++;const context=JSON.parse(options.body);assert.equal(context.mode,'allianceCouncil');const speaker=context.world.participants.find(p=>p.ai).id;return Response.json({responses:[{speakerHouseId:speaker,message:'Our frontier scouts stand ready.'}]});}});
   client.session={token:'test-session',expires:Date.now()+3600000};
   const result=await client.send(s,'wintermere','Attack Vesper.','',true,{actorHouseId:'ashen',councilId:c.id});
-  assert.equal(calls,1);assert.equal(result.source,'gemini');assert.equal(result.responses[0].speakerHouseId,'wintermere');
+  assert.equal(calls,2);assert.equal(result.source,'gemini');assert.deepEqual(result.responses.map(r=>r.speakerHouseId).sort(),['thornwall','wintermere']);
   const fallback=await client.send(s,'wintermere','Attack Vesper.','',false,{actorHouseId:'ashen',councilId:c.id});
-  assert.equal(calls,1);assert.equal(fallback.source,'scripted');assert.ok(fallback.responses.length);
+  assert.equal(calls,2);assert.equal(fallback.source,'scripted');assert.ok(fallback.responses.length);
   await callGemini(makeCouncilContext(s,c,'ashen','Attack Vesper.'),{GEMINI_API_KEY:'test'},async(url,options)=>{
     const body=JSON.parse(options.body);assert.ok(body.generationConfig.responseSchema.properties.responses);
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(reply)}]}}]});
@@ -222,15 +222,15 @@ test('council Gemini replies with absent optional terms survive the Worker, clie
   const context=sanitizeContext(JSON.parse(options.body));assert.ok(context);
   const response=await callGemini(context,{},async(url,options)=>{
    calls++;const schema=JSON.parse(options.body).generationConfig.responseSchema;
-   assert.deepEqual(schema.properties.responses.items.properties.speakerHouseId.enum.sort(),['thornwall','wintermere']);
-   return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({responses:[{speakerHouseId:'wintermere',message:'Our frontier scouts will support the shared campaign.',requestedIntent:{type:'ALLIANCE',giveItems:[],actorMember:null}}]})}]}}]});
+   const speakers=context.world.participants.filter(p=>p.ai).map(p=>p.id);assert.equal(speakers.length,1);assert.deepEqual(schema.properties.responses.items.properties.speakerHouseId.enum,speakers);
+   return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({responses:[{speakerHouseId:speakers[0],message:'Our frontier scouts will support the shared campaign.',requestedIntent:{type:'ALLIANCE',giveItems:[],actorMember:null}}]})}]}}]});
   });
   return Response.json(response);
  }});
  client.session={token:'test',expires:Date.now()+1800000};
  const start=beginCouncilMessage(s,'ashen',c.id,'Let us coordinate.');assert.equal(start.ok,true);
  const response=await client.send(s,'wintermere','Let us coordinate.','',true,{actorHouseId:'ashen',councilId:c.id});
- assert.equal(calls,1);assert.equal(response.source,'gemini');assert.equal(client.lastDiagnostic,null);
+ assert.equal(calls,2);assert.equal(response.source,'gemini');assert.equal(client.lastDiagnostic,null);
  assert.equal(finishCouncilMessage(s,'ashen',start,'Let us coordinate.',response).ok,true);
  assert.equal(c.messages.at(-1).source,'gemini');assert.match(c.messages.at(-1).message,/frontier scouts/);
  assert.equal(c.messages.at(-1).requestedIntent.giveItems,undefined);

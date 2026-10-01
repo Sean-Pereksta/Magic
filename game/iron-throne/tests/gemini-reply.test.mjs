@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { callGemini, DiplomacyBudget, reserveBudget } from '../worker/worker.mjs';
 import { DiplomacyClient } from '../chat.mjs';
@@ -25,16 +26,16 @@ test('truncated, empty, malformed and schema-invalid output remain rejected with
  }
  assert.equal(makeDiagnostic('GEMINI_RESPONSE_INVALID',{replyIssue:'private-error'}).replyIssue,undefined);
 });
-test('invalid reply waits five seconds end to end, without automatic model retries',async()=>{
+test('invalid reply does not delay the next explicit message or retry automatically',async()=>{
  let now=Date.now(),calls=0;const original=globalThis.fetch;
  const storage=new Storage(),budget=new DiplomacyBudget({storage},{GEMINI_MODEL:'gemini-3.5-flash',GEMINI_API_KEY:'private-key'});
  const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',now:()=>now,fetcher:(url,opts)=>budget.fetch(new Request(url,{method:'POST',body:JSON.stringify({context:JSON.parse(opts.body),clientId:'test',origin:'https://catnmice.com'})}))});
  client.session={token:'test',expires:now+1800000};
  try{
   globalThis.fetch=async()=>{calls++;return calls===1?output('MAX_TOKENS','{'):output('STOP',JSON.stringify(reply));};
-  const s=createGame();await client.send(s,'wintermere','First');assert.equal(client.cooldownUntil,now+5000);assert.equal(client.lastDiagnostic.code,'GEMINI_RESPONSE_TRUNCATED');
-  now+=4000;const wait=await client.send(s,'wintermere','Second');assert.equal(calls,1);assert.match(wait.notice,/1 seconds/);
-  now+=1000;assert.equal((await client.send(s,'wintermere','Third')).source,'gemini');assert.equal(calls,2);assert.equal((await storage.get('budget')).used,2);
+  const s=createGame();await client.send(s,'wintermere','First');assert.equal(client.cooldownUntil,0);assert.equal(client.lastDiagnostic.code,'GEMINI_RESPONSE_TRUNCATED');
+  assert.equal(calls,1,'no automatic retry');
+  assert.equal((await client.send(s,'wintermere','Second')).source,'gemini');assert.equal(calls,2);assert.equal((await storage.get('budget')).used,2);
  }finally{globalThis.fetch=original;}
 });
 test('minute limits wait only until their actual reset, without raising allowances',async()=>{
@@ -64,12 +65,9 @@ test('Gemini proposals preserve complete multi-resource packages and reject mean
   await assert.rejects(callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,[field]:value}))),e=>e.replyIssue===issue);
  }
 });
-test('flat provider schema retains bounded terms, promise types and interpretation',()=>{
- const terms=RESPONSE_SCHEMA.properties.intents.items.properties;
- assert.equal(terms.giveItems.minItems,1);assert.equal(terms.giveItems.maxItems,8);
- assert.equal(terms.duration.minimum,1);assert.equal(terms.duration.maximum,20);
- assert.ok(RESPONSE_SCHEMA.properties.promiseDetected.properties.type.enum.every(t=>t==='PROMISE'||t==='GUARANTEE'||t.startsWith('PLEDGE_')));
- assert.equal(RESPONSE_SCHEMA.properties.reply.maxLength,1600);assert.equal(RESPONSE_SCHEMA.properties.memoryCandidates.items.maxLength,180);
+test('private provider schema matches the pre-queue request contract',()=>{
+ // SHA-256 of RESPONSE_SCHEMA at 66ff3a2, immediately before PR #1653.
+ assert.equal(createHash('sha256').update(JSON.stringify(RESPONSE_SCHEMA)).digest('hex'), '40e35b5f506f967cbeaaa451a9ce7c6b8995cfee03920c9c26f27325ff8b7f11');
 });
 
 test('all conversation modes serialize one typed schema format and make exactly one provider request',async()=>{
