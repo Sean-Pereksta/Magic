@@ -69,6 +69,30 @@ test('atomic reservations cap concurrent attempts globally, including failed cal
   assert.equal((await reserveBudget(storage, env, 'different', now + 60000)).ok, false);
   assert.equal((await reserveBudget(storage, env, 'different', now + 86400000)).ok, true);
 });
+test('daily budget reports usage and retries at midnight UTC, including fractional final seconds', async () => {
+  const env = { DAILY_LIMIT: '1', REQUESTS_PER_MINUTE: '10', CLIENT_PER_MINUTE: '10' };
+  const midnight = Date.parse('2026-09-25T00:00:00Z');
+  for (const now of [Date.parse('2026-09-24T00:00:00Z'), Date.parse('2026-09-24T14:28:40.433Z'), midnight - 1]) {
+    const storage = new MemoryStorage();
+    assert.equal((await reserveBudget(storage, env, 'first-player', now)).ok, true);
+    const denied = await reserveBudget(storage, env, 'other-player', now);
+    assert.equal(denied.code, 'DAILY_LIMIT');
+    assert.deepEqual(denied.dailyBudget, { limit: 1, used: 1 });
+    assert.equal(denied.retryAfter, Math.ceil((midnight - now) / 1000));
+    assert.equal((await reserveBudget(storage, env, 'other-player', midnight - 1)).ok, false);
+    assert.equal((await reserveBudget(storage, env, 'other-player', midnight)).ok, true);
+    assert.equal((await storage.get('budget')).used, 1);
+  }
+});
+test('increasing the configured daily limit preserves usage and admits another attempt', async () => {
+  const storage = new MemoryStorage(), env = { DAILY_LIMIT: '1', REQUESTS_PER_MINUTE: '10', CLIENT_PER_MINUTE: '10' };
+  const now = Date.parse('2026-09-24T14:28:40Z');
+  assert.equal((await reserveBudget(storage, env, 'player', now)).ok, true);
+  assert.equal((await reserveBudget(storage, env, 'player', now)).code, 'DAILY_LIMIT');
+  env.DAILY_LIMIT = '2';
+  assert.equal((await reserveBudget(storage, env, 'player', now)).ok, true);
+  assert.equal((await storage.get('budget')).used, 2);
+});
 test('per-IP and per-minute caps apply independently of the daily budget', async () => {
   const storage = new MemoryStorage(), env = { DAILY_LIMIT: '20', REQUESTS_PER_MINUTE: '2', CLIENT_PER_MINUTE: '1' }, now = Date.parse('2026-09-23T01:00:00Z');
   assert.equal((await reserveBudget(storage, env, 'ip1', now)).ok, true);

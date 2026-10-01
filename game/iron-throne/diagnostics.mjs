@@ -32,7 +32,7 @@ const CODES = {
   TURNSTILE_ACTION: ['Server verification', 'The verification action does not match this game.', 'Deploy the current game files; the widget action must be iron-throne.'],
   TURNSTILE_UNAVAILABLE: ['Server verification', 'The Worker could not complete Cloudflare’s verification request.', 'Check Worker logs and Turnstile availability, then retry verification.'],
   BUDGET_FAILED: ['BUDGET binding', 'The Durable Object could not complete its operation.', 'Confirm BUDGET is a Durable Object binding to DiplomacyBudget, deploy the Wrangler configuration, and inspect Worker/Durable Object logs.'],
-  DAILY_LIMIT: ['Game request allowance', 'The Worker’s daily Gemini allowance is exhausted.', 'Wait for the next UTC day or review DAILY_LIMIT against your provider allowance.'],
+  DAILY_LIMIT: ['Game request allowance', 'The Worker’s shared daily Gemini allowance is exhausted.', 'This app allowance covers all players and models, including failed attempts. Wait until 00:00 UTC or have the operator adjust DAILY_LIMIT in the Worker and worker/wrangler.toml against the provider allowance, deploy, and refresh the game.'],
   CLIENT_RATE_LIMIT: ['Game request allowance', 'This client reached the Worker’s per-minute allowance.', 'Wait before sending another message.'],
   GLOBAL_RATE_LIMIT: ['Game request allowance', 'The shared Worker reached its per-minute allowance.', 'Wait before sending another message.'],
   PROVIDER_COOLDOWN: ['Gemini request', 'Gemini is cooling down after a provider rate limit.', 'Wait for the retry time before sending another message.'],
@@ -55,6 +55,8 @@ export function workerChecks(env) {
   return Object.fromEntries(CHECK_NAMES.map(name => [name, env[name] ? 'present' : 'missing']));
 }
 export function makeDiagnostic(code, details = {}) {
+  const dailyBudget = code === 'DAILY_LIMIT' && ['limit', 'used'].every(name => Number.isInteger(details.dailyBudget?.[name]) && details.dailyBudget[name] >= 0 && details.dailyBudget[name] <= 10000)
+    ? { limit: details.dailyBudget.limit, used: details.dailyBudget.used } : null;
   return {
     version: 1, code: typeof code === 'string' && Object.hasOwn(CODES, code) ? code : 'WORKER_UNAVAILABLE',
     checks: Object.fromEntries(CHECK_NAMES.map(name => [name, STATES.includes(details.checks?.[name]) ? details.checks[name] : 'unknown'])),
@@ -62,6 +64,7 @@ export function makeDiagnostic(code, details = {}) {
     ...(normalizeGeminiModel(details.model) ? { model: normalizeGeminiModel(details.model) } : {}),
     ...(['configured','default'].includes(details.modelSource) ? { modelSource: details.modelSource } : {}),
     ...(Object.hasOwn(REPLY_ISSUES,details.replyIssue || '') ? { replyIssue: details.replyIssue } : {}),
+    ...(dailyBudget ? { dailyBudget } : {}),
     turnstileCodes: [...new Set((Array.isArray(details.turnstileCodes) ? details.turnstileCodes : []).filter(c => TURNSTILE_CODES.includes(c)))].slice(0, 7)
   };
 }
@@ -72,7 +75,10 @@ export function diagnosticDetails(value) {
   const d = readDiagnostic(value) || makeDiagnostic('WORKER_UNAVAILABLE');
   const [stage, reason, action] = CODES[d.code];
   const missing = CHECK_NAMES.filter(name => d.checks[name] === 'missing');
-  return { stage, reason: d.code === 'CONFIG_MISSING' && missing.length ? `Missing from the running Worker: ${missing.join(', ')}.` : reason, action };
+  const disabled = d.code === 'DAILY_LIMIT' && d.dailyBudget?.limit === 0;
+  return { stage, reason: d.code === 'CONFIG_MISSING' && missing.length ? `Missing from the running Worker: ${missing.join(', ')}.`
+    : disabled ? 'Gemini calls are disabled by the Worker’s DAILY_LIMIT of 0.' : reason,
+    action: disabled ? 'Have the operator set DAILY_LIMIT above 0 in the Worker and worker/wrangler.toml within the provider allowance, deploy, and refresh the game.' : action };
 }
 export function diagnosticReport(record, endpoint = '', origin = '', clientSettings = {}) {
   if (!record) return '';
@@ -89,6 +95,7 @@ export function diagnosticReport(record, endpoint = '', origin = '', clientSetti
     ...(d.replyIssue ? [`Reply validation: ${REPLY_ISSUES[d.replyIssue]}`] : []),
     ...(d.model ? [`Gemini model: ${d.model}`] : []),
     ...(d.modelSource ? [`Model setting: ${d.modelSource === 'configured' ? 'Cloudflare GEMINI_MODEL' : 'Worker default (GEMINI_MODEL not set)'}`] : []),
+    ...(d.dailyBudget ? [`Shared Worker daily limit (DAILY_LIMIT): ${d.dailyBudget.limit}`, `Attempts used this UTC day: ${d.dailyBudget.used}`, 'Scope: all players and models; failed attempts also count.'] : []),
     ...CHECK_NAMES.map(name => `${name}: ${CHECK_LABELS[d.checks[name]]}`),
     'Present means configured, not proof that a key is valid or funded.',
     `Game endpoint configured: ${clientSettings.endpoint ? 'Yes' : 'No'}`, `Public Turnstile site key configured: ${clientSettings.siteKey ? 'Yes' : 'No'}`,
