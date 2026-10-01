@@ -87,6 +87,9 @@ test('Google billing, quota, key, permission and model failures reach the client
       [400, { message: 'private-key-data', details: [{ reason: 'API_KEY_INVALID' }] }, 'GEMINI_KEY_INVALID'],
       [403, { message: 'private-project-data' }, 'GEMINI_PERMISSION'],
       [404, { message: 'private-model-data' }, 'GEMINI_MODEL'],
+      [400, { message: 'generation_config.response_schema: private-invalid-schema' }, 'GEMINI_SCHEMA'],
+      [400, { message: 'thinking_config.thinking_level: private-invalid-setting' }, 'GEMINI_THINKING'],
+      [400, { message: 'private-unknown-parameter' }, 'GEMINI_REQUEST'],
       [503, { message: 'private-unavailable-data' }, 'GEMINI_UNAVAILABLE']
     ]) {
       const { env, storage } = environment(); let modelCalls = 0;

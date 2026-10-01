@@ -17,10 +17,26 @@ export const COUNCIL_RESPONSE_SCHEMA = {
     }
   }}}
 };
-function councilResponseSchema(context) {
+// Use native JSON Schema for Council unions. In particular, optional intent
+// objects must not combine an unspecified OpenAPI type with nullable + anyOf.
+function jsonSchema(schema) {
+  const out = {...schema}; delete out.nullable;
+  if (out.type) out.type = out.type.toLowerCase();
+  if (out.properties) out.properties = Object.fromEntries(Object.entries(out.properties).map(([k,v])=>[k,jsonSchema(v)]));
+  if (out.items) out.items = jsonSchema(out.items);
+  if (out.anyOf) out.anyOf = out.anyOf.map(jsonSchema);
+  return schema.nullable ? {anyOf:[out,{type:'null'}]} : out;
+}
+export function councilResponseSchema(context) {
   const schema=structuredClone(COUNCIL_RESPONSE_SCHEMA);
   schema.properties.responses.items.properties.speakerHouseId.enum=context.world.participants.filter(p=>p.ai&&p.id!==context.actorHouseId&&context.participants.includes(p.id)).map(p=>p.id);
-  return schema;
+  if (context.world.conversationMode === 'ai-initiated-council' || context.world.formalDecision) {
+    // These requests only voice already-recorded facts. A treaty schema is
+    // unnecessary and adds many nested alternatives to Google's grammar.
+    delete schema.properties.responses.items.properties.requestedIntent;
+    if (context.world.formalDecision) schema.properties.responses.maxItems = 1;
+  }
+  return jsonSchema(schema);
 }
 function normalizeCouncilReply(raw) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw))return raw;
@@ -141,7 +157,7 @@ async function providerFailure(response) {
   const code = response.status === 402 || reasons.some(r => ['BILLING_DISABLED', 'BILLING_NOT_ACTIVE'].includes(r)) || billingRequired ? 'GEMINI_BILLING'
     : response.status === 401 || reasons.some(r => ['API_KEY_INVALID', 'API_KEY_EXPIRED', 'API_KEY_REVOKED'].includes(r)) ? 'GEMINI_KEY_INVALID'
     : response.status === 403 ? 'GEMINI_PERMISSION' : response.status === 429 ? 'GEMINI_QUOTA'
-    : response.status === 404 ? 'GEMINI_MODEL' : response.status === 400 ? 'GEMINI_REQUEST' : 'GEMINI_UNAVAILABLE';
+    : response.status === 404 ? 'GEMINI_MODEL' : response.status === 400 ? (/schema/i.test(message) ? 'GEMINI_SCHEMA' : /thinking[_ .]?(?:config|level|budget)/i.test(message) ? 'GEMINI_THINKING' : 'GEMINI_REQUEST') : 'GEMINI_UNAVAILABLE';
   return Object.assign(new Error('provider'), { status: response.status, diagnosticCode: code });
 }
 export async function callGemini(context, env, fetcher = fetch) {
@@ -152,7 +168,7 @@ export async function callGemini(context, env, fetcher = fetch) {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: context.mode==='general'?generalSystemPrompt():context.mode==='allianceCouncil'?councilSystemPrompt():systemPrompt(context.rulerId, context.actorHouseId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: context.mode==='general'?GENERAL_RESPONSE_SCHEMA:context.mode==='allianceCouncil'?councilResponseSchema(context):RESPONSE_SCHEMA, maxOutputTokens: 2048, ...(model === 'gemini-3.5-flash' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}) } })
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: context.mode==='general'?generalSystemPrompt():context.mode==='allianceCouncil'?councilSystemPrompt():systemPrompt(context.rulerId, context.actorHouseId) }] }, contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }], generationConfig: { responseMimeType: 'application/json', ...(context.mode==='allianceCouncil' ? {responseJsonSchema:councilResponseSchema(context)} : {responseSchema:context.mode==='general'?GENERAL_RESPONSE_SCHEMA:RESPONSE_SCHEMA}), maxOutputTokens: 2048, ...(model === 'gemini-3.5-flash' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}) } })
     });
     if (!upstream.ok) throw await providerFailure(upstream);
     let result;

@@ -150,8 +150,8 @@ and are not included in saves or exports.
 ### Cost and failure behavior
 
 - Player messages and submitted structured offers may call Gemini. After a turn,
-  at most one significant incoming dispatch can be voiced in the background when
-  an authenticated session is already active. Its local text appears immediately;
+  current Alliance Council openings are queued for background voicing, along with
+  at most one optional private dispatch per turn, once verification is ready. Its local text appears immediately;
   failures never block the map. Strategy, combat and rival-to-rival negotiations
   remain deterministic and make no model requests.
 - Prompts contain the current message (600 characters), up to twelve recent
@@ -174,14 +174,17 @@ and are not included in saves or exports.
   session cannot reset the IP-based model budget.
 - Successful exact-context replies are cached for 30 minutes (at most 40 entries).
   Different state, history, memory, model or origin creates a different cache key.
-- Failed attempts consume budget. No automatic retry, paid upgrade, grounding,
-  other provider, model download or AI-to-AI generation is performed.
+- Failed provider attempts consume budget. Council requests wait through local
+  per-minute limits and retry Google quota failures at most twice after the stated
+  cooldown. Format, key and billing errors are not retried automatically. No paid
+  upgrade, grounding, other provider or model download is performed.
 - Provider quota errors activate a shared cooldown. The client also backs off on
-  errors. Timeout, rate limit, missing configuration, invalid JSON or interrupted
-  network returns the scripted council without preventing turns or deals.
+  errors. Waiting Council requests remain queued through verification and cooldowns.
+  Daily exhaustion, permanent errors or failed bounded retries retain local dialogue
+  and diagnostics without preventing turns or deals.
 - Free-tier chat content may be used to improve Google's products. The council UI
   discloses this while Gemini is enabled. Messages and fictional state go to the
-  configured Worker and Gemini for messages, structured offers and at most one eligible incoming dispatch per turn in that mode. There is no game telemetry.
+  configured Worker and Gemini for messages, structured offers, current Council openings and at most one private incoming dispatch per turn in that mode. There is no game telemetry.
 
 The proxy limits spending attempts and validates the output shape; the **game
 rules are authoritative**. This is a local singleplayer campaign, not a secure
@@ -438,7 +441,7 @@ an immutable audience; changing the coalition starts a separate conversation.
 Rulers use directional relationships, shared observations and their own coarse
 concerns to disagree, ask for assurances, or suggest existing Treaty Desk terms.
 One council message consumes one shared dispatch and at most one Gemini request
-for one to three AI replies. Local responses use the same rules when Gemini is
+for one to three AI replies (a quota refusal can be retried after cooldown). Local responses use the same rules when Gemini is
 unavailable. Human rulers are never voiced by the model.
 
 An explicit request for a proposal can grant one continuation for that ruler,
@@ -508,28 +511,47 @@ multiplayer/save integration.
 Deploy both the static game files and `game/iron-throne/worker` for this update.
 From the Worker directory, run `npx wrangler deploy` using the existing Cloudflare
 account and runtime secrets. The game deployment alone does not update the Worker.
-No new secret or binding is required.
+No new secret or binding is required. Deploy `firestore.rules` too for the new
+`councilVoice` command in online campaigns; it uses the same active-House and
+authenticated-controller checks as other gameplay commands.
 
 Player diplomacy, general chat and optional background voices now share one
 in-page request queue and session. One generation runs at a time; player messages
 precede waiting background jobs. Already-running generation finishes normally.
 Changing the campaign cancels obsolete queued work. The queue does not coordinate
 separate browser tabs or players; the Worker's atomic shared budgets still do that.
-Provider errors are not automatically retried, and provider cooldowns remain in force.
+Council messages wait for verification and honor `Retry-After` before sending.
+Local per-minute refusals leave the message queued; Google quota failures get at
+most two retries. Google 400, key, billing, daily-budget and malformed-output
+failures remain visible in Diagnostics, without automatic provider retries.
 
 Alliance Council exposes the captured safe error code, a live cooldown countdown,
 and a Diagnostics / Copy report dialog. Successful player replies clear that
 council's failure display. Gemini and local player-response messages are labeled.
 
-In single-player, up to one eligible automatic exchange per turn is voiced after
-verification, preferring a current Alliance Council event over a private dispatch.
+All eligible current-turn Council openings enter the queue, including on resumed
+campaigns and before verification. Their provisional text is marked **Queued for
+Gemini** until the request completes. The single-exchange-per-turn Council gate
+has been removed; private dispatches retain their optional once-per-turn limit.
 The triggering event, ruler personalities and shared observations are supplied.
 Voicing replaces only the matching current scripted entries and never grants
 proposal credits, spends player dispatches, or executes treaties, wars or orders.
-If the player has already answered, the coalition changed, or the reply names the
-wrong speakers, the background replacement is discarded. Online automatic
-exchanges retain deterministic text; player-initiated online council chat uses
-Gemini through the shared client queue as before.
+A later player message does not discard an earlier queued opening; only its
+original message IDs are replaced, and its prompt excludes that later dialogue.
+Changed turns, coalitions, original text or speakers invalidate the job. Online
+voicing commits through the authenticated `councilVoice` command during the
+player’s activation. Turning Gemini off or replacing the campaign cancels waiting
+requests. Reopening the council can retry an unsuccessful background voice.
+
+Google HTTP 400 describes rejected request parameters, not simultaneous calls.
+Council requests now use the documented native `responseJsonSchema` field with
+explicit JSON null alternatives. Turn-start and recorded-decision voices use a
+small schema containing only speakers and messages, without treaty alternatives.
+Google errors naming schema or thinking settings produce safe `GEMINI_SCHEMA`
+or `GEMINI_THINKING` codes; provider error text is never exposed. The existing
+model and thinking settings remain unchanged. See the [Google request reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
+An authenticated production generation is still needed to confirm the deployed
+model accepts these settings for the operator’s project.
 
 `CLIENT_PER_MINUTE` now supports values through 60, matching the existing shared
 per-minute ceiling, so the configured value of 50 is honored. Lower configured

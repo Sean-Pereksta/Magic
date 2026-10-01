@@ -78,12 +78,26 @@ export class DiplomacyClient {
         }
         this.session = { token: value.token, expires: value.expires }; return true;
       } catch { this.recordFailure(controller.signal.aborted ? 'SESSION_TIMEOUT' : 'NETWORK_UNREADABLE', {}, '/session'); return false; }
-      finally { clearTimeout(timer); this.sessionRequest = null; this.sessionController = null; }
+      finally { clearTimeout(timer); this.sessionRequest = null; this.sessionController = null; this.queue.wake(); }
     });
     return this.sessionRequest;
   }
   send(state, rulerId, message, token = '', useGemini = true, options = {}) {
-    return this.queue.enqueue(() => this.sendNow(state, rulerId, message, token, useGemini, options), options);
+    const council = state.allianceCouncils?.find(c => c.id === options.councilId);
+    const queuedAI = useGemini && this.endpoint && council?.participants.some(id => id !== options.actorHouseId && isAiHouse(state, id));
+    if (queuedAI && token && !this.hasSession() && !this.sessionRequest) void this.openSession(token);
+    let retries = 0;
+    return this.queue.enqueue(async () => {
+      const response = await this.sendNow(state, rulerId, message, queuedAI ? '' : token, useGemini, options);
+      // Allowance refusals occur before a model call. Keep that unsent message
+      // queued. Retry a provider rate limit at most twice, never a Google 400.
+      const code = response.diagnostic?.code;
+      if (queuedAI && response.diagnostic) options.onDiagnostic?.(response.diagnostic);
+      if (queuedAI && ['CLIENT_RATE_LIMIT', 'GLOBAL_RATE_LIMIT', 'PROVIDER_COOLDOWN'].includes(code)) return {source:'deferred'};
+      if (queuedAI && code === 'GEMINI_QUOTA' && retries++ < 2) return {source:'deferred'};
+      return response;
+    }, {...options, ...(queuedAI ? {ready: () => this.now() < this.cooldownUntil ? 'cooldown'
+      : !this.hasSession() ? 'verification' : true} : {})});
   }
   async sendNow(state, rulerId, message, token = '', useGemini = true, options = {}) {
     const general=options.generalId;
