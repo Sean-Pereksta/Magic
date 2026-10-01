@@ -27,7 +27,7 @@ let browser;
 try {
 
   for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
-  browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--single-process','--no-zygote','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] : [])]});
+  browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] : [])]});
     const s=legacyGame();
     for(const id of ['wintermere','thornwall'])s.treaties.push({id:`alliance-${id}`,type:'alliance',parties:['ashen',id],expires:11});
     s.diplomacy.messages.regular=2;
@@ -57,7 +57,7 @@ try {
     const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(saved.diplomacy.messages.regular,3,'requested proposal did not spend another envoy');
     assert.equal(saved.proposalFollowups?.[`ashen:${ruler}`],undefined,'one-use credit consumed');
-    assert.equal(await page.locator('#proposals .proposal').count()>0,true);
+    assert.equal(await page.locator('.alliance-formal-proposals [data-formal-card]').count()>0,true);
     await page.locator('.treaty-drawer-close').click();
     assert.equal(await page.locator('#diplomacy').isVisible(),false);assert.equal(await page.locator('#alliance-council').isVisible(),true);
     await page.locator('#alliance-council .close').click();

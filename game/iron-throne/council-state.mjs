@@ -1,3 +1,4 @@
+import { normalizeLocation } from './strategic-locations.mjs';
 import { INTENT_TYPES } from './data.mjs';
 // Shared records have immutable audiences. A changed coalition starts a new
 // thread; new allies never inherit an earlier coalition's private history.
@@ -51,6 +52,7 @@ export function validateCouncilSave(s) {
     for (const m of c.messages) {
       if (!obj(m) || !c.participants.includes(m.speakerHouseId) || typeof m.message !== 'string' || m.message.length > 900 ||
         !Number.isSafeInteger(m.id) || m.id <= previous || m.id > c.sequence || !Number.isInteger(m.turn) || m.turn > s.turn || m.turn < 0) fail();
+      if(m.location!==undefined){const location=normalizeLocation(s,m.location);if(!location)fail();m.location=location;}
       previous = m.id;
       // Suggestions are rebuilt by the normal treaty desk, never import actions.
       delete m.intent; delete m.requestedIntent;

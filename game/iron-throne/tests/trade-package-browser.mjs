@@ -13,7 +13,7 @@ const server=http.createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser;
 try{
- browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+ browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
  for(const viewport of [{width:1280,height:850},{width:390,height:844}]){
   const s=createGame();for(const k of s.kingdoms)for(const r of Object.keys(k.resources))k.resources[r]=500;
   const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
@@ -31,11 +31,11 @@ try{
   await page.locator('#receive-resource').selectOption('food');await page.locator('#receive-amount').fill('100');
   assert.equal(await page.locator('#give-items [data-trade-row]').count(),2);
   assert.equal(await second.locator('option[value="iron"]').evaluate(option=>option.disabled),true);
-  const before=JSON.parse(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'))).kingdoms.map(k=>k.resources);
-  await page.locator('#offer-form button[type="submit"]').click();await page.locator('[data-modify]').first().waitFor();
-  assert.match(await page.locator('#proposals').textContent(),/30 wood \+ 15 iron/);
-  assert.deepEqual(JSON.parse(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'))).kingdoms.map(k=>k.resources),before);
-  await page.locator('[data-modify]').first().click();assert.equal(await page.locator('#give-items [data-trade-row]').count(),2);
+
+  await page.locator('#offer-form button[type="submit"]').click();await page.locator('#private-formal-proposals [data-formal-card]').first().waitFor();
+  assert.match(await page.locator('#private-formal-proposals').textContent(),/30 wood \+ 15 iron/);
+  const record=JSON.parse(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'))).cooperation.formalProposals[0];assert.equal(record.source,'explicit');assert.equal(record.approved,true);assert.deepEqual(record.intent.giveItems,[{resource:'wood',amount:30},{resource:'iron',amount:15}]);
+  assert.equal(await page.locator('#give-items [data-trade-row]').count(),2);
   await page.locator('#give-items [data-remove-resource]').first().click();assert.equal(await page.locator('#give-items [data-trade-row]').count(),1);assert.equal(await page.locator('#give-resource').count(),1);
   await page.locator('#offer-type').selectOption('AID');assert.equal(await page.locator('[data-add-resource="give"]').isVisible(),false);
   await page.locator('#offer-type').selectOption('EXCHANGE');assert.equal(await page.locator('[data-add-resource="give"]').isVisible(),true);

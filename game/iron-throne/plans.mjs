@@ -227,7 +227,7 @@ export function validatePlans(s) {
     if(!integer(p.createdTurn,1,s.turn)||!integer(p.updatedTurn,p.createdTurn,s.turn)||!integer(p.desiredExecutionTurn,p.createdTurn)||!integer(p.requiredForces,1,100000)||!integer(p.requiredSiege,0,100000)||!p.requiredResources||typeof p.requiredResources!=='object'||Array.isArray(p.requiredResources)||Object.entries(p.requiredResources).some(([r,n])=>!RESOURCES.includes(r)||!integer(n)))fail();
     if(!Array.isArray(p.assignedArmies)||p.assignedArmies.length>500||p.assignedArmies.some(id=>typeof id!=='string'||id.length>80)||!Array.isArray(p.allies)||p.allies.length>s.kingdoms.length-1||p.allies.some(id=>!kingdom(s,id)||id===p.actor)||!Array.isArray(p.conditions)||p.conditions.length>4||p.conditions.some(x=>typeof x!=='string'||x.length>160)||p.cancellationReason!==null&&(typeof p.cancellationReason!=='string'||p.cancellationReason.length>240)||p.status==='Abandoned'&&!p.cancellationReason||typeof p.wasAtWar!=='boolean')fail();
     if(p.discoveredBy!==undefined&&(!Array.isArray(p.discoveredBy)||p.discoveredBy.length>s.kingdoms.length||p.discoveredBy.some(id=>!kingdom(s,id))))fail();
-    if(militaryPlan(p)&&(!p.target||!p.targetTile)||p.type==='infrastructure'&&!p.structure)fail();
+    if(militaryPlan(p)&&(!p.target&&!p.operationId||!p.targetTile)||p.type==='infrastructure'&&!p.structure)fail();
   }
   for(const a of s.intrigue.audit)if(!a||!integer(a.turn,1,s.turn)||a.planId&&!ps.some(p=>p.id===a.planId)||typeof a.message!=='string'||a.message.length>240)fail();
 }

@@ -28,7 +28,7 @@ export function playerPromiseCheck(s, rulerId, i, actorHouseId = PLAYER) {
   }
   if (i.type === 'PLEDGE_DEFEND') {
     const t = s.tiles[i.targetId];
-    if (!t || t.owner !== rulerId || !['city', 'town', 'fort'].includes(t.building)) return 'Select a settlement or fort belonging to this ruler.';
+    if (!t || t.owner !== rulerId) return 'Select a location in this ruler’s territory.';
     if (i.duration < 2) return 'Defense requires two turns on station.';
     if (!armiesOf(s, actorHouseId).some(a => a.tile === t.id || findPath(s, a.tile, t.id, actorHouseId).length)) return 'Obtain military access before pledging defense of this location.';
   }

@@ -1,3 +1,4 @@
+import { validateFormalProposals } from './formal-proposal-state.mjs';
 import { foodAccounting } from './food-security.mjs';
 import { migrateTradePackages } from './trade-package.mjs';
 import { movementBudget, canSpendMovement } from './movement-timing.mjs';
@@ -594,7 +595,7 @@ export function parseSave(raw) {
   s.version=SAVE_VERSION;
   migrateTradePackages(s);
   validateNaval(s);validateCommanders(s);
-  validateLivingSave(s); validateCouncilSave(s);
+  validateLivingSave(s); validateCouncilSave(s); validateFormalProposals(s);
   validateEmotions(s); validateMarriage(s); validateCourtIntelligence(s);
   validateFoundingSave(s);
   if(s.worldGeneration&&(!Object.hasOwn(MAP_PROFILES,s.mapProfile)||!Number.isInteger(s.seed)||!Number.isInteger(s.generation?.attempt)||s.generation.attempt<0||s.generation.attempt>=96))throw new Error('Damaged regional world metadata.');

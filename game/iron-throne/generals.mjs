@@ -67,13 +67,14 @@ export function validateGeneralOrder(s,owner,id,raw) {
   if(!g||!raw||!COMMAND_KINDS.includes(raw.kind)||!Array.isArray(raw.targets)||!raw.targets.length||raw.targets.length>3||new Set(raw.targets).size!==raw.targets.length)return fail('Choose a general, objective and one to three known locations.');
   const limit=raw.lossLimit??35;
   if(!Number.isInteger(limit)||limit<15||limit>65||typeof raw.allowSplit!=='boolean')return fail('Choose a loss limit of 15–65% and whether detachments are permitted.');
-  if(raw.targets.some(id=>!view.tiles[id]||view.tiles[id].fog==='unknown'))return fail('Scout a location before including it in a campaign.');
+  if(raw.targets.some(id=>!Object.hasOwn(view.tiles,id)||['attack','siege'].includes(raw.kind)&&view.tiles[id].fog==='unknown'&&!view.tiles[id].knownCapital))return fail('Scout a location before including it in a campaign.');
   if(raw.army){
     const ally=view.armies.find(a=>a.id===raw.army);
     if(raw.kind!=='reinforce'||!ally||ally.commandId===g.commandId||ally.owner!==owner&&!['alliance','vassalage'].some(type=>treaty(s,owner,ally.owner,type)))return fail('Choose an observed friendly army outside this command to reinforce.');
   }
-  if(['attack','siege'].includes(raw.kind)&&raw.targets.some(id=>view.tiles[id].owner!==owner&&(!view.tiles[id].owner||!atWar(s,owner,view.tiles[id].owner))))return fail('This objective requires an existing war. Declare war separately before approving the campaign.');
-  const order={kind:raw.kind,targets:[...raw.targets],lossLimit:limit,allowSplit:raw.allowSplit,approvedTurn:s.turn,status:'Preparing',reason:'Approved objective; orders will be prepared during our activation.'};
+  if(['attack','siege'].includes(raw.kind)&&raw.targets.some(id=>(view.tiles[id].owner||view.tiles[id].knownCapital)!==owner&&(!(view.tiles[id].owner||view.tiles[id].knownCapital)||!atWar(s,owner,view.tiles[id].owner||view.tiles[id].knownCapital))))return fail('This objective requires an existing war. Declare war separately before issuing the command.');
+  if(raw.kind==='siege'&&raw.targets.some(id=>!['city','town','fort'].includes(view.tiles[id].building)))return fail('A siege requires an observed city, town or fort.');
+  const order={source:raw.source==='conversation_inferred'?'conversation_inferred':'explicit',kind:raw.kind,targets:[...raw.targets],lossLimit:limit,allowSplit:raw.allowSplit,approvedTurn:s.turn,status:'Preparing',reason:'Issued objective; orders will be prepared during our activation.'};
   if(raw.army)order.army=raw.army;
   return {ok:true,order};
 }
@@ -81,8 +82,8 @@ export function approveGeneralOrder(s,owner,id,raw) {
   if(s.outcome)return fail('This campaign has ended.');
   const checked=validateGeneralOrder(s,owner,id,raw);if(!checked.ok)return checked;
   const g=own(s,owner,id);g.objective=checked.order;
-  for(const a of forces(s,g))a.commandBaseline=sizeOf(a);
-  generalMessage(s,g,'council',`Approved: ${describeGeneralOrder(g.objective)} No new war or discretionary spending is authorized.`);
+  for(const a of forces(s,g)){a.commandBaseline=sizeOf(a);delete a.playerOverride;delete a.regrouping;} // The newly issued ruler command replaces older manual orders.
+  generalMessage(s,g,'council',`Ordered: ${describeGeneralOrder(g.objective)} No new war or discretionary spending is authorized.`);
   planGeneral(s,g,{force:true});return {ok:true};
 }
 export const describeGeneralOrder=o=>`${o.kind} ${o.army?`army ${o.army} (last designated at ${o.targets[0]})`:o.targets.join(' → ')}; regroup at ${o.lossLimit}% losses; ${o.allowSplit?'detachments permitted':'keep forces together'}; hold captured objectives`;
@@ -100,13 +101,14 @@ export function planGeneral(s,g,{force=false}={}) {
   if(!g.objective||!force&&g.lastPlanned===s.turn||s.sequential&&s.sequential.order[s.sequential.index]!==g.owner)return;
   g.lastPlanned=s.turn;syncCommanders(s);
   const o=g.objective,view=planningView(s,g.owner),k=kingdom(s,g.owner),all=forces(s,g);
+  delete o.advice;
   if(!all.length){status(s,g,'Blocked','No army assigned. Assign forces before the campaign can proceed.');return;}
   if(o.army){
     const ally=view.armies.find(a=>a.id===o.army&&!a.remembered);
     if(!ally||ally.owner!==g.owner&&!['alliance','vassalage'].some(type=>treaty(s,g.owner,ally.owner,type))){for(const a of all)if(!manualOverride(s,a)&&!a.embarkOrder)order(s,g,a,view.tiles[a.tile],'hold');status(s,g,'Blocked','The designated army is no longer observed as a friendly force. Holding position until you review it.');return;}
     o.targets=[ally.tile];
   }
-  const targets=o.targets.map(id=>view.tiles[id]),attack=['attack','siege'].includes(o.kind);
+  const targets=o.targets.map(id=>{const t=view.tiles[id];return t.knownCapital?{...t,owner:t.owner||t.knownCapital}:t;}),attack=['attack','siege'].includes(o.kind);
   const remaining=attack?targets.filter(t=>t.owner!==g.owner):targets;
   if(attack&&!remaining.length){
     for(const a of all)if(!manualOverride(s,a)&&!a.embarkOrder)order(s,g,a,view.tiles[a.tile],'hold');
@@ -133,7 +135,8 @@ export function planGeneral(s,g,{force=false}={}) {
   for(const [i,a] of active.entries()){
     const tile=view.tiles[a.tile],target=remaining[Math.min(i,remaining.length-1)],loss=1-sizeOf(a)/Math.max(1,a.commandBaseline||sizeOf(a));
     const threatened=settlements(view,g.owner).find(t=>t.capital===g.owner&&view.armies.some(e=>atWar(view,g.owner,e.owner)&&distance(t,view.tiles[e.tile])<=2));
-    if(a.morale<.6||loss>=o.lossLimit/100||a.regrouping){
+    if(a.morale<.6)o.advice='Morale is low. I recommend rest, but I will carry out your order.';
+    if(loss>=o.lossLimit/100||a.regrouping){
       const refuge=settlements(view,g.owner).filter(t=>!view.armies.some(e=>atWar(view,g.owner,e.owner)&&distance(t,view.tiles[e.tile])<=1)).sort((x,y)=>distance(tile,x)-distance(tile,y))[0];
       const ready=a.morale>=.82&&sizeOf(a)>=Math.max(24,(a.commandBaseline||24)*.8);
       a.regrouping=!ready;
@@ -145,20 +148,18 @@ export function planGeneral(s,g,{force=false}={}) {
       }
       a.commandBaseline=sizeOf(a);
     }
-    if(threatened&&g.personality==='protective'&&distance(tile,threatened)<=5){const result=order(s,g,a,threatened,'move');blocked=result.ok?'Covering an immediate threat to our capital; the original objective is retained.':`Capital defense route blocked: ${result.error}`;continue;}
+    if(threatened&&g.personality==='protective')o.advice='Our capital is threatened. I recommend reviewing its defense; I will continue your current order.';
     const caution=g.personality==='cautious'?.82:g.personality==='aggressive'?1.12:g.personality==='protective'?.9:1;
     if(attack&&target.fog==='visible'){
       const estimate=assaultAssessment(view,{...k,aggression:Math.min(1,k.aggression*caution)},a,target);
-      if(g.personality==='methodical'&&target.walls>0&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
-      if(estimate.bombard&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
-      if(!estimate.assault||estimate.lossFraction>o.lossLimit/100){
-        const rally=settlements(view,g.owner).sort((x,y)=>distance(x,target)-distance(y,target))[0];
-        const result=rally?order(s,g,a,rally,'move'):order(s,g,a,tile,'hold');
-        blocked=`Known defenses at ${target.name||target.id} exceed the approved loss limit; ${result.ok?'gathering reinforcements or siege support.':`rally route blocked: ${result.error}`}`;continue;
-      }
+      if(o.kind==='siege'&&g.personality==='methodical'&&target.walls>0&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
+      if(o.kind==='siege'&&estimate.bombard&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
+      if(!estimate.assault||estimate.lossFraction>o.lossLimit/100)o.advice=`Known defenses at ${target.name||target.id} may cause heavy losses. I recommend siege support, but your attack order stands.`;
     }
     if(a.tile===target.id){order(s,g,a,target,'hold');continue;}
-    const result=order(s,g,a,target,attack?'attack':o.kind==='withdraw'?'retreat':'move',dangerousTiles(view,k,a));
+    const avoid=dangerousTiles(view,k,a);avoid.delete(target.id);
+    let result=order(s,g,a,target,attack?'attack':o.kind==='withdraw'?'retreat':'move',avoid);
+    if(!result.ok)result=order(s,g,a,target,attack?'attack':o.kind==='withdraw'?'retreat':'move');
     if(!result.ok)blocked=result.error;else{marching++;engaged ||= attack&&distance(tile,target)<=1;}
   }
   if(blocked)status(s,g,'Blocked',blocked);
@@ -201,12 +202,13 @@ export function interpretGeneralOrder(s,owner,id,message) {
   const g=own(s,owner,id);if(!g)return null;
   const text=String(message).toLowerCase(),view=knowledgeView(s,owner);
   // Explicit verbs + exact known names/coordinates, never a guessed hidden target.
-  if(!/\b(take|attack|capture|defend|hold|rally|gather|withdraw|reinforce|besiege|advance)\b/.test(text))return null;
+  if(!/\b(take|attack|capture|defend|hold|rally|gather|withdraw|reinforce|besiege|advance|move|protect)\b/.test(text))return null;
   const support=/reinforce/.test(text)&&view.armies.find(a=>new RegExp(`\\b${a.id}\\b`).test(text));
-  const targets=support?[support.tile]:Object.values(view.tiles).filter(t=>t.fog!=='unknown'&&(new RegExp(`(^|[^0-9])${t.id}([^0-9]|$)`).test(text)||t.name&&text.includes(t.name.toLowerCase()))).slice(0,3).map(t=>t.id);
+  const targets=support?[support.tile]:Object.values(view.tiles).filter(t=>(t.fog!=='unknown'||t.knownCapital)&&(new RegExp(`(^|[^0-9])${t.id}([^0-9]|$)`).test(text)||t.name&&text.includes(t.name.toLowerCase()))).slice(0,3).map(t=>t.id);
   if(!targets.length)return null;
-  const kind=/withdraw|retreat/.test(text)?'withdraw':/defend|hold|pass/.test(text)&&!/take|capture|attack/.test(text)?'defend':/rally|gather/.test(text)?'rally':/reinforce/.test(text)?'reinforce':/besiege/.test(text)?'siege':'attack';
-  const raw={kind,targets,lossLimit:g.objective?.lossLimit||35,allowSplit:/divide|split|detach/.test(text),...(support?{army:support.id}:{})};
+  const kind=/withdraw|retreat/.test(text)?'withdraw':/defend|protect|pass/.test(text)&&!/take|capture|attack/.test(text)?'defend':/hold/.test(text)?'hold':/move/.test(text)?'move':/rally|gather/.test(text)?'rally':/reinforce/.test(text)?'reinforce':/besiege/.test(text)?'siege':'attack';
+  const loss=text.match(/(?:los(?:e|ing|ses)|loss limit).{0,24}?(\d{1,2})\s*%/),limit=/a third|one third/.test(text)?35:loss?Math.max(15,Math.min(65,Number(loss[1]))):g.objective?.lossLimit||35;
+  const raw={source:'conversation_inferred',kind,targets,lossLimit:limit,allowSplit:/divide|split|detach/.test(text),...(support?{army:support.id}:{})};
   return validateGeneralOrder(s,owner,id,raw).ok?raw:null;
 }
 export function generalContext(s,owner,id,message) {
@@ -220,8 +222,8 @@ export function localGeneralReply(s,owner,id,message) {
   const order=interpretGeneralOrder(s,owner,id,message),o=g.objective;
   const all=allArmies(s).filter(a=>a.commandId===g.commandId),composition=Object.entries(all.reduce((units,a)=>{for(const [u,n] of Object.entries(a.units))units[u]=(units[u]||0)+n;return units;},{})).filter(([,n])=>n>0).map(([u,n])=>`${n} ${UNITS[u]?.name||u}`).join(', ');
   const summary=all.length?`I command ${composition}. ${all.some(a=>Object.entries(a.units).some(([u,n])=>n>0&&UNITS[u]?.family==='siege'))?'Siege support is available.':'We have no siege engines; fortified assaults need careful review.'} `:'';
-  const preference={aggressive:'I favor pressing a confirmed advantage within your loss limit.',cautious:'Fresh observations and a safe route should precede the assault.',methodical:'I prefer concentrating our forces and reducing walls before the decisive assault.',opportunistic:'Exposed objectives may justify two viable detachments; uncertain defenses do not.',protective:'I will preserve a retreat route and cover immediate threats to our capital.'}[g.personality];
-  return {reply:summary+(order?`I propose: ${describeGeneralOrder(order)}. Review and approve the order before it changes our campaign.`:o?`${o.status}: ${o.reason} Our objective remains ${o.kind} at ${o.targets.join(', ')}. ${preference} ${/divid|split/.test(message)?'Detachments require two viable forces, current observations and legal routes. Approve splitting in the orders panel to permit it.':'Your manual orders remain authoritative.'}`:`Assign an army, then name a known location and an objective. ${preference} I can prepare an attack, defense, rally, reinforcement, siege support or withdrawal for your approval.`),order};
+  const preference={aggressive:'I favor pressing a confirmed advantage within your loss limit.',cautious:'Fresh observations and a safe route should precede the assault.',methodical:'I prefer concentrating our forces and reducing walls before the decisive assault.',opportunistic:'Exposed objectives may justify two viable detachments; uncertain defenses do not.',protective:'I will preserve a retreat route and recommend how to protect our capital while following your command.'}[g.personality];
+  return {reply:summary+(order?`I propose: ${describeGeneralOrder(order)}. Click Order to issue this interpretation; until then it changes nothing.`:o?`${o.status}: ${o.reason} Our objective remains ${o.kind} at ${o.targets.join(', ')}. ${preference} ${/divid|split/.test(message)?'Detachments require two viable forces, current observations and legal routes. Order with splitting enabled to permit it.':'Your manual orders remain authoritative.'}`:`Assign an army, then name a known location and an objective. ${preference} I can prepare an attack, defense, rally, reinforcement, siege support or withdrawal for you to order.`),order};
 }
 export function validateGeneralResponse(raw) {
   if(!raw||typeof raw.reply!=='string'||!raw.reply.trim()||raw.reply.length>1600)return null;

@@ -1,3 +1,6 @@
+import { installFormalProposalUI } from './formal-proposal-ui.mjs';
+import { defaultProposalDirection, localFormalVoice, submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, answerFormalProposal, recordFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
+import { installStrategicMapPicker } from './strategic-map-picker.mjs';
 import { mountTradeItems } from './trade-package-ui.mjs';
 import { nextCouncilDispatch, councilDispatchCurrent, applyCouncilDispatch } from './council-dispatch.mjs';
 import { installArmySortUI } from './army-sort-ui.mjs';
@@ -69,7 +72,7 @@ let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', o
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let turnBusy = false;
 let proposalConversation = null;
-let allianceUI = null;
+let allianceUI = null, formalUI=null;
 let sending = false, compactCouncil = false, reviewedTrade = null;
 let configReady = false, verificationLoad = null, geminiChoiceMade = false;
 let configurationFailure = false;
@@ -90,7 +93,8 @@ const artResult = await preloadAllArt(({completed,total,failed}) => {
 $('art-status').textContent = artResult.failed ? `Artwork ready · ${artResult.failed} unavailable images will use fallback art.` : 'All artwork ready';
 $('start-game').disabled = $('resume').disabled = false;
 let displayedState=knowledgeView(state,localHouse);
-const map = new WorldMap($('map'), { getState: () => displayedState, onSelect: selectTile });
+const map = new WorldMap($('map'), { getState: () => displayedState, onSelect: selectTile, onStrategicMarker: marker => {if(marker.operationId){tab='war-room';render();document.querySelector(`[data-operation-card="${marker.operationId}"]`)?.scrollIntoView({block:'center'});}else if(marker.councilId)allianceUI?.open(marker.councilId);else if(marker.ruler)openDiplomacy(marker.ruler);} });
+const strategicPicker=installStrategicMapPicker(document,{getState:()=>currentView(),getViewer:()=>localHouse,getCamera:()=>map,onError:toast});
 commandUI=installCommandUI({getState:()=>state,getView:()=>currentView(),getOwner:()=>localHouse,perform,toast,onOpen:showGeneralVerification,onClose:restoreGeneralVerification,canAct:()=>!turnBusy&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse]),send:(id,message)=>{const campaign=state,requestEpoch=epoch;return client.send(campaign,localHouse,message,challengeToken,$('use-gemini').checked,{generalId:id,actorHouseId:localHouse,isCurrent:()=>state===campaign&&epoch===requestEpoch});}});
 
 function currentView() { displayedState=knowledgeView(state,localHouse);return displayedState; }
@@ -211,7 +215,7 @@ function realmPanel() {
 }
 function councilPanel() {
   const state=displayedState;
-  return `${systemTitle('diplomacy')}${allianceButtons(state,localHouse)}${vassalPanel(state,localHouse)}${tradePanel(state)}<span class="eyebrow">${state.kingdoms.length-1} RULERS. MANY AMBITIONS.</span><h2>The great houses</h2><p class="fine">An agreement becomes binding only after you review and ratify its terms.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
+  return `${systemTitle('diplomacy')}${allianceButtons(state,localHouse)}${vassalPanel(state,localHouse)}${tradePanel(state)}<span class="eyebrow">${state.kingdoms.length-1} RULERS. MANY AMBITIONS.</span><h2>The great houses</h2><p class="fine">Send exact terms for each ruler to consider. Accepted proposals become active; chat interpretations require Ratify & Send.</p>${state.kingdoms.filter(k => k.id !== localHouse).map(k => { const r = k.relations[localHouse], status = !alive(state, k.id) ? 'Fallen' : atWar(state, localHouse, k.id) ? 'At war' : treaty(state, localHouse, k.id, 'alliance') ? 'Allied' : 'At peace'; return `<article class="house-card" style="--house:${k.color}"><span class="house-sigil">${k.sigil}</span><h3>${escape(k.name)}</h3><p>${escape(state.controllers?.[k.id]?.kind==='human'?state.controllers[k.id].name+' · HUMAN':k.ruler)} · ${status}</p><p>Opinion ${r.opinion > 0 ? '+' : ''}${r.opinion} · Trust ${r.trust > 0 ? '+' : ''}${r.trust}<br>${k.honor > .8 ? 'Honorable' : k.honor < .4 ? 'Unpredictable' : 'Pragmatic'} · ${k.aggression > .7 ? 'Warlike' : k.greed > .8 ? 'Mercantile' : 'Watchful'}</p>${politicalCard(state,k.id)}${foreignEconomy(state,k.id)}<button data-talk="${k.id}" ${!alive(state, k.id) ? 'disabled' : ''}>Enter the council chamber →</button></article>`; }).join('')}`;
 }
 function ledgerPanel(rulerId = null) {
   const state=displayedState;
@@ -274,7 +278,7 @@ $('panel').addEventListener('submit',e=>{
   if(e.target.id!=='operation-form')return;e.preventDefault();
   const form=e.target,field=name=>form.elements.namedItem(name).value;
   const participants=[...form.querySelectorAll('[data-operation-house]')].filter(row=>row.dataset.operationHouse===localHouse||row.querySelector('[name=include]').checked).map(row=>{const value=name=>row.querySelector(`[name=${name}]`).value;return {house:row.dataset.operationHouse,role:value('role'),rally:value('rally'),requiredTroops:Number(value('troops')),requiredSiege:Number(value('siege')),food:Number(value('food'))};});
-  const terms={name:field('operationName'),targetTile:field('objective'),attackStart:Number(field('attackStart')),attackEnd:Number(field('attackEnd')),participants};
+  const terms={name:field('operationName'),targetTile:field('objective'),objectiveType:field('objectiveType'),attackStart:Number(field('attackStart')),attackEnd:Number(field('attackEnd')),participants};
   perform('operationCreate',terms,()=>createOperation(state,localHouse,terms));
 });
 $('panel').addEventListener('change', e => {
@@ -306,7 +310,7 @@ $('end-turn').addEventListener('click', async () => {
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { orderMode = null;navalOrder=null; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !strategicPicker.dialog.open) { orderMode = null;navalOrder=null; render(); } });
 $('chronicle-button').onclick = () => $('chronicle-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).close()));
 $('menu-button').onclick = () => $('menu').showModal();
@@ -429,6 +433,7 @@ function enableMarriageOffer(){
   if(!$('offer-type').querySelector('option[value="MARRIAGE"]')){const option=document.createElement('option');option.value='MARRIAGE';option.textContent='Discussed marriage settlement';$('offer-type').append(option);}
 }
 function renderProposals() {
+  formalUI?.render();
   renderCourtOptions(state,activeRuler,localHouse);
   const family=marriageContext(currentView(),activeRuler,localHouse);
   if(family.discussion)enableMarriageOffer();
@@ -437,6 +442,7 @@ function renderProposals() {
     $('proposals').innerHTML=humanProposals(state,activeRuler,localHouse)+proposals.filter(i=>['WAR','BETRAY'].includes(i.type)).map((i,index)=>`<div class="proposal"><p>${escape(describeIntent(i))}</p><button class="danger" data-human-war="${index}">Declare war with these consequences</button></div>`).join('');return;
   }
   $('proposals').innerHTML = proposals.map((i, index) => {
+    if(state.cooperation?.formalProposals?.some(p=>p.source==='conversation_inferred'&&p.created===state.turn&&p.requestedHouses.includes(activeRuler)&&p.intent?.type===i.type&&p.intent.targetId===i.targetId))return '';
     const v = disclosedDeal(state,activeRuler,i,localHouse), promise = isPlayerPromise(i);
     return `<div class="proposal ${v.status}"><h4>${promise ? 'PROPOSED PROMISE' : escape(LABELS[i.type])} · ${v.status.toUpperCase()}</h4><p>${escape(describeIntent(i))}</p>${promise ? `<p><strong>Deadline: Turn ${state.turn + i.duration}</strong></p>` : ''}<p>${escape(v.reason)}</p>${v.status === 'accept' ? `<button data-ratify="${index}" class="${['WAR', 'BETRAY'].includes(i.type) ? 'danger' : 'primary'}">${promise ? 'Give My Word' : ['WAR', 'BETRAY'].includes(i.type) ? 'Declare war with these consequences' : 'Accept & Ratify'}</button>` : v.status === 'counter' ? `<div class="counter-terms"><strong>${escape(kingdom(state, activeRuler).name)} counteroffer</strong><p>${escape(describeIntent(v.counter))}</p><button class="primary" data-ratify-counter="${index}">Accept & Ratify</button><button data-counter="${index}">Review counteroffer</button></div>` : ''}<div class="button-row"><button data-modify="${index}">${promise ? 'Clarify' : 'Modify Offer'}</button><button data-reply="${index}">${promise ? 'I Make No Such Promise' : 'Reply'}</button></div></div>`;
   }).join('');
@@ -476,6 +482,7 @@ $('proposals').addEventListener('click', e => {
     const r = commitDeal(state,activeRuler,proposal,localHouse);
     if (r.ok) { state.diplomacy.offers[activeRuler]=[];proposals=[];announceCouncilAgreement(state,localHouse,activeRuler,proposalConversation,proposal); if(reviewedTrade){const offer=state.commerce.offers.find(o=>o.id===reviewedTrade);if(offer)offer.status='accepted';reviewedTrade=null;} appendMessage(activeRuler, 'council', `${describeIntent(proposal)} — ratified on turn ${state.turn}.`); toast('Your word is recorded. The ledger tracks what happens next.'); }
     result(r);
+
   }
 });
 function appendMessage(rulerId, role, text) { return appendConversation(state,rulerId,role,text,{actorHouseId:localHouse}); }
@@ -483,9 +490,11 @@ $('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>!['MARRIAGE','
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
 const tradeRows=mountTradeItems($('offer-form'));
+const offerMapButton=document.createElement('button');offerMapButton.type='button';offerMapButton.dataset.selectMap='Select strategic location';offerMapButton.textContent='Select on Map';$('target-label').append(offerMapButton);
 function updateOfferFields() {
   const state=currentView();
   const type = $('offer-type').value;
+  offerMapButton.hidden=!['DEFEND','POSITION','BUILD_DEFENSES','PLEDGE_ATTACK','PLEDGE_DEFEND','PLEDGE_BUILD'].includes(type);
   tradeRows.mode(['EXCHANGE','RECURRING'].includes(type));
   $('marriage-fields').hidden=type!=='MARRIAGE';
   $('duration').min=type==='MARRIAGE'?'10':'1';
@@ -520,7 +529,7 @@ $('offer-form').addEventListener('submit', e => {
   if (!$('condition-label').hidden && $('condition-target').value) raw.conditionHouseId = $('condition-target').value;
   const i = validateIntent(raw);
   if (!i) { toast('Use whole resource amounts and valid terms (1–20 turns for a promise, 2–20 for agreements).'); return; }
-  sendDiplomatic(describeIntent(i), i);
+  formalUI.submit({intent:i,direction:defaultProposalDirection(i),councilId:proposalConversation||null,requestedHouses:[activeRuler]});
 });
 $('chat-form').addEventListener('submit', e => { e.preventDefault(); sendDiplomatic($('chat-message').value.trim()); });
 async function sendDiplomatic(message, proposal = null) {
@@ -546,7 +555,7 @@ async function sendDiplomatic(message, proposal = null) {
   const conversation=proposalConversation||privateConversation(activeRuler);
   const spent = consumeDiplomaticMessage(state,activeRuler,localHouse,proposal,conversation); if (!spent.ok) { toast(spent.error); return; }
   const rulerId = activeRuler, requestEpoch = epoch, campaign = state;
-  if (!proposal) applySpeech(campaign,rulerId,message,localHouse);
+  if (!proposal){applySpeech(campaign,rulerId,message,localHouse);stageConversationProposal(campaign,localHouse,message,{ruler:rulerId});}
   else if(proposal.type==='MARRIAGE')continueMarriageReview(campaign,rulerId,localHouse);
   sending = true;
   prepareCourtInquiry(campaign,rulerId,message,localHouse);
@@ -651,6 +660,7 @@ fetch('./config.json', { cache: 'no-store' }).then(r => { configStatus = r.statu
   enableGemini();
 });
 function renderDispatches() {
+  formalUI?.render();
   const state=currentView();
   $('dispatch-bar').innerHTML = allianceButtons(state,localHouse) + state.kingdoms.filter(k => k.id !== localHouse && alive(state, k.id)).map(k => {
     const r = k.relations[localHouse], messages = state.conversations[k.id] || [], last = messages.filter(m => m.role === 'ruler').at(-1);
@@ -696,6 +706,9 @@ document.addEventListener('click', e => {
 const verificationHome=document.createComment('Shared diplomacy verification');
 $('turnstile').before(verificationHome);
 allianceUI=installAllianceCouncil(document,{
+  pickLocation:options=>strategicPicker.openStrategicMapPicker(options),
+  planLocation:location=>{allianceUI.dialog.close();tab='war-room';render();const form=$('operation-form');if(!form){toast('Form an alliance before planning an operation.');return;}form.closest('details').open=true;form.elements.objectiveType.value=location.objectiveType;const select=form.elements.objective;let option=[...select.options].find(o=>o.value===location.targetTile);if(!option){option=document.createElement('option');option.value=location.targetTile;option.textContent=`Hex ${location.targetTile}`;select.append(option);}select.value=location.targetTile;form.scrollIntoView({block:'start'});},
+  offerRequest:id=>formalUI.open({councilId:id}),
   getState:()=>state,getActor:()=>localHouse,isBusy:()=>sending||turnBusy,
   gemini:()=>({enabled:$('use-gemini').checked,available:!$('use-gemini').disabled}),
   setGemini:enabled=>{$('use-gemini').checked=enabled;geminiChoiceMade=true;enableGemini();},
@@ -717,19 +730,19 @@ allianceUI=installAllianceCouncil(document,{
     if(onlineOptions)await online.submit('councilRead',{councilId:id});
     else{c.read[localHouse]=c.sequence;save();}
   },
-  send:async(id,message)=>{
+  send:async(id,message,location)=>{
     if(sending||turnBusy)return {ok:false,error:'An envoy is already travelling.'};
     const campaign=state,turn=state.turn,requestEpoch=epoch;
     const c=councilForActor(state,localHouse,id);if(!c)return {ok:false,error:'This coalition is no longer active.'};
-    const start=onlineOptions?null:beginCouncilMessage(state,localHouse,id,message);
+    const start=onlineOptions?null:beginCouncilMessage(state,localHouse,id,message,location);
     if(start&&!start.ok)return start;
     sending=true;save();allianceUI.render();
     try{
-      const response=await client.send(campaign,c.participants.find(x=>x!==localHouse),message,challengeToken,$('use-gemini').checked,{councilId:id,actorHouseId:localHouse,isCurrent:()=>state.turn===turn&&(onlineOptions?councilForActor(state,localHouse,id)?.sequence===c.sequence:state===campaign&&epoch===requestEpoch),onStatus:status=>allianceUI.setStatus(status==='queued'?'Waiting for the current conversation…':'The council is composing a reply…')});
+      const response=await client.send(campaign,c.participants.find(x=>x!==localHouse),message,challengeToken,$('use-gemini').checked,{councilId:id,location,actorHouseId:localHouse,isCurrent:()=>state.turn===turn&&(onlineOptions?councilForActor(state,localHouse,id)?.sequence===c.sequence:state===campaign&&epoch===requestEpoch),onStatus:status=>allianceUI.setStatus(status==='queued'?'Waiting for the current conversation…':'The council is composing a reply…')});
       if(response.source==='cancelled'||state.turn!==turn||!onlineOptions&&(state!==campaign||epoch!==requestEpoch))return {ok:false,error:'Circumstances changed while the envoy travelled. Open the current council.'};
       recordReplyDiagnostic(`council:${id}`,response);
       let result;
-      if(onlineOptions){await online.submit('councilChat',{councilId:id,message,response:{responses:response.responses,source:response.source}});result={ok:true};}
+      if(onlineOptions){await online.submit('councilChat',{councilId:id,message,location,response:{responses:response.responses,source:response.source}});result={ok:true};}
       else result=finishCouncilMessage(state,localHouse,start,message,response);
       return {...result,notice:response.notice};
     }finally{sending=false;challengeToken='';save();renderDispatches();}
@@ -743,6 +756,16 @@ allianceUI=installAllianceCouncil(document,{
     setTimeout(()=>{$('quick-offer').click();if(intent)loadOffer(intent);updateChatControls();},0);
   }
 });
+
+const formalActions={formalSubmit:submitFormalProposal,formalRatify:ratifyFormalProposal,formalDismiss:dismissFormalProposal,formalResolve:resolveFormalResponse,formalAnswer:answerFormalProposal,formalVoice:recordFormalVoice};
+formalUI=installFormalProposalUI(document,{
+  getState:()=>currentView(),getActor:()=>localHouse,getRuler:()=>activeRuler,
+  canAct:()=>!turnBusy&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&!onlineStatus?.meta?.ready[localHouse]),
+  action:async(type,p)=>{if(turnBusy)return {ok:false,error:'Wait for the current turn.'};if(onlineOptions){try{const r=await online.submit(type,p);return r||{ok:true};}catch(e){return {ok:false,error:e.message};}}const args=type==='formalSubmit'?[p]:type==='formalResolve'?[p.id,p.house]:type==='formalAnswer'?[p.id,p.house,p.decision]:type==='formalVoice'?[p.id,p.house,p.message]:[p.id];const r=formalActions[type](state,localHouse,...args);if(r.ok){save();render();}return r;},
+  voice:async(p,house)=>{const row=p.responses[house];if(!$('use-gemini').checked)return localFormalVoice(state,p,house);const response=await client.send(state,house,`Voice the recorded ${row.status} decision.`,challengeToken,true,{councilId:p.councilId,actorHouseId:localHouse,formalDecision:{proposalId:p.id,house},isCurrent:()=>state.cooperation?.formalProposals?.some(x=>x.id===p.id&&x.responses[house]?.status===row.status)});return response.source==='scripted'?localFormalVoice(state,p,house):response.responses?.find(r=>r.speakerHouseId===house)?.message||response.reply||localFormalVoice(state,p,house);},
+  error:toast,changed:()=>{save();renderDispatches();}
+});
+
 document.addEventListener('click',e=>{const b=e.target.closest('[data-alliance]');if(b&&!b.disabled)allianceUI.open(b.dataset.alliance);});
 document.addEventListener('click',e=>{if(e.target.closest('.treaty-drawer-close')&&$('diplomacy').classList.contains('council-terms'))$('diplomacy').close();});
 $('diplomacy').addEventListener('close',()=>{

@@ -1,3 +1,4 @@
+import { OBJECTIVE_TYPES, offensiveObjective } from './strategic-locations.mjs';
 import { emotionalEvent } from './emotions.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { alive, armiesOf, atWar, canAfford, canEnter, declareWar, distance, findPath, kingdom, orderArmy, pay, relation, settlements, sizeOf, treaty } from './core.mjs';
@@ -12,7 +13,7 @@ import { OPERATION_ROLES, acceptedMembers, initializeCooperation, memberOperatio
 const fail = error => ({ok:false,error});
 const integer = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
 const attackRole = p => ['assault','flank','siege'].includes(p.role);
-const protectedPeace = (s, a, b) => ['peace','non-aggression','alliance','vassalage'].some(type => treaty(s,a,b,type));
+const protectedPeace = (s, a, b) => !!b && ['peace','non-aggression','alliance','vassalage'].some(type => treaty(s,a,b,type));
 const pendingPledges = (s,o,house) => s.pledges.filter(p => p.operationId === o.id && (!house || p.debtor === house) && p.status === 'pending');
 export const operationPledges = (s,o) => s.pledges.filter(p => p.operationId === o.id);
 const currentPlan = (s,p) => s.intrigue.plans.find(x => x.id === p.planId);
@@ -25,9 +26,9 @@ export function defaultRally(s, house, targetTile, role='assault') {
 function memberError(s, o, p) {
   if (!p || !alive(s,p.house) || p.house===o.target || !Object.hasOwn(OPERATION_ROLES,p.role)) return 'Choose a living participant and a role.';
   if (p.house!==o.owner && (!treaty(s,o.owner,p.house,'alliance')&&!treaty(s,o.owner,p.house,'vassalage') || atWar(s,o.owner,p.house))) return 'Participating Houses must be allied to the operation leader.';
-  if (protectedPeace(s,p.house,o.target)) return 'A participant has a treaty protecting the target.';
-  const rally=s.tiles[p.rally];
-  if (!rally || !canEnter(s,p.house,rally) || ![p.house,o.owner].includes(rally.owner)) return 'Choose a reachable rally point in your or the leader’s territory.';
+  if (offensiveObjective(o.objectiveType) && protectedPeace(s,p.house,o.target)) return 'A participant has a treaty protecting the target.';
+  const rally=typeof p.rally==='string'&&Object.hasOwn(s.tiles,p.rally)?s.tiles[p.rally]:null;
+  if (!rally || !canEnter(s,p.house,rally) ) return 'Choose a rally point with legal military access.';
   if (p.role==='defend' && rally.owner!==o.owner) return 'Defenders must rally in the leader’s territory.';
   if (!integer(p.requiredTroops,p.role==='supply'?0:1,500) || !integer(p.requiredSiege,0,20) || !integer(p.food,0,250) || p.role==='supply' && p.food<10) return 'Use 1–500 troops, 0–20 siege engines, and 10–250 food for a supplier.';
   if (p.house===o.owner && p.food) return 'Assign supply deliveries to a partner House.';
@@ -40,12 +41,12 @@ function memberError(s, o, p) {
 function pledge(s,o,p,task,type,targetId,amount=0) {
   // Existing ledger and consequence path; operationTask specifies observable proof.
   const creditor=p.house===o.owner?o.participants.find(x=>x.house!==o.owner&&x.status==='accepted')?.house:o.owner;
-  const row={id:`pledge-${s.nextId++}`,debtor:p.house,creditor,intent:{type,targetId,giveAmount:amount,giveResource:'food',receiveAmount:0,receiveResource:'gold',duration:o.attackEnd-s.turn},operationId:o.id,operationTask:task,created:s.turn,deadline:task==='attack'?o.attackEnd+8:o.attackEnd,held:0,status:'pending',delivered:false,breached:false,eventAfter:s.nextId-1,produced:0};
+  const row={id:`pledge-${s.nextId++}`,debtor:p.house,creditor,intent:{type,targetId,giveAmount:amount,giveResource:'food',receiveAmount:0,receiveResource:'gold',duration:o.attackEnd-s.turn},operationId:o.id,operationTask:task,created:s.turn,deadline:['attack','position','defend','hold'].includes(task)?o.attackEnd+8:o.attackEnd,held:0,status:'pending',delivered:false,breached:false,eventAfter:s.nextId-1,produced:0};
   s.pledges.push(row);
 }
 function acceptMember(s,o,p) {
   const error=memberError(s,o,p);if(error)return fail(error);
-  const plan=createPlan(s,p.house,'jointWar',{target:o.target,targetTile:o.targetTile,objective:`${OPERATION_ROLES[p.role]} in ${o.name}.`,allies:o.participants.filter(x=>x.house!==p.house).map(x=>x.house),requiredForces:Math.max(1,p.requiredTroops),requiredSiege:p.requiredSiege,requiredResources:{food:24,gold:18},delay:Math.max(0,o.attackStart-s.turn),operationId:o.id});
+  const plan=createPlan(s,p.house,offensiveObjective(o.objectiveType)?'jointWar':'defendFrontier',{target:o.target,targetTile:o.targetTile,objective:`${OBJECTIVE_TYPES[o.objectiveType||'attack']} Hex ${o.targetTile}; ${OPERATION_ROLES[p.role]} in ${o.name}.`,allies:o.participants.filter(x=>x.house!==p.house).map(x=>x.house),requiredForces:Math.max(1,p.requiredTroops),requiredSiege:p.requiredSiege,requiredResources:{food:24,gold:18},delay:Math.max(0,o.attackStart-s.turn),operationId:o.id});
   if(!plan)return fail('No strategic plan slot is available.');
   p.status='accepted';p.planId=plan.id;p.acceptedTurn=s.turn;
   transitionPlan(s,plan,'Preparing','A shared operation was accepted.');
@@ -62,7 +63,8 @@ function bindCommitments(s,o,p) {
   if(p.food)pledge(s,o,p,'supply','PROMISE',o.owner,p.food);
   if(p.role!=='supply') {
     pledge(s,o,p,'rally','POSITION',p.rally);
-    pledge(s,o,p,attackRole(p)?'attack':p.role,attackRole(p)?'JOINT_WAR':'DEFEND',attackRole(p)?o.target:p.rally);
+    if(offensiveObjective(o.objectiveType)&&attackRole(p)&&o.target)pledge(s,o,p,'attack','JOINT_WAR',o.target);
+    else {const duty=offensiveObjective(o.objectiveType)?(['defend','hold'].includes(p.role)?p.role:'position'):(['defend','hold'].includes(o.objectiveType)?o.objectiveType:'position');pledge(s,o,p,duty,'POSITION',!offensiveObjective(o.objectiveType)||attackRole(p)?o.targetTile:p.rally);}
   }
   if(p.requiredSiege)pledge(s,o,p,'siege','BUILD_DEFENSES',p.rally);
 }
@@ -71,14 +73,22 @@ export function createOperation(s,owner,terms={}) {
   if(!terms||typeof terms!=='object')return fail('Invalid operation terms.');
   if(s.outcome || s.phase==='founding' || !alive(s,owner))return fail('Operations require an active kingdom.');
   if(typeof terms.name!=='string'||!terms.name.trim()||terms.name.length>60)return fail('Name the operation (up to 60 characters).');
-  const targetTile=s.tiles[terms.targetTile];
-  if(!targetTile || !targetTile.owner || targetTile.owner===owner || !alive(s,targetTile.owner))return fail('Choose a foreign objective.');
+  const objectiveType=terms.objectiveType??'attack';
+  if(!Object.hasOwn(OBJECTIVE_TYPES,objectiveType)||typeof terms.targetTile!=='string'||!Object.hasOwn(s.tiles,terms.targetTile))return fail('Choose a valid action and map location.');
+  const targetTile=planningView(s,owner).tiles[terms.targetTile],offensive=offensiveObjective(objectiveType);
+  // Never infer the enemy House from the hidden authoritative tile.
+  const knownOwner=targetTile.owner||targetTile.knownCapital||null;
+  const targetHouse=offensive?(terms.targetHouse??knownOwner):null;
+  if(terms.targetHouse!=null&&(!offensive||typeof terms.targetHouse!=='string'||!kingdom(s,terms.targetHouse)))return fail('Choose a valid target House for an offensive objective.');
+  if(targetHouse&&(!alive(s,targetHouse)||targetHouse===owner||knownOwner&&knownOwner!==targetHouse))return fail('Choose a valid foreign objective.');
+  if(objectiveType==='siege'&&(targetTile.fog!=='visible'||!['city','town','fort'].includes(targetTile.building)||!targetHouse))return fail('Sieges require an observed enemy city, town or fort.');
+  if(!offensive&&targetTile.fog==='visible'&&knownOwner&&knownOwner!==owner&&!['alliance','access','vassalage'].some(type=>treaty(s,owner,knownOwner,type)))return fail('This position requires military access or an offensive objective.');
   if(!integer(terms.attackStart,s.turn+1,s.turn+20)||!integer(terms.attackEnd,terms.attackStart,Math.min(s.turn+24,terms.attackStart+6)))return fail('Plan an attack 1–20 turns ahead with a window of up to 6 turns.');
   if(!Array.isArray(terms.participants)||terms.participants.length<2||terms.participants.length>5||new Set(terms.participants.map(p=>p?.house)).size!==terms.participants.length||terms.participants.some(p=>!p||typeof p!=='object'))return fail('Choose two to five different participating Houses.');
   const participants=terms.participants.map(p=>({house:p?.house,role:p.role,rally:p.rally,requiredTroops:p.requiredTroops,requiredSiege:p.requiredSiege,food:p.food,status:'invited',planId:null,acceptedTurn:null}));
   if(participants.find(p=>p.house===owner)?.role!=='assault')return fail('The leader must commit to the main assault.');
   if(s.cooperation.operations.some(o=>o.owner===owner&&s.turn-o.createdTurn<6))return fail('Allow six turns between new operations.');
-  const o={id:`OP-${s.nextId}`,owner,name:terms.name.trim(),target:targetTile.owner,targetTile:targetTile.id,createdTurn:s.turn,updatedTurn:s.turn,attackStart:terms.attackStart,attackEnd:terms.attackEnd,status:'Preparing',reason:'Gathering consent and preparations.',participants,exposure:0,exposureReasons:[],launchedTurn:null};
+  const o={id:`OP-${s.nextId}`,owner,name:terms.name.trim(),target:targetHouse,targetHouse,objectiveType,targetTile:targetTile.id,createdTurn:s.turn,updatedTurn:s.turn,attackStart:terms.attackStart,attackEnd:terms.attackEnd,status:'Preparing',reason:'Gathering consent and preparations.',participants,exposure:0,exposureReasons:[],launchedTurn:null};
   for(const p of participants){const error=memberError(s,o,p);if(error)return fail(error);}
   s.nextId++;s.cooperation.operations.push(o);
   const result=acceptMember(s,o,operationMember(o,owner));
@@ -147,9 +157,10 @@ export function operationPledgeProgress(s,p) {
   let done=p.delivered;
   if(p.operationTask==='rally')done=stationed;
   if(p.operationTask==='siege')done=p.produced>=member.requiredSiege;
-  if(p.operationTask==='attack')done=p.delivered||o.launchedTurn!==null&&s.militaryEvents.some(e=>e.id>p.eventAfter&&e.turn>=o.launchedTurn&&e.attacker===p.debtor&&e.defender===o.target&&e.tile===o.targetTile);
+  if(p.operationTask==='attack')done=p.delivered||o.launchedTurn!==null&&(s.militaryEvents.some(e=>e.id>p.eventAfter&&e.turn>=o.launchedTurn&&e.attacker===p.debtor&&e.defender===o.target&&e.tile===o.targetTile)||s.tiles[o.targetTile].owner===p.debtor&&forces.some(a=>a.tile===o.targetTile));
+  if(p.operationTask==='position')done=o.launchedTurn!==null&&forces.filter(a=>a.tile===p.intent.targetId).reduce((n,a)=>n+sizeOf(a),0)>=member.requiredTroops;
   if(['hold','defend'].includes(p.operationTask)) {
-    if(p.lastVerified!==s.turn){p.held=stationed&&[p.debtor,o.owner].includes(s.tiles[member.rally].owner)?Math.min(2,p.held+1):0;p.lastVerified=s.turn;}
+    if(p.lastVerified!==s.turn){p.held=o.launchedTurn!==null&&forces.filter(a=>a.tile===p.intent.targetId).reduce((n,a)=>n+sizeOf(a),0)>=member.requiredTroops&&canEnter(s,p.debtor,s.tiles[p.intent.targetId])?Math.min(2,p.held+1):0;p.lastVerified=s.turn;}
     done=p.held>=2;
   }
   return done?'fulfilled':s.turn>=p.deadline?'broken':ongoingOperation(o)?'pending':'released';
@@ -192,23 +203,29 @@ export function updateOperations(s,{afterMovement=false}={}) {
     if(!ongoingOperation(o))continue;
     const members=acceptedMembers(o),tile=s.tiles[o.targetTile];
     const observed=members.some(p=>planningView(s,p.house).tiles[o.targetTile]?.fog==='visible');
-    if(observed && tile.owner!==o.target) {
+    if(offensiveObjective(o.objectiveType) && o.target && observed && tile.owner!==o.target) {
       // Verify the last combat before closing and releasing redundant obligations.
       for(const row of pendingPledges(s,o))if(operationPledgeProgress(s,row)==='fulfilled')row.delivered=true;
       closeOperation(s,o,members.some(p=>p.house===tile.owner)?'Completed':'Abandoned','The objective changed hands.');continue;
     }
-    if(members.some(p=>protectedPeace(s,p.house,o.target)||o.launchedTurn!==null&&attackRole(p)&&currentPlan(s,p)?.wasAtWar&&!atWar(s,p.house,o.target))) {closeOperation(s,o,'Abandoned','A peace agreement prevents the shared campaign.');continue;}
+    if(offensiveObjective(o.objectiveType)&&o.target&&members.some(p=>protectedPeace(s,p.house,o.target)||o.launchedTurn!==null&&attackRole(p)&&currentPlan(s,p)?.wasAtWar&&!atWar(s,p.house,o.target))) {closeOperation(s,o,'Abandoned','A peace agreement prevents the shared campaign.');continue;}
     if(s.turn>o.attackEnd+(o.launchedTurn===null?0:8)) {
       for(const row of pendingPledges(s,o))if(s.turn>=row.deadline&&operationPledgeProgress(s,row)!=='fulfilled')row.breached=true;
       closeOperation(s,o,'Abandoned',o.launchedTurn===null?'The attack window passed without preparations.':'The campaign stalled after the attack window.');continue;
     }
+    if(o.launchedTurn!==null&&(!offensiveObjective(o.objectiveType)||!o.target)) {
+      const duties=pendingPledges(s,o).filter(p=>['position','hold','defend'].includes(p.operationTask));
+      for(const row of duties)if(operationPledgeProgress(s,row)==='fulfilled')row.delivered=true;
+      const tasks=operationPledges(s,o).filter(p=>['position','hold','defend'].includes(p.operationTask));
+      if(tasks.length&&tasks.every(p=>p.delivered||p.status==='fulfilled')){closeOperation(s,o,'Completed','Participating forces reached and secured the designated position.');continue;}
+    }
     refreshExposure(s,o);
     if(afterMovement||o.status!=='Preparing')continue;
     if(s.turn>=o.attackStart&&members.length>=2&&members.every(p=>operationProgress(s,o,p).ready)) {
-      const fighters=members.filter(attackRole);
-      const legal=fighters.every(p=>{const probe={...planningView(s,p.house),wars:[...s.wars,[p.house,o.target].sort().join(':')]};return armiesOf(s,p.house).some(a=>findPath(probe,a.tile,o.targetTile,p.house).length||a.tile===o.targetTile);});
+      const fighters=members.filter(p=>p.role!=='supply'&&(!offensiveObjective(o.objectiveType)||attackRole(p)));
+      const legal=fighters.every(p=>{const view=planningView(s,p.house),probe={...view,wars:offensiveObjective(o.objectiveType)&&o.target?[...s.wars,[p.house,o.target].sort().join(':')]:s.wars};return armiesOf(s,p.house).some(a=>findPath(probe,a.tile,o.targetTile,p.house).length||a.tile===o.targetTile);});
       if(!legal){o.reason='Waiting for legal routes to the objective.';continue;}
-      for(const p of fighters){if((!s.sequential||s.sequential.order[s.sequential.index]===p.house)&&!atWar(s,p.house,o.target))declareWar(s,p.house,o.target);const plan=currentPlan(s,p);plan.wasAtWar=atWar(s,p.house,o.target);transitionPlan(s,plan,'Committed','Shared attack window opened; the operation is ready.');}
+      for(const p of fighters){if(offensiveObjective(o.objectiveType)&&o.target&&(!s.sequential||s.sequential.order[s.sequential.index]===p.house)&&!atWar(s,p.house,o.target))declareWar(s,p.house,o.target);const plan=currentPlan(s,p);plan.wasAtWar=atWar(s,p.house,o.target);transitionPlan(s,plan,'Committed','Shared action window opened; the operation is ready.');}
       for(const p of members.filter(p=>!attackRole(p)))transitionPlan(s,currentPlan(s,p),'Executing','Shared support commitments are on station.');
       o.status='Executing';o.launchedTurn=s.turn;o.updatedTurn=s.turn;o.reason='Coordinated orders released to participating armies.';
     }
@@ -221,13 +238,23 @@ export function operationArmyOrder(s,k,a,c) {
   if(p.role==='supply'){orderArmy(s,k.id,a.id,a.tile,'hold');return currentPlan(s,p);}
   const plan=currentPlan(s,p);
   if(!plan.assignedArmies.includes(a.id))plan.assignedArmies.push(a.id);
-  if(o.status==='Preparing'||!attackRole(p)) {
+  if(o.status==='Preparing'||offensiveObjective(o.objectiveType)&&!attackRole(p)) {
     orderArmy(s,k.id,a.id,p.rally,a.tile===p.rally?'hold':'move');return plan;
   }
-  if(s.sequential&&s.sequential.order[s.sequential.index]===k.id&&!atWar(s,k.id,o.target)&&!protectedPeace(s,k.id,o.target)){declareWar(s,k.id,o.target);plan.wasAtWar=true;}
-  const t=planningView(s,k.id).tiles[o.targetTile],assessment=assaultAssessment(s,k,a,t);
+  if(offensiveObjective(o.objectiveType)&&o.target&&s.sequential&&s.sequential.order[s.sequential.index]===k.id&&!atWar(s,k.id,o.target)&&!protectedPeace(s,k.id,o.target)){declareWar(s,k.id,o.target);plan.wasAtWar=true;}
+  const view=planningView(s,k.id),t=view.tiles[o.targetTile];
+  if(!offensiveObjective(o.objectiveType)||!o.target){
+    // The coordinate is an instruction, never a grant of reconnaissance.
+    const enemy=view.armies.some(e=>e.tile===t.id&&atWar(s,k.id,e.owner))||t.owner&&atWar(s,k.id,t.owner);
+    const mode=a.tile===t.id?'hold':offensiveObjective(o.objectiveType)&&enemy?'attack':'move';
+    const result=orderArmy(s,k.id,a.id,t.id,mode,dangerousTiles(view,k,a));
+    if(!result.ok)orderArmy(s,k.id,a.id,a.tile,'hold');
+    else transitionPlan(s,plan,'Executing','Orders issued to the exact strategic location.');
+    return plan;
+  }
+  const assessment=assaultAssessment(view,k,a,t);
   if(assessment.assault&&atWar(s,k.id,o.target)) {
-    const avoid=dangerousTiles(s,k,a);avoid.delete(t.id);
+    const avoid=dangerousTiles(view,k,a);avoid.delete(t.id);
     if(orderArmy(s,k.id,a.id,t.id,'attack',avoid).ok){transitionPlan(s,plan,'Executing','Shared assault orders issued.');return plan;}
   }
   // The ordinary plan executor handles safe bombardment with real equipment.
@@ -240,7 +267,7 @@ export function prepareOperationAI(s,k) {
     for(const p of o.participants) {
       if(p.status==='counter'&&o.owner===k.id)respondOperation(s,k.id,o.id,'accept',p.house);
       if(p.house!==k.id||p.status!=='invited')continue;
-      const r=relation(s,k.id,o.owner),enemy=relation(s,k.id,o.target);
+      const r=relation(s,k.id,o.owner),enemy=o.target?relation(s,k.id,o.target):{grievance:0,fear:0,dependency:0};
       const benefit=(atWar(s,k.id,o.target)?25:0)+enemy.grievance*.35+enemy.fear*.2+k.aggression*12;
       const troops=armiesOf(s,k.id).reduce((n,a)=>n+sizeOf(a),0);
       const score=r.trust*.5+r.reliability*.15-r.grievance*.5+benefit-enemy.dependency*.5;

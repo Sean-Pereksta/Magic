@@ -14,6 +14,11 @@ export function pruneCooperation(s) {
   const live = s.cooperation.operations.filter(ongoingOperation);
   const keep = new Set([...live, ...s.cooperation.operations.filter(o => !ongoingOperation(o)).slice(-Math.max(0, 24-live.length))].map(o => o.id));
   s.cooperation.operations = s.cooperation.operations.filter(o => keep.has(o.id));
+  for(const p of s.cooperation.formalProposals||[]){
+    if(s.turn<=p.expires&&(!p.councilId||s.allianceCouncils?.some(c=>c.id===p.councilId))&&(!p.operationId||keep.has(p.operationId)))continue;
+    if(p.status==='draft')p.status='dismissed';
+    if(p.status==='processing'){for(const response of Object.values(p.responses))if(['waiting','awaiting-human'].includes(response.status))Object.assign(response,{status:'invalid',reasonCodes:['circumstances_changed'],message:'This proposal expired or its conversation changed.',resolvedTurn:s.turn});p.status='resolved';}
+  }
   const pending=s.cooperation.proposals.filter(p=>['pending','counter'].includes(p.status));
   const resolved=s.cooperation.proposals.filter(p=>!pending.includes(p)&&s.turn-p.created<=12).slice(-(60-pending.length));
   s.cooperation.proposals=s.cooperation.proposals.filter(p=>pending.includes(p)||resolved.includes(p));
