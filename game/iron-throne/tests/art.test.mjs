@@ -4,11 +4,11 @@ import {readFile} from 'node:fs/promises';
 import {ALL_ART_PATHS,ART,ironThronesAsset,preloadAllArt,AssetCache,loadArt,displayArtURL} from '../asset-manifest.mjs';
 test('complete manifest matches supplied PNGs and game catalogs',async()=>{
   assert.equal(new Set(ALL_ART_PATHS).size,ALL_ART_PATHS.length);
-  assert.equal(ALL_ART_PATHS.length,208);
+  assert.equal(ALL_ART_PATHS.length,214);
   assert.equal(Object.keys(ART.generals).length,16);
   assert.ok(Object.values(ART.generals).every(url=>url.includes('/portraits/generals/')));
   assert.equal(ironThronesAsset('/buildings/lumber_1.png'),ART.structures.lumber[1]);
-  assert.equal(ART.terrain.mountain.length,6);
+  assert.equal(ART.terrain.mountain.length,6);assert.equal(ART.terrain.desert.length,6);assert.ok(ART.terrain.desert.every(url=>/terrain\/sand_0[1-6]\.png$/.test(url)));
   assert.ok(!ALL_ART_PATHS.some(path=>/^(terrain\/coast_|overlays\/river_)/.test(path)), 'replaced scenic art is not preloaded');
 });
 test('preload probes lumber first, bounds concurrency, decodes and reuses every image',async()=>{

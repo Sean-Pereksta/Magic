@@ -1,3 +1,4 @@
+import { mountTradeItems } from './trade-package-ui.mjs';
 import { nextCouncilDispatch, councilDispatchCurrent, applyCouncilDispatch } from './council-dispatch.mjs';
 import { installArmySortUI } from './army-sort-ui.mjs';
 import { armyName } from './army-organization.mjs';
@@ -447,6 +448,7 @@ function loadOffer(i) {
   setCouncilMode(false); $('offer-type').value = i.type; updateOfferFields();
   $('give-resource').value = i.giveResource; $('give-amount').value = i.giveAmount;
   $('receive-resource').value = i.receiveResource; $('receive-amount').value = i.receiveAmount;
+  if(['EXCHANGE','RECURRING'].includes(i.type))tradeRows.load(i);
   $('trade-kind').value=i.tradeKind||'immediate';
   if(i.type==='MARRIAGE')for(const key of MARRIAGE_FIELDS){const el=$(`marriage-${key}`);if(el.type==='checkbox')el.checked=i[key];else el.value=i[key];}
   $('duration').value = i.duration; $('offer-target').value = i.targetId;
@@ -480,9 +482,11 @@ function appendMessage(rulerId, role, text) { return appendConversation(state,ru
 $('offer-type').innerHTML = Object.entries(LABELS).filter(([id])=>!['MARRIAGE','INTELLIGENCE'].includes(id)).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
 for (const id of ['give-resource', 'receive-resource']) $(id).innerHTML = RESOURCES.map(r => `<option>${r}</option>`).join('');
 $('give-resource').value = 'gold';
+const tradeRows=mountTradeItems($('offer-form'));
 function updateOfferFields() {
   const state=currentView();
   const type = $('offer-type').value;
+  tradeRows.mode(['EXCHANGE','RECURRING'].includes(type));
   $('marriage-fields').hidden=type!=='MARRIAGE';
   $('duration').min=type==='MARRIAGE'?'10':'1';
   if(type==='MARRIAGE'&&Number($('duration').value)<10)$('duration').value=12;
@@ -510,6 +514,7 @@ $('trade-kind').onchange=()=>{const kind=$('trade-kind').value;$('offer-type').v
 $('offer-form').addEventListener('submit', e => {
   e.preventDefault();
   const raw = { type: $('offer-type').value, giveResource: $('give-resource').value, giveAmount: Number($('give-amount').value), receiveResource: $('receive-resource').value, receiveAmount: Number($('receive-amount').value), targetId: $('target-label').hidden ? '' : $('offer-target').value, duration: Number($('duration').value) };
+  if(['EXCHANGE','RECURRING'].includes(raw.type)){raw.giveItems=tradeRows.read('give');raw.receiveItems=tradeRows.read('receive');}
   if(raw.type==='MARRIAGE')for(const key of MARRIAGE_FIELDS){const el=$(`marriage-${key}`);raw[key]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value;}
   if(!$('trade-kind-label').hidden) raw.tradeKind=$('trade-kind').value;
   if (!$('condition-label').hidden && $('condition-target').value) raw.conditionHouseId = $('condition-target').value;

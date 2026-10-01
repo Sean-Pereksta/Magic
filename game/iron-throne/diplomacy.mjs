@@ -1,3 +1,4 @@
+import { packageTrade, tradeItems, normalizePackage, itemCost, itemText, itemTotal, packageKey, scalePackage } from './trade-package.mjs';
 import { resolveFleetMovement } from './naval.mjs';
 import { militaryArmiesOf } from './core.mjs';
 import { difficulty } from './difficulty.mjs';
@@ -29,7 +30,7 @@ export const LABELS = { INTELLIGENCE: 'Purchase private intelligence report', MA
 const VALUES = RESOURCE_VALUES;
 import { aiResourceTrade, contractAnchors, contractCheck, economicNeeds, scheduleTrade, tradeRoute } from './trade.mjs';
 const TYPES = new Set(INTENT_TYPES);
-const FIELDS = new Set([...MARRIAGE_FIELDS, 'type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId', 'tradeKind']);
+const FIELDS = new Set([...MARRIAGE_FIELDS, 'giveItems','receiveItems','type', 'targetId', 'giveResource', 'giveAmount', 'receiveResource', 'receiveAmount', 'duration', 'conditionHouseId', 'tradeKind']);
 export function validateIntent(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !TYPES.has(value.type) || Object.keys(value).some(k => !FIELDS.has(k))) return null;
   const i = { type: value.type, duration: value.duration ?? 10, giveResource: value.giveResource ?? 'gold', giveAmount: value.giveAmount ?? 0, receiveResource: value.receiveResource ?? 'food', receiveAmount: value.receiveAmount ?? 0, targetId: value.targetId ?? '' };
@@ -39,6 +40,12 @@ export function validateIntent(value) {
   if (value.conditionHouseId !== undefined) i.conditionHouseId = value.conditionHouseId;
   if (i.conditionHouseId !== undefined && (typeof i.conditionHouseId !== 'string' || !CAMPAIGN_HOUSES.some(h => h.id === i.conditionHouseId) || !['PLEDGE_WAR', 'GUARANTEE'].includes(i.type))) return null;
   if (!Number.isInteger(i.duration) || i.duration < (isPlayerPromise(i) ? 1 : 2) || i.duration > 20 || !RESOURCES.includes(i.giveResource) || !RESOURCES.includes(i.receiveResource) || !Number.isInteger(i.giveAmount) || i.giveAmount < 0 || i.giveAmount > 1000 || !Number.isInteger(i.receiveAmount) || i.receiveAmount < 0 || i.receiveAmount > 1000 || typeof i.targetId !== 'string' || i.targetId.length > 60) return null;
+  if(packageTrade(i)){
+    if(value.giveItems!==undefined)i.giveItems=value.giveItems;
+    if(value.receiveItems!==undefined)i.receiveItems=value.receiveItems;
+    return normalizePackage(i);
+  }
+  if(value.giveItems!==undefined||value.receiveItems!==undefined)return null;
   return i;
 }
 export function validateResponse(raw) {
@@ -72,6 +79,7 @@ export function validateResponse(raw) {
   } catch { return null; }
 }
 export function describeIntent(i) {
+  if(packageTrade(i))return `${LABELS[i.type]} · Proposer gives ${itemText(tradeItems(i,'give'))} · Proposer receives ${itemText(tradeItems(i,'receive'))}${i.type==='RECURRING'?` each turn for ${i.duration} turns`:' now · Immediate'}`;
   if (i.type === 'INTELLIGENCE') return `Private intelligence report · Quote ${i.targetId} · Pay ${i.giveAmount} gold once on ratification · A dated report of approaches, not proof of an agreed conspiracy.`;
   if(i.type==='MARRIAGE')return `Royal marriage: proposer’s ${i.actorMember} and receiving House’s ${i.rulerMember} (adults) · ${i.giveAmount} ${i.giveResource} upfront · mutual peace for ${i.duration} turns${i.shipmentAmount?` · proposer sends ${i.shipmentAmount} ${i.shipmentResource} per turn for ${i.shipmentTurns} turns`:''}${i.defense?' · mutual defense: respond to an attack within 3 turns during the peace term':''}${i.trade?' · trade agreement for the peace term':''}. Breaches can strain or break the family bond.`;
   const timing = i.type === 'RECURRING' ? ' each turn' : isPlayerPromise(i) ? ' by the deadline' : ' now';
@@ -103,8 +111,8 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   const wartime=atWar(s,actorHouseId,rulerId), war=wartime?warDesperation(s,rulerId,actorHouseId):null;
   const surrender=wartime&&intent.type==='VASSALAGE'?capitulationCheck(s,rulerId,actorHouseId,intent):null;
   const i = intent, r = relation(s, rulerId, actorHouseId);
-  if (!isPlayerPromise(i) && !canAfford(player, { [i.giveResource]: i.giveAmount })) return reject('Your treasury cannot cover this offer.');
-  if (i.type !== 'LOAN' && !canAfford(k, { [i.receiveResource]: i.receiveAmount })) return reject('That house does not possess the requested resources.');
+  if (!isPlayerPromise(i) && !canAfford(player, packageTrade(i)?itemCost(tradeItems(i,'give')):{ [i.giveResource]: i.giveAmount })) return reject('Your treasury cannot cover this offer.');
+  if (i.type !== 'LOAN' && !canAfford(k, packageTrade(i)?itemCost(tradeItems(i,'receive')):{ [i.receiveResource]: i.receiveAmount })) return reject('That house does not possess the requested resources.');
   if (!['EXCHANGE', 'TRIBUTE', 'RECURRING', 'LOAN'].includes(i.type) && i.receiveAmount !== 0) return reject('Use an exchange, recurring trade, loan or tribute to specify received resources.');
   if (['WAR', 'BETRAY', 'WITHDRAW', 'TRIBUTE', 'PROMISE'].includes(i.type) && i.type !== 'PROMISE' && i.giveAmount !== 0) return reject('This action does not accept an upfront payment.');
   if (['ALLIANCE', 'TRADE', 'VASSALAGE', 'DEFEND', 'POSITION', 'BUILD_DEFENSES', 'TERRITORY', 'PROMISE', 'RECURRING', 'LOAN', 'NON_AGGRESSION', 'ACCESS', 'EMBARGO', 'GUARANTEE', 'PLEDGE_WAR', 'PLEDGE_ATTACK', 'PLEDGE_DEFEND', 'PLEDGE_WITHDRAW', 'PLEDGE_BUILD', 'PLEDGE_PEACE'].includes(i.type) && wartime && !(i.type==='VASSALAGE'&&surrender?.eligible) && !(i.type==='TERRITORY'&&war?.score>=55)) return reject(i.type==='VASSALAGE'?'Negotiate peace before requesting allegiance. Capitulation requires material military collapse.':'Negotiate peace before making this agreement.');
@@ -129,22 +137,22 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
     if (k.lastGiftTurn === s.turn) return reject('This ruler has already received a gift this turn.');
     return { status: 'accept', reason: 'Aid matters most during genuine need. Repeated gifts quickly lose diplomatic influence.', intent };
   }
-  if (['EXCHANGE', 'RECURRING'].includes(i.type) && (!i.giveAmount || !i.receiveAmount || i.giveResource === i.receiveResource)) return reject('Offer two different resources, each with a positive amount.');
+  if (['EXCHANGE', 'RECURRING'].includes(i.type) && (!tradeItems(i,'give').length||!tradeItems(i,'receive').length||tradeItems(i,'give').some(x=>tradeItems(i,'receive').some(y=>y.resource===x.resource)))) return reject('Offer positive resource amounts on both sides, with each resource on only one side.');
   if(i.type==='EXCHANGE'&&!tradeRoute(s,actorHouseId,rulerId).safe)return reject('No safe trade route is available.');
-  if(i.type==='RECURRING'&&s.treaties.some(t=>t.type==='recurring'&&t.expires>s.turn&&t.parties.includes(actorHouseId)&&t.parties.includes(rulerId)&&t.intent.giveResource===i.giveResource&&t.intent.receiveResource===i.receiveResource&&t.intent.giveAmount===i.giveAmount&&t.intent.receiveAmount===i.receiveAmount))return reject('An identical supply agreement is already active.');
+  if(i.type==='RECURRING'&&s.treaties.some(t=>t.type==='recurring'&&t.expires>s.turn&&t.parties.includes(actorHouseId)&&t.parties.includes(rulerId)&&packageKey(t.intent)===packageKey(i)))return reject('An identical supply agreement is already active.');
   if(i.type==='RECURRING'){
     const why=contractCheck(s,actorHouseId,rulerId,i);
     if(why){
       if(allowCounter&&!consentingHuman&&!['strategic','preferential'].includes(i.tradeKind)){
-        const scale=Math.min(1,12/Math.max(i.giveAmount,i.receiveAmount));
-        const trial={...i,type:'EXCHANGE',tradeKind:'immediate',duration:2,giveAmount:Math.ceil(i.giveAmount*scale),receiveAmount:Math.max(1,Math.floor(i.receiveAmount*scale))};
+        const scale=Math.min(1,12/Math.max(itemTotal(tradeItems(i,'give')),itemTotal(tradeItems(i,'receive'))));
+        const trial={...scalePackage(i,scale),type:'EXCHANGE',tradeKind:'immediate',duration:2};
         const v=evaluateDeal(s,rulerId,trial,actorHouseId,{allowCounter:false});
         if(v.status==='accept')return {status:'counter',intent,counter:v.intent,factors:[why],reason:`${why} A small immediate exchange is possible instead; it does not create a recurring contract.`};
       }
       return reject(why);
     }
   }
-  if(i.tradeKind==='purchase'&&![i.giveResource,i.receiveResource].includes('gold'))return reject('A purchase must include gold.');
+  if(i.tradeKind==='purchase'&&![...tradeItems(i,'give'),...tradeItems(i,'receive')].some(x=>x.resource==='gold'))return reject('A purchase must include gold.');
   if(['strategic','preferential','recurring'].includes(i.tradeKind)&&i.type!=='RECURRING')return reject('These supply terms require a recurring contract.');
   if (i.type === 'LOAN' && (i.giveAmount < 10 || i.receiveResource !== i.giveResource || i.receiveAmount < i.giveAmount || i.receiveAmount > Math.floor(i.giveAmount * 1.5))) return reject('A loan needs at least 10 resources and repayment of 100–150% in the same resource.');
   if (i.type === 'LOAN' && s.pledges.some(p => p.debtor === rulerId && p.creditor === actorHouseId && p.status === 'pending' && p.loan)) return reject('This House must repay its existing loan first.');
@@ -234,8 +242,12 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
     }
     return purchase;
   }
-  if (!isPlayerPromise(i)) { pay(player, { [i.giveResource]: i.giveAmount }); pay(k, { [i.giveResource]: i.giveAmount }, 1); }
-  if (i.receiveAmount && i.type !== 'LOAN') { pay(k, { [i.receiveResource]: i.receiveAmount }); pay(player, { [i.receiveResource]: i.receiveAmount }, 1); }
+  if(packageTrade(i)){
+    const give=itemCost(tradeItems(i,'give')),receive=itemCost(tradeItems(i,'receive'));
+    pay(player,give);pay(k,receive);pay(k,give,1);pay(player,receive,1);
+  }
+  else if (!isPlayerPromise(i)) { pay(player, { [i.giveResource]: i.giveAmount }); pay(k, { [i.giveResource]: i.giveAmount }, 1); }
+  if (!packageTrade(i) && i.receiveAmount && i.type !== 'LOAN') { pay(k, { [i.receiveResource]: i.receiveAmount }); pay(player, { [i.receiveResource]: i.receiveAmount }, 1); }
   if (['WAR', 'BETRAY'].includes(i.type)) declareWar(s, actorHouseId, rulerId);
   if (i.type === 'PEACE') { makePeace(s, actorHouseId, rulerId); addTreaty(s, actorHouseId, rulerId, 'peace', i.duration); }
   const type = { ALLIANCE: 'alliance', TRADE: 'trade', VASSALAGE: 'vassalage', NON_AGGRESSION: 'non-aggression', ACCESS: 'access', RECURRING: 'recurring' }[i.type];
@@ -246,8 +258,9 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
     if(relation(s,observer.id,actorHouseId)?.personal?.feelings.attachment>=25)emotionalEvent(s,observer.id,actorHouseId,'jealousy',{key:`alliance:${s.turn}:${rulerId}`,text:`Joined in alliance with our rival, ${k.name}.`});
   if (i.type === 'TERRITORY') { stateTransfer(s, i.targetId, actorHouseId); }
   if (i.type === 'AID') { k.lastGiftTurn = s.turn; applyGift(s, actorHouseId, rulerId, i.giveResource, i.giveAmount); }
-  if (!isPlayerPromise(i) && i.giveAmount) recordTrade(s, actorHouseId, rulerId, i.giveResource, i.giveAmount, i.type.toLowerCase());
-  if (i.receiveAmount && i.type !== 'LOAN') recordTrade(s, rulerId, actorHouseId, i.receiveResource, i.receiveAmount, i.type.toLowerCase());
+  if(packageTrade(i)){for(const x of tradeItems(i,'give'))recordTrade(s,actorHouseId,rulerId,x.resource,x.amount,i.type.toLowerCase());for(const x of tradeItems(i,'receive'))recordTrade(s,rulerId,actorHouseId,x.resource,x.amount,i.type.toLowerCase());}
+  if (!packageTrade(i) && !isPlayerPromise(i) && i.giveAmount) recordTrade(s, actorHouseId, rulerId, i.giveResource, i.giveAmount, i.type.toLowerCase());
+  if (!packageTrade(i) && i.receiveAmount && i.type !== 'LOAN') recordTrade(s, rulerId, actorHouseId, i.receiveResource, i.receiveAmount, i.type.toLowerCase());
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) emotionalEvent(s,rulerId,actorHouseId,'coercion',{scale:Math.max(.5,Math.min(2,i.receiveAmount/100)),text:'Forced tribute or submission from our House.'});
   if (['TRIBUTE', 'VASSALAGE'].includes(i.type)) changeRelation(s, rulerId, actorHouseId, { fear: 10, trust: -5, opinion: -8, grievance: 10 }, 'Coercion secured concessions, not friendship.');
   if (isPlayerPromise(i)) createPlayerPromise(s, rulerId, i, actorHouseId);
@@ -266,7 +279,7 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
     }
     s.pledges.push({ id: `pledge-${s.nextId++}`, debtor: rulerId, creditor: actorHouseId, eventAfter: s.nextId - 1, intent: i, deadline: s.turn + i.duration, status: 'pending', delivered: false, created: s.turn, held: 0, breached: false,...(pendingWarParties.length?{pendingWarParties}:{}) });
   }
-  recordPoliticalMemory(s, rulerId, actorHouseId, 'agreement', `${LABELS[i.type]} agreed with ${player.name}; ${i.giveAmount} ${i.giveResource}${i.type === 'PROMISE' ? ' promised' : ' paid'}.`, 7);
+  recordPoliticalMemory(s, rulerId, actorHouseId, 'agreement', packageTrade(i)?`${LABELS[i.type]} agreed with ${player.name}; ${itemText(tradeItems(i,'give'))} for ${itemText(tradeItems(i,'receive'))}.`:`${LABELS[i.type]} agreed with ${player.name}; ${i.giveAmount} ${i.giveResource}${i.type === 'PROMISE' ? ' promised' : ' paid'}.`, 7);
   log(s, `${LABELS[i.type]} with ${k.name} ratified.`, 'diplomacy', {audience:[actorHouseId,rulerId]});
   court(s,actorHouseId).offers[rulerId]=[];
   return { ok: true };
@@ -357,7 +370,7 @@ export function resolveRecurringTrade(s) {
     t.routeStatus=blocked||route.status;
     if(blocked){t.lastPaid=s.turn;t.disrupted=(t.disrupted||0)+1;if(t.disrupted>=3)t.expires=s.turn;continue;}
     t.disrupted=0;
-    const give = { [i.giveResource]: i.giveAmount }, receive = { [i.receiveResource]: i.receiveAmount };
+    const give = itemCost(tradeItems(i,'give')), receive = itemCost(tradeItems(i,'receive'));
     give.gold=(give.gold||0)+route.fee;receive.gold=(receive.gold||0)+route.fee;
     if (!canAfford(payer, give) || !canAfford(receiver, receive)) {
       const failed = !canAfford(payer, give) ? payer : receiver, harmed = failed === payer ? receiver : payer;
@@ -367,8 +380,8 @@ export function resolveRecurringTrade(s) {
       t.expires = s.turn; continue;
     }
     // Both sides are checked before either is charged. No partial or repeated payment.
-    pay(payer, give); pay(receiver, {[i.giveResource]:i.giveAmount}, 1); pay(receiver, receive); pay(payer, {[i.receiveResource]:i.receiveAmount}, 1); t.lastPaid = s.turn;
-    recordTrade(s, payer.id, receiver.id, i.giveResource, i.giveAmount, 'recurring'); recordTrade(s, receiver.id, payer.id, i.receiveResource, i.receiveAmount, 'recurring');
+    pay(payer, give);pay(receiver,receive);pay(receiver,itemCost(tradeItems(i,'give')),1);pay(payer,itemCost(tradeItems(i,'receive')),1); t.lastPaid = s.turn;
+    for(const x of tradeItems(i,'give'))recordTrade(s,payer.id,receiver.id,x.resource,x.amount,'recurring');for(const x of tradeItems(i,'receive'))recordTrade(s,receiver.id,payer.id,x.resource,x.amount,'recurring');
     for (const [a, b] of [[payer, receiver], [receiver, payer]]) changeRelation(s, a.id, b.id, { opinion: relation(s, a.id, b.id).opinion < 45 ? 1 : 0, trust: relation(s, a.id, b.id).trust < 35 ? 1 : 0 }, 'A reciprocal trade shipment arrived.');
   }
 }
@@ -484,7 +497,7 @@ function commercialVoice(response,discussion) {
   const legal=[v.intent,v.counter].filter(Boolean).map(i=>JSON.stringify(validateIntent(i)));
   const monetaryNumbers=[...response.reply.matchAll(/\b(\d+)\s+(food|grain|wood|timber|stone|iron|gold|coins?|horses|tools|arms|weapons)\b/gi)];
   const aliases={grain:'food',timber:'wood',coin:'gold',coins:'gold',weapons:'arms'};
-  const amounts=[v.intent,v.counter].filter(Boolean).flatMap(i=>[[i.giveAmount,i.giveResource],[i.receiveAmount,i.receiveResource]]);
+  const amounts=[v.intent,v.counter].filter(Boolean).flatMap(i=>packageTrade(i)?[...tradeItems(i,'give'),...tradeItems(i,'receive')].map(x=>[x.amount,x.resource]):[[i.giveAmount,i.giveResource],[i.receiveAmount,i.receiveResource]]);
   const forbidden=/\b(?:already (?:sent|paid|signed|ratified|delivered)|payment (?:is )?required before|initiation fee|entrance fee|permission fee)\b/i;
   if(response.speechAct!==act||proposals.some(i=>!legal.includes(JSON.stringify(validateIntent(i))))||forbidden.test(response.reply)
     ||monetaryNumbers.some(m=>!amounts.some(([n,r])=>n===Number(m[1])&&r===(aliases[m[2].toLowerCase()]||m[2].toLowerCase()))))return discussion.reply;

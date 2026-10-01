@@ -11,30 +11,35 @@ function regionName(t,width,height,terrain) {
   const vertical=t.r<height*.34?'Northern':t.r>height*.66?'Southern':'';
   const horizontal=t.q<width*.34?'Western':t.q>width*.66?'Eastern':'';
   const direction=[vertical,horizontal].filter(Boolean).join(' ')||'Central';
-  return `${direction} ${{forest:'Woodlands',plains:'Plains',hills:'Highlands',mountain:'Range',coast:'Coast',water:'Waters'}[terrain]}`;
+  return `${direction} ${{forest:'Woodlands',plains:'Plains',hills:'Highlands',mountain:'Range',coast:'Coast',water:'Waters',desert:'Desert'}[terrain]}`;
 }
 export function generateRegions(s,profile,seed) {
   const roll=seededRandom(hash(seed,'regions')),regions=[];
   // Large jittered region cells with broad boundaries. Detail is coherent noise,
   // so exceptions become small clearings/hill groups rather than white-noise hexes.
   for(let r=0;r<Math.ceil(s.height/10);r++)for(let q=0;q<Math.ceil(s.width/10);q++){
-    const n=roll(),terrain=n<profile.forest?'forest':n<profile.forest+profile.hills?'hills':'plains';
+    const n=roll(),terrain=n>.87?'desert':n<profile.forest?'forest':n<profile.forest+profile.hills?'hills':'plains';
     const t={q:4+q*10+(roll()-.5)*5,r:4+r*10+(roll()-.5)*5};
     regions.push({...t,id:`region-${r*Math.ceil(s.width/10)+q}`,terrain,name:regionName(t,s.width,s.height,terrain),description:`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`});
   }
-  // Every world has a broad forest, plains and highland region, independent of Houses.
-  for(const [i,terrain]of [[0,'forest'],[6,'plains'],[10,'hills']]){regions[i].terrain=terrain;regions[i].name=regionName(regions[i],s.width,s.height,terrain);regions[i].description=`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`;}
+  // Keep representative biomes inland; a corner region can be almost entirely
+  // offshore on island profiles. Placement scales with the selected world size.
+  const assigned=new Set();
+  for(const [terrain,q,r]of [['forest',.3,.65],['plains',.35,.35],['hills',.7,.7],['desert',.7,.35]]){
+    const region=regions.filter(t=>!assigned.has(t.id)).sort((a,b)=>distance(a,{q:q*s.width,r:r*s.height})-distance(b,{q:q*s.width,r:r*s.height})||a.id.localeCompare(b.id))[0];
+    assigned.add(region.id);region.terrain=terrain;region.name=regionName(region,s.width,s.height,terrain);region.description=`Predominantly ${terrain}, with natural clearings, foothills and resource pockets.`;
+  }
   s.regions=Object.fromEntries(regions.map(r=>[r.id,r]));
   for(let r=0;r<s.height;r++)for(let q=0;q<s.width;q++){
     const t={id:tileId(q,r),q,r,terrain:'plains',resource:null,quality:'normal',owner:null,building:null,road:false,river:false,walls:0,market:false,workshop:false,project:null,capital:null,levels:{}};
     const region=[...regions].sort((a,b)=>distance(t,a)-distance(t,b)||a.id.localeCompare(b.id))[0];
     t.region=region.id;t.biome=region.terrain;
     const detail=noise(hash(seed,'detail'),q,r,2.4);
-    const cut={forest:[.14,.22,.74,.91],plains:[.1,.2,.76,.94],hills:[.12,.25,.81,.96]}[region.terrain];
+    const cut={forest:[.06,.1,.9,.98],plains:[.05,.1,.85,.98],hills:[.08,.15,.9,.98],desert:[.05,.09,.92,.98]}[region.terrain];
     t.terrain=region.terrain;
     if(detail<cut[1])t.terrain='plains';
     else if(detail>cut[2])t.terrain=region.terrain==='hills'?'forest':'hills';
-    else if(region.terrain==='plains'&&detail<.38)t.terrain='forest';
+    else if(region.terrain==='plains'&&detail<.28)t.terrain='forest';
     // Coast depth is sampled smoothly along each edge; never cut a random corridor.
     const coast=profile.coast;
     const west=4+noise(hash(seed,'west'),r,0,8)*coast*.45,east=4+noise(hash(seed,'east'),r,0,8)*coast*.45;
@@ -98,10 +103,11 @@ export function generateRivers(s,seed) {
 export function generateResources(s,seed) {
   for(const t of Object.values(s.tiles)){
     const n=sample(seed,'resource',t.id),richness=noise(hash(seed,'quality'),t.q,t.r,5);
-    t.resource=t.terrain==='forest'?'wood':t.terrain==='hills'?(n<.49?'iron':'stone'):t.terrain==='plains'?(n<.68?'food':n<.86?'horses':null):t.terrain==='coast'&&n<.38?'horses':null;
+    t.resource=t.terrain==='desert'?(n<.26?'iron':n<.72?'stone':null):t.terrain==='forest'?'wood':t.terrain==='hills'?(n<(t.biome==='hills'?.65:.28)?'iron':'stone'):t.terrain==='plains'?(n<(t.biome==='plains'?.65:.35)?'food':n<.86?'horses':null):t.terrain==='coast'&&n<.38?'horses':null;
     const matches=t.terrain===t.biome;
     t.quality=richness>.74&&matches?'exceptional':richness>.48&&matches?'rich':richness<.18?'poor':'normal';
-    if(t.river&&t.terrain==='plains'){t.resource='food';t.quality='rich';}
+    if(t.river&&['plains','desert'].includes(t.terrain)){t.resource='food';t.quality='rich';}
+    else if(t.biome==='desert'&&['food','wood','horses'].includes(t.resource))t.quality='poor';
   }
 }
 export function validateWorld(s) {

@@ -1,3 +1,4 @@
+import { normalizePackage } from './trade-package.mjs';
 import { blockadeAt } from './naval.mjs';
 import { BUILDINGS, FORMATIONS, QUALITY, REGIONS, RESOURCES, UNITS } from './data.mjs';
 
@@ -29,11 +30,11 @@ export function tileProduction(t, owner) {
     const resourceSite = ['farm','lumber','quarry','mine','ranch'].includes(id);
     const quality = resourceSite && (t.resource === Object.keys(b.yield)[0] || id === 'farm' && t.river) ? QUALITY[t.quality || 'normal'] : 1;
     const industry = !t.biome && REGIONS[owner]?.industry === id ? 1.12 : 1;
-    for (const [r,n] of Object.entries(b.yield)) output[r] += Math.round((n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65) * quality * industry);
+    for (const [r,n] of Object.entries(b.yield)) output[r] += Math.round((n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65) * quality * industry * (t.terrain==='desert'&&id==='farm'?(t.river?.9:.35):1));
   }
   if (['town','city'].includes(t.building)) {
     const city=cityBenefits(t);
-    output.food += city?.food ?? 8;
+    output.food += Math.round((city?.food ?? 3)*(t.terrain==='desert'?.65:1));
     output.gold += (city?.gold ?? 5) + (['sunspire','vesper'].includes(t.region) ? 6 : 0);
   }
   return output;
@@ -146,5 +147,5 @@ export function validateExpansion(s) {
   }
   const c=s.commerce;if(!c||!Array.isArray(c.offers)||c.offers.length>(s.controllers?72:12)||!integer(c.lastOfferTurn,0,100000)||!c.cooldowns||!c.aiTrades)fail();
   for(const times of [c.cooldowns,c.aiTrades])if(Object.entries(times).length>s.kingdoms.length*s.kingdoms.length||Object.values(times).some(n=>!integer(n,0,100000)))fail();
-  for(const o of c.offers)if(!integer(o.id,1,10000000)||!s.kingdoms.some(k=>k.id===o.from)||!integer(o.created,0,100000)||!integer(o.expires,0,100000)||!['pending','reviewed','declined','accepted'].includes(o.status)||typeof o.reason!=='string'||o.reason.length>600||!o.intent||!RESOURCES.includes(o.intent.giveResource)||!RESOURCES.includes(o.intent.receiveResource)||!integer(o.intent.giveAmount,1,1000)||!integer(o.intent.receiveAmount,1,1000)||!integer(o.intent.duration,2,20)||!['EXCHANGE','RECURRING'].includes(o.intent.type))fail();
+  for(const o of c.offers)if(!integer(o.id,1,10000000)||!s.kingdoms.some(k=>k.id===o.from)||!integer(o.created,0,100000)||!integer(o.expires,0,100000)||!['pending','reviewed','declined','accepted'].includes(o.status)||typeof o.reason!=='string'||o.reason.length>600||!o.intent||!normalizePackage(o.intent)||!RESOURCES.includes(o.intent.giveResource)||!RESOURCES.includes(o.intent.receiveResource)||!integer(o.intent.giveAmount,1,1000)||!integer(o.intent.receiveAmount,1,1000)||!integer(o.intent.duration,2,20)||!['EXCHANGE','RECURRING'].includes(o.intent.type))fail();
 }

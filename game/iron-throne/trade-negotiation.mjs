@@ -1,3 +1,4 @@
+import { tradeItems, itemTotal, normalizePackage, withItems, scalePackage } from './trade-package.mjs';
 // Economic decisions and conversational influence belong to the simulation.
 // Model text/signals are never accepted as relationship deltas or proof of deeds.
 import { RESOURCES, RESOURCE_VALUES } from './data.mjs';
@@ -5,7 +6,7 @@ import { PLAYER, atWar, kingdom, relation } from './core.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { court, isHumanHouse } from './house-control.mjs';
 import { appendConversation, borderThreat, changeRelation, economicRelationship, tradeBlocked } from './living.mjs';
-import { economicNeeds, tradeRoute } from './trade-economy.mjs';
+import { economicNeeds, packageValue, tradeRoute } from './trade-economy.mjs';
 
 export const COMMERCIAL_TYPES = new Set(['TRADE', 'EXCHANGE', 'RECURRING']);
 const VALUES = RESOURCE_VALUES;
@@ -44,14 +45,18 @@ export function isTradeDiscussion(s, ruler, message, actor = PLAYER) {
 export function parseBarter(message) {
   const text = normalized(message);
   if (refusesTrade(text) || /\b(?:if|might|maybe|perhaps|next turn|by turn|within)\b/.test(text)) return null;
-  const match = text.match(new RegExp(`\\b(?:i|we)\\s+(?:(?:can|will|would)\\s+)?(?:offer|give|trade|exchange|send)\\s+(?:you\\s+)?(\\d{1,4})\\s+(${RESOURCE_WORDS})\\s+(?:in (?:exchange|return) )?for\\s+(\\d{1,4})\\s+(${RESOURCE_WORDS})\\b`));
-  if (!match) return null;
-  const recurring = /\b(?:each|per|every) turn\b/.test(text);
-  const duration = recurring ? Number(text.match(/\bfor (\d{1,2}) turns?\b/)?.[1]) : 2;
-  if (!duration || duration < 2 || duration > 20) return null;
-  const giveAmount = Number(match[1]), receiveAmount = Number(match[3]);
-  if (!giveAmount || !receiveAmount || giveAmount > 1000 || receiveAmount > 1000) return null;
-  return { type: recurring ? 'RECURRING' : 'EXCHANGE', giveResource: resource(match[2]), giveAmount, receiveResource: resource(match[4]), receiveAmount, duration, targetId: '', tradeKind: recurring ? 'recurring' : 'immediate' };
+  const match=text.match(/\b(?:i|we)\s+(?:(?:can|will|would)\s+)?(?:offer|give|trade|exchange|send)\s+(?:you\s+)?(.+?)\s+(?:in (?:exchange|return) )?for\s+(.+?)(?=\s+(?:(?:each|per|every) turn|for \d+ turns)|[.!?]|$)/);
+  if(!match)return null;
+  const parse=part=>{
+    const rows=[...part.matchAll(new RegExp(`(\\d{1,4})\\s+(${RESOURCE_WORDS})\\b`,'g'))];
+    const residue=part.replace(new RegExp(`\\d{1,4}\\s+(?:${RESOURCE_WORDS})\\b`,'g'),'').replace(/(?:\band\b|[,+&])/g,'').trim();
+    return rows.length&&!residue?rows.map(m=>({resource:resource(m[2]),amount:Number(m[1])})):null;
+  };
+  const giveItems=parse(match[1]),receiveItems=parse(match[2]);if(!giveItems||!receiveItems)return null;
+  const recurring=/\b(?:each|per|every) turn\b/.test(text),duration=recurring?Number(text.match(/\bfor (\d{1,2}) turns?\b/)?.[1]):2;
+  if(duration<2||duration>20||!duration)return null;
+  return normalizePackage({type:recurring?'RECURRING':'EXCHANGE',giveItems,receiveItems,duration,targetId:'',tradeKind:recurring?'recurring':'immediate'});
+
 }
 
 export function parseCommercialOffer(message) {
@@ -87,7 +92,7 @@ export function tradeBriefing(s, ruler, actor = PLAYER) {
   const unavailable = atWar(s, ruler, actor) ? 'war' : tradeBlocked(s, ruler, actor) ? 'embargo' : '';
   return {
     turn: s.turn, actor, imports: f.needs.filter(n => n.need > 5).sort((a, b) => b.need - a.need).slice(0, 3).map(n => n.resource),
-    exports: f.needs.filter(n => n.surplus >= 12).sort((a, b) => b.surplus - a.surplus).slice(0, 3).map(n => n.resource),
+    exports: f.needs.filter(n => n.surplus >= 12).sort((a, b) => b.surplus - a.surplus).map(n => n.resource),
     concern: unavailable || (military.score >= 20 ? 'border_security' : serious(r) ? 'broken_confidence' : r.trust < 20 ? 'untested_commitment' : 'fair_exchange'),
     roadTrade: route.safe && /road|highway/i.test(route.status) ? 'connected' : route.safe ? 'prospective' : 'unconfirmed',
     preference: f.k.greed > .8 ? 'material_benefit' : f.k.paranoia > .6 ? 'limited_commitment' : f.k.honor > .8 ? 'reliable_partner' : 'mutual_benefit',
@@ -156,8 +161,8 @@ function influence(s, ruler, actor, i, f) {
     if (!ARGUMENTS.includes(kind) || evidence.revoked || s.turn - evidence.turn > 2 || evidence.turn > s.turn) continue;
     if (serious(f.r) && kind !== 'acknowledge_grievance') continue;
     if (f.military.score >= 20) continue;
-    if (kind === 'relevant_supply' && (i.giveResource !== evidence.key || !i.giveAmount || !f.needs.some(n => n.resource === evidence.key && n.need > 5))) continue;
-    if (kind === 'limited_trial' && !(i.type === 'TRADE' && i.duration <= 3 || i.type === 'EXCHANGE' && Math.max(i.giveAmount, i.receiveAmount) <= 20 || i.type === 'RECURRING' && i.duration <= 3 && Math.max(i.giveAmount, i.receiveAmount) <= 12)) continue;
+    if (kind === 'relevant_supply' && (!tradeItems(i,'give').some(x=>x.resource===evidence.key) || !f.needs.some(n => n.resource === evidence.key && n.need > 5))) continue;
+    if (kind === 'limited_trial' && !(i.type === 'TRADE' && i.duration <= 3 || i.type === 'EXCHANGE' && Math.max(itemTotal(tradeItems(i,'give')),itemTotal(tradeItems(i,'receive'))) <= 20 || i.type === 'RECURRING' && i.duration <= 3 && Math.max(itemTotal(tradeItems(i,'give')),itemTotal(tradeItems(i,'receive'))) <= 12)) continue;
     if (kind === 'kept_word' && !s.pledges.some(p => p.id === evidence.key && p.debtor === actor && p.creditor === ruler && p.status === 'fulfilled')) continue;
     if (kind === 'verified_withdrawal' && !s.pledges.some(p => p.id === evidence.key && p.debtor === actor && p.creditor === ruler && p.status === 'fulfilled' && p.intent.type === 'PLEDGE_WITHDRAW')) continue;
     points += POINTS[kind]; reasons.push(REASONS[kind]);
@@ -188,24 +193,57 @@ function assessment(s, ruler, actor, i, f) {
     return deny('commitment', 'The duration and risk of this commitment exceed our present confidence. A shorter charter or a useful initial exchange would be more convincing.');
   }
   if (i.type === 'RECURRING' && (military.score >= 20 || serious(r) || r.trust < 5 && i.duration > 3)) return deny('commitment', 'We are not ready to rely on repeated deliveries under these conditions. Begin with a small immediate exchange rather than paying to bypass the concern.');
-  // Keep a non-negotiable base/scarcity floor: even perfect friendship cannot
-  // generate resources by swapping them back and forth. Persuasion only softens
-  // an extra bargaining/risk margin above that floor.
-  const floor = Math.min(given - received, material);
-  const emergency = i.tradeKind === 'emergency' && k.resources[i.receiveResource] < 40 ? Math.ceil(received * .2) : 0;
-  const distrust = r.trust < -30 ? Math.ceil(-r.trust * k.honor * (1 - k.greed) * .12) : 0;
-  const premiumRate = Math.max(0, k.greed - .65) * .25 + (i.type === 'RECURRING' && r.trust < 20 ? .03 + k.paranoia * .03 : 0);
-  const concession = Math.min(premiumRate, discussion.points * .008 + Math.max(0, r.trust - 15) * .001);
-  const premium = Math.ceil(received * Math.max(0, premiumRate - concession));
-  if (floor + 1e-8 >= emergency + distrust + premium) return { accepted: true, code: 'fair_exchange', reason: `${factors.join(' ')} The exchange is fair and ${i.type === 'EXCHANGE' ? 'requires no separate trade charter or initiation fee' : 'these supply terms are acceptable'}. Review and ratify the exact terms before any delivery.`.trim(), factors };
-  const needed = f.needs.some(n => n.resource === i.giveResource && n.need > 5);
-  if (needed) factors.push(`The offered ${i.giveResource} would address a real need.`);
-  return deny(floor < 0 || emergency ? 'material_balance' : 'bargaining_margin', floor < 0 || emergency ? `We cannot part with that much ${i.receiveResource} on these terms. Adjust the quantities or offer a resource we need.` : 'The exchange needs a better margin for our House. A credible, limited proposal can reduce that margin, but cannot replace fair value.');
+  const give=tradeItems(i,'give'),receive=tradeItems(i,'receive');
+  const duration=i.type==='RECURRING'?i.duration:1;
+  for(const x of receive){
+    const n=f.needs.find(n=>n.resource===x.resource);
+    const required=x.amount*duration;
+    const available=i.type==='RECURRING'?n.surplus+Math.max(0,n.production)*Math.max(0,duration-1):n.surplus;
+    if(required>available)return deny('protected_reserve',`We need our ${x.resource} for reserves, committed deliveries and planned spending; only ${Math.max(0,Math.floor(available/duration))} per shipment is available.`);
+  }
+  const packageGiven=packageValue(f.needs,give),packageReceived=packageValue(f.needs,receive);
+  const premiumRate=Math.max(0,k.greed-.65)*.25+(i.type==='RECURRING'&&r.trust<20?.03+k.paranoia*.03:0);
+  const concession=Math.min(premiumRate,discussion.points*.008+Math.max(0,r.trust-15)*.001);
+  const fair=packageGiven+1e-8>=packageReceived*(1+premiumRate-concession);
+  const relevant=give.filter(x=>f.needs.find(n=>n.resource===x.resource).need>0);
+  if(relevant.length)factors.push(`The offered ${relevant.map(x=>x.resource).join(' and ')} addresses our projected needs.`);
+  if(fair)return {accepted:true,code:'fair_exchange',reason:`${factors.join(' ')} The full exchange serves our resource needs and requires no separate initiation fee. Ratify the exact package before delivery.`.trim(),factors};
+  return deny('material_balance','The full package is worth less to us than the supplies requested. Add resources we need or request a smaller shipment.');
+
 }
 
-function sizedExchange(i, cap = 12) {
-  const scale = Math.min(1, cap / Math.max(i.giveAmount, i.receiveAmount));
-  return { ...i, type: 'EXCHANGE', tradeKind: 'immediate', duration: 2, giveAmount: Math.ceil(i.giveAmount * scale), receiveAmount: Math.max(1, Math.floor(i.receiveAmount * scale)) };
+function sizedExchange(i, cap=12){return {...scalePackage(i,Math.min(1,cap/Math.max(itemTotal(tradeItems(i,'give')),itemTotal(tradeItems(i,'receive'))))),type:'EXCHANGE',tradeKind:'immediate',duration:2};}
+
+function packageCounters(s,ruler,i,actor,judge,f,result){
+  const candidates=[],give=tradeItems(i,'give'),receive=tradeItems(i,'receive');
+  if(i.type==='RECURRING')candidates.push(sizedExchange(i));
+  const actorNeeds=economicNeeds(s,actor);
+  const bases=[i];
+  for(const scale of [.9,.75,.5,.25,.1]){
+    const rows=receive.map(x=>({...x,amount:Math.min(Math.max(1,Math.floor(x.amount*scale)),Math.floor(f.needs.find(n=>n.resource===x.resource).surplus/(i.type==='RECURRING'?i.duration:1)))}));
+    if(rows.every(x=>x.amount>0))bases.push(withItems(i,give,rows));
+  }
+  for(const base of bases){
+    candidates.push(base);
+    const outgoing=tradeItems(base,'receive');
+    const additions=f.needs.filter(n=>!outgoing.some(x=>x.resource===n.resource)).sort((a,b)=>b.need-a.need||b.value-a.value);
+    for(const n of additions){
+      const existing=give.find(x=>x.resource===n.resource)?.amount||0;
+      const available=Math.min(1000,kingdom(s,actor).resources[n.resource],Math.floor(actorNeeds.find(x=>x.resource===n.resource).surplus));
+      if(available<=existing)continue;
+      const target=packageValue(f.needs,outgoing)*(1+Math.max(0,f.k.greed-.65)*.25);
+      const extra=Math.max(1,Math.ceil((target-packageValue(f.needs,give))/n.value));
+      if(existing+extra>available)continue;
+      const rows=give.filter(x=>x.resource!==n.resource).concat({resource:n.resource,amount:existing+extra});
+      candidates.push(withItems(base,rows,outgoing));
+    }
+  }
+  for(const candidate of candidates){
+    if(!assessment(s,ruler,actor,candidate,f).accepted)continue;
+    const verdict=judge(candidate);
+    if(verdict.status==='accept')return {status:'counter',reason:`${result.reason} These revised resource quantities address our needs while protecting our reserves.`,intent:i,counter:verdict.intent,factors:result.factors,reasonCode:result.code};
+  }
+  return {status:'reject',reason:result.reason,intent:i,factors:result.factors,reasonCode:result.code};
 }
 
 // The final candidate still passes evaluateDeal's full affordability, route,
@@ -214,6 +252,7 @@ export function evaluateCommercial(s, ruler, i, actor, judge, allowCounter = tru
   const f = facts(s, ruler, actor), result = assessment(s, ruler, actor, i, f);
   const response = { status: result.accepted ? 'accept' : 'reject', reason: result.reason, intent: i, factors: result.factors, reasonCode: result.code };
   if (result.accepted || !allowCounter) return response;
+  if(['EXCHANGE','RECURRING'].includes(i.type))return packageCounters(s,ruler,i,actor,judge,f,result);
   const candidates = [], seen = new Set();
   const add = (candidate, explanation) => {
     const key = JSON.stringify(candidate);
@@ -223,7 +262,7 @@ export function evaluateCommercial(s, ruler, i, actor, judge, allowCounter = tru
     // Binary-search only the pure score using the same read-only facts. One
     // complete rules check follows, instead of repeatedly cloning the world.
     let low = 1, high = 1000;
-    if (!assessment(s, ruler, actor, { ...base, giveAmount: high }, f).accepted) return null;
+    if (!assessment(s, ruler, actor, {...base,giveItems:undefined,giveAmount:high}, f).accepted) return null;
     while (low < high) { const mid = Math.floor((low + high) / 2); if (assessment(s, ruler, actor, { ...base, giveAmount: mid }, f).accepted) high = mid; else low = mid + 1; }
     return { ...base, giveAmount: low };
   };
@@ -243,22 +282,6 @@ export function evaluateCommercial(s, ruler, i, actor, judge, allowCounter = tru
       const candidate = balanced({ type: 'EXCHANGE', giveResource: need.resource, giveAmount: 1, receiveResource: surplus.resource, receiveAmount: 6, duration: 2, targetId: '', tradeKind: 'immediate' });
       if (candidate && candidate.giveAmount <= 20) add(candidate, `Let us first exchange ${need.resource} for ${surplus.resource} on a small scale. This is an exchange, not a paid charter.`);
     }
-  } else {
-    if (i.type === 'RECURRING') {
-      if (i.duration > 3) add({ ...i, duration: 3 }, 'A shorter supply term limits the risk.');
-      const trial = balanced(sizedExchange(i));
-      if (trial && trial.giveAmount <= 20) add(trial, 'A small immediate exchange would let us begin without relying on future deliveries.');
-    }
-    for (const need of needs.filter(n => n.resource !== i.receiveResource && n.resource !== i.giveResource).slice(0, 2)) {
-      const candidate = balanced({ ...i, giveResource: need.resource, ...(i.tradeKind === 'purchase' && need.resource !== 'gold' && i.receiveResource !== 'gold' ? { tradeKind: 'immediate' } : {}) });
-      if (candidate) add(candidate, `${need.resource} is more useful to us than the offered ${i.giveResource}; these quantities preserve fair value.`);
-    }
-    const more = balanced(i); if (more) add(more, 'These revised quantities cover the resources and bargaining risk, without a separate initiation fee.');
-    // A player unable to increase payment can instead receive less. This is a
-    // separate, explicitly reviewed counteroffer, never a silent quantity edit.
-    let low = 0, high = i.receiveAmount;
-    while (low < high) { const mid = Math.ceil((low + high) / 2); if (assessment(s, ruler, actor, { ...i, receiveAmount: mid }, f).accepted) low = mid; else high = mid - 1; }
-    if (low > 0 && low < i.receiveAmount) add({ ...i, receiveAmount: low }, 'We can offer a smaller shipment for your proposed payment.');
   }
   for (const { candidate, explanation } of candidates.slice(0, 9)) {
     if (!assessment(s, ruler, actor, candidate, f).accepted) continue;

@@ -30,13 +30,13 @@ for(const profile of Object.keys(MAP_PROFILES))test(`${profile}: three seeds hav
   assert.ok(tiles.filter(t=>t.terrain==='hills').some(t=>neighbors(s,t).some(n=>n.terrain==='mountain')));
   assert.ok(tiles.some(t=>t.mountainPass&&passable(t)));
   assert.ok(tiles.filter(t=>t.resource==='wood').every(t=>t.terrain==='forest'));
-  assert.ok(tiles.filter(t=>['iron','stone'].includes(t.resource)).every(t=>t.terrain==='hills'));
-  assert.ok(tiles.filter(t=>t.resource==='food').every(t=>t.terrain==='plains'));
+  assert.ok(tiles.filter(t=>['iron','stone'].includes(t.resource)).every(t=>['hills','desert'].includes(t.terrain)));
+  assert.ok(tiles.filter(t=>t.resource==='food').every(t=>['plains','desert'].includes(t.terrain)));
   const original=natural(s);allAI(s);assert.equal(foundAIKingdoms(s).ok,true);assert.equal(s.turn,1);
   const caps=foundedCapitals(s);assert.equal(caps.length,6);for(const a of caps)for(const b of caps)if(a!==b)assert.ok(distance(a,b)>=8);
   for(const h of HOUSES){
     const c=s.tiles[s.founding.houses[h.id].capital],buildings=tiles.filter(t=>t.owner===h.id&&t.building&&t!==c);
-    const actual=buildings.map(t=>t.building).sort();assert.deepEqual(actual,[...STARTING_BUILDINGS[h.id]].sort());
+    const actual=buildings.map(t=>t.building).sort();assert.ok(actual.includes('farm'));assert.ok(actual.length>=2&&actual.length<=3);assert.ok(actual.length<4,'all basic resources must not be guaranteed');
     for(const t of buildings){assert.ok(distance(c,t)<=4);assert.ok(BUILDINGS[t.building].terrain.includes(t.terrain));if(BUILDINGS[t.building].resource)assert.equal(t.resource,BUILDINGS[t.building].resource);assert.equal(t.road,true);}
     assert.ok(economyProjection(s,h.id).income.food>0,`${h.id} sustainable food`);
     assert.equal(s.armies.find(a=>a.owner===h.id).units.levy,20);

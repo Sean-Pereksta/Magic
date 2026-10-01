@@ -542,3 +542,5 @@ Targeted checks:
 node --test game/iron-throne/tests/diplomacy-queue.test.mjs game/iron-throne/tests/alliance-council.test.mjs game/iron-throne/tests/network.test.mjs game/iron-throne/tests/diagnostics.test.mjs game/iron-throne/tests/session.test.mjs
 node game/iron-throne/tests/council-diagnostics-browser.mjs
 ```
+
+Food, regional scarcity, desert assets and multi-resource trade rules are documented in [ECONOMY_TRADE.md](ECONOMY_TRADE.md).
