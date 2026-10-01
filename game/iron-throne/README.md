@@ -367,7 +367,7 @@ limit and strict intent validation remain enforced.
 
 An HTTP 200 from Google followed by `GEMINI_RESPONSE_INVALID` is a reply validation
 failure, not proof of rate limiting. Diagnostics distinguish an output-limit stop,
-other incomplete generation, empty reply, malformed JSON, and invalid schema.
+other incomplete generation, empty reply, malformed JSON, invalid reply text, invalid intent terms, and invalid conversation metadata. Categories are fixed; diagnostics never include generated text or terms.
 Truncated responses get `GEMINI_RESPONSE_TRUNCATED`. Neither partial replies nor
 invalid intents are accepted. These reply failures use a five-second manual retry
 wait; there is no automatic extra request. Per-minute local limits now return the
@@ -544,3 +544,44 @@ node game/iron-throne/tests/council-diagnostics-browser.mjs
 ```
 
 Food, regional scarcity, desert assets and multi-resource trade rules are documented in [ECONOMY_TRADE.md](ECONOMY_TRADE.md).
+
+
+### Conquest reactions and sworn vassals
+
+Border movement compares observed army positions against the same current border.
+Capturing a settlement and moving its frontier cannot by itself count as a retreat.
+A defeated ruler receives a military-loss dispatch naming the captured settlement
+and capital status. Lost sightings produce an uncertain border report; a confirmed
+movement away still produces a withdrawal. Saved position observations remain
+private to the observing court, and older saves without them are supported.
+
+Permitted armies fighting or holding a recent captured settlement in a shared war
+are treated as cooperating. An ally's capture from a common enemy does not itself
+raise border alarm. Other threatening armies and unrelated conquests remain relevant.
+
+Directed vassalage immediately changes the AI ruler's posture to Sworn Vassal.
+The liege's permitted forces do not trigger ordinary border demands. Dialogue owes
+respectful service despite unresolved feelings. AI vassals provide an accurate full
+muster to their own liege, including unseen armies, without revealing locations or
+orders. Other courts and human vassals' private forces are excluded. Existing commands
+continue to require actual orders, lawful access, readiness and truthful progress;
+the existing grave-mistreatment warning and rebellion rules still apply.
+
+### Gemini reply contract alignment
+
+The Worker supplies separate intent branches for ordinary agreements, package trades,
+marriages, and player promises. Only the matching fields are offered, trade item lists
+must contain at least one item, and text fields carry the engine's length bounds.
+At the model boundary, null optional fields and empty irrelevant item lists mean no
+term and are omitted before strict validation. Meaningful invalid fields, empty trade
+packages, invalid amounts and incompatible terms remain rejected. Player/menu intent
+validation stays strict, and no failure triggers a second paid request automatically.
+
+Alliance Council schemas list only the current eligible AI speakers. Their optional
+terms use the same normalization and strict validation; valid Gemini replies retain
+that source in offline and online council history. Provider, session and quota failures
+still use local dialogue and show the actual Diagnostics reason.
+
+Deploy the updated game files and redeploy the Cloudflare Worker to activate these
+changes. A GitHub merge alone does not update the Worker. Mocked regressions cover
+provider HTTP 200 replies; they do not call Google or validate a production key.

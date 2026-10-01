@@ -2,6 +2,9 @@ export const ACTIVE_CONVERSATION_TURNS=2;
 export function dispatchTitle(kind='') {
   if(kind==='border')return 'Border Concern';
   if(kind==='withdrawal')return 'Border Withdrawal';
+  if(kind==='border-report')return 'Border Report';
+  if(kind==='territory-loss')return 'Military Defeat';
+  if(kind==='shared-victory')return 'Shared War Victory';
   if(kind==='alliance-renewal')return 'Alliance Renewal';
   if(kind==='alliance')return 'Alliance Opportunity';
   if(kind==='shared-enemy')return 'Shared Enemy';

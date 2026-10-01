@@ -1,9 +1,11 @@
+import { vassalBond } from './vassal-role.mjs';
 import { atWar, kingdom, relation, treaty } from './core.mjs';
 
-export const ATTITUDES = ['Steadfast Ally','Trusted Friend','Friendly','Commercial Partner','Dependent Partner','Respectful Rival','Cautious','Suspicious','Paranoid','Intimidated','Resentful','Coldly Pragmatic','Opportunistic','Hostile','Vengeful','Mortal Enemy'];
+export const ATTITUDES = ['Sworn Vassal','Steadfast Ally','Trusted Friend','Friendly','Commercial Partner','Dependent Partner','Respectful Rival','Cautious','Suspicious','Paranoid','Intimidated','Resentful','Coldly Pragmatic','Opportunistic','Hostile','Vengeful','Mortal Enemy'];
 function candidate(s, observer, subject) {
   const r = relation(s,observer,subject), k = kingdom(s,observer);
   if (atWar(s,observer,subject)) return r.grievance >= 75 ? 'Mortal Enemy' : r.grievance >= 45 ? 'Vengeful' : 'Hostile';
+  if (vassalBond(s,subject,observer)) return 'Sworn Vassal';
   if (r.grievance >= 65 && r.trust < 0) return 'Vengeful';
   if (r.wariness >= 65 && k.paranoia >= .6) return 'Paranoid';
   if (r.wariness >= 30 || r.trust < -15) return 'Suspicious';
@@ -24,7 +26,7 @@ export function updateAttitudes(s) {
   for (const k of s.kingdoms) for (const other of s.kingdoms) {
     if (k.id === other.id) continue;
     const r = relation(s,k.id,other.id), next = candidate(s,k.id,other.id);
-    if (!r.political || atWar(s,k.id,other.id)) r.political = {label:next,pending:null,since:s.turn,checked:s.turn};
+    if (!r.political || atWar(s,k.id,other.id) || next==='Sworn Vassal' || r.political.label==='Sworn Vassal') r.political = {label:next,pending:null,since:s.turn,checked:s.turn};
     else if (r.political.checked !== s.turn) {
       const p = r.political;
       if (next === p.label) p.pending = null;
@@ -37,11 +39,13 @@ export function updateAttitudes(s) {
 export function politicalAttitude(s,observer,subject) {
   const r=relation(s,observer,subject);
   if (!r) return {label:'Unknown',tone:'',reasons:[]};
-  const label = atWar(s,observer,subject) ? candidate(s,observer,subject) : r.political?.label || candidate(s,observer,subject);
+  const sworn = !atWar(s,observer,subject) && !!vassalBond(s,subject,observer);
+  const label = atWar(s,observer,subject) || sworn || r.political?.label==='Sworn Vassal' ? candidate(s,observer,subject) : r.political?.label || candidate(s,observer,subject);
   const reasons=[];
   if (atWar(s,observer,subject)) reasons.push('Our Houses are at war.');
   if (treaty(s,observer,subject,'alliance')) reasons.push('A signed alliance binds our Houses.');
-  if (r.wariness >= 20) reasons.push('Foreign armies are concentrated near our frontier.');
+  if (sworn) reasons.push('You are our sworn liege. We owe respectful service, honest reports and obedience to lawful commands.');
+  if (!sworn && r.wariness >= 20) reasons.push('Foreign armies are concentrated near our frontier.');
   if (r.dependency >= 20) reasons.push('Our economy depends on their shipments.');
   if (r.reliability >= 65) reasons.push('Their fulfilled commitments have earned confidence.');
   if (r.grievance >= 25) reasons.push('Unresolved grievances shape our policy.');
@@ -49,7 +53,7 @@ export function politicalAttitude(s,observer,subject) {
   reasons.push(...(r.history || []).filter(h=>Object.values(h.changes).some(n=>Math.abs(n)>=4)).slice(-2).map(h=>h.reason));
   if (!reasons.length) reasons.push('Limited dealings; our court is still judging their intentions.');
   const intelligence=(s.intelligence?.reports||[]).some(report=>report.owner===observer&&report.house===subject&&report.detail>=2&&report.snapshot.target===observer&&(report.operationId||['invasion','infrastructure','jointWar'].includes(report.snapshot.type))&&s.turn-report.turn<=6);
-  return {label,tone:intelligence?'Concerned by recent intelligence':r.wariness >= 20?'Concerned about your armies':r.grievance >= 30?'Unresolved grievances':r.trust >= 45?'Confident in your word':r.dependency >= 20?'Protective of trade':'Guarded',reasons:[...new Set(reasons)].slice(0,4)};
+  return {label,tone:sworn?'Respectful and obedient':intelligence?'Concerned by recent intelligence':r.wariness >= 20?'Concerned about your armies':r.grievance >= 30?'Unresolved grievances':r.trust >= 45?'Confident in your word':r.dependency >= 20?'Protective of trade':'Guarded',reasons:[...new Set(reasons)].slice(0,4)};
 }
 export function validatePolitics(s) {
   for(const k of s.kingdoms) for(const r of Object.values(k.relations)) if(r.political) {

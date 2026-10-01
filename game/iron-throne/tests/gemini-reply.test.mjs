@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { callGemini, DiplomacyBudget, reserveBudget } from '../worker/worker.mjs';
 import { DiplomacyClient } from '../chat.mjs';
-import {  } from '../core.mjs';
+import { validateResponse } from '../diplomacy.mjs';
+import { RESPONSE_SCHEMA } from '../worker/reply-contract.mjs';
 import { createGame } from './fixtures/legacy-game.mjs';
 import { diagnosticReport, makeDiagnostic } from '../diagnostics.mjs';
 const context={rulerId:'wintermere',turn:1,message:'Greetings',world:{},history:[],summary:'',memories:[]};
@@ -17,7 +18,7 @@ test('Gemini 3.5 uses chat-speed thinking and room for a complete structured res
  });
 });
 test('truncated, empty, malformed and schema-invalid output remain rejected with safe distinct diagnostics',async()=>{
- for(const [finish,text,issue] of [['MAX_TOKENS','private-partial-text','output_limit'],['STOP','','empty_reply'],['STOP','private-not-json','invalid_json'],['STOP',JSON.stringify({...reply,intents:[{type:'UNSAFE'}]}),'invalid_schema']]){
+ for(const [finish,text,issue] of [['MAX_TOKENS','private-partial-text','output_limit'],['STOP','','empty_reply'],['STOP','private-not-json','invalid_json'],['STOP',JSON.stringify({...reply,intents:[{type:'UNSAFE'}]}),'invalid_intent']]){
   await assert.rejects(callGemini(context,{},async()=>output(finish,text)),error=>{
    assert.equal(error.replyIssue,issue);const report=diagnosticReport(makeDiagnostic(error.diagnosticCode,{replyIssue:error.replyIssue,providerStatus:200}));assert.doesNotMatch(report,/private-|UNSAFE/);assert.match(report,/Reply validation:/);return true;
   });
@@ -41,4 +42,35 @@ test('minute limits wait only until their actual reset, without raising allowanc
  const env={CLIENT_PER_MINUTE:1};assert.equal((await reserveBudget(storage,env,'client',now)).ok,true);
  const denied=await reserveBudget(storage,env,'client',now);assert.equal(denied.code,'CLIENT_RATE_LIMIT');assert.equal(denied.retryAfter,1);
  assert.equal((await reserveBudget(storage,env,'client',now+1000)).ok,true);
+});
+
+test('model-only null placeholders and empty irrelevant item lists become a canonical browser reply',async()=>{
+ const raw={...reply,intents:[{type:'ALLIANCE',giveItems:[],receiveItems:null,actorMember:null,conditionHouseId:null}],
+  proposal:null,counterProposal:null,promiseDetected:null,speechAct:null,relationshipSummary:null,relationshipSignals:null,memoryCandidates:null};
+ assert.equal(validateResponse(raw),null,'the player-facing contract remains strict');
+ const result=await callGemini(context,{},async()=>output('STOP',JSON.stringify(raw)));
+ assert.ok(validateResponse(result));assert.equal(result.intents[0].type,'ALLIANCE');
+ for(const key of ['giveItems','receiveItems','actorMember','conditionHouseId'])assert.equal(result.intents[0][key],undefined);
+ for(const key of ['speechAct','relationshipSummary','relationshipSignals','memoryCandidates'])assert.equal(result[key],undefined);
+});
+test('Gemini proposals preserve complete multi-resource packages and reject meaningful invalid terms',async()=>{
+ const exchange={type:'EXCHANGE',giveItems:[{resource:'food',amount:20},{resource:'iron',amount:10}],receiveItems:[{resource:'gold',amount:40}]};
+ const result=await callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,intents:[exchange]})));
+ assert.deepEqual(result.intents[0].giveItems,exchange.giveItems);assert.deepEqual(result.intents[0].receiveItems,exchange.receiveItems);
+ for(const terms of [{...exchange,giveItems:[]},{type:'ALLIANCE',giveItems:[{resource:'gold',amount:10}]},{type:'ALLIANCE',actorMember:'son'},{type:'ALLIANCE',duration:1},{type:'EXCHANGE',giveAmount:'20'}])
+  await assert.rejects(callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,intents:[terms]}))),e=>e.replyIssue==='invalid_intent');
+ await assert.rejects(callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,promiseDetected:{type:'ALLIANCE'}}))),e=>e.replyIssue==='invalid_intent');
+ for(const [field,value,issue] of [['reply','x'.repeat(1601),'invalid_reply'],['relationshipSummary','x'.repeat(361),'invalid_metadata'],['memoryCandidates',['x'.repeat(181)],'invalid_metadata']]){
+  await assert.rejects(callGemini(context,{},async()=>output('STOP',JSON.stringify({...reply,[field]:value}))),e=>e.replyIssue===issue);
+ }
+});
+test('provider schema separates incompatible terms and bounds optional interpretation',()=>{
+ const branches=RESPONSE_SCHEMA.properties.intents.items.anyOf;
+ const matching=type=>branches.find(b=>b.properties.type.enum.includes(type));
+ assert.equal(matching('ALLIANCE').properties.giveItems,undefined);assert.equal(matching('ALLIANCE').properties.actorMember,undefined);
+ assert.equal(matching('EXCHANGE').properties.giveItems.minItems,1);assert.equal(matching('ALLIANCE').properties.duration.minimum,2);
+ assert.equal(matching('PROMISE').properties.duration.minimum,1);assert.equal(matching('MARRIAGE').properties.tradeKind,undefined);
+ assert.equal(matching('PLEDGE_ATTACK').properties.conditionHouseId,undefined);assert.ok(matching('PLEDGE_WAR').properties.conditionHouseId);
+ assert.ok(RESPONSE_SCHEMA.properties.promiseDetected.anyOf.every(b=>b.properties.type.enum.every(t=>t==='PROMISE'||t==='GUARANTEE'||t.startsWith('PLEDGE_'))));
+ assert.equal(RESPONSE_SCHEMA.properties.reply.maxLength,1600);assert.equal(RESPONSE_SCHEMA.properties.memoryCandidates.items.maxLength,180);
 });

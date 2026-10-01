@@ -1,3 +1,4 @@
+import { vassalBond, vassalMuster, vassalRole } from './vassal-role.mjs';
 import { packageTrade, tradeItems, normalizePackage, itemCost, itemText, itemTotal, packageKey, scalePackage } from './trade-package.mjs';
 import { resolveFleetMovement } from './naval.mjs';
 import { militaryArmiesOf } from './core.mjs';
@@ -18,9 +19,9 @@ import { operationFor, operationMember } from './cooperation-state.mjs';
 import { isHumanHouse, isAiHouse, humanControlledHouseIds, court, resetMessages } from './house-control.mjs';
 import { finishPlans, recordPlayerPlans } from './plans.mjs';
 import { resolveEspionage, knownRelationships, visiblePlans, visibleOperations } from './espionage.mjs';
-import { politicalAttitude } from './politics.mjs';
+import { politicalAttitude, updateAttitudes } from './politics.mjs';
 import { finishStrategyRound } from './strategy.mjs';
-import { CAMPAIGN_HOUSES, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
+import { CAMPAIGN_HOUSES, UNITS, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from './data.mjs';
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
@@ -253,7 +254,11 @@ export function commitDeal(s, rulerId, raw, actorHouseId = PLAYER, options = {})
   const type = { ALLIANCE: 'alliance', TRADE: 'trade', VASSALAGE: 'vassalage', NON_AGGRESSION: 'non-aggression', ACCESS: 'access', RECURRING: 'recurring' }[i.type];
   if (['VASSALAGE','TERRITORY'].includes(i.type)&&atWar(s,actorHouseId,rulerId)) {makePeace(s,actorHouseId,rulerId);addTreaty(s,actorHouseId,rulerId,'peace',i.duration);}
   if (type) addTreaty(s, actorHouseId, rulerId, type, i.duration);
-  if(type==='vassalage')Object.assign(s.treaties.at(-1),{liege:actorHouseId,vassal:rulerId});
+  if(type==='vassalage'){
+    Object.assign(s.treaties.at(-1),{liege:actorHouseId,vassal:rulerId});
+    changeRelation(s,rulerId,actorHouseId,{wariness:-(relation(s,rulerId,actorHouseId).wariness||0)},'The sworn liege has military access; their presence is not a border threat.');
+    updateFealty(s,{allowRebellion:false});updateAttitudes(s);
+  }
   if(type==='alliance')for(const observer of s.kingdoms.filter(h=>![actorHouseId,rulerId].includes(h.id)&&atWar(s,h.id,rulerId)))
     if(relation(s,observer.id,actorHouseId)?.personal?.feelings.attachment>=25)emotionalEvent(s,observer.id,actorHouseId,'jealousy',{key:`alliance:${s.turn}:${rulerId}`,text:`Joined in alliance with our rival, ${k.name}.`});
   if (i.type === 'TERRITORY') { stateTransfer(s, i.targetId, actorHouseId); }
@@ -544,6 +549,8 @@ export function makeContext(s, rulerId, message, { proposal = null, event = null
     world: {
       conversationMode:dispatch?'ai-initiated-dispatch':'player-message',
       ...(commerce?{tradeDiscussion:{phase:commerce.phase,verdict:commerce.verdict}}:{}),
+      vassalRelationship:vassalRole(source,actorHouseId,rulerId),
+      vassalMuster:isAiHouse(source,rulerId)?vassalMuster(source,actorHouseId,rulerId):null,
       vassalCommands:(s.cooperation?.vassalOrders||[]).filter(o=>[o.liege,o.vassal].includes(actorHouseId)&&[o.liege,o.vassal].includes(rulerId)).slice(-2).map(o=>({kind:o.kind,target:o.target,status:o.status,reason:o.reason,updated:o.updated})),
       currentTurn:s.turn,activeConversationSince:Math.max(0,s.turn-2),
       warPosition: qualitativeWarPosition(source,rulerId,actorHouseId),
@@ -608,6 +615,8 @@ export function acceptRulerMemories(s, rulerId, response, actorHouseId = PLAYER)
 export function scriptedReply(s, rulerId, message, options = {}) {
   const actorHouseId = options.actorHouseId || PLAYER;
   if(options.event){const dispatch=dispatchContext(options.event,s.turn,rulerId,actorHouseId);return {reply:dispatch.text,tone:'guarded',intents:[]};}
+  const musterReply=swornVassalReply(s,rulerId,message,actorHouseId,options);
+  if(musterReply)return musterReply;
   const courtReply = intelligenceReply(s,rulerId,message,actorHouseId,options.proposal);
   if (courtReply) return courtReply;
   const warPosition=qualitativeWarPosition(s,rulerId,actorHouseId);
@@ -660,8 +669,9 @@ export function scriptedReply(s, rulerId, message, options = {}) {
   const amount = Number(text.match(/\b(\d{1,4})\s*(?:gold|coins)\b/)?.[1] || (type === 'AID' ? 25 : 0));
   const intent = type ? validateIntent({ type, giveAmount: amount, duration: 10 }) : null;
   const repeated = Object.entries(r.speech || {}).some(([kind, value]) => ['praise', 'reassurance', 'apology'].includes(kind) && value.count >= 3);
-  const opening = (military.score<20&&!(repeated&&!r.personal?.deedTurns.length)?personalOpening(s,rulerId,actorHouseId):'') || (military.score >= 20 ? `Your soldiers stand close to ${settlements(s, rulerId)[0]?.name || 'our frontier'}. Explain their purpose before you speak of friendship.` : r.trust < 0 ? 'We remember the word you failed to keep. What deed will follow this speech?' : repeated ? 'You have praised our honor often enough, Regent. I would prefer to hear concrete terms.' : k.honor > .8 ? 'Your deeds give weight to your word in this hall.' : k.greed > .8 ? 'Prosperity is a language we both understand.' : k.aggression > .7 ? 'Speak plainly. My captains are waiting.' : 'I am listening, Regent.');
-  return { reply: `${opening} ${intent ? disclosedDeal(source, rulerId, intent, actorHouseId).reason : economic.majorPartner ? 'Our people benefit from your trade. Tell me what you seek in return.' : diplomaticPriorities(s, rulerId)[0]}`, intents: intent ? [intent] : [], tone: military.score >= 20 || r.trust < 0 ? 'guarded' : r.opinion > 0 ? 'neutral' : 'cold' };
+  const sworn=!!vassalBond(source,actorHouseId,rulerId);
+  const opening = sworn ? 'My liege, I stand ready to carry out your commands.' : (military.score<20&&!(repeated&&!r.personal?.deedTurns.length)?personalOpening(s,rulerId,actorHouseId):'') || (military.score >= 20 ? `Your soldiers stand close to ${settlements(s, rulerId)[0]?.name || 'our frontier'}. Explain their purpose before you speak of friendship.` : r.trust < 0 ? 'We remember the word you failed to keep. What deed will follow this speech?' : repeated ? 'You have praised our honor often enough, Regent. I would prefer to hear concrete terms.' : k.honor > .8 ? 'Your deeds give weight to your word in this hall.' : k.greed > .8 ? 'Prosperity is a language we both understand.' : k.aggression > .7 ? 'Speak plainly. My captains are waiting.' : 'I am listening, Regent.');
+  return { reply: `${opening} ${intent ? disclosedDeal(source, rulerId, intent, actorHouseId).reason : sworn ? 'Name the objective and I will report our readiness and any practical obstacles.' : economic.majorPartner ? 'Our people benefit from your trade. Tell me what you seek in return.' : diplomaticPriorities(s, rulerId)[0]}`, intents: intent ? [intent] : [], tone: military.score >= 20 || r.trust < 0 ? 'guarded' : r.opinion > 0 ? 'neutral' : 'cold' };
 }
 
 function continuingTerms(s,rulerId,message,actor){
@@ -679,7 +689,21 @@ function groundedCommitment(s,rulerId,actor,message){
   if(operation){const p=operation.participants.find(p=>p.house===rulerId),progress=p.reportedProgress;return `${operation.name}: ${operation.status}. ${operation.reason} ${progress?`${progress.troops} troops and ${progress.siege} siege engines verified at the rally; ${progress.supplyReady?'supply obligation ready':'supply delivery still outstanding'}.`:''} Orders are preparations; arrival and combat are verified separately.`;}
   return null;
 }
+function swornVassalReply(s,rulerId,message,actor,options={}) {
+  if(options.event||options.proposal||!vassalBond(s,actor,rulerId)||!isAiHouse(s,rulerId))return null;
+  if(/\b(?:forces?|troops?|soldiers?|arm(?:y|ies)|muster)\b/i.test(message)&&/how many|numbers?|full|total|strength|muster/i.test(message)){
+    const report=vassalMuster(s,actor,rulerId);
+    if(!report)return {reply:'My liege, I owe you an accurate muster. A current force report is unavailable; I will not invent a number.',tone:'neutral',intents:[]};
+    const detail=Object.entries(report.units).filter(([,n])=>n).map(([id,n])=>`${n} ${UNITS[id].name}`).join(', ');
+    return {reply:`My liege, our current muster is ${report.troops} troops across ${report.armies} armies${detail?`: ${detail}`:''}. I stand ready to receive your military commands.`,tone:'neutral',intents:[]};
+  }
+  const progress=groundedCommitment(s,rulerId,actor,message);
+  return progress?{reply:`My liege, ${progress}`,tone:'neutral',intents:[]}:null;
+}
 export function relationshipResponse(s,rulerId,message,response,options={}) {
+  const swornReply=swornVassalReply(s,rulerId,message,options.actorHouseId||PLAYER,options);
+  if(swornReply)return swornReply;
+  if(!options.event&&!options.proposal&&isAiHouse(s,rulerId)&&vassalBond(s,options.actorHouseId||PLAYER,rulerId)&&/explain (?:their|your) purpose|(?:your|foreign) (?:soldiers|armies|troops).{0,90}(?:frontier|border)|before you speak of friendship/i.test(response.reply))return scriptedReply(s,rulerId,message,options);
   const actor=options.actorHouseId||PLAYER;
   if (!options.event) {
     const courtReply = intelligenceReply(s,rulerId,message,actor,options.proposal);

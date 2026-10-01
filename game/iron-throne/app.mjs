@@ -729,7 +729,7 @@ allianceUI=installAllianceCouncil(document,{
       if(response.source==='cancelled'||state.turn!==turn||!onlineOptions&&(state!==campaign||epoch!==requestEpoch))return {ok:false,error:'Circumstances changed while the envoy travelled. Open the current council.'};
       recordReplyDiagnostic(`council:${id}`,response);
       let result;
-      if(onlineOptions){await online.submit('councilChat',{councilId:id,message,response:{responses:response.responses}});result={ok:true};}
+      if(onlineOptions){await online.submit('councilChat',{councilId:id,message,response:{responses:response.responses,source:response.source}});result={ok:true};}
       else result=finishCouncilMessage(state,localHouse,start,message,response);
       return {...result,notice:response.notice};
     }finally{sending=false;challengeToken='';save();renderDispatches();}

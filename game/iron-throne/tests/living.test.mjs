@@ -32,14 +32,16 @@ test('compliments, apologies and reassurances have a small shared lifetime ceili
   assert.ok(r.opinion <= before + 4); assert.equal(r.trust, 15);
   assert.match(scriptedReply(s, 'wintermere', 'You are amazing.').reply, /terms|praised/);
 });
-test('nearby military strength creates wariness and retreat removes it without nice words overriding the board', () => {
+test('nearby military strength creates wariness and lost sightings reduce it without claiming withdrawal', () => {
   const s = createGame(), a = s.armies[0]; a.tile = '17,4'; a.units.levy = 120;
   updatePoliticalState(s); const r = relation(s, 'wintermere', PLAYER);
   assert.ok(r.wariness > 50); assert.ok(r.fear > 0);
   const opinion = r.opinion; applySpeech(s, 'wintermere', 'You are my closest friend.');
   assert.equal(r.opinion, opinion); assert.match(scriptedReply(s, 'wintermere', 'My closest friend.').reply, /soldiers|frontier/);
   a.tile = '5,6'; s.turn++; updatePoliticalState(s); assert.equal(r.wariness, 0);
-  assert.ok(r.history.some(h => /withdrew/.test(h.reason)));
+  assert.ok(r.history.some(h => /reassessed/.test(h.reason)));
+  assert.ok(!r.history.some(h => /withdrew/.test(h.reason)));
+  assert.ok(s.conversations.wintermere.some(m=>m.kind==='border-report'));
 });
 test('important imports generate dependency and are retained in bounded trade history', () => {
   const s = createGame();
