@@ -30,7 +30,7 @@ try{
   const second=page.locator('#give-items [data-trade-row]').nth(1);await second.locator('select').selectOption('wood');await second.locator('input').fill('30');
   await page.locator('#receive-resource').selectOption('food');await page.locator('#receive-amount').fill('100');
   assert.equal(await page.locator('#give-items [data-trade-row]').count(),2);
-  assert.equal(await second.locator('option[value="iron"]').isDisabled(),true);
+  assert.equal(await second.locator('option[value="iron"]').evaluate(option=>option.disabled),true);
   const before=JSON.parse(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'))).kingdoms.map(k=>k.resources);
   await page.locator('#offer-form button[type="submit"]').click();await page.locator('[data-modify]').first().waitFor();
   assert.match(await page.locator('#proposals').textContent(),/30 wood \+ 15 iron/);
