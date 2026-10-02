@@ -16,3 +16,41 @@ test('mobile portrait, landscape and desktop keep selection visible and commands
 test('multiple human workers assist without changing build time; effects follow authoritative state',async()=>{const {browser,page,errors}=await setup();try{const result=await page.evaluate(()=>{const w=tc.entities.find(e=>e.type==='engineer'),site=tc.build(0,'barracks',w.x+1,w.y),helper=tc.addEntity('unit','engineer',0,w.x+1,w.y+1),end=site.buildEnd;tc.applyCommand({type:'assistBuild',slot:0,entityId:w.id,targetId:site.id});tc.applyCommand({type:'assistBuild',slot:0,entityId:helper.id,targetId:site.id});const helping=w.buildTargetId===site.id&&helper.buildTargetId===site.id;tc.advanceScan();tc.draw();w.shield=12;tc.advanceScan();tc.applyDamage(w,5,{faction:1,type:'zergling',kind:'unit'});tc.advanceScan();tc.select(w);tc.useAbility(w,'fieldRepair');tc.advanceScan();tc.refreshUI(true);tc.draw();const effectKinds=tc.events.map(e=>e.kind),abilityText=document.querySelector('#abilityButtons').textContent;tc.applyDamage(helper,999,{faction:1,type:'zergling',kind:'unit'});tc.advanceScan();tc.draw();const wreck=tc.events.some(e=>e.kind==='wreck');tc.completeConstruction(site);for(let i=0;i<100;i++)tc.spawnFx(w.x,w.y,'#fff',30);return{helping,sameEnd:end===site.buildEnd,released:w.buildTargetId===null,effectKinds,abilityText,wreck,particles:tc.particles.length}});assert.equal(result.helping,true);assert.equal(result.sameEnd,true);assert.equal(result.released,true);assert.ok(result.effectKinds.includes('shield'));assert.ok(result.effectKinds.includes('ability'));assert.match(result.abilityText,/s.*No resource cost/);assert.equal(result.wreck,true);assert.ok(result.particles<=180);assert.deepEqual(errors,[])}finally{await browser.close()}});
 
 test('adjacent workers prefer valid in-range gas for every faction',async()=>{const {browser,page,errors}=await setup();try{for(const spec of [['frontier','engineer','refinery','assimilator'],['ascendant','probe','assimilator','extractor'],['brood','drone','extractor','refinery']]){const result=await page.evaluate(([f,workerType,gasType,wrongGasType])=>{tc.start(f);const worker=tc.entities.find(e=>e.faction===0&&e.type===workerType),gas=tc.nodes.find(n=>n.type==='gas'),mineral=tc.nodes.find(n=>n.type==='mineral'),spot={x:gas.x+1,y:gas.y};mineral.x=spot.x;mineral.y=spot.y;worker.x=spot.x;worker.y=spot.y;worker.px=spot.x;worker.py=spot.y;worker.moveDestination=null;worker.targetId=null;worker.miningStopped=false;worker.miningNodeId=null;tc.addEntity('structure',wrongGasType,0,gas.x,gas.y);tc.updateMining();const wrongStructureMining=worker.miningNodeId;tc.addEntity('structure',gasType,0,gas.x,gas.y);tc.updateMining();return{wrongStructureMining,mineralId:mineral.id,gasMining:worker.miningNodeId,gasId:gas.id}},spec);assert.equal(result.wrongStructureMining,result.mineralId,`${spec[0]} should reject the wrong gas structure`);assert.equal(result.gasMining,result.gasId,`${spec[0]} worker should automatically prefer adjacent connected gas`)}assert.deepEqual(errors,[])}finally{await browser.close()}});
+
+test('selection, invalid targeting and UI pointer ownership stay independent',async()=>{
+ const {browser,page,errors}=await setup();try{
+ const result=await page.evaluate(()=>{
+  const worker=tc.entities.find(e=>e.type==='engineer'),soldier=tc.addEntity('unit','rifleman',0,worker.x+2,worker.y),base=tc.entities.find(e=>e.type==='commandHub');
+  const selectAt=e=>{const p=tc.worldToScreen(e.x+.5,e.y+.5);const canvas=document.querySelector('#game');canvas.setPointerCapture=()=>{};for(const type of ['pointerdown','pointerup'])canvas.dispatchEvent(new PointerEvent(type,{pointerId:70,pointerType:'mouse',button:0,clientX:p.x,clientY:p.y,bubbles:true}))};
+  tc.select(worker);tc.focusSelected();selectAt(soldier);const troop=document.querySelector('#selectionName').textContent;
+  tc.setMode('ability','deployCover');const before=worker.moveDestination;window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));tc.select(base);const baseSelected=document.querySelector('#selectionName').textContent;
+  tc.select(worker);tc.setMode('mine');document.querySelector('#targetCancel').click();const cancelled=tc.mode;
+  document.querySelector('#resourceHud').dispatchEvent(new PointerEvent('pointerdown',{pointerId:72,bubbles:true}));document.querySelector('#resourceHud').dispatchEvent(new PointerEvent('pointerup',{pointerId:72,bubbles:true}));
+  return{troop,baseSelected,cancelled,before,after:worker.moveDestination};
+ });assert.match(result.troop,/Marine|Rifle/i);assert.match(result.baseSelected,/Command/i);assert.equal(result.cancelled,null);assert.deepEqual(result.before,result.after);assert.deepEqual(errors,[]);
+ }finally{await browser.close()}
+});
+
+test('UI geometry prevents minimap, group and cancel overlaps on small screens',async()=>{
+ for(const [width,height] of [[390,844],[844,390],[568,320],[1280,800]]){
+  const {browser,page,errors}=await setup(width,height);try{
+   const result=await page.evaluate(()=>{
+    tc.select(tc.entities.find(e=>e.type==='engineer'));tc.setMode('mine');
+    const rect=id=>{const r=document.querySelector(id).getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+    const cancel=document.querySelector('#targetCancel'),r=cancel.getBoundingClientRect();return{dock:rect('#commandPanel'),mini:rect('#minimapDock'),groups:rect('#controlGroups'),cancel:rect('#targetCancel'),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===cancel};
+   });const overlaps=(a,b)=>a.x<b.right&&a.right>b.x&&a.y<b.bottom&&a.bottom>b.y;
+   assert.ok(result.dock.x>=0&&result.dock.right<=width+1&&result.dock.bottom<=height+1&&result.dock.y>=0);
+   assert.equal(overlaps(result.dock,result.mini),false,`${width}: minimap covers dock`);assert.equal(overlaps(result.groups,result.cancel),false,`${width}: groups cover cancel`);assert.equal(result.hit,true,`${width}: cancel reachable`);assert.ok(result.cancel.height>=44);assert.deepEqual(errors,[]);
+  }finally{await browser.close()}
+ }
+});
+
+test('all visible ability labels match a single non-conflicting keyboard action',async()=>{
+ const {browser,page,errors}=await setup();try{
+  const result=await page.evaluate(()=>{
+   tc.select(tc.entities.find(e=>e.type==='engineer'));const labels=[...document.querySelectorAll('#abilityButtons kbd')].map(e=>e.textContent);
+   tc.setMode('mine');const input=document.createElement('textarea');document.body.append(input);input.focus();input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));const typingMode=tc.mode;input.remove();window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));const cleared=tc.mode;
+   window.dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}));const cameraMode=tc.mode;window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}));return{labels,typingMode,cleared,cameraMode};
+  });assert.equal(new Set(result.labels).size,result.labels.length);assert.equal(result.typingMode,'mine');assert.equal(result.cleared,null);assert.equal(result.cameraMode,null);assert.deepEqual(errors,[]);
+ }finally{await browser.close()}
+});
