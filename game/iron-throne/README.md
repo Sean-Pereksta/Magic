@@ -529,6 +529,18 @@ leader or an explicit retry. Only Worker allowance refusals are rescheduled
 without a model attempt. There are no automatic retries of failed generation.
 Mixed-success exchanges keep each leader's Gemini/local label and diagnostic.
 
+Council timing: each leader gets up to 60 seconds of Gemini generation in the
+Worker, with a 75-second browser deadline to allow for Worker processing and
+network transit. Queue waiting and session verification/renewal do not consume
+that deadline. Private ruler and general chats retain their 12-second provider
+and 18-second browser limits. A stalled Council leader releases the queue when
+its deadline expires; failed generation is not automatically retried.
+This timing fix requires both the game update and a Worker redeploy:
+`npx wrangler deploy --config game/iron-throne/worker/wrangler.toml --keep-vars`
+from the repository root. It changes no model, response schema, billing setting,
+secret, binding, or budget. The request-format diagnostic remains
+`pre-council-queue-v1` because the provider payload format has not changed.
+
 Alliance Council exposes the captured safe error code, a live cooldown countdown,
 and a Diagnostics / Copy report dialog. Successful player replies clear that
 council's failure display. Gemini and local player-response messages are labeled.

@@ -1,6 +1,7 @@
 import { validateGeneralResponse } from '../generals.mjs';
 import { validateCouncilResponse, COUNCIL_MOODS } from '../alliance-council.mjs';
 import { geminiModelSetting } from '../gemini-model.mjs';
+import { diplomacyTiming } from '../diplomacy-timing.mjs';
 import { CAMPAIGN_HOUSES, INTENT_TYPES } from '../data.mjs';
 import { issueSession, reserveSessionBudget, verifySession } from './session.mjs';
 import { validateIntent } from '../diplomacy.mjs';
@@ -156,7 +157,7 @@ async function providerFailure(response) {
 export async function callGemini(context, env, fetcher = fetch) {
   const { model, modelSource } = geminiModelSetting(env);
   if (!model) throw Object.assign(new Error('configuration'), { diagnosticCode: 'GEMINI_MODEL_CONFIG', modelSource });
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), diplomacyTiming(context.mode).providerMs);
   try {
     const upstream = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: controller.signal,

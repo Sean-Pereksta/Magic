@@ -1,4 +1,5 @@
 import { DiplomacyQueue } from './diplomacy-queue.mjs';
+import { diplomacyTiming } from './diplomacy-timing.mjs';
 import { makeCouncilDispatchContext } from './council-dispatch.mjs';
 import { generalContext, localGeneralReply, validateGeneralResponse } from './generals.mjs';
 import { makeCouncilContext, scriptedCouncil, validateCouncilResponse } from './alliance-council.mjs';
@@ -158,7 +159,8 @@ export class DiplomacyClient {
     const key = JSON.stringify(context);
     this.busy = true;
     let timedOut = false;
-    const controller = new AbortController(), timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 18000);
+    const controller = new AbortController();
+    let timeout;
     this.controllers.add(controller);
     try {
       if (this.sessionRequest) await this.sessionRequest;
@@ -166,6 +168,8 @@ export class DiplomacyClient {
       if (!this.hasSession()) { requestDiagnostic = this.lastDiagnostic || recordFailure('SESSION_NOT_READY'); return fallback(); }
       if (controller.signal.aborted) { recordFailure(timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED'); return fallback(); }
       if (this.cache.has(key)) { this.lastDiagnostic = null; return { ...this.cache.get(key), source: 'gemini', notice: 'Gemini council · proposals await your word' }; }
+      // Verification and queue waiting must not consume the reply's deadline.
+      timeout = setTimeout(() => { timedOut = true; controller.abort(); }, diplomacyTiming(context.mode).clientMs);
       const response = await this.fetcher(this.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.session.token}` }, credentials: 'omit', signal: controller.signal, body: JSON.stringify(context) });
       const fresh = response.headers.get('X-Diplomacy-Session'), expires = Number(response.headers.get('X-Diplomacy-Expires'));
       if (fresh && fresh.length <= 1600 && Number.isSafeInteger(expires) && expires > this.now()) this.session = { token: fresh, expires };
