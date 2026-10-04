@@ -44,6 +44,8 @@ test('public loader applies every existing patch to the updated core; both modul
   assert.match(output,/from "\.\/catandmouse\/tactics.mjs"/);
   assert.match(output,/from "\.\/catandmouse\/combat-presentation.mjs"/);
   assert.match(output,/battlePresentation\.syncEntities/);
+  assert.match(output,/battlePresentation\.structureHit/);
+  assert.match(output,/battlePresentation\.captureMouse/);
   assert.match(output,/tacticalAI\.plan/);
   assert.match(output,/combat-presentation\.css/);
   assert.equal((output.match(/const MAX_FRIENDLY_RABBITS =/g) || []).length,1);
@@ -152,7 +154,7 @@ test('real savePosition does not overwrite death, cheese or identity, and skips 
 });
 
 function listenerHarness() {
-  const elements=new Map();let next, failure, renders=0, cancelled=0, menus=0;
+  const elements=new Map(),captures=[];let next, failure, renders=0, cancelled=0, menus=0;
   const ctx=vm.createContext({
     liveSnapshotReady:false,listenerFailed:false,knownRealtimeDocs:new Map(),isHost:false,uid:'me',
     gameStarted:false,hostInitialized:false,catMoveInterval:null,
@@ -169,12 +171,15 @@ function listenerHarness() {
     requestRender:()=>renders++,setTileEffect(){},startCatBehaviorLoop(){},
     stateWriter:{cancel:()=>cancelled++,observe(){},resume(){}},
     tacticalAI:{reset(){}},delayedEnemySteps:new Map(),
-    battlePresentation:{moveEntity(){}},enemyMovementCadence:()=>400,
+    battlePresentation:{moveEntity(){},captureMouse:(...args)=>captures.push(args)},enemyMovementCadence:()=>400,
+    normalizeEnemyKind:kind=>kind,combatUnitKey:(kind,enemy)=>`${kind}:${enemy.id}`,
+    enemyRegistryEntry:()=>({collection:()=>[{id:'rat-one'}]}),
     playerWriter:{cancel:()=>cancelled++,resume(){}},
     stateFieldPatch,applyDifficulty(){},updateHostDisplay(){},updateCatHealthBar(){},updateDifficultyUI(){},
     renderSelectionOverlay:()=>menus++,ensureLocalBuildControls(){},playGameMusic(){},startHostLoops(){},
     clearInterval(){},console:{error(){}},setTimeout(){},activateSoloRuntime(){}
   });
+  vm.runInContext(section('  function presentMouseCapture(', '  function renderBattleUnits(){'),ctx);
   vm.runInContext(section('  function listenToCrownCouncil(){','  // ============================================================\n  // Ensure lobby'),ctx);
   const doc=(id,data)=>({id,data:()=>data,metadata:{hasPendingWrites:false}});
   const deliver=(items,{cached=false,docs=items.map(i=>doc(i.id,i.data))}={})=>next({
@@ -182,7 +187,7 @@ function listenerHarness() {
     docChanges:()=>items.map(i=>({type:i.type||'modified',doc:doc(i.id,i.data)}))
   });
   ctx.listenToCrownCouncil();
-  return {ctx,deliver,fail:()=>failure(new Error('closed')),get renders(){return renders;},get cancelled(){return cancelled;},get menus(){return menus;}};
+  return {ctx,deliver,captures,fail:()=>failure(new Error('closed')),get renders(){return renders;},get cancelled(){return cancelled;},get menus(){return menus;}};
 }
 
 test('listener applies death during pending movement without snapping live movement backwards',()=>{
@@ -197,6 +202,31 @@ test('listener accepts authoritative revive position despite older movement sequ
   const h=listenerHarness();h.ctx.players.me.alive=false;h.ctx.isAlive=false;
   h.deliver([{id:'player_me',data:{uid:'me',x:9,y:10,alive:true,clientSeq:1}}]);
   assert.equal(h.ctx.isAlive,true);assert.equal(h.ctx.playerPos.x,9);assert.equal(h.cancelled,1);
+});
+
+test('live capture snapshots identify the mouse and attacker once; repeated death snapshots do not replay FX',()=>{
+  const h=listenerHarness();
+  const death={uid:'me',x:2,y:2,alive:false,killedBy:'rat',killedById:'rat-one',killedAt:123,clientSeq:1};
+  h.deliver([{id:'player_me',data:death}],{cached:true});assert.equal(h.captures.length,0);
+  h.deliver([{id:'player_me',data:death}]);assert.equal(h.captures.length,1);
+  assert.equal(h.captures[0][0],'mouse:me');assert.equal(h.captures[0][2].attackerKey,'rat:rat-one');
+  assert.equal(h.captures[0][2].eventId,123);assert.equal(h.ctx.playerPos.x,5);
+  h.deliver([{id:'player_me',data:death}]);assert.equal(h.captures.length,1);
+  h.deliver([{id:'player_me',data:{...death,alive:true,x:8,y:8}}]);
+  h.deliver([{id:'player_me',data:{...death,killedBy:'cat',killedAt:456,x:8,y:8}}]);
+  assert.equal(h.captures.length,2);assert.equal(h.captures[1][2].attackerKey,'cat');
+});
+
+test('initial dead players, cached snapshots, disconnects and removals do not invent a mouse capture',()=>{
+  const h=listenerHarness();
+  h.deliver([{id:'player_old',data:{uid:'old',alive:false,killedBy:'cat',killedAt:1}}]);
+  h.deliver([{id:'player_me',data:{uid:'me',alive:false,killedBy:'cat'}}],{cached:true});
+  assert.equal(h.captures.length,0);
+  h.deliver([{id:'player_me',data:{uid:'me',alive:false,online:false,killedBy:'cat',killedAt:1}}]);
+  h.deliver([{id:'player_other',data:{uid:'other',alive:true}}]);
+  h.deliver([{id:'player_other',type:'removed',data:{uid:'other',alive:false,killedBy:'cat'}}]);
+  h.deliver([{id:'player_other',data:{uid:'other',alive:false,killedBy:'cat',killedAt:2}}]);
+  assert.equal(h.captures.length,0);
 });
 
 test('cached and metadata-only snapshots report connection truthfully without redrawing',()=>{

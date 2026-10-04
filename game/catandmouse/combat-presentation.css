@@ -6,9 +6,11 @@
 .cm-unit.cm-moving[data-unit-type=termite] .cm-unit-body{animation:cm-crawl .13s linear infinite}
 .cm-unit.cm-moving[data-unit-type=vulture] .cm-unit-body{animation:cm-glide .8s ease-in-out infinite}
 .cm-unit.cm-attacking .cm-unit-body{animation:cm-recoil .18s ease-out}
+.cm-unit.cm-striking .cm-unit-body{animation:cm-strike .24s ease-out}
 .cm-unit.cm-hit .cm-unit-body{animation:cm-hit .22s ease-out}
 .cm-unit.cm-spawning .cm-unit-body{animation:cm-spawn .32s ease-out}
 .cm-unit.cm-dying .cm-unit-body{animation:cm-die .25s ease-in forwards}
+.cm-unit.cm-captured .cm-unit-body{animation:cm-capture .42s ease-out forwards}
 .cm-unit.cm-winding .cm-unit-body{filter:drop-shadow(0 0 3px #ffb96b);scale:1.06 .95}
 .cm-unit.cm-trapped:after{content:"";position:absolute;left:4px;top:10px;width:27px;height:19px;border:1px solid #d6f5ff;border-radius:50%;background:repeating-conic-gradient(from 10deg,transparent 0 43deg,#d6f5ff80 44deg 46deg);pointer-events:none}
 .cm-unit.cm-slowed:before{content:"";position:absolute;left:4px;top:19px;width:29px;height:10px;background:#77d98033;border:1px solid #7de88b66;border-radius:50%}
@@ -28,10 +30,17 @@
 .cm-beam.cm-tesla{height:13px;background:#b9f4ff;clip-path:polygon(0 40%,12% 24%,25% 65%,38% 10%,50% 70%,62% 25%,77% 70%,90% 30%,100% 42%,100% 54%,90% 44%,77% 86%,62% 41%,50% 86%,38% 26%,25% 81%,12% 40%,0 54%)}
 .cm-beam.cm-laser{height:5px;background:linear-gradient(#ff95d8,#fff,#ff95d8);box-shadow:0 0 8px #f98dc1}
 .cm-beam.cm-gust{height:14px;background:repeating-linear-gradient(0deg,transparent 0 3px,#d5f4f670 4px 5px);box-shadow:none}
-.cm-slash{width:30px;height:23px;border-radius:50%;border-top:3px solid #fff3db;rotate:-24deg;box-shadow:0 -2px 4px #f6a45088}
+.cm-slash{width:30px;height:23px;border-radius:50%;border-top:3px solid var(--cm-color);rotate:var(--cm-slash-angle,-24deg);box-shadow:0 -2px 4px #f6a45088}
+.cm-slash.cm-structure{width:35px;height:26px;border-top-width:3.5px}
+.cm-slash.cm-breach{width:40px;height:29px;border-top-width:4px}
+.cm-slash.cm-capture{width:34px;height:26px;border-bottom:1px solid #ffe1d6}
+.cm-flare{width:25px;height:22px;background:var(--cm-color);clip-path:polygon(50% 0,61% 33%,91% 14%,70% 43%,100% 52%,68% 62%,84% 92%,58% 73%,47% 100%,39% 71%,8% 86%,28% 59%,0 45%,33% 39%,19% 8%,43% 30%)}
+.cm-flare.cm-capture{width:28px;height:24px}
+.cm-ring.cm-capture{width:28px;height:17px;border-color:#ffaaa0}
+.cm-caption.cm-capture{width:auto;height:auto;padding:2px 5px;border:1px solid #ffb5a980;border-radius:4px;background:#321713de;color:#ffe6db;font:700 9px system-ui;letter-spacing:.8px;white-space:nowrap}
 .cm-marker{width:28px;height:18px;transform:translate(-50%,-50%);border:2px dashed #ffb778;border-radius:50%;background:#c4441826;color:#ffe9c9;text-align:center;font:bold 13px system-ui}
 .cm-marker.cm-warning{animation:cm-warning .7s ease-in-out infinite}
-.iso-structure.cm-structure-hit .structure-art,.iso-structure.cm-structure-hit .body{animation:cm-structure-hit .22s ease-out}
+.iso-structure.cm-structure-hit .structure-art,.iso-structure.cm-structure-hit .body{animation:cm-structure-hit .26s ease-out}
 .iso-structure.cm-damaged:after{content:"";position:absolute;left:11px;top:7px;width:13px;height:21px;background:#241e17a0;clip-path:polygon(44% 0,58% 0,38% 40%,70% 51%,43% 100%,32% 100%,51% 57%,24% 43%);pointer-events:none}
 .iso-structure.cm-shield-hit .ring{animation:cm-shield .3s ease-out}
 .iso-structure.cm-shield-recharge .ring{animation:cm-shield .6s ease-out}
@@ -39,15 +48,18 @@
 @keyframes cm-crawl{50%{rotate:1.5deg}}
 @keyframes cm-glide{50%{translate:0 -2px;rotate:1deg}}
 @keyframes cm-recoil{30%{translate:-2px 0;scale:.95 1.04}70%{translate:1px 0}}
+@keyframes cm-strike{30%{translate:var(--cm-strike-x,2px) var(--cm-strike-y,0px);scale:1.045 .97}65%{translate:-1px 0}to{translate:0 0}}
 @keyframes cm-hit{25%{filter:brightness(1.9);translate:1px -1px}}
 @keyframes cm-spawn{from{opacity:.15;scale:.8;translate:0 4px}to{opacity:1;scale:1;translate:0 0}}
 @keyframes cm-die{to{opacity:0;scale:.72;translate:2px 3px}}
-@keyframes cm-structure-hit{25%{translate:-1.5px 0;filter:brightness(1.4)}60%{translate:1px 0}}
+@keyframes cm-capture{18%{filter:brightness(1.9) drop-shadow(0 0 3px #ffb1a0);scale:1.05}to{opacity:0;scale:.8;translate:0 3px}}
+@keyframes cm-structure-hit{25%{translate:var(--cm-impact-x,-2px) var(--cm-impact-y,0px);filter:brightness(1.65)}60%{translate:-1px 0}to{translate:0 0}}
 @keyframes cm-shield{25%{box-shadow:0 0 10px #c2f1ff;border-color:#fff}70%{scale:1.12}}
 @keyframes cm-warning{50%{border-color:#fff0ce;background:#c4441840}}
 @media(prefers-reduced-motion:reduce){
-  .cm-unit-body,.cm-unit.cm-moving .cm-unit-body,.cm-unit.cm-attacking .cm-unit-body,.cm-unit.cm-spawning .cm-unit-body,.cm-unit.cm-dying .cm-unit-body,.iso-structure.cm-structure-hit .structure-art,.iso-structure.nest-firing .structure-art{animation:none!important;translate:0 0;rotate:0deg;scale:1}
+  .cm-unit-body,.cm-unit.cm-moving .cm-unit-body,.cm-unit.cm-attacking .cm-unit-body,.cm-unit.cm-striking .cm-unit-body,.cm-unit.cm-spawning .cm-unit-body,.cm-unit.cm-dying .cm-unit-body,.cm-unit.cm-captured .cm-unit-body,.iso-structure.cm-structure-hit .structure-art,.iso-structure.nest-firing .structure-art{animation:none!important;translate:0 0;rotate:0deg;scale:1}
   .cm-unit.cm-hit .cm-unit-body{animation:cm-hit .18s ease-out!important}
+  .iso-structure.cm-structure-hit .structure-art,.cm-unit.cm-captured .cm-unit-body{filter:brightness(1.45)}
   .cm-unit.cm-spawning{opacity:.8}.cm-unit.cm-dying{opacity:.25}
   .cm-marker.cm-warning{animation:none;background:#c4441833}
   .cm-trail{display:none}.cm-fx{box-shadow:none}
