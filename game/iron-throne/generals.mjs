@@ -1,4 +1,3 @@
-import { UNITS } from './data.mjs';
 import { GENERAL_ROSTER, generalTemperament, generalTraits } from './general-roster.mjs';
 import { allArmies } from './naval-state.mjs';
 import { hash } from './world-hex.mjs';
@@ -13,7 +12,10 @@ import { assaultAssessment, dangerousTiles, orderBombardment } from './plans.mjs
 const fail=error=>({ok:false,error});
 const own=(s,owner,id)=>s.commanders?.roster.find(g=>g.id===id&&g.owner===owner);
 const forces=(s,g)=>armiesOf(s,g.owner).filter(a=>a.commandId===g.commandId);
-export function generalMessage(s,g,role,text){g.history.push({turn:s.turn,role,text:String(text).slice(0,1600)});g.history=g.history.slice(-40);}
+export function generalMessage(s,g,role,text,source){g.history.push({turn:s.turn,role,text:String(text).slice(0,1600),...(source?{source}:{})});g.history=g.history.slice(-40);}
+// Saved games can contain old scripted dialogue. Only provider-backed speech
+// belongs in the conversation; deterministic command records remain visible.
+export const visibleGeneralHistory=g=>(g.history||[]).filter(m=>m.role!=='general'||m.source==='gemini');
 
 // One deterministic opportunity per House, bounded by a realm-wide cooldown.
 // Called only at a round boundary, never from render/open/reconnect.
@@ -40,7 +42,7 @@ export function hireGeneral(s,owner,id) {
   const q=GENERAL_QUALITIES[g.quality];
   if(!canAfford(k,{gold:q.cost}))return fail(`Recruitment requires ${q.cost} gold; upkeep is ${q.upkeep} gold per round.`);
   pay(k,{gold:q.cost});s.commanders.candidates=s.commanders.candidates.filter(x=>x!==g);s.commanders.roster.push(g);
-  generalMessage(s,g,'general',`I am ready for an army and an objective. My upkeep is ${q.upkeep} gold per round, including while unassigned.`);
+  generalMessage(s,g,'council',`General recruited. Upkeep: ${q.upkeep} gold per round, including while unassigned.`);
   return {ok:true,generalId:id};
 }
 export function assignGeneral(s,owner,id,armyId,transfer=false) {
@@ -89,7 +91,7 @@ export function approveGeneralOrder(s,owner,id,raw) {
 export const describeGeneralOrder=o=>`${o.kind} ${o.army?`army ${o.army} (last designated at ${o.targets[0]})`:o.targets.join(' → ')}; regroup at ${o.lossLimit}% losses; ${o.allowSplit?'detachments permitted':'keep forces together'}; hold captured objectives`;
 function status(s,g,value,reason){
   const o=g.objective;if(!o)return;
-  if(o.status!==value||o.reason!==reason)generalMessage(s,g,'general',`${value}: ${reason}`);
+  if(o.status!==value||o.reason!==reason)generalMessage(s,g,'council',`${value}: ${reason}`);
   o.status=value;o.reason=reason;
 }
 function order(s,g,a,t,kind,avoid=null){
@@ -135,7 +137,7 @@ export function planGeneral(s,g,{force=false}={}) {
   for(const [i,a] of active.entries()){
     const tile=view.tiles[a.tile],target=remaining[Math.min(i,remaining.length-1)],loss=1-sizeOf(a)/Math.max(1,a.commandBaseline||sizeOf(a));
     const threatened=settlements(view,g.owner).find(t=>t.capital===g.owner&&view.armies.some(e=>atWar(view,g.owner,e.owner)&&distance(t,view.tiles[e.tile])<=2));
-    if(a.morale<.6)o.advice='Morale is low. I recommend rest, but I will carry out your order.';
+    if(a.morale<.6)o.advice='Morale is low. Consider resting the army; the current order remains active.';
     if(loss>=o.lossLimit/100||a.regrouping){
       const refuge=settlements(view,g.owner).filter(t=>!view.armies.some(e=>atWar(view,g.owner,e.owner)&&distance(t,view.tiles[e.tile])<=1)).sort((x,y)=>distance(tile,x)-distance(tile,y))[0];
       const ready=a.morale>=.82&&sizeOf(a)>=Math.max(24,(a.commandBaseline||24)*.8);
@@ -148,13 +150,13 @@ export function planGeneral(s,g,{force=false}={}) {
       }
       a.commandBaseline=sizeOf(a);
     }
-    if(threatened&&g.personality==='protective')o.advice='Our capital is threatened. I recommend reviewing its defense; I will continue your current order.';
+    if(threatened&&g.personality==='protective')o.advice='The capital is threatened. Review its defense; the current order remains active.';
     const caution=g.personality==='cautious'?.82:g.personality==='aggressive'?1.12:g.personality==='protective'?.9:1;
     if(attack&&target.fog==='visible'){
       const estimate=assaultAssessment(view,{...k,aggression:Math.min(1,k.aggression*caution)},a,target);
       if(o.kind==='siege'&&g.personality==='methodical'&&target.walls>0&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
       if(o.kind==='siege'&&estimate.bombard&&orderBombardment(s,k,a,target,dangerousTiles(view,k,a),'general').ok){marching++;continue;}
-      if(!estimate.assault||estimate.lossFraction>o.lossLimit/100)o.advice=`Known defenses at ${target.name||target.id} may cause heavy losses. I recommend siege support, but your attack order stands.`;
+      if(!estimate.assault||estimate.lossFraction>o.lossLimit/100)o.advice=`Known defenses at ${target.name||target.id} may cause heavy losses. Consider siege support; the attack order remains active.`;
     }
     if(a.tile===target.id){order(s,g,a,target,'hold');continue;}
     const avoid=dangerousTiles(view,k,a);avoid.delete(target.id);
@@ -215,15 +217,7 @@ export function generalContext(s,owner,id,message) {
   const g=own(s,owner,id);if(!g)return null;
   const view=planningView(s,owner),all=allArmies(view).filter(a=>a.commandId===g.commandId);
   const visibleTargets=Object.values(view.tiles).filter(t=>t.fog!=='unknown'&&(t.building==='city'||t.building==='town'||g.objective?.targets.includes(t.id))).sort((a,b)=>Math.min(...all.map(x=>distance(view.tiles[x.tile],a)),99)-Math.min(...all.map(x=>distance(view.tiles[x.tile],b)),99)).slice(0,18);
-  return {mode:'general',actorHouseId:owner,generalId:id,turn:s.turn,message:String(message).slice(0,600),history:g.history.slice(-8).map(m=>({...m,text:m.text.slice(0,600)})),world:{general:{name:g.name,personality:generalTemperament(g),traits:generalTraits(g),quality:GENERAL_QUALITIES[g.quality].name,specialty:g.specialty},objective:g.objective,forces:all.slice(0,24).map(a=>({id:a.id,name:a.name||a.id,tile:a.tile,units:{...a.units},strength:Math.round(strength(a)),troops:sizeOf(a),morale:a.morale,formation:a.formation,order:a.order,target:a.target,losses:Math.max(0,(a.commandBaseline||sizeOf(a))-sizeOf(a)),playerOverride:manualOverride(s,a)})),locations:visibleTargets.map(t=>({id:t.id,name:t.name||t.id,owner:t.owner,observedTurn:t.observedTurn??s.turn,visible:t.fog==='visible',enemies:view.armies.filter(a=>a.tile===t.id&&atWar(view,owner,a.owner)).slice(0,6).map(a=>({troops:sizeOf(a),estimated:!!a.remembered}))})),friendlyArmies:view.armies.filter(a=>!a.remembered&&(a.owner===owner||['alliance','vassalage'].some(type=>treaty(view,owner,a.owner,type)))).slice(0,18).map(a=>({id:a.id,owner:a.owner,tile:a.tile})),nearbyEnemies:view.armies.filter(a=>atWar(view,owner,a.owner)&&all.some(f=>distance(view.tiles[f.tile],view.tiles[a.tile])<=5)).slice(0,12).map(a=>({id:a.id,tile:a.tile,troops:sizeOf(a),estimated:!!a.remembered})),wars:view.wars.filter(w=>w.split(':').includes(owner)),supplies:{food:kingdom(view,owner).resources.food},recentBattles:view.militaryEvents.filter(e=>[e.attacker,e.defender].includes(owner)&&s.turn-e.turn<=3).slice(-5).map(e=>({turn:e.turn,tile:e.tile,before:e.before,after:e.after,winner:e.winner})),supportedOrders:COMMAND_KINDS,proposedOrder:interpretGeneralOrder(s,owner,id,message)}};
-}
-export function localGeneralReply(s,owner,id,message) {
-  const g=own(s,owner,id);if(!g)return {reply:'This commander is unavailable.',order:null};
-  const order=interpretGeneralOrder(s,owner,id,message),o=g.objective;
-  const all=allArmies(s).filter(a=>a.commandId===g.commandId),composition=Object.entries(all.reduce((units,a)=>{for(const [u,n] of Object.entries(a.units))units[u]=(units[u]||0)+n;return units;},{})).filter(([,n])=>n>0).map(([u,n])=>`${n} ${UNITS[u]?.name||u}`).join(', ');
-  const summary=all.length?`I command ${composition}. ${all.some(a=>Object.entries(a.units).some(([u,n])=>n>0&&UNITS[u]?.family==='siege'))?'Siege support is available.':'We have no siege engines; fortified assaults need careful review.'} `:'';
-  const preference={aggressive:'I favor pressing a confirmed advantage within your loss limit.',cautious:'Fresh observations and a safe route should precede the assault.',methodical:'I prefer concentrating our forces and reducing walls before the decisive assault.',opportunistic:'Exposed objectives may justify two viable detachments; uncertain defenses do not.',protective:'I will preserve a retreat route and recommend how to protect our capital while following your command.'}[g.personality];
-  return {reply:summary+(order?`I propose: ${describeGeneralOrder(order)}. Click Order to issue this interpretation; until then it changes nothing.`:o?`${o.status}: ${o.reason} Our objective remains ${o.kind} at ${o.targets.join(', ')}. ${preference} ${/divid|split/.test(message)?'Detachments require two viable forces, current observations and legal routes. Order with splitting enabled to permit it.':'Your manual orders remain authoritative.'}`:`Assign an army, then name a known location and an objective. ${preference} I can prepare an attack, defense, rally, reinforcement, siege support or withdrawal for you to order.`),order};
+  return {mode:'general',actorHouseId:owner,generalId:id,turn:s.turn,message:String(message).slice(0,600),history:visibleGeneralHistory(g).slice(-8).map(m=>({role:m.role,turn:m.turn,text:m.text.slice(0,600)})),world:{general:{name:g.name,personality:generalTemperament(g),traits:generalTraits(g),quality:GENERAL_QUALITIES[g.quality].name,specialty:g.specialty},objective:g.objective,forces:all.slice(0,24).map(a=>({id:a.id,name:a.name||a.id,tile:a.tile,units:{...a.units},strength:Math.round(strength(a)),troops:sizeOf(a),morale:a.morale,formation:a.formation,order:a.order,target:a.target,losses:Math.max(0,(a.commandBaseline||sizeOf(a))-sizeOf(a)),playerOverride:manualOverride(s,a)})),locations:visibleTargets.map(t=>({id:t.id,name:t.name||t.id,owner:t.owner,observedTurn:t.observedTurn??s.turn,visible:t.fog==='visible',enemies:view.armies.filter(a=>a.tile===t.id&&atWar(view,owner,a.owner)).slice(0,6).map(a=>({troops:sizeOf(a),estimated:!!a.remembered}))})),friendlyArmies:view.armies.filter(a=>!a.remembered&&(a.owner===owner||['alliance','vassalage'].some(type=>treaty(view,owner,a.owner,type)))).slice(0,18).map(a=>({id:a.id,owner:a.owner,tile:a.tile})),nearbyEnemies:view.armies.filter(a=>atWar(view,owner,a.owner)&&all.some(f=>distance(view.tiles[f.tile],view.tiles[a.tile])<=5)).slice(0,12).map(a=>({id:a.id,tile:a.tile,troops:sizeOf(a),estimated:!!a.remembered})),wars:view.wars.filter(w=>w.split(':').includes(owner)),supplies:{food:kingdom(view,owner).resources.food},recentBattles:view.militaryEvents.filter(e=>[e.attacker,e.defender].includes(owner)&&s.turn-e.turn<=3).slice(-5).map(e=>({turn:e.turn,tile:e.tile,before:e.before,after:e.after,winner:e.winner})),supportedOrders:COMMAND_KINDS,proposedOrder:interpretGeneralOrder(s,owner,id,message)}};
 }
 export function validateGeneralResponse(raw) {
   if(!raw||typeof raw.reply!=='string'||!raw.reply.trim()||raw.reply.length>1600)return null;
@@ -231,13 +225,17 @@ export function validateGeneralResponse(raw) {
   if(raw.order){const o=raw.order;if(COMMAND_KINDS.includes(o.kind)&&Array.isArray(o.targets)&&o.targets.length>0&&o.targets.length<=3&&o.targets.every(id=>typeof id==='string'&&/^\d+,\d+$/.test(id))&&Number.isInteger(o.lossLimit)&&o.lossLimit>=15&&o.lossLimit<=65&&typeof o.allowSplit==='boolean')order={kind:o.kind,targets:o.targets,lossLimit:o.lossLimit,allowSplit:o.allowSplit,...(o.kind==='reinforce'&&typeof o.army==='string'&&/^army-\d+$/.test(o.army)?{army:o.army}:{})};}
   return {reply:raw.reply.trim(),order};
 }
-export function recordGeneralConversation(s,owner,id,message,response) {
-  const g=own(s,owner,id);if(!g||typeof message!=='string'||!message.trim()||message.length>600)return fail('Enter a message of up to 600 characters.');
-  let parsed=validateGeneralResponse(response)||localGeneralReply(s,owner,id,message);
+export function validateGeneralConversationResponse(s,owner,id,response) {
+  const g=own(s,owner,id);let parsed=validateGeneralResponse(response);if(!g||!parsed)return null;
   if(parsed.order&&!validateGeneralOrder(s,owner,id,parsed.order).ok)parsed={...parsed,order:null};
   const claimedCapture=/\b(?:we|i|our (?:army|forces)) (?:have |has |already )*(?:captured|conquered|seized|taken)\b/i.test(parsed.reply);
   const capture=s.militaryEvents.some(e=>e.attacker===owner&&e.action==='capture'&&s.turn-e.turn<=2&&g.objective?.targets.includes(e.tile));
-  if(claimedCapture&&!capture)parsed=localGeneralReply(s,owner,id,message);
+  return claimedCapture&&!capture?null:parsed;
+}
+export function recordGeneralConversation(s,owner,id,message,response) {
+  const g=own(s,owner,id);if(!g||typeof message!=='string'||!message.trim()||message.length>600)return fail('Enter a message of up to 600 characters.');
+  const parsed=response?.source==='gemini'?validateGeneralConversationResponse(s,owner,id,response):null;
+  if(!parsed)return fail('A valid Gemini reply without unsupported claims is required. Your message can be retried.');
   // Replies never execute. A model proposal is validated again on approval.
-  generalMessage(s,g,'player',message);generalMessage(s,g,'general',parsed.reply);return {ok:true,order:parsed.order};
+  generalMessage(s,g,'player',message);generalMessage(s,g,'general',parsed.reply,'gemini');return {ok:true,order:parsed.order};
 }

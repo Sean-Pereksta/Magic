@@ -5,7 +5,7 @@ import { createGame } from './fixtures/legacy-game.mjs';
 import { onlineGame } from './fixtures/online-game.mjs';
 import { kingdom, sizeOf, settlements, splitArmy, mergeArmies, orderArmy, resolveMovement, economyProjection, parseSave, declareWar } from '../core.mjs';
 import { GENERAL_QUALITIES, syncCommanders, generalUpkeep } from '../command-state.mjs';
-import { refreshGeneralCandidates, hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, prepareGenerals, musterGenerals, recordGeneralConversation, generalContext } from '../generals.mjs';
+import { refreshGeneralCandidates, hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, prepareGenerals, musterGenerals, recordGeneralConversation, generalContext, visibleGeneralHistory } from '../generals.mjs';
 import { issueVassalCommand, vassalArmyOrder, updateFealty } from '../vassals.mjs';
 import { changeRelation } from '../living.mjs';
 import { applyCommand } from '../multiplayer-commands.mjs';
@@ -53,10 +53,10 @@ test('mustering is paid, once per command per round, and cannot be farmed throug
 test('general replies do not execute; manual orders survive replanning and late conversation records',()=>{
   const s=createGame(),g=hire(s),a=s.armies[0],home=s.tiles[a.tile],target=Object.values(s.tiles).find(t=>t.owner==='ashen'&&t.id!==a.tile&&!['mountain','water'].includes(t.terrain));
   refreshKnowledge(s);const order={kind:'rally',targets:[target.id],lossLimit:35,allowSplit:false};
-  recordGeneralConversation(s,'ashen',g.id,'Gather at '+target.id,{reply:'I recommend this plan.',order});assert.equal(a.path.length,0);
+  recordGeneralConversation(s,'ashen',g.id,'Gather at '+target.id,{source:'gemini',reply:'I recommend this plan.',order});assert.equal(a.path.length,0);
   assert.equal(approveGeneralOrder(s,'ashen',g.id,order).ok,true);assert.equal(a.target,target.id);
   orderArmy(s,'ashen',a.id,home.id,'hold');g.lastPlanned=0;prepareGenerals(s,'ashen');assert.equal(a.order,'hold');assert.equal(a.target,null);
-  recordGeneralConversation(s,'ashen',g.id,'Where now?',{reply:'A new plan.',order});assert.equal(a.order,'hold');
+  recordGeneralConversation(s,'ashen',g.id,'Where now?',{source:'gemini',reply:'A new plan.',order});assert.equal(a.order,'hold');
   const view=knowledgeView(s,'wintermere');assert.equal(view.commanders.roster.length,0);assert.ok(!JSON.stringify(view).includes('Gather at '+target.id));
   assert.ok(sanitizeContext(generalContext(s,'ashen',g.id,'Why have you stopped?')));
 });
@@ -194,9 +194,27 @@ test('completed vassal objectives release their plan slot and imported orphan pl
   assert.deepEqual(parseSave(JSON.stringify(s)).cooperation.vassalOrders,s.cooperation.vassalOrders);
   p.status='Preparing';assert.throws(()=>parseSave(JSON.stringify(s)),/vassal command/);
 });
-test('invented completion claims are replaced by the current engine status',()=>{
-  const s=createGame(),g=hire(s);recordGeneralConversation(s,'ashen',g.id,'How is the campaign?',{reply:'We have captured every enemy town.',order:null});
-  assert.doesNotMatch(g.history.at(-1).text,/captured every enemy/);
+test('unsupported Gemini completion claims are rejected without synthetic replacement',()=>{
+  const s=createGame(),g=hire(s),before=JSON.stringify(s);
+  const result=recordGeneralConversation(s,'ashen',g.id,'How is the campaign?',{source:'gemini',reply:'We have captured every enemy town.',order:null});
+  assert.equal(result.ok,false);assert.match(result.error,/unsupported claims/);assert.equal(JSON.stringify(s),before);
+});
+test('general conversations require genuine nonempty Gemini responses and retain provenance after reload',()=>{
+  const s=createGame(),g=hire(s),before=JSON.stringify(s);
+  for(const response of [null,{reply:'Scripted reply.'},{source:'local',reply:'Scripted reply.'},{source:'failed',reply:''},{source:'gemini',reply:''},{source:'gemini',reply:' '.repeat(4)},{source:'gemini',reply:'x'.repeat(1601)}]){
+    assert.equal(recordGeneralConversation(s,'ashen',g.id,'Report',response).ok,false);
+    assert.equal(JSON.stringify(s),before,'unusable responses never append either half of a conversation or change orders');
+  }
+  assert.equal(recordGeneralConversation(s,'ashen',g.id,'Report',{source:'gemini',reply:'Awaiting your campaign orders.',order:null}).ok,true);
+  assert.equal(g.history.at(-1).source,'gemini');assert.equal(g.history.at(-1).role,'general');
+  const saved=parseSave(JSON.stringify(s)).commanders.roster.find(x=>x.id===g.id);
+  assert.deepEqual(saved.history,g.history);
+});
+test('general history hides legacy or local speech while retaining Gemini, player and command records',()=>{
+  const messages=[{role:'general',text:'Old greeting.'},{role:'general',source:'local',text:'Local reply.'},{role:'general',source:'gemini',text:'Provider reply.'},{role:'player',text:'Report.'},{role:'council',text:'Orders issued.'}];
+  assert.deepEqual(visibleGeneralHistory({history:messages}),messages.slice(2));
+  const s=createGame(),g=hire(s);
+  assert.equal(g.history.some(m=>m.role==='general'),false,'recruitment is an order record, never scripted character speech');
 });
 
 test('standing vassal defenses persist after arrival without repeated announcements',()=>{

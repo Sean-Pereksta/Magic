@@ -50,7 +50,10 @@ try {
     await page.waitForFunction(()=>document.getElementById('ai-status').textContent==='Gemini council connected');
     await page.locator('#alliance-message').fill('I will aid your northern frontier.');await page.locator('.alliance-compose button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.alliance-ai-status').textContent.includes('GEMINI_SCHEMA'));
-    assert.match(await page.locator('.alliance-notice').textContent(),/GEMINI_SCHEMA/);
+    assert.match(await page.locator('.alliance-ai-status').textContent(),/GEMINI_SCHEMA/);
+    const failedState=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
+    assert.equal(failedState.allianceCouncils[0].messages.some(m=>m.speakerHouseId==='wintermere'),false,'failed Gemini never inserts a local ruler answer');
+    assert.doesNotMatch(await page.locator('.alliance-history').textContent(),/Local dialogue/);
     await page.locator('.alliance-diagnostics').click();
     assert.equal(await page.locator('#gemini-diagnostics-dialog').isVisible(),true);
     assert.match(await page.locator('#diagnostics-report').inputValue(),/Error code: GEMINI_SCHEMA/);
@@ -96,7 +99,8 @@ try {
     });
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('[data-alliance]').first().click();
     await page.waitForFunction(()=>typeof globalThis.finishVerification==='function');
-    assert.equal(calls,0);assert.match(await page.locator('.alliance-history').textContent(),/Queued for Gemini/);
+    assert.equal(calls,0);assert.match(await page.locator('.alliance-history').textContent(),/Waiting for .*Gemini reply/);
+    assert.doesNotMatch(await page.locator('.alliance-history').textContent(),/Local dialogue|Food supplies will need attention/,'automatic dispatch facts are not shown as fabricated ruler speech');
     await page.evaluate(()=>globalThis.finishVerification());
     await page.waitForFunction(()=>{const s=JSON.parse(localStorage.getItem('catnmice.iron-throne.v1'));return s.allianceCouncils[0].messages.every(m=>m.source==='gemini');});
     assert.equal(calls,3);const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));

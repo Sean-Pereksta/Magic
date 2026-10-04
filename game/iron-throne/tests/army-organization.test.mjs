@@ -48,7 +48,7 @@ test('stale source, other House and draft-only forged troops fail without any st
 });
 test('commander remains in A; a second officer can command B and retains shared history after reload',()=>{
  const {s,a}=fixture(),g=hire(s),h=hire(s);assignGeneral(s,a.owner,g.id,a.id);
- recordGeneralConversation(s,a.owner,g.id,'Report',{reply:'Ready.',order:null});const history=structuredClone(g.history),d=createArmyDraft(s,a.owner,a.id);
+ recordGeneralConversation(s,a.owner,g.id,'Report',{source:'gemini',reply:'Ready.',order:null});const history=structuredClone(g.history),d=createArmyDraft(s,a.owner,a.id);
  moveDraftUnits(d,0,1,'archer',22);d.formations[1].generalId=h.id;d.formations[1].name='Bow Company';
  assert.equal(reorganizeArmy(s,a.owner,d).ok,true);const b=s.armies.find(x=>x.commandId===h.commandId);assert.ok(b);assert.equal(s.armies.find(x=>x.id===a.id).commandId,g.commandId);
  const restored=parseSave(JSON.stringify(s));assert.deepEqual(restored.commanders.roster.find(x=>x.id===g.id).history,history);

@@ -29,18 +29,26 @@ function earned() {
   return s;
 }
 
-test('authoritative online chat replaces a false denial and does not expose the secret in a buyer snapshot', () => {
+test('authoritative online chat rejects false Gemini denial, retains truthful Gemini speech and protects the secret', () => {
   const { state: s, meta } = onlineGame(2), cmd = commands(s, meta), host = 'sunspire', buyer = 'wintermere';
   kingdom(s, host).greed = .9; kingdom(s, host).honor = .4;
   Object.assign(relation(s, host, buyer), { trust: 15, opinion: 5 });
   const secret = 'I want to overthrow Wintermere. Will you join me?';
   appendConversation(s, host, 'player', secret, { actorHouseId: 'ashen' });
+  const invalid = cmd(buyer, 'chat', {
+    targetHouseId: host, message: 'Has anyone spoken to you about overthrowing my House?',
+    response: { reply: 'No one has ever spoken to us about overthrowing your House.', intents: [], tone: 'neutral', source: 'gemini' }
+  });
+  const unchanged=structuredClone(s);
+  assert.equal(applyCommand(s, meta, invalid).ok,false);assert.deepEqual(s,unchanged);
+  const truthful='My court has heard relevant discussions. I can offer the information under these exact terms.';
   const result = applyCommand(s, meta, cmd(buyer, 'chat', {
     targetHouseId: host, message: 'Has anyone spoken to you about overthrowing my House?',
-    response: { reply: 'No one has ever spoken to us about overthrowing your House.', intents: [], tone: 'neutral' }
+    response: { reply: truthful, intents: [], tone: 'neutral', source: 'gemini' }
   }));
   assert.equal(result.ok, true);
-  assert.doesNotMatch(s.courts[buyer].conversations[host].at(-1).text, /No one has ever/);
+  assert.equal(s.courts[buyer].conversations[host].at(-1).text, truthful);
+  assert.equal(s.courts[buyer].conversations[host].at(-1).source, 'gemini');
   const terms = s.courts[buyer].offers[host].find(i => i.type === 'INTELLIGENCE'); assert.ok(terms);
   const before = splitCampaign(s);
   assert.equal(JSON.stringify(before.world).includes(secret), false);

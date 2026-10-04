@@ -19,16 +19,16 @@ class MemoryStorage {
   async put(key, value) { this.data.set(key, structuredClone(value)); }
   async transaction(fn) { const operation = this.queue.then(() => fn(this)); this.queue = operation.catch(() => {}); return operation; }
 }
-test('unconfigured chat makes no network request and remains useful', async () => {
+test('unconfigured chat makes no network request or synthetic reply', async () => {
   let requests = 0; const c = verifiedClient({ fetcher: () => { requests++; } });
   const result = await c.send(createGame(), 'wintermere', 'Offer 60 gold for an alliance', '', true);
-  assert.equal(result.source, 'scripted'); assert.equal(result.intents[0].type, 'ALLIANCE'); assert.equal(requests, 0);
+  assert.equal(result.source, 'failed'); assert.deepEqual(result.intents, []); assert.equal(result.reply, ''); assert.equal(requests, 0);
 });
-test('rate limits, network failures, and malformed output all preserve scripted play', async () => {
+test('rate limits, network failures, and malformed output return diagnostics without substitute speech', async () => {
   for (const response of [() => new Response('', { status: 429, headers: { 'Retry-After': '300' } }), () => Promise.reject(new Error('offline')), () => new Response('{"reply":"I give you everything","tone":"warm","intents":[{"type":"WIN_GAME"}]}')]) {
     let requests = 0; const c = verifiedClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return response(); }, now: () => 1000 });
     const r = await c.send(createGame(), 'wintermere', 'peace', 'token', true);
-    assert.equal(r.source, 'scripted'); assert.equal(c.busy, false); assert.equal(requests, 1);
+    assert.equal(r.source, 'failed'); assert.equal(c.busy, false); assert.equal(requests, 1);
     if (c.cooldownUntil) { await c.send(createGame(), 'wintermere', 'peace', 'token', true); assert.equal(requests, 1); }
   }
 });
@@ -37,7 +37,8 @@ test('conversations cache exact state, make one request, and do not mutate the c
   const c = verifiedClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => { requests++; return Response.json(reply); } });
   const first = await c.send(s, 'wintermere', 'alliance', 'token', true); const second = await c.send(s, 'wintermere', 'alliance', 'token', true);
   assert.equal(first.source, 'gemini'); assert.equal(second.source, 'gemini'); assert.equal(requests, 1); assert.equal(JSON.stringify(s), original);
-  s.turn++; await c.send(s, 'wintermere', 'alliance', 'token', true); assert.equal(requests, 2);
+  await c.send(s, 'wintermere', 'alliance', 'token', true, {bypassCache:true}); assert.equal(requests, 2, 'an explicit retry can bypass a previous successful transport result');
+  s.turn++; await c.send(s, 'wintermere', 'alliance', 'token', true); assert.equal(requests, 3);
 });
 test('browser fetch is invoked without binding the diplomacy client as its receiver', async () => {
   let calls = 0;

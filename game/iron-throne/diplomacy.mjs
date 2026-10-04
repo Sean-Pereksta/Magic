@@ -743,3 +743,44 @@ export function relationshipResponse(s,rulerId,message,response,options={}) {
   if(terms){const v=disclosedDeal(s,rulerId,terms,actor);if(v.status!=='pending')return {...out,reply:`${options.proposal?'These are the terms before us.':'We are still discussing the same terms.'} ${v.reason}${v.counter?` Revised terms: ${describeIntent(v.counter)}.`:''}`,intents:[v.intent],...(v.counter?{counterProposal:v.counter}:{}),speechAct:v.status==='counter'?'counteroffer':v.status};}
   return out;
 }
+
+// Gemini remains the sole author of displayed ruler speech. Keep the existing
+// rule-backed metadata, while rejecting concrete contradictions instead of
+// replacing a model's character voice with a locally authored explanation.
+export function geminiRelationshipResponse(s,rulerId,message,response,options={}) {
+  const actor=options.actorHouseId||PLAYER, text=response.reply;
+  const sworn=!options.event&&!options.proposal&&isAiHouse(s,rulerId)&&vassalBond(s,actor,rulerId);
+  if(sworn&&/explain (?:their|your) purpose|(?:your|foreign) (?:soldiers|armies|troops).{0,90}(?:frontier|border)|before you speak of friendship/i.test(text))return null;
+  if(options.event){
+    const recent=conversationWindow(court(s,actor).conversations[rulerId]||[],s.turn).history.some(m=>m.role==='player');
+    if(!recent&&/\byou (?:ask|speak of|just offered|have just offered|propose|suggest|offered)\b/i.test(text))return null;
+  }
+  const war=qualitativeWarPosition(s,rulerId,actor);
+  if(war&&['broken','collapsing'].includes(war.desperation)&&/shatter.{0,60}walls|(?:we|our armies|my captains) (?:will|shall) (?:crush|destroy|annihilate)|war is (?:even|undecided)|victory is (?:certain|assured)/i.test(text))return null;
+  if(sworn&&/\b(?:forces?|troops?|soldiers?|arm(?:y|ies)|muster)\b/i.test(message)&&/how many|numbers?|full|total|strength|muster/i.test(message)){
+    const report=vassalMuster(s,actor,rulerId);
+    for(const match of text.matchAll(/\b(\d+)\s+(troops|armies)\b/gi))if(!report||Number(match[1])!==report[match[2].toLowerCase()])return null;
+  }
+  const discussion=commercialDiscussion(s,rulerId,message,options);
+  if(discussion){
+    if(discussion.verdict&&discussion.verdict.status!=='pending'){
+      if(commercialVoice(response,discussion)===discussion.reply&&text.trim()!==discussion.reply)return null;
+    }else if(commercialResponse(s,rulerId,message,response,options).reply!==text)return null;
+  }
+  const intelligence=!options.event&&intelligenceReply(s,rulerId,message,actor,options.proposal);
+  if(intelligence){
+    // An unknown or withheld report is never evidence that no approach occurred.
+    if(/\b(?:no one|nobody|not a soul)\s+(?:has\s+)?(?:ever\s+)?(?:spoken|approached|conspired|plotted)|\bthere (?:is|are) no (?:plots|schemes|threats|conspiracies)\b/i.test(text))return null;
+    const prices=intelligence.intents.filter(i=>i.type==='INTELLIGENCE').map(i=>i.giveAmount);
+    if([...text.matchAll(/\b(\d+)\s+(?:gold|coins?)\b/gi)].some(m=>!prices.includes(Number(m[1]))))return null;
+  }
+  const family=marriageReply(s,rulerId,message,actor,options.proposal);
+  if(family){
+    const current=marriageContext(s,rulerId,actor).marriage;
+    if(!current&&/\b(?:we (?:are|have become) (?:now )?(?:married|wed)|our families (?:are|have been) (?:now )?(?:joined|united)|the wedding (?:is complete|has (?:occurred|taken place)))\b/i.test(text))return null;
+    if(family.speechAct&&['accept','counteroffer'].includes(response.speechAct)&&response.speechAct!==family.speechAct)return null;
+    if(family.speechAct==='accept'&&response.speechAct==='reject')return null;
+  }
+  const guarded=relationshipResponse(s,rulerId,message,response,options);
+  return {...guarded,reply:text};
+}

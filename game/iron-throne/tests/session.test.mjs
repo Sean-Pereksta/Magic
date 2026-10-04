@@ -81,7 +81,7 @@ test('session issuance throttles independently of model budget and is safe under
   assert.equal(results.filter(Boolean).length, 6); assert.equal(await storage.get('budget'), undefined);
   assert.equal(await reserveSessionBudget(storage, 'same-client', now + 60000), true);
 });
-test('the browser shares one session handshake, omits verification tokens from messages and falls back after expiry', async () => {
+test('the browser shares one session handshake, omits verification tokens from messages and fails without speech after expiry', async () => {
   let now = 10000000, sessions = 0, messages = 0;
   const client = new DiplomacyClient({ endpoint: 'https://worker.example', now: () => now, fetcher: async (url, options) => {
     const data = JSON.parse(options.body);
@@ -93,11 +93,11 @@ test('the browser shares one session handshake, omits verification tokens from m
   assert.equal((await client.send(s, 'wintermere', 'one', '', true)).source, 'gemini');
   assert.equal((await client.send(s, 'wintermere', 'two', '', true)).source, 'gemini');
   assert.equal(messages, 2); assert.equal(sessions, 1); assert.equal(JSON.stringify(s), before);
-  now += 1800001; assert.equal((await client.send(s, 'wintermere', 'three', '', true)).source, 'scripted'); assert.equal(messages, 2);
+  now += 1800001; assert.equal((await client.send(s, 'wintermere', 'three', '', true)).source, 'failed'); assert.equal(messages, 2);
 });
 test('server-rejected session is cleared without automatic model retry or consumed-token reuse', async () => {
   const client = new DiplomacyClient({ endpoint: 'https://worker.example/diplomacy', fetcher: async () => new Response('{}', { status: 401 }) });
   client.session = { token: 'expired-server-side', expires: Date.now() + 1800000 };
   const out = await client.send(createGame(), 'wintermere', 'An alliance?', '', true);
-  assert.equal(out.source, 'scripted'); assert.equal(client.session, null); assert.match(out.notice, /verification/);
+  assert.equal(out.source, 'failed'); assert.equal(client.session, null); assert.match(out.notice, /verification/);
 });

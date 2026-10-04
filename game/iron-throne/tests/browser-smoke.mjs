@@ -28,14 +28,25 @@ try {
   for (const viewport of (process.env.IRON_THRONE_CHAT_ONLY ? [] : [{ width: 1280, height: 850 }, { width: 390, height: 844 }, { width: 844, height: 390 }].filter(v => !process.env.IRON_THRONE_VIEWPORT || String(v.width) === process.env.IRON_THRONE_VIEWPORT))) {
     browser = await chromium.launch({ headless: true, executablePath: process.env.IRON_THRONE_CHROMIUM || undefined, args: ['--no-sandbox', ...(process.env.IRON_THRONE_CHROMIUM ? ['--no-zygote', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
     const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900 });
-    await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},legacyGame());
+    await context.addInitScript(initial=>{
+      if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));
+      let verification;
+      window.turnstile={render:(_el,o)=>{verification=o;queueMicrotask(()=>o.callback('smoke-test-token'));return 1;},reset:()=>queueMicrotask(()=>verification.callback('smoke-test-token'))};
+    },legacyGame());
     const page = await context.newPage(), errors = [], external = [];
     // Startup artwork has a bounded 45-second fallback budget, including reloads.
     page.setDefaultNavigationTimeout(60000);
     await page.route('https://pub-*.r2.dev/**', route => route.fulfill({status:404,body:''}));
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', r => { if (!r.url().startsWith(base)) external.push(r.url()); });
-    await page.route('**/game/iron-throne/config.json', route => route.fulfill({ json: {} }));
+    await page.route('**/game/iron-throne/config.json', route => route.fulfill({ json: {diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'public-test-key'} }));
+    await page.route('https://worker.example/session',route=>route.fulfill({json:{token:'smoke-test-session',expires:Date.now()+1800000}}));
+    await page.route('https://worker.example/diplomacy',route=>{
+      const body=route.request().postDataJSON(),decision=body.world.formalDecision;
+      if(body.mode==='allianceCouncil')return route.fulfill({json:{responses:[{speakerHouseId:body.world.participants.find(p=>p.ai).id,message:decision?.reason||'Our House has received the council dispatch.'}]}});
+      const intents=!decision&&body.message==='An alliance for 60 gold'?[{type:'ALLIANCE',giveResource:'gold',giveAmount:60,duration:12}]:[];
+      return route.fulfill({json:{reply:decision?.reason||'Wintermere has heard your envoy and will review the formal terms.',tone:'neutral',intents}});
+    });
     await page.goto(`${base}/game/iron-throne/index.html`);
     await page.locator('#resume').click();
     assert.equal(await page.locator('#turn').textContent(), 'Turn 1');
@@ -72,11 +83,13 @@ try {
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(saved.armies.find(a => a.owner === 'ashen').tile, '5,7');
     await page.locator('[data-tab="council"]').click(); await page.locator('[data-talk="wintermere"]').click();
+    await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Gemini ready'));
     await page.locator('#chat-message').fill('An alliance for 60 gold'); await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
-    assert.match(await page.locator('#chat-notice').textContent(), /local diplomacy/i);
-    assert.equal(await page.locator('#use-gemini').isChecked(), false);
-    assert.equal(await page.locator('#use-gemini').isDisabled(), true);
+    assert.match(await page.locator('#chat-notice').textContent(), /Gemini/i);
+    assert.equal(await page.locator('#use-gemini').isChecked(), true);
+    assert.equal(await page.locator('#use-gemini').isDisabled(), false);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.findLast(m=>m.role==='ruler').source),'gemini');
     await page.locator('#quick-offer').click();await page.locator('[data-ratify]').first().click();
     await page.locator('.treaty-drawer-close').click();
     assert.match(await page.locator('#messages').textContent(), /ratified/);
@@ -109,7 +122,7 @@ try {
       for (const [type, x, y, id] of [['pointerdown', 110, 100, 1], ['pointermove', 170, 140, 1], ['pointerup', 170, 140, 1]]) canvas.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: rect.left + x, clientY: rect.top + y, bubbles: true }));
     });
     assert.equal(await page.locator('#coordinates').textContent(), before);
-    assert.deepEqual(errors, []); assert.deepEqual(external.filter(url=>!url.startsWith('https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/')), [], 'scripted mode should only request remote artwork');
+    assert.deepEqual(errors, []); assert.deepEqual(external.filter(url=>!url.startsWith('https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/')&&!url.startsWith('https://worker.example/')), [], 'only artwork and mocked Gemini endpoints are requested');
     console.log(`PASS ${viewport.width}×${viewport.height}: build, recruit, march, turns, council, treaty, autosave/resume, layout`);
     // Expanded controls use the same saved campaign and authoritative actions.
     await page.evaluate(async()=>{
@@ -192,7 +205,10 @@ try {
     assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false,'diagnostics appear after an attempted message');
     await page.locator('#chat-message').fill('Greetings, Queen.');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
-    if(verificationFails){assert.equal(modelCalls,0);assert.match(await page.locator('#chat-notice').textContent(),/verification/i);}
+    if(verificationFails){
+      assert.equal(modelCalls,0);assert.match(await page.locator('#chat-notice').textContent(),/verification/i);
+      assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler').length),0,'verification failure creates no local answer');
+    }
     else {
       assert.equal(modelCalls,1, await page.locator('#chat-notice').textContent());assert.match(await page.locator('#messages').textContent(),/banners of Wintermere/);
       assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false);
@@ -200,17 +216,20 @@ try {
       await page.locator('#chat-message').fill('Would you consider peace?');await page.locator('#send-chat').click();
       await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
       assert.equal(modelCalls,2);assert.match(await page.locator('#chat-notice').textContent(),/rate-limited.*RATE_LIMIT_UNKNOWN/);assert.match(await page.locator('#messages').textContent(),/Wintermere/);
-      assert.match(await page.locator('#ai-status').textContent(),/Local/);
+      assert.doesNotMatch(await page.locator('#ai-status').textContent(),/Local|Scripted/);
+      const afterLimit=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler'));
+      assert.equal(afterLimit.length,1,'rate limiting preserves the first Gemini reply without appending local speech');assert.equal(afterLimit[0].source,'gemini');
     }
     await page.locator('#gemini-diagnostics').click();
     const failureReport=await page.locator('#diagnostics-report').inputValue();
     assert.ok(failureReport.includes(verificationFails?'TURNSTILE_LOAD_FAILED':'RATE_LIMIT_UNKNOWN'));
     assert.match(failureReport,/GEMINI_API_KEY: Unknown/);
     await page.locator('[data-close="gemini-diagnostics-dialog"]').click();
-    await page.locator('#use-gemini').uncheck();const callsBefore=modelCalls;
+    await page.locator('#use-gemini').uncheck();const callsBefore=modelCalls,rulersBefore=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler').length);
     await page.locator('#chat-message').fill('An alliance for 60 gold');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal(modelCalls,callsBefore);assert.equal(await page.locator('#privacy').isVisible(),false);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler').length),rulersBefore,'opting out does not enable local ruler speech');
     await page.locator('[data-close="diplomacy"]').click();await page.locator('[data-talk="wintermere"]').click();
     assert.equal(await page.locator('#use-gemini').isChecked(),false,'manual opt-out survives reopening the council');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth),true);
@@ -221,7 +240,7 @@ try {
     assert.equal(await page.locator('#use-gemini').isChecked(),true,'a new session defaults to Gemini on resume');
     assert.equal(modelCalls,callsBefore);
     assert.deepEqual(errors,[]);
-    console.log(`PASS Gemini default: delayed config, ${verificationFails?'verification failure':'single verification, session reuse and quota fallback'}, opt-out, resume, no automatic model calls`);
+    console.log(`PASS Gemini default: delayed config, ${verificationFails?'verification failure without synthetic speech':'single verification, session reuse and quota failure without synthetic speech'}, opt-out, resume, no automatic model calls`);
     await context.close(); await browser.close(); browser=null;
   }
   // Capture the reported /session 503, copy it without a request, then recover.

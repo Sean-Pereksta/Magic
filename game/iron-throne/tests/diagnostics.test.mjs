@@ -29,14 +29,14 @@ function clientFor(env) {
 function report(client) { return diagnosticReport(client.lastDiagnostic, endpoint, origin, { endpoint: true, siteKey: true }); }
 const unknownChecks = Object.fromEntries(CHECK_NAMES.map(name => [name, 'unknown']));
 
-test('session 503 identifies each missing runtime setting and survives the scripted fallback', async () => {
+test('session 503 identifies each missing runtime setting and survives the failed response', async () => {
   for (const missing of [...CHECK_NAMES.map(name => [name]), CHECK_NAMES]) {
     const { env } = environment(); for (const name of missing) delete env[name];
     const client = clientFor(env);
     assert.equal(await client.openSession('private-verification-token'), false);
     const captured = client.lastDiagnostic, state = createGame(), before = JSON.stringify(state);
     const result = await client.send(state, 'wintermere', 'private-player-message');
-    assert.equal(result.source, 'scripted'); assert.equal(result.diagnostic, captured);
+    assert.equal(result.source, 'failed'); assert.equal(result.diagnostic, captured);
     assert.equal(captured.path, '/session'); assert.equal(captured.httpStatus, 503); assert.equal(captured.code, 'CONFIG_MISSING');
     for (const name of CHECK_NAMES) assert.equal(captured.checks[name], missing.includes(name) ? 'missing' : 'present');
     const text = report(client);
@@ -95,7 +95,7 @@ test('Google billing, quota, key, permission and model failures reach the client
       const { env, storage } = environment(); let modelCalls = 0;
       globalThis.fetch = async url => { if (url.includes('siteverify')) return verified(); modelCalls++; return Response.json({ error }, { status }); };
       const client = clientFor(env); assert.equal(await client.openSession('private-token'), true);
-      assert.equal((await client.send(createGame(), 'wintermere', 'private-message')).source, 'scripted');
+      assert.equal((await client.send(createGame(), 'wintermere', 'private-message')).source, 'failed');
       assert.equal(client.lastDiagnostic.code, code); assert.equal(client.lastDiagnostic.httpStatus, 503);
       assert.equal(client.lastDiagnostic.providerStatus, status); assert.equal(client.lastDiagnostic.checks.BUDGET, 'verified');
       assert.equal(client.lastDiagnostic.requestFormat, 'pre-council-queue-v1');
@@ -164,7 +164,7 @@ test('diagnostic reports reject injected fields, credentials, query strings and 
   assert.match(diagnosticReport(makeDiagnostic('GEMINI_REQUEST')), /Worker request format: Unknown/);
 });
 
-test('intentional local play has no diagnostic, malformed Gemini output is diagnosed, and recovery clears it', async () => {
+test('disabled Gemini has no diagnostic or generated speech, malformed Gemini output is diagnosed, and recovery clears it', async () => {
   let calls = 0;
   const client = new DiplomacyClient({ endpoint, fetcher: async () => { calls++; return calls === 1 ? new Response('not-json') : Response.json(reply); } });
   client.session = { token: 'private-session', expires: Date.now() + 1800000 };

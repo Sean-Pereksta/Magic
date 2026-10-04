@@ -35,10 +35,11 @@ export function initializeLiving(s) {
   return s;
 }
 
-export function appendConversation(s, rulerId, role, text, { unread = false, kind = '', proposal = null, actorHouseId = PLAYER } = {}) {
+export function appendConversation(s, rulerId, role, text, { unread = false, kind = '', proposal = null, actorHouseId = PLAYER, source = null } = {}) {
   if (role === 'player') recordCourtConversation(s, rulerId, actorHouseId, String(text), { kind });
   const history = court(s, actorHouseId).conversations[rulerId] ||= [];
   const entry = { role, text: String(text).slice(0, 1600), turn: s.turn, kind };
+  if (source === 'gemini') entry.source = source;
   if (proposal) entry.proposal = proposal;
   if(unread&&role==='ruler'&&kind&&!kind.startsWith('human'))entry.dispatch=dispatchContext({text:entry.text,kind},s.turn,rulerId,actorHouseId);
   history.push(entry);

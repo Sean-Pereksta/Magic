@@ -36,17 +36,32 @@ try {
       {role:'council',turn:1,kind:'relationship',text:'WARINESS +9 / FEAR +21'}
     ];
     const context=await browser.newContext({viewport});
-    await context.addInitScript(s=>localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(s)),s);
+    await context.addInitScript(s=>{
+      localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(s));
+      let verification;
+      globalThis.turnstile={render:(_el,o)=>{verification=o;queueMicrotask(()=>o.callback('test-token'));return 1;},reset:()=>queueMicrotask(()=>verification.callback('fresh-test-token'))};
+    },s);
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));
-    await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{}}));
+    await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'test-public-key'}}));
+    await page.route('https://worker.example/session',r=>r.fulfill({json:{token:'test-session',expires:Date.now()+1800000}}));
+    await page.route('https://worker.example/diplomacy',r=>{
+      const body=r.request().postDataJSON();
+      if(body.mode!=='allianceCouncil')return r.fulfill({json:{reply:'House Ashen armies approach House Wintermere territory.',tone:'neutral',intents:[]}});
+      const speaker=body.world.participants.find(p=>p.ai).id,decision=body.world.formalDecision;
+      return r.fulfill({json:{responses:[{speakerHouseId:speaker,message:decision?.reason||'Put the terms before me. I will consider joining the campaign.',...(!decision?{requestedIntent:{type:'JOINT_WAR',targetId:'vesper'}}:{})}]}});
+    });
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
     await page.locator('[data-alliance]').first().click();
+    await page.waitForFunction(()=>document.getElementById('ai-status').textContent==='Gemini council connected');
     assert.equal(await page.locator('#alliance-council').isVisible(),true);
     assert.equal(await page.locator('.alliance-members>span').count(),3);
     await page.locator('#alliance-message').fill('Attack Vesper.');await page.locator('.alliance-compose button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.alliance-history').textContent.includes('terms before me'));
     assert.equal(await page.locator('.alliance-compose button[type=submit]').isDisabled(),true);
+    // The first invitation now appears before the rest of the council answers.
+    // Wait for this sequence before submitting the mutually exclusive follow-up.
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).allianceCouncils[0].activeSequence?.status==='complete');
     const requested=page.locator('.alliance-history [data-alliance-terms]').first(),ruler=await requested.getAttribute('data-alliance-terms');
     await requested.click();
     await page.waitForFunction(()=>document.getElementById('offer-type').value==='JOINT_WAR');

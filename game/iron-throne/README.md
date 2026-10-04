@@ -118,11 +118,11 @@ Local caps cannot turn a paid-tier project into a free-tier project.
    terms, and ratify one. Check the pledge ledger and next turn's movement.
 
 No private keys are accepted or stored by the browser. Disabling the Gemini checkbox
-returns to the scripted council. The treaty desk remains available in every mode.
+leaves that answer undelivered, with an explicit Gemini retry. The treaty desk remains available in every mode.
 
 ### Diagnose a failed conversation
 
-If an attempted Gemini message uses local diplomacy, a **Diagnostics** button
+If an attempted Gemini message cannot be delivered, a **Diagnostics** button
 appears beside **Send envoy** in both the compact chat and full council. It opens
 the captured failure, including its stage, HTTP status, safe error code, suggested
 next step, and separate results for `GEMINI_API_KEY`, `TURNSTILE_SECRET`, and
@@ -179,7 +179,7 @@ and are not included in saves or exports.
   upgrade, grounding, other provider or model download is performed.
 - Actual rate limits activate a shared cooldown. Format, invalid-reply and network
   errors do not impose a browser cooldown on other chats. Waiting Council requests
-  remain queued through verification and actual rate limits. Failed requests retain local dialogue
+  remain queued through verification and actual rate limits. Failed requests record missing Gemini replies
   and diagnostics without preventing turns or deals.
 - Free-tier chat content may be used to improve Google's products. The council UI
   discloses this while Gemini is enabled. Messages and fictional state go to the
@@ -257,7 +257,7 @@ animation or external art download. The welcome citadel is a bundled SVG, and ex
 ## Deploying the living diplomacy update
 
 Deploy the updated Worker **and** the static files. The new browser expects the
-`/session` endpoint; an older Worker will safely leave it in local diplomacy until
+`/session` endpoint; an older Worker will leave AI replies unavailable until
 redeployed. From `game/iron-throne/worker`, run `npx wrangler deploy` through the
 existing Cloudflare account. Existing `GEMINI_API_KEY`, `TURNSTILE_SECRET`, origin
 allowlist and Durable Object binding remain in use. No Durable Object migration
@@ -272,7 +272,7 @@ URL is also normalized automatically by the client.
 
 Gameplay message allowances do not raise the operator's Gemini budget. The
 conservative 20/day, 4/minute global and 2/minute per-client defaults remain;
-local diplomacy supplies responses after those budgets are exhausted.
+AI replies remain unavailable when those budgets are exhausted; no scripted answer is inserted.
 
 Campaign format is version 3. Version 1/2 imports and the existing browser save key
 migrate automatically, retaining the board, existing resources and conversations while defaulting new expansion fields.
@@ -508,56 +508,77 @@ See [NAVAL.md](NAVAL.md) for Shipyards, three vessel classes, transport capacity
 river navigation, amphibious landings, Fishing Docks, naval AI, new maps and
 multiplayer/save integration.
 
-### Alliance Council Gemini queue and diagnostics
+### Alliance Council response sequences and diagnostics
 
-Deploy both the static game files and `game/iron-throne/worker` for this update.
-From the Worker directory, run `npx wrangler deploy` using the existing Cloudflare
-account and runtime secrets. The game deployment alone does not update the Worker.
-No new secret or binding is required. Deploy `firestore.rules` too for the new
-`councilVoice` command in online campaigns; it uses the same active-House and
-authenticated-controller checks as other gameplay commands.
+The progressive Council update changes the static game and multiplayer command
+allowlist only. Deploy the updated game files and `firestore.rules` for online
+campaigns. **No Cloudflare Worker redeploy, configuration change, contract change,
+or timeout adjustment is needed for this update.**
 
-Only Alliance Council requests enter the in-page queue. Each leader finishes
-before the next request starts; player Council work precedes waiting background
-Council jobs. Private ruler chats and generals send directly and keep using the
-same verified session. The Council send button has its own pending state, so a
-queued Council does not disable private chat. Changing campaigns cancels all
-active requests and obsolete queued work.
-Council messages wait for verification and actual `Retry-After` rate limits.
-A malformed reply, Google 400 or connection failure does not delay the next
-leader or an explicit retry. Only Worker allowance refusals are rescheduled
-without a model attempt. There are no automatic retries of failed generation.
-Mixed-success exchanges keep each leader's Gemini/local label and diagnostic.
+Previously, `sendCouncil()` requested rulers sequentially but returned one combined
+set. The game appended that set only after the last ruler finished, leaving earlier
+answers invisible while later requests were running. Formal voices were kept on
+proposal rows instead of entering the shared transcript.
 
-Council timing: each leader gets up to 60 seconds of Gemini generation in the
-Worker, with a 75-second browser deadline to allow for Worker processing and
-network transit. Queue waiting and session verification/renewal do not consume
-that deadline. Private ruler and general chats retain their 12-second provider
-and 18-second browser limits. A stalled Council leader releases the queue when
-its deadline expires; failed generation is not automatically retried.
-This timing fix requires both the game update and a Worker redeploy:
-`npx wrangler deploy --config game/iron-throne/worker/wrangler.toml --keep-vars`
-from the repository root. It changes no model, response schema, billing setting,
-secret, binding, or budget. The request-format diagnostic remains
-`pre-council-queue-v1` because the provider payload format has not changed.
+Now `DiplomacyClient.sendCouncilSpeaker()` owns one ruler and one independent
+`/diplomacy` request. Game-side `runCouncilSequence()` marks the next House as
+considering, requests its reply, commits it to authoritative council history,
+saves and renders it, then pauses `COUNCIL_RESPONSE_GAP_MS` (750 ms) before the
+next House. Reduced-effects mode removes the pause; there is none after the final
+answer. The next request is rebuilt from current bounded council history and
+marks only that ruler as eligible to speak. There is no conversation-wide timer.
+Existing per-request transport deadlines remain unchanged.
 
-Alliance Council exposes the captured safe error code, a live cooldown countdown,
-and a Diagnostics / Copy report dialog. Successful player replies clear that
-council's failure display. Gemini and local player-response messages are labeled.
+A stable player-message anchor replaces the old transcript-sequence equality
+check. Per-House completion records make replayed commits idempotent. Online
+campaigns use `councilBegin`, `councilConsider`, `councilCommit`, and
+`councilFinalize`, waiting for each authoritative state version before the next
+step. Campaign/turn/coalition/anchor changes cancel remaining speakers while
+preserving committed replies. Restoring a local save closes interrupted normal
+sequences instead of replaying paid requests. Closing the Council panel does not
+cancel a running conversation. The same Council cannot start a conflicting chat
+or formal request while its current sequence is pending.
 
-All eligible current-turn Council openings enter the queue, including on resumed
-campaigns and before verification. Their provisional text is marked **Queued for
-Gemini** until the request completes. The single-exchange-per-turn Council gate
-has been removed; private dispatches retain their optional once-per-turn limit.
-The triggering event, ruler personalities and shared observations are supplied.
-Voicing replaces only the matching current scripted entries and never grants
-proposal credits, spends player dispatches, or executes treaties, wars or orders.
-A later player message does not discard an earlier queued opening; only its
-original message IDs are replaced, and its prompt excludes that later dialogue.
-Changed turns, coalitions, original text or speakers invalidate the job. Online
-voicing commits through the authenticated `councilVoice` command during the
-player’s activation. Turning Gemini off or replacing the campaign cancels waiting
-requests. Reopening the council can retry an unsuccessful background voice.
+Formal requests use the same pacing. `formalConsider` publishes the current House,
+then deterministic game logic resolves and applies its decision **before** Gemini
+voices it. Accepted commitments never depend on model prose. One latest live card
+in the transcript shows Waiting, Considering, Accepted (✓), Declined (✕),
+Counteroffer or Alternative Support (◐), and invalid/circumstances changed (⚠),
+with text labels. Each completed voice is appended once to council history with
+its `formalProposalId`, so later rulers hear earlier answers. Contradictory voice
+text is withheld; it never becomes a scripted ruler answer. Private conversations remain independent
+of the Council queue.
+
+All AI dialogue is Gemini-only: councils, formal proposals, private rulers, and
+generals. A Gemini timeout, invalid reply, or failed verification records an
+undelivered answer and its safe diagnostic, then the Council proceeds to the next
+House. It does not generate or insert local speech. Existing scripted event facts
+can inform a model request but remain hidden as AI dialogue until Gemini voices
+them. Successful private/general replies retain their provider source.
+
+Failed paid generations are never automatically retried. **Retry Gemini** reopens
+only failed Council speakers at their original anchor, preserving delivered
+answers and spending no additional envoy. Formal voice retries preserve the
+already-authoritative decision; private message retries preserve the original
+paid player message. Saved formal decisions with interrupted voices are marked
+undelivered rather than silently requesting Gemini again. Later successes do not
+erase earlier diagnostics. Initial verification and actual `Retry-After` allowance
+resets still wait; a fresh verification can restore Gemini after an explicit
+verification failure. Provider outages, billing, quota, and upstream timeouts can
+still prevent delivery, and are shown honestly instead of replaced with fiction.
+
+Automatic Council dispatches are also voiced and committed one entry at a time.
+They keep their original event/message anchors, spend no player dispatches, and
+execute no commitments. Failed automatic voices remain undelivered and are not silently retried.
+Private ruler chats, formal offers, dispatches, and generals use independent request paths.
+
+Validation: `npm run test:iron-throne` covers state, client, formal decisions,
+multiplayer replay, cancellation, and unchanged Worker contracts. Run
+`npm run test:iron-throne:council-browser` for delayed-response, timeout-isolation,
+private-chat independence, explicit Gemini retries, and live formal tracker checks on desktop and mobile.
+The existing `alliance-council-browser.mjs`, `formal-proposal-browser.mjs`, and
+`council-diagnostics-browser.mjs` cover the related flows. Browser tests are
+functional checks with mocked provider calls; they create no previews or images.
 
 The October 1 recovery restores the private-chat provider schema from commit
 `66ff3a2` (the main branch immediately before PR #1653). The regression test checks
@@ -643,7 +664,7 @@ validation stays strict, and no failure triggers a second paid request automatic
 Alliance Council schemas list only the current eligible AI speakers. Their optional
 terms use the same normalization and strict validation; valid Gemini replies retain
 that source in offline and online council history. Provider, session and quota failures
-still use local dialogue and show the actual Diagnostics reason.
+withhold the AI answer and show the actual Diagnostics reason.
 
 Deploy the updated game files and redeploy the Cloudflare Worker to activate these
 changes. A GitHub merge alone does not update the Worker. Mocked regressions cover
