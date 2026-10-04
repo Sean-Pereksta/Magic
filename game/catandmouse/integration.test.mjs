@@ -33,6 +33,12 @@ test('public loader applies every existing patch to the updated core; both modul
   assert.match(output,/rat:\[0,7,8,9,10\]\[n\]/);
   assert.match(output,/MAX_FRIENDLY_RABBITS = 12/);
   assert.match(output,/from "\.\/catandmouse\/sync.mjs"/);
+  assert.match(output,/from "\.\/catandmouse\/tactics.mjs"/);
+  assert.match(output,/from "\.\/catandmouse\/combat-presentation.mjs"/);
+  assert.match(output,/battlePresentation\.syncEntities/);
+  assert.match(output,/tacticalAI\.plan/);
+  assert.match(output,/combat-presentation\.css/);
+  assert.equal((output.match(/const MAX_FRIENDLY_RABBITS =/g) || []).length,1);
   compileModule(core);compileModule(output);
 });
 
@@ -67,6 +73,8 @@ function listenerHarness() {
     getLobbyParticipants:()=>Object.entries(ctx.players),
     requestRender:()=>renders++,setTileEffect(){},startCatBehaviorLoop(){},
     stateWriter:{cancel:()=>cancelled++,observe(){},resume(){}},
+    tacticalAI:{reset(){}},delayedEnemySteps:new Map(),
+    battlePresentation:{moveEntity(){}},enemyMovementCadence:()=>400,
     playerWriter:{cancel:()=>cancelled++,resume(){}},
     stateFieldPatch,applyDifficulty(){},updateHostDisplay(){},updateCatHealthBar(){},updateDifficultyUI(){},
     renderSelectionOverlay:()=>menus++,ensureLocalBuildControls(){},playGameMusic(){},startHostLoops(){},
@@ -141,4 +149,79 @@ test('authoritative state patches go through the queue and solo remains local',a
   await ctx.runtimeUpdateDoc({id:'state'},{cat:{x:4},updatedAt:1});assert.equal(queued[0]['cat.x'],4);
   ctx.isHost=false;await ctx.runtimeUpdateDoc({id:'state'},{cat:{x:5}});assert.equal(queued.length,1);
   ctx.soloMode=true;await ctx.runtimeUpdateDoc({id:'state'},{cat:{x:6}});assert.equal(local.length,1);
+});
+
+test('combat batches merge per-unit updates, let death win, and preserve coalesced dotted state writes',async()=>{
+  const batches=[],queued=[];
+  const ctx=vm.createContext({soloMode:false,isHost:true,stateFieldPatch,ID:{STATE:'state'},db:{},
+    stateWriter:{enqueue:async patch=>queued.push(patch)},writeBatch:()=>({
+      update:(ref,data)=>batches.push({type:'update',ref,data}),set:(ref,data)=>batches.push({type:'set',ref,data}),delete:ref=>batches.push({type:'delete',ref}),commit:async()=>{}
+    })});
+  vm.runInContext(section('  async function commitEnemyBatch(actions)', '  const ID = {'),ctx);
+  await ctx.commitEnemyBatch([
+    {type:'update',ref:{id:'rabbit_a'},data:{x:2,y:3}},
+    {type:'update',ref:{id:'rabbit_a'},data:{health:4}},
+    {type:'update',ref:{id:'rat_dead'},data:{x:4}},
+    {type:'delete',ref:{id:'rat_dead'}},
+    {type:'update',ref:{id:'rat_dead'},data:{health:0}},
+    {type:'update',ref:{id:'state'},data:{cat:{health:42},updatedAt:100}}
+  ]);
+  assert.equal(batches.length,2);assert.equal(batches.find(b=>b.ref.id==='rat_dead').type,'delete');
+  assert.equal(batches.find(b=>b.ref.id==='rabbit_a').data.health,4);
+  assert.equal(batches.find(b=>b.ref.id==='rabbit_a').data.x,2);
+  assert.equal(queued.length,1);assert.equal(queued[0]['cat.health'],42);assert.equal(queued[0].cat,undefined);
+});
+
+function denHarness({blocked=false,count=11,canRun=true,fail=false}={}) {
+  let ack;const batches=[];
+  const ctx=vm.createContext({window:{},rabbits:Array.from({length:count},(_,i)=>({id:`r${i}`,x:20,y:i,health:5})),
+    canRunHostSimulation:()=>canRun,MAX_FRIENDLY_RABBITS:12,Date:{now:()=>100000},crypto:{randomUUID:()=>String(batches.length)},
+    isLivingEnemy:r=>r.health>0,getStructuresByType:()=>[{x:1,y:1},{x:4,y:4}],stableHash:()=>0,
+    openFriendlySpawn:den=>blocked ? null : {x:den.x+1,y:den.y},directionFromDelta:()=> 'east',
+    ccRef:id=>({id}),ID:{rabbit:id=>`rabbit_${id}`},battlePresentation:{pulseNode(){}},structureNodes:new Map(),
+    isNearRallyDrum:()=>false,tacticalPlan:(_kind,rb)=>({target:{x:0,y:0,kind:'rat',enemy:{health:50}},next:{x:rb.x-1,y:rb.y}}),
+    moveAlongPlan:(_kind,rb,plan,writes)=>{rb.x=plan.next.x;writes.push({type:'update',ref:{id:`rabbit_${rb.id}`},data:{x:rb.x}});},
+    requestRender(){},commitEnemyBatch:actions=>{batches.push(actions);return fail ? Promise.reject(Error('offline')) : new Promise(resolve=>ack=resolve);}
+  });
+  vm.runInContext(section('  async function rabbitDenTick(){','  async function fleaNestAttackTick(){'),ctx);
+  return {ctx,batches,ack:()=>ack?.()};
+}
+test('rabbit den obeys the global cap and prepares every movement before a network acknowledgement',async()=>{
+  const h=denHarness(),promise=h.ctx.rabbitDenTick();await Promise.resolve();
+  assert.equal(h.ctx.rabbits.length,12);assert.equal(h.batches.length,1);
+  assert.ok(h.ctx.rabbits.slice(0,11).every(r=>r.x===19));
+  assert.equal(h.batches[0].filter(a=>a.type==='set').length,1);
+  const spawn=h.batches[0].find(a=>a.type==='set').data;assert.equal(spawn.x,2);assert.equal(spawn.spawnX,1);
+  h.ack();await promise;
+});
+test('blocked dens do not spawn, and non-hosts cannot spawn or move allies',async()=>{
+  const blocked=denHarness({blocked:true,count:0}),promise=blocked.ctx.rabbitDenTick();blocked.ack();await promise;
+  assert.equal(blocked.ctx.rabbits.length,0);assert.equal(blocked.batches[0].length,0);
+  const spectator=denHarness({canRun:false});await spectator.ctx.rabbitDenTick();assert.equal(spectator.batches.length,0);
+});
+test('failed den batches release optimistic spawn slots for a later retry',async()=>{
+  const h=denHarness({fail:true});await assert.rejects(h.ctx.rabbitDenTick(),/offline/);
+  assert.equal(h.ctx.rabbits.length,11);assert.equal(h.ctx.window.__lastRabbitSpawnAt['1,1'],0);
+});
+test('real enemy group takes one step, stores no AI cache in Firebase, and respects host authority',async()=>{
+  const writes=[],rat={id:'one',kind:'rat',x:1,y:1,health:20,updatedAt:100000};
+  const ctx=vm.createContext({canRunHostSimulation:()=>true,Date:{now:()=>100000},combatUnitKey:(kind,e)=>`${kind}:${e.id}`,
+    enemyDocRef:(_kind,id)=>({id:`rat_${id}`}),ccRef:id=>({id}),isLivingEnemy:e=>e.health>0,delayedEnemySteps:new Map(),traps:[],ratKings:[],ratPower:1,
+    tacticalPlan:()=>({next:{x:2,y:1},target:{type:'mouse',key:'m',x:8,y:1,uid:'other'}}),
+    moveAlongPlan:(_kind,e,plan,out)=>{Object.assign(e,plan.next);out.push({type:'update',ref:{id:e.id},data:{x:e.x,y:e.y}});},
+    requestRender(){},commitEnemyBatch:async out=>writes.push(...out)});
+  vm.runInContext(section('  async function hostMoveTacticalGroup(', '  async function hostMoveFleas(){'),ctx);
+  await ctx.hostMoveTacticalGroup([rat],'rat');assert.equal(rat.x,2);
+  assert.ok(writes.every(a=>!a.data?.ai));
+  ctx.canRunHostSimulation=()=>false;await ctx.hostMoveTacticalGroup([rat],'rat');assert.equal(rat.x,2);
+});
+test('ox damage waits for its authoritative windup, then retains the original attack damage',async()=>{
+  let now=100000,damage=0;const ox={id:'o',x:2,y:1,health:30,updatedAt:now};
+  const ctx=vm.createContext({canRunHostSimulation:()=>true,Date:{now:()=>now},combatUnitKey:()=> 'ox:o',enemyDocRef:()=>({id:'ox_o'}),
+    isLivingEnemy:e=>e.health>0,delayedEnemySteps:new Map(),traps:[],ratKings:[],ratPower:2,
+    tacticalPlan:()=>({next:null,target:{type:'structure',key:'wall',x:3,y:1}}),moveAlongPlan(){},
+    damageStructure:async(_x,_y,amount)=>{damage+=amount;},requestRender(){},commitEnemyBatch:async()=>{}});
+  vm.runInContext(section('  async function hostMoveTacticalGroup(', '  async function hostMoveFleas(){'),ctx);
+  await ctx.hostMoveTacticalGroup([ox],'ox');assert.equal(damage,0);assert.equal(ox.attackIntent.executeAt,100180);
+  now+=500;await ctx.hostMoveTacticalGroup([ox],'ox');assert.equal(damage,20);assert.equal(ox.health,29);
 });

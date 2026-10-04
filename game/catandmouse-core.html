@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>🐭 Cat vs Mouse</title>
+  <link rel="stylesheet" href="./catandmouse/combat-presentation.css" />
 
   <style>
     body {
@@ -1561,6 +1562,8 @@
   // ============================================================
 
   import { createPatchWriter, stateFieldPatch, eligibleHostCandidate, reconcileKeyedNodes } from "./catandmouse/sync.mjs";
+  import { createTacticalDirector, findOpenSpawn, stableHash } from "./catandmouse/tactics.mjs";
+  import { createCombatPresentation } from "./catandmouse/combat-presentation.mjs";
 
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -1985,25 +1988,46 @@
 
   async function commitEnemyBatch(actions) {
     if (!actions.length) return;
-
+    // Merge compatible updates; a deletion always wins over a movement update
+    // collected earlier in this tick. State retains its existing write queue.
+    const merged = new Map();
+    let statePatch = null;
+    for (const action of actions){
+      if (action.ref?.id === ID.STATE && action.type === "update"){
+        statePatch = { ...statePatch, ...stateFieldPatch(action.data) };
+        continue;
+      }
+      const prior = merged.get(action.ref?.id);
+      if (prior?.type === "delete" && action.type !== "set") continue;
+      merged.set(action.ref?.id, action.type === "update" && prior
+        ? { ...prior, data:{ ...prior.data, ...action.data } } : action);
+    }
     if (soloMode){
-      for (const action of actions) applyLocalRuntimeMutation(action.type, action.ref, action.data || {});
+      for (const action of merged.values()) applyLocalRuntimeMutation(action.type, action.ref, action.data || {});
+      if (statePatch){
+        // applyLocalRuntimeMutation expects the original nested cat/objectives.
+        const local = {};
+        for (const [key,value] of Object.entries(statePatch)){
+          const dot = key.indexOf(".");
+          if (dot < 0) local[key] = value;
+          else { const root=key.slice(0,dot); (local[root] ||= {})[key.slice(dot+1)] = value; }
+        }
+        applyLocalRuntimeMutation("update", ccRef(ID.STATE), local);
+      }
       return;
     }
-
-    const batch = writeBatch(db);
-
-    for (const action of actions) {
-      if (action.type === "update") {
-        batch.update(action.ref, action.data);
-      } else if (action.type === "set") {
-        batch.set(action.ref, action.data, { merge: true });
-      } else if (action.type === "delete") {
-        batch.delete(action.ref);
+    const pending = [];
+    if (statePatch && isHost) pending.push(stateWriter.enqueue(statePatch));
+    if (merged.size){
+      const batch = writeBatch(db);
+      for (const action of merged.values()){
+        if (action.type === "update") batch.update(action.ref, action.data);
+        else if (action.type === "set") batch.set(action.ref, action.data, { merge:true });
+        else if (action.type === "delete") batch.delete(action.ref);
       }
+      pending.push(batch.commit());
     }
-
-    await batch.commit();
+    await Promise.all(pending);
   }
 
   const ID = {
@@ -2114,6 +2138,7 @@
   const MAX_TOTAL_ENEMIES = 36;
   const MAX_PROJECTILES = 80;
   const ENEMIES_AI_PER_FRAME = 6;
+  const MAX_FRIENDLY_RABBITS = 16;
   let buildCooldown = 180;
 
   let advancementPoints = 0;
@@ -2183,8 +2208,6 @@
   const STALE_ENEMY_MS = 30000;
   const DEAD_ENEMY_CLEANUP_MS = 1500;
   const TILE_EFFECT_MS = 5000;
-  const PROJECTILE_TTL_MS = 2500;
-  const EFFECT_TTL_MS = 1200;
   const ROOM_ABANDONED_MS = 30000;
   const OVERLAY_RENDER_DISTANCE = 7;
   const ENEMY_CAPS = {
@@ -2325,7 +2348,6 @@
   let selectionStates = {};
   let selectionDeadlineAt = null;
   let selectionAssetsReadyAt = null;
-  let rabbitShots = [];
   let structureShields = {};
   let structureShieldBrokenAt = {};
 
@@ -2354,7 +2376,6 @@
   let lastPlayerWriteAt = 0;
 
   let nextRatWaveAt = null;
-  let combatVfx = [];
   let lastGeneratorPayoutAt = Date.now();
   let lastAdvPointAt = Date.now();
   const towerCooldowns = new Map();
@@ -2685,13 +2706,12 @@
   function isLivingRat(r) { return isLivingEnemy(r) && (r.health ?? 0) > 0; }
   function isLivingFlea(f) { return isLivingEnemy(f) && (f.lifetime ?? 1) > 0; }
   let structureTargeting = {};
-  let enemyUpdateCursor = 0;
   let blockedGridCache = null;
   let blockedGridDirty = true;
+  let tacticalRevision = 0;
 
   let entitySpatialIndex = createSpatialIndex();
   let structureSpatialIndex = createSpatialIndex();
-  let projectileSpatialIndex = createSpatialIndex();
   let structureIndexDirty = true;
 
   function markStructureIndexDirty(){ structureIndexDirty = true; }
@@ -2710,7 +2730,6 @@
   function rebuildSpatialIndexes(){
     rebuildStructureIndexIfNeeded();
     entitySpatialIndex.clear();
-    projectileSpatialIndex.clear();
 
     for (const p of Object.values(players)){
       if (!p) continue;
@@ -2726,14 +2745,11 @@
       }
     }
 
-    for (const p of rabbitShots){
-      p.entityType = "projectile";
-      projectileSpatialIndex.insert(p);
-    }
+
   }
 
 
-  function markBlockedGridDirty(){ blockedGridDirty = true; }
+  function markBlockedGridDirty(){ blockedGridDirty = true; tacticalRevision++; }
   function rebuildBlockedGridFromStructures(){
     const blocked = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
     for (const st of getAllStructures()){
@@ -2777,6 +2793,7 @@
     }
     if (catPos.x === x && catPos.y === y) return true;
     if (rats.some(r => isLivingRat(r) && r.x === x && r.y === y)) return true;
+    if (stinkRats.some(r => isLivingEnemy(r) && r.x === x && r.y === y)) return true;
     if (oxen.some(o => isLivingEnemy(o) && o.x === x && o.y === y)) return true;
     if (ratKings.some(k => isLivingEnemy(k) && k.x === x && k.y === y)) return true;
     if (vultures.some(v => isLivingEnemy(v) && v.x === x && v.y === y)) return true;
@@ -2836,33 +2853,17 @@
 
   function addCombatVfx(x, y, icon, className, durationMs = 450, size = 16){
     if (x<0 || y<0 || x>=gridSize || y>=gridSize) return;
-    combatVfx.push({
-      x, y, icon, className, size,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + durationMs
-    });
+    const style = className === "vfx-explosion" ? "rocket" : className === "vfx-claw" ? "claw" : icon === "🛡️" ? "shield" : icon === "🟢" ? "slime" : "hit";
+    battlePresentation.burst({x,y}, style, size > 18 ? 6 : 3, className === "vfx-explosion");
   }
 
   function triggerNestFiringVfx(x, y, durationMs = 380){
-    const selector = `.iso-structure.iso-flea-nest[data-gx="${x}"][data-gy="${y}"]`;
-    const nestEl = persistentStructureLayer?.querySelector(selector);
-    if (!nestEl) return;
-    nestEl.classList.remove("nest-firing");
-    void nestEl.offsetWidth;
-    nestEl.classList.add("nest-firing");
-    setTimeout(() => nestEl.classList.remove("nest-firing"), durationMs);
+    const nestEl = structureNodes.get(`${x}_${y}`)?.node;
+    battlePresentation.pulseNode(`nest:${x}_${y}`,nestEl,"nest-firing",durationMs);
   }
 
-  function showClawHit(x, y){
-    addCombatVfx(x, y, "🗡️", "vfx-claw", 560, 13);
-    addCombatVfx(x, y, "✦", "vfx-hit", 420, 10);
-  }
-
-  function showProjectileImpact(x, y){
-    addCombatVfx(x, y, "✦", "vfx-sparks", 460, 18);
-    addCombatVfx(x, y, "✦", "vfx-hit", 340, 9);
-    requestRender("projectileImpact");
-  }
+  function showClawHit(x, y){ battlePresentation.attack("cat", {x,y}, "claw"); }
+  function showProjectileImpact(x, y){ battlePresentation.burst({x,y}, "hit", 3); }
 
   // ============================================================
   // UI helpers
@@ -3097,7 +3098,7 @@
     for (const [kind, entry] of Object.entries(ENEMY_TYPE_REGISTRY)){
       if (!entry.targetable) continue;
       for (const enemy of (entry.collection() || [])){
-        if (!isLivingEnemy(enemy)) continue;
+        if (!isLivingEnemy(enemy) || kind === "flea") continue;
         result.push({ kind, enemy, x:enemy.x, y:enemy.y, health:(enemy.health ?? enemy.maxHealth ?? 1) });
       }
     }
@@ -3358,6 +3359,11 @@
   let persistentTileLayer = null;
   let persistentEntityLayer = null;
   let persistentStructureLayer = null;
+  let persistentUnitLayer = null;
+  let persistentEffectLayer = null;
+  let presentationStageMetrics = null;
+  let presentationFocus = null;
+  const structureVisualState = new Map();
   const structureNodes = new Map();
   const tileNodes = [];
   let playerStatusSignature = "";
@@ -3435,10 +3441,10 @@
     return null;
   }
 
-  function updateIsoCamera(stageMetrics){
+  function updateIsoCamera(stageMetrics, visualFocus = null, frameMs = 100){
     const wrapper = document.getElementById("gridWrapper");
     if (!wrapper || !stageMetrics) return;
-    const focus = getLocalFocusPlayer();
+    const focus = visualFocus || getLocalFocusPlayer();
     if (focus && typeof focus.x === "number" && typeof focus.y === "number"){
       const localPlayer = players[uid];
       const isLocalFocus = focus.isLocal === true || (localPlayer && focus === localPlayer);
@@ -3475,7 +3481,7 @@
       return;
     }
 
-    const smooth = ISO_CAMERA_SMOOTHING;
+    const smooth = 1 - Math.pow(1 - ISO_CAMERA_SMOOTHING, Math.min(100, frameMs) / 100);
     camera.x += (camera.targetX - camera.x) * smooth;
     camera.y += (camera.targetY - camera.y) * smooth;
   }
@@ -3485,8 +3491,8 @@
     const viewport = document.getElementById("grid");
     if (!wrapper || !viewport || !stageMetrics) return;
 
-    const wrapperW = wrapper.clientWidth;
-    const wrapperH = wrapper.clientHeight;
+    const wrapperW = stageMetrics.wrapperW ?? wrapper.clientWidth;
+    const wrapperH = stageMetrics.wrapperH ?? wrapper.clientHeight;
     const stageW = stageMetrics.worldW;
     const stageH = stageMetrics.worldH;
     const isSmall = Math.min(wrapperW, wrapperH) < 430;
@@ -3498,8 +3504,8 @@
 
     // True screen-space centering: camera point is mapped directly to the chosen
     // viewport center.
-    let translateX = screenCenterX - camera.x * scale;
-    let translateY = screenCenterY - camera.y * scale;
+    let translateX = screenCenterX - camera.x * scale + (stageMetrics.shakeX || 0);
+    let translateY = screenCenterY - camera.y * scale + (stageMetrics.shakeY || 0);
 
     // Very loose safety clamp only to keep some part of the map in view.
     // Padding is intentionally large so clamping does not pin the player low.
@@ -3729,8 +3735,82 @@
       creature.className = `iso-creature ${creatureClass} ${getDirectionClass(facing)}`;
       el.appendChild(creature);
     }
-    entityLayer.appendChild(el);
+    const body = document.createElement("div");
+    body.className = "cm-unit-body";
+    while (el.firstChild) body.appendChild(el.firstChild);
+    el.appendChild(body);
+    entityLayer?.appendChild(el);
     return el;
+  }
+
+  const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const battlePresentation = createCombatPresentation({
+    document, project:isoToScreen, depth:getIsoDepth,maxProjectiles:MAX_PROJECTILES,
+    now:()=>Date.now(),requestFrame:requestAnimationFrame,cancelFrame:cancelAnimationFrame,
+    hidden:() => document.hidden || pageSuspended,
+    reducedMotion:() => motionPreference.matches,
+    createUnit:entry => addCreatureEntityAt(null,entry.x,entry.y,`${entry.type}-creature`,entry.facing, {extraClass:entry.friendlyFlea ? "player-flea" : ""}),
+    inView:position => {
+      if (!presentationStageMetrics) return true;
+      const p=isoToScreen(position.x,position.y), m=presentationStageMetrics;
+      return Math.abs(p.x+m.originX-camera.x)<m.wrapperW/1.25+100 && Math.abs(p.y+m.originY-camera.y)<m.wrapperH/1.25+100;
+    },
+    onObservedHit:entry => {
+      // Remote damage snapshots also get travel feedback, without syncing any
+      // intermediate projectile coordinates. The closest eligible shooter is
+      // a presentation inference; combat results remain entirely authoritative.
+      if (isHost || soloMode || entry.type === "mouse" || entry.type === "rabbit" || entry.type === "flea") return;
+      const shooters = getAllStructures().filter(st => ["🔫","🚀","⚡","☄️","🌰","🕸️"].includes(st.type) && !isTowerDisabledByStink(st.x,st.y) && !isTowerSilenced(st.x,st.y))
+        .map(st => ({...st,dist:Math.abs(st.x-entry.x)+Math.abs(st.y-entry.y)})).filter(st => st.dist <= ({"🔫":5,"🚀":8,"⚡":5,"☄️":8,"🌰":30,"🕸️":7}[st.type] || 5)).sort((a,b)=>a.dist-b.dist);
+      const source=shooters[0];
+      if(source) presentShot(source,entry,{"🔫":"turret","🚀":"rocket","⚡":"tesla","☄️":"laser","🌰":"acorn","🕸️":"web"}[source.type],entry.key);
+    },
+    onFrame:(focus,frameMs,shake) => {
+      if (!presentationStageMetrics) return false;
+      if (focus && presentationFocus) updateIsoCamera(presentationStageMetrics, {...focus,facing:presentationFocus.facing,isLocal:presentationFocus.local},frameMs);
+      applyIsoCameraTransform({...presentationStageMetrics,shakeX:shake.x,shakeY:shake.y});
+      return Math.abs(camera.targetX-camera.x)+Math.abs(camera.targetY-camera.y)>0.2;
+    }
+  });
+  motionPreference.addEventListener?.("change", () => battlePresentation.resume());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) battlePresentation.suspend();
+    else { battlePresentation.resume(); requestRender("motionVisibleAgain"); }
+  });
+
+  function combatUnitKey(kind,entity){ return kind === "cat" ? "cat" : `${kind}:${entity.docId || entity.id || entity.uid}`; }
+  function presentShot(source,target,style="rabbit",targetKey=null){
+    const from=battlePresentation.getPosition(source.key,source) || source;
+    const to=battlePresentation.getPosition(targetKey,target) || target;
+    if(style === "tesla" || style === "laser" || style === "gust") battlePresentation.beam(from,to,style,style === "gust" ? 300 : 190);
+    else battlePresentation.projectile(from,to,style,{targetKey});
+    if(source.key) battlePresentation.pulseNode(`fire:${source.key}`,battleUnitNode(source.key),"cm-attacking",180);
+  }
+  function battleUnitNode(key){ return persistentUnitLayer?.querySelector(`[data-unit-key="${key}"]`); }
+
+  function renderBattleUnits(){
+    const entries=[], now=Date.now(), near=entity => Math.abs(entity.x-playerPos.x)+Math.abs(entity.y-playerPos.y)<=OVERLAY_RENDER_DISTANCE;
+    for (const [pu,p] of Object.entries(players)){
+      if (p.alive === false) continue;
+      const local=pu===uid, entity=local ? {...p,...playerPos,facing:playerFacing} : p;
+      entries.push({...entity,type:"mouse",key:`mouse:${pu}`,local,obscured:local && isLocalMouseLikelyObscured(entity.x,entity.y),label:near(entity) ? (p.displayName || "mouse").toLowerCase() : "",health:1});
+    }
+    const groups=[["rat",rats],["stinkrat",stinkRats],["ox",oxen],["ratking",ratKings],["vulture",vultures],["termite",termites],["rabbit",rabbits],["flea",fleas]];
+    const colors={rat:"brown",ox:"orange",ratking:"#7c2d12",rabbit:"#7c3aed"};
+    for(const [kind,list] of groups) for(const entity of list){
+      if (!isLivingEnemy(entity) || (kind === "flea" && !isLivingFlea(entity))) continue;
+      const key=combatUnitKey(kind,entity);
+      entries.push({...entity,key,type:kind,facing:entity.facing || inferFacingFromMovement(key,entity.x,entity.y,"se"),
+        health:entity.health,spawnAt:entity.createdAt,label:colors[kind] && near(entity) ? `❤️${entity.health}` : "",labelColor:colors[kind],friendlyFlea:kind === "flea",
+        rally:(kind === "rabbit" || kind === "flea") && isNearRallyDrum(entity.x,entity.y),duration:kind === "rabbit" ? 1800 : enemyMovementCadence(kind)*0.94});
+    }
+    if(catHealth>0)entries.push({...catPos,key:"cat",type:"cat",facing:catFacingDir,health:catHealth,maxHealth:maxCatHealth,label:near(catPos)?`⚡Lv.${catPower}`:"",labelColor:"red",duration:enemyMovementCadence("cat")*0.94});
+    for(const entry of entries) entry.artSignature=`${entry.type}|${entry.facing}|${entry.friendlyFlea || false}|${failedAssetPaths.size}`;
+    presentationFocus=entries.find(e=>e.local) || entries.find(e=>e.type === "mouse") || entries.find(e=>e.type === "cat") || null;
+    battlePresentation.syncEntities(entries,{focusKey:presentationFocus?.key});
+    const pounce=catAbilityState.pouncePending;
+    battlePresentation.statusMarker("cat-pounce",pounce || catPos,"warning",pounce?.executeAt || 0,"!");
+    for (const key of Object.keys(previousEnemyPositions)) if(!entries.some(e=>e.key===key))delete previousEnemyPositions[key];
   }
 
   function getBuildPreviewCells(){
@@ -3759,6 +3839,22 @@
         if (node) positionIsoElement(node, x, y, 8);
         return node;
       });
+    const seen = new Set();
+    for (const entry of structureEntries){
+      const key=`${entry.x}_${entry.y}`, old=structureVisualState.get(key), node=structureNodes.get(key)?.node;
+      seen.add(key);
+      node?.classList.toggle("cm-damaged",entry.hp < (STRUCTURE_MAX_HP[entry.symbol] || 1)*0.33);
+      if(old && entry.hp < old.hp) battlePresentation.pulseNode(`structure:${key}`,node,"cm-structure-hit",220);
+      if(old && entry.shield < old.shield){
+        battlePresentation.pulseNode(`shield:${key}`,node,"cm-shield-hit",300);
+        battlePresentation.burst(entry,"shield",entry.shield <= 0 ? 5 : 2,entry.shield <= 0);
+      }else if(old && old.shield <= 0 && entry.shield > 0)battlePresentation.pulseNode(`shield:${key}`,node,"cm-shield-recharge",600);
+      if(old && !old.stinkDisabled && entry.stinkDisabled)battlePresentation.burst(entry,"slime",3);
+      structureVisualState.set(key,{...entry});
+    }
+    for(const [key,old] of structureVisualState)if(!seen.has(key)){
+      battlePresentation.burst(old,"death",7,true);battlePresentation.shake(1.5);structureVisualState.delete(key);
+    }
   }
 
   function renderPickupSprite(entityLayer, x, y, assetKey, cssKey, z = 7, extraClass = ""){
@@ -3778,31 +3874,8 @@
     }
   }
 
-  function renderIsoProjectiles(entityLayer){
-    for (const shot of rabbitShots){
-      const proj = document.createElement("div");
-      proj.className = `iso-object iso-projectile ${shot.source === "tower" ? "tower" : "rabbit"}`;
-      if (typeof shot.x === "number" && typeof shot.y === "number"){
-        positionIsoElement(proj, shot.x, shot.y, 12);
-        entityLayer.appendChild(proj);
-      }
-    }
-  }
-
-  function renderIsoVfx(entityLayer){
-    for (const v of combatVfx){
-      const fx = document.createElement("div");
-      fx.className = `combat-vfx ${v.className} shape`;
-      if (!["vfx-hit","vfx-sparks","vfx-claw","vfx-explosion","vfx-flame","vfx-pop"].includes(v.className)) fx.textContent = v.icon;
-      fx.style.fontSize = `${v.size}px`;
-      positionIsoElement(fx, v.x, v.y, 14);
-      entityLayer.appendChild(fx);
-    }
-  }
-
   function renderGrid(){
     const now = Date.now();
-    combatVfx = combatVfx.filter(v => v.expiresAt > now);
 
     const viewport = document.getElementById("grid");
     const centerX = playerPos.x;
@@ -3852,6 +3925,8 @@
     if (!persistentTileLayer || !persistentEntityLayer || persistentStageSignature !== stageSignature){
       viewport.replaceChildren();
       structureNodes.clear();
+      structureVisualState.clear();
+      battlePresentation.clear();
       tileNodes.length = 0;
       persistentTileLayer = document.createElement("div");
       persistentTileLayer.id = "tileLayer";
@@ -3865,6 +3940,15 @@
       viewport.appendChild(persistentTileLayer);
       viewport.appendChild(persistentStructureLayer);
       viewport.appendChild(persistentEntityLayer);
+      persistentUnitLayer = document.createElement("div");
+      persistentUnitLayer.id = "unitLayer";
+      persistentUnitLayer.style.position = "absolute";
+      persistentEffectLayer = document.createElement("div");
+      persistentEffectLayer.id = "combatEffectLayer";
+      persistentEffectLayer.style.position = "absolute";
+      persistentEffectLayer.style.pointerEvents = "none";
+      viewport.append(persistentUnitLayer,persistentEffectLayer);
+      battlePresentation.attach(persistentUnitLayer,persistentEffectLayer);
       renderIsoTiles(persistentTileLayer);
       persistentStageSignature = stageSignature;
     }
@@ -3876,6 +3960,11 @@
     entityLayer.style.top = `${topPad}px`;
     persistentStructureLayer.style.left = `${leftPad}px`;
     persistentStructureLayer.style.top = `${topPad}px`;
+    persistentUnitLayer.style.left = persistentEffectLayer.style.left = `${leftPad}px`;
+    persistentUnitLayer.style.top = persistentEffectLayer.style.top = `${topPad}px`;
+    const wrapper = document.getElementById("gridWrapper");
+    presentationStageMetrics = {worldW:stageW,worldH:stageH,originX:leftPad,originY:topPad,wrapperW:wrapper?.clientWidth || 860,wrapperH:wrapper?.clientHeight || 600,
+      mapCenter:{x:leftPad+isoToScreen((gridSize-1)/2,(gridSize-1)/2).x,y:topPad+isoToScreen((gridSize-1)/2,(gridSize-1)/2).y}};
     entityLayer.replaceChildren();
 
     const addEntityAt = (x, y, icon, opts = {}) => {
@@ -3977,112 +4066,7 @@
       tile.classList.add(open ? "build-preview-valid" : "build-preview-blocked");
     }
 
-    // players
-    for (const [pu, p] of Object.entries(players)){
-      if ((p.alive ?? true) === false) continue;
-      const cell = document.getElementById(`cell-${p.x}-${p.y}`);
-      if (cell){
-        const localObscured = pu === uid && isLocalMouseLikelyObscured(p.x, p.y);
-        if (localObscured){
-          const ring = document.createElement("div");
-          ring.className = "local-mouse-ring";
-          positionIsoElement(ring, p.x, p.y, 16);
-          entityLayer.appendChild(ring);
-        }
-        const unit = addCreatureEntityAt(entityLayer, p.x, p.y, "mouse-creature", p.facing || "se", { entityClass: localObscured ? "local-mouse-obscured" : "" });
-        if (localObscured) unit.style.zIndex = String(getIsoDepth(p.x, p.y, 17));
-        if (Math.abs((p.x ?? 0) - centerX) + Math.abs((p.y ?? 0) - centerY) <= OVERLAY_RENDER_DISTANCE){
-          const nameTag = document.createElement("div");
-          nameTag.className = "name";
-          nameTag.textContent = (p.displayName || "mouse").toLowerCase();
-          unit?.appendChild(nameTag);
-        }
-      }
-    }
-
-    // fleas
-    for (const f of fleas){
-      if (!isLivingFlea(f)) continue;
-      const cell = document.getElementById(`cell-${f.x}-${f.y}`);
-      if (cell) addCreatureEntityAt(entityLayer, f.x, f.y, `flea-creature${f.origin === "player" ? " player-flea" : ""}`, f.facing || inferFacingFromMovement(f.id || f.docId, f.x, f.y, "east"));
-    }
-
-    // rats
-    for (const r of rats){
-      if (!isLivingRat(r)) continue;
-      const cell = document.getElementById(`cell-${r.x}-${r.y}`);
-      if (cell){
-        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rat-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "se"));
-        if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
-          const hpTag = document.createElement("div");
-          hpTag.className = "name";
-          hpTag.style.color = "brown";
-          hpTag.textContent = `❤️${r.health}`;
-          unit?.appendChild(hpTag);
-        }
-      }
-    }
-
-    // stink rats
-    for (const sr of stinkRats){
-      if (!isLivingEnemy(sr)) continue;
-      const cell = document.getElementById(`cell-${sr.x}-${sr.y}`);
-      if (cell) addCreatureEntityAt(entityLayer, sr.x, sr.y, "stinkrat-creature", sr.facing || inferFacingFromMovement(sr.id, sr.x, sr.y, "west"));
-    }
-
-    // oxen
-    for (const o of oxen){
-      if (!isLivingEnemy(o)) continue;
-      const cell = document.getElementById(`cell-${o.x}-${o.y}`);
-      if (cell){
-        const unit = addCreatureEntityAt(entityLayer, o.x, o.y, "ox-creature", o.facing || inferFacingFromMovement(o.id, o.x, o.y, "west"));
-        if (Math.abs(o.x - centerX) + Math.abs(o.y - centerY) <= OVERLAY_RENDER_DISTANCE){
-          const hpTag = document.createElement("div");
-          hpTag.className = "name";
-          hpTag.style.color = "orange";
-          hpTag.textContent = `❤️${o.health}`;
-          unit?.appendChild(hpTag);
-        }
-      }
-    }
-
-    // rat kings
-    for (const k of ratKings){
-      if (!isLivingEnemy(k)) continue;
-      const cell = document.getElementById(`cell-${k.x}-${k.y}`);
-      if (cell){
-        const unit = addCreatureEntityAt(entityLayer, k.x, k.y, "ratking-creature", k.facing || inferFacingFromMovement(k.id, k.x, k.y, "sw"));
-        if (Math.abs(k.x - centerX) + Math.abs(k.y - centerY) <= OVERLAY_RENDER_DISTANCE){
-          const hpTag = document.createElement("div");
-          hpTag.className = "name";
-          hpTag.style.color = "#7c2d12";
-          hpTag.textContent = `❤️${k.health}`;
-          unit?.appendChild(hpTag);
-        }
-      }
-    }
-
-    // rabbits
-    for (const r of rabbits){
-      if ((r.health ?? 0) <= 0) continue;
-      const cell = document.getElementById(`cell-${r.x}-${r.y}`);
-      if (cell){
-        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rabbit-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "east"));
-        if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
-          const hpTag = document.createElement("div");
-          hpTag.className = "name";
-          hpTag.style.color = "#7c3aed";
-          hpTag.textContent = `❤️${r.health}`;
-          unit?.appendChild(hpTag);
-        }
-      }
-    }
-
-    // termites
-    for (const t of termites){
-      const cell = document.getElementById(`cell-${t.x}-${t.y}`);
-      if (cell) addCreatureEntityAt(entityLayer, t.x, t.y, "termite-creature", t.facing || inferFacingFromMovement(t.id || `termite_${t.x}_${t.y}`, t.x, t.y, "east"));
-    }
+    renderBattleUnits();
 
     // structure status overlays
     for (const key in structureHealth){
@@ -4100,13 +4084,6 @@
       }
     }
 
-    // vultures
-    for (const v of vultures){
-      if ((v.health ?? 0) <= 0) continue;
-      const cell = document.getElementById(`cell-${v.x}-${v.y}`);
-      if (cell) addCreatureEntityAt(entityLayer, v.x, v.y, "vulture-creature", v.facing || inferFacingFromMovement(v.id, v.x, v.y, "ne"));
-    }
-
     // traps
     renderIsoPickupsAndTraps(entityLayer);
 
@@ -4118,45 +4095,6 @@
       positionIsoElement(rep, objectiveState.repair.x, objectiveState.repair.y, 7);
       entityLayer.appendChild(rep);
     }
-
-    // cat
-    const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
-    if (catCell){
-      const catUnit = addCreatureEntityAt(entityLayer, catPos.x, catPos.y, "cat-creature", catFacingDir || "se");
-      if (Math.abs(catPos.x - centerX) + Math.abs(catPos.y - centerY) <= OVERLAY_RENDER_DISTANCE){
-        const levelTag = document.createElement("div");
-        levelTag.className = "name";
-        levelTag.style.color = "red";
-        levelTag.innerHTML = `⚡Lv.${catPower}`;
-        catUnit?.appendChild(levelTag);
-
-        const bar = document.createElement("div");
-        bar.className = "health-bar";
-        const denom = Math.max(1, maxCatHealth);
-        const barWidth = Math.max(10, Math.min(100, (catHealth/denom)*100));
-        bar.style.width = `${barWidth}%`;
-        bar.style.background = "red";
-        bar.style.height = "3px";
-        bar.style.marginTop = "-10px";
-        catUnit?.appendChild(bar);
-      }
-    }
-
-    const pounceMark = catAbilityState.pouncePending;
-    if (pounceMark){
-      const t = document.createElement("div");
-      t.className = "combat-vfx vfx-pop";
-      t.textContent = "🎯";
-      t.style.fontSize = "12px";
-      positionIsoElement(t, pounceMark.x, pounceMark.y, 15);
-      entityLayer.appendChild(t);
-    }
-
-    // projectile overlays
-    renderIsoProjectiles(entityLayer);
-
-    // combat VFX overlays
-    renderIsoVfx(entityLayer);
 
     // status list
     const statusDiv = document.getElementById("playerStatus");
@@ -4173,20 +4111,9 @@
         statusDiv.appendChild(sp);
       }
     }
-    updateIsoCamera({
-      worldW: stageW,
-      worldH: stageH,
-      originX:leftPad,
-      originY:topPad,
-      mapCenter:{
-        x:leftPad + isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2).x,
-        y:topPad + isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2).y
-      }
-    });
-    applyIsoCameraTransform({
-      worldW: stageW,
-      worldH: stageH
-    });
+    const visualFocus=battlePresentation.getPosition(presentationFocus?.key,presentationFocus);
+    updateIsoCamera(presentationStageMetrics,visualFocus ? {...visualFocus,isLocal:presentationFocus?.local,facing:presentationFocus?.facing} : null);
+    applyIsoCameraTransform(presentationStageMetrics);
     updateObjectiveBanner();
   }
 
@@ -4215,6 +4142,7 @@
     if (facing) playerFacing = facing;
     playerPos = { x: newX, y: newY };
     if (players[uid]) Object.assign(players[uid], { x:newX, y:newY, facing:playerFacing || players[uid].facing || "se" });
+    battlePresentation.moveEntity(`mouse:${uid}`,{x:newX,y:newY,facing:playerFacing},{local:true});
     savePosition().catch(()=>{});
     checkCheese().catch(()=>{});
     maybeTeleportOnCrystal().catch(()=>{});
@@ -4686,20 +4614,15 @@
   }
 
   function isNearRallyDrum(x, y, range = 5){
-    for (let yy = 0; yy < gridSize; yy++){
-      for (let xx = 0; xx < gridSize; xx++){
-        if (grid[yy][xx] !== "🥁") continue;
-        if (Math.abs(xx - x) + Math.abs(yy - y) <= range) return true;
-      }
-    }
-    return false;
+    return getStructuresByType("🥁").some(drum => Math.abs(drum.x-x)+Math.abs(drum.y-y)<=range);
   }
 
-  async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower/3))){
+  async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower/3)), actions = null, attacker = null){
     const key = `${x}_${y}`;
     if (structureHealth[key] === undefined) return;
 
-    showClawHit(x, y);
+    if(attacker)battlePresentation.attack(attacker.key,{x,y},"claw",attacker.kind === "ox" || attacker.kind === "ratking");
+    else showClawHit(x,y);
 
     const symbol = grid[y]?.[x] || "";
     const wallNearBeacon = ["🧱","💎","🧊"].includes(symbol) && isWithinBeaconAura(x, y, 2);
@@ -4727,10 +4650,16 @@
       delete structureShieldBrokenAt[key];
       clearTowerCooldownsAt(x, y);
       markBlockedGridDirty();
-      await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
+      removeFromStructureIndex(x,y);
+      setTileEffect(x,y,"rubble");
+      if(actions)actions.push({type:"delete",ref:ccRef(ID.structure(x,y))});
+      else await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
       markStructureIndexDirty();
     } else {
-      await runtimeUpdateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0, shieldBrokenAt: structureShieldBrokenAt[key] || 0 });
+      const patch={health:structureHealth[key],shield:structureShields[key] ?? 0,shieldBrokenAt:structureShieldBrokenAt[key] || 0,updatedAt:Date.now()};
+      addToStructureIndex(x,y,symbol,structureHealth[key]);
+      if(actions)actions.push({type:"update",ref:ccRef(ID.structure(x,y)),data:patch});
+      else await runtimeUpdateDoc(ccRef(ID.structure(x,y)),patch);
       markStructureIndexDirty();
     }
     requestRender("damageStructure");
@@ -4760,28 +4689,8 @@
   }
 
   // ============================================================
-  // Player flea syncing (player-owned flea docs)
+  // Stink Rat disruption
   // ============================================================
-  async function syncMyFleas(){
-    const now = Date.now();
-    const writes = [];
-    for (const f of fleas.filter(ff => ff.ownerUid === uid && ff.origin === "player")){
-      if (!f.docId) continue;
-      myFleaDocIds.add(f.docId);
-      writes.push(runtimeSetDoc(ccRef(f.docId), {
-        kind: "flea",
-        id: f.id || f.docId,
-        docId: f.docId,
-        x: f.x, y: f.y,
-        lifetime: f.lifetime ?? 15,
-        ownerUid: uid,
-        origin: "player",
-        updatedAt: now
-      }, { merge:true }));
-    }
-    await Promise.all(writes);
-  }
-
   function isInStinkAura(x, y){
     for (const sr of stinkRats){
       if ((sr.health ?? 0) <= 0) continue;
@@ -4835,7 +4744,7 @@
     const nearbyEnemies = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && isLivingEnemy(e));
     for (const e of nearbyEnemies){
       const entry = enemyRegistryEntry(e.kind);
-      if (!entry?.targetable) continue;
+      if (!entry?.targetable || e.kind === "flea") continue;
       const k = normalizeEnemyKind(e.kind);
       candidates.push({ kind:entry.label, refType:k, enemy:e, x:e.x, y:e.y, health:(e.health ?? e.maxHealth ?? 1), dist:Math.abs(e.x-x)+Math.abs(e.y-y) });
     }
@@ -4866,14 +4775,13 @@
       const damage = 2 + bonusDamage;
       const target = pickTargetForStructure(x, y, 5, getStructureTargeting(x, y));
       if (!target) continue;
-      addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-      showProjectileImpact(target.x, target.y);
+      presentShot({x,y},target,"turret",combatUnitKey(target.refType,target.enemy || catPos));
       if (target.refType === "cat"){
         catHealth -= damage;
         writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat:{x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt:Date.now() } });
         if (catHealth <= 0) handleCatDefeated().catch(()=>{});
       } else {
-        await damageEnemyUnit({ ...target.enemy, kind: target.refType }, damage);
+        await damageEnemyUnit({ ...target.enemy, kind: target.refType }, damage,writes,false);
       }
     }
     await commitEnemyBatch(writes);
@@ -4890,12 +4798,11 @@
       if (!target || target.refType === "cat") continue;
       const boosted = getStructuresByType("🗼").some(b => Math.abs(b.x-x)<=2 && Math.abs(b.y-y)<=2);
       const mainDamage = boosted ? 20 : 15, splashDamage = boosted ? 15 : 10;
-      addCombatVfx(x, y, "🔥", "vfx-flame", 500, 14);
-      addCombatVfx(target.x, target.y, "💣", "vfx-explosion", 700, boosted ? 24 : 21);
-      await damageEnemyUnit({ ...target.enemy, kind: target.refType }, mainDamage);
+      presentShot({x,y},target,"rocket",combatUnitKey(target.refType,target.enemy));
+      await damageEnemyUnit({ ...target.enemy, kind: target.refType }, mainDamage,writes,false);
       for (const unit of listCombatEnemies()){
         if (unit.enemy.id === target.enemy.id && unit.kind === target.refType) continue;
-        if (Math.abs(unit.enemy.x-target.x)<=1 && Math.abs(unit.enemy.y-target.y)<=1) await damageEnemyUnit({ ...unit.enemy, kind:unit.kind }, splashDamage);
+        if (Math.abs(unit.enemy.x-target.x)<=1 && Math.abs(unit.enemy.y-target.y)<=1) await damageEnemyUnit({ ...unit.enemy, kind:unit.kind }, splashDamage,writes,false);
       }
       if (Math.abs(catPos.x-target.x)<=1 && Math.abs(catPos.y-target.y)<=1 && catHealth>0){
         catHealth -= splashDamage;
@@ -5071,6 +4978,78 @@
     );
     return candidates[0] || null;
   }
+  const delayedEnemySteps = new Map();
+  function enemyMovementCadence(kind){
+    const scaling=getEnemyScaling().speedMultiplier || 1;
+    if(kind === "cat") return Math.max(165,Math.floor((1300-catPower*40)/(CAT_SPEED_MULTIPLIER*(DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed || 1))));
+    const profile={rat:[760/RAT_SPEED_MULTIPLIER,190,1.05],ox:[800,430,.88],ratking:[700,390,.95],vulture:[600,300,1.08],stinkrat:[700,360,1.02],termite:[400,220,1.12],flea:[700,360,1.05] }[kind] || [2000,2000,1];
+    return Math.max(profile[1],Math.floor(profile[0]/Math.max(.85,scaling*profile[2])));
+  }
+  function tacticalPassable(kind,x,y){
+    if(x<0 || y<0 || x>=gridSize || y>=gridSize)return false;
+    const symbol=grid[y][x];
+    if(kind === "rabbit" || kind === "flea" || kind === "termite")return !STRUCTURE_TYPES.has(symbol);
+    if(kind === "rat" || kind === "vulture")return !getBlockedGrid()[y][x];
+    return !["🧱","💎","🧊"].includes(symbol);
+  }
+  function tacticalOccupants(){
+    const result=[{...catPos,key:"cat",kind:"cat",team:"enemy"}];
+    for(const [kind,list] of [["rat",rats],["stinkrat",stinkRats],["ox",oxen],["ratking",ratKings],["vulture",vultures],["termite",termites],["rabbit",rabbits],["flea",fleas]])
+      for(const e of list)if(isLivingEnemy(e))result.push({...e,key:combatUnitKey(kind,e),kind,team:kind === "rabbit" || kind === "flea" ? "friendly" : "enemy"});
+    const present=new Set(result.map(e=>e.key));
+    for(const key of delayedEnemySteps.keys())if(!present.has(key))delayedEnemySteps.delete(key);
+    return result;
+  }
+  function tacticalTargets(){
+    const hostile=[],friendly=[];
+    const livingPlayers=Object.entries(players).filter(([,p])=>p.alive !== false);
+    for(const [pu,p] of livingPlayers)hostile.push({...p,key:`mouse:${pu}`,id:pu,uid:pu,type:"mouse",value:0});
+    for(const rb of rabbits)if(isLivingEnemy(rb))hostile.push({...rb,key:combatUnitKey("rabbit",rb),type:"rabbit",rabbit:rb,value:0});
+    for(const f of fleas)if(isLivingFlea(f))hostile.push({...f,key:combatUnitKey("flea",f),type:"flea",flea:f,value:0});
+    const allStructures=getAllStructures();
+    for(const st of allStructures) hostile.push({...st,key:`structure:${st.x}_${st.y}`,type:"structure",value:st.type === "🐇" || st.type === "🗼" ? 3 : 0,
+      wall:["🧱","💎","🧊"].includes(st.type),defense:TARGETABLE_STRUCTURES.includes(st.type),support:["🛡️","🥁","🛠️","🗼","🐦‍🔥"].includes(st.type),economy:["🏭","🧀"].includes(st.type),disruptable:STINK_DISABLED_TOWERS.includes(st.type),disabled:isTowerDisabledByStink(st.x,st.y),healthFraction:(structureHealth[st.key] || 1)/(STRUCTURE_MAX_HP[st.type] || 1)});
+    if(catHealth>0)friendly.push({...catPos,key:"cat",kind:"cat",type:"enemy",health:catHealth});
+    for(const [kind,list] of [["rat",rats],["stinkrat",stinkRats],["ox",oxen],["ratking",ratKings],["vulture",vultures],["termite",termites]])
+      for(const e of list)if(isLivingEnemy(e))friendly.push({...e,key:combatUnitKey(kind,e),kind,type:"enemy",enemy:e});
+    for(const e of friendly){
+      e.playerThreat=livingPlayers.some(([,p])=>Math.abs(p.x-e.x)+Math.abs(p.y-e.y)<=4);
+      e.infrastructureThreat=allStructures.some(st=>Math.abs(st.x-e.x)+Math.abs(st.y-e.y)<=2);
+    }
+    return {enemy:hostile,friendly};
+  }
+  function resolveTacticalTarget(target){
+    let live=null;
+    if(target.type === "structure")return STRUCTURE_TYPES.has(grid[target.y]?.[target.x]) ? target : null;
+    if(target.type === "mouse")live=players[target.uid];
+    else if(target.type === "rabbit")live=rabbits.find(r=>r.id === target.id);
+    else if(target.type === "flea")live=fleas.find(f=>f.id === target.id);
+    else if(target.kind === "cat")return catHealth>0 ? {...target,...catPos,health:catHealth} : null;
+    else live=enemyRegistryEntry(target.kind)?.collection().find(e=>e.id === target.id);
+    if(!live || live.alive === false || !isLivingEnemy(live))return null;
+    return {...target,...live,rabbit:target.type === "rabbit" ? live : target.rabbit,enemy:target.type === "enemy" ? live : target.enemy,flea:target.type === "flea" ? live : target.flea};
+  }
+  const tacticalAI=createTacticalDirector({size:gridSize,now:()=>Date.now(),findPath,passable:tacticalPassable,targets:tacticalTargets,occupants:tacticalOccupants,
+    revision:()=>tacticalRevision,resolveTarget:resolveTacticalTarget,maxDecisions:()=>ENEMIES_AI_PER_FRAME,maxPaths:10});
+  function tacticalPlan(kind,entity,stopRange=kind === "rabbit" ? 4 : 0,reactionMs=600){
+    const difficulty={easy:.85,medium:1,hard:1.18,insane:1.35}[currentDifficulty] || 1;
+    const pressure=Math.min(1.7,difficulty*(1+Math.max(0,catPower-1)*.01));
+    return tacticalAI.plan({...entity,key:combatUnitKey(kind,entity),kind,team:kind === "rabbit" || kind === "flea" ? "friendly" : "enemy"},
+      {stopRange,pressure,reactionMs:Math.max(260,reactionMs/pressure),holdMs:kind === "ox" || kind === "ratking" ? 2300 : 1500});
+  }
+  function moveAlongPlan(kind,entity,plan,writes){
+    if(!plan.next)return false;
+    const old={x:entity.x,y:entity.y};entity.x=plan.next.x;entity.y=plan.next.y;
+    entity.facing=directionFromDelta(old.x,old.y,entity.x,entity.y) || entity.facing || "se";
+    battlePresentation.moveEntity(combatUnitKey(kind,entity),entity,{duration:kind === "rabbit" ? 1800 : enemyMovementCadence(kind)*.94});
+    writes.push({type:"update",ref:enemyDocRef(kind,entity.id,entity) || ccRef(ID.rabbit(entity.id)),data:{x:entity.x,y:entity.y,facing:entity.facing,updatedAt:Date.now()}});
+    return true;
+  }
+  function openFriendlySpawn(producer,seed=0){
+    return findOpenSpawn(producer,{size:gridSize,seed,passable:(x,y)=>grid[y][x] === "",occupied:isCellOccupiedBySharedObject,
+      reserved:(x,y)=>tacticalAI.reservations.blocked(x,y,"spawn"),radius:3});
+  }
+
   // ============================================================
   // Cat AI
   // ============================================================
@@ -5147,7 +5126,8 @@
       catFacing = { dx: Math.sign(pending.x - catPos.x) || catFacing.dx || 1, dy: Math.sign(pending.y - catPos.y) || catFacing.dy || 0 };
       catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
       catPos = { x: pending.x, y: pending.y };
-      addCombatVfx(catPos.x, catPos.y, "💨", "vfx-hit", 650, 17);
+      battlePresentation.burst(catPos,"claw",7,true);
+      battlePresentation.shake(2);
     }
 
     catAbilityState.pouncePending = null;
@@ -5249,6 +5229,7 @@
   async function catBehavior(){
     if (!canRunHostSimulation()) return;
     rebuildSpatialIndexes();
+    const writes=[];
     if (Date.now() < catWebTrappedUntil){
       addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
       await runtimeUpdateDoc(ccRef(ID.STATE), {
@@ -5278,51 +5259,12 @@
       }
     }
 
-    const aliveMice = Object.values(players).filter(p => (p.alive ?? true) !== false);
-    let target = null;
-    let path = null;
-    let mouseBlocked = true;
-
-    // closest reachable mouse
-    for (const p of aliveMice){
-      const pPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
-      if (pPath){
-        mouseBlocked = false;
-        if (!path || pPath.length < path.length){
-          target = {x:p.x,y:p.y,type:"mouse"};
-          path = pPath;
-        }
-      }
-    }
-
-    // if mice are blocked/unreachable, attack nearest rabbit then structure
-    if (!target && mouseBlocked){
-      const rabbitTarget = getNearestRabbitTarget(catPos.x, catPos.y, false);
-      if (rabbitTarget){
-        target = { x: rabbitTarget.x, y: rabbitTarget.y, type: "rabbit", rabbit:rabbitTarget.rabbit };
-        path = rabbitTarget.path;
-      }
-    }
-
-    if (!target && mouseBlocked){
-      const structureTarget = getNearestReachableStructureTarget(catPos.x, catPos.y, false);
-      if (structureTarget){
-        target = { x: structureTarget.x, y: structureTarget.y, type: "structure" };
-        path = structureTarget.path;
-      }
-    }
-
-    // move
-    if (target && path && path.length > 0){
-      const next = path[0];
-      const symbol = grid[next.y][next.x];
-      const isBlocked = (symbol==="🧱" || symbol==="💎" || symbol==="🧊");
-      if (!isBlocked){
-        catFacing = { dx: Math.sign(next.x - catPos.x), dy: Math.sign(next.y - catPos.y) };
-        catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
-        catPos.x = next.x;
-        catPos.y = next.y;
-      }
+    const catPlan=tacticalPlan("cat",catPos);
+    if(catPlan.next){
+      catFacing={dx:Math.sign(catPlan.next.x-catPos.x),dy:Math.sign(catPlan.next.y-catPos.y)};
+      catFacingDir=normalizeDirection(catFacing.dx,catFacing.dy) || catFacingDir;
+      catPos={...catPlan.next};
+      battlePresentation.moveEntity("cat",{...catPos,facing:catFacingDir},{duration:enemyMovementCadence("cat")*.94});
     }
 
     // attack nearby
@@ -5330,7 +5272,7 @@
     const nearbyStructures = structureSpatialIndex.query(catPos.x, catPos.y, 1).filter(s => Math.abs(s.x-catPos.x) <= 1 && Math.abs(s.y-catPos.y) <= 1);
     for (const s of nearbyStructures){
       if (!attacked && ["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[s.y]?.[s.x])){
-        await damageStructure(s.x, s.y);
+        await damageStructure(s.x,s.y,undefined,writes,{key:"cat",kind:"cat"});
         attacked = true;
       }
     }
@@ -5339,15 +5281,16 @@
       const d = Math.abs(rb.x-catPos.x)+Math.abs(rb.y-catPos.y);
       if (d===0){
         rb.health -= ratPower * 10;
-        if (rb.health <= 0) await runtimeDeleteDoc(ccRef(ID.rabbit(rb.id)));
-        else await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { health: rb.health, updatedAt: Date.now() });
+        writes.push(rb.health<=0 ? {type:"delete",ref:ccRef(ID.rabbit(rb.id))} : {type:"update",ref:ccRef(ID.rabbit(rb.id)),data:{health:rb.health,updatedAt:Date.now()}});
       }
     }
 
     // kill players on cat tile
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
-        await runtimeUpdateDoc(ccRef(ID.player(pu)), { alive:false, killedBy:"cat", killedAt:Date.now(), updatedAt: Date.now() });
+        p.alive=false;
+        battlePresentation.attack("cat",p,"claw");
+        writes.push({type:"update",ref:ccRef(ID.player(pu)),data:{alive:false,killedBy:"cat",killedAt:Date.now(),updatedAt:Date.now()}});
         if (pu === uid){
           isAlive = false;
           document.getElementById("status").textContent = "💀 You were killed by: cat";
@@ -5356,13 +5299,11 @@
     }
 
     // write cat state
-    await runtimeUpdateDoc(ccRef(ID.STATE), {
-      cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
-      updatedAt: Date.now()
-    });
+    writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir,pouncePending:catAbilityState.pouncePending},updatedAt:Date.now()}});
 
     updateCatHealthBar();
     requestRender("catBehaviorEnd");
+    await commitEnemyBatch(writes);
   }
 
   function getActiveEnemyCount(type = null){
@@ -5487,515 +5428,92 @@
   // Host enemies movement / logic (kept from your gameplay)
   // ============================================================
   async function hostMoveRats(){
-    const writes = [];
-    const now = Date.now();
     const RAT_THINK_INTERVAL_MS = 350;
     const RAT_REPATH_JITTER_MS = 200;
-    const RAT_STUCK_TICKS_LIMIT = 8;
-    const RAT_TARGET_MAX_DISTANCE = 24;
-
-    const isRatTargetStillValid = (rat) => {
-      rat.ai = rat.ai || {
-        targetType: null,
-        targetId: null,
-        targetX: null,
-        targetY: null,
-        path: null,
-        nextThinkAt: 0,
-        stuckTicks: 0,
-        lastX: rat.x,
-        lastY: rat.y
-      };
-      if (!rat.ai.targetType) return false;
-      const target = { type: rat.ai.targetType, x: rat.ai.targetX, y: rat.ai.targetY, id: rat.ai.targetId };
-      const dist = Math.abs(rat.x - target.x) + Math.abs(rat.y - target.y);
-      if (dist > RAT_TARGET_MAX_DISTANCE) return false;
-
-      if (target.type === "mouse"){
-        const p = players[target.id];
-        return !!p &&
-          (p.alive ?? true) !== false &&
-          p.x === target.x &&
-          p.y === target.y;
-      }
-
-      if (target.type === "rabbit"){
-        return rabbits.some(r => r.id === target.id && (r.health ?? 0) > 0);
-      }
-
-      if (target.type === "structure"){
-        return ["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[target.y]?.[target.x] ?? "");
-      }
-
-      return false;
-    };
-
-    const blockedGrid = getBlockedGrid();
-    const ratsToAiUpdate = new Set();
-    const livingRatIds = rats.filter(r => isLivingRat(r)).map(r => r.id);
-    const aiBudget = Math.min(ENEMIES_AI_PER_FRAME, livingRatIds.length);
-    for (let i = 0; i < aiBudget; i++){
-      const idx = (enemyUpdateCursor + i) % livingRatIds.length;
-      ratsToAiUpdate.add(livingRatIds[idx]);
-    }
-    enemyUpdateCursor = (enemyUpdateCursor + aiBudget) % Math.max(1, livingRatIds.length);
-
-    for (const rat of rats){
-      if (!isLivingRat(rat)) continue;
-
-      if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
-      const kingNearby = ratKings.some(k => (k.health ?? 0) > 0 && (Math.abs(k.x-rat.x)+Math.abs(k.y-rat.y) <= 4));
-      if (rat.slowedUntil && Date.now() < rat.slowedUntil && Math.random() < (kingNearby ? 0.35 : 0.6)) continue;
-
-      // trap check
-      for (const t of traps){
-        if (t.x===rat.x && t.y===rat.y){
-          rat.trappedUntil = Date.now() + 3000;
-          writes.push({ type:"delete", ref: ccRef(ID.trap(rat.x, rat.y)) });
-          const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
-          if (cell){
-            cell.style.backgroundColor = "#ffcccc";
-            setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
-          }
-          requestRender("hostMoveRatsTrapTrigger");
-          continue;
-        }
-      }
-
-      rat.ai = rat.ai || {
-        targetType: null,
-        targetId: null,
-        targetX: null,
-        targetY: null,
-        path: null,
-        nextThinkAt: 0,
-        stuckTicks: 0,
-        lastX: rat.x,
-        lastY: rat.y
-      };
-
-      if (rat.ai.lastX === rat.x && rat.ai.lastY === rat.y){
-        rat.ai.stuckTicks = (rat.ai.stuckTicks || 0) + 1;
-      } else {
-        rat.ai.stuckTicks = 0;
-      }
-      rat.ai.lastX = rat.x;
-      rat.ai.lastY = rat.y;
-
-      const isStuck = (rat.ai.stuckTicks || 0) > RAT_STUCK_TICKS_LIMIT;
-      if (isStuck) rat.ai.nextThinkAt = 0;
-
-      const currentTargetDistance = (rat.ai.targetX == null || rat.ai.targetY == null)
-        ? Infinity
-        : Math.abs(rat.x - rat.ai.targetX) + Math.abs(rat.y - rat.ai.targetY);
-      const targetMovedFarAway = currentTargetDistance > RAT_TARGET_MAX_DISTANCE;
-      const pathEmpty = !rat.ai.path || rat.ai.path.length === 0;
-      const shouldThink = ratsToAiUpdate.has(rat.id) && (!rat.ai.nextThinkAt || now >= rat.ai.nextThinkAt || !isRatTargetStillValid(rat) || pathEmpty || isStuck || targetMovedFarAway);
-
-      if (shouldThink){
-        const closestTarget = getNearestHostileObjectiveTarget(rat.x, rat.y, (x, y) => {
-          const isBlocked = blockedGrid[y]?.[x] === true;
-          const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
-          return !isBlocked && !ratOccupied;
-        });
-
-        rat.ai.targetType = closestTarget?.type ?? null;
-        rat.ai.targetId = closestTarget?.id ?? null;
-        rat.ai.targetX = closestTarget?.x ?? null;
-        rat.ai.targetY = closestTarget?.y ?? null;
-        rat.ai.path = closestTarget?.path ? [...closestTarget.path] : null;
-        rat.ai.nextThinkAt = now + RAT_THINK_INTERVAL_MS + Math.floor(Math.random() * RAT_REPATH_JITTER_MS);
-      }
-
-      const closestTarget = rat.ai.targetType ? { type: rat.ai.targetType, id: rat.ai.targetId, x: rat.ai.targetX, y: rat.ai.targetY } : null;
-      let bestPath = rat.ai.path;
-
-      if (closestTarget){
-        const centerX = Math.floor(gridSize/2);
-        const centerY = Math.floor(gridSize/2);
-        const dx = closestTarget.x - rat.x;
-        const dy = closestTarget.y - rat.y;
-        const manhattan = Math.abs(dx) + Math.abs(dy);
-        const nearTarget = manhattan <= 6;
-        const lineOfSight = (nearTarget && (dx === 0 || dy === 0)) ? (() => {
-          const sx = Math.sign(dx), sy = Math.sign(dy);
-          let cx = rat.x + sx, cy = rat.y + sy;
-          while (cx !== closestTarget.x || cy !== closestTarget.y){
-            if (blockedGrid[cy]?.[cx]) return false;
-            cx += sx; cy += sy;
-          }
-          return true;
-        })() : false;
-        if (lineOfSight){
-          const nx = rat.x + Math.sign(dx);
-          const ny = rat.y + Math.sign(dy);
-          const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===nx && r.y===ny);
-          if (!ratInWay && !blockedGrid[ny]?.[nx]){
-            rat.x = nx; rat.y = ny;
-            const nextFacing = directionFromDelta(rat.ai?.lastX, rat.ai?.lastY, rat.x, rat.y) || rat.facing || "se";
-            rat.facing = nextFacing;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: nextFacing, updatedAt: Date.now() } });
-          }
-        }
-
-        if (!lineOfSight && !bestPath){
-          bestPath = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-            const isBlocked = blockedGrid[y]?.[x] === true;
-            const isReviveCenter = (x===centerX && y===centerY);
-            const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
-            return !isBlocked && !isReviveCenter && !ratOccupied;
-          });
-          rat.ai.path = bestPath ? [...bestPath] : null;
-        }
-
-        if (rat.ai.path && rat.ai.path.length > 0){
-          const next = rat.ai.path.shift();
-          if (!next) continue;
-          const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===next.x && r.y===next.y);
-          if (!ratInWay){
-            rat.x = next.x; rat.y = next.y;
-            const nextFacing = directionFromDelta(rat.ai?.lastX, rat.ai?.lastY, rat.x, rat.y) || rat.facing || "se";
-            rat.facing = nextFacing;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: nextFacing, updatedAt: Date.now() } });
-          }
-        }
-
-        const distance = Math.abs(rat.x-closestTarget.x) + Math.abs(rat.y-closestTarget.y);
-        if (closestTarget.type==="structure" && distance===1){
-          await damageStructure(closestTarget.x, closestTarget.y, kingNearby ? Math.ceil(ratPower * 1.8) : ratPower);
-        } else if (closestTarget.type==="rabbit" && distance===0){
-          const liveRabbit = rabbits.find(r => r.id === closestTarget.id && (r.health ?? 0) > 0);
-          if (liveRabbit){
-            liveRabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
-            if (liveRabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(liveRabbit.id)) });
-            else writes.push({ type:"update", ref: ccRef(ID.rabbit(liveRabbit.id)), data: { health: liveRabbit.health, updatedAt: Date.now() } });
-          }
-        } else if (closestTarget.type==="mouse" && distance===0){
-          const livePlayer = players[closestTarget.id];
-          const cachedMatchesPlayer = !!livePlayer && livePlayer.x === closestTarget.x && livePlayer.y === closestTarget.y;
-          const playerStillValid = cachedMatchesPlayer &&
-            (livePlayer.alive ?? true) !== false &&
-            livePlayer.x === rat.x &&
-            livePlayer.y === rat.y;
-          if (!playerStillValid){
-            rat.ai.targetType = null;
-            rat.ai.targetId = null;
-            rat.ai.targetX = null;
-            rat.ai.targetY = null;
-            rat.ai.path = null;
-            rat.ai.nextThinkAt = 0;
-            writes.push({
-              type:"update",
-              ref: ccRef(ID.rat(rat.id)),
-              data: { x: rat.x, y: rat.y, health: rat.health, ai: rat.ai, updatedAt: Date.now() }
-            });
-            continue;
-          }
-          showClawHit(rat.x, rat.y);
-          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.id)), data: { alive:false, killedBy:"rat", killedById:rat.id, killedAt:Date.now(), updatedAt: Date.now() } });
-          if (closestTarget.id === uid){
-            isAlive = false;
-            document.getElementById("status").textContent = "💀 You were killed by: rat";
-          }
-        }
-      }
-    }
-
-    // cleanup dead rats
-    for (let i=rats.length-1; i>=0; i--){
-      if ((rats[i].health ?? 0) <= 0){
-        writes.push({ type:"delete", ref: ccRef(ID.rat(rats[i].id)) });
-        rats.splice(i,1);
-      }
-    }
-    await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
+    return hostMoveTacticalGroup(rats,"rat",RAT_THINK_INTERVAL_MS+RAT_REPATH_JITTER_MS);
   }
+  async function hostMoveOxen(){ return hostMoveTacticalGroup(oxen,"ox"); }
+  async function hostMoveRatKings(){ return hostMoveTacticalGroup(ratKings,"ratking"); }
+  async function hostMoveStinkRats(){ return hostMoveTacticalGroup(stinkRats,"stinkrat"); }
+  async function hostMoveVultures(){ return hostMoveTacticalGroup(vultures,"vulture"); }
+  async function hostMoveTermites(){ return hostMoveTacticalGroup(termites,"termite"); }
 
-  async function hostMoveOxen(){
-    const writes = [];
-    for (let i=oxen.length-1; i>=0; i--){
-      const ox = oxen[i];
-      if ((ox.health ?? 0) <= 0){
-        writes.push({ type:"delete", ref: ccRef(ID.ox(ox.id)) });
-        oxen.splice(i,1);
-        continue;
-      }
-
-      const bestTarget = getNearestHostileObjectiveTarget(ox.x, ox.y, false);
-      const bestPath = bestTarget?.path || null;
-
-      if (bestTarget){
-        if (bestPath && bestPath.length>0){
-          const next = bestPath[0];
-          const oldX = ox.x, oldY = ox.y;
-          ox.x = next.x; ox.y = next.y;
-          ox.facing = directionFromDelta(oldX, oldY, ox.x, ox.y) || ox.facing || "west";
-          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { x: ox.x, y: ox.y, facing:ox.facing, updatedAt:Date.now() } });
+  async function hostMoveTacticalGroup(group,kind,reactionMs=600){
+    if(!canRunHostSimulation())return;
+    const writes=[],now=Date.now();
+    for(let i=group.length-1;i>=0;i--){
+      const entity=group[i],key=combatUnitKey(kind,entity),ref=enemyDocRef(kind,entity.id,entity);
+      if(!isLivingEnemy(entity)){writes.push({type:"delete",ref});group.splice(i,1);delayedEnemySteps.delete(key);continue;}
+      if((entity.trappedUntil || 0)>now)continue;
+      const trapped=kind === "rat" && traps.find(t=>t.x === entity.x && t.y === entity.y);
+      if(trapped){entity.trappedUntil=now+3000;writes.push({type:"delete",ref:ccRef(ID.trap(entity.x,entity.y))},{type:"update",ref,data:{trappedUntil:entity.trappedUntil,updatedAt:now}});continue;}
+      if((entity.slowedUntil || 0)>now && now<(delayedEnemySteps.get(key) || 0))continue;
+      const plan=tacticalPlan(kind,entity,0,reactionMs),target=plan.target;
+      // Structures are attacked from contact range, with no step into them.
+      moveAlongPlan(kind,entity,plan,writes);
+      if((entity.slowedUntil || 0)>now)delayedEnemySteps.set(key,now+enemyMovementCadence(kind)/Math.max(.25,entity.slowMultiplier || .55));
+      const d=target ? Math.abs(entity.x-target.x)+Math.abs(entity.y-target.y) : Infinity;
+      const inRange=target && ((target.type === "structure" && d === 1) || (target.type !== "structure" && d === 0));
+      if(inRange){
+        const heavy=kind === "ox" || kind === "ratking";
+        const prepared=entity.attackIntent?.key === target.key && entity.attackIntent.executeAt<=now;
+        if(heavy){
+          entity.attackIntent={key:target.key,type:target.type,id:target.id || null,x:target.x,y:target.y,executeAt:now+(kind === "ox" ? 180 : 230)};
+          writes.push({type:"update",ref,data:{attackIntent:entity.attackIntent,updatedAt:now}});
         }
-
-        const distance = Math.abs(ox.x - bestTarget.x) + Math.abs(ox.y - bestTarget.y);
-        if (distance===1 && bestTarget.type === "structure"){
-          await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
-          ox.health -= 1;
-          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { health: ox.health } });
-        } else if (distance===0 && bestTarget.type === "rabbit"){
-          bestTarget.rabbit.health -= ratPower * 10;
-          if (bestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)) });
-          else writes.push({ type:"update", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)), data: { health: bestTarget.rabbit.health, updatedAt: Date.now() } });
-        } else if (distance===0 && bestTarget.type === "mouse"){
-          showClawHit(bestTarget.x, bestTarget.y);
-          writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, killedBy:"ox", killedById:ox.id, killedAt:Date.now(), updatedAt: Date.now() } });
+        if(!heavy || prepared){
+          const kingNearby=kind === "rat" && ratKings.some(k=>isLivingEnemy(k) && Math.abs(k.x-entity.x)+Math.abs(k.y-entity.y)<=4);
+          const damage=kind === "ox" ? ratPower*10 : kind === "ratking" ? Math.max(10,ratPower*2) : kind === "vulture" ? ratPower*4 : kind === "termite" ? 40 : kind === "stinkrat" ? Math.max(1,ratPower) : kingNearby ? Math.ceil(ratPower*1.8) : ratPower;
+          if(target.type === "structure"){
+            await damageStructure(target.x,target.y,damage,writes,{key,kind});
+            if(kind === "ox"){entity.health--;writes.push({type:"update",ref,data:{health:entity.health,updatedAt:now}});}
+          }else if(target.type === "rabbit"){
+            const rb=target.rabbit;
+            const rabbitDamage=kind === "rat" ? (kingNearby ? Math.ceil(ratPower*5) : ratPower*3) : kind === "stinkrat" ? Math.max(3,ratPower*2) : damage;
+            rb.health-=rabbitDamage;
+            battlePresentation.attack(key,rb,"claw",heavy);
+            writes.push(rb.health<=0 ? {type:"delete",ref:ccRef(ID.rabbit(rb.id))} : {type:"update",ref:ccRef(ID.rabbit(rb.id)),data:{health:rb.health,updatedAt:now}});
+          }else if(target.type === "flea"){
+            target.flea.lifetime=0;writes.push({type:"delete",ref:ccRef(target.flea.docId || ID.flea(target.flea.id))});
+          }else if(target.type === "mouse"){
+            const live=players[target.uid];
+            if(live?.alive !== false && live?.x === entity.x && live?.y === entity.y){
+              live.alive=false;battlePresentation.attack(key,target,"claw",heavy);
+              writes.push({type:"update",ref:ccRef(ID.player(target.uid)),data:{alive:false,killedBy:kind,killedById:entity.id,killedAt:now,updatedAt:now}});
+              if(target.uid === uid){isAlive=false;document.getElementById("status").textContent=`💀 You were killed by: ${kind}`;}
+            }
+          }
+          if(kind === "termite"){writes.push({type:"delete",ref});group.splice(i,1);}
         }
-      }
+      }else if(entity.attackIntent){entity.attackIntent=null;writes.push({type:"update",ref,data:{attackIntent:null,updatedAt:now}});}
+      // Stationary attackers still have bounded presence; idle units do not
+      // need a timestamp-only write at every tick.
+      if(now-(entity.updatedAt || entity.createdAt || 0)>12000){entity.updatedAt=now;writes.push({type:"update",ref,data:{updatedAt:now}});}
     }
+    requestRender("tactical enemies moved");
     await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
-  }
-
-  async function hostMoveRatKings(){
-    const writes = [];
-    for (let i=ratKings.length-1; i>=0; i--){
-      const king = ratKings[i];
-      if ((king.health ?? 0) <= 0){
-        writes.push({ type:"delete", ref: ccRef(ID.ratKing(king.id)) });
-        ratKings.splice(i,1);
-        continue;
-      }
-
-      const finalTarget = getNearestHostileObjectiveTarget(king.x, king.y, false);
-      const bestPath = finalTarget?.path || null;
-      if (!finalTarget) continue;
-
-      if (bestPath && bestPath.length>0){
-        const oldX = king.x, oldY = king.y;
-        king.x = bestPath[0].x;
-        king.y = bestPath[0].y;
-        king.facing = directionFromDelta(oldX, oldY, king.x, king.y) || king.facing || "west";
-        writes.push({ type:"update", ref: ccRef(ID.ratKing(king.id)), data: { x: king.x, y: king.y, facing:king.facing, updatedAt: Date.now() } });
-      }
-
-      const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
-      if (finalTarget.type === "structure" && d===1){
-        await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
-      } else if (finalTarget.type === "rabbit" && d===0){
-        finalTarget.rabbit.health -= Math.max(10, ratPower * 2);
-        if (finalTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(finalTarget.rabbit.id)) });
-        else writes.push({ type:"update", ref: ccRef(ID.rabbit(finalTarget.rabbit.id)), data: { health: finalTarget.rabbit.health, updatedAt: Date.now() } });
-      } else if (finalTarget.type === "mouse" && d===0){
-        writes.push({ type:"update", ref: ccRef(ID.player(finalTarget.uid)), data: { alive:false, killedBy:"ratking", killedById:king.id, killedAt:Date.now(), updatedAt: Date.now() } });
-      }
-    }
-    await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
-  }
-
-  async function hostMoveStinkRats(){
-    if (!isHost || !gameStarted) return;
-    const writes = [];
-    for (const sr of stinkRats){
-      if ((sr.health ?? 0) <= 0) { writes.push({ type:"delete", ref: ccRef(ID.stinkRat(sr.id)) }); continue; }
-      const t = getNearestHostileObjectiveTarget(sr.x, sr.y, false);
-      if (!t) continue;
-      const path = t.path;
-      if (path && path.length){
-        const n = path[0], oldX = sr.x, oldY = sr.y; sr.x = n.x; sr.y = n.y;
-        sr.facing = directionFromDelta(oldX, oldY, sr.x, sr.y) || sr.facing || "west";
-        writes.push({ type:"update", ref: ccRef(ID.stinkRat(sr.id)), data: { x:sr.x, y:sr.y, facing:sr.facing, updatedAt:Date.now() } });
-      }
-
-      const distance = Math.abs(sr.x-t.x) + Math.abs(sr.y-t.y);
-      if (t.type === "structure" && distance === 1){
-        await damageStructure(t.x, t.y, Math.max(1, ratPower));
-      } else if (t.type === "rabbit" && distance === 0){
-        t.rabbit.health -= Math.max(3, ratPower * 2);
-        if (t.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(t.rabbit.id)) });
-        else writes.push({ type:"update", ref: ccRef(ID.rabbit(t.rabbit.id)), data: { health:t.rabbit.health, updatedAt:Date.now() } });
-      } else if (t.type === "mouse" && distance === 0){
-        showClawHit(t.x, t.y);
-        writes.push({ type:"update", ref: ccRef(ID.player(t.uid)), data: { alive:false, killedBy:"stinkrat", killedById:sr.id, killedAt:Date.now(), updatedAt:Date.now() } });
-      }
-    }
-    await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
-  }
-
-  async function hostMoveVultures(){
-    const writes = [];
-    for (let i=vultures.length-1; i>=0; i--){
-      const v = vultures[i];
-      if ((v.health ?? 0) <= 0){
-        writes.push({ type:"delete", ref: ccRef(ID.vulture(v.id)) });
-        vultures.splice(i,1);
-        continue;
-      }
-
-      const bestTarget = getNearestHostileObjectiveTarget(v.x, v.y, (x, y) => {
-        return !["🧱","🏭","💎","🧊","🗼"].includes(grid[y][x]);
-      });
-      const bestPath = bestTarget?.path || null;
-      if (!bestTarget) continue;
-
-      if (bestPath && bestPath.length>0){
-        const next = bestPath[0];
-        const oldX = v.x, oldY = v.y;
-        v.x = next.x;
-        v.y = next.y;
-        v.facing = directionFromDelta(oldX, oldY, v.x, v.y) || v.facing || "east";
-        writes.push({ type:"update", ref: ccRef(ID.vulture(v.id)), data: { x: v.x, y: v.y, facing:v.facing, updatedAt: Date.now() } });
-      }
-
-      const distance = Math.abs(v.x-bestTarget.x) + Math.abs(v.y-bestTarget.y);
-      if (bestTarget.type === "structure" && distance===1){
-        await damageStructure(bestTarget.x, bestTarget.y, ratPower * 4);
-      } else if (bestTarget.type === "rabbit" && distance===0){
-        bestTarget.rabbit.health -= ratPower * 4;
-        if (bestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)) });
-        else writes.push({ type:"update", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)), data: { health:bestTarget.rabbit.health, updatedAt:Date.now() } });
-      } else if (bestTarget.type === "mouse" && distance===0){
-        showClawHit(bestTarget.x, bestTarget.y);
-        writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, killedBy:"vulture", killedById:v.id, killedAt:Date.now(), updatedAt:Date.now() } });
-      }
-    }
-    await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
-  }
-
-  async function hostMoveTermites(){
-    const writes = [];
-    for (let i=termites.length-1; i>=0; i--){
-      const termite = termites[i];
-
-      const closestTarget = getNearestHostileObjectiveTarget(termite.x, termite.y, (x,y) => {
-        return !["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
-      });
-      if (!closestTarget) continue;
-      const bestPath = closestTarget.path;
-
-      if (bestPath && bestPath.length>0){
-        const next = bestPath[0];
-        const oldX = termite.x, oldY = termite.y;
-        termite.x = next.x; termite.y = next.y;
-        termite.facing = directionFromDelta(oldX, oldY, termite.x, termite.y) || termite.facing || "east";
-        writes.push({ type:"update", ref: ccRef(ID.termite(termite.id)), data: { x: termite.x, y: termite.y, facing:termite.facing, updatedAt:Date.now() } });
-      }
-
-      const distance = Math.abs(termite.x-closestTarget.x) + Math.abs(termite.y-closestTarget.y);
-      const reachedTarget = (closestTarget.type === "structure" && distance === 1) ||
-        (closestTarget.type !== "structure" && distance === 0);
-      if (reachedTarget){
-        if (closestTarget.type === "structure"){
-          await damageStructure(closestTarget.x, closestTarget.y, 40);
-        } else if (closestTarget.type === "rabbit"){
-          closestTarget.rabbit.health -= 40;
-          if (closestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(closestTarget.rabbit.id)) });
-          else writes.push({ type:"update", ref: ccRef(ID.rabbit(closestTarget.rabbit.id)), data: { health:closestTarget.rabbit.health, updatedAt:Date.now() } });
-        } else if (closestTarget.type === "mouse"){
-          showClawHit(closestTarget.x, closestTarget.y);
-          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.uid)), data: { alive:false, killedBy:"termite", killedById:termite.id, killedAt:Date.now(), updatedAt:Date.now() } });
-        }
-        writes.push({ type:"delete", ref: ccRef(ID.termite(termite.id)) });
-        termites.splice(i,1);
-      }
-    }
-    await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
   }
 
   async function hostMoveFleas(){
-    const writes = [];
-    // Fleas are stored as docs in crowncouncil (both nest fleas + player fleas)
-    for (let i=fleas.length-1; i>=0; i--){
-      const flea = fleas[i];
-      const fleaOldX = flea.x, fleaOldY = flea.y;
-      let target = null;
-      let minDist = Infinity;
-
-      // target cat
-      const distToCat = Math.abs(catPos.x - flea.x) + Math.abs(catPos.y - flea.y);
-      if (distToCat < minDist){
-        minDist = distToCat;
-        target = { x: catPos.x, y: catPos.y, type:"cat" };
+    if(!canRunHostSimulation())return;
+    const writes=[];
+    for(let i=fleas.length-1;i>=0;i--){
+      const flea=fleas[i],ref=ccRef(flea.docId || ID.flea(flea.id));
+      if(!isLivingFlea(flea)){writes.push({type:"delete",ref});fleas.splice(i,1);continue;}
+      const plan=tacticalPlan("flea",flea,0,450);
+      moveAlongPlan("flea",flea,plan,writes);
+      const target=plan.target,nearDrum=isNearRallyDrum(flea.x,flea.y);
+      if(target && flea.x === target.x && flea.y === target.y){
+        battlePresentation.burst(flea,"hit",3);flea.lifetime=0;
+        if(target.kind === "cat"){catHealth-=nearDrum ? 2 : 1;writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{health:catHealth},updatedAt:Date.now()}});}
+        else await damageEnemyUnit({...target.enemy,kind:target.kind},nearDrum ? 8 : 5,writes);
       }
-
-      // target rat
-      for (const r of rats){
-        if ((r.health ?? 0) <= 0) continue;
-        const dist = Math.abs(r.x - flea.x) + Math.abs(r.y - flea.y);
-        if (dist < minDist){
-          minDist = dist;
-          target = { x:r.x, y:r.y, type:"rat", rat:r };
-        }
-      }
-
-      // target ox
-      for (const o of oxen){
-        if ((o.health ?? 0) <= 0) continue;
-        const dist = Math.abs(o.x - flea.x) + Math.abs(o.y - flea.y);
-        if (dist < minDist){
-          minDist = dist;
-          target = { x:o.x, y:o.y, type:"ox", ox:o };
-        }
-      }
-
-      // move flea
-      if (target){
-        let dx=0, dy=0;
-        const xDiff = target.x - flea.x;
-        const yDiff = target.y - flea.y;
-        if (Math.abs(xDiff) > Math.abs(yDiff)) dx = Math.sign(xDiff);
-        else dy = Math.sign(yDiff);
-
-        const newX = flea.x + dx;
-        const newY = flea.y + dy;
-        if (newX>=0 && newX<gridSize && newY>=0 && newY<gridSize){
-          flea.x = newX; flea.y = newY;
-          flea.facing = directionFromDelta(fleaOldX, fleaOldY, flea.x, flea.y) || flea.facing || "east";
-        }
-
-        const nearDrum = isNearRallyDrum(flea.x, flea.y);
-        const fleaDamage = nearDrum ? 8 : 5;
-
-        // attack if reached
-        if (flea.x===target.x && flea.y===target.y){
-          addCombatVfx(flea.x, flea.y, "💥", "vfx-pop", 520, 17);
-          flea.lifetime = 0;
-
-          if (target.type==="cat"){
-            catHealth -= nearDrum ? 2 : 1;
-            writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
-          } else if (target.type==="rat" && target.rat){
-            target.rat.health -= fleaDamage;
-            if (target.rat.health <= 0){
-              writes.push({ type:"delete", ref: ccRef(ID.rat(target.rat.id)) });
-            } else {
-              writes.push({ type:"update", ref: ccRef(ID.rat(target.rat.id)), data: { health: target.rat.health } });
-            }
-          } else if (target.type==="ox" && target.ox){
-            target.ox.health -= fleaDamage;
-            if (target.ox.health <= 0){
-              writes.push({ type:"delete", ref: ccRef(ID.ox(target.ox.id)) });
-            } else {
-              writes.push({ type:"update", ref: ccRef(ID.ox(target.ox.id)), data: { health: target.ox.health } });
-            }
-          }
-        }
-      }
-
-      const fleaDecay = isNearRallyDrum(flea.x, flea.y) ? 0.5 : 1;
-      flea.lifetime = (flea.lifetime ?? 15) - fleaDecay;
-      if (flea.lifetime <= 0){
-        if (flea.ownerUid === uid && flea.origin === "player" && flea.docId){
-          myFleaDocIds.delete(flea.docId);
-        }
-        writes.push({ type:"delete", ref: ccRef(flea.docId) });
-        fleas.splice(i,1);
-      } else {
-        writes.push({ type:"update", ref: ccRef(flea.docId), data: { x: flea.x, y: flea.y, facing:flea.facing || "east", lifetime: flea.lifetime, updatedAt: Date.now() } });
-      }
+      flea.lifetime=(flea.lifetime ?? 15)-(nearDrum ? .5 : 1);
+      if(flea.lifetime<=0){myFleaDocIds.delete(flea.docId);writes.push({type:"delete",ref});fleas.splice(i,1);}
+      else writes.push({type:"update",ref,data:{x:flea.x,y:flea.y,facing:flea.facing || "east",lifetime:flea.lifetime,updatedAt:Date.now()}});
     }
+    requestRender("friendly swarm moved");
     await commitEnemyBatch(writes);
-    requestRender("enemy batch moved");
   }
 
   // ============================================================
@@ -6123,15 +5641,18 @@
     }
   }
 
-  async function damageEnemyUnit(enemy, amount){
+  async function damageEnemyUnit(enemy, amount, actions = null, visual = true){
     if (!enemy) return;
     const kind = normalizeEnemyKind(enemy.kind);
     const ref = enemyDocRef(kind, enemy.id, enemy);
     if (!ref) return;
-    showProjectileImpact(enemy.x, enemy.y);
+    const live=findRuntimeEntity(getRuntimeEntityList(ref.id),ref.id,enemy);
+    if(live && !isLivingEnemy(live))return;
+    if(live)enemy=live;
+    if(visual)showProjectileImpact(enemy.x,enemy.y);
     enemy.health = (enemy.health ?? enemy.maxHealth ?? 1) - amount;
     if (enemy.health <= 0){
-      await runtimeDeleteDoc(ref);
+      if(actions)actions.push({type:"delete",ref});else await runtimeDeleteDoc(ref);
       if (kind === "ratking"){
         let dropped = 0;
         for (let dy=-2; dy<=2 && dropped<5; dy++) for (let dx=-2; dx<=2 && dropped<5; dx++){
@@ -6142,13 +5663,14 @@
         }
       }
     } else {
-      await runtimeUpdateDoc(ref, { health:enemy.health, slowedUntil:enemy.slowedUntil || 0, trappedUntil:enemy.trappedUntil || 0, updatedAt:Date.now() });
+      const patch={health:enemy.health,slowedUntil:enemy.slowedUntil || 0,trappedUntil:enemy.trappedUntil || 0,updatedAt:Date.now()};
+      if(actions)actions.push({type:"update",ref,data:patch});else await runtimeUpdateDoc(ref,patch);
     }
   }
 
   function nearestEnemyFrom(x, y, range = 6){
     const radiusCells = Number.isFinite(range) ? Math.max(1, Math.ceil(range / SPATIAL_CELL_SIZE)) : 20;
-    const nearby = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && isLivingEnemy(e) && enemyRegistryEntry(e.kind)?.targetable);
+    const nearby = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && isLivingEnemy(e) && e.kind !== "flea" && enemyRegistryEntry(e.kind)?.targetable);
     let best = null;
     for (const e of nearby){
       const d = Math.abs(e.x - x) + Math.abs(e.y - y);
@@ -6224,7 +5746,7 @@
 
   async function specialStructureTick(){
     await shieldTowerTick();
-    rabbitShots = [];
+    const writes=[];
     // cheese farm spawn: every 20s each farm can create one nearby pickup
     if (!window.__lastFarmSpawn || Date.now() - window.__lastFarmSpawn > 20000){
       window.__lastFarmSpawn = Date.now();
@@ -6250,15 +5772,17 @@
             if (target.kind==="cat"){ dx=Math.sign(catPos.x-x); dy=Math.sign(catPos.y-y); }
             else { dx=Math.sign(target.enemy.x-x); dy=Math.sign(target.enemy.y-y); }
             if (dx===0&&dy===0) dx=1;
+            const beamEnd={x:x+dx,y:y+dy};
             let cx=x+dx, cy=y+dy;
             while (cx>=0&&cy>=0&&cx<gridSize&&cy<gridSize){
-              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy});
+              beamEnd.x=cx;beamEnd.y=cy;
               for (const unit of listCombatEnemies()){
-                if (unit.enemy.x===cx && unit.enemy.y===cy) await damageEnemyUnit({...unit.enemy, kind:unit.kind}, 18);
+                if (unit.enemy.x===cx && unit.enemy.y===cy) await damageEnemyUnit({...unit.enemy, kind:unit.kind},18,writes,false);
               }
-              if (catPos.x===cx&&catPos.y===cy){ catHealth -= 18; await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() }); }
+              if (catPos.x===cx&&catPos.y===cy){catHealth-=18;writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{health:catHealth},updatedAt:Date.now()}});}
               cx += dx; cy += dy;
             }
+            presentShot({x,y},beamEnd,"laser");
           }
         }
         if (sym === "⚡"){
@@ -6274,8 +5798,9 @@
               if (next && (Math.abs(next.x-h.x)+Math.abs(next.y-h.y)<=3)) hit.push(next);
               if (hit.length>=4) break;
             }
-            for (const h of hit){ if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
-            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+            let source={x,y};
+            for(const h of hit){presentShot(source,h,"tesla");source=h;if(h.kind === "cat")catHealth-=4;else await damageEnemyUnit({...h.enemy,kind:h.kind},4,writes,false);}
+            writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{health:catHealth},updatedAt:Date.now()}});
           }
         }
         if (sym === "🟢" && isTowerReady(sym, x, y, BUILD_DEFS[15].cooldownMs || 1000)){
@@ -6295,7 +5820,7 @@
               unit.enemy.slowMultiplier = mult;
               slimeAuraMemory.set(memKey, now);
               const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
-              if (ref) await runtimeUpdateDoc(ref, { slowedUntil:nextUntil, slowMultiplier:mult, updatedAt:now });
+              if(ref)writes.push({type:"update",ref,data:{slowedUntil:nextUntil,slowMultiplier:mult,updatedAt:now}});
               addCombatVfx(unit.enemy.x, unit.enemy.y, "🟢", "vfx-pop", 500, 14);
             }
           }
@@ -6306,13 +5831,12 @@
           const enemies = listCombatEnemies();
           const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
           if (target){
-            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:target.enemy.x,y:target.enemy.y});
-            await damageEnemyUnit({ ...target.enemy, kind: target.kind }, 55);
+            presentShot({x,y},target.enemy,"acorn",combatUnitKey(target.kind,target.enemy));
+            await damageEnemyUnit({...target.enemy,kind:target.kind},55,writes,false);
             markTowerCooldown(sym, x, y);
           } else if (catHealth > 0){
-            catHealth -= 45;
-            markTowerCooldown(sym, x, y);
-            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+            presentShot({x,y},catPos,"acorn","cat");catHealth-=45;markTowerCooldown(sym,x,y);
+            writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{health:catHealth},updatedAt:Date.now()}});
           }
         }
         if (sym === "🕸️" && isTowerReady(sym, x, y, BUILD_DEFS[19].cooldownMs || 5000)){
@@ -6330,11 +5854,8 @@
             target.enemy.trappedUntil = until;
             target.enemy.slowedUntil = until + 3000;
             const ref = enemyDocRef(target.kind, target.enemy.id, target.enemy);
-            if (ref) await runtimeUpdateDoc(ref, { trappedUntil: until, slowedUntil: target.enemy.slowedUntil, slowMultiplier: boss ? 0.75 : 0.5, updatedAt: Date.now() });
-            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x,y});
-            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:target.enemy.x,y:target.enemy.y});
-            addCombatVfx(x, y, "🕸️", "vfx-pop", 350, 12);
-            addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 1100, 20);
+            if(ref)writes.push({type:"update",ref,data:{trappedUntil:until,slowedUntil:target.enemy.slowedUntil,slowMultiplier:boss ? .75 : .5,updatedAt:Date.now()}});
+            presentShot({x,y},target.enemy,"web",combatUnitKey(target.kind,target.enemy));
             markTowerCooldown(sym, x, y);
           }
         }
@@ -6353,86 +5874,99 @@
           for (let i=0; i<burstCount; i++){
             const [dx,dy] = dirs[i % dirs.length];
             let wx=x, wy=y;
+            const gustEnd={x,y};
             for (let step=0; step<range; step++){
               wx += dx; wy += dy;
               if (wx<0 || wy<0 || wx>=gridSize || wy>=gridSize) break;
-              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:wx,y:wy});
+              gustEnd.x=wx;gustEnd.y=wy;
               for (const unit of listCombatEnemies()){
                 const id = `${unit.kind}:${unit.enemy.id || unit.enemy.docId || unit.enemy.x+","+unit.enemy.y}`;
                 if (hitIds.has(id) || unit.enemy.x!==wx || unit.enemy.y!==wy) continue;
                 hitIds.add(id);
-                await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
+                await damageEnemyUnit({...unit.enemy,kind:unit.kind},3,writes);
                 const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
                 const cat = enemyRegistryEntry(unit.kind)?.category;
                 const maxPush = cat === "flying" ? 3 : cat === "boss" ? 1 : 2;
                 const pushed = pushDestination(x, y, unit.enemy.x, unit.enemy.y, maxPush);
                 const slowMs = cat === "boss" ? 1200 : 1500;
-                if (ref) await runtimeUpdateDoc(ref, { x:pushed.x, y:pushed.y, slowedUntil:Date.now()+slowMs, slowMultiplier:cat === "boss" ? 0.88 : 0.8, updatedAt:Date.now() });
+                if(ref && isLivingEnemy(unit.enemy)){Object.assign(unit.enemy,pushed);writes.push({type:"update",ref,data:{...pushed,slowedUntil:Date.now()+slowMs,slowMultiplier:cat === "boss" ? .88 : .8,updatedAt:Date.now()}});}
                 addCombatVfx(unit.enemy.x, unit.enemy.y, "💨", "vfx-pop", 650, 16);
               }
             }
+            presentShot({x,y},gustEnd,"gust");
           }
           markTowerCooldown(sym, x, y);
         }
     }
-    requestRender("generatorPayoutTick");
+    requestRender("special structure decisions ready");
+    await commitEnemyBatch(writes);
   }
 
   async function rabbitDenTick(){
-    // spawn rabbits from dens
+    if(!canRunHostSimulation())return;
     if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};
-    for (const den of getStructuresByType("🐇")){
-      const x = den.x, y = den.y;
-      const local = rabbits.filter(r => Math.abs(r.x-x)+Math.abs(r.y-y)<=2 && (r.health??0)>0);
-      if (local.length >= 3) continue;
-      const denKey = `${x},${y}`;
-      const lastSpawn = window.__lastRabbitSpawnAt[denKey] || 0;
-      if (Date.now() - lastSpawn < 15000) continue;
-      const id = `rabbit_${crypto.randomUUID()}`;
-      await runtimeSetDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });
-      window.__lastRabbitSpawnAt[denKey] = Date.now();
+    const writes=[],spawned=[],now=Date.now();
+    let livingRabbitCount=rabbits.filter(r=>isLivingEnemy(r)).length;
+    for(const den of getStructuresByType("🐇")){
+      if(livingRabbitCount>=MAX_FRIENDLY_RABBITS)break;
+      const denKey=`${den.x},${den.y}`,lastSpawn=window.__lastRabbitSpawnAt[denKey] || 0;
+      if(now-lastSpawn<15000 || rabbits.filter(r=>isLivingEnemy(r) && Math.abs(r.x-den.x)+Math.abs(r.y-den.y)<=2).length>=3)continue;
+      const spot=openFriendlySpawn(den,stableHash(denKey)%4);
+      if(!spot)continue; // Bounded retry on the existing den tick.
+      const id=`rabbit_${crypto.randomUUID()}`,data={kind:"rabbit",id,...spot,health:5,spawnX:den.x,spawnY:den.y,createdAt:now,updatedAt:now,
+        facing:directionFromDelta(den.x,den.y,spot.x,spot.y) || "east"};
+      rabbits.push(data);spawned.push({id,denKey});livingRabbitCount++;
+      writes.push({type:"set",ref:ccRef(ID.rabbit(id)),data});
+      window.__lastRabbitSpawnAt[denKey]=now;
+      battlePresentation.pulseNode(`den:${denKey}`,structureNodes.get(`${den.x}_${den.y}`)?.node,"nest-firing",320);
     }
-
-    for (const rb of rabbits){
-      if ((rb.health ?? 0) <= 0) continue;
-      const target = nearestEnemyFrom(rb.x, rb.y, Number.POSITIVE_INFINITY);
-      if (target){
-        const tx = target.kind==="cat" ? catPos.x : target.enemy.x;
-        const ty = target.kind==="cat" ? catPos.y : target.enemy.y;
-        const distance = Math.abs(tx - rb.x) + Math.abs(ty - rb.y);
-        const nearDrum = isNearRallyDrum(rb.x, rb.y);
-        const rabbitDamage = nearDrum ? 10 : 7;
-        const rabbitAttackRange = nearDrum ? 5 : 4;
-        if (distance <= rabbitAttackRange){
-          let cx = rb.x, cy = rb.y;
-          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy}); }
-          if (target.kind==="cat"){
-            catHealth -= rabbitDamage;
-            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
-          } else {
-            await damageEnemyUnit({...target.enemy,kind:target.kind}, rabbitDamage);
-          }
-        } else {
-          const rabbitStride = nearDrum ? 2 : 1;
-          const nx = rb.x + (Math.sign(tx - rb.x) * rabbitStride);
-          const ny = rb.y + (Math.sign(ty - rb.y) * rabbitStride);
-          if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
-            rb.x = nx;
-            rb.y = ny;
-            await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
-          }
-        }
-      } else {
-        const opts=[[1,0],[-1,0],[0,1],[0,-1]];
-        const [dx,dy] = opts[Math.floor(Math.random()*opts.length)];
-        const nx=rb.x+dx, ny=rb.y+dy;
-        if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
-          rb.x=nx; rb.y=ny;
-          await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
+    for(const rb of rabbits){
+      if(!isLivingEnemy(rb) || spawned.some(s=>s.id === rb.id))continue;
+      const nearDrum=isNearRallyDrum(rb.x,rb.y),range=nearDrum ? 5 : 4;
+      let plan=tacticalPlan("rabbit",rb,range,650),target=plan.target;
+      if(target){
+        const distance=Math.abs(target.x-rb.x)+Math.abs(target.y-rb.y);
+        if(distance<=range){
+          const facing=directionFromDelta(rb.x,rb.y,target.x,target.y) || rb.facing || "east";
+          if(facing!==rb.facing){rb.facing=facing;writes.push({type:"update",ref:ccRef(ID.rabbit(rb.id)),data:{facing,updatedAt:now}});}
+          presentShot({...rb,key:combatUnitKey("rabbit",rb)},target,"rabbit",target.key);
+          if(target.kind === "cat"){catHealth-=nearDrum ? 10 : 7;writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{health:catHealth},updatedAt:now}});}
+          else await damageEnemyUnit({...target.enemy,kind:target.kind},nearDrum ? 10 : 7,writes,false);
+        }else {
+          moveAlongPlan("rabbit",rb,plan,writes);
+          // Preserve the drum's faster travel, using two validated adjacent
+          // steps instead of jumping across an intervening blocked cell.
+          if(nearDrum){plan=tacticalPlan("rabbit",rb,range,650);moveAlongPlan("rabbit",rb,plan,writes);}
         }
       }
     }
-    requestRender("rabbitDenTick");
+    requestRender("rabbit den decisions ready");
+    try {await commitEnemyBatch(writes);}
+    catch(error){
+      const ids=new Set(spawned.map(s=>s.id));rabbits=rabbits.filter(r=>!ids.has(r.id));
+      for(const spawn of spawned)window.__lastRabbitSpawnAt[spawn.denKey]=0;
+      requestRender("rabbit spawn retry");throw error;
+    }
+  }
+
+  async function fleaNestAttackTick(){
+    if(!canRunHostSimulation())return;
+    const writes=[],reservations=[],spawned=[];
+    try{
+      for(const nest of getStructuresByType("🪳")){
+        const bonus=getStructuresByType("🗼").filter(b=>Math.abs(b.x-nest.x)<=2 && Math.abs(b.y-nest.y)<=2).length;
+        const reservation=reserveEnemySpawnSlots("flea",Math.min(3,1+bonus));reservations.push(reservation);
+        for(let i=0;i<reservation.count;i++){
+          const spot=openFriendlySpawn(nest,(stableHash(`${nest.x},${nest.y}`)+i)%4);if(!spot)break;
+          const now=Date.now(),id=`nest_${nest.x}_${nest.y}_${crypto.randomUUID()}`,docId=ID.flea(id);
+          const data={kind:"flea",id,docId,...spot,lifetime:isNearRallyDrum(spot.x,spot.y)?22:15,origin:"nest",spawnX:nest.x,spawnY:nest.y,createdAt:now,updatedAt:now,facing:directionFromDelta(nest.x,nest.y,spot.x,spot.y) || "east"};
+          fleas.push(data);spawned.push(docId);writes.push({type:"set",ref:ccRef(docId),data});
+          triggerNestFiringVfx(nest.x,nest.y);
+        }
+      }
+      requestRender("flea nests ready");await commitEnemyBatch(writes);
+    }catch(error){const ids=new Set(spawned);fleas=fleas.filter(f=>!ids.has(f.docId));requestRender("nest retry");throw error;}
+    finally{for(const reservation of reservations)releaseEnemySpawnReservations(reservation);}
   }
 
   // ============================================================
@@ -6883,7 +6417,7 @@
           observedHostUid = hostUid;
           observedHostHeartbeatAt = data.hostHeartbeatAt || data.updatedAt || 0;
           isHost = (hostUid === uid);
-          if (wasHost && !isHost) stateWriter.cancel();
+          if (wasHost && !isHost) {stateWriter.cancel();tacticalAI.reset();delayedEnemySteps.clear();}
           if (!ch.doc.metadata.hasPendingWrites) stateWriter.observe(stateFieldPatch(data));
           if (wasHost && !isHost && catMoveInterval){ clearInterval(catMoveInterval); catMoveInterval = null; }
           if (!wasHost && isHost && gameStarted){
@@ -6909,6 +6443,8 @@
           if (typeof cat.health === "number") catHealth = cat.health;
           if (previousCatHealth > 0 && catHealth <= 0) handleCatDefeated().catch(()=>{});
           catFacingDir = cat.facing || catFacingDir;
+          if(!isHost && Object.prototype.hasOwnProperty.call(cat,"pouncePending"))catAbilityState.pouncePending=cat.pouncePending;
+          battlePresentation.moveEntity("cat",{...catPos,facing:catFacingDir},{duration:enemyMovementCadence("cat")*.94});
           if (Object.prototype.hasOwnProperty.call(data, "selectionDeadline")) selectionDeadlineAt = typeof data.selectionDeadline === "number" ? data.selectionDeadline : null;
           if (Object.prototype.hasOwnProperty.call(data, "selectionAssetsReadyAt")) selectionAssetsReadyAt = typeof data.selectionAssetsReadyAt === "number" ? data.selectionAssetsReadyAt : null;
           if (data.phase === "playing"){
@@ -6974,6 +6510,7 @@
             document.getElementById("cheeseCount").textContent = cheeseCount;
             document.getElementById("status").textContent = isAlive ? "" : ("💀 You were killed by: " + (data.killedBy || "unknown"));
           }
+          if(players[pu].alive)battlePresentation.moveEntity(`mouse:${pu}`,players[pu],{local:pu===uid,teleport:previousPlayer?.alive===false});
         }
         else if (id.startsWith("cheese_")){
           const x = data.x, y = data.y;
@@ -7634,12 +7171,8 @@
       requestRender("player flea spawn");
     }, fleaSpawnCooldown);
 
-    // keep player fleas synced if active (like your original)
-    setInterval(() => {
-      if (fleaMasterActive && isAlive){
-        syncMyFleas().catch(()=>{});
-      }
-    }, 1200);
+    // Flea creation is player-owned; subsequent movement/lifetime is host-owned.
+    // The listener already receives those updates, so no owner echo writes.
 
     // generator payout
     setInterval(() => { if (gameStarted) generatorPayoutTick(); }, 15000);
@@ -7683,11 +7216,6 @@
       if (!isHost || gameStarted || !syncEnabled()) return;
       updateDoc(ccRef(ID.STATE), { hostHeartbeatAt:Date.now(), updatedAt:Date.now() }).catch(()=>{});
     }, HOST_HEARTBEAT_MS);
-    setInterval(() => {
-      const now = Date.now();
-      rabbitShots = rabbitShots.filter(shot => now - (shot.createdAt || now) <= PROJECTILE_TTL_MS);
-      combatVfx = combatVfx.filter(v => now - (v.createdAt || now) <= EFFECT_TTL_MS);
-    }, 500);
   }
 
 
@@ -7816,81 +7344,6 @@
       ratPower++;
       await runtimeUpdateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
     }, 120000);
-
-    async function fleaNestAttackTick(){
-      const nests = getStructuresByType?.("🪳")?.length
-        ? getStructuresByType("🪳")
-        : (() => {
-            const found = [];
-            for (let y=0; y<gridSize; y++){
-              for (let x=0; x<gridSize; x++){
-                if (grid[y]?.[x] === "🪳") found.push({ x, y, symbol: "🪳" });
-              }
-            }
-            return found;
-          })();
-      if (!nests.length) return;
-
-      const occupiedByLiveFlea = (x, y) => fleas.some(f => isLivingFlea(f) && f.x === x && f.y === y);
-      const isInside = (x, y) => x >= 0 && y >= 0 && x < gridSize && y < gridSize;
-      const isSpawnable = (x, y, allowNestCell = false) => {
-        if (!isInside(x, y)) return false;
-        const cell = grid[y]?.[x];
-        if (occupiedByLiveFlea(x, y)) return false;
-        if (allowNestCell && cell === "🪳") return true;
-        return cell === "";
-      };
-
-      for (const nest of nests){
-        const x = nest.x, y = nest.y;
-        let spawned = 0;
-
-        const beaconBonus = getStructuresByType("🗼").filter(b => Math.abs(b.x - x) <= 2 && Math.abs(b.y - y) <= 2).length;
-        const requestedSpawns = Math.min(3, 1 + beaconBonus);
-        const fleaReservation = reserveEnemySpawnSlots("flea", requestedSpawns);
-        const spawnBudget = fleaReservation.count;
-
-        if (spawnBudget <= 0){
-          if (cameraDebug) console.debug("[fleaNestAttackTick] cap reached");
-          continue;
-        }
-
-        const ringOffsets = [
-          {dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},
-          {dx:1,dy:1},{dx:1,dy:-1},{dx:-1,dy:1},{dx:-1,dy:-1}
-        ];
-        const candidateTiles = ringOffsets
-          .map(off => ({ x: x + off.dx, y: y + off.dy }))
-          .filter(p => isSpawnable(p.x, p.y, false));
-        if (isSpawnable(x, y, true)) candidateTiles.push({ x, y });
-
-        const shuffled = candidateTiles.sort(() => Math.random() - 0.5);
-        for (const tile of shuffled){
-          if (spawned >= spawnBudget) break;
-          const fx = tile.x, fy = tile.y;
-          const now = Date.now();
-          const fid = `nest_${x}_${y}_${now}_${Math.floor(Math.random()*9999)}`;
-          await runtimeSetDoc(ccRef(ID.flea(fid)), {
-            kind: "flea",
-            id: fid,
-            docId: ID.flea(fid),
-            x: fx, y: fy,
-            lifetime: isNearRallyDrum(fx, fy) ? 22 : 15,
-            origin: "nest",
-            createdAt: now,
-            updatedAt: now
-          }, { merge:true });
-          addCombatVfx(fx, fy, "✦", "vfx-pop", 350, 12);
-          spawned++;
-        }
-        releaseEnemySpawnReservations(fleaReservation);
-        if (spawned > 0){
-          addCombatVfx(x, y, "🐞", "vfx-pop", 500, 14);
-          triggerNestFiringVfx(x, y);
-        }
-      }
-      requestRender("flea nest fired");
-    }
 
     setInterval(() => {
       if (!canRunHostSimulation()) return;
@@ -8049,6 +7502,7 @@
   repairStationTick = lockAsyncTask("repairStations", repairStationTick);
   specialStructureTick = lockAsyncTask("specialStructures", specialStructureTick);
   rabbitDenTick = lockAsyncTask("rabbitDens", rabbitDenTick);
+  fleaNestAttackTick = lockAsyncTask("fleaNests", fleaNestAttackTick);
   waveSchedulerTick = lockAsyncTask("waves", waveSchedulerTick);
   objectiveSchedulerTick = lockAsyncTask("objectives", objectiveSchedulerTick);
   processWallHealRequests = lockAsyncTask("wallHealing", processWallHealRequests);
@@ -8056,6 +7510,7 @@
   scrubGhostEnemies = lockAsyncTask("ghostCleanup", scrubGhostEnemies);
 
   window.__catMouseSyncStats = () => ({ state:stateWriter.stats, player:playerWriter.stats, connected:syncEnabled() });
+  window.__catMouseBattleStats = () => ({presentation:battlePresentation.stats,ai:tacticalAI.stats});
 
   // ============================================================
   // Boot
@@ -8069,6 +7524,7 @@
     const markLocalPlayerOffline = () => {
       if (pageSuspended) return;
       pageSuspended = true;
+      battlePresentation.suspend();
       liveSnapshotReady = false;
       stateWriter.cancel();
       playerWriter.cancel();
@@ -8083,6 +7539,7 @@
       pageSuspended = false;
       lastRequestedPosition = null;
       if (!soloMode){ listenToCrownCouncil(); startPlayerHeartbeat(); }
+      battlePresentation.resume();
       requestRender("resumePage");
     });
     window.addEventListener("offline", () => {
@@ -8172,4 +7629,3 @@
 </script>
 </body>
 </html>
-
