@@ -82,6 +82,7 @@ export function validateResponse(raw) {
   } catch { return null; }
 }
 export function describeIntent(i) {
+  if(i.type==='PEACE'&&i.targetId)return `Make peace with ${i.targetId} · ${i.duration} turns · Requires both warring Houses to agree`;
   if(i.type==='AID'&&i.giveItems)return `Gift / military aid · ${itemText(i.giveItems)} · Immediate`;
   if(packageTrade(i))return `${LABELS[i.type]} · Proposer gives ${itemText(tradeItems(i,'give'))} · Proposer receives ${itemText(tradeItems(i,'receive'))}${i.type==='RECURRING'?` each turn for ${i.duration} turns`:' now · Immediate'}`;
   if (i.type === 'INTELLIGENCE') return `Private intelligence report · Quote ${i.targetId} · Pay ${i.giveAmount} gold once on ratification · A dated report of approaches, not proof of an agreed conspiracy.`;
@@ -110,6 +111,7 @@ export function evaluateDeal(s, rulerId, raw, actorHouseId = PLAYER, { consentin
   const reject = reason => ({ status: 'reject', reason, intent, factors });
   if (s.outcome) return reject('The campaign is over.');
   if (!intent || !k || rulerId === actorHouseId || !alive(s, rulerId)) return reject('The proposed terms are invalid.');
+  if(intent.type==='PEACE'&&intent.targetId)return reject('Use Offer / Request to ask this ruler to make peace with a third faction.');
   if (intent.type === 'INTELLIGENCE') return evaluateIntelligenceSale(s, rulerId, intent, actorHouseId);
   if(intent.type==='MARRIAGE')return evaluateMarriage(s,rulerId,intent,actorHouseId,{consentingHuman});
   const wartime=atWar(s,actorHouseId,rulerId), war=wartime?warDesperation(s,rulerId,actorHouseId):null;

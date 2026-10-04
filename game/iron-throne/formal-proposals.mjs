@@ -36,7 +36,8 @@ export function cancelFormalConversation(s,actor){
 }
 const targetOf=(s,p,house)=>{const view=knowledgeView(s,house);return validHouse(s,p.intent?.targetId)?p.intent.targetId:view.tiles[p.intent?.targetId]?.owner||view.tiles[p.intent?.targetId]?.knownCapital||null;};
 const RECEIVER_ACTIONS=new Set(['DEFEND','POSITION','BUILD_DEFENSES','WITHDRAW','EMBARGO']);
-export const defaultProposalDirection=i=>RECEIVER_ACTIONS.has(i?.type)||i?.type==='JOINT_WAR'?'request':'offer';
+export const isFactionPeace=i=>i?.type==='PEACE'&&!!i.targetId;
+export const defaultProposalDirection=i=>RECEIVER_ACTIONS.has(i?.type)||i?.type==='JOINT_WAR'||isFactionPeace(i)?'request':'offer';
 const requestedSender=i=>isPlayerPromise(i)||['AID','EXCHANGE','RECURRING','LOAN'].includes(i?.type);
 const parties=(p,house)=>(p.direction==='request'&&requestedSender(p.intent)||p.direction==='offer'&&RECEIVER_ACTIONS.has(p.intent.type))?{actor:house,ruler:p.proposer}:{actor:p.proposer,ruler:house};
 const reversePackage=i=>withItems(i,tradeItems(i,'receive'),tradeItems(i,'give'));
@@ -47,7 +48,31 @@ const audience=(s,actor,councilId,requested)=>{
   if(!c&&requested.length!==1)return null;
   return c?c.participants:[actor,...requested];
 };
-export function formalDescription(p){const requested=p.direction==='request'&&requestedSender(p.intent);return p.operationId?`Join ${p.operationId}`:`${requested?'Requested commitment: ':''}${requested?describeIntent(p.intent).replaceAll('Proposer','Requested House'):describeIntent(p.intent)}${p.targetTile?` · Exact hex ${p.targetTile}`:''}`;}
+export function formalDescription(p){const requested=p.direction==='request'&&requestedSender(p.intent);return p.operationId?`Join ${p.operationId}`:isFactionPeace(p.intent)?`Request selected rulers to make peace with ${p.intent.targetId} · Peace treaty for ${p.intent.duration} turns · No resource payment`:`${requested?'Requested commitment: ':''}${requested?describeIntent(p.intent).replaceAll('Proposer','Requested House'):describeIntent(p.intent)}${p.targetTile?` · Exact hex ${p.targetTile}`:''}`;}
+function factionPeaceTerms(s,actor,direction,intent,houses){
+  if(direction!=='request')return 'Ask the selected rulers to make peace with the target faction.';
+  if(!validHouse(s,intent.targetId)||!alive(s,intent.targetId)||[actor,...houses].includes(intent.targetId))return 'Choose a surviving third faction, separate from you and the requested rulers.';
+  if(intent.giveAmount||intent.receiveAmount)return 'Mediated peace requests do not transfer resources. Negotiate payments directly with the faction.';
+  return null;
+}
+function peaceWarCommitment(s,house,target){
+  const operation=memberOperation(s,house);
+  return operation&&['attack','capture','siege'].includes(operation.objectiveType||'attack')&&(operation.targetHouse||operation.target)===target||s.pledges.some(p=>p.debtor===house&&p.status==='pending'&&OFFENSIVE.has(p.intent.type)&&(p.intent.targetId===target||p.targetOwner===target||s.tiles[p.intent.targetId]?.owner===target||s.armies.find(a=>a.id===p.intent.targetId)?.owner===target));
+}
+function evaluateFactionPeace(s,house,p){
+  const i=p.intent,target=i.targetId,terms=factionPeaceTerms(s,p.proposer,p.direction,i,p.requestedHouses),result=(decision,code,reason)=>({decision,reasonCodes:[code],reason});
+  if(terms)return result('invalid','invalid_peace_target',terms);
+  const name=kingdom(s,target).name;
+  if(!atWar(s,house,target))return result('invalid','already_at_peace',`${kingdom(s,house).name} is already at peace with ${name}. No war was changed.`);
+  if(!isAiHouse(s,target))return result('declined','target_consent_required',`${name} is human-controlled and must accept peace in direct negotiations. This request cannot consent on their behalf.`);
+  for(const party of [house,target])if(peaceWarCommitment(s,party,party===house?target:house))return result('declined','peace_commitment_conflict',`An existing offensive commitment prevents this peace with ${name}. Resolve that commitment first.`);
+  // Both warring courts judge the same zero-payment treaty. The mediator cannot
+  // spend either court's resources, accept a hidden counter, or force a human's consent.
+  const treatyIntent={type:'PEACE',duration:i.duration};
+  if(isAiHouse(s,house)&&evaluateDeal(s,house,treatyIntent,target).status!=='accept')return result('declined','peace_terms_unacceptable',`I am not willing to end my war with ${name} on these terms. The war remains active.`);
+  if(evaluateDeal(s,target,treatyIntent,house).status!=='accept')return result('declined','target_declined_peace',`${name} is not willing to accept this peace. Our war remains active.`);
+  return result('accepted','mediated_peace',`${kingdom(s,house).name} and ${name} have agreed to end their war and establish a peace treaty for ${i.duration} turns. No resources change hands; your other wars are unchanged.`);
+}
 function initialize(s){s.cooperation??={operations:[],proposals:[],balance:[],lastDiplomacyTurn:0};s.cooperation.formalProposals??=[];}
 const canPrune=(s,p)=>p.status==='dismissed'||p.status==='resolved'&&(s.turn>p.expires||!Object.values(p.responses).some(r=>['counter','alternative'].includes(r.status)&&!r.offerAnswered));
 function trim(s){const rows=s.cooperation.formalProposals;while(rows.length>40){const i=rows.findIndex(p=>canPrune(s,p));if(i<0)break;rows.splice(i,1);}}
@@ -68,6 +93,7 @@ export function submitFormalProposal(s,actor,raw,{inferred=false}={}){
   const operation=raw.operationId&&operationFor(s,raw.operationId),intent=operation?null:validateIntent(raw.intent);
   if(raw.operationId&&(!operation||operation.owner!==actor||operation.status!=='Preparing'||raw.requestedHouses.some(h=>operationMember(operation,h)?.status!=='invited')))return fail('Choose an operation with invitations for these Houses.');
   if(!operation&&!intent)return fail('Choose valid structured terms.');
+  if(isFactionPeace(intent)){const error=factionPeaceTerms(s,actor,direction,intent,raw.requestedHouses);if(error)return fail(error);}
   if(intent&&['WAR','BETRAY','VASSALAGE','MARRIAGE','INTELLIGENCE'].includes(intent.type)&&councilId)return fail('These terms belong in a private ruler conversation.');
   if(intent?.targetId&&!validHouse(s,intent.targetId)&&!Object.hasOwn(s.tiles,intent.targetId)&&!knowledgeView(s,actor).armies.some(a=>a.id===intent.targetId))return fail('Choose a valid known target or map coordinate.');
   initialize(s);if(s.cooperation.formalProposals.filter(p=>!['resolved','dismissed'].includes(p.status)).length>=24)return fail('Resolve or dismiss earlier proposals first.');
@@ -106,6 +132,7 @@ function alternatives(s,house,p){
 export function evaluateCouncilProposal(s,house,p){
   if(!p?.approved||!p.requestedHouses.includes(house))return {decision:'invalid',reasonCodes:['unapproved'],reason:'No approved request.'};
   if(s.outcome||s.turn>p.expires||!alive(s,house)||!audience(s,p.proposer,p.councilId,p.requestedHouses))return {decision:'invalid',reasonCodes:['circumstances_changed'],reason:'This proposal expired or its audience changed.'};
+  if(isFactionPeace(p.intent))return evaluateFactionPeace(s,house,p);
   if(p.operationId){const o=operationFor(s,p.operationId);if(!o||o.status!=='Preparing'||operationMember(o,house)?.status!=='invited')return {decision:'invalid',reasonCodes:['operation_changed'],reason:'This operation invitation changed.'};}
   const i=p.intent,r=relation(s,house,p.proposer),k=kingdom(s,house),target=i?targetOf(s,p,house):operationFor(s,p.operationId).target;
   let reason=null,code=null;
@@ -133,6 +160,11 @@ export function evaluateCouncilProposal(s,house,p){
 }
 function commit(s,p,house,intent=p.intent){
   if(p.operationId)return respondOperation(s,house,p.operationId,'accept');
+  if(isFactionPeace(intent)){
+    const verdict=evaluateFactionPeace(s,house,{...p,intent});
+    if(verdict.decision!=='accepted')return fail(verdict.reason);
+    return commitDeal(s,intent.targetId,{type:'PEACE',duration:intent.duration},house,{consentingHuman:true});
+  }
   const who=parties({...p,intent},house),before=s.pledges.length;
   const result=commitDeal(s,who.ruler,intent,who.actor,{consentingHuman:true,formalSupport:true});
   if(result.ok)for(const pledge of s.pledges.slice(before))pledge.formalProposalId=p.id;
@@ -186,7 +218,9 @@ export function recordFormalVoice(s,actor,id,house,message,source='failed',rawDi
   if(!formalConversationCurrent(s,p)||['waiting','considering','awaiting-human'].includes(r.status))return fail('No completed decision awaits a voice.');
   if(!['gemini','failed','scripted'].includes(source)||typeof message!=='string'||message.length>900)return fail('Invalid response text.');
   const text=message.trim(),accepting=/\b(?:Agreed|Accepted|I agree|We agree|I accept|We accept|I will (?:attack|join|march|fight)|we will (?:attack|join|march|fight))\b/i.test(text),refusing=/\b(?:I refuse|I decline|I (?:will not|cannot|can't|won't) (?:accept|join|attack|commit|march|fight))\b/i.test(text);
-  const contradictory=r.status!=='accepted'&&accepting||r.status==='accepted'&&refusing;
+  const peaceAcceptance=isFactionPeace(p.intent)&&/\b(?:I|we) (?:will|shall|have) (?:make|made|sign|signed) (?:a )?(?:peace|truce)\b/i.test(text);
+  const peaceRefusal=isFactionPeace(p.intent)&&/\b(?:I|we) (?:will not|cannot|can't|won't) (?:make|sign) (?:a )?(?:peace|truce)\b/i.test(text);
+  const contradictory=r.status!=='accepted'&&(accepting||peaceAcceptance)||r.status==='accepted'&&(refusing||peaceRefusal);
   const voiced=source==='gemini'&&text&&!contradictory;
   let diagnostic=councilDiagnostic(rawDiagnostic);
   if(!voiced&&!diagnostic)diagnostic=makeDiagnostic(contradictory||source==='gemini'?'GEMINI_RESPONSE_INVALID':'WORKER_UNAVAILABLE');
@@ -225,10 +259,19 @@ export async function runFormalResponseQueue({next,resolve,voice,record,fallback
 const words={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fifteen:15,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,hundred:100};
 export function inferFormalProposal(s,actor,message,{councilId=null,ruler=null,location=null}={}){
   if(typeof message!=='string'||/\b(?:do not|don't|never|cancel)\b/i.test(message))return null;
-  const text=message.toLowerCase(),view=knowledgeView(s,actor),number=x=>/^\d+$/.test(x)?Number(x):words[x];
+  const text=message.toLowerCase().replaceAll('’',"'"),view=knowledgeView(s,actor),number=x=>/^\d+$/.test(x)?Number(x):words[x];
+  const turn=text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)\s+turns?\b/),duration=Math.min(20,Math.max(2,turn?number(turn[1]):10));
+  const peace=text.match(/\b(?:(?:make|negotiate|sign|agree to|seek)\s+(?:a\s+)?(?:peace|truce)(?:\s+treaty)?\s+with|end\s+(?:(?:your|the|our)\s+)?war\s+(?:with|against))\s+(?:the\s+)?(?:faction\s+|house\s+)?([a-z]+)/);
+  if(peace){
+    if(/\b(?:not|don't|won't|never|if|unless|maybe|perhaps|i will|i'll|i promise|i shall|we will|we'll|i can|let me)\b/.test(text))return null;
+    const target=s.kingdoms.find(k=>k.id===peace[1]);if(!target||target.id===actor||target.id===ruler)return null;
+    const council=councilId&&s.allianceCouncils?.find(c=>c.id===councilId),members=council?council.participants.filter(h=>h!==actor&&h!==target.id):ruler?[ruler]:[];
+    const addressed=members.filter(h=>new RegExp(`\\b${h}\\b`).test(text.slice(0,peace.index)));
+    const requestedHouses=addressed.length?addressed:members;
+    return requestedHouses.length?{intent:validateIntent({type:'PEACE',targetId:target.id,duration}),direction:'request',councilId,requestedHouses}:null;
+  }
   const promise=ruler&&detectPromise(view,ruler,message,actor);
   if(promise)return {intent:validateIntent(promise),direction:'offer',councilId,requestedHouses:[ruler]};
-  const turn=text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)\s+turns?\b/),duration=Math.min(20,Math.max(2,turn?number(turn[1]):10));
   const tile=location?.targetTile&&view.tiles[location.targetTile]||Object.values(view.tiles).find(t=>(t.fog!=='unknown'||t.knownCapital)&&t.name&&text.includes(t.name.toLowerCase()))||view.tiles[text.match(/\b\d+,\d+\b/)?.[0]];
   const house=view.kingdoms.find(k=>new RegExp(`\\b${k.id}\\b`,'i').test(text)),resources=text.match(/\b(\d+|twenty|thirty|forty|fifty|sixty|hundred)\s+(food|iron|wood|gold|stone|arms|tools|horses)\b/);
   let intent,direction='request';

@@ -709,3 +709,41 @@ this update. Publish the static game update; no Worker redeploy is required.
 npm run test:iron-throne:counteroffers-browser
 npm run test:iron-throne:connection-browser
 ```
+
+### Ask another faction to make peace
+
+Both private ruler chats and Alliance Councils now include **Offer / Request →
+Make peace with a faction**. Select the faction to make peace with, the rulers
+being asked, and a 2–20 turn peace treaty duration. The target cannot also be a
+requested ruler. Accepted requests end only that ruler's war with the target and
+create a peace treaty between them; the mediator's wars stay unchanged. These
+requests transfer no resources.
+
+You can also type, for example, “Wintermere, please make peace with House Sunspire
+for eight turns.” This creates an interpreted draft with **Ratify & Send**,
+**Modify**, and **Dismiss**. Council requests naming a recipient before the peace
+request address that recipient; an unaddressed request addresses the other council
+members except the target. Conditional or negated statements and promises to make
+peace yourself do not create a mediated peace draft. **Promise not to attack** and
+ordinary bilateral **Peace treaty** remain separate actions.
+
+Both warring AI courts evaluate the exact peace terms under the existing peace
+rules. Either can decline; a payment counter is never accepted implicitly.
+Existing offensive pledges or coordinated operations can prevent peace. Already
+peaceful or fallen targets are revalidated when the request resolves. A requested
+human ruler must explicitly accept using the existing multiplayer proposal flow;
+a human-controlled third-party target requires direct negotiation, so another
+player cannot consent for them.
+
+Gemini voices the recorded outcome through the existing formal-decision context.
+Failure to generate speech produces no scripted/local AI reply. The game-side
+request uses the existing `PEACE` intent and `targetId`; no Worker, provider
+configuration, request schema, or Firestore command changes are needed. Publish
+the static game files; no Worker redeploy is required.
+
+Validation: `node --test game/iron-throne/tests/faction-peace.test.mjs` covers
+private/council acceptance, refusal by either faction, draft ratification, target
+validation, active commitments, save/reload, Gemini context compatibility, and
+human consent. `npm run test:iron-throne:peace-browser` checks both chat entry
+paths, target/recipient selection, and persistence on desktop and mobile without
+screenshots or previews.
