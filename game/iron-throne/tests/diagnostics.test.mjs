@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { DiplomacyBudget } from '../worker/worker.mjs';
+import worker, { DiplomacyBudget, sanitizeContext } from '../worker/worker.mjs';
 import { DiplomacyClient } from '../chat.mjs';
-import { CHECK_NAMES, diagnosticReport, makeDiagnostic, readDiagnostic } from '../diagnostics.mjs';
+import { CHECK_NAMES, diagnosticReport, makeDiagnostic, readDiagnostic, requestMetrics } from '../diagnostics.mjs';
 import {  } from '../core.mjs';
 import { createGame } from './fixtures/legacy-game.mjs';
 
@@ -28,6 +28,52 @@ function clientFor(env) {
 }
 function report(client) { return diagnosticReport(client.lastDiagnostic, endpoint, origin, { endpoint: true, siteKey: true }); }
 const unknownChecks = Object.fromEntries(CHECK_NAMES.map(name => [name, 'unknown']));
+
+test('503 retry delays apply to the failed message without blocking other conversations',async()=>{
+  let clock=100000,calls=0;const bodies=[];
+  const client=new DiplomacyClient({endpoint,now:()=>clock,fetcher:async(_url,options)=>{
+    calls++;bodies.push(options.body);clock+=25;
+    return Response.json({diagnostics:makeDiagnostic('GEMINI_UNAVAILABLE',{providerStatus:503})},{status:503,headers:{'Retry-After':'60'}});
+  }});
+  client.session={token:'private-session',expires:clock+3600000};
+  const s=createGame(),first=await client.send(s,'wintermere','private-message');
+  assert.equal(first.source,'failed');assert.equal(first.diagnostic.retryAt,160025);
+  assert.deepEqual(first.diagnostic.clientRequest,{...requestMetrics(JSON.parse(bodies[0])),durationMs:25});
+  const retry=await client.send(s,'wintermere','private-message','',true,{bypassCache:true});
+  assert.equal(calls,1);assert.equal(retry.diagnostic,first.diagnostic);assert.match(retry.notice,/Wait 60 seconds/);
+  await client.send(s,'thornwall','private-message');assert.equal(calls,2,'another ruler is independent');
+  await client.send(s,'wintermere','A different message');assert.equal(calls,3,'only the failed message is delayed');
+  clock=160100;await client.send(s,'wintermere','private-message','',true,{bypassCache:true});assert.equal(calls,4);
+  assert.equal(client.cooldownUntil,0,'no council-wide provider cooldown');
+  const text=diagnosticReport(first.diagnostic,endpoint,origin);
+  assert.match(text,/Conversation: private/);assert.match(text,/Game context bytes: \d+/);assert.match(text,/Request elapsed ms: 25/);assert.match(text,/Retry after:/);
+  assert.match(text,/does not identify a context-size problem/);assert.doesNotMatch(text,/private-message|private-session/);
+  assert.equal(JSON.parse(bodies[0]).clientRequest,undefined,'no request schema changes');
+});
+
+test('request measurements preserve only bounded counts and never request contents',()=>{
+  const record=readDiagnostic({...makeDiagnostic('GEMINI_UNAVAILABLE'),clientRequest:{mode:'council',bodyBytes:1000,worldBytes:-1,historyBytes:Infinity,historyEntries:99,durationMs:20,message:'PRIVATE',token:'PRIVATE'}});
+  assert.deepEqual(record.clientRequest,{mode:'council',bodyBytes:1000,durationMs:20});
+  assert.equal(readDiagnostic({...record,clientRequest:{mode:'PRIVATE',bodyBytes:1}}).clientRequest,undefined);
+  assert.doesNotMatch(diagnosticReport(record),/PRIVATE/);
+});
+test('manual minimal probes use the unchanged contract without returning dialogue or replacing game diagnostics',async()=>{
+ for(const mode of ['private','council','general']){
+  let calls=0;const bodies=new Set(),client=new DiplomacyClient({endpoint,fetcher:async(_url,options)=>{
+   calls++;bodies.add(options.body);const body=JSON.parse(options.body);assert.ok(sanitizeContext(body));assert.ok(new TextEncoder().encode(options.body).length<700);assert.equal(body.history.length,0);assert.doesNotMatch(options.body,/CAMPAIGN_SECRET/);
+   return Response.json(mode==='council'?{responses:[{speakerHouseId:'wintermere',message:'MODEL_PROBE_REPLY'}]}:mode==='general'?{reply:'MODEL_PROBE_REPLY'}:{reply:'MODEL_PROBE_REPLY',tone:'neutral',intents:[]});
+  }});
+  client.session={token:'private-token',expires:Date.now()+3600000};const original=client.recordFailure('GEMINI_TIMEOUT',{},'/diplomacy');
+  const result=await client.testConnection({mode});assert.equal(result.ok,true);assert.equal(calls,1);assert.equal(client.lastDiagnostic,original);assert.equal(client.cache.size,0);assert.equal(result.clientRequest.mode,mode);assert.doesNotMatch(JSON.stringify(result),/MODEL_PROBE_REPLY|private-token/);
+  assert.equal((await client.testConnection({mode})).ok,true);assert.equal(calls,2);assert.equal(bodies.size,2,'a new explicit probe cannot reuse a successful Worker cache entry');
+ }
+});
+test('failed connection probes remain manual and respect their own retry delay',async()=>{
+ let calls=0;const client=new DiplomacyClient({endpoint,fetcher:async()=>{calls++;return Response.json({diagnostics:makeDiagnostic('GEMINI_UNAVAILABLE',{providerStatus:503})},{status:503,headers:{'Retry-After':'60'}});}});
+ client.session={token:'private-token',expires:Date.now()+3600000};
+ assert.equal((await client.testConnection()).ok,false);assert.equal(calls,1);
+ const next=await client.testConnection();assert.equal(next.ok,false);assert.equal(calls,1);assert.match(next.notice,/Wait/);
+});
 
 test('session 503 identifies each missing runtime setting and survives the failed response', async () => {
   for (const missing of [...CHECK_NAMES.map(name => [name]), CHECK_NAMES]) {

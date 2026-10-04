@@ -53,6 +53,20 @@ const CODES = {
 };
 const REPLY_ISSUES = { output_limit: 'Output-token limit reached', generation_not_complete: 'Generation did not finish normally', empty_reply: 'No visible reply text', invalid_json: 'Reply text was not valid JSON', invalid_schema: 'JSON did not match the diplomacy contract', invalid_reply: 'Reply was missing, empty, or exceeded the text limit', invalid_intent: 'A proposed intent did not match its allowed terms', invalid_metadata: 'Tone or conversation metadata did not match the contract' };
 const TURNSTILE_CODES = ['missing-input-secret', 'invalid-input-secret', 'missing-input-response', 'invalid-input-response', 'bad-request', 'timeout-or-duplicate', 'internal-error'];
+// Client measurements describe the transmitted game context, not Google's token
+// usage or the additional system instructions/schema supplied by the Worker.
+export function requestMetrics(context) {
+  const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
+  return {mode:context.mode==='allianceCouncil'?'council':context.mode==='general'?'general':'private',
+    bodyBytes:bytes(context),worldBytes:bytes(context.world||{}),historyBytes:bytes(context.history||[]),historyEntries:context.history?.length||0};
+}
+function safeRequestMetrics(value) {
+  if(!value||!['private','council','general'].includes(value.mode))return null;
+  const result={mode:value.mode};
+  for(const [key,max] of Object.entries({bodyBytes:1000000,worldBytes:1000000,historyBytes:1000000,historyEntries:12,durationMs:3600000}))
+    if(Number.isSafeInteger(value[key])&&value[key]>=0&&value[key]<=max)result[key]=value[key];
+  return result;
+}
 export function workerChecks(env) {
   return Object.fromEntries(CHECK_NAMES.map(name => [name, env[name] ? 'present' : 'missing']));
 }
@@ -65,6 +79,7 @@ export function makeDiagnostic(code, details = {}) {
     ...(['configured','default'].includes(details.modelSource) ? { modelSource: details.modelSource } : {}),
     ...(['openapi-flat-v1','pre-council-queue-v1'].includes(details.requestFormat) ? { requestFormat: details.requestFormat } : {}),
     ...(Object.hasOwn(REPLY_ISSUES,details.replyIssue || '') ? { replyIssue: details.replyIssue } : {}),
+    ...(safeRequestMetrics(details.clientRequest) ? {clientRequest:safeRequestMetrics(details.clientRequest)} : {}),
     turnstileCodes: [...new Set((Array.isArray(details.turnstileCodes) ? details.turnstileCodes : []).filter(c => TURNSTILE_CODES.includes(c)))].slice(0, 7)
   };
 }
@@ -74,6 +89,7 @@ export function readDiagnostic(value) {
 export function diagnosticDetails(value) {
   const d = readDiagnostic(value) || makeDiagnostic('WORKER_UNAVAILABLE');
   const [stage, reason, action] = CODES[d.code];
+  if(d.code==='GEMINI_UNAVAILABLE'&&d.providerStatus===503)return {stage,reason:'Google returned 503 Service Unavailable for this generation request.',action:'Wait until the reported retry time, then retry this reply. If it persists, compare a minimal request using the same model and API project. This status does not identify a context-size problem; redeploying unchanged Worker code will not resolve Google availability.'};
   const missing = CHECK_NAMES.filter(name => d.checks[name] === 'missing');
   return { stage, reason: d.code === 'CONFIG_MISSING' && missing.length ? `Missing from the running Worker: ${missing.join(', ')}.` : reason, action };
 }
@@ -85,10 +101,16 @@ export function diagnosticReport(record, endpoint = '', origin = '', clientSetti
   const path = ['/session', '/diplomacy', '/config.json', '/verification'].includes(record.path) ? record.path : '';
   return [
     'Iron Throne — Gemini diagnostics v1',
+    'Game client: progressive-gemini-diagnostics-v2',
     `Time: ${Number.isSafeInteger(record.at) && record.at > 0 && record.at < 8640000000000000 ? new Date(record.at).toISOString() : 'Unknown'}`,
     `Game origin: ${safeOrigin(origin)}`, `Worker: ${safeOrigin(endpoint)}`, `Failed step: ${info.stage}`, `Request: ${path || 'Not sent'}`,
     `HTTP status: ${Number.isInteger(record.httpStatus) && record.httpStatus >= 100 && record.httpStatus <= 599 ? record.httpStatus : 'Unavailable'}`,
     ...(d.providerStatus ? [`Google HTTP status: ${d.providerStatus}`] : []), `Error code: ${d.code}`, `Reason: ${info.reason}`, '',
+    ...(d.clientRequest ? [
+      `Conversation: ${d.clientRequest.mode}`,
+      ...(['bodyBytes','worldBytes','historyBytes','historyEntries','durationMs'].filter(k=>d.clientRequest[k]!==undefined).map(k=>`${({bodyBytes:'Game context bytes',worldBytes:'World context bytes',historyBytes:'History bytes',historyEntries:'History entries',durationMs:'Request elapsed ms'})[k]}: ${d.clientRequest[k]}`)),
+      'Sizes measure game-to-Worker JSON; Worker instructions/schema and Google token counts are not included.', ''
+    ] : []),
     ...(d.replyIssue ? [`Reply validation: ${REPLY_ISSUES[d.replyIssue]}`] : []),
     ...(d.model ? [`Gemini model: ${d.model}`] : []),
     ...(d.modelSource ? [`Model setting: ${d.modelSource === 'configured' ? 'Cloudflare GEMINI_MODEL' : 'Worker default (GEMINI_MODEL not set)'}`] : []),

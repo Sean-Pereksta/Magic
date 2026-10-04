@@ -458,8 +458,11 @@ function updateDiagnostics() {
   const record = replyDiagnostics.get(activeRuler);
   $('gemini-diagnostics').hidden = sending || !record || isHumanHouse(state, activeRuler);
 }
+let displayedDiagnostic=null,diagnosticTestVersion=0;
 function fillDiagnostics(record = replyDiagnostics.get(activeRuler)) {
   if (!record) return;
+  displayedDiagnostic=record;diagnosticTestVersion++;
+  $('gemini-test-result').textContent='';$('test-gemini-connection').disabled=false;
   const info = diagnosticDetails(record);
   $('diagnostics-stage').textContent = info.stage;
   $('diagnostics-reason').textContent = info.reason;
@@ -474,6 +477,20 @@ function fillDiagnostics(record = replyDiagnostics.get(activeRuler)) {
 $('gemini-diagnostics').onclick = () => {
   if (!replyDiagnostics.has(activeRuler)) return;
   fillDiagnostics(); $('gemini-diagnostics-dialog').showModal();
+};
+$('test-gemini-connection').onclick=async()=>{
+  if(!displayedDiagnostic)return;
+  const version=++diagnosticTestVersion,mode=displayedDiagnostic.clientRequest?.mode||'private',button=$('test-gemini-connection');
+  button.disabled=true;$('gemini-test-result').textContent='Testing Gemini with minimal context…';
+  try{
+    const result=await client.testConnection({mode,actorHouseId:localHouse,rulerId:activeRuler});
+    if(version!==diagnosticTestVersion)return;
+    const metrics=result.clientRequest,detail=metrics?` (${metrics.bodyBytes} game-context bytes, ${metrics.durationMs??0} ms)`:'',summary=result.retryBlocked?`No new connection test was sent. ${result.notice}`:result.ok
+      ?`Minimal ${mode} test succeeded${detail}. Gemini can answer this small request. The original failure may be intermittent or depend on its request; its cause is not proven.`
+      :`Minimal ${mode} test failed${detail}. ${result.diagnostic?`${diagnosticDetails(result.diagnostic).reason} [${result.diagnostic.code}]`:result.notice||'No response.'}${result.diagnostic?.providerStatus===503?' Google also returned 503 without campaign context. Large game history is not required to reproduce this failure.':''}`;
+    $('gemini-test-result').textContent=summary;
+    $('diagnostics-report').value+=`\n\nManual connection test: ${summary}${result.diagnostic?`\n${diagnosticReport(result.diagnostic,client.endpoint,location.origin,{endpoint:!!client.endpoint,siteKey:!!config.turnstileSiteKey})}`:''}`;
+  }finally{if(version===diagnosticTestVersion)button.disabled=false;}
 };
 $('copy-diagnostics').onclick = async () => {
   const report = $('diagnostics-report'); let copied = false;
@@ -832,7 +849,7 @@ allianceUI=installAllianceCouncil(document,{
   cooldown:()=>Math.max(0,Math.ceil((client.cooldownUntil-client.now())/1000)),
   openDiagnostics:id=>{const record=councilDiagnosticFor(id);if(record){fillDiagnostics(record);$('gemini-diagnostics-dialog').showModal();}},
   error:toast,changed:()=>{save();renderDispatches();},
-  onOpen:holder=>{holder.append($('turnstile'));if(configReady)enableGemini();voiceNextDispatch(true);},
+  onOpen:holder=>{holder.append($('turnstile'));formalUI?.render();if(configReady)enableGemini();voiceNextDispatch(true);},
   onClose:()=>{verificationHome.after($('turnstile'));save();renderDispatches();},
   open:async id=>{
     if(turnBusy||state.phase==='founding')return null;

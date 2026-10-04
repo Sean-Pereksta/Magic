@@ -669,3 +669,43 @@ withhold the AI answer and show the actual Diagnostics reason.
 Deploy the updated game files and redeploy the Cloudflare Worker to activate these
 changes. A GitHub merge alone does not update the Worker. Mocked regressions cover
 provider HTTP 200 replies; they do not call Google or validate a production key.
+
+### Recurring Google 503s and unanswered counteroffers
+
+`GEMINI_UNAVAILABLE` with Google HTTP 503 identifies an upstream failure; the
+report alone cannot establish why Google rejected that generation. The client
+now reports conversation type, game-context/world/history byte counts, history
+entry count, elapsed request time, and the Worker's retry time. These are bounded
+measurements only, with no message contents or credentials. Byte counts describe
+the game-to-Worker JSON, excluding the Worker's system instructions and response
+schema; they are not token counts.
+
+The client honors `Retry-After` (or the existing JSON `retryAfter`) for that exact
+failed message. It does not put later council speakers or unrelated conversations
+behind a new global cooldown, and it does not automatically retry paid generation.
+Opening Diagnostics still sends no AI request. **Test Gemini connection** sends
+one explicitly requested, minimal request through the existing Worker and session,
+using the same conversation mode without campaign history or world state. Its
+result is appended to the copyable diagnostic report; generated test dialogue is
+never returned to game chat, saved, or used to apply actions. A 503 on this test
+reproduces the failure without large campaign context. A successful test does not
+prove the original context caused the earlier failure. Real provider availability
+must still be checked in the deployed browser; automated tests mock Gemini.
+
+Counteroffers and alternative support show their exact terms with **Accept**,
+**Decline**, and **Modify / New Offer**. Reopening a saved council refreshes these
+controls immediately. Older unanswered offers remain accessible below the latest
+live tracker. Modify preserves every resource row on both sides, sends a new
+proposal to the offering House, and closes the original terms only after successful
+submission. Cancelling or failing submission leaves the original offer open;
+acceptance still revalidates resources and applies once through the existing
+multiplayer command path. Active unanswered offers are protected from history
+pruning until answered or expired.
+
+No Worker files, request schema, model settings, or timeout constants change for
+this update. Publish the static game update; no Worker redeploy is required.
+
+```sh
+npm run test:iron-throne:counteroffers-browser
+npm run test:iron-throne:connection-browser
+```
