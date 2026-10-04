@@ -6,10 +6,10 @@ import { onlineGame, activateForTest } from './fixtures/online-game.mjs';
 import { atWar, kingdom, relation, parseSave, settlements } from '../core.mjs';
 import { refreshKnowledge, knowledgeView } from '../fog.mjs';
 import { ownCouncil } from '../council-state.mjs';
-import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, evaluateCouncilProposal, answerFormalProposal, inferFormalProposal, stageConversationProposal, runFormalResponseQueue, recordFormalVoice, formalDescription } from '../formal-proposals.mjs';
+import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, evaluateCouncilProposal, answerFormalProposal, inferFormalProposal, stageConversationProposal, runFormalResponseQueue, recordFormalVoice, formalDescription, markFormalConsidering, retryFormalVoice, formalConversationCurrent, isFormalCouncilBusy, cancelFormalConversation } from '../formal-proposals.mjs';
 import { pruneCooperation } from '../cooperation-state.mjs';
 import { grantFollowup } from '../proposal-followup.mjs';
-import { makeCouncilContext } from '../alliance-council.mjs';
+import { makeCouncilContext, beginCouncilMessage, finalizeCouncilMessage } from '../alliance-council.mjs';
 import { sanitizeContext } from '../worker/worker.mjs';
 import { splitCampaign } from '../multiplayer-state.mjs';
 import { applyCommand, COMMAND_TYPES } from '../multiplayer-commands.mjs';
@@ -61,14 +61,16 @@ test('private attack requests can name a public capital, and contradictory model
  const {s}=setup();const r=stageConversationProposal(s,'ashen','I want you to attack Solstice within ten turns.',{ruler:'wintermere'});
  assert.equal(ratifyFormalProposal(s,'ashen',r.proposalId).ok,true);resolveFormalResponse(s,'ashen',r.proposalId,'wintermere');
  const p=proposal(s,r.proposalId);assert.equal(p.responses.wintermere.status,'accepted');assert.equal(s.pledges.at(-1).debtor,'wintermere');
- recordFormalVoice(s,'ashen',p.id,'wintermere','I refuse to commit to this campaign.');assert.equal(p.responses.wintermere.voice,p.responses.wintermere.message);
+ recordFormalVoice(s,'ashen',p.id,'wintermere','I refuse to commit to this campaign.','gemini');assert.equal(p.responses.wintermere.voice,undefined);assert.equal(p.responses.wintermere.voiceComplete,true);assert.equal(p.responses.wintermere.source,'failed');
  assert.doesNotMatch(p.responses.wintermere.message,/ratif|must accept/i);
 });
-test('expired proposals release pending slots, and bounded Council reactions do not create obligations',()=>{
+test('expired proposals release pending slots without adding scripted Council reactions',()=>{
  const {s,c}=setup();s.treaties.push({id:'protected',type:'alliance',parties:['redharbor','sunspire'],expires:100});
  const r=submitFormalProposal(s,'ashen',request(c,{type:'JOINT_WAR',targetId:'sunspire'},['wintermere','redharbor']));
  for(const h of ['wintermere','redharbor'])resolveFormalResponse(s,'ashen',r.proposalId,h);
- const p=proposal(s,r.proposalId);assert.equal(p.reactions,1);assert.equal(c.messages.filter(m=>m.formalProposalId===p.id&&m.speakerHouseId!=='ashen').length,1);
+ const p=proposal(s,r.proposalId);assert.equal(p.reactions,0);
+ for(const h of p.requestedHouses)recordFormalVoice(s,'ashen',p.id,h,'The recorded commitment reflects my position.','gemini');
+ assert.equal(p.reactions,0);assert.equal(c.messages.filter(m=>m.formalProposalId===p.id&&m.speakerHouseId!=='ashen').length,2);
  assert.equal(s.pledges.filter(x=>x.formalProposalId===p.id).length,1);
  const draft=submitFormalProposal(s,'ashen',request(c,{type:'ACCESS'},['thornwall']),{inferred:true});s.turn+=4;pruneCooperation(s);
  assert.equal(proposal(s,draft.proposalId).status,'dismissed');assert.ok(parseSave(JSON.stringify(s)));
@@ -97,8 +99,102 @@ test('formal proposal state and independent statuses survive save/load',()=>{
 });
 test('response queue stays sequential and continues after voice failure',async()=>{
  const work=['wintermere','redharbor','thornwall'],events=[];let i=0;
- await runFormalResponseQueue({next:()=>i<work.length?{id:'test',house:work[i]}:null,resolve:async item=>{events.push(`resolve:${item.house}`);i++;return {ok:true};},voice:async item=>{events.push(`voice:${item.house}`);if(item.house==='wintermere')throw Error('timeout');return 'Recorded';},record:async item=>events.push(`record:${item.house}`)});
- assert.deepEqual(events,['resolve:wintermere','voice:wintermere','resolve:redharbor','voice:redharbor','record:redharbor','resolve:thornwall','voice:thornwall','record:thornwall']);
+ await runFormalResponseQueue({gapMs:0,next:()=>i<work.length?{id:'test',house:work[i]}:null,resolve:async item=>{events.push(`resolve:${item.house}`);i++;return {ok:true};},voice:async item=>{events.push(`voice:${item.house}`);if(item.house==='wintermere')throw Error('timeout');return 'Recorded';},record:async item=>events.push(`record:${item.house}`)});
+ assert.deepEqual(events,['resolve:wintermere','voice:wintermere','record:wintermere','resolve:redharbor','voice:redharbor','record:redharbor','resolve:thornwall','voice:thornwall','record:thornwall']);
+});
+test('formal voices commit progressively after authoritative accepted, declined and alternative decisions',async()=>{
+ const {s,c}=setup(),houses=['wintermere','redharbor','thornwall'];
+ for(const h of houses.slice(1))s.treaties.push({id:`protected-${h}`,type:'non-aggression',parties:[h,'sunspire'],expires:100});
+ Object.assign(relation(s,'redharbor','ashen'),{trust:0});
+ const submitted=submitFormalProposal(s,'ashen',request(c,{type:'JOINT_WAR',targetId:'sunspire'},houses)),p=proposal(s,submitted.proposalId),events=[],contexts=[],pauses=[],snapshots=[];
+ assert.equal(isFormalCouncilBusy(s,c.id),true);
+ const result=await runFormalResponseQueue({
+  next:()=>{const house=houses.find(h=>!p.responses[h].spoken&&!p.responses[h].voiceComplete);return house?{id:p.id,house}:null;},
+  isCurrent:()=>formalConversationCurrent(s,p),
+  onStatus:(item,status)=>{if(status==='considering'){assert.equal(markFormalConsidering(s,'ashen',item.id,item.house).ok,true);assert.equal(p.responses[item.house].status,'considering');}if(status==='resolved')snapshots.push(houses.map(h=>p.responses[h].status));},
+  resolve:item=>{events.push(`resolve:${item.house}`);return resolveFormalResponse(s,'ashen',item.id,item.house);},
+  voice:async item=>{
+   events.push(`voice:${item.house}`);assert.ok(['accepted','declined','alternative'].includes(p.responses[item.house].status));
+   const ctx=makeCouncilContext(s,c,'ashen','Voice the recorded decision.',null,{proposalId:p.id,house:item.house});contexts.push(ctx);
+   assert.deepEqual(ctx.world.participants.filter(x=>x.ai).map(x=>x.id),[item.house]);
+   if(item.house==='redharbor')throw Object.assign(Error('Gemini timed out'),{code:'GEMINI_TIMEOUT'});
+   return {message:item.house==='wintermere'?'You have my word. Wintermere will join the campaign.':'My House can send the offered supplies instead.',source:'gemini'};
+  },
+  fallback:(item,error)=>{assert.equal(error.code,'GEMINI_TIMEOUT');return {message:'',source:'failed',diagnostic:{version:1,code:error.code,httpStatus:503,path:'/diplomacy'}};},
+  record:(item,reply)=>{events.push(`record:${item.house}`);return recordFormalVoice(s,'ashen',item.id,item.house,reply.message,reply.source,reply.diagnostic);},
+  pause:async ms=>{pauses.push(ms);assert.equal(houses.filter(h=>p.responses[h].voiceComplete).length,pauses.length);}
+ });
+ assert.equal(result.ok,true);assert.deepEqual(pauses,[750,750]);
+ assert.deepEqual(snapshots,[['accepted','waiting','waiting'],['accepted','declined','waiting'],['accepted','declined','alternative']]);
+ assert.deepEqual(events,houses.flatMap(h=>[`resolve:${h}`,`voice:${h}`,`record:${h}`]));
+ const spoken=c.messages.filter(m=>m.formalResponse);assert.deepEqual(spoken.map(m=>m.speakerHouseId),['wintermere','thornwall']);assert.deepEqual(spoken.map(m=>m.source),['gemini','gemini']);
+ assert.equal(p.responses.redharbor.diagnostic.code,'GEMINI_TIMEOUT');assert.equal(p.responses.redharbor.voiceComplete,true);assert.equal(p.responses.redharbor.spoken,false);assert.equal(p.responses.redharbor.diagnostic.httpStatus,503);
+ assert.ok(contexts[1].history.some(m=>m.message===spoken[0].message));
+ assert.ok(contexts[2].history.some(m=>m.message===spoken[0].message));assert.equal(contexts[2].history.some(m=>m.speakerHouseId==='redharbor'),false);
+ assert.equal(isFormalCouncilBusy(s,c.id),false);assert.deepEqual(parseSave(JSON.stringify(s)).cooperation.formalProposals,s.cooperation.formalProposals);
+ const count=c.messages.length;assert.equal(recordFormalVoice(s,'ashen',p.id,'wintermere','Duplicate response','gemini').duplicate,true);assert.equal(c.messages.length,count);
+});
+test('formal cancellation keeps committed replies and decisions but prevents stale voices or later rulers',async()=>{
+ const {s,c}=setup(),houses=['wintermere','redharbor','thornwall'];
+ const submitted=submitFormalProposal(s,'ashen',request(c,{type:'POSITION',targetId:'5,6'},houses)),p=proposal(s,submitted.proposalId),voiced=[];
+ const result=await runFormalResponseQueue({gapMs:0,isCurrent:()=>formalConversationCurrent(s,p),next:()=>{const house=houses.find(h=>!p.responses[h].spoken&&!p.responses[h].voiceComplete);return house?{id:p.id,house}:null;},resolve:item=>resolveFormalResponse(s,'ashen',item.id,item.house),voice:async item=>{voiced.push(item.house);if(item.house==='redharbor')s.turn++;return 'My commitment stands.';},record:(item,message)=>recordFormalVoice(s,'ashen',item.id,item.house,message,'gemini')});
+ assert.equal(result.cancelled,true);assert.deepEqual(voiced,['wintermere','redharbor']);
+ assert.deepEqual(c.messages.filter(m=>m.formalResponse).map(m=>m.speakerHouseId),['wintermere']);
+ assert.equal(p.responses.redharbor.status,'accepted');assert.equal(p.responses.redharbor.spoken,false);assert.equal(p.responses.thornwall.status,'waiting');
+ assert.equal(resolveFormalResponse(s,'ashen',p.id,'thornwall').ok,false);assert.equal(recordFormalVoice(s,'ashen',p.id,'redharbor','Late voice').ok,false);assert.equal(isFormalCouncilBusy(s,c.id),false);
+});
+test('formal considering survives save/load and conflicting submissions remain locked through the last voice',()=>{
+ const {s,c}=setup(),raw=request(c,{type:'POSITION',targetId:'5,6'},['wintermere']),r=submitFormalProposal(s,'ashen',raw),p=proposal(s,r.proposalId);
+ assert.equal(markFormalConsidering(s,'ashen',p.id,'wintermere').ok,true);assert.equal(parseSave(JSON.stringify(s)).cooperation.formalProposals[0].responses.wintermere.status,'considering');
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false);assert.equal(resolveFormalResponse(s,'ashen',p.id,'wintermere').ok,true);assert.equal(p.status,'resolved');
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false,'recorded decision still awaits its voice');
+ assert.equal(beginCouncilMessage(s,'ashen',c.id,'Another message').ok,false,'ordinary council chat waits for the final formal voice');
+ assert.equal(recordFormalVoice(s,'ashen',p.id,'wintermere','I refuse to join.','gemini').ok,true);assert.equal(p.responses.wintermere.source,'failed');assert.equal(p.responses.wintermere.voiceComplete,true);assert.equal(c.messages.filter(m=>m.formalResponse).length,0);
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,true);
+});
+test('ordinary active council sequences prevent overlapping formal submissions',()=>{
+ const {s,c}=setup(),start=beginCouncilMessage(s,'ashen',c.id,'What should our council discuss?');assert.equal(start.ok,true);
+ const raw=request(c,{type:'POSITION',targetId:'5,6'},['wintermere']);assert.equal(submitFormalProposal(s,'ashen',raw).ok,false);
+ assert.equal(finalizeCouncilMessage(s,'ashen',start,{cancelled:true}).ok,true);assert.equal(submitFormalProposal(s,'ashen',raw).ok,true);
+});
+test('ending an activation releases formal conversation locks without undoing completed commitments',()=>{
+ const {s,c}=setup(),submitted=submitFormalProposal(s,'ashen',request(c,{type:'POSITION',targetId:'5,6'})),p=proposal(s,submitted.proposalId);
+ for(const house of ['wintermere','redharbor'])assert.equal(resolveFormalResponse(s,'ashen',p.id,house).ok,true);
+ assert.equal(recordFormalVoice(s,'ashen',p.id,'wintermere','My commitment stands.','gemini').ok,true);
+ const count=c.messages.length,pledges=s.pledges.length;
+ assert.equal(cancelFormalConversation(s,'ashen'),1);assert.equal(p.conversationCancelled,true);assert.equal(p.status,'resolved');
+ assert.equal(p.responses.wintermere.spoken,true);assert.equal(p.responses.redharbor.status,'accepted');assert.equal(p.responses.redharbor.spoken,false);assert.equal(p.responses.thornwall.status,'invalid');
+ assert.equal(s.pledges.length,pledges);assert.equal(c.messages.length,count);assert.equal(formalConversationCurrent(s,p),false);assert.equal(isFormalCouncilBusy(s,c.id),false);
+ assert.equal(recordFormalVoice(s,'ashen',p.id,'redharbor','Late reply').ok,false);assert.equal(cancelFormalConversation(s,'ashen'),0);assert.equal(parseSave(JSON.stringify(s)).cooperation.formalProposals[0].conversationCancelled,true);
+ assert.equal(beginCouncilMessage(s,'ashen',c.id,'The previous conversation has concluded.').ok,true);
+});
+test('resuming a resolved unspoken formal decision marks its reply unavailable without repeating its paid request',async()=>{
+ const {s,c}=setup(),houses=['wintermere','redharbor'],submitted=submitFormalProposal(s,'ashen',request(c,{type:'POSITION',targetId:'5,6'},houses)),p=proposal(s,submitted.proposalId),paid=[];
+ assert.equal(resolveFormalResponse(s,'ashen',p.id,'wintermere').ok,true);
+ const result=await runFormalResponseQueue({gapMs:0,isCurrent:()=>formalConversationCurrent(s,p),
+  next:()=>{const house=houses.find(h=>!p.responses[h].spoken&&!p.responses[h].voiceComplete);return house?{id:p.id,house,resumeVoice:p.responses[house].status!=='waiting'}:null;},
+  resolve:item=>item.resumeVoice?{ok:true}:resolveFormalResponse(s,'ashen',item.id,item.house),
+  voice:async item=>{paid.push(item.house);return {message:'My commitment stands.',source:'gemini'};},
+  fallback:item=>({message:'',source:'failed'}),
+  record:(item,reply)=>recordFormalVoice(s,'ashen',item.id,item.house,reply.message,reply.source)
+ });
+ assert.equal(result.ok,true);assert.deepEqual(paid,['redharbor']);assert.equal(p.responses.wintermere.status,'accepted');
+ assert.deepEqual(c.messages.filter(m=>m.formalResponse).map(m=>m.source),['gemini']);assert.equal(p.responses.wintermere.source,'failed');assert.equal(p.responses.wintermere.voiceComplete,true);
+});
+test('an explicit retry permits one Gemini voice without repeating the formal decision or obligations',async()=>{
+ const {s,c}=setup(),submitted=submitFormalProposal(s,'ashen',request(c,{type:'POSITION',targetId:'5,6'},['wintermere'])),p=proposal(s,submitted.proposalId);
+ assert.equal(resolveFormalResponse(s,'ashen',p.id,'wintermere').ok,true);const pledged=s.pledges.length;
+ assert.equal(recordFormalVoice(s,'ashen',p.id,'wintermere','','failed',{version:1,code:'GEMINI_TIMEOUT'}).voiceUnavailable,true);
+ assert.equal(c.messages.filter(m=>m.formalResponse).length,0);assert.equal(isFormalCouncilBusy(s,c.id),false);
+ assert.equal(retryFormalVoice(s,'ashen',p.id,'wintermere').ok,true);assert.equal(isFormalCouncilBusy(s,c.id),true);assert.equal(retryFormalVoice(s,'ashen',p.id,'wintermere').ok,false);
+ assert.equal(parseSave(JSON.stringify(s)).cooperation.formalProposals[0].responses.wintermere.retryRequested,true);
+ let calls=0;
+ await runFormalResponseQueue({gapMs:0,next:()=>p.responses.wintermere.voiceComplete?null:{id:p.id,house:'wintermere',manualRetry:true,resumeVoice:false},
+  onStatus:(item,status)=>status==='considering'?markFormalConsidering(s,'ashen',item.id,item.house):undefined,
+  resolve:()=>({ok:true}),voice:async()=>{calls++;return {message:'You have my word. My commitment stands.',source:'gemini'};},
+  record:(item,reply)=>recordFormalVoice(s,'ashen',item.id,item.house,reply.message,reply.source)});
+ assert.equal(calls,1);assert.equal(s.pledges.length,pledged);assert.equal(p.responses.wintermere.status,'accepted');assert.equal(p.responses.wintermere.retryRequested,false);assert.equal(p.responses.wintermere.source,'gemini');
+ assert.equal(c.messages.filter(m=>m.formalResponse).length,1);assert.equal(retryFormalVoice(s,'ashen',p.id,'wintermere').ok,false);
 });
 test('formal Council followups honor a ruler’s one-use invitation after dispatches run out',()=>{
  const {s,c}=setup();s.diplomacy.messages.regular=3;

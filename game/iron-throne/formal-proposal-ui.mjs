@@ -1,20 +1,24 @@
 import { LABELS, describeIntent } from './diplomacy.mjs';
 import { RESOURCES } from './data.mjs';
-import { formalDescription, runFormalResponseQueue } from './formal-proposals.mjs';
+import { isAiHouse } from './house-control.mjs';
+import { formalDescription, formalConversationCurrent, runFormalResponseQueue } from './formal-proposals.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tileTypes=new Set(['PLEDGE_ATTACK','DEFEND','PLEDGE_DEFEND','POSITION','BUILD_DEFENSES','PLEDGE_BUILD','TERRITORY']);
 const houseTypes=new Set(['JOINT_WAR','PLEDGE_WAR','EMBARGO','GUARANTEE','PLEDGE_PEACE']);
-const statuses={waiting:'Waiting…',considering:'Considering…','awaiting-human':'Awaiting ruler',accepted:'Accepted · Active',declined:'Refused',counter:'Counteroffer',alternative:'Declined · Alternative support',invalid:'Unable / invalid'};
+const statuses={waiting:'Waiting',considering:'Considering…','awaiting-human':'Awaiting ruler',accepted:'Accepted · Active',declined:'Declined',counter:'Counteroffer',alternative:'Alternative Support',invalid:'Circumstances changed'};
+const indicators={waiting:'○',considering:'…','awaiting-human':'○',accepted:'✓',declined:'✕',counter:'◐',alternative:'◐',invalid:'⚠'};
 export function installFormalProposalUI(doc,options){
   const dialog=doc.createElement('dialog');dialog.id='formal-proposal-builder';dialog.setAttribute('aria-labelledby','formal-builder-title');doc.body.append(dialog);
   const privatePanel=doc.createElement('section');privatePanel.id='private-formal-proposals';doc.getElementById('messages').after(privatePanel);
   const button=doc.createElement('button');button.type='button';button.textContent='Offer / Request';button.id='private-offer-request';doc.getElementById('chat-form').before(button);button.onclick=()=>open({ruler:options.getRuler()});
-  let scope=null,busy=false,considering=null,signature='',modifyId=null;
+  let scope=null,signature='',modifyId=null;
+  const processors=new Map();
   const rows=()=>options.getState().cooperation?.formalProposals||[];
   const active=()=>options.getActor();
   function form(){return dialog.querySelector('form');}
   function open({councilId=null,ruler=null,proposal=null,intent=null,direction=null}={}){
     const s=options.getState(),actor=active(),c=councilId&&s.allianceCouncils?.find(c=>c.id===councilId),members=c?c.participants.filter(h=>h!==actor):[ruler||options.getRuler()];
+    if(councilId&&options.isCouncilBusy?.(councilId)){options.error('Wait for the current council conversation to finish.');return;}
     scope={councilId,members};modifyId=proposal?.status==='draft'?proposal.id:null;
     const i=intent||proposal?.intent||{type:'JOINT_WAR',duration:10};
     dialog.innerHTML=`<header class="dialog-header"><h2 id="formal-builder-title">Offer / Request</h2><button type="button" data-formal-close aria-label="Close proposal">×</button></header><form><p class="fine">Sending approves these exact terms. Each ruler decides independently. Accepted terms become active immediately.</p><label>Action<select name="type">${Object.entries(LABELS).filter(([id])=>!['MARRIAGE','INTELLIGENCE'].includes(id)&&(!c||!['WAR','BETRAY','VASSALAGE'].includes(id))).map(([id,label])=>`<option value="${id}" ${id===i.type?'selected':''}>${esc(id==='PLEDGE_ATTACK'?'Attack a specific location':id==='PLEDGE_DEFEND'?'Promise defense of a location':label)}</option>`).join('')}<option value="OPERATION" ${proposal?.operationId?'selected':''}>Join a coordinated operation</option></select></label><label>Commitment<select name="direction"><option value="request">Request from selected ruler(s)</option><option value="offer">Offer my commitment / mutual agreement</option></select></label><label class="formal-target">Target<select name="target"></select><button type="button" data-select-map="Choose proposal location">Select on Map</button></label><label class="formal-operation" hidden>Operation<select name="operation">${(s.cooperation?.operations||[]).filter(o=>o.owner===actor&&o.status==='Preparing').map(o=>`<option value="${o.id}">${esc(o.name)} · Hex ${esc(o.targetTile)}</option>`).join('')}</select></label><label>Within turns<input name="duration" type="number" min="2" max="20" value="${i.duration||10}"></label><div class="formal-resources"><p class="fine">Resource amounts per participating House. Requests ask them to send; offers send from your treasury.</p>${[0,1,2].map(n=>`<div class="form-row"><label>Resource<select name="resource${n}">${RESOURCES.map(r=>`<option>${r}</option>`).join('')}</select></label><label>Amount<input name="amount${n}" type="number" min="0" max="1000" value="0"></label></div>`).join('')}</div><div class="formal-receive"><label><span data-formal-return-resource>Receive resource</span><select name="receiveResource">${RESOURCES.map(r=>`<option>${r}</option>`).join('')}</select></label><label><span data-formal-return-amount>Receive amount</span><input name="receiveAmount" type="number" min="0" max="1000" value="${i.receiveAmount||0}"></label></div><fieldset><legend>Ask these rulers</legend>${members.map(h=>`<label><input type="checkbox" name="house" value="${h}" ${!proposal||proposal.requestedHouses.includes(h)?'checked':''}> ${esc(s.kingdoms.find(k=>k.id===h)?.name||h)}</label>`).join('')}</fieldset><p class="formal-error" role="alert"></p><div class="button-row"><button type="button" data-formal-close>Cancel</button><button type="submit" class="primary">${c?'Send to Council':'Send Proposal'}</button></div></form>`;
@@ -46,26 +50,65 @@ export function installFormalProposalUI(doc,options){
   });
   function card(p,s){
     if(p.status==='dismissed')return '';
-    const own=p.proposer===active(),expired=s.turn>p.expires;
+    const own=p.proposer===active(),expired=s.turn>p.expires,compact=!!p.councilId;
     if(p.status==='draft')return own?`<article class="formal-card" data-formal-card="${p.id}"><span class="eyebrow">INTERPRETED REQUEST · NOT SENT</span><h3>${esc(formalDescription(p))}</h3><p class="fine">Within ${p.intent?.duration||0} turns · ${p.requestedHouses.map(h=>esc(s.kingdoms.find(k=>k.id===h)?.name)).join(', ')}</p><div class="button-row"><button data-formal-ratify="${p.id}" ${expired?'disabled':''}>Ratify & Send</button><button data-formal-modify="${p.id}">Modify</button><button data-formal-dismiss="${p.id}">Dismiss</button></div></article>`:'';
-    return `<article class="formal-card" data-formal-card="${p.id}"><span class="eyebrow">FORMAL PROPOSAL · TURN ${p.created}${p.intent?.duration?' · DEADLINE T'+((p.sentTurn||p.created)+p.intent.duration):''}</span><h3>${esc(formalDescription(p))}</h3><p class="fine">${esc(s.kingdoms.find(k=>k.id===p.proposer)?.name)} approved these terms. Each accepted commitment stands independently.</p>${p.requestedHouses.map(h=>{const r=p.responses[h],state=considering?.id===p.id&&considering.house===h?'considering':r.status;return `<section class="formal-response"><strong>${esc(s.kingdoms.find(k=>k.id===h)?.name)} — <span class="formal-status ${r.status}">${esc(statuses[state])}</span></strong><p>${esc(r.message)}</p>${r.voice&&r.voice!==r.message?`<blockquote>${esc(r.voice)}</blockquote>`:''}${r.counterIntent?`<p>${esc(formalDescription({...p,intent:r.counterIntent}))}</p>`:''}${r.alternativeIntents?`<p>Offered support: ${r.alternativeIntents.map(i=>esc(i.type==='AID'?(i.giveItems||[{resource:i.giveResource,amount:i.giveAmount}]).map(x=>`${x.amount} ${x.resource}`).join(' + '):describeIntent(i))).join(' · ')}</p>`:''}${r.offerAnswered?`<p>Support / counteroffer ${esc(r.offerAnswered)}</p>`:!expired&&((r.status==='awaiting-human'&&h===active())||own&&['counter','alternative'].includes(r.status))?`<div class="button-row"><button data-formal-answer="${p.id}" data-house="${h}" data-decision="accept">Accept${r.status==='alternative'?' Support Offer':''}</button>${own?`<button data-formal-modify="${p.id}" data-house="${h}">Modify</button>`:''}<button data-formal-answer="${p.id}" data-house="${h}" data-decision="decline">Decline</button></div>`:''}</section>`;}).join('')}</article>`;
+    return `<article class="formal-card ${compact?'formal-tracker':''}" data-formal-card="${p.id}" aria-label="Council Decision Tracker"><span class="eyebrow">${compact?'COUNCIL DECISION TRACKER':'FORMAL PROPOSAL'} · TURN ${p.created}${p.intent?.duration?' · DEADLINE T'+((p.sentTurn||p.created)+p.intent.duration):''}</span><h3>${esc(formalDescription(p))}</h3>${compact?'':`<p class="fine">${esc(s.kingdoms.find(k=>k.id===p.proposer)?.name)} approved these terms. Each accepted commitment stands independently.</p>`}${p.requestedHouses.map(h=>{const r=p.responses[h],state=r.status;return `<section class="formal-response" data-formal-house="${h}" data-formal-status="${state}"><strong><span class="formal-indicator" aria-hidden="true">${indicators[state]}</span> ${esc(s.kingdoms.find(k=>k.id===h)?.name)} — <span class="formal-status ${state}">${esc(statuses[state])}</span></strong>${r.voiceComplete&&r.source==='failed'||r.source==='scripted'&&r.spoken?`<p class="formal-voice-unavailable">Gemini reply unavailable</p>${own&&r.source==='failed'&&formalConversationCurrent(s,p)?`<button type="button" data-formal-retry="${p.id}" data-house="${h}" ${processors.has(conversation(p))?'disabled':''}>Retry Gemini reply</button>`:''}`:''}${!compact&&r.source==='gemini'&&r.voice?`<blockquote>${esc(r.voice)}</blockquote>`:''}${r.counterIntent?`<p>${esc(formalDescription({...p,intent:r.counterIntent}))}</p>`:''}${r.alternativeIntents?`<p>Offered support: ${r.alternativeIntents.map(i=>esc(i.type==='AID'?(i.giveItems||[{resource:i.giveResource,amount:i.giveAmount}]).map(x=>`${x.amount} ${x.resource}`).join(' + '):describeIntent(i))).join(' · ')}</p>`:''}${r.offerAnswered?`<p>Support / counteroffer ${esc(r.offerAnswered)}</p>`:!expired&&((r.status==='awaiting-human'&&h===active())||own&&['counter','alternative'].includes(r.status))?`<div class="button-row"><button data-formal-answer="${p.id}" data-house="${h}" data-decision="accept">Accept${r.status==='alternative'?' Support Offer':''}</button>${own?`<button data-formal-modify="${p.id}" data-house="${h}">Modify</button>`:''}<button data-formal-answer="${p.id}" data-house="${h}" data-decision="decline">Decline</button></div>`:''}</section>`;}).join('')}</article>`;
   }
-  function render(){
-    const s=options.getState(),all=rows(),council=doc.getElementById('alliance-council'),id=council?.dataset.councilId;
-    const next=JSON.stringify([all,active(),options.getRuler(),id,considering,s.turn]);
-    if(signature!==next){signature=next;privatePanel.innerHTML=all.filter(p=>!p.councilId&&p.audience.includes(active())&&p.audience.includes(options.getRuler())).map(p=>card(p,s)).join('');const holder=doc.querySelector('.alliance-formal-proposals');if(holder)holder.innerHTML=all.filter(p=>p.councilId===id).map(p=>card(p,s)).join('');}
-    queueMicrotask(pump);
+  function updateCards(holder,proposals,s){
+    if(!holder)return;
+    const keep=new Set();
+    for(const p of proposals){
+      const html=card(p,s);if(!html)continue;
+      keep.add(p.id);const template=doc.createElement('template');template.innerHTML=html;
+      const next=template.content.firstElementChild,existing=[...holder.children].find(e=>e.dataset.formalCard===p.id);
+      if(existing){if(existing.innerHTML!==next.innerHTML)existing.innerHTML=next.innerHTML;existing.className=next.className;holder.append(existing);}else holder.append(next);
+    }
+    for(const node of [...holder.children])if(!keep.has(node.dataset.formalCard))node.remove();
   }
+  function renderWithoutPump(){
+    const s=options.getState(),all=rows(),id=doc.getElementById('alliance-council')?.dataset.councilId;
+    const next=JSON.stringify([all,active(),options.getRuler(),id,s.turn]);
+    if(signature===next)return;signature=next;
+    updateCards(privatePanel,all.filter(p=>!p.councilId&&p.audience.includes(active())&&p.audience.includes(options.getRuler())),s);
+    const councilRows=all.filter(p=>p.councilId===id),latest=councilRows.findLast(p=>p.approved&&p.status!=='dismissed');
+    const history=doc.querySelector('.alliance-history'),pinned=history&&history.scrollHeight-history.clientHeight-history.scrollTop<48;
+    updateCards(doc.querySelector('.alliance-formal-proposals'),councilRows.filter(p=>p===latest||p.status==='draft'),s);
+    if(pinned)history.scrollTop=history.scrollHeight;
+  }
+  function render(){renderWithoutPump();queueMicrotask(pump);}
+  const pendingHouse=p=>p.requestedHouses.find(h=>{const r=p.responses[h];return isAiHouse(options.getState(),h)&&r&&(['waiting','considering'].includes(r.status)||r.status!=='awaiting-human'&&!r.spoken&&!r.voiceComplete);});
+  const conversation=p=>p.councilId||`private:${p.requestedHouses[0]}`;
   async function pump(){
-    if(busy||!options.canAct())return;busy=true;
-    try{await runFormalResponseQueue({next:()=>{if(!options.canAct())return null;for(const p of rows().filter(p=>p.proposer===active()&&p.approved&&p.status==='processing')){const house=p.requestedHouses.find(h=>p.responses[h].status==='waiting');if(house)return {id:p.id,house};}return null;},resolve:item=>options.action('formalResolve',item),voice:item=>{const p=rows().find(p=>p.id===item.id);return p?options.voice(p,item.house):null;},record:(item,message)=>options.action('formalVoice',{...item,message}),onStatus:(item,status)=>{considering=status==='considering'?item:null;render();}});}finally{busy=false;considering=null;renderWithoutPump();}
+    if(!options.canAct())return;
+    const identity=options.getCampaignIdentity?.();
+    const initial=rows().find(p=>(!processors.has(conversation(p))||processors.get(conversation(p)).identity!==identity)&&p.proposer===active()&&formalConversationCurrent(options.getState(),p)&&pendingHouse(p)&&(!p.councilId||!options.isCouncilBusy?.(p.councilId)));
+    if(!initial)return;
+    const key=conversation(initial),owner={identity};processors.set(key,owner);queueMicrotask(pump);
+    const id=initial.id,actor=active(),turn=options.getState().turn,current=()=>rows().find(p=>p.id===id);
+    const isCurrent=()=>options.canAct()&&active()===actor&&options.getState().turn===turn&&(!options.getCampaignIdentity||options.getCampaignIdentity()===identity)&&formalConversationCurrent(options.getState(),current());
+    let result;
+    try{
+      result=await runFormalResponseQueue({
+        isCurrent,gapMs:initial.councilId&&!options.getState().presentation?.reducedEffects?options.responseGapMs:0,
+        next:()=>{if(!isCurrent())return null;const p=current(),house=pendingHouse(p);return house?{id,house,manualRetry:!!p.responses[house].retryRequested,resumeVoice:!['waiting','considering'].includes(p.responses[house].status)&&!p.responses[house].retryRequested}:null;},
+        resolve:item=>{if(['waiting','considering'].includes(current().responses[item.house].status))return options.action('formalResolve',item);if(!item.manualRetry)item.resumeVoice=true;return {ok:true};},
+        voice:item=>options.voice(current(),item.house),
+        fallback:(item,error)=>({message:'',source:'failed',diagnostic:error?.diagnostic}),
+        record:(item,reply)=>options.action('formalVoice',{...item,...(typeof reply==='string'?{message:'',source:'failed'}:{message:reply.message,source:reply.source,diagnostic:reply.diagnostic})}),
+        onStatus:async(item,status)=>{
+          let started;
+          if(status==='considering'&&isCurrent()&&(['waiting','considering'].includes(current().responses[item.house].status)||current().responses[item.house].retryRequested))started=await options.action('formalConsider',item);
+          renderWithoutPump();options.changed?.();return started;
+        }
+      });
+    }catch(error){if(isCurrent())options.error(error.message||'The response could not be recorded.');}
+    finally{if(processors.get(key)===owner)processors.delete(key);signature='';renderWithoutPump();if(result?.ok)queueMicrotask(pump);}
   }
-  function renderWithoutPump(){signature='';const s=options.getState();privatePanel.innerHTML=rows().filter(p=>!p.councilId&&p.audience.includes(active())&&p.audience.includes(options.getRuler())).map(p=>card(p,s)).join('');const holder=doc.querySelector('.alliance-formal-proposals'),id=doc.getElementById('alliance-council')?.dataset.councilId;if(holder)holder.innerHTML=rows().filter(p=>p.councilId===id).map(p=>card(p,s)).join('');}
   doc.addEventListener('click',async e=>{
-    const b=e.target.closest('[data-formal-ratify],[data-formal-dismiss],[data-formal-answer],[data-formal-modify]');if(!b||b.disabled)return;
-    const id=b.dataset.formalRatify||b.dataset.formalDismiss||b.dataset.formalAnswer||b.dataset.formalModify,p=rows().find(p=>p.id===id);if(!p)return;
+    const b=e.target.closest('[data-formal-ratify],[data-formal-dismiss],[data-formal-answer],[data-formal-modify],[data-formal-retry]');if(!b||b.disabled)return;
+    const id=b.dataset.formalRatify||b.dataset.formalDismiss||b.dataset.formalAnswer||b.dataset.formalModify||b.dataset.formalRetry,p=rows().find(p=>p.id===id);if(!p)return;
     if(b.dataset.formalModify){const r=p.responses[b.dataset.house];open({councilId:p.councilId,ruler:b.dataset.house||p.requestedHouses[0],proposal:r?{...p,requestedHouses:[b.dataset.house]}:p,intent:r?.counterIntent||r?.alternativeIntents?.[0],direction:r?.alternativeIntents?'request':p.direction});return;}
-    const type=b.dataset.formalRatify?'formalRatify':b.dataset.formalDismiss?'formalDismiss':'formalAnswer',result=await options.action(type,{id,house:b.dataset.house,decision:b.dataset.decision});if(!result?.ok)options.error(result?.error||'Terms could not be applied.');render();
+    const type=b.dataset.formalRetry?'formalRetryVoice':b.dataset.formalRatify?'formalRatify':b.dataset.formalDismiss?'formalDismiss':'formalAnswer',result=await options.action(type,{id,house:b.dataset.house,decision:b.dataset.decision});if(!result?.ok)options.error(result?.error||'Terms could not be applied.');render();
   });
   return {open,submit,render};
 }

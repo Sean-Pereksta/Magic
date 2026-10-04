@@ -4,18 +4,36 @@ import { evaluateDeal, commitDeal, validateIntent, describeIntent } from './dipl
 import { isPlayerPromise, detectPromise } from './promises.mjs';
 import { isAiHouse, court } from './house-control.mjs';
 import { appendConversation, borderThreat, diplomaticCapacity } from './living.mjs';
-import { councilActive, appendCouncil } from './council-state.mjs';
+import { councilActive, appendCouncil, councilDiagnostic } from './council-state.mjs';
 import { operationFor, operationMember, memberOperation } from './cooperation-state.mjs';
 import { respondOperation } from './operations.mjs';
 import { economicNeeds } from './trade.mjs';
 import { packageTrade, tradeItems, withItems } from './trade-package.mjs';
 import { consumeDiplomaticMessage, privateConversation } from './proposal-followup.mjs';
+import { COUNCIL_RESPONSE_GAP_MS, pauseCouncilResponse } from './council-sequence.mjs';
+import { makeDiagnostic } from './diagnostics.mjs';
 
 const fail=error=>({ok:false,error});
 const MILITARY=new Set(['JOINT_WAR','DEFEND','POSITION','BUILD_DEFENSES','PLEDGE_WAR','PLEDGE_ATTACK','PLEDGE_DEFEND','PLEDGE_BUILD','GUARANTEE']);
 const OFFENSIVE=new Set(['JOINT_WAR','PLEDGE_WAR','PLEDGE_ATTACK']);
 const validHouse=(s,id)=>typeof id==='string'&&s.kingdoms.some(k=>k.id===id);
 const record=(s,id)=>s.cooperation?.formalProposals?.find(p=>p.id===id);
+const pending=r=>r&&(['waiting','considering'].includes(r.status)||r.status!=='awaiting-human'&&!r.spoken&&!r.voiceComplete);
+export function formalConversationCurrent(s,p){
+  if(!p?.approved||p.conversationCancelled||!['processing','resolved'].includes(p.status)||p.sentTurn!==s.turn||s.outcome||!alive(s,p.proposer)||!audience(s,p.proposer,p.councilId,p.requestedHouses))return false;
+  return !p.councilId||s.allianceCouncils.find(c=>c.id===p.councilId)?.messages.some(m=>m.formalProposalId===p.id&&m.speakerHouseId===p.proposer&&m.turn===p.sentTurn);
+}
+export const isFormalCouncilBusy=(s,id)=>!!id&&(s.cooperation?.formalProposals||[]).some(p=>p.councilId===id&&formalConversationCurrent(s,p)&&p.requestedHouses.some(h=>isAiHouse(s,h)&&pending(p.responses[h])));
+export function cancelFormalConversation(s,actor){
+  let cancelled=0;
+  for(const p of s.cooperation?.formalProposals||[]){
+    if(p.proposer!==actor||!p.approved||p.conversationCancelled||!p.requestedHouses.some(h=>isAiHouse(s,h)&&pending(p.responses[h])))continue;
+    p.conversationCancelled=true;cancelled++;
+    for(const h of p.requestedHouses){const r=p.responses[h];if(isAiHouse(s,h)&&['waiting','considering'].includes(r.status))Object.assign(r,{status:'invalid',reasonCodes:['circumstances_changed'],message:'The active ruler changed before this response was completed.',resolvedTurn:s.turn});}
+    complete(p);
+  }
+  return cancelled;
+}
 const targetOf=(s,p,house)=>{const view=knowledgeView(s,house);return validHouse(s,p.intent?.targetId)?p.intent.targetId:view.tiles[p.intent?.targetId]?.owner||view.tiles[p.intent?.targetId]?.knownCapital||null;};
 const RECEIVER_ACTIONS=new Set(['DEFEND','POSITION','BUILD_DEFENSES','WITHDRAW','EMBARGO']);
 export const defaultProposalDirection=i=>RECEIVER_ACTIONS.has(i?.type)||i?.type==='JOINT_WAR'?'request':'offer';
@@ -49,6 +67,8 @@ export function submitFormalProposal(s,actor,raw,{inferred=false}={}){
 }
 export function ratifyFormalProposal(s,actor,id){
   const p=record(s,id);if(!p||p.proposer!==actor||p.status!=='draft'||p.approved||s.turn>p.expires||!audience(s,actor,p.councilId,p.requestedHouses))return fail('This draft is no longer available.');
+  const sequence=p.councilId&&s.allianceCouncils.find(c=>c.id===p.councilId)?.activeSequence;
+  if(p.councilId&&(isFormalCouncilBusy(s,p.councilId)||sequence?.status==='pending'&&sequence.turn===s.turn))return fail('Wait for the current council conversation to finish.');
   if(p.councilId&&p.requestedHouses.length===1){const spent=consumeDiplomaticMessage(s,p.requestedHouses[0],actor,p.intent,p.councilId);if(!spent.ok)return spent;}
   else if(p.councilId){const c=court(s,actor),used=c.messages.turn===s.turn?c.messages:{turn:s.turn,regular:0,hosts:{}};if(used.regular>=diplomaticCapacity(s,actor))return fail('Your shared dispatches are used for this turn.');c.messages=used;if(!s.controllers)s.diplomacy.messages=used;used.regular++;}
   else {const spent=consumeDiplomaticMessage(s,p.requestedHouses[0],actor,p.intent,privateConversation(p.requestedHouses[0]));if(!spent.ok)return spent;}
@@ -101,21 +121,26 @@ function commit(s,p,house,intent=p.intent){
   if(result.ok)for(const pledge of s.pledges.slice(before))pledge.formalProposalId=p.id;
   return result;
 }
-function reactions(s,p){
-  if(!p.councilId||p.reactions||p.status!=='resolved')return;
-  const c=s.allianceCouncils.find(c=>c.id===p.councilId),accepted=p.requestedHouses.find(h=>isAiHouse(s,h)&&p.responses[h].status==='accepted'),other=p.requestedHouses.find(h=>['declined','alternative'].includes(p.responses[h].status));
-  if(!c||!accepted||!other)return;
-  const message=p.responses[other].status==='alternative'?`${kingdom(s,other).name}, your offered supplies could help those of us taking the field. Our own commitment stands.`:`${kingdom(s,other).name}, I hear your refusal. We will plan with the Houses that have committed.`;
-  appendCouncil(s,c,accepted,message,{formalProposalId:p.id,source:'scripted'});p.reactions=1;
-}
 function complete(p){if(Object.values(p.responses).every(r=>!['waiting','considering','awaiting-human'].includes(r.status)))p.status='resolved';}
+export function markFormalConsidering(s,actor,id,house){
+  const p=record(s,id),r=p?.responses[house];
+  if(p?.proposer===actor&&formalConversationCurrent(s,p)&&isAiHouse(s,house)&&r?.retryRequested&&!r.voiceComplete&&!r.spoken){r.retryRequested=false;return {ok:true,voiceRetry:true};}
+  if(!p||p.proposer!==actor||!formalConversationCurrent(s,p)||!isAiHouse(s,house)||!r||!['waiting','considering'].includes(r.status)||p.requestedHouses.find(h=>['waiting','considering'].includes(p.responses[h].status))!==house)return fail('This response is no longer pending.');
+  r.status='considering';return {ok:true};
+}
+export function retryFormalVoice(s,actor,id,house){
+  const p=record(s,id),r=p?.responses[house],c=p?.councilId&&s.allianceCouncils.find(c=>c.id===p.councilId);
+  if(!p||p.proposer!==actor||!formalConversationCurrent(s,p)||!isAiHouse(s,house)||!r||r.source!=='failed'||!r.voiceComplete||r.spoken)return fail('This Gemini reply cannot be retried now.');
+  if(isFormalCouncilBusy(s,p.councilId)||c?.activeSequence?.status==='pending'&&c.activeSequence.turn===s.turn)return fail('Wait for the current council conversation to finish.');
+  r.voiceComplete=false;r.retryRequested=true;return {ok:true};
+}
 export function resolveFormalResponse(s,actor,id,house){
-  const p=record(s,id);if(!p||p.proposer!==actor||!p.approved||!isAiHouse(s,house)||p.responses[house]?.status!=='waiting')return fail('This response is not pending.');
-  if(p.requestedHouses.find(h=>p.responses[h].status==='waiting')!==house)return fail('Council responses must be resolved in order.');
+  const p=record(s,id);if(!p||p.proposer!==actor||!p.approved||!formalConversationCurrent(s,p)||!isAiHouse(s,house)||!['waiting','considering'].includes(p.responses[house]?.status))return fail('This response is not pending.');
+  if(p.requestedHouses.find(h=>['waiting','considering'].includes(p.responses[h].status))!==house)return fail('Council responses must be resolved in order.');
   const v=evaluateCouncilProposal(s,house,p),r=p.responses[house];
   if(v.decision==='accepted'){const result=commit(s,p,house);if(!result.ok){v.decision='invalid';v.reason=result.error;v.reasonCodes=['terms_changed'];}}
   Object.assign(r,{status:v.decision,reasonCodes:v.reasonCodes,message:v.reason,...(v.counterIntent?{counterIntent:v.counterIntent}:{}),...(v.alternativeIntents?.length?{alternativeIntents:v.alternativeIntents}:{}),resolvedTurn:s.turn});
-  complete(p);reactions(s,p);return {ok:true,proposalId:id,house,status:r.status};
+  complete(p);return {ok:true,proposalId:id,house,status:r.status};
 }
 export function answerFormalProposal(s,actor,id,house,decision){
   const p=record(s,id),r=p?.responses[house];if(!p||!r||!p.approved||s.turn>p.expires||!['accept','decline'].includes(decision)||!audience(s,p.proposer,p.councilId,p.requestedHouses))return fail('This offer is no longer available.');
@@ -134,16 +159,51 @@ export function answerFormalProposal(s,actor,id,house,decision){
     }
     r.offerAnswered='declined';
   }
-  complete(p);reactions(s,p);return {ok:true};
-}
-export function localFormalVoice(s,p,house){
-  const k=kingdom(s,house),r=p.responses[house],opening=r.status==='accepted'?(k.honor>=.7?'You have my word. ':k.aggression>=.7?'Let us act decisively. ':'We have an understanding. '):r.reasonCodes.includes('trade_dependency_with_target')?'My realm depends on its merchants. ':k.honor>=.7?'I must honor my obligations. ':'I must weigh the needs of my realm. ';
-  return opening+r.message+(r.status==='alternative'?' I can offer the listed support instead.':'');
+  complete(p);return {ok:true};
 }
 // This only changes the prose attached to an existing deterministic decision.
-export function recordFormalVoice(s,actor,id,house,message){const p=record(s,id),r=p?.responses[house];if(!p||p.proposer!==actor||!r||r.spoken||['waiting','awaiting-human'].includes(r.status))return fail('No completed decision awaits a voice.');if(typeof message!=='string'||!message.trim()||message.length>900)return fail('Invalid response text.');const text=message.trim(),accepting=/\b(?:Agreed|Accepted|I agree|We agree|I accept|We accept|I will (?:attack|join|march|fight)|we will (?:attack|join|march|fight))\b/i.test(text),refusing=/\b(?:I refuse|I decline|I (?:will not|cannot|can't|won't) (?:accept|join|attack|commit|march|fight))\b/i.test(text);r.spoken=true;r.voice=(r.status!=='accepted'&&accepting||r.status==='accepted'&&refusing)?r.message:text;return {ok:true};}
-export async function runFormalResponseQueue({next,resolve,voice,record,onStatus=()=>{}}){
-  while(true){const item=next();if(!item)return;onStatus(item,'considering');const result=await resolve(item);if(!result?.ok){onStatus(item,'invalid');return;}try{const text=await voice(item);if(text)await record(item,text);}catch{/* Decision remains active; continue to the next ruler. */}onStatus(item,'complete');}
+export function recordFormalVoice(s,actor,id,house,message,source='failed',rawDiagnostic=null){
+  const p=record(s,id),r=p?.responses[house];
+  if(!p||p.proposer!==actor||!r||!isAiHouse(s,house))return fail('No completed decision awaits a voice.');
+  if(r.spoken||r.voiceComplete)return {ok:true,duplicate:true};
+  if(!formalConversationCurrent(s,p)||['waiting','considering','awaiting-human'].includes(r.status))return fail('No completed decision awaits a voice.');
+  if(!['gemini','failed','scripted'].includes(source)||typeof message!=='string'||message.length>900)return fail('Invalid response text.');
+  const text=message.trim(),accepting=/\b(?:Agreed|Accepted|I agree|We agree|I accept|We accept|I will (?:attack|join|march|fight)|we will (?:attack|join|march|fight))\b/i.test(text),refusing=/\b(?:I refuse|I decline|I (?:will not|cannot|can't|won't) (?:accept|join|attack|commit|march|fight))\b/i.test(text);
+  const contradictory=r.status!=='accepted'&&accepting||r.status==='accepted'&&refusing;
+  const voiced=source==='gemini'&&text&&!contradictory;
+  let diagnostic=councilDiagnostic(rawDiagnostic);
+  if(!voiced&&!diagnostic)diagnostic=makeDiagnostic(contradictory||source==='gemini'?'GEMINI_RESPONSE_INVALID':'WORKER_UNAVAILABLE');
+  r.voiceComplete=true;r.retryRequested=false;r.spoken=!!voiced;r.source=voiced?'gemini':'failed';
+  if(diagnostic)r.diagnostic=diagnostic;
+  if(!voiced){delete r.voice;return {ok:true,voiceUnavailable:true};}
+  r.voice=text;
+  if(p.councilId){
+    const c=s.allianceCouncils.find(c=>c.id===p.councilId);
+    if(!c.messages.some(m=>m.formalProposalId===id&&m.speakerHouseId===house&&m.formalResponse))appendCouncil(s,c,house,r.voice,{formalProposalId:id,formalResponse:true,source:'gemini'});
+  }
+  return {ok:true};
+}
+export async function runFormalResponseQueue({next,resolve,voice,record,fallback=()=>({message:'',source:'failed'}),onStatus=()=>{},isCurrent=()=>true,gapMs=COUNCIL_RESPONSE_GAP_MS,pause=pauseCouncilResponse}){
+  const completed=new Set();
+  while(isCurrent()){
+    const item=next();if(!item)return {ok:true};
+    const key=`${item.id}:${item.house}`;if(completed.has(key))return fail('This council response has already been processed.');
+    const considering=await onStatus(item,'considering');if(considering?.ok===false)return considering;if(!isCurrent())break;
+    const result=await resolve(item);if(!result?.ok){await onStatus(item,'invalid');return result;}
+    await onStatus(item,'resolved');if(!isCurrent())break;
+    // A saved authoritative decision may already have started a paid request
+    // before the page disconnected. Mark its voice unavailable, never repeat the paid request.
+    let reply;try{reply=item.resumeVoice?await fallback(item):await voice(item);}catch(error){if(isCurrent())reply=await fallback(item,error);}
+    if(!isCurrent()||reply?.source==='cancelled')break;
+    if(!reply)reply=await fallback(item);
+    if(!isCurrent())break;
+    if(reply){const committed=await record(item,reply);if(committed?.ok===false)return committed;}
+    completed.add(key);await onStatus(item,'complete');
+    if(!isCurrent())break;
+    if(!next())return {ok:true};
+    if(gapMs>0)await pause(gapMs);
+  }
+  return {ok:false,cancelled:true};
 }
 const words={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fifteen:15,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,hundred:100};
 export function inferFormalProposal(s,actor,message,{councilId=null,ruler=null,location=null}={}){

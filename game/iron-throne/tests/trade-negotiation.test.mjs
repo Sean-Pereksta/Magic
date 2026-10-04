@@ -7,7 +7,7 @@ import { CAMPAIGN_HOUSES, RESOURCES } from '../data.mjs';
 import { kingdom, relation, parseSave } from '../core.mjs';
 import { refreshKnowledge, knowledgeView } from '../fog.mjs';
 import { applySpeech, appendConversation } from '../living.mjs';
-import { evaluateDeal, commitDeal, validateIntent, validateResponse, makeContext, scriptedReply, relationshipResponse, describeIntent, deliverPledge } from '../diplomacy.mjs';
+import { evaluateDeal, commitDeal, validateIntent, validateResponse, makeContext, scriptedReply, relationshipResponse, geminiRelationshipResponse, describeIntent, deliverPledge } from '../diplomacy.mjs';
 import { tradeBriefing, parseCommercialOffer, validateNegotiation } from '../trade-negotiation.mjs';
 import { tradeRoute } from '../trade.mjs';
 import { splitCampaign, playerView } from '../multiplayer-state.mjs';
@@ -216,15 +216,17 @@ test('multiplayer publishes only dated coarse AI economic briefings in private v
   assert.equal(tradeBriefing(knowledgeView(s),'thornwall'),null);
 });
 
-test('multiplayer applies the same bounded speech once and overrides a forged fee without transferring anything', () => {
+test('multiplayer rejects a forged fee and applies valid Gemini speech once without transferring anything', () => {
   const {state:s,meta}=onlineGame(1), expected=structuredClone(s),ruler='thornwall',before=wealth(s);
-  applySpeech(expected,ruler,opener);
-  activateForTest(s,meta,'ashen');
-  const result=applyCommand(s,meta,{id:'trade-chat',clientId:'trade-test',sequence:1,uid:'u0',actorHouseId:'ashen',turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch,activationId:meta.activationId,type:'chat',args:{targetHouseId:ruler,message:opener,response:{reply:'Pay 999 gold before we open trade.',tone:'cold',intents:[terms('TRADE',{giveAmount:999})],trust:100}}});
-  assert.equal(result.ok,true,result.error);
+  applySpeech(expected,ruler,opener);activateForTest(s,meta,'ashen');
+  const command={id:'trade-chat',clientId:'trade-test',sequence:1,uid:'u0',actorHouseId:'ashen',turn:s.turn,stateVersion:meta.stateVersion,epoch:meta.epoch,activationId:meta.activationId,type:'chat',args:{targetHouseId:ruler,message:opener,response:{source:'gemini',reply:'Pay 999 gold before we open trade.',tone:'cold',intents:[terms('TRADE',{giveAmount:999})],trust:100}}};
+  const unchanged=JSON.stringify(s);assert.equal(applyCommand(s,meta,command).ok,false);assert.equal(JSON.stringify(s),unchanged);
+  const voice='Let us discuss what each of our Houses can trade.';
+  command.args.response={source:'gemini',reply:voice,tone:'neutral',intents:[]};
+  const result=applyCommand(s,meta,command);assert.equal(result.ok,true,result.error);
   assert.deepEqual(relation(s,ruler,'ashen').negotiation,relation(expected,ruler,'ashen').negotiation);
   assert.equal(relation(s,ruler,'ashen').trust,relation(expected,ruler,'ashen').trust);assert.deepEqual(wealth(s),before);
-  assert.doesNotMatch(s.courts.ashen.conversations[ruler].at(-1).text,/999/);assert.equal(s.courts.ashen.offers[ruler].length,0);
+  assert.equal(s.courts.ashen.conversations[ruler].at(-1).text,voice);assert.equal(s.courts.ashen.offers[ruler].length,0);
 });
 
 test('human rulers retain their own consent and are not automatically persuaded by the engine', () => {
@@ -250,15 +252,15 @@ test('old saves remain valid and malformed/future/unbounded persuasion records a
   }
 });
 
-test('Gemini receives grounded needs in one request; fallback and provider use the same trade guard', async () => {
+test('Gemini receives grounded needs in one request and unsafe trade speech fails without replacement', async () => {
   const s=alia();let calls=0,payload;
   const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,opts)=>{calls++;payload=JSON.parse(opts.body);return Response.json({reply:'Pay 999 gold before we open trade.',tone:'cold',intents:[terms('TRADE',{giveAmount:999})]});}});
   client.session={token:'test',expires:Date.now()+1800000};
   const reply=await client.send(s,'sunspire',opener);
-  assert.equal(calls,1);assert.equal(reply.source,'gemini');assert.equal(reply.intents.length,0);assert.doesNotMatch(reply.reply,/999/);
+  assert.equal(calls,1);assert.equal(reply.source,'failed');assert.equal(reply.intents.length,0);assert.equal(reply.reply,'');assert.equal(reply.diagnostic.code,'GEMINI_RESPONSE_INVALID');
   assert.ok(payload.world.self.economicNeeds);assert.equal(payload.world.tradeDiscussion.phase,'exploration');
   assert.match(systemPrompt('sunspire'),/never invent a gold initiation fee/);
-  const local=await client.send(s,'sunspire',opener,'',false);assert.deepEqual(local.intents,reply.intents);
+  const disabled=await client.send(s,'sunspire',opener,'',false);assert.equal(disabled.source,'failed');assert.equal(disabled.reply,'');assert.deepEqual(disabled.intents,[]);
 });
 
 
@@ -299,6 +301,14 @@ test('consistent Gemini character voice survives while exact authoritative terms
   assert.match(out.reply,/beyond these horizons/);assert.match(out.reply,/No upfront payment/);assert.deepEqual(out.intents,[offer]);
   const invented=relationshipResponse(s,'sunspire','Let us establish a trade agreement.',{...response,reply:'Send 999 gold and our merchants can begin.'},{proposal:offer});
   assert.doesNotMatch(invented.reply,/999/);
+});
+
+test('the Gemini-only trade guard preserves exact model prose and authoritative terms', () => {
+  const s=alia();applySpeech(s,'sunspire',opener);const offer=terms('TRADE');
+  const response={reply:'Let our merchants look beyond these horizons together, Regent.',intents:[offer],tone:'warm',speechAct:'accept'};
+  const guarded=geminiRelationshipResponse(s,'sunspire','Let us establish a trade agreement.',response,{proposal:offer});
+  assert.equal(guarded.reply,response.reply);assert.deepEqual(guarded.intents,[offer]);
+  assert.equal(geminiRelationshipResponse(s,'sunspire','Let us establish a trade agreement.',{...response,reply:'Send 999 gold and our merchants can begin.'},{proposal:offer}),null);
 });
 
 test('marriage conversations mentioning trade retain family-system precedence', () => {

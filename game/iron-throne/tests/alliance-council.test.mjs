@@ -18,7 +18,7 @@ const allies=(s,ids=['wintermere','thornwall'])=>{
   refreshKnowledge(s);return ownCouncil(s,'ashen',true);
 };
 const setup=()=>{const s=createGame(),c=allies(s);return {s,c};};
-const reply={responses:[{speakerHouseId:'wintermere',message:'I would consider it. Put the terms before me.',requestedIntent:{type:'JOINT_WAR',targetId:'vesper'}}]};
+const reply={source:'gemini',responses:[{speakerHouseId:'wintermere',message:'I would consider it. Put the terms before me.',requestedIntent:{type:'JOINT_WAR',targetId:'vesper'}}]};
 let sequence=0;
 const command=(s,m,actor,type,args)=>{activateForTest(s,m,actor);return ({id:`council-test-${++sequence}`,clientId:'council-test',sequence,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,activationId:m.activationId,type,args});};
 
@@ -84,11 +84,12 @@ test('changing coalition prevents stale replies, stale credits and access by the
   assert.equal(knowledgeView(s,'sunspire').allianceCouncils.some(x=>x.id===c.id),false);
   assert.equal(sendCouncilMessage(s,'thornwall',c.id,'I should not still be here.').ok,false);
 });
-test('a newer council exchange prevents an older async reply from spending or issuing credits',()=>{
+test('a conflicting council exchange is rejected without spending another dispatch',()=>{
   const {s,c}=setup();const start=beginCouncilMessage(s,'ashen',c.id,'Attack Vesper.');
-  beginCouncilMessage(s,'ashen',c.id,'Consider peace instead.');
-  assert.equal(finishCouncilMessage(s,'ashen',start,'Attack Vesper.',reply).ok,false);
-  assert.equal(followupCredit(s,'ashen','wintermere',c.id),null);
+  assert.equal(beginCouncilMessage(s,'ashen',c.id,'Consider peace instead.').ok,false);
+  assert.equal(s.diplomacy.messages.regular,1);assert.equal(c.messages.length,1);
+  assert.equal(finishCouncilMessage(s,'ashen',start,'Attack Vesper.',reply).ok,true);
+  assert.ok(followupCredit(s,'ashen','wintermere',c.id));
 });
 test('model and worker validation reject nonparticipants, human impersonation and too many speakers',()=>{
   const {s,c}=setup(),ctx=makeCouncilContext(s,c,'ashen','Attack Vesper.');
@@ -98,14 +99,14 @@ test('model and worker validation reject nonparticipants, human impersonation an
   assert.equal(validateCouncilResponse({responses:Array(4).fill(reply.responses[0])},c.participants),null);
   assert.equal(sanitizeContext({...ctx,participants:['ashen','ashen']}),null);
 });
-test('a council requests each leader separately using the existing session, schema and fallback',async()=>{
+test('a council speaker uses the existing session and schema with no disabled-Gemini fallback',async()=>{
   const {s,c}=setup();let calls=0;
   const client=new DiplomacyClient({endpoint:'https://worker.example/diplomacy',fetcher:async(url,options)=>{calls++;const context=JSON.parse(options.body);assert.equal(context.mode,'allianceCouncil');const speaker=context.world.participants.find(p=>p.ai).id;return Response.json({responses:[{speakerHouseId:speaker,message:'Our frontier scouts stand ready.'}]});}});
   client.session={token:'test-session',expires:Date.now()+3600000};
   const result=await client.send(s,'wintermere','Attack Vesper.','',true,{actorHouseId:'ashen',councilId:c.id});
-  assert.equal(calls,2);assert.equal(result.source,'gemini');assert.deepEqual(result.responses.map(r=>r.speakerHouseId).sort(),['thornwall','wintermere']);
+  assert.equal(calls,1);assert.equal(result.source,'gemini');assert.deepEqual(result.responses.map(r=>r.speakerHouseId),['wintermere']);
   const fallback=await client.send(s,'wintermere','Attack Vesper.','',false,{actorHouseId:'ashen',councilId:c.id});
-  assert.equal(calls,2);assert.equal(fallback.source,'scripted');assert.ok(fallback.responses.length);
+  assert.equal(calls,1);assert.equal(fallback.source,'failed');assert.deepEqual(fallback.responses,[]);assert.equal(fallback.reply,'');
   await callGemini(makeCouncilContext(s,c,'ashen','Attack Vesper.'),{GEMINI_API_KEY:'test'},async(url,options)=>{
     const body=JSON.parse(options.body);assert.ok(body.generationConfig.responseSchema.properties.responses);
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(reply)}]}}]});
@@ -178,7 +179,7 @@ test('automatic council voices retain their event, audience, speakers and simula
   assert.equal(schema.properties.responses.items.properties.requestedIntent,undefined);
   assert.equal(context.world.conversationMode,'ai-initiated-council');assert.equal(context.world.dispatch.reason,'expiry');
   const wars=JSON.stringify(s.wars),treaties=JSON.stringify(s.treaties),sequence=c.sequence,allowance=s.diplomacy.messages.regular;
-  const response={responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:`${e.speakerHouseId} considers renewing our northern alliance.`}))};
+  const response={source:'gemini',responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:`${e.speakerHouseId} considers renewing our northern alliance.`}))};
   const forged=structuredClone(response);forged.responses[0].speakerHouseId='ashen';assert.equal(applyCouncilDispatch(s,'ashen',dispatch,forged),false);
   const intent=structuredClone(response);intent.responses[0].requestedIntent={type:'ALLIANCE',duration:10};assert.equal(applyCouncilDispatch(s,'ashen',dispatch,intent),false);
   assert.equal(applyCouncilDispatch(s,'ashen',dispatch,response),true);
@@ -191,7 +192,7 @@ test('online Council voicing is authenticated, only replaces matching AI dispatc
   const {state:s,meta:m}=onlineGame(1),c=allies(s);
   for(const t of s.treaties)t.expires=s.turn+1;initiateCouncilDiscussions(s);
   const dispatch=nextCouncilDispatch(s,'ashen');assert.ok(dispatch);
-  const response={responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:'Our alliance stands watch at the frontier.'}))};
+  const response={source:'gemini',responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:'Our alliance stands watch at the frontier.'}))};
   const args={dispatch,response};
   const forged=command(s,m,'ashen','councilVoice',args);forged.uid='stranger';assert.equal(applyCommand(s,m,forged).ok,false);
   const bad=structuredClone(args);bad.response.responses[0].speakerHouseId='ashen';assert.equal(applyCommand(s,m,command(s,m,'ashen','councilVoice',bad)).ok,false);
@@ -206,7 +207,7 @@ test('queued automatic voices survive later dialogue without overwriting it, but
   const {nextCouncilDispatch,applyCouncilDispatch,makeCouncilDispatchContext}=await import('../council-dispatch.mjs');
   const {s,c}=setup();for(const t of s.treaties)t.expires=s.turn+1;
   initiateCouncilDiscussions(s);const dispatch=nextCouncilDispatch(s,'ashen');assert.ok(dispatch);
-  const response={responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:'An old background reply.'}))};
+  const response={source:'gemini',responses:dispatch.entries.map(e=>({speakerHouseId:e.speakerHouseId,message:'An old background reply.'}))};
   beginCouncilMessage(s,'ashen',c.id,'I will help defend the north.');
   const player=structuredClone(c.messages.at(-1));
   assert.ok(makeCouncilDispatchContext(s,c,'ashen',dispatch));
@@ -230,7 +231,7 @@ test('council Gemini replies with absent optional terms survive the Worker, clie
  client.session={token:'test',expires:Date.now()+1800000};
  const start=beginCouncilMessage(s,'ashen',c.id,'Let us coordinate.');assert.equal(start.ok,true);
  const response=await client.send(s,'wintermere','Let us coordinate.','',true,{actorHouseId:'ashen',councilId:c.id});
- assert.equal(calls,2);assert.equal(response.source,'gemini');assert.equal(client.lastDiagnostic,null);
+ assert.equal(calls,1);assert.equal(response.source,'gemini');assert.equal(client.lastDiagnostic,null);
  assert.equal(finishCouncilMessage(s,'ashen',start,'Let us coordinate.',response).ok,true);
  assert.equal(c.messages.at(-1).source,'gemini');assert.match(c.messages.at(-1).message,/frontier scouts/);
  assert.equal(c.messages.at(-1).requestedIntent.giveItems,undefined);

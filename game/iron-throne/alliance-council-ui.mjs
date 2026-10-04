@@ -5,7 +5,8 @@ import { councilParticipants, councilActive, councilUnread, ownCouncil } from '.
 import { councilFacts } from './alliance-council.mjs';
 import { followupCredit } from './proposal-followup.mjs';
 import { diplomaticCapacity } from './living.mjs';
-import { court } from './house-control.mjs';
+import { court, isAiHouse } from './house-control.mjs';
+import { isFormalCouncilBusy } from './formal-proposals.mjs';
 const esc = v => String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const portrait = h => `<span class="alliance-portrait" style="--house:${h.color}" role="img" aria-label="${esc(h.name)}"><span>${esc(h.sigil)}</span><img src="${esc(ART.portraits[h.id])}" alt="" data-iron-art loading="lazy"></span>`;
 
@@ -21,15 +22,15 @@ export function installAllianceCouncil(doc, options) {
   const dialog=doc.createElement('dialog');dialog.id='alliance-council';dialog.setAttribute('aria-labelledby','alliance-title');
   dialog.innerHTML=`<header class="dialog-header"><div><span class="eyebrow">THE ALLIED HOUSES</span><h2 id="alliance-title">Alliance Council</h2></div><button type="button" class="close" aria-label="Close Alliance Council">×</button></header>
     <div class="alliance-members" aria-label="Participating Houses"></div><p class="fine alliance-mood"></p>
-    <button type="button" class="alliance-offer-request">Offer / Request</button><div class="alliance-formal-proposals"></div><div class="alliance-history" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
+    <button type="button" class="alliance-offer-request">Offer / Request</button><div class="alliance-history" role="log" aria-live="polite" aria-relevant="additions text" tabindex="0"><div class="alliance-message-list"></div><div class="alliance-formal-proposals"></div><div class="alliance-failed-replies" role="status"></div></div>
     <button class="alliance-latest" hidden>Latest council messages ↓</button>
     <form class="alliance-compose"><label class="eyebrow" for="alliance-message">ADDRESS THE COUNCIL</label><textarea id="alliance-message" maxlength="600" rows="2" required placeholder="Name the goal and the role you ask each House to play…"></textarea>
     <div class="alliance-location"><label>Proposed action<select class="alliance-action">${Object.entries(OBJECTIVE_TYPES).map(([id,name])=>`<option value="${id}">${name}</option>`).join('')}</select></label><button type="button" class="alliance-map">Choose Location on Map</button><span class="alliance-location-label"></span><button type="button" class="alliance-location-clear" hidden>Remove location</button></div><div class="button-row"><label class="toggle"><input class="alliance-gemini" type="checkbox">Gemini conversation</label><small class="alliance-allowance"></small><button type="submit" class="primary">Send envoy →</button></div>
-    <button type="button" class="alliance-diagnostics" hidden>Diagnostics</button><p class="fine alliance-ai-status" role="status"></p><div class="alliance-verification"></div><p class="fine alliance-notice" role="status"></p><p class="fine alliance-privacy" hidden>Gemini receives the council conversation and shared fictional game context. Keep personal information out of messages.</p></form>`;
+    <button type="button" class="alliance-retry-gemini" hidden>Retry undelivered Gemini replies</button><button type="button" class="alliance-diagnostics" hidden>Diagnostics</button><p class="fine alliance-ai-status" role="status"></p><div class="alliance-verification"></div><p class="fine alliance-notice" role="status"></p><p class="fine alliance-privacy" hidden>Gemini receives the council conversation and shared fictional game context. Keep personal information out of messages.</p></form>`;
   doc.body.append(dialog);
-  const el=selector=>dialog.querySelector(selector), history=el('.alliance-history');
+  const el=selector=>dialog.querySelector(selector), history=el('.alliance-history'),messageList=el('.alliance-message-list');
   let location=null;
-  let currentId=null, signature='', pinned=true, busy=false, readSequence=-1,statusTimer=null;
+  let currentId=null, signature='', pinned=true, busy=null, readSequence=-1,statusTimer=null;
   el('.alliance-offer-request').onclick=()=>options.offerRequest(currentId);
   el('.alliance-map').onclick=async()=>{const point=await options.pickLocation({initialTile:location?.targetTile,title:'Select Council location'});if(point){location={targetTile:point.tileId,objectiveType:el('.alliance-action').value};el('.alliance-location-label').textContent=point.displayName;el('.alliance-location-clear').hidden=false;}};
   el('.alliance-action').onchange=()=>{if(location)location.objectiveType=el('.alliance-action').value;};
@@ -37,6 +38,13 @@ export function installAllianceCouncil(doc, options) {
   el('.close').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{clearInterval(statusTimer);statusTimer=null;options.onClose?.();});
   el('.alliance-diagnostics').onclick=()=>options.openDiagnostics?.(currentId);
+  el('.alliance-retry-gemini').onclick=async()=>{
+    if(busy===currentId||options.isBusy(currentId)||!options.retry)return;
+    const sendingId=currentId;busy=sendingId;render();
+    try{const result=await options.retry(sendingId);if(result?.ok===false&&currentId===sendingId)el('.alliance-notice').textContent=result.error||'Gemini could not deliver this reply.';}
+    catch(error){if(currentId===sendingId)el('.alliance-notice').textContent=error.message;}
+    finally{if(busy===sendingId)busy=null;render();options.changed();}
+  };
   function updateStatus(){
     const diagnostic=options.diagnostic?.(currentId),seconds=options.cooldown?.()||0;
     el('.alliance-diagnostics').hidden=!diagnostic;
@@ -52,11 +60,11 @@ export function installAllianceCouncil(doc, options) {
     if(c&&councilActive(s,c))options.openTerms(b.dataset.allianceTerms,c.id,m?.requestedIntent||null);
   });
   el('form').onsubmit=async e=>{
-    e.preventDefault();const message=el('textarea').value.trim();if(!message||busy||options.isBusy())return;
-    busy=true;render();
-    try {const result=await options.send(currentId,message,location);if(result?.ok===false)throw Error(result.error);el('textarea').value='';el('.alliance-location-clear').click();el('.alliance-notice').textContent=result?.notice||'The council has heard your envoy. Review terms before making commitments.';}
-    catch(error){el('.alliance-notice').textContent=error.message;}
-    finally{busy=false;render();options.changed();}
+    e.preventDefault();const message=el('textarea').value.trim();if(!message||busy===currentId||options.isBusy(currentId)||isFormalCouncilBusy(options.getState(),currentId))return;
+    const sendingId=currentId;busy=sendingId;render();
+    try {const result=await options.send(sendingId,message,location);if(result?.ok===false)throw Error(result.error);if(currentId!==sendingId)return;el('textarea').value='';el('.alliance-location-clear').click();el('.alliance-notice').textContent=result?.notice||'The council has heard your envoy. Review terms before making commitments.';}
+    catch(error){if(currentId===sendingId)el('.alliance-notice').textContent=error.message;}
+    finally{if(busy===sendingId)busy=null;render();options.changed();}
   };
   async function open(id='') {
     try {
@@ -77,16 +85,25 @@ export function installAllianceCouncil(doc, options) {
     const next=JSON.stringify([c.messages,s.proposalFollowups,c.messages.map(m=>!!options.queued?.(c.id,m.id))]);
     if(next!==signature){
       signature=next;const top=history.scrollTop;
-      history.innerHTML=c.messages.map(m=>{
+      messageList.innerHTML=c.messages.map(m=>{
         const h=s.kingdoms.find(k=>k.id===m.speakerHouseId),credit=followupCredit(s,actor,h.id,c.id);
+        if(isAiHouse(s,h.id)&&m.source!=='gemini')return options.queued?.(c.id,m.id)?`<p class="fine alliance-delivery-status" role="status">Waiting for ${esc(h.name)}’s Gemini reply…</p>`:'';
         return `${m.initiated?`<div class="dispatch-divider" role="separator"><b>NEW DISPATCH · TURN ${m.turn}</b><span>Alliance Council · ${esc(m.reason||"Council Concern")}</span></div>`:''}<article class="alliance-message ${h.id===actor?'from-player':''}" style="--speaker-color:${h.color}">${portrait(h)}<div><small>${esc(h.id===actor?'YOU':h.ruler)} · ${esc(h.name)} · Turn ${m.turn}${options.queued?.(c.id,m.id)?' · Queued for Gemini':m.source==='gemini'?' · Gemini':m.source==='scripted'||m.initiated?' · Local dialogue':''}</small><p>${esc(m.message)}</p>${m.location?`<p>${esc(OBJECTIVE_TYPES[m.location.objectiveType])} · Hex ${esc(m.location.targetTile)} <button type="button" data-council-location="${m.id}">Plan operation here</button></p>`:''}${m.requestedIntent&&h.id!==actor&&active?`<button type="button" data-alliance-terms="${h.id}" data-message="${m.id}">${credit?'Requested terms · no extra envoy':'Review terms'}</button>`:''}</div></article>`;
       }).join('')||'<p class="fine alliance-empty">The allied rulers await your first proposal. Each House speaks for its own interests.</p>';
       history.scrollTop=pinned?history.scrollHeight:top;el('.alliance-latest').hidden=pinned;
     }
     const used=court(s,actor).messages,remaining=Math.max(0,diplomaticCapacity(s,actor)-(used.turn===s.turn?used.regular:0));
     el('.alliance-allowance').textContent=`${remaining} shared dispatches remaining`;
-    el('[type="submit"]').disabled=busy||options.isBusy()||!active||!remaining||!!s.outcome;
-    el('[type="submit"]').textContent=busy?'Envoy travelling…':'Send envoy →';
+    const processing=busy===currentId||options.isBusy(currentId)||isFormalCouncilBusy(s,currentId);
+    const sequence=c.activeSequence,failed=Object.keys(sequence?.failed||{});
+    el('.alliance-failed-replies').innerHTML=failed.map(h=>`<p class="fine">${esc(s.kingdoms.find(k=>k.id===h)?.name||h)} — Gemini reply unavailable.</p>`).join('');
+    el('.alliance-retry-gemini').hidden=!failed.length||sequence?.status!=='complete'||sequence?.turn!==s.turn||sequence?.actor!==actor||!active;
+    el('.alliance-retry-gemini').disabled=processing||!!s.outcome;
+    el('[type="submit"]').disabled=processing||!active||!remaining||!!s.outcome;
+    el('.alliance-offer-request').disabled=processing||!active||!!s.outcome;
+    el('[type="submit"]').textContent=processing?'Conversation in progress…':'Send envoy →';
+    const speaker=c.activeSequence?.status==='pending'&&c.activeSequence.turn===s.turn&&c.activeSequence.currentSpeaker;
+    if(speaker)el('.alliance-notice').textContent=`${s.kingdoms.find(k=>k.id===speaker)?.name||speaker} is considering your message…`;
     const gemini=options.gemini();el('.alliance-gemini').checked=gemini.enabled;el('.alliance-gemini').disabled=!gemini.available;el('.alliance-privacy').hidden=!gemini.enabled;
     if(readSequence!==c.sequence){readSequence=c.sequence;options.read(c.id).catch(e=>options.error(e.message));}
   }

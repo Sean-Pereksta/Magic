@@ -6,9 +6,10 @@ import { knowledgeView } from './fog.mjs';
 import { isAiHouse, humanControlledHouseIds, court } from './house-control.mjs';
 import { appendConversation, diplomaticCapacity, borderThreat } from './living.mjs';
 import { validateIntent, describeIntent } from './diplomacy.mjs';
-import { councilParticipants, councilActive, ownCouncil, appendCouncil } from './council-state.mjs';
+import { councilParticipants, councilActive, ownCouncil, appendCouncil, councilDiagnostic } from './council-state.mjs';
 import { expireFollowups, grantFollowup, topicIntent } from './proposal-followup.mjs';
-import { stageConversationProposal } from './formal-proposals.mjs';
+import { stageConversationProposal, isFormalCouncilBusy } from './formal-proposals.mjs';
+import { makeDiagnostic } from './diagnostics.mjs';
 
 export const COUNCIL_MOODS = ['Cooperative','Cordial','Uneasy','Somber','Heated','Uncontrolled'];
 const relationFields = ['opinion','trust','reliability','respect','grievance','fear','wariness'];
@@ -65,8 +66,9 @@ export function councilFacts(s, c) {
 export function makeCouncilContext(s, c, actor, message, location=null, formalDecision=null) {
   const facts = councilFacts(s,c);
   if (!facts) return null;
+  const spoken=c.messages.filter(m=>m.source==='gemini'||!isAiHouse(s,m.speakerHouseId));
   const context = {mode:'allianceCouncil',turn:s.turn,actorHouseId:actor,councilId:c.id,participants:c.participants,
-    message:message.slice(0,600),history:c.messages.filter(m=>m.turn>=s.turn-2).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450),...(m.location?{location:normalizeLocation(s,m.location)}:{})})),world:{...structuredClone(facts),locationProposal:normalizeLocation(s,location),historicalDiscussion:c.messages.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
+    message:message.slice(0,600),history:spoken.filter(m=>m.turn>=s.turn-2).slice(-10).map(m => ({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,450),...(m.location?{location:normalizeLocation(s,m.location)}:{})})),world:{...structuredClone(facts),locationProposal:normalizeLocation(s,location),historicalDiscussion:spoken.filter(m=>m.turn<s.turn-2).slice(-3).map(m=>({speakerHouseId:m.speakerHouseId,turn:m.turn,message:m.message.slice(0,180)}))}};
   if(formalDecision){
     const proposal=s.cooperation?.formalProposals?.find(p=>p.id===formalDecision.proposalId&&p.councilId===c.id&&p.proposer===actor),row=proposal?.responses[formalDecision.house];
     if(!row||!proposal.approved||['waiting','awaiting-human'].includes(row.status))return null;
@@ -93,7 +95,7 @@ export function validateCouncilResponse(raw, participants, aiIds = participants)
     if (!value || !Array.isArray(value.responses) || value.responses.length < 1 || value.responses.length > Math.min(12,aiIds.length)) return null;
     const responses = [];
     for (const r of value.responses) {
-      if (!r || !participants.includes(r.speakerHouseId) || !aiIds.includes(r.speakerHouseId) || typeof r.message !== 'string' || !r.message.trim() || r.message.length > 900) return null;
+      if (!r || !participants.includes(r.speakerHouseId) || !aiIds.includes(r.speakerHouseId) || responses.some(x=>x.speakerHouseId===r.speakerHouseId) || typeof r.message !== 'string' || !r.message.trim() || r.message.length > 900) return null;
       const intent = r.requestedIntent == null ? null : validateIntent(r.requestedIntent);
       if (r.requestedIntent != null && !intent) return null;
       responses.push({speakerHouseId:r.speakerHouseId,message:r.message,...(intent?{requestedIntent:intent}:{})});
@@ -102,7 +104,7 @@ export function validateCouncilResponse(raw, participants, aiIds = participants)
   } catch { return null; }
 }
 
-export function scriptedCouncil(s,c,actor,message,location=null) {
+export function scriptedCouncil(s,c,actor,message,location=null,speakerHouseId=null) {
   location=normalizeLocation(s,location)||c.messages.findLast(m=>m.speakerHouseId===actor&&m.message===message&&m.turn===s.turn)?.location||null;
   const facts = councilFacts(s,c), intent = location?(['defend','hold','reinforce','rally','flank','move'].includes(location.objectiveType)?validateIntent({type:'POSITION',targetId:location.targetTile}):null):topicIntent(s,message), responses = [];
   if (!facts) return {responses};
@@ -122,6 +124,9 @@ export function scriptedCouncil(s,c,actor,message,location=null) {
     if(location)text=`${OBJECTIVE_TYPES[location.objectiveType]} at Hex ${location.targetTile}: ${text} This identifies a position; its unseen conditions remain unknown.`;
     return {speakerHouseId:p.id,message:text,stance,...(stance==='support'?{requestedIntent:intent}:{})};
   });
+  // A failed independent request still needs this ruler's own personality and
+  // circumstances, even when the group diversity chooser would omit them.
+  if (speakerHouseId) return {responses:candidates.filter(p=>p.speakerHouseId===speakerHouseId).map(({stance,...r})=>r)};
   // Prefer different positions; do not make every ruler repeat assent.
   for (const p of candidates) if (!responses.length || !responses.some(r => r.stance === p.stance)) {responses.push(p);if(responses.length===3)break;}
   const challenger = responses.find(r => r.stance === 'conditional');
@@ -139,6 +144,12 @@ export function councilForActor(s,actor,id,create=false) {
 export function beginCouncilMessage(s,actor,id,message,location=null) {
   const c = councilForActor(s,actor,id,true);
   if (!c || s.outcome || s.phase==='founding' || !alive(s,actor)) return fail('This alliance council is no longer active.');
+  const prior=c.activeSequence;
+  if (prior?.status==='pending') {
+    if (councilSequenceValid(s,prior.actor,{councilId:c.id,entryId:prior.anchorId,turn:prior.turn,seed:prior.seed})) return fail('Wait for the current council speakers to finish.');
+    prior.status='cancelled';prior.currentSpeaker=null;
+  }
+  if (isFormalCouncilBusy(s,c.id)) return fail('Wait for the current proposal responses to finish.');
   if (typeof message !== 'string' || !message.trim() || message.length > 600) return fail('Enter a message of up to 600 characters.');
   const attached=location==null?null:normalizeLocation(s,location);if(location!=null&&!attached)return fail('Choose a valid action and map location.');
   const record = court(s,actor), used = record.messages.turn===s.turn?record.messages:{turn:s.turn,regular:0,hosts:{}};
@@ -148,23 +159,93 @@ export function beginCouncilMessage(s,actor,id,message,location=null) {
   // resident ambassador's private allowance.
   for (const member of c.participants) expireFollowups(s,member,c.id);
   const entry = appendCouncil(s,c,actor,message.trim(),attached?{location:attached}:{}); c.read[actor]=c.sequence;
+  const speakers=s.kingdoms.filter(k=>k.id!==actor&&c.participants.includes(k.id)&&isAiHouse(s,k.id)).map(k=>k.id);
+  c.activeSequence={anchorId:entry.id,actor,turn:s.turn,seed:s.seed,participants:[...c.participants],speakers,completed:{},failed:{},failureHistory:[],retryCount:0,currentSpeaker:null,status:'pending'};
   stageConversationProposal(s,actor,message,{councilId:c.id,location:attached});
-  return {ok:true,councilId:c.id,entryId:entry.id};
+  return {ok:true,councilId:c.id,entryId:entry.id,turn:s.turn,seed:s.seed,speakers:[...speakers]};
 }
+function councilSequenceRecord(s,actor,start) {
+  if (!start || !Number.isSafeInteger(start.entryId) || start.turn!==s.turn || start.seed!==s.seed || s.outcome || s.phase==='founding' || !alive(s,actor)) return null;
+  const c=councilForActor(s,actor,start.councilId),q=c?.activeSequence;
+  if (!q || q.actor!==actor || q.anchorId!==start.entryId || q.turn!==s.turn || q.seed!==s.seed || JSON.stringify(q.participants)!==JSON.stringify(c.participants) || !c.messages.some(m=>m.id===q.anchorId&&m.speakerHouseId===actor&&m.turn===q.turn)) return null;
+  return {c,q};
+}
+export function councilSequenceValid(s,actor,start) {
+  return councilSequenceRecord(s,actor,start)?.q.status==='pending';
+}
+const speakerFinished=(q,house)=>!!(q.completed[house]||q.failed?.[house]);
+const duplicateSpeaker=(q,house)=>({ok:true,duplicate:true,...(q.completed[house]?{entryId:q.completed[house]}:{failed:true,diagnostic:q.failed[house].diagnostic})});
+export function considerCouncilSpeaker(s,actor,start,house) {
+  const record=councilSequenceRecord(s,actor,start);
+  if (!record || record.q.status!=='pending') return fail('The council conversation is no longer current.');
+  const {q}=record;
+  if (!q.speakers.includes(house)) return fail('This ruler is not part of the council response sequence.');
+  if (speakerFinished(q,house)) return duplicateSpeaker(q,house);
+  if (q.speakers.find(id=>!speakerFinished(q,id))!==house || !isAiHouse(s,house)) return fail('Council rulers must respond one at a time in order.');
+  if (q.currentSpeaker && q.currentSpeaker!==house) return fail('Another ruler is currently considering this message.');
+  q.currentSpeaker=house;return {ok:true,house};
+}
+export function failCouncilSpeaker(s,actor,start,house,diagnostic) {
+  const record=councilSequenceRecord(s,actor,start);
+  if(!record)return fail('The council changed while the envoy travelled.');
+  const {q}=record;
+  if(!q.speakers.includes(house))return fail('This ruler is not part of the council response sequence.');
+  if(speakerFinished(q,house))return duplicateSpeaker(q,house);
+  if(q.status!=='pending'||q.currentSpeaker!==house||q.speakers.find(id=>!speakerFinished(q,id))!==house||!isAiHouse(s,house))return fail('This ruler is not awaiting a council response.');
+  const safe=councilDiagnostic(diagnostic)||makeDiagnostic('GEMINI_RESPONSE_INVALID');
+  q.failed??={};q.failed[house]={diagnostic:safe};q.currentSpeaker=null;
+  q.failureHistory=[...(q.failureHistory||[]),{house,diagnostic:safe}].slice(-24);
+  return {ok:true,house,failed:true,diagnostic:safe};
+}
+export function retryCouncilSpeakers(s,actor,start) {
+  const record=councilSequenceRecord(s,actor,start);
+  if(!record||record.q.status!=='complete'||!Object.keys(record.q.failed||{}).length)return fail('No failed Gemini replies in this current council are available to retry.');
+  if(isFormalCouncilBusy(s,record.c.id))return fail('Wait for the current proposal responses to finish.');
+  const {c,q}=record;
+  q.failed={};q.currentSpeaker=null;q.status='pending';q.retryCount=(q.retryCount||0)+1;
+  return {ok:true,councilId:c.id,entryId:q.anchorId,turn:q.turn,seed:q.seed,speakers:q.speakers.filter(h=>!q.completed[h])};
+}
+export function commitCouncilSpeaker(s,actor,start,house,raw) {
+  const record=councilSequenceRecord(s,actor,start);
+  if (!record) return fail('The council changed while the envoy travelled.');
+  const {c,q}=record;
+  if (!q.speakers.includes(house)) return fail('This ruler is not part of the council response sequence.');
+  if (speakerFinished(q,house)) return duplicateSpeaker(q,house);
+  if (q.status!=='pending' || q.currentSpeaker!==house || q.speakers.find(id=>!speakerFinished(q,id))!==house || !isAiHouse(s,house)) return fail('This ruler is not awaiting a council response.');
+  if (raw?.source==='cancelled') return fail('The council response was cancelled.');
+  const anchor=c.messages.find(m=>m.id===q.anchorId),validated=validateCouncilResponse(raw,c.participants,[house]);
+  if(raw?.source!=='gemini'||!validated)return failCouncilSpeaker(s,actor,start,house,raw?.diagnostic);
+  const r=validated.responses[0],source='gemini';
+  const diagnostic=councilDiagnostic(raw?.diagnostic);
+  const entry=appendCouncil(s,c,house,r.message,{anchorMessageId:q.anchorId,source,...(diagnostic?{diagnostic}:{}),...(r.requestedIntent?{requestedIntent:r.requestedIntent}:{})});
+  q.completed[house]=entry.id;q.currentSpeaker=null;
+  grantFollowup(s,actor,house,c.id,anchor.message,r,{paid:true,requestedIntent:r.requestedIntent});
+  return {ok:true,entryId:entry.id,house,source};
+}
+export function finalizeCouncilMessage(s,actor,start,{cancelled=false}={}) {
+  // Cancellation may occur after a turn or coalition changes. It only closes
+  // this exact anchor and never removes already committed replies.
+  const c=s.allianceCouncils?.find(c=>c.id===start?.councilId),q=c?.activeSequence;
+  if (!q || q.actor!==actor || q.anchorId!==start?.entryId || q.turn!==start.turn || q.seed!==start.seed) return fail('The council sequence changed.');
+  if (q.status!=='pending') return {ok:true,duplicate:true};
+  if (!cancelled && (!councilSequenceValid(s,actor,start) || q.speakers.some(id=>!speakerFinished(q,id)))) return fail('Council rulers are still awaiting their responses.');
+  q.status=cancelled?'cancelled':'complete';q.currentSpeaker=null;return {ok:true};
+}
+// Compatibility for synchronous callers and old saved command payloads. The
+// game UI uses the per-speaker functions above and commits before continuing.
 export function finishCouncilMessage(s,actor,start,message,raw) {
-  const c = councilForActor(s,actor,start.councilId);
-  if (!c || c.sequence !== start.entryId || c.messages.at(-1)?.turn !== s.turn) return fail('The council changed while the envoy travelled.');
-  const aiIds = c.participants.filter(id => id !== actor && isAiHouse(s,id));
-  const validated = validateCouncilResponse(raw,c.participants,aiIds);
-  const response = validated || scriptedCouncil(s,c,actor,message);
-  for (const r of response.responses) {
-    const source = !validated || raw?.source === 'scripted' ? 'scripted' : raw?.source === 'gemini' ? 'gemini'
-      : raw?.source === 'mixed' ? (raw.responses.find(entry=>entry.speakerHouseId===r.speakerHouseId)?.source === 'gemini' ? 'gemini' : 'scripted') : undefined;
-    appendCouncil(s,c,r.speakerHouseId,r.message,{...(source?{source}:{}),...(r.requestedIntent?{requestedIntent:r.requestedIntent}:{})});
-    grantFollowup(s,actor,r.speakerHouseId,c.id,message,r,{paid:true,requestedIntent:r.requestedIntent});
+  const record=councilSequenceRecord(s,actor,start);
+  if (!record || record.q.status!=='pending') return fail('The council changed while the envoy travelled.');
+  const {c,q}=record,validated=validateCouncilResponse(raw,c.participants,q.speakers);
+  if(validated)q.speakers=validated.responses.map(r=>r.speakerHouseId);
+  for (const house of q.speakers) {
+    const r=validated?.responses.find(r=>r.speakerHouseId===house);
+    const considering=considerCouncilSpeaker(s,actor,start,house);if(!considering.ok)return considering;
+    const result=commitCouncilSpeaker(s,actor,start,house,{responses:r?[r]:[],source:validated?(raw?.source==='mixed'?raw.responses.find(x=>x.speakerHouseId===house)?.source:raw?.source):'failed',diagnostic:raw?.diagnostic});
+    if(!result.ok)return result;
   }
   c.read[actor]=c.sequence;
-  return {ok:true};
+  return finalizeCouncilMessage(s,actor,start);
 }
 export function sendCouncilMessage(s,actor,id,message,response=null,location=null) {
   const start=beginCouncilMessage(s,actor,id,message,location);return start.ok?finishCouncilMessage(s,actor,start,message,response):start;

@@ -7,6 +7,7 @@ import { initializeSequential, syncSequential, activeHouse } from './sequential.
 import { prepareGenerals } from './generals.mjs';
 import { DIFFICULTIES } from './difficulty.mjs';
 import { court } from './house-control.mjs';
+import { cancelFormalConversation } from './formal-proposals.mjs';
 
 export const LEASE_MS = 30000, HEARTBEAT_MS = 10000, ONLINE_MS = 35000, GRACE_MS = 90000;
 export const houseIds = HOUSES.map(h => h.id);
@@ -74,6 +75,13 @@ export function resolveRound(state,meta,presence,now) {
   }
   if(meta.activationId!==state.sequential.id||meta.activeHouse!==activeHouse(state))throw new Error('The active House changed.');
   const actor=activeHouse(state),seat=meta.seats[actor];
+  // Both an explicit end and an expired activation timer close the outgoing
+  // ruler's conversation producers. Already delivered speech and commitments
+  // remain authoritative; the next human must not inherit a locked council.
+  for(const c of state.allianceCouncils||[])if(c.activeSequence?.actor===actor&&c.activeSequence.status==='pending'){
+    c.activeSequence.status='cancelled';c.activeSequence.currentSpeaker=null;
+  }
+  cancelFormalConversation(state,actor);
   if(seat.kind==='human'){
     seat.substitute=!!seat.forcedSubstitute||!present(presence[seat.uid],now)&&meta.options.absent==='ai';delete seat.forcedSubstitute;
   }

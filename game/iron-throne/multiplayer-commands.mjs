@@ -4,9 +4,9 @@ import { queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './n
 import { initializeSequential } from './sequential.mjs';
 import { hireGeneral, assignGeneral, detachGeneral, approveGeneralOrder, recordGeneralConversation } from './generals.mjs';
 import { issueVassalCommand, acceptVassalRequest } from './vassals.mjs';
-import { councilForActor, sendCouncilMessage, announceCouncilAgreement } from './alliance-council.mjs';
+import { councilForActor, sendCouncilMessage, announceCouncilAgreement, beginCouncilMessage, considerCouncilSpeaker, commitCouncilSpeaker, finalizeCouncilMessage, retryCouncilSpeakers } from './alliance-council.mjs';
 import { consumeDiplomaticMessage, expireFollowups, grantFollowup, privateConversation } from './proposal-followup.mjs';
-import { relationshipResponse } from './diplomacy.mjs';
+import { geminiRelationshipResponse } from './diplomacy.mjs';
 import { discussMarriage, continueMarriageReview } from './marriage.mjs';
 import { createOperation, respondOperation, supplyOperation, leaveOperation } from './operations.mjs';
 import { respondCooperation } from './strategic-diplomacy.mjs';
@@ -15,14 +15,14 @@ import { build, buildHighway, recruit, orderArmy, orderStructureAttack, splitArm
 import { setFormation } from './warfare.mjs';
 import { recruitSpy, assignSpy, paySpyRansom, resolveCaptive } from './espionage.mjs';
 import { recruitAmbassador, assignAmbassador, ambassadorIncident, appendConversation, applySpeech, markRead } from './living.mjs';
-import { commitDeal, deliverPledge, scriptedReply, validateIntent, validateResponse, acceptRulerMemories, describeIntent } from './diplomacy.mjs';
+import { commitDeal, deliverPledge, validateIntent, validateResponse, acceptRulerMemories, describeIntent } from './diplomacy.mjs';
 import { court, isHumanHouse } from './house-control.mjs';
 import { houseIds, requestTakeover } from './multiplayer-rounds.mjs';
-import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, resolveFormalResponse, answerFormalProposal, recordFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
+import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, markFormalConsidering, resolveFormalResponse, answerFormalProposal, recordFormalVoice, retryFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalResolve','formalAnswer','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilChat','councilVoice','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalConsider','formalResolve','formalAnswer','formalRetryVoice','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilBegin','councilConsider','councilCommit','councilRetry','councilFinalize','councilChat','councilVoice','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -56,9 +56,11 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
     case 'formalSubmit':result=submitFormalProposal(s,a,p);break;
     case 'formalRatify':result=ratifyFormalProposal(s,a,p.id);break;
     case 'formalDismiss':result=dismissFormalProposal(s,a,p.id);break;
+    case 'formalConsider':result=markFormalConsidering(s,a,p.id,p.house);break;
     case 'formalResolve':result=resolveFormalResponse(s,a,p.id,p.house);break;
     case 'formalAnswer':result=answerFormalProposal(s,a,p.id,p.house,p.decision);break;
-    case 'formalVoice':result=recordFormalVoice(s,a,p.id,p.house,p.message);break;
+    case 'formalVoice':result=recordFormalVoice(s,a,p.id,p.house,p.message,p.source,p.diagnostic);break;
+    case 'formalRetryVoice':result=retryFormalVoice(s,a,p.id,p.house);break;
     case 'shipBuild':result=queueShip(s,a,p.tile,p.ship);break;
     case 'shipCancel':result=cancelShip(s,a,p.id);break;
     case 'fleetEmbark':result=orderEmbark(s,a,p.army,p.fleet,p.count??null);break;
@@ -84,6 +86,11 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
       council.read[a]=council.sequence;result=ok();break;
     }
     case 'councilChat': result=sendCouncilMessage(s,a,p.councilId,p.message,p.response,p.location);break;
+    case 'councilBegin': result=beginCouncilMessage(s,a,p.councilId,p.message,p.location);break;
+    case 'councilConsider': result=considerCouncilSpeaker(s,a,p.start,p.house);break;
+    case 'councilCommit': result=commitCouncilSpeaker(s,a,p.start,p.house,p.response);break;
+    case 'councilFinalize': result=finalizeCouncilMessage(s,a,p.start,{cancelled:p.cancelled===true});break;
+    case 'councilRetry': result=retryCouncilSpeakers(s,a,p.start);break;
     case 'councilVoice': result=applyCouncilDispatch(s,a,p.dispatch,p.response)?ok():fail('The council dispatch changed.');break;
     case 'found':{
       // Work on a copy: any placement/AI failure leaves the authoritative state untouched.
@@ -140,26 +147,33 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
     case 'chat':{
       if(!validTarget()||typeof p.message!=='string'||!p.message.trim()||p.message.length>TEXT_LIMIT)return fail('Enter a message of up to 600 characters.');
       if(p.proposal&&(!validateIntent(p.proposal)||p.message!==describeIntent(validateIntent(p.proposal))))return fail('Submit the requested structured terms without a separate chat message.');
-      const spent=consumeDiplomaticMessage(s,target,a,p.proposal||null,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
-      if(!p.proposal){expireFollowups(s,a,privateConversation(target));stageConversationProposal(s,a,p.message,{ruler:target});}
-      appendConversation(s,target,'player',p.message,{actorHouseId:a,kind:p.proposal?'proposal':''});
-      if(isHumanHouse(s,target)){
+      const human=isHumanHouse(s,target),options={actorHouseId:a,proposal:p.proposal||null};
+      const model=!human&&p.response?.source==='gemini'&&validateResponse(p.response);
+      if(!human&&!model)return fail('A valid Gemini reply is required before this envoy can be delivered.');
+      // The player's inquiry may create rule-backed offers before its reply is
+      // validated. Stage the whole AI exchange so a rejected voice spends no
+      // dispatch and cannot partially alter private court state.
+      const chatState=human?s:structuredClone(s);
+      const spent=consumeDiplomaticMessage(chatState,target,a,p.proposal||null,p.conversationId||privateConversation(target));if(!spent.ok)return spent;
+      if(!p.proposal){expireFollowups(chatState,a,privateConversation(target));stageConversationProposal(chatState,a,p.message,{ruler:target});}
+      appendConversation(chatState,target,'player',p.message,{actorHouseId:a,kind:p.proposal?'proposal':''});
+      if(human){
         discussMarriage(s,target,p.message,a);
         appendConversation(s,a,'ruler',p.message,{actorHouseId:target,unread:true,kind:'human'});
         const prior=court(s,target).conversations[a]?.findLast(m=>m.role==='player'&&m.turn===s.turn);
         if(prior&&!prior.kind&&!prior.followupGranted&&grantFollowup(s,target,a,privateConversation(a),prior.text,{reply:p.message},{paid:true}))prior.followupGranted=true;
       }else{
-        if(!p.proposal)applySpeech(s,target,p.message,a);
-        else if(p.proposal.type==='MARRIAGE')continueMarriageReview(s,target,a);
+        if(!p.proposal)applySpeech(chatState,target,p.message,a);
+        else if(p.proposal.type==='MARRIAGE')continueMarriageReview(chatState,target,a);
+        const response=geminiRelationshipResponse(chatState,target,p.message,model,options);
+        if(!response)return fail('The Gemini reply conflicts with the current diplomacy facts. Retry Gemini.');
         // A model reply is untrusted dialogue/proposals. Rule checks run only on ratification.
-        const model=p.response&&validateResponse(p.response);
-        const options={actorHouseId:a,proposal:p.proposal||null};
-        const response=relationshipResponse(s,target,p.message,model||scriptedReply(s,target,p.message,options),options);
-        appendConversation(s,target,'ruler',response.reply,{actorHouseId:a,unread:true});
-        grantFollowup(s,a,target,p.conversationId||privateConversation(target),p.message,response,{paid:!p.proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
-        if(model)acceptRulerMemories(s,target,response,a);
+        appendConversation(chatState,target,'ruler',response.reply,{actorHouseId:a,unread:true,source:'gemini'});
+        grantFollowup(chatState,a,target,p.conversationId||privateConversation(target),p.message,response,{paid:!p.proposal&&!spent.free,requestedIntent:response.proposal||response.intents[0]});
+        acceptRulerMemories(chatState,target,response,a);
         const candidates=[p.proposal,...response.intents,response.proposal,response.counterProposal,response.promiseDetected].filter(Boolean);
-        court(s,a).offers[target]=[...new Map(candidates.map(i=>[JSON.stringify(i),i])).values()].slice(0,4);
+        court(chatState,a).offers[target]=[...new Map(candidates.map(i=>[JSON.stringify(i),i])).values()].slice(0,4);
+        Object.assign(s,chatState);
       }
       result=ok();break;
     }
