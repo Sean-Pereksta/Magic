@@ -1,23 +1,18 @@
+import {chooseVoice,readVoiceSettings} from './voice-settings.mjs';
 const DEFAULT_RATE=1.06;
 
 const available=(synth,Utterance)=>!!synth&&typeof Utterance==='function';
 
-function chooseVoice(synth){
-  const voices=synth?.getVoices?.()||[];
-  return voices.find(v=>v.default&&/^en/i.test(v.lang))
-    ||voices.find(v=>/^en/i.test(v.lang))
-    ||voices.find(v=>v.default)
-    ||null;
-}
-
 export function createBrowserSpeechQueue({
   synth=globalThis.speechSynthesis,
-  Utterance=globalThis.SpeechSynthesisUtterance
+  Utterance=globalThis.SpeechSynthesisUtterance,
+  getVoicePreferences=readVoiceSettings
 }={}){
   const queue=[];
   const keys=new Set();
   const listeners=new Set();
   let current=null;
+  let suspended=false;
 
   const state=()=>({
     available:available(synth,Utterance),
@@ -47,7 +42,7 @@ export function createBrowserSpeechQueue({
       warmup.lang='en-US';
       warmup.rate=10;
       warmup.volume=0;
-      const voice=chooseVoice(synth);
+      const voice=chooseVoice(synth?.getVoices?.()||[],getVoicePreferences().voiceURI);
       if(voice)warmup.voice=voice;
       synth.speak(warmup);
       return true;
@@ -67,7 +62,7 @@ export function createBrowserSpeechQueue({
   };
 
   function drain(){
-    if(current||!queue.length)return;
+    if(suspended||current||!queue.length)return;
     if(!resume()){
       while(queue.length){
         const item=queue.shift();
@@ -99,22 +94,22 @@ export function createBrowserSpeechQueue({
       utterance.rate=Number.isFinite(item.rate)?item.rate:DEFAULT_RATE;
       utterance.pitch=Number.isFinite(item.pitch)?item.pitch:1;
       utterance.volume=Number.isFinite(item.volume)?item.volume:1;
-      const voice=chooseVoice(synth);
-      if(voice)utterance.voice=voice;
+      const voice=chooseVoice(synth?.getVoices?.()||[],getVoicePreferences().voiceURI);
+      if(voice){utterance.voice=voice;utterance.lang=item.lang||voice.lang;}
 
       let done=false;
       utterance.onstart=()=>{
-        if(done)return;
+        if(done||current!==item)return;
         try{item.onStart?.();}catch{}
         notify();
       };
       utterance.onend=()=>{
-        if(done)return;
+        if(done||current!==item)return;
         done=true;
         finish(item,true);
       };
       utterance.onerror=event=>{
-        if(done)return;
+        if(done||current!==item)return;
         done=true;
         finish(item,false,event?.error||'speech-error');
       };
@@ -164,13 +159,31 @@ export function createBrowserSpeechQueue({
     return removed;
   };
 
+  // Browser cancel() does not consistently fire onend/onerror on mobile.
+  // Settle our queue explicitly so radio ducking and the next item always recover.
+  const cancel=predicate=>{
+    const removed=removePending(predicate);
+    if(current&&(!predicate||predicate(current))){
+      const item=current;
+      try{synth.cancel?.();}catch{}
+      finish(item,false,'canceled');
+      return removed+1;
+    }
+    return removed;
+  };
+  const setSuspended=value=>{
+    suspended=!!value;
+    if(suspended&&current)cancel(item=>item===current);
+    if(!suspended)drain();
+  };
+
   const subscribe=listener=>{
     listeners.add(listener);
     try{listener(state());}catch{}
     return ()=>listeners.delete(listener);
   };
 
-  return {enqueue,unlock,resume,removePending,subscribe,state,available:()=>available(synth,Utterance)};
+  return {enqueue,unlock,resume,removePending,cancel,setSuspended,subscribe,state,available:()=>available(synth,Utterance)};
 }
 
 export const browserSpeechQueue=createBrowserSpeechQueue();
@@ -181,3 +194,6 @@ export const enqueueBrowserSpeech=(text,options)=>browserSpeechQueue.enqueue(tex
 export const removeQueuedSpeech=predicate=>browserSpeechQueue.removePending(predicate);
 export const getBrowserSpeechQueueState=()=>browserSpeechQueue.state();
 export const onBrowserSpeechQueueState=listener=>browserSpeechQueue.subscribe(listener);
+
+export const cancelBrowserSpeech=predicate=>browserSpeechQueue.cancel(predicate);
+export const suspendBrowserSpeech=value=>browserSpeechQueue.setSuspended(value);

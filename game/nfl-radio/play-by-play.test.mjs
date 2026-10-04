@@ -41,18 +41,19 @@ const makeEvent=({
   }]
 });
 
-test('builds a concise team plus play announcement',()=>{
+test('uses one cleaned call for both transcript and speech',()=>{
   const out=latestPlayAnnouncement(makeEvent());
   assert.equal(out.team,'Lions');
-  assert.match(out.speech,/^Lions\. J\. Goff pass complete/);
+  assert.equal(out.speech,'J. Goff finds A. St. Brown for 12 yards.');
+  assert.equal(out.speech,out.play);
   assert.equal(out.gameId,'g1');
   assert.deepEqual(out.matchup,['GB','DET']);
 });
 
-test('falls back to possession when the play has no explicit team',()=>{
+test('does not invent a play team from possession after the play',()=>{
   const out=latestPlayAnnouncement(makeEvent({playTeam:null,possession:'9',text:'Rush for 6 yards.'}));
-  assert.equal(out.team,'Packers');
-  assert.equal(out.speech,'Packers. Rush for 6 yards.');
+  assert.equal(out.team,'');
+  assert.equal(out.speech,'Rush for 6 yards.');
 });
 
 test('primes without speaking, then queues only a changed play',()=>{
@@ -62,7 +63,7 @@ test('primes without speaking, then queues only a changed play',()=>{
   assert.deepEqual(collectNewPlayAnnouncements([makeEvent()],ids,seen),[]);
   const next=collectNewPlayAnnouncements([makeEvent({playId:'p2',text:'J. Gibbs left tackle for 9 yards.'})],ids,seen);
   assert.equal(next.length,1);
-  assert.match(next[0].speech,/Lions\. J\. Gibbs/);
+  assert.equal(next[0].speech,'J. Gibbs runs left for 9 yards.');
 });
 
 test('ignores unselected and non-live games',()=>{
