@@ -1,3 +1,4 @@
+import { clickChatAction, revealChatAction } from './fixtures/chat-actions.mjs';
 // Functional desktop/touch checks. No previews, screenshots or generated HTML.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -46,7 +47,7 @@ try{
     await own.locator('[data-select-map]').click();await clickHex(target);await dialog.locator('[data-map-confirm]').click();assert.equal(await own.locator('[name=rally]').inputValue(),target.id);
     await page.locator('#operation-form [type=submit]').click();
     const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1'))),op=saved.cooperation.operations.find(o=>o.name==='Operation Browser Pass');assert.ok(op);assert.equal(op.targetTile,target.id);assert.equal(op.objectiveType,'defend');assert.equal(op.targetHouse,null);
-    await page.locator('[data-alliance]').first().click();await page.locator('#alliance-message').fill('Hold this position with me.');await page.locator('.alliance-action').selectOption('hold');await page.locator('.alliance-map').click();await clickHex(target);await dialog.locator('[data-map-confirm]').click();assert.equal(await page.locator('#alliance-message').inputValue(),'Hold this position with me.');
+    await page.locator('[data-alliance]').first().click();await page.locator('#alliance-message').fill('Hold this position with me.');await (await revealChatAction(page,'.alliance-action')).selectOption('hold');await clickChatAction(page,'.alliance-map');await clickHex(target);await dialog.locator('[data-map-confirm]').click();assert.equal(await page.locator('#alliance-message').inputValue(),'Hold this position with me.');
     await page.locator('.alliance-compose [type=submit]').click();await page.waitForFunction(()=>document.querySelector('[data-council-location]'));
     const councilSaved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.deepEqual(councilSaved.allianceCouncils[0].messages[0].location,{targetTile:target.id,objectiveType:'hold'});
     await page.locator('[data-council-location]').first().click();assert.equal(await page.locator('[name=objective]').inputValue(),target.id);assert.equal(await page.locator('[name=objectiveType]').inputValue(),'hold');

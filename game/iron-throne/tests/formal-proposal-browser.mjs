@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 // Functional Council/private interaction checks; no HTML previews or screenshots.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -25,7 +26,7 @@ try{
   await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
   const saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1'))),builder=page.locator('#formal-proposal-builder');
   if(mode==='council'){
-   await page.locator('[data-alliance]').first().click();await page.locator('.alliance-offer-request').click();
+   await page.locator('[data-alliance]').first().click();await clickChatAction(page,'.alliance-offer-request');
    await builder.locator('[name=type]').selectOption('JOINT_WAR');await builder.locator('[name=target]').selectOption('sunspire');await builder.locator('[name=duration]').fill('10');await builder.locator('[type=submit]').click();
    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation.formalProposals?.[0]?.status==='resolved');
    let state=await saved(),p=state.cooperation.formalProposals[0];assert.equal(p.source,'explicit');assert.equal(p.responses.wintermere.status,'accepted');assert.equal(p.responses.redharbor.status,'alternative');assert.equal(p.responses.thornwall.status,'alternative');
@@ -36,7 +37,7 @@ try{
    const before=(await saved()).pledges.length;await page.locator('[data-formal-dismiss]').click();assert.equal((await saved()).pledges.length,before);
    await page.locator('#alliance-council .close').click();await page.locator('[data-alliance]').first().click();assert.match(await page.locator('.alliance-formal-proposals').textContent(),/counteroffer accepted/);
   }else{
-   await page.locator('[data-tab=council]').click();await page.locator('[data-talk=wintermere]').click();await page.locator('#private-offer-request').click();
+   await page.locator('[data-tab=council]').click();await page.locator('[data-talk=wintermere]').click();await clickChatAction(page,'#private-offer-request');
    await builder.locator('[name=type]').selectOption('AID');await builder.locator('[name=direction]').selectOption('offer');await builder.locator('[name=resource0]').selectOption('iron');await builder.locator('[name=amount0]').fill('20');await builder.locator('[type=submit]').click();
    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation.formalProposals?.[0]?.status==='resolved');
    let state=await saved();assert.equal(state.kingdoms[0].resources.iron,480);assert.equal(await page.locator('[data-formal-ratify]').count(),0);

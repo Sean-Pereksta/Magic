@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 // Functional council checks only; no HTML previews, screenshots, or generated art.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -44,7 +45,7 @@ try{
     await page.locator('[data-close="diplomacy"]').click();await page.locator('#end-turn').click();
     await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 11');
     await open();await send('Let us discuss the marriage settlement.');
-    await page.locator('#quick-offer').click();
+    await clickChatAction(page,'#quick-offer');
     await page.locator('#proposals [data-modify]').first().click();
     assert.equal(await page.locator('#marriage-fields').isVisible(),true);
     assert.equal(await page.locator('#marriage-rulerMember').inputValue(),'daughter');

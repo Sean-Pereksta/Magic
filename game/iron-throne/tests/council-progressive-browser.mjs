@@ -1,3 +1,4 @@
+import { clickChatAction, revealChatAction } from './fixtures/chat-actions.mjs';
 // Functional interaction tests only: no HTML previews, screenshots, or real Gemini calls.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -131,11 +132,11 @@ try {
       test.failPrivateOnce();
       await page.locator('#chat-message').fill('A private greeting to your court.');
       await page.locator('#send-chat').click();
-      await page.locator('#retry-private-gemini').waitFor({ state: 'visible' });
+      await (await revealChatAction(page,'#retry-private-gemini')).waitFor({ state: 'visible' });
       const failedPrivate = await saved(page);
       assert.equal(failedPrivate.conversations.vesper.filter(m => m.role === 'ruler').length, 0, 'private failure has no local ruler substitute');
       assert.equal(failedPrivate.conversations.vesper.filter(m => m.role === 'player').length, 1);
-      await page.locator('#retry-private-gemini').click();
+      await clickChatAction(page,'#retry-private-gemini');
       await page.waitForFunction(() => document.getElementById('messages').textContent.includes('private northern dispatch'));
       const retriedPrivate = await saved(page);
       assert.equal(retriedPrivate.diplomacy.messages.regular, failedPrivate.diplomacy.messages.regular, 'private retry does not spend another envoy');
@@ -166,11 +167,11 @@ try {
       assert.doesNotMatch(await page.locator('.alliance-history').textContent(), /Local dialogue/);
       assert.match(await page.locator('.alliance-failed-replies').textContent(), /Redharbor.*Gemini/i);
       assert.equal(test.calls.length, 3, 'timeout has no paid retry'); assert.equal(test.maxInFlight(), 1);
-      assert.equal(await page.locator('.alliance-diagnostics').isVisible(), true, 'later success does not erase the middle timeout');
-      await page.locator('.alliance-diagnostics').click();
+      assert.equal(await page.locator('.alliance-diagnostics').evaluate(el=>!el.hidden), true, 'later success does not erase the middle timeout');
+      await clickChatAction(page,'.alliance-diagnostics');
       assert.match(await page.locator('#diagnostics-report').inputValue(), /GEMINI_TIMEOUT/);
       await page.locator('#gemini-diagnostics-dialog .close').click();
-      await page.locator('.alliance-retry-gemini').click();
+      await clickChatAction(page,'.alliance-retry-gemini');
       const retry = await request(3);
       assert.deepEqual(retry.speakers, ['redharbor'], 'manual retry contacts the undelivered ruler only');
       assert.ok(retry.body.history.some(m => m.speakerHouseId === 'thornwall'), 'retry receives the current authoritative conversation');
@@ -189,7 +190,7 @@ try {
     const formal = await setup(browser, viewport, true);
     try {
       const { page, request, release } = formal;
-      await page.locator('.alliance-offer-request').click();
+      await clickChatAction(page,'.alliance-offer-request');
       const builder = page.locator('#formal-proposal-builder');
       await builder.locator('[name=type]').selectOption('JOINT_WAR');
       await builder.locator('[name=target]').selectOption('sunspire');
@@ -210,7 +211,7 @@ try {
           await page.locator('#alliance-council .close').click();
           await page.locator('[data-tab=council]').click();
           await page.locator('[data-talk=vesper]').click();
-          await page.locator('#private-offer-request').click();
+          await clickChatAction(page,'#private-offer-request');
           await builder.locator('[name=type]').selectOption('AID');
           await builder.locator('[name=direction]').selectOption('offer');
           await builder.locator('[name=resource0]').selectOption('food');

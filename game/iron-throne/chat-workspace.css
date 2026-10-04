@@ -1,0 +1,95 @@
+/* Conversation tools share one disclosure; message history keeps the free space. */
+#diplomacy[data-correspondence-ready] .dialog-header,
+#alliance-council .dialog-header { padding: 10px 16px; gap: 10px; }
+#diplomacy[data-correspondence-ready] { --portrait-size: 48px; }
+#diplomacy[data-correspondence-ready] .dialog-header h2,
+#alliance-council .dialog-header h2 { font-size: 23px; }
+#diplomacy[data-correspondence-ready] .conversation { padding: 6px 16px 10px; }
+#diplomacy[data-correspondence-ready] .correspondence-body { max-width: min(86%, 88ch); }
+#diplomacy[data-correspondence-ready] .correspondence-scroll { padding-top: 8px; }
+#diplomacy[data-correspondence-ready] #private-formal-proposals { flex: none; }
+#alliance-council { width: min(1280px, 96vw); height: min(920px, 94dvh); max-height: 94dvh; }
+#alliance-council .alliance-members { padding: 5px 16px; gap: 14px; }
+#alliance-council .alliance-members .alliance-portrait { width: 24px; height: 28px; font-size: 18px; }
+#alliance-council .alliance-members small { font-size: 11px; }
+#alliance-council .alliance-mood { padding: 0 16px 5px; font-size: 11px; }
+#alliance-council .alliance-history { padding: 12px 16px; scrollbar-gutter: stable; }
+#alliance-council .alliance-message { max-width: 96%; }
+#alliance-council .alliance-message .alliance-portrait { width: 44px; height: 52px; }
+#alliance-council .alliance-compose,
+#diplomacy[data-correspondence-ready] #chat-form {
+  position: relative; flex: none; margin: 0; padding: 8px 0 0;
+  max-height: none; overflow: visible; border-top: 1px solid var(--line);
+}
+#alliance-council .alliance-compose { margin: 0 16px 10px; }
+.chat-composer > label[for] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+#diplomacy[data-correspondence-ready] #chat-message,
+#alliance-council #alliance-message {
+  display: block; box-sizing: border-box; min-height: 40px; height: 40px;
+  max-height: 128px; padding: 8px 10px; resize: none; margin: 0;
+  font-size: 14px; line-height: 22px; overflow-y: auto;
+}
+.chat-toolbar { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.chat-toolbar > button[type=submit] { margin-left: auto; flex: 0 0 auto; min-height: 38px; padding: 7px 12px; }
+.chat-toolbar #message-allowance, .chat-toolbar .alliance-allowance { min-width: 0; font-size: 11px; color: var(--muted); line-height: 1.3; }
+.chat-options { flex: 0 0 auto; }
+.chat-options > summary { list-style: none; cursor: pointer; padding: 8px 10px; border: 1px solid #6f775d; border-radius: 5px; font: 600 12px/20px system-ui; color: var(--gold); background: #28342f; }
+.chat-options > summary::-webkit-details-marker { display: none; }
+.chat-options > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.chat-options > summary span { display: inline-block; margin-left: 4px; }
+.chat-options[open] > summary span { transform: rotate(180deg); }
+.chat-options[data-attention=true] > summary { border-color: #d0a85e; }
+.chat-options-panel {
+  position: absolute; z-index: 10; bottom: calc(100% + 8px); left: 0;
+  width: min(520px, 100%); max-height: min(56dvh, calc(100dvh - 220px));
+  box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  padding: 14px; border: 1px solid #647367; border-radius: 8px;
+  background: #182b32; box-shadow: 0 10px 35px #0009;
+}
+.chat-options:not([open]) > .chat-options-panel { display: none; }
+.chat-options-panel > strong, .private-connection-options > strong { display: block; margin-bottom: 8px; font-size: 12px; color: var(--gold); }
+.chat-options-panel button { min-height: 38px; font-size: 12px; white-space: normal; margin: 3px 3px 3px 0; }
+.chat-options-panel .button-row { flex-wrap: wrap; }
+#diplomacy[data-correspondence-ready] .chat-options-panel .council-tools { padding: 0; border: 0; gap: 6px; flex-wrap: wrap; }
+#diplomacy[data-correspondence-ready] .chat-options-panel .relations-details { padding: 6px 0; max-height: none; }
+#diplomacy[data-correspondence-ready] .chat-options-panel .motto { font-size: 12px; margin: 8px 0; }
+#diplomacy .chat-options-panel #court-knowledge-options { padding: 0; }
+#diplomacy .chat-options-panel #court-marriage-readiness { margin: 5px 0; }
+.private-connection-options { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.chat-options-panel .toggle { display: flex; align-items: center; gap: 6px; margin: 8px 0; font-size: 12px; }
+.chat-options-panel .toggle input { width: auto; }
+.chat-options-panel .fine { font-size: 11px; line-height: 1.5; margin: 6px 0; }
+.chat-options-panel .fine:empty { display: none; }
+#alliance-council .alliance-offer-request { margin: 0 0 8px; align-self: auto; }
+#alliance-council .alliance-location { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 8px 0 12px; padding: 10px 0; border-block: 1px solid var(--line); }
+#alliance-council .alliance-location > label { flex: 1 1 170px; }
+.chat-connection-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; min-height: 15px; }
+.chat-connection-status, .alliance-attachment-summary { font-size: 10px; line-height: 15px; color: #a9b9bb; }
+.alliance-attachment-summary { color: var(--gold); }
+.chat-verification, #diplomacy #turnstile { margin: 0; min-height: 0; max-width: 100%; }
+#diplomacy #turnstile:empty, .chat-verification:empty { display: none; }
+#diplomacy[data-correspondence-ready] .correspondence-latest { bottom: 120px; }
+@media (max-width: 760px) {
+  #diplomacy[data-correspondence-ready], #diplomacy[data-correspondence-ready].compact { --portrait-size: 36px; }
+  #diplomacy[data-correspondence-ready] .dialog-header, #alliance-council .dialog-header { padding: 8px 10px; }
+  #diplomacy[data-correspondence-ready] .dialog-header h2, #alliance-council .dialog-header h2 { font-size: 18px; }
+  #diplomacy[data-correspondence-ready] .conversation { padding-inline: 8px; }
+  #alliance-council .alliance-compose { margin-inline: 8px; }
+  #alliance-council .alliance-history { padding: 8px; }
+  #alliance-council .alliance-members { padding-inline: 10px; }
+  #alliance-council .alliance-message { gap: 7px; }
+  #alliance-council .alliance-message .alliance-portrait { width: 30px; height: 38px; }
+  #diplomacy[data-correspondence-ready] .correspondence-body { max-width: calc(100% - 44px); }
+  #diplomacy[data-correspondence-ready] #chat-message, #alliance-council #alliance-message { font-size: 16px; }
+  .chat-toolbar { gap: 6px; flex-wrap: wrap; }
+  .chat-toolbar #message-allowance, .chat-toolbar .alliance-allowance { order: 3; flex-basis: 100%; font-size: 10px; }
+  .chat-options-panel { max-height: min(56dvh, calc(100dvh - 240px)); padding: 10px; }
+  .chat-toolbar > button[type=submit] { max-width: 55%; font-size: 12px; }
+}
+@media (max-height: 500px) {
+  #diplomacy[data-correspondence-ready] .dialog-header, #alliance-council .dialog-header { padding-block: 4px; }
+  #alliance-council .alliance-members, #alliance-council .alliance-mood { display: none; }
+  .chat-options-panel { max-height: calc(100dvh - 160px); }
+  #diplomacy[data-correspondence-ready] .chat-composer.composer-expanded textarea,
+  #alliance-council .chat-composer.composer-expanded textarea { max-height: 80px; }
+}

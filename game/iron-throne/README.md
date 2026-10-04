@@ -747,3 +747,33 @@ validation, active commitments, save/reload, Gemini context compatibility, and
 human consent. `npm run test:iron-throne:peace-browser` checks both chat entry
 paths, target/recipient selection, and persistence on desktop and mobile without
 screenshots or previews.
+
+### Roomier council conversations
+
+Private Council Chambers and Alliance Councils keep their extra tools inside one
+**Offer / Request** menu beside Send. The menu includes formal proposals, treaty
+and promise controls, conversation shortcuts, individual council terms, map
+attachments, Gemini settings, retries, diagnostics, and connection/privacy details
+where applicable. Existing proposal accept/decline/modify controls remain attached
+to the messages they answer. Opening a menu never submits a proposal or a message.
+
+The message composer is one line when unfocused. Clicking or tabbing into it
+expands it; leaving it collapses it while keeping the entire draft. Opening an
+Alliance Council focuses its history, so it does not immediately open a mobile
+keyboard. Escape collapses a focused composer or closes the options menu before
+closing the conversation. Treaty drawers return keyboard focus to the visible
+Offer / Request trigger.
+
+Smaller headers and participant strips leave more room for history. A short
+Gemini status line replaces persistent setup/privacy paragraphs. Cloudflare's
+[interaction-only widget appearance](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)
+keeps routine verification unobtrusive while displaying a challenge when human
+interaction is required. The existing shared widget, session, verification
+callbacks, and Gemini-only dialogue flow are retained. No Worker redeploy or
+request/response schema changes are needed.
+
+`npm run test:iron-throne:chat-workspace-browser` checks desktop, phone, and short
+viewport layouts, visible verification, menu actions, draft preservation, focus,
+scroll position, and real send handlers using a mocked provider. Existing browser
+suites open the menu before exercising moved controls. No HTML previews or
+screenshots are generated.

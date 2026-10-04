@@ -1,3 +1,4 @@
+import { clickChatAction, revealChatAction } from './fixtures/chat-actions.mjs';
 // Functional Council/private interaction checks; no HTML previews or screenshots.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -27,8 +28,8 @@ try{
    return probe&&succeeds?r.fulfill({json:{reply:'PROBE_TEXT_MUST_NOT_ENTER_CHAT',tone:'neutral',intents:[]}}):r.fulfill({status:503,headers:{'Retry-After':'60'},json:{retryAfter:60,diagnostics:{version:1,code:'GEMINI_UNAVAILABLE',providerStatus:503,model:'gemini-3.5-flash',requestFormat:'pre-council-queue-v1',checks:{GEMINI_API_KEY:'present',TURNSTILE_SECRET:'present',BUDGET:'verified'}}}});
   });
   await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('[data-tab=council]').click();await page.locator('[data-talk=wintermere]').click();await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Gemini ready'));
-  await page.locator('#chat-message').fill('CAMPAIGN_CONTENT_CANARY');await page.locator('#send-chat').click();await page.locator('#gemini-diagnostics').waitFor({state:'visible'});
-  const before=await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'));await page.locator('#gemini-diagnostics').click();assert.equal(calls,1,'opening diagnostics sends no request');
+  await page.locator('#chat-message').fill('CAMPAIGN_CONTENT_CANARY');await page.locator('#send-chat').click();await (await revealChatAction(page,'#gemini-diagnostics')).waitFor({state:'visible'});
+  const before=await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1'));await clickChatAction(page,'#gemini-diagnostics');assert.equal(calls,1,'opening diagnostics sends no request');
   const original=await page.locator('#diagnostics-report').inputValue();assert.match(original,/Game context bytes: \d+/);assert.match(original,/Retry after:/);assert.doesNotMatch(original,/CAMPAIGN_CONTENT_CANARY/);
   await page.locator('#test-gemini-connection').click();await page.waitForFunction(()=>/Minimal private test (?:succeeded|failed)/.test(document.getElementById('gemini-test-result').textContent));
   assert.equal(calls,2);assert.equal(probes,1);const text=await page.locator('#gemini-test-result').textContent();assert.match(text,succeeds?/succeeded/:/without campaign context/);
