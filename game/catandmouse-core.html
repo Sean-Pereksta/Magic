@@ -2881,7 +2881,6 @@
     battlePresentation.pulseNode(`nest:${x}_${y}`,nestEl,"nest-firing",durationMs);
   }
 
-  function showClawHit(x, y){ battlePresentation.attack("cat", {x,y}, "claw"); }
   function showProjectileImpact(x, y){ battlePresentation.burst({x,y}, "hit", 3); }
 
   // ============================================================
@@ -3807,6 +3806,29 @@
   }
   function battleUnitNode(key){ return persistentUnitLayer?.querySelector(`[data-unit-key="${key}"]`); }
 
+  function presentStructureImpact(position,node,attacker=null,shielded=false){
+    let source=attacker;
+    if(!source){
+      // A remote health/shield snapshot does not identify its attacker. Use
+      // only a nearby hostile for the cosmetic strike direction/animation.
+      const nearby=[];
+      if(catHealth>0 && Math.abs(catPos.x-position.x)+Math.abs(catPos.y-position.y)<=2)nearby.push({...catPos,key:"cat",kind:"cat"});
+      for(const [kind,list] of [["rat",rats],["stinkrat",stinkRats],["ox",oxen],["ratking",ratKings],["vulture",vultures],["termite",termites]])
+        for(const enemy of list)if(isLivingEnemy(enemy) && Math.abs(enemy.x-position.x)+Math.abs(enemy.y-position.y)<=1)
+          nearby.push({...enemy,key:combatUnitKey(kind,enemy),kind});
+      nearby.sort((a,b)=>(Math.abs(a.x-position.x)+Math.abs(a.y-position.y))-(Math.abs(b.x-position.x)+Math.abs(b.y-position.y)));
+      source=nearby[0];
+    }
+    battlePresentation.structureHit(source?.key || null,position,{kind:source?.kind || "rat",node,shielded});
+  }
+  function presentMouseCapture(playerUid,victim){
+    const kind=normalizeEnemyKind(victim.killedBy);
+    if(victim.online === false || !["cat","rat","stinkrat","ox","ratking","vulture","termite"].includes(kind))return;
+    const enemy=kind === "cat" ? null : enemyRegistryEntry(kind)?.collection().find(e=>e.id === victim.killedById);
+    const attackerKey=kind === "cat" ? "cat" : enemy ? combatUnitKey(kind,enemy) : null;
+    battlePresentation.captureMouse(`mouse:${playerUid}`,victim,{attackerKey,eventId:victim.killedAt ?? null});
+  }
+
   function renderBattleUnits(){
     const entries=[], now=Date.now(), near=entity => Math.abs(entity.x-playerPos.x)+Math.abs(entity.y-playerPos.y)<=OVERLAY_RENDER_DISTANCE;
     for (const [pu,p] of Object.entries(players)){
@@ -3863,7 +3885,9 @@
       const key=`${entry.x}_${entry.y}`, old=structureVisualState.get(key), node=structureNodes.get(key)?.node;
       seen.add(key);
       node?.classList.toggle("cm-damaged",entry.hp < (STRUCTURE_MAX_HP[entry.symbol] || 1)*0.33);
-      if(old && entry.hp < old.hp) battlePresentation.pulseNode(`structure:${key}`,node,"cm-structure-hit",220);
+      if(old && entry.hp < old.hp) battlePresentation.pulseNode(`structure:${key}`,node,"cm-structure-hit",260);
+      if(old && !isHost && !soloMode && liveSnapshotReady && (entry.hp < old.hp || entry.shield < old.shield))
+        presentStructureImpact(entry,node,null,entry.shield < old.shield);
       if(old && entry.shield < old.shield){
         battlePresentation.pulseNode(`shield:${key}`,node,"cm-shield-hit",300);
         battlePresentation.burst(entry,"shield",entry.shield <= 0 ? 5 : 2,entry.shield <= 0);
@@ -4640,15 +4664,13 @@
     const key = `${x}_${y}`;
     if (structureHealth[key] === undefined) return;
 
-    if(attacker)battlePresentation.attack(attacker.key,{x,y},"claw",attacker.kind === "ox" || attacker.kind === "ratking");
-    else showClawHit(x,y);
-
     const symbol = grid[y]?.[x] || "";
     const wallNearBeacon = ["🧱","💎","🧊"].includes(symbol) && isWithinBeaconAura(x, y, 2);
     let finalDamage = wallNearBeacon ? (damageAmount * 0.5) : damageAmount;
     if (Date.now() < catWeakenedUntil) finalDamage *= 0.55;
 
     const shield = structureShields[key] ?? 0;
+    presentStructureImpact({x,y},structureNodes.get(key)?.node,attacker || {key:"cat",kind:"cat"},shield>0);
     if (shield > 0){
       const used = Math.min(shield, finalDamage);
       const nextShield = Math.max(0, shield - used);
@@ -5307,9 +5329,9 @@
     // kill players on cat tile
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
-        p.alive=false;
-        battlePresentation.attack("cat",p,"claw");
-        writes.push({type:"update",ref:ccRef(ID.player(pu)),data:{alive:false,killedBy:"cat",killedAt:Date.now(),updatedAt:Date.now()}});
+        const capture={alive:false,killedBy:"cat",killedAt:Date.now(),updatedAt:Date.now()};
+        Object.assign(p,capture);presentMouseCapture(pu,p);
+        writes.push({type:"update",ref:ccRef(ID.player(pu)),data:capture});
         if (pu === uid){
           isAlive = false;
           document.getElementById("status").textContent = "💀 You were killed by: cat";
@@ -5496,8 +5518,9 @@
           }else if(target.type === "mouse"){
             const live=players[target.uid];
             if(live?.alive !== false && live?.x === entity.x && live?.y === entity.y){
-              live.alive=false;battlePresentation.attack(key,target,"claw",heavy);
-              writes.push({type:"update",ref:ccRef(ID.player(target.uid)),data:{alive:false,killedBy:kind,killedById:entity.id,killedAt:now,updatedAt:now}});
+              const capture={alive:false,killedBy:kind,killedById:entity.id,killedAt:now,updatedAt:now};
+              Object.assign(live,capture);presentMouseCapture(target.uid,live);
+              writes.push({type:"update",ref:ccRef(ID.player(target.uid)),data:capture});
               if(target.uid === uid){isAlive=false;document.getElementById("status").textContent=`💀 You were killed by: ${kind}`;}
             }
           }
@@ -6333,6 +6356,9 @@
     listenerFailed = false;
     liveSnapshotReady = false;
     let reconciledServerSnapshot = false;
+    // Cosmetic capture events follow confirmed liveness, even if a cached
+    // snapshot displayed the death before the server confirmed it.
+    const captureLiveness = new Map(Object.entries(players).map(([pu,p])=>[pu,p.alive !== false]));
     const unsub = onSnapshot(ccCol, { includeMetadataChanges:true }, (snap) => {
       liveSnapshotReady = !snap.metadata.fromCache;
       setConnectionStatus(liveSnapshotReady ? "Connected" : "Reconnecting", liveSnapshotReady);
@@ -6358,7 +6384,8 @@
           if (id === ID.STATE){
             // ignore
           } else if (id.startsWith("player_")){
-            delete players[data?.uid || id.replace("player_","")];
+            const pu=data?.uid || id.replace("player_","");
+            delete players[pu];captureLiveness.delete(pu);
           } else if (id.startsWith("structure_")){
             const x = data?.x, y = data?.y;
             if (Number.isInteger(x) && Number.isInteger(y)){
@@ -6505,6 +6532,11 @@
             slowMult: data.slowMult ?? 1
           };
           if (previousPlayer?.alive !== false && players[pu].alive === false) setTileEffect(players[pu].x, players[pu].y, "blood");
+          if (!snap.metadata.fromCache){
+            if (captureLiveness.get(pu) === true && players[pu].alive === false)
+              presentMouseCapture(pu,{...players[pu],killedBy:data.killedBy,killedById:data.killedById,killedAt:data.killedAt});
+            captureLiveness.set(pu,players[pu].alive);
+          }
           if (!previousPlayer || previousPlayer.x !== players[pu].x || previousPlayer.y !== players[pu].y || previousPlayer.facing !== players[pu].facing || previousPlayer.cheese !== players[pu].cheese || previousPlayer.alive !== players[pu].alive || previousPlayer.online !== players[pu].online) snapshotNeedsRender = true;
 
           // Ignore stale position acknowledgements for the local player.

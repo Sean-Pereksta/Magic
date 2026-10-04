@@ -24,9 +24,9 @@ export function createEffectStore({ now = Date.now, limits = EFFECT_LIMITS, rele
     add(effect) {
       prune();
       const category=effect.category || 'cue';
-      const cap=category==='particle' ? limits.particles : category==='trail' ? limits.trails : category==='large' ? limits.large : category==='projectile' ? limits.projectiles : limits.active;
+      const cap=category==='particle' ? limits.particles : category==='trail' ? limits.trails : category==='large' ? limits.large : category==='projectile' ? limits.projectiles : null;
       let count=0;for(const e of effects.values())if(e.category===category)count++;
-      if(count>=cap) return null;
+      if(cap!==null && count>=cap) return null;
       if(effects.size>=limits.active) {
         // Essential hits/projectiles can displace decoration. Telegraphs live
         // on their unit or keyed marker, independent of the particle budget.
@@ -39,12 +39,12 @@ export function createEffectStore({ now = Date.now, limits = EFFECT_LIMITS, rele
       const value={...effect,id,category,startedAt:time+(effect.delay || 0),expiresAt:time+(effect.delay || 0)+(effect.duration || 400)};
       effects.set(id,value);return value;
     }, remove, prune, clear(){for(const id of effects.keys())remove(id);},
-    values:()=>effects.values(), get size(){return effects.size;}
+    values:()=>effects.values(), has:id=>effects.has(id), get size(){return effects.size;}
   };
 }
 
 const point = p => ({x:p.x,y:p.y});
-const colors = {hit:'#ffe6a0',rocket:'#ffac59',tesla:'#b7f3ff',laser:'#ffc3e9',web:'#eef8ff',acorn:'#cdb483',rabbit:'#f3e1ff',slime:'#80dd78',gust:'#d5f4f6',shield:'#b4edff',spawn:'#e6dbc1',death:'#bca78c',claw:'#fff1d9',rally:'#fde59b'};
+const colors = {hit:'#ffe6a0',rocket:'#ffac59',tesla:'#b7f3ff',laser:'#ffc3e9',web:'#eef8ff',acorn:'#cdb483',rabbit:'#f3e1ff',slime:'#80dd78',gust:'#d5f4f6',shield:'#b4edff',spawn:'#e6dbc1',death:'#bca78c',claw:'#fff1d9',rally:'#fde59b',structure:'#ffd19a',breach:'#ffc17a',capture:'#ffaaa0'};
 
 // The only active animation loop. syncEntities does DOM reconciliation; frame
 // only samples existing tracks/effects and changes transforms. No world scans.
@@ -52,7 +52,7 @@ export function createCombatPresentation({ document, project, depth, createUnit,
   requestFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame,
   hidden = () => document.hidden, inView = () => true, onFrame = () => {}, onObservedHit = () => {},
   reducedMotion = () => false, maxProjectiles = 64 }) {
-  const units=new Map(), dying=new Map(), markers=new Map(), pool=[], pulses=new Map();
+  const units=new Map(), dying=new Map(), markers=new Map(), pool=[], pulses=new Map(), captures=new Map();
   const governor=createQualityGovernor();let unitLayer=null,effectLayer=null,frameId=null,lastFrame=0,primed=false;
   let shakeUntil=0,shakePower=0;
   const store=createEffectStore({now,limits:{...EFFECT_LIMITS,projectiles:maxProjectiles},release:e=>{if(!e.node)return;e.node.remove();if(pool.length<EFFECT_LIMITS.pool)pool.push(e.node);}});
@@ -106,6 +106,53 @@ export function createCombatPresentation({ document, project, depth, createUnit,
     burst(to,style,heavy?7:3,heavy);
     if(heavy)shake();
   }
+  function strikeDirection(key,to,node) {
+    const from=getPosition(key,to),a=project(from.x,from.y),b=project(to.x,to.y);
+    const angle=Math.atan2(b.y-a.y,b.x-a.x),dx=Math.cos(angle)*2.5,dy=Math.sin(angle)*2;
+    if(node){node.style.setProperty('--cm-impact-x',`${dx.toFixed(2)}px`);node.style.setProperty('--cm-impact-y',`${dy.toFixed(2)}px`);}
+    const attacker=units.get(key);
+    if(attacker){
+      attacker.node.style.setProperty('--cm-strike-x',`${dx.toFixed(2)}px`);attacker.node.style.setProperty('--cm-strike-y',`${dy.toFixed(2)}px`);
+      pulseNode(`attack:${key}`,attacker.node,'cm-striking',240);
+    }
+    return angle;
+  }
+  function structureHit(key,to,{kind='cat',node=null,shielded=false}={}) {
+    const heavy=kind==='ox' || kind==='ratking',style=shielded?'shield':heavy?'breach':'structure';
+    const angle=strikeDirection(key,to,node);
+    pulseNode(`structure:${to.x}_${to.y}`,node,'cm-structure-hit',260);
+    if(!inView(to))return;
+    add({kind:'slash',style:heavy?'breach':'structure',...point(to),angle,duration:heavy?340:290,critical:true});
+    add({kind:'flare',style,...point(to),duration:170,critical:true});
+    burst(to,style,heavy?6:4,heavy);
+    if(heavy)shake();
+  }
+  function captureMouse(victimKey,to,{attackerKey=null,eventId=null}={}) {
+    const time=now(),prior=captures.get(victimKey);
+    // Keep the event ID until revive, so a slow death acknowledgement cannot
+    // replay a capture after the visible effect has already expired.
+    if(prior && (eventId===null || prior.eventId===eventId))return false;
+    if(captures.size>=12 && !captures.has(victimKey))captures.delete(captures.keys().next().value);
+    captures.set(victimKey,{eventId,until:time+850});
+    const victim=units.get(victimKey),position=getPosition(victimKey,to);
+    victim?.node.classList.add('cm-captured');
+    const angle=strikeDirection(attackerKey,position,null);
+    if(inView(position)){
+      // A compact capture cue outranks ordinary impact decoration, while
+      // staying inside the same global effect cap as all other combat FX.
+      const cue={style:'capture',...position,captureKey:victimKey,critical:true,priority:2};
+      add({...cue,kind:'slash',angle,duration:320});
+      add({...cue,kind:'slash',angle:angle+1.6,duration:320,delay:55});
+      add({...cue,kind:'flare',duration:190});
+      add({...cue,kind:'caption',text:'CAUGHT',duration:520});
+      burst(position,'capture',4);
+    }
+    wake();return true;
+  }
+  function clearCapture(key) {
+    captures.delete(key);
+    for(const effect of store.values())if(effect.captureKey===key)store.remove(effect.id);
+  }
   function statusMarker(key,position,style,until,text='') {
     if(until<=now()) {const old=markers.get(key);old?.node?.remove();markers.delete(key);return;}
     let marker=markers.get(key);
@@ -119,6 +166,8 @@ export function createCombatPresentation({ document, project, depth, createUnit,
       if(!Number.isFinite(entry.x) || !Number.isFinite(entry.y))continue;
       seen.add(entry.key);let unit=units.get(entry.key);
       if(!unit){
+        dying.get(entry.key)?.node.remove();dying.delete(entry.key);
+        if(captures.has(entry.key))clearCapture(entry.key);
         const node=createUnit(entry);if(!node)continue;
         node.classList.add('cm-unit');node.dataset.unitKey=entry.key;node.dataset.unitType=entry.type;
         unit={node,track:createMotionTrack(entry,time,entry.type),signature:entry.artSignature,health:entry.health,status:''};
@@ -140,6 +189,8 @@ export function createCombatPresentation({ document, project, depth, createUnit,
         if(body){unit.node.querySelector('.cm-unit-body')?.remove();unit.node.prepend(body);}
         unit.signature=entry.artSignature;
       }
+      // A live entry may be a quick revive before the death redraw arrived.
+      if(unit.node.classList.contains('cm-captured')){unit.node.classList.remove('cm-captured');clearCapture(entry.key);}
       if(Number.isFinite(unit.health) && Number.isFinite(entry.health) && entry.health<unit.health) {
         pulseNode(`hit:${entry.key}`,unit.node);
         burst(unit.track.rendered,'hit',3);
@@ -167,7 +218,9 @@ export function createCombatPresentation({ document, project, depth, createUnit,
     for(const [key,unit] of units)if(!seen.has(key)) {
       units.delete(key);markers.get(`windup:${key}`)?.node?.remove();markers.delete(`windup:${key}`);
       if(primed && inView(unit.track.rendered) && dying.size<12){
-        unit.node.classList.add('cm-dying');dying.set(key,{node:unit.node,until:time+250});burst(unit.track.rendered,'death',4);
+        const captured=unit.node.classList.contains('cm-captured');
+        unit.node.classList.add('cm-dying');dying.set(key,{node:unit.node,until:time+(captured?420:250)});
+        if(!captured)burst(unit.track.rendered,'death',4);
       }else unit.node.remove();
     }
     primed=true;
@@ -205,10 +258,11 @@ export function createCombatPresentation({ document, project, depth, createUnit,
       node.style.opacity=String(1-t);node.style.zIndex=String(depth(e.to.x,e.to.y,14));return;
     } else if(e.kind==='particle') {x += (e.to.x-e.x)*t;y += (e.to.y-e.y)*t;lift=reducedMotion()?0:Math.sin(t*Math.PI)*10;}
     const p=project(x,y);
-    node.style.left=`${p.x}px`;node.style.top=`${p.y-lift-10}px`;node.style.zIndex=String(depth(x,y,14));
-    node.style.opacity=String(e.kind==='projectile'?1:1-t);
-    const scale=reducedMotion()?1:e.kind==='ring'?0.5+t*1.4:e.kind==='smoke'?0.7+t*0.6:1;
+    node.style.left=`${p.x}px`;node.style.top=`${p.y-lift-(e.kind==='caption'?34:10)}px`;node.style.zIndex=String(depth(x,y,14));
+    node.style.opacity=String(e.kind==='projectile'?1:e.kind==='flare'?(1-t)*(1-t):1-t);
+    const scale=reducedMotion()?1:e.kind==='ring'?0.5+t*1.4:e.kind==='smoke'?0.7+t*0.6:e.kind==='flare'?.8+t*.4:1;
     node.style.transform=`translate(-50%,-50%) scale(${scale})`;
+    if(e.kind==='slash')node.style.setProperty('--cm-slash-angle',`${e.angle ?? -.42}rad`);
     if(e.kind==='projectile') {const a=project(e.from.x,e.from.y),b=project(e.to.x,e.to.y);node.style.transform+=` rotate(${Math.atan2(b.y-a.y,b.x-a.x)}rad)`;}
   }
   function frame() {
@@ -216,10 +270,12 @@ export function createCombatPresentation({ document, project, depth, createUnit,
     const time=now(),dt=lastFrame?time-lastFrame:16.7;lastFrame=time;governor.sample(dt);
     let active=false;
     for(const unit of units.values())active=placeUnit(unit,time)||active;
-    for(const e of [...store.values()])placeEffect(e,time);
+    for(const e of [...store.values()])if(store.has(e.id))placeEffect(e,time);
     store.prune();
     for(const [key,item] of dying)if(item.until<=time){item.node.remove();dying.delete(key);}
     for(const [key,pulse] of pulses)if(pulse.until<=time){pulse.node.classList.remove(pulse.className);pulses.delete(key);}
+    let captureActive=false;
+    for(const capture of captures.values()){if(capture.until>time)captureActive=true;else capture.until=0;}
     for(const [key,marker] of markers) {
       if(marker.until<=time){marker.node?.remove();markers.delete(key);continue;}
       if(!marker.node && effectLayer){marker.node=document.createElement('div');marker.node.className=`cm-marker cm-${marker.style}`;marker.node.textContent=marker.text;effectLayer.appendChild(marker.node);}
@@ -228,17 +284,17 @@ export function createCombatPresentation({ document, project, depth, createUnit,
     const shakeRemaining=Math.max(0,(shakeUntil-time)/160);
     const shakeOffset=reducedMotion()?{x:0,y:0}:{x:Math.sin(time*0.15)*shakePower*shakeRemaining,y:Math.cos(time*0.12)*shakePower*shakeRemaining*0.6};
     const cameraActive=onFrame(getPosition(presentation.focusKey),dt,shakeOffset)===true;
-    active=active || store.size>0 || dying.size>0 || pulses.size>0 || markers.size>0 || shakeRemaining>0 || cameraActive;
+    active=active || store.size>0 || dying.size>0 || pulses.size>0 || markers.size>0 || captureActive || shakeRemaining>0 || cameraActive;
     if(active)frameId=requestFrame(frame);else lastFrame=0;
   }
-  const presentation={syncEntities,projectile,beam,burst,attack,statusMarker,pulseNode,shake,getPosition,focusKey:null,
+  const presentation={syncEntities,projectile,beam,burst,attack,structureHit,captureMouse,statusMarker,pulseNode,shake,getPosition,focusKey:null,
     moveEntity(key,position,options={}){const unit=units.get(key);if(!unit)return false;
       const changed=retargetMotion(unit.track,position,now(),options);if(changed){placeUnit(unit,now());wake();}return changed;},
     attach(nextUnits,nextEffects){unitLayer=nextUnits;effectLayer=nextEffects;for(const u of units.values())unitLayer.appendChild(u.node);wake();},
     suspend(){if(frameId!==null)cancelFrame(frameId);frameId=null;lastFrame=0;},
     resume(){for(const unit of units.values())retargetMotion(unit.track,unit.track.grid,now(),{teleport:true});wake();},
-    clear(){this.suspend();store.clear();for(const u of units.values())u.node.remove();for(const u of dying.values())u.node.remove();for(const m of markers.values())m.node?.remove();for(const p of pulses.values())p.node.classList.remove(p.className);units.clear();dying.clear();markers.clear();pulses.clear();primed=false;},
-    get stats(){return {units:units.size,effects:store.size,dying:dying.size,markers:markers.size,pooled:pool.length,quality:governor.label,animating:frameId!==null,reducedMotion:reducedMotion()};}
+    clear(){this.suspend();store.clear();for(const u of units.values())u.node.remove();for(const u of dying.values())u.node.remove();for(const m of markers.values())m.node?.remove();for(const p of pulses.values())p.node.classList.remove(p.className);units.clear();dying.clear();markers.clear();pulses.clear();captures.clear();primed=false;},
+    get stats(){return {units:units.size,effects:store.size,dying:dying.size,markers:markers.size,captures:[...captures.values()].filter(c=>c.until>now()).length,pooled:pool.length,quality:governor.label,animating:frameId!==null,reducedMotion:reducedMotion()};}
   };
   return presentation;
 }

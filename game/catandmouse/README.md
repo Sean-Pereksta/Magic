@@ -11,7 +11,7 @@ modules and stylesheet together:
   bounded effects, procedural animation and reduced-motion feedback.
 
 The loader's exact/regex replacements are exercised against the real core.
-The optimized patch version is `2026-10-04-rat-difficulty-v1`; its validation
+The optimized patch version is `2026-10-04-attack-feedback-v1`; its validation
 includes the new runtime imports and the existing caps, buffered BFS and
 self-scheduling movement loops. Tests compile both optimized and fallback
 module scripts. No HTML previews are generated.
@@ -96,6 +96,24 @@ structures show a small crack. Major impacts alone add a board shake capped
 at 2.2 pixels; reduced motion disables shake and minimizes hops, sweeping
 particles and large transforms while retaining hits, statuses and warnings.
 
+Enemy structure contacts now show a slightly larger directional claw arc,
+a brief contact flash, a short attacker lunge and a brighter structure kick.
+Ox/king breaches retain a larger arc and the existing small impact shake;
+ordinary hits add no board shake. Shielded contacts use a blue flash. Hosts
+show the actual attack immediately; remote clients derive contact feedback
+from confirmed health/shield changes and infer a nearby hostile only for
+cosmetic direction. Repeated unchanged snapshots do not replay the effect.
+
+Mouse captures show crossed claw arcs, a compact warm-red pulse, a brief
+`CAUGHT` caption and a 420 ms fade of the mouse. This follows the mouse's
+current visual position and uses existing death fields, without delaying
+authoritative capture. Live death transitions trigger feedback for remote
+players too; cached snapshots, disconnects and initial historical deaths
+do not invent captures. Death event IDs are remembered until revive so slow
+acknowledgements cannot replay the cue. Quick revives clear the old caption
+and dying sprite. The cues retain priority over ordinary impact decoration,
+stay within the existing effect caps and remain readable in reduced motion.
+
 The effect store caps active effects at 128, projectiles/beams at 64,
 particles at 48, trails at 12 and large effects at four. It recycles up to 96
 DOM nodes and retains at most 12 brief death sprites. Critical projectiles
@@ -147,16 +165,20 @@ its tab. Browser timer throttling still applies.
 
 ## Validation
 
-Run `npm run test:catandmouse` (Node 20+; no dependencies). The 68 tests cover
+Run `npm run test:catandmouse` (Node 20+; no dependencies). The 77 tests cover
 sync queues/retries, death/revive safety, host election/listener recovery,
 loader application, interpolation/corrections, target persistence, reachable
 spawns, cap enforcement, failed producer retries, route reuse/reservations,
 AI budgets, effect limits/expiry and reduced-motion telegraphs. Rat tests
 cover every difficulty/player count, opening/late progression, reservation
 accounting, rat-only headroom, fallback behavior and the real wave spawner.
-Runtime tests also execute the full optimized core against a deterministic DOM and clock
+Impact tests cover directional contacts, heavy/shield feedback, capture
+deduplication across slow acknowledgements, quick revives, effect overload,
+offscreen suppression and reduced motion. Runtime tests also execute the full
+optimized core against a deterministic DOM and clock
 fixture with mixed enemies, defensive structures, a den and a nest. They
-exercise the real spawners, movement and tower attacks together; they are not
+enable host simulation and exercise real spawns, movement, tower attacks,
+structure damage and rat/cat captures together; they are not
 browser rendering or live Firebase tests.
 
 For the optional real-browser smoke test, make Playwright available locally
@@ -170,7 +192,8 @@ implementation environment, so this browser test has not been run there.
 
 `window.__catMouseSyncStats()` exposes write/skip/retry counters and connection
 state. `window.__catMouseBattleStats()` exposes unit/effect/pool counts,
-quality, reduced-motion state, cached brains, reservations and AI budgets.
+active captures, quality, reduced-motion state, cached brains, reservations
+and AI budgets.
 
 Before release, play the mixed-wave acceptance scenario on desktop and
 mobile, including reduced motion. Check den/nest emergence, swarm spacing,

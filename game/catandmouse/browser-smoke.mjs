@@ -21,7 +21,7 @@ const firebase={
 const fixture=String.raw`
   window.__battleFixture={
     seed(){
-      soloMode=true;isHost=true;gameStarted=true;liveSnapshotReady=true;catPower=5;ratPower=1;catHealth=1000;maxCatHealth=1000;
+      soloMode=true;isHost=true;gameStarted=true;hostInitialized=true;liveSnapshotReady=true;catPower=5;ratPower=1;catHealth=1000;maxCatHealth=1000;
       playerPos={x:9,y:10};catPos={x:16,y:12};players={
         [uid]:{uid,x:9,y:10,alive:true,displayName:'tester',facing:'east',cheese:50},
         remote:{uid:'remote',x:10,y:10,alive:true,displayName:'remote',facing:'east'}};
@@ -53,6 +53,25 @@ const fixture=String.raw`
     warn(){catAbilityState.pouncePending={x:12,y:10,executeAt:Date.now()+5000};renderGrid();},
     fx(){presentShot({x:9,y:10},{x:13,y:10},'rocket');presentShot({x:9,y:10},{x:13,y:11},'tesla');presentShot({x:9,y:10},{x:13,y:12},'web');},
     hitStructure(){structureHealth['13_13']=2;structureShields['13_13']=4;renderGrid();structureHealth['13_13']=1;structureShields['13_13']=0;renderGrid();},
+    async enemyImpact(){
+      const before=structureHealth['13_13'];
+      await damageStructure(13,13,1,null,{key:combatUnitKey('ox',oxen[0]),kind:'ox'});renderGrid();
+      return {before,after:structureHealth['13_13']};
+    },
+    remoteImpact(){
+      isHost=false;soloMode=false;
+      try{structureHealth['13_13']--;renderGrid();}finally{isHost=true;soloMode=true;}
+    },
+    async captureMouse(kind='rat'){
+      if(kind==='cat'){
+        catPos={x:players.remote.x,y:players.remote.y};catAbilityLoadout=[];tacticalAI.reset();await catBehavior();
+        renderGrid();return {alive:players.remote.alive,killedBy:players.remote.killedBy};
+      }
+      const rest=rats.slice(1);rats=[rats[0] || {id:'capturer',kind:'rat',health:20}];rats[0].health=Math.max(5,rats[0].health || 0);
+      rats[0].x=players.remote.x;rats[0].y=players.remote.y;tacticalAI.reset();
+      try{await hostMoveRats();}finally{rats.push(...rest);}
+      renderGrid();return {alive:players.remote.alive,killedBy:players.remote.killedBy};
+    },
     overload(){for(let i=0;i<500;i++)battlePresentation.burst({x:10,y:10},'hit',9);this.fx();},
     finish(){catAbilityState.pouncePending=null;renderGrid();},
     stats(){return window.__catMouseBattleStats();}
@@ -90,7 +109,7 @@ try {
     await page.clock.install({time:new Date('2026-10-04T07:00:00Z')});
     await page.goto(`http://127.0.0.1:${server.address().port}/game/catandmouse.html`);
     await page.waitForFunction(()=>!!window.__battleFixture);
-    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-04-rat-difficulty-v1');
+    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-04-attack-feedback-v1');
     await page.evaluate(()=>window.__battleFixture.seed());
     const first=await page.evaluate(()=>window.__battleFixture.rendered('mouse:remote'));
     await page.evaluate(()=>window.__battleFixture.moveRemote());await page.clock.runFor(55);
@@ -106,6 +125,9 @@ try {
     await page.evaluate(()=>window.__battleFixture.overload());await page.clock.runFor(25);
     const stats=await page.evaluate(()=>window.__battleFixture.stats());assert.ok(stats.presentation.effects<=128);assert.ok(stats.ai.peakDecisions<=5);assert.ok(stats.ai.peakPaths<=10);
     assert.equal(stats.presentation.reducedMotion,reduced);
+    const capture=await page.evaluate(()=>window.__battleFixture.captureMouse());assert.equal(capture.alive,false);
+    await page.clock.runFor(40);assert.ok(await page.locator('.cm-caption.cm-capture').count());
+    assert.ok(await page.locator('.cm-captured.cm-dying').count());
     await page.evaluate(()=>window.__battleFixture.finish());await page.clock.runFor(6500);
     assert.equal((await page.evaluate(()=>window.__battleFixture.stats())).presentation.effects,0);
     assert.deepEqual(errors,[]);
