@@ -12,6 +12,12 @@ export function validateFormalProposals(s){
     if(p.approved!==['processing','resolved'].includes(p.status)||!Number.isInteger(p.reactions)||p.reactions<0||p.reactions>2||p.approved&&(!Number.isInteger(p.sentTurn)||p.sentTurn<p.created||p.sentTurn>s.turn))fail();
     if(p.approved&&p.requestedHouses.some(h=>!p.responses[h])||!p.approved&&Object.keys(p.responses).length)fail();
     if(p.conversationCancelled!==undefined&&typeof p.conversationCancelled!=='boolean')fail();
+    if(p.replyTo!==undefined&&(!p.replyTo||!/^FORMAL-\d+$/.test(p.replyTo.proposalId)||p.replyTo.proposalId===p.id||p.requestedHouses.length!==1||p.requestedHouses[0]!==p.replyTo.house))fail();
+    for(const r of Object.values(p.responses)){
+      if(r.offerAnswered!==undefined&&!['accepted','declined','modified'].includes(r.offerAnswered))fail();
+      if(r.replacementProposalId!==undefined&&(!/^FORMAL-\d+$/.test(r.replacementProposalId)||r.offerAnswered!=='modified'))fail();
+      if(r.offerAnswered==='modified'&&!r.replacementProposalId)fail();
+    }
     if(Object.values(p.responses).some(r=>r.retryRequested!==undefined&&typeof r.retryRequested!=='boolean'))fail();
     for(const r of Object.values(p.responses))if(r.diagnostic!==undefined){const diagnostic=councilDiagnostic(r.diagnostic);if(!diagnostic)fail();r.diagnostic=diagnostic;}
   }

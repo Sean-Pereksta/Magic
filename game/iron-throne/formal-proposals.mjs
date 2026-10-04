@@ -49,24 +49,40 @@ const audience=(s,actor,councilId,requested)=>{
 };
 export function formalDescription(p){const requested=p.direction==='request'&&requestedSender(p.intent);return p.operationId?`Join ${p.operationId}`:`${requested?'Requested commitment: ':''}${requested?describeIntent(p.intent).replaceAll('Proposer','Requested House'):describeIntent(p.intent)}${p.targetTile?` · Exact hex ${p.targetTile}`:''}`;}
 function initialize(s){s.cooperation??={operations:[],proposals:[],balance:[],lastDiplomacyTurn:0};s.cooperation.formalProposals??=[];}
-function trim(s){const rows=s.cooperation.formalProposals;while(rows.length>40){const i=rows.findIndex(p=>['resolved','dismissed'].includes(p.status));if(i<0)break;rows.splice(i,1);}}
+const canPrune=(s,p)=>p.status==='dismissed'||p.status==='resolved'&&(s.turn>p.expires||!Object.values(p.responses).some(r=>['counter','alternative'].includes(r.status)&&!r.offerAnswered));
+function trim(s){const rows=s.cooperation.formalProposals;while(rows.length>40){const i=rows.findIndex(p=>canPrune(s,p));if(i<0)break;rows.splice(i,1);}}
+export function formalReplyAvailable(s,p,actor,house){
+  const r=p?.responses?.[house];
+  return !!(p?.approved&&p.proposer===actor&&s.turn<=p.expires&&audience(s,actor,p.councilId,p.requestedHouses)&&r&&['counter','alternative'].includes(r.status)&&!r.offerAnswered);
+}
+function replyTarget(s,actor,value,councilId,houses){
+  if(!value||typeof value!=='object'||!/^FORMAL-\d+$/.test(value.proposalId)||!validHouse(s,value.house))return null;
+  const parent=record(s,value.proposalId);
+  return parent&&parent.councilId===councilId&&houses.length===1&&houses[0]===value.house&&formalReplyAvailable(s,parent,actor,value.house)?parent.responses[value.house]:null;
+}
 export function submitFormalProposal(s,actor,raw,{inferred=false}={}){
   if(s.outcome||s.phase==='founding'||!alive(s,actor)||!raw||typeof raw!=='object')return fail('Proposals require an active ruler.');
   const councilId=raw.councilId||null,members=audience(s,actor,councilId,raw.requestedHouses);if(!members)return fail('Choose current participants in this conversation.');
   const direction=raw.direction??'offer';if(!['offer','request'].includes(direction))return fail('Choose who is offering the commitment.');
+  if(raw.replyTo!==undefined&&(inferred||!replyTarget(s,actor,raw.replyTo,councilId,raw.requestedHouses)))return fail('This counteroffer is no longer available to modify.');
   const operation=raw.operationId&&operationFor(s,raw.operationId),intent=operation?null:validateIntent(raw.intent);
   if(raw.operationId&&(!operation||operation.owner!==actor||operation.status!=='Preparing'||raw.requestedHouses.some(h=>operationMember(operation,h)?.status!=='invited')))return fail('Choose an operation with invitations for these Houses.');
   if(!operation&&!intent)return fail('Choose valid structured terms.');
   if(intent&&['WAR','BETRAY','VASSALAGE','MARRIAGE','INTELLIGENCE'].includes(intent.type)&&councilId)return fail('These terms belong in a private ruler conversation.');
   if(intent?.targetId&&!validHouse(s,intent.targetId)&&!Object.hasOwn(s.tiles,intent.targetId)&&!knowledgeView(s,actor).armies.some(a=>a.id===intent.targetId))return fail('Choose a valid known target or map coordinate.');
   initialize(s);if(s.cooperation.formalProposals.filter(p=>!['resolved','dismissed'].includes(p.status)).length>=24)return fail('Resolve or dismiss earlier proposals first.');
+  if(s.cooperation.formalProposals.length>=40&&!s.cooperation.formalProposals.some(p=>canPrune(s,p)))return fail('Answer an earlier offer before sending another proposal.');
   const p={id:`FORMAL-${s.nextId++}`,proposer:actor,councilId,audience:[...members],requestedHouses:[...raw.requestedHouses],source:inferred?'conversation_inferred':'explicit',direction,intent,operationId:operation?.id||null,targetTile:operation?.targetTile||(intent&&Object.hasOwn(s.tiles,intent.targetId)?intent.targetId:null),created:s.turn,expires:s.turn+3,status:'draft',approved:false,responses:{},reactions:0};
-  s.cooperation.formalProposals.push(p);trim(s);
+  if(raw.replyTo)p.replyTo={proposalId:raw.replyTo.proposalId,house:raw.replyTo.house};
+  s.cooperation.formalProposals.push(p);
   if(!inferred){const result=ratifyFormalProposal(s,actor,p.id);if(!result.ok){s.cooperation.formalProposals=s.cooperation.formalProposals.filter(x=>x!==p);return result;}}
+  trim(s);
   return {ok:true,proposalId:p.id};
 }
 export function ratifyFormalProposal(s,actor,id){
   const p=record(s,id);if(!p||p.proposer!==actor||p.status!=='draft'||p.approved||s.turn>p.expires||!audience(s,actor,p.councilId,p.requestedHouses))return fail('This draft is no longer available.');
+  const replying=p.replyTo&&replyTarget(s,actor,p.replyTo,p.councilId,p.requestedHouses);
+  if(p.replyTo&&!replying)return fail('This counteroffer has already been answered or expired.');
   const sequence=p.councilId&&s.allianceCouncils.find(c=>c.id===p.councilId)?.activeSequence;
   if(p.councilId&&(isFormalCouncilBusy(s,p.councilId)||sequence?.status==='pending'&&sequence.turn===s.turn))return fail('Wait for the current council conversation to finish.');
   if(p.councilId&&p.requestedHouses.length===1){const spent=consumeDiplomaticMessage(s,p.requestedHouses[0],actor,p.intent,p.councilId);if(!spent.ok)return spent;}
@@ -74,6 +90,7 @@ export function ratifyFormalProposal(s,actor,id){
   else {const spent=consumeDiplomaticMessage(s,p.requestedHouses[0],actor,p.intent,privateConversation(p.requestedHouses[0]));if(!spent.ok)return spent;}
   p.approved=true;p.status='processing';p.sentTurn=s.turn;
   p.responses=Object.fromEntries(p.requestedHouses.map(h=>[h,{status:isAiHouse(s,h)?'waiting':'awaiting-human',reasonCodes:[],message:'',spoken:false}]));
+  if(replying){replying.offerAnswered='modified';replying.replacementProposalId=p.id;}
   if(p.councilId)appendCouncil(s,s.allianceCouncils.find(c=>c.id===p.councilId),actor,`Formal proposal: ${formalDescription(p)}`,{formalProposalId:p.id});
   else appendConversation(s,p.requestedHouses[0],'player',`Formal proposal: ${formalDescription(p)}`,{actorHouseId:actor,kind:'formal-proposal',formalProposalId:p.id});
   return {ok:true,proposalId:p.id};

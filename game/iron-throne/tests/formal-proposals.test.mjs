@@ -252,6 +252,40 @@ test('requested trades retain AI economic judgment and counteroffers retain thei
  for(const item of counter.giveItems)assert.equal(kingdom(s,'wintermere').resources[item.resource],resources[item.resource]-item.amount);
  for(const item of counter.receiveItems)assert.equal(kingdom(s,'wintermere').resources[item.resource],resources[item.resource]+item.amount);
 });
+test('modifying a counteroffer closes only its old terms and submits one new offer to that House',()=>{
+ const {s,c}=setup(),first=submitFormalProposal(s,'ashen',request(c,{type:'EXCHANGE',giveResource:'food',giveAmount:100,receiveResource:'gold',receiveAmount:1},['wintermere']));
+ resolveFormalResponse(s,'ashen',first.proposalId,'wintermere');recordFormalVoice(s,'ashen',first.proposalId,'wintermere','','failed');
+ const parent=proposal(s,first.proposalId),counter=parent.responses.wintermere.counterIntent,before=JSON.stringify(s.kingdoms.map(k=>k.resources));
+ const raw={...request(c,counter,['wintermere']),replyTo:{proposalId:parent.id,house:'wintermere'}};
+ assert.equal(submitFormalProposal(s,'ashen',{...raw,requestedHouses:['redharbor']}).ok,false,'cannot redirect a reply to a different House');
+ assert.equal(parent.responses.wintermere.offerAnswered,undefined);
+ const result=submitFormalProposal(s,'ashen',raw);assert.equal(result.ok,true,result.error);
+ const next=proposal(s,result.proposalId);assert.deepEqual(next.replyTo,raw.replyTo);assert.deepEqual(next.requestedHouses,['wintermere']);assert.deepEqual(next.intent,counter);assert.equal(next.direction,'request');
+ assert.equal(parent.responses.wintermere.offerAnswered,'modified');assert.equal(parent.responses.wintermere.replacementProposalId,next.id);
+ assert.equal(JSON.stringify(s.kingdoms.map(k=>k.resources)),before,'modification does not accept or transfer the old package');
+ assert.equal(answerFormalProposal(s,'ashen',parent.id,'wintermere','accept').ok,false);
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false,'duplicate modification cannot submit twice');
+ assert.ok(parseSave(JSON.stringify(s)),'reply lineage survives save/reload');
+});
+test('unsent or expired counteroffer revisions leave the original offer intact',()=>{
+ const {s,c}=setup(),first=submitFormalProposal(s,'ashen',request(c,{type:'EXCHANGE',giveResource:'food',giveAmount:100,receiveResource:'gold',receiveAmount:1},['wintermere']));
+ resolveFormalResponse(s,'ashen',first.proposalId,'wintermere');recordFormalVoice(s,'ashen',first.proposalId,'wintermere','','failed');
+ const parent=proposal(s,first.proposalId),raw={...request(c,parent.responses.wintermere.counterIntent,['wintermere']),replyTo:{proposalId:parent.id,house:'wintermere'}};
+ s.diplomacy.messages.regular=100;
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false);assert.equal(parent.responses.wintermere.offerAnswered,undefined);
+ s.turn=parent.expires+1;
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false);assert.equal(parent.responses.wintermere.offerAnswered,undefined);
+});
+test('unanswered counteroffers cannot be silently pruned or overflow the saved proposal limit',()=>{
+ const {s,c}=setup(),first=submitFormalProposal(s,'ashen',request(c,{type:'EXCHANGE',giveResource:'food',giveAmount:100,receiveResource:'gold',receiveAmount:1},['wintermere']));
+ resolveFormalResponse(s,'ashen',first.proposalId,'wintermere');recordFormalVoice(s,'ashen',first.proposalId,'wintermere','','failed');
+ const parent=proposal(s,first.proposalId);
+ while(s.cooperation.formalProposals.length<40)s.cooperation.formalProposals.push({...structuredClone(parent),id:`FORMAL-${s.nextId++}`});
+ const raw={...request(c,parent.responses.wintermere.counterIntent,['wintermere']),replyTo:{proposalId:parent.id,house:'wintermere'}};
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,false);assert.equal(s.cooperation.formalProposals.length,40);assert.equal(parent.responses.wintermere.offerAnswered,undefined);
+ assert.equal(answerFormalProposal(s,'ashen',s.cooperation.formalProposals.at(-1).id,'wintermere','decline').ok,true);
+ assert.equal(submitFormalProposal(s,'ashen',raw).ok,true);assert.equal(s.cooperation.formalProposals.length,40);assert.ok(parseSave(JSON.stringify(s)));
+});
 test('requested loans do not lend domestic reserves or bypass a ruler’s distrust',()=>{
  for(const scarce of [false,true]){const {s,c}=setup();if(scarce)kingdom(s,'wintermere').resources.gold=20;else Object.assign(relation(s,'wintermere','ashen'),{trust:-80,reliability:0});
   const r=submitFormalProposal(s,'ashen',request(c,{type:'LOAN',giveResource:'gold',giveAmount:20,receiveResource:'gold',receiveAmount:22},['wintermere'])),before=kingdom(s,'wintermere').resources.gold;
