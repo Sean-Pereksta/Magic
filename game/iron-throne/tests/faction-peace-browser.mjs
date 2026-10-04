@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 // Functional Council/private interaction checks; no HTML previews or screenshots.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -29,7 +30,7 @@ try{
   const saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1'))),builder=page.locator('#formal-proposal-builder');
   if(mode==='council')await page.locator('[data-alliance]').first().click();else{await page.locator('[data-tab=council]').click();await page.locator('[data-talk=wintermere]').click();}
   if(entry==='builder'){
-   await page.locator(mode==='council'?'.alliance-offer-request':'#private-offer-request').click();
+   await clickChatAction(page,mode==='council'?'.alliance-offer-request':'#private-offer-request');
    await builder.locator('[name=type]').selectOption({label:'Make peace with a faction'});
    assert.equal(await builder.locator('[name=direction]').inputValue(),'request');assert.equal(await builder.locator('[name=direction]').isDisabled(),true);assert.equal(await builder.locator('.formal-resources').isHidden(),true);
    if(mode==='council'){

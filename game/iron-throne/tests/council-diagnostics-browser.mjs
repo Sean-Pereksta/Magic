@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 import { appendCouncil } from '../council-state.mjs';
 import { initiateCouncilDiscussions } from '../alliance-council.mjs';
 import { createGame as legacyGame } from './fixtures/legacy-game.mjs';
@@ -54,7 +55,7 @@ try {
     const failedState=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(failedState.allianceCouncils[0].messages.some(m=>m.speakerHouseId==='wintermere'),false,'failed Gemini never inserts a local ruler answer');
     assert.doesNotMatch(await page.locator('.alliance-history').textContent(),/Local dialogue/);
-    await page.locator('.alliance-diagnostics').click();
+    await clickChatAction(page,'.alliance-diagnostics');
     assert.equal(await page.locator('#gemini-diagnostics-dialog').isVisible(),true);
     assert.match(await page.locator('#diagnostics-report').inputValue(),/Error code: GEMINI_SCHEMA/);
     assert.match(await page.locator('#diagnostics-report').inputValue(),/Google HTTP status: 400/);
@@ -63,11 +64,11 @@ try {
     // A request-format failure imposes no cooldown on the next envoy.
     await page.locator('#alliance-message').fill('My relief force will approach the northern pass.');await page.locator('.alliance-compose button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.alliance-history').textContent.includes('Your northern relief force'));
-    assert.equal(await page.locator('.alliance-diagnostics').isVisible(),false);assert.equal(calls,2);
+    assert.equal(await page.locator('.alliance-diagnostics').evaluate(el=>!el.hidden),false);assert.equal(calls,2);
     assert.match(await page.locator('.alliance-history').textContent(),/Gemini/);
     // A formal decision must restart verification itself after session expiry.
     await page.evaluate(()=>globalThis.testTimeShift=1810000);
-    await page.locator('.alliance-offer-request').click();
+    await clickChatAction(page,'.alliance-offer-request');
     const builder=page.locator('#formal-proposal-builder');
     await builder.locator('[name=type]').selectOption('AID');await builder.locator('[name=direction]').selectOption('offer');
     await builder.locator('[name=resource0]').selectOption('food');await builder.locator('[name=amount0]').fill('1');await builder.locator('[type=submit]').click();

@@ -89,7 +89,8 @@ export function installCorrespondence(doc, { portraits = {}, houses = [] } = {})
   function closeDrawer(restore = true) {
     drawerOpen = false; syncDrawer();
     if (restore && dialog.open) {
-      const target = returnFocus?.isConnected ? returnFocus : get('quick-offer');
+      const original = returnFocus?.isConnected ? returnFocus : get('quick-offer');
+      const target = original?.closest('.chat-options:not([open])')?.querySelector('summary') || original;
       target?.focus({ preventScroll: true });
     }
   }

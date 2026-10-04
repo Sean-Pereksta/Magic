@@ -1,3 +1,4 @@
+import { installPrivateChatWorkspace } from './chat-workspace.mjs';
 import { installFormalProposalUI } from './formal-proposal-ui.mjs';
 import { defaultProposalDirection, cancelFormalConversation, isFormalCouncilBusy, retryFormalVoice, submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, markFormalConsidering, resolveFormalResponse, answerFormalProposal, recordFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
 import { installStrategicMapPicker } from './strategic-map-picker.mjs';
@@ -703,7 +704,7 @@ async function enableGemini() {
     await loadVerification();
     if (!$('use-gemini').checked || !($('diplomacy').open || allianceUI?.dialog.open || $('general-orders')?.open)) return;
     if (turnstileWidget === null) turnstileWidget = globalThis.turnstile.render($('turnstile'), {
-      sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark',
+      sitekey: config.turnstileSiteKey, action: 'iron-throne', theme: 'dark', appearance: 'interaction-only',
       callback: async token => {
         challengeToken = token;
         const ready = await client.openSession(token);
@@ -835,6 +836,10 @@ async function sendCouncilConversation(id,message,location,retryStart=null) {
       councilSequences.release(lock);challengeToken='';refreshCouncilConversation();void cancelInterruptedCouncilSequences();
     }
 }
+function chatConnection({council=false}={}){
+  const enabled=$('use-gemini').checked,available=!!client.endpoint&&!!config.turnstileSiteKey,failed=!council&&(!$('gemini-diagnostics').hidden||!retryPrivateButton.hidden);
+  return {text:!available?'Gemini · Not configured':!enabled?'Gemini · Off':failed?'Gemini · Reply unavailable':client.hasSession()?'Gemini · Connected':'Gemini · Verification needed',detail:$('chat-notice').textContent,attention:failed||enabled&&available&&!client.hasSession()};
+}
 const verificationHome=document.createComment('Shared diplomacy verification');
 $('turnstile').before(verificationHome);
 allianceUI=installAllianceCouncil(document,{
@@ -842,6 +847,7 @@ allianceUI=installAllianceCouncil(document,{
   planLocation:location=>{allianceUI.dialog.close();tab='war-room';render();const form=$('operation-form');if(!form){toast('Form an alliance before planning an operation.');return;}form.closest('details').open=true;form.elements.objectiveType.value=location.objectiveType;const select=form.elements.objective;let option=[...select.options].find(o=>o.value===location.targetTile);if(!option){option=document.createElement('option');option.value=location.targetTile;option.textContent=`Hex ${location.targetTile}`;select.append(option);}select.value=location.targetTile;form.scrollIntoView({block:'start'});},
   offerRequest:id=>formalUI.open({councilId:id}),
   getState:()=>state,getActor:()=>localHouse,isBusy:id=>turnBusy||normalCouncilBusy(id)||formalCouncilBusy(id),
+  connection:()=>chatConnection({council:true}),
   gemini:()=>({enabled:$('use-gemini').checked,available:!$('use-gemini').disabled}),
   setGemini:enabled=>{$('use-gemini').checked=enabled;geminiChoiceMade=true;enableGemini();allianceUI.render();},
   queued:(id,messageId)=>[...councilJobs.values()].some(j=>j.pending&&j.dispatch.councilId===id&&j.dispatch.entries.some(e=>e.id===messageId)),
@@ -896,6 +902,8 @@ formalUI=installFormalProposalUI(document,{
   },
   error:toast,changed:refreshCouncilConversation
 });
+
+installPrivateChatWorkspace(document,{connection:chatConnection});
 
 document.addEventListener('click',e=>{const b=e.target.closest('[data-alliance]');if(b&&!b.disabled)allianceUI.open(b.dataset.alliance);});
 document.addEventListener('click',e=>{if(e.target.closest('.treaty-drawer-close')&&$('diplomacy').classList.contains('council-terms'))$('diplomacy').close();});

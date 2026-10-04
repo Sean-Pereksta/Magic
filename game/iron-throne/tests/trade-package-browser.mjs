@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 // Functional DOM checks only; no screenshots or generated HTML previews.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -24,7 +25,7 @@ try{
   await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
   await page.locator('[data-tab="realm"]').click();assert.match(await page.locator('body').textContent(),/Food Security/);
   await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').first().click();
-  await page.locator('#quick-offer').click();await page.locator('#use-gemini').uncheck({force:true}).catch(()=>{});
+  await clickChatAction(page,'#quick-offer');await page.locator('#use-gemini').uncheck({force:true}).catch(()=>{});
   await page.locator('#give-resource').selectOption('iron');await page.locator('#give-amount').fill('15');
   await page.locator('[data-add-resource="give"]').click();
   const second=page.locator('#give-items [data-trade-row]').nth(1);await second.locator('select').selectOption('wood');await second.locator('input').fill('30');

@@ -1,3 +1,4 @@
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 // Real Firebase SDK + Auth/Firestore emulators; no screenshots or HTML previews.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -96,7 +97,7 @@ try{
  console.log('Only the active browser recruitment persisted');
  // Formal AI responses must wait for each authoritative command and state update.
  const beforeAid=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);
- await a.page.locator('[data-dispatch="thornwall"]').click();await a.page.locator('#private-offer-request').click();
+ await a.page.locator('[data-dispatch="thornwall"]').click();await clickChatAction(a.page,'#private-offer-request');
  const builder=a.page.locator('#formal-proposal-builder');await builder.locator('[name=type]').selectOption('AID');await builder.locator('[name=direction]').selectOption('offer');
  await builder.locator('[name=resource0]').selectOption('food');await builder.locator('[name=amount0]').fill('10');await builder.locator('[type=submit]').click();await builder.waitFor({state:'hidden'});
  await eventually(async()=>{const state=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);return state.cooperation.formalProposals?.some(p=>p.responses.thornwall?.status==='accepted'&&p.responses.thornwall.spoken);});
@@ -108,7 +109,7 @@ try{
  await a.page.locator('#chat-message').fill('Let us form an alliance.');await a.page.locator('#send-chat').click();
  await eventually(async()=>(await b.page.locator('#messages').textContent()).includes('Let us form an alliance.'));
  assert.equal((await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).treaties.length,0);
- await a.page.locator('#quick-offer').click();await a.page.locator('#offer-type').selectOption('ALLIANCE');await a.page.locator('#give-amount').fill('0');await a.page.locator('#offer-form button[type="submit"]').click();
+ await clickChatAction(a.page,'#quick-offer');await a.page.locator('#offer-type').selectOption('ALLIANCE');await a.page.locator('#give-amount').fill('0');await a.page.locator('#offer-form button[type="submit"]').click();
  await a.page.locator('.treaty-drawer-close').click();
  await b.page.locator('[data-formal-answer][data-decision=accept]').waitFor();await b.page.locator('[data-formal-answer][data-decision=accept]').click();
  assert.equal((await decodePayload((await read(`${prefix}/iron_throne/state`)).payload)).treaties.length,0);

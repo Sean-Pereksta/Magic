@@ -1,3 +1,4 @@
+import { clickChatAction, revealChatAction } from './fixtures/chat-actions.mjs';
 import { createGame as legacyGame } from './fixtures/legacy-game.mjs';
 // Functional browser checks only: no generated previews, screenshots or assets.
 import assert from 'node:assert/strict';
@@ -90,7 +91,7 @@ try {
     assert.equal(await page.locator('#use-gemini').isChecked(), true);
     assert.equal(await page.locator('#use-gemini').isDisabled(), false);
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.findLast(m=>m.role==='ruler').source),'gemini');
-    await page.locator('#quick-offer').click();await page.locator('[data-ratify]').first().click();
+    await clickChatAction(page,'#quick-offer');await page.locator('[data-ratify]').first().click();
     await page.locator('.treaty-drawer-close').click();
     assert.match(await page.locator('#messages').textContent(), /ratified/);
     await page.locator('[data-close="diplomacy"]').click(); await page.locator('[data-tab="ledger"]').click();
@@ -101,13 +102,13 @@ try {
     await page.locator('#chat-message').fill("I'll send you 20 food next turn."); await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges.length,0);
-    await page.locator('#expand-council').click();assert.equal(await page.locator('#diplomacy').evaluate(el=>el.classList.contains('compact')),false);
+    await clickChatAction(page,'#expand-council');assert.equal(await page.locator('#diplomacy').evaluate(el=>el.classList.contains('compact')),false);
     await page.locator('[data-formal-ratify]').click();
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges.length===1);
     const oath=await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).pledges[0]);assert.equal(oath.status,'pending');
     assert.match(await page.locator('#messages').textContent(),/20 food/);
     assert.equal(await page.locator('#send-chat').isDisabled(),true);assert.match(await page.locator('#message-allowance').textContent(),/0\/3/);
-    await page.locator('#quick-promises').click();await page.locator('#council-records-body [data-deliver]').click();
+    await clickChatAction(page,'#quick-promises');await page.locator('#council-records-body [data-deliver]').click();
     assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))).pledges[0].status,'fulfilled');
     await page.locator('.treaty-drawer-close').click();
     await page.locator('[data-close="diplomacy"]').click();
@@ -142,7 +143,7 @@ try {
     const beforeReview=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources);
     await page.locator('[data-trade-review]').click();
     assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).kingdoms[0].resources),beforeReview);
-    if(await page.locator('#treaty-drawer').getAttribute('aria-hidden')==='true')await page.locator('#quick-offer').click();
+    if(await page.locator('#treaty-drawer').getAttribute('aria-hidden')==='true')await clickChatAction(page,'#quick-offer');
     await page.locator('[data-ratify]').first().click();
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).commerce.offers[0].status),'accepted');
     await page.locator('.treaty-drawer-close').click();
@@ -199,10 +200,10 @@ try {
     await configRoute.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'public-test-key'}});
     await page.waitForFunction(() => !document.getElementById('use-gemini').disabled);
     assert.equal(await page.locator('#use-gemini').isChecked(),true);
-    assert.equal(await page.locator('#privacy').isVisible(),true);
+    assert.equal(await (await revealChatAction(page,'#privacy')).isVisible(),true);
     await page.waitForFunction(fails => document.getElementById('chat-notice').textContent.includes(fails?'could not load':'Gemini ready'),verificationFails);
     assert.equal(modelCalls,0,'opening a council must not consume Gemini quota');
-    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false,'diagnostics appear after an attempted message');
+    assert.equal(await page.locator('#gemini-diagnostics').evaluate(el=>!el.hidden),false,'diagnostics appear after an attempted message');
     await page.locator('#chat-message').fill('Greetings, Queen.');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     if(verificationFails){
@@ -211,7 +212,7 @@ try {
     }
     else {
       assert.equal(modelCalls,1, await page.locator('#chat-notice').textContent());assert.match(await page.locator('#messages').textContent(),/banners of Wintermere/);
-      assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false);
+      assert.equal(await page.locator('#gemini-diagnostics').evaluate(el=>!el.hidden),false);
       assert.equal(await page.evaluate(() => window.testVerificationCount),1);assert.equal(sessionCalls,1);
       await page.locator('#chat-message').fill('Would you consider peace?');await page.locator('#send-chat').click();
       await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
@@ -220,12 +221,12 @@ try {
       const afterLimit=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler'));
       assert.equal(afterLimit.length,1,'rate limiting preserves the first Gemini reply without appending local speech');assert.equal(afterLimit[0].source,'gemini');
     }
-    await page.locator('#gemini-diagnostics').click();
+    await clickChatAction(page,'#gemini-diagnostics');
     const failureReport=await page.locator('#diagnostics-report').inputValue();
     assert.ok(failureReport.includes(verificationFails?'TURNSTILE_LOAD_FAILED':'RATE_LIMIT_UNKNOWN'));
     assert.match(failureReport,/GEMINI_API_KEY: Unknown/);
     await page.locator('[data-close="gemini-diagnostics-dialog"]').click();
-    await page.locator('#use-gemini').uncheck();const callsBefore=modelCalls,rulersBefore=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler').length);
+    await (await revealChatAction(page,'#use-gemini')).uncheck();const callsBefore=modelCalls,rulersBefore=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).conversations.wintermere.filter(m=>m.role==='ruler').length);
     await page.locator('#chat-message').fill('An alliance for 60 gold');await page.locator('#send-chat').click();
     await page.waitForFunction(() => document.getElementById('send-chat').textContent === 'Send envoy →');
     assert.equal(modelCalls,callsBefore);assert.equal(await page.locator('#privacy').isVisible(),false);
@@ -274,11 +275,11 @@ try {
     if(viewport.width>700){await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();}
     else await page.locator('[data-dispatch="wintermere"]').click();
     await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Missing from the running Worker'));
-    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false);
+    assert.equal(await page.locator('#gemini-diagnostics').evaluate(el=>!el.hidden),false);
     await page.locator('#chat-message').fill('What would you need to support my claim?');await page.locator('#send-chat').click();
     await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
     assert.equal(sessionCalls,1,'a failed send must not reset verification automatically');assert.equal(modelCalls,0);
-    await page.locator('#gemini-diagnostics').click();
+    await clickChatAction(page,'#gemini-diagnostics');
     assert.match(await page.locator('#diagnostics-TURNSTILE_SECRET').textContent(),/Missing/);
     assert.match(await page.locator('#diagnostics-GEMINI_API_KEY').textContent(),/Present/);
     assert.match(await page.locator('#diagnostics-BUDGET').textContent(),/Present/);
@@ -298,7 +299,7 @@ try {
     await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('Gemini ready'));
     await page.locator('#chat-message').fill('Name your terms.');await page.locator('#send-chat').click();
     await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
-    await page.locator('#gemini-diagnostics').click();
+    await clickChatAction(page,'#gemini-diagnostics');
     assert.match(await page.locator('#diagnostics-report').inputValue(),/Google HTTP status: 402/);
     assert.match(await page.locator('#diagnostics-report').inputValue(),/GEMINI_BILLING/);
     assert.match(await page.locator('#diagnostics-action').textContent(),/prepay/);
@@ -306,7 +307,7 @@ try {
     billingFailure=false;await page.evaluate(()=>{window.testTimeOffset=61000;});
     await page.locator('#chat-message').fill('Can we agree?');await page.locator('#send-chat').click();
     await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');
-    assert.equal(await page.locator('#gemini-diagnostics').isVisible(),false,'a successful Gemini reply clears diagnostics');
+    assert.equal(await page.locator('#gemini-diagnostics').evaluate(el=>!el.hidden),false,'a successful Gemini reply clears diagnostics');
     assert.match(await page.locator('#messages').textContent(),/claim deserves a hearing/);
     assert.equal(sessionCalls,2);assert.equal(modelCalls,2);
     assert.doesNotMatch(await page.evaluate(()=>localStorage.getItem('catnmice.iron-throne.v1')),/CONFIG_MISSING|GEMINI_BILLING|private-test-/);
