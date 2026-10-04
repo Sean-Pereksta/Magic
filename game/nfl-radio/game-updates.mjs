@@ -1,3 +1,6 @@
+import {formatPlay,summaryPlayers,shouldAnnouncePlay} from './play-formatter.mjs';
+import {readPlayByPlaySettings,settingsForGame} from './play-settings.mjs';
+import {setRadioDucked} from './radio-audio-bridge.mjs';
 import {
   browserSpeechAvailable,
   enqueueBrowserSpeech,
@@ -72,6 +75,10 @@ export function buildGameUpdate(event,summary=null,options={}){
   if(status)parts.push(`${status}.`);
 
   const situation=c.situation;
+  const players=summaryPlayers(summary,event);
+  const playSettings=options.playSettings||{};
+  const allowed=play=>shouldAnnouncePlay(play,playSettings,{event,players});
+  const call=play=>formatPlay(play,{event,players}).text;
   if(state==='in'&&situation){
     const possessing=teamById(event,situation.possession);
     if(possessing){
@@ -80,7 +87,7 @@ export function buildGameUpdate(event,summary=null,options={}){
     }else if(situation.downDistanceText){
       parts.push(`${replaceAbbreviations(situation.downDistanceText,event)}.`);
     }
-    if(settings.lastPlay&&situation.lastPlay?.text)parts.push(`Last play: ${clean(situation.lastPlay.text)}`);
+    if(settings.lastPlay&&situation.lastPlay?.text&&allowed(situation.lastPlay))parts.push(`Last play: ${call(situation.lastPlay)}`);
   }else if(state==='post'){
     parts.push('Final.');
   }
@@ -89,13 +96,13 @@ export function buildGameUpdate(event,summary=null,options={}){
   const scoringPlays=Array.isArray(summary?.scoringPlays)?summary.scoringPlays:[];
   const allScoreIds=scoringPlays.map(scorePlayId);
   if(settings.scoring&&scoringPlays.length){
-    const fresh=scoringPlays.map((play,index)=>({play,id:scorePlayId(play,index)})).filter(x=>!seen.has(x.id)).slice(-2);
+    const fresh=scoringPlays.map((play,index)=>({play,id:scorePlayId(play,index)})).filter(x=>!seen.has(x.id)&&allowed(x.play)&&!(settings.lastPlay&&situation?.lastPlay?.id&&String(situation.lastPlay.id)===x.id)).slice(-2);
     if(fresh.length){
-      const text=fresh.map(({play})=>clean(play.text||play.shortText||play.type?.text)).filter(Boolean).join(' Next, ');
+      const text=fresh.map(({play})=>call(play)).filter(Boolean).join(' Next, ');
       if(text)parts.push(`Recent scoring: ${text}`);
     }
-  }else if(settings.scoring&&situation?.lastPlay?.scoreValue>0&&situation.lastPlay?.text){
-    parts.push(`Scoring play: ${clean(situation.lastPlay.text)}`);
+  }else if(settings.scoring&&!settings.lastPlay&&situation?.lastPlay?.scoreValue>0&&situation.lastPlay?.text&&allowed(situation.lastPlay)){
+    parts.push(`Scoring play: ${call(situation.lastPlay)}`);
   }
 
   if(settings.leaders){
@@ -128,9 +135,9 @@ export function speakBrowserDefault(text,{onStart,onEnd,onError,key}={}){
     source:'game-update',
     key:key||`game-update:${text}`,
     rate:1.04,
-    onStart,
-    onEnd,
-    onError
+    onStart:()=>{if(readPlayByPlaySettings().duckRadio)setRadioDucked(true);onStart?.();},
+    onEnd:()=>{setRadioDucked(false);onEnd?.();},
+    onError:error=>{setRadioDucked(false);onError?.(error);}
   });
 }
 
@@ -157,7 +164,7 @@ export function installSpokenUpdates(){
   title.append(element('h2','Spoken game updates'),element('button','✕',{id:'closeGameUpdates','aria-label':'Close game updates'}));
   dialog.append(title);
 
-  const intro=element('p','Speak live score, clock, possession, field position, recent scoring, last play, and passing/rushing/receiving leaders for games in your rotation. Uses the browser’s default voice and shares one audio queue with live play-by-play.');
+  const intro=element('p','Speak live score, clock, possession, field position, recent scoring, last play, and passing/rushing/receiving leaders for games in your rotation. Uses your selected voice and the shared announcement queue. While live play calls are on, automatic recaps cover scores and leaders; use Speak update now to replay play details.');
   intro.className='availability updateIntro';
   dialog.append(intro);
 
@@ -253,7 +260,9 @@ export function installSpokenUpdates(){
       const spoken=[];
       targets.forEach((event,index)=>{
         const seen=seenScores.get(String(event.id))||new Set();
-        const update=buildGameUpdate(event,summaries[index],{...settings,seenScoreIds:seen});
+        const liveSettings=readPlayByPlaySettings();
+        const recapSettings=!manual&&liveSettings.enabled?{...settings,lastPlay:false,scoring:false}:settings;
+        const update=buildGameUpdate(event,summaries[index],{...recapSettings,seenScoreIds:seen,playSettings:settingsForGame(liveSettings,event.id)});
         if(update.speech)spoken.push(update.speech);
         seenScores.set(String(event.id),new Set(update.scoreIds));
       });

@@ -48,3 +48,12 @@ test('settings enforce supported intervals and rotation parsing',()=>{
  assert.equal(readSettings(storage).enabled,true);
  assert.deepEqual(selectedGameIds(storage),['g1','g2']);
 });
+
+test('recaps apply play filters and do not repeat the same score as last play and recent scoring',()=>{
+ const play={id:'td1',text:'Quarterback pass to Receiver for a touchdown.',scoreValue:6};
+ const scoringEvent={...event,competitions:[{...event.competitions[0],situation:{...event.competitions[0].situation,lastPlay:play}}]};
+ const out=buildGameUpdate(scoringEvent,{scoringPlays:[play]},{playSettings:{mode:'touchdowns'},leaders:false});
+ assert.equal((out.speech.match(/touchdown/gi)||[]).length,1);
+ const filtered=buildGameUpdate(event,summary,{playSettings:{mode:'touchdowns'},leaders:false});
+ assert.doesNotMatch(filtered.speech,/Last play:/);assert.doesNotMatch(filtered.speech,/42 yard/);assert.match(filtered.speech,/touchdown/);
+});

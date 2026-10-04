@@ -1,128 +1,43 @@
-import {
-  browserSpeechAvailable,
-  enqueueBrowserSpeech,
-  getBrowserSpeechQueueState,
-  removeQueuedSpeech,
-  unlockBrowserSpeech
-} from './speech-queue.mjs';
+import {browserSpeechAvailable,enqueueBrowserSpeech,getBrowserSpeechQueueState,removeQueuedSpeech,unlockBrowserSpeech,onBrowserSpeechQueueState} from './speech-queue.mjs';
 import {setRadioDucked} from './radio-audio-bridge.mjs';
-
-const STORAGE_KEY='nfl-dial:livePlayByPlay';
-const ROTATION_KEY='nfl-dial:rotation';
-const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
+import {formatPlay,mergePlayers,summaryPlayers,rosterPlayers,shouldAnnouncePlay} from './play-formatter.mjs';
+import {createPlayTracker,playIdentity,playsFromSummary} from './play-tracker.mjs';
+import {STORAGE_KEY,readPlayByPlaySettings,settingsForGame,selectedGameIds,normalizeScoreInterval} from './play-settings.mjs';
+import {readVoiceSettings,saveVoiceSettings,englishVoices,playVoiceOptions} from './voice-settings.mjs';
+export {readPlayByPlaySettings,selectedGameIds,normalizeScoreInterval,DEFAULT_SCORE_INTERVAL_MINUTES,MAX_SCORE_INTERVAL_MINUTES} from './play-settings.mjs';
 export const PLAY_POLL_MS=5000;
-export const DEFAULT_SCORE_INTERVAL_MINUTES=5;
-export const MAX_SCORE_INTERVAL_MINUTES=120;
-
+const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
+const API='https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+const searchKey=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const clean=value=>String(value??'').replace(/\s+/g,' ').trim();
 const canonical=value=>({WSH:'WAS',JAC:'JAX',LA:'LAR'}[value]||value);
-const scoreNumber=value=>{
-  const number=Number(value);
-  return Number.isFinite(number)?number:0;
-};
-export function normalizeScoreInterval(value){
-  const number=Math.round(Number(value));
-  if(!Number.isFinite(number)||number<0)return DEFAULT_SCORE_INTERVAL_MINUTES;
-  return Math.min(number,MAX_SCORE_INTERVAL_MINUTES);
-}
-function normalizeScoreScope(value){return value==='all'?'all':'rotation';}
-
-export function readPlayByPlaySettings(storage=globalThis.localStorage){
-  try{
-    const saved=JSON.parse(storage?.getItem(STORAGE_KEY)||'null')||{};
-    return {
-      enabled:!!saved.enabled,
-      duckRadio:saved.duckRadio!==false,
-      scoreIntervalMinutes:normalizeScoreInterval(saved.scoreIntervalMinutes??DEFAULT_SCORE_INTERVAL_MINUTES),
-      scoreScope:normalizeScoreScope(saved.scoreScope)
-    };
-  }catch{
-    return {
-      enabled:false,
-      duckRadio:true,
-      scoreIntervalMinutes:DEFAULT_SCORE_INTERVAL_MINUTES,
-      scoreScope:'rotation'
-    };
-  }
-}
-
-export function selectedGameIds(storage=globalThis.localStorage){
-  try{
-    const value=JSON.parse(storage?.getItem(ROTATION_KEY)||'[]');
-    return Array.isArray(value)?value.filter(id=>typeof id==='string'):[];
-  }catch{return [];}
-}
-
-function competition(event){return event?.competitions?.[0]||null;}
-function competitors(event){return competition(event)?.competitors||[];}
-function teamById(event,id){return competitors(event).find(c=>String(c.id)===String(id)||String(c.team?.id)===String(id));}
-function teamLabel(entry){return entry?.team?.shortDisplayName||entry?.team?.name||entry?.team?.displayName||entry?.team?.abbreviation||'';}
-function replaceAbbreviations(text,event){
-  let out=clean(text);
-  for(const c of competitors(event)){
-    const raw=c.team?.abbreviation,aliases=[raw,canonical(raw)].filter(Boolean);
-    for(const abbr of new Set(aliases))out=out.replace(new RegExp(`\\b${abbr}\\b`,'g'),teamLabel(c)||abbr);
-  }
-  return out.replace(/\s*&\s*/g,' and ');
-}
-function gameState(event){return competition(event)?.status?.type?.state||event?.status?.type?.state||'pre';}
-function playIdentity(play){
-  const text=clean(play?.text||play?.shortText||play?.type?.text);
-  const id=clean(play?.id);
-  const period=play?.period?.number||play?.period||'';
-  const clock=play?.clock?.displayValue||'';
-  return `${id||`${period}:${clock}`}|${text}`;
-}
-function eventMatchup(event){
-  const away=competitors(event).find(c=>c.homeAway==='away');
-  const home=competitors(event).find(c=>c.homeAway==='home');
-  return [canonical(away?.team?.abbreviation),canonical(home?.team?.abbreviation)].filter(Boolean);
-}
-export function radioLabelMatchup(label){
-  const match=clean(label).match(/^([A-Z]{2,3})\s+vs\s+([A-Z]{2,3})\b/);
-  return match?[canonical(match[1]),canonical(match[2])]:[];
-}
-export function matchupMatchesRadioLabel(matchup,label){
-  const current=radioLabelMatchup(label);
-  return current.length===2&&matchup?.length===2&&current[0]===canonical(matchup[0])&&current[1]===canonical(matchup[1]);
-}
+const scoreNumber=value=>Number.isFinite(Number(value))?Number(value):0;
+const competition=event=>event?.competitions?.[0]||null;
+const competitors=event=>competition(event)?.competitors||[];
+const teamLabel=entry=>entry?.team?.shortDisplayName||entry?.team?.name||entry?.team?.displayName||entry?.team?.abbreviation||'';
+const gameState=event=>competition(event)?.status?.type?.state||event?.status?.type?.state||'pre';
+function eventMatchup(event){return ['away','home'].map(role=>canonical(competitors(event).find(c=>c.homeAway===role)?.team?.abbreviation)).filter(Boolean);}
+export function radioLabelMatchup(label){const match=clean(label).match(/^([A-Z]{2,3})\s+vs\s+([A-Z]{2,3})\b/);return match?[canonical(match[1]),canonical(match[2])]:[];}
+export function matchupMatchesRadioLabel(matchup,label){const current=radioLabelMatchup(label);return current.length===2&&matchup?.length===2&&current[0]===canonical(matchup[0])&&current[1]===canonical(matchup[1]);}
 export function eventMatchesRadioLabel(event,label){return matchupMatchesRadioLabel(eventMatchup(event),label);}
-
-export function latestPlayAnnouncement(event){
-  const c=competition(event);
-  if(!event||!c||gameState(event)!=='in')return null;
-  const situation=c.situation||{};
-  const play=situation.lastPlay;
-  const text=replaceAbbreviations(play?.text||play?.shortText||play?.type?.text,event);
-  if(!play||!text)return null;
-  const explicitTeamId=play.team?.id??play.teamId??play.possession;
-  const playTeam=teamById(event,explicitTeamId)||teamById(event,situation.possession);
-  const teamName=teamLabel(playTeam);
-  return {
-    gameId:String(event.id),
-    key:playIdentity({...play,text}),
-    team:teamName,
-    matchup:eventMatchup(event),
-    play:text,
-    speech:teamName?`${teamName}. ${text}`:text
-  };
+export function latestPlayAnnouncement(event,{players=[]}={}){
+  const raw=competition(event)?.situation?.lastPlay;
+  if(!raw||gameState(event)!=='in')return null;
+  const formatted=formatPlay(raw,{event,players:mergePlayers(players,summaryPlayers(null,event))});
+  return formatted.text?{...formatted,gameId:String(event.id),key:playIdentity(raw),matchup:eventMatchup(event),raw,play:formatted.text,speech:formatted.text}:null;
 }
-
-export function collectNewPlayAnnouncements(events,selectedIds,seenKeys=new Map(),{announceInitial=false}={}){
-  const selected=new Set((selectedIds||[]).map(String));
-  const announcements=[];
+export function collectNewPlayAnnouncements(events,selectedIds,seenKeys=new Map(),{announceInitial=false,settings={},players=[]}={}){
+  const selected=new Set((selectedIds||[]).map(String)),announcements=[];
   for(const event of events||[]){
-    const gameId=String(event?.id??'');
-    if(!selected.has(gameId))continue;
-    const announcement=latestPlayAnnouncement(event);
-    if(!announcement)continue;
-    const previous=seenKeys.get(gameId);
-    if((previous&&previous!==announcement.key)||(!previous&&announceInitial))announcements.push(announcement);
-    seenKeys.set(gameId,announcement.key);
+    if(!selected.has(String(event.id)))continue;
+    const out=latestPlayAnnouncement(event,{players});if(!out)continue;
+    const previous=seenKeys.get(out.gameId);
+    const seen=previous instanceof Set?previous:new Set(previous?[previous]:[]);
+    const fresh=!seen.has(out.key);seen.add(out.key);seenKeys.set(out.gameId,seen);
+    if(fresh&&(previous||announceInitial)&&shouldAnnouncePlay(out.raw,settingsForGame(settings,out.gameId),{event,players,formatted:out}))announcements.push(out);
   }
   return announcements;
 }
-
 function scoreStatusLabel(event){
   const c=competition(event);
   const state=gameState(event);
@@ -155,334 +70,242 @@ export function buildScoreUpdateSpeech(events,{selectedIds=[],scope='rotation'}=
   return lines.length?`NFL score update. ${lines.join(' ')}`:'';
 }
 
-async function fetchJson(url,{timeout=10000}={}){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),timeout);
-  try{
-    const response=await fetch(url,{cache:'no-store',signal:controller.signal});
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  }finally{clearTimeout(timer);}
+async function fetchJson(url){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),9000);
+  try{const response=await fetch(url,{cache:'no-store',signal:controller.signal});if(!response.ok)throw new Error(`HTTP ${response.status}`);return await response.json();}finally{clearTimeout(timer);}
 }
-
 function element(tag,text,attrs={}){
-  const node=document.createElement(tag);
-  if(text!=null)node.textContent=text;
-  for(const [key,value] of Object.entries(attrs)){
-    if(key==='class')node.className=value;
-    else if(key==='for')node.htmlFor=value;
-    else if(key in node)node[key]=value;
-    else node.setAttribute(key,value);
-  }
+  const node=document.createElement(tag);if(text!=null)node.textContent=text;
+  for(const [key,value] of Object.entries(attrs))if(key==='class')node.className=value;else if(key in node)node[key]=value;else node.setAttribute(key,value);
   return node;
 }
-
 export function installLivePlayByPlay(){
-  if(typeof document==='undefined'||!document.querySelector('.toolbar')||document.getElementById('playByPlayButton'))return;
-
-  const toolbar=document.querySelector('.toolbar');
-  const open=element('button','📣 Play-by-play',{id:'playByPlayButton'});
-  toolbar.insertBefore(open,document.getElementById('gameUpdatesButton')||document.getElementById('refresh'));
-
-  const dialog=element('dialog',null,{id:'playByPlayDialog'});
-  const title=element('div',null,{class:'sectionTitle'});
-  title.append(element('h2','Live play-by-play voice'),element('button','✕',{id:'closePlayByPlay','aria-label':'Close live play-by-play'}));
-  dialog.append(title);
-  dialog.append(element('p','For every other live game in your rotation, check for a different latest play about every 5 seconds. The game currently selected on the radio is automatically excluded.',{class:'availability playByPlayIntro'}));
-
-  const controls=element('div',null,{class:'playByPlayControls'});
-  const enabledLabel=element('label',null,{class:'playByPlayToggle'});
-  const enabled=element('input',null,{id:'playByPlayEnabled',type:'checkbox'});
-  enabledLabel.append(enabled,document.createTextNode(' Automatic live play-by-play'));
-  controls.append(enabledLabel);
-
-  const duckLabel=element('label',null,{class:'playByPlayToggle'});
-  const duckRadio=element('input',null,{id:'playByPlayDuckRadio',type:'checkbox'});
-  duckLabel.append(duckRadio,document.createTextNode(' Quiet radio while voice announcements speak'));
-  controls.append(duckLabel);
-
-  const scoreRow=element('label',null,{class:'playByPlaySetting'});
-  const scoreText=element('span','Score update every');
-  const scoreInterval=element('input',null,{
-    id:'playByPlayScoreInterval',
-    type:'number',
-    min:0,
-    max:MAX_SCORE_INTERVAL_MINUTES,
-    step:1,
-    inputMode:'numeric',
-    'aria-label':'Score update interval in minutes'
-  });
-  scoreRow.append(scoreText,scoreInterval,document.createTextNode(' minute(s)'));
-  controls.append(scoreRow);
-
-  const scopeRow=element('label',null,{class:'playByPlaySetting'});
-  scopeRow.append(element('span','Score update games'));
-  const scoreScope=element('select',null,{id:'playByPlayScoreScope','aria-label':'Games included in score updates'});
-  scoreScope.append(element('option','Games in my rotation',{value:'rotation'}),element('option','All started NFL games',{value:'all'}));
-  scopeRow.append(scoreScope);
-  controls.append(scopeRow);
-
-  controls.append(element('p','Use 0 minutes to turn periodic score updates off. Score summaries enter the same FIFO browser-voice queue as play-by-play, so they never interrupt an announcement already speaking.',{class:'availability playByPlayNote'}));
-  dialog.append(controls);
-
-  const actions=element('div',null,{class:'playByPlayActions'});
-  const speakLatest=element('button','Speak latest plays now',{id:'speakLatestPlays'});
-  const speakScores=element('button','Speak scores now',{id:'speakScoresNow'});
-  actions.append(speakLatest,speakScores);
-  dialog.append(actions);
-  const status=element('p','Play-by-play is off.',{id:'playByPlayStatus',class:'availability','aria-live':'polite'});
-  dialog.append(status);
-  document.body.append(dialog);
-
-  let settings=readPlayByPlaySettings();
-  let timer=null,polling=false,generation=0,nextScoreAt=0;
-  const seenKeys=new Map();
-
-  const currentRadioLabel=()=>document.getElementById('nowGame')?.textContent||'';
+  if(typeof document==='undefined'||!document.getElementById('activeGame'))return;
+  const $=id=>document.getElementById(id);
+  let settings=readPlayByPlaySettings(),voiceSettings=readVoiceSettings();
+  let gameOptionsKey='',playerPaintKey='';
+  let events=[],viewedGame='',polling=false,nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000,disposed=false,dataFailed=false;
+  const tracker=createPlayTracker(),summaries=new Map(),rosters=new Map(),playersByGame=new Map(),historyStatus=new Map();
+  const liveGames=new Set();
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
-  const liveCountLabel=count=>`${count} other selected live game${count===1?'':'s'}`;
-  const scoreIntervalLabel=()=>settings.scoreIntervalMinutes
-    ?`Scores every ${settings.scoreIntervalMinutes} minute${settings.scoreIntervalMinutes===1?'':'s'} (${settings.scoreScope==='all'?'all started games':'rotation'}).`
-    :'Periodic scores OFF.';
-  const hydrate=()=>{
-    enabled.checked=!!settings.enabled;
-    duckRadio.checked=settings.duckRadio!==false;
-    scoreInterval.value=String(settings.scoreIntervalMinutes);
-    scoreScope.value=settings.scoreScope;
+  const currentRadioId=()=>$('nowGame')?.dataset.gameId||'';
+  const monitored=()=>selectedGameIds();
+  const selectedPlayers=id=>settings.selectedPlayersByGame[String(id)]||[];
+  const currentEvent=()=>events.find(e=>String(e.id)===viewedGame);
+  const allowed=entry=>{
+    const event=events.find(e=>String(e.id)===entry.gameId);
+    const latest=tracker.history(entry.gameId).find(p=>p.key===entry.key);
+    if(latest&&latest.text!==entry.text)return false;
+    return settings.enabled&&monitored().includes(entry.gameId)&&(settings.includeRadioGame||currentRadioId()!==entry.gameId)&&
+      shouldAnnouncePlay(entry.raw,settingsForGame(settings,entry.gameId),{event,players:playersByGame.get(entry.gameId)||[],formatted:entry});
   };
-  const resetScoreClock=()=>{
-    nextScoreAt=settings.scoreIntervalMinutes
-      ?Date.now()+settings.scoreIntervalMinutes*60_000
-      :0;
+  const status=message=>{$('playByPlayStatus').textContent=message;};
+  const paintControls=()=>{
+    for(const button of document.querySelectorAll('[data-play-mode]'))button.setAttribute('aria-pressed',String(button.dataset.playMode===settings.mode));
+    $('announcementsToggle').textContent=settings.enabled?'Voice on':'Enable voice';
+    $('announcementsToggle').setAttribute('aria-pressed',String(settings.enabled));
+    $('playByPlayEnabled').checked=settings.enabled;$('playByPlayDuckRadio').checked=settings.duckRadio;
+    $('includeRadioGame').checked=settings.includeRadioGame;$('playByPlayScoreInterval').value=settings.scoreIntervalMinutes;$('playByPlayScoreScope').value=settings.scoreScope;
+    $('voiceStyle').value=voiceSettings.style;
+    const followed=monitored().flatMap(id=>selectedPlayers(id));
+    const count=followed.length;
+    const names=[...new Set(followed.map(p=>p.name))];
+    $('selectedPlayerSummary').textContent=names.slice(0,4).join(' · ')+(names.length>4?` · +${names.length-4} more`:'');
+    $('selectedPlayerSummary').hidden=settings.mode!=='players'||!count;
+    $('selectedPlayerCount').textContent=count?`${count} selected`:'Choose players';
+    $('choosePlayers').hidden=settings.mode!=='players';
+    $('announcementHint').textContent=!browserSpeechAvailable()?'Voice is unavailable in this browser. Live transcripts still work.':
+      !settings.enabled?'Voice is paused. Your live transcript keeps updating.':settings.mode==='players'&&!count?'Choose players to hear their plays.':
+      settings.mode==='touchdowns'?'Touchdown calls from your monitored games.':settings.mode==='players'?'Calls when your selected players are involved.':'Every new play from your monitored games.';
   };
-
-  const paint=message=>{
-    const count=selectedGameIds().length;
-    hydrate();
-    open.textContent=settings.enabled?'📣 Play-by-play ON':'📣 Play-by-play';
-    open.classList.toggle('active',!!settings.enabled);
-    if(message){status.textContent=message;return;}
-    if(!browserSpeechAvailable()){
-      status.textContent='This browser does not expose text-to-speech.';
-      return;
+  const paintVoiceList=()=>{
+    const voices=englishVoices(globalThis.speechSynthesis?.getVoices?.()||[]),select=$('voiceSelect');
+    select.replaceChildren(element('option','Automatic · best available English',{value:''}));
+    for(const voice of voices)select.append(element('option',`${voice.name} · ${voice.lang}`,{value:voice.voiceURI}));
+    if(voiceSettings.voiceURI&&!voices.some(v=>v.voiceURI===voiceSettings.voiceURI))select.append(element('option','Saved voice unavailable · using automatic',{value:voiceSettings.voiceURI}));
+    select.value=voiceSettings.voiceURI;
+  };
+  const paintGameOptions=()=>{
+    const ids=monitored(),available=events.filter(e=>ids.includes(String(e.id)));
+    tracker.retain(ids);
+    for(const cache of [summaries,playersByGame,historyStatus])for(const id of cache.keys())if(!ids.includes(id))cache.delete(id);
+    for(const id of liveGames)if(!ids.includes(id))liveGames.delete(id);
+    if(!available.some(e=>String(e.id)===viewedGame))viewedGame=available.find(e=>String(e.id)===currentRadioId())?.id||available[0]?.id||'';
+    viewedGame=String(viewedGame);
+    const optionsKey=available.map(e=>`${e.id}:${eventMatchup(e).join('-')}`).join('|');
+    if(optionsKey===gameOptionsKey){$('transcriptGame').value=viewedGame;return;}
+    gameOptionsKey=optionsKey;
+    for(const id of ['transcriptGame','playerGame']){
+      const select=$(id),previous=select.value;
+      select.replaceChildren();
+      if(!available.length)select.append(element('option','Add a game to your rotation',{value:''}));
+      for(const event of available)select.append(element('option',eventMatchup(event).join(' vs '),{value:String(event.id)}));
+      select.value=id==='transcriptGame'?viewedGame:available.some(e=>String(e.id)===previous)?previous:viewedGame;
     }
-    const voice=getBrowserSpeechQueueState();
-    status.textContent=settings.enabled
-      ?`Watching ${count} selected game${count===1?'':'s'} about every 5 seconds; the current radio game is excluded. ${scoreIntervalLabel()} Radio ducking ${settings.duckRadio?'ON':'OFF'}. Shared voice queue: ${voice.queued}${voice.speaking?' + 1 speaking':''}.`
-      :'Play-by-play is off.';
   };
-
-  const stopSchedule=()=>{
-    clearInterval(timer);
-    timer=null;
-    generation++;
-  };
-
-  const enqueuePlay=announcement=>{
-    if(!announcement?.speech)return false;
-    const speechKey=`play-by-play:${announcement.gameId}:${announcement.key}`;
-    const currentGameIsThis=()=>matchupMatchesRadioLabel(announcement.matchup,currentRadioLabel());
-    return enqueueBrowserSpeech(announcement.speech,{
-      source:'play-by-play',
-      key:speechKey,
-      rate:1.08,
-      shouldPlay:()=>settings.enabled&&selectedGameIds().includes(announcement.gameId)&&!currentGameIsThis(),
-      onStart:()=>{
-        if(settings.duckRadio)setRadioDucked(true);
-        paint(`Speaking ${announcement.team||'latest'} play${settings.duckRadio?' over quieted radio':''}.`);
-      },
-      onEnd:()=>{
-        setRadioDucked(false);
-        paint('Play spoken. Watching for the next new play.');
-      },
-      onError:()=>{
-        setRadioDucked(false);
-        paint('Browser voice could not speak that play. New plays will keep queuing normally.');
-      },
-      onSkip:()=>{setRadioDucked(false);paint();}
-    });
-  };
-
-  const enqueueScoreUpdate=(events,{manual=false}={})=>{
-    const speech=buildScoreUpdateSpeech(events,{
-      selectedIds:selectedGameIds(),
-      scope:settings.scoreScope
-    });
-    if(!speech){
-      if(manual)paint(settings.scoreScope==='all'?'No NFL games have started yet.':'No games in your rotation have started yet.');
-      return false;
+  function paintHero(){
+    const event=currentEvent(),c=competition(event),hero=$('gameScore');hero.replaceChildren();
+    $('gameLiveState').textContent=dataFailed?'RECONNECTING':event?gameState(event)==='in'?'LIVE':gameState(event)==='post'?'FINAL':'UPCOMING':'YOUR DIAL';
+    $('gameLiveState').classList.toggle('isLive',!!event&&gameState(event)==='in'&&!dataFailed);
+    if(!event){hero.append(element('p','Pick your games. We’ll follow the action.',{class:'gameEmpty'}));$('gameSituation').textContent='Add games below to start your live companion.';paintTranscript();return;}
+    const gameStatus=c?.status||event.status||{};
+    for(const role of ['away','home']){
+      const entry=competitors(event).find(c=>c.homeAway===role),team=entry?.team||{};
+      const side=element('div',null,{class:`scoreTeam ${role}`});
+      const logo=team.logo||team.logos?.[0]?.href;
+      if(/^https:\/\//.test(logo||'')){const img=element('img',null,{src:logo,alt:'',width:72,height:72});img.onerror=()=>{img.hidden=true;};side.append(img);}
+      const name=element('div',null,{class:'teamIdentity'});name.append(element('span',team.location||'',{class:'teamCity'}),element('strong',team.name||team.shortDisplayName||team.abbreviation||'Team'));
+      if(gameState(event)==='in'&&String(c.situation?.possession)===String(team.id||entry.id))name.append(element('span','● Possession',{class:'possession'}));
+      side.append(name,element('b',gameState(event)==='pre'?'—':entry?.score??'—',{class:'scoreValue'}));hero.append(side);
     }
-    const bucket=settings.scoreIntervalMinutes
-      ?Math.floor(Date.now()/(settings.scoreIntervalMinutes*60_000))
-      :Date.now();
-    return enqueueBrowserSpeech(speech,{
-      source:'score-update',
-      key:`score-update:${settings.scoreScope}:${manual?'manual':bucket}`,
-      rate:1.05,
-      shouldPlay:()=>settings.enabled,
-      onStart:()=>{
-        if(settings.duckRadio)setRadioDucked(true);
-        paint(`Speaking NFL score update${settings.duckRadio?' over quieted radio':''}.`);
-      },
-      onEnd:()=>{
-        setRadioDucked(false);
-        paint('Score update spoken. Returning to live play-by-play.');
-      },
-      onError:()=>{
-        setRadioDucked(false);
-        paint('Browser voice could not speak that score update. Play-by-play will keep running.');
-      },
-      onSkip:()=>{setRadioDucked(false);paint();}
+    const clock=gameStatus.displayClock,period=gameStatus.period;
+    const time=gameState(event)==='in'&&clock&&period?`${period>4?'OT':`Q${period}`} · ${clock}`:gameStatus.type?.shortDetail||gameStatus.type?.detail||'Scheduled';
+    $('gameSituation').textContent=[time,c?.situation?.downDistanceText].filter(Boolean).join('  ·  ');
+    paintTranscript();
+  }
+  function paintTranscript(){
+    const history=tracker.history(viewedGame),latest=history.at(-1),list=$('transcriptList');
+    $('latestPlay').textContent=latest?.text||'Waiting for the next play.';
+    $('latestPlayLabel').textContent=latest?.label||'LIVE PLAY CALL';
+    $('latestCall').dataset.kind=latest?.kind||'play';
+    $('transcriptCount').textContent=String(history.length);
+    $('transcriptMeta').textContent=historyStatus.get(viewedGame)||'Recent plays appear here when ESPN posts them.';
+    list.replaceChildren();
+    for(const entry of history.slice().reverse()){
+      const row=element('li',null,{class:`transcriptPlay ${entry.important?'important':''}`});row.dataset.kind=entry.kind;
+      const meta=element('div',null,{class:'playMeta'});meta.append(element('strong',entry.label),element('span',[entry.period?`Q${entry.period}`:'',entry.clock].filter(Boolean).join(' · ')));
+      row.append(meta,element('p',entry.text));list.append(row);
+    }
+    if(!history.length)list.append(element('li','No plays yet for this game.',{class:'emptyState'}));
+  }
+  async function ensureRoster(team){
+    if(!team?.id)return [];
+    const id=String(team.id),existing=rosters.get(id);
+    if(existing?.pending)return existing.pending;
+    if(existing&&Date.now()<existing.expires)return existing.players;
+    const entry={players:existing?.players||[],expires:Date.now()+60000};
+    entry.pending=fetchJson(`${API}/teams/${encodeURIComponent(id)}/roster`).then(data=>{entry.players=rosterPlayers(data,team);entry.expires=Date.now()+3600000;entry.failed=false;return entry.players;}).catch(()=>{entry.failed=true;return entry.players;}).finally(()=>{entry.pending=null;});
+    rosters.set(id,entry);return entry.pending;
+  }
+  async function loadPlayers(event,summary){
+    const lists=await Promise.all(competitors(event).map(c=>ensureRoster(c.team)));
+    const id=String(event.id);
+    const saved=selectedPlayers(id).map(p=>({id:p.id,displayName:p.name,team:competitors(event).find(c=>c.team.abbreviation===p.team)?.team||{abbreviation:p.team}}));
+    const players=mergePlayers(saved,...lists,summaryPlayers(summary,event));playersByGame.set(id,players);
+    return players;
+  }
+  function paintPlayers(){
+    const id=$('playerGame').value,event=events.find(e=>String(e.id)===id),selected=selectedPlayers(id),query=searchKey($('playerSearch').value);
+    const players=playersByGame.get(id)||[],list=$('playerList'),tags=$('selectedPlayers');
+    const renderKey=JSON.stringify([id,query,selected,players,competitors(event).map(c=>{const r=rosters.get(String(c.team.id));return [!!r?.pending,!!r?.failed];})]);
+    if(renderKey===playerPaintKey)return;playerPaintKey=renderKey;list.replaceChildren();tags.replaceChildren();
+    const toggle=player=>{
+      const existing=selectedPlayers(id),has=existing.some(p=>p.id===player.id);
+      settings.selectedPlayersByGame[id]=has?existing.filter(p=>p.id!==player.id):[...existing,{id:player.id,name:player.name,team:player.team}];
+      save();paintPlayers();paintControls();removeQueuedSpeech(item=>item.source==='play-by-play'&&!settings.enabled);
+    };
+    for(const player of selected){const chip=element('button',`${player.name} ×`,{class:'playerChip','aria-label':`Remove ${player.name}`});chip.onclick=()=>toggle(player);tags.append(chip);}
+    if(!selected.length)tags.append(element('p','No players selected for this game.',{class:'emptyState'}));
+    for(const competitor of competitors(event)){
+      const team=competitor.team,group=element('section',null,{class:'rosterGroup'});group.append(element('h3',team.displayName||team.shortDisplayName||team.abbreviation));
+      const matches=players.filter(p=>(p.teamId===String(team.id)||p.team===team.abbreviation)&&p.id&&searchKey(`${p.name} ${p.position}`).includes(query)).sort((a,b)=>a.name.localeCompare(b.name));
+      for(const player of matches){const b=element('button',null,{class:'playerOption','aria-pressed':String(selected.some(p=>p.id===player.id))});b.append(element('span',player.name),element('small',player.position||team.abbreviation));b.onclick=()=>toggle(player);group.append(b);}
+      if(!matches.length)group.append(element('p',query?'No matching players.':rosters.get(String(team.id))?.pending?'Loading roster…':'Roster temporarily unavailable. Try again.',{class:'emptyState'}));
+      list.append(group);
+    }
+    $('rosterStatus').textContent=!id?'Add a game to your rotation first.':competitors(event).some(c=>rosters.get(String(c.team.id))?.failed)?'Some roster data could not load. Available players are shown; retry to load the rest.':`${players.length} players available · select anyone on either team`;
+  }
+  function enqueuePlay(entry,{manual=false}={}){
+    if(!entry?.text||(!manual&&!allowed(entry)))return false;
+    return enqueueBrowserSpeech(entry.text,{
+      source:'play-by-play',key:`play-by-play:${entry.gameId}:${entry.key}`,...playVoiceOptions(entry,voiceSettings.style),
+      shouldPlay:()=>manual?monitored().includes(entry.gameId):allowed(entry),
+      onStart:()=>{if(settings.duckRadio)setRadioDucked(true);status(`Speaking: ${entry.label}`);},
+      onEnd:()=>{setRadioDucked(false);status('Ready for the next play.');},
+      onError:()=>{setRadioDucked(false);status('Voice stopped. New announcements will keep queuing.');},
+      onSkip:()=>setRadioDucked(false)
     });
-  };
-
-  const poll=async({prime=false,manual=false,manualScores=false,token=generation}={})=>{
-    if(polling&&!manual&&!manualScores)return;
-    const ids=selectedGameIds();
-    if(!ids.length&&!manualScores){paint('Add games to your rotation first.');return;}
+  }
+  function enqueueScores({manual=false}={}){
+    const speech=buildScoreUpdateSpeech(events,{selectedIds:monitored(),scope:settings.scoreScope});
+    if(!speech){status('No started games available for a score update.');return;}
+    enqueueBrowserSpeech(speech,{source:'score-update',key:`score-update:${speech}`,rate:1.08,shouldPlay:()=>manual||settings.enabled,
+      onStart:()=>{if(settings.duckRadio)setRadioDucked(true);},onEnd:()=>setRadioDucked(false),onError:()=>setRadioDucked(false)});
+  }
+  async function poll(){
+    if(polling||disposed||!monitored().length)return;
     polling=true;
-    if(manual)paint('Getting latest plays…');
-    if(manualScores)paint('Getting current scores…');
     try{
-      const board=await fetchJson(SCOREBOARD_URL,{timeout:10000});
-      if(token!==generation&&!manual&&!manualScores)return;
-      const allEvents=board.events||[];
-
-      if(manualScores){
-        if(enqueueScoreUpdate(allEvents,{manual:true})){
-          const voice=getBrowserSpeechQueueState();
-          paint(`Score update added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
-        }
-        return;
-      }
-
-      const events=allEvents.filter(event=>ids.includes(String(event.id)));
-      const live=events.filter(event=>gameState(event)==='in');
-
-      if(settings.scoreIntervalMinutes&&nextScoreAt&&Date.now()>=nextScoreAt){
-        enqueueScoreUpdate(allEvents);
-        nextScoreAt+=settings.scoreIntervalMinutes*60_000;
-        if(nextScoreAt<=Date.now())nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60_000;
-      }
-
-      if(!live.length){paint(`None of your selected games are live right now. ${scoreIntervalLabel()}`);return;}
-
-      const radioLabel=currentRadioLabel();
-      const suppressed=live.filter(event=>eventMatchesRadioLabel(event,radioLabel));
-      const eligible=live.filter(event=>!eventMatchesRadioLabel(event,radioLabel));
-
-      for(const event of suppressed){
-        const announcement=latestPlayAnnouncement(event);
-        if(announcement)seenKeys.set(announcement.gameId,announcement.key);
-      }
-
-      if(!eligible.length){
-        paint(`The only selected live game is the one currently on the radio, so play-by-play is staying silent for it. ${scoreIntervalLabel()}`);
-        return;
-      }
-
-      let added=0;
-      if(manual){
-        for(const event of eligible){
-          const announcement=latestPlayAnnouncement(event);
-          if(!announcement)continue;
-          seenKeys.set(announcement.gameId,announcement.key);
-          if(enqueuePlay(announcement))added++;
-        }
-      }else{
-        const announcements=collectNewPlayAnnouncements(eligible,ids,seenKeys,{announceInitial:false});
-        if(!prime)for(const announcement of announcements)if(enqueuePlay(announcement))added++;
-      }
-
-      if(prime)paint(`Ready. Watching ${liveCountLabel(eligible.length)}; current radio game excluded. ${scoreIntervalLabel()}`);
-      else if(added){
-        const voice=getBrowserSpeechQueueState();
-        paint(`${added} new play${added===1?'':'s'} added to the shared voice queue. ${voice.queued} waiting${voice.speaking?' + 1 speaking now':''}.`);
-      }else{
-        paint(`Watching ${liveCountLabel(eligible.length)}. No new play yet; current radio game excluded. ${scoreIntervalLabel()}`);
-      }
-    }catch{
-      paint('Could not check live plays or scores. Automatic play-by-play will retry on the next 5-second check.');
-    }finally{
-      polling=false;
-    }
-  };
-
-  const schedule=()=>{
-    stopSchedule();
-    resetScoreClock();
-    if(!settings.enabled){paint();return;}
-    const token=generation;
-    poll({prime:true,token});
-    timer=setInterval(()=>poll({token}),PLAY_POLL_MS);
-    paint();
-  };
-
+      const board=await fetchJson(SCOREBOARD_URL);if(disposed)return;
+      if(!Array.isArray(board?.events))throw new Error('Invalid ESPN scoreboard');
+      events=board.events;dataFailed=false;paintGameOptions();paintHero();
+      $('liveDataStatus').textContent=`Updated ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
+      const targets=events.filter(e=>monitored().includes(String(e.id)));
+      await Promise.all(targets.map(async event=>{
+        const id=String(event.id),state=gameState(event),last=competition(event)?.situation?.lastPlay;
+        if(state==='pre'){await loadPlayers(event,null);return;}
+        const old=summaries.get(id),lastKey=last?playIdentity(last):'';
+        let summary=old?.data||null,complete=false;
+        if(!old||old.key!==lastKey||Date.now()-old.at>30000){
+          try{summary=await fetchJson(`${API}/summary?event=${encodeURIComponent(id)}`);complete=!!summary?.drives||Array.isArray(summary?.plays);summaries.set(id,{data:summary,key:lastKey,at:Date.now()});}
+          catch{historyStatus.set(id,'Latest play only · retrying ESPN play history.');}
+        }else complete=!!summary?.drives||Array.isArray(summary?.plays);
+        const players=await loadPlayers(event,summary);
+        if(disposed||!monitored().includes(id))return;
+        const result=tracker.ingest(event,playsFromSummary(summary,last),{players,settings:settingsForGame(settings,id),complete});
+        if(complete)historyStatus.set(id,'Latest 60 plays · updated from ESPN');
+        if(state==='in'||liveGames.has(id))for(const entry of result.announcements)enqueuePlay(entry);
+        if(state==='in')liveGames.add(id);
+      }));
+      tracker.retain(monitored());
+      if(settings.enabled&&settings.scoreIntervalMinutes&&Date.now()>=nextScoreAt){enqueueScores();nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000;}
+      paintHero();if($('playByPlayDialog').open)paintPlayers();
+    }catch{dataFailed=true;$('liveDataStatus').textContent='Live data interrupted · retrying';status('ESPN is unavailable. Saved plays remain visible; live updates will retry.');paintHero();}
+    finally{polling=false;}
+  }
   const setEnabled=value=>{
-    settings={...settings,enabled:!!value};
-    save();
-    if(settings.enabled)unlockBrowserSpeech();
-    else{
-      removeQueuedSpeech(item=>item.source==='play-by-play'||item.source==='score-update');
-      setRadioDucked(false);
-    }
-    schedule();
+    settings.enabled=!!value;save();
+    if(settings.enabled){unlockBrowserSpeech();nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000;void poll();}
+    else removeQueuedSpeech(item=>['play-by-play','score-update'].includes(item.source));
+    paintControls();
   };
-
-  const setDuckRadio=value=>{
-    settings={...settings,duckRadio:!!value};
-    save();
-    const voice=getBrowserSpeechQueueState();
-    setRadioDucked(!!settings.duckRadio&&['play-by-play','score-update'].includes(voice.current?.source));
-    paint();
+  const openSettings=(players=false)=>{
+    paintVoiceList();paintGameOptions();paintPlayers();$('playByPlayDialog').showModal();
+    if(players){$('playerSearch').focus();$('playerSelection').scrollIntoView({block:'start'});}
   };
-
-  const setScoreInterval=value=>{
-    settings={...settings,scoreIntervalMinutes:normalizeScoreInterval(value)};
-    save();
-    resetScoreClock();
-    paint();
+  for(const button of document.querySelectorAll('[data-play-mode]'))button.onclick=()=>{settings.mode=button.dataset.playMode;setEnabled(true);if(settings.mode==='players')openSettings(true);};
+  $('announcementsToggle').onclick=()=>setEnabled(!settings.enabled);$('playByPlayEnabled').onchange=()=>setEnabled($('playByPlayEnabled').checked);
+  $('playByPlayButton').onclick=()=>openSettings();$('choosePlayers').onclick=()=>openSettings(true);$('closePlayByPlay').onclick=()=>$('playByPlayDialog').close();
+  $('playByPlayDuckRadio').onchange=()=>{settings.duckRadio=$('playByPlayDuckRadio').checked;save();setRadioDucked(settings.duckRadio&&['play-by-play','score-update','game-update','voice-preview'].includes(getBrowserSpeechQueueState().current?.source));};
+  $('includeRadioGame').onchange=()=>{settings.includeRadioGame=$('includeRadioGame').checked;save();};
+  $('playByPlayScoreInterval').onchange=()=>{settings.scoreIntervalMinutes=normalizeScoreInterval($('playByPlayScoreInterval').value);save();nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000;paintControls();};
+  $('playByPlayScoreScope').onchange=()=>{settings.scoreScope=$('playByPlayScoreScope').value;save();};
+  $('voiceSelect').onchange=()=>{voiceSettings.voiceURI=$('voiceSelect').value;saveVoiceSettings(voiceSettings);};
+  $('voiceStyle').onchange=()=>{voiceSettings.style=$('voiceStyle').value;saveVoiceSettings(voiceSettings);};
+  $('previewVoice').onclick=()=>{unlockBrowserSpeech();enqueueBrowserSpeech('Your NFL radio companion is ready. Choose your games and follow the action.',{source:'voice-preview',key:'voice-preview',...playVoiceOptions({},voiceSettings.style),onStart:()=>{if(settings.duckRadio)setRadioDucked(true);},onEnd:()=>setRadioDucked(false),onError:()=>setRadioDucked(false)});};
+  $('speakLatestPlays').onclick=()=>{unlockBrowserSpeech();const latest=tracker.history(viewedGame).at(-1);if(latest&&shouldAnnouncePlay(latest.raw,settingsForGame(settings,viewedGame),{event:currentEvent(),players:playersByGame.get(viewedGame)||[],formatted:latest}))enqueuePlay(latest,{manual:true});else status('No latest play matches your announcement filter.');};
+  $('speakScoresNow').onclick=()=>{unlockBrowserSpeech();enqueueScores({manual:true});};
+  $('transcriptGame').onchange=()=>{viewedGame=$('transcriptGame').value;paintHero();};
+  $('playerGame').onchange=()=>paintPlayers();$('playerSearch').oninput=()=>paintPlayers();
+  $('retryRoster').onclick=async()=>{
+    const event=events.find(e=>String(e.id)===$('playerGame').value);if(!event)return;
+    for(const c of competitors(event)){const entry=rosters.get(String(c.team.id));if(entry&&!entry.pending)entry.expires=0;}
+    const work=loadPlayers(event,summaries.get(String(event.id))?.data);paintPlayers();await work;paintPlayers();
   };
-
-  const setScoreScope=value=>{
-    settings={...settings,scoreScope:normalizeScoreScope(value)};
-    save();
-    paint();
-  };
-
-  const rearm=()=>{if(settings.enabled)unlockBrowserSpeech();};
-  document.addEventListener('pointerdown',rearm,{passive:true});
-  document.addEventListener('keydown',rearm);
-
-  enabled.onchange=()=>setEnabled(enabled.checked);
-  duckRadio.onchange=()=>setDuckRadio(duckRadio.checked);
-  scoreInterval.onchange=()=>setScoreInterval(scoreInterval.value);
-  scoreScope.onchange=()=>setScoreScope(scoreScope.value);
-  open.onclick=()=>{
-    settings=readPlayByPlaySettings();
-    hydrate();
-    if(settings.enabled)unlockBrowserSpeech();
-    paint();
-    dialog.showModal();
-  };
-  document.getElementById('closePlayByPlay').onclick=()=>dialog.close();
-  speakLatest.onclick=()=>{
-    unlockBrowserSpeech();
-    poll({manual:true,token:generation});
-  };
-  speakScores.onclick=()=>{
-    unlockBrowserSpeech();
-    poll({manualScores:true,token:generation});
-  };
-
-  document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden&&settings.enabled)poll({token:generation});
+  const updates=$('gameUpdatesButton');if(updates)$('extraVoiceActions').append(updates);
+  onBrowserSpeechQueueState(state=>{
+    $('speechIndicator').textContent=state.speaking?`Speaking${state.queued?` · ${state.queued} queued`:''}`:state.queued?`${state.queued} queued`:'Voice ready';
+    $('speechIndicator').classList.toggle('speaking',state.speaking);
   });
-  window.addEventListener('pagehide',()=>{clearInterval(timer);setRadioDucked(false);});
-
-  hydrate();
-  paint();
-  schedule();
+  globalThis.speechSynthesis?.addEventListener?.('voiceschanged',paintVoiceList);
+  window.addEventListener('nfl-radio:scoreboard',e=>{if(!events.length){events=e.detail.events||[];paintGameOptions();paintHero();}void poll();});
+  window.addEventListener('nfl-radio:rotation',()=>{paintGameOptions();paintHero();paintControls();void poll();});
+  window.addEventListener('nfl-radio:selection',e=>{viewedGame=String(e.detail.gameId);paintGameOptions();paintHero();});
+  window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){settings=readPlayByPlaySettings();paintControls();}if(e.key==='nfl-dial:rotation'){paintGameOptions();paintHero();void poll();}});
+  document.addEventListener('pointerdown',()=>{if(settings.enabled)unlockBrowserSpeech();},{passive:true});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void poll();});
+  const timer=setInterval(poll,PLAY_POLL_MS);
+  window.addEventListener('pagehide',()=>{disposed=true;clearInterval(timer);setRadioDucked(false);});
+  paintControls();paintVoiceList();paintGameOptions();paintHero();void poll();
 }
-
 if(typeof document!=='undefined')installLivePlayByPlay();

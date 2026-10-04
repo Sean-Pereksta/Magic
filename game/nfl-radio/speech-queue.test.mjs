@@ -57,3 +57,38 @@ test('deduplicates keys and removing pending items never stops the active item',
   assert.ok(!events.includes('start:later'));
   assert.equal(synth.cancelCalls,0);
 });
+
+test('canceling an active command settles the queue even without browser cancel events',async()=>{
+ const spoken=[],ended=[];
+ const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.enqueue('command',{source:'voice-command',key:'command',onError:error=>ended.push(error)});
+ queue.enqueue('live play',{source:'play-by-play',key:'play'});
+ queue.cancel(item=>item.source==='voice-command');
+ await sleep(5);
+ assert.deepEqual(ended,['canceled']);assert.equal(spoken.at(-1).text,'live play');assert.equal(queue.state().current.source,'play-by-play');
+ spoken.at(-1).onend();assert.equal(queue.state().speaking,false);
+});
+test('queued plays reevaluate filters and cannot duck audio after cancellation',async()=>{
+ const spoken=[],hooks=[];let allowed=true;
+ const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.enqueue('first',{key:'first',onStart:()=>hooks.push('start'),onError:()=>hooks.push('restore')});
+ queue.enqueue('filtered play',{key:'second',shouldPlay:()=>allowed,onSkip:()=>hooks.push('skip')});
+ allowed=false;const canceled=spoken[0];queue.cancel(item=>item.key==='first');canceled.onstart?.();
+ await sleep(5);assert.deepEqual(hooks,['restore','skip']);assert.equal(spoken.length,1);assert.equal(queue.state().speaking,false);
+});
+test('microphone suspension pauses queue draining and restores announcements afterwards',()=>{
+ const spoken=[];const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.setSuspended(true);queue.enqueue('after microphone',{key:'mic'});assert.equal(spoken.length,0);
+ queue.setSuspended(false);assert.equal(spoken[0].text,'after microphone');spoken[0].onend();
+});
+test('voice choice is resolved when a queued item starts, including late-loaded voices',async()=>{
+ const spoken=[];let voices=[],choice='preferred';
+ const synth={getVoices:()=>voices,resume(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,getVoicePreferences:()=>({voiceURI:choice})});
+ queue.enqueue('first',{key:'one'});queue.enqueue('second',{key:'two',rate:1.1,pitch:1.08});
+ voices=[{voiceURI:'preferred',name:'Natural',lang:'en-US'}];spoken[0].onend();await sleep(5);
+ assert.equal(spoken[1].voice.voiceURI,'preferred');assert.equal(spoken[1].rate,1.1);assert.equal(spoken[1].pitch,1.08);spoken[1].onend();
+});

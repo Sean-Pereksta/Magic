@@ -71,3 +71,25 @@ node --check game/nfl-radio/station-discovery.mjs
 ```
 
 Live stream availability is inherently time-dependent and should still be smoke-tested on the target mobile browser. The regression tests validate resolver ordering/filtering and player behavior, not broadcast rights or whether a specific station is carrying a specific game at test time.
+
+## Personalized live companion
+
+The current-game card and transcript follow a monitored game; use the game selector to inspect another game in your rotation. Switching radio games also switches that view. Radio routing, public stream discovery, in-app fallback order, media controls, and station preferences remain in `app-v2.mjs` / `RadioPlayer`.
+
+- **Every Play**, **Touchdowns**, and **Selected Players** control new play calls. Tap a mode to enable speech, or use **Voice on** to pause announcements while the transcript keeps updating. The first snapshot loads history silently.
+- **Selected Players** opens the searchable rosters for both teams. Selections are stored per game. Athlete IDs cover all participant roles; unique full/abbreviated names cover play records with no participant IDs. Ambiguous initials are never guessed.
+- **Voice & alerts** contains the device voice selector, Normal/Excited style, player picker, radio ducking, current-radio-game inclusion, and periodic score settings. Choosing automatic ranks available English voices, preferring voices marked Natural/Neural/Premium/Enhanced. Missing or late-loading voices fall back safely.
+- Automatic score summaries remain separate from play filters. Set their interval to **0** for play calls only. Detailed game updates use the same formatter and voice queue; when live play calls are enabled, automatic detailed recaps omit duplicate play details. Manual replay remains available.
+- `play-formatter.mjs` rewrites supported passes, runs, sacks, and kicks from explicit ESPN facts. Penalties, reviews, return/fumble sequences, missed/blocked kicks, and unfamiliar forms keep a cleaned version of their original detail. It never infers the previous play's team from the next possession.
+- `play-tracker.mjs` combines ESPN drive history with the scoreboard last play, sorts plays, and deduplicates by ESPN play ID across polls and corrected/replayed snapshots. Corrections update the transcript without another announcement. Each game retains 60 visible plays; seen IDs last for the monitored session so scrolling history out cannot cause replay.
+- Scoreboard polling remains every five seconds. Drive history is fetched when the latest play changes or at least every 30 seconds, with request overlap prevented. Rosters are cached for an hour with bounded retry delays. Unchanged plays reuse their formatting. An unavailable summary falls back to the latest scoreboard play and explicitly shows reduced coverage; a connection interruption preserves the transcript and retries.
+- Voice commands now settle cancellation through the shared speech queue. Microphone capture suspends announcements, and ending/canceling speech restores the radio's previous volume. Selecting a new station while ducked continues using the existing audio bridge.
+
+### Companion validation
+
+```bash
+node --test game/nfl-radio/*.test.mjs
+node game/nfl-radio/browser-smoke.mjs
+```
+
+The browser smoke script requires Playwright and an installed Chromium (`CHROMIUM_PATH` can point to a browser executable). It uses controlled ESPN, roster, station, speech, and audio fixtures; it checks mobile/desktop overflow, saved selections, speech/transcript consistency, mode changes, radio controls, ducking/restoration, and network recovery. Real voice quality, pronunciation, mobile background scheduling, and current station carriage still require listening on the target device.

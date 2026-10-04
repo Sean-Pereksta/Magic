@@ -1,3 +1,4 @@
+import {enqueueBrowserSpeech,cancelBrowserSpeech,suspendBrowserSpeech,unlockBrowserSpeech} from './speech-queue.mjs';
 import {team,parseSchedule,resolveVoice,playable,feedQueue,cycle,RadioPlayer} from './core.mjs';
 import {catalog} from './catalog.mjs';
 import {PROVIDERS,providerCandidates,safeListeningUrl} from './providers.mjs';
@@ -5,7 +6,7 @@ import {discoverTeamStreams,mergeInAppQueues} from './station-discovery.mjs';
 
 const $=id=>document.getElementById(id);
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(`nfl-dial:${key}`))??fallback;}catch{return fallback;}};
-const save=(key,value)=>{try{localStorage.setItem(`nfl-dial:${key}`,JSON.stringify(value));}catch{}}
+const save=(key,value)=>{try{localStorage.setItem(`nfl-dial:${key}`,JSON.stringify(value));}catch{}if(key==='rotation')window.dispatchEvent(new CustomEvent('nfl-radio:rotation'));}
 const notice=message=>{$('notice').textContent=message;};
 const label=g=>`${g.away} vs ${g.home}`;
 const button=(text,fn,cls='')=>{const b=document.createElement('button');b.textContent=text;b.className=cls;b.onclick=fn;return b;};
@@ -93,6 +94,7 @@ async function routePlayback(g,role,manual=false){
  hideExternalFallback();
  const target=role==='home'?g.home:role==='away'?g.away:requestedTeam||g.away;
  requestedTeam=target;
+ for(const control of $('broadcastRoles').children)control.setAttribute('aria-pressed',String(control.textContent.toLowerCase()===(role|| (target===g.home?'home':'away'))));
  let queue=inAppQueue(g,target,role,preferences[target]);
  if(queue.length){
   if(manual)preferencesPending=queue[0].id;
@@ -115,6 +117,8 @@ function selectGame(id,teamId,fromVoice=false){
  if(!fromVoice)cancelSpeech();
  const g=games.find(item=>item.id===id);if(!g)return;
  current=id;requestedTeam=teamId||g.away;preferencesPending=null;
+ $('nowGame').dataset.gameId=id;
+ window.dispatchEvent(new CustomEvent('nfl-radio:selection',{detail:{gameId:id}}));
  warmGame(g);
  $('nowGame').textContent=`${label(g)} · ${g.state==='in'?'LIVE':g.state==='post'?'FINAL':new Date(g.date).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'})}`;
  void routePlayback(g);
@@ -232,7 +236,7 @@ async function refresh(){
   const results=await Promise.allSettled([json('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'),json('./nfl-radio/feeds.json')]);
   if(results[1].status==='fulfilled'&&Array.isArray(results[1].value.feeds))feeds=results[1].value.feeds.filter(f=>f&&typeof f.id==='string'&&typeof f.name==='string');
   if(results[0].status==='rejected')throw results[0].reason;
-  games=parseSchedule(results[0].value);save('schedule',{at:Date.now(),games});
+  games=parseSchedule(results[0].value);window.dispatchEvent(new CustomEvent('nfl-radio:scoreboard',{detail:results[0].value}));save('schedule',{at:Date.now(),games});
   $('scheduleStatus').textContent=`${results[0].value.week?.number?'Week '+results[0].value.week.number+' · ':''}Updated ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
   selected=new Set([...selected].filter(id=>games.some(g=>g.id===id)));save('rotation',[...selected]);warmRotation();
  }catch{
@@ -242,12 +246,17 @@ async function refresh(){
 }
 
 function speak(text,then){
- if(!('speechSynthesis' in window)){then?.();return;}
- speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(text);utterance.rate=1.08;
- let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);then?.();};const timer=setTimeout(finish,5000);utterance.onend=finish;utterance.onerror=finish;speechSynthesis.speak(utterance);
+ const token=commandSerial,key=`voice-command:${token}`;
+ let done=false;
+ const finish=()=>{if(done)return;done=true;clearTimeout(timer);if(token===commandSerial)then?.();};
+ // Keep the existing command fallback if the browser never finishes its utterance.
+ const timer=setTimeout(()=>{cancelBrowserSpeech(item=>item.key===key);finish();},5000);
+ unlockBrowserSpeech();
+ const queued=enqueueBrowserSpeech(text,{source:'voice-command',key,rate:1.08,shouldPlay:()=>token===commandSerial,onEnd:finish,onError:finish});
+ if(!queued)finish();
 }
 let commandSerial=0;
-function cancelSpeech(){commandSerial++;window.speechSynthesis?.cancel();}
+function cancelSpeech(){commandSerial++;cancelBrowserSpeech(item=>item.source==='voice-command');}
 function handleCommand(text){
  cancelSpeech();const token=commandSerial;const result=resolveVoice(text,games,currentGame());notice(`Heard: “${text}”`);
  if(result.kind==='game'){
@@ -275,24 +284,24 @@ $('prev').onclick=()=>nextGame(-1);$('next').onclick=()=>nextGame(1);$('pause').
 $('commandForm').onsubmit=e=>{e.preventDefault();const text=$('command').value.trim();if(text)handleCommand(text);$('command').value='';};
 
 const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-let recognition=null,held=false,voiceText='',voiceTimer=null,voiceStarted=false,voiceError=false;
+let recognition=null,held=false,voiceText='',voiceTimer=null,voiceStarted=false,voiceError=false,heldAudio=null,heldVolume=1;
+function restoreMicrophoneAudio(){if(heldAudio)heldAudio.volume=heldVolume;heldAudio=null;suspendBrowserSpeech(false);}
 const mic=$('mic');
-function release(cancel=false){held=false;mic.setAttribute('aria-pressed','false');mic.textContent='🎙 HOLD TO TALK';if(cancel){recognition?.abort();clearTimeout(voiceTimer);}else if(voiceStarted)recognition?.stop();}
+function release(cancel=false){held=false;mic.setAttribute('aria-pressed','false');mic.textContent='🎙 HOLD TO TALK';if(cancel){try{recognition?.abort();}catch{}clearTimeout(voiceTimer);restoreMicrophoneAudio();}else if(voiceStarted)recognition?.stop();}
 function hold(){
- if(held||recognition)return;cancelSpeech();held=true;voiceText='';voiceStarted=false;voiceError=false;mic.setAttribute('aria-pressed','true');mic.textContent='LISTENING… RELEASE TO SWITCH';
- const voiceToken=commandSerial;const wasPlaying=phase==='playing';if(player.audio)player.audio.volume=.12;
+ if(held||recognition)return;cancelSpeech();suspendBrowserSpeech(true);held=true;voiceText='';voiceStarted=false;voiceError=false;mic.setAttribute('aria-pressed','true');mic.textContent='LISTENING… RELEASE TO SWITCH';
+ const voiceToken=commandSerial;const wasPlaying=phase==='playing';heldAudio=player.audio;heldVolume=heldAudio?.volume??1;if(heldAudio)heldAudio.volume=Math.min(heldVolume,.12);
  recognition=new Recognition();const session=recognition;session.lang='en-US';session.continuous=true;session.interimResults=true;
  session.onstart=()=>{voiceStarted=true;if(!held)session.stop();};session.onresult=e=>{voiceText=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();notice(`Hearing: ${voiceText}`);};
  session.onerror=e=>{voiceError=true;voiceText='';notice(e.error==='not-allowed'?'Microphone permission denied. Allow the microphone or type a team below.':`Voice unavailable (${e.error}). Type a team below.`);};
- session.onend=()=>{clearTimeout(voiceTimer);recognition=null;voiceStarted=false;held=false;mic.setAttribute('aria-pressed','false');mic.textContent='🎙 HOLD TO TALK';if(player.audio)player.audio.volume=1;if(voiceToken!==commandSerial)return;if(voiceText)handleCommand(voiceText);else if(wasPlaying&&!voiceError)notice('No team heard. Hold to talk again, or type below.');};
- try{session.start();voiceTimer=setTimeout(()=>release(),15000);}catch{recognition=null;release(true);if(player.audio)player.audio.volume=1;notice('Voice could not start. Type a team below.');}
+ session.onend=()=>{clearTimeout(voiceTimer);recognition=null;voiceStarted=false;held=false;mic.setAttribute('aria-pressed','false');mic.textContent='🎙 HOLD TO TALK';restoreMicrophoneAudio();if(voiceToken!==commandSerial)return;if(voiceText)handleCommand(voiceText);else if(wasPlaying&&!voiceError)notice('No team heard. Hold to talk again, or type below.');};
+ try{session.start();voiceTimer=setTimeout(()=>release(),15000);}catch{recognition=null;release(true);restoreMicrophoneAudio();notice('Voice could not start. Type a team below.');}
 }
 if(!Recognition||!window.isSecureContext){mic.disabled=true;mic.textContent='VOICE UNAVAILABLE · TYPE BELOW';}
 else{
  mic.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();mic.setPointerCapture(e.pointerId);hold();};mic.onpointerup=e=>{e.preventDefault();release();};mic.onpointercancel=()=>{voiceText='';release(true);};mic.oncontextmenu=e=>e.preventDefault();mic.onkeydown=e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();hold();}};mic.onkeyup=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();release();}};window.addEventListener('blur',()=>{if(held){voiceText='';release(true);}});
 }
 if('mediaSession' in navigator)for(const [action,handler]of Object.entries({play:toggleResume,pause:()=>player.pause(),previoustrack:()=>nextGame(-1),nexttrack:()=>nextGame(1)})){try{navigator.mediaSession.setActionHandler(action,handler);}catch{}}
-new ResizeObserver(()=>document.documentElement.style.setProperty('--player-height',`${$('player').offsetHeight}px`)).observe($('player'));
-window.addEventListener('pagehide',()=>{cancelSpeech();voiceText='';release(true);player.stop();});
+window.addEventListener('pagehide',()=>{cancelSpeech();cancelBrowserSpeech();voiceText='';release(true);player.stop();});
 window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 hideExternalFallback();refresh();setInterval(()=>{if(!document.hidden)refresh();if(activeFeed?.gameAudio&&!playable(activeFeed,currentGame()))void routePlayback(currentGame());},60000);
