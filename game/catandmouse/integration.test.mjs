@@ -20,7 +20,7 @@ function compileModule(html) {
   } finally { rmSync(dir,{recursive:true,force:true}); }
 }
 
-test('public loader applies every existing patch to the updated core; both modules parse',async()=>{
+async function optimizedCore(){
   let output='', errors=[];
   const script=loader.match(/<script>([\s\S]*)<\/script>/)[1];
   await vm.runInNewContext(script,{
@@ -29,8 +29,16 @@ test('public loader applies every existing patch to the updated core; both modul
     console:{error:(...e)=>errors.push(e.map(String).join(" ")),warn:(...e)=>errors.push(e.map(String).join(" "))}
   });
   assert.deepEqual(errors,[]);
+  return output;
+}
+
+test('public loader applies every existing patch to the updated core; both modules parse',async()=>{
+  const output=await optimizedCore();
   assert.match(output,/__CATMOUSE_PERF_PATCH_VERSION/);
-  assert.match(output,/rat:\[0,7,8,9,10\]\[n\]/);
+  assert.match(output,/rat:\[0,7,8,9,10\]\[n\]\+ratBonus/);
+  assert.match(output,/MAX_RATS = 13/);
+  assert.match(output,/MAX_TOTAL_ENEMIES = 25/);
+  assert.match(output,/reserveEnemySpawnSlots\("rat", getRatWaveBudget\(\)\)/);
   assert.match(output,/MAX_FRIENDLY_RABBITS = 12/);
   assert.match(output,/from "\.\/catandmouse\/sync.mjs"/);
   assert.match(output,/from "\.\/catandmouse\/tactics.mjs"/);
@@ -40,6 +48,93 @@ test('public loader applies every existing patch to the updated core; both modul
   assert.match(output,/combat-presentation\.css/);
   assert.equal((output.match(/const MAX_FRIENDLY_RABBITS =/g) || []).length,1);
   compileModule(core);compileModule(output);
+});
+
+async function ratSpawnHarness(source){
+  source ??= await optimizedCore();
+  const ctx=vm.createContext({currentDifficulty:'medium',activePlayers:1,catPower:34,ratPower:1,counts:{},pendingEnemySpawnReservations:new Map(),
+    getActivePlayerCount:()=>ctx.activePlayers,normalizeEnemyKind:kind=>kind,
+    getLivingEnemyCount:kind=>ctx.counts[kind] || 0,
+    getTotalLivingEnemyCount:()=>Object.values(ctx.counts).reduce((sum,count)=>sum+count,0),
+    getPendingEnemyCount:kind=>ctx.pendingEnemySpawnReservations.get(kind) || 0});
+  const code=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
+  vm.runInContext(code('  const DIFFICULTY_SETTINGS = {','  let canMove = true;'),ctx);
+  vm.runInContext(code('  function getRatSpawnBonus(){','  function getPendingEnemyCount('),ctx);
+  vm.runInContext(code('  function canSpawnEnemy(','  function getEnemyScaling('),ctx);
+  return {ctx,source,code};
+}
+
+test('rat difficulty caps increase by two or three for every player count; other caps stay fixed',async()=>{
+  const {ctx}=await ratSpawnHarness();
+  const expected={easy:[9,10,11,12],medium:[9,10,11,12],hard:[10,11,12,13],insane:[10,11,12,13]};
+  for(const [difficulty,rats] of Object.entries(expected))for(let players=1;players<=4;players++){
+    ctx.currentDifficulty=difficulty;ctx.activePlayers=players;
+    const caps=ctx.getEnemyCaps();assert.equal(caps.rat,rats[players-1]);
+    assert.equal(caps.stinkrat,[1,2,2,2][players-1]);assert.equal(caps.ox,[2,2,3,4][players-1]);
+    assert.equal(caps.ratking,1);assert.equal(caps.vulture,[2,2,3,4][players-1]);
+    assert.equal(caps.termite,[3,3,4,5][players-1]);assert.equal(caps.flea,[5,6,7,8][players-1]);
+  }
+  assert.equal(ctx.getEnemyCaps(0).rat,10);assert.equal(ctx.getEnemyCaps(10).rat,13);
+  ctx.currentDifficulty='unknown';assert.equal(ctx.getEnemyCaps(1).rat,9);
+});
+
+test('rat wave allowance preserves opening waves and increases only the existing late tiers',async()=>{
+  const {ctx}=await ratSpawnHarness();
+  const expected={easy:[6,7,8,9],medium:[6,7,8,9],hard:[7,8,9,10],insane:[7,8,9,10]};
+  for(const [difficulty,late] of Object.entries(expected))for(let players=1;players<=4;players++){
+    ctx.currentDifficulty=difficulty;
+    for(const level of [1,10,21])assert.equal(ctx.getRatWaveBudget(players,level),players+1);
+    assert.equal(ctx.getRatWaveBudget(players,22),late[players-1]-1);
+    for(const level of [34,1000])assert.equal(ctx.getRatWaveBudget(players,level),late[players-1]);
+  }
+});
+
+test('a full battlefield admits the extra regular rats but denies other kinds the new headroom',async()=>{
+  const {ctx}=await ratSpawnHarness();
+  for(const [difficulty,bonus] of [['easy',2],['medium',2],['hard',3],['insane',3]]){
+    ctx.currentDifficulty=difficulty;ctx.counts={rat:7,ox:2,stinkrat:1,ratking:1,vulture:1,termite:3};
+    assert.equal(ctx.getTotalLivingEnemyCount(),15);assert.equal(ctx.canSpawnEnemy('flea'),false);
+    const reservation=ctx.reserveEnemySpawnSlots('rat',20);assert.equal(reservation.count,bonus);
+    assert.equal(ctx.canSpawnEnemy('rat'),false);assert.equal(ctx.canSpawnEnemy('vulture'),false);
+    ctx.releaseEnemySpawnReservations(reservation);assert.equal(ctx.getPendingEnemyCount('rat'),0);
+    ctx.counts.rat+=bonus;assert.equal(ctx.canSpawnEnemy('flea'),false);
+    ctx.counts.rat=7;assert.equal(ctx.canSpawnEnemy('flea'),false);
+  }
+});
+
+test('rat reservations preserve ordinary free slots without lending their bonus to other spawners',async()=>{
+  const {ctx}=await ratSpawnHarness();ctx.counts={rat:7,ox:2,stinkrat:1,ratking:1,vulture:2,termite:1};
+  const rats=ctx.reserveEnemySpawnSlots('rat',10);assert.equal(rats.count,2);
+  const fleas=ctx.reserveEnemySpawnSlots('flea',5);assert.equal(fleas.count,1);
+  assert.equal(ctx.canSpawnEnemy('flea'),false);ctx.releaseEnemySpawnReservations(rats);
+  assert.equal(ctx.canSpawnEnemy('flea'),false);ctx.releaseEnemySpawnReservations(fleas);
+  assert.equal(ctx.canSpawnEnemy('flea'),true);
+  ctx.counts={rat:0,ox:2};assert.equal(ctx.canSpawnEnemy('ox'),false);
+});
+
+test('fallback core uses the same rat-only difficulty bonus and bounded wave progression',async()=>{
+  const {ctx}=await ratSpawnHarness(core);ctx.currentDifficulty='easy';
+  assert.equal(ctx.getEnemyCaps(1).rat,12);assert.equal(ctx.getEnemyCaps(1).total,26);
+  assert.equal(ctx.getRatWaveBudget(1,1),2);assert.equal(ctx.getRatWaveBudget(1,34),6);
+  ctx.currentDifficulty='insane';assert.equal(ctx.getEnemyCaps(4).rat,19);
+  assert.equal(ctx.getEnemyCaps(4).total,39);assert.equal(ctx.getRatWaveBudget(4,34),10);
+});
+
+test('real wave spawner consumes the difficulty budget and releases all spawn reservations',async()=>{
+  const {ctx,code}=await ratSpawnHarness();const batches=[];let id=0;
+  Object.assign(ctx,{isHost:true,catPos:{x:10,y:10},gridSize:21,grid:Array.from({length:21},()=>Array(21).fill('')),
+    rats:[],oxen:[],ratKings:[],isLivingRat:()=>true,isLivingEnemy:()=>true,crypto:{randomUUID:()=>String(++id)},
+    Math:Object.assign(Object.create(Math),{random:()=>1}),ccRef:id=>({id}),ID:{rat:id=>`rat_${id}`,ox:id=>`ox_${id}`},
+    getRatHealthForDifficulty:()=>4,getOxHealthForDifficulty:()=>18,scaleEnemyStats:health=>({health}),
+    commitEnemyBatch:async actions=>batches.push(actions),requestRender(){}});
+  vm.runInContext(code('  async function spawnRatWave(){','  // ============================================================\n  // Host enemies movement'),ctx);
+  for(const [difficulty,late] of [['medium',[6,7,8,9]],['insane',[7,8,9,10]]])for(let players=1;players<=4;players++){
+    ctx.currentDifficulty=difficulty;ctx.activePlayers=players;await ctx.spawnRatWave();
+    assert.equal(batches.at(-1).filter(action=>action.data.kind==='rat').length,late[players-1]);
+    assert.ok([...ctx.pendingEnemySpawnReservations.values()].every(count=>count===0));
+  }
+  ctx.activePlayers=1;ctx.counts={rat:7,ox:2,stinkrat:1,ratking:1,vulture:1,termite:3};
+  await ctx.spawnRatWave();assert.equal(batches.at(-1).filter(action=>action.data.kind==='rat').length,3);
 });
 
 test('real savePosition does not overwrite death, cheese or identity, and skips idle input',async()=>{

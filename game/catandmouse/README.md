@@ -11,7 +11,7 @@ modules and stylesheet together:
   bounded effects, procedural animation and reduced-motion feedback.
 
 The loader's exact/regex replacements are exercised against the real core.
-The optimized patch version is `2026-10-04-combat-polish-v1`; its validation
+The optimized patch version is `2026-10-04-rat-difficulty-v1`; its validation
 includes the new runtime imports and the existing caps, buffered BFS and
 self-scheduling movement loops. Tests compile both optimized and fallback
 module scripts. No HTML previews are generated.
@@ -44,10 +44,30 @@ useful towers that are still active; oxen favor breaches; rat kings favor
 defenses/support; vultures favor exposed players and economy; termites favor
 structures, including damaged defenses. Existing rat-king damage support is
 preserved. Difficulty and progression shorten reaction windows; the loader's
-existing speed escalation and enemy count caps remain in place. Ox/king
-contact attacks carry a small authoritative windup, and the existing cat
+existing speed escalation and bounded enemy populations remain in place.
+Ox/king contact attacks carry a small authoritative windup, and the existing cat
 pounce destination is visible before impact. Core damage and unlock values
 are retained.
+
+## Rat population by difficulty
+
+Regular rats get two extra population slots on Easy/Normal and three on
+Hard/Nightmare. Other unit-type caps are unchanged. The additional shared
+population headroom is reserved for regular rats, including pending spawns;
+other spawners can still use ordinary free slots but cannot consume the rat
+bonus.
+
+| Difficulty | Rat alive caps (1/2/3/4 players) | Maximum rats per late wave (1/2/3/4 players) |
+| --- | --- | --- |
+| Easy / Normal | 9 / 10 / 11 / 12 | 6 / 7 / 8 / 9 |
+| Hard / Nightmare | 10 / 11 / 12 / 13 | 7 / 8 / 9 / 10 |
+
+Opening waves remain at 2/3/4/5 rats for 1/2/3/4 active players. The extra
+difficulty allowance starts with the existing first late tier at cat level
+22, and wave size reaches the table's maximum at level 34. Existing rats,
+reserved spawns, available cells and shared population occupancy can reduce
+the actual number spawned. The fallback core uses the same difficulty bonus
+and wave progression with its existing higher base population caps.
 
 ## Friendly troops
 
@@ -127,12 +147,14 @@ its tab. Browser timer throttling still applies.
 
 ## Validation
 
-Run `npm run test:catandmouse` (Node 20+; no dependencies). The 62 tests cover
+Run `npm run test:catandmouse` (Node 20+; no dependencies). The 68 tests cover
 sync queues/retries, death/revive safety, host election/listener recovery,
 loader application, interpolation/corrections, target persistence, reachable
 spawns, cap enforcement, failed producer retries, route reuse/reservations,
-AI budgets, effect limits/expiry and reduced-motion telegraphs. Runtime tests
-also execute the full optimized core against a deterministic DOM and clock
+AI budgets, effect limits/expiry and reduced-motion telegraphs. Rat tests
+cover every difficulty/player count, opening/late progression, reservation
+accounting, rat-only headroom, fallback behavior and the real wave spawner.
+Runtime tests also execute the full optimized core against a deterministic DOM and clock
 fixture with mixed enemies, defensive structures, a den and a nest. They
 exercise the real spawners, movement and tower attacks together; they are not
 browser rendering or live Firebase tests.

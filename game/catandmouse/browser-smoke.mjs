@@ -90,7 +90,7 @@ try {
     await page.clock.install({time:new Date('2026-10-04T07:00:00Z')});
     await page.goto(`http://127.0.0.1:${server.address().port}/game/catandmouse.html`);
     await page.waitForFunction(()=>!!window.__battleFixture);
-    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-04-combat-polish-v1');
+    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-04-rat-difficulty-v1');
     await page.evaluate(()=>window.__battleFixture.seed());
     const first=await page.evaluate(()=>window.__battleFixture.rendered('mouse:remote'));
     await page.evaluate(()=>window.__battleFixture.moveRemote());await page.clock.runFor(55);

@@ -2122,10 +2122,10 @@
     insane: { icon:"💀", label:"Nightmare", subtitle:"The cat is hunting", className:"difficulty-nightmare" }
   };
   const DIFFICULTY_SETTINGS = {
-    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18 },
-    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26 },
-    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34 },
-    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44 }
+    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, ratSpawnBonus:2 },
+    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, ratSpawnBonus:2 },
+    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, ratSpawnBonus:3 },
+    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, ratSpawnBonus:3 }
   };
 
   let canMove = true;
@@ -2133,9 +2133,9 @@
   let moveCooldown = 170; // Faster local movement; network writes are coalesced below.
   const CAT_SPEED_MULTIPLIER = 1.28;
   const RAT_SPEED_MULTIPLIER = 1.85;
-  const MAX_RATS = 18;
+  const MAX_RATS = 19;
   const MAX_FLEAS = 24;
-  const MAX_TOTAL_ENEMIES = 36;
+  const MAX_TOTAL_ENEMIES = 39;
   const MAX_PROJECTILES = 80;
   const ENEMIES_AI_PER_FRAME = 6;
   const MAX_FRIENDLY_RABBITS = 16;
@@ -2682,15 +2682,34 @@
     }
     return Math.max(1, Math.min(4, seen.size || 1));
   }
+  function getRatSpawnBonus(){ return DIFFICULTY_SETTINGS[currentDifficulty]?.ratSpawnBonus ?? 2; }
+  function getRatWaveBudget(activePlayerCount = getActivePlayerCount(), waveNumber = catPower){
+    const n = Math.max(1, Math.min(4, activePlayerCount || 1));
+    const baseWaveRats = [0,2,3,4,5][n];
+    const lateWaveBonus = Math.min(2, Math.floor(Math.max(0, waveNumber - 10) / 12));
+    // Keep opening waves unchanged; extra rats join the existing late tiers.
+    const difficultyBonus = lateWaveBonus > 0 ? getRatSpawnBonus() : 0;
+    return Math.min(getEnemyCaps(n).rat, baseWaveRats + lateWaveBonus + difficultyBonus);
+  }
   function getEnemyCaps(activePlayerCount = getActivePlayerCount()){
     const n = Math.max(1, Math.min(4, activePlayerCount || 1));
+    const ratBonus = getRatSpawnBonus();
     const lateKings = n >= 3 && (catPower >= 35 || ratPower >= 8);
-    return { rat:[0,10,12,14,16][n], stinkrat:n <= 2 ? 2 : 3, ox:[0,3,4,5,6][n], ratking:lateKings ? 2 : 1, vulture:[0,3,4,5,6][n], termite:[0,4,5,6,7][n], flea:[0,8,10,12,14][n], total:[0,24,28,32,36][n] };
+    return { rat:[0,10,12,14,16][n]+ratBonus, stinkrat:n <= 2 ? 2 : 3, ox:[0,3,4,5,6][n], ratking:lateKings ? 2 : 1, vulture:[0,3,4,5,6][n], termite:[0,4,5,6,7][n], flea:[0,8,10,12,14][n], total:[0,24,28,32,36][n]+ratBonus };
   }
   function getPendingEnemyCount(kind){ return pendingEnemySpawnReservations.get(normalizeEnemyKind(kind)) || 0; }
   function getLivingEnemyCount(kind){ const entry = enemyRegistryEntry(kind); return entry ? (entry.collection() || []).filter(isLivingEnemy).length : 0; }
   function getTotalLivingEnemyCount(){ return Object.keys(ENEMY_TYPE_REGISTRY).reduce((sum, kind) => sum + getLivingEnemyCount(kind), 0); }
-  function canSpawnEnemy(kind, requestedCount = 1){ const k = normalizeEnemyKind(kind); const caps = getEnemyCaps(); const requested = Math.max(1, requestedCount|0); return getLivingEnemyCount(k) + getPendingEnemyCount(k) + requested <= caps[k] && getTotalLivingEnemyCount() + Array.from(pendingEnemySpawnReservations.values()).reduce((a,b)=>a+b,0) + requested <= caps.total; }
+  function canSpawnEnemy(kind, requestedCount = 1){
+    const k = normalizeEnemyKind(kind), caps = getEnemyCaps(), requested = Math.max(1, requestedCount|0);
+    const bonus = getRatSpawnBonus();
+    // Only regular rats may consume the extra population slots. Count pending
+    // rats too, so concurrent spawners cannot lend their reserved slots away.
+    const extraRats = Math.min(bonus, Math.max(0, getLivingEnemyCount("rat") + getPendingEnemyCount("rat") - (caps.rat - bonus)));
+    const totalLimit = k === "rat" ? caps.total : caps.total - bonus + extraRats;
+    return getLivingEnemyCount(k) + getPendingEnemyCount(k) + requested <= caps[k] &&
+      getTotalLivingEnemyCount() + Array.from(pendingEnemySpawnReservations.values()).reduce((a,b)=>a+b,0) + requested <= totalLimit;
+  }
   function reserveEnemySpawnSlots(kind, requestedCount = 1){ const k = normalizeEnemyKind(kind); let granted = 0; for (let i=0;i<requestedCount;i++){ if (!canSpawnEnemy(k,1)) break; pendingEnemySpawnReservations.set(k, getPendingEnemyCount(k)+1); granted++; } return { kind:k, count:granted }; }
   function releaseEnemySpawnReservations(reservation){ if (!reservation) return; const k = normalizeEnemyKind(reservation.kind); pendingEnemySpawnReservations.set(k, Math.max(0, getPendingEnemyCount(k) - (reservation.count || 0))); }
   function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){ return { healthMultiplier:Math.min(3.0, 1 + Math.max(0, waveNumber - 1) * 0.06), damageMultiplier:Math.min(2.25, 1 + Math.max(0, waveNumber - 1) * 0.035), speedMultiplier:Math.min(1.20, 1 + Math.max(0, waveNumber - 1) * 0.0075) }; }
@@ -5398,8 +5417,7 @@
       if (stinkReservation.count > 0) writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, ...scaleEnemyStats(Math.max(10, getRatHealthForDifficulty()*3), 2), createdAt:Date.now() } });
     }
 
-    const maxRats = catPower;
-    const ratReservation = reserveEnemySpawnSlots("rat", maxRats);
+    const ratReservation = reserveEnemySpawnSlots("rat", getRatWaveBudget());
     const ratsToSpawn = ratReservation.count;
     let ratsSpawned = 0;
     for (let i=0; i<availableSpots.length && ratsSpawned<ratsToSpawn; i++){
