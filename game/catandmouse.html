@@ -49,15 +49,15 @@
     insane: { icon:"💀", label:"Nightmare", subtitle:"Relentless pursuit", className:"difficulty-nightmare" }
   };
   const DIFFICULTY_SETTINGS = {
-    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92 },
-    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00 },
-    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10 },
-    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20 }
+    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92, ratSpawnBonus:2 },
+    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00, ratSpawnBonus:2 },
+    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10, ratSpawnBonus:3 },
+    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20, ratSpawnBonus:3 }
   };`, 'difficulty metadata');
 
-    html = replacePattern(html, /const MAX_RATS = \d+;/, 'const MAX_RATS = 10;', 'MAX_RATS');
+    html = replacePattern(html, /const MAX_RATS = \d+;/, 'const MAX_RATS = 13;', 'MAX_RATS');
     html = replacePattern(html, /const MAX_FLEAS = \d+;/, 'const MAX_FLEAS = 8;', 'MAX_FLEAS');
-    html = replacePattern(html, /const MAX_TOTAL_ENEMIES = \d+;/, 'const MAX_TOTAL_ENEMIES = 22;', 'MAX_TOTAL_ENEMIES');
+    html = replacePattern(html, /const MAX_TOTAL_ENEMIES = \d+;/, 'const MAX_TOTAL_ENEMIES = 25;', 'MAX_TOTAL_ENEMIES');
     html = replacePattern(html, /const MAX_PROJECTILES = \d+;/, 'const MAX_PROJECTILES = 64;', 'MAX_PROJECTILES');
     html = replacePattern(html, /const ENEMIES_AI_PER_FRAME = \d+;/, 'const ENEMIES_AI_PER_FRAME = 5;', 'AI budget');
 
@@ -65,15 +65,16 @@
       /  function getEnemyCaps\(activePlayerCount = getActivePlayerCount\(\)\)\{[\s\S]*?\n  \}\n  function getPendingEnemyCount/,
 `  function getEnemyCaps(activePlayerCount = getActivePlayerCount()){
     const n = Math.max(1, Math.min(4, activePlayerCount || 1));
+    const ratBonus = getRatSpawnBonus();
     return {
-      rat:[0,7,8,9,10][n],
+      rat:[0,7,8,9,10][n]+ratBonus,
       stinkrat:[0,1,2,2,2][n],
       ox:[0,2,2,3,4][n],
       ratking:1,
       vulture:[0,2,2,3,4][n],
       termite:[0,3,3,4,5][n],
       flea:[0,5,6,7,8][n],
-      total:[0,15,18,20,22][n]
+      total:[0,15,18,20,22][n]+ratBonus
     };
   }
   function getPendingEnemyCount`, 'enemy caps');
@@ -167,10 +168,6 @@
       /const speed = Math\.max\(190, Math\.floor\(\(1300 - catPower \* 40\) \/ CAT_SPEED_MULTIPLIER\)\);/,
       'const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;\n    const speed = Math.max(165, Math.floor((1300 - catPower * 40) / (CAT_SPEED_MULTIPLIER * difficultySpeed)));', 'cat speed');
 
-    html = replacePattern(html,
-      /const maxRats = catPower;\s*const ratReservation = reserveEnemySpawnSlots\("rat", maxRats\);/,
-      'const activePlayers = getActivePlayerCount();\n    const baseWaveRats = [0,2,3,4,5][activePlayers];\n    const lateWaveBonus = Math.min(2, Math.floor(Math.max(0, catPower - 10) / 12));\n    const waveRatBudget = Math.min(getEnemyCaps(activePlayers).rat, baseWaveRats + lateWaveBonus);\n    const ratReservation = reserveEnemySpawnSlots("rat", waveRatBudget);', 'rat wave budget');
-
     html = replaceExact(html,
       '    const RAT_THINK_INTERVAL_MS = 350;\n    const RAT_REPATH_JITTER_MS = 200;',
       '    // Fast movement is separated from expensive thinking/repathing.\n    const RAT_THINK_INTERVAL_MS = 500;\n    const RAT_REPATH_JITTER_MS = 260;', 'rat think budget');
@@ -230,8 +227,9 @@
       '          const tileTexture = getTileTexture(x, y);\n          if (cell.dataset.texture !== tileTexture){\n            cell.dataset.texture = tileTexture;\n            cell.style.backgroundImage = `url("${getAssetUrl(tileTexture)}")`;\n          }', 'terrain texture cache');
 
     const required = [
-      'rat:[0,7,8,9,10][n]',
-      'total:[0,15,18,20,22][n]',
+      'rat:[0,7,8,9,10][n]+ratBonus',
+      'total:[0,15,18,20,22][n]+ratBonus',
+      'const ratReservation = reserveEnemySpawnSlots("rat", getRatWaveBudget());',
       'speedMultiplier:Math.min(1.75',
       'STRUCTURE_PATH_CANDIDATE_LIMIT = 16',
       'MAX_FRIENDLY_RABBITS = 12',
@@ -246,7 +244,7 @@
       if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
     }
 
-    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-04-combat-polish-v1";<\/script></body>');
+    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-04-rat-difficulty-v1";<\/script></body>');
     return html;
   }
 
@@ -276,4 +274,3 @@
 </script>
 </body>
 </html>
-
