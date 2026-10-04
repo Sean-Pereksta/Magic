@@ -59,7 +59,7 @@
     html = replacePattern(html, /const MAX_FLEAS = \d+;/, 'const MAX_FLEAS = 8;', 'MAX_FLEAS');
     html = replacePattern(html, /const MAX_TOTAL_ENEMIES = \d+;/, 'const MAX_TOTAL_ENEMIES = 22;', 'MAX_TOTAL_ENEMIES');
     html = replacePattern(html, /const MAX_PROJECTILES = \d+;/, 'const MAX_PROJECTILES = 64;', 'MAX_PROJECTILES');
-    html = replacePattern(html, /const ENEMIES_AI_PER_FRAME = \d+;/, 'const ENEMIES_AI_PER_FRAME = 5;\n  const MAX_FRIENDLY_RABBITS = 12;', 'AI budget');
+    html = replacePattern(html, /const ENEMIES_AI_PER_FRAME = \d+;/, 'const ENEMIES_AI_PER_FRAME = 5;', 'AI budget');
 
     html = replacePattern(html,
       /  function getEnemyCaps\(activePlayerCount = getActivePlayerCount\(\)\)\{[\s\S]*?\n  \}\n  function getPendingEnemyCount/,
@@ -200,12 +200,8 @@
 
     // phoenix revive`, 'enemy movement loops');
 
-    html = replacePattern(html,
-      /  async function rabbitDenTick\(\)\{\s*\/\/ spawn rabbits from dens\s*if \(!window\.__lastRabbitSpawnAt\) window\.__lastRabbitSpawnAt = \{\};\s*for \(const den of getStructuresByType\("🐇"\)\)\{/,
-      '  async function rabbitDenTick(){\n    // Friendly helpers also get a global ceiling so large den networks cannot create runaway simulation load.\n    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};\n    let livingRabbitCount = rabbits.filter(r => (r.health ?? 0) > 0).length;\n    for (const den of getStructuresByType("🐇")){\n      if (livingRabbitCount >= MAX_FRIENDLY_RABBITS) break;', 'rabbit global cap');
-    html = replacePattern(html,
-      /(await runtimeSetDoc\(ccRef\(ID\.rabbit\(id\)\), \{ kind:"rabbit", id, x, y, health:5, createdAt:Date\.now\(\) \}, \{ merge:true \}\s*\);\s*)(window\.__lastRabbitSpawnAt\[denKey\] = Date\.now\(\);)/,
-      '$1livingRabbitCount++;\n      $2', 'rabbit counter');
+    html = replacePattern(html, /const MAX_FRIENDLY_RABBITS = \d+;/,
+      'const MAX_FRIENDLY_RABBITS = 12;', 'rabbit global cap');
 
     html = replaceExact(html,
       '            <p class="war-room-subtitle">Build a shared fortress, collect cheese, and outmaneuver an increasingly dangerous cat.</p>',
@@ -240,13 +236,17 @@
       'STRUCTURE_PATH_CANDIDATE_LIMIT = 16',
       'MAX_FRIENDLY_RABBITS = 12',
       'scheduleEnemyTick(hostMoveRats, 760 / RAT_SPEED_MULTIPLIER, 190, 1.05)',
-      'id="menuThreatCap"'
+      'id="menuThreatCap"',
+      'from "./catandmouse/combat-presentation.mjs"',
+      'from "./catandmouse/tactics.mjs"',
+      'tacticalAI.plan',
+      'battlePresentation.syncEntities'
     ];
     for (const marker of required){
       if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
     }
 
-    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-08-13-v2";<\/script></body>');
+    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-04-combat-polish-v1";<\/script></body>');
     return html;
   }
 
