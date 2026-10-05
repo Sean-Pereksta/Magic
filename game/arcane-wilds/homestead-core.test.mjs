@@ -100,3 +100,23 @@ test('normalization preserves journey and planting timestamps without granting e
 test('a backward clock never takes back or double-counts earned progress',()=>{
  const h=harness(),id=h.plot('stormgrape');h.act('water',{id});h.setTime(START+2*C.HOUR);C.settle(h.home,h.time);C.settle(h.home,START);assert.equal(h.home.plots[0].plant.growthMs,2*C.HOUR);C.settle(h.home,START+3*C.HOUR);assert.equal(h.home.plots[0].plant.growthMs,3*C.HOUR);
 });
+test('home milestone rewards require real care and cannot be reclaimed after reload',()=>{
+ const h=harness();assert.throws(()=>h.act('claimCare',{goal:'welcome'}),/Complete/);
+ for(const [kind,x]of [['bed',6],['hearth',8]])h.act('place',{id:h.home.items.find(i=>i.kind===kind).id,x,y:4});
+ const gold=h.wallet.gold,seeds=h.home.seeds.lanternberry;h.act('claimCare',{goal:'welcome'});assert.equal(h.wallet.gold,gold+20);assert.equal(h.home.seeds.lanternberry,seeds+4);
+ const home=C.normalize(h.home,'journey',h.time),before=JSON.stringify([home,h.wallet]);assert.throws(()=>C.apply(home,h.wallet,{type:'claimCare',goal:'welcome',requestId:'again'},h.time,{atHome:true}),/already claimed/);assert.equal(JSON.stringify([home,h.wallet]),before);
+ const plot=h.plot();h.act('water',{id:plot});h.setTime(START+C.HOUR);h.act('harvest',{id:plot});assert.equal(h.home.harvestCount,1);h.act('claimCare',{goal:'firstHarvest'});
+ h.craft('stove',9,4);h.act('cook',{recipe:'berryMeal'});assert.equal(h.home.mealsCooked,1);assert.equal(h.home.meals.berryMeal,1);h.act('claimCare',{goal:'cook'});assert.ok(h.home.careClaims.includes('cook'));
+});
+test('five harvests and collected production grant packed gifts once with no salvage refund',()=>{
+ const h=harness(),id=h.plot();
+ for(let n=0;n<5;n++){if(n){h.home.seeds.lanternberry=1;h.act('plant',{id,crop:'lanternberry'});}h.act('water',{id});h.setTime(h.time+C.HOUR);h.act('harvest',{id});}
+ h.act('claimCare',{goal:'gardener'});assert.equal(h.home.fertilizer,3);const gift=h.home.items.at(-1);assert.equal(gift.kind,'flowers');assert.equal(gift.packed,true);assert.equal(gift.gift,true);const wallet=JSON.stringify(h.wallet);h.act('dismantle',{id:gift.id});assert.equal(JSON.stringify(h.wallet),wallet);
+ const producer=h.craft('coinbloom');h.setTime(h.time+5*C.HOUR);h.act('collect',{id:producer});assert.equal(h.home.totalCollected,20);h.act('collect',{id:producer});assert.equal(h.home.totalCollected,20);h.act('claimCare',{goal:'supplier'});assert.equal(h.home.items.at(-1).kind,'lantern');
+});
+test('plant stages follow watered growth and mature trees keep their canopy between harvests',()=>{
+ const h=harness(),id=h.plot();assert.equal(C.cropStage(h.home.plots[0],h.time).key,'seed');h.setTime(h.time+C.HOUR);C.settle(h.home,h.time);assert.equal(C.cropStage(h.home.plots[0],h.time).key,'seed');h.act('water',{id});
+ const start=h.time;for(const [minutes,key]of [[3,'sprout'],[12,'leafy'],[24,'flowering'],[30,'ready']]){h.setTime(start+minutes*C.MINUTE);C.settle(h.home,h.time);assert.equal(C.cropStage(h.home.plots[0],h.time).key,key);}
+ h.act('buildHouse');const tree=h.plot('sunapple',true);h.home.fertilizer=1;h.act('fertilize',{id:tree});h.act('water',{id:tree});h.setTime(h.time+C.DAY);h.act('water',{id:tree});h.setTime(h.time+C.DAY);const result=h.act('harvest',{id:tree});assert.equal(h.home.produce.sunapple,6);assert.match(result.effects[0].text,/Harvested 6/);
+ const stage=C.cropStage(h.home.plots.find(p=>p.id===tree),h.time);assert.equal(stage.key,'leafy');assert.equal(stage.matureTree,true);assert.equal(stage.wet,false);
+});

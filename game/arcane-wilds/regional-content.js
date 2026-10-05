@@ -79,7 +79,7 @@
   const oldClaim=A.claimSite;A.claimSite=function(){const n=A.current();if(n.mountRequires&&!A.state().cleared.includes(n.mountRequires)){toastMsg(`First discover or defeat ${D.nodes[n.mountRequires].name}.`);return false;}const ok=oldClaim();if(ok)grantItems();return ok;};
   function grantItems(){const s=A.state();if(!s)return; s.itemClaims||=[];let changed=false;
     for(const n of Object.values(D.nodes))if(!n.shadow&&(n.mount||['shrine','landmark','resource','treasure','puzzle'].includes(n.type)?s.claimed:s.cleared).includes(n.id))for(const id of n.rewardItems||[])if(!s.itemClaims.includes(id)){s.itemClaims.push(id);s.rewards.push(id);changed=true;}
-    if(changed){toastMsg('Named equipment earned — claim it in Character.');saveGame();}
+    if(changed){toastMsg('Regional equipment earned.');saveGame();}
   }
   const oldClear=markRoomCleared;markRoomCleared=function(){const was=game.roomData?.cleared;oldClear();if(!was&&game.roomData?.cleared){if(has('clearSprint'))sprint=5;grantItems();}};
   const oldLoad=loadRoom;loadRoom=function(){summonHaste=0;const result=oldLoad();grantItems();return result;};

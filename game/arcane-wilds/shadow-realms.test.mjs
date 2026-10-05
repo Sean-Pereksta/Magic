@@ -55,21 +55,21 @@ test('Glory and elite rewards cannot be farmed by revisiting, and waves must fin
 
 test('save and cloud bundles retain depth, Glory, milestones, variants, gear and pending loot; death retains Glory',()=>{
   const h=start();try{unlock(h);at(h,25);clear(h);h.run(`AWShadow.activate();AWShadow.award(3000);AWShadow.loot(AWShadow.definition(24,1),true);saveGame();`);
-    const glory=h.run('AWShadow.state().glory'),seed=h.run('AWShadow.state().seed'),loot=h.run('game.loot.regionalId');
-    h.run('loadGame();beginWorld()');assert.equal(h.run('AWShadow.state().glory'),glory);assert.equal(h.run('AWShadow.state().seed'),seed);assert.equal(h.run('game.campaign.current'),'shadow:25:0');assert.equal(h.run('game.loot.regionalId'),loot);assert.equal(h.run('AWShadow.state().pendingLoot.length'),1);
+    const glory=h.run('AWShadow.state().glory'),seed=h.run('AWShadow.state().seed'),loot=h.run('game.inventory.items.at(-1).regionalId');
+    h.run('loadGame();beginWorld()');assert.equal(h.run('AWShadow.state().glory'),glory);assert.equal(h.run('AWShadow.state().seed'),seed);assert.equal(h.run('game.campaign.current'),'shadow:25:0');assert.equal(h.run('game.inventory.items.at(-1).regionalId'),loot);assert.equal(h.run('(AWShadow.state().pendingLoot||[]).length'),0);
     assert.equal(h.run('JSON.parse(JSON.parse(awCloudCurrentBundle()).base).campaign.shadow.glory'),glory);
     assert.equal(h.run('AWShadow.state().waystones.includes(25)'),true);assert.equal(h.run('AWShadow.state().milestones.includes(25)'),true);
     at(h,28);const banked=h.run('AWShadow.state().glory');h.run('game.player.hp=0;playerDeath()');assert.equal(h.run('game.campaign.current'),'shadow:25:0');assert.equal(h.run('AWShadow.state().glory'),banked);assert.equal(h.run('AWShadow.state().expedition'),0);
   }finally{h.close();}
 });
 
-test('deep expeditions keep descriptors, room snapshots, discovery and overflow loot bounded',()=>{
+test('deep expeditions bound world state while retaining every equipment pickup',()=>{
   const h=start();try{unlock(h);
     h.run(`for(let d=1;d<=12000;d+=13){AWShadow.windowAt(d);AWShadow.bit('shadow:'+d+':0','seen',true);AWShadow.bit('shadow:'+d+':0','cleared',true);}`);
     assert.ok(h.run('AWShadow.continent.nodes.length')<=39);assert.ok(h.run('Object.keys(AWCampaignData.nodes).length')<=249);assert.ok(h.run('Object.keys(AWShadow.state().ledger).length')<=32);
     assert.ok(h.run('JSON.stringify(AWShadow.state()).length')<10000);assert.equal(h.run('AWShadow.bit("shadow:2:0","claimed")'),true,'archived nodes cannot award again');
-    at(h,12000);clear(h);h.run(`game.loot=AWCampaign.craftItem('shadowsteel');const goldBeforeOverflow=game.gold;for(let d=12001;d<=12016;d++)AWShadow.loot(AWShadow.definition(d,1),true);`);
-    assert.equal(h.run('AWShadow.state().pendingLoot.length'),12);assert.ok(h.run('game.gold>goldBeforeOverflow'));
+    at(h,12000);clear(h);h.run(`game.loot=AWCampaign.craftItem('shadowsteel');const goldBeforeOverflow=game.gold,inventoryBeforeOverflow=game.inventory.items.length;for(let d=12001;d<=12016;d++)AWShadow.loot(AWShadow.definition(d,1),true);`);
+    assert.equal(h.run('(AWShadow.state().pendingLoot||[]).length'),0);assert.equal(h.run('game.inventory.items.length-inventoryBeforeOverflow'),16);assert.equal(h.run('game.gold'),h.run('goldBeforeOverflow'));
     for(const depth of [12001,12002,12003]){at(h,depth);h.run('saveGame();loadGame();beginWorld()');}
     assert.ok(h.run('Object.values(game.rooms).filter(r=>r.y===2000000).length')<=1);assert.ok(h.run('game.campaign.visited.every(id=>!id.startsWith("shadow:"))'));
     assert.deepEqual(h.errors,[]);
@@ -82,7 +82,7 @@ test('treasure interaction uses Shadow rewards once, and escort objectives requi
       findShadow('treasure');game.player.x=9;game.player.y=6;interact();`);
     assert.equal(h.run('currentInteraction().type'),'shadowSite');
     const claim=[...h.w.document.querySelectorAll('#npcBody button')].find(b=>/Claim discovery/.test(b.textContent));assert.ok(claim);claim.click();
-    assert.ok(h.run('AWShadow.bit(game.campaign.current,"claimed")'));assert.ok(h.run('game.loot.shadowDepth>0'));
+    assert.ok(h.run('AWShadow.bit(game.campaign.current,"claimed")'));assert.ok(h.run('game.inventory.items.some(i=>i.shadowDepth>0&&i.sourceNode===game.campaign.current)'));
     const glory=h.run('AWShadow.state().glory');assert.equal(h.run('AWShadow.claim()'),false);assert.equal(h.run('AWShadow.state().glory'),glory);
     h.run(`findShadow('event','escort');game.enemies=[];game.roomData.shadowEncounter.stage=3;markRoomCleared();`);assert.equal(h.run('game.roomData.cleared'),false);
     h.run(`paused=true;update(2)`);assert.equal(h.run('game.roomData.shadowEncounter.ally.progress'),0);
