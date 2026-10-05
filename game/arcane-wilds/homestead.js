@@ -2,7 +2,7 @@
 /* One integration adapter: ordinary game currency, campaign rooms, saves and input. */
 (() => {
   const C=AWHomeCore,A=AWCampaign,HOME='verdant-hearthglade';
-  let pending=false,recall=null,portalLock=0,buildPreview=null,visualCache=null,visualAt=0;
+  let pending=false,recall=null,portalLock=0,buildPreview=null,visualCache=null,visualAt=0,guideUntil=0;
   const unique=()=>globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   function ensure(){if(!game.player)return null;if(!game.homestead)game.homestead=C.fresh(unique(),Date.now());return game.homestead;}
   const state=()=>ensure(),atHome=()=>A.current()?.id===HOME,inside=()=>atHome()&&A.state().room===1;
@@ -31,7 +31,7 @@
   const baseGet=getRoomData;
   getRoomData=function(x,y){const r=baseGet(x,y);if(r.campaignNode===HOME){r.cleared=true;r.town=false;r.boss=false;r.elite=false;r.challenge=null;r.scenery=[];r.deco=[];r.chests=[];r.homestead=true;r.name=r.campaignRoom===1?'Hearthglade · Home Interior':'Hearthglade · Garden and Grounds';}return r;};
   const baseLoad=loadRoom;
-  loadRoom=function(){recall=null;buildPreview=null;portalLock=1.2;const result=baseLoad();if(atHome()){ensure().visited=true;game.player.riding=false;rebuild();}window.AWHomeUI?.refresh();return result;};
+  loadRoom=function(){recall=null;buildPreview=null;portalLock=1.2;const result=baseLoad();if(atHome()){const h=ensure();if(!h.visited&&!h.tier&&!h.foundationUnderstood)guideUntil=elapsed+12;h.visited=true;game.player.riding=false;rebuild();}else guideUntil=0;window.AWHomeUI?.refresh();return result;};
   function rebuild(){
     if(!atHome()||!game.roomData)return;const h=state(),objects=[];
     game.enemies=[];game.projectiles=[];game.telegraphs=[];const st=intensityState();st.encounter=null;st.hazards=[];
@@ -42,7 +42,7 @@
       for(const i of h.items.filter(i=>!i.packed&&!C.items[i.kind].outdoor)){const r=C.footprint(i);object('item',r.x+r.w/2,r.y+r.h/2,C.items[i.kind].name,{homeId:i.id});}
       game.player.x=clamp(game.player.x,floor.x+.35,floor.x+floor.w-.35);game.player.y=clamp(game.player.y,floor.y+.35,floor.y+floor.h-.35);
     }else{
-      const r=C.houseRect(h);object('house',r.x+2,r.y+2,h.tier?'Enter '+C.tiers[h.tier].name:'Build your cottage');
+      const r=C.houseRect(h);object('house',r.x+2,r.y+2,h.tier?'Enter '+C.tiers[h.tier].name:'Future Cottage');
       object('well',10,7,'Well · Refill watering can');object('board',8.5,11.5,'Homestead plans');
       object('return',9,12.5,'Return to your adventure');
       for(const p of h.plots)object('plot',p.x+(p.tree?1:.5),p.y+(p.tree?1:.5),p.tree?'Orchard tree':'Garden bed',{homeId:p.id});
@@ -59,6 +59,8 @@
     const enc=intensityState().encounter,event=game.roomData.worldEvent,shadow=game.roomData.shadowEncounter;
     return !(enc?.roomKey===game.roomData.key&&(enc.pending||enc.wave<enc.totalWaves))&&!event?.pending&&!shadow?.pending;
   }
+  function acknowledgeFoundation(){guideUntil=0;if(!state().foundationUnderstood){state().foundationUnderstood=true;saveGame();}}
+  const guiding=()=>atHome()&&!inside()&&!state().tier&&!state().foundationUnderstood&&elapsed<guideUntil;
   function enterHouse(){if(!state().tier)return window.AWHomeUI?.open('build');window.AWHomeUI?.close();A.enter(HOME,1,'S');const floor=C.interior(state());game.player.x=9;game.player.y=floor.y+floor.h-1.2;rebuild();}
   function leaveHouse(){window.AWHomeUI?.close();A.enter(HOME,0,'S');const r=C.houseRect(state());game.player.x=r.x+2;game.player.y=r.y+r.h+.5;}
   function startRecall(){
@@ -84,7 +86,7 @@
   }
   const baseInteract=interact;interact=function(){const o=currentInteraction();if(!atHome()||o?.type!=='homeObject')return baseInteract();
     if(o.homeKind==='house')return enterHouse();if(o.homeKind==='exit')return leaveHouse();if(o.homeKind==='return')return returnAdventure();
-    if(o.homeKind==='well')return window.AWHomeUI?.open('water');if(o.homeKind==='board')return window.AWHomeUI?.open();
+    if(o.homeKind==='well')return window.AWHomeUI?.open('water');if(o.homeKind==='board'){acknowledgeFoundation();return window.AWHomeUI?.open(state().tier?'overview':'build');}
     return window.AWHomeUI?.open(o.homeKind,o.homeId);
   };
   const baseClear=markRoomCleared;
@@ -124,7 +126,9 @@
   function tile(x,y,color,alpha=1){const pts=[[x,y],[x+1,y],[x+1,y+1],[x,y+1]].map(([x,y])=>worldToScreen(x,y));ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill();ctx.restore();}
   const baseFloor=drawFloorDetails;drawFloorDetails=function(room,pal){if(!room.homestead)return baseFloor(room,pal);
     if(inside()){const r=C.interior(state());for(let x=r.x;x<r.x+r.w;x++)for(let y=r.y;y<r.y+r.h;y++)tile(x,y,(x+y)%2?'#75563f':'#826147');}
-    else{for(const zone of [C.garden,C.orchard,C.workshop])for(let x=zone.x;x<zone.x+zone.w;x++)for(let y=zone.y;y<zone.y+zone.h;y++)tile(x,y,zone===C.garden?'#665038':zone===C.orchard?'#466a49':'#6d6954',.8);for(let x=1;x<18;x++)tile(x,7,'#aea282',.7);for(let y=7;y<14;y++)tile(9,y,'#aea282',.7);}
+    else{for(const zone of [C.garden,C.orchard,C.workshop])for(let x=zone.x;x<zone.x+zone.w;x++)for(let y=zone.y;y<zone.y+zone.h;y++)tile(x,y,zone===C.garden?'#665038':zone===C.orchard?'#466a49':'#6d6954',.8);for(let x=1;x<18;x++)tile(x,7,'#aea282',.7);for(let y=7;y<14;y++)tile(9,y,'#aea282',.7);
+      if(!state().tier){const r=C.houseRect(state()),a=worldToScreen(8.5,11.5),b=worldToScreen(r.x+2,r.y+r.h);ctx.save();ctx.strokeStyle='#d8d69b';ctx.lineWidth=2;ctx.setLineDash([4,7]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.restore();}
+    }
   };
   function labelAt(x,y,label,color='#f1ebd7',z=0){const s=worldToScreen(x,y,z);ctx.fillStyle=color;ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(label,s.x,s.y);}
   const baseDraw=drawInteractable;
@@ -137,14 +141,20 @@
       if(plot.soil===2){ctx.strokeStyle='#b2dbef';ctx.lineWidth=1;ctx.strokeRect(p.x-20*scale,p.y-30*scale,40*scale,32*scale);}
     }else if(o.homeKind==='house'){
       const r=C.houseRect(h);for(let x=r.x;x<r.x+r.w;x++)for(let y=r.y;y<r.y+r.h;y++)tile(x,y,h.tier?'#906e4e':'#b7a779');
-      ctx.translate(p.x,p.y);ctx.scale(scale,scale);ctx.fillStyle=h.tier?'#ae845b':'#726951';ctx.fillRect(-67,-72,134,75);ctx.fillStyle='#654743';ctx.beginPath();ctx.moveTo(-80,-70);ctx.lineTo(0,-124);ctx.lineTo(80,-70);ctx.closePath();ctx.fill();ctx.fillStyle='#ffd990';ctx.fillRect(-48,-54,24,26);ctx.fillRect(25,-54,24,26);ctx.fillStyle='#302b29';ctx.fillRect(-14,-38,28,41);ctx.fillStyle='#f2e4c7';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(h.tier?C.tiers[h.tier].name:'Cottage foundation',0,-135);
+      if(!h.tier){
+        const corners=[[r.x,r.y],[r.x+r.w,r.y],[r.x+r.w,r.y+r.h],[r.x,r.y+r.h]].map(([x,y])=>worldToScreen(x,y));
+        ctx.strokeStyle='#f2df9f';ctx.lineWidth=3;ctx.beginPath();corners.forEach((v,i)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));ctx.closePath();ctx.stroke();
+      }
+      ctx.translate(p.x,p.y);ctx.scale(scale,scale);ctx.globalAlpha=h.tier?1:.28;ctx.fillStyle=h.tier?'#ae845b':'#c5e5d6';ctx.fillRect(-67,-72,134,75);ctx.fillStyle='#654743';ctx.beginPath();ctx.moveTo(-80,-70);ctx.lineTo(0,-124);ctx.lineTo(80,-70);ctx.closePath();ctx.fill();ctx.fillStyle='#ffd990';ctx.fillRect(-48,-54,24,26);ctx.fillRect(25,-54,24,26);ctx.fillStyle='#302b29';ctx.fillRect(-14,-38,28,41);ctx.globalAlpha=1;ctx.fillStyle='#f2e4c7';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(h.tier?C.tiers[h.tier].name:'YOUR COTTAGE',0,-135);
+      if(!h.tier){ctx.font='11px system-ui';ctx.fillText(guiding()?'⌂ Build your cottage here':'Future Cottage',0,-151);}
+
     }else if(o.homeKind==='item'){
       const i=h.items.find(i=>i.id===o.homeId);if(!i){ctx.restore();return;}const d=C.items[i.kind];ctx.translate(p.x,p.y);ctx.scale(scale,scale);
       if(d.portal){ctx.strokeStyle=i.destination?'#bdb3ff':'#797b91';ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(0,-29,18,34,0,0,TAU);ctx.stroke();ctx.globalAlpha=.35+.1*Math.sin(elapsed*2);ctx.fillStyle='#9e88ff';ctx.fill();ctx.globalAlpha=1;ctx.fillStyle='#eee5ff';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(i.destination?.name||'Unattuned',0,-73);}
       else {const r=C.footprint(i);ctx.fillStyle=d.producer?'#9e8855':d.solid===false?'#747d91':'#8d7258';ctx.fillRect(-15*r.w,-22,30*r.w,25);ctx.fillStyle='#f9e5b7';ctx.font='20px system-ui';ctx.textAlign='center';ctx.fillText(d.icon,0,-9);if(d.producer&&i.stored>0){ctx.font='10px system-ui';ctx.fillText('READY',0,-34);}}
-    }else{ctx.translate(p.x,p.y);ctx.scale(scale,scale);ctx.fillStyle=o.homeKind==='well'?'#85bdcf':o.homeKind==='return'?'#b19ddb':'#bbab7e';ctx.beginPath();ctx.ellipse(0,-10,17,12,0,0,TAU);ctx.fill();ctx.fillStyle='#f7efd4';ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.fillText(({well:'WELL',exit:'EXIT',return:'RETURN',board:'HOME'})[o.homeKind],0,-29);}
+    }else{ctx.translate(p.x,p.y);ctx.scale(scale,scale);if(o.homeKind==='board'&&guiding()){ctx.strokeStyle='#f3dfa0';ctx.globalAlpha=.5+.3*Math.sin(elapsed*3);ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,-10,24,18,0,0,TAU);ctx.stroke();ctx.globalAlpha=1;}ctx.fillStyle=o.homeKind==='well'?'#85bdcf':o.homeKind==='return'?'#b19ddb':'#bbab7e';ctx.beginPath();ctx.ellipse(0,-10,17,12,0,0,TAU);ctx.fill();ctx.fillStyle='#f7efd4';ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.fillText(({well:'WELL',exit:'EXIT',return:'RETURN',board:'PLANS'})[o.homeKind],0,-29);}
     ctx.restore();if(dist(game.player,o)<2&&o.homeKind!=='house')labelAt(o.x,o.y,o.label,'#f1ebd7',92);
   };
   const baseRender=render;render=function(){const result=baseRender();if(atHome()&&buildPreview){const {x,y,w,h,valid}=buildPreview;for(let xx=x;xx<x+w;xx++)for(let yy=y;yy<y+h;yy++)tile(xx,yy,valid?'#8ee4b4':'#ee8f9e',.55);}return result;};
-  window.AWHome={HOME,state,snapshot,atHome,inside,wallet,context,action,accept,now,rebuild,safe,enterHouse,leaveHouse,startRecall,returnAdventure,travelPortal,pending:()=>pending,setPreview:p=>{buildPreview=p;},unique};
+  window.AWHome={HOME,state,snapshot,atHome,inside,wallet,context,action,accept,now,rebuild,safe,enterHouse,leaveHouse,startRecall,returnAdventure,travelPortal,pending:()=>pending,setPreview:p=>{buildPreview=p;},unique,acknowledgeFoundation,guiding};
 })();

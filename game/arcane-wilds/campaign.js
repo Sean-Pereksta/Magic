@@ -320,7 +320,7 @@
   renderMinimap=function(){
     if(!inCampaign())return originals.renderMinimap();
     const n=current(),c=D.continent(n.continent),stamp=[n.id,state().cleared.length,state().defeated.length].join('|');if(stamp===mapStamp)return;mapStamp=stamp;
-    const root=$('minimapGrid');root.style.display='block';root.textContent=`🗺 ${n.name}${n.shadow?'':` · ${D.sealCount(state(),c)}/4 seals`}`;
+    const root=$('minimapGrid');root.style.display='block';root.textContent=`🗺 World Map${n.shadow?'':` · ${D.sealCount(state(),c)}/4 seals`}`;
     $('minimap').setAttribute('role','button');$('minimap').tabIndex=0;$('minimap').onclick=()=>window.AWCampaignUI?.open('Map');
     $('minimap').onkeydown=e=>{if(e.key==='Enter')window.AWCampaignUI?.open('Map');};
   };

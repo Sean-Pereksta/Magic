@@ -10,8 +10,8 @@
   const body=el('div',undefined,'aw-home-body'),status=el('p','Local save','aw-home-status'),notice=el('p','','aw-home-message');status.setAttribute('role','status');notice.setAttribute('role','alert');
   const nav=el('nav',undefined,'aw-home-tabs');nav.setAttribute('aria-label','Homestead sections');
   function button(parent,text,fn,disabled=false){const b=el('button',text,'btn secondary');b.type='button';b.disabled=disabled;b.onclick=()=>{if(!H.pending())fn();};parent.appendChild(b);return b;}
-  button(head,'Close',()=>close());panel.append(head,status,notice,nav,body);overlay.append(panel);document.body.append(overlay);
-  const tray=el('div',undefined,'aw-home-tray hidden');tray.id='awHomeTray';tray.setAttribute('aria-label','Home controls');button(tray,'⌂ Home',()=>open());button(tray,'Build',()=>open('build'));button(tray,'Garden',()=>open('garden'));document.body.append(tray);
+  button(head,'Close',()=>close()).dataset.close='awHomePanel';panel.append(head,status,notice,nav,body);overlay.append(panel);document.body.append(overlay);
+  const tray=el('div',undefined,'aw-home-tray hidden');tray.id='awHomeTray';tray.setAttribute('aria-label','Home controls');button(tray,'⌂ Home',()=>open(H.state().tier?'overview':'build'));document.body.append(tray);
   const placeBar=el('div',undefined,'aw-home-place hidden');placeBar.setAttribute('role','region');placeBar.setAttribute('aria-label','Building placement controls');document.body.append(placeBar);
   const time=ms=>ms<=0?'Ready':ms<C.HOUR?`${Math.ceil(ms/C.MINUTE)}m`:`${Math.ceil(ms/C.HOUR*10)/10}h`;
   const cost=x=>Object.entries(x).map(([k,v])=>`${v} ${k==='gold'?'gold':MATERIALS[k]?.name||k}`).join(' · ');
@@ -23,11 +23,12 @@
     if(!game.player||!running||roomTransition)return;
     if(H.pending())return;
     if(!H.atHome()&&!D.isTown(AWCampaign.current()))return H.startRecall();
+    if(H.atHome()&&next==='build')H.acknowledgeFoundation();
     previousFocus=document.activeElement;AWCampaignUI.close();document.querySelectorAll('#npcPanel,#townPanel').forEach(e=>e.classList.add('hidden'));
     cancelPlacement(false);page=next;selected=id;overlay.classList.remove('hidden');modalPause=true;AWInput.clear();notice.textContent='';render();head.querySelector('button').focus();
   }
   function close(){if(H.pending())return;overlay.classList.add('hidden');cancelPlacement(false);modalPause=Array.from(document.querySelectorAll('.overlay')).some(e=>!e.classList.contains('hidden'));AWInput.clear();previousFocus?.focus?.();}
-  function refreshStatus(){status.textContent=window.AWHomeCloud?.status()||'Local save';head.querySelector('button').disabled=H.pending();placeBar.querySelectorAll('button').forEach(b=>b.disabled=H.pending());}
+  function refreshStatus(){status.textContent=window.AWHomeCloud?.status()||'Local save';head.querySelector('button').disabled=H.pending();placeBar.querySelectorAll('button').forEach(b=>b.disabled=H.pending());body.querySelectorAll('[data-home-build-ready]').forEach(b=>b.disabled=H.pending()||b.dataset.homeBuildReady!=='true');}
   function refresh(){tray.classList.toggle('hidden',!running||!H.atHome()||!!placing);if(visible())render();refreshStatus();}
   function render(){
     if(!game.player)return;const h=H.snapshot();body.replaceChildren();nav.replaceChildren();
@@ -41,23 +42,34 @@
   function overview(h){
     const ready=h.plots.filter(C.ready).length,dry=h.plots.filter(p=>p.plant&&!C.ready(p)&&p.plant.wateredUntil<=H.now()).length,stored=h.items.reduce((n,i)=>n+(i.stored||0),0);
     card(C.tiers[h.tier].name,`${ready} harvests ready · ${dry} growing spaces dry · ${stored} stored supplies`);
-    const quest=card('A Place to Return',!h.deed?'Clear a marked dangerous multi-wave site, then follow the western Sunmere road to Hearthglade.':!h.tier?'Your deed and starter supplies are ready. Build the cottage, place furniture, then plant and water a crop.':!h.firstWatered?'Furnish your house, prepare a garden bed, and plant and water your first crop.':'Your home is established. Explore for materials, expand the house, and maintain your garden.');
+    const quest=card('A Place to Return',!h.deed?'Clear a marked dangerous multi-wave site, then follow the western Sunmere road to Hearthglade.':!h.tier?'Build Your Cottage: travel west from Sunmere to Hearthglade and build on the marked foundation.':!h.firstWatered?'Furnish your house, prepare a garden bed, and plant and water your first crop.':'Your home is established. Explore for materials, expand the house, and maintain your garden.');
     if(!H.atHome()){button(quest,'Open world map',()=>{close();AWCampaignUI.open('Map');});if(h.tier)button(quest,'Recall home',()=>{close();H.startRecall();});}
     else{
-      if(!h.tier)button(quest,'Build cottage · '+cost(C.tiers[1].cost),()=>doAction('buildHouse'),!h.deed);
+      if(!h.tier)button(quest,'Build Your Cottage',()=>open('build'));
       else button(quest,H.inside()?'Leave house':'Enter house',()=>{close();H.inside()?H.leaveHouse():H.enterHouse();});
       button(body,'Collect ready supplies',()=>doAction('collect'));
       button(body,'Return to adventure',()=>{close();H.returnAdventure();});
     }
     paragraph('Dry plants pause rather than die. Ready harvests never spoil. A fruit tree stores only one harvest.');
-    paragraph(h.mode==='cloud'?'Cloud home actions are confirmed by Firebase before resources change. Reopen this named journey on another device; concurrent edits are rejected.':'This home is local until you assign an Official Firebase Save. Local clocks are device-based.');
     button(body,'Official Firebase Save',()=>{close();awOfficialSave();});
     if(h.mode==='cloud')button(body,'Reopen cloud journey',()=>{close();awCloudOpenModal('load');});
   }
   function build(h){
-    paragraph(`${game.gold} gold · ${game.materials.timber||0} Timber · ${game.materials.stone||0} Stone · ${game.materials.fiber||0} Plant Fiber`);
-    if(h.tier<4){const t=C.tiers[h.tier+1];button(body,`${h.tier?'Expand to':'Build'} ${t.name} · ${cost(t.cost)}`,()=>doAction('buildHouse'),!h.deed);}
-    if(!h.tier){paragraph('Earn the deed and build the cottage to unlock furniture placement.');return;}
+    if(h.tier)paragraph(`${game.gold} gold · ${game.materials.timber||0} Timber · ${game.materials.stone||0} Stone · ${game.materials.fiber||0} Plant Fiber`);
+    if(h.tier<4){
+      const t=C.tiers[h.tier+1],box=card(h.tier?'Expand to '+t.name:'Build Your Cottage',h.tier?'Expand your existing home in Hearthglade.':'This cottage will be built on the marked foundation in Hearthglade.'),missing=[];
+      for(const [key,needed]of Object.entries(t.cost)){
+        const have=key==='gold'?game.gold:game.materials[key]||0,name=key==='gold'?'Gold':MATERIALS[key]?.name||key,ready=have>=needed;
+        const row=paragraph(`${name}   ${have} / ${needed} ${ready?'✓':'✕'}${ready?'':' — Need '+(needed-have)+' more '+name}`,box);row.className=ready?'aw-home-ready':'aw-home-missing';
+        if(!ready)missing.push(`Need ${needed-have} more ${name}`);
+      }
+      if(!h.deed)missing.unshift('Clear a multi-wave encounter to earn your homestead deed.');
+      if(t.continent&&!AWCampaign.state().unlocked.includes(t.continent))missing.unshift('Explore '+D.continent(t.continent).name+' before this expansion.');
+      const reason=paragraph(missing.join(' · ')||'All requirements ready.',box);reason.id='awBuildReason';
+      const b=button(box,h.tier?'EXPAND HOUSE':'BUILD COTTAGE',()=>doAction('buildHouse'),!!missing.length||H.pending());b.dataset.homeBuildReady=String(!missing.length);b.classList.add('aw-home-primary');b.setAttribute('aria-describedby',reason.id);
+      paragraph('Building supplies can be earned from encounters or purchased from ♧ Homestead Suppliers in villages.',box);
+    }
+    if(!h.tier){paragraph(h.deed?'Build the cottage to unlock furniture placement.':'Earn the deed and build the cottage to unlock furniture placement.');return;}
     button(body,'Move house footprint',()=>startPlacement('house'));
     paragraph('Craft a furnishing, then place its preview in the world. Interior partitions form rooms; doors, rugs and floor inlays do not block movement.');
     if(h.items.length){const owned=el('div',undefined,'aw-home-grid');body.append(el('h3','Owned furnishings'),owned);
@@ -135,9 +147,9 @@
   function supplies(h){
     if(!D.isTown(AWCampaign.current())){paragraph('Visit any settlement home supplier for building basics. Seeds are sold on their native continent.');button(body,'World map',()=>{close();AWCampaignUI.open('Map');});return;}
     card(AWCampaign.current().name+' · Home Supplier',`${game.gold} gold · Timber, Stone and Plant Fiber replenish here.`);
-    for(const id of ['timber','stone','fiber'])button(body,`Buy 10 ${MATERIALS[id].name} · ${id==='fiber'?10:20} gold`,()=>doAction('buyMaterials',{resource:id,count:10}));
+    for(const id of ['timber','stone','fiber']){const price=id==='fiber'?10:20,short=Math.max(0,price-game.gold);button(body,`Buy 10 ${MATERIALS[id].name} · ${price} gold${short?' · Need '+short+' more gold':''}`,()=>doAction('buyMaterials',{resource:id,count:10}),!!short);}
     const grid=el('div',undefined,'aw-home-grid');body.append(grid);
-    for(const [id,c]of Object.entries(C.crops))if(c.continent===AWCampaign.current().continent){const box=card(c.name,`${c.tree?'Sapling':'Seeds'} · ${c.hours} watered hours${c.repeat?' to establish, then '+c.repeat+'h per harvest':''} · Owned ${h.seeds[id]||0}`,grid);button(box,'Buy one · '+c.seed+' gold',()=>doAction('buySeeds',{crop:id,count:1}));}
+    for(const [id,c]of Object.entries(C.crops))if(c.continent===AWCampaign.current().continent){const box=card(c.name,`${c.tree?'Sapling':'Seeds'} · ${c.hours} watered hours${c.repeat?' to establish, then '+c.repeat+'h per harvest':''} · Owned ${h.seeds[id]||0}`,grid);const short=Math.max(0,c.seed-game.gold);button(box,'Buy one · '+c.seed+' gold'+(short?' · Need '+short+' more gold':''),()=>doAction('buySeeds',{crop:id,count:1}),!!short);}
     button(body,'Sell produce / eat meals',()=>open('pantry'));
   }
   function placementRect(){
@@ -165,7 +177,7 @@
       else if(p.type==='house')ok=await H.action('moveHouse',{x:p.x,y:p.y});
       else ok=await H.action('bed',{x:p.x,y:p.y,tree:p.type==='tree'});
       if(ok){cancelPlacement();open(p.type==='item'||p.type==='house'?'build':'garden');}else if(placing)updatePlacement();
-    });confirmButton.dataset.confirm='true';button(actions,'Cancel',()=>{cancelPlacement();open('build');});
+    });confirmButton.dataset.confirm='true';button(actions,'Cancel',()=>{cancelPlacement();open('build');}).dataset.close='placement';
     document.body.classList.add('aw-home-building');placeBar.classList.remove('hidden');tray.classList.add('hidden');modalPause=true;AWInput.clear();updatePlacement();
   }
   function cancelPlacement(resume=true){placing=null;H.setPreview(null);placeBar.classList.add('hidden');document.body.classList.remove('aw-home-building');if(resume)modalPause=visible();AWInput.clear();}
@@ -176,11 +188,11 @@
   // Avoid shadowing the game's global H (canvas height) with the home adapter.
   function Hh(){return window.innerHeight;}
   document.addEventListener('keydown',e=>{
-    if(placing){const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(delta){e.preventDefault();e.stopImmediatePropagation();placing.x+=delta[0];placing.y+=delta[1];updatePlacement();}else if(e.key.toLowerCase()==='r'&&placing.type==='item'){e.preventDefault();placing.rotation=(placing.rotation+1)%4;updatePlacement();}else if(e.key==='Escape'){e.preventDefault();cancelPlacement();open('build');}return;}
+    if(placing){const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(delta){e.preventDefault();e.stopImmediatePropagation();placing.x+=delta[0];placing.y+=delta[1];updatePlacement();}else if(e.key.toLowerCase()==='r'&&placing.type==='item'){e.preventDefault();placing.rotation=(placing.rotation+1)%4;updatePlacement();}else if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelPlacement();open('build');}return;}
     if(visible()&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}
     if(visible()&&e.key==='Tab'){const focusables=[...panel.querySelectorAll('button:not(:disabled)')];if(!focusables.length)return;const first=focusables[0],last=focusables.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
   },true);
-  const oldTown=AWCampaignUI.openTown;AWCampaignUI.openTown=function(npc){oldTown(npc);button($('npcBody'),'⌂ Home supplies and seeds',()=>open('supplies'));};
+  const oldTown=AWCampaignUI.openTown;AWCampaignUI.openTown=function(npc){oldTown(npc);if(AWServices.capabilities(D.towns[npc.campaignTown],npc.role)?.supplies)button($('npcBody'),'♧ Home Supplies & Seeds',()=>open('supplies'));};
   // Context actions live in the existing journal, never over the combat spell buttons.
   const oldOpen=AWCampaignUI.open;AWCampaignUI.open=function(...args){oldOpen(...args);installJournalLinks();};
   function installJournalLinks(){const root=$('inventoryContent');if(!root||!AWCampaignUI.isOpen()||root.querySelector('[data-home-link]'))return;const b=button(root,H.atHome()?'⌂ Manage Hearthglade':'⌂ Hearthglade / Recall',()=>H.atHome()?open():H.startRecall());b.dataset.homeLink='true';}
@@ -190,5 +202,5 @@
     for(const b of body.querySelectorAll('[data-home-harvest]'))b.disabled=H.pending()||!C.ready(h.plots.find(p=>p.id===b.dataset.homeHarvest)||{});
   }
   const oldRender=render;render=function(){const result=oldRender();if(running&&performance.now()-lastTick>1000){lastTick=performance.now();tray.classList.toggle('hidden',!H.atHome()||!!placing);installJournalLinks();liveGarden();refreshStatus();}return result;};
-  window.AWHomeUI={open,close,refresh,refreshStatus,message:text=>{notice.textContent=text||'';},startPlacement,cancelPlacement};
+  window.AWHomeUI={open,close,isOpen:visible,refresh,refreshStatus,message:text=>{notice.textContent=text||'';},startPlacement,cancelPlacement};
 })();
