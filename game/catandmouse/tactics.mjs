@@ -61,12 +61,12 @@ export function scoreObjective(unit, target, pressure = 1, assignments = 0) {
 export function createTacticalDirector({ size, now = Date.now, findPath, passable, targets, occupants,
   revision = () => 0, resolveTarget = target => target, maxDecisions = () => 5, maxPaths = 10, windowMs = 200 }) {
   const brains = new Map(), reservations = createReservations({now});
-  let window = -1, decisions = 0, paths = 0, snapshot = null, occupied = new Map();
-  const stats = {decisions:0,paths:0,peakDecisions:0,peakPaths:0};
+  let window = -1, decisions = 0, paths = 0, snapshot = null, targetIndexes=null, occupied = new Map();
+  const stats = {decisions:0,paths:0,peakDecisions:0,peakPaths:0,targetResolutions:0};
   function begin() {
     const next=Math.floor(now()/windowMs);
     if (next===window) return;
-    window=next; decisions=0; paths=0; snapshot=null; occupied=new Map(); reservations.prune();
+    window=next; decisions=0; paths=0; snapshot=null;targetIndexes=null; occupied=new Map(); reservations.prune();
     const present=new Set();
     for (const unit of occupants()) {
       present.add(unit.key);
@@ -75,7 +75,12 @@ export function createTacticalDirector({ size, now = Date.now, findPath, passabl
     }
     for (const key of brains.keys()) if (!present.has(key)) {brains.delete(key);reservations.release(key);}
   }
-  function getTargets(team) { if (!snapshot) snapshot=targets(); return snapshot[team] || []; }
+  function getTargets(team) {
+    if (!snapshot){snapshot=targets();targetIndexes={};
+      for(const [key,list] of Object.entries(snapshot))targetIndexes[key]=new Map(list.map(t=>[t.key,t]));}
+    return snapshot[team] || [];
+  }
+  function resolve(target){if(!target)return null;stats.targetResolutions++;return resolveTarget(target);}
   function takePath(unit,target) {
     if (paths>=maxPaths) return undefined;
     paths++; stats.paths++; stats.peakPaths=Math.max(stats.peakPaths,paths);
@@ -85,10 +90,10 @@ export function createTacticalDirector({ size, now = Date.now, findPath, passabl
   }
   function plan(unit, {stopRange = 0, pressure = 1, reactionMs = 600, holdMs = 1600} = {}) {
     begin();
-    const time=now(), list=getTargets(unit.team).map(resolveTarget).filter(Boolean);
+    const time=now(),rawTargets=getTargets(unit.team);
     let brain=brains.get(unit.key);
     if (!brain) {brain={target:null,path:[],nextThink:0,holdUntil:0,stuck:0,previous:null,revision:revision(),failed:new Map()};brains.set(unit.key,brain);}
-    let target=list.find(t=>t.key===brain.target) || null;
+    let target=resolve(targetIndexes[unit.team]?.get(brain.target)) || null;
     if (!target) {brain.target=null;brain.path=[];}
     const endpointMoved=target && (brain.tx!==target.x || brain.ty!==target.y);
     const stale=brain.revision!==revision() || endpointMoved || (brain.path[0] && (distance(unit,brain.path[0])!==1 || !passable(unit.kind,brain.path[0].x,brain.path[0].y)));
@@ -98,6 +103,9 @@ export function createTacticalDirector({ size, now = Date.now, findPath, passabl
     const needsDecision=(!target && time>=brain.nextThink) || (target && (stale || brain.stuck>=3 || (!atRange && !brain.path.length) || time>=brain.nextThink));
     if (needsDecision && decisions<maxDecisions()) {
       decisions++;stats.decisions++;stats.peakDecisions=Math.max(stats.peakDecisions,decisions);
+      // Only the bounded decision pass resolves the entire roster. Movement
+      // ticks read their current target directly from the snapshot index.
+      const list=rawTargets.map(resolve).filter(Boolean);
       for (const [key,until] of brain.failed) if (until<=time) brain.failed.delete(key);
       const claims = key => {let count=0;for (const [id,b] of brains) if(id!==unit.key && b.target===key) count++;return count;};
       let choices=list.filter(t=>!brain.failed.has(t.key));
