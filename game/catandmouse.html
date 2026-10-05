@@ -219,13 +219,6 @@
       /    const label = DIFFICULTY_SETTINGS\[currentDifficulty\]\?\.label \|\| "Medium";\s*const myVoteLabel = myDifficultyVote \? \(DIFFICULTY_SETTINGS\[myDifficultyVote\]\?\.label \|\| myDifficultyVote\) : "none";/,
       '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";\n    const previewCaps = getEnemyCaps();\n    const previewScaling = getEnemyScaling(Math.max(1, catPower || ratPower || 1));\n    const threatCapEl = document.getElementById("menuThreatCap");\n    const enemySpeedEl = document.getElementById("menuEnemySpeed");\n    const catAbilitiesEl = document.getElementById("menuCatAbilities");\n    const pressureEl = document.getElementById("menuDifficultyPressure");\n    if (threatCapEl) threatCapEl.textContent = String(previewCaps.total);\n    if (enemySpeedEl) enemySpeedEl.textContent = previewScaling.speedMultiplier.toFixed(2) + "×";\n    if (catAbilitiesEl) catAbilitiesEl.textContent = currentDifficulty === "insane" ? "2" : currentDifficulty === "hard" ? "1" : "0";\n    if (pressureEl) pressureEl.textContent = label;', 'menu pressure data');
 
-    html = replaceExact(html,
-      '    tile.style.backgroundImage = `url("${getAssetUrl(TERRAIN_ASSETS.grass)}")`;',
-      '    tile.style.backgroundColor = "#68b947";\n    const initialTexture = getTileTexture(x, y);\n    tile.dataset.texture = initialTexture;\n    tile.style.backgroundImage = `url("${getAssetUrl(initialTexture)}")`;', 'initial terrain texture');
-    html = replaceExact(html,
-      '          cell.style.backgroundColor = "#68b947";\n          cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;',
-      '          const tileTexture = getTileTexture(x, y);\n          if (cell.dataset.texture !== tileTexture){\n            cell.dataset.texture = tileTexture;\n            cell.style.backgroundImage = `url("${getAssetUrl(tileTexture)}")`;\n          }', 'terrain texture cache');
-
     const required = [
       'rat:[0,7,8,9,10][n]+ratBonus',
       'total:[0,15,18,20,22][n]+ratBonus',
@@ -240,13 +233,16 @@
       'tacticalAI.plan',
       'battlePresentation.syncEntities',
       'battlePresentation.structureHit',
-      'battlePresentation.captureMouse'
+      'battlePresentation.captureMouse',
+      'createStructureQueries',
+      'recordWinTransaction',
+      'dirtyTerrainCells.has(key)'
     ];
     for (const marker of required){
       if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
     }
 
-    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-04-attack-feedback-v1";<\/script></body>');
+    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-05-late-game-wins-v1";<\/script></body>');
     return html;
   }
 

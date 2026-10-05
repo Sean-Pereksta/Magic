@@ -14,6 +14,7 @@ const firebase={
   'firebase-app.js':'export const initializeApp=()=>({});',
   'firebase-auth.js':'export const getAuth=()=>({currentUser:{uid:"test-player"}});export const signInAnonymously=async()=>{};',
   'firebase-firestore.js':`export const getFirestore=()=>({});export const doc=(_db,path)=>({id:path.split('/').pop()});export const collection=(_db,path)=>({path});
+    export const query=(...args)=>args;export const where=(...args)=>args;export const limit=n=>n;
     export const getDoc=async()=>({exists:()=>false,data:()=>({})});export const getDocs=async()=>({docs:[]});
     export const setDoc=async()=>{throw Error('unexpected Firebase write');};export const updateDoc=setDoc;export const deleteDoc=setDoc;
     export const onSnapshot=()=>()=>{};export const runTransaction=setDoc;export const writeBatch=setDoc;export const increment=x=>x;`
@@ -109,7 +110,7 @@ try {
     await page.clock.install({time:new Date('2026-10-04T07:00:00Z')});
     await page.goto(`http://127.0.0.1:${server.address().port}/game/catandmouse.html`);
     await page.waitForFunction(()=>!!window.__battleFixture);
-    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-04-attack-feedback-v1');
+    assert.equal(await page.evaluate(()=>window.__CATMOUSE_PERF_PATCH_VERSION),'2026-10-05-late-game-wins-v1');
     await page.evaluate(()=>window.__battleFixture.seed());
     const first=await page.evaluate(()=>window.__battleFixture.rendered('mouse:remote'));
     await page.evaluate(()=>window.__battleFixture.moveRemote());await page.clock.runFor(55);

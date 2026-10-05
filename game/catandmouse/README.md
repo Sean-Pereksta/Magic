@@ -7,11 +7,13 @@ modules and stylesheet together:
 - `sync.mjs`: existing write queues and multiplayer reconciliation.
 - `motion.mjs`: local visual tracks and smooth projectile sampling.
 - `tactics.mjs`: host target commitment, cached routes and tile reservations.
+- `structure-queries.mjs`: local support/disruption queries and topology caches.
+- `wins.mjs`: account lookup, atomic match receipts and pending win recovery.
 - `combat-presentation.mjs` and `combat-presentation.css`: persistent units,
   bounded effects, procedural animation and reduced-motion feedback.
 
 The loader's exact/regex replacements are exercised against the real core.
-The optimized patch version is `2026-10-04-attack-feedback-v1`; its validation
+The optimized patch version is `2026-10-05-late-game-wins-v1`; its validation
 includes the new runtime imports and the existing caps, buffered BFS and
 self-scheduling movement loops. Tests compile both optimized and fallback
 module scripts. No HTML previews are generated.
@@ -165,7 +167,7 @@ its tab. Browser timer throttling still applies.
 
 ## Validation
 
-Run `npm run test:catandmouse` (Node 20+; no dependencies). The 77 tests cover
+Run `npm run test:catandmouse` (Node 20+; no dependencies). The 105 tests cover
 sync queues/retries, death/revive safety, host election/listener recovery,
 loader application, interpolation/corrections, target persistence, reachable
 spawns, cap enforcement, failed producer retries, route reuse/reservations,
@@ -181,6 +183,40 @@ enable host simulation and exercise real spawns, movement, tower attacks,
 structure damage and rat/cat captures together; they are not
 browser rendering or live Firebase tests.
 
+Late-game tests run 420 structures, shield recharges, repeated health updates,
+retired slime history and a level-60 four-player battle at the shared population
+cap. Stink disruption used to enumerate/filter/sort all buildings for each
+tower, twice per redraw and again during AI decisions. It now examines at most
+13 nearby cells per rat position/rotation window/topology revision. Shield
+coverage is cached using at most 41 local cells per structure. Health-only
+updates retain both these caches and AI paths. Movement-only AI ticks resolve
+their current target rather than the entire building roster. Dirty terrain
+cells alone update textures; pickups/traps reuse their existing nodes. Slime
+history expires after 10 seconds. Generator payouts publish one combined
+player update, and large combat/shield batches split at 400 operations.
+
+Run `npm run bench:catandmouse` for an informational CPU benchmark using the
+actual optimized core in the deterministic DOM fixture. A 420-building run
+before this change took 47.73 ms median / 54.73 ms p95 per redraw and made
+25,640 full structure-list reads across 40 redraws. The changed run takes
+roughly 3–5 ms median / 6–8 ms p95 with zero redraw structure-list reads.
+These are local CPU/operation measurements, not browser FPS or a hardware
+performance guarantee; wall-clock timing is not a test pass/fail threshold.
+
+Wins now read the lobby's exact `users/{username}` account before bounded
+legacy equality queries. Missing fields on legacy accounts are supported;
+read failures preserve a known total or display unavailable instead of zero.
+An account listener stays active in solo mode. Each award transaction reads
+the account and `gameStats/catmouse_win_{encoded account-and-match}` receipt
+before writing the increment and receipt atomically. The receipt survives
+lobby cleanup. Previously confirmed local markers migrate without recounting
+the win. Pending victories are stored before account resolution and retried
+after reconnect/reload, including a lost acknowledgement. Tests model SDK
+contention/retries, stale cached totals and duplicate tabs without using live
+account data. The receipt path uses the existing checked-in authenticated
+`gameStats` rules; deployed rules and historical account totals have not been
+inspected through this GitHub-only connection.
+
 For the optional real-browser smoke test, make Playwright available locally
 and install its Chromium browser (`npx playwright install chromium`), then
 run `npm run test:catandmouse:browser`. `CHROMIUM_EXECUTABLE` may point to an
@@ -193,7 +229,9 @@ implementation environment, so this browser test has not been run there.
 `window.__catMouseSyncStats()` exposes write/skip/retry counters and connection
 state. `window.__catMouseBattleStats()` exposes unit/effect/pool counts,
 active captures, quality, reduced-motion state, cached brains, reservations
-and AI budgets.
+and AI budgets, structure query/cache counters and slime history size.
+`window.__catMouseWinsStats()` exposes the resolved account ID, match ID, count
+availability, pending award count and last tracking error.
 
 Before release, play the mixed-wave acceptance scenario on desktop and
 mobile, including reduced motion. Check den/nest emergence, swarm spacing,

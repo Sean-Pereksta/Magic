@@ -297,6 +297,39 @@ test('combat batches merge per-unit updates, let death win, and preserve coalesc
   assert.equal(queued.length,1);assert.equal(queued[0]['cat.health'],42);assert.equal(queued[0].cat,undefined);
 });
 
+test('large structure batches split transport commits without losing or duplicating any update',async()=>{
+  const chunks=[];
+  const ctx=vm.createContext({db:{},soloMode:false,isHost:true,ID:{STATE:'state'},stateFieldPatch,
+    stateWriter:{enqueue:async()=>{}},writeBatch:()=>{const writes=[];return {update:(ref,data)=>writes.push({ref,data}),commit:async()=>chunks.push(writes)};}});
+  vm.runInContext(section('  async function commitEnemyBatch(actions)', '  const ID = {'),ctx);
+  await ctx.commitEnemyBatch(Array.from({length:907},(_,i)=>({type:'update',ref:{id:'structure_'+i},data:{health:i}})));
+  assert.deepEqual(chunks.map(c=>c.length),[400,400,107]);assert.equal(new Set(chunks.flat().map(a=>a.ref.id)).size,907);
+});
+
+test('generator income totals the same nearby rewards in one player write',async()=>{
+  const writes=[],grid=Array.from({length:30},()=>Array(30).fill(''));grid[2][2]='🗼';
+  const ctx=vm.createContext({Date:{now:()=>123},lastGeneratorPayoutAt:0,getStructuresByType:()=>[{x:1,y:1},{x:3,y:1},{x:27,y:27}],gridSize:30,grid,
+    players:{me:{x:1,y:1,alive:true,cheese:5}},uid:'me',cheeseCount:5,document:{getElementById:()=>null},setTimeout(){},
+    ccRef:id=>({id}),ID:{player:id=>'player_'+id},runtimeUpdateDoc:async(ref,data)=>writes.push({ref,data})});
+  ctx.document.getElementById=id=>id==='cheeseCount'?{}:null;
+  vm.runInContext(section('  async function generatorPayoutTick(){','  async function damageEnemyUnit('),ctx);
+  await ctx.generatorPayoutTick();assert.equal(ctx.cheeseCount,9);assert.equal(ctx.players.me.cheese,9);
+  assert.equal(writes.length,1);assert.equal(writes[0].data.cheese,9);
+});
+
+test('failed shield publication rolls back only its own recharge and permits the next retry',async()=>{
+  let reject;
+  const ctx=vm.createContext({shieldTickInFlight:false,Date:{now:()=>10000},getAllStructures:()=>[{x:1,y:1,type:'🧱'}],
+    shieldCoverageForStructure:()=>[{}],STRUCTURE_MAX_HP:{'🧱':100},structureHealth:{'1_1':100},structureShields:{'1_1':10},structureShieldBrokenAt:{},
+    addCombatVfx(){},ccRef:id=>({id}),ID:{structure:(x,y)=>`structure_${x}_${y}`},
+    commitEnemyBatch:()=>new Promise((_resolve,fail)=>{reject=fail;})});
+  vm.runInContext(section('  async function shieldTowerTick(){','  function isValidEnemyDestination('),ctx);
+  const first=ctx.shieldTowerTick();assert.ok(ctx.structureShields['1_1']>10);reject(Error('offline'));
+  await assert.rejects(first,/offline/);assert.equal(ctx.structureShields['1_1'],10);assert.equal(ctx.shieldTickInFlight,false);
+  const second=ctx.shieldTowerTick();ctx.structureShields['1_1']=5;reject(Error('offline'));
+  await assert.rejects(second,/offline/);assert.equal(ctx.structureShields['1_1'],5);
+});
+
 function denHarness({blocked=false,count=11,canRun=true,fail=false}={}) {
   let ack;const batches=[];
   const ctx=vm.createContext({window:{},rabbits:Array.from({length:count},(_,i)=>({id:`r${i}`,x:20,y:i,health:5})),

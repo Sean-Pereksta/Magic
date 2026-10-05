@@ -1564,6 +1564,8 @@
   import { createPatchWriter, stateFieldPatch, eligibleHostCandidate, reconcileKeyedNodes } from "./catandmouse/sync.mjs";
   import { createTacticalDirector, findOpenSpawn, stableHash } from "./catandmouse/tactics.mjs";
   import { createCombatPresentation } from "./catandmouse/combat-presentation.mjs";
+  import { createStructureQueries } from "./catandmouse/structure-queries.mjs";
+  import { resolveWinAccount, readWinCount, recordWinTransaction, readPendingWins, savePendingWins } from "./catandmouse/wins.mjs";
 
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -1577,9 +1579,11 @@
     onSnapshot,
     collection,
     getDocs,
+    query,
+    where,
+    limit,
     runTransaction,
-    writeBatch,
-    increment
+    writeBatch
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -1601,7 +1605,9 @@
   // ============================================================
   const urlParams = new URLSearchParams(window.location.search);
   const gameId = urlParams.get("gameId") || "default";
-  let username = (urlParams.get("username") || "guest").trim();
+  let savedAccountUsername="";
+  try{savedAccountUsername=(localStorage.getItem("gh.username") || "").trim();}catch{}
+  let username = (urlParams.get("username")?.trim() || savedAccountUsername || "guest").trim();
   const usernameNorm = username.toLowerCase();
 
   const ASSET_DIR = "/graphics/mousegraphics";
@@ -1923,8 +1929,6 @@
         structures.set(key, { x, y, type:symbol, health });
         addToStructureIndex(x, y, symbol, health);
       }
-      markBlockedGridDirty();
-      markStructureIndexDirty();
       return;
     }
     if (id.startsWith("trap_")){
@@ -2019,13 +2023,14 @@
     const pending = [];
     if (statePatch && isHost) pending.push(stateWriter.enqueue(statePatch));
     if (merged.size){
-      const batch = writeBatch(db);
+      let batch = writeBatch(db),count=0;
       for (const action of merged.values()){
         if (action.type === "update") batch.update(action.ref, action.data);
         else if (action.type === "set") batch.set(action.ref, action.data, { merge:true });
         else if (action.type === "delete") batch.delete(action.ref);
+        if(++count===400){pending.push(batch.commit());batch=writeBatch(db);count=0;}
       }
-      pending.push(batch.commit());
+      if(count)pending.push(batch.commit());
     }
     await Promise.all(pending);
   }
@@ -2171,10 +2176,14 @@
   function clearStructureIndex(){
     structureIndex.all.clear();
     structureIndex.byType.clear();
+    structureTopologyRevision++;
+    markBlockedGridDirty();
+    markStructureIndexDirty();
   }
   function addToStructureIndex(x, y, type, health = 1){
     const key = `${x}_${y}`;
     const prev = structureIndex.all.get(key);
+    if(prev?.type===type){prev.health=health;return;}
     if (prev && prev.type !== type){
       const prevTyped = structureIndex.byType.get(prev.type);
       if (prevTyped) prevTyped.delete(key);
@@ -2183,6 +2192,9 @@
     structureIndex.all.set(key, item);
     if (!structureIndex.byType.has(type)) structureIndex.byType.set(type, new Map());
     structureIndex.byType.get(type).set(key, item);
+    structureTopologyRevision++;
+    markBlockedGridDirty();
+    markStructureIndexDirty();
   }
   function removeFromStructureIndex(x, y){
     const key = `${x}_${y}`;
@@ -2191,6 +2203,9 @@
     structureIndex.all.delete(key);
     const typed = structureIndex.byType.get(existing.type);
     if (typed) typed.delete(key);
+    structureTopologyRevision++;
+    markBlockedGridDirty();
+    markStructureIndexDirty();
   }
   function getStructuresByType(type){
     return Array.from(structureIndex.byType.get(type)?.values() || []);
@@ -2214,16 +2229,19 @@
     rats: 10, stinkrat: 2, fleas: 8, oxen: 3, ratKings: 1, vultures: 3, termites: 4, totalEnemies: 24
   };
   const tileEffects = new Map();
+  const dirtyTerrainCells = new Set();
 
   function setTileEffect(x, y, type, durationMs = TILE_EFFECT_MS){
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= gridSize || y >= gridSize) return;
     const key = `${x}_${y}`;
     const effect = { type, expiresAt:Date.now() + durationMs };
     tileEffects.set(key, effect);
+    dirtyTerrainCells.add(key);
     requestRender(`tileEffect:${type}`);
     setTimeout(() => {
       if (tileEffects.get(key) !== effect) return;
       tileEffects.delete(key);
+      dirtyTerrainCells.add(key);
       requestRender(`tileEffectExpired:${type}`);
     }, durationMs + 40);
   }
@@ -2343,6 +2361,15 @@
   let playerWins = 0;
   let playerUserDocId = null;
   let winAwardPromise = null;
+  let winAwardMatch = null;
+  let winSavedMatch = null;
+  let winsFetchPromise = null;
+  let winsUnsubscribe = null;
+  let pendingWinFlush = null;
+  let winRetryTimer = null;
+  let playerWinsKnown = false;
+  let winsStatus = "loading";
+  let winsError = "";
   let selectedBuildSlots = [];
   let mySelectionDone = false;
   let selectionStates = {};
@@ -2407,7 +2434,7 @@
   function updateTopHud(){
     document.getElementById("hudPlayer").textContent = `🐭 ${username}`;
     document.getElementById("hudCheese").textContent = `🧀 ${cheeseCount}`;
-    document.getElementById("hudWins").textContent = `🏆 ${playerWins}`;
+    updateWinsHud();
     updateRoleHud();
   }
   function isBuildUnlockedForLocalPlayer(buildId){
@@ -2728,6 +2755,7 @@
   let blockedGridCache = null;
   let blockedGridDirty = true;
   let tacticalRevision = 0;
+  let structureTopologyRevision = 0;
 
   let entitySpatialIndex = createSpatialIndex();
   let structureSpatialIndex = createSpatialIndex();
@@ -2782,6 +2810,10 @@
     blockedGridDirty = false;
     return blockedGridCache;
   }
+
+  const structureQueries=createStructureQueries({size:gridSize,now:()=>Date.now(),
+    lookup:(x,y)=>structureIndex.all.get(`${x}_${y}`),revision:()=>structureTopologyRevision,
+    disabledTypes:STINK_DISABLED_TOWERS,hash:hashStinkRatId});
 
   const GENERATOR_PAYOUT_MS = 15000;
   const ADV_POINT_MS = 180000;
@@ -3153,22 +3185,74 @@
   }
 
   async function fetchPlayerWins(){
-    try {
-      const usersSnap = await getDocs(collection(db, "users"));
-      let wins = 0;
-      usersSnap.forEach(docSnap => {
-        const data = docSnap.data();
-        if ((data.username || "").toLowerCase() === usernameNorm){
-          wins = data.wins || 0;
-          playerUserDocId = docSnap.id;
+    if(winsFetchPromise)return winsFetchPromise;
+    winsFetchPromise=(async()=>{
+      try{
+        const account=await resolveWinAccount({username,savedUsername:savedAccountUsername,
+          readExact:async name=>{const snap=await getDoc(doc(db,"users",name));return snap.exists() ? {id:snap.id,data:snap.data()} : null;},
+          findByUsername:async name=>{const snap=await getDocs(query(collection(db,"users"),where("username","==",name),limit(2)));return snap.docs.map(s=>({id:s.id,data:s.data()}));}});
+        playerUserDocId=account.id;applyWinCount(account.wins,"loaded");
+        listenToAccountWins();void retryPendingWins();return true;
+      }catch(error){
+        winsStatus="unavailable";winsError=error.message || "Wins could not be loaded.";
+        updateWinsHud();scheduleWinRetry();console.warn("Cat & Mouse account wins unavailable",error);return false;
+      }
+    })().finally(()=>{winsFetchPromise=null;});
+    return winsFetchPromise;
+  }
+
+  function updateWinsHud(){
+    const hud=document.getElementById("hudWins");if(!hud)return;
+    hud.textContent=`🏆 ${playerWinsKnown ? playerWins : winsStatus === "loading" ? "…" : "—"}`;
+    hud.title=winsError || (winsStatus === "cached" ? "Showing cached account wins" : "Account wins");
+  }
+  function applyWinCount(wins,status="synced"){
+    const changed=!playerWinsKnown || playerWins!==wins;
+    playerWins=wins;playerWinsKnown=true;winsStatus=status;winsError="";updateWinsHud();
+    if(changed)ensureLocalBuildControls("accountWins");
+  }
+  function listenToAccountWins(){
+    winsUnsubscribe?.();winsUnsubscribe=null;
+    if(!playerUserDocId || pageSuspended)return;
+    // This listener is separate from battle listeners: solo mode can stop
+    // battlefield synchronization while account progression remains live.
+    winsUnsubscribe=onSnapshot(doc(db,"users",playerUserDocId),{includeMetadataChanges:true},snap=>{
+      if(snap.metadata.hasPendingWrites)return;
+      if(snap.metadata.fromCache && playerWinsKnown)return;
+      try{
+        if(!snap.exists())throw Error("The saved account no longer exists.");
+        applyWinCount(readWinCount(snap.data().wins),snap.metadata.fromCache ? "cached" : "synced");
+      }catch(error){winsStatus="unavailable";winsError=error.message;updateWinsHud();}
+    },error=>{winsStatus="unavailable";winsError=error.message || "Account wins are offline.";updateWinsHud();});
+  }
+
+  function retryPendingWins(){
+    if(pendingWinFlush)return pendingWinFlush;
+    if(!playerUserDocId || pageSuspended || navigator.onLine===false)return Promise.resolve(false);
+    pendingWinFlush=(async()=>{
+      const accountId=playerUserDocId;
+      for(const job of readPendingWins(localStorage,username)){
+        try{
+          if(job.accountId && job.accountId!==accountId)throw Error("The pending win belongs to a different account record.");
+          const result=await recordWinTransaction({db,doc,runTransaction,...job,accountId});
+          savePendingWins(localStorage,username,readPendingWins(localStorage,username).filter(p=>p.matchId!==job.matchId));
+          if(job.matchId===(matchId || gameId))winSavedMatch=job.matchId;
+          applyWinCount(Math.max(playerWins,result.wins));
+        }catch(error){
+          winsStatus="save-pending";winsError="Win save pending — reconnect to retry.";updateWinsHud();
+          scheduleWinRetry();
+          console.warn("Cat & Mouse win save pending",error);return false;
         }
-      });
-      playerWins = wins;
-      ensureLocalBuildControls("winsLoaded");
-    } catch {
-      playerWins = 0;
-      ensureLocalBuildControls("winsFallback");
-    }
+      }
+      if(handleCatDefeated.done && winSavedMatch===(matchId || gameId))updateVictoryWins(true);
+      return true;
+    })().finally(()=>{pendingWinFlush=null;});
+    return pendingWinFlush;
+  }
+  function scheduleWinRetry(){
+    if(winRetryTimer || pageSuspended || !readPendingWins(localStorage,username).length)return;
+    winRetryTimer=setTimeout(()=>{winRetryTimer=null;
+      if(playerUserDocId)void retryPendingWins();else void fetchPlayerWins();},10000);
   }
 
   function winAwardStorageKey(){
@@ -3177,23 +3261,39 @@
 
   async function awardWinOnce(){
     if (catHealth > 0) return false;
-    try {
-      if (localStorage.getItem(winAwardStorageKey()) === "1") return true;
-    } catch {}
-    if (winAwardPromise) return winAwardPromise;
+    const matchKey=matchId || gameId;
+    if (winAwardPromise && winAwardMatch===matchKey) return winAwardPromise;
+    winAwardMatch=matchKey;
     winAwardPromise = (async () => {
+      let legacyAlreadyAwarded=false;
+      try{legacyAlreadyAwarded=localStorage.getItem(winAwardStorageKey()) === "1";}catch{}
+      // Remember the victory before resolving the account too: a failed
+      // initial read must not lose the match when the page is reloaded.
+      const job={accountName:username,accountId:playerUserDocId,matchId:matchKey,gameId,uid,legacyAlreadyAwarded};
+      const pending=readPendingWins(localStorage,username).filter(p=>p.matchId!==matchKey);
+      savePendingWins(localStorage,username,[...pending,job]);
       if (!playerUserDocId) await fetchPlayerWins();
       if (!playerUserDocId) throw new Error(`No user record found for ${username}`);
-      await updateDoc(doc(db, "users", playerUserDocId), { wins:increment(1) });
-      playerWins += 1;
+      job.accountId=playerUserDocId;
+      const result=await recordWinTransaction({db,doc,runTransaction,...job});
+      applyWinCount(Math.max(playerWins,result.wins));
+      winSavedMatch=matchKey;
+      savePendingWins(localStorage,username,readPendingWins(localStorage,username).filter(p=>p.matchId!==matchKey));
       try { localStorage.setItem(winAwardStorageKey(), "1"); } catch {}
       return true;
     })().catch(err => {
       winAwardPromise = null;
+      winsStatus="save-pending";winsError="Win save pending — reconnect to retry.";updateWinsHud();
+      scheduleWinRetry();
       console.error("Error awarding Cat & Mouse win:", err);
       return false;
     });
     return winAwardPromise;
+  }
+
+  function updateVictoryWins(awarded){
+    const status=document.getElementById("status");if(!status)return;
+    status.textContent=`🎉 Congratulations! The cats and enemies are defeated. Total wins: ${playerWinsKnown ? playerWins : "unavailable"}${awarded ? "" : " (win save pending — reconnect to retry)"}`;
   }
 
   function defeatAllEnemies(){
@@ -3230,7 +3330,7 @@
     const returnButton = document.getElementById("returnButton");
     if (returnButton) returnButton.style.display = "block";
     const awarded = await awardWinOnce();
-    if (st) st.textContent = `🎉 Congratulations! The cats and enemies are defeated. Total wins: ${playerWins}${awarded ? "" : " (win count could not be updated)"}`;
+    updateVictoryWins(awarded);
     requestRender("cat defeated");
   }
 
@@ -3383,6 +3483,7 @@
   let presentationFocus = null;
   const structureVisualState = new Map();
   const structureNodes = new Map();
+  const staticEntityNodes = new Map();
   const tileNodes = [];
   let playerStatusSignature = "";
   let persistentStageSignature = "";
@@ -3551,7 +3652,10 @@
     const tile = document.createElement("div");
     tile.className = "cell iso-tile";
     tile.id = `cell-${x}-${y}`;
-    tile.style.backgroundImage = `url("${getAssetUrl(TERRAIN_ASSETS.grass)}")`;
+    const initialTexture=getTileTexture(x,y);
+    tile.dataset.texture=initialTexture;
+    tile.style.backgroundColor="#68b947";
+    tile.style.backgroundImage = `url("${getAssetUrl(initialTexture)}")`;
     positionIsoElement(tile, x, y, 0);
     return tile;
   }
@@ -3713,7 +3817,7 @@
   }
 
   function isLocalMouseLikelyObscured(x, y){
-    for (const s of getAllStructures()){
+    for (const s of structureQueries.nearby(x,y,1,{square:true})){
       if (Math.abs((s.x ?? -99) - x) <= 1 && Math.abs((s.y ?? -99) - y) <= 1 && ((s.x + s.y) >= (x + y))) return true;
     }
     return STRUCTURE_SYMBOL_SET.has(grid[y]?.[x]);
@@ -3968,6 +4072,7 @@
     if (!persistentTileLayer || !persistentEntityLayer || persistentStageSignature !== stageSignature){
       viewport.replaceChildren();
       structureNodes.clear();
+      staticEntityNodes.clear();
       structureVisualState.clear();
       battlePresentation.clear();
       tileNodes.length = 0;
@@ -3993,6 +4098,7 @@
       viewport.append(persistentUnitLayer,persistentEffectLayer);
       battlePresentation.attach(persistentUnitLayer,persistentEffectLayer);
       renderIsoTiles(persistentTileLayer);
+      dirtyTerrainCells.clear();
       persistentStageSignature = stageSignature;
     }
     const tileLayer = persistentTileLayer;
@@ -4008,19 +4114,13 @@
     const wrapper = document.getElementById("gridWrapper");
     presentationStageMetrics = {worldW:stageW,worldH:stageH,originX:leftPad,originY:topPad,wrapperW:wrapper?.clientWidth || 860,wrapperH:wrapper?.clientHeight || 600,
       mapCenter:{x:leftPad+isoToScreen((gridSize-1)/2,(gridSize-1)/2).x,y:topPad+isoToScreen((gridSize-1)/2,(gridSize-1)/2).y}};
-    entityLayer.replaceChildren();
-
-    const addEntityAt = (x, y, icon, opts = {}) => {
-      const cell = document.getElementById(`cell-${x}-${y}`);
-      if (!cell) return null;
-      const el = document.createElement("div");
-      el.className = `cell iso-entity ${opts.entityClass || ""}`.trim();
-      el.textContent = icon;
-      el.style.fontSize = opts.fontSize || "24px";
-      positionIsoElement(el, x, y, 6);
-      entityLayer.appendChild(el);
-      return el;
-    };
+    const staticEntries=[];
+    const stinkTiles=new Set(),termiteWarningTiles=new Set();
+    for(const rat of stinkRats)if((rat.health ?? 0)>0)
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)
+        if(Math.abs(dx)+Math.abs(dy)<=2)stinkTiles.add(`${rat.x+dx}_${rat.y+dy}`);
+    if(isTermiteSpawnWarningCell(OBJECTIVE_CENTER,OBJECTIVE_CENTER))
+      for(const offset of TERMITE_SPAWN_OFFSETS)termiteWarningTiles.add(`${OBJECTIVE_CENTER+offset.x}_${OBJECTIVE_CENTER+offset.y}`);
 
     // Base tiles are persistent and were created when the stage initialized.
     const structureEntries = [];
@@ -4035,8 +4135,11 @@
           const symbol = grid[y][x];
 
           let tileShadow = "", tileOutline = "", tileFilter = "";
-          cell.style.backgroundColor = "#68b947";
-          cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;
+          if(dirtyTerrainCells.has(key)){
+            const tileTexture=getTileTexture(x,y);
+            if(cell.dataset.texture!==tileTexture){cell.dataset.texture=tileTexture;cell.style.backgroundImage=`url("${getAssetUrl(tileTexture)}")`;}
+            dirtyTerrainCells.delete(key);
+          }
           if (beaconBoosted.has(key)){
             tileShadow = "inset 0 0 0 2px rgba(239,68,68,.82),0 0 7px rgba(239,68,68,.7)";
             tileFilter = "saturate(1.15) brightness(1.06)";
@@ -4050,7 +4153,7 @@
             const remaining = expiresAt ? Math.ceil((expiresAt - now) / 1000) : 0;
             const isRatKingDrop = expiresAt > 0;
             const urgency = isRatKingDrop && remaining <= 5 ? "final" : isRatKingDrop && remaining <= 10 ? "urgent" : "";
-            renderPickupSprite(entityLayer, x, y, isRatKingDrop ? "ratKingCheese" : "standardCheese", isRatKingDrop ? "rat-king-cheese" : "standard-cheese", 6, urgency);
+            staticEntries.push({key:`cheese:${key}`,kind:"pickup",x,y,asset:isRatKingDrop ? "ratKingCheese" : "standardCheese",css:isRatKingDrop ? "rat-king-cheese" : "standard-cheese",z:6,extra:urgency});
           }
           if (STRUCTURE_SYMBOL_SET.has(symbol)){
             const hp = structureHealth[`${x}_${y}`] ?? (STRUCTURE_MAX_HP[symbol] ?? 1);
@@ -4063,22 +4166,22 @@
             });
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
-            renderPickupSprite(entityLayer, x, y, "supplyDrop", "supply-drop", 7);
+            staticEntries.push({key:"supply",kind:"pickup",x,y,asset:"supplyDrop",css:"supply-drop",z:7});
             tileShadow = "0 0 10px #fde047";
           }
           if (objectiveState.shrine?.active && objectiveState.shrine.x===x && objectiveState.shrine.y===y){
-            renderPickupSprite(entityLayer, x, y, "weakeningShrine", "weakening-shrine", 7);
+            staticEntries.push({key:"shrine",kind:"pickup",x,y,asset:"weakeningShrine",css:"weakening-shrine",z:7});
             tileOutline = "2px solid #a855f7";
           }
           if (objectiveState.rescue?.active && objectiveState.rescue.x===x && objectiveState.rescue.y===y){
-            renderPickupSprite(entityLayer, x, y, "rescueSpark", "rescue-spark", 7);
+            staticEntries.push({key:"rescue",kind:"pickup",x,y,asset:"rescueSpark",css:"rescue-spark",z:7});
             tileOutline = "2px solid #60a5fa";
           }
 
-          if (isTermiteSpawnWarningCell(x, y)) {
+          if (termiteWarningTiles.has(key)) {
             tileShadow = "inset 0 0 0 2px rgba(239,68,68,.95), 0 0 13px rgba(220,38,38,.9)";
             tileFilter = "saturate(1.45) brightness(1.08) hue-rotate(320deg)";
-          } else if (isInStinkAura(x, y)) {
+          } else if (stinkTiles.has(key)) {
             tileShadow = "inset 0 0 8px rgba(90, 60, 20, 0.9)";
             tileFilter = "sepia(.35) hue-rotate(28deg) saturate(.85)";
           }
@@ -4118,26 +4221,28 @@
       if (!(x>=0 && x<gridSize && y>=0 && y<gridSize)) continue;
       const cell = document.getElementById(`cell-${x}-${y}`);
       if (cell && isTowerDisabledByStink(x, y)){
-        const disabled = document.createElement("div");
-        disabled.className = "cell iso-entity name";
-        disabled.style.color = "#4b2e05";
-        disabled.textContent = "STINK";
-        positionIsoElement(disabled, x, y, 13);
-        entityLayer.appendChild(disabled);
+        staticEntries.push({key:`stink:${key}`,kind:"stink",x,y});
       }
     }
 
     // traps
-    renderIsoPickupsAndTraps(entityLayer);
+    for(const trap of traps)staticEntries.push({key:`trap:${trap.x}_${trap.y}`,kind:"pickup",x:trap.x,y:trap.y,asset:"mousetrap",css:"mousetrap",z:6});
 
     if (objectiveState.repair?.active){
-      const rep = document.createElement("div");
-      rep.className = "iso-object iso-objective iso-repair-marker";
-      const repairImg = PICKUP_ASSETS.repairObjective && !failedAssetPaths.has(PICKUP_ASSETS.repairObjective) ? makeAssetImage(PICKUP_ASSETS.repairObjective, "pickup-art pickup-repair-objective", "repair objective") : null;
-      if (repairImg) rep.appendChild(repairImg);
-      positionIsoElement(rep, objectiveState.repair.x, objectiveState.repair.y, 7);
-      entityLayer.appendChild(rep);
+      staticEntries.push({key:"repair",kind:"repair",x:objectiveState.repair.x,y:objectiveState.repair.y});
     }
+    reconcileKeyedNodes(staticEntityNodes,entityLayer,staticEntries,entry=>entry.key,
+      entry=>JSON.stringify(entry)+`|${failedAssetPaths.size}`,entry=>{
+        if(entry.kind==="pickup")return renderPickupSprite(entityLayer,entry.x,entry.y,entry.asset,entry.css,entry.z,entry.extra);
+        if(entry.kind==="repair"){
+          const node=document.createElement("div");node.className="iso-object iso-objective iso-repair-marker";
+          const path=PICKUP_ASSETS.repairObjective;
+          if(path && !failedAssetPaths.has(path))node.appendChild(makeAssetImage(path,"pickup-art pickup-repair-objective","repair objective"));
+          positionIsoElement(node,entry.x,entry.y,7);return node;
+        }
+        const node=document.createElement("div");node.className="cell iso-entity name";node.style.color="#4b2e05";node.textContent="STINK";
+        positionIsoElement(node,entry.x,entry.y,13);return node;
+      });
 
     // status list
     const statusDiv = document.getElementById("playerStatus");
@@ -4634,8 +4739,6 @@
       structureHealth[`${tx}_${ty}`] = data.health;
       structures.set(`${tx}_${ty}`, { x:tx, y:ty, type:data.type, health:data.health });
       addToStructureIndex(tx, ty, data.type, data.health);
-      markBlockedGridDirty();
-      markStructureIndexDirty();
       syncLocalCheese(result.nextCheese);
       refreshBuildAffordability();
       showCheeseSpend(cost, playerPos.x, playerPos.y);
@@ -4690,18 +4793,15 @@
       delete structureShields[key];
       delete structureShieldBrokenAt[key];
       clearTowerCooldownsAt(x, y);
-      markBlockedGridDirty();
       removeFromStructureIndex(x,y);
       setTileEffect(x,y,"rubble");
       if(actions)actions.push({type:"delete",ref:ccRef(ID.structure(x,y))});
       else await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
-      markStructureIndexDirty();
     } else {
       const patch={health:structureHealth[key],shield:structureShields[key] ?? 0,shieldBrokenAt:structureShieldBrokenAt[key] || 0,updatedAt:Date.now()};
       addToStructureIndex(x,y,symbol,structureHealth[key]);
       if(actions)actions.push({type:"update",ref:ccRef(ID.structure(x,y)),data:patch});
       else await runtimeUpdateDoc(ccRef(ID.structure(x,y)),patch);
-      markStructureIndexDirty();
     }
     requestRender("damageStructure");
   }
@@ -4748,13 +4848,7 @@
   }
 
   function getStinkRatDisabledTowerKey(sr, now = Date.now()){
-    if (!sr || (sr.health ?? 0) <= 0) return null;
-    const candidates = getAllStructures()
-      .filter(s => STINK_DISABLED_TOWERS.includes(s.type) && Math.abs(sr.x - s.x) + Math.abs(sr.y - s.y) <= 2)
-      .sort((a,b) => (Math.abs(sr.x-a.x)+Math.abs(sr.y-a.y)) - (Math.abs(sr.x-b.x)+Math.abs(sr.y-b.y)) || a.key.localeCompare(b.key));
-    if (!candidates.length) return null;
-    const windowIndex = Math.floor(now / STINK_DISABLE_DURATION_MS);
-    return candidates[(windowIndex + hashStinkRatId(sr.id)) % candidates.length].key;
+    return structureQueries.stinkTarget(sr,STINK_DISABLE_DURATION_MS,now);
   }
 
   function isTowerDisabledByStink(x, y){
@@ -5590,7 +5684,7 @@
   }
 
   async function repairStationTick(){
-    const usedTargets = new Set();
+    const usedTargets = new Set(),writes=[];
     for (const station of getStructuresByType("🛠️")){
       const x = station.x, y = station.y;
 
@@ -5600,7 +5694,7 @@
         const repairsPerTick = boostedByBeacon ? 2 : 1;
         const candidates = [];
 
-        for (const targetStruct of getAllStructures()){
+        for (const targetStruct of structureQueries.nearby(x,y,repairRange)){
             const tx = targetStruct.x, ty = targetStruct.y;
             const symbol = targetStruct.type;
             if (tx===x && ty===y) continue;
@@ -5632,17 +5726,19 @@
           const toCell = document.getElementById(`cell-${target.tx}-${target.ty}`);
           if (toCell) toCell.style.backgroundColor = boostedByBeacon ? "#22d3ee" : "#86efac";
           setTimeout(() => {
-            if (toCell) toCell.style.backgroundColor = "";
+            if (toCell) toCell.style.backgroundColor = "#68b947";
           }, 220);
 
-          await runtimeUpdateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
+          addToStructureIndex(target.tx,target.ty,target.symbol,healedHp);
+          writes.push({type:"update",ref:ccRef(ID.structure(target.tx,target.ty)),data:{health:healedHp,updatedAt:Date.now()}});
         }
 
         setTimeout(() => {
-          if (fromCell) fromCell.style.backgroundColor = "";
+          if (fromCell) fromCell.style.backgroundColor = "#68b947";
         }, 220);
     }
     requestRender("repairStationTick");
+    await commitEnemyBatch(writes);
   }
 
   // ============================================================
@@ -5650,6 +5746,7 @@
   // ============================================================
   async function generatorPayoutTick(){
     lastGeneratorPayoutAt = Date.now();
+    let earned=0;
     for (const gen of getStructuresByType("🏭")){
       const x = gen.x, y = gen.y;
 
@@ -5673,12 +5770,15 @@
           const dx = Math.abs(me.x - x);
           const dy = Math.abs(me.y - y);
           if (dx + dy <= 9){
-            const totalCheese = 1 + bonusCheese;
-            cheeseCount += totalCheese;
-            document.getElementById("cheeseCount").textContent = cheeseCount;
-            await runtimeUpdateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
+            earned += 1 + bonusCheese;
           }
         }
+    }
+    if(earned){
+      cheeseCount+=earned;
+      if(players[uid])players[uid].cheese=cheeseCount;
+      document.getElementById("cheeseCount").textContent=cheeseCount;
+      await runtimeUpdateDoc(ccRef(ID.player(uid)),{cheese:cheeseCount,updatedAt:Date.now()});
     }
   }
 
@@ -5725,8 +5825,8 @@
     return best;
   }
 
-  function shieldCoverageForStructure(st, shieldTowers){
-    return shieldTowers.filter(sh => Math.abs(sh.x-st.x)+Math.abs(sh.y-st.y) <= 4);
+  function shieldCoverageForStructure(st){
+    return structureQueries.shieldSupports(st);
   }
 
   async function shieldTowerTick(){
@@ -5734,12 +5834,11 @@
     shieldTickInFlight = true;
     try{
       const now = Date.now();
-      const shieldTowers = getStructuresByType("🛡️");
       const all = getAllStructures();
       const changed = [];
       for (const st of all){
         const key = `${st.x}_${st.y}`;
-        const supports = shieldCoverageForStructure(st, shieldTowers);
+        const supports = shieldCoverageForStructure(st);
         if (!supports.length){ delete structureShields[key]; continue; }
         const maxHp = STRUCTURE_MAX_HP[st.type] || structureHealth[key] || 25;
         const extra = Math.max(0, supports.length - 1);
@@ -5753,16 +5852,16 @@
         if (Math.round(next) !== Math.round(current)){
           structureShields[key] = next;
           if (current <= 0) structureShieldBrokenAt[key] = 0;
-          changed.push({ x:st.x, y:st.y, shield:Math.round(next), maxShield, shieldBrokenAt:structureShieldBrokenAt[key] || 0, supports:supports.length });
+          changed.push({ x:st.x, y:st.y, shield:Math.round(next), previous:current, next, previousBrokenAt:brokenAt,maxShield, shieldBrokenAt:structureShieldBrokenAt[key] || 0, supports:supports.length });
           addCombatVfx(st.x, st.y, "🛡️", "vfx-pop", 300, 11);
         }
       }
-      if (changed.length && !soloMode){
-        const batch = writeBatch(db);
-        for (const c of changed) batch.update(ccRef(ID.structure(c.x,c.y)), { shield:c.shield, maxShield:c.maxShield, shieldBrokenAt:c.shieldBrokenAt, shieldSupports:c.supports, updatedAt:now });
-        await batch.commit();
-      } else if (changed.length){
-        for (const c of changed) applyLocalRuntimeMutation("update", ccRef(ID.structure(c.x,c.y)), { shield:c.shield, maxShield:c.maxShield, shieldBrokenAt:c.shieldBrokenAt, shieldSupports:c.supports });
+      try{
+        await commitEnemyBatch(changed.map(c=>({type:"update",ref:ccRef(ID.structure(c.x,c.y)),data:{shield:c.shield,maxShield:c.maxShield,shieldBrokenAt:c.shieldBrokenAt,shieldSupports:c.supports,updatedAt:now}})));
+      }catch(error){
+        for(const c of changed){const key=`${c.x}_${c.y}`;
+          if(structureShields[key]===c.next){structureShields[key]=c.previous;structureShieldBrokenAt[key]=c.previousBrokenAt;}}
+        throw error;
       }
     } finally { shieldTickInFlight = false; }
   }
@@ -5786,6 +5885,9 @@
   }
 
   async function specialStructureTick(){
+    const historyCutoff=Date.now()-10000;
+    for(const [key,time] of slimeAuraMemory)if(time<historyCutoff)slimeAuraMemory.delete(key);
+    rebuildSpatialIndexes();
     await shieldTowerTick();
     const writes=[];
     // cheese farm spawn: every 20s each farm can create one nearby pickup
@@ -6336,7 +6438,7 @@
     popup.id = "structureTargetPopup"; popup.style.cssText = "position:fixed;right:10px;top:110px;background:#fff;border:2px solid #333;padding:8px;z-index:9999;max-width:250px";
     const name = BUILD_DEFS[Object.keys(BUILD_DEFS).find(k=>BUILD_DEFS[k].symbol===symbol)]?.name || "Structure";
     const hp = structureHealth[key] ?? 0; const maxHp = STRUCTURE_MAX_HP[symbol] ?? hp;
-    const supports = shieldCoverageForStructure({x,y,type:symbol}, getStructuresByType("🛡️")).length;
+    const supports = shieldCoverageForStructure({x,y,type:symbol}).length;
     const extra = Math.max(0, supports - 1);
     const maxShield = supports ? Math.max(15, Math.ceil(maxHp * 0.60 * (1 + Math.min(0.60, extra * 0.20)))) : 0;
     const shield = Math.round(structureShields[key] || 0);
@@ -6392,12 +6494,10 @@
               setTileEffect(x, y, "rubble");
               const key = `${x}_${y}`;
               structures.delete(key);
-              markBlockedGridDirty();
               delete structureHealth[key];
               delete structureShields[key];
               removeFromStructureIndex(x, y);
               clearTowerCooldownsAt(x, y);
-    markStructureIndexDirty();
               if (grid[y] && grid[y][x] && STRUCTURE_TYPES.has(grid[y][x])){
                 grid[y][x] = "";
               }
@@ -6579,7 +6679,6 @@
           if (Number.isInteger(x) && Number.isInteger(y) && data.type){
             const key = `${x}_${y}`;
             structures.set(key, {x,y,type:data.type,health:data.health ?? 1});
-            markBlockedGridDirty();
             structureHealth[key] = data.health ?? 1;
             structureShields[key] = Math.max(0, data.shield ?? structureShields[key] ?? 0);
             if (isCheesePickupCell(grid[y][x])) delete cheesePickupExpiryByCell[`${x}_${y}`];
@@ -7560,7 +7659,10 @@
   scrubGhostEnemies = lockAsyncTask("ghostCleanup", scrubGhostEnemies);
 
   window.__catMouseSyncStats = () => ({ state:stateWriter.stats, player:playerWriter.stats, connected:syncEnabled() });
-  window.__catMouseBattleStats = () => ({presentation:battlePresentation.stats,ai:tacticalAI.stats});
+  window.__catMouseBattleStats = () => ({presentation:battlePresentation.stats,ai:tacticalAI.stats,
+    structures:structureIndex.all.size,structureQueries:structureQueries.stats,slimeHistory:slimeAuraMemory.size});
+  window.__catMouseWinsStats = () => ({account:playerUserDocId,match:matchId,status:winsStatus,
+    wins:playerWinsKnown ? playerWins : null,pending:readPendingWins(localStorage,username).length,error:winsError});
 
   // ============================================================
   // Boot
@@ -7580,6 +7682,7 @@
       playerWriter.cancel();
       stopPlayerHeartbeat();
       cleanupFirebaseListeners();
+      winsUnsubscribe?.();winsUnsubscribe=null;
       if (!soloMode) void updateDoc(ccRef(ID.player(uid)), { online:false, lastSeen:Date.now(), updatedAt:Date.now() }).catch(()=>{});
     };
     window.addEventListener("pagehide", markLocalPlayerOffline);
@@ -7589,6 +7692,7 @@
       pageSuspended = false;
       lastRequestedPosition = null;
       if (!soloMode){ listenToCrownCouncil(); startPlayerHeartbeat(); }
+      void fetchPlayerWins();
       battlePresentation.resume();
       requestRender("resumePage");
     });
@@ -7598,7 +7702,9 @@
     });
     window.addEventListener("online", () => {
       if (!soloMode && listenerFailed && !pageSuspended) listenToCrownCouncil();
+      void fetchPlayerWins();
     });
+    document.getElementById("hudWins")?.addEventListener("click",()=>{void fetchPlayerWins();});
     document.getElementById("hudSync")?.addEventListener("click", () => {
       if (soloMode || pageSuspended) return;
       if (listenerFailed) listenToCrownCouncil();

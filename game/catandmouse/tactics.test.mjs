@@ -108,3 +108,11 @@ test('structure specialists stay in contact range and do not repeatedly repath i
   const result=h.step(termite);assert.equal(result.target.key,'wall');assert.equal(result.next,null);
   h.advance(250);h.step(termite);assert.equal(h.director.stats.paths,0);
 });
+
+test('movement-only planning resolves one current target instead of every building on every tick',()=>{
+  const h=harness(),unit=h.add();
+  h.targets(Array.from({length:500},(_,i)=>({key:String(i),type:'structure',x:3+i%9,y:3+Math.floor(i/9)%8,wall:true})));
+  h.step(unit,{stopRange:99,reactionMs:100000});const before=h.director.stats.targetResolutions;
+  for(let i=0;i<1000;i++)h.step(unit,{stopRange:99,reactionMs:100000});
+  assert.equal(h.director.stats.targetResolutions-before,1000);assert.equal(h.director.stats.decisions,1);
+});
