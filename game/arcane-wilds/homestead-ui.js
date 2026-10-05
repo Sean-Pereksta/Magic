@@ -32,17 +32,21 @@
   function refresh(){tray.classList.toggle('hidden',!running||!H.atHome()||!!placing);if(visible())render();refreshStatus();}
   function render(){
     if(!game.player)return;const h=H.snapshot();body.replaceChildren();nav.replaceChildren();
-    for(const [id,name]of [['overview','Overview'],['build','Build'],['garden','Garden'],['pantry','Pantry'],['portals','Portals'],['supplies','Supplies']]){
+    for(const [id,name]of [['overview','Overview'],['care','Home Rewards'],['build','Build'],['garden','Garden'],['pantry','Pantry'],['portals','Portals'],['supplies','Supplies']]){
       const b=button(nav,name,()=>{page=id;selected=null;render();});b.setAttribute('aria-current',page===id?'page':'false');
     }
     refreshStatus();
     if(!H.atHome()&&!['supplies','pantry','overview'].includes(page)){paragraph('Return to Hearthglade to build and tend your home.');button(body,'Recall home',()=>{close();H.startRecall();});return;}
-    ({overview,build,garden,pantry,portals,supplies,plot:plotView,item:itemView,water:waterView})[page]?.(h);
+    ({overview,care,build,garden,pantry,portals,supplies,plot:plotView,item:itemView,water:waterView})[page]?.(h);
   }
   function overview(h){
     const ready=h.plots.filter(C.ready).length,dry=h.plots.filter(p=>p.plant&&!C.ready(p)&&p.plant.wateredUntil<=H.now()).length,stored=h.items.reduce((n,i)=>n+(i.stored||0),0);
     card(C.tiers[h.tier].name,`${ready} harvests ready · ${dry} growing spaces dry · ${stored} stored supplies`);
-    const quest=card('A Place to Return',!h.deed?'Clear a marked dangerous multi-wave site, then follow the western Sunmere road to Hearthglade.':!h.tier?'Build Your Cottage: travel west from Sunmere to Hearthglade and build on the marked foundation.':!h.firstWatered?'Furnish your house, prepare a garden bed, and plant and water your first crop.':'Your home is established. Explore for materials, expand the house, and maintain your garden.');
+    const next=nextStep(h),quest=card('Next step · '+next.title,next.text);quest.classList.add('aw-home-next');
+    if(H.atHome()&&h.tier)button(quest,next.button,()=>open(next.page));
+    const available=Object.keys(C.careGoals).filter(id=>{const p=C.careProgress(h,id);return p.ready&&!p.claimed;}).length;
+    const rewards=card('Home Rewards',available?`${available} milestone rewards ready to claim.`:'Earn seeds, gold, materials and decorations by tending your home.');
+    button(rewards,'View home milestones',()=>open('care'));
     if(!H.atHome()){button(quest,'Open world map',()=>{close();AWCampaignUI.open('Map');});if(h.tier)button(quest,'Recall home',()=>{close();H.startRecall();});}
     else{
       if(!h.tier)button(quest,'Build Your Cottage',()=>open('build'));
@@ -53,6 +57,29 @@
     paragraph('Dry plants pause rather than die. Ready harvests never spoil. A fruit tree stores only one harvest.');
     button(body,'Official Firebase Save',()=>{close();awOfficialSave();});
     if(h.mode==='cloud')button(body,'Reopen cloud journey',()=>{close();awCloudOpenModal('load');});
+  }
+  function nextStep(h){
+    if(!h.deed)return {title:'Earn your deed',text:'Clear a marked multi-wave encounter. Then follow the road west from Sunmere to Hearthglade.'};
+    if(!h.tier)return {title:'Build Your Cottage',text:'Use the marked foundation. The Build page lists every material you have and still need.'};
+    if(C.careProgress(h,'welcome').value<2)return {title:'Unpack your welcome furniture',text:'Your cottage comes with a bed, hearth and chest. Place the bed and hearth to unlock rest benefits and your first reward.',page:'build',button:'Place furnishings'};
+    if(C.careProgress(h,'welcome').ready&&!C.careProgress(h,'welcome').claimed)return {title:'Collect your welcome seeds',text:'Claim Make Yourself at Home to receive 20 gold and 4 Lanternberry seeds.',page:'care',button:'Claim home rewards'};
+    if(h.plots.some(C.ready))return {title:'Bring in the harvest',text:'Harvest ready plants into Inventory. Cook them for healing, sell them in town, or compost them.',page:'garden',button:'Harvest the garden'};
+    if(h.plots.some(p=>p.plant&&p.plant.wateredUntil<=H.now()))return {title:'Give your plants a drink',text:'Refill at the well, then water dry beds. Growth resumes with no lost plants.',page:'garden',button:'Tend the garden'};
+    if(!h.firstWatered)return {title:'Grow your first crop',text:'Place a garden bed, plant a seed, and water it. Lanternberries take 30 minutes of watered growth.',page:'garden',button:'Start the garden'};
+    if(h.items.some(i=>!i.packed&&i.stored>0))return {title:'Collect what your home made',text:'Your producers have supplies waiting. Collect them to make room for more.',page:'build',button:'Inspect producers'};
+    return {title:'Make something with your harvest',text:'Place a Cooking Hearth to turn 3 Lanternberries into a Berry Preserve that heals 35% health. Home Rewards tracks your next milestones.',page:'pantry',button:'Explore recipes'};
+  }
+  function care(h){
+    paragraph('One-time rewards for this journey. Your garden and producers keep rewarding regular care after these milestones. Nothing expires.');
+    const grid=el('div',undefined,'aw-home-grid');body.append(grid);
+    for(const [id,goal]of Object.entries(C.careGoals)){
+      const progress=C.careProgress(h,id),box=card((progress.claimed?'✓ ':'')+goal.name,goal.description,grid);
+      const bar=el('progress');bar.max=progress.target;bar.value=progress.value;bar.setAttribute('aria-label',goal.name+' progress');box.append(bar);
+      paragraph(`${progress.value} / ${progress.target} · ${progress.claimed?'Claimed':progress.ready?'Reward ready':'In progress'}`,box);
+      paragraph('Reward: '+C.rewardText(id),box);
+      button(box,progress.claimed?'Reward claimed':'Claim reward',()=>doAction('claimCare',{goal:id}),progress.claimed||!progress.ready);
+      if(!progress.claimed&&!progress.ready)button(box,id==='welcome'||id==='supplier'?'Open Build':id==='cook'?'Open Pantry':'Open Garden',()=>open(id==='welcome'||id==='supplier'?'build':id==='cook'?'pantry':'garden'));
+    }
   }
   function build(h){
     if(h.tier)paragraph(`${game.gold} gold · ${game.materials.timber||0} Timber · ${game.materials.stone||0} Stone · ${game.materials.fiber||0} Plant Fiber`);
@@ -76,7 +103,7 @@
       for(const i of h.items){const d=C.items[i.kind],c=card(d.icon+' '+d.name,`${i.packed?'Packed':'Placed'}${d.producer?' · Level '+i.level:''}`,owned);button(c,i.packed?'Place':'Move',()=>startPlacement('item',i.id));button(c,'Inspect',()=>open('item',i.id));}
     }
     const grid=el('div',undefined,'aw-home-grid');body.append(el('h3','Blueprints'),grid);
-    for(const [id,d]of Object.entries(C.items)){const c=card(`${d.icon} ${d.name}`,cost(d.cost),grid);paragraph(d.outdoor?'Workshop yard':d.portal?'House portal':d.producer?'Indoor production':'Interior furnishing',c);button(c,`Craft${d.tier>h.tier?' · Tier '+d.tier+' required':''}`,()=>doAction('craft',{kind:id}),h.tier<(d.tier||1));}
+    for(const [id,d]of Object.entries(C.items)){const c=card(`${d.icon} ${d.name}`,cost(d.cost),grid);paragraph(C.benefit(id),c);paragraph(d.outdoor?'Workshop yard':d.portal?'House portal':d.producer?'Indoor production':'Interior furnishing',c);button(c,`Craft${d.tier>h.tier?' · Tier '+d.tier+' required':''}`,()=>doAction('craft',{kind:id}),h.tier<(d.tier||1));}
   }
   function garden(h){
     paragraph(`${h.plots.filter(p=>!p.tree).length}/${C.tiers[h.tier].beds} crop beds · ${h.plots.filter(p=>p.tree).length}/${C.tiers[h.tier].trees} orchard plots · ${h.water}/${h.canLevel>1?24:6} watering charges`);
@@ -87,7 +114,7 @@
     paragraph('Click a planted bed in the world to tend it. Basic beds hold 8 hours of water; improved beds 12, greenhouse beds 16, and trees 24. Watering early refills, rather than stacks, that limit.');
     const grid=el('div',undefined,'aw-home-grid');body.append(grid);
     for(const p of h.plots){const d=C.crops[p.plant?.crop],remaining=p.plant?p.plant.requiredGrowthMs-p.plant.growthMs:0;
-      const c=card(d?.name||(p.tree?'Empty orchard plot':'Empty garden bed'),!p.plant?'Plant a seed':C.ready(p)?'Harvest ready':`${Math.round(p.plant.growthMs/p.plant.requiredGrowthMs*100)}% · ${time(remaining)} watered growth remaining · ${p.plant.wateredUntil>H.now()?'Watered':'Dry / paused'}`,grid);
+      const c=card(d?.name||(p.tree?'Empty orchard plot':'Empty garden bed'),!p.plant?'Plant a seed':C.ready(p)?'Harvest ready':`${C.cropStage(p,H.now()).label} · ${Math.round(p.plant.growthMs/p.plant.requiredGrowthMs*100)}% · ${time(remaining)} watered growth remaining · ${p.plant.wateredUntil>H.now()?'Watered':'Dry / paused'}`,grid);
       c.querySelector('p').dataset.homePlot=p.id;
       button(c,'Tend',()=>open('plot',p.id));const harvest=button(c,'Harvest',()=>doAction('harvest',{id:p.id}),!C.ready(p));harvest.dataset.homeHarvest=p.id;
     }
@@ -98,6 +125,7 @@
     card(crop?.name||(p.tree?'Orchard plot':'Garden bed'),`Position ${p.x}, ${p.y} · ${C.waterHours(p)} hours of moisture`);
     if(!p.plant){for(const [id,c]of Object.entries(C.crops))if(!!c.tree===p.tree){const count=h.seeds[id]||0;button(body,`Plant ${c.name} · ${count} seeds`,()=>doAction('plant',{id:p.id,crop:id}),!count);}}
     else{
+      paragraph(`${C.cropStage(p,H.now()).label} · Harvest ${crop.yield+(p.plant.fertilized?1:0)} produce into Inventory · ${crop.value} gold each when sold in town.`);
       paragraph(`Planted ${new Date(p.plant.plantedAt).toLocaleString()} · Harvest cycle ${p.plant.harvestNumber+1}`);
       paragraph(C.ready(p)?'Ready to harvest. It will not spoil.':`${time(p.plant.requiredGrowthMs-p.plant.growthMs)} of watered growth remains. ${p.plant.wateredUntil>H.now()?'Moisture lasts '+time(p.plant.wateredUntil-H.now()):'Dry: growth is paused.'}`);
       button(body,'Water · 1 watering charge',()=>doAction('water',{id:p.id}),C.ready(p));
@@ -116,7 +144,7 @@
     paragraph('Each placed sprinkler feeds its four nearest annual beds through buried garden channels. It consumes one reservoir unit when a growing bed dries. Mature crops consume no water.');
   }
   function itemView(h){
-    const i=h.items.find(i=>i.id===selected);if(!i)return build(h);const d=C.items[i.kind];card(d.icon+' '+d.name,i.packed?'Packed furnishings are inactive.':`Placed at ${i.x}, ${i.y}`);
+    const i=h.items.find(i=>i.id===selected);if(!i)return build(h);const d=C.items[i.kind];card(d.icon+' '+d.name,i.packed?'Packed furnishings are inactive.':`Placed at ${i.x}, ${i.y}`);paragraph(C.benefit(i.kind,i.level));
     button(body,i.packed?'Place':'Move',()=>startPlacement('item',i.id));
     if(!i.packed)button(body,'Pack furnishing',()=>doAction('pack',{id:i.id}));
     if(d.producer){paragraph(`${i.stored||0}/${d.producer.cap*(i.level||1)} ${d.producer.resource} stored. Production pauses at capacity and while packed.`);button(body,'Collect output',()=>doAction('collect',{id:i.id}));if(i.level<3)button(body,`Upgrade production · ${cost({gold:60*i.level,iron:4*i.level,dust:2*i.level})}`,()=>doAction('upgradeProducer',{id:i.id}));}
@@ -198,7 +226,7 @@
   function installJournalLinks(){const root=$('inventoryContent');if(!root||!AWCampaignUI.isOpen()||root.querySelector('[data-home-link]'))return;const b=button(root,H.atHome()?'⌂ Manage Hearthglade':'⌂ Hearthglade / Recall',()=>H.atHome()?open():H.startRecall());b.dataset.homeLink='true';}
   function liveGarden(){
     if(!visible())return;const h=H.snapshot();
-    for(const text of body.querySelectorAll('[data-home-plot]')){const p=h.plots.find(p=>p.id===text.dataset.homePlot);if(!p)continue;text.textContent=!p.plant?'Plant a seed':C.ready(p)?'Harvest ready':`${Math.round(p.plant.growthMs/p.plant.requiredGrowthMs*100)}% · ${time(p.plant.requiredGrowthMs-p.plant.growthMs)} watered growth remaining · ${p.plant.wateredUntil>H.now()?'Watered':'Dry / paused'}`;}
+    for(const text of body.querySelectorAll('[data-home-plot]')){const p=h.plots.find(p=>p.id===text.dataset.homePlot);if(!p)continue;text.textContent=!p.plant?'Plant a seed':C.ready(p)?'Harvest ready':`${C.cropStage(p,H.now()).label} · ${Math.round(p.plant.growthMs/p.plant.requiredGrowthMs*100)}% · ${time(p.plant.requiredGrowthMs-p.plant.growthMs)} watered growth remaining · ${p.plant.wateredUntil>H.now()?'Watered':'Dry / paused'}`;}
     for(const b of body.querySelectorAll('[data-home-harvest]'))b.disabled=H.pending()||!C.ready(h.plots.find(p=>p.id===b.dataset.homeHarvest)||{});
   }
   const oldRender=render;render=function(){const result=oldRender();if(running&&performance.now()-lastTick>1000){lastTick=performance.now();tray.classList.toggle('hidden',!H.atHome()||!!placing);installJournalLinks();liveGarden();refreshStatus();}return result;};

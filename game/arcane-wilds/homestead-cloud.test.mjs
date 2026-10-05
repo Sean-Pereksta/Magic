@@ -62,3 +62,12 @@ test('a stale official save is rejected even when the older client changed only 
   await assert.rejects(f.save(),/changed|reopened/);assert.equal(f.records.get(key).iv[0],222);
  }finally{h.close();}
 });
+test('home rewards commit with inventory and lost acknowledgement cannot pay twice after reopen',async()=>{
+ const f=fixture(),h=f.h;try{
+  h.run(`AWHome.state().firstHarvest=true;AWHome.state().harvestCount=1;AWInventory.receive(AWCampaign.craftItem('thornstaff'))`);await f.save();const gold=h.run('game.gold'),count=h.run('game.inventory.items.length');f.failAfterCommit=true;
+  assert.equal(await h.run(`AWHome.action('claimCare',{goal:'firstHarvest'})`),false);assert.equal(h.run('game.gold'),gold);
+  assert.equal(await h.run(`AWHome.action('claimCare',{goal:'firstHarvest'})`),false);
+  await h.run(`awCloudLoadNamed('Hearth test','password')`);assert.equal(h.run('game.gold'),gold+20);assert.equal(h.run('game.inventory.items.length'),count);assert.equal(h.run(`AWHome.state().careClaims.includes('firstHarvest')`),true);
+  assert.equal(await h.run(`AWHome.action('claimCare',{goal:'firstHarvest'})`),false);assert.equal(h.run('game.gold'),gold+20);
+ }finally{h.close();}
+});

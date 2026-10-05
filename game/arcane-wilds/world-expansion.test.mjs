@@ -50,7 +50,7 @@ test('all forty named items have obtainable sources and valid equipment, includi
     equip(h,'bloomheartCharm');h.run('game.player.hp=game.player.maxHp;game.player.shield=0;healPlayer(20)');assert.ok(Math.abs(h.run('game.player.shield')-20)<1e-9);
     equip(h,'crystalHeart');h.run(`game.player.shield=0;game.player.activeSpells[0]='ward';game.player.spellState.ward={cd:0};castSpell(0)`);assert.ok(h.run('game.player.shield')>45);
     equip(h,'eventideStaff');h.run(`game.hazards=[];SPELL_CASTS.voidrift('voidrift',SPELLS.voidrift,spellMods('voidrift'));`);assert.ok(h.run('game.hazards[0].r')>=2.125);
-    h.run(`game.campaign.cleared.push('verdant-boss1');AWRegionalContent.grantItems();AWRegionalContent.grantItems()`);assert.equal(h.run(`game.campaign.rewards.filter(id=>id==='thornkeeperRobes').length`),1);
+    h.run(`game.campaign.cleared.push('verdant-boss1');AWRegionalContent.grantItems();AWRegionalContent.grantItems()`);assert.equal(h.run(`game.inventory.items.filter(i=>i.regionalId==='thornkeeperRobes').length`),1);
   }finally{h.close();}
 });
 

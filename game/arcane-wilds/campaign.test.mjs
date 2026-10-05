@@ -62,12 +62,12 @@ test('all four seals gate each ruler; actual room clears unlock all three contin
       assert.equal(h.run('game.enemies.find(e=>e.boss).campaignPhase'),3);
       clear(h);
       assert.equal(h.run(`game.campaign.defeated.includes('${c}-ruler')`),true);
-      assert.ok(h.run('game.campaign.rewards.length')>0);
+      assert.ok(h.run('game.inventory.items.filter(i=>i.regionalId).length')>0);
       route(h,`${c}-passage`);
       if(c!=='gloam'){const next=c==='verdant'?'meridian':'gloam';assert.equal(h.run(`AWCampaign.travel('${next}-city','passage')`),true);}
     }
     assert.equal(h.run('game.campaign.unlocked.length'),3);
-    const before=h.run('game.campaign.rewards.length');h.run('markRoomCleared()');assert.equal(h.run('game.campaign.rewards.length'),before);
+    const before=h.run('game.inventory.items.length');h.run('markRoomCleared()');assert.equal(h.run('game.inventory.items.length'),before);
     assert.deepEqual(h.errors,[]);
   }finally{h.close();}
 });
@@ -105,7 +105,7 @@ test('save roundtrip keeps mount, checkpoints, rewards and exploration; new game
     route(h,'verdant-town');h.run(`game.campaign.mounts=['horse'];game.campaign.activeMount='horse';AWCampaign.mount();game.campaign.rewards=['heartwood'];saveGame();loadGame();beginWorld();`);
     assert.equal(h.run('game.campaign.current'),'verdant-town');assert.equal(h.run('game.campaign.checkpoint'),'verdant-town');assert.equal(h.run('game.campaign.riding'),true);
     h.run('AWCampaign.travel("verdant-danger");playerDeath()');assert.equal(h.run('game.campaign.current'),'verdant-town');assert.equal(h.run('game.campaign.riding'),false);
-    assert.equal(h.run('game.campaign.rewards[0]'),'heartwood');
+    assert.equal(h.run('game.inventory.items.filter(i=>i.regionalId==="heartwood").length'),1);
     h.run('startNewGame()');assert.equal(h.run('game.campaign.visited.length'),1);assert.equal(h.run('game.campaign.rewards.length'),0);assert.equal(h.run('game.campaign.mounts.length'),0);
   }finally{h.close();}
 });
@@ -115,11 +115,11 @@ test('regional stock is location-bound and unlocks cannot be bypassed through pu
     h.run('game.gold=9999');assert.equal(h.run('AWCampaign.buy("astralcodex")'),false);
     assert.equal(h.run('AWCampaign.buyMount("arcanebeast")'),false);
     assert.equal(h.run('AWCampaign.learn("mirrorBastion")'),false);
-    assert.equal(h.run('AWCampaign.buy("starterstaff")'),true);assert.equal(h.run('game.loot.name'),'Sunmere Staff');
-    h.run('game.loot=null');route(h,'verdant-town');assert.equal(h.run('AWCampaign.buy("thornstaff")'),true);assert.equal(h.run('game.loot.suffixKey'),'thorns');
+    assert.equal(h.run('AWCampaign.buy("starterstaff")'),true);assert.equal(h.run('game.inventory.items.at(-1).name'),'Sunmere Staff');
+    h.run('game.loot=null');route(h,'verdant-town');assert.equal(h.run('AWCampaign.buy("thornstaff")'),true);assert.equal(h.run('game.inventory.items.at(-1).suffixKey'),'thorns');
     h.run(`game.loot=null;game.campaign.defeated.push('verdant-ruler');game.campaign.unlocked.push('meridian');game.campaign.current='meridian-city';game.campaign.visited.push('meridian-city');game.room=AWCampaign.coordinates('meridian-city');loadRoom();`);
     const gold=h.run('game.gold');assert.equal(h.run('AWCampaign.buy("mirrorsigil")'),false);assert.equal(h.run('game.gold'),gold);
-    h.run(`game.campaign.cleared.push('meridian-dungeon')`);assert.equal(h.run('AWCampaign.buy("mirrorsigil")'),true);assert.equal(h.run('game.loot.spellSlotBonus'),1);
+    h.run(`game.campaign.cleared.push('meridian-dungeon')`);assert.equal(h.run('AWCampaign.buy("mirrorsigil")'),true);assert.equal(h.run('game.inventory.items.at(-1).spellSlotBonus'),1);
     assert.equal(h.run(`Array.from({length:100},()=>makeRandomGear({source:'merchant'})).some(i=>i.regionalId==='astralcodex')`),false);
   }finally{h.close();}
 });

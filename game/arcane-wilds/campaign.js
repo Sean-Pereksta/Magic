@@ -205,11 +205,12 @@
     if(!inCampaign()||!current().town)return false;
     const t=D.items[id],town=D.towns[current().town];
     if(!t||!town.stock.includes(id)||t.requires&&!state().cleared.includes(t.requires))return false;
-    if(t.slot&&game.loot){toastMsg('Inspect or leave your pending loot first.');return false;}
+    if(t.slot&&game.loot&&!window.AWInventory){toastMsg('Inspect or leave your pending loot first.');return false;}
     if(game.gold<t.price||Object.entries(t.cost||{}).some(([k,v])=>(game.materials[k]||0)<v)){toastMsg('You need more gold or local materials.');return false;}
     game.gold-=t.price;for(const [k,v] of Object.entries(t.cost||{}))game.materials[k]-=v;
     if(t.kind==='heal')healPlayer(game.player.maxHp*.5);
     else if(t.kind==='material')addMaterial(t.material,t.count,true);
+    else if(window.AWInventory)AWInventory.receive(craftItem(id));
     else {game.loot=craftItem(id);closeOverlay('npcPanel');openLootOverlay();}
     saveGame();updateHUD();return true;
   }

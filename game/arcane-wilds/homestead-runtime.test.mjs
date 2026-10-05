@@ -88,3 +88,14 @@ for(const event of ['waves','defend'])test(`${event} objectives keep exactly one
  h.run('game.enemies=[];markRoomCleared()');assert.equal(h.run('game.roomData.cleared'),true);assert.equal(h.run('AWHome.state().deed'),true);
  }finally{h.close();}
 });
+test('home guidance, rewards and every growth stage run through the real home UI and canvas',async()=>{
+ const h=start(true);try{await home(h);h.run(`AWHomeUI.open()`);assert.match(h.w.document.querySelector('.aw-home-next').textContent,/Unpack/);
+  for(const [kind,x]of [['bed',6],['hearth',8]])assert.equal(await h.run(`AWHome.action('place',{id:AWHome.state().items.find(i=>i.kind==='${kind}').id,x:${x},y:4})`),true);
+  h.run(`AWHomeUI.open('care')`);assert.equal(h.w.document.querySelectorAll('.aw-home-card progress').length,5);
+  assert.equal(await h.run(`AWHome.action('claimCare',{goal:'welcome'})`),true);assert.match(h.w.document.querySelector('#awHomePanel').textContent,/Reward claimed/);
+  await h.run(`AWHome.action('bed',{x:11,y:2})`);await h.run(`AWHome.action('plant',{id:AWHome.state().plots[0].id,crop:'lanternberry'})`);await h.run(`AWHome.action('water',{id:AWHome.state().plots[0].id})`);
+  h.run(`AWHomeUI.close();var basePlantTime=AWHome.now();var wallClock=Date.now();Date.now=()=>wallClock;`);
+  for(const minutes of [0,3,12,24,30]){h.run(`wallClock=basePlantTime+${minutes}*60000;AWHome.state().revision++;render()`);h.step(2);}
+  assert.equal(h.run('AWHomeCore.cropStage(AWHome.snapshot().plots[0],AWHome.now()).key'),'ready');assert.deepEqual(h.errors,[]);
+ }finally{h.close();}
+});

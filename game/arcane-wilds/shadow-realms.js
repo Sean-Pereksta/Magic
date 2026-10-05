@@ -116,7 +116,8 @@
     const level=Math.max(18,game.level+Math.floor(Math.log2(n.depth+1)*2)),item=base.slot==='weapon'?makeWeapon(base,level,rarity):base.slot==='armor'?makeArmor(base,level,rarity):makeTrinket(base,level,rarity);
     Object.assign(item,{name:base.name,baseName:base.name,special:base.special,regionalId:id,rarity,origin:`Shadow Depth ${n.depth}`,spellSlotBonus:base.spellSlotBonus||0,shadowDepth:n.depth});
     if(item.slot==='weapon')item.power*=1+n.depth*.004;else if(item.slot==='armor')item.hpBonus*=1+n.depth*.004;else for(const key of Object.keys(item.mods))item.mods[key]*=1+Math.min(1.5,Math.log2(n.depth+1)*.08);
-    if(!game.loot){game.loot=item;AWModernUI.offerLoot?.(item);}else if((s.pendingLoot||=[]).length<12)s.pendingLoot.push(item);else{const gold=80+n.depth*4;game.gold+=gold;addMaterial('voidshard',3,true);toastMsg(`Shadow storage full — ${item.name} salvaged for ${gold} gold and 3 Void Shards.`);}
+    if(window.AWInventory)AWInventory.receive(item,{node:n.id,label:'Shadow Depth '+n.depth,claim:'shadow:'+n.id});
+    else if(!game.loot){game.loot=item;AWModernUI.offerLoot?.(item);}else if((s.pendingLoot||=[]).length<12)s.pendingLoot.push(item);else{const gold=80+n.depth*4;game.gold+=gold;addMaterial('voidshard',3,true);toastMsg(`Shadow storage full — ${item.name} salvaged for ${gold} gold and 3 Void Shards.`);}
     if(n.depth>=50&&h%37===0){const variant=h%2?'shadowFireball':'eclipseLightning';A.unlockSpell(variant);if(!s.unlocks.includes(variant))s.unlocks.push(variant);}
     if(rarity==='Legendary'){AWModernUI.announce(item.name,`Legendary Shadow discovery • Depth ${n.depth}`);AWPresentation.audio.play('loot');fx('constellation',game.player.x,game.player.y,1.5,'#ddc4ff',{r:3});}
   }

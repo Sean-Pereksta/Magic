@@ -131,13 +131,45 @@
     }
   };
   function labelAt(x,y,label,color='#f1ebd7',z=0){const s=worldToScreen(x,y,z);ctx.fillStyle=color;ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(label,s.x,s.y);}
+  function drawPlant(plot,crop,stage,p,scale){
+    ctx.save();ctx.translate(p.x,p.y);ctx.scale(scale,scale);
+    const oval=(x,y,rx,ry,color,angle=0)=>{ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(x,y,rx,ry,angle,0,TAU);ctx.fill();};
+    oval(0,2,plot.tree?24:16,plot.tree?9:6,'#243f2b66');
+    // Furrows and moisture remain visible even before germination.
+    ctx.strokeStyle=stage.wet?'#69583b':'#ad865b';ctx.lineWidth=1.5;
+    for(let row=-1;row<=1;row++){ctx.beginPath();ctx.moveTo(-13,row*4);ctx.lineTo(13,row*4+3);ctx.stroke();}
+    if(stage.wet){oval(-13,5,2,1,'#b5dfec');oval(10,8,1.5,1,'#b5dfec');}
+    if(!crop){ctx.restore();return;}
+    if(stage.key==='seed'&&!plot.tree){for(const x of [-7,0,7])oval(x,-1,2,1.5,'#e7c994');ctx.restore();return;}
+    const grown=stage.matureTree?1:stage.progress,height=plot.tree?12+grown*48:6+grown*23;
+    ctx.strokeStyle=plot.tree?'#8d6844':'#82ac5c';ctx.lineWidth=plot.tree?2+grown*5:2.5;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-height);ctx.stroke();
+    const green=stage.wet?'#72b567':'#819963';
+    if(plot.tree&&grown>.3){
+      oval(-11*grown,-height+5,17*grown,18*grown,'#3d754a');oval(11*grown,-height+3,18*grown,17*grown,green);oval(0,-height-10*grown,19*grown,17*grown,'#8abe73');
+    }else{
+      oval(-5,-height+3,6,2.5,green,.45);oval(5,-height,6,2.5,'#a0cf79',-.45);
+      if(grown>.3){oval(-7,-height*.5,9,3,green,.5);oval(7,-height*.55,9,3,'#a0cf79',-.5);}
+    }
+    if(['flowering','ready'].includes(stage.key)){
+      const ripe=stage.key==='ready',points=plot.tree?[[-12,-height],[10,-height+5],[0,-height-13]]:[[-7,-height+2],[6,-height-2],[0,-height-9]];
+      for(const [x,y]of points){
+        if(!ripe)for(let k=0;k<5;k++){const a=k*TAU/5;oval(x+Math.cos(a)*3,y+Math.sin(a)*3,2.5,2.5,'#ffeac6');}
+        oval(x,y,ripe?4.5:2,ripe?5:2,ripe?crop.color:'#eec768');
+        if(ripe)oval(x-1,y-2,1.4,1.3,'#fff3cf');
+      }
+      if(ripe){ctx.strokeStyle='#ffe5a0';ctx.lineWidth=1.5;const x=plot.tree?26:17,y=-height-9;ctx.beginPath();ctx.moveTo(x-3,y);ctx.lineTo(x+3,y);ctx.moveTo(x,y-3);ctx.lineTo(x,y+3);ctx.stroke();}
+    }
+    ctx.restore();
+  }
   const baseDraw=drawInteractable;
   drawInteractable=function(o){if(o.type!=='homeObject')return baseDraw(o);const h=visual(),p=worldToScreen(o.x,o.y),scale=window.AWPresentation?.camera?.zoom||1;ctx.save();
     if(o.homeKind==='plot'){
       const plot=h.plots.find(p=>p.id===o.homeId);if(!plot){ctx.restore();return;}
-      const copy=C.clone(plot);C.grow(copy,now());const crop=C.crops[copy.plant?.crop],wet=copy.plant?.wateredUntil>now(),progress=copy.plant?copy.plant.growthMs/copy.plant.requiredGrowthMs:0;
-      tile(plot.x,plot.y,wet?'#403a29':'#876746');if(plot.tree)for(const [dx,dy]of[[1,0],[0,1],[1,1]])tile(plot.x+dx,plot.y+dy,'#556945');
-      if(crop){ctx.strokeStyle='#87b979';ctx.lineWidth=plot.tree?6:3;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x,p.y-(plot.tree?30+progress*30:6+progress*22)*scale);ctx.stroke();ctx.fillStyle=crop.color;ctx.beginPath();ctx.ellipse(p.x,p.y-(plot.tree?45:18)*scale,(plot.tree?23:6+progress*5)*scale,(plot.tree?21:5+progress*3)*scale,0,0,TAU);ctx.fill();if(C.ready(copy))labelAt(o.x,o.y,'HARVEST','#ffe2a1',plot.tree?79:40);else if(!wet)labelAt(o.x,o.y,'WATER','#b7e5ff',plot.tree?79:40);}
+      const crop=C.crops[plot.plant?.crop],stage=C.cropStage(plot,now());
+      tile(plot.x,plot.y,stage.wet?'#403a29':'#876746');if(plot.tree)for(const [dx,dy]of[[1,0],[0,1],[1,1]])tile(plot.x+dx,plot.y+dy,'#556945');
+      drawPlant(plot,crop,stage,p,scale);
+      if(crop){if(stage.key==='ready')labelAt(o.x,o.y,'HARVEST','#ffe2a1',plot.tree?94:49);else if(!stage.wet)labelAt(o.x,o.y,'WATER','#b7e5ff',plot.tree?94:49);}
       if(plot.soil===2){ctx.strokeStyle='#b2dbef';ctx.lineWidth=1;ctx.strokeRect(p.x-20*scale,p.y-30*scale,40*scale,32*scale);}
     }else if(o.homeKind==='house'){
       const r=C.houseRect(h);for(let x=r.x;x<r.x+r.w;x++)for(let y=r.y;y<r.y+r.h;y++)tile(x,y,h.tier?'#906e4e':'#b7a779');

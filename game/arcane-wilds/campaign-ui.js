@@ -40,6 +40,7 @@
     action('Save journey',()=>{saveGame();toastMsg('Journey saved on this device.');});
   }
   function renderGear(){
+    if(window.AWInventoryUI)return AWInventoryUI.render(content());
     const p=game.player;
     content().innerHTML=`<div class="gear-layout">${gearCard(p.weapon,'Weapon')}${gearCard(p.armorGear,'Armor')}</div><h3>Trinkets</h3><div class="trinket-grid">${p.trinkets.map((t,i)=>gearCard(t,`Slot ${i+1}`)).join('')}</div><h3>Regional materials</h3><div class="aw-card-grid">${Object.entries(MATERIALS).map(([k,m])=>`<div class="exp-card"><b>${m.icon} ${esc(m.name)}</b><span>${game.materials[k]||0}</span></div>`).join('')}</div>`;
     if(game.loot)action(`Compare ${game.loot.name}`,()=>{close();openLootOverlay();});
@@ -123,6 +124,7 @@
     const reason=D.travelReason(s,n.id,travelMode);
     card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[n.material||c.material].name)}</p>${known&&!n.town&&!n.homestead?`<p>Enemies: ${(n.shadow?AWShadow.exclusiveIds:A.pool(n)).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))?'✓ Cleared':known?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
     if(known&&n.homestead)card.insertAdjacentHTML('beforeend','<p><b>Your permanent home:</b> a safe cottage clearing, garden, orchard and workshop. Follow the western road from Sunmere.</p>');
+    if(known&&window.AWInventoryUI)AWInventoryUI.region(card,n);
     if(known&&n.multiWave)card.insertAdjacentHTML('beforeend','<p><b>Multi-wave encounter:</b> clear all reinforcements for homestead supplies.</p>');
     if(known&&n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
     if(n.shadow)card.insertAdjacentHTML('beforeend',`<p>Depth ${n.depth}${n.modifier==='Greed'?' · Greed: enemies +40% health, loot/Glory +70%':n.modifier==='Safety'?' · Safety: standard enemies and rewards':''}</p>`);
@@ -145,7 +147,7 @@
       const missing=Object.entries(t.cost||{}).filter(([k,v])=>(game.materials[k]||0)<v).map(([k,v])=>`Need ${v-(game.materials[k]||0)} more ${MATERIALS[k]?.name||k}`);
       if(game.gold<t.price)missing.unshift(`Need ${t.price-game.gold} more gold`);
       if(locked)missing.unshift('Clear '+D.nodes[t.requires].name);
-      const b=action(`${t.name} · ${t.price} gold${t.cost?' + '+materialCostText(t.cost):''}${missing.length?' · '+missing.join(' · '):''}`,()=>{if(A.buy(id)){updateHUD(true);if(!t.slot)AWCampaignUI.openTown(npc);}},list,'exp-buy');
+      const b=action(`${t.name} · ${t.price} gold${t.cost?' + '+materialCostText(t.cost):''}${missing.length?' · '+missing.join(' · '):''}`,()=>{if(A.buy(id)){updateHUD(true);if(window.AWInventory||!t.slot)AWCampaignUI.openTown(npc);}},list,'exp-buy');
       b.disabled=!!missing.length;b.title=missing.join(' · ')||t.desc||'Regional material bundle';
     }
     if(services.forge)action('Material forge',()=>{closeOverlay('npcPanel');openForgePanel();},list);
