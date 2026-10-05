@@ -165,7 +165,7 @@
         require(ctx.earned===true,'Complete the encounter first.');require(typeof action.node==='string','Encounter missing.');
         if(!h.claims.includes(action.node)){h.claims.push(action.node);add(wallet,'timber',6);add(wallet,'stone',4);add(wallet,'fiber',3);
           if(!h.deed&&ctx.multiWave){h.deed=true;add(wallet,'gold',60);add(wallet,'timber',20);add(wallet,'stone',10);h.seeds.lanternberry=num(h.seeds.lanternberry)+4;h.seeds.strawberry=num(h.seeds.strawberry)+2;
-            for(const kind of ['hearth','bed','chest','workbench'])h.items.push({id:nextId('item'),kind,packed:true,gift:true,level:1,evaluatedAt:now,stored:0,remainder:0});effects.push({type:'message',text:'A Place to Return: Hearthglade deed earned! Starter building materials and seeds are ready.'});}}
+            for(const kind of ['hearth','bed','chest','workbench'])h.items.push({id:nextId('item'),kind,packed:true,gift:true,level:1,evaluatedAt:now,stored:0,remainder:0});effects.push({type:'message',text:'Build Your Cottage: deed earned! Travel west from Sunmere to Hearthglade and use the marked foundation. Starter supplies are ready.'});}}
         break;
       }
       case 'buildHouse': {allHome();require(h.deed,'Clear a multi-wave encounter to earn your homestead deed.');require(h.tier<4,'Your house is fully expanded.');const t=tiers[h.tier+1];require(unlocked(ctx,t.continent),'Explore the next continent before this expansion.');charge(wallet,t.cost);h.tier++;effects.push({type:'message',text:t.name+' built.'});break;}

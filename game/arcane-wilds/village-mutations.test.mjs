@@ -11,7 +11,7 @@ for(const touch of [false,true])test(`${touch?'touch':'desktop'} portals use vis
     assert.equal(h.run('AWVillagePortals.travel("4,0")'),false);
     h.run('game.room={x:4,y:0};loadRoom();saveGame();loadGame();loadRoom()');
     h.run('const portal=game.interactables.find(o=>o.type==="villagePortal");game.player.x=portal.x;game.player.y=portal.y;updateHUD(true)');
-    if(touch){assert.match(h.w.document.querySelector('#mobileInteract').textContent,/TRAVEL/);h.w.document.querySelector('#mobileInteract').click();}
+    if(touch){assert.match(h.w.document.querySelector('#mobileInteract').textContent,/Use Portal/);h.w.document.querySelector('#mobileInteract').click();}
     else h.run('interact()');
     assert.equal(h.w.document.querySelectorAll('[data-village]').length,1);
     assert.equal(h.w.document.querySelector('[data-village]').dataset.village,'0,0');

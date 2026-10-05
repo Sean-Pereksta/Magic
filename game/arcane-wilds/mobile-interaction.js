@@ -7,6 +7,7 @@
 
   function interactionLabel(target){
     if(!target)return null;
+    if(window.AWUsability)return AWUsability.actionName(target);
     if(target.npc||target.type==='npc'){
       if(target.role==='Blacksmith')return '⚒ FORGE';
       if(target.role==='Merchant')return '🛒 SHOP';
@@ -36,7 +37,7 @@
     }
     button.classList.remove('hidden');
     button.textContent=label;
-    button.title=target.label||label.replace(/^\S+\s*/, '');
+    button.title=window.AWUsability?AWUsability.describe(target):target.label||label.replace(/^\S+\s*/, '');
     button.setAttribute('aria-label',button.title);
   }
 

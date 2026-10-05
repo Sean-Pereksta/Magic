@@ -23,5 +23,5 @@
   const fresh=D.fresh,normalize=D.normalize,visible=D.visible;
   D.fresh=()=>({...fresh(),waveProgress:{}});
   D.normalize=raw=>{const s=normalize(raw);s.waveProgress={};for(const[k,v]of Object.entries(raw?.waveProgress||{}).slice(-500))if(/^\d+,\d+$/.test(k)&&Number.isInteger(v)&&v>=0&&v<=4)s.waveProgress[k]=v;return s;};
-  D.visible=(s,node)=>node.homestead||visible(s,node);
+  D.visible=(s,node)=>node.homestead?!!game.homestead?.deed||s.visited.includes(node.id)||s.scouted.includes(node.id)||visible(s,node):visible(s,node);
 })();

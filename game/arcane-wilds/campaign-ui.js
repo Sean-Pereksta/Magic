@@ -3,7 +3,7 @@
 (() => {
   const A=window.AWCampaign,D=A.data,overlay=$('inventoryOverlay'),panel=overlay.querySelector('.panel'),root=$('inventoryContent');
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const icons={wildland:'♣',danger:'⚔',town:'⌂',village:'⌂',portalCity:'◉',boss:'♜',ruler:'♛',dungeon:'▥',shrine:'✦',merchant:'⚖',landmark:'◆',mount:'♞',event:'!',passage:'⚓',resource:'⛏',treasure:'◆',tower:'▥',puzzle:'◇',sanctuary:'◈',challenge:'⚔',shadowBoss:'♜'};
+  const icons={wildland:'♣',danger:'⚔',town:'🏘',village:'🏘',portalCity:'♛',boss:'♜',ruler:'♛',dungeon:'▥',shrine:'✦',merchant:'⚖',landmark:'◆',mount:'♞',event:'!',passage:'⚓',resource:'⛏',treasure:'◆',tower:'▥',puzzle:'◇',sanctuary:'◈',challenge:'⚔',shadowBoss:'♜'};
   let page='Character',selectedSpell=null,category='All',search='',selectedNode=null,selectedContinent='verdant',travelMode='road',previousFocus=null;
   let view={x:0,y:0,zoom:.8},pointers=new Map(),gesture=null,dragged=false;
   panel.classList.add('aw-adventure-menu');panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label','Adventure menu');
@@ -13,6 +13,7 @@
   function close(){overlay.classList.add('hidden');pointers.clear();gesture=null;document.body.classList.remove('aw-menu-open');modalPause=Array.from(document.querySelectorAll('.overlay')).some(el=>!el.classList.contains('hidden'));window.AWInput?.clear();previousFocus?.focus?.();}
   function open(next='Character',mode='road'){
     if(!game.player||!running||roomTransition)return;
+    if(window.AWHomeUI?.isOpen()){if(AWHome.pending())return;AWHomeUI.close();}
     if(!isOpen())previousFocus=document.activeElement;
     travelMode=mode;selectedContinent=A.current()?.continent||'verdant';selectedNode=A.current()?.id;
     document.querySelectorAll('#npcPanel,#townPanel').forEach(el=>el.classList.add('hidden'));
@@ -29,6 +30,7 @@
   function renderCharacter(){
     const s=A.state(),n=A.current(),p=game.player;if(!s||!n)return;
     content().innerHTML=`<div class="aw-journey-banner"><small>${esc(D.continent(n.continent).name)}</small><h2>Wanderer • Level ${game.level}</h2><p>${esc(n.name)} · ${Math.ceil(p.hp)} / ${Math.ceil(p.maxHp)} health · ${game.gold} gold</p><p>Sanctuary: ${esc(D.nodes[s.checkpoint].name)}</p></div><div class="aw-seal-grid">${D.continents.map(c=>`<section class="exp-card"><h3>${esc(c.name)}</h3><p>${D.sealCount(s,c)} / 4 regional seals</p><p>${s.defeated.includes(c.boss)?'✓ Ruler defeated':s.unlocked.includes(c.id)?'Journey in progress':'Awaiting passage'}</p></section>`).join('')}</div><h3>Mounts</h3><div id="awMountList" class="aw-card-grid"></div><h3>Quest Journal</h3><div>${(game.quests?.active||[]).filter(q=>!q.claimed).map(q=>`<p>${esc(q.title)} · ${q.progress||0}/${q.target}${q.ready?' · Return to a Quest Keeper':''}</p>`).join('')||'<p>Visit a town’s Quest Keeper for local work.</p>'}</div>`;
+    if(game.homestead?.deed&&!game.homestead.tier){const q=document.createElement('section');q.className='exp-card';q.innerHTML='<h3>Build Your Cottage</h3><p>Travel west from Sunmere to Hearthglade and build your cottage on the marked foundation.</p>';action('Find Hearthglade',()=>{renderPage('Map');selectedContinent='verdant';selectedNode='verdant-hearthglade';renderMap();},q);content().appendChild(q);}
     const mountList=$('awMountList');
     if(!s.mounts.length)mountList.textContent='Find a Stablemaster or a hidden mount location to earn your first companion.';
     for(const id of s.mounts){const m=D.mounts[id];if(!m)continue;const card=document.createElement('section');card.className='exp-card';const title=document.createElement('b');title.textContent=m.icon+' '+m.name;card.appendChild(title);const desc=document.createElement('p');desc.textContent=m.desc;card.appendChild(desc);action(s.activeMount===id?'Active mount':'Set Active Mount',()=>{s.activeMount=id;s.riding=false;saveGame();renderCharacter();},card);mountList.appendChild(card);}
@@ -80,6 +82,8 @@
     action('Equip → Choose a slot',()=>{$('awSlotPicker')?.remove();const slots=document.createElement('div');slots.id='awSlotPicker';slots.className='aw-slot-picker';$('awSpellActions').appendChild(slots);for(let i=0;i<awCurrentSpellLimit();i++)action(`Slot ${i+1}`,()=>assign(id,i),slots);slots.querySelector('button')?.focus();},$('awSpellActions'),'btn');
     if(p.activeSpells.includes(id))action('Unequip',()=>{p.activeSpells=p.activeSpells.map(x=>x===id?null:x);saveGame();updateHUD();renderBook();},$('awSpellActions'));
   }
+  function knownNode(n,s){return !!(n.homestead&&game.homestead?.deed)||(n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id));}
+  function isObjective(n){return n.homestead?game.homestead?.deed&&!game.homestead?.tier:(game.quests?.active||[]).some(q=>!q.claimed&&!q.ready&&q.destination===n.id);}
   function renderMap(){
     const s=A.state();if(!s)return;
     const c=D.continent(selectedContinent)||D.continent(A.current().continent);selectedContinent=c.id;
@@ -90,7 +94,9 @@
     layer.style.width=(c.mapWidth||1220)+'px';layer.style.height=(c.mapHeight||820)+'px';layer.classList.toggle('aw-shadow-map',!!c.endless);
     layer.innerHTML=`<svg class="aw-map-roads" viewBox="0 0 ${c.mapWidth||1220} ${c.mapHeight||820}" aria-hidden="true"><path class="aw-landmass" d="M 85 235 Q 170 10 490 5 L 880 40 Q 1200 25 1190 345 L 1150 725 Q 960 825 665 750 L 220 770 Q 20 635 85 235 Z"/>${roads}</svg>`;
     for(const n of visible){
-      const known=n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id),b=action(`${known?icons[n.type]:'?'} ${known?n.name:'Unexplored '+capitalize(n.biome)}`,()=>{if(dragged)return;selectedNode=n.id;renderNodeCard();},layer,'aw-map-node');
+      const known=knownNode(n,s),b=action(`${known?(n.homestead?'⌂':icons[n.type]):'?'} ${known?n.name:'Unexplored '+capitalize(n.biome)}`,()=>{if(dragged)return;selectedNode=n.id;renderNodeCard();},layer,'aw-map-node');
+      if(known&&isObjective(n))b.textContent+=' ❗';
+      b.classList.toggle('aw-home-node',known&&!!n.homestead);
       b.dataset.node=n.id;b.style.left=n.x+'px';b.style.top=n.y+'px';b.style.setProperty('--biome',biomePalette[n.biome]?.accent||c.color);b.classList.toggle('current',n.id===s.current);b.classList.toggle('cleared',n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id));b.classList.toggle('unknown',!known);
       if(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))b.textContent+=' ✓';b.title=known?n.name:'Unexplored location';
     }
@@ -113,12 +119,12 @@
     const end=e=>{pointers.delete(e.pointerId);gesture=null;if(!pointers.size)setTimeout(()=>dragged=false,0);};box.onpointerup=end;box.onpointercancel=end;box.onlostpointercapture=end;
   }
   function renderNodeCard(){
-    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=n.homestead|| (n.shadow?AWShadow.known(n.id):s.visited.includes(n.id)||s.scouted.includes(n.id)),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
+    const n=D.nodes[selectedNode]||A.current(),s=A.state(),known=knownNode(n,s),c=D.continent(n.continent),card=$('awNodeCard');if(!card)return;
     const reason=D.travelReason(s,n.id,travelMode);
     card.innerHTML=`<small>${known?esc(n.type.replace(/([A-Z])/g,' $1')):'Undiscovered location'}</small><h3>${known?esc(n.name):'Unexplored '+capitalize(n.biome)}</h3><p>${capitalize(n.biome)} · Threat ${n.threat}</p><p>${known&&n.town?esc(D.towns[n.town].culture):'Possible materials: '+esc(MATERIALS[n.material||c.material].name)}</p>${known&&!n.town&&!n.homestead?`<p>Enemies: ${(n.shadow?AWShadow.exclusiveIds:A.pool(n)).map(id=>esc(ENEMY_TYPES[id].name)).join(', ')}</p>`:''}<p>${(n.shadow?AWShadow.bit(n.id,'cleared'):s.cleared.includes(n.id))?'✓ Cleared':known?'Discovered':'Follow a connected road to reveal this location.'}</p>`;
-    if(n.homestead)card.insertAdjacentHTML('beforeend','<p><b>Your permanent home:</b> a safe cottage clearing, garden, orchard and workshop. Follow the western road from Sunmere.</p>');
+    if(known&&n.homestead)card.insertAdjacentHTML('beforeend','<p><b>Your permanent home:</b> a safe cottage clearing, garden, orchard and workshop. Follow the western road from Sunmere.</p>');
     if(known&&n.multiWave)card.insertAdjacentHTML('beforeend','<p><b>Multi-wave encounter:</b> clear all reinforcements for homestead supplies.</p>');
-    if(n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
+    if(known&&n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
     if(n.shadow)card.insertAdjacentHTML('beforeend',`<p>Depth ${n.depth}${n.modifier==='Greed'?' · Greed: enemies +40% health, loot/Glory +70%':n.modifier==='Safety'?' · Safety: standard enemies and rewards':''}</p>`);
     if(known&&n.rewardSpells?.length)card.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
     if(n.id===s.current){
@@ -126,27 +132,33 @@
       if(n.type==='ruler'&&s.defeated.includes(n.id))action('Return to Portal City',()=>A.travel(c.portalCity),card);
       if(n.type==='dungeon'){card.insertAdjacentHTML('beforeend',`<p>Rooms cleared: ${(s.dungeonClears[n.id]||[]).length}/5. Use the doors inside to explore the branches.</p>`);}
     }else{if(travelMode==='portal'||travelMode==='waystone'){const b=action('Use activated waystone',()=>A.travel(n.id,'waystone'),card,'btn');b.disabled=!!D.travelReason(s,n.id,'waystone');}else{const dir=Object.keys(A.current()?.exits||{}).find(d=>A.current().exits[d]===n.id);card.insertAdjacentHTML('beforeend',`<p>${dir?'Walk through the '+dir+' exit to travel here.':'Follow the connected roads to reach this location.'}</p>`);}if(reason)card.insertAdjacentHTML('beforeend',`<p class="aw-travel-reason">${esc(reason)}</p>`);}
+    if(known&&n.town)card.insertAdjacentHTML('beforeend',`<p><b>Services:</b> ${AWServices.forTown(n).map(b=>esc(b.icon+' '+b.label)).join(' · ')}</p>`);
     if(known&&n.town)card.insertAdjacentHTML('beforeend',`<p><b>Specialties:</b> ${D.towns[n.town].stock.map(id=>esc(D.items[id].name)).join(', ')}</p>`);
     if(A.current().waystone)action('Arcane Waystones',()=>window.AWTravel?.openWaystone(),card);
   }
   function openTown(npc){
     const n=A.current(),town=D.towns[n.town];if(!town)return;
     $('npcName').textContent=`${npc.name} • ${npc.role} • ${town.name}`;const body=$('npcBody');body.innerHTML=`<p class="exp-dialogue">${esc(town.line)}</p><p>${esc(town.culture)} · ${game.gold} gold</p><div id="awTownServices" class="aw-card-grid"></div>`;
-    const list=$('awTownServices'),role=npc.role;
-    if(['Merchant','Weaponsmith','Armorer','Relic Dealer','Blacksmith','Enchanter','Alchemist'].includes(role)){
-      const stock=town.stock.filter(id=>{const t=D.items[id];if(role==='Weaponsmith')return t.slot==='weapon';if(role==='Armorer')return t.slot==='armor';if(role==='Alchemist')return t.kind==='heal'||t.kind==='material'||t.kind==='provision';if(role==='Relic Dealer'||role==='Enchanter')return t.slot==='trinket'||t.kind==='material';return true;});
-      for(const id of stock){const t=D.items[id],locked=t.requires&&!A.state().cleared.includes(t.requires);const b=action(`${t.name} · ${t.price} gold${t.cost?' + '+materialCostText(t.cost):''}${locked?' · Clear '+D.nodes[t.requires].name:''}`,()=>{if(A.buy(id)&&!t.slot)openTown(npc);},list,'exp-buy');b.disabled=!!locked;b.title=t.desc||'Regional material bundle';}
+    const list=$('awTownServices'),services=AWServices.capabilities(town,npc.role);
+    for(const id of services.stock){
+      const t=D.items[id],locked=t.requires&&!A.state().cleared.includes(t.requires);
+      const missing=Object.entries(t.cost||{}).filter(([k,v])=>(game.materials[k]||0)<v).map(([k,v])=>`Need ${v-(game.materials[k]||0)} more ${MATERIALS[k]?.name||k}`);
+      if(game.gold<t.price)missing.unshift(`Need ${t.price-game.gold} more gold`);
+      if(locked)missing.unshift('Clear '+D.nodes[t.requires].name);
+      const b=action(`${t.name} · ${t.price} gold${t.cost?' + '+materialCostText(t.cost):''}${missing.length?' · '+missing.join(' · '):''}`,()=>{if(A.buy(id)){updateHUD(true);if(!t.slot)AWCampaignUI.openTown(npc);}},list,'exp-buy');
+      b.disabled=!!missing.length;b.title=missing.join(' · ')||t.desc||'Regional material bundle';
     }
-    if(['Blacksmith','Weaponsmith','Armorer','Enchanter'].includes(role))action('Material forge',()=>{closeOverlay('npcPanel');openForgePanel();},list);
-    if(['Arcanist','Spell Scribe'].includes(role)||role==='Enchanter'){
-      for(const id of town.spells){const s=SPELLS[id];if(!s)continue;const known=game.player.unlocked.includes(id),price=70+rarityRank[s.rarity]*110;const b=action(`${s.icon} ${s.name} · ${known?'Learned':price+' gold'}`,()=>{A.learn(id);openTown(npc);},list,'exp-buy');b.disabled=known;}
+    if(services.forge)action('Material forge',()=>{closeOverlay('npcPanel');openForgePanel();},list);
+    for(const id of services.spells){
+      const s=SPELLS[id],known=game.player.unlocked.includes(id),price=70+rarityRank[s.rarity]*110,reason=known?'Learned':game.gold<price?`Need ${price-game.gold} more gold`:'';
+      const b=action(`${s.icon} ${s.name} · ${price} gold${reason?' · '+reason:''}`,()=>{A.learn(id);AWCampaignUI.openTown(npc);},list,'exp-buy');b.disabled=!!reason;
     }
-    // A fortress can sell a local spell focus even without hosting a whole academy.
-    if(role==='Weaponsmith'&&town.spells.length)for(const id of town.spells){const s=SPELLS[id];if(s)action(`Local spell: ${s.name} · ${70+rarityRank[s.rarity]*110} gold`,()=>{A.learn(id);openTown(npc);},list);}
-    if(role==='Stablemaster')for(const id of town.mounts){const m=D.mounts[id],owned=A.state().mounts.includes(id);action(`${m.icon} ${m.name} · ${owned?'Ride / Dismiss':m.cost+' gold'}`,()=>{if(owned)A.mount(id);else if(!A.buyMount(id))toastMsg('Not enough gold.');openTown(npc);},list);}
-    if(role==='Quest Keeper'){body.insertAdjacentHTML('beforeend','<div id="npcQuestList"></div>');renderNPCPanelQuestList();}
-    if(role==='Cartographer')action('Scout neighboring paths · 30 gold',()=>{if(game.gold<30)return toastMsg('Not enough gold.');game.gold-=30;for(const id of n.connections)if(!A.state().scouted.includes(id))A.state().scouted.push(id);saveGame();toastMsg('Nearby locations are marked. Reach them by road to discover their portals.');},list);
-    if(role==='Villager')list.textContent=D.portalReady(A.state(),D.continent(n.continent))?'The great portal is singing. The ruler awaits.':`The city’s portal needs all four regional seals. ${D.sealCount(A.state(),D.continent(n.continent))}/4 are lit.`;
+    for(const id of services.mounts){const m=D.mounts[id],owned=A.state().mounts.includes(id),short=!owned&&game.gold<m.cost;
+      const b=action(`${m.icon} ${m.name} · ${owned?'Ride / Dismiss':m.cost+' gold'}${short?' · Need '+(m.cost-game.gold)+' more gold':''}`,()=>{if(owned)A.mount(id);else A.buyMount(id);AWCampaignUI.openTown(npc);},list);b.disabled=short;
+    }
+    if(services.quest){body.insertAdjacentHTML('beforeend','<div id="npcQuestList"></div>');renderNPCPanelQuestList();}
+    if(services.scout){const b=action('Scout neighboring paths · 30 gold'+(game.gold<30?' · Need '+(30-game.gold)+' more gold':''),()=>{if(game.gold<30)return;game.gold-=30;for(const id of n.connections)if(!A.state().scouted.includes(id))A.state().scouted.push(id);saveGame();updateHUD();AWCampaignUI.openTown(npc);toastMsg('Nearby locations are marked. Reach them by road to discover their portals.');},list);b.disabled=game.gold<30;}
+    if(!services.badges.length)list.textContent=D.portalReady(A.state(),D.continent(n.continent))?'The great portal is singing. The ruler awaits.':`The city’s portal needs all four regional seals. ${D.sealCount(A.state(),D.continent(n.continent))}/4 are lit.`;
     showOverlay('npcPanel');
   }
   function openPortal(){

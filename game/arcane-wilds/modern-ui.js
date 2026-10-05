@@ -73,7 +73,7 @@
   function tick(){
     const now=performance.now();if(now-noticeUntil>0)notice.classList.remove('show');if(now-lastTick<65)return;lastTick=now;renderSpellBar();
     if(loot&&game.loot!==loot.item)loot=null;if(game.loot&&!loot&&document.querySelectorAll('.overlay:not(.hidden)').length===0)offerLoot(game.loot);if(loot&&loot.room!==game.roomData){loot.room=game.roomData;loot.x=game.player.x+.65;loot.y=game.player.y+.3;}
-    const target=groundTarget()||currentInteraction();prompt.classList.toggle('hidden',!target||paused||modalPause||P.cinematic);if(target)prompt.textContent=`${I.prompt('interact')} — ${target.npc?'Talk to '+target.name:target.label}`;
+    const target=groundTarget()||currentInteraction();prompt.classList.toggle('hidden',!target||paused||modalPause||P.cinematic);if(target)prompt.textContent=`${I.prompt('interact')} — ${window.AWUsability?AWUsability.describe(target):target.npc?'Talk to '+target.name:target.label}`;
     const dodge=$('dodgeChip');dodge.classList.add('aw-dodge');dodge.style.setProperty('--cooldown',`${clamp(game.player.dodgeCd/1.25,0,1)*360}deg`);dodge.textContent='↯';dodge.title=`${I.prompt('dodge')} · ${game.player.dodgeCd>0?game.player.dodgeCd.toFixed(1)+'s':'Dodge ready'}`;dodge.setAttribute('aria-label',dodge.title);
   }
   function portrait(npc){
@@ -81,7 +81,7 @@
     pc.fillStyle=npc.color;pc.beginPath();pc.moveTo(9,65);pc.lineTo(17,37);pc.lineTo(48,37);pc.lineTo(57,65);pc.fill();pc.fillStyle='#e4c1a3';pc.beginPath();pc.arc(32,27,12,0,Math.PI*2);pc.fill();pc.fillStyle='#49382f';pc.beginPath();pc.arc(32,23,13,Math.PI,Math.PI*2);pc.fill();$('npcName').parentNode.prepend(portrait);
   }
   function menuGamepad(buttons,previous){
-    const overlay=Array.from(document.querySelectorAll('.overlay')).reverse().find(n=>!n.classList.contains('hidden'));
+    const overlay=Array.from(document.querySelectorAll('.overlay')).reverse().find(n=>!n.classList.contains('hidden'))||document.querySelector('.aw-home-place:not(.hidden)');
     if(!overlay)return false;
     const controls=Array.from(overlay.querySelectorAll('button,input,select,summary')).filter(n=>!n.disabled&&n.getClientRects().length);
     const index=controls.indexOf(document.activeElement);
