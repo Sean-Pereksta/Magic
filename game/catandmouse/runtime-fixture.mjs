@@ -54,4 +54,3 @@ export async function createBattleRuntime(reduced=false, {scenarioExtra=""}={}) 
   const fixture=window.__battleFixture;fixture.seed();
   return {fixture,document,warnings,frame(ms){time+=ms;const callbacks=[...frames.values()];frames.clear();for(const callback of callbacks)callback(time);},advance(ms){time+=ms;}};
 }
-
