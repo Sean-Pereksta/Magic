@@ -57,6 +57,57 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read, write: if isAuthed();
+
+      // Read the old per-device location only for that Firebase Auth identity.
+      match /tiny_troops_profiles/{saveName} {
+        allow get: if isAuthed() && request.auth.uid == userId;
+      }
+    }
+
+    function validTinyTroopsSave(saveName) {
+      let data = request.resource.data;
+      return isAuthed() && saveName.matches('^[a-z0-9_-]{1,28}$')
+        && data.cleanUsername == saveName
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 100
+        && data.password is string && data.password.size() >= 1 && data.password.size() <= 48
+        && data.saveVersion == 'tiny_troops_v1'
+        && data.updatedAtMs is int && data.updatedAtMs >= 0
+        && data.sequence is int && data.sequence >= 0
+        && data.reason is string && data.reason.size() <= 100
+        && data.state is map && data.state.saveVersion == 'tiny_troops_v1'
+        && data.state.round is int && data.state.round >= 1
+        && data.state.squad is list && data.state.squad.size() in [16,20]
+        && data.updatedAt == request.time
+        && data.keys().hasOnly(['username','cleanUsername','password','saveVersion','updatedAtMs','sequence','reason','createOnly','state','updatedAt']);
+    }
+
+    match /tiny_troops_profiles/{saveName} {
+      // Save-name/code lookup is supported; browsing every player's file is not.
+      allow get: if isAuthed();
+      allow create: if validTinyTroopsSave(saveName);
+      allow update: if validTinyTroopsSave(saveName)
+        && request.resource.data.password == resource.data.password
+        && request.resource.data.updatedAtMs >= resource.data.updatedAtMs;
+
+      match /runs/{runId} {
+        allow read: if isAuthed();
+        allow create: if isAuthed() && request.resource.data.runId == runId
+          && request.resource.data.username is string
+          && request.resource.data.round is int && request.resource.data.round >= 1
+          && request.resource.data.kills is number && request.resource.data.kills >= 0
+          && request.resource.data.points is number && request.resource.data.points >= 0
+          && request.resource.data.coins is number && request.resource.data.coins >= 0
+          && request.resource.data.dateTime is string
+          && request.resource.data.keys().hasOnly(['username','round','kills','points','coins','dateTime','runId']);
+      }
+    }
+
+    match /tiny_troops_meta/{documentId} {
+      allow get: if isAuthed() && documentId == 'global_leaderboard';
+      allow create, update: if isAuthed() && documentId == 'global_leaderboard'
+        && request.resource.data.top10 is list && request.resource.data.top10.size() <= 10
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly(['top10','updatedAt']);
     }
 
     match /lobbies/{gameId} {
