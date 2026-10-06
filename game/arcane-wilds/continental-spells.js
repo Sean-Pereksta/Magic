@@ -171,6 +171,11 @@
     return baseNearest(origin,range,filter);
   };
   const baitFor=e=>actors.find(a=>a.life>0&&a.hp>0&&['treant','mirror','ember'].includes(a.kind)&&dist(e,a)<area(a.id,e.boss?2.5:5));
+  const hurtActor=(a,damage,source)=>{
+    const affinity=window.AWCombatAffinity;
+    const element=source.combatElement||affinity?.enemyElement(source)||'physical';
+    a.hp-=damage*(affinity?.resolve(element,a).multiplier||1);
+  };
   const baseAI=updateEnemyAI;
   updateEnemyAI=function(e,d,range,speed,dt){
     if(eclipse>0&&!e.boss&&e.state==='idle'&&range>area('eclipse',5))return;
@@ -178,7 +183,7 @@
     if(bait&&e.state==='idle'){
       const delta=norm(bait.x-e.x,bait.y-e.y),dd=dist(e,bait);
       if(dd>e.r+bait.r+.15)moveEnemy(e,delta,speed,dt);
-      if(e.attack<=0){if(ranged(e)){enemyProjectile(e,delta,4.5);e.attack=1.6;}else if(dd<e.r+bait.r+.35){bait.hp-=e.damage;e.attack=1.2;}}
+      if(e.attack<=0){if(ranged(e)){enemyProjectile(e,delta,4.5);e.attack=1.6;}else if(dd<e.r+bait.r+.35){hurtActor(bait,e.damage,e);e.attack=1.2;}}
       return;
     }
     return baseAI(e,d,range,speed,dt);
@@ -188,7 +193,7 @@
     baseEnemies(dt);
     for(const e of game.enemies)for(const a of actors)if(a.hp>0&&a.life>0&&['treant','crystal'].includes(a.kind)){
       const dd=dist(e,a),r=e.r+a.r;if(dd<r){const d=dd>.001?norm(e.x-a.x,e.y-a.y):{x:1,y:0};e.x=clamp(a.x+d.x*r,.4,ROOM_W-.4);e.y=clamp(a.y+d.y*r,.4,ROOM_H-.4);
-        if(a.kind==='crystal'&&e.attack<=0){a.hp-=e.damage;e.attack=1;}}
+        if(a.kind==='crystal'&&e.attack<=0){hurtActor(a,e.damage,e);e.attack=1;}}
     }
   };
   const baseProjectiles=updateProjectiles;
@@ -197,7 +202,7 @@
       if(q.life<=0)continue;
       if(q.owner==='enemy'){
         const end={x:q.x+q.vx*dt,y:q.y+q.vy*dt};
-        for(const a of actors)if(a.hp>0&&a.life>0&&segmentDistance(a,q,end)<a.r+q.r){a.hp-=q.damage;q.life=0;break;}
+        for(const a of actors)if(a.hp>0&&a.life>0&&segmentDistance(a,q,end)<a.r+q.r){hurtActor(a,q.damage,q);q.life=0;break;}
         for(const f of fields)if(['magneticField','pollenVeil'].includes(f.id)&&dist(q,f)<f.r&&!q.continentalWeakened){q.continentalWeakened=true;q.damage*=.65;q.vx*=.8;q.vy*=.8;}
       }
     }
@@ -341,3 +346,4 @@
   };
   window.AWContinentalSpells={ids:Object.keys(definitions),grantEarned,canRecast:id=>id==='rewind'&&!!anchor&&!phase,state:()=>({fields,actors,anchor,phase,eclipse,links,marks,poisons})};
 })();
+

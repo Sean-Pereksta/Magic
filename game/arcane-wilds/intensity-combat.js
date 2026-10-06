@@ -293,17 +293,18 @@ spellMods=function(spell){
 function intensityImminentThreat(){
   const p=game.player;if(!p)return false;
   for(const q of game.projectiles){
-    if(q.owner!=='enemy')continue;
+    if(q.owner!=='enemy'||q.combatAbilityId)continue;
     const dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy),spd=Math.hypot(q.vx,q.vy)||1;
     const toward=(dx*q.vx+dy*q.vy)/(Math.max(.01,d)*spd);
     if(d<Math.max(1.05,spd*.24)+p.r+q.r && toward>.35)return true;
   }
   for(const t of game.telegraphs){
+    if(t.combatAbility)continue;
     if(t.time>.3)continue;
     if(Number.isFinite(t.x)&&Number.isFinite(t.y)&&Number.isFinite(t.r) && Math.hypot(p.x-t.x,p.y-t.y)<t.r+p.r+.15)return true;
   }
   for(const e of game.enemies){
-    if(e.dead || !e.telegraph || e.stateTime>.3)continue;
+    if(e.dead || !e.telegraph || e.telegraph.combatAbility || e.stateTime>.3)continue;
     const t=e.telegraph;
     if(Number.isFinite(t.x)&&Number.isFinite(t.y)&&Number.isFinite(t.r) && Math.hypot(p.x-t.x,p.y-t.y)<t.r+p.r+.15)return true;
     if(Number.isFinite(t.r) && !Number.isFinite(t.x) && dist(e,p)<t.r+p.r+.18)return true;
@@ -314,14 +315,15 @@ function intensityImminentThreat(){
 }
 
 function intensityPerfectDodge(){
-  window.AWPresentation?.event("perfect",{});
+  const major=window.AWEnemyCombat?.majorDodge===true;
+  window.AWPresentation?.event("perfect",{major});
   const st=intensityState(),p=game.player;
-  intensityAddMomentum(14,'PERFECT DODGE');
+  intensityAddMomentum(major?18:8,'PERFECT DODGE');
   p.dodgeCd=Math.max(.35,p.dodgeCd-.32);
   for(const s of Object.values(p.spellState||{}))s.cd=Math.max(0,(s.cd||0)-.7);
   radialDamage(p.x,p.y,1.7,10+game.level*1.35,'arcane',.32);
   fx('shockRing',p.x,p.y,.38,'#f4e7ff',{r:1.8});
-  burst(p.x,p.y,'#e7c7ff',24,1.2);
+  burst(p.x,p.y,'#e7c7ff',major?24:8,major?1.2:.6);
   shake=Math.max(shake,4);
   st.comboGrace=Math.max(st.comboGrace,2.8);
 }
@@ -483,7 +485,7 @@ function intensityTickEliteTraits(dt){
     if(e.dead||!e.intensityTrait)continue;
     e.intensityCd=(e.intensityCd||0)-dt;
     if(Math.random()<dt*.55)game.particles.push({x:e.x+rnd(.35,-.35),y:e.y+rnd(.35,-.35),z:rnd(16,5),vx:rnd(.12,-.12),vy:rnd(.12,-.12),vz:.3,life:.5,maxLife:.5,size:2.4,color:e.intensityColor||'#fff',soft:true});
-    if(e.intensityTrait==='Stormbound' && e.intensityCd<=0){
+    if(e.intensityTrait==='Stormbound' && e.intensityCd<=0 && !e.combatManaged){
       const pt={x:game.player.x,y:game.player.y};
       intensityQueueHazard('crossfire',[pt],.62,e.damage*.65,e.intensityColor,.72);
       e.intensityCd=2.4;
@@ -570,7 +572,7 @@ function intensityTickBosses(dt){
     const ratio=e.hp/Math.max(1,e.maxHp);
     if(ratio<=.35 && e.intensityPhase<3)intensityBossPhase(e,3);
     else if(ratio<=.70 && e.intensityPhase<2)intensityBossPhase(e,2);
-    if(e.intensityPhase>=2){
+    if(e.intensityPhase>=2 && !e.combatManaged){
       e.intensityBossCd-=dt;
       if(e.intensityBossCd<=0){
         intensityBossHazard(e);
@@ -650,3 +652,4 @@ update=function(dt){
 };
 
 intensityEnsureHud();
+
