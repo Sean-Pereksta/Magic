@@ -84,7 +84,7 @@
     }else if(kind==='dodge'||kind==='perfect'){
       animate(p,kind==='perfect'?'perfect':'dodge',kind==='perfect'?.42:.24);
       for(let i=0;i<4;i++)ring(p.x-p.facing.x*i*.22,p.y-p.facing.y*i*.22,kind==='perfect'?'#f6e8ff':p.armorGear.trim,'echo',.18+i*.06,1);
-      if(kind==='perfect'){hitPause=.045;window.AWModernUI?.announce('PERFECT DODGE','Momentum +14');}
+      if(kind==='perfect'){hitPause=data.major?.045:.015;window.AWModernUI?.announce('PERFECT DODGE',data.major?'Momentum +18 / Counter window':'Momentum +8');}
     }else if(kind==='reaction'){
       ring(p.x,p.y,'#eac8ff','reaction',.65,2);ring(p.x,p.y,'#9dedff','impact',.5,1.5);camera.kick=.03;window.AWModernUI?.announce(data.kind.replace(/([a-z])([A-Z])/g,'$1 $2').toUpperCase(),'Spell reaction');
     }else if(['heal','hurt','interact','level','loot'].includes(kind)){
@@ -148,3 +148,4 @@
     afterRender(){if(roomTitle>0&&!intro&&game.roomData){ctx.save();ctx.globalAlpha=Math.min(1,roomTitle);ctx.textAlign='center';ctx.fillStyle='#e8dfcf';ctx.font='600 18px system-ui';ctx.fillText(game.roomData.name,W/2,H*.19);ctx.font='11px system-ui';ctx.fillStyle='#b9c9d4';ctx.fillText(`${biomePalette[game.roomData.biome]?.name||game.roomData.biome} · Threat ${game.roomData.difficulty}`,W/2,H*.19+21);ctx.restore();}}
   };
 })();
+

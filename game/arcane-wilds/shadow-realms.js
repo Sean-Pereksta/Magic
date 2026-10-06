@@ -102,7 +102,7 @@
     }
     attacker=e;try{return oldAI(e,d,range,speed,dt);}finally{attacker=null;}
   };
-  const oldHurt=damagePlayer;damagePlayer=function(amount){const before=game.player?.hp,source=attacker||game.projectiles.find(q=>q.owner==='enemy'&&q.life>0&&dist(q,game.player)<q.r+game.player.r+.12)?.regionalSource;oldHurt(amount);const dealt=Math.max(0,before-game.player.hp);if(source?.shadowTraits?.includes('Vampiric')&&dealt)source.hp=Math.min(source.maxHp,source.hp+dealt*.6);};
+  const oldHurt=damagePlayer;damagePlayer=function(amount){const before=game.player?.hp,source=window.AWRegionalContent?.incoming||attacker||game.projectiles.find(q=>q.owner==='enemy'&&q.life>0&&dist(q,game.player)<q.r+game.player.r+.12)?.regionalSource;oldHurt(amount);const dealt=Math.max(0,before-game.player.hp);if(source?.shadowTraits?.includes('Vampiric')&&dealt)source.hp=Math.min(source.maxHp,source.hp+dealt*.6);};
   const oldHit=damageEnemy;damageEnemy=function(e,amount,tag='',dot=false){if(e?.shadow){const t=e.shadowTraits||[];if(t.includes('Armored'))amount*=.8;if(t.includes('Shadowed')&&Math.sin(elapsed*2+e.phase)>.7)amount*=.5;
     if(t.includes('Reflective')&&!dot&&(e.reflectAt||0)<=elapsed){e.reflectAt=elapsed+1.2;telegraph('circle',e.x,e.y,1,.5,'#eacfff');pulses.push({kind:'reflect',e,life:.5});}}
     return oldHit(e,amount,tag,dot);
@@ -167,3 +167,4 @@
   const oldPool=weightedSpellPool;weightedSpellPool=function(){return oldPool().filter(id=>!['shadowFireball','eclipseLightning'].includes(id)||game.player.unlocked.includes(id));};
   window.AWShadow={state,parse,isNode,definition,windowAt,hash,bit,known:id=>bit(id,'seen'),enter,resume,travel,leave,activate,claim,award,loot,unlock,exclusiveIds:exclusive.map(e=>e[0]),traits,gearIds:shadowGear.map(e=>e[0]),spawnShadow,continent:shadowContinent};
 })();
+
