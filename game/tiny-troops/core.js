@@ -255,6 +255,7 @@
     if (snap.tt.wavePlan && (!Array.isArray(snap.tt.wavePlan.enemies) || snap.tt.wavePlan.enemies.length > 40)) snap.tt.wavePlan = null;
     if (snap.tt.wavePlan?.enemies.some(e => !e || typeof e.n !== 'string' || !Number.isFinite(e.maxHp) || e.maxHp <= 0 || !Number.isFinite(e.atk) || e.atk < 0 || !Number.isFinite(e.spd) || e.spd <= 0)) snap.tt.wavePlan = null;
     snap.tt.steps = Math.floor(numeric(snap.tt.steps)); snap.tt.bestHit = numeric(snap.tt.bestHit); snap.tt.nextUnitId = Math.floor(numeric(snap.tt.nextUnitId));
+    if (snap.tt.basicCombatRound !== snap.round) delete snap.tt.basicCombatRound;
     snap.tt.draft = (Array.isArray(snap.tt.draft) ? snap.tt.draft : []).slice(0, 3).map(c => { if (!c || !['recruit', 'effect', 'upgrade', 'tt-path'].includes(c.type)) return null; if (c.type === 'recruit') { c.unit = sanitizeUnit(c.unit, roster); if (!c.unit) return null; } return c; }).filter(Boolean);
     snap.runEnded = !!snap.runEnded || ['dead', 'won'].includes(snap.phase) || !!snap.tt.finished;
     snap.phase = snap.runEnded ? snap.tt.outcome === 'victory' || snap.phase === 'won' ? 'won' : 'dead' : snap.tt.event ? 'tt-event' : snap.phase === 'relic' ? 'relic' : snap.shopOpen && snap.phase === 'shop' ? 'shop' : 'recruit';
@@ -264,5 +265,72 @@
     ['choices', 'items', 'relicChoices', 'evoChoices', 'ascChoices', 'starChoiceChoices', 'ultimate10Choices'].forEach(k => snap[k] = []);
     return snap;
   }
-  return { VERSION, MODES, PHASES, ROLE_INFO, SYNERGIES, COUNTERS, PATHS, STARTERS, MODIFIERS, ARCHETYPES, EVENTS, OBJECTIVES, numeric, copy, tags, has, role, countTags, synergies, protectedBy, recruitImpact, counterMultiplier, pathsFor, pathMods, nextRandom, weighted, newRun, armyStyle, sanitizeUnit, sanitizeSnapshot };
+  // A recovery battle deliberately avoids native spell/ability callbacks. It still
+  // fights the same enemies; victory and defeat are decided by actual HP loss.
+  function basicBonus(state, unit, key) {
+    return numeric(state.boost?.[key]) + (Array.isArray(unit.t) ? unit.t : []).reduce((total, tag) => total + numeric(state.boost?.tb?.[tag]?.[key]), 0);
+  }
+  function initializeBasicBattle(state) {
+    if (!Array.isArray(state.tt?.wavePlan?.enemies) || !state.tt.wavePlan.enemies.length) throw new Error('The enemy checkpoint is missing. Restore preparation to rebuild the wave.');
+    state.enemies = copy(state.tt.wavePlan.enemies);
+    state.enemies.forEach(u => { u.maxHp = numeric(u.maxHp || u.hp, 1, 1); u.hp = u.maxHp; u.atk = numeric(u.atk, 1, 1); u.spd = numeric(u.spd, 1, .1, 20); u.shield = numeric(u.shield); u.cd = 0; u.dead = false; });
+    state.squad.filter(Boolean).forEach((u) => {
+      u.maxHp = numeric(numeric(u.baseMaxHp || u.maxHp, 1, 1) + basicBonus(state, u, 'hp'), 1, 1);
+      u.hp = u.maxHp; u.atk = numeric(numeric(u.baseAtk ?? u.atk, 1) + basicBonus(state, u, 'atk'), 1, 1);
+      u.spd = numeric(numeric(u.baseSpd || u.spd, 1, .1, 20) + basicBonus(state, u, 'spd'), 1, .1, 20);
+      u.shield = numeric(u.shield) + basicBonus(state, u, 'shield') + (state.squad.indexOf(u) % 4 === 3 ? numeric(state.boost?.frontShield) : 0);
+      u.dead = false; u.cd = 0;
+      ['burn', 'poison', 'slow', 'stun', 'marked'].forEach(k => u[k] = 0);
+    });
+    state._battleSeq = Math.floor(numeric(state._battleSeq)) + 1;
+    state.battle = { id: state._battleSeq, tick: 0, simTime: 0, basic: true };
+    state.phase = 'battle'; state.tt.objective = null;
+  }
+  function stepBasicBattle(state) {
+    const living = list => list.filter(u => u && !u.dead && numeric(u.hp) > 0);
+    const events = [], allies = () => living(state.squad), enemies = () => living(state.enemies);
+    state.battle.tick++; state.battle.simTime = state.battle.tick * .25; state.tt.steps = Math.floor(numeric(state.tt.steps)) + 1;
+    function targetFor(source, list, attackingAllies) {
+      let targets = list.slice();
+      if (attackingAllies && source.kind !== 'ranged') {
+        const front = Math.max(...targets.map(u => state.squad.indexOf(u) % 4));
+        targets = targets.filter(u => state.squad.indexOf(u) % 4 === front);
+      }
+      if (source.focus === 'weak') targets.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+      else if (source.focus === 'strong') targets.sort((a, b) => b.atk - a.atk);
+      else if (source.focus === 'armor') targets.sort((a, b) => numeric(b.shield) - numeric(a.shield));
+      else if (source.focus === 'back' && attackingAllies) targets.sort((a, b) => state.squad.indexOf(a) % 4 - state.squad.indexOf(b) % 4);
+      return targets[0];
+    }
+    function attack(source, target, amount) {
+      if (!target) return;
+      amount = numeric(amount, 1, 1); target.shield = numeric(target.shield);
+      const blocked = Math.min(target.shield, amount); target.shield -= blocked;
+      const before = numeric(target.hp); target.hp = Math.max(0, before - amount + blocked);
+      const killed = target.hp === 0; if (killed) target.dead = true;
+      events.push({ source, target, damage: before - target.hp + blocked, blocked, killed });
+    }
+    for (const u of allies()) {
+      if (!enemies().length) break;
+      u.cd = numeric(u.cd, 0, -100) - .25;
+      if (u.cd > 0) continue;
+      if (has(u, 'HEALER') || u.focus === 'support') {
+        const weakest = allies().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+        const before = weakest.hp; weakest.hp = Math.min(weakest.maxHp, before + 6 + numeric(u.star, 1) * 2 + basicBonus(state, u, 'heal'));
+        events.push({ source: u, target: weakest, heal: weakest.hp - before });
+      }
+      const target = targetFor(u, enemies(), false);
+      attack(u, target, u.atk * counterMultiplier(u, target));
+      u.cd = Math.max(.38, 1.75 / numeric(u.spd, 1, .35, 20));
+    }
+    for (const e of enemies()) {
+      if (!allies().length) break;
+      e.cd = numeric(e.cd, 0, -100) - .25;
+      if (e.cd > 0) continue;
+      attack(e, targetFor(e, allies(), true), e.atk * (e.boss ? 1.08 : 1));
+      e.cd = Math.max(.45, 1.9 / numeric(e.spd, 1, .35, 20));
+    }
+    return { events, outcome: !allies().length ? 'defeat' : !enemies().length ? 'victory' : null };
+  }
+  return { VERSION, MODES, PHASES, ROLE_INFO, SYNERGIES, COUNTERS, PATHS, STARTERS, MODIFIERS, ARCHETYPES, EVENTS, OBJECTIVES, numeric, copy, tags, has, role, countTags, synergies, protectedBy, recruitImpact, counterMultiplier, pathsFor, pathMods, nextRandom, weighted, newRun, armyStyle, sanitizeUnit, sanitizeSnapshot, basicBonus, initializeBasicBattle, stepBasicBattle };
 });

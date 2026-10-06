@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   const R = window.TinyTroopsRules;
-  const TP = window.TinyTroopsPolish = { ready: false, speed: 1, timer: null, preparingWave: false, stats: new Map(), focusTarget: null, lastRecap: null, unitSeq: 0, fx: new Map(), flashes: new Map(), structures: '', drawing: false, actions: new Set(), deaths: new Set() };
+  const TP = window.TinyTroopsPolish = { ready: false, speed: 1, timer: null, preparingWave: false, stats: new Map(), focusTarget: null, lastRecap: null, unitSeq: 0, fx: new Map(), flashes: new Map(), structures: '', drawing: false, actions: new Set(), deaths: new Set(), recovery: null, battleCheckpoint: null };
   const q = (s, root = document) => root.querySelector(s);
   const qa = (s, root = document) => [...root.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -37,20 +37,61 @@
     TP.fx.forEach((_, node) => node.remove()); TP.fx.clear();
     TP.flashes.forEach((entry, node) => entry.classes.forEach(c => node.classList.remove(c))); TP.flashes.clear(); if (TP.fxFrame) cancelAnimationFrame(TP.fxFrame); TP.fxFrame = null;
     qa('.float,.atkFx,.targetRing,.intentTag,.supportLink,.regionBanner,.tt-toast,.nova,.iceBurst,.poisonCloud,.shadowRip,.gearBurst,.holyFlash,.mortarBurst,.auraPulse,.beam,.slash,.spark,.reviveRing,.laneFlash').forEach(node => node.remove());
-    window.__bonusDmgQueue = []; window.__dmgDepth = 0;
+    window.__bonusDmgQueue = []; window.__dmgDepth = 0; window.__ttSecondaryDamage = false; TP.act = null;
   }
   function scheduleStep(delay = 250 / TP.speed) {
-    if (TP.timer !== null || !isBattle() || !isPlaying()) return;
+    if (TP.timer !== null || TP.recovery || !isBattle() || !isPlaying()) return;
     const id = S.battle.id;
     TP.timer = ttTimeout(() => { TP.timer = null; loop(id); }, delay);
   }
   function pause() {
+    if (TP.recovery) return openRecovery();
     if (!isBattle() || !['PLAYING', 'PAUSED'].includes(mode())) return;
     if (mode() === 'PAUSED') { setMode('PLAYING'); scheduleStep(); }
     else { stopLoop(); setMode('PAUSED'); }
     postRender();
   }
   function setSpeed(n) { if (![1, 2, 3].includes(n)) return; TP.speed = n; storage.write('ttBattleSpeed', n); stopLoop(); scheduleStep(); postRender(); }
+
+  function recoveryHtml() {
+    const r = TP.recovery;
+    return '<b>Battle interrupted · Wave ' + r.wave + '</b><p>Restore your army and replay the same wave. Progress earned during the interrupted attempt will be rolled back.</p><div class="tt-recovery-actions"><button data-tt-action="retry">Retry wave</button><button class="secondary" data-tt-action="basic">Retry with basic combat</button><button class="secondary" data-tt-action="prepare">Restore preparation</button><button class="secondary" data-tt-action="new">Saved runs</button></div><small>Basic combat uses attacks, healing, and shields. Advanced abilities are off for this wave only.</small><details><summary>Error details</summary><pre>' + esc(r.stage + ': ' + TP.lastError) + '</pre></details>';
+  }
+  function openRecovery() {
+    if (!TP.recovery) return;
+    const panel = $('ttRecovery'); panel.innerHTML = recoveryHtml(); panel.hidden = false;
+    panel.querySelector('button')?.focus({ preventScroll: true }); panel.scrollIntoView({ block: 'nearest' });
+  }
+  function clearRecovery() { TP.recovery = null; TP.battleCheckpoint = null; TP.lastError = null; if ($('ttRecovery')) { $('ttRecovery').hidden = true; $('ttRecovery').replaceChildren(); } }
+  function combatFailed(error, stage) {
+    stopLoop(); ttClearTimers();
+    try { clearEffects(); } catch (visualError) { console.warn('Tiny Troops effect cleanup', visualError); }
+    TP.act = null; TP.pauseForDialog = false;
+    const previous = TP.recovery;
+    TP.lastError = String(error?.message || error);
+    const state = previous?.state || TP.battleCheckpoint || S.tt.checkpoint?.state || stableSnapshot();
+    TP.recovery = { state, wave: state.round, stage };
+    setMode('PAUSED'); forceClose();
+    msg('Battle interrupted. Retry the wave, use basic combat, or restore preparation below.');
+    $('phase').textContent = 'Battle interrupted · choose a recovery option.';
+    $('ttPause').textContent = 'Recover'; $('playNext').disabled = false; $('playNext').textContent = 'Recover';
+    console.error('Tiny Troops combat error', { wave: S.round, stage, error }); openRecovery();
+  }
+  TP.handleCombatError = function (error, stage) { if (!isBattle() && !TP.recovery) return false; combatFailed(error, stage); return true; };
+  function recoverBattle(action) {
+    if (!TP.recovery || TP.recovering) return;
+    TP.recovering = true;
+    const recovery = TP.recovery;
+    try {
+      const snapshot = R.copy(recovery.state);
+      if (action === 'basic') snapshot.tt.basicCombatRound = snapshot.round;
+      else delete snapshot.tt.basicCombatRound;
+      restoreSnapshot(snapshot); ttClearTimers(); $('mainMenu').classList.remove('open');
+      if (action === 'prepare') { msg('Pre-battle army restored. Adjust your formation, then fight the same wave.'); render(); saveProfile('combat recovery'); }
+      else fight();
+    } catch (error) { TP.recovery = recovery; combatFailed(error, 'recovery'); }
+    finally { TP.recovering = false; }
+  }
 
   // Cache only formation-dependent queries; HP, targeting, and damage stay live.
   let formationKey = '', formationRecords = [], tagCache = {}, mixedCache = null, roleCache = [];
@@ -201,6 +242,22 @@
   TP.step = function () {
     if (!isBattle() || !isPlaying()) return false;
     if (!liveA().length) { end(false); return false; } if (!liveE().length) { end(true); return false; }
+    if (S.battle.basic) {
+      const result = R.stepBasicBattle(S);
+      result.events.forEach(event => {
+        const { source, target } = event;
+        stat(source)?.forEach(s => { s.damage += event.damage || 0; s.heal += event.heal || 0; if (event.killed && target.team === 'enemy') s.kills++; });
+        stat(target)?.forEach(s => s.shield += event.blocked || 0);
+        if (source.team === 'ally') S.tt.bestHit = Math.max(S.tt.bestHit, event.damage || 0);
+        if (event.killed && target.team === 'enemy') {
+          source.kills = R.numeric(source.kills) + 1; S.kills++;
+          S.coins += 2 + R.numeric(S.boost.coins) + (source.n === 'Pirate' ? 2 : 0) + (target.boss ? 10 + R.numeric(S.boost.bossCoins) : 0) + (liveA().some(u => u.n === 'Banker') ? 1 : 0);
+          S.points += 10 + S.round * 2 + (target.boss ? 70 : 0);
+        } else if (event.killed) TP.deaths.add(target.ttId);
+      });
+      if (result.outcome) end(result.outcome === 'victory'); else render();
+      return true;
+    }
     const chillBefore = S.tt.modifier === 'frozen' ? new Map([...liveA(), ...liveE()].map(u => [u, u.slow || 0])) : null;
     S.battle.tick++; S.battle.simTime = (S.battle.simTime || 0) + .25; S.tt.steps++; S.battle.lightningCastsThisTick = 0;
     tickBattleAbilities(.25); temporaryBonuses();
@@ -226,7 +283,7 @@
   loop = function (id) {
     if (!isBattle() || !isPlaying() || S.battle.id !== id || TP.timer !== null) return;
     const began = performance.now();
-    try { TP.step(); } catch (error) { stopLoop(); setMode('PAUSED'); msg('Combat paused after an error. Your pre-battle checkpoint is safe.'); console.error('Tiny Troops combat error', error); TP.lastError = error.message; }
+    try { TP.step(); } catch (error) { combatFailed(error, 'combat'); return; }
     scheduleStep(Math.max(4, 250 / TP.speed - (performance.now() - began)));
   };
   const legacyFight = fight;
@@ -236,24 +293,28 @@
     const requiredEvolution = S.squad.find(u => u && maybeEvolution(u)); if (requiredEvolution) return openEvolution(requiredEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
     if (!liveA().length) return msg('Place at least one fighter first.');
+    try {
     stopLoop(); ttClearTimers(); clearEffects(); S.tt.checkpoint = null; S.tt.draftedRound = S.round;
-    S.tt.checkpoint = { state: stableSnapshot() };
+    TP.battleCheckpoint = stableSnapshot(); prepareWave();
+    S.tt.checkpoint = { state: stableSnapshot() }; TP.battleCheckpoint = R.copy(S.tt.checkpoint.state);
     TP.stats = new Map(); TP.deaths = new Set(); TP.actions = new Set(); TP.lastRecap = null; TP.focusTarget = null;
     S.squad.forEach(u => { if (u) { identify(u); discover(u); ['roundDamage', 'roundSupport', 'procActivity', 'silenced', 'suppressed', 'weakened', 'controlGrace', 'healCut', 'roundHealingReceived', 'roundShieldReceived', 'roundProcs', 'delay', 'desynced', 'mercyFatigue', 'formationMarked', 'targetShift'].forEach(k => u[k] = 0); } });
-    formationKey = ''; setMode('PLAYING'); const result = legacyFight();
+    formationKey = ''; setMode('PLAYING'); const basic = S.tt.basicCombatRound === S.round;
+    const result = basic ? R.initializeBasicBattle(S) : legacyFight();
     if (isBattle()) {
       S.battle.simTime = 0;
-      S.squad.filter(active).forEach(u => { const m = modifiers(u), i = ix(u); if (m.rowShield) filled(rowIds(rowOf(i))).filter(active).forEach(a => giveShield(a, m.rowShield)); if (R.protectedBy(S.squad, i, true).length) giveShield(u, 8); });
+      if (!basic) S.squad.filter(active).forEach(u => { const m = modifiers(u), i = ix(u); if (m.rowShield) filled(rowIds(rowOf(i))).filter(active).forEach(a => giveShield(a, m.rowShield)); if (R.protectedBy(S.squad, i, true).length) giveShield(u, 8); });
       const eligible = R.OBJECTIVES.filter(o => o.id !== 'protect' || liveA().some(u => R.has(u, 'RANGED')));
-      S.tt.objective = S.round % 3 === 0 ? { ...sample(eligible), progress: 0 } : null;
+      S.tt.objective = !basic && S.round % 3 === 0 ? { ...sample(eligible), progress: 0 } : null;
       TP.structures = '';
       // Own the initializer's timer and watchdog so there is exactly one loop.
       ttClearTimers(); stopLoop(); scheduleStep(); render(); saveProfile('battle checkpoint');
       const boss = liveE().find(e => e.boss); if (boss) toast('👑 ' + boss.n, boss.ability || 'Inspect its abilities and counters.');
     }
     return result;
+    } catch (error) { combatFailed(error, 'battle setup'); return false; }
   };
-  window.startNextFight = function () { if (mode() === 'PAUSED') return pause(); if (isBattle()) return false; if (S.phase !== 'recruit') return msg('Finish this reward or upgrade first.'); close(); return fight(); };
+  window.startNextFight = function () { if (TP.recovery) return openRecovery(); if (mode() === 'PAUSED') return pause(); if (isBattle()) return false; if (S.phase !== 'recruit') return msg('Finish this reward or upgrade first.'); close(); return fight(); };
 
   // Drafts are bounded and saved with the wave. Reopening a menu is never a reroll.
   const legacyChoose = choose, legacyTapCell = tapCell, legacyChoice = choice;
@@ -370,6 +431,19 @@
     S.tt.event = null; S.phase = 'recruit'; close(); msg(e.name + ': ' + o.name + '.'); saveProfile('event'); openRecruit();
   }
   const legacyEnd = end;
+  function finishBasicBattle(win) {
+    if (!win) { S.phase = 'dead'; return; }
+    S.squad.filter(Boolean).forEach(u => {
+      u.dead = false; u.hp = u.maxHp; u.cd = 0;
+      ['burn', 'poison', 'slow', 'stun', 'marked'].forEach(k => u[k] = 0);
+    });
+    S.points += 8 + S.round * 3;
+    S.coins += Math.round(S.squad.filter(Boolean).reduce((total, u) => total + R.basicBonus(S, u, 'coin'), 0));
+    msg('Wave cleared with basic combat. Normal abilities return on the next wave.');
+    if (S.round % 5 === 0) { S.shopOpen = true; S.phase = 'relic'; ttTimeout(openRelic, 350); }
+    else { S.round++; S.phase = 'recruit'; ttTimeout(openRecruit, 350); }
+    delete S.tt.basicCombatRound;
+  }
   end = function (win) {
     if (!isBattle() || S.battle.ttEnded) return;
     S.battle.ttEnded = true;
@@ -380,11 +454,12 @@
     stopLoop(); ttClearTimers(); clearEffects(); S.tt.checkpoint = null; S.tt.wavePlan = null; S.tt.draft = null; S.tt.offerRound = null; formationKey = '';
     if (complete) S.coins += objective.reward;
     setMode(win ? 'VICTORY' : 'DEFEAT');
-    legacyEnd(win);
+    if (S.battle.basic) finishBasicBattle(win); else legacyEnd(win);
     if (!win) return finishRun(wave);
     if (wave % 5 === 0 && !TP.meta.boss) { TP.meta.boss = true; saveMeta(); toast('✨ The Arcanist unlocked', 'A new starting army is available for your next run.'); }
     if (wave % 3 === 0 && wave % 5 !== 0 && S.tt.lastEventRound !== wave) { S.tt.lastEventRound = wave; S.tt.event = { id: sample(R.EVENTS).id }; S.phase = 'tt-event'; }
     S.battle = null; setMode('PLAYING'); render(); saveProfile('wave complete');
+    clearRecovery();
     // Waves have no limit. The campaign keeps escalating after the last region.
   };
   function finishRun(wave) {
@@ -425,6 +500,7 @@
   reset = function () {
     const battleSeq = (S._battleSeq || 0) + 1;
     stopLoop(); ttClearTimers(); clearEffects(); loadMeta();
+    clearRecovery();
     const config = { starter: $('ttStarter')?.value, modifier: $('ttModifier')?.value, difficulty: $('ttDifficulty')?.value };
     if (!unlocked(R.STARTERS.find(s => s.id === config.starter) || {})) config.starter = 'defender';
     if (!unlocked(R.MODIFIERS.find(s => s.id === config.modifier) || {})) config.modifier = 'standard';
@@ -432,7 +508,7 @@
     TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); TP.unitSeq = 0; TP.lastRecap = null; TP.focusTarget = null; TP.structures = ''; formationKey = ''; forceClose();
     S.tt.started = true; TP.suspendedDrawer = null; setMode('PLAYING'); legacyReset(); setMode('PLAYING'); render();
   };
-  TP.beforeRestore = function () { stopLoop(); clearEffects(); TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); formationKey = ''; TP.structures = ''; TP.lastRecap = null; TP.focusTarget = null; forceClose(); };
+  TP.beforeRestore = function () { stopLoop(); clearEffects(); clearRecovery(); TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); formationKey = ''; TP.structures = ''; TP.lastRecap = null; TP.focusTarget = null; forceClose(); };
   TP.afterRestore = function () {
     loadMeta(); TP.unitSeq = Math.max(S.tt.nextUnitId || 0, ...[...Object.keys(S.tt.stats), ...[...S.squad, ...S.bench, ...(S.tt.draft || []).map(c => c.unit)].filter(Boolean).map(u => u.ttId)].map(id => Number(String(id || '').split('-u').at(-1)) || 0)); S.tt.nextUnitId = TP.unitSeq;
     S.squad.filter(Boolean).forEach(u => { identify(u); discover(u); }); S.tt.started = true; S.tt.finished = !!S.runEnded || !!S.tt.finished; setMode(S.tt.finished ? 'RESULTS' : 'PLAYING');
@@ -460,17 +536,19 @@
     if (S.tt?.started && window.TinyTroopsSaveFiles?.active()) saveProfile('menu checkpoint');
     if ($('drawer').classList.contains('open') && forcedChoice()) TP.suspendedDrawer = { title: $('dt').textContent, hint: $('dhint').textContent, html: $('body').innerHTML };
     stopLoop(); ttClearTimers(); clearEffects(); TP.pauseForDialog = false; forceClose(); setMode('MENU'); $('mainMenu').classList.add('open');
-    $('ttResume').hidden = !S.tt.started || S.tt.finished; menuOptions(); refreshTop10(); window.dispatchEvent(new CustomEvent('tt-saves-changed'));
+    $('ttResume').hidden = !TP.recovery && (!S.tt.started || S.tt.finished); menuOptions(); refreshTop10(); window.dispatchEvent(new CustomEvent('tt-saves-changed'));
   };
   function resumeRun() {
-    if (!S.tt.started || S.tt.finished) return;
+    if (!TP.recovery && (!S.tt.started || S.tt.finished)) return;
     $('mainMenu').classList.remove('open'); setMode('PLAYING');
+    if (TP.recovery) { setMode('PAUSED'); return openRecovery(); }
     if (isBattle()) scheduleStep();
     else if (TP.suspendedDrawer && forcedChoice()) { const d = TP.suspendedDrawer; TP.suspendedDrawer = null; show(d.title, d.hint, d.html); }
     else if (S.tt.event) openEvent(); else if (S.phase === 'shop') openShop(); else if (S.phase === 'relic') openRelic(); else openRecruit();
     render();
   }
   openRunMenu = function () {
+    if (TP.recovery) return openRecovery();
     if (forcedChoice()) return msg('Finish this choice before opening the run menu.');
     if (isBattle() && mode() === 'PLAYING') { pause(); TP.pauseForDialog = true; }
     show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" data-tt-action="new">Browse saved runs</button></div>');
@@ -490,13 +568,13 @@
   }
   function setupUi() {
     document.body.classList.add('tt-modern');
-    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-saves'; document.head.appendChild(link);
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-combat'; document.head.appendChild(link);
     q('.title').textContent = 'Tiny Troops'; q('.menuTitle').textContent = 'Tiny Troops'; q('.menuSub').textContent = 'Small armies. Unexpected combinations. Endless waves.';
     $('menuUser').setAttribute('aria-label', 'Save name'); $('menuPass').setAttribute('aria-label', 'Save code'); $('menuNew').textContent = 'Start endless run →'; $('menuLoad').textContent = 'Load saved run';
     const settings = document.createElement('div'); settings.className = 'tt-run-settings'; settings.innerHTML = '<label>Choose your commander<select id="ttStarter"></select></label><div class="tt-setting-row"><label>Run rules<select id="ttModifier"></select></label><label>Enemy tactics<select id="ttDifficulty"><option value="standard">Standard</option><option value="relaxed">Relaxed · gentler opponents</option><option value="tactician">Tactician · smarter targeting</option></select></label></div><p id="ttConfigHint"></p>';
     q('.menuInputs').before(settings);
     const resume = document.createElement('button'); resume.id = 'ttResume'; resume.className = 'secondary'; resume.textContent = 'Resume current run'; resume.hidden = true; resume.onclick = resumeRun; q('.menuButtons').before(resume);
-    const intel = document.createElement('section'); intel.id = 'ttIntel'; intel.innerHTML = '<div class="tt-control-row"><div><span class="tt-eyebrow">ENDLESS CAMPAIGN</span><b id="ttArmySize"></b></div><div class="tt-speeds" aria-label="Battle speed"><button data-tt-speed="1">1×</button><button data-tt-speed="2">2×</button><button data-tt-speed="3">3×</button><button id="ttPause" data-tt-action="pause">Pause</button><button class="secondary" data-tt-action="more" aria-label="More options">•••</button></div></div><div id="ttWavePreview"></div><div id="ttObjective"></div>';
+    const intel = document.createElement('section'); intel.id = 'ttIntel'; intel.innerHTML = '<div class="tt-control-row"><div><span class="tt-eyebrow">ENDLESS CAMPAIGN</span><b id="ttArmySize"></b></div><div class="tt-speeds" aria-label="Battle speed"><button data-tt-speed="1">1×</button><button data-tt-speed="2">2×</button><button data-tt-speed="3">3×</button><button id="ttPause" data-tt-action="pause">Pause</button><button class="secondary" data-tt-action="more" aria-label="More options">•••</button></div></div><div id="ttWavePreview"></div><div id="ttObjective"></div><section id="ttRecovery" class="tt-recovery" role="alert" aria-label="Battle recovery" hidden></section>';
     q('.main').prepend(intel);
     const syn = document.createElement('section'); syn.id = 'ttSynergies'; syn.setAttribute('aria-label', 'Army synergies'); $('traits').before(syn);
     const recap = document.createElement('div'); recap.id = 'ttRecap'; q('footer').prepend(recap);
@@ -577,7 +655,7 @@
     if (!$('ttArmySize') || !S.tt) return;
     $('ttArmySize').textContent = S.squad.filter(Boolean).length + ' troops · ' + R.armyStyle(S.squad);
     qa('[data-tt-speed]').forEach(b => { b.classList.toggle('selected', Number(b.dataset.ttSpeed) === TP.speed); b.setAttribute('aria-pressed', String(Number(b.dataset.ttSpeed) === TP.speed)); });
-    $('ttPause').disabled = !isBattle() || mode() === 'MENU'; $('ttPause').textContent = mode() === 'PAUSED' ? '▶ Resume' : 'Ⅱ Pause'; $('ttPause').setAttribute('aria-pressed', String(mode() === 'PAUSED'));
+    $('ttPause').disabled = !TP.recovery && (!isBattle() || mode() === 'MENU'); $('ttPause').textContent = TP.recovery ? 'Recover' : mode() === 'PAUSED' ? '▶ Resume' : 'Ⅱ Pause'; $('ttPause').setAttribute('aria-pressed', String(mode() === 'PAUSED'));
     const plan = S.tt.wavePlan, a = R.ARCHETYPES.find(a => a.id === plan?.archetype), boss = (isBattle() ? S.enemies : plan?.enemies || []).find(e => e.boss);
     const preview = `<span class="tt-eyebrow">${isBattle() ? 'FIGHTING' : 'UP NEXT'} · WAVE ${S.round} · ${esc(region().n)}</span><b>${boss ? '👑 ' + esc(boss.n) : a ? a.emoji + ' ' + a.name : 'The next wave'}</b><span>${esc(boss?.ability || a?.counter || '')}</span>`;
     if ($('ttWavePreview').innerHTML !== preview) $('ttWavePreview').innerHTML = preview;
@@ -587,8 +665,9 @@
     if ($('ttSynergies').innerHTML !== html) $('ttSynergies').innerHTML = html;
     if (mode() !== 'MENU') syns.filter(s => s.tier > (S.tt.seenSynergies[s.id] || 0)).forEach(s => { S.tt.seenSynergies[s.id] = s.tier; if (!TP.meta.synergies.includes(s.id)) { TP.meta.synergies.push(s.id); saveMeta(); } toast(s.emoji + ' ' + s.name + ' activated · Tier ' + s.tier, s.bonus); });
     $('pick').classList.toggle('show', !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization)); if (S.placingSpecialization) $('pick').textContent = '🔀 Choose a troop to specialize';
-    $('phase').textContent = mode() === 'PAUSED' ? 'Paused · the battlefield will wait.' : S.placingSpecialization ? 'Choose a troop with no specialization.' : S.phase === 'tt-event' ? 'A quick decision before your next draft.' : S.phase === 'tt-path' ? 'Choose a path for this troop.' : S.tt.finished ? 'Run complete · try another army.' : S.placing ? 'Place ' + S.placing.n + ' · matching troops train.' : S.placingUpgrade ? 'Choose a troop for star training.' : S.placingEffect ? 'Choose a troop for ' + S.placingEffect.n + '.' : isBattle() ? 'Battle underway · inspect a troop for live details.' : 'Build, inspect, then fight the next wave.';
+    $('phase').textContent = TP.recovery ? 'Battle interrupted · choose a recovery option.' : mode() === 'PAUSED' ? 'Paused · the battlefield will wait.' : S.placingSpecialization ? 'Choose a troop with no specialization.' : S.phase === 'tt-event' ? 'A quick decision before your next draft.' : S.phase === 'tt-path' ? 'Choose a path for this troop.' : S.tt.finished ? 'Run complete · try another army.' : S.placing ? 'Place ' + S.placing.n + ' · matching troops train.' : S.placingUpgrade ? 'Choose a troop for star training.' : S.placingEffect ? 'Choose a troop for ' + S.placingEffect.n + '.' : isBattle() ? S.battle.basic ? 'Basic combat · normal abilities return next wave.' : 'Battle underway · inspect a troop for live details.' : 'Build, inspect, then fight the next wave.';
     if ($('playNext')) { $('playNext').disabled = isBattle() && mode() !== 'PAUSED' || S.tt.finished || forcedChoice() || !!(S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) || !liveA().length || S.phase !== 'recruit' && mode() !== 'PAUSED'; $('playNext').textContent = mode() === 'PAUSED' ? '▶ Resume' : '▶ Fight'; }
+    if (TP.recovery && $('playNext')) { $('playNext').disabled = false; $('playNext').textContent = 'Recover'; }
     $('recruit').disabled = S.phase !== 'recruit' || isBattle() || S.tt.finished || !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization); $('recruit').textContent = 'Draft'; $('shop').textContent = 'Store'; $('restart').textContent = 'Menu';
     const recap = TP.lastRecap; $('ttRecap').hidden = !recap || isBattle(); if (recap) $('ttRecap').textContent = `Wave ${recap.wave} ${recap.win ? 'cleared' : 'lost'} · ${recap.seconds}s` + (recap.mvp ? ` · MVP ${recap.mvp.e} ${recap.mvp.n}` : '') + (recap.objective ? ' · 🎯 Challenge complete +20 🪙' : '');
     qa('.cell').forEach((c, i) => { c.tabIndex = 0; c.setAttribute('role', 'button'); c.setAttribute('aria-label', S.squad[i] ? S.squad[i].n + ' · row ' + (Math.floor(i / 4) + 1) + ', column ' + (i % 4 + 1) : 'Empty square · row ' + (Math.floor(i / 4) + 1) + ', column ' + (i % 4 + 1)); updateCard(q('.unit', c), S.squad[i], true); });
@@ -617,7 +696,7 @@
     if (el.dataset.ttEvent) return pickEvent(el.dataset.ttEvent);
     if (el.dataset.ttSynergy) return openSynergies(el.dataset.ttSynergy);
     if (el.dataset.ttHistory !== undefined) return openResults(TP.meta.runs[Number(el.dataset.ttHistory)]);
-    const actions = { pause, resume: close, new: openMainMenu, book: openBook, history: openHistory, synergies: openSynergies, help, counters: openCounters, elements: () => window.openElements?.(), causes: () => show('Combat explanations', 'Recent immunities, resistances, and special interactions.', (S.combatCauses || []).slice(0, 12).map(c => `<p>${esc(c)}</p>`).join('') || '<p>Battle explanations will appear here.</p>'), bench: () => window.openBench?.(), more: () => show('Army tools', 'Details when you need them.', '<div class="runMenuGrid">' + [['book', '📖 Army Book'], ['synergies', '✨ Synergies'], ['bench', '🧺 Bench'], ['counters', '⚔️ Matchups'], ['causes', '📜 Combat explanations'], ['history', '🕰 Run history'], ['help', '❔ How to play']].map(([a, n]) => `<button class="secondary" data-tt-action="${a}">${n}</button>`).join('') + '</div>') };
+    const actions = { pause, retry: () => recoverBattle('retry'), basic: () => recoverBattle('basic'), prepare: () => recoverBattle('prepare'), resume: close, new: openMainMenu, book: openBook, history: openHistory, synergies: openSynergies, help, counters: openCounters, elements: () => window.openElements?.(), causes: () => show('Combat explanations', 'Recent immunities, resistances, and special interactions.', (S.combatCauses || []).slice(0, 12).map(c => `<p>${esc(c)}</p>`).join('') || '<p>Battle explanations will appear here.</p>'), bench: () => window.openBench?.(), more: () => show('Army tools', 'Details when you need them.', '<div class="runMenuGrid">' + [['book', '📖 Army Book'], ['synergies', '✨ Synergies'], ['bench', '🧺 Bench'], ['counters', '⚔️ Matchups'], ['causes', '📜 Combat explanations'], ['history', '🕰 Run history'], ['help', '❔ How to play']].map(([a, n]) => `<button class="secondary" data-tt-action="${a}">${n}</button>`).join('') + '</div>') };
     actions[el.dataset.ttAction]?.();
   });
   document.addEventListener('keydown', e => {

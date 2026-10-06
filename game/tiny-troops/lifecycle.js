@@ -5,7 +5,12 @@ function ttTimeout(callback, delay = 0) {
   const epoch = ttTimerEpoch;
   const id = setTimeout(() => {
     ttRunTimers.delete(id);
-    if (epoch === ttTimerEpoch) callback();
+    if (epoch === ttTimerEpoch) {
+      try { callback(); }
+      catch (error) {
+        if (!globalThis.TinyTroopsPolish?.handleCombatError?.(error, 'combat callback')) throw error;
+      }
+    }
   }, delay);
   ttRunTimers.add(id);
   return id;
