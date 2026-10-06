@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 import {snapshotDelta,placementRating,applyWarResult,rankProgress} from './core.mjs';
+import {capitalProduction} from './objectives.mjs';
 const html=fs.readFileSync(new URL('../chess_warlord.html',import.meta.url),'utf8');
 function fn(name){const match=html.match(new RegExp(`^(?:async )?function ${name}\\(`,'m'));assert.ok(match);const start=match.index,end=html.indexOf('\n}',start)+2;return html.slice(start,end);}
 function writeHarness({failLease=false}={}){
@@ -66,4 +67,42 @@ test('unchanged remote walls retain terrain caches and changed walls invalidate 
   vm.createContext(env);vm.runInContext(fn('applyWalls'),env);
   env.applyWalls('-1');assert.equal(actorDirty,0);assert.equal(touched.length,0);
   env.applyWalls('01');assert.equal(actorDirty,1);assert.deepEqual(touched,[[0,0]]);assert.equal(terrainDirty,0);
+});
+
+test('production snapshots freeze objective state before simulation can mutate an in-flight checkpoint',()=>{
+  const war={mode:'grand',scores:{0:12},objectives:[{id:'banner-0',owner:0,progress:.5}],victory:null};
+  const env={JSON,Date,Math,recalcOwnerCounts:()=>{},GAME_KEY:'cw',localStateVersion:1,serverTimestamp:()=>0,username:'Host',
+    matchRecord:null,commandReceipts:[],mapSeed:1,BOARD_W:1,BOARD_H:1,selectedMultiplayerAiCount:0,slotHumans:['Host'],slotNames:['Host'],slotFactionIds:['crownward'],
+    controllerName:'Host',currentControllerEpoch:()=>1,gameStats:{},now:()=>10,factions:[],warState:war,winnerName:()=>'',
+    compressOwners:()=>'-',compressCaptureKinds:()=>'.',compressWalls:()=>'-',buildFullPieces:()=>[]};
+  vm.createContext(env);vm.runInContext(fn('buildSelfContainedState'),env);
+  const snapshot=env.buildSelfContainedState();war.scores[0]=119;war.objectives[0].owner=1;war.victory={slot:1,reason:'dominion'};
+  assert.equal(snapshot.war.scores[0],12);assert.equal(snapshot.war.objectives[0].owner,0);assert.equal(snapshot.war.victory,null);
+});
+
+test('timed troop production runs at half speed during capital occupation and resumes normally after recapture',()=>{
+  let time=0,spawns=0;const b={type:'barrackskeep',faction:0,nextBuildingTick:55,objectiveProductionAt:0};
+  const capital={kind:'capital',home:0,owner:1};
+  const env={Math,lobbyId:null,now:()=>time,canAuthoritativelyWriteState:()=>true,warState:{objectives:[capital]},capitalProduction,
+    updateCrownwardGeneralBanners:()=>{},liveBuildings:()=>[b],spawnBuildingUnit:()=>{spawns++;return {};}};
+  vm.createContext(env);vm.runInContext(fn('updateBuildingRules'),env);
+  for(time=1;time<110;time++)env.updateBuildingRules({idx:0},1);
+  assert.equal(spawns,0);env.updateBuildingRules({idx:0},1);assert.equal(spawns,1);
+  capital.owner=0;
+  for(time=111;time<=165;time++)env.updateBuildingRules({idx:0},1);
+  assert.equal(spawns,2,'recaptured capital restores the 55-second interval');
+});
+
+test('normal and Sunspire token generation both apply exactly the reversible capital penalty',()=>{
+  const capital={kind:'capital',home:0,owner:0};
+  const env={Math,SPAWN_SLOWEST_SECONDS:105,SPAWN_FASTEST_SECONDS:8.8,SUNSPIRE_MAX_SOLAR_BEACONS:10,SUNSPIRE_MIN_SPAWN_SECONDS:45,SUNSPIRE_BASE_SPAWN_SECONDS:91.5,
+    SUNSPIRE_SOLAR_BEACON_SECONDS:4.5,SPAWN_TOKEN_RATE_MULT:2,GLOBAL_TOKEN_INTERVAL_MULT:.67,
+    warState:{objectives:[capital]},capitalProduction,activeSolarBeacons:()=>3,isHumanSlot:()=>true,shrineSpawnMultiplier:()=>1,
+    spawnTierInfoForFaction:()=>({seconds:50}),specialSpawnTilesForFaction:()=>0};
+  vm.createContext(env);vm.runInContext(fn('spawnRateForFaction'),env);
+  for(const id of ['crownward','sunspire']){
+    const f={idx:0,id,spawnRate:1};capital.owner=0;const baseline=env.spawnRateForFaction(f,100,12);
+    capital.owner=1;assert.equal(env.spawnRateForFaction(f,100,12),baseline*.5);
+    capital.owner=0;assert.equal(env.spawnRateForFaction(f,100,12),baseline);
+  }
 });

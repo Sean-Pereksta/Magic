@@ -1,0 +1,29 @@
+name: Chess Warlords regression tests
+
+on:
+  pull_request:
+    paths:
+      - "game/chess-warlords/**"
+      - "game/chess_warlord.html"
+      - "game/chess_warlord_solo.html"
+      - "game/chess_warlord_polish.test.mjs"
+      - "package.json"
+      - ".github/workflows/chess-warlords.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chess-warlords:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run objective, AI and gameplay regressions
+        run: npm run test:chess-warlords

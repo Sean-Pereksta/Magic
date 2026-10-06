@@ -247,6 +247,7 @@
   @media(prefers-reduced-motion:reduce){#loadingStage::before{animation:none}#battleTransition{transition:none}}
 
 </style>
+<link rel="stylesheet" href="./chess-warlords/objectives.css" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -271,6 +272,7 @@
 </div>
 <div id="checkBanner"></div>
 <div id="toast"></div>
+<aside id="objectiveHUD" aria-label="Strategic objectives" hidden></aside>
 <div id="networkBadge"><span id="networkText">Connecting…</span><button id="exitLobbyBtn">Exit</button></div>
 <div id="bottomHint"></div>
 <div id="piecePanel" class="glass"></div>
@@ -305,6 +307,8 @@
     </div>
     <div class="pickLabel" id="factionLabel">Choose your faction</div>
     <div id="factionPick"></div>
+    <div class="pickLabel" id="warModeLabel">Victory mode</div>
+    <div id="warModePick"><select id="warModeSelect" aria-label="Victory mode"></select><p id="warModeDescription"></p></div>
     <div class="pickLabel" id="difficultyLabel">Enemy difficulty</div>
     <div id="difficultyPick"></div>
     <div class="pickLabel" id="soloAiCountLabel">AI warlords</div>
@@ -342,6 +346,8 @@
 </dialog>
 <script type="module">
 import {snapshotDelta, restoreSnapshot, rankProgress, RANK_TIERS, placementRating, applyWarResult, seasonKey, pickHit, cosmeticBudget} from "./chess-warlords/core.mjs";
+import {createWar, connectWarRealms, advanceWar, absorbWarRealm, objectiveVictory, capitalProduction, capitalKingExposed, enemyCapitalsHeld, fortificationType, ObjectivePlanner} from './chess-warlords/objectives.mjs';
+import {initWarModePicker, ObjectiveHUD, drawWarObjectives, drawWarMinimap, drawExposedKings, warVictoryText} from './chess-warlords/objectives-ui.mjs';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction,
@@ -680,6 +686,11 @@ const minimapBaseCtx = minimapBaseCanvas.getContext('2d');
 let minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
 let chosenFactionId = 'crownward';
 let chosenDifficultyId = 'normal';
+let chosenWarMode = 'grand';
+let warState = null;
+let objectiveAccumulator = 0;
+const objectivePlanner = new ObjectivePlanner();
+const objectiveHUD = new ObjectiveHUD(document.getElementById('objectiveHUD'), objective=>smoothCenterOn(objective.x,objective.y));
 let selectedSoloAiCount = 7;
 let gameStarted = false;
 let playerDefeated = false;
@@ -1598,6 +1609,7 @@ function buildSelfContainedState(reason='fullRepair'){
     fullSnapshot: true,
     protocol: 2,
     matchRecord,
+    war: warState ? JSON.parse(JSON.stringify(warState)) : null,
     commandReceipts: commandReceipts.slice(-128),
     mapSeed,
     boardW: BOARD_W,
@@ -1753,6 +1765,7 @@ function applyRemoteState(data, restored=false){
     renderEloProfileLine();
   }
   if(!board.length) generateBoard();
+  if((remoteMapReset||firstBattle) && data.war?.mode && data.war.mode!=='regicide')connectWarRealms(board,BOARD_W,BOARD_H,getStartPositions());
   if(!factions.length) setupFactions();
   if(hasLandPayload){
     applyOwners(mergedOwners);
@@ -1852,6 +1865,8 @@ function applyRemoteState(data, restored=false){
     if(Array.isArray(fd.spawnChoices)) f.spawnChoices = fd.spawnChoices.slice(0,3);
   }
   gameStats = data.stats || gameStats;
+  warState = data.war ? JSON.parse(JSON.stringify(data.war)) : null;
+  if(remoteMapReset || firstBattle) objectivePlanner.reset();
   watchOwnResult();
   gameStarted = true;
   closeFactionLibrary('game-start');
@@ -2042,7 +2057,7 @@ function findWinnerIndexAgainst(loser){
   const alive = factions.find(f=>f.alive && f.idx !== loser);
   return alive ? alive.idx : 0;
 }
-function winnerName(){ const alive = factions.filter(f=>f.alive); return alive.length === 1 ? displayNameForFaction(alive[0].idx) : ''; }
+function winnerName(){ const alive = factions.filter(f=>f.alive); const slot=warState?.victory?.slot ?? (alive.length===1?alive[0].idx:null); return slot==null?'':displayNameForFaction(slot); }
 async function writeStateNow(reason='sync'){
   if(!stateRef || !gameStarted || writingState || !canAuthoritativelyWriteState()) return;
   writingState = true;
@@ -2137,6 +2152,7 @@ function nearestEligibleOpenSpawnTile(slot,type,x,y){
   return tiles[0] || null;
 }
 function applyIncomingCommand(cmd){
+  if(warState?.victory)return commandReject('war_complete');
   if(cmd.actionId && processedCommandIds.has(`action:${cmd.actionId}`)) return commandAccept('duplicate_action');
   const baseVersion = Number(cmd.baseStateVersion || 0);
   if(baseVersion && baseVersion > (localStateVersion || 0) + 5) return commandReject('client_too_far_ahead');
@@ -2356,6 +2372,7 @@ function predictLocalMove(piece,x,y,action){
 }
 
 async function requestPlayerMove(piece,x,y){
+  if(warState?.victory)return false;
   if(!isMyPiece(piece)) return false;
   const live = getPiece(piece.id);
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
@@ -2383,6 +2400,7 @@ async function requestPlayerMove(piece,x,y){
   return ok;
 }
 async function requestPlayerAbility(actor,target,ability){
+  if(warState?.victory)return false;
   if(!isMyPiece(actor) || !target?.alive) return false;
   const liveActor=getPiece(actor.id), liveTarget=getPiece(target.id);
   if(!liveActor || !liveTarget) return false;
@@ -2407,6 +2425,7 @@ async function requestPlayerAbility(actor,target,ability){
   return true;
 }
 async function requestPlayerSpawn(x,y){
+  if(warState?.victory)return false;
   if(playerDefeated || !ownFactionAlive()) return;
   const f=factions[PLAYER];
   const type=f.spawnChoices?.[spawnSelection];
@@ -2475,15 +2494,17 @@ async function completeLobbyIfNeeded(winner){
 }
 function showWarEnd(winner){
   paused = true;
+  clearTimeout(triggerDefeat._timer);
   defeatOverlay.style.display = 'flex';
-  const winnerSlot = factions.findIndex(f => f.alive);
+  const winnerSlot = warState?.victory?.slot ?? factions.findIndex(f => f.alive);
   if(winnerSlot >= 0) awardChessEloForWinnerSlot(winnerSlot);
   watchOwnResult();
   const h = document.querySelector('#defeatCard h2');
-  if(h) h.textContent = winnerSlot === PLAYER ? 'Victory' : 'War Complete';
-  defeatDetails.textContent = `${winner} controls the Vastboard.`;
+  const result=warVictoryText(warState,factions,winnerSlot,ownerCounts.get(winnerSlot)||0,factions[winnerSlot]?.piecesTaken||0);
+  if(h) h.textContent = winnerSlot === PLAYER ? result.title : `${factions[winnerSlot]?.short}: ${result.title}`;
+  defeatDetails.textContent = result.description;
   restartBtn.textContent = 'Exit to Lobby';
-  spectateBtn.textContent = 'Spectate Map';
+  spectateBtn.textContent = 'View Final Map';
   if(canAuthoritativelyWriteState()) completeLobbyIfNeeded(winner);
 }
 function exitToLobby(){
@@ -4289,6 +4310,7 @@ function initDifficultyPicker(){
   updateDifficultyVisibility();
 }
 initDifficultyPicker();
+initWarModePicker(document.getElementById('warModeSelect'),document.getElementById('warModeDescription'),id=>{chosenWarMode=id;});
 
 function initSoloAiCountPicker(){
   if(!soloAiCountPick) return;
@@ -4324,6 +4346,29 @@ function updateDifficultyVisibility(){
   if(difficultyPick) difficultyPick.style.display = show ? '' : 'none';
   if(aiLabel) aiLabel.style.display = show ? '' : 'none';
   if(soloAiCountPick) soloAiCountPick.style.display = show ? '' : 'none';
+  document.getElementById('warModeLabel').style.display=show?'':'none';
+  document.getElementById('warModePick').style.display=show?'':'none';
+}
+
+function initializeWar(){
+  warState=createWar({board,width:BOARD_W,height:BOARD_H,starts:getStartPositions(),factions,mode:isMultiplayerGame()?'regicide':chosenWarMode});
+  objectiveAccumulator=0;objectivePlanner.reset();objectiveHUD.reset();
+}
+function updateWarObjectives(dt){
+  if(!warState?.objectives.length || warState.victory)return;
+  objectiveAccumulator+=dt;
+  if(objectiveAccumulator<.2)return;
+  const events=advanceWar(warState,objectiveAccumulator,pieces,factions,pieceDefs);objectiveAccumulator=0;
+  for(const event of events){
+    const objective=warState.objectives.find(o=>o.id===event.id);
+    if(event.type==='captured')objectiveHUD.notify(`${factions[event.owner]?.short} ${event.home===event.owner?'recaptured':'captured'} ${objective.name}`,warState.elapsed);
+    else if(event.kind==='capital'&&event.home!==PLAYER)objectiveHUD.notify(`${objective.name} ${event.type==='contested'?'contested':'under attack'}`,warState.elapsed);
+  }
+  markStateDirty();
+}
+function strategicPlanFor(f){
+  return objectivePlanner.plan({war:warState,faction:f,factions,pieces,defs:pieceDefs,board,width:BOARD_W,height:BOARD_H,time:warState?.elapsed||0,
+    visible:p=>capitalKingExposed(warState,p)||!isShadowFoggedForPlayer(p.x,p.y,f.idx)});
 }
 
 function generateBoard(){
@@ -5209,6 +5254,7 @@ function visibleFromPlayerTroops(x,y,viewer=PLAYER,r=SHADOW_FOG_RADIUS){
 }
 function isShadowFoggedForPlayer(x,y,viewer=PLAYER){
   if(viewer == null || !inBounds(x,y)) return false;
+  if(capitalKingExposed(warState,findPieceAt(x,y)))return false;
   const t=tile(x,y);
   if(t.owner==null || t.owner===viewer) return false;
   const ownerFaction=factions[t.owner];
@@ -6543,6 +6589,7 @@ function emitFactionMoveEffect(piece,fromX,fromY,toX,toY,moveMeta=null){
   if(special) floating(toX,toY,'PHASED',factions[piece.faction]?.aura||'#d8b4fe');
 }
 function movePiece(piece,x,y,source='player'){
+  if(warState?.victory)return false;
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
   const fromX=piece.x, fromY=piece.y;
   const usedShadowRush = piece.type==='nightblade' && !cooldownReady(piece) && (piece.shadowRushUntil || 0) > now() && x===piece.shadowRushX && y===piece.shadowRushY && !findPieceAt(x,y);
@@ -6721,7 +6768,7 @@ function applyBuildingKillEffects(attacker,target){
       if(spot){
         newPiece(attacker.faction,'sparkden',spot.x,spot.y,{ready:false,nextBuildingTick:now()+35});
         claimTile(attacker.faction,spot.x,spot.y,0,'ember_kill');
-        attacker.nextBuildingTick=now()+CINDER_ARCHON_DEN_COOLDOWN;
+        attacker.nextBuildingTick=now()+CINDER_ARCHON_DEN_COOLDOWN/capitalProduction(warState,attacker.faction);
         burst(spot.x,spot.y,f.color,28);
         floating(spot.x,spot.y,'SPARK DEN', f.color);
       }
@@ -6740,7 +6787,7 @@ function applyBuildingKillEffects(attacker,target){
       if(dist2(b.x,b.y,target.x,target.y)>25) continue;
       if(now() < (b.nextBuildingTick || 0)) continue;
       if(spawnBuildingUnit(b,'shadepawn',1,true)){
-        b.nextBuildingTick=now()+10;
+        b.nextBuildingTick=now()+10/capitalProduction(warState,b.faction);
         floating(b.x,b.y,'CHAPEL SHADE', f.color);
       }
     }
@@ -6875,6 +6922,7 @@ function conquerFaction(winner, loser, cx, cy){
     matchRecord.kings[winner]=(matchRecord.kings[winner]||0)+1;
   }
   lf.alive=false;
+  absorbWarRealm(warState,winner,loser);
   if(matchRecord && factions.filter(f=>f.alive).length===1)matchRecord.placements[winner]=1;
   markStateDirty();
   if(lobbyId)scheduleControllerStateWrite('kingCaptured',0);
@@ -6899,6 +6947,7 @@ function conquerFaction(winner, loser, cx, cy){
   }
   if(loser===PLAYER) pendingPlayerActions = [];
   toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; ${removed} defeated pieces removed.`, 4200);
+  if(warState)warState.victory=objectiveVictory(warState,factions);
 }
 function triggerDefeat(winner){
   playerDefeated = true;
@@ -6923,10 +6972,18 @@ function triggerDefeat(winner){
   updatePiecePanel();
 }
 function maybeAnnounceWorldWinner(){
-  const alive = factions.filter(f=>f.alive);
-  if(alive.length===1 && gameStarted && !maybeAnnounceWorldWinner.done){
+  if(!canAuthoritativelyWriteState())return;
+  const victory=objectiveVictory(warState,factions);
+  if(victory && gameStarted && !maybeAnnounceWorldWinner.done){
     maybeAnnounceWorldWinner.done = true;
-    const winnerSlot = alive[0].idx;
+    if(warState)warState.victory=victory;
+    const winnerSlot = victory.slot;
+    if(matchRecord){
+      matchRecord.placements[winnerSlot]=1;matchRecord.victory={...victory,mode:warState?.mode||'regicide'};
+      const survivingRivals=factions.filter(f=>f.alive&&f.idx!==winnerSlot).sort((a,b)=>
+        (warState?.scores[b.idx]||0)-(warState?.scores[a.idx]||0)||enemyCapitalsHeld(warState,b.idx)-enemyCapitalsHeld(warState,a.idx)||(ownerCounts.get(b.idx)||0)-(ownerCounts.get(a.idx)||0)||a.idx-b.idx);
+      survivingRivals.forEach((f,i)=>{matchRecord.placements[f.idx]=i+2;});
+    }
     const winner = displayNameForFaction(winnerSlot);
     awardChessEloForWinnerSlot(winnerSlot);
     toast(`${winner} controls the Vastboard.`, 6000);
@@ -7190,7 +7247,7 @@ function createGame(){
   closeFactionLibrary('game-start');
   if(!slotNames.length) buildSlots([username || 'Player']);
   mapSeed = Math.floor(Math.random()*1000000000) + Date.now();
-  generateBoard(); setupFactions(); setupPieces(); recalcOwnerCounts();
+  generateBoard(); setupFactions(); initializeWar(); setupPieces(); recalcOwnerCounts();
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
   cam.zoom=1;
   if(king) centerOn(king.x,king.y);
@@ -7412,6 +7469,7 @@ function setStyleIfChanged(el,property,value){
 }
 function updateHUD(){
   if(!factions[PLAYER]) return;
+  objectiveHUD.update(warState,factions,PLAYER,warState?.elapsed||0);
   const f=factions[PLAYER];
   const pct=clamp(f.spawnMeter||0,0,99.999);
   const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
@@ -7702,7 +7760,7 @@ function segmentTouchesRenderBounds(a,b,pad=2){
 }
 
 function gameTick(dt){
-  if(!gameStarted || initializingMatch || (paused && (!lobbyId || winnerName()))) return;
+  if(!gameStarted || initializingMatch || warState?.victory || (paused && (!lobbyId || winnerName()))) return;
   refreshSelectedPieceCooldownMoves();
   tickTime += dt;
   hudTickTime += dt;
@@ -7755,6 +7813,8 @@ function gameTick(dt){
   for(let i=factionMoveFx.length-1;i>=0;i--){ if(now()-factionMoveFx[i].start>factionMoveFx[i].duration) factionMoveFx.splice(i,1); }
   for(let i=destructionFx.length-1;i>=0;i--){ if(now()-destructionFx[i].start>destructionFx[i].duration) destructionFx.splice(i,1); }
   if(canAuthoritativelyWriteState()){
+    updateWarObjectives(dt);
+    if(warState?.victory){maybeAnnounceWorldWinner();updateHUD();return;}
     spawnEconomyAccumulator += dt;
     if(spawnEconomyAccumulator >= SPAWN_ECONOMY_STEP){
       const spawnDt = spawnEconomyAccumulator;
@@ -7999,6 +8059,10 @@ function updateBuildingRules(f,dt){
   const tNow=now();
   updateCrownwardGeneralBanners(f,tNow);
   for(const b of liveBuildings(f.idx)){
+    const previousProductionAt=b.objectiveProductionAt??tNow;b.objectiveProductionAt=tNow;
+    if(['seedgrove','barrackskeep','sparkden','broodbloom','reefnursery','sledyard'].includes(b.type) && b.nextBuildingTick){
+      b.nextBuildingTick+=Math.max(0,tNow-previousProductionAt)*(1-capitalProduction(warState,f.idx));
+    }
     if(!b.nextBuildingTick){
       if(b.type==='seedgrove') b.nextBuildingTick=tNow+25;
       else if(b.type==='barrackskeep') b.nextBuildingTick=tNow+55;
@@ -8267,6 +8331,7 @@ function specialSpawnTilesForFaction(f){
   return value;
 }
 function spawnRateForFaction(f, territory, army){
+  const capitalMult=capitalProduction(warState,f.idx);
   // Rate is percentage points per second. Territory now advances in clear tiers,
   // while Ember and Shadow use faction kill-count tiers instead of land totals.
   const baseRate = 100 / SPAWN_SLOWEST_SECONDS;
@@ -8276,7 +8341,7 @@ function spawnRateForFaction(f, territory, army){
     const seconds = Math.max(SUNSPIRE_MIN_SPAWN_SECONDS, SUNSPIRE_BASE_SPAWN_SECONDS - beacons * SUNSPIRE_SOLAR_BEACON_SECONDS);
     const armyDrag = 1 + Math.max(0, army - 28) * .014;
     const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-    return ((100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT;
+    return ((100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT * capitalMult;
   }
   const tier = spawnTierInfoForFaction(f, territory);
   let tierRate = 100 / Math.max(SPAWN_FASTEST_SECONDS, tier.seconds);
@@ -8286,7 +8351,7 @@ function spawnRateForFaction(f, territory, army){
 
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag)) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT;
+  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag)) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT * capitalMult;
 }
 function updateSpawns(dt){
   if(PERF_DEBUG) perfStats.spawnUpdates++;
@@ -8305,6 +8370,7 @@ function aiTick(dt){
   const elapsed = now()-gameStats.startedAt;
   for(const f of factions){
     if(isHumanSlot(f.idx) || !f.alive || budget<=0) continue;
+    if(warState?.victory)break;
     const aiSpeed = multiplayerAi
       ? clamp(f.difficulty + elapsed/900, .45, MULTIPLAYER_AI_SPEED_CAP)
       : clamp(f.difficulty + elapsed/480, .55, 2.05);
@@ -8324,6 +8390,7 @@ function aiTick(dt){
     const aiContext = buildAiDecisionContext(f);
     const scoredArmy=topKByScore(army,Math.min(army.length,Math.max(5,maxActions*3)),p=>aiPiecePriority(f,p,aiContext));
     for(let i=0;i<scoredArmy.length && actions<maxActions && budget>0;i++){
+      if(warState?.victory)break;
       if(aiMovePiece(f,scoredArmy[i].item,aiContext)){
         budget--;
         actions++;
@@ -8343,7 +8410,7 @@ function buildAiDecisionContext(f){
     ? topKByScore(enemies.filter(p=>p.type!=='king'),Math.min(14,enemies.length),shadowTargetPriority).map(row=>({target:row.item,priority:row.score}))
     : [];
   const nearestToKing=ownKing?nearestPieceFromList(enemies,ownKing.x,ownKing.y):null;
-  return {attackers,ownKing,enemies,enemyKings,shadowObjectives,enemyNearKing:nearestToKing&&dist2(nearestToKing.x,nearestToKing.y,ownKing.x,ownKing.y)<=81?nearestToKing:null};
+  return {attackers,ownKing,enemies,enemyKings,shadowObjectives,strategic:strategicPlanFor(f),enemyNearKing:nearestToKing&&dist2(nearestToKing.x,nearestToKing.y,ownKing.x,ownKing.y)<=81?nearestToKing:null};
 }
 function topKByScore(items,k,scoreFn){
   if(k<=0 || !items?.length) return [];
@@ -8391,7 +8458,7 @@ function shadowObjectivePressure(objectives,x,y){
 }
 function aiPiecePriority(f,p,context=null){
   const def=pieceDefs[p.type];
-  let v=(def.value||1)+p.level*.6+p.captures*.5;
+  let v=(def.value||1)+p.level*.6+p.captures*.5+objectivePlanner.priority(context?.strategic,p);
   if(def.aura) v+=1.5;
   let nearest=null, nearestD=12*12;
   const enemyList=context?.enemies || [];
@@ -8450,6 +8517,7 @@ function aiMovePiece(f,p,context=null){
   const attackers=context?.attackers || attackingPiecesForFactionKing(f.idx);
   const enemyNearKing=context?.enemyNearKing || (ownKing?nearestEnemy(ownKing.x,ownKing.y,f.idx,9):null);
   const kingInCheck=!!attackers.length;
+  if(objectivePlanner.shouldHold(context?.strategic,p,moves,{danger:kingInCheck,enemyAt:(x,y)=>findPieceAt(x,y)?.faction!==f.idx&&!!findPieceAt(x,y)}))return false;
   for(const m of moves){
     let s=0;
     const target=findPieceAt(m.x,m.y);
@@ -8461,6 +8529,7 @@ function aiMovePiece(f,p,context=null){
       if(attackers.some(a=>a.id===target.id)) s += kingInCheck ? 260 : 130;
     }
     const t=tile(m.x,m.y);
+    s+=objectivePlanner.moveScore(context?.strategic,p,m,{owner:t.owner,capture:!!target});
     if(t.owner!==p.faction) s += style==='expansion'?17:9;
     if(t.wallOwner != null && t.wallOwner !== p.faction){
       s += 32;
@@ -8510,6 +8579,8 @@ function aiMovePiece(f,p,context=null){
   return false;
 }
 function aiSpawn(f){
+  if(warState?.victory)return false;
+  const strategic=strategicPlanFor(f);
   if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(f.idx);
   let choices=f.spawnChoices.filter(type=>spawnTokenCost(type)<=(f.spawnTokens||0));
   if(!choices.length) return false;
@@ -8517,13 +8588,14 @@ function aiSpawn(f){
   let type=choices[0];
   if(f.aiStyle==='expansion') type=choices.slice().sort((a,b)=>(pieceDefs[a].cooldown||3)-(pieceDefs[b].cooldown||3))[0];
   if(f.aiStyle==='defensive' && Math.random()<.55){ type=choices.find(t=>(pieceDefs[t].aura||0)>0 || pieceDefs[t].pattern==='rook' || pieceDefs[t].pattern==='tower') || type; }
+  if(strategic && f.aiStyle==='defensive' && strategic.evaluation.some(e=>e.objective.owner===f.idx&&!e.objective.tower))type=choices.find(t=>fortificationType({type:t},pieceDefs)==='tower')||type;
   const tiles=eligibleSpawnTiles(f.idx,type);
   if(!tiles.length) return false;
   const enemies=pieces.filter(p=>p.alive&&p.faction!==f.idx&&factions[p.faction].alive);
   let best=tiles[Math.floor(Math.random()*tiles.length)], bs=-999;
   for(let i=0;i<Math.min(80,tiles.length);i++){
     const t=tiles[Math.floor(Math.random()*tiles.length)];
-    let s=Math.random()*5;
+    let s=Math.random()*5+objectivePlanner.spawnScore(strategic,type,t,pieceDefs);
     const e=nearestPieceFromList(enemies,t.x,t.y);
     if(e){ const d=Math.sqrt(dist2(t.x,t.y,e.x,e.y)); s += f.aiStyle==='defensive' ? -Math.abs(d-9) : Math.max(0,22-d); }
     for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy)&&tile(t.x+dx,t.y+dy).owner!==f.idx) s+=8; }
@@ -8564,9 +8636,11 @@ function draw(){
     perfTime('territory',()=>drawTerritoryEffects());
     drawShrines();
     drawShadowFog();
+    drawWarObjectives(ctx,warState,factions,BASE_CELL,now(),{upright:makeCurrentTransformUpright,reduceMotion,bounds:visibleBoardBounds(4)});
     drawHighlights();
     drawFactionMoveEffects();
     perfTime('actorsTotal',()=>drawActors());
+    drawExposedKings(ctx,warState,pieces,factions,BASE_CELL,now(),{upright:makeCurrentTransformUpright,reduceMotion});
     perfTime('effects',()=>drawDestructionEffects());
     drawSolarBeaconChannels();
     drawParticlesWorld();
@@ -9430,8 +9504,8 @@ function drawActors(){
   const visiblePieces=renderScratch.pieces; visiblePieces.length=0;
   perfTime('actorGather',()=>{
     for(let row=min; row<=max; row++){
-      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(px>=left&&px<=right&&py>=top&&py<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) visiblePieces.push(p); } }
-      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(p.x>=left&&p.x<=right&&p.y>=top&&p.y<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) visiblePieces.push(p); } }
+      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(px>=left&&px<=right&&py>=top&&py<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y)&&!capitalKingExposed(warState,p))) visiblePieces.push(p); } }
+      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(p.x>=left&&p.x<=right&&p.y>=top&&p.y<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y)&&!capitalKingExposed(warState,p))) visiblePieces.push(p); } }
     }
     for(const p of visiblePieces){ const rec=renderIndex.pieceRecords.get(p.id); if(!rec) continue; const px=p.px ?? p.x, py=p.py ?? p.y, row=depthRowFor(px,py); if(row!==rec.row){ rec.depth=actorDepth(px + px*.002, py + px*.02); perfCount('actorsRebucketed'); markActorIndexDirty(); } }
   });
@@ -9444,8 +9518,8 @@ function drawActors(){
     for(let row=min; row<=max; row++){
       actors.length=0;
       const wb=renderIndex.wallsByDepthRow.get(row); if(wb){ perfCount('actorBucketsVisited'); for(const rec of wb){ if(rec.x<left||rec.x>right||rec.y<top||rec.y>bottom||isShadowFoggedForRender(rec.x,rec.y)) continue; actors.push(rec); perfCount('visibleWallRecords'); } }
-      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(!p.alive||p.x<left||p.x>right||p.y<top||p.y>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=p.px ?? p.x; rec.y=p.py ?? p.y; rec.depth=actorDepth(rec.x + rec.x*.002, rec.y + rec.x*.02); actors.push(rec); } }
-      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(!p.alive||px<left||px>right||py<top||py>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=px; rec.y=py; rec.depth=actorDepth(px + px*.002, py + px*.02); actors.push(rec); } }
+      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(!p.alive||p.x<left||p.x>right||p.y<top||p.y>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y)&&!capitalKingExposed(warState,p))) continue; rec.x=p.px ?? p.x; rec.y=p.py ?? p.y; rec.depth=actorDepth(rec.x + rec.x*.002, rec.y + rec.x*.02); actors.push(rec); } }
+      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(!p.alive||px<left||px>right||py<top||py>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y)&&!capitalKingExposed(warState,p))) continue; rec.x=px; rec.y=py; rec.depth=actorDepth(px + px*.002, py + px*.02); actors.push(rec); } }
       if(actors.length>1){ actors.sort(stableActorCompare); perfCount('localBucketSorts'); }
       for(const actor of actors){
         if(actor.kind==='wall'){ drawWallSpriteAt(actor.x,actor.y,factions[actor.owner]||{id:'neutral',color:'#dbeafe'}); perfCount('cachedWallsDrawn'); }
@@ -10106,7 +10180,7 @@ function drawMinimap(){
     mctx.beginPath();mctx.arc((s.x+.5)*sx,(s.y+.5)*sy,3.2,0,Math.PI*2);mctx.fill();mctx.stroke();
   }
   for(const p of pieces){
-    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y))) continue;
+    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y) && !capitalKingExposed(warState,p))) continue;
     const px=(p.x+.5)*sx,py=(p.y+.5)*sy;
     if(p.type==='king'){
       mctx.fillStyle=factions[p.faction]?.color||'#fff';mctx.strokeStyle='#fff';mctx.lineWidth=1.4;mctx.beginPath();mctx.arc(px,py,4.2,0,Math.PI*2);mctx.fill();mctx.stroke();
@@ -10121,6 +10195,7 @@ function drawMinimap(){
     if(now()-fx.start>3 || isShadowFoggedForRender(fx.x,fx.y))continue;
     mctx.strokeStyle='#ff8b72';mctx.lineWidth=1.5;mctx.beginPath();mctx.arc((fx.x+.5)*sx,(fx.y+.5)*sy,4,0,Math.PI*2);mctx.stroke();
   }
+  drawWarMinimap(mctx,warState,factions,sx,sy,now());
   const corners=[screenToBoardFloat(0,0),screenToBoardFloat(innerWidth,0),screenToBoardFloat(innerWidth,innerHeight),screenToBoardFloat(0,innerHeight)];
   mctx.beginPath();corners.forEach((p,i)=>{const x=p.fx*sx,y=p.fy*sy;if(i===0)mctx.moveTo(x,y);else mctx.lineTo(x,y);});mctx.closePath();
   mctx.fillStyle='rgba(255,255,255,.055)';mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1.5;mctx.stroke();
@@ -10135,7 +10210,7 @@ function pieceAtPointer(sx,sy,pointerType='mouse'){
   const touch=pointerType!=='mouse',pad=touch?13:6,candidates=[];
   prepareRenderLookups();
   for(const p of pieces){
-    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y)))continue;
+    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y) && !capitalKingExposed(warState,p)))continue;
     const ground=isoProjectWorld((p.x+.5)*BASE_CELL,(p.y+.5)*BASE_CELL);
     const px=ground.x*cam.zoom-cam.x,py=ground.y*cam.zoom-cam.y;
     const def=pieceDefs[p.type],r=BASE_CELL*.36+Math.min(7,(def.value||1)*.6),graphic=getPieceGraphic(factions[p.faction].id,p.type);

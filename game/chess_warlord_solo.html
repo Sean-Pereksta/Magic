@@ -88,8 +88,9 @@
     #bottomHint{display:none !important;}
   }
 </style>
+<link rel="stylesheet" href="./chess-warlords/objectives.css" />
 </head>
-<body>
+<body class="soloLegacy">
 <canvas id="game"></canvas>
 <canvas id="minimap"></canvas>
 <div id="topbar">
@@ -104,6 +105,7 @@
   </div>
 </div>
 <div id="toast"></div>
+<aside id="objectiveHUD" aria-label="Strategic objectives" hidden></aside>
 <div id="bottomHint"></div>
 <div id="piecePanel" class="glass"></div>
 <div id="menu" class="glass">
@@ -113,9 +115,11 @@
 <div id="overlay">
   <div id="startCard">
     <h1>Faction Chess Warlords: Single Player</h1>
-    <p class="lead">A giant real-time chess war: every piece has a cooldown, every moved-on square becomes yours, generals and towers project territory, and enemies expand across a huge terrain board. Capture a king to absorb a faction and seed your weakest pieces in the conquered region.</p>
+    <p class="lead">Control War Banners for Dominion points, seize enemy capitals to halve their production, or capture kings to absorb rival realms. Protect your own capital, fortify objectives with generals and towers, and choose how to win below.</p>
     <div class="pickLabel">Choose your faction</div>
     <div id="factionPick"></div>
+    <div class="pickLabel">Victory mode</div>
+    <div><select id="warModeSelect" aria-label="Victory mode"></select><p id="warModeDescription"></p></div>
     <div class="pickLabel">Enemy difficulty</div>
     <div id="difficultyPick"></div>
     <button id="startBtn">Start Vastboard War</button>
@@ -131,7 +135,9 @@
     </div>
   </div>
 </div>
-<script>
+<script type="module">
+import {createWar, advanceWar, absorbWarRealm, objectiveVictory, capitalProduction, ObjectivePlanner} from './chess-warlords/objectives.mjs';
+import {initWarModePicker, ObjectiveHUD, drawWarObjectives, drawWarMinimap, drawExposedKings, warVictoryText} from './chess-warlords/objectives-ui.mjs';
 (() => {
 'use strict';
 const canvas = document.getElementById('game');
@@ -188,6 +194,11 @@ let particles = [];
 let floatingText = [];
 let chosenFactionId = 'crownward';
 let chosenDifficultyId = 'normal';
+let chosenWarMode = 'grand';
+let warState = null;
+let objectiveAccumulator = 0;
+const objectivePlanner = new ObjectivePlanner();
+const objectiveHUD = new ObjectiveHUD(document.getElementById('objectiveHUD'),objective=>centerOn(objective.x,objective.y));
 let gameStarted = false;
 let playerDefeated = false;
 let spectating = false;
@@ -361,6 +372,21 @@ function initDifficultyPicker(){
   difficultyPick.appendChild(select);
 }
 initDifficultyPicker();
+initWarModePicker(document.getElementById('warModeSelect'),document.getElementById('warModeDescription'),id=>{chosenWarMode=id;});
+
+function initializeWar(){
+  warState=createWar({board,width:BOARD_W,height:BOARD_H,starts:getStartPositions().slice(0,factions.length),factions,mode:chosenWarMode});
+  objectiveAccumulator=0;objectivePlanner.reset();objectiveHUD.reset();
+}
+function updateWarObjectives(dt){
+  if(!warState?.objectives.length || warState.victory)return;
+  objectiveAccumulator+=dt;if(objectiveAccumulator<.2)return;
+  const events=advanceWar(warState,objectiveAccumulator,pieces,factions,pieceDefs);objectiveAccumulator=0;
+  for(const event of events)if(event.type==='captured')objectiveHUD.notify(`${factions[event.owner]?.short} captured ${warState.objectives.find(o=>o.id===event.id).name}`,warState.elapsed);
+}
+function strategicPlanFor(f){
+  return objectivePlanner.plan({war:warState,faction:f,factions,pieces,defs:pieceDefs,board,width:BOARD_W,height:BOARD_H,time:warState?.elapsed||0});
+}
 
 function generateBoard(){
   board = new Array(BOARD_W*BOARD_H);
@@ -737,6 +763,7 @@ function claimMovePath(piece,fromX,fromY,toX,toY){
   return claimed;
 }
 function movePiece(piece,x,y,source='player'){
+  if(warState?.victory)return false;
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
   const fromX=piece.x, fromY=piece.y;
   const target=findPieceAt(x,y);
@@ -784,6 +811,7 @@ function conquerFaction(winner, loser, cx, cy){
   const lf = factions[loser];
   if(!lf.alive) return;
   lf.alive=false;
+  absorbWarRealm(warState,winner,loser);
   if(loser===PLAYER) triggerDefeat(winner);
   factions[winner].territoryTaken++;
   if(winner===PLAYER) gameStats.kingsTaken++;
@@ -806,6 +834,7 @@ function conquerFaction(winner, loser, cx, cy){
     }
   }
   toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; 3 weak pieces seed the conquered land.`, 4200);
+  if(warState)warState.victory=objectiveVictory(warState,factions);
 }
 function triggerDefeat(winner){
   playerDefeated = true;
@@ -821,10 +850,14 @@ function triggerDefeat(winner){
   updatePiecePanel();
 }
 function maybeAnnounceWorldWinner(){
-  const alive = factions.filter(f=>f.alive);
-  if(alive.length===1 && gameStarted && !maybeAnnounceWorldWinner.done){
+  const victory=objectiveVictory(warState,factions);
+  if(victory && gameStarted && !maybeAnnounceWorldWinner.done){
     maybeAnnounceWorldWinner.done = true;
-    toast(`${alive[0].short} controls the Vastboard.`, 6000);
+    if(warState)warState.victory=victory;
+    paused=true;
+    const result=warVictoryText(warState,factions,victory.slot,ownerCounts.get(victory.slot)||0,factions[victory.slot].piecesTaken||0);
+    document.querySelector('#defeatCard h2').textContent= victory.slot===PLAYER?result.title:`${factions[victory.slot].short}: ${result.title}`;
+    defeatDetails.textContent=result.description;defeatOverlay.style.display='flex';spectateBtn.textContent='View Final Map';
   }
 }
 function burst(x,y,color,count=10){
@@ -839,11 +872,12 @@ function floating(x,y,text,color){
 }
 
 function createGame(){
-  generateBoard(); setupFactions(); setupPieces(); recalcOwnerCounts();
+  generateBoard(); setupFactions(); initializeWar(); setupPieces(); recalcOwnerCounts();
   const king=getPiece(factions[PLAYER].kingId);
   cam.x=(king.x+.5)*BASE_CELL-innerWidth/2; cam.y=(king.y+.5)*BASE_CELL-innerHeight/2; cam.zoom=1;
   selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
+  document.querySelector('#defeatCard h2').textContent='You were defeated';spectateBtn.textContent='Spectate the Rest';
   if(pauseBtn) pauseBtn.textContent='Pause';
   maybeAnnounceWorldWinner.done=false;
   gameStats={captures:0,kingsTaken:0,startedAt:now()};
@@ -883,6 +917,7 @@ function patternName(p){
 }
 function updateHUD(){
   if(!factions[PLAYER]) return;
+  objectiveHUD.update(warState,factions,PLAYER,warState?.elapsed||0);
   const f=factions[PLAYER];
   const pct=clamp(f.spawnMeter,0,100);
   spawnFill.style.width=pct.toFixed(0)+'%';
@@ -931,7 +966,9 @@ function screenToBoard(sx,sy){
 function boardToScreen(x,y){return {x:x*BASE_CELL*cam.zoom-cam.x,y:y*BASE_CELL*cam.zoom-cam.y};}
 
 function gameTick(dt){
-  if(!gameStarted || paused) return;
+  if(!gameStarted || paused || warState?.victory) return;
+  updateWarObjectives(dt);
+  if(warState?.victory){maybeAnnounceWorldWinner();updateHUD();return;}
   tickTime += dt;
   for(const t of board){ t.glow = Math.max(0,t.glow-dt*.7); }
   for(const p of pieces){
@@ -969,7 +1006,7 @@ function spawnRateForFaction(f, territory, army){
   // This now matches the faction identities: Verdant/Ember are quicker, Iron is slower.
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = f.idx===PLAYER ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo / armyDrag);
+  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo / armyDrag) * capitalProduction(warState,f.idx);
 }
 function updateSpawns(dt){
   for(const f of factions){
@@ -990,14 +1027,17 @@ function aiTick(dt){
   const elapsed = now()-gameStats.startedAt;
   for(const f of factions){
     if(f.idx===PLAYER || !f.alive || budget<=0) continue;
+    if(warState?.victory)break;
     const aiSpeed = clamp(f.difficulty + elapsed/480, .55, 1.75);
     if(now()<f.nextThink) continue;
     f.nextThink = now() + clamp((1.45/aiSpeed) + Math.random()*.65, .38, 2.2);
     if(f.spawnMeter>=100){ aiSpawn(f); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(f.idx); budget--; }
     const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
-    army.sort((a,b)=>aiPiecePriority(f,b)-aiPiecePriority(f,a));
+    const strategic=strategicPlanFor(f);
+    army.sort((a,b)=>aiPiecePriority(f,b)+objectivePlanner.priority(strategic,b)-aiPiecePriority(f,a)-objectivePlanner.priority(strategic,a));
     for(let i=0;i<Math.min(3,army.length)&&budget>0;i++){
-      if(aiMovePiece(f,army[i])) budget--;
+      if(warState?.victory)break;
+      if(aiMovePiece(f,army[i],strategic)) budget--;
     }
   }
 }
@@ -1029,9 +1069,10 @@ function nearestOwnedFrontier(x,y,faction){
   }
   return best;
 }
-function aiMovePiece(f,p){
+function aiMovePiece(f,p,strategic=null){
   const moves=getLegalMoves(p,false);
   if(!moves.length) return false;
+  if(objectivePlanner.shouldHold(strategic,p,moves,{enemyAt:(x,y)=>!!findPieceAt(x,y)&&findPieceAt(x,y).faction!==f.idx}))return false;
   const style=f.aiStyle;
   let best=null,bs=-99999;
   const kingTargets=pieces.filter(q=>q.alive&&q.type==='king'&&q.faction!==p.faction&&factions[q.faction].alive);
@@ -1044,6 +1085,7 @@ function aiMovePiece(f,p){
       if(style==='assassin') s += target.type==='king'?400:20;
     }
     const t=tile(m.x,m.y);
+    s+=objectivePlanner.moveScore(strategic,p,m,{owner:t.owner,capture:!!target});
     if(t.owner!==p.faction) s += style==='expansion'?17:9;
     if(pieceDefs[p.type].aura) s += 4;
     const nearestKing=kingTargets.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
@@ -1064,6 +1106,8 @@ function aiMovePiece(f,p){
   return false;
 }
 function aiSpawn(f){
+  if(warState?.victory)return false;
+  const strategic=strategicPlanFor(f);
   const tiles=eligibleSpawnTiles(f.idx);
   if(!tiles.length) return;
   const choices=chooseSpawnOptions(f.idx);
@@ -1075,7 +1119,7 @@ function aiSpawn(f){
   let best=tiles[Math.floor(Math.random()*tiles.length)], bs=-999;
   for(let i=0;i<Math.min(80,tiles.length);i++){
     const t=tiles[Math.floor(Math.random()*tiles.length)];
-    let s=Math.random()*5;
+    let s=Math.random()*5+objectivePlanner.spawnScore(strategic,type,t,pieceDefs);
     const e=enemies.sort((a,b)=>dist2(t.x,t.y,a.x,a.y)-dist2(t.x,t.y,b.x,b.y))[0];
     if(e){ const d=Math.sqrt(dist2(t.x,t.y,e.x,e.y)); s += f.aiStyle==='defensive' ? -Math.abs(d-9) : Math.max(0,22-d); }
     for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy)&&tile(t.x+dx,t.y+dy).owner!==f.idx) s+=8; }
@@ -1094,8 +1138,10 @@ function draw(){
   ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
   drawBoard();
   drawTerritoryEffects();
+  drawWarObjectives(ctx,warState,factions,BASE_CELL,now());
   drawHighlights();
   drawPieces();
+  drawExposedKings(ctx,warState,pieces,factions,BASE_CELL,now());
   drawParticlesWorld();
   ctx.restore();
   drawScreenEffects();
@@ -1305,6 +1351,7 @@ function drawMinimap(){
   }
   mctx.globalAlpha=1;
   for(const p of pieces){ if(!p.alive) continue; mctx.fillStyle=p.type==='king'?'#fff':(factions[p.faction]?.color||'#fff'); mctx.fillRect(p.x*sx-1,p.y*sy-1,3,3); }
+  drawWarMinimap(mctx,warState,factions,sx,sy,now());
   const vx=(cam.x/(BASE_CELL*cam.zoom))*sx, vy=(cam.y/(BASE_CELL*cam.zoom))*sy;
   const vw=(innerWidth/(BASE_CELL*cam.zoom))*sx, vh=(innerHeight/(BASE_CELL*cam.zoom))*sy;
   mctx.strokeStyle='#fff'; mctx.lineWidth=1.5; mctx.strokeRect(vx,vy,vw,vh);
@@ -1312,6 +1359,10 @@ function drawMinimap(){
 function terrainMiniColor(type){
   if(type==='water') return '#287bb3'; if(type==='mountain') return '#83899a'; if(type==='forest') return '#2f9a55'; if(type==='swamp') return '#3b786c'; if(type==='road') return '#9a8051'; if(type==='ruins') return '#8b7ba7'; if(type==='sand') return '#b39a57'; if(type==='canyon') return '#9a4d3b'; if(type==='crystal') return '#7da2ff'; return '#46556c';
 }
+mini.setAttribute('aria-label','War map: click to move the camera');
+mini.addEventListener('pointerdown',event=>{
+  const rect=mini.getBoundingClientRect();centerOn(Math.floor((event.clientX-rect.left)/rect.width*BOARD_W),Math.floor((event.clientY-rect.top)/rect.height*BOARD_H));event.stopPropagation();
+});
 
 function onTap(sx,sy){
   if(!gameStarted || (playerDefeated && !spectating)) return;
@@ -1339,6 +1390,7 @@ function onTap(sx,sy){
   }
 }
 function handleSpawnPlace(x,y){
+  if(warState?.victory)return false;
   if(playerDefeated) return;
   const f=factions[PLAYER];
   const type=f.spawnChoices[spawnSelection];
