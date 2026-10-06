@@ -1,0 +1,40 @@
+/* Saved-run browser. Persistence and profile credentials stay in the game adapter. */
+(function () {
+  'use strict';
+  const files = window.TinyTroopsSaveFiles, $ = id => document.getElementById(id);
+  const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  if (!files) return;
+  const panel = document.createElement('section'); panel.id = 'ttSaveFiles'; panel.className = 'tt-save-files';
+  panel.setAttribute('aria-label', 'Available saved runs');
+  panel.innerHTML = '<div class="tt-save-heading"><h3>Saved runs on this device</h3><button id="ttRefreshSaves" class="secondary tiny" type="button">Refresh</button></div><p class="tt-save-help">Choose a run to load it. For a save from another device, enter its name and code above.</p><div id="ttSaveList"></div>';
+  $('menuStatus').after(panel);
+  const status = document.createElement('div'); status.id = 'ttSaveState'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+  status.className = 'tt-save-state'; status.textContent = 'Progress saves automatically.'; $('manualSave').closest('footer').appendChild(status);
+  function renderList() {
+    const entries = files.list();
+    $('ttSaveList').innerHTML = entries.length ? entries.map(entry => {
+      const date = entry.updatedAtMs ? new Date(entry.updatedAtMs).toLocaleString() : 'Older checkpoint';
+      return `<article class="tt-save-row"><div class="tt-save-copy"><strong>${esc(entry.name)}</strong><span>${entry.readable ? `Wave ${entry.wave} · ${entry.size} troops · ${entry.coins} coins${entry.completed ? ' · Completed' : ''}` : 'This save could not be read.'}</span><small>${esc(date)}${entry.recovered ? ' · Recovery backup' : ''}</small><span class="tt-save-army" aria-label="Saved army">${esc(entry.army)}</span></div><button type="button" class="secondary" data-tt-load-save="${esc(entry.clean)}" aria-label="Load ${esc(entry.name)}" ${entry.readable ? '' : 'disabled'}>${entry.recovered ? 'Recover' : 'Load'}</button></article>`;
+    }).join('') : `<p class="tt-save-empty">${files.available() ? 'No saved runs yet. Start a run with a name and code; its checkpoint will appear here.' : 'Browser storage is unavailable. Enter a save name and code above to load from the cloud.'}</p>`;
+  }
+  $('ttRefreshSaves').onclick = renderList;
+  panel.addEventListener('click', async event => {
+    const button = event.target.closest('[data-tt-load-save]'); if (!button || button.disabled) return;
+    button.disabled = true;
+    try { if (files.select(button.dataset.ttLoadSave)) await files.load(button.dataset.ttLoadSave); }
+    finally { renderList(); }
+  });
+  window.addEventListener('tt-saves-changed', renderList);
+  window.addEventListener('storage', event => { if (!event.key || event.key.startsWith(TinyTroopsSaves.PREFIX) || event.key.startsWith(TinyTroopsSaves.BACKUP_PREFIX)) renderList(); });
+  window.addEventListener('tt-save-status', event => {
+    const saved = event.detail; status.textContent = saved.text;
+    status.dataset.state = saved.phase === 'failed' && !saved.local ? 'error' : saved.phase === 'syncing' ? 'pending' : 'saved';
+    status.title = saved.payload ? 'Last checkpoint: ' + new Date(saved.payload.updatedAtMs).toLocaleString() : '';
+  });
+  function checkpoint() { if (S.tt?.started && files.active()) saveProfile('page checkpoint'); }
+  // These synchronous local writes are independent of combat timer cancellation.
+  window.addEventListener('pagehide', checkpoint);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) checkpoint(); });
+  window.addEventListener('online', () => { if (S.tt?.started && files.active() && files.connection()) saveProfile('connection restored'); });
+  renderList();
+})();

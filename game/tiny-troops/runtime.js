@@ -248,7 +248,7 @@
       S.tt.objective = S.round % 3 === 0 ? { ...sample(eligible), progress: 0 } : null;
       TP.structures = '';
       // Own the initializer's timer and watchdog so there is exactly one loop.
-      ttClearTimers(); stopLoop(); scheduleStep(); render();
+      ttClearTimers(); stopLoop(); scheduleStep(); render(); saveProfile('battle checkpoint');
       const boss = liveE().find(e => e.boss); if (boss) toast('👑 ' + boss.n, boss.ability || 'Inspect its abilities and counters.');
     }
     return result;
@@ -457,9 +457,10 @@
     if (TP.pauseForDialog) { TP.pauseForDialog = false; if (mode() === 'PAUSED') pause(); }
   };
   openMainMenu = function () {
+    if (S.tt?.started && window.TinyTroopsSaveFiles?.active()) saveProfile('menu checkpoint');
     if ($('drawer').classList.contains('open') && forcedChoice()) TP.suspendedDrawer = { title: $('dt').textContent, hint: $('dhint').textContent, html: $('body').innerHTML };
     stopLoop(); ttClearTimers(); clearEffects(); TP.pauseForDialog = false; forceClose(); setMode('MENU'); $('mainMenu').classList.add('open');
-    $('ttResume').hidden = !S.tt.started || S.tt.finished; menuOptions(); refreshTop10();
+    $('ttResume').hidden = !S.tt.started || S.tt.finished; menuOptions(); refreshTop10(); window.dispatchEvent(new CustomEvent('tt-saves-changed'));
   };
   function resumeRun() {
     if (!S.tt.started || S.tt.finished) return;
@@ -472,7 +473,7 @@
   openRunMenu = function () {
     if (forcedChoice()) return msg('Finish this choice before opening the run menu.');
     if (isBattle() && mode() === 'PLAYING') { pause(); TP.pauseForDialog = true; }
-    show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" onclick="loadProfilePrompt()">Load saved run</button></div>');
+    show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" data-tt-action="new">Browse saved runs</button></div>');
   };
   function menuOptions() {
     if (!$('ttStarter')) return;
@@ -489,7 +490,7 @@
   }
   function setupUi() {
     document.body.classList.add('tt-modern');
-    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006'; document.head.appendChild(link);
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-saves'; document.head.appendChild(link);
     q('.title').textContent = 'Tiny Troops'; q('.menuTitle').textContent = 'Tiny Troops'; q('.menuSub').textContent = 'Small armies. Unexpected combinations. Endless waves.';
     $('menuUser').setAttribute('aria-label', 'Save name'); $('menuPass').setAttribute('aria-label', 'Save code'); $('menuNew').textContent = 'Start endless run →'; $('menuLoad').textContent = 'Load saved run';
     const settings = document.createElement('div'); settings.className = 'tt-run-settings'; settings.innerHTML = '<label>Choose your commander<select id="ttStarter"></select></label><div class="tt-setting-row"><label>Run rules<select id="ttModifier"></select></label><label>Enemy tactics<select id="ttDifficulty"><option value="standard">Standard</option><option value="relaxed">Relaxed · gentler opponents</option><option value="tactician">Tactician · smarter targeting</option></select></label></div><p id="ttConfigHint"></p>';
