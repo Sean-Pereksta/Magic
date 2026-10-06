@@ -9,6 +9,30 @@ no length setting or final-wave victory. Defeat records the army’s story in a
 bounded, local history. Existing late regions and their enemy scaling continue
 beyond wave 300. The fifth row retains its native wave/level-250 unlock.
 
+## Combat recovery
+
+The shared aura pulse helper is available to all native evolution and spell
+callbacks. Battle spell-field initialization skips empty formation slots, and
+periodic support pulses use actual board positions. Core setup failures enter
+recovery instead of silently continuing with a partly initialized army.
+Board-size queries log only an actual size change, keeping long combat out of
+the old per-query console flood.
+
+Combat errors stop the scheduler and invalidate pending callbacks. A persistent
+recovery panel offers **Retry wave**, **Restore preparation**, **Saved runs**, and
+**Retry with basic combat**. Retry and preparation restore the exact pre-battle
+army, enemy plan, RNG, consumed draft, and income. Partial rewards are rolled
+back, including when an error occurs during the victory transition. Resume,
+speed changes, and returning from the menu cannot restart a broken simulation.
+
+Basic combat is an explicit, single-wave fallback for persistent native ability
+failures. It uses base stats plus purchased stat boosts, front-line targeting,
+normal attacks, healing, shields, and role counters; advanced abilities and
+their triggers are disabled for that wave. It does not skip enemies or grant
+an automatic victory. Normal kill/victory rewards and the boss relic/store
+flow settle once; normal combat returns on the next wave. A checkpoint saved
+during a basic battle retains this setting for its replay.
+
 ## Files
 
 - `core.js`: DOM-free rules, standardized role tags, soft counters, synergy
@@ -78,11 +102,19 @@ cloud sync and leaderboard services are not covered by this offline suite.
 
 ```sh
 npm run test:tiny-troops:saves-browser
+npm run test:tiny-troops:recovery-browser
 ```
 
 This browser suite verifies visible files, reload, separate run names, backups,
 full browser storage, page-exit checkpoints, and cloud adapter failure/lookup
 flows. Cloud adapter cases use a deterministic SDK mock.
+
+The recovery suite sustains every native boss definition for 160 simulation
+steps, all 243 valid recruits for repeated periodic abilities, exercises the
+five-second spell cadence, and injects repeated combat,
+initialization, and delayed-callback errors. It verifies rollback, saved-file
+safety, menu behavior, single rewards, fallback reloads, return to normal
+combat, and reachable recovery controls on desktop and mobile.
 
 The repository's prior Firestore rules denied Tiny Troops' save namespaces.
 The updated root rules allow authenticated named-save lookup and validated
