@@ -57,3 +57,30 @@
 /* Keep the collapse handle outside the dock and scrolling inside its sections. */
 #commandPanel{overflow:visible}#selectionCard,#ordersPanel,#contextPanel{min-height:0}
 @media(max-width:760px),(max-height:520px) and (orientation:landscape){#commandPanel:not(.mobileCollapsed) #selectionCard{min-height:58px}#commandPanel.mobileCollapsed #mobileDockToggle{display:block}}
+
+/* Target cancellation stays outside scrolling command rows. */
+#targetCancel{position:absolute;left:0;top:-50px;max-width:calc(100% - 62px);min-height:44px;background:#472536;border-color:#ff9ab1;z-index:3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#targetCancel[hidden]{display:none!important}
+#commandPanel:has(#targetCancel:not([hidden])){outline:2px solid #ddadff}
+#abilityButtons .cmdBtn[data-state="targeting"]{outline:2px solid #e4b9ff;background:#44345e}
+#abilityButtons .becameReady{animation:abilityReady .65s ease-out}
+@keyframes abilityReady{0%{box-shadow:0 0 0 3px #a0ffd5}100%{box-shadow:0 0 0 0 transparent}}
+@media(prefers-reduced-motion:reduce){#abilityButtons .becameReady{animation:none;outline:1px solid #a0ffd5}}
+.productionReason{display:block;color:#ffd19c;font-size:11px;margin-top:5px}
+#controlGroups{bottom:calc(var(--dock-height) + 80px)}
+.controlGroupChip{min-width:44px;min-height:44px}
+@media(max-width:760px){
+ #controlGroups{bottom:calc(min(var(--dock-height),48dvh) + 64px)}
+ body:has(#commandPanel.mobileCollapsed) #controlGroups{bottom:138px}
+}
+@media(max-height:520px) and (orientation:landscape){
+ #targetCancel{top:auto;bottom:0;left:auto;right:calc(100% + 6px);max-width:calc(60vw - 72px);transform:translateY(-50px)}
+ #controlGroups,body:has(#commandPanel.mobileCollapsed) #controlGroups{bottom:8px}
+ #minimapDock{top:52px!important}
+ #commandPanel.mobileCollapsed{width:min(250px,40vw)}
+ #battleAlerts{max-height:calc(100dvh - 125px);overflow:auto}
+}
+@media(max-height:360px) and (orientation:landscape){
+ #minimap{height:48px!important;width:80px!important}#minimapDock{width:94px!important}
+ #selectionCard{max-height:60px!important}
+}

@@ -1,0 +1,26 @@
+name: TurnCraft regression checks
+on:
+  pull_request:
+    paths: ['game/turncraft.html', 'game/turncraft/**', 'tests/turncraft-*', '.github/workflows/turncraft-regressions.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  turncraft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/turncraft-warfare-core.cjs
+      - run: npm install --ignore-scripts --no-package-lock
+        working-directory: game/turncraft
+      - run: npx playwright install --with-deps chromium
+        working-directory: game/turncraft
+      - run: npm test
+        working-directory: game/turncraft
+      - run: node tests/turncraft-warfare.cjs
+        env:
+          NODE_PATH: ${{ github.workspace }}/game/turncraft/node_modules
