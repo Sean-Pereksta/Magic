@@ -2,6 +2,26 @@
 
 The online entry point is `game/chess_warlord.html`. `core.mjs` contains pure snapshot, ranking, selection, and cosmetic-budget helpers. Existing movement rules and faction abilities are preserved.
 
+## Strategic victory modes
+
+Solo matches default to **Grand War** in both `chess_warlord.html` and `chess_warlord_solo.html`. Choose Grand War, Dominion, Capital Conquest, or classic Total War / Regicide before starting. Multiplayer retains Regicide.
+
+Grand War ends when a realm reaches 120 Dominion points, holds four enemy capitals (or every enemy capital in smaller matches), or becomes the last surviving faction. Dominion uses points and regicide; capitals still weaken rivals. Capital Conquest uses simultaneous enemy-capital ownership and regicide.
+
+Seven permanent banners are placed on reachable land away from starting capitals. Capture takes six seconds in a two-tile radius; the center awards two points every five seconds and other banners award one. Hostile presence denies scoring, multiple factions freeze capture progress, and ownership persists without a garrison. More troops do not shorten capture time. A nearby defending tower multiplies capture time by 1.5; a general multiplies it by 4/3. Together they turn six seconds into twelve. King conquest transfers the defeated realm's objectives and awards 15 points once.
+
+Capitals remain at starting locations and take twelve seconds to occupy or retake. Occupation halves token generation and timed troop production and reveals the original realm's king, including through Shadow fog. Recapture restores production and concealment. Capital counts exclude one's own home capital. The HUD and minimap show ownership, contests, capture progress, and victory pressure; HUD markers focus the camera. Finished matches freeze gameplay and show the winning condition and capture statistics.
+
+`objectives.mjs` owns match-time capture/scoring and a shared personality-weighted planner. It preserves king guards, home defenders, frontier units, and reserves; caps normal offensive squads at 30% of movable troops per target; evaluates leader pressure, travel routes, local strength, and losses; stages viable attacks and retreats or abandons hopeless attacks. Routes are cached and bounded, and plans refresh on important changes or after 2.5 seconds. Tide's existing standalone personality is supported without reintroducing Tide to the modern faction picker.
+
+Objective state is included in cumulative checkpoints and cloned before publishing or hydrating to prevent an in-flight snapshot from changing with the live simulation.
+
+Additional verification:
+
+- `npm run test:chess-warlords`: objective rules, planner scenarios, reversible production penalties, and snapshot isolation alongside existing tests.
+- `npm run test:chess-warlords:objectives-browser`: both entry points at desktop/mobile sizes; capture, denial, recapture, paused/final scoring, and Dominion/Imperial finish screens. Firebase imports are stubbed.
+- `npm run bench:chess-warlords:objectives`: seeded, real-production AI matches with 2, 6, and 8 realms plus a six-realm capital match, each with a twenty-minute simulation budget. Asserts victory, reserves, home defense, offensive squad limits, and bounded route caches. Uses the same Playwright/Chromium setup as the browser smoke test.
+
 ## Synchronization
 
 Protocol 2 sends cumulative deltas against `chess_warlord/full_state`, identified by `baseVersion`, map seed, and controller epoch. A client reconstructs from that checkpoint each time; it does not assume Firestore delivers every intermediate revision. This also handles a unit or territory cell returning to its original checkpoint value.
