@@ -233,7 +233,7 @@
     const slots = snap.round >= 250 || snap.boardRowsUnlocked || (Array.isArray(snap.squad) && snap.squad.slice(16, 20).some(Boolean)) ? 20 : 16;
     snap.boardRowsUnlocked = slots === 20;
     snap.squad = Array.from({ length: slots }, (_, i) => sanitizeUnit(Array.isArray(snap.squad) ? snap.squad[i] : null, roster));
-    snap.bench = (Array.isArray(snap.bench) ? snap.bench : []).map(u => sanitizeUnit(u, roster)).filter(Boolean).slice(0, 3);
+    snap.bench = Array.from({ length: 3 }, (_, i) => sanitizeUnit(Array.isArray(snap.bench) ? snap.bench[i] : null, roster));
     const baseBoost = { hp: 0, atk: 0, spd: 0, shield: 0, coins: 0, poison: 0, thorns: 0, revive: false, revivePower: .35, frontShield: 0, tb: {} };
     snap.boost = { ...baseBoost, ...(snap.boost && typeof snap.boost === 'object' && !Array.isArray(snap.boost) ? snap.boost : {}) };
     Object.keys(baseBoost).filter(k => typeof baseBoost[k] === 'number').forEach(k => snap.boost[k] = numeric(snap.boost[k], baseBoost[k]));

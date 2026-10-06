@@ -89,6 +89,13 @@ test('fifth-row migration preserves occupied slots and the native wave-250 unloc
   assert.equal(R.sanitizeSnapshot({ round: 250, squad: [] }).squad.length, 20);
   const army = Array(20).fill(null); army[19] = troop([]); const saved = R.sanitizeSnapshot({ round: 20, squad: army }); assert.ok(saved.squad[19]); assert.equal(saved.boardRowsUnlocked, true);
 });
+test('bench checkpoints retain empty slots, troop identities, training, and equipment', () => {
+  const bench = [null, troop([], { ttId: 'reserve-2', star: 4, starProg: 2, fx: [{ id: 'shield', rank: 3 }] }), null];
+  const saved = R.sanitizeSnapshot({ squad: [], bench });
+  assert.equal(saved.bench.length, 3); assert.equal(saved.bench[0], null); assert.equal(saved.bench[2], null);
+  assert.equal(saved.bench[1].ttId, 'reserve-2'); assert.equal(saved.bench[1].starProg, 2); assert.equal(saved.bench[1].fx[0].rank, 3);
+  assert.deepEqual(R.sanitizeSnapshot({ squad: [], bench: [troop([])] }).bench.map(u => u?.n || null), ['Test troop', null, null]);
+});
 test('invalid enemies and oversized drafts are rejected safely on load', () => {
   const s = R.sanitizeSnapshot({ squad: [], tt: { wavePlan: { enemies: [{ n: 'Broken', maxHp: null }] }, draft: [{ type: 'unknown' }, ...Array(10).fill({ type: 'upgrade', n: 'Training' })] } });
   assert.equal(s.tt.wavePlan, null); assert.ok(s.tt.draft.length <= 3);

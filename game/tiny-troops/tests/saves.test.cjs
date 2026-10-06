@@ -76,6 +76,23 @@ test('a cloud failure preserves local progress and accurately reports its source
   const result = await writer.save(payload(), true); assert.equal(result.local, true); assert.equal(result.cloud, false);
   assert.equal(messages.at(-1).local, true); assert.equal(messages.at(-1).phase, 'failed'); assert.equal(store.read('army').data.state.round, 10);
 });
+test('cloud conflicts retain their actionable error type', async () => {
+  const messages = [], store = P.createStore(memory());
+  const writer = P.createWriter({ store, notify: status => messages.push(status), writeCloud: () => { throw Object.assign(new Error('Other cloud run'), { code: 'save/name-conflict' }); } });
+  await writer.save(payload(), true);
+  assert.equal(messages.at(-1).code, 'save/name-conflict'); assert.equal(store.read('army').data.state.round, 10);
+  const numeric = P.createWriter({ store, notify: status => messages.push(status), writeCloud: () => { throw Object.assign(new Error('Cloud failure'), { code: 22 }); } });
+  await numeric.save(payload(), true); assert.equal(messages.at(-1).code, '22');
+});
+test('loading invalidates queued writes and gives running transactions a cancellation guard', async () => {
+  const store = P.createStore(memory()), writes = []; let release, began;
+  const gate = new Promise(resolve => { release = resolve; }), started = new Promise(resolve => { began = resolve; });
+  const writer = P.createWriter({ store, writeCloud: async (data, isCurrent) => { began(); await gate; if (!isCurrent()) throw new Error('superseded'); writes.push(data); } });
+  const first = writer.save(payload('army', 10), true), queued = writer.save(payload('army', 20), true);
+  await started; writer.invalidate('army'); release();
+  assert.equal((await queued).superseded, true); assert.equal((await first).cloud, false); assert.deepEqual(writes, []);
+  assert.equal(store.read('army').data.state.round, 20); assert.equal((await writer.save(payload('army', 30), true)).cloud, true);
+});
 test('cloud-only saves can succeed when browser storage is full', async () => {
   const store = P.createStore({ getItem: () => null, setItem: () => { throw new Error('full'); } });
   const writer = P.createWriter({ store, writeCloud: async () => {} });

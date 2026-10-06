@@ -290,7 +290,7 @@
   fight = function () {
     if (isBattle() || S.tt.finished || ['MENU', 'RESULTS'].includes(mode())) return false;
     if (S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization || S.tt.event || S.starChoiceTarget || S.ultimate10Target || S.evoTarget || S.ascTarget) return msg('Finish your current choice before starting the wave.');
-    const requiredEvolution = S.squad.find(u => u && maybeEvolution(u)); if (requiredEvolution) return openEvolution(requiredEvolution);
+    const requiredEvolution = army().find(u => u && maybeEvolution(u)); if (requiredEvolution) return openEvolution(requiredEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
     if (!liveA().length) return msg('Place at least one fighter first.');
     try {
@@ -348,7 +348,7 @@
   }
   choice = function (c, i) {
     if (c.type !== 'recruit') return c.type === 'tt-path' ? `<button class="choice rarity-uncommon" onclick="choose(${i})"><span class="be">${c.e}</span><span><strong>${esc(c.n)}</strong><p>${esc(c.desc)}</p></span><span class="price">PATH</span></button>` : legacyChoice(c, i);
-    const u = c.unit, info = R.ROLE_INFO[R.role(u)], owned = S.squad.filter(x => x?.n === u.n).length;
+    const u = c.unit, info = R.ROLE_INFO[R.role(u)], owned = army().filter(x => x.n === u.n).length;
     return `<button class="choice" onclick="choose(${i})"><span class="be">${u.e}</span><span><strong>${esc(u.n)}</strong><p>${info.emoji} ${info.name} · ${u.t.map(t => esc(t)).join(' / ')}<br>${esc(u.a)}<br><b class="tt-impact">${owned ? 'Matching recruit trains your existing troop. ' : ''}${esc(R.recruitImpact(S.squad, u))}</b></p></span><span class="price">${owned ? '×' + owned : 'JOIN'}</span></button>`;
   };
   openRecruit = function () {
@@ -356,7 +356,7 @@
     if (S.tt.event) return openEvent();
     if (S.phase !== 'recruit' || S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return;
     if (S.evoTarget || S.ascTarget || S.starChoiceTarget) return;
-    const pendingEvolution = S.squad.find(u => u && maybeEvolution(u));
+    const pendingEvolution = army().find(u => u && maybeEvolution(u));
     if (pendingEvolution) return openEvolution(pendingEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
     prepareWave();
@@ -380,6 +380,116 @@
     S.tt.draft = buildDraft(); openRecruit(); saveProfile('reroll');
   };
   function pathCard(p) { return `<button class="choice rarity-${p.rarity}" data-tt-path="${p.id}"><span class="be">${p.emoji}</span><span><strong>${p.name}</strong><p>${p.desc}</p></span><span class="price">${p.rarity}</span></button>`; }
+  // Bench slots keep their positions through saves, merges, and post-boss swaps.
+  let replacement = null, benchSelection = null;
+  function benchSlots() {
+    if (!Array.isArray(S.bench) || S.bench.length !== 3) S.bench = Array.from({ length: 3 }, (_, i) => S.bench?.[i] || null);
+    return S.bench;
+  }
+  function army() { return [...S.squad, ...benchSlots()].filter(Boolean); }
+  function prepareReserve(u) { if (u) { u.dead = false; u.hp = u.maxHp; } return u; }
+  function canManageBench() { return ['recruit', 'shop'].includes(S.phase) && mode() !== 'MENU' && !S.tt.finished && !forcedChoice() && !TP.recovery; }
+  function finishPlacement(reason) {
+    S.tt.draftedRound = S.round; formationKey = ''; close(); render(); saveProfile(reason);
+    if (!liveA().length && !army().some(u => maybeEvolution(u)) && !(S.pendingStarChoices || []).length) {
+      msg('Recruit saved on the bench. Deploy it to an empty board square to fight.'); return window.openBench();
+    }
+    return fight();
+  }
+  function askReplacement(where, index) {
+    if (S.phase !== 'recruit' || !canManageBench() || !S.placing) return;
+    const occupant = (where === 'board' ? S.squad : benchSlots())[index], incoming = S.placing;
+    if (!occupant || occupant.n === incoming.n) return;
+    const free = benchSlots().findIndex(u => !u);
+    replacement = { where, index, occupant, incoming };
+    show('Make room for ' + incoming.n, 'What should happen to ' + occupant.n + '? Your troops stay where they are until you choose.',
+      `<div class="tt-replacement"><p>${esc(occupant.e)} <b>${esc(heroTitle(occupant))}</b> · ${occupant.star || 1}★</p><button data-tt-replacement="bench" ${free < 0 ? 'disabled' : ''}>🪑 Move ${esc(occupant.n)} to bench${free < 0 ? ' · full' : ''}</button><button class="gold" data-tt-replacement="sell">Sell ${esc(occupant.n)} · +${window.troopSaleValue(occupant)} 🪙</button><button class="secondary" data-tt-replacement="cancel">Cancel · keep placing</button></div>`);
+  }
+  function confirmReplacement(action) {
+    if (action === 'cancel') { close(); return; }
+    const choice = replacement;
+    if (!choice || !['bench', 'sell'].includes(action) || S.phase !== 'recruit' || !canManageBench() || S.placing !== choice.incoming) return;
+    const slots = choice.where === 'board' ? S.squad : benchSlots();
+    if (slots[choice.index] !== choice.occupant) { close(); return msg('That slot changed. Choose the troop to replace again.'); }
+    const free = benchSlots().findIndex(u => !u);
+    if (action === 'bench' && free < 0) return msg('All three bench slots are full. Sell this troop or cancel.');
+    replacement = null;
+    if (action === 'bench') benchSlots()[free] = prepareReserve(choice.occupant);
+    else S.coins += window.troopSaleValue(choice.occupant);
+    slots[choice.index] = identify(choice.incoming); discover(choice.incoming); S.placing = null;
+    msg(choice.incoming.e + ' ' + choice.incoming.n + ' placed. ' + choice.occupant.n + (action === 'bench' ? ' moved to the bench.' : ' was sold.'));
+    return finishPlacement('recruit replacement');
+  }
+  function benchHint() {
+    if (isBattle()) return 'Bench troops sit out combat. You can inspect them while the battle is paused.';
+    if (S.placing) return 'Place ' + S.placing.n + ' in an empty slot, or select an exact duplicate for +2 star progress.';
+    if (S.placingUpgrade) return 'Select a benched troop for +1 star progress. Empty slots cannot be trained.';
+    return 'Three reserve slots. Deploy to empty board squares freely; swapping with a board troop uses your post-boss switch.';
+  }
+  window.openBench = function () {
+    if (forcedChoice() || TP.recovery || mode() === 'MENU') return msg('Finish your current choice before opening the bench.');
+    if (isBattle() && mode() === 'PLAYING') { pause(); TP.pauseForDialog = true; }
+    benchSelection = null; replacement = null;
+    const pending = S.placing || S.placingUpgrade;
+    const cards = benchSlots().map((u, i) => {
+      const action = !u ? S.placing ? 'Place recruit here' : 'Empty slot' : S.placingUpgrade ? canGainStar(u) ? 'Train +1 star progress' : 'Star cap reached' : S.placing ? u.n === S.placing.n ? 'Merge +2 star progress' : 'Replace troop…' : 'Inspect troop';
+      const disabled = !u && !S.placing || pending && !canManageBench() || S.placingUpgrade && u && !canGainStar(u) || !!(S.placingEffect || S.placingSpecialization);
+      return `<button class="tt-bench-slot secondary ${pending && !disabled ? 'tt-bench-target' : ''}" data-tt-bench-slot="${i}" ${disabled ? 'disabled' : ''} aria-label="Bench slot ${i + 1}: ${esc(u ? u.n + ' · ' + action : action)}"><span class="tt-eyebrow">SLOT ${i + 1}</span><span class="tt-bench-emoji">${esc(u?.e || '🪑')}</span><strong>${esc(u ? heroTitle(u) : 'Empty')}</strong>${u ? `<span>${u.star || 1}★ · ${Number.isFinite(starNeed(u)) ? (u.starProg || 0) + '/' + starNeed(u) + ' training' : 'MAX'}</span>` : ''}<small>${esc(action)}</small></button>`;
+    }).join('');
+    show('🪑 Bench · ' + benchSlots().filter(Boolean).length + '/3', benchHint(), '<div class="tt-bench-slots" aria-label="Three bench slots">' + cards + '</div>' + (S.bossSwapAvailable ? '<p class="tt-impact">One post-boss squad swap is available.</p>' : '') + (S.placingEffect || S.placingSpecialization ? '<p>Choose a board troop for this card.</p>' : ''));
+    $('drawer').dataset.ttView = 'bench'; $('benchBtn').setAttribute('aria-expanded', 'true');
+  };
+  function tapBench(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= 3 || mode() === 'MENU' || forcedChoice() || TP.recovery) return;
+    const u = benchSlots()[i];
+    if (S.placing || S.placingUpgrade) {
+      if (S.phase !== 'recruit' || !canManageBench()) return;
+      if (S.placing && u && u.n !== S.placing.n) return askReplacement('bench', i);
+      if ((S.placingUpgrade || u) && (!u || !canGainStar(u))) return msg(u ? u.n + ' is at the current star cap. Choose another slot.' : 'Choose a benched troop to train.');
+      if (S.placingUpgrade) { S.placingUpgrade = false; grantUpgradeStarProgress(u, 1, 'star training'); msg(u.n + ' gained +1 star progress on the bench.'); }
+      else if (u) { S.placing = null; grantUpgradeStarProgress(u, 2, 'sameCardMerge'); msg('Same-card merge! ' + u.n + ' gained +2 star progress on the bench.'); }
+      else { const incoming = S.placing; S.placing = null; benchSlots()[i] = identify(incoming); discover(incoming); msg(incoming.e + ' ' + incoming.n + ' joined the bench.'); }
+      return finishPlacement('bench placement');
+    }
+    if (!u || S.placingEffect || S.placingSpecialization) return;
+    show(u.e + ' ' + heroTitle(u), 'Bench slot ' + (i + 1) + ' · reserve troop', detailHtml(u) + (canManageBench() ? `<div class="tt-replacement"><button data-tt-bench-deploy="${i}" ${!S.bossSwapAvailable && !S.squad.some(x => !x) ? 'disabled' : ''}>Deploy / swap with squad</button><button class="gold" data-tt-bench-sell="${i}">Sell · +${window.troopSaleValue(u)} 🪙</button><button class="secondary" data-tt-action="bench">Back to bench</button></div>` : '<button class="secondary tt-wide" data-tt-action="bench">Back to bench</button>'));
+  }
+  function sellBench(i) {
+    if (!canManageBench() || S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) return;
+    const u = benchSlots()[i]; if (!u) return;
+    const value = window.troopSaleValue(u); benchSlots()[i] = null; S.coins += value;
+    close(); render(); saveProfile('bench troop sold'); msg(u.n + ' sold for ' + value + ' coins.'); window.openBench();
+  }
+  window.benchUnit = function (i) {
+    if (!canManageBench()) return msg('Bench changes happen between battles.');
+    const u = S.squad[i], free = benchSlots().findIndex(x => !x); if (!u) return;
+    if (free < 0) return msg('All three bench slots are full.');
+    benchSlots()[free] = prepareReserve(u); S.squad[i] = null; formationKey = '';
+    close(); render(); saveProfile('bench'); msg(u.n + ' moved to the bench.');
+  };
+  window.sellUnit = function (i) {
+    if (!canManageBench()) return msg('Troops can only be sold between battles.');
+    const u = S.squad[i]; if (!u) return; const value = window.troopSaleValue(u);
+    S.squad[i] = null; S.coins += value; formationKey = '';
+    close(); render(); saveProfile('unit sold'); msg(u.n + ' sold for ' + value + ' coins.');
+  };
+  window.chooseBench = function (i) {
+    if (!canManageBench() || S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) return;
+    const u = benchSlots()[i]; if (!u) return;
+    show('Deploy ' + u.n, 'Choose an empty board square, or use your post-boss switch to swap troops.', '<div class="choices">' + S.squad.map((a, si) => `<button class="choice" data-tt-bench-board="${si}" ${a && !S.bossSwapAvailable ? 'disabled' : ''}><span class="be">${esc(a?.e || '＋')}</span><span><strong>${esc(a ? heroTitle(a) : 'Empty board square')}</strong><p>Row ${Math.floor(si / 4) + 1}, column ${si % 4 + 1}${a ? ' · uses post-boss switch' : ' · free deployment'}</p></span></button>`).join('') + '</div>');
+    benchSelection = { i, unit: u };
+  };
+  window.swapBench = function (bi, si) {
+    if (!canManageBench() || S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization || !Number.isInteger(si) || si < 0 || si >= S.squad.length) return;
+    const u = benchSlots()[bi], board = S.squad[si]; if (!u) return;
+    if (board && !S.bossSwapAvailable) return msg('Defeat a boss to earn a squad swap, or choose an empty square.');
+    S.squad[si] = u; benchSlots()[bi] = prepareReserve(board) || null; if (board) S.bossSwapAvailable = false;
+    formationKey = ''; close(); render(); saveProfile(board ? 'boss bench swap' : 'bench deployment'); msg(u.n + ' joined the squad.');
+  };
+  window.selectBenchTarget = function (si) {
+    const selection = benchSelection; if (!selection || benchSlots()[selection.i] !== selection.unit) return;
+    return window.swapBench(selection.i, si);
+  };
   tapCell = function (i) {
     if (!Number.isInteger(i) || i < 0 || i >= S.squad.length || S.tt.finished || mode() === 'MENU') return;
     if (S.placingSpecialization) {
@@ -387,6 +497,7 @@
       S.placingSpecialization = false; S.tt.pathTarget = u.ttId || identify(u).ttId; S.phase = 'tt-path';
       show('Specialize ' + u.e + ' ' + u.n, 'One permanent path for this troop, for this run.', '<div class="choices">' + R.pathsFor(u).map(pathCard).join('') + '</div>'); render(); return;
     }
+    if (S.placing && S.squad[i] && S.squad[i].n !== S.placing.n) return askReplacement('board', i);
     return legacyTapCell(i);
   };
   function pickPath(id) {
@@ -511,7 +622,7 @@
   TP.beforeRestore = function () { stopLoop(); clearEffects(); clearRecovery(); TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); formationKey = ''; TP.structures = ''; TP.lastRecap = null; TP.focusTarget = null; forceClose(); };
   TP.afterRestore = function () {
     loadMeta(); TP.unitSeq = Math.max(S.tt.nextUnitId || 0, ...[...Object.keys(S.tt.stats), ...[...S.squad, ...S.bench, ...(S.tt.draft || []).map(c => c.unit)].filter(Boolean).map(u => u.ttId)].map(id => Number(String(id || '').split('-u').at(-1)) || 0)); S.tt.nextUnitId = TP.unitSeq;
-    S.squad.filter(Boolean).forEach(u => { identify(u); discover(u); }); S.tt.started = true; S.tt.finished = !!S.runEnded || !!S.tt.finished; setMode(S.tt.finished ? 'RESULTS' : 'PLAYING');
+    army().forEach(u => { identify(u); discover(u); u.id ||= u.ttId; }); S.tt.started = true; S.tt.finished = !!S.runEnded || !!S.tt.finished; setMode(S.tt.finished ? 'RESULTS' : 'PLAYING');
     if (S.tt.finished) ttTimeout(() => openResults(S.tt.summary || { result: 'Defeat', wave: S.round, style: R.armyStyle(S.squad), size: S.squad.filter(Boolean).length }), 90);
     else if (S.tt.event) ttTimeout(openEvent, 90); render();
   };
@@ -520,16 +631,16 @@
   let lastFocus = null;
   const legacyShow = show, legacyClose = close, legacyDetailHtml = detailHtml;
   const forcedChoice = () => !!(S.tt?.event || S.phase === 'tt-path' || S.phase === 'relic' || S.evoTarget || S.ascTarget || S.starChoiceTarget || S.ultimate10Target);
-  function forceClose() { S.inspect = null; $('shade').classList.remove('open'); $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); }
+  function forceClose() { replacement = null; benchSelection = null; $('benchBtn')?.setAttribute('aria-expanded', 'false'); S.inspect = null; $('shade').classList.remove('open'); $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); }
   show = function (title, hint, html) {
-    lastFocus = document.activeElement; S.inspect = null; legacyShow(title, hint, html);
+    delete $('drawer').dataset.ttView; $('benchBtn')?.setAttribute('aria-expanded', 'false'); lastFocus = document.activeElement; S.inspect = null; legacyShow(title, hint, html);
     $('drawer').setAttribute('role', 'dialog'); $('drawer').setAttribute('aria-modal', 'true'); $('drawer').setAttribute('aria-labelledby', 'dt'); $('drawer').setAttribute('aria-hidden', 'false'); $('drawer').scrollTop = 0;
     $('close').disabled = forcedChoice(); $('close').title = forcedChoice() ? 'Complete this choice to continue' : 'Close';
     q('#body button, #body input, #close')?.focus({ preventScroll: true });
   };
   close = function () {
     if (forcedChoice()) return msg('Finish this choice to continue.');
-    legacyClose(); $('drawer').setAttribute('aria-hidden', 'true'); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true });
+    replacement = null; benchSelection = null; legacyClose(); $('benchBtn')?.setAttribute('aria-expanded', 'false'); $('drawer').setAttribute('aria-hidden', 'true'); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true });
     if (TP.pauseForDialog) { TP.pauseForDialog = false; if (mode() === 'PAUSED') pause(); }
   };
   openMainMenu = function () {
@@ -568,14 +679,16 @@
   }
   function setupUi() {
     document.body.classList.add('tt-modern');
-    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-combat'; document.head.appendChild(link);
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-bench'; document.head.appendChild(link);
     q('.title').textContent = 'Tiny Troops'; q('.menuTitle').textContent = 'Tiny Troops'; q('.menuSub').textContent = 'Small armies. Unexpected combinations. Endless waves.';
     $('menuUser').setAttribute('aria-label', 'Save name'); $('menuPass').setAttribute('aria-label', 'Save code'); $('menuNew').textContent = 'Start endless run →'; $('menuLoad').textContent = 'Load saved run';
     const settings = document.createElement('div'); settings.className = 'tt-run-settings'; settings.innerHTML = '<label>Choose your commander<select id="ttStarter"></select></label><div class="tt-setting-row"><label>Run rules<select id="ttModifier"></select></label><label>Enemy tactics<select id="ttDifficulty"><option value="standard">Standard</option><option value="relaxed">Relaxed · gentler opponents</option><option value="tactician">Tactician · smarter targeting</option></select></label></div><p id="ttConfigHint"></p>';
     q('.menuInputs').before(settings);
     const resume = document.createElement('button'); resume.id = 'ttResume'; resume.className = 'secondary'; resume.textContent = 'Resume current run'; resume.hidden = true; resume.onclick = resumeRun; q('.menuButtons').before(resume);
-    const intel = document.createElement('section'); intel.id = 'ttIntel'; intel.innerHTML = '<div class="tt-control-row"><div><span class="tt-eyebrow">ENDLESS CAMPAIGN</span><b id="ttArmySize"></b></div><div class="tt-speeds" aria-label="Battle speed"><button data-tt-speed="1">1×</button><button data-tt-speed="2">2×</button><button data-tt-speed="3">3×</button><button id="ttPause" data-tt-action="pause">Pause</button><button class="secondary" data-tt-action="more" aria-label="More options">•••</button></div></div><div id="ttWavePreview"></div><div id="ttObjective"></div><section id="ttRecovery" class="tt-recovery" role="alert" aria-label="Battle recovery" hidden></section>';
+    const intel = document.createElement('section'); intel.id = 'ttIntel'; intel.innerHTML = '<div class="tt-control-row"><div><span class="tt-eyebrow">ENDLESS CAMPAIGN</span><div class="tt-army-status"><b id="ttArmySize"></b></div></div><div class="tt-speeds" aria-label="Battle speed"><button data-tt-speed="1">1×</button><button data-tt-speed="2">2×</button><button data-tt-speed="3">3×</button><button id="ttPause" data-tt-action="pause">Pause</button><button class="secondary" data-tt-action="more" aria-label="More options">•••</button></div></div><div id="ttWavePreview"></div><div id="ttObjective"></div><section id="ttRecovery" class="tt-recovery" role="alert" aria-label="Battle recovery" hidden></section>';
     q('.main').prepend(intel);
+    q('.tt-army-status').appendChild($('benchBtn')); $('benchBtn').onclick = window.openBench;
+    $('benchBtn').setAttribute('aria-haspopup', 'dialog'); $('benchBtn').setAttribute('aria-controls', 'drawer');
     const syn = document.createElement('section'); syn.id = 'ttSynergies'; syn.setAttribute('aria-label', 'Army synergies'); $('traits').before(syn);
     const recap = document.createElement('div'); recap.id = 'ttRecap'; q('footer').prepend(recap);
     $('msg').setAttribute('role', 'status'); $('msg').setAttribute('aria-live', 'polite'); $('msg').setAttribute('aria-atomic', 'true'); $('menuStatus').setAttribute('role', 'status');
@@ -608,7 +721,7 @@
     const roster = [...new Map(heroes.filter(validHero).map(h => [h.n, h])).values()], known = roster.filter(h => TP.meta.units.includes(h.n)), query = search.toLowerCase();
     $('ttBookEntries').innerHTML = known.filter(h => (h.n + R.tags(h).join(' ') + R.ROLE_INFO[R.role(h)].name).toLowerCase().includes(query)).map(h => { const info = R.ROLE_INFO[R.role(h)]; return `<details class="tt-book-entry"><summary>${h.e} ${esc(h.n)} <span>${info.name}</span></summary><p>${esc(h.a)}</p><p><b>Strong:</b> ${info.strong}<br><b>Weak:</b> ${info.weak}<br><b>Partners:</b> ${info.partner}</p><p class="hint">${R.tags(h).join(' · ')}<br>${R.SYNERGIES.filter(s => s.tag && R.has(h, s.tag) || s.req && Object.keys(s.req).some(t => R.has(h, t))).map(s => s.name).join(' · ')}</p></details>`; }).join('') + `<p class="hint">??? · ${Math.max(0, roster.length - known.length)} troops left to discover</p>`;
   }
-  help = function () { show('Tiny Troops, explained', 'An endless strategy campaign on a stationary formation grid.', '<ol class="tt-help"><li>Choose a commander and one card per wave. Your first recruit can deal damage.</li><li>Place defenders on the right and fragile ranged troops behind them in the same row. Units stay in their squares.</li><li>Draft matching roles to activate synergies. Matching troop recruits train an existing troop; separate squares build larger formations.</li><li>Specializations offer three paths with tradeoffs. Stars, effects, evolutions, mentors, relics, and spells retain their original mechanics.</li><li>Inspect the exact incoming enemy formation. Boss waves offer a relic and a store visit after winning.</li><li>Every third non-boss victory brings a quick event. Optional challenges reward 20 coins.</li><li>Pause or change speed at any time. 1×, 2×, and 3× use identical simulation steps. Space pauses combat.</li><li>Save with a name and code. Saving during combat returns to the same pre-battle checkpoint on reload; it never duplicates combat rewards.</li><li>There is no final wave. Enemies continue scaling after the last region. Defeat records your army, then you can try another build.</li></ol><button class="secondary tt-wide" data-tt-action="counters">See the matchups</button>'); };
+  help = function () { show('Tiny Troops, explained', 'An endless strategy campaign on a stationary formation grid.', '<ol class="tt-help"><li>Choose a commander and one card per wave. Your first recruit can deal damage.</li><li>Place defenders on the right and fragile ranged troops behind them in the same row. Units stay in their squares.</li><li>Draft matching roles to activate synergies. Matching troop recruits train an existing troop; separate squares build larger formations.</li><li>Click 🪑 Bench to open three reserve slots. New recruits, exact duplicates (+2 star progress), and Star Training (+1) can target the bench. Replacing a different troop asks whether to bench or sell it. Empty-square bench deployment is free; a squad swap uses your post-boss switch.</li><li>Specializations offer three paths with tradeoffs. Stars, effects, evolutions, mentors, relics, and spells retain their original mechanics.</li><li>Inspect the exact incoming enemy formation. Boss waves offer a relic and a store visit after winning.</li><li>Every third non-boss victory brings a quick event. Optional challenges reward 20 coins.</li><li>Pause or change speed at any time. 1×, 2×, and 3× use identical simulation steps. Space pauses combat.</li><li>Save with a name and code. Saving during combat returns to the same pre-battle checkpoint on reload; it never duplicates combat rewards.</li><li>There is no final wave. Enemies continue scaling after the last region. Defeat records your army, then you can try another build.</li></ol><button class="secondary tt-wide" data-tt-action="counters">See the matchups</button>'); };
   function openCounters() { show('Soft counters', 'Small bonuses reward good matchups. Composition, stars, and original elemental weaknesses still matter.', '<div class="choices">' + R.COUNTERS.map(c => `<div class="tt-counter"><b>${c.label}</b></div>`).join('') + '</div><p class="hint">Magic can punish armor. Defenders shelter ranged allies in the same row. Fast troops use burst and attack tempo; troops do not move.</p><button class="secondary tt-wide" data-tt-action="elements">Class &amp; element rules</button>'); }
 
   function addFx(node, life = 550) {
@@ -665,7 +778,8 @@
     if ($('ttSynergies').innerHTML !== html) $('ttSynergies').innerHTML = html;
     if (mode() !== 'MENU') syns.filter(s => s.tier > (S.tt.seenSynergies[s.id] || 0)).forEach(s => { S.tt.seenSynergies[s.id] = s.tier; if (!TP.meta.synergies.includes(s.id)) { TP.meta.synergies.push(s.id); saveMeta(); } toast(s.emoji + ' ' + s.name + ' activated · Tier ' + s.tier, s.bonus); });
     $('pick').classList.toggle('show', !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization)); if (S.placingSpecialization) $('pick').textContent = '🔀 Choose a troop to specialize';
-    $('phase').textContent = TP.recovery ? 'Battle interrupted · choose a recovery option.' : mode() === 'PAUSED' ? 'Paused · the battlefield will wait.' : S.placingSpecialization ? 'Choose a troop with no specialization.' : S.phase === 'tt-event' ? 'A quick decision before your next draft.' : S.phase === 'tt-path' ? 'Choose a path for this troop.' : S.tt.finished ? 'Run complete · try another army.' : S.placing ? 'Place ' + S.placing.n + ' · matching troops train.' : S.placingUpgrade ? 'Choose a troop for star training.' : S.placingEffect ? 'Choose a troop for ' + S.placingEffect.n + '.' : isBattle() ? S.battle.basic ? 'Basic combat · normal abilities return next wave.' : 'Battle underway · inspect a troop for live details.' : 'Build, inspect, then fight the next wave.';
+    const benchButton = $('benchBtn'); benchButton.textContent = '🪑 Bench ' + benchSlots().filter(Boolean).length + '/3'; benchButton.disabled = forcedChoice() || mode() === 'MENU' || !!TP.recovery; benchButton.classList.toggle('tt-bench-target', !!(S.placing || S.placingUpgrade)); benchButton.setAttribute('aria-expanded', String($('drawer').classList.contains('open') && $('drawer').dataset.ttView === 'bench')); benchButton.title = S.bossSwapAvailable ? 'Three bench slots · a post-boss swap is available' : 'View three bench slots or place your selected card';
+    $('phase').textContent = TP.recovery ? 'Battle interrupted · choose a recovery option.' : mode() === 'PAUSED' ? 'Paused · the battlefield will wait.' : S.placingSpecialization ? 'Choose a troop with no specialization.' : S.phase === 'tt-event' ? 'A quick decision before your next draft.' : S.phase === 'tt-path' ? 'Choose a path for this troop.' : S.tt.finished ? 'Run complete · try another army.' : S.placing ? 'Place ' + S.placing.n + ' · choose a board or bench slot.' : S.placingUpgrade ? 'Choose a board or bench troop for star training.' : S.placingEffect ? 'Choose a troop for ' + S.placingEffect.n + '.' : isBattle() ? S.battle.basic ? 'Basic combat · normal abilities return next wave.' : 'Battle underway · inspect a troop for live details.' : 'Build, inspect, then fight the next wave.';
     if ($('playNext')) { $('playNext').disabled = isBattle() && mode() !== 'PAUSED' || S.tt.finished || forcedChoice() || !!(S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) || !liveA().length || S.phase !== 'recruit' && mode() !== 'PAUSED'; $('playNext').textContent = mode() === 'PAUSED' ? '▶ Resume' : '▶ Fight'; }
     if (TP.recovery && $('playNext')) { $('playNext').disabled = false; $('playNext').textContent = 'Recover'; }
     $('recruit').disabled = S.phase !== 'recruit' || isBattle() || S.tt.finished || !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization); $('recruit').textContent = 'Draft'; $('shop').textContent = 'Store'; $('restart').textContent = 'Menu';
@@ -690,8 +804,13 @@
     } finally { TP.drawing = false; }
   };
   document.addEventListener('click', e => {
-    const el = e.target.closest('[data-tt-action],[data-tt-speed],[data-tt-path],[data-tt-event],[data-tt-synergy],[data-tt-history]'); if (!el) return;
+    const el = e.target.closest('[data-tt-action],[data-tt-speed],[data-tt-path],[data-tt-event],[data-tt-synergy],[data-tt-history],[data-tt-bench-slot],[data-tt-replacement],[data-tt-bench-deploy],[data-tt-bench-board],[data-tt-bench-sell]'); if (!el || el.disabled) return;
     if (el.dataset.ttSpeed) return setSpeed(Number(el.dataset.ttSpeed));
+    if (el.dataset.ttBenchSlot !== undefined) return tapBench(Number(el.dataset.ttBenchSlot));
+    if (el.dataset.ttReplacement) return confirmReplacement(el.dataset.ttReplacement);
+    if (el.dataset.ttBenchDeploy !== undefined) return window.chooseBench(Number(el.dataset.ttBenchDeploy));
+    if (el.dataset.ttBenchBoard !== undefined) return window.selectBenchTarget(Number(el.dataset.ttBenchBoard));
+    if (el.dataset.ttBenchSell !== undefined) return sellBench(Number(el.dataset.ttBenchSell));
     if (el.dataset.ttPath) return pickPath(el.dataset.ttPath);
     if (el.dataset.ttEvent) return pickEvent(el.dataset.ttEvent);
     if (el.dataset.ttSynergy) return openSynergies(el.dataset.ttSynergy);
