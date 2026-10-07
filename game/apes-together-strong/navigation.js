@@ -147,16 +147,27 @@ class Navigation {
  }
  this.cohorts.set(id,cohort);return cohort;
  }
- _cohortPoint(a,target,r,nav){
- const cohort=this.cohorts.get(a.navCohort);if(!cohort||!cohort.path.length||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
+ recoveryPath(from,to,r=10,priority=3){
+ // A blocked group earns one recovery corridor per small spatial cell. This
+ // includes distant stragglers, so a thousand followers never create a
+ // thousand independent A* jobs after their shared route becomes obstructed.
+ const id=['recovery',Math.floor(from.x/84),Math.floor(from.y/84),Math.floor(to.x/160),Math.floor(to.y/160),r].join(':');
+ const cohort=this.setCohortRoute(id,from,to,r,priority);return cohort.path.length?cohort.path:null;
+ }
+ _cohortPoint(a,target,r,nav,cohortId=a.navCohort){
+ const cohort=this.cohorts.get(cohortId);if(!cohort||!cohort.path.length||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
  const path=cohort.path;
  if(nav.sharedPoint&&nav.sharedPath===path&&this.time<nav.sharedAt&&Math.hypot(a.x-nav.sharedPoint.x,a.y-nav.sharedPoint.y)>22){this.stats.sharedHits++;return nav.sharedPoint}
- if(nav.cohort!==a.navCohort||nav.sharedPath!==path){nav.cohort=a.navCohort;nav.sharedPath=path;nav.sharedIndex=0;let best=Infinity;for(let i=0;i<path.length;i++){const d=(a.x-path[i].x)**2+(a.y-path[i].y)**2;if(d<best){nav.sharedIndex=i;best=d}}}
+ if(nav.cohort!==cohortId||nav.sharedPath!==path){nav.cohort=cohortId;nav.sharedPath=path;nav.sharedIndex=0;let best=Infinity;for(let i=0;i<path.length;i++){const d=(a.x-path[i].x)**2+(a.y-path[i].y)**2;if(d<best){nav.sharedIndex=i;best=d}}}
  let i=nav.sharedIndex;
  if(i>=path.length)return null;
  // Local steering joins the shared corridor only through a reachable segment;
- // a follower on the other side of a wall receives its own recovery route.
+ // followers on the other side of a wall share a local recovery corridor.
  for(let next=Math.min(path.length-1,i+2);next>=i;next--){const p=path[next];if(this.clearSegment(a.x,a.y,p.x,p.y,r)){nav.sharedIndex=next;nav.sharedPoint=p;nav.sharedAt=this.time+.12;this.stats.sharedHits++;if(Math.hypot(a.x-p.x,a.y-p.y)<22&&next<path.length-1&&this.clearSegment(a.x,a.y,path[next+1].x,path[next+1].y,r))nav.sharedIndex++;return p}}
+ // A follower can slide away from the corridor while the shared request is
+ // being solved. Rejoin a reachable earlier waypoint before trying to turn
+ // across a river or wall; proximity alone does not make that turn safe.
+ for(let previous=i-1;previous>=Math.max(0,i-8);previous--){const p=path[previous];if(this.clearSegment(a.x,a.y,p.x,p.y,r)){nav.sharedIndex=previous;nav.sharedPoint=p;nav.sharedAt=this.time+.12;this.stats.sharedHits++;return p}}
  return null;
  }
  steer(a,target,r,dt){
@@ -171,11 +182,17 @@ class Navigation {
  const moved2=(a.x-nav.lastX)**2+(a.y-nav.lastY)**2;nav.stuck=moved2<.0064?nav.stuck+dt:Math.max(0,nav.stuck-dt*2);nav.lastX=a.x;nav.lastY=a.y;
  const goalMoved=Math.hypot(target.x-nav.goal.x,target.y-nav.goal.y)>90;
  if(nav.revision!==this.revision||nav.profile!==profile){nav.path=[];nav.revision=this.revision;nav.directAt=-1;nav.profile=profile}
- if(this.time>=nav.directAt||!nav.directGoal||Math.hypot(target.x-nav.directGoal.x,target.y-nav.directGoal.y)>35){nav.direct=this.preferredSegment(a.x,a.y,target.x,target.y,r,profile);nav.directAt=this.time+.18;nav.directGoal={...target}}
+ if(this.time>=nav.directAt||!nav.directGoal||Math.hypot(target.x-nav.directGoal.x,target.y-nav.directGoal.y)>35){nav.direct=this.preferredSegment(a.x,a.y,target.x,target.y,r,profile);nav.directAt=this.time+(a._simTier===2?.65:a._simTier===1?.28:.18);nav.directGoal={...target}}
  if(nav.direct){nav.path=[];nav.goal={...target};nav.revision=this.revision;return target}
  if(!profile&&a.navCohort&&nav.stuck<1.4){const point=this._cohortPoint(a,target,r,nav);if(point){nav.corridorMiss=0;return point}nav.corridorMiss=(nav.corridorMiss||0)+dt}
  const priority=a._navPriority??a.navPriority??(a.id==='king'?0:a.state==='combat'||a.state==='charge'?1:nav.stuck>.8?2:a.id?.startsWith('ape')?3:a.id?.startsWith('human')?4:5);
  const waitForShared=!profile&&a.navCohort&&this.cohorts.has(a.navCohort)&&nav.stuck<1.4&&(nav.corridorMiss||0)<.8;
+ if(!profile&&a.id?.startsWith('ape')&&!waitForShared){
+ const recoveryId=['recovery',Math.floor(a.x/84),Math.floor(a.y/84),Math.floor(target.x/160),Math.floor(target.y/160),r].join(':');
+ this.recoveryPath(a,target,r,priority);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point)return point;
+ // Immediate collision-safe local steering continues while the cohort waits.
+ return target;
+ }
  if(!waitForShared&&(nav.revision!==this.revision||goalMoved||nav.stuck>.8||!nav.path.length)&&this.time>=nav.retry){
  // Retain the original request's start while waiting; sliding one grid cell
  // must not leave an unbounded trail of abandoned requests in the queue.

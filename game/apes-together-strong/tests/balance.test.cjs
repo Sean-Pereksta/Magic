@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 function game(){const c=vm.createContext({console,Math,Map,Set});c.window=c;for(const f of ['world','navigation','settlements','forces','sim'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f+'.js'),'utf8'),c);const g=new c.ATSGame('balance');g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world.ensure=()=>{};g.world.terrain=()=>({biome:'forest',water:false});g.world.lineClear=()=>true;g.world.getSites=()=>[];g.spawnSites=()=>{};return{g,c}}
-function colony(n){const {g,c}=game();for(let i=0;i<n;i++)g.makeApe(i,0,'follow');g.food=n*10;g.command('settleAll');const s=g.settlements[0];Object.assign(s,{food:n*10,housing:n+48,wood:120,gardens:Math.ceil(n/8),suitability:{fertility:1,wood:24,capacity:500,water:true}});return{g,c,s}}
+function colony(n){const {g,c}=game();for(let i=0;i<n;i++)g.makeApe(i,0,'follow');g.food=n*10;g.command('settleAll');const s=g.settlements[0];Object.assign(s,{food:n*10,housing:n+48,wood:120,gardens:Math.ceil(n/8),suitability:{fertility:1,wood:24,capacity:c.MAX_APE_POPULATION,water:true}});delete s.structuresVersion;g.colonies.init(s);return{g,c,s}}
 function seconds(g,s,n){for(let i=0;i<n;i++){g.time++;g.refreshSettlements();g.colonies.tick(s);g.navigation.beginFrame(g.time);for(const a of g.apes)if(a.state==='young')g.updateApe(a,1)}g.refreshSettlements()}
 test('healthy adults take 2–4 ordinary weapon hits; scouts are tougher',()=>{
  for(const [weapon,hits]of [['pistol',4],['rifle',3],['assault',4],['machine',4],['shotgun',2]]){const {g}=game(),a=g.makeApe(0,0),h=g.makeHuman(200,0,null);h.kind=weapon;let shots=0;while(a.hp>0){g.bullets=[];g.shoot(h,a);for(const b of g.bullets)g.hurt(a,b.damage,h);shots++;assert.ok(shots<6)}assert.equal(shots,hits,weapon)}
@@ -21,10 +21,10 @@ test('larger communities raise more offspring and the young become useful adults
  const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=3);assert.ok(large.g.stats.born>=small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);
 });
 test('families still require adult parents, food, safety and available housing',()=>{
- for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born,0,blocked)}
+ for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;delete s.structuresVersion;g.colonies.init(s);s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born,0,blocked)}
 });
-test('births respect the global 600-ape limit',()=>{
- const {g,s}=colony(598);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,600);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,600);assert.equal(g.stats.born,2);
+test('births respect the shared ape population limit',()=>{
+ const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);
 });
 test('military facilities hold substantially more captives with matching cage totals',()=>{
  const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[4,7],hunter:[10,18],research:[20,36],checkpoint:[18,32],prison:[40,70],detention:[80,120],experimental:[120,180],forwardBase:[32,60],armoredDepot:[36,70],regionalCommand:[120,180]};

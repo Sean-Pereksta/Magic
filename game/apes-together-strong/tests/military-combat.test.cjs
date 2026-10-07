@@ -61,10 +61,10 @@ test('shell impact deals splash damage and brief knockback while a blocked impac
 });
 test('APC troops are prepaid, unload once into a shared squad, and die with an undeployed transport',()=>{
  const {g}=arena(),site={id:'base',x:0,y:0,tier:4,strength:20,objects:[]};g.world.sites.set(site.id,site);
- const v=vehicle(g,'apc',0,0,8);v.siteId=site.id;v.target={x:400,y:0};
+ const v=vehicle(g,'apc',0,0,8);v.siteId=site.id;v.operationId='field-pursuit';v.target={x:400,y:0};
  for(let i=0;i<20;i++)g.forces.dismount(v,.36);
  assert.equal(g.humans.length,8);assert.equal(v.troops,0);assert.equal(site.strength,20);assert.equal(g.forces.squads.size,1);
- assert.ok(g.humans.every(h=>h.responseAllocated&&h.squadId===v.dismountSquadId));assert.equal(g.humans[0].role,'leader');
+ assert.ok(g.humans.every(h=>h.responseAllocated&&h.squadId===v.dismountSquadId&&h.operationId==='field-pursuit'));assert.equal(g.humans[0].role,'leader');
  g.hurt(g.humans[1],1000,{x:0,y:0});assert.equal(site.strength,20);
  const doomed=vehicle(g,'truck',100,0,12);g.hurt(doomed,1000,{x:200,y:0});assert.equal(doomed.troops,0);assert.equal(doomed.troopsLost,12);
  const count=g.humans.length;g.forces.dismount(doomed,1);assert.equal(g.humans.length,count);
@@ -74,14 +74,14 @@ test('military squads hold against 40 visible apes, withdraw against 80, and nev
  const humans=[];for(let i=0;i<4;i++){const h=g.makeHuman(0,i*10,null);g.forces.assign(h,null,i===0?'leader':'rifleman');h.state='combat';h.targetId='king';h.lastSeenAt=0;humans.push(h)}
  const s=g.forces.createSquad(humans,{x:250,y:0});s.nextReport=1000;
  for(let i=0;i<39;i++)g.makeApe(240+i%10,i%6,'hold');refresh(g);g.forces.thinkSquad(s);assert.equal(s.order,'Suppress');
- for(let i=0;i<40;i++)g.makeApe(240+i%10,i%6,'hold');refresh(g);g.time=.6;g.forces.thinkSquad(s);assert.equal(s.order,'Retreat');
+ for(let i=0;i<40;i++)g.makeApe(240+i%10,i%6,'hold');refresh(g);g.time=.6;g.forces.thinkSquad(s);assert.equal(s.order,'Fallback');
  const reported={...s.objective};g.king.x=900;g.world.lineClear=()=>false;g.visibilityCache.clear();g.time=7;refresh(g);g.forces.thinkSquad(s);assert.equal(s.order,'Search');assert.equal(s.density,0);assert.deepEqual({...s.objective},reported);
 });
 test('an exhausted LOS budget retains the last confirmed density and withdrawal order',()=>{
  const {g}=arena();g.king.x=250;g.king.y=0;const h=g.makeHuman(0,0,null);g.forces.assign(h,null,'rifleman');h.state='combat';h.targetId='king';h.lastSeenAt=0;
- const s=g.forces.createSquad([h],{x:250,y:0});s.density=100;s.order='Retreat';s.nextReport=1000;
+ const s=g.forces.createSquad([h],{x:250,y:0});s.density=100;s.order='Fallback';s.nextReport=1000;
  for(let i=0;i<80;i++)g.makeApe(250+i%8,i%9,'hold');refresh(g);g.performance.losRemaining=0;g.lineVisible=(observer,target)=>target.id==='king'?true:null;
- g.forces.thinkSquad(s);assert.equal(s.density,100);assert.equal(s.order,'Retreat');
+ g.forces.thinkSquad(s);assert.equal(s.density,100);assert.equal(s.order,'Fallback');
 });
 test('leader loss briefly breaks coordination and military wounds, transport cargo, and squad reports survive a legacy save',()=>{
  const {c,g}=arena(),leader=g.makeHuman(0,0,null),soldier=g.makeHuman(25,0,null);g.forces.assign(leader,null,'leader');g.forces.assign(soldier,null,'ranger');
