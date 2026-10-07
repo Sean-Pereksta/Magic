@@ -100,3 +100,116 @@ and past rescue statistics retain their history.
 
 The new regional layout applies to newly generated chunks. Already explored
 areas in imported saves keep their existing structures.
+
+## Performance and stress checks
+
+The simulation keeps full detail around the king, active combat, attacked
+settlements, alarms and recent rescues. Nearby actors update at 15 Hz with
+visual movement interpolation; distant actors advance strategic state at
+2 Hz. Family growth, searching and raid journeys continue while distant.
+An exceptionally trapped, separated follower can queue a low-priority recovery
+corridor. Cohorts share routes while individuals retain local steering,
+collision clearance and independent combat. Separation considers up to eight
+nearby neighbors rather than every member of a dense clump.
+
+Each fixed simulation step permits 32 AI think operations (at most 20 from
+apes, reserving capacity for humans), 96 perception visibility tests, three
+new A* searches, 192 A* node expansions, and three small world-generation
+stages. A search's preparation, expansion and smoothing resume across steps;
+the navigation queue is capped at 384 requests. Settlement economy ticks run
+at 1 Hz with staggered deadlines and at most two settlements processed per
+step. Collision uses cached spatial data and water checks; queued generation
+prioritizes the king's movement direction. Distant chunks retain persistent
+state while their detailed objects can sleep, and populated settlements and
+active combat pin their collision areas.
+
+Rendering culls actors, scenery, projectiles, corpses and effects with padded
+bounds. Terrain chunks use at most eight million cached pixels, with two
+cache builds per draw; trees, rocks, food, characters, light beams, glows and
+static corpses reuse bounded sprite caches. Lighting geometry is staggered
+with at most 96 rendering visibility tests per draw; illumination used by
+gameplay remains independent. Bullet collision sweeps the complete traveled
+segment and respects walls, trunks and water. Bullet, effect and noise pools
+reuse expired objects. The effect budget prioritizes nearby combat, commands
+and warnings while merging redundant distant impacts.
+
+The fixed timestep is 1/60 second. A rendering frame runs at most three
+simulation steps and discards excessive catch-up time after a stall. A hidden
+tab stops simulation, rendering and audio updates and pauses the run. Sustained
+slow frames progressively reduce distant visual work; detail restores gradually
+after recovery. Close combat, controls, warning cues and spotlight mechanics
+retain their gameplay behavior.
+
+Press **F3** or add `?perf` to the game URL to reveal the development monitor.
+It reports frame, simulation, rendering and navigation time; active and
+simulated actors; visible actors; navigation work and cache hits; projectiles,
+effects, slow frames and the current quality level. Developers can also read
+`ATS.performance` or call `ATS.debugPerformance(true)` in the browser console.
+
+```sh
+npm run bench:apes -- --frames 120 --output simulation.json
+npm run bench:apes -- --scenario B --frames 120 --profile
+npm run bench:apes -- --scenario D --frames 1800 --output soak.json
+npm run bench:apes:browser -- --frames 120 --output browser.json
+```
+
+The browser benchmark needs Playwright and Chromium, like the smoke test;
+`CHROMIUM_PATH` selects an installed browser. `QA_ARTIFACT_DIR` captures all
+six scenes as PNGs. Both benchmarks accept `--source <module-directory>` for
+comparison with a separate baseline checkout, and `--scenario A`, `D`, or
+`ABCDEF` selects scenes. The default length is 360 steps. `--profile` wraps
+simulation methods with inclusive timing, so nested method totals overlap.
+
+All six fixtures use the same world seed and reset actor randomness separately.
+A/B retain 100/200 followers in dense generated woodland; C runs 150 apes
+against 80 humans; D runs 200 apes against 150 humans with four vehicles,
+two helicopters and an active alarm; E includes 180 settlement residents,
+100 raiders and two vehicles. Combat actors receive high health only inside
+the fixture so the workload stays populated while ordinary damage, weapons,
+roles and alarms execute. F advances the king one chunk every half-second
+to deliberately saturate streaming and distant navigation. This extreme
+synthetic exploration is separate from ordinary player movement.
+
+Representative development measurements on October 7, 2026 used Windows,
+Chrome 154 in headless mode, a 1440×900 canvas at DPR 1, full visuals and
+120 steps per scene. The browser benchmark measures one simulation step plus
+one real canvas draw per animation frame, with automatic quality reduction
+disabled. The baseline was captured before the optimization pass.
+
+| Scene | Browser work p95 before | Browser work p95 after | After max | After mean animation-frame interval |
+| --- | ---: | ---: | ---: | ---: |
+| A: 100 forest followers | 39.7 ms | 8.6 ms | 38.4 ms | 21.4 ms |
+| B: 200 forest followers | 62.8 ms | 11.8 ms | 14.8 ms | 17.8 ms |
+| C: 150 vs 80 | 21.6 ms | 12.0 ms | 22.1 ms | 20.3 ms |
+| D: 200 vs 150, vehicles, alarms | 26.8 ms | 14.1 ms | 25.5 ms | 26.3 ms |
+| E: settlement raid | 31.0 ms | 14.4 ms | 23.6 ms | 24.2 ms |
+| F: rapid streaming | 530.1 ms | 7.4 ms | 9.4 ms | 17.5 ms |
+
+Canvas work time excludes browser compositing, scheduling and display latency;
+the animation-frame intervals are reported separately. These measurements
+show lower recurring work and removal of the severe exploration stalls, and
+do not establish universal 60 FPS on every browser or device. The cold first
+forest frame remains the largest measured optimized canvas-work spike.
+
+The separate Node VM simulation benchmark measured p95 times of
+226/378/85/113/112/4263 ms before versus approximately
+13/18/16/22/14/9 ms after for A–F. VM timing differs substantially from native
+browser execution and must not be converted into a browser FPS claim.
+In the instrumented 200-ape forest, blocked queries fell from about
+1.93 million to 50,810 over 120 steps, and A* starts fell from 185 to 14.
+
+A 30-second simulation-only D soak retained all 200 apes and 150 humans.
+Mean simulation work was 10.2 ms, p95 13.6 ms and maximum 48.1 ms; the
+first and last 60-step means were 16.6 and 10.2 ms. Peak counts were 52
+projectiles, 214 effects and 67 queued routes. Work stayed within three
+A* starts, 192 expansion steps, 32 AI thinks and 96 perception tests per tick.
+This verifies the sustained fixture without implying an indefinite soak.
+
+The ordinary `test:apes` suite and existing GitHub workflow include the A–F
+operation-budget checks, retained populations, real combat damage, distant
+growth and wake-up, remote vehicle combat, fair human perception, swept
+projectiles, pool reuse, quality recovery and saved strategic state. The
+browser smoke test also checks hidden-tab pause, the F3 monitor and a real
+250 ms main-thread stall. Hardware-specific maximum tick gates are optional
+through `ATS_MAX_TICK_MS`; portable tests enforce operation ceilings instead
+of an unreliable universal wall-clock threshold.
