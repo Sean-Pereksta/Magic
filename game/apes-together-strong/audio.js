@@ -18,6 +18,7 @@
       this.beatTime = 0;
       this.insectTime = 0;
       this.rotorTime = 0;
+      this.engineTime = 0;
       this.stepTime = 0;
       this.natureTime = 0;
       this.step = 0;
@@ -187,7 +188,9 @@
         gun: 0.055, attack: 0.07, hit: 0.11, death: 0.25, smash: 0.2,
         alarm: 1.7, radio: 0.9, heli: 0.38, rescue: 0.25, birth: 0.3,
         food: 0.18, call: 0.65, charge: 0.6, recall: 0.65,
-        hold: 0.5, settle: 0.5, patrol: 0.5, fall: 0.16, warning: 0.45, grenade: 0.3
+        hold: 0.5, settle: 0.5, patrol: 0.5, fall: 0.16, warning: 0.45, grenade: 0.3,
+        cannon: 0.35, tank: 0.65, apc: 0.8, truck: 0.85, military: 2.4, mobilization: 2.4,
+        rumble: 0.65, recon: 0.4, scout: 0.4, gunship: 0.4, overrun: 0.8
       };
       if (!Object.prototype.hasOwnProperty.call(intervals, name)) return;
       if (now - (this.last[name] ?? -100) < intervals[name]) return;
@@ -258,6 +261,44 @@
             this._noise(at(.12, .15, { filter: 'highpass', cutoff: 2300 }));
             this._tone(330, 170, at(.13, .1, { delay: .08, wave: 'triangle' }));
             break;
+          case 'cannon':
+            this._noise(at(.11, .72, { filter: 'lowpass', cutoff: 1700, endCutoff: 420, attack: .002 }));
+            this._tone(92, 24, at(.7, .44, { attack: .003 }));
+            this._noise(at(1.05, .32, { filter: 'lowpass', cutoff: 480, endCutoff: 90, delay: .04, attack: .03 }));
+            this._noise(at(.22, .15, { filter: 'highpass', cutoff: 2100, delay: .09 }));
+            break;
+          case 'tank':
+            this._tone(48, 37, at(.76, .18, { wave: 'sawtooth', filter: 'lowpass', cutoff: 150, attack: .09 }));
+            this._noise(at(.65, .16, { filter: 'bandpass', cutoff: 220, q: .7, attack: .06 }));
+            for (let i = 0; i < 3; i++) this._noise(at(.075, .075, { delay: i * .17, filter: 'bandpass', cutoff: 940, q: 1.4 }));
+            break;
+          case 'apc':
+            this._tone(67, 49, at(.75, .14, { wave: 'sawtooth', filter: 'lowpass', cutoff: 260, attack: .07 }));
+            this._noise(at(.54, .1, { filter: 'bandpass', cutoff: 390, q: .7, attack: .05 }));
+            break;
+          case 'truck':
+            this._tone(78, 55, at(.8, .12, { wave: 'sawtooth', filter: 'lowpass', cutoff: 310, attack: .1 }));
+            this._noise(at(.65, .075, { filter: 'lowpass', cutoff: 590, attack: .08 }));
+            break;
+          case 'rumble':
+            this._tone(44, 22, at(.95, .18, { attack: .06 }));
+            this._noise(at(.8, .17, { filter: 'lowpass', cutoff: 330, endCutoff: 90, attack: .04 }));
+            break;
+          case 'military':
+          case 'mobilization':
+            // Escalation adds a low command pulse and radio acknowledgement.
+            // Strength encodes the response stage without extra audio assets.
+            for (let i = 0; i < (s > 1 ? 3 : 2); i++) {
+              this._tone(82 - i * 9, 37, at(.4, .21, { delay: i * .25, attack: .016 }));
+              this._noise(at(.12, .065, { delay: i * .25, filter: 'bandpass', cutoff: 920 }));
+            }
+            this._noise(at(.28, .12, { delay: .68, filter: 'bandpass', cutoff: 1650, q: 2 }));
+            this._tone(s > 1 ? 680 : 890, 540, at(.19, .09, { delay: .73, wave: 'triangle' }));
+            break;
+          case 'overrun':
+            this._noise(at(.25, .28, { filter: 'bandpass', cutoff: 1850, endCutoff: 450 }));
+            this._tone(105, 36, at(.42, .22));
+            break;
           case 'birth':
             this._tone(360, 490, at(0.27, 0.12, { wave: 'triangle' }));
             this._tone(480, 370, at(0.3, 0.08, { delay: 0.14, wave: 'triangle' }));
@@ -267,9 +308,13 @@
             this._noise(at(0.08, 0.1, { filter: 'lowpass', cutoff: 800 }));
             break;
           case 'heli':
+          case 'recon':
+          case 'scout':
+          case 'gunship':
             for (let i = 0; i < 4; i++) {
-              this._noise(at(0.075, 0.18, { delay: i * 0.075, filter: 'lowpass', cutoff: 350, attack: 0.006 }));
-              this._tone(43, 35, at(0.085, 0.06, { delay: i * 0.075 }));
+              const heavy = name === 'gunship', interval = heavy ? .095 : .075;
+              this._noise(at(heavy ? .105 : .075, heavy ? .24 : .18, { delay: i * interval, filter: 'lowpass', cutoff: name === 'recon' ? 480 : heavy ? 280 : 350, attack: .006 }));
+              this._tone(heavy ? 34 : 43, heavy ? 26 : 35, at(.095, heavy ? .095 : .06, { delay: i * interval }));
             }
             break;
         }
@@ -330,9 +375,40 @@
           this._tone(pitch, pitch * 0.98, { duration: 0.07, gain: 0.015, wave: 'sine', pan });
           this._tone(pitch, pitch * 0.98, { duration: 0.07, gain: 0.013, wave: 'sine', pan, delay: 0.1 });
         }
-        if ((game.helicopterActive || game.heliActive) && now >= this.rotorTime) {
-          this.rotorTime = now + 0.55;
-          this.play('heli', 0.35);
+        const king = game.king;
+        // Sample bounded actor lists and sound only the nearest engine/rotor.
+        // A distant armored column never consumes the combat voice budget.
+        if (king && now >= this.engineTime) {
+          this.engineTime = now + .78;
+          let nearest = null, distance = 620 * 620;
+          const vehicles = game.vehicles || [];
+          for (let i = 0; i < Math.min(24, vehicles.length); i++) {
+            const vehicle = vehicles[i];
+            if (!vehicle || vehicle.hp <= 0 || vehicle.engineDamage >= 100) continue;
+            const kind = vehicle.vehicleClass || vehicle.kind;
+            if (!['tank', 'apc', 'ifv', 'truck'].includes(kind)) continue;
+            const d = (vehicle.x - king.x) ** 2 + (vehicle.y - king.y) ** 2;
+            if (d < distance) { distance = d; nearest = vehicle; }
+          }
+          if (nearest) {
+            const kind = nearest.vehicleClass || nearest.kind;
+            this.play(kind === 'ifv' ? 'apc' : kind, .16 + (1 - Math.sqrt(distance) / 620) * .55,
+              this._clamp((nearest.x - king.x - nearest.y + king.y) / 650, -.85, .85));
+          }
+        }
+        if (king && now >= this.rotorTime) {
+          this.rotorTime = now + .55;
+          let nearest = null, distance = 1000 * 1000;
+          const helicopters = game.helis || [];
+          for (let i = 0; i < Math.min(12, helicopters.length); i++) {
+            const heli = helicopters[i];
+            if (!heli || heli.hp <= 0) continue;
+            const d = (heli.x - king.x) ** 2 + (heli.y - king.y) ** 2;
+            if (d < distance) { distance = d; nearest = heli; }
+          }
+          if (nearest) this.play(['recon', 'scout', 'gunship'].includes(nearest.kind) ? nearest.kind : 'heli',
+            .18 + (1 - Math.sqrt(distance) / 1000) * .45, this._clamp((nearest.x - king.x - nearest.y + king.y) / 950, -.8, .8));
+          else if (game.helicopterActive || game.heliActive) this.play('heli', .35);
         }
       } catch (_) { /* Stale game objects and unavailable audio are harmless. */ }
     }
