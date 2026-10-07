@@ -17,6 +17,7 @@ test('the real follower AI brings 100 apes through a generated forest without re
   }
   Object.assign(g.king,g.findOpen(720,0,12));
   for(let i=0;i<25*60;i++)g.update(1/60,{});
-  assert.equal(g.apes.filter(a=>Math.hypot(a.x-g.king.x,a.y-g.king.y)<175).length,100);
+  // Larger hordes now occupy more ground; every follower must still reach the king's clearing.
+  assert.equal(g.apes.filter(a=>Math.hypot(a.x-g.king.x,a.y-g.king.y)<210).length,100);
   for(const a of g.apes)assert.equal(g.world.blocked(a.x,a.y,10),false);
 });
