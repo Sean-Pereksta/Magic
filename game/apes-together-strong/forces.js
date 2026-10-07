@@ -15,7 +15,7 @@ const ROLES={
 };
 class Forces {
  constructor(game){this.game=game;this.hazards=[]}
- assign(h,site,requested){if(h.role&&ROLES[h.role])return;const tier=Math.max(site?.tier||1,this.game.tier-1),n=ATSUtil.hash(h.id+this.game.seed)%100;let role=requested||'guard';if(!requested){if(tier<=1)role=n<20?'tracker':n<32?'officer':'guard';else if(tier===2)role=n<20?'shield':n<40?'tracker':n<55?'officer':n<70?'medic':n<82?'sniper':'guard';else role=['shield','sniper','grenadier','medic','officer','flanker','gunner','tracker'][n%8]}
+ assign(h,site,requested){if(h.role&&ROLES[h.role])return;const tier=Math.max(site?.tier||1,this.game.tier-1),n=ATSUtil.hash(h.id+this.game.seed)%100;let role=requested||'guard';if(!requested){if(tier<=1)role=n<20?'tracker':n<32?'officer':'guard';else if(tier===2)role=n<20?'shield':n<40?'tracker':n<55?'officer':n<70?'medic':'guard';else role=['shield','sniper','grenadier','medic','officer','flanker','gunner','tracker'][n%8]}
  const spec=ROLES[role];h.role=role;h.kind=spec.weapon;h.hp=h.maxHp=spec.hp;h.hasRadio=role==='officer'||h.hasRadio;h.specialAt=this.game.time+4+Math.random()*4;h.flankSide=ATSUtil.hash(h.id)%2?1:-1;h.label=spec.label;
  }
  range(h){return ROLES[h.role]?.range||(h.kind==='pistol'?230:300)}

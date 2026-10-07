@@ -3,6 +3,7 @@
 const TAU=Math.PI*2, clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const angleDiff=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const FOLLOW=new Set(['follow','charge','hold']), tierNames=['Hunters','Local security','Military response','Regional suppression','Extermination'];
+const APE_HP=120,SCOUT_HP=150,YOUNG_HP=60,GROW_UP=35;
 class Spatial{
  constructor(size=120){this.size=size;this.cells=new Map()}
  rebuild(items){this.cells.clear();for(const a of items){if(a.hp<=0)continue;const k=Math.floor(a.x/this.size)+','+Math.floor(a.y/this.size);if(!this.cells.has(k))this.cells.set(k,[]);this.cells.get(k).push(a)}}
@@ -16,7 +17,7 @@ class Game{
  }
  get followers(){return this.apes.filter(a=>a.hp>0&&FOLLOW.has(a.state))}
  get population(){return this.apes.filter(a=>a.hp>0).length}
- get score(){let s=this.stats;return Math.round(s.freed*120+s.born*200+s.largestHorde*35+s.humans*40+s.structures*35+s.bases*1200+s.prisons*500+s.settlements*650+s.territory*15+this.time*2+this.settlements.filter(x=>x.population>0).length*400)}
+ get score(){let s=this.stats;return Math.round(s.freed*250+s.born*300+s.largestHorde*90+s.largestSettlement*60+s.humans*40+s.structures*35+s.bases*1800+s.prisons*500+s.settlements*650+s.territory*15+this.time*2+this.settlements.filter(x=>x.population>0).length*400)}
  get title(){return this.score>90000?'The Unbroken Crown':this.score>45000?'Ape Warlord':this.score>22000?'Lord of the Forest':this.score>10000?'Tribal King':this.stats.freed>5?'Liberator':'Lonely Wanderer'}
  notify(text,color='gold'){this.messages.push({text,color,time:this.time});if(this.messages.length>25)this.messages.shift();this.hooks.toast?.(text,color)}
  sound(name,strength=1,x=this.king.x){this.hooks.sound?.(name,strength,clamp((x-this.king.x)/550,-1,1))}
@@ -44,7 +45,7 @@ class Game{
  let s=this.settlements.find(s=>s.population>0&&dist(s,this.king)<240);if(!s){s={id:'settlement-'+this.nextId++,x:this.king.x,y:this.king.y,name:['Redwood','Moonroot','Laurel','Riverbend','Ashgrove','Highbranch'][this.settlements.length%6]+(this.settlements.length>=6?' '+(this.settlements.length+1):''),level:1,radius:90,food:18,age:0,known:false,attack:false,population:0,birthTimer:0,starveTimer:0,lastRaid:-120,nextWarn:0,foragers:0,scouts:0,children:0};this.settlements.push(s);this.stats.settlements++;this.notify(s.name+' has been founded.')}
  for(const a of list){a.state='settled';a.settlementId=s.id;a.homeX=s.x;a.homeY=s.y;n++}let transfer=Math.min(this.food,Math.max(12,n*2));this.food-=transfer;s.food+=transfer;wave('#93caa0');this.sound('settle');this.notify(n+' apes settle. Food transferred: '+Math.floor(transfer)+'.');this.refreshSettlements();this.colonies.init(s);
  }else if(cmd==='patrol'){
- for(const a of nearby){if(a.state==='settled'){a.state='scout';a.maxHp=65;a.hp=Math.max(a.hp,65);a.speed=104;n++;if(n>=Math.max(2,Math.floor(nearby.length/3)))break}}
+ for(const a of nearby){if(a.state==='settled'){a.state='scout';a.maxHp=SCOUT_HP;a.hp=Math.max(a.hp,SCOUT_HP);a.speed=104;n++;if(n>=Math.max(2,Math.floor(nearby.length/3)))break}}
  wave('#92c5ec');this.sound('patrol');this.notify(n?n+' scouts guard the settlement approaches.':'Visit settled apes to assign scouts.');this.refreshSettlements();
  }return true;
  }
@@ -53,7 +54,8 @@ class Game{
  }
  makeApe(x,y,state='free',settlementId=null,young=false){
  ({x,y}=this.findOpen(x,y));
- const p={id:'ape-'+this.nextId++,x,y,hp:young?22:48,maxHp:young?22:48,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.apes.push(p);return p;
+ const hp=young?YOUNG_HP:state==='scout'?SCOUT_HP:APE_HP;
+ const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.apes.push(p);return p;
  }
  makeHuman(x,y,site,kind=null){
  ({x,y}=this.findOpen(x,y));
@@ -143,18 +145,18 @@ class Game{
  if(o.type!=='cage'||o.siteId!=='opening-rescue')this.noise(o.x,o.y,180,'smash');
  if(o.hp<=0){o.hp=0;o.dead=true;o.solid=false;this.world.navRevision++;this.stats.structures++;this.sound('smash',1,o.x);this.effect('smoke',o.x,o.y,{color:'#b29d78',life:1.4});
  let s=o.siteId?this.world.sites.get(o.siteId):null;
- if(o.type==='cage'){let num=o.count||o.prisoners||3;for(let i=0;i<num&&this.population<600;i++){const a=this.makeApe(o.x+(Math.random()-.5)*55,o.y+(Math.random()-.5)*55);if(this.world.blocked(a.x,a.y,10)){a.x=o.x;a.y=o.y}}this.stats.freed+=num;this.stats.prisons++;this.sound('rescue');this.notify(num+' apes are free. Roar [Q] to gather them.','green');this.addIntel(o.x,o.y,4);if(s){s.count=Math.max(0,s.count-num);s.rescued=s.count===0}}
+ if(o.type==='cage'){const captives=o.count||o.prisoners||3,num=Math.min(captives,600-this.population);for(let i=0;i<num;i++){const a=this.makeApe(o.x+(Math.random()-.5)*55,o.y+(Math.random()-.5)*55);if(this.world.blocked(a.x,a.y,10)){a.x=o.x;a.y=o.y}}this.stats.freed+=num;this.stats.prisons++;this.sound('rescue');this.notify(num+' apes join the free tribe. Roar [Q] to gather them.','green');this.addIntel(o.x,o.y,4);if(s){s.count=Math.max(0,s.count-captives);s.rescued=s.count===0}}
  else if(o.type==='radio'){this.notify('Radio tower down. Regional reinforcements cut.','green');if(s)s.radioDown=true}
  else if(o.type==='alarm'){if(s){s.alarm=false;s.alarmDown=true}this.notify('The alarm station is silent.','green')}
  else if(o.type==='tower'){this.notify('Searchlight destroyed. Darkness returns.','green')}
  else if(o.type==='barracks'){if(s){s.strength=Math.floor(s.strength*.35);s.barracksDown=true}this.notify('Barracks destroyed. Local operations collapse.','green')}
  else if(o.type==='depot'){if(s)s.depotDown=true;this.notify('Vehicle depot destroyed. Mobile raids reduced.','green')}
  else if(o.type==='fuel'){if(s)s.fuelDown=true;for(const h of this.humanGrid.near(o.x,o.y,120))this.hurt(h,80,attacker);this.effect('wave',o.x,o.y,{color:'#e6a465',life:.65,range:120})}
- else if(o.type==='house'){this.food+=15;this.notify('Human supplies seized: +15 food.','green')}
+ else if(o.type==='house'){this.food+=35;this.notify('Human supplies seized: +35 food.','green')}
  this.checkSite(s);
  }
  }
- checkSite(s){if(!s||s.cleared)return;let structural=s.objects.map(id=>this.world.objects.get(id)).filter(Boolean);if(!structural.some(o=>o.type==='cage'&&!o.dead)&&!this.humans.some(h=>h.hp>0&&h.siteId===s.id)&&!(s.sleepingHumans||[]).some(h=>h.hp>0)&&(!structural.some(o=>o.type==='barracks'&&!o.dead)||s.strength<=0)){s.cleared=true;s.alarm=false;s.strength=0;this.stats.bases++;this.notify(s.name+' liberated. The forest grows quiet.','green')}}
+ checkSite(s){if(!s||s.cleared)return;let structural=s.objects.map(id=>this.world.objects.get(id)).filter(Boolean);if(!structural.some(o=>o.type==='cage'&&!o.dead)&&!this.humans.some(h=>h.hp>0&&h.siteId===s.id)&&!(s.sleepingHumans||[]).some(h=>h.hp>0)&&(!structural.some(o=>o.type==='barracks'&&!o.dead)||s.strength<=0)){s.cleared=true;s.alarm=false;s.strength=0;this.stats.bases++;const supplies=s.tier>=2?s.tier*30:0;this.food+=supplies;this.notify(s.name+' liberated.'+(supplies?' +'+supplies+' food seized.':' The forest grows quiet.'),'green')}}
  addIntel(x,y,n){const k=Math.floor(x/768)+','+Math.floor(y/768);const old=this.world.intel.get(k)||{heat:0,lastSeen:0,x,y};if(typeof old==='number'){this.world.intel.set(k,{heat:old+n,lastSeen:this.time,x,y});return}old.heat=Math.min(100,(old.heat||0)+n);old.lastSeen=this.time;old.x=x;old.y=y;this.world.intel.set(k,old)}
  alert(h,kind='shout'){
  const radius=kind==='radio'?1300:kind==='alarm'?900:360;const s=this.world.sites.get(h.siteId);if(kind==='alarm'&&s){s.alarm=true;s.alarmUntil=this.time+45}h.reported=true;this.noise(h.lastX,h.lastY,radius,'alert');this.addIntel(h.lastX,h.lastY,kind==='shout'?3:8);this.lastContact=this.time;
@@ -199,8 +201,8 @@ class Game{
  updateApe(a,dt){
  a.hitTimer=Math.max(0,(a.hitTimer||0)-dt);a.attackTimer=Math.max(0,a.attackTimer-dt);a.attackCD=Math.max(0,a.attackCD-dt);a.moving=false;
  const st=a.settlementId?this.settlements.find(s=>s.id===a.settlementId):null;
- if(st&&dist(a,this.king)>1800&&!st.attack){a.age+=dt;if(a.state==='young'&&a.age>90){a.state='settled';a.hp=a.maxHp=48;a.speed=90}return}
- a.age+=dt;if(a.state==='young'){if(st?.attack){let h=this.humanGrid.near(a.x,a.y,160)[0];if(h){this.move(a,a.x-h.x,a.y-h.y,90,dt);return}}if(a.age>90){a.state='settled';a.hp=a.maxHp=48;a.speed=90;this.effect('text',a.x,a.y,{text:'Grown',color:'#b1d5a0',life:2})}else{if(st){let aa=this.time*.28+a.phase;this.move(a,st.x+Math.cos(aa)*35-a.x,st.y+Math.sin(aa)*35-a.y,a.speed,dt)}return}}
+ if(st&&dist(a,this.king)>1800&&!st.attack){a.age+=dt;if(a.state==='young'&&a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90}return}
+ a.age+=dt;if(a.state==='young'){if(st?.attack){let h=this.humanGrid.near(a.x,a.y,160)[0];if(h){this.move(a,a.x-h.x,a.y-h.y,90,dt);return}}if(a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90;this.effect('text',a.x,a.y,{text:'Grown',color:'#b1d5a0',life:2})}else{if(st){let aa=this.time*.28+a.phase;this.move(a,st.x+Math.cos(aa)*35-a.x,st.y+Math.sin(aa)*35-a.y,a.speed,dt)}return}}
  let enemy=null;let range=a.state==='charge'?185:a.state==='scout'?165:FOLLOW.has(a.state)?90:st?.attack?190:70;
  if(a.state==='follow'&&a.retreatUntil>this.time)range=24;
  for(const h of this.humanGrid.near(a.x,a.y,range)){if(!enemy||dist(a,h)<dist(a,enemy))enemy=h}
@@ -265,8 +267,8 @@ class Game{
  }
  shoot(h,target){
  const difficulty=this.difficulty==='wanderer'?.7:this.difficulty==='relentless'?1.15:1;
- const config={sniper:[2.8,78,1],pistol:[1.25,38,1],rifle:[.9,54,1],assault:[.32,35,1],shotgun:[1.8,22,4],machine:[.2,35,1]}[h.kind]||[1.2,38,1];h.shootTimer=config[0]/difficulty+Math.random()*.12;h.attackTimer=.14;h.animation={kind:'recoil',start:this.time,duration:.2};
- const d=dist(h,target),base=Math.atan2(target.y-h.y,target.x-h.x),error=(Math.random()-.5)*(.07+d/3800);
+ const config={sniper:[2.8,300,1],pistol:[1.25,38,1],rifle:[.9,54,1],assault:[.32,35,1],shotgun:[1.8,22,4],machine:[.2,35,1]}[h.kind]||[1.2,38,1];h.shootTimer=config[0]/difficulty+Math.random()*.12;h.attackTimer=.14;h.animation={kind:'recoil',start:this.time,duration:.2};
+ const d=dist(h,target),base=Math.atan2(target.y-h.y,target.x-h.x),error=(Math.random()-.5)*(h.kind==='sniper'?.025+d/6000:.07+d/3800);
  for(let i=0;i<config[2];i++){const angle=base+error+(i-(config[2]-1)/2)*.06;this.bullets.push({x:h.x+Math.cos(angle)*18,y:h.y+Math.sin(angle)*18,px:h.x,py:h.y,vx:Math.cos(angle)*550,vy:Math.sin(angle)*550,damage:config[1]*difficulty,life:h.kind==='sniper'?1.2:.7,owner:h.id})}
  this.sound('gun',.65,h.x);this.effect('muzzle',h.x+Math.cos(base)*23,h.y+Math.sin(base)*23,{life:.1,color:'#f8da9a'});this.noise(h.x,h.y,300,'gun');
  }
@@ -293,17 +295,28 @@ class Game{
  for(const o of this.world.getObjects(this.king.x,this.king.y,85)){if(o.type==='berry'&&!o.dead&&(o.food??12)>0){const take=Math.min(o.food??12,4);o.food=(o.food??12)-take;this.food+=take;this.sound('food',.3);this.effect('text',o.x,o.y,{text:'+'+take+' food',color:'#a6d29a',life:1});if(o.food<=0){o.dead=true;o.solid=false}}}
  let consume=this.followers.length*.011;this.food=Math.max(0,this.food-consume);
  const n=this.followers.length;if(n>this.stats.largestHorde)this.stats.largestHorde=n;this.stats.territory=this.world.discovered.size;
- let threat=this.time/180+this.stats.freed/26+this.stats.bases*.5+this.stats.humans/45+this.population/85+this.settlements.filter(s=>s.known&&s.population).length*.45;this.tier=clamp(1+Math.floor(threat/2),1,5);this.stats.highestThreat=Math.max(this.tier,this.stats.highestThreat);
+ let threat=this.time/180+this.stats.freed/65+this.stats.bases*.5+this.stats.humans/45+this.population/170+this.settlements.filter(s=>s.known&&s.population).length*.45;this.tier=clamp(1+Math.floor(threat/2),1,5);this.stats.highestThreat=Math.max(this.tier,this.stats.highestThreat);
  for(const s of this.world.sites.values()){if(s.alarm&&s.alarmUntil<this.time)s.alarm=false;if(s.spawned&&!s.cleared&&s.strength>0&&this.time>(s.nextOperation||Infinity)){s.nextOperation=this.time+65+Math.random()*40;let intel=this.world.intel.get(Math.floor(s.x/768)+','+Math.floor(s.y/768));if(intel&&(intel.heat||intel)>5)this.spawnRaid(s,{x:intel.x||s.x,y:intel.y||s.y},false);this.checkSite(s)}}
  for(const [k,v]of this.world.intel){if(typeof v==='object')v.heat=Math.max(0,v.heat-.02)}
  this.heliTimer--;if(this.tier>=3&&this.heliTimer<=0&&this.helis.length<2){this.heliTimer=110+Math.random()*70;const aa=Math.random()*TAU;this.helis.push({id:'heli-'+this.nextId++,x:this.king.x+Math.cos(aa)*1200,y:this.king.y+Math.sin(aa)*1200,dir:aa+Math.PI,phase:0,hp:250,spotX:0,spotY:0,armed:this.tier>=5,shootTimer:1});this.notify('Rotor blades in the distance. Keep to cover.','red')}
  this.apes=this.apes.filter(a=>a.hp>0);this.humans=this.humans.filter(h=>h.hp>0);this.vehicles=this.vehicles.filter(v=>v.hp>0);
  }
  end(){if(this.ended)return;this.ended=true;this.king.hp=0;this.sound('death');this.effect('wave',this.king.x,this.king.y,{color:'#d9be77',range:240,life:2.5});this.notify('The King has fallen.','red');this.hooks.death?.(this)}
- serialize(){return {version:1,seed:this.seed,difficulty:this.difficulty,time:this.time,nextId:this.nextId,king:this.king,apes:this.apes.map(({_nav,...a})=>a),humans:this.humans.map(({_nav,...a})=>a),vehicles:this.vehicles.map(({_nav,...a})=>a),helis:this.helis,settlements:this.settlements,food:this.food,tier:this.tier,stats:this.stats,world:this.world.serialize(),hazards:this.forces.hazards,heliTimer:this.heliTimer,events:this.events,messages:this.messages,ended:this.ended}}
+ migrateBalance(){
+ // Preserve wounds and family progress while bringing an existing run onto the new balance.
+ for(const a of this.apes){const hp=a.state==='young'?YOUNG_HP:a.maxHp===65||a.state==='scout'?SCOUT_HP:APE_HP;a.hp=hp*clamp(a.hp/(a.maxHp||48),0,1);a.maxHp=hp;if(a.state==='young')a.age*=GROW_UP/90}
+ for(const s of this.settlements){const interval=Math.max(35,110/(1+s.population/22));s.birthTimer=Math.min(29,(s.birthTimer||0)/interval*30)}
+ const multipliers={transport:1.75,hunter:2,research:2.5,checkpoint:3,prison:2.5,detention:2.5,experimental:2.5};
+ for(const s of this.world.sites.values()){
+ if(s.cleared||s.id==='opening-rescue')continue;let remaining=0;
+ for(const id of s.objects){const o=this.world.objects.get(id);if(!o||o.dead)continue;if(o.type==='cage'){o.count=Math.ceil((o.count||o.prisoners||3)*(multipliers[s.type]||2.5));o.prisoners=o.count;remaining+=o.count}else if(o.type==='berry'&&o.supply){const total=120+s.tier*45;o.food=total*clamp((o.food||0)/(o.count||1),0,1);o.count=total}}
+ s.count=remaining;
+ }
+ }
+ serialize(){return {version:1,balanceVersion:2,seed:this.seed,difficulty:this.difficulty,time:this.time,nextId:this.nextId,king:this.king,apes:this.apes.map(({_nav,...a})=>a),humans:this.humans.map(({_nav,...a})=>a),vehicles:this.vehicles.map(({_nav,...a})=>a),helis:this.helis,settlements:this.settlements,food:this.food,tier:this.tier,stats:this.stats,world:this.world.serialize(),hazards:this.forces.hazards,heliTimer:this.heliTimer,events:this.events,messages:this.messages,ended:this.ended}}
  static fromJSON(d,hooks={}){
  if(!d||d.version!==1||!d.king||!Array.isArray(d.apes)||!d.world||!d.stats||d.ended||d.king.hp<=0)throw new Error('This is not a living Apes Together Strong run.');
- const g=new Game(d.seed,d.difficulty,hooks);for(const k of ['time','nextId','king','apes','humans','vehicles','helis','settlements','food','tier','stats','heliTimer','events','messages'])if(d[k]!==undefined)g[k]=d[k];g.world=ATSWorld.fromJSON(d.world);g.navigation=new ATSNavigation(g.world);g.forces.hazards=Array.isArray(d.hazards)?d.hazards:[];for(const a of [...g.apes,...g.humans,...g.vehicles])delete a._nav;g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);g.trail=[{x:g.king.x,y:g.king.y}];return g;
+ const g=new Game(d.seed,d.difficulty,hooks);for(const k of ['time','nextId','king','apes','humans','vehicles','helis','settlements','food','tier','stats','heliTimer','events','messages'])if(d[k]!==undefined)g[k]=d[k];g.world=ATSWorld.fromJSON(d.world);if(!d.balanceVersion||d.balanceVersion<2)g.migrateBalance();g.navigation=new ATSNavigation(g.world);g.forces.hazards=Array.isArray(d.hazards)?d.hazards:[];for(const a of [...g.apes,...g.humans,...g.vehicles])delete a._nav;g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);g.trail=[{x:g.king.x,y:g.king.y}];return g;
  }
 }
 window.ATSGame=Game;window.ATSTierNames=tierNames;

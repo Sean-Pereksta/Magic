@@ -55,12 +55,25 @@ npm run test:apes:browser
   circles give 1.8 seconds to escape. Shield guards reward flanking or a swarm.
   Officers illuminate remembered positions with flares. Vehicles, searchlights,
   alarms, finite reinforcements, and helicopters remain part of the hunt.
+- **Balance:** adults have 120 health (roughly 2–4 ordinary hits on Survival),
+  scouts 150, and young 60. Marksmen enter tier 3+ forces and retain warned,
+  lethal shots. Captive counts are substantially higher: checkpoints hold
+  18–32, prisons 40–70, detention camps 80–120, and experimental camps 120–180.
+  Military liberation awards 30 food per site tier once, and camp supplies and
+  ape score rewards are larger. Rescue/population threat contributions are
+  lower so one successful rescue does not immediately trigger a military hunt.
 - **Settlements:** food patches, water, fertility, nearby timber, housing, and
   local human activity affect a camp. Adults forage, build, or guard. Work
   priorities favor growth, food, or defense. Construction produces shelters,
   gardens, lodges, stores, and defenses; population growth requires food, room,
   and safety. Visit to deliver food or recruit adults. Raids consume defenses
   and supplies, and scouts give advance warnings.
+  Lodge targets advance one level per 12 inhabitants, reaching level 10 at 108;
+  upgrades still require building work and timber. Construction and timber
+  gathering are faster, shelters add 12 housing, and gardens produce more food.
+  Each eight adults contribute one family work unit per second toward a birth
+  every 30 units, subject to food, housing, safety, local capacity, and the
+  600-ape limit. Young mature after 35 seconds, including while far from the king.
 - **Presentation:** illustrated night forest, pines and hanging wetland trees,
   orchard trees, reeds, farm rows, landscape details, construction and garden
   visuals, region HUD, map management, and a seeded menu. Procedural audio adds
@@ -80,6 +93,10 @@ Older tree collision and settlement records migrate on load. Navigation caches
 are rebuilt; they are not serialized. Autosave runs every 15 seconds, with
 manual save and JSON export/import in Pause. The king's death removes the
 living checkpoint and records a legacy score.
+
+Balance revision 2 migrates older ape health proportionally, retains family
+progress, and increases rewards in existing unbroken cages once. Cleared camps
+and past rescue statistics retain their history.
 
 The new regional layout applies to newly generated chunks. Already explored
 areas in imported saves keep their existing structures.
