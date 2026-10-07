@@ -7,7 +7,7 @@
   function ensure(){if(!game.player)return null;if(!game.homestead)game.homestead=C.fresh(unique(),Date.now());return game.homestead;}
   const state=()=>ensure(),atHome=()=>A.current()?.id===HOME,inside=()=>atHome()&&A.state().room===1;
   const wallet=()=>({gold:game.gold,materials:{...game.materials}});
-  const context=()=>({atHome:atHome(),atTown:!!A.current()?.town,continent:A.current()?.continent,unlocked:A.state()?.unlocked||['verdant'],visited:A.state()?.visited||[],shadowUnlocked:!!window.AWShadow?.state()?.unlocked,shadowWaystones:window.AWShadow?.state()?.waystones||[]});
+  const context=()=>({atHome:atHome(),atTown:!!A.current()?.town,continent:A.current()?.continent,unlocked:A.state()?.unlocked||['verdant'],visited:A.state()?.visited||[],shadowUnlocked:!!window.AWShadow?.state()?.unlocked,shadowWaystones:window.AWShadow?.state()?.waystones||[],dangerVictory:window.AWWorldDanger?.settlementVictory(),dangerDefenseActive:window.AWWorldDanger?.defenseActive()});
   function now(){return window.AWHomeCloud?.now?.()||Date.now();}
   function snapshot(){return C.settle(C.clone(state()),now());}
   function visual(){const h=state(),t=now();if(!visualCache||visualCache.journeyId!==h.journeyId||visualCache.revision!==h.revision||t-visualAt>=1000){visualCache=snapshot();visualAt=t;}return visualCache;}
@@ -48,7 +48,7 @@
       for(const p of h.plots)object('plot',p.x+(p.tree?1:.5),p.y+(p.tree?1:.5),p.tree?'Orchard tree':'Garden bed',{homeId:p.id});
       for(const i of h.items.filter(i=>!i.packed&&C.items[i.kind].outdoor)){const r=C.footprint(i);object('item',r.x+r.w/2,r.y+r.h/2,C.items[i.kind].name,{homeId:i.id});}
     }
-    game.interactables=objects;game.roomData.scenery=[];game.roomData.cleared=true;window.AWWorld?.invalidate();
+    game.interactables=objects;game.roomData.scenery=[];game.roomData.cleared=true;window.AWWorldDanger?.refreshHomeObjects();window.AWWorld?.invalidate();
   }
   const baseSpawn=spawnRoomEnemies;spawnRoomEnemies=function(room){if(room.campaignNode===HOME){room.cleared=true;return;}return baseSpawn(room);};
   const baseDoor=doorOpen;doorOpen=function(dir){return inside()?false:baseDoor(dir);};
@@ -190,3 +190,4 @@
   const baseRender=render;render=function(){const result=baseRender();if(atHome()&&buildPreview){const {x,y,w,h,valid}=buildPreview;for(let xx=x;xx<x+w;xx++)for(let yy=y;yy<y+h;yy++)tile(xx,yy,valid?'#8ee4b4':'#ee8f9e',.55);}return result;};
   window.AWHome={HOME,state,snapshot,atHome,inside,wallet,context,action,accept,now,rebuild,safe,enterHouse,leaveHouse,startRecall,returnAdventure,travelPortal,pending:()=>pending,setPreview:p=>{buildPreview=p;},unique,acknowledgeFoundation,guiding};
 })();
+

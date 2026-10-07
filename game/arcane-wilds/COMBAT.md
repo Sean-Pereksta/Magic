@@ -1,8 +1,9 @@
 # Enemy abilities and combat affinities
 
 `combat-affinities.js` and `enemy-abilities.js` load after the existing combat,
-regional, squad, spell, and presentation layers, immediately before runtime
-stability. They extend the existing AI, damage pipeline, dodge rewards, and
+regional, squad, spell, and presentation layers. The world danger adapters
+follow them before runtime stability; see [WORLD-DANGER.md](WORLD-DANGER.md).
+They extend the existing AI, damage pipeline, dodge rewards, and
 effect renderer. Enemy health and base speed are unchanged by these modules.
 
 ## Movement attacks
@@ -48,7 +49,11 @@ Existing support AI retains healing, summoning, and summon/decoy aggro.
 | Element | Target tags/status | Damage multiplier |
 | --- | --- | --- |
 | Fire | ICE or PLANT | 1.35 |
+| Fire | UNDEAD / wet target | 1.25 / 0.75 |
 | Frost | FIRE | 1.30 |
+| Water | FIRE | 1.35 |
+| Earth | ARMORED, CONSTRUCT, or a shield | 1.45 |
+| Wind | Enemy currently owns an attack | 1.15 |
 | Lightning | ARMORED / WET | 1.30 / 1.40 |
 | Physical or impact | CONSTRUCT | 1.30 |
 | Arcane | ARCANE with a magical shield | 1.35 |
@@ -78,6 +83,10 @@ no damage behavior.
 
 ## Elite modifiers and effect budgets
 
+Ordinary campaign elites now use the affixes in `danger-combat.js` instead of
+the automatic legacy modifier below. Explicit legacy and Shadow encounters
+retain this original behavior.
+
 Echoing repeats geometry with a fresh warning; jumping/dashing echoes repeat
 ground danger without moving the actor twice. Volatile and Frozen leave warned
 ground hazards, Blinking repositions after an attack, Twin Cast advertises its
@@ -96,3 +105,4 @@ jump/hidden/counter state.
 Run `npm test --prefix game/arcane-wilds` from the repository root. The affinity
 and enemy-ability tests exercise the complete ordered HTML runtime, alongside
 existing spell, regional, boss, mobile, presentation, save, and inventory tests.
+

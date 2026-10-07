@@ -7,10 +7,13 @@
  */
 (() => {
   if(window.AWCombatAffinity)return;
-  const colors={fire:'#ff995b',frost:'#bcefff',lightning:'#96f4ff',physical:'#e1bc91',arcane:'#c6a7ff',solar:'#fff0a4',shadow:'#ce97ff',poison:'#b8ef86',nature:'#9bd585'};
-  const schools={Fire:'fire',Frost:'frost',Storm:'lightning',Lightning:'lightning',Arcane:'arcane',Celestial:'solar',Holy:'solar',Nature:'nature','Shadow/Void':'shadow',Shadow:'shadow',Void:'shadow',Earth:'physical'};
-  const baseSpells={firebolt:'fire',frostnova:'frost',thorns:'nature',arcaneMissiles:'arcane',gust:'physical',ward:'arcane',chain:'lightning',poison:'poison',chakram:'physical',spirits:'arcane',quake:'physical',meteor:'fire',voidrift:'shadow',icelance:'frost',soulflame:'shadow',tempest:'lightning',timestop:'arcane',phoenix:'fire',starfall:'solar',singularity:'shadow',solarLance:'solar',stormSpear:'lightning'};
+  const colors={fire:'#ff995b',frost:'#bcefff',lightning:'#96f4ff',earth:'#c9ac86',wind:'#c5f4dc',water:'#8bcdff',physical:'#e1bc91',arcane:'#c6a7ff',solar:'#fff0a4',shadow:'#ce97ff',poison:'#b8ef86',nature:'#9bd585'};
+  const schools={Fire:'fire',Frost:'frost',Storm:'lightning',Lightning:'lightning',Arcane:'arcane',Celestial:'solar',Holy:'solar',Nature:'nature','Shadow/Void':'shadow',Shadow:'shadow',Void:'shadow',Earth:'earth',Wind:'wind',Water:'water'};
+  const baseSpells={firebolt:'fire',frostnova:'frost',thorns:'nature',arcaneMissiles:'arcane',gust:'wind',ward:'arcane',chain:'lightning',poison:'poison',chakram:'physical',spirits:'arcane',quake:'earth',meteor:'fire',voidrift:'shadow',icelance:'frost',soulflame:'shadow',tempest:'lightning',timestop:'arcane',phoenix:'fire',starfall:'solar',singularity:'shadow',solarLance:'solar',stormSpear:'lightning'};
   function element(tag=''){
+    if(/water|tidal|soak/i.test(tag))return 'water';
+    if(/wind|gust|gale/i.test(tag))return 'wind';
+    if(/earth|quake|stonewake/i.test(tag))return 'earth';
     if(/poison|venom|toxic|spore|rot(?:Seed)?/i.test(tag))return 'poison';
     if(/solar|celestial|holy|sunLance|star|constellation/i.test(tag))return 'solar';
     if(/frost|ice|glacial|snow|rime/i.test(tag))return 'frost';
@@ -56,6 +59,11 @@
     const t=tags(e),has=k=>t.has(k),wet=has('WET')||e.wet>0||e.regionalWet>0||e.inWater===true;
     if(kind==='fire'&&(has('ICE')||has('PLANT')))return {multiplier:1.35,label:has('ICE')?'MELTED!':'IGNITED!',color:colors.fire};
     if(kind==='frost'&&has('FIRE'))return {multiplier:1.3,label:'EXTINGUISHED!',color:colors.frost};
+    if(kind==='fire'&&has('UNDEAD'))return {multiplier:1.25,label:'SEARED!',color:colors.fire};
+    if(kind==='fire'&&wet)return {multiplier:.75,label:'DAMPENED',color:colors.water};
+    if(kind==='water'&&has('FIRE'))return {multiplier:1.35,label:'QUENCHED!',color:colors.water};
+    if(kind==='earth'&&(has('ARMORED')||has('CONSTRUCT')||e.shield>0))return {multiplier:1.45,label:'ARMOR BREAK!',color:colors.earth};
+    if(kind==='wind'&&e.combatAbility)return {multiplier:1.15,label:'INTERRUPT!',color:colors.wind};
     if(kind==='lightning'&&(wet||has('ARMORED')))return {multiplier:wet?1.4:1.3,label:'OVERLOAD!',color:colors.lightning};
     if(kind==='physical'&&has('CONSTRUCT'))return {multiplier:1.3,label:'SHATTER!',color:colors.physical};
     if(kind==='arcane'&&(e.shield>0||e.magicShield>0)&&has('ARCANE'))return {multiplier:1.35,label:'WARD BREAK!',color:colors.arcane};
@@ -154,6 +162,10 @@
       e.combatSuppressed=Math.max(e.combatSuppressed||0,1.4);
       window.AWEnemyCombat?.extinguish(e,1.6);
     }
+    if(kind==='frost'&&e.speed>=2.3)e.slow=Math.max(e.slow||0,1.2);
+    if(kind==='water'){e.wet=3;if(tags(e).has('FIRE'))window.AWEnemyCombat?.extinguish(e,1.8);}
+    if(kind==='earth'&&result.multiplier>1){e.shield=Math.max(0,(e.shield||0)-amount*.5);e.dangerArmorBroken=3;e.stun=Math.max(e.stun||0,e.boss?.12:.45);}
+    if(kind==='wind'&&!dot&&e.combatAbility){e.stun=Math.max(e.stun||0,e.boss?.12:.6);if(!e.boss)window.AWEnemyCombat?.cancel(e);}
     if(kind==='arcane'&&result.multiplier>1&&e.shield<=0)e.stun=Math.max(e.stun||0,e.boss?.12:.35);
     if(kind==='shadow'&&result.multiplier>1)e.combatSuppressed=Math.max(e.combatSuppressed||0,.75);
     if(!dot&&!secondary&&result.multiplier>1&&(e.affinityProcAt??-1)<=elapsed){
@@ -170,3 +182,4 @@
   drawEnemy=function(e){oldDraw(e);if(!(e.affinityFlash>0))return;const s=worldToScreen(e.x,e.y,14);ctx.save();ctx.strokeStyle=e.affinityTint;ctx.globalAlpha=clamp(e.affinityFlash*4,0,1);ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(s.x,s.y,e.r*45,e.r*28,0,0,TAU);ctx.stroke();ctx.restore();};
   window.AWCombatAffinity={element,spellElement,enemyElement,tags,resolve,colors};
 })();
+
