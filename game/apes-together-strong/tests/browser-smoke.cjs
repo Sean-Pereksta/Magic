@@ -88,7 +88,11 @@ const { chromium } = require('playwright');
       const settled = g.command('settleAll');
       const s = g.settlements[0];
       g.colonies.action(s.id, 'fortify');
-      for (let i = 0; i < 90; i++) { g.refreshSettlements(); g.colonies.tick(s); }
+      // Let distant aggregate construction advance real game time before
+      // displaying the mature camp; fresh homes now have visible work stages.
+      const crown = { x:g.king.x, y:g.king.y };g.king.x = s.x + 5000;s.wood = 100;
+      for (let i = 0; i < 90; i++) { g.time++;g.refreshSettlements();g.colonies.tick(s); }
+      Object.assign(g.king,crown);
       // Render every new force, hazard and fall pose using the real renderer.
       let i = 0;
       for (const role of Object.keys(ATSHumanRoles)) {

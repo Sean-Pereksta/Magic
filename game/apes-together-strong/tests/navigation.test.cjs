@@ -1,6 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function engine(){const ctx=vm.createContext({console,Math,Map,Set});ctx.window=ctx;for(const f of ['world','navigation','settlements','forces','sim'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f+'.js'),'utf8'),ctx);return ctx}
-function moveTo(nav,actors,target,seconds=25){for(let i=0;i<seconds*60;i++){nav.beginFrame(i/60);for(const a of actors)nav.move(a,target.x-a.x,target.y-a.y,100,1/60)}return actors}
+// Accelerated movement fixtures use deterministic operation budgets. Dedicated performance suites exercise the default time cutoff and assert work limits.
+function moveTo(nav,actors,target,seconds=25){for(let i=0;i<seconds*60;i++){nav.beginFrame(i/60,{budgetMs:Infinity});for(const a of actors)nav.move(a,target.x-a.x,target.y-a.y,100,1/60)}return actors}
 function empty(ctx){const w=new ctx.ATSWorld('navigation');w.ensure=()=>{};w.terrain=()=>({biome:'forest',water:false,road:false});w.objects.clear();w._spatial.clear();return w}
 function add(w,o){o={hp:100,solid:true,dead:false,...o};w.objects.set(o.id,o);w._indexObject(o)}
 test('routes around a U-shaped enclosure instead of pressing against its wall',()=>{const c=engine(),w=empty(c);for(const o of [{id:'back',x:170,y:0,w:20,h:320},{id:'top',x:60,y:-160,w:240,h:20},{id:'bottom',x:60,y:160,w:240,h:20}])add(w,{...o,r:10,collision:'rect'});const nav=new c.ATSNavigation(w),a={id:'ape-1',x:100,y:0};moveTo(nav,[a],{x:300,y:0});assert.ok(Math.hypot(a.x-300,a.y)<24,JSON.stringify(a));});

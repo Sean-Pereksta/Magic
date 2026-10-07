@@ -289,22 +289,24 @@ apes. Families pause at capacity with at most one completed birth of progress;
 losing an ape cannot trigger a backlog of hundreds of births. Existing saves
 retain their campaigns, supplies, wounds and settlement housing.
 
-Tier 5 has internal intensity levels without additional HUD tiers:
+Tier 5 remains the visible maximum. Internal intensity counts the whole living
+civilization, including settlement residents, and continues scaling toward 1,000:
 
-| Active horde | Weighted budget | Tanks | Armored support | Director interval |
-| --- | ---: | ---: | ---: | ---: |
-| Below 220 | 250 | 3 | 4 | 28 sec |
-| 220–299 | 340 | 3 | 4 | 15 sec |
-| 300–449 | 450 | 4 | 6 | 12 sec |
-| 450–649 | 575 | 5 | 8 | 10 sec |
-| 650–849 | 700 | 6 | 10 | 8 sec |
-| 850–1,000 | 825 | 8 | 12 | 7 sec |
+| Living population | Campaign | Budget from | Soldiers from | Tanks | Armored support | Concurrent operations |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Below 220 | Early response | 250 | 220 | 3 | 4 | 1 |
+| 220–299 | Military Mobilization | 340 | 220 | 3 | 4 | 2 |
+| 300–449 | Major War | 500 | 320 | 6 | 9 | 3 |
+| 450–649 | Regional War | 680 | 400 | 8 | 12 | 4 |
+| 650–849 | Emergency Mobilization | 880 | 480 | 11 | 16 | 5 |
+| 850–1,000 | Total Regional Campaign | 1,100 | 560 | 14 | 20 | 6 |
 
-Vehicle figures are regional ceilings and armored support counts APCs, IFVs
-and armored patrols together. Active human capacity is 220 early, 260 at 250
-followers, 300 at 400, 340 at 650 and 360 at 850. Reevaluation can redirect
-existing formations; it does not create a new army every interval. Infantry
-and cargo are both included in capacity and weighted resource accounting.
+Budget and soldier capacity rise within the later bands; at 1,000 apes they
+reach 1,250 and 600. Vehicle figures are regional ceilings and armored support
+counts APCs, IFVs and armored patrols together. Director and reinforcement
+intervals shorten as the campaign grows. Reevaluation can redirect field
+formations while settlement, interception, blockade and reconnaissance
+objectives remain independent. Infantry and cargo both count toward capacity.
 
 Confirmed contact maintains a saved pursuit operation with position, movement
 estimate, contact time, roads and known settlements. Intercepts project these
@@ -348,9 +350,9 @@ A separate ordinary-health regression sends 300 normally spaced apes into a
 prepared formation of two tanks, an APC and 28 professional troops: 20
 riflemen and two each of leaders, heavy gunners, grenadiers and medics. The
 king follows the army and renews Charge when it reaches its old destination.
-The isolated farmland battle finishes in 13.6 seconds with 105 apes lost,
-195 surviving and the king at 160 HP. Reinforcements and terrain cover are
-disabled to isolate that formation; unit health, damage, firing rates and
+The isolated farmland battle verifies a costly victory with the king surviving.
+Reinforcements and terrain cover are disabled to isolate that formation;
+unit health, damage, firing rates and
 reloads retain normal gameplay values. Tightly packed or unattended charges
 can suffer greater losses.
 
@@ -359,7 +361,7 @@ including through saves. IFV bursts retain their original warned location;
 each new location receives the full tell. Cannon, grenade, mortar and airstrike
 warnings use the full projected blast radius at every zoom and detail level.
 
-October 7, 2026 diagnostic measurements used native headless Chrome 154,
+Pre-update October 7, 2026 diagnostic measurements used native headless Chrome 154,
 1440×900 at DPR 1, 180 frames and full visual detail:
 
 | Scenario | Mean simulation | Mean render | Total work p95 |
@@ -381,4 +383,63 @@ and the existing gameplay checks.
 node --test game/apes-together-strong/tests/*.test.cjs
 node game/apes-together-strong/tests/settlement-expansion-browser.cjs
 npm run bench:apes:browser -- --scenario GHIJK --frames 180
+```
+
+## Living kingdoms and prepared campaigns
+
+Fresh settlements start with a small communal shelter. Population, lodge level
+and completed buildings set a target footprint of roughly 100 units at ten
+residents, 250 at 100, 450 at 400, and 550–650 for major towns. Development
+claims that space gradually. Shared worker projects clear individual trunks
+before placing structures, yield timber exactly once, and preserve shade and
+perimeter trees. Nearby projects require builders to reach their work site and
+carry material. Distant economy uses the same persistent projects in aggregate.
+
+Each new hut houses ten apes, with ground, posts, frame and roof stages before
+occupancy. Developed 500-resident towns can support 50 or more distinct homes,
+connected paths, gardens, stores, work shelters, cooking areas and a level-ten
+lodge. Worker cohorts use resource and community zones; young remain near the
+core. Danger recalls foragers, shelters young, gathers guards at entrances and
+redirects builders to repairs. Lookouts extend warning range. Large settlements
+develop irregular perimeter defenses with openings and weak sections.
+
+Human platoons coordinate two to four squads with front, heavy-weapon and
+support lines. Engineers build basic 300-HP sections in four to six seconds and
+600-HP sections in seven. Damage, fallback and apes at the construction site
+interrupt the job. Chokepoints and staging areas have separated sections with
+firing gaps, and infantry hold behind cover. Bullets clear low field cover;
+apes must physically break human sections. Apes vault their own barriers while
+infantry climb or breach slowly, engineers dismantle faster, and tanks can
+crush only designated weak ape sections. APCs unload before contact and armor
+supports infantry from cleared approaches.
+
+Settlement operations progress through reconnaissance, approach, deployment,
+engineering and assault. Their target and phase survive saves, as do platoons,
+engineer progress, huts, timber work, breaches and supplies. Destroying an army
+does not erase pressure from intact installations: generated military sites
+reorganize finite campaign reserves every 90 seconds. Destroyed barracks,
+depots and fuel permanently remove those reserves' corresponding capacity.
+Ruined homes, breached barricades, tree stumps and up to 128 abandoned vehicle
+wrecks retain a bounded visual history of the war.
+
+Grenades, tank shells, mortars and airstrikes now produce colored fireballs,
+shockwaves, embers and rising smoke. Every exposed ape and fallen body within
+the blast reacts, including bodies killed by the impact and a fatal hit on the
+King. Falloff changes the impulse and height. Flight sweeps against terrain and
+solid obstacles, bodies settle on safe ground, and survivors brace and stand
+over a short recovery animation before moving or fighting again. Construction
+also pauses while a worker is airborne or recovering. Flight and corpse state
+survive saves. Immediate impact collision work is capped while all affected
+actors receive their animation, and ordinary bounded actor updates finish the
+motion. A dense regression covers 1,000 survivors and 320 fallen bodies.
+
+New regression suites cover development, actual worker navigation, faction
+traversal, construction interruption, strategic independence, phased assaults,
+finite replenishment, save continuity and cached geometry. The optional living
+kingdom browser gallery exercises a 500-resident town in desktop and mobile
+views with 40–50+ completed homes and physical defenses:
+
+```sh
+node game/apes-together-strong/tests/living-kingdom-browser.cjs
+node game/apes-together-strong/tests/blast-browser.cjs
 ```

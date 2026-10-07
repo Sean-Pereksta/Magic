@@ -82,6 +82,7 @@
       this._corridorRequests = new Map();
       this._streamSerial = 0;
       this._coldChunks = new Map();
+      this._settlementOccupantsChecked = new WeakSet();
       this._streaming = false;
       this.chunkRevision = 0;
       this.stats = { collisionQueries: 0, collisionCandidates: 0, objectQueries: 0,
@@ -413,6 +414,7 @@
       let blocked = false;
       this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
         if (object.id === ignoreId || !object.solid || object.dead || object.hp <= 0) return;
+        if (object.fortification && this.fortificationPassable(object, profile)) return;
         const obstacleRadius = this.vehicleObstacleRadius(object, profile);
         if (obstacleRadius < 0) return;
         const touches = object.collision === 'rect' ? this._touches(object, x, y, radius)
@@ -420,6 +422,207 @@
         if (touches) { blocked = true; return false; }
       });
       return blocked;
+    }
+
+    // Tactical cover has faction-specific movement rules. It remains in the
+    // spatial index after destruction so the battlefield retains its debris.
+    createFortification(options = {}) {
+      const team = options.team || options.owner || (options.type === 'apeBarricade' ? 'ape' : 'human');
+      const kind = options.kind || 'basic', auxiliary = kind === 'searchlight' || kind === 'observation';
+      if (!options.id) this._fortificationSerial = (this._fortificationSerial || 0) + 1;
+      const id = options.id || 'field-' + this._fortificationSerial;
+      if (this.objects.has(id)) return this.objects.get(id);
+      let w = options.w || options.width || (auxiliary ? 18 : 74), h = options.h || (auxiliary ? 18 : 16);
+      const angle = options.angle ?? options.dir ?? 0;
+      if (!options.h && Math.abs(Math.sin(angle)) > Math.abs(Math.cos(angle))) [w, h] = [h, w];
+      const maxHp = options.maxHp || options.hp || (auxiliary ? 120 : kind === 'heavy' ? 600 : team === 'ape' ? 260 : 300);
+      const object = { ...options, id, x: options.x, y: options.y, team, kind, angle,
+        type: auxiliary ? kind === 'searchlight' ? 'fieldSearchlight' : 'observationPost' : team === 'ape' ? 'apeBarricade' : 'humanBarricade',
+        fortification: true, lowCover: !auxiliary, w, h, r: auxiliary ? 10 : 12,
+        height: options.height || (auxiliary ? 64 : team === 'ape' ? 38 : 30),
+        maxHp, hp: options.hp ?? maxHp, solid: !auxiliary, collision: 'rect',
+        weak: !!options.weak, stage: 4 };
+      this.objects.set(id, object);this._indexObject(object);this.navRevision++;
+      return object;
+    }
+
+    addFortification(options) { return this.createFortification(options); }
+
+    fortificationPassable(object, actorOrProfile) {
+      if (!object.fortification || object.dead || object.hp <= 0 || !object.solid) return true;
+      const profile = typeof actorOrProfile === 'string' ? actorOrProfile : actorOrProfile?.vehicleClass || actorOrProfile?.kind;
+      const team = typeof actorOrProfile === 'object' && actorOrProfile?.team
+        || (profile === 'ape' || actorOrProfile?.id === 'king' || actorOrProfile?.id?.startsWith('ape-') ? 'ape' : 'human');
+      // A tank must physically breach a weak enemy barrier; it never gets a
+      // free pass merely because its armor can eventually knock it down.
+      return object.team === team;
+    }
+
+    fortificationAt(x, y, radius = 12, teamFilter) {
+      let found = null;
+      this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
+        if (object.fortification && object.solid && !object.dead && object.hp > 0
+          && (!teamFilter || object.team === teamFilter) && this._touches(object, x, y, radius)) {
+          found = object;return false;
+        }
+      });return found;
+    }
+
+    damageFortification(object, damage, time = 0) {
+      if (typeof object === 'string') object = this.objects.get(object);
+      if (!object?.fortification || object.dead || object.hp <= 0 || !(damage > 0)) return false;
+      object.hp = Math.max(0, object.hp - damage);object.lastHit = typeof time === 'number' ? time : time?.time || 0;
+      object.damageStage = object.hp / object.maxHp > .65 ? 'healthy' : object.hp / object.maxHp > .3 ? 'damaged' : 'critical';
+      if (!object.hp) { object.dead = true;object.solid = false;object.destroyedAt = object.lastHit;object.damageStage = 'destroyed';this.navRevision++; }
+      return true;
+    }
+
+    repairFortification(object, amount, time = 0) {
+      if (typeof object === 'string') object = this.objects.get(object);
+      if (!object?.fortification || !(amount > 0)) return false;
+      const wasSolid = object.solid;
+      object.hp = Math.min(object.maxHp, object.hp + amount);object.dead = false;
+      object.solid = object.lowCover;object.lastRepair = time;
+      delete object.destroyedAt;
+      if (wasSolid !== object.solid) this.navRevision++;
+      return true;
+    }
+
+    addVehicleWreck(vehicle, time) {
+      const id = vehicle.id + ':wreck';if (this.objects.has(id)) return;
+      const object = { id, type: 'vehicleWreck', x: vehicle.x, y: vehicle.y, dir: vehicle.dir,
+        kind: vehicle.vehicleClass || vehicle.kind, r: 40, hp: 0, maxHp: 1, solid: false, dead: true, destroyedAt: time };
+      this.objects.set(id, object);this._indexObject(object);
+      // Retain recognizable campaign history with a bounded scenery budget.
+      const wrecks = Array.from(this.objects.values()).filter(o => o.type === 'vehicleWreck');
+      if (wrecks.length > 128) { const oldest = wrecks.sort((a,b) => a.destroyedAt - b.destroyedAt)[0];this._unindexObject(oldest);this.objects.delete(oldest.id); }
+    }
+
+    actorBlocked(x, y, radius = 12, actorOrProfile = 'ape', ignoreId) {
+      const profile = typeof actorOrProfile === 'string' ? actorOrProfile : actorOrProfile?.vehicleClass;
+      if (VEHICLE_CLEARANCE[profile]) return this.vehicleBlocked(x, y, radius, profile, ignoreId);
+      if (this._streaming) { if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius)) return true; }
+      else this.ensure(x, y, 64);
+      if (this.waterBlocked(x, y, radius)) return true;
+      let blocked = false;
+      this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
+        if (object.id !== ignoreId && object.solid && !object.dead && object.hp > 0
+          && (!object.fortification || !this.fortificationPassable(object, actorOrProfile)) && this._touches(object, x, y, radius)) {
+          blocked = true;return false;
+        }
+      });return blocked;
+    }
+
+    projectileBlocked(x, y, radius = 2) {
+      if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius) || this.waterBlocked(x, y, radius)) return true;
+      let blocked = false;
+      this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
+        if (!object.lowCover && object.solid && !object.dead && object.hp > 0 && this._touches(object, x, y, radius)) {
+          blocked = true;return false;
+        }
+      });return blocked;
+    }
+
+    settlementPlot(x, y, radius = 24, options = {}) {
+      const trees = [], blocked = [];
+      // An occupied plot must include its procedural scenery before builders
+      // approve it. Distant work queues stream a small area through the normal
+      // generation budget instead of finishing chunks during a colony tick.
+      if (this._streaming) {
+        if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius)) {
+          this.requestCorridor({ x, y }, { x, y }, { id: 'plot-' + (options.settlementId || Math.floor(x / CHUNK) + ',' + Math.floor(y / CHUNK)), radius });
+          return { valid: false, pending: true, trees, blocked, water: false };
+        }
+      } else this.ensure(x, y, radius + 384);
+      const water = this.waterBlocked(x, y, radius);
+      for (const object of this.getObjects(x, y, radius + 60)) {
+        if (object.dead || object.hp <= 0 || !object.solid || !this._touches(object, x, y, radius)) continue;
+        if (object.type === 'tree') trees.push(object);
+        else if (object.id !== options.ignoreId) blocked.push(object);
+      }
+      return { valid: !water && !blocked.length, trees, blocked, water };
+    }
+
+    clearTree(treeOrId, options = {}) {
+      const tree = typeof treeOrId === 'string' ? this.objects.get(treeOrId) : treeOrId;
+      if (!tree || tree.type !== 'tree' || tree.dead || tree.woodClaimed) return 0;
+      tree.dead = true;tree.hp = 0;tree.solid = false;tree.woodClaimed = true;
+      tree.clearedBy = options.settlementId;tree.clearedAt = options.time || 0;
+      this.navRevision++;
+      return Math.round(5 + (tree.size || 1) * 5);
+    }
+
+    syncSettlementBuildings(settlement, game) {
+      const list = (settlement.huts || []).concat((settlement.structures || []).filter(o => ['storage', 'workShelter'].includes(o.kind)));
+      const activated = [];
+      for (const building of list) {
+        const id = building.id + ':collision', completed = building.stage === undefined || building.stage >= 4;
+        let object = this.objects.get(id);
+        if (!object && completed && building.hp > 0) {
+          object = { id, x: building.x, y: building.y, type: 'apeBuilding', settlementId: settlement.id,
+            hp: building.hp, maxHp: building.maxHp || 100, r: 24, w: 40, h: 34, solid: true, collision: 'rect', hiddenRender: true };
+          this.objects.set(id, object);this._indexObject(object);this.navRevision++;
+          activated.push(object);
+        } else if (object) {
+          const solid = completed && building.hp > 0;
+          if (solid && !object.solid) activated.push(object);
+          if (object.solid !== solid) this.navRevision++;
+          object.hp = building.hp;object.dead = !solid;object.solid = solid;
+        }
+      }
+      if (!game) return;
+      // Completing a roof can surround its builders. Evacuate overlapping
+      // occupants once when a footprint activates, and once after restoring
+      // a settlement, before ordinary navigation resumes around the walls.
+      if (!this._settlementOccupantsChecked.has(settlement)) {
+        this._settlementOccupantsChecked.add(settlement);
+        for (const building of list) {
+          const object = this.objects.get(building.id + ':collision');
+          if (object?.solid && !activated.includes(object)) activated.push(object);
+        }
+      }
+      if (!activated.length) return;
+      for (const actor of [game.king, ...(game.apes || []), ...(game.humans || []), ...(game.vehicles || [])]) {
+        if (!actor || actor.hp <= 0 || actor.blastReaction?.stage === 'flight') continue;
+        const profile = game.navigation?.profile(actor) || (actor.id?.startsWith('human') ? 'human' : 'ape');
+        const radius = Math.max(actor.radius || (actor.id === 'king' ? 12 : actor.state === 'young' ? 7 : 10), VEHICLE_CLEARANCE[profile] || 0);
+        if (!activated.some(object => this._touches(object, actor.x, actor.y, radius))) continue;
+        let safe = null;
+        for (let distance = 16; distance <= 192 && !safe; distance += 16) {
+          for (let i = 0; i < 16; i++) {
+            const angle = i / 16 * TAU, x = actor.x + Math.cos(angle) * distance, y = actor.y + Math.sin(angle) * distance;
+            if (!this.actorBlocked(x, y, radius, profile)) { safe = { x, y }; break; }
+          }
+        }
+        if (safe) {
+          actor.x = safe.x;actor.y = safe.y;actor.moving = false;
+          delete actor._nav;delete actor._previousX;delete actor._previousY;
+        }
+      }
+    }
+
+    replenishInstallation(site, time) {
+      if (!site?.military || site.cleared || !site.campaignReserve) return false;
+      const reserve = site.campaignReserve;
+      if (time < (site.nextMobilizationAt ?? 90)) return false;
+      site.nextMobilizationAt = time + 90;
+      const capacity = this.militaryCapacity(site);
+      let rebuilt = false;
+      if (!capacity.barracks) reserve.personnel = 0;
+      if (!capacity.depot || !capacity.fuel) { reserve.vehicles = {};reserve.armor = 0; }
+      if (capacity.barracks && reserve.personnel > 0) {
+        const amount = Math.min(18 + site.tier * 3, reserve.personnel, Math.max(0, (site.initialStrength || 100) - site.strength));
+        site.strength += amount;reserve.personnel -= amount;rebuilt = amount > 0;
+      }
+      if (capacity.depot && capacity.fuel) for (const [kind, count] of Object.entries(reserve.vehicles || {})) {
+        if (count <= 0 || (site.vehicleInventory[kind] || 0) >= (site.initialInventory?.[kind] || 0)) continue;
+        const cost = { tank: 12, ifv: 9, apc: 7 }[kind] || 0;
+        if (reserve.armor < cost) continue;
+        site.vehicleInventory[kind] = (site.vehicleInventory[kind] || 0) + 1;reserve.vehicles[kind]--;
+        site.armorCapacity += cost;reserve.armor -= cost;rebuilt = true;
+        break;
+      }
+      return rebuilt;
     }
 
     militaryCapacity(site) {
@@ -682,6 +885,10 @@
 
       if (site.military) {
         this.militaryCapacity(site);
+        site.initialStrength = site.strength;
+        site.initialInventory = { ...site.vehicleInventory };
+        site.campaignReserve = { personnel: site.strength * 2, vehicles: { ...site.vehicleInventory }, armor: site.armorCapacity };
+        site.nextMobilizationAt = 90;
         this._buildMilitarySite(site, r, add);
         return;
       }
@@ -968,7 +1175,7 @@
       let clear = true;
       this._queryCollision(Math.min(x1, x2) - 3, Math.min(y1, y2) - 3,
         Math.max(x1, x2) + 3, Math.max(y1, y2) + 3, object => {
-        if (object.dead || object.hp <= 0 || !object.solid) return;
+        if (object.dead || object.hp <= 0 || !object.solid || object.lowCover) return;
         // A guard's own light fixture or the tree it stands behind cannot block light at its origin.
         if (this._touches(object, x1, y1, 2)) return;
         if (this._rayHits(object, x1, y1, x2, y2)) { clear = false; return false; }
@@ -1001,6 +1208,7 @@
 
     serialize() {
       return { version: 1, seed: this.seed, chunks: Array.from(this.chunks.entries()),
+        fortificationSerial: this._fortificationSerial || 0,
         sites: Array.from(this.sites.entries()), objects: Array.from(this.objects.entries()),
         coldChunks: Array.from(this._coldChunks.entries()),
         discovered: Array.from(this.discovered), intel: Array.from(this.intel.entries()) };
@@ -1010,6 +1218,7 @@
       if (typeof data === 'string') data = JSON.parse(data);
       if (!data || !data.seed) throw new Error('This world save is incomplete.');
       const world = new ATSWorld(data.seed);
+      world._fortificationSerial = data.fortificationSerial || 0;
       world.chunks = new Map(data.chunks || []);
       world.sites = new Map(data.sites || []);
       world.objects = new Map(data.objects || []);

@@ -56,7 +56,7 @@ test('shell impact deals splash damage and brief knockback while a blocked impac
  const {g}=arena();g.king.x=40;g.king.y=0;refresh(g);
  g.forces.hazards.push({id:'shell-test',type:'shell',x:-100,y:0,fromX:-100,fromY:0,targetX:0,targetY:0,start:0,duration:1,life:1,radius:108,damage:100});
  g.forces.tick(.5);assert.equal(g.king.hp,160);assert.equal(g.forces.hazards[0].x,-50);
- g.forces.tick(.5);assert.ok(g.king.hp<90);assert.ok(g.king.x>40);assert.ok(g.king.knockbackUntil>g.time);
+ g.forces.tick(.5);assert.ok(g.king.hp<90);assert.equal(g.king.blastReaction.stage,'flight');g.updateBlastReaction(g.king,.1);assert.ok(g.king.x>40);assert.ok(g.king.knockbackUntil>g.time);
  const before=g.king.hp;g.world.lineClear=()=>false;g.forces.blast({x:g.king.x,y:g.king.y,type:'shell',radius:108,damage:135});assert.equal(g.king.hp,before);
 });
 test('APC troops are prepaid, unload once into a shared squad, and die with an undeployed transport',()=>{
