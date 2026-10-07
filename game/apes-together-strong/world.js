@@ -68,6 +68,15 @@
       this._sitePlanCache = new Map();
       this._spatial = new Map();
       this._collisionCell = 128;
+      this._queryStamp = 0;
+      this._queryDepth = 0;
+      this._chunkJobs = new Map();
+      this._streamQueue = new Map();
+      this._coldChunks = new Map();
+      this._streaming = false;
+      this.chunkRevision = 0;
+      this.stats = { collisionQueries: 0, collisionCandidates: 0, objectQueries: 0,
+        chunksGenerated: 0, streamSteps: 0, streamMs: 0, pendingChunks: 0, coldChunks: 0 };
       this._phase = (this.seedHash % 10000) / 10000 * TAU;
     }
 
@@ -146,6 +155,138 @@
       for (let cy = minY; cy <= maxY; cy++) for (let cx = minX; cx <= maxX; cx++) this._generateChunk(cx, cy);
     }
 
+    // Generation is staged ahead of travel. Collision never asks generation to
+    // finish synchronously once streaming is active.
+    stream(x, y, radius = 1400, options = {}) {
+      this._streaming = true;
+      const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const started = now(), budget = options.budgetMs ?? 1.5, maxSteps = options.maxSteps ?? 3;
+      const dx = options.dx || 0, dy = options.dy || 0;
+      const minX = Math.floor((x - radius) / CHUNK), maxX = Math.floor((x + radius) / CHUNK);
+      const minY = Math.floor((y - radius) / CHUNK), maxY = Math.floor((y + radius) / CHUNK);
+      for (const [key, request] of this._streamQueue) {
+        if (request.cx < minX - 1 || request.cx > maxX + 1 || request.cy < minY - 1 || request.cy > maxY + 1) this._streamQueue.delete(key);
+      }
+      for (let cy = minY; cy <= maxY; cy++) for (let cx = minX; cx <= maxX; cx++) {
+        const key = cx + ',' + cy;
+        if (this.chunks.has(key)) { this._streamQueue.delete(key); continue; }
+        const ox = (cx + .5) * CHUNK - x, oy = (cy + .5) * CHUNK - y;
+        this._streamQueue.set(key, { cx, cy, score: ox * ox + oy * oy - (ox * dx + oy * dy) * 350 });
+      }
+      const queue = Array.from(this._streamQueue.entries()).sort((a, b) => a[1].score - b[1].score);
+      let steps = 0;
+      for (const [key, request] of queue) {
+        while (steps < maxSteps && (steps === 0 || now() - started < budget)) {
+          const job = this._chunkJobs.get(key) || this._startChunk(request.cx, request.cy);
+          this._advanceChunk(job, 16); steps++;
+          if (job.chunk.generated) { this._streamQueue.delete(key); break; }
+        }
+        if (steps >= maxSteps || now() - started >= budget) break;
+      }
+      // Abandoned incomplete jobs contain only deterministic private data; they
+      // can be safely restarted when the player returns.
+      for (const key of this._chunkJobs.keys()) if (!this._streamQueue.has(key)) this._chunkJobs.delete(key);
+      this.stats.streamSteps = steps;
+      this.stats.streamMs = now() - started;
+      this.stats.pendingChunks = this._streamQueue.size;
+      return steps;
+    }
+
+    boundsReady(minX, minY, maxX, maxY) {
+      if (!this._streaming) return true;
+      // Facilities can overlap the owning chunk by up to 60px. Require their
+      // neighboring blueprint before permitting movement along a chunk edge.
+      const pad = 96;
+      for (let cy = Math.floor((minY - pad) / CHUNK); cy <= Math.floor((maxY + pad) / CHUNK); cy++) {
+        for (let cx = Math.floor((minX - pad) / CHUNK); cx <= Math.floor((maxX + pad) / CHUNK); cx++) {
+          if (!this.chunks.has(cx + ',' + cy)) return false;
+        }
+      }
+      return true;
+    }
+
+    trimDistant(x, y, pins = [], distance = 6500, maxChunks = 6) {
+      const distance2 = distance * distance;
+      let removed = 0;
+      for (const [key, chunk] of this.chunks) {
+        if (removed >= maxChunks) break;
+        const px = chunk.x + CHUNK / 2, py = chunk.y + CHUNK / 2;
+        if ((px - x) ** 2 + (py - y) ** 2 < distance2
+          || pins.some(p => (px - p.x) ** 2 + (py - p.y) ** 2 < 1800 ** 2)) continue;
+        const changes = [];
+        for (const id of chunk.objects) {
+          const object = this.objects.get(id);
+          if (!object) continue;
+          this._unindexObject(object);
+          // Site objects remain addressable by gameplay IDs for strategic raids
+          // and sleeping garrisons. Procedural foliage can be regenerated from
+          // its seed, retaining only actual changes rather than full geometry.
+          if (object.siteId) continue;
+          if (!this._pristineScenery(object)) changes.push([id, { ...object }]);
+          this.objects.delete(id);
+        }
+        this._coldChunks.set(key, { id: key, cx: chunk.cx, cy: chunk.cy,
+          sites: chunk.sites.slice(), changes });
+        this.chunks.delete(key);removed++;
+      }
+      if (removed) this.chunkRevision++;
+      if (this._sitePlanCache.size > 1500) {
+        for (const key of this._sitePlanCache.keys()) {
+          const [cx, cy] = key.split(',').map(Number), px = (cx + .5) * CHUNK, py = (cy + .5) * CHUNK;
+          if ((px - x) ** 2 + (py - y) ** 2 > distance2 * 2.25) this._sitePlanCache.delete(key);
+        }
+      }
+      this.stats.coldChunks = this._coldChunks.size;
+      return removed;
+    }
+
+    _pristineScenery(object) {
+      const natural = object.id.startsWith('obj:') || object.id === 'opening-berries';
+      const hp = HP[object.type] || 100;
+      const unchanged = natural && !object.dead && object.hp === hp && object.maxHp === hp
+        && object.solid === (object.type !== 'berry')
+        && (object.type !== 'berry' || object.food === object.count);
+      if (!unchanged || object._pristineHash === undefined) return unchanged;
+      const { _pristineHash, ...record } = object;
+      return hash(JSON.stringify(record)) === _pristineHash;
+    }
+
+    _unindexObject(object) {
+      if (object._spatialKeys) {
+        for (const key of object._spatialKeys) {
+          const bucket = this._spatial.get(key);
+          if (!bucket) continue;
+          bucket.delete(object);if (!bucket.size) this._spatial.delete(key);
+        }
+        object._spatialKeys.length = 0;
+        return;
+      }
+      const cell = this._collisionCell;
+      const hx = Math.max(object.r || 0, (object.w || 0) / 2) + 3;
+      const hy = Math.max(object.r || 0, (object.h || 0) / 2) + 3;
+      for (let cy = Math.floor((object.y - hy) / cell); cy <= Math.floor((object.y + hy) / cell); cy++) {
+        for (let cx = Math.floor((object.x - hx) / cell); cx <= Math.floor((object.x + hx) / cell); cx++) {
+          const key = cx + ',' + cy, bucket = this._spatial.get(key);
+          if (!bucket) continue;
+          bucket.delete(object);
+          if (!bucket.size) this._spatial.delete(key);
+        }
+      }
+    }
+
+    _waterAt(x, y) {
+      if (this.terrain !== ATSWorld.prototype.terrain) return this.terrain(x, y).water;
+      const river = this._riverInfo(x, y);
+      return river.distance < river.width && this._roadInfo(x, y).dx >= 36;
+    }
+
+    waterBlocked(x, y, radius = 0) {
+      if (this._waterAt(x, y)) return true;
+      const bank = radius * .7;
+      return radius > 4 && (this._waterAt(x + bank, y) || this._waterAt(x - bank, y)
+        || this._waterAt(x, y + bank) || this._waterAt(x, y - bank));
+    }
+
     _sitePlan(cx, cy) {
       const key = cx + ',' + cy;
       if (this._sitePlanCache.has(key)) return this._sitePlanCache.get(key);
@@ -216,14 +357,29 @@
       const hp = data.hp === undefined ? HP[data.type] || 100 : data.hp;
       const object = Object.assign({ r: 18, hp, maxHp: hp, solid: true, dead: false,
         height: 24, angle: 0, siteId: null }, data);
-      this.objects.set(object.id, object);
+      if (!object.siteId && (object.id.startsWith('obj:') || object.id === 'opening-berries'))
+        object._pristineHash = hash(JSON.stringify(object));
+      const saved = chunk._changes?.get(object.id);
+      if (saved) Object.assign(object, saved);
       chunk.objects.push(object.id);
-      this._indexObject(object);
+      if (chunk._pendingObjects) chunk._pendingObjects.push(object);
+      else { this.objects.set(object.id, object); this._indexObject(object); }
       return object;
     }
 
     _indexObject(object) {
-      if (!object.solid) return;
+      // Index resources as well as solids so harvesting and local structure
+      // searches use the same bounded spatial query as collision.
+      if (!Object.prototype.hasOwnProperty.call(object, '_atsQueryStamp'))
+        Object.defineProperty(object, '_atsQueryStamp', { value: 0, writable: true });
+      // Shape geometry is immutable; hp/dead/solid remain live and are checked
+      // at query time, so destruction immediately changes collision behavior.
+      Object.defineProperty(object, '_collision', { value: {
+        hx: (object.w || object.r * 2) / 2, hy: (object.h || object.r * 2) / 2,
+        radius: object.moveRadius ?? object.r ?? 15
+      }, configurable: true });
+      if (!object._spatialKeys) Object.defineProperty(object, '_spatialKeys', { value: [] });
+      else if (object._spatialKeys.length) this._unindexObject(object);
       const cell = this._collisionCell;
       const hx = Math.max(object.r || 0, (object.w || 0) / 2) + 3;
       const hy = Math.max(object.r || 0, (object.h || 0) / 2) + 3;
@@ -231,36 +387,58 @@
         for (let cx = Math.floor((object.x - hx) / cell); cx <= Math.floor((object.x + hx) / cell); cx++) {
           const key = cx + ',' + cy;
           if (!this._spatial.has(key)) this._spatial.set(key, new Set());
-          this._spatial.get(key).add(object.id);
+          this._spatial.get(key).add(object);
+          object._spatialKeys.push(key);
         }
       }
     }
 
     _queryCollision(minX, minY, maxX, maxY, callback) {
-      const cell = this._collisionCell, seen = new Set();
+      const cell = this._collisionCell, stamp = ++this._queryStamp;
+      // Nested queries need a local mark set because an inner query changes the
+      // shared object stamps. The common, non-nested path allocates no set.
+      const seen = this._queryDepth ? new Set() : null;
+      this._queryDepth++;
+      this.stats.collisionQueries++;
+      try {
       for (let cy = Math.floor(minY / cell); cy <= Math.floor(maxY / cell); cy++) {
         for (let cx = Math.floor(minX / cell); cx <= Math.floor(maxX / cell); cx++) {
           const bucket = this._spatial.get(cx + ',' + cy);
           if (!bucket) continue;
-          for (const id of bucket) {
-            if (seen.has(id)) continue;
-            seen.add(id);
-            const object = this.objects.get(id);
-            if (object && callback(object) === false) return false;
+          for (const object of bucket) {
+            if (seen ? seen.has(object) : object._atsQueryStamp === stamp) continue;
+            if (seen) seen.add(object); else object._atsQueryStamp = stamp;
+            this.stats.collisionCandidates++;
+            if (callback(object) === false) return false;
           }
         }
       }
       return true;
+      } finally { this._queryDepth--; }
     }
 
     _buildSite(chunk, plan) {
-      if (this.sites.has(plan.id)) return;
+      if (this.sites.has(plan.id)) {
+        // Rehydrate geometry around the same live site state, never a fresh
+        // blueprint that would reset destroyed gates or wounded garrisons.
+        const site = this.sites.get(plan.id);
+        chunk.sites.push(site.id);
+        for (const id of site.objects) {
+          const object = this.objects.get(id);
+          if (!object) continue;
+          chunk.objects.push(id);
+          if (chunk._pendingObjects) chunk._pendingObjects.push(object);
+          else this._indexObject(object);
+        }
+        return;
+      }
       const r = rng(this.seed + ':blueprint:' + plan.id);
       const site = Object.assign({ objects: [], spawned: false, rescued: false, cleared: false,
         strength: plan.guards * 3 + plan.tier * 5, alarm: false, lastRaid: 0, known: false,
         radioOnline: plan.tier >= 2, depotOnline: plan.tier >= 3,
         barracksOnline: plan.tier >= 2, lightAngle: r() * TAU }, plan);
-      this.sites.set(site.id, site);
+      if (chunk._pendingSites) chunk._pendingSites.push(site);
+      else this.sites.set(site.id, site);
       chunk.sites.push(site.id);
       let index = 0;
       const mirrored = site.layout === 1;
@@ -343,11 +521,13 @@
         food: 120 + site.tier * 45, count: 120 + site.tier * 45, supply: true });
     }
 
-    _generateChunk(cx, cy) {
+    _startChunk(cx, cy) {
       const key = cx + ',' + cy;
-      if (this.chunks.has(key)) return this.chunks.get(key);
-      const chunk = { id: key, cx, cy, x: cx * CHUNK, y: cy * CHUNK, objects: [], sites: [], generated: true };
-      this.chunks.set(key, chunk);
+      if (this._chunkJobs.has(key)) return this._chunkJobs.get(key);
+      const chunk = { id: key, cx, cy, x: cx * CHUNK, y: cy * CHUNK, objects: [], sites: [], generated: false,
+        _pendingObjects: [], _pendingSites: [] };
+      const cold = this._coldChunks.get(key);
+      if (cold) chunk._changes = new Map(cold.changes || []);
       const r = rng(this.seed + ':foliage:' + key);
       const plan = this._sitePlan(cx, cy);
       if (plan) this._buildSite(chunk, plan);
@@ -358,8 +538,15 @@
       }
       const centerTerrain = this.terrain(chunk.x + CHUNK / 2, chunk.y + CHUNK / 2);
       const attempts = { forest: 112, wetland: 76, rocky: 58, farmland: 46, ruins: 54 }[centerTerrain.biome];
-      const occupied = [];
-      for (let i = 0; i < attempts; i++) {
+      const job = { chunk, r, nearbySites, attempts, occupied: [], index: 0 };
+      this._chunkJobs.set(key, job);
+      return job;
+    }
+
+    _advanceChunk(job, count) {
+      const { chunk, r, nearbySites, attempts, occupied } = job, { cx, cy } = chunk, key = chunk.id;
+      const end = Math.min(attempts, job.index + count);
+      for (let i = job.index; i < end; i++) {
         const x = chunk.x + 20 + r() * (CHUNK - 40), y = chunk.y + 20 + r() * (CHUNK - 40);
         const t = this.terrain(x, y);
         const road = this._roadInfo(x, y);
@@ -381,11 +568,31 @@
         this._object(chunk, obj);
         if (type !== 'berry') occupied.push({ x, y });
       }
+      job.index = end;
+      if (end < attempts) return chunk;
       if (cx === 0 && cy === 0) {
         this._object(chunk, { id: 'opening-berries', type: 'berry', x: 48, y: 68, r: 16,
           height: 17, solid: false, food: 48, count: 48, variant: 1, size: 1.1 });
       }
+      for (const object of chunk._pendingObjects) { this.objects.set(object.id, object); this._indexObject(object); }
+      for (const site of chunk._pendingSites) this.sites.set(site.id, site);
+      delete chunk._pendingObjects; delete chunk._pendingSites; delete chunk._changes;
+      chunk.generated = true;
+      this.chunks.set(key, chunk);
+      this._chunkJobs.delete(key);
+      this._streamQueue.delete(key);
+      this._coldChunks.delete(key);
+      this.chunkRevision++;
+      this.stats.chunksGenerated++;
+      this.stats.coldChunks = this._coldChunks.size;
       return chunk;
+    }
+
+    _generateChunk(cx, cy) {
+      const key = cx + ',' + cy;
+      if (this.chunks.has(key)) return this.chunks.get(key);
+      const job = this._chunkJobs.get(key) || this._startChunk(cx, cy);
+      return this._advanceChunk(job, job.attempts);
     }
 
     _nearChunks(x, y, radius, callback) {
@@ -403,13 +610,10 @@
     getObjects(x, y, radius) {
       radius = radius === undefined ? 1000 : radius;
       const out = [];
-      this._nearChunks(x, y, radius, chunk => {
-        for (const id of chunk.objects) {
-          const object = this.objects.get(id);
-          if (!object) continue;
+      this.stats.objectQueries++;
+      this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
           const extent = Math.max(object.r || 0, (object.w || 0) / 2, (object.h || 0) / 2);
           if (dist2(x, y, object.x, object.y) <= (radius + extent) ** 2) out.push(object);
-        }
       });
       return out;
     }
@@ -428,21 +632,20 @@
 
     _touches(object, x, y, radius) {
       if (object.collision === 'rect') {
-        const hx = (object.w || object.r * 2) / 2, hy = (object.h || object.r * 2) / 2;
+        const hx = object._collision?.hx ?? (object.w || object.r * 2) / 2,
+          hy = object._collision?.hy ?? (object.h || object.r * 2) / 2;
         const closestX = clamp(x, object.x - hx, object.x + hx);
         const closestY = clamp(y, object.y - hy, object.y + hy);
         return dist2(x, y, closestX, closestY) < radius * radius;
       }
-      return dist2(x, y, object.x, object.y) < ((object.moveRadius ?? object.r ?? 15) + radius) ** 2;
+      return dist2(x, y, object.x, object.y) < ((object._collision?.radius ?? object.moveRadius ?? object.r ?? 15) + radius) ** 2;
     }
 
     blocked(x, y, radius, ignoreId) {
       radius = radius === undefined ? 12 : radius;
-      this.ensure(x, y, 64);
-      if (this.terrain(x, y).water) return true;
-      // Also prevent a body straddling a riverbank, while leaving bridges wide enough for a horde.
-      if (radius > 4 && (this.terrain(x + radius * 0.7, y).water || this.terrain(x - radius * 0.7, y).water
-        || this.terrain(x, y + radius * 0.7).water || this.terrain(x, y - radius * 0.7).water)) return true;
+      if (this._streaming) { if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius)) return true; }
+      else this.ensure(x, y, 64);
+      if (this.waterBlocked(x, y, radius)) return true;
       let blocked = false;
       this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
         if (object.id !== ignoreId && object.solid && !object.dead && object.hp > 0
@@ -477,6 +680,7 @@
     }
 
     lineClear(x1, y1, x2, y2) {
+      if (!this.boundsReady(Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2))) return false;
       let clear = true;
       this._queryCollision(Math.min(x1, x2) - 3, Math.min(y1, y2) - 3,
         Math.max(x1, x2) + 3, Math.max(y1, y2) + 3, object => {
@@ -514,6 +718,7 @@
     serialize() {
       return { version: 1, seed: this.seed, chunks: Array.from(this.chunks.entries()),
         sites: Array.from(this.sites.entries()), objects: Array.from(this.objects.entries()),
+        coldChunks: Array.from(this._coldChunks.entries()),
         discovered: Array.from(this.discovered), intel: Array.from(this.intel.entries()) };
     }
 
@@ -524,7 +729,14 @@
       world.chunks = new Map(data.chunks || []);
       world.sites = new Map(data.sites || []);
       world.objects = new Map(data.objects || []);
-      for (const object of world.objects.values()){if(object.type==='tree')object.moveRadius=7.5*(object.size||1);world._indexObject(object);}
+      world._coldChunks = new Map(data.coldChunks || []);
+      const coldSites = new Set();
+      for (const chunk of world._coldChunks.values()) for (const id of chunk.sites || []) coldSites.add(id);
+      for (const object of world.objects.values()) {
+        if(object.type==='tree')object.moveRadius=7.5*(object.size||1);
+        if (!object.siteId || !coldSites.has(object.siteId)) world._indexObject(object);
+      }
+      world.stats.coldChunks = world._coldChunks.size;
       world.discovered = new Set(data.discovered || []);
       world.intel = new Map(data.intel || []);
       return world;

@@ -44,6 +44,36 @@ const { chromium } = require('playwright');
     await page.waitForTimeout(120);
     assert.equal(await page.evaluate(() => ATS.game.time), pausedTime, 'pause freezes simulation');
 
+    await page.keyboard.press('F3');
+    assert.equal(await page.locator('#performanceMonitor').isVisible(), true, 'debug monitor toggles on');
+    await page.waitForFunction(() => typeof ATS.performance?.simulationMs === 'number');
+    await page.keyboard.press('F3');
+    assert.equal(await page.locator('#performanceMonitor').isVisible(), false, 'debug monitor stays hidden in ordinary play');
+    const hidden = await page.evaluate(async () => {
+      const renderer = ATS.renderer, original = renderer.draw;
+      let renders = 0;
+      renderer.draw = function (...args) { renders++; return original.apply(this, args); };
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      const time = ATS.game.time;
+      await new Promise(resolve => setTimeout(resolve, 180));
+      const result = { renders, unchanged: ATS.game.time === time, pausedAudio: ATS.audio.paused };
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+      renderer.draw = original;
+      return result;
+    });
+    assert.deepEqual(hidden, { renders: 0, unchanged: true, pausedAudio: true }, 'hidden tab skips rendering, simulation and audio');
+    await page.locator('#resumeRun').click();
+    const catchup = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => {
+      const time = ATS.game.time, start = performance.now();
+      while (performance.now() - start < 250) {} // A real main-thread stall.
+      requestAnimationFrame(() => resolve(ATS.game.time - time));
+    })));
+    assert.ok(catchup <= .05 + 1e-8, 'long browser frame performs at most three fixed simulation ticks');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => ATS.screen), 'pause');
+
     const setup = await page.evaluate(() => {
       const g = ATS.game;
       g.king.x = g.king.y = 0;
@@ -134,7 +164,7 @@ const { chromium } = require('playwright');
     await mobile.locator('#attackButton').tap();
     await screenshot(mobile, 'mobile-play');
     assert.deepEqual(errors, []);
-    console.log('PASS: desktop/mobile menus, movement, rescue, settlements, all force/animation rendering, save/reload, settings and permadeath. No browser errors.');
+    console.log('PASS: desktop/mobile menus, movement, rescue, settlements, all force/animation rendering, hidden-tab pause, debug monitor, bounded long-frame recovery, save/reload, settings and permadeath. No browser errors.');
   } finally {
     await browser.close();
   }
