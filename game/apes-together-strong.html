@@ -1339,6 +1339,42 @@ class Game{
  const terrain=this.world.terrain(a.x,a.y),roleSpeed=a.role?(ATSHumanRoles[a.role]?.speed||1):1;
  this.navigation.move(a,dx,dy,speed*roleSpeed*(terrain.biome==='wetland'&&!terrain.road?.86:1),dt,a.id==='king');
  }
+ spreadApes(dt){
+ // Compute all pressures before moving anyone, so array order cannot bias a clump.
+ // Local steps bypass route finding but retain wall, trunk and water clearance.
+ const pressures=new Map();
+ for(const a of this.apes){
+ if(a.hp<=0)continue;
+ const st=a.settlementId?this.settlements.find(s=>s.id===a.settlementId):null;
+ if(st&&dist(a,this.king)>1800&&!st.attack)continue;
+ pressures.set(a,{x:0,y:0});
+ }
+ this.apeGrid.rebuild([this.king,...pressures.keys()]);const shifts=[];
+ for(const [a,push]of pressures){
+ for(const p of this.apeGrid.near(a.x,a.y,38)){
+ if(p.id<=a.id||p.hp<=0)continue;
+ const spacing=p.id==='king'?36:a.state==='young'||p.state==='young'?24:32;
+ let dx=a.x-p.x,dy=a.y-p.y,d=Math.hypot(dx,dy);if(d>=spacing)continue;
+ if(!this.navigation.clearSegment(a.x,a.y,p.x,p.y,0))continue;
+ if(d<.001){
+ // A stable, opposite direction for each pair also separates identical save positions.
+ const first=a.id<p.id,angle=ATSUtil.hash(first?a.id+':'+p.id:p.id+':'+a.id)/4294967296*TAU;
+ dx=Math.cos(angle)*(first?1:-1);dy=Math.sin(angle)*(first?1:-1);d=0;
+ }else{dx/=d;dy/=d}
+ const pressure=110*(1-d/spacing)**2;push.x+=dx*pressure;push.y+=dy*pressure;
+ const other=pressures.get(p);if(other){other.x-=dx*pressure;other.y-=dy*pressure}
+ }
+ }
+ for(const [a,push]of pressures){
+ const force=Math.hypot(push.x,push.y);if(force>.5)shifts.push({a,dx:push.x/force,dy:push.y/force,speed:Math.min(70,force)});
+ }
+ for(const {a,dx,dy,speed}of shifts){
+ const moving=a.moving,dir=a.dir;
+ this.navigation.move(a,dx*40,dy*40,speed,dt,true);
+ a.moving=a.moving||moving;if(a.attackTimer>0)a.dir=dir;
+ }
+ this.apeGrid.rebuild([this.king,...this.apes]);
+ }
  animateAttack(a,target,kind){
  const variants=['hook','slam','backhand','tackle','overhead','uppercut'];a.attackSerial=(a.attackSerial||0)+1;a.animation={kind:kind||variants[(ATSUtil.hash(a.id)+a.attackSerial)%variants.length],start:this.time,duration:a.id==='king'?.42:.5};a.attackTimer=a.animation.duration;if(target)a.dir=Math.atan2(target.y-a.y,target.x-a.x);
  }
@@ -1407,7 +1443,9 @@ class Game{
  if(input.aim&&Math.hypot(input.aim.x,input.aim.y)>.05)this.aim={...input.aim};if(input.attack)this.attack(this.aim);
  if(this.time-this.king.lastHit>8)this.king.hp=Math.min(this.king.maxHp,this.king.hp+2.4*dt);
  this.apeGrid.rebuild([this.king,...this.apes]);this.humanGrid.rebuild(this.humans);
+ this.followSpread=Math.max(1,Math.sqrt(this.apes.filter(a=>a.hp>0&&a.state==='follow').length/32));
  for(const a of this.apes){if(a.hp>0)this.updateApe(a,dt)}
+ this.spreadApes(dt);
  for(const h of this.humans){if(h.hp>0&&!this.forces.update(h,dt))this.updateHuman(h,dt)}
  for(const v of this.vehicles){if(v.hp>0)this.updateVehicle(v,dt)}
  for(const h of this.helis)this.updateHeli(h,dt);this.helis=this.helis.filter(h=>h.hp>0&&Math.abs(h.x-this.king.x)<3500&&Math.abs(h.y-this.king.y)<3500);
@@ -1435,10 +1473,13 @@ class Game{
  if(obj&&this.objectDistance(a,obj)<26){if(a.attackCD<=0){a.attackCD=.75;this.animateAttack(a,obj,'overhead');this.damageObject(obj,18,a)}return}
  if(a.chargeTime<=0||dist(a,this.king)>1050||dist(a,target)<30){a.state='hold';a.target={x:a.x,y:a.y}}else this.move(a,target.x-a.x,target.y-a.y,a.speed*1.4,dt);
  }else if(a.state==='follow'){
- let tx=this.king.x+a.offsetX+Math.sin(this.time*.9+a.phase)*16,ty=this.king.y+a.offsetY+Math.cos(this.time*.8+a.phase)*16;
+ const spread=this.followSpread||1;
+ let tx=this.king.x+a.offsetX*spread+Math.sin(this.time*.9+a.phase)*16,ty=this.king.y+a.offsetY*spread+Math.cos(this.time*.8+a.phase)*16;
+ const kingGap=Math.hypot(tx-this.king.x,ty-this.king.y);
+ if(kingGap<42){const angle=kingGap>.001?Math.atan2(ty-this.king.y,tx-this.king.x):a.phase;tx=this.king.x+Math.cos(angle)*42;ty=this.king.y+Math.sin(angle)*42}
  // Clearance routes own obstacle avoidance. Old trail targets could pull a
  // follower backwards forever when the king had already crossed a clearing.
- let d=Math.hypot(tx-a.x,ty-a.y);if(d>25){let peers=this.apeGrid.near(a.x,a.y,22);let sx=0,sy=0;for(const p of peers){if(p!==a){sx+=(a.x-p.x)*.16;sy+=(a.y-p.y)*.16}}this.move(a,tx-a.x+sx,ty-a.y+sy,a.speed*(dist(a,this.king)>180?1.55:1),dt)}
+ let d=Math.hypot(tx-a.x,ty-a.y);if(d>25)this.move(a,tx-a.x,ty-a.y,a.speed*(dist(a,this.king)>180?1.55:1),dt);
  }else if(a.state==='hold'){
  if(a.target&&dist(a,a.target)>28)this.move(a,a.target.x-a.x,a.target.y-a.y,a.speed,dt);
  }else if(st&&(a.state==='settled'||a.state==='scout')){

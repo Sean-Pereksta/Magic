@@ -35,6 +35,13 @@ npm run test:apes:browser
   trunks leave room for the horde. Old trail steering no longer pulls followers
   backward. Regression tests include enclosed walls, bridges, 100 mixed units
   in dense trees, and 100 followers in an actual generated forest.
+- **Horde spacing:** nearby active apes gently make room even when holding,
+  attacking, or already close to their destination. Exact overlaps separate in
+  stable directions, children use smaller spacing, and followers leave room
+  around the crown. Larger hordes keep wider, loose following offsets. Local
+  spacing respects obstacles and water, preserves attacks and commands, and
+  leaves distant sleeping settlements alone. Tests cover clumps, corridors,
+  different update rates, and a moving 100-ape horde.
 - **World:** frontier, watershed, orchard, highland, research, and military
   districts influence landscape and development. Major hubs occupy spaced dry
   slots between river bands. Smaller camps, checkpoints, and research outposts
