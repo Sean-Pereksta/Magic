@@ -75,7 +75,7 @@ test('military squads hold against 40 visible apes, withdraw against 80, and nev
  const s=g.forces.createSquad(humans,{x:250,y:0});s.nextReport=1000;
  for(let i=0;i<39;i++)g.makeApe(240+i%10,i%6,'hold');refresh(g);g.forces.thinkSquad(s);assert.equal(s.order,'Suppress');
  for(let i=0;i<40;i++)g.makeApe(240+i%10,i%6,'hold');refresh(g);g.time=.6;g.forces.thinkSquad(s);assert.equal(s.order,'Fallback');
- const reported={...s.objective};g.king.x=900;g.world.lineClear=()=>false;g.visibilityCache.clear();g.time=7;refresh(g);g.forces.thinkSquad(s);assert.equal(s.order,'Search');assert.equal(s.density,0);assert.deepEqual({...s.objective},reported);
+ const reported={...s.objective},fallback={...s.fallbackPoint};g.king.x=900;g.world.lineClear=()=>false;g.visibilityCache.clear();g.time=7;refresh(g);g.forces.thinkSquad(s);assert.equal(s.order,'Fallback','loss of contact does not cancel travel to confirmed support');assert.equal(s.density,0);assert.deepEqual({...s.objective},reported);assert.deepEqual({...s.fallbackPoint},fallback);g.time=9;g.performance.beginStep();g.forces.thinkSquad(s);assert.equal(s.order,'Hold & Suppress');assert.equal(s.fallbackComplete,true);
 });
 test('an exhausted LOS budget retains the last confirmed density and withdrawal order',()=>{
  const {g}=arena();g.king.x=250;g.king.y=0;const h=g.makeHuman(0,0,null);g.forces.assign(h,null,'rifleman');h.state='combat';h.targetId='king';h.lastSeenAt=0;
