@@ -49,7 +49,7 @@ npm run test:apes:browser
   layout variants. Distant garrisons retain their wounds and surviving members
   in the save without exhausting the active force budget.
 - **Combat:** six ape attack poses, five fall variants, recoil, interruption,
-  fading bodies, dropped weapons, and a falling king. Nine human roles include
+  fading bodies, dropped weapons, and a falling king. Fourteen human roles include
   trackers, radio officers, shield guards, marksmen, grenadiers, medics, assault
   scouts, and heavy gunners. Marksmen lock a warned point before firing; grenade
   circles give 1.8 seconds to escape. Shield guards reward flanking or a swarm.
@@ -79,6 +79,62 @@ npm run test:apes:browser
   visuals, region HUD, map management, and a seeded menu. Procedural audio adds
   footsteps, river ambience, varied impacts and falls, and distinct threat cues.
   Low detail, reduced motion, mute, and volume controls are available.
+
+## Military escalation
+
+Active followers guarantee response stages at 25, 60, 120 and 220. The original
+campaign threat still matters; settled residents do not count toward the horde
+floor. At 200 followers a one-time military mobilization unlocks tanks; at 350
+the director coordinates larger operations across separate approach bearings.
+Reports expire, targets are remembered positions, and breaking contact still
+works. Known settlements receive named army warnings before a column departs.
+
+Responses consume finite site personnel, vehicle inventory and armored capacity.
+The active response budget is weighted: infantry 1, elites 1.5, heavy gunners 2,
+trucks/jeeps/command vehicles 4, APCs 7, IFVs 9, tanks 12 and aircraft 10. Cargo
+reserves its future soldiers' budget before they deploy. Destroying radios cuts
+coordination; depots stop armor; fuel cuts vehicles and aircraft; barracks reduce
+replacement troops. Troop trucks and APCs unload prepaid passengers in sequence,
+and ambushing an occupied transport removes its undeployed reinforcements.
+
+Military riflemen, rangers, heavy assault gunners, engineers and squad leaders
+join the original roles. Squads share a reported objective and role formations:
+marksmen and medics behind riflemen, rangers on the flanks, infantry screening
+armor. Confirmed concentrations of 40 prompt suppression and support reports;
+80 prompt withdrawal. Small patrols avoid direct engagement with huge hordes.
+Killing a leader briefly disrupts coordination. Engineers need 3.5 uninterrupted
+seconds away from apes to build temporary barricades or field lights.
+
+Tanks have 1,100 HP, a separate slowly rotating turret, and a cannon that commits
+to a point for a 1.8-second warning before a shell travels and explodes. Front,
+side and rear melee deal 20%, 50% and 100% damage. Five nearby apes slow rotation,
+eight disrupt the machine gun, twelve impair the turret, and sixteen overrun the
+vehicle, stopping cannon fire and exposing components. Damaged tracks immobilize,
+weapon damage increases reload and eventually disables guns, and rear engine
+damage produces smoke and eventual destruction. IFVs fire smaller explosive
+volleys; APCs provide covering fire while dismounting troops. Forest canopy,
+solid trees, buildings, rocks and unbridged rivers constrain armor. Forest cover
+also reduces armed scouts and gunships, which orbit reported battle areas, fire
+limited bursts and periodically reposition or leave.
+
+New forward bases, armored depots and rare regional command bases have larger
+305/345/430-unit compounds, layered barricade rings, broad guarded gates,
+service openings, multiple floodlights, armor parking and 30–78 defenders.
+Command installations contain major captivity areas. Roads remain clear of the
+expanded perimeters. Temporary checkpoints assemble at road approaches after
+their defenders travel from a source; occasional supply columns move between
+installations. Distant response corridors load through the existing three-stage
+streaming budget and heavy vehicles retain clearance and road preference.
+
+Version-one saves keep the same storage key. Missing military fields derive on
+load; existing wounds, spent inventory, passengers, squad reports and one-time
+mobilization persist. Newly generated regions receive the new base layouts.
+
+Scenario **G** adds 300 apes, 100 humans, two tanks, three APC/IFVs, three
+trucks/jeeps, two helicopters, an alarm, grenades and cannon activity. It runs
+alongside A–F with the same AI, visibility, navigation and generation ceilings.
+`npm run bench:apes:browser -- --scenario G --frames 180` measures a real canvas;
+hardware timing is diagnostic and never a universal frame-rate guarantee.
 
 ## Controls and persistence
 
@@ -160,7 +216,7 @@ comparison with a separate baseline checkout, and `--scenario A`, `D`, or
 `ABCDEF` selects scenes. The default length is 360 steps. `--profile` wraps
 simulation methods with inclusive timing, so nested method totals overlap.
 
-All six fixtures use the same world seed and reset actor randomness separately.
+All seven fixtures use the same world seed and reset actor randomness separately.
 A/B retain 100/200 followers in dense generated woodland; C runs 150 apes
 against 80 humans; D runs 200 apes against 150 humans with four vehicles,
 two helicopters and an active alarm; E includes 180 settlement residents,
@@ -205,7 +261,7 @@ projectiles, 214 effects and 67 queued routes. Work stayed within three
 A* starts, 192 expansion steps, 32 AI thinks and 96 perception tests per tick.
 This verifies the sustained fixture without implying an indefinite soak.
 
-The ordinary `test:apes` suite and existing GitHub workflow include the A–F
+The ordinary `test:apes` suite and existing GitHub workflow include the A–G
 operation-budget checks, retained populations, real combat damage, distant
 growth and wake-up, remote vehicle combat, fair human perception, swept
 projectiles, pool reuse, quality recovery and saved strategic state. The

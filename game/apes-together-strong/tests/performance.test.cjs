@@ -18,7 +18,7 @@ function emptyGame() {
 }
 
 for (const scenario of SCENARIOS) test(`stress ${scenario.id}: ${scenario.label} retains actors and bounded work`, () => {
-  const { game, report } = runScenario(loadEngine(), scenario, 120);
+  const { game, report } = runScenario(loadEngine(), scenario, scenario.military ? 180 : 120);
   assert.equal(report.apes, scenario.apes, 'optimization must retain the requested population');
   assert.equal(report.humans, scenario.humans);
   assert.ok(report.maxSearches <= 3, `A* request budget exceeded: ${report.maxSearches}`);
@@ -33,6 +33,13 @@ for (const scenario of SCENARIOS) test(`stress ${scenario.id}: ${scenario.label}
   if (scenario.combat) {
     assert.ok(report.damage > 0, 'combat must still inflict damage');
     assert.ok(report.peakBullets > 0, 'human weapons must still fire');
+  }
+  if (scenario.military) {
+    assert.ok(report.peakCannonWarnings > 0, 'combined arms benchmark must exercise visible cannon preparation');
+    assert.ok(report.peakShells > 0, 'combined arms benchmark must exercise traveling armored shells');
+    assert.ok(report.peakGrenades > 0, 'combined arms benchmark must exercise infantry explosives');
+    assert.equal(game.vehicles.filter(v => v.vehicleClass === 'tank').length, 2);
+    assert.equal(game.vehicles.filter(v => ['apc', 'ifv'].includes(v.vehicleClass)).length, 3);
   }
   if (scenario.alarm) assert.equal(game.world.sites.get('stress-garrison').alarm, true);
   if (scenario.settlement) assert.equal(game.settlements[0].population, scenario.apes);

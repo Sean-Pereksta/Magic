@@ -50,7 +50,10 @@
     'Redfern', 'Briar', 'Hollow', 'Northstar', 'Greywolf', 'Stonebrook', 'Ember', 'Stillwater'];
   const SITE_LABELS = { transport: 'Transport Cage', hunter: 'Hunter Camp', research: 'Research House',
     checkpoint: 'Road Checkpoint', prison: 'Prison Compound', detention: 'Detention Center',
-    experimental: 'Experimental Facility' };
+    experimental: 'Experimental Facility', forwardBase: 'Forward Operating Base',
+    armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base' };
+  const MILITARY_TYPES = new Set(['forwardBase', 'armoredDepot', 'regionalCommand']);
+  const VEHICLE_CLEARANCE = { jeep: 21, armored: 23, command: 22, truck: 24, apc: 25, ifv: 27, tank: 31 };
 
   class ATSWorld {
     constructor(seed) {
@@ -66,12 +69,15 @@
       this.intel = new Map();
       this._terrainCache = new Map();
       this._sitePlanCache = new Map();
+      this._vehiclePlanCache = new Map();
       this._spatial = new Map();
       this._collisionCell = 128;
       this._queryStamp = 0;
       this._queryDepth = 0;
       this._chunkJobs = new Map();
       this._streamQueue = new Map();
+      this._corridorRequests = new Map();
+      this._streamSerial = 0;
       this._coldChunks = new Map();
       this._streaming = false;
       this.chunkRevision = 0;
@@ -159,19 +165,33 @@
     // finish synchronously once streaming is active.
     stream(x, y, radius = 1400, options = {}) {
       this._streaming = true;
+      this._streamSerial++;
       const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
       const started = now(), budget = options.budgetMs ?? 1.5, maxSteps = options.maxSteps ?? 3;
       const dx = options.dx || 0, dy = options.dy || 0;
       const minX = Math.floor((x - radius) / CHUNK), maxX = Math.floor((x + radius) / CHUNK);
       const minY = Math.floor((y - radius) / CHUNK), maxY = Math.floor((y + radius) / CHUNK);
+      const corridors = new Map();
+      for (const [id, request] of this._corridorRequests) {
+        if (this._streamSerial - request.touched > 180) { this._corridorRequests.delete(id); continue; }
+        for (const [key, point] of request.chunks) {
+          const score = point.distance + 1600000;
+          if (!corridors.has(key) || score < corridors.get(key).score) corridors.set(key, { cx: point.cx, cy: point.cy, score });
+        }
+      }
       for (const [key, request] of this._streamQueue) {
-        if (request.cx < minX - 1 || request.cx > maxX + 1 || request.cy < minY - 1 || request.cy > maxY + 1) this._streamQueue.delete(key);
+        if (!corridors.has(key) && (request.cx < minX - 1 || request.cx > maxX + 1 || request.cy < minY - 1 || request.cy > maxY + 1)) this._streamQueue.delete(key);
       }
       for (let cy = minY; cy <= maxY; cy++) for (let cx = minX; cx <= maxX; cx++) {
         const key = cx + ',' + cy;
         if (this.chunks.has(key)) { this._streamQueue.delete(key); continue; }
         const ox = (cx + .5) * CHUNK - x, oy = (cy + .5) * CHUNK - y;
         this._streamQueue.set(key, { cx, cy, score: ox * ox + oy * oy - (ox * dx + oy * dy) * 350 });
+      }
+      for (const [key, request] of corridors) {
+        if (this.chunks.has(key)) continue;
+        const old = this._streamQueue.get(key);
+        if (!old || request.score < old.score) this._streamQueue.set(key, request);
       }
       const queue = Array.from(this._streamQueue.entries()).sort((a, b) => a[1].score - b[1].score);
       let steps = 0;
@@ -192,11 +212,36 @@
       return steps;
     }
 
+    requestCorridor(from, to, options = {}) {
+      if (!from || !to || !Number.isFinite(from.x + from.y + to.x + to.y)) return;
+      const id = String(options.id || 'journey:' + Math.floor(from.x / CHUNK) + ',' + Math.floor(from.y / CHUNK));
+      const old = this._corridorRequests.get(id);
+      if (old && dist2(from, old.from) < 180 ** 2 && dist2(to, old.to) < 180 ** 2) { old.touched = this._streamSerial; return; }
+      const startRoad = this._roadInfo(from.x, from.y), endRoad = this._roadInfo(to.x, to.y);
+      const points = options.profile ? [from, { x: startRoad.x, y: endRoad.y }, { x: endRoad.x, y: endRoad.y }, to] : [from, to];
+      const chunks = new Map(), padding = Math.min(2, Math.max(1, Math.ceil(((options.radius || 0) + 384) / CHUNK)));
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i], steps = Math.max(1, Math.ceil(dist(a, b) / (CHUNK * .5)));
+        for (let n = 0; n <= steps; n++) {
+          const px = lerp(a.x, b.x, n / steps), py = lerp(a.y, b.y, n / steps), cx = Math.floor(px / CHUNK), cy = Math.floor(py / CHUNK);
+          // One neighboring chunk on each side covers A* detours, facilities
+          // that straddle a border, and full hull clearance at chunk seams.
+          for (let dy = -padding; dy <= padding; dy++) for (let dx = -padding; dx <= padding; dx++) {
+            const xx = cx + dx, yy = cy + dy, key = xx + ',' + yy;
+            if (!chunks.has(key)) chunks.set(key, { cx: xx, cy: yy, distance: dist2(from.x, from.y, (xx + .5) * CHUNK, (yy + .5) * CHUNK) * .04 });
+          }
+        }
+      }
+      const bounded = new Map([...chunks].sort((a, b) => a[1].distance - b[1].distance).slice(0, 96));
+      this._corridorRequests.set(id, { from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, chunks: bounded, touched: this._streamSerial });
+      if (this._corridorRequests.size > 24) this._corridorRequests.delete(this._corridorRequests.keys().next().value);
+    }
+
     boundsReady(minX, minY, maxX, maxY) {
       if (!this._streaming) return true;
-      // Facilities can overlap the owning chunk by up to 60px. Require their
+      // Fortified compounds can overlap the owning chunk. Require their
       // neighboring blueprint before permitting movement along a chunk edge.
-      const pad = 96;
+      const pad = 384;
       for (let cy = Math.floor((minY - pad) / CHUNK); cy <= Math.floor((maxY + pad) / CHUNK); cy++) {
         for (let cx = Math.floor((minX - pad) / CHUNK); cx <= Math.floor((maxX + pad) / CHUNK); cx++) {
           if (!this.chunks.has(cx + ',' + cy)) return false;
@@ -210,6 +255,7 @@
       let removed = 0;
       for (const [key, chunk] of this.chunks) {
         if (removed >= maxChunks) break;
+        if ([...this._corridorRequests.values()].some(request => this._streamSerial - request.touched <= 180 && request.chunks.has(key))) continue;
         const px = chunk.x + CHUNK / 2, py = chunk.y + CHUNK / 2;
         if ((px - x) ** 2 + (py - y) ** 2 < distance2
           || pins.some(p => (px - p.x) ** 2 + (py - p.y) ** 2 < 1800 ** 2)) continue;
@@ -287,6 +333,137 @@
         || this._waterAt(x, y + bank) || this._waterAt(x, y - bank));
     }
 
+    vehicleRadius(profile) { return VEHICLE_CLEARANCE[profile] || 21; }
+
+    vehicleWaypoint(from, to, range = 560) {
+      const distance = dist(from, to);
+      if (distance <= range) return { x: to.x, y: to.y };
+      if (this.terrain !== ATSWorld.prototype.terrain) return {
+        x: lerp(from.x, to.x, range / distance), y: lerp(from.y, to.y, range / distance)
+      };
+      const start = this._roadInfo(from.x, from.y), end = this._roadInfo(to.x, to.y);
+      const vertical = start.dx < start.dy, targetVertical = end.dx < end.dy;
+      const destination = targetVertical ? { x: end.x, y: to.y } : { x: to.x, y: end.y };
+      const along = (a, b) => a + clamp(b - a, -range, range);
+      if (dist(from, destination) < 80) return { x: to.x, y: to.y };
+      if (vertical) {
+        const sameColumn = Math.round((from.x - 560) / DISTRICT) === Math.round((destination.x - 560) / DISTRICT);
+        if (sameColumn) { const y = along(from.y, destination.y); return { x: this._roadInfo(from.x, y).x, y }; }
+        const junctionY = this._roadInfo(from.x, end.y).y;
+        if (Math.abs(from.y - junctionY) > 55) { const y = along(from.y, junctionY); return { x: this._roadInfo(from.x, y).x, y }; }
+        const x = along(from.x, destination.x); return { x, y: this._roadInfo(x, end.y).y };
+      }
+      const sameRow = Math.round((from.y - 120) / DISTRICT) === Math.round((destination.y - 120) / DISTRICT);
+      if (sameRow) { const x = along(from.x, destination.x); return { x, y: this._roadInfo(x, from.y).y }; }
+      const junctionX = this._roadInfo(end.x, from.y).x;
+      if (Math.abs(from.x - junctionX) > 55) { const x = along(from.x, junctionX); return { x, y: this._roadInfo(x, from.y).y }; }
+      const y = along(from.y, destination.y); return { x: this._roadInfo(end.x, y).x, y };
+    }
+
+    vehicleObstacleRadius(object, profile) {
+      // Infantry keeps its forgiving trunk collision. Armor needs the whole
+      // tree clearance, and can crush only explicitly small vegetation.
+      if (object.type === 'tree') {
+        if (profile === 'tank' && (object.smallVegetation || (object.size < .8 && object.height < 75))) return -1;
+        return object.r || 16;
+      }
+      return object._collision?.radius ?? object.moveRadius ?? object.r ?? 15;
+    }
+
+    vehicleTerrain(x, y) {
+      const terrain = this.terrain(x, y);
+      if (terrain.road || terrain.water) return terrain;
+      // Blueprint lookups are deterministic and cached; no chunk generation or
+      // global site scans are needed to recognize cleared military staging.
+      const cx = Math.floor(x / CHUNK), cy = Math.floor(y / CHUNK);
+      const key = cx + ',' + cy;
+      let plans = this._vehiclePlanCache.get(key);
+      if (!plans) {
+        plans = [];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const plan = this._sitePlan(cx + dx, cy + dy);
+          if (plan?.military) plans.push(plan);
+        }
+        this._vehiclePlanCache.set(key, plans);
+        if (this._vehiclePlanCache.size > 1500) this._vehiclePlanCache.delete(this._vehiclePlanCache.keys().next().value);
+      }
+      for (const plan of plans) {
+        if (Math.abs(x - plan.x) < plan.radius && Math.abs(y - plan.y) < plan.radius)
+          return { ...terrain, compound: true };
+        const points = plan.approach || [];
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1], b = points[i], vx = b.x - a.x, vy = b.y - a.y;
+          const t = clamp(((x - a.x) * vx + (y - a.y) * vy) / (vx * vx + vy * vy || 1), 0, 1);
+          if (dist2(x, y, a.x + vx * t, a.y + vy * t) < 48 * 48) return { ...terrain, road: true, accessRoad: true };
+        }
+      }
+      return terrain;
+    }
+
+    vehicleBlocked(x, y, radius, profile = 'truck', ignoreId) {
+      radius = Math.max(radius || 0, this.vehicleRadius(profile));
+      if (this._streaming) { if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius)) return true; }
+      else this.ensure(x, y, 64);
+      if (this.waterBlocked(x, y, radius)) return true;
+      const terrain = this.vehicleTerrain(x, y);
+      if (terrain.biome === 'wetland' && !terrain.road && !terrain.compound) return true;
+      let blocked = false;
+      this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
+        if (object.id === ignoreId || !object.solid || object.dead || object.hp <= 0) return;
+        const obstacleRadius = this.vehicleObstacleRadius(object, profile);
+        if (obstacleRadius < 0) return;
+        const touches = object.collision === 'rect' ? this._touches(object, x, y, radius)
+          : dist2(x, y, object.x, object.y) < (obstacleRadius + radius) ** 2;
+        if (touches) { blocked = true; return false; }
+      });
+      return blocked;
+    }
+
+    militaryCapacity(site) {
+      if (!site) return null;
+      site.military = site.military ?? MILITARY_TYPES.has(site.type);
+      // Legacy campaigns derive supply once. Consuming an inventory entry is
+      // persistent and never replenished by calling this method or loading.
+      if (!site.vehicleInventory) {
+        const t = site.tier || 0, major = site.type === 'regionalCommand', depot = site.type === 'armoredDepot';
+        site.vehicleInventory = { jeep: t >= 2 ? 2 : t === 1 ? 1 : 0,
+          armored: t >= 4 ? 2 : t === 3 ? 1 : 0,
+          command: t >= 4 ? 1 : 0, truck: t >= 3 ? major ? 5 : 3 : t === 2 ? 1 : 0,
+          apc: t >= 4 || site.military ? major ? 4 : 2 : t === 3 ? 1 : 0,
+          ifv: t >= 5 ? major ? 2 : 1 : 0, tank: t >= 5 || depot ? major ? 3 : depot ? 2 : 1 : 0,
+          heli: t >= 4 ? major ? 3 : 2 : t === 3 ? 1 : 0 };
+      }
+      if (site.armorCapacity === undefined) site.armorCapacity = Object.entries(site.vehicleInventory)
+        .reduce((sum, [kind, count]) => sum + count * ({ tank: 12, ifv: 9, apc: 7 }[kind] || 0), 0);
+      const structures = (site.objects || []).map(id => this.objects.get(id)).filter(Boolean);
+      const online = (type, fallback) => {
+        const found = structures.filter(o => o.type === type);
+        return found.length ? found.some(o => !o.dead && o.hp > 0) : fallback;
+      };
+      const radio = !site.radioDown && site.radioOnline !== false && online('radio', (site.tier || 0) >= 2);
+      const depot = !site.depotDown && site.depotOnline !== false && online('depot', (site.tier || 0) >= 3);
+      const barracks = !site.barracksDown && site.barracksOnline !== false && online('barracks', (site.tier || 0) >= 2);
+      const fuel = !site.fuelDown && site.fuelOnline !== false && online('fuel', (site.tier || 0) >= 3);
+      return { inventory: site.vehicleInventory, vehicleInventory: site.vehicleInventory, armorCapacity: Math.max(0, site.armorCapacity),
+        radio, depot, barracks, fuel, coordination: radio ? 1 : .3,
+        armorFactor: depot ? 1 : .15, infantryFactor: barracks ? 1 : .3,
+        fuelFactor: fuel ? 1 : .25 };
+    }
+
+    vehicleStaging(site, profile, index = 0) {
+      const points = site.staging?.length ? site.staging : site.approach?.length ? [site.approach.at(-1)]
+        : [{ x: site.x, y: site.y + (site.radius || 160) + 90 }];
+      const base = points[index % points.length], radius = this.vehicleRadius(profile);
+      // Line columns up along the road instead of offsetting large hulls into
+      // the trees bordering a staging point. No inventory is spent on failure.
+      for (const offset of [0, 84, -84, 168, -168, 252, -252]) {
+        const y = base.y + Math.floor(index / points.length) * 96 + offset;
+        const road = this._roadInfo(base.x, y), p = { x: Math.abs(road.x - base.x) < 96 ? road.x : base.x, y };
+        if (!this.vehicleBlocked(p.x, p.y, radius, profile)) return p;
+      }
+      return null;
+    }
+
     _sitePlan(cx, cy) {
       const key = cx + ',' + cy;
       if (this._sitePlanCache.has(key)) return this._sitePlanCache.get(key);
@@ -329,15 +506,40 @@
             else if (tier === 3) type = r() < 0.2 ? 'checkpoint' : 'prison';
             else if (tier === 4) type = r() < 0.27 ? 'prison' : 'detention';
             else type = r() < 0.23 ? 'detention' : 'experimental';
+            // Major hubs can house mechanized garrisons. Command bases are a
+            // rare Tier 5 blueprint, not another facility in every chunk.
+            if (hub && tier >= 3 && (district.role === 'military' || r() < .56)) {
+              const militaryRoll = r();
+              type = tier === 3 ? 'forwardBase' : tier === 4 ? militaryRoll < .55 ? 'forwardBase' : 'armoredDepot'
+                : militaryRoll < .13 ? 'regionalCommand' : militaryRoll < .65 ? 'armoredDepot' : 'forwardBase';
+            }
             const counts = { transport: [4, 7], hunter: [10, 18], research: [20, 36], checkpoint: [18, 32],
-              prison: [40, 70], detention: [80, 120], experimental: [120, 180] };
+              prison: [40, 70], detention: [80, 120], experimental: [120, 180],
+              forwardBase: [32, 60], armoredDepot: [36, 70], regionalCommand: [120, 180] };
             const guards = { transport: [0, 2], hunter: [2, 4], research: [4, 5], checkpoint: [4, 7],
-              prison: [6, 10], detention: [10, 14], experimental: [14, 19] };
+              prison: [6, 10], detention: [10, 14], experimental: [14, 19],
+              forwardBase: [30, 50], armoredDepot: [32, 48], regionalCommand: [62, 78] };
             plan = { id: 'site:' + key, x: sx, y: sy, name: choice(r, ADJECTIVES) + ' ' + SITE_LABELS[type],
               type, tier, count: int(r, ...counts[type]), guards: int(r, ...guards[type]),
-              radius: type === 'transport' ? 76 : type === 'hunter' ? 154 : 145 + tier * 20 };
-            if (this._riverInfo(sx, sy).distance < plan.radius + 115) plan = null;
-            if(plan){plan.district=district.id;plan.region=district.name;plan.role=hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
+              radius: type === 'regionalCommand' ? 430 : type === 'armoredDepot' ? 345 : type === 'forwardBase' ? 305
+                : type === 'transport' ? 76 : type === 'hunter' ? 154 : 145 + tier * 20 };
+            if (MILITARY_TYPES.has(type)) {
+              // A larger perimeter must sit back from both main roads. Choose
+              // a dry parcel within its owning chunk instead of walling off a
+              // regional highway or letting the access lane cross a river.
+              const candidates = [{ x: sx, y: sy }];
+              for (const oy of [96, 288, 480, 672]) for (const ox of [96, 288, 480, 672])
+                candidates.push({ x: cx * CHUNK + ox, y: cy * CHUNK + oy });
+              const placement = candidates.filter(p => {
+                const info = this._roadInfo(p.x, p.y);
+                return Math.min(info.dx, info.dy) > plan.radius + 65
+                  && this._riverInfo(p.x, p.y).distance > plan.radius + 115;
+              }).sort((a, b) => dist2(a.x, a.y, sx, sy) - dist2(b.x, b.y, sx, sy))[0];
+              if (placement) { plan.x = sx = placement.x; plan.y = sy = placement.y; }
+              else plan = null;
+            }
+            if (plan && this._riverInfo(sx, sy).distance < plan.radius + 115) plan = null;
+            if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
           }
         }
       }
@@ -348,6 +550,14 @@
         // Join the north/south road below the perimeter instead of drawing a
         // supply road through the cages and buildings.
         plan.approach = [entrance, { x: road.x, y: entrance.y }];
+        if (plan.military) {
+          plan.staging = [plan.approach[1], { x: this._roadInfo(road.x, entrance.y + 100).x, y: entrance.y + 100 }]
+            .filter(p => !this.terrain(p.x, p.y).water);
+          plan.roadblocks = [-320, 0, 320].map(offset => {
+            const y = entrance.y + offset, info = this._roadInfo(road.x, y);
+            return { x: info.x, y, angle: Math.PI / 2 };
+          }).filter(p => !this.terrain(p.x, p.y).water);
+        }
       }
       this._sitePlanCache.set(key, plan);
       return plan;
@@ -467,6 +677,12 @@
         return;
       }
 
+      if (site.military) {
+        this.militaryCapacity(site);
+        this._buildMilitarySite(site, r, add);
+        return;
+      }
+
       const extent = site.radius - 34;
       site.serviceEntrance={x:site.x+extent*.36*(mirrored?-1:1),y:site.y-extent-24};
       const cageCount = site.count > 30 ? 4 : site.count > 13 ? 3 : 2;
@@ -521,6 +737,70 @@
         food: 120 + site.tier * 45, count: 120 + site.tier * 45, supply: true });
     }
 
+    _buildMilitarySite(site, r, add) {
+      const extent = site.radius - 74, command = site.type === 'regionalCommand', depot = site.type === 'armoredDepot';
+      site.serviceEntrance = { x: site.x, y: site.y - extent - 24 };
+      // Wide supply gates and rear staging avoid sending a tank through the
+      // infantry-sized side openings used by ordinary prison compounds.
+      for (let p = -extent; p <= extent; p += 38) {
+        if (Math.abs(p) > 82) add('wall', p, extent, { r: 19, w: 39, h: 18, height: 37, collision: 'rect' });
+        if (Math.abs(p) > 70) add('wall', p, -extent, { r: 19, w: 39, h: 18, height: 37, collision: 'rect' });
+        if (p > -extent + 15 && p < extent - 15) {
+          add('wall', -extent, p, { r: 19, w: 18, h: 39, height: 37, collision: 'rect' });
+          add('wall', extent, p, { r: 19, w: 18, h: 39, height: 37, collision: 'rect' });
+        }
+      }
+      add('gate', 0, extent, { r: 68, w: 143, h: 21, height: 44, collision: 'rect', hp: 310 + site.tier * 30 });
+      const outer = extent + 48;
+      if (depot || command) for (let p = -outer; p <= outer; p += 46) {
+        if (Math.abs(p) > 110) add('wall', p, outer, { r: 23, w: 47, h: 20, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
+        if (Math.abs(p) > 96) add('wall', p, -outer, { r: 23, w: 47, h: 20, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
+        if (p > -outer + 24 && p < outer - 24) {
+          add('wall', -outer, p, { r: 23, w: 20, h: 47, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
+          add('wall', outer, p, { r: 23, w: 20, h: 47, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
+        }
+      }
+      else for (const sign of [-1, 1]) add('wall', sign * 136, outer,
+        { r: 44, w: 86, h: 20, height: 26, collision: 'rect', barricade: true, defenseRing: 2, hp: 210 });
+      // Protected firing positions flank the entrance while leaving the wide
+      // center lane clear for outbound transports and armor.
+      for (const sign of [-1, 1]) {
+        add('tower', sign * 104, extent - 22, { r: 16, height: 94, lightRange: 590, angle: Math.PI / 2, sweep: .12, powered: true, floodlight: true });
+        add('wall', sign * 106, extent - 59, { r: 26, w: 49, h: 18, height: 25, collision: 'rect', barricade: true, defenseRing: 1, hp: 240 });
+      }
+      if (command) for (const sign of [-1, 1]) add('tower', sign * (extent - 18), 0,
+        { r: 17, height: 116, lightRange: 620, angle: sign < 0 ? Math.PI : 0, sweep: .18, powered: true, floodlight: true });
+      const cageCount = command ? 6 : 4;
+      let remaining = site.count;
+      for (let i = 0; i < cageCount; i++) {
+        const count = Math.ceil(remaining / (cageCount - i)); remaining -= count;
+        add('cage', -96 + i % 2 * 78, -64 + Math.floor(i / 2) * 67,
+          { r: 29, w: 64, h: 51, height: 46, hp: 110 + site.tier * 10, prisoners: count, count });
+      }
+      const barracksCount = command ? 3 : 2;
+      for (let i = 0; i < barracksCount; i++) add('barracks', -extent + 52, -extent + 124 + i * 92,
+        { r: 39, w: 76, h: 60, height: 52, collision: 'rect' });
+      add('radio', -extent + 44, -extent + 37, { r: 16, height: command ? 134 : 106, radioRange: 2800 + site.tier * 420 });
+      add('depot', extent - 74, -51, { r: 44, w: 105, h: 79, height: 53, collision: 'rect', repairBay: true, hp: 410 });
+      if (command) add('depot', extent - 74, 59, { r: 41, w: 102, h: 74, height: 49, collision: 'rect', repairBay: true, hp: 410 });
+      add('fuel', extent - 44, -extent + 45, { r: 20, w: 36, h: 38, height: 35, explosive: true, blastRadius: 165 });
+      if (command || depot) add('fuel', extent - 104, -extent + 45,
+        { r: 20, w: 36, h: 38, height: 35, explosive: true, blastRadius: 165 });
+      if (command) add('house', 10, -extent + 64, { r: 49, w: 102, h: 76, height: 74, collision: 'rect', commandCenter: true, hp: 480 });
+      add('alarm', 41, extent - 47, { r: 12, height: 54, alarmRange: 2200 + site.tier * 160, lightRange: 180, active: false });
+      for (const [x, y] of [[-extent + 19, -extent + 18], [extent - 19, -extent + 18], [-extent + 19, extent - 18], [extent - 19, extent - 18]])
+        add('tower', x, y, { r: 17, height: 118, lightRange: 550, angle: r() * TAU, sweep: .16, powered: true });
+      const parked = command ? ['tank', 'apc', 'truck', 'ifv'] : depot ? ['tank', 'apc', 'truck'] : ['apc', 'truck'];
+      for (let i = 0; i < parked.length; i++) {
+        const column = command || depot ? i % 2 : 0, row = command || depot ? Math.floor(i / 2) : i;
+        const x = column ? Math.min(238, extent - 64) : 126, y = extent - 160 + row * 90;
+        add('vehicle', x, y,
+          { r: parked[i] === 'tank' ? 35 : 29, w: parked[i] === 'tank' ? 84 : 71, h: parked[i] === 'tank' ? 51 : 40,
+            height: parked[i] === 'tank' ? 38 : 31, angle: Math.PI / 2, vehicleType: parked[i], parked: true });
+      }
+      add('berry', -42, extent - 58, { r: 17, solid: false, height: 16, food: 310 + site.tier * 45, count: 310 + site.tier * 45, supply: true });
+    }
+
     _startChunk(cx, cy) {
       const key = cx + ',' + cy;
       if (this._chunkJobs.has(key)) return this._chunkJobs.get(key);
@@ -551,8 +831,9 @@
         const t = this.terrain(x, y);
         const road = this._roadInfo(x, y);
         if (x * x + y * y < 172 * 172 || t.water || t.bridge || road.dx < 52 || road.dy < 52) continue;
-        if (nearbySites.some(s => dist2(x, y, s.x, s.y) < (s.radius + 23) ** 2)) continue;
-        if(nearbySites.some(s=>(s.approach||[]).some((a,index,points)=>{if(!index)return false;const b=points[index-1],dx=b.x-a.x,dy=b.y-a.y,t=clamp(((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return dist2(x,y,a.x+t*dx,a.y+t*dy)<32*32})))continue;
+        if (nearbySites.some(s => s.military ? Math.abs(x - s.x) < s.radius + 23 && Math.abs(y - s.y) < s.radius + 23
+          : dist2(x, y, s.x, s.y) < (s.radius + 23) ** 2)) continue;
+        if(nearbySites.some(s=>(s.approach||[]).some((a,index,points)=>{if(!index)return false;const b=points[index-1],dx=b.x-a.x,dy=b.y-a.y,t=clamp(((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return dist2(x,y,a.x+t*dx,a.y+t*dy)<(s.military?64:32)**2})))continue;
         if (occupied.some(o => dist2(x, y, o.x, o.y) < 45 * 45)) continue;
         const v = r();
         let type = v < 0.09 ? 'berry' : t.biome === 'rocky' ? v < 0.65 ? 'rock' : 'tree'
@@ -597,7 +878,7 @@
 
     _nearChunks(x, y, radius, callback) {
       // A site may extend past its owning chunk. Padding includes those overlapping structures.
-      const padding = 275;
+      const padding = 550;
       const minX = Math.floor((x - radius - padding) / CHUNK), maxX = Math.floor((x + radius + padding) / CHUNK);
       const minY = Math.floor((y - radius - padding) / CHUNK), maxY = Math.floor((y + radius + padding) / CHUNK);
       for (let cy = minY; cy <= maxY; cy++) for (let cx = minX; cx <= maxX; cx++) {
