@@ -84,6 +84,20 @@ army and income. It grants neither another recruit nor another copy of combat
 rewards. Pending boss relics, event choices, and unconsumed draft offers survive
 reload. Incomplete native star/evolution choices are reopened from troop data.
 
+Required popups can be closed with Close, Escape, or the backdrop. The **Continue
+choice** button reopens the same pending reward or upgrade; closing never selects
+an option or rerolls its offers. Troop upgrades finish before an overlapping event,
+including after reloading a checkpoint. Event popups also offer **Skip event · no
+reward**. Stale popup buttons repair the current view before applying a choice,
+and Close stays visible while scrolling on short screens. Saved runs and the run
+menu remain reachable while a choice is pending.
+
+The footer keeps a full-width next-step button visible after every round. It
+starts the next wave, reopens a pending choice, finishes the boss store, or opens
+recruitment/bench deployment when the board is empty. During card placement it
+stays visible with the instruction to place the card; during combat it shows
+the battle status and resumes a paused fight.
+
 The menu lists saved runs on this device with name, wave, army, coins, and saved time. Choosing a file fills its local save code and loads it. Cloud saves from another device can be loaded by name/code; successful loads are cached and then listed. New runs with an existing local save name receive a numbered name, preserving the earlier run and carrying over its local discoveries/unlocks when the code matches.
 
 Every primary checkpoint keeps the last readable version as a recovery backup. Storage errors are reported accurately. Cloud writes retain their original profile identity, coalesce pending checkpoints, time out instead of blocking forever, and reject mismatched codes or older timestamps. A failed cloud read still permits a valid local load.
@@ -132,6 +146,7 @@ cloud sync and leaderboard services are not covered by this offline suite.
 npm run test:tiny-troops:saves-browser
 npm run test:tiny-troops:recovery-browser
 npm run test:tiny-troops:bench-browser
+npm run test:tiny-troops:popups-browser
 ```
 
 This browser suite verifies visible files, reload, separate run names, backups,
@@ -143,6 +158,15 @@ copies, offline and full-storage recovery, and clickable recovery controls.
 The bench suite uses the shipped page to verify replacement choices, sale
 payouts, three fixed slots, merges, training and damage/support star paths,
 post-boss swaps, combat inspection, saved-file reload, and mobile interactions.
+
+The popup suite reproduces overlapping event/evolution rewards and checks all
+nine event options with real clicks, dismissal and identical offers on resume,
+stale phases/buttons, single rewards, skipping, obsolete events, evolution,
+mastery, high stars, specialization, relics, menu access, touch interaction,
+sticky Close on short screens, and real save/reload of overlapping rewards.
+It also checks visible next-wave controls after normal, event, and boss victories,
+store completion, empty-board recruitment/deployment, pause/resume, and duplicate
+start protection.
 
 The recovery suite sustains every native boss definition for 160 simulation
 steps, all 243 valid recruits for repeated periodic abilities, exercises the

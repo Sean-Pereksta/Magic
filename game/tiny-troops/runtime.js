@@ -107,7 +107,7 @@
   const synergy = id => { refreshFormation(); return roleCache.find(s => s.id === id); };
   function modifiers(u) {
     const m = { ...R.pathMods(u) };
-    (S.tt.eventBonuses || []).forEach(b => { if (R.has(u, b.tag)) Object.entries(b).filter(([k]) => k !== 'tag').forEach(([k, v]) => m[k] = (m[k] || 0) + R.numeric(v)); });
+    (Array.isArray(S.tt.eventBonuses) ? S.tt.eventBonuses : []).forEach(b => { if (b && typeof b.tag === 'string' && R.has(u, b.tag)) Object.entries(b).filter(([k]) => k !== 'tag').forEach(([k, v]) => m[k] = (m[k] || 0) + R.numeric(v)); });
     return m;
   }
   const legacySpawn = spawn, legacyRand = rand;
@@ -289,7 +289,8 @@
   const legacyFight = fight;
   fight = function () {
     if (isBattle() || S.tt.finished || ['MENU', 'RESULTS'].includes(mode())) return false;
-    if (S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization || S.tt.event || S.starChoiceTarget || S.ultimate10Target || S.evoTarget || S.ascTarget) return msg('Finish your current choice before starting the wave.');
+    if (openPendingChoice()) return;
+    if (S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return msg('Finish your current choice before starting the wave.');
     const requiredEvolution = army().find(u => u && maybeEvolution(u)); if (requiredEvolution) return openEvolution(requiredEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
     if (!liveA().length) return msg('Place at least one fighter first.');
@@ -314,7 +315,18 @@
     return result;
     } catch (error) { combatFailed(error, 'battle setup'); return false; }
   };
-  window.startNextFight = function () { if (TP.recovery) return openRecovery(); if (mode() === 'PAUSED') return pause(); if (isBattle()) return false; if (S.phase !== 'recruit') return msg('Finish this reward or upgrade first.'); close(); return fight(); };
+  window.startNextFight = function () {
+    if (TP.recovery) return openRecovery();
+    if (S.tt.finished) return openMainMenu();
+    if (mode() === 'MENU') return false;
+    if (isBattle()) { if (mode() === 'PAUSED') return pause(); return false; }
+    if (openPendingChoice()) return;
+    if (S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return msg('Choose a board or bench troop to finish placing your card.');
+    if (S.phase === 'shop') return window.doneShop();
+    if (S.phase !== 'recruit') return msg('Finish this reward or upgrade first.');
+    if (!liveA().length) return benchSlots().some(Boolean) ? window.openBench() : openRecruit();
+    close(); return fight();
+  };
 
   // Drafts are bounded and saved with the wave. Reopening a menu is never a reroll.
   const legacyChoose = choose, legacyTapCell = tapCell, legacyChoice = choice;
@@ -353,9 +365,8 @@
   };
   openRecruit = function () {
     if (!S.tt || S.tt.finished || mode() === 'MENU') return;
-    if (S.tt.event) return openEvent();
+    if (openPendingChoice()) return;
     if (S.phase !== 'recruit' || S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return;
-    if (S.evoTarget || S.ascTarget || S.starChoiceTarget) return;
     const pendingEvolution = army().find(u => u && maybeEvolution(u));
     if (pendingEvolution) return openEvolution(pendingEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
@@ -530,16 +541,22 @@
   };
   function openEvent() {
     if (!S.tt.event || S.tt.finished || mode() === 'MENU') return;
-    const e = R.EVENTS.find(e => e.id === S.tt.event.id); if (!e) { S.tt.event = null; return openRecruit(); }
+    const e = R.EVENTS.find(e => e.id === S.tt.event.id); if (!e) { S.tt.event = null; S.phase = 'recruit'; return openRecruit(); }
     S.phase = 'tt-event';
-    show(e.emoji + ' ' + e.name, e.desc, '<div class="choices">' + e.options.map(o => `<button class="choice" data-tt-event="${o.id}"><span class="be">${o.coins ? '🪙' : e.emoji}</span><span><strong>${o.name}</strong><p>${o.desc}</p></span></button>`).join('') + '</div>'); render();
+    show(e.emoji + ' ' + e.name, e.desc, '<div class="choices">' + e.options.map(o => `<button class="choice" data-tt-event="${o.id}" data-tt-event-id="${e.id}"><span class="be">${o.coins ? '🪙' : e.emoji}</span><span><strong>${o.name}</strong><p>${o.desc}</p></span></button>`).join('') + '</div><button class="secondary tt-wide" data-tt-action="skip-event">Skip event · no reward</button>'); render();
   }
-  function pickEvent(id) {
-    if (S.phase !== 'tt-event' || !S.tt.event) return;
+  function pickEvent(id, eventId) {
+    if (S.phase !== 'tt-event' || !S.tt.event || S.tt.event.id !== eventId) return;
     const e = R.EVENTS.find(e => e.id === S.tt.event.id), o = e?.options.find(o => o.id === id); if (!o) return;
-    if (o.coins) S.coins += o.coins;
-    if (o.bonus) { const old = S.tt.eventBonuses.find(b => b.tag === o.bonus.tag && Object.keys(o.bonus).every(k => k === 'tag' || k in b)); if (old) Object.keys(o.bonus).filter(k => k !== 'tag').forEach(k => old[k] += o.bonus[k]); else S.tt.eventBonuses.push({ ...o.bonus }); }
+    const bonuses = Array.isArray(S.tt.eventBonuses) ? S.tt.eventBonuses.filter(b => b && typeof b.tag === 'string').map(b => ({ ...b })) : [];
+    if (o.bonus) { const old = bonuses.find(b => b.tag === o.bonus.tag && Object.keys(o.bonus).every(k => k === 'tag' || k in b)); if (old) Object.keys(o.bonus).filter(k => k !== 'tag').forEach(k => old[k] = R.numeric(old[k]) + o.bonus[k]); else bonuses.push({ ...o.bonus }); }
+    S.tt.eventBonuses = bonuses;
+    if (o.coins) S.coins = R.numeric(S.coins) + o.coins;
     S.tt.event = null; S.phase = 'recruit'; close(); msg(e.name + ': ' + o.name + '.'); saveProfile('event'); openRecruit();
+  }
+  function skipEvent() {
+    if (!S.tt.event || isBattle() || mode() === 'MENU' || S.tt.finished) return;
+    S.tt.event = null; S.phase = 'recruit'; close(); saveProfile('event skipped'); openRecruit();
   }
   const legacyEnd = end;
   function finishBasicBattle(win) {
@@ -590,8 +607,8 @@
   openRelic = function () {
     if (S.tt.finished || mode() === 'MENU' || S.phase !== 'relic') return;
     const pool = relics.filter(r => !S.relics.includes(r.id));
-    if (!pool.length) { S.phase = 'shop'; return openShop(); }
-    if (!S.tt.relicDraft?.length) { const options = pool.slice(); S.tt.relicDraft = []; while (S.tt.relicDraft.length < 3 && options.length) { const r = sample(options); S.tt.relicDraft.push(r.id); options.splice(options.indexOf(r), 1); } }
+    if (!pool.length) { S.tt.relicDraft = null; S.phase = 'shop'; return openShop(); }
+    if (!S.tt.relicDraft?.some(id => pool.some(r => r.id === id))) { const options = pool.slice(); S.tt.relicDraft = []; while (S.tt.relicDraft.length < 3 && options.length) { const r = sample(options); S.tt.relicDraft.push(r.id); options.splice(options.indexOf(r), 1); } }
     S.relicChoices = S.tt.relicDraft.map(id => pool.find(r => r.id === id)).filter(Boolean);
     show('Boss relic', 'Choose one free relic for this run, then visit the store.', '<div class="choices">' + S.relicChoices.map((r, i) => `<button class="choice" onclick="pickRelic(${i})"><span class="be">${r.e}</span><span><strong>${esc(r.n)}</strong><p>${esc(r.desc)}</p></span><span class="price">FREE</span></button>`).join('') + '</div>'); saveProfile('relic draft'); render();
   };
@@ -603,6 +620,7 @@
   const legacyShop = openShop;
   openShop = function () {
     if (S.tt.finished || mode() === 'MENU') return;
+    if (openPendingChoice()) return;
     const result = legacyShop();
     if (S.tt.modifier === 'economy' && S.items?.length && S.phase === 'shop') S.items.forEach((it, i) => { const key = Number.isFinite(it.c) ? 'c' : 'cost'; if (!it.ttPriced) { it[key] = Math.ceil(it[key] * 1.15); it.ttPriced = true; } const el = qa('#body .choice')[i]?.querySelector('.price'); if (el) el.textContent = it[key] + ' 🪙'; });
     return result;
@@ -617,35 +635,86 @@
     if (!unlocked(R.MODIFIERS.find(s => s.id === config.modifier) || {})) config.modifier = 'standard';
     Object.keys(S).forEach(k => delete S[k]); Object.assign(S, R.copy(freshState)); S.comboCells = new Set(); N = 16; S._battleSeq = battleSeq; S.tt = R.newRun(config, seed());
     TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); TP.unitSeq = 0; TP.lastRecap = null; TP.focusTarget = null; TP.structures = ''; formationKey = ''; forceClose();
-    S.tt.started = true; TP.suspendedDrawer = null; setMode('PLAYING'); legacyReset(); setMode('PLAYING'); render();
+    choiceViews.clear(); S.tt.started = true; setMode('PLAYING'); legacyReset(); setMode('PLAYING'); render();
   };
-  TP.beforeRestore = function () { stopLoop(); clearEffects(); clearRecovery(); TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); formationKey = ''; TP.structures = ''; TP.lastRecap = null; TP.focusTarget = null; forceClose(); };
+  TP.beforeRestore = function () { stopLoop(); clearEffects(); clearRecovery(); choiceViews.clear(); TP.stats.clear(); TP.deaths.clear(); TP.actions.clear(); formationKey = ''; TP.structures = ''; TP.lastRecap = null; TP.focusTarget = null; forceClose(); };
   TP.afterRestore = function () {
     loadMeta(); TP.unitSeq = Math.max(S.tt.nextUnitId || 0, ...[...Object.keys(S.tt.stats), ...[...S.squad, ...S.bench, ...(S.tt.draft || []).map(c => c.unit)].filter(Boolean).map(u => u.ttId)].map(id => Number(String(id || '').split('-u').at(-1)) || 0)); S.tt.nextUnitId = TP.unitSeq;
     army().forEach(u => { identify(u); discover(u); u.id ||= u.ttId; }); S.tt.started = true; S.tt.finished = !!S.runEnded || !!S.tt.finished; setMode(S.tt.finished ? 'RESULTS' : 'PLAYING');
     if (S.tt.finished) ttTimeout(() => openResults(S.tt.summary || { result: 'Defeat', wave: S.round, style: R.armyStyle(S.squad), size: S.squad.filter(Boolean).length }), 90);
-    else if (S.tt.event) ttTimeout(openEvent, 90); render();
+    else if (S.tt.event || S.tt.pathTarget) ttTimeout(openRecruit, 90); render();
   };
 
   // Menus never start or restart combat. Closing them restores the same battle.
   let lastFocus = null;
-  const legacyShow = show, legacyClose = close, legacyDetailHtml = detailHtml;
-  const forcedChoice = () => !!(S.tt?.event || S.phase === 'tt-path' || S.phase === 'relic' || S.evoTarget || S.ascTarget || S.starChoiceTarget || S.ultimate10Target);
-  function forceClose() { replacement = null; benchSelection = null; $('benchBtn')?.setAttribute('aria-expanded', 'false'); S.inspect = null; $('shade').classList.remove('open'); $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); }
+  const legacyShow = show, legacyDetailHtml = detailHtml;
+  const choiceViews = new Map();
+  const forcedChoice = () => !!(S.tt?.event || S.tt?.pathTarget || S.phase === 'tt-path' || S.phase === 'relic' || S.tt?.relicDraft?.length || S.evoTarget || S.ascTarget || S.starChoiceTarget || S.ultimate10Target);
+  function pendingChoice() {
+    const make = (kind, phase, target, marker) => ({ kind, phase, target, marker, key: [S.tt.id, S.round, kind, typeof target === 'object' ? target?.ttId || target?.id || target?.n : target].join(':') });
+    if (S.evoTarget) return make('evolution', 'evolve', S.evoTarget, 'pickEvolution(');
+    if (S.ascTarget) return make('mastery', 'ascend', S.ascTarget, 'pickAscension(');
+    if (S.starChoiceTarget || S.ultimate10Target) return make('star' + (S.starChoiceStar || 10), S.starChoiceStar === 10 || S.ultimate10Target ? 'ultimate10' : 'lateStarChoice', S.starChoiceTarget || S.ultimate10Target, 'pickStarChoice(');
+    if (S.tt.pathTarget) return make('path', 'tt-path', S.tt.pathTarget, 'data-tt-path=');
+    if (S.tt.event) return make('event', 'tt-event', S.tt.event.id, 'data-tt-event=');
+    if (S.phase === 'relic' || S.tt.relicDraft?.length) return make('relic', 'relic', 'boss', 'pickRelic(');
+    return null;
+  }
+  function openPendingChoice() {
+    if (!S.tt || S.tt.finished || isBattle() || mode() === 'MENU') return false;
+    let pending = pendingChoice();
+    // Saved runs can retain the event while transient evolution targets are rebuilt.
+    if (!pending || pending.kind === 'event') {
+      const u = army().find(u => maybeEvolution(u));
+      if (u) { forceClose(); openEvolution(u); return true; }
+      if (S.pendingStarChoices?.length) { forceClose(); S.phase = 'recruit'; if (processNextStarChoice()) return true; }
+      pending = pendingChoice();
+    }
+    if (!pending) { if (S.phase === 'tt-event' || S.phase === 'tt-path') S.phase = 'recruit'; return false; }
+    if ($('drawer').classList.contains('open') && $('drawer').dataset.ttChoiceKey === pending.key && S.phase === pending.phase) return true;
+    const saved = choiceViews.get(pending.key);
+    S.phase = pending.phase;
+    if (saved) { show(saved.title, saved.hint, saved.html); return true; }
+    if (pending.kind === 'event') {
+      if (!R.EVENTS.some(e => e.id === S.tt.event.id)) { S.tt.event = null; S.phase = 'recruit'; return false; }
+      openEvent(); return true;
+    }
+    if (pending.kind === 'relic') { openRelic(); return true; }
+    if (pending.kind === 'path') {
+      const u = army().find(u => u.ttId === S.tt.pathTarget);
+      if (!u || u.ttPath) { S.tt.pathTarget = null; S.phase = 'recruit'; return false; }
+      show('Specialize ' + u.e + ' ' + u.n, 'One permanent path for this troop, for this run.', '<div class="choices">' + R.pathsFor(u).map(pathCard).join('') + '</div>'); return true;
+    }
+    const u = pending.target, star = S.starChoiceStar || 10;
+    const options = pending.kind === 'evolution' ? S.evoChoices : pending.kind === 'mastery' ? S.ascChoices : S.starChoiceChoices || S.ultimate10Choices;
+    if (options?.length) {
+      const handler = pending.kind === 'evolution' ? 'pickEvolution' : pending.kind === 'mastery' ? 'pickAscension' : 'pickStarChoice';
+      show((pending.kind === 'evolution' ? '5★ Evolution' : pending.kind === 'mastery' ? '6★ Mastery' : star + '★ Upgrade') + ': ' + u.e + ' ' + u.n, 'Choose one upgrade. Closing keeps your choice available.', '<div class="choices">' + options.map((a, i) => `<button class="choice" onclick="${handler}(${i})"><span class="be">${a.e || '⭐'}</span><span><strong>${esc(a.n)}</strong><p>${esc(a.desc || a.flavor || '')}</p></span></button>`).join('') + '</div>'); return true;
+    }
+    if (pending.kind === 'evolution' || pending.kind === 'mastery') { openEvolution(u); return true; }
+    u.id ||= u.ttId; S.pendingStarChoices ||= []; S.pendingStarChoices.unshift({ unitId: u.id, unit: u, star });
+    S.starChoiceTarget = S.ultimate10Target = null; S.phase = 'recruit'; forceClose();
+    return !!processNextStarChoice();
+  }
+  function forceClose() { replacement = null; benchSelection = null; $('benchBtn')?.setAttribute('aria-expanded', 'false'); S.inspect = null; $('shade').classList.remove('open'); $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); delete $('drawer').dataset.ttChoiceKey; }
   show = function (title, hint, html) {
-    delete $('drawer').dataset.ttView; $('benchBtn')?.setAttribute('aria-expanded', 'false'); lastFocus = document.activeElement; S.inspect = null; legacyShow(title, hint, html);
+    const pending = pendingChoice();
+    if (pending && S.phase === pending.phase && html.includes(pending.marker)) {
+      choiceViews.set(pending.key, { title, hint, html }); $('drawer').dataset.ttChoiceKey = pending.key;
+    } else delete $('drawer').dataset.ttChoiceKey;
+    for (const key of choiceViews.keys()) if (key !== pending?.key) choiceViews.delete(key);
+    delete $('drawer').dataset.ttView; $('benchBtn')?.setAttribute('aria-expanded', 'false'); if (!$('drawer').classList.contains('open')) lastFocus = document.activeElement; S.inspect = null; legacyShow(title, hint, html);
     $('drawer').setAttribute('role', 'dialog'); $('drawer').setAttribute('aria-modal', 'true'); $('drawer').setAttribute('aria-labelledby', 'dt'); $('drawer').setAttribute('aria-hidden', 'false'); $('drawer').scrollTop = 0;
-    $('close').disabled = forcedChoice(); $('close').title = forcedChoice() ? 'Complete this choice to continue' : 'Close';
-    q('#body button, #body input, #close')?.focus({ preventScroll: true });
+    $('close').disabled = false; $('close').title = forcedChoice() ? 'Close; use Continue choice to return' : 'Close';
+    (q('#body button:not(:disabled), #body input') || $('close')).focus({ preventScroll: true });
   };
   close = function () {
-    if (forcedChoice()) return msg('Finish this choice to continue.');
-    replacement = null; benchSelection = null; legacyClose(); $('benchBtn')?.setAttribute('aria-expanded', 'false'); $('drawer').setAttribute('aria-hidden', 'true'); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true });
+    forceClose(); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true });
+    if (forcedChoice()) { msg('Your choice is waiting. Use Continue choice to reopen it.'); render(); if (!isBattle()) { stopLoop(); ttClearTimers(); } }
     if (TP.pauseForDialog) { TP.pauseForDialog = false; if (mode() === 'PAUSED') pause(); }
   };
   openMainMenu = function () {
     if (S.tt?.started && window.TinyTroopsSaveFiles?.active()) saveProfile('menu checkpoint');
-    if ($('drawer').classList.contains('open') && forcedChoice()) TP.suspendedDrawer = { title: $('dt').textContent, hint: $('dhint').textContent, html: $('body').innerHTML };
     stopLoop(); ttClearTimers(); clearEffects(); TP.pauseForDialog = false; forceClose(); setMode('MENU'); $('mainMenu').classList.add('open');
     $('ttResume').hidden = !TP.recovery && (!S.tt.started || S.tt.finished); menuOptions(); refreshTop10(); window.dispatchEvent(new CustomEvent('tt-saves-changed'));
   };
@@ -654,13 +723,11 @@
     $('mainMenu').classList.remove('open'); setMode('PLAYING');
     if (TP.recovery) { setMode('PAUSED'); return openRecovery(); }
     if (isBattle()) scheduleStep();
-    else if (TP.suspendedDrawer && forcedChoice()) { const d = TP.suspendedDrawer; TP.suspendedDrawer = null; show(d.title, d.hint, d.html); }
-    else if (S.tt.event) openEvent(); else if (S.phase === 'shop') openShop(); else if (S.phase === 'relic') openRelic(); else openRecruit();
+    else if (!openPendingChoice()) { if (S.phase === 'shop') openShop(); else openRecruit(); }
     render();
   }
   openRunMenu = function () {
     if (TP.recovery) return openRecovery();
-    if (forcedChoice()) return msg('Finish this choice before opening the run menu.');
     if (isBattle() && mode() === 'PLAYING') { pause(); TP.pauseForDialog = true; }
     show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" data-tt-action="new">Browse saved runs</button></div>');
   };
@@ -679,7 +746,7 @@
   }
   function setupUi() {
     document.body.classList.add('tt-modern');
-    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261006-bench'; document.head.appendChild(link);
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'tiny-troops/ui.css?v=20261007-popups'; document.head.appendChild(link);
     q('.title').textContent = 'Tiny Troops'; q('.menuTitle').textContent = 'Tiny Troops'; q('.menuSub').textContent = 'Small armies. Unexpected combinations. Endless waves.';
     $('menuUser').setAttribute('aria-label', 'Save name'); $('menuPass').setAttribute('aria-label', 'Save code'); $('menuNew').textContent = 'Start endless run →'; $('menuLoad').textContent = 'Load saved run';
     const settings = document.createElement('div'); settings.className = 'tt-run-settings'; settings.innerHTML = '<label>Choose your commander<select id="ttStarter"></select></label><div class="tt-setting-row"><label>Run rules<select id="ttModifier"></select></label><label>Enemy tactics<select id="ttDifficulty"><option value="standard">Standard</option><option value="relaxed">Relaxed · gentler opponents</option><option value="tactician">Tactician · smarter targeting</option></select></label></div><p id="ttConfigHint"></p>';
@@ -693,7 +760,7 @@
     const recap = document.createElement('div'); recap.id = 'ttRecap'; q('footer').prepend(recap);
     $('msg').setAttribute('role', 'status'); $('msg').setAttribute('aria-live', 'polite'); $('msg').setAttribute('aria-atomic', 'true'); $('menuStatus').setAttribute('role', 'status');
     $('close').onclick = close; $('shade').onclick = close; $('restart').onclick = openRunMenu; $('shop').onclick = openShop; $('help').onclick = help; $('recruit').onclick = () => S.tt.finished ? openMainMenu() : openRecruit();
-    if ($('playNext')) { $('playNext').onclick = window.startNextFight; $('playNext').title = 'Start the next wave'; }
+    if ($('playNext')) { $('playNext').onclick = window.startNextFight; $('playNext').setAttribute('aria-describedby', 'phase'); }
     ['ttStarter', 'ttModifier', 'ttDifficulty'].forEach(id => $(id).addEventListener('change', updateConfigHint)); $('menuUser').addEventListener('change', menuOptions);
   }
   detailHtml = function (u) {
@@ -780,9 +847,16 @@
     $('pick').classList.toggle('show', !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization)); if (S.placingSpecialization) $('pick').textContent = '🔀 Choose a troop to specialize';
     const benchButton = $('benchBtn'); benchButton.textContent = '🪑 Bench ' + benchSlots().filter(Boolean).length + '/3'; benchButton.disabled = forcedChoice() || mode() === 'MENU' || !!TP.recovery; benchButton.classList.toggle('tt-bench-target', !!(S.placing || S.placingUpgrade)); benchButton.setAttribute('aria-expanded', String($('drawer').classList.contains('open') && $('drawer').dataset.ttView === 'bench')); benchButton.title = S.bossSwapAvailable ? 'Three bench slots · a post-boss swap is available' : 'View three bench slots or place your selected card';
     $('phase').textContent = TP.recovery ? 'Battle interrupted · choose a recovery option.' : mode() === 'PAUSED' ? 'Paused · the battlefield will wait.' : S.placingSpecialization ? 'Choose a troop with no specialization.' : S.phase === 'tt-event' ? 'A quick decision before your next draft.' : S.phase === 'tt-path' ? 'Choose a path for this troop.' : S.tt.finished ? 'Run complete · try another army.' : S.placing ? 'Place ' + S.placing.n + ' · choose a board or bench slot.' : S.placingUpgrade ? 'Choose a board or bench troop for star training.' : S.placingEffect ? 'Choose a troop for ' + S.placingEffect.n + '.' : isBattle() ? S.battle.basic ? 'Basic combat · normal abilities return next wave.' : 'Battle underway · inspect a troop for live details.' : 'Build, inspect, then fight the next wave.';
-    if ($('playNext')) { $('playNext').disabled = isBattle() && mode() !== 'PAUSED' || S.tt.finished || forcedChoice() || !!(S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) || !liveA().length || S.phase !== 'recruit' && mode() !== 'PAUSED'; $('playNext').textContent = mode() === 'PAUSED' ? '▶ Resume' : '▶ Fight'; }
-    if (TP.recovery && $('playNext')) { $('playNext').disabled = false; $('playNext').textContent = 'Recover'; }
-    $('recruit').disabled = S.phase !== 'recruit' || isBattle() || S.tt.finished || !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization); $('recruit').textContent = 'Draft'; $('shop').textContent = 'Store'; $('restart').textContent = 'Menu';
+    if ($('playNext')) {
+      const button = $('playNext'), placing = !!(S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization), pending = forcedChoice();
+      // The native render layers used different rules to hide this control.
+      // Keep one visible next step through rewards, placement, stores, and combat.
+      button.hidden = false; button.style.display = 'block'; button.closest('.actions')?.classList.add('hasPlay');
+      button.disabled = mode() === 'MENU' || !TP.recovery && !S.tt.finished && (isBattle() ? mode() !== 'PAUSED' : placing && !pending);
+      button.textContent = TP.recovery ? 'Recover wave' : S.tt.finished ? 'Start new run' : isBattle() ? mode() === 'PAUSED' ? '▶ Resume' : 'Battle running' : pending ? 'Continue choice' : S.phase === 'shop' ? 'Finish store →' : placing ? 'Place your card' : !liveA().length ? benchSlots().some(Boolean) ? 'Deploy a troop' : 'Choose a recruit' : '▶ Start wave';
+      button.title = placing && !pending ? 'Choose a board or bench slot to finish placing your card.' : button.textContent;
+    }
+    $('recruit').disabled = mode() === 'MENU' || isBattle() || S.tt.finished || !forcedChoice() && (S.phase !== 'recruit' || !!(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization)); $('recruit').textContent = forcedChoice() ? 'Continue choice' : 'Draft'; $('shop').disabled ||= forcedChoice(); $('shop').textContent = 'Store'; $('restart').textContent = 'Menu';
     const recap = TP.lastRecap; $('ttRecap').hidden = !recap || isBattle(); if (recap) $('ttRecap').textContent = `Wave ${recap.wave} ${recap.win ? 'cleared' : 'lost'} · ${recap.seconds}s` + (recap.mvp ? ` · MVP ${recap.mvp.e} ${recap.mvp.n}` : '') + (recap.objective ? ' · 🎯 Challenge complete +20 🪙' : '');
     qa('.cell').forEach((c, i) => { c.tabIndex = 0; c.setAttribute('role', 'button'); c.setAttribute('aria-label', S.squad[i] ? S.squad[i].n + ' · row ' + (Math.floor(i / 4) + 1) + ', column ' + (i % 4 + 1) : 'Empty square · row ' + (Math.floor(i / 4) + 1) + ', column ' + (i % 4 + 1)); updateCard(q('.unit', c), S.squad[i], true); });
     $('grid').style.setProperty('--tt-rows', Math.ceil(S.squad.length / 4)); $('grid').classList.toggle('tt-expanded', S.squad.length > 16);
@@ -803,6 +877,20 @@
       postRender();
     } finally { TP.drawing = false; }
   };
+  // Native upgrade buttons use inline handlers. Repair stale phase/view state
+  // before those handlers run, so a delayed popup cannot grant the wrong choice.
+  $('drawer').addEventListener('click', e => {
+    const button = e.target.closest('#body button');
+    if (!button || button.disabled || !button.matches('[data-tt-event],[data-tt-path]') && !/\b(?:choose|pickEvolution|pickAscension|pickStarChoice|pickUltimate10|pickRelic)\(/.test(button.getAttribute('onclick') || '')) return;
+    const pending = pendingChoice(), key = $('drawer').dataset.ttChoiceKey;
+    const requiredButton = button.matches('[data-tt-event],[data-tt-path]') || /\bpick(?:Evolution|Ascension|StarChoice|Ultimate10|Relic)\(/.test(button.getAttribute('onclick') || '');
+    if (isBattle() || mode() === 'MENU' || S.tt.finished || pending && pending.key !== key || !pending && (key || requiredButton)) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (!isBattle() && mode() !== 'MENU' && !S.tt.finished) { forceClose(); if (!openPendingChoice()) openRecruit(); }
+      return;
+    }
+    if (pending) S.phase = pending.phase;
+  }, true);
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-tt-action],[data-tt-speed],[data-tt-path],[data-tt-event],[data-tt-synergy],[data-tt-history],[data-tt-bench-slot],[data-tt-replacement],[data-tt-bench-deploy],[data-tt-bench-board],[data-tt-bench-sell]'); if (!el || el.disabled) return;
     if (el.dataset.ttSpeed) return setSpeed(Number(el.dataset.ttSpeed));
@@ -812,10 +900,10 @@
     if (el.dataset.ttBenchBoard !== undefined) return window.selectBenchTarget(Number(el.dataset.ttBenchBoard));
     if (el.dataset.ttBenchSell !== undefined) return sellBench(Number(el.dataset.ttBenchSell));
     if (el.dataset.ttPath) return pickPath(el.dataset.ttPath);
-    if (el.dataset.ttEvent) return pickEvent(el.dataset.ttEvent);
+    if (el.dataset.ttEvent) return pickEvent(el.dataset.ttEvent, el.dataset.ttEventId);
     if (el.dataset.ttSynergy) return openSynergies(el.dataset.ttSynergy);
     if (el.dataset.ttHistory !== undefined) return openResults(TP.meta.runs[Number(el.dataset.ttHistory)]);
-    const actions = { pause, retry: () => recoverBattle('retry'), basic: () => recoverBattle('basic'), prepare: () => recoverBattle('prepare'), resume: close, new: openMainMenu, book: openBook, history: openHistory, synergies: openSynergies, help, counters: openCounters, elements: () => window.openElements?.(), causes: () => show('Combat explanations', 'Recent immunities, resistances, and special interactions.', (S.combatCauses || []).slice(0, 12).map(c => `<p>${esc(c)}</p>`).join('') || '<p>Battle explanations will appear here.</p>'), bench: () => window.openBench?.(), more: () => show('Army tools', 'Details when you need them.', '<div class="runMenuGrid">' + [['book', '📖 Army Book'], ['synergies', '✨ Synergies'], ['bench', '🧺 Bench'], ['counters', '⚔️ Matchups'], ['causes', '📜 Combat explanations'], ['history', '🕰 Run history'], ['help', '❔ How to play']].map(([a, n]) => `<button class="secondary" data-tt-action="${a}">${n}</button>`).join('') + '</div>') };
+    const actions = { pause, retry: () => recoverBattle('retry'), basic: () => recoverBattle('basic'), prepare: () => recoverBattle('prepare'), 'skip-event': skipEvent, resume: close, new: openMainMenu, book: openBook, history: openHistory, synergies: openSynergies, help, counters: openCounters, elements: () => window.openElements?.(), causes: () => show('Combat explanations', 'Recent immunities, resistances, and special interactions.', (S.combatCauses || []).slice(0, 12).map(c => `<p>${esc(c)}</p>`).join('') || '<p>Battle explanations will appear here.</p>'), bench: () => window.openBench?.(), more: () => show('Army tools', 'Details when you need them.', '<div class="runMenuGrid">' + [['book', '📖 Army Book'], ['synergies', '✨ Synergies'], ['bench', '🧺 Bench'], ['counters', '⚔️ Matchups'], ['causes', '📜 Combat explanations'], ['history', '🕰 Run history'], ['help', '❔ How to play']].map(([a, n]) => `<button class="secondary" data-tt-action="${a}">${n}</button>`).join('') + '</div>') };
     actions[el.dataset.ttAction]?.();
   });
   document.addEventListener('keydown', e => {
