@@ -83,6 +83,29 @@ npm run test:apes:browser
   footsteps, river ambience, varied impacts and falls, and distinct threat cues.
   Low detail, reduced motion, mute, and volume controls are available.
 
+## Primate artwork
+
+The horde includes gorillas, chimpanzees, orangutans, gibbons, mandrills and
+capuchins. Each has its own proportions, fur palette, face and silhouette:
+broad silverback shoulders, chimpanzee ears, shaggy orange arms and cheek
+flanges, long gibbon arms, colorful mandrill muzzles, and curled capuchin tails.
+The King remains a crowned silverback. Three coat shades per species add variety
+without changing health, speed, attack strength or collision size.
+
+Species and coat shade persist through growth, scouting, settlement work,
+combat, blast flight, recovery and fallen bodies. Old saves receive stable
+appearances derived from their seed and actor IDs without consuming simulation
+randomness or changing existing wounds, ages, proportions or fur records.
+The same artwork supports cage previews, distant detail and reduced motion;
+species-aware sprite caches keep large hordes bounded.
+
+The optional real-canvas gallery checks species visibility, animation paths,
+sprite bounds and cache limits on desktop and mobile:
+
+```sh
+node game/apes-together-strong/tests/primate-design-browser.cjs
+```
+
 ## Military escalation
 
 Active followers guarantee response stages at 25, 60, 120 and 220. The original
