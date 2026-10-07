@@ -155,7 +155,7 @@
           type: 'transport', tier: 0, count: 3, guards: 0, radius: 68, tutorial: true };
       } else if (cx === 0 && cy === 0) {
         plan = { id: 'opening-hunters', x: 560, y: 120, name: 'Blackpine Hunter Camp',
-          type: 'hunter', tier: 1, count: 6, guards: 2, radius: 153, tutorial: true };
+          type: 'hunter', tier: 1, count: 12, guards: 2, radius: 153, tutorial: true };
       } else {
         const r = rng(this.seed + ':site:' + key);
         const distance = Math.hypot((cx + 0.5) * CHUNK, (cy + 0.5) * CHUNK);
@@ -188,8 +188,8 @@
             else if (tier === 3) type = r() < 0.2 ? 'checkpoint' : 'prison';
             else if (tier === 4) type = r() < 0.27 ? 'prison' : 'detention';
             else type = r() < 0.23 ? 'detention' : 'experimental';
-            const counts = { transport: [2, 4], hunter: [4, 10], research: [8, 15], checkpoint: [5, 12],
-              prison: [15, 28], detention: [30, 48], experimental: [45, 72] };
+            const counts = { transport: [4, 7], hunter: [10, 18], research: [20, 36], checkpoint: [18, 32],
+              prison: [40, 70], detention: [80, 120], experimental: [120, 180] };
             const guards = { transport: [0, 2], hunter: [2, 4], research: [4, 5], checkpoint: [4, 7],
               prison: [6, 10], detention: [10, 14], experimental: [14, 19] };
             plan = { id: 'site:' + key, x: sx, y: sy, name: choice(r, ADJECTIVES) + ' ' + SITE_LABELS[type],
@@ -340,7 +340,7 @@
           explosive: true, blastRadius: 135 });
       }
       add('berry', -24, 77, { r: 17, solid: false, height: 15,
-        food: 60 + site.tier * 18, count: 60 + site.tier * 18, supply: true });
+        food: 120 + site.tier * 45, count: 120 + site.tier * 45, supply: true });
     }
 
     _generateChunk(cx, cy) {
