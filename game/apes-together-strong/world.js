@@ -56,6 +56,7 @@
     experimental: 'Experimental Facility', forwardBase: 'Forward Operating Base',
     armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base' };
   const MILITARY_TYPES = new Set(['forwardBase', 'armoredDepot', 'regionalCommand']);
+  const WALL_HEIGHT = [0, 28, 45, 68, 95], WALL_HP = [0, 240, 620, 1400, 2800];
   const VEHICLE_CLEARANCE = { jeep: 21, armored: 23, command: 22, truck: 24, apc: 25, ifv: 27, tank: 31 };
 
   class ATSWorld {
@@ -392,7 +393,7 @@
         if (this._vehiclePlanCache.size > 1500) this._vehiclePlanCache.delete(this._vehiclePlanCache.keys().next().value);
       }
       for (const plan of plans) {
-        if (Math.abs(x - plan.x) < plan.radius && Math.abs(y - plan.y) < plan.radius)
+        if (Math.abs(x - plan.x) < (plan.footprintX || plan.radius) && Math.abs(y - plan.y) < (plan.footprintY || plan.radius))
           return { ...terrain, compound: true };
         const points = plan.approach || [];
         for (let i = 1; i < points.length; i++) {
@@ -553,19 +554,23 @@
     }
 
     syncSettlementBuildings(settlement, game) {
-      const list = (settlement.huts || []).concat((settlement.structures || []).filter(o => ['storage', 'workShelter'].includes(o.kind)));
+      const buildings = (settlement.huts || []).concat((settlement.structures || []).concat(settlement.facilities || []).filter(o => ['storage', 'workShelter', 'spearTower', 'training'].includes(o.kind)));
+      const list = [...new Map(buildings.map(o => [o.id, o])).values()];
       const activated = [];
       for (const building of list) {
         const id = building.id + ':collision', completed = building.stage === undefined || building.stage >= 4;
+        const width = building.kind === 'training' ? 64 : building.kind === 'spearTower' ? 42 : 40, height = 34 + (building.kind === 'training' ? 12 : 0);
         let object = this.objects.get(id);
         if (!object && completed && building.hp > 0) {
           object = { id, x: building.x, y: building.y, type: 'apeBuilding', settlementId: settlement.id,
-            hp: building.hp, maxHp: building.maxHp || 100, r: 24, w: 40, h: 34, solid: true, collision: 'rect', hiddenRender: true };
+            hp: building.hp, maxHp: building.maxHp || 100, structureId: building.id, kind: building.kind || 'hut', r: 24, w: width, h: height, solid: true, collision: 'rect', hiddenRender: true };
           this.objects.set(id, object);this._indexObject(object);this.navRevision++;
           activated.push(object);
         } else if (object) {
-          const solid = completed && building.hp > 0;
-          if (solid && !object.solid) activated.push(object);
+          const solid = completed && building.hp > 0, geometryChanged = object.x !== building.x || object.y !== building.y || object.w !== width || object.h !== height;
+          if (solid && (!object.solid || geometryChanged)) activated.push(object);
+          if (geometryChanged) { object.x = building.x;object.y = building.y;object.w = width;object.h = height;this._indexObject(object);this.navRevision++; }
+          object.maxHp = building.maxHp || 100;object.structureId = building.id;object.kind = building.kind || 'hut';
           if (object.solid !== solid) this.navRevision++;
           object.hp = building.hp;object.dead = !solid;object.solid = solid;
         }
@@ -673,13 +678,18 @@
     _sitePlan(cx, cy) {
       const key = cx + ',' + cy;
       if (this._sitePlanCache.has(key)) return this._sitePlanCache.get(key);
+      // Recorded compounds keep their exact layout and captive stock even
+      // when newly discovered regions use a newer procedural blueprint.
+      const savedId = cx === 0 && cy === -1 ? 'opening-rescue' : cx === 0 && cy === 0 ? 'opening-hunters' : 'site:' + key;
+      const savedSite = this.sites.get(savedId);
+      if (savedSite) { this._sitePlanCache.set(key, savedSite);return savedSite; }
       let plan = null;
       if (cx === 0 && cy === -1) {
         plan = { id: 'opening-rescue', x: 120, y: -100, name: 'Abandoned Transport Cage',
-          type: 'transport', tier: 0, count: 3, guards: 0, radius: 68, tutorial: true };
+          type: 'transport', tier: 0, count: 2, guards: 0, radius: 68, tutorial: true };
       } else if (cx === 0 && cy === 0) {
         plan = { id: 'opening-hunters', x: 560, y: 120, name: 'Blackpine Hunter Camp',
-          type: 'hunter', tier: 1, count: 12, guards: 2, radius: 153, tutorial: true };
+          type: 'hunter', tier: 1, count: 6, guards: 2, radius: 153, tutorial: true };
       } else {
         const r = rng(this.seed + ':site:' + key);
         const distance = Math.hypot((cx + 0.5) * CHUNK, (cy + 0.5) * CHUNK);
@@ -719,38 +729,64 @@
               type = tier === 3 ? 'forwardBase' : tier === 4 ? militaryRoll < .55 ? 'forwardBase' : 'armoredDepot'
                 : militaryRoll < .13 ? 'regionalCommand' : militaryRoll < .65 ? 'armoredDepot' : 'forwardBase';
             }
-            const counts = { transport: [4, 7], hunter: [10, 18], research: [20, 36], checkpoint: [18, 32],
-              prison: [40, 70], detention: [80, 120], experimental: [120, 180],
-              forwardBase: [32, 60], armoredDepot: [36, 70], regionalCommand: [120, 180] };
+            const counts = { transport: [2, 4], hunter: [4, 7], research: [8, 14], checkpoint: [8, 16],
+              prison: [18, 30], detention: [42, 72], experimental: [80, 125],
+              forwardBase: [32, 60], armoredDepot: [60, 110], regionalCommand: [160, 260] };
             const guards = { transport: [0, 2], hunter: [2, 4], research: [4, 5], checkpoint: [4, 7],
               prison: [6, 10], detention: [10, 14], experimental: [14, 19],
-              forwardBase: [30, 50], armoredDepot: [32, 48], regionalCommand: [62, 78] };
+              forwardBase: [30, 50], armoredDepot: [44, 68], regionalCommand: [82, 120] };
             plan = { id: 'site:' + key, x: sx, y: sy, name: choice(r, ADJECTIVES) + ' ' + SITE_LABELS[type],
               type, tier, count: int(r, ...counts[type]), guards: int(r, ...guards[type]),
-              radius: type === 'regionalCommand' ? 430 : type === 'armoredDepot' ? 345 : type === 'forwardBase' ? 305
+              radius: type === 'regionalCommand' ? 690 : type === 'armoredDepot' ? 540 : type === 'forwardBase' ? 420
                 : type === 'transport' ? 76 : type === 'hunter' ? 154 : 145 + tier * 20 };
             if (MILITARY_TYPES.has(type)) {
               // A larger perimeter must sit back from both main roads. Choose
               // a dry parcel within its owning chunk instead of walling off a
               // regional highway or letting the access lane cross a river.
+              // Broad rectangular compounds fit the dry shelf between a highway
+              // and the river without shrinking the stronger late fortresses.
+              plan.extentX = type === 'regionalCommand' ? 540 : plan.radius - 74;
+              plan.extentY = type === 'regionalCommand' ? 330 : type === 'armoredDepot' ? 300 : 260;
+              plan.footprintX = plan.extentX + (type === 'forwardBase' ? 0 : 48);
+              plan.footprintY = plan.extentY + 48;
               const candidates = [{ x: sx, y: sy }];
-              for (const oy of [96, 288, 480, 672]) for (const ox of [96, 288, 480, 672])
+              for (const oy of [80, 240, 400, 560, 688]) for (const ox of [80, 240, 400, 560, 688])
                 candidates.push({ x: cx * CHUNK + ox, y: cy * CHUNK + oy });
               const placement = candidates.filter(p => {
                 const info = this._roadInfo(p.x, p.y);
-                return Math.min(info.dx, info.dy) > plan.radius + 65
-                  && this._riverInfo(p.x, p.y).distance > plan.radius + 115;
+                if (info.dx <= plan.footprintX + 65 || info.dy <= plan.footprintY + 65
+                  || this._riverInfo(p.x, p.y).distance <= plan.footprintY + 115) return false;
+                for (const offset of [-1, -.5, 0, .5, 1]) {
+                  if (this._riverInfo(p.x + offset * plan.footprintX, p.y).distance <= plan.footprintY + 65) return false;
+                  if (this._roadInfo(p.x, p.y + offset * plan.footprintY).dx <= plan.footprintX + 40) return false;
+                  if (this._roadInfo(p.x + offset * plan.footprintX, p.y).dy <= plan.footprintY + 40) return false;
+                }
+                const entranceY = p.y + plan.footprintY + 26, roadX = this._roadInfo(p.x, entranceY).x;
+                for (let i = 0; i <= 8; i++) if (this.waterBlocked(p.x + (roadX - p.x) * i / 8, entranceY, 31)) return false;
+                return true;
               }).sort((a, b) => dist2(a.x, a.y, sx, sy) - dist2(b.x, b.y, sx, sy))[0];
               if (placement) { plan.x = sx = placement.x; plan.y = sy = placement.y; }
               else plan = null;
             }
-            if (plan && this._riverInfo(sx, sy).distance < plan.radius + 115) plan = null;
+            if (plan && this._riverInfo(sx, sy).distance < (plan.footprintY || plan.radius) + 115) plan = null;
+            // A wide fortress can extend into its neighbor's parcel. Reserve
+            // that space before either chunk streams, so a satellite house or
+            // tower cannot appear through the stronger perimeter.
+            if (plan && !hub) {
+              for (let dy = -1; dy <= 1 && plan; dy++) for (let dx = -1; dx <= 1 && plan; dx++) {
+                const hx = cx + dx, hy = cy + dy;
+                if ((hx % 3 + 3) % 3 !== 1 || (hy % 3 + 3) % 3 !== 0) continue;
+                const major = this._sitePlan(hx, hy);
+                if (major && major.military && Math.abs(plan.x - major.x) < (major.footprintX || major.radius) + plan.radius + 45
+                  && Math.abs(plan.y - major.y) < (major.footprintY || major.radius) + plan.radius + 45) plan = null;
+              }
+            }
             if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
           }
         }
       }
       if (plan) {
-        const entrance = { x: plan.x, y: plan.y + plan.radius + 26 };
+        const entrance = { x: plan.x, y: plan.y + (plan.footprintY || plan.radius) + 26 };
         const road = this._roadInfo(entrance.x, entrance.y);
         plan.entrance = entrance;
         // Join the north/south road below the perimeter instead of drawing a
@@ -860,9 +896,15 @@
       const mirrored = site.layout === 1;
       const add = (type, dx, dy, extra) => {
         if (mirrored) dx = -dx;
+        let defense = null;
+        if (type === 'wall' || type === 'gate') {
+          const wallTier = extra?.wallTier || (site.type === 'regionalCommand' ? 4 : site.type === 'armoredDepot' ? 3 : site.type === 'forwardBase' ? 2 : clamp(site.tier - 1, 1, 4));
+          const height = WALL_HEIGHT[wallTier] + (type === 'gate' ? 10 : 0);
+          defense = { wallTier, height, visualHeight: height, hp: Math.round(WALL_HP[wallTier] * (type === 'gate' ? 1.15 : 1)), faction: 'human', climbable: type === 'wall' && wallTier <= 2 };
+        }
         const o = this._object(chunk, Object.assign({ id: site.id + ':' + type + ':' + index++, type,
           x: site.x + dx, y: site.y + dy, siteId: site.id,
-          hp: HP[type] + (type === 'cage' ? 0 : Math.max(0, site.tier - 1) * 20) }, extra || {}));
+          hp: HP[type] + (type === 'cage' ? 0 : Math.max(0, site.tier - 1) * 20) }, extra || {}, defense || {}));
         site.objects.push(o.id);
         return o;
       };
@@ -948,37 +990,38 @@
     }
 
     _buildMilitarySite(site, r, add) {
-      const extent = site.radius - 74, command = site.type === 'regionalCommand', depot = site.type === 'armoredDepot';
-      site.serviceEntrance = { x: site.x, y: site.y - extent - 24 };
-      // Wide supply gates and rear staging avoid sending a tank through the
-      // infantry-sized side openings used by ordinary prison compounds.
-      for (let p = -extent; p <= extent; p += 38) {
-        if (Math.abs(p) > 82) add('wall', p, extent, { r: 19, w: 39, h: 18, height: 37, collision: 'rect' });
-        if (Math.abs(p) > 70) add('wall', p, -extent, { r: 19, w: 39, h: 18, height: 37, collision: 'rect' });
-        if (p > -extent + 15 && p < extent - 15) {
-          add('wall', -extent, p, { r: 19, w: 18, h: 39, height: 37, collision: 'rect' });
-          add('wall', extent, p, { r: 19, w: 18, h: 39, height: 37, collision: 'rect' });
-        }
+      const extentX = site.extentX || site.radius - 74, extentY = site.extentY || site.radius - 74, command = site.type === 'regionalCommand', depot = site.type === 'armoredDepot';
+      const outerTier = command ? 3 : depot ? 2 : 1;
+      site.serviceEntrance = { x: site.x, y: site.y - extentY - 24 };
+      // Wide gate and rear service lanes remain clear of hull-sized obstacles.
+      for (let p = -extentX; p <= extentX; p += 38) {
+        if (Math.abs(p) > 82) add('wall', p, extentY, { r: 19, w: 39, h: 18, collision: 'rect' });
+        if (Math.abs(p) > 70) add('wall', p, -extentY, { r: 19, w: 39, h: 18, collision: 'rect' });
       }
-      add('gate', 0, extent, { r: 68, w: 143, h: 21, height: 44, collision: 'rect', hp: 310 + site.tier * 30 });
-      const outer = extent + 48;
-      if (depot || command) for (let p = -outer; p <= outer; p += 46) {
-        if (Math.abs(p) > 110) add('wall', p, outer, { r: 23, w: 47, h: 20, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
-        if (Math.abs(p) > 96) add('wall', p, -outer, { r: 23, w: 47, h: 20, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
-        if (p > -outer + 24 && p < outer - 24) {
-          add('wall', -outer, p, { r: 23, w: 20, h: 47, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
-          add('wall', outer, p, { r: 23, w: 20, h: 47, height: 27, collision: 'rect', barricade: true, defenseRing: 2, hp: 245 });
-        }
+      for (let p = -extentY + 38; p < extentY - 15; p += 38) {
+        add('wall', -extentX, p, { r: 19, w: 18, h: 39, collision: 'rect' });
+        add('wall', extentX, p, { r: 19, w: 18, h: 39, collision: 'rect' });
       }
-      else for (const sign of [-1, 1]) add('wall', sign * 136, outer,
-        { r: 44, w: 86, h: 20, height: 26, collision: 'rect', barricade: true, defenseRing: 2, hp: 210 });
+      add('gate', 0, extentY, { r: 68, w: 143, h: 21, collision: 'rect' });
+      const outerX = extentX + 48, outerY = extentY + 48;
+      if (depot || command) {
+        for (let p = -outerX; p <= outerX; p += 46) {
+          if (Math.abs(p) > 110) add('wall', p, outerY, { r: 23, w: 47, h: 20, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });
+          if (Math.abs(p) > 96) add('wall', p, -outerY, { r: 23, w: 47, h: 20, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });
+        }
+        for (let p = -outerY + 46; p < outerY - 24; p += 46) {
+          add('wall', -outerX, p, { r: 23, w: 20, h: 47, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });
+          add('wall', outerX, p, { r: 23, w: 20, h: 47, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });
+        }
+      } else for (const sign of [-1, 1]) add('wall', sign * 136, outerY,
+        { r: 44, w: 86, h: 20, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });
       // Protected firing positions flank the entrance while leaving the wide
       // center lane clear for outbound transports and armor.
       for (const sign of [-1, 1]) {
-        add('tower', sign * 104, extent - 22, { r: 16, height: 94, lightRange: 590, angle: Math.PI / 2, sweep: .12, powered: true, floodlight: true });
-        add('wall', sign * 106, extent - 59, { r: 26, w: 49, h: 18, height: 25, collision: 'rect', barricade: true, defenseRing: 1, hp: 240 });
+        add('tower', sign * 104, extentY - 22, { r: 16, height: 94, lightRange: 590, angle: Math.PI / 2, sweep: .12, powered: true, floodlight: true });
+        add('wall', sign * 106, extentY - 59, { r: 26, w: 49, h: 18, height: 25, collision: 'rect', barricade: true, defenseRing: 1, wallTier: outerTier });
       }
-      if (command) for (const sign of [-1, 1]) add('tower', sign * (extent - 18), 0,
+      if (command) for (const sign of [-1, 1]) add('tower', sign * (extentX - 18), 0,
         { r: 17, height: 116, lightRange: 620, angle: sign < 0 ? Math.PI : 0, sweep: .18, powered: true, floodlight: true });
       const cageCount = command ? 6 : 4;
       let remaining = site.count;
@@ -988,27 +1031,27 @@
           { r: 29, w: 64, h: 51, height: 46, hp: 110 + site.tier * 10, prisoners: count, count });
       }
       const barracksCount = command ? 3 : 2;
-      for (let i = 0; i < barracksCount; i++) add('barracks', -extent + 52, -extent + 124 + i * 92,
+      for (let i = 0; i < barracksCount; i++) add('barracks', -extentX + 52, -extentY + 124 + i * 92,
         { r: 39, w: 76, h: 60, height: 52, collision: 'rect' });
-      add('radio', -extent + 44, -extent + 37, { r: 16, height: command ? 134 : 106, radioRange: 2800 + site.tier * 420 });
-      add('depot', extent - 74, -51, { r: 44, w: 105, h: 79, height: 53, collision: 'rect', repairBay: true, hp: 410 });
-      if (command) add('depot', extent - 74, 59, { r: 41, w: 102, h: 74, height: 49, collision: 'rect', repairBay: true, hp: 410 });
-      add('fuel', extent - 44, -extent + 45, { r: 20, w: 36, h: 38, height: 35, explosive: true, blastRadius: 165 });
-      if (command || depot) add('fuel', extent - 104, -extent + 45,
+      add('radio', -extentX + 44, -extentY + 37, { r: 16, height: command ? 134 : 106, radioRange: 2800 + site.tier * 420 });
+      add('depot', extentX - 74, -51, { r: 44, w: 105, h: 79, height: 53, collision: 'rect', repairBay: true, hp: 410 });
+      if (command) add('depot', extentX - 74, 59, { r: 41, w: 102, h: 74, height: 49, collision: 'rect', repairBay: true, hp: 410 });
+      add('fuel', extentX - 44, -extentY + 45, { r: 20, w: 36, h: 38, height: 35, explosive: true, blastRadius: 165 });
+      if (command || depot) add('fuel', extentX - 104, -extentY + 45,
         { r: 20, w: 36, h: 38, height: 35, explosive: true, blastRadius: 165 });
-      if (command) add('house', 10, -extent + 64, { r: 49, w: 102, h: 76, height: 74, collision: 'rect', commandCenter: true, hp: 480 });
-      add('alarm', 41, extent - 47, { r: 12, height: 54, alarmRange: 2200 + site.tier * 160, lightRange: 180, active: false });
-      for (const [x, y] of [[-extent + 19, -extent + 18], [extent - 19, -extent + 18], [-extent + 19, extent - 18], [extent - 19, extent - 18]])
+      if (command) add('house', 10, -extentY + 64, { r: 49, w: 102, h: 76, height: 74, collision: 'rect', commandCenter: true, hp: 480 });
+      add('alarm', 41, extentY - 47, { r: 12, height: 54, alarmRange: 2200 + site.tier * 160, lightRange: 180, active: false });
+      for (const [x, y] of [[-extentX + 19, -extentY + 18], [extentX - 19, -extentY + 18], [-extentX + 19, extentY - 18], [extentX - 19, extentY - 18]])
         add('tower', x, y, { r: 17, height: 118, lightRange: 550, angle: r() * TAU, sweep: .16, powered: true });
       const parked = command ? ['tank', 'apc', 'truck', 'ifv'] : depot ? ['tank', 'apc', 'truck'] : ['apc', 'truck'];
       for (let i = 0; i < parked.length; i++) {
         const column = command || depot ? i % 2 : 0, row = command || depot ? Math.floor(i / 2) : i;
-        const x = column ? Math.min(238, extent - 64) : 126, y = extent - 160 + row * 90;
+        const x = column ? Math.min(238, extentX - 64) : 126, y = extentY - 160 + row * 90;
         add('vehicle', x, y,
           { r: parked[i] === 'tank' ? 35 : 29, w: parked[i] === 'tank' ? 84 : 71, h: parked[i] === 'tank' ? 51 : 40,
             height: parked[i] === 'tank' ? 38 : 31, angle: Math.PI / 2, vehicleType: parked[i], parked: true });
       }
-      add('berry', -42, extent - 58, { r: 17, solid: false, height: 16, food: 310 + site.tier * 45, count: 310 + site.tier * 45, supply: true });
+      add('berry', -42, extentY - 58, { r: 17, solid: false, height: 16, food: 310 + site.tier * 45, count: 310 + site.tier * 45, supply: true });
     }
 
     _startChunk(cx, cy) {
@@ -1041,7 +1084,7 @@
         const t = this.terrain(x, y);
         const road = this._roadInfo(x, y);
         if (x * x + y * y < 172 * 172 || t.water || t.bridge || road.dx < 52 || road.dy < 52) continue;
-        if (nearbySites.some(s => s.military ? Math.abs(x - s.x) < s.radius + 23 && Math.abs(y - s.y) < s.radius + 23
+        if (nearbySites.some(s => s.military ? Math.abs(x - s.x) < (s.footprintX || s.radius) + 23 && Math.abs(y - s.y) < (s.footprintY || s.radius) + 23
           : dist2(x, y, s.x, s.y) < (s.radius + 23) ** 2)) continue;
         if(nearbySites.some(s=>(s.approach||[]).some((a,index,points)=>{if(!index)return false;const b=points[index-1],dx=b.x-a.x,dy=b.y-a.y,t=clamp(((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return dist2(x,y,a.x+t*dx,a.y+t*dy)<(s.military?64:32)**2})))continue;
         if (occupied.some(o => dist2(x, y, o.x, o.y) < 45 * 45)) continue;
@@ -1088,7 +1131,7 @@
 
     _nearChunks(x, y, radius, callback) {
       // A site may extend past its owning chunk. Padding includes those overlapping structures.
-      const padding = 550;
+      const padding = 760;
       const minX = Math.floor((x - radius - padding) / CHUNK), maxX = Math.floor((x + radius + padding) / CHUNK);
       const minY = Math.floor((y - radius - padding) / CHUNK), maxY = Math.floor((y + radius + padding) / CHUNK);
       for (let cy = minY; cy <= maxY; cy++) for (let cx = minX; cx <= maxX; cx++) {
@@ -1226,6 +1269,13 @@
       const coldSites = new Set();
       for (const chunk of world._coldChunks.values()) for (const id of chunk.sites || []) coldSites.add(id);
       for (const object of world.objects.values()) {
+        if (object.type === 'wall' || object.type === 'gate') {
+          const height = object.visualHeight ?? object.height ?? 28;
+          object.wallTier = clamp(Math.round(object.wallTier || (height <= 32 ? 1 : height <= 55 ? 2 : height <= 80 ? 3 : 4)), 1, 4);
+          object.faction = object.faction || 'human';
+          object.visualHeight = height;
+          object.climbable = object.type === 'gate' ? false : object.climbable ?? object.wallTier <= 2;
+        }
         if(object.type==='tree')object.moveRadius=7.5*(object.size||1);
         if (!object.siteId || !coldSites.has(object.siteId)) world._indexObject(object);
       }

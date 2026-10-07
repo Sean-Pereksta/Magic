@@ -57,7 +57,7 @@ test('deterministic regional military bases contain finite supplies, captivity a
   assert.equal(types.size,3);
   for(const [type,{plan,cx,cy}] of types){
     w._generateChunk(cx,cy);const site=w.sites.get(plan.id),capacity=w.militaryCapacity(site);
-    assert.ok(site.count>=30);assert.ok(site.guards>=(type==='regionalCommand'?60:30));
+    assert.ok(site.count>=30);assert.ok(site.guards>=(type==='regionalCommand'?82:type==='armoredDepot'?44:30));
     if(type==='forwardBase')assert.ok(site.guards<=50);
     assert.ok(site.staging.length);assert.ok(site.roadblocks.length);
     for(const p of site.roadblocks)assert.equal(w.terrain(p.x,p.y).road,true);
@@ -68,12 +68,12 @@ test('deterministic regional military bases contain finite supplies, captivity a
     assert.ok(objects.some(o=>o.type==='vehicle'&&o.vehicleType==='apc'));
     if(type!=='forwardBase')assert.ok(objects.some(o=>o.type==='vehicle'&&o.vehicleType==='tank'));
     if(type==='regionalCommand')assert.ok(objects.some(o=>o.commandCenter));
-    assert.ok(site.radius>=(type==='regionalCommand'?430:type==='armoredDepot'?345:305));
+    assert.ok(site.radius>=(type==='regionalCommand'?690:type==='armoredDepot'?540:420));
     assert.ok(objects.some(o=>o.barricade&&o.defenseRing===2));
     assert.ok(objects.filter(o=>o.type==='tower').length>=6);
     assert.ok(objects.some(o=>o.type==='gate'&&o.w>=140));
     const road=w._roadInfo(site.x,site.y);
-    assert.ok(Math.min(road.dx,road.dy)>site.radius+65,'large perimeters must leave main roads open');
+    assert.ok(road.dx>site.footprintX+65&&road.dy>site.footprintY+65,'large perimeters must leave main roads open');
     for(const kind of ['truck','apc','tank'])for(let index=0;index<3;index++){
       const p=w.vehicleStaging(site,kind,index);assert.ok(p,'military installations must have hull-clear launch positions');
       assert.equal(w.terrain(p.x,p.y).road,true);assert.equal(w.vehicleBlocked(p.x,p.y,w.vehicleRadius(kind),kind),false);

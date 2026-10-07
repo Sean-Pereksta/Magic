@@ -55,13 +55,16 @@ npm run test:apes:browser
   circles give 1.8 seconds to escape. Shield guards reward flanking or a swarm.
   Officers illuminate remembered positions with flares. Vehicles, searchlights,
   alarms, finite reinforcements, and helicopters remain part of the hunt.
-- **Balance:** adults have 120 health (roughly 2–4 ordinary hits on Survival),
-  scouts 150, and young 60. Marksmen enter tier 3+ forces and retain warned,
-  lethal shots. Captive counts are substantially higher: checkpoints hold
-  18–32, prisons 40–70, detention camps 80–120, and experimental camps 120–180.
-  Military liberation awards 30 food per site tier once, and camp supplies and
-  ape score rewards are larger. Rescue/population threat contributions are
-  lower so one successful rescue does not immediately trigger a military hunt.
+- **Balance:** untrained adults have 120 health (roughly 2–4 ordinary hits on
+  Survival), scouts 150, and young 60. Marksmen enter tier 3+ forces and retain
+  warned, lethal shots. Fresh runs build from a two-ape opening cage and a
+  six-ape hunter camp. Transport cages hold 2–4, hunter camps 4–7, research
+  outposts 8–14, checkpoints 8–16, prisons 18–30, detention camps 42–72,
+  experimental camps 80–125, forward bases 32–60, armored bases 60–110,
+  and regional command bases 160–260. Larger rewards require later, more
+  defended installations. Existing saved captive stocks remain unchanged.
+  Military liberation awards 30 food per site tier once. Rescue/population
+  threat contributions remain low enough to allow an early tribe to grow.
 - **Settlements:** food patches, water, fertility, nearby timber, housing, and
   local human activity affect a camp. Adults forage, build, or guard. Work
   priorities favor growth, food, or defense. Construction produces shelters,
@@ -70,7 +73,7 @@ npm run test:apes:browser
   and supplies, and scouts give advance warnings.
   Lodge targets advance one level per 12 inhabitants, reaching level 10 at 108;
   upgrades still require building work and timber. Construction and timber
-  gathering are faster, shelters add 12 housing, and gardens produce more food.
+  gathering are faster, shelters add ten housing, and gardens produce more food.
   Each eight adults contribute one family work unit per second toward a birth
   every 30 units, subject to food, housing, safety, local capacity, and the
   shared 1,000-ape limit. Young mature after 35 seconds, including while far from the king.
@@ -104,6 +107,72 @@ sprite bounds and cache limits on desktop and mobile:
 
 ```sh
 node game/apes-together-strong/tests/primate-design-browser.cjs
+```
+
+## Village commissions and ape tactics
+
+Stand within 90 world units of a living village's main hut and press **B** or
+choose **Build**. The council pauses simulation, audio, movement and pending
+touch orders while showing local supplies, available plots, queued projects,
+construction progress and completed commissions. Selecting a structure pays
+its timber and food exactly once; the physical worker project resumes after
+leaving the menu. Leaving the lodge, losing its population, a destroyed lodge,
+an attack, insufficient supplies or occupied plots prevents new orders.
+Worker construction and training pause during attacks and resume afterward.
+
+| Commission | Timber | Village food | Required residents | Building work |
+| --- | ---: | ---: | ---: | ---: |
+| Spear tower | 26 | 12 | 24 | 54 |
+| Training ground | 24 | 20 | 30 | 48 |
+| Palisade section | 12 | 0 | 6 | 35 |
+| Family hut | 8 | 0 | 1 | 18 |
+| Garden | 10 | 0 | 6 | 22 |
+| Food store | 16 | 6 | 12 | 35 |
+| Workshop | 20 | 8 | 18 | 28 |
+
+Build time depends on crew arrival, clearing and available builders. Villages
+can queue three to twelve commissioned projects as their population grows;
+the active worker limit remains bounded. Tower slots grow from two to fourteen,
+and training-ground slots from one to six. Villages also continue expanding
+housing, paths, communal facilities and perimeter defenses automatically.
+
+Completed spear towers need a living adult at their guard station. They aim
+at nearby soldiers and vehicles within 360 units, then launch visible traveling
+shafts whose swept collisions and line of sight determine hits. Damage does
+not occur on the launch frame. Towers, trainees and in-flight spears survive
+saves; destroyed or abandoned towers cannot fire. Each staffed training ground
+teaches up to three adult residents at a time. Levels one through three need
+45, 90 and 135 safe practice ticks and cost three, five and seven village food.
+Each permanent level adds 12 maximum health and 8% strike damage; recruitment
+and save/reload retain it without healing existing wounds for free.
+
+Every ape receives one persistent, seeded personality without consuming new
+simulation randomness. Bold apes prefer frontline troops and armor; guardians
+protect the crown and home; saboteurs favor radios, alarms, depots and barriers;
+rescuers seek captive cages; skirmishers prioritize snipers, officers and medics.
+**X** sends a spread charge toward the pointer, with individual attack lanes.
+**T** sends apes against nearby foes in every direction. Existing charge,
+recall and hold commands continue working. Touch preserves whether **Charge**
+or **Spread charge** was chosen until the ground is tapped.
+
+Adult capuchins, gibbons and chimpanzees can climb the two lower wall tiers.
+Training lets other adults climb basic walls. Young stay on the ground;
+reinforced and fortress walls require a gate or breach. King and follower
+strikes damage contacted enemy walls, including during climbing, so a tribe
+can open passages for apes that cannot cross them.
+
+Gameplay no longer prints command acknowledgements, activity labels, damage
+numbers, cage instructions or objective hints over the world. Shape, color,
+movement, icons and health bars retain feedback. Village attack or approaching
+raid warnings remain visible. Controls, explanations, commissioning choices
+and save/import errors stay in menus; HUD counters remain readable.
+
+The optional council browser check covers desktop and touch commands, quiet
+gameplay, retained attack warnings, paused keyboard access, exact costs,
+real construction completion, remote-order denial and saved records:
+
+```sh
+node game/apes-together-strong/tests/village-ui-browser.cjs
 ```
 
 ## Military escalation
@@ -148,11 +217,13 @@ solid trees, buildings, rocks and unbridged rivers constrain armor. Forest cover
 also reduces armed scouts and gunships, which orbit reported battle areas, fire
 limited bursts and periodically reposition or leave.
 
-New forward bases, armored depots and rare regional command bases have larger
-305/345/430-unit compounds, layered barricade rings, broad guarded gates,
-service openings, multiple floodlights, armor parking and 30–78 defenders.
-Command installations contain major captivity areas. Roads remain clear of the
-expanded perimeters. Temporary checkpoints assemble at road approaches after
+Fresh forward bases, armored depots and rare regional command bases use larger
+rectangular compounds, layered barricade rings, broad guarded gates, service
+openings, multiple floodlights, armor parking and 30–120 defenders. Stronger
+inner walls and lower outer sections distinguish each installation's defenses.
+Command installations contain major captivity areas. Their placement preserves
+regional highways and dry access lanes between river bands. Temporary
+checkpoints assemble at road approaches after
 their defenders travel from a source; occasional supply columns move between
 installations. Distant response corridors load through the existing three-stage
 streaming budget and heavy vehicles retain clearance and road preference.
@@ -170,10 +241,11 @@ hardware timing is diagnostic and never a universal frame-rate guarantee.
 ## Controls and persistence
 
 WASD/arrows move; Shift sprints; Ctrl sneaks; click/Space attacks. Q calls,
-E charges toward the pointer, R recalls, F holds, Z settles nearby followers,
-Shift+Z settles all, and C assigns scouts. M/Tab opens the map and settlement
-controls; Escape pauses. Touch uses a movement stick, strike button, and command
-menu.
+E charges toward the pointer, X spreads the charge, T attacks nearest foes,
+R recalls, F holds, Z settles nearby followers, Shift+Z settles all, and C
+assigns scouts. B opens the council beside a main hut. M/Tab opens the map and
+settlement controls; Escape pauses or closes a menu. Touch uses a movement
+stick, strike button, command menu and nearby Build button.
 
 The original `ats-crown-save-v1` storage key and JSON save format are retained.
 Older tree collision and settlement records migrate on load. Navigation caches
@@ -181,9 +253,11 @@ are rebuilt; they are not serialized. Autosave runs every 15 seconds, with
 manual save and JSON export/import in Pause. The king's death removes the
 living checkpoint and records a legacy score.
 
-Balance revision 2 migrates older ape health proportionally, retains family
-progress, and increases rewards in existing unbroken cages once. Cleared camps
-and past rescue statistics retain their history.
+The existing balance-revision-two actor migration still preserves relative
+health and family progress. The slower rescue pacing applies to fresh world
+generation; saved captive counts and past rescue statistics retain their
+history. Personality and training fields migrate without replacing existing
+species, coats, wounds, ages or settlement membership.
 
 The new regional layout applies to newly generated chunks. Already explored
 areas in imported saves keep their existing structures.
@@ -358,11 +432,12 @@ from multiple installations. Coordinated approach bearings retain an imperfect
 escape sector. Support, killed leaders, density drops and recalled charges
 affect fallback, shadowing, firing lines and counterattacks.
 
-The **Find Settlement** button or **V** toggles one named direction/distance
-marker for every founded settlement, including empty bases after their residents
-join the horde. Destinations project onto all four screen edges; a nearby base
-receives a home marker. Nearby
-markers separate, attack status changes their color, and the layout handles
+The **Find Settlement** button or **V** toggles one home-direction icon for
+every founded settlement, including empty bases after their residents join
+the horde. Destinations project onto all four screen edges; a nearby base
+receives a home marker. Quiet markers use icons, with village names and
+warning words reserved for attacks. Nearby markers separate, attack status
+changes their color, and the layout handles
 camera motion, zoom, desktop and touch. Huts persist as individual plots with
 health, damage bars and ruins. Human siege fire requires nearby line of sight;
 grenades, shells, mortars and airstrikes can destroy homes. Destroyed homes
@@ -447,10 +522,25 @@ support lines. Engineers build basic 300-HP sections in four to six seconds and
 600-HP sections in seven. Damage, fallback and apes at the construction site
 interrupt the job. Chokepoints and staging areas have separated sections with
 firing gaps, and infantry hold behind cover. Bullets clear low field cover;
-apes must physically break human sections. Apes vault their own barriers while
+apes climb eligible low walls or physically break stronger human sections.
+Apes vault their own barriers while
 infantry climb or breach slowly, engineers dismantle faster, and tanks can
 crush only designated weak ape sections. APCs unload before contact and armor
 supports infantry from cleared approaches.
+
+Fresh generated compound walls have four persistent strength and height levels:
+
+| Wall tier | Health | Height | Adult climbing |
+| --- | ---: | ---: | --- |
+| 1 · Low timber | 240 | 28 | Agile species or trained adults |
+| 2 · Reinforced palisade | 620 | 45 | Adult capuchins, gibbons and chimpanzees |
+| 3 · Stone rampart | 1,400 | 68 | Breach or gate required |
+| 4 · Armored rampart | 2,800 | 95 | Breach or gate required |
+
+Gates add 15% health. Old explored walls preserve their existing health and
+geometry. Wall strikes, climb progress and persistent breaches survive saves;
+new wall visuals use height, materials, buttresses and battlements to make
+the stronger tiers recognizable without floating labels.
 
 Infantry prioritizes firing at visible apes inside its weapon range. Short
 repositioning and close backsteps are capped at 16 units over 0.28 seconds,

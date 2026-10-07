@@ -29,8 +29,8 @@ test('births respect the shared ape population limit',()=>{
  const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);
 });
 test('military facilities hold substantially more captives with matching cage totals',()=>{
- const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[4,7],hunter:[10,18],research:[20,36],checkpoint:[18,32],prison:[40,70],detention:[80,120],experimental:[120,180],forwardBase:[32,60],armoredDepot:[36,70],regionalCommand:[120,180]};
- assert.equal(w.sites.get('opening-rescue').count,3);assert.equal(w.sites.get('opening-hunters').count,12);
+ const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260]};
+ assert.equal(w.sites.get('opening-rescue').count,2);assert.equal(w.sites.get('opening-hunters').count,6);
  let military=0;for(const s of w.sites.values()){if(s.tutorial)continue;const [lo,hi]=ranges[s.type];assert.ok(s.count>=lo&&s.count<=hi);const cages=s.objects.map(id=>w.objects.get(id)).filter(o=>o.type==='cage');assert.equal(cages.reduce((sum,o)=>sum+o.count,0),s.count);if(s.tier>=3)military++}assert.ok(military>0);
 });
 test('liberating a military facility awards supplies exactly once and ape score rewards increase',()=>{
@@ -40,9 +40,9 @@ test('early rescues reach containment only while active followers remain above i
  const {g}=game();for(let i=0;i<40;i++)g.makeApe(i,0,'follow');g.stats.freed=40;g.stats.bases=1;g.time=90;g.tickSecond();assert.equal(g.tier,2);
  for(const a of g.apes)a.state='settled';g.tickSecond();assert.equal(g.tier,1);
 });
-test('old saves preserve wounds and improve unrescued camp rewards once',()=>{
+test('old saves migrate ape wounds while preserving recorded captive stock',()=>{
  const c=game().c,g=new c.ATSGame('migration-balance'),a=g.makeApe(0,0),child=g.makeApe(10,0,'young',null,true);a.maxHp=48;a.hp=24;child.maxHp=22;child.hp=11;child.age=45;
  const s=g.world.sites.get('opening-hunters'),cage=s.objects.map(id=>g.world.objects.get(id)).find(o=>o.type==='cage');cage.count=cage.prisoners=s.count=6;
- const saved=JSON.parse(JSON.stringify(g.serialize()));delete saved.balanceVersion;const loaded=c.ATSGame.fromJSON(saved);assert.equal(loaded.apes[0].maxHp,120);assert.equal(loaded.apes[0].hp,60);assert.equal(loaded.apes[1].maxHp,60);assert.equal(loaded.apes[1].hp,30);assert.equal(loaded.apes[1].age,17.5);assert.equal(loaded.world.objects.get(cage.id).count,12);
- const again=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(loaded.serialize())));assert.equal(again.apes[0].hp,60);assert.equal(again.world.objects.get(cage.id).count,12);assert.equal(again.serialize().balanceVersion,2);
+ const saved=JSON.parse(JSON.stringify(g.serialize()));delete saved.balanceVersion;const loaded=c.ATSGame.fromJSON(saved);assert.equal(loaded.apes[0].maxHp,120);assert.equal(loaded.apes[0].hp,60);assert.equal(loaded.apes[1].maxHp,60);assert.equal(loaded.apes[1].hp,30);assert.equal(loaded.apes[1].age,17.5);assert.equal(loaded.world.objects.get(cage.id).count,6);
+ const again=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(loaded.serialize())));assert.equal(again.apes[0].hp,60);assert.equal(again.world.objects.get(cage.id).count,6);assert.equal(again.serialize().balanceVersion,2);
 });

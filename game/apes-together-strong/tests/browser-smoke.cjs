@@ -116,9 +116,9 @@ const { chromium } = require('playwright');
       ATS.renderer.draw(g, 0);
       return { freed, settled, population: s.population, defense: s.maxDefense };
     });
-    assert.equal(setup.freed, 3);
+    assert.equal(setup.freed, 2);
     assert.equal(setup.settled, true);
-    assert.ok(setup.population >= 18);
+    assert.ok(setup.population >= 17);
     assert.ok(setup.defense > 0);
     await screenshot(page, 'combat');
     // Remove the test encounter before resuming the player's menu flow.
