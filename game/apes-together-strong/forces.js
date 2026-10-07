@@ -31,7 +31,7 @@ const VEHICLES={
 };
 for(const spec of Object.values(VEHICLES))spec.budget=spec.weight;
 class Forces {
- constructor(game){this.game=game;this.hazards=[];this.squads=new Map();this.nextMortarAt=0}
+ constructor(game){this.game=game;this.hazards=[];this.squads=new Map();this.platoons=new Map();this.engineerJobs=new Map();this.nextMortarAt=0;if(game.navigation)game.navigation.game=game}
  assign(h,site,requested){
   if(!requested&&h.role&&ROLES[h.role])return;
   const tier=Math.max(site?.tier||1,this.game.tier-1),n=ATSUtil.hash(h.id+this.game.seed)%100;let role=requested||'guard';
@@ -44,16 +44,36 @@ class Forces {
   const g=this.game,id=options.id||'squad-'+g.nextId++,point={x:objective?.x??members[0]?.x??0,y:objective?.y??members[0]?.y??0},order=options.order||'Search';
   const squad={id,members:members.map(h=>h.id),initialSize:members.length,objective:point,order:order==='Retreat'?'Fallback':order,vehicleId:options.vehicleId||null,siteId:options.siteId||members[0]?.siteId,operationId:options.operationId||null,leaderId:members.find(h=>h.role==='leader'||h.role==='officer')?.id,reportAt:options.reportAt??g.time,nextThink:g.time,cohesionLossUntil:0,density:0};
   this.squads.set(id,squad);
-  members.forEach((h,i)=>{h.squadId=id;h.squadSlot=i;h.squadRole=h.role;h.squadObjective={...point};h.squadOrder=squad.order;h.squadVehicleId=squad.vehicleId;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=id;h.lastX=point.x;h.lastY=point.y});return squad;
+  members.forEach((h,i)=>{h.squadId=id;h.squadSlot=i;h.squadRole=h.role;h.squadObjective={...point};h.squadOrder=squad.order;h.squadVehicleId=squad.vehicleId;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=id;h.lastX=point.x;h.lastY=point.y});this.attachPlatoon(squad);return squad;
+ }
+ createPlatoon(squads,objective,options={}){
+ const g=this.game,groups=squads.map(s=>typeof s==='string'?this.squads.get(s):s).filter(Boolean).slice(0,4);if(!groups.length)return null;
+ const id=options.id||'platoon-'+g.nextId++,p={id,squads:groups.map(s=>s.id),objective:{...(objective||groups[0].objective)},order:options.order||groups[0].order,operationId:options.operationId||groups[0].operationId,reportAt:g.time,nextThink:g.time};this.platoons.set(id,p);
+ groups.forEach((s,i)=>{s.platoonId=id;s.platoonSlot=i;for(const member of s.members){const h=g.humansById.get(member);if(h)h.platoonId=id}});return p;
+ }
+ attachPlatoon(squad){
+ const key=squad.operationId||squad.siteId;if(!key)return;const same=Array.from(this.platoons.values()).find(p=>p.groupKey===key&&p.squads.length<4&&(squad.operationId||distance(p.objective,squad.objective)<100));
+ if(same){same.squads.push(squad.id);squad.platoonId=same.id;squad.platoonSlot=same.squads.length-1;for(const id of squad.members){const h=this.game.humansById.get(id);if(h)h.platoonId=same.id}}
+ else{const p=this.createPlatoon([squad],squad.objective,{operationId:squad.operationId});p.groupKey=key}
+ }
+ restorePlatoons(saved=[]){
+ for(const record of saved||[]){const squads=(record.squads||[]).map(id=>this.squads.get(id)).filter(Boolean);if(!squads.length)continue;for(const [id,p]of this.platoons)if(p.squads.some(s=>squads.some(q=>q.id===s)))this.platoons.delete(id);const p=this.createPlatoon(squads,record.objective,record);for(const key of ['groupKey','reportAt','observedTargetId','assaultPhase','facing','anchor','nextThink'])if(record[key]!==undefined)p[key]=record[key]}
+ }
+ sharePlatoonObjective(squad,target,witness){
+ const p=this.platoons.get(squad.platoonId),g=this.game;if(!p||p.squads.length<2)return;
+ if(target&&!squad.assaultPhase&&this.communicationsAvailable(witness)){p.objective={x:target.x,y:target.y};p.reportAt=g.time;p.observedTargetId=target.id;p.order=squad.order}
+ else if(p.observedTargetId&&g.time-p.reportAt<5&&!squad.assaultPhase){squad.objective={...p.objective};squad.reportAt=Math.max(squad.reportAt,p.reportAt)}
  }
  restoreSquads(saved=[]){
-  this.squads.clear();const groups=new Map(),records=new Map((Array.isArray(saved)?saved:[]).map(s=>[s.id,s])),g=this.game,people=[...g.humans];for(const s of g.world.sites.values())people.push(...(s.sleepingHumans||[]));
+  this.squads.clear();this.platoons.clear();this.engineerJobs.clear();if(this.game.navigation)this.game.navigation.game=this.game;const groups=new Map(),records=new Map((Array.isArray(saved)?saved:[]).map(s=>[s.id,s])),g=this.game,people=[...g.humans];for(const s of g.world.sites.values())people.push(...(s.sleepingHumans||[]));
   for(const h of people)if(h.hp>0&&h.squadId){if(!groups.has(h.squadId))groups.set(h.squadId,[]);groups.get(h.squadId).push(h)}
-  for(const [id,members]of groups){members.sort((a,b)=>(a.squadSlot||0)-(b.squadSlot||0));const h=members[0],saved=records.get(id),s=this.createSquad(members,saved?.objective||h.squadObjective||{x:h.lastX,y:h.lastY},{id,order:saved?.order||h.squadOrder,vehicleId:saved?.vehicleId||h.squadVehicleId,operationId:saved?.operationId||h.squadOperationId,reportAt:saved?.reportAt??h.squadReportAt});s.cohesionLossUntil=Math.max(saved?.cohesionLossUntil||0,...members.map(h=>h.cohesionLossUntil||0));s.nextReport=saved?.nextReport||0;for(const key of ['initialSize','density','fallbackPoint','fallbackUntil','fallbackComplete','counterattackUntil','kingIdentifiedUntil','firingLine','firingFacing'])if(saved?.[key]!==undefined)s[key]=saved[key]}
+  for(const [id,members]of groups){members.sort((a,b)=>(a.squadSlot||0)-(b.squadSlot||0));const h=members[0],saved=records.get(id),s=this.createSquad(members,saved?.objective||h.squadObjective||{x:h.lastX,y:h.lastY},{id,order:saved?.order||h.squadOrder,vehicleId:saved?.vehicleId||h.squadVehicleId,operationId:saved?.operationId||h.squadOperationId,reportAt:saved?.reportAt??h.squadReportAt});s.cohesionLossUntil=Math.max(saved?.cohesionLossUntil||0,...members.map(h=>h.cohesionLossUntil||0));s.nextReport=saved?.nextReport||0;for(const key of ['initialSize','density','fallbackPoint','fallbackUntil','fallbackComplete','counterattackUntil','kingIdentifiedUntil','firingLine','firingFacing','fortificationIds','assaultPhase','assaultFacing','lineBuildQueue'])if(saved?.[key]!==undefined)s[key]=saved[key]}
+  for(const h of people)if(h.engineerJob&&h.hp>0){h.constructing=h.engineerJob;this.engineerJobs.set(h.engineerJob.id,h.engineerJob)}
   this.nextMortarAt=Math.max(g.time,...this.hazards.filter(h=>h.type==='mortar'&&h.life>0).map(h=>(h.start||0)+2.4));
  }
  onDeath(a){
   const g=this.game;if(a.squadId){const squad=this.squads.get(a.squadId);if(squad?.leaderId===a.id){squad.leaderId=null;squad.cohesionLossUntil=g.time+7;for(const id of squad.members){const h=g.humansById.get(id);if(h&&h.hp>0){h.cohesionLossUntil=g.time+7;h.shootTimer=Math.max(h.shootTimer,.8);h.squadOrder='Regroup'}}g.effect('text',a.x,a.y,{text:'LEADER DOWN',life:1.3,color:'#e9bb8a'})}}
+  if(a.engineerJob)this.cancelEngineerJob(a,'engineer lost');
   if(a.id?.startsWith('vehicle')){a.troopsLost=(a.troopsLost||0)+(a.troops||0);a.troops=0;a.dismounting=false;a.cannonTarget=null}
  }
  // Estimate only a visually confirmed concentration. A bounded sample uses the
@@ -104,7 +124,7 @@ class Forces {
  }
  fallbackPosition(squad,support){
   const g=this.game,anchor=support.anchor,point=squad.objective,angle=Math.atan2(point.y-anchor.y,point.x-anchor.x),rear={x:anchor.x-Math.cos(angle)*180,y:anchor.y-Math.sin(angle)*180};
-  const home=g.world.sites.get(squad.siteId),positions=[...support.armor,...support.friends];if(home&&!home.cleared)positions.push(home);
+  const home=g.world.sites.get(squad.siteId),positions=[...support.armor,...support.friends];const barricades=g.world.getObjects?.(anchor.x,anchor.y,460)||[];positions.push(...barricades.filter(o=>o.fortification&&o.team==='human'&&o.hp>0&&!o.dead));if(home&&!home.cleared)positions.push(home);
   const cover=positions.filter(p=>distance(anchor,p)>40&&distance(anchor,p)<500).sort((a,b)=>distance(a,rear)-distance(b,rear))[0];
   if(!cover)return rear;const d=distance(anchor,cover),scale=Math.min(1,200/d);return{x:anchor.x+(cover.x-anchor.x)*scale,y:anchor.y+(cover.y-anchor.y)*scale};
  }
@@ -114,43 +134,49 @@ class Forces {
   let witness=null,target=null;
   for(const h of members)if(h.state==='combat'&&h.targetId){const a=h.targetId==='king'?g.king:g.apesById.get(h.targetId);if(a?.hp>0&&g.time-(h.lastSeenAt??-100)<2&&distance(h,a)<=this.range(h)+40){const sight=g.lineVisible(h,a);if(sight){witness=h;target=a;break}if(sight===null)break}}
   const previousDensity=squad.density;
-  if(target){squad.objective={x:target.x,y:target.y};squad.reportAt=g.time;const density=this.observedDensity(witness,target);if(density!==null){squad.density=density;if(this.communicationsAvailable(witness))g.recordHordeContact?.(witness,target,density);if(previousDensity>=40&&density<previousDensity*.65){squad.counterattackUntil=g.time+8;squad.fallbackPoint=null;squad.fallbackComplete=false}}squad.observedTargetId=target.id}
+  if(target){if(!squad.assaultPhase)squad.objective={x:target.x,y:target.y};squad.reportAt=g.time;const density=this.observedDensity(witness,target);if(density!==null){squad.density=density;if(this.communicationsAvailable(witness))g.recordHordeContact?.(witness,target,density);if(previousDensity>=40&&density<previousDensity*.65){squad.counterattackUntil=g.time+8;squad.fallbackPoint=null;squad.fallbackComplete=false}}squad.observedTargetId=target.id}
   else if(g.time-squad.reportAt>5){squad.density=0;squad.observedTargetId=null}
+  this.sharePlatoonObjective(squad,target,witness);const phase=String(squad.assaultPhase||'').toLowerCase(),commanded=['deployment','engineers'].includes(phase),assaulting=phase==='assault';
   const vehicle=g.vehicles.find(v=>v.id===squad.vehicleId&&v.hp>0);squad.vehicle=vehicle;
-  const support=this.supportFor(squad,members),density=squad.density,oldOrder=squad.order;
+  const support=this.supportFor(squad,members),density=squad.density,oldOrder=squad.order;if(assaulting&&!Number.isFinite(squad.assaultFacing))squad.assaultFacing=Math.atan2(squad.objective.y-support.anchor.y,squad.objective.x-support.anchor.x);else if(!assaulting)squad.assaultFacing=null;
   squad.supported=support.supported;squad.supportStrength=support.strength;
   const badlyDamaged=members.reduce((n,h)=>n+h.hp,0)<members.reduce((n,h)=>n+h.maxHp,0)*.45||members.length<Math.max(2,(squad.initialSize||members.length)*.4);
   const armyReady=support.supported&&support.strength>=Math.min(52,24+density/30);
-  if(g.time<squad.cohesionLossUntil)squad.order='Regroup';
+  if(commanded)squad.order='Hold Line';
+  else if(g.time<squad.cohesionLossUntil)squad.order='Regroup';
   else if(target&&density>=300&&!armyReady&&!badlyDamaged)squad.order='Shadow';
   else if(target&&(badlyDamaged||density>=80&&!support.supported)&&!squad.fallbackComplete)squad.order='Fallback';
+  else if(assaulting&&!badlyDamaged)squad.order='Attack Settlement';
   else if(target&&((oldOrder==='Fallback'||oldOrder==='Shadow')&&support.supported&&!badlyDamaged||g.time<(squad.counterattackUntil||0))){squad.order='Counterattack';if(oldOrder==='Fallback'||oldOrder==='Shadow')squad.counterattackUntil=g.time+8;squad.fallbackPoint=null;squad.fallbackComplete=false}
   else if(target&&density>=80)squad.order=density>=150&&support.friends.length>=8&&ATSUtil.hash(squad.id)%3===0?'Flank':'Hold & Suppress';
   else if(target&&density>=40)squad.order='Suppress';
   else if(target&&vehicle)squad.order='Protect Vehicle';
   else if(target)squad.order='Advance';
-  else if(['Suppress','Retreat','Fallback','Regroup','Advance','Protect Vehicle','Hold & Suppress','Shadow','Counterattack','Flank'].includes(squad.order))squad.order='Search';
+  else if(['Suppress','Retreat','Fallback','Regroup','Advance','Protect Vehicle','Hold & Suppress','Hold Line','Shadow','Counterattack','Flank'].includes(squad.order))squad.order='Search';
   if(squad.order==='Fallback'){
    if(!squad.fallbackPoint){squad.fallbackPoint=this.fallbackPosition(squad,support);squad.fallbackUntil=g.time+8}
    if(distance(support.anchor,squad.fallbackPoint)<45||g.time>=squad.fallbackUntil){squad.fallbackComplete=true;squad.order='Hold & Suppress'}
   }
-  if(target&&['Hold & Suppress','Suppress','Hold','Defend Base'].includes(squad.order)&&!squad.firingLine){
+  if(assaulting&&squad.order==='Attack Settlement'){squad.firingLine=null;squad.firingFacing=null}
+  const barricade=this.defensiveBarricade(squad,support.anchor);if(!assaulting&&barricade&&!badlyDamaged&&(!target||squad.order!=='Fallback'&&squad.order!=='Shadow')&&squad.order!=='Regroup'&&squad.order!=='Counterattack'){squad.order='Hold Line';const angle=Math.atan2(squad.objective.y-barricade.y,squad.objective.x-barricade.x);squad.firingLine={x:barricade.x-Math.cos(angle)*42,y:barricade.y-Math.sin(angle)*42};squad.firingFacing=angle;}
+  if(target&&['Hold & Suppress','Suppress','Hold','Hold Line','Defend Base'].includes(squad.order)&&!squad.firingLine){
    const line=members.filter(h=>['rifleman','shield','guard','leader','officer'].includes(h.role)),front=line.length?line:members;
    squad.firingLine={x:front.reduce((n,h)=>n+h.x,0)/front.length,y:front.reduce((n,h)=>n+h.y,0)/front.length};squad.firingFacing=Math.atan2(target.y-squad.firingLine.y,target.x-squad.firingLine.x);
-  }else if(squad.order==='Counterattack'||!target&&g.time-squad.reportAt>5){squad.firingLine=null;squad.firingFacing=null}
+  }else if(squad.order==='Counterattack'||!barricade&&!commanded&&!target&&g.time-squad.reportAt>5){squad.firingLine=null;squad.firingFacing=null}
   if(target&&density>=40&&g.time>=(squad.nextReport||0)){const radio=members.find(h=>h.hasRadio);const site=g.world.sites.get(radio?.siteId);if(radio&&!site?.radioDown){squad.nextReport=g.time+(density>=150?16:24);g.alert(radio,'radio');if(density>=150){g.effect('text',radio.x,radio.y,{text:density>=300?'ARMY CONTACT':'MASS HORDE CONTACT',life:1.5,color:'#e6bb8c'});g.sound('military',.4,radio.x)}}}
   const anchor=vehicle||support.anchor;squad.anchor={x:anchor.x,y:anchor.y};
   for(const h of members){h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadReportAt=squad.reportAt;h.lastX=squad.objective.x;h.lastY=squad.objective.y;h.cohesionLossUntil=squad.cohesionLossUntil;h.accuracyMultiplier=(ROLES[h.role]?.accuracy||1)*(squad.leaderId?.9:1)*(g.tier===5?.86:1);h.navCohort=squad.id}
   if(!target&&distance(anchor,squad.objective)>100)g.navigation.setCohortRoute(squad.id,anchor,squad.objective,10,3);
  }
  formationPoint(h,squad){
-  const point=squad.objective,anchor=squad.anchor||h,vehicle=squad.vehicle,holding=squad.firingLine&&['Hold & Suppress','Suppress','Hold','Defend Base'].includes(squad.order),angle=holding?squad.firingFacing:Math.atan2(point.y-anchor.y,point.x-anchor.x),front={x:Math.cos(angle),y:Math.sin(angle)},side={x:-front.y,y:front.x},slot=h.squadSlot||0;
-  let depth=(Math.floor(slot/4)-1)*32,lateral=((slot%4)-1.5)*39;
-  if(h.role==='mortar')depth=-245;else if(h.role==='sniper'||h.role==='medic')depth=-115;else if(h.role==='heavy'||h.role==='gunner'||h.role==='grenadier')depth=-70;else if(h.role==='ranger'||h.role==='flanker'){lateral=h.flankSide*(squad.density>=80?200:145);depth=squad.density>=80?-40:30}
-  if(vehicle){depth-=50;lateral+=(slot%2?1:-1)*42}
+  const point=squad.objective,anchor=squad.anchor||h,vehicle=squad.vehicle,assaulting=String(squad.assaultPhase||'').toLowerCase()==='assault'&&squad.order==='Attack Settlement',holding=squad.firingLine&&['Hold & Suppress','Suppress','Hold','Hold Line','Defend Base'].includes(squad.order),angle=assaulting&&Number.isFinite(squad.assaultFacing)?squad.assaultFacing:holding?squad.firingFacing:Math.atan2(point.y-anchor.y,point.x-anchor.x),front={x:Math.cos(angle),y:Math.sin(angle)},side={x:-front.y,y:front.x},slot=h.squadSlot||0;
+  let depth=(Math.floor(slot/4)-1)*32,lateral=((slot%4)-1.5)*(assaulting?16:39);
+  if(squad.platoonId&&!['Hold','Hold Line','Defend Base','Suppress','Hold & Suppress'].includes(squad.order)){const p=this.platoons.get(squad.platoonId);if(p?.squads.length>1)lateral+=(squad.platoonSlot-(p.squads.length-1)/2)*(assaulting?16:190)}
+  if(h.role==='mortar')depth=-245;else if(h.role==='sniper'||h.role==='medic')depth=-115;else if(h.role==='heavy'||h.role==='gunner'||h.role==='grenadier')depth=-70;else if(h.role==='engineer')depth=holding?-65:-20;else if(h.role==='ranger'||h.role==='flanker'){lateral=h.flankSide*(assaulting?32:squad.density>=80?200:145);depth=squad.density>=80?-40:30}
+  if(vehicle&&!assaulting){depth-=50;lateral+=(slot%2?1:-1)*42}
   if(squad.order==='Fallback'||squad.fallbackComplete&&squad.fallbackPoint){const cover=squad.fallbackPoint||anchor;return{x:cover.x+front.x*Math.min(0,depth)+side.x*lateral,y:cover.y+front.y*Math.min(0,depth)+side.y*lateral}}
   if(squad.order==='Regroup')return {x:anchor.x-front.x*55+side.x*lateral,y:anchor.y-front.y*55+side.y*lateral};
-  const battle=squad.density>0,standOff=squad.order==='Shadow'?450:squad.order==='Counterattack'?145:vehicle?260:200,base=holding?squad.firingLine:battle?{x:point.x-front.x*standOff,y:point.y-front.y*standOff}:point;
+  const battle=squad.density>0,standOff=squad.order==='Shadow'?450:squad.order==='Counterattack'?145:vehicle?260:200,base=assaulting?{x:point.x+front.x*110,y:point.y+front.y*110}:holding?squad.firingLine:battle?{x:point.x-front.x*standOff,y:point.y-front.y*standOff}:point;
   if(squad.order==='Flank')lateral+=(ATSUtil.hash(squad.id)%2?1:-1)*190;
   return {x:base.x+front.x*depth+side.x*lateral,y:base.y+front.y*depth+side.y*lateral};
  }
@@ -176,17 +202,41 @@ class Forces {
   }
   return true;
  }
+ defensiveBarricade(squad,anchor){
+ const world=this.game.world,objects=world.getObjects?.(anchor.x,anchor.y,310)||[];return objects.filter(o=>o.fortification&&o.team==='human'&&o.solid&&o.hp>0&&!o.dead&&distance(anchor,o)<220).sort((a,b)=>distance(a,anchor)-distance(b,anchor))[0]||null;
+ }
+ startEngineerJob(h,options={}){
+ const g=this.game;if(h.role!=='engineer'||h.hp<=0||h.engineerJob)return null;const kind=options.kind||'basic',duration=kind==='heavy'?7:kind==='basic'?4+(ATSUtil.hash(h.id+g.nextId)%3):5;
+ const job={...options,id:options.id||'engineer-job-'+g.nextId++,engineerId:h.id,x:options.x??h.x+Math.cos(h.dir)*30,y:options.y??h.y+Math.sin(h.dir)*30,kind,type:kind==='searchlight'?'tower':'wall',team:'human',siteId:options.siteId||h.siteId,startedAt:g.time,remaining:duration,duration,status:'building'};
+ h.engineerJob=h.constructing=job;this.engineerJobs.set(job.id,job);h.animation={kind:'build',start:g.time,duration};return job.id;
+ }
+ cancelEngineerJob(h,reason='under attack'){
+ const job=h.engineerJob||h.constructing;if(!job)return;job.status='interrupted';job.reason=reason;h.lastEngineerJob={...job};this.engineerJobs.delete(job.id);h.engineerJob=h.constructing=null;h.specialAt=this.game.time+6;
+ }
+ prepareLine(squad,options={}){
+ const g=this.game,members=squad.members.map(id=>g.humansById.get(id)).filter(h=>h?.hp>0),engineers=members.filter(h=>h.role==='engineer'&&!h.engineerJob);if(!members.length)return [];
+ const anchor=options.x!==undefined?options:members.find(h=>h.id===squad.leaderId)||members[0],angle=options.angle??Math.atan2(squad.objective.y-anchor.y,squad.objective.x-anchor.x),front={x:Math.cos(angle),y:Math.sin(angle)},side={x:-front.y,y:front.x};
+ // Separate sections leave an infantry passage in the center and usable flanks.
+ const placements=[-88,88,-194,194].map(lateral=>({x:anchor.x+front.x*36+side.x*lateral,y:anchor.y+front.y*36+side.y*lateral,angle:angle+Math.PI/2,kind:options.kind||'basic',w:Math.abs(side.x)>.7?82:18,h:Math.abs(side.x)>.7?18:82,siteId:squad.siteId,operationId:squad.operationId,squadId:squad.id,temporary:options.temporary,expiresAt:options.expiresAt})).filter(p=>!g.world.blocked(p.x,p.y,17)&&!g.world.fortificationAt?.(p.x,p.y,40));
+ squad.lineBuildQueue=placements;engineers.forEach((h,i)=>{if(placements[i])this.startEngineerJob(h,placements[i])});return placements;
+ }
  updateEngineer(h,dt){
-  const g=this.game;if(h.role!=='engineer')return false;
-  if(h.constructing){
-   if(g.apeGrid.near(h.x,h.y,90).length||h.hitTimer>0){h.constructing=null;h.specialAt=g.time+9;return false}
-   h.constructing.remaining-=dt;h.moving=false;
-   if(h.constructing.remaining<=0){const b=h.constructing,chunk=g.world.chunks.get(Math.floor(b.x/g.world.chunkSize)+','+Math.floor(b.y/g.world.chunkSize));if(chunk&&!g.world.blocked(b.x,b.y,17)){const o=g.world._object(chunk,{id:'field-'+g.nextId++,type:b.type,x:b.x,y:b.y,r:b.type==='wall'?18:9,w:44,h:13,collision:b.type==='wall'?'rect':undefined,hp:130,maxHp:130,height:b.type==='wall'?24:43,siteId:h.siteId,temporary:true,expiresAt:g.time+70});this.hazards.push({type:'fortification',id:o.id,x:o.x,y:o.y,start:g.time,life:70});g.world.navRevision++;g._lightsAt=-1;g.effect('text',o.x,o.y,{text:b.type==='wall'?'BARRICADE':'FIELD LIGHT',color:'#cbbd94',life:1.2})}h.constructing=null;h.specialAt=g.time+35}
-   return true;
-  }
-  if(g.time>h.specialAt&&h.squadId&&['Hold','Suppress','Hold & Suppress','Fallback','Protect Vehicle','Defend Base'].includes(h.squadOrder)&&!g.apeGrid.near(h.x,h.y,150).length&&g.performance.think()){
-   const x=h.x+Math.cos(h.dir)*28,y=h.y+Math.sin(h.dir)*28;if(!g.world.blocked(x,y,20)){h.constructing={x,y,type:ATSUtil.hash(h.id+Math.floor(g.time))%2?'wall':'tower',remaining:3.5};h.animation={kind:'build',start:g.time,duration:3.5};return true}
-  }return false;
+ const g=this.game;if(h.role!=='engineer')return false;
+ if(h.engineerJob||h.constructing){
+  const job=h.engineerJob||h.constructing;h.engineerJob=h.constructing=job;
+  const withdrawing=h.state==='retreat'||['Fallback','Retreat'].includes(h.squadOrder)||['Fallback','Retreat'].includes(this.squads.get(h.squadId)?.order),workRadius=Math.max(job.w||82,job.h||18)/2+32;
+  if(withdrawing){this.cancelEngineerJob(h,'withdrawal');return false}
+  if(h.hitTimer>0||g.apeGrid.near(h.x,h.y,90).some(a=>a.hp>0)||g.apeGrid.near(job.x,job.y,workRadius).some(a=>a.hp>0)){this.cancelEngineerJob(h,'construction area contested');return false}
+  if(distance(h,job)>48){g.move(h,job.x-h.x,job.y-h.y,68,dt);return true}
+  job.remaining-=dt;h.moving=false;h.animation={kind:'build',start:g.time,duration:.6};
+  if(job.remaining<=0){
+   let o=null;if(!g.world.blocked(job.x,job.y,17)){if(g.world.createFortification)o=g.world.createFortification({...job,temporary:job.temporary??false,expiresAt:job.expiresAt});else{const chunk=g.world.chunks.get(Math.floor(job.x/g.world.chunkSize)+','+Math.floor(job.y/g.world.chunkSize));if(chunk)o=g.world._object(chunk,{id:'field-'+g.nextId++,type:'wall',fortification:true,team:'human',kind:job.kind,x:job.x,y:job.y,r:18,w:job.w||82,h:job.h||18,collision:'rect',hp:job.kind==='heavy'?600:300,maxHp:job.kind==='heavy'?600:300,siteId:h.siteId})}}
+   job.status=o?'completed':'blocked';job.objectId=o?.id;h.lastEngineerJob={...job};if(o){const squad=this.squads.get(h.squadId);if(squad)(squad.fortificationIds||(squad.fortificationIds=[])).push(o.id);g._lightsAt=-1;g.effect('text',o.x,o.y,{text:job.kind==='searchlight'?'FIELD LIGHT':job.kind==='observation'?'OBSERVATION POST':'BARRICADE READY',color:'#cbbd94',life:1.2});if(job.expiresAt)this.hazards.push({type:'fortification',id:o.id,x:o.x,y:o.y,start:g.time,life:Math.max(1,job.expiresAt-g.time)})}this.engineerJobs.delete(job.id);h.engineerJob=h.constructing=null;h.specialAt=g.time+20;
+  }return true;
+ }
+ if(g.time>h.specialAt&&h.squadId&&['Hold','Hold Line','Suppress','Hold & Suppress','Protect Vehicle','Defend Base'].includes(h.squadOrder)&&!g.apeGrid.near(h.x,h.y,150).length&&g.performance.think()){
+  const squad=this.squads.get(h.squadId);if(squad){const existing=this.defensiveBarricade(squad,h);if(!existing){const candidates=this.prepareLine(squad);if(h.engineerJob)return true;if(!candidates.length)h.specialAt=g.time+8}}}
+ return false;
  }
  tacticalTarget(h){
   const g=this.game;if(!['rifleman','heavy','gunner','ranger','flanker','leader','sniper'].includes(h.role)||g.time<(h._tacticalThink||0))return;
@@ -222,7 +272,7 @@ class Forces {
   h.specialAt=g.time+10+ATSUtil.hash(h.id+Math.floor(g.time))%5;this.nextMortarAt=g.time+2.4;h.animation={kind:'throw',start:g.time,duration:.7};g.sound('mortar',.85,h.x);g.sound('warning',.65,point.x);g.noise(h.x,h.y,650,'mortar');
  }
  update(h,dt){
-  const g=this.game;if(!h.role)this.assign(h,g.world.sites.get(h.siteId));h.hitTimer=Math.max(0,(h.hitTimer||0)-dt);if(h.hitTimer>.19){h.aiming=null;return true}
+  const g=this.game;if(!h.role)this.assign(h,g.world.sites.get(h.siteId));h.hitTimer=Math.max(0,(h.hitTimer||0)-dt);if(h.engineerJob&&h.hitTimer>0)this.cancelEngineerJob(h);if(h.hitTimer>.19){h.aiming=null;return true}
   if(!h.squadId&&h.state==='combat'&&g.tier>=3){const allies=g.humanGrid.near(h.x,h.y,140).filter(a=>a.hp>0&&!a.squadId&&a.siteId===h.siteId).slice(0,6);if(!allies.includes(h))allies.push(h);this.createSquad(allies,{x:h.lastX,y:h.lastY},{order:'Search',siteId:h.siteId})}
   if(h.role==='medic'&&g.time>h.specialAt&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.5;const ally=g.humanGrid.near(h.x,h.y,105).find(a=>a!==h&&a.hp>0&&a.hp<a.maxHp*.7);if(ally){ally.hp=Math.min(ally.maxHp,ally.hp+18);h.specialAt=g.time+6;h.animation={kind:'treat',start:g.time,duration:.5};g.effect('text',ally.x,ally.y,{text:'+18',color:'#92cdbb',life:1})}}
   if(h.role==='tracker'&&h.state==='patrol'&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.35;const sound=g.noiseGrid.near(h.x,h.y,1900).find(n=>distance(h,n)<n.radius*1.4);if(sound){h.state='investigate';h.lastX=sound.x;h.lastY=sound.y;h.searchTime=20}}
@@ -265,6 +315,7 @@ class Forces {
  }
  vehicleMove(v,point,dt,reverse=false){
   const g=this.game,spec=VEHICLES[v.vehicleClass];if(v._simTier===2&&g.time>(v._swarmThink||0)+.5){v.swarmCount=0;v.overrun=false;v.rotationMultiplier=1;v.turretMultiplier=1-v.weaponDamage*.006;v.accuracyMultiplier=1+v.weaponDamage*.015}if(v.mobilityDamage>=100||v.engineDamage>=100){v.moving=false;return}
+  if(g.navigation.interactFortification?.(v,point,v.radius,dt)===false){v.moving=false;return}
   const waypoint=g.navigation.steer(v,point,v.radius,dt);if(distance(waypoint,v)<1){v.moving=false;return}const angle=Math.atan2(waypoint.y-v.y,waypoint.x-v.x),heading=turn(v.dir,angle+(reverse?Math.PI:0),(v.vehicleClass==='tank'?.5:.9)*v.rotationMultiplier*dt),travelHeading=heading+(reverse?Math.PI:0),alignment=Math.max(0,Math.cos(angle-travelHeading));
   const speed=spec.speed*(reverse?.72:1)*(1-v.mobilityDamage*.007)*(1-v.engineDamage*.004)*(v.overrun?.08:1)*alignment;
   if(speed>1)g.navigation.move(v,Math.cos(travelHeading)*64,Math.sin(travelHeading)*64,speed,dt,true);else v.moving=false;v.dir=heading;v.reversing=reverse&&v.moving;
@@ -273,7 +324,7 @@ class Forces {
   const g=this.game;if(!v.troops||v.hp<=0||g.humans.length>=(g.activeHumanCapacity?.()||220))return;v.dismounting=true;v.unloadTimer=(v.unloadTimer||0)-dt;if(v.unloadTimer>0)return;
   const roles=['leader','rifleman','rifleman','heavy','ranger','grenadier','medic','engineer','rifleman','sniper','rifleman','rifleman','ranger','rifleman','rifleman','medic'],i=v.deployedTroops||0,rear=v.dir+Math.PI,side=i%2?1:-1,p=g.findOpen(v.x+Math.cos(rear)*42+Math.cos(rear+Math.PI/2)*side*20,v.y+Math.sin(rear)*42+Math.sin(rear+Math.PI/2)*side*20,10);
   const h=g.makeHuman(p.x,p.y,g.world.sites.get(v.siteId));this.assign(h,g.world.sites.get(v.siteId),roles[i%roles.length]);h.responseAllocated=true;h.operationId=v.operationId;h.reported=true;h.state='search';h.searchTime=55;h.lastX=v.target?.x??v.x;h.lastY=v.target?.y??v.y;h.raidTarget=v.target?.id;v.troops--;v.deployedTroops=i+1;v.unloadTimer=.35;
-  const squad=this.squads.get(v.dismountSquadId);if(squad){squad.members.push(h.id);squad.initialSize=Math.max(squad.initialSize||0,squad.members.length);h.squadId=squad.id;h.squadSlot=squad.members.length-1;h.squadRole=h.role;h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadVehicleId=v.id;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=squad.id;if(h.role==='leader')squad.leaderId=h.id}
+  const squad=this.squads.get(v.dismountSquadId);if(squad){squad.members.push(h.id);squad.initialSize=Math.max(squad.initialSize||0,squad.members.length);h.squadId=squad.id;h.squadSlot=squad.members.length-1;h.squadRole=h.role;h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadVehicleId=v.id;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=squad.id;h.platoonId=squad.platoonId;if(h.role==='leader')squad.leaderId=h.id}
   else v.dismountSquadId=this.createSquad([h],v.target||v,{order:'Protect Vehicle',vehicleId:v.id,operationId:v.operationId,siteId:v.siteId}).id;
   if(!v.troops){v.dismounting=false;g.effect('text',v.x,v.y,{text:'TROOPS DEPLOYED',life:1.3,color:'#d2c7a3'})}
  }
@@ -308,6 +359,19 @@ class Forces {
    return true;
   }return false;
  }
+ positionOperationArmor(v,target,dt){
+ if(!v.settlementTarget||!v.assaultPhase||!v.target)return false;
+ // Guns answer nearby confirmed contacts; the independent assault keeps its
+ // staging or supporting position when the crown passes through view.
+ const point=v.target;if(target&&distance(v,target)<135){const angle=Math.atan2(target.y-v.y,target.x-v.x);this.vehicleMove(v,{x:point.x-Math.cos(angle)*80,y:point.y-Math.sin(angle)*80},dt,true)}else if(distance(v,point)>65)this.vehicleMove(v,point,dt);else v.moving=false;return true;
+ }
+ positionCarrier(v,target,dt){
+ if(!['apc','ifv'].includes(v.vehicleClass)||!target)return false;const g=this.game,infantry=g.humanGrid.near(v.x,v.y,380).filter(h=>h.hp>0&&(h.squadVehicleId===v.id||h.operationId&&h.operationId===v.operationId));
+ const angle=Math.atan2(target.y-v.y,target.x-v.x),gap=distance(v,target),line=infantry.length?{x:infantry.reduce((n,h)=>n+h.x,0)/infantry.length,y:infantry.reduce((n,h)=>n+h.y,0)/infantry.length}:v;
+ v.supportingSquadId=infantry[0]?.squadId||null;
+ if(v.swarmCount>=8||gap<145){const rear={x:line.x-Math.cos(angle)*85,y:line.y-Math.sin(angle)*85};this.vehicleMove(v,rear,dt,true);return true}
+ const standoff=v.vehicleClass==='ifv'?280:225;if(gap>standoff+55){const point={x:target.x-Math.cos(angle)*standoff,y:target.y-Math.sin(angle)*standoff};this.vehicleMove(v,point,dt)}else v.moving=false;return true;
+ }
  updateVehicle(v,dt){
   if(!v._militaryInitialized)this.initVehicle(v);const g=this.game,spec=VEHICLES[v.vehicleClass];v.shootTimer-=dt;v.cannonTimer-=dt;v.cannonFlash=Math.max(0,(v.cannonFlash||0)-dt);v.phase+=dt;v.moving=false;v.reversing=false;if(v._simTier===2)return true;
   this.updateSwarm(v,dt);if(v.hp<=0)return true;this.acquireVehicleTarget(v);
@@ -315,7 +379,7 @@ class Forces {
   // A cannon commits to a warned position rather than tracking a dodge.
   const observed=target&&g.time-(v.lastSeen?.time??-100)<.7;if(!observed)target=null;
   const aimPoint=v.cannonTarget||target;if(aimPoint){const aim=Math.atan2(aimPoint.y-v.y,aimPoint.x-v.x);v.turretDir=turn(v.turretDir,aim,(v.vehicleClass==='tank'?.7:1.5)*v.turretMultiplier*dt)}
-  const positioned=this.positionTank(v,target,dt);
+  const positioned=this.positionOperationArmor(v,target,dt)||this.positionTank(v,target,dt)||this.positionCarrier(v,target,dt);
   if(!positioned&&v.target&&distance(v,v.target)>85){
    if(!v.dismounting)this.vehicleMove(v,v.target,dt);
   }else if(v.state==='raid')v.state='combat';
@@ -332,13 +396,16 @@ class Forces {
  }
  blast(h){
   const g=this.game,tank=h.type==='shell',heavy=tank||h.type==='mortar'||h.type==='airstrike',radius=h.radius;g.effect('wave',h.x,h.y,{life:heavy?.8:.5,range:radius,color:'#efbd7d'});g.effect('smoke',h.x,h.y,{life:heavy?2.4:1.8,color:'#94705b'});g.effect('smash',h.x,h.y,{life:.55,color:'#f1c68c'});g.sound(h.type==='mortar'?'mortarImpact':tank?'cannon':'smash',tank?1.5:1.6,h.x);
+  const power=heavy?1:.7;g.effect('explosion',h.x,h.y,{life:heavy?1.1:.85,radius,range:radius,blastType:h.type,blastKind:h.type,power});
   if(heavy)g.effect('tankImpact',h.x,h.y,{life:1.1,radius,range:radius,color:'#f0c789'});
   if(tank&&distance(h,g.king)<600){g.hitFlash=Math.max(g.hitFlash,.35);g.cannonShake=Math.max(g.cannonShake||0,11)}
   for(const a of g.apeGrid.near(h.x,h.y,radius))if(a.hp>0&&g.world.lineClear(h.x,h.y,a.x,a.y)){
    const d=distance(a,h),falloff=1-d/radius*.55;g.hurt(a,(h.damage||72)*falloff,h);
-   if(tank&&a.hp>0){const angle=d>.01?Math.atan2(a.y-h.y,a.x-h.x):ATSUtil.hash(a.id)%628/100,push=28+32*falloff,x=a.x+Math.cos(angle)*push,y=a.y+Math.sin(angle)*push,r=a.id==='king'?12:10;if(!g.world.blocked(x,y,r)&&g.navigation.clearSegment(a.x,a.y,x,y,r)){a.x=x;a.y=y}a.knockbackUntil=g.time+.32;a.staggerUntil=g.time+.45;a.animation={kind:'stagger',start:g.time,duration:.4}}
+   if(a.hp>0&&g.launchBlastReaction)g.launchBlastReaction(a,h,{radius,power});
+   else if(tank&&a.hp>0){const angle=d>.01?Math.atan2(a.y-h.y,a.x-h.x):ATSUtil.hash(a.id)%628/100,push=28+32*falloff,x=a.x+Math.cos(angle)*push,y=a.y+Math.sin(angle)*push,r=a.id==='king'?12:10;if(!g.world.blocked(x,y,r)&&g.navigation.clearSegment(a.x,a.y,x,y,r)){a.x=x;a.y=y}a.knockbackUntil=g.time+.32;a.staggerUntil=g.time+.45;a.animation={kind:'stagger',start:g.time,duration:.4}}
   }
-  for(const a of g.humanGrid.near(h.x,h.y,radius))if(a.hp>0&&g.world.lineClear(h.x,h.y,a.x,a.y))g.hurt(a,tank?(h.damage||72)*.65:60,h);
+  for(const a of g.humanGrid.near(h.x,h.y,radius))if(a.hp>0&&g.world.lineClear(h.x,h.y,a.x,a.y)){g.hurt(a,tank?(h.damage||72)*.65:60,h);if(a.hp>0&&g.launchBlastReaction)g.launchBlastReaction(a,h,{radius,power})}
+  g.blastBodies?.(h,radius,{power});
   g.colonies.damageNearby?.(h.x,h.y,radius,h.damage||72,h);
  }
  tick(dt){
@@ -348,7 +415,7 @@ class Forces {
    }else if(['grenade','mortar','airstrike'].includes(h.type)&&h.life<=0)this.blast(h);
    else if(h.type==='fortification'&&h.life<=0){const o=g.world.objects.get(h.id);if(o&&!o.dead){o.dead=true;o.solid=false;o.hp=0;g.world.navRevision++;g._lightsAt=-1}}
   }this.hazards=this.hazards.filter(h=>h.life>0);
-  if(g.time>=(this.nextSquadTrim||0)){this.nextSquadTrim=g.time+4;for(const [id,s]of this.squads)if(!s.members.some(id=>g.humansById.has(id))&&!Array.from(g.world.sites.values()).some(site=>(site.sleepingHumans||[]).some(h=>h.hp>0&&h.squadId===id)))this.squads.delete(id)}
+  if(g.time>=(this.nextSquadTrim||0)){this.nextSquadTrim=g.time+4;for(const [id,s]of this.squads)if(!s.members.some(id=>g.humansById.has(id))&&!Array.from(g.world.sites.values()).some(site=>(site.sleepingHumans||[]).some(h=>h.hp>0&&h.squadId===id)))this.squads.delete(id);for(const [id,p]of this.platoons){p.squads=p.squads.filter(s=>this.squads.has(s));if(!p.squads.length)this.platoons.delete(id)}}
  }
 }
 window.ATSForces=Forces;window.ATSHumanRoles=ROLES;window.ATSVehicleSpecs=VEHICLES;

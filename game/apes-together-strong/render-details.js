@@ -259,4 +259,125 @@ P.drawEffects=function(c,effects){
  }
  previousEffects.call(this,c,regular);
 };
+// Village geometry is shared across residents and cached by building state.
+// Paths live on the ground layer; huts and work sites retain depth sorting.
+const livingObject=P.drawObject,livingHut=P.drawHut,livingApe=P.drawApe,livingApeSprite=P.drawApeSprite,livingHuman=P.drawHuman,livingThreats=P.drawThreats;
+P.drawSettlementGround=function(game,view){
+ const c=this.ctx,z=this.camera.zoom;
+ for(const s of game.settlements||[]){if(Math.hypot(s.x-game.king.x,s.y-game.king.y)>view+(s.radius||100))continue;
+  const p=this.project(s.x,s.y),r=s.developedRadius||s.radius||100;c.save();c.translate(p.x,p.y);c.scale(z,z);
+  ellipse(c,0,0,r*.8*Math.SQRT2*.82,r*.42*Math.SQRT2*.82,'rgba(124,107,65,.075)');
+  ellipse(c,0,0,Math.min(r*.32,115)*1.13,Math.min(r*.32,115)*.59,'rgba(152,125,77,.12)');c.restore();
+  c.save();c.lineCap='round';for(const path of s.paths||[]){const points=path.points||[path.from,path.to];if(!points[0]||!points[1])continue;c.beginPath();for(let i=0;i<points.length;i++){const q=this.project(points[i].x,points[i].y);i?c.lineTo(q.x,q.y):c.moveTo(q.x,q.y)}c.lineWidth=(path.width||12)*z;c.strokeStyle='rgba(142,119,76,.28)';c.stroke();c.lineWidth=2*z;c.strokeStyle='rgba(191,154,94,.14)';c.stroke();}c.restore();
+ }
+};
+P.drawConstruction=function(c,project){
+ const stage=clamp(project.stage||0,0,3),kind=project.kind||'hut',progress=clamp(project.progress||0,0,1);
+ ellipse(c,0,2,34,14,'rgba(149,115,61,.22)');
+ for(const x of [-23,23]){line(c,x,5,x,-9,'#c7af79',3);line(c,x,-8,x+7,-11,'#aa9565',2)}
+ if(stage>=1){for(const [x,y]of [[-22,0],[0,13],[23,0],[0,-12]])line(c,x,y,x,y-29,'#aa9569',4);line(c,-22,-29,0,-16,'#d0b985',3);line(c,0,-16,23,-29,'#b29d71',3);}
+ if(stage>=2){line(c,-22,-29,0,-48,'#c1aa78',3);line(c,0,-48,23,-29,'#c1aa78',3);line(c,0,-48,0,-16,'#c1aa78',3);line(c,-20,0,20,-27,'#857450',2);}
+ if(stage>=3)poly(c,[[-29,-29],[0,-51],[29,-28],[0,-9]],'#79845a');
+ if((project.treeIds||[]).length){line(c,-30,5,-13,-4,'#b49a6b',4);label(c,'CLEARING',0,-63,'#bbcc9f');}
+ else if(this.camera.zoom>.75&&this.detailLevel<3)label(c,kind==='hut'?'NEW HOME':kind==='lodge'?'GREAT LODGE':kind==='barrier'?'DEFENSES':kind.replace(/([A-Z])/g,' $1').toUpperCase(),0,-63,'#cabe93');
+ this.health(c,progress,20,38,'#b6c88a');
+};
+P.drawHut=function(c,h){
+ if(h.stage!==undefined&&h.stage<4){this.drawConstruction(c,{...h,kind:'hut'});return;}
+ const ratio=(h.hp||0)/(h.maxHp||100),damage=ratio<=0?3:ratio<.3?2:ratio<.65?1:0,variant=h.variant??(idHash(h.id)>>>0)%4,key=variant+':'+damage;
+ this.hutSprites=this.hutSprites||new Map();let sprite=this.hutSprites.get(key);
+ if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=104;sprite.height=104;const sc=sprite.getContext('2d');sc.translate(52,80);sc.scale(variant===1?1.12:variant===2?.92:1,variant===3?1.1:1);livingHut.call(this,sc,{id:'hut',hp:damage===3?0:100,maxHp:100});if(damage<3){if(variant===1){line(sc,-22,-25,0,-47,'#a89b6f',2);line(sc,0,-47,24,-25,'#b6a977',2)}if(variant===2){ellipse(sc,17,-14,5,4,'#c6b579');line(sc,17,-19,17,-10,'#384c35',1)}if(damage>0){line(sc,-11,-35,1,-25,'#4d3f2e',3);line(sc,1,-25,-3,-15,'#4d3f2e',2)}if(damage===2)poly(sc,[[4,-43],[16,-35],[9,-20],[-2,-29]],'#25392d');}this.cacheSet(this.hutSprites,key,sprite,20);}
+ if(sprite)c.drawImage(sprite,-52,-80);else livingHut.call(this,c,h);
+ if(ratio>0&&ratio<1)this.health(c,ratio,-64,33,ratio<.3?'#e6a07b':'#c4c894');
+ if(this.time-(h.lastHit??-100)<.2){c.save();c.globalAlpha=.35;ellipse(c,0,-25,27,19,'#ecc48b');c.restore();}
+};
+P.drawSettlement=function(c,s){
+ const level=clamp(Math.floor(s.level||1),1,10),scale=level>=7?1.28:level>=5?1.13:1;
+ this.lodgeSprites=this.lodgeSprites||new Map();let sprite=this.lodgeSprites.get(level);
+ if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=360;sprite.height=270;const sc=sprite.getContext('2d');sc.translate(180,225);baseSettlement.call(this,sc,{level,radius:45,food:0,known:false,attack:false});this.cacheSet(this.lodgeSprites,level,sprite,10);}
+ c.save();c.scale(scale,scale);if(sprite)c.drawImage(sprite,-180,-225);else baseSettlement.call(this,c,{...s,radius:45,known:false,attack:false});c.restore();
+ if(this.camera.zoom>.6){label(c,s.name||'Ape settlement',0,-(58+level*8)*scale,'#e5d3a0');if(s.attack){label(c,'DEFEND THE VILLAGE',0,-(75+level*8)*scale,'#eda282');this.glow(c,0,-35,100,'226,97,54',.12)}else if(s.known)label(c,'HUMANS KNOW THIS PLACE',0,35,'#d4a384');}
+ if(s.maxDefense>0)this.health(c,(s.defense||0)/s.maxDefense,26,55,'#9db899');
+};
+P.drawSettlementProp=function(c,o){
+ const kind=o.kind||o.type,variant=o.variant||0,ruin=o.hp<=0,key=kind+':'+variant+':'+ruin;
+ this.villageSprites=this.villageSprites||new Map();let sprite=this.villageSprites.get(key);
+ if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=152;sprite.height=160;const sc=sprite.getContext('2d');sc.translate(76,132);this.drawVillageGeometry(sc,kind,variant,ruin);this.cacheSet(this.villageSprites,key,sprite,48);}
+ if(sprite)c.drawImage(sprite,-76,-132);else this.drawVillageGeometry(c,kind,variant,ruin);
+ if(kind==='cooking'&&!ruin&&this.detailLevel<3){const flicker=this.reducedMotion?0:Math.sin(this.time*9)*2;poly(c,[[-6,0],[-3,-13-flicker],[1,-9],[4,-20+flicker],[8,-2]],'#e4a151');ellipse(c,1,-4,4,5,'#f5d387');this.glow(c,1,-6,29,'236,169,77',.16);}
+};
+P.drawVillageGeometry=function(c,kind,variant,ruin){
+ if(ruin){this.drawRubble(c,{id:kind+variant});return;}ellipse(c,0,3,32,13,'rgba(2,13,9,.25)');
+ if(kind==='garden'){poly(c,[[-39,0],[0,-21],[40,0],[0,22]],'#665a39');for(let row=0;row<4;row++)for(let col=0;col<5;col++){const x=(col-2)*10+(row-1.5)*7,y=(col-2)*4-(row-1.5)*5;ellipse(c,x,y,5,3,row%2?'#839354':'#647e4d');line(c,x,y,x+2,y-9,'#b0b976',1.6);}return;}
+ if(kind==='cooking'){for(let i=0;i<8;i++){const a=i*Math.PI/4;ellipse(c,Math.cos(a)*17,Math.sin(a)*7,5,3,'#8a8e76')}line(c,-15,-2,13,-8,'#9b7c50',5);for(const x of [-24,24])line(c,x,1,x*.4,-43,'#8f805d',3);line(c,-24,-27,24,-27,'#b7a16e',3);poly(c,[[-11,-20],[-8,-8],[9,-8],[12,-20]],'#334440');ellipse(c,0,-20,12,5,'#829182');ellipse(c,0,-21,8,2,'#ae9361');for(const x of[-38,38]){ellipse(c,x,3,9,6,'#aa8960');ellipse(c,x,-1,8,3,'#d0b878')}return;}
+ if(kind==='wood'||kind==='lumber'){for(let row=0;row<3;row++)for(let col=0;col<4-row;col++){const x=(col-(3-row)/2)*13,y=4-row*8;line(c,x-16,y-7,x+12,y+7,'#87714e',7);ellipse(c,x+12,y+7,4,4,'#c5aa72');ellipse(c,x+12,y+7,2,2,'#8d7147')}return;}
+ if(kind==='lookout'){for(const x of [-18,18]){line(c,x,0,x,-80,'#968466',5);line(c,x,0,-x,-74,'#716d4d',3)}poly(c,[[-26,-76],[0,-89],[26,-76],[0,-63]],'#b2a47b');for(let i=0;i<6;i++)line(c,-5,-i*10,6,-i*10,'#bba67a',2);line(c,-25,-76,-25,-93,'#978d68',3);line(c,25,-76,25,-93,'#978d68',3);poly(c,[[-29,-97],[0,-116],[29,-97],[0,-85]],'#758450');return;}
+ if(kind==='communal'||kind==='gathering'){for(let i=0;i<6;i++){const a=i*Math.PI/3;line(c,Math.cos(a)*25-7,Math.sin(a)*12,Math.cos(a)*25+7,Math.sin(a)*12+3,'#8e7955',6)}return;}
+ // Storehouses and work shelters share a timber frame, with different cargo.
+ for(const x of[-30,30])line(c,x,0,x,-38,'#a29265',4);poly(c,[[-42,-39],[0,-67],[42,-39],[0,-15]],kind==='storage'?'#978b55':'#78834f');poly(c,[[-42,-39],[0,-67],[0,-15]],'#a4a36a');line(c,-30,-37,30,-37,'#b6a177',3);if(kind==='storage'||kind==='food'){for(const x of[-17,3,22]){ellipse(c,x,2,10,7,'#a48856');ellipse(c,x,-4,9,4,'#d0b572');for(let i=0;i<3;i++)ellipse(c,x-4+i*4,-5-(i%2)*3,2.8,2,'#aaba76')}}else{line(c,-23,-6,23,4,'#9a8256',6);line(c,-14,-10,-7,-21,'#b7aa79',3);}
+};
+P.drawObject=function(c,o){
+ if(o.type==='tree'&&o.dead&&o.clearedBy){ellipse(c,0,2,13,5,'rgba(13,24,13,.24)');poly(c,[[-6,0],[-6,-8],[6,-8],[6,0]],'#6c6549');ellipse(c,0,-8,6,3,'#b2a273');line(c,0,-8,2,-7,'#6f714d',1);return;}
+ if(o.type==='vehicleWreck'){c.save();c.globalAlpha*=.52;c.scale(Math.cos(o.dir||0)<0?-1:1,1);if(['tank','apc','ifv','truck'].includes(o.kind))this.drawMilitaryHull(c,o.kind);else civilianVehicle.call(this,c,{kind:o.kind,hp:0,dir:0});line(c,-27,-22,12,-7,'#241e19',6);line(c,-8,-34,20,-16,'#1c2621',5);c.restore();return;}
+ if(o.fortification){if(o.kind==='searchlight'){line(c,-10,3,0,-49,'#9ea78e',3);line(c,10,3,0,-49,'#697d70',3);poly(c,[[-10,-54],[9,-58],[14,-48],[-8,-45]],o.dead?'#546258':'#a5b3a0');if(!o.dead)this.glow(c,9,-51,24,'238,226,169',.35);return;}if(o.kind==='observation'){this.drawVillageGeometry(c,'lookout',0,o.dead);return;}this.drawFieldBarrier(c,o);return;}
+ return livingObject.call(this,c,o);
+};
+P.drawFieldBarrier=function(c,o){
+ const damage=o.dead||o.hp<=0?3:o.hp/o.maxHp<.3?2:o.hp/o.maxHp<.65?1:0,w=o.w||74,h=o.h||16,key=o.team+':'+o.kind+':'+w+':'+h+':'+damage;
+ this.barrierSprites=this.barrierSprites||new Map();let sprite=this.barrierSprites.get(key);
+ if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=Math.ceil((w+h)*.8+32);sprite.height=Math.ceil((w+h)*.42+92);const sc=sprite.getContext('2d');sc.translate(sprite.width/2,sprite.height-24);this.drawBarrierGeometry(sc,o,damage);this.cacheSet(this.barrierSprites,key,sprite,72);}
+ if(sprite)c.drawImage(sprite,-sprite.width/2,-sprite.height+24);else this.drawBarrierGeometry(c,o,damage);
+ if(o.hp>0&&o.hp<o.maxHp)this.health(c,o.hp/o.maxHp,-51,42,damage===2?'#e9a17b':'#d4c596');
+};
+P.drawBarrierGeometry=function(c,o,damage){
+ const w=o.w||74,h=o.h||16,axis=w>=h?0:Math.PI/2,length=Math.max(w,h),d=projectedDirection(axis,length/2),ape=o.team==='ape',height=o.kind==='heavy'?35:ape?38:28;
+ ellipse(c,0,4,Math.abs(d.x)+11,Math.abs(d.y)+9,'rgba(0,10,9,.3)');
+ if(damage===3){for(let i=0;i<5;i++){const t=i/4,x=(t-.5)*d.x*1.8,y=(t-.5)*d.y*1.8;line(c,x-9,y-4,x+12,y+4,ape?'#9c825c':'#798372',5);}return;}
+ const count=Math.max(4,Math.ceil(length/12));for(let i=0;i<=count;i++){if(damage===2&&(i===2||i===3))continue;const t=i/count,x=-d.x+d.x*2*t,y=-d.y+d.y*2*t,top=height-(damage>0&&i%3===0?10:0);line(c,x,y,x+(ape?(i%2?2:-2):0),y-top,ape?'#a08b60':o.kind==='heavy'?'#91a08c':'#7f8c77',ape?7:10);if(ape)poly(c,[[x-4,y-top],[x,y-top-7],[x+4,y-top]],'#c3b482');else line(c,x-3,y-top+7,x+3,y-top+12,'#c7b879',2);}
+ for(const lift of [8,height-8])line(c,-d.x,-d.y-lift,d.x,d.y-lift,ape?'#736f4b':'#b2b49a',3);
+ if(damage>0){line(c,-8,-height+3,3,-height+13,'#35473a',2);line(c,3,-height+13,0,-8,'#35473a',2);}
+};
+P.drawWorkerDetail=function(c,a){
+ if(a.hp<=0)return;const activity=a.activity||'',working=/build|chop|clear|repair|garden|cook|breach/.test(activity),pulse=this.reducedMotion?0:Math.sin(this.time*7+(a.phase||0));
+ if(a.carrying==='wood'){line(c,-18,-28,17,-20,'#a78b61',8);ellipse(c,17,-20,4,4,'#d1b984');line(c,-14,-34,14,-27,'#806c4e',5);}
+ if(working&&this.detailLevel<3){line(c,12,-27,24+3*pulse,-36+5*pulse,'#b8a57a',3);line(c,19+3*pulse,-39+5*pulse,28+3*pulse,-34+5*pulse,'#809688',4);}
+ if(activity==='grooming'||activity==='socializing')ellipse(c,19,-23,3,3,'#a4b394');
+};
+P.drawApe=function(c,a,king,exposure){c.save();if(!king&&(a.activity==='resting'||a.activity==='sleeping'||a.activity==='grooming')){c.translate(0,2);c.scale(1,.83)}if(a.animation?.kind==='vault'&&!this.reducedMotion){const t=clamp((this.time-a.animation.start)/a.animation.duration,0,1);c.translate(0,-Math.sin(t*Math.PI)*17)}livingApe.call(this,c,a.carrying==='wood'?{...a,carrying:false}:a,king,exposure);if(!king)this.drawWorkerDetail(c,a);c.restore();};
+P.drawApeSprite=function(c,a){livingApeSprite.call(this,c,a);this.drawWorkerDetail(c,a);};
+P.drawHuman=function(c,h){livingHuman.call(this,c,h);if(h.engineerJob){line(c,12,-29,25,-19+Math.sin(this.time*9)*4,'#baa378',3);line(c,21,-21,29,-15,'#8a998a',4)}if(h.squadOrder==='Hold Line'&&this.camera.zoom>.9&&this.detailLevel<2)line(c,-8,7,8,7,'#9fb8a0',2);};
+P.drawThreats=function(game){livingThreats.call(this,game);const c=this.ctx,z=this.camera.zoom;for(const h of game.humans||[]){const task=h.engineerJob||h.constructing;if(!task||h.hp<=0||!Number.isFinite(task.x)||!Number.isFinite(task.y))continue;const p=this.project(task.x,task.y);if(!this.visible(p,90*z))continue;const progress=clamp(1-(task.remaining||0)/(task.duration||5),0,.99);c.save();c.translate(p.x,p.y);c.scale(z,z);this.drawConstruction(c,{kind:'barrier',stage:Math.floor(progress*4),progress});c.restore();}};
+
+// Blast motion uses the same actor art as ordinary play, with a ground shadow
+// and a separate airborne body. Surviving apes visibly brace and stand again.
+const groundApe=P.drawApe,groundCorpses=P.drawCorpses,ordinaryEffects=P.drawEffects;
+P.drawApe=function(c,a,king,exposure){
+ const reaction=a.blastReaction;if(!reaction||(a.hp<=0&&!(king&&reaction.stage==='flight')))return groundApe.call(this,c,a,king,exposure);
+ const height=Math.max(0,reaction.height||a.blastZ||0);ellipse(c,0,3,Math.max(8,20-height*.05),6,'rgba(2,8,10,.35)');
+ c.save();if(reaction.stage==='flight'){c.translate(0,-height);c.rotate(reaction.rotation||a.blastSpin||0);c.scale(1,.94);}
+ else if(reaction.stage==='gettingUp'){const begin=reaction.getUpAt??reaction.start,end=reaction.recoverAt??begin+.8,t=clamp(Math.max(this.time-begin,reaction.recoveryElapsed||0)/Math.max(.01,reaction.recoveryDuration||end-begin),0,1),rise=t*t*(3-2*t);c.translate((1-rise)*12,5*(1-rise));c.rotate((1-rise)*1.24);c.scale(1,.72+rise*.28);if(t>.3&&t<.8){line(c,15,-15,23,1,'#7b8c75',5);ellipse(c,23,1,5,3,'#536c56');}}
+ baseApe.call(this,c,{...a,animation:null,attackTimer:0,hitTimer:0,moving:false,carrying:false},king,exposure);c.restore();
+};
+P.drawCorpses=function(game){
+ const airborne=(game.corpses||[]).filter(a=>a.blastReaction?.stage==='flight'),ground=(game.corpses||[]).filter(a=>a.blastReaction?.stage!=='flight');groundCorpses.call(this,{...game,corpses:ground});
+ const c=this.ctx,z=this.camera.zoom;for(const a of airborne){const p=this.project(a.x,a.y);if(!this.visible(p,230*z))continue;const reaction=a.blastReaction,height=Math.max(0,reaction.height||0);c.save();c.translate(p.x,p.y);c.scale(z,z);ellipse(c,0,2,Math.max(7,20-height*.05),6,'rgba(2,8,10,.32)');c.translate(0,-height);c.rotate(reaction.rotation||0);c.globalAlpha=clamp(a.life/2,0,.95);const young=(a.actorAge??240)<20||a.actorState==='young',copy={...a,hp:100,maxHp:100,age:a.actorAge??240,state:young?'young':'fallen',moving:false,animation:null,attackTimer:0,hitTimer:0,carrying:false};
+  if(a.type==='human')baseHuman.call(this,c,copy);else if(a.type==='ape')baseApe.call(this,c,copy,false,0);else this.drawRubble(c,{id:a.id});c.restore();
+ }
+};
+P.drawExplosion=function(c,e){
+ const radius=e.radius||e.range||70,t=clamp(1-e.life/(e.maxLife||1.35),0,1),power=e.power||1,kind=e.blastKind||e.blastType||e.type,air=kind==='airstrike',grenade=kind==='grenade',count=this.detailLevel>=3?6:12,seed=idHash(e.id||kind+e.x+','+e.y),rx=radius*ISO_RADIUS_X,ry=radius*ISO_RADIUS_Y;
+ const hot=air?'255,94,60':grenade?'255,198,72':'255,145,49',cool=air?'160,153,255':grenade?'125,215,171':'119,191,236';
+ c.save();c.globalCompositeOperation='screen';this.glow(c,0,-14,Math.max(25,radius*(1.5-t)),hot,Math.max(0,.46*(1-t)));if(t<.32)this.glow(c,0,-18,radius*.6*(1-t),cool,.4*(1-t));
+ const ring=.2+Math.min(1,t*2.3);c.beginPath();c.ellipse(0,0,rx*ring,ry*ring,0,0,Math.PI*2);c.strokeStyle=`rgba(${cool},${Math.max(0,(1-t)*.72)})`;c.lineWidth=Math.max(1,7*(1-t));c.stroke();c.restore();
+ if(t<.7){const bloom=Math.sin(Math.PI*clamp(t/.7,0,1)),rise=16+t*radius*.4;for(let i=0;i<count;i++){const a=i/count*Math.PI*2,n=((seed>>>((i%4)*6))&63)/63,d=radius*(.1+t*.68)*(i%3===0?.9:.5),x=Math.cos(a)*d*.9,y=Math.sin(a)*d*.38-rise*(.4+n*.65),r=(12+radius*.16)*bloom*(.6+n*.4);ellipse(c,x,y,r,r*(.95+i%2*.2),i%3===0?'rgba(242,77,41,.78)':i%3===1?'rgba(255,162,46,.88)':'rgba(255,215,91,.88)',a*.1);if(t<.22)ellipse(c,x*.45,y*.6,r*.55,r*.7,'rgba(255,247,206,.96)');}}
+ // Rising smoke remains colored by the fire below, while separate fast embers
+ // trace the force of the blast. Their count obeys the current detail budget.
+ for(let i=0;i<(this.detailLevel>=3?3:6);i++){const a=i*2.399+seed*.001,d=radius*.22*(.2+t),x=Math.cos(a)*d,y=Math.sin(a)*d*.32-25-t*(45+i*4),r=(10+radius*.13)*(.4+t);ellipse(c,x,y,r,r*.84,`rgba(${i%2?'117,102,104':'92,110,115'},${Math.min(.5,t*.8)*(1-t)})`);}
+ for(let i=0;i<count;i++){const a=i/count*Math.PI*2+(seed%19)*.1,d=radius*(.25+t*1.4),x=Math.cos(a)*d*.85,y=Math.sin(a)*d*.42-Math.sin(t*Math.PI)*(18+(i%4)*10)*power;if(t<.85)line(c,x-Math.cos(a)*8*(1-t),y-Math.sin(a)*4,x,y,i%3===0?'#fff0b9':i%3===1?'#ffb44c':'#ff7359',Math.max(1,3*(1-t)));}
+};
+P.drawEffects=function(c,effects){
+ const regular=[],colored=effects.filter(e=>e.type==='explosion');let budget=this.detailLevel>=3?8:20;
+ for(const e of effects){if(!['explosion','treeFall','dust'].includes(e.type)){if((e.type==='tankImpact'||e.type==='cannonImpact')&&colored.some(b=>Math.abs(b.x-e.x)+Math.abs(b.y-e.y)<2))continue;regular.push(e);continue;}const p=this.project(e.x,e.y),r=e.radius||e.range||80;if(!this.visible(p,(r*1.8+120)*this.camera.zoom)||budget--<=0)continue;c.save();c.translate(p.x,p.y);c.scale(this.camera.zoom,this.camera.zoom);if(e.type==='explosion')this.drawExplosion(c,e);else{const t=clamp(1-e.life/(e.maxLife||1.2),0,1);c.globalAlpha=1-t;if(e.type==='dust'){for(let i=0;i<4;i++){const a=i/4*Math.PI*2;ellipse(c,Math.cos(a)*(8+t*20),Math.sin(a)*(4+t*8)-t*8,9+t*5,5+t*3,'rgba(182,171,141,.25)');}}else{c.rotate(t*.8);line(c,0,0,8,-60,'#8c8060',10);for(let i=0;i<3;i++)ellipse(c,-14+i*14,-61-i%2*12,20,15,'rgba(88,120,76,.6)');}}c.restore();}
+ ordinaryEffects.call(this,c,regular);
+};
 })();

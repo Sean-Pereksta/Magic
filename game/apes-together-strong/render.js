@@ -27,22 +27,26 @@ class ATSRenderer {
  const king=game.king,world=game.world,view=game.viewRadius||760;const smooth=1-Math.exp(-Math.min(dt,.08)*7);this.camera.x=lerp(this.camera.x,king.x,smooth);this.camera.y=lerp(this.camera.y,king.y,smooth);this.camera.zoom=clamp(this.camera.zoom,.45,1.8);
  this.shake=Math.max(this.shake,clamp(game.cannonShake||0,0,15));c.setTransform(this.dpr,0,0,this.dpr,0,0);c.fillStyle='#071216';c.fillRect(0,0,this.w,this.h);c.save();if(this.shake>0){if(!this.reducedMotion)c.translate((Math.random()-.5)*this.shake,(Math.random()-.5)*this.shake);this.shake=Math.max(0,this.shake-dt*35);}
  this.drawGround(world,king,view);
+ if(this.drawSettlementGround)this.drawSettlementGround(game,view);
  const kp=this.project(king.x,king.y);this.glow(c,kp.x,kp.y-30,500*this.camera.zoom,'108,174,181',.07);
  const lights=game.getLights?game.getLights():[];this.drawLights(world,lights,game);
  this.useApeAtlas=(game.apes||[]).length>(this.quality==='low'?30:70);this.useHumanAtlas=(game.humans||[]).length>35;if(this.drawCorpses)this.drawCorpses(game);
  const entries=[];let visibleActors=1;const objects=world.getObjects(king.x,king.y,view+170)||[];
  const add=(type,a,p,dist=0)=>{const i=entries.length,e=this.entryPool[i]||(this.entryPool[i]={p:{x:0,y:0}});e.depth=p.y;e.type=type;e.a=a;e.p.x=p.x;e.p.y=p.y;e.dist=dist;entries.push(e);};
- for(const o of objects){if(o.type==='tree'&&o.dead)continue;const dx=o.x-king.x,dy=o.y-king.y,d2=dx*dx+dy*dy;if(d2>(view+70)**2)continue;const p=this.project(o.x,o.y);if(this.visible(p,240*this.camera.zoom))add('object',o,p,d2>view*view*.64?Math.sqrt(d2):0);}
+ for(const o of objects){if(o.hiddenRender||o.type==='tree'&&o.dead&&!o.clearedBy)continue;const dx=o.x-king.x,dy=o.y-king.y,d2=dx*dx+dy*dy;if(d2>(view+70)**2)continue;const p=this.project(o.x,o.y);if(this.visible(p,240*this.camera.zoom))add('object',o,p,d2>view*view*.64?Math.sqrt(d2):0);}
  for(const s of game.settlements||[]){const dx=s.x-king.x,dy=s.y-king.y;if(dx*dx+dy*dy<(view+(s.radius||300))**2){const p=this.project(s.x,s.y);if(this.visible(p,(s.radius||300)*this.camera.zoom+100))add('settlement',s,p);for(const hut of s.huts||[]){const hp=this.project(hut.x,hut.y);if(this.visible(hp,65*this.camera.zoom))add('hut',hut,hp);}}}
+ for(const s of game.settlements||[]){if(Math.hypot(s.x-king.x,s.y-king.y)>view+(s.radius||300))continue;for(const structure of s.structures||[]){if(structure.kind==='lodge'||structure.kind==='barrier'||structure.kind==='lookout'&&world.objects.has(structure.id))continue;const p=this.project(structure.x,structure.y);if(this.visible(p,110*this.camera.zoom))add('settlementProp',structure,p);}for(const project of s.projects||[]){if((s.huts||[]).some(h=>h.id===project.structureId||h.id===project.id))continue;const p=this.project(project.x,project.y);if(this.visible(p,95*this.camera.zoom))add('construction',project,p);}}
  for(const [type,actors,padding]of [['ape',game.apes||[],95],['human',game.humans||[],100],['vehicle',game.vehicles||[],230]])for(const a of actors){if(a.hp<=0)continue;const dx=a.x-king.x,dy=a.y-king.y;if(dx*dx+dy*dy>(view+padding)**2)continue;const p=this.renderPoint(a);if(this.visible(p,padding*this.camera.zoom)){add(type,a,p);visibleActors++;}}
  add('king',king,kp);entries.at(-1).depth+=.1;entries.sort((a,b)=>a.depth-b.depth);
  for(const e of entries){c.save();c.translate(e.p.x,e.p.y);c.scale(this.camera.zoom,this.camera.zoom);if(e.dist>view*.8)c.globalAlpha=clamp((view+70-e.dist)/(view*.2+70),0,1);
  if(e.type==='object'){if(e.a.type==='tree'){const dx=Math.abs(e.p.x-kp.x),dy=e.p.y-kp.y;if(dx<70*this.camera.zoom&&dy>0&&dy<150*this.camera.zoom)c.globalAlpha*=.38;}this.drawObject(c,e.a);}
  else if(e.type==='settlement')this.drawSettlement(c,e.a);
  else if(e.type==='hut')this.drawHut(c,e.a);
+ else if(e.type==='settlementProp')this.drawSettlementProp(c,e.a);
+ else if(e.type==='construction')this.drawConstruction(c,e.a);
  else if(e.type==='human'&&this.useHumanAtlas&&this.drawHumanSprite&&!(e.a.hitTimer>0)&&!(e.a.animation&&this.time<e.a.animation.start+e.a.animation.duration)&&e.a.state!=='radio')this.drawHumanSprite(c,e.a);else if(e.type==='human')this.drawHuman(c,e.a);
  else if(e.type==='vehicle')this.drawVehicle(c,e.a);
- else if(e.type==='ape'&&this.useApeAtlas&&!(e.a.attackTimer>0)&&!(e.a.hitTimer>0)&&!e.a.carrying&&!(e.a.climbUntil>this.time)&&!(e.a.staggerUntil>this.time)&&!(e.a.knockbackUntil>this.time))this.drawApeSprite(c,e.a);else this.drawApe(c,e.a,e.type==='king',game.exposure||0);
+ else if(e.type==='ape'&&this.useApeAtlas&&!e.a.blastReaction&&!(e.a.attackTimer>0)&&!(e.a.hitTimer>0)&&!e.a.carrying&&!(e.a.climbUntil>this.time)&&!(e.a.staggerUntil>this.time)&&!(e.a.knockbackUntil>this.time))this.drawApeSprite(c,e.a);else this.drawApe(c,e.a,e.type==='king',game.exposure||0);
  c.restore();}this.entryPool.length=entries.length;
  for(const h of game.helis||[]){const dx=h.x-king.x,dy=h.y-king.y;if(h.hp<=0||dx*dx+dy*dy>(view+200)**2||!this.visible(this.renderPoint(h,125),200*this.camera.zoom))continue;this.drawHeli(c,h);visibleActors++;}if(game.performance?.counters)game.performance.counters.visibleActors=visibleActors;
  if(this.drawThreats)this.drawThreats(game);this.drawBullets(c,game.bullets||[]);this.drawEffects(c,game.effects||[]);this.drawAtmosphere(c,king,view,game);

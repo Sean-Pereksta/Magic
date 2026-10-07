@@ -15,7 +15,9 @@ test('young grow in 35 seconds both nearby and in distant settlements',()=>{
  for(const x of [0,3000]){const {g}=game(),s={id:'home',x,y:0,attack:false};g.settlements=[s];const a=g.makeApe(x,0,'young',s.id,true);a.age=34;g.updateApe(a,.9);assert.equal(a.state,'young');g.updateApe(a,.1);assert.equal(a.state,'settled');assert.equal(a.maxHp,120)}
 });
 test('settlement levels catch up to inhabitants through faster construction',()=>{
- for(const [population,level]of [[24,3],[60,6],[120,10]]){const {g,s}=colony(population);s.birthTimer=-100000;seconds(g,s,60);assert.equal(s.level,level);assert.ok(s.housing>=population+Math.max(8,Math.ceil(population*.25)))}
+ // Visible clearing, frame, roof and completion stages take time even when
+ // many builders share a project. Established colonies still catch up.
+ for(const [population,level]of [[24,3],[60,6],[120,10]]){const {g,s}=colony(population);s.birthTimer=-100000;g.king.x=3000;for(let i=0;i<90;i++){s.wood=120;seconds(g,s,1)}assert.equal(s.level,level);assert.ok(s.housing>=population+Math.max(8,Math.ceil(population*.25)))}
 });
 test('larger communities raise more offspring and the young become useful adults',()=>{
  const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=3);assert.ok(large.g.stats.born>=small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);
