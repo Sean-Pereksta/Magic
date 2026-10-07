@@ -57,6 +57,15 @@ body.tt-modern #ttIntel { display: grid; gap: 8px; }
 .tt-control-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .tt-eyebrow { color: #71817d; font-size: 10px; font-weight: 750; letter-spacing: 1.2px; text-transform: uppercase; }
 body.tt-modern #ttArmySize { font-size: 12px; font-weight: 600; }
+.tt-army-status { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; }
+body.tt-modern #benchBtn { min-height: 32px; padding: 4px 9px; font-size: 11px; white-space: nowrap; animation: none; }
+body.tt-modern .tt-bench-target { border-color: #77ab87; background: #e3f1e5; box-shadow: inset 0 0 0 1px #91bb99; }
+.tt-bench-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 14px 0; }
+body.tt-modern .tt-bench-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 174px; padding: 10px 7px; text-align: center; overflow-wrap: anywhere; }
+.tt-bench-emoji { font-size: 34px; line-height: 1.2; }
+.tt-bench-slot strong { font-size: 12px; }
+.tt-bench-slot > span:not(.tt-bench-emoji), .tt-bench-slot small { font-size: 10px; font-weight: 500; }
+.tt-replacement { display: grid; gap: 9px; margin: 12px 0; }
 .tt-speeds { display: flex; gap: 4px; align-items: center; }
 body.tt-modern .tt-speeds button { min-height: 34px; min-width: 36px; padding: 5px 9px; font-size: 12px; background: #eaf0e9; color: #5a7068; border-color: transparent; }
 body.tt-modern .tt-speeds button.selected { background: #d6ebe0; border-color: #86b5a0; color: #175b4b; }
@@ -86,10 +95,10 @@ body.tt-modern .enemy .en { font-size: 8px; max-width: 53px; margin-bottom: 6px;
 body.tt-modern .enemy .ehp { height: 3px; left: 5px; right: 5px; bottom: 3px; background: #ede6dc; }
 body.tt-modern .enemy .ehp i { background: #bf6b51; transition: width .15s; }
 body.tt-modern .enemy .weakHint, body.tt-modern .enemy .statusBadge { display: none; }
-body.tt-modern .arena { padding: 4px 0; min-height: 0; background: none; }
+body.tt-modern .arena { padding: 4px 0; min-height: 0; background: none; container-type: size; }
 body.tt-modern .gridWrap { gap: 8px; max-width: 100%; }
-body.tt-modern #grid.grid { width: min(44dvh, 410px, 90vw) !important; max-width: 100%; height: auto !important; min-height: 0 !important; aspect-ratio: 1; gap: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(var(--tt-rows, 4), minmax(0, 1fr)) !important; }
-body.tt-modern #grid.grid.expandedBoard { aspect-ratio: 4 / 5; width: min(48dvh, 410px, 90vw) !important; }
+body.tt-modern #grid.grid { width: min(44dvh, 410px, 90vw, calc(100cqh - 60px)) !important; max-width: 100%; height: auto !important; min-height: 0 !important; aspect-ratio: 1; gap: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(var(--tt-rows, 4), minmax(0, 1fr)) !important; }
+body.tt-modern #grid.grid.expandedBoard { aspect-ratio: 4 / 5; width: min(48dvh, 410px, 90vw, calc((100cqh - 60px) * .8)) !important; }
 body.tt-modern #grid .cell { border: 1px dashed #c4cfc0; border-radius: 13px; background: #eff2e9; overflow: hidden; min-height: 0 !important; height: 100% !important; }
 body.tt-modern .cell.f { background: #e9eedf; border-color: #a7b699; }
 body.tt-modern .cell.place { border-color: #65a78c; background: #e0f0e7; animation: none; box-shadow: inset 0 0 0 1px #65a78c44; }
@@ -151,11 +160,18 @@ body.tt-modern .tt-save-row button { flex-shrink: 0; min-height: 36px; padding: 
 .tt-save-state { font-size: 10px; line-height: 1.3; text-align: center; color: #54755b; max-width: 100%; overflow-wrap: anywhere; }
 .tt-save-state[data-state="error"] { color: #b03f37; }
 .tt-save-state[data-state="pending"] { color: #806128; }
+.tt-save-state[data-state="warning"] { color: #806128; }
+body.tt-modern #ttResolveSave { position: fixed; top: 12px; right: 12px; z-index: 230; padding: 6px 10px; font-size: 11px; min-height: 32px; background: #fff6df; border-color: #d8bc86; }
+.tt-save-conflict { padding: 12px; border: 1px solid #d8bc86; border-radius: 12px; background: #fff6df; color: #675330; }
+.tt-save-conflict > b { font-size: 13px; }
+.tt-save-conflict p { font-size: 11px; line-height: 1.5; margin: 7px 0 10px; }
+.tt-save-conflict-actions { display: grid; gap: 7px; }
+body.tt-modern .tt-save-conflict-actions button { font-size: 12px; padding: 8px; }
 body.tt-modern .leaderPanel { background: #f3f5ee; border-color: #e0e6d9; border-radius: 12px; padding: 12px; }
 body.tt-modern .leaderPanel h3 { font-size: 12px; color: #708063; }
 body.tt-modern .leaderMeta { font-weight: 500; font-size: 11px; }
 body.tt-modern .shade { z-index: 210; background: #1b302d35; backdrop-filter: blur(2px); }
-body.tt-modern .drawer { z-index: 220; inset: auto max(18px, calc((100vw - 1000px) / 2)) 18px auto; width: min(500px, calc(100vw - 36px)); max-height: 76dvh; border-radius: 19px; border-color: #d2dfcf; background: #fffef9; padding: 20px; box-shadow: 0 20px 70px #1b302d20; overscroll-behavior: contain; }
+body.tt-modern .drawer { z-index: 220; inset: auto max(18px, calc((100vw - 1000px) / 2)) 18px auto; width: min(500px, calc(100vw - 36px)); max-height: 76dvh; border-radius: 19px; border-color: #d2dfcf; background: #fffef9; padding: 20px; box-shadow: 0 20px 70px #1b302d20; overscroll-behavior: contain; transition: transform .2s; }
 body.tt-modern .drawer:not(.open) { visibility: hidden; }
 body.tt-modern .drawer h2 { font-size: 21px; font-weight: 750; color: #294a3a; }
 body.tt-modern .drawer .hint { font-weight: 500; font-size: 12px; color: #7b8973; }
@@ -195,7 +211,7 @@ body.tt-modern summary { cursor: pointer; color: #52764a; font-size: 13px; font-
 .tt-toast b { font-size: 13px; }
 .tt-toast span { font-size: 11px; opacity: .8; }
 .tt-projectile, .tt-combat-number, .tt-impact-flash { position: fixed; z-index: 190; pointer-events: none; }
-body.tt-modern #grid.grid.tt-expanded { aspect-ratio: 4 / 5; width: min(35dvh, 370px, 90vw) !important; }
+body.tt-modern #grid.grid.tt-expanded { aspect-ratio: 4 / 5; width: min(35dvh, 370px, 90vw, calc((100cqh - 60px) * .8)) !important; }
 .tt-projectile { width: 5px; height: 5px; border-radius: 50%; background: #85987b; animation: tt-flight .38s ease-out forwards; }
 .tt-projectile.tt-fire { background: #e59a52; box-shadow: 0 0 7px #e59a5260; }
 .tt-projectile.tt-frost { background: #7abec4; }
@@ -230,14 +246,14 @@ body.tt-modern #grid.grid.tt-expanded { aspect-ratio: 4 / 5; width: min(35dvh, 3
   body.tt-modern .menuInputs, body.tt-modern .menuButtons { grid-template-columns: 1fr 1fr; }
   .tt-setting-row { grid-template-columns: 1fr; }
   body.tt-modern .choice { padding: 10px; gap: 8px; }
-  body.tt-modern #grid.grid { width: min(38dvh, 90vw, 360px) !important; }
-  body.tt-modern #grid.grid.expandedBoard { width: min(35dvh, 90vw, 340px) !important; }
+  body.tt-modern #grid.grid { width: min(38dvh, 90vw, 360px, calc(100cqh - 60px)) !important; }
+  body.tt-modern #grid.grid.expandedBoard { width: min(35dvh, 90vw, 340px, calc((100cqh - 60px) * .8)) !important; }
   body.tt-modern .cell .unit .emo { font-size: clamp(22px, 4dvh, 36px); }
 }
 @media (max-height: 720px) {
   body.tt-modern .main { gap: 5px; }
-  body.tt-modern #grid.grid { width: min(28dvh, 90vw, 340px) !important; }
-  body.tt-modern #grid.grid.tt-expanded { width: min(22dvh, 90vw, 300px) !important; }
+  body.tt-modern #grid.grid { width: min(28dvh, 90vw, 340px, calc(100cqh - 60px)) !important; }
+  body.tt-modern #grid.grid.tt-expanded { width: min(22dvh, 90vw, 300px, calc((100cqh - 60px) * .8)) !important; }
   #ttWavePreview { padding-bottom: 3px; }
   #ttWavePreview > span { display: none; }
   body.tt-modern .enemyTitle { display: none; }

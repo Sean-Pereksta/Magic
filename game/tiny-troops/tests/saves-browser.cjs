@@ -91,8 +91,97 @@ async function start(page, name, code = 'qa-code') {
     await saveProfile('wrong cloud code QA');
   });
   assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/occupied_cloud'].password), 'original-code');
-  assert.match(await cloud.locator('#ttSaveState').innerText(), /different code/);
+  await cloud.click('#ttResolveSave'); assert.match(await cloud.locator('#ttSaveConflict').innerText(), /different code/);
+  assert.equal(await cloud.locator('[data-tt-save-resolve="load"]').isEnabled(), true);
+  await cloud.click('[data-tt-save-resolve="continue"]'); assert.equal(await cloud.evaluate(() => S.tt.mode), 'PLAYING');
   console.log('PASS cloud adapter transactions, offline local fallback, cloud-only discovery/cache, and save-code protection');
+
+  // A new device may discover an older account only after it has already played.
+  async function conflictingAccount(name, wave = 77) {
+    await cloud.evaluate(() => { window.qaFailRead = true; openMainMenu(); }); await start(cloud, name);
+    return cloud.evaluate(async ({ name, wave }) => {
+      window.qaFailRead = false; S.coins = 55; S.round = 12; await saveProfile('device progress');
+      const clean = cleanUsername(name), current = JSON.parse(localStorage.getItem(TinyTroopsSaves.PREFIX + clean)), older = JSON.parse(JSON.stringify(current));
+      older.state.tt.id = current.state.tt.id + '-cloud'; older.state.round = wave; older.state.coins = 900; older.updatedAtMs -= 10000;
+      window.qaCloud['tiny_troops_profiles/' + clean] = older;
+      await saveProfile('cloud collision QA'); return { clean, deviceId: current.state.tt.id, cloudId: older.state.tt.id };
+    }, { name, wave });
+  }
+  const copy = await conflictingAccount('Account Copy');
+  // The recovery button must work even when a recruit dialog is open.
+  await cloud.click('#ttResolveSave'); assert.equal(await cloud.locator('[data-tt-save-resolve="copy"]').isEnabled(), true);
+  await cloud.click('[data-tt-save-resolve="copy"]'); await cloud.waitForFunction(() => !document.getElementById('mainMenu').classList.contains('open'));
+  assert.equal(await cloud.inputValue('#menuUser'), 'Account Copy 2');
+  assert.equal(await cloud.evaluate(({ clean }) => window.qaCloud['tiny_troops_profiles/' + clean].state.round, copy), 77);
+  assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/account_copy_2'].state.coins), 55);
+  await cloud.click('#body .choice:first-child'); assert.ok(await cloud.evaluate(() => S.placing));
+  console.log('PASS same-name conflict controls stay clickable, preserve the old cloud account, save separately, and recruiting still works');
+
+  const loadedAccount = await conflictingAccount('Account Load', 88);
+  await cloud.click('#ttResolveSave'); await cloud.click('[data-tt-save-resolve="load"]');
+  await cloud.waitForFunction(() => S.round === 88);
+  assert.equal(await cloud.evaluate(() => S.coins), 900); assert.equal(await cloud.evaluate(() => S.tt.id), loadedAccount.cloudId);
+  const backup = await cloud.evaluate(() => TinyTroopsSaveFiles.list().find(s => s.clean.startsWith('account_load_device')));
+  assert.equal(backup.wave, 12); assert.equal(backup.coins, 55);
+  await cloud.evaluate(async () => { S.coins = 901; await saveProfile('loaded existing account'); });
+  assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/account_load'].state.coins), 901);
+  assert.equal(await cloud.evaluate(() => TinyTroopsSaveFiles.conflict()), null);
+  console.log('PASS loading the older existing account keeps newer device progress in a separate file and resumes cloud saving');
+
+  const auto = await conflictingAccount('Account Auto', 66);
+  const autoLoaded = await cloud.evaluate(async () => loadProfile('Account Auto', 'qa-code'));
+  assert.equal(autoLoaded, true); assert.equal(await cloud.evaluate(() => S.tt.id), auto.cloudId);
+  assert.equal(await cloud.evaluate(() => TinyTroopsSaveFiles.list().find(s => s.clean.startsWith('account_auto_device')).wave), 12);
+  console.log('PASS ordinary Load recognizes the existing account despite a newer conflicting device file');
+
+  await conflictingAccount('Account Offline'); await cloud.click('#ttResolveSave');
+  await cloud.evaluate(() => { window.qaFailRead = true; }); await cloud.click('[data-tt-save-resolve="load"]');
+  await cloud.waitForFunction(() => document.getElementById('menuStatus').textContent.includes('Cloud could not be reached'));
+  assert.equal(await cloud.locator('[data-tt-save-resolve="load"]').isEnabled(), true); assert.equal(await cloud.locator('#menuLoad').isEnabled(), true);
+  assert.equal(await cloud.evaluate(() => S.round), 12); await cloud.click('[data-tt-save-resolve="continue"]');
+  await cloud.evaluate(() => { window.qaFailRead = false; });
+  console.log('PASS failed cloud recovery unlocks every option and leaves the current device run playable');
+
+  // Starting a new run checks cloud-only and legacy account names too.
+  await cloud.evaluate(() => openMainMenu()); await start(cloud, 'Account Load');
+  assert.equal(await cloud.inputValue('#menuUser'), 'Account Load 2');
+  assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/account_load'].state.coins), 901);
+  console.log('PASS new run preflight preserves cloud account names and automatically chooses a free save name');
+
+  await conflictingAccount('Account Offline Reload', 54);
+  const offlineReload = await cloud.evaluate(async () => {
+    window.qaFailRead = true; const loaded = await loadProfile('Account Offline Reload', 'qa-code'); window.qaFailRead = false;
+    await saveProfile('offline fallback ownership QA');
+    return { loaded, wave: S.round, cloudWave: window.qaCloud['tiny_troops_profiles/account_offline_reload'].state.round, conflict: TinyTroopsSaveFiles.conflict()?.type };
+  });
+  assert.deepEqual(offlineReload, { loaded: true, wave: 12, cloudWave: 54, conflict: 'save/name-conflict' });
+  console.log('PASS offline device loading retains the cloud-name guard when connectivity returns');
+
+  await cloud.evaluate(() => {
+    const legacy = JSON.parse(JSON.stringify(window.qaCloud['tiny_troops_profiles/account_load']));
+    legacy.username = 'Legacy Account'; legacy.cleanUsername = 'legacy_account'; delete legacy.state.tt; legacy.state.round = 43;
+    window.qaCloud['users/qa-user/tiny_troops_profiles/legacy_account'] = legacy; openMainMenu();
+  });
+  await start(cloud, 'Legacy Account'); assert.equal(await cloud.inputValue('#menuUser'), 'Legacy Account 2');
+  assert.equal(await cloud.evaluate(() => window.qaCloud['users/qa-user/tiny_troops_profiles/legacy_account'].state.round), 43);
+  assert.equal(await cloud.evaluate(async () => loadProfile('Legacy Account', 'qa-code')), true);
+  assert.equal(await cloud.evaluate(() => S.round), 43);
+  assert.equal(await cloud.evaluate(() => TinyTroopsSaveFiles.conflict()), null);
+  console.log('PASS preflight and account loading recognize older saves without a modern run ID');
+
+  // A denied/full device store still offers Continue; no action stays locked.
+  await conflictingAccount('Account Quota', 58); await cloud.click('#ttResolveSave');
+  await cloud.evaluate(() => { window.qaStorageWrite = Storage.prototype.setItem; Storage.prototype.setItem = function(key, value) { if (key.startsWith(TinyTroopsSaves.PREFIX)) throw new Error('Storage full'); return qaStorageWrite.call(this, key, value); }; });
+  await cloud.click('[data-tt-save-resolve="load"]');
+  await cloud.waitForFunction(() => document.getElementById('menuStatus').textContent.includes('Could not preserve'));
+  assert.equal(await cloud.locator('[data-tt-save-resolve="continue"]').isEnabled(), true); assert.equal(await cloud.evaluate(() => S.round), 12);
+  await cloud.click('[data-tt-save-resolve="copy"]'); await cloud.waitForFunction(() => !document.getElementById('mainMenu').classList.contains('open'));
+  assert.equal(await cloud.inputValue('#menuUser'), 'Account Quota 2');
+  assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/account_quota_2'].state.round), 12);
+  assert.equal(await cloud.evaluate(() => window.qaCloud['tiny_troops_profiles/account_quota'].state.round), 58);
+  assert.match(await cloud.locator('#ttSaveState').innerText(), /Saved to cloud.*browser storage unavailable/);
+  await cloud.evaluate(() => { Storage.prototype.setItem = qaStorageWrite; });
+  console.log('PASS a failed backup unlocks recovery and separate cloud saving works even with full device storage');
 
   await page.evaluate(() => openMainMenu());
   for (const size of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 640 }]) {

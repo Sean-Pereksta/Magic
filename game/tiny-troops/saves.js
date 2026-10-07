@@ -71,10 +71,10 @@
     throw new Error('No readable saved run found for that save name.');
   }
   function createWriter({ store, writeCloud, notify = () => {}, timeoutMs = 8000 }) {
-    const pending = new Map(), latest = new Map();
+    const pending = new Map(), latest = new Map(), generations = new Map();
     let running = false;
     function report(job, phase, error) {
-      if (latest.get(job.payload.cleanUsername) === job.payload) notify({ phase, local: job.local.ok, error: error?.message || error || '', payload: job.payload });
+      if (latest.get(job.payload.cleanUsername) === job.payload) notify({ phase, local: job.local.ok, error: error?.message || error || '', code: String(error?.code || ''), payload: job.payload });
     }
     async function drain() {
       if (running) return;
@@ -83,7 +83,7 @@
         while (pending.size) {
           const [clean, job] = pending.entries().next().value; pending.delete(clean);
           try {
-            await withTimeout(() => writeCloud(job.payload), timeoutMs);
+            await withTimeout(() => writeCloud(job.payload, () => job.generation === (generations.get(clean) || 0)), timeoutMs);
             report(job, 'saved'); job.resolve({ local: job.local.ok, cloud: true });
           } catch (error) {
             report(job, 'failed', error); job.resolve({ local: job.local.ok, cloud: false, error: error.message });
@@ -94,7 +94,7 @@
     function save(payload, online) {
       // Detach both the checkpoint and profile identity before any asynchronous work.
       payload = JSON.parse(JSON.stringify(payload));
-      const local = store.write(payload.cleanUsername, payload), job = { payload, local };
+      const local = store.write(payload.cleanUsername, payload), job = { payload, local, generation: generations.get(payload.cleanUsername) || 0 };
       latest.set(payload.cleanUsername, payload);
       if (!valid(payload)) { report(job, 'failed', local.error); latest.delete(payload.cleanUsername); return Promise.resolve({ local: false, cloud: false, error: local.error }); }
       report(job, online ? 'syncing' : local.ok ? 'local' : 'failed', local.error);
@@ -105,7 +105,12 @@
       pending.set(payload.cleanUsername, job); void drain();
       return promise;
     }
-    return { save, pendingCount: () => pending.size + (running ? 1 : 0) };
+    function invalidate(clean) {
+      generations.set(clean, (generations.get(clean) || 0) + 1);
+      const job = pending.get(clean); if (job) { pending.delete(clean); job.resolve({ local: job.local.ok, cloud: false, superseded: true }); }
+      latest.delete(clean);
+    }
+    return { save, invalidate, pendingCount: () => pending.size + (running ? 1 : 0) };
   }
   function unusedName(name, entries, cleanName) {
     const used = new Set(entries.map(entry => entry.clean));

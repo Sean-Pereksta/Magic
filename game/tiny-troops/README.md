@@ -9,6 +9,24 @@ no length setting or final-wave victory. Defeat records the army’s story in a
 bounded, local history. Existing late regions and their enemy scaling continue
 beyond wave 300. The fifth row retains its native wave/level-250 unlock.
 
+## Troop placement and bench
+
+The visible **🪑 Bench** button opens three numbered reserve slots. Recruits can
+go directly into an empty slot. Exact duplicates grant **+2 star progress** to
+the selected board or bench troop; **Star Training** grants **+1**. Bench troops
+retain their identity, equipment, growth, evolutions, and 5–13 star choices.
+
+Placing a different recruit onto an occupied board or bench slot asks whether
+to **Move to bench**, **Sell**, or **Cancel**. A full bench disables only the
+move option. Cancellation keeps the recruit selected and the occupant intact.
+Troops can deploy from the bench to empty board squares freely between battles;
+swapping with an occupied square uses the existing one post-boss switch.
+Combat bench inspection pauses the battle and cannot change reserves.
+
+Save slots retain empty positions. Checkpoints serialize owned troops before
+queued upgrade references, and keep the currently open star choice by troop ID,
+so reloading an upgrade cannot remove or train a detached copy of a reserve.
+
 ## Combat recovery
 
 The shared aura pulse helper is available to all native evolution and spell
@@ -70,6 +88,16 @@ The menu lists saved runs on this device with name, wave, army, coins, and saved
 
 Every primary checkpoint keeps the last readable version as a recovery backup. Storage errors are reported accurately. Cloud writes retain their original profile identity, coalesce pending checkpoints, time out instead of blocking forever, and reject mismatched codes or older timestamps. A failed cloud read still permits a valid local load.
 
+New runs check both current and legacy cloud names before selecting a numbered
+save name. If a different or newer cloud run is discovered later, a reachable
+**Resolve cloud save** button opens **Load cloud run**, **Save this run
+separately**, and **Keep playing on this device**. Cloud loading first preserves
+a separate device copy. A new conflicting local file does not shadow the older
+cloud account just because its timestamp is newer. Failed requests unlock the
+controls, and device-only loading keeps the cloud-name guard until ownership is
+confirmed. A separate copy can save to the cloud even if device storage is full.
+Loading and separating a run invalidate queued transactions for the old profile.
+
 Discoveries and the last 25 completed runs are stored locally per save name.
 Unlocks add commanders and a draft modifier; they grant no permanent stat boosts.
 
@@ -103,11 +131,18 @@ cloud sync and leaderboard services are not covered by this offline suite.
 ```sh
 npm run test:tiny-troops:saves-browser
 npm run test:tiny-troops:recovery-browser
+npm run test:tiny-troops:bench-browser
 ```
 
 This browser suite verifies visible files, reload, separate run names, backups,
 full browser storage, page-exit checkpoints, and cloud adapter failure/lookup
 flows. Cloud adapter cases use a deterministic SDK mock.
+They also exercise cloud-name conflicts, legacy account discovery, separate
+copies, offline and full-storage recovery, and clickable recovery controls.
+
+The bench suite uses the shipped page to verify replacement choices, sale
+payouts, three fixed slots, merges, training and damage/support star paths,
+post-boss swaps, combat inspection, saved-file reload, and mobile interactions.
 
 The recovery suite sustains every native boss definition for 160 simulation
 steps, all 243 valid recruits for repeated periodic abilities, exercises the
