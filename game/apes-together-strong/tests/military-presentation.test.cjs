@@ -13,14 +13,16 @@ test('military hull cache stays bounded while doors, damage and turret draw live
  const{r,calls}=renderer();
  for(const kind of ['tank','apc','ifv','truck'])for(let i=0;i<8;i++)r.drawVehicle(r.ctx,{kind,x:0,y:0,hp:250,maxHp:650,mobilityDamage:60,weaponDamage:80,engineDamage:70,overrun:kind==='tank',dismounting:kind==='apc',troops:5,capacity:10,cannonFlash:.1,turretDir:i*.6,dir:i%2?Math.PI:0});
  assert.equal(r.vehicleSprites.size,4);
- assert.ok(calls.some(a=>a[0]==='fillText'&&a[1]==='OVERRUN'));
- assert.ok(calls.some(a=>a[0]==='fillText'&&a[1]==='DISMOUNT'));
+ assert.ok(calls.some(a=>a[0]==='lineTo'&&a[1]===-80&&a[2]===11),'dismount door remains visible');
+ assert.ok(r.glowSprites.has('203,123,62'),'overrun retains its close combat glow');
+ assert.ok(!calls.some(a=>a[0]==='fillText'),'vehicle status words stay out of the world view');
  const before=r.vehicleSprites.get('apc');r.drawObject(r.ctx,{type:'vehicle',vehicleType:'apc',x:0,y:0});assert.equal(r.vehicleSprites.get('apc'),before);
 });
 test('cannon telegraph remains at the committed location and shell uses one trail',()=>{
  const{r,calls}=renderer(),target={x:60,y:30,start:9,duration:1.8,until:10.8};
  r.drawThreats({time:10,vehicles:[{kind:'tank',x:-50,y:0,hp:1100,cannonTarget:target}],humans:[],forces:{hazards:[{type:'shell',x:30,y:15,fromX:-50,fromY:0,targetX:60,targetY:30,start:9.8,life:.2,duration:.4,radius:104}]}});
- assert.ok(calls.some(a=>a[0]==='fillText'&&a[1]==='CANNON LOCK'));
+ assert.ok(calls.some(a=>a[0]==='ellipse'&&Math.abs(a[3]-104*.8*Math.SQRT2)<1e-8),'cannon warning matches the blast footprint');
+ assert.ok(!calls.some(a=>a[0]==='fillText'),'cannon warning has no floating caption');
  const p=r.project(target.x,target.y);assert.ok(calls.some(a=>a[0]==='translate'&&a[1]===p.x&&a[2]===p.y));
  assert.ok(!r.glowSprites.has('221,126,111'),'shell is not also rendered as a flare');
  calls.length=0;r.drawThreats({time:10,vehicles:[],humans:[],forces:{hazards:[{type:'fortification',x:0,y:0,life:70,start:9}]}});assert.equal(calls.length,0,'temporary construction lifetimes are not visual flare hazards');
@@ -34,12 +36,12 @@ test('new role, aircraft, impact and ape reaction geometry is finite',()=>{
  for(const fields of [{climbingVehicleId:'tank',climbUntil:11},{staggerUntil:11},{knockbackUntil:11}])r.drawApe(r.ctx,{id:'reaction',x:0,y:0,hp:50,maxHp:100,...fields});
  r.drawEffects(r.ctx,[{type:'tankImpact',x:0,y:0,life:.8,maxLife:1,radius:104}]);
 });
-test('impact and squad cues keep their budgets after leaders die',()=>{
+test('impact budget remains bounded and lost cohesion has no order caption',()=>{
  const{r,calls}=renderer();
  r.drawEffects(r.ctx,Array.from({length:60},()=>({type:'tankImpact',x:0,y:0,life:.8,maxLife:1,radius:104})));
  assert.equal(calls.filter(a=>a[0]==='translate').length,20,'visible explosion budget');
  calls.length=0;r.drawThreats({time:10,vehicles:[],forces:{hazards:[]},humans:[{id:'survivor',squadId:'leader-down',role:'rifleman',x:0,y:0,hp:100,cohesionLossUntil:15}]});
- assert.ok(calls.some(a=>a[0]==='fillText'&&a[1]==='REGROUP'),'surviving squad displays its loss of cohesion');
+ assert.equal(calls.length,0,'surviving squad does not add a floating regroup order');
 });
 test('large hordes keep climb and blast reactions outside the idle atlas',()=>{
  const{r,c}=renderer();c.ATSUtil={hash:()=>0};let live=0,cached=0;

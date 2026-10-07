@@ -52,16 +52,16 @@ class Navigation {
  const steps=Math.ceil(d/28);for(let i=0;i<=steps;i++)if(this.terrainCost(ax+(bx-ax)*i/steps,ay+(by-ay)*i/steps,profile)>1.5)return false;
  return true;
  }
- clearSegment(ax,ay,bx,by,r=10,profile=''){
+ clearSegment(ax,ay,bx,by,r=10,profile='',ignoreId){
  profile=this.profile(profile);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
  const dx=bx-ax,dy=by-ay,length2=dx*dx+dy*dy,pad=r;
  if(this.world.boundsReady&&!this.world.boundsReady(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad))return false;
- const cacheable=ax%this.cell===0&&ay%this.cell===0&&bx%this.cell===0&&by%this.cell===0;
+ const cacheable=!ignoreId&&ax%this.cell===0&&ay%this.cell===0&&bx%this.cell===0&&by%this.cell===0;
  const key=cacheable?ax+','+ay+','+bx+','+by+','+r+','+profile:null;
  if(key&&this.segmentCache.has(key))return this.segmentCache.get(key);
  let clear=true;
  if(this.world._queryCollision)this.world._queryCollision(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad,o=>{
- if(!o.solid||o.dead||o.hp<=0||o.fortification&&this.world.fortificationPassable?.(o,profile))return;
+ if(o.id===ignoreId||!o.solid||o.dead||o.hp<=0||o.fortification&&this.world.fortificationPassable?.(o,profile))return;
  const obstacleRadius=this.isVehicle(profile)&&this.world.vehicleObstacleRadius?this.world.vehicleObstacleRadius(o,profile):(o._collision?.radius??o.moveRadius??o.r??15);if(obstacleRadius<0)return;
  if(o.collision==='rect'){
  const hx=o._collision?.hx??(o.w||o.r*2)/2,hy=o._collision?.hy??(o.h||o.r*2)/2,minX=o.x-hx,maxX=o.x+hx,minY=o.y-hy,maxY=o.y+hy;
