@@ -38,6 +38,7 @@
     if(s.rewards.length)action(`Claim regional reward: ${D.items[s.rewards[0]].name}`,()=>{if(!A.claimReward())toastMsg('Inspect or leave pending loot first.');});
     if(game.loot)action(`Inspect pending loot: ${game.loot.name}`,()=>{close();openLootOverlay();});
     action('Save journey',()=>{saveGame();toastMsg('Journey saved on this device.');});
+    if(window.AWWorldDanger)AWWorldDanger.journal(content());
   }
   function renderGear(){
     if(window.AWInventoryUI)return AWInventoryUI.render(content());
@@ -127,6 +128,7 @@
     if(known&&window.AWInventoryUI)AWInventoryUI.region(card,n);
     if(known&&n.multiWave)card.insertAdjacentHTML('beforeend','<p><b>Multi-wave encounter:</b> clear all reinforcements for homestead supplies.</p>');
     if(known&&n.region&&D.regions[n.region])card.insertAdjacentHTML('beforeend',`<p>Region: ${esc(D.regions[n.region].name)}</p>`);
+    if(known&&window.AWWorldDanger){const p=document.createElement('p');p.textContent=AWWorldDanger.nodeInfo(n);card.appendChild(p);}
     if(n.shadow)card.insertAdjacentHTML('beforeend',`<p>Depth ${n.depth}${n.modifier==='Greed'?' · Greed: enemies +40% health, loot/Glory +70%':n.modifier==='Safety'?' · Safety: standard enemies and rewards':''}</p>`);
     if(known&&n.rewardSpells?.length)card.insertAdjacentHTML('beforeend',`<p>Spell discoveries: ${n.rewardSpells.map(id=>esc(SPELLS[id].name)).join(', ')}</p>`);
     if(n.id===s.current){
@@ -215,3 +217,4 @@
   window.AWInput.bindAction($('mobileDodge'),'dodge');
   window.AWCampaignUI={open,close,isOpen,openTown,openPortal,openSite,openCamp,assign,categories};
 })();
+

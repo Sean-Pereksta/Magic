@@ -29,6 +29,10 @@
     vaultSlash:{name:'Vaulting Strike',wind:.9,active:.68,recovery:.75,cd:3.2,factor:1.15,range:7},
     doubleDash:{name:'Crosscut Dash',wind:.95,active:1.15,recovery:.8,cd:3.8,factor:1.1,range:8},
     leapVolley:{name:'Vault / Volley',wind:.9,active:.66,recovery:.65,cd:3.2,factor:.8,range:11},
+    hunterDash:{name:'Predator Lock / Dash',wind:.8,active:.4,recovery:.7,cd:2.6,factor:1.2,range:12},
+    chainDash:{name:'Threefold Pursuit',wind:.9,active:3.2,recovery:.85,cd:3.6,factor:1.1,range:12},
+    pounceWave:{name:'Pounce / Shockwave',wind:1,active:1.4,recovery:.9,cd:3.8,factor:1.2,range:10},
+    shadowAmbush:{name:'Shadow / Emergence',wind:1.05,active:.22,recovery:.8,cd:3.1,factor:1.25,range:10},
     summon:{name:'Rally Ritual',wind:1.1,active:.2,recovery:.6,cd:5,factor:0,range:12},
     pool:{name:'Dangerous Ground',wind:.5,active:2.8,recovery:0,cd:0,factor:.3,range:0}
   };
@@ -39,6 +43,7 @@
   function targetId(p){if(!targetIds.has(p))targetIds.set(p,++targetSerial);return targetIds.get(p);}
   function actions(){return game.effects.filter(a=>a.kind===KIND&&a.life>0&&a.room===game.roomData);}
   function family(e){
+    if(e.dangerFamily)return e.dangerFamily==='sand'?'stone':e.dangerFamily;
     const t=ENEMY_TYPES[e.type]||{},b=t.biomes||[],tags=affinity.tags(e);
     if(t.region==='bloodroot'||b.length===1&&b[0]==='bloodroot'||/marrowboar|crimsonwitch|thorncolossus/i.test(e.type))return 'bloodroot';
     if(t.region==='celestial'||b.length===1&&b[0]==='celestial'||/starbound|astral|sunwarden|sunmoth/.test(e.type))return 'celestial';
@@ -52,9 +57,10 @@
   }
   function profile(e){
     if(e.damage<=0||['regional_plant','regional_wall','regional_echo'].includes(e.ai))return null;
-    const cacheKey=e.ai+'/'+(e.boss?(e.intensityPhase||1):0);
+    const cacheKey=e.ai+'/'+(e.boss?(e.intensityPhase||1):0)+'/'+(e.dangerProfile||[]).join();
     if(e._combatProfileKey===cacheKey)return e._combatProfile;
     e._combatProfileKey=cacheKey;
+    if(e.dangerProfile?.length)return e._combatProfile=e.dangerProfile;
     const f=family(e),ai=e.ai;
     if(e.boss){
       const phase=e.intensityPhase||1;
@@ -74,6 +80,7 @@
     }
     const mapping={
       melee:'cleave',ranged:'predictive',shield:'counter',orbiter:'fan',sniper:'predictive',charger:'charge',
+      dangerHunter:'hunterDash',dangerDasher:'chainDash',dangerBeast:'pounceWave',dangerAssassin:'shadowAmbush',dangerRaider:'hunterDash',
       bomber:'meteor',summoner:'summon',spread:'fan',skirmish:'predictive',blinker:'blink',turret:'fan',
       diver:'vaultSlash',beam:'beam',shockwave:'rupture',frostmage:'frostTrail',vampire:'blink',
       phoenix:'flameWave',stormknight:'chain',voideye:'gravity',drake:'flameWave',
@@ -102,6 +109,7 @@
     return e._combatProfile=min>=8&&extra[f]&&extra[f]!==first?[first,extra[f]]:[first];
   }
   function modifier(e){
+    if(e.dangerAffixes?.length)return '';
     if(e.combatModifier)return e.combatModifier;
     const shadowMods={Teleporting:'Blinking',Burning:'Volatile',Arcane:'Echoing'};
     const inherited=[e.intensityTrait,e.trait,...(e.shadowTraits||[]).map(t=>shadowMods[t]||t)].find(t=>eliteColors[t]);
@@ -131,6 +139,7 @@
   }
   function inShape(s,p,padding=p.r||.25){
     if(s.shape==='circle')return dist(s,p)<=s.r+padding;
+    if(s.shape==='ring')return Math.abs(dist(s,p)-s.r)<=s.width+padding;
     if(s.shape==='line')return distanceToSegment(p,s,s.to)<=s.width+padding;
     if(s.shape==='cone'){
       const dx=p.x-s.x,dy=p.y-s.y,d=Math.hypot(dx,dy),a=Math.atan2(dy,dx);
@@ -178,7 +187,7 @@
       element:({frost:'frost',fire:'fire',storm:'lightning',nature:'nature',void:'shadow',celestial:'solar',bloodroot:'physical',stone:'physical'})[f]||'physical',
       damage:e.damage*def.factor,room:game.roomData,hit:new Set(),fired:false,tick:0,modifier:modifier(e),marks:[],...options};
     if(id==='cleave')a.marks=[{shape:'cone',x:a.x,y:a.y,r:e.boss?3.5:2.5,angle:a.angle,arc:1.05,delay:0}];
-    if(['charge','pincer','frostTrail'].includes(id))a.marks=[line(origin,dir,Math.min(def.range,11*def.active),e.r+.14)];
+    if(['charge','pincer','frostTrail','hunterDash'].includes(id))a.marks=[line(origin,dir,Math.min(def.range,(id==='hunterDash'?18:11)*def.active),e.r+.14)];
     if(id==='rupture')for(let i=1;i<=5;i++)a.marks.push(circle(point({x:a.x+dir.x*i*1.15,y:a.y+dir.y*i*1.15}),.55,i*.1));
     if(id==='meteor'){
       const travel=norm(velocity.x,velocity.y),side=Math.hypot(velocity.x,velocity.y)>.2?travel:dir;
@@ -186,7 +195,7 @@
     }
     if(id==='gravity')a.marks=[circle(target,1.7,a.active-.12)];
     if(id==='burrow')a.marks=[circle(target,1.25)];
-    if(id==='blink'){
+    if(id==='blink'||id==='shadowAmbush'){
       const back=point({x:target.x-dir.x*1.45,y:target.y-dir.y*1.45});
       a.blinkFrom=back;a.marks=[line(back,dir,3.2,.38)];
     }
@@ -204,10 +213,11 @@
       for(let i=0;i<3;i++){const next=allies().filter(s=>!seen.has(s)&&dist(s,from)<2.6).sort((s,t)=>dist(s,from)-dist(t,from))[0];if(!next)break;seen.add(next);a.chainTargets.push(next);a.marks.push(circle(point(next),.55));from=next;}
     }
     if(id==='counter')a.marks=[{shape:'cone',x:a.x,y:a.y,r:e.r+.65,angle:a.angle,arc:1.2,delay:0}];
-    if(['leapSlam','vaultSlash','leapVolley'].includes(id)){
+    if(['leapSlam','vaultSlash','leapVolley','pounceWave'].includes(id)){
       a.flight=.44;
-      a.jumpEnd=id==='leapSlam'?target:id==='vaultSlash'?point({x:target.x+dir.x*1.45,y:target.y+dir.y*1.45}):line(origin,{x:-dir.x,y:-dir.y},2.8,.1).to;
+      a.jumpEnd=['leapSlam','pounceWave'].includes(id)?target:id==='vaultSlash'?point({x:target.x+dir.x*1.45,y:target.y+dir.y*1.45}):line(origin,{x:-dir.x,y:-dir.y},2.8,.1).to;
       if(id==='leapSlam')a.marks=[circle(a.jumpEnd,1.45,a.flight)];
+      if(id==='pounceWave')a.marks=[circle(a.jumpEnd,1.1,a.flight)];
       if(id==='vaultSlash'){
         const strike=norm(target.x-a.jumpEnd.x,target.y-a.jumpEnd.y);
         a.marks=[{shape:'cone',x:a.jumpEnd.x,y:a.jumpEnd.y,r:2.2,angle:Math.atan2(strike.y,strike.x),arc:.8,delay:a.flight}];
@@ -220,11 +230,12 @@
       const nextDir=norm(nextTarget.x-first.to.x,nextTarget.y-first.to.y);
       a.dashes=[first,line(first.to,nextDir,4.2,e.r+.14,.8)];a.marks=a.dashes;
     }
+    if(id==='chainDash'){a.chainLeg=0;a.chainStart=0;a.chainDuration=.3;a.dashes=[line(origin,dir,5.2,e.r+.14)];a.marks=a.dashes;}
     if(id==='summon')a.marks=[circle(origin,1.25)];
     game.effects.push(a);e.combatAbility=a;e.combatManaged=true;e.combatCounter=null;
     e.state='abilityWind';e.stateTime=wind;e.facing={...dir};
     e.telegraph={kind:'ability',combatAbility:a,maxTime:wind,dir,range:def.range};
-    if(id==='burrow')e.hidden=true;
+    if(id==='burrow'||id==='shadowAmbush')e.hidden=true;
     return a;
   }
   function start(e,id){
@@ -241,6 +252,11 @@
   }
   function shapes(a,warning=false){
     const t=Math.max(0,a.age-a.wind);
+    if(a.ability==='pounceWave'){
+      if(warning)return [...a.marks,{shape:'ring',...a.jumpEnd,r:3,width:.18,delay:a.flight+.12}];
+      if(t<a.flight+.12)return a.marks;
+      return [{shape:'ring',...a.jumpEnd,r:Math.min(3,(t-a.flight)*3.3),width:.18,delay:0}];
+    }
     if(a.ability==='beam'){
       // The fan during windup also announces the direction/extent of the sweep.
       const angle=a.angle+(warning?0:t*.52*(a.enemy.id%2?1:-1));
@@ -272,7 +288,7 @@
     try{intensityPerfectDodge();}finally{majorDodge=false;}
     game.player.tailwind=Math.max(game.player.tailwind||0,.8);
     const e=a.enemy||a.regionalSource;
-    if(e&&!e.dead&&['charge','pincer','frostTrail','blink','cleave','leapSlam','vaultSlash','doubleDash'].includes(a.ability)&&dist(e,game.player)<3)e.stun=Math.max(e.stun,e.boss?.25:.65);
+    if(e&&!e.dead&&['charge','pincer','frostTrail','blink','cleave','leapSlam','vaultSlash','doubleDash','hunterDash','chainDash','pounceWave','shadowAmbush'].includes(a.ability)&&dist(e,game.player)<3)e.stun=Math.max(e.stun,e.boss?.25:.65);
     fx('dashEcho',game.player.x,game.player.y,.4,'#eee1ff',{dir:game.player.dodgeDir});
   }
   function hurt(a,target,key,scale=1){
@@ -326,7 +342,7 @@
   function activation(a){
     const e=a.enemy;
     if(['predictive','fan'].includes(a.ability))fireShots(a);
-    if(a.ability==='blink'){e.x=a.blinkFrom.x;e.y=a.blinkFrom.y;burst(e.x,e.y,a.color,8,.6);}
+    if(a.ability==='blink'||a.ability==='shadowAmbush'){e.x=a.blinkFrom.x;e.y=a.blinkFrom.y;e.hidden=false;burst(e.x,e.y,a.color,8,.6);}
     if(a.ability==='burrow'){e.x=a.target.x;e.y=a.target.y;e.hidden=false;burst(e.x,e.y,a.color,12,1);}
     if(a.ability==='counter')e.combatCounter={dir:{...a.dir},retaliate:false};
     if(a.ability==='cage')patch(a,a.marks,'nature');
@@ -355,7 +371,7 @@
       if(a.age>=a.wind+a.active+a.recovery){a.life=0;finish(a);}
       return;
     }
-    if(['leapSlam','vaultSlash','leapVolley'].includes(a.ability)){
+    if(['leapSlam','vaultSlash','leapVolley','pounceWave'].includes(a.ability)){
       const progress=clamp(t/a.flight,0,1);
       e.x=lerp(a.x,a.jumpEnd.x,progress);e.y=lerp(a.y,a.jumpEnd.y,progress);
       e.combatJumpHeight=Math.sin(progress*Math.PI)*(a.ability==='leapSlam'?62:48);
@@ -366,14 +382,29 @@
         if(a.ability==='leapVolley'){const original=a.origin,angle=a.angle;a.origin=a.volleyOrigin;a.angle=Math.atan2(a.volleyDir.y,a.volleyDir.x);fireShots(a);a.origin=original;a.angle=angle;}
       }
       if(a.ability!=='leapVolley')resolveShapes(a,a.marks);
+      if(a.ability==='pounceWave'&&t>=a.flight+.12)for(const p of [game.player,...allies()])if(inShape(shapes(a)[0],p))hurt(a,p,'wave/'+targetId(p),.7);
+    }else if(a.ability==='chainDash'){
+      let s=a.dashes[a.chainLeg],local=t-a.chainStart;
+      if(local>=0){
+        const from={x:e.x,y:e.y},progress=clamp(local/a.chainDuration,0,1);
+        e.x=lerp(s.x,s.to.x,progress);e.y=lerp(s.y,s.to.y,progress);
+        if(local-dt<a.chainDuration)for(const p of [game.player,...allies()])if(inShape({shape:'line',...from,to:{x:e.x,y:e.y},width:s.width},p))hurt(a,p,'chain/'+a.chainLeg+'/'+targetId(p));
+        if(local>=a.chainDuration+.16&&a.chainLeg<2){
+          a.chainLeg++;a.chainStart=t+.85-a.chainLeg*.05;a.chainDuration=.3-a.chainLeg*.04;
+          const target=aim(e),d=norm(target.x-e.x,target.y-e.y);
+          a.dashes.push(line(point(e),d,5.2+a.chainLeg*.35,e.r+.14,a.chainStart));
+          e.facing=d;window.AWPresentation?.audio.play('cast',a.color);
+        }
+      }
     }else if(a.ability==='doubleDash'){
       const phase=t>=.8?1:0,s=a.dashes[phase],local=t-(phase?.8:0),progress=clamp(local/.28,0,1),from={x:e.x,y:e.y};
       e.x=lerp(s.x,s.to.x,progress);e.y=lerp(s.y,s.to.y,progress);
       if(local-dt<.28){const swept={shape:'line',...from,to:{x:e.x,y:e.y},width:s.width};
         for(const p of [game.player,...allies()])if(inShape(swept,p))hurt(a,p,'dash/'+phase+'/'+targetId(p));
       }
-    }else if(['charge','pincer','frostTrail'].includes(a.ability)){
-      const from={x:e.x,y:e.y},next={x:e.x+a.dir.x*11*dt,y:e.y+a.dir.y*11*dt};
+    }else if(['charge','pincer','frostTrail','hunterDash'].includes(a.ability)){
+      const dashSpeed=a.ability==='hunterDash'?18:11;
+      const from={x:e.x,y:e.y},next={x:e.x+a.dir.x*dashSpeed*dt,y:e.y+a.dir.y*dashSpeed*dt};
       const wall=next.x<.4||next.x>ROOM_W-.4||next.y<.4||next.y>ROOM_H-.4;
       e.x=clamp(next.x,.4,ROOM_W-.4);e.y=clamp(next.y,.4,ROOM_H-.4);
       const swept={shape:'line',...from,to:{x:e.x,y:e.y},width:e.r+.14};
@@ -519,6 +550,12 @@
   // The same sampled world polygon draws both the warning and the live attack.
   function drawShape(s,color,alpha,fill=true){
     let pts=[];
+    if(s.shape==='ring'){
+      ctx.save();ctx.strokeStyle=color;ctx.fillStyle=colorAlpha(color,alpha);ctx.lineWidth=2;ctx.beginPath();
+      for(const [r,reverse] of [[s.r+s.width,false],[Math.max(.01,s.r-s.width),true]]){
+        for(let i=0;i<=32;i++){const angle=(reverse?-1:1)*i*TAU/32,p=worldToScreen(s.x+Math.cos(angle)*r,s.y+Math.sin(angle)*r);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.closePath();
+      }if(fill)ctx.fill('evenodd');ctx.stroke();ctx.restore();return;
+    }
     if(s.shape==='circle')for(let i=0;i<32;i++){const a=i*TAU/32;pts.push({x:s.x+Math.cos(a)*s.r,y:s.y+Math.sin(a)*s.r});}
     if(s.shape==='line'){
       const angle=Math.atan2(s.to.y-s.y,s.to.x-s.x);
@@ -540,7 +577,7 @@
       const s=list[i],local=a.age-a.wind-(s.delay||0);
       const pending=warming||local<0;
       if(pending!==warningOnly)continue;
-      if(!warming&&!['pool','beam','flameWave','counter'].includes(a.ability)&&local>.22)continue;
+      if(!warming&&!['pool','beam','flameWave','counter','pounceWave'].includes(a.ability)&&local>.22)continue;
       drawShape(s,a.color,pending?.08+progress*.14:.25);
       if(pending&&s.shape==='circle'){const fill=warming?progress:clamp(1+local/Math.max(.1,s.delay||0),0,1);drawShape({...s,r:Math.max(.05,s.r*fill)},a.color,.08);}
       if(!warming&&['rupture','cage'].includes(a.ability)){
@@ -556,7 +593,7 @@
       for(let i=0;i<8;i++){const angle=i*TAU/8+a.age,r=(warming?34:42)*(1-(a.age*.75%1));ctx.beginPath();ctx.moveTo(p.x+Math.cos(angle)*r,p.y+Math.sin(angle)*r*.5);ctx.lineTo(p.x+Math.cos(angle)*r*.55,p.y+Math.sin(angle)*r*.28);ctx.stroke();}ctx.restore();
     }
     if(a.ability==='meteor'&&active&&!warningOnly)for(const s of list){const h=Math.max(0,(s.delay||0)-(a.age-a.wind))*150,p=worldToScreen(s.x,s.y);ctx.save();ctx.strokeStyle=a.color;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(p.x+h*.3,p.y-h-20);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();}
-    if(a.ability==='burrow'&&warming){const p=worldToScreen(lerp(a.x,a.target.x,progress),lerp(a.y,a.target.y,progress));ctx.save();ctx.strokeStyle=a.color;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y,12+Math.sin(a.age*20)*3,5,0,0,TAU);ctx.stroke();ctx.restore();}
+    if(['burrow','shadowAmbush'].includes(a.ability)&&warming){const p=worldToScreen(lerp(a.x,a.target.x,progress),lerp(a.y,a.target.y,progress));ctx.save();ctx.strokeStyle=a.color;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y,12+Math.sin(a.age*20)*3,5,0,0,TAU);ctx.stroke();ctx.restore();}
     if(a.ability==='cage'&&warming&&a.gap){const d=a.gap,from=worldToScreen(a.target.x+d.x*.8,a.target.y+d.y*.8),to=worldToScreen(a.target.x+d.x*2.8,a.target.y+d.y*2.8);ctx.save();ctx.strokeStyle='#c2ffad';ctx.lineWidth=3;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.restore();}
     if(a.jumpEnd&&warningOnly&&(warming||a.age-a.wind<a.flight)){
       const from=worldToScreen(a.x,a.y),to=worldToScreen(a.jumpEnd.x,a.jumpEnd.y);ctx.save();ctx.strokeStyle=a.color;ctx.lineWidth=1.5;ctx.setLineDash([4,6]);ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.quadraticCurveTo((from.x+to.x)/2,(from.y+to.y)/2-64,to.x,to.y);ctx.stroke();ctx.restore();
@@ -582,10 +619,20 @@
     if(e.elite){ctx.font='bold 10px system-ui';ctx.fillStyle=eliteColors[mod];ctx.textAlign='center';ctx.fillText(mod,p.x,p.y-42);}ctx.restore();
   };
   window.AWEnemyCombat={
-    definitions,profile,family,actions,start,shapes,inShape,distanceToSegment,drawAction,
+    definitions,profile,family,actions,start,shapes,inShape,distanceToSegment,drawAction,drawShape,
+    cancel(e){const a=e?.combatAbility;if(a){a.life=0;finish(a);}},
+    hazard(e,marks,{wind=.85,active=2.6,damage=e.damage*.3,element=affinity.enemyElement(e),color=e.color,slow=false}={}){
+      if(actions().length>=MAX_RECORDS||actions().filter(a=>a.ability==='pool').length>=8||!hasCapacity())return false;
+      const a={kind:KIND,enemy:e,id:++serial,x:e.x,y:e.y,z:0,origin:point(e),target:point(e),dir:{x:1,y:0},angle:0,
+        ability:'pool',marks:marks.map(s=>({...s})),wind:Math.max(.7,wind),active,recovery:0,age:0,
+        life:Math.max(.7,wind)+active+.08,maxLife:Math.max(.7,wind)+active+.08,color,element,damage,
+        room:game.roomData,hit:new Set(),tick:0,tickSerial:0,fired:false,modifier:'',detached:true,dangerSlow:slow};
+      game.effects.push(a);return a;
+    },
     get majorDodge(){return majorDodge;},get movement(){return {velocity,steady};},
     extinguish(e,r){for(const a of actions())if(a.ability==='pool'&&a.element==='fire'&&a.marks.some(s=>dist(s,e)<r+s.r)){a.active=Math.min(a.active,a.age-a.wind+.05);a.life=Math.min(a.life,.1);fx('frostNova',e.x,e.y,.3,'#bff4ff',{r});}},
     projectileThreat(q,dt){return q.combatAbilityId&&distanceToSegment(game.player,{x:q.x-q.vx*dt,y:q.y-q.vy*dt},q)<q.r+game.player.r;},
     projectileHit(q){if(q.combatAbilityId&&game.player.dodgeTime>0)perfect(q);}
   };
 })();
+

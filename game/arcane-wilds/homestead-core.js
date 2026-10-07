@@ -77,12 +77,33 @@
     else parts.push(v+' '+({gold:'gold',fiber:'Plant Fiber',stone:'Stone',timber:'Timber',fertilizer:'fertilizer'}[k]||k));
   }return parts.join(' + ');}
   function benefit(kind,level=1){const d=items[kind];if(!d)return '';if(d.producer){const every=d.producer.every/(1+(level-1)*.5);return `Produces 1 ${d.producer.resource} every ${Math.round(every/MINUTE)} min while placed; stores up to ${d.producer.cap*level}. Collect to make room for more.`;}
-    return {bed:'Restores all health and grants +5% experience for your next 3 cleared encounters.',hearth:'Restores all health when you rest.',stove:'Turns harvests into meals that restore 35–100% health.',alchemy:'Makes healing tonics and advanced meals from your harvests.',composter:'Turns 2 produce + 1 Plant Fiber into fertilizer for 10% less growth time and +1 produce per harvest.',cistern:'Stores 32 bed-waterings for connected sprinklers.',sprinkler:'Automatically waters its 4 nearest annual beds using your cistern.',chest:'Opens your shared item inventory.',workbench:'Opens furnishing blueprints and building tools.',pantry:'Organizes harvests, recipes and prepared meals.',seedCabinet:'Opens your garden and seed management.',lectern:'Opens your spellbook.',stable:'Choose and ride an owned mount.',trophy:'Displays your defeated regional bosses.'}[kind]||(d.portal?'Travel to earned destinations after attuning this placed portal.':'Decoration for your cottage. Place it to make the space your own.');
+    return {bed:'Restores all health and grants +5% experience for your next 3 cleared encounters.',hearth:'Restores all health when you rest.',stove:'Turns harvests into meals that restore 35–100% health.',alchemy:'Makes healing tonics and advanced meals from your harvests.',composter:'Turns 2 produce + 1 Plant Fiber into fertilizer for 10% less growth time and +1 produce per harvest.',cistern:'Stores 32 bed-waterings for connected sprinklers.',sprinkler:'Automatically waters its 4 nearest annual beds using your cistern.',chest:'Opens your shared item inventory.',workbench:'Opens furnishing blueprints and building tools.',pantry:'Organizes harvests, recipes and prepared meals.',seedCabinet:'Opens your garden and seed management.',lectern:'Opens your spellbook.',stable:'Choose and ride an owned mount.',trophy:'Displays your defeated regional bosses.'}[kind]||d.desc||(d.portal?'Travel to earned destinations after attuning this placed portal.':'Decoration for your cottage. Place it to make the space your own.');
   }
   function cropStage(plot,now){const p=plot.plant;if(!p)return {key:'empty',label:'Empty bed',progress:0,wet:false};const progress=Math.min(1,p.growthMs/p.requiredGrowthMs),matureTree=plot.tree&&p.harvestNumber>0;
     const key=progress>=1?'ready':matureTree?(progress<.65?'leafy':'flowering'):progress<.05?'seed':progress<.3?'sprout':progress<.65?'leafy':'flowering';
     return {key,label:{ready:'Harvest ready',seed:plot.tree?'New sapling':'Seed planted',sprout:'Sprouting',leafy:matureTree?'Fruit regrowing':'Growing leaves',flowering:plot.tree?'Fruit forming':'Flowering'}[key],progress,wet:p.wateredUntil>now,matureTree};
   }
+  const dangerEvents={
+    banditRaid:{name:'Bandit Raid',raid:true,station:'watchtower',cost:{gold:35},reward:{gold:80,timber:6}},
+    monsterRaid:{name:'Monster Raid',raid:true,station:'barracks',cost:{hide:4},reward:{gold:85,stone:6}},
+    merchant:{name:'Traveling Merchant',station:'pantry',cost:{gold:20},reward:{fiber:8,timber:8}},
+    traveler:{name:'Mysterious Traveler',station:'lectern',cost:{dust:3},reward:{gold:65,dust:5}},
+    injured:{name:'Injured Adventurer',station:'herbalist',cost:{herbs:3},reward:{gold:70,hide:4}},
+    festival:{name:'Harvest Festival',station:'stove',cost:{gold:25},reward:{gold:65,fiber:6}},
+    accident:{name:'Magical Accident',station:'mageTower',cost:{dust:4},reward:{gold:80,dust:6}},
+    dispute:{name:'Villager Dispute',station:'hearth',cost:{},reward:{gold:30,fiber:3}},
+    blight:{name:'Crop Blight',station:'herbalist',cost:{herbs:4},reward:{fiber:8,timber:4}},
+    rareCreature:{name:'Rare Creature at the Garden',station:'stable',cost:{hide:3},reward:{gold:60,hide:6}},
+    stolen:{name:'Stolen Supplies',raid:true,station:'watchtower',cost:{gold:30},reward:{gold:65,iron:4}},
+    blacksmith:{name:'Wandering Blacksmith',station:'workbench',cost:{iron:3},reward:{stone:10,timber:6}},
+    refugees:{name:'Refugee Group',station:'barracks',cost:{gold:25,timber:4},reward:{gold:75,fiber:8}}
+  };
+  Object.assign(items,{
+    watchtower:{name:'Watchtower',icon:'🔭',outdoor:true,size:[1,1],tier:2,cost:{gold:65,timber:16,stone:8},desc:'Early warnings let you avoid raid supply costs.'},
+    barracks:{name:'Defender Barracks',icon:'🛡',outdoor:true,size:[2,1],tier:2,cost:{gold:85,timber:18,iron:8},desc:'Prepared defenders resolve raids and shelter travelers.'},
+    herbalist:{name:'Herbalist Shelter',icon:'🌿',outdoor:true,size:[1,1],tier:2,cost:{gold:60,timber:10,herbs:6},desc:'Resolve crop blight and treat injured adventurers.'},
+    mageTower:{name:'Mage Beacon',icon:'🔮',outdoor:true,size:[1,1],tier:3,cost:{gold:120,stone:14,dust:10},desc:'Contain magical accidents without spending Arcane Dust.'}
+  });
   const clone=x=>JSON.parse(JSON.stringify(x)), num=x=>Number.isFinite(Number(x))?Math.max(0,Number(x)):0;
   const require=(ok,message)=>{if(!ok)throw new Error(message);};
   const rect=(x,y,w,h)=>({x,y,w,h});
@@ -94,6 +115,8 @@
     for(const k of ['seeds','produce','meals'])if(!h[k]||typeof h[k]!=='object'||Array.isArray(h[k]))h[k]={};
     h.careClaims=Array.isArray(h.careClaims)?[...new Set(h.careClaims.filter(id=>careGoals[id]))]:[];
     for(const k of ['harvestCount','mealsCooked','totalCollected'])h[k]=Math.floor(num(h[k]));
+    h.dangerSequence=Math.floor(num(h.dangerSequence));h.lastDangerMilestone=Math.floor(num(h.lastDangerMilestone));
+    if(!dangerEvents[h.dangerEvent?.kind]||typeof h.dangerEvent?.id!=='string')h.dangerEvent=null;
     if(h.firstHarvest)h.harvestCount=Math.max(1,h.harvestCount);
     h.requests=h.requests.slice(-128);h.water=Math.min(h.canLevel>1?24:6,num(h.water));h.lastEvaluatedAt=num(h.lastEvaluatedAt)||now;
     for(const p of h.plots){if(p.plant&&!crops[p.plant.crop])p.plant=null;}
@@ -182,6 +205,7 @@
     h.careClaims=Array.isArray(h.careClaims)?h.careClaims:[];
     const effects=[];settle(h,now);
     const atHome=ctx.atHome===true,atTown=ctx.atTown===true;
+    require(!ctx.dangerDefenseActive||action.type==='resolveDangerEvent','Finish or leave the settlement defense before changing the home.');
     require(atHome||atTown||action.type==='claimExpedition','Return to Hearthglade or a home supplier first.');
     const nextId=prefix=>`${prefix}-${++h.serial}`;
     const findItem=()=>{const i=h.items.find(i=>i.id===action.id);require(i,'Furnishing not found.');return i;};
@@ -191,10 +215,25 @@
     switch(action.type){
       case 'claimExpedition': {
         require(ctx.earned===true,'Complete the encounter first.');require(typeof action.node==='string','Encounter missing.');
-        if(!h.claims.includes(action.node)){h.claims.push(action.node);add(wallet,'timber',6);add(wallet,'stone',4);add(wallet,'fiber',3);
+        const newlyEarned=!h.claims.includes(action.node);
+        if(newlyEarned){h.claims.push(action.node);add(wallet,'timber',6);add(wallet,'stone',4);add(wallet,'fiber',3);
           if(!h.deed&&ctx.multiWave){h.deed=true;add(wallet,'gold',60);add(wallet,'timber',20);add(wallet,'stone',10);h.seeds.lanternberry=num(h.seeds.lanternberry)+4;h.seeds.strawberry=num(h.seeds.strawberry)+2;
             for(const kind of ['hearth','bed','chest','workbench'])h.items.push({id:nextId('item'),kind,packed:true,gift:true,level:1,evaluatedAt:now,stored:0,remainder:0});effects.push({type:'message',text:'Build Your Cottage: deed earned! Travel west from Sunmere to Hearthglade and use the marked foundation. Starter supplies are ready.'});}}
+        const milestone=Math.floor(h.claims.length/3);
+        if(newlyEarned&&h.deed&&milestone>num(h.lastDangerMilestone)&&!h.dangerEvent){
+          h.lastDangerMilestone=milestone;h.dangerSequence=num(h.dangerSequence)+1;
+          const kinds=Object.keys(dangerEvents);h.dangerEvent={id:'settlement-'+h.dangerSequence,kind:kinds[(h.dangerSequence-1)%kinds.length]};
+          effects.push({type:'message',text:'A new settlement situation awaits on the Hearthglade noticeboard.'});
+        }
         break;
+      }
+      case 'resolveDangerEvent': {
+        allHome();const event=h.dangerEvent,d=dangerEvents[event?.kind];require(d&&action.eventId===event.id,'This settlement event is no longer active.');
+        if(action.solution==='defend')require(d.raid&&ctx.dangerVictory===event.id,'Win the optional defense first.');
+        else if(action.solution==='prepared')require(station(d.station),'Place the required settlement upgrade first.');
+        else {require(action.solution==='help','Choose a valid event solution.');charge(wallet,d.cost);}
+        for(const[k,v]of Object.entries(d.reward))add(wallet,k,v);
+        h.dangerEvent=null;effects.push({type:'message',text:d.name+' resolved. Settlement supplies earned.'});break;
       }
       case 'claimCare': {allHome();const goal=careGoals[action.goal],progress=careProgress(h,action.goal);require(goal,'Unknown home milestone.');require(!progress.claimed,'This home reward was already claimed.');require(progress.ready,'Complete this home milestone first.');const r=goal.reward;
         if(r.furnishing){require(h.items.length<150,'Make room for the reward furnishing first.');h.items.push({id:nextId('item'),kind:r.furnishing,packed:true,gift:true,level:1,evaluatedAt:now,stored:0,remainder:0,water:0});}
@@ -230,5 +269,6 @@
     }
     h.revision++;h.requests.push(action.requestId);h.requests=h.requests.slice(-128);return {home:h,wallet,effects};
   }
-  return {HOUR,MINUTE,DAY,tiers,crops,items,recipes,careGoals,careProgress,rewardText,benefit,cropStage,fresh,normalize,clone,settle,grow,ready,waterHours,placement,footprint,interior,houseRect,blocked,garden,orchard,workshop,clearing,overlaps,contains,portalReason,apply};
+  return {HOUR,MINUTE,DAY,tiers,crops,items,recipes,dangerEvents,careGoals,careProgress,rewardText,benefit,cropStage,fresh,normalize,clone,settle,grow,ready,waterHours,placement,footprint,interior,houseRect,blocked,garden,orchard,workshop,clearing,overlaps,contains,portalReason,apply};
 });
+

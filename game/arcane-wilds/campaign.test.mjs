@@ -5,6 +5,9 @@ import {runtime} from './runtime-test-helper.mjs';
 function start(touch=false){const h=runtime(touch);h.run('startNewGame()');h.step(3);return h;}
 function clear(h){
   h.run(`if(game.roomData?.worldEvent)Object.assign(game.roomData.worldEvent,{time:20,wave:3,pending:0});
+    // Routing coverage supplies a completed objective fixture. The world-danger
+    // suite exercises each real interaction and its completion guard.
+    if(window.AWWorldDanger?.problem()){const objective=AWWorldDanger.problem();objective.record.steps=Array(5).fill(true);objective.progress=1;}
     for(let guard=0;guard<8&&!game.roomData.cleared;guard++){
       for(const e of game.enemies){e.hp=0;e.dead=true;}game.enemies=[];markRoomCleared();
       if(!game.roomData.cleared){intensityTickEncounter(3);intensityTickEncounter(1.1);}
@@ -171,3 +174,4 @@ test('all new spells cast, mutate and render without nonfinite geometry; regiona
     assert.deepEqual(h.errors,[]);
   }finally{h.close();}
 });
+
