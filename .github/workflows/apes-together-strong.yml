@@ -1,0 +1,20 @@
+name: Apes Together Strong
+on:
+  pull_request:
+    paths:
+      - 'game/apes-together-strong/**'
+      - 'game/apes-together-strong.html'
+      - 'lobby/**'
+      - '.github/workflows/apes-together-strong.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node game/apes-together-strong/build.cjs --check
+      - run: node --test game/apes-together-strong/tests/*.test.cjs
+      - run: node --experimental-vm-modules --test lobby/tests/lobby-library.test.cjs

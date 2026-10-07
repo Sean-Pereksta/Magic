@@ -17,7 +17,7 @@ const registry = html => {
 const games = registry(core);
 const byKey = Object.fromEntries(games.map(game => [game.key, game]));
 
-for (const key of ['receiverwindowqb', 'arcanewilds']) {
+for (const key of ['receiverwindowqb', 'arcanewilds', 'apestogetherstrong']) {
   test(`${key}: singleplayer offers only Play`, () => {
     assert.deepEqual(library.getActions(byKey[key]), [{ type: 'single', label: 'Play' }]);
   });
@@ -177,3 +177,14 @@ test('the real loader injects extra games before upgrading and preserves core mo
   assert.equal(typeof vm.SourceTextModule, 'function', 'Run with node --experimental-vm-modules --test');
   for (const match of modules) assert.doesNotThrow(() => new vm.SourceTextModule(match[1]));
 });
+
+test('Apes Together Strong uses the installed solo route and never creates a lobby', async () => {
+   const game=byKey.apestogetherstrong;
+   assert.equal(game.route, '/game/apes-together-strong.html');
+   assert.deepEqual(game.modes,['single']);
+   assert.ok(fs.existsSync(path.join(__dirname,'../..',game.route)));
+   let launched=false;
+   await library.runAction(game,'single',{playSingle:(selected,userInitiated)=>{assert.equal(selected.key,'apestogetherstrong');assert.equal(userInitiated,true);launched=true;}});
+   assert.equal(launched,true);
+   assert.throws(()=>library.runAction(game,'lobby',{}),/does not support/);
+ });
