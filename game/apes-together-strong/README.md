@@ -113,7 +113,7 @@ Mortars warn for about two seconds, stagger shots and reload in 10–14 seconds.
 Killing a leader briefly disrupts coordination. Engineers need 3.5 uninterrupted
 seconds away from apes to build temporary barricades or field lights.
 
-Tanks have 1,100 HP, a separate slowly rotating turret, and a cannon that commits
+Standard tanks have 1,100 HP, a separate slowly rotating turret, and a cannon that commits
 to a point for a 1.8-second warning before a shell travels and explodes. Front,
 side and rear melee deal 20%, 50% and 100% damage. Five nearby apes slow rotation,
 eight disrupt the machine gun, twelve impair the turret, and sixteen overrun the
@@ -297,16 +297,32 @@ civilization, including settlement residents, and continues scaling toward 1,000
 | Below 220 | Early response | 250 | 220 | 3 | 4 | 1 |
 | 220–299 | Military Mobilization | 340 | 220 | 3 | 4 | 2 |
 | 300–449 | Major War | 500 | 320 | 6 | 9 | 3 |
-| 450–649 | Regional War | 680 | 400 | 8 | 12 | 4 |
-| 650–849 | Emergency Mobilization | 880 | 480 | 11 | 16 | 5 |
-| 850–1,000 | Total Regional Campaign | 1,100 | 560 | 14 | 20 | 6 |
+| 450–649 | Regional War | 950 | 500 | 10 | 16 | 5 |
+| 650–849 | Emergency Mobilization | 1,450 | 700 | 15 | 24 | 7 |
+| 850–1,000 | Total Regional Campaign | 1,950 | 900 | 22 | 34 | 9 |
 
 Budget and soldier capacity rise within the later bands; at 1,000 apes they
-reach 1,250 and 600. Vehicle figures are regional ceilings and armored support
+reach 2,250 and 1,000. Vehicle figures are regional ceilings and armored support
 counts APCs, IFVs and armored patrols together. Director and reinforcement
 intervals shorten as the campaign grows. Reevaluation can redirect field
 formations while settlement, interception, blockade and reconnaissance
 objectives remain independent. Infantry and cargo both count toward capacity.
+
+Regional War introduces 150-HP assault infantry and 1,500-HP Veteran tanks.
+At 650 apes, accurate 110-HP commandos, 1,900-HP Siege tanks and 1,050-HP
+Sentinel IFVs join the formations. At 850, 180-HP juggernaut gunners and
+2,400-HP Ironclad tanks enter service. Juggernauts carry limited body armor
+that fails when six apes surround them. Larger tanks carry stronger frontal
+armor, longer-range guns and larger warned explosions; their rear engines,
+tracks and weapons remain vulnerable to the same swarm mechanics. Each model
+has distinct visible equipment, armor, paint and weapon details.
+
+Actual dispatched columns grow too: ordinary late-war operations can commit
+110–300 soldiers, and major offensives can commit 200–380, supplied by several
+installations. These are limits, subject to remaining personnel, chassis,
+armor supplies and the weighted regional budget. Elite roles and upgraded
+vehicles consume their full cost. Transport passenger roles are committed
+when troops embark, saved with the carrier and charged before deployment.
 
 Confirmed contact maintains a saved pursuit operation with position, movement
 estimate, contact time, roads and known settlements. Intercepts project these
@@ -412,6 +428,18 @@ apes must physically break human sections. Apes vault their own barriers while
 infantry climb or breach slowly, engineers dismantle faster, and tanks can
 crush only designated weak ape sections. APCs unload before contact and armor
 supports infantry from cleared approaches.
+
+Infantry prioritizes firing at visible apes inside its weapon range. Short
+repositioning and close backsteps are capped at 16 units over 0.28 seconds,
+with 2.4 seconds between steps, and pause for a ready shot or recoil. Soldiers
+keep facing the enemy through those moves, preserving their perception cone.
+Patrols shadowing a large horde also fire from a stable line instead of retreating
+beyond rifle range. Coordinated fallback and regroup orders may cover more
+ground toward squad support or prepared cover; fallback commits to a fixed
+position, continues firing when possible, and ends on arrival or after roughly
+eight seconds.
+Tanks also commit to a fixed reverse-support point under pressure, then stop
+instead of continuously moving their retreat destination farther away.
 
 Settlement operations progress through reconnaissance, approach, deployment,
 engineering and assault. Their target and phase survive saves, as do platoons,

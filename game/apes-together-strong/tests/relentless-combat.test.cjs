@@ -75,7 +75,7 @@ test('riflemen clear an overrun friendly tank before aiming at the distant horde
 });
 test('rangers choose isolated horde edges and heavy gunners move slowly during bursts',()=>{
  const g=arena(),r=soldier(g,'ranger');horde(g,45,240,0);const lone=g.makeApe(170,-90,'hold');refresh(g);g.forces.tacticalTarget(r);assert.equal(r.targetId,lone.id);
- const heavy=soldier(g,'heavy',-110,0),leader=soldier(g,'leader',-90,30);const s=g.forces.createSquad([leader,heavy],g.king);s.nextReport=999;heavy.burstUntil=4;const speeds=[];g.move=(h,x,y,speed)=>speeds.push(speed);refresh(g);g.forces.updateDoctrine(heavy,.05);assert.ok(speeds.includes(14));assert.ok(heavy.accuracyMultiplier<.85);
+ const heavy=soldier(g,'heavy',-110,0),leader=soldier(g,'leader',-90,30);const s=g.forces.createSquad([leader,heavy],g.king);s.nextReport=999;heavy.burstUntil=4;const speeds=[];g.move=(h,x,y,speed)=>speeds.push(speed);refresh(g);g.forces.updateDoctrine(heavy,.05);assert.equal(speeds.length,0,'a ready gun fires before repositioning');assert.ok(g.bullets.some(b=>b.owner===heavy.id));g.time=.2;heavy.attackTimer=0;g.forces.updateDoctrine(heavy,.05);assert.ok(speeds.includes(14));assert.ok(heavy.accuracyMultiplier<.85);
 });
 test('marksmen identify an exposed King over time and retain a dodgeable warning that cover cancels',()=>{
  const g=arena(),h=soldier(g,'sniper'),ape=g.makeApe(180,40,'hold');h.targetId=ape.id;g.exposure=.6;refresh(g);g.forces.tacticalTarget(h);assert.equal(h.targetId,ape.id);
@@ -84,6 +84,22 @@ test('marksmen identify an exposed King over time and retain a dodgeable warning
 });
 test('saved fallback positions, casualty thresholds and the current mortar volley remain bounded after loading',()=>{
  const g=arena(),s=squad(g,4);horde(g,100);g.forces.thinkSquad(s);s.initialSize=10;g.forces.hazards.push({id:'saved-mortar',type:'mortar',x:250,y:0,start:0,life:2.1,fuse:2.1,radius:100,damage:90});
+ const h=g.humans[1],formation={...g.forces.formationPoint(h,s)};assert.ok(Number.isFinite(s.fallbackFacing));
  const saved=JSON.parse(JSON.stringify(g.serialize())),c=loadEngine(),loaded=c.ATSGame.fromJSON(saved),restored=loaded.forces.squads.get(s.id);
- assert.equal(restored.order,'Fallback');assert.equal(restored.initialSize,10);assert.equal(restored.density,101);assert.deepEqual({...restored.fallbackPoint},{...s.fallbackPoint});assert.equal(restored.fallbackUntil,s.fallbackUntil);assert.equal(loaded.forces.nextMortarAt,2.4);
+ assert.equal(restored.order,'Fallback');assert.equal(restored.initialSize,10);assert.equal(restored.density,101);assert.deepEqual({...restored.fallbackPoint},{...s.fallbackPoint});assert.equal(restored.fallbackFacing,s.fallbackFacing);assert.equal(restored.fallbackUntil,s.fallbackUntil);assert.equal(loaded.forces.nextMortarAt,2.4);
+ const member=loaded.humansById.get(h.id);assert.deepEqual({...loaded.forces.formationPoint(member,restored)},formation);restored.anchor={x:-140,y:80};assert.deepEqual({...loaded.forces.formationPoint(member,restored)},formation,'fallback orientation does not drift with its restored moving anchor');
+});
+
+test('saved regroup and settlement assault formations keep their committed direction after loading',()=>{
+ for(const mode of ['Regroup','Attack Settlement']){
+  const g=arena(),s=squad(g,4);let h;
+  if(mode==='Regroup'){g.hurt(g.humans[0],1000,g.king);refresh(g);g.forces.thinkSquad(s);h=g.humans[1];assert.equal(s.order,mode);assert.ok(s.regroupPoint);assert.ok(Number.isFinite(s.regroupFacing))}
+  else {s.assaultPhase='assault';s.objective={x:210,y:170};refresh(g);g.forces.thinkSquad(s);h=g.humans[1];assert.equal(s.order,mode);assert.ok(Number.isFinite(s.assaultFacing))}
+  const formation={...g.forces.formationPoint(h,s)},saved=JSON.parse(JSON.stringify(g.serialize())),loaded=loadEngine().ATSGame.fromJSON(saved),restored=loaded.forces.squads.get(s.id),member=loaded.humansById.get(h.id);
+  assert.equal(restored.order,mode);
+  assert.equal(member.squadSlot,h.squadSlot,'a fallen member does not renumber surviving formation positions on loading');
+  if(mode==='Regroup'){assert.deepEqual({...restored.regroupPoint},{...s.regroupPoint});assert.equal(restored.regroupFacing,s.regroupFacing)}
+  else {assert.equal(restored.assaultPhase,'assault');assert.equal(restored.assaultFacing,s.assaultFacing)}
+  assert.deepEqual({...loaded.forces.formationPoint(member,restored)},formation);restored.anchor={x:95,y:-120};assert.deepEqual({...loaded.forces.formationPoint(member,restored)},formation,'loading preserves a stable rally or assault formation as the squad anchor moves');
+ }
 });

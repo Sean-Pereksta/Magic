@@ -62,10 +62,17 @@ P.drawGround=function(world,king,radius){baseGround.call(this,world,king,radius)
 P.drawSettlement=function(c,s){baseSettlement.call(this,c,s);const gardens=Math.min(5,s.gardens||0);for(let i=0;i<gardens;i++){const x=50+(i%3)*30,y=35+Math.floor(i/3)*17;poly(c,[[x-14,y],[x,y-8],[x+17,y],[x+2,y+8]],'#594e32');for(let j=0;j<4;j++){ellipse(c,x-7+j*5,y-2,3,2,'#8f9b5e');line(c,x-7+j*5,y-2,x-7+j*5,y-6,'#a5b375',1)}}if(s.buildProgress>0){const x=-58,y=19;line(c,x,y,x,y-35,'#a99b70',3);line(c,x+27,y+7,x+27,y-29,'#a99b70',3);line(c,x,y-28,x+27,y-21,'#b9ae80',2);line(c,x+4,y-5,x+23,y-29,'#8c815b',1.5)}if(s.maxDefense>0)this.health(c,(s.defense||0)/s.maxDefense,30,55,'#99b4a0');};
 
 // Hull geometry is cached separately from damage, doors, turret direction and
-// lights. Armored columns therefore reuse four small sprites, even in war.
+// lights. Base hulls and late-war variants share an eight-sprite budget.
 const civilianVehicle=P.drawVehicle,previousObject=P.drawObject,previousHuman=P.drawHuman,previousApe=P.drawApe,previousThreats=P.drawThreats,previousEffects=P.drawEffects,previousWall=P.drawWall,previousGate=P.drawGate;
 const militaryVehicles=new Set(['tank','apc','ifv','truck']);
+const armoredLooks={
+ veteran:{kind:'tank',scale:1.04,barrel:1.08,paint:'#60744d',top:'#9cab7b',edge:'#b9c49a',accent:'#ded39c'},
+ siege:{kind:'tank',scale:1.1,barrel:1.28,paint:'#8b7756',top:'#b8a17a',edge:'#d4c49e',accent:'#ca7e56'},
+ ironclad:{kind:'tank',scale:1.1,barrel:1.15,paint:'#40515d',top:'#768993',edge:'#a3b8bc',accent:'#d49a67'},
+ sentinel:{kind:'ifv',scale:1.06,barrel:1.15,paint:'#4c6777',top:'#8fa5b0',edge:'#b2c5cc',accent:'#8cc4b9'}
+};
 function vehicleKind(v){return v.vehicleClass||v.vehicleType||v.kind||'jeep'}
+function vehicleLook(v){const look=armoredLooks[v.variant];return look?.kind===vehicleKind(v)?look:null}
 function label(c,text,x,y,color='#e7d7ac'){c.font='700 9px system-ui';c.textAlign='center';c.fillStyle=color;c.fillText(text,x,y)}
 function projectedDirection(dir,length){return{x:(Math.cos(dir)-Math.sin(dir))*.8*length,y:(Math.cos(dir)+Math.sin(dir))*.42*length}}
 // Fence faces follow the same axes as their collision rectangles. This keeps
@@ -104,16 +111,16 @@ P.drawGate=function(c,o){
  for(const p of [l,r]){line(c,p.x,p.y+4,p.x,p.y-height-10,'#657c63',7);ellipse(c,p.x,p.y-height-10,4,2,'#b5b590')}
  poly(c,[[-5,-26],[5,-23],[5,-13],[-5,-16]],'#d0bc7c');c.save();c.translate(0,-height-3);c.rotate(Math.atan2(d.y,d.x));label(c,'RESTRICTED',0,0,'#e1d7b1');c.restore();
 };
-P.drawMilitaryHull=function(c,kind){
- const tank=kind==='tank',truck=kind==='truck',w=tank?76:truck?67:57,h=tank?28:23;
+P.drawMilitaryHull=function(c,kind,variant){
+ const tank=kind==='tank',truck=kind==='truck',look=armoredLooks[variant]?.kind===kind?armoredLooks[variant]:null,paint=window.ATSVehicleVariants?.[variant]?.paint||look?.paint,w=tank?76:truck?67:57,h=tank?28:23;
  ellipse(c,0,7,w+10,h,'rgba(0,6,9,.5)');
  if(tank){
   for(const side of [-1,1]){const x=side<0?-13:10,y=side<0?-12:8;poly(c,[[-w+x,y-10],[w*.55+x,y+3],[w*.64+x,y+20],[-w+x,y+5]],'#172727');for(let i=0;i<7;i++)ellipse(c,-w+12+i*18+x,y+3+i*1.9,7,8,'#566052',-.32);line(c,-w+x,y-8,w*.6+x,y+8,'#959279',3)}
  }else{
   for(const [x,y] of [[-42,-5],[-3,8],[35,18],[45,-3]]){ellipse(c,x,y,10,12,'#152629',-.3);ellipse(c,x+1,y,4,6,'#728371',-.3)}
  }
- poly(c,[[-w,-18],[-w*.35,-h-23],[w,-8],[w-5,16],[-w*.38,20],[-w,1]],truck?'#556653':tank?'#626a4e':'#5a735d');
- poly(c,[[-w,-18],[-w*.35,-h-23],[w,-8],[w*.28,9]],truck?'#849078':tank?'#949476':'#899a7f');
+ poly(c,[[-w,-18],[-w*.35,-h-23],[w,-8],[w-5,16],[-w*.38,20],[-w,1]],paint||(truck?'#556653':tank?'#626a4e':'#5a735d'));
+ poly(c,[[-w,-18],[-w*.35,-h-23],[w,-8],[w*.28,9]],look?.top||(truck?'#849078':tank?'#949476':'#899a7f'));
  poly(c,[[w*.28,9],[w,-8],[w-5,16],[-w*.38,20]],'#354d3c');
  line(c,-w+2,-15,w*.26,11,'#b2b092',2);
  if(truck){
@@ -126,11 +133,21 @@ P.drawMilitaryHull=function(c,kind){
   line(c,-62,-19,-62,-43,'#a7a78b',2);line(c,-60,-24,-25,-10,'#a7a78b',2);
  }else{
   const top=tank?-46:-53;
-  poly(c,[[-w*.62,-24],[-w*.6,top],[-9,top-13],[w*.58,-29],[w*.56,-10],[-13,5]],tank?'#68775a':'#687f64');
-  poly(c,[[-w*.6,top],[-9,top-13],[w*.58,-29],[-13,-19]],tank?'#a0a084':'#99a389');
+  poly(c,[[-w*.62,-24],[-w*.6,top],[-9,top-13],[w*.58,-29],[w*.56,-10],[-13,5]],paint||(tank?'#68775a':'#687f64'));
+  poly(c,[[-w*.6,top],[-9,top-13],[w*.58,-29],[-13,-19]],look?.top||(tank?'#a0a084':'#99a389'));
   if(!tank){poly(c,[[20,-40],[33,-33],[35,-23],[21,-28]],'#253c37');for(let i=0;i<3;i++)line(c,-34+i*13,-31+i*4,-27+i*13,-28+i*4,'#394e3d',2)}
   if(kind==='ifv'){for(let i=0;i<4;i++)poly(c,[[-51+i*22,-15+i*4],[-35+i*22,-11+i*4],[-35+i*22,-1+i*4],[-52+i*22,-5+i*4]],'#778675');}
   for(let i=0;i<3;i++)line(c,-23+i*10,-39+i*3,-12+i*10,-36+i*3,'#495f45',2);
+ }
+ if(look){
+  // Armor skirts and frontal slabs distinguish variants even when zoomed out.
+  const heavy=variant==='siege'||variant==='ironclad';
+  for(let i=0;i<(heavy?5:4);i++){const x=-61+i*24,y=-10+i*4;poly(c,[[x,y-7],[x+20,y-3],[x+18,y+13],[x-2,y+8]],paint);line(c,x,y-6,x+19,y-2,look.edge,2);line(c,x+2,y+4,x+16,y+7,'#293a39',1.5)}
+  poly(c,[[37,-33],[73,-18],[78,-4],[59,4],[34,-10]],paint);line(c,39,-30,71,-16,look.edge,3);
+  if(variant==='veteran'){for(let i=0;i<3;i++)line(c,39+i*9,-22+i*3,42+i*9,-13+i*3,look.accent,3);poly(c,[[-12,-44],[-5,-41],[-12,-37],[-19,-40]],look.accent)}
+  else if(variant==='siege'){poly(c,[[-74,-22],[-79,-36],[-44,-48],[-19,-36],[-20,-18]],paint);line(c,-76,-34,-44,-45,look.edge,3);for(let i=0;i<3;i++)line(c,44+i*8,-24+i*3,49+i*8,-17+i*3,look.accent,3);line(c,-29,-46,-14,-40,look.accent,5)}
+  else if(variant==='ironclad'){for(let i=0;i<3;i++)poly(c,[[9+i*18,-38+i*5],[23+i*18,-34+i*5],[24+i*18,-25+i*5],[10+i*18,-29+i*5]],look.edge);line(c,-22,-45,-7,-39,look.accent,5);poly(c,[[-5,-37],[1,-40],[7,-35],[1,-31]],look.accent)}
+  else {line(c,-36,-42,-14,-35,look.accent,4);poly(c,[[22,-38],[36,-33],[38,-26],[24,-31]],'#253d4b');line(c,25,-35,34,-32,look.accent,2);line(c,-51,-18,-25,-11,look.edge,3)}
  }
  // Visible rear access and armor seams make flank attacks readable.
  line(c,-w,-17,-w,0,'#c3b78e',2);line(c,-w+2,-12,-w*.39,7,'#465945',2);
@@ -139,10 +156,10 @@ P.drawMilitaryHull=function(c,kind){
 };
 P.drawVehicle=function(c,v){
  const kind=vehicleKind(v);if(!militaryVehicles.has(kind)){civilianVehicle.call(this,c,v);return}
- const tank=kind==='tank',truck=kind==='truck',flip=Math.cos(v.dir||0)<0?-1:1,w=tank?76:truck?67:57;
- this.vehicleSprites=this.vehicleSprites||new Map();let sprite=this.vehicleSprites.get(kind);
- if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=230;sprite.height=150;const sc=sprite.getContext('2d');sc.translate(115,112);this.drawMilitaryHull(sc,kind);this.cacheSet(this.vehicleSprites,kind,sprite,8)}
- c.save();c.scale(flip,1);if(sprite)c.drawImage(sprite,-115,-112);else this.drawMilitaryHull(c,kind);
+ const tank=kind==='tank',truck=kind==='truck',flip=Math.cos(v.dir||0)<0?-1:1,w=tank?76:truck?67:57,look=vehicleLook(v),descriptor=look?window.ATSVehicleVariants?.[v.variant]:null,scale=look?clamp(descriptor?.visualScale||look.scale,1,1.1):1,key=look?kind+':'+v.variant:kind;
+ this.vehicleSprites=this.vehicleSprites||new Map();let sprite=this.vehicleSprites.get(key);
+ if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=230;sprite.height=150;const sc=sprite.getContext('2d');sc.translate(115,112);this.drawMilitaryHull(sc,kind,look?v.variant:null);this.cacheSet(this.vehicleSprites,key,sprite,8)}
+ c.save();c.scale(scale,scale);c.save();c.scale(flip,1);if(sprite)c.drawImage(sprite,-115,-112);else this.drawMilitaryHull(c,kind,look?v.variant:null);
  const moving=v.moving&&!this.reducedMotion,phase=this.time*9+(v.phase||0);
  if(tank&&moving&&this.detailLevel<3){for(let i=0;i<7;i++){const x=-66+((i*18+phase*5)%126);line(c,x,5+x*.15,x+4,12+x*.15,'#9d9a78',1.5)}}
  if(v.dismounting||v.unloadTimer>0&&v.troops<v.capacity){const open=v.dismounting?1:.4;
@@ -163,11 +180,14 @@ P.drawVehicle=function(c,v){
  const headOn=v.lightActive!==false&&v.hp!==0;this.glow(c,w-6,-3,13,'238,225,163',headOn ? .28 : .04);
  ellipse(c,-w+2,-7,3,3.5,v.braking||!v.moving?'#f1a078':'#a56151');
  c.restore();
- if(!truck){const dir=v.turretDir??v.dir??0,barrel=projectedDirection(dir,tank?78:kind==='ifv'?48:34),baseX=3*flip,baseY=tank?-57:-56;
-  ellipse(c,baseX,baseY, tank?28:16,tank?14:9,tank?'#8f9a72':'#9aa287');
-  poly(c,[[baseX-19,baseY],[baseX-17,baseY-11],[baseX+7,baseY-16],[baseX+23,baseY-2],[baseX+19,baseY+7]],tank?'#667d57':'#557655');
-  line(c,baseX,baseY-5,baseX+barrel.x,baseY-5+barrel.y,'#c0c0a0',tank?9:kind==='ifv'?6:4);
-  line(c,baseX+barrel.x*.84,baseY-5+barrel.y*.84,baseX+barrel.x,baseY-5+barrel.y,'#304632',tank?10:6);
+ if(!truck){const dir=v.turretDir??v.dir??0,barrel=projectedDirection(dir,(tank?78:kind==='ifv'?48:34)*(descriptor?.barrelScale||look?.barrel||1)),baseX=3*flip,baseY=tank?-57:-56,heavy=look&&v.variant!=='veteran'&&tank;
+  ellipse(c,baseX,baseY,tank?(heavy?33:28):16,tank?(heavy?17:14):9,look?.top||(tank?'#8f9a72':'#9aa287'));
+  poly(c,[[baseX-(heavy?25:19),baseY],[baseX-(heavy?23:17),baseY-11],[baseX+7,baseY-(heavy?21:16)],[baseX+(heavy?29:23),baseY-2],[baseX+19,baseY+7]],descriptor?.paint||look?.paint||(tank?'#667d57':'#557655'));
+  if(look){line(c,baseX-16,baseY-11,baseX+7,baseY-16,look.edge,2.5);line(c,baseX+9,baseY-13,baseX+20,baseY-8,look.accent,3);if(v.variant==='siege'){poly(c,[[baseX-32,baseY-6],[baseX-29,baseY-18],[baseX-16,baseY-13],[baseX-17,baseY+3]],look.paint);line(c,baseX-28,baseY-16,baseX-18,baseY-12,look.edge,2)}if(v.variant==='ironclad'){poly(c,[[baseX-25,baseY],[baseX-22,baseY-15],[baseX-10,baseY-12],[baseX-10,baseY+7]],look.paint);ellipse(c,baseX-16,baseY-14,3,2,look.accent)}}
+  line(c,baseX,baseY-5,baseX+barrel.x,baseY-5+barrel.y,look?.edge||'#c0c0a0',tank?(heavy?11:9):kind==='ifv'?6:4);
+  line(c,baseX+barrel.x*.84,baseY-5+barrel.y*.84,baseX+barrel.x,baseY-5+barrel.y,'#304632',tank?(heavy?13:10):6);
+  if(look&&v.variant==='ironclad')for(const t of [.38,.58,.78]){const length=Math.hypot(barrel.x,barrel.y)||1,nx=-barrel.y/length*6,ny=barrel.x/length*6,x=baseX+barrel.x*t,y=baseY-5+barrel.y*t;line(c,x-nx,y-ny,x+nx,y+ny,look.accent,3)}
+  if(look&&v.variant==='siege'){const x=baseX+barrel.x*.92,y=baseY-5+barrel.y*.92;ellipse(c,x,y,7,5,look.paint,Math.atan2(barrel.y,barrel.x));line(c,x-2,y-4,x+2,y+4,look.accent,2)}
   line(c,-15*flip,baseY-7,-15*flip,baseY-40,'#b0b79b',1.5);ellipse(c,10*flip,baseY-10,6,3,'#c9d4ae');this.glow(c,10*flip,baseY-10,13,'238,225,163',.2);
   if(weapon>=70){line(c,baseX+6,baseY-12,baseX+18,baseY+4,'#352f2a',3);line(c,baseX+19,baseY-10,baseX+4,baseY,'#dbc183',1.5)}
   if(v.cannonFlash>0){this.glow(c,baseX+barrel.x,baseY-5+barrel.y,42,'255,205,114',.72);ellipse(c,baseX+barrel.x,baseY-5+barrel.y,12,7,'#ffeab9')}
@@ -176,6 +196,7 @@ P.drawVehicle=function(c,v){
  else if(mobility>=100)label(c,'IMMOBILIZED',0,-102,'#e4b484');
  else if(weapon>=100)label(c,'GUN DISABLED',0,-102,'#e4b484');
  if(v.hp>0&&v.maxHp&&v.hp<v.maxHp)this.health(c,v.hp/v.maxHp,tank?-92:-88,tank?64:49,'#dcaf7e');
+ c.restore();if(look&&v.label&&this.camera.zoom>.65&&this.detailLevel<3)label(c,v.label.toUpperCase(),0,-117*scale,look.accent);
 };
 P.drawObject=function(c,o){
  if(o.type==='vehicle'&&o.vehicleType&&!o.dead){this.drawVehicle(c,o);return}
@@ -189,10 +210,11 @@ P.drawObject=function(c,o){
  }
 };
 P.drawHuman=function(c,h){
- previousHuman.call(this,c,h);const flip=Math.cos(h.dir||0)<0?-1:1;c.save();c.scale(flip,1);
- if(['rifleman','ranger','heavy','engineer','leader','mortar'].includes(h.role)){
-  poly(c,[[-9,-45],[-6,-51],[7,-51],[10,-44],[8,-40],[-8,-41]],h.role==='ranger'?'#405e50':'#465d47');line(c,-7,-45,8,-45,'#a1ac88',2);
-  poly(c,[[-11,-31],[10,-31],[11,-16],[-10,-16]],h.role==='ranger'?'#3a5d4f':'#445c43');line(c,-8,-25,7,-25,'#a7a885',1.5);line(c,-8,-21,7,-21,'#879575',1.5);
+ const size=h.role==='juggernaut'?1.1:h.role==='assault'?1.04:1;c.save();c.scale(size,size);previousHuman.call(this,c,h);const flip=Math.cos(h.dir||0)<0?-1:1;c.save();c.scale(flip,1);
+ if(['rifleman','ranger','heavy','engineer','leader','mortar','assault','commando','juggernaut'].includes(h.role)){
+  const helmet=h.role==='juggernaut'?'#45545b':h.role==='assault'?'#2e493c':h.role==='commando'?'#394d3f':h.role==='ranger'?'#405e50':'#465d47';
+  poly(c,[[-9,-45],[-6,-51],[7,-51],[10,-44],[8,-40],[-8,-41]],helmet);line(c,-7,-45,8,-45,'#a1ac88',2);
+  poly(c,[[-11,-31],[10,-31],[11,-16],[-10,-16]],helmet);line(c,-8,-25,7,-25,'#a7a885',1.5);line(c,-8,-21,7,-21,'#879575',1.5);
  }
  if(h.role==='rifleman'){line(c,17,-29,43,-28,'#a7b596',2);line(c,24,-31,33,-31,'#344832',3)}
  else if(h.role==='ranger'){poly(c,[[-10,-48],[10,-46],[11,-42],[-10,-43]],'#7a9271');line(c,-14,-28,-14,-14,'#879775',4);line(c,4,-40,9,-39,'#263e2f',2)}
@@ -200,8 +222,11 @@ P.drawHuman=function(c,h){
  else if(h.role==='engineer'){poly(c,[[-16,-29],[-8,-26],[-8,-9],[-16,-13]],'#a39369');line(c,-18,-35,-10,-14,'#c7c69e',3);line(c,-22,-36,-14,-39,'#a4b59a',4);line(c,4,-25,10,-21,'#d0be7d',3)}
  else if(h.role==='leader'){line(c,-5,-47,7,-47,'#d5c583',3);poly(c,[[4,-28],[10,-26],[7,-22]],'#ddc787');line(c,-15,-28,-15,-57,'#a9b89a',2)}
  else if(h.role==='mortar'){ellipse(c,20,5,18,6,'#485c40');line(c,16,2,27,-34,'#a4ac86',7);line(c,14,2,3,-4,'#718361',3);line(c,17,2,35,7,'#718361',3);ellipse(c,27,-34,5,3,'#283c2e');poly(c,[[-18,-29],[-10,-27],[-10,-12],[-18,-15]],'#8a9067')}
+ else if(h.role==='assault'){poly(c,[[-14,-34],[-8,-36],[-6,-25],[-14,-23]],'#547260');poly(c,[[8,-35],[15,-31],[14,-22],[7,-25]],'#547260');poly(c,[[-8,-31],[8,-31],[7,-18],[-7,-18]],'#294438');line(c,-7,-29,6,-29,'#a4b69a',2);line(c,-7,-25,6,-25,'#738b6e',2);poly(c,[[-8,-46],[9,-45],[9,-39],[-6,-39]],'#233c33');line(c,1,-43,8,-42,'#b4c5a2',2);line(c,22,-28,45,-27,'#809482',3);line(c,-4,-16,-5,-8,'#536a56',4);line(c,6,-16,7,-8,'#536a56',4)}
+ else if(h.role==='commando'){poly(c,[[-10,-46],[9,-46],[9,-42],[-10,-42]],'#4c624d');poly(c,[[-7,-40],[7,-40],[6,-35],[-5,-36]],'#2c4036');ellipse(c,5,-43,3,2,'#c3dbaa');poly(c,[[-14,-32],[-9,-30],[-10,-13],[-16,-16]],'#333f34');line(c,-9,-30,5,-17,'#8f9c71',2);line(c,25,-29,50,-28,'#a4b693',2);line(c,25,-33,36,-33,'#2f473b',3);ellipse(c,32,-33,3,2,'#c3dbaa');line(c,45,-28,52,-28,'#31463a',4);line(c,-14,-32,-14,-55,'#879d81',1.5)}
+ else if(h.role==='juggernaut'){poly(c,[[-15,-33],[-8,-38],[9,-36],[16,-28],[13,-12],[-13,-12]],'#61747b');poly(c,[[-8,-32],[7,-31],[8,-19],[-8,-19]],'#3d535e');line(c,-7,-30,7,-29,'#abc0c4',2);poly(c,[[-18,-34],[-9,-36],[-9,-24],[-18,-23]],'#7d8c90');poly(c,[[9,-35],[18,-30],[18,-22],[10,-25]],'#7d8c90');poly(c,[[-10,-48],[-5,-54],[8,-53],[12,-45],[9,-37],[-8,-39]],'#44575d');poly(c,[[-5,-46],[10,-45],[9,-40],[-5,-41]],'#e1a267');line(c,-3,-44,8,-43,'#f3d0a0',1.5);line(c,-12,-16,-12,-6,'#75868b',5);line(c,11,-16,11,-6,'#75868b',5);line(c,-9,-31,9,-17,'#c4a777',4);for(let i=0;i<4;i++)line(c,-7+i*4,-30+i*3,-8+i*4,-25+i*3,'#e1c18b',1.5);line(c,21,-28,49,-27,'#9cadab',5);ellipse(c,21,-21,5,6,'#4b635d');line(c,37,-25,34,-6,'#778c89',2);line(c,46,-27,52,-27,'#384e4c',5)}
  c.restore();
- if(h.constructing){this.health(c,1-clamp(h.constructing.remaining/3.5,0,1),-69,29,'#d1c38b');label(c,'BUILDING',0,-76,'#e2d2a5')}
+ if(h.constructing){this.health(c,1-clamp(h.constructing.remaining/3.5,0,1),-69,29,'#d1c38b');label(c,'BUILDING',0,-76,'#e2d2a5')}c.restore();
 };
 P.drawApe=function(c,a,king,exposure){
  const climbing=!!a.climbingVehicleId&&a.climbUntil>this.time,stagger=a.staggerUntil>this.time||a.knockbackUntil>this.time;
@@ -233,7 +258,7 @@ P.drawThreats=function(game){
  previousThreats.call(this,game);const c=this.ctx,z=this.camera.zoom,captions=[];
  const reserveCaption=(x,y)=>{if(captions.some(p=>Math.abs(p.x-x)<100*z&&Math.abs(p.y-y)<22*z))return false;captions.push({x,y});return true};
  for(const mortar of game.forces?.hazards||[]){if(mortar.type!=='mortar'&&mortar.type!=='airstrike')continue;const p=this.project(mortar.x,mortar.y),r=mortar.radius||100;if(!this.visible(p,(r*ISO_RADIUS_X+30)*z))continue;const progress=clamp((game.time-mortar.start)/(mortar.fuse||2.1),0,1);c.save();c.translate(p.x,p.y);c.scale(z,z);ellipse(c,0,0,r*ISO_RADIUS_X,r*ISO_RADIUS_Y,'rgba(242,139,75,.14)');c.beginPath();c.ellipse(0,0,r*ISO_RADIUS_X,r*ISO_RADIUS_Y,0,0,Math.PI*2);c.strokeStyle='#ffb56f';c.lineWidth=2.5;c.stroke();c.beginPath();c.ellipse(0,0,r*ISO_RADIUS_X,r*ISO_RADIUS_Y,0,-Math.PI*.5,-Math.PI*.5+Math.PI*2*progress);c.strokeStyle='#ffe4a5';c.lineWidth=4;c.stroke();line(c,-11,0,11,0,'#ffe4a5',2);line(c,0,-8,0,8,'#ffe4a5',2);label(c,mortar.type==='airstrike'?'AIRSTRIKE INCOMING':'MORTAR INCOMING',0,-r*ISO_RADIUS_Y-12,'#ffd79d');c.restore()}
- for(const v of game.vehicles||[]){const target=v.cannonTarget;if(!target||v.hp<=0)continue;const from=this.renderPoint(v,56),p=this.project(target.x,target.y),r=window.ATSVehicleSpecs?.[vehicleKind(v)]?.cannonRadius||(vehicleKind(v)==='ifv'?60:104);if(!this.segmentVisible(from,p,r*ISO_RADIUS_X*z))continue;
+ for(const v of game.vehicles||[]){const target=v.cannonTarget;if(!target||v.hp<=0)continue;const from=this.renderPoint(v,56),p=this.project(target.x,target.y),r=(vehicleLook(v)&&window.ATSVehicleVariants?.[v.variant]?.cannonRadius)||window.ATSVehicleSpecs?.[vehicleKind(v)]?.cannonRadius||(vehicleKind(v)==='ifv'?60:104);if(!this.segmentVisible(from,p,r*ISO_RADIUS_X*z))continue;
   const progress=clamp((game.time-target.start)/(target.duration||1.8),0,1);c.save();
   c.setLineDash([8,7]);line(c,from.x,from.y,p.x,p.y,`rgba(244,167,109,${.25+progress*.3})`,1.5*z);c.setLineDash([]);c.translate(p.x,p.y);c.scale(z,z);
   ellipse(c,0,0,r*ISO_RADIUS_X,r*ISO_RADIUS_Y,'rgba(234,128,79,.12)');c.beginPath();c.ellipse(0,0,r*ISO_RADIUS_X,r*ISO_RADIUS_Y,0,0,Math.PI*2);c.strokeStyle='#f1b176';c.lineWidth=2.2;c.stroke();

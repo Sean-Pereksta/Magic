@@ -17,7 +17,15 @@ test('the real follower AI brings 100 apes through a generated forest without re
     a.speed=84+random()*18;a.offsetX=(random()-.5)*120;a.offsetY=(random()-.5)*120;a.phase=random()*Math.PI*2;
   }
   Object.assign(g.king,g.findOpen(720,0,12));
-  for(let i=0;i<25*60;i++)g.update(1/60,{});
+  // This is a functional route fixture: parallel test contention must not take
+  // away its simulation time. Keep the normal request, search and expansion caps.
+  const beginFrame=g.navigation.beginFrame.bind(g.navigation);
+  g.navigation.beginFrame=(time,options={})=>beginFrame(time,{...options,budgetMs:Infinity});
+  for(let i=0;i<25*60;i++){
+    g.update(1/60,{});
+    assert.ok(g.navigation.stats.frameSearches<=3);
+    assert.ok(g.navigation.stats.frameExpanded<=192);
+  }
   // Larger hordes now occupy more ground; every follower must still reach the king's clearing.
   assert.equal(g.apes.filter(a=>Math.hypot(a.x-g.king.x,a.y-g.king.y)<210).length,100);
   for(const a of g.apes)assert.equal(g.world.blocked(a.x,a.y,10),false);

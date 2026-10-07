@@ -38,17 +38,20 @@ class Game{
  get campaignPopulation(){return this.population}
  get warIntensity(){const n=this.campaignPopulation;return n>=850?5:n>=650?4:n>=450?3:n>=300?2:n>=220?1:0}
  get warProgress(){const i=this.warIntensity;if(i<2)return 0;const edges=[0,220,300,450,650,850,1000];return clamp((this.campaignPopulation-edges[i])/(edges[i+1]-edges[i]),0,1)}
- get responseBudget(){return [250,340,500,680,880,1100][this.warIntensity]+Math.floor(this.warProgress*[0,0,100,130,150,150][this.warIntensity])}
- activeHumanCapacity(){const n=this.campaignPopulation,i=this.warIntensity;return i<2?(n>=250?260:220):[220,260,320,400,480,560][i]+Math.floor(this.warProgress*40)}
- get vehicleLimits(){const i=this.warIntensity;return {tank:[3,3,6,8,11,14][i],armored:[4,4,9,12,16,20][i],total:[24,24,32,40,48,56][i]}}
- get directorInterval(){return Math.max(3,[28,15,12,10,8,6][this.warIntensity]-this.warProgress*1.5-Math.min(1.5,(this.stats.bases||0)*.15+(this.stats.territory||0)*.0005))}
- get operationCapacity(){return [1,2,3,4,5,6][this.warIntensity]}
- get reinforcementInterval(){return [45,35,30,25,20,16][this.warIntensity]-this.warProgress*3}
+ get responseBudget(){return [250,340,500,950,1450,1950][this.warIntensity]+Math.floor(this.warProgress*[0,0,100,180,220,300][this.warIntensity])}
+ activeHumanCapacity(){const n=this.campaignPopulation,i=this.warIntensity;return i<2?(n>=250?260:220):[220,260,320,500,700,900][i]+Math.floor(this.warProgress*[0,0,40,80,100,100][i])}
+ get vehicleLimits(){const i=this.warIntensity;return {tank:[3,3,6,10,15,22][i],armored:[4,4,9,16,24,34][i],total:[24,24,32,48,68,90][i]}}
+ get directorInterval(){return Math.max(3,[28,15,12,9,6.5,4.5][this.warIntensity]-this.warProgress*1.5-Math.min(1.5,(this.stats.bases||0)*.15+(this.stats.territory||0)*.0005))}
+ get operationCapacity(){return [1,2,3,5,7,9][this.warIntensity]}
+ get reinforcementInterval(){return [45,35,30,23,17,12][this.warIntensity]-this.warProgress*3}
  activeOperations(channel){return this.militaryOperations.filter(op=>op.status==='active'&&(!channel||op.channel===channel))}
  vehicleRoom(kind,pending=[]){const limits=this.vehicleLimits,live=this.vehicles.filter(v=>v.hp>0),armored=['apc','ifv','armored'];return live.length+pending.length<limits.total&&(kind!=='tank'||live.filter(v=>(v.vehicleClass||v.kind)==='tank').length+pending.filter(k=>k==='tank').length<limits.tank)&&(!armored.includes(kind)||live.filter(v=>armored.includes(v.vehicleClass||v.kind)).length+pending.filter(k=>armored.includes(k)).length<limits.armored)}
+ humanWeight(role){return window.ATSHumanRoles?.[role]?.weight||(['gunner','heavy'].includes(role)?2:1)}
+ cargoWeight(v){let weight=0;const start=v.deployedTroops||0;for(let i=0;i<(v.troops||0);i++)weight+=v.troopRoles?.[start+i]?this.humanWeight(v.troopRoles[start+i]):2;return weight}
+ militaryVehicleProfile(kind,index=0){const variant=this.forces.variantFor?.(kind,index)||null;return{variant,spec:this.forces.vehicleSpec?.({vehicleClass:kind,variant})||window.ATSVehicleSpecs?.[kind]||{hp:230,radius:21,budget:4}}}
  forceWeight(){
- let weight=0;for(const h of this.humans)if(h.hp>0)weight+=h.role==='mortar'?3:['gunner','heavy'].includes(h.role)?2:['rifleman','ranger','leader','engineer'].includes(h.role)?1.5:1;
- for(const v of this.vehicles)if(v.hp>0)weight+=(window.ATSVehicleSpecs?.[v.vehicleClass||v.kind]?.budget||4)+(v.troops||0)*2;
+ let weight=0;for(const h of this.humans)if(h.hp>0)weight+=this.humanWeight(h.role);
+ for(const v of this.vehicles)if(v.hp>0)weight+=(this.forces.vehicleSpec?.(v)?.budget||window.ATSVehicleSpecs?.[v.vehicleClass||v.kind]?.budget||4)+this.cargoWeight(v);
  for(const h of this.helis)if(h.hp>0)weight+=10;return weight;
  }
  updateResponseStage(){
@@ -65,18 +68,18 @@ class Game{
  const major=options.major&&n>=500,column=stage===5&&(war||(this.operationSerial||0)%4===3),tanks=(this.mobilized||settlementRaid&&this.population>=500)&&(stage===5||n>=200),platoon=n>=650&&(this.operationSerial||0)%5===3;
  const add=(kind,count=1)=>{for(let i=0;i<count;i++)if((inventory[kind]||0)>vehicles.filter(x=>x===kind).length)vehicles.push(kind)};
  if(stage>=2&&!site.depotDown&&!site.fuelDown&&(site.tier<3||capacity.depot!==false&&capacity.fuel!==false)){
- if(column){add('jeep');add('apc',major?(n>=750?3:2):war?2:1);add('truck',2);if(tanks)add('tank',major||platoon?(n>=650?3:2):n>=450?2:1);if(major)add('ifv');add('command')}
+ if(column){add('jeep');add('apc',major?(n>=850?5:n>=650?4:2):n>=850?4:n>=650?3:war?2:1);add('truck',n>=850?4:n>=650?3:2);if(tanks)add('tank',major||platoon?(n>=850?5:n>=650?4:2):n>=850?4:n>=650?3:n>=450?2:1);if(major||n>=650)add('ifv',n>=850?2:1);add('command')}
  else if(stage>=4){if(tanks)add('tank');add('apc');if(stage===5&&(this.operationSerial||0)%3===2)add('ifv');if(settlementRaid)add('truck')}
  else add('truck');
  }
- const basePeople=major?(n>=850?56:n>=650?44:32):options.intercept?24+this.warIntensity*3:settlementRaid?24+this.warIntensity*6:war?30+this.warIntensity*5:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
+ const basePeople=major?(n>=850?96+this.warProgress*24:n>=650?68+this.warProgress*20:40):options.intercept?24+this.warIntensity*6:settlementRaid?24+this.warIntensity*12:war?n>=850?105+this.warProgress*24:n>=650?80+this.warProgress*20:n>=450?60+this.warProgress*16:40:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
  return {name:settlementRaid?'Settlement Assault':major?'Major Offensive':platoon?'Tank Platoon':options.intercept?'Armored Intercept':column?'Search & Destroy':vehicles.includes('tank')?'Armored Response':vehicles.includes('apc')?'Mechanized Squad':stage>=3?'Military Squad':stage===2?'Tactical Squad':'Search Team',people,vehicles,stage,capacity};
  }
  makeMilitaryVehicle(site,kind,target,troops=0,operationId=null,index=0){
- const spec=window.ATSVehicleSpecs?.[kind]||{hp:kind==='armored'?400:230,radius:21},staging=site.staging||site.approach||[{x:site.x+140,y:site.y+80}];
+ const {variant,spec}=this.militaryVehicleProfile(kind,index),staging=site.staging||site.approach||[{x:site.x+140,y:site.y+80}];
  const origin=staging[index%staging.length]||staging[0],p=this.world.vehicleStaging?this.world.vehicleStaging(site,kind,index):this.findOpen(origin.x+(index%2)*65,origin.y+Math.floor(index/2)*65,spec.radius||21);
  if(!p||(this.world.vehicleBlocked?this.world.vehicleBlocked(p.x,p.y,spec.radius||21,kind):this.world.blocked(p.x,p.y,spec.radius||21)))return null;
- const v={id:'vehicle-'+this.nextId++,x:p.x,y:p.y,dir:Math.atan2(target.y-p.y,target.x-p.x),kind,vehicleClass:kind,hp:spec.hp,maxHp:spec.hp,siteId:site.id,state:'raid',target:{x:target.x,y:target.y,id:target.id},shootTimer:2,phase:0,operationId};
+ const v={id:'vehicle-'+this.nextId++,x:p.x,y:p.y,dir:Math.atan2(target.y-p.y,target.x-p.x),kind,vehicleClass:kind,variant,hp:spec.hp,maxHp:spec.hp,siteId:site.id,state:'raid',target:{x:target.x,y:target.y,id:target.id},shootTimer:2,phase:0,operationId,troopRoles:Array.from({length:troops},(_,i)=>this.forces.militaryRole(i))};
  this.forces.initVehicle?.(v,kind,troops);v.troops=troops;if(['tank','apc','ifv'].includes(kind)&&operationId)v.platoonId=operationId;this.vehicles.push(v);return v;
  }
  prepareMilitarySource(site){
@@ -108,15 +111,15 @@ class Game{
  for(const channel of channels){
  if(this.activeOperations().length>=this.operationCapacity)break;
  const {target,regional}=channel,origins=sites.filter(s=>dist(s,target)<(this.warIntensity>=4?4200:3200)&&this.time-(s.lastRaid??-100)>=30).sort((a,b)=>dist(a,target)-dist(b,target));
- const coordinated=(this.tier>=4||this.warIntensity>=2)&&origins.some(s=>this.world.militaryCapacity?.(s)?.radio??!s.radioDown),max=coordinated?[1,3,3,3,4,5][this.warIntensity]:1,used=[],sources=[];
- const major=!regional&&n>=650&&origins.length>=2&&this.time>=(this.nextMajorOffensive||180),peopleLimit=major?(n>=850?132:90):regional?(n>=850?110:n>=650?90:n>=450?76:54):n>=850?110:n>=650?90:n>=450?76:n>=300?60:Infinity;
+ const coordinated=(this.tier>=4||this.warIntensity>=2)&&origins.some(s=>this.world.militaryCapacity?.(s)?.radio??!s.radioDown),max=coordinated?[1,3,3,4,5,6][this.warIntensity]:1,used=[],sources=[];
+ const major=!regional&&n>=650&&origins.length>=2&&this.time>=(this.nextMajorOffensive||180),peopleLimit=major?(n>=850?300+Math.floor(this.warProgress*80):200+Math.floor(this.warProgress*60)):n>=850?240+Math.floor(this.warProgress*60):n>=650?170+Math.floor(this.warProgress*50):n>=450?110+Math.floor(this.warProgress*40):regional?54:n>=300?60:Infinity;
  const operationId='campaign-'+this.nextId++,staging=regional?this.assaultStaging(target,origins[0]):null,goal=staging?{...staging,id:target.id}:target;let people=0,spent=0;
  for(const site of origins){
  if(used.length>=max||people>=peopleLimit)break;if(used.length&&(this.world.militaryCapacity?.(site)?.radio===false||site.radioDown))continue;
  const bearing=Math.atan2(site.y-target.y,site.x-target.x);if(used.some(a=>Math.abs(angleDiff(a,bearing))<.8))continue;
  if(used.length>=3){const sorted=[...used,bearing].sort((a,b)=>a-b),gaps=sorted.map((a,i)=>(sorted[(i+1)%sorted.length]-a+TAU)%TAU);if(Math.max(...gaps)<1.65)continue}
  const before=this.forceWeight();
- if(this.spawnRaid(site,goal,regional,{major,operationId,settlement:regional?target:null,assaultPhase:regional?'recon':null,peopleCap:Math.min(major?(n>=850?56:45):Infinity,peopleLimit-people),budgetAllowance:channel.allowance-spent})){spent+=this.forceWeight()-before;people+=this.events.at(-1).people;used.push(bearing);sources.push(site)}
+ if(this.spawnRaid(site,goal,regional,{major,operationId,settlement:regional?target:null,assaultPhase:regional?'recon':null,peopleCap:Math.min(major?(n>=850?120:90):Infinity,peopleLimit-people),budgetAllowance:channel.allowance-spent})){spent+=this.forceWeight()-before;people+=this.events.at(-1).people;used.push(bearing);sources.push(site)}
  }
  if(!sources.length)continue;
  const name=regional?'SETTLEMENT ASSAULT':major?'MAJOR OFFENSIVE':used.length>1?'SEARCH & DESTROY':'FIELD PURSUIT';
@@ -182,7 +185,7 @@ class Game{
  if(!destination||this.forceWeight()+43>this.responseBudget||this.humans.length+12+this.vehicles.reduce((n,v)=>n+(v.troops||0),0)>this.activeHumanCapacity())return false;
  if(!this.prepareMilitarySource(source)){this.nextConvoyAt=this.time+2;return false}
  const target=destination.approach?.at(-1)||destination,vehicles=[],operationId='convoy-'+this.nextId++;
- for(const kind of ['jeep','truck','apc','command']){if(!this.vehicleRoom(kind)||!(source.vehicleInventory[kind]>0)||kind==='apc'&&source.armorCapacity<7)continue;const v=this.makeMilitaryVehicle(source,kind,target,kind==='truck'?12:0,operationId,vehicles.length);if(!v)continue;v.logistics=true;source.vehicleInventory[kind]--;if(kind==='apc')source.armorCapacity=Math.max(0,source.armorCapacity-7);if(kind==='truck')source.strength-=12;vehicles.push(v)}
+ for(const kind of ['jeep','truck','apc','command']){const cost=this.militaryVehicleProfile(kind,vehicles.length).spec.budget,cargo=kind==='truck'?Array.from({length:12},(_,i)=>this.forces.militaryRole(i)).reduce((n,role)=>n+this.humanWeight(role),0):0;if(!this.vehicleRoom(kind)||!(source.vehicleInventory[kind]>0)||kind==='apc'&&source.armorCapacity<cost||this.forceWeight()+cost+cargo>this.responseBudget)continue;const v=this.makeMilitaryVehicle(source,kind,target,kind==='truck'?12:0,operationId,vehicles.length);if(!v)continue;v.logistics=true;source.vehicleInventory[kind]--;if(kind==='apc')source.armorCapacity=Math.max(0,source.armorCapacity-cost);if(kind==='truck')source.strength-=12;vehicles.push(v)}
  this.nextConvoyAt=this.time+(vehicles.length?180:10);if(!vehicles.length)return false;this.militaryOperations.push({id:operationId,name:'SUPPLY CONVOY',channel:'logistics',target:{x:target.x,y:target.y},status:'active',phase:'travel',phaseAt:this.time,createdAt:this.time,expiresAt:this.time+240,origins:[source.id]});this.events.push({type:'convoy',operationId,x:source.x,y:source.y,targetX:target.x,targetY:target.y,time:this.time});if(this.events.length>30)this.events.shift();this.sound('rumble',.7,source.x);return true;
  }
  deployRoadblock(site,target){
@@ -191,7 +194,7 @@ class Game{
  const candidates=site.roadblocks||site.approach||[],point=candidates.filter(p=>dist(p,target)>350&&dist(p,target)<1500&&this.world.terrain(p.x,p.y).road&&!this.world.blocked(p.x,p.y,35)).sort((a,b)=>dist(a,target)-dist(b,target))[0];
  if(!point||site.strength<number||this.forceWeight()+number*2>this.responseBudget)return false;site.nextRoadblock=this.time+Math.max(80,180-this.warIntensity*17);
  const operationId='roadblock-'+this.nextId++,squad=[],roles=['leader','rifleman','heavy','engineer','medic','shield','engineer','rifleman','grenadier','sniper','engineer','rifleman'];for(let i=0;i<number;i++){const h=this.makeHuman(site.x+i%4*24,site.y+Math.floor(i/4)*24,site);this.forces.assign(h,site,roles[i]);h.state='search';h.lastX=point.x;h.lastY=point.y;h.searchTime=180;h.responseAllocated=true;h.operationId=operationId;squad.push(h)}site.strength-=number;
- let parked=null;const inventory=this.world.militaryCapacity?.(site)?.inventory||site.vehicleInventory||{},kind=this.tier===5&&(inventory.tank||0)>0&&this.vehicleRoom('tank')?'tank':(inventory.apc||0)>0?'apc':'jeep',cost=window.ATSVehicleSpecs?.[kind]?.budget||4;
+ let parked=null;const inventory=this.world.militaryCapacity?.(site)?.inventory||site.vehicleInventory||{},kind=this.tier===5&&(inventory.tank||0)>0&&this.vehicleRoom('tank')?'tank':(inventory.apc||0)>0?'apc':'jeep',cost=this.militaryVehicleProfile(kind).spec.budget||4;
  if(this.vehicleRoom(kind)&&(inventory[kind]||0)>0&&this.forceWeight()+cost<=this.responseBudget&&!site.depotDown&&!site.fuelDown&&(!['tank','apc'].includes(kind)||site.armorCapacity>=cost)){parked=this.makeMilitaryVehicle(site,kind,point,0,operationId);if(parked){inventory[kind]--;if(['tank','apc'].includes(kind))site.armorCapacity-=cost}}
  const formation=this.forces.createSquad?.(squad,point,{order:'Hold Line',siteId:site.id,roadblock:true,vehicleId:parked?.id,operationId});
  const op={id:operationId,name:'BLOCKADE',channel:'roadblock',siteId:site.id,target:{x:point.x,y:point.y},point:{x:point.x,y:point.y},facing:Math.atan2(target.y-point.y,target.x-point.x),members:squad.map(h=>h.id),engineers:squad.filter(h=>h.role==='engineer').map(h=>h.id),squadId:formation?.id,until:this.time+210,expiresAt:this.time+210,createdAt:this.time,phaseAt:this.time,status:'active',phase:'approach',origins:[site.id],engineerJobs:[],built:false,objects:[]};this.roadblockOperations.push(op);this.militaryOperations.push(op);this.events.push({type:'blockade',operationId,name:'BLOCKADE',time:this.time,x:point.x,y:point.y,siteId:site.id});if(this.events.length>30)this.events.shift();if(this.warIntensity>=3)this.notify('BLOCKADE — Military engineers move to secure a road.','red');return true;
@@ -273,13 +276,13 @@ class Game{
  const sites=this.world.getSites(this.king.x,this.king.y,1050);
  for(const s of sites){
  let budget=this.responseBudget-this.forceWeight();
- while(s.sleepingHumans?.length&&this.humans.length+this.vehicles.reduce((n,v)=>n+(v.troops||0),0)<this.activeHumanCapacity()&&budget>=3){const h=s.sleepingHumans.pop();this.humans.push(h);budget-=h.role==='mortar'?3:2}
- while(s.sleepingVehicles?.length){const v=s.sleepingVehicles[s.sleepingVehicles.length-1],cost=(window.ATSVehicleSpecs?.[v.vehicleClass||v.kind]?.budget||4)+(v.troops||0)*2;if(cost>budget||!this.vehicleRoom(v.vehicleClass||v.kind)||this.humans.length+this.vehicles.reduce((n,a)=>n+(a.troops||0),0)+(v.troops||0)>this.activeHumanCapacity())break;this.vehicles.push(s.sleepingVehicles.pop());budget-=cost}
+ while(s.sleepingHumans?.length&&this.humans.length+this.vehicles.reduce((n,v)=>n+(v.troops||0),0)<this.activeHumanCapacity()){const h=s.sleepingHumans[s.sleepingHumans.length-1],cost=this.humanWeight(h.role);if(cost>budget)break;this.humans.push(s.sleepingHumans.pop());budget-=cost}
+ while(s.sleepingVehicles?.length){const v=s.sleepingVehicles[s.sleepingVehicles.length-1],cost=this.forces.vehicleSpec(v).budget+this.cargoWeight(v);if(cost>budget||!this.vehicleRoom(v.vehicleClass||v.kind)||this.humans.length+this.vehicles.reduce((n,a)=>n+(a.troops||0),0)+(v.troops||0)>this.activeHumanCapacity())break;this.vehicles.push(s.sleepingVehicles.pop());budget-=cost}
  if(s.spawned)continue;const count=s.guards??Math.max(0,s.tier*2);
- s.spawned=true;s.nextOperation=this.time+55+Math.random()*45;const guards=[];for(let i=0;i<count;i++){let a=i/count*TAU;const h=this.makeHuman(s.x+Math.cos(a)*90,s.y+Math.sin(a)*90,s);if(this.humans.length+this.vehicles.reduce((n,v)=>n+(v.troops||0),0)>this.activeHumanCapacity()||budget<2){this.humans.pop();(s.sleepingHumans||(s.sleepingHumans=[])).push(h)}else{budget-=2;guards.push(h)}}
+ s.spawned=true;s.nextOperation=this.time+55+Math.random()*45;const guards=[];for(let i=0;i<count;i++){let a=i/count*TAU;const h=this.makeHuman(s.x+Math.cos(a)*90,s.y+Math.sin(a)*90,s),cost=this.humanWeight(h.role);if(this.humans.length+this.vehicles.reduce((n,v)=>n+(v.troops||0),0)>this.activeHumanCapacity()||budget<cost){this.humans.pop();(s.sleepingHumans||(s.sleepingHumans=[])).push(h)}else{budget-=cost;guards.push(h)}}
  if(s.tier>=2&&guards.length)this.forces.createSquad?.(guards,{x:s.x,y:s.y},{order:'Defend Base',siteId:s.id});
  this.world.militaryCapacity?.(s);const kind=this.mobilized&&this.tier===5&&s.vehicleInventory?.tank?'tank':this.tier>=4&&s.vehicleInventory?.apc?'apc':s.tier>=4?'armored':'jeep';
- if(s.tier>=3&&this.vehicleRoom(kind)&&budget>=(window.ATSVehicleSpecs?.[kind]?.budget||4)&&!s.depotDown&&!s.fuelDown&&(s.vehicleInventory?.[kind]||0)>0){const v=this.makeMilitaryVehicle(s,kind,{x:s.x,y:s.y});if(v){v.state='idle';s.vehicleInventory[kind]--;if(['tank','ifv','apc'].includes(kind)&&Number.isFinite(s.armorCapacity))s.armorCapacity=Math.max(0,s.armorCapacity-(window.ATSVehicleSpecs?.[kind]?.budget||{tank:12,ifv:9,apc:7}[kind]))}}}
+ const cost=this.militaryVehicleProfile(kind).spec.budget,heavy=['tank','ifv','apc'].includes(kind);if(s.tier>=3&&this.vehicleRoom(kind)&&budget>=cost&&!s.depotDown&&!s.fuelDown&&(s.vehicleInventory?.[kind]||0)>0&&(!heavy||s.armorCapacity>=cost)){const v=this.makeMilitaryVehicle(s,kind,{x:s.x,y:s.y});if(v){v.state='idle';s.vehicleInventory[kind]--;if(heavy&&Number.isFinite(s.armorCapacity))s.armorCapacity=Math.max(0,s.armorCapacity-cost)}}}
  }
  sleepDistantForces(){
  // Preserve each garrison rather than letting old, inactive guards consume the
@@ -378,7 +381,7 @@ class Game{
  }else{
  a.shootTimer-=dt;a.perceptionTimer=Math.max(0,a.perceptionTimer-dt);
  if(a.state==='search'||a.state==='investigate'){a.searchTime-=dt;target={x:a.lastX,y:a.lastY};speed=72;if(a.searchTime<=0){a.state='patrol';a.reported=false;a.suspicion=0;a.raidTarget=null}}
- else if(kind==='vehicle'&&a.state==='raid'){this.forces.initVehicle?.(a);target=a.target;speed=window.ATSVehicleSpecs?.[a.vehicleClass||a.kind]?.speed||(a.kind==='armored'?70:95);if(a.mobilityDamage>=100)speed=0;else speed*=1-(a.mobilityDamage||0)/160;speed*=1-(a.engineDamage||0)/180}
+ else if(kind==='vehicle'&&a.state==='raid'){this.forces.initVehicle?.(a);target=a.target;speed=this.forces.vehicleSpec(a).speed;if(a.mobilityDamage>=100)speed=0;else speed*=1-(a.mobilityDamage||0)/160;speed*=1-(a.engineDamage||0)/180}
  }
  // Distant journeys advance at a strategic cadence, with one bounded corridor check.
  // Reported response journeys may queue bounded low-priority corridors; they
@@ -539,13 +542,19 @@ class Game{
  const regionalReserve=!options.operationId&&!settlementRaid&&this.population>=300&&this.settlements.some(s=>s.known&&s.population>0)?Math.max(0,this.responseBudget*.7-this.forceWeight()):Infinity;
  const pack=this.responsePackage(site,target,settlementRaid,options),remaining=Math.min(this.responseBudget-this.forceWeight(),options.budgetAllowance??Infinity,regionalReserve);
  const vehicles=[];let cost=0,armor=0;const armorLimit=pack.capacity.armorCapacity??site.armorCapacity??Infinity;
- for(const kind of pack.vehicles){const weight=window.ATSVehicleSpecs?.[kind]?.budget||({tank:12,ifv:9,apc:7}[kind]||4),heavy=['tank','ifv','apc'].includes(kind)?weight:0;if(!this.vehicleRoom(kind,vehicles)||armor+heavy>armorLimit||cost+weight+6>remaining)continue;vehicles.push(kind);cost+=weight;armor+=heavy}
- const sleeping=this.vehicles.reduce((sum,v)=>sum+(v.troops||0),0),number=Math.floor(Math.min(options.peopleCap??Infinity,pack.people,this.activeHumanCapacity()-this.humans.length-sleeping,Math.floor((remaining-cost)/(pack.stage===5?2.2:pack.stage>=3?2:1.25))));
+ for(const kind of pack.vehicles){const weight=this.militaryVehicleProfile(kind,vehicles.length).spec.budget||4,heavy=['tank','ifv','apc'].includes(kind)?weight:0;if(!this.vehicleRoom(kind,vehicles)||armor+heavy>armorLimit||cost+weight+6>remaining)continue;vehicles.push(kind);cost+=weight;armor+=heavy}
+ const roleList=pack.stage===5?['leader','rifleman','shield','rifleman','heavy','grenadier','medic','engineer','ranger','sniper','mortar','rifleman']:pack.stage>=4?['leader','rifleman','shield','ranger','heavy','grenadier','medic','sniper','engineer','rifleman','heavy','ranger']:pack.stage>=3?['leader','rifleman','rifleman','flanker','gunner','grenadier','medic','sniper','rifleman','rifleman','tracker','rifleman']:pack.stage===2?['officer','shield','tracker','flanker','medic','guard','guard','guard','tracker']:['officer','tracker','guard','guard','guard'];
+ const roleAt=i=>pack.stage===5&&this.warIntensity>=3?this.forces.militaryRole(i):roleList[i%roleList.length];
+ const allocationWeight=number=>{let weight=cost,cargo=Math.max(0,number-12),carried=0;for(const kind of vehicles){const seats=window.ATSVehicleSpecs?.[kind]?.capacity||0,troops=Math.min(cargo,seats);cargo-=troops;carried+=troops;for(let i=0;i<troops;i++)weight+=this.humanWeight(this.forces.militaryRole(i))}for(let i=0;i<number-carried;i++)weight+=this.humanWeight(roleAt(i));return weight};
+ const sleeping=this.vehicles.reduce((sum,v)=>sum+(v.troops||0),0);let number=Math.floor(Math.min(options.peopleCap??Infinity,pack.people,this.activeHumanCapacity()-this.humans.length-sleeping));
+ while(number>=3&&allocationWeight(number)>remaining)number--;
  if(number<3)return false;
  const operationId=options.operationId||'operation-'+this.nextId++,snapshot={x:target.x,y:target.y,id:target.id},start={x:site.x,y:site.y},squads=[],created=[];let cargo=Math.max(0,number-12),carried=0;
- for(const kind of vehicles){const seats=window.ATSVehicleSpecs?.[kind]?.capacity||({apc:8,ifv:5,truck:12}[kind]||0),troops=Math.min(cargo,seats);const v=this.makeMilitaryVehicle(site,kind,snapshot,troops,operationId,created.length);if(!v)continue;cargo-=troops;carried+=troops;created.push(v);if(site.vehicleInventory)site.vehicleInventory[kind]=Math.max(0,(site.vehicleInventory[kind]||0)-1);if(['tank','ifv','apc'].includes(kind)&&Number.isFinite(site.armorCapacity))site.armorCapacity=Math.max(0,site.armorCapacity-(window.ATSVehicleSpecs?.[kind]?.budget||{tank:12,ifv:9,apc:7}[kind]))}
- const roleList=pack.stage===5?['leader','rifleman','shield','rifleman','heavy','grenadier','medic','engineer','ranger','sniper','mortar','rifleman']:pack.stage>=4?['leader','rifleman','shield','ranger','heavy','grenadier','medic','sniper','engineer','rifleman','heavy','ranger']:pack.stage>=3?['leader','rifleman','rifleman','flanker','gunner','grenadier','medic','sniper','rifleman','rifleman','tracker','rifleman']:pack.stage===2?['officer','shield','tracker','flanker','medic','guard','guard','guard','tracker']:['officer','tracker','guard','guard','guard'];
- for(let i=0;i<number-carried;i++){const h=this.makeHuman(start.x+(i%4)*26,start.y+Math.floor(i/4)*26,site);this.forces.assign(h,site,roleList[i%roleList.length]);h.state='search';h.lastX=target.x;h.lastY=target.y;h.searchTime=150;h.raidTarget=settlementRaid?target.id:null;h.assaultPhase=options.assaultPhase;h.reported=true;h.responseAllocated=true;h.operationId=operationId;squads.push(h)}
+ for(const [vehicleIndex,kind]of vehicles.entries()){const seats=window.ATSVehicleSpecs?.[kind]?.capacity||0,troops=Math.min(cargo,seats);const v=this.makeMilitaryVehicle(site,kind,snapshot,troops,operationId,vehicleIndex);if(!v)continue;cargo-=troops;carried+=troops;created.push(v);if(site.vehicleInventory)site.vehicleInventory[kind]=Math.max(0,(site.vehicleInventory[kind]||0)-1);if(['tank','ifv','apc'].includes(kind)&&Number.isFinite(site.armorCapacity))site.armorCapacity=Math.max(0,site.armorCapacity-(this.forces.vehicleSpec(v).budget||4))}
+ // A blocked staging slot can change the carried/on-foot split. Charge the
+ // resulting roles before committing any personnel from the installation.
+ let actualCost=created.reduce((n,v)=>n+this.forces.vehicleSpec(v).budget+this.cargoWeight(v),0),foot=0;while(foot<number-carried&&actualCost+this.humanWeight(roleAt(foot))<=remaining){actualCost+=this.humanWeight(roleAt(foot));foot++}number=carried+foot;
+ for(let i=0;i<foot;i++){const h=this.makeHuman(start.x+(i%4)*26,start.y+Math.floor(i/4)*26,site);this.forces.assign(h,site,roleAt(i));h.state='search';h.lastX=target.x;h.lastY=target.y;h.searchTime=150;h.raidTarget=settlementRaid?target.id:null;h.assaultPhase=options.assaultPhase;h.reported=true;h.responseAllocated=true;h.operationId=operationId;squads.push(h)}
  const formations=[];for(let i=0;i<squads.length;i+=12){const squad=this.forces.createSquad?.(squads.slice(i,i+12),snapshot,{order:settlementRaid?(options.assaultPhase?'Approach':'Attack Settlement'):options.intercept?'Hold Line':'Search',vehicleId:created[i===0?0:Math.min(created.length-1,1)]?.id,operationId,siteId:site.id});if(squad){squad.assaultPhase=options.assaultPhase;formations.push(squad)}}
  for(const platoon of this.forces.platoons?.values?.()||[])if(platoon.operationId===operationId)platoon.order=settlementRaid?'Attack Settlement':options.intercept?'Intercept Horde':'Encircle';
  for(const v of created){v.assaultPhase=options.assaultPhase;if(settlementRaid)v.settlementTarget=target.id}
@@ -646,9 +655,8 @@ class Game{
  }
  if(h.state==='combat'){
  let target=h.targetId==='king'?this.king:this.apesById.get(h.targetId);if(!target||target.hp<=0){h.state='search';return}
- const d=dist(h,target);h.dir=Math.atan2(target.y-h.y,target.x-h.x);
- if(d<38){this.move(h,h.x-target.x,h.y-target.y,62,dt)}else if(d>210){const flank=h.role==='flanker'?h.flankSide*90:0;this.move(h,target.x-h.x+Math.cos(h.dir+Math.PI/2)*flank,target.y-h.y+Math.sin(h.dir+Math.PI/2)*flank,60,dt);}
- if(h.shootTimer<=0&&d<330&&this.world.lineClear(h.x,h.y,target.x,target.y))this.shoot(h,target);
+ this.forces.combatMovement(h,target,dt);
+ if(h.shootTimer<=0&&dist(h,target)<this.forces.range(h)&&this.world.lineClear(h.x,h.y,target.x,target.y))this.shoot(h,target);
  }else if(h.state==='search'||h.state==='investigate'){
  h.searchTime-=dt;
  if(h.searchTime<=0){h.state='patrol';h.reported=false;h.suspicion=0;h.raidTarget=null}
@@ -759,7 +767,7 @@ class Game{
  }
  savedActor(a){const out={};for(const k in a)if(!k.startsWith('_')&&k!=='navCohort')out[k]=a[k];return out}
  serialize(){return {version:1,balanceVersion:2,militaryVersion:3,populationVersion:2,pursuitOperation:this.pursuitOperation,nextReinforcementAt:this.nextReinforcementAt,nextFieldOperation:this.nextFieldOperation,nextRegionalOperation:this.nextRegionalOperation,nextMajorOffensive:this.nextMajorOffensive,nextConvoyAt:this.nextConvoyAt,nextDirectorAt:this.nextDirectorAt,nextInterceptAt:this.nextInterceptAt,nextReconAt:this.nextReconAt,responseStage:this.responseStage,responsePeak:this.responsePeak,mobilized:this.mobilized,warPhase:this.warPhase,announcedWarIntensity:this.announcedWarIntensity,operationSerial:this.operationSerial,observedHorde:this.observedHorde,roadblockOperations:this.roadblockOperations,militaryOperations:this.militaryOperations,
- squads:Array.from(this.forces.squads?.values?.()||[],s=>({id:s.id,initialSize:s.initialSize,density:s.density,fallbackPoint:s.fallbackPoint,fallbackUntil:s.fallbackUntil,fallbackComplete:s.fallbackComplete,counterattackUntil:s.counterattackUntil,kingIdentifiedUntil:s.kingIdentifiedUntil,firingLine:s.firingLine,firingFacing:s.firingFacing,members:s.members,objective:s.objective,order:s.order,vehicleId:s.vehicleId,siteId:s.siteId,operationId:s.operationId,leaderId:s.leaderId,reportAt:s.reportAt,cohesionLossUntil:s.cohesionLossUntil,nextReport:s.nextReport,platoonId:s.platoonId,platoonSlot:s.platoonSlot,assaultPhase:s.assaultPhase,fortificationIds:s.fortificationIds,lineBuildQueue:s.lineBuildQueue})),
+ squads:Array.from(this.forces.squads?.values?.()||[],s=>({id:s.id,initialSize:s.initialSize,density:s.density,fallbackPoint:s.fallbackPoint,fallbackFacing:s.fallbackFacing,fallbackUntil:s.fallbackUntil,fallbackComplete:s.fallbackComplete,regroupPoint:s.regroupPoint,regroupFacing:s.regroupFacing,counterattackUntil:s.counterattackUntil,kingIdentifiedUntil:s.kingIdentifiedUntil,firingLine:s.firingLine,firingFacing:s.firingFacing,members:s.members,objective:s.objective,order:s.order,vehicleId:s.vehicleId,siteId:s.siteId,operationId:s.operationId,leaderId:s.leaderId,reportAt:s.reportAt,cohesionLossUntil:s.cohesionLossUntil,nextReport:s.nextReport,platoonId:s.platoonId,platoonSlot:s.platoonSlot,assaultPhase:s.assaultPhase,assaultFacing:s.assaultFacing,fortificationIds:s.fortificationIds,lineBuildQueue:s.lineBuildQueue})),
  platoons:Array.from(this.forces.platoons?.values?.()||[],p=>this.savedActor(p)),engineerJobs:Array.from(this.forces.engineerJobs?.values?.()||[],j=>this.savedActor(j)),corpseVersion:1,corpses:this.corpses.map(c=>this.savedActor(c)),seed:this.seed,difficulty:this.difficulty,time:this.time,nextId:this.nextId,king:this.king,apes:this.apes.map(a=>this.savedActor(a)),humans:this.humans.map(a=>this.savedActor(a)),vehicles:this.vehicles.map(a=>this.savedActor(a)),helis:this.helis.map(a=>this.savedActor(a)),settlements:this.settlements.map(a=>this.savedActor(a)),food:this.food,tier:this.tier,stats:this.stats,world:this.world.serialize(),hazards:this.forces.hazards,heliTimer:this.heliTimer,events:this.events,messages:this.messages,ended:this.ended}}
  static fromJSON(d,hooks={}){
  if(!d||d.version!==1||!d.king||!Array.isArray(d.apes)||!d.world||!d.stats||d.ended||d.king.hp<=0)throw new Error('This is not a living Apes Together Strong run.');
