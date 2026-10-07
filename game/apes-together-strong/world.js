@@ -1,6 +1,9 @@
 (function () {
   'use strict';
 
+  // Shared by rescues, families, saves and the population display.
+  window.MAX_APE_POPULATION = 1000;
+
   const TAU = Math.PI * 2;
   function hash(value) {
     const text = String(value);

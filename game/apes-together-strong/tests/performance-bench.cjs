@@ -10,7 +10,8 @@ for (const scenario of SCENARIOS.filter(s => !only || only.includes(s.id))) {
   const { report } = runScenario(loadEngine(value('--source')), scenario, frames, args.includes('--profile'));
   reports.push(report);
   console.log(`${report.id}: mean ${report.meanMs.toFixed(2)} ms, p95 ${report.p95Ms.toFixed(2)} ms, max ${report.maxMs.toFixed(2)} ms; A* ${report.searches}; ${report.apes} apes / ${report.humans} humans; ${report.chunksAdded} new chunks`);
-  if (frames >= 600) console.log(`First/last 60-tick means: ${report.firstWindowMeanMs.toFixed(2)} / ${report.lastWindowMeanMs.toFixed(2)} ms; peak bullets ${report.peakBullets}, effects ${report.peakEffects}, queue ${report.maxQueue}; peak A* starts ${report.maxSearches}, expansions ${report.maxExpanded}, AI ${report.maxThink}, LOS ${report.maxLos}`);
+  if (['G', 'H', 'I', 'J', 'K'].includes(report.id)) console.log(`  ${report.followers} followers / ${report.settled} settled; ${report.tanks} tanks / ${report.armored} armored / ${report.helis} helicopters; peak grenades ${report.peakGrenades}, mortars ${report.peakMortars}; shared routes ${report.sharedHits}, peak distant actors ${report.peakAbstractApes}`);
+  if (frames >= 600) console.log(`First/last 60-tick means: ${report.firstWindowMeanMs.toFixed(2)} / ${report.lastWindowMeanMs.toFixed(2)} ms; peak bullets ${report.peakBullets}, effects ${report.peakEffects}, queue ${report.maxQueue}; peak A* starts ${report.maxSearches}, expansions ${report.maxExpanded}, AI ${report.maxThink}, LOS ${report.maxLos}, neighbor pairs ${report.maxSeparationPairs}`);
   if (args.includes('--profile')) console.table(Object.entries(report.methods).map(([name, m]) => ({ name, calls: m.calls, inclusiveMs: Math.round(m.ms) })).sort((a, b) => b.inclusiveMs - a.inclusiveMs));
 }
 const output = value('--output');

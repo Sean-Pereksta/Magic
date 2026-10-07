@@ -17,7 +17,8 @@ const ROLES={
  ranger:{label:'Ranger',hp:82,weapon:'assault',range:350,speed:1.3,accuracy:.65,weight:1.5},
  heavy:{label:'Heavy assault gunner',hp:112,weapon:'machine',range:380,speed:.78,accuracy:.85,weight:2},
  engineer:{label:'Combat engineer',hp:80,weapon:'rifle',range:320,speed:1,weight:1.5},
- leader:{label:'Squad leader',hp:90,weapon:'assault',range:380,speed:1.03,accuracy:.78,weight:1.5}
+ leader:{label:'Squad leader',hp:90,weapon:'assault',range:380,speed:1.03,accuracy:.78,weight:1.5},
+ mortar:{label:'Mortar team',hp:75,weapon:'pistol',range:720,speed:.72,weight:3}
 };
 const VEHICLES={
  jeep:{label:'Scout jeep',hp:230,speed:95,radius:21,weight:4,capacity:0,range:300,weapon:'rifle',reload:1.2,front:1,side:1},
@@ -30,7 +31,7 @@ const VEHICLES={
 };
 for(const spec of Object.values(VEHICLES))spec.budget=spec.weight;
 class Forces {
- constructor(game){this.game=game;this.hazards=[];this.squads=new Map()}
+ constructor(game){this.game=game;this.hazards=[];this.squads=new Map();this.nextMortarAt=0}
  assign(h,site,requested){
   if(!requested&&h.role&&ROLES[h.role])return;
   const tier=Math.max(site?.tier||1,this.game.tier-1),n=ATSUtil.hash(h.id+this.game.seed)%100;let role=requested||'guard';
@@ -41,14 +42,15 @@ class Forces {
  armor(h,damage,source){if(h.role!=='shield'||!source)return damage;const g=this.game,angle=Math.atan2(source.y-h.y,source.x-h.x),frontal=Math.cos(angle-h.dir)>.45,swarm=g.apeGrid.near(h.x,h.y,52).length;if(frontal&&swarm<4){g.effect('text',h.x,h.y,{text:'BLOCK',life:.45,color:'#abc5cf'});return damage*.42}return damage}
  createSquad(members,objective,options={}){
   const g=this.game,id=options.id||'squad-'+g.nextId++,point={x:objective?.x??members[0]?.x??0,y:objective?.y??members[0]?.y??0},order=options.order||'Search';
-  const squad={id,members:members.map(h=>h.id),objective:point,order,vehicleId:options.vehicleId||null,siteId:options.siteId||members[0]?.siteId,operationId:options.operationId||null,leaderId:members.find(h=>h.role==='leader'||h.role==='officer')?.id,reportAt:options.reportAt??g.time,nextThink:g.time,cohesionLossUntil:0,density:0};
+  const squad={id,members:members.map(h=>h.id),initialSize:members.length,objective:point,order:order==='Retreat'?'Fallback':order,vehicleId:options.vehicleId||null,siteId:options.siteId||members[0]?.siteId,operationId:options.operationId||null,leaderId:members.find(h=>h.role==='leader'||h.role==='officer')?.id,reportAt:options.reportAt??g.time,nextThink:g.time,cohesionLossUntil:0,density:0};
   this.squads.set(id,squad);
-  members.forEach((h,i)=>{h.squadId=id;h.squadSlot=i;h.squadRole=h.role;h.squadObjective={...point};h.squadOrder=order;h.squadVehicleId=squad.vehicleId;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=id;h.lastX=point.x;h.lastY=point.y});return squad;
+  members.forEach((h,i)=>{h.squadId=id;h.squadSlot=i;h.squadRole=h.role;h.squadObjective={...point};h.squadOrder=squad.order;h.squadVehicleId=squad.vehicleId;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=id;h.lastX=point.x;h.lastY=point.y});return squad;
  }
  restoreSquads(saved=[]){
   this.squads.clear();const groups=new Map(),records=new Map((Array.isArray(saved)?saved:[]).map(s=>[s.id,s])),g=this.game,people=[...g.humans];for(const s of g.world.sites.values())people.push(...(s.sleepingHumans||[]));
   for(const h of people)if(h.hp>0&&h.squadId){if(!groups.has(h.squadId))groups.set(h.squadId,[]);groups.get(h.squadId).push(h)}
-  for(const [id,members]of groups){members.sort((a,b)=>(a.squadSlot||0)-(b.squadSlot||0));const h=members[0],saved=records.get(id),s=this.createSquad(members,saved?.objective||h.squadObjective||{x:h.lastX,y:h.lastY},{id,order:saved?.order||h.squadOrder,vehicleId:saved?.vehicleId||h.squadVehicleId,operationId:saved?.operationId||h.squadOperationId,reportAt:saved?.reportAt??h.squadReportAt});s.cohesionLossUntil=Math.max(saved?.cohesionLossUntil||0,...members.map(h=>h.cohesionLossUntil||0));s.nextReport=saved?.nextReport||0}
+  for(const [id,members]of groups){members.sort((a,b)=>(a.squadSlot||0)-(b.squadSlot||0));const h=members[0],saved=records.get(id),s=this.createSquad(members,saved?.objective||h.squadObjective||{x:h.lastX,y:h.lastY},{id,order:saved?.order||h.squadOrder,vehicleId:saved?.vehicleId||h.squadVehicleId,operationId:saved?.operationId||h.squadOperationId,reportAt:saved?.reportAt??h.squadReportAt});s.cohesionLossUntil=Math.max(saved?.cohesionLossUntil||0,...members.map(h=>h.cohesionLossUntil||0));s.nextReport=saved?.nextReport||0;for(const key of ['initialSize','density','fallbackPoint','fallbackUntil','fallbackComplete','counterattackUntil','kingIdentifiedUntil','firingLine','firingFacing'])if(saved?.[key]!==undefined)s[key]=saved[key]}
+  this.nextMortarAt=Math.max(g.time,...this.hazards.filter(h=>h.type==='mortar'&&h.life>0).map(h=>(h.start||0)+2.4));
  }
  onDeath(a){
   const g=this.game;if(a.squadId){const squad=this.squads.get(a.squadId);if(squad?.leaderId===a.id){squad.leaderId=null;squad.cohesionLossUntil=g.time+7;for(const id of squad.members){const h=g.humansById.get(id);if(h&&h.hp>0){h.cohesionLossUntil=g.time+7;h.shootTimer=Math.max(h.shootTimer,.8);h.squadOrder='Regroup'}}g.effect('text',a.x,a.y,{text:'LEADER DOWN',life:1.3,color:'#e9bb8a'})}}
@@ -61,35 +63,95 @@ class Forces {
   for(let i=0;i<count;i++){const a=candidates[Math.floor(i*candidates.length/count)];if(a.hp<=0)continue;const sight=g.lineVisible(observer,a);if(sight===null)break;checked++;if(sight)visible++}
   return checked&&!(checked<count&&g.performance.losRemaining<=0)?Math.round(candidates.length*visible/checked):null;
  }
+ communicationsAvailable(observer){
+  const g=this.game,site=g.world.sites.get(observer.siteId);if(site?.radioDown)return false;
+  if(observer.hasRadio)return true;
+  const squad=this.squads.get(observer.squadId);if(squad?.members.some(id=>{const h=g.humansById.get(id);return h?.hp>0&&h.hasRadio&&distance(observer,h)<650&&!g.world.sites.get(h.siteId)?.radioDown}))return true;
+  return g.humanGrid.near(observer.x,observer.y,480).some(h=>h.hp>0&&h.hasRadio&&!g.world.sites.get(h.siteId)?.radioDown);
+ }
+ // Examine a few occupied cells around a confirmed contact rather than sorting
+ // every ape for every gun. Each selected center must pass the shared LOS budget.
+ selectCluster(observer,target,options={}){
+  const g=this.game;if(!target)return null;
+  const radius=options.radius||90,range=options.range||this.range(observer),minRange=options.minRange||0;
+  const key=[radius,range,minRange,options.deconflict||'',options.support?'support':''].join(':');
+  const cached=observer._cluster;if(cached?.key===key&&g.time-cached.time<.65&&distance(cached.origin,target)<100)return cached.point;
+  if(!options.budgeted&&!g.performance.think(observer._militaryInitialized?'vehicle':observer.id?.startsWith('heli')?'air':'human'))return null;
+  const cells=new Map(),size=Math.max(55,radius);
+  for(const a of g.apeGrid.near(target.x,target.y,280)){
+   const gap=distance(observer,a);if(a.hp<=0||gap>range||gap<minRange)continue;
+   const cell=Math.floor(a.x/size)+','+Math.floor(a.y/size);let bucket=cells.get(cell);
+   if(!bucket)cells.set(cell,bucket={representative:a,count:0,x:0,y:0});bucket.count++;bucket.x+=a.x;bucket.y+=a.y;
+  }
+  const candidates=Array.from(cells.values()).sort((a,b)=>b.count-a.count).slice(0,8);let best=null;
+  for(const bucket of candidates){
+   const center=bucket.representative,sight=g.lineVisible(observer,center);if(sight===null)break;if(!sight)continue;
+   const apes=g.apeGrid.near(center.x,center.y,radius).filter(a=>a.hp>0),count=apes.length;
+   if(options.deconflict&&this.hazards.some(h=>['grenade','mortar','airstrike'].includes(h.type)&&h.life>0&&distance(h,center)<(h.radius+radius)*.8))continue;
+   // Nearby infantry under pressure gives supporting armor a reason to shift fire.
+   const pressure=options.support?g.humanGrid.near(center.x,center.y,125).filter(h=>h.hp>0).length:0;
+   const allies=g.humanGrid.near(center.x,center.y,radius*.75).filter(h=>h.hp>0).length;
+   const score=count+Math.min(pressure,10)*2-allies*3;
+   if(!best||score>best.score)best={id:center.id,x:center.x,y:center.y,count,score,confirmedAt:g.time};
+  }
+  observer._cluster={key,time:g.time,origin:{x:target.x,y:target.y},point:best};return best;
+ }
+ supportFor(squad,members){
+  const g=this.game,anchor=members.find(h=>h.id===squad.leaderId)||members[0];
+  const armor=g.vehicles.filter(v=>v.hp>0&&['tank','apc','ifv','armored'].includes(v.vehicleClass||v.kind)&&distance(anchor,v)<520);
+  const friends=g.humanGrid.near(anchor.x,anchor.y,430).filter(h=>h.hp>0&&h.squadId&&h.squadId!==squad.id);
+  return {anchor,armor,friends,supported:armor.length>0||friends.length>=4,strength:members.length+friends.length+armor.reduce((n,v)=>n+((v.vehicleClass||v.kind)==='tank'?16:9),0)};
+ }
+ fallbackPosition(squad,support){
+  const g=this.game,anchor=support.anchor,point=squad.objective,angle=Math.atan2(point.y-anchor.y,point.x-anchor.x),rear={x:anchor.x-Math.cos(angle)*180,y:anchor.y-Math.sin(angle)*180};
+  const home=g.world.sites.get(squad.siteId),positions=[...support.armor,...support.friends];if(home&&!home.cleared)positions.push(home);
+  const cover=positions.filter(p=>distance(anchor,p)>40&&distance(anchor,p)<500).sort((a,b)=>distance(a,rear)-distance(b,rear))[0];
+  if(!cover)return rear;const d=distance(anchor,cover),scale=Math.min(1,200/d);return{x:anchor.x+(cover.x-anchor.x)*scale,y:anchor.y+(cover.y-anchor.y)*scale};
+ }
  thinkSquad(squad){
   const g=this.game;if(g.time<squad.nextThink||!g.performance.think())return;squad.nextThink=g.time+.5;
   const members=squad.members.map(id=>g.humansById.get(id)).filter(h=>h&&h.hp>0);if(!members.length)return;
   let witness=null,target=null;
   for(const h of members)if(h.state==='combat'&&h.targetId){const a=h.targetId==='king'?g.king:g.apesById.get(h.targetId);if(a?.hp>0&&g.time-(h.lastSeenAt??-100)<2&&distance(h,a)<=this.range(h)+40){const sight=g.lineVisible(h,a);if(sight){witness=h;target=a;break}if(sight===null)break}}
-  if(target){squad.objective={x:target.x,y:target.y};squad.reportAt=g.time;const density=this.observedDensity(witness,target);if(density!==null)squad.density=density;squad.observedTargetId=target.id}
+  const previousDensity=squad.density;
+  if(target){squad.objective={x:target.x,y:target.y};squad.reportAt=g.time;const density=this.observedDensity(witness,target);if(density!==null){squad.density=density;if(this.communicationsAvailable(witness))g.recordHordeContact?.(witness,target,density);if(previousDensity>=40&&density<previousDensity*.65){squad.counterattackUntil=g.time+8;squad.fallbackPoint=null;squad.fallbackComplete=false}}squad.observedTargetId=target.id}
   else if(g.time-squad.reportAt>5){squad.density=0;squad.observedTargetId=null}
   const vehicle=g.vehicles.find(v=>v.id===squad.vehicleId&&v.hp>0);squad.vehicle=vehicle;
-  const small=members.length<7,density=squad.density;
+  const support=this.supportFor(squad,members),density=squad.density,oldOrder=squad.order;
+  squad.supported=support.supported;squad.supportStrength=support.strength;
+  const badlyDamaged=members.reduce((n,h)=>n+h.hp,0)<members.reduce((n,h)=>n+h.maxHp,0)*.45||members.length<Math.max(2,(squad.initialSize||members.length)*.4);
+  const armyReady=support.supported&&support.strength>=Math.min(52,24+density/30);
   if(g.time<squad.cohesionLossUntil)squad.order='Regroup';
-  else if(target&&density>=150&&small)squad.order='Retreat';
-  else if(target&&density>=80)squad.order='Retreat';
+  else if(target&&density>=300&&!armyReady&&!badlyDamaged)squad.order='Shadow';
+  else if(target&&(badlyDamaged||density>=80&&!support.supported)&&!squad.fallbackComplete)squad.order='Fallback';
+  else if(target&&((oldOrder==='Fallback'||oldOrder==='Shadow')&&support.supported&&!badlyDamaged||g.time<(squad.counterattackUntil||0))){squad.order='Counterattack';if(oldOrder==='Fallback'||oldOrder==='Shadow')squad.counterattackUntil=g.time+8;squad.fallbackPoint=null;squad.fallbackComplete=false}
+  else if(target&&density>=80)squad.order=density>=150&&support.friends.length>=8&&ATSUtil.hash(squad.id)%3===0?'Flank':'Hold & Suppress';
   else if(target&&density>=40)squad.order='Suppress';
   else if(target&&vehicle)squad.order='Protect Vehicle';
   else if(target)squad.order='Advance';
-  else if(['Suppress','Retreat','Regroup','Advance','Protect Vehicle'].includes(squad.order))squad.order='Search';
-  if(target&&density>=40&&g.time>=(squad.nextReport||0)){const radio=members.find(h=>h.hasRadio);const site=g.world.sites.get(radio?.siteId);if(radio&&!site?.radioDown){squad.nextReport=g.time+24;g.alert(radio,'radio')}}
-  const anchor=vehicle||members.find(h=>h.id===squad.leaderId)||members[0];squad.anchor={x:anchor.x,y:anchor.y};
-  for(const h of members){h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadReportAt=squad.reportAt;h.lastX=squad.objective.x;h.lastY=squad.objective.y;h.cohesionLossUntil=squad.cohesionLossUntil;h.accuracyMultiplier=(ROLES[h.role]?.accuracy||1)*(squad.leaderId?.9:1);h.navCohort=squad.id}
+  else if(['Suppress','Retreat','Fallback','Regroup','Advance','Protect Vehicle','Hold & Suppress','Shadow','Counterattack','Flank'].includes(squad.order))squad.order='Search';
+  if(squad.order==='Fallback'){
+   if(!squad.fallbackPoint){squad.fallbackPoint=this.fallbackPosition(squad,support);squad.fallbackUntil=g.time+8}
+   if(distance(support.anchor,squad.fallbackPoint)<45||g.time>=squad.fallbackUntil){squad.fallbackComplete=true;squad.order='Hold & Suppress'}
+  }
+  if(target&&['Hold & Suppress','Suppress','Hold','Defend Base'].includes(squad.order)&&!squad.firingLine){
+   const line=members.filter(h=>['rifleman','shield','guard','leader','officer'].includes(h.role)),front=line.length?line:members;
+   squad.firingLine={x:front.reduce((n,h)=>n+h.x,0)/front.length,y:front.reduce((n,h)=>n+h.y,0)/front.length};squad.firingFacing=Math.atan2(target.y-squad.firingLine.y,target.x-squad.firingLine.x);
+  }else if(squad.order==='Counterattack'||!target&&g.time-squad.reportAt>5){squad.firingLine=null;squad.firingFacing=null}
+  if(target&&density>=40&&g.time>=(squad.nextReport||0)){const radio=members.find(h=>h.hasRadio);const site=g.world.sites.get(radio?.siteId);if(radio&&!site?.radioDown){squad.nextReport=g.time+(density>=150?16:24);g.alert(radio,'radio');if(density>=150){g.effect('text',radio.x,radio.y,{text:density>=300?'ARMY CONTACT':'MASS HORDE CONTACT',life:1.5,color:'#e6bb8c'});g.sound('military',.4,radio.x)}}}
+  const anchor=vehicle||support.anchor;squad.anchor={x:anchor.x,y:anchor.y};
+  for(const h of members){h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadReportAt=squad.reportAt;h.lastX=squad.objective.x;h.lastY=squad.objective.y;h.cohesionLossUntil=squad.cohesionLossUntil;h.accuracyMultiplier=(ROLES[h.role]?.accuracy||1)*(squad.leaderId?.9:1)*(g.tier===5?.86:1);h.navCohort=squad.id}
   if(!target&&distance(anchor,squad.objective)>100)g.navigation.setCohortRoute(squad.id,anchor,squad.objective,10,3);
  }
  formationPoint(h,squad){
-  const point=squad.objective,anchor=squad.anchor||h,vehicle=squad.vehicle,angle=Math.atan2(point.y-anchor.y,point.x-anchor.x),front={x:Math.cos(angle),y:Math.sin(angle)},side={x:-front.y,y:front.x},slot=h.squadSlot||0;
+  const point=squad.objective,anchor=squad.anchor||h,vehicle=squad.vehicle,holding=squad.firingLine&&['Hold & Suppress','Suppress','Hold','Defend Base'].includes(squad.order),angle=holding?squad.firingFacing:Math.atan2(point.y-anchor.y,point.x-anchor.x),front={x:Math.cos(angle),y:Math.sin(angle)},side={x:-front.y,y:front.x},slot=h.squadSlot||0;
   let depth=(Math.floor(slot/4)-1)*32,lateral=((slot%4)-1.5)*39;
-  if(h.role==='sniper'||h.role==='medic')depth=-115;else if(h.role==='heavy'||h.role==='gunner')depth=-58;else if(h.role==='ranger'||h.role==='flanker'){lateral=h.flankSide*145;depth=30}
+  if(h.role==='mortar')depth=-245;else if(h.role==='sniper'||h.role==='medic')depth=-115;else if(h.role==='heavy'||h.role==='gunner'||h.role==='grenadier')depth=-70;else if(h.role==='ranger'||h.role==='flanker'){lateral=h.flankSide*(squad.density>=80?200:145);depth=squad.density>=80?-40:30}
   if(vehicle){depth-=50;lateral+=(slot%2?1:-1)*42}
-  if(squad.order==='Retreat'){const home=this.game.world.sites.get(squad.siteId),cover=vehicle||home||{x:anchor.x-front.x*230,y:anchor.y-front.y*230};return {x:cover.x-front.x*70+side.x*lateral,y:cover.y-front.y*70+side.y*lateral}}
+  if(squad.order==='Fallback'||squad.fallbackComplete&&squad.fallbackPoint){const cover=squad.fallbackPoint||anchor;return{x:cover.x+front.x*Math.min(0,depth)+side.x*lateral,y:cover.y+front.y*Math.min(0,depth)+side.y*lateral}}
   if(squad.order==='Regroup')return {x:anchor.x-front.x*55+side.x*lateral,y:anchor.y-front.y*55+side.y*lateral};
-  const battle=squad.density>0,base=battle?{x:point.x-front.x*(vehicle?260:200),y:point.y-front.y*(vehicle?260:200)}:point;
+  const battle=squad.density>0,standOff=squad.order==='Shadow'?450:squad.order==='Counterattack'?145:vehicle?260:200,base=holding?squad.firingLine:battle?{x:point.x-front.x*standOff,y:point.y-front.y*standOff}:point;
+  if(squad.order==='Flank')lateral+=(ATSUtil.hash(squad.id)%2?1:-1)*190;
   return {x:base.x+front.x*depth+side.x*lateral,y:base.y+front.y*depth+side.y*lateral};
  }
  updateDoctrine(h,dt,perceived=false){
@@ -102,11 +164,11 @@ class Forces {
   if(h.state==='combat'&&target?.hp>0){
    const gap=distance(h,target);h.dir=Math.atan2(target.y-h.y,target.x-h.x);
    if(gap<45)g.move(h,h.x-target.x,h.y-target.y,64,dt);
-   else if(distance(h,point)>30)g.move(h,point.x-h.x,point.y-h.y,squad.order==='Retreat'?83:62,dt);
-   const cautious=squad.order==='Retreat'&&squad.members.length<7;
-   if(!cautious&&h.shootTimer<=0&&gap<this.range(h)&&g.time>=(h._fireCheck||0)&&g.performance.think()){
+   else if(distance(h,point)>30){const firing=['heavy','gunner'].includes(h.role)&&g.time<(h.burstUntil||0);g.move(h,point.x-h.x,point.y-h.y,firing?14:squad.order==='Fallback'?83:62,dt)}
+   const cautious=squad.order==='Shadow'&&gap>110;
+   if(!cautious&&h.role!=='mortar'&&h.shootTimer<=0&&gap<this.range(h)&&g.time>=(h._fireCheck||0)){
     h._fireCheck=g.time+.14;const sight=g.lineVisible(h,target);if(sight){
-     if(h.role==='heavy'){if(g.time>=(h.burstUntil||0)&&g.time>=(h.burstRestUntil||0)){h.burstUntil=g.time+(squad.density>=40?3.1:1.8);h.burstRestUntil=h.burstUntil+1.4}if(g.time<h.burstUntil)g.shoot(h,target)}else if(h.role!=='sniper')g.shoot(h,target);
+     if(['heavy','gunner'].includes(h.role)){if(g.time>=(h.burstUntil||0)&&g.time>=(h.burstRestUntil||0)){h.burstUntil=g.time+(squad.density>=40?(g.tier===5?4.2:3.1):1.8);h.burstRestUntil=h.burstUntil+1.25}if(g.time<h.burstUntil)g.shoot(h,target)}else if(h.role!=='sniper')g.shoot(h,target);
     }else if(sight===false){h.targetId=null;h.state='search';h.searchTime=18}
    }
   }else{
@@ -122,9 +184,42 @@ class Forces {
    if(h.constructing.remaining<=0){const b=h.constructing,chunk=g.world.chunks.get(Math.floor(b.x/g.world.chunkSize)+','+Math.floor(b.y/g.world.chunkSize));if(chunk&&!g.world.blocked(b.x,b.y,17)){const o=g.world._object(chunk,{id:'field-'+g.nextId++,type:b.type,x:b.x,y:b.y,r:b.type==='wall'?18:9,w:44,h:13,collision:b.type==='wall'?'rect':undefined,hp:130,maxHp:130,height:b.type==='wall'?24:43,siteId:h.siteId,temporary:true,expiresAt:g.time+70});this.hazards.push({type:'fortification',id:o.id,x:o.x,y:o.y,start:g.time,life:70});g.world.navRevision++;g._lightsAt=-1;g.effect('text',o.x,o.y,{text:b.type==='wall'?'BARRICADE':'FIELD LIGHT',color:'#cbbd94',life:1.2})}h.constructing=null;h.specialAt=g.time+35}
    return true;
   }
-  if(g.time>h.specialAt&&h.squadId&&['Hold','Suppress','Protect Vehicle','Defend Base'].includes(h.squadOrder)&&!g.apeGrid.near(h.x,h.y,150).length&&g.performance.think()){
+  if(g.time>h.specialAt&&h.squadId&&['Hold','Suppress','Hold & Suppress','Fallback','Protect Vehicle','Defend Base'].includes(h.squadOrder)&&!g.apeGrid.near(h.x,h.y,150).length&&g.performance.think()){
    const x=h.x+Math.cos(h.dir)*28,y=h.y+Math.sin(h.dir)*28;if(!g.world.blocked(x,y,20)){h.constructing={x,y,type:ATSUtil.hash(h.id+Math.floor(g.time))%2?'wall':'tower',remaining:3.5};h.animation={kind:'build',start:g.time,duration:3.5};return true}
   }return false;
+ }
+ tacticalTarget(h){
+  const g=this.game;if(!['rifleman','heavy','gunner','ranger','flanker','leader','sniper'].includes(h.role)||g.time<(h._tacticalThink||0))return;
+  const current=h.targetId==='king'?g.king:g.apesById.get(h.targetId);if(!current?.hp)return;
+  const vehicle=['rifleman','heavy','gunner','leader'].includes(h.role)?g.vehicles.find(v=>v.hp>0&&(v.overrun||v.swarmCount>=8)&&distance(h,v)<360):null;
+  if(!vehicle&&(h.role==='rifleman'||h.role==='leader'&&g.exposure<.35)){h._tacticalThink=g.time+.55;return}
+  if(!g.performance.think())return;h._tacticalThink=g.time+.55;
+  if(h.role==='sniper'||h.role==='leader'){
+   const king=g.king,gap=distance(h,king),angle=Math.atan2(king.y-h.y,king.x-h.x);
+   const exposed=g.exposure>=.35&&gap>95&&gap<this.range(h)&&Math.cos(angle-h.dir)>.65;
+   const sight=exposed?g.lineVisible(h,king):false;
+   if(sight){h.kingVisibleSince=h.kingVisibleSince??g.time;const squad=this.squads.get(h.squadId);if(squad)squad.kingIdentifiedUntil=g.time+3;if(h.role==='sniper'&&g.time-h.kingVisibleSince>=1.25){h.targetId='king';h.lastSeenAt=g.time}}
+   else if(sight===false)h.kingVisibleSince=null;
+  }
+  if(['rifleman','heavy','gunner','leader'].includes(h.role)){
+   if(vehicle){const threats=g.apeGrid.near(vehicle.x,vehicle.y,90).filter(a=>a.hp>0&&distance(h,a)<this.range(h)).slice(0,6);for(const a of threats){const sight=g.lineVisible(h,a);if(sight===null)break;if(sight){h.targetId=a.id;h.lastSeenAt=g.time;h.clearingVehicleId=vehicle.id;return}}}h.clearingVehicleId=null;
+  }
+  if(h.role==='ranger'||h.role==='flanker'){
+   const nearby=g.apeGrid.near(current.x,current.y,240),choices=[];
+   for(let i=0;i<Math.min(10,nearby.length);i++){const a=nearby[Math.floor(i*nearby.length/Math.min(10,nearby.length))];if(a.hp>0&&distance(h,a)<this.range(h))choices.push({a,score:g.apeGrid.near(a.x,a.y,60).length+distance(h,a)/130})}
+   choices.sort((a,b)=>a.score-b.score);for(const {a}of choices.slice(0,4)){const sight=g.lineVisible(h,a);if(sight===null)break;if(sight){h.targetId=a.id;h.lastSeenAt=g.time;break}}
+  }else if(['heavy','gunner'].includes(h.role)){
+   const cluster=this.selectCluster(h,current,{radius:75,range:this.range(h),budgeted:true});if(cluster){h.targetId=cluster.id;h.lastSeenAt=g.time}
+  }
+ }
+ updateMortar(h){
+  const g=this.game;if(h.role!=='mortar'||g.tier<5||g.time<h.specialAt||g.time<this.nextMortarAt||!this.communicationsAvailable(h))return;
+  const squad=this.squads.get(h.squadId);if(squad)this.thinkSquad(squad);
+  const id=squad?.observedTargetId||h.targetId,target=id==='king'?g.king:g.apesById.get(id),confirmed=squad?g.time-squad.reportAt<2:g.time-(h.lastSeenAt??-100)<1;
+  if(!target?.hp||!confirmed||squad?.order==='Shadow'||distance(h,target)<210||distance(h,target)>720)return;
+  const point=this.selectCluster(h,target,{radius:100,range:720,minRange:210,deconflict:'mortar'});if(!point||point.count<8)return;
+  this.hazards.push({id:'mortar-'+g.nextId++,type:'mortar',x:point.x,y:point.y,fromX:h.x,fromY:h.y,start:g.time,life:2.1,fuse:2.1,radius:100,damage:90,owner:h.id});
+  h.specialAt=g.time+10+ATSUtil.hash(h.id+Math.floor(g.time))%5;this.nextMortarAt=g.time+2.4;h.animation={kind:'throw',start:g.time,duration:.7};g.sound('mortar',.85,h.x);g.sound('warning',.65,point.x);g.noise(h.x,h.y,650,'mortar');
  }
  update(h,dt){
   const g=this.game;if(!h.role)this.assign(h,g.world.sites.get(h.siteId));h.hitTimer=Math.max(0,(h.hitTimer||0)-dt);if(h.hitTimer>.19){h.aiming=null;return true}
@@ -132,11 +227,13 @@ class Forces {
   if(h.role==='medic'&&g.time>h.specialAt&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.5;const ally=g.humanGrid.near(h.x,h.y,105).find(a=>a!==h&&a.hp>0&&a.hp<a.maxHp*.7);if(ally){ally.hp=Math.min(ally.maxHp,ally.hp+18);h.specialAt=g.time+6;h.animation={kind:'treat',start:g.time,duration:.5};g.effect('text',ally.x,ally.y,{text:'+18',color:'#92cdbb',life:1})}}
   if(h.role==='tracker'&&h.state==='patrol'&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.35;const sound=g.noiseGrid.near(h.x,h.y,1900).find(n=>distance(h,n)<n.radius*1.4);if(sound){h.state='investigate';h.lastX=sound.x;h.lastY=sound.y;h.searchTime=20}}
   if(this.updateEngineer(h,dt))return true;
+  this.updateMortar(h);
   if(h.state==='combat'){
+   this.tacticalTarget(h);
    const target=h.targetId==='king'?g.king:g.apesById.get(h.targetId);
    if(target?.hp>0){
-    if(h.role==='sniper'&&distance(h,target)>85&&distance(h,target)<520){const sight=g.lineVisible(h,target);if(sight===null)return true;if(!sight){h.aiming=null;h.state='search';h.searchTime=15;return false}h.dir=Math.atan2(target.y-h.y,target.x-h.x);h.shootTimer-=dt;h.perceptionTimer-=dt;if(!h.aiming&&h.shootTimer<=0){h.aiming={x:target.x,y:target.y,until:g.time+1.35};g.sound('warning',.45,h.x)}if(h.aiming&&g.time>=h.aiming.until){g.shoot(h,{x:h.aiming.x,y:h.aiming.y});h.aiming=null;h.shootTimer=2.8}h.moving=false;return true}
-    if(h.role==='grenadier'&&g.time>h.specialAt&&distance(h,target)>105&&distance(h,target)<330&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.3;if(g.lineVisible(h,target)){h.specialAt=g.time+9;h.animation={kind:'throw',start:g.time,duration:.6};this.hazards.push({id:'grenade-'+g.nextId++,type:'grenade',x:target.x,y:target.y,fromX:h.x,fromY:h.y,start:g.time,fuse:1.8,radius:67,life:1.8});g.sound('grenade',.5,h.x)}}
+    if(h.role==='sniper'&&distance(h,target)>85&&distance(h,target)<520){const sight=g.lineVisible(h,target);if(sight===null)return true;if(!sight){h.aiming=null;h.kingVisibleSince=null;h.state='search';h.searchTime=15;return false}h.dir=Math.atan2(target.y-h.y,target.x-h.x);h.shootTimer-=dt;h.perceptionTimer-=dt;if(!h.aiming&&h.shootTimer<=0){h.aiming={x:target.x,y:target.y,targetId:target.id,start:g.time,duration:1.35,until:g.time+1.35};g.sound('warning',.45,h.x)}if(h.aiming&&g.time>=h.aiming.until){g.shoot(h,{x:h.aiming.x,y:h.aiming.y});h.aiming=null;h.shootTimer=2.8}h.moving=false;return true}
+    if(h.role==='grenadier'&&g.time>h.specialAt&&g.time>=(h._roleThink||0)){h._roleThink=g.time+.4;const point=this.selectCluster(h,target,{radius:67,range:330,minRange:105,deconflict:'grenade'});if(point){h.specialAt=g.time+(g.tier===5?Math.max(6.6,8-(g.warIntensity||0)*.22):9);h.animation={kind:'throw',start:g.time,duration:.6};this.hazards.push({id:'grenade-'+g.nextId++,type:'grenade',x:point.x,y:point.y,fromX:h.x,fromY:h.y,start:g.time,fuse:1.8,radius:67,life:1.8,owner:h.id});g.sound('grenade',.5,h.x)}}
     if(h.role==='officer'&&g.time>h.specialAt&&g.exposure<.4){h.specialAt=g.time+24;this.hazards.push({id:'flare-'+g.nextId++,type:'flare',x:h.lastX,y:h.lastY,start:g.time,life:12,radius:150});g.noise(h.lastX,h.lastY,420,'flare');g.notify('A flare lights the last reported position.','red')}
    }
   }else h.aiming=null;
@@ -155,73 +252,100 @@ class Forces {
   v.components={mobility:v.mobilityDamage,weapon:v.weaponDamage,engine:v.engineDamage};return damage*fraction;
  }
  updateSwarm(v,dt){
-  const g=this.game;if(g.time>=(v._swarmThink||0)&&g.performance.think()){v._swarmThink=g.time+.22;const apes=g.apeGrid.near(v.x,v.y,v.radius+25);v.swarmCount=apes.length;for(const a of apes)if(v.vehicleClass==='tank'||v.vehicleClass==='ifv'||v.vehicleClass==='apc'){a.climbingVehicleId=v.id;a.climbUntil=g.time+.35}}
+  const g=this.game;if(g.time>=(v._swarmThink||0)&&g.performance.think('vehicle')){v._swarmThink=g.time+.3;const apes=g.apeGrid.near(v.x,v.y,v.radius+25).filter(a=>a.hp>0);v.swarmCount=apes.length;for(const a of apes)if(v.vehicleClass==='tank'||v.vehicleClass==='ifv'||v.vehicleClass==='apc'){a.climbingVehicleId=v.id;a.climbUntil=g.time+.4}
+   if(v.vehicleClass==='tank'){
+    const approaching=g.apeGrid.near(v.x,v.y,150).filter(a=>a.hp>0),sample=Math.min(4,approaching.length);let seen=0,checked=0,x=0,y=0;
+    for(let i=0;i<sample;i++){const a=approaching[Math.floor(i*approaching.length/sample)],sight=g.lineVisible(v,a);if(sight===null)break;checked++;if(sight){seen++;x+=a.x;y+=a.y}}
+    if(checked===sample){v.approachCount=sample?Math.round(approaching.length*seen/sample):0;v.swarmFront=seen?{x:x/seen,y:y/seen}:null}
+   }
+  }
   const n=v.swarmCount;v.rotationMultiplier=n>=5?.5:1;v.accuracyMultiplier=(n>=8?1.9:1)*(1+v.weaponDamage*.015);v.turretMultiplier=(n>=12?.16:n>=5?.65:1)*(1-v.weaponDamage*.006);v.overrun=n>=16;
   if(v.overrun){v.cannonTarget=null;v.cannonTimer=Math.max(2.4,v.cannonTimer);v.mobilityDamage=clamp(v.mobilityDamage+dt*4,0,100);v.weaponDamage=clamp(v.weaponDamage+dt*6,0,100);v.engineDamage=clamp(v.engineDamage+dt*4,0,100);g.hurt(v,(12+Math.min(n,35))*dt,{x:v.x,y:v.y,type:'overrun',armorPiercing:true});if(g.time>=(v._sparkAt||0)){v._sparkAt=g.time+.45;g.effect('smash',v.x,v.y,{life:.28,color:'#f7ce89'});g.effect('smoke',v.x,v.y,{life:1,color:'#69716b'})}}
   v.components={mobility:v.mobilityDamage,weapon:v.weaponDamage,engine:v.engineDamage};
  }
- vehicleMove(v,point,dt){
+ vehicleMove(v,point,dt,reverse=false){
   const g=this.game,spec=VEHICLES[v.vehicleClass];if(v._simTier===2&&g.time>(v._swarmThink||0)+.5){v.swarmCount=0;v.overrun=false;v.rotationMultiplier=1;v.turretMultiplier=1-v.weaponDamage*.006;v.accuracyMultiplier=1+v.weaponDamage*.015}if(v.mobilityDamage>=100||v.engineDamage>=100){v.moving=false;return}
-  const waypoint=g.navigation.steer(v,point,v.radius,dt);if(distance(waypoint,v)<1){v.moving=false;return}const angle=Math.atan2(waypoint.y-v.y,waypoint.x-v.x),heading=turn(v.dir,angle,(v.vehicleClass==='tank'?.5:.9)*v.rotationMultiplier*dt),alignment=Math.max(0,Math.cos(angle-heading));
-  const speed=spec.speed*(1-v.mobilityDamage*.007)*(1-v.engineDamage*.004)*(v.overrun?.08:1)*alignment;
-  if(speed>1)g.navigation.move(v,Math.cos(heading)*64,Math.sin(heading)*64,speed,dt,true);else v.moving=false;v.dir=heading;
+  const waypoint=g.navigation.steer(v,point,v.radius,dt);if(distance(waypoint,v)<1){v.moving=false;return}const angle=Math.atan2(waypoint.y-v.y,waypoint.x-v.x),heading=turn(v.dir,angle+(reverse?Math.PI:0),(v.vehicleClass==='tank'?.5:.9)*v.rotationMultiplier*dt),travelHeading=heading+(reverse?Math.PI:0),alignment=Math.max(0,Math.cos(angle-travelHeading));
+  const speed=spec.speed*(reverse?.72:1)*(1-v.mobilityDamage*.007)*(1-v.engineDamage*.004)*(v.overrun?.08:1)*alignment;
+  if(speed>1)g.navigation.move(v,Math.cos(travelHeading)*64,Math.sin(travelHeading)*64,speed,dt,true);else v.moving=false;v.dir=heading;v.reversing=reverse&&v.moving;
  }
  dismount(v,dt){
-  const g=this.game;if(!v.troops||v.hp<=0||g.humans.length>=220)return;v.dismounting=true;v.unloadTimer=(v.unloadTimer||0)-dt;if(v.unloadTimer>0)return;
+  const g=this.game;if(!v.troops||v.hp<=0||g.humans.length>=(g.activeHumanCapacity?.()||220))return;v.dismounting=true;v.unloadTimer=(v.unloadTimer||0)-dt;if(v.unloadTimer>0)return;
   const roles=['leader','rifleman','rifleman','heavy','ranger','grenadier','medic','engineer','rifleman','sniper','rifleman','rifleman','ranger','rifleman','rifleman','medic'],i=v.deployedTroops||0,rear=v.dir+Math.PI,side=i%2?1:-1,p=g.findOpen(v.x+Math.cos(rear)*42+Math.cos(rear+Math.PI/2)*side*20,v.y+Math.sin(rear)*42+Math.sin(rear+Math.PI/2)*side*20,10);
-  const h=g.makeHuman(p.x,p.y,g.world.sites.get(v.siteId));this.assign(h,g.world.sites.get(v.siteId),roles[i%roles.length]);h.responseAllocated=true;h.reported=true;h.state='search';h.searchTime=55;h.lastX=v.target?.x??v.x;h.lastY=v.target?.y??v.y;h.raidTarget=v.target?.id;v.troops--;v.deployedTroops=i+1;v.unloadTimer=.35;
-  const squad=this.squads.get(v.dismountSquadId);if(squad){squad.members.push(h.id);h.squadId=squad.id;h.squadSlot=squad.members.length-1;h.squadRole=h.role;h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadVehicleId=v.id;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=squad.id;if(h.role==='leader')squad.leaderId=h.id}
+  const h=g.makeHuman(p.x,p.y,g.world.sites.get(v.siteId));this.assign(h,g.world.sites.get(v.siteId),roles[i%roles.length]);h.responseAllocated=true;h.operationId=v.operationId;h.reported=true;h.state='search';h.searchTime=55;h.lastX=v.target?.x??v.x;h.lastY=v.target?.y??v.y;h.raidTarget=v.target?.id;v.troops--;v.deployedTroops=i+1;v.unloadTimer=.35;
+  const squad=this.squads.get(v.dismountSquadId);if(squad){squad.members.push(h.id);squad.initialSize=Math.max(squad.initialSize||0,squad.members.length);h.squadId=squad.id;h.squadSlot=squad.members.length-1;h.squadRole=h.role;h.squadOrder=squad.order;h.squadObjective={...squad.objective};h.squadVehicleId=v.id;h.squadOperationId=squad.operationId;h.squadReportAt=squad.reportAt;h.navCohort=squad.id;if(h.role==='leader')squad.leaderId=h.id}
   else v.dismountSquadId=this.createSquad([h],v.target||v,{order:'Protect Vehicle',vehicleId:v.id,operationId:v.operationId,siteId:v.siteId}).id;
   if(!v.troops){v.dismounting=false;g.effect('text',v.x,v.y,{text:'TROOPS DEPLOYED',life:1.3,color:'#d2c7a3'})}
  }
  acquireVehicleTarget(v){
-  const g=this.game,spec=VEHICLES[v.vehicleClass];if(g.time<(v._targetThink||0)||!g.performance.think())return;v._targetThink=g.time+.3;
+  const g=this.game,spec=VEHICLES[v.vehicleClass];if(g.time<(v._targetThink||0)||!g.performance.think('vehicle'))return;v._targetThink=g.time+.3;
   const perception=g.perceive(v,{x:v.x,y:v.y,dir:v.turretDir,range:spec.range||310,angle:v._targetId?.9:.6});if(perception.pending)return;const target=perception.seen;
   v._targetId=target?.id;if(target){v.lastSeen={x:target.x,y:target.y,time:g.time};v.state=v.state==='raid'?'raid':'combat';if(g.time>=(v._reportAt||0)){v._reportAt=g.time+8;g.addIntel(target.x,target.y,2)}}
  }
  fireShell(v,target,spec){
   const g=this.game,angle=Math.atan2(target.y-v.y,target.x-v.x),fromX=v.x+Math.cos(angle)*(v.vehicleClass==='tank'?53:37),fromY=v.y+Math.sin(angle)*(v.vehicleClass==='tank'?53:37),travel=Math.max(.18,Math.hypot(target.x-fromX,target.y-fromY)/570);
   this.hazards.push({id:'shell-'+g.nextId++,type:'shell',x:fromX,y:fromY,fromX,fromY,targetX:target.x,targetY:target.y,start:g.time,life:travel,duration:travel,speed:570,radius:spec.cannonRadius,damage:spec.cannonDamage,owner:v.id});
-  if(v.vehicleClass==='ifv')v.cannonBurst=Math.max(0,(v.cannonBurst||1)-1);
+  if(v.vehicleClass==='ifv'){v.cannonBurst=Math.max(0,(v.cannonBurst||1)-1);if(!v.cannonBurst)v.cannonBurstPoint=null}
   v.cannonFlash=.3;v.cannonTimer=(v.vehicleClass==='ifv'&&v.cannonBurst>0?.4:spec.cannonReload)*(1+v.weaponDamage*.018);g.effect('muzzle',fromX,fromY,{life:.3,color:'#ffe9aa'});g.effect('smoke',fromX,fromY,{life:1.1,color:'#b4ac89'});g.sound(v.vehicleClass==='tank'?'cannon':'gun',v.vehicleClass==='tank'?1.4:1,v.x);g.noise(v.x,v.y,900,'cannon');if(distance(v,g.king)<800){g.hitFlash=Math.max(g.hitFlash,.16);g.cannonShake=Math.max(g.cannonShake||0,v.vehicleClass==='tank'?6:3)}
  }
+ positionTank(v,target,dt){
+  const g=this.game;if(v.vehicleClass!=='tank')return false;
+  const front=v.swarmFront||target;if(!front)return false;
+  const buddies=g.vehicles.filter(a=>a!==v&&a.hp>0&&a.vehicleClass==='tank'&&distance(a,v)<420&&((v.platoonId&&a.platoonId===v.platoonId)||(v.operationId&&a.operationId===v.operationId)));
+  v.platoonCover=buddies.some(a=>a.reversing);
+  if(v.approachCount>=12||target&&distance(v,target)<230){
+   const angle=Math.atan2(front.y-v.y,front.x-v.x),rear={x:v.x-Math.cos(angle)*180,y:v.y-Math.sin(angle)*180};
+   if(g.time>=(v._supportThink||0)&&g.performance.think('vehicle')){
+    v._supportThink=g.time+1;const allies=g.humanGrid.near(v.x,v.y,340).filter(h=>h.hp>0&&distance(h,rear)<210);
+    const ally=allies.sort((a,b)=>distance(a,rear)-distance(b,rear))[0];v.reverseSupport=ally?{x:rear.x*.7+ally.x*.3,y:rear.y*.7+ally.y*.3}:rear;
+   }
+   this.vehicleMove(v,v.reverseSupport||rear,dt,true);return true;
+  }
+  if(v.platoonCover){v.moving=false;return true}
+  if(target){
+   const gap=distance(v,target),angle=Math.atan2(target.y-v.y,target.x-v.x);
+   if(gap>350){const side=buddies.length?(ATSUtil.hash(v.id)%2?1:-1)*70:0;this.vehicleMove(v,{x:target.x-Math.cos(angle)*300-Math.sin(angle)*side,y:target.y-Math.sin(angle)*300+Math.cos(angle)*side},dt)}
+   return true;
+  }return false;
+ }
  updateVehicle(v,dt){
-  if(!v._militaryInitialized)this.initVehicle(v);const g=this.game,spec=VEHICLES[v.vehicleClass];v.shootTimer-=dt;v.cannonTimer-=dt;v.cannonFlash=Math.max(0,(v.cannonFlash||0)-dt);v.phase+=dt;v.moving=false;if(v._simTier===2)return true;
+  if(!v._militaryInitialized)this.initVehicle(v);const g=this.game,spec=VEHICLES[v.vehicleClass];v.shootTimer-=dt;v.cannonTimer-=dt;v.cannonFlash=Math.max(0,(v.cannonFlash||0)-dt);v.phase+=dt;v.moving=false;v.reversing=false;if(v._simTier===2)return true;
   this.updateSwarm(v,dt);if(v.hp<=0)return true;this.acquireVehicleTarget(v);
   let target=v._targetId==='king'?g.king:g.apesById.get(v._targetId);if(target?.hp<=0)target=null;
   // A cannon commits to a warned position rather than tracking a dodge.
   const observed=target&&g.time-(v.lastSeen?.time??-100)<.7;if(!observed)target=null;
   const aimPoint=v.cannonTarget||target;if(aimPoint){const aim=Math.atan2(aimPoint.y-v.y,aimPoint.x-v.x);v.turretDir=turn(v.turretDir,aim,(v.vehicleClass==='tank'?.7:1.5)*v.turretMultiplier*dt)}
-  if(v.target&&distance(v,v.target)>85){
-   if(target&&v.vehicleClass==='tank'&&distance(v,target)<440){if(distance(v,target)<160)this.vehicleMove(v,{x:v.x-(target.x-v.x),y:v.y-(target.y-v.y)},dt)}
-   else if(!v.dismounting)this.vehicleMove(v,v.target,dt);
+  const positioned=this.positionTank(v,target,dt);
+  if(!positioned&&v.target&&distance(v,v.target)>85){
+   if(!v.dismounting)this.vehicleMove(v,v.target,dt);
   }else if(v.state==='raid')v.state='combat';
   if(v.troops&&(target&&distance(v,target)<300||v.target&&distance(v,v.target)<170||v.dismounting))this.dismount(v,dt);
   if(spec.weapon&&target&&v.weaponDamage<100&&v.shootTimer<=0){const align=Math.cos(Math.atan2(target.y-v.y,target.x-v.x)-v.turretDir);if(align>.88){const kind=v.kind,dir=v.dir;v.kind=spec.weapon;v.dir=v.turretDir;g.shoot(v,target);v.kind=kind;v.dir=dir;v.shootTimer=spec.reload*(1+v.weaponDamage*.018)}}
   if(spec.cannonReload&&v.weaponDamage<100&&!v.overrun){
    if(v.cannonTarget){const aim=Math.atan2(v.cannonTarget.y-v.y,v.cannonTarget.x-v.x);if(g.time>=v.cannonTarget.until&&Math.cos(aim-v.turretDir)>.96){const sight=g.lineVisible(v,v.cannonTarget);if(sight){this.fireShell(v,v.cannonTarget,spec);v.cannonTarget=null}else if(sight===false){v.cannonTarget=null;v.cannonTimer=1.5}}}
-   else if(target&&v.cannonTimer<=0&&distance(v,target)>100){const duration=v.vehicleClass==='tank'?1.8:v.cannonBurst>0?.25:1.1;if(v.vehicleClass==='ifv'&&!v.cannonBurst)v.cannonBurst=2;v.cannonTarget={x:target.x,y:target.y,start:g.time,until:g.time+duration,duration};g.sound('warning',.7,v.x)}
-  }else v.cannonTarget=null;
+   else if(target&&v.cannonTimer<=0&&distance(v,target)>100){const point=v.vehicleClass==='ifv'&&v.cannonBurst>0&&v.cannonBurstPoint?v.cannonBurstPoint:this.selectCluster(v,target,{radius:spec.cannonRadius,range:spec.range,minRange:100,support:true});if(point){const duration=v.vehicleClass==='tank'?1.8:v.cannonBurst>0?.25:1.1;if(v.vehicleClass==='ifv'&&!v.cannonBurst){v.cannonBurst=2;v.cannonBurstPoint={x:point.x,y:point.y,count:point.count}}v.cannonTarget={x:point.x,y:point.y,count:point.count,start:g.time,until:g.time+duration,duration};g.sound('warning',.7,v.x)}}
+  }else{v.cannonTarget=null;v.cannonBurst=0;v.cannonBurstPoint=null}
   if(v.engineDamage>55&&g.time>=(v._exhaustAt||0)){v._exhaustAt=g.time+.6;g.effect('smoke',v.x-Math.cos(v.dir)*25,v.y-Math.sin(v.dir)*25,{life:1.6,color:'#555f56'})}
   if(v.engineDamage>=100)g.hurt(v,24*dt,{x:v.x,y:v.y,armorPiercing:true,type:'engine'});
   if(g.time>=(v.nextSound||0)&&distance(v,g.king)<1250){v.nextSound=g.time+2.4;g.sound(v.vehicleClass==='tank'?'tank':v.vehicleClass==='truck'?'truck':['apc','ifv'].includes(v.vehicleClass)?'apc':'rumble',.45,v.x)}
   return true;
  }
  blast(h){
-  const g=this.game,tank=h.type==='shell',radius=h.radius;g.effect('wave',h.x,h.y,{life:tank?.8:.5,range:radius,color:'#efbd7d'});g.effect('smoke',h.x,h.y,{life:tank?2.4:1.8,color:'#94705b'});g.effect('smash',h.x,h.y,{life:.55,color:'#f1c68c'});g.sound(tank?'cannon':'smash',tank?1.5:1.6,h.x);
-  if(tank)g.effect('tankImpact',h.x,h.y,{life:1.1,radius,range:radius,color:'#f0c789'});
+  const g=this.game,tank=h.type==='shell',heavy=tank||h.type==='mortar'||h.type==='airstrike',radius=h.radius;g.effect('wave',h.x,h.y,{life:heavy?.8:.5,range:radius,color:'#efbd7d'});g.effect('smoke',h.x,h.y,{life:heavy?2.4:1.8,color:'#94705b'});g.effect('smash',h.x,h.y,{life:.55,color:'#f1c68c'});g.sound(h.type==='mortar'?'mortarImpact':tank?'cannon':'smash',tank?1.5:1.6,h.x);
+  if(heavy)g.effect('tankImpact',h.x,h.y,{life:1.1,radius,range:radius,color:'#f0c789'});
   if(tank&&distance(h,g.king)<600){g.hitFlash=Math.max(g.hitFlash,.35);g.cannonShake=Math.max(g.cannonShake||0,11)}
   for(const a of g.apeGrid.near(h.x,h.y,radius))if(a.hp>0&&g.world.lineClear(h.x,h.y,a.x,a.y)){
    const d=distance(a,h),falloff=1-d/radius*.55;g.hurt(a,(h.damage||72)*falloff,h);
    if(tank&&a.hp>0){const angle=d>.01?Math.atan2(a.y-h.y,a.x-h.x):ATSUtil.hash(a.id)%628/100,push=28+32*falloff,x=a.x+Math.cos(angle)*push,y=a.y+Math.sin(angle)*push,r=a.id==='king'?12:10;if(!g.world.blocked(x,y,r)&&g.navigation.clearSegment(a.x,a.y,x,y,r)){a.x=x;a.y=y}a.knockbackUntil=g.time+.32;a.staggerUntil=g.time+.45;a.animation={kind:'stagger',start:g.time,duration:.4}}
   }
   for(const a of g.humanGrid.near(h.x,h.y,radius))if(a.hp>0&&g.world.lineClear(h.x,h.y,a.x,a.y))g.hurt(a,tank?(h.damage||72)*.65:60,h);
+  g.colonies.damageNearby?.(h.x,h.y,radius,h.damage||72,h);
  }
  tick(dt){
   const g=this.game;for(const h of this.hazards){h.life-=dt;
    if(h.type==='shell'){const t=clamp(1-h.life/h.duration,0,1),x=h.fromX+(h.targetX-h.fromX)*t,y=h.fromY+(h.targetY-h.fromY)*t;
     if(!g.navigation.clearSegment(h.x,h.y,x,y,2)){let lo=0,hi=1;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(g.navigation.clearSegment(h.x,h.y,h.x+(x-h.x)*mid,h.y+(y-h.y)*mid,2))lo=mid;else hi=mid}h.x+=(x-h.x)*lo;h.y+=(y-h.y)*lo;h.life=0}else{h.x=x;h.y=y}if(h.life<=0)this.blast(h);
-   }else if(h.type==='grenade'&&h.life<=0)this.blast(h);
+   }else if(['grenade','mortar','airstrike'].includes(h.type)&&h.life<=0)this.blast(h);
    else if(h.type==='fortification'&&h.life<=0){const o=g.world.objects.get(h.id);if(o&&!o.dead){o.dead=true;o.solid=false;o.hp=0;g.world.navRevision++;g._lightsAt=-1}}
   }this.hazards=this.hazards.filter(h=>h.life>0);
   if(g.time>=(this.nextSquadTrim||0)){this.nextSquadTrim=g.time+4;for(const [id,s]of this.squads)if(!s.members.some(id=>g.humansById.has(id))&&!Array.from(g.world.sites.values()).some(site=>(site.sleepingHumans||[]).some(h=>h.hp>0&&h.squadId===id)))this.squads.delete(id)}

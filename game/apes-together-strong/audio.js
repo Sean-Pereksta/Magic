@@ -19,6 +19,9 @@
       this.insectTime = 0;
       this.rotorTime = 0;
       this.engineTime = 0;
+      this.warTime = 0;
+      this.warCursor = 0;
+      this.engineCursor = 0;
       this.stepTime = 0;
       this.natureTime = 0;
       this.step = 0;
@@ -110,8 +113,10 @@
       return this.enabled && !this.paused && this.ctx && this.ctx.state === 'running';
     }
 
+    _voiceLimit() { return this._voiceBudget ?? Math.max(1, this.maxVoices - 8); }
+
     _voice(source, settings) {
-      if (!this._ready() || this.sources.size >= this.maxVoices) {
+      if (!this._ready() || this.sources.size >= this._voiceLimit()) {
         try { source.disconnect(); } catch (_) {}
         return;
       }
@@ -157,7 +162,7 @@
     }
 
     _tone(frequency, endFrequency, settings = {}) {
-      if (!this._ready() || this.sources.size >= this.maxVoices) return;
+      if (!this._ready() || this.sources.size >= this._voiceLimit()) return;
       const oscillator = this.ctx.createOscillator();
       oscillator.type = settings.wave || 'sine';
       const t = this.ctx.currentTime + (settings.delay || 0);
@@ -167,7 +172,7 @@
     }
 
     _noise(settings = {}) {
-      if (!this._ready() || this.sources.size >= this.maxVoices) return;
+      if (!this._ready() || this.sources.size >= this._voiceLimit()) return;
       const source = this.ctx.createBufferSource();
       source.buffer = this.noise;
       this._voice(source, settings);
@@ -190,11 +195,17 @@
         food: 0.18, call: 0.65, charge: 0.6, recall: 0.65,
         hold: 0.5, settle: 0.5, patrol: 0.5, fall: 0.16, warning: 0.45, grenade: 0.3,
         cannon: 0.35, tank: 0.65, apc: 0.8, truck: 0.85, military: 2.4, mobilization: 2.4,
-        rumble: 0.65, recon: 0.4, scout: 0.4, gunship: 0.4, overrun: 0.8
+        rumble: 0.65, recon: 0.4, scout: 0.4, gunship: 0.4, overrun: 0.8,
+        mortar: 0.45, mortarImpact: 0.45, distantGun: 1.15,
+        converge: 3.5, offensive: 4, sirens: 4
       };
       if (!Object.prototype.hasOwnProperty.call(intervals, name)) return;
       if (now - (this.last[name] ?? -100) < intervals[name]) return;
       this.last[name] = now;
+      // Gunfire and ambience leave voices for danger tells and commands, so a
+      // mass battle cannot drown out a mortar launch or the King's recall.
+      const previousBudget = this._voiceBudget;
+      this._voiceBudget = ['warning', 'mortar', 'mortarImpact', 'cannon', 'offensive', 'call', 'charge', 'recall', 'hit', 'death'].includes(name) ? this.maxVoices : Math.max(1, this.maxVoices - 8);
       const s = strength;
       const at = (duration, gain, extra = {}) => ({ duration, gain: gain * s, pan, ...extra });
       try {
@@ -261,6 +272,32 @@
             this._noise(at(.12, .15, { filter: 'highpass', cutoff: 2300 }));
             this._tone(330, 170, at(.13, .1, { delay: .08, wave: 'triangle' }));
             break;
+          case 'mortar':
+            // A low launch thump and rising whistle precede the warning circle.
+            this._tone(118, 38, at(.24, .23, { attack: .004 }));
+            this._noise(at(.28, .2, { filter: 'lowpass', cutoff: 680, endCutoff: 180 }));
+            this._tone(510, 1450, at(.65, .055, { delay: .16, wave: 'triangle', attack: .08 }));
+            break;
+          case 'mortarImpact':
+            this._noise(at(.16, .56, { filter: 'lowpass', cutoff: 1350, attack: .002 }));
+            this._tone(76, 20, at(.72, .34, { attack: .003 }));
+            this._noise(at(.95, .24, { delay: .05, filter: 'lowpass', cutoff: 420, endCutoff: 80, attack: .03 }));
+            break;
+          case 'distantGun':
+            for (let i = 0; i < 4; i++) {
+              this._noise(at(.09, .15, { delay: i * .09, filter: 'lowpass', cutoff: 540, attack: .002 }));
+              this._tone(83, 28, at(.12, .055, { delay: i * .09, attack: .003 }));
+            }
+            break;
+          case 'converge':
+          case 'offensive':
+            this._tone(47, 30, at(1.15, .15, { wave: 'sawtooth', filter: 'lowpass', cutoff: 180, attack: .12 }));
+            this._noise(at(.52, .14, { delay: .12, filter: 'bandpass', cutoff: 1400, q: 1.8 }));
+            for (let i = 0; i < (name === 'offensive' ? 3 : 2); i++) this._tone(760 - i * 110, 530, at(.16, .07, { delay: .14 + i * .2, wave: 'square', filter: 'lowpass', cutoff: 1100 }));
+            break;
+          case 'sirens':
+            for (let i = 0; i < 3; i++) this._tone(i % 2 ? 580 : 420, i % 2 ? 420 : 580, at(.72, .075, { delay: i * .6, wave: 'sawtooth', filter: 'lowpass', cutoff: 780, attack: .06 }));
+            break;
           case 'cannon':
             this._noise(at(.11, .72, { filter: 'lowpass', cutoff: 1700, endCutoff: 420, attack: .002 }));
             this._tone(92, 24, at(.7, .44, { attack: .003 }));
@@ -319,6 +356,7 @@
             break;
         }
       } catch (_) { /* Audio must never interrupt gameplay. */ }
+      finally { this._voiceBudget = previousBudget; }
     }
 
     update(game, dt) {
@@ -380,20 +418,21 @@
         // A distant armored column never consumes the combat voice budget.
         if (king && now >= this.engineTime) {
           this.engineTime = now + .78;
-          let nearest = null, distance = 620 * 620;
+          let nearest = null, distance = 1450 * 1450;
           const vehicles = game.vehicles || [];
           for (let i = 0; i < Math.min(24, vehicles.length); i++) {
-            const vehicle = vehicles[i];
+            const vehicle = vehicles[(this.engineCursor + i) % vehicles.length];
             if (!vehicle || vehicle.hp <= 0 || vehicle.engineDamage >= 100) continue;
             const kind = vehicle.vehicleClass || vehicle.kind;
             if (!['tank', 'apc', 'ifv', 'truck'].includes(kind)) continue;
             const d = (vehicle.x - king.x) ** 2 + (vehicle.y - king.y) ** 2;
             if (d < distance) { distance = d; nearest = vehicle; }
           }
+          if (vehicles.length) this.engineCursor = (this.engineCursor + 24) % vehicles.length;
           if (nearest) {
             const kind = nearest.vehicleClass || nearest.kind;
-            this.play(kind === 'ifv' ? 'apc' : kind, .16 + (1 - Math.sqrt(distance) / 620) * .55,
-              this._clamp((nearest.x - king.x - nearest.y + king.y) / 650, -.85, .85));
+            this.play(kind === 'ifv' ? 'apc' : kind, .1 + (1 - Math.sqrt(distance) / 1450) * .55,
+              this._clamp((nearest.x - king.x - nearest.y + king.y) / 1450, -.85, .85));
           }
         }
         if (king && now >= this.rotorTime) {
@@ -409,6 +448,29 @@
           if (nearest) this.play(['recon', 'scout', 'gunship'].includes(nearest.kind) ? nearest.kind : 'heli',
             .18 + (1 - Math.sqrt(distance) / 1000) * .45, this._clamp((nearest.x - king.x - nearest.y + king.y) / 950, -.8, .8));
           else if (game.helicopterActive || game.heliActive) this.play('heli', .35);
+        }
+        if (king && now >= this.warTime) {
+          this.warTime = now + 2.2 + Math.random() * .7;
+          const troops = game.humans || [], intensity = game.warIntensity || 0;
+          let gunner = null, radio = null, gunDistance = 1900 * 1900, radioDistance = 1900 * 1900;
+          // Rotate through a fixed-size sample; new reinforcement squads get
+          // heard without inspecting hundreds of actors on each audio tick.
+          for (let i = 0; i < Math.min(32, troops.length); i++) {
+            const h = troops[(this.warCursor + i) % troops.length];
+            if (!h || h.hp <= 0) continue;
+            const d = (h.x - king.x) ** 2 + (h.y - king.y) ** 2;
+            if (d > 420 ** 2 && d < gunDistance && h.state === 'combat') { gunner = h; gunDistance = d; }
+            if (d < radioDistance && h.reported && h.hasRadio && !game.world?.sites?.get(h.siteId)?.radioDown && ['combat', 'search', 'radio'].includes(h.state)) { radio = h; radioDistance = d; }
+          }
+          if (troops.length) this.warCursor = (this.warCursor + 32) % troops.length;
+          if (gunner) this.play('distantGun', .14 + (1 - Math.sqrt(gunDistance) / 1900) * .32, this._clamp((gunner.x - king.x - gunner.y + king.y) / 1900, -.8, .8));
+          if (radio && intensity > 0) this.play('converge', .15 + intensity * .04, this._clamp((radio.x - king.x - radio.y + king.y) / 1900, -.7, .7));
+          let checked = 0;
+          for (const site of game.world?.sites?.values?.() || []) {
+            if (checked++ >= 24) break;
+            const d = (site.x - king.x) ** 2 + (site.y - king.y) ** 2;
+            if (site.alarm && d > 350 ** 2 && d < 2200 ** 2) { this.play('sirens', .12 + (1 - Math.sqrt(d) / 2200) * .18, this._clamp((site.x - king.x - site.y + king.y) / 2200, -.8, .8)); break; }
+          }
         }
       } catch (_) { /* Stale game objects and unavailable audio are harmless. */ }
     }

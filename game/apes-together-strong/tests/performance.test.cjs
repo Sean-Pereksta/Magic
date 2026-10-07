@@ -27,6 +27,7 @@ for (const scenario of SCENARIOS) test(`stress ${scenario.id}: ${scenario.label}
   assert.ok(report.maxThink <= 32, `AI thinking budget exceeded: ${report.maxThink}`);
   assert.ok(report.maxLos <= 96, `perception LOS budget exceeded: ${report.maxLos}`);
   assert.ok(report.maxStreamSteps <= 3, `world generation budget exceeded: ${report.maxStreamSteps}`);
+  assert.ok(report.maxSeparationPairs <= scenario.apes * 8, 'each ape separates against at most eight neighbors');
   assert.ok(report.peakEffects <= 448, 'bounded visible effect overflow');
   assert.ok(report.maxThink > 0, 'AI scheduler must perform real work');
   for (const actor of [...game.apes, ...game.humans]) assert.ok(Number.isFinite(actor.x) && Number.isFinite(actor.y));
@@ -38,8 +39,15 @@ for (const scenario of SCENARIOS) test(`stress ${scenario.id}: ${scenario.label}
     assert.ok(report.peakCannonWarnings > 0, 'combined arms benchmark must exercise visible cannon preparation');
     assert.ok(report.peakShells > 0, 'combined arms benchmark must exercise traveling armored shells');
     assert.ok(report.peakGrenades > 0, 'combined arms benchmark must exercise infantry explosives');
-    assert.equal(game.vehicles.filter(v => v.vehicleClass === 'tank').length, 2);
-    assert.equal(game.vehicles.filter(v => ['apc', 'ifv'].includes(v.vehicleClass)).length, 3);
+    assert.equal(report.tanks, scenario.tanks);
+    assert.equal(report.armored, scenario.armored);
+    assert.equal(report.helis, scenario.helis);
+    if (scenario.mortars) assert.ok(report.peakMortars > 0, 'extreme-war benchmarks must exercise mortar telegraphs and impacts');
+  }
+  if (scenario.settled) {
+    assert.equal(report.followers, scenario.following);
+    assert.equal(report.settled, scenario.settled);
+    assert.ok(report.peakAbstractApes >= scenario.settled, 'distant residents keep their real actors at a strategic simulation rate');
   }
   if (scenario.alarm) assert.equal(game.world.sites.get('stress-garrison').alarm, true);
   if (scenario.settlement) assert.equal(game.settlements[0].population, scenario.apes);

@@ -73,7 +73,10 @@ npm run test:apes:browser
   gathering are faster, shelters add 12 housing, and gardens produce more food.
   Each eight adults contribute one family work unit per second toward a birth
   every 30 units, subject to food, housing, safety, local capacity, and the
-  600-ape limit. Young mature after 35 seconds, including while far from the king.
+  shared 1,000-ape limit. Young mature after 35 seconds, including while far from the king.
+  Builders add persistent huts around the lodge, expanding the actual footprint.
+  Each hut has 100 health and provides housing; human fire and explosives leave
+  ruins and remove that housing. Repairs and rebuilding consume work and timber.
 - **Presentation:** illustrated night forest, pines and hanging wetland trees,
   orchard trees, reeds, farm rows, landscape details, construction and garden
   visuals, region HUD, map management, and a seeded menu. Procedural audio adds
@@ -84,14 +87,15 @@ npm run test:apes:browser
 
 Active followers guarantee response stages at 25, 60, 120 and 220. The original
 campaign threat still matters; settled residents do not count toward the horde
-floor. At 200 followers a one-time military mobilization unlocks tanks; at 350
+floor. At 200 followers a one-time military mobilization unlocks tanks; at 300
 the director coordinates larger operations across separate approach bearings.
 Reports expire, targets are remembered positions, and breaking contact still
 works. Known settlements receive named army warnings before a column departs.
 
 Responses consume finite site personnel, vehicle inventory and armored capacity.
 The active response budget is weighted: infantry 1, elites 1.5, heavy gunners 2,
-trucks/jeeps/command vehicles 4, APCs 7, IFVs 9, tanks 12 and aircraft 10. Cargo
+trucks/jeeps/command vehicles 4, APCs 7, IFVs 9, tanks 12 and aircraft 10. Mortar
+teams cost 3. Cargo
 reserves its future soldiers' budget before they deploy. Destroying radios cuts
 coordination; depots stop armor; fuel cuts vehicles and aircraft; barracks reduce
 replacement troops. Troop trucks and APCs unload prepaid passengers in sequence,
@@ -101,7 +105,11 @@ Military riflemen, rangers, heavy assault gunners, engineers and squad leaders
 join the original roles. Squads share a reported objective and role formations:
 marksmen and medics behind riflemen, rangers on the flanks, infantry screening
 armor. Confirmed concentrations of 40 prompt suppression and support reports;
-80 prompt withdrawal. Small patrols avoid direct engagement with huge hordes.
+80 prompt a bounded fallback for unsupported squads; supported squads hold and
+suppress. Small patrols shadow an army until combined forces can counterattack.
+Heavy weapons choose visible clusters, grenadiers avoid overlapping warnings,
+and mortar crews need fresh contact, communications and safe firing distance.
+Mortars warn for about two seconds, stagger shots and reload in 10–14 seconds.
 Killing a leader briefly disrupts coordination. Engineers need 3.5 uninterrupted
 seconds away from apes to build temporary barricades or field lights.
 
@@ -130,10 +138,10 @@ Version-one saves keep the same storage key. Missing military fields derive on
 load; existing wounds, spent inventory, passengers, squad reports and one-time
 mobilization persist. Newly generated regions receive the new base layouts.
 
-Scenario **G** adds 300 apes, 100 humans, two tanks, three APC/IFVs, three
+Scenario **L** retains 300 apes, 100 humans, two tanks, three APC/IFVs, three
 trucks/jeeps, two helicopters, an alarm, grenades and cannon activity. It runs
 alongside A–F with the same AI, visibility, navigation and generation ceilings.
-`npm run bench:apes:browser -- --scenario G --frames 180` measures a real canvas;
+`npm run bench:apes:browser -- --scenario L --frames 180` measures a real canvas;
 hardware timing is diagnostic and never a universal frame-rate guarantee.
 
 ## Controls and persistence
@@ -211,12 +219,12 @@ npm run bench:apes:browser -- --frames 120 --output browser.json
 
 The browser benchmark needs Playwright and Chromium, like the smoke test;
 `CHROMIUM_PATH` selects an installed browser. `QA_ARTIFACT_DIR` captures all
-six scenes as PNGs. Both benchmarks accept `--source <module-directory>` for
+selected scenes as PNGs. Both benchmarks accept `--source <module-directory>` for
 comparison with a separate baseline checkout, and `--scenario A`, `D`, or
 `ABCDEF` selects scenes. The default length is 360 steps. `--profile` wraps
 simulation methods with inclusive timing, so nested method totals overlap.
 
-All seven fixtures use the same world seed and reset actor randomness separately.
+All twelve fixtures use the same world seed and reset actor randomness separately.
 A/B retain 100/200 followers in dense generated woodland; C runs 150 apes
 against 80 humans; D runs 200 apes against 150 humans with four vehicles,
 two helicopters and an active alarm; E includes 180 settlement residents,
@@ -261,7 +269,7 @@ projectiles, 214 effects and 67 queued routes. Work stayed within three
 A* starts, 192 expansion steps, 32 AI thinks and 96 perception tests per tick.
 This verifies the sustained fixture without implying an indefinite soak.
 
-The ordinary `test:apes` suite and existing GitHub workflow include the A–G
+The ordinary `test:apes` suite and existing GitHub workflow include the A–L
 operation-budget checks, retained populations, real combat damage, distant
 growth and wake-up, remote vehicle combat, fair human perception, swept
 projectiles, pool reuse, quality recovery and saved strategic state. The
@@ -269,3 +277,108 @@ browser smoke test also checks hidden-tab pause, the F3 monitor and a real
 250 ms main-thread stall. Hardware-specific maximum tick gates are optional
 through `ATS_MAX_TICK_MS`; portable tests enforce operation ceilings instead
 of an unreliable universal wall-clock threshold.
+
+## Relentless war and settlement expansion
+
+`MAX_APE_POPULATION` in `world.js` is the authoritative living population
+ceiling. Followers, residents, scouts and young all count. Opening a cage at
+985 with 40 captives recruits 15 and preserves the other 25 on the opened cage
+and site, including across saves. Returning within 350 units when there is
+room recruits the remainder. Rescue statistics increase only for recruited
+apes. Families pause at capacity with at most one completed birth of progress;
+losing an ape cannot trigger a backlog of hundreds of births. Existing saves
+retain their campaigns, supplies, wounds and settlement housing.
+
+Tier 5 has internal intensity levels without additional HUD tiers:
+
+| Active horde | Weighted budget | Tanks | Armored support | Director interval |
+| --- | ---: | ---: | ---: | ---: |
+| Below 220 | 250 | 3 | 4 | 28 sec |
+| 220–299 | 340 | 3 | 4 | 15 sec |
+| 300–449 | 450 | 4 | 6 | 12 sec |
+| 450–649 | 575 | 5 | 8 | 10 sec |
+| 650–849 | 700 | 6 | 10 | 8 sec |
+| 850–1,000 | 825 | 8 | 12 | 7 sec |
+
+Vehicle figures are regional ceilings and armored support counts APCs, IFVs
+and armored patrols together. Active human capacity is 220 early, 260 at 250
+followers, 300 at 400, 340 at 650 and 360 at 850. Reevaluation can redirect
+existing formations; it does not create a new army every interval. Infantry
+and cargo are both included in capacity and weighted resource accounting.
+
+Confirmed contact maintains a saved pursuit operation with position, movement
+estimate, contact time, roads and known settlements. Intercepts project these
+observations rather than reading the king's current position. Twenty-five
+seconds of sustained 150+ contact requests reinforcements from real reserves.
+Independent field and regional channels can hunt the army while assaulting a
+settlement, with a resource share protected for known settlements. Rare major
+offensives draw infantry, paired tanks or platoons, armored support and aircraft
+from multiple installations. Coordinated approach bearings retain an imperfect
+escape sector. Support, killed leaders, density drops and recalled charges
+affect fallback, shadowing, firing lines and counterattacks.
+
+The **Find Settlement** button or **V** toggles one named direction/distance
+marker for every founded settlement, including empty bases after their residents
+join the horde. Destinations project onto all four screen edges; a nearby base
+receives a home marker. Nearby
+markers separate, attack status changes their color, and the layout handles
+camera motion, zoom, desktop and touch. Huts persist as individual plots with
+health, damage bars and ruins. Human siege fire requires nearby line of sight;
+grenades, shells, mortars and airstrikes can destroy homes. Destroyed homes
+remove housing immediately, and builders repair or reconstruct with paid work.
+New construction searches bounded dry, unobstructed plots around the lodge.
+
+Recovery routes are shared by coarse origin/goal cohorts, including distant
+followers. Mid-distance separation runs with their 15 Hz simulation while
+nearby apes stay immediate. Per-step limits remain 32 AI operations, 96 LOS
+tests, three A* starts and 192 expansions. Heavy vehicles and aircraft receive
+reserved thinking/visibility work, and rotating processing prevents large
+infantry lists from starving cannons. Audio reserves command/warning voices
+while distant war ambience uses bounded sampling.
+
+G/H exercise 500/750 moving forest followers. I preserves 1,000 actual apes:
+650 following and 350 in distant settlements. J adds 500 apes, 250 humans,
+four tanks, six armored vehicles, two helicopters and live grenades/mortars.
+K uses 750 apes, 320 humans, six tanks, eight armored vehicles, three helicopters
+and explosives. Both wars verify real shots, cannon telegraphs and traveling
+shells within the operation budgets. Synthetic combat health retains the
+specified workload; it is not a casualty or difficulty calibration.
+
+A separate ordinary-health regression sends 300 normally spaced apes into a
+prepared formation of two tanks, an APC and 28 professional troops: 20
+riflemen and two each of leaders, heavy gunners, grenadiers and medics. The
+king follows the army and renews Charge when it reaches its old destination.
+The isolated farmland battle finishes in 13.6 seconds with 105 apes lost,
+195 surviving and the king at 160 HP. Reinforcements and terrain cover are
+disabled to isolate that formation; unit health, damage, firing rates and
+reloads retain normal gameplay values. Tightly packed or unattended charges
+can suffer greater losses.
+
+Supported firing lines retain their position and facing as the horde closes,
+including through saves. IFV bursts retain their original warned location;
+each new location receives the full tell. Cannon, grenade, mortar and airstrike
+warnings use the full projected blast radius at every zoom and detail level.
+
+October 7, 2026 diagnostic measurements used native headless Chrome 154,
+1440×900 at DPR 1, 180 frames and full visual detail:
+
+| Scenario | Mean simulation | Mean render | Total work p95 |
+| --- | ---: | ---: | ---: |
+| G: 500 followers | 12.09 ms | 6.53 ms | 25.5 ms |
+| H: 750 followers | 19.70 ms | 8.59 ms | 39.5 ms |
+| I: 1,000 mixed apes | 17.81 ms | 7.24 ms | 32.2 ms |
+| J: large battle | 21.40 ms | 21.16 ms | 55.8 ms |
+| K: extreme war | 32.37 ms | 28.17 ms | 94.6 ms |
+
+Extreme battles remain expensive. These short fixtures establish population
+retention, warning behavior and bounded work, not a universal 60 FPS guarantee.
+Normal gameplay reduces visual detail under sustained load; danger warnings
+and commands remain active. The browser tests cover the settlement finder,
+construction, visible destruction and touch layout in addition to save/reload
+and the existing gameplay checks.
+
+```sh
+node --test game/apes-together-strong/tests/*.test.cjs
+node game/apes-together-strong/tests/settlement-expansion-browser.cjs
+npm run bench:apes:browser -- --scenario GHIJK --frames 180
+```
