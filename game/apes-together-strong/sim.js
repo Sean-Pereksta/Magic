@@ -4,6 +4,15 @@ const TAU=Math.PI*2, clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), dist=(a,b)=>Math.
 const angleDiff=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const FOLLOW=new Set(['follow','charge','hold']), tierNames=['Hunters','Containment','Military response','Regional suppression','Full military mobilization'];
 const APE_HP=120,SCOUT_HP=150,YOUNG_HP=60,GROW_UP=35;
+const PRIMATE_SPECIES=Object.freeze({
+ gorilla:Object.freeze({id:'gorilla',label:'Gorilla'}),
+ chimpanzee:Object.freeze({id:'chimpanzee',label:'Chimpanzee'}),
+ orangutan:Object.freeze({id:'orangutan',label:'Orangutan'}),
+ gibbon:Object.freeze({id:'gibbon',label:'Gibbon'}),
+ mandrill:Object.freeze({id:'mandrill',label:'Mandrill'}),
+ capuchin:Object.freeze({id:'capuchin',label:'Capuchin'})
+});
+const PRIMATE_IDS=Object.keys(PRIMATE_SPECIES),PRIMATE_NAMES=new Set(PRIMATE_IDS);
 const distance2=(a,b)=>(a.x-b.x)**2+(a.y-b.y)**2;
 const now=()=>window.performance?.now?.()||0;
 class PerformanceMonitor{
@@ -27,7 +36,7 @@ class Spatial{
 }
 class Game{
  constructor(seed,difficulty='survival',hooks={}){
- this.version=1;this.seed=String(seed||'LAUREL');this.difficulty=difficulty;this.hooks=hooks;this.world=new ATSWorld(this.seed);this.navigation=new ATSNavigation(this.world);this.colonies=new ATSSettlements(this);this.forces=new ATSForces(this);this.corpses=[];this.time=0;this.nextId=1;this.king={id:'king',x:0,y:0,hp:160,maxHp:160,dir:-.5,attackTimer:0,moving:false,lastHit:-30};
+ this.version=1;this.seed=String(seed||'LAUREL');this.difficulty=difficulty;this.hooks=hooks;this.world=new ATSWorld(this.seed);this.navigation=new ATSNavigation(this.world);this.colonies=new ATSSettlements(this);this.forces=new ATSForces(this);this.corpses=[];this.time=0;this.nextId=1;this.king={id:'king',x:0,y:0,hp:160,maxHp:160,dir:-.5,attackTimer:0,moving:false,lastHit:-30};this.ensureApeAppearance(this.king);
  this.apes=[];this.humans=[];this.vehicles=[];this.helis=[];this.settlements=[];this.bullets=[];this.effects=[];this.events=[];this.apeGrid=new Spatial(64);this.humanGrid=new Spatial(96);this.vehicleGrid=new Spatial(128);this.focusGrid=new Spatial(384);this.noiseGrid=new Spatial(384);this.apesById=new Map();this.humansById=new Map();this.settlementsById=new Map();this.settlementMembers=new Map();this.performance=new PerformanceMonitor();this.bulletPool=new Pool(512);this.effectPool=new Pool(400);this.noisePool=new Pool(128);this.visibilityCache=new Map();this.rescueFocus=[];this.nextCohortAt=0;this.nextSpawnAt=0;this.mode='follow';this.food=0;this.exposure=0;this.tier=1;this.viewRadius=700;this.commandCD=0;this.attackCD=0;this.ended=false;this.deathTimer=0;this.secondTimer=0;this.noises=[];this.trail=[{x:0,y:0}];this.raidTimer=45;this.heliTimer=150;this.seenTimer=0;this.lightCache=[];this.lightTimer=0;this.messages=[];this.hitFlash=0;this.lastContact=-20;this.sprintNoiseTime=0;this.day=1;this.aim={x:1,y:0};this.stats={freed:0,born:0,largestHorde:0,humans:0,structures:0,bases:0,prisons:0,settlements:0,largestSettlement:0,lost:0,highestThreat:1,territory:0};
  this.world.ensure(0,0,1400);this.world.reveal(0,0,300);this.notify('The crown is yours. A cage rattles nearby.','gold');
  this.responseStage=1;this.responsePeak=1;this.mobilized=false;this.warPhase=false;this.operationSerial=0;this.observedHorde=0;this.roadblockOperations=[];this.militaryOperations=[];this.nextInterceptAt=0;this.nextReconAt=180;
@@ -260,11 +269,18 @@ class Game{
  findOpen(x,y,r=10){
  if(!this.world.blocked(x,y,r))return{x,y};for(let radius=22;radius<=200;radius+=22)for(let i=0;i<12;i++){let aa=i/12*TAU,xx=x+Math.cos(aa)*radius,yy=y+Math.sin(aa)*radius;if(!this.world.blocked(xx,yy,r))return{x:xx,y:yy}}return{x,y};
  }
+ ensureApeAppearance(a){
+  // Cosmetics use independent hashes so combat and movement keep their random stream.
+  const id=a.id||'body-'+Math.round((a.x||0)*10)+','+Math.round((a.y||0)*10);
+  if(a.id==='king')a.species='gorilla';else if(!PRIMATE_NAMES.has(a.species))a.species=PRIMATE_IDS[ATSUtil.hash(this.seed+'|primate|'+id)%PRIMATE_IDS.length];
+  if(!Number.isInteger(a.coatVariant)||a.coatVariant<0||a.coatVariant>2)a.coatVariant=ATSUtil.hash(this.seed+'|coat|'+id)%3;
+  return a;
+ }
  makeApe(x,y,state='free',settlementId=null,young=false){
  if(this.population>=MAX_APE_POPULATION){if(this.time>=(this.nextPopulationWarn||0)){this.nextPopulationWarn=this.time+10;this.notify('Population limit reached — '+MAX_APE_POPULATION+' living apes.','gold')}return null}
  ({x,y}=this.findOpen(x,y));
  const hp=young?YOUNG_HP:state==='scout'?SCOUT_HP:APE_HP;
- const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.apes.push(p);this.apesById.set(p.id,p);return p;
+ const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.ensureApeAppearance(p);this.apes.push(p);this.apesById.set(p.id,p);return p;
  }
  makeHuman(x,y,site,kind=null){
  ({x,y}=this.findOpen(x,y));
@@ -774,11 +790,12 @@ class Game{
  if(d.apes.filter(a=>a.hp>0).length>MAX_APE_POPULATION)throw new Error('This save exceeds the '+MAX_APE_POPULATION+'-ape population limit.');
  const g=new Game(d.seed,d.difficulty,hooks);for(const k of ['time','nextId','king','apes','humans','vehicles','helis','settlements','food','tier','stats','heliTimer','events','messages','responseStage','responsePeak','mobilized','warPhase','announcedWarIntensity','operationSerial','observedHorde','roadblockOperations','militaryOperations','nextConvoyAt','nextDirectorAt','nextInterceptAt','nextReconAt','pursuitOperation','nextReinforcementAt','nextFieldOperation','nextRegionalOperation','nextMajorOffensive'])if(d[k]!==undefined)g[k]=d[k];g.world=ATSWorld.fromJSON(d.world);if(!d.balanceVersion||d.balanceVersion<2)g.migrateBalance();g.navigation=new ATSNavigation(g.world);g.forces.hazards=Array.isArray(d.hazards)?d.hazards:[];
  g.corpses=Array.isArray(d.corpses)?d.corpses.filter(c=>c&&c.life>0).slice(-320):[];
+ g.ensureApeAppearance(g.king);for(const a of g.apes)g.ensureApeAppearance(a);for(const a of g.corpses)if(a.type==='ape'||a.id==='king'||a.id?.startsWith('ape-'))g.ensureApeAppearance(a);
  for(const a of [...g.apes,...g.humans,...g.vehicles,...g.helis,...g.corpses])for(const key in a)if(key.startsWith('_')||key==='navCohort')delete a[key];for(const site of g.world.sites.values())for(const key of ['sleepingHumans','sleepingVehicles'])for(const a of site[key]||[])for(const field in a)if(field.startsWith('_')||field==='navCohort')delete a[field];
  g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.syncIndexes();g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);g.trail=[{x:g.king.x,y:g.king.y}];g.responseStage=d.responseStage||g.tier;g.responsePeak=d.responsePeak||g.stats.highestThreat||g.tier;g.mobilized=d.mobilized??(g.stats.largestHorde>=200);for(const v of g.vehicles)g.forces.initVehicle?.(v);g.forces.restoreSquads?.(d.squads);g.forces.restorePlatoons?.(d.platoons);
  g.militaryOperations=Array.isArray(g.militaryOperations)?g.militaryOperations:[];g.roadblockOperations=(Array.isArray(g.roadblockOperations)?g.roadblockOperations:[]).map(op=>{const saved=g.militaryOperations.find(x=>x.id&&x.id===op.id);if(saved)return saved;op.id=op.id||'roadblock-'+g.nextId++;op.channel='roadblock';op.status='active';op.target=op.target||op.point;op.phase=op.phase||(op.built?'hold':'approach');op.engineerJobs=op.engineerJobs||[];op.objects=op.objects||[];op.expiresAt=op.expiresAt||op.until;op.createdAt=op.createdAt??g.time;for(const id of op.members||[]){const h=g.humansById.get(id);if(h)h.operationId=op.id}g.militaryOperations.push(op);return op});
  for(const s of g.settlements)s.birthTimer=Math.min(30,Math.max(0,s.birthTimer||0));if((d.militaryVersion||0)<3){g.nextDirectorAt=Math.min(g.nextDirectorAt||0,g.time+g.directorInterval)}return g;
  }
 }
-window.ATSPerformance=PerformanceMonitor;window.ATSGame=Game;window.ATSTierNames=tierNames;
+window.ATSPerformance=PerformanceMonitor;window.ATSGame=Game;window.ATSTierNames=tierNames;window.ATSPrimateSpecies=PRIMATE_SPECIES;
 })();
