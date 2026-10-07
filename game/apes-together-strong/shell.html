@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071619">
+  <meta name="description" content="An illustrated isometric survival game. Free captive apes, command a horde, and build a kingdom in a procedural nighttime wilderness.">
+  <title>Apes Together Strong — Crown of the Wild</title>
+  <style>
+    :root { color-scheme: dark; --ink:#061217; --panel:#0b2027; --panel-light:#173238; --cream:#e9e4d2; --muted:#9facaa; --gold:#cfb46e; --gold-light:#ecdaa7; --teal:#83c8b3; --red:#e37b6b; --edge:rgba(198,222,204,.17); }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:var(--ink); color:var(--cream); font-family:Arial,Helvetica,sans-serif; }
+    body { -webkit-tap-highlight-color:transparent; }
+    [hidden] { display:none!important; }
+    button,input,select { font:inherit; }
+    button { color:inherit; cursor:pointer; touch-action:manipulation; }
+    button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid var(--gold-light); outline-offset:4px; }
+    button:disabled { opacity:.35; cursor:not-allowed; }
+    #gameCanvas { display:block; position:fixed; inset:0; width:100%; height:100%; touch-action:none; }
+    .screen { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:32px; overflow:auto; background:rgba(3,12,15,.76); backdrop-filter:blur(9px); }
+    #menu { justify-content:flex-start; padding:clamp(28px,6vw,100px); background:linear-gradient(90deg,rgba(3,14,18,.96) 0%,rgba(3,14,18,.88) 34%,rgba(3,14,18,.36) 68%,rgba(3,14,18,.12) 100%); backdrop-filter:none; }
+    .menu-content { width:min(520px,100%); }
+    .eyebrow { margin:0 0 18px; color:var(--teal); font-size:11px; letter-spacing:.28em; text-transform:uppercase; font-weight:700; }
+    .eyebrow:before { content:""; display:inline-block; width:26px; height:1px; background:var(--teal); vertical-align:middle; margin-right:12px; }
+    .game-title { font-family:Georgia,'Times New Roman',serif; font-size:clamp(50px,6.1vw,92px); line-height:.96; letter-spacing:-.065em; font-weight:400; margin:0 0 26px; text-shadow:0 3px 35px #02080a; }
+    .game-title span { display:block; }
+    .game-title .title-gold { color:var(--gold); }
+    .menu-description { font-size:15px; line-height:1.7; max-width:360px; color:#b7c2bc; margin:0 0 26px; }
+    .menu-description strong { font-weight:400; color:var(--cream); }
+    .menu-rule { height:1px; background:linear-gradient(90deg,var(--edge),transparent); margin:22px 0; max-width:392px; }
+    .menu-options { max-width:390px; display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; }
+    label.field-label { display:block; margin-bottom:7px; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); font-weight:bold; }
+    input[type=text], select { width:100%; min-height:43px; padding:10px 12px; border:1px solid var(--edge); border-radius:4px; color:var(--cream); background:rgba(12,34,39,.9); }
+    input::placeholder { color:#6f8584; }
+    .button { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:46px; padding:12px 18px; border:1px solid var(--edge); border-radius:4px; background:rgba(15,39,46,.9); color:var(--cream); font-size:12px; letter-spacing:.06em; font-weight:700; transition:background .15s,border-color .15s,transform .15s; }
+    .button:hover { background:#213f43; border-color:rgba(198,222,204,.42); }
+    .button:active { transform:translateY(1px); }
+    .button.primary { background:var(--gold); color:#12241f; border-color:var(--gold); }
+    .button.primary:hover { background:var(--gold-light); }
+    .button.quiet { background:transparent; }
+    .button.danger { color:#efa89c; border-color:rgba(224,119,104,.28); }
+    .menu-actions { max-width:390px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    #newRun { grid-column:1/-1; min-height:54px; text-transform:uppercase; letter-spacing:.15em; }
+    .menu-bottom { margin-top:28px; font-size:11px; color:#7f938e; line-height:1.8; }
+    .menu-bottom strong { color:var(--gold); font-weight:400; }
+    .menu-art-label { position:absolute; bottom:42px; right:48px; color:#9bafa5; font-size:10px; letter-spacing:.24em; text-transform:uppercase; text-align:right; line-height:2; pointer-events:none; }
+    .menu-art-label span { color:var(--gold); display:block; font-family:Georgia,serif; font-size:21px; letter-spacing:.03em; }
+    .dialog { width:min(520px,100%); max-height:calc(100dvh - 64px); overflow:auto; padding:32px; border:1px solid var(--edge); border-radius:10px; background:linear-gradient(145deg,#102c32,#08191f); box-shadow:0 28px 90px rgba(0,0,0,.55); }
+    .dialog.wide { width:min(860px,100%); }
+    .dialog h2 { font-family:Georgia,'Times New Roman',serif; font-size:36px; letter-spacing:-.04em; font-weight:400; margin:0 0 12px; }
+    .dialog p { color:var(--muted); font-size:13px; line-height:1.7; margin:0 0 20px; }
+    .dialog .eyebrow { font-size:10px; margin-bottom:16px; color:var(--gold); }
+    .dialog .eyebrow:before { background:var(--gold); }
+    .dialog-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
+    .dialog-actions > .button { flex:1; }
+    .pause-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    #resumeRun { grid-column:1/-1; }
+    #quitRun { grid-column:1/-1; }
+    .fine-print { margin-top:20px!important; margin-bottom:0!important; font-size:11px!important; color:#718985!important; }
+    .guide-intro { font-size:15px!important; max-width:660px; }
+    .guide-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .guide-card { padding:20px; border:1px solid var(--edge); border-radius:5px; background:rgba(5,20,24,.45); }
+    .guide-card h3 { margin:0 0 10px; font-size:13px; color:var(--gold-light); font-weight:700; }
+    .guide-card p { margin:0; font-size:12px; }
+    .guide-card.wide { grid-column:1/-1; }
+    .key { display:inline-flex; align-items:center; justify-content:center; padding:2px 5px; margin:0 1px; min-width:20px; min-height:21px; background:#1b363b; border:1px solid #3a5253; border-bottom-width:2px; border-radius:3px; font:10px Arial,sans-serif; color:#d1dcd1; }
+    .controls-list { display:grid; grid-template-columns:auto 1fr; column-gap:16px; row-gap:8px; align-items:center; margin:0; font-size:12px; }
+    .controls-list dt { color:var(--cream); white-space:nowrap; }
+    .controls-list dd { margin:0; color:var(--muted); }
+    .setting-row { display:flex; align-items:center; justify-content:space-between; gap:22px; border-top:1px solid var(--edge); padding:18px 0; }
+    .setting-row:first-of-type { margin-top:20px; }
+    .setting-name { display:block; font-size:13px; color:var(--cream); }
+    .setting-description { display:block; color:#849b96; font-size:11px; line-height:1.5; margin-top:5px; }
+    .setting-row input[type=checkbox] { width:19px; height:19px; accent-color:var(--gold); flex-shrink:0; }
+    .setting-row input[type=range] { width:170px; accent-color:var(--gold); }
+    .setting-row select { width:170px; }
+    #legacyList { display:grid; gap:10px; min-height:100px; color:var(--muted); font-size:13px; }
+    .legacy-row { display:grid; grid-template-columns:1fr auto; gap:6px; padding:15px; border:1px solid var(--edge); border-radius:4px; }
+    .legacy-row strong { color:var(--gold); }
+    .legacy-row small { color:var(--muted); }
+    #legacyScore { font-family:Georgia,serif; font-size:58px; color:var(--gold); margin:12px 0 18px; letter-spacing:-.04em; }
+    #deathStats { padding:16px 0; border-top:1px solid var(--edge); border-bottom:1px solid var(--edge); color:#adbbb2; font-size:13px; line-height:1.9; }
+    #overview .dialog { width:min(1040px,100%); }
+    .overview-layout { display:grid; grid-template-columns:1fr 250px; gap:24px; }
+    #mapCanvas { display:block; background:#051316; border:1px solid var(--edge); border-radius:5px; width:100%; aspect-ratio:1; max-height:60dvh; object-fit:contain; }
+    #overviewStats { font-size:13px; line-height:1.8; color:var(--muted); margin:0 0 18px; }
+    #settlementList { font-size:12px; line-height:1.6; color:#aebdb2; display:grid; gap:8px; }
+    .settlement-row { background:rgba(2,13,17,.35); padding:11px; border:1px solid var(--edge); border-radius:4px; }
+    .overview-side h3 { color:var(--gold); font-size:10px; letter-spacing:.14em; text-transform:uppercase; margin:0 0 12px; }
+    #hud { position:fixed; z-index:5; inset:0; pointer-events:none; user-select:none; }
+    .hud-top { display:flex; justify-content:space-between; gap:12px; position:absolute; left:20px; right:20px; top:18px; align-items:flex-start; }
+    .hud-cluster { display:flex; align-items:center; gap:14px; border:1px solid rgba(192,210,191,.14); border-radius:6px; background:rgba(5,22,27,.85); padding:12px 16px; box-shadow:0 3px 25px rgba(0,0,0,.15); }
+    .king-status { min-width:160px; }
+    .hud-label { font-size:9px; font-weight:bold; letter-spacing:.15em; text-transform:uppercase; color:#92a99e; }
+    .king-status .hud-label { color:var(--gold); display:flex; justify-content:space-between; margin-bottom:7px; }
+    .hp-track { width:160px; height:5px; background:#283c38; border-radius:4px; overflow:hidden; }
+    #hpFill { display:block; height:100%; width:100%; background:linear-gradient(90deg,#87b48b,#bad09b); transition:width .18s; }
+    #hpText { font-size:9px; letter-spacing:0; color:#aec4aa; font-weight:400; }
+    .hud-stat { min-width:47px; }
+    .hud-stat strong { display:block; font-family:Georgia,serif; font-size:24px; color:var(--cream); line-height:1.1; margin-top:4px; font-weight:400; }
+    .hud-stat.food strong { color:var(--gold-light); }
+    .hud-divider { height:28px; width:1px; background:var(--edge); }
+    .hud-right { display:flex; gap:8px; align-items:center; }
+    .time-cluster { flex-direction:column; align-items:flex-start; gap:5px; padding:10px 14px; }
+    #dayText { font-size:12px; letter-spacing:.08em; color:var(--gold-light); }
+    #threatText { font-size:10px; color:#99b5a6; }
+    .icon-button { pointer-events:auto; display:flex; align-items:center; justify-content:center; width:43px; height:43px; border:1px solid var(--edge); background:rgba(5,22,27,.88); border-radius:5px; color:#c8d7ca; font-size:19px; padding:0; }
+    .icon-button:hover { border-color:var(--gold); color:var(--gold); }
+    .hud-bottom { position:absolute; bottom:22px; left:22px; display:flex; flex-direction:column; align-items:flex-start; gap:9px; max-width:min(530px,calc(100vw - 44px)); }
+    .exposure-panel { width:210px; padding:9px 12px; border:1px solid rgba(213,227,208,.1); border-radius:5px; background:rgba(5,20,25,.82); }
+    .exposure-title { display:flex; justify-content:space-between; align-items:center; gap:12px; font-size:9px; text-transform:uppercase; letter-spacing:.14em; color:#8da79b; margin-bottom:6px; }
+    #exposureText { color:#b2c9a7; }
+    .exposure-track { height:3px; background:#253936; overflow:hidden; border-radius:2px; }
+    #exposureFill { height:100%; width:0%; display:block; background:#e8b467; transition:width .08s; }
+    #objectiveHint { color:#c8cebb; font-size:12px; line-height:1.5; padding:10px 13px; background:rgba(6,22,27,.85); border:1px solid var(--edge); border-radius:5px; max-width:440px; }
+    #contextHint { position:absolute; left:50%; bottom:110px; transform:translateX(-50%); text-align:center; color:#e8dfb4; font-size:12px; padding:8px 12px; background:rgba(5,19,24,.84); border:1px solid rgba(216,192,123,.22); border-radius:4px; max-width:80vw; }
+    #contextHint:empty { display:none; }
+    #toastArea { position:absolute; top:100px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:7px; width:min(420px,calc(100vw - 30px)); }
+    .toast { font-size:12px; line-height:1.5; padding:10px 17px; color:var(--cream); background:rgba(7,30,32,.94); border:1px solid rgba(172,198,163,.25); border-radius:5px; box-shadow:0 5px 25px rgba(0,0,0,.3); text-align:center; }
+    .toast.alert { border-color:rgba(223,125,96,.4); color:#f0bf9d; }
+    .command-wrap { position:absolute; bottom:22px; right:22px; display:flex; flex-direction:column; align-items:flex-end; gap:8px; pointer-events:auto; }
+    #commandToggle { min-height:40px; font-size:10px; background:rgba(7,27,32,.92); }
+    #commandPanel { width:245px; padding:9px; display:grid; gap:5px; border:1px solid var(--edge); border-radius:6px; background:rgba(5,21,26,.96); }
+    .command-button { display:flex; justify-content:space-between; align-items:center; width:100%; min-height:38px; font-size:11px; border:1px solid transparent; background:transparent; border-radius:3px; padding:7px 10px; text-align:left; }
+    .command-button:hover { background:#173438; border-color:#2b4745; }
+    .command-button[data-command=charge] { color:var(--gold); }
+    .command-button .command-sub { font-size:9px; margin-left:5px; color:#819c93; }
+    .command-button .key { pointer-events:none; }
+    #touchControls { display:none; position:absolute; inset:0; pointer-events:none; }
+    #joystick { pointer-events:auto; position:absolute; left:max(28px,env(safe-area-inset-left)); bottom:max(100px,env(safe-area-inset-bottom)); width:108px; height:108px; border:1px solid rgba(194,217,190,.25); background:rgba(6,25,30,.44); border-radius:50%; touch-action:none; }
+    #joystick:before { content:""; position:absolute; inset:17px; border:1px dashed rgba(194,217,190,.13); border-radius:50%; }
+    #joystickKnob { position:absolute; top:32px; left:32px; width:42px; height:42px; border:1px solid rgba(221,229,192,.38); background:rgba(159,192,161,.27); border-radius:50%; pointer-events:none; }
+    #attackButton { pointer-events:auto; position:absolute; right:30px; bottom:104px; width:78px; height:78px; border:1px solid rgba(218,189,107,.6); background:rgba(128,101,41,.5); border-radius:50%; color:#eed9a2; font-weight:700; font-size:10px; letter-spacing:.09em; touch-action:none; }
+    .touch-hint { position:absolute; right:16px; bottom:190px; width:107px; text-align:center; color:#aac3af; font-size:9px; line-height:1.5; }
+    #bootError { z-index:100; }
+    #errorMessage { padding:12px; border:1px solid rgba(224,119,104,.28); border-radius:4px; background:rgba(32,8,8,.3); color:#edc7bb; word-break:break-word; }
+    @media (pointer:coarse), (max-width:800px) { #touchControls { display:block; } .hud-bottom { bottom:14px; left:14px; max-width:calc(100vw - 120px); } #objectiveHint { max-width:330px; font-size:10px; padding:7px 9px; } .command-wrap { right:14px; bottom:14px; } #commandToggle { min-height:35px; padding:8px 10px; } #contextHint { bottom:222px; } .exposure-panel { width:155px; padding:7px 9px; } }
+    @media (max-width:650px) { .screen { padding:16px; } #menu { padding:28px; align-items:center; background:linear-gradient(90deg,rgba(3,14,18,.96),rgba(3,14,18,.76)); } .menu-content { width:min(390px,100%); } .game-title { font-size:59px; margin-bottom:20px; } .menu-description { font-size:12px; margin-bottom:20px; } .eyebrow { font-size:9px; margin-bottom:15px; } .menu-bottom { margin-top:17px; font-size:10px; } .menu-art-label { display:none; } .dialog { padding:23px; max-height:calc(100dvh - 32px); } .dialog h2 { font-size:30px; } .guide-grid { grid-template-columns:1fr; } .guide-card.wide { grid-column:auto; } .overview-layout { grid-template-columns:1fr; gap:18px; } #mapCanvas { max-height:43dvh; } .hud-top { left:10px; right:10px; top:10px; gap:5px; } .hud-cluster { gap:9px; padding:9px 10px; } .king-status { min-width:98px; } .hp-track { width:98px; } .hud-stat { min-width:30px; } .hud-stat strong { font-size:20px; } .hud-label { font-size:8px; } .hud-divider { display:none; } .hud-right { gap:5px; } .time-cluster { padding:8px 9px; } #dayText { font-size:10px; } #threatText { font-size:8px; } .icon-button { width:32px; height:35px; font-size:16px; } #toastArea { top:78px; } .toast { font-size:10px; padding:8px 12px; } .setting-row input[type=range],.setting-row select { width:120px; } }
+    @media (max-height:650px) and (min-width:650px) { #menu { padding:25px 6vw; } .game-title { font-size:64px; margin-bottom:15px; } .menu-description { font-size:12px; margin-bottom:14px; } .eyebrow { margin-bottom:12px; } .menu-rule { margin:15px 0; } .menu-bottom { margin-top:15px; } .menu-options { margin-bottom:12px; } .menu-actions .button { min-height:39px; padding:8px 15px; } #newRun { min-height:44px; } }
+    @media (prefers-reduced-motion:reduce) { *,*:before,*:after { transition:none!important; animation:none!important; } }
+    #regionText{position:absolute;top:90px;left:24px;color:#aebbb1;font-size:10px;letter-spacing:.1em;text-transform:uppercase;text-shadow:0 2px 4px #041014}
+    .settlement-row p{font-size:11px;line-height:1.6;margin:8px 0}.settlement-row label{display:block;margin-top:12px;font-size:11px}.settlement-row select{min-height:36px;font-size:11px;margin-top:5px}.settlement-actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}.settlement-actions .button{font-size:10px;padding:7px;min-height:33px;flex:1}.site-assessment{padding:10px;border:1px solid var(--edge);font-size:11px!important}.lobby-link{font-size:11px;color:var(--teal);text-decoration:none}.lobby-link:hover{text-decoration:underline}
+    @media(max-width:650px){#regionText{top:66px;left:12px;font-size:8px}.overview-side{padding-bottom:12px}}
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" aria-label="Isometric forest and your ape tribe"></canvas>
+
+  <main id="menu" class="screen" aria-labelledby="gameTitle">
+    <div class="menu-content">
+      <p class="eyebrow">A horde survival odyssey</p>
+      <h1 id="gameTitle" class="game-title"><span>APES</span><span>TOGETHER</span><span class="title-gold">STRONG.</span></h1>
+      <p class="menu-description">One crown. A thousand beating hearts.<br>Free your kin, build a tribe, and lead them through a world that fears your freedom.</p>
+      <div class="menu-options">
+        <div><label class="field-label" for="difficultySelect">The hunt</label><select id="difficultySelect"><option value="wanderer">Wanderer · forgiving</option><option value="survival" selected>Survival · the intended hunt</option><option value="relentless">Relentless · no mercy</option></select></div>
+        <div><label class="field-label" for="seedInput">World seed</label><input id="seedInput" type="text" maxlength="40" placeholder="Leave to discover" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="menu-actions">
+        <button id="newRun" class="button primary">Enter the wild <span aria-hidden="true">→</span></button>
+        <button id="continueRun" class="button" disabled>Continue your reign</button>
+        <button id="howToPlay" class="button quiet">How to survive</button>
+        <button id="legacyButton" class="button quiet" style="grid-column:1/-1">Hall of crowns <span aria-hidden="true">♜</span></button>
+      </div>
+      <div class="menu-rule"></div>
+      <p class="menu-bottom"><a class="lobby-link" href="../lobby/lobby.html">← Game library</a><br>THE FOREST IS YOUR KINGDOM. THE DARKNESS IS YOUR ALLY.<br>Longest legacy <strong id="highScore">0</strong> · Headphones recommended</p>
+    </div>
+    <div class="menu-art-label">Procedural worlds · Unscripted survival<span>A crown worth following.</span></div>
+  </main>
+
+  <section id="guide" class="screen" hidden aria-labelledby="guideTitle">
+    <div class="dialog wide">
+      <p class="eyebrow">The king's field guide</p><h2 id="guideTitle">Strength needs a leader.</h2>
+      <p class="guide-intro">You begin alone. Every ape you free can become part of your horde. Protect your crown, preserve your tribe, and make the forest yours.</p>
+      <div class="guide-grid">
+        <article class="guide-card"><h3>Move, fight, and explore</h3><dl class="controls-list"><dt><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></dt><dd>Move the king. Arrow keys also work.</dd><dt><span class="key">Shift</span></dt><dd>Sprint. Your footfalls attract attention.</dd><dt><span class="key">Ctrl</span></dt><dd>Move slowly through the shadows.</dd><dt><span class="key">Space</span> / click</dt><dd>Strike nearby enemies, cages, and structures.</dd><dt><span class="key">Tab</span> / <span class="key">M</span></dt><dd>Open the world map and settlements.</dd><dt><span class="key">Esc</span></dt><dd>Pause, save, and change settings.</dd></dl></article>
+        <article class="guide-card"><h3>Lead your horde</h3><dl class="controls-list"><dt><span class="key">Q</span> Call</dt><dd>Rally nearby free apes to your crown.</dd><dt><span class="key">E</span> Charge</dt><dd>Send your horde toward the pointer.</dd><dt><span class="key">R</span> Recall</dt><dd>Bring followers back to the king.</dd><dt><span class="key">F</span> Hold</dt><dd>Keep your horde in place while you scout.</dd><dt><span class="key">Z</span> Settle</dt><dd>Leave a group to build a home.</dd><dt><span class="key">Shift</span> + <span class="key">Z</span></dt><dd>Settle all followers at once.</dd><dt><span class="key">C</span> Patrol</dt><dd>Assign defenders to guard the area.</dd></dl></article>
+        <article class="guide-card"><h3>Light means danger</h3><p>Flashlights and tower beams reveal any ape they touch. Keep to shadows and trees. Humans shout, run to alarms, and call reinforcements by radio. Interrupt a caller before help arrives. Break sight and move away from the last place you were seen.</p></article>
+        <article class="guide-card"><h3>Free your kin</h3><p>Captive apes wait in cages around human camps. Strike a cage until it breaks, then call with <span class="key">Q</span> to gather the freed apes. A large horde can overwhelm a patrol, but a crowded road is easy to spot. Hold your tribe in safe cover and scout alone when the hunt is hot.</p></article>
+        <article class="guide-card"><h3>Give your tribe a home</h3><p>Settle on safe open land near berry bushes. Settlements support a growing population and give you a place to return. Food patches slowly regrow. Housing, timber, gardens, and defenses develop as adults work. Open the map to choose balanced growth, food security, or fortification, and visit to deliver food. Assign patrols to defend your homes, and come back to rally more apes when you need them.</p></article>
+        <article class="guide-card"><h3>Turn the hunt against them</h3><p>Human bullets are deadly. Use cover and approach from the dark, then strike together. Towers, alarms, cages, and other infrastructure can be destroyed. Your king slowly recovers when safe; your followers are more fragile. Marksmen show an aiming line before firing; move away from its endpoint. Orange circles warn of grenades. Flank shield guards or swarm them. Medics support nearby soldiers. Each passing night brings a harder hunt.</p></article>
+        <article class="guide-card wide"><h3>Playing by touch</h3><p>Use the left stick to move and the right button to strike. Open <strong>Commands</strong> to rally, hold, recall, settle, or patrol. Choose <strong>Charge</strong>, then tap the ground to send the horde in that direction.</p></article>
+      </div>
+      <div class="dialog-actions"><button id="backGuide" class="button primary">I am ready</button></div>
+    </div>
+  </section>
+
+  <section id="pause" class="screen" hidden aria-labelledby="pauseTitle"><div class="dialog">
+    <p class="eyebrow">A moment in the shadows</p><h2 id="pauseTitle">The forest waits.</h2><p>Your reign is paused. Rest your hands. The hunt will resume when you are ready.</p>
+    <div class="pause-actions"><button id="resumeRun" class="button primary">Return to the wild</button><button id="saveRun" class="button">Save this reign</button><button id="settingsButton" class="button">Settings</button><button id="exportSave" class="button quiet">Export save</button><button id="importSave" class="button quiet">Import save</button><button id="quitRun" class="button danger">Save and return to menu</button></div>
+    <input id="importInput" type="file" accept=".json,application/json" hidden>
+    <p class="fine-print">Your progress saves automatically on this device. Export a save to keep a separate copy. The king's death ends the current reign.</p>
+  </div></section>
+
+  <section id="settings" class="screen" hidden aria-labelledby="settingsTitle"><div class="dialog">
+    <p class="eyebrow">Make the wild yours</p><h2 id="settingsTitle">Settings</h2>
+    <label class="setting-row" for="soundToggle"><span><span class="setting-name">Forest sound</span><span class="setting-description">Footsteps, calls, alarms, and battle.</span></span><input id="soundToggle" type="checkbox" checked></label>
+    <label class="setting-row" for="volumeInput"><span><span class="setting-name">Sound volume</span><span class="setting-description">Keep an ear out for the hunt.</span></span><input id="volumeInput" type="range" min="0" max="1" step="0.05" value="0.55"></label>
+    <label class="setting-row" for="qualitySelect"><span><span class="setting-name">Visual detail</span><span class="setting-description">Lower detail helps on slower devices.</span></span><select id="qualitySelect"><option value="high">High</option><option value="low">Low</option></select></label>
+    <label class="setting-row" for="reducedMotion"><span><span class="setting-name">Reduced motion</span><span class="setting-description">Reduce camera shake and visual movement.</span></span><input id="reducedMotion" type="checkbox"></label>
+    <div class="dialog-actions"><button id="backSettings" class="button primary">Done</button></div>
+  </div></section>
+
+  <section id="death" class="screen" hidden aria-labelledby="legacyTitle"><div class="dialog">
+    <p class="eyebrow">The crown falls. The story remains.</p><h2 id="legacyTitle">A reign remembered.</h2><p>Your tribe carried your courage into the dark.</p><div id="legacyScore" aria-label="Legacy score">0</div><div id="deathStats"></div>
+    <div class="dialog-actions"><button id="deathNew" class="button primary">A new crown</button><button id="deathMenu" class="button">Return to menu</button></div>
+  </div></section>
+
+  <section id="legacy" class="screen" hidden aria-labelledby="hallTitle"><div class="dialog">
+    <p class="eyebrow">Those who led the way</p><h2 id="hallTitle">Hall of crowns</h2><p>A kingdom is measured in the lives it frees.</p><div id="legacyList"></div><div class="dialog-actions"><button id="backLegacy" class="button primary">Return</button></div>
+  </div></section>
+
+  <section id="overview" class="screen" hidden aria-labelledby="overviewTitle"><div class="dialog wide">
+    <p class="eyebrow">Beyond the trees</p><h2 id="overviewTitle">Your growing kingdom</h2><p>Only places you have explored are revealed. Find food, free captives, and choose where your tribe will take root.</p>
+    <div class="overview-layout"><canvas id="mapCanvas" width="600" height="600" aria-label="Explored world map"></canvas><aside class="overview-side"><h3>The reign</h3><div id="overviewStats"></div><p id="siteAssessment" class="site-assessment"></p><h3>Settlements</h3><div id="settlementList"></div></aside></div>
+    <div class="dialog-actions"><button id="closeOverview" class="button primary">Back to the forest</button></div>
+  </div></section>
+
+  <div id="hud" hidden>
+    <div class="hud-top"><div class="hud-cluster"><div class="king-status"><div class="hud-label"><span>♛ The king</span><span id="hpText">100 / 100</span></div><div class="hp-track"><span id="hpFill"></span></div></div><div class="hud-divider"></div><div class="hud-stat"><div class="hud-label">Horde</div><strong id="hordeCount">0</strong></div><div class="hud-stat food"><div class="hud-label">Food</div><strong id="foodCount">0</strong></div></div><div class="hud-right"><div class="hud-cluster time-cluster"><span id="dayText">DAY 1</span><span id="threatText">Quiet woods</span></div><button id="mapButton" class="icon-button" aria-label="Open world map" title="World map (M)">⌖</button><button id="pauseButton" class="icon-button" aria-label="Pause game" title="Pause (Esc)">Ⅱ</button></div></div>
+    <div id="regionText"></div>
+    <div id="toastArea" role="status" aria-live="polite"></div>
+    <div class="hud-bottom"><div class="exposure-panel"><div class="exposure-title"><span>Visibility</span><span id="exposureText">Hidden</span></div><div class="exposure-track"><span id="exposureFill"></span></div></div><div id="objectiveHint">Follow the shadows. Find your captive kin.</div></div>
+    <div id="contextHint"></div>
+    <div class="command-wrap"><div id="commandPanel" hidden><button class="command-button" data-command="call"><span>Call nearby apes</span><span class="key">Q</span></button><button class="command-button" data-command="charge"><span>Charge <span class="command-sub">toward pointer</span></span><span class="key">E</span></button><button class="command-button" data-command="recall"><span>Recall the horde</span><span class="key">R</span></button><button class="command-button" data-command="hold"><span>Hold position</span><span class="key">F</span></button><button class="command-button" data-command="settle"><span>Settle a group</span><span class="key">Z</span></button><button class="command-button" data-command="settleAll"><span>Settle all followers</span><span class="key">⇧ Z</span></button><button class="command-button" data-command="patrol"><span>Patrol this area</span><span class="key">C</span></button></div><button id="commandToggle" class="button" aria-controls="commandPanel" aria-expanded="false">Commands <span aria-hidden="true">⌃</span></button></div>
+    <div id="touchControls"><div id="joystick" role="application" aria-label="Movement joystick"><div id="joystickKnob"></div></div><p class="touch-hint">Tap the forest to aim.<br>Command your charge.</p><button id="attackButton" aria-label="Strike nearby target">STRIKE</button></div>
+  </div>
+
+  <section id="bootError" class="screen" hidden aria-labelledby="errorTitle"><div class="dialog"><p class="eyebrow">A snag in the undergrowth</p><h2 id="errorTitle">Let's get you moving.</h2><p id="errorMessage" role="alert"></p><div class="dialog-actions"><button id="errorResume" class="button primary">Recover the reign</button></div></div></section>
+</body>
+</html>
