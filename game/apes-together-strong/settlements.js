@@ -17,12 +17,12 @@ const COMMISSIONS={
  garden:{kind:'garden',label:'Garden',description:'Grow a steady local food supply after the planting crew finishes.',wood:10,food:0,work:22,population:6},
  store:{kind:'storage',label:'Food store',description:'Increase the village food and timber storage capacity.',wood:16,food:6,work:35,population:12},
  workshop:{kind:'workShelter',label:'Workshop',description:'Shelter work crews and equip one ape at a time. Visit to buy armor for your king.',wood:20,food:8,work:28,population:18},
- royalExpansion:{kind:'royalExpansion',label:'Royal lodge expansion',description:'Expand the main lodge and claim a wide new district. Unlock 24-resident longhouses, more workshops and a second palisade ring.',wood:160,food:120,work:110,population:12,tier:1,expansion:1},
- longhouse:{kind:'longhouse',label:'Royal longhouse',description:'A broad, reinforced family home for 24 residents. Royal lodge expansion required.',wood:30,food:16,work:46,population:12,tier:1,requiresExpansion:1},
+ royalExpansion:{kind:'royalExpansion',label:'Royal lodge expansion',description:'Reinforce the main lodge and lay out a wider district with a second palisade ring.',wood:160,food:120,work:110,population:12,tier:1,expansion:1},
+ longhouse:{kind:'longhouse',label:'Royal longhouse',description:'A broad, reinforced family home for 24 residents.',wood:30,food:16,work:46,population:12,tier:1,requiresExpansion:1},
  nursery:{kind:'nursery',label:'Nursery grove',description:'A sheltered family grove helps families raise young 18% faster. Completed homes set the population limit.',wood:42,food:35,work:55,population:18,tier:1},
  spearBattery:{kind:'spearBattery',label:'Spear battery',description:'A reinforced twin-rack defense launches visible spears up to 1,000 units. Requires an adult defender.',wood:64,food:30,work:78,population:18,tier:1},
- warlordExpansion:{kind:'warlordExpansion',label:'Warlord citadel expansion',description:'Raise a great war lodge and a vast outer district. Unlock 40-resident canopy halls, abundant housing plots and three palisade rings.',wood:360,food:280,work:175,population:24,tier:2,expansion:2,requiresExpansion:1},
- canopyHut:{kind:'canopyHut',label:'Canopy hall',description:'A large multi-roof home for 40 residents. Warlord citadel expansion required.',wood:55,food:30,work:70,population:24,tier:2,requiresExpansion:2},
+ warlordExpansion:{kind:'warlordExpansion',label:'Warlord citadel expansion',description:'Raise a great war lodge and lay out a vast outer district with three palisade rings.',wood:360,food:280,work:175,population:24,tier:2,expansion:2,requiresExpansion:1},
+ canopyHut:{kind:'canopyHut',label:'Canopy hall',description:'A large multi-roof home for 40 residents.',wood:55,food:30,work:70,population:24,tier:2,requiresExpansion:2},
  rallyGrove:{kind:'rallyGrove',label:'Rally grove',description:'Create another family gathering district with 25% faster births while completed homes have room.',wood:85,food:75,work:85,population:24,tier:2},
  orchard:{kind:'orchard',label:'Royal orchard',description:'An expanded food-growing area feeds large settlements and helps their families grow faster.',wood:65,food:45,work:65,population:18,tier:2},
  spearBallista:{kind:'spearBallista',label:'Great spear ballista',description:'A heavy wooden launcher hurls powerful spears up to 1,150 units at infantry and armor.',wood:120,food:70,work:105,population:24,tier:2}
@@ -56,25 +56,25 @@ class Settlements {
   this.game.world.syncSettlementBuildings?.(s,this.game);
  }
  lodgeAt(king=this.game.king){if(!king||king.hp<=0)return null;return this.game.settlements.filter(s=>s.population>0&&s.lodge?.hp!==0&&distance(king,s)<=90).sort((a,b)=>distance(king,a)-distance(king,b))[0]||null}
- commissioningSlots(s){return{active:(s.projects||[]).filter(p=>p.commissioned&&!p.done).length,limit:clamp(2+Math.ceil((s.population||0)/100),3,12)}}
- facilityLimit(s,kind){const p=s.population||0,e=this.expansion(s);return /Expansion$/.test(kind)?1:kind==='spearTower'?Math.min(14,2+Math.floor(p/80)+e*2):kind==='spearBattery'?4+e*3:kind==='spearBallista'?3+e*2:kind==='training'?Math.min(6,1+Math.floor(p/180)+e):kind==='barrier'?this.palisadePlan(s).length:HOUSING[kind]?Math.max(Math.ceil(Math.max(6,p)*1.2/10)+2,[18,64,128][e]):kind==='nursery'?3+e*2:kind==='rallyGrove'?4+e:kind==='orchard'?6+e*3:kind==='garden'?Math.ceil(p/8)+2+e*8:kind==='storage'?Math.ceil(p/80)+1+e*3:Math.ceil(p/100)+1+e*3}
- catalog(s){if(typeof s==='string')s=this.game.settlement(s);if(!s)return[];this.init(s);const slots=this.commissioningSlots(s),near=this.lodgeAt()===s;
-  return Object.entries(COMMISSIONS).map(([kind,c])=>{const collection=HOUSING[c.kind]?s.huts:c.kind==='barrier'?s.barriers:FACILITIES.has(c.kind)?s.facilities:s.structures,built=c.expansion?(this.expansion(s)>=c.expansion?1:0):collection.filter(o=>(c.kind==='barrier'||(o.kind||'hut')===c.kind)&&o.hp>0&&(o.stage??4)===4).length,queued=s.projects.filter(p=>p.kind===c.kind&&!p.done).length,limit=this.facilityLimit(s,c.kind),tierReady=this.tier()>=(c.tier||0),unlocked=tierReady&&s.population>=c.population&&this.expansion(s)>=(c.requiresExpansion||0);
-   const reason=!tierReady?'Reach '+(c.tier===2?'300 apes · Warlord':'100 apes · King of the Jungle')+'.':this.expansion(s)<(c.requiresExpansion||0)?'Complete the '+(c.requiresExpansion===2?'Warlord citadel':'Royal lodge')+' expansion first.':s.population<c.population?'Needs '+c.population+' village residents.':!near?'Visit the great lodge to commission construction.':s.attack?'Construction orders wait until the village is safe.':built+queued>=limit?'All '+limit+' available plots of this kind are occupied.':slots.active>=slots.limit?'The commission queue is full.':s.wood<c.wood?'Not enough village timber.':s.food<c.food?'Not enough village food.':'';
-   return{kind,label:c.label,description:c.description,cost:{wood:c.wood,food:c.food},totalWork:c.work,limit,built,queued,unlocked,available:!reason,reason};
+ commissioningSlots(s){return{active:(s.projects||[]).filter(p=>p.commissioned&&!p.done).length,limit:Infinity}}
+ facilityLimit(s,kind){return /Expansion$/.test(kind)?1:Infinity}
+ catalog(s){if(typeof s==='string')s=this.game.settlement(s);if(!s)return[];this.init(s);const near=this.lodgeAt()===s;
+  return Object.entries(COMMISSIONS).map(([kind,c])=>{const collection=HOUSING[c.kind]?s.huts:c.kind==='barrier'?s.barriers:FACILITIES.has(c.kind)?s.facilities:s.structures,built=c.expansion?(this.expansion(s)>=c.expansion?1:0):collection.filter(o=>(c.kind==='barrier'||(o.kind||'hut')===c.kind)&&o.hp>0&&(o.stage??4)===4).length,queued=s.projects.filter(p=>p.kind===c.kind&&!p.done).length,limit=this.facilityLimit(s,c.kind);
+   const reason=!near?'Visit the great lodge to commission construction.':c.expansion&&built?'This lodge upgrade is complete.':c.expansion&&queued?'This lodge upgrade is already queued.':s.wood<c.wood?'Not enough village timber.':s.food<c.food?'Not enough village food.':'';
+   return{kind,label:c.label,description:c.description,cost:{wood:c.wood,food:c.food},totalWork:c.work,limit,built,queued,unlocked:true,available:!reason,reason};
   });
  }
- commission(id,kind){const s=this.game.settlement(id);if(!s)return{ok:false,reason:'This village no longer exists.'};const entry=this.catalog(s).find(c=>c.kind===kind);if(!entry)return{ok:false,reason:'Unknown construction commission.'};if(!entry.available)return{ok:false,reason:entry.reason};const spec=COMMISSIONS[kind],p=this.queue(s,spec.kind,null,{commissioned:true});if(!p)return{ok:false,reason:'No safe, open plot is ready. Try again as the village expands.'};
-  s.wood-=spec.wood;s.food-=spec.food;p.commissioned=true;p.commissionKind=kind;p.paidCost={wood:spec.wood,food:spec.food};p.timber=0;p.totalWork=spec.work;p.waiting=true;s.commissions.push({id:p.id,projectId:p.id,kind,status:'queued',createdAt:this.game.time,cost:{...p.paidCost}});this.trimCommissions(s);s._jobsAt=0;return{ok:true,reason:'Commission added to the builders’ work queue.',projectId:p.id};
+ commission(id,kind){const s=this.game.settlement(id);if(!s)return{ok:false,reason:'This village no longer exists.'};const entry=this.catalog(s).find(c=>c.kind===kind);if(!entry)return{ok:false,reason:'Unknown construction commission.'};if(!entry.available)return{ok:false,reason:entry.reason};const spec=COMMISSIONS[kind],p=this.queue(s,spec.kind,null,{commissioned:true});if(!p)return{ok:false,reason:'The project could not be queued.'};
+  s.wood-=spec.wood;s.food-=spec.food;p.commissioned=true;p.commissionKind=kind;p.paidCost={wood:spec.wood,food:spec.food};p.timber=0;p.totalWork=spec.work;p.waiting=true;s.commissions.push({id:p.id,projectId:p.id,kind,status:'queued',createdAt:this.game.time,cost:{...p.paidCost}});this.trimCommissions(s);s._jobsAt=0;s._staffAt=0;return{ok:true,reason:'Commission added to the builders’ work queue.',projectId:p.id};
  }
  trimCommissions(s){const active=s.commissions.filter(c=>c.status==='queued'),history=s.commissions.filter(c=>c.status!=='queued').slice(-24);s.commissions=history.concat(active)}
  trainingBonus(a){const level=clamp(Math.floor(a.trainingLevel||0),0,3);return{maxHp:level*12,damageMultiplier:1+level*.08}}
- builtExtent(s,limit=Infinity){let r=100;for(const h of (s.huts||[]).concat(s.facilities||[],s.barriers||[]))r=Math.max(r,Math.hypot(h.x-s.x,h.y-s.y)+Math.max(38,(h.w||h.width||0)*.5,(h.h||0)*.5));return Math.min(limit,r)}
+ builtExtent(s,limit=Infinity){let r=100;for(const h of (s.huts||[]).concat(s.facilities||[],s.structures||[],s.barriers||[]).filter(o=>!o.activityZone))r=Math.max(r,Math.hypot(h.x-s.x,h.y-s.y)+Math.max(38,(h.w||h.width||0)*.5,(h.h||0)*.5));return Math.min(limit,r)}
  targetFootprint(s){const points=[[0,100],[10,100],[50,180],[100,250],[200,340],[400,450],[600,550],[1000,650]],p=Math.max(0,s.population||0),e=this.expansion(s);let r=650;for(let i=1;i<points.length;i++)if(p<=points[i][0]){const [a,ra]=points[i-1],[b,rb]=points[i];r=ra+(rb-ra)*(p-a)/(b-a);break}return clamp(Math.max(r+[0,220,600][e],[100,420,900][e])+Math.max(0,(s.level||1)-1)*3+Math.min(16,(s.structures?.length||0)*.8),100,650+e*300)}
  footprint(s){this.init(s);return Math.max(s.developedRadius||100,this.builtExtent(s))}
  expand(s){s.targetRadius=Math.max(this.targetFootprint(s),this.builtExtent(s),s.developedRadius);const before=s.developedRadius;s.developedRadius=Math.min(s.targetRadius,s.developedRadius+.35+Math.min(2.45,Math.sqrt(s.builders||0)*.12));s.radius=this.footprint(s);if(Math.abs(s.radius-(s._layoutRadius||0))>=8||!s.entrances?.length)this.layout(s);s.expansionRing={inner:Math.max(65,before-18),outer:s.developedRadius};}
  palisadePlan(s){
-  const count=this.expansion(s)+1,width=clamp(62+Math.floor((s.population||0)/100)*7,62,132),r=Math.max(110,s.developedRadius||s.radius||100);s.palisadeRadii=s.palisadeRadii||[];s.palisadeWidths=s.palisadeWidths||[];
+  const count=Math.max(this.expansion(s)+1,s.palisadeRadii?.length||0),width=clamp(62+Math.floor((s.population||0)/100)*7,62,132),r=Math.max(110,s.developedRadius||s.radius||100);s.palisadeRadii=s.palisadeRadii||[];s.palisadeWidths=s.palisadeWidths||[];
   // Ring radii stay fixed once surveyed. Later district growth adds an outer
   // ring instead of teleporting the existing walls or destroying old saves.
   if(!s.palisadeRadii.length)s.palisadeRadii.push(Math.max(105,Math.round(r*.9)));
@@ -88,7 +88,54 @@ class Settlements {
   s._palisadePlanKey=key;s._palisadePlan=plots;return plots;
  }
  barrierPlot(s){const w=this.game.world,occupied=(s.barriers||[]).concat((s.projects||[]).filter(p=>p.kind==='barrier'));for(const p of this.palisadePlan(s)){if(occupied.some(o=>o.ringId===p.ringId&&o.ringLayout===p.ringLayout&&o.ringSlot===p.ringSlot||o.ringLayout!==p.ringLayout&&distance(o,p)<p.barrierWidth*.45))continue;if(w.terrain(p.x,p.y).water)continue;const info=w.settlementPlot?.(p.x,p.y,18,{settlementId:s.id});if(info&&!info.valid&&(info.pending||info.water||!Array.isArray(info.blocked)||info.blocked.some(o=>o.type!=='apeBarricade'||o.settlementId!==s.id)))continue;const objects=info?.trees||w.getObjects(p.x,p.y,26);if(!info&&objects.some(o=>o.solid&&o.type!=='tree'&&!(o.type==='apeBarricade'&&o.settlementId===s.id)&&!o.dead&&o.hp!==0))continue;return{...p,treeIds:objects.filter(o=>o.type==='tree'&&!o.dead).map(t=>t.id)}}return null}
+ surveyPlot(s,kind,search={ring:0,slot:0}){
+  const w=this.game.world,size=k=>k==='training'||k==='longhouse'||k==='canopyHut'?40:DEFENSES[k]?34:k==='hut'?27:k==='barrier'?18:21,plotRadius=size(kind);
+  const occupied=(this.game.settlements||[s]).flatMap(home=>[{...home,kind:'lodge'},...(home.huts||[]),...(home.structures||[]),...(home.facilities||[]),...(home.projects||[]),...(home.barriers||[])]).filter(o=>!o.awaitingPlot&&!o.activityZone&&o.kind!=='lumber');
+  // Search is resumable and bounded per call, not limited to a settlement size.
+  // Complete each ring around the lodge before looking farther outward.
+  for(let attempt=0;attempt<96;attempt++){
+   let point;
+   if(kind==='barrier'){
+    let plan=this.palisadePlan(s);
+    if(search.slot>=plan.length){s.palisadeRadii.push((s.palisadeRadii.at(-1)||110)+180);plan=this.palisadePlan(s)}
+    point=plan[search.slot];if(!point){search.slot++;continue}
+   }else{
+    const radius=120+search.ring*150,slots=Math.max(5,Math.floor(Math.PI*2*radius/150));
+    if(search.slot>=slots){search.ring++;search.slot=0;continue}
+    const seed=hash(s.id+':ring:'+search.ring),angle=(seed%997)/997*Math.PI*2+search.slot*Math.PI*2/slots;
+    point={x:s.x+Math.cos(angle)*radius,y:s.y+Math.sin(angle)*radius,layoutRing:search.ring,layoutSlot:search.slot};
+    if([0,Math.PI*.68,Math.PI*1.37].some(a=>Math.cos(angle-a)>0&&Math.abs(Math.sin(angle-a))*radius<30)){search.slot++;continue}
+   }
+   if(occupied.some(o=>kind==='barrier'&&(o.fortification||o.kind==='barrier')?distance(o,point)<(point.barrierWidth||62)*.45:distance(o,point)<plotRadius+size(o.kind||'hut')+50)){search.slot++;continue}
+   const info=w.settlementPlot?.(point.x,point.y,plotRadius,{settlementId:s.id,requestId:search.id||s.id,clearTerrain:true});
+   if(info?.pending)return null; // Retry this same location once streaming finishes.
+   search.slot++;
+   if(info){
+    const blocking=(info.blocked||[]).filter(o=>!(kind==='barrier'&&o.type==='apeBarricade'&&o.settlementId===s.id));
+    if(info.water||blocking.length||!info.valid&&!(kind==='barrier'&&info.blocked?.length))continue;
+    return {...point,treeIds:(info.trees||[]).concat(info.rocks||[]).filter(o=>!o.dead).map(o=>o.id)};
+   }
+   if(w.terrain(point.x,point.y).water)continue;
+   const objects=w.getObjects(point.x,point.y,plotRadius+60).filter(o=>o.solid&&!o.dead&&o.hp!==0);
+   if(objects.some(o=>!['tree','rock'].includes(o.type)))continue;
+   return {...point,treeIds:objects.map(o=>o.id)};
+  }
+  return null;
+ }
+ reservePlot(s,p){
+  if(HOUSING[p.kind]&&!p.structureId){const slot=s.hutSerial??s.huts.length,spec=HOUSING[p.kind];const h={id:s.id+'-hut-'+slot,kind:p.kind,slot,x:p.x,y:p.y,hp:0,maxHp:spec.hp,capacity:spec.capacity,stage:0,progress:0,variant:slot%4};s.hutSerial=slot+1;s.huts.push(h);p.structureId=h.id}
+  this.connect(s,p);
+  if(p.layoutRing!==undefined||p.ringId){s.developedRadius=Math.max(s.developedRadius||100,distance(p,s)+60);s.radius=Math.max(s.radius||100,s.developedRadius);this.layout(s)}
+ }
+ locateCommissions(s){
+  const waiting=s.projects.filter(p=>p.awaitingPlot);if(!waiting.length)return;
+  // One survey per village tick; paid jobs retain their cursor through saves.
+  const p=waiting[(s.surveyCursor||0)%waiting.length];s.surveyCursor=(s.surveyCursor||0)+1;
+  p.survey=p.survey||{ring:0,slot:0};p.survey.id=p.id;const plot=this.surveyPlot(s,p.kind,p.survey);if(!plot)return;
+  Object.assign(p,plot);delete p.awaitingPlot;delete p.survey;this.reservePlot(s,p);s._jobsAt=0;
+ }
  plot(s,kind,slot=0,legacy=false){
+  if(!legacy&&kind!=='barrier'){s.plotSearches=s.plotSearches||{};const search=s.plotSearches[kind]||(s.plotSearches[kind]={ring:0,slot:0}),p=this.surveyPlot(s,kind,search);if(p)delete s.plotSearches[kind];return p}
   if(kind==='barrier')return this.barrierPlot(s);
   const w=this.game.world,structures=(s.huts||[]).concat(s.structures||[],s.facilities||[],s.projects||[],s.barriers||[]),radius=s.developedRadius||s.radius||100;
   let housingRing=0,remaining=slot,ringSlots=8;while(remaining>=ringSlots){remaining-=ringSlots;housingRing++;ringSlots=8+housingRing*4}
@@ -125,7 +172,7 @@ class Settlements {
  members(s){const g=this.game;return (g.settlementMembers?.get(s.id)||g.apes||[]).filter(a=>a.hp>0&&a.settlementId===s.id)}
  assignJobs(s,members){const adults=members.filter(a=>a.state!=='young'&&a.state!=='scout'),n=adults.length;
   const ratios=this.game.kingdom?.jobRatios(s)||(s.policy==='forage'?{forager:.56,builder:.17,lumber:.08,gardener:.08,cook:.02,hauler:.04,caretaker:.02}:s.policy==='fortify'?{forager:.28,builder:.31,lumber:.12,gardener:.08,cook:.02,hauler:.05,caretaker:.02}:{forager:.4,builder:.24,lumber:.09,gardener:.09,cook:.03,hauler:.05,caretaker:.02});
-  let cursor=0;const roles=[];for(const [job,ratio]of Object.entries(ratios)){let count=Math.floor(n*ratio);if(job==='forager'&&n)count=Math.max(1,count);if(job==='builder'&&n>=4)count=Math.max(1,count);if(job==='lumber'&&n>=6)count=Math.max(1,count);count=Math.min(count,n-cursor);for(let i=0;i<count;i++)roles.push(job);cursor+=count}while(roles.length<n)roles.push('guardian');
+  let cursor=0;const roles=[];for(const [job,ratio]of Object.entries(ratios)){let count=Math.floor(n*ratio);if(job==='forager'&&n)count=Math.max(1,count);if(job==='builder'&&n>=4)count=Math.max(1,count);if(job==='lumber'&&n>=6)count=Math.max(1,count);count=Math.min(count,n-cursor);for(let i=0;i<count;i++)roles.push(job);cursor+=count}while(roles.length<n)roles.push('guardian');if(n&&s.projects.some(p=>p.kind!=='lumber')&&!roles.includes('builder'))roles[n-1]='builder';
   const groups=new Map();adults.forEach((a,i)=>{a.job=roles[i];const list=groups.get(a.job)||[];list.push(a);groups.set(a.job,list)});for(const a of members)if(a.state==='scout')a.job='scout';else if(a.state==='young')a.job='young';
   s.cohorts=[];for(const [job,list]of groups)for(let i=0;i<list.length;i+=20){const cohort={id:s.id+'-'+job+'-'+Math.floor(i/20),job,count:Math.min(20,list.length-i),members:list.slice(i,i+20).map(a=>a.id)};s.cohorts.push(cohort);for(let j=i;j<Math.min(i+20,list.length);j++)list[j].workCohort=cohort.id}
   s.foragers=groups.get('forager')?.length||0;s.builders=groups.get('builder')?.length||0;s.lumberWorkers=groups.get('lumber')?.length||0;s.guards=groups.get('guardian')?.length||0;s.gardeners=groups.get('gardener')?.length||0;s.cooks=groups.get('cook')?.length||0;s.haulers=groups.get('hauler')?.length||0;s._adults=adults;s._members=members;s._jobsAt=this.game.time+ (s.simLOD===2?20:s.simLOD===1?8:4);
@@ -135,10 +182,10 @@ class Settlements {
   const objects=g.world.getObjects(s.x,s.y,Math.min(1500,Math.max(520,s.radius*2.4)));s._berries=objects.filter(o=>o.type==='berry');s._trees=objects.filter(o=>o.type==='tree'&&!o.dead&&distance(o,s)<Math.max(430,Math.min(900,s.radius*1.4)));s._foragePoint=s._berries.find(b=>!b.dead&&(b.food??b.count??1)>.5)||this.zone(s,'garden');
  }
  queue(s,kind,target,options={}){if(s.projects.some(p=>p.kind===kind&&(!target||p.structureId===target.id))&&!['hut','garden','barrier'].includes(kind)&&!options.commissioned)return null;
-  let plot;if(target)plot={x:target.x,y:target.y,treeIds:[]};else if(kind==='lumber'){const reserved=new Set(s.projects.flatMap(p=>p.treeIds||[]));const tree=(s._trees||[]).find(t=>!t.dead&&!reserved.has(t.id)&&hash(t.id)%5!==0);if(!tree)return null;plot={x:tree.x,y:tree.y,treeIds:[tree.id]}}else if(kind==='lodge'||/Expansion$/.test(kind))plot={x:s.x,y:s.y,treeIds:[]};else plot=this.plot(s,kind,HOUSING[kind]?s.huts.length:(s.projectSerial||0));
-  if(!plot){s.constructionBlocked=true;return null}const serial=s.projectSerial=(s.projectSerial||0)+1,p={id:s.id+'-project-'+serial,kind,...plot,stage:0,progress:0,work:0,totalWork:WORK[kind]||30,timber:TIMBER[kind]||0,clearProgress:0,createdAt:this.game.time,structureId:target?.id};
-  if(HOUSING[kind]){const slot=s.hutSerial??s.huts.length,spec=HOUSING[kind];const h={id:s.id+'-hut-'+slot,kind,slot,x:p.x,y:p.y,hp:0,maxHp:spec.hp,capacity:spec.capacity,stage:0,progress:0,variant:slot%4};s.hutSerial=slot+1;s.huts.push(h);p.structureId=h.id}
-  s.projects.push(p);this.connect(s,p);s.constructionBlocked=false;return p;
+  const survey={ring:0,slot:0};let plot;if(target)plot={x:target.x,y:target.y,treeIds:[]};else if(kind==='lumber'){const reserved=new Set(s.projects.flatMap(p=>p.treeIds||[]));const tree=(s._trees||[]).find(t=>!t.dead&&!reserved.has(t.id)&&hash(t.id)%5!==0);if(!tree)return null;plot={x:tree.x,y:tree.y,treeIds:[tree.id]}}else if(kind==='lodge'||/Expansion$/.test(kind))plot={x:s.x,y:s.y,treeIds:[]};else plot=options.commissioned?this.surveyPlot(s,kind,survey):this.plot(s,kind,HOUSING[kind]?s.huts.length:(s.projectSerial||0));
+  if(!plot&&!options.commissioned){s.constructionBlocked=true;return null}const awaitingPlot=!plot;if(!plot)plot={x:s.x,y:s.y,treeIds:[],awaitingPlot:true,survey};const serial=s.projectSerial=(s.projectSerial||0)+1,p={id:s.id+'-project-'+serial,kind,...plot,stage:0,progress:0,work:0,totalWork:WORK[kind]||30,timber:TIMBER[kind]||0,clearProgress:0,createdAt:this.game.time,structureId:target?.id};
+  if(!awaitingPlot)this.reservePlot(s,p);
+  s.projects.push(p);s.constructionBlocked=false;return p;
  }
  plan(s){const queued=kind=>s.projects.some(p=>p.kind===kind),pending=s.projects.reduce((n,p)=>n+(HOUSING[p.kind]?.capacity||0),0),housingReserve=s.population<150?Math.max(8,Math.ceil(s.population*.25)):Math.max(10,Math.ceil(s.population*.08)),limit=clamp(Math.ceil(s.builders/15),1,6),ruined=s.huts.find(h=>h.hp<=0&&(h.stage??4)===4&&!s.projects.some(p=>p.structureId===h.id)),wounded=s.huts.find(h=>h.hp>0&&h.hp<h.maxHp&&!s.projects.some(p=>p.structureId===h.id));
   if(s.projects.filter(p=>p.kind!=='lumber').length<limit){
@@ -155,7 +202,7 @@ class Settlements {
   if(s.population>=24&&s.builders>=5&&s.projects.length<limit+1&&!s.cooking&&!queued('cooking'))this.queue(s,'cooking');
   if(s.gardens<Math.ceil(s.population/10)&&s.builders>=8&&s.projects.length<limit+1&&!queued('garden'))this.queue(s,'garden');
   if((s.wood<[60,320,650][this.tier()]||s.targetRadius>s.developedRadius+4)&&s.lumberWorkers&&!queued('lumber'))this.queue(s,'lumber');
-  if((s.level>=6&&s.population>=100)||(s.policy==='fortify'&&s.population>=18)){const target=s.level>=6?this.facilityLimit(s,'barrier'):3;
+  if((s.level>=6&&s.population>=100)||(s.policy==='fortify'&&s.population>=18)){const target=s.level>=6?this.palisadePlan(s).length:3;
    const damaged=s.barriers.find(b=>b.hp<b.maxHp&&!queued('repairBarrier'));
    if(damaged&&s.projects.length<limit+2)this.queue(s,'repairBarrier',damaged);
    else if(s.barriers.length+s.projects.filter(p=>p.kind==='barrier').length<target&&!queued('barrier')&&s.projects.length<limit+2)this.queue(s,'barrier');
@@ -164,9 +211,9 @@ class Settlements {
   const next=s.projects.find(p=>p.kind!=='lumber');s.project=COMMISSIONS[next?.commissionKind||next?.kind]?.label||LABELS[next?.kind]||'Food stores';s.buildProject=s.project;
  }
  clearWork(s,p,workers){const w=this.game.world,tree=w.objects?.get(p.treeIds?.[0])||(s._trees||[]).find(t=>t.id===p.treeIds?.[0]);if(!tree||tree.dead||tree.hp===0){p.treeIds.shift();p.clearProgress=0;return}
-  p.xClear=tree.x;p.yClear=tree.y;let hands=workers;if(s.simLOD===0){const near=(s._members||[]).filter(a=>['lumber','builder'].includes(a.job)&&!this.game.blastActive?.(a)&&distance(a,tree)<52);hands=near.length;for(const a of near){a.activity='chopping';a.workTargetId=tree.id;a.workAnimationAt=this.game.time}}
+  p.xClear=tree.x;p.yClear=tree.y;let hands=workers;if(s.simLOD===0){const near=(s._members||[]).filter(a=>['lumber','builder'].includes(a.job)&&!this.game.blastActive?.(a)&&distance(a,tree)<Math.max(tree.moveRadius||tree.r||20,(tree.w||0)*.5,(tree.h||0)*.5)+52);hands=near.length;for(const a of near){a.activity=tree.type==='rock'?'clearing rocks':'chopping';a.workTargetId=tree.id;a.workAnimationAt=this.game.time}}
   if(!hands)return;p.clearProgress+=Math.min(4,hands)*.8;if(p.clearProgress<5)return;
-  const wood=w.clearTree?.(tree,{settlementId:s.id,time:this.game.time})??0;if(wood>0){s.wood+=wood;s.clearedTrees++;this.game.effect?.('treeFall',tree.x,tree.y,{life:1.2});}
+  const wood=(tree.type==='rock'?w.clearSettlementObstacle?.(tree,{settlementId:s.id,time:this.game.time}):w.clearTree?.(tree,{settlementId:s.id,time:this.game.time}))??0;if(wood>0){s.wood+=wood;s.clearedTrees++;this.game.effect?.('treeFall',tree.x,tree.y,{life:1.2});}
   if(tree.dead||tree.hp===0){p.treeIds.shift();p.clearProgress=0}else p.clearProgress=5;
  }
  complete(s,p){const g=this.game,target=s.huts.find(h=>h.id===p.structureId);
@@ -174,7 +221,7 @@ class Settlements {
   else if(p.kind==='rebuildHut'){target.hp=target.maxHp;target.stage=4;delete target.destroyedAt;this.updateHousing(s)}
   else if(p.kind==='repairHut')target.hp=Math.min(target.maxHp,target.hp+45);
   else if(p.kind==='repairBarrier'){const barrier=s.barriers.find(b=>b.id===p.structureId);if(barrier){if(g.world.repairFortification)g.world.repairFortification(barrier,90,g.time);else {barrier.hp=Math.min(barrier.maxHp,barrier.hp+90);barrier.dead=false;barrier.solid=true}}}
-  else if(/Expansion$/.test(p.kind)){const level=p.kind==='warlordExpansion'?2:1;s.expansionLevel=Math.max(this.expansion(s),level);s.lodge.expansionLevel=s.expansionLevel;s.lodge.maxHp=400+level*300;s.lodge.hp=Math.min(s.lodge.maxHp,s.lodge.hp+300);s.developedRadius=Math.max(s.developedRadius,[100,420,900][level]);s.radius=this.footprint(s);this.layout(s);this.palisadePlan(s);g.notify?.(s.name+' completes its '+(level===2?'Warlord citadel':'Royal lodge')+' — new housing and '+(level+1)+' palisade rings available.','green')}
+  else if(/Expansion$/.test(p.kind)){const level=p.kind==='warlordExpansion'?2:1;s.expansionLevel=Math.max(this.expansion(s),level);s.lodge.expansionLevel=s.expansionLevel;s.lodge.maxHp=400+s.expansionLevel*300;s.lodge.hp=Math.min(s.lodge.maxHp,s.lodge.hp+300);s.developedRadius=Math.max(s.developedRadius,[100,420,900][level]);s.radius=this.footprint(s);this.layout(s);this.palisadePlan(s);g.notify?.(s.name+' completes its '+(level===2?'Warlord citadel':'Royal lodge')+' — lodge reinforced and district expanded.','green')}
   else if(p.kind==='lodge'){s.level=Math.min(10,s.level+1);s.lodge.level=s.level;g.notify?.(s.name+' finishes lodge level '+s.level+'.','green')}
   else if(p.kind==='barrier'){
    const angle=Math.atan2(p.y-s.y,p.x-s.x),weak=s.barriers.length%5===3,width=p.barrierWidth||clamp(62+Math.floor((s.population||0)/100)*7,62,132),hp=(weak?180:320)+this.expansion(s)*70,o=g.world.addFortification?.({id:p.id+'-barrier',type:'apeBarricade',owner:'ape',team:'ape',settlementId:s.id,x:p.x,y:p.y,width,height:16,dir:p.barrierDir??angle+Math.PI/2,hp,maxHp:hp,weak,ringId:p.ringId||1,ringRadius:p.ringRadius,ringSlot:p.ringSlot,ringLayout:p.ringLayout});
@@ -184,14 +231,14 @@ class Settlements {
   else if(p.kind!=='lumber'){const o={id:p.id+'-built',kind:p.kind,x:p.x,y:p.y,stage:4,hp:100,maxHp:100,variant:s.structures.length%3};s.structures.push(o);if(p.kind==='garden')s.gardens++;else if(p.kind==='cooking')s.cooking++;else if(p.kind==='storage'){s.stores++;s.food+=16}this.connect(s,o);this.layout(s)}
   if(p.commissioned){const entry=s.commissions.find(c=>c.projectId===p.id);if(entry){entry.status='complete';entry.completedAt=g.time;entry.structureId=HOUSING[p.kind]?p.structureId:/Expansion$/.test(p.kind)?s.lodge.id:p.id+(p.kind==='barrier'?'-barrier':'-built')}this.trimCommissions(s)}
  }
- work(s){const g=this.game,builders=s.builders||0,sites=new Map(s.projects.map(p=>[p.id,p])),nearHands=new Map();
-  const concurrency=clamp(Math.ceil(builders/12),1,6),ordered=s.projects.filter(p=>p.kind!=='lumber').sort((a,b)=>(['repairHut','repairBarrier'].includes(b.kind)?1:0)-(['repairHut','repairBarrier'].includes(a.kind)?1:0)||(b.commissioned?1:0)-(a.commissioned?1:0)||(a.createdAt-b.createdAt));const selected=new Set(ordered.slice(0,concurrency).map(p=>p.id));for(const p of ordered)p.waiting=!selected.has(p.id);
+ work(s){this.locateCommissions(s);const g=this.game,builders=s.builders||0,sites=new Map(s.projects.map(p=>[p.id,p])),nearHands=new Map();
+  const concurrency=clamp(Math.ceil(builders/12),1,6),ordered=s.projects.filter(p=>p.kind!=='lumber'&&!p.awaitingPlot).sort((a,b)=>(['repairHut','repairBarrier'].includes(b.kind)?1:0)-(['repairHut','repairBarrier'].includes(a.kind)?1:0)||(b.commissioned?1:0)-(a.commissioned?1:0)||(a.createdAt-b.createdAt));const selected=new Set(ordered.slice(0,concurrency).map(p=>p.id));for(const p of ordered)p.waiting=!selected.has(p.id);
   // One shared arrival pass per economy tick, rather than one planner for
   // every builder. Carrying is a visual resource trip, without inventories.
   if(s.simLOD===0)for(const a of s._members||[]){if(a.job!=='builder'||g.blastActive?.(a))continue;const p=sites.get(a.workTargetId);if(!p||p.treeIds.length||distance(a,p)>48)continue;nearHands.set(p.id,(nearHands.get(p.id)||0)+1);if(a.carrying==='wood'){p.deliveries=(p.deliveries||0)+1;p.lastDeliveryAt=g.time;a.carrying=false}a.activity='building';a.workAnimationAt=g.time}
   let active=0;for(const p of s.projects){if(p.kind==='lumber'){if(!s.attack&&p.treeIds.length)this.clearWork(s,p,s.lumberWorkers);if(!p.treeIds.length)p.done=true;continue}
-   if(p.waiting||g.time<=p.createdAt||s.attack&&!['repairBarrier','repairHut'].includes(p.kind))continue;
-   const assigned=s.simLOD===0?(nearHands.get(p.id)||0):Math.min(20,Math.max(1,builders/Math.max(1,s.projects.filter(q=>q.kind!=='lumber'&&!['repairHut','rebuildHut'].includes(q.kind)).length)));p.cohortId=s.cohorts.find(c=>c.job==='builder')?.id;
+   if(p.awaitingPlot||p.waiting||g.time<=p.createdAt||s.attack&&!['repairBarrier','repairHut'].includes(p.kind))continue;
+   const assigned=s.simLOD===0?(nearHands.get(p.id)||0):Math.min(20,Math.max(1,builders/Math.max(1,s.projects.filter(q=>q.kind!=='lumber'&&!q.waiting&&!q.awaitingPlot&&!['repairHut','rebuildHut'].includes(q.kind)).length)));p.cohortId=s.cohorts.find(c=>c.job==='builder')?.id;
    const repair=['repairHut','rebuildHut','repairBarrier'].includes(p.kind),reserved=repair?0:s.projects.filter(q=>!q.done&&['repairHut','rebuildHut','repairBarrier'].includes(q.kind)).reduce((sum,q)=>sum+q.timber,0);
    if(p.treeIds.length){const hut=s.huts.find(h=>h.id===p.structureId);if(hut&&HOUSING[p.kind]){hut.treeIds=p.treeIds;hut.clearProgress=p.clearProgress/5}this.clearWork(s,p,builders);continue}if(!assigned||!builders||!p.paidCost&&s.wood<p.timber+reserved)continue;
    active++;p.work+=Math.min(p.totalWork*.22,assigned*1.25)*(s.attack?.45:1)*(g.kingdom?.modifiers(s).construction||1);p.progress=clamp(p.work/p.totalWork,0,1);p.stage=Math.min(3,1+Math.floor(p.progress*3));const h=s.huts.find(h=>h.id===p.structureId);if(h&&HOUSING[p.kind]){h.stage=p.stage;h.progress=p.progress}
@@ -210,8 +257,9 @@ class Settlements {
   }else if(job==='young'){const phase=g.time*.2+(a.phase||0);target={x:s.x+Math.cos(phase)*Math.min(55,s.radius*.22),y:s.y+Math.sin(phase)*Math.min(55,s.radius*.22)};activity=g.time%24<15?'playing':'rest';speed=.7}
   else if(job==='scout'){const angle=g.time*.04+(a.phase||0);target={x:s.x+Math.cos(angle)*s.radius*1.35,y:s.y+Math.sin(angle)*s.radius*1.35};activity='scouting'}
   else if(job==='forager'){const home=this.zone(s,'food'),field=s._foragePoint||this.zone(s,'garden'),returning=(g.time+index%7)%16>=8;target=returning?home:field;activity=returning?'hauling food':'gathering';carrying=returning?'food':false}
-  else if(job==='builder'||job==='lumber'){const candidates=s.projects.filter(p=>!p.waiting&&(job==='lumber'?p.treeIds.length:p.kind!=='lumber')),p=candidates[index%Math.max(1,candidates.length)];const fetching=(g.time+index%5)%12<4;
-   if(p?.treeIds.length){const tree=g.world.objects?.get(p.treeIds[0])||(s._trees||[]).find(t=>t.id===p.treeIds[0]);target=tree||p;activity=distance(a,target)<48?'chopping':'clearing woodland';a.workTargetId=p.treeIds[0]}
+  else if(job==='builder'||job==='lumber'){const candidates=s.projects.filter(p=>!p.awaitingPlot&&!p.waiting&&(job==='lumber'?p.treeIds.length:p.kind!=='lumber')),p=candidates[index%Math.max(1,candidates.length)];// Finish the material trip before switching destinations, even on outer rings.
+   if(p&&distance(a,this.zone(s,'wood'))<48)a.materialProjectId=p.id;const fetching=p&&a.materialProjectId!==p.id;
+   if(p?.treeIds.length){const tree=g.world.objects?.get(p.treeIds[0])||(s._trees||[]).find(t=>t.id===p.treeIds[0]);target=tree||p;if(tree){const dx=a.x-tree.x,dy=a.y-tree.y,d=Math.hypot(dx,dy)||1,r=Math.max(tree.moveRadius||tree.r||20,(tree.w||0)*.5,(tree.h||0)*.5)+22;target={x:tree.x+dx/d*r,y:tree.y+dy/d*r}}activity=tree?.type==='rock'?'clearing rocks':distance(a,target)<48?'chopping':'clearing woodland';a.workTargetId=p.treeIds[0]}
    else if(p){target=fetching?this.zone(s,'wood'):p;activity=fetching?'collecting timber':distance(a,p)<38?'building':'carrying timber';carrying=activity==='carrying timber'?'wood':false;a.workTargetId=p.id}
    else {target=this.zone(s,'work');activity='rest'}
   }else if(job==='gardener'){target=this.zone(s,'garden');activity='gardening'}
@@ -224,12 +272,12 @@ class Settlements {
   if(distance(a,target)>90&&job!=='scout'&&job!=='young'){const dot=(a.x-s.x)*(target.x-s.x)+(a.y-s.y)*(target.y-s.y);if(distance(a,s)>40&&dot<0){x=s.x+offset;y=s.y}}
   a.activity=activity;a.carrying=carrying;return {x,y,speed:(a.speed||90)*speed,activity,carrying,projectId:a.workTargetId};
  }
- staffFacilities(s){const g=this.game;if(g.time<(s._staffAt||0))return;s._staffAt=g.time+4;const adults=(s._adults||this.members(s).filter(a=>a.state!=='young'&&a.state!=='scout')).filter(a=>a.hp>0),byId=new Map(adults.map(a=>[a.id,a])),reserved=new Set(),candidates=adults.slice().sort((a,b)=>(b.job==='guardian')-(a.job==='guardian'));
+ staffFacilities(s){const g=this.game;if(g.time<(s._staffAt||0))return;s._staffAt=g.time+4;const adults=(s._adults||this.members(s).filter(a=>a.state!=='young'&&a.state!=='scout')).filter(a=>a.hp>0),available=adults.filter(a=>a.job!=='builder'||!s.projects.some(p=>p.kind!=='lumber')),byId=new Map(available.map(a=>[a.id,a])),reserved=new Set(),candidates=available.slice().sort((a,b)=>(b.job==='guardian')-(a.job==='guardian'));
   for(const a of adults){delete a.towerId;delete a.trainingFacilityId}
-  for(const tower of s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4).slice(0,32)){let a=byId.get(tower.staffedBy);if(!a||reserved.has(a.id))a=candidates.find(a=>!reserved.has(a.id));tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range}
-  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4).slice(0,6)){const keep=(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));for(const a of candidates){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}}
+  for(const tower of s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4)){let a=byId.get(tower.staffedBy);if(!a||reserved.has(a.id))a=candidates.find(a=>!reserved.has(a.id));tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range}
+  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4)){const keep=(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));for(const a of candidates){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}}
  }
- train(s){if(s.attack)return;const g=this.game,byId=new Map((s._adults||[]).map(a=>[a.id,a]));let work=0;for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4).slice(0,6))for(const id of (facility.trainingResidents||[]).slice(0,3)){const a=byId.get(id);if(!a||a.hp<=0||a.state==='young'||g.blastActive?.(a)||distance(a,facility)>80)continue;const level=clamp(Math.floor(a.trainingLevel||0),0,3);if(level>=3){a.trainingProgress=0;continue}const needed=45*(level+1),cost=3+level*2;a.trainingProgress=Math.min(needed,(a.trainingProgress||0)+(g.kingdom?.modifiers(s).training||1));a.activity='training';work++;if(a.trainingProgress>=needed&&s.food>=cost){s.food-=cost;a.trainingProgress=0;a.trainingLevel=level+1;g.applyTraining?.(a,a.trainingLevel);facility.trained=(facility.trained||0)+1}}
+ train(s){if(s.attack)return;const g=this.game,byId=new Map((s._adults||[]).map(a=>[a.id,a])),facilities=s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4),selected=Array.from({length:Math.min(6,facilities.length)},(_,i)=>facilities[((s.trainingCursor||0)+i)%facilities.length]);s.trainingCursor=((s.trainingCursor||0)+selected.length)%Math.max(1,facilities.length);let work=0;for(const facility of selected)for(const id of (facility.trainingResidents||[]).slice(0,3)){const a=byId.get(id);if(!a||a.hp<=0||a.state==='young'||g.blastActive?.(a)||distance(a,facility)>80)continue;const level=clamp(Math.floor(a.trainingLevel||0),0,3);if(level>=3){a.trainingProgress=0;continue}const needed=45*(level+1),cost=3+level*2;a.trainingProgress=Math.min(needed,(a.trainingProgress||0)+(g.kingdom?.modifiers(s).training||1));a.activity='training';work++;if(a.trainingProgress>=needed&&s.food>=cost){s.food-=cost;a.trainingProgress=0;a.trainingLevel=level+1;g.applyTraining?.(a,a.trainingLevel);facility.trained=(facility.trained||0)+1}}
   s.trainingWorkers=work;
  }
  spearHeight(spear,elapsed){const t=clamp(elapsed/Math.max(.05,spear.duration||1),0,1),from=spear.fromZ??27,to=spear.targetZ??20;return from+(to-from)*t+Math.sin(t*Math.PI)*22}
@@ -247,7 +295,7 @@ class Settlements {
     spear.x=endX;spear.y=endY;if(hit&&spear.life>0){g.hurt(hit,spear.damage,{id:spear.id,x:spear.fromX,y:spear.fromY,team:'ape',kind:'spear',settlementId:s.id});g.effect?.('spearImpact',endX,endY,{life:.25});spear.life=0}
   }
   for(const s of g.settlements)s.spears=s.spears.filter(p=>p.life>0);let count=active.filter(p=>p.spear.life>0).length;
-  if(g.time>=(this._defenseRosterAt||0)){this._defenseRosterAt=g.time+1;this._defenseRoster=g.settlements.flatMap(s=>(s.facilities||[]).filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4).slice(0,32).map(tower=>({s,tower})));this._defenseCursor=(this._defenseCursor||0)%Math.max(1,this._defenseRoster.length)}
+  if(g.time>=(this._defenseRosterAt||0)){this._defenseRosterAt=g.time+1;this._defenseRoster=g.settlements.flatMap(s=>(s.facilities||[]).filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4).map(tower=>({s,tower})));this._defenseCursor=(this._defenseCursor||0)%Math.max(1,this._defenseRoster.length)}
   const roster=this._defenseRoster||[],actors=g.apesById||new Map((g.apes||[]).map(a=>[a.id,a]));for(let i=0;i<Math.min(16,roster.length);i++){const {s,tower}=roster[this._defenseCursor++%roster.length];counters.towerChecks++;if(tower.hp<=0||s.spears.length>=32||count>=128||g.time<(tower.shotAt||0)||g.time<(tower.acquireAt||0))continue;const a=actors.get(tower.staffedBy),station=tower.station||tower;if(!a||a.hp<=0||a.state==='young'||a.settlementId!==s.id||g.blastActive?.(a)||distance(a,station)>42)continue;
    tower.acquireAt=g.time+.3;const spec=DEFENSES[tower.kind]||DEFENSES.spearTower,candidates=(g.humanGrid?.near(tower.x,tower.y,spec.range)||[]).concat(g.vehicleGrid?.near(tower.x,tower.y,spec.range)||[]).filter(h=>h.hp>0&&h.team!=='ape'&&h.owner!=='ape'&&distance(h,tower)<=spec.range).sort((a,b)=>distance(a,tower)-distance(b,tower)).slice(0,24);let target=null;
    for(let attempt=0;attempt<Math.min(2,candidates.length);attempt++){if(counters.losTests>=32)break;const candidate=candidates[((tower.targetCursor||0)+attempt)%candidates.length],d=distance(candidate,tower)||1,point={x:tower.x+(candidate.x-tower.x)/d*44,y:tower.y+(candidate.y-tower.y)/d*44};counters.losTests++;if(this.spearRay(point,candidate,spec.height,(candidate.elevation||0)+20,tower.id+':collision')){target=candidate;break}}

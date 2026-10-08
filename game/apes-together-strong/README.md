@@ -25,7 +25,7 @@ The total living population across followers and settlements earns two permanent
 milestones: **King of the Jungle at 100** and **Warlord at 300**. A full-screen
 illustrated ceremony freezes simulation and input until Continue. Each milestone
 is acknowledged once and saved; jumping both thresholds presents both in order.
-Losses never remove titles or unlocked construction. The King wears a small first
+Losses never remove titles or unlocked equipment. The King wears a small first
 crown, a taller royal crown, then a dark, horned war crown, including on the map.
 
 The supplied Underpowered King plays before the first milestone, Ceremonial Tom
@@ -37,12 +37,14 @@ network requests during play.
 
 Visit a living main hut and press **B** (or Build) to commission expansion:
 
-- **Royal lodge:** 160 timber + 120 village food; opens a broad district,
-  24-resident longhouses and a second palisade ring.
-- **Warlord citadel:** 360 timber + 280 food after the Royal lodge; opens an
-  even larger district, 40-resident canopy halls and a third palisade ring.
-  Late settlements support 128 plots per housing kind, subject to real open
-  land and the existing 1,000-living-ape population cap.
+- **Royal lodge:** 160 timber + 120 village food; reinforces the main lodge and
+  lays out a broader district with a second palisade ring.
+- **Warlord citadel:** 360 timber + 280 food; reinforces the lodge further and
+  lays out a wider district with three palisade rings.
+- All affordable housing and facilities are available at every rank.
+  Commissions have no building-count, queue, population or district-radius cap.
+  Family huts, longhouses and canopy halls house 10, 24 and 40 residents.
+  The existing 1,000-living-ape population cap remains.
 - Nursery groves and rally groves add birth-rate bonuses; orchards produce
   food. Every completed building accelerates growth. Completed homes plus
   the lodge's six places set local capacity; the shared 1,000-ape cap remains.
@@ -253,28 +255,35 @@ node game/apes-together-strong/tests/primate-design-browser.cjs
 
 Stand within 90 world units of a living village's main hut and press **B** or
 choose **Build**. The council pauses simulation, audio, movement and pending
-touch orders while showing local supplies, available plots, queued projects,
-construction progress and completed commissions. Selecting a structure pays
-its timber and food exactly once; the physical worker project resumes after
-leaving the menu. Leaving the lodge, losing its population, a destroyed lodge,
-an attack, insufficient supplies or occupied plots prevents new orders.
+touch orders while showing local supplies, queued projects, construction
+progress and completed commissions. Selecting a structure pays its timber and
+food exactly once. Affordable orders queue immediately, even during attacks.
 Worker construction and training pause during attacks and resume afterward.
 
-| Commission | Timber | Village food | Required residents | Building work |
-| --- | ---: | ---: | ---: | ---: |
-| Spear tower | 26 | 12 | 24 | 54 |
-| Training ground | 24 | 20 | 30 | 48 |
-| Palisade section | 12 | 0 | 6 | 35 |
-| Family hut | 8 | 0 | 1 | 18 |
-| Garden | 10 | 0 | 6 | 22 |
-| Food store | 16 | 6 | 12 | 35 |
-| Workshop | 20 | 8 | 18 | 28 |
+| Commission | Timber | Village food | Building work |
+| --- | ---: | ---: | ---: |
+| Spear tower | 26 | 12 | 54 |
+| Training ground | 24 | 20 | 48 |
+| Palisade section | 12 | 0 | 35 |
+| Family hut | 8 | 0 | 18 |
+| Garden | 10 | 0 | 22 |
+| Food store | 16 | 6 | 35 |
+| Workshop | 20 | 8 | 28 |
 
-Build time depends on crew arrival, clearing and available builders. Villages
-can queue three to twelve commissioned projects as their population grows;
-the active worker limit remains bounded. Tower slots grow from two to fourteen,
-and training-ground slots from one to six. Villages also continue expanding
-housing, paths, communal facilities and perimeter defenses automatically.
+Build time depends on crew arrival, clearing and available builders. There is
+no commission queue, building-count, resident or rank requirement. A settlement
+with one available adult assigns a builder. Crews finish their material trip
+before walking to the plot, including distant outer rings.
+
+Plots fill concentric rings around the main hut, searching farther outward
+without a settlement-radius cap. Trees and rocks become clearing work; water
+and existing buildings send the search to the next position. Surveys process
+at most 96 candidates per call. If terrain has not loaded or more searching is
+needed, the paid order waits for a plot and resumes without another charge,
+including after a save/load. Additional palisade orders create further rings.
+Lodge upgrades are unique; repeat purchases of the same upgrade are prevented.
+The active worker and combat budgets remain bounded while every queued project
+and staffed facility gets a turn. Villages still build automatically.
 
 Completed spear towers need a living adult at their guard station. They aim
 at enemy soldiers and vehicles within 900 units (batteries: 1,000; ballistas:
@@ -589,7 +598,7 @@ camera motion, zoom, desktop and touch. Huts persist as individual plots with
 health, damage bars and ruins. Human siege fire requires nearby line of sight;
 grenades, shells, mortars and airstrikes can destroy homes. Destroyed homes
 remove housing immediately, and builders repair or reconstruct with paid work.
-New construction searches bounded dry, unobstructed plots around the lodge.
+New construction searches outward in rings around the lodge and clears natural obstacles.
 
 Recovery routes are shared by coarse origin/goal cohorts, including distant
 followers. Mid-distance separation runs with their 15 Hz simulation while

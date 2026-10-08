@@ -651,13 +651,13 @@
     }
 
     settlementPlot(x, y, radius = 24, options = {}) {
-      const trees = [], blocked = [];
+      const trees = [], rocks = [], blocked = [];
       // An occupied plot must include its procedural scenery before builders
       // approve it. Distant work queues stream a small area through the normal
       // generation budget instead of finishing chunks during a colony tick.
       if (this._streaming) {
         if (!this.boundsReady(x - radius, y - radius, x + radius, y + radius)) {
-          this.requestCorridor({ x, y }, { x, y }, { id: 'plot-' + (options.settlementId || Math.floor(x / CHUNK) + ',' + Math.floor(y / CHUNK)), radius });
+          this.requestCorridor({ x, y }, { x, y }, { id: 'plot-' + (options.requestId || options.settlementId || Math.floor(x / CHUNK) + ',' + Math.floor(y / CHUNK)), radius });
           return { valid: false, pending: true, trees, blocked, water: false };
         }
       } else this.ensure(x, y, radius + 384);
@@ -665,9 +665,10 @@
       for (const object of this.getObjects(x, y, radius + 60)) {
         if (object.dead || object.hp <= 0 || !object.solid || !this._touches(object, x, y, radius)) continue;
         if (object.type === 'tree') trees.push(object);
+        else if (object.type === 'rock' && options.clearTerrain) rocks.push(object);
         else if (object.id !== options.ignoreId) blocked.push(object);
       }
-      return { valid: !water && !blocked.length, trees, blocked, water };
+      return { valid: !water && !blocked.length, trees, rocks, blocked, water };
     }
 
     clearTree(treeOrId, options = {}) {
@@ -677,6 +678,17 @@
       tree.clearedBy = options.settlementId;tree.clearedAt = options.time || 0;
       this.navigationChanged(tree);
       return Math.round(5 + (tree.size || 1) * 5);
+    }
+
+    clearSettlementObstacle(objectOrId, options = {}) {
+      const object = typeof objectOrId === 'string' ? this.objects.get(objectOrId) : objectOrId;
+      if (!object || object.dead || object.hp <= 0) return 0;
+      if (object.type === 'tree') return this.clearTree(object, options);
+      if (object.type !== 'rock') return 0;
+      object.dead = true;object.hp = 0;object.solid = false;
+      object.clearedBy = options.settlementId;object.clearedAt = options.time || 0;
+      this.navigationChanged(object);
+      return 0;
     }
 
     syncSettlementBuildings(settlement, game) {
