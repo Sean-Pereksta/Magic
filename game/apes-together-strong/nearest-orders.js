@@ -1,15 +1,21 @@
-/* Tap/hold attack orders: exact local distance, with a strict human-only mode. */
+/* Directional tap/hold charges share a scan range; holds target humans only. */
 (() => {
 'use strict';
-const FOLLOW=new Set(['follow','charge','hold']),RANGE=320;
+// Both E gestures scan and retain targets through the full charge distance.
+const FOLLOW=new Set(['follow','charge','hold']),RANGE=570;
 const HOSTILE=new Set(['wall','gate','cage','gateControl','tower','radio','alarm','barracks','depot','fuel','fuelDepot','house','vehicle','generator','prisonControl','powerRelay','gatlingNest','mortarNest','humanBarricade','heavyBarricade','fieldBarricade','fieldSearchlight','fieldObservation','observationPost']);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),P=ATSGame.prototype;
+const heading=aim=>{const x=Number.isFinite(aim?.x)?aim.x:1,y=Number.isFinite(aim?.y)?aim.y:0,len=Math.hypot(x,y);return len>0?{x:x/len,y:y/len}:{x:1,y:0}};
+const setDirection=(a,order,aim)=>{const d=heading(aim);order.dx=d.x;order.dy=d.y;order.goal={x:a.x+d.x*RANGE,y:a.y+d.y*RANGE}};
+// Anchor the forward cone to the issued charge, so routing around an obstacle
+// does not change which side of the battlefield the player ordered an attack on.
+const inDirection=(a,t)=>{const o=a.nearestOrder;if(!o?.goal)return true;const x=t.x-(o.goal.x-o.dx*RANGE),y=t.y-(o.goal.y-o.dy*RANGE);return x*o.dx+y*o.dy>=Math.hypot(x,y)*.5-1e-6};
 const hostileObject=o=>!o.dead&&o.hp>0&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
 P.nearestTargetFor=function(a,humansOnly=false){
  let best=null,nearest=RANGE;
- const consider=(t,kind)=>{if(!t||t.hp<=0||t.dead)return;const d=kind==='object'?this.objectDistance(a,t):distance(a,t);if(d>RANGE)return;if(!best||d<nearest||(d===nearest&&String(t.id)<String(best.id))){nearest=d;best={id:t.id,kind}}};
- for(const h of this.humanGrid.nearest(a.x,a.y,RANGE,1,h=>h.hp>0))consider(h,'human');
- if(!humansOnly){for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,1,v=>v.hp>0))consider(v,'vehicle');for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o))consider(o,'object')}
+ const consider=(t,kind)=>{if(!t||t.hp<=0||t.dead||!inDirection(a,t))return;const d=kind==='object'?this.objectDistance(a,t):distance(a,t);if(d>RANGE)return;if(!best||d<nearest||(d===nearest&&String(t.id)<String(best.id))){nearest=d;best={id:t.id,kind}}};
+ for(const h of this.humanGrid.nearest(a.x,a.y,RANGE,1,h=>h.hp>0&&inDirection(a,h)))consider(h,'human');
+ if(!humansOnly){for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,1,v=>v.hp>0&&inDirection(a,v)))consider(v,'vehicle');for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o))consider(o,'object')}
  return best;
 };
 const command=P.command;
@@ -17,9 +23,9 @@ P.command=function(cmd,...args){
  if(!['nearestTarget','nearestHuman'].includes(cmd))return command.call(this,cmd,...args);
  if(this.ended||this.blastActive(this.king))return false;const feedback=this.commandCD<=0;
  const selected=!!this.siege?.selected.length,list=selected?this.siege.selectedMembers():this.apes.filter(a=>a.hp>0&&FOLLOW.has(a.state));if(!list.length)return false;
- for(const a of list){this.tactics.clearOrder(a);this.champions?.removeMember(a.id);delete a.throwWindup;a.state='charge';a.chargeTime=13;a.retreatUntil=0;a.target={x:a.x,y:a.y};a.nearestOrder={kind:cmd==='nearestHuman'?'human':'all',until:this.time+13};a._nearestThink=0;delete a._nearestTarget;}
+ for(const a of list){this.tactics.clearOrder(a);this.champions?.removeMember(a.id);delete a.throwWindup;a.state='charge';a.chargeTime=13;a.retreatUntil=0;a.nearestOrder={kind:cmd==='nearestHuman'?'human':'all',until:this.time+13};setDirection(a,a.nearestOrder,args[0]||this.aim);a.target={...a.nearestOrder.goal};a._nearestThink=0;delete a._nearestTarget;}
  this._nearestQueue=this.apes.filter(a=>a.hp>0&&a.nearestOrder).map(a=>a.id);this._nearestCursor=0;
- this.mode=cmd;this.commandCD=.5;if(feedback){this.king.attackTimer=.55;this.effect('wave',this.king.x,this.king.y,{color:cmd==='nearestHuman'?'#de947e':'#d3b378',life:.8,range:320});this.sound('charge',.8);this.noise(this.king.x,this.king.y,900,'order')}return true;
+ this.mode=cmd;this.commandCD=.5;if(feedback){this.king.attackTimer=.55;this.effect('wave',this.king.x,this.king.y,{color:cmd==='nearestHuman'?'#de947e':'#d3b378',life:.8,range:RANGE});this.sound('charge',.8);this.noise(this.king.x,this.king.y,900,'order')}return true;
 };
 const clear=ATSApeTactics.prototype.clearOrder;
 ATSApeTactics.prototype.clearOrder=function(a){delete a.nearestOrder;delete a._nearestTarget;delete a._nearestThink;return clear.call(this,a)};
@@ -38,6 +44,7 @@ P.planNearestOrders=function(){
   const index=(this._nearestCursor||0)%queue.length,a=this.apesById.get(queue[index]);this._nearestCursor=(index+1)%queue.length;
   if(!a||a.hp<=0||a.state!=='charge'||!a.nearestOrder||a.nearestOrder.until<=this.time||this.time<(a._nearestThink||0))continue;
   if(!this.performance.think('ape')){this._nearestCursor=index;break}
+  if(!a.nearestOrder.goal)setDirection(a,a.nearestOrder,this.aim);
   a._nearestTarget=this.nearestTargetFor(a,a.nearestOrder.kind==='human');a._nearestThink=this.time+.2+(ATSUtil.hash(a.id)%11)*.008;plans++;
  }
 };
@@ -46,9 +53,14 @@ P.updateApe=function(a,dt){
  const order=a.nearestOrder;if(!order)return update.call(this,a,dt);
  if(a.state!=='charge'||!['human','all'].includes(order.kind)||!Number.isFinite(order.until)){this.tactics.clearOrder(a);return update.call(this,a,dt)}
  if(this.time>=order.until){this.tactics.clearOrder(a);a.state='hold';a.target={x:a.x,y:a.y};a.chargeTime=0;a.moving=false;return}
+ if(!order.goal)setDirection(a,order,this.aim);
  a.hitTimer=Math.max(0,(a.hitTimer||0)-dt);a.attackTimer=Math.max(0,(a.attackTimer||0)-dt);a.attackCD=Math.max(0,(a.attackCD||0)-dt);a.age+=dt;a.chargeTime=Math.max(0,order.until-this.time);a.moving=false;if(this.updateBlastReaction(a,dt))return;
  const ref=a._nearestTarget,t=this.tactics.resolve(ref);
- if(!t||t.hp<=0||t.dead||order.kind==='human'&&ref.kind!=='human'||ref.kind==='object'&&!hostileObject(t)||(ref.kind==='object'?this.objectDistance(a,t):distance(a,t))>RANGE){a._nearestTarget=null;delete a.throwWindup;a.target={x:a.x,y:a.y};return}
+ if(!t||t.hp<=0||t.dead||!inDirection(a,t)||order.kind==='human'&&ref.kind!=='human'||ref.kind==='object'&&!hostileObject(t)||(ref.kind==='object'?this.objectDistance(a,t):distance(a,t))>RANGE){
+  a._nearestTarget=null;delete a.throwWindup;a.target={...order.goal};const d=distance(a,order.goal);
+  if(d>8)this.move(a,order.goal.x-a.x,order.goal.y-a.y,Math.min(a.speed*1.3,d/Math.max(dt,.001)),dt);
+  return;
+ }
  this.siege?.releaseThrow(a);a.target={x:t.x,y:t.y};if(this.siege?.attack(a,t,ref.kind,dt))return;
  // Keep the shared terrain, champion and weather movement modifiers while
  // suppressing automatic climbing/breaching through the hooks above.
