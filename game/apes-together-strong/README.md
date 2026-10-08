@@ -938,8 +938,8 @@ With the illustrated artwork included, the standalone download is approximately 
 **Tap E** issues a 13-second directional charge toward the pointer: humans,
 vehicles, occupied cells, gates, towers and other hostile structures ahead
 compete by actual distance. **Hold E** for 280 ms charges in the same direction
-but targets humans only; apes route around obstacles and never redirect their
-strikes to vehicles or structures. Releasing a hold does not also issue the tap
+but targets humans and vehicles, including active and parked tanks; apes route
+around obstacles and never redirect their strikes to structures. Releasing a hold does not also issue the tap
 action. Both gestures scan and pursue within the same 570 world units per ape,
 in a 120-degree forward cone anchored to the direction and position when issued.
 Each ape's destination is 570 units along that heading, preserving the horde's

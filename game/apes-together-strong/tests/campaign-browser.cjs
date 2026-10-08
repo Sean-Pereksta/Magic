@@ -2,6 +2,18 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const{pathToFileURL}=require('node:url'),{chromium}=require('playwright');
+function installHeldTargetFixture(){
+ const g=ATS.game,command=g.command.bind(g);
+ g.command=(name,...args)=>{
+  const result=command(name,...args);if(name!=='nearestHuman'||!result)return result;
+  const a=g.apes.find(a=>a.hp>0&&a.nearestOrder?.kind==='human'),o=a.nearestOrder;a.hp=a.maxHp=1e6;
+  g.humans.length=0;g.vehicles.length=0;
+  const v=g.forces.initVehicle({id:'vehicle-held-browser',x:a.x+o.dx*36,y:a.y+o.dy*36,dir:0,state:'idle',shootTimer:1e6,cannonTimer:1e6},'tank',0);g.vehicles.push(v);
+  const h=g.makeHuman(a.x+o.dx*140,a.y+o.dy*140,null),structure={id:'object-held-browser',type:'cage',x:a.x+o.dx*15,y:a.y+o.dy*15,r:2,hp:200,maxHp:200,count:2,solid:false};
+  g.world.objects.set(structure.id,structure);g.world._indexObject(structure);g.syncIndexes();g.humanGrid.rebuild(g.humans);g.vehicleGrid.rebuild(g.vehicles);
+  window.heldFixture={apeId:a.id,vehicleId:v.id,humanId:h.id,structureId:structure.id};return result;
+ };
+}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox']});const errors=[];
  const shot=async(p,name)=>{if(process.env.QA_ARTIFACT_DIR){fs.mkdirSync(process.env.QA_ARTIFACT_DIR,{recursive:true});await p.screenshot({path:path.join(process.env.QA_ARTIFACT_DIR,name+'.png')});}};
@@ -15,8 +27,11 @@ const{pathToFileURL}=require('node:url'),{chromium}=require('playwright');
   await page.mouse.move(1150,400);
   await page.keyboard.press('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestTarget']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'all');
   const tapHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(Math.abs(Math.hypot(tapHeading.x,tapHeading.y)-1)<1e-6);
+  await page.evaluate(installHeldTargetFixture);
   await page.mouse.move(250,350);
   await page.keyboard.down('e');await page.waitForTimeout(380);assert.deepEqual(await page.evaluate(()=>issued.slice()),['nearestHuman']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'human');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestHuman'],'hold never issues tap on release');
+  await page.waitForFunction(()=>ATS.game.apesById.get(heldFixture.apeId)?._nearestTarget?.id===heldFixture.vehicleId);
+  assert.equal(await page.evaluate(()=>ATS.game.world.objects.get(heldFixture.structureId).hp),200,'held desktop E ignores the closer structure');
   const holdHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(tapHeading.x*holdHeading.x+tapHeading.y*holdHeading.y<0,'moving the pointer aims the next charge in the opposite direction');
   await page.keyboard.down('e');await page.keyboard.press('Escape');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),[],'pause cancels pending gesture');
   assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
@@ -35,14 +50,16 @@ const{pathToFileURL}=require('node:url'),{chromium}=require('playwright');
   await page.keyboard.press('Escape');await page.locator('#settingsButton').click();await page.locator('#reducedMotion').check();await page.locator('#qualitySelect').selectOption('low');await page.locator('#backSettings').click();await page.locator('#resumeRun').click();await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>ATS.screen),'play');
   const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.locator('#newRun').tap();
   await touch.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.makeApe(g.king.x+30,g.king.y,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
+  await touch.evaluate(installHeldTargetFixture);
   for(const kind of ['nearestTarget','nearestHuman']){
    await touch.locator('.army-expand').tap();await touch.locator(`[data-army-command=${kind}]`).tap();
    assert.deepEqual(await touch.evaluate(()=>issued.slice()),[],'choosing a touch charge waits for an aim point');
    assert.equal(await touch.locator('#armyDock').evaluate(el=>el.classList.contains('expanded')),false);
    await touch.locator('#gameCanvas').tap({position:{x:300,y:260}});assert.deepEqual(await touch.evaluate(()=>issued.splice(0)),[kind]);
    const direction=await touch.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return Math.hypot(o.dx,o.dy)});assert.ok(Math.abs(direction-1)<1e-6);
+   if(kind==='nearestHuman'){await touch.waitForFunction(()=>ATS.game.apesById.get(heldFixture.apeId)?._nearestTarget?.id===heldFixture.vehicleId);assert.equal(await touch.evaluate(()=>ATS.game.world.objects.get(heldFixture.structureId).hp),200,'touch combat-target order ignores the closer structure')}
   }
   await touch.locator('#mapButton').tap();await touch.locator('#championCouncil').scrollIntoViewIfNeeded();assert.equal(await touch.locator('#championCouncil').isVisible(),true);assert.ok(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(touch,'campaign-touch');
-  assert.deepEqual(errors,[]);console.log('PASS: real embedded music decode/play/pause, independent mute, tap/hold E, council/division controls, specialization, saved elites/orders, prison recon, storm and low-detail rendering, touch layout; no browser errors.');
+  assert.deepEqual(errors,[]);console.log('PASS: real embedded music decode/play/pause, independent mute, tap/hold E and touch equivalent select armor over farther infantry while ignoring structures, council/division controls, specialization, saved elites/orders, prison recon, storm and low-detail rendering, touch layout; no browser errors.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
