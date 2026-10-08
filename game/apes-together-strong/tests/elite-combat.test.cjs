@@ -16,10 +16,10 @@ test('elite unlocks rotate stronger tank types while preserving the ordinary 300
  assert.equal(g.forces.variantFor('tank'),null);assert.equal(g.forces.variantFor('ifv'),null);
  assert.equal(c.ATSVehicleSpecs.tank.hp,1100);assert.equal(c.ATSVehicleSpecs.tank.front,.2);assert.equal(c.ATSVehicleSpecs.tank.cannonDamage,135);
  assert.ok(Array.from({length:16},(_,i)=>g.forces.militaryRole(i)).every(role=>!['assault','commando','juggernaut'].includes(role)));
- for(const [n,variant]of [[449,null],[450,'veteran'],[649,'veteran'],[650,'siege'],[849,'siege'],[850,'ironclad']]){population(g,n);assert.equal(g.forces.variantFor('tank'),variant)}
- assert.deepEqual(Array.from({length:4},(_,i)=>g.forces.variantFor('tank',i)),['ironclad','siege','veteran',null]);
+ for(const [n,variant]of [[449,null],[450,'veteran'],[549,'veteran'],[550,'repeater'],[649,'repeater'],[650,'siege'],[749,'siege'],[750,'bombard'],[849,'bombard'],[850,'ironclad'],[899,'ironclad'],[900,'cyclone']]){population(g,n);assert.equal(g.forces.variantFor('tank'),variant)}
+ assert.deepEqual(Array.from({length:7},(_,i)=>g.forces.variantFor('tank',i)),['cyclone','ironclad','bombard','siege','repeater','veteran',null]);
  assert.equal(g.forces.variantFor('ifv'),'sentinel');assert.equal(g.forces.variantFor('apc'),null);
- const roster=Array.from({length:16},(_,i)=>g.forces.militaryRole(i));for(const role of ['assault','commando','juggernaut','leader','heavy','engineer','medic','mortar','sniper','grenadier'])assert.ok(roster.includes(role));
+ const roster=Array.from({length:20},(_,i)=>g.forces.militaryRole(i));for(const role of ['assault','commando','juggernaut','leader','heavy','engineer','medic','mortar','sniper','grenadier','breacher','spotter','bombardier','rotary'])assert.ok(roster.includes(role));
  assert.equal(g.forces.vehicleSpec({kind:'apc',variant:'ironclad'}),c.ATSVehicleSpecs.apc,'a variant cannot turn a carrier into a tank');
 });
 

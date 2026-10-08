@@ -52,7 +52,7 @@ class Forces {
  }
  range(h){return ROLES[h.role]?.range||(h.kind==='pistol'?230:300)}
  militaryRole(index=0){const slot=((Math.floor(index)%16)+16)%16,population=this.game.population;if(population>=850&&(slot===3||slot===14))return 'juggernaut';if(population>=650&&(slot===4||slot===10))return 'commando';if(population>=450&&(slot===2||slot===8))return 'assault';return MILITARY_ROLES[slot]}
- variantFor(kind,index=0){const population=this.game.population,variants=Object.keys(VARIANTS).filter(id=>VARIANTS[id].vehicleClass===kind&&population>=VARIANTS[id].unlockPopulation).reverse();if(!variants.length)return null;variants.push(null);return variants[((Math.floor(index)%variants.length)+variants.length)%variants.length]}
+ variantFor(kind,index=0){const population=this.game.population,variants=Object.keys(VARIANTS).filter(id=>VARIANTS[id].vehicleClass===kind&&population>=VARIANTS[id].unlockPopulation).sort((a,b)=>VARIANTS[b].unlockPopulation-VARIANTS[a].unlockPopulation);if(!variants.length)return null;variants.push(null);return variants[((Math.floor(index)%variants.length)+variants.length)%variants.length]}
  vehicleSpec(v){const kind=v.vehicleClass||v.kind||'jeep',variant=VARIANTS[v.variant];return variant?.vehicleClass===kind?variant:VEHICLES[kind]||VEHICLES.jeep}
  armor(h,damage,source){
   if(!source||!['shield','juggernaut'].includes(h.role))return damage;const g=this.game,swarm=g.apeGrid.near(h.x,h.y,52).filter(a=>a.hp>0).length;
