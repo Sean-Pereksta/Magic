@@ -76,7 +76,7 @@ class Champions{
    if(d.stance==='climbBreach'&&target.type==='wall'&&g.tactics?.tryClimb(a,anchor.x-a.x,anchor.y-a.y,target))return true;
    if(!defensive||distance(a,anchor)<180){this.travel(d,a,target,dt,target);return true}
   }
-  let goal=this.formation(d,a);if(d.stance==='rescue'&&!d.target&&!d.fallingBack&&g.time>=(d.nextEscort||0)){d.nextEscort=g.time+1;const freed=g.apeGrid.nearest(a.x,a.y,180,24,p=>p.state==='free'),cohorts=(g.prisons?.active||[]).flatMap(s=>s.prison?.cohorts||[]).filter(c=>c.count>0&&distance(c,a)<210);for(const captive of freed){captive.state='follow';captive.retreatUntil=g.time+12}if(freed.length||cohorts.length){d.fallingBack=true;d.reason='Escorting rescued captives';goal=this.formation(d,a)}}
+  let goal=this.formation(d,a);if(d.stance==='rescue'&&!d.target&&!d.fallingBack&&g.time>=(d.nextEscort||0)){d.nextEscort=g.time+1;const freed=g.apeGrid.nearest(a.x,a.y,180,24,p=>p.state==='free'),cohorts=(g.prisons?.active||[]).flatMap(s=>s.prison?.cohorts||[]).filter(c=>c.count>0&&distance(c,a)<210);for(const captive of freed){captive.hordeOwner='king';captive.state='follow';captive.retreatUntil=g.time+12}if(freed.length||cohorts.length){d.fallingBack=true;d.reason='Escorting rescued captives';goal=this.formation(d,a)}}
   if(distance(a,goal)>20)this.travel(d,a,goal,dt);return true;
  }
  tick(){const g=this.g;if(g.ended)return;const elapsed=clamp(g.time-this.lastTick,0,2);this.lastTick=g.time;if(g.time>=this.nextPlan){this.nextPlan=g.time+.5;this.plan()}

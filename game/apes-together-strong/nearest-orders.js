@@ -11,11 +11,44 @@ const setDirection=(a,order,aim)=>{const d=heading(aim);order.dx=d.x;order.dy=d.
 // does not change which side of the battlefield the player ordered an attack on.
 const inDirection=(a,t)=>{const o=a.nearestOrder;if(!o?.goal)return true;const x=t.x-(o.goal.x-o.dx*RANGE),y=t.y-(o.goal.y-o.dy*RANGE);return x*o.dx+y*o.dy>=Math.hypot(x,y)*.5-1e-6};
 const hostileObject=o=>!o.dead&&o.hp>0&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
+const pathLengths=new WeakMap();
+function cachedDistance(path,a,t){
+ // Smoothed local routes normally have very few points. Never turn target
+ // scoring into an unbounded traversal of a long or invalid cached route.
+ if(!path?.length||path._navInvalid||path.length>128)return null;
+ let length=pathLengths.get(path);
+ if(length===undefined){length=0;for(let i=1;i<path.length;i++)length+=distance(path[i-1],path[i]);pathLengths.set(path,length)}
+ return distance(a,path[0])+length+distance(path.at(-1),t);
+}
+function travelCost(g,a,t,d){
+ const nav=g.navigation,r=a.radius||10,cell=nav.cell||28;
+ const key=[Math.round(a.x/cell),Math.round(a.y/cell),Math.round(t.x/cell),Math.round(t.y/cell),r,nav.revision,'ape'].join(':');
+ const cached=nav.routes.get(key);
+ if(cached&&!cached.path._navInvalid&&nav.time-cached.time<(cached.path.length?8:1.1)){
+  if(!cached.path.length)return Infinity;
+  const length=cachedDistance(cached.path,a,t);
+  if(length!==null)return Math.max(d,length-(distance(a,t)-d));
+ }
+ // This graph is already shared by movement, including bridge approaches.
+ // Reading it does not enqueue A*, stream chunks or change an actor's route.
+ const crossing=g.world.crossingFor?.(a,t,'ape',a._navAvoidCrossings,g.time);
+ if(crossing){
+  const side=t.y>=a.y?0:1,near=crossing.approaches[side],far=crossing.approaches[1-side];
+  const onDeck=a.x>=crossing.minX&&a.x<=crossing.maxX&&a.y>=crossing.minY&&a.y<=crossing.maxY;
+  return Math.max(d,(onDeck?distance(a,far):distance(a,near)+distance(near,far))+distance(far,t)-(distance(a,t)-d));
+ }
+ return d;
+}
 P.nearestTargetFor=function(a,humansOnly=false){
- let best=null,nearest=RANGE;
- const consider=(t,kind)=>{if(!t||t.hp<=0||t.dead||!inDirection(a,t))return;const d=kind==='object'?this.objectDistance(a,t):distance(a,t);if(d>RANGE)return;if(!best||d<nearest||(d===nearest&&String(t.id)<String(best.id))){nearest=d;best={id:t.id,kind}}};
- for(const h of this.humanGrid.nearest(a.x,a.y,RANGE,1,h=>h.hp>0&&inDirection(a,h)))consider(h,'human');
- if(!humansOnly){for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,1,v=>v.hp>0&&inDirection(a,v)))consider(v,'vehicle');for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o))consider(o,'object')}
+ const candidates=[];
+ const available=t=>{const rejected=a._nearestRejected?.[t.id];return !rejected||rejected.revision!==(this.world.navRevision||0)||rejected.until<=this.time};
+ const consider=(t,kind)=>{if(!t||t.hp<=0||t.dead||!inDirection(a,t)||!available(t))return;const d=kind==='object'?this.objectDistance(a,t):distance(a,t);if(d>RANGE)return;const i=candidates.findIndex(c=>d<c.d||d===c.d&&String(t.id)<String(c.t.id));if(i<0){if(candidates.length<6)candidates.push({t,kind,d})}else{candidates.splice(i,0,{t,kind,d});if(candidates.length>6)candidates.pop()}};
+ // Keep the same bounded spatial scans, retaining a few alternatives instead
+ // of only their first result. At most six candidates receive route scoring.
+ for(const h of this.humanGrid.nearest(a.x,a.y,RANGE,4,h=>h.hp>0&&inDirection(a,h)&&available(h)))consider(h,'human');
+ if(!humansOnly){for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,2,v=>v.hp>0&&inDirection(a,v)&&available(v)))consider(v,'vehicle');for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o))consider(o,'object')}
+ let best=null,nearest=Infinity;
+ for(const {t,kind,d}of candidates){if(d>nearest)break;const cost=travelCost(this,a,t,d);if(cost<nearest||Number.isFinite(cost)&&cost===nearest&&String(t.id)<String(best?.id)){nearest=cost;best={id:t.id,kind}}}
  return best;
 };
 const command=P.command;
@@ -28,7 +61,7 @@ P.command=function(cmd,...args){
  this.mode=cmd;this.commandCD=.5;if(feedback){this.king.attackTimer=.55;this.effect('wave',this.king.x,this.king.y,{color:cmd==='nearestHuman'?'#de947e':'#d3b378',life:.8,range:RANGE});this.sound('charge',.8);this.noise(this.king.x,this.king.y,900,'order')}return true;
 };
 const clear=ATSApeTactics.prototype.clearOrder;
-ATSApeTactics.prototype.clearOrder=function(a){delete a.nearestOrder;delete a._nearestTarget;delete a._nearestThink;return clear.call(this,a)};
+ATSApeTactics.prototype.clearOrder=function(a){delete a.nearestOrder;delete a._nearestTarget;delete a._nearestThink;delete a._nearestRejected;return clear.call(this,a)};
 // The normal navigation interaction can breach barricades automatically. These
 // orders navigate around barriers and damage only their explicitly chosen target.
 const interaction=ATSNavigation.prototype.interactFortification;
@@ -55,7 +88,11 @@ P.updateApe=function(a,dt){
  if(this.time>=order.until){this.tactics.clearOrder(a);a.state='hold';a.target={x:a.x,y:a.y};a.chargeTime=0;a.moving=false;return}
  if(!order.goal)setDirection(a,order,this.aim);
  a.hitTimer=Math.max(0,(a.hitTimer||0)-dt);a.attackTimer=Math.max(0,(a.attackTimer||0)-dt);a.attackCD=Math.max(0,(a.attackCD||0)-dt);a.age+=dt;a.chargeTime=Math.max(0,order.until-this.time);a.moving=false;if(this.updateBlastReaction(a,dt))return;
- const ref=a._nearestTarget,t=this.tactics.resolve(ref);
+ let ref=a._nearestTarget,t=this.tactics.resolve(ref);
+ if(t&&this.navigation.unreachable?.(a,t)){
+  (a._nearestRejected||(a._nearestRejected={}))[t.id]={until:this.time+8,revision:this.world.navRevision||0};
+  a._nearestTarget=null;a._nearestThink=0;delete a.throwWindup;this.navigation.resetActor?.(a);ref=null;t=null;
+ }
  if(!t||t.hp<=0||t.dead||!inDirection(a,t)||order.kind==='human'&&ref.kind!=='human'||ref.kind==='object'&&!hostileObject(t)||(ref.kind==='object'?this.objectDistance(a,t):distance(a,t))>RANGE){
   a._nearestTarget=null;delete a.throwWindup;a.target={...order.goal};const d=distance(a,order.goal);
   if(d>8)this.move(a,order.goal.x-a.x,order.goal.y-a.y,Math.min(a.speed*1.3,d/Math.max(dt,.001)),dt);

@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
 
-const MODULES = ['world', 'navigation', 'settlements', 'forces', 'ape-tactics', 'siege', 'sim', 'arsenal', 'champions', 'kingdom', 'prisons', 'weather', 'nearest-orders', 'progression', 'equipment', 'palisade-traversal', 'settlement-combat'];
+const MODULES = ['world', 'navigation', 'settlements', 'forces', 'ape-tactics', 'siege', 'sim', 'arsenal', 'champions', 'kingdom', 'prisons', 'weather', 'nearest-orders', 'progression', 'equipment', 'palisade-traversal', 'settlement-combat', 'horde-commands'];
 const SCENARIOS = [
   { id: 'A', label: '100 followers in dense forest', apes: 100, humans: 0 },
   { id: 'B', label: '200 followers in dense forest', apes: 200, humans: 0 },

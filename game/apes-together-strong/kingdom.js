@@ -104,7 +104,7 @@ class Kingdom{
  }
  receiveSurvivors(id,apes,options={}){
   const g=this.game,s=g.settlement(id);if(!s)return{ok:false,reason:'No settlement is available.'};this.ensure(s);let count=0;
-  for(const a of apes){if(!a||a.hp<=0)continue;g.tactics?.clearOrder(a);delete a.kingdomMission;delete a._activityTarget;a.carrying=false;a.settlementId=s.id;if(a.state!=='young')a.state='settled';a.homeX=s.x;a.homeY=s.y;count++}
+  for(const a of apes){if(!a||a.hp<=0)continue;g.tactics?.clearOrder(a);delete a.kingdomMission;delete a._activityTarget;a.carrying=false;a.hordeOwner='king';a.settlementId=s.id;if(a.state!=='young')a.state='settled';a.homeX=s.x;a.homeY=s.y;count++}
   s._jobsAt=0;g.refreshSettlements();if(options.celebration){s.moraleUntil=g.time+90;this.event(s,'survivors',count+' prison survivors arrive'+(options.facilityName?' from '+options.facilityName:'')+'. The village celebrates for 90 seconds.','green',0)}else if(count)this.event(s,'arrivals',count+' '+(options.kind==='reinforcement'?'defenders':'residents')+' arrive safely.','green',0);return{ok:true,count};
  }
  welcomeSurvivors(apes,options={}){

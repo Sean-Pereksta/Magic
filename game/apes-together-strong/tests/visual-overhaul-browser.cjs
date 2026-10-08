@@ -47,9 +47,9 @@ const screenshot = async (page, name) => { if (output) { fs.mkdirSync(output, { 
     await page.waitForFunction(() => ATS.game?.time > .2);
     assert.equal(await page.locator('#loadingScreen').isVisible(), false);
     assert.equal(await page.evaluate(() => document.body.getAttribute('aria-busy')), 'false');
-    assert.equal(await page.locator('#armyDock .army-commands button:visible').count(), 7, 'compact desktop dock exposes the seven core commands');
+    assert.equal(await page.locator('#armyDock .army-commands button:visible').count(), 8, 'compact desktop dock exposes the eight core commands, including field recall');
     await page.locator('#armyDock .army-expand').click();
-    assert.ok(await page.locator('#armyDock .army-commands button:visible').count() > 7, 'advanced commands remain accessible');
+    assert.ok(await page.locator('#armyDock .army-commands button:visible').count() > 8, 'advanced commands remain accessible');
     assert.equal(await page.locator('#armyDock .army-expand').getAttribute('aria-expanded'), 'true');
     await page.locator('#armyDock .army-expand').click();
     const before = await page.evaluate(() => ({ x: ATS.game.king.x, y: ATS.game.king.y }));

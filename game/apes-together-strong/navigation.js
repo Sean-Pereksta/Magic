@@ -9,16 +9,23 @@ class Heap {
 }
 class Navigation {
  constructor(world){
- this.world=world;this.cell=28;this.walkCache=new Map();this.segmentCache=new Map();this.routes=new Map();this.pending=new Map();this.cohorts=new Map();this.revision=-1;this.chunkRevision=-1;this.time=0;
- this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0};
+ this.world=world;this.cell=28;this.walkCache=new Map();this.segmentCache=new Map();this.routes=new Map();this.pending=new Map();this.cohorts=new Map();this.corridorAt=new Map();this.revision=-1;this.worldRevision=-1;this.localVersions=new Map();this.chunkRevision=-1;this.time=0;
+ this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0,crossings:0,recoveries:0};
  }
  beginFrame(time,options={}){
  this.time=time;
- if(this.revision!==(this.world.navRevision||0)){this.revision=this.world.navRevision||0;this.walkCache.clear();this.segmentCache.clear();this.routes.clear();this.pending.clear();this.hasFortifications=!!this.world.objects&&Array.from(this.world.objects.values()).some(o=>o.fortification&&o.solid&&!o.dead&&o.hp>0)}
+ const revision=this.world.navRevision||0;
+ if(this.worldRevision!==revision){
+ const changes=this.worldRevision>=0?this.world.navigationChangesSince?.(this.worldRevision):null;
+ if(changes&&this._invalidateLocal(changes)){if(changes.some(c=>c.fortification))this.hasFortifications=true}
+ else {this.revision++;for(const route of this.routes.values())route.path._navInvalid=true;this.walkCache.clear();this.segmentCache.clear();this.routes.clear();this.pending.clear();this.cohorts.clear();this.localVersions.clear();this.hasFortifications=!!this.world.objects&&Array.from(this.world.objects.values()).some(o=>o.fortification&&o.solid&&!o.dead&&o.hp>0)}
+ this.worldRevision=revision;
+ }
  if(this.chunkRevision!==(this.world.chunkRevision||0)){this.chunkRevision=this.world.chunkRevision||0;this.walkCache.clear();this.segmentCache.clear()}
  if(this.walkCache.size>30000)this.walkCache.clear();if(this.segmentCache.size>9000)this.segmentCache.clear();if(this.routes.size>512)this.routes.delete(this.routes.keys().next().value);
  for(const [key,route]of this.routes)if(time-route.time>(route.path.length?8:1.1))this.routes.delete(key);
  for(const [key,cohort]of this.cohorts)if(time-cohort.touched>2)this.cohorts.delete(key);
+ for(const [key,at]of this.corridorAt)if(time-at>3)this.corridorAt.delete(key);
  for(const [key,job]of this.pending)if(time-job.touched>3)this.pending.delete(key);
  const started=clock(),searches=this.stats.searches,budget=options.budgetMs??1.6,maxExpanded=options.maxExpanded??192,maxRequests=options.maxRequests??6,maxSearches=options.maxSearches??3;
  const jobs=Array.from(this.pending.values()).sort((a,b)=>(a.priority-Math.min(2,(time-a.created)*.8))-(b.priority-Math.min(2,(time-b.created)*.8))||a.created-b.created);
@@ -36,6 +43,21 @@ class Navigation {
  if(expanded>=maxExpanded||clock()-started>=budget)break;
  }
  this.stats.frameExpanded=expanded;this.stats.frameSearches=this.stats.searches-searches;this.stats.expanded+=expanded;this.stats.frameMs=clock()-started;this.stats.queueLength=this.pending.size;this.stats.deferred+=this.pending.size;
+ }
+ _overlap(a,b){return a&&b&&a.minX<=b.maxX&&a.maxX>=b.minX&&a.minY<=b.maxY&&a.maxY>=b.minY}
+ _requestBounds(from,to,r=10){const margin=this.cell*29+168+r+3;return {minX:Math.min(from.x,to.x)-margin,minY:Math.min(from.y,to.y)-margin,maxX:Math.max(from.x,to.x)+margin,maxY:Math.max(from.y,to.y)+margin}}
+ _regionVersion(minX,minY,maxX,maxY){if(!this.localVersions.size)return 0;let version=0,count=0;for(let y=Math.floor(minY/384);y<=Math.floor(maxY/384);y++)for(let x=Math.floor(minX/384);x<=Math.floor(maxX/384);x++){if(++count>256)return this.worldRevision;version=Math.max(version,this.localVersions.get(x+','+y)||0)}return version}
+ _invalidateLocal(changes){
+ // Cache keys carry the newest geometry version in their small spatial region.
+ // No per-gate sweep of tens of thousands of collision-cache entries is needed.
+ for(const change of changes){let count=0;for(let y=Math.floor(change.minY/384);y<=Math.floor(change.maxY/384);y++)for(let x=Math.floor(change.minX/384);x<=Math.floor(change.maxX/384);x++){if(++count>256||this.localVersions.size>=4096)return false;this.localVersions.set(x+','+y,change.revision)}}
+ const affected=bounds=>!bounds||changes.some(change=>this._overlap(bounds,change));
+ for(const [key,route]of this.routes)if(affected(route.bounds)){route.path._navInvalid=true;this.routes.delete(key)}
+ // Search bounds include all possible coarse/refined expansion and nearest-cell
+ // probes. A changed wall can invalidate closed nodes as well as the final path.
+ for(const [key,job]of this.pending)if(affected(job.bounds))this.pending.delete(key);
+ for(const [key,cohort]of this.cohorts){const request=cohort.request,bounds=request?this._requestBounds(request.from,request.to,cohort.radius):cohort.path._navBounds||cohort.leader&&this._requestBounds(cohort.leader,cohort.goal,cohort.radius);if(cohort.path._navInvalid||affected(bounds)){cohort.path._navInvalid=true;this.cohorts.delete(key)}}
+ return true;
  }
  profile(a){const name=typeof a==='string'?a:a?.navClass||a?.vehicleClass||a?.kind||a?.vehicleType||a?.type;if(this.isVehicle(name))return name;if(this.world.actorBlocked){if(name==='human'||name==='ape')return name;if(a?.id==='king'||a?.id?.startsWith('ape'))return 'ape';if(a?.id?.startsWith('human'))return 'human'}return ''}
  isVehicle(profile){return VEHICLE_PROFILES.has(profile)}
@@ -57,7 +79,7 @@ class Navigation {
  const dx=bx-ax,dy=by-ay,length2=dx*dx+dy*dy,pad=r;
  if(this.world.boundsReady&&!this.world.boundsReady(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad))return false;
  const cacheable=!ignoreId&&ax%this.cell===0&&ay%this.cell===0&&bx%this.cell===0&&by%this.cell===0;
- const key=cacheable?ax+','+ay+','+bx+','+by+','+r+','+profile:null;
+ const key=cacheable?ax+','+ay+','+bx+','+by+','+r+','+profile+','+this._regionVersion(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad):null;
  if(key&&this.segmentCache.has(key))return this.segmentCache.get(key);
  let clear=true;
  if(this.world._queryCollision)this.world._queryCollision(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad,o=>{
@@ -80,27 +102,28 @@ class Navigation {
  // Obstacle intersections above are exact; only terrain needs sampling. This
  // removes the old repeated spatial collision query at every eight pixels.
  const steps=Math.max(1,Math.ceil(Math.sqrt(length2)/8));
- for(let i=0;i<=steps;i++){const x=ax+dx*i/steps,y=ay+dy*i/steps;if(this.world.waterBlocked?this.world.waterBlocked(x,y,r):this.world.blocked(x,y,r)){clear=false;break}if(this.isVehicle(profile)){const t=this.world.vehicleTerrain?this.world.vehicleTerrain(x,y):this.world.terrain(x,y);if(t.biome==='wetland'&&!t.road&&!t.compound){clear=false;break}}}
+ for(let i=0;i<=steps;i++){const x=ax+dx*i/steps,y=ay+dy*i/steps;if(this.world.waterBlocked?this.world.waterBlocked(x,y,r):this.world.blocked(x,y,r)){clear=false;break}if(this.isVehicle(profile)){const t=this.world.vehicleTerrain?this.world.vehicleTerrain(x,y):this.world.terrain(x,y);if(t.crossing&&!t.crossing.vehicleCompatible||t.biome==='wetland'&&!t.road&&!t.compound){clear=false;break}}}
  }
  if(key)this.segmentCache.set(key,clear);return clear;
  }
- walk(x,y,r,profile=''){let key=x+','+y+','+r+','+profile;if(!this.walkCache.has(key))this.walkCache.set(key,!this.blocked(x*this.cell,y*this.cell,r+1,profile));return this.walkCache.get(key)}
+ walk(x,y,r,profile='',cell=this.cell){const px=x*cell,py=y*cell,pad=r+1;let key=x+','+y+','+r+','+profile+','+cell+','+this._regionVersion(px-pad,py-pad,px+pad,py+pad);if(!this.walkCache.has(key))this.walkCache.set(key,!this.blocked(px,py,pad,profile));return this.walkCache.get(key)}
  _nearestStep(job,which){
- let scan=job.scan;
- if(!scan){const point=which==='start'?job.from:job.to;scan=job.scan={cx:Math.round(point.x/this.cell),cy:Math.round(point.y/this.cell),ring:0,dx:0,dy:0,best:null,score:Infinity,point}}
+ const cell=job.cell||this.cell;let scan=job.scan;
+ if(!scan){const point=which==='start'?job.from:job.to;scan=job.scan={cx:Math.round(point.x/cell),cy:Math.round(point.y/cell),ring:0,dx:0,dy:0,best:null,score:Infinity,point}}
  const {ring,dx,dy}=scan,x=scan.cx+dx,y=scan.cy+dy;
- if(Math.max(Math.abs(dx),Math.abs(dy))===ring&&this.walk(x,y,job.r,job.profile)&&
- (which!=='start'||this.clearSegment(job.from.x,job.from.y,x*this.cell,y*this.cell,job.r,job.profile))){const score=(x*this.cell-scan.point.x)**2+(y*this.cell-scan.point.y)**2;if(score<scan.score){scan.best={x,y};scan.score=score}}
+ if(Math.max(Math.abs(dx),Math.abs(dy))===ring&&this.walk(x,y,job.r,job.profile,cell)&&
+ (which!=='start'||this.clearSegment(job.from.x,job.from.y,x*cell,y*cell,job.r,job.profile))){const score=(x*cell-scan.point.x)**2+(y*cell-scan.point.y)**2;if(score<scan.score){scan.best={x,y};scan.score=score}}
  scan.dy++;
  if(scan.dy>ring){scan.dy=-ring;scan.dx++}
  if(scan.dx>ring){
  if(scan.best){job[which]=scan.best;job.scan=null;job.phase=which==='start'?'goal':'initialize';return false}
- scan.ring++;scan.dx=scan.dy=-scan.ring;if(scan.ring>6)return this._finish(job,[]);
+ scan.ring++;scan.dx=scan.dy=-scan.ring;if(scan.ring>Math.ceil(168/cell))return this._finish(job,[]);
  }
  return false;
  }
- _finish(job,path){this.routes.set(job.key,{time:this.time,path});if(!path.length)this.stats.failures++;return true}
+ _finish(job,path){Object.defineProperties(path,{_navBounds:{value:job.bounds},_navInvalid:{value:false,writable:true}});this.routes.set(job.key,{time:this.time,path,bounds:job.bounds});if(!path.length)this.stats.failures++;return true}
  _step(job){
+ const cell=job.cell||this.cell;
  if(job.phase==='start'||job.phase==='goal')return this._nearestStep(job,job.phase);
  if(job.phase==='initialize'){
  const {start,goal}=job;job.heap=new Heap();job.nodes=new Map();job.heuristic=(x,y)=>Math.hypot(goal.x-x,goal.y-y);
@@ -108,20 +131,28 @@ class Navigation {
  job.minX=Math.min(start.x,goal.x)-28;job.maxX=Math.max(start.x,goal.x)+28;job.minY=Math.min(start.y,goal.y)-28;job.maxY=Math.max(start.y,goal.y)+28;job.phase='expand';this.stats.searches++;return false;
  }
  if(job.phase==='expand'){
- if(!job.heap.items.length||job.expanded>=3200)return this._finish(job,[]);
+ if(!job.heap.items.length||job.expanded>=(job.refined?6400:3200)){
+ // An exhausted small coarse region can be a legal, sub-cell passage beside
+ // cages or gatehouses. Refine that shared job once; retain both global frame
+ // budgets and exact actor clearance. Unbounded/open-world failures stay cheap.
+ if(!job.refined&&!job.heap.items.length&&job.expanded<1600&&!this.isVehicle(job.profile)){
+ job.refined=true;job.cell=7;job.scan=null;job.phase='start';return false;
+ }
+ return this._finish(job,[]);
+ }
  const cur=job.heap.pop();if(cur.closed)return false;cur.closed=true;job.expanded++;
  if(cur.x===job.goal.x&&cur.y===job.goal.y){job.path=[];job.cursor=cur;job.phase='reconstruct';return false}
  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
  if(!dx&&!dy)continue;const x=cur.x+dx,y=cur.y+dy,r=job.r;
- if(x<job.minX||x>job.maxX||y<job.minY||y>job.maxY||!this.walk(x,y,r,job.profile))continue;
- if(dx&&dy&&(!this.walk(cur.x+dx,cur.y,r,job.profile)||!this.walk(cur.x,cur.y+dy,r,job.profile)))continue;
- if(!this.clearSegment(cur.x*this.cell,cur.y*this.cell,x*this.cell,y*this.cell,r,job.profile))continue;
- const cost=this.terrainCost(x*this.cell,y*this.cell,job.profile),g=cur.g+(dx&&dy?Math.SQRT2:1)*cost,id=x+','+y,old=job.nodes.get(id);
+ if(x<job.minX||x>job.maxX||y<job.minY||y>job.maxY||!this.walk(x,y,r,job.profile,cell))continue;
+ if(dx&&dy&&(!this.walk(cur.x+dx,cur.y,r,job.profile,cell)||!this.walk(cur.x,cur.y+dy,r,job.profile,cell)))continue;
+ if(!this.clearSegment(cur.x*cell,cur.y*cell,x*cell,y*cell,r,job.profile))continue;
+ const cost=this.terrainCost(x*cell,y*cell,job.profile),g=cur.g+(dx&&dy?Math.SQRT2:1)*cost,id=x+','+y,old=job.nodes.get(id);
  if(!old||g<old.g){const node={x,y,g,f:g+job.heuristic(x,y)*(this.isVehicle(job.profile)?.6:.92),parent:cur};job.nodes.set(id,node);job.heap.push(node)}
  }return false;
  }
  if(job.phase==='reconstruct'){
- if(job.cursor){job.path.push({x:job.cursor.x*this.cell,y:job.cursor.y*this.cell});job.cursor=job.cursor.parent;return false}
+ if(job.cursor){job.path.push({x:job.cursor.x*cell,y:job.cursor.y*cell});job.cursor=job.cursor.parent;return false}
  job.path.reverse();const last=job.path.at(-1);if(last&&!this.blocked(job.to.x,job.to.y,job.r,job.profile)&&this.clearSegment(last.x,last.y,job.to.x,job.to.y,job.r,job.profile))job.path.push({...job.to});
  job.smooth=[];job.index=0;job.next=1;job.phase='smooth';return false;
  }
@@ -134,17 +165,22 @@ class Navigation {
  findPath(from,to,r=10,priority=3,profile=''){
  profile=this.profile(profile);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
  const key=[Math.round(from.x/this.cell),Math.round(from.y/this.cell),Math.round(to.x/this.cell),Math.round(to.y/this.cell),r,this.revision,profile].join(':');
- const cached=this.routes.get(key);if(cached&&this.time-cached.time<(cached.path.length?8:1.1)){this.stats.cacheHits++;return cached.path}
+ const cached=this.routes.get(key);if(cached&&!cached.path._navInvalid&&this.time-cached.time<(cached.path.length?8:1.1)){this.stats.cacheHits++;return cached.path}
  const old=this.pending.get(key);if(old){old.priority=Math.min(old.priority,priority);old.touched=this.time;return null}
  if(this.pending.size>=384){this.stats.dropped++;return null}
- this.pending.set(key,{key,from:{x:from.x,y:from.y},to:{x:to.x,y:to.y},r,profile,priority,created:this.time,touched:this.time,expanded:0,phase:'start'});this.stats.requested++;this.stats.queueLength=this.pending.size;return null;
+ this.pending.set(key,{key,from:{x:from.x,y:from.y},to:{x:to.x,y:to.y},bounds:this._requestBounds(from,to,r),r,profile,priority,created:this.time,touched:this.time,expanded:0,phase:'start'});this.stats.requested++;this.stats.queueLength=this.pending.size;return null;
  }
  setCohortRoute(id,leader,target,r=10,priority=3,profile=this.profile(leader)){
+ if(!id.startsWith('recovery:'))target=this.strategicTarget(leader,target,r,profile);
  let cohort=this.cohorts.get(id);if(!cohort)cohort={path:[],goal:{...target},revision:-1,created:this.time};
  cohort.touched=this.time;cohort.leader=leader;cohort.radius=r;cohort.profile=profile;
- if(cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>75||!cohort.path.length){
+ // Missing streamed chunks are pending information, not a blocked bridge.
+ // Do not fill the search queue or reject a target while its local leg loads.
+ if(this.world.boundsReady&&!this.world.boundsReady(Math.min(leader.x,target.x)-r,Math.min(leader.y,target.y)-r,Math.max(leader.x,target.x)+r,Math.max(leader.y,target.y)+r)){this.cohorts.set(id,cohort);return cohort}
+ if(cohort.failedUntil>this.time&&cohort.revision===this.revision&&Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)<75){this.cohorts.set(id,cohort);return cohort}
+ if(cohort.revision!==this.revision||cohort.path._navInvalid||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>75||!cohort.path.length){
  if(!cohort.request||cohort.requestRevision!==this.revision||Math.hypot(target.x-cohort.request.to.x,target.y-cohort.request.to.y)>75){cohort.request={from:{x:leader.x,y:leader.y},to:{...target}};cohort.requestRevision=this.revision}
- const path=this.findPath(cohort.request.from,cohort.request.to,r,priority,profile);if(path!==null){cohort.path=path;cohort.goal={...cohort.request.to};cohort.revision=this.revision;cohort.request=null}
+ const path=this.findPath(cohort.request.from,cohort.request.to,r,priority,profile);if(path!==null){cohort.path=path;cohort.goal={...cohort.request.to};cohort.revision=this.revision;cohort.failedUntil=path.length?0:this.time+2.5;cohort.request=null}
  }
  this.cohorts.set(id,cohort);return cohort;
  }
@@ -156,7 +192,7 @@ class Navigation {
  const cohort=this.setCohortRoute(id,from,to,r,priority,profile);return cohort.path.length?cohort.path:null;
  }
  _cohortPoint(a,target,r,nav,cohortId=a.navCohort){
- const cohort=this.cohorts.get(cohortId);if(!cohort||!cohort.path.length||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
+ const cohort=this.cohorts.get(cohortId);if(!cohort||!cohort.path.length||cohort.path._navInvalid||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
  const path=cohort.path;
  if(nav.sharedPoint&&nav.sharedPath===path&&this.time<nav.sharedAt&&Math.hypot(a.x-nav.sharedPoint.x,a.y-nav.sharedPoint.y)>22){this.stats.sharedHits++;return nav.sharedPoint}
  if(nav.cohort!==cohortId||nav.sharedPath!==path){nav.cohort=cohortId;nav.sharedPath=path;nav.sharedIndex=0;let best=Infinity;for(let i=0;i<path.length;i++){const d=(a.x-path[i].x)**2+(a.y-path[i].y)**2;if(d<best){nav.sharedIndex=i;best=d}}}
@@ -171,16 +207,65 @@ class Navigation {
  for(let previous=i-1;previous>=Math.max(0,i-8);previous--){const p=path[previous];if(this.clearSegment(a.x,a.y,p.x,p.y,r,nav.profile)){nav.sharedIndex=previous;nav.sharedPoint=p;nav.sharedAt=this.time+.12;this.stats.sharedHits++;return p}}
  return null;
  }
+ resetActor(a){
+ for(const key of ['_nav','_navJourney','_navCrossing','_navCrossingAt','_navAvoidCrossings','_abstractPath','_abstractRequest','_abstractRetry','_abstractIndex','navCohort'])delete a[key];
+ }
+ followTarget(a,king,x,y){
+ const world=this.world,region=world.landRegionAt?.(king.x,king.y);
+ // The formation may widen across a shore. Its decorative spacing must not
+ // order a follower back across the river after it has reached its king.
+ if(world.waterBlocked?.(x,y,a.radius||10)||region!=null&&world.landRegionAt(x,y)!==region)return {x:king.x,y:king.y};
+ return {x,y};
+ }
+ strategicTarget(a,target,r=10,profile=this.profile(a)){
+ const world=this.world,ground=profile==='ape'||profile==='human'||this.isVehicle(profile);
+ if(!ground)return target;
+ let crossing=a._navCrossing;
+ if(!crossing&&this.time>=(a._navCrossingAt||0)){
+ a._navCrossingAt=this.time+.75;
+ const bridge=world.crossingFor?.(a,target,profile,a._navAvoidCrossings,this.time);
+ if(bridge){
+ const direction=target.y>a.y?1:-1,side=direction>0?0:1;
+ // Three stable lanes use the physical deck width without crowding its edges.
+ const lane=this.isVehicle(profile)?0:((ATSUtil.hash(a.id||'cohort')%3)-1)*Math.max(0,Math.min(28,bridge.width/2-r-15));
+ crossing=a._navCrossing={id:bridge.id,bridge,direction,phase:0,near:{x:bridge.x+lane,y:bridge.approaches[side].y},far:{x:bridge.x+lane,y:bridge.approaches[1-side].y}};
+ if(a.x>bridge.minX+r&&a.x<bridge.maxX-r&&a.y>bridge.minY&&a.y<bridge.maxY)crossing.phase=1;
+ this.stats.crossings++;
+ }
+ }
+ if(crossing){
+ if(crossing.phase===0&&Math.hypot(a.x-crossing.near.x,a.y-crossing.near.y)<24)crossing.phase=1;
+ if(crossing.phase===1&&(a.y-crossing.far.y)*crossing.direction>=-18){a._navCrossing=null;a._navCrossingAt=this.time+.2;delete a._navJourney;}
+ else target=crossing.phase===0?crossing.near:crossing.far;
+ }
+ const distance=Math.hypot(a.x-target.x,a.y-target.y);
+ if(distance>600){
+ const old=a._navJourney;
+ if(!old||Math.hypot(old.goal.x-target.x,old.goal.y-target.y)>90||Math.hypot(a.x-old.point.x,a.y-old.point.y)<70){
+ const point=this.isVehicle(profile)&&world.vehicleWaypoint?world.vehicleWaypoint(a,target):{x:a.x+(target.x-a.x)*560/distance,y:a.y+(target.y-a.y)*560/distance};
+ a._navJourney={goal:{...target},point};
+ }
+ target=a._navJourney.point;
+ }else a._navJourney=null;
+ // Group streaming requests by region. Distant recalls load only the next
+ // bounded leg and crossing approach instead of the entire world at once.
+ if(this.isVehicle(profile)||a.responseAllocated||profile==='ape'&&(a.recallOrder||distance>600||crossing)){
+ const id=this.isVehicle(profile)||a.responseAllocated?(a.operationId||a.squadId||a.id)+':'+(profile||'infantry'):'nav:'+profile+':'+Math.floor(a.x/768)+':'+Math.floor(a.y/768);
+ if(this.time>=(this.corridorAt.get(id)??-1)){this.corridorAt.set(id,this.time+.35);world.requestCorridor?.(a,target,{id,profile:this.isVehicle(profile)?profile:undefined})}
+ }
+ return target;
+ }
+ unreachable(a,target){const failed=a._nav?.unreachable;return !!failed&&failed.revision===this.revision&&this.time<failed.until&&Math.hypot(failed.x-target.x,failed.y-target.y)<90}
  steer(a,target,r,dt){
  const profile=this.profile(a);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
- if(this.isVehicle(profile)||a.responseAllocated)this.world.requestCorridor?.(a,target,{id:(a.operationId||a.squadId||a.id)+':'+(profile||'infantry'),profile});
- if((this.isVehicle(profile)||a.responseAllocated)&&Math.hypot(a.x-target.x,a.y-target.y)>600){
- const old=a._navJourney;if(!old||Math.hypot(old.goal.x-target.x,old.goal.y-target.y)>90||Math.hypot(a.x-old.point.x,a.y-old.point.y)<70){
- const d=Math.hypot(a.x-target.x,a.y-target.y),point=this.isVehicle(profile)&&this.world.vehicleWaypoint?this.world.vehicleWaypoint(a,target):{x:a.x+(target.x-a.x)*560/d,y:a.y+(target.y-a.y)*560/d};a._navJourney={goal:{...target},point};
- }target=a._navJourney.point;
- }else a._navJourney=null;
+ target=this.strategicTarget(a,target,r,profile);
  let nav=a._nav;if(!nav)nav=a._nav={path:[],index:0,goal:{...target},retry:0,revision:-1,stuck:0,lastX:a.x,lastY:a.y,directAt:-1,pointAt:-1};
+ if(nav.worldRevision!==this.worldRevision){const changes=this.world.navigationChangesSince?.(nav.worldRevision),bounds=nav.path._navBounds||this._requestBounds(a,nav.goal,r);if(nav.path._navInvalid||!changes||changes.some(change=>this._overlap(bounds,change))){nav.path=[];nav.request=null;nav.retry=0;nav.directAt=-1;nav.sharedAt=-1;nav.pointAt=-1;nav.unreachable=null}nav.worldRevision=this.worldRevision}
  const moved2=(a.x-nav.lastX)**2+(a.y-nav.lastY)**2;nav.stuck=moved2<.0064?nav.stuck+dt:Math.max(0,nav.stuck-dt*2);nav.lastX=a.x;nav.lastY=a.y;
+ if(!nav.progress||this.time-nav.progress.time>1.4){
+ if(nav.progress&&Math.hypot(a.x-nav.progress.x,a.y-nav.progress.y)<12&&Math.hypot(a.x-target.x,a.y-target.y)>35){nav.stuck=Math.max(nav.stuck,1.4);nav.directAt=-1;nav.sharedAt=-1;this.stats.recoveries++}
+ nav.progress={x:a.x,y:a.y,time:this.time};
+ }
  const goalMoved=Math.hypot(target.x-nav.goal.x,target.y-nav.goal.y)>90;
  if(nav.revision!==this.revision||nav.profile!==profile){nav.path=[];nav.revision=this.revision;nav.directAt=-1;nav.profile=profile}
  if(this.time>=nav.directAt||!nav.directGoal||Math.hypot(target.x-nav.directGoal.x,target.y-nav.directGoal.y)>35){nav.direct=this.preferredSegment(a.x,a.y,target.x,target.y,r,profile);nav.directAt=this.time+(a._simTier===2?.65:a._simTier===1?.28:.18);nav.directGoal={...target}}
@@ -190,7 +275,12 @@ class Navigation {
  const waitForShared=!this.isVehicle(profile)&&a.navCohort&&this.cohorts.has(a.navCohort)&&nav.stuck<1.4&&(nav.corridorMiss||0)<.8;
  if(!this.isVehicle(profile)&&a.id?.startsWith('ape')&&!waitForShared){
  const recoveryId=['recovery',Math.floor(a.x/84),Math.floor(a.y/84),Math.floor(target.x/160),Math.floor(target.y/160),r,profile].join(':');
- this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point)return point;
+ this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point){nav.unreachable=null;return point}
+ const cohort=this.cohorts.get(recoveryId);
+ if(cohort?.failedUntil>this.time&&cohort.revision===this.revision){
+ nav.unreachable={x:target.x,y:target.y,until:cohort.failedUntil,revision:this.revision};
+ if(a._navCrossing?.phase===0){(a._navAvoidCrossings||(a._navAvoidCrossings={}))[a._navCrossing.id]=this.time+12;a._navCrossing=null;a._navCrossingAt=0;a._navJourney=null}
+ return {x:a.x,y:a.y}}
  // Immediate collision-safe local steering continues while the cohort waits.
  return target;
  }
@@ -225,8 +315,8 @@ class Navigation {
  a._barrierCrossing={...point,id:b.id,until:now+1.5};a._barrierIgnore=b.id;a.barrierAction=null;return a._barrierCrossing;
  }
  move(a,dx,dy,speed,dt,controlled=false){
- const profile=this.profile(a),r=Math.max(a.radius||(a.id==='king'?12:a.id?.startsWith('vehicle')?21:a.state==='young'?7:10),this.isVehicle(profile)?(this.world.vehicleRadius?.(profile)||21):0);if(dx*dx+dy*dy<2.25){a.moving=false;return}
- const intended={x:a.x+dx,y:a.y+dy},interaction=this.interactFortification(a,intended,r,dt);if(interaction===false){a.moving=false;return}const target=interaction|| (controlled?intended:this.steer(a,intended,r,dt));dx=target.x-a.x;dy=target.y-a.y;const d=Math.hypot(dx,dy)||1,travel=Math.min(d,speed*dt),steps=Math.max(1,Math.ceil(travel/5));let vx=dx/d*travel/steps,vy=dy/d*travel/steps;const ox=a.x,oy=a.y;
+ const profile=this.profile(a),r=Math.max(a.radius||(a.id==='king'?12:a.id?.startsWith('vehicle')?21:a.state==='young'?7:10),this.isVehicle(profile)?(this.world.vehicleRadius?.(profile)||21):0);if(dx*dx+dy*dy<2.25&&(controlled||!a._navCrossing)){a.moving=false;return}
+ const intended={x:a.x+dx,y:a.y+dy},planned=controlled?intended:this.steer(a,intended,r,dt),interaction=this.interactFortification(a,planned,r,dt);if(interaction===false){a.moving=false;return}const target=interaction||planned;dx=target.x-a.x;dy=target.y-a.y;const d=Math.hypot(dx,dy)||1,travel=Math.min(d,speed*dt),steps=Math.max(1,Math.ceil(travel/5));let vx=dx/d*travel/steps,vy=dy/d*travel/steps;const ox=a.x,oy=a.y;
  for(let i=0;i<steps;i++){if(!this.blocked(a.x+vx,a.y+vy,r,profile,a._barrierIgnore)){a.x+=vx;a.y+=vy;continue}if(!this.blocked(a.x+vx,a.y,r,profile,a._barrierIgnore)){a.x+=vx;continue}if(!this.blocked(a.x,a.y+vy,r,profile,a._barrierIgnore)){a.y+=vy;continue}
  // Stage one/two recovery: deterministic local sliding and alternative angles.
  // A stalled actor then rejoins its corridor or earns a prioritized A* job.

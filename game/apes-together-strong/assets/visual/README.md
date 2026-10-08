@@ -5,6 +5,26 @@ PNG alpha channels are retained; artwork is generated using the built-in imagege
 tool. The exact prompts are saved in each family's directory. There are no runtime
 image hotlinks, purchased stock assets, or external image dependencies.
 
+The continuation adds `vehicles/` (85 directional/component frames) and
+`settlements/` (human buildings, crossing materials and 75 construction frames).
+Five construction frames per strip run from foundations through completion;
+the last frame is also the normal completed-building sprite. Manifests include
+hand-inspected crop rectangles and stable per-strip anchors. Original PNGs and
+exact built-in imagegen prompts are retained. These two families use lossless
+WebP copies at runtime, verified to preserve alpha and every visible RGB value.
+Initial ape/civic concept atlases and the helipad remain reusable library art,
+while the playable build uses the finished construction frames and existing
+gameplay building types. See [WORLD-UPDATE.md](../../WORLD-UPDATE.md).
+
+`held-items/` adds 41 original weapon, shield, tool, cargo and wearable frames.
+Its manifest includes measured crop bounds, grip anchors and display sizes.
+The character manifest selects three `*-unarmed.png` body layers so carried
+weapons can be drawn behind or in front of each actor without duplicate guns.
+The original armed sheets and `characters/unarmed-prompts.json` are preserved.
+Item identity follows existing game state; frame hand landmarks and body
+occlusion follow the character animation. Front/rear scout sashes are separate
+fabric artwork. No separate texture is generated for each equipped actor.
+
 ## Coordinate and material conventions
 
 - World projection is `screenX = (x-y)*0.8`, `screenY = (x+y)*0.42-z` before camera scale.

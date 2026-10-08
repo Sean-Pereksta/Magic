@@ -1,5 +1,16 @@
 # Apes Together Strong
 
+## World, construction and navigation update
+
+Vehicles and aircraft now use original directional artwork; settlements have
+75 authored construction frames across 15 building/development strips. Wider
+wood, stone, military and natural crossings share their geometry with navigation.
+Q recruits, R recalls nearby/field apes, and T recalls field/all apes, with 600 ms
+holds and matching touch controls. See [WORLD-UPDATE.md](WORLD-UPDATE.md) for
+implementation, tests, measured performance and the remaining performance limits.
+Apes and soldiers carry illustrated weapons, shields, tools and supplies with
+facing-aware body occlusion. Scouts' sashes have distinct front and rear artwork.
+
 ## Illustrated artwork update
 
 The playable standalone build now embeds original animated character and
@@ -21,7 +32,7 @@ The supplied Underpowered King plays before the first milestone, Ceremonial Tom
 plays during the royal tier, and Primal Roar plays as Warlord. All three MP3s are
 embedded in the standalone HTML. One audio element loads only the selected track;
 music remains subject to master/music volume, mute, pause and tab visibility.
-The complete standalone build, including the new artwork, is approximately 60.7 MB, without adding
+The complete standalone build, including the new artwork, is approximately 88 MB, without adding
 network requests during play.
 
 Visit a living main hut and press **B** (or Build) to commission expansion:
@@ -365,12 +376,17 @@ hardware timing is diagnostic and never a universal frame-rate guarantee.
 
 ## Controls and persistence
 
-WASD/arrows move; Shift sprints; Ctrl sneaks; click/Space attacks. Q calls,
-E charges toward the pointer, X spreads the charge, T attacks nearest foes,
-R recalls, F holds, Z settles nearby followers, Shift+Z settles all, and C
+WASD/arrows move; Shift sprints; Ctrl sneaks; click/Space attacks. Q recruits
+nearby unrecruited apes. R taps recall nearby field apes; holding R for 600 ms
+recalls every field ape. T taps recall every field ape; holding T for 600 ms
+also mobilizes settlement residents and defenders. E charges toward the pointer,
+X spreads the charge, F holds, Z settles nearby followers, Shift+Z settles all, and C
 assigns scouts. B opens the council beside a main hut. M/Tab opens the map and
 settlement controls; Escape pauses or closes a menu. Touch uses a movement
-stick, strike button, command menu and nearby Build button.
+stick, strike button, command menu and nearby Build button. The R/T command
+buttons support the same tap/hold gestures and show hold progress. See
+[Horde commands and crossing navigation](HORDE-COMMANDS.md) for exact eligibility,
+assignment preservation, and validation details.
 
 The original `ats-crown-save-v1` storage key and JSON save format are retained.
 Older tree collision and settlement records migrate on load. Navigation caches
@@ -829,9 +845,10 @@ recovered champion/veteran and up to 256 followers from unassigned apes, the
 current army selection or the commander's species. Membership is exclusive.
 Set a stance, fallback rule, priority and formation, then choose a discovered
 objective, settlement, King's position or explored point on the map. A direct
-Call/Recall/Hold/Charge command puts division orders on standby; **Resume
-orders** restores their saved plan. Existing species-route orders take control
-of the specifically ordered apes.
+Hold/Charge command puts division orders on standby; **Resume orders** restores
+their saved plan. Recall removes responding apes from division orders so they
+can follow the King. Q leaves established divisions untouched. Existing
+species-route orders take control of the specifically ordered apes.
 
 Divisions share targets and fortress paths. Assaults push; Hold and defense
 stances remain close to their assigned ground; Skirmish maintains spacing;

@@ -59,7 +59,7 @@
     else if(!human&&a.attackCD>0&&a.attackCD<.14&&['charge','attack'].includes(a.state)){state='prepare';column=king?3:5;event='anticipation'}
     else if(a.hp>0&&a.hp<a.maxHp*.25){state='injured';column=king?5:0}
     else if(/rest|sleep|heal|groom/.test(a.activity||'')){state='rest';column=king?5:0}
-    else if(a.carrying||a._carryingWood){state='carry';column=king?4:0}
+    else if(a.carrying||a._carryingWood){state='carry';column=king?4:d.rear?3:0}
     else if(a.state==='victory'||a.celebrating){state='victory';column=king?3:5}
     else if(human&&d.rear){column=5}
     else if(!king&&d.rear){column=3}
@@ -146,11 +146,14 @@
         for(const contact of contacts)ellipse(c,(contact.x-f.anchorX)*unit,.35,Math.max(2,contact.width*unit*.62),1.5,'rgba(0,5,6,.44)');
       }
     }
+    const held=window.ATSHeldItemArt,items=held?.ready()&&held.hasEquipment(a,p)?held.resolve(a,p):null;
+    if(items)held.draw(this,c,a,p,slot,'rear',items);
     frame(this,c,a,p,slot);
+    if(items){held.draw(this,c,a,p,slot,'front',items);held.restoreHands(this,c,a,p,slot,items,atlasImage(this,p.atlas,a))}
     if(!options.mini&&this.detailLevel<3){
       const n=hash(a.id),rear=p.rear;
       if(!p.king&&!rear&&n%7===0){line(c,8,-46,11,-41,'rgba(205,178,146,.66)',.9);line(c,7,-45,9,-44,'#6a6554',.65)}
-      if(a.state==='scout'){line(c,-12,-35,11,-18,'#c8b47e',2);ellipse(c,10,-18,2,2,'#e4d09b')}
+      if(a.state==='scout'&&!held?.ready()){line(c,-12,-35,11,-18,'#c8b47e',2);ellipse(c,10,-18,2,2,'#e4d09b')}
       if(p.king&&a.crownTier>0&&p.atlas==='king'){
         // The laurel is painted into every frame. Reign jewels attach to the
         // frame's actual head, so progression is visible without a floating crown.
@@ -191,6 +194,7 @@
     // Torso armor remains on the original progression layer; items attached to
     // hands follow their authored pose independently of the chest.
     equipment.call(this,c,{...a,equipment:{...gear,cuffs:false,spear:false,torch:false}},king);
+    if(window.ATSHeldItemArt?.ready())return;
     if(!gear.cuffs&&!gear.spear&&!gear.torch)return;
     c.save();c.translate(0,-(a.elevation||a.wallClimbHeight||0));c.scale(sockets.scale*(sockets.mirror?-1:1),sockets.scale);
     if(gear.cuffs)for(const hand of [sockets.left,sockets.right]){
@@ -205,25 +209,30 @@
 
   function humanEquipment(r,c,a,p){
     const role=a.role||'',rear=p.rear,moving=a.moving&&!r.reducedMotion,sway=moving?Math.sin(p.phase*TAU)*1.1:0;
+    const held=window.ATSHeldItemArt?.ready();
     c.save();c.translate(0,sway);
     // Small role-specific equipment remains independent of the shared bodies.
-    if(role==='medic'){c.fillStyle='#c4ccae';c.fillRect(-11,-31,7,11);line(c,-10,-26,-5,-26,'#ae5649',1.7);line(c,-7.5,-29,-7.5,-23,'#ae5649',1.7)}
+    if(role==='medic'&&!held){c.fillStyle='#c4ccae';c.fillRect(-11,-31,7,11);line(c,-10,-26,-5,-26,'#ae5649',1.7);line(c,-7.5,-29,-7.5,-23,'#ae5649',1.7)}
     if(['officer','leader'].includes(role)){line(c,-5,-43,6,-43,'#d7bd7d',2);ellipse(c,6,-34,1.7,2,'#e4c377')}
     if(['grenadier','bombardier','mortar'].includes(role))for(let i=0;i<3;i++)ellipse(c,-9+i*4,-29+i*2,1.6,3,'#d0b275');
     if(['engineer','spotter'].includes(role)){line(c,-12,-25,-12,-55,'#95aaa0',1);ellipse(c,-12,-54,1.6,1.3,'#d3b371')}
-    if(role==='shield'&&!rear){c.fillStyle='#485e63';c.fillRect(5,-36,13,29);c.fillStyle='#abbfb7';c.fillRect(6,-33,11,7);line(c,11,-23,11,-10,'#8aa49b',1.5)}
-    if(a.engineerJob||a.constructing){line(c,9,-27,19,-20+sway,'#bbaa7e',2.2);line(c,16,-24+sway,23,-20+sway,'#9aa99b',3)}
-    if(p.state==='radio'){ellipse(c,-8,-41,2,4,'#14282b');line(c,-8,-44,-8,-50,'#93ad9d',1);r.drawSignal(c,-8,-54,a.radioTimer||0)}
+    if(role==='shield'&&!rear&&!held){c.fillStyle='#485e63';c.fillRect(5,-36,13,29);c.fillStyle='#abbfb7';c.fillRect(6,-33,11,7);line(c,11,-23,11,-10,'#8aa49b',1.5)}
+    if((a.engineerJob||a.constructing)&&!held){line(c,9,-27,19,-20+sway,'#bbaa7e',2.2);line(c,16,-24+sway,23,-20+sway,'#9aa99b',3)}
+    if(p.state==='radio'){if(!held){ellipse(c,-8,-41,2,4,'#14282b');line(c,-8,-44,-8,-50,'#93ad9d',1)}r.drawSignal(c,-8,-54,a.radioTimer||0)}
     c.restore();
   }
   P.drawHuman=function(c,a){
-    if(!art()?.get('characters-humans')||!metadata())return previousHuman.call(this,c,a);
+    if(!art()?.get('characters-humans')||!metadata()||window.ATSHeldItemArt&&!window.ATSHeldItemArt.ready())return previousHuman.call(this,c,a);
     const p=resolve(a,this.time||0,{human:true,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz}),
       size=a.role==='juggernaut'?1.12:a.role==='assault'?1.04:1;
     stamp(this,a,p);ellipse(c,0,2,12*size,4.3,'rgba(0,5,8,.4)');c.save();c.translate(0,-(a.elevation||0));c.scale(size,size);
     c.save();c.scale(p.mirror?-1:1,1);cosmeticMotion(this,c,a,p);
     if(!this.reducedMotion&&a.hitTimer>0)c.rotate(Math.sin(a.hitTimer*18)*-.07);
-    frame(this,c,a,p,60);humanEquipment(this,c,a,p);c.restore();
+    const held=window.ATSHeldItemArt,items=held?.ready()?held.resolve(a,p):null;
+    if(items)held.draw(this,c,a,p,60,'rear',items);
+    frame(this,c,a,p,60);
+    if(items){held.draw(this,c,a,p,60,'front',items);held.restoreHands(this,c,a,p,60,items,atlasImage(this,p.atlas,a))}
+    humanEquipment(this,c,a,p);c.restore();
     if(p.state==='fire'){
       const dx=(Math.cos(a.dir||0)-Math.sin(a.dir||0))*.8,dy=(Math.cos(a.dir||0)+Math.sin(a.dir||0))*.42,
         len=a.kind==='pistol'?24:a.kind==='machine'?39:33,mx=dx*len,my=-34+dy*len;

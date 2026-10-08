@@ -62,8 +62,8 @@ test('travel cohorts are bounded and failed commands do not spend stores or move
  const{g}=game(),s=home(g,'Origin',0,80);g.king.x=1000;for(let i=0;i<4;i++)assert.equal(g.kingdom.sendSupplies(s.id).ok,true);const before=s.food,wood=s.wood;assert.equal(g.kingdom.sendSupplies(s.id).ok,false);assert.equal(s.food,before);assert.equal(s.wood,wood);g.kingdom.tick(s);assert.equal(s.kingdomMissions.length,4);assert.ok(g.kingdom.counters.missionMembers<=48);assert.equal(g.kingdom.evacuate(s.id).ok,false);assert.equal(g.kingdom.specialize(s.id,'bogus').ok,false);
 });
 
-test('direct recall or recruitment frees travelers instead of leaving stale caravan reservations',()=>{
- const{g}=game(),s=home(g,'Home',0,18),result=g.kingdom.sendSupplies(s.id),carrier=g.apesById.get(result.mission.members[0]);assert.ok(carrier.kingdomMission);g.commandCD=0;g.command('call');assert.equal(carrier.state,'follow');g.kingdom.tick(s);assert.equal(carrier.kingdomMission,undefined);assert.equal(result.mission.status,'cancelled');
+test('Q preserves assigned travelers and absolute recall cancels stale caravan reservations',()=>{
+ const{g}=game(),s=home(g,'Home',0,18),result=g.kingdom.sendSupplies(s.id),carrier=g.apesById.get(result.mission.members[0]);assert.ok(carrier.kingdomMission);g.commandCD=0;g.command('call');assert.equal(carrier.state,'settled');assert.ok(carrier.kingdomMission);g.command('recallAll');assert.equal(carrier.state,'follow');g.kingdom.tick(s);assert.equal(carrier.kingdomMission,undefined);assert.equal(result.mission.status,'cancelled');
 });
 
 test('actual distant caravan navigation detours around a solid tree, delivers and returns home',()=>{
