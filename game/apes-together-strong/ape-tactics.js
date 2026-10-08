@@ -13,7 +13,7 @@ class ApeTactics{
   a.trainingLevel=Math.max(0,Math.min(3,Math.floor(Number.isFinite(a.trainingLevel)?a.trainingLevel:0)));
   return a;
  }
- clearOrder(a){if(a.wallClimb||a.onWallId)this.detach(a);delete a.commandStyle;delete a._tacticTarget;delete a._tacticThink}
+ clearOrder(a){this.g.siege?.clearActor(a);if(a.wallClimb||a.onWallId)this.detach(a);delete a.commandStyle;delete a._tacticTarget;delete a._tacticThink}
  order(style,aim){
   const g=this.g,list=g.apes.filter(a=>a.hp>0&&FOLLOW.has(a.state)),len=Math.hypot(aim.x,aim.y)||1,angle=Math.atan2(aim.y/len,aim.x/len);
   for(let i=0;i<list.length;i++){
@@ -48,7 +48,7 @@ class ApeTactics{
   let best=null,score=Infinity;
   for(const c of candidates){
    const distance=c.kind==='object'?g.objectDistance(a,c.t):Math.sqrt(d2(a,c.t));
-   if(distance>range)continue;
+   if(distance>range||c.kind==='human'&&g.siege&&!g.siege.meleeAllowed(a,c.t)&&a.species!=='capuchin')continue;
    const s=distance-(a.commandStyle==='attackNearest'?0:this.preferred(a,c.t,c.kind));
    if(s<score){score=s;best={id:c.t.id,kind:c.kind}}
   }
@@ -58,7 +58,7 @@ class ApeTactics{
  canClimb(a,wall){
   if(a.id==='king'||a.state==='young'||a.state==='free'||!wall||wall.dead||wall.hp<=0||wall.type!=='wall'||wall.faction!=='human'||wall.climbable===false)return false;
   const tier=wall.wallTier||1;
-  return LIGHT.has(a.species)?tier<=2:a.trainingLevel>0&&tier===1;
+  return LIGHT.has(a.species)?tier<=2||wall.climbAccess===true:a.trainingLevel>0&&tier===1;
  }
  tryClimb(a,dx,dy,wall){
   const g=this.g;if(a.wallClimb||a.onWallId||g.blastActive(a)||g.time<(a._climbRetry||0))return false;
@@ -71,6 +71,7 @@ class ApeTactics{
   const crest={x:vertical?wall.x:a.x,y:vertical?a.y:wall.y};
   const exit={x:vertical?wall.x-side*(half+24):a.x,y:vertical?a.y:wall.y-side*(half+24)};
   if(g.navigation.blocked(exit.x,exit.y,10,'ape')||!g.navigation.clearSegment(a.x,a.y,exit.x,exit.y,10,'ape',wall.id)){a._climbRetry=g.time+.7;return false}
+  if(wall.climbAccess&&g.siege){return g.siege.startTransition(a,wall,exit)}
   a.wallClimb={wallId:wall.id,fromX:a.x,fromY:a.y,crestX:crest.x,crestY:crest.y,exitX:exit.x,exitY:exit.y,elapsed:0,height:Math.min(60,wall.visualHeight||wall.height||28)};
   a.climbingWallId=wall.id;a.wallClimbUntil=g.time+2.5;a.wallClimbHeight=0;a.moving=true;a._nav=null;
   return true;

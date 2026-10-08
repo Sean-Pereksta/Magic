@@ -88,7 +88,7 @@ test('infantry rounds clear waist-high firing cover while movement still collide
  const ape=g.makeApe(120,0,'hold');g.apeGrid.rebuild([g.king,...g.apes]);
  assert.equal(g.navigation.clearSegment(0,0,120,0,2,'ape'),false);assert.equal(g.projectileSegmentClear(0,0,120,0),true);
  g.bullets.push(g.bulletPool.take({x:0,y:0,px:0,py:0,vx:550,vy:0,damage:12,life:1,owner:'human-rifle'}));g.updateBullets(.25);
- assert.equal(ape.hp,108);assert.equal(barrier.hp,300);assert.equal(g.bullets.length,0);
+ assert.equal(ape.hp,ape.maxHp-12);assert.equal(barrier.hp,300);assert.equal(g.bullets.length,0);
 });
 
 test('near and distant residents use their colony activity and friendly barrier traversal profile',()=>{

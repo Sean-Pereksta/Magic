@@ -28,6 +28,57 @@ npm run test:apes:browser
 
 ## Design
 
+- **Species orders and sieges:** select gorillas, orangutans, chimpanzees,
+  gibbons, capuchins or mandrills with `1`–`6`; `0` selects all followers.
+  Shift adds/removes species. `I` or Alt-click picks an individual ape.
+  Click/tap successive ground points or visible targets, then Enter / the
+  triangle button sends the route. Shift+Enter / `+` appends instead of
+  replacing it. Routes contain up to 16 steps; Backspace undoes a draft
+  point. Each ape must finish its own waypoint, while 85% arrival releases
+  the main group. Blocked steps offer retry and skip. `E` immediately charges.
+  Escape returns to King control without cancelling issued orders. Selected
+  army taps never strike with the King. Drag to pan; wheel or pinch to zoom.
+- **Small command dock:** PC commands have a 20px canvas picture, a visible
+  key and a 30×34px button. Touch buttons are at least 44px tall; expand the
+  command dock to see all commands and four tactical presets. Ctrl+Shift+1–4
+  saves a species preset, Ctrl+1–4 recalls it. On touch, hold A–D to save and
+  tap to recall. `H` plans a shield advance, `J` sabotage, `K` a climb, `L`
+  Rally Roar, `U` log preparation, `Y` regroup and `N` defend.
+- **Fortress layers:** new forward bases, armored depots and regional commands
+  have guarded gates, interior winches, designated vines/scaffolds, stairs
+  and walkable elevated walls. Five procedural interior families vary the
+  strongpoints. Regional commands have a separately gated inner compound.
+  Gibbons, capuchins and chimpanzees can infiltrate through designated access;
+  heavy species wait for gates or breach them. Destroying a winch immediately
+  opens its gate and invalidates movement/visibility caches. Ground melee
+  cannot hit elevated defenders; wall guards ascend stairs, patrol and shoot
+  down. Reinforcements spend finite personnel reserves and stop after
+  barracks/radio sabotage. Existing explored layouts retain their damage
+  and geometry; new features appear in newly generated fortresses.
+- **Species balance:** adult base HP is gorilla 260, orangutan 205, mandrill
+  140, chimpanzee 120, gibbon 95 and capuchin 90. King and child health remain
+  unchanged; old adult saves preserve their health percentage. Capuchins
+  throw for 6 base damage at 168-unit range every 1.25 seconds, with a
+  0.42-second windup, release/follow-through animation and cover-aware arc.
+  Throws are weaker against structures and do not hurt armored vehicles.
+  Mandrill Rally Roar boosts nearby movement and melee speed by 15% for six
+  seconds, has a shared 30-second cooldown and makes audible noise.
+- **Logs and military intelligence:** gorilla/orangutan logs have 180/145 HP,
+  absorb frontal bullets, give partial blast protection, splinter and never
+  regenerate in combat. Prepare them from village timber or fallen trees.
+  Shield advances place carriers in front at a shared pace. Humans share
+  local sightings and delayed radio reports with position, direction,
+  estimated group size and confidence; stale reports decay instead of
+  tracking unseen apes. Working towers can trigger exterior alarms directly.
+  Reports, tower checks, navigation, projectiles and caches have fixed limits.
+
+Siege-specific simulation and browser checks:
+
+```sh
+node --test game/apes-together-strong/tests/siege.test.cjs
+node game/apes-together-strong/tests/siege-browser.cjs
+```
+
 - **Navigation:** apes and humans share a 28-unit clearance grid, bounded A*
   searches, cached routes, segment smoothing, and collision-aware sliding.
   Waypoints only advance when the next segment is clear. Destroyed obstacles

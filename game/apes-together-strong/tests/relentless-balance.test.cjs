@@ -14,7 +14,7 @@ test('a continued 300-ape frontal charge can defeat prepared combined arms with 
  g.spawnSites=()=>{};g.responseDirector=()=>{};g.launchHelicopter=()=>false;g.heliTimer=100000;
  g.king.x=-150;g.king.y=0;g.food=1000;
  for(let i=0;i<300;i++)g.makeApe(-350+i%20*26,(Math.floor(i/20)-7)*26,'follow');
- assert.ok(g.apes.every(a=>a.hp===120&&a.maxHp===120));g.updateResponseStage();
+ assert.ok(g.apes.every(a=>a.hp===a.maxHp&&a.maxHp>=90&&a.maxHp<=260));g.updateResponseStage();
  const site={id:'prepared-defense',tier:5,x:650,y:0,objects:[],strength:0,nextOperation:100000,spawned:true,radioDown:false};
  g.world.sites.set(site.id,site);const soldiers=[],vehicles=[];
  for(let i=0;i<28;i++){

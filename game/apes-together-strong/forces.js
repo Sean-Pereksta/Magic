@@ -209,7 +209,8 @@ class Forces {
   const gap=distance(h,target),range=options.range??this.range(h),point=options.point,squad=this.squads.get(h.squadId),order=options.order||squad?.order;
   const strategic=point&&squad&&order===squad.order&&['Fallback','Retreat','Regroup'].includes(order);
   let destination=null,speed=62,elapsed=dt,step=null;
-  if(strategic){if(distance(h,point)>28){destination=point;speed=order==='Fallback'?83:70}}
+  if(h._shieldFlank?.until>g.time&&!strategic){destination=h._shieldFlank;speed=72}
+  else if(strategic){if(distance(h,point)>28){destination=point;speed=order==='Fallback'?83:70}}
   else if(gap>=range){destination=point&&distance(point,target)<range*.85?point:target}
   else if(!(h.attackTimer>0)&&!(h.shootTimer<=0&&!['mortar','sniper'].includes(h.role))){
    // A short move cannot become a continuous kite when an ape follows it.
@@ -282,6 +283,13 @@ class Forces {
  tacticalTarget(h){
   const g=this.game;if(!['rifleman','heavy','gunner','ranger','flanker','leader','sniper','assault','commando','juggernaut'].includes(h.role)||g.time<(h._tacticalThink||0))return;
   const current=h.targetId==='king'?g.king:g.apesById.get(h.targetId);if(!current?.hp)return;
+  if(current.shield?.hp>0&&Math.cos(Math.atan2(h.y-current.y,h.x-current.x)-(current.dir||0))>.5&&g.performance.think()){
+   h._tacticalThink=g.time+.6;
+   for(const a of g.apeGrid.nearest(current.x,current.y,220,5,p=>p.hp>0&&!p.shield?.hp)){const sight=g.lineVisible(h,a);if(sight===null)break;if(sight&&distance(h,a)<this.range(h)){h.targetId=a.id;h.lastSeenAt=g.time;return}}
+   if(['ranger','flanker','commando'].includes(h.role)){const angle=(current.dir||0)+(h.flankSide||1)*Math.PI/2;h._shieldFlank={x:current.x+Math.cos(angle)*180,y:current.y+Math.sin(angle)*180,until:g.time+2}}
+   else h.shootTimer=Math.max(h.shootTimer,.22);
+   return;
+  }
   const vehicle=['rifleman','heavy','gunner','leader','assault','juggernaut'].includes(h.role)?g.vehicles.find(v=>v.hp>0&&(v.overrun||v.swarmCount>=8)&&distance(h,v)<360):null;
   if(!vehicle&&(h.role==='rifleman'||h.role==='assault'||h.role==='leader'&&g.exposure<.35)){h._tacticalThink=g.time+.55;return}
   if(!g.performance.think())return;h._tacticalThink=g.time+.55;

@@ -56,7 +56,7 @@
     experimental: 'Experimental Facility', forwardBase: 'Forward Operating Base',
     armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base' };
   const MILITARY_TYPES = new Set(['forwardBase', 'armoredDepot', 'regionalCommand']);
-  const WALL_HEIGHT = [0, 28, 45, 68, 95], WALL_HP = [0, 240, 620, 1400, 2800];
+  const WALL_HEIGHT = [0, 28, 45, 68, 95], WALL_HP = [0, 700, 2100, 3700, 5400];
   const VEHICLE_CLEARANCE = { jeep: 21, armored: 23, command: 22, truck: 24, apc: 25, ifv: 27, tank: 31 };
 
   class ATSWorld {
@@ -747,8 +747,8 @@
               // and the river without shrinking the stronger late fortresses.
               plan.extentX = type === 'regionalCommand' ? 540 : plan.radius - 74;
               plan.extentY = type === 'regionalCommand' ? 330 : type === 'armoredDepot' ? 300 : 260;
-              plan.footprintX = plan.extentX + (type === 'forwardBase' ? 0 : 48);
-              plan.footprintY = plan.extentY + 48;
+              plan.footprintX = plan.extentX + (type === 'forwardBase' ? 0 : 96);
+              plan.footprintY = plan.extentY + 96;
               const candidates = [{ x: sx, y: sy }];
               for (const oy of [80, 240, 400, 560, 688]) for (const ox of [80, 240, 400, 560, 688])
                 candidates.push({ x: cx * CHUNK + ox, y: cy * CHUNK + oy });
@@ -900,7 +900,7 @@
         if (type === 'wall' || type === 'gate') {
           const wallTier = extra?.wallTier || (site.type === 'regionalCommand' ? 4 : site.type === 'armoredDepot' ? 3 : site.type === 'forwardBase' ? 2 : clamp(site.tier - 1, 1, 4));
           const height = WALL_HEIGHT[wallTier] + (type === 'gate' ? 10 : 0);
-          defense = { wallTier, height, visualHeight: height, hp: Math.round(WALL_HP[wallTier] * (type === 'gate' ? 1.15 : 1)), faction: 'human', climbable: type === 'wall' && wallTier <= 2 };
+          defense = { wallTier, height, visualHeight: height, hp: type === 'gate' ? [0, 700, 850, 1050, 1250][wallTier] : WALL_HP[wallTier], faction: 'human', climbable: type === 'wall' && wallTier <= 2 };
         }
         const o = this._object(chunk, Object.assign({ id: site.id + ':' + type + ':' + index++, type,
           x: site.x + dx, y: site.y + dy, siteId: site.id,
@@ -1003,7 +1003,7 @@
         add('wall', extentX, p, { r: 19, w: 18, h: 39, collision: 'rect' });
       }
       add('gate', 0, extentY, { r: 68, w: 143, h: 21, collision: 'rect' });
-      const outerX = extentX + 48, outerY = extentY + 48;
+      const outerX = extentX + 96, outerY = extentY + 96;
       if (depot || command) {
         for (let p = -outerX; p <= outerX; p += 46) {
           if (Math.abs(p) > 110) add('wall', p, outerY, { r: 23, w: 47, h: 20, collision: 'rect', barricade: true, defenseRing: 2, wallTier: outerTier });

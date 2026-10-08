@@ -7,7 +7,7 @@ const library = require('../lobby-library.js');
 
 // CI always uses the actual hub core. A local source fixture can be supplied
 // when running an isolated renderer/browser harness without Firebase.
-const core = fs.readFileSync(process.env.LOBBY_CORE_PATH || path.join(__dirname, '../lobby-core.html'), 'utf8');
+const core = fs.readFileSync(process.env.LOBBY_CORE_PATH || path.join(__dirname, '../lobby-core.html'), 'utf8').replace(/\r\n/g, '\n');
 const upgraded = library.upgradeHtml(core);
 const registry = html => {
   const match = html.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/);
