@@ -22,8 +22,8 @@ test('settlement levels catch up to inhabitants through faster construction',()=
 test('larger communities raise more offspring and the young become useful adults',()=>{
  const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=3);assert.ok(large.g.stats.born>=small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);
 });
-test('families still require adult parents, food, safety and available housing',()=>{
- for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;delete s.structuresVersion;g.colonies.init(s);s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born,0,blocked)}
+test('families require adult residents and housing but low supplies and attacks do not pause births',()=>{
+ for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;delete s.structuresVersion;g.colonies.init(s);s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born>0,blocked==='food'||blocked==='attack',blocked)}
 });
 test('births respect the shared ape population limit',()=>{
  const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);

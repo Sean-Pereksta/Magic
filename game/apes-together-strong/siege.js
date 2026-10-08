@@ -113,7 +113,7 @@ class Siege {
  rayObjects(a,b){const result=[];this.g.world._queryCollision(Math.min(a.x,b.x)-2,Math.min(a.y,b.y)-2,Math.max(a.x,b.x)+2,Math.max(a.y,b.y)+2,o=>{result.push(o);return true});return result}
  clearRay(a,b,opts={}){
   const za=opts.za??altitude(a)+30,zb=opts.zb??altitude(b)+20;
-  for(const o of this.rayObjects(a,b)){if(o.dead||!o.solid||o.id===opts.ignore||o.id===a.id||o.id===b.id||o.type==='berry'||o.type==='stairs'||o.lowCover||o.type==='gate'&&o.gateState==='open')continue;const t=rectHit(a,b,o,opts.projectile?1:0);if(t===null)continue;const height=o.type==='tree'?(opts.projectile?o.trunkHeight||60:90):o.visualHeight||o.height||40;if(za+(zb-za)*t<height+2)return false}return true;
+  for(const o of this.rayObjects(a,b)){if(o.dead||!o.solid||o.id===opts.ignore||o.id===a.id||o.id===b.id||o.type==='berry'||o.type==='stairs'||o.lowCover&&!opts.heightCover||o.type==='gate'&&o.gateState==='open')continue;const t=rectHit(a,b,o,opts.projectile?1:0);if(t===null)continue;const height=o.type==='tree'?(opts.projectile?o.trunkHeight||60:90):o.visualHeight||o.height||40;if(za+(zb-za)*t<height+2)return false}return true;
  }
  meleeAllowed(a,b){return Math.abs(altitude(a)-altitude(b))<26}
  openGate(gate){if(!gate)return;gate.gateState=gate.dead?'destroyed':'open';gate.solid=false;gate.forcedOpen=true;gate.openedAt=this.g.time;this.g.world.navigationChanged(gate);this.g.visibilityCache.clear();this.pathCache.clear();this.g._lightsAt=-1;this.g.effect('wave',gate.x,gate.y,{color:'#acd4ab',range:90,life:.7});for(const group of Object.values(this.groups))if(group.blocked==='gate'){group.blocked=false;for(const id of group.members){const a=this.g.apesById.get(id);if(a){delete a.siegeRoute;delete a._orderStall}}}}

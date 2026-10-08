@@ -43,8 +43,9 @@ Visit a living main hut and press **B** (or Build) to commission expansion:
   even larger district, 40-resident canopy halls and a third palisade ring.
   Late settlements support 128 plots per housing kind, subject to real open
   land and the existing 1,000-living-ape population cap.
-- Nursery groves, rally groves and orchards add growth capacity, birth-rate
-  bonuses or food production. Births still need food, safe land and housing.
+- Nursery groves and rally groves add birth-rate bonuses; orchards produce
+  food. Every completed building accelerates growth. Completed homes plus
+  the lodge's six places set local capacity; the shared 1,000-ape cap remains.
 - Spear towers, rapid spear batteries and great spear ballistas require real
   adult crews. Shafts travel, collide and deal damage on impact. Human soldiers
   shoot the nearest visible ape, building or ape-owned palisade. Rifle shots
@@ -204,15 +205,18 @@ node game/apes-together-strong/tests/siege-browser.cjs
 - **Settlements:** food patches, water, fertility, nearby timber, housing, and
   local human activity affect a camp. Adults forage, build, or guard. Work
   priorities favor growth, food, or defense. Construction produces shelters,
-  gardens, lodges, stores, and defenses; population growth requires food, room,
-  and safety. Visit to deliver food or recruit adults. Raids consume defenses
+  gardens, lodges, stores, and defenses; occupied villages keep raising young
+  while their completed homes have room. Visit to deliver food or recruit adults. Raids consume defenses
   and supplies, and scouts give advance warnings.
   Lodge targets advance one level per 12 inhabitants, reaching level 10 at 108;
   upgrades still require building work and timber. Construction and timber
   gathering are faster, shelters add ten housing, and gardens produce more food.
-  Each eight adults contribute one family work unit per second toward a birth
-  every 30 units, subject to food, housing, safety, local capacity, and the
-  shared 1,000-ape limit. Young mature after 35 seconds, including while far from the king.
+  Families contribute at least one work unit per second (one per eight
+  available adults), with a birth every 30 units. Completed buildings and
+  lodge upgrades increase that rate, as do nursery/rally and sanctuary bonuses.
+  Terrain ratings, low supplies and recovering safety no longer pause births;
+  food still feeds and heals residents. Housing and the shared 1,000-ape cap
+  bound births, and empty villages need residents before growth resumes. Young mature after 35 seconds, including while far from the king.
   Builders add persistent huts around the lodge, expanding the actual footprint.
   Each hut has 100 health and provides housing; human fire and explosives leave
   ruins and remove that housing. Repairs and rebuilding consume work and timber.
@@ -273,8 +277,10 @@ and training-ground slots from one to six. Villages also continue expanding
 housing, paths, communal facilities and perimeter defenses automatically.
 
 Completed spear towers need a living adult at their guard station. They aim
-at nearby soldiers and vehicles within 360 units, then launch visible traveling
-shafts whose swept collisions and line of sight determine hits. Damage does
+at enemy soldiers and vehicles within 900 units (batteries: 1,000; ballistas:
+1,150), beyond infantry guns and the longest current tank weapon range of 780.
+Visible shafts remain in flight to their aim point; swept collisions and
+height-aware cover determine hits. Towers can fire over low palisades. Damage does
 not occur on the launch frame. Towers, trainees and in-flight spears survive
 saves; destroyed or abandoned towers cannot fire. Each staffed training ground
 teaches up to three adult residents at a time. Levels one through three need
@@ -771,7 +777,7 @@ travel and work resume when you close the overview.
 
 | Specialization | Practical effect |
 | --- | --- |
-| Sanctuary | Family progress is 35% faster; occupied huts provide two extra beds; ordinary healing and wounded elite recovery are twice as fast. Food, safety, housing and the 1,000-ape cap still constrain births. |
+| Sanctuary | Family progress is 35% faster; occupied huts provide two extra beds; ordinary healing and wounded elite recovery are twice as fast. Completed housing and the 1,000-ape cap constrain births. |
 | War camp | Completed training facilities work 60% faster. Up to three nearby residents also practice basic militia training each second, spending food when they earn a permanent level. More residents guard the village, and local incoming damage is reduced by 14%. |
 | Supply village | Food harvest/garden yields rise 35%; genuinely felled local trees supply 50% more timber. Its carriers move 25% faster and can transport up to 60 food instead of 40. |
 | Scout outpost | Reveals nearby map terrain and checks a wider area for approaching humans and vehicles every eight seconds, up to 1,200 world units. Warning messages are throttled. |
