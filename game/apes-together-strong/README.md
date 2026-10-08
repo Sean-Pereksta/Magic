@@ -843,12 +843,18 @@ Default music gain is 22% of the 45% master volume (9.9% effective volume).
 Audio remains local; no streaming service or external asset request is needed.
 Embedding increases the standalone download to approximately 6.9 MB.
 
-**Tap E** issues a 13-second nearest-target order: humans, vehicles, occupied
-cells, gates, towers and other hostile structures compete by actual distance.
-**Hold E** for 280 ms targets humans only; apes route around obstacles and never
-redirect their strikes to vehicles or structures. Releasing a hold does not
-also issue the tap action. Each ape retargets within 320 world units, and waits
-if there is no eligible target. Selected species/individuals receive the order;
+**Tap E** issues a 13-second directional charge toward the pointer: humans,
+vehicles, occupied cells, gates, towers and other hostile structures ahead
+compete by actual distance. **Hold E** for 280 ms charges in the same direction
+but targets humans only; apes route around obstacles and never redirect their
+strikes to vehicles or structures. Releasing a hold does not also issue the tap
+action. Both gestures scan and pursue within the same 570 world units per ape,
+in a 120-degree forward cone anchored to the direction and position when issued.
+Each ape's destination is 570 units along that heading, preserving the horde's
+spacing. Without an eligible target, or after a kill, apes continue toward that
+destination and wait there until the order expires. Changing the pointer does
+not redirect an active charge. On touch, choose either charge mode and tap the
+ground to aim it. Selected species/individuals receive the order;
 with no selection it applies to all traveling followers. Pausing or leaving the
 window cancels an unfinished key gesture. The command dock also offers both
 actions and retains the directional Charge button. Nearest-target planning

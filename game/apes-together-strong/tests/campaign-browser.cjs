@@ -12,8 +12,12 @@ const{pathToFileURL}=require('node:url'),{chromium}=require('playwright');
   await page.waitForFunction(()=>!document.getElementById('campaignMusic').paused&&document.getElementById('campaignMusic').currentTime>.05);
   assert.ok(await page.locator('#campaignMusic').evaluate(a=>a.volume<=.1&&a.loop&&a.readyState>=2));
   await page.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.makeApe(g.king.x+30,g.king.y,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
+  await page.mouse.move(1150,400);
   await page.keyboard.press('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestTarget']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'all');
+  const tapHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(Math.abs(Math.hypot(tapHeading.x,tapHeading.y)-1)<1e-6);
+  await page.mouse.move(250,350);
   await page.keyboard.down('e');await page.waitForTimeout(380);assert.deepEqual(await page.evaluate(()=>issued.slice()),['nearestHuman']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'human');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestHuman'],'hold never issues tap on release');
+  const holdHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(tapHeading.x*holdHeading.x+tapHeading.y*holdHeading.y<0,'moving the pointer aims the next charge in the opposite direction');
   await page.keyboard.down('e');await page.keyboard.press('Escape');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),[],'pause cancels pending gesture');
   assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
   await page.locator('#settingsButton').click();await page.locator('#musicToggle').uncheck();await page.locator('#backSettings').click();await page.locator('#resumeRun').click();assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
@@ -29,7 +33,16 @@ const{pathToFileURL}=require('node:url'),{chromium}=require('playwright');
   await page.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.spawnSites=()=>{};g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world._buildSite({objects:[],sites:[]},{id:'qa-blacksite',x:g.king.x,y:g.king.y,name:'Blacksite K-12',type:'armoredDepot',prisonKind:'blacksite',military:true,tier:4,guards:12,count:44,radius:540,extentX:466,extentY:300,layout:0});const s=g.world.sites.get('qa-blacksite');s.known=true;g.world.getSites=()=>[s];g._weather={kind:'storm',until:g.time+120,wind:.5,thunderAt:g.time+20};ATS.renderer.camera.zoom=.8;});
   await page.keyboard.press('m');await page.locator('#prisonOperations').scrollIntoViewIfNeeded();assert.match(await page.locator('#prisonOperations').innerText(),/Blacksite K-12.*Research Compound/s);assert.match(await page.locator('#prisonOperations').innerText(),/power locked|control locked/);await shot(page,'campaign-operation');await page.locator('#closeOverview').click();await page.waitForTimeout(120);await shot(page,'campaign-blacksite');
   await page.keyboard.press('Escape');await page.locator('#settingsButton').click();await page.locator('#reducedMotion').check();await page.locator('#qualitySelect').selectOption('low');await page.locator('#backSettings').click();await page.locator('#resumeRun').click();await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>ATS.screen),'play');
-  const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.locator('#newRun').tap();await touch.locator('#mapButton').tap();await touch.locator('#championCouncil').scrollIntoViewIfNeeded();assert.equal(await touch.locator('#championCouncil').isVisible(),true);assert.ok(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(touch,'campaign-touch');
+  const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.locator('#newRun').tap();
+  await touch.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.makeApe(g.king.x+30,g.king.y,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
+  for(const kind of ['nearestTarget','nearestHuman']){
+   await touch.locator('.army-expand').tap();await touch.locator(`[data-army-command=${kind}]`).tap();
+   assert.deepEqual(await touch.evaluate(()=>issued.slice()),[],'choosing a touch charge waits for an aim point');
+   assert.equal(await touch.locator('#armyDock').evaluate(el=>el.classList.contains('expanded')),false);
+   await touch.locator('#gameCanvas').tap({position:{x:300,y:260}});assert.deepEqual(await touch.evaluate(()=>issued.splice(0)),[kind]);
+   const direction=await touch.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return Math.hypot(o.dx,o.dy)});assert.ok(Math.abs(direction-1)<1e-6);
+  }
+  await touch.locator('#mapButton').tap();await touch.locator('#championCouncil').scrollIntoViewIfNeeded();assert.equal(await touch.locator('#championCouncil').isVisible(),true);assert.ok(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(touch,'campaign-touch');
   assert.deepEqual(errors,[]);console.log('PASS: real embedded music decode/play/pause, independent mute, tap/hold E, council/division controls, specialization, saved elites/orders, prison recon, storm and low-detail rendering, touch layout; no browser errors.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
