@@ -554,12 +554,13 @@
     }
 
     syncSettlementBuildings(settlement, game) {
-      const buildings = (settlement.huts || []).concat((settlement.structures || []).concat(settlement.facilities || []).filter(o => ['storage', 'workShelter', 'spearTower', 'training'].includes(o.kind)));
+      const buildings = (settlement.huts || []).concat((settlement.structures || []).concat(settlement.facilities || []).filter(o => ['storage', 'workShelter', 'spearTower', 'spearBattery', 'spearBallista', 'training', 'nursery', 'rallyGrove', 'orchard'].includes(o.kind)));
       const list = [...new Map(buildings.map(o => [o.id, o])).values()];
       const activated = [];
       for (const building of list) {
         const id = building.id + ':collision', completed = building.stage === undefined || building.stage >= 4;
-        const width = building.kind === 'training' ? 64 : building.kind === 'spearTower' ? 42 : 40, height = 34 + (building.kind === 'training' ? 12 : 0);
+        const width = building.kind === 'training' ? 64 : building.kind === 'spearTower' ? 42 : building.kind === 'spearBattery' ? 54 : building.kind === 'spearBallista' ? 60 : building.kind === 'longhouse' ? 56 : building.kind === 'canopyHut' ? 68 : 40,
+          height = building.kind === 'canopyHut' || building.kind === 'training' ? 46 : building.kind === 'longhouse' ? 40 : 34;
         let object = this.objects.get(id);
         if (!object && completed && building.hp > 0) {
           object = { id, x: building.x, y: building.y, type: 'apeBuilding', settlementId: settlement.id,

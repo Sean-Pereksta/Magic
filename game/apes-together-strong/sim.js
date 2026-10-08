@@ -219,7 +219,7 @@ class Game{
  op.built=op.objects.length>0;if(op.built)op.phase='hold';return true;
  });
  }
- get population(){return this.apes.filter(a=>a.hp>0).length}
+ get population(){let count=0;for(const a of this.apes)if(a.hp>0)count++;return count}
  get score(){let s=this.stats;return Math.round(s.freed*250+s.born*300+s.largestHorde*90+s.largestSettlement*60+s.humans*40+s.structures*35+s.bases*1800+s.prisons*500+s.settlements*650+s.territory*15+this.time*2+this.settlements.filter(x=>x.population>0).length*400)}
  get title(){return this.score>90000?'The Unbroken Crown':this.score>45000?'Ape Warlord':this.score>22000?'Lord of the Forest':this.score>10000?'Tribal King':this.stats.freed>5?'Liberator':'Lonely Wanderer'}
  notify(text,color='gold',category='routine'){this.messages.push({text,color,category,time:this.time});if(this.messages.length>25)this.messages.shift();this.hooks.toast?.(text,color,category)}
@@ -284,10 +284,10 @@ class Game{
  }
  apeDamage(a,base){return base*(1+clamp(a.trainingLevel||0,0,3)*.08)}
  makeApe(x,y,state='free',settlementId=null,young=false){
- if(this.population>=MAX_APE_POPULATION){if(this.time>=(this.nextPopulationWarn||0)){this.nextPopulationWarn=this.time+10;this.notify('Population limit reached — '+MAX_APE_POPULATION+' living apes.','gold')}return null}
+ const livePopulation=this.population;if(livePopulation>=MAX_APE_POPULATION){if(this.time>=(this.nextPopulationWarn||0)){this.nextPopulationWarn=this.time+10;this.notify('Population limit reached — '+MAX_APE_POPULATION+' living apes.','gold')}return null}
  ({x,y}=this.findOpen(x,y));
  const hp=young?YOUNG_HP:state==='scout'?SCOUT_HP:APE_HP;
- const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.ensureApeAppearance(p);this.siege?.balance(p);this.apes.push(p);this.apesById.set(p.id,p);return p;
+ const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.ensureApeAppearance(p);this.siege?.balance(p);this.apes.push(p);this.apesById.set(p.id,p);this.recordReignPopulation?.(livePopulation+1);return p;
  }
  makeHuman(x,y,site,kind=null){
  ({x,y}=this.findOpen(x,y));
