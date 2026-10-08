@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {loadEngine}=require('./performance-harness.cjs');
 
 function openWorld(g){
- g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world.ensure=()=>{};g.world.getSites=()=>[];g.world.terrain=()=>({biome:'forest',water:false});g.world.blocked=()=>false;g.world.lineClear=()=>true;
+ g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world.ensure=()=>{};g.world.getSites=()=>[];g.world.terrain=()=>({biome:'forest',water:false});g.world.blocked=()=>false;g.world.lineClear=()=>true;g.siege.clearRay=()=>g.world.lineClear();
  g.world.getObjects=(x,y,r)=>[...g.world.objects.values()].filter(o=>Math.hypot(o.x-x,o.y-y)<=r);g.world.settlementPlot=()=>({valid:true,trees:[],blocked:[]});g.world.syncSettlementBuildings=()=>{};
  g.world.addFortification=o=>{const b={...o,team:'ape',fortification:true,solid:true,dead:false};g.world.objects.set(b.id,b);return b};
 }
