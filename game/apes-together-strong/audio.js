@@ -1,4 +1,4 @@
-/* Procedural effects and the user-provided, embedded Primal Roar soundtrack. */
+/* Procedural effects and the three embedded reign soundtracks. */
 (function () {
   'use strict';
 
@@ -33,6 +33,7 @@
       this.musicVolume = 0.22;
       this.musicPending = false;
       this.musicArmed = false;
+      this.musicTier = -1;
     }
 
     // Call this from a click, tap, or key event. Construction remains silent.
@@ -99,6 +100,20 @@
         this.musicVolume > 0 && !window.document?.hidden && this.ctx?.state === 'running';
     }
 
+    setReignTier(tier = 0) {
+      tier = Math.max(0, Math.min(2, Math.floor(tier)));
+      if (tier === this.musicTier || !this.music) return;
+      const id = ['underpowered-king','ceremonial-tom','primal-roar'][tier];
+      const source = window.document?.getElementById?.('music-source-' + id);
+      if (!source?.textContent?.trim()) return;
+      this.musicTier = tier;
+      this.music.pause();
+      this.music.src = source.textContent.trim();
+      this.music.dataset.track = id;
+      this.music.load?.();
+      this._syncMusic();
+    }
+
     _syncMusic() {
       const music = this.music;
       if (!music) return;
@@ -107,11 +122,12 @@
       if (!this._musicReady()) { music.pause(); return; }
       if (!music.paused || this.musicPending) return;
       this.musicPending = true;
+      const requestedTier = this.musicTier;
       try {
         Promise.resolve(music.play()).then(() => {
           if (!this._musicReady()) music.pause();
         }).catch(() => { /* A later player gesture retries a browser-blocked start. */ })
-          .finally(() => { this.musicPending = false; });
+          .finally(() => { this.musicPending = false; if (this.musicTier !== requestedTier) this._syncMusic(); });
       } catch (_) { this.musicPending = false; }
     }
 

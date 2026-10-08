@@ -1,5 +1,71 @@
 # Apes Together Strong
 
+## Reign progression, royal settlements and equipment
+
+The total living population across followers and settlements earns two permanent
+milestones: **King of the Jungle at 100** and **Warlord at 300**. A full-screen
+illustrated ceremony freezes simulation and input until Continue. Each milestone
+is acknowledged once and saved; jumping both thresholds presents both in order.
+Losses never remove titles or unlocked construction. The King wears a small first
+crown, a taller royal crown, then a dark, horned war crown, including on the map.
+
+The supplied Underpowered King plays before the first milestone, Ceremonial Tom
+plays during the royal tier, and Primal Roar plays as Warlord. All three MP3s are
+embedded in the standalone HTML. One audio element loads only the selected track;
+music remains subject to master/music volume, mute, pause and tab visibility.
+This raises the standalone download to approximately 20.2 MB, without adding
+network requests during play.
+
+Visit a living main hut and press **B** (or Build) to commission expansion:
+
+- **Royal lodge:** 160 timber + 120 village food; opens a broad district,
+  24-resident longhouses and a second palisade ring.
+- **Warlord citadel:** 360 timber + 280 food after the Royal lodge; opens an
+  even larger district, 40-resident canopy halls and a third palisade ring.
+  Late settlements support 128 plots per housing kind, subject to real open
+  land and the existing 1,000-living-ape population cap.
+- Nursery groves, rally groves and orchards add growth capacity, birth-rate
+  bonuses or food production. Births still need food, safe land and housing.
+- Spear towers, rapid spear batteries and great spear ballistas require real
+  adult crews. Shafts travel, collide and deal damage on impact. Human soldiers
+  shoot the nearest visible ape, building or ape-owned palisade. Rifle shots
+  physically break wall sections, then retarget what is exposed behind them;
+  intervening cover and apes stop bullets.
+
+Lodge upgrades, paid projects, damaged buildings and surveyed ring locations
+persist in saves. Existing homes stay where they were. Friendly palisades stay
+passable for the King and every ape species through a short climb, crest and
+jump animation. Human troops must still breach or use openings. Climbing does
+not bypass trees, huts, water or unrelated fortress walls.
+
+Visit a completed workshop and press **B** (or Workshop) to spend its village's
+timber and food. A shared queue holds up to eight orders and equips only one
+individual at a time. Apes physically approach the workshop; the King must stay
+nearby while armor is fitted. Raids, destroyed workshops or missing recipients
+pause work, and cancellation refunds only unused supplies.
+
+- Individual capuchins receive visible throwing spears for 2.3× ranged damage.
+- Individual gorillas receive wooden fist cuffs for 35% stronger strikes.
+- Adult gibbons, chimpanzees and capuchins can carry torches for 65% more
+  structural damage. Torches illuminate nearby ground and make the bearer easier
+  to detect, while still respecting cover and weather visibility.
+- Royal armor progresses through 240, 350 and 500 maximum health, with up to
+  22% damage protection and 70% stronger King attacks. Fitting preserves the
+  existing missing-health amount; repeating a purchase cannot heal the King.
+
+Human response packages grow by 12% at the royal tier and 22% at Warlord, with
+shorter dispatch intervals. Finite site reserves, vehicle inventories, regional
+force budgets and existing warnings remain in effect. Projectile simulation,
+tower acquisition, human structure targeting, torch lights and rendering caches
+are bounded so these features do not add unbounded work as settlements expand.
+
+Additional checks:
+
+```sh
+node --test game/apes-together-strong/tests/reign-progression.test.cjs game/apes-together-strong/tests/royal-settlements.test.cjs game/apes-together-strong/tests/equipment.test.cjs game/apes-together-strong/tests/palisade-traversal.test.cjs game/apes-together-strong/tests/settlement-combat.test.cjs
+node game/apes-together-strong/tests/reign-browser.cjs
+```
+
 A solo, procedural horde survival game. The lobby registry launches
 `/game/apes-together-strong.html` directly and offers that same self-contained
 file as a download. Canvas artwork and Web Audio need no asset downloads,
@@ -836,12 +902,13 @@ These rules never block a physical bullet. The weather schedule survives saves.
 Rain uses at most 64 screen-space streaks, fog four bands; low detail lowers these
 counts and Reduced motion suppresses lightning and drifting animation.
 
-The supplied **Primal Roar** MP3 is embedded in the downloadable HTML. It loops
+The three supplied campaign MP3s are embedded in the downloadable HTML. The
+selected reign track loops
 only during play after a player gesture, pauses in menus and hidden tabs, and
 respects master mute. Settings has its own music toggle and volume slider.
 Default music gain is 22% of the 45% master volume (9.9% effective volume).
 Audio remains local; no streaming service or external asset request is needed.
-Embedding increases the standalone download to approximately 6.9 MB.
+Embedding increases the standalone download to approximately 20.2 MB.
 
 **Tap E** issues a 13-second directional charge toward the pointer: humans,
 vehicles, occupied cells, gates, towers and other hostile structures ahead

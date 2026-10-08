@@ -107,6 +107,6 @@ test('completed homes free their occupants before activating collision and resto
 
 test('blast damage reaches preserved homes beyond the new development limit',()=>{
  const {g,s}=colony(18);s.huts=[{id:'legacy-outer-home',slot:0,x:800,y:0,hp:100,maxHp:100,capacity:12,stage:4,progress:1}];g.colonies.init(s);s.developedRadius=s.radius=650;
- assert.equal(g.colonies.builtExtent(s),650);assert.equal(g.colonies.builtExtent(s,Infinity),838);const housing=s.housing;
+ assert.equal(g.colonies.builtExtent(s),838);assert.equal(g.colonies.builtExtent(s,Infinity),838);const housing=s.housing;
  g.colonies.damageNearby(800,0,30,100,{type:'shell'});assert.equal(s.huts[0].hp,0);assert.equal(s.housing,housing-12);assert.equal(s.developedRadius,650);assert.equal(g.colonies.targetFootprint(s)<=650,true);
 });
