@@ -23,7 +23,7 @@ P.suspendSettlementAssignment=function(a){
 };
 P.receiveHordeRecall=function(a,kind,serial){
  this.tactics?.clearOrder(a);this.champions?.removeMember(a.id);delete a.throwWindup;
- if(kind==='all')this.suspendSettlementAssignment(a);
+ if(kind==='all'||kind==='recruit')this.suspendSettlementAssignment(a);
  // Children travel without changing their age, health, or settlement growth rules.
  if(a.state!=='young')a.state='follow';
  a.target=null;a.retreatUntil=this.time+5;a.recallOrder={id:serial,kind,issuedAt:this.time};a.commandResponseUntil=this.time+1.1;
@@ -38,24 +38,29 @@ P.command=function(cmd,...args){
  // Q and nearby R read only neighboring spatial cells. Global orders scan once
  // here; the movement system shares and staggers subsequent route searches.
  const candidates=recruit||kind==='nearby'?this.apeGrid.near(this.king.x,this.king.y,recruit?RECRUIT:NEAR):this.apes;
- const serial=(this._hordeCommandSerial||0)+1;this._hordeCommandSerial=serial;let count=0,mobilized=0;
+ const serial=(this._hordeCommandSerial||0)+1,affectedSettlements=new Set();this._hordeCommandSerial=serial;let count=0,mobilized=0;
  for(const a of candidates){
   if(a.id==='king'||a.hp<=0)continue;
   if(recruit){
-   if(inferOwner(a)||a.hordeOwner!=null||a.state!=='free'||a.settlementId||a.captive||a.prisoner||a.prisonEscort)continue;
+   inferOwner(a);
+   if(a.hordeOwner!=null&&a.hordeOwner!==OWNER||a.captive||a.prisoner||a.prisonEscort)continue;
+   // Residents can be called out of any village duty, including combat.
+   // Active field followers and issued orders keep their current instructions.
+   if(!a.settlementId&&(['follow','charge','hold'].includes(a.state)||a.armyOrder||a.nearestOrder||a.divisionId||a.recallOrder))continue;
    const cage=a.cageId&&this.world.objects.get(a.cageId);if(cage&&!cage.dead&&!cage.rescueOpened)continue;
+   if(a.settlementId){mobilized++;affectedSettlements.add(a.settlementId)}
    a.hordeOwner=OWNER;this.receiveHordeRecall(a,'recruit',serial);count++;
   }else if(this.ownsApe(a)&&(kind==='all'||!this.isSettledApe(a))){
-   if(a.settlementId)mobilized++;this.receiveHordeRecall(a,kind,serial);count++;
+   if(a.settlementId){mobilized++;affectedSettlements.add(a.settlementId)}this.receiveHordeRecall(a,kind,serial);count++;
   }
  }
  for(const division of Object.values(this._champions?.divisions||{}))if(!division.memberIds.some(id=>this.apesById.get(id)?.hp>0))division.suspended=true;
- if(mobilized){this.refreshSettlements();for(const s of this.settlements){s._members=(this.settlementMembers.get(s.id)||[]).slice();s._adults=s._members.filter(a=>a.state!=='young'&&a.state!=='scout');s.cohorts=[];s.builders=s.guards=s.lumberWorkers=s.gardeners=s.cooks=s.haulers=0}}
+ if(mobilized){this.refreshSettlements();for(const s of this.settlements){if(!affectedSettlements.has(s.id))continue;s._members=(this.settlementMembers.get(s.id)||[]).slice();s._adults=s._members.filter(a=>a.state!=='young'&&a.state!=='scout');s.cohorts=[];s.builders=s.guards=s.lumberWorkers=s.gardeners=s.cooks=s.haulers=0}}
  this.mode='follow';this.commandCD=.5;this.king.attackTimer=.55;
  const color=recruit?'#e5c374':kind==='all'?'#f0bd78':kind==='field'?'#a8bbf0':'#75cabb',range=recruit?170:kind==='all'?410:kind==='field'?300:190;
  this.effect('wave',this.king.x,this.king.y,{color,life:kind==='all'?1.15:.8,range});
  this.noise(this.king.x,this.king.y,recruit?650:kind==='nearby'?500:750,'order');this.sound(recruit?'call':'recall',kind==='all'?1.15:.85);
- const message=recruit?count+' unrecruited apes answer the call.':kind==='nearby'?count+' nearby field apes recalled.':kind==='field'?count+' field apes recalled — settlements remain assigned.':count+' apes mobilized — settlements included ('+mobilized+' residents).';
+ const message=recruit?count+' nearby apes answer the call.'+(mobilized?' '+mobilized+' residents join your horde.':''):kind==='nearby'?count+' nearby field apes recalled.':kind==='field'?count+' field apes recalled — settlements remain assigned.':count+' apes mobilized — settlements included ('+mobilized+' residents).';
  this.lastHordeCommand={cmd,kind:recruit?'recruit':kind,count,mobilized,time:this.time};this.notify(message,'gold','command');return true;
 };
 // A recalled child remains young while traveling; maturation keeps its field

@@ -4,7 +4,7 @@
 
 | Input | Result | Command API |
 | --- | --- | --- |
-| Q | Recruit eligible unrecruited apes within the existing 340-world-unit call radius. | `call` |
+| Q | Call wild, idle, and settled apes within 340 world units into the active horde. | `call` |
 | R tap | Recall recruited field apes within 260 world units. | `recall` |
 | R hold | Recall all recruited field apes, regardless of distance. | `recallField` |
 | T tap | Recall all recruited field apes, regardless of distance. | `recallField` |
@@ -12,13 +12,13 @@
 
 R and T use a 600 ms hold threshold. A tap commits on release; a hold commits once at the threshold and release does not repeat it. Keyboard repeat is ignored. The same gestures work on the recall arrows in the touch command palette. A visible progress bar distinguishes T's settlement mobilization from its ordinary field recall. Pause, blur, hidden tabs, canceled pointers, and lost pointer capture cancel unfinished gestures. The former T attack-nearest action remains available in the expanded command menu; directional E tap/hold orders remain available.
 
-Q and nearby R use the ape spatial grid. Q does not reset existing followers, residents, or their selected-species orders. Locked cages and unrescued prison cohorts retain their existing rescue requirements. Command pulses are bounded to one effect per order; feedback reports the actual affected population and mobilized resident count.
+Q and nearby R use the ape spatial grid. Q mobilizes nearby residents and settlement scouts, including young, and recruits idle apes. Existing active field followers and their selected-species or division orders remain unchanged. Locked cages and unrescued prison cohorts retain their existing rescue requirements. Command pulses are bounded to one effect per order; feedback reports the actual affected population and mobilized resident count.
 
 ## Ownership, settlement duties, and saved games
 
-`hordeOwner` records recruitment independently of transient movement state. New followers, settlement residents, and rescued prison followers belong to the King; free apes remain unowned until recruited. Existing version-1 saves derive this field once from their previous follower/resident state. Subsequent commands use the stored ownership field, so a recruited ape temporarily marked free is still excluded from Q and included in field recall.
+`hordeOwner` records recruitment independently of transient movement state. New followers, settlement residents, and rescued prison followers belong to the King; free apes remain unowned until recruited. Existing version-1 saves derive this field once from their previous follower/resident state. A recruited ape temporarily marked free can rejoin through Q if it has no active field order; it also remains eligible for field recall. Apes belonging to another owner are excluded from Q.
 
-Settlement exclusion uses `settlementId`, including residents temporarily fighting or traveling on a settlement mission. Absolute recall clears that active assignment and removes work, tower, training, caravan, and division orders. It preserves the former assignment in `previousSettlementAssignment`, including its settlement, role, and home coordinates. Existing entities walk from their current positions; recall neither creates apes nor teleports them. Settlements do not automatically take those apes back. The existing settle, station, or reassignment actions can assign them again.
+R and tapped T exclude `settlementId`, including residents temporarily fighting or traveling on a settlement mission. Q within its radius and held T globally clear that active assignment and remove work, tower, training, caravan, and division orders. Each preserves the former assignment in `previousSettlementAssignment`, including its settlement, role, and home coordinates. Existing entities walk from their current positions; recall neither creates apes nor teleports them. Settlements do not automatically take those apes back. The existing settle, station, or reassignment actions can assign them again.
 
 Young retain their age and health, travel without acquiring adult combat behavior, and mature under the existing 35-second rule. Ownership, recall metadata, and previous settlement assignments survive the ordinary save format. Movement caches remain transient and are reconstructed after loading.
 
