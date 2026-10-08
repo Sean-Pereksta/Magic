@@ -318,7 +318,7 @@ class Game{
  if(this.blastActive(a)){a.moving=false;return}
  if(a.siegeTransition)return;if(!a.armyOrder&&(a.wallClimb||(a.state==='charge'||a._nav?.stuck>.2)&&this.tactics?.tryClimb(a,dx,dy)))return;speed*=a.rallyUntil>this.time?1.15:1;speed*=a.shield?.hp>0?.9:1;if(a.staggerUntil>this.time)return;
  const terrain=this.world.terrain(a.x,a.y),roleSpeed=a.role?(ATSHumanRoles[a.role]?.speed||1):1;
- this.navigation.move(a,dx,dy,speed*roleSpeed*(terrain.biome==='wetland'&&!terrain.road?.86:1),dt,a.id==='king');
+ this.navigation.move(a,dx,dy,speed*roleSpeed*(this.terrainPace?.(a,terrain)??1)*(terrain.biome==='wetland'&&!terrain.road?.86:1),dt,a.id==='king');
  }
  spreadApes(dt){
  // Compute all pressures before moving anyone, so array order cannot bias a clump.

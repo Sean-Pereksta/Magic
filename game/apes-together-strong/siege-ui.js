@@ -1,7 +1,7 @@
 /* Small desktop hotkey pictures; touch keeps comfortably sized hit targets. */
 (() => {
 'use strict';
-const COMMANDS=[['call','q','Call / follow'],['charge','e','Charge'],['recall','r','Retreat / regroup'],['hold','f','Hold position'],['spreadCharge','x','Spread charge'],['attackNearest','t','Defend against nearest enemies'],['target','g','Target / route'],['finish','p','Finish with attack · right-click a final point'],['unit','i','Pick individual apes'],['shield','h','Shield advance'],['sabotage','j','Sabotage'],['climb','k','Climb wall'],['rally','l','Rally Roar'],['logs','u','Prepare log shields'],['regroup','y','Regroup here'],['defend','n','Defend position'],['settle','z','Found settlement'],['patrol','c','Settlement scouts'],['finder','v','Find settlements'],['build','b','Village buildings']];
+const COMMANDS=[['call','q','Call / follow'],['charge','','Directional charge'],['nearestTarget','e','Nearest target · hold E for humans'],['nearestHuman','','Attack nearest humans'],['recall','r','Retreat / regroup'],['hold','f','Hold position'],['spreadCharge','x','Spread charge'],['attackNearest','t','Defend against nearest enemies'],['target','g','Target / route'],['finish','p','Finish with attack · right-click a final point'],['unit','i','Pick individual apes'],['shield','h','Shield advance'],['sabotage','j','Sabotage'],['climb','k','Climb wall'],['rally','l','Rally Roar'],['logs','u','Prepare log shields'],['regroup','y','Regroup here'],['defend','n','Defend position'],['settle','z','Found settlement'],['patrol','c','Settlement scouts'],['finder','v','Find settlements'],['build','b','Village buildings']];
 const COLORS={gorilla:'#9ca9a8',orangutan:'#c88a58',chimpanzee:'#b4b48e',gibbon:'#ddd4ac',capuchin:'#c5aa79',mandrill:'#89b8c3'};
 function icon(canvas,kind){const c=canvas.getContext('2d');canvas.width=40;canvas.height=40;c.scale(2,2);c.strokeStyle='#dedbb5';c.fillStyle='#dedbb5';c.lineWidth=1.5;c.lineCap='round';c.lineJoin='round';const line=(...p)=>{c.beginPath();c.moveTo(p[0],p[1]);for(let i=2;i<p.length;i+=2)c.lineTo(p[i],p[i+1]);c.stroke()},circle=(x,y,r)=>{c.beginPath();c.arc(x,y,r,0,7);c.stroke()};
  if(['charge','target','regroup','recall'].includes(kind)){const back=kind==='recall';c.save();if(back){c.translate(20,0);c.scale(-1,1)}line(3,10,17,10,12,5);line(17,10,12,15);if(kind==='target'){circle(10,10,7)}c.restore()}
@@ -9,7 +9,7 @@ function icon(canvas,kind){const c=canvas.getContext('2d');canvas.width=40;canva
  else if(kind==='shield'||kind==='logs'){line(4,4,10,2,16,4,15,12,10,17,5,12,4,4);if(kind==='logs')line(6,8,14,8);else line(10,14,10,6,7,9)}
  else if(kind==='climb'){line(5,2,5,18);line(15,2,15,18);for(let y=5;y<18;y+=4)line(5,y,15,y)}
  else if(kind==='sabotage'){circle(7,7,4);line(10,10,17,17);line(4,3,7,7,3,5)}
- else if(kind==='spreadCharge'||kind==='attackNearest'){line(10,16,10,4,7,7);line(10,4,13,7);line(9,12,3,6,3,10);line(11,12,17,6,17,10)}
+ else if(kind==='spreadCharge'||kind==='attackNearest'||kind==='nearestTarget'||kind==='nearestHuman'){line(10,16,10,4,7,7);line(10,4,13,7);line(9,12,3,6,3,10);line(11,12,17,6,17,10)}
  else if(kind==='call'||kind==='rally'){circle(6,10,3);line(9,8,13,5,13,15,9,12);c.beginPath();c.arc(11,10,7,-.7,.7);c.stroke();if(kind==='rally')line(4,3,6,1,8,3)}
  else if(kind==='settle'||kind==='build'||kind==='finder'){line(3,9,10,3,17,9);line(5,8,5,17,15,17,15,8);line(9,17,9,12,12,12,12,17);if(kind==='finder')circle(10,10,9)}
  else if(kind==='patrol'){circle(7,8,4);circle(14,8,4);line(5,12,4,16);line(16,12,17,16)}

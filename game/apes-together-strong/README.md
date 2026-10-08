@@ -671,3 +671,193 @@ node game/apes-together-strong/tests/blast-browser.cjs
   canvas art and warning cones. Perception shares the existing work budget,
   nearby nests cap at 12, rotary bullets cap at 320 and dormant bursts cannot
   accumulate delayed shots. Added behavior tests and real desktop/touch checks.
+
+## Kingdom settlement strategy
+
+Open the map with **M** or **Tab** to manage every settlement. Each row has
+specialization, defense posture, defender requests, evacuation, a rally flag,
+and a destination selector for supply groups. These orders save immediately;
+travel and work resume when you close the overview.
+
+| Specialization | Practical effect |
+| --- | --- |
+| Sanctuary | Family progress is 35% faster; occupied huts provide two extra beds; ordinary healing and wounded elite recovery are twice as fast. Food, safety, housing and the 1,000-ape cap still constrain births. |
+| War camp | Completed training facilities work 60% faster. Up to three nearby residents also practice basic militia training each second, spending food when they earn a permanent level. More residents guard the village, and local incoming damage is reduced by 14%. |
+| Supply village | Food harvest/garden yields rise 35%; genuinely felled local trees supply 50% more timber. Its carriers move 25% faster and can transport up to 60 food instead of 40. |
+| Scout outpost | Reveals nearby map terrain and checks a wider area for approaching humans and vehicles every eight seconds, up to 1,200 world units. Warning messages are throttled. |
+| Forge / workshop | Building crews work 30% faster. Newly completed palisades have 25% more health. A safe village of at least eight residents can craft one gear kit and one siege-material bundle every 45 seconds for 12 timber and 6 food, storing up to six of each. |
+
+The General settlement focus preserves the old economy. The existing food or
+fortification priority still adjusts job allocation. Fortified defense assigns
+more guards and reduces local incoming damage another 12%; mobile reserve moves
+guards and scouts 20% faster but takes 6% more local damage. Stationed, recovered
+champions and veterans add their relevant support effects only while physically
+at home; their shared support multipliers cap at 1.75.
+
+**Request defenders** sends up to eight available adults from the nearest safe
+settlement with a spare workforce; it creates no new apes. **Evacuate
+noncombatants** sends up to twelve children, wounded residents and civilian
+workers to a safe home with spare beds, preferring sanctuaries. Pending groups
+reserve those beds. Travelers retain their departure-home assignment until
+arrival and do not work or train while traveling.
+
+**Send supply group** uses two or three real adult carriers and deducts cargo
+at departure, keeping a local food reserve. Food reaches the selected village
+or the King only when the surviving group arrives; lost carriers reduce the
+delivered share. Village deliveries may also carry surplus timber. Carriers
+then physically return home. A direct recruitment or Call order can redirect
+them. Each settlement supports at most four simultaneous groups of twelve;
+distant groups share short streamed navigation corridors and remain subject
+to obstacles and attacks. Cargo, return legs and member IDs survive saving.
+
+The **rally point** is preferred when rescued family groups and elders need a
+home. They travel there before the arrival celebration grants 90 seconds of
+10% faster construction and 15% faster family progress. Ordinary combat rescues
+remain with the traveling army. Recent village events show arrivals, warnings,
+shortages, ready equipment and construction opportunities.
+
+At a workshop, **Refit stationed champion** consumes one gear kit for one of a
+champion's two possible equipment upgrades. **Issue reinforced log shields**
+uses one siege bundle for up to four nearby gorillas/orangutans; shields have
+225/180 health and preserve stronger existing champion shields. Crafting and
+militia training pause under attack.
+
+Focused regression coverage, including actual distant obstacle navigation and
+save/restore during a supply return journey:
+
+```sh
+node --test game/apes-together-strong/tests/kingdom.test.cjs
+```
+
+## Champions and division leadership
+
+Fortified prison extractions can award named champions with a species archetype,
+visible equipment and a passive trait. Each of the six species has four
+archetypes: structural bruisers, support builders, saboteurs, scouts, morale
+leaders and ranged disruptors. There are at most 24 living champions; excess
+elite rewards become veterans. Ordinary followers become eligible commanders
+through two training levels or five credited infantry victories.
+
+Champions have species-based additional health and 20% stronger strikes.
+Equipment refits add 5% strike damage each, capped at two. Archetype bonuses
+apply to their actual objectives: Wallbreakers breach gates/walls, Saboteurs
+cut devices, Tank Busters benefit from attacking a vehicle's flank/rear,
+Warcallers improve the existing Rally action, and Slinger Aces improve thrown
+stones. Support champions only provide settlement production bonuses while
+physically stationed there and recovered. Champion identity, equipment,
+training, wounds and recovered status survive saves without reapplying bonuses.
+Injured legends move and fight more slowly until safely stationed; sanctuary
+recovery is twice as fast. Fallen champions appear in the council remembrance.
+
+Open **Kingdom overview → Champions & divisions** to inspect the roster,
+station nearby elites, recall them or form up to six named divisions. Choose a
+recovered champion/veteran and up to 256 followers from unassigned apes, the
+current army selection or the commander's species. Membership is exclusive.
+Set a stance, fallback rule, priority and formation, then choose a discovered
+objective, settlement, King's position or explored point on the map. A direct
+Call/Recall/Hold/Charge command puts division orders on standby; **Resume
+orders** restores their saved plan. Existing species-route orders take control
+of the specifically ordered apes.
+
+Divisions share targets and fortress paths. Assaults push; Hold and defense
+stances remain close to their assigned ground; Skirmish maintains spacing;
+Sabotage prioritizes devices; Rescue skips locked cells for release machinery
+and escorts liberated groups; Climb and Breach uses the existing real wall
+transitions. Heavies damage closed gates along fortress approaches. Commanders
+improve nearby cohesion, speed and damage, with gorilla/mandrill defensive
+support. Wounded/outnumbered rules retreat toward the King; loss of the commander
+also causes retreat unless Hold at all costs was selected. Orders persist
+through a save, including retreat following a commander's death.
+
+Planning runs at most twice per second for six divisions, considering at most
+52 candidates per division. Aura work runs once per second, affects at most
+48 nearby allies per supporting champion, and keeps transient bonuses out of
+save data. Offscreen divisions use the existing 15 Hz distant-order simulation.
+Champion gear overlays do not expand the ordinary species sprite atlas;
+at most 24 living elites receive the richer geometry, with simplified detail
+at distance and reduced-motion support.
+
+```sh
+node --test game/apes-together-strong/tests/champions.test.cjs
+```
+
+A 120-frame, 1440×900 headless Chrome comparison includes **all** original
+siege/arsenal render extensions in both the previous version and this update:
+
+| Scenario | Previous mean work / p95 | Updated mean work / p95 |
+| --- | --- | --- |
+| 500 moving followers (G) | 20.21 / 28.5 ms | 21.24 / 30.0 ms |
+| 750 apes, 320 humans, armor, aircraft and explosives (K) | 72.01 / 123.4 ms | 75.31 / 135.0 ms |
+
+Both versions kept every actor and met the per-frame budgets (at most two path
+searches observed, 96 render sight checks, 56 render rays). These are short,
+synthetic sustained-combat measurements on one machine, including warm-up;
+the extreme scene remains expensive and is not a 60 fps guarantee. Earlier
+figures from a runner that omitted the siege/arsenal render extensions are not
+directly comparable to this full-render comparison.
+
+
+## Prison liberation operations
+
+Newly explored military parcels can hold Regional Prisons, Blacksite Research
+Compounds, Transfer Fortresses and Quarry Labor Prisons. Explored save regions
+keep their geometry, damage and spent supplies. The opening rescue stays gentle.
+Open the map to read a discovered prison's power, controls, captive count, escape
+progress and specific sabotage objectives. Its main gates, climb access, inner
+riot gate, towers, barracks, radio and detention blocks are physical objects.
+
+Power-locked cells ignore raw damage until the generator is destroyed. Internal
+release controls unlock both power and steel-door blocks; chain pens can be
+broken directly. Disabling power also cuts searchlights. A breach escalates the
+siren, closes the intact inner riot gate and commits up to three paid defender
+waves; a nearby base may send one rescue-prevention column from its own reserves.
+Radio, power and barracks sabotage stop local reinforcement dispatches.
+
+Freed prisoners move in one visible crowd per holding block. Keep an escort
+within 210 units, lead the crowd through a real opening, and spend four safe
+seconds beyond the perimeter. Unescorted crowds exposed to guards for five
+seconds can be recaptured. Injured survivors travel slower; a nearby Rescue
+Bearer helps them. Captive slots remain reserved against the 1,000-ape limit while
+they escape; rescue statistics, champion awards and food rewards are credited
+once they are safe. Families and elders can then travel to the kingdom rally
+village. Escapes, wounds, recaptures, locks and rewards persist through saves.
+
+Planning is bounded to eight nearby facilities, twelve escape crowds and eighteen
+guard duty updates each quarter-second. Remote crowds wait in saved state;
+they never teleport to safety. Structure overlays, champion gear and weather
+reuse the existing view culling and adaptive detail system.
+
+## Weather, music and quick attack controls
+
+Weather changes every 150 simulation seconds: clear, fog, rain, wind and storms.
+Fog shortens human detection, rain and thunder dampen movement noise, roads
+retain normal footing, and wet fields, rocky slopes and marsh edges slow travel.
+These rules never block a physical bullet. The weather schedule survives saves.
+Rain uses at most 64 screen-space streaks, fog four bands; low detail lowers these
+counts and Reduced motion suppresses lightning and drifting animation.
+
+The supplied **Primal Roar** MP3 is embedded in the downloadable HTML. It loops
+only during play after a player gesture, pauses in menus and hidden tabs, and
+respects master mute. Settings has its own music toggle and volume slider.
+Default music gain is 22% of the 45% master volume (9.9% effective volume).
+Audio remains local; no streaming service or external asset request is needed.
+Embedding increases the standalone download to approximately 6.9 MB.
+
+**Tap E** issues a 13-second nearest-target order: humans, vehicles, occupied
+cells, gates, towers and other hostile structures compete by actual distance.
+**Hold E** for 280 ms targets humans only; apes route around obstacles and never
+redirect their strikes to vehicles or structures. Releasing a hold does not
+also issue the tap action. Each ape retargets within 320 world units, and waits
+if there is no eligible target. Selected species/individuals receive the order;
+with no selection it applies to all traveling followers. Pausing or leaving the
+window cancels an unfinished key gesture. The command dock also offers both
+actions and retains the directional Charge button. Nearest-target planning
+rotates across large hordes with at most 12 plans per frame, sharing the existing
+ape AI budget; rapid switching updates the order while throttling sound/effects.
+
+Additional verification:
+
+```sh
+node --test game/apes-together-strong/tests/music-weather.test.cjs game/apes-together-strong/tests/nearest-orders.test.cjs game/apes-together-strong/tests/prisons.test.cjs
+node game/apes-together-strong/tests/campaign-browser.cjs
+```
