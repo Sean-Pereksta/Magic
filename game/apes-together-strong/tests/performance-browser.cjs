@@ -19,7 +19,7 @@ const only = value('--scenario');
     page.on('pageerror', e => errors.push(e.message));
     await page.setContent('<style>html,body{margin:0;background:#071216}canvas{display:block;width:1440px;height:900px}</style><canvas id="game"></canvas>');
     await page.addScriptTag({ content: 'window.resetStressRandom=()=>{let randomSeed=0x923cd91;Math.random=()=>{randomSeed=Math.imul(1664525,randomSeed)+1013904223|0;return(randomSeed>>>0)/4294967296}};resetStressRandom();' });
-    for (const name of [...MODULES, 'render', 'render-details']) await page.addScriptTag({ content: fs.readFileSync(path.join(directory, name + '.js'), 'utf8') });
+    for (const name of [...MODULES, 'render', 'render-details', 'siege-render', 'arsenal-render', 'champions-render', 'prisons-render', 'weather-render']) await page.addScriptTag({ content: fs.readFileSync(path.join(directory, name + '.js'), 'utf8') });
     await page.addScriptTag({ content: 'window.setupStressScene=' + setupScenario.toString() + ';' });
     for (const scenario of SCENARIOS.filter(s => !only || only.includes(s.id))) {
       const report = await page.evaluate(async ({ scenario, frames }) => {

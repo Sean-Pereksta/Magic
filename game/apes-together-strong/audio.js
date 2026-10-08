@@ -1,4 +1,4 @@
-/* Apes Together Strong — procedural audio, no downloads or autoplay. */
+/* Procedural effects and the user-provided, embedded Primal Roar soundtrack. */
 (function () {
   'use strict';
 
@@ -28,6 +28,11 @@
       this.threat = 0;
       this.maxVoices = 34;
       this.unlocking = null;
+      this.music = window.document?.getElementById?.('campaignMusic') || null;
+      this.musicEnabled = true;
+      this.musicVolume = 0.22;
+      this.musicPending = false;
+      this.musicArmed = false;
     }
 
     // Call this from a click, tap, or key event. Construction remains silent.
@@ -63,24 +68,51 @@
       })();
       const result = await this.unlocking;
       this.unlocking = null;
+      this._syncMusic();
       return result;
     }
 
     setSettings(settings = {}) {
       if (typeof settings.enabled === 'boolean') this.enabled = settings.enabled;
       if (Number.isFinite(settings.volume)) this.volume = this._clamp(settings.volume, 0, 1);
+      if (typeof settings.musicEnabled === 'boolean') this.musicEnabled = settings.musicEnabled;
+      if (Number.isFinite(settings.musicVolume)) this.musicVolume = this._clamp(settings.musicVolume, 0, 1);
       this._masterLevel();
+      this._syncMusic();
     }
 
     pause(paused = true) {
       this.paused = !!paused;
+      if (!this.paused) this.musicArmed = true;
       this._masterLevel();
+      this._syncMusic();
       if (this.paused) {
         for (const source of Array.from(this.sources)) {
           try { source.stop(this.ctx.currentTime + 0.03); } catch (_) {}
         }
         this.last = Object.create(null);
       }
+    }
+
+    _musicReady() {
+      return this.musicArmed && this.enabled && this.musicEnabled && !this.paused && this.volume > 0 &&
+        this.musicVolume > 0 && !window.document?.hidden && this.ctx?.state === 'running';
+    }
+
+    _syncMusic() {
+      const music = this.music;
+      if (!music) return;
+      music.volume = this.volume * this.musicVolume;
+      music.loop = true;
+      if (!this._musicReady()) { music.pause(); return; }
+      if (!music.paused || this.musicPending) return;
+      this.musicPending = true;
+      try {
+        Promise.resolve(music.play()).then(() => {
+          if (!this._musicReady()) music.pause();
+        }).catch(() => { /* A later player gesture retries a browser-blocked start. */ })
+          .finally(() => { this.musicPending = false; });
+      } catch (_) { this.musicPending = false; }
     }
 
     _masterLevel() {

@@ -126,7 +126,7 @@ const { chromium } = require('playwright');
     await page.locator('#resumeRun').click();
     await page.keyboard.press('m');
     assert.equal(await page.evaluate(() => ATS.screen), 'overview');
-    await page.locator('.settlement-row select').selectOption('forage');
+    await page.locator('.settlement-row select[aria-label$=" work priority"]').selectOption('forage');
     assert.equal(await page.evaluate(() => ATS.game.settlements[0].policy), 'forage');
     await page.getByRole('button', { name: 'Deliver up to 30 food' }).click();
     await screenshot(page, 'settlements');
