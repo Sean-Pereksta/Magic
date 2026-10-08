@@ -1,0 +1,43 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),{loadEngine}=require('./performance-harness.cjs');
+function arena(){const c=loadEngine(),g=new c.ATSGame('ARSENAL-TEST');g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world.ensure=()=>{};g.world.stream=()=>{};g.world.terrain=()=>({biome:'forest',water:false});g.world.waterBlocked=()=>false;g.spawnSites=()=>{};g.nextDirectorAt=g.nextConvoyAt=g.heliTimer=1e9;g.king.x=-600;g.time=100;return{c,g}}
+function grids(g){g.syncIndexes();g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.vehicleGrid.rebuild(g.vehicles);g.navigation.beginFrame(g.time);g.performance.beginStep(g)}
+function object(g,p){const o={id:'prop-'+g.nextId++,x:0,y:0,hp:500,maxHp:500,solid:true,r:12,...p};g.world.objects.set(o.id,o);g.world._indexObject(o);return o}
+function tank(g,variant){const v={id:'vehicle-'+g.nextId++,x:0,y:0,variant,vehicleClass:'tank'};g.forces.initVehicle(v);g.vehicles.push(v);return v}
+function step(g,n,fn){for(let i=0;i<n;i++){g.time+=1/30;grids(g);fn?.();}}
+test('right-click terminal attack respects earlier waypoints, attacks the area and cannot have appended stops',()=>{
+ const {g}=arena(),a=g.makeApe(-150,0,'follow');a.species='gibbon';g.siege.balance(a,true);const h=g.makeHuman(180,0,null);h.hp=200;grids(g);g.siege.select('gibbon');g.siege.draft({x:-140,y:100},'move');g.siege.draft({x:160,y:0},'attackArea');assert.equal(g.siege.dispatch(),true);let visited=false,hit=false;
+ step(g,900,()=>{g.siege.tick(1/30);g.updateApe(a,1/30);if(Math.hypot(a.x+140,a.y-100)<30)visited=true;if(h.hp<200){assert.ok(visited);hit=true}});assert.ok(hit);assert.equal(g.siege.groups.gibbon.orders.at(-1).type,'attackArea');assert.equal(g.siege.issue(['gibbon'],[{id:'later',type:'move',x:300,y:0}],true),false);
+ assert.equal(g.siege.issue(['gibbon'],[{id:'end',type:'attackArea',x:0,y:0},{id:'bad',type:'move',x:0,y:10}]),false);
+});
+test('terminal attack clears vehicles and enemy structures near the point but leaves remote targets alone',()=>{
+ const {g}=arena(),a=g.makeApe(0,0,'follow');a.species='gorilla';g.siege.balance(a,true);const prop=object(g,{type:'powerRelay',x:45,y:0,hp:35}),far=object(g,{type:'powerRelay',x:420,y:0,hp:35});grids(g);g.siege.issue(['gorilla'],[{id:'area',type:'attackArea',x:0,y:0}]);step(g,150,()=>{g.siege.tick(1/30);g.updateApe(a,1/30)});assert.ok(prop.dead);assert.equal(far.hp,35);
+ const v=tank(g,null);v.x=45;v.hp=20;grids(g);step(g,160,()=>{g.siege.tick(1/30);g.updateApe(a,1/30)});assert.ok(v.hp<=0);assert.ok(Math.hypot(a.x,a.y)<220);
+});
+test('Twinfang fires a fixed three-shell burst and cancels follow-up shots on weapon destruction',()=>{
+ const {g}=arena(),v=tank(g,'repeater');grids(g);g.forces.fireShell(v,{x:400,y:0},g.forces.vehicleSpec(v));assert.equal(g.forces.hazards.length,1);step(g,26,()=>g.forces.advanceWeapon(v));assert.equal(g.forces.hazards.length,3);assert.ok(g.forces.hazards.every(h=>h.targetX===400&&h.targetY===0));
+ g.forces.hazards=[];g.forces.fireShell(v,{x:450,y:0},g.forces.vehicleSpec(v));v.weaponDamage=100;step(g,30,()=>g.forces.advanceWeapon(v));assert.equal(g.forces.hazards.length,1);assert.equal(v.firePlan,null);
+});
+test('Thunderback warns three fixed impact zones and refuses point-blank bombardment',()=>{
+ const {g}=arena(),v=tank(g,'bombard');grids(g);g.forces.fireShell(v,{x:400,y:0},g.forces.vehicleSpec(v));assert.equal(g.forces.hazards.length,3);assert.ok(g.forces.hazards.every(h=>h.type==='mortar'&&h.life>=2.2));assert.equal(new Set(g.forces.hazards.map(h=>h.y)).size,3);g.forces.hazards=[];g.forces.fireShell(v,{x:90,y:0},g.forces.vehicleSpec(v));assert.equal(g.forces.hazards.length,0);
+});
+test('rotary weapons spool up, sweep finite bursts, cool down and respect solid cover',()=>{
+ const {g}=arena(),v=tank(g,'cyclone'),a=g.makeApe(250,0,'hold');a.hp=a.maxHp=1000;grids(g);g.forces.startRotary(v,a);g.time+=.5;g.forces.advanceWeapon(v);assert.equal(g.bullets.length,0);
+ step(g,55,()=>g.forces.advanceWeapon(v));assert.ok(g.bullets.length>=9&&g.bullets.length<=12);assert.equal(v.firePlan,null);assert.equal(g.forces.startRotary(v,a),false);assert.ok(new Set(g.bullets.map(b=>b.vy)).size>3);
+ g.bullets=[];g.time=v.readyAt+1;object(g,{type:'wall',x:120,w:24,h:220,collision:'rect',visualHeight:110});g.forces.startRotary(v,a);step(g,80,()=>g.forces.advanceWeapon(v));assert.equal(g.bullets.length,0,'cover blocks every committed shot');
+});
+test('Gatling nest has a frontal firing arc, live muzzle collision and a sabotagable power source',()=>{
+ const {g}=arena(),relay=object(g,{type:'powerRelay',x:-100,y:-100}),gun=object(g,{type:'gatlingNest',w:38,h:32,r:21,collision:'rect',height:42,relayId:relay.id,mountDir:0,dir:0,range:470,siteId:'base'}),s={id:'base',objects:[relay.id,gun.id],gunIds:[gun.id],guards:0,strength:0};relay.siteId=s.id;g.world.sites.set(s.id,s);const a=g.makeApe(-200,0,'hold');a.hp=a.maxHp=1000;grids(g);g.forces.updateEmplacement(gun);assert.equal(gun.firePlan,undefined);
+ a.x=220;g.time+=1;grids(g);g.forces.updateEmplacement(gun);assert.ok(gun.firePlan);const hp=a.hp;step(g,60,()=>{g.forces.updateEmplacement(gun);g.updateBullets(1/30)});assert.ok(a.hp<hp,'bullets actually leave the solid emplacement');
+ gun.firePlan={mode:'rotary',release:g.time+1,until:g.time+3};g.damageObject(relay,999,g.king);assert.equal(gun.powered,false);assert.equal(gun.firePlan,null);step(g,150,()=>g.forces.updateEmplacement(gun));assert.equal(gun.firePlan,null);
+});
+test('new specialists use their actual weapons and saved cooldowns without restoring health',()=>{
+ const {c,g}=arena(),target=g.makeApe(230,0,'hold'),gunner=g.makeHuman(0,0,null),grenadier=g.makeHuman(0,60,null);g.forces.assign(gunner,null,'rotary');g.forces.assign(grenadier,null,'bombardier');grenadier.specialAt=0;grids(g);g.shoot(gunner,target);assert.ok(gunner.firePlan);assert.equal(g.bullets.length,0);g.shoot(grenadier,target);assert.equal(g.forces.hazards.length,2);assert.ok(grenadier.specialAt>g.time);gunner.hp=37;const loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize()))),saved=loaded.humans.find(h=>h.id===gunner.id);assert.equal(saved.hp,37);assert.equal(saved.role,'rotary');assert.equal(saved.firePlan.release,gunner.firePlan.release);assert.equal(saved.readyAt,gunner.readyAt);
+});
+test('protected mortars use delayed local reports, keep the warned point fixed and lose reports when radio is destroyed',()=>{
+ const {g}=arena(),relay=object(g,{type:'powerRelay',x:-80,y:-80}),gun=object(g,{type:'mortarNest',relayId:relay.id,range:740,siteId:'base'});g.world.sites.set('base',{id:'base',objects:[relay.id,gun.id],gunIds:[gun.id]});g.king.hp=0;g.siege.reports.push({id:'report',siteId:'base',x:400,y:100,at:g.time});grids(g);g.forces.updateEmplacement(gun);assert.equal(gun.aiming,undefined,'no instant radio knowledge');g.time+=1.3;grids(g);g.forces.updateEmplacement(gun);assert.equal(gun.aiming.x,400);g.siege.reports[0].x=650;g.time+=1.4;g.forces.updateEmplacement(gun);assert.equal(g.forces.hazards.length,3);assert.ok(g.forces.hazards.every(h=>h.x<450),'fixed warned location does not follow later sightings');g.forces.hazards=[];gun.readyAt=0;g.world.sites.get('base').radioDown=true;g.time+=.5;grids(g);g.forces.updateEmplacement(gun);assert.equal(gun.aiming,null);
+});
+test('new fortresses contain distinct powered defenses and loading never restores a sabotaged relay',()=>{
+ const {c,g}=arena(),families=new Set();for(let i=0;i<12;i++){g.world._buildSite({objects:[],sites:[]},{id:'arsenal-'+i,x:i*1700,y:0,type:'regionalCommand',military:true,tier:5,guards:100,count:100,radius:620,extentX:500,extentY:430,layout:i%2});const s=g.world.sites.get('arsenal-'+i);families.add(s.stronghold);assert.ok(s.gunIds.length>=3);const guns=s.gunIds.map(id=>g.world.objects.get(id));assert.ok(guns.every(o=>g.world.objects.get(o.relayId)?.type==='powerRelay'));assert.ok(s.campaignReserve.personnel>0);if(s.stronghold==='artilleryBastion')assert.ok(guns.some(o=>o.type==='mortarNest'))}
+ assert.equal(families.size,3);const site=g.world.sites.get('arsenal-0'),gun=g.world.objects.get(site.gunIds[0]),relay=g.world.objects.get(gun.relayId);g.damageObject(relay,999,g.king);const reserve=site.strength,loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize())));assert.equal(loaded.world.objects.get(relay.id).hp,0);assert.equal(loaded.world.objects.get(gun.id).powered,false);assert.equal(loaded.world.sites.get(site.id).strength,reserve);
+});

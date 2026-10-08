@@ -36,7 +36,7 @@ npm run test:apes:browser
   replacing it. Routes contain up to 16 steps; Backspace undoes a draft
   point. Each ape must finish its own waypoint, while 85% arrival releases
   the main group. Blocked steps offer retry and skip. `E` immediately charges.
-  Escape returns to King control without cancelling issued orders. Selected
+  `O` or the visible Cancel button discards unissued waypoints and returns to King control. Issued orders continue; Escape always pauses. Selected
   army taps never strike with the King. Drag to pan; wheel or pinch to zoom.
 - **Small command dock:** PC commands have a 20px canvas picture, a visible
   key and a 30×34px button. Touch buttons are at least 44px tall; expand the
@@ -635,3 +635,39 @@ views with 40–50+ completed homes and physical defenses:
 node game/apes-together-strong/tests/living-kingdom-browser.cjs
 node game/apes-together-strong/tests/blast-browser.cjs
 ```
+
+
+## Arsenal and control polish
+
+- Right-click a final point to dispatch the drafted route, ending in an area
+  attack. Earlier waypoints are mandatory. The final group attacks visible
+  troops, vehicles and enemy structures within 190 world units, and stays near
+  the point when clear. `P` / Finish with attack offers the same action on touch.
+  An area attack is terminal; Go replaces it with a new route, while Append
+  reports why it cannot add stops after a terminal attack and preserves drafts.
+- Route action buttons keep their DOM identity during simulation updates.
+  Held keys cannot toggle species or duplicate orders; pointer capture, drag
+  thresholds, multi-touch suppression, off-canvas release checks and blur
+  cleanup prevent stale gestures. Browser modifier shortcuts stay available.
+- Six species have distinct gait timing and limb poses. Gibbons bound with
+  raised balancing arms; gorillas/chimps use crouched knuckle strides; orangutans
+  take slow long-arm steps; capuchin tails counterbalance quick steps; mandrills
+  use a compact quadrupedal gait. Climbers alternate their reaching hands.
+  Sprite atlases use the same clocks as live poses; reduced-motion stays still.
+- Four finite-budget infantry roles join the late military roster: breacher
+  (450 population), forward observer (550), volley grenadier (700), rotary
+  gunner (850). Existing squads, perception and reinforcement stocks still apply.
+- New tank variants: Twinfang (550, three 68-damage shells), Thunderback (750,
+  three staggered 90-damage mortar zones), Cyclone (900, a 12-damage rotary sweep).
+  Each uses actual chassis inventory and weighted deployment budgets. Warnings
+  commit to fixed positions; destroyed weapons and overrun cancel pending bursts.
+- Newly generated military blueprints include Gatling Redoubts, Artillery
+  Bastions and Iron Citadels. Gatling nests have limited frontal arcs, a one-second
+  spin-up, a 1.2-second burst and cooldown. Mortar nests have a close-range blind
+  spot. Destroy the linked power relay to interrupt and disable every connected
+  emplacement. Existing explored sites, health, finite reserves and cooldowns
+  survive loading without replenishment.
+- `arsenal.js` contains weapon/blueprint rules; `arsenal-render.js` contains
+  canvas art and warning cones. Perception shares the existing work budget,
+  nearby nests cap at 12, rotary bullets cap at 320 and dormant bursts cannot
+  accumulate delayed shots. Added behavior tests and real desktop/touch checks.

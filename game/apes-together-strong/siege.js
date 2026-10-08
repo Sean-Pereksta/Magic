@@ -5,7 +5,7 @@ const SPECIES=['gorilla','orangutan','chimpanzee','gibbon','capuchin','mandrill'
 const HP={gorilla:260,orangutan:205,chimpanzee:120,gibbon:95,capuchin:90,mandrill:140};
 const SPEED={gorilla:76,orangutan:88,chimpanzee:96,gibbon:112,capuchin:105,mandrill:96};
 const LIGHT=new Set(['gibbon','capuchin','chimpanzee']),FOLLOW=new Set(['follow','charge','hold']);
-const TYPES=new Set(['move','attack','sabotage','climb','charge','shield','hold','defend','follow','regroup','retreat','rally','assault']);
+const TYPES=new Set(['move','attack','sabotage','climb','charge','shield','hold','defend','follow','regroup','retreat','rally','assault','attackArea']);
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const point=p=>({x:p.x,y:p.y}),finite=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
 const altitude=a=>a?.elevation||a?.wallClimbHeight||0;
@@ -69,26 +69,29 @@ class Siege {
  select(species,add=false){this.unitIds=null;const ids=(Array.isArray(species)?species:[species]).filter(s=>SPECIES.includes(s));this.selected=add?[...new Set([...this.selected,...ids])]:ids;return this.selected}
  selectUnits(ids,add=false){this.unitIds=[...new Set([...(add?this.unitIds||[]:[]),...ids])].filter(id=>this.eligible(this.g.apesById.get(id)||{}));this.selected=[...new Set(this.unitIds.map(id=>this.g.apesById.get(id).species))];return this.selected}
  selectedMembers(){return this.members(this.selected.length?this.selected:SPECIES).filter(a=>!this.unitIds||this.unitIds.includes(a.id))}
- clearActor(a){delete a.armyOrder;delete a.siegeRoute;delete a._siegeProgress;delete a._orderStall;if(a.siegeTransition)this.detach(a);}
+ clearActor(a){delete a.areaTarget;delete a._areaThink;delete a.armyOrder;delete a.siegeRoute;delete a._siegeProgress;delete a._orderStall;if(a.siegeTransition)this.detach(a);}
  statusOf(species){const group=this.groups[species];return group?.blocked?'blocked':group?.orders.length?'active':'idle'}
  makeOrder(p,kind){
   if(!finite(p))return null;const g=this.g;
   const visible=o=>this.known(o),objects=g.world.getObjects(p.x,p.y,110).filter(o=>!o.dead&&o.hp>0&&visible(o)&&!['tree','rock','berry','stairs'].includes(o.type));
   let target=objects.filter(o=>rectHit(p,p,o,12)!==null).sort((a,b)=>dist(a,p)-dist(b,p))[0];
   const enemy=g.humanGrid.nearest(p.x,p.y,24,1,h=>this.visibleTarget(h))[0]||g.vehicleGrid.nearest(p.x,p.y,45,1,h=>this.visibleTarget(h))[0];if(enemy)target=enemy;
-  if(kind==='move')target=null;
+  if(kind==='move'||kind==='attackArea')target=null;
   if(kind==='climb')target=g.world.getObjects(p.x,p.y,100).filter(o=>o.climbAccess&&this.known(o)).sort((a,b)=>dist(a,p)-dist(b,p))[0];
   if(target){const type=kind|| (target.type==='gateControl'?'sabotage':target.climbAccess?'climb':'attack');return{id:'order-'+ ++this.serial,type,targetId:target.id,targetKind:target.id.startsWith('human')?'human':target.id.startsWith('vehicle')?'vehicle':'object',x:target.x,y:target.y};}
   const site=g.world.getSites(p.x,p.y,100).find(s=>s.military&&!s.cleared&&Math.abs(p.x-s.x)<(s.extentX||s.radius)&&Math.abs(p.y-s.y)<(s.extentY||s.radius));
   if(!kind&&site&&site.known){const gate=(site.gates||site.objects).map(id=>g.world.objects.get(id)).filter(o=>o?.type==='gate'&&!o.dead&&o.solid&&this.known(o)).sort((a,b)=>dist(a,this.center())-dist(b,this.center()))[0];if(gate)return{id:'order-'+ ++this.serial,type:'assault',targetId:gate.id,targetKind:'object',siteId:site.id,x:gate.x,y:gate.y}}
+  if(kind==='attackArea')return{id:'order-'+ ++this.serial,type:'attackArea',...point(p)};
   const q=g.navigation.blocked(p.x,p.y,10,'ape')?g.findOpen(p.x,p.y):p;
   if(g.navigation.blocked(q.x,q.y,10,'ape')){this.status='No reachable staging point';return null}
   return{id:'order-'+ ++this.serial,type:kind||'move',...point(q)};
  }
  center(species=this.selected){const list=this.members(species.length?species:SPECIES).filter(a=>!this.unitIds||this.unitIds.includes(a.id));return list.length?{x:list.reduce((n,a)=>n+a.x,0)/list.length,y:list.reduce((n,a)=>n+a.y,0)/list.length}:point(this.g.king)}
  draft(p,kind){const order=this.makeOrder(p,kind);if(!order)return false;const ids=this.selected.length?this.selected:SPECIES;if(ids.some(s=>(this.drafts[s]?.length||0)+(this.groups[s]?.orders.length||0)>=16)){this.status='Route full (16)';return false}for(const s of ids)(this.drafts[s]||(this.drafts[s]=[])).push({...order});return true}
- dispatch(append=false){let count=0;const ids=this.selected.length?this.selected:SPECIES,shield=ids.flatMap(s=>this.drafts[s]||[]).find(o=>o.type==='shield');for(const s of ids){const orders=this.drafts[s]||[];if(!orders.length)continue;if(this.issue([s],orders,append))count++;this.drafts[s]=[]}if(shield)this.formation(ids,shield);return count>0}
+ dispatch(append=false){let count=0;const ids=this.selected.length?this.selected:SPECIES,shield=ids.flatMap(s=>this.drafts[s]||[]).find(o=>o.type==='shield');for(const s of ids){const orders=this.drafts[s]||[];if(!orders.length)continue;if(this.issue([s],orders,append)){count++;this.drafts[s]=[]}}if(shield)this.formation(ids,shield);return count>0}
  issue(species,orders,append=false){
+  if(orders.some((o,i)=>o.type==='attackArea'&&i!==orders.length-1)){this.status='Attack area must be the final stop';return false}
+  if(append&&species.some(id=>this.groups[id]?.orders.some(o=>o.type==='attackArea'))){this.status='Final attack already set; Go starts a new route';return false}
   if(this.g.ended||!orders.length||orders.some(o=>!TYPES.has(o.type)||!finite(o)))return false;
   for(const s of species){if(!SPECIES.includes(s))continue;const old=this.groups[s];if((append?old?.orders.length||0:0)+orders.length>16){this.status='Route full (16)';return false}}
   for(const s of species){if(!SPECIES.includes(s))continue;const old=this.groups[s],list=append&&old?old.members.map(id=>this.g.apesById.get(id)).filter(a=>a&&this.eligible(a)):this.members([s]).filter(a=>!this.unitIds||this.unitIds.includes(a.id));if(!list.length)continue;
@@ -191,6 +194,17 @@ class Siege {
   if(!this.clearRay(a,t,{ignore:kind==='object'?t.id:null}))return false;a.dir=Math.atan2(t.y-a.y,t.x-a.x);
   if(a.attackCD<=0){a.attackCD=.75;g.animateAttack(a,t,kind==='object'?'overhead':'slam');let damage=g.apeDamage(a,kind==='vehicle'?24:20);if(a.species==='gorilla')damage*=1.5;else if(a.species==='orangutan')damage*=1.25;else if(a.species==='capuchin')damage*=.5;if(kind==='object')g.damageObject(t,damage,a);else g.hurt(t,damage,a)}return true;
  }
+ attackArea(a,o,dt){
+  const g=this.g;if(!a.armyOrder.areaArrived){if(this.followRoute(a,o,dt)){a.armyOrder.areaArrived=true;delete a.siegeRoute}return true}
+  if(g.time>=(a._areaThink||0)){a._areaThink=g.time+.35;let target=g.humanGrid.nearest(o.x,o.y,190,8,h=>h.hp>0&&this.visibleTarget(h))[0],kind='human';
+   if(!target){target=g.vehicleGrid.nearest(o.x,o.y,190,4,v=>v.hp>0&&this.visibleTarget(v))[0];kind='vehicle'}
+   if(!target){target=g.world.getObjects(o.x,o.y,190).filter(t=>!t.dead&&t.hp>0&&this.known(t)&&!['tree','rock','berry','stairs','apeBuilding'].includes(t.type)&&t.type!=='gateControl'&&!(t.type==='gate'&&!t.solid)&&dist(t,o)<190).sort((x,y)=>dist(a,x)-dist(a,y))[0];kind='object'}
+   a.areaTarget=target?{id:target.id,kind}:null;
+  }
+  const ref=a.areaTarget,target=ref?this.resolve({targetId:ref.id,targetKind:ref.kind}):null;
+  if(target?.hp>0&&dist(target,o)<=210){if(!this.attack(a,target,ref.kind,dt))this.followRoute(a,{id:o.id+':'+target.id,type:'attack',targetId:target.id,targetKind:ref.kind,...point(target)},dt)}
+  else{a.areaTarget=null;if(dist(a,o)>70)this.followRoute(a,o,dt);else a.moving=false}return true;
+ }
  updateApe(a,dt){
   this.releaseThrow(a);this.updateRally(a);if(this.transition(a,dt))return true;
   if(a.onWallId&&a.armyOrder){const w=this.g.world.objects.get(a.onWallId);if(!w||w.dead)this.detach(a)}
@@ -199,6 +213,7 @@ class Siege {
   if(group.blocked||a.armyOrder.index>(group.readyIndex||0)){a.moving=false;return true}let o=group.orders[a.armyOrder.index];if(!o){a.state='hold';return true}
   if(o.type==='rally'){const prior=this.selected;this.selected=[a.species];if(a===group.members.map(id=>this.g.apesById.get(id)).find(p=>p?.hp>0)){if(!this.rally()){group.blocked='rally';this.selected=prior;return true}}this.selected=prior;this.advance(a);return true}
   if(o.type==='follow'){const k=this.g.king;this.g.move(a,k.x+a.offsetX-a.x,k.y+a.offsetY-a.y,a.speed,dt);return true}
+  if(o.type==='attackArea')return this.attackArea(a,o,dt);
   let target=o.targetId?this.resolve(o):null;
   if(o.targetId&&(!target||target.hp<=0||target.type==='gate'&&!target.solid)){if(o.type==='assault'&&target){const s=this.g.world.sites.get(o.siteId);const t=this.g.humanGrid.nearest(s.x,s.y,s.radius,6,h=>h.siteId===s.id&&this.visibleTarget(h))[0];if(t){o={...o,targetId:t.id,targetKind:'human',...point(t)};target=t}else{this.advance(a);return true}}else{this.advance(a);return true}}
   if(target&&(o.targetKind==='human'||o.targetKind==='vehicle')){if(this.visibleTarget(target)){o.x=target.x;o.y=target.y;a._lostTargetAt=this.g.time}else if(this.g.time-(a._lostTargetAt??group.started)>5){group.blocked='target';return true}else target=null}
