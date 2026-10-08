@@ -9,6 +9,8 @@ async function fresh(page){await page.evaluate(()=>{
  window.inputCommands=[];if(!g._inputOriginal){g._inputOriginal=g.command;g.command=function(cmd,...args){const result=this._inputOriginal(cmd,...args);if(['call','recall','recallField','recallAll'].includes(cmd)&&result)inputCommands.push({...this.lastHordeCommand});return result}}
  });}
 async function commands(page){return page.evaluate(()=>inputCommands.map(c=>({cmd:c.cmd,count:c.count,mobilized:c.mobilized})))}
+async function nearbyResidents(page){await page.evaluate(()=>{const g=ATS.game;for(const [i,a] of g.apes.filter(a=>a.settlementId).slice(0,2).entries()){a.x=200+i*40;a.y=0;a.job='builder'}g.apeGrid.rebuild([g.king,...g.apes])})}
+async function checkRecruitment(page){assert.deepEqual(await commands(page),[{cmd:'call',count:7,mobilized:2}]);assert.deepEqual(await page.evaluate(()=>({residents:ATS.game.apes.filter(a=>a.settlementId).length,mobilized:ATS.game.apes.filter(a=>a.previousSettlementAssignment&&a.state==='follow'&&!a.job).length,holding:ATS.game.apes.filter(a=>a.state==='hold').length})),{residents:3,mobilized:2,holding:10})}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--disable-dev-shm-usage']}),errors=[];let sourceHtml;
  try{
@@ -19,7 +21,7 @@ async function commands(page){return page.evaluate(()=>inputCommands.map(c=>({cm
    await page.route('https://ats-input.test/**',route=>route.fulfill({contentType:'text/html',body:html}));await page.goto('https://ats-input.test/');
   }else await page.goto(pathToFileURL(path.resolve(root,'../apes-together-strong.html')).href);
   await page.waitForFunction(()=>ATSVisualAssets.status==='ready');await page.locator('#seedInput').fill('HORDE-INPUT');await page.locator('#newRun').click();await page.waitForFunction(()=>ATS.screen==='play'&&ATS.game.time>.1);
-  await fresh(page);await page.keyboard.press('q');assert.deepEqual(await commands(page),[{cmd:'call',count:5,mobilized:0}]);
+  await fresh(page);await nearbyResidents(page);await page.keyboard.press('q');await checkRecruitment(page);
   await fresh(page);await page.keyboard.press('r');assert.deepEqual(await commands(page),[{cmd:'recall',count:5,mobilized:0}]);
   await fresh(page);await page.keyboard.down('r');await page.waitForFunction(()=>document.getElementById('commandHoldProgress').value>0,undefined,{timeout:5000});assert.equal(await page.locator('#commandHoldIndicator').isVisible(),true);assert.ok(await page.locator('#commandHoldProgress').evaluate(el=>el.value)>0,JSON.stringify(await page.evaluate(()=>({screen:ATS.screen,hidden:document.hidden,now:performance.now(),error:document.getElementById('errorMessage').textContent,time:ATS.game.time,progress:document.getElementById('commandHoldProgress').value}))));await page.keyboard.down('r');await page.waitForTimeout(650);await page.keyboard.up('r');assert.deepEqual(await commands(page),[{cmd:'recallField',count:10,mobilized:0}]);
   await fresh(page);await page.keyboard.press('t');assert.deepEqual(await commands(page),[{cmd:'recallField',count:10,mobilized:0}]);
@@ -31,6 +33,7 @@ async function commands(page){return page.evaluate(()=>inputCommands.map(c=>({cm
   if(process.argv.includes('--source')){await mobile.route('https://ats-input.test/**',route=>route.fulfill({contentType:'text/html',body:sourceHtml}));await mobile.goto('https://ats-input.test/')}else await mobile.goto(pathToFileURL(path.resolve(root,'../apes-together-strong.html')).href);
   await mobile.waitForFunction(()=>window.ATS?.screen==='menu');await mobile.locator('#newRun').click();await mobile.waitForFunction(()=>ATS.game?.time>.1);await mobile.locator('#armyDock .army-expand').tap();
   const cdp=await context.newCDPSession(mobile),touch=async(key,hold)=>{const rect=await mobile.locator('[data-army-command="'+key+'"]').boundingBox();assert.ok(rect);const point={x:rect.x+rect.width/2,y:rect.y+rect.height/2};await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await mobile.waitForTimeout(hold);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await mobile.waitForTimeout(80)};
+  await fresh(mobile);await nearbyResidents(mobile);await touch('call',80);await checkRecruitment(mobile);
   await fresh(mobile);await touch('recall',80);assert.deepEqual(await commands(mobile),[{cmd:'recall',count:5,mobilized:0}]);
   await fresh(mobile);await touch('recall',700);assert.deepEqual(await commands(mobile),[{cmd:'recallField',count:10,mobilized:0}]);
   await fresh(mobile);await touch('recallField',90);assert.deepEqual(await commands(mobile),[{cmd:'recallField',count:10,mobilized:0}]);

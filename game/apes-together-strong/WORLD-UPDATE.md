@@ -20,7 +20,7 @@ This continuation replaces the remaining vehicle/aircraft artwork, expands the s
 |---|---|
 | E tap | Directional charge against nearby humans, vehicles and hostile structures |
 | E hold 280 ms | Directional charge against humans and vehicles, including active or parked tanks; ignore structures |
-| Q | Recruit eligible nearby unowned, free apes only |
+| Q | Call nearby wild, idle, and settled apes into your horde; preserve active field orders |
 | R tap | Recall nearby recruited field apes |
 | R hold 600 ms | Recall all recruited field apes |
 | T tap | Recall all recruited field apes |

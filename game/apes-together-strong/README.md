@@ -5,7 +5,7 @@
 Vehicles and aircraft now use original directional artwork; settlements have
 75 authored construction frames across 15 building/development strips. Wider
 wood, stone, military and natural crossings share their geometry with navigation.
-Q recruits, R recalls nearby/field apes, and T recalls field/all apes, with 600 ms
+Q recruits nearby wild, idle, and settled apes, R recalls nearby/field apes, and T recalls field/all apes, with 600 ms
 holds and matching touch controls. See [WORLD-UPDATE.md](WORLD-UPDATE.md) for
 implementation, tests, measured performance and the remaining performance limits.
 Apes and soldiers carry illustrated weapons, shields, tools and supplies with
@@ -377,7 +377,7 @@ hardware timing is diagnostic and never a universal frame-rate guarantee.
 ## Controls and persistence
 
 WASD/arrows move; Shift sprints; Ctrl sneaks; click/Space attacks. Q recruits
-nearby unrecruited apes. R taps recall nearby field apes; holding R for 600 ms
+nearby wild, idle, and settled apes within 340 world units; active field orders stay intact. R taps recall nearby field apes; holding R for 600 ms
 recalls every field ape. T taps recall every field ape; holding T for 600 ms
 also mobilizes settlement residents and defenders. E charges toward the pointer,
 X spreads the charge, F holds, Z settles nearby followers, Shift+Z settles all, and C
