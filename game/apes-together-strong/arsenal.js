@@ -46,7 +46,7 @@ F.rotaryRound=function(owner,point,angle,damage=11){
  // cover farther along the ray is still handled by updateBullets.
  const x=owner.x+Math.cos(angle)*muzzle,y=owner.y+Math.sin(angle)*muzzle;
  g.bullets.push(g.bulletPool.take({x,y,px:x,py:y,z,pz:z,vx:Math.cos(angle)*610,vy:Math.sin(angle)*610,vz:((point.elevation||0)+18-z)/Math.max(.1,range/610),damage:damage*difficulty,life:Math.min(1.3,(range+70)/610),owner:owner.id}));
- owner.gunFlashUntil=g.time+.08;g.effect('muzzle',x,y,{life:.075,color:'#ffe1a1'});if(g.time>=(owner.gunSoundAt||0)){owner.gunSoundAt=g.time+.2;g.sound('gun',.42,owner.x)}return true;
+ owner.gunFlashUntil=g.time+.08;g.effect('muzzle',x,y,{life:.075,color:'#ffe1a1',dir:angle,z});if(g.time>=(owner.gunSoundAt||0)){owner.gunSoundAt=g.time+.2;g.sound('gun',.42,owner.x)}return true;
 };
 F.startRotary=function(owner,target,{warmup=.85,duration=1,damage=11,interval=.09,sweep=.12}={}){
  const g=this.game;if(owner.firePlan||g.time<(owner.readyAt||0))return false;

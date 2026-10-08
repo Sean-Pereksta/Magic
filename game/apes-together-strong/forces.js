@@ -386,7 +386,7 @@ class Forces {
   const g=this.game,angle=Math.atan2(target.y-v.y,target.x-v.x),fromX=v.x+Math.cos(angle)*(v.vehicleClass==='tank'?53:37),fromY=v.y+Math.sin(angle)*(v.vehicleClass==='tank'?53:37),travel=Math.max(.18,Math.hypot(target.x-fromX,target.y-fromY)/570);
   this.hazards.push({id:'shell-'+g.nextId++,type:'shell',x:fromX,y:fromY,fromX,fromY,targetX:target.x,targetY:target.y,start:g.time,life:travel,duration:travel,speed:570,radius:spec.cannonRadius,damage:spec.cannonDamage,owner:v.id});
   if(v.vehicleClass==='ifv'){v.cannonBurst=Math.max(0,(v.cannonBurst||1)-1);if(!v.cannonBurst)v.cannonBurstPoint=null}
-  v.cannonFlash=.3;v.cannonTimer=(v.vehicleClass==='ifv'&&v.cannonBurst>0?.4:spec.cannonReload)*(1+v.weaponDamage*.018);g.effect('muzzle',fromX,fromY,{life:.3,color:'#ffe9aa'});g.effect('smoke',fromX,fromY,{life:1.1,color:'#b4ac89'});g.sound(v.vehicleClass==='tank'?'cannon':'gun',v.vehicleClass==='tank'?1.4:1,v.x);g.noise(v.x,v.y,900,'cannon');if(distance(v,g.king)<800){g.hitFlash=Math.max(g.hitFlash,.16);g.cannonShake=Math.max(g.cannonShake||0,v.vehicleClass==='tank'?6:3)}
+  v.cannonFlash=.3;v.cannonTimer=(v.vehicleClass==='ifv'&&v.cannonBurst>0?.4:spec.cannonReload)*(1+v.weaponDamage*.018);g.effect('muzzle',fromX,fromY,{life:.3,color:'#ffe9aa',dir:angle,z:26});g.effect('smoke',fromX,fromY,{life:1.1,color:'#b4ac89'});g.sound(v.vehicleClass==='tank'?'cannon':'gun',v.vehicleClass==='tank'?1.4:1,v.x);g.noise(v.x,v.y,900,'cannon');if(distance(v,g.king)<800){g.hitFlash=Math.max(g.hitFlash,.16);g.cannonShake=Math.max(g.cannonShake||0,v.vehicleClass==='tank'?6:3)}
  }
  positionTank(v,target,dt){
   const g=this.game;if(v.vehicleClass!=='tank')return false;

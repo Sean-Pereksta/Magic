@@ -1,5 +1,13 @@
 # Apes Together Strong
 
+## Illustrated artwork update
+
+The playable standalone build now embeds original animated character and
+environment sprite atlases. See [VISUAL-UPDATE.md](VISUAL-UPDATE.md) for the
+implemented presentation systems, verification, performance and limits, and
+[the sprite library guide](assets/visual/README.md) for source artwork, animation
+metadata and exporting the complete game and sprite ZIPs.
+
 ## Reign progression, royal settlements and equipment
 
 The total living population across followers and settlements earns two permanent
@@ -13,7 +21,7 @@ The supplied Underpowered King plays before the first milestone, Ceremonial Tom
 plays during the royal tier, and Primal Roar plays as Warlord. All three MP3s are
 embedded in the standalone HTML. One audio element loads only the selected track;
 music remains subject to master/music volume, mute, pause and tab visibility.
-This raises the standalone download to approximately 20.2 MB, without adding
+The complete standalone build, including the new artwork, is approximately 60.7 MB, without adding
 network requests during play.
 
 Visit a living main hut and press **B** (or Build) to commission expansion:
@@ -908,7 +916,7 @@ only during play after a player gesture, pauses in menus and hidden tabs, and
 respects master mute. Settings has its own music toggle and volume slider.
 Default music gain is 22% of the 45% master volume (9.9% effective volume).
 Audio remains local; no streaming service or external asset request is needed.
-Embedding increases the standalone download to approximately 20.2 MB.
+With the illustrated artwork included, the standalone download is approximately 60.7 MB.
 
 **Tap E** issues a 13-second directional charge toward the pointer: humans,
 vehicles, occupied cells, gates, towers and other hostile structures ahead

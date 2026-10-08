@@ -706,7 +706,7 @@ class Game{
  const config={sniper:[2.8,300,1],pistol:[1.25,38,1],rifle:[.9,54,1],assault:[.32,35,1],shotgun:[1.8,22,4],machine:[.2,35,1]}[h.kind]||[1.2,38,1];h.shootTimer=config[0]/difficulty+Math.random()*.12;h.attackTimer=.14;h.animation={kind:'recoil',start:this.time,duration:.2};
  const d=dist(h,target),base=Math.atan2(target.y-h.y,target.x-h.x),error=(Math.random()-.5)*(h.kind==='sniper'?.025+d/6000:.07+d/3800)*(h.accuracyMultiplier||1);
  for(let i=0;i<config[2];i++){const angle=base+error+(i-(config[2]-1)/2)*.06;this.bullets.push(this.bulletPool.take({x:h.x+Math.cos(angle)*18,y:h.y+Math.sin(angle)*18,px:h.x,py:h.y,vx:Math.cos(angle)*550,vy:Math.sin(angle)*550,damage:config[1]*difficulty,life:h.kind==='sniper'?1.2:.7,owner:h.id,z:(h.elevation||h.wallClimbHeight||0)+30,pz:(h.elevation||h.wallClimbHeight||0)+30,vz:((target.elevation||target.wallClimbHeight||0)+18-((h.elevation||h.wallClimbHeight||0)+30))/Math.max(.05,dist(h,target)/550)}))}
- this.sound('gun',.65,h.x);this.effect('muzzle',h.x+Math.cos(base)*23,h.y+Math.sin(base)*23,{life:.1,color:'#f8da9a'});this.noise(h.x,h.y,300,'gun');
+ this.sound('gun',.65,h.x);this.effect('muzzle',h.x+Math.cos(base)*23,h.y+Math.sin(base)*23,{life:.1,color:'#f8da9a',dir:base,z:(h.elevation||0)+22});this.noise(h.x,h.y,300,'gun');
  }
  updateBullets(dt){
  for(const b of this.bullets){b.life-=dt;if(b.life<=0)continue;

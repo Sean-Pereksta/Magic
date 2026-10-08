@@ -172,9 +172,23 @@
     #prisonOperations ul { font-size:12px; line-height:1.8; padding-left:18px; }
     #championCouncil select,#championCouncil input { max-width:100%; } #campaignWeather { margin-top:16px; }
   .reign-dialog{width:min(700px,100%);text-align:center;border-color:#b69a5c;background:radial-gradient(ellipse at 50% 25%,#304235 0,#10272a 55%,#0a1c20 100%);padding:24px 42px 32px}.reign-dialog .eyebrow{margin-bottom:0}.reign-dialog h2{font-size:46px;margin:0;color:#f0d594}#coronationArt{display:block;width:100%;height:auto;max-height:300px;object-fit:contain;margin:-4px 0 0}.reign-deck{font-size:15px!important;line-height:1.65}.reign-unlocks{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;margin:20px 0}.reign-unlock{padding:12px 14px;background:#071b1e88;border-left:2px solid #bd9857;font-size:12px;color:#c6d1c6;line-height:1.65}.reign-unlock strong{display:block;color:#efca84;font-size:13px}.reign-note{font-size:11px!important;color:#9db0a5!important}.reign-dialog .primary{width:100%;margin-top:9px;min-height:48px}.reign-dialog[data-tier="2"]{border-color:#c48154;background:radial-gradient(ellipse at 50% 25%,#593b2e 0,#19282a 55%,#0a1c20 100%)}@media(max-width:650px){.reign-dialog{padding:20px}.reign-dialog h2{font-size:33px}.reign-unlocks{grid-template-columns:1fr;gap:7px;margin:12px 0}#coronationArt{max-height:185px}.reign-unlock{padding:7px 12px}.reign-deck{font-size:13px!important}}
+    .artwork-status { color:var(--gold-light); font-size:11px; letter-spacing:.08em; margin:0 0 14px; }
+    .dialog { background:radial-gradient(ellipse at top left,rgba(62,91,79,.17),transparent 65%),linear-gradient(145deg,#102c32,#08191f); border-top-color:rgba(209,188,132,.38); }
+    .hud-cluster { box-shadow:0 5px 20px #020b1166,inset 0 1px 0 #c6b87c13; }
+    .hp-track,.exposure-track { box-shadow:inset 0 1px 4px #0008; }
+    #hpFill,#exposureFill { transition:width .12s linear; }
+    .button.primary { background:linear-gradient(120deg,#e3ce95,#bca061); box-shadow:0 3px 15px #020e1655,inset 0 1px 0 #fae5b2; }
+    .button.primary:hover { background:linear-gradient(120deg,#efdcab,#d3b977); }
+    .setting-description { max-width:285px; }
+    .reduced-motion *,.reduced-motion *:before,.reduced-motion *:after { transition:none!important; animation:none!important; }
+    @media(pointer:coarse) { .icon-button { min-width:44px; min-height:44px; } }
+    #loadingScreen{position:fixed;inset:0;z-index:110;display:grid;place-items:center;background:radial-gradient(ellipse at 65% 20%,#244239,#071619 64%);color:var(--cream)}
+    .loading-card{width:min(350px,calc(100vw - 64px));text-align:center}.loading-crown{font:40px Georgia;color:var(--gold);margin-bottom:22px}.loading-card h2{font:32px/1.12 Georgia,serif;letter-spacing:-.03em;margin:0 0 28px}.loading-meta{display:flex;justify-content:space-between;gap:12px;font:11px system-ui;color:#b4c7b9;margin-top:10px;text-align:left}
+    #artworkProgress{display:block;width:100%;height:6px;border:0;border-radius:4px;overflow:hidden;background:#243d35;accent-color:#d6bf7e}#artworkProgress::-webkit-progress-bar{background:#243d35}#artworkProgress::-webkit-progress-value{background:linear-gradient(90deg,#8bb69d,#e1c480)}#artworkProgress::-moz-progress-bar{background:#d6bf7e}
 </style>
 </head>
 <body>
+  <div id="loadingScreen" role="status" aria-live="polite"><div class="loading-card"><div class="loading-crown" aria-hidden="true">♛</div><h2>THE WILD AWAITS.</h2><progress id="artworkProgress" value="0" max="1" aria-label="Loading game artwork"></progress><div class="loading-meta"><span id="loadingDetail">Preparing the forest</span><span id="loadingPercent">0%</span></div></div></div>
   <!-- CAMPAIGN_MUSIC -->
   <canvas id="gameCanvas" aria-label="Isometric forest and your ape tribe"></canvas>
 
@@ -187,11 +201,13 @@
         <div><label class="field-label" for="difficultySelect">The hunt</label><select id="difficultySelect"><option value="wanderer">Wanderer · forgiving</option><option value="survival" selected>Survival · the intended hunt</option><option value="relentless">Relentless · no mercy</option></select></div>
         <div><label class="field-label" for="seedInput">World seed</label><input id="seedInput" type="text" maxlength="40" placeholder="Leave to discover" autocomplete="off" spellcheck="false"></div>
       </div>
+      <p id="artworkStatus" role="status" class="artwork-status">Preparing the forest…</p>
       <div class="menu-actions">
         <button id="newRun" class="button primary">Enter the wild <span aria-hidden="true">→</span></button>
         <button id="continueRun" class="button" disabled>Continue your reign</button>
         <button id="howToPlay" class="button quiet">How to survive</button>
-        <button id="legacyButton" class="button quiet" style="grid-column:1/-1">Hall of crowns <span aria-hidden="true">♜</span></button>
+        <button id="legacyButton" class="button quiet">Hall of crowns <span aria-hidden="true">♜</span></button>
+        <button id="menuSettings" class="button quiet">Settings</button>
       </div>
       <div class="menu-rule"></div>
       <p class="menu-bottom"><a class="lobby-link" href="../lobby/lobby.html">← Game library</a><br>THE FOREST IS YOUR KINGDOM. THE DARKNESS IS YOUR ALLY.<br>Longest legacy <strong id="highScore">0</strong> · Headphones recommended</p>
@@ -232,7 +248,7 @@
     <label class="setting-row" for="volumeInput"><span><span class="setting-name">Sound volume</span><span class="setting-description">Keep an ear out for the hunt.</span></span><input id="volumeInput" type="range" min="0" max="1" step="0.05" value="0.55"></label>
     <label class="setting-row" for="musicToggle"><span><span class="setting-name">Background music</span><span class="setting-description">Underpowered King → Ceremonial Tom → Primal Roar. Changes with your reign; loops only while playing.</span></span><input id="musicToggle" type="checkbox" checked></label>
     <label class="setting-row" for="musicVolumeInput"><span><span class="setting-name">Music volume</span><span class="setting-description">A quiet backdrop beneath the sounds of battle.</span></span><input id="musicVolumeInput" type="range" min="0" max="1" step="0.01" value="0.22"></label>
-    <label class="setting-row" for="qualitySelect"><span><span class="setting-name">Visual detail</span><span class="setting-description">Lower detail helps on slower devices.</span></span><select id="qualitySelect"><option value="high">High</option><option value="low">Low</option></select></label>
+    <label class="setting-row" for="qualitySelect"><span><span class="setting-name">Visual detail</span><span class="setting-description">Adjusts motion, foliage, light and effects. Every preset keeps the full character artwork.</span></span><select id="qualitySelect"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select></label>
     <label class="setting-row" for="reducedMotion"><span><span class="setting-name">Reduced motion</span><span class="setting-description">Reduce camera shake and visual movement.</span></span><input id="reducedMotion" type="checkbox"></label>
     <div class="dialog-actions"><button id="backSettings" class="button primary">Done</button></div>
   </div></section>
