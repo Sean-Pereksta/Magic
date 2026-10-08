@@ -18,9 +18,9 @@ function colony(n=30){
 }
 function tick(g,s,n=1,workers=true){for(let i=0;i<n;i++){g.time++;g.refreshSettlements();g.colonies.tick(s);if(workers)for(const a of g.settlementMembers.get(s.id)||[]){const p=g.colonies.activityTarget(a,s);a.x=p.x;a.y=p.y}}}
 
-test('fresh camps expand gradually while legacy footprints and housing survive migration',()=>{
+test('new construction claims its ring while legacy footprints and housing survive migration',()=>{
  const {g,s}=colony(500);assert.equal(s.housing,6);assert.equal(s.huts.length,0);const before=s.radius,target=g.colonies.targetFootprint(s);assert.ok(target>=500&&target<=650);
- tick(g,s);assert.ok(s.radius>before&&s.radius<before+4);assert.ok(s.radius<target);const radius=s.radius;g.refreshSettlements();assert.equal(s.radius,radius,'population refresh cannot claim the whole region');
+ tick(g,s);assert.ok(s.radius>before&&s.radius<=target);assert.ok(s.radius<target);const radius=s.radius;g.refreshSettlements();assert.equal(s.radius,radius,'population refresh cannot claim the whole region');
  for(const [pop,expected]of [[10,100],[50,180],[100,250],[200,340],[400,450],[600,550],[1000,650]]){s.population=pop;s.level=1;s.structures=[];assert.equal(g.colonies.targetFootprint(s),expected)}
  const legacy={id:'old',name:'Old home',x:1200,y:0,population:24,level:3,economyVersion:2,housing:54,wood:19,food:37,suitability:s.suitability};
  g.colonies.init(legacy);assert.equal(legacy.housing,54);assert.equal(legacy.huts.length,4);assert.equal(legacy.food,37);assert.equal(legacy.wood,19);g.colonies.damageHut(legacy,legacy.huts[0],100);g.colonies.init(legacy);assert.equal(legacy.huts[0].hp,0);assert.equal(legacy.housing,42);

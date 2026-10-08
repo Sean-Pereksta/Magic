@@ -15,9 +15,9 @@ function shoot(g,s,tower,target){crew(g,s,tower);tower.shotAt=0;tower.acquireAt=
 function fly(g,s,seconds){for(let i=0;i<Math.ceil(seconds*60);i++){g.time+=1/60;g.colonies.updateDefenses(1/60)}}
 
 test('catalog, local lodge access and scarce supplies reject orders without mutations',()=>{
- const {g,s}=colony(18),catalog=g.colonies.catalog(s);assert.equal(catalog.length,16);assert.ok(catalog.every(c=>c.description&&c.cost&&c.totalWork>0&&c.limit>0));assert.equal(catalog.find(c=>c.kind==='spearTower').unlocked,false);assert.equal(g.colonies.commission(s.id,'spearTower').ok,false);assert.equal(s.projects.length,0);
+ const {g,s}=colony(18),catalog=g.colonies.catalog(s);assert.equal(catalog.length,16);assert.ok(catalog.every(c=>c.description&&c.cost&&c.totalWork>0&&c.limit>0));assert.equal(catalog.find(c=>c.kind==='spearTower').unlocked,true);assert.equal(catalog.find(c=>c.kind==='spearTower').available,true);assert.equal(s.projects.length,0);
  g.king.x=91;assert.equal(g.colonies.lodgeAt(g.king),null);assert.match(g.colonies.commission(s.id,'hut').reason,/Visit/);g.king.x=90;assert.equal(g.colonies.lodgeAt(g.king),s);g.king.x=0;s.wood=0;s.food=0;const before=JSON.stringify(s.commissions);assert.match(g.colonies.commission(s.id,'hut').reason,/timber/);assert.equal(JSON.stringify(s.commissions),before);assert.equal(g.colonies.commission(s.id,'unknown').ok,false);
- s.wood=100;g.world.terrain=()=>({water:true});const wood=s.wood;assert.equal(g.colonies.commission(s.id,'hut').ok,false);assert.equal(s.wood,wood);assert.equal(s.projects.length,0,'invalid terrain spends no supplies and queues no phantom job');
+ s.wood=100;g.world.settlementPlot=()=>({valid:false,water:true,trees:[],blocked:[]});const wood=s.wood;assert.equal(g.colonies.commission(s.id,'hut').ok,true);assert.equal(s.wood,wood-8);assert.equal(s.projects.length,1);assert.equal(s.projects[0].awaitingPlot,true);assert.equal(s.huts.length,0,'searching for land does not create a phantom hut');
 });
 
 test('commissions deduct once, require an arriving crew and create staged real facilities',()=>{
@@ -26,7 +26,7 @@ test('commissions deduct once, require an arriving crew and create staged real f
 });
 
 test('attacks pause unfinished commissions and work resumes after the attack',()=>{
- const {g,s}=colony(),result=g.colonies.commission(s.id,'training'),p=s.projects.find(p=>p.id===result.projectId);advance(g,s,5);const before=p.work,wood=s.wood,raider=g.makeHuman(0,0,null);raider.state='combat';g.humanGrid.rebuild(g.humans);advance(g,s,15);assert.equal(s.attack,true);assert.equal(p.work,before);assert.equal(s.wood,wood);assert.equal(s.facilities.length,0);assert.equal(g.colonies.commission(s.id,'hut').ok,false);
+ const {g,s}=colony(),result=g.colonies.commission(s.id,'training'),p=s.projects.find(p=>p.id===result.projectId);advance(g,s,5);const before=p.work,wood=s.wood,raider=g.makeHuman(0,0,null);raider.state='combat';g.humanGrid.rebuild(g.humans);advance(g,s,15);assert.equal(s.attack,true);assert.equal(p.work,before);assert.equal(s.wood,wood);assert.equal(s.facilities.length,0);assert.equal(g.colonies.commission(s.id,'hut').ok,true);
  raider.hp=0;g.humanGrid.rebuild(g.humans);advance(g,s,100);assert.ok(s.facilities.some(f=>f.kind==='training'));assert.equal(s.commissions[0].status,'complete');
 });
 
@@ -48,8 +48,8 @@ test('training requires completed facilities, physical adult practice and finite
  s.food=100;g.colonies.train(s);assert.equal(a.trainingLevel,1);assert.equal(a.hp,wounded,'a strength upgrade cannot heal accumulated wounds');const after=s.food;g.colonies.train(s);assert.equal(s.food,after,'the bonus is not repeatedly charged');for(let i=0;i<400;i++)g.colonies.train(s);assert.equal(a.trainingLevel,3);const capFood=s.food;for(let i=0;i<200;i++)g.colonies.train(s);assert.equal(a.trainingLevel,3);assert.equal(s.food,capFood);assert.equal(g.colonies.trainingBonus(a).maxHp,36);assert.equal(g.colonies.trainingBonus(a).damageMultiplier,1.24);
 });
 
-test('population scales available facilities and palisade length without instant land claims',()=>{
- const {g,s}=colony(40),small=g.colonies.catalog(s);s.population=1000;const large=g.colonies.catalog(s),before=s.developedRadius;assert.ok(large.find(c=>c.kind==='spearTower').limit>small.find(c=>c.kind==='spearTower').limit);assert.equal(large.find(c=>c.kind==='spearTower').limit,14);assert.equal(large.find(c=>c.kind==='training').limit,6);assert.equal(g.colonies.commissioningSlots(s).limit,12);g.colonies.expand(s);assert.ok(s.developedRadius>before&&s.developedRadius<before+4);assert.ok(s.targetRadius<=650);
+test('building counts are unlimited while population still scales palisade strength',()=>{
+ const {g,s}=colony(40),small=g.colonies.catalog(s);s.population=1000;const large=g.colonies.catalog(s),before=s.developedRadius;assert.equal(large.find(c=>c.kind==='spearTower').limit,small.find(c=>c.kind==='spearTower').limit);assert.equal(large.find(c=>c.kind==='spearTower').limit,Infinity);assert.equal(large.find(c=>c.kind==='training').limit,Infinity);assert.equal(g.colonies.commissioningSlots(s).limit,Infinity);g.colonies.expand(s);assert.ok(s.developedRadius>before&&s.developedRadius<before+4);assert.ok(s.targetRadius<=650);
  const result=g.colonies.commission(s.id,'defense'),p=s.projects.find(p=>p.id===result.projectId);assert.equal(result.ok,true);p.work=p.totalWork;g.colonies.complete(s,p);const b=s.barriers[0];assert.ok(b.width>=120);const angle=Math.atan2(b.y-s.y,b.x-s.x);assert.ok(s.entrances.every(e=>Math.abs(Math.atan2(Math.sin(angle-e.angle),Math.cos(angle-e.angle)))>=.19));
 });
 
@@ -59,7 +59,7 @@ test('unfinished paid work, wounded facilities, practice and flying spears persi
 });
 
 test('commission queues, dense training and defense physics have explicit shared work limits',()=>{
- const {g,s}=colony(1000);s.wood=5000;s.food=5000;s.developedRadius=s.radius=650;g.colonies.layout(s);for(let i=0;i<12;i++){const kinds=['spearTower','training','defense','hut','garden','store','workshop'],kind=kinds[i%kinds.length],result=g.colonies.commission(s.id,kind);assert.equal(result.ok,true,result.reason)}assert.equal(g.colonies.commissioningSlots(s).active,12);assert.match(g.colonies.commission(s.id,'garden').reason,/queue is full/);advance(g,s,2);assert.ok(s.activeConstruction<=6);assert.ok(s.projects.filter(p=>!p.waiting&&p.kind!=='lumber').length<=6);
+ const {g,s}=colony(1000);s.wood=5000;s.food=5000;s.developedRadius=s.radius=650;g.colonies.layout(s);for(let i=0;i<12;i++){const kinds=['spearTower','training','defense','hut','garden','store','workshop'],kind=kinds[i%kinds.length],result=g.colonies.commission(s.id,kind);assert.equal(result.ok,true,result.reason)}assert.equal(g.colonies.commissioningSlots(s).active,12);assert.equal(g.colonies.commission(s.id,'garden').ok,true);advance(g,s,2);assert.ok(s.activeConstruction<=6);assert.ok(s.projects.filter(p=>!p.waiting&&p.kind!=='lumber').length<=6);
  s.facilities=[];for(let i=0;i<14;i++){const a=g.apes[i];Object.assign(a,{x:i*8,y:0});s.facilities.push({id:'tower-'+i,kind:'spearTower',x:i*8,y:0,hp:220,stage:4,station:{x:i*8,y:0},staffedBy:a.id,shotAt:0})}for(let i=0;i<100;i++)g.makeHuman(180+i%10,Math.floor(i/10),null);g.syncIndexes();g.humanGrid.rebuild(g.humans);g.colonies._defenseRosterAt=0;g.colonies.updateDefenses(1/60);assert.ok(s.spears.length<=32);for(let i=0;i<100;i++){g.time+=1/60;g.colonies.updateDefenses(1/60);const c=g.colonies.defenseCounters;assert.ok(c.towerChecks<=16&&c.projectiles<=32&&c.losTests<=32&&c.collisionChecks<=32*24)}
 });
 
