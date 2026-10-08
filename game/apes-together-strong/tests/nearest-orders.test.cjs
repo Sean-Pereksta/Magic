@@ -48,7 +48,35 @@ test('saved directional charges retain their heading and destination after loadi
  grids(loaded);loaded.updateApe(copy,1/30);assert.ok(copy.y>0);
 });
 test('commands affect selected travelers only and leave villagers and unselected divisions alone',()=>{const {g,a}=arena(),b=g.makeApe(0,50,'follow'),resident=g.makeApe(0,70,'settled','home');b.species='gibbon';g.siege.balance(b,true);g.champions.veteran(b);g.champions.assign('climbers',b.id,[b.id]);g.siege.selectUnits([a.id]);grids(g);g.command('nearestTarget');assert.equal(a.nearestOrder.kind,'all');assert.equal(b.nearestOrder,undefined);assert.equal(resident.nearestOrder,undefined);assert.equal(g.champions.divisions.climbers.suspended,false);assert.ok(g.champions.members.has(b.id))});
-test('nearest orders retarget dead humans, expire after thirteen seconds, and yield to recall',()=>{const {g,a}=arena(),first=g.makeHuman(25,0,null),next=g.makeHuman(55,0,null);grids(g);g.command('nearestHuman');step(g);first.hp=0;step(g,10);assert.equal(a._nearestTarget.id,next.id);g.time=14;step(g);assert.equal(a.nearestOrder,undefined);assert.equal(a.state,'hold');g.commandCD=0;g.command('nearestTarget');assert.ok(a.nearestOrder);g.commandCD=0;g.siege.selected=[];g.command('recall');assert.equal(a.nearestOrder,undefined);assert.equal(a.state,'follow')});
+test('nearest orders retarget dead humans, expire after thirteen seconds, and yield to recall',()=>{const {g,a}=arena(),first=g.makeHuman(25,0,null),next=g.makeHuman(55,0,null);grids(g);g.command('nearestHuman');step(g);first.hp=0;step(g,10);assert.equal(a._nearestTarget.id,next.id);g.time=14;step(g);assert.equal(a.nearestOrder,undefined);assert.equal(a.state,'hold');g.commandCD=0;g.command('nearestTarget');assert.ok(a.nearestOrder);g.commandCD=0;g.siege.selected=[];g.command('recallField');assert.equal(a.nearestOrder,undefined);assert.equal(a.state,'follow')});
 test('active orders survive save/load with original expiry and capuchins preserve exact target choice',()=>{const {c,g,a}=arena();a.species='capuchin';g.siege.balance(a,true);const cage=object(g,'cage',70,{count:2}),h=g.makeHuman(150,0,null);grids(g);g.command('nearestTarget');step(g);assert.equal(a._nearestTarget.id,cage.id);assert.equal(a.throwWindup.targetId,cage.id);const loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize()))),copy=loaded.apes.find(x=>x.id===a.id);assert.equal(copy.nearestOrder.until,13);assert.equal(copy.nearestOrder.kind,'all');assert.equal(h.hp,h.maxHp)});
 test('round-robin planning reaches every ape in a thousand-ape order within bounded budgets',()=>{const {g}=arena();for(let i=1;i<1000;i++)g.makeApe(i%10,Math.floor(i/10),'follow');const h=g.makeHuman(150,50,null);h.hp=h.maxHp=1e8;grids(g);g.command('nearestHuman');let highest=0;for(let frame=0;frame<100;frame++){g.time+=1/30;grids(g);g.planNearestOrders();highest=Math.max(highest,g.performance.counters.aiThinks)}assert.ok(highest<=12);assert.equal(g.apes.filter(a=>a._nearestTarget?.id===h.id).length,1000)});
 test('a hold replaces a recent tap immediately even during feedback cooldown',()=>{const {g,a}=arena(),tower=object(g,'tower',26),h=g.makeHuman(70,0,null);grids(g);assert.equal(g.nearestTargetFor(a).id,tower.id);assert.equal(g.command('nearestTarget'),true);assert.ok(g.commandCD>0);assert.equal(g.command('nearestHuman'),true);assert.equal(a.nearestOrder.kind,'human');step(g,30);assert.equal(a._nearestTarget.id,h.id);assert.equal(tower.hp,200)});
+test('nearest target scoring prefers an accessible bank over a shorter straight line across a river',()=>{
+ const {g,a}=arena();delete g.world.terrain;delete g.world.waterBlocked;
+ const river=g.world._riverInfo(944,1320);a.x=944;a.y=river.centerY-120;
+ const across=g.makeHuman(944,river.centerY+120,null),same=g.makeHuman(1204,river.centerY-80,null);
+ assert.equal(g.world.landRegionAt(a.x,a.y),g.world.landRegionAt(same.x,same.y));assert.notEqual(g.world.landRegionAt(a.x,a.y),g.world.landRegionAt(across.x,across.y));
+ assert.ok(Math.hypot(across.x-a.x,across.y-a.y)<Math.hypot(same.x-a.x,same.y-a.y));
+ grids(g);g.command('nearestHuman',{x:1,y:1});
+ const stats=JSON.stringify(g.navigation.stats),pending=g.navigation.pending.size,actor=JSON.stringify(a);
+ g.navigation.findPath=()=>{throw Error('target scoring must not request A*')};g.navigation.clearSegment=()=>{throw Error('target scoring must not add collision scans')};
+ for(let i=0;i<30;i++)assert.equal(g.nearestTargetFor(a,true).id,same.id);
+ assert.equal(g.navigation.pending.size,pending);assert.equal(JSON.stringify(g.navigation.stats),stats);assert.equal(JSON.stringify(a),actor);
+ same.hp=0;grids(g);assert.equal(g.nearestTargetFor(a,true).id,across.id,'a detour does not make the remaining reachable enemy ineligible');
+});
+test('nearest selection reads valid cached detours and failures without adding path requests',()=>{
+ const {g,a}=arena(),near=g.makeHuman(80,0,null),far=g.makeHuman(150,0,null);grids(g);g.command('nearestHuman',{x:1,y:0});
+ const n=g.navigation,key=[0,0,Math.round(near.x/n.cell),0,a.radius||10,n.revision,'ape'].join(':'),route={time:n.time,path:[{x:0,y:0},{x:0,y:200},{x:80,y:200},{x:80,y:0}]};n.routes.set(key,route);
+ const requested=n.stats.requested;n.findPath=()=>{throw Error('cached scoring must remain read-only')};
+ assert.equal(g.nearestTargetFor(a,true).id,far.id,'known wall detour is more expensive');
+ route.path._navInvalid=true;assert.equal(g.nearestTargetFor(a,true).id,near.id,'a gate change invalidates the old cost');
+ route.path=[];assert.equal(g.nearestTargetFor(a,true).id,far.id,'recent proven failure selects an alternative');
+ route.time=n.time-2;assert.equal(g.nearestTargetFor(a,true).id,near.id,'expired failure is eligible again');
+ assert.equal(n.stats.requested,requested);assert.equal(n.pending.size,0);
+});
+test('target scoring keeps its six-candidate cap and preserves explicit combat targets',()=>{
+ const {g,a}=arena();for(let i=0;i<40;i++)g.makeHuman(60+i,0,null);for(let i=0;i<40;i++)object(g,'tower',110+i);grids(g);g.command('nearestTarget',{x:1,y:0});
+ let calls=0;g.world.crossingFor=()=>{calls++;return null};g.navigation.findPath=()=>{throw Error('unexpected path request')};
+ const explicit={kind:'human',id:g.humans.at(-1).id};a._nearestTarget=explicit;g.nearestTargetFor(a);assert.ok(calls<=6);assert.equal(a._nearestTarget,explicit,'scoring does not mutate active/explicit orders');
+});

@@ -210,7 +210,7 @@ class Game{
  }
  tickRoadblocks(){
  this.roadblockOperations=(this.roadblockOperations||[]).filter(op=>{
- if(op.until<this.time){op.status='ended';op.endedAt=this.time;for(const id of op.objects||[]){const o=this.world.objects.get(id);if(o&&!o.dead){o.hp=0;o.dead=true;o.solid=false;this.world.navRevision++}}return false}
+ if(op.until<this.time){op.status='ended';op.endedAt=this.time;for(const id of op.objects||[]){const o=this.world.objects.get(id);if(o&&!o.dead){o.hp=0;o.dead=true;o.solid=false;this.world.navigationChanged(o)}}return false}
  const engineers=(op.engineers||op.members.filter(id=>this.humansById.get(id)?.role==='engineer')).map(id=>this.humansById.get(id)).filter(h=>h?.hp>0);
  if(!engineers.length)return true;
  for(let i=0;i<engineers.length;i++){const h=engineers[i],done=h.lastEngineerJob;if(done?.operationId===op.id&&done.status==='completed'&&done.objectId&&!op.objects.includes(done.objectId))op.objects.push(done.objectId);if(h.engineerJob||op.built||done?.operationId===op.id&&done.status==='completed'||done?.operationId===op.id&&this.time<h.specialAt||dist(h,op.point)>170||this.time<(op.nextBuildAt||0)||this.apeGrid.near(op.point.x,op.point.y,140).length)continue;
@@ -257,7 +257,7 @@ class Game{
  }else if(cmd==='recall'){
  for(const a of this.apes){if(a.hp>0&&FOLLOW.has(a.state)){this.tactics?.clearOrder(a);a.state='follow';a.target=null;a.retreatUntil=this.time+5;n++}}this.mode='follow';wave('#75cabb',440);this.noise(this.king.x,this.king.y,750);this.sound('recall');this.notify('Disengage. Return to your king.');
  }else if(cmd==='hold'){
- for(const a of nearby){if(FOLLOW.has(a.state)){this.tactics?.clearOrder(a);a.state='hold';a.target={x:a.x,y:a.y};n++}}this.mode='hold';wave('#99bac3',260);this.sound('hold');this.notify(n?n+' apes hold this ground. Call to regroup.':'No followers close enough to hold.');
+ for(const a of nearby){if(FOLLOW.has(a.state)){this.tactics?.clearOrder(a);a.state='hold';a.target={x:a.x,y:a.y};n++}}this.mode='hold';wave('#99bac3',260);this.sound('hold');this.notify(n?n+' apes hold this ground. Recall [R] to regroup.':'No followers close enough to hold.');
  }else if(cmd==='settle'||cmd==='settleAll'){
  if(this.world.terrain(this.king.x,this.king.y).water||this.world.getSites(this.king.x,this.king.y,240).some(s=>!s.cleared&&s.guards>0)){this.notify('Move into safer dry woodland before settling.','red');return false}
  let list=(cmd==='settleAll'?this.apes:nearby).filter(a=>a.hp>0&&FOLLOW.has(a.state));if(!list.length){this.notify('There are no followers here to settle.');return false}
@@ -413,17 +413,10 @@ class Game{
  if(target){
  if(kind==='vehicle'&&a.state==='raid'&&this.forces.vehicleMove){a._navPriority=5;this.forces.vehicleMove(a,target,dt);return}
  const radius=a.radius||(kind==='vehicle'?21:a.state==='young'?7:10),profile=kind==='vehicle'?a.vehicleClass:kind==='ape'?'ape':'human',step=point=>{const dx=point.x-a.x,dy=point.y-a.y,d=Math.hypot(dx,dy),travel=Math.min(60,speed*dt,d);if(d<.001||!this.navigation.clearSegment(a.x,a.y,a.x+dx/d*travel,a.y+dy/d*travel,radius,profile))return false;a.x+=dx/d*travel;a.y+=dy/d*travel;a.dir=Math.atan2(dy,dx);a.moving=true;return true};
+ // Far followers keep the same committed crossing and shared local corridors
+ // as visible apes, evaluated only at their existing staggered coarse cadence.
+ if(kind==='ape'&&a.state==='follow'){a._navPriority=a.recallOrder?2:5;if(a._navCrossing||distance2(a,target)>30**2)step(this.navigation.steer(a,target,radius,dt));return}
  const moved=distance2(a,target)<=30**2||step(target);
- if(!moved&&kind==='ape'&&a.state==='follow'){
- // A separated follower can exceptionally request a slow recovery corridor.
- // Retain its origin while queued, so coarse ticks do not restart the search.
- const path=a._abstractPath;if(path?.length){let index=a._abstractIndex||0;while(index<path.length-1&&distance2(a,path[index])<22**2&&this.navigation.clearSegment(a.x,a.y,path[index+1].x,path[index+1].y,radius,'ape'))index++;a._abstractIndex=index;if(step(path[index]))return;a._abstractPath=null}
- const ready=!this.world.boundsReady||this.world.boundsReady(Math.min(a.x,target.x)-radius,Math.min(a.y,target.y)-radius,Math.max(a.x,target.x)+radius,Math.max(a.y,target.y)+radius);
- if(ready&&this.time>=(a._abstractRetry||0)){
- const request=a._abstractRequest||(a._abstractRequest={from:{x:a.x,y:a.y},to:{x:target.x,y:target.y}}),route=this.navigation.recoveryPath(request.from,request.to,radius,5,'ape');
- if(route!==null){a._abstractPath=route;a._abstractIndex=0;a._abstractRequest=null;a._abstractRetry=this.time+2}
- }
- }
  if(!moved&&kind==='human'&&a.responseAllocated){a._navPriority=5;const waypoint=this.navigation.steer(a,target,radius,dt);step(waypoint)}
  }
  }
@@ -532,7 +525,7 @@ class Game{
  if(o.fortification&&this.world.damageFortification){if(this.world.damageFortification(o,damage,this.time)){this._lightsAt=-1;this.effect('smash',o.x,o.y,{color:'#c6ac7e',life:.35});this.noise(o.x,o.y,180,'smash');if(o.dead){this.stats.structures++;this.visibilityCache.clear();this.sound('smash',1,o.x);this.effect('smoke',o.x,o.y,{color:'#b29d78',life:1.4})}}return}
  if(o.dead||!(o.hp>0))return;this._lightsAt=-1;o.hp-=damage;this.effect('smash',o.x,o.y,{color:'#c6ac7e',life:.35});
  if(o.type!=='cage'||o.siteId!=='opening-rescue')this.noise(o.x,o.y,180,'smash');
- if(o.hp<=0){o.hp=0;o.dead=true;o.solid=false;this.world.navRevision++;this.visibilityCache.clear();this.stats.structures++;this.sound('smash',1,o.x);this.effect('smoke',o.x,o.y,{color:'#b29d78',life:1.4});
+ if(o.hp<=0){o.hp=0;o.dead=true;o.solid=false;this.world.navigationChanged(o);this.visibilityCache.clear();this.stats.structures++;this.sound('smash',1,o.x);this.effect('smoke',o.x,o.y,{color:'#b29d78',life:1.4});
  let s=o.siteId?this.world.sites.get(o.siteId):null;
  if(o.type==='cage'){o.rescueOpened=true;o.count=Math.max(0,o.count??o.prisoners??3);o.prisoners=o.count;this.releaseCaptives(o,true)}
  else if(o.type==='radio'){this.notify('Radio tower down. Regional reinforcements cut.','green');if(s)s.radioDown=true}
@@ -657,9 +650,10 @@ class Game{
  let tx=this.king.x+a.offsetX*spread+Math.sin(this.time*.9+a.phase)*16,ty=this.king.y+a.offsetY*spread+Math.cos(this.time*.8+a.phase)*16;
  const kingGap=Math.hypot(tx-this.king.x,ty-this.king.y);
  if(kingGap<42){const angle=kingGap>.001?Math.atan2(ty-this.king.y,tx-this.king.x):a.phase;tx=this.king.x+Math.cos(angle)*42;ty=this.king.y+Math.sin(angle)*42}
+ if(this.navigation.followTarget){const slot=this.navigation.followTarget(a,this.king,tx,ty);tx=slot.x;ty=slot.y}
  // Clearance routes own obstacle avoidance. Old trail targets could pull a
  // follower backwards forever when the king had already crossed a clearing.
- let d=Math.hypot(tx-a.x,ty-a.y);if(d>25)this.move(a,tx-a.x,ty-a.y,a.speed*(dist(a,this.king)>180?1.55:1),dt);
+ let d=Math.hypot(tx-a.x,ty-a.y);if(a._navCrossing||d>25)this.move(a,tx-a.x,ty-a.y,a.speed*(dist(a,this.king)>180?1.55:1),dt);
  }else if(a.state==='hold'){
  if(a.target&&dist(a,a.target)>28)this.move(a,a.target.x-a.x,a.target.y-a.y,a.speed,dt);
  }else if(st&&(a.state==='settled'||a.state==='scout')){

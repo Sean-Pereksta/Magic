@@ -467,7 +467,7 @@ class Forces {
    if(h.type==='shell'){const t=clamp(1-h.life/h.duration,0,1),x=h.fromX+(h.targetX-h.fromX)*t,y=h.fromY+(h.targetY-h.fromY)*t;
     if(!g.navigation.clearSegment(h.x,h.y,x,y,2)){let lo=0,hi=1;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(g.navigation.clearSegment(h.x,h.y,h.x+(x-h.x)*mid,h.y+(y-h.y)*mid,2))lo=mid;else hi=mid}h.x+=(x-h.x)*lo;h.y+=(y-h.y)*lo;h.life=0}else{h.x=x;h.y=y}if(h.life<=0)this.blast(h);
    }else if(['grenade','mortar','airstrike'].includes(h.type)&&h.life<=0)this.blast(h);
-   else if(h.type==='fortification'&&h.life<=0){const o=g.world.objects.get(h.id);if(o&&!o.dead){o.dead=true;o.solid=false;o.hp=0;g.world.navRevision++;g._lightsAt=-1}}
+   else if(h.type==='fortification'&&h.life<=0){const o=g.world.objects.get(h.id);if(o&&!o.dead){o.dead=true;o.solid=false;o.hp=0;g.world.navigationChanged(o);g._lightsAt=-1}}
   }this.hazards=this.hazards.filter(h=>h.life>0);
   if(g.time>=(this.nextSquadTrim||0)){this.nextSquadTrim=g.time+4;for(const [id,s]of this.squads)if(!s.members.some(id=>g.humansById.has(id))&&!Array.from(g.world.sites.values()).some(site=>(site.sleepingHumans||[]).some(h=>h.hp>0&&h.squadId===id)))this.squads.delete(id);for(const [id,p]of this.platoons){p.squads=p.squads.filter(s=>this.squads.has(s));if(!p.squads.length)this.platoons.delete(id)}}
  }

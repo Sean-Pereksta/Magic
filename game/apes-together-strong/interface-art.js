@@ -93,7 +93,7 @@
     `;
     document.head.append(style);
     for (const button of army.commands.querySelectorAll('button')) {
-      if (['call', 'nearestTarget', 'recall', 'hold', 'target', 'finder', 'build'].includes(button.dataset.armyCommand)) button.dataset.core = '';
+      if (['call', 'nearestTarget', 'recall', 'recallField', 'hold', 'target', 'finder', 'build'].includes(button.dataset.armyCommand)) button.dataset.core = '';
     }
     const expand = army.root.querySelector('.army-expand');
     expand.setAttribute('aria-expanded', 'false');

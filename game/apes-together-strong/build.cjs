@@ -1,8 +1,8 @@
 const fs=require('node:fs'),path=require('node:path');
-const parts=['visual-assets','world','navigation','audio','settlements','forces','ape-tactics','siege','sim','arsenal','champions','kingdom','prisons','weather','nearest-orders','progression','equipment','palisade-traversal','settlement-combat','render','render-details','siege-render','arsenal-render','champions-render','prisons-render','weather-render','settlement-render','progression-render','equipment-render','palisade-render','graphics','environment-art','character-art','equipment-art','interface-art','siege-ui','champions-ui','kingdom-ui','equipment-ui','app'];
+const parts=['visual-assets','world','navigation','audio','settlements','forces','ape-tactics','siege','sim','arsenal','champions','kingdom','prisons','weather','nearest-orders','progression','equipment','palisade-traversal','settlement-combat','horde-commands','render','render-details','siege-render','arsenal-render','champions-render','prisons-render','weather-render','settlement-render','progression-render','equipment-render','palisade-render','graphics','environment-art','character-art','equipment-art','held-item-art','structure-art','vehicle-art','interface-art','siege-ui','champions-ui','kingdom-ui','equipment-ui','app'];
 const shell=fs.readFileSync(path.join(__dirname,'shell.html'),'utf8');
 const assetRoot=path.join(__dirname,'assets','visual'),manifest={},sources={};
-for(const family of ['characters','environment','equipment']){
+for(const family of ['characters','environment','equipment','held-items','settlements','vehicles']){
  const data=JSON.parse(fs.readFileSync(path.join(assetRoot,family,'manifest.json'),'utf8'));
  manifest[family]=data;
  for(const atlas of data.atlases){

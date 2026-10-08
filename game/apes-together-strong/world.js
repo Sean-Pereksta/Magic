@@ -72,6 +72,7 @@
       this.discovered = new Set();
       this.intel = new Map();
       this._terrainCache = new Map();
+      this._crossingCache = new Map();
       this._sitePlanCache = new Map();
       this._vehiclePlanCache = new Map();
       this._spatial = new Map();
@@ -120,7 +121,101 @@
       const row = Math.round((y - 1320) / 2304);
       const centerY = row * 2304 + 1320 + Math.sin(x / 560 + this._phase + row * 1.47) * 110
         + Math.sin(x / 1370 + this._phase) * 65;
-      return { distance: Math.abs(y - centerY), width: 37 + Math.sin(x / 370 + row) * 8, centerY };
+      return { row, distance: Math.abs(y - centerY), width: 37 + Math.sin(x / 370 + row) * 8, centerY };
+    }
+
+    // A small deterministic river graph works before chunks are loaded. Every
+    // river has a crossing at most 768 world units away along either bank.
+    crossing(row, column) {
+      const id = 'crossing:' + row + ':' + column;
+      if (this._crossingCache.has(id)) return this._crossingCache.get(id);
+      const mainRoad = column % 2 === 0, choice = hash(this.seed + ':' + id) % 3;
+      const type = mainRoad ? ['wood', 'stone', 'military'][choice] : choice === 0 ? 'wood' : 'ford';
+      const width = { wood: 104, stone: 128, military: 152, ford: 112 }[type];
+      let x = 560 + column * 768, y = row * 2304 + 1320;
+      if (mainRoad) for (let i = 0; i < 3; i++) { x = this._roadInfo(x, y).x; y = this._riverInfo(x, y).centerY; }
+      else y = this._riverInfo(x, y).centerY;
+      let minY = Infinity, maxY = -Infinity;
+      for (const px of [x - width / 2, x, x + width / 2]) {
+        const river = this._riverInfo(px, y);
+        minY = Math.min(minY, river.centerY - river.width - 18);
+        maxY = Math.max(maxY, river.centerY + river.width + 18);
+      }
+      const crossing = { id, row, column, type, x, y: (minY + maxY) / 2, width,
+        length: maxY - minY, minX: x - width / 2, maxX: x + width / 2, minY, maxY,
+        approaches: [{ x, y: minY - 66 }, { x, y: maxY + 66 }], vehicleCompatible: mainRoad };
+      if (this._crossingCache.size > 2048) this._crossingCache.delete(this._crossingCache.keys().next().value);
+      this._crossingCache.set(id, crossing);
+      return crossing;
+    }
+
+    crossingAt(x, y, approach = 0) {
+      const row = Math.round((y - 1320) / 2304), column = Math.round((x - 560) / 768);
+      // Roads curve by at most 70 pixels, much less than crossing spacing.
+      const crossing = this.crossing(row, column);
+      return x >= crossing.minX - approach && x <= crossing.maxX + approach
+        && y >= crossing.minY - approach && y <= crossing.maxY + approach ? crossing : null;
+    }
+
+    crossingsNear(x, y, radius = 1000) {
+      const crossings = [];
+      for (let row = Math.ceil((y - radius - 1495) / 2304); row <= Math.floor((y + radius - 1145) / 2304); row++)
+        for (let column = Math.ceil((x - radius - 630) / 768); column <= Math.floor((x + radius - 490) / 768); column++) {
+          const crossing = this.crossing(row, column);
+          if (Math.abs(crossing.x - x) <= radius + crossing.width / 2 && Math.abs(crossing.y - y) <= radius + crossing.length / 2) crossings.push(crossing);
+        }
+      return crossings;
+    }
+
+    crossingFor(from, to, profile = 'ape', avoided, time = 0) {
+      // Custom maps supply their own geometry and continue using local A*.
+      if (this.terrain !== ATSWorld.prototype.terrain) return null;
+      const occupied = this.crossingAt(from.x, from.y);
+      if (occupied && (to.y < occupied.minY || to.y > occupied.maxY)
+        && (!VEHICLE_CLEARANCE[profile] || occupied.vehicleCompatible)) return occupied;
+      const north = Math.min(from.y, to.y), south = Math.max(from.y, to.y);
+      const first = Math.ceil((north - 1495) / 2304), last = Math.floor((south - 1145) / 2304);
+      const direction = to.y >= from.y ? 1 : -1;
+      for (let row = direction > 0 ? first : last; direction > 0 ? row <= last : row >= first; row += direction) {
+        const a = this._riverInfo(from.x, row * 2304 + 1320).centerY;
+        const b = this._riverInfo(to.x, row * 2304 + 1320).centerY;
+        if ((from.y - a) * (to.y - b) >= 0) continue;
+        const ratio = clamp((a - from.y) / (to.y - from.y || 1), 0, 1), idealX = lerp(from.x, to.x, ratio);
+        const column = Math.round((idealX - 560) / 768); let best = null, score = Infinity;
+        for (let offset = -2; offset <= 2; offset++) {
+          const crossing = this.crossing(row, column + offset);
+          if (avoided?.[crossing.id] > time) continue;
+          if (VEHICLE_CLEARANCE[profile] && !crossing.vehicleCompatible) continue;
+          const near = crossing.approaches[direction > 0 ? 0 : 1], far = crossing.approaches[direction > 0 ? 1 : 0];
+          const cost = dist(from, near) + dist(far, to);
+          if (cost < score) { best = crossing; score = cost; }
+        }
+        return best;
+      }
+      return null;
+    }
+
+    landRegionAt(x, y) {
+      if (this.terrain !== ATSWorld.prototype.terrain) return null;
+      const river = this._riverInfo(x, y);
+      return river.row + (y >= river.centerY ? 1 : 0);
+    }
+
+    validateCrossings(chunk) {
+      // A generation/load-time connectivity repair, never a frame-time scan.
+      // Only procedural scenery is eligible: walls and player buildings keep
+      // their authoritative collision and require an alternate crossing.
+      let repaired = 0;
+      for (const id of chunk.objects || []) {
+        const object = this.objects.get(id);
+        if (!object || !id.startsWith('obj:') || object.siteId || !object.solid || object.dead || !['tree', 'rock'].includes(object.type)) continue;
+        if (!this.crossingAt(object.x, object.y, 102)) continue;
+        object.dead = true;object.solid = false;object.hp = 0;repaired++;
+      }
+      if (repaired) this.navigationChanged({ minX: chunk.x - 128, minY: chunk.y - 128, maxX: chunk.x + CHUNK + 128, maxY: chunk.y + CHUNK + 128 });
+      chunk.crossingsValidated = true;
+      this.stats.crossingRepairs = (this.stats.crossingRepairs || 0) + repaired;
+      return repaired;
     }
 
     districtAt(x, y) {
@@ -152,10 +247,11 @@
       const roadInfo = this._roadInfo(x, y);
       const river = this._riverInfo(x, y);
       const riverDistance = river.distance, riverWidth = river.width;
-      const bridge = riverDistance < riverWidth + 12 && roadInfo.dx < 36;
-      // Bridges occupy the road corridor; the same deterministic test governs rendering and collision.
+      const crossing = riverDistance < riverWidth + 80 ? this.crossingAt(x, y) : null;
+      const bridge = !!crossing;
+      // Artwork, collision and strategic waypoints share the exact corridor.
       const water = riverDistance < riverWidth && !bridge;
-      return { biome, road: roadInfo.road || bridge, water, bridge, walkable: !water,
+      return { biome, road: roadInfo.road || bridge, water, bridge, crossing, crossingType: crossing?.type, walkable: !water,
         river: riverDistance < riverWidth + 48, moisture: biome === 'wetland' ? 0.8 : 0.3 };
     }
 
@@ -328,7 +424,7 @@
     _waterAt(x, y) {
       if (this.terrain !== ATSWorld.prototype.terrain) return this.terrain(x, y).water;
       const river = this._riverInfo(x, y);
-      return river.distance < river.width && this._roadInfo(x, y).dx >= 36;
+      return river.distance < river.width && !this.crossingAt(x, y);
     }
 
     waterBlocked(x, y, radius = 0) {
@@ -411,6 +507,7 @@
       else this.ensure(x, y, 64);
       if (this.waterBlocked(x, y, radius)) return true;
       const terrain = this.vehicleTerrain(x, y);
+      if (terrain.crossing && !terrain.crossing.vehicleCompatible) return true;
       if (terrain.biome === 'wetland' && !terrain.road && !terrain.compound) return true;
       let blocked = false;
       this._queryCollision(x - radius, y - radius, x + radius, y + radius, object => {
@@ -423,6 +520,35 @@
         if (touches) { blocked = true; return false; }
       });
       return blocked;
+    }
+
+    navigationBounds(object) {
+      if (Number.isFinite(object?.minX)) return { minX: object.minX, minY: object.minY, maxX: object.maxX, maxY: object.maxY };
+      if (!Number.isFinite(object?.x) || !Number.isFinite(object?.y)) return null;
+      const hx = Math.max(object.r || 0, (object.w || 0) / 2, object.moveRadius || 0) + 3;
+      const hy = Math.max(object.r || 0, (object.h || 0) / 2, object.moveRadius || 0) + 3;
+      return { minX: object.x - hx, minY: object.y - hy, maxX: object.x + hx, maxY: object.y + hy };
+    }
+
+    navigationChanged(object, previous) {
+      const bounds = this.navigationBounds(object), old = this.navigationBounds(previous);
+      this.navRevision++;
+      // Unlocated changes deliberately leave a gap. Consumers must then use
+      // their safe full-reset path rather than trusting incomplete history.
+      if (!bounds) return;
+      if (old) { bounds.minX = Math.min(bounds.minX, old.minX);bounds.minY = Math.min(bounds.minY, old.minY);bounds.maxX = Math.max(bounds.maxX, old.maxX);bounds.maxY = Math.max(bounds.maxY, old.maxY); }
+      const changes = this._navigationChanges || (this._navigationChanges = []);
+      changes.push({ revision: this.navRevision, ...bounds, fortification: !!object.fortification });
+      if (changes.length > 128) changes.shift();
+    }
+
+    navigationChangesSince(revision) {
+      if (revision === this.navRevision) return [];
+      if (!Number.isFinite(revision)) return null;
+      const changes = (this._navigationChanges || []).filter(change => change.revision > revision);
+      if (!changes.length || changes[0].revision !== revision + 1 || changes.at(-1).revision !== this.navRevision) return null;
+      for (let i = 1; i < changes.length; i++) if (changes[i].revision !== changes[i - 1].revision + 1) return null;
+      return changes;
     }
 
     // Tactical cover has faction-specific movement rules. It remains in the
@@ -443,7 +569,7 @@
         height: options.height || (auxiliary ? 64 : team === 'ape' ? 38 : 30),
         maxHp, hp: options.hp ?? maxHp, solid: !auxiliary, collision: 'rect',
         weak: !!options.weak, stage: 4 };
-      this.objects.set(id, object);this._indexObject(object);this.navRevision++;
+      this.objects.set(id, object);this._indexObject(object);this.navigationChanged(object);
       return object;
     }
 
@@ -474,7 +600,7 @@
       if (!object?.fortification || object.dead || object.hp <= 0 || !(damage > 0)) return false;
       object.hp = Math.max(0, object.hp - damage);object.lastHit = typeof time === 'number' ? time : time?.time || 0;
       object.damageStage = object.hp / object.maxHp > .65 ? 'healthy' : object.hp / object.maxHp > .3 ? 'damaged' : 'critical';
-      if (!object.hp) { object.dead = true;object.solid = false;object.destroyedAt = object.lastHit;object.damageStage = 'destroyed';this.navRevision++; }
+      if (!object.hp) { object.dead = true;object.solid = false;object.destroyedAt = object.lastHit;object.damageStage = 'destroyed';this.navigationChanged(object); }
       return true;
     }
 
@@ -485,7 +611,7 @@
       object.hp = Math.min(object.maxHp, object.hp + amount);object.dead = false;
       object.solid = object.lowCover;object.lastRepair = time;
       delete object.destroyedAt;
-      if (wasSolid !== object.solid) this.navRevision++;
+      if (wasSolid !== object.solid) this.navigationChanged(object);
       return true;
     }
 
@@ -549,7 +675,7 @@
       if (!tree || tree.type !== 'tree' || tree.dead || tree.woodClaimed) return 0;
       tree.dead = true;tree.hp = 0;tree.solid = false;tree.woodClaimed = true;
       tree.clearedBy = options.settlementId;tree.clearedAt = options.time || 0;
-      this.navRevision++;
+      this.navigationChanged(tree);
       return Math.round(5 + (tree.size || 1) * 5);
     }
 
@@ -565,14 +691,14 @@
         if (!object && completed && building.hp > 0) {
           object = { id, x: building.x, y: building.y, type: 'apeBuilding', settlementId: settlement.id,
             hp: building.hp, maxHp: building.maxHp || 100, structureId: building.id, kind: building.kind || 'hut', r: 24, w: width, h: height, solid: true, collision: 'rect', hiddenRender: true };
-          this.objects.set(id, object);this._indexObject(object);this.navRevision++;
+          this.objects.set(id, object);this._indexObject(object);this.navigationChanged(object);
           activated.push(object);
         } else if (object) {
           const solid = completed && building.hp > 0, geometryChanged = object.x !== building.x || object.y !== building.y || object.w !== width || object.h !== height;
           if (solid && (!object.solid || geometryChanged)) activated.push(object);
-          if (geometryChanged) { object.x = building.x;object.y = building.y;object.w = width;object.h = height;this._indexObject(object);this.navRevision++; }
+          if (geometryChanged) { const previous = this.navigationBounds(object);object.x = building.x;object.y = building.y;object.w = width;object.h = height;this._indexObject(object);this.navigationChanged(object, previous); }
           object.maxHp = building.maxHp || 100;object.structureId = building.id;object.kind = building.kind || 'hut';
-          if (object.solid !== solid) this.navRevision++;
+          if (object.solid !== solid) this.navigationChanged(object);
           object.hp = building.hp;object.dead = !solid;object.solid = solid;
         }
       }
@@ -1084,7 +1210,7 @@
         const x = chunk.x + 20 + r() * (CHUNK - 40), y = chunk.y + 20 + r() * (CHUNK - 40);
         const t = this.terrain(x, y);
         const road = this._roadInfo(x, y);
-        if (x * x + y * y < 172 * 172 || t.water || t.bridge || road.dx < 52 || road.dy < 52) continue;
+        if (x * x + y * y < 172 * 172 || t.water || t.bridge || road.dx < 52 || road.dy < 52 || this.crossingAt(x, y, 102)) continue;
         if (nearbySites.some(s => s.military ? Math.abs(x - s.x) < (s.footprintX || s.radius) + 23 && Math.abs(y - s.y) < (s.footprintY || s.radius) + 23
           : dist2(x, y, s.x, s.y) < (s.radius + 23) ** 2)) continue;
         if(nearbySites.some(s=>(s.approach||[]).some((a,index,points)=>{if(!index)return false;const b=points[index-1],dx=b.x-a.x,dy=b.y-a.y,t=clamp(((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return dist2(x,y,a.x+t*dx,a.y+t*dy)<(s.military?64:32)**2})))continue;
@@ -1111,6 +1237,7 @@
       }
       for (const object of chunk._pendingObjects) { this.objects.set(object.id, object); this._indexObject(object); }
       for (const site of chunk._pendingSites) this.sites.set(site.id, site);
+      this.validateCrossings(chunk);
       delete chunk._pendingObjects; delete chunk._pendingSites; delete chunk._changes;
       chunk.generated = true;
       this.chunks.set(key, chunk);
@@ -1281,6 +1408,7 @@
         if (!object.siteId || !coldSites.has(object.siteId)) world._indexObject(object);
       }
       world.stats.coldChunks = world._coldChunks.size;
+      for (const chunk of world.chunks.values()) if (!chunk.crossingsValidated) world.validateCrossings(chunk);
       world.discovered = new Set(data.discovered || []);
       world.intel = new Map(data.intel || []);
       return world;
