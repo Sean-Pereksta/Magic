@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {loadEngine}=require('./performance-harness.cjs');
+const health={gorilla:260,orangutan:205,chimpanzee:120,gibbon:95,capuchin:90,mandrill:140},speed={gorilla:76,orangutan:88,chimpanzee:96,gibbon:112,capuchin:105,mandrill:96};
 const species=['gorilla','chimpanzee','orangutan','gibbon','mandrill','capuchin'];
 function arena(seed='PRIMATE-SPECIES'){
  const c=loadEngine(),g=new c.ATSGame(seed,'survival');
@@ -10,30 +11,30 @@ function arena(seed='PRIMATE-SPECIES'){
 function valid(a){assert.ok(species.includes(a.species),a.species);assert.ok(Number.isInteger(a.coatVariant)&&a.coatVariant>=0&&a.coatVariant<=2)}
 function looks(a){return {species:a.species,coatVariant:a.coatVariant,fur:a.fur,bodyScale:a.bodyScale}}
 
-test('all six species and coat shades are deterministic cosmetics while the King remains a gorilla',()=>{
+test('all six species and coat shades are deterministic appearances while the King remains a gorilla',()=>{
  const first=arena(),second=arena();assert.deepEqual(Object.keys(first.c.ATSPrimateSpecies),species);assert.equal(first.g.king.species,'gorilla');assert.equal(first.g.king.hp,160);assert.equal(first.g.king.maxHp,160);valid(first.g.king);
- const seen=new Set(),coats=new Set();for(let i=0;i<600;i++){const a=first.g.makeApe(i,0,'hold'),b=second.g.makeApe(-i,100,'hold');valid(a);seen.add(a.species);coats.add(a.coatVariant);assert.deepEqual(looks(a),looks(b));assert.equal(a.hp,120);assert.equal(a.radius,undefined)}
+ const seen=new Set(),coats=new Set();for(let i=0;i<600;i++){const a=first.g.makeApe(i,0,'hold'),b=second.g.makeApe(-i,100,'hold');valid(a);seen.add(a.species);coats.add(a.coatVariant);assert.deepEqual(looks(a),looks(b));assert.equal(a.hp,health[a.species]);assert.equal(a.radius,undefined)}
  assert.equal(seen.size,6);assert.equal(coats.size,3);
  const different=arena('OTHER-SPECIES-SEED').g;let changes=0;for(let i=0;i<24;i++){const a=different.makeApe(i,0,'hold');if(a.species!==first.g.apes[i].species||a.coatVariant!==first.g.apes[i].coatVariant)changes++}assert.ok(changes>0,'seed changes produce distinct stable appearances');
 });
 
-test('appearance assignment adds no random draws and preserves existing adult and child stats',()=>{
+test('appearance assignment adds no random draws and keeps deterministic adult balance and existing child stats',()=>{
  const {c,g}=arena();let draws=0;c.Math.random=()=>++draws/10;
- const a=g.makeApe(0,0);assert.equal(draws,9);assert.equal(a.dir,.1*Math.PI*2);assert.equal(a.phase,.2*Math.PI*2);assert.equal(a.fur,.3);assert.equal(a.bodyScale,.88+.4*.22);assert.equal(a.attackCD,.5*.4);assert.equal(a.speed,84+.6*18);assert.equal(a.offsetX,(.7-.5)*120);assert.equal(a.offsetY,(.8-.5)*120);assert.equal(a.wander,.9*Math.PI*2);
+ const a=g.makeApe(0,0);assert.equal(draws,9);assert.equal(a.dir,.1*Math.PI*2);assert.equal(a.phase,.2*Math.PI*2);assert.equal(a.fur,.3);assert.equal(a.bodyScale,.88+.4*.22);assert.equal(a.attackCD,.5*.4);assert.equal(a.speed,speed[a.species]);assert.equal(a.offsetX,(.7-.5)*120);assert.equal(a.offsetY,(.8-.5)*120);assert.equal(a.wander,.9*Math.PI*2);
  const before={...a};g.ensureApeAppearance(a);assert.equal(draws,9);assert.deepEqual({...a},before);
  draws=0;const child=g.makeApe(0,0,'young',null,true);assert.equal(draws,8);assert.equal(child.hp,60);assert.equal(child.maxHp,60);assert.equal(child.speed,67);assert.equal(child.age,0);assert.equal(child.radius,undefined);valid(child);
 });
 
 test('rescued captives acquire stable species without changing rescue counts or adult balance',()=>{
  const {g}=arena(),cage={id:'rescue-test',type:'cage',x:0,y:0,count:9,prisoners:9};assert.equal(g.releaseCaptives(cage),9);assert.equal(cage.count,0);assert.equal(g.stats.freed,9);assert.equal(g.population,9);
- for(const a of g.apes){valid(a);assert.equal(a.state,'free');assert.equal(a.hp,120);assert.equal(a.maxHp,120);assert.ok(a.speed>=84&&a.speed<=102);const before=looks(a);g.ensureApeAppearance(a);assert.deepEqual(looks(a),before)}
+ for(const a of g.apes){valid(a);assert.equal(a.state,'free');assert.equal(a.hp,health[a.species]);assert.equal(a.maxHp,health[a.species]);assert.equal(a.speed,speed[a.species]);const before=looks(a);g.ensureApeAppearance(a);assert.deepEqual(looks(a),before)}
 });
 
 test('real settlement births retain their species and coat through nearby and distant maturation',()=>{
  const {g}=arena();for(let i=0;i<8;i++)g.makeApe(i,0,'follow');g.food=400;assert.equal(g.command('settleAll'),true);const s=g.settlements[0];
  Object.assign(s,{food:400,housing:24,wood:120,gardens:2,safety:1,birthTimer:30,suitability:{fertility:1,wood:24,capacity:1000,water:true}});delete s.structuresVersion;g.colonies.init(s);g.refreshSettlements();g.humanGrid.rebuild([]);g.colonies.tick(s);
- assert.ok(g.stats.born>0);const child=g.apes.find(a=>a.state==='young');assert.ok(child);valid(child);const before=looks(child);child.age=34.9;g.updateApe(child,.1);assert.equal(child.state,'settled');assert.equal(child.hp,120);assert.equal(child.speed,90);assert.deepEqual(looks(child),before);
- const remote=g.makeApe(4000,0,'young',null,true),remoteLook=looks(remote);remote.age=34.9;g.abstractActor(remote,.1,'ape');assert.equal(remote.state,'settled');assert.equal(remote.hp,120);assert.equal(remote.speed,90);assert.deepEqual(looks(remote),remoteLook);
+ assert.ok(g.stats.born>0);const child=g.apes.find(a=>a.state==='young');assert.ok(child);valid(child);const before=looks(child);child.age=34.9;g.updateApe(child,.1);assert.equal(child.state,'settled');assert.equal(child.hp,health[child.species]);assert.equal(child.speed,speed[child.species]);assert.deepEqual(looks(child),before);
+ const remote=g.makeApe(4000,0,'young',null,true),remoteLook=looks(remote);remote.age=34.9;g.abstractActor(remote,.1,'ape');assert.equal(remote.state,'settled');assert.equal(remote.hp,health[remote.species]);assert.equal(remote.speed,speed[remote.species]);assert.deepEqual(looks(remote),remoteLook);
 });
 
 test('saved species, shades, wounds, age and original fur/body scale round-trip unchanged',()=>{

@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path');
-const parts=['world','navigation','audio','settlements','forces','ape-tactics','sim','render','render-details','app'];
+const parts=['world','navigation','audio','settlements','forces','ape-tactics','siege','sim','render','render-details','siege-render','siege-ui','app'];
 const shell=fs.readFileSync(path.join(__dirname,'shell.html'),'utf8');
 const scripts=parts.map(name=>'<script>\n'+fs.readFileSync(path.join(__dirname,name+'.js'),'utf8')+'\n</script>').join('\n');
 const output=shell.replace('</body>',scripts+'\n</body>');

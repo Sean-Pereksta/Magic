@@ -38,7 +38,7 @@ class Game{
  constructor(seed,difficulty='survival',hooks={}){
  this.version=1;this.seed=String(seed||'LAUREL');this.difficulty=difficulty;this.hooks=hooks;this.world=new ATSWorld(this.seed);this.navigation=new ATSNavigation(this.world);this.colonies=new ATSSettlements(this);this.forces=new ATSForces(this);this.tactics=window.ATSApeTactics?new ATSApeTactics(this):null;this.corpses=[];this.time=0;this.nextId=1;this.king={id:'king',x:0,y:0,hp:160,maxHp:160,dir:-.5,attackTimer:0,moving:false,lastHit:-30};this.ensureApeAppearance(this.king);
  this.apes=[];this.humans=[];this.vehicles=[];this.helis=[];this.settlements=[];this.bullets=[];this.effects=[];this.events=[];this.apeGrid=new Spatial(64);this.humanGrid=new Spatial(96);this.vehicleGrid=new Spatial(128);this.focusGrid=new Spatial(384);this.noiseGrid=new Spatial(384);this.apesById=new Map();this.humansById=new Map();this.settlementsById=new Map();this.settlementMembers=new Map();this.performance=new PerformanceMonitor();this.bulletPool=new Pool(512);this.effectPool=new Pool(400);this.noisePool=new Pool(128);this.visibilityCache=new Map();this.rescueFocus=[];this.nextCohortAt=0;this.nextSpawnAt=0;this.mode='follow';this.food=0;this.exposure=0;this.tier=1;this.viewRadius=700;this.commandCD=0;this.attackCD=0;this.ended=false;this.deathTimer=0;this.secondTimer=0;this.noises=[];this.trail=[{x:0,y:0}];this.raidTimer=45;this.heliTimer=150;this.seenTimer=0;this.lightCache=[];this.lightTimer=0;this.messages=[];this.hitFlash=0;this.lastContact=-20;this.sprintNoiseTime=0;this.day=1;this.aim={x:1,y:0};this.stats={freed:0,born:0,largestHorde:0,humans:0,structures:0,bases:0,prisons:0,settlements:0,largestSettlement:0,lost:0,highestThreat:1,territory:0};
- this.world.ensure(0,0,1400);this.world.reveal(0,0,300);this.notify('The crown is yours. A cage rattles nearby.','gold');
+ this.siege=window.ATSSiege?new ATSSiege(this):null;this.world.ensure(0,0,1400);this.world.reveal(0,0,300);this.notify('The crown is yours. A cage rattles nearby.','gold');
  this.responseStage=1;this.responsePeak=1;this.mobilized=false;this.warPhase=false;this.operationSerial=0;this.observedHorde=0;this.roadblockOperations=[];this.militaryOperations=[];this.nextInterceptAt=0;this.nextReconAt=180;
  }
  get followers(){return this.apes.filter(a=>a.hp>0&&FOLLOW.has(a.state))}
@@ -244,7 +244,7 @@ class Game{
  for(const h of candidates){if(h.hp>0&&(x-h.x)**2+(y-h.y)**2<radius**2&&h.state!=='combat'&&h.state!=='radio'&&h.state!=='alarm'){h.state='investigate';h.lastX=x;h.lastY=y;h.searchTime=12;h.suspicion=Math.max(h.suspicion,.35)}}
  }
  command(cmd,aim=this.aim){
- if(this.ended||this.commandCD>0||this.blastActive(this.king))return false;this.commandCD=.5;this.king.attackTimer=.55;let commandRadius=cmd==='settle'?105:cmd==='hold'?160:cmd==='call'?340:260;let nearby=this.apes.filter(a=>a.hp>0&&dist(a,this.king)<commandRadius),n=0;
+ if(this.ended||this.commandCD>0||this.blastActive(this.king))return false;if(this.siege?.selected.length&&['charge','spreadCharge','attackNearest','recall','hold','call'].includes(cmd))return this.siege.shortcut(cmd,aim);this.commandCD=.5;this.king.attackTimer=.55;let commandRadius=cmd==='settle'?105:cmd==='hold'?160:cmd==='call'?340:260;let nearby=this.apes.filter(a=>a.hp>0&&dist(a,this.king)<commandRadius),n=0;
  const wave=(color,range=300)=>this.effect('wave',this.king.x,this.king.y,{color,life:1.1,range});
  if(cmd==='call'){
  for(const a of nearby){if(a.state!=='young'){this.tactics?.clearOrder(a);a.state='follow';a.settlementId=null;a.target=null;n++}}
@@ -287,7 +287,7 @@ class Game{
  if(this.population>=MAX_APE_POPULATION){if(this.time>=(this.nextPopulationWarn||0)){this.nextPopulationWarn=this.time+10;this.notify('Population limit reached — '+MAX_APE_POPULATION+' living apes.','gold')}return null}
  ({x,y}=this.findOpen(x,y));
  const hp=young?YOUNG_HP:state==='scout'?SCOUT_HP:APE_HP;
- const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.ensureApeAppearance(p);this.apes.push(p);this.apesById.set(p.id,p);return p;
+ const p={id:'ape-'+this.nextId++,x,y,hp,maxHp:hp,dir:Math.random()*TAU,phase:Math.random()*TAU,fur:Math.random(),bodyScale:.88+Math.random()*.22,state:young?'young':state,settlementId,age:young?0:240,attackTimer:0,attackCD:Math.random()*.4,speed:young?67:84+Math.random()*18,moving:false,offsetX:(Math.random()-.5)*120,offsetY:(Math.random()-.5)*120,wander:Math.random()*TAU,nextThink:0};this.ensureApeAppearance(p);this.siege?.balance(p);this.apes.push(p);this.apesById.set(p.id,p);return p;
  }
  makeHuman(x,y,site,kind=null){
  ({x,y}=this.findOpen(x,y));
@@ -316,7 +316,7 @@ class Game{
  }
  move(a,dx,dy,speed,dt){
  if(this.blastActive(a)){a.moving=false;return}
- if(a.wallClimb||(a.state==='charge'||a._nav?.stuck>.2)&&this.tactics?.tryClimb(a,dx,dy))return;
+ if(a.siegeTransition)return;if(!a.armyOrder&&(a.wallClimb||(a.state==='charge'||a._nav?.stuck>.2)&&this.tactics?.tryClimb(a,dx,dy)))return;speed*=a.rallyUntil>this.time?1.15:1;speed*=a.shield?.hp>0?.9:1;if(a.staggerUntil>this.time)return;
  const terrain=this.world.terrain(a.x,a.y),roleSpeed=a.role?(ATSHumanRoles[a.role]?.speed||1):1;
  this.navigation.move(a,dx,dy,speed*roleSpeed*(terrain.biome==='wetland'&&!terrain.road?.86:1),dt,a.id==='king');
  }
@@ -325,7 +325,7 @@ class Game{
  // Local steps bypass route finding but retain wall, trunk and water clearance.
  const pressures=new Map();
  for(const a of this.apes){
- if(a.hp<=0||this.blastActive(a)||a.wallClimb||a.onWallId)continue;
+ if(a.hp<=0||this.blastActive(a)||a.wallClimb||a.onWallId||a.siegeTransition)continue;
  const st=a.settlementId?this.settlement(a.settlementId):null;
  if(a._simTier===2||a._simTier===1&&a._lodAt!==this.time||st&&dist(a,this.king)>1800&&!st.attack)continue;
  pressures.set(a,{x:0,y:0});
@@ -376,7 +376,7 @@ class Game{
  this.focusGrid.rebuild(focus);this.noiseGrid.rebuild(this.noises);
  }
  actorTier(a){
- const d=distance2(a,this.king);if(d<750**2)return 0;
+ const d=distance2(a,this.king);if(a.armyOrder||a.siegeTransition||a.onWallId)return d<1200**2?0:1;if(d<750**2)return 0;
  for(const f of this.focusGrid.near(a.x,a.y,900))if(distance2(a,f)<f.radius**2)return 0;
  if(d<(this.performance.qualityLevel>=5?1300:1650)**2)return 1;return 2;
  }
@@ -399,7 +399,7 @@ class Game{
  let target=null,speed=0;
  if(kind==='ape'){
  a.age+=dt;a.attackCD=Math.max(0,a.attackCD-dt);
- if(a.state==='young'&&a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90}
+ if(a.state==='young'&&a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90;this.siege?.balance(a,true)}
  if(a.state==='follow'){target=this.king;speed=a.speed*1.55}else if(a.state==='charge'){a.chargeTime-=dt;target=a.target;speed=a.speed*1.4;if(a.chargeTime<=0){a.state='hold';a.target={x:a.x,y:a.y}}}
  else if(a.settlementId&&['settled','scout','young'].includes(a.state)){const s=this.settlement(a.settlementId);if(s){if(this.time>=(a._activityAt||0)||!a._activityTarget){a._activityAt=this.time+3+(ATSUtil.hash(a.id)%5)*.3;a._activityTarget=this.colonies.activityTarget?.(a,s)}target=a._activityTarget;speed=target?.speed??a.speed*.55}}
  }else{
@@ -437,6 +437,7 @@ class Game{
  for(const [id,{leader,target}]of groups)this.navigation.setCohortRoute?.(id,leader,target,10,3);
  }
  lineVisible(a,b,critical=false){
+ if(this.siege&&(ATSSiegeAltitude(a)>0||ATSSiegeAltitude(b)>0)){if(!critical&&this.performance.losRemaining<=this.performance.heavyLosReserve)return null;if(!critical){this.performance.losRemaining--;this.performance.counters.losTests++}return this.siege.clearRay(a,b)}
  if(critical)return this.world.lineClear(a.x,a.y,b.x,b.y);
  const key=[Math.round(a.x/3),Math.round(a.y/3),Math.round(b.x/3),Math.round(b.y/3),this.world.navRevision].join(',');
  const cached=this.visibilityCache.get(key);if(cached&&this.time-cached.time<.08){this.performance.counters.losCacheHits++;return cached.clear}
@@ -467,8 +468,8 @@ class Game{
  }
  objectDistance(a,o){const x=Math.max(o.x-(o.w||o.r*2)/2,Math.min(a.x,o.x+(o.w||o.r*2)/2)),y=Math.max(o.y-(o.h||o.r*2)/2,Math.min(a.y,o.y+(o.h||o.r*2)/2));return Math.hypot(a.x-x,a.y-y)}
  hurt(a,damage,source){
- if(a.hp<=0)return;this._lightsAt=-1;if(a.id?.startsWith('human'))damage=this.forces.armor(a,damage,source);else if(a.id?.startsWith('vehicle'))damage=this.forces.vehicleDamage?.(a,damage,source)??damage;else if(a.settlementId)damage=this.colonies.absorb(a,damage);
- a.hitTimer=.28;a.aiming=null;a.lastHit=this.time;a.hp-=damage;
+ if(a.hp<=0)return;if(this.siege&&source?.species&&!this.siege.meleeAllowed(source,a))return;damage=this.siege?.absorb(a,damage,source)??damage;this._lightsAt=-1;if(a.id?.startsWith('human'))damage=this.forces.armor(a,damage,source);else if(a.id?.startsWith('vehicle'))damage=this.forces.vehicleDamage?.(a,damage,source)??damage;else if(a.settlementId)damage=this.colonies.absorb(a,damage);
+ if(a.siegeTransition&&damage>0&&a.hp-damage<=0)this.siege?.detach(a);a.hitTimer=.28;a.aiming=null;a.lastHit=this.time;a.hp-=damage;
  if(a.hp<=0&&(a.wallClimb||a.onWallId)){const lift=a.wallClimbHeight||0;this.tactics?.detach(a);if(['shell','mortar','airstrike','grenade'].includes(source?.type))a.blastZ=Math.max(a.blastZ||0,lift)}
  if(a.hp<=0&&a.id!=='king'){this.apesById.delete(a.id);this.humansById.delete(a.id);const type=a.id?.startsWith('human')?'human':a.id?.startsWith('vehicle')?'vehicle':'ape';if(type==='vehicle')this.world.addVehicleWreck?.(a,this.time);this.corpses.push({...a,_nav:undefined,type,actorAge:a.age,actorState:a.state,fallVariant:ATSUtil.hash(a.id+this.time)%5,fallDir:source?Math.atan2(a.y-source.y,a.x-source.x):a.dir,age:0,life:distance2(a,this.king)<900**2?30:12});if(this.corpses.length>320){const distant=this.corpses.findIndex(c=>distance2(c,this.king)>900**2);this.corpses.splice(distant>=0?distant:0,1)}this.sound('fall',type==='human'?.45:.65,a.x)}this.effect('hit',a.x,a.y,{color:a.id==='king'?'#ef947a':'#bda17b',life:.25});
  if(a.id==='king'){a.lastHit=this.time;this.hitFlash=.6;this.sound('hit');if(a.hp<=0){this.end();if(['shell','mortar','airstrike','grenade'].includes(source?.type))this.launchBlastReaction(a,source,{radius:source.radius,power:source.type==='grenade'?.7:1})}}
@@ -479,7 +480,7 @@ class Game{
  blastActive(a){return a?.blastReaction?.stage==='flight'||a?.blastReaction?.stage==='gettingUp'}
  launchBlastReaction(a,source,options={}){
  if(!a||!source||!Number.isFinite(a.x)||!Number.isFinite(a.y))return false;
- const wallLift=a.wallClimbHeight||0;if(a.wallClimb||a.onWallId)this.tactics?.detach(a);a.blastZ=Math.max(a.blastZ||0,wallLift);
+ const wallLift=a.wallClimbHeight||a.elevation||0;if(a.siegeTransition||a.elevation)this.siege?.detach(a);if(a.wallClimb||a.onWallId)this.tactics?.detach(a);a.blastZ=Math.max(a.blastZ||0,wallLift);
  if(a.role==='engineer'&&a.engineerJob)this.forces.cancelEngineerJob?.(a,'blast');
  const radius=Math.max(1,options.radius||source.radius||100),gap=dist(a,source),falloff=clamp(1-gap/radius*.7,.25,1),power=clamp(options.power??1,.2,2);
  const angle=gap>1?Math.atan2(a.y-source.y,a.x-source.x):(ATSUtil.hash(a.id+this.time)%628)/100,impulse=(100+power*110)*falloff,height0=Math.max(2,a.blastZ||0),vz=(170+power*115)*Math.sqrt(falloff),gravity=640;
@@ -543,6 +544,7 @@ class Game{
  else if(o.type==='house'){this.food+=35;this.notify('Human supplies seized: +35 food.','green')}
  this.checkSite(s);
  }
+ this.siege?.damagedObject(o);
  }
  releaseCaptives(o,announce=false){
  const remaining=Math.max(0,o.count??o.prisoners??0),num=Math.min(remaining,Math.max(0,MAX_APE_POPULATION-this.population));
@@ -593,7 +595,7 @@ class Game{
  }
  getLights(){
  const lights=[];for(const h of this.humans){if(h.hp>0&&dist(h,this.king)<1050)lights.push({id:h.id,x:h.x,y:h.y,dir:h.dir,range:this.forces.range(h),angle:h.state==='combat'?.43:.34,kind:'flashlight',active:true})}
- this.observationPosts=[];for(const o of this.world.getObjects(this.king.x,this.king.y,1100)){if(o.dead||o.hp<=0)continue;if(o.type==='tower'){const s=this.world.sites.get(o.siteId);lights.push({id:o.id,x:o.x,y:o.y,dir:this.time*.29+(o.phase||0),range:480+(s?.tier||1)*25,angle:.21,kind:'tower',active:true})}else if(o.type==='fieldSearchlight')lights.push({id:o.id,x:o.x,y:o.y,dir:o.dir??o.angle??0,range:390,angle:.65,kind:'fieldlight',active:true});else if(['fieldObservation','observationPost'].includes(o.type))this.observationPosts.push(o);else if(o.type==='alarm'&&this.world.sites.get(o.siteId)?.alarm)lights.push({id:o.id,x:o.x,y:o.y,dir:0,range:75,angle:Math.PI,kind:'alarm',active:true})}
+ this.observationPosts=[];for(const o of this.world.getObjects(this.king.x,this.king.y,1100)){if(o.dead||o.hp<=0)continue;if(o.type==='tower'){const s=this.world.sites.get(o.siteId);lights.push({id:o.id,x:o.x,y:o.y,dir:o.trackUntil>this.time?o.trackAngle:(o.angle||0)+Math.sin(this.time*(o.sweep||.2))*1.2,range:o.scanRange||480+(s?.tier||1)*25,angle:.48,elevation:o.height||95,kind:'tower',active:true})}else if(o.type==='fieldSearchlight')lights.push({id:o.id,x:o.x,y:o.y,dir:o.dir??o.angle??0,range:390,angle:.65,kind:'fieldlight',active:true});else if(['fieldObservation','observationPost'].includes(o.type))this.observationPosts.push(o);else if(o.type==='alarm'&&this.world.sites.get(o.siteId)?.alarm)lights.push({id:o.id,x:o.x,y:o.y,dir:0,range:75,angle:Math.PI,kind:'alarm',active:true})}
  for(const v of this.vehicles){if(v.hp>0&&dist(v,this.king)<1000){const heavy=['tank','apc','ifv'].includes(v.vehicleClass||v.kind);lights.push({id:v.id,x:v.x,y:v.y,dir:v.dir,range:heavy?540:350,angle:.39,kind:'vehicle',active:true});if(heavy)lights.push({id:v.id+':search',x:v.x,y:v.y,dir:(v.turretDir??v.dir)+Math.sin(this.time*.6)*.24,range:630,angle:.19,kind:'vehicle',active:true})}}
  for(const f of this.forces.hazards)if(f.type==='flare')lights.push({id:f.id,x:f.x,y:f.y,dir:0,range:f.radius,angle:Math.PI,kind:'flare',active:true});
  for(const h of this.helis)if(h.hp>0)lights.push({id:h.id+':spot',x:h.spotX,y:h.spotY,dir:0,range:95,angle:Math.PI,kind:'heli',active:true});this.lightCache=lights;return lights;
@@ -611,10 +613,10 @@ class Game{
  if(input.sprint&&mag>.04&&this.time>this.sprintNoiseTime){this.sprintNoiseTime=this.time+.9;this.noise(this.king.x,this.king.y,130+Math.min(220,this.followerCount*2),'footsteps')}
  if(input.aim&&Math.hypot(input.aim.x,input.aim.y)>.05)this.aim={...input.aim};if(input.attack)this.attack(this.aim);
  if(this.time-this.king.lastHit>8)this.king.hp=Math.min(this.king.maxHp,this.king.hp+2.4*dt);
- this.followSpread=Math.max(1,Math.sqrt(this.followCount/32));this.updateCohorts();
+ this.followSpread=Math.max(1,Math.sqrt(this.followCount/32));this.siege?.tick(dt);this.updateCohorts();
  for(const a of this.apes)if(a.hp>0){const elapsed=this.simulateActor(a,dt,'ape');if(elapsed)this.updateApe(a,elapsed)}
  this.spreadApes(dt);
- this.humanUpdateOffset=((this.humanUpdateOffset||0)+1)%Math.max(1,this.humans.length);for(let i=0;i<this.humans.length;i++){const h=this.humans[(i+this.humanUpdateOffset)%this.humans.length];if(h.hp>0){const elapsed=this.simulateActor(h,dt,'human');if(elapsed&&!this.updateBlastReaction(h,elapsed)&&!this.forces.update(h,elapsed))this.updateHuman(h,elapsed)}}
+ this.humanUpdateOffset=((this.humanUpdateOffset||0)+1)%Math.max(1,this.humans.length);for(let i=0;i<this.humans.length;i++){const h=this.humans[(i+this.humanUpdateOffset)%this.humans.length];if(h.hp>0){const elapsed=this.simulateActor(h,dt,'human');if(elapsed&&!this.updateBlastReaction(h,elapsed)&&!this.siege?.updateHuman(h,elapsed)&&!this.forces.update(h,elapsed))this.updateHuman(h,elapsed)}}
  this.vehicleUpdateOffset=((this.vehicleUpdateOffset||0)+1)%Math.max(1,this.vehicles.length);for(let i=0;i<this.vehicles.length;i++){const v=this.vehicles[(i+this.vehicleUpdateOffset)%this.vehicles.length];if(v.hp>0){const elapsed=this.simulateActor(v,dt,'vehicle');if(elapsed)this.updateVehicle(v,elapsed)}}
  for(const h of this.helis){if(distance2(h,this.king)>1650**2&&!this.focusGrid.near(h.x,h.y,600).length){h._lodElapsed=(h._lodElapsed||0)+dt;if(h._lodElapsed<.25)continue;const elapsed=h._lodElapsed;h._lodElapsed=0;this.updateHeli(h,elapsed)}else this.updateHeli(h,dt)}
  this.compact(this.helis,h=>h.hp>0&&Math.abs(h.x-this.king.x)<3500&&Math.abs(h.y-this.king.y)<3500);
@@ -631,7 +633,8 @@ class Game{
  a.hitTimer=Math.max(0,(a.hitTimer||0)-dt);a.attackTimer=Math.max(0,a.attackTimer-dt);a.attackCD=Math.max(0,a.attackCD-dt);a.moving=false;
  if(this.updateBlastReaction(a,dt)){a.age+=dt;return}
  const st=a.settlementId?this.settlement(a.settlementId):null;
- a.age+=dt;if(a.state==='young'){if(a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90;this.effect('text',a.x,a.y,{text:'Grown',color:'#b1d5a0',life:2})}else{if(st){const activity=this.colonies.activityTarget?.(a,st)||{x:st.x+Math.cos(this.time*.28+a.phase)*35,y:st.y+Math.sin(this.time*.28+a.phase)*35,speed:a.speed};this.move(a,activity.x-a.x,activity.y-a.y,activity.speed??a.speed,dt)}return}}
+ a.age+=dt;if(a.state==='young'){if(a.age>=GROW_UP){a.state='settled';a.hp=a.maxHp=APE_HP;a.speed=90;this.siege?.balance(a,true);this.effect('text',a.x,a.y,{text:'Grown',color:'#b1d5a0',life:2})}else{if(st){const activity=this.colonies.activityTarget?.(a,st)||{x:st.x+Math.cos(this.time*.28+a.phase)*35,y:st.y+Math.sin(this.time*.28+a.phase)*35,speed:a.speed};this.move(a,activity.x-a.x,activity.y-a.y,activity.speed??a.speed,dt)}return}}
+ if(a.rallyUntil>this.time)a.attackCD=Math.max(0,a.attackCD-dt*.15);if(this.siege?.updateApe(a,dt))return;
  if(this.tactics?.updateClimb(a,dt))return;
  if(this.tactics&&a.state==='charge'){a.chargeTime-=dt;if(a.chargeTime<=0){a.state='hold';a.target={x:a.x,y:a.y};this.tactics.clearOrder(a)}}
  if(this.tactics?.combat(a,dt,st))return;
@@ -673,7 +676,7 @@ class Game{
  const site=this.world.sites.get(h.siteId);
  if(h.perceptionTimer<=0&&this.performance.think()){h.perceptionTimer=.2+(ATSUtil.hash(h.id)%100)/1000;const post=this.observationPosts?.some(o=>!o.dead&&distance2(o,h)<280**2),light={x:h.x,y:h.y,dir:h.dir,range:this.forces.range(h)*(post?1.15:1),angle:h.state==='combat'?.65:.34};let seen=null;
  const perception=this.perceive(h,light);seen=perception.seen;if(perception.pending)h.perceptionTimer=0;
- if(seen){h.lastSeenAt=this.time;h.suspicion=clamp(h.suspicion+.32,0,1);h.lastX=seen.x;h.lastY=seen.y;h.searchTime=14;this.lastContact=this.time;if(h.suspicion>=1){if(!h.reported){this.alert(h,'shout');const alarm=site?.objects.map(id=>this.world.objects.get(id)).find(o=>o?.type==='alarm'&&!o.dead);if(alarm&&dist(h,alarm)<270){h.state='alarm';h.alarmTarget=alarm.id;h.radioTimer=0}else if(h.hasRadio&&!(site?.radioDown)){h.state='radio';h.radioTimer=2.3}else h.state='combat'}else if(h.state!=='radio'&&h.state!=='alarm')h.state='combat';h.targetId=seen.id}}
+ if(seen){this.siege?.report(h,seen);h.lastSeenAt=this.time;h.suspicion=clamp(h.suspicion+.32,0,1);h.lastX=seen.x;h.lastY=seen.y;h.searchTime=14;this.lastContact=this.time;if(h.suspicion>=1){if(!h.reported){this.alert(h,'shout');const alarm=site?.objects.map(id=>this.world.objects.get(id)).find(o=>o?.type==='alarm'&&!o.dead);if(alarm&&dist(h,alarm)<270){h.state='alarm';h.alarmTarget=alarm.id;h.radioTimer=0}else if(h.hasRadio&&!(site?.radioDown)){h.state='radio';h.radioTimer=2.3}else h.state='combat'}else if(h.state!=='radio'&&h.state!=='alarm')h.state='combat';h.targetId=seen.id}}
  else if(!perception.pending){h.suspicion=Math.max(0,h.suspicion-.06);if(h.state==='combat'){h.state='search';h.searchTime=18;h.targetId=null}}
  // A very large moving horde leaves audible evidence, without pinpoint vision.
  if(!seen&&!perception.pending&&this.followerCount>30&&this.king.moving&&dist(h,this.king)<Math.min(430,120+this.followerCount*2)&&h.state==='patrol'){h.state='investigate';h.lastX=this.king.x+(Math.random()-.5)*120;h.lastY=this.king.y+(Math.random()-.5)*120;h.searchTime=12}
@@ -686,7 +689,7 @@ class Game{
  if(h.state==='combat'){
  let target=h.targetId==='king'?this.king:this.apesById.get(h.targetId);if(!target||target.hp<=0){h.state='search';return}
  this.forces.combatMovement(h,target,dt);
- if(h.shootTimer<=0&&dist(h,target)<this.forces.range(h)&&this.world.lineClear(h.x,h.y,target.x,target.y))this.shoot(h,target);
+ if(h.shootTimer<=0&&dist(h,target)<this.forces.range(h)&&(this.siege?this.siege.clearRay(h,target):this.world.lineClear(h.x,h.y,target.x,target.y)))this.shoot(h,target);
  }else if(h.state==='search'||h.state==='investigate'){
  h.searchTime-=dt;
  if(h.searchTime<=0){h.state='patrol';h.reported=false;h.suspicion=0;h.raidTarget=null}
@@ -698,27 +701,29 @@ class Game{
  }
  }
  shoot(h,target){
+ if(this.siege&&!this.siege.clearRay(h,target))return;
  const difficulty=this.difficulty==='wanderer'?.7:this.difficulty==='relentless'?1.15:1;
  const config={sniper:[2.8,300,1],pistol:[1.25,38,1],rifle:[.9,54,1],assault:[.32,35,1],shotgun:[1.8,22,4],machine:[.2,35,1]}[h.kind]||[1.2,38,1];h.shootTimer=config[0]/difficulty+Math.random()*.12;h.attackTimer=.14;h.animation={kind:'recoil',start:this.time,duration:.2};
  const d=dist(h,target),base=Math.atan2(target.y-h.y,target.x-h.x),error=(Math.random()-.5)*(h.kind==='sniper'?.025+d/6000:.07+d/3800)*(h.accuracyMultiplier||1);
- for(let i=0;i<config[2];i++){const angle=base+error+(i-(config[2]-1)/2)*.06;this.bullets.push(this.bulletPool.take({x:h.x+Math.cos(angle)*18,y:h.y+Math.sin(angle)*18,px:h.x,py:h.y,vx:Math.cos(angle)*550,vy:Math.sin(angle)*550,damage:config[1]*difficulty,life:h.kind==='sniper'?1.2:.7,owner:h.id}))}
+ for(let i=0;i<config[2];i++){const angle=base+error+(i-(config[2]-1)/2)*.06;this.bullets.push(this.bulletPool.take({x:h.x+Math.cos(angle)*18,y:h.y+Math.sin(angle)*18,px:h.x,py:h.y,vx:Math.cos(angle)*550,vy:Math.sin(angle)*550,damage:config[1]*difficulty,life:h.kind==='sniper'?1.2:.7,owner:h.id,z:(h.elevation||h.wallClimbHeight||0)+30,pz:(h.elevation||h.wallClimbHeight||0)+30,vz:((target.elevation||target.wallClimbHeight||0)+18-((h.elevation||h.wallClimbHeight||0)+30))/Math.max(.05,dist(h,target)/550)}))}
  this.sound('gun',.65,h.x);this.effect('muzzle',h.x+Math.cos(base)*23,h.y+Math.sin(base)*23,{life:.1,color:'#f8da9a'});this.noise(h.x,h.y,300,'gun');
  }
  updateBullets(dt){
  for(const b of this.bullets){b.life-=dt;if(b.life<=0)continue;
- const x=b.x,y=b.y,dx=b.vx*dt,dy=b.vy*dt,length2=dx*dx+dy*dy,length=Math.sqrt(length2);b.px=x;b.py=y;
+ const x=b.x,y=b.y,dx=b.vx*dt,dy=b.vy*dt,length2=dx*dx+dy*dy,length=Math.sqrt(length2),z=b.z??20,endZ=z+(b.vz||0)*dt;b.px=x;b.py=y;b.pz=z;
  let target=null,hit=1;
  for(const a of this.apeGrid.near(x+dx*.5,y+dy*.5,length*.5+16)){
  if(a.hp<=0||!length2)continue;const px=a.x-x,py=a.y-y,projection=(px*dx+py*dy)/length2,t=clamp(projection,0,1),distance=(px-dx*t)**2+(py-dy*t)**2;
- if(distance>16**2)continue;
+ if(distance>16**2||this.siege&&Math.abs(z+(endZ-z)*t-((a.elevation||a.wallClimbHeight||0)+18))>23)continue;
  const cross=(px-dx*projection)**2+(py-dy*projection)**2,entry=Math.max(0,projection-Math.sqrt(Math.max(0,16**2-cross)/length2));
  if(entry<=hit){hit=entry;target=a}
  }
  const endX=x+dx*hit,endY=y+dy*hit;
- if(!this.projectileSegmentClear(x,y,endX,endY)){
- let lo=0,hi=hit;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(this.projectileSegmentClear(x,y,x+dx*mid,y+dy*mid))lo=mid;else hi=mid}
+ const clearSegment=(bx,by,f=hit)=>this.siege?this.siege.clearRay({x,y},{x:bx,y:by},{za:z,zb:z+(endZ-z)*f,projectile:true}):this.projectileSegmentClear(x,y,bx,by);
+ if(!clearSegment(endX,endY)){
+ let lo=0,hi=hit;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(clearSegment(x+dx*mid,y+dy*mid,mid))lo=mid;else hi=mid}
  b.x=x+dx*lo;b.y=y+dy*lo;b.life=0;this.effect('hit',b.x,b.y,{life:.16,color:'#c7bfa3'});
- }else{b.x=endX;b.y=endY;if(target){this.hurt(target,b.damage,{x,y});b.life=0}}
+ }else{b.x=endX;b.y=endY;b.z=z+(endZ-z)*hit;if(target){this.hurt(target,b.damage,{x,y,type:'bullet',owner:b.owner});b.life=0}}
  }
  this.compact(this.bullets,b=>b.life>0,this.bulletPool);
  }
@@ -792,7 +797,7 @@ class Game{
  // Pacing changes apply to newly generated installations only.
  }
  savedActor(a){const out={};for(const k in a)if(!k.startsWith('_')&&k!=='navCohort')out[k]=a[k];return out}
- serialize(){return {version:1,balanceVersion:2,militaryVersion:3,populationVersion:2,pursuitOperation:this.pursuitOperation,nextReinforcementAt:this.nextReinforcementAt,nextFieldOperation:this.nextFieldOperation,nextRegionalOperation:this.nextRegionalOperation,nextMajorOffensive:this.nextMajorOffensive,nextConvoyAt:this.nextConvoyAt,nextDirectorAt:this.nextDirectorAt,nextInterceptAt:this.nextInterceptAt,nextReconAt:this.nextReconAt,responseStage:this.responseStage,responsePeak:this.responsePeak,mobilized:this.mobilized,warPhase:this.warPhase,announcedWarIntensity:this.announcedWarIntensity,operationSerial:this.operationSerial,observedHorde:this.observedHorde,roadblockOperations:this.roadblockOperations,militaryOperations:this.militaryOperations,
+ serialize(){return {version:1,siege:this.siege?.serialize(),speciesBalanceVersion:1,balanceVersion:2,militaryVersion:3,populationVersion:2,pursuitOperation:this.pursuitOperation,nextReinforcementAt:this.nextReinforcementAt,nextFieldOperation:this.nextFieldOperation,nextRegionalOperation:this.nextRegionalOperation,nextMajorOffensive:this.nextMajorOffensive,nextConvoyAt:this.nextConvoyAt,nextDirectorAt:this.nextDirectorAt,nextInterceptAt:this.nextInterceptAt,nextReconAt:this.nextReconAt,responseStage:this.responseStage,responsePeak:this.responsePeak,mobilized:this.mobilized,warPhase:this.warPhase,announcedWarIntensity:this.announcedWarIntensity,operationSerial:this.operationSerial,observedHorde:this.observedHorde,roadblockOperations:this.roadblockOperations,militaryOperations:this.militaryOperations,
  squads:Array.from(this.forces.squads?.values?.()||[],s=>({id:s.id,initialSize:s.initialSize,density:s.density,fallbackPoint:s.fallbackPoint,fallbackFacing:s.fallbackFacing,fallbackUntil:s.fallbackUntil,fallbackComplete:s.fallbackComplete,regroupPoint:s.regroupPoint,regroupFacing:s.regroupFacing,counterattackUntil:s.counterattackUntil,kingIdentifiedUntil:s.kingIdentifiedUntil,firingLine:s.firingLine,firingFacing:s.firingFacing,members:s.members,objective:s.objective,order:s.order,vehicleId:s.vehicleId,siteId:s.siteId,operationId:s.operationId,leaderId:s.leaderId,reportAt:s.reportAt,cohesionLossUntil:s.cohesionLossUntil,nextReport:s.nextReport,platoonId:s.platoonId,platoonSlot:s.platoonSlot,assaultPhase:s.assaultPhase,assaultFacing:s.assaultFacing,fortificationIds:s.fortificationIds,lineBuildQueue:s.lineBuildQueue})),
  platoons:Array.from(this.forces.platoons?.values?.()||[],p=>this.savedActor(p)),engineerJobs:Array.from(this.forces.engineerJobs?.values?.()||[],j=>this.savedActor(j)),corpseVersion:1,corpses:this.corpses.map(c=>this.savedActor(c)),seed:this.seed,difficulty:this.difficulty,time:this.time,nextId:this.nextId,king:this.king,apes:this.apes.map(a=>this.savedActor(a)),humans:this.humans.map(a=>this.savedActor(a)),vehicles:this.vehicles.map(a=>this.savedActor(a)),helis:this.helis.map(a=>this.savedActor(a)),settlements:this.settlements.map(a=>this.savedActor(a)),food:this.food,tier:this.tier,stats:this.stats,world:this.world.serialize(),hazards:this.forces.hazards,heliTimer:this.heliTimer,events:this.events,messages:this.messages,ended:this.ended}}
  static fromJSON(d,hooks={}){
@@ -802,9 +807,9 @@ class Game{
  g.corpses=Array.isArray(d.corpses)?d.corpses.filter(c=>c&&c.life>0).slice(-320):[];
  g.ensureApeAppearance(g.king);for(const a of g.apes)g.ensureApeAppearance(a);for(const a of g.corpses)if(a.type==='ape'||a.id==='king'||a.id?.startsWith('ape-'))g.ensureApeAppearance(a);
  for(const a of [...g.apes,...g.humans,...g.vehicles,...g.helis,...g.corpses])for(const key in a)if(key.startsWith('_')||key==='navCohort')delete a[key];for(const site of g.world.sites.values())for(const key of ['sleepingHumans','sleepingVehicles'])for(const a of site[key]||[])for(const field in a)if(field.startsWith('_')||field==='navCohort')delete a[field];
- g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.syncIndexes();g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);for(const a of [g.king,...g.apes]){g.tactics?.restore(a);if(a.id!=='king')g.applyTraining(a,a.trainingLevel)}g.apeGrid.rebuild([g.king,...g.apes]);g.trail=[{x:g.king.x,y:g.king.y}];g.responseStage=d.responseStage||g.tier;g.responsePeak=d.responsePeak||g.stats.highestThreat||g.tier;g.mobilized=d.mobilized??(g.stats.largestHorde>=200);for(const v of g.vehicles)g.forces.initVehicle?.(v);g.forces.restoreSquads?.(d.squads);g.forces.restorePlatoons?.(d.platoons);
+ g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.syncIndexes();g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);for(const a of [g.king,...g.apes]){if(!a.siegeTransition&&!a.elevation)g.tactics?.restore(a);if(a.id!=='king')g.applyTraining(a,a.trainingLevel)}g.apeGrid.rebuild([g.king,...g.apes]);g.trail=[{x:g.king.x,y:g.king.y}];g.responseStage=d.responseStage||g.tier;g.responsePeak=d.responsePeak||g.stats.highestThreat||g.tier;g.mobilized=d.mobilized??(g.stats.largestHorde>=200);for(const v of g.vehicles)g.forces.initVehicle?.(v);g.forces.restoreSquads?.(d.squads);g.forces.restorePlatoons?.(d.platoons);
  g.militaryOperations=Array.isArray(g.militaryOperations)?g.militaryOperations:[];g.roadblockOperations=(Array.isArray(g.roadblockOperations)?g.roadblockOperations:[]).map(op=>{const saved=g.militaryOperations.find(x=>x.id&&x.id===op.id);if(saved)return saved;op.id=op.id||'roadblock-'+g.nextId++;op.channel='roadblock';op.status='active';op.target=op.target||op.point;op.phase=op.phase||(op.built?'hold':'approach');op.engineerJobs=op.engineerJobs||[];op.objects=op.objects||[];op.expiresAt=op.expiresAt||op.until;op.createdAt=op.createdAt??g.time;for(const id of op.members||[]){const h=g.humansById.get(id);if(h)h.operationId=op.id}g.militaryOperations.push(op);return op});
- for(const s of g.settlements)s.birthTimer=Math.min(30,Math.max(0,s.birthTimer||0));if((d.militaryVersion||0)<3){g.nextDirectorAt=Math.min(g.nextDirectorAt||0,g.time+g.directorInterval)}return g;
+ for(const s of g.settlements)s.birthTimer=Math.min(30,Math.max(0,s.birthTimer||0));if((d.militaryVersion||0)<3){g.nextDirectorAt=Math.min(g.nextDirectorAt||0,g.time+g.directorInterval)}g.siege?.restore(d.siege);return g;
  }
 }
 window.ATSPerformance=PerformanceMonitor;window.ATSGame=Game;window.ATSTierNames=tierNames;window.ATSPrimateSpecies=PRIMATE_SPECIES;

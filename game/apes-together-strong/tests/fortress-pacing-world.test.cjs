@@ -12,14 +12,14 @@ test('fresh cage progression starts small and preserves every procedural site ty
 });
 
 test('larger tiered fortresses leave dry walls, main roads and hull-clear access lanes',()=>{
- const c=engine(),w=new c.ATSWorld('fortress-cage-progression'),found=plans(w),tiers={forwardBase:2,armoredDepot:3,regionalCommand:4},heights=[0,28,45,68,95],hp=[0,240,620,1400,2800];
+ const c=engine(),w=new c.ATSWorld('fortress-cage-progression'),found=plans(w),tiers={forwardBase:2,armoredDepot:3,regionalCommand:4},heights=[0,28,45,68,95],hp=[0,700,2100,3700,5400];
  for(const type of Object.keys(tiers)){
   const {plan,cx,cy}=found.get(type);w._generateChunk(cx,cy);const site=w.sites.get(plan.id),objects=site.objects.map(id=>w.objects.get(id)),walls=objects.filter(o=>o.type==='wall'&&!o.barricade),gates=objects.filter(o=>o.type==='gate'),tier=tiers[type];
   assert.equal(site.radius,{forwardBase:420,armoredDepot:540,regionalCommand:690}[type]);assert.ok(site.extentX>site.extentY,'rectangular fortress occupies a broad dry shelf');
   if(type==='regionalCommand'){assert.ok(site.guards>=82&&site.guards<=120);assert.ok(site.extentX*site.extentY*4>700000,'late fortress has a much larger defended area')}
   if(type==='forwardBase')assert.ok(site.guards>=30&&site.guards<=50);
   assert.ok(walls.length>40);for(const wall of walls){assert.equal(wall.wallTier,tier);assert.equal(wall.height,heights[tier]);assert.equal(wall.visualHeight,heights[tier]);assert.equal(wall.maxHp,hp[tier]);assert.equal(wall.faction,'human');assert.equal(wall.climbable,tier<=2);assert.equal(w.terrain(wall.x,wall.y).water,false);assert.equal(w.terrain(wall.x,wall.y).road,false)}
-  assert.ok(gates.length);for(const gate of gates){assert.equal(gate.climbable,false);assert.ok(gate.maxHp>hp[tier]);assert.ok(gate.height>heights[tier])}
+  assert.ok(gates.length);for(const gate of gates){assert.equal(gate.climbable,false);assert.ok(gate.maxHp<hp[tier]);assert.ok(gate.height>heights[tier])}
   const [from,to]=site.approach;for(let i=0;i<=16;i++){const x=from.x+(to.x-from.x)*i/16,y=from.y+(to.y-from.y)*i/16;assert.equal(w.waterBlocked(x,y,31),false,'supply approach retains tank bank clearance')}
   for(const kind of ['truck','apc','tank']){const staging=w.vehicleStaging(site,kind,0);assert.ok(staging);assert.equal(w.vehicleBlocked(staging.x,staging.y,w.vehicleRadius(kind),kind),false)}
   const capacity=w.militaryCapacity(site);assert.ok(Object.values(capacity.inventory).every(Number.isFinite));assert.ok(site.campaignReserve.personnel>0&&Number.isFinite(site.campaignReserve.personnel));
