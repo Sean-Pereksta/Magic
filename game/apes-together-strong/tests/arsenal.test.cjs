@@ -14,6 +14,9 @@ test('terminal attack clears vehicles and enemy structures near the point but le
  const {g}=arena(),a=g.makeApe(0,0,'follow');a.species='gorilla';g.siege.balance(a,true);const prop=object(g,{type:'powerRelay',x:45,y:0,hp:35}),far=object(g,{type:'powerRelay',x:420,y:0,hp:35});grids(g);g.siege.issue(['gorilla'],[{id:'area',type:'attackArea',x:0,y:0}]);step(g,150,()=>{g.siege.tick(1/30);g.updateApe(a,1/30)});assert.ok(prop.dead);assert.equal(far.hp,35);
  const v=tank(g,null);v.x=45;v.hp=20;grids(g);step(g,160,()=>{g.siege.tick(1/30);g.updateApe(a,1/30)});assert.ok(v.hp<=0);assert.ok(Math.hypot(a.x,a.y)<220);
 });
+test('an area attack after climbing a wall descends before attacking ground targets',()=>{
+ const {g}=arena(),a=g.makeApe(0,0,'follow');a.species='gibbon';g.siege.balance(a,true);const wall=object(g,{type:'wall',x:0,y:0,w:20,h:130,collision:'rect',walkable:true,visualHeight:80,walkHeight:80,siteId:'base'});g.world.sites.set('base',{id:'base',x:200,y:0,objects:[wall.id]});const h=g.makeHuman(100,0,null);h.hp=100;grids(g);g.siege.issue(['gibbon'],[{id:'end',type:'attackArea',x:80,y:0}]);a.onWallId=wall.id;a.elevation=a.wallClimbHeight=80;g.siege.updateApe(a,1/30);assert.ok(a.siegeTransition);assert.equal(a.onWallId,undefined);step(g,300,()=>{g.siege.tick(1/30);g.updateApe(a,1/30)});assert.equal(a.elevation,0);assert.ok(h.hp<100);
+});
 test('Twinfang fires a fixed three-shell burst and cancels follow-up shots on weapon destruction',()=>{
  const {g}=arena(),v=tank(g,'repeater');grids(g);g.forces.fireShell(v,{x:400,y:0},g.forces.vehicleSpec(v));assert.equal(g.forces.hazards.length,1);step(g,26,()=>g.forces.advanceWeapon(v));assert.equal(g.forces.hazards.length,3);assert.ok(g.forces.hazards.every(h=>h.targetX===400&&h.targetY===0));
  g.forces.hazards=[];g.forces.fireShell(v,{x:450,y:0},g.forces.vehicleSpec(v));v.weaponDamage=100;step(g,30,()=>g.forces.advanceWeapon(v));assert.equal(g.forces.hazards.length,1);assert.equal(v.firePlan,null);

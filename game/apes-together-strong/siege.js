@@ -213,11 +213,11 @@ class Siege {
   if(group.blocked||a.armyOrder.index>(group.readyIndex||0)){a.moving=false;return true}let o=group.orders[a.armyOrder.index];if(!o){a.state='hold';return true}
   if(o.type==='rally'){const prior=this.selected;this.selected=[a.species];if(a===group.members.map(id=>this.g.apesById.get(id)).find(p=>p?.hp>0)){if(!this.rally()){group.blocked='rally';this.selected=prior;return true}}this.selected=prior;this.advance(a);return true}
   if(o.type==='follow'){const k=this.g.king;this.g.move(a,k.x+a.offsetX-a.x,k.y+a.offsetY-a.y,a.speed,dt);return true}
-  if(o.type==='attackArea')return this.attackArea(a,o,dt);
   let target=o.targetId?this.resolve(o):null;
   if(o.targetId&&(!target||target.hp<=0||target.type==='gate'&&!target.solid)){if(o.type==='assault'&&target){const s=this.g.world.sites.get(o.siteId);const t=this.g.humanGrid.nearest(s.x,s.y,s.radius,6,h=>h.siteId===s.id&&this.visibleTarget(h))[0];if(t){o={...o,targetId:t.id,targetKind:'human',...point(t)};target=t}else{this.advance(a);return true}}else{this.advance(a);return true}}
   if(target&&(o.targetKind==='human'||o.targetKind==='vehicle')){if(this.visibleTarget(target)){o.x=target.x;o.y=target.y;a._lostTargetAt=this.g.time}else if(this.g.time-(a._lostTargetAt??group.started)>5){group.blocked='target';return true}else target=null}
   if(a.onWallId&&!a.siegeTransition){if(target&&this.meleeAllowed(a,target)&&this.attack(a,target,o.targetKind,dt))return true;if(target?.onWallId&&this.walkTop(a,target,dt))return true;if(o.type==='climb'){this.advance(a);return true}const w=this.g.world.objects.get(a.onWallId),s=this.g.world.sites.get(w?.siteId),side=Math.sign(a.x-(s?.x||0))||1;if(w){const exit={x:w.x-side*((w.w||20)/2+24),y:w.y};a.siegeTransition={wallId:w.id,from:point(a),to:exit,height:altitude(a),elapsed:1.8,duration:3.6,top:false};delete a.onWallId;return true}}
+  if(o.type==='attackArea')return this.attackArea(a,o,dt);
   if(target&&['attack','sabotage','assault'].includes(o.type)&&this.attack(a,target,o.targetKind,dt))return true;
   if(['charge','defend','hold'].includes(o.type)){const threat=this.g.humanGrid.nearest(a.x,a.y,o.type==='charge'?90:65,4,h=>this.meleeAllowed(a,h)&&this.clearRay(a,h))[0];if(threat){if(this.attack(a,threat,'human',dt))return true;if(o.type!=='hold'&&(o.type==='charge'||dist(threat,o)<160)){this.g.move(a,threat.x-a.x,threat.y-a.y,a.speed,dt);return true}}}
   if(o.type==='hold'||o.type==='defend'){if(dist(a,o)>60)this.followRoute(a,o,dt);return true}
