@@ -1,4 +1,4 @@
-/* Directional tap/hold charges share a scan range; holds target humans only. */
+/* Directional tap/hold charges share a scan range; holds exclude structures. */
 (() => {
 'use strict';
 // Both E gestures scan and retain targets through the full charge distance.
@@ -11,6 +11,7 @@ const setDirection=(a,order,aim)=>{const d=heading(aim);order.dx=d.x;order.dy=d.
 // does not change which side of the battlefield the player ordered an attack on.
 const inDirection=(a,t)=>{const o=a.nearestOrder;if(!o?.goal)return true;const x=t.x-(o.goal.x-o.dx*RANGE),y=t.y-(o.goal.y-o.dy*RANGE);return x*o.dx+y*o.dy>=Math.hypot(x,y)*.5-1e-6};
 const hostileObject=o=>!o.dead&&o.hp>0&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
+const troopTarget=(t,kind)=>kind==='human'||kind==='vehicle'||kind==='object'&&t.type==='vehicle';
 const pathLengths=new WeakMap();
 function cachedDistance(path,a,t){
  // Smoothed local routes normally have very few points. Never turn target
@@ -39,19 +40,22 @@ function travelCost(g,a,t,d){
  }
  return d;
 }
-P.nearestTargetFor=function(a,humansOnly=false){
+P.nearestTargetFor=function(a,excludeStructures=false){
  const candidates=[];
  const available=t=>{const rejected=a._nearestRejected?.[t.id];return !rejected||rejected.revision!==(this.world.navRevision||0)||rejected.until<=this.time};
  const consider=(t,kind)=>{if(!t||t.hp<=0||t.dead||!inDirection(a,t)||!available(t))return;const d=kind==='object'?this.objectDistance(a,t):distance(a,t);if(d>RANGE)return;const i=candidates.findIndex(c=>d<c.d||d===c.d&&String(t.id)<String(c.t.id));if(i<0){if(candidates.length<6)candidates.push({t,kind,d})}else{candidates.splice(i,0,{t,kind,d});if(candidates.length>6)candidates.pop()}};
  // Keep the same bounded spatial scans, retaining a few alternatives instead
  // of only their first result. At most six candidates receive route scoring.
  for(const h of this.humanGrid.nearest(a.x,a.y,RANGE,4,h=>h.hp>0&&inDirection(a,h)&&available(h)))consider(h,'human');
- if(!humansOnly){for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,2,v=>v.hp>0&&inDirection(a,v)&&available(v)))consider(v,'vehicle');for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o))consider(o,'object')}
+ for(const v of this.vehicleGrid.nearest(a.x,a.y,RANGE,2,v=>v.hp>0&&inDirection(a,v)&&available(v)))consider(v,'vehicle');
+ for(const o of this.world.getObjects(a.x,a.y,RANGE))if(hostileObject(o)&&(!excludeStructures||o.type==='vehicle'))consider(o,'object');
  let best=null,nearest=Infinity;
  for(const {t,kind,d}of candidates){if(d>nearest)break;const cost=travelCost(this,a,t,d);if(cost<nearest||Number.isFinite(cost)&&cost===nearest&&String(t.id)<String(best?.id)){nearest=cost;best={id:t.id,kind}}}
  return best;
 };
 const command=P.command;
+// Retain the existing command/save identifiers. 'human' now means mobile
+// human forces (infantry and vehicles); only structural targets are excluded.
 P.command=function(cmd,...args){
  if(!['nearestTarget','nearestHuman'].includes(cmd))return command.call(this,cmd,...args);
  if(this.ended||this.blastActive(this.king))return false;const feedback=this.commandCD<=0;
@@ -93,7 +97,7 @@ P.updateApe=function(a,dt){
   (a._nearestRejected||(a._nearestRejected={}))[t.id]={until:this.time+8,revision:this.world.navRevision||0};
   a._nearestTarget=null;a._nearestThink=0;delete a.throwWindup;this.navigation.resetActor?.(a);ref=null;t=null;
  }
- if(!t||t.hp<=0||t.dead||!inDirection(a,t)||order.kind==='human'&&ref.kind!=='human'||ref.kind==='object'&&!hostileObject(t)||(ref.kind==='object'?this.objectDistance(a,t):distance(a,t))>RANGE){
+ if(!t||t.hp<=0||t.dead||!inDirection(a,t)||order.kind==='human'&&!troopTarget(t,ref.kind)||ref.kind==='object'&&!hostileObject(t)||(ref.kind==='object'?this.objectDistance(a,t):distance(a,t))>RANGE){
   a._nearestTarget=null;delete a.throwWindup;a.target={...order.goal};const d=distance(a,order.goal);
   if(d>8)this.move(a,order.goal.x-a.x,order.goal.y-a.y,Math.min(a.speed*1.3,d/Math.max(dt,.001)),dt);
   return;
@@ -104,7 +108,7 @@ P.updateApe=function(a,dt){
  this.move(a,t.x-a.x,t.y-a.y,a.speed*1.3,dt);
 };
 const damage=P.damageObject;
-P.damageObject=function(o,n,a){if(a?.nearestOrder?.kind==='human')return false;return damage.call(this,o,n,a)};
+P.damageObject=function(o,n,a){if(a?.nearestOrder?.kind==='human'&&o.type!=='vehicle')return false;return damage.call(this,o,n,a)};
 const hurt=P.hurt;
-P.hurt=function(a,n,source){if(source?.nearestOrder?.kind==='human'&&!a.id?.startsWith('human'))return false;return hurt.call(this,a,n,source)};
+P.hurt=function(a,n,source){if(source?.nearestOrder?.kind==='human'&&!a.id?.startsWith('human')&&!a.id?.startsWith('vehicle'))return false;return hurt.call(this,a,n,source)};
 })();

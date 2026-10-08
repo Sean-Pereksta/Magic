@@ -18,6 +18,8 @@ This continuation replaces the remaining vehicle/aircraft artwork, expands the s
 
 | Gesture | Action |
 |---|---|
+| E tap | Directional charge against nearby humans, vehicles and hostile structures |
+| E hold 280 ms | Directional charge against humans and vehicles, including active or parked tanks; ignore structures |
 | Q | Recruit eligible nearby unowned, free apes only |
 | R tap | Recall nearby recruited field apes |
 | R hold 600 ms | Recall all recruited field apes |
@@ -42,7 +44,8 @@ Crossing art uses the existing ground cache. Vehicle rotor caches cap at 32 entr
 
 ## Validation
 
-- Full engine/art regression run: **477/477 passed**, with zero failures (64.61 seconds on the validation machine).
+- Full engine/art regression run after the held-E vehicle update: **483/483 passed**, with zero failures (93.48 seconds on the validation machine).
+- Held-E checks cover active/parked tank damage, equal infantry/vehicle target ranking, kill retargeting, range/cone limits, legacy saves and excluded structures. The real keyboard hold and equivalent touch command both select nearby armor over farther infantry without targeting a closer cage.
 - Real Chrome desktop and touch checks cover taps, holds, keyboard repeats, pause/blur/pointer cancellation, menus, loading, all quality presets, mobile DPR, reduced motion and missing-art fallback. The final built bundle decodes 28 runtime atlases.
 - New navigation scenarios cover moving targets, saved crossing progress, 240-ape lane traffic, 120-ape recall with actual crowd separation, 1,000-ape coalesced recall, inaccessible targets, destroyed gates, live-wall melee rejection, narrow prison passages and order/save precedence.
 - A commissioned tower was advanced by its existing worker system through stages 0–4; a stage-2 save restored stage/progress and the same source frame, then completion used frame 4. All 75 authored stage rectangles were rendered in Chrome and visually inspected.

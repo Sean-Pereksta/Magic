@@ -2,6 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{loadEngine}=require('./performance-harness.cjs');
 function arena(){const c=loadEngine();if(!c.ATSGame.prototype.nearestTargetFor)vm.runInContext(fs.readFileSync(path.join(__dirname,'../nearest-orders.js'),'utf8'),c);const g=new c.ATSGame('NEAREST-ORDERS');g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();g.world.ensure=()=>{};g.world.stream=()=>{};g.world.terrain=()=>({biome:'forest',water:false});g.world.waterBlocked=()=>false;g.king.x=-400;const a=g.makeApe(0,0,'follow');a.species='gorilla';g.siege.balance(a,true);return{c,g,a}}
 function object(g,type,x,extra={}){const o={id:'object-'+g.nextId++,type,x,y:0,r:10,hp:200,maxHp:200,solid:true,...extra};g.world.objects.set(o.id,o);g.world._indexObject(o);return o}
+function vehicle(g,kind,x,y=0){const v=g.forces.initVehicle({id:'vehicle-'+g.nextId++,x,y,dir:0,state:'idle'},kind,0);g.vehicles.push(v);return v}
 function grids(g){g.syncIndexes();g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.vehicleGrid.rebuild(g.vehicles);g.navigation.beginFrame(g.time);g.performance.beginStep(g)}
 function step(g,frames=1){for(let i=0;i<frames;i++){g.time+=1/30;grids(g);g.siege.tick(1/30);for(const a of g.apes)if(a.hp>0)g.updateApe(a,1/30)}}
 test('tap and hold share the full charge scan radius in every direction',()=>{
@@ -22,9 +23,9 @@ test('both E orders pursue distant humans and drop targets beyond the shared lim
  }
 });
 test('tap selects actual nearest hostile target across humans, vehicles, structures and occupied cages',()=>{const {g,a}=arena(),human=g.makeHuman(95,0,null),cage=object(g,'cage',55,{count:4}),vehicle={id:'vehicle-test',x:75,y:0,hp:200,maxHp:200,kind:'jeep'};g.vehicles.push(vehicle);object(g,'tree',12);object(g,'apeBuilding',17);object(g,'cage',20,{count:0});object(g,'gate',23,{solid:false});grids(g);assert.equal(g.nearestTargetFor(a).id,cage.id);cage.dead=true;assert.equal(g.nearestTargetFor(a).id,vehicle.id);vehicle.hp=0;grids(g);assert.equal(g.nearestTargetFor(a).id,human.id);const gate=object(g,'gate',35);assert.equal(g.nearestTargetFor(a).id,gate.id)});
-test('held command ignores closer cages and vehicles and actually attacks the nearest human',()=>{const {g,a}=arena(),cage=object(g,'cage',0,{y:45,count:2}),vehicle={id:'vehicle-test',x:0,y:-35,hp:200,maxHp:200,kind:'jeep'};g.vehicles.push(vehicle);const far=g.makeHuman(150,0,null),near=g.makeHuman(28,0,null);grids(g);assert.ok(g.command('nearestHuman'));step(g,6);assert.equal(a._nearestTarget.id,near.id);assert.ok(near.hp<near.maxHp);assert.equal(far.hp,far.maxHp);assert.equal(cage.hp,cage.maxHp);assert.equal(vehicle.hp,vehicle.maxHp)});
-test('human-only pathfinding never breaches a blocking wall or fortification',()=>{const {g,a}=arena(),wall=object(g,'wall',48,{w:20,h:140,collision:'rect',faction:'human',wallTier:3,climbable:false,fortification:true,team:'human'}),h=g.makeHuman(110,0,null);grids(g);g.command('nearestHuman');step(g,330);assert.equal(wall.hp,wall.maxHp);assert.ok(h.hp<h.maxHp,'apes route around the wall to the human');assert.equal(a.wallClimb,undefined);assert.equal(a.siegeTransition,undefined)});
-test('human-only command charges with no humans and never redirects to structures',()=>{const {g,a}=arena(),cage=object(g,'cage',25,{count:2});grids(g);g.command('nearestHuman');step(g,90);assert.equal(cage.hp,200);assert.ok(a.x>25);assert.equal(a._nearestTarget,null)});
+test('held command attacks nearby infantry ahead of a farther vehicle and leaves structures alone',()=>{const {g,a}=arena(),cage=object(g,'cage',0,{y:45,count:2}),v=vehicle(g,'jeep',85);const far=g.makeHuman(150,0,null),near=g.makeHuman(28,0,null);grids(g);assert.ok(g.command('nearestHuman'));step(g,6);assert.equal(a._nearestTarget.id,near.id);assert.ok(near.hp<near.maxHp);assert.equal(far.hp,far.maxHp);assert.equal(cage.hp,cage.maxHp);assert.equal(v.hp,v.maxHp)});
+test('held combat-target pathfinding never breaches a blocking wall or fortification',()=>{const {g,a}=arena(),wall=object(g,'wall',48,{w:20,h:140,collision:'rect',faction:'human',wallTier:3,climbable:false,fortification:true,team:'human'}),h=g.makeHuman(110,0,null);grids(g);g.command('nearestHuman');step(g,330);assert.equal(wall.hp,wall.maxHp);assert.ok(h.hp<h.maxHp,'apes route around the wall to the human');assert.equal(a.wallClimb,undefined);assert.equal(a.siegeTransition,undefined)});
+test('held command charges when no humans or vehicles remain and never redirects to structures',()=>{const {g,a}=arena(),cage=object(g,'cage',25,{count:2});grids(g);g.command('nearestHuman');step(g,90);assert.equal(cage.hp,200);assert.ok(a.x>25);assert.equal(a._nearestTarget,null)});
 test('both gestures ignore closer targets behind or outside the charge direction',()=>{
  for(const command of ['nearestTarget','nearestHuman']){
   const {g,a}=arena();g.makeHuman(-10,0,null);g.makeHuman(5,45,null);const h=g.makeHuman(450,0,null);
@@ -79,4 +80,42 @@ test('target scoring keeps its six-candidate cap and preserves explicit combat t
  const {g,a}=arena();for(let i=0;i<40;i++)g.makeHuman(60+i,0,null);for(let i=0;i<40;i++)object(g,'tower',110+i);grids(g);g.command('nearestTarget',{x:1,y:0});
  let calls=0;g.world.crossingFor=()=>{calls++;return null};g.navigation.findPath=()=>{throw Error('unexpected path request')};
  const explicit={kind:'human',id:g.humans.at(-1).id};a._nearestTarget=explicit;g.nearestTargetFor(a);assert.ok(calls<=6);assert.equal(a._nearestTarget,explicit,'scoring does not mutate active/explicit orders');
+});
+test('held E ranks infantry and armor by the same distance and excludes closer structures',()=>{
+ const {g,a}=arena(),h=g.makeHuman(90,0,null),tank=vehicle(g,'tank',60);
+ const structures=['cage','gate','tower','barracks','depot'].map((kind,i)=>object(g,kind,15+i*5,{count:3}));grids(g);g.command('nearestHuman',{x:1,y:0});
+ assert.equal(g.nearestTargetFor(a,true).id,tank.id);
+ h.x=45;grids(g);assert.equal(g.nearestTargetFor(a,true).id,h.id,'nearer infantry wins over armor');
+ tank.x=35;grids(g);assert.equal(g.nearestTargetFor(a,true).id,tank.id,'nearer armor wins over infantry');
+ h.hp=tank.hp=0;grids(g);assert.equal(g.nearestTargetFor(a,true),null);for(const o of structures)assert.equal(o.hp,o.maxHp);
+});
+test('held E actually damages both patrol vehicles and military tanks without harming structures',()=>{
+ for(const kind of ['jeep','tank']){
+  const {g,a}=arena(),v=vehicle(g,kind,36),h=g.makeHuman(160,0,null),cage=object(g,'cage',0,{y:60,count:3});grids(g);g.command('nearestHuman',{x:1,y:0});step(g,8);
+  assert.equal(a._nearestTarget?.id,v.id);assert.equal(a._nearestTarget?.kind,'vehicle');assert.ok(v.hp<v.maxHp,kind+' must take actual combat damage');assert.equal(h.hp,h.maxHp);assert.equal(cage.hp,cage.maxHp);
+ }
+});
+test('held E retargets from infantry to armor and back as targets die',()=>{
+ const {g,a}=arena(),first=g.makeHuman(26,0,null),tank=vehicle(g,'tank',55),last=g.makeHuman(95,0,null);object(g,'tower',0,{y:65});grids(g);g.command('nearestHuman',{x:1,y:0});step(g,2);assert.equal(a._nearestTarget?.id,first.id);
+ first.hp=0;for(let frame=0;frame<90&&tank.hp===tank.maxHp;frame++)step(g);assert.equal(a._nearestTarget?.id,tank.id);assert.ok(tank.hp<tank.maxHp);
+ tank.hp=0;step(g,30);assert.equal(a._nearestTarget?.id,last.id);assert.ok(last.hp<last.maxHp);assert.equal(a.nearestOrder.kind,'human','legacy saved discriminator remains compatible');
+});
+test('held E uses the same 570-unit range and directional cone for vehicles and tanks',()=>{
+ const {g,a}=arena(),v=vehicle(g,'tank',0);
+ for(const angle of [0,Math.PI/2,Math.PI,Math.PI*1.5])for(const radius of [569.99,570,570.01]){
+  v.x=Math.cos(angle)*radius;v.y=Math.sin(angle)*radius;grids(g);g.command('nearestHuman',{x:Math.cos(angle),y:Math.sin(angle)});assert.equal(g.nearestTargetFor(a,true)?.id??null,radius<=570?v.id:null);
+ }
+ g.command('nearestHuman',{x:1,y:0});for(const [x,y]of [[-15,0],[5,60]]){v.x=x;v.y=y;grids(g);assert.equal(g.nearestTargetFor(a,true),null)}
+ v.x=80;v.y=0;grids(g);assert.equal(g.nearestTargetFor(a,true).id,v.id);
+});
+test('legacy saved held orders retain mixed infantry and vehicle targeting after loading',()=>{
+ const {c,g,a}=arena(),tank=vehicle(g,'tank',40);g.makeHuman(120,0,null);grids(g);g.command('nearestHuman',{x:1,y:0});
+ const loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize()))),copy=loaded.apes.find(x=>x.id===a.id);loaded.world.terrain=()=>({biome:'forest',water:false});loaded.world.waterBlocked=()=>false;loaded.world.objects.clear();loaded.world._spatial.clear();grids(loaded);
+ assert.equal(copy.nearestOrder.kind,'human');loaded.planNearestOrders();assert.equal(copy._nearestTarget?.id,tank.id);assert.equal(copy._nearestTarget?.kind,'vehicle');
+});
+
+test('held E attacks parked tank objects while excluding closer structures and friendly vehicles',()=>{
+ const {g,a}=arena(),tank=object(g,'vehicle',45,{vehicleType:'tank',parked:true,r:20,w:40,h:30,collision:'rect'}),cage=object(g,'cage',12,{count:2,solid:false}),friendly=object(g,'vehicle',8,{team:'ape',solid:false});g.makeHuman(140,0,null);grids(g);g.command('nearestHuman',{x:1,y:0});
+ assert.equal(g.nearestTargetFor(a,true).id,tank.id);step(g,6);assert.equal(a._nearestTarget?.kind,'object');assert.equal(a._nearestTarget?.id,tank.id);assert.ok(tank.hp<tank.maxHp);assert.equal(cage.hp,cage.maxHp);assert.equal(friendly.hp,friendly.maxHp);
+ g.damageObject(cage,100,a);assert.equal(cage.hp,cage.maxHp,'structure damage remains blocked throughout held orders');
 });
