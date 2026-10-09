@@ -4,15 +4,24 @@
 
 | Input | Result | Command API |
 | --- | --- | --- |
-| Q | Call wild, idle, and settled apes within 340 world units into the active horde. | `call` |
+| Q tap | Call wild, idle, and settled apes within 340 world units into the active horde. | `call` |
+| Q partial hold | Expand the visible call circle from 340 to 1,600 units; release to call from that area. | `call`, `{radius}` |
+| Q full hold | At 1.2 seconds, perform the existing total recall of every commanded ape, including residents. | `recallAll` |
+| E tap | Attack the nearest valid target ahead. | `nearestTarget` |
+| E double tap | Fan out toward the pointer while attacking. | `spreadCharge` |
+| E hold | Attack troops and vehicles ahead, ignoring structures. | `nearestHuman` |
 | R tap | Recall recruited field apes within 260 world units. | `recall` |
 | R hold | Recall all recruited field apes, regardless of distance. | `recallField` |
 | T tap | Recall all recruited field apes, regardless of distance. | `recallField` |
 | T hold | Mobilize every recruited ape, including settlement residents, defenders, workers, and young. | `recallAll` |
 
+Q keeps its ordinary 340-unit tap radius for the first 120 ms, then grows linearly to 1,600 units over 1.2 seconds. Releasing early issues one area call; reaching 1.2 seconds issues only the existing `recallAll`, with no earlier recruitment. This full call includes only already-commanded apes; wild apes and captives retain their existing rules. The world ring and progress text preview the current area. Keyboard, dock buttons, and the touch wheel share this behavior.
+
+E waits 240 ms after a tap to distinguish a quick second tap. A double tap issues one spread attack; holding either press for 280 ms issues the ordinary troops-and-vehicles order instead. The initiating pointer direction is kept while the gesture resolves. Selected species and individual units fan out across one shared front; later orders clear that fan.
+
 R and T use a 600 ms hold threshold. A tap commits on release; a hold commits once at the threshold and release does not repeat it. Keyboard repeat is ignored. The same gestures work on the recall arrows in the touch command palette. A visible progress bar distinguishes T's settlement mobilization from its ordinary field recall. Pause, blur, hidden tabs, canceled pointers, and lost pointer capture cancel unfinished gestures. The former T attack-nearest action remains available in the expanded command menu; directional E tap/hold orders remain available.
 
-Q and nearby R use the ape spatial grid. Q mobilizes nearby residents and settlement scouts, including young, and recruits idle apes. Existing active field followers and their selected-species or division orders remain unchanged. Locked cages and unrescued prison cohorts retain their existing rescue requirements. Command pulses are bounded to one effect per order; feedback reports the actual affected population and mobilized resident count.
+Area Q calls and nearby R use the ape spatial grid. Q mobilizes nearby residents and settlement scouts, including young, and recruits idle apes. Existing active field followers and their selected-species or division orders remain unchanged. Locked cages and unrescued prison cohorts retain their existing rescue requirements. Command pulses are bounded to one effect per order; feedback reports the actual affected population and mobilized resident count.
 
 ## Ownership, settlement duties, and saved games
 

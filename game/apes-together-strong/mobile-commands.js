@@ -4,8 +4,8 @@
 const PRIMARY=[['nearestTarget','⚔️','All Charge'],['hold','✋','Hold Position'],['call','📣','Call Apes'],['recall','↩️','Recall'],['settlement','🏕️','Settlement']];
 const SCOPES=[['recall','↩️','Nearby · R'],['recallField','↩️','All field · T'],['recallAll','🏘️','All + residents']];
 class MobileCommands {
- constructor({canvas,hud,enabled,blocked,command,tap,drag,unlock,settlement,army}) {
-  Object.assign(this,{canvas,hud,enabled,blocked,command,tap,drag,unlock,settlement,army});
+ constructor({canvas,hud,enabled,blocked,command,tap,drag,unlock,settlement,army,callHold}) {
+  Object.assign(this,{canvas,hud,enabled,blocked,command,tap,drag,unlock,settlement,army,callHold});
   this.pointers=new Map();this.gesture=null;this.timer=null;this.scopeTimer=null;
   this.wheel=document.createElement('div');this.wheel.id='mobileCommandWheel';this.wheel.hidden=true;this.wheel.setAttribute('role','status');this.wheel.setAttribute('aria-live','polite');hud.append(this.wheel);
   this.panel=document.createElement('div');this.panel.id='mobileSettlementActions';this.panel.hidden=true;this.panel.setAttribute('role','group');this.panel.setAttribute('aria-label','Settlement and army actions');hud.append(this.panel);
@@ -56,9 +56,11 @@ class MobileCommands {
   if(type!=='pointerup'){this.cancelGesture();this.army.cancel();return}
   if(g?.id===e.pointerId){
    let action=null;if(g.open){g.x=e.clientX;g.y=e.clientY;this.select(g);if(g.selected>=0)action=g.items[g.selected][0];if(action==='nearestTarget'&&performance.now()-g.selectedAt>=280)action='nearestHuman'}
+   const heldCall=action==='call'&&!!this.callHold;
+   if(heldCall&&g.callToken&&this.enabled()&&!this.blocked()){this.callHold.release(g.callToken);delete g.callToken}
    this.cancelGesture();
    if(!this.enabled()||this.blocked())return;
-   if(action==='settlement'){this.openSettlement()}else if(action)this.command(action,g.start);else if(!g.open){if(g.dragging)this.drag('up',e);else this.tap(g.start,e)}
+   if(action==='settlement'){this.openSettlement()}else if(action&&!heldCall)this.command(action,g.start);else if(!g.open){if(g.dragging)this.drag('up',e);else this.tap(g.start,e)}
   }else this.drag('up',e);
  }
  showWheel(g){
@@ -69,7 +71,8 @@ class MobileCommands {
   const dx=g.x-g.cx,dy=g.y-g.cy,n=g.items.length,step=Math.PI*2/n;
   const center=Math.hypot(dx,dy)<29||Math.hypot(g.x-g.start.clientX,g.y-g.start.clientY)<14;
   const selected=center?-1:Math.floor(((Math.atan2(dy,dx)-g.offset+step/2+Math.PI*4)%(Math.PI*2))/step);
-  if(selected===g.selected)return;g.selected=selected;g.selectedAt=performance.now();clearTimeout(this.scopeTimer);this.render(g);
+  if(selected===g.selected)return;if(g.callToken){this.callHold.cancel(g.callToken);delete g.callToken}g.selected=selected;g.selectedAt=performance.now();clearTimeout(this.scopeTimer);this.render(g);
+  if(g.items===PRIMARY&&selected>=0&&g.items[selected][0]==='call'&&this.callHold){const token='wheel:'+g.id;if(this.callHold.press(token))g.callToken=token}
   if(g.items===PRIMARY&&selected>=0&&g.items[selected][0]==='recall')this.scopeTimer=setTimeout(()=>{
    if(this.gesture!==g||g.selected!==selected)return;
    // Keep Nearby in the same direction: opening scopes never escalates a recall.
@@ -84,12 +87,12 @@ class MobileCommands {
    const text=document.createElement('div');text.className='mobile-wheel-label'+(i===g.selected?' selected':'');text.style.left=(r+76*Math.cos(angle))+'px';text.style.top=(r+76*Math.sin(angle))+'px';const b=document.createElement('b');b.textContent=icon;text.append(b,document.createTextNode(label));this.wheel.append(text);
   });
   const center=document.createElement('div');center.className='mobile-wheel-center';center.textContent='Cancel';this.wheel.append(center);
-  const hint=document.createElement('div');hint.className='mobile-wheel-hint';const id=g.items[g.selected]?.[0];hint.textContent=g.items===SCOPES?'Choose recall scope · release to call':id==='recall'?'Release: nearby · hold here: recall scopes':id==='nearestTarget'?'Release: E · hold 0.28s: troops & vehicles':'Slide to choose · release to command';this.wheel.append(hint);
+  const hint=document.createElement('div');hint.className='mobile-wheel-hint';const id=g.items[g.selected]?.[0];hint.textContent=g.items===SCOPES?'Choose recall scope · release to call':id==='call'?'Hold here to grow the call circle · 1.2s calls the entire horde':id==='recall'?'Release: nearby · hold here: recall scopes':id==='nearestTarget'?'Release: E · hold 0.28s: troops & vehicles':'Slide to choose · release to command';this.wheel.append(hint);
  }
  openSettlement(){this.cancelGesture();this.panel.hidden=false;this.panel.querySelector('[data-mobile-action=build]').disabled=this.base.hidden}
  toggleArmy(open){this.panel.hidden=true;const wasOpen=this.army.root.classList.contains('mobile-open');this.army.root.classList.toggle('mobile-open',open);if(open||wasOpen)this.army.root.classList.toggle('expanded',open)}
  update({near,workshop,playing}){this.base.hidden=!playing||!near&&!workshop;this.base.textContent=near?'🏕️ Settlement':'🛠️ Workshop';if(!playing)this.cancel()}
- cancelGesture(){clearTimeout(this.timer);clearTimeout(this.scopeTimer);this.gesture=null;this.wheel.hidden=true}
+ cancelGesture(){clearTimeout(this.timer);clearTimeout(this.scopeTimer);if(this.gesture?.callToken)this.callHold?.cancel(this.gesture.callToken);this.gesture=null;this.wheel.hidden=true}
  cancel(){this.cancelGesture();this.pointers.clear();this.panel.hidden=true;this.toggleArmy(false)}
 }
 window.ATSMobileCommands=MobileCommands;

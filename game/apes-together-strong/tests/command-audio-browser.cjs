@@ -37,6 +37,7 @@ async function reset(page) {
   await page.evaluate(() => { sampleStarts.length = 0; ATS.audio.last = Object.create(null); ATS.game.commandCD = 0; });
 }
 async function chorus(page) {
+  await page.waitForFunction(() => sampleStarts.length === 3);
   const calls = await page.evaluate(() => sampleStarts);
   assert.equal(calls.length, 3);
   assert.equal(new Set(calls.map(c => c.id)).size, 3);

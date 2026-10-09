@@ -6,7 +6,7 @@ function installHeldTargetFixture(){
  const g=ATS.game,command=g.command.bind(g);
  g.command=(name,...args)=>{
   const result=command(name,...args);if(name!=='nearestHuman'||!result)return result;
-  const a=g.apes.find(a=>a.hp>0&&a.nearestOrder?.kind==='human'),o=a.nearestOrder;a.hp=a.maxHp=1e6;
+  const a=g.apes.find(a=>a.hp>0&&a.nearestOrder?.kind==='human');if(!a)throw Error('Held E did not assign a combat target order');const o=a.nearestOrder;a.hp=a.maxHp=1e6;
   g.humans.length=0;g.vehicles.length=0;
   const v=g.forces.initVehicle({id:'vehicle-held-browser',x:a.x+o.dx*36,y:a.y+o.dy*36,dir:0,state:'idle',shootTimer:1e6,cannonTimer:1e6},'tank',0);g.vehicles.push(v);
   const h=g.makeHuman(a.x+o.dx*140,a.y+o.dy*140,null),structure={id:'object-held-browser',type:'cage',x:a.x+o.dx*15,y:a.y+o.dy*15,r:2,hp:200,maxHp:200,count:2,solid:false};
@@ -23,19 +23,22 @@ function installHeldTargetFixture(){
   assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);await page.locator('#newRun').click();
   await page.waitForFunction(()=>!document.getElementById('campaignMusic').paused&&document.getElementById('campaignMusic').currentTime>.05);
   assert.ok(await page.locator('#campaignMusic').evaluate(a=>a.volume<=.1&&a.loop&&a.readyState>=2));
-  await page.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.makeApe(g.king.x+30,g.king.y,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
+  await page.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;for(let i=0;i<4;i++)g.makeApe(g.king.x+30,g.king.y+i*15,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
   await page.mouse.move(1150,400);
-  await page.keyboard.press('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestTarget']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'all');
+  await page.keyboard.press('e');await page.waitForFunction(()=>issued.includes('nearestTarget'));assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestTarget']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'all');
   const tapHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(Math.abs(Math.hypot(tapHeading.x,tapHeading.y)-1)<1e-6);
+  await page.evaluate(()=>ATS.game.commandCD=0);await page.keyboard.press('e');await page.keyboard.press('e');await page.waitForFunction(()=>issued.includes('spreadCharge'));await page.waitForTimeout(320);
+  assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['spreadCharge'],'double E suppresses the delayed nearest attack');assert.ok(await page.evaluate(()=>{const list=ATS.game.apes.filter(a=>a.commandStyle==='spreadCharge');return list.length>=4&&new Set(list.map(a=>a.target.x.toFixed(2)+','+a.target.y.toFixed(2))).size>1}),'double E assigns distinct fan destinations');
   await page.evaluate(installHeldTargetFixture);
   await page.mouse.move(250,350);
-  await page.keyboard.down('e');await page.waitForTimeout(380);assert.deepEqual(await page.evaluate(()=>issued.slice()),['nearestHuman']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'human');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestHuman'],'hold never issues tap on release');
+  await page.keyboard.down('e');await page.waitForFunction(()=>issued.includes('nearestHuman'));assert.deepEqual(await page.evaluate(()=>issued.slice()),['nearestHuman']);assert.equal(await page.evaluate(()=>ATS.game.apes[0].nearestOrder?.kind),'human');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestHuman'],'hold never issues tap on release');
   await page.waitForFunction(()=>ATS.game.apesById.get(heldFixture.apeId)?._nearestTarget?.id===heldFixture.vehicleId);
   assert.equal(await page.evaluate(()=>ATS.game.world.objects.get(heldFixture.structureId).hp),200,'held desktop E ignores the closer structure');
   const holdHeading=await page.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return{x:o.dx,y:o.dy}});assert.ok(tapHeading.x*holdHeading.x+tapHeading.y*holdHeading.y<0,'moving the pointer aims the next charge in the opposite direction');
-  await page.keyboard.down('e');await page.keyboard.press('Escape');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),[],'pause cancels pending gesture');
+  await page.keyboard.press('e');await page.keyboard.down('e');await page.waitForFunction(()=>issued.includes('nearestHuman'));await page.keyboard.up('e');await page.waitForTimeout(320);assert.deepEqual(await page.evaluate(()=>issued.splice(0)),['nearestHuman'],'holding the second press suppresses both the single and fan attacks');
+  await page.keyboard.press('e');await page.keyboard.down('e');await page.keyboard.press('Escape');await page.keyboard.up('e');assert.deepEqual(await page.evaluate(()=>issued.splice(0)),[],'pause cancels both taps in a pending double gesture');
   assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
-  await page.locator('#settingsButton').click();await page.locator('#musicToggle').uncheck();await page.locator('#backSettings').click();await page.locator('#resumeRun').click();assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
+  await page.locator('#settingsButton').click();await page.locator('#musicToggle').uncheck();await page.locator('#backSettings').click();await page.locator('#resumeRun').click();await page.waitForTimeout(320);assert.deepEqual(await page.evaluate(()=>issued.splice(0)),[],'resuming cannot revive a canceled E gesture');assert.equal(await page.locator('#campaignMusic').evaluate(a=>a.paused),true);
   await page.keyboard.press('Escape');await page.locator('#settingsButton').click();await page.locator('#musicToggle').check();await page.locator('#backSettings').click();await page.locator('#resumeRun').click();await page.waitForFunction(()=>!document.getElementById('campaignMusic').paused);
   await page.evaluate(()=>{const g=ATS.game;g.spawnSites=()=>{};g.nextDirectorAt=g.nextConvoyAt=g.heliTimer=1e9;g.world.getSites=()=>[];g.world.terrain=()=>({biome:'forest',water:false,road:false});for(let i=0;i<24;i++)g.makeApe(g.king.x+i%5*6,g.king.y+Math.floor(i/5)*6,'follow');g.food=500;g.commandCD=0;g.command('settleAll');const s=g.settlements[0];s.food=500;s.wood=200;for(let i=0;i<40;i++)g.makeApe(g.king.x+50+i%7*9,g.king.y+Math.floor(i/7)*9,'follow');const a=g.apes.at(-1);a.species='gorilla';g.siege.balance(a,true);g.champions.promote(a,{archetype:'wallbreaker',name:'Flint Wallbreaker'});g.world.reveal(g.king.x,g.king.y,900);g.syncIndexes();});
   await page.keyboard.press('m');await page.getByLabel('Division',{exact:true}).selectOption('vanguard');await page.getByRole('button',{name:'Form division',exact:true}).click();
@@ -51,15 +54,15 @@ function installHeldTargetFixture(){
   const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.locator('#newRun').tap();
   await touch.evaluate(()=>{const g=ATS.game;g.king.hp=g.king.maxHp=1e6;g.makeApe(g.king.x+30,g.king.y,'follow');window.issued=[];const command=g.command.bind(g);g.command=(name,...args)=>{issued.push(name);return command(name,...args)}});
   await touch.evaluate(installHeldTargetFixture);
+  const touchSession=await touch.context().newCDPSession(touch),touchSend=(type,points)=>touchSession.send('Input.dispatchTouchEvent',{type,touchPoints:points});
+  const touchPick=async(id,holdMs=0)=>{await touchSend('touchStart',[{x:200,y:340,id:1}]);await touch.waitForFunction(()=>!document.getElementById('mobileCommandWheel').hidden);const point=await touch.evaluate(id=>{const g=ATS.mobileCommands.gesture,i=g.items.findIndex(x=>x[0]===id);if(i<0)throw Error(id+' missing from wheel');const angle=g.offset+i*Math.PI*2/g.items.length;return{x:g.cx+82*Math.cos(angle),y:g.cy+82*Math.sin(angle),id:1}},id);await touchSend('touchMove',[point]);if(holdMs)await touch.waitForTimeout(holdMs);await touchSend('touchEnd',[])};
   for(const kind of ['nearestTarget','nearestHuman']){
-   await touch.locator('.army-expand').tap();await touch.locator(`[data-army-command=${kind}]`).tap();
-   assert.deepEqual(await touch.evaluate(()=>issued.slice()),[],'choosing a touch charge waits for an aim point');
-   assert.equal(await touch.locator('#armyDock').evaluate(el=>el.classList.contains('expanded')),false);
-   await touch.locator('#gameCanvas').tap({position:{x:300,y:260}});assert.deepEqual(await touch.evaluate(()=>issued.splice(0)),[kind]);
+   await touchPick('nearestTarget',kind==='nearestHuman'?310:0);await touch.waitForFunction(kind=>issued.includes(kind),kind);assert.deepEqual(await touch.evaluate(()=>issued.splice(0)),[kind]);
+   assert.equal(await touch.locator('#mobileCommandWheel').isVisible(),false);
    const direction=await touch.evaluate(()=>{const o=ATS.game.apes[0].nearestOrder;return Math.hypot(o.dx,o.dy)});assert.ok(Math.abs(direction-1)<1e-6);
    if(kind==='nearestHuman'){await touch.waitForFunction(()=>ATS.game.apesById.get(heldFixture.apeId)?._nearestTarget?.id===heldFixture.vehicleId);assert.equal(await touch.evaluate(()=>ATS.game.world.objects.get(heldFixture.structureId).hp),200,'touch combat-target order ignores the closer structure')}
   }
-  await touch.locator('#mapButton').tap();await touch.locator('#championCouncil').scrollIntoViewIfNeeded();assert.equal(await touch.locator('#championCouncil').isVisible(),true);assert.ok(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(touch,'campaign-touch');
-  assert.deepEqual(errors,[]);console.log('PASS: real embedded music decode/play/pause, independent mute, tap/hold E and touch equivalent select armor over farther infantry while ignoring structures, council/division controls, specialization, saved elites/orders, prison recon, storm and low-detail rendering, touch layout; no browser errors.');
+  await touchPick('settlement');await touch.locator('[data-mobile-action=overview]').tap();await touch.locator('#championCouncil').scrollIntoViewIfNeeded();assert.equal(await touch.locator('#championCouncil').isVisible(),true);assert.ok(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(touch,'campaign-touch');
+  assert.deepEqual(errors,[]);console.log('PASS: real embedded music decode/play/pause, independent mute, tap/double-tap/hold E, second-press hold and pause cancellation, touch wheel orders select armor over farther infantry while ignoring structures, council/division controls, specialization, saved elites/orders, prison recon, storm and low-detail rendering, touch layout; no browser errors.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
