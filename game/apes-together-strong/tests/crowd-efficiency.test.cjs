@@ -7,7 +7,7 @@ test('pooled crowd queries retain the exact nearest eligible neighbors and clear
  for(let i=0;i<80;i++)actors.push({id:'ape-'+i,x:(i%9)*8,y:Math.floor(i/9)*7,hp:100,_separationStamp:i%3?12:11});
  grid.rebuild(actors);const out=[],distances=[];
  for(const a of actors){
-  const expected=grid.nearest(a.x,a.y,38,8,p=>p!==a&&p.hp>0&&(p.id>a.id||p._separationStamp!==12));
+  const expected=grid.nearest(a.x,a.y,48,8,p=>p!==a&&p.hp>0&&(p.id>a.id||p._separationStamp!==12));
   assert.deepEqual(Array.from(grid.separationNeighbors(a,12,out,distances),p=>p.id),Array.from(expected,p=>p.id));
  }
  const oldBuckets=Array.from(grid.cells.values());grid.rebuild([{id:'new',x:900,y:900,hp:1}]);

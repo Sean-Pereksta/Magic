@@ -19,7 +19,7 @@ const COMMISSIONS={
  workshop:{kind:'workShelter',label:'Workshop',description:'A resident woodworker slowly produces renewable timber. Equip apes and visit to buy armor for your king.',wood:20,food:8,work:28,population:18},
  royalExpansion:{kind:'royalExpansion',label:'Royal lodge expansion',description:'Reinforce the main lodge and lay out a wider district with a second palisade ring.',wood:160,food:120,work:110,population:12,tier:1,expansion:1},
  longhouse:{kind:'longhouse',label:'Royal longhouse',description:'A broad, reinforced family home for 24 residents.',wood:30,food:16,work:46,population:12,tier:1,requiresExpansion:1},
- nursery:{kind:'nursery',label:'Nursery grove',description:'A sheltered family grove helps families raise young 18% faster. Completed homes set the population limit.',wood:42,food:35,work:55,population:18,tier:1},
+ nursery:{kind:'nursery',label:'Nursery grove',description:'A sheltered family grove improves supported growth by 35%, then 20% and 12% for the next two groves. Completed homes set the population limit.',wood:42,food:35,work:55,population:18,tier:1},
  spearBattery:{kind:'spearBattery',label:'Spear battery',description:'A reinforced twin-rack defense launches visible spears up to 1,000 units. Requires an adult defender.',wood:64,food:30,work:78,population:18,tier:1},
  warlordExpansion:{kind:'warlordExpansion',label:'Warlord citadel expansion',description:'Raise a great war lodge and lay out a vast outer district with three palisade rings.',wood:360,food:280,work:175,population:24,tier:2,expansion:2,requiresExpansion:1},
  canopyHut:{kind:'canopyHut',label:'Canopy hall',description:'A large multi-roof home for 40 residents.',wood:55,food:30,work:70,population:24,tier:2,requiresExpansion:2},
@@ -66,15 +66,196 @@ class Settlements {
  commissioningSlots(s){return{active:(s.projects||[]).filter(p=>p.commissioned&&!p.done).length,limit:Infinity}}
  facilityLimit(s,kind){return /Expansion$/.test(kind)?1:Infinity}
  catalog(s){if(typeof s==='string')s=this.game.settlement(s);if(!s)return[];this.init(s);const near=this.lodgeAt()===s;
-  return Object.entries(COMMISSIONS).map(([kind,c])=>{const collection=HOUSING[c.kind]?s.huts:c.kind==='barrier'?s.barriers:FACILITIES.has(c.kind)?s.facilities:s.structures,built=c.expansion?(this.expansion(s)>=c.expansion?1:0):collection.filter(o=>(c.kind==='barrier'||(o.kind||'hut')===c.kind)&&o.hp>0&&(o.stage??4)===4).length,queued=s.projects.filter(p=>p.kind===c.kind&&!p.done).length,limit=this.facilityLimit(s,c.kind);
+  const catalog=Object.entries(COMMISSIONS).map(([kind,c])=>{const collection=HOUSING[c.kind]?s.huts:c.kind==='barrier'?s.barriers:FACILITIES.has(c.kind)?s.facilities:s.structures,built=c.expansion?(this.expansion(s)>=c.expansion?1:0):collection.filter(o=>(c.kind==='barrier'||(o.kind||'hut')===c.kind)&&o.hp>0&&(o.stage??4)===4).length,queued=s.projects.filter(p=>p.kind===c.kind&&!p.done).length,limit=this.facilityLimit(s,c.kind);
    const reason=!near?'Visit the great lodge to commission construction.':c.expansion&&built?'This lodge upgrade is complete.':c.expansion&&queued?'This lodge upgrade is already queued.':s.wood<c.wood?'Not enough village timber.':s.food<c.food?'Not enough village food.':'';
    return{kind,label:c.label,description:c.description,cost:{wood:c.wood,food:c.food},totalWork:c.work,limit,built,queued,unlocked:true,available:!reason,reason};
   });
+  const p=s.perimeter,coverage=this.perimeterCoverage(s),pending=p&&coverage.complete<coverage.total&&p.stage!=='blocked',wood=p?.totalWood||Math.ceil((this.defenseExtent(s)+70)*8/64)*8+16;
+  catalog.push({kind:'perimeter',label:'Complete Palisade Perimeter',description:'Survey walls and four gates around the settlement. Workers build progressively, spending timber per section as supplies arrive.',cost:{wood,food:0},totalWork:0,built:coverage.complete,queued:coverage.total-coverage.complete,limit:Infinity,available:near&&!pending,reason:!near?'Visit the great lodge to plan defenses.':pending?'Perimeter blueprint in progress.':'',blueprint:true});
+  return catalog;
  }
- commission(id,kind){const s=this.game.settlement(id);if(!s)return{ok:false,reason:'This village no longer exists.'};const entry=this.catalog(s).find(c=>c.kind===kind);if(!entry)return{ok:false,reason:'Unknown construction commission.'};if(!entry.available)return{ok:false,reason:entry.reason};const spec=COMMISSIONS[kind],p=this.queue(s,spec.kind,null,{commissioned:true});if(!p)return{ok:false,reason:'The project could not be queued.'};
+ commission(id,kind){const s=this.game.settlement(id);if(!s)return{ok:false,reason:'This village no longer exists.'};if(kind==='perimeter'){this.init(s);return this.completePerimeter(s)}const entry=this.catalog(s).find(c=>c.kind===kind);if(!entry)return{ok:false,reason:'Unknown construction commission.'};if(!entry.available)return{ok:false,reason:entry.reason};const spec=COMMISSIONS[kind],p=this.queue(s,spec.kind,null,{commissioned:true});if(!p)return{ok:false,reason:'The project could not be queued.'};
   s.wood-=spec.wood;s.food-=spec.food;p.commissioned=true;p.commissionKind=kind;p.paidCost={wood:spec.wood,food:spec.food};p.timber=0;p.totalWork=spec.work;p.waiting=true;s.commissions.push({id:p.id,projectId:p.id,kind,status:'queued',createdAt:this.game.time,cost:{...p.paidCost}});this.trimCommissions(s);s._jobsAt=0;s._staffAt=0;return{ok:true,reason:'Commission added to the builders’ work queue.',projectId:p.id};
  }
  trimCommissions(s){const active=s.commissions.filter(c=>c.status==='queued'),history=s.commissions.filter(c=>c.status!=='queued').slice(-24);s.commissions=history.concat(active);s._initializedCommissions=s.commissions}
+ development(s){
+  const thresholds=[1,16,40,80,150],names=['Outpost','Hamlet','Village','Township','Stronghold'];
+  let wanted=1;for(let i=1;i<5;i++)if(s.population>=thresholds[i])wanted=i+1;
+  let tier=s.developmentTier||wanted;
+  if(wanted>=tier){tier=wanted;delete s.tierDropAt}
+  else if(s.population<thresholds[tier-1]*.85){s.tierDropAt??=this.game.time;if(this.game.time-s.tierDropAt>=30){tier=wanted;delete s.tierDropAt}}
+  else delete s.tierDropAt;
+  s.developmentTier=tier;
+  const signature=[s.huts?.length,s.structures?.length,s.facilities?.length,s.barriers?.length].join(':');
+  if(this.game.time>=(s._attentionAt||0)||s._attentionSignature!==signature){s._attentionAt=this.game.time+8;s._attentionSignature=signature;s._developmentAttention=Math.min(1,(s.structures||[]).concat(s.facilities||[],s.barriers||[]).filter(o=>o.hp>0&&!o.activityZone&&(o.stage??4)===4).length*.025)}
+  return{tier,name:names[tier-1],roman:['I','II','III','IV','V'][tier-1],attention:tier+(s._developmentAttention||0)};
+ }
+ intel(s){
+  if(!s.humanIntel)s.humanIntel={version:1,state:s.known?'Discovered':'Undetected',reportedAt:s.known?this.game.time:null,position:s.known?{x:s.x,y:s.y}:null,readyAt:0,recoveryUntil:0,nextScoutAt:this.game.time+90};
+  return s.humanIntel;
+ }
+ settlementSummary(s){
+  const d=this.development(s),intel=this.intel(s),bonus=Math.round(this.growthFacilities(s).nurseryBonus*100),p=s.perimeter;
+  const walls=p?this.perimeterCoverage(s):null;
+  return 'Tier '+d.roman+' '+d.name+' · '+s.population+' residents · Nursery +'+bonus+'% · '+intel.state+(walls?' · Palisade '+walls.complete+'/'+walls.total+(p.stage==='surveying'?' (surveying)':p.stage==='blocked'?' (terrain blocked)':''):'');
+ }
+ clearWallOccupants(s,wall){
+  const g=this.game,w=g.world,reach=Math.max(wall.w||0,wall.h||0)/2+32;
+  const actors=(g.apeGrid?.near(wall.x,wall.y,reach)||[]).concat(g.humanGrid?.near(wall.x,wall.y,reach)||[],g.king||[]);
+  for(const a of new Set(actors)){
+   const profile=a.id?.startsWith('human')?'human':'ape',radius=a.id==='king'?12:10;if(a.hp<=0||w.fortificationPassable(wall,profile)||!w._touches(wall,a.x,a.y,radius))continue;
+   const vertical=(wall.w||0)<(wall.h||0),half=(vertical?wall.w:wall.h)/2,offset=vertical?a.x-wall.x:a.y-wall.y,preferred=Math.sign(offset)||Math.sign(vertical?s.x-wall.x:s.y-wall.y)||1;
+   for(const sign of[preferred,-preferred]){const point={x:vertical?wall.x+sign*(half+radius+3):a.x,y:vertical?a.y:wall.y+sign*(half+radius+3)};if(w.actorBlocked(point.x,point.y,radius,profile))continue;a.x=point.x;a.y=point.y;a._nav=null;break}
+  }
+ }
+ raidEntrance(s,a,target){
+  const p=s.perimeter;if(!p||p.stage==='surveying'||p.stage==='blocked')return null;
+  const outside=q=>Math.max(Math.abs(q.x-s.x),Math.abs(q.y-s.y))>p.radius-24;if(!outside(a)||outside(target))return null;
+  if(!s._raidEntries||this.game.time>=(s._raidEntriesAt||0)||s._raidRevision!==this.game.world.navRevision){s._raidEntriesAt=this.game.time+3;s._raidRevision=this.game.world.navRevision;const walls=new Map(s.barriers.map(b=>[b.id,b]));s._raidEntries=p.plots.map(o=>({plot:o,wall:walls.get(o.existingId||o.projectId+'-barrier')})).filter(e=>e.plot.gate||!e.wall||e.wall.hp<=0)}
+  const entry=s._raidEntries.slice().sort((a1,b1)=>Number(!!a1.wall&&a1.wall.hp>0)-Number(!!b1.wall&&b1.wall.hp>0)||distance(a,a1.plot)-distance(a,b1.plot))[0];if(!entry)return null;
+  const point=entry.plot,vertical=Math.abs(Math.cos(point.barrierDir))<.5,sign=vertical?Math.sign(point.x-s.x):Math.sign(point.y-s.y),inside=distance(a,point)<60||!entry.wall||entry.wall.hp<=0;
+  return{x:point.x+(vertical?sign*(inside?-40:38):0),y:point.y+(vertical?0:sign*(inside?-40:38))};
+ }
+ defenseExtent(s){
+  let extent=100;for(const list of[s.huts,s.structures,s.facilities,s.projects,s.barriers])for(const o of list||[])if(!o.activityZone&&!o.awaitingPlot&&o.kind!=='lumber')extent=Math.max(extent,Math.abs(o.x-s.x)+Math.max(40,(o.w||0)/2),Math.abs(o.y-s.y)+Math.max(40,(o.h||0)/2));
+  return Math.max(extent,s.perimeter?.radius||0);
+ }
+ warn(s,key,text,color='red'){
+  s.threatNotices=s.threatNotices||{};if(this.game.time<(s.threatNotices[key]||0))return;
+  s.threatNotices[key]=this.game.time+45;this.game.notify(s.name+' — '+text,color,'villageAttack');
+ }
+ reportVillage(s,position){
+  if(!s)return;const intel=this.intel(s),fresh=!s.known;s.known=true;intel.reportedAt=this.game.time;intel.position={x:position.x,y:position.y};
+  if(!['Targeted','Recovering'].includes(intel.state)){intel.state='Discovered';if(fresh)intel.readyAt=this.game.time+45}
+  if(fresh)this.warn(s,'discovery','discovered by enemy forces');
+ }
+ observeVillage(s,h){
+  if(!h||h.hp<=0||h.villageReport||h.villageReported?.id===s.id&&this.game.time-h.villageReported.at<60)return false;
+  // Use physical structures in the local collision index, the observer's
+  // flashlight cone and budgeted line of sight. Region search is not discovery.
+  const range=Math.min(360,this.game.forces.range(h)),candidates=[];
+  this.game.world._queryCollision(h.x-range,h.y-range,h.x+range,h.y+range,o=>{
+   if(o.settlementId===s.id&&o.hp>0&&!o.dead&&(o.type==='apeBuilding'||o.fortification))candidates.push(o);
+  });
+  if(s.lodge?.hp>0)candidates.push(s.lodge);
+  candidates.sort((a,b)=>distance(h,a)-distance(h,b));
+  for(const o of candidates.slice(0,4)){
+   if(distance(h,o)>range||Math.cos(Math.atan2(o.y-h.y,o.x-h.x)-(h.dir||0))<Math.cos(.65))continue;
+   const d=distance(h,o)||1,half=Math.max(o.w||0,o.h||0)/2+4,target={x:o.x+(h.x-o.x)/d*Math.min(half,d/2),y:o.y+(h.y-o.y)/d*Math.min(half,d/2)};
+   if(this.game.lineVisible(h,target)!==true)continue;
+   h.villageReport={id:s.id,x:o.x,y:o.y,seenAt:this.game.time,progress:0};const intel=this.intel(s);intel.suspectedAt=this.game.time;if(!s.known)intel.state='Suspected';
+   this.warn(s,'scouts','human scouts spotted near village');return true;
+  }
+  return false;
+ }
+ communicateVillage(h,kind){
+  const report=h.villageReport;if(!report||h.hp<=0)return false;const s=this.game.settlement(report.id),site=this.game.world.sites.get(h.siteId);
+  if(!s||kind==='radio'&&(!h.hasRadio||site?.radioDown))return false;
+  this.reportVillage(s,report);h.villageReported={id:s.id,at:this.game.time};delete h.villageReport;return true;
+ }
+ scoutHuman(h,dt){
+  if(h.hp<=0)return false;const g=this.game,mission=h.scoutMission,report=h.villageReport;if(!mission&&!report)return false;
+  const home=g.world.sites.get(h.siteId);
+  if(report){
+   if(g.time-report.seenAt>180){delete h.villageReport;if(mission)mission.returning=true;return false}
+   const relay=h.hasRadio&&!home?.radioDown?h:g.humanGrid.nearest(h.x,h.y,100,4,p=>p!==h&&p.hp>0&&p.hasRadio&&!g.world.sites.get(p.siteId)?.radioDown)[0];
+   if(relay){report.progress=h.hitTimer>0?0:report.progress+dt;h.moving=false;h.animation={kind:'radio',start:g.time,duration:.4};if(report.progress>=4){this.reportVillage(g.settlement(report.id),report);h.villageReported={id:report.id,at:g.time};delete h.villageReport;if(mission)mission.returning=true}return true}
+   if(home&&!home.cleared&&distance(h,home)<120){this.communicateVillage(h,'courier');if(mission)mission.returning=true;return true}
+   // A messenger physically reaches a patrol or surviving installation.
+   const destination=home&&!home.cleared?home:[...g.world.sites.values()].filter(p=>!p.cleared&&p.strength>0).sort((a,b)=>distance(h,a)-distance(h,b))[0];
+   if(destination){g.move(h,destination.x-h.x,destination.y-h.y,90,dt);return true}return false;
+  }
+  if(mission.returning||g.time>mission.expiresAt){
+   if(!home||home.cleared||distance(h,home)<100){delete h.scoutMission;h.state='patrol';return false}
+   g.move(h,home.x-h.x,home.y-h.y,85,dt);return true;
+  }
+  if(g.time>=(h._scoutPlanAt||0)){
+   h._scoutPlanAt=g.time+1;
+   if(g.apeGrid.nearest(h.x,h.y,160,9,a=>a.hp>0).length>=8){mission.returning=true;return true}
+   const offsets=[[0,0],[-300,-300],[0,-300],[300,-300],[300,0],[300,300],[0,300],[-300,300],[-300,0]];
+   const offset=offsets[mission.waypoint%offsets.length],point={x:mission.regionX+offset[0],y:mission.regionY+offset[1]};
+   if(distance(h,point)<70||g.time>(mission.legUntil||0)){mission.waypoint++;mission.legUntil=g.time+24}
+   if(h.state!=='combat'){h.state='search';h.lastX=point.x;h.lastY=point.y;h.searchTime=30}
+  }
+  return false; // The ordinary flashlight, perception, weapons and navigation run.
+ }
+ canRaid(s,operationId){
+  const intel=this.intel(s),g=this.game;if(!s.known||!s.population||intel.reportedAt===null||g.time-intel.reportedAt>900||g.time<intel.readyAt||g.time<intel.recoveryUntil)return false;
+  if(intel.state==='Targeted'&&intel.operationId!==operationId)return false;
+  return !g.activeOperations('regional').some(o=>o.target.id===s.id&&o.id!==operationId);
+ }
+ dispatchScouts(s){
+  const g=this.game,d=this.development(s),intel=this.intel(s),activeScouts=g.humans.filter(h=>h.hp>0&&h.scoutMission).length;
+  if(g.time<intel.nextScoutAt||activeScouts>=12)return false;
+  intel.nextScoutAt=g.time+[600,300,210,150,110][d.tier-1]/(1+(d.attention-d.tier)*.35);
+  if(d.tier===1&&Math.random()>.2)return false;
+  const base=[...g.world.sites.values()].filter(b=>!b.cleared&&b.strength>=3&&distance(b,s)<4000&&g.settlements.every(v=>Math.max(Math.abs(b.x-v.x),Math.abs(b.y-v.y))>this.defenseExtent(v)+180)).sort((a,b)=>distance(a,s)-distance(b,s))[0];
+  const count=Math.min(4,d.tier+1,Math.floor(base?.strength||0),12-activeScouts);if(!base||count<2||g.humans.length+count>g.activeHumanCapacity()||g.forceWeight()+count*2>g.responseBudget)return false;
+  // Only the coarse activity region is assigned. Scouts search nine points;
+  // their eyes and a surviving report must supply a village coordinate.
+  const regionX=Math.floor(s.x/900)*900+450,regionY=Math.floor(s.y/900)*900+450;
+  for(let i=0;i<count;i++){const point=g.findOpen(base.x+i*24,base.y,10),h=g.makeHuman(point.x,point.y,base);g.forces.assign(h,base,'tracker');h.hasRadio=i===0&&d.tier>=3;h.state='search';h.searchTime=240;h.lastX=regionX;h.lastY=regionY;h.scoutMission={regionX,regionY,waypoint:i,legUntil:g.time+24,expiresAt:g.time+240};h.responseAllocated=true}
+  base.strength=Math.max(0,base.strength-count);return true;
+ }
+ threatTick(s){
+  const g=this.game,intel=this.intel(s);this.development(s);
+  const humans=g.humanGrid.nearest(s.x,s.y,Math.min(3000,(s.radius||100)+380),8,h=>h.hp>0);
+  for(const h of humans)this.observeVillage(s,h);
+  if(intel.state==='Suspected'&&g.time-(intel.suspectedAt||0)>180&&!g.humans.some(h=>h.hp>0&&h.villageReport?.id===s.id))intel.state='Undetected';
+  if(intel.state==='Targeted'){
+   const op=g.militaryOperations.find(o=>o.id===intel.operationId),living=g.humans.some(h=>h.hp>0&&h.raidTarget===s.id)||g.vehicles.some(v=>v.hp>0&&v.settlementTarget===s.id);
+   if(!living||g.time-intel.attackStarted>360){if(op){op.status='ended';op.endedAt=g.time}for(const h of g.humans)if(h.raidTarget===s.id){h.raidTarget=null;h.state='search';const base=g.world.sites.get(h.siteId);h.lastX=base?.x??h.homeX;h.lastY=base?.y??h.homeY;h.searchTime=60}for(const v of g.vehicles)if(v.settlementTarget===s.id){v.settlementTarget=null;v.assaultPhase=null;v.state='idle'}intel.state='Recovering';intel.recoveryUntil=g.time+(s.developmentTier>=4?240:150);this.warn(s,'defended','village successfully defended','green')}
+  }else if(intel.state==='Recovering'&&g.time>=intel.recoveryUntil)intel.state=s.known?'Discovered':'Undetected';
+  if(intel.reportedAt!==null&&g.time-intel.reportedAt>900&&!['Targeted','Recovering'].includes(intel.state)){s.known=false;intel.state='Suspected';intel.suspectedAt=g.time;intel.position=null;intel.reportedAt=null}
+  const breaches=(s.barriers||[]).filter(b=>b.hp<=0).length;if(breaches>(s._breaches??breaches))this.warn(s,'breach','palisade breached');s._breaches=breaches;
+  if(g.time<(this._regionalAt||0))return;this._regionalAt=g.time+8;
+  const villages=g.settlements.filter(v=>v.population>0);if(!villages.length)return;this._regionCursor=(this._regionCursor||0)%villages.length;const home=villages[this._regionCursor++];
+  this.dispatchScouts(home);
+  if(!this.canRaid(home)||g.time-(home.lastRaid??-120)<180||g.activeOperations('regional').length>=2)return;
+  if(Math.random()>[.025,.10,.22,.35,.5][this.development(home).tier-1])return;
+  const source=[...g.world.sites.values()].filter(b=>!b.cleared&&b.strength>0&&distance(b,home)<4000).sort((a,b)=>distance(a,home)-distance(b,home))[0];
+  if(source)g.spawnRaid(source,home,true);
+ }
+ perimeterCoverage(s){
+  const p=s.perimeter;if(!p)return{complete:0,total:0};const completed=new Set((s.barriers||[]).filter(b=>b.hp>0).map(b=>b.id));
+  return{complete:p.plots.filter(o=>completed.has(o.projectId+'-barrier')||o.existingId&&completed.has(o.existingId)).length,total:p.total||p.plots.length};
+ }
+ completePerimeter(s){
+  if(this.lodgeAt()!==s)return{ok:false,reason:'Visit the main hut to plan defenses.'};
+  if(s.perimeter&&this.perimeterCoverage(s).complete<this.perimeterCoverage(s).total&&s.perimeter.stage!=='blocked')return{ok:false,reason:'The perimeter blueprint is already in progress.'};
+  const radius=Math.ceil((this.defenseExtent(s)+70)/30)*30,slots=Math.ceil(2*radius/64),serial=(s.perimeterSerial||0)+1;s.perimeterSerial=serial;
+  s.perimeter={version:1,serial,radius,slots,total:slots*4,plots:[],cursor:0,stage:'surveying',totalWood:slots*4*8+4*4,createdAt:this.game.time};s._jobsAt=0;
+  this.advancePerimeter(s);return{ok:true,reason:'Perimeter blueprint planned. Workers use timber as each section is built.'};
+ }
+ advancePerimeter(s){
+  const p=s.perimeter;if(!p||p.stage==='blocked')return;
+  if(p.stage==='surveying'){
+   const step=2*p.radius/p.slots,w=this.game.world;let budget=32;
+   while(p.cursor<p.total&&budget-->0){
+    const i=p.cursor%p.slots,side=Math.floor(p.cursor/p.slots),along=-p.radius+(i+.5)*step,vertical=side%2===0;
+    const point={x:s.x+(side===0?p.radius:side===2?-p.radius:along),y:s.y+(side===1?p.radius:side===3?-p.radius:along)};
+    const gate=i===Math.floor(p.slots/2),width=step+6,trees=new Set();let pending=false,blocked=false;
+    // Sample the full segment footprint, including both ends, not just its centre.
+    for(const t of[-.5,0,.5]){const x=point.x+(vertical?0:width*t),y=point.y+(vertical?width*t:0),info=w.settlementPlot?.(x,y,12,{settlementId:s.id,requestId:s.id+'-perimeter',clearTerrain:true});if(info?.pending){pending=true;break}if(w.terrain(x,y).water||info?.water){blocked=true;break}for(const o of (info?.blocked||w.getObjects(x,y,28)).concat(info?.trees||[],info?.rocks||[])){if(!o.solid||o.dead||o.hp===0||o.type==='apeBarricade'&&o.settlementId===s.id)continue;if(['tree','rock'].includes(o.type))trees.add(o.id);else{blocked=true;break}}}
+    if(pending)return;
+    if(blocked){p.attempts=(p.attempts||0)+1;if(p.attempts>=16){p.stage='blocked';this.warn(s,'perimeter','perimeter survey needs open ground; no timber spent');return}p.radius+=30;p.slots=Math.ceil(2*p.radius/64);p.total=p.slots*4;p.cursor=0;p.plots=[];p.totalWood=p.total*8+16;return}
+    const existing=(s.barriers||[]).find(b=>b.hp>0&&Math.abs(b.x-point.x)<5&&Math.abs(b.y-point.y)<5&&Math.max(b.w,b.h)>=width-4&&!!b.gate===gate);
+    p.plots.push({...point,gate,barrierDir:vertical?Math.PI/2:0,barrierWidth:width,ringLayout:'enclosure-v1',ringId:'perimeter-'+p.serial,ringSlot:p.cursor,ringRadius:p.radius,treeIds:[...trees],projectId:s.id+'-perimeter-'+p.serial+'-'+p.cursor,existingId:existing?.id});p.cursor++;
+   }
+   if(p.cursor>=p.total){p.stage='building';p.totalWood=p.plots.reduce((n,o)=>n+(o.existingId?0:o.gate?12:8),0);p.cursor=0;this.warn(s,'blueprint','perimeter surveyed: '+p.totalWood+' timber, including four gates','green')}
+  }
+  if(p.stage==='building'){
+   // At most six material projects at once; the saved blueprint holds the rest.
+   const pending=s.projects.filter(o=>o.perimeter&&!o.done).length;if(pending>=6)return;
+   let added=false;for(let n=0;n<6-pending&&p.cursor<p.plots.length;n++){
+    const plot=p.plots[p.cursor++];if(plot.existingId)continue;
+    const project={...plot,id:plot.projectId,kind:'barrier',perimeter:true,stage:0,progress:0,work:0,totalWork:plot.gate?45:35,timber:plot.gate?12:8,clearProgress:0,createdAt:this.game.time};s.projects.push(project);added=true;
+   }
+   if(added)this.invalidate(s);
+   if(p.cursor===p.plots.length&&this.perimeterCoverage(s).complete===p.total)p.stage='complete';
+  }
+ }
+
  trainingBonus(a){const level=clamp(Math.floor(a.trainingLevel||0),0,3);return{maxHp:level*12,damageMultiplier:1+level*.08}}
  builtExtent(s,limit=Infinity){let r=100;for(const h of (s.huts||[]).concat(s.facilities||[],s.structures||[],s.barriers||[]).filter(o=>!o.activityZone))r=Math.max(r,Math.hypot(h.x-s.x,h.y-s.y)+Math.max(38,(h.w||h.width||0)*.5,(h.h||0)*.5));return Math.min(limit,r)}
  targetFootprint(s){const points=[[0,100],[10,100],[50,180],[100,250],[200,340],[400,450],[600,550],[1000,650]],p=Math.max(0,s.population||0),e=this.expansion(s);let r=650;for(let i=1;i<points.length;i++)if(p<=points[i][0]){const [a,ra]=points[i-1],[b,rb]=points[i];r=ra+(rb-ra)*(p-a)/(b-a);break}return clamp(Math.max(r+[0,220,600][e],[100,420,900][e])+Math.max(0,(s.level||1)-1)*3+Math.min(16,(s.structures?.length||0)*.8),100,650+e*300)}
@@ -97,8 +278,8 @@ class Settlements {
  barrierPlot(s){const w=this.game.world,occupied=(s.barriers||[]).concat((s.projects||[]).filter(p=>p.kind==='barrier'));for(const p of this.palisadePlan(s)){if(occupied.some(o=>o.ringId===p.ringId&&o.ringLayout===p.ringLayout&&o.ringSlot===p.ringSlot||o.ringLayout!==p.ringLayout&&distance(o,p)<p.barrierWidth*.45))continue;if(w.terrain(p.x,p.y).water)continue;const info=w.settlementPlot?.(p.x,p.y,18,{settlementId:s.id});if(info&&!info.valid&&(info.pending||info.water||!Array.isArray(info.blocked)||info.blocked.some(o=>o.type!=='apeBarricade'||o.settlementId!==s.id)))continue;const objects=info?.trees||w.getObjects(p.x,p.y,26);if(!info&&objects.some(o=>o.solid&&o.type!=='tree'&&!(o.type==='apeBarricade'&&o.settlementId===s.id)&&!o.dead&&o.hp!==0))continue;return{...p,treeIds:objects.filter(o=>o.type==='tree'&&!o.dead).map(t=>t.id)}}return null}
  surveyPlot(s,kind,search={ring:0,slot:0}){
   const w=this.game.world,size=k=>k==='training'||k==='longhouse'||k==='canopyHut'?40:DEFENSES[k]?34:k==='hut'?27:k==='barrier'?18:21,plotRadius=size(kind);
-  const homes=this.game.settlements?.includes(s)?this.game.settlements:[s],signature=homes.map(h=>h.id+':'+[h.huts,h.structures,h.facilities,h.projects,h.barriers].map(a=>a?.length||0).join(',')).join('|');let index=this._plotIndex;
-  if(!index||index.signature!==signature){index={signature,cells:new Map()};const add=o=>{if(o.awaitingPlot||o.activityZone||o.kind==='lumber')return;const key=Math.floor(o.x/160)+','+Math.floor(o.y/160),cell=index.cells.get(key)||[];cell.push(o);index.cells.set(key,cell)};for(const h of homes){add(h);for(const list of [h.huts,h.structures,h.facilities,h.projects,h.barriers])for(const o of list||[])add(o)}this._plotIndex=index}
+  const homes=this.game.settlements?.includes(s)?this.game.settlements:[s],signature=homes.map(h=>h.id+':'+[h.huts,h.structures,h.facilities,h.projects,h.barriers,h.perimeter?.plots].map(a=>a?.length||0).join(',')).join('|');let index=this._plotIndex;
+  if(!index||index.signature!==signature){index={signature,cells:new Map()};const add=o=>{if(o.awaitingPlot||o.activityZone||o.kind==='lumber')return;const key=Math.floor(o.x/160)+','+Math.floor(o.y/160),cell=index.cells.get(key)||[];cell.push(o);index.cells.set(key,cell)};for(const h of homes){add(h);for(const list of [h.huts,h.structures,h.facilities,h.projects,h.barriers])for(const o of list||[])add(o);for(const o of h.perimeter?.plots||[])add({...o,kind:'barrier'})}this._plotIndex=index}
   // Search is resumable and bounded per call, not limited to a settlement size.
   // Complete each ring around the lodge before looking farther outward.
   for(let attempt=0;attempt<96;attempt++){
@@ -108,13 +289,13 @@ class Settlements {
     if(search.slot>=plan.length){s.palisadeRadii.push((s.palisadeRadii.at(-1)||110)+180);plan=this.palisadePlan(s)}
     point=plan[search.slot];if(!point){search.slot++;continue}
    }else{
-    const radius=120+search.ring*150,slots=Math.max(5,Math.floor(Math.PI*2*radius/150));
+    const radius=102+search.ring*126,slots=Math.max(5,Math.floor(Math.PI*2*radius/126));
     if(search.slot>=slots){search.ring++;search.slot=0;continue}
     const seed=hash(s.id+':ring:'+search.ring),angle=(seed%997)/997*Math.PI*2+search.slot*Math.PI*2/slots;
     point={x:s.x+Math.cos(angle)*radius,y:s.y+Math.sin(angle)*radius,layoutRing:search.ring,layoutSlot:search.slot};
     if([0,Math.PI*.68,Math.PI*1.37].some(a=>Math.cos(angle-a)>0&&Math.abs(Math.sin(angle-a))*radius<30)){search.slot++;continue}
    }
-   this.counters.plotChecks++;let occupied=false;const cx=Math.floor(point.x/160),cy=Math.floor(point.y/160);for(let x=cx-1;x<=cx+1&&!occupied;x++)for(let y=cy-1;y<=cy+1&&!occupied;y++)for(const o of index.cells.get(x+','+y)||[]){if(kind==='barrier'&&(o.fortification||o.kind==='barrier')?distance(o,point)<(point.barrierWidth||62)*.45:distance(o,point)<plotRadius+size(o.kind||'hut')+50){occupied=true;break}}if(occupied){search.slot++;continue}
+   this.counters.plotChecks++;let occupied=false;const cx=Math.floor(point.x/160),cy=Math.floor(point.y/160);for(let x=cx-1;x<=cx+1&&!occupied;x++)for(let y=cy-1;y<=cy+1&&!occupied;y++)for(const o of index.cells.get(x+','+y)||[]){if(kind==='barrier'&&(o.fortification||o.kind==='barrier')?distance(o,point)<(point.barrierWidth||62)*.45:distance(o,point)<plotRadius+size(o.kind||'hut')+34){occupied=true;break}}if(occupied){search.slot++;continue}
    const info=w.settlementPlot?.(point.x,point.y,plotRadius,{settlementId:s.id,requestId:search.id||s.id,clearTerrain:true});
    if(info?.pending)return null; // Retry this same location once streaming finishes.
    search.slot++;
@@ -283,26 +464,26 @@ class Settlements {
   else if(p.kind==='rebuildHut'){target.hp=target.maxHp;target.stage=4;delete target.destroyedAt;this.updateHousing(s)}
   else if(p.kind==='repairHut')target.hp=Math.min(target.maxHp,target.hp+45);
   else if(p.kind==='repairFacility'){const f=this.structure(s,p.structureId);if(f){f.hp=f.maxHp||100;f.stage=4;delete f.dead;delete f.destroyedAt;s._staffAt=0}}
-  else if(p.kind==='repairBarrier'){const barrier=s.barriers.find(b=>b.id===p.structureId);if(barrier){if(g.world.repairFortification)g.world.repairFortification(barrier,90,g.time);else {barrier.hp=Math.min(barrier.maxHp,barrier.hp+90);barrier.dead=false;barrier.solid=true}}}
+  else if(p.kind==='repairBarrier'){const barrier=s.barriers.find(b=>b.id===p.structureId);if(barrier){if(g.world.repairFortification)g.world.repairFortification(barrier,90,g.time);else {barrier.hp=Math.min(barrier.maxHp,barrier.hp+90);barrier.dead=false;barrier.solid=true}this.clearWallOccupants(s,barrier)}}
   else if(/Expansion$/.test(p.kind)){const level=p.kind==='warlordExpansion'?2:1;s.expansionLevel=Math.max(this.expansion(s),level);s.lodge.expansionLevel=s.expansionLevel;s.lodge.maxHp=400+s.expansionLevel*300;s.lodge.hp=Math.min(s.lodge.maxHp,s.lodge.hp+300);s.developedRadius=Math.max(s.developedRadius,[100,420,900][level]);s.radius=this.footprint(s);this.layout(s);this.palisadePlan(s);g.notify?.(s.name+' completes its '+(level===2?'Warlord citadel':'Royal lodge')+' — lodge reinforced and district expanded.','green')}
   else if(p.kind==='lodge'){s.level=Math.min(10,s.level+1);s.lodge.level=s.level;g.notify?.(s.name+' finishes lodge level '+s.level+'.','green')}
   else if(p.kind==='barrier'){
-   const angle=Math.atan2(p.y-s.y,p.x-s.x),weak=s.barriers.length%5===3,width=p.barrierWidth||clamp(62+Math.floor((s.population||0)/100)*7,62,132),hp=(weak?180:320)+this.expansion(s)*70,o=g.world.addFortification?.({id:p.id+'-barrier',type:'apeBarricade',owner:'ape',team:'ape',settlementId:s.id,x:p.x,y:p.y,width,height:16,dir:p.barrierDir??angle+Math.PI/2,hp,maxHp:hp,weak,ringId:p.ringId||1,ringRadius:p.ringRadius,ringSlot:p.ringSlot,ringLayout:p.ringLayout});
-   if(o){o.worldId=o.id;s.barriers.push(o);s.maxDefense+=35;s.defense=Math.min(s.maxDefense,s.defense+35)}
+   const angle=Math.atan2(p.y-s.y,p.x-s.x),weak=s.barriers.length%5===3,width=p.barrierWidth||clamp(62+Math.floor((s.population||0)/100)*7,62,132),hp=(weak?180:320)+this.expansion(s)*70,o=g.world.addFortification?.({id:p.id+'-barrier',type:'apeBarricade',owner:'ape',team:'ape',settlementId:s.id,x:p.x,y:p.y,width,height:16,dir:p.barrierDir??angle+Math.PI/2,hp,maxHp:hp,weak,ringId:p.ringId||1,ringRadius:p.ringRadius,ringSlot:p.ringSlot,ringLayout:p.ringLayout,settlementWall:true,gate:!!p.gate,kind:p.gate?'gate':'basic'});
+   if(o){o.worldId=o.id;s.barriers.push(o);this.clearWallOccupants(s,o);s.maxDefense+=35;s.defense=Math.min(s.maxDefense,s.defense+35)}
   }else if(p.kind==='lookout'){const o={id:p.id+'-lookout',kind:'lookout',x:p.x,y:p.y,stage:4,hp:150,maxHp:150,warningRadius:500};s.lookouts.push(o);s.structures.push(o);this.connect(s,o)}
   else if(FACILITIES.has(p.kind)){const spec=DEFENSES[p.kind],hp=spec?.hp||180,o={id:p.id+'-built',kind:p.kind,x:p.x,y:p.y,stage:4,progress:1,hp,maxHp:hp,variant:s.facilities.length%3};if(spec){o.range=spec.range;o.shotAt=g.time+1;o.station={x:o.x-42,y:o.y+24}}else if(p.kind==='training'){o.trainingResidents=[];o.trained=0}s.facilities.push(o);this.connect(s,o);s._staffAt=0;this._defenseRosterAt=0}
   else if(p.kind!=='lumber'){const o={id:p.id+'-built',kind:p.kind,x:p.x,y:p.y,stage:4,hp:100,maxHp:100,variant:s.structures.length%3};s.structures.push(o);if(p.kind==='garden')s.gardens++;else if(p.kind==='cooking')s.cooking++;else if(p.kind==='storage'){s.stores++;s.food+=16}this.connect(s,o);this.layout(s)}
   if(p.commissioned){const entry=s.commissions.find(c=>c.projectId===p.id);if(entry){entry.status='complete';entry.completedAt=g.time;entry.structureId=HOUSING[p.kind]?p.structureId:/Expansion$/.test(p.kind)?s.lodge.id:p.id+(p.kind==='barrier'?'-barrier':'-built')}this.trimCommissions(s)}
   p.done=true;p.completedAt=g.time;this.invalidate(s);g.world.syncSettlementBuildings?.(s,g);
  }
- work(s){this.locateCommissions(s);const g=this.game,builders=s.builders||0,board=this.board(s),sites=board.byId,nearHands=new Map();this.counters.projectsWorked=0;
+ work(s){this.advancePerimeter(s);if(s.perimeter&&!s.projects.some(p=>p.kind==='repairBarrier')){const damaged=s.barriers.find(b=>b.hp<b.maxHp);if(damaged)this.queue(s,'repairBarrier',damaged)}this.locateCommissions(s);const g=this.game,builders=s.builders||0,board=this.board(s),sites=board.byId,nearHands=new Map();this.counters.projectsWorked=0;
   // One shared arrival pass per economy tick, rather than one planner for
   // every builder. Carrying is a visual resource trip, without inventories.
   for(const a of s._members||[]){if(a.hp<=0||a.job!=='builder'||a.kingdomMission||a.expeditionCargo||a.towerId||a.trainingFacilityId||g.blastActive?.(a))continue;const p=sites.get(a.workTargetId);if(!p||p.treeIds.length||distance(a,p)>48)continue;nearHands.set(p.id,(nearHands.get(p.id)||0)+1);if(a.carrying==='wood'){p.deliveries=(p.deliveries||0)+1;p.lastDeliveryAt=g.time;a.carrying=false}a.activity='building';if(s.simLOD===0)a.workAnimationAt=g.time}
   let active=0,completed=false;for(const p of board.active.concat(board.lumber.slice(0,2))){this.counters.projectsWorked++;if(p.kind==='lumber'){if(!s.attack&&p.treeIds.length)this.clearWork(s,p,s.lumberWorkers);if(!p.treeIds.length){p.done=true;completed=true}continue}
    if(p.awaitingPlot||p.waiting||g.time<=p.createdAt||s.attack&&!['repairBarrier','repairHut'].includes(p.kind))continue;
    const assigned=nearHands.get(p.id)||0;p.cohortId=s.cohorts.find(c=>c.job==='builder')?.id;
-   const essential=!!HOUSING[p.kind]||['repairHut','rebuildHut','repairBarrier','repairFacility','garden','workShelter'].includes(p.kind),reserved=essential?0:board.repairReserve+(s.essentialWoodReserve||0);
+   const essential=!!p.perimeter||!!HOUSING[p.kind]||['repairHut','rebuildHut','repairBarrier','repairFacility','garden','workShelter'].includes(p.kind),reserved=essential?0:board.repairReserve+(s.essentialWoodReserve||0);
    if(p.treeIds.length){const hut=s.huts.find(h=>h.id===p.structureId);if(hut&&HOUSING[p.kind]){hut.treeIds=p.treeIds;hut.clearProgress=p.clearProgress/5}this.clearWork(s,p,builders);continue}if(!assigned||!builders||!p.paidCost&&s.wood<p.timber+reserved)continue;
    active++;p.work+=Math.min(p.totalWork*.22,assigned*1.25)*(s.attack?.45:1)*(g.kingdom?.modifiers(s).construction||1);p.progress=clamp(p.work/p.totalWork,0,1);p.stage=Math.min(3,1+Math.floor(p.progress*3));const h=s.huts.find(h=>h.id===p.structureId);if(h&&HOUSING[p.kind]){h.stage=p.stage;h.progress=p.progress}
    if(p.work>=p.totalWork){if(!p.paidCost){s.wood-=p.timber;p.paidCost={wood:p.timber,food:0}}this.complete(s,p);p.stage=4;p.progress=1;completed=true}
@@ -314,7 +495,7 @@ class Settlements {
   const station=this.structure(s,a.towerId),academy=this.structure(s,a.trainingFacilityId),tower=station?.hp>0&&DEFENSES[station.kind]?station:null,training=academy?.hp>0&&academy.kind==='training'?academy:null;
   if(tower&&job!=='young'){target=tower.station||{x:tower.x-36,y:tower.y+22};activity='guarding spear tower';speed=.7}
   else if(training&&!s.attack&&job!=='young'){target={x:training.x+62,y:training.y+12};activity='training';speed=.65}
-  else if(s.attack){if(job==='young'||job==='forager'||job==='cook'||job==='caretaker'){target=this.zone(s,'communal');activity=job==='young'?'sheltering':'returning home';speed=.9}
+  else if(s.attack){if(job==='young'||job==='forager'||job==='cook'||job==='caretaker'||job==='workshop'||job==='gardener'){target=this.zone(s,'communal');activity=job==='young'?'sheltering':'returning home';speed=.9}
    else if(job==='builder'||job==='lumber'){target=s.barriers.find(b=>b.hp<b.maxHp)||this.zone(s,'wood');activity='repairing defenses';carrying='wood'}
    else if(job==='scout'){target={x:s.x+Math.cos(a.phase||index)*s.radius*1.12,y:s.y+Math.sin(a.phase||index)*s.radius*1.12};activity='watching approaches'}
    else {target=s.entrances?.[index%(s.entrances?.length||1)]||this.zone(s,'guard');activity='defending entrance';speed=.85}
@@ -370,15 +551,22 @@ class Settlements {
  }
  damageHut(s,h,damage,source){if(h.hp<=0||!(damage>0))return false;h.hp=Math.max(0,h.hp-damage);h.lastHit=this.game.time;this.game.effect?.('hit',h.x,h.y,{life:.3,color:'#c8ac79'});if(h.hp===0){h.destroyedAt=this.game.time;this.updateHousing(s);this.game.sound?.('smash',.65,h.x);this.game.effect?.('smoke',h.x,h.y,{life:2});this.game.notify?.(s.name+' loses a hut — '+(h.capacity||10)+' housing destroyed.','red')}this.game.world.syncSettlementBuildings?.(s,this.game);return true}
  damageFacility(s,f,damage){if(f.hp<=0||!(damage>0))return false;f.hp=Math.max(0,f.hp-damage);f.lastHit=this.game.time;this.game.effect?.('hit',f.x,f.y,{life:.25,color:'#ceb880'});if(!f.hp){f.destroyedAt=this.game.time;s._staffAt=0;this._defenseRosterAt=0;this.game.effect?.('smoke',f.x,f.y,{life:1.7})}this.game.world.syncSettlementBuildings?.(s,this.game);return true}
- growthLabel(s){const family=this.familyGrowth(s),rate=family.rate*(this.game.kingdom?.modifiers(s).growth||1);return this.game.population>=(window.MAX_APE_POPULATION||1000)?'Kingdom population full':family.space<1?'Homes full':rate>0?'Growing · ~'+(rate*2).toFixed(1)+' young/min':'Waiting for adult residents'}
+ growthLabel(s){const family=this.familyGrowth(s),rate=family.rate*(this.game.kingdom?.modifiers(s).growth||1);return this.game.population>=(window.MAX_APE_POPULATION||1000)?'Kingdom population full':family.space<1?'Homes full':rate>0?family.reason+' · ~'+(rate*2).toFixed(1)+' young/min':family.reason}
  familyGrowth(s,members=this.members(s)){
   const parents=members.filter(a=>a.hp>0&&a.state!=='young'&&!a.kingdomMission).length,space=s.housing-s.population;
-  const buildings=(s.huts||[]).concat(s.structures||[],s.facilities||[],s.barriers||[]).filter(o=>o.hp>0&&(o.stage??4)===4&&!o.activityZone&&o.kind!=='lodge'),development=1+Math.min(3,buildings.length*.06+Math.max(0,(s.level||1)-1)*.04);
-  // Housing is the only local population ceiling. Terrain ratings, food
-  // reserves and recovering safety no longer silently stall occupied homes.
-  return{space,structures:buildings.length,rate:parents>0&&space>0?Math.max(1,parents/8)*development*this.growthFacilities(s).multiplier:0};
+  const buildings=(s.huts||[]).concat(s.structures||[],s.facilities||[]).filter(o=>o.hp>0&&(o.stage??4)===4&&!o.activityZone&&!['lodge','nursery','rallyGrove'].includes(o.kind));
+  const reserve=Math.max(6,s.population*.6),foodFactor=clamp((s.food-6)/reserve,0,1),development=1+Math.min(.35,buildings.length*.03+Math.max(0,(s.level||1)-1)*.02);
+  // Half the old small-village baseline; sublinear parents and a bounded
+  // development bonus prevent a large settlement feeding exponential births.
+  const base=.5*Math.pow(Math.max(1,parents/8),.45)*development/(1+Math.max(0,s.population-40)/200);
+  const reason=space<1?'Homes full':parents<1?'Waiting for adult residents':foodFactor===0?'Growth paused · food shortage':foodFactor<1?'Growth slowed · low food':'Growing';
+  return{space,structures:buildings.length,foodFactor,reason,rate:parents>0&&space>0?base*this.growthFacilities(s).multiplier*foodFactor:0};
  }
- growthFacilities(s){const active=(s.facilities||[]).filter(f=>f.hp>0&&f.stage===4),nurseries=active.filter(f=>f.kind==='nursery'),groves=active.filter(f=>f.kind==='rallyGrove'),orchards=active.filter(f=>f.kind==='orchard');return{multiplier:1+Math.min(1.8,nurseries.length*.18+groves.length*.25),orchards:orchards.length,centers:nurseries.concat(groves)}}
+ growthFacilities(s){
+  const active=(s.facilities||[]).filter(f=>f.hp>0&&!f.dead&&f.stage===4),nurseries=active.filter(f=>f.kind==='nursery'),groves=active.filter(f=>f.kind==='rallyGrove'),orchards=active.filter(f=>f.kind==='orchard'),n=nurseries.length;
+  const nurseryBonus=(n>0?.35:0)+(n>1?.20:0)+(n>2?.12:0)+Math.min(.08,Math.max(0,n-3)*.02);
+  return{multiplier:1+nurseryBonus+Math.min(.25,groves.length*.10),nurseryBonus,orchards:orchards.length,centers:nurseries.concat(groves)};
+ }
  damageNearby(x,y,radius,damage,source){if(!(radius>0&&damage>0))return;for(const s of this.game.settlements){if(Math.hypot(s.x-x,s.y-y)>Math.max(s.radius||100,this.builtExtent(s,Infinity))+radius)continue;this.init(s);for(const h of s.huts){const d=Math.hypot(h.x-x,h.y-y);if(h.hp>0&&d<radius)this.damageHut(s,h,damage*(1-d/radius*.65),source)}for(const f of s.facilities){const d=Math.hypot(f.x-x,f.y-y);if(f.hp>0&&d<radius){f.hp=Math.max(0,f.hp-damage*(1-d/radius*.65));f.lastHit=this.game.time;if(!f.hp){f.destroyedAt=this.game.time;s._staffAt=0;this._defenseRosterAt=0}}}this.game.world.syncSettlementBuildings?.(s,this.game)}}
  siege(s,raiders){const g=this.game;let budget=64;const buildings=s.huts.concat(s.facilities||[],(s.structures||[]).filter(o=>!o.activityZone)),byId=new Map(buildings.map(o=>[o.id,o]));s._siegeCursor=(s._siegeCursor||0)%Math.max(1,raiders.length);for(let i=0;i<Math.min(64,raiders.length);i++){const h=raiders[s._siegeCursor++%raiders.length];if(!budget||h.hp<=0||h.state==='patrol'||h.raidTarget&&h.raidTarget!==s.id||g.time<(h._hutAttackAt||0))continue;const local=buildings.length<=24?buildings:g.world.getObjects(h.x,h.y,190).filter(o=>o.type==='apeBuilding'&&o.settlementId===s.id).map(o=>byId.get(o.structureId)).filter(Boolean).slice(0,16);let target=null,range=175;for(const building of local){const d=Math.hypot(h.x-building.x,h.y-building.y),face=Math.min(42,d*.5),x=building.x+(h.x-building.x)/(d||1)*face,y=building.y+(h.y-building.y)/(d||1)*face;if(building.hp>0&&d<range&&g.world.lineClear(h.x,h.y,x,y)){target=building;range=d}}if(!target)continue;budget--;h._hutAttackAt=g.time+1.8;h.structureTarget=target.id;h.dir=Math.atan2(target.y-h.y,target.x-h.x);h.attackTimer=.14;h.animation={kind:'recoil',start:g.time,duration:.2};g.effect?.('muzzle',h.x,h.y,{life:.12});g.effect?.('siegeShot',h.x,h.y,{targetX:target.x,targetY:target.y,life:.15});g.sound?.('gun',.3,h.x);const damage=h.role==='heavy'?15:h.role==='engineer'?20:10;if(s.huts.includes(target))this.damageHut(s,target,damage,h);else this.damageFacility(s,target,damage)}}
  action(id,action){const g=this.game,s=g.settlement(id);if(!s)return false;this.init(s);if(['balanced','forage','fortify'].includes(action)){s.policy=action;s._jobsAt=0;g.notify(s.name+' prioritizes '+({balanced:'balanced growth',forage:'food security',fortify:'defense'}[action])+'.');return true}if(Math.hypot(g.king.x-s.x,g.king.y-s.y)>s.radius+110){g.notify('Visit this settlement to move supplies or recruit its apes.','red');return false}
@@ -386,7 +574,7 @@ class Settlements {
   if(action==='recruit'){for(const a of g.apes)if(a.settlementId===id&&a.state!=='young'&&a.hp>0){g.suspendSettlementAssignment?.(a);g.kingdom?.releaseExpeditionActor?.(a);a.state='follow';a.settlementId=null}g.refreshSettlements();g.notify('The adults of '+s.name+' rally to your crown.');return true}return false;
  }
  tick(s){const g=this.game;this.init(s);s.radius=this.footprint(s);s.simLOD=s.attack?0:distance(g.king||s,s)>1800?2:distance(g.king||s,s)>950?1:0;
-  const nearby=g.humanGrid.near(s.x,s.y,s.radius+120);s.attack=nearby.some(h=>h.hp>0&&h.state!=='patrol');this.siege(s,nearby);if(!s.population)return;s.age++;
+  const nearby=g.humanGrid.near(s.x,s.y,s.radius+120);s.attack=nearby.some(h=>h.hp>0&&(h.state==='combat'||h.raidTarget===s.id||h.structureTarget));this.siege(s,nearby);if(!s.population)return;s.age++;
   this.resources(s);const buildings=this.buildings(s);s.gardens=buildings.gardens.length;s.cooking=buildings.cooking.length;s.stores=buildings.stores.length;
   const members=this.members(s);if(g.time>=(s._jobsAt||0)||s._memberCount!==members.length||s._jobsAttack!==s.attack){this.assignJobs(s,members);s._memberCount=members.length;s._jobsAttack=s.attack}else{s._members=members;s._adults=members.filter(a=>a.state!=='young'&&a.state!=='scout'&&!a.kingdomMission)}
   const adults=s._adults;s.safety=clamp(s.safety+(s.attack?-.045:.007),0,1);this.expand(s);
@@ -396,14 +584,14 @@ class Settlements {
   const kingdom=g.kingdom?.modifiers(s)||{},harvest=Math.min(available,foragers*.32*(s.attack?.25:1)*(kingdom.food||1));let remaining=harvest;for(const b of nodes){if(reservedFood.has(b.id))continue;const take=Math.min(remaining,b.food||0);b.food-=take;remaining-=take;if(b.food<=0)b.dead=true;if(remaining<=0)break}
   const growth=this.growthFacilities(s),income=this.production(s,buildings);s.gardenFoodRate=income.food;s.workshopWoodRate=income.wood;s.foodConsumption=income.consumption;s.food=clamp(s.food+harvest+income.food-income.consumption,0,this.foodCapacity(s));s.foodDelta=s.food-before;s.wood=Math.min(this.woodCapacity(s),s.wood+income.wood);
   this.plan(s);this.work(s);this.staffFacilities(s);this.train(s);s.wood=Math.min(s.wood,this.woodCapacity(s));s.radius=this.footprint(s);
-  const family=this.familyGrowth(s,members),space=family.space,canRaise=family.rate>0,population=g.population,cap=window.MAX_APE_POPULATION||1000;s.growthRate=family.rate;s.growthStatus=population>=cap?'Kingdom population full':space<1?'Homes full':!canRaise?'Waiting for adult residents':'Growing';
-  if(population>=cap||space<1){s.birthTimer=Math.min(30,s.birthTimer);if(population>=cap&&canRaise&&!s.capNotified){s.capNotified=true;g.notify('Population limit reached — '+cap.toLocaleString()+' apes. Families wait for space.')}}else{s.capNotified=false;if(canRaise)s.birthTimer+=family.rate*(kingdom.growth||1)}
-  if(canRaise&&s.birthTimer>=30&&population<cap){const births=Math.min(Math.floor(s.birthTimer/30),Math.floor(space),cap-population);for(let i=0;i<births;i++){const angle=(g.stats.born+i)*2.399,center=growth.centers.length?growth.centers[(g.stats.born+i)%growth.centers.length]:s;const child=g.makeApe(center.x+Math.cos(angle)*42,center.y+Math.sin(angle)*42,'young',s.id,true);if(child)g.settlementMembers?.get(s.id)?.push(child)}if(births>0){s.birthTimer-=births*30;s.food=Math.max(0,s.food-births*6);s.population+=births;s.children=(s.children||0)+births;g.stats.born+=births;g.sound?.('birth',.45,s.x);if(g.stats.born===births)g.notify('A new generation is born in '+s.name+'.','green')}}
+  const family=this.familyGrowth(s,members),space=family.space,canRaise=family.rate>0,population=g.population,cap=window.MAX_APE_POPULATION||1000;s.growthRate=family.rate;s.growthStatus=population>=cap?'Kingdom population full':space<1?'Homes full':family.reason;
+  if(population>=cap||space<1||!canRaise){s.birthTimer=Math.min(30,s.birthTimer);if(population>=cap&&canRaise&&!s.capNotified){s.capNotified=true;g.notify('Population limit reached — '+cap.toLocaleString()+' apes. Families wait for space.')}}else{s.capNotified=false;if(canRaise)s.birthTimer+=family.rate*(kingdom.growth||1)}
+  if(canRaise&&s.birthTimer>=30&&population<cap){const births=Math.min(Math.floor(s.birthTimer/30),Math.floor(space),Math.floor(s.food/6),cap-population,1);for(let i=0;i<births;i++){const angle=(g.stats.born+i)*2.399,center=growth.centers.length?growth.centers[(g.stats.born+i)%growth.centers.length]:s;const child=g.makeApe(center.x+Math.cos(angle)*42,center.y+Math.sin(angle)*42,'young',s.id,true);if(child)g.settlementMembers?.get(s.id)?.push(child)}if(births>0){s.birthTimer-=births*30;s.food=Math.max(0,s.food-births*6);s.population+=births;s.children=(s.children||0)+births;g.stats.born+=births;g.sound?.('birth',.45,s.x);if(g.stats.born===births)g.notify('A new generation is born in '+s.name+'.','green')}}
   if(s.food<1){s.starveTimer++;if(s.starveTimer===15)g.notify(s.name+' needs food. Forage or deliver supplies.','red');if(s.starveTimer>40)for(const a of adults)g.hurt(a,.6,{x:s.x,y:s.y})}else{s.starveTimer=0;for(const a of adults)if(!s.attack)a.hp=Math.min(a.maxHp,a.hp+.16*(kingdom.recovery||1))}
   s.status=s.attack?'Under attack':s.constructionBlocked?'Need open ground':s.food<s.population?'Food shortage':s.population>=s.housing?'Crowded':s.safety<.5?'Recovering':s.foodDelta<0?'Drawing on stores':'Thriving';
   if(s.attack){const raiders=g.humanGrid.near(s.x,s.y,s.radius);s.food=Math.max(0,s.food-raiders.length*.18);s.defense=Math.max(0,s.defense-raiders.length*.15);if(g.time>s.nextWarn){s.nextWarn=g.time+25;g.notify('Distant roars — '+s.name+' is under attack!','red','villageAttack')}}
   if(s.lookouts.length&&g.time>=(s._lookoutAt||0)){s._lookoutAt=g.time+8;const threat=g.humanGrid.near(s.x,s.y,s.radius+500).find(h=>h.hp>0&&h.state!=='patrol');if(threat&&g.time>=(s._lookoutWarn||0)){s._lookoutWarn=g.time+30;const direction=Math.abs(threat.x-s.x)>Math.abs(threat.y-s.y)?threat.x>s.x?'east':'west':threat.y>s.y?'south':'north';g.notify('Scouts at '+s.name+' sight an approaching force from the '+direction+'.','red','villageAttack');s.warning={x:threat.x,y:threat.y,time:g.time,direction}}}
-  if((g.campaignPopulation??g.population)<300&&s.known&&g.time-s.lastRaid>95&&Math.random()<.025){const base=[...g.world.sites.values()].filter(x=>!x.cleared&&x.strength>0&&Math.hypot(x.x-s.x,x.y-s.y)<3200).sort((a,b)=>Math.hypot(a.x-s.x,a.y-s.y)-Math.hypot(b.x-s.x,b.y-s.y))[0];if(base&&g.spawnRaid(base,s,true)){s.lastRaid=g.time;g.notify((s.scouts?'Scouts warn: a raid is approaching ':'Human forces march toward ')+s.name+'.','red','villageAttack')}}
+  this.threatTick(s);
   g.stats.largestSettlement=Math.max(g.stats.largestSettlement,s.population);
  }
  absorb(a,damage){const s=this.game.settlement(a.settlementId);if(!s||s.defense<=0||Math.hypot(a.x-s.x,a.y-s.y)>=s.radius)return damage;const absorbed=Math.min(s.defense,damage*.25);s.defense-=absorbed;return damage-absorbed}

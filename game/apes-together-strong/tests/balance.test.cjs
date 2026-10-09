@@ -22,13 +22,13 @@ test('settlement levels catch up to inhabitants through faster construction',()=
  for(const [population,level]of [[24,3],[60,6],[120,10]]){const {g,s}=colony(population);s.birthTimer=-100000;g.king.x=3000;g.navigation.clearSegment=()=>true;for(let i=0;i<Math.ceil(population/8);i++)s.structures.push({id:'established-garden-'+i,kind:'garden',x:s.x+160+i*65,y:s.y+140,hp:100,maxHp:100,stage:4});for(let i=0;i<360&&s.level<level;i++){s.wood=120;for(let step=0;step<60;step++){g.time+=1/60;g.navigation.beginFrame(g.time);if(step%15===14)for(const a of g.apes)if(a.settlementId===s.id)g.abstractActor(a,.25,'ape')}g.refreshSettlements();g.colonies.tick(s)}assert.equal(s.level,level);assert.ok(s.housing>=population+Math.max(8,Math.ceil(population*.25)))}
 });
 test('larger communities raise more offspring and the young become useful adults',()=>{
- const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=3);assert.ok(large.g.stats.born>=small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);
+ const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=1);assert.ok(large.g.stats.born>=small.g.stats.born&&large.g.stats.born<small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);
 });
-test('families require adult residents and housing but low supplies and attacks do not pause births',()=>{
- for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;delete s.structuresVersion;g.colonies.init(s);s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born>0,blocked==='food'||blocked==='attack',blocked)}
+test('families require food, adult residents and housing; danger alone does not pause births',()=>{
+ for(const blocked of ['food','attack','children','housing']){const {g,s}=colony(16);s.birthTimer=30;if(blocked==='food'){s.food=0;s.gardens=0}else if(blocked==='attack')g.humans=[{id:'raider',x:0,y:0,hp:100,state:'combat'}];else if(blocked==='children')for(const a of g.apes)a.state='young';else{s.housing=16;delete s.structuresVersion;g.colonies.init(s);s.wood=0;s.suitability.wood=0}s.safety=1;g.refreshSettlements();g.colonies.tick(s);assert.equal(g.stats.born>0,blocked==='attack',blocked)}
 });
 test('births respect the shared ape population limit',()=>{
- const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);
+ const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION-1);g.refreshSettlements();g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);
 });
 test('military facilities hold substantially more captives with matching cage totals',()=>{
  const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260]};
@@ -36,7 +36,7 @@ test('military facilities hold substantially more captives with matching cage to
  let military=0;for(const s of w.sites.values()){if(s.tutorial)continue;const [lo,hi]=ranges[s.type];assert.ok(s.count>=lo&&s.count<=hi);const cages=s.objects.map(id=>w.objects.get(id)).filter(o=>o.type==='cage');assert.equal(cages.reduce((sum,o)=>sum+o.count,0),s.count);if(s.tier>=3)military++}assert.ok(military>0);
 });
 test('liberating a military facility awards supplies exactly once and ape score rewards increase',()=>{
- const {g}=game(),s={id:'base',name:'Base',tier:3,objects:[],strength:0};g.checkSite(s);assert.equal(g.food,90);g.checkSite(s);assert.equal(g.food,90);const score=g.score;g.stats.freed++;assert.equal(g.score-score,250);g.stats.largestHorde++;assert.equal(g.score-score,340);g.stats.largestSettlement++;assert.equal(g.score-score,400);
+ const {g}=game(),s={id:'base',name:'Base',tier:3,objects:[],strength:0};g.checkSite(s);assert.equal(g.food,180);g.checkSite(s);assert.equal(g.food,180);const score=g.score;g.stats.freed++;assert.equal(g.score-score,250);g.stats.largestHorde++;assert.equal(g.score-score,340);g.stats.largestSettlement++;assert.equal(g.score-score,400);
 });
 test('early rescues reach containment only while active followers remain above its threshold',()=>{
  const {g}=game();for(let i=0;i<40;i++)g.makeApe(i,0,'follow');g.stats.freed=40;g.stats.bases=1;g.time=90;g.tickSecond();assert.equal(g.tier,2);

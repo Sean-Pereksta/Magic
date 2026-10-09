@@ -31,8 +31,8 @@ test('paid plots fill concentric rings and keep expanding beyond old settlement 
  assert.equal(s.projects.filter(p=>p.awaitingPlot).length,0);assert.equal(s.huts.length,150);
  assert.equal(new Set(s.huts.map(h=>h.x+','+h.y)).size,150);
  assert.ok(s.developedRadius>650,'construction is not capped by population or expansion tier');
- for(const p of s.projects)assert.ok(Math.abs(Math.hypot(p.x-s.x,p.y-s.y)-(120+p.layoutRing*150))<.001);
- for(let i=0;i<s.huts.length;i++)for(let j=0;j<i;j++)assert.ok(Math.hypot(s.huts[i].x-s.huts[j].x,s.huts[i].y-s.huts[j].y)>=104);
+ for(const p of s.projects)assert.ok(Math.abs(Math.hypot(p.x-s.x,p.y-s.y)-(102+p.layoutRing*126))<.001);
+ for(let i=0;i<s.huts.length;i++)for(let j=0;j<i;j++)assert.ok(Math.hypot(s.huts[i].x-s.huts[j].x,s.huts[i].y-s.huts[j].y)>=88);
  assert.ok(s.projects.filter(p=>p.layoutRing===0).length>=3,'first homes occupy multiple directions around the main hut');
  assert.equal(s.wood,wood-150*8,'finding land never charges an accepted order again');
 });

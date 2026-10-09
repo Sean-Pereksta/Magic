@@ -594,6 +594,7 @@
         || (profile === 'ape' || actorOrProfile?.id === 'king' || actorOrProfile?.id?.startsWith('ape-') ? 'ape' : 'human');
       // A tank must physically breach a weak enemy barrier; it never gets a
       // free pass merely because its armor can eventually knock it down.
+      if(object.settlementWall)return object.team===team&&!!object.gate;
       return object.team === team;
     }
 

@@ -15,7 +15,7 @@ function shoot(g,s,tower,target){crew(g,s,tower);tower.shotAt=0;tower.acquireAt=
 function fly(g,s,seconds){for(let i=0;i<Math.ceil(seconds*60);i++){g.time+=1/60;g.colonies.updateDefenses(1/60)}}
 
 test('catalog, local lodge access and scarce supplies reject orders without mutations',()=>{
- const {g,s}=colony(18),catalog=g.colonies.catalog(s);assert.equal(catalog.length,16);assert.ok(catalog.every(c=>c.description&&c.cost&&c.totalWork>0&&c.limit>0));assert.equal(catalog.find(c=>c.kind==='spearTower').unlocked,true);assert.equal(catalog.find(c=>c.kind==='spearTower').available,true);assert.equal(s.projects.length,0);
+ const {g,s}=colony(18),catalog=g.colonies.catalog(s);assert.equal(catalog.length,17);assert.ok(catalog.every(c=>c.description&&c.cost&&(c.totalWork>0||c.blueprint)&&c.limit>0));assert.equal(catalog.find(c=>c.kind==='spearTower').unlocked,true);assert.equal(catalog.find(c=>c.kind==='spearTower').available,true);assert.equal(s.projects.length,0);
  g.king.x=91;assert.equal(g.colonies.lodgeAt(g.king),null);assert.match(g.colonies.commission(s.id,'hut').reason,/Visit/);g.king.x=90;assert.equal(g.colonies.lodgeAt(g.king),s);g.king.x=0;s.wood=0;s.food=0;const before=JSON.stringify(s.commissions);assert.match(g.colonies.commission(s.id,'hut').reason,/timber/);assert.equal(JSON.stringify(s.commissions),before);assert.equal(g.colonies.commission(s.id,'unknown').ok,false);
  s.wood=100;g.world.settlementPlot=()=>({valid:false,water:true,trees:[],blocked:[]});const wood=s.wood;assert.equal(g.colonies.commission(s.id,'hut').ok,true);assert.equal(s.wood,wood-8);assert.equal(s.projects.length,1);assert.equal(s.projects[0].awaitingPlot,true);assert.equal(s.huts.length,0,'searching for land does not create a phantom hut');
 });
