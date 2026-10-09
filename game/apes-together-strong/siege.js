@@ -98,13 +98,14 @@ class Siege {
   if(append&&species.some(id=>this.groups[id]?.orders.some(o=>o.type==='attackArea'))){this.status='Final attack already set; Go starts a new route';return false}
   if(this.g.ended||!orders.length||orders.some(o=>!TYPES.has(o.type)||!finite(o)))return false;
   for(const s of species){if(!SPECIES.includes(s))continue;const old=this.groups[s];if((append?old?.orders.length||0:0)+orders.length>16){this.status='Route full (16)';return false}}
-  for(const s of species){if(!SPECIES.includes(s))continue;const old=this.groups[s],list=append&&old?old.members.map(id=>this.g.apesById.get(id)).filter(a=>a&&this.eligible(a)):this.members([s]).filter(a=>!this.unitIds||this.unitIds.includes(a.id));if(!list.length)continue;
+  let commanded=0;
+  for(const s of species){if(!SPECIES.includes(s))continue;const old=this.groups[s],list=append&&old?old.members.map(id=>this.g.apesById.get(id)).filter(a=>a&&this.eligible(a)):this.members([s]).filter(a=>!this.unitIds||this.unitIds.includes(a.id));if(!list.length)continue;commanded+=list.length;
    if(append&&old?.orders.length){old.orders.push(...orders.map(o=>({...o})));continue}
    const group={id:'army-'+ ++this.serial,species:s,members:list.map(a=>a.id),orders:orders.map(o=>({...o})),started:this.g.time,blocked:false};this.groups[s]=group;
    list.forEach((a,i)=>{this.g.tactics?.clearOrder(a);this.clearActor(a);a.state='hold';a.armyOrder={group:group.id,index:0,slot:i};a.target=point(a)});
   }
   const shield=orders.find(o=>o.type==='shield');if(shield)this.formation(species,shield);
-  this.status='';return true;
+  this.status='';if(commanded)this.g.sound('command',.8);return true;
  }
  formation(species,destination){const units=this.members(species).filter(a=>a.armyOrder&&a.armyOrder.group===this.groups[a.species]?.id).sort((a,b)=>Number(b.shield?.hp>0)-Number(a.shield?.hp>0)),front=units.filter(a=>a.shield?.hp>0).length,columns=Math.min(12,Math.max(3,front)),center=this.center(species),heading=Math.atan2(destination.y-center.y,destination.x-center.x);units.forEach((a,i)=>{const slot=i<front?i:i-front+Math.ceil(front/columns)*columns;a.armyOrder.formation={side:(slot%columns-(columns-1)/2)*25,back:Math.floor(slot/columns)*28,heading}})}
  immediate(type,p=this.center()){const ids=this.selected.length?this.selected:SPECIES;return this.issue(ids,[{id:'order-'+ ++this.serial,type,...point(p)}])}

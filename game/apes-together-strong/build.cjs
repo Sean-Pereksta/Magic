@@ -15,7 +15,14 @@ for(const family of ['characters','environment','equipment','held-items','settle
  }
 }
 const bundle='<script>window.ATS_VISUAL_BUNDLE='+JSON.stringify({manifest,sources}).replace(/</g,'\\u003c')+';</script>\n';
-const scripts=bundle+parts.map(name=>'<script>\n'+fs.readFileSync(path.join(__dirname,name+'.js'),'utf8')+'\n</script>').join('\n');
+const commandRoot=path.join(__dirname,'assets','command-sounds');
+const commandSounds=JSON.parse(fs.readFileSync(path.join(commandRoot,'manifest.json'),'utf8')).map(file=>{
+ const ext=path.extname(file).toLowerCase(),target=path.resolve(commandRoot,file);
+ if(!target.startsWith(commandRoot+path.sep)||!['.wav','.mp3'].includes(ext))throw new Error('Invalid command sound: '+file);
+ return{id:path.parse(file).name,src:'data:audio/'+(ext==='.wav'?'wav':'mpeg')+';base64,'+fs.readFileSync(target).toString('base64')};
+});
+const commandBundle='<script>window.ATS_COMMAND_SOUNDS='+JSON.stringify(commandSounds).replace(/</g,'\\u003c')+';</script>\n';
+const scripts=bundle+commandBundle+parts.map(name=>'<script>\n'+fs.readFileSync(path.join(__dirname,name+'.js'),'utf8')+'\n</script>').join('\n');
 const tracks=['underpowered-king','ceremonial-tom','primal-roar'];
 const music='<audio id="campaignMusic" loop preload="none"></audio>'+tracks.map(id=>'<script type="text/plain" id="music-source-'+id+'">data:audio/mpeg;base64,'+fs.readFileSync(path.join(__dirname,'assets',id+'.mp3')).toString('base64')+'</script>').join('\n');
 const output=shell.replace('<!-- CAMPAIGN_MUSIC -->',music).replace('</body>',scripts+'\n</body>');
