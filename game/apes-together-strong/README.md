@@ -997,3 +997,14 @@ Additional verification:
 node --test game/apes-together-strong/tests/music-weather.test.cjs game/apes-together-strong/tests/nearest-orders.test.cjs game/apes-together-strong/tests/prisons.test.cjs
 node game/apes-together-strong/tests/campaign-browser.cjs
 ```
+
+
+## Mobile hold-and-flick commands
+
+Hold open world space for 250 ms, slide to a segment, and release. The compact wheel exposes All Charge (existing E), Hold Position, Call Apes (existing Q), Recall, and Settlement. Release at the center to cancel. Hold over Charge for 280 ms for existing held-E targeting. Hold over Recall for 600 ms to reveal explicit Nearby, All field (R hold / T), and All + residents (T hold) scopes; each still requires release. Returning to center or canceling never issues an order.
+
+Settlement opens existing founding, scouts, finder, map/management, and optional advanced army controls. The contextual Settlement button uses the existing main-hut interaction range; workshops retain equipment access. Advanced species and route controls appear only on demand and preserve the current selection when closed. Normal world taps, selected-army drag/pinch, keyboard controls, and game command mechanics remain shared with desktop. The primary touch HUD retains movement, Strike, pause, and the contextual hut/workshop action.
+
+Pointer ownership isolates the joystick and Strike from world gestures. Pending holds cancel on movement, extra touches, screen changes, blur, death, cancellation, or resize. A canceled world touch cannot click through into a newly opened menu. Wheel DOM updates occur only on opening or selection changes, not per simulation tick.
+
+Validation: `node game/apes-together-strong/tests/mobile-commands-browser.cjs` requires Playwright/Chromium (`CHROMIUM_PATH` can override the executable). It sends real touchscreen events to the source app and checks command dispatch, hold variants, cancellation, control isolation, normal targeting, edge placement, pinch, context range, and the existing settlement menu. `node game/apes-together-strong/tests/horde-commands-browser.cjs --source` checks existing Q/R/T keyboard and on-demand button behavior.

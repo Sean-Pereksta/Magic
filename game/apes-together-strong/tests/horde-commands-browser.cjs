@@ -31,7 +31,7 @@ async function checkRecruitment(page){assert.deepEqual(await commands(page),[{cm
   const context=await browser.newContext({viewport:{width:800,height:850},hasTouch:true,isMobile:true}),mobile=await context.newPage();mobile.on('pageerror',e=>errors.push(e.message));
   // The source harness remains entirely local; copy its fulfilled document.
   if(process.argv.includes('--source')){await mobile.route('https://ats-input.test/**',route=>route.fulfill({contentType:'text/html',body:sourceHtml}));await mobile.goto('https://ats-input.test/')}else await mobile.goto(pathToFileURL(path.resolve(root,'../apes-together-strong.html')).href);
-  await mobile.waitForFunction(()=>window.ATS?.screen==='menu');await mobile.locator('#newRun').click();await mobile.waitForFunction(()=>ATS.game?.time>.1);await mobile.locator('#armyDock .army-expand').tap();
+  await mobile.waitForFunction(()=>window.ATS?.screen==='menu');await mobile.locator('#newRun').click();await mobile.waitForFunction(()=>ATS.game?.time>.1);await mobile.evaluate(()=>ATS.mobileCommands.toggleArmy(true));
   const cdp=await context.newCDPSession(mobile),touch=async(key,hold)=>{const rect=await mobile.locator('[data-army-command="'+key+'"]').boundingBox();assert.ok(rect);const point={x:rect.x+rect.width/2,y:rect.y+rect.height/2};await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await mobile.waitForTimeout(hold);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await mobile.waitForTimeout(80)};
   await fresh(mobile);await nearbyResidents(mobile);await touch('call',80);await checkRecruitment(mobile);
   await fresh(mobile);await touch('recall',80);assert.deepEqual(await commands(mobile),[{cmd:'recall',count:5,mobilized:0}]);
