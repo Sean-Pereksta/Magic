@@ -2,8 +2,10 @@
 
 ## Expanding calls and fan attacks
 
-Hold **Q** to grow a visible recruitment circle from 340 to 1,600 paces, then
-release to call apes from that area. At **1.2 seconds**, Q performs the existing
+Hold **Q** to quickly grow a visible recruitment circle from 120 to 1,600 paces,
+then release to call apes from that area. It stays small for the first 60 ms,
+reaches about 678 paces at 300 ms and 1,190 at 600 ms, then slows as it approaches
+its maximum. At **1.2 seconds**, Q performs the existing
 total recall of every ape already under your command, including residents.
 The same hold works on the Call button and the touch wheel.
 
@@ -35,6 +37,12 @@ human scouting parties. Scouts must see structures and communicate a report
 before targeted raids can begin. Visit the main hut to view nursery bonuses,
 threat status and **Complete Palisade Perimeter**: a saved, progressively funded
 construction blueprint with four usable gates.
+
+Settling with **Z / Shift Z** near an existing village reuses the nearest
+village, including an empty one. Returning families keep its houses, supplies,
+and saved birth progress, so ordinary growth resumes as food and housing allow.
+Recalled young can return with their families while keeping their age and
+remaining young until the usual maturation time.
 
 Press **K / Select climbers** to select field chimpanzees, gibbons and capuchins.
 Give ordinary move or attack orders inside a fort; they use its climb accesses
@@ -459,7 +467,7 @@ hardware timing is diagnostic and never a universal frame-rate guarantee.
 ## Controls and persistence
 
 WASD/arrows move; Shift sprints; Ctrl sneaks; click/Space attacks. Q recruits
-nearby wild, idle, and settled apes within 340 world units; active field orders stay intact. R taps recall nearby field apes; holding R for 600 ms
+nearby wild, idle, and settled apes within 120 world units on a short tap; holding Q quickly expands the call circle. Active field orders stay intact. R taps recall nearby field apes; holding R for 600 ms
 recalls every field ape. T taps recall every field ape; holding T for 600 ms
 also mobilizes settlement residents and defenders. E charges toward the pointer,
 X spreads the charge, F holds, Z settles nearby followers, Shift+Z settles all, and C

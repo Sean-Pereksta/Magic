@@ -4,8 +4,8 @@
 
 | Input | Result | Command API |
 | --- | --- | --- |
-| Q tap | Call wild, idle, and settled apes within 340 world units into the active horde. | `call` |
-| Q partial hold | Expand the visible call circle from 340 to 1,600 units; release to call from that area. | `call`, `{radius}` |
+| Q tap | Call wild, idle, and settled apes within 120 world units into the active horde. | `call` |
+| Q partial hold | Quickly expand the visible call circle from 120 to 1,600 units; release to call from that area. | `call`, `{radius}` |
 | Q full hold | At 1.2 seconds, perform the existing total recall of every commanded ape, including residents. | `recallAll` |
 | E tap | Attack the nearest valid target ahead. | `nearestTarget` |
 | E double tap | Fan out toward the pointer while attacking. | `spreadCharge` |
@@ -15,7 +15,7 @@
 | T tap | Recall all recruited field apes, regardless of distance. | `recallField` |
 | T hold | Mobilize every recruited ape, including settlement residents, defenders, workers, and young. | `recallAll` |
 
-Q keeps its ordinary 340-unit tap radius for the first 120 ms, then grows linearly to 1,600 units over 1.2 seconds. Releasing early issues one area call; reaching 1.2 seconds issues only the existing `recallAll`, with no earlier recruitment. This full call includes only already-commanded apes; wild apes and captives retain their existing rules. The world ring and progress text preview the current area. Keyboard, dock buttons, and the touch wheel share this behavior.
+Q starts with a small 120-unit circle for the first 60 ms, then grows quickly with quadratic ease-out: about 678 units at 300 ms and 1,190 at 600 ms, approaching 1,600 before the 1.2-second threshold. The exact radius is `120 + 1480 × t × (2 − t)`, where `t = clamp((heldMs − 60) / 1140, 0, 1)`. Releasing early issues one area call; reaching 1.2 seconds issues only the existing `recallAll`, with no earlier recruitment. This full call includes only already-commanded apes; wild apes and captives retain their existing rules. The world ring and progress text preview the current area. Keyboard, dock buttons, and the touch wheel share this behavior.
 
 E waits 240 ms after a tap to distinguish a quick second tap. A double tap issues one spread attack; holding either press for 280 ms issues the ordinary troops-and-vehicles order instead. The initiating pointer direction is kept while the gesture resolves. Selected species and individual units fan out across one shared front; later orders clear that fan.
 

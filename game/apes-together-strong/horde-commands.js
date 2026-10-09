@@ -1,7 +1,7 @@
 /* Ownership, settlement mobilization, and one-command tap/hold gestures. */
 (() => {
 'use strict';
-const OWNER='king',NEAR=260,RECRUIT=340,RECRUIT_MAX=1600,HOLD_MS=600,Q_HOLD_MS=1200,Q_TAP_MS=120;
+const OWNER='king',NEAR=260,RECRUIT=120,RECRUIT_MAX=1600,HOLD_MS=600,Q_HOLD_MS=1200,Q_TAP_MS=60;
 const OWNED_STATES=new Set(['follow','charge','hold','settled','scout','young']);
 const P=ATSGame.prototype;
 function inferOwner(a){if(a.hordeOwner===undefined)a.hordeOwner=OWNED_STATES.has(a.state)||a.settlementId?OWNER:null;return a.hordeOwner===OWNER}
@@ -79,7 +79,7 @@ P.abstractActor=function(a,dt,kind){if(kind==='ape'&&a.state==='young'&&a.recall
 // threshold tap; a hold commits once, and its later release does nothing. Q
 // previews its expanding area without recruiting anyone before the release.
 const holdDuration=key=>key==='q'?Q_HOLD_MS:HOLD_MS;
-const recruitRadiusAt=elapsed=>RECRUIT+(RECRUIT_MAX-RECRUIT)*Math.max(0,Math.min(1,(elapsed-Q_TAP_MS)/(Q_HOLD_MS-Q_TAP_MS)));
+const recruitRadiusAt=elapsed=>{const t=Math.max(0,Math.min(1,(elapsed-Q_TAP_MS)/(Q_HOLD_MS-Q_TAP_MS)));return RECRUIT+(RECRUIT_MAX-RECRUIT)*t*(2-t)};
 class HoldCommandInput{
  constructor(commit,progress=()=>{}){this.commit=commit;this.progress=progress;this.active=new Map();this.now=0}
  press(key,token,now){key=key.toLowerCase();if(!['q','r','t'].includes(key)||this.active.has(token)||[...this.active.values()].some(g=>g.key===key))return false;this.active.set(token,{key,started:now,held:false});this.render(now);return true}
