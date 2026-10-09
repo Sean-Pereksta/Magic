@@ -1180,8 +1180,13 @@
       renderAllGames();renderOnlineWorlds();renderFeatured();
     }
     async function logGamePlay(game){
-      try{await setDoc(doc(db,"gameStats",game.key),{key:game.key,title:game.title,plays:increment(1),lastPlayedAt:serverTimestamp()},{merge:true});gamePlayCounts[game.key]=(gamePlayCounts[game.key]||0)+1;}catch(e){console.warn("Play logging skipped",e);}
-      await addRecentGame(game);
+      // Save local recents immediately, even when either cloud write is offline.
+      await Promise.all([
+        addRecentGame(game),
+        (async()=>{
+          try{await setDoc(doc(db,"gameStats",game.key),{key:game.key,title:game.title,plays:increment(1),lastPlayedAt:serverTimestamp()},{merge:true});gamePlayCounts[game.key]=(gamePlayCounts[game.key]||0)+1;}catch(e){console.warn("Play logging skipped",e);}
+        })()
+      ]);
     }
     async function addRecentGame(game){
       const entry={key:game.key,playedAt:Date.now()};
@@ -1240,7 +1245,10 @@
         return;
       }
       if(game.requiresUser&&!username){pendingAction={type:"single",gameKey:game.key};return openModal("accountGateModal");}
-      await logGamePlay(game);let url=game.singleRoute||game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
+      if(launchingGame)return;
+      // Analytics must never hold up a user-initiated solo launch.
+      void logGamePlay(game).catch(error=>console.warn("Play logging skipped",error));
+      let url=game.singleRoute||game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
       save(SK.lastGame,game.key);launchGameUrl(url,"single-play");
     }
 
@@ -1949,4 +1957,5 @@
   </script>
 </body>
 </html>
+
 
