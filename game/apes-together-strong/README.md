@@ -1,5 +1,21 @@
 # Apes Together Strong
 
+## Monkey command calls
+
+The nine supplied monkey/gorilla effects play softly for recruit, charge, recall,
+hold, settle, patrol, and selected-unit army orders on desktop and touch. Each
+chorus randomly chooses distinct clips: 25% solo, 50% duet, and 25% trio, with
+simultaneous starts and a little stereo spread. A shared gain caps the whole
+chorus at 18% before master volume; at most six sampled voices can overlap.
+Mute, zero volume, pause and hidden tabs silence calls. The clips decode once
+after a player gesture, with procedural cues available during loading or if
+decoding fails. All nine originals in `assets/command-sounds/` are embedded by
+the build, so the downloaded HTML also plays them offline.
+
+Validation: `node --test game/apes-together-strong/tests/command-audio.test.cjs`
+and `node game/apes-together-strong/tests/command-audio-browser.cjs` (the latter
+uses Playwright/Chromium and supports `CHROMIUM_PATH`).
+
 ## Village growth, reconnaissance and fort assaults
 
 Settlements grow more slowly, gain five population tiers, and attract physical
@@ -71,7 +87,7 @@ The supplied Underpowered King plays before the first milestone, Ceremonial Tom
 plays during the royal tier, and Primal Roar plays as Warlord. All three MP3s are
 embedded in the standalone HTML. One audio element loads only the selected track;
 music remains subject to master/music volume, mute, pause and tab visibility.
-The complete standalone build, including the new artwork, is approximately 88 MB, without adding
+The complete standalone build, including artwork and command calls, is approximately 90 MB, without adding
 network requests during play.
 
 Visit a living main hut and press **B** (or Build) to commission expansion:

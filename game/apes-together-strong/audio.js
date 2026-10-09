@@ -1,4 +1,4 @@
-/* Procedural effects and the three embedded reign soundtracks. */
+/* Procedural effects, embedded monkey calls, and three reign soundtracks. */
 (function () {
   'use strict';
 
@@ -10,6 +10,12 @@
       this.master = null;
       this.paused = false;
       this.sources = new Set();
+      this.commandSources = new Set();
+      this.commandBuffers = [];
+      this.commandGain = null;
+      this.commandLoading = null;
+      this.commandLoadAttempted = false;
+      this.lastCommandSound = null;
       this.last = Object.create(null);
       this.noise = null;
       this.wind = null;
@@ -59,6 +65,7 @@
             }
             this._createWind();
           }
+          this._loadCommandSounds();
           if (this.ctx.state === 'suspended') await this.ctx.resume();
           return this.ctx.state === 'running';
         } catch (_) {
@@ -78,6 +85,7 @@
       if (Number.isFinite(settings.volume)) this.volume = this._clamp(settings.volume, 0, 1);
       if (typeof settings.musicEnabled === 'boolean') this.musicEnabled = settings.musicEnabled;
       if (Number.isFinite(settings.musicVolume)) this.musicVolume = this._clamp(settings.musicVolume, 0, 1);
+      if (!this.enabled || this.volume === 0) this._stopCommandSounds();
       this._masterLevel();
       this._syncMusic();
     }
@@ -140,6 +148,90 @@
     }
 
     _clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+
+    _loadCommandSounds() {
+      if (this.commandLoadAttempted || !this.ctx || !window.ATS_COMMAND_SOUNDS?.length) return;
+      this.commandLoadAttempted = true;
+      const ctx = this.ctx;
+      // Decode once after the first player gesture. Each failed clip is isolated;
+      // procedural cues remain available while loading or if decoding fails.
+      this.commandLoading = Promise.all(window.ATS_COMMAND_SOUNDS.map(async clip => {
+        try {
+          const encoded = clip.src.slice(clip.src.indexOf(',') + 1);
+          const bytes = Uint8Array.from(window.atob(encoded), ch => ch.charCodeAt(0));
+          const buffer = await ctx.decodeAudioData(bytes.buffer);
+          return { id: clip.id, buffer };
+        } catch (_) { return null; }
+      })).then(clips => {
+        if (this.ctx === ctx) this.commandBuffers = clips.filter(Boolean);
+      }).finally(() => {
+        if (this.ctx === ctx) this.commandLoading = null;
+      });
+    }
+
+    _commandLevel() {
+      if (!this.commandGain || !this.ctx) return;
+      // Bound the whole chorus, including overlapping commands, to a soft
+      // level before the player's master volume is applied.
+      this.commandGain.gain.setValueAtTime(.18 / Math.max(1, this.commandSources.size), this.ctx.currentTime);
+    }
+
+    _stopCommandSounds() {
+      for (const source of Array.from(this.commandSources)) {
+        try { source.stop(); } catch (_) {}
+      }
+    }
+
+    _playCommandSounds(strength, pan) {
+      if (!this.commandBuffers.length) return false;
+      if (this.volume === 0 || window.document?.hidden) return true;
+      const ctx = this.ctx, now = ctx.currentTime;
+      if (now - (this.last.commandCalls ?? -100) < .45) return true;
+      this.last.commandCalls = now;
+      const roll = Math.random();
+      // 25% solo, 50% duet, 25% trio. Never repeat a clip within a chorus.
+      const count = Math.min(roll < .25 ? 1 : roll < .75 ? 2 : 3,
+        this.commandBuffers.length, 6 - this.commandSources.size, this._voiceLimit() - this.sources.size);
+      if (count <= 0) return true;
+      const clips = this.commandBuffers.slice();
+      for (let i = clips.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [clips[i], clips[j]] = [clips[j], clips[i]];
+      }
+      if (clips.length > 1 && clips[0].id === this.lastCommandSound) [clips[0], clips[1]] = [clips[1], clips[0]];
+      this.lastCommandSound = clips[0].id;
+      if (!this.commandGain) {
+        this.commandGain = ctx.createGain();
+        this.commandGain.gain.value = 0;
+        this.commandGain.connect(this.master);
+      }
+      const t = now + .005;
+      for (let i = 0; i < count; i++) {
+        const source = ctx.createBufferSource(), gain = ctx.createGain(), nodes = [source, gain];
+        source.buffer = clips[i].buffer;
+        source.loop = false;
+        source.connect(gain);
+        if (ctx.createStereoPanner) {
+          const panner = ctx.createStereoPanner();
+          panner.pan.value = this._clamp(pan + (i - (count - 1) / 2) * .3 + (Math.random() - .5) * .15, -1, 1);
+          gain.connect(panner); panner.connect(this.commandGain); nodes.push(panner);
+        } else gain.connect(this.commandGain);
+        const duration = source.buffer.duration, peak = Math.min(1, strength) * (.85 + Math.random() * .15);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(peak, t + Math.min(.015, duration * .1));
+        gain.gain.setValueAtTime(peak, t + Math.max(duration * .5, duration - .08));
+        gain.gain.linearRampToValueAtTime(0, t + duration);
+        this.sources.add(source); this.commandSources.add(source);
+        source.onended = () => {
+          this.sources.delete(source); this.commandSources.delete(source);
+          for (const node of nodes) { try { node.disconnect(); } catch (_) {} }
+          this._commandLevel();
+        };
+        source.start(t);
+      }
+      this._commandLevel();
+      return true;
+    }
 
     _createWind() {
       const ctx = this.ctx;
@@ -241,7 +333,7 @@
         gun: 0.055, attack: 0.07, hit: 0.11, death: 0.25, smash: 0.2,
         alarm: 1.7, radio: 0.9, heli: 0.38, rescue: 0.25, birth: 0.3,
         food: 0.18, call: 0.65, charge: 0.6, recall: 0.65,
-        hold: 0.5, settle: 0.5, patrol: 0.5, fall: 0.16, warning: 0.45, grenade: 0.3,
+        hold: 0.5, settle: 0.5, patrol: 0.5, command: 0.5, fall: 0.16, warning: 0.45, grenade: 0.3,
         cannon: 0.35, tank: 0.65, apc: 0.8, truck: 0.85, military: 2.4, mobilization: 2.4,
         rumble: 0.65, recon: 0.4, scout: 0.4, gunship: 0.4, overrun: 0.8,
         mortar: 0.45, mortarImpact: 0.45, distantGun: 1.15,
@@ -253,11 +345,14 @@
       // Gunfire and ambience leave voices for danger tells and commands, so a
       // mass battle cannot drown out a mortar launch or the King's recall.
       const previousBudget = this._voiceBudget;
-      this._voiceBudget = ['warning', 'mortar', 'mortarImpact', 'cannon', 'offensive', 'call', 'charge', 'recall', 'hit', 'death'].includes(name) ? this.maxVoices : Math.max(1, this.maxVoices - 8);
+      const commandCue = ['call', 'charge', 'recall', 'hold', 'settle', 'patrol', 'command'].includes(name);
+      this._voiceBudget = commandCue || ['warning', 'mortar', 'mortarImpact', 'cannon', 'offensive', 'hit', 'death'].includes(name) ? this.maxVoices : Math.max(1, this.maxVoices - 8);
       const s = strength;
       const at = (duration, gain, extra = {}) => ({ duration, gain: gain * s, pan, ...extra });
       try {
+        if (commandCue && this._playCommandSounds(s, pan)) return;
         switch (name) {
+          case 'command': this._roar(150, s * .35, pan, .3); break;
           case 'call': this._roar(155, s, pan, 0.72); break;
           case 'charge':
             this._roar(135, s, pan, 0.68);
@@ -528,6 +623,12 @@
       this.paused = true;
       for (const source of this.sources) { try { source.stop(); } catch (_) {} }
       this.sources.clear();
+      this.commandSources.clear();
+      this.commandBuffers = [];
+      if (this.commandGain) { try { this.commandGain.disconnect(); } catch (_) {} }
+      this.commandGain = null;
+      this.commandLoading = null;
+      this.commandLoadAttempted = false;
       if (this.wind) { try { this.wind.stop(); this.wind.disconnect(); } catch (_) {} }
       if (this.ctx) { try { const closing = this.ctx.close(); if (closing && closing.catch) closing.catch(() => {}); } catch (_) {} }
       this.ctx = null;
