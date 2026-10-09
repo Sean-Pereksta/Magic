@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const N=ATSNavigation.prototype,G=ATSGame.prototype,clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-const friendly=b=>!!b?.fortification&&(b.team||b.owner)==='ape'&&b.solid&&!b.dead&&b.hp>0;
+const friendly=b=>!!b?.fortification&&!b.gate&&!b.settlementWall&&(b.team||b.owner)==='ape'&&b.solid&&!b.dead&&b.hp>0;
 const now=nav=>nav.game?.time??nav.time;
 const radius=a=>a.radius||(a.id==='king'?12:a.state==='young'?7:10);
 const pose=a=>{

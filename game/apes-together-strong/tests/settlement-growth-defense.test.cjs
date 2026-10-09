@@ -52,15 +52,15 @@ test('cover raised after launch intercepts a traveling spear and friendly armor 
  fly(g,shot.spear.duration+.3);assert.equal(h.hp,shot.hp);assert.equal(friendly.hp,500);assert.equal(s.spears.length,0);
 });
 test('settlements fill actual housing beyond low terrain capacity and resume when a home is added',()=>{
- const {g,s}=colony(4);hut(g,s);s.gardens=2;step(g,s,400);assert.equal(s.population,16);assert.equal(g.stats.born,12);
+ const {g,s}=colony(4);hut(g,s);s.structures.push({id:'garden1',kind:'garden',hp:100,stage:4},{id:'garden2',kind:'garden',hp:100,stage:4});step(g,s,1200);assert.equal(s.population,16);assert.equal(g.stats.born,12);
  const count=g.population;step(g,s,60);assert.equal(g.population,count);assert.equal(s.growthStatus,'Homes full');
- hut(g,s);step(g,s,35);assert.ok(s.population>16);assert.ok(s.population<=s.housing);
+ hut(g,s);step(g,s,80);assert.ok(s.population>16);assert.ok(s.population<=s.housing);
 });
-test('low food, recovering safety and attack do not silently stop housing-limited births',()=>{
+test('food shortages pause births while recovering safety alone does not',()=>{
  const {g,s}=colony(1);s.food=0;s.safety=0;s.birthTimer=30;
  const h=g.makeHuman(90,0,null);h.state='combat';g.humanGrid.rebuild(g.humans);
- step(g,s);assert.equal(s.attack,true);assert.equal(g.stats.born,1);assert.equal(s.population,2);assert.equal(s.food,0);
- h.hp=0;g.humanGrid.rebuild([]);const before=s.birthTimer;step(g,s);assert.ok(s.birthTimer>before);
+ step(g,s);assert.equal(s.attack,true);assert.equal(g.stats.born,0);assert.equal(s.population,1);assert.equal(s.food,0);
+ h.hp=0;g.humanGrid.rebuild([]);const before=s.birthTimer;step(g,s);assert.equal(s.birthTimer,before);s.food=100;step(g,s);assert.equal(g.stats.born,1);
 });
 test('completed structures and larger adult communities accelerate births; ruins and frames do not',()=>{
  const {g,s}=colony(4);hut(g,s);const base=g.colonies.familyGrowth(s).rate;
@@ -69,7 +69,7 @@ test('completed structures and larger adult communities accelerate births; ruins
  hut(g,s);for(let i=0;i<8;i++)g.makeApe(0,80+i*12,'settled',s.id);g.refreshSettlements();assert.ok(g.colonies.familyGrowth(s).rate>developed);
 });
 test('newborns count immediately, returning travelers retain beds, and destroyed huts remove capacity',()=>{
- const {g,s}=colony(4),h=hut(g,s);g.apes[0].kingdomMission={id:'delivery',kind:'supply'};s.birthTimer=10000;step(g,s);
+ const {g,s}=colony(4),h=hut(g,s);g.apes[0].kingdomMission={id:'delivery',kind:'supply'};s.birthTimer=10000;step(g,s,12);
  assert.equal(s.population,16);assert.equal(g.population,16);assert.equal(g.settlementMembers.get(s.id).length,16);
  g.colonies.damageHut(s,h,100);step(g,s,5);assert.equal(s.housing,6);assert.equal(g.population,16);
  g.colonies.complete(s,{kind:'rebuildHut',structureId:h.id});g.apes.at(-1).state='follow';g.apes.at(-1).settlementId=null;g.refreshSettlements();s.birthTimer=30;step(g,s);assert.equal(s.population,16);assert.equal(g.population,17);

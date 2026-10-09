@@ -18,12 +18,12 @@ const {pathToFileURL}=require('node:url'),{chromium}=require('playwright');
    const s={id:'economy-gallery',name:'Farwood',x:0,y:0,population:1,level:1,radius:100,food:100000,wood:100000,livingFounding:true};g.settlements.push(s);
    g.makeApe(0,10,'settled',s.id);g.refreshSettlements();g.colonies.init(s);s.attack=true;window.economyHome=s;
   });
-  if(mobile){await press('#armyDock .army-expand');await press('[data-army-command=build]')}else await page.keyboard.press('b');
+  if(mobile)await press('#mobileSettlementButton');else await page.keyboard.press('b');
   await page.waitForFunction(()=>ATS.screen==='build');assert.equal(await page.locator('#resourceExpeditions').isVisible(),true);
   await page.locator('#expeditionFoodRange').selectOption('extended');await page.locator('#expeditionWoodRange').selectOption('frontier');await page.locator('#expeditionPriority').selectOption('wood');
   assert.deepEqual(await page.evaluate(()=>JSON.parse(JSON.stringify(economyHome.expeditionSettings))),{foodRange:'extended',woodRange:'frontier',priority:'wood'});
   assert.match(await page.locator('#expeditionSummary').innerText(),/parties.*available adults/);
-  const options=await page.evaluate(()=>ATS.game.colonies.catalog(economyHome).filter(e=>e.available).map(e=>({kind:e.kind,cost:e.cost})));
+  const options=await page.evaluate(()=>ATS.game.colonies.catalog(economyHome).filter(e=>e.available&&!e.blueprint).map(e=>({kind:e.kind,cost:e.cost})));
   let spentWood=0,spentFood=0,count=0;
   for(const option of options){
    await press('[data-structure="'+option.kind+'"]');spentWood+=option.cost.wood;spentFood+=option.cost.food||0;count++;

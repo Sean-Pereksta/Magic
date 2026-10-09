@@ -313,11 +313,12 @@ class Navigation {
  const crossing=a._barrierCrossing;if(crossing){if(now<crossing.until&&Math.hypot(a.x-crossing.x,a.y-crossing.y)>6){a._barrierIgnore=crossing.id;return crossing}a._barrierCrossing=null;a._barrierIgnore=null}
  const dx=target.x-a.x,dy=target.y-a.y,d=Math.hypot(dx,dy);if(d<1)return null;
  const step=Math.min(d,r+22),b=world.fortificationAt(a.x+dx/d*step,a.y+dy/d*step,r);if(!b||b.dead||b.hp<=0){a.barrierAction=null;return null}
- const team=b.team||b.owner,own=team===profile;if(profile==='human'&&own)return null;
+ const team=b.team||b.owner,own=team===profile;if(profile==='human'&&own)return null;if(profile==='ape'&&own&&b.settlementWall)return null;
  if(this.isVehicle(profile)){
   if(profile==='tank'&&team==='ape'&&b.weak){if(now>=(a._barrierAttackAt||0)){a._barrierAttackAt=now+.65;world.damageFortification(b,95,now);this.game?.effect('smash',b.x,b.y,{life:.35,color:'#dfbc82'})}return b.dead?null:false}return null;
  }
  if(profile==='ape'&&!own){if(now>=(a._barrierAttackAt||0)){a._barrierAttackAt=now+.75;world.damageFortification(b,a.id==='king'?55:32,now);a.animation={kind:'overhead',start:now,duration:.55};this.game?.sound('smash',.35,a.x)}a.barrierAction={id:b.id,kind:'breach'};return false}
+ if(profile==='human'&&team==='ape'&&(b.settlementWall||b.settlementId)&&a.role!=='engineer'){if(now>=(a._barrierAttackAt||0)){a._barrierAttackAt=now+1;world.damageFortification(b,18,now);a.animation={kind:'breach',start:now,duration:.4}}a.barrierAction={id:b.id,kind:'breach'};return false}
  if(profile==='human'&&a.role==='engineer'){if(a.hitTimer>0){a.barrierAction=null;return false}if(now>=(a._barrierAttackAt||0)){a._barrierAttackAt=now+.55;world.damageFortification(b,65,now);a.animation={kind:'build',start:now,duration:.5}}a.barrierAction={id:b.id,kind:'breach'};return false}
  const duration=own?.28:2.8;let action=a.barrierAction;if(!action||action.id!==b.id||action.kind!=='climb')action=a.barrierAction={id:b.id,kind:'climb',remaining:duration};
  if(!own&&a.hitTimer>0){action.remaining=duration;return false}action.remaining-=dt;a.animation={kind:own?'vault':'climb',start:now,duration:Math.min(duration,.7)};

@@ -19,7 +19,7 @@ test('a real 120-ape recall crosses a ford under crowd separation without leavin
  }
  assert.ok(peakCrossing>10,'exercise actual simultaneous bridge congestion');
  const stranded=g.apes.filter(a=>a.y<b.maxY+20);assert.equal(stranded.length,0,JSON.stringify(stranded.map(a=>({id:a.id,x:a.x,y:a.y,crossing:a._navCrossing,nav:a._nav}))));
- assert.equal(g.apes.filter(a=>Math.hypot(a.x-g.king.x,a.y-g.king.y)<250).length,120);
+ assert.equal(g.apes.filter(a=>Math.hypot(a.x-g.king.x,a.y-g.king.y)<380).length,120);
 });
 
 test('human-only nearest attack cannot damage a human through a live thin fortress wall',()=>{

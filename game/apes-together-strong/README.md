@@ -1,5 +1,21 @@
 # Apes Together Strong
 
+## Village growth, reconnaissance and fort assaults
+
+Settlements grow more slowly, gain five population tiers, and attract physical
+human scouting parties. Scouts must see structures and communicate a report
+before targeted raids can begin. Visit the main hut to view nursery bonuses,
+threat status and **Complete Palisade Perimeter**: a saved, progressively funded
+construction blueprint with four usable gates.
+
+Press **K / Select climbers** to select field chimpanzees, gibbons and capuchins.
+Give ordinary move or attack orders inside a fort; they use its climb accesses
+automatically. Hordes spread farther apart, and large fort victories grant more
+food and training for nearby survivors.
+
+See [SETTLEMENT-STRATEGY.md](SETTLEMENT-STRATEGY.md) for balance values,
+validation and terrain/performance limits.
+
 ## Settlement economy and expeditions
 
 Visit a main hut and press **B** to choose **Resource Expeditions**. Food and

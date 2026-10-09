@@ -46,7 +46,7 @@ test('dead apes and dormant distant settlements do not drift or repel',()=>{
 test('a large horde spreads out and still travels with the king',()=>{
  const g=game();g.king.x=0;
  for(let i=0;i<100;i++){const a=ape(g,0,0,'follow');a.offsetX=Math.sin(i*2.399)*Math.sqrt((i+1)/100)*60;a.offsetY=Math.cos(i*2.399)*Math.sqrt((i+1)/100)*60;a.phase=i*2.399}
- run(g,8);assert.ok(Math.max(...g.apes.map(a=>distance(a,g.king)))>90);
+ run(g,8);assert.ok(Math.max(...g.apes.map(a=>distance(a,g.king)))>200);
  for(let i=0;i<8*60;i++)g.update(1/60,{x:1});
- assert.ok(g.apes.every(a=>distance(a,g.king)<230));assert.ok(g.apes.every(a=>a.state==='follow'));
+ assert.ok(g.apes.every(a=>distance(a,g.king)<350));assert.ok(g.apes.every(a=>a.state==='follow'));
 });

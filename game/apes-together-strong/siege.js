@@ -67,6 +67,7 @@ class Siege {
  eligible(a){return a.hp>0&&FOLLOW.has(a.state)}
  members(species){return this.g.apes.filter(a=>this.eligible(a)&&species.includes(a.species))}
  select(species,add=false){this.unitIds=null;const ids=(Array.isArray(species)?species:[species]).filter(s=>SPECIES.includes(s));this.selected=add?[...new Set([...this.selected,...ids])]:ids;return this.selected}
+ selectClimbers(){const ids=this.members(SPECIES).filter(a=>LIGHT.has(a.species)).map(a=>a.id);this.selectUnits(ids);this.status=ids.length?'Climbers selected · move or attack inside walls to climb':'No climbing apes available';return ids.length}
  selectUnits(ids,add=false){this.unitIds=[...new Set([...(add?this.unitIds||[]:[]),...ids])].filter(id=>this.eligible(this.g.apesById.get(id)||{}));this.selected=[...new Set(this.unitIds.map(id=>this.g.apesById.get(id).species))];return this.selected}
  selectedMembers(){return this.members(this.selected.length?this.selected:SPECIES).filter(a=>!this.unitIds||this.unitIds.includes(a.id))}
  clearActor(a){delete a.areaTarget;delete a._areaThink;delete a.armyOrder;delete a.siegeRoute;delete a._siegeProgress;delete a._orderStall;if(a.siegeTransition)this.detach(a);}
@@ -77,8 +78,9 @@ class Siege {
   let target=objects.filter(o=>rectHit(p,p,o,12)!==null).sort((a,b)=>dist(a,p)-dist(b,p))[0];
   const enemy=g.humanGrid.nearest(p.x,p.y,24,1,h=>this.visibleTarget(h))[0]||g.vehicleGrid.nearest(p.x,p.y,45,1,h=>this.visibleTarget(h))[0];if(enemy)target=enemy;
   if(kind==='move'||kind==='attackArea')target=null;
-  if(kind==='climb')target=g.world.getObjects(p.x,p.y,100).filter(o=>o.climbAccess&&this.known(o)).sort((a,b)=>dist(a,p)-dist(b,p))[0];
+  if(kind==='climb')target=g.world.getObjects(p.x,p.y,100).filter(o=>o.climbAccess&&!o.dead&&o.hp>0&&this.known(o)).sort((a,b)=>dist(a,p)-dist(b,p))[0];
   if(target){const type=kind|| (target.type==='gateControl'?'sabotage':target.climbAccess?'climb':'attack');return{id:'order-'+ ++this.serial,type,targetId:target.id,targetKind:target.id.startsWith('human')?'human':target.id.startsWith('vehicle')?'vehicle':'object',x:target.x,y:target.y};}
+  if(kind==='climb'){this.status='Choose a visible wall with vines or scaffolding';return null}
   const site=g.world.getSites(p.x,p.y,100).find(s=>s.military&&!s.cleared&&Math.abs(p.x-s.x)<(s.extentX||s.radius)&&Math.abs(p.y-s.y)<(s.extentY||s.radius));
   if(!kind&&site&&site.known){const gate=(site.gates||site.objects).map(id=>g.world.objects.get(id)).filter(o=>o?.type==='gate'&&!o.dead&&o.solid&&this.known(o)).sort((a,b)=>dist(a,this.center())-dist(b,this.center()))[0];if(gate)return{id:'order-'+ ++this.serial,type:'assault',targetId:gate.id,targetKind:'object',siteId:site.id,x:gate.x,y:gate.y}}
   if(kind==='attackArea')return{id:'order-'+ ++this.serial,type:'attackArea',...point(p)};
@@ -87,9 +89,11 @@ class Siege {
   return{id:'order-'+ ++this.serial,type:kind||'move',...point(q)};
  }
  center(species=this.selected){const list=this.members(species.length?species:SPECIES).filter(a=>!this.unitIds||this.unitIds.includes(a.id));return list.length?{x:list.reduce((n,a)=>n+a.x,0)/list.length,y:list.reduce((n,a)=>n+a.y,0)/list.length}:point(this.g.king)}
- draft(p,kind){const order=this.makeOrder(p,kind);if(!order)return false;const ids=this.selected.length?this.selected:SPECIES;if(ids.some(s=>(this.drafts[s]?.length||0)+(this.groups[s]?.orders.length||0)>=16)){this.status='Route full (16)';return false}for(const s of ids)(this.drafts[s]||(this.drafts[s]=[])).push({...order});return true}
+ draft(p,kind){const order=this.makeOrder(p,kind);if(!order)return false;if(order.type==='climb'&&!this.selectClimbers())return false;const ids=this.selected.length?this.selected:SPECIES;if(ids.some(s=>(this.drafts[s]?.length||0)+(this.groups[s]?.orders.length||0)>=16)){this.status='Route full (16)';return false}for(const s of ids)(this.drafts[s]||(this.drafts[s]=[])).push({...order});return true}
  dispatch(append=false){let count=0;const ids=this.selected.length?this.selected:SPECIES,shield=ids.flatMap(s=>this.drafts[s]||[]).find(o=>o.type==='shield');for(const s of ids){const orders=this.drafts[s]||[];if(!orders.length)continue;if(this.issue([s],orders,append)){count++;this.drafts[s]=[]}}if(shield)this.formation(ids,shield);return count>0}
  issue(species,orders,append=false){
+  if(orders.some(o=>o.type==='climb'&&(!this.resolve(o)?.climbAccess||this.resolve(o)?.dead||this.resolve(o)?.hp<=0))){this.status='Choose an intact climbable wall';return false}
+  if(orders.some(o=>o.type==='climb'))species=species.filter(s=>LIGHT.has(s));if(!species.length)return false;
   if(orders.some((o,i)=>o.type==='attackArea'&&i!==orders.length-1)){this.status='Attack area must be the final stop';return false}
   if(append&&species.some(id=>this.groups[id]?.orders.some(o=>o.type==='attackArea'))){this.status='Final attack already set; Go starts a new route';return false}
   if(this.g.ended||!orders.length||orders.some(o=>!TYPES.has(o.type)||!finite(o)))return false;
@@ -146,7 +150,7 @@ class Siege {
   const g=this.g,t=this.resolve(o)||o,site=o.siteId?g.world.sites.get(o.siteId):t.siteId?g.world.sites.get(t.siteId):[...g.world.sites.values()].find(s=>s.fortressVersion&&Math.abs(t.x-s.x)<s.extentX&&Math.abs(t.y-s.y)<s.extentY);
   if(!site?.fortressVersion)return[{...point(t),action:o.type==='climb'?'climb':null,wallId:o.type==='climb'?t.id:null}];
   const ex=site.extentX||site.radius-74,ey=site.extentY||site.radius-74,inside=p=>Math.abs(p.x-site.x)<ex-20&&Math.abs(p.y-site.y)<ey-20;
-  const finish=route=>{const gate=(site.gates||[]).map(id=>g.world.objects.get(id)).find(w=>w?.defenseRing===3),last=route.at(-1)||a;if(gate&&t.y<gate.y-20&&last.y>gate.y+20){const w=LIGHT.has(a.species)?(site.innerAccess||[]).map(id=>g.world.objects.get(id)).filter(w=>w&&!w.dead).sort((x,y)=>dist(last,x)-dist(last,y))[0]:null;if(w)route.push({x:w.x,y:w.y+44},{x:w.x,y:w.y-44,action:'cross',wallId:w.id});else route.push({x:gate.x,y:gate.y+44},{x:gate.x,y:gate.y-44,gateId:gate.id})}route.push(point(t));return route};
+  const finish=route=>{const gate=(site.gates||[]).map(id=>g.world.objects.get(id)).find(w=>w?.defenseRing===3),last=route.at(-1)||a;if(gate&&t.y<gate.y-20&&last.y>gate.y+20){const w=LIGHT.has(a.species)?(site.innerAccess||[]).map(id=>g.world.objects.get(id)).filter(w=>w&&!w.dead).sort((x,y)=>dist(last,x)-dist(last,y))[0]:null;if(w)route.push({x:w.x,y:w.y+44},{x:w.x,y:w.y-44,action:'cross',wallId:w.id});else route.push({x:gate.x,y:gate.y+44},{x:gate.x,y:gate.y-44,gateId:gate.id})}route.push({...point(t),formationBounds:inside(t)?{x:site.x,y:site.y,ex:ex-28,ey:ey-28}:null});return route};
   if(o.type==='climb')return[{...point(t),action:'climb',wallId:t.id}];
   if(inside(a)||!inside(t))return finish([]);
   if(LIGHT.has(a.species)){
@@ -178,9 +182,9 @@ class Siege {
   const route=a.siegeRoute,p=route.steps[route.index];if(!p)return true;
   if(p.gateId){const gate=g.world.objects.get(p.gateId);if(gate?.solid&&!gate.dead){this.groups[a.species].blocked='gate';return false}}
   if(p.blocked){this.groups[a.species].blocked='route';return false}
-  if(p.action&&!LIGHT.has(a.species)){this.groups[a.species].blocked='climber required';return false}if(p.action){const wall=g.world.objects.get(p.wallId);if(wall?.dead){route.index++;return false}if(dist(a,wall)<Math.max(wall.w||20,wall.h||20)/2+42){if(this.startTransition(a,wall,p,p.action==='climb'))route.index++;else if(this.status==='Climb exit blocked')this.groups[a.species].blocked='climb exit';return false}}
-  const last=route.index===route.steps.length-1,slot=a.armyOrder.slot,spacing=a.armySpread?36:20,side=(slot%9-Math.min(8,(this.groups[a.species]?.members.length||1)-1)/2)*spacing,row=Math.floor(slot/9)%8;
-  let goal=point(p);if(last&&!o.targetId){const angle=a.armyOrder.heading??(a.armyOrder.heading=Math.atan2(o.y-a.y,o.x-a.x));goal={x:p.x-Math.sin(angle)*side-Math.cos(angle)*row*18,y:p.y+Math.cos(angle)*side-Math.sin(angle)*row*18};if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
+  if(p.action&&!LIGHT.has(a.species)){this.groups[a.species].blocked='climber required';return false}if(p.action){const wall=g.world.objects.get(p.wallId);if(!wall||wall.dead||wall.hp<=0){route.index++;return false}if(dist(a,wall)<Math.max(wall.w||20,wall.h||20)/2+42){if(this.startTransition(a,wall,p,p.action==='climb'))route.index++;else if(this.status==='Climb exit blocked')this.groups[a.species].blocked='climb exit';return false}}
+  const last=route.index===route.steps.length-1,slot=a.armyOrder.slot,spacing=a.armySpread?46:34,side=(slot%9-Math.min(8,(this.groups[a.species]?.members.length||1)-1)/2)*spacing,row=Math.floor(slot/9);
+  let goal=point(p);if(last&&!o.targetId){const angle=a.armyOrder.heading??(a.armyOrder.heading=Math.atan2(o.y-a.y,o.x-a.x));goal={x:p.x-Math.sin(angle)*side-Math.cos(angle)*row*32,y:p.y+Math.cos(angle)*side-Math.sin(angle)*row*32};const b=p.formationBounds;if(b){goal.x=clamp(goal.x,b.x-b.ex,b.x+b.ex);goal.y=clamp(goal.y,b.y-b.ey,b.y+b.ey)}if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
   if(o.type==='shield'&&a.armyOrder.formation&&last){const f=a.armyOrder.formation;goal={x:p.x-Math.sin(f.heading)*f.side-Math.cos(f.heading)*f.back,y:p.y+Math.cos(f.heading)*f.side-Math.sin(f.heading)*f.back};if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
   const d=dist(a,goal),arrived=last&&o.targetId?g.objectDistance(a,this.resolve(o)||o)<29:d<(last?26:6);if(arrived){route.index++;delete a._orderStall;return route.index>=route.steps.length}
   const speed=o.type==='shield'?Math.min(a.speed,68)/(a.shield?.hp>0?.9:1):a.speed*(o.type==='charge'?1.35:1);a.target=goal;g.move(a,goal.x-a.x,goal.y-a.y,speed,dt);

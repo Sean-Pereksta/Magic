@@ -375,6 +375,7 @@ P.drawBarrierGeometry=function(c,o,damage){
  const w=o.w||74,h=o.h||16,axis=w>=h?0:Math.PI/2,length=Math.max(w,h),d=projectedDirection(axis,length/2),ape=o.team==='ape',height=o.kind==='heavy'?35:ape?38:28;
  ellipse(c,0,4,Math.abs(d.x)+11,Math.abs(d.y)+9,'rgba(0,10,9,.3)');
  if(damage===3){for(let i=0;i<5;i++){const t=i/4,x=(t-.5)*d.x*1.8,y=(t-.5)*d.y*1.8;line(c,x-9,y-4,x+12,y+4,ape?'#9c825c':'#798372',5);}return;}
+ if(o.gate){for(const sign of[-1,1]){line(c,sign*d.x,sign*d.y,sign*d.x,sign*d.y-49,'#c3a978',9)}line(c,-d.x,-d.y-44,d.x,d.y-44,'#c9b078',6);line(c,-d.x,-d.y-8,d.x,d.y-34,'#997849',5);line(c,-d.x,-d.y-34,d.x,d.y-8,'#997849',5);return}
  const count=Math.max(4,Math.ceil(length/12));for(let i=0;i<=count;i++){if(damage===2&&(i===2||i===3))continue;const t=i/count,x=-d.x+d.x*2*t,y=-d.y+d.y*2*t,top=height-(damage>0&&i%3===0?10:0);line(c,x,y,x+(ape?(i%2?2:-2):0),y-top,ape?'#a08b60':o.kind==='heavy'?'#91a08c':'#7f8c77',ape?7:10);if(ape)poly(c,[[x-4,y-top],[x,y-top-7],[x+4,y-top]],'#c3b482');else line(c,x-3,y-top+7,x+3,y-top+12,'#c7b879',2);}
  for(const lift of [8,height-8])line(c,-d.x,-d.y-lift,d.x,d.y-lift,ape?'#736f4b':'#b2b49a',3);
  if(damage>0){line(c,-8,-height+3,3,-height+13,'#35473a',2);line(c,3,-height+13,0,-8,'#35473a',2);}
