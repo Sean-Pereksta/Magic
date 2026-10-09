@@ -51,6 +51,8 @@ for (const scenario of SCENARIOS) test(`stress ${scenario.id}: ${scenario.label}
   }
   if (scenario.alarm) assert.equal(game.world.sites.get('stress-garrison').alarm, true);
   if (scenario.settlement) assert.equal(game.settlements[0].population, scenario.apes);
+  if (scenario.economy) assert.equal(game.settlements.reduce((n,s)=>n+s.population,0),scenario.apes,'working residents remain in their villages');
+  if (scenario.expeditions) assert.ok(report.workload.peakExpeditions>=3,'each stress village launches a real gathering group');
   if (scenario.exploration) assert.ok(report.chunksAdded > 0, 'streaming must generate terrain');
   // Hardware-specific latency gates are opt-in; operation ceilings above run everywhere.
   if (process.env.ATS_MAX_TICK_MS) assert.ok(report.maxMs < Number(process.env.ATS_MAX_TICK_MS), `max tick ${report.maxMs.toFixed(1)}ms`);

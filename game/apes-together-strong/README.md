@@ -1,5 +1,28 @@
 # Apes Together Strong
 
+## Settlement economy and expeditions
+
+Visit a main hut and press **B** to choose **Resource Expeditions**. Food and
+lumber each have their own Local, Extended (1,600 paces), or Frontier (2,800
+paces) range, plus a shared Balanced, Food First, or Lumber First priority.
+The council lists active parties, available adults, and trip status. Workers
+physically gather supplies and carry them home; changing priorities or
+recruiting a carrier cannot create a remote delivery.
+
+Operational gardens provide dependable food in poor terrain. Adult workers
+staff workshops for a slow renewable timber income, while distant gathering
+provides larger deliveries. Residents reassess real construction, food,
+timber, and defense needs while keeping useful assignments stable. Affordable
+commissions reserve their cost once and continue searching for a building
+site if the nearby plots are occupied.
+
+Warlord now unlocks permanently at **200 living apes**. Existing saves are
+upgraded when loaded; previously acknowledged ceremonies stay acknowledged.
+Military escalation thresholds remain separate from royal progression.
+
+See [SETTLEMENT-ECONOMY.md](SETTLEMENT-ECONOMY.md) for implementation details,
+validation, measured performance, and limitations.
+
 ## World, construction and navigation update
 
 Vehicles and aircraft now use original directional artwork; settlements have
@@ -22,7 +45,7 @@ metadata and exporting the complete game and sprite ZIPs.
 ## Reign progression, royal settlements and equipment
 
 The total living population across followers and settlements earns two permanent
-milestones: **King of the Jungle at 100** and **Warlord at 300**. A full-screen
+milestones: **King of the Jungle at 100** and **Warlord at 200**. A full-screen
 illustrated ceremony freezes simulation and input until Continue. Each milestone
 is acknowledged once and saved; jumping both thresholds presents both in order.
 Losses never remove titles or unlocked equipment. The King wears a small first
@@ -948,7 +971,7 @@ only during play after a player gesture, pauses in menus and hidden tabs, and
 respects master mute. Settings has its own music toggle and volume slider.
 Default music gain is 22% of the 45% master volume (9.9% effective volume).
 Audio remains local; no streaming service or external asset request is needed.
-With the illustrated artwork included, the standalone download is approximately 60.7 MB.
+With the illustrated artwork included, the standalone download is approximately 87.7 MB.
 
 **Tap E** issues a 13-second directional charge toward the pointer: humans,
 vehicles, occupied cells, gates, towers and other hostile structures ahead

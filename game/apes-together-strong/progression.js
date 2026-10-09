@@ -4,14 +4,14 @@
 const TIERS=[
  {name:'Underpowered King',threshold:0,track:'underpowered-king',crown:'The first crown'},
  {name:'King of the Jungle',threshold:100,track:'ceremonial-tom',crown:'The royal crown'},
- {name:'Warlord',threshold:300,track:'primal-roar',crown:'The war crown'}
+ {name:'Warlord',threshold:200,track:'primal-roar',crown:'The war crown'}
 ];
 const P=ATSGame.prototype;
 Object.defineProperty(P,'progression',{configurable:true,get(){return this._progression||(this._progression={version:1,tier:0,acknowledged:0,peak:0})}});
 P.recordReignPopulation=function(n){
  if(this.ended||this.king.hp<=0)return;
  const p=this.progression;
- p.peak=Math.max(p.peak,n);p.tier=Math.max(p.tier,n>=300?2:n>=100?1:0);
+ p.peak=Math.max(p.peak,n);p.tier=Math.max(p.tier,n>=TIERS[2].threshold?2:n>=TIERS[1].threshold?1:0);
  this.king.crownTier=p.tier;
  return p;
 };

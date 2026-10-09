@@ -55,7 +55,7 @@ test('a developed 500-resident village builds dozens of distinct ten-ape huts',(
 });
 
 test('work cohorts share projects and jobs choose appropriate resource and social zones',()=>{
- const {g,s}=colony(300);tick(g,s,2);assert.ok(s.cohorts.length<30);assert.ok(s.cohorts.every(c=>c.count<=20));for(const job of ['forager','builder','lumber','gardener','cook','hauler','caretaker','guardian'])assert.ok(g.apes.some(a=>a.job===job),job);
+ const {g,s}=colony(300);s.wood=20;g.world.objects.set('food',{id:'food',type:'berry',x:160,y:0,food:100,count:100});g.world.objects.set('timber',{id:'timber',type:'tree',x:-180,y:0,hp:80});s.structures.push({id:'garden',kind:'garden',x:120,y:140,hp:100,stage:4},{id:'cook',kind:'cooking',x:80,y:-140,hp:100,stage:4});g.makeApe(0,0,'young',s.id,true);g.colonies.layout(s);tick(g,s,2);assert.ok(s.cohorts.length<30);assert.ok(s.cohorts.every(c=>c.count<=20));for(const job of ['forager','builder','lumber','gardener','cook','caretaker','guardian'])assert.ok(g.apes.some(a=>a.job===job),job);assert.equal(g.apes.some(a=>a.job==='hauler'),false,'resource workers handle real deliveries instead of decorative hauling');
  const cook=g.apes.find(a=>a.job==='cook'),gardener=g.apes.find(a=>a.job==='gardener'),forager=g.apes.find(a=>a.job==='forager');assert.equal(g.colonies.activityTarget(cook,s).activity,'cooking');assert.equal(g.colonies.activityTarget(gardener,s).activity,'gardening');let carried=false;for(let time=0;time<20;time++){g.time=time;carried=carried||g.colonies.activityTarget(forager,s).carrying==='food'}assert.ok(carried);
  g.time=2;const child=g.makeApe(s.radius,0,'young',s.id,true);const target=g.colonies.activityTarget(child,s);assert.ok(Math.hypot(target.x-s.x,target.y-s.y)<s.radius*.5);assert.equal(target.activity,'playing');
 });
@@ -67,12 +67,12 @@ test('mature settlements prepare irregular ape barriers, lookouts and communal f
 });
 
 test('an invasion recalls food workers, sends young to shelter and moves guards to entrances',()=>{
- const {g,s}=colony(180);tick(g,s);s.attack=true;const forager=g.apes.find(a=>a.job==='forager'),guard=g.apes.find(a=>a.job==='guardian'),builder=g.apes.find(a=>a.job==='builder'),child=g.makeApe(s.radius,0,'young',s.id,true);
+ const {g,s}=colony(180);g.world.objects.set('food',{id:'food',type:'berry',x:160,y:0,food:100,count:100});tick(g,s);s.attack=true;const forager=g.apes.find(a=>a.job==='forager'),guard=g.apes.find(a=>a.job==='guardian'),builder=g.apes.find(a=>a.job==='builder'),child=g.makeApe(s.radius,0,'young',s.id,true);
  assert.equal(g.colonies.activityTarget(forager,s).activity,'returning home');assert.equal(g.colonies.activityTarget(guard,s).activity,'defending entrance');assert.equal(g.colonies.activityTarget(builder,s).activity,'repairing defenses');const p=g.colonies.activityTarget(child,s);assert.equal(p.activity,'sheltering');assert.ok(Math.hypot(p.x-s.x,p.y-s.y)<s.radius*.4);
 });
 
 test('distant villages keep aggregate economy without per-resident planning or frequent world scans',()=>{
- const {g,s}=colony(500);g.king.x=5000;s.level=10;s.gardens=50;s.developedRadius=s.radius=550;let scans=0;const query=g.world.getObjects;g.world.getObjects=(...args)=>{if(args[2]>100)scans++;return query(...args)};tick(g,s);const first=scans,cohortCount=s.cohorts.length;scans=0;tick(g,s,19);assert.equal(s.simLOD,2);assert.equal(first,1);assert.equal(scans,0,'far resource scans run every thirty seconds');assert.equal(s.cohorts.length,cohortCount);assert.ok(s.food>0);assert.ok(s.huts.some(h=>h.stage===4),'aggregate construction continues out of view');
+ const {g,s}=colony(500);g.king.x=5000;s.level=10;s.gardens=50;s.developedRadius=s.radius=550;let scans=0;const query=g.world.getObjects;g.world.getObjects=(...args)=>{if(args[2]>100)scans++;return query(...args)};tick(g,s);const first=scans;scans=0;tick(g,s,19);assert.equal(s.simLOD,2);assert.equal(first,1);assert.equal(scans,0,'far resource scans run every thirty seconds');assert.ok(s.cohorts.length<=33,'bounded cohorts adapt when construction or infrastructure changes');assert.ok(s.food>0);assert.ok(s.huts.some(h=>h.stage===4),'aggregate construction continues out of view');
 });
 
 test('real actor navigation brings a wood crew to a trunk before occupied construction',()=>{

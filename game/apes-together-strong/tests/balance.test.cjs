@@ -17,7 +17,9 @@ test('young grow in 35 seconds both nearby and in distant settlements',()=>{
 test('settlement levels catch up to inhabitants through faster construction',()=>{
  // Visible clearing, frame, roof and completion stages take time even when
  // many builders share a project. Established colonies still catch up.
- for(const [population,level]of [[24,3],[60,6],[120,10]]){const {g,s}=colony(population);s.birthTimer=-100000;g.king.x=3000;for(let i=0;i<90;i++){s.wood=120;seconds(g,s,1)}assert.equal(s.level,level);assert.ok(s.housing>=population+Math.max(8,Math.ceil(population*.25)))}
+ // This economic fixture explicitly provides open navigation; obstacle and
+ // river routing are covered by navigation and physical offscreen work tests.
+ for(const [population,level]of [[24,3],[60,6],[120,10]]){const {g,s}=colony(population);s.birthTimer=-100000;g.king.x=3000;g.navigation.clearSegment=()=>true;for(let i=0;i<Math.ceil(population/8);i++)s.structures.push({id:'established-garden-'+i,kind:'garden',x:s.x+160+i*65,y:s.y+140,hp:100,maxHp:100,stage:4});for(let i=0;i<360&&s.level<level;i++){s.wood=120;for(let step=0;step<60;step++){g.time+=1/60;g.navigation.beginFrame(g.time);if(step%15===14)for(const a of g.apes)if(a.settlementId===s.id)g.abstractActor(a,.25,'ape')}g.refreshSettlements();g.colonies.tick(s)}assert.equal(s.level,level);assert.ok(s.housing>=population+Math.max(8,Math.ceil(population*.25)))}
 });
 test('larger communities raise more offspring and the young become useful adults',()=>{
  const small=colony(16),large=colony(64);seconds(small.g,small.s,60);seconds(large.g,large.s,60);assert.ok(small.g.stats.born>=3);assert.ok(large.g.stats.born>=small.g.stats.born*3);assert.ok(large.g.apes.filter(a=>a.state==='settled').length>64);assert.ok(large.s.food>0);

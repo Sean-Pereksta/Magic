@@ -29,8 +29,12 @@ class Pool{
  release(object){if(this.free.length<this.limit)this.free.push(object)}
 }
 class Spatial{
- constructor(size=120){this.size=size;this.cells=new Map()}
- rebuild(items){this.cells.clear();for(const a of items){if(a.hp<=0)continue;const k=Math.floor(a.x/this.size)+','+Math.floor(a.y/this.size);if(!this.cells.has(k))this.cells.set(k,[]);this.cells.get(k).push(a)}}
+ constructor(size=120){this.size=size;this.cells=new Map();this.free=[]}
+ rebuild(items,extra){for(const bucket of this.cells.values()){bucket.length=0;if(this.free.length<4096)this.free.push(bucket)}this.cells.clear();if(extra)this.add(extra);for(const a of items)this.add(a)}
+ add(a){if(a.hp<=0)return;const k=Math.floor(a.x/this.size)+','+Math.floor(a.y/this.size);let bucket=this.cells.get(k);if(!bucket){bucket=this.free.pop()||[];this.cells.set(k,bucket)}bucket.push(a)}
+ // The crowd query retains exactly the nearest eight eligible neighbors, using
+ // one fixed scratch buffer instead of two arrays and a predicate per resident.
+ separationNeighbors(a,stamp,out,ds){out.length=0;ds.length=0;const r=38,limit=8;for(let i=Math.floor((a.x-r)/this.size);i<=Math.floor((a.x+r)/this.size);i++)for(let j=Math.floor((a.y-r)/this.size);j<=Math.floor((a.y+r)/this.size);j++){const list=this.cells.get(i+','+j);if(!list)continue;for(const p of list){if(p===a||p.hp<=0||p._separationStamp===stamp&&p.id<=a.id)continue;const dx=p.x-a.x,dy=p.y-a.y,d=dx*dx+dy*dy;if(d>r*r||out.length===limit&&d>=ds[limit-1])continue;let n=Math.min(out.length,limit-1);while(n>0&&ds[n-1]>d){if(n<limit){out[n]=out[n-1];ds[n]=ds[n-1]}n--}out[n]=p;ds[n]=d}}return out}
  near(x,y,r){const out=[];for(let i=Math.floor((x-r)/this.size);i<=Math.floor((x+r)/this.size);i++)for(let j=Math.floor((y-r)/this.size);j<=Math.floor((y+r)/this.size);j++){const list=this.cells.get(i+','+j);if(list)for(const a of list)if((a.x-x)**2+(a.y-y)**2<=r*r)out.push(a)}return out}
  nearest(x,y,r,limit=8,accept=()=>true){const out=[],ds=[];for(let i=Math.floor((x-r)/this.size);i<=Math.floor((x+r)/this.size);i++)for(let j=Math.floor((y-r)/this.size);j<=Math.floor((y+r)/this.size);j++){const list=this.cells.get(i+','+j);if(!list)continue;for(const a of list){const d=(a.x-x)**2+(a.y-y)**2;if(d>r*r||!accept(a)||out.length===limit&&d>=ds[limit-1])continue;let n=out.length;while(n>0&&ds[n-1]>d)n--;out.splice(n,0,a);ds.splice(n,0,d);if(out.length>limit){out.pop();ds.pop()}}}return out}
 }
@@ -323,39 +327,38 @@ class Game{
  spreadApes(dt){
  // Compute all pressures before moving anyone, so array order cannot bias a clump.
  // Local steps bypass route finding but retain wall, trunk and water clearance.
- const pressures=new Map();
+ const actors=this._separationActors||(this._separationActors=[]),neighbors=this._separationNeighbors||(this._separationNeighbors=[]),distances=this._separationDistances||(this._separationDistances=[]),stamp=this._separationStamp=(this._separationStamp||0)+1;actors.length=0;
  for(const a of this.apes){
  if(a.hp<=0||this.blastActive(a)||a.wallClimb||a.onWallId||a.siegeTransition)continue;
  const st=a.settlementId?this.settlement(a.settlementId):null;
  if(a._simTier===2||a._simTier===1&&a._lodAt!==this.time||st&&dist(a,this.king)>1800&&!st.attack)continue;
- pressures.set(a,{x:0,y:0});
+ a._separationStamp=stamp;a._separationX=0;a._separationY=0;actors.push(a);
  }
  // Slow actors still participate as neighbors between their own updates.
- this.apeGrid.rebuild([this.king,...this.apes]);const shifts=[];
- for(const [a,push]of pressures){
- for(const p of this.apeGrid.nearest(a.x,a.y,38,8,p=>p!==a&&p.hp>0&&(p.id>a.id||!pressures.has(p)))){
+ this.apeGrid.rebuild(this.apes,this.king);
+ this.navigation.beginSeparation();
+ for(const a of actors){
+ for(const p of this.apeGrid.separationNeighbors(a,stamp,neighbors,distances)){
  this.performance.counters.separationPairs++;
  const spacing=p.id==='king'?36:a.state==='young'||p.state==='young'?24:32;
  let dx=a.x-p.x,dy=a.y-p.y,d=Math.hypot(dx,dy);if(d>=spacing)continue;
- if(!this.navigation.clearSegment(a.x,a.y,p.x,p.y,0))continue;
+ if(!this.navigation.separationClear(a,p))continue;
  if(d<.001){
  // A stable, opposite direction for each pair also separates identical save positions.
  const first=a.id<p.id,angle=ATSUtil.hash(first?a.id+':'+p.id:p.id+':'+a.id)/4294967296*TAU;
  dx=Math.cos(angle)*(first?1:-1);dy=Math.sin(angle)*(first?1:-1);d=0;
  }else{dx/=d;dy/=d}
- const pressure=110*(1-d/spacing)**2;push.x+=dx*pressure;push.y+=dy*pressure;
- const other=pressures.get(p);if(other){other.x-=dx*pressure;other.y-=dy*pressure}
+ const pressure=110*(1-d/spacing)**2;a._separationX+=dx*pressure;a._separationY+=dy*pressure;
+ if(p._separationStamp===stamp){p._separationX-=dx*pressure;p._separationY-=dy*pressure}
  }
  }
- for(const [a,push]of pressures){
- const force=Math.hypot(push.x,push.y);if(force>.5)shifts.push({a,dx:push.x/force,dy:push.y/force,speed:Math.min(70,force)});
- }
- for(const {a,dx,dy,speed}of shifts){
+ for(const a of actors){
+ const force=Math.hypot(a._separationX,a._separationY);if(force<=.5)continue;const dx=a._separationX/force,dy=a._separationY/force,speed=Math.min(70,force);
  const moving=a.moving,dir=a.dir;
  this.navigation.move(a,dx*40,dy*40,speed,a._simTier===1?Math.min(.1,a._lodInterval||dt):dt,true);
  a.moving=a.moving||moving;if(a.attackTimer>0)a.dir=dir;
  }
- this.apeGrid.rebuild([this.king,...this.apes]);
+ this.apeGrid.rebuild(this.apes,this.king);
  }
  settlement(id){let s=this.settlementsById.get(id);if(!s){s=this.settlements.find(s=>s.id===id);if(s)this.settlementsById.set(id,s)}return s}
  syncIndexes(){
@@ -416,8 +419,16 @@ class Game{
  // Far followers keep the same committed crossing and shared local corridors
  // as visible apes, evaluated only at their existing staggered coarse cadence.
  if(kind==='ape'&&a.state==='follow'){a._navPriority=a.recallOrder?2:5;if(a._navCrossing||distance2(a,target)>30**2)step(this.navigation.steer(a,target,radius,dt));return}
- const moved=distance2(a,target)<=30**2||step(target);
- if(!moved&&kind==='human'&&a.responseAllocated){a._navPriority=5;const waypoint=this.navigation.steer(a,target,radius,dt);step(waypoint)}
+ // Local work targets include formation offsets. A coarse 30-unit arrival
+ // radius can leave builders outside the real depot/site delivery distance.
+ const arrival=kind==='ape'&&a.settlementId?8:30;
+ const moved=distance2(a,target)<=arrival*arrival||step(target);
+ if(!moved&&(kind==='human'&&a.responseAllocated||kind==='ape'&&a.settlementId)){
+ a._navPriority=5;
+ // Residents headed for the same garden/workshop share local recovery jobs,
+ // retaining real clearance and movement while their village is offscreen.
+ const waypoint=this.navigation.steer(a,target,radius,dt);step(waypoint);
+ }
  }
  }
  updateCohorts(){
@@ -601,7 +612,7 @@ class Game{
  const mx=input.x||0,my=input.y||0,mag=Math.hypot(mx,my);
  this.navigation.beginFrame(this.time);if(this.world.stream)this.world.stream(this.king.x,this.king.y,1200,{budgetMs:1.5,maxSteps:3,dx:mx,dy:my});else this.world.ensure(this.king.x,this.king.y,1200);
  if(this.time>=this.nextSpawnAt){this.nextSpawnAt=this.time+.25;this.spawnSites()}
- this.syncIndexes();this.apeGrid.rebuild([this.king,...this.apes]);this.humanGrid.rebuild(this.humans);this.vehicleGrid.rebuild(this.vehicles);this.buildRelevance();
+ this.syncIndexes();this.apeGrid.rebuild(this.apes,this.king);this.humanGrid.rebuild(this.humans);this.vehicleGrid.rebuild(this.vehicles);this.buildRelevance();
  const kingRecovering=this.updateBlastReaction(this.king,dt);if(mag>.04&&!kingRecovering)this.move(this.king,mx*100,my*100,112*(input.sprint?1.24:1)*(this.king.hp<30?.75:1)*(input.sneak?.62:1),dt);
  if(input.sprint&&mag>.04&&this.time>this.sprintNoiseTime){this.sprintNoiseTime=this.time+.9;this.noise(this.king.x,this.king.y,130+Math.min(220,this.followerCount*2),'footsteps')}
  if(input.aim&&Math.hypot(input.aim.x,input.aim.y)>.05)this.aim={...input.aim};if(input.attack)this.attack(this.aim);
@@ -801,7 +812,7 @@ class Game{
  g.corpses=Array.isArray(d.corpses)?d.corpses.filter(c=>c&&c.life>0).slice(-320):[];
  g.ensureApeAppearance(g.king);for(const a of g.apes)g.ensureApeAppearance(a);for(const a of g.corpses)if(a.type==='ape'||a.id==='king'||a.id?.startsWith('ape-'))g.ensureApeAppearance(a);
  for(const a of [...g.apes,...g.humans,...g.vehicles,...g.helis,...g.corpses])for(const key in a)if(key.startsWith('_')||key==='navCohort')delete a[key];for(const site of g.world.sites.values())for(const key of ['sleepingHumans','sleepingVehicles'])for(const a of site[key]||[])for(const field in a)if(field.startsWith('_')||field==='navCohort')delete a[field];
- g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild([g.king,...g.apes]);g.humanGrid.rebuild(g.humans);g.syncIndexes();g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);for(const a of [g.king,...g.apes]){if(!a.siegeTransition&&!a.elevation)g.tactics?.restore(a);if(a.id!=='king')g.applyTraining(a,a.trainingLevel)}g.apeGrid.rebuild([g.king,...g.apes]);g.trail=[{x:g.king.x,y:g.king.y}];g.responseStage=d.responseStage||g.tier;g.responsePeak=d.responsePeak||g.stats.highestThreat||g.tier;g.mobilized=d.mobilized??(g.stats.largestHorde>=200);for(const v of g.vehicles)g.forces.initVehicle?.(v);g.forces.restoreSquads?.(d.squads);g.forces.restorePlatoons?.(d.platoons);
+ g.ended=false;g.world.ensure(g.king.x,g.king.y,1200);g.apeGrid.rebuild(g.apes,g.king);g.humanGrid.rebuild(g.humans);g.syncIndexes();g.refreshSettlements();for(const s of g.settlements)g.colonies.init(s);for(const a of [g.king,...g.apes]){if(!a.siegeTransition&&!a.elevation)g.tactics?.restore(a);if(a.id!=='king')g.applyTraining(a,a.trainingLevel)}g.apeGrid.rebuild(g.apes,g.king);g.trail=[{x:g.king.x,y:g.king.y}];g.responseStage=d.responseStage||g.tier;g.responsePeak=d.responsePeak||g.stats.highestThreat||g.tier;g.mobilized=d.mobilized??(g.stats.largestHorde>=200);for(const v of g.vehicles)g.forces.initVehicle?.(v);g.forces.restoreSquads?.(d.squads);g.forces.restorePlatoons?.(d.platoons);
  g.militaryOperations=Array.isArray(g.militaryOperations)?g.militaryOperations:[];g.roadblockOperations=(Array.isArray(g.roadblockOperations)?g.roadblockOperations:[]).map(op=>{const saved=g.militaryOperations.find(x=>x.id&&x.id===op.id);if(saved)return saved;op.id=op.id||'roadblock-'+g.nextId++;op.channel='roadblock';op.status='active';op.target=op.target||op.point;op.phase=op.phase||(op.built?'hold':'approach');op.engineerJobs=op.engineerJobs||[];op.objects=op.objects||[];op.expiresAt=op.expiresAt||op.until;op.createdAt=op.createdAt??g.time;for(const id of op.members||[]){const h=g.humansById.get(id);if(h)h.operationId=op.id}g.militaryOperations.push(op);return op});
  for(const s of g.settlements)s.birthTimer=Math.min(30,Math.max(0,s.birthTimer||0));if((d.militaryVersion||0)<3){g.nextDirectorAt=Math.min(g.nextDirectorAt||0,g.time+g.directorInterval)}g.siege?.restore(d.siege);return g;
  }

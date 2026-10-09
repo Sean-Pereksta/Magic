@@ -3,6 +3,7 @@
 (function(){
 'use strict';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const EXPEDITION_RANGES={local:0,extended:1600,frontier:2800};
 const FOCUS={
  balanced:{label:'General settlement',description:'Follow the selected work priority.'},
  sanctuary:{label:'Sanctuary',description:'35% faster family growth, double recovery and two extra beds per completed hut.',growth:1.35,recovery:2,ratios:{forager:.4,builder:.2,lumber:.08,gardener:.09,cook:.04,hauler:.03,caretaker:.1}},
@@ -15,7 +16,114 @@ class Kingdom{
  constructor(game){this.game=game;this.counters={missionMembers:0,warningCandidates:0,trainingCandidates:0}}
  ensure(s){
   if(s.kingdomVersion!==1){s.kingdomVersion=1;s.specialization=FOCUS[s.specialization]?s.specialization:'balanced';s.defensePosture=['balanced','fortified','mobile'].includes(s.defensePosture)?s.defensePosture:'balanced';s.kingdomEvents=[];s.kingdomMissions=[];s.gearKits=0;s.siegeMaterials=0;s.craftProgress=0;s.moraleUntil=0}
+  if(!s.expeditionSettings)s.expeditionSettings={foodRange:'local',woodRange:'local',priority:'balanced'};
+  for(const key of ['foodRange','woodRange'])if(!(s.expeditionSettings[key] in EXPEDITION_RANGES))s.expeditionSettings[key]='local';
+  if(!['balanced','food','wood'].includes(s.expeditionSettings.priority))s.expeditionSettings.priority='balanced';
   return s;
+ }
+ configureExpeditions(id,settings){
+  const s=this.game.settlement(id);if(!s)return{ok:false,reason:'Choose an existing settlement.'};this.ensure(s);
+  for(const key of ['foodRange','woodRange'])if(settings[key]!==undefined&&!Object.hasOwn(EXPEDITION_RANGES,settings[key]))return{ok:false,reason:'Choose Local, Extended or Frontier.'};
+  if(settings.priority!==undefined&&!['balanced','food','wood'].includes(settings.priority))return{ok:false,reason:'Choose a gathering priority.'};
+  for(const key of ['foodRange','woodRange','priority'])if(settings[key]!==undefined)s.expeditionSettings[key]=settings[key];
+  s.nextExpeditionAt=0;s.expeditionMessage=s.expeditionSettings.foodRange==='local'&&s.expeditionSettings.woodRange==='local'?'Local gathering; current parties will finish their trips':'Orders ready — parties depart when supplies are needed';return{ok:true};
+ }
+ expeditionWorkers(s){
+  // Keep actual defenders, skilled production crews and deliveries at home.
+  const all=this.game.settlementMembers.get(s.id)||[],eligible=[],guards=[];let adults=0,away=0;
+  for(const a of all){if(a.hp<=0||a.state==='young')continue;adults++;if(a.kingdomMission){away++;continue}if(a.state!=='settled'||a.champion||a.divisionId||a.recoveryRemaining>0||a.expeditionCargo||a.towerId||a.trainingFacilityId||['gardener','workshop','cook','caretaker'].includes(a.job)||a.carrying)continue;if(a.job==='guardian'){guards.push(a);continue}if(a.job==='builder'&&(s.projects||[]).some(p=>!p.done))continue;eligible.push(a)}
+  eligible.push(...guards.slice(Math.max(3,Math.ceil(adults*.2))));
+  return eligible.slice(0,Math.max(0,Math.min(Math.floor(adults*.3)-away,adults-away-Math.max(6,Math.ceil(adults*.35)))));
+ }
+ expeditionStatus(s){
+  this.ensure(s);const states=[];
+  for(const m of s.kingdomMissions)if(m.kind==='expedition'&&m.status==='traveling')states.push({id:m.id,resource:m.resource,phase:m.phase,members:m.members.filter(id=>{const a=this.game.apesById.get(id);return a?.hp>0&&a.kingdomMission?.id===m.id}).length,cargo:m.cargo?.[m.resource]||0,reason:m.reason||''});
+  return{...s.expeditionSettings,parties:states.length,availableWorkers:this.expeditionWorkers(s).length,states,message:states.length?'':s.expeditionMessage||'Local gathering'};
+ }
+ resourceReserved(id,point,except){
+  for(const s of this.game.settlements){for(const m of s.kingdomMissions||[])if(m!==except&&m.kind==='expedition'&&m.status==='traveling'&&!m.returning&&m.target&&(m.target.resourceId===id||distance(m.target,point)<110))return true;
+   for(const p of s.projects||[])if(!p.done&&p.treeIds?.includes(id))return true}
+  return false;
+ }
+ resourceQuantity(o,resource){return !o||o.dead||o.hp===0?0:resource==='food'&&o.type==='berry'?Math.max(0,o.food??o.count??0):resource==='wood'&&o.type==='tree'&&!o.woodClaimed?Math.round(5+(o.size||1)*5):0}
+ expeditionRouteCost(from,to){
+  const g=this.game,nav=g.navigation,cell=nav.cell||28,key=[Math.round(from.x/cell),Math.round(from.y/cell),Math.round(to.x/cell),Math.round(to.y/cell),10,nav.revision,'ape'].join(':'),cached=nav.routes.get(key);
+  if(cached&&!cached.path._navInvalid&&g.time-cached.time<(cached.path.length?8:1.1)){if(!cached.path.length)return Infinity;let length=0,last=from;for(const p of cached.path){length+=distance(last,p);last=p}return length+distance(last,to)}
+  const crossing=g.world.crossingFor?.(from,to,'ape',null,g.time);if(crossing){const side=to.y>=from.y?0:1;return distance(from,crossing.approaches[side])+distance(crossing.approaches[0],crossing.approaches[1])+distance(crossing.approaches[1-side],to)}
+  return distance(from,to);
+ }
+ discoverResource(s,resource,from=s,except=null){
+  const g=this.game,range=EXPEDITION_RANGES[s.expeditionSettings[resource+'Range']];if(!range)return null;
+  // Read the spatial resource index once per planning pass. Only eight promising
+  // sites get threat and shared-route scoring; no per-worker or full-map A*.
+  const reserved=new Set(),areas=[];for(const home of g.settlements){for(const m of home.kingdomMissions||[])if(m!==except&&m.kind==='expedition'&&m.status==='traveling'&&!m.returning&&m.target){reserved.add(m.target.resourceId);areas.push(m.target)}for(const p of home.projects||[])if(!p.done)for(const id of p.treeIds||[])reserved.add(id)}
+  const strongholds=g.world.getSites(s.x,s.y,range).filter(site=>!site.cleared&&(site.guards>0||site.sleepingHumans?.length));
+  const origin=Math.round(from.x/160)+','+Math.round(from.y/160),prior=s.expeditionSearchAfter?.[resource],after=prior?.origin===origin?prior:null,shortlist=[];
+  for(const o of g.world.getObjects(s.x,s.y,range)){const quantity=this.resourceQuantity(o,resource);if(!quantity||distance(s,o)>range||s.expeditionRejected?.[o.id]>g.time||reserved.has(o.id)||areas.some(p=>distance(p,o)<110)||strongholds.some(site=>distance(site,o)<(site.radius||120)+180))continue;const score=distance(from,o)/(Math.min(quantity,48)+8),id=String(o.id);if(after&&(score<after.score||score===after.score&&id<=after.id))continue;const entry={o,score,id};let i=0;while(i<shortlist.length&&(shortlist[i].score<score||shortlist[i].score===score&&shortlist[i].id<=id))i++;if(i<8){shortlist.splice(i,0,entry);if(shortlist.length>8)shortlist.pop()}}
+  let best=null,cost=Infinity;for(const {o}of shortlist){if(g.humanGrid.nearest(o.x,o.y,260,1,h=>h.hp>0).length||g.vehicleGrid?.nearest(o.x,o.y,330,1,v=>v.hp>0).length)continue;const length=this.expeditionRouteCost(from,o),score=length/(Math.min(this.resourceQuantity(o,resource),48)+8);if(score<cost){cost=score;best=o}}
+  // Continue beyond a rejected shortlist next time, rather than repeatedly
+  // reconsidering the same eight guarded or unreachable nodes forever.
+  const cursors=s.expeditionSearchAfter||(s.expeditionSearchAfter={});if(!best){const last=shortlist.at(-1);if(last)cursors[resource]={origin,score:last.score,id:last.id};else delete cursors[resource];return null}delete cursors[resource];const d=distance(from,best)||1,r=resource==='wood'?Math.max(42,(best.moveRadius||best.r||16)+20):22;
+  return{resourceId:best.id,x:best.x+(from.x-best.x)/d*r,y:best.y+(from.y-best.y)/d*r,resourceX:best.x,resourceY:best.y,routeDistance:this.expeditionRouteCost(from,best)};
+ }
+ scoutResources(s,resource){
+  // Discover unexplored resources incrementally through the normal stream budget.
+  const range=EXPEDITION_RANGES[s.expeditionSettings[resource+'Range']],cursor=s.expeditionSearchCursor||0,rings=Math.max(1,Math.ceil(range/600)),ring=cursor%rings+1,angle=Math.floor(cursor/rings)*2.399963,r=Math.min(range-100,ring*600),point={x:s.x+Math.cos(angle)*r,y:s.y+Math.sin(angle)*r};s.expeditionSearchCursor=cursor+1;this.game.world.requestCorridor?.(point,point,{id:'expedition-scout:'+s.id,radius:200});
+ }
+ planExpeditions(s){
+  const g=this.game,settings=s.expeditionSettings;if(settings.foodRange==='local'&&settings.woodRange==='local')return;
+  if(g.time<(s.nextExpeditionAt||0))return;s.nextExpeditionAt=g.time+8;
+  if(s.attack){s.expeditionMessage='Threatened — workers remain home';return}
+  const active=s.kingdomMissions.filter(m=>m.status==='traveling');if(active.length>=4)return;const workers=this.expeditionWorkers(s);if(workers.length<3){s.expeditionMessage='Keeping defenders and essential workers home';return}
+  const needs={food:Math.max(0,Math.max(60,s.population*3)-s.food),wood:Math.max(0,Math.max(60,Math.min(180,s.population*2+(s.projects?.length||0)*6))-s.wood)},order=settings.priority==='food'?['food','wood']:settings.priority==='wood'?['wood','food']:needs.food/Math.max(60,s.population*3)>=needs.wood/Math.max(60,s.population*2)?['food','wood']:['wood','food'];
+  for(const resource of order){if(!needs[resource]||settings[resource+'Range']==='local'||active.filter(m=>m.kind==='expedition'&&m.resource===resource).length>=Math.max(1,Math.floor(s.population/80)))continue;const target=this.discoverResource(s,resource);if(!target){this.scoutResources(s,resource);s.expeditionMessage='Unable to find safe '+(resource==='wood'?'lumber':'food')+' — scouting selected range';continue}
+   const result=this.startMission(s,null,workers.slice(0,Math.min(8,Math.max(3,Math.floor(workers.length/2)))),'expedition');if(!result.ok)return;
+   const m=result.mission;Object.assign(m,{resource,target,phase:'traveling',lastTick:g.time,progressAt:g.time,travelUntil:g.time+clamp(target.routeDistance/70*4+30,90,240),progressPoint:{x:workers[0].x,y:workers[0].y},cargo:{},gatherWork:0});for(const id of m.members){const a=g.apesById.get(id);a.job='expedition';a.kingdomMission.targetId=target.resourceId}delete s.expeditionMessage;return;
+  }
+  if(!active.length&&!needs.food&&!needs.wood)s.expeditionMessage='Stores are sufficient';
+ }
+ releaseExpeditionActor(a){delete a.kingdomMission;delete a._activityTarget;delete a._activityAt;delete a.workTargetId;delete a.workCohort;a.carrying=!!a.expeditionCargo&&a.expeditionCargo.resource;this.game.navigation.resetActor?.(a)}
+ depositExpeditionCargo(a){
+  const cargo=a.expeditionCargo;if(!cargo||a.hp<=0)return false;a.carrying=cargo.resource;const s=this.game.settlement(cargo.sourceId);if(!s||distance(a,s)>80)return false;
+  const cap=cargo.resource==='food'?Math.max(s.housing||0,s.population||0)*10+80+(s.stores||0)*120+this.game.colonies.expansion(s)*800:200+(s.level||1)*25+(s.stores||0)*80+this.game.colonies.expansion(s)*500,take=Math.min(cargo.amount,Math.max(0,cap-(s[cargo.resource]||0)));
+  s[cargo.resource]=(s[cargo.resource]||0)+take;cargo.amount-=take;if(cargo.amount<=.00001){delete a.expeditionCargo;a.carrying=false}return true;
+ }
+ returnExpedition(s,m,actors,reason='',threat=false){
+  m.returning=true;m.phase=threat?'threatened':'returning';m.reason=reason;m.progressAt=this.game.time;m.progressPoint={x:actors[0].x,y:actors[0].y};m.routeFailures=0;delete m.leg;
+  for(const a of actors){a.kingdomMission.returning=true;delete a._activityTarget;this.game.navigation.resetActor?.(a)}
+ }
+ tickExpedition(s,m){
+  const g=this.game,actors=[];for(const id of m.members){const a=g.apesById.get(id);if(!a||a.hp<=0)continue;this.depositExpeditionCargo(a);if(a.kingdomMission?.id!==m.id)continue;if(a.settlementId!==s.id||!['settled','scout'].includes(a.state)){this.releaseExpeditionActor(a);continue}actors.push(a)}
+  this.counters.missionMembers+=m.members.length;if(!actors.length){m.status=m.returning?'complete':'cancelled';m.cargo={};s._jobsAt=0;return}
+  const leader=actors[0],dt=clamp(g.time-(m.lastTick??g.time-1),0,3);m.lastTick=g.time;m.cargo={[m.resource]:actors.reduce((n,a)=>n+(a.expeditionCargo?.amount||0),0)};
+  if(!m.returning&&m.target)g.world.requestCorridor?.(m.target,m.target,{id:'expedition-resource:'+m.id});
+  const threatened=s.attack||actors.some(a=>g.humanGrid.nearest(a.x,a.y,210,1,h=>h.hp>0).length||g.vehicleGrid?.nearest(a.x,a.y,280,1,v=>v.hp>0).length);if(threatened&&!m.returning)this.returnExpedition(s,m,actors,'Workers recalled from danger',true);
+  if(m.phase==='blocked'){if(g.time<(m.retryAt||0))return;m.phase='returning';m.progressAt=g.time;m.progressPoint={x:leader.x,y:leader.y};m.routeFailures=0}
+  if(m.returning){let remaining=0;for(const a of actors){if(distance(a,s)<80){this.depositExpeditionCargo(a);this.releaseExpeditionActor(a)}else remaining++}if(!remaining){m.status='complete';m.cargo={};s._jobsAt=0;s.nextExpeditionAt=g.time+5;return}}
+  let target=m.returning?s:m.target,object=m.returning?null:g.world.objects.get(target?.resourceId);
+  if(!m.returning&&!this.resourceQuantity(object,m.resource)){
+   const next=(m.retargets||0)<3?this.discoverResource(s,m.resource,leader,m):null;m.retargets=(m.retargets||0)+1;
+   if(next){m.target=target=next;m.phase='traveling';m.gatherWork=0;m.progressAt=g.time;m.progressPoint={x:leader.x,y:leader.y};object=g.world.objects.get(next.resourceId);delete m.leg;for(const a of actors)delete a._activityTarget}else{this.returnExpedition(s,m,actors,'Resource area exhausted');target=s}
+  }
+  if(!m.returning&&actors.every(a=>distance(a,target)<72)){
+   m.phase='gathering';m.progressAt=g.time;delete m.leg;const room=actors.reduce((n,a)=>n+Math.max(0,16-(a.expeditionCargo?.amount||0)),0);let amount=0;
+   if(m.resource==='food'){amount=Math.min(this.resourceQuantity(object,'food'),room,actors.length*1.4*dt);object.food=this.resourceQuantity(object,'food')-amount;if(object.food<=0){object.dead=true;object.solid=false}}
+   else{m.gatherWork=(m.gatherWork||0)+actors.length*dt;if(m.gatherWork>=8&&room>=this.resourceQuantity(object,'wood')){amount=g.world.clearTree(object,{settlementId:s.id,time:g.time});m.gatherWork=0}}
+   for(const a of actors){const take=Math.min(amount,16-(a.expeditionCargo?.amount||0));if(take>0){a.expeditionCargo=a.expeditionCargo||{sourceId:s.id,resource:m.resource,amount:0};a.expeditionCargo.amount+=take;amount-=take}a.activity=m.resource==='wood'?'chopping timber':'gathering food';a.carrying=a.expeditionCargo?.amount>0?m.resource:false;delete a._activityTarget}
+   m.cargo={[m.resource]:actors.reduce((n,a)=>n+(a.expeditionCargo?.amount||0),0)};
+   if(m.cargo[m.resource]>=actors.length*12||m.resource==='wood'&&room<this.resourceQuantity(object,'wood'))this.returnExpedition(s,m,actors);
+   return;
+  }
+  if(m.phase==='gathering')m.phase='traveling';
+  if(!m.progressPoint||distance(leader,m.progressPoint)>45){m.progressPoint={x:leader.x,y:leader.y};m.progressAt=g.time;m.routeFailures=0}
+  if(g.time-(m.progressAt||0)>24||!m.returning&&g.time>(m.travelUntil||m.startedAt+240)){
+   if(!m.returning){s.expeditionRejected=s.expeditionRejected||{};s.expeditionRejected[m.target.resourceId]=g.time+180;const keys=Object.keys(s.expeditionRejected);if(keys.length>48)delete s.expeditionRejected[keys[0]];this.returnExpedition(s,m,actors,'Unreachable resource abandoned');target=s}
+   else{m.phase='blocked';m.reason='Return route blocked — regrouping';m.retryAt=g.time+20;delete m.leg;return}
+  }
+  // All members use one streamed leg and shared route. The navigation system
+  // selects real bridge approaches and bounded recovery paths for stragglers.
+  const cohort='kingdom:'+m.id,waypoint=g.navigation.strategicTarget(leader,target,10,'ape');m.leg={x:waypoint.x,y:waypoint.y};g.world.requestCorridor?.(leader,m.leg,{id:cohort});g.navigation.setCohortRoute(cohort,leader,m.leg,10,5);
+  m.regroupId=actors.some(a=>distance(a,leader)>240)?leader.id:null;for(const a of actors){a.navCohort=cohort;delete a._activityTarget}
  }
  modifiers(s){
   this.ensure(s);if(s._kingdomModsAt>this.game.time&&s._kingdomMods)return s._kingdomMods;
@@ -75,10 +183,16 @@ class Kingdom{
   if(result.ok){source.food-=cargo;source.wood-=result.mission.cargo.wood;this.event(source,'supply-departure','Carriers depart with '+cargo+' food for '+(target?.name||'the King')+'.','green',0)}return result;
  }
  rally(id){const target=this.game.settlement(id);if(!target)return{ok:false,reason:'Choose a rally settlement.'};for(const s of this.game.settlements)s.rallyPoint=s===target;this.event(target,'rally','This settlement is the kingdom rally point.','green',0);return{ok:true}}
- missionTarget(a){const m=a.kingdomMission;if(!m)return null;return m.returning?this.game.settlement(m.sourceId):m.targetId==='king'?this.game.king:this.game.settlement(m.targetId)}
- travelTarget(a){const target=this.missionTarget(a);if(!target)return null;const source=this.game.settlement(a.kingdomMission.sourceId),mission=source?.kingdomMissions.find(m=>m.id===a.kingdomMission.id),goal=mission?.leg||target,speed=(a.speed||75)*(source?.specialization==='supply'?1.25:1)*(a.state==='young'?.9:1);a.navCohort='kingdom:'+a.kingdomMission.id;a.activity=a.kingdomMission.kind==='evacuation'?'evacuating':a.kingdomMission.kind==='survivors'?'returning to sanctuary':a.kingdomMission.returning?'returning home':a.kingdomMission.kind==='reinforcement'?'reinforcing settlement':'carrying supplies';a.carrying=a.kingdomMission.kind==='supply'&&!a.kingdomMission.returning?'food':false;return{x:goal.x,y:goal.y,speed,activity:a.activity,carrying:a.carrying}}
+ missionTarget(a){const m=a.kingdomMission;if(!m)return null;if(m.kind==='expedition'){const s=this.game.settlement(m.sourceId),mission=s?.kingdomMissions.find(x=>x.id===m.id);return mission?.returning?s:mission?.target}return m.returning?this.game.settlement(m.sourceId):m.targetId==='king'?this.game.king:this.game.settlement(m.targetId)}
+ travelTarget(a){
+  const target=this.missionTarget(a);if(!target)return null;const source=this.game.settlement(a.kingdomMission.sourceId),mission=source?.kingdomMissions.find(m=>m.id===a.kingdomMission.id),goal=mission?.leg||target;let speed=(a.speed||75)*(source?.specialization==='supply'?1.25:1)*(a.state==='young'?.9:1);a.navCohort='kingdom:'+a.kingdomMission.id;
+  if(a.kingdomMission.kind==='expedition'){a.activity=mission.phase==='gathering'?mission.resource==='wood'?'chopping timber':'gathering food':mission.phase==='blocked'?'regrouping':mission.returning?'returning home':'resource expedition';a.carrying=a.expeditionCargo?.amount>0?mission.resource:false;if(mission.phase==='blocked'||mission.phase==='gathering'||mission.regroupId===a.id)speed=0}
+  else{a.activity=a.kingdomMission.kind==='evacuation'?'evacuating':a.kingdomMission.kind==='survivors'?'returning to sanctuary':a.kingdomMission.returning?'returning home':a.kingdomMission.kind==='reinforcement'?'reinforcing settlement':'carrying supplies';a.carrying=a.kingdomMission.kind==='supply'&&!a.kingdomMission.returning?'food':false}
+  return{x:goal.x,y:goal.y,speed,activity:a.activity,carrying:a.carrying};
+ }
  tickMissions(s){
   for(const m of s.kingdomMissions.slice(0,4)){
+   if(m.kind==='expedition'){if(m.status==='traveling')this.tickExpedition(s,m);continue}
    if(m.status!=='traveling')continue;const group=m.members.slice(0,12).map(id=>this.game.apesById.get(id));
    // A direct player order takes precedence over the journey. Do not leave a
    // recalled/recruited actor reserved forever in an obsolete caravan.
@@ -129,14 +243,14 @@ class Kingdom{
   s.siegeMaterials--;this.event(s,'shields',nearby.length+' heavy apes receive reinforced log shields.','green',0);return{ok:true};
  }
  tick(s){
-  const g=this.game;this.ensure(s);this.counters={missionMembers:0,warningCandidates:0,trainingCandidates:0};this.tickMissions(s);if(!s.population)return;
+  const g=this.game;this.ensure(s);this.counters={missionMembers:0,warningCandidates:0,trainingCandidates:0};this.tickMissions(s);if(!s.population)return;this.planExpeditions(s);
   if(s.food<s.population*.4)this.event(s,'food-shortage','Food stocks are low. Send supplies or switch work priority.','red',60);
   if(s.specialization==='warcamp'&&!s.attack&&s.food>s.population){
    const adults=s._adults||[],start=(s.militiaCursor||0)%Math.max(1,adults.length);let trained=0;
    for(let i=0;i<Math.min(12,adults.length)&&trained<3;i++){const a=adults[(start+i)%adults.length];this.counters.trainingCandidates++;if(a.hp<=0||a.kingdomMission||a.trainingFacilityId||a.state==='young'||(a.trainingLevel||0)>=3||distance(a,s)>s.radius+40)continue;trained++;a.trainingProgress=(a.trainingProgress||0)+.65;const level=a.trainingLevel||0,cost=3+level*2;if(a.trainingProgress>=45*(level+1)&&s.food>=cost){s.food-=cost;a.trainingProgress=0;g.applyTraining(a,level+1)}}
    s.militiaCursor=start+12;
   }
-  if(s.specialization==='workshop'&&!s.attack&&s.population>=8&&s.wood>=12&&s.food>=Math.max(8,s.population*.5)&&(s.gearKits<6||s.siegeMaterials<6)){
+  if(s.specialization==='workshop'&&!s.attack&&s.population>=8&&s.wood>=Math.max(40,(s.essentialWoodReserve||0)+12)&&s.food>=Math.max(8,s.population*2)&&(s.gearKits<6||s.siegeMaterials<6)){
    s.craftProgress++;if(s.craftProgress>=45){s.craftProgress=0;s.wood-=12;s.food-=6;s.gearKits=Math.min(6,s.gearKits+1);s.siegeMaterials=Math.min(6,s.siegeMaterials+1);this.event(s,'craft','A gear kit and siege materials are ready.','green',30)}
   }
   if(s.population>=18&&s.wood>=30&&!s.attack&&!s.projects.some(p=>p.commissioned)&&g.time>=(s.nextOpportunityAt||0)){s.nextOpportunityAt=g.time+150;this.event(s,'construction','Timber is available for a lodge construction commission.','green',150)}
@@ -152,13 +266,16 @@ class Kingdom{
 Object.defineProperty(ATSGame.prototype,'kingdom',{configurable:true,get(){return this._kingdom||(this._kingdom=new Kingdom(this))}});
 const abstract=ATSGame.prototype.abstractActor;
 ATSGame.prototype.abstractActor=function(a,dt,kind){
+ if(kind==='ape'&&a.expeditionCargo)this.kingdom.depositExpeditionCargo(a);
  if(kind!=='ape'||!a.kingdomMission)return abstract.call(this,a,dt,kind);
  // Preserve ordinary aging and hit recovery, but let the group's shared route
  // own movement instead of alternating a straight step with a corridor step.
  const home=a.settlementId;let result;a.settlementId=null;try{result=abstract.call(this,a,dt,kind)}finally{a.settlementId=home}
- if(!this.blastActive(a)){const target=this.kingdom.travelTarget(a);if(target&&distance(a,target)>30){a._navPriority=5;this.move(a,target.x-a.x,target.y-a.y,target.speed,Math.min(.5,dt))}}
+ if(!this.blastActive(a)){const target=this.kingdom.travelTarget(a);if(target&&distance(a,target)>30){a._navPriority=5;for(let remaining=Math.min(1,dt);remaining>0;remaining-=.25)this.move(a,target.x-a.x,target.y-a.y,target.speed,Math.min(.25,remaining))}}
  return result;
 };
+const updateApe=ATSGame.prototype.updateApe;
+ATSGame.prototype.updateApe=function(a,dt){if(a.expeditionCargo)this.kingdom.depositExpeditionCargo(a);return updateApe.call(this,a,dt)};
 const p=ATSSettlements.prototype,init=p.init,tick=p.tick,members=p.members,activity=p.activityTarget,housing=p.updateHousing,absorb=p.absorb,clear=p.clearWork,complete=p.complete;
 p.init=function(s){this.game.kingdom.ensure(s);return init.call(this,s)};
 p.tick=function(s){const result=tick.call(this,s);this.game.kingdom.tick(s);return result};

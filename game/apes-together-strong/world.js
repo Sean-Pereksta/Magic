@@ -428,10 +428,22 @@
     }
 
     waterBlocked(x, y, radius = 0) {
-      if (this._waterAt(x, y)) return true;
       const bank = radius * .7;
+      if (this.waterFreeBounds(x - bank, y - bank, x + bank, y + bank)) return false;
+      if (this._waterAt(x, y)) return true;
       return radius > 4 && (this._waterAt(x + bank, y) || this._waterAt(x - bank, y)
         || this._waterAt(x, y + bank) || this._waterAt(x, y - bank));
+    }
+
+    waterFreeBounds(minX, minY, maxX, maxY) {
+      // _riverInfo's two sine offsets total at most 175 units, and river
+      // half-width is at most 45. Outside those periodic 220-unit envelopes
+      // there is provably no water, for any x. Near rivers keep exact sampling.
+      // Custom terrain used by scenarios/mods must retain its own water rules.
+      if (this.terrain !== ATSWorld.prototype.terrain || this._riverInfo !== ATSWorld.prototype._riverInfo
+        || this._waterAt !== ATSWorld.prototype._waterAt || this.waterBlocked !== ATSWorld.prototype.waterBlocked) return false;
+      const first = Math.ceil((minY - 220 - 1320) / 2304) * 2304 + 1320;
+      return first - 220 > maxY;
     }
 
     vehicleRadius(profile) { return VEHICLE_CLEARANCE[profile] || 21; }

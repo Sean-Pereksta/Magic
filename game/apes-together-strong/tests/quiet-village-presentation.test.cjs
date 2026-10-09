@@ -11,6 +11,16 @@ function renderer(){
 const textCalls=calls=>calls.filter(c=>c[0]==='fillText'||c[0]==='strokeText');
 const ape=fields=>({id:'ape-art',species:'orangutan',coatVariant:1,x:0,y:0,dir:0,phase:0,bodyScale:1.1,hp:80,maxHp:100,age:240,...fields});
 
+test('ordinary ground has no procedural grass strokes while farms, reeds and water retain details',()=>{
+ for(const biome of ['forest','farmland','wetland','water']){
+  const {r,calls}=renderer(),world={terrain:()=>({biome,water:biome==='water'}),getSites:()=>[]};
+  r.groundBuildBudget=0;r.drawGround(world,{x:0,y:0},220);
+  const strokes=calls.filter(c=>c[0]==='stroke').length;
+  if(biome==='forest'){assert.equal(strokes,0,'both ground layers omit decorative line grass');assert.ok(calls.some(c=>c[0]==='fill'),'underlying terrain color remains')}
+  else assert.ok(strokes>0,biome+' retains meaningful ground details');
+ }
+});
+
 test('world status, work, signs and bonus effects remain wordless while their geometry survives',()=>{
  const {r,calls}=renderer();
  r.drawObject(r.ctx,{id:'captives',type:'cage',count:3,rescueOpened:true,w:62,h:50});
