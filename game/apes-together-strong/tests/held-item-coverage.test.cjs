@@ -28,6 +28,25 @@ function freeze(value) {
   if (value && typeof value === 'object') { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
   return value;
 }
+
+test('shared authored geometry and equipment sockets stay bounded and invalidate with replaced artwork',()=>{
+ const {c,art,character,Renderer}=artHarness(),r=new Renderer();
+ r.time=0;r.detailLevel=3;r.camera={zoom:1};r.graphicsProfile={animationHz:18};
+ const context=new Proxy({}, {get:(target,name)=>name in target?target[name]:()=>{}});
+ const a=Object.freeze({id:'ape-cache',species:'gorilla',hp:100,maxHp:100,dir:0,phase:0,state:'follow'}),p=character.resolve(a,0);
+ const first=art.sockets(a,p,76);
+ assert.equal(art.sockets({...a,id:'another-ape'},p,76),first,'different actors share immutable frame attachments');
+ assert.ok(Object.isFrozen(first)&&Object.isFrozen(first.left));
+ for(let i=0;i<600;i++)art.sockets(a,p,30+i);
+ assert.ok(art.status().sharedSocketFrames<=512,'unusual render sizes cannot grow cache indefinitely');
+ for(let i=0;i<1000;i++)r.drawPrimateGeometry(context,{...a,id:'ape-'+i});
+ assert.equal(r.characterFrameGeometry.entries.size,1,'a thousand matching poses share one geometry entry');
+ const old=r.characterFrameGeometry;
+ const manifest=JSON.parse(JSON.stringify(c.ATSVisualAssets.manifest));manifest.characters.frames[p.atlas][p.row+':'+p.column].anchorX+=5;
+ c.ATSVisualAssets={get:id=>({id}),manifest};
+ const next=art.sockets(a,p,76);assert.notEqual(next.left.x,first.left.x,'new artwork anchors replace cached coordinates');
+ r.drawPrimateGeometry(context,a);assert.notEqual(r.characterFrameGeometry,old);assert.equal(r.characterFrameGeometry.entries.size,1);
+});
 const actor = fields => freeze({ id: 'coverage-actor', species: 'gorilla', type: 'ape', hp: 100, maxHp: 100, state: 'follow', dir: 0, ...fields });
 const ids = entries => Array.from(entries, item => item.id);
 
@@ -64,7 +83,7 @@ test('every existing ape gear, worker activity, carry resource and scout sash is
   const { art, character } = artHarness();
   const resolved = fields => { const a = actor(fields); return ids(art.resolve(a, character.resolve(a, 10))); };
   for (const [gear, spec] of Object.entries(engine.ATSEquipmentGear)) assert.ok(resolved({ species: spec.species[0], equipment: { [gear]: true } }).includes(gear), gear + ' has raster art');
-  for (const activity of ['building', 'chopping', 'clearing woodland', 'repairing defenses', 'gardening', 'cooking', 'breaching']) assert.ok(resolved({ activity }).includes('hammer'), activity + ' has a held work tool');
+  for (const activity of ['building', 'chopping', 'sawing', 'clearing woodland', 'repairing defenses', 'gardening', 'cooking', 'breaching']) assert.ok(resolved({ activity }).includes('hammer'), activity + ' has a held work tool');
   assert.ok(resolved({ carrying: 'wood' }).includes('wood'));
   assert.ok(resolved({ carrying: false, _carryingWood: true }).includes('wood'), 'legacy render wrapper preserves carried logs');
   assert.ok(resolved({ carrying: 'food' }).includes('food'));
@@ -72,6 +91,11 @@ test('every existing ape gear, worker activity, carry resource and scout sash is
   assert.ok(resolved({ state: 'scout' }).some(id => /^scoutSash/.test(id)));
   assert.ok(resolved({ shield: { hp: 50, maxHp: 100 } }).includes('logShield'));
   assert.ok(!resolved({ shield: { hp: 0, maxHp: 100 } }).includes('logShield'), 'broken shields are not resurrected by the artwork');
+});
+test('stationary workshop workers animate the held tool without changing the simulation',()=>{
+ const {art,character}=artHarness(),a=actor({activity:'sawing',job:'workshop',moving:false}),anchors={right:{x:10,y:-20}},item={id:'hammer',socket:'right'};
+ const before=JSON.stringify(a),poses=[0,.1,.2].map(t=>art.placement(a,character.resolve(a,t),item,anchors));
+ assert.ok(new Set(poses.map(p=>p.rotation)).size>1);assert.equal(JSON.stringify(a),before);
 });
 
 test('all 24 champion identities receive actual equipment, including their named hand tools', () => {

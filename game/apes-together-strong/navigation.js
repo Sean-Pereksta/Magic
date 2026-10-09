@@ -74,7 +74,18 @@ class Navigation {
  const steps=Math.ceil(d/28);for(let i=0;i<=steps;i++)if(this.terrainCost(ax+(bx-ax)*i/steps,ay+(by-ay)*i/steps,profile)>1.5)return false;
  return true;
  }
- clearSegment(ax,ay,bx,by,r=10,profile='',ignoreId){
+ beginSeparation(){this.separationCells||(this.separationCells=new Map());this.separationCells.clear()}
+ separationClear(a,b){
+ // Every separation pair lies within 38 units. Gather the live collision
+ // candidates once per small crowd cell; exact segment and water tests below
+ // still run for every pair. This does not cache a pass/fail geometry result.
+ if(!this.world._queryCollision)return this.clearSegment(a.x,a.y,b.x,b.y,0);
+ const cells=this.separationCells||(this.separationCells=new Map()),x=Math.floor(a.x/64),y=Math.floor(a.y/64),key=x+','+y;
+ let objects=cells.get(key);
+ if(!objects){objects=[];const minX=x*64-38,minY=y*64-38,maxX=(x+1)*64+38,maxY=(y+1)*64+38;this.world._queryCollision(minX,minY,maxX,maxY,o=>{if(!o.solid||o.dead||o.hp<=0)return;const radius=o._collision?.radius??o.moveRadius??o.r??15,hx=o.collision==='rect'?(o._collision?.hx??(o.w||o.r*2)/2):radius,hy=o.collision==='rect'?(o._collision?.hy??(o.h||o.r*2)/2):radius;if(o.x+hx>=minX&&o.x-hx<=maxX&&o.y+hy>=minY&&o.y-hy<=maxY)objects.push(o)});cells.set(key,objects)}
+ return this.clearSegment(a.x,a.y,b.x,b.y,0,'',undefined,objects);
+ }
+ clearSegment(ax,ay,bx,by,r=10,profile='',ignoreId,objects){
  profile=this.profile(profile);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
  const dx=bx-ax,dy=by-ay,length2=dx*dx+dy*dy,pad=r;
  if(this.world.boundsReady&&!this.world.boundsReady(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad))return false;
@@ -82,7 +93,7 @@ class Navigation {
  const key=cacheable?ax+','+ay+','+bx+','+by+','+r+','+profile+','+this._regionVersion(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad):null;
  if(key&&this.segmentCache.has(key))return this.segmentCache.get(key);
  let clear=true;
- if(this.world._queryCollision)this.world._queryCollision(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad,o=>{
+ const check=o=>{
  if(o.id===ignoreId||!o.solid||o.dead||o.hp<=0||o.fortification&&this.world.fortificationPassable?.(o,profile))return;
  const obstacleRadius=this.isVehicle(profile)&&this.world.vehicleObstacleRadius?this.world.vehicleObstacleRadius(o,profile):(o._collision?.radius??o.moveRadius??o.r??15);if(obstacleRadius<0)return;
  if(o.collision==='rect'){
@@ -97,8 +108,10 @@ class Navigation {
  for(const x of[minX,maxX])for(const y of[minY,maxY]){const t=length2?Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/length2)):0;distance=Math.min(distance,(ax+dx*t-x)**2+(ay+dy*t-y)**2)}
  if(distance<pad*pad){clear=false;return false}
  }else{const t=length2?Math.max(0,Math.min(1,((o.x-ax)*dx+(o.y-ay)*dy)/length2)):0,rr=obstacleRadius+pad;if((ax+dx*t-o.x)**2+(ay+dy*t-o.y)**2<rr*rr){clear=false;return false}}
- });
- if(clear){
+ };
+ if(objects){for(const o of objects)if(check(o)===false)break}
+ else if(this.world._queryCollision)this.world._queryCollision(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad,check);
+ if(clear&&!( !this.isVehicle(profile)&&this.world.waterFreeBounds?.(Math.min(ax,bx)-pad,Math.min(ay,by)-pad,Math.max(ax,bx)+pad,Math.max(ay,by)+pad))){
  // Obstacle intersections above are exact; only terrain needs sampling. This
  // removes the old repeated spatial collision query at every eight pixels.
  const steps=Math.max(1,Math.ceil(Math.sqrt(length2)/8));

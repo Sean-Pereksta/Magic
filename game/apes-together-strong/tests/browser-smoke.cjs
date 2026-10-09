@@ -88,10 +88,14 @@ const { chromium } = require('playwright');
       const settled = g.command('settleAll');
       const s = g.settlements[0];
       g.colonies.action(s.id, 'fortify');
-      // Let distant aggregate construction advance real game time before
-      // displaying the mature camp; fresh homes now have visible work stages.
-      const crown = { x:g.king.x, y:g.king.y };g.king.x = s.x + 5000;s.wood = 100;
-      for (let i = 0; i < 90; i++) { g.time++;g.refreshSettlements();g.colonies.tick(s); }
+      // Food security now precedes optional autonomous defenses. Explicitly
+      // commission the real barrier used by this rendering/menu smoke fixture.
+      s.wood = 100;
+      if (!g.colonies.commission(s.id, 'defense').ok) throw new Error('Defense fixture commission failed');
+      // Offscreen builders physically navigate and deliver materials before
+      // the economy advances; changing camera distance cannot build remotely.
+      const crown = { x:g.king.x, y:g.king.y };g.king.x = s.x + 5000;
+      for (let i = 0; i < 180; i++) { for(let step=0;step<4;step++){g.time+=.25;g.navigation.beginFrame(g.time);for(const a of g.apes)if(a.settlementId===s.id&&a.hp>0)g.abstractActor(a,.25,'ape')}g.refreshSettlements();g.colonies.tick(s); }
       Object.assign(g.king,crown);
       // Render every new force, hazard and fall pose using the real renderer.
       let i = 0;

@@ -1,6 +1,7 @@
 /* Actual Canvas benchmark. Uses the same source order as the playable bundle. */
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+const os = require('node:os');
 const { chromium } = require('playwright');
 const { SCENARIOS, setupScenario } = require('./performance-harness.cjs');
 const args = process.argv.slice(2);
@@ -8,12 +9,14 @@ const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name)
 const directory = path.resolve(option('--source', path.join(__dirname, '..')));
 const frames = Number(option('--frames', 180)), only = option('--scenario', 'AGK');
 const quality = option('--quality', 'high');
+const fixedQuality = args.includes('--fixed-quality');
+const profile = args.includes('--profile');
 const viewport = { width: Number(option('--width', 1440)), height: Number(option('--height', 900)) };
 const build = fs.readFileSync(path.join(directory, 'build.cjs'), 'utf8');
 const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]).filter(n => n !== 'app' && !n.endsWith('-ui'));
 
 (async () => {
-  const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--disable-dev-shm-usage'] });
+  const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--disable-dev-shm-usage', '--enable-precise-memory-info'] });
   const reports = [], errors = [];
   try {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
@@ -33,10 +36,15 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
     await page.addScriptTag({ content: 'window.setupStressScene=' + setupScenario.toString() + ';' });
     const scenarios = SCENARIOS.concat({ id: 'N', label: 'King alone in procedural forest', apes: 0, humans: 0 }, { id: 'O', label: '240 connected fortress wall and gate modules across four tiers', apes: 0, humans: 0, walls: true });
     for (const scenario of scenarios.filter(s => only.includes(s.id))) {
-      const report = await page.evaluate(async ({ scenario, frames, quality }) => {
+      const report = await page.evaluate(async ({ scenario, frames, quality, fixedQuality, profile }) => {
         resetStressRandom();
         const g = setupStressScene(window, scenario), r = new ATSRenderer(document.getElementById('game'));
         r.quality = quality;
+        const methods = {};
+        if(profile)for(const name of ['drawGround','drawGroundChunk','drawLights','drawApe','drawHuman','drawVehicle','drawHeli','drawEffects','drawAtmosphere','drawSettlement','drawConstruction','drawObject']){
+          const original=r[name];if(typeof original!=='function')continue;const entry=methods[name]={calls:0,ms:0};
+          r[name]=function(...args){const start=performance.now();entry.calls++;try{return original.apply(this,args)}finally{entry.ms+=performance.now()-start}};
+        }
         if(scenario.walls){
           g.king.x=g.king.y=0;g.world.objects.clear();g.world._spatial.clear();g.world.sites.clear();
           g.world.ensure=()=>{};g.world.stream=()=>{};g.world._streaming=false;
@@ -53,6 +61,8 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
         }
         const sim = [], render = [], work = [], intervals = [];
         let previous, peakVisible = 0, maxSearches = 0, maxLos = 0, maxRays = 0, maxParticles = 0;
+        const initialHeapBytes = performance.memory?.usedJSHeapSize ?? null;
+        let peakHeapBytes = initialHeapBytes, heapDrops = 0, largestHeapDropBytes = 0, previousHeap = initialHeapBytes;
         const initialPopulation = g.apes.length;
         for (let i = 0; i < frames; i++) {
           const stamp = await new Promise(requestAnimationFrame);
@@ -60,6 +70,7 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
           previous = stamp;
           if (scenario.exploration && i % 30 === 0) { g.king.x += g.world.chunkSize; g.king.y += g.world.chunkSize / 3; }
           const searches = g.navigation.stats.searches, start = performance.now();
+          if(fixedQuality)g.performance.qualityLevel=0;
           g.update(1 / 60, {});
           const after = performance.now();
           r.draw(g, 1 / 60);
@@ -71,10 +82,12 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
           maxRays = Math.max(maxRays, g.performance?.counters.renderRays || 0);
           peakVisible = Math.max(peakVisible, r.stats?.visibleActors || g.performance?.counters.visibleActors || 0);
           maxParticles = Math.max(maxParticles, r._environmentArt?.active || 0);
+          const heap = performance.memory?.usedJSHeapSize;
+          if(heap!==undefined){peakHeapBytes=Math.max(peakHeapBytes,heap);if(heap<previousHeap-1024*1024){heapDrops++;largestHeapDropBytes=Math.max(largestHeapDropBytes,previousHeap-heap)}previousHeap=heap}
         }
         const stats = a => ({ meanMs: a.reduce((s, n) => s + n, 0) / a.length, p95Ms: a.slice().sort((a, b) => a - b)[Math.floor(a.length * .95)], maxMs: Math.max(...a), over50Ms: a.filter(n => n > 50).length });
-        return { id: scenario.id, label: scenario.label, frames, quality, initialPopulation, apes: g.apes.length, humans: g.humans.length, ended: g.ended, simulation: stats(sim), render: stats(render), work: stats(work), animationFrameInterval: stats(intervals), maxSearches, maxLos, maxRays, maxParticles, peakVisible, qualityLevel: g.performance?.qualityLevel || 0, characterArtworkDraws: r.characterArtworkDraws || 0, particlePoolCapacity: r._environmentArt?.pool?.length || 0, sharedCoatAtlases: r.characterCoats?.size || 0, cachedTerrainPixels: r.groundPixels || 0, wallTextureCount:r._environmentArt?.wallTextures?.size||0,wallTexturePixels:r._environmentArt?.wallTexturePixels||0,fortressModules:scenario.walls?g.world.objects.size:0 };
-      }, { scenario, frames, quality });
+        return { id: scenario.id, label: scenario.label, frames, quality, fixedQuality, methods, initialPopulation, apes: g.apes.length, humans: g.humans.length, ended: g.ended, simulation: stats(sim), render: stats(render), work: stats(work), animationFrameInterval: stats(intervals), memory: { initialHeapBytes, peakHeapBytes, finalHeapBytes: previousHeap, heapDrops, largestHeapDropBytes, note: 'Heap drops are allocation/collection observations, not direct GC pause measurements.' }, maxSearches, maxLos, maxRays, maxParticles, peakVisible, qualityLevel: g.performance?.qualityLevel || 0, characterArtworkDraws: r.characterArtworkDraws || 0, particlePoolCapacity: r._environmentArt?.pool?.length || 0, sharedCoatAtlases: r.characterCoats?.size || 0, cachedTerrainPixels: r.groundPixels || 0, wallTextureCount:r._environmentArt?.wallTextures?.size||0,wallTexturePixels:r._environmentArt?.wallTexturePixels||0,fortressModules:scenario.walls?g.world.objects.size:0 };
+      }, { scenario, frames, quality, fixedQuality, profile });
       reports.push(report);
       assert.equal(report.apes, scenario.apes, 'all real apes retained');
       assert.equal(report.humans, scenario.humans, 'all real humans retained');
@@ -90,6 +103,6 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
       if (process.env.QA_ARTIFACT_DIR) { fs.mkdirSync(process.env.QA_ARTIFACT_DIR, { recursive: true }); await page.screenshot({ path: path.join(process.env.QA_ARTIFACT_DIR, `stress-${scenario.id}-${quality}.png`) }); }
     }
     assert.deepEqual(errors, []);
-    if (option('--output')) fs.writeFileSync(option('--output'), JSON.stringify({ kind: 'real Canvas, headless Chrome; synthetic sustained combat health', browser: browser.version(), viewport, frames, quality, sources: names, reports }, null, 2));
+    if (option('--output')) fs.writeFileSync(option('--output'), JSON.stringify({ kind: 'real Canvas, headless Chromium; full production artwork; synthetic sustained combat health', browser: browser.version(), cpu: os.cpus()[0]?.model, logicalProcessors: os.cpus().length, node: process.version, os: os.release(), viewport, dpr: 1, seed: 'FOREST-A', randomSeed: '0x923cd91', warmupFrames: 0, includesColdStart: true, frames, quality, fixedQuality, sources: names, reports }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

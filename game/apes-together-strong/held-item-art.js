@@ -1,7 +1,7 @@
 /* Authored held equipment. Pure visual selections; never changes combat or orders. */
 (() => {
   'use strict';
-  const P=ATSRenderer.prototype,TAU=Math.PI*2,EMPTY=Object.freeze([]),working=/build|chop|clear|repair|garden|cook|breach/;
+  const P=ATSRenderer.prototype,TAU=Math.PI*2,EMPTY=Object.freeze([]),working=/build|chop|saw|clear|repair|garden|cook|breach/;
   const art=()=>window.ATSVisualAssets,meta=()=>art()?.manifest?.['held-items'];
   const championItems=Object.freeze({wallbreaker:'maul',bulwark:'logShield',tankBuster:'chainWrap',jailerCrusher:'shoulderPlate',masterBuilder:'toolRig',rescueBearer:'ropePack',siegeHauler:'ropePack',greatForager:'food',saboteur:'cutters',climberCaptain:'cuffs',shockRaider:'baton',gateRunner:'satchel',skyRunner:'hook',scoutMaster:'scoutSash',silentInfiltrator:'cuffs',signalHunter:'sling',warcaller:'drum',guardCaptain:'staff',pursuitLeader:'commandSash',settlementWarden:'warMantle',slingerAce:'sling',alarmSpoiler:'jammer',skirmisher:'satchel',supplyThief:'utilityBelt'});
   const handItems=new Set(['pistol','rifle','shotgun','sniper','assault','machine','rotary','radio','grenade','flare','hammer','spear','torch','maul','cutters','baton','hook','staff','sling','jammer','binoculars']);
@@ -82,8 +82,15 @@
     [[194,685,212,668],[511,691,530,675],[714,782,839,663],[1213,729,1018,631]],
     [[209,1000,214,980],[515,999,528,978],[729,1096,819,983],[1212,1058,1024,949]]
   ];
+  let socketCache=null;
   function sockets(a,p,slot){
-    const cm=art()?.manifest?.characters,table=cm?.frames?.[p.atlas],f=table?.[p.row+':'+p.column],sheet=cm?.atlases?.find(v=>v.id==='characters-'+p.atlas);
+    // Attachment coordinates depend on authored frame geometry, never actor
+    // identity, time, equipment or action phase. Share them across all three
+    // render passes and every actor using that pose, with bounded storage.
+    const registry=art(),cm=registry?.manifest?.characters;
+    if(!socketCache||socketCache.registry!==registry||socketCache.metadata!==cm||socketCache.version!==cm?.version||socketCache.frames!==cm?.frames)socketCache={registry,metadata:cm,version:cm?.version,frames:cm?.frames,atlases:new Map((cm?.atlases||[]).map(a=>[a.id,a])),entries:new Map()};
+    const key=p.atlas+':'+p.row+':'+p.column+':'+slot+':'+!!p.human+':'+!!p.king,cached=socketCache.entries.get(key);if(cached)return cached;
+    const table=cm?.frames?.[p.atlas],f=table?.[p.row+':'+p.column],sheet=socketCache.atlases.get('characters-'+p.atlas);
     let points=apeHands[Math.max(0,p.row)]||apeHands[0];
     if(p.human){
       if(p.atlas==='humanactions')points=p.column===2?[[.27,.45],[.32,.31]]:p.column===3?[[.45,.61],[.70,.14]]:[[.48,.35],[.68,.34]];
@@ -107,14 +114,16 @@
     const pixels=p.atlas==='humans'?humanHands[p.row]?.[p.column]:p.atlas==='humanactions'?humanActionHands[p.row]?.[p.column]:null;
     const measured=f.hands,convert=k=>{const i=k==='left'?0:2;return measured?.[k]?{x:(measured[k].x-f.anchorX)*unit,y:(measured[k].y-f.anchorY)*unit}:pixels?{x:(pixels[i]-f.x-f.anchorX)*unit,y:(pixels[i+1]-f.y-f.anchorY)*unit}:point(points[k==='left'?0:1])};
     const left=convert('left'),right=convert('right');
-    return {left,right,both:{x:(left.x+right.x)/2,y:(left.y+right.y)/2},body:point([.51,.48]),hip:point([.21,.63]),back:point([.28,.45]),ground:{x:22,y:0},frame:f,unit};
+    const result={left,right,both:{x:(left.x+right.x)/2,y:(left.y+right.y)/2},body:point([.51,.48]),hip:point([.21,.63]),back:point([.28,.45]),ground:{x:22,y:0},frame:f,unit};
+    for(const name of ['left','right','both','body','hip','back','ground'])Object.freeze(result[name]);Object.freeze(result);
+    if(socketCache.entries.size>=512)socketCache.entries.delete(socketCache.entries.keys().next().value);socketCache.entries.set(key,result);return result;
   }
   function placement(a,p,item,anchors){
     const s=anchors[item.socket]||anchors.right,move=['run','sprint'].includes(p.state),attack=['attack','heavyAttack','chargeAttack','prepare'].includes(p.state);
     let rotation=0;
     if(guns.has(item.id))rotation=['aim','fire'].includes(p.state)?(p.rear?-.28:-.09):(p.rear?1.2:.75);
     else if(['spear','torch','hammer','maul','staff','baton','hook','cutters'].includes(item.id))rotation=p.state==='throw'&&p.phase>=.525?1.1:attack?(p.state==='prepare'?-.5:.9):move?Math.sin(p.phase*TAU)*.08:.12;
-    if(p.human&&(a.engineerJob||a.constructing)&&item.id==='hammer')rotation=Math.sin(p.phase*TAU)*.45;
+    if(item.id==='hammer'&&(p.human&&(a.engineerJob||a.constructing)||!a.moving&&working.test(a.activity||'')))rotation=Math.sin(p.phase*TAU)*.45;
     return {x:s.x,y:s.y,rotation};
   }
   function draw(r,c,a,p,slot,pass,items){
@@ -129,7 +138,7 @@
       }
       if(!f||!image)continue;
       const at=placement(a,p,item,anchors),w=f.drawWidth,h=f.drawHeight;
-      c.save();c.translate(at.x,at.y);c.rotate(r.reducedMotion&&['run','sprint'].includes(p.state)?0:at.rotation);
+      c.save();c.translate(at.x,at.y);c.rotate(r.reducedMotion&&(['run','sprint'].includes(p.state)||item.id==='hammer')?0:at.rotation);
       c.drawImage(image,f.x,f.y,f.w,f.h,-f.gripX/f.w*w,-f.gripY/f.h*h,w,h);c.restore();
       r.heldItemArtworkDraws=(r.heldItemArtworkDraws||0)+1;drawn=true;
     }
@@ -148,5 +157,5 @@
     const color=window.ATSDivisions?.find(d=>d.id===a.divisionId)?.color||'#e9c56d';c.save();c.strokeStyle=color;c.lineWidth=1.7;c.beginPath();c.ellipse(0,5,20,7,0,0,TAU);c.stroke();c.translate(0,-(a.elevation||a.wallClimbHeight||0));c.fillStyle=color;c.beginPath();c.moveTo(0,-83);c.lineTo(4,-78);c.lineTo(0,-73);c.lineTo(-4,-78);c.closePath();c.fill();c.restore();
   };
   window.ATSHeldItemArt={version:1,ready,hasEquipment,resolve,sockets,placement,draw,restoreHands,championItems,
-    status(){return {ready:ready(),atlases:meta()?.atlases?.length||0,frames:Object.keys(meta()?.frames||{}).length,perActorCache:0}}};
+    status(){return {ready:ready(),atlases:meta()?.atlases?.length||0,frames:Object.keys(meta()?.frames||{}).length,perActorCache:0,sharedSocketFrames:socketCache?.entries.size||0}}};
 })();

@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {loadEngine}=require('./performance-harness.cjs');
 function game(){const c=loadEngine();for(const [name,key] of [['champions','ATSChampions'],['kingdom','ATSKingdom']])if(!c[key])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),c);const g=new c.ATSGame('kingdom-regression');g.world.getSites=()=>[];g.world.getObjects=()=>[];g.world.terrain=()=>({biome:'forest',water:false});g.world.blocked=()=>false;g.world.lineClear=()=>true;g.world.settlementPlot=()=>({valid:true,trees:[]});return{g,c}}
-function home(g,id,x=0,n=24){const s={id,name:id,x,y:0,population:n,housing:n+20,food:500,wood:150,level:2,safety:1,birthTimer:-1000,known:false,age:0};g.settlements.push(s);for(let i=0;i<n;i++)g.makeApe(x+i%6*7,Math.floor(i/6)*7,'settled',id);g.refreshSettlements();g.colonies.init(s);s.suitability={fertility:1,wood:12,capacity:1000,water:false};s.gardens=5;g.colonies.assignJobs(s,g.colonies.members(s));return s}
+function home(g,id,x=0,n=24){const s={id,name:id,x,y:0,population:n,housing:n+20,food:500,wood:150,level:2,safety:1,birthTimer:-1000,known:false,age:0};g.settlements.push(s);for(let i=0;i<n;i++)g.makeApe(x+i%6*7,Math.floor(i/6)*7,'settled',id);g.refreshSettlements();g.colonies.init(s);s.suitability={fertility:1,wood:12,capacity:1000,water:false};s.gardens=5;for(let i=0;i<5;i++)s.structures.push({id:id+'-garden-'+i,kind:'garden',x:x+180+i*60,y:80,hp:100,maxHp:100,stage:4});g.colonies.assignJobs(s,g.colonies.members(s));return s}
 function step(g,s,n=1){for(let i=0;i<n;i++){g.time++;g.refreshSettlements();g.colonies.tick(s)}}
 
 test('old saves retain resources, wounds and general economy; strategy settings persist',()=>{
@@ -20,7 +20,7 @@ test('sanctuary beds, recovery and family growth are actual economy effects',()=
 
 test('supply villages produce more garden food and workshops finish real construction faster',()=>{
  const a=game().g,b=game().g,normal=home(a,'Home'),supply=home(b,'Home');normal.food=supply.food=100;b.kingdom.specialize(supply.id,'supply');step(a,normal);step(b,supply);assert.ok(supply.food>normal.food);
- const makeProject=(g,s)=>{s.projects=[];s.builders=2;s.simLOD=2;g.time=10;const p={id:'test-project',kind:'garden',x:s.x+150,y:0,treeIds:[],createdAt:0,work:0,totalWork:100,timber:0};s.projects.push(p);return p};
+ const makeProject=(g,s)=>{s.projects=[];s.builders=2;s.simLOD=2;g.time=10;const p={id:'test-project',kind:'garden',x:s.x+150,y:0,treeIds:[],createdAt:0,work:0,totalWork:100,timber:0};s.projects.push(p);for(const a of g.colonies.members(s).slice(0,2))Object.assign(a,{job:'builder',x:p.x,y:p.y,workTargetId:p.id});return p};
  b.kingdom.specialize(supply.id,'workshop');const p=makeProject(a,normal),q=makeProject(b,supply);a.colonies.work(normal);b.colonies.work(supply);assert.ok(q.work>p.work);assert.equal(q.work,p.work*1.3);
 });
 

@@ -11,17 +11,36 @@
   const ellipse=(c,x,y,w,h,color)=>{c.beginPath();c.ellipse(x,y,w,h,0,0,TAU);c.fillStyle=color;c.fill()};
   const line=(c,x,y,u,v,color,w=1)=>{c.beginPath();c.moveTo(x,y);c.lineTo(u,v);c.strokeStyle=color;c.lineWidth=w;c.lineCap='round';c.stroke()};
   const art=()=>window.ATSVisualAssets,metadata=()=>art()?.manifest?.characters;
+  const DIRECTIONS=Object.freeze(['east','southeast','south','southwest','west','northwest','north','northeast'].map((name,sector)=>Object.freeze({sector,name,row:[2,1,0,1,2,3,4,3][sector],mirror:sector>2&&sector<6,rear:sector>=5})));
+  const FRONT_STEP=[1,0,2,0],REAR_APE_STEP=[3,3,4,4],REAR_HUMAN_STEP=[5,5,6,6];
+  const HEAVY_ROLES=new Set(['heavy','juggernaut','rotary','shield','breacher']),RANGED_ROLES=new Set(['sniper','ranger','tracker','flanker','spotter','commando']);
+  const MELEE_ANIMATIONS=new Set(['hook','slam','backhand','tackle','overhead','uppercut']),COMMAND_STATES=new Set(['prepare','command','victory']),RUN_STATES=new Set(['run','sprint']);
+
+  function frameGeometry(r,pose,slot){
+    const registry=art(),data=metadata();if(!data)return null;
+    let cache=r.characterFrameGeometry;
+    if(!cache||cache.registry!==registry||cache.data!==data||cache.version!==data.version||cache.frames!==data.frames){
+      cache=r.characterFrameGeometry={registry,data,version:data.version,frames:data.frames,atlases:new Map((data.atlases||[]).map(a=>[a.id,a])),entries:new Map()};
+      r.characterCoats?.clear();r.characterCoatSources?.clear();
+    }
+    const key=pose.atlas+':'+pose.row+':'+pose.column+':'+slot;
+    let value=cache.entries.get(key);if(value)return value;
+    const atlas=cache.atlases.get('characters-'+pose.atlas),f=data.frames?.[pose.atlas]?.[pose.row+':'+pose.column];if(!atlas||!f)return null;
+    const shadowUnit=slot/(atlas.width/atlas.columns),unit=shadowUnit*(pose.atlas==='kingactions'&&pose.row===0?.68:1),contacts=[];
+    let left=Infinity,right=-Infinity;for(const contact of f.groundContacts||[]){left=Math.min(left,contact.x-contact.width/2);right=Math.max(right,contact.x+contact.width/2);contacts.push({x:(contact.x-f.anchorX)*shadowUnit,width:Math.max(2,contact.width*shadowUnit*.62)})}
+    value={f,x:-f.anchorX*unit,y:-f.anchorY*unit,width:f.w*unit,height:f.h*unit,contacts,shadowX:contacts.length?((left+right)/2-f.anchorX)*shadowUnit:0,shadowWidth:contacts.length?(right-left)*shadowUnit*.54+3:0};
+    if(cache.entries.size>=512)cache.entries.delete(cache.entries.keys().next().value);cache.entries.set(key,value);return value;
+  }
 
   // World facing is first projected into the same isometric plane as movement.
   function direction(angle=0){
     const dx=(Math.cos(angle)-Math.sin(angle))*.8,dy=(Math.cos(angle)+Math.sin(angle))*.42;
     const sector=(Math.round(Math.atan2(dy,dx)/(Math.PI/4))+8)%8;
-    return {sector,name:['east','southeast','south','southwest','west','northwest','north','northeast'][sector],
-      row:[2,1,0,1,2,3,4,3][sector],mirror:sector>2&&sector<6,rear:sector>=5};
+    return DIRECTIONS[sector];
   }
   function humanRow(a){
-    if(['heavy','juggernaut','rotary','shield','breacher'].includes(a.role)||a.kind==='machine')return 2;
-    if(['sniper','ranger','tracker','flanker','spotter','commando'].includes(a.role)||a.kind==='sniper')return 3;
+    if(HEAVY_ROLES.has(a.role)||a.kind==='machine')return 2;
+    if(RANGED_ROLES.has(a.role)||a.kind==='sniper')return 3;
     return a.kind==='pistol'?0:1;
   }
   // Pure resolver, also used by QA and the sprite browser. No entity writes.
@@ -35,7 +54,7 @@
       active=anim&&time>=anim.start&&time<anim.start+(anim.duration||.5),
       progress=active?clamp((time-anim.start)/(anim.duration||.5),0,1):0;
     let state='idle',column=0,event=null,phase=cycle;
-    const rearStep=human?[5,5,6,6]:[3,3,4,4],frontStep=[1,0,2,0];
+    const rearStep=human?REAR_HUMAN_STEP:REAR_APE_STEP,frontStep=FRONT_STEP;
     const climbing=a.palisadeClimb||a.climbingWallId&&a.wallClimbUntil>time||a.climbingVehicleId&&a.climbUntil>time||a.siegeTransition&&!a.siegeTransition.stairs;
     if(a.hp<=0||a.state==='fallen'){state='death';column=human?7:king?5:5;phase=clamp((a.deathAge||a.age||0)/.65,0,1)}
     else if(a.blastReaction?.stage==='flight'||a.knockbackUntil>time){state='knockback';column=king?5:human?4:5}
@@ -47,7 +66,7 @@
       state='throw';phase=progress;column=human?(progress<.52?3:4):king?(progress<.52?3:4):5;
       event=progress>=.525&&progress<.65?'release':progress<.525?'anticipation':'recover';
     }
-    else if(active&&['hook','slam','backhand','tackle','overhead','uppercut'].includes(anim.kind)){
+    else if(active&&MELEE_ANIMATIONS.has(anim.kind)){
       // Melee damage is immediate in the existing game. The first frame is the
       // contact pose; follow-through/recovery never delays or predicts damage.
       state=['slam','overhead'].includes(anim.kind)?'heavyAttack':anim.kind==='tackle'?'chargeAttack':'attack';
@@ -63,20 +82,20 @@
     else if(a.state==='victory'||a.celebrating){state='victory';column=king?3:5}
     else if(human&&d.rear){column=5}
     else if(!king&&d.rear){column=3}
-    if(options.reducedMotion&&['run','sprint'].includes(state)){column=d.rear&&!king?(human?5:3):0;event=null}
+    if(options.reducedMotion&&RUN_STATES.has(state)){column=d.rear&&!king?(human?5:3):0;event=null}
     let atlas=human?'humans':king?'king':'apes',row=human?humanRow(a):king?d.row:index;
     if(!human&&!king){
       if(state==='climb'){atlas='actions';column=beat%2?4:3}
       else if(state==='death'){atlas='actions';column=5}
       else if(state==='heavyAttack'||state==='chargeAttack'){atlas='actions';column=1}
       else if(state==='attack'){atlas='actions';column=progress<.68?2:1}
-      else if(['prepare','command','victory'].includes(state)){atlas='actions';column=0}
+      else if(COMMAND_STATES.has(state)){atlas='actions';column=0}
       else if(state==='throw'){atlas='actions';column=progress<.525?0:2}
     }
     if(human&&(d.rear&&['fire','aim'].includes(state)||state==='radio'||state==='throw')){
       atlas='humanactions';column=state==='radio'?2:state==='throw'?3:state==='fire'?1:0;
     }
-    if(human&&!options.reducedMotion&&['run','sprint'].includes(state)){
+    if(human&&!options.reducedMotion&&RUN_STATES.has(state)){
       // Alternate the high-knee lift artwork with authored planted-foot passing
       // poses. Limbs and shoulders change shape; the whole cutout never bobs.
       if(beat===0||beat===2){atlas='humanwalk';column=(d.rear?2:0)+(beat===2?1:0)}
@@ -95,17 +114,15 @@
     if(!['apes','actions'].includes(name)||!a.coatVariant||r.quality==='low')return original;
     // Four shared coat atlases, never one cache entry per member of the horde.
     const variant=clamp(a.coatVariant|0,0,2);if(!variant)return original;r.characterCoats=r.characterCoats||new Map();
-    const key=name+':'+variant;let image=r.characterCoats.get(key);if(image)return image;
+    const key=name+':'+variant;if(!r.characterCoatSources)r.characterCoatSources=new Map();let image=r.characterCoats.get(key);if(image&&r.characterCoatSources.get(key)===original)return image;
     image=document.createElement('canvas');image.width=original.naturalWidth||original.width;image.height=original.naturalHeight||original.height;
     const c=image.getContext('2d');c.filter=variant===1?'brightness(.82) sepia(.12)':'brightness(1.13) saturate(.82)';c.drawImage(original,0,0);c.filter='none';
-    r.characterCoats.set(key,image);return image;
+    r.characterCoats.set(key,image);r.characterCoatSources.set(key,original);return image;
   }
   function frame(r,c,a,pose,slot){
-    const data=metadata(),atlas=data?.atlases?.find(v=>v.id==='characters-'+pose.atlas),
-      f=data?.frames?.[pose.atlas]?.[pose.row+':'+pose.column],image=atlasImage(r,pose.atlas,a);
-    if(!image||!f||!atlas){const fallback=pose.king?'king':pose.human?'humans':'apes';if(pose.atlas!==fallback)return frame(r,c,a,{...pose,atlas:fallback,row:pose.king?direction(a.dir||0).row:pose.row,column:0},slot);return false}
-    const unit=slot/(atlas.width/atlas.columns)*(pose.atlas==='kingactions'&&pose.row===0?.68:1);
-    c.drawImage(image,f.x,f.y,f.w,f.h,-f.anchorX*unit,-f.anchorY*unit,f.w*unit,f.h*unit);
+    const geometry=frameGeometry(r,pose,slot),image=atlasImage(r,pose.atlas,a);
+    if(!image||!geometry){const fallback=pose.king?'king':pose.human?'humans':'apes';if(pose.atlas!==fallback)return frame(r,c,a,{...pose,atlas:fallback,row:pose.king?direction(a.dir||0).row:pose.row,column:0},slot);return false}
+    const f=geometry.f;c.drawImage(image,f.x,f.y,f.w,f.h,geometry.x,geometry.y,geometry.width,geometry.height);
     r.characterArtworkDraws=(r.characterArtworkDraws||0)+1;return true;
   }
   function stamp(r,a,pose){
@@ -140,10 +157,10 @@
     if(!['climb','knockback','death'].includes(p.state)){
       // The support locations are measured from the opaque feet/knuckles in
       // each authored frame. This stays aligned even when a stride spreads wide.
-      const f=metadata()?.frames?.[p.atlas]?.[p.row+':'+p.column],sheet=metadata()?.atlases?.find(v=>v.id==='characters-'+p.atlas);
-      if(f&&sheet){const unit=slot/(sheet.width/sheet.columns),contacts=f.groundContacts||[];
-        if(contacts.length){const left=Math.min(...contacts.map(k=>k.x-k.width/2)),right=Math.max(...contacts.map(k=>k.x+k.width/2));ellipse(c,((left+right)/2-f.anchorX)*unit,1.5,(right-left)*unit*.54+3,3.2,'rgba(0,6,7,.18)')}
-        for(const contact of contacts)ellipse(c,(contact.x-f.anchorX)*unit,.35,Math.max(2,contact.width*unit*.62),1.5,'rgba(0,5,6,.44)');
+      const geometry=frameGeometry(this,p,slot);
+      if(geometry){
+        if(geometry.contacts.length)ellipse(c,geometry.shadowX,1.5,geometry.shadowWidth,3.2,'rgba(0,6,7,.18)');
+        for(const contact of geometry.contacts)ellipse(c,contact.x,.35,contact.width,1.5,'rgba(0,5,6,.44)');
       }
     }
     const held=window.ATSHeldItemArt,items=held?.ready()&&held.hasEquipment(a,p)?held.resolve(a,p):null;
