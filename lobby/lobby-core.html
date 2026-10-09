@@ -359,6 +359,20 @@
     .modal.wide{width:min(820px,100%)}
     .modal-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
     .modal-title{font-weight:950;font-size:1.08rem}.modal-close{border:0;background:#f2f4f7;width:36px;height:36px;border-radius:50%;cursor:pointer;font-weight:900}
+    #accountModal{display:flex;flex-direction:column;overflow:hidden;max-height:calc(var(--profile-viewport-height,100dvh) - 24px)}
+    #accountModal .modal-head{flex:none;background:#fff}
+    #accountModal .modal-close{width:44px;height:44px;flex:none;font-size:1.35rem}
+    #accountModal .modal-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+    #accountModal .field{font-size:16px}
+    .modal-layer:has(#accountModal:not([hidden])){top:var(--profile-viewport-top,0px);height:var(--profile-viewport-height,100dvh);bottom:auto}
+    .admin-toolbar{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+    .admin-toolbar input{flex:1;min-width:160px}
+    .admin-table-wrap{overflow-x:auto}
+    .admin-table{border-collapse:collapse;width:100%;min-width:760px;font-size:.86rem}
+    .admin-table th,.admin-table td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line)}
+    .admin-table th{background:var(--surface-2);white-space:nowrap}
+    .admin-table summary{cursor:pointer;font-weight:750}
+    .admin-table ul{padding-left:18px;line-height:1.7}
     .modal-body{padding:20px}.modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
     .account-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;background:#f2f4f7;padding:5px;border-radius:13px;margin-bottom:16px}
     .account-tab{border:0;border-radius:10px;padding:9px;background:transparent;font-weight:900;cursor:pointer}.account-tab.active{background:#fff;box-shadow:0 3px 10px rgba(16,24,40,.09)}
@@ -552,6 +566,28 @@
           <div style="position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap"><button id="editProfileBtn" class="btn ghost-light">Edit Profile</button><button id="profileLogoutBtn" class="btn ghost-light">Logout</button></div>
         </div>
 
+        <section id="adminMembersPanel" class="card card-pad" style="margin-top:18px" hidden aria-labelledby="adminMembersTitle">
+          <h2 id="adminMembersTitle" class="section-title" style="font-size:1.15rem">Admin · Members</h2>
+          <p class="help">View registered members and recorded activity. Play totals count launches recorded by the lobby; older activity and games opened elsewhere may be missing.</p>
+          <div id="adminMembersLocked">
+            <p>Confirm Sean's password to view member activity for this session.</p>
+            <label class="label" for="adminPassword">Sean's password</label>
+            <input id="adminPassword" class="field" type="password" autocomplete="current-password" />
+            <button id="adminUnlock" class="btn" style="margin-top:10px">Unlock member dashboard</button>
+          </div>
+          <div id="adminMembersContent" hidden>
+            <div class="admin-toolbar">
+              <input id="adminMemberSearch" class="field" type="search" placeholder="Search members" aria-label="Search members" />
+              <select id="adminMemberSort" class="select" aria-label="Sort members"><option value="lastLogin">Last login</option><option value="plays">Games played</option><option value="name">Username</option></select>
+              <button id="adminRefreshMembers" class="btn secondary">Refresh</button>
+              <button id="adminLock" class="btn secondary">Lock</button>
+            </div>
+            <div id="adminMemberSummary" class="help" aria-live="polite"></div>
+            <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th scope="col">Member</th><th scope="col">Last login</th><th scope="col">Joined</th><th scope="col">Recorded plays</th><th scope="col">Wins</th><th scope="col">Games &amp; recent activity</th></tr></thead><tbody id="adminMemberRows"></tbody></table></div>
+          </div>
+          <div id="adminMembersMessage" class="message" aria-live="polite"></div>
+        </section>
+
         <div class="profile-layout">
           <div>
             <div class="card card-pad">
@@ -596,25 +632,26 @@
       </div>
     </div>
 
-    <div id="accountModal" class="modal" hidden>
-      <div class="modal-head"><div class="modal-title">Game Hub Account</div><button class="modal-close" data-close-modal>×</button></div>
+    <div id="accountModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle" hidden>
+      <div class="modal-head"><div id="accountModalTitle" class="modal-title">Your Game Hub Profile</div><button class="modal-close" data-close-modal aria-label="Close profile prompt">×</button></div>
       <div class="modal-body">
         <div class="account-tabs">
           <button id="showLoginTab" class="account-tab active">Log In</button>
-          <button id="showCreateTab" class="account-tab">Create User</button>
+          <button id="showCreateTab" class="account-tab">Create Profile</button>
         </div>
         <div id="loginPane">
           <div class="form-row"><label class="label" for="loginUsername">Username</label><input id="loginUsername" class="field" autocomplete="username" /></div>
-          <div class="form-row"><label class="label" for="loginPassword">Password</label><input id="loginPassword" class="field" type="password" autocomplete="current-password" /></div>
+          <div class="form-row"><label class="label" for="loginPassword">Password</label><input id="loginPassword" class="field" type="password" autocomplete="current-password" aria-describedby="loginPasswordWarning" /><div id="loginPasswordWarning" class="help">Please do not use your normal passwords. Choose a unique password just for Game Hub.</div></div>
           <button id="loginSubmit" class="btn block">Log In</button>
         </div>
         <div id="createPane" hidden>
+          <p style="margin:0 0 16px;line-height:1.55"><strong style="color:var(--brand)">No email required!</strong><br>Create an optional profile to save favorites, recent games, and your profile details.</p>
           <div class="form-row"><label class="label" for="createUsername">Username</label><input id="createUsername" class="field" autocomplete="off" /></div>
-          <div class="form-row"><label class="label" for="createPassword">Password</label><input id="createPassword" class="field" type="password" autocomplete="new-password" /></div>
+          <div class="form-row"><label class="label" for="createPassword">Password</label><input id="createPassword" class="field" type="password" autocomplete="new-password" aria-describedby="createPasswordWarning" /><div id="createPasswordWarning" class="help">Please do not use your normal passwords. Choose a unique password just for Game Hub.</div></div>
           <div class="form-row"><label class="label" for="createConfirm">Confirm Password</label><input id="createConfirm" class="field" type="password" autocomplete="new-password" /></div>
-          <div class="help">Uses the same username and password storage as the current Game Hub account system.</div>
-          <button id="createSubmit" class="btn block" style="margin-top:13px">Create User</button>
+          <button id="createSubmit" class="btn block" style="margin-top:13px">Create Profile</button>
         </div>
+        <button class="btn secondary block" data-close-modal style="margin-top:13px">Continue as guest</button>
         <div id="accountMessage" class="message"></div>
       </div>
     </div>
@@ -709,6 +746,7 @@
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     import { firebaseConfig } from "./firebase-config.mjs";
+    import { memberActivity, filterMembers } from "./lobby-admin-members.mjs";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -847,7 +885,7 @@
     const SK = {
       user:"gh.username", lastLobby:"gh.lastLobbyId", staleLobby:"gh.staleLobbyCleanupId",
       lastGame:"gh.lastGameType", lastView:"gh.lastTab", nextRoute:"gh.nextRoute",
-      favorites:"gh.favorites", recent:"gh.recentGames"
+      favorites:"gh.favorites", recent:"gh.recentGames", profilePromptSeen:"gh.profilePromptSeen"
     };
     const save=(k,v)=>{try{localStorage.setItem(k,v);return true;}catch(e){console.warn("Storage write skipped",k,e);return false;}};
     const read=(k,fallback=null)=>{try{return localStorage.getItem(k)??fallback;}catch(e){console.warn("Storage read skipped",k,e);return fallback;}};
@@ -867,6 +905,7 @@
     const initialParams=new URLSearchParams(location.search);
     let username=(initialParams.get("username") || read(SK.user) || "").trim();
     let currentUserData=null;
+    let seanAdminUnlocked=false,adminMembers=[],adminMembersLoaded=false,adminLoadSeq=0;
     let currentLobbyId=null;
     let currentLobbyData=null;
     let inviteTargetLobbyId=null;
@@ -1038,6 +1077,7 @@
       save(SK.lastView,view);
       if(view==="profile")renderProfile();
       syncLobbyBrowserPolling();
+      if(view==="profile"&&canViewAdminMembers()&&!adminMembersLoaded)void loadAdminMembers();
       if(view==="multiplayer"&&firebaseAuthReady)void refreshLobbyBrowser();
     }
     document.querySelectorAll("[data-view]").forEach(btn=>btn.addEventListener("click",()=>showView(btn.dataset.view)));
@@ -1057,6 +1097,25 @@
     function closeModal(){
       $("modalLayer").hidden=true;document.querySelectorAll("#modalLayer > .modal").forEach(m=>m.hidden=true);document.body.style.overflow="";
     }
+    function fitProfileViewport(){
+      const viewport=window.visualViewport;
+      document.documentElement.style.setProperty("--profile-viewport-height",`${viewport?.height||window.innerHeight}px`);
+      document.documentElement.style.setProperty("--profile-viewport-top",`${viewport?.offsetTop||0}px`);
+    }
+    fitProfileViewport();
+    window.addEventListener("resize",fitProfileViewport);
+    window.visualViewport?.addEventListener("resize",fitProfileViewport);
+    window.visualViewport?.addEventListener("scroll",fitProfileViewport);
+    document.addEventListener("keydown",event=>{
+      if($("accountModal").hidden)return;
+      if(event.key==="Escape")closeModal();
+      if(event.key==="Tab"){
+        const controls=[...$("accountModal").querySelectorAll('button,input,select,textarea,a[href]')].filter(node=>!node.disabled&&node.getClientRects().length);
+        const first=controls[0],last=controls[controls.length-1];
+        if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+        else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+      }
+    });
     document.querySelectorAll("[data-close-modal]").forEach(btn=>btn.addEventListener("click",closeModal));
     $("modalLayer").addEventListener("click",e=>{if(e.target===$("modalLayer"))closeModal();});
 
@@ -1067,10 +1126,19 @@
     $("gateNotNow").addEventListener("click",()=>{pendingAction=null;closeModal();});
     $("gateLogin").addEventListener("click",()=>openAccount("login"));
     $("gateCreate").addEventListener("click",()=>openAccount("create"));
-    function openAccount(tab="login"){
+    function openAccount(tab="login",focusClose=false){
       openModal("accountModal");showAccountTab(tab);
       setMessage("accountMessage","");
-      setTimeout(()=>$(tab==="login"?"loginUsername":"createUsername").focus(),50);
+      setTimeout(()=>(focusClose?$("accountModal").querySelector(".modal-close"):$(tab==="login"?"loginUsername":"createUsername")).focus(),50);
+    }
+    function showFirstVisitProfilePrompt(){
+      if(read(SK.profilePromptSeen)||readSession(SK.profilePromptSeen))return;
+      // Remember existing players too, so logging out never triggers onboarding.
+      if(username){save(SK.profilePromptSeen,"1");saveSession(SK.profilePromptSeen,"1");return;}
+      // Let an invitation preview take priority; offer a profile on a later lobby visit.
+      if(initialParams.has("lobby")||!$("modalLayer").hidden)return;
+      save(SK.profilePromptSeen,"1");saveSession(SK.profilePromptSeen,"1");
+      openAccount("create",true);
     }
     function showAccountTab(tab){
       const login=tab==="login";$("loginPane").hidden=!login;$("createPane").hidden=login;
@@ -1089,7 +1157,7 @@
         const ref=doc(db,"users",name),snap=await getDoc(ref);
         if(!snap.exists()||snap.data().password!==password)throw new Error("Invalid username or password.");
         username=name;save(SK.user,username);await setDoc(ref,{lastLogin:serverTimestamp()},{merge:true});
-        await afterUserLogin(snap.data());closeModal();toast(`Welcome back, ${username}.`,"good");await runPendingAction();
+        await afterUserLogin(snap.data());seanAdminUnlocked=name==="Sean";renderProfile();closeModal();toast(`Welcome back, ${username}.`,"good");await runPendingAction();
       }catch(e){setMessage("accountMessage",e.message||"Unable to log in.","error");}
       finally{setBusy($("loginSubmit"),false);}
     }
@@ -1140,7 +1208,7 @@
     }
     async function logout(){
       try{if(currentLobbyId)await leaveLobby();}catch{}
-      username="";currentUserData=null;del(SK.user);del(SK.lastLobby);del(SK.lastGame);pendingAction=null;
+      lockAdminMembers();username="";currentUserData=null;del(SK.user);del(SK.lastLobby);del(SK.lastGame);pendingAction=null;
       const savedFavorites=readJson(SK.favorites,[]),savedRecent=readJson(SK.recent,[]);
       favorites=new Set(Array.isArray(savedFavorites)?savedFavorites:[]);recentGames=Array.isArray(savedRecent)?savedRecent:[];updateAccountUI();markDailyGuestOnce(authUser?.uid).catch(()=>{});showDailyUsersPill();showView("multiplayer");toast("Logged out.");
     }
@@ -1807,7 +1875,78 @@
       try{const snap=await getDocs(query(collection(db,"users"),orderBy("lastLogin","desc"),limit(50)));box.innerHTML="";snap.forEach(d=>{const data=d.data();if(!data.password&&normalize(data.username)!==normalize(d.id))return;const el=document.createElement("div");el.className="member-item";el.innerHTML=`<button class="profile-summary-button" data-profile-name="${escapeHtml(d.id)}"><span style="display:flex;align-items:center;gap:10px"><span class="avatar-mini" style="margin:0">${avatarMarkup(data.avatar||"🎮",`${d.id} profile icon`)}</span><span><strong>${escapeHtml(data.displayName||d.id)}</strong><span class="invite-meta" style="display:block">🏆 ${data.wins||0} wins${data.favoriteCategory?` • ${escapeHtml(data.favoriteCategory)}`:""}</span></span></span></button>`;box.appendChild(el);});bindProfileLinks(box);if(!box.children.length)box.innerHTML='<div class="dropdown-empty">No members found.</div>';}catch{box.innerHTML='<div class="dropdown-empty">Members unavailable.</div>';}
     }
 
+
+    // This is a read-only view of existing community data. Legacy anonymous
+    // Firestore access is not a server-enforced admin role.
+    function canViewAdminMembers(){return username==="Sean"&&seanAdminUnlocked;}
+    function lockAdminMembers(){
+      seanAdminUnlocked=false;adminMembers=[];adminMembersLoaded=false;adminLoadSeq++;
+      $("adminPassword").value="";$("adminMemberRows").innerHTML="";$("adminMemberSummary").textContent="";
+      setMessage("adminMembersMessage","");renderAdminMembersAccess();
+    }
+    function renderAdminMembersAccess(){
+      const allowed=canViewAdminMembers();
+      $("adminMembersPanel").hidden=username!=="Sean";
+      $("adminMembersLocked").hidden=allowed;$("adminMembersContent").hidden=!allowed;
+      if(!allowed){adminMembers=[];adminMembersLoaded=false;adminLoadSeq++;$("adminMemberRows").innerHTML="";$("adminMemberSummary").textContent="";}
+    }
+    async function unlockAdminMembers(){
+      if(username!=="Sean")return;
+      const seq=++adminLoadSeq;
+      const password=$("adminPassword").value;
+      if(!password)return setMessage("adminMembersMessage","Enter Sean's password.","error");
+      setBusy($("adminUnlock"),true,"Checking…");
+      try{
+        const snap=await getDoc(doc(db,"users","Sean"));
+        if(username!=="Sean"||seq!==adminLoadSeq)return;
+        if(!snap.exists()||snap.data().password!==password)throw new Error("Incorrect password.");
+        seanAdminUnlocked=true;renderAdminMembersAccess();await loadAdminMembers();
+      }catch(error){setMessage("adminMembersMessage",error.message||"Unable to unlock dashboard.","error");}
+      finally{$("adminPassword").value="";setBusy($("adminUnlock"),false);}
+    }
+    function adminDate(value){
+      return value?new Date(value).toLocaleString(undefined,{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"Not recorded";
+    }
+    function adminGameTitle(key){return GAMES.find(game=>game.key===key)?.title||key;}
+    function renderAdminMembers(){
+      if(!canViewAdminMembers())return;
+      const rows=filterMembers(adminMembers,$("adminMemberSearch").value,$("adminMemberSort").value);
+      const total=adminMembers.reduce((sum,member)=>sum+member.totalPlays,0);
+      $("adminMemberSummary").textContent=`${rows.length} of ${adminMembers.length} members · ${total.toLocaleString()} recorded plays`;
+      $("adminMemberRows").innerHTML=rows.map(member=>{
+        const games=member.games.map(game=>`<li>${escapeHtml(adminGameTitle(game.key))}: ${game.plays.toLocaleString()}</li>`).join("");
+        const recent=member.recent.map(game=>`<li>${escapeHtml(adminGameTitle(game.key))} · ${escapeHtml(adminDate(game.playedAt))}</li>`).join("");
+        return `<tr><td><strong>${escapeHtml(member.displayName)}</strong><div class="help">@${escapeHtml(member.username)}</div></td><td>${escapeHtml(adminDate(member.lastLogin))}</td><td>${escapeHtml(adminDate(member.createdAt))}</td><td>${member.hasPlayCounts?member.totalPlays.toLocaleString():"Not recorded"}</td><td>${member.wins.toLocaleString()}</td><td><details><summary>${member.games.length} games with recorded counts</summary>${games?`<ul>${games}</ul>`:"<p>No play counts recorded.</p>"}<strong>Recent activity</strong>${recent?`<ul>${recent}</ul>`:"<p>No recent activity recorded.</p>"}</details></td></tr>`;
+      }).join("")||'<tr><td colspan="6">No members match your search.</td></tr>';
+    }
+    async function loadAdminMembers(){
+      if(!canViewAdminMembers())return;
+      const seq=++adminLoadSeq;setBusy($("adminRefreshMembers"),true,"Loading…");
+      setMessage("adminMembersMessage","Loading members…");
+      try{
+        // No orderBy or limit: include accounts without lastLogin and every member.
+        const snap=await getDocs(collection(db,"users"));
+        if(seq!==adminLoadSeq||!canViewAdminMembers())return;
+        adminMembers=[];
+        snap.forEach(entry=>{
+          const data=entry.data();
+          if(!data.password&&normalize(data.username)!==normalize(entry.id))return;
+          adminMembers.push(memberActivity(entry.id,data));
+        });
+        adminMembersLoaded=true;renderAdminMembers();setMessage("adminMembersMessage","");
+      }catch(error){
+        if(seq===adminLoadSeq&&canViewAdminMembers())setMessage("adminMembersMessage","Could not load members. Try Refresh.","error");
+      }finally{setBusy($("adminRefreshMembers"),false);}
+    }
+    $("adminUnlock").addEventListener("click",unlockAdminMembers);
+    $("adminPassword").addEventListener("keydown",event=>{if(event.key==="Enter")void unlockAdminMembers();});
+    $("adminRefreshMembers").addEventListener("click",loadAdminMembers);
+    $("adminLock").addEventListener("click",lockAdminMembers);
+    $("adminMemberSearch").addEventListener("input",renderAdminMembers);
+    $("adminMemberSort").addEventListener("change",renderAdminMembers);
+
     function renderProfile(){
+      renderAdminMembersAccess();
       const logged=!!username;$("profileGuest").hidden=logged;$("profileContent").hidden=!logged;if(!logged)return;
       const d=currentUserData||{},display=d.displayName||username,avatar=d.avatar||"🎮",bio=d.bio||"Game Hub player";
       setAvatarNode($("profileAvatar"),avatar,`${display} profile icon`);$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;$("profileMostPlayed").textContent=mostPlayedGame(d)?.game?.title||"—";
@@ -1915,6 +2054,7 @@
 
     if(initialParams.has("username")){initialParams.delete("username");const clean=`${location.pathname}${initialParams.toString()?`?${initialParams}`:""}${location.hash}`;history.replaceState({},"",clean);}
     populateStaticUI();renderFeatured();renderOnlineWorlds();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
+    showFirstVisitProfilePrompt();
 
     onAuthStateChanged(auth,user=>{
       if(!user){firebaseAuthReady=false;syncLobbyBrowserPolling();stopCurrentLobbySafetyPolling();return;}
