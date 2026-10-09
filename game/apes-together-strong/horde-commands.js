@@ -1,7 +1,7 @@
 /* Ownership, settlement mobilization, and one-command tap/hold gestures. */
 (() => {
 'use strict';
-const OWNER='king',NEAR=260,RECRUIT=340,HOLD_MS=600;
+const OWNER='king',NEAR=260,RECRUIT=340,RECRUIT_MAX=1600,HOLD_MS=600,Q_HOLD_MS=1200,Q_TAP_MS=120;
 const OWNED_STATES=new Set(['follow','charge','hold','settled','scout','young']);
 const P=ATSGame.prototype;
 function inferOwner(a){if(a.hordeOwner===undefined)a.hordeOwner=OWNED_STATES.has(a.state)||a.settlementId?OWNER:null;return a.hordeOwner===OWNER}
@@ -35,9 +35,10 @@ P.command=function(cmd,...args){
  if(!['call','recall','recallField','recallAll'].includes(cmd))return command.call(this,cmd,...args);
  if(this.ended||this.blastActive(this.king)||cmd==='call'&&this.commandCD>0)return false;
  const recruit=cmd==='call',kind=cmd==='recallAll'?'all':cmd==='recall'?'nearby':'field';
+ const radius=recruit&&Number.isFinite(args[0]?.radius)?Math.max(RECRUIT,Math.min(RECRUIT_MAX,args[0].radius)):RECRUIT;
  // Q and nearby R read only neighboring spatial cells. Global orders scan once
  // here; the movement system shares and staggers subsequent route searches.
- const candidates=recruit||kind==='nearby'?this.apeGrid.near(this.king.x,this.king.y,recruit?RECRUIT:NEAR):this.apes;
+ const candidates=recruit||kind==='nearby'?this.apeGrid.near(this.king.x,this.king.y,recruit?radius:NEAR):this.apes;
  const serial=(this._hordeCommandSerial||0)+1,affectedSettlements=new Set();this._hordeCommandSerial=serial;let count=0,mobilized=0;
  for(const a of candidates){
   if(a.id==='king'||a.hp<=0)continue;
@@ -57,11 +58,11 @@ P.command=function(cmd,...args){
  for(const division of Object.values(this._champions?.divisions||{}))if(!division.memberIds.some(id=>this.apesById.get(id)?.hp>0))division.suspended=true;
  if(mobilized){this.refreshSettlements();for(const s of this.settlements){if(!affectedSettlements.has(s.id))continue;s._members=(this.settlementMembers.get(s.id)||[]).slice();s._adults=s._members.filter(a=>a.state!=='young'&&a.state!=='scout');s.cohorts=[];s.builders=s.guards=s.lumberWorkers=s.gardeners=s.cooks=s.haulers=0}}
  this.mode='follow';this.commandCD=.5;this.king.attackTimer=.55;
- const color=recruit?'#e5c374':kind==='all'?'#f0bd78':kind==='field'?'#a8bbf0':'#75cabb',range=recruit?170:kind==='all'?410:kind==='field'?300:190;
+ const color=recruit?'#e5c374':kind==='all'?'#f0bd78':kind==='field'?'#a8bbf0':'#75cabb',range=recruit?radius*.5:kind==='all'?410:kind==='field'?300:190;
  this.effect('wave',this.king.x,this.king.y,{color,life:kind==='all'?1.15:.8,range});
  this.noise(this.king.x,this.king.y,recruit?650:kind==='nearby'?500:750,'order');this.sound(recruit?'call':'recall',kind==='all'?1.15:.85);
  const message=recruit?count+' nearby apes answer the call.'+(mobilized?' '+mobilized+' residents join your horde.':''):kind==='nearby'?count+' nearby field apes recalled.':kind==='field'?count+' field apes recalled — settlements remain assigned.':count+' apes mobilized — settlements included ('+mobilized+' residents).';
- this.lastHordeCommand={cmd,kind:recruit?'recruit':kind,count,mobilized,time:this.time};this.notify(message,'gold','command');return true;
+ this.lastHordeCommand={cmd,kind:recruit?'recruit':kind,count,mobilized,time:this.time};if(recruit)this.lastHordeCommand.radius=radius;this.notify(message,'gold','command');return true;
 };
 // A recalled child remains young while traveling; maturation keeps its field
 // order. Settlement assignments never reattach themselves in the background.
@@ -75,15 +76,18 @@ P.updateApe=function(a,dt){
 };
 P.abstractActor=function(a,dt,kind){if(kind==='ape'&&a.state==='young'&&a.recallOrder&&!a.settlementId)return this.updateApe(a,dt);return abstract.call(this,a,dt,kind)};
 // Wall-clock input is separate from paused simulation time. Releases before the
-// threshold tap; a hold commits once, and its later release does nothing.
+// threshold tap; a hold commits once, and its later release does nothing. Q
+// previews its expanding area without recruiting anyone before the release.
+const holdDuration=key=>key==='q'?Q_HOLD_MS:HOLD_MS;
+const recruitRadiusAt=elapsed=>RECRUIT+(RECRUIT_MAX-RECRUIT)*Math.max(0,Math.min(1,(elapsed-Q_TAP_MS)/(Q_HOLD_MS-Q_TAP_MS)));
 class HoldCommandInput{
- constructor(commit,progress=()=>{}){this.commit=commit;this.progress=progress;this.active=new Map()}
- press(key,token,now){key=key.toLowerCase();if(!['r','t'].includes(key)||this.active.has(token)||[...this.active.values()].some(g=>g.key===key))return false;this.active.set(token,{key,started:now,held:false});this.render(now);return true}
- fire(g,held){this.commit(held?(g.key==='t'?'recallAll':'recallField'):(g.key==='t'?'recallField':'recall'))}
- release(token,now){const g=this.active.get(token);if(!g)return false;if(!g.held)this.fire(g,now-g.started>=HOLD_MS);this.active.delete(token);this.render(now);return true}
- tick(now){for(const g of this.active.values())if(!g.held&&now-g.started>=HOLD_MS){g.held=true;this.fire(g,true)}this.render(now)}
- cancel(token){if(token===undefined)this.active.clear();else this.active.delete(token);this.render(0)}
- render(now){const g=[...this.active.values()].at(-1);this.progress(g?{key:g.key,held:g.held,progress:g.held?1:Math.max(0,Math.min(1,(now-g.started)/HOLD_MS)),label:g.key==='t'?'Mobilize settlements':'Recall all field apes'}:null)}
+ constructor(commit,progress=()=>{}){this.commit=commit;this.progress=progress;this.active=new Map();this.now=0}
+ press(key,token,now){key=key.toLowerCase();if(!['q','r','t'].includes(key)||this.active.has(token)||[...this.active.values()].some(g=>g.key===key))return false;this.active.set(token,{key,started:now,held:false});this.render(now);return true}
+ fire(g,held,now){if(g.key==='q'){if(held)this.commit('recallAll');else this.commit('call',{radius:recruitRadiusAt(now-g.started)});return}this.commit(held?(g.key==='t'?'recallAll':'recallField'):(g.key==='t'?'recallField':'recall'))}
+ release(token,now){const g=this.active.get(token);if(!g)return false;if(!g.held)this.fire(g,now-g.started>=holdDuration(g.key),now);this.active.delete(token);this.render(now);return true}
+ tick(now){for(const g of this.active.values())if(!g.held&&now-g.started>=holdDuration(g.key)){g.held=true;this.fire(g,true,now)}this.render(now)}
+ cancel(token){if(token===undefined)this.active.clear();else this.active.delete(token);this.render(this.now)}
+ render(now){this.now=now;const g=[...this.active.values()].at(-1);this.progress(g?{key:g.key,held:g.held,progress:g.held?1:Math.max(0,Math.min(1,(now-g.started)/holdDuration(g.key))),...(g.key==='q'?{radius:recruitRadiusAt(g.held?Q_HOLD_MS:now-g.started)}:{}),label:g.key==='q'?(g.held?'All commanded apes called':'Expand call radius'):g.key==='t'?'Mobilize settlements':'Recall all field apes'}:null)}
 }
-window.ATSHoldCommandInput=HoldCommandInput;window.ATSHordeCommands=Object.freeze({holdMs:HOLD_MS,nearbyRadius:NEAR,recruitRadius:RECRUIT});
+window.ATSHoldCommandInput=HoldCommandInput;window.ATSHordeCommands=Object.freeze({holdMs:HOLD_MS,qHoldMs:Q_HOLD_MS,nearbyRadius:NEAR,recruitRadius:RECRUIT,recruitMaxRadius:RECRUIT_MAX,recruitRadiusForHold:recruitRadiusAt});
 })();

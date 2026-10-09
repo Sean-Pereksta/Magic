@@ -1,5 +1,17 @@
 # Apes Together Strong
 
+## Expanding calls and fan attacks
+
+Hold **Q** to grow a visible recruitment circle from 340 to 1,600 paces, then
+release to call apes from that area. At **1.2 seconds**, Q performs the existing
+total recall of every ape already under your command, including residents.
+The same hold works on the Call button and the touch wheel.
+
+Quickly **double-tap E** to fan out toward the pointer while attacking. A single
+tap still targets the nearest foe after the 240 ms double-tap window; holding
+E still targets troops and vehicles. Selected species and individual groups
+share a fan front. See [HORDE-COMMANDS.md](HORDE-COMMANDS.md).
+
 ## Monkey command calls
 
 The nine supplied monkey/gorilla effects play softly for recruit, charge, recall,

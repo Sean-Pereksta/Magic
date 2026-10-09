@@ -70,7 +70,7 @@ class Siege {
  selectClimbers(){const ids=this.members(SPECIES).filter(a=>LIGHT.has(a.species)).map(a=>a.id);this.selectUnits(ids);this.status=ids.length?'Climbers selected · move or attack inside walls to climb':'No climbing apes available';return ids.length}
  selectUnits(ids,add=false){this.unitIds=[...new Set([...(add?this.unitIds||[]:[]),...ids])].filter(id=>this.eligible(this.g.apesById.get(id)||{}));this.selected=[...new Set(this.unitIds.map(id=>this.g.apesById.get(id).species))];return this.selected}
  selectedMembers(){return this.members(this.selected.length?this.selected:SPECIES).filter(a=>!this.unitIds||this.unitIds.includes(a.id))}
- clearActor(a){delete a.areaTarget;delete a._areaThink;delete a.armyOrder;delete a.siegeRoute;delete a._siegeProgress;delete a._orderStall;if(a.siegeTransition)this.detach(a);}
+ clearActor(a){delete a.areaTarget;delete a._areaThink;delete a.armySpread;delete a.armyOrder;delete a.siegeRoute;delete a._siegeProgress;delete a._orderStall;if(a.siegeTransition)this.detach(a);}
  statusOf(species){const group=this.groups[species];return group?.blocked?'blocked':group?.orders.length?'active':'idle'}
  makeOrder(p,kind){
   if(!finite(p))return null;const g=this.g;
@@ -109,8 +109,12 @@ class Siege {
  }
  formation(species,destination){const units=this.members(species).filter(a=>a.armyOrder&&a.armyOrder.group===this.groups[a.species]?.id).sort((a,b)=>Number(b.shield?.hp>0)-Number(a.shield?.hp>0)),front=units.filter(a=>a.shield?.hp>0).length,columns=Math.min(12,Math.max(3,front)),center=this.center(species),heading=Math.atan2(destination.y-center.y,destination.x-center.x);units.forEach((a,i)=>{const slot=i<front?i:i-front+Math.ceil(front/columns)*columns;a.armyOrder.formation={side:(slot%columns-(columns-1)/2)*25,back:Math.floor(slot/columns)*28,heading}})}
  immediate(type,p=this.center()){const ids=this.selected.length?this.selected:SPECIES;return this.issue(ids,[{id:'order-'+ ++this.serial,type,...point(p)}])}
- shortcut(cmd,aim){if(!this.selected.length)return false;let type={charge:'charge',spreadCharge:'charge',attackNearest:'defend',recall:'retreat',hold:'hold',call:'follow'}[cmd];if(!type)return false;const center=this.center(),length=Math.hypot(aim.x,aim.y)||1,p=['charge'].includes(type)?{x:center.x+aim.x/length*570,y:center.y+aim.y/length*570}:type==='retreat'?point(this.g.king):center;const ok=this.immediate(type,p);if(cmd==='spreadCharge')for(const a of this.selectedMembers())a.armySpread=true;return ok}
- skip(){for(const s of this.selected){const group=this.groups[s];if(!group)continue;for(const id of group.members){const a=this.g.apesById.get(id);if(a?.armyOrder){a.armyOrder.index++;delete a.siegeRoute;delete a._orderStall}}group.blocked=false}}
+ shortcut(cmd,aim){if(!this.selected.length)return false;let type={charge:'charge',spreadCharge:'charge',attackNearest:'defend',recall:'retreat',hold:'hold',call:'follow'}[cmd];if(!type)return false;const center=this.center(),length=Math.hypot(aim.x,aim.y)||1,p=['charge'].includes(type)?{x:center.x+aim.x/length*570,y:center.y+aim.y/length*570}:type==='retreat'?point(this.g.king):center;const ok=this.immediate(type,p);if(ok&&cmd==='spreadCharge'){
+  const list=this.selectedMembers(),angle=Math.atan2(aim.y,aim.x);
+  // Share the fan across the selection, so separate species do not overlap.
+  list.forEach((a,i)=>{const heading=angle+((i+.5)/list.length-.5)*1.75;a.armyOrder.fanTarget={x:center.x+Math.cos(heading)*570,y:center.y+Math.sin(heading)*570}});
+ }return ok}
+ skip(){for(const s of this.selected){const group=this.groups[s];if(!group)continue;for(const id of group.members){const a=this.g.apesById.get(id);if(a?.armyOrder)this.advance(a)}group.blocked=false}}
  retry(){for(const s of this.selected){const group=this.groups[s];if(group){group.blocked=false;for(const id of group.members){const a=this.g.apesById.get(id);if(a){delete a.siegeRoute;delete a._orderStall;a._siegeProgress=null}}}}this.pathCache.clear()}
  resolve(o){return o.targetKind==='human'?this.g.humansById.get(o.targetId):o.targetKind==='vehicle'?this.g.vehicles.find(v=>v.id===o.targetId):this.g.world.objects.get(o.targetId)}
  known(o){if(o.type==='gateControl')return !!o.discovered;const w=this.g.world;return !w.discovered?.size||w.discovered.has(Math.floor(o.x/(w.revealCellSize||192))+','+Math.floor(o.y/(w.revealCellSize||192)))}
@@ -174,18 +178,19 @@ class Siege {
   if(u===1){if(!t.top&&!t.stairs&&this.g.navigation.blocked(t.to.x,t.to.y,9,'ape')){this.detach(a);delete a.siegeRoute;return true}delete a.siegeTransition;delete a.climbingWallId;if(t.top||t.stairs){a.x=w.x;a.y=w.y;a.onWallId=w.id;a.wallNode=w.id;a.elevation=t.height;a.wallClimbHeight=t.height}else{a.x=t.to.x;a.y=t.to.y;a.elevation=0;a.wallClimbHeight=0}}
   return true;
  }
- advance(a){delete a.armyOrder.heading;a.armyOrder.index++;delete a.siegeRoute;delete a._orderStall;delete a._siegeProgress;}
+ advance(a){delete a.armyOrder.heading;delete a.armyOrder.fanTarget;a.armyOrder.index++;delete a.siegeRoute;delete a._orderStall;delete a._siegeProgress;}
  walkTop(a,target,dt){const g=this.g,start=g.world.objects.get(a.onWallId),end=g.world.objects.get(target.onWallId),site=g.world.sites.get(start?.siteId);if(!start||!end||!site||start.siteId!==end.siteId)return false;
   const key='wall:'+start.id+':'+end.id+':'+g.world.navRevision;let path=this.pathCache.get(key);if(!path){const queue=[[start]],seen=new Set([start.id]);path=[];while(queue.length&&seen.size<=256){const route=queue.shift(),w=route.at(-1);if(w.id===end.id){path=route.map(w=>w.id);break}for(const n of this.wallNeighbors(w,site))if(!seen.has(n.id)){seen.add(n.id);queue.push([...route,n])}}this.pathCache.set(key,path);if(this.pathCache.size>256)this.pathCache.delete(this.pathCache.keys().next().value)}if(!path.length)return false;const next=path.length>1?g.world.objects.get(path[1]):target,d=dist(a,next),step=Math.min(d,a.speed*.6*dt);if(d>1){a.x+=(next.x-a.x)/d*step;a.y+=(next.y-a.y)/d*step;a.dir=Math.atan2(next.y-a.y,next.x-a.x);a.moving=true}if(d<3&&path.length>1){a.onWallId=next.id;a.wallNode=next.id}return true;
  }
  followRoute(a,o,dt){
+  if(o.type==='charge'&&a.armyOrder.fanTarget)o={...o,id:o.id+':fan:'+a.id,...point(a.armyOrder.fanTarget)};
   const g=this.g,orderKey=o.id+':'+g.world.navRevision+(o.targetKind&&o.targetKind!=='object'?':'+Math.floor(o.x/32)+','+Math.floor(o.y/32):'');if(!a.siegeRoute||a.siegeRoute.key!==orderKey){const key=a.species+':'+Math.floor(a.x/140)+','+Math.floor(a.y/140)+':'+orderKey;let path=this.pathCache.get(key);if(!path){path=this.routeFor(a,o);this.pathCache.set(key,path);if(this.pathCache.size>256)this.pathCache.delete(this.pathCache.keys().next().value)}a.siegeRoute={key:orderKey,steps:path.map(p=>({...p})),index:0}}
   const route=a.siegeRoute,p=route.steps[route.index];if(!p)return true;
   if(p.gateId){const gate=g.world.objects.get(p.gateId);if(gate?.solid&&!gate.dead){this.groups[a.species].blocked='gate';return false}}
   if(p.blocked){this.groups[a.species].blocked='route';return false}
   if(p.action&&!LIGHT.has(a.species)){this.groups[a.species].blocked='climber required';return false}if(p.action){const wall=g.world.objects.get(p.wallId);if(!wall||wall.dead||wall.hp<=0){route.index++;return false}if(dist(a,wall)<Math.max(wall.w||20,wall.h||20)/2+42){if(this.startTransition(a,wall,p,p.action==='climb'))route.index++;else if(this.status==='Climb exit blocked')this.groups[a.species].blocked='climb exit';return false}}
-  const last=route.index===route.steps.length-1,slot=a.armyOrder.slot,spacing=a.armySpread?46:34,side=(slot%9-Math.min(8,(this.groups[a.species]?.members.length||1)-1)/2)*spacing,row=Math.floor(slot/9);
-  let goal=point(p);if(last&&!o.targetId){const angle=a.armyOrder.heading??(a.armyOrder.heading=Math.atan2(o.y-a.y,o.x-a.x));goal={x:p.x-Math.sin(angle)*side-Math.cos(angle)*row*32,y:p.y+Math.cos(angle)*side-Math.sin(angle)*row*32};const b=p.formationBounds;if(b){goal.x=clamp(goal.x,b.x-b.ex,b.x+b.ex);goal.y=clamp(goal.y,b.y-b.ey,b.y+b.ey)}if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
+  const last=route.index===route.steps.length-1,slot=a.armyOrder.slot,side=(slot%9-Math.min(8,(this.groups[a.species]?.members.length||1)-1)/2)*34,row=Math.floor(slot/9);
+  let goal=point(p);if(last&&!o.targetId&&!a.armyOrder.fanTarget){const angle=a.armyOrder.heading??(a.armyOrder.heading=Math.atan2(o.y-a.y,o.x-a.x));goal={x:p.x-Math.sin(angle)*side-Math.cos(angle)*row*32,y:p.y+Math.cos(angle)*side-Math.sin(angle)*row*32};const b=p.formationBounds;if(b){goal.x=clamp(goal.x,b.x-b.ex,b.x+b.ex);goal.y=clamp(goal.y,b.y-b.ey,b.y+b.ey)}if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
   if(o.type==='shield'&&a.armyOrder.formation&&last){const f=a.armyOrder.formation;goal={x:p.x-Math.sin(f.heading)*f.side-Math.cos(f.heading)*f.back,y:p.y+Math.cos(f.heading)*f.side-Math.sin(f.heading)*f.back};if(g.navigation.blocked(goal.x,goal.y,10,'ape'))goal=point(p)}
   const d=dist(a,goal),arrived=last&&o.targetId?g.objectDistance(a,this.resolve(o)||o)<29:d<(last?26:6);if(arrived){route.index++;delete a._orderStall;return route.index>=route.steps.length}
   const speed=o.type==='shield'?Math.min(a.speed,68)/(a.shield?.hp>0?.9:1):a.speed*(o.type==='charge'?1.35:1);a.target=goal;g.move(a,goal.x-a.x,goal.y-a.y,speed,dt);
