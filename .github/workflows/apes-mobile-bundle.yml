@@ -1,0 +1,35 @@
+name: Assemble mobile command wheel bundle
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: write
+jobs:
+  bundle:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/apes-mobile-command-wheel'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/apes-together-strong/
+            /game/apes-together-strong.html
+            /.github/workflows/apes-mobile-bundle.yml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Rebuild and verify the tested standalone game
+        run: |
+          node game/apes-together-strong/build.cjs
+          test "$(git hash-object game/apes-together-strong.html)" = "9be776238d999840555ccdadf14cbb3116eb5113"
+          node game/apes-together-strong/build.cjs --check
+      - name: Commit the generated bundle and remove this one-time assembler
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add game/apes-together-strong.html
+          git rm .github/workflows/apes-mobile-bundle.yml
+          git commit -m "Build tested mobile command wheel into standalone game"
+          git push origin HEAD:refs/heads/codex/apes-mobile-command-wheel
