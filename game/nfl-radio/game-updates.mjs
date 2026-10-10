@@ -1,3 +1,4 @@
+import {storagePrefix,API,SCOREBOARD_URL} from './league.mjs';
 import {formatPlay,summaryPlayers,shouldAnnouncePlay} from './play-formatter.mjs';
 import {readPlayByPlaySettings,settingsForGame} from './play-settings.mjs';
 import {setRadioDucked} from './radio-audio-bridge.mjs';
@@ -8,10 +9,10 @@ import {
   unlockBrowserSpeech
 } from './speech-queue.mjs';
 
-const STORAGE_KEY='nfl-dial:spokenUpdates';
-const ROTATION_KEY='nfl-dial:rotation';
-const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
-const SUMMARY_URL=id=>`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(id)}`;
+const STORAGE_KEY=`${storagePrefix}:spokenUpdates`;
+const ROTATION_KEY=`${storagePrefix}:rotation`;
+
+const SUMMARY_URL=id=>`${API}/summary?event=${encodeURIComponent(id)}`;
 
 export const DEFAULT_UPDATE_SETTINGS={
   enabled:false,

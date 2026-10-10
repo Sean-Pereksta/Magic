@@ -1,5 +1,6 @@
+import {storagePrefix} from './league.mjs';
 import {normalizeAnnouncementMode} from './play-formatter.mjs';
-export const STORAGE_KEY='nfl-dial:livePlayByPlay';
+export const STORAGE_KEY=`${storagePrefix}:livePlayByPlay`;
 export const DEFAULT_SCORE_INTERVAL_MINUTES=5;
 export const MAX_SCORE_INTERVAL_MINUTES=120;
 export function normalizeScoreInterval(value){
@@ -22,5 +23,5 @@ export function readPlayByPlaySettings(storage=globalThis.localStorage){
 }
 export function settingsForGame(settings,gameId){return {...settings,selectedPlayerIds:(settings.selectedPlayersByGame?.[String(gameId)]||[]).map(p=>p.id)};}
 export function selectedGameIds(storage=globalThis.localStorage){
-  try{const value=JSON.parse(storage?.getItem('nfl-dial:rotation')||'[]');return Array.isArray(value)?value.filter(id=>typeof id==='string'):[];}catch{return [];}
+  try{const value=JSON.parse(storage?.getItem(`${storagePrefix}:rotation`)||'[]');return Array.isArray(value)?value.filter(id=>typeof id==='string'):[];}catch{return [];}
 }
