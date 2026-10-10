@@ -3,7 +3,10 @@
 <body>
 <header><a href="/lobby/lobby.html" class="back">← Lobby</a><span class="brand"><span class="brandMark" aria-hidden="true">◉</span> CATNMICE <b>RADIO</b></span><button id="playByPlayButton" aria-haspopup="dialog">Voice &amp; alerts</button></header>
 <main>
-<nav class="leagueTabs" aria-label="Football league"><a data-league="nfl" href="?league=nfl">NFL</a><a data-league="college" href="?league=college">College Football</a></nav>
+<div class="stickyTabs"><nav class="leagueTabs" aria-label="Football league"><a data-league="nfl" href="?league=nfl">NFL</a><a data-league="college" href="?league=college">College Football</a></nav>
+<div class="viewBar"><div role="tablist" aria-label="Radio display"><button id="playTab" role="tab" data-view="play" aria-selected="true" aria-controls="playPanel">Play-by-play</button><button id="visualTab" role="tab" data-view="visual" aria-selected="false" aria-controls="visualPanel">Visual</button></div><button id="fieldVoiceToggle" aria-pressed="false">Enable voice</button></div>
+<div class="voiceQueueBar"><span id="speechIndicator" role="status" aria-live="polite">Voice ready</span><button id="resumeVoice" hidden>Resume voice</button></div></div>
+<section id="visualPanel" role="tabpanel" aria-labelledby="visualTab" hidden><h2>Rotation field view</h2><p class="settingHint">● Ball · yellow line: first down · blue curve: completed pass · gold line: run. Schematic last-play movement, not player tracking. Voice continues in either view.</p><div id="fieldGrid"></div></section>
 <div id="collegeFilters" hidden><label for="collegeFilter">Show games</label> <select id="collegeFilter"><option value="all">All games</option><option value="ranked">Top 25 teams</option></select><p class="settingHint">Top 25 includes either team ranked 1–25 in ESPN’s game ranking. Your rotation stays saved when filtering.</p></div>
 <div class="masthead"><div><div id="leagueHeading" class="eyebrow">NFL RADIO COMPANION</div><h1>Your game. <span>Your call.</span></h1><p class="intro">Live radio. Play calls. The players you follow.</p></div><div class="toolbar"><button id="edit" hidden>Edit rotation</button><button id="refresh" aria-label="Refresh games">↻ Refresh</button><span id="scheduleStatus" role="status">Loading games…</span></div></div>
 <section id="activeGame" class="gameHero" aria-label="Current game">
@@ -16,8 +19,8 @@
  <div class="transport"><button id="prev" aria-label="Previous game">‹ Previous</button><button id="pause" aria-label="Play or pause">▶</button><button id="next" aria-label="Next game">Next ›</button></div>
  <details class="radioTools"><summary>Broadcast &amp; voice commands</summary><div id="broadcastRoles" class="roles" aria-label="Broadcast choice"></div><button id="mic" class="mic" aria-label="Hold to talk. Hold Space when focused." aria-pressed="false">🎙 HOLD TO TALK</button><form id="commandForm"><label class="sr" for="command">Type a team or broadcast</label><input id="command" placeholder="Lions / away broadcast" autocomplete="off"><button>Go →</button></form><button id="listening" class="textButton">How playback works</button></details>
 </footer>
-<section class="companion" aria-label="Play announcements">
- <div class="sectionTitle"><h2>Your play calls</h2><span id="speechIndicator" role="status" aria-live="polite">Voice ready</span></div>
+<section id="playPanel" role="tabpanel" aria-labelledby="playTab" class="companion" aria-label="Play announcements">
+ <div class="sectionTitle"><h2>Your play calls</h2></div>
  <div class="announcementControls"><div class="modeChips" role="group" aria-label="Announcement mode"><button data-play-mode="every" aria-pressed="true">Every Play</button><button data-play-mode="touchdowns" aria-pressed="false">Touchdowns</button><button data-play-mode="players" aria-pressed="false">Selected Players</button></div><button id="announcementsToggle" aria-pressed="false">Enable voice</button></div>
  <p id="announcementHint" class="settingHint"></p><button id="choosePlayers" hidden><span id="selectedPlayerCount">Choose players</span> · Edit players</button>
  <p id="selectedPlayerSummary" class="settingHint" hidden></p>

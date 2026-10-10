@@ -1,3 +1,4 @@
+import {installFieldView} from './field-view.mjs';
 import {leagueName,storagePrefix,API,SCOREBOARD_URL} from './league.mjs';
 import {browserSpeechAvailable,enqueueBrowserSpeech,getBrowserSpeechQueueState,removeQueuedSpeech,unlockBrowserSpeech,onBrowserSpeechQueueState} from './speech-queue.mjs';
 import {setRadioDucked} from './radio-audio-bridge.mjs';
@@ -88,6 +89,8 @@ export function installLivePlayByPlay(){
   let events=[],viewedGame='',polling=false,nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000,disposed=false,dataFailed=false;
   const tracker=createPlayTracker(),summaries=new Map(),rosters=new Map(),playersByGame=new Map(),historyStatus=new Map();
   const liveGames=new Set();
+  const fields=installFieldView();
+  const paintFields=()=>fields?.render(events,selectedGameIds(),id=>tracker.history(id).at(-1),{stale:dataFailed});
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
   const currentRadioId=()=>$('nowGame')?.dataset.gameId||'';
   const monitored=()=>selectedGameIds();
@@ -95,14 +98,14 @@ export function installLivePlayByPlay(){
   const currentEvent=()=>events.find(e=>String(e.id)===viewedGame);
   const allowed=entry=>{
     const event=events.find(e=>String(e.id)===entry.gameId);
-    const latest=tracker.history(entry.gameId).find(p=>p.key===entry.key);
-    if(latest&&latest.text!==entry.text)return false;
     return settings.enabled&&monitored().includes(entry.gameId)&&(settings.includeRadioGame||currentRadioId()!==entry.gameId)&&
       shouldAnnouncePlay(entry.raw,settingsForGame(settings,entry.gameId),{event,players:playersByGame.get(entry.gameId)||[],formatted:entry});
   };
   const status=message=>{$('playByPlayStatus').textContent=message;};
   const paintControls=()=>{
     for(const button of document.querySelectorAll('[data-play-mode]'))button.setAttribute('aria-pressed',String(button.dataset.playMode===settings.mode));
+    $('fieldVoiceToggle').textContent=settings.enabled?'Voice on':'Enable voice';
+    $('fieldVoiceToggle').setAttribute('aria-pressed',String(settings.enabled));
     $('announcementsToggle').textContent=settings.enabled?'Voice on':'Enable voice';
     $('announcementsToggle').setAttribute('aria-pressed',String(settings.enabled));
     $('playByPlayEnabled').checked=settings.enabled;$('playByPlayDuckRadio').checked=settings.duckRadio;
@@ -145,6 +148,7 @@ export function installLivePlayByPlay(){
     }
   };
   function paintHero(){
+    paintFields();
     const event=currentEvent(),c=competition(event),hero=$('gameScore');hero.replaceChildren();
     $('gameLiveState').textContent=dataFailed?'RECONNECTING':event?gameState(event)==='in'?'LIVE':gameState(event)==='post'?'FINAL':'UPCOMING':'YOUR DIAL';
     $('gameLiveState').classList.toggle('isLive',!!event&&gameState(event)==='in'&&!dataFailed);
@@ -219,11 +223,12 @@ export function installLivePlayByPlay(){
   function enqueuePlay(entry,{manual=false}={}){
     if(!entry?.text||(!manual&&!allowed(entry)))return false;
     return enqueueBrowserSpeech(entry.text,{
+      getText:()=>tracker.history(entry.gameId).find(p=>p.key===entry.key)?.text||entry.text,
       source:'play-by-play',key:`play-by-play:${entry.gameId}:${entry.key}`,...playVoiceOptions(entry,voiceSettings.style),
       shouldPlay:()=>manual?monitored().includes(entry.gameId):allowed(entry),
       onStart:()=>{if(settings.duckRadio)setRadioDucked(true);status(`Speaking: ${entry.label}`);},
       onEnd:()=>{setRadioDucked(false);status('Ready for the next play.');},
-      onError:()=>{setRadioDucked(false);status('Voice stopped. New announcements will keep queuing.');},
+      onError:error=>{setRadioDucked(false);status(error==='speech-blocked'?'Voice needs a tap. Use Resume voice; your calls are still queued.':'Recovering voice; your calls remain queued.');},
       onSkip:()=>setRadioDucked(false)
     });
   }
@@ -275,6 +280,7 @@ export function installLivePlayByPlay(){
     if(players){$('playerSearch').focus();$('playerSelection').scrollIntoView({block:'start'});}
   };
   for(const button of document.querySelectorAll('[data-play-mode]'))button.onclick=()=>{settings.mode=button.dataset.playMode;setEnabled(true);if(settings.mode==='players')openSettings(true);};
+  $('fieldVoiceToggle').onclick=()=>setEnabled(!settings.enabled);
   $('announcementsToggle').onclick=()=>setEnabled(!settings.enabled);$('playByPlayEnabled').onchange=()=>setEnabled($('playByPlayEnabled').checked);
   $('playByPlayButton').onclick=()=>openSettings();$('choosePlayers').onclick=()=>openSettings(true);$('closePlayByPlay').onclick=()=>$('playByPlayDialog').close();
   $('playByPlayDuckRadio').onchange=()=>{settings.duckRadio=$('playByPlayDuckRadio').checked;save();setRadioDucked(settings.duckRadio&&['play-by-play','score-update','game-update','voice-preview'].includes(getBrowserSpeechQueueState().current?.source));};
@@ -295,9 +301,11 @@ export function installLivePlayByPlay(){
   };
   const updates=$('gameUpdatesButton');if(updates)$('extraVoiceActions').append(updates);
   onBrowserSpeechQueueState(state=>{
-    $('speechIndicator').textContent=state.speaking?`Speaking${state.queued?` · ${state.queued} queued`:''}`:state.queued?`${state.queued} queued`:'Voice ready';
+    $('resumeVoice').hidden=!state.blocked;
+    $('speechIndicator').textContent=state.blocked?`Tap Resume voice · ${state.queued} queued`:state.speaking?`Speaking${state.queued?` · ${state.queued} queued`:''}`:state.queued?`${state.queued} queued`:'Voice ready';
     $('speechIndicator').classList.toggle('speaking',state.speaking);
   });
+  $('resumeVoice').onclick=()=>unlockBrowserSpeech();
   globalThis.speechSynthesis?.addEventListener?.('voiceschanged',paintVoiceList);
   window.addEventListener('nfl-radio:scoreboard',e=>{if(!events.length){events=e.detail.events||[];paintGameOptions();paintHero();}void poll();});
   window.addEventListener('nfl-radio:rotation',()=>{paintGameOptions();paintHero();paintControls();void poll();});

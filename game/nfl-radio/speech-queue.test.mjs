@@ -92,3 +92,39 @@ test('voice choice is resolved when a queued item starts, including late-loaded 
  voices=[{voiceURI:'preferred',name:'Natural',lang:'en-US'}];spoken[0].onend();await sleep(5);
  assert.equal(spoken[1].voice.voiceURI,'preferred');assert.equal(spoken[1].rate,1.1);assert.equal(spoken[1].pitch,1.08);spoken[1].onend();
 });
+
+test('a stalled browser retries the head item without losing the FIFO backlog',async()=>{
+ const spoken=[];const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,startTimeoutMs:12});
+ queue.enqueue('first',{key:'1'});queue.enqueue('second',{key:'2'});
+ await sleep(18);
+ assert.equal(spoken.length,2);assert.equal(spoken[1].text,'first');
+ spoken[0].onend();assert.equal(queue.state().current.key,'1','late old callback cannot finish retry');
+ spoken[1].onstart();spoken[1].onend();await sleep(3);
+ assert.equal(spoken[2].text,'second');spoken[2].onend();assert.equal(queue.state().queued,0);
+});
+test('blocked voice retains all calls until a user unlocks speech',async()=>{
+ const spoken=[];const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.enqueue('first',{key:'1'});queue.enqueue('second',{key:'2'});
+ spoken[0].onerror({error:'not-allowed'});
+ assert.equal(queue.state().blocked,true);assert.equal(queue.state().queued,2);
+ queue.unlock();assert.equal(spoken[1].text,'first');spoken[1].onend();await sleep(3);
+ assert.equal(spoken[2].text,'second');spoken[2].onend();assert.equal(queue.state().blocked,false);
+});
+test('missing end callback recovers and a queued correction is read rather than dropped',async()=>{
+ const spoken=[];let text='old description';
+ const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,minimumSpeechTimeoutMs:5});
+ queue.enqueue('A',{key:'1'});spoken[0].onstart();queue.enqueue('old description',{key:'2',getText:()=>text});text='corrected description';
+ await sleep(125);assert.equal(spoken[1].text,'A');spoken[1].onend();await sleep(3);
+ assert.equal(spoken[2].text,'corrected description');spoken[2].onend();
+});
+test('microphone interruption preserves active play ahead of later calls',async()=>{
+ const spoken=[];const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.enqueue('first',{key:'1'});queue.enqueue('second',{key:'2'});queue.setSuspended(true);
+ assert.equal(queue.state().queued,2);queue.setSuspended(false);
+ assert.equal(spoken[1].text,'first');spoken[0].onend();assert.equal(queue.state().current.key,'1');
+ spoken[1].onend();await sleep(3);assert.equal(spoken[2].text,'second');spoken[2].onend();
+});
