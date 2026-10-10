@@ -1,14 +1,16 @@
+import {collegeStationSearches,collegeExternalOptions} from './college-stations.mjs';
+import {college,leagueName,storagePrefix,SCOREBOARD_URL,isTop25} from './league.mjs';
 import {enqueueBrowserSpeech,cancelBrowserSpeech,suspendBrowserSpeech,unlockBrowserSpeech} from './speech-queue.mjs';
-import {team,parseSchedule,resolveVoice,playable,feedQueue,cycle,RadioPlayer} from './core.mjs';
+import {team,parseSchedule,registerCollegeTeam,resolveVoice,playable,feedQueue,cycle,RadioPlayer} from './core.mjs';
 import {catalog} from './catalog.mjs';
 import {PROVIDERS,providerCandidates,safeListeningUrl} from './providers.mjs';
 import {discoverTeamStreams,mergeInAppQueues} from './station-discovery.mjs';
 
 const $=id=>document.getElementById(id);
-const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(`nfl-dial:${key}`))??fallback;}catch{return fallback;}};
-const save=(key,value)=>{try{localStorage.setItem(`nfl-dial:${key}`,JSON.stringify(value));}catch{}if(key==='rotation')window.dispatchEvent(new CustomEvent('nfl-radio:rotation'));}
+const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(`${storagePrefix}:${key}`))??fallback;}catch{return fallback;}};
+const save=(key,value)=>{try{localStorage.setItem(`${storagePrefix}:${key}`,JSON.stringify(value));}catch{}if(key==='rotation')window.dispatchEvent(new CustomEvent('nfl-radio:rotation'));}
 const notice=message=>{$('notice').textContent=message;};
-const label=g=>`${g.away} vs ${g.home}`;
+const label=g=>`${team(g.away)?.abbreviation||g.away} vs ${team(g.home)?.abbreviation||g.home}`;
 const button=(text,fn,cls='')=>{const b=document.createElement('button');b.textContent=text;b.className=cls;b.onclick=fn;return b;};
 const paragraph=(text,cls='')=>{const p=document.createElement('p');p.textContent=text;p.className=cls;return p;};
 const badge=(text,kind='free')=>{const s=document.createElement('span');s.className=`sourceBadge ${kind}`;s.textContent=text;return s;};
@@ -41,7 +43,7 @@ async function warmTeam(teamId){
  if(!teamId)return [];
  if(stationCache.has(teamId))return stationCache.get(teamId);
  if(stationPending.has(teamId))return stationPending.get(teamId);
- const work=discoverTeamStreams(teamId).then(list=>{
+ const work=discoverTeamStreams(teamId,{searches:college?collegeStationSearches(team(teamId)):undefined}).then(list=>{
   stationCache.set(teamId,list);
   stationPending.delete(teamId);
   renderGames();
@@ -85,7 +87,7 @@ const player=new RadioPlayer(()=>new Audio(),(state,feed)=>{
  if(state==='playing'&&preferencesPending===feed?.id){preferences[requestedTeam]=feed.id;save('preferences',preferences);preferencesPending=null;}
  if('mediaSession' in navigator){
   navigator.mediaSession.playbackState=state==='playing'?'playing':'paused';
-  if(feed&&typeof MediaMetadata!=='undefined')navigator.mediaSession.metadata=new MediaMetadata({title:currentGame()?label(currentGame()):'NFL Radio Dial',artist:feed.name,album:'Catnmice'});
+  if(feed&&typeof MediaMetadata!=='undefined')navigator.mediaSession.metadata=new MediaMetadata({title:currentGame()?label(currentGame()):`${leagueName} Radio Dial`,artist:feed.name,album:'Catnmice'});
  }
 });
 
@@ -156,10 +158,11 @@ function toggleResume(){if(player.audio)player.resume();else if(current)void rou
 
 function renderGames(){
  $('games').replaceChildren();
- for(const g of games){
+ for(const g of games.filter(g=>!college||read('gameFilter','all')!=='ranked'||isTop25(g))){
   const card=document.createElement('article');card.className=`card ${selected.has(g.id)?'selected':''}`;
   card.append(paragraph(g.state==='in'?`● LIVE · ${g.status}`:g.state==='post'?`FINAL · ${g.status}`:new Date(g.date).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),'status'));
-  const h=document.createElement('h3');h.textContent=label(g);card.append(h,paragraph(`${team(g.away).name} at ${team(g.home).name}`,'teams'));
+  const h=document.createElement('h3');h.textContent=`${g.awayRank>=1&&g.awayRank<=25?'#'+g.awayRank+' ':''}${team(g.away)?.abbreviation||g.away} vs ${g.homeRank>=1&&g.homeRank<=25?'#'+g.homeRank+' ':''}${team(g.home)?.abbreviation||g.home}`;card.append(h,paragraph(`${team(g.away).name} at ${team(g.home).name}`,'teams'));
+  if(g.state!=='pre')card.append(paragraph(`${g.awayScore??'–'} – ${g.homeScore??'–'}`,'score'));
   const verified=feeds.filter(f=>playable(f,g)).length;
   const discovered=streamsFor(g.away).length+streamsFor(g.home).length;
   const searching=stationPending.has(g.away)||stationPending.has(g.home);
@@ -171,7 +174,7 @@ function renderGames(){
   }));
   $('games').append(card);
  }
- if(!games.length)$('games').append(paragraph('No games are scheduled in the current NFL week. Refresh to check again.'));
+ if(!$('games').children.length)$('games').append(paragraph(`No ${college&&read('gameFilter','all')==='ranked'?'Top 25 ':''}games in the current ${leagueName} slate. Refresh or choose All games.`));
  $('count').textContent=`${rotation().length} selected`;$('start').disabled=!rotation().length;
 }
 function renderRotation(){
@@ -193,6 +196,7 @@ function inAppRow(feed){
  return row;
 }
 function externalCandidatesFor(g,target,role){
+ if(college)return collegeExternalOptions(team(target));
  const raw=providerCandidates(catalog,g,target,role,preferences[target]);
  const options=[];
  for(const option of raw){
@@ -233,14 +237,14 @@ async function json(url){const controller=new AbortController();const timer=setT
 async function refresh(){
  if(scheduleBusy)return;scheduleBusy=true;$('refresh').disabled=true;
  try{
-  const results=await Promise.allSettled([json('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'),json('./nfl-radio/feeds.json')]);
+  const results=await Promise.allSettled([json(SCOREBOARD_URL),json('./nfl-radio/feeds.json')]);
   if(results[1].status==='fulfilled'&&Array.isArray(results[1].value.feeds))feeds=results[1].value.feeds.filter(f=>f&&typeof f.id==='string'&&typeof f.name==='string');
   if(results[0].status==='rejected')throw results[0].reason;
   games=parseSchedule(results[0].value);window.dispatchEvent(new CustomEvent('nfl-radio:scoreboard',{detail:results[0].value}));save('schedule',{at:Date.now(),games});
   $('scheduleStatus').textContent=`${results[0].value.week?.number?'Week '+results[0].value.week.number+' · ':''}Updated ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
   selected=new Set([...selected].filter(id=>games.some(g=>g.id===id)));save('rotation',[...selected]);warmRotation();
  }catch{
-  if(!games.length){const cached=read('schedule',null);if(cached&&Date.now()-cached.at<86400000&&Array.isArray(cached.games))games=cached.games.filter(g=>g&&team(g.home)&&team(g.away)&&Number.isFinite(Date.parse(g.date)));}
+  if(!games.length){const cached=read('schedule',null);if(cached&&Date.now()-cached.at<86400000&&Array.isArray(cached.games))games=cached.games.filter(g=>{if(college&&g?.homeTeam&&g?.awayTeam){registerCollegeTeam(g.homeTeam);registerCollegeTeam(g.awayTeam);}return g&&team(g.home)&&team(g.away)&&Number.isFinite(Date.parse(g.date));});}
   $('scheduleStatus').textContent=games.length?'Offline · showing cached schedule, live status may be outdated':'Schedule unavailable. Check your connection and retry.';
  }finally{scheduleBusy=false;$('refresh').disabled=false;renderGames();renderRotation();}
 }
@@ -304,4 +308,12 @@ else{
 if('mediaSession' in navigator)for(const [action,handler]of Object.entries({play:toggleResume,pause:()=>player.pause(),previoustrack:()=>nextGame(-1),nexttrack:()=>nextGame(1)})){try{navigator.mediaSession.setActionHandler(action,handler);}catch{}}
 window.addEventListener('pagehide',()=>{cancelSpeech();cancelBrowserSpeech();voiceText='';release(true);player.stop();});
 window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+document.title=`${leagueName} Radio · Catnmice`;
+$('leagueHeading').textContent=`${leagueName.toUpperCase()} RADIO COMPANION`;
+for(const link of document.querySelectorAll('[data-league]')){if((link.dataset.league==='college')===college)link.setAttribute('aria-current','page');}
+$('collegeFilters').hidden=!college;
+$('collegeFilter').value=read('gameFilter','all');
+$('collegeFilter').onchange=()=>{save('gameFilter',$('collegeFilter').value);renderGames();};
+$('playByPlayScoreScope').options[1].textContent=`All started ${leagueName} games`;
+$('command').placeholder=college?'Ohio State / away broadcast':'Lions / away broadcast';
 hideExternalFallback();refresh();setInterval(()=>{if(!document.hidden)refresh();if(activeFeed?.gameAudio&&!playable(activeFeed,currentGame()))void routePlayback(currentGame());},60000);

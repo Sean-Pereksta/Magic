@@ -1,3 +1,4 @@
+import {college} from './league.mjs';
 // Framework-free domain logic shared by the page and regression tests.
 export const TEAMS = [
  ['ARI','Arizona','Cardinals'],['ATL','Atlanta','Falcons'],['BAL','Baltimore','Ravens'],['BUF','Buffalo','Bills'],
@@ -9,7 +10,9 @@ export const TEAMS = [
  ['NYJ','New York','Jets'],['PHI','Philadelphia','Eagles'],['PIT','Pittsburgh','Steelers'],['SEA','Seattle','Seahawks'],
  ['SF','San Francisco','49ers'],['TB','Tampa Bay','Buccaneers'],['TEN','Tennessee','Titans'],['WAS','Washington','Commanders']
 ].map(([id,city,nickname])=>({id,city,nickname,name:`${city} ${nickname}`}));
-export const team = id => TEAMS.find(t=>t.id===id);
+const collegeTeams=new Map();
+export const team = id => collegeTeams.get(id)||TEAMS.find(t=>t.id===id);
+export function registerCollegeTeam(t){const id=`college:${t.id}`;collegeTeams.set(id,{id,city:t.location||t.shortDisplayName||t.displayName,nickname:t.name||t.displayName,name:t.displayName,abbreviation:t.abbreviation});return id;}
 const normalize=s=>String(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 const extras={SF:['niners','forty niners','forty niners'],TB:['bucs','tampa'],JAX:['jags','jac'],NE:['pats','boston'],WAS:['wash'],LAR:['la rams'],LAC:['la chargers']};
 export function resolveVoice(input,games,current){
@@ -19,7 +22,17 @@ export function resolveVoice(input,games,current){
  if(text==='next station')return {kind:'nextStation'};
  if(/^(pause|stop)( audio| radio)?$/.test(text))return {kind:'pause'};
  if(/^(resume|play)$/.test(text))return {kind:'resume'};
- const mentioned=TEAMS.filter(t=>[t.id,t.name,t.nickname,t.city,...(extras[t.id]||[])].some(a=>padded.includes(` ${normalize(a)} `)));
+ const pool=college?[...collegeTeams.values()].filter(t=>games.some(g=>[g.home,g.away].includes(t.id))):TEAMS;
+ const mentioned=pool.filter(t=>[t.abbreviation||t.id,t.name,t.nickname,t.city,...(extras[t.id]||[])].some(a=>padded.includes(` ${normalize(a)} `)));
+ if(college){
+  const exact=mentioned.filter(t=>[t.city,t.name,t.abbreviation].some(a=>normalize(a)===text.replace(/^(play|switch to|put on) /,'')));
+  const wanted=exact.length?exact:mentioned;
+  if(!wanted.length)return {kind:'unknown',message:'Say a school, matchup, or broadcast.'};
+  const matches=games.filter(g=>wanted.every(t=>[g.home,g.away].includes(t.id)));
+  if(!matches.length)return {kind:'ambiguous',message:'Please use the full school name or matchup.'};
+  const chosen=matches.find(g=>g.state==='in')||matches[0];
+  return {kind:'game',game:chosen,team:wanted[0].id,matchup:wanted.length>1};
+ }
  // A city shared by two teams must never silently pick one, even on a bye.
  for(const city of ['New York','Los Angeles']){
   const pair=TEAMS.filter(t=>t.city===city);
@@ -47,9 +60,10 @@ export function parseSchedule(data){
  return data.events.flatMap(e=>{
   const c=e.competitions?.[0], a=c?.competitors?.find(t=>t.homeAway==='away'),h=c?.competitors?.find(t=>t.homeAway==='home');
   const canonical=id=>({WSH:'WAS',JAC:'JAX',LA:'LAR'}[id]||id);
-  const home=canonical(h?.team?.abbreviation),away=canonical(a?.team?.abbreviation);
+  if(college&&(!h?.team?.id||!a?.team?.id))return [];
+  const home=college?registerCollegeTeam(h.team):canonical(h?.team?.abbreviation),away=college?registerCollegeTeam(a.team):canonical(a?.team?.abbreviation);
   if(!team(home)||!team(away)||!e.id||!Number.isFinite(Date.parse(e.date)))return [];
-  return [{id:String(e.id),home,away,date:e.date,state:e.status?.type?.state||'pre',status:e.status?.type?.shortDetail||'Scheduled'}];
+  return [{id:String(e.id),home,away,homeTeam:h.team,awayTeam:a.team,homeRank:Number(h.curatedRank?.current),awayRank:Number(a.curatedRank?.current),homeScore:h.score,awayScore:a.score,date:e.date,state:e.status?.type?.state||'pre',status:e.status?.type?.shortDetail||'Scheduled'}];
  }).sort((a,b)=>(a.state==='in'?-1:0)-(b.state==='in'?-1:0)||Date.parse(a.date)-Date.parse(b.date));
 }
 export function playable(feed,game,now=Date.now()){

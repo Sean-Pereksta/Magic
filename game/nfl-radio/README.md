@@ -93,3 +93,24 @@ node game/nfl-radio/browser-smoke.mjs
 ```
 
 The browser smoke script requires Playwright and an installed Chromium (`CHROMIUM_PATH` can point to a browser executable). It uses controlled ESPN, roster, station, speech, and audio fixtures; it checks mobile/desktop overflow, saved selections, speech/transcript consistency, mode changes, radio controls, ducking/restoration, and network recovery. Real voice quality, pronunciation, mobile background scheduling, and current station carriage still require listening on the target device.
+
+## College football
+
+The top league links open the same app with `?league=nfl` or `?league=college`.
+Navigation stops existing audio and polling. NFL storage keys remain unchanged;
+college rotations, station preferences, schedule caches and announcement settings
+use `college-dial`. The device voice selection is shared.
+
+College schedules explicitly request ESPN's full FBS slate (`groups=80&limit=1000`),
+including unranked matchups. “Top 25 teams” checks either competitor's ESPN
+`curatedRank.current` for 1–25; missing ranks and 99 are unranked. Filtering the
+chooser never removes a saved rotation entry. Summary and roster calls use the
+college-football endpoint, with the existing play formatter and player controls.
+
+`college-stations.mjs` contains official-source radio search mappings for nine
+schools, with source URLs for maintenance. Other schools search the public radio
+directory by school/team name. Discovery is best effort, not complete station
+coverage or verified game carriage. No college selection uses NFL provider links.
+Add further official call-sign mappings there as coverage expands.
+
+Validation: `node --test game/nfl-radio/*.test.mjs`.

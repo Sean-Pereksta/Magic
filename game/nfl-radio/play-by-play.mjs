@@ -1,3 +1,4 @@
+import {leagueName,storagePrefix,API,SCOREBOARD_URL} from './league.mjs';
 import {browserSpeechAvailable,enqueueBrowserSpeech,getBrowserSpeechQueueState,removeQueuedSpeech,unlockBrowserSpeech,onBrowserSpeechQueueState} from './speech-queue.mjs';
 import {setRadioDucked} from './radio-audio-bridge.mjs';
 import {formatPlay,mergePlayers,summaryPlayers,rosterPlayers,shouldAnnouncePlay} from './play-formatter.mjs';
@@ -6,8 +7,8 @@ import {STORAGE_KEY,readPlayByPlaySettings,settingsForGame,selectedGameIds,norma
 import {readVoiceSettings,saveVoiceSettings,englishVoices,playVoiceOptions} from './voice-settings.mjs';
 export {readPlayByPlaySettings,selectedGameIds,normalizeScoreInterval,DEFAULT_SCORE_INTERVAL_MINUTES,MAX_SCORE_INTERVAL_MINUTES} from './play-settings.mjs';
 export const PLAY_POLL_MS=5000;
-const SCOREBOARD_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
-const API='https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+
+
 const searchKey=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const clean=value=>String(value??'').replace(/\s+/g,' ').trim();
 const canonical=value=>({WSH:'WAS',JAC:'JAX',LA:'LAR'}[value]||value);
@@ -67,7 +68,7 @@ export function buildScoreUpdateSpeech(events,{selectedIds=[],scope='rotation'}=
     .filter(event=>scope==='all'||selected.has(String(event?.id??'')))
     .map(scoreLine)
     .filter(Boolean);
-  return lines.length?`NFL score update. ${lines.join(' ')}`:'';
+  return lines.length?`${leagueName} score update. ${lines.join(' ')}`:'';
 }
 
 async function fetchJson(url){
@@ -282,7 +283,7 @@ export function installLivePlayByPlay(){
   $('playByPlayScoreScope').onchange=()=>{settings.scoreScope=$('playByPlayScoreScope').value;save();};
   $('voiceSelect').onchange=()=>{voiceSettings.voiceURI=$('voiceSelect').value;saveVoiceSettings(voiceSettings);};
   $('voiceStyle').onchange=()=>{voiceSettings.style=$('voiceStyle').value;saveVoiceSettings(voiceSettings);};
-  $('previewVoice').onclick=()=>{unlockBrowserSpeech();enqueueBrowserSpeech('Your NFL radio companion is ready. Choose your games and follow the action.',{source:'voice-preview',key:'voice-preview',...playVoiceOptions({},voiceSettings.style),onStart:()=>{if(settings.duckRadio)setRadioDucked(true);},onEnd:()=>setRadioDucked(false),onError:()=>setRadioDucked(false)});};
+  $('previewVoice').onclick=()=>{unlockBrowserSpeech();enqueueBrowserSpeech('Your football radio companion is ready. Choose your games and follow the action.',{source:'voice-preview',key:'voice-preview',...playVoiceOptions({},voiceSettings.style),onStart:()=>{if(settings.duckRadio)setRadioDucked(true);},onEnd:()=>setRadioDucked(false),onError:()=>setRadioDucked(false)});};
   $('speakLatestPlays').onclick=()=>{unlockBrowserSpeech();const latest=tracker.history(viewedGame).at(-1);if(latest&&shouldAnnouncePlay(latest.raw,settingsForGame(settings,viewedGame),{event:currentEvent(),players:playersByGame.get(viewedGame)||[],formatted:latest}))enqueuePlay(latest,{manual:true});else status('No latest play matches your announcement filter.');};
   $('speakScoresNow').onclick=()=>{unlockBrowserSpeech();enqueueScores({manual:true});};
   $('transcriptGame').onchange=()=>{viewedGame=$('transcriptGame').value;paintHero();};
@@ -301,7 +302,7 @@ export function installLivePlayByPlay(){
   window.addEventListener('nfl-radio:scoreboard',e=>{if(!events.length){events=e.detail.events||[];paintGameOptions();paintHero();}void poll();});
   window.addEventListener('nfl-radio:rotation',()=>{paintGameOptions();paintHero();paintControls();void poll();});
   window.addEventListener('nfl-radio:selection',e=>{viewedGame=String(e.detail.gameId);paintGameOptions();paintHero();});
-  window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){settings=readPlayByPlaySettings();paintControls();}if(e.key==='nfl-dial:rotation'){paintGameOptions();paintHero();void poll();}});
+  window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){settings=readPlayByPlaySettings();paintControls();}if(e.key===`${storagePrefix}:rotation`){paintGameOptions();paintHero();void poll();}});
   document.addEventListener('pointerdown',()=>{if(settings.enabled)unlockBrowserSpeech();},{passive:true});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void poll();});
   const timer=setInterval(poll,PLAY_POLL_MS);

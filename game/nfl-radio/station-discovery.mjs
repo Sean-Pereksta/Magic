@@ -3,7 +3,7 @@
 // This deliberately does NOT scrape iHeart/Audacy/TuneIn session URLs or proxy
 // restricted audio. It searches the open Radio Browser directory for public
 // station-origin HTTPS streams, then lets the browser audio element prove whether
-// each candidate actually plays. NFL game carriage is never inferred from a
+// each candidate actually plays. Football game carriage is never inferred from a
 // working general station stream: a broadcaster can substitute other programming
 // online because of rights, blackout, or location rules.
 
@@ -91,7 +91,7 @@ function toFeed(station,teamId,search){
     stationUuid:station.stationuuid||'',
     search,
     directoryCheckedAt:station.lastchecktime_iso8601||station.lastcheckoktime_iso8601||null,
-    note:'FREE IN APP · Public station stream. NFL game carriage may be replaced or unavailable online because the broadcaster controls rights and location rules.'
+    note:'FREE IN APP · Public station stream. Football game carriage may be replaced or unavailable online because the broadcaster controls rights and location rules.'
   };
 }
 
@@ -118,8 +118,7 @@ async function searchOne(search,fetchImpl){
   return [];
 }
 
-export async function discoverTeamStreams(teamId,{fetchImpl=globalThis.fetch}={}){
-  const searches=TEAM_STATION_SEARCHES[teamId]||[];
+export async function discoverTeamStreams(teamId,{fetchImpl=globalThis.fetch,searches=TEAM_STATION_SEARCHES[teamId]||[]}={}){
   if(!searches.length||typeof fetchImpl!=='function') return [];
   const settled=await Promise.allSettled(searches.map(search=>searchOne(search,fetchImpl).then(rows=>({search,rows}))));
   const candidates=[];
