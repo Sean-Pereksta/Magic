@@ -16,7 +16,7 @@ test('runs, losses, no gain, and first downs remain short and accurate',()=>{
  assert.equal(format('J.Gibbs up the middle for -2 yards.').text,'Jahmyr Gibbs runs up the middle for a loss of 2 yards.');
  assert.equal(format('J.Gibbs right guard for no gain.').text,'Jahmyr Gibbs runs right for no gain.');
  const out=format('J.Goff pass short right to S.LaPorta to DET 42 for 11 yards.',{type:{text:'Pass Reception'},start:{down:3,distance:2,shortDownDistanceText:'3rd & 2',team:{id:'8'}},end:{down:1,team:{id:'8'}}});
- assert.equal(out.text,'Jared Goff finds Sam LaPorta to the right for 11 yards and a first down.');
+ assert.equal(out.text,'Third and 2. Jared Goff finds Sam LaPorta to the right for 11 yards and a first down.');
  assert.equal(out.label,'3rd & 2 — DET');
 });
 test('touchdown is emphatic without invented route or score information',()=>{
@@ -101,4 +101,12 @@ test('suffixes in full ESPN names do not prevent abbreviated player matching',()
  const roster=[normalizePlayer({id:'cook',displayName:'James Cook III',firstName:'James',lastName:'Cook III'})];
  assert.equal(playInvolvesSelectedPlayer({text:'J.Cook left end for 4 yards.'},['cook'],roster),true);
  assert.equal(formatPlay({text:'J.Cook left end for 4 yards.'},{players:roster}).text,'James Cook III runs left for 4 yards.');
+});
+
+test('spoken calls lead with the pre-play down and distance, including goal to go',()=>{
+ const play={text:'J.Goff pass short middle to A.St. Brown for 14 yards.',type:{text:'Pass Reception'},start:{down:2,distance:10},end:{down:1,distance:10}};
+ assert.match(formatPlay(play,{event,players}).text,/^Second and 10\. Jared Goff/);
+ assert.match(formatPlay({...play,start:{down:1,distance:3,shortDownDistanceText:'1st & Goal'}},{event,players}).text,/^First and goal\./);
+ assert.match(formatPlay({...play,start:{shortDownDistanceText:'4th & 2'}},{event,players}).text,/^Fourth and 2\./);
+ assert.doesNotMatch(formatPlay({...play,start:{}},{event,players}).text,/^(First|Second|Third|Fourth) and/);
 });

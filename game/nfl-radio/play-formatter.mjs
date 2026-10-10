@@ -103,6 +103,16 @@ function conversionNote(text){
   return kick?`Extra point by ${kick[1]}.`:`Conversion: ${text}.`;
 }
 function yardPhrase(yards){return yards<0?`for a loss of ${Math.abs(yards)} ${Math.abs(yards)===1?'yard':'yards'}`:yards===0?'for no gain':`for ${yards} ${yards===1?'yard':'yards'}`;}
+export function spokenDown(play){
+  const start=play?.start||{};
+  const short=clean(start.shortDownDistanceText||start.downDistanceText).split(/ at /i)[0];
+  const match=short.match(/^(1st|2nd|3rd|4th)\s*(?:&|and)\s*(goal|\d+)/i);
+  const down=Number(start.down)||({"1st":1,"2nd":2,"3rd":3,"4th":4}[match?.[1]?.toLowerCase()]);
+  if(![1,2,3,4].includes(down))return '';
+  const distance=/goal/i.test(short)?'goal':start.distance??match?.[2];
+  if(distance==null||distance===''||(!/^goal$/i.test(String(distance))&&!Number.isFinite(Number(distance))))return `${['','First','Second','Third','Fourth'][down]} down`;
+  return `${['','First','Second','Third','Fourth'][down]} and ${distance}`;
+}
 export function formatPlay(play,{event=null,players=[]}={}){
   const raw=clean(play?.text||play?.shortText||play?.type?.text);
   if(!raw)return {text:'',kind:'play',touchdown:false,turnover:false,important:false,label:'PLAY',playerIds:[]};
@@ -170,6 +180,8 @@ export function formatPlay(play,{event=null,players=[]}={}){
   }
   const down=clean(play?.start?.shortDownDistanceText||play?.start?.downDistanceText).split(/ at /i)[0]||
     (play?.start?.down?`${['','1st','2nd','3rd','4th'][play.start.down]||play.start.down} & ${play.start.distance??'?'}`:'');
+  const spoken=spokenDown(play);
+  if(spoken)text=`${spoken}. ${text}`;
   const heading=touchdown?'TOUCHDOWN':turnover?'TURNOVER':sack?'SACK':penalty?'PENALTY':fieldGoal?'FIELD GOAL':down||kind.toUpperCase();
   const {all,ids,usable}=playerContext(play,players);
   const playerIds=all.filter(p=>ids.has(p.id)||p.aliases.some(a=>usable(p,a)&&nameMatches(raw,a))).map(p=>p.id).filter(Boolean);

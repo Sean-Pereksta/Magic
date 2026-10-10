@@ -22,7 +22,7 @@ try{
  const gb=[athlete('mckinney','Xavier McKinney','X. McKinney','S')];
  const teams={8:{id:'8',abbreviation:'DET',location:'Detroit',name:'Lions',displayName:'Detroit Lions'},9:{id:'9',abbreviation:'GB',location:'Green Bay',name:'Packers',displayName:'Green Bay Packers'},2:{id:'2',abbreviation:'BUF',name:'Bills'},12:{id:'12',abbreviation:'KC',name:'Chiefs'}};
  for(const t of Object.values(teams))t.logo=`https://a.espncdn.com/test/${t.abbreviation}.png`;
- const makePlay=(id,text)=>({id:String(id),sequenceNumber:String(id),text,type:{text:'Rush'},period:{number:3},clock:{displayValue:'12:05'},start:{down:1,distance:10,shortDownDistanceText:'1st & 10',team:{id:'8'}},end:{down:2,team:{id:'8'}}});
+ const makePlay=(id,text)=>({id:String(id),sequenceNumber:String(id),text,type:{text:'Rush'},period:{number:3},clock:{displayValue:'12:05'},start:{down:1,distance:10,yardsToEndzone:60,shortDownDistanceText:'1st & 10',team:{id:'8'}},end:{down:2,yardsToEndzone:52,team:{id:'8'}}});
  let plays=[makePlay(1,'J.Gibbs left tackle to DET 42 for 8 yards.')],failBoard=false,failSummary=false;
  const game=(id,away,home,last)=>({id,date:'2026-10-04T17:00:00Z',status:{type:{state:'in',shortDetail:'12:05 - 3rd'},period:3,displayClock:'12:05'},competitions:[{competitors:[{id:away.id,homeAway:'away',team:away,score:'10'},{id:home.id,homeAway:'home',team:home,score:'17'}],situation:{possession:home.id,downDistanceText:'2nd & 2 at DET 42',lastPlay:last}}]});
  await page.route('**/*',async route=>{
@@ -94,6 +94,32 @@ try{
  failSummary=true;plays.push(makePlay(8,'J.Gibbs right end for 7 yards.'));await page.waitForFunction(()=>document.querySelector('#transcriptMeta').textContent.includes('Latest play only'));
  failBoard=true;await page.waitForFunction(()=>document.querySelector('#gameLiveState').textContent==='RECONNECTING');
  failBoard=false;failSummary=false;await page.waitForFunction(()=>document.querySelector('#gameLiveState').textContent==='LIVE');
+ await page.evaluate(()=>window.__finishSpeech?.());
+ await page.locator('[data-play-mode=every]').click();
+ await page.locator('#visualTab').click();
+ assert.equal(await page.locator('#visualPanel').isVisible(),true);
+ assert.equal(await page.locator('#playPanel').isVisible(),false);
+ assert.equal(await page.locator('.fieldCard').count(),2);
+ assert.equal(await page.locator('.fieldCard svg').count(),2);
+ for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`visual layout at ${width}px`);}
+ plays.push(makePlay(9,'J.Gibbs right tackle for 9 yards.'));
+ await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 9 yards'));
+ assert.match(await page.evaluate(()=>window.__spoken.at(-1).text),/^First and 10/);
+ const speakingCount=await page.evaluate(()=>window.__spoken.length);
+ plays.push(makePlay(10,'J.Gibbs right tackle for 10 yards.'));
+ await page.waitForFunction(()=>document.querySelector('#transcriptCount').textContent==='10');
+ plays[9]={...plays[9],text:'J.Gibbs right tackle for 11 yards.'};
+ plays.push({...makePlay(11,'J.Goff pass short middle to A.St. Brown for 14 yards.'),type:{text:'Pass Reception'}});
+ await page.waitForFunction(()=>document.querySelector('#transcriptCount').textContent==='11');
+ assert.equal(await page.evaluate(()=>window.__spoken.length),speakingCount,'new plays wait behind current speech');
+ assert.match(await page.locator('#speechIndicator').textContent(),/2 queued/);
+ assert.match(await page.locator('.fieldCard[data-game-id="g1"] .lastPlayRoute').getAttribute('d'),/Q/);
+ await page.locator('#playTab').click();await page.locator('#visualTab').click();
+ assert.equal(await page.evaluate(()=>window.__spoken.length),speakingCount,'view changes never interrupt speech');
+ await page.evaluate(()=>window.__finishSpeech());await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 11 yards'));
+ await page.evaluate(()=>window.__finishSpeech());await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 14 yards'));
+ await page.evaluate(()=>window.__finishSpeech());
+ await page.reload();await page.waitForSelector('.fieldCard');assert.equal(await page.locator('#visualPanel').isVisible(),true);
  assert.deepEqual(errors,[]);
  console.log('Browser smoke passed: mobile/desktop layout, radio playback/rotation/stations, transcript, filters, player search, voice persistence, duck/restore, corrections and data recovery.');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

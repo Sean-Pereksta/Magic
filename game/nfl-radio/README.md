@@ -114,3 +114,29 @@ coverage or verified game carriage. No college selection uses NFL provider links
 Add further official call-sign mappings there as coverage expands.
 
 Validation: `node --test game/nfl-radio/*.test.mjs`.
+
+## Voice recovery and rotation fields
+
+Play-by-play / Visual tabs stay under the league links in a sticky navigation bar.
+Visual renders one responsive SVG field per rotation game using the existing poller;
+switching display modes never stops radio, play ingestion or spoken announcements.
+The view choice persists per league. Run paths are straight; completed pass paths
+are schematic curves. Coordinates come from ESPN possession-relative distances or
+named yard-line spots, never an invented starting location or player-tracking data.
+Missing positions remain unavailable. Delayed data is labeled. Home attacks right
+and away attacks left in this fixed schematic (not actual stadium direction).
+
+Calls now lead with the play's starting down and distance, including goal-to-go.
+Browser speech retains utterances and queues calls FIFO. A failed start or missing
+completion retries the head item once; repeated failure or autoplay blocking keeps
+the backlog and shows Resume voice. Tapping resumes in order. Microphone interruptions
+retain the current call. Queued ESPN wording corrections are read when their turn
+arrives rather than silently dropping the call. Existing mode/player filters and
+intentional voice disabling still apply; historical backfill is not auto-narrated.
+Recovery may repeat part of an interrupted call because the browser does not expose
+a reliable resume offset. Background audio still depends on the device/browser.
+
+Tests cover FIFO, blocked/stalled speech, late callbacks, corrections, microphone
+interruptions, down-distance speech, field orientation, possession changes, missing
+coordinates, and pass/run handling. Browser smoke includes visual layouts, view
+persistence and a three-play backlog while changing tabs.

@@ -6,16 +6,23 @@ const available=(synth,Utterance)=>!!synth&&typeof Utterance==='function';
 export function createBrowserSpeechQueue({
   synth=globalThis.speechSynthesis,
   Utterance=globalThis.SpeechSynthesisUtterance,
-  getVoicePreferences=readVoiceSettings
+  getVoicePreferences=readVoiceSettings,
+  startTimeoutMs=8000,
+  minimumSpeechTimeoutMs=45000
 }={}){
   const queue=[];
   const keys=new Set();
   const listeners=new Set();
   let current=null;
   let suspended=false;
+  let blocked=false;
+  let watchdog=null;
+  const clearWatchdog=()=>{clearTimeout(watchdog);watchdog=null;};
+  const arm=(fn,ms)=>{clearWatchdog();watchdog=setTimeout(fn,ms);watchdog.unref?.();};
 
   const state=()=>({
     available:available(synth,Utterance),
+    blocked,
     speaking:!!current,
     queued:queue.length,
     current:current?{key:current.key,source:current.source,text:current.text}:null
@@ -36,6 +43,8 @@ export function createBrowserSpeechQueue({
 
   const unlock=()=>{
     if(!resume())return false;
+    if(blocked){blocked=false;for(const item of queue)item.retries=0;drain();return true;}
+    drain();
     try{
       if(synth.speaking||synth.pending||current||queue.length)return true;
       const warmup=new Utterance(' ');
@@ -51,6 +60,8 @@ export function createBrowserSpeechQueue({
 
   const finish=(item,ok,error)=>{
     if(current!==item)return;
+    clearWatchdog();
+    item.utterance=null;
     current=null;
     if(item.key)keys.delete(item.key);
     try{
@@ -61,8 +72,22 @@ export function createBrowserSpeechQueue({
     setTimeout(drain,0);
   };
 
+  function recover(item,error){
+    if(current!==item)return;
+    clearWatchdog();
+    current=null; // Ignore cancellation callbacks from the failed attempt.
+    try{synth.cancel?.();}catch{}
+    item.utterance=null;
+    item.retries=(item.retries||0)+1;
+    queue.unshift(item); // Preserve FIFO order and the de-duplication key.
+    blocked=error==='not-allowed'||item.retries>1;
+    try{item.onError?.(blocked?'speech-blocked':error);}catch{}
+    notify();
+    if(!blocked)setTimeout(drain,0);
+  }
+
   function drain(){
-    if(suspended||current||!queue.length)return;
+    if(suspended||blocked||current||!queue.length)return;
     if(!resume()){
       while(queue.length){
         const item=queue.shift();
@@ -89,7 +114,8 @@ export function createBrowserSpeechQueue({
     notify();
 
     try{
-      const utterance=new Utterance(item.text);
+      const utterance=new Utterance(item.getText?.()||item.text);
+      item.utterance=utterance; // Keep the utterance alive until completion (mobile engines).
       utterance.lang=item.lang||'en-US';
       utterance.rate=Number.isFinite(item.rate)?item.rate:DEFAULT_RATE;
       utterance.pitch=Number.isFinite(item.pitch)?item.pitch:1;
@@ -99,23 +125,25 @@ export function createBrowserSpeechQueue({
 
       let done=false;
       utterance.onstart=()=>{
-        if(done||current!==item)return;
+        if(done||current!==item||item.utterance!==utterance)return;
+        arm(()=>recover(item,'speech-timeout'),Math.max(minimumSpeechTimeoutMs,utterance.text.length*110/(utterance.rate||1)));
         try{item.onStart?.();}catch{}
         notify();
       };
       utterance.onend=()=>{
-        if(done||current!==item)return;
+        if(done||current!==item||item.utterance!==utterance)return;
         done=true;
         finish(item,true);
       };
       utterance.onerror=event=>{
-        if(done||current!==item)return;
+        if(done||current!==item||item.utterance!==utterance)return;
         done=true;
-        finish(item,false,event?.error||'speech-error');
+        recover(item,event?.error||'speech-error');
       };
+      arm(()=>{if(current===item)recover(item,'speech-start-timeout');},startTimeoutMs);
       synth.speak(utterance);
     }catch(error){
-      finish(item,false,error?.message||'speech-error');
+      recover(item,error?.message||'speech-error');
     }
   }
 
@@ -126,6 +154,7 @@ export function createBrowserSpeechQueue({
     if(key&&keys.has(key))return false;
     const item={
       text:normalized,
+      getText:options.getText,
       key,
       source:options.source||'app',
       rate:options.rate,
@@ -155,6 +184,7 @@ export function createBrowserSpeechQueue({
         removed++;
       }
     }
+    if(!queue.length&&!current)blocked=false;
     if(removed)notify();
     return removed;
   };
@@ -165,15 +195,15 @@ export function createBrowserSpeechQueue({
     const removed=removePending(predicate);
     if(current&&(!predicate||predicate(current))){
       const item=current;
-      try{synth.cancel?.();}catch{}
       finish(item,false,'canceled');
+      try{synth.cancel?.();}catch{}
       return removed+1;
     }
     return removed;
   };
   const setSuspended=value=>{
     suspended=!!value;
-    if(suspended&&current)cancel(item=>item===current);
+    if(suspended&&current){const item=current;current=null;clearWatchdog();queue.unshift(item);try{synth.cancel?.();}catch{}try{item.onError?.('microphone-paused');}catch{}notify();}
     if(!suspended)drain();
   };
 
