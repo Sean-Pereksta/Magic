@@ -1,3 +1,6 @@
+import {loadNaturalVoice,onNaturalVoiceStatus} from './natural-voice.mjs';
+import {gamePlayerStats,playStatFooter} from './player-stats.mjs';
+import {installStatsView} from './stats-view.mjs';
 import {installFieldView} from './field-view.mjs';
 import {leagueName,storagePrefix,API,SCOREBOARD_URL} from './league.mjs';
 import {browserSpeechAvailable,enqueueBrowserSpeech,getBrowserSpeechQueueState,removeQueuedSpeech,unlockBrowserSpeech,onBrowserSpeechQueueState} from './speech-queue.mjs';
@@ -90,7 +93,8 @@ export function installLivePlayByPlay(){
   const tracker=createPlayTracker(),summaries=new Map(),rosters=new Map(),playersByGame=new Map(),historyStatus=new Map();
   const liveGames=new Set();
   const fields=installFieldView();
-  const paintFields=()=>fields?.render(events,selectedGameIds(),id=>tracker.history(id).at(-1),{stale:dataFailed});
+  const statsView=installStatsView(),statsByGame=new Map();
+  const paintFields=()=>fields?.render(events,selectedGameIds(),id=>tracker.history(id).at(-1),{stale:dataFailed,getFooter:id=>playStatFooter(tracker.history(id).at(-1),statsByGame.get(id)||[])});
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
   const currentRadioId=()=>$('nowGame')?.dataset.gameId||'';
   const monitored=()=>selectedGameIds();
@@ -111,6 +115,7 @@ export function installLivePlayByPlay(){
     $('playByPlayEnabled').checked=settings.enabled;$('playByPlayDuckRadio').checked=settings.duckRadio;
     $('includeRadioGame').checked=settings.includeRadioGame;$('playByPlayScoreInterval').value=settings.scoreIntervalMinutes;$('playByPlayScoreScope').value=settings.scoreScope;
     $('voiceStyle').value=voiceSettings.style;
+    $('voiceEngine').value=voiceSettings.engine||'device';$('naturalVoice').value=voiceSettings.naturalVoice||'af_heart';
     const followed=monitored().flatMap(id=>selectedPlayers(id));
     const count=followed.length;
     const names=[...new Set(followed.map(p=>p.name))];
@@ -132,7 +137,7 @@ export function installLivePlayByPlay(){
   const paintGameOptions=()=>{
     const ids=monitored(),available=events.filter(e=>ids.includes(String(e.id)));
     tracker.retain(ids);
-    for(const cache of [summaries,playersByGame,historyStatus])for(const id of cache.keys())if(!ids.includes(id))cache.delete(id);
+    for(const cache of [summaries,playersByGame,historyStatus,statsByGame])for(const id of cache.keys())if(!ids.includes(id))cache.delete(id);
     for(const id of liveGames)if(!ids.includes(id))liveGames.delete(id);
     if(!available.some(e=>String(e.id)===viewedGame))viewedGame=available.find(e=>String(e.id)===currentRadioId())?.id||available[0]?.id||'';
     viewedGame=String(viewedGame);
@@ -149,6 +154,8 @@ export function installLivePlayByPlay(){
   };
   function paintHero(){
     paintFields();
+    const snapshot=summaries.get(viewedGame);
+    statsView.render(statsByGame.get(viewedGame)||[],eventMatchup(currentEvent()).join(' vs '),snapshot?`${dataFailed||snapshot.failed?'Data delayed · last saved totals':'Latest ESPN game totals'} · ${new Date(snapshot.at).toLocaleTimeString()} · may trail live plays`:'Waiting for ESPN player stats.');
     const event=currentEvent(),c=competition(event),hero=$('gameScore');hero.replaceChildren();
     $('gameLiveState').textContent=dataFailed?'RECONNECTING':event?gameState(event)==='in'?'LIVE':gameState(event)==='post'?'FINAL':'UPCOMING':'YOUR DIAL';
     $('gameLiveState').classList.toggle('isLive',!!event&&gameState(event)==='in'&&!dataFailed);
@@ -171,6 +178,7 @@ export function installLivePlayByPlay(){
   function paintTranscript(){
     const history=tracker.history(viewedGame),latest=history.at(-1),list=$('transcriptList');
     $('latestPlay').textContent=latest?.text||'Waiting for the next play.';
+    $('latestPlayStats').textContent=playStatFooter(latest,statsByGame.get(viewedGame)||[]);
     $('latestPlayLabel').textContent=latest?.label||'LIVE PLAY CALL';
     $('latestCall').dataset.kind=latest?.kind||'play';
     $('transcriptCount').textContent=String(history.length);
@@ -179,7 +187,8 @@ export function installLivePlayByPlay(){
     for(const entry of history.slice().reverse()){
       const row=element('li',null,{class:`transcriptPlay ${entry.important?'important':''}`});row.dataset.kind=entry.kind;
       const meta=element('div',null,{class:'playMeta'});meta.append(element('strong',entry.label),element('span',[entry.period?`Q${entry.period}`:'',entry.clock].filter(Boolean).join(' · ')));
-      row.append(meta,element('p',entry.text));list.append(row);
+      row.append(meta,element('p',entry.text));
+      const footer=playStatFooter(entry,statsByGame.get(viewedGame)||[]);if(footer)row.append(element('small',footer,{class:'playStatFooter'}));list.append(row);
     }
     if(!history.length)list.append(element('li','No plays yet for this game.',{class:'emptyState'}));
   }
@@ -249,15 +258,16 @@ export function installLivePlayByPlay(){
       const targets=events.filter(e=>monitored().includes(String(e.id)));
       await Promise.all(targets.map(async event=>{
         const id=String(event.id),state=gameState(event),last=competition(event)?.situation?.lastPlay;
-        if(state==='pre'){await loadPlayers(event,null);return;}
+        if(state==='pre'){const players=await loadPlayers(event,null);statsByGame.set(id,gamePlayerStats(null,players));return;}
         const old=summaries.get(id),lastKey=last?playIdentity(last):'';
         let summary=old?.data||null,complete=false;
         if(!old||old.key!==lastKey||Date.now()-old.at>30000){
           try{summary=await fetchJson(`${API}/summary?event=${encodeURIComponent(id)}`);complete=!!summary?.drives||Array.isArray(summary?.plays);summaries.set(id,{data:summary,key:lastKey,at:Date.now()});}
-          catch{historyStatus.set(id,'Latest play only · retrying ESPN play history.');}
+          catch{if(old)old.failed=true;historyStatus.set(id,'Latest play only · retrying ESPN play history.');}
         }else complete=!!summary?.drives||Array.isArray(summary?.plays);
         const players=await loadPlayers(event,summary);
         if(disposed||!monitored().includes(id))return;
+        statsByGame.set(id,gamePlayerStats(summary,players));
         const result=tracker.ingest(event,playsFromSummary(summary,last),{players,settings:settingsForGame(settings,id),complete});
         if(complete)historyStatus.set(id,'Latest 60 plays · updated from ESPN');
         if(state==='in'||liveGames.has(id))for(const entry of result.announcements)enqueuePlay(entry);
@@ -287,6 +297,10 @@ export function installLivePlayByPlay(){
   $('includeRadioGame').onchange=()=>{settings.includeRadioGame=$('includeRadioGame').checked;save();};
   $('playByPlayScoreInterval').onchange=()=>{settings.scoreIntervalMinutes=normalizeScoreInterval($('playByPlayScoreInterval').value);save();nextScoreAt=Date.now()+settings.scoreIntervalMinutes*60000;paintControls();};
   $('playByPlayScoreScope').onchange=()=>{settings.scoreScope=$('playByPlayScoreScope').value;save();};
+  onNaturalVoiceStatus(message=>{$('naturalVoiceStatus').textContent=message;});
+  $('voiceEngine').onchange=()=>{voiceSettings.engine=$('voiceEngine').value;saveVoiceSettings(voiceSettings);};
+  $('naturalVoice').onchange=()=>{voiceSettings.naturalVoice=$('naturalVoice').value;saveVoiceSettings(voiceSettings);};
+  $('loadNaturalVoice').onclick=async()=>{const button=$('loadNaturalVoice');button.disabled=true;try{await loadNaturalVoice();voiceSettings.engine='natural';voiceSettings.naturalVoice=$('naturalVoice').value;saveVoiceSettings(voiceSettings);paintControls();}catch(error){$('naturalVoiceStatus').textContent=error.message+' Device voice remains available.';}finally{button.disabled=false;}};
   $('voiceSelect').onchange=()=>{voiceSettings.voiceURI=$('voiceSelect').value;saveVoiceSettings(voiceSettings);};
   $('voiceStyle').onchange=()=>{voiceSettings.style=$('voiceStyle').value;saveVoiceSettings(voiceSettings);};
   $('previewVoice').onclick=()=>{unlockBrowserSpeech();enqueueBrowserSpeech('Your football radio companion is ready. Choose your games and follow the action.',{source:'voice-preview',key:'voice-preview',...playVoiceOptions({},voiceSettings.style),onStart:()=>{if(settings.duckRadio)setRadioDucked(true);},onEnd:()=>setRadioDucked(false),onError:()=>setRadioDucked(false)});};
@@ -309,6 +323,7 @@ export function installLivePlayByPlay(){
   globalThis.speechSynthesis?.addEventListener?.('voiceschanged',paintVoiceList);
   window.addEventListener('nfl-radio:scoreboard',e=>{if(!events.length){events=e.detail.events||[];paintGameOptions();paintHero();}void poll();});
   window.addEventListener('nfl-radio:rotation',()=>{paintGameOptions();paintHero();paintControls();void poll();});
+  window.addEventListener('nfl-radio:inspect',e=>{viewedGame=String(e.detail.gameId);paintGameOptions();paintHero();statsView.open();});
   window.addEventListener('nfl-radio:selection',e=>{viewedGame=String(e.detail.gameId);paintGameOptions();paintHero();});
   window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){settings=readPlayByPlaySettings();paintControls();}if(e.key===`${storagePrefix}:rotation`){paintGameOptions();paintHero();void poll();}});
   document.addEventListener('pointerdown',()=>{if(settings.enabled)unlockBrowserSpeech();},{passive:true});

@@ -1,6 +1,6 @@
 const KEY='nfl-dial:voice';
 export function readVoiceSettings(storage=globalThis.localStorage){
-  try{const saved=JSON.parse(storage?.getItem(KEY)||'null')||{};return {voiceURI:typeof saved.voiceURI==='string'?saved.voiceURI:'',style:saved.style==='excited'?'excited':'normal'};}
+  try{const saved=JSON.parse(storage?.getItem(KEY)||'null')||{};return {voiceURI:typeof saved.voiceURI==='string'?saved.voiceURI:'',style:saved.style==='excited'?'excited':'normal',...(saved.engine==='natural'?{engine:'natural',naturalVoice:['af_heart','am_fenrir'].includes(saved.naturalVoice)?saved.naturalVoice:'af_heart'}:{})};}
   catch{return {voiceURI:'',style:'normal'};}
 }
 export function saveVoiceSettings(settings,storage=globalThis.localStorage){try{storage?.setItem(KEY,JSON.stringify(settings));}catch{}}
