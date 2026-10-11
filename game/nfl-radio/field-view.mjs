@@ -71,12 +71,12 @@ function drawField(model){
 }
 export function installFieldView(){
  const grid=document.getElementById('fieldGrid');if(!grid)return null;
- let latest=[],ids=[],getEntry=()=>null,stale=false,view='play',paintKey='';
+ let latest=[],ids=[],getEntry=()=>null,stale=false,getFooter=()=>'',view='play',paintKey='';
  try{view=localStorage.getItem(`${storagePrefix}:view`)==='visual'?'visual':'play';}catch{}
  const paint=()=>{
   if(view!=='visual')return;
   const models=ids.map(gameId=>{const event=latest.find(e=>id(e.id)===gameId);return {gameId,event,model:fieldModel(event,getEntry(gameId))};});
-  const key=JSON.stringify([models,stale]);if(key===paintKey)return;paintKey=key;
+  const key=JSON.stringify([models,stale,ids.map(getFooter)]);if(key===paintKey)return;paintKey=key;
   grid.replaceChildren();
   for(const {gameId,event,model:m} of models){
    const card=node('article',null,'fieldCard');card.dataset.gameId=gameId;
@@ -84,6 +84,10 @@ export function installFieldView(){
    card.append(node('h3',event?score:'Game '+gameId),node('p',stale?'Data delayed · last known position':event?m.status:'Waiting for game data','fieldStatus'),drawField(m));
    const possessor=m.competitors.find(c=>id(c.team?.id||c.id)===m.possession)?.team?.abbreviation;
    card.append(node('p',[possessor?`${possessor} ${m.direction>0?'→':'←'}`:'',m.down,m.spot,m.lastPosition?'Last reported spot':''].filter(Boolean).join(' · '),'fieldSituation'),node('p',m.last,'fieldLast'));
+   const footer=getFooter(gameId);if(footer)card.append(node('small',footer,'playStatFooter'));
+   card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`${score}. View players and game stats`);
+   const inspect=()=>{switchView('play');window.dispatchEvent(new CustomEvent('nfl-radio:inspect',{detail:{gameId}}));document.getElementById('gamePlayerStats').querySelector('summary').focus({preventScroll:true});};
+   card.onclick=inspect;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inspect();}};
    grid.append(card);
   }
   if(!ids.length)grid.append(node('p','Add games to your rotation below to see their fields.','emptyState'));
@@ -101,5 +105,5 @@ export function installFieldView(){
   button.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const buttons=[...document.querySelectorAll('[data-view]')];const target=e.key==='Home'?buttons[0]:e.key==='End'?buttons.at(-1):buttons.find(b=>b!==button);target.focus();switchView(target.dataset.view);}};
  }
  switchView(view);
- return {render(events,selected,getLatest,options={}){latest=events;ids=selected;getEntry=getLatest;stale=!!options.stale;paint();}};
+ return {render(events,selected,getLatest,options={}){latest=events;ids=selected;getEntry=getLatest;stale=!!options.stale;getFooter=options.getFooter||(()=>'');paint();}};
 }

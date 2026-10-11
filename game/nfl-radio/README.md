@@ -140,3 +140,43 @@ Tests cover FIFO, blocked/stalled speech, late callbacks, corrections, microphon
 interruptions, down-distance speech, field orientation, possession changes, missing
 coordinates, and pass/run handling. Browser smoke includes visual layouts, view
 persistence and a three-play backlog while changing tabs.
+
+## Game-center player stats and fantasy estimates
+
+Tap a Visual field card (or focus it and press Enter/Space) to open that game's
+Players dropdown in Play-by-play without changing the radio station. It shows
+passing/rushing/receiving leaders (including ties), all QB/RB/FB/WR/TE roster
+players, position filters, and expandable full ESPN offensive stat categories.
+The PPR/Standard choice is saved per league. Player rows show the fantasy points
+breakdown and the exact scoring assumptions. These are estimates, excluding
+2-point conversions and league-specific bonuses, kicking and defense. Unreported
+stats are shown as a dash; roster-only players are not presented as having scored
+zero. Totals come from the existing cached game summary requests, never from
+summing the limited play history. Corrections replace the totals.
+
+Play cards and Visual cards show identified receivers' reception/yardage totals,
+runners' rushing totals, and passers' passing totals in a small footer. They are
+explicitly **latest game totals**, not historical totals at the time of that play.
+The stats panel timestamps its snapshot and marks cached data when fetches fail.
+
+## Optional free natural voice
+
+Voice & alerts → Download / enable natural voice loads Kokoro.js 1.2.1 (Apache-2.0)
+and the Kokoro-82M v1.0 q8 ONNX model in a same-origin module worker. Heart and
+Fenrir are selectable. No account, API key, backend or special installation is
+required; the initial model/runtime download may exceed 100 MB and needs network
+access to jsDelivr and Hugging Face. Source: https://github.com/hexgrad/kokoro/tree/main/kokoro.js
+
+Device voice stays the default. Loading is explicit on each page session (browser
+HTTP/model caching can reuse downloads). Inference runs off the UI thread and
+uses the existing FIFO speech queue, radio ducking, cancellation and recovery.
+If the model is unavailable, the audio context is blocked, or generation exceeds
+20 seconds, the same announcement falls back to device voice. The download times
+out after three minutes. Natural voice runs locally; no play text is submitted
+to a hosted TTS service. Performance and sound quality depend on the device.
+
+Validation: `node --test game/nfl-radio/*.test.mjs` and
+`node game/nfl-radio/browser-smoke.mjs` (Playwright/Chromium required). The browser
+fixture covers stats navigation, scoring switches, filters, responsive layout,
+latest-total footers and a failed optional voice download, alongside radio and
+voice-queue regressions.

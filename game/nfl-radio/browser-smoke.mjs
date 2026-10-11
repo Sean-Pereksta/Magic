@@ -29,7 +29,7 @@ try{
   const url=new URL(route.request().url());
   const json=body=>route.fulfill({json:body});
   if(url.pathname.endsWith('/scoreboard'))return failBoard?route.fulfill({status:503,body:'unavailable'}):json({events:[game('g1',teams[9],teams[8],plays.at(-1)),game('g2',teams[12],teams[2],makePlay(101,'Runner up the middle for 4 yards.'))]});
-  if(url.pathname.endsWith('/summary'))return failSummary?route.fulfill({status:503,body:'unavailable'}):json({drives:{current:{team:teams[8],plays:url.searchParams.get('event')==='g1'?plays:[makePlay(101,'Runner up the middle for 4 yards.')]}},boxscore:{players:[]}});
+  if(url.pathname.endsWith('/summary'))return failSummary?route.fulfill({status:503,body:'unavailable'}):json({drives:{current:{team:teams[8],plays:url.searchParams.get('event')==='g1'?plays:[makePlay(101,'Runner up the middle for 4 yards.')]}},boxscore:{players:url.searchParams.get('event')==='g1'?[{team:teams[8],statistics:[{name:'rushing',labels:['CAR','YDS','TD'],athletes:[{athlete:det[1],stats:['12','85','1']}]},{name:'receiving',labels:['REC','YDS','TD','TGTS'],athletes:[{athlete:det[2],stats:['5','70','1','7']}]}]}]:[]}});
   if(url.pathname.endsWith('/roster')){const id=url.pathname.split('/').at(-2);return json({team:teams[id],athletes:[{items:id==='8'?det:id==='9'?gb:[athlete(`p${id}`,'Some Runner','S. Runner','RB')]}]});}
   if(url.hostname.endsWith('radio-browser.info'))return json([{stationuuid:'fixture-stream',name:'Fixture radio',url_resolved:'https://stream.example/fixture.mp3',lastcheckok:1,ssl_error:0,codec:'MP3'}]);
   if(url.origin===origin)return route.continue();
@@ -120,6 +120,25 @@ try{
  await page.evaluate(()=>window.__finishSpeech());await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 14 yards'));
  await page.evaluate(()=>window.__finishSpeech());
  await page.reload();await page.waitForSelector('.fieldCard');assert.equal(await page.locator('#visualPanel').isVisible(),true);
+ await page.locator('.fieldCard[data-game-id="g1"]').press('Enter');
+ assert.equal(await page.locator('#playPanel').isVisible(),true);
+ assert.equal(await page.locator('#gamePlayerStats').getAttribute('open'),'');
+ assert.match(await page.locator('.statsLeaders').textContent(),/Jahmyr Gibbs.*85 yd/);
+ const brown=page.locator('.statPlayer[data-player-id="brown"]');
+ assert.match(await brown.textContent(),/18.00 PPR/);
+ await page.locator('[aria-label="Fantasy scoring"]').selectOption('standard');
+ assert.match(await brown.textContent(),/13.00 STANDARD/);
+ await brown.locator('summary').click();assert.match(await brown.textContent(),/Fantasy points breakdown/);
+ await page.locator('[aria-label="Player position"]').selectOption('WR');
+ assert.equal(await page.locator('.statPlayer').count(),1);
+ assert.match(await page.locator('#latestPlayStats').textContent(),/5 rec · 70 receiving yd/);
+ assert.match(await page.locator('#latestPlayStats').textContent(),/Latest game totals/);
+ for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`stats layout at ${width}px`);}
+ await page.locator('#playByPlayButton').click();
+ await page.locator('#loadNaturalVoice').click();
+ await page.waitForFunction(()=>!document.querySelector('#loadNaturalVoice').disabled);
+ assert.match(await page.locator('#naturalVoiceStatus').textContent(),/Device voice|device voice/);
+ await page.locator('#closePlayByPlay').click();
  assert.deepEqual(errors,[]);
  console.log('Browser smoke passed: mobile/desktop layout, radio playback/rotation/stations, transcript, filters, player search, voice persistence, duck/restore, corrections and data recovery.');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

@@ -1,3 +1,4 @@
+import {tryNaturalSpeech,unlockNaturalVoice} from './natural-voice.mjs';
 import {chooseVoice,readVoiceSettings} from './voice-settings.mjs';
 const DEFAULT_RATE=1.06;
 
@@ -7,6 +8,7 @@ export function createBrowserSpeechQueue({
   synth=globalThis.speechSynthesis,
   Utterance=globalThis.SpeechSynthesisUtterance,
   getVoicePreferences=readVoiceSettings,
+  renderNatural=tryNaturalSpeech,
   startTimeoutMs=8000,
   minimumSpeechTimeoutMs=45000
 }={}){
@@ -42,6 +44,7 @@ export function createBrowserSpeechQueue({
   };
 
   const unlock=()=>{
+    if(getVoicePreferences().engine==='natural')unlockNaturalVoice();
     if(!resume())return false;
     if(blocked){blocked=false;for(const item of queue)item.retries=0;drain();return true;}
     drain();
@@ -63,6 +66,7 @@ export function createBrowserSpeechQueue({
     clearWatchdog();
     item.utterance=null;
     current=null;
+    item.cancelNatural?.();item.cancelNatural=null;
     if(item.key)keys.delete(item.key);
     try{
       if(ok)item.onEnd?.();
@@ -76,6 +80,7 @@ export function createBrowserSpeechQueue({
     if(current!==item)return;
     clearWatchdog();
     current=null; // Ignore cancellation callbacks from the failed attempt.
+    item.cancelNatural?.();item.cancelNatural=null;
     try{synth.cancel?.();}catch{}
     item.utterance=null;
     item.retries=(item.retries||0)+1;
@@ -113,6 +118,20 @@ export function createBrowserSpeechQueue({
     current=item;
     notify();
 
+    const preferences=getVoicePreferences();
+    if(preferences.engine==='natural'){
+      const cancel=renderNatural(item.getText?.()||item.text,{
+        voice:preferences.naturalVoice,rate:item.rate||1,
+        onStart:()=>{if(current!==item)return;arm(()=>recover(item,'speech-timeout'),Math.max(minimumSpeechTimeoutMs,item.text.length*110));try{item.onStart?.();}catch{}notify();},
+        onEnd:()=>finish(item,true),
+        onFallback:()=>{if(current===item){item.cancelNatural=null;speakBrowser(item);}}
+      });
+      if(cancel){item.cancelNatural=cancel;return;}
+    }
+    speakBrowser(item);
+  }
+
+  function speakBrowser(item){
     try{
       const utterance=new Utterance(item.getText?.()||item.text);
       item.utterance=utterance; // Keep the utterance alive until completion (mobile engines).
@@ -203,7 +222,7 @@ export function createBrowserSpeechQueue({
   };
   const setSuspended=value=>{
     suspended=!!value;
-    if(suspended&&current){const item=current;current=null;clearWatchdog();queue.unshift(item);try{synth.cancel?.();}catch{}try{item.onError?.('microphone-paused');}catch{}notify();}
+    if(suspended&&current){const item=current;current=null;clearWatchdog();item.cancelNatural?.();item.cancelNatural=null;queue.unshift(item);try{synth.cancel?.();}catch{}try{item.onError?.('microphone-paused');}catch{}notify();}
     if(!suspended)drain();
   };
 

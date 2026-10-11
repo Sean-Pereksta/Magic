@@ -128,3 +128,16 @@ test('microphone interruption preserves active play ahead of later calls',async(
  assert.equal(spoken[1].text,'first');spoken[0].onend();assert.equal(queue.state().current.key,'1');
  spoken[1].onend();await sleep(3);assert.equal(spoken[2].text,'second');spoken[2].onend();
 });
+
+test('optional natural renderer preserves FIFO and cancellation',async()=>{
+ const calls=[];let cancelCount=0;
+ const q=createBrowserSpeechQueue({synth:fakeSynth().synth,Utterance:FakeUtterance,getVoicePreferences:()=>({engine:'natural'}),renderNatural:(text,callbacks)=>{calls.push({text,...callbacks});return ()=>cancelCount++;}});
+ q.enqueue('first');q.enqueue('second');assert.equal(calls.length,1);
+ calls[0].onStart();calls[0].onEnd();await sleep(5);assert.equal(calls[1].text,'second');
+ q.cancel();assert.equal(q.state().speaking,false);assert.equal(cancelCount,2);
+});
+test('natural synthesis failure falls back to browser for the same item',async()=>{
+ const {synth,events}=fakeSynth();let fail;
+ const q=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,getVoicePreferences:()=>({engine:'natural'}),renderNatural:(_text,callbacks)=>{fail=callbacks.onFallback;return ()=>{};}});
+ q.enqueue('fallback play');fail();await sleep(20);assert.ok(events.includes('end:fallback play'));assert.equal(q.state().speaking,false);
+});
