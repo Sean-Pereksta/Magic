@@ -109,8 +109,9 @@ test('every packaged atlas and frame has a valid local image, crop and ground an
       assert.ok(file.startsWith(root + path.sep), 'asset stays inside its package');
       const bytes = fs.readFileSync(file);
       if(atlas.file.endsWith('.webp')){
-        assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.equal(bytes.toString('ascii',12,16),'VP8L','lossless WebP');
-        const bits=bytes.readUInt32LE(21);assert.equal((bits&0x3fff)+1,atlas.width);assert.equal(((bits>>>14)&0x3fff)+1,atlas.height);
+        assert.equal(bytes.toString('ascii',8,12),'WEBP');const kind=bytes.toString('ascii',12,16);
+        if(kind==='VP8L'){const bits=bytes.readUInt32LE(21);assert.equal((bits&0x3fff)+1,atlas.width);assert.equal(((bits>>>14)&0x3fff)+1,atlas.height)}
+        else{assert.equal(kind,'VP8X');assert.ok(bytes[20]&16,'transparent alpha is retained');assert.equal(bytes.readUIntLE(24,3)+1,atlas.width);assert.equal(bytes.readUIntLE(27,3)+1,atlas.height)}
         const original=fs.readFileSync(path.join(root,atlas.source));assert.equal(original.subarray(0,8).toString('hex'),'89504e470d0a1a0a','original source retained');
       }else{
         assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'original PNG image');

@@ -278,6 +278,7 @@
       ellipse(c,0,2,22,6,'rgba(0,8,12,.28)');c.translate(Math.cos(a.fallDir||0)*ease*8,-height);
       c.scale((p.mirror?-1:1)*(a.bodyScale||1),a.bodyScale||1);
       if(airborne)c.rotate(a.blastReaction.rotation||0);
+      else if(!human&&p.illustratedArmor){/* The selected full-body sheet includes its own falling and settled poses. */}
       else if(!human&&t<.72){p.atlas='actions';p.column=1;c.rotate((a.fallVariant===1?-1:1)*sign*ease*(a.fallVariant===2?2.65:1.48));c.scale(1,1-ease*.24)}
       else if(!human){p.atlas='actions';p.column=5;c.scale(1,.9)}
       else if(t<.72){c.rotate(sign*ease*1.45);p.column=4}
@@ -290,5 +291,5 @@
   // Exposed without any game references so tools/tests can inspect the clips.
   window.ATSCharacterArt={version:1,species:[...species],direction,resolve,
     frameRect(atlas,row,column){return metadata()?.frames?.[atlas]?.[row+':'+column]||null},
-    status(){return {ready:!!metadata()&&metadata().atlases.every(a=>!!art()?.get(a.id)),frames:metadata()?.atlases.reduce((n,a)=>n+a.frameCount,0)||0,directions:{king:8,crowd:4},cacheLimit:4}}};
+    status(){return {ready:!!metadata()&&art()?.status==='ready',frames:metadata()?.atlases.reduce((n,a)=>n+a.frameCount,0)||0,directions:{king:8,crowd:8},cacheLimit:art()?.lazyLimit||4}}};
 })();

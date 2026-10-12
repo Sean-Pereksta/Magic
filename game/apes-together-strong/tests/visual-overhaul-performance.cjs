@@ -27,6 +27,7 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
       const manifest = {}, sources = {}, root = path.join(directory, 'assets', 'visual');
       for (const family of fs.readdirSync(root).filter(name => fs.existsSync(path.join(root, name, 'manifest.json')))) {
         manifest[family] = JSON.parse(fs.readFileSync(path.join(root, family, 'manifest.json'), 'utf8'));
+        if(family==='outfits'&&fs.existsSync(path.join(root,'armor-sprites','manifest.json'))){manifest[family].atlases=manifest[family].atlases.filter(a=>['outfits-shields-tools','outfits-tribal-structures'].includes(a.id));manifest[family].characterFrames={}}
         for (const atlas of manifest[family].atlases) sources[atlas.id] = 'data:image/' + path.extname(atlas.file).slice(1) + ';base64,' + fs.readFileSync(path.join(root, atlas.file)).toString('base64');
       }
       await page.evaluate(bundle => { window.ATS_VISUAL_BUNDLE = bundle; }, { manifest, sources });
@@ -75,6 +76,7 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
           g.siege.issue(['chimpanzee','gibbon','capuchin'],[{id:'fortress-inside',type:'move',x:190,y:70}]);g.siege.issue(['gorilla','orangutan','mandrill'],[{id:'fortress-gate',type:'attack',targetId:gate.id,targetKind:'object',x:gate.x,y:gate.y}]);
           g.king.x=-150;g.king.y=0;
         }
+        if(window.ATSOutfitArt?.atlasFor&&window.ATSVisualAssets?.preload)await ATSVisualAssets.preload([...new Set(g.apes.map(a=>'characters-'+ATSOutfitArt.atlasFor(a)))]);
         const sim = [], render = [], work = [], intervals = [];
         let previous, peakVisible = 0, maxSearches = 0, maxLos = 0, maxRays = 0, maxParticles = 0;
         const initialHeapBytes = performance.memory?.usedJSHeapSize ?? null;

@@ -3,11 +3,11 @@
 ## Tribal Kings and equipment
 
 Each tribe now has independently illustrated King body/action sheets and five
-visible royal armor tiers. All six species support illustrated armor, shields,
+dedicated royal armor sets, including a permanent Warlord choice. All six species have unarmored, basic, reinforced, and heavy body sheets, plus shields,
 weapons, and utility equipment. First-settlement camp crafting, workshop batches,
 army loadouts, rare prison equipment, working poses, tree falls, and tribal
 buildings expand the existing game. See [VISUAL-EQUIPMENT.md](VISUAL-EQUIPMENT.md)
-for progression, save compatibility, rendering bounds, and measured validation.
+for the earlier equipment features. See [FULL-ARMOR.md](FULL-ARMOR.md) for the current 42-sheet armor progression, save migration, and rendering bounds.
 
 ## Tribal kingdoms and infiltration
 
@@ -167,8 +167,8 @@ pause work, and cancellation refunds only unused supplies.
 - Adult gibbons, chimpanzees and capuchins can carry torches for 65% more
   structural damage. Torches illuminate nearby ground and make the bearer easier
   to detect, while still respecting cover and weather visibility.
-- Royal armor progresses through 240, 350 and 500 maximum health, with up to
-  22% damage protection and 70% stronger King attacks. Fitting preserves the
+- Royal armor starts at 210 and 320 maximum health, then specializes into a command, power, or shadow Warlord path. Battle King reaches 600 health, with
+  28% damage protection and 70% stronger King attacks. Fitting preserves the
   existing missing-health amount; repeating a purchase cannot heal the King.
 
 Human response packages grow by 12% at the royal tier and 22% at Warlord, with
