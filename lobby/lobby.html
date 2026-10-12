@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Game Hub</title>
   <script src="./lobby-library.js"></script>
+  <script src="./lobby-flagships.js?v=1"></script>
 </head>
 <body>
   <script>
@@ -42,6 +43,11 @@
         });
         // Run inside the existing loader so every injected game participates.
         html=globalThis.GameHubLibrary.upgradeHtml(html);
+        // A presentation failure must not prevent the existing hub from opening.
+        if(globalThis.GameHubFlagships){
+          try{html=globalThis.GameHubFlagships.upgradeHtml(html);}
+          catch(error){console.warn("Flagship layout unavailable; using the original hub",error);}
+        }
         const patch='<script src="./lobby-catalog-organization.js" defer><\/script>';
         html=html.includes("</body>")?html.replace("</body>",patch+"</body>"):html+patch;
         document.open();
