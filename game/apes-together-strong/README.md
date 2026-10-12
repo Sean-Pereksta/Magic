@@ -1,5 +1,17 @@
 # Apes Together Strong
 
+## Tribal kingdoms and infiltration
+
+Choose Ironback, Shadowhand or Emberwood before a new run. Each kingdom has
+permanent bonuses, distinct opening rescues, exclusive army or village upgrades,
+and cached tribal artwork. Ordinary climber orders cross fortress walls; the
+advanced army panel adds infiltration, discovery responses and distractions.
+Friendly spear defenses fire over scenery, villages organize defensive posts,
+and new strong prisons offer escorted elite captives.
+
+See [TRIBAL-KINGDOMS.md](TRIBAL-KINGDOMS.md) for controls, exact bonuses, save
+compatibility, validation and performance limits.
+
 ## Expanding calls and fan attacks
 
 Hold **Q** to quickly grow a visible recruitment circle from 120 to 1,600 paces,

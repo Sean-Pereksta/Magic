@@ -82,7 +82,7 @@ class Siege {
   if(target){const type=kind|| (target.type==='gateControl'?'sabotage':target.climbAccess?'climb':'attack');return{id:'order-'+ ++this.serial,type,targetId:target.id,targetKind:target.id.startsWith('human')?'human':target.id.startsWith('vehicle')?'vehicle':'object',x:target.x,y:target.y};}
   if(kind==='climb'){this.status='Choose a visible wall with vines or scaffolding';return null}
   const site=g.world.getSites(p.x,p.y,100).find(s=>s.military&&!s.cleared&&Math.abs(p.x-s.x)<(s.extentX||s.radius)&&Math.abs(p.y-s.y)<(s.extentY||s.radius));
-  if(!kind&&site&&site.known){const gate=(site.gates||site.objects).map(id=>g.world.objects.get(id)).filter(o=>o?.type==='gate'&&!o.dead&&o.solid&&this.known(o)).sort((a,b)=>dist(a,this.center())-dist(b,this.center()))[0];if(gate)return{id:'order-'+ ++this.serial,type:'assault',targetId:gate.id,targetKind:'object',siteId:site.id,x:gate.x,y:gate.y}}
+
   if(kind==='attackArea')return{id:'order-'+ ++this.serial,type:'attackArea',...point(p)};
   const q=g.navigation.blocked(p.x,p.y,10,'ape')?g.findOpen(p.x,p.y):p;
   if(g.navigation.blocked(q.x,q.y,10,'ape')){this.status='No reachable staging point';return null}
@@ -117,7 +117,7 @@ class Siege {
  skip(){for(const s of this.selected){const group=this.groups[s];if(!group)continue;for(const id of group.members){const a=this.g.apesById.get(id);if(a?.armyOrder)this.advance(a)}group.blocked=false}}
  retry(){for(const s of this.selected){const group=this.groups[s];if(group){group.blocked=false;for(const id of group.members){const a=this.g.apesById.get(id);if(a){delete a.siegeRoute;delete a._orderStall;a._siegeProgress=null}}}}this.pathCache.clear()}
  resolve(o){return o.targetKind==='human'?this.g.humansById.get(o.targetId):o.targetKind==='vehicle'?this.g.vehicles.find(v=>v.id===o.targetId):this.g.world.objects.get(o.targetId)}
- known(o){if(o.type==='gateControl')return !!o.discovered;const w=this.g.world;return !w.discovered?.size||w.discovered.has(Math.floor(o.x/(w.revealCellSize||192))+','+Math.floor(o.y/(w.revealCellSize||192)))}
+ known(o){if(!o)return false;if(o.type==='gateControl'||['prisonControl','generator','radio','alarm','cage'].includes(o.type)&&o.discovered!==undefined)return !!o.discovered;const w=this.g.world;return !w.discovered?.size||w.discovered.has(Math.floor(o.x/(w.revealCellSize||192))+','+Math.floor(o.y/(w.revealCellSize||192)))}
  visibleTarget(t){const g=this.g;if(t._siegeSightAt>g.time)return !!t._siegeVisible;for(const a of g.apeGrid.nearest(t.x,t.y,450,6)){const seen=g.lineVisible(a,t);if(seen===null)return !!t._siegeVisible;if(seen){t._siegeSightAt=g.time+.2;t._siegeVisible=true;return true}}t._siegeSightAt=g.time+.2;t._siegeVisible=false;return false}
  rayObjects(a,b){const result=[];this.g.world._queryCollision(Math.min(a.x,b.x)-2,Math.min(a.y,b.y)-2,Math.max(a.x,b.x)+2,Math.max(a.y,b.y)+2,o=>{result.push(o);return true});return result}
  clearRay(a,b,opts={}){
@@ -152,17 +152,42 @@ class Siege {
   this.stones=this.stones.filter(b=>!b.done&&b.age<3);
  }
  routeFor(a,o){
-  const g=this.g,t=this.resolve(o)||o,site=o.siteId?g.world.sites.get(o.siteId):t.siteId?g.world.sites.get(t.siteId):[...g.world.sites.values()].find(s=>s.fortressVersion&&Math.abs(t.x-s.x)<s.extentX&&Math.abs(t.y-s.y)<s.extentY);
+  const g=this.g,t=this.resolve(o)||o,site=o.siteId?g.world.sites.get(o.siteId):t.siteId?g.world.sites.get(t.siteId):[...g.world.sites.values()].find(s=>s.fortressVersion&&(Math.abs(t.x-s.x)<s.extentX&&Math.abs(t.y-s.y)<s.extentY||Math.abs(a.x-s.x)<s.extentX&&Math.abs(a.y-s.y)<s.extentY));
   if(!site?.fortressVersion)return[{...point(t),action:o.type==='climb'?'climb':null,wallId:o.type==='climb'?t.id:null}];
-  const ex=site.extentX||site.radius-74,ey=site.extentY||site.radius-74,inside=p=>Math.abs(p.x-site.x)<ex-20&&Math.abs(p.y-site.y)<ey-20;
-  const finish=route=>{const gate=(site.gates||[]).map(id=>g.world.objects.get(id)).find(w=>w?.defenseRing===3),last=route.at(-1)||a;if(gate&&t.y<gate.y-20&&last.y>gate.y+20){const w=LIGHT.has(a.species)?(site.innerAccess||[]).map(id=>g.world.objects.get(id)).filter(w=>w&&!w.dead).sort((x,y)=>dist(last,x)-dist(last,y))[0]:null;if(w)route.push({x:w.x,y:w.y+44},{x:w.x,y:w.y-44,action:'cross',wallId:w.id});else route.push({x:gate.x,y:gate.y+44},{x:gate.x,y:gate.y-44,gateId:gate.id})}route.push({...point(t),formationBounds:inside(t)?{x:site.x,y:site.y,ex:ex-28,ey:ey-28}:null});return route};
   if(o.type==='climb')return[{...point(t),action:'climb',wallId:t.id}];
-  if(inside(a)||!inside(t))return finish([]);
-  if(LIGHT.has(a.species)){
-   const routes=(site.climbRoutes||[]).map(ids=>ids.map(id=>g.world.objects.get(id)).filter(w=>w&&!w.dead));const viable=routes.filter(r=>r.length).sort((r,s)=>dist(a,r[0])-dist(a,s[0]));
-   if(viable.length){const route=[];for(const w of viable[0]){const side=Math.sign(w.x-site.x),half=(w.w||20)/2;route.push({x:w.x+side*(half+24),y:w.y});route.push({x:w.x-side*(half+24),y:w.y,action:'cross',wallId:w.id});}return finish(route)}
+  const ex=site.extentX||site.radius-74,ey=site.extentY||site.radius-74,inside=p=>Math.abs(p.x-site.x)<ex-20&&Math.abs(p.y-site.y)<ey-20,enter=inside(t),leaving=inside(a)&&!enter;
+  const finish=route=>{
+   const gate=(site.gates||[]).map(id=>g.world.objects.get(id)).find(w=>w?.defenseRing===3),out=[];
+   const accesses=(site.innerAccess||[]).map(id=>g.world.objects.get(id)).filter(Boolean),innerX=accesses.length?Math.max(...accesses.map(w=>Math.abs(w.x-site.x)))+35:ex;
+   let last=a;
+   for(const next of [...route,{...point(t),formationBounds:enter?{x:site.x,y:site.y,ex:ex-28,ey:ey-28}:null}]){
+    if(gate&&(next.y-gate.y)*(last.y-gate.y)<0){
+     const crossingX=last.x+(next.x-last.x)*(gate.y-last.y)/(next.y-last.y);
+     if(Math.abs(crossingX-site.x)<innerX){
+      const sign=Math.sign(last.y-gate.y)||1,w=gate.solid&&LIGHT.has(a.species)?accesses.filter(w=>!w.dead&&!g.navigation.blocked(w.x,w.y+sign*44,9,'ape')&&!g.navigation.blocked(w.x,w.y-sign*44,9,'ape')).sort((x,y)=>dist(last,x)-dist(last,y))[0]:null;
+      if(w)out.push({x:w.x,y:w.y+sign*44},{x:w.x,y:w.y-sign*44,action:'cross',wallId:w.id});
+      else out.push({x:gate.x,y:gate.y+sign*44},{x:gate.x,y:gate.y-sign*44,gateId:gate.id});
+     }
+    }
+    out.push(next);last=next;
+   }return out;
+  };
+  if(inside(a)&&enter||!inside(a)&&!enter)return finish([]);
+  const options=[];
+  if(LIGHT.has(a.species))for(const ids of site.climbRoutes||[]){
+   let walls=ids.map(id=>g.world.objects.get(id)).filter(Boolean);if(leaving)walls.reverse();const steps=[];let valid=!!walls.length;
+   for(const w of walls){const sign=(Math.sign(w.x-site.x)||1)*(leaving?-1:1),half=(w.w||20)/2,from={x:w.x+sign*(half+24),y:w.y},to={x:w.x-sign*(half+24),y:w.y};
+    if(g.navigation.blocked(from.x,from.y,9,'ape')||g.navigation.blocked(to.x,to.y,9,'ape')||!w.dead&&!g.navigation.clearSegment(from.x,from.y,to.x,to.y,9,'ape',w.id)){valid=false;break}
+    steps.push(from,{...to,...(!w.dead&&w.hp>0?{action:'cross',wallId:w.id}:{})});
+   }
+   if(valid){const quiet=a.infiltration?.ghost?(g.world.concealment?.(steps[0].x,steps[0].y)||0)*100:0;options.push({steps,cost:dist(a,steps[0])+dist(steps.at(-1),t)-quiet})}
   }
-  const gates=(site.gates||[]).map(id=>g.world.objects.get(id)).filter(w=>w&&w.defenseRing!==3).sort((x,y)=>dist(a,x)-dist(a,y));const gate=gates[0];if(!gate)return[{...point(a),blocked:true}];const side=Math.sign(gate.y-site.y)||1;return finish([{x:gate.x,y:gate.y+side*45},{x:gate.x,y:gate.y-side*45,gateId:gate.id}]);
+  for(const side of[-1,1]){
+   const gates=(site.gates||[]).map(id=>g.world.objects.get(id)).filter(w=>w&&w.defenseRing!==3&&Math.sign(w.y-site.y)===side).sort((x,y)=>(Math.abs(y.y-site.y)-Math.abs(x.y-site.y))*(leaving?-1:1));
+   if(!gates.length)continue;const steps=[];for(const gate of gates){const sign=side*(leaving?-1:1);steps.push({x:gate.x,y:gate.y+sign*40},{x:gate.x,y:gate.y-sign*40,gateId:gate.id})}
+   const closed=gates.filter(w=>w.solid&&!w.dead).length;options.push({steps,cost:dist(a,steps[0])+dist(steps.at(-1),t)+closed*(LIGHT.has(a.species)?900:150)});
+  }
+  options.sort((a,b)=>a.cost-b.cost);return options.length?finish(options[0].steps):[{...point(a),blocked:true}];
  }
  startTransition(a,w,exit,top=false,stairs=null){
   const g=this.g;if(!w||w.dead||!w.walkable&&!w.climbAccess||!stairs&&!LIGHT.has(a.species))return false;
@@ -172,7 +197,7 @@ class Siege {
  }
  detach(a){const t=a.siegeTransition;if(t){const candidates=[t.from,t.to,point(a)];const p=candidates.find(p=>!this.g.navigation.blocked(p.x,p.y,9,a.id.startsWith('human')?'human':'ape'))||this.g.findOpen(a.x,a.y);a.x=p.x;a.y=p.y}delete a.siegeTransition;delete a.climbingWallId;delete a.onWallId;delete a.wallNode;a.elevation=0;a.wallClimbHeight=0;}
  transition(a,dt){const t=a.siegeTransition;if(!t)return false;const w=this.g.world.objects.get(t.wallId);if(!w||w.dead||a.hp<=0){const lift=altitude(a);this.detach(a);if(lift>35&&a.hp>0)this.g.hurt(a,(lift-35)*.25,{x:a.x,y:a.y,type:'fall'});return false}
-  t.elapsed+=dt;const u=Math.min(1,t.elapsed/t.duration);a.moving=true;
+  a.dir=Math.atan2(t.to.y-t.from.y,t.to.x-t.from.x);a.visualDir=a.dir;t.elapsed+=dt;const u=Math.min(1,t.elapsed/t.duration);a.moving=true;
   if(t.stairs||t.top){a.x=t.from.x+(w.x-t.from.x)*u;a.y=t.from.y+(w.y-t.from.y)*u;a.elevation=t.height*u}
   else{const p=u<.5?u*2:(u-.5)*2;a.x=u<.5?t.from.x+(w.x-t.from.x)*p:w.x+(t.to.x-w.x)*p;a.y=u<.5?t.from.y+(w.y-t.from.y)*p:w.y+(t.to.y-w.y)*p;a.elevation=t.height*(u<.5?p:1-p)}a.wallClimbHeight=a.elevation;
   if(u===1){if(!t.top&&!t.stairs&&this.g.navigation.blocked(t.to.x,t.to.y,9,'ape')){this.detach(a);delete a.siegeRoute;return true}delete a.siegeTransition;delete a.climbingWallId;if(t.top||t.stairs){a.x=w.x;a.y=w.y;a.onWallId=w.id;a.wallNode=w.id;a.elevation=t.height;a.wallClimbHeight=t.height}else{a.x=t.to.x;a.y=t.to.y;a.elevation=0;a.wallClimbHeight=0}}
@@ -186,7 +211,7 @@ class Siege {
   if(o.type==='charge'&&a.armyOrder.fanTarget)o={...o,id:o.id+':fan:'+a.id,...point(a.armyOrder.fanTarget)};
   const g=this.g,orderKey=o.id+':'+g.world.navRevision+(o.targetKind&&o.targetKind!=='object'?':'+Math.floor(o.x/32)+','+Math.floor(o.y/32):'');if(!a.siegeRoute||a.siegeRoute.key!==orderKey){const key=a.species+':'+Math.floor(a.x/140)+','+Math.floor(a.y/140)+':'+orderKey;let path=this.pathCache.get(key);if(!path){path=this.routeFor(a,o);this.pathCache.set(key,path);if(this.pathCache.size>256)this.pathCache.delete(this.pathCache.keys().next().value)}a.siegeRoute={key:orderKey,steps:path.map(p=>({...p})),index:0}}
   const route=a.siegeRoute,p=route.steps[route.index];if(!p)return true;
-  if(p.gateId){const gate=g.world.objects.get(p.gateId);if(gate?.solid&&!gate.dead){this.groups[a.species].blocked='gate';return false}}
+  if(p.gateId){const gate=g.world.objects.get(p.gateId);if(gate?.solid&&!gate.dead){if(!this.attack(a,gate,'object',dt))g.move(a,gate.x-a.x,gate.y-a.y,a.speed,dt);a.routeStatus='Breaching Gate';return false}}
   if(p.blocked){this.groups[a.species].blocked='route';return false}
   if(p.action&&!LIGHT.has(a.species)){this.groups[a.species].blocked='climber required';return false}if(p.action){const wall=g.world.objects.get(p.wallId);if(!wall||wall.dead||wall.hp<=0){route.index++;return false}if(dist(a,wall)<Math.max(wall.w||20,wall.h||20)/2+42){if(this.startTransition(a,wall,p,p.action==='climb'))route.index++;else if(this.status==='Climb exit blocked')this.groups[a.species].blocked='climb exit';return false}}
   const last=route.index===route.steps.length-1,slot=a.armyOrder.slot,side=(slot%9-Math.min(8,(this.groups[a.species]?.members.length||1)-1)/2)*34,row=Math.floor(slot/9);
@@ -220,7 +245,7 @@ class Siege {
   if(a.onWallId&&a.armyOrder){const w=this.g.world.objects.get(a.onWallId);if(!w||w.dead)this.detach(a)}
   if(!a.armyOrder)return this.capuchin(a,dt);
   const group=this.groups[a.species];if(!group||group.id!==a.armyOrder.group){this.clearActor(a);return false}
-  if(group.blocked||a.armyOrder.index>(group.readyIndex||0)){a.moving=false;return true}let o=group.orders[a.armyOrder.index];if(!o){a.state='hold';return true}
+  if(group.blocked&&this.g.time>=(group.retryAt||0)&&['route','climb exit'].includes(group.blocked)){group.retryAt=this.g.time+2;group.blocked=false;delete a.siegeRoute;this.pathCache.clear()}if(group.blocked||a.armyOrder.index>(group.readyIndex||0)){a.moving=false;return true}let o=group.orders[a.armyOrder.index];if(!o){a.state='hold';return true}
   if(o.type==='rally'){const prior=this.selected;this.selected=[a.species];if(a===group.members.map(id=>this.g.apesById.get(id)).find(p=>p?.hp>0)){if(!this.rally()){group.blocked='rally';this.selected=prior;return true}}this.selected=prior;this.advance(a);return true}
   if(o.type==='follow'){const k=this.g.king;this.g.move(a,k.x+a.offsetX-a.x,k.y+a.offsetY-a.y,a.speed,dt);return true}
   let target=o.targetId?this.resolve(o):null;
@@ -247,7 +272,7 @@ class Siege {
  receive(h,r){if(h.hp<=0)return;h.lastX=r.x;h.lastY=r.y;h.reportId=r.id;h.reportAt=r.at;h.dir=Math.atan2(r.y-h.y,r.x-h.x);h.searchTime=18;h.suspicion=Math.max(h.suspicion||0,.6);if(h.state!=='combat'&&h.state!=='radio'&&h.state!=='alarm')h.state='investigate';const id=h.squadId||h.id;if(!r.recipients.includes(id)&&r.recipients.length<128)r.recipients.push(id);h.perceptionTimer=0;const squad=this.g.forces.squads?.get(h.squadId);if(squad&&(!squad.reportAt||r.at>=squad.reportAt)){squad.objective={x:r.x,y:r.y};squad.reportAt=r.at;squad.nextThink=this.g.time;}}
  scanTowers(){const g=this.g;if(g.time<this.nextScan)return;this.nextScan=g.time+.15;const towers=g.world.getObjects(g.king.x,g.king.y,Math.max(1300,g.viewRadius||700)).filter(o=>o.type==='tower'&&!o.dead&&o.powered!==false&&o.staffed!==false);let checks=0;
   for(let i=0;i<Math.min(4,towers.length);i++){const t=towers[this.scanCursor++%towers.length];const angle=t.trackUntil>g.time?t.trackAngle:(t.angle||0)+Math.sin(g.time*(t.sweep||.2))*1.2;
-   for(const a of g.apeGrid.nearest(t.x,t.y,t.scanRange||t.lightRange||500,6)){if(checks>=12||g.performance.losRemaining<=48)break;const d=dist(a,t),facing=Math.cos(Math.atan2(a.y-t.y,a.x-t.x)-angle);if(facing<Math.cos(.48)&&d>90)continue;checks++;g.performance.losRemaining--;g.performance.counters.losTests++;if(!this.clearRay({...t,elevation:t.height||95},a))continue;
+   for(const a of g.apeGrid.nearest(t.x,t.y,t.scanRange||t.lightRange||500,6)){if(checks>=12||g.performance.losRemaining<=48)break;const d=dist(a,t),facing=Math.cos(Math.atan2(a.y-t.y,a.x-t.x)-angle);if(facing<Math.cos(.48)&&d>90)continue;if(d>90&&d>(t.scanRange||t.lightRange||500)*(g.stealthFactor?.(a)||1))continue;checks++;g.performance.losRemaining--;g.performance.counters.losTests++;if(!this.clearRay({...t,elevation:t.height||95},a))continue;
     const conceal=g.world.concealment?.(a.x,a.y)||0;if(d>250&&conceal>.8){const s=g.world.sites.get(t.siteId);if(s)s.siegeStage=Math.max(s.siegeStage||0,1);continue}t.trackAngle=Math.atan2(a.y-t.y,a.x-t.x);t.trackUntil=g.time+2;this.report(t,a,true);break;
    }
   }this.stats.towerChecks=checks;
@@ -274,9 +299,9 @@ class Siege {
   const next=g.world.objects.get(h.wallNext);if(next){const d=dist(h,next),step=Math.min(d,50*dt);if(d>1){h.x+=(next.x-h.x)/d*step;h.y+=(next.y-h.y)/d*step;h.moving=true}else{h.onWallId=next.id;h.wallNext=null}}
   return true;
  }
- tick(dt){this.updateStones(dt);this.scanTowers();if(this.g.time>=this.nextGroupTick){this.nextGroupTick=this.g.time+.3;this.tickReports();for(const s of SPECIES){const group=this.groups[s];if(!group)continue;const live=group.members.map(id=>this.g.apesById.get(id)).filter(a=>a&&this.eligible(a)&&a.armyOrder?.group===group.id);group.members=live.map(a=>a.id);if(!live.length){delete this.groups[s];continue}const min=Math.min(...live.map(a=>a.armyOrder.index));if(min>0){group.orders.splice(0,min);for(const a of live)a.armyOrder.index-=min}group.readyIndex=live.map(a=>a.armyOrder.index).sort((a,b)=>a-b)[Math.floor((live.length-1)*.15)]||0;if(!group.orders.length){for(const a of live){this.clearActor(a);a.state='hold';a.target=point(a)}delete this.groups[s]}}
+ tick(dt){this.updateStones(dt);this.scanTowers();if(this.g.time>=this.nextGroupTick){this.nextGroupTick=this.g.time+.3;this.tickReports();for(const s of SPECIES){const group=this.groups[s];if(!group)continue;const live=group.members.map(id=>this.g.apesById.get(id)).filter(a=>a&&this.eligible(a)&&a.armyOrder?.group===group.id);group.members=live.map(a=>a.id);if(!live.length){delete this.groups[s];continue}const min=Math.min(...live.map(a=>a.armyOrder.index));if(min>0){group.orders.splice(0,min);for(const a of live)a.armyOrder.index-=min}group.readyIndex=live.map(a=>a.armyOrder.index).sort((a,b)=>a-b)[Math.floor((live.length-1)*.15)]||0;if(!group.orders.length){for(const a of live){const stance=a.infiltration;this.clearActor(a);if(stance)a.infiltration=stance;a.state='hold';a.target=point(a)}delete this.groups[s]}}
    // Scouting is bounded and applies to the selected known local objects only.
-   for(const o of this.g.world.getObjects(this.g.king.x,this.g.king.y,Math.max(1000,this.g.viewRadius||700))){if(o.type!=='gateControl'||o.discovered||o.dead)continue;if(this.g.apeGrid.nearest(o.x,o.y,230,4).some(a=>this.clearRay(a,o,{ignore:o.id}))){o.discovered=true;const s=this.g.world.sites.get(o.siteId);if(s)s.known=true}}
+   const devices=this.g.world.getObjects(this.g.king.x,this.g.king.y,Math.max(1000,this.g.viewRadius||700)).filter(o=>['gateControl','prisonControl','generator','radio','alarm','cage'].includes(o.type)&&o.discovered===false&&!o.dead);for(let i=0;i<Math.min(24,devices.length);i++){const o=devices[((this.discoveryCursor||0)+i)%devices.length];if(this.g.apeGrid.nearest(o.x,o.y,230,4).some(a=>this.clearRay(a,o,{ignore:o.id}))){o.discovered=true;const s=this.g.world.sites.get(o.siteId);if(s)s.known=true}}this.discoveryCursor=((this.discoveryCursor||0)+24)%Math.max(1,devices.length);
   }this.garrison();}
  serialize(){return{version:1,selected:this.selected,unitIds:this.unitIds,groups:this.groups,drafts:this.drafts,presets:this.presets,serial:this.serial,reports:this.reports,deliveries:this.deliveries,stones:this.stones,rallyReady:this.rallyReady}}
  restore(d){if(d?.version===1){this.selected=(d.selected||[]).filter(s=>SPECIES.includes(s));this.unitIds=Array.isArray(d.unitIds)?d.unitIds.filter(id=>this.g.apesById.has(id)):null;this.serial=Number.isFinite(d.serial)?d.serial:0;this.rallyReady=Math.max(0,Number(d.rallyReady)||0);this.presets=(d.presets||[]).slice(0,4).map(p=>p.filter(s=>SPECIES.includes(s)));for(const s of SPECIES){const group=d.groups?.[s];if(group&&Array.isArray(group.members)&&Array.isArray(group.orders)){group.members=group.members.filter(id=>this.g.apesById.has(id));group.orders=group.orders.filter(o=>TYPES.has(o.type)&&finite(o)).slice(0,16);this.groups[s]=group}this.drafts[s]=(d.drafts?.[s]||[]).filter(o=>TYPES.has(o.type)&&finite(o)).slice(0,16)}this.reports=(d.reports||[]).filter(r=>finite(r)&&Number.isFinite(r.at)&&this.g.time-r.at<30).slice(-64);this.deliveries=(d.deliveries||[]).filter(r=>Number.isFinite(r.at)).slice(-32);this.stones=(d.stones||[]).filter(b=>finite(b)&&finite(b.from)&&finite(b.to)&&Number.isFinite(b.duration)&&b.duration>0).slice(-256)}

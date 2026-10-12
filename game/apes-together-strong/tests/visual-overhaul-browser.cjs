@@ -172,7 +172,8 @@ const screenshot = async (page, name) => { if (output) { fs.mkdirSync(output, { 
     const end = await mobile.evaluate(() => ({ x: ATS.game.king.x, y: ATS.game.king.y }));
     assert.ok(Math.hypot(end.x - start.x, end.y - start.y) > 5, 'real touch drag moves the king through the joystick');
     await mobile.locator('#attackButton').tap();
-    await mobile.locator('#mapButton').tap(); assert.equal(await mobile.evaluate(() => ATS.screen), 'overview');
+    await mobile.evaluate(()=>{ATS.mobileCommands.toggleArmy(false);ATS.mobileCommands.openSettlement()});
+    await mobile.locator('[data-mobile-action=overview]').tap(); assert.equal(await mobile.evaluate(() => ATS.screen), 'overview');
     await mobile.locator('#closeOverview').tap();
     await screenshot(mobile, 'visual-mobile-play');
 

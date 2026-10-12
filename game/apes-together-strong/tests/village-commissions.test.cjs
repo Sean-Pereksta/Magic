@@ -35,11 +35,11 @@ test('staffed towers launch visible traveling shafts before human or vehicle dam
  human.hp=0;const vehicle={id:'vehicle-'+g.nextId++,kind:'tank',x:tower.x+200,y:tower.y,dir:0,state:'raid'};g.forces.initVehicle(vehicle,'tank');g.vehicles.push(vehicle);g.vehicleGrid.rebuild(g.vehicles);const armorHp=vehicle.hp;assert.ok(shoot(g,s,tower,vehicle));assert.equal(vehicle.hp,armorHp);fly(g,s,.7);assert.ok(vehicle.hp<armorHp,'traveling spear collision also reaches armor');
 });
 
-test('walls, evasion, absent staff, children and knocked-down staff cannot cause remote hits',()=>{
- const {g,s}=colony(),tower=finished(g,s,'spearTower'),human=g.makeHuman(tower.x+220,tower.y,null),hp=human.hp,a=crew(g,s,tower);g.humanGrid.rebuild(g.humans);g.world.lineClear=()=>false;tower.shotAt=0;g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,0);assert.equal(human.hp,hp);
+test('scenery never blocks towers; evasion, absent staff, children and knocked-down staff remain valid',()=>{
+ const {g,s}=colony(),tower=finished(g,s,'spearTower'),human=g.makeHuman(tower.x+220,tower.y,null),hp=human.hp,a=crew(g,s,tower);g.humanGrid.rebuild(g.humans);g.world.lineClear=()=>false;tower.shotAt=0;g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,1);assert.equal(human.hp,hp);s.spears=[];tower.shotAt=0;
  g.world.lineClear=()=>true;tower.acquireAt=0;Object.assign(a,{x:0,y:0});g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,0);Object.assign(a,tower.station);a.state='young';g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,0);a.state='settled';a.blastReaction={stage:'gettingUp'};g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,0);delete a.blastReaction;
  assert.ok(shoot(g,s,tower,human));human.y+=100;g.humanGrid.rebuild(g.humans);fly(g,s,1.3);assert.equal(human.hp,hp,'moving away from the fixed aim point evades the shaft');assert.equal(s.spears.length,0);
- human.y=tower.y;assert.ok(shoot(g,s,tower,human));g.world.lineClear=()=>false;fly(g,s,.6);assert.equal(human.hp,hp,'cover blocks a spear already in flight');
+ human.y=tower.y;assert.ok(shoot(g,s,tower,human));g.world.lineClear=()=>false;fly(g,s,.6);assert.ok(human.hp<hp,'scenery cannot block an elevated friendly shaft');
 });
 
 test('training requires completed facilities, physical adult practice and finite food',()=>{

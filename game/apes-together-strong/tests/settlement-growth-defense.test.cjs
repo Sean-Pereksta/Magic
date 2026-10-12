@@ -40,16 +40,16 @@ test('all spear defenses hit at their full range beyond infantry and tank guns',
   g.forces.initVehicle(v,'tank');g.vehicles.push(v);const armor=fire(g,s,t,v);fly(g,armor.spear.duration+.3);assert.ok(v.hp<armor.hp);
  }
 });
-test('a tower fires above its own palisade while a tall obstacle still blocks it',()=>{
+test('friendly towers acquire and hit enemies across palisades of any visual height',()=>{
  const {g,s}=colony(),t=tower(g,s),wall=g.world.addFortification({id:'palisade',type:'apeBarricade',team:'ape',owner:'ape',x:200,y:0,width:120,height:16,dir:Math.PI/2,hp:320,maxHp:320});
  const h=g.makeHuman(980,0,null);const shot=fire(g,s,t,h);fly(g,shot.spear.duration+.2);assert.ok(h.hp<shot.hp);
- h.hp=h.maxHp;wall.visualHeight=220;t.shotAt=t.acquireAt=0;g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,0);
+ h.hp=h.maxHp;wall.visualHeight=220;t.shotAt=t.acquireAt=0;g.colonies.updateDefenses(1/60);assert.equal(s.spears.length,1);fly(g,s.spears[0].duration+.2);assert.ok(h.hp<h.maxHp);
 });
-test('cover raised after launch intercepts a traveling spear and friendly armor is ignored',()=>{
+test('cover raised after launch cannot cancel a friendly spear and friendly armor is ignored',()=>{
  const {g,s}=colony(),t=tower(g,s),h=g.makeHuman(800,0,null),friendly={id:'friendly',kind:'tank',vehicleClass:'tank',team:'ape',hp:500,maxHp:500,x:300,y:0};g.vehicles.push(friendly);
  const shot=fire(g,s,t,h);assert.equal(shot.spear.targetId,h.id);
  g.world.addFortification({id:'new-wall',type:'wall',team:'human',x:500,y:0,width:120,height:180,dir:Math.PI/2,hp:320,maxHp:320});
- fly(g,shot.spear.duration+.3);assert.equal(h.hp,shot.hp);assert.equal(friendly.hp,500);assert.equal(s.spears.length,0);
+ fly(g,shot.spear.duration+.3);assert.ok(h.hp<shot.hp);assert.equal(friendly.hp,500);assert.equal(s.spears.length,0);
 });
 test('settlements fill actual housing beyond low terrain capacity and resume when a home is added',()=>{
  const {g,s}=colony(4);hut(g,s);s.structures.push({id:'garden1',kind:'garden',hp:100,stage:4},{id:'garden2',kind:'garden',hp:100,stage:4});step(g,s,1200);assert.equal(s.population,16);assert.equal(g.stats.born,12);

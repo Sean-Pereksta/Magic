@@ -80,7 +80,9 @@ const { chromium } = require('playwright');
       const cage = [...g.world.objects.values()].find(o => o.siteId === 'opening-rescue' && o.type === 'cage');
       g.damageObject(cage, 999, g.king);
       g.commandCD = 0;
-      g.command('call');
+      // This fixture releases and calls within one paused frame; refresh the
+      // same spatial index a live simulation tick normally rebuilds.
+      g.apeGrid.rebuild(g.apes,g.king);g.command('call',{radius:340});
       const freed = g.followers.length;
       for (let i = 0; i < 15; i++) g.makeApe(0, 0, 'follow');
       g.food = 150;
@@ -161,10 +163,12 @@ const { chromium } = require('playwright');
     await mobile.locator('#newRun').tap();
     await mobile.waitForFunction(() => ATS.screen === 'play');
     assert.equal(await mobile.locator('#joystick').isVisible(), true);
-    await mobile.locator('#armyDock .army-expand').tap();
+    // Advanced commands are now opened through the mobile wheel's army action.
+    await mobile.evaluate(()=>ATS.mobileCommands.toggleArmy(true));
     await mobile.locator('#armyDock [data-army-command=charge]').tap();
     await mobile.locator('#gameCanvas').tap({ position: { x: 240, y: 360 } });
-    await mobile.locator('#mapButton').tap();
+    await mobile.evaluate(()=>{ATS.mobileCommands.toggleArmy(false);ATS.mobileCommands.openSettlement()});
+    await mobile.locator('[data-mobile-action=overview]').tap();
     assert.equal(await mobile.evaluate(() => ATS.screen), 'overview');
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile has no horizontal overflow');
     await screenshot(mobile, 'mobile-map');
