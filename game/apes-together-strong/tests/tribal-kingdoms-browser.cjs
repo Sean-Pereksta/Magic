@@ -14,6 +14,22 @@ const {pathToFileURL}=require('node:url'),{chromium}=require('playwright');
    await page.waitForFunction(()=>window.ATSVisualAssets?.status==='ready');
    assert.equal(await page.locator('#tribeChoices input').count(),3);
    await page.locator('input[name=startingTribe][value='+id+']').check();
+   // Verify the large painted King, not only the radio button or small tribe card,
+   // switches to the matching tribe-specific outfit without starting a run.
+   const portrait=await page.evaluate(()=>{
+    const renderer=ATS.renderer,draw=renderer.drawApe;let sideKing=null;
+    try{
+     renderer.drawApe=function(ctx,ape,king,...args){
+      if(king)sideKing={tribeId:ape.tribeId,atlas:ATSOutfitArt.atlasFor(ape,{king:true,tribeId:ape.tribeId})};
+      return draw.call(this,ctx,ape,king,...args);
+     };
+     renderer.drawMenu(0);
+    }finally{renderer.drawApe=draw;}
+    return{selected:renderer.menuTribeId,sideKing};
+   });
+   assert.equal(portrait.selected,id);
+   assert.equal(portrait.sideKing?.tribeId,id);
+   assert.equal(portrait.sideKing?.atlas,'armor-'+id+'-base');
    if(process.env.QA_ARTIFACT_DIR&&id==='ironback'){fs.mkdirSync(process.env.QA_ARTIFACT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.QA_ARTIFACT_DIR,'tribal-menu.png'),fullPage:true})}
    await page.locator('#newRun').click();await page.waitForFunction(()=>ATS.game?.time>.1);
    assert.equal(await page.evaluate(()=>ATS.game.tribe.id),id);
