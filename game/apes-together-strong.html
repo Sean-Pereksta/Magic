@@ -216,6 +216,7 @@
       <div class="menu-actions">
         <button id="newRun" class="button primary">Enter the wild <span aria-hidden="true">→</span></button>
         <button id="continueRun" class="button" disabled>Continue your reign</button>
+        <button id="menuImportSave" class="button" disabled>Import &amp; load saved file</button>
         <button id="howToPlay" class="button quiet">How to survive</button>
         <button id="legacyButton" class="button quiet">Hall of crowns <span aria-hidden="true">♜</span></button>
         <button id="menuSettings" class="button quiet">Settings</button>
@@ -3318,10 +3319,31 @@ class Settlements {
   if(distance(a,target)>90&&job!=='scout'&&job!=='young'){const dot=(a.x-s.x)*(target.x-s.x)+(a.y-s.y)*(target.y-s.y);if(distance(a,s)>40&&dot<0){x=s.x+offset;y=s.y}}
   a.activity=activity;a.carrying=carrying;return {x,y,speed:(a.speed||90)*speed,activity,carrying,projectId:a.workTargetId};
  }
- staffFacilities(s){const g=this.game;if(g.time<(s._staffAt||0))return;s._staffAt=g.time+4;const adults=(s._adults||this.members(s).filter(a=>a.state!=='young'&&a.state!=='scout')).filter(a=>a.hp>0&&!a.kingdomMission),hasWork=this.board(s).ordered.length>0,available=adults.filter(a=>!a.expeditionCargo&&(s.attack||!['workshop','gardener'].includes(a.job)&&(a.job!=='builder'||!hasWork))),byId=new Map(available.map(a=>[a.id,a])),reserved=new Set(),candidates=available.slice().sort((a,b)=>(b.job==='guardian')-(a.job==='guardian'));
-  for(const a of adults){delete a.towerId;delete a.trainingFacilityId}
-  for(const tower of s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4)){let a=byId.get(tower.staffedBy);if(!a||reserved.has(a.id))a=candidates.find(a=>!reserved.has(a.id));tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range}
-  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4)){const keep=(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));for(const a of candidates){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}}
+ staffFacilities(s){
+  const g=this.game,attacked=!!s.attack;
+  if(g.time<(s._staffAt||0)&&s._staffAttack===attacked)return;
+  s._staffAttack=attacked;s._staffAt=g.time+(attacked?1:4);
+  const members=s._members||this.members(s),adults=members.filter(a=>a.hp>0&&a.state==='settled'&&a.settlementId===s.id&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission&&!a.expeditionCargo&&!g.blastActive?.(a));
+  const hasWork=this.board(s).ordered.length>0,available=adults.filter(a=>attacked||!['workshop','gardener'].includes(a.job)&&(a.job!=='builder'||!hasWork)),byId=new Map(available.map(a=>[a.id,a])),reserved=new Set();
+  for(const f of s.facilities)if(DEFENSES[f.kind]&&f.staffedBy){const old=g.apesById?.get(f.staffedBy);if(old&&!members.includes(old))delete old.towerId}
+  const previous=new Map(members.map(a=>[a.id,a.towerId]));
+  for(const a of members){delete a.towerId;delete a.trainingFacilityId}
+  const towers=s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4);
+  // Reserve existing crew first, including monkeys still walking to a station.
+  for(const tower of towers){const a=byId.get(tower.staffedBy);tower.staffedBy=a&&!reserved.has(a.id)?a.id:null;if(tower.staffedBy)reserved.add(a.id)}
+  for(const tower of towers){
+   tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range;
+   let a=byId.get(tower.staffedBy);
+   if(!a){let best=Infinity;for(const candidate of available){if(reserved.has(candidate.id))continue;const score=distance(candidate,tower.station)+(candidate.job==='guardian'?0:200);if(score<best){best=score;a=candidate}}}
+   tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}
+  }
+  for(const f of s.facilities)if(DEFENSES[f.kind]&&!towers.includes(f))f.staffedBy=null;
+  for(const a of members)if(previous.get(a.id)!==a.towerId){delete a._activityTarget;a._activityAt=0;delete a.garrisonPost;s._garrisonAt=0}
+  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4)){
+   const keep=attacked?[]:(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));
+   if(!attacked)for(const a of available){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}
+   facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}
+  }
  }
  train(s){if(s.attack)return;const g=this.game,byId=new Map((s._adults||[]).map(a=>[a.id,a])),facilities=s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4),selected=Array.from({length:Math.min(6,facilities.length)},(_,i)=>facilities[((s.trainingCursor||0)+i)%facilities.length]);s.trainingCursor=((s.trainingCursor||0)+selected.length)%Math.max(1,facilities.length);let work=0;for(const facility of selected)for(const id of (facility.trainingResidents||[]).slice(0,3)){const a=byId.get(id);if(!a||a.hp<=0||a.state==='young'||g.blastActive?.(a)||distance(a,facility)>80)continue;const level=clamp(Math.floor(a.trainingLevel||0),0,3);if(level>=3){a.trainingProgress=0;continue}const needed=45*(level+1),cost=3+level*2;a.trainingProgress=Math.min(needed,(a.trainingProgress||0)+(g.kingdom?.modifiers(s).training||1));a.activity='training';work++;if(a.trainingProgress>=needed&&s.food>=cost){s.food-=cost;a.trainingProgress=0;a.trainingLevel=level+1;g.applyTraining?.(a,a.trainingLevel);facility.trained=(facility.trained||0)+1}}
   s.trainingWorkers=work;
@@ -6704,7 +6726,7 @@ C.planGarrison=function(s){
 const tick=C.tick;C.tick=function(s,...args){const result=tick.call(this,s,...args);this.planGarrison(s);return result};
 const activity=C.activityTarget;C.activityTarget=function(a,s){
  const post=a.garrisonPost;
- if(post&&post.role!=='tower'&&a.job==='guardian'&&a.state==='settled'&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission){a.activity=s.attack&&post.role==='gate'?'defending entrance':'holding '+post.role+' post';return{...point(post),speed:a.speed*.8,activity:a.activity}}
+ if(!a.towerId&&post&&post.role!=='tower'&&a.job==='guardian'&&a.state==='settled'&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission){a.activity=s.attack&&post.role==='gate'?'defending entrance':'holding '+post.role+' post';return{...point(post),speed:a.speed*.8,activity:a.activity}}
  return activity.call(this,a,s);
 };
 const combat=T.combat;T.combat=function(a,dt,s){
@@ -7368,7 +7390,7 @@ class ATSRenderer {
  drawMenu(time=0){if(this.reducedMotion)time=0;const c=this.ctx;this.time=time;c.setTransform(this.dpr,0,0,this.dpr,0,0);const g=c.createLinearGradient(0,0,0,this.h);g.addColorStop(0,'#102b34');g.addColorStop(.65,'#122c2d');g.addColorStop(1,'#071417');c.fillStyle=g;c.fillRect(0,0,this.w,this.h);const moonX=this.w*.76,moonY=this.h*.2;this.glow(c,moonX,moonY,180,'122,177,183',.12);ellipse(c,moonX,moonY,21,21,'#acc4b8');ellipse(c,moonX+8,moonY-5,19,19,'#193942');
  for(let layer=0;layer<3;layer++){const count=layer?10:16;for(let i=0;i<count;i++){const x=(i/(count-1))*this.w+(hash(i,layer)-.5)*80,y=this.h*(.43+layer*.2)+hash(i+3,layer)*70,s=.55+layer*.32+hash(i,layer)*.45;c.save();c.translate(x,y);c.scale(s,s);c.globalAlpha=.28+layer*.22;c.drawImage(this.trees[(i+layer*3)%10],-83,-186);c.restore();}}
  const bx=this.w*.82,by=this.h*.49;c.save();c.translate(bx,by);c.scale(1.15,1.15);this.drawTower(c,{id:'menu',dir:time*.15});c.restore();const ang=Math.PI*.68+Math.sin(time*.17)*.37;const x2=bx+Math.cos(ang)*this.w*.48,y2=by+Math.sin(ang)*this.h*.48;const beam=c.createLinearGradient(bx,by-125,x2,y2);beam.addColorStop(0,'rgba(210,224,170,.13)');beam.addColorStop(1,'rgba(210,224,170,0)');path(c,[[bx,by-128],[x2-80,y2-45],[x2+95,y2+45]],beam);
- const ax=this.w*.73,ay=this.h*.83,size=Math.min(3.8,this.w/350,this.h/200);c.save();c.translate(ax,ay);c.scale(size,size);this.drawRock(c,{r:45});c.translate(-3,-13);this.drawApe(c,{id:'king',x:0,y:0,hp:100,maxHp:100,dir:Math.PI*.1,phase:0,fur:'#586a5d'},true);c.restore();
+ const ax=this.w*.73,ay=this.h*.83,size=Math.min(3.8,this.w/350,this.h/200);c.save();c.translate(ax,ay);c.scale(size,size);this.drawRock(c,{r:45});c.translate(-3,-13);this.drawApe(c,{id:'king',tribeId:this.menuTribeId||'ironback',species:'gorilla',x:0,y:0,hp:100,maxHp:100,dir:Math.PI*.1,phase:0,fur:'#586a5d',crownTier:1,equipment:{armorLevel:1}},true);c.restore();
  for(let i=0;i<5;i++){const x=this.w*(.52+i*.075),y=this.h*.92+(i%2)*8;c.save();c.translate(x,y);c.scale(1.2,1.2);c.globalAlpha=.8;this.drawApe(c,{id:'menu-companion-'+i,species:['chimpanzee','orangutan','gibbon','mandrill','capuchin'][i],coatVariant:i%3,dir:.1},false);c.restore();}
  const fog=c.createLinearGradient(0,this.h*.7,0,this.h);fog.addColorStop(0,'rgba(31,66,62,0)');fog.addColorStop(.5,'rgba(40,77,72,.15)');fog.addColorStop(1,'rgba(4,14,17,.65)');c.fillStyle=fog;c.fillRect(0,this.h*.7,this.w,this.h*.3);for(let i=0;i<25;i++){const x=(hash(i,91)*this.w+time*(2+hash(i,1)*3))%this.w,y=hash(i,5)*this.h;c.globalAlpha=.1+Math.sin(time*.8+i)*.08;ellipse(c,x,y,1.5,1,'#f3d89a');}c.globalAlpha=1;const shade=c.createLinearGradient(0,0,this.w,0);shade.addColorStop(0,'rgba(4,13,17,.86)');shade.addColorStop(.35,'rgba(4,13,17,.6)');shade.addColorStop(.7,'rgba(4,13,17,0)');c.fillStyle=shade;c.fillRect(0,0,this.w,this.h);}
  drawMap(game,canvas){const c=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),w=rect.width||640,h=rect.height||420,dpr=Math.min(devicePixelRatio||1,2);if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#0b1d22';c.fillRect(0,0,w,h);const world=game.world,cell=world.revealCellSize||192,keys=world.discovered?Array.from(world.discovered):[];let minX=game.king.x/cell-4,maxX=game.king.x/cell+4,minY=game.king.y/cell-4,maxY=game.king.y/cell+4;const cells=[];for(const key of keys){const q=key.split(',').map(Number);if(!Number.isFinite(q[0])||!Number.isFinite(q[1]))continue;cells.push(q);minX=Math.min(minX,q[0]);maxX=Math.max(maxX,q[0]+1);minY=Math.min(minY,q[1]);maxY=Math.max(maxY,q[1]+1);}const scale=Math.min((w-56)/((maxX-minX)*cell),(h-60)/((maxY-minY)*cell)),ox=(w-(maxX-minX)*cell*scale)/2-minX*cell*scale,oy=(h-(maxY-minY)*cell*scale)/2-minY*cell*scale;const point=(x,y)=>({x:ox+x*scale,y:oy+y*scale});
@@ -10094,7 +10116,7 @@ function mount({getGame,army,renderer,onBuildChange=()=>{}}){
  const menu=document.getElementById('newRun').parentElement;menu.before(field);
  const details=document.createElement('div');details.className='tribe-details';field.after(details);
  function selected(){return field.querySelector('input:checked')?.value||'ironback'}
- function describe(){const t=ATSTribes[selected()];details.replaceChildren();const b=document.createElement('b');b.textContent=t.bonuses;details.append(b,document.createElement('br'),t.drawback,document.createElement('br'),'Opening rescues: '+t.opening.join(', ')+'.',document.createElement('br'),'Exclusive: '+({ironback:'Shieldwall · Battering Assault · Gatehouse',shadowhand:'Ghost Entry · Master Distraction · Silent Relay Cut',emberwood:'Holdfast Defense · Masterwork Towers · Engineer Reserve'})[selected()]);}
+ function describe(){const id=selected(),t=ATSTribes[id];renderer.menuTribeId=id;details.replaceChildren();const b=document.createElement('b');b.textContent=t.bonuses;details.append(b,document.createElement('br'),t.drawback,document.createElement('br'),'Opening rescues: '+t.opening.join(', ')+'.',document.createElement('br'),'Exclusive: '+({ironback:'Shieldwall · Battering Assault · Gatehouse',shadowhand:'Ghost Entry · Master Distraction · Silent Relay Cut',emberwood:'Holdfast Defense · Masterwork Towers · Engineer Reserve'})[selected()]);}
  field.addEventListener('change',describe);describe();
  const row=document.createElement('div');row.className='tribal-orders';row.hidden=true;army.root.append(row);const buttons={};
  const button=(id,label,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.tribal=id;b.onclick=()=>{if(army.getScreen()!=='play')return;fn();army.update(true);refresh()};row.append(b);buttons[id]=b;return b};
@@ -10177,7 +10199,7 @@ function toast(text,color='gold',category='routine'){
  const area=$('toastArea'),el=document.createElement('div');el.className='toast';el.style.borderLeft='2px solid '+({red:'#e47c6b',green:'#83c8b3',gold:'#cfb46e'}[color]||color);el.textContent=text;area.append(el);while(area.children.length>4)area.firstChild.remove();setTimeout(()=>el.remove(),5500);
 }
 const hooks={toast,sound:(...args)=>audio.play(...args),death:g=>{deathShown=false;try{localStorage.removeItem(SAVE)}catch{}saved=null;recordLegacy(g)}};
-function updateMenu(){const loading=window.ATSVisualAssets?.status==='loading';$('newRun').disabled=loading;$('continueRun').disabled=!saved||loading;$('artworkStatus').hidden=!loading;$('highScore').textContent=fmt(Math.max(0,...histories.map(h=>h.score)))}
+function updateMenu(){const loading=window.ATSVisualAssets?.status==='loading';$('newRun').disabled=loading;$('continueRun').disabled=!saved||loading;$('menuImportSave').disabled=loading;$('artworkStatus').hidden=!loading;$('highScore').textContent=fmt(Math.max(0,...histories.map(h=>h.score)))}
 function startNew(){
  const seed=$('seedInput').value.trim().slice(0,50)||Math.random().toString(36).slice(2,10).toUpperCase();audio.unlock();
  try{game=new ATSGame(seed,$('difficultySelect').value,hooks);game.chooseTribe?.(tribalUI?.selected()||'ironback');renderer.camera.x=game.king.x;renderer.camera.y=game.king.y;renderer.camera.zoom=1;renderer.camera.armyFocus=null;renderer.findSettlements=false;$('findSettlementButton').setAttribute('aria-pressed','false');deathShown=false;$('toastArea').replaceChildren();show('play');saveGame(false)}catch(e){handleError(e)}
@@ -10258,7 +10280,7 @@ $('buildButton').addEventListener('click',openBuild);$('closeBuild').addEventLis
 function toggleSettlementFinder(){if(!game||screen!=='play')return;renderer.findSettlements=!renderer.findSettlements;$('findSettlementButton').setAttribute('aria-pressed',String(renderer.findSettlements));if(renderer.findSettlements)toast(game.settlements.length?'Edge arrows lead to every settlement.':'Found a settlement with Z; its arrow will appear here.')}
 $('findSettlementButton').addEventListener('click',toggleSettlementFinder);
 $('exportSave').addEventListener('click',()=>{if(!game||game.ended)return;const blob=new Blob([JSON.stringify(game.serialize())],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Apes_Together_Strong_'+game.seed.replace(/[^a-z0-9_-]/gi,'_')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Save file exported.','green','menu')});
-$('importSave').addEventListener('click',()=>$('importInput').click());$('importInput').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>20*1024*1024)throw new Error('This save file is too large.');const data=JSON.parse(await file.text());validateSave(data);if(loadGame(data))saveGame(false)}catch(err){toast('Import failed: '+err.message,'red','menu')}e.target.value=''});
+for(const id of ['importSave','menuImportSave'])$(id).addEventListener('click',()=>$('importInput').click());$('importInput').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>20*1024*1024)throw new Error('This save file is too large.');const data=JSON.parse(await file.text());validateSave(data);if(loadGame(data))saveGame(false)}catch(err){toast('Import failed: '+err.message,'red','menu')}e.target.value=''});
 $('commandToggle').addEventListener('click',()=>{$('commandPanel').hidden=!$('commandPanel').hidden;$('commandToggle').setAttribute('aria-expanded',String(!$('commandPanel').hidden))});document.querySelectorAll('[data-command]').forEach(btn=>btn.addEventListener('click',()=>{if(!game||screen!=='play')return;cancelNearestKey();const cmd=btn.dataset.command;if(['charge','spreadCharge','nearestTarget','nearestHuman'].includes(cmd)&&matchMedia('(pointer:coarse)').matches){pointer.aiming=cmd}else{pointer.aiming=false;game.command(cmd,currentAim())}$('commandPanel').hidden=true;$('commandToggle').setAttribute('aria-expanded','false')}));
 // Pointer capture supports a stationary long press on both the desktop dock and
 // touch command palette. The synthetic click after pointerup is consumed.
