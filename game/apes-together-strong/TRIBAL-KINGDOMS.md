@@ -87,23 +87,24 @@ access, elevated defenders, an internal lockdown section and reserve posts.
 Finite barracks waves stage inside the compound. Some guards retain reserve
 positions even during a breakout.
 
-Every new strongest facility has an elite captive whose cell requires **both**
-power and cell controls disabled. Some layouts contain an additional elite.
-Scouting reveals cell insignia and the prison inspection objective. Recruits
-are awarded only after the existing physical escort reaches safety beyond both
-rings. Saved cohort and cell award markers prevent duplicates. Champion-cap
-overflow keeps elite identity, specialty and a veteran reward.
+Every Blacksite/Transfer cage and every tier-4-or-higher prison cage holds
+10–20 normal monkeys with a seeded chance of 0–2 champions. Champions use the
+existing primate species, full heavy armor and a hand-drawn flag on their back.
+They have 5.5× normal health and 1.8× strike damage; their nonstacking banner aura
+grants nearby allies 15% damage and 12% movement speed within 180 paces.
 
-| Elite | Specialty |
-| --- | --- |
-| Ironhide Gorilla | 10% damage resistance and +30% log shield durability |
-| Ghost Gibbon | +20% climbing speed and 20% lower visibility |
-| Shadowbreaker Chimpanzee | +30% security sabotage speed/damage |
-| Stoneheart Orangutan | +15% construction support while stationed; one shared village bonus |
-| Warcry Mandrill | Extended local defensive rally |
-| Master Slinger Capuchin | +30% ranged damage, wider distractions, shorter cooldown |
+Freed monkeys are individual followers that fight and obey orders immediately.
+Escort each survivor beyond the walls for four safe seconds to secure their
+rescue. Isolated captives can be recaptured and released again as the same
+individuals. Saved actor IDs and award markers prevent duplicate recruits or
+rerolled champions. Untouched saved high-level cells adopt the new composition
+once; partially opened cells preserve their remaining stock. Legacy crowd
+escorts migrate to individual followers; already awarded species-specific
+elites remain compatible with older saves.
+The first high-security cell still requires both power and cell controls
+before opening. Scouting reveals champion counts and lock requirements.
 
-Tribal paint, armor, king crown tiers, elite harnesses/insignia, banners and
+Tribal paint, armor, king crown tiers, champion armor/insignia, banners and
 fortification decorations reuse existing art with a bounded 128-entry overlay
 cache. Rendering follows committed movement with dead zones and turn smoothing;
 combat and shield direction remain independent. The standalone build embeds
@@ -127,7 +128,7 @@ node game/apes-together-strong/tests/performance-bench.cjs --scenario HIK --fram
 Browser scripts require Playwright and Chromium and accept `CHROMIUM_PATH`.
 Focused simulation coverage includes opening balance, legacy saves, finite
 upgrades, stealth, distractions, silent outages, gate interaction, blocked and
-interrupted climbs, elite award persistence, garrison recall and remote armor.
+interrupted climbs, champion award persistence, garrison recall and remote armor.
 Existing prison, mixed-order, spear-defense, save and mobile regressions remain
 part of the validation.
 

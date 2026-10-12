@@ -35,7 +35,7 @@ const {pathToFileURL}=require('node:url'),{chromium}=require('playwright');
    assert.equal(await page.evaluate(()=>ATS.game.tribe.id),id);
    await page.evaluate(()=>{
     const g=ATS.game;g.spawnSites=()=>{};g.humans=[];g.vehicles=[];g.helis=[];g.nextDirectorAt=g.nextConvoyAt=g.heliTimer=1e9;g.king.hp=g.king.maxHp=10000;
-    for(const species of ATSSiegeSpecies){const a=g.makeApe(g.king.x+20,g.king.y+20,'follow');a.species=species;g.siege.balance(a,true);g.grantElite(a,species,'test-'+species)}
+    for(const species of ATSSiegeSpecies){const a=g.makeApe(g.king.x+20,g.king.y+20,'follow');a.species=species;g.siege.balance(a,true);g.champions.promote(a,{prisonChampion:true,sourceId:'test-'+species})}
     g.syncIndexes();g.siege.selectClimbers();ATS.army.update(true);
    });
    await page.locator('[data-tribal=infiltrate]').click();
@@ -46,10 +46,10 @@ const {pathToFileURL}=require('node:url'),{chromium}=require('playwright');
    await page.locator('[data-tribal=distract]').click();assert.equal(await page.evaluate(()=>ATS.army.mode),'distract');
    await page.mouse.move(800,480);await page.waitForTimeout(50);assert.ok(await page.evaluate(()=>!!ATS.renderer.distractionPreview));
    await page.keyboard.press('Escape');
-   const saved=await page.evaluate(()=>{const data=JSON.parse(JSON.stringify(ATS.game.serialize())),copy=ATSGame.fromJSON(data);return{id:copy.tribe.id,elites:copy.apes.filter(a=>a.elite).length,cache:ATS.renderer.tribalOverlays?.size||0}});
-   assert.equal(saved.id,id);assert.equal(saved.elites,6);assert.ok(saved.cache<=128);
+   const saved=await page.evaluate(()=>{const data=JSON.parse(JSON.stringify(ATS.game.serialize())),copy=ATSGame.fromJSON(data);return{id:copy.tribe.id,champions:copy.apes.filter(a=>a.champion?.prisonChampion).length,cache:ATS.renderer.tribalOverlays?.size||0}});
+   assert.equal(saved.id,id);assert.equal(saved.champions,6);assert.ok(saved.cache<=128);
   }
   assert.deepEqual(network,[],'standalone game is entirely offline');assert.deepEqual(errors,[]);
-  console.log('Tribal browser checks passed: all three openings, embedded artwork, infiltration/response UI, Ghost Entry, noise preview, elite saves, zero external requests.');
+  console.log('Tribal browser checks passed: all three openings, embedded artwork, infiltration/response UI, Ghost Entry, noise preview, champion saves, zero external requests.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -247,9 +247,10 @@
     // top of faces and make otherwise correctly placed captives disappear.
     art(c, 'cage', width, height, 0, 9);
     c.save(); polygon(c,layout.interior); c.clip();
+    const champions=(o.championRemaining??o.championCount??0)+(o.recapturedApes||[]).filter(a=>a.champion?.prisonChampion).length;
     for (let i = 0; i < layout.occupants.length; i++) {
       const p = layout.occupants[i];
-      this.drawApeMini(c,p.x,p.y,p.scale,{id:o.id+'-captive-'+i,species:o.captiveSpecies || (o.prisonReward === 'champion' ? 'gorilla' : ['chimpanzee','orangutan','gorilla'][i%3]),coatVariant:i%3,dir:.25,state:'captive',outfit:i===0&&['champion','injuredLegend'].includes(o.prisonReward)?{version:2,body:'elite'}:undefined});
+      this.drawApeMini(c,p.x,p.y,p.scale,{id:o.id+'-captive-'+i,species:o.captiveSpecies || (o.prisonReward === 'champion' ? 'gorilla' : ['chimpanzee','orangutan','gorilla'][i%3]),coatVariant:i%3,dir:.25,state:'captive',champion:i<champions?{prisonChampion:true}:undefined,outfit:i===0&&['champion','injuredLegend'].includes(o.prisonReward)?{version:2,body:'elite'}:undefined});
     }
     c.restore();
     c.save();c.beginPath();

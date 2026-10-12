@@ -9,7 +9,7 @@ const ready=()=>!!art()?.get('characters-armor-gorilla-base');
 function atlasFor(a,p={}){
  if(p.king||a.id==='king'){const tribe=tribes.includes(p.tribeId||a.tribeId)?p.tribeId||a.tribeId:'ironback',id=window.ATSArmorProgression?.canonical(a.outfit?.royal)||a.outfit?.royal;return 'armor-'+tribe+'-'+(looks[id]||'base')}
  const id=window.ATSArmorProgression?.canonical(a.outfit?.body)||a.outfit?.body,item=window.ATSOutfitItems?.[id],kind=species.includes(a.species)?a.species:'gorilla';
- return 'armor-'+kind+'-'+(item?.grade?'tier'+Math.min(3,item.grade):'base');
+ return 'armor-'+kind+'-'+(a.champion?.prisonChampion?'tier3':item?.grade?'tier'+Math.min(3,item.grade):'base');
 }
 function pose(a,p,options,time){
  if(p.human)return p;let atlas=atlasFor(a,{...options,king:p.king});if(!meta()?.sheets?.[atlas])return p;
@@ -39,7 +39,7 @@ function pose(a,p,options,time){
  const mapping=(action?spec.actionRows:spec.motionRows),row=mapping[d],override=spec.overrides?.[(action?'a':'m')+d+':'+column];
  return {...p,atlas,row:override?.[0]??row,column:override?.[1]??column,state,worker,tribe:options.tribeId||a.tribeId,sourceDirectionCount:8,illustratedArmor:true};
 }
-function armor(a,p){const atlas=atlasFor(a,p),item=window.ATSOutfitItems?.[window.ATSArmorProgression?.canonical(a.outfit?.[p.king?'royal':'body'])];return item?{atlas,grade:item.grade,fullBody:true}:null}
+function armor(a,p){const atlas=atlasFor(a,p),item=window.ATSOutfitItems?.[window.ATSArmorProgression?.canonical(a.outfit?.[p.king?'royal':'body'])];return a.champion?.prisonChampion&&!p.king?{atlas,grade:3,fullBody:true}:item?{atlas,grade:item.grade,fullBody:true}:null}
 function frame(){return false}
 // Complete repeated loadouts are one draw in the crowd, including front/rear
 // items and hand occlusion. Sources are composed only on appearance changes.
