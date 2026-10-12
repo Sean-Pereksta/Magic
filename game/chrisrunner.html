@@ -467,6 +467,7 @@
     backdrop-filter: blur(8px);
   }
   #hud h1, #hud .legacyHudLine { display: none; }
+  #hud.twoPlayerHud { top: 116px; }
   .hudPrimary { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
   #scoreText { font-size:24px !important; font-weight:950; line-height:1; letter-spacing:-.4px; }
   #biomeText { font-size:11px; font-weight:900; letter-spacing:1.4px; opacity:.82; text-transform:uppercase; }
@@ -540,6 +541,7 @@
       box-shadow: 0 0 10px rgba(0,0,0,0.35);
     }
     #hud h1 { display: none; }
+    #hud.twoPlayerHud { top: 128px; }
     #hud .hudLabel { display: none; }
     .barWrap { height: 7px; margin: 3px 0 4px; border-radius: 6px; }
     #scoreText { font-size: 18px !important; line-height: 1.05; }
@@ -713,7 +715,7 @@
 <div id="menuOverlay">
   <div id="menuCard">
     <h1>Chris Runner</h1>
-    <h2>One road. Ten worlds. Five runners.</h2>
+    <h2>Sixteen realms. Five runners. Find your way.</h2>
     <div id="menuLayout">
       <div id="menuMain">
         <h3 id="characterHeading">Choose your runner</h3>
@@ -825,6 +827,7 @@ let torches = [];
 let fireZones = [];
 let spiritDogs = [];
 let dreamHazards = [];
+let runnerGeneratingPlan = null;
 let fallingStars = [];
 let bonusScore = 0;
 let skillPopupTimer = null;
@@ -935,8 +938,8 @@ let roundActive = false;
 let roundEnding = false;
 let roundToastTimer = null;
 
-const CHRIS_REPLAY_VERSION = 1;
-const GAME_BUILD_VERSION = "chris-runner-astra-sections-v4";
+const CHRIS_REPLAY_VERSION = 2;
+const GAME_BUILD_VERSION = "chris-runner-realms-v5";
 
 let replayRecorder = null;
 let replayPlayback = null;
@@ -973,8 +976,7 @@ const MAX_DOGS = 5;
 const MAX_DESERT_STALKERS = 4;
 const MAX_POLICE = 5;
 const MAX_SPIRIT_DOGS = 5;
-const DREAM_START = 4000;
-const DREAM_END = 5000;
+const DREAM_START = 1008;
 const POLICE_SPAWN_START = 3000;
 const POLICE_RANGE = 46;
 const POLICE_CHASE_TIME = 2.2;
@@ -996,6 +998,8 @@ Object.assign(BIOMES, {
   tunnel: {...BIOMES.city, groundColor:0x28313f, roadColor:0x202b36, skyColor:0x233241, fogColor:0x354b59, sunIntensity:.7},
   ruins: {...BIOMES.forest, groundColor:0x62614d, roadColor:0x666359, skyColor:0xafaaa0, fogColor:0xc3bbaa, sunColor:0xffdfae}
 });
+
+for (const [key, config] of Object.entries(RUNNER_NEW_REALMS)) BIOMES[key] = {...config, treeType: key, rockType: key, grassType: key, decorationDensity: 1};
 
 function detectMobileDevice() {
   return window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
@@ -1585,6 +1589,7 @@ function updateEnvironmentSky(dt) {
 }
 
 function getBiomeLabel(biome) {
+  if (RUNNER_NEW_REALMS[biome]) return RUNNER_NEW_REALMS[biome].label;
   return ({ rooftops:"Skyline Rooftops", construction:"Construction Yard", industrial:"Foundry District", tunnel:"Transit Tunnel", ruins:"Overgrown Ruins", forest: "Forest Road", snow: "Frozen Pass", desert: "Desert Highway", city: "Night City", dream: "The Dream" })[biome] || biome;
 }
 
@@ -1669,31 +1674,13 @@ function buildCharacterModel(profile, jerseyColor = 0x1d4ed8) {
   rightEye.position.x = 0.18;
   rig.add(rightEye);
 
-  function attachLimb(name, x, y, z, mat, width, height) {
-    const limb = new THREE.Group();
-    limb.position.set(x, y, z);
-    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(width / 2, height, 6, 10), mat);
-    mesh.castShadow = true;
-    limb.add(mesh);
-    rig.add(limb);
-    parts[name] = limb;
-  }
-
-  const shoulderX = profile.roundness > 1.1 ? 1.08 : 0.95;
-  attachLimb("leftArm", -shoulderX, 3.45, 0, skin, 0.34, 1.35);
-  attachLimb("rightArm", shoulderX, 3.45, 0, skin, 0.34, 1.35);
-  attachLimb("leftLeg", -0.38, 1.85, 0, shorts, 0.42, 1.55);
-  attachLimb("rightLeg", 0.38, 1.85, 0, shorts, 0.42, 1.55);
-
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.25, 0.82), shoeMat);
-  leftShoe.position.set(-0.38, 0.45, 0.17);
-  leftShoe.castShadow = true;
-  rig.add(leftShoe);
-  parts.leftShoe = leftShoe;
-  const rightShoe = leftShoe.clone();
-  rightShoe.position.x = 0.38;
-  rig.add(rightShoe);
-  parts.rightShoe = rightShoe;
+  const shoulderX = profile.roundness > 1.1 ? 1.08 : .95;
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(1.05 * profile.roundness, .6, .72), shorts);
+  hips.position.y = 1.8; hips.castShadow = true; rig.add(hips);
+  runnerArticulatedLimb(rig, parts, 'leftArm', -shoulderX, 3.9, skin, .34, .7, skin);
+  runnerArticulatedLimb(rig, parts, 'rightArm', shoulderX, 3.9, skin, .34, .7, skin);
+  runnerArticulatedLimb(rig, parts, 'leftLeg', -.38, 1.85, shorts, .42, .82, shoeMat);
+  runnerArticulatedLimb(rig, parts, 'rightLeg', .38, 1.85, shorts, .42, .82, shoeMat);
 
   rig.scale.set(profile.modelScale[0], profile.modelScale[1], profile.modelScale[2]);
   rig.userData.characterKey = profile.id;
@@ -1834,114 +1821,13 @@ function createPlayerArrow(color) {
 ============================================================ */
 
 function createEnemy(x, z) {
-  const rig = new THREE.Group();
-  rig.position.set(x, 0, z);
-
-  const skin = new THREE.MeshStandardMaterial({ color: 0xf0c9a2, roughness: 0.65 });
-  const hoodie = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.7 });
-  const hair = new THREE.MeshStandardMaterial({ color: 0x6b3e1f, roughness: 0.8 });
-  const fireMat = new THREE.MeshStandardMaterial({
-    color: 0xff7a18,
-    emissive: 0xff3c00,
-    emissiveIntensity: 1.1
-  });
-
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.55, 2.35, 0.9), hoodie);
-  torso.position.y = 3.05;
-  torso.castShadow = true;
-  rig.add(torso);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 18, 18), skin);
-  head.position.y = 4.55;
-  head.castShadow = true;
-  rig.add(head);
-
-  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.22, 0.1), hair);
-  beard.position.set(0, 4.22, 0.5);
-  rig.add(beard);
-
-  const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 8), hair);
-  hairTop.position.y = 4.85;
-  hairTop.scale.set(0.95, 0.38, 0.85);
-  rig.add(hairTop);
-
-  const leftArm = new THREE.Group();
-  leftArm.position.set(-1.0, 3.4, 0);
-
-  const leftArmMesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.18, 1.45, 6, 10),
-    hoodie
-  );
-  leftArmMesh.castShadow = true;
-  leftArm.add(leftArmMesh);
-  rig.add(leftArm);
-
-  const rightArm = leftArm.clone();
-  rightArm.position.x = 1.0;
-  rig.add(rightArm);
-
-  const leftLeg = new THREE.Group();
-  leftLeg.position.set(-0.42, 1.8, 0);
-
-  const leftLegMesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.22, 1.6, 6, 10),
-    pants
-  );
-  leftLegMesh.castShadow = true;
-  leftLeg.add(leftLegMesh);
-  rig.add(leftLeg);
-
-  const rightLeg = leftLeg.clone();
-  rightLeg.position.x = 0.42;
-  rig.add(rightLeg);
-
-  const canHaveTorch = distance >= 500 && gameRandom() < 0.38;
-  let handTorch = null;
-
-  if (canHaveTorch) {
-    handTorch = new THREE.Group();
-
-    const stick = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.07, 0.9, 6),
-      new THREE.MeshStandardMaterial({ color: 0x5b3211, roughness: 0.75 })
-    );
-    stick.rotation.z = 0.2;
-    handTorch.add(stick);
-
-    const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.18, 0.45, 8),
-      fireMat
-    );
-    flame.position.y = 0.55;
-    handTorch.add(flame);
-
-    handTorch.position.set(1.18, 3.25, 0.15);
-    rig.add(handTorch);
-  }
-
-  scene.add(rig);
-
-  return {
-    type: "enemy",
-    rig,
-    velocity: new THREE.Vector3(),
-    speed: 8 + enemyBaseSpeedBonus + gameRandom() * 2.5,
-    animTime: gameRandom() * 10,
-    pathTimer: rand(0.4, 1.2),
-    path: [],
-    wanderDir: null,
-    wanderTimer: 0,
-    hasTorch: canHaveTorch,
-    torchCooldown: rand(2.5, 5.0),
-    handTorch,
-    parts: {
-      leftArm,
-      rightArm,
-      leftLeg,
-      rightLeg
-    }
-  };
+  const canHaveTorch = distance >= 500 && gameRandom() < .38;
+  const made = buildRunnerEnemyModel('chaser', Math.abs(Math.round(x * 17 + z)) % 6, getBiomeForZ(z), canHaveTorch);
+  made.rig.position.set(x, 0, z); scene.add(made.rig);
+  return {type: 'enemy', ...made, velocity: new THREE.Vector3(),
+    speed: 8 + enemyBaseSpeedBonus + gameRandom() * 2.5, animTime: gameRandom() * 10,
+    pathTimer: rand(.4, 1.2), path: [], wanderDir: null, wanderTimer: 0,
+    hasTorch: canHaveTorch, torchCooldown: rand(2.5, 5)};
 }
 
 function createPoliceOfficer(x, z) {
@@ -2049,28 +1935,11 @@ function createDog(x, z) {
     animTime: gameRandom() * 5,
     wanderDir: null,
     wanderTimer: 0,
-    legs
+    legs, body, head, tail
   };
 }
 
-function createSpiritDog(x, z) {
-  const rig = new THREE.Group();
-  rig.position.set(x, 0, z);
-  const glow = new THREE.MeshStandardMaterial({ color: 0x9be7ff, emissive: 0x6d28d9, emissiveIntensity: 1.25, transparent: true, opacity: 0.68, roughness: 0.22, depthWrite: false });
-  const pale = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.82, depthWrite: false });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.58, 1.55, 5, 9), glow); body.rotation.x = Math.PI / 2; body.position.y = 1.05; rig.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 12, 10), glow); head.position.set(0, 1.45, 1.15); rig.add(head);
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.75, 8), glow); snout.rotation.x = Math.PI / 2; snout.position.set(0, 1.34, 1.8); rig.add(snout);
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), pale); eyeL.position.set(-0.22, 1.57, 1.62); rig.add(eyeL);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.22; rig.add(eyeR);
-  const legs = [];
-  for (const [lx,lz] of [[-.48,.62],[.48,.62],[-.48,-.62],[.48,-.62]]) {
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.11,.68,4,7), glow); leg.position.set(lx,.48,lz); rig.add(leg); legs.push(leg);
-  }
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(1.35,.055,7,30), pale); halo.rotation.x = Math.PI/2; halo.position.y=.15; rig.add(halo);
-  scene.add(rig);
-  return { type: "spiritDog", rig, speed: 15.2 + enemyBaseSpeedBonus, turnRate: 2.65, heading: gameRandom() * Math.PI * 2, animTime: gameRandom() * 5, wanderDir: null, wanderTimer: 0, legs, phase: gameRandom() * Math.PI * 2 };
-}
+function createSpiritDog(x, z) { return makeRunnerSpiritDog(x, z); }
 
 function updateSpiritDogs(dt) {
   for (const dog of spiritDogs) {
@@ -2092,8 +1961,8 @@ function updateSpiritDogs(dt) {
       if (collidesWithWall(dog.rig.position,.72)) dog.rig.position.copy(old);
       dog.rig.rotation.y = dog.heading;
     }
-    dog.phase += dt * 4.2; dog.animTime += dt * 11; dog.rig.position.y = .18 + Math.sin(dog.phase) * .18;
-    dog.legs.forEach((leg,i) => leg.rotation.x = Math.sin(dog.animTime + i*Math.PI/2) * .65);
+    dog.phase += dt * 4.2;
+    animateRunnerCanine(dog, dt, true);
     if (dist < 1.5) { if (tryShieldBlock(target,dog)) continue; handlePlayerCaught(target, "Player " + target.id + " was taken by a spirit dog!"); }
   }
   const leader = getLeaderRunner() || player;
@@ -2103,16 +1972,20 @@ function updateSpiritDogs(dt) {
 function findDreamHazardPosition(zStart, radius) {
   for (let attempt=0; attempt<18; attempt++) {
     const pos = new THREE.Vector3(rand(-ROAD_WIDTH/2+radius+1,ROAD_WIDTH/2-radius-1),0,zStart+rand(8,CHUNK_LENGTH-7));
+    const plan = worldChunks.find(c => c.userData.zStart === zStart)?.userData.plan || runnerGeneratingPlan;
+    if (!plan || !runnerRouteClear(plan, pos.x, pos.z - zStart, radius, radius)) continue;
     if (getCollidingWall(pos,radius+.55)) continue;
     if (pickups.some(p => flatDistance(p.position,pos) < radius+1.8)) continue;
     if (dreamHazards.some(h => h.group && flatDistance(h.group.position,pos) < radius+h.radius+2.2)) continue;
     return pos;
   }
-  return new THREE.Vector3(0,0,zStart+CHUNK_LENGTH*.62);
+  return null;
 }
 
 function createDreamHazard(chunk, zStart) {
   const radius = 3.2;
+  const safePosition = findDreamHazardPosition(zStart, radius);
+  if (!safePosition) return;
   const group = new THREE.Group();
   const fillMat = new THREE.MeshBasicMaterial({ color:0x7c3aed, transparent:true, opacity:.16, depthWrite:false, side:THREE.DoubleSide });
   const ringMat = new THREE.MeshBasicMaterial({ color:0xc084fc, transparent:true, opacity:.82, depthWrite:false, side:THREE.DoubleSide });
@@ -2146,7 +2019,7 @@ function createDreamHazard(chunk, zStart) {
     group.add(spike); burstSpikes.push(spike);
   }
   const light = new THREE.PointLight(0xec4899,0,18,2); light.position.y=2.6; group.add(light);
-  group.position.copy(findDreamHazardPosition(zStart,radius));
+  group.position.copy(safePosition);
   chunk.add(group);
   const warningDuration=2.4;
   dreamHazards.push({
@@ -2278,9 +2151,7 @@ function updateFallingStars(dt) {
 ============================================================ */
 
 function getBiomeForZ(z) {
-  // Chunk-aligned transitions prevent lighting and geometry disagreeing.
-  const route = ["forest", "city", "rooftops", "construction", "industrial", "tunnel", "ruins", "snow", "desert", "dream"];
-  return route[Math.max(0, Math.floor(z / (CHUNK_LENGTH * 6))) % route.length];
+  return runnerRealmForIndex(Math.max(0, Math.floor(z / (CHUNK_LENGTH * 6))));
 }
 
 function getBiomeConfig(biome) {
@@ -2687,7 +2558,9 @@ function generateChunk(zStart) {
   addRoadLines(chunk, zStart, biome);
   if (["forest","snow","desert","dream"].includes(biome)) addOuterTerrainDecor(chunk, zStart, biome);
   addRunnerArchitecture(chunk, zStart, biome);
+  addRunnerRealmScenery(chunk, zStart, biome);
   const section = addRunnerSection(chunk, zStart, biome);
+  runnerGeneratingPlan = section;
   addPickups(chunk, zStart);
   if (["forest","snow","desert","ruins"].includes(biome)) addGrassPatches(chunk, zStart, biome);
   if (biome === "dream" && !section.recovery) {
@@ -2857,7 +2730,7 @@ function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
 
 function addPickups(chunk, zStart) {
   const recovery = chunk.userData.section === "recovery";
-  const rewardRoute = ["shortcut", "parkour"].includes(chunk.userData.section);
+  const rewardRoute = chunk.userData.plan?.rewardX !== undefined;
   const amount = recovery || rewardRoute ? 2 : 1;
 
   for (let i = 0; i < amount; i++) {
@@ -2909,9 +2782,10 @@ function addPickups(chunk, zStart) {
       group.add(ringB);
     }
 
-    const shortcut = ["shortcut", "parkour"].includes(chunk.userData.section);
-    const x = shortcut && i === 0 ? 9 : 0;
-    const z = zStart + (shortcut && i === 0 ? 36 : 10 + i * 16);
+    const shortcut = chunk.userData.plan?.rewardX !== undefined;
+    const localZ = shortcut && i === 0 ? 37 : 5 + i * 13;
+    const x = shortcut && i === 0 ? chunk.userData.plan.rewardX : runnerRouteX(chunk.userData.plan, localZ);
+    const z = zStart + localZ;
 
     group.position.set(x, 1.2, z);
     group.userData = {
@@ -3179,7 +3053,7 @@ function updateFlowState(dt) {
 
 function getCollidingWall(pos,radius) {
   for (const wall of walls) {
-    if (!wall || !wall.userData || Math.abs(wall.position.z-pos.z)>12) continue;
+    if (!wall || !wall.userData || wall.userData.runnerOpen || Math.abs(wall.position.z-pos.z)>12) continue;
     const rx=(wall.userData.radiusX||1.6)+radius; const rz=(wall.userData.radiusZ||1.6)+radius;
     if (Math.abs(pos.x-wall.position.x)<rx && Math.abs(pos.z-wall.position.z)<rz) return wall;
   }
@@ -3236,6 +3110,8 @@ function updatePlayerActor(p, dt, controlSet) {
   if (p.energy >= 25) p.exhausted = false;
   const sprinting = (keys[controlSet.sprint] || (p.id === 1 && mobileSprintDown)) && !p.exhausted && p.energy > 0;
   let speed = sprinting ? actor.sprintSpeed : actor.speed;
+  actor.isSprinting = sprinting;
+  actor.exhausted = p.exhausted;
 
   if (sprinting && move.lengthSq() > 0) {
     p.energy -= dt * 22 * (p.sprintDrainMultiplier || 1);
@@ -3274,7 +3150,7 @@ function updatePlayerActor(p, dt, controlSet) {
     actor.velocity.z = move.z * speed;
 
     const angle = Math.atan2(actor.velocity.x, actor.velocity.z);
-    actor.rig.rotation.y = angle;
+    runnerTurn(actor, angle);
   } else {
     actor.velocity.multiplyScalar(0.82);
   }
@@ -3321,69 +3197,9 @@ function checkFireDamage(dt) {
    ANIMATION
 ============================================================ */
 
-function animateRunner(actor, dt, isMoving, allowFarSkip) {
-  if (allowFarSkip) {
-    const dist = Math.abs(actor.rig.position.z - player.rig.position.z);
-    if (dist > 85 && frameCount % 2 !== 0) return;
-  }
+function animateRunner(actor, dt, isMoving, allowFarSkip) { animateRunnerMotion(actor, dt, isMoving, allowFarSkip); }
 
-  actor.animTime += dt * (isMoving ? 9 : 2.5);
-
-  const t = actor.animTime;
-  const swing = Math.sin(t) * (isMoving ? 0.85 : 0.12);
-  const oppositeSwing = Math.sin(t + Math.PI) * (isMoving ? 0.85 : 0.12);
-  const bounce = Math.abs(Math.sin(t * 2)) * (isMoving ? 0.16 : 0.03);
-
-  const parts = actor.parts;
-
-  if (parts.leftArm) parts.leftArm.rotation.x = oppositeSwing;
-  if (parts.rightArm) parts.rightArm.rotation.x = swing;
-  if (parts.leftLeg) parts.leftLeg.rotation.x = swing;
-  if (parts.rightLeg) parts.rightLeg.rotation.x = oppositeSwing;
-
-  if (parts.torso) {
-    parts.torso.rotation.x = actor.abilityTime > 0 ? .35 : isMoving ? .1 : 0;
-    parts.torso.scale.y = 1 + (actor.energy < 25 ? Math.sin(t * 1.4) * .025 : 0);
-    parts.torso.rotation.z = Math.sin(t) * 0.04;
-  }
-
-  if (parts.head) {
-    parts.head.position.y = 4.58 + bounce * 0.25;
-  }
-
-  actor.rig.position.y = bounce;
-
-  if (parts.leftShoe) {
-    parts.leftShoe.position.z = 0.17 + Math.sin(t) * 0.28;
-    parts.leftShoe.position.y = 0.45 + Math.max(0, Math.sin(t)) * 0.18;
-  }
-
-  if (parts.rightShoe) {
-    parts.rightShoe.position.z = 0.17 + Math.sin(t + Math.PI) * 0.28;
-    parts.rightShoe.position.y = 0.45 + Math.max(0, Math.sin(t + Math.PI)) * 0.18;
-  }
-}
-
-function animateDog(dog, dt, moving) {
-  const dist = Math.abs(dog.rig.position.z - player.rig.position.z);
-  if (dist > 85 && frameCount % 2 !== 0) return;
-
-  dog.animTime += dt * (moving ? 13 : 3);
-
-  const t = dog.animTime;
-
-  if (dog.legs) {
-    for (let i = 0; i < dog.legs.length; i++) {
-      dog.legs[i].rotation.x = Math.sin(t + i * Math.PI / 2) * 0.75;
-    }
-  }
-
-  dog.rig.position.y = Math.abs(Math.sin(t * 2)) * 0.08;
-}
-
-/* ============================================================
-   ENEMY AI, DOGS, HIDING, TORCHES
-============================================================ */
+function animateDog(dog, dt, moving) { animateRunnerCanine(dog, dt, moving); }
 
 function createDesertStalkerRig() { const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
 function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
@@ -3538,7 +3354,7 @@ function chaseWithPathfinding(enemy, dt, speed, radius) {
       enemy.pathTimer = 0;
     }
 
-    enemy.rig.rotation.y = Math.atan2(dir.x, dir.z);
+    runnerTurn(enemy, Math.atan2(dir.x, dir.z));
     animateRunner(enemy, dt, true, true);
   } else {
     animateRunner(enemy, dt, false, true);
@@ -3567,7 +3383,7 @@ function directChase(enemy, dt, speed, radius) {
     enemy.rig.position.x += rand(-1.8, 1.8);
   }
 
-  enemy.rig.rotation.y = Math.atan2(dir.x, dir.z);
+  runnerTurn(enemy, Math.atan2(dir.x, dir.z));
   animateRunner(enemy, dt, true, true);
 }
 
@@ -3602,7 +3418,7 @@ function updateEnemyWander(enemy, dt) {
     enemy.wanderTimer = 0;
   }
 
-  enemy.rig.rotation.y = Math.atan2(enemy.wanderDir.x, enemy.wanderDir.z);
+  runnerTurn(enemy, Math.atan2(enemy.wanderDir.x, enemy.wanderDir.z));
   animateRunner(enemy, dt, true, true);
 }
 
@@ -4824,7 +4640,7 @@ function movePoliceDirectlyTowardTarget(cop, target, dt) {
     WORLD_WIDTH / 2 - 2
   );
 
-  cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+  runnerTurn(cop, Math.atan2(dir.x, dir.z));
 }
 
 function facePoliceTowardTarget(cop, target) {
@@ -4839,18 +4655,7 @@ function facePoliceTowardTarget(cop, target) {
   }
 }
 
-function animatePoliceOfficer(cop, dt) {
-  if (!cop || !cop.parts) return;
-
-  const t = cop.animTime || 0;
-  const moving = cop.state === "chase";
-  const swing = moving ? Math.sin(t * 9) * 0.55 : 0.08;
-
-  if (cop.parts.leftArm) cop.parts.leftArm.rotation.x = swing;
-  if (cop.parts.rightArm) cop.parts.rightArm.rotation.x = -swing;
-  if (cop.parts.leftLeg) cop.parts.leftLeg.rotation.x = -swing;
-  if (cop.parts.rightLeg) cop.parts.rightLeg.rotation.x = swing;
-}
+function animatePoliceOfficer(cop, dt) { if (cop?.parts) animateRunnerMotion(cop, dt, cop.state === 'chase', true); }
 
 function clamp01(value) {
   if (!Number.isFinite(value)) return 0;
@@ -5038,6 +4843,7 @@ function animate() {
   updatePoliceBullets(dt);
   updateFireZones(dt);
   updateDreamHazards(dt);
+  updateRunnerWorld(dt);
   updateFallingStars(dt);
   updatePickups(dt);
   updateBlackGlobeProjectiles(dt);
@@ -5062,7 +4868,7 @@ function animate() {
    HELPERS
 ============================================================ */
 
-function setReplaySeed(seed) { seededRandomState = seed >>> 0; }
+function setReplaySeed(seed) { seededRandomState = seed >>> 0; resetRunnerEvolution(seed); }
 function gameRandom() { seededRandomState = (seededRandomState * 1664525 + 1013904223) >>> 0; return seededRandomState / 4294967296; }
 function makeReplaySeed() { return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0; }
 
@@ -5186,7 +4992,7 @@ function restorePlayerFromControlledChaser(p) {
 
   if (p.controlledChaser && p.controlledChaser.rig) {
     const chaserPos = p.controlledChaser.rig.position.clone();
-    scene.remove(p.controlledChaser.rig);
+    disposeRunnerObject(p.controlledChaser.rig);
     if (p.controlledChaser.arrow) scene.remove(p.controlledChaser.arrow);
     p.rig.position.copy(chaserPos);
   }
@@ -5206,6 +5012,7 @@ function resetPlayerMovementStats(p) {
   p.sprintSpeed = playerBaseSprintSpeed * (p.sprintSpeedMultiplier || 1);
   p.energy = 100;
   p.exhausted = false; p.traversal = null; p.abilityCooldown = 0; p.abilityShield = 0; p.abilityTime = 0; p.abilityHeld = false;
+  p.runnerMotion = null; p.targetHeading = 0; p.isSprinting = false; p.rig.rotation.y = 0;
   p.velocity.set(0, 0, 0);
   p.dodgeCooldown = 0;
   p.burnCooldown = 0;
@@ -5359,6 +5166,7 @@ function resetTwoPlayerMatch() {
   updateTwoPlayerScoreboard();
 }
 function resetWorldForNewTwoPlayerRound() {
+  resetRunnerEvolution();
   clearObjectArray(enemies, "rig"); clearObjectArray(dogs, "rig"); clearObjectArray(spiritDogs, "rig"); clearObjectArray(desertStalkers, "rig"); clearObjectArray(policeOfficers, "rig", true); clearObjectArray(policeBullets, "mesh"); clearObjectArray(pickups, null); clearObjectArray(grassPatches, null); clearObjectArray(fireZones, "group"); clearObjectArray(torches, "group");
   for (const effect of tempEffects) disposeRunnerObject(effect.obj); tempEffects = [];
   for (const chunk of worldChunks) disposeRunnerObject(chunk);
@@ -5366,7 +5174,7 @@ function resetWorldForNewTwoPlayerRound() {
   distance = 0; bonusScore = 0; furthestChunkZ = 0; pickupCount = 0; currentSpeedTier = 0; enemyBaseSpeedBonus = 0;
   for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) generateChunk(i * CHUNK_LENGTH);
   furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
-  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? (gameMode === 2 ? -2.8 : 0) : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
+  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) disposeRunnerObject(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? (gameMode === 2 ? -2.8 : 0) : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
   for (const p of players) { p.shieldActive = false; p.shieldCharges = 0; if (p.shieldMesh) p.shieldMesh.visible = false; }
   for (const projectile of blackGlobeProjectiles) disposeRunnerObject(projectile.mesh);
   blackGlobeProjectiles = [];
@@ -5426,6 +5234,7 @@ function endTwoPlayerRound(reason) {
   showRoundTransition(reason);
 }
 function startGame(mode) {
+  document.getElementById('hud').classList.toggle('twoPlayerHud', mode === 2);
   document.getElementById("mobileControls")?.resetRunnerInput?.();
   keys = {}; mobileDodgeQueued = false; mobileSprintDown = false;
   for (const previous of players) {
