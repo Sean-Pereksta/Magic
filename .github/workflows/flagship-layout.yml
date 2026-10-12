@@ -1,0 +1,38 @@
+name: Flagship layout regressions
+on:
+  pull_request:
+    paths:
+      - 'lobby/**'
+      - '.github/workflows/flagship-layout.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /lobby/
+            /game/apes-together-strong.html
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Core and layout regressions
+        run: node --experimental-vm-modules --test lobby/tests/*.test.cjs lobby/tests/*.test.mjs
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/cnm-browser" --no-save --package-lock=false --ignore-scripts playwright@1.56.1
+          "$RUNNER_TEMP/cnm-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Desktop and mobile browser checks
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/cnm-browser/node_modules/playwright/index.mjs
+        run: node lobby/tests/flagships-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flagship-layout-source
+          path: lobby/
