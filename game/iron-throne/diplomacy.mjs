@@ -1,3 +1,4 @@
+import { recordKingdomDevelopments } from './kingdom-developments.mjs';
 import { normalizeItems } from './trade-package.mjs';
 import { vassalBond, vassalMuster, vassalRole } from './vassal-role.mjs';
 import { packageTrade, tradeItems, normalizePackage, itemCost, itemText, itemTotal, packageKey, scalePackage } from './trade-package.mjs';
@@ -453,7 +454,7 @@ export function finishRound(s) {
   allianceRenewalOutreach(s,expiredAlliances);
   s.treaties=s.treaties.filter(t=>t.expires>s.turn&&t.parties.every(id=>alive(s,id)));
   updateFealty(s,{allowRebellion:!s.sequential});refreshGeneralCandidates(s);
-  checkVictory(s);rebuildTerritory(s);refreshKnowledge(s);
+  checkVictory(s);rebuildTerritory(s);refreshKnowledge(s);recordKingdomDevelopments(s);
   if(!s.outcome){desperateDiplomacy(s);initiateCouncilDiscussions(s);}
   return s;
 }

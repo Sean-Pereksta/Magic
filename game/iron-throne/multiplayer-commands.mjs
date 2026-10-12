@@ -1,3 +1,4 @@
+import { chooseRoyalDecree } from './opening.mjs';
 import { reorganizeArmy } from './army-organization.mjs';
 import { applyCouncilDispatch } from './council-dispatch.mjs';
 import { queueShip, cancelShip, orderEmbark, orderFleet, mergeFleets } from './naval.mjs';
@@ -22,7 +23,7 @@ import { submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, mark
 
 const ok=()=>({ok:true}), fail=error=>({ok:false,error});
 const TEXT_LIMIT=600;
-export const COMMAND_TYPES=['formalSubmit','formalRatify','formalDismiss','formalConsider','formalResolve','formalAnswer','formalRetryVoice','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilBegin','councilConsider','councilCommit','councilRetry','councilFinalize','councilChat','councilVoice','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
+export const COMMAND_TYPES=['royalDecree','formalSubmit','formalRatify','formalDismiss','formalConsider','formalResolve','formalAnswer','formalRetryVoice','formalVoice','shipBuild','shipCancel','fleetEmbark','fleetOrder','fleetMerge','reorganize','generalHire','generalAssign','generalDetach','generalOrder','generalChat','vassalCommand','vassalAccept','endActivation','councilOpen','councilBegin','councilConsider','councilCommit','councilRetry','councilFinalize','councilChat','councilVoice','councilRead','operationCreate','operationAnswer','operationSupply','operationLeave','cooperationAnswer','found','build','highway','recruit','order','structure','split','merge','formation','tax','recruitSpy','assignSpy','ransom','captive','recruitAmbassador','assignAmbassador','ambassadorIncident','deliver','ratify','declineTrade','chat','humanProposal','respondProposal','read','ready','takeover'];
 export function commandError(s, meta, command) {
   if(!command||!COMMAND_TYPES.includes(command.type)||!command.args||Array.isArray(command.args)||typeof command.args!=='object'||JSON.stringify(command.args).length>14000)return 'Invalid command.';
   if(typeof command.id!=='string'||command.id.length>120||typeof command.clientId!=='string'||!/^[a-zA-Z0-9_-]{8,64}$/.test(command.clientId)||!Number.isSafeInteger(command.sequence)||command.sequence<1)return 'Invalid command identity.';
@@ -53,6 +54,7 @@ export function applyCommand(s, meta, c, {presence={},now=0}={}) {
   let result;
   const validTarget=()=>houseIds.includes(target)&&target!==a&&alive(s,target);
   switch(c.type){
+    case 'royalDecree':result=chooseRoyalDecree(s,a,p.decree);break;
     case 'formalSubmit':result=submitFormalProposal(s,a,p);break;
     case 'formalRatify':result=ratifyFormalProposal(s,a,p.id);break;
     case 'formalDismiss':result=dismissFormalProposal(s,a,p.id);break;

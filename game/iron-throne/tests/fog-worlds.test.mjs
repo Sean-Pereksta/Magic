@@ -25,7 +25,7 @@ function emptyField() {
 for(const n of [6,8,10,12])test(`${n}-House campaign has room, separated viable openings, and round-trips`,()=>{
   const s=createGame(8147,'random',n),plan=planFoundings(s);assert.equal(s.kingdoms.length,n);assert.deepEqual({width:s.width,height:s.height},WORLD_SIZES[n]);assert.ok(s.width*s.height/n>=200);
   for(const x of plan)for(const y of plan)if(x!==y)assert.ok(distance(s.tiles[x.capital],s.tiles[y.capital])>=capitalSeparation(s));
-  assert.equal(foundCity(s,'ashen',plan[0].capital).ok,true);assert.equal(foundAIKingdoms(s).ok,true);assert.equal(s.turn,1);assert.equal(s.armies.length,n);
+  assert.equal(foundCity(s,'ashen',plan[0].capital).ok,true);assert.equal(foundAIKingdoms(s).ok,true);assert.equal(s.turn,1);assert.equal(s.armies.length,n*2);assert.equal(s.armies.filter(a=>a.scout).length,n);
   for(const k of s.kingdoms){
     const industries=Object.values(s.tiles).filter(t=>t.owner===k.id&&['farm','lumber','quarry','mine','ranch'].includes(t.building));
     assert.ok(industries.some(t=>t.building==='farm'));assert.ok(industries.length>=2&&industries.length<=3);
@@ -39,7 +39,7 @@ test('full founding preview is discarded when the player confirms their capital'
   assert.equal(foundCity(s,'ashen',site).ok,true);foundAIKingdoms(s);
   const v=knowledgeView(s),unknown=Object.values(v.tiles).filter(t=>t.fog==='unknown');assert.ok(unknown.length>1000);
   for(const t of unknown){assert.equal(t.resource,null);assert.equal(t.owner,null);assert.equal(t.project,null);assert.equal(t.road,false);if(t.building)assert.ok(t.knownCapital);}
-  assert.equal(unknown.filter(t=>t.knownCapital).length,5);assert.equal(v.armies.length,1);
+  assert.equal(unknown.filter(t=>t.knownCapital).length,5);assert.equal(v.armies.length,2);assert.equal(v.armies.filter(a=>a.scout).length,1);
 });
 test('best scouting unit controls mixed-army vision and towers provide frontier observation',()=>{
   const a={units:emptyUnits()};for(const [id,range]of [['ram',1],['levy',2],['archer',3],['cavalry',4],['scout',5]]){a.units[id]=1;assert.equal(armyVision(a),range);}

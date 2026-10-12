@@ -1,9 +1,12 @@
 import { normalizePackage } from './trade-package.mjs';
 import { blockadeAt } from './naval.mjs';
 import { BUILDINGS, FORMATIONS, QUALITY, REGIONS, RESOURCES, UNITS } from './data.mjs';
+import { premiumProductionFactor } from './premium-regions.mjs';
+import { applyOpeningConstruction, openingProductionFactor } from './opening.mjs';
 
 export const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 export const emptyUnits = () => Object.fromEntries(Object.keys(UNITS).map(u => [u, 0]));
+const premiumYield=(base,factor)=>Math.min(Math.floor(Math.round(base)*2.5),Math.max(Math.ceil(Math.round(base)*1.5),Math.round(base*factor)));
 export function buildingLevel(t, type) {
   if (!t) return 0;
   // Preserve shipyards already built as settlement additions in older saves.
@@ -16,12 +19,14 @@ export const cityBenefits = t => t?.building === 'city' ? buildingSpec('city',bu
 export const cityOrderBonus = (s,owner) => Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+(cityBenefits(t)?.orders||0),0);
 export function wallMaximum(t) { return buildingLevel(t, 'wall') * 60; }
 export function fortMaximum(t) { return t.building === 'fort' ? [0, 45, 100, 180][buildingLevel(t, 'fort')] : 0; }
-export function constructionSpec(t, type) {
+export function constructionSpec(t, type, s=null, owner=null) {
   const current = buildingLevel(t, type), b = BUILDINGS[type];
   if (!b) return null;
   const repair = current === b.maxLevel && (type === 'wall' && t.walls < wallMaximum(t) || type === 'fort' && (t.fortIntegrity ?? fortMaximum(t)) < fortMaximum(t));
   const spec = buildingSpec(type, repair ? current : current + 1);
-  return spec && {...spec, repair, cost: repair ? Object.fromEntries(Object.entries(spec.cost).map(([r,n])=>[r,Math.ceil(n*.4)])) : spec.cost, turns: repair ? 2 : spec.turns};
+  if(!spec)return null;
+  const result={...spec, repair, cost: repair ? Object.fromEntries(Object.entries(spec.cost).map(([r,n])=>[r,Math.ceil(n*.4)])) : spec.cost, turns: repair ? 2 : spec.turns};
+  return s&&owner?applyOpeningConstruction(s,owner,t,type,result):result;
 }
 export function tileProduction(t, owner) {
   const output = emptyResources();
@@ -30,7 +35,10 @@ export function tileProduction(t, owner) {
     const resourceSite = ['farm','lumber','quarry','mine','ranch'].includes(id);
     const quality = resourceSite && (t.resource === Object.keys(b.yield)[0] || id === 'farm' && t.river) ? QUALITY[t.quality || 'normal'] : 1;
     const industry = !t.biome && REGIONS[owner]?.industry === id ? 1.12 : 1;
-    for (const [r,n] of Object.entries(b.yield)) output[r] += Math.round((n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65) * quality * industry * (t.terrain==='desert'&&id==='farm'?(t.river?.9:.35):1));
+    for (const [r,n] of Object.entries(b.yield)) {
+      const base=(n + (id === 'farm' && t.resource === 'food' ? 4 : 0)) * (1+(level-1)*.65),terrain=t.terrain==='desert'&&id==='farm'?(t.river?.9:.35):1,factor=premiumProductionFactor(t,r,id);
+      output[r] += factor===null?Math.round(base*quality*industry*terrain):premiumYield(base*industry*terrain,factor);
+    }
   }
   if (['town','city'].includes(t.building)) {
     const city=cityBenefits(t);
@@ -41,13 +49,14 @@ export function tileProduction(t, owner) {
 }
 export function productionPlan(s, owner) {
   const k = s.kingdoms.find(k=>k.id === owner), income = emptyResources(), gross = emptyResources(), stalls = [];
-  const tiles = Object.values(s.tiles).filter(t=>t.owner === owner);
+  const tiles = Object.values(s.tiles).filter(t=>t.owner === owner),openingFactor=openingProductionFactor(s,owner);
   for (const t of tiles) {
     const production = tileProduction(t, owner);
     if((buildingLevel(t,'fishingDock')||buildingLevel(t,'harbor'))&&blockadeAt(s,t.id,owner)){
-      for(const id of ['fishingDock','harbor']){const level=buildingLevel(t,id);if(level)for(const [r,n] of Object.entries(BUILDINGS[id].yield))production[r]-=Math.round(n*(1+(level-1)*.65));}
+      for(const id of ['fishingDock','harbor']){const level=buildingLevel(t,id);if(level)for(const [r,n] of Object.entries(BUILDINGS[id].yield)){const base=n*(1+(level-1)*.65),factor=premiumProductionFactor(t,r,id);production[r]-=factor===null?Math.round(base):premiumYield(base,factor);}}
       stalls.push({tile:t.id,type:'blockade',input:{}});
     }
+    for(const resource of ['food','wood','stone','iron','horses'])production[resource]=Math.round(production[resource]*openingFactor);
     for (const r of RESOURCES) { income[r] += production[r]; gross[r] += production[r]; }
   }
   // Stable tile/catalog order, with a shared input budget, prevents double spending.

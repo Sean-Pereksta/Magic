@@ -82,12 +82,12 @@ test('fixed pool has exactly sixteen characters across recruitment, expiration, 
 let serial=0;
 const envelope=(s,m,actor,args)=>({id:`sort-${++serial}`,clientId:'sorting-client',sequence:serial,uid:m.seats[actor].uid,actorHouseId:actor,turn:s.turn,stateVersion:m.stateVersion,epoch:m.epoch,activationId:m.activationId,type:'reorganize',args});
 test('one authoritative online command conserves troops, projects atomically and rejects replay, forgery, wrong owner and inactive turns',()=>{
- const {state:s,meta:m}=onlineGame(2);activateForTest(s,m,'ashen');const owner=m.activeHouse,a=s.armies.find(a=>a.owner===owner),d=createArmyDraft(knowledgeView(s,owner),owner,a.id);applyDraftPreset(d,'half');const before=s.armies.length;
+ const {state:s,meta:m}=onlineGame(2);activateForTest(s,m,'ashen');const owner=m.activeHouse,a=s.armies.find(a=>a.owner===owner),d=createArmyDraft(knowledgeView(s,owner),owner,a.id);applyDraftPreset(d,'half');const before=s.armies.length,totalBefore=s.armies.filter(x=>x.owner===owner).reduce((n,x)=>n+sizeOf(x),0);
  const other=Object.keys(m.seats).find(id=>id!==owner&&m.seats[id].kind==='human');unchanged(s,()=>applyCommand(s,m,envelope(s,m,other,d)));
  const forged=structuredClone(d);forged.formations[0].units.levy++;unchanged(s,()=>applyCommand(s,m,envelope(s,m,owner,forged)));
  const stale=envelope(s,m,owner,d);stale.stateVersion--;unchanged(s,()=>applyCommand(s,m,stale));
  const cmd=envelope(s,m,owner,d),r=applyCommand(s,m,cmd);assert.equal(r.ok,true,r.error);assert.equal(s.armies.length,before+1);unchanged(s,()=>applyCommand(s,m,cmd));
- const packed=splitCampaign(s),view=packed.privateByHouse[owner].view;assert.equal(view.armies.filter(x=>x.owner===owner).reduce((n,x)=>n+sizeOf(x),0),sizeOf(a));assert.deepEqual(joinCampaign(packed.canonical,packed.privateByHouse).armies,s.armies);
+ const packed=splitCampaign(s),view=packed.privateByHouse[owner].view;assert.equal(view.armies.filter(x=>x.owner===owner).reduce((n,x)=>n+sizeOf(x),0),totalBefore);assert.deepEqual(joinCampaign(packed.canonical,packed.privateByHouse).armies,s.armies);
 });
 test('legacy identities retain runtime IDs, histories and objectives, while duplicate named identities fail',()=>{
  const {s,a}=fixture(),g=hire(s);assignGeneral(s,a.owner,g.id,a.id);g.history.push({turn:s.turn,role:'player',text:'Keep my previous instructions.'});

@@ -32,7 +32,7 @@ test('six human activations complete a round without any House receiving an AI t
 });
 test('orders cannot spend another House resources or take another army, and replay/turn/epoch checks fail closed',()=>{
  const {state:s,meta:m}=setup();activateForTest(s,m,'ashen');const before=JSON.stringify(s),foreign=settlements(s,'wintermere')[0].id;
- for(const [type,args]of [['recruit',{tile:foreign,unit:'levy'}],['order',{army:s.armies[1].id,tile:foreign,order:'hold'}],['build',{tile:foreign,building:'market'}]])assert.equal(applyCommand(s,m,command(s,m,'ashen',type,args)).ok,false);
+ for(const [type,args]of [['recruit',{tile:foreign,unit:'levy'}],['order',{army:s.armies.find(a=>a.owner!=='ashen').id,tile:foreign,order:'hold'}],['build',{tile:foreign,building:'market'}]])assert.equal(applyCommand(s,m,command(s,m,'ashen',type,args)).ok,false);
  assert.equal(JSON.stringify(s),before);
  const c=command(s,m,'ashen','tax',{policy:'low'});assert.equal(applyCommand(s,m,c).ok,true);assert.equal(applyCommand(s,m,c).ok,false);
  for(const patch of [{uid:'u1'},{turn:0},{epoch:0},{stateVersion:m.stateVersion+1}])assert.equal(applyCommand(s,m,{...command(s,m,'ashen','tax',{policy:'high'}),...patch}).ok,false);

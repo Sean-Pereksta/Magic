@@ -66,7 +66,7 @@ export function economicNeeds(s,owner) {
   const reserve={food:Math.max(50,(projection.food?.consumption||15)*4),wood:35,stone:25,iron:20,gold:65,horses:6,tools:8,arms:6};
   const spending=Object.fromEntries(RESOURCES.map(r=>[r,0])),obligations={...spending},incoming={...spending};
   const add=cost=>{for(const [r,n] of Object.entries(cost||{}))spending[r]+=n;};
-  if(k.economicPlan&&BUILDINGS[k.economicPlan.type]&&!s.tiles[k.economicPlan.tile]?.project)add(constructionSpec(s.tiles[k.economicPlan.tile],k.economicPlan.type)?.cost);
+  if(k.economicPlan&&BUILDINGS[k.economicPlan.type]&&!s.tiles[k.economicPlan.tile]?.project)add(constructionSpec(s.tiles[k.economicPlan.tile],k.economicPlan.type,s,owner)?.cost);
   const war=s.wars.some(w=>w.split(':').includes(owner));
   const military=REGIONS[owner]?.troops==='cavalry'?'lightCavalry':REGIONS[owner]?.troops==='archer'?'archer':'spearman';
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===owner&&['Preparing','Committed','Executing'].includes(p.status));

@@ -1,6 +1,7 @@
 import { MAP_PROFILES, selectMapProfile } from './map-profiles.mjs';
 import { hash, seededRandom, sample, distance, neighbors, passable, tileId } from './world-hex.mjs';
 import { planFoundings } from './founding.mjs';
+import { generatePremiumRegions } from './premium-regions.mjs';
 
 function noise(seed,x,y,scale) {
   x/=scale;y/=scale;const q=Math.floor(x),r=Math.floor(y),smooth=n=>n*n*(3-2*n),a=smooth(x-q),b=smooth(y-r);
@@ -133,16 +134,16 @@ export function validateWorld(s) {
     if(groups.length<2||groups.some(g=>g.length<45))return {ok:false,reason:'Separated realms need meaningful land and expansion space.'};
   }
   const plan=planFoundings(s,s.kingdoms.map(h=>h.id));
-  return plan?{ok:true,sites:plan.map(p=>p.capital)}:{ok:false,reason:'Separated starting packages do not fit.'};
+  return plan?{ok:true,sites:plan.map(p=>p.capital),plan}:{ok:false,reason:'Separated starting packages do not fit.'};
 }
 export function generateWorld(s,requested='random') {
   s.mapProfile=selectMapProfile(s.seed,requested);s.preset=s.mapProfile;s.worldGeneration=1;
   const profile=MAP_PROFILES[s.mapProfile];
   for(let attempt=0;attempt<96;attempt++){
-    const seed=hash(s.seed,s.mapProfile,'world-v1',attempt);s.tiles={};
+    const seed=hash(s.seed,s.mapProfile,'world-v1',attempt);s.tiles={};delete s.premiumRegions;
     generateRegions(s,profile,seed);generateMountainRanges(s,profile,seed);generateRivers(s,seed);generateResources(s,seed);
     const validation=validateWorld(s);
-    if(validation.ok){s.generation={attempt,seed};return s;}
+    if(validation.ok){generatePremiumRegions(s,seed,validation.plan);s.generation={attempt,seed};return s;}
   }
   throw new Error('Unable to generate a viable world for this seed. Try a different map seed.');
 }

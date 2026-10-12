@@ -9,6 +9,7 @@ import { HOUSES, BUILDINGS } from '../data.mjs';
 import { distance, neighbors, passable } from '../world-hex.mjs';
 import { foundCity, foundingCheck, startingFootprint, planFoundings, foundAIKingdoms, foundedCapitals, foundingOutlook, STARTING_BUILDINGS } from '../founding.mjs';
 import { tileProduction } from '../economy.mjs';
+import { OPENING_RESOURCES } from '../opening.mjs';
 import { buildGeography, maskEdges, neighborId, oppositeEdge } from '../geography.mjs';
 import { setupMeta, claimSeat, startCampaign, resolutionDue, resolveRound, configureCampaign } from '../multiplayer-rounds.mjs';
 import { applyCommand } from '../multiplayer-commands.mjs';
@@ -40,7 +41,7 @@ for(const profile of Object.keys(MAP_PROFILES))test(`${profile}: three seeds hav
     for(const t of buildings){assert.ok(distance(c,t)<=4);assert.ok(BUILDINGS[t.building].terrain.includes(t.terrain));if(BUILDINGS[t.building].resource)assert.equal(t.resource,BUILDINGS[t.building].resource);assert.equal(t.road,true);}
     assert.ok(economyProjection(s,h.id).income.food>0,`${h.id} sustainable food`);
     assert.equal(s.armies.find(a=>a.owner===h.id).units.levy,20);
-    assert.deepEqual(s.kingdoms.find(k=>k.id===h.id).resources,{food:140,wood:110,stone:90,iron:50,gold:200,horses:12,tools:0,arms:0});
+    assert.deepEqual(s.kingdoms.find(k=>k.id===h.id).resources,OPENING_RESOURCES);
   }
   assert.deepEqual(natural(s),original,'founding must never edit geography');
   rebuildTerritory(s);for(const t of tiles.filter(t=>t.building))assert.ok(t.owner);
@@ -63,7 +64,7 @@ test('water, mountains, occupied land, isolated enclaves and capitals closer tha
  const atEight=tiles.find(t=>distance(t,s.tiles[site])===8&&!foundingCheck(s,'wintermere',t.id));assert.ok(atEight,'exactly 8 hexes must remain legal');
  assert.equal(foundCity(s,'wintermere',atEight.id).ok,true);
  assert.match(foundCity(s,'ashen',site).error,/already founded/);
- const isolated=world(),c=isolated.tiles['20,15'];c.terrain='plains';for(const n of neighbors(isolated,c))n.terrain='mountain';
+ const isolated=world(),c=isolated.tiles[planFoundings(isolated)[0].capital];c.terrain='plains';for(const n of neighbors(isolated,c))n.terrain='mountain';
  assert.equal(startingFootprint(isolated,'ashen',c),null);assert.match(foundCity(isolated,'ashen',c.id).error,/nearby usable land/);
  const foreign=tiles.find(t=>passable(t)&&!t.building&&distance(t,s.tiles[site])>10&&distance(t,atEight)>8);foreign.owner='vesper';assert.match(foundingCheck(s,'thornwall',foreign.id),/territory/);
 });

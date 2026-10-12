@@ -1,6 +1,7 @@
 import {UNITS,FORMATIONS} from './data.mjs';
 import {sizeOf,strength,mergeArmies} from './core.mjs';
-import {armySpeed,formationCheck} from './warfare.mjs';
+import {formationCheck} from './warfare.mjs';
+import {effectiveArmySpeed} from './movement-timing.mjs';
 import {GENERAL_QUALITIES,generalForArmy} from './command-state.mjs';
 import {allArmies} from './naval-state.mjs';
 import {createArmyDraft,addDraftFormation,moveDraftUnits,applyDraftPreset,validateArmyDraft,reorganizeArmy,armyName} from './army-organization.mjs';
@@ -21,7 +22,7 @@ export function installArmySortUI({getState,getOwner,perform,canAct=()=>true,toa
   function renderFormation(f,i){
     const a=source(),g=roster().find(g=>g.id===f.generalId),q=g&&GENERAL_QUALITIES[g.quality];
     const preview={...a,...f,commandBonus:q?.bonus||0,commandMove:g?.specialty==='movement'?(g.quality>=3?2:1):0};
-    const troops=sizeOf(f),speed=armySpeed(preview),spent=a.movementTurn===getState().turn?a.movementSpent||0:0;
+    const troops=sizeOf(f),speed=effectiveArmySpeed(getState(),preview),spent=a.movementTurn===getState().turn?a.movementSpent||0:0;
     return `<section class="sort-formation" data-drop="${i}" aria-label="Army ${String.fromCharCode(65+i)}"><div class="sort-formation-heading"><span class="eyebrow">ARMY ${String.fromCharCode(65+i)}</span><strong data-total="${i}" aria-live="polite">${troops} troops</strong></div><label>Army name<input data-name="${i}" value="${esc(f.name)}" maxlength="60" placeholder="${i===0?esc(armyName(a)):'New formation'}"></label><button class="sort-general" data-pick-general="${i}">${g?`${generalPortrait(g)}<span>${esc(g.name)}<small>${generalSummary(g)}</small></span>`:'⚔ General: None · Assign commander'}</button><label>Formation<select data-formation="${i}">${Object.entries(FORMATIONS).map(([id,x])=>`<option value="${id}" ${f.formation===id?'selected':''} ${formationCheck(f,id)?'disabled':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="sort-grid">${Object.entries(UNITS).filter(([u])=>f.units[u]>0).map(([u,unit])=>{const src=displayArtURL(ART.units[u]);return `<button class="troop-tile ${selected?.from===i&&selected.unit===u?'active':''}" data-unit="${u}" data-from="${i}" draggable="true" aria-pressed="${selected?.from===i&&selected.unit===u?'true':'false'}">${src?`<img data-iron-art src="${esc(src)}" alt="">`:''}<span>${unit.icon} ${esc(unit.name)}</span><b>${f.units[u]}</b></button>`;}).join('')||'<p class="sort-empty">Drop troops here<br>or select a troop card and choose this destination.</p>'}${packet?.from===i?`<button class="troop-packet" draggable="true" data-packet>Drag ${packet.count} ${esc(UNITS[packet.unit].name)}</button>`:''}</div><p class="fine">Approx. strength ${Math.round(strength(preview))} · Movement ${speed.toFixed(1)} / turn · ${(a.resolvedTurn===getState().turn?0:Math.max(0,speed-spent)).toFixed(1)} remaining<br>${esc(getState().tiles[a.tile]?.name||a.tile)} · ${esc(a.tile)}${!troops?'<br>Empty formations are discarded.':''}</p>${selected&&selected.from!==i?`<button class="full" data-drop-button="${i}">${packet?`Place ${packet.count}`:'Move selected troops'} here</button>`:''}</section>`;
   }
   function draw(){
