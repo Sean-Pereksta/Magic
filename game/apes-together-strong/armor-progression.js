@@ -68,7 +68,17 @@ G.move=function(a,dx,dy,speed,dt,...args){
  return move.call(this,a,dx,dy,speed*factor,dt,...args);
 };
 const command=G.command;
-G.command=function(...args){const before=this.commandCD,result=command.apply(this,args);if(result&&royal(this.equipment)?.commandSpeed&&this.commandCD>0&&this.commandCD!==before)this.commandCD*=royal(this.equipment).commandSpeed;return result};
+G.command=function(...args){
+ const candidates=args[0]==='patrol'?this.apes.filter(a=>a.state==='settled'&&a.hp>0&&items[a.outfit?.body]?.standardArmor).map(a=>({a,hp:a.hp,maxHp:a.maxHp})):[];
+ const before=this.commandCD,result=command.apply(this,args);
+ // The original patrol command replaces maxHp with its old generic scout
+ // baseline. Rebalance newly assigned armored scouts from their species,
+ // training and elite bonuses, carrying the original wounds through once.
+ for(const old of candidates)if(old.a.state==='scout'){
+  const speed=old.a.speed;old.a.maxHp=old.maxHp;old.a.hp=old.hp;this.siege.balance(old.a,true);old.a.speed=speed;
+ }
+ if(result&&royal(this.equipment)?.commandSpeed&&this.commandCD>0&&this.commandCD!==before)this.commandCD*=royal(this.equipment).commandSpeed;return result;
+};
 const stealth=G.stealthFactor;
 G.stealthFactor=function(a){return clamp(stealth.call(this,a)*(a.id==='king'?royal(this.equipment)?.stealth||1:1),.22,2.2)};
 const perceive=G.perceive;

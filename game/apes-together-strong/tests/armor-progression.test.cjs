@@ -29,6 +29,13 @@ test('shadow armor lowers actual visibility and suspicion without bypassing near
 });
 test('reloading a fallen armored King never revives the run',()=>{const o=setup();o.e.fitItem(o.g.king,'powerRoyal');o.g.king.hp=0;o.g.ended=true;assert.throws(()=>o.c.ATSGame.fromJSON(JSON.parse(JSON.stringify(o.g.serialize()))),/not a living/)});
 
+for(const species of ['gorilla','chimpanzee','orangutan','gibbon','mandrill','capuchin'])test(species+' keeps one armor health bonus and its wounds through scout assignment and reloads',()=>{
+ const o=setup(),a=follower(o,species);o.g.apes=[a];a.state='settled';a.settlementId=o.s.id;o.g.syncIndexes();o.e.fitItem(a,'reinforcedArmor');a.hp-=30;const base=a.maxHp-a.outfit.armorHealthBonus,expected=base+25+Math.round((base+25)*.35);
+ o.g.commandCD=0;assert.equal(o.g.command('patrol'),true);assert.equal(a.state,'scout');assert.equal(a.maxHp,expected);assert.equal(a.maxHp-a.hp,30);assert.equal(a.speed,104);
+ let g=o.g;for(let i=0;i<3;i++)g=o.c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize())));const loaded=g.apesById.get(a.id);assert.equal(loaded.maxHp,expected);assert.equal(loaded.maxHp-loaded.hp,30);
+ loaded.state='settled';g.commandCD=0;g.command('patrol');assert.equal(loaded.maxHp,expected);assert.equal(loaded.maxHp-loaded.hp,30);
+});
+
 test('a redundant paid legacy royal upgrade refunds its unused reservation exactly once',()=>{
  const o=setup(),d=JSON.parse(JSON.stringify(o.g.serialize()));d.king.equipment={armorLevel:2};d.king.maxHp=350;d.king.hp=310;
  d.equipment.queue=[{id:'old-paid-royal',kind:'armor',actorId:'king',armorLevel:3,settlementId:o.s.id,workshopId:o.w.id,progress:10,duration:50,cost:{wood:360,food:420}}];

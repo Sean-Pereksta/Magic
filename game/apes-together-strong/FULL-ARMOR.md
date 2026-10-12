@@ -81,7 +81,7 @@ cache. `tests/outfitting-browser.cjs` decodes all 42 atlases offline, renders
 the actual crafting UI and a 390-pixel mobile viewport. Performance comparisons
 and final regression totals are recorded with the PR validation results.
 
-Local regression validation: 668 game tests and 25 lobby tests passed. Browser
+Local regression validation: 674 game tests and 25 lobby tests passed. Browser
 checks cover equipment purchases, held items, tribal openings, mobile commands,
 graphics/fallback behavior, and the full desktop/mobile smoke flow. Set
 `ARMOR_MOTION_QA=1` and `QA_ARTIFACT_DIR` when running the outfitting browser
