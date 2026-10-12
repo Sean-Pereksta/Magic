@@ -12,30 +12,51 @@ test('both gameplay scripts parse', () => {
   new vm.Script(main); new vm.Script(extension);
 });
 
-test('10,000 sections preserve a connected player-sized route across boundaries', () => {
+test('10,000 chained sections preserve swept clearance for both players and varied lanes', () => {
   const ctx = vm.createContext({}); vm.runInContext(extension, ctx);
   const plan = vm.runInContext('planRunnerSection', ctx);
   let seed = 91723; const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const kinds = new Set();
+  const kinds = new Set(), exits = new Set(); let previous = null, challenged = 0, centerBlocked = 0, transitions = 0;
   for (let i = 0; i < 10000; i++) {
-    const section = plan(i, random); kinds.add(section.kind);
-    const points = [{z: 0, center: 0}, ...section.rows, {z: 42, center: 0}];
-    assert.equal(section.rows[0].center, 0); assert.equal(section.rows.at(-1).center, 0);
+    const section = plan(i, random, previous); kinds.add(section.kind); exits.add(section.exit);
+    const points = section.points;
+    assert.equal(section.entry, previous?.exit || 0);
+    if (!section.recovery) {
+      challenged++;
+      if (section.rows.some(r => r.blocks.some(b => b.x === 0))) centerBlocked++;
+      if (previous && previous.exit !== section.exit) transitions++;
+      assert.notEqual(section.kind, previous?.kind);
+    }
     for (let j = 1; j < points.length; j++) {
       const a = points[j - 1], b = points[j];
       // Kevon's lateral speed / maximum sprint speed still permits this turn.
-      assert.ok(Math.abs(b.center - a.center) / (b.z - a.z) < .5);
-      for (let z = a.z; z <= b.z; z += .2) {
+      assert.ok(Math.abs(b.center - a.center) / (b.z - a.z) <= .5);
+      for (let z = a.z; z <= b.z; z += .15) {
         const x = a.center + (b.center - a.center) * (z - a.z) / (b.z - a.z);
-        for (const row of section.rows) for (const block of row.blocks) {
-          assert.ok(Math.abs(x - block.x) >= 3.2 || Math.abs(z - block.z) >= 1.7, `blocked ${i}/${z}`);
+        for (const offset of [-1.3, 0, 1.3]) for (const row of section.rows) for (const block of row.blocks) {
+          assert.ok(Math.abs(x + offset - block.x) >= 3.2 || Math.abs(z - block.z) >= 1.7, `blocked ${i}/${z}/${offset}`);
         }
       }
     }
     if (section.recovery) assert.equal(section.rows.flatMap(r => r.blocks).length, 0);
-    if (['parkour', 'shortcut'].includes(section.kind)) assert.ok(section.rows.every(r => r.blocks.some(b => b.x === 9 && b.breakable)));
+    if (section.rewardX !== undefined) assert.ok(Math.abs(section.rewardX) === 13.5);
+    previous = section;
   }
-  assert.equal(kinds.size, 6);
+  assert.equal(kinds.size, 12); assert.equal(exits.size, 3);
+  assert.ok(centerBlocked / challenged >= .4 && centerBlocked / challenged <= .6, `center blocked ${centerBlocked / challenged}`);
+  assert.ok(transitions > 1500);
+});
+
+test('realm selection is seeded, weighted, query-order independent and avoids repeats', () => {
+  const ctx = vm.createContext({}); vm.runInContext(extension, ctx);
+  const run = code => vm.runInContext(code, ctx);
+  const sequence = seed => run(`resetRunnerEvolution(${seed}); Array.from({length: 500}, (_, i) => runnerRealmForIndex(i))`);
+  const a = sequence(271), b = sequence(272);
+  assert.equal(new Set(a).size, 16); assert.equal(a[4], 'dream'); assert.notDeepEqual(a, b);
+  assert.deepEqual(a, sequence(271));
+  for (let i = 1; i < a.length; i++) assert.notEqual(a[i], a[i - 1]);
+  run('resetRunnerEvolution(271); runnerRealmForIndex(499);');
+  for (const i of [150, 2, 99, 40, 499]) assert.equal(run(`runnerRealmForIndex(${i})`), a[i]);
 });
 
 // Optional integration layer uses the exact browser Three.js build, avoiding a
@@ -145,18 +166,18 @@ integration('enemy roles have distinct behavior and survive repeated updates', (
     }`);
 });
 
-integration('ten environments generate and resources stay bounded across a long run', () => {
+integration('sixteen environments generate and resources stay bounded across a long run', () => {
   const {run} = runtime();
   run(`const seen=new Set();let peak=0;
     for(let i=0;i<300;i++){
       player.rig.position.set(0,0,i*42);distance=i*42;manageWorld();
-      updateTempEffects(1);seen.add(getBiomeForZ(distance));peak=Math.max(peak,worldChunks.length);
+      updateTempEffects(1);updateRunnerWorld(1);seen.add(getBiomeForZ(distance));peak=Math.max(peak,worldChunks.length);
       // Exercise all existing enemy cleanup paths, without allowing catches.
       for(const enemy of getThreatActors())if(enemy.rig.position.z<distance-70)disposeRunnerObject(enemy.rig);
       enemies=enemies.filter(canEnemyDamage);dogs=dogs.filter(canEnemyDamage);policeOfficers=policeOfficers.filter(canEnemyDamage);
       assert.ok(walls.every(w=>Number.isFinite(w.position.z)));
     }
-    assert.equal(seen.size,10);assert.ok(peak<=13);assert.ok(tempEffects.length<=45);
+    assert.equal(seen.size,16);assert.ok(peak<=13);assert.ok(tempEffects.length<=45);assert.ok(runnerRealmSituations.length<=13);
     const geometry=new THREE.BoxGeometry(1,1,1),material=new THREE.MeshBasicMaterial();let freed=0;
     geometry.addEventListener('dispose',()=>freed++);const group=new THREE.Group();group.add(new THREE.Mesh(geometry,material));scene.add(group);
     disposeRunnerObject(group);disposeRunnerObject(group);assert.equal(freed,1);assert.equal(group.parent,null);`);
@@ -186,4 +207,88 @@ integration('starting and replaying a run rebuilds the same seeded terrain and r
     replayMode=false;startGame(2);assert.equal(players.length,2);
     assert.equal(players[0].rig.position.x,-2.8);assert.equal(players[1].rig.position.x,2.8);
     assert.ok(Number.isFinite(camera.position.z));`);
+});
+
+integration('realm hazards stay outside the full two-player corridor in every timed phase', () => {
+  const {run} = runtime();
+  run(`resetRunnerEvolution(813);let situations=0,dreamCount=0;
+    for(let i=0;i<96;i++)generateChunk(i*CHUNK_LENGTH);
+    for(const s of runnerRealmSituations){
+      situations++;const plan=s.owner.userData.plan;
+      assert.ok(runnerRouteClear(plan,s.obstacle.position.x,s.obstacle.position.z-s.owner.userData.zStart));
+    }
+    for(const h of dreamHazards){
+      dreamCount++; const owner=worldChunks.find(c=>h.group.position.z>=c.userData.zStart&&h.group.position.z<c.userData.zStart+42);
+      assert.ok(runnerRouteClear(owner.userData.plan,h.group.position.x,h.group.position.z-owner.userData.zStart,h.radius,h.radius));
+    }
+    assert.ok(situations>=12);assert.ok(dreamCount>0);
+    for(let frame=0;frame<330;frame++){
+      updateRunnerWorld(1/60);
+      for(const s of runnerRealmSituations) {
+        const plan=s.owner.userData.plan, localZ=s.obstacle.position.z-s.owner.userData.zStart;
+        const center=runnerRouteX(plan,localZ);
+        for(const dx of [-1.3,1.3]) assert.ok(!getCollidingWall(new THREE.Vector3(center+dx,0,s.obstacle.position.z),1));
+      }
+    }
+    const gate=runnerRealmSituations.find(s=>s.biome==='clockwork');
+    runnerWorldTime=4-gate.phase;updateRunnerWorld(.01);assert.equal(gate.obstacle.userData.runnerOpen,true);
+    player.rig.position.copy(gate.obstacle.position);runnerWorldTime=-gate.phase;
+    updateRunnerWorld(.01);assert.equal(gate.obstacle.userData.runnerOpen,true);
+    assert.equal(getCollidingWall(player.rig.position,1),null);
+    player.rig.position.x+=5;for(let frame=0;frame<60;frame++)updateRunnerWorld(1/60);assert.equal(gate.obstacle.userData.runnerOpen,false);
+    const old=runnerRealmSituations[0];disposeRunnerObject(old.owner);updateRunnerWorld(.1);
+    assert.ok(!runnerRealmSituations.includes(old));`);
+});
+
+integration('enemy silhouettes have articulated rigs, equipment and variation; spirit outlines persist on mobile', () => {
+  const {run} = runtime();
+  run(`const signatures=new Set();
+    for(const role of ['chaser','fast','heavy','ambusher','blocker','jumper','ranged','elite']) {
+      const enemy=configureRunnerEnemy(createEnemy(0,800),800,role);
+      assert.equal(enemy.rig.userData.role,role);assert.ok(enemy.parts.head&&enemy.parts.torso);
+      for(const limb of ['leftLeg','rightLeg','leftArm','rightArm'])assert.ok(enemy.parts[limb+'Lower']);
+      const geometry=[];enemy.rig.traverse(o=>{if(o.isMesh)geometry.push([o.geometry.type,o.position.toArray(),o.scale.toArray(),o.isInstancedMesh?Array.from(o.instanceMatrix.array):null]);});
+      signatures.add(JSON.stringify([enemy.rig.scale.toArray(),geometry]));
+      if(role==='ranged'||role==='elite')assert.ok(enemy.handTorch);
+      disposeRunnerObject(enemy.rig);
+    }
+    assert.equal(signatures.size,8);
+    for(const mobile of [false,true]) {
+      isMobileDevice=mobile;const dog=createSpiritDog(0,10);let outlines=0;
+      dog.rig.traverse(o=>{if(o.userData.spiritOutline){outlines++;assert.equal(o.material.depthTest,true);assert.equal(o.material.fog,false);assert.equal(o.material.side,THREE.BackSide);}});
+      assert.ok(outlines>=11);assert.equal(dog.body.material.opacity,1);assert.equal(dog.body.material.transparent,false);
+      assert.ok(dog.head.children.some(o=>o.userData.spiritOutline));assert.ok(dog.tail.children.some(o=>o.userData.spiritOutline));
+      disposeRunnerObject(dog.rig);
+    }`);
+});
+
+integration('animation follows movement, eases turns, blends exhaustion and preserves jumps', () => {
+  const {run} = runtime();
+  run(`animateRunner(player,1/60,false,false);const initial=player.animTime;
+    for(let i=0;i<60;i++){player.rig.position.z+=13/60;animateRunner(player,1/60,true,false);}
+    assert.ok(player.runnerMotion.speed>12.9);assert.equal(player.runnerMotion.mode,'running');assert.ok(player.animTime>initial+10);
+    runnerTurn(player,Math.PI/2);animateRunner(player,1/60,true,false);
+    assert.ok(player.rig.rotation.y>0&&player.rig.rotation.y<Math.PI/2);
+    player.exhausted=true;animateRunner(player,1/60,true,false);assert.equal(player.runnerMotion.mode,'exhausted');
+    player.exhausted=false;player.traversal={start:player.rig.position.clone(),end:player.rig.position.clone().add(new THREE.Vector3(0,0,7)),elapsed:0,duration:.42,height:3.6};
+    animateRunner(player,.1,true,false);updateRunnerTraversal(player,player,.1);assert.ok(player.rig.position.y>1);
+    for(let i=0;i<30;i++){animateRunner(player,1/60,true,false);updateRunnerTraversal(player,player,1/60);}
+    animateRunner(player,1/60,false,false);assert.ok(['landing','jogging'].includes(player.runnerMotion.mode));
+    assert.ok(player.parts.leftLegLower.rotation.x>=0);assert.ok(player.rig.position.toArray().every(Number.isFinite));
+    const dog=createDog(2,10);for(let i=0;i<60;i++){dog.rig.position.z+=16/60;animateDog(dog,1/60,true);}
+    assert.ok(dog.runnerMotion.speed>15.9);assert.notEqual(dog.legs[0].rotation.x,dog.legs[2].rotation.x);
+    disposeRunnerObject(dog.rig);`);
+});
+
+integration('two-player chase conversion, movement, tag swapping and cleanup remain operational', () => {
+  const {run} = runtime();
+  run(`camera=new THREE.PerspectiveCamera(70,1,.1,650);clock=new THREE.Clock();startGame(2);
+    const p1=players[0],p2=players[1];convertPlayerToControlledChaser(p2,'test');
+    assert.equal(p2.isChaser,true);assert.equal(p2.rig.visible,false);assert.ok(p2.controlledChaser.parts.leftLegLower);
+    const oldRig=p2.controlledChaser.rig;let freed=0;oldRig.traverse(o=>{if(o.geometry)o.geometry.addEventListener('dispose',()=>freed++);});
+    keys.i=true;updatePlayerActor(p2,.1,{forwardA:'i',sprint:'enter',dodge:'o'});keys.i=false;
+    assert.ok(p2.controlledChaser.rig.position.toArray().every(Number.isFinite));
+    swapChaserAndRunner(p2,p1);assert.equal(p2.isChaser,false);assert.equal(p1.isChaser,true);
+    assert.equal(oldRig.parent,null);assert.ok(freed>0);
+    startNextTwoPlayerRound();assert.ok(players.every(p=>!p.isChaser&&p.rig.visible));assert.equal(players.length,2);`);
 });
