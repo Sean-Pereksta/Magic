@@ -102,7 +102,7 @@ const update=S.updateApe;S.updateApe=function(a,dt){
    if(!this.clearRay(a,target,{ignore:target.id}))return update.call(this,a,dt);
    const silent=a.silentRelay&&['radio','alarm'].includes(target.type)&&g.tribe.id==='shadowhand';
    if(a.sabotageTarget!==target.id)a.sabotageProgress=0;
-   a.sabotageTarget=target.id;a.sabotageProgress=(a.sabotageProgress||0)+dt*(g.tribe.id==='shadowhand'?1.2:1)*(a.species==='chimpanzee'?1.25:1)*(a.elite?.type==='shadowbreaker'?1.3:1);
+   a.sabotageTarget=target.id;a.sabotageProgress=(a.sabotageProgress||0)+dt*(g.outfitModifiers?.(a)?.sabotage||1)*(g.tribe.id==='shadowhand'?1.2:1)*(a.species==='chimpanzee'?1.25:1)*(a.elite?.type==='shadowbreaker'?1.3:1);
    a.dir=Math.atan2(target.y-a.y,target.x-a.x);a.moving=false;a.routeStatus=silent?'Cutting Silent Relay':target.type==='gateControl'?'Opening Gate':'Sabotaging';
    if(a.sabotageProgress>=3){
     delete a.sabotageProgress;delete a.sabotageTarget;

@@ -60,7 +60,7 @@
     if (!image(name)) return base.drawSettlement.call(this, c, s);
     const width = [102, 148, 198][stage], height = [101, 144, 188][stage];
     if (s.lodge?.hp === 0) { this.drawRubble(c, s.lodge); return; }
-    shadow(c, width); art(c, name, width, height, 0, 6);
+    shadow(c, width); if(!window.ATSLivingArt?.structure(this,c,'lodge',width,height,6))art(c, name, width, height, 0, 6);
     if (s.lodge) damage(this, c, s.lodge, width, height);
     // The existing communal fire is a visual activity, never a new worker job.
     const fx = width * .37, fy = 15;
@@ -86,7 +86,7 @@
     if (o.stage !== undefined && o.stage < 4) return this.drawConstruction(c, o);
     if (o.hp <= 0) return this.drawRubble(c, o);
     const [name, width, height] = look;
-    shadow(c, width); art(c, name, width, height, 0, 4); damage(this, c, o, width, height);
+    shadow(c, width); if(!window.ATSLivingArt?.structure(this,c,kind,width,height,4))art(c, name, width, height, 0, 4); damage(this, c, o, width, height);
     if (o.hp > 0 && o.hp < o.maxHp) this.health(c, o.hp / o.maxHp, -height * .84, 38, '#b7c895');
     if (this.time - (o.lastShot ?? -10) < .2) this.glow(c, 6, -height * .65, 18, '229,205,119', .2);
     if (kind === 'cooking') { const flicker = this.reducedMotion ? 1 : 1 + Math.sin(this.time * 9) * .09; c.save(); c.translate(0, -6); c.scale(1, flicker); env(c, 'fire', 17, 25); c.restore(); ambient(this, c, 'smoke', 17, 22, 5, -30); }

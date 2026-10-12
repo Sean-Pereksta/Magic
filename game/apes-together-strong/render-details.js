@@ -365,7 +365,7 @@ P.drawObject=function(c,o){
  return livingObject.call(this,c,o);
 };
 P.drawFieldBarrier=function(c,o){
- const damage=o.dead||o.hp<=0?3:o.hp/o.maxHp<.3?2:o.hp/o.maxHp<.65?1:0,w=o.w||74,h=o.h||16,key=o.team+':'+o.kind+':'+w+':'+h+':'+damage;
+ const damage=o.dead||o.hp<=0?3:o.hp/o.maxHp<.3?2:o.hp/o.maxHp<.65?1:0,w=o.w||74,h=o.h||16,key=(this._tribalGame?.tribe.id||'ironback')+':'+o.team+':'+o.kind+':'+!!o.gate+':'+w+':'+h+':'+damage;
  this.barrierSprites=this.barrierSprites||new Map();let sprite=this.barrierSprites.get(key);
  if(!sprite&&this.actorSpriteBudget>0){this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=Math.ceil((w+h)*.8+32);sprite.height=Math.ceil((w+h)*.42+92);const sc=sprite.getContext('2d');sc.translate(sprite.width/2,sprite.height-24);this.drawBarrierGeometry(sc,o,damage);this.cacheSet(this.barrierSprites,key,sprite,72);}
  if(sprite)c.drawImage(sprite,-sprite.width/2,-sprite.height+24);else this.drawBarrierGeometry(c,o,damage);
@@ -427,7 +427,7 @@ P.drawExplosion=function(c,e){
 };
 P.drawEffects=function(c,effects){
  const regular=[],colored=effects.filter(e=>e.type==='explosion');let budget=this.detailLevel>=3?8:20;
- for(const e of effects){if(!['explosion','treeFall','dust'].includes(e.type)){if((e.type==='tankImpact'||e.type==='cannonImpact')&&colored.some(b=>Math.abs(b.x-e.x)+Math.abs(b.y-e.y)<2))continue;regular.push(e);continue;}const p=this.project(e.x,e.y),r=e.radius||e.range||80;if(!this.visible(p,(r*1.8+120)*this.camera.zoom)||budget--<=0)continue;c.save();c.translate(p.x,p.y);c.scale(this.camera.zoom,this.camera.zoom);if(e.type==='explosion')this.drawExplosion(c,e);else{const t=clamp(1-e.life/(e.maxLife||1.2),0,1);c.globalAlpha=1-t;if(e.type==='dust'){for(let i=0;i<4;i++){const a=i/4*Math.PI*2;ellipse(c,Math.cos(a)*(8+t*20),Math.sin(a)*(4+t*8)-t*8,9+t*5,5+t*3,'rgba(182,171,141,.25)');}}else{c.rotate(t*.8);line(c,0,0,8,-60,'#8c8060',10);for(let i=0;i<3;i++)ellipse(c,-14+i*14,-61-i%2*12,20,15,'rgba(88,120,76,.6)');}}c.restore();}
+ for(const e of effects){if(e.type==='treeFall'&&window.ATSLivingArt?.ready())continue;if(!['explosion','treeFall','dust'].includes(e.type)){if((e.type==='tankImpact'||e.type==='cannonImpact')&&colored.some(b=>Math.abs(b.x-e.x)+Math.abs(b.y-e.y)<2))continue;regular.push(e);continue;}const p=this.project(e.x,e.y),r=e.radius||e.range||80;if(!this.visible(p,(r*1.8+120)*this.camera.zoom)||budget--<=0)continue;c.save();c.translate(p.x,p.y);c.scale(this.camera.zoom,this.camera.zoom);if(e.type==='explosion')this.drawExplosion(c,e);else{const t=clamp(1-e.life/(e.maxLife||1.2),0,1);c.globalAlpha=1-t;if(e.type==='dust'){for(let i=0;i<4;i++){const a=i/4*Math.PI*2;ellipse(c,Math.cos(a)*(8+t*20),Math.sin(a)*(4+t*8)-t*8,9+t*5,5+t*3,'rgba(182,171,141,.25)');}}else{c.rotate(t*.8);line(c,0,0,8,-60,'#8c8060',10);for(let i=0;i<3;i++)ellipse(c,-14+i*14,-61-i%2*12,20,15,'rgba(88,120,76,.6)');}}c.restore();}
  ordinaryEffects.call(this,c,regular);
 };
 })();

@@ -164,6 +164,7 @@
       }
       return;
     }
+    if(o.type==='tree'&&o.dead&&o.clearedBy&&window.ATSLivingArt?.fall(this,c,o))return;
     if (o.type !== 'tree' || o.dead || !available('oak')) return base.drawObject.call(this, c, o);
     const n = seed(o.id), variants = window.ATSVisualAssets.manifest.environment.treeVariants;
     const variant = variants[(n >>> 0) % variants.length], s = clamp((o.r || 27) / 30, .58, 1.22);
@@ -178,7 +179,7 @@
     // Canopies sway about their ground anchor. The maximum trunk displacement
     // stays below one pixel; the navigation radius never follows visual sway.
     c.save();
-    if (!this.reducedMotion && profile(this).foliage && this.detailLevel < 3) c.rotate(Math.sin(this.time * .65 + hash(n) * TAU) * .006);
+    if (!this.reducedMotion && profile(this).foliage && this.detailLevel < 3) c.rotate(Math.sin(this.time * .65 + hash(n) * TAU) * .006+(this.time-(o.chopAt??-10)<.35?Math.sin(this.time*11)*.018:0));
     art(c, variant, width * s, height * s); c.restore();
     if (profile(this).foliage > 0 && this.detailLevel < 3 && hash(n, 6) > .34) {
       c.globalAlpha *= .86;
@@ -248,7 +249,7 @@
     c.save(); polygon(c,layout.interior); c.clip();
     for (let i = 0; i < layout.occupants.length; i++) {
       const p = layout.occupants[i];
-      this.drawApeMini(c,p.x,p.y,p.scale,{id:o.id+'-captive-'+i,species:o.captiveSpecies || (o.prisonReward === 'champion' ? 'gorilla' : ['chimpanzee','orangutan','gorilla'][i%3]),coatVariant:i%3,dir:.25,state:'captive'});
+      this.drawApeMini(c,p.x,p.y,p.scale,{id:o.id+'-captive-'+i,species:o.captiveSpecies || (o.prisonReward === 'champion' ? 'gorilla' : ['chimpanzee','orangutan','gorilla'][i%3]),coatVariant:i%3,dir:.25,state:'captive',outfit:i===0&&['champion','injuredLegend'].includes(o.prisonReward)?{version:2,body:'elite'}:undefined});
     }
     c.restore();
     c.save();c.beginPath();

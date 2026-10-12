@@ -15,6 +15,16 @@ function actors(g,m){return m.members.map(id=>g.apesById.get(id))}
 function advance(g,s,seconds,inspect=()=>{}){for(let i=0;i<Math.ceil(seconds/.25);i++){g.time+=.25;g.navigation.beginFrame(g.time,{budgetMs:Infinity});if(i%4===0)g.kingdom.tick(s);for(const a of g.apes)if(a.kingdomMission)g.abstractActor(a,.25,'ape');if(inspect()===false)break;}}
 function arrive(g,s,m){for(const a of actors(g,m)){a.x=m.target.x;a.y=m.target.y}g.time++;g.navigation.beginFrame(g.time,{budgetMs:Infinity});g.kingdom.tick(s)}
 
+test('food expeditions fill mixed equipped capacities and deposit the exact harvested cargo once',()=>{
+ const{g,s,w}=setup(24),berry=add(w,'carry-berries','berry',1100,0,1000),m=configure(g,s),group=actors(g,m);
+ group.forEach((a,i)=>{if(i%3===1)g.equipment.fitItem(a,'scout');if(i%3===2)g.equipment.fitItem(a,'lumber')});
+ const capacities=group.map((a,i)=>[16,20,24][i%3]),capacity=capacities.reduce((n,v)=>n+v,0);arrive(g,s,m);
+ for(let i=0;i<40&&!m.returning;i++){g.time++;g.kingdom.tick(s)}assert.equal(m.returning,true);
+ assert.equal(m.cargo.food,capacity);group.forEach((a,i)=>assert.equal(a.expeditionCargo.amount,capacities[i]));
+ assert.ok(Math.abs(1000-berry.food-capacity)<1e-8);assert.equal(s.food,0);
+ for(const a of group){a.x=s.x;a.y=s.y}g.time++;g.kingdom.tick(s);assert.equal(s.food,capacity);g.kingdom.tick(s);assert.equal(s.food,capacity);assert.equal(m.status,'complete');
+});
+
 test('independent range settings migrate, reject invalid choices and survive saves',()=>{
  const{g,c,s}=setup();assert.deepEqual(JSON.parse(JSON.stringify(s.expeditionSettings)),{foodRange:'local',woodRange:'local',priority:'balanced'});
  assert.equal(g.kingdom.configureExpeditions(s.id,{foodRange:'extended',woodRange:'frontier',priority:'wood'}).ok,true);

@@ -106,12 +106,13 @@ class Kingdom{
    if(next){m.target=target=next;m.phase='traveling';m.gatherWork=0;m.progressAt=g.time;m.progressPoint={x:leader.x,y:leader.y};object=g.world.objects.get(next.resourceId);delete m.leg;for(const a of actors)delete a._activityTarget}else{this.returnExpedition(s,m,actors,'Resource area exhausted');target=s}
   }
   if(!m.returning&&actors.every(a=>distance(a,target)<72)){
-   m.phase='gathering';m.progressAt=g.time;delete m.leg;const room=actors.reduce((n,a)=>n+Math.max(0,16-(a.expeditionCargo?.amount||0)),0);let amount=0;
+   m.phase='gathering';m.progressAt=g.time;delete m.leg;const room=actors.reduce((n,a)=>n+Math.max(0,(g.outfitCarry?.(a)||16)-(a.expeditionCargo?.amount||0)),0);let amount=0;
    if(m.resource==='food'){amount=Math.min(this.resourceQuantity(object,'food'),room,actors.length*1.4*dt);object.food=this.resourceQuantity(object,'food')-amount;if(object.food<=0){object.dead=true;object.solid=false}}
    else{m.gatherWork=(m.gatherWork||0)+actors.length*dt;if(m.gatherWork>=8&&room>=this.resourceQuantity(object,'wood')){amount=g.world.clearTree(object,{settlementId:s.id,time:g.time});m.gatherWork=0}}
-   for(const a of actors){const take=Math.min(amount,16-(a.expeditionCargo?.amount||0));if(take>0){a.expeditionCargo=a.expeditionCargo||{sourceId:s.id,resource:m.resource,amount:0};a.expeditionCargo.amount+=take;amount-=take}a.activity=m.resource==='wood'?'chopping timber':'gathering food';a.carrying=a.expeditionCargo?.amount>0?m.resource:false;delete a._activityTarget}
+   for(const a of actors){const take=Math.min(amount,(g.outfitCarry?.(a)||16)-(a.expeditionCargo?.amount||0));if(take>0){a.expeditionCargo=a.expeditionCargo||{sourceId:s.id,resource:m.resource,amount:0};a.expeditionCargo.amount+=take;amount-=take}a.activity=m.resource==='wood'?'chopping timber':'gathering food';a.carrying=a.expeditionCargo?.amount>0?m.resource:false;delete a._activityTarget}
    m.cargo={[m.resource]:actors.reduce((n,a)=>n+(a.expeditionCargo?.amount||0),0)};
-   if(m.cargo[m.resource]>=actors.length*12||m.resource==='wood'&&room<this.resourceQuantity(object,'wood'))this.returnExpedition(s,m,actors);
+   const returnCapacity=m.resource==='food'?actors.reduce((n,a)=>n+(g.outfitCarry?.(a)||16),0):actors.length*12;
+   if(m.cargo[m.resource]>=returnCapacity||m.resource==='wood'&&room<this.resourceQuantity(object,'wood'))this.returnExpedition(s,m,actors);
    return;
   }
   if(m.phase==='gathering')m.phase='traveling';

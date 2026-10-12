@@ -7,6 +7,7 @@ const line=(c,x,y,u,v,color,width=2)=>{c.beginPath();c.moveTo(x,y);c.lineTo(u,v)
 const poly=(c,points,color)=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=color;c.fill()};
 const draw=P.draw;P.draw=function(g,...args){this._tribalGame=g;return draw.call(this,g,...args)};
 P.drawTribalOverlay=function(c,a,king=false){
+ if(window.ATSOutfitArt?.ready())return;
  const id=a.tribeId||this._tribalGame?.tribe.id,t=ATSTribes[id],elite=a.elite,armor=king?a.equipment?.armorLevel||0:0;
  if(!t&&!elite||a.hp<=0||a._atlas)return;
  this._tribalOverlaySerial=(this._tribalOverlaySerial||0)+1;
@@ -35,7 +36,7 @@ P.drawTribalOverlay=function(c,a,king=false){
  c.drawImage(art,-64,-112);c.restore();
 };
 const ape=P.drawApe;P.drawApe=function(c,a,king,...args){const simulationDir=a.dir;
- try{if(Number.isFinite(a.visualDir)&&!(a.attackTimer>0))a.dir=a.visualDir;ape.call(this,c,a,king,...args);this.drawTribalOverlay(c,a,king)}finally{a.dir=simulationDir}
+ try{if(!a.moving&&Number.isFinite(a.workFacing)&&/chop|build|repair/.test(a.activity||''))a.dir=a.workFacing;else if(Number.isFinite(a.visualDir)&&!(a.attackTimer>0))a.dir=a.visualDir;ape.call(this,c,a,king,...args);this.drawTribalOverlay(c,a,king)}finally{a.dir=simulationDir}
 };
 const sprite=P.drawApeSprite;P.drawApeSprite=function(c,a){const before=this._tribalOverlaySerial||0,r=sprite.call(this,c,a);if(before===(this._tribalOverlaySerial||0))this.drawTribalOverlay(c,a,false);return r};
 const human=P.drawHuman;P.drawHuman=function(c,a){human.call(this,c,a);if(a.eliteGuard){c.save();c.translate(0,-(a.elevation||0));poly(c,[[-12,-49],[0,-55],[12,-49],[8,-40],[-8,-40]],'#5b3434');line(c,-7,-50,7,-50,'#e5ad74',3);poly(c,[[0,-64],[4,-60],[0,-56],[-4,-60]],'#e9b96d');c.restore()}};

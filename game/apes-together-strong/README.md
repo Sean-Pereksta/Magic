@@ -1,5 +1,14 @@
 # Apes Together Strong
 
+## Tribal Kings and equipment
+
+Each tribe now has independently illustrated King body/action sheets and five
+visible royal armor tiers. All six species support illustrated armor, shields,
+weapons, and utility equipment. First-settlement camp crafting, workshop batches,
+army loadouts, rare prison equipment, working poses, tree falls, and tribal
+buildings expand the existing game. See [VISUAL-EQUIPMENT.md](VISUAL-EQUIPMENT.md)
+for progression, save compatibility, rendering bounds, and measured validation.
+
 ## Tribal kingdoms and infiltration
 
 Choose Ironback, Shadowhand or Emberwood before a new run. Each kingdom has

@@ -26,7 +26,7 @@
     const key=pose.atlas+':'+pose.row+':'+pose.column+':'+slot;
     let value=cache.entries.get(key);if(value)return value;
     const atlas=cache.atlases.get('characters-'+pose.atlas),f=data.frames?.[pose.atlas]?.[pose.row+':'+pose.column];if(!atlas||!f)return null;
-    const shadowUnit=slot/(atlas.width/atlas.columns),unit=shadowUnit*(pose.atlas==='kingactions'&&pose.row===0?.68:1),contacts=[];
+    const shadowUnit=slot/(atlas.width/atlas.columns)*(atlas.drawScale||1),unit=shadowUnit*(pose.atlas==='kingactions'&&pose.row===0?.68:1),contacts=[];
     let left=Infinity,right=-Infinity;for(const contact of f.groundContacts||[]){left=Math.min(left,contact.x-contact.width/2);right=Math.max(right,contact.x+contact.width/2);contacts.push({x:(contact.x-f.anchorX)*shadowUnit,width:Math.max(2,contact.width*shadowUnit*.62)})}
     value={f,x:-f.anchorX*unit,y:-f.anchorY*unit,width:f.w*unit,height:f.h*unit,contacts,shadowX:contacts.length?((left+right)/2-f.anchorX)*shadowUnit:0,shadowWidth:contacts.length?(right-left)*shadowUnit*.54+3:0};
     if(cache.entries.size>=512)cache.entries.delete(cache.entries.keys().next().value);cache.entries.set(key,value);return value;
@@ -104,9 +104,10 @@
     if(king&&state==='climb'){atlas='kingactions';row=0;column=beat%2?1:0}
     if(king&&['command','victory'].includes(state)){atlas='kingactions';row=0;column=2}
     if(king&&state==='death'){atlas='kingactions';row=1;column=phase<.35?0:phase<.75?1:2}
-    return {atlas,state,column,row,
+    const pose={atlas,state,column,row,
       direction:d.sector,directionName:d.name,mirror:d.mirror,rear:d.rear,phase,event,beat,king,human,
       clipId:active?String(anim.start)+':'+anim.kind:state,sourceDirectionCount:king?8:4};
+    return window.ATSOutfitArt?.pose(a,pose,options,time)||pose;
   }
 
   function atlasImage(r,name,a){
@@ -122,7 +123,7 @@
   function frame(r,c,a,pose,slot){
     const geometry=frameGeometry(r,pose,slot),image=atlasImage(r,pose.atlas,a);
     if(!image||!geometry){const fallback=pose.king?'king':pose.human?'humans':'apes';if(pose.atlas!==fallback)return frame(r,c,a,{...pose,atlas:fallback,row:pose.king?direction(a.dir||0).row:pose.row,column:0},slot);return false}
-    const f=geometry.f;c.drawImage(image,f.x,f.y,f.w,f.h,geometry.x,geometry.y,geometry.width,geometry.height);
+    const f=geometry.f;if(!window.ATSOutfitArt?.frame(r,c,a,pose,slot,geometry,image))c.drawImage(image,f.x,f.y,f.w,f.h,geometry.x,geometry.y,geometry.width,geometry.height);
     r.characterArtworkDraws=(r.characterArtworkDraws||0)+1;return true;
   }
   function stamp(r,a,pose){
@@ -148,7 +149,7 @@
   P.usesPaintedPrimate=function(a={},king=false){return !!metadata()&&!!art()?.get(king||a.id==='king'?'characters-king':'characters-apes')};
   P.drawPrimateGeometry=function(c,a={},options={}){
     if(!art()?.get(options.king||a.id==='king'?'characters-king':'characters-apes')||!metadata())return previousGeometry.call(this,c,a,options);
-    const p=resolve(a,this.time||0,{king:options.king,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz}),
+    const p=resolve(a,this.time||0,{king:options.king,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz}),
       index=Math.max(0,species.indexOf(a.species||'gorilla')),slot=p.king?84:sizes[index],outerFlip=Math.cos(a.dir||0)<-.15?-1:1;
     stamp(this,a,p);c.save();
     // Existing outer body wrappers use world-axis mirroring. Cancel that here
@@ -164,9 +165,10 @@
       }
     }
     const held=window.ATSHeldItemArt,items=held?.ready()&&held.hasEquipment(a,p)?held.resolve(a,p):null;
-    if(items)held.draw(this,c,a,p,slot,'rear',items);
-    frame(this,c,a,p,slot);
-    if(items){held.draw(this,c,a,p,slot,'front',items);held.restoreHands(this,c,a,p,slot,items,atlasImage(this,p.atlas,a))}
+    const composed=window.ATSOutfitArt?.actor(this,c,a,p,slot,frameGeometry(this,p,slot),atlasImage(this,p.atlas,a),items);
+    if(composed)this.characterArtworkDraws=(this.characterArtworkDraws||0)+1;
+    else {if(items)held.draw(this,c,a,p,slot,'rear',items);frame(this,c,a,p,slot);
+      if(items){held.draw(this,c,a,p,slot,'front',items);held.restoreHands(this,c,a,p,slot,items,atlasImage(this,p.atlas,a))}}
     if(!options.mini&&this.detailLevel<3){
       const n=hash(a.id),rear=p.rear;
       if(!p.king&&!rear&&n%7===0){line(c,8,-46,11,-41,'rgba(205,178,146,.66)',.9);line(c,7,-45,9,-44,'#6a6554',.65)}
@@ -188,7 +190,7 @@
     if(!king||a.hp>0||!art()?.get('characters-kingactions'))return previousApe.call(this,c,a,king,exposure);
     // Three actual collapse poses settle the King with the laurel still painted
     // on his head; rotating a live standing frame cannot provide this silhouette.
-    const p=resolve(a,this.time||0,{king:true,reducedMotion:this.reducedMotion});
+    const p=resolve(a,this.time||0,{king:true,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion});
     ellipse(c,0,3,36,8,'rgba(0,5,8,.38)');c.save();c.scale(p.mirror?-1.36:1.36,1.36);
     if(a.blastReaction?.stage==='flight'){c.translate(0,-(a.blastReaction.height||0));c.rotate(a.blastReaction.rotation||0)}
     frame(this,c,a,p,84);c.restore();

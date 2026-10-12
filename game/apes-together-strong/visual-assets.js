@@ -2,6 +2,10 @@
 (() => {
   'use strict';
   const config = window.ATS_VISUAL_BUNDLE || { manifest: {}, sources: {} };
+  // New families share the established frame/socket registries without duplicating sources.
+  const outfits=config.manifest.outfits;
+  if(outfits&&config.manifest.characters){const cm=config.manifest.characters;cm.atlases.push(...outfits.atlases.filter(a=>a.id.startsWith('characters-')));Object.assign(cm.frames,outfits.characterFrames);cm.version=String(cm.version)+':outfits2'}
+  if(outfits&&config.manifest['held-items'])Object.assign(config.manifest['held-items'].frames,outfits.heldFrames);
   const images = Object.create(null), failures = [], listeners = new Set();
   const entries = Object.entries(config.sources);
   const assets = window.ATSVisualAssets = {

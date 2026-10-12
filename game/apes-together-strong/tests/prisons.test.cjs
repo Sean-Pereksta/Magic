@@ -21,3 +21,5 @@ test('liberated family cohorts become saved journeys and celebrate only after re
 
 
 
+
+test('high-security rare armor and materials pay once per saved facility',()=>{const {c,g,s,cells}=arena('blacksite',12),crowd=open(g,s,cells[0]);g.prisons.reward(s,crowd);assert.equal(g.equipment.rareMaterials,4);assert.ok(g.apes.some(a=>a.outfit?.body==='elite'));g.prisons.reward(s,crowd);assert.equal(g.equipment.rareMaterials,4);const loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize()))),site=loaded.world.sites.get(s.id);assert.equal(site.prison.rareRewardClaimed,true);assert.equal(loaded.equipment.rareMaterials,4);const next=site.prison.cohorts[0];loaded.prisons.reward(site,next);assert.equal(loaded.equipment.rareMaterials,4)});

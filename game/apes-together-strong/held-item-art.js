@@ -8,9 +8,13 @@
   const guns=new Set(['pistol','rifle','shotgun','sniper','assault','machine','rotary']);
   const backWorn=new Set(['ropePack','toolRig','warMantle']);
   function ready(){return !!meta()&&!!art()?.get('held-combat')&&!!art()?.get('held-utility')&&!!art()?.get('held-stone')}
-  function hasEquipment(a,p={}){return a.hp>0&&(p.human||a.type==='human'||!!a.kind||a.equipment?.cuffs||a.equipment?.spear||a.equipment?.torch||a.shield?.hp>0||!!a.champion||!!a.carrying||!!a._carryingWood||a.state==='scout'||p.state==='throw'||working.test(a.activity||''))}
+  function hasEquipment(a,p={}){return a.hp>0&&(p.human||a.type==='human'||!!a.kind||!!a.outfit?.weapon||!!a.outfit?.utility||a.equipment?.cuffs||a.equipment?.spear||a.equipment?.torch||a.shield?.hp>0||!!a.champion||!!a.carrying||!!a._carryingWood||a.state==='scout'||p.state==='throw'||working.test(a.activity||''))}
+  const outfitsCache=new Map();
   function resolve(a={},p={}){
     if(!hasEquipment(a,p))return EMPTY;
+    const common=a.outfit?.weapon&&!a.champion&&!a.carrying&&!a._carryingWood&&a.state!=='scout'&&p.state!=='throw'&&!working.test(a.activity||'');
+    const outfitKey=common?[a.outfit.weapon,a.outfit.utility,a.shield?.hp>0?a.outfit.shield||'log':'',a.shield?.hp>0?a.shield.hp/a.shield.maxHp<.3?2:a.shield.hp/a.shield.maxHp<.65?1:0:'',!!p.rear].join('|'):null;
+    if(outfitKey&&outfitsCache.has(outfitKey))return outfitsCache.get(outfitKey);
     const result=[],human=p.human||a.type==='human',rear=!!p.rear;
     const add=(id,socket='right',extra={})=>{
       if(result.some(v=>v.id===id&&v.socket===socket))return;
@@ -32,18 +36,25 @@
       if(a.role==='mortar')add('mortar',a.moving?'back':'ground');
       return result;
     }
-    const gear=a.equipment||{};
-    if(gear.cuffs){add('cuffs','left');add('cuffs','right')}
-    if(a.shield?.hp>0)add('logShield','both',{damage:a.shield.hp/Math.max(1,a.shield.maxHp)});
-    const cargo=a._carryingWood||a.carrying==='wood'?'wood':a.carrying?'food':null;
+    const gear=a.equipment||{},catalog=window.ATSOutfitItems||{},weapon=catalog[a.outfit?.weapon],utility=catalog[a.outfit?.utility],shield=catalog[a.outfit?.shield];
+    const cargo=a._carryingWood||a.carrying==='wood'||p.worker&&p.state==='placing'?'wood':a.carrying?'food':null;
     if(cargo)add(cargo,'both');
-    if(p.state==='throw'&&p.phase<.525&&!gear.spear)add('stone');
-    if(gear.spear&&(p.state!=='throw'||p.phase<.525))add('spear');
-    if(gear.torch)add('torch',gear.spear?'left':'right');
-    if(working.test(a.activity||'')&&!gear.spear&&!gear.torch&&!cargo)add('hammer');
+    const busy=!a.moving&&working.test(a.activity||'');
+    if(busy&&!cargo){const tool=/chop|clearing/.test(a.activity)?'axe':/saw|woodwork/.test(a.activity)?'saw':/garden/.test(a.activity)?'trowel':/cook/.test(a.activity)?'ladle':'hammer';add(meta()?.frames?.[tool]?tool:'hammer',tool==='axe'?'both':'right')}
+    if(a.shield?.hp>0)add(shield?.art||'logShield',shield?.id==='buckler'?'left':'both',{damage:a.shield.hp/Math.max(1,a.shield.maxHp)});
+    if(weapon){
+      if(weapon.art==='cuffs'||weapon.art==='chainWrap'){add(weapon.art,'left');add(weapon.art,'right')}
+      else if(weapon.id!=='spear'||p.state!=='throw'||p.phase<.525)add(weapon.art);
+    }else{
+      if(gear.cuffs){add('cuffs','left');add('cuffs','right')}
+      if(gear.spear&&(p.state!=='throw'||p.phase<.525))add('spear');
+      if(gear.torch)add('torch',gear.spear?'left':'right');
+    }
+    if(p.state==='throw'&&p.phase<.525&&!gear.spear&&weapon?.id!=='spear')add('stone');
+    if(utility){if(utility.art==='scoutSash')sash('scoutSash');else add(utility.art,backWorn.has(utility.art)?'back':['satchel','medkit','utilityBelt','jammer','hook'].includes(utility.art)?'hip':utility.art==='drum'?'both':'body')}
     if(a.state==='scout')sash('scoutSash');
     const item=championItems[a.champion?.archetype];
-    if(item){
+    if(item&&!result.some(v=>v.id===item||v.id===item+'Front'||v.id===item+'Rear')){
       if(item==='scoutSash'||item==='commandSash')sash(item);
       else if(item==='logShield'){if(!(a.shield?.hp>0))add(item,'both',{damage:1})}
       else if(item==='chainWrap'||item==='cuffs'){add(item,'left');add(item,'right')}
@@ -62,10 +73,11 @@
         else {item.socket='back';item.layer=rear?'front':'rear'}
       }else for(const hand of needed)occupied.add(hand);
     }
+    if(outfitKey){result.visualKey=outfitKey;for(const it of result)Object.freeze(it);Object.freeze(result);if(outfitsCache.size>=128)outfitsCache.delete(outfitsCache.keys().next().value);outfitsCache.set(outfitKey,result)}
     return result;
   }
 
-  // Hand landmarks are measured in each painted crop, not guessed in world space.
+  // Hand landmarks are authored in each painted crop, not in world space.
   // Frame dimensions and planted-foot anchors convert them to actor coordinates.
   const apeHands=[[[.58,.96],[.87,.93]],[[.43,.96],[.88,.91]],[[.12,.96],[.86,.96]],[[.25,.95],[.87,.90]],[[.53,.95],[.90,.91]],[[.67,.92],[.95,.87]]];
   // Pixel landmarks on the weapon-free source sheets. These avoid anchoring
@@ -109,12 +121,12 @@
     else if(p.column===2){points=[[.65,.94],[.90,.82]]}
     else if(p.column>=3){points=[[.60,.88],[.91,.88]]}
     if(!f||!sheet)return {left:{x:-13,y:-15},right:{x:18,y:-15},body:{x:0,y:-32},hip:{x:-11,y:-22},back:{x:-10,y:-31},ground:{x:23,y:1},both:{x:2,y:-16}};
-    const unit=slot/(sheet.width/sheet.columns)*(p.atlas==='kingactions'&&p.row===0?.68:1);
+    const unit=slot/(sheet.width/sheet.columns)*(sheet.drawScale||1)*(p.atlas==='kingactions'&&p.row===0?.68:1);
     const point=(v)=>({x:(f.w*v[0]-f.anchorX)*unit,y:(f.h*v[1]-f.anchorY)*unit});
     const pixels=p.atlas==='humans'?humanHands[p.row]?.[p.column]:p.atlas==='humanactions'?humanActionHands[p.row]?.[p.column]:null;
     const measured=f.hands,convert=k=>{const i=k==='left'?0:2;return measured?.[k]?{x:(measured[k].x-f.anchorX)*unit,y:(measured[k].y-f.anchorY)*unit}:pixels?{x:(pixels[i]-f.x-f.anchorX)*unit,y:(pixels[i+1]-f.y-f.anchorY)*unit}:point(points[k==='left'?0:1])};
     const left=convert('left'),right=convert('right');
-    const result={left,right,both:{x:(left.x+right.x)/2,y:(left.y+right.y)/2},body:point([.51,.48]),hip:point([.21,.63]),back:point([.28,.45]),ground:{x:22,y:0},frame:f,unit};
+    const result={left,right,both:{x:(left.x+right.x)/2,y:(left.y+right.y)/2},body:f.body?{x:(f.body.x-f.anchorX)*unit,y:(f.body.y-f.anchorY)*unit}:point([.51,.48]),hip:point([.21,.63]),back:point([.28,.45]),ground:{x:22,y:0},frame:f,unit};
     for(const name of ['left','right','both','body','hip','back','ground'])Object.freeze(result[name]);Object.freeze(result);
     if(socketCache.entries.size>=512)socketCache.entries.delete(socketCache.entries.keys().next().value);socketCache.entries.set(key,result);return result;
   }
@@ -122,8 +134,10 @@
     const s=anchors[item.socket]||anchors.right,move=['run','sprint'].includes(p.state),attack=['attack','heavyAttack','chargeAttack','prepare'].includes(p.state);
     let rotation=0;
     if(guns.has(item.id))rotation=['aim','fire'].includes(p.state)?(p.rear?-.28:-.09):(p.rear?1.2:.75);
-    else if(['spear','torch','hammer','maul','staff','baton','hook','cutters'].includes(item.id))rotation=p.state==='throw'&&p.phase>=.525?1.1:attack?(p.state==='prepare'?-.5:.9):move?Math.sin(p.phase*TAU)*.08:.12;
+    else if(['spear','torch','hammer','maul','staff','baton','hook','cutters','axe','saw','trowel','ladle'].includes(item.id))rotation=p.state==='throw'&&p.phase>=.525?1.1:attack?(p.state==='prepare'?-.5:.9):move?Math.sin(p.phase*TAU)*.08:.12;
     if(item.id==='hammer'&&(p.human&&(a.engineerJob||a.constructing)||!a.moving&&working.test(a.activity||'')))rotation=Math.sin(p.phase*TAU)*.45;
+    if(item.id==='axe'&&p.worker)rotation=p.column===0?-.55:.8;
+    if(item.id==='saw'&&p.worker)rotation=-.8;
     return {x:s.x,y:s.y,rotation};
   }
   function draw(r,c,a,p,slot,pass,items){
@@ -132,6 +146,7 @@
     for(const item of items){
       if(item.layer!==pass)continue;
       let f=data.frames[item.id],image=f&&art().get(f.atlas);
+      if(['buckler','ironShield','ancientShield'].includes(item.id)){const stage=(p.rear?3:0)+(item.damage<.3?2:item.damage<.65?1:0);f=data.frames[item.id+stage];image=f&&art().get(f.atlas)}
       if(item.id==='logShield'){
         const stage=item.damage<.3?2:item.damage<.65?1:0,q=art().manifest.equipment?.frames?.[stage];image=art().get('equipment-logs');
         if(q)f={...q,gripX:q.w*.5,gripY:q.h*.62,drawWidth:48,drawHeight:48};
