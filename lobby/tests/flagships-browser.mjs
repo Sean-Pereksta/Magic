@@ -105,6 +105,12 @@ try {
   assert.equal(await member.page.locator('#currentLobbyContent').isVisible(),true);
   assert.equal(await member.page.locator('#startGameBtn').isVisible(),true);
   assert.deepEqual(member.errors,[]);results.push('Account fixture: shared favorite state; successful create opens the current lobby without starting');
+  await member.page.evaluate(()=>window.logout());
+  await member.page.locator('.main-nav [data-view="discover"]').click();
+  assert.equal(await member.page.locator('#cnmProfileOffer').isVisible(),true);
+  await member.page.locator('#cnmCreateProfile').click();
+  assert.equal(await member.page.locator('#createPane').isVisible(),true);
+  assert.deepEqual(member.errors,[]);results.push('Logout refreshes the inline guest profile offer and its account action');
   await member.context.close();
 
   const solo=await open();

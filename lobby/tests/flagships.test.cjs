@@ -70,3 +70,25 @@ test('loader keeps all existing game injections and falls back on enhancement fa
   assert.deepEqual(JSON.parse(JSON.stringify(registry(upgraded))),JSON.parse(JSON.stringify(registry(baseline))));
   for (const key of ['circuitbound','mtgcatalog','fantasyfootball','receiverwindowqb']) assert.ok(registry(upgraded).some(g=>g.key===key));
 });
+
+
+test('account-only updates refresh flagship state when a remembered account clears', () => {
+  const library = require('../lobby-library.js');
+  const upgraded = layout.upgradeHtml(library.upgradeHtml(read('lobby-core.html')));
+  const match = upgraded.match(/function updateAccountUI\(\)\{([\s\S]*?)\n    \}/);
+  assert.ok(match);
+  const controls = new Map();
+  let refreshes = 0;
+  const sandbox = {
+    username:'RememberedUser', currentUserData:{}, inviteCache:new Map(), inviteUnsub:null,
+    $:id=>{if(!controls.has(id))controls.set(id,{});return controls.get(id);},
+    GameHubFlagships:{refresh(){refreshes++;}},
+    renderInvites(){},renderProfile(){},renderLobbyBrowser(){}
+  };
+  const update = new vm.Script(match[0]+';updateAccountUI();');
+  update.runInNewContext(sandbox);
+  sandbox.username='';
+  update.runInNewContext(sandbox);
+  assert.equal(refreshes,2);
+  assert.equal(controls.get('accountButtonText').textContent,'Log In');
+});
