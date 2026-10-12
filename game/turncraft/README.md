@@ -16,11 +16,23 @@ The game remains `../turncraft.html`. `polish.css` is loaded after the legacy st
 
 The faction cards use three original illustrated WebP assets in `assets/factions/`; their generation prompts and provenance are documented there. They load independently of optional battlefield sprites. The menu offers Easy, Medium, Hard and Pro buttons tied to the existing AI simulation tuning and saved preference. Solo opponent selection now creates the requested one or two opponents. Faction and difficulty controls keep keyboard focus while setup status updates.
 
+Choose from Classic Frontier and five new battlefields. Each new map has authored routes, obstacles, starting locations, six expansion sites, conquest zones, a relic location, and its own four-material terrain atlas:
+
+| Battlefield | Terrain | Layout |
+| --- | --- | --- |
+| Ember Rift | Basalt, ash and ember seams | Diagonal fault, bridge crossings and flank routes |
+| Frostline Basin | Snow and blue ice | Ring ridge, central basin and outer circuit |
+| Verdant Divide | Jungle earth, moss and forest rock | Winding divide with three passes |
+| Shattered Dunes | Sand, sandstone and oasis clearings | Broken ridges and broad open flats |
+| Orbital Foundry | Steel flooring and industrial walls | Connected rooms, halls and alternate corridors |
+
+Map cards preview the actual terrain geometry and remember the last choice. Multiplayer readiness includes a map vote; the majority wins, with the earliest ready vote breaking ties. The controller publishes the map ID, fixed terrain seed and terrain snapshot so all clients share the same battlefield. Original Classic coordinates remain available, and older snapshots default to Classic. The simulation's changing random seed is separate from the fixed map seed. Atlas prompts and provenance are in `assets/maps/README.md`; palette terrain remains usable if a texture is unavailable.
+
 ## Checks
 
 From this directory, run `npm install`, `npx playwright install chromium`, then `npm test`.
 Set `CHROMIUM_EXECUTABLE_PATH` to use an existing Chromium executable.
 
-The headless checks load the real game source and CSS, replacing Firebase imports and the network boot with an isolated test entry point. They cover all three construction styles, snapshot fields, hold/pan/pinch gestures, smooth camera controls, mining stop/resume and ownership, helper construction, ability hotkeys and effects, distant gas construction and cancellations, bounded particles, faction artwork, persistent difficulty choices, and menu/command geometry at 390×844, 844×390, and 1280×800. They do not contact Firebase. Set `TURNCRAFT_SCREENSHOT_DIR` to capture menu screenshots from the browser checks.
+The headless checks load the real game source and CSS, replacing Firebase imports and the network boot with an isolated test entry point. They cover all three construction styles, snapshot fields, hold/pan/pinch gestures, smooth camera controls, mining stop/resume and ownership, helper construction, ability hotkeys and effects, distant gas construction and cancellations, bounded particles, faction artwork, persistent difficulty choices, map geometry/resource access, all six map deployments, map voting and snapshot migration, and menu/command geometry at phone and desktop sizes. They do not contact Firebase. Set `TURNCRAFT_SCREENSHOT_DIR` to capture menu screenshots from the browser checks.
 
 Live multi-client synchronization and physical-device frame rates require an actual lobby/device check. New construction fields travel through the existing entity snapshot; presentation events are observed locally without a second simulation.

@@ -15,6 +15,7 @@ function simulation(faction='frontier'){
   const html=fs.readFileSync(path.join(__dirname,'../../turncraft.html'),'utf8');
   const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('\nboot();','\nrefreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.addTestNode=(...args)=>{addNode(...args);return resourceNodes.at(-1)};globalThis.testEvaluate=source=>eval(source);');
   const context=vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../maps.js'),'utf8'),context,{timeout:30000});
   vm.runInContext(code,context,{timeout:30000,filename:'turncraft.html'});
   const run=code=>vm.runInContext(`testEvaluate(${JSON.stringify(code)})`,context,{timeout:30000});
   run(`nowMs=()=>testClock;entities=[];resourceNodes=[];nextEntityId=1;nextNodeId=1;players=[makePlayer(0,'Player',${JSON.stringify(faction)},false),makePlayer(1,'Remote','ascendant',false)];players.forEach(p=>{p.minerals=500;p.gas=0});terrain=Array.from({length:BOARD_W*BOARD_H},(_,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type:'ground',blocked:false}));gameStarted=true;gameOver=false;paused=false;PLAYER=0;selectedId=null;selectedIds=[];modeState=null;pendingImpacts=[];areaEffects=[];temporaryObstacles=[];visionCacheAt=0;tileVisibleToFaction=()=>true;initialCameraSet=true;`);
@@ -85,4 +86,16 @@ test('a paused or backgrounded match resumes a reachable gas route before checki
   const run=simulation();
   const result=run(`(()=>{const w=addEntity('unit','engineer',0,3,5);addTestNode('gas',25,5,1800);issueBuildOrder(w,'refinery',25,5);updatePersistentOrders();const before={x:w.x,y:w.y};testClock+=30000;updatePersistentOrders();const resumed=!!w.pendingBuild,progress=w.x!==before.x||w.y!==before.y;for(let i=0;i<100;i++){testClock+=500;updatePersistentOrders()}return {resumed,progress,built:entities.some(e=>e.type==='refinery'),spent:500-players[0].minerals}})()`);
   assert.equal(result.resumed,true);assert.equal(result.progress,true);assert.equal(result.built,true);assert.equal(result.spent,80);
+});
+
+test('friendly Shield Walls remain traversable but reject ordinary buildings until they expire',()=>{
+  const run=simulation();
+  const result=run(`(()=>{const w=addEntity('unit','engineer',0,3,5);addTemporaryObstacle({kind:'shieldWall',faction:0,x:4,y:5,hp:100,endAt:testClock+1000});const traversable=validMoveTile(w,4,5),legal=validBuildTile(w,'supplyDepot',4,5),accepted=issueBuildOrder(w,'supplyDepot',4,5),spentBefore=500-players[0].minerals;testClock+=1001;const acceptedAfter=issueBuildOrder(w,'supplyDepot',4,5);return {traversable,legal,accepted,spentBefore,acceptedAfter,spentAfter:500-players[0].minerals,cost:STRUCTURES.supplyDepot.cost[0],count:entities.filter(e=>e.type==='supplyDepot').length}})()`);
+  assert.equal(result.traversable,true);assert.equal(result.legal,false);assert.equal(result.accepted,false);assert.equal(result.spentBefore,0);assert.equal(result.acceptedAfter,true);assert.equal(result.spentAfter,result.cost);assert.equal(result.count,1);
+});
+
+for(const faction of ['frontier','ascendant','brood'])test(`${faction}: temporary walls reject gas placement at both order and construction time`,()=>{
+  const run=simulation(faction);
+  const result=run(`(()=>{const fac=FACTIONS[players[0].factionId],w=addEntity('unit',fac.worker,0,3,5);addTestNode('gas',15,5,1800);const wall=addTemporaryObstacle({kind:'shieldWall',faction:0,x:15,y:5,hp:100,endAt:testClock+60000});const traversable=validMoveTile(w,15,5),rejected=!issueBuildOrder(w,fac.gas,15,5);selectedId=w.id;selectedIds=[w.id];interactionMode='build';interactionPayload=fac.gas;refreshLegalTiles();const highlighted=legalTiles.some(p=>p.x===15&&p.y===5);wall.endAt=0;const queued=issueBuildOrder(w,fac.gas,15,5);w.x=14;w.y=5;clearMoveDestination(w);addTemporaryObstacle({kind:'shieldWall',faction:0,x:15,y:5,hp:100,endAt:testClock+60000});updatePendingBuild(w);return {traversable,rejected,highlighted,queued,pending:!!w.pendingBuild,spent:500-players[0].minerals,built:entities.some(e=>e.type===fac.gas),workerAlive:w.alive!==false}})()`);
+  assert.equal(result.traversable,true);assert.equal(result.rejected,true);assert.equal(result.highlighted,false);assert.equal(result.queued,true);assert.equal(result.pending,false);assert.equal(result.spent,0);assert.equal(result.built,false);assert.equal(result.workerAlive,true);
 });

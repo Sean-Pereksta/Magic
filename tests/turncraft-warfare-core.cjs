@@ -10,6 +10,7 @@ const context={console,document,window:{addEventListener:noop},location:{search:
 context.window=context;context.addEventListener=noop;
 const html=fs.readFileSync(path.join(__dirname,'../game/turncraft.html'),'utf8');
 let code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'');
+code=fs.readFileSync(path.join(__dirname,'../game/turncraft/maps.js'),'utf8')+'\n'+code;
 let scenarios=fs.readFileSync(path.join(__dirname,'turncraft-warfare-scenarios.js'),'utf8');
 scenarios=scenarios.slice(0,scenarios.indexOf("reset();const caster="))+`check(!ABILITY_KEYS.some(k=>['w','a','s','d','x','b','f'].includes(k)),'Ability keys do not conflict with movement or existing commands');\nreturn {checks:results.length,results};`;
 code=code.replace('\nboot();',`\nrefreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.report=(function(){${scenarios}})();`);
