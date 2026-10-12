@@ -6,6 +6,25 @@ function ape(g,species='gorilla'){const a=g.makeApe(35,25,'follow');a.species=sp
 function work(g,n){for(let i=0;i<n;i++){g.time++;g.equipment.tick(1)}}
 function batch(o,item,ids,n='all',shop=false){return o.e.orderBatch(o.s.id,shop?o.w.id:o.s.id+':camp',item,ids,n)}
 
+for(const royal of ['wovenRoyal','timberRoyal'])test(royal+' reserves the King against legacy armor purchases until cancelled or fitted',()=>{
+ const o=arena(),{g,e,s,w,c}=o;while(g.population<25)ape(g);Object.defineProperty(g,'progression',{value:{tier:2}});
+ assert.equal(batch(o,royal,['king'],1).ok,true);const wood=s.wood,food=s.food;
+ const entry=e.catalog(s.id,w.id).find(it=>it.kind==='armor');assert.equal(entry.available,false);assert.match(entry.reason,/already.*armor.*queue/);
+ assert.equal(e.purchase(s.id,w.id,'armor').ok,false);assert.equal(s.wood,wood);assert.equal(s.food,food);assert.equal(e.queue.length,0);
+ const loaded=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize())));Object.defineProperty(loaded,'progression',{value:{tier:2}});
+ assert.equal(loaded.equipment.purchase(s.id,w.id,'armor').ok,false);assert.equal(loaded.settlement(s.id).wood,wood);assert.equal(loaded.settlement(s.id).food,food);
+ e.cancelBatch(e.batches[0].id);assert.equal(e.catalog(s.id,w.id).find(it=>it.kind==='armor').available,true);
+ assert.equal(batch(o,royal,['king'],1).ok,true);work(g,c.ATSOutfitItems[royal].seconds);assert.equal(g.king.outfit.royal,royal);
+ assert.equal(e.purchase(s.id,w.id,'armor').ok,true);work(g,25);assert.equal(e.armorLevel,1);assert.equal(g.king.outfit.royal,undefined);
+});
+
+test('legacy armor reserves the King against camp fittings without blocking follower batches',()=>{
+ const o=arena();Object.defineProperty(o.g,'progression',{value:{tier:2}});assert.equal(o.e.purchase(o.s.id,o.w.id,'armor').ok,true);
+ const wood=o.s.wood,food=o.s.food;assert.equal(batch(o,'wovenRoyal',['king'],1).ok,false);assert.equal(o.s.wood,wood);assert.equal(o.s.food,food);
+ const a=ape(o.g);assert.equal(batch(o,'bark',[a.id],1).ok,true);o.e.cancel(o.e.queue[0].id);
+ assert.equal(o.e.catalog(o.s.id,o.w.id).find(it=>it.kind==='armor').available,true);
+});
+
 test('first camp fits early royal armor without healing wounds; legacy upgrades remain exact',()=>{const o=arena(),{g,e,c}=o;g.king.hp=120;assert.equal(batch(o,'wovenRoyal',['king'],1).ok,true);work(g,14);assert.equal(g.king.maxHp,185);assert.equal(g.king.hp,145);assert.equal(e.armor.label,'Woven Royal Guard');assert.equal(batch(o,'wovenRoyal',['king'],1).ok,false);let restored=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize())));assert.equal(restored.king.maxHp,185);assert.equal(restored.king.hp,145);Object.defineProperty(g,'progression',{value:{tier:2}});assert.equal(e.purchase(o.s.id,o.w.id,'armor').ok,true);work(g,25);assert.equal(g.king.maxHp,240);assert.equal(g.king.hp,200);assert.equal(g.king.outfit.royal,undefined);work(g,1);restored=c.ATSGame.fromJSON(JSON.parse(JSON.stringify(g.serialize())));assert.equal(restored.equipment.armorLevel,1);assert.equal(restored.king.maxHp,240)});
 
 test('batch reserves supplies once, fits physical arrivals and cancels unused materials',()=>{const o=arena(),a=ape(o.g),b=ape(o.g);b.x=500;const wood=o.s.wood;assert.equal(batch(o,'bark',[a.id,b.id,b.id],10).assigned,2);assert.equal(o.e.batches.length,1);assert.equal(o.s.wood,wood-24);assert.equal(batch(o,'leaf',[a.id],1).ok,false);work(o.g,6);assert.equal(a.outfit.body,'bark');assert.equal(b.outfit,undefined);work(o.g,3);assert.equal(o.e.batches[0].progress,0);const x=b.x;o.g.navigation.beginFrame(o.g.time);o.e.updateApe(b,.1);assert.ok(b.x<x);o.e.cancelBatch(o.e.batches[0].id);assert.equal(o.s.wood,wood-12);assert.equal(o.e.batches.length,0)});

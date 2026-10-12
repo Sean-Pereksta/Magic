@@ -111,7 +111,8 @@ class Kingdom{
    else{m.gatherWork=(m.gatherWork||0)+actors.length*dt;if(m.gatherWork>=8&&room>=this.resourceQuantity(object,'wood')){amount=g.world.clearTree(object,{settlementId:s.id,time:g.time});m.gatherWork=0}}
    for(const a of actors){const take=Math.min(amount,(g.outfitCarry?.(a)||16)-(a.expeditionCargo?.amount||0));if(take>0){a.expeditionCargo=a.expeditionCargo||{sourceId:s.id,resource:m.resource,amount:0};a.expeditionCargo.amount+=take;amount-=take}a.activity=m.resource==='wood'?'chopping timber':'gathering food';a.carrying=a.expeditionCargo?.amount>0?m.resource:false;delete a._activityTarget}
    m.cargo={[m.resource]:actors.reduce((n,a)=>n+(a.expeditionCargo?.amount||0),0)};
-   if(m.cargo[m.resource]>=actors.length*12||m.resource==='wood'&&room<this.resourceQuantity(object,'wood'))this.returnExpedition(s,m,actors);
+   const returnCapacity=m.resource==='food'?actors.reduce((n,a)=>n+(g.outfitCarry?.(a)||16),0):actors.length*12;
+   if(m.cargo[m.resource]>=returnCapacity||m.resource==='wood'&&room<this.resourceQuantity(object,'wood'))this.returnExpedition(s,m,actors);
    return;
   }
   if(m.phase==='gathering')m.phase='traveling';

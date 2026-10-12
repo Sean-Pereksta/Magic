@@ -54,6 +54,12 @@ loading. Version-2 outfit slots, custom presets, material balances, and batch
 progress are saved separately from legacy equipment. Existing torch ownership
 is preserved while active torch lights remain capped at twenty-four.
 
+A pending camp royal fitting reserves the King against workshop armor orders,
+including after loading a save. Cancelling or completing that fitting unlocks
+the next workshop upgrade. Food expeditions fill the sum of their surviving
+carriers' capacities: 16 normally, 20 with Scout Pouches, or 24 with a Lumber
+Carrying Harness. Cargo must still be physically returned and deposited once.
+
 The first successful escort from each Blacksite or Transfer Fortress awards
 four heartwood and a rescued ape wearing the player's tribal rare armor.
 Facility reward markers survive saves and prevent repeated rewards. Rare armor,
@@ -106,7 +112,7 @@ logic. Missing artwork falls back through the existing rendering layers.
 
 ## Validation and limits
 
-Validation passed: 644 Node tests; offline outfit, equipment, visual settings
+Validation passed: 648 Node tests; offline outfit, equipment, visual settings
 and fallback, tribal opening, held-item, and touchscreen browser regressions.
 Pixel checks distinguish all twelve King/armor previews and every follower
 armor grade. Browser coverage draws 312 King state/direction combinations,
