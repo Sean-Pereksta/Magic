@@ -31,7 +31,7 @@ C.planGarrison=function(s){
 const tick=C.tick;C.tick=function(s,...args){const result=tick.call(this,s,...args);this.planGarrison(s);return result};
 const activity=C.activityTarget;C.activityTarget=function(a,s){
  const post=a.garrisonPost;
- if(post&&post.role!=='tower'&&a.job==='guardian'&&a.state==='settled'&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission){a.activity=s.attack&&post.role==='gate'?'defending entrance':'holding '+post.role+' post';return{...point(post),speed:a.speed*.8,activity:a.activity}}
+ if(!a.towerId&&post&&post.role!=='tower'&&a.job==='guardian'&&a.state==='settled'&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission){a.activity=s.attack&&post.role==='gate'?'defending entrance':'holding '+post.role+' post';return{...point(post),speed:a.speed*.8,activity:a.activity}}
  return activity.call(this,a,s);
 };
 const combat=T.combat;T.combat=function(a,dt,s){
