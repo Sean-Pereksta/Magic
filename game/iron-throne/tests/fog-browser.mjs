@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { WORLD_SIZES } from '../data.mjs';
+import { clickChatAction } from './fixtures/chat-actions.mjs';
 const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
 const {chromium}=require('playwright');
 const root=path.resolve(fileURLToPath(new URL('../../../',import.meta.url)));
@@ -30,14 +32,21 @@ try {
     await page.locator('#start-game').waitFor({state:'visible'});
     await page.locator('#game-size').selectOption('12');await page.locator('#start-game').click();
     let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
-    assert.equal(saved.width,64);assert.equal(saved.height,44);assert.equal(saved.kingdoms.length,12);assert.deepEqual(saved.fog.houses,{});
+    assert.equal(saved.width,WORLD_SIZES[12].width);assert.equal(saved.height,WORLD_SIZES[12].height);assert.equal(saved.kingdoms.length,12);assert.deepEqual(saved.fog.houses,{});
     assert.match(await page.locator('#panel').textContent(),/12 HOUSES/);await page.locator('#fit-map').click();
     const site=await page.evaluate(async()=>{const {planFoundings}=await import('./founding.mjs');return planFoundings(JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))[0].capital;});
     const [q,r]=site.split(',').map(Number);await page.locator('#map').focus();
     for(let i=5;i!==q;i+=Math.sign(q-i))await page.keyboard.press(q>i?'ArrowRight':'ArrowLeft');
     for(let i=6;i!==r;i+=Math.sign(r-i))await page.keyboard.press(r>i?'ArrowDown':'ArrowUp');
     await page.locator('[data-found-city]').click();
-    saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.equal(saved.phase,'playing');assert.equal(saved.armies.length,12);
+    saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.equal(saved.phase,'playing');
+    assert.equal(saved.armies.filter(a=>!a.scout).length,12);assert.equal(saved.armies.filter(a=>a.scout).length,12);
+    for(const house of saved.kingdoms){
+      const forces=saved.armies.filter(a=>a.owner===house.id),main=forces.filter(a=>!a.scout),scouts=forces.filter(a=>a.scout);
+      assert.equal(main.length,1);assert.equal(scouts.length,1);assert.equal(scouts[0].units.scout,2);
+      assert.equal(Object.values(scouts[0].units).reduce((n,count)=>n+count,0),2);
+      assert.ok(Object.values(main[0].units).reduce((n,count)=>n+count,0)>2);
+    }
     await page.locator('[data-tab="council"]').click();assert.equal(await page.locator('.house-card').count(),11);
     await page.evaluate(async()=>{
       const {createGame}=await import('./tests/fixtures/legacy-game.mjs');const {refreshKnowledge}=await import('./fog.mjs');
@@ -55,7 +64,13 @@ try {
     assert.match(await page.locator('#panel').textContent(),/UNEXPLORED/);assert.doesNotMatch(await page.locator('#panel').textContent(),/UNKNOWN_SECRET_SITE/);
     for(const tab of ['realm','council','intelligence','war-room','ledger']){const button=page.locator(`[data-tab="${tab}"]`);if(await button.count())await button.click();assert.doesNotMatch(await page.locator('#panel').textContent(),/SECRET_NEW_FORT|UNKNOWN_SECRET_SITE|98765/);}
     await page.locator('[data-tab="council"]').click();await page.locator('.house-card [data-talk="wintermere"]').click();
-    await page.locator('#offer-type').selectOption('PLEDGE_ATTACK');assert.doesNotMatch(await page.locator('#offer-target').textContent(),/98765|13,6|SECRET/);
+    await clickChatAction(page,'#private-offer-request');
+    await page.locator('#formal-proposal-builder [name=type]').selectOption('PLEDGE_ATTACK');
+    const targets=page.locator('#formal-proposal-builder [name=target]');assert.doesNotMatch(await targets.textContent(),/98765|SECRET/);
+    // This location was surveyed before the enemy moved there. The current
+    // picker may list its remembered geography, without exposing that army.
+    const remembered=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).fog.houses.ashen.tiles['13,6'].tile);
+    assert.equal(await targets.locator('option[value="13,6"]').textContent(),`${remembered.name||remembered.terrain} · Hex 13,6`);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.deepEqual(errors,[]);console.log(`12-House setup, founding fog, stale sightings and private panels passed at ${viewport.width}×${viewport.height}`);await context.close();
   }

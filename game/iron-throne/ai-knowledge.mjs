@@ -1,13 +1,13 @@
 import { marriageSupport } from './marriage.mjs';
 import { knowledgeView, refreshKnowledge } from './fog.mjs';
 import { armyVision } from './fog.mjs';
-import { atWar, distance, findPath, kingdom, orderArmy, settlements, sizeOf, splitArmy } from './core.mjs';
+import { atWar, distance, findPath, kingdom, neighbors, orderArmy, settlements, sizeOf, splitArmy, strength } from './core.mjs';
 
 // Decision code receives a detached observation projection. Only command handlers
 // receive the canonical state; there is no fallback lookup for missing knowledge.
 export function planningView(world, owner) {
   if (world.knowledgeView) return world;
-  const view = knowledgeView(world, owner);
+  const view = knowledgeView(world, owner, {forecast:false});
   view.planningHouse = owner;
   // Preserve the ruler's private memories, including previous border observations.
   view.kingdoms = view.kingdoms.map(k => k.id === owner ? {...structuredClone(kingdom(world, owner)),knownAlive:k.knownAlive} : k);
@@ -42,15 +42,15 @@ export function refreshHouseKnowledge(world, owner) { refreshKnowledge(world, [o
 
 // Select destinations using knowledge, then let normal movement discover borders
 // and resolve encounters. Never re-path around undiscovered roads or garrisons.
-export function scoutOrder(world, k, army, c) {
-  const view = planningView(world, k.id), location = view.tiles[army.tile];
-  if (c.threats.length || c.pledges.length || k.resources.food<24 || k.resources.gold<18 || sizeOf(army) < 2) return false;
-  if (world.cooperation?.operations.some(o=>['Preparing','Executing'].includes(o.status)&&o.participants.some(p=>p.house===k.id&&p.status==='accepted'))) return false;
+export function scoutOrder(world, k, army, c, decisionView = null) {
+  if ((!army.scout&&(c.threats.length || c.pledges.length)) || k.resources.food<24 || k.resources.gold<18 || sizeOf(army) < 2) return false;
+  if (!army.scout&&world.cooperation?.operations.some(o=>['Preparing','Executing'].includes(o.status)&&o.participants.some(p=>p.house===k.id&&p.status==='accepted'))) return false;
   const own = world.armies.filter(a => a.owner === k.id);
-  const scout = [...own].sort((a,b)=>armyVision(b)-armyVision(a)||sizeOf(a)-sizeOf(b)||a.id.localeCompare(b.id))[0];
+  const scout = [...own].sort((a,b)=>Number(!!b.scout)-Number(!!a.scout)||armyVision(b)-armyVision(a)||sizeOf(a)-sizeOf(b)||a.id.localeCompare(b.id))[0];
   if (army.id !== scout?.id || c.war && own.length===1 && armyVision(army)<4) return false;
+  const view = decisionView || planningView(world, k.id), location = view.tiles[army.tile];
   // Detach a small mounted screen so the main army keeps its campaign role.
-  if (own.length === 1 && armyVision(army) >= 4 && sizeOf(army) >= 36) {
+  if (!army.scout && own.length === 1 && armyVision(army) >= 4 && sizeOf(army) >= 36) {
     const result = splitArmy(world, k.id, army.id);
     if (result.ok) {
       const detachment=world.armies.find(a=>a.id===result.armyId);
@@ -60,20 +60,24 @@ export function scoutOrder(world, k, army, c) {
       }
       // A mixed force with no splittable cavalry continues as a normal army.
       if(sizeOf(detachment)===0)world.armies=world.armies.filter(a=>a!==detachment);
-      else scoutOrder(world,k,detachment,c);
+      else {detachment.scout=true;scoutOrder(world,k,detachment,c,view);}
     }
     return false;
   }
   const missing = view.armies.filter(a=>a.remembered&&atWar(view,k.id,a.owner)&&a.confidence>.15);
   const knownTargets = settlements(view).filter(t=>atWar(view,k.id,t.owner)&&t.fog!=='visible');
+  const rich = Object.values(view.tiles).filter(t=>t.fog!=='unknown'&&t.premiumRegion&&t.owner!==k.id);
+  const danger = view.armies.filter(a=>(army.scout||!a.remembered)&&atWar(view,k.id,a.owner)&&strength(a)*(a.confidence??1)>strength(army));
   const candidates = Object.values(view.tiles).filter(t => t.id!==army.tile &&
     (t.fog!=='visible' || missing.some(a=>a.tile===t.id)) &&
-    !view.armies.some(a=>!a.remembered&&a.tile===t.id&&atWar(view,k.id,a.owner)))
+    !danger.some(a=>distance(view.tiles[a.tile],t)<=2))
     .map(t=>({tile:t,score:(missing.some(a=>a.tile===t.id)?45:0)+
-      (knownTargets.some(x=>distance(x,t)<=3)?18:0)+(t.fog==='unknown'?8:0)-distance(location,t)*2}))
+      (knownTargets.some(x=>distance(x,t)<=3)?18:0)+(rich.some(x=>distance(x,t)<=2)?14:0)+
+      neighbors(view,t).filter(n=>n.fog==='unknown').length*2+(t.fog==='unknown'?8:0)-distance(location,t)*2}))
     .sort((a,b)=>b.score-a.score||a.tile.id.localeCompare(b.tile.id));
   for (const {tile} of candidates.slice(0,16)) {
-    if (!findPath(view,army.tile,tile.id,k.id).length) continue;
+    const path=findPath(view,army.tile,tile.id,k.id);
+    if (!path.length || path.some(id=>danger.some(a=>distance(view.tiles[a.tile],view.tiles[id])<=1))) continue;
     if (orderArmy(world,k.id,army.id,tile.id,'move').ok) return true;
   }
   return false;

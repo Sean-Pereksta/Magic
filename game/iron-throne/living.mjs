@@ -1,3 +1,4 @@
+import { hasRoyalDecree } from './opening.mjs';
 import { vassalBond } from './vassal-role.mjs';
 import { militaryArmiesOf } from './core.mjs';
 import { initializeCourtIntelligence, recordCourtConversation } from './court-intelligence.mjs';
@@ -88,7 +89,7 @@ export function contact(s, rulerId, key, text, cooldown = 4, actorHouseId = PLAY
 
 export function diplomaticCapacity(s, owner = PLAYER) {
   const towns = settlements(s, owner);
-  return towns.some(t => t.chancery && t.envoyOffice) ? 5 : towns.some(t => t.envoyOffice) ? 4 : 3;
+  return (towns.some(t => t.chancery && t.envoyOffice) ? 5 : towns.some(t => t.envoyOffice) ? 4 : 3)+(hasRoyalDecree(s,owner,'influence')?1:0);
 }
 export function stationedAmbassador(s, owner, host) {
   const capital = capitalOf(s, host);
@@ -296,7 +297,10 @@ export function relationDescriptions(s, rulerId, actorHouseId = PLAYER) {
   return [ ['Political attitude', posture.label], ['Personal feelings',personal.feelings.join(' · ')||'Still getting to know you'], ...(personal.bonds.length?[['Personal bonds',personal.bonds.join(' · ')]]:[]), ...(marriage?[['Family bond',`Royal marriage · ${marriage.status}`]]:[]), ['Current tone',posture.tone], ['Trust', r.trust < 0 ? 'Broken confidence' : r.trust >= 45 ? 'Dependable' : 'Cautious'], ['Trade', r.dependency >= 20 ? 'Important supplier' : r.dependency > 0 ? 'Occasional partner' : 'Limited exchange'], ['Military', r.wariness >= 50 ? 'Alarmed by your forces' : r.wariness >= 20 ? 'Concerned about the frontier' : 'No immediate border concern'], ['Reputation', r.reliability < 40 ? 'Unreliable promises' : r.reliability > 65 ? 'Proven word' : 'Still being judged'], ['Current interest', k.resourcesUnknown?'Private · Discuss cooperation or gather intelligence':k.priorities?.[0] || diplomaticPriorities(s, rulerId)[0]], ['Promise', pending ? `Awaiting your oath · turn ${pending.deadline}` : 'No outstanding oath'], ['Ambassador', stationedAmbassador(s, actorHouseId, rulerId) ? 'Present at court · 10 messages per turn; border concerns are easier to clarify' : 'No resident envoy'], ...(stationedAmbassador(s, actorHouseId, rulerId) ? [['Envoy report', 'Local shortages and priorities are reported above.']] : []) ];
 }
 
-export function ambassadorCapacity(s, owner = PLAYER) { const capacity = diplomaticCapacity(s, owner); return capacity === 5 ? 3 : capacity === 4 ? 1 : 0; }
+export function ambassadorCapacity(s, owner = PLAYER) {
+  const towns=settlements(s,owner);
+  return towns.some(t=>t.chancery&&t.envoyOffice)?3:towns.some(t=>t.envoyOffice)?1:0;
+}
 function civilianPath(s, startId, endId) {
   // Immunity grants passage, not teleportation: mountains and water still block travel.
   const queue = [startId], came = new Map([[startId, null]]);
@@ -365,7 +369,8 @@ export function resolveAmbassadors(s) {
     if (!alive(s, a.owner)) { a.status = 'idle'; a.path = []; a.host = null; continue; }
     if (a.host && (!alive(s, a.host) || capitalOf(s, a.host)?.id !== a.target)) assignAmbassador(s, a.owner, a.id, null);
     const office=Math.max(1,...settlements(s,a.owner).map(t=>buildingLevel(t,'envoyOffice')));
-    let budget = (diplomaticCapacity(s, a.owner) === 5 ? 12 : 9) + (office-1)*2;
+    const chancery=settlements(s,a.owner).some(t=>t.chancery&&t.envoyOffice);
+    let budget = (chancery ? 12 : 9) + (office-1)*2+(hasRoyalDecree(s,a.owner,'influence')?1:0);
     while (a.path.length && budget > 0) {
       const next = s.tiles[a.path[0]], current = s.tiles[a.tile];
       if (!passable(next) || distance(current, next) !== 1) { a.path = []; a.status = 'idle'; a.host = null; break; }

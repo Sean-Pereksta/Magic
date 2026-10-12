@@ -1,4 +1,5 @@
 import { strategicMarkers } from './strategic-locations.mjs';
+import { premiumMapMarkers } from './ambition-ui.mjs';
 import { drawOrderIndicators } from './map-orders.mjs';
 import { drawFleets } from './naval-art.mjs';
 import { capitalSeparation, foundedCapitals } from './founding.mjs';
@@ -266,6 +267,16 @@ export class WorldMap {
         c.fillStyle='#132936';c.font='bold 8px Georgia';c.textAlign='center';c.fillText(s.treaties?.some(t=>t.type==='vassalage'&&t.vassal===army.owner&&t.expires>s.turn)?'♛':group.some(a=>familyCount(a,'siege'))?'♜':group.some(a=>familyCount(a,'mounted'))?'♞':'⚔',-12,2);
         c.font='bold 11px system-ui';c.fillStyle='#fff1d0';c.fillText(total,5,6);c.restore();
       });
+    }
+    // Discovery badges remain readable when the scouts that found a region
+    // occupy its tile. Troop-count controls retain the final overlay priority.
+    for(const marker of premiumMapMarkers(s)){
+      const t=s.tiles[marker.tile],p=t&&hexPixel(t);if(!p||!inView(p)||this.zoom<.35)continue;
+      const x=p.x-16,y=p.y-17;
+      c.save();c.globalAlpha=marker.remembered ? .65 : 1;c.fillStyle='#192f36';c.strokeStyle='#f0ce79';c.lineWidth=1.4;
+      c.beginPath();c.moveTo(x,y-9);c.lineTo(x+8,y);c.lineTo(x,y+9);c.lineTo(x-8,y);c.closePath();c.fill();c.stroke();
+      c.fillStyle='#f8dfa0';c.textAlign='center';c.font='bold 10px Georgia';c.fillText('◆',x,y+3);c.restore();
+      this.hits.push({tile:marker.tile,left:x-9,right:x+9,top:y-10,bottom:y+10});
     }
     if(s.fleets?.length||s.lastSeenFleets?.length)drawFleets(this,c,s,hexPixel,inView,colors);
     drawOrderIndicators(this,c,s,hexPixel,inView);

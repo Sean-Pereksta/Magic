@@ -46,6 +46,9 @@ import { DiplomacyClient } from './chat.mjs';
 import { createCouncilSequenceRunner, runCouncilSequence, COUNCIL_RESPONSE_GAP_MS } from './council-sequence.mjs';
 import { CHECK_NAMES, CHECK_LABELS, diagnosticDetails, diagnosticReport } from './diagnostics.mjs';
 import { WorldMap } from './map.mjs';
+import { chooseRoyalDecree, openingActive } from './opening.mjs';
+import { royalOpeningPanel, openingBriefingPanel, premiumRegionPanel, kingdomDevelopmentsPanel } from './ambition-ui.mjs';
+import { kingdomDevelopments } from './kingdom-developments.mjs';
 
 const $ = id => document.getElementById(id), SAVE_KEY = 'catnmice.iron-throne.v1';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -224,6 +227,11 @@ function render() {
   $('panel').innerHTML = state.phase==='founding'?foundingPanel(view,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(view) : tab === 'war-room' ? warRoomPanel(view)+vassalPanel(view,localHouse) : ledgerPanel();
   $('panel').scrollTop = scroll;
   $('latest-events').innerHTML = view.events.map(e => `<div class="event"><b>T${e.turn}</b>${escape(e.message)}</div>`).join('');
+  $('developments-body').innerHTML = kingdomDevelopmentsPanel(view,localHouse,12);
+  const developments=kingdomDevelopments(view,localHouse,24),recent=developments.filter(e=>e.turn===state.turn).length;
+  $('developments-button').textContent=`Developments${recent?` · ${recent}`:''}`;
+  $('developments-button').classList.toggle('has-developments',recent>0);
+  $('developments-button').disabled=founding;
   const t = view.tiles[selected]; $('coordinates').textContent = `${t.name || TERRAINS[t.terrain].name} · ${t.id}`;
   $('order-hint').hidden = !orderMode&&!navalOrder; $('order-hint').textContent = 'Select a destination · Esc cancels';
   map.armyId = selectedArmy; map.selected = selected; map.reducedEffects = !!state.presentation?.reducedEffects; map.draw();
@@ -241,6 +249,9 @@ function landPanel() {
   const state=displayedState;
   const t = state.tiles[selected], k = kingdom(state, localHouse), owner = kingdom(state, t.owner), armies = state.armies.filter(a => a.tile === selected).sort((a,b) => Number(b.owner === localHouse)-Number(a.owner === localHouse) || Number(b.id === selectedArmy)-Number(a.id === selectedArmy));
   let html = `<span class="eyebrow">${escape(owner?.name || 'THE UNCLAIMED MARCHES')}</span><div class="selection-title"><h2>${escape(t.name || TERRAINS[t.terrain].name)}</h2><span class="badge">${escape(t.id)}</span></div><div class="tile-meta">${TERRAINS[t.terrain].name}${t.resource ? ` · ${t.quality} ${t.resource} deposit` : ''}${t.river ? ' · River crossing' : ''}${t.road ? ' · Road' : ''}</div>`;
+  const opening=kingdom(state,localHouse).opening;
+  if(opening&&!opening.decree&&openingActive(state,localHouse))html=royalOpeningPanel(state,localHouse)+openingBriefingPanel(state,localHouse)+html;
+  html+=premiumRegionPanel(state,t);
   const observations=(state.lastSeenArmies||[]).filter(a=>a.tile===selected).map(a=>`<article class="realm-card last-seen"><strong>${escape(kingdom(state,a.owner).name)} army · Last seen T${a.turn}</strong><p>${state.turn-a.turn} turns ago · Estimated strength when observed: ${a.minimum}–${a.maximum}${a.intelligenceFresh?' · Recent spy report':''}</p>${a.objective?`<p>Reported objective: ${escape(a.objective)} (T${a.turn})</p>`:''}<p class="fine">The army may have moved or changed strength.</p></article>`).join('');
   if(t.fog!=='visible')return html+`<p class="fog-notice">${t.fog==='unknown'?'UNEXPLORED · Scout this region to discover resources and settlements.':`LAST OBSERVED TURN ${t.observedTurn} · Geography and structures are remembered. Ownership and defenses may have changed.${t.intelligenceFresh?' Recent spy access.':''}`}</p>${t.knownCapital?`<p>Known starting capital of ${escape(kingdom(state,t.knownCapital).name)}. Current ownership, buildings and garrison are unknown.</p>`:t.building?`<p>Last known structure: ${escape(BUILDINGS[t.building].name)}</p>`:''}${observations}${fleetPanel(state,selected,localHouse)}<p class="fine">Send a force here to scout. Current battle losses and structure targets require observation.</p>`;
   html += observations + fleetPanel(state,selected,localHouse) + shipyardPanel(state,selected,localHouse);
@@ -265,7 +276,7 @@ function populationPanel(){
 function realmPanel() {
   const state=displayedState;
   const k = kingdom(state, localHouse), { income, routes } = economyProjection(state, localHouse);
-  return `${systemTitle('kingdom')}<span class="eyebrow">${escape(k.name.toUpperCase())}</span><h2>Your realm</h2><div class="stat-grid"><span>Build / recruit orders</span><b>${k.commands}/${commandLimit(state, localHouse)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, localHouse).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, localHouse).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, localHouse).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${escape(armyName(a))} · ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${navalOverview(state,localHouse)}${generalRoster(state,localHouse)}${vassalPanel(state,localHouse)}${populationPanel()}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
+  return `${systemTitle('kingdom')}<span class="eyebrow">${escape(k.name.toUpperCase())}</span><h2>Your realm</h2>${royalOpeningPanel(state,localHouse)}${openingBriefingPanel(state,localHouse)}${kingdomDevelopmentsPanel(state,localHouse)}<div class="stat-grid"><span>Build / recruit orders</span><b>${k.commands}/${commandLimit(state, localHouse)}</b><span>Population happiness</span><b>${k.happiness}%</b><span>Connected trade routes</span><b>${routes}</b><span>Settlements</span><b>${settlements(state, localHouse).length}</b></div><div class="section-label">TAX POLICY</div><label>Balance income and growth<select id="tax">${['low', 'medium', 'high'].map(t => `<option ${k.tax === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><p class="fine">Low taxes grow population and happiness. High taxes produce gold but reduce happiness.</p><div class="section-label">NET CHANGE NEXT TURN</div><div class="stat-grid">${RESOURCES.map(r => `<span>${r}</span><b class="${income[r] < 0 ? 'negative' : ''}">${income[r] >= 0 ? '+' : ''}${income[r]}</b>`).join('')}</div><div class="section-label">YOUR SETTLEMENTS</div>${settlements(state, localHouse).map(t => `<button class="full" data-goto="${t.id}">♜ ${escape(t.name)} · ${t.id}</button>`).join('')}<div class="section-label">YOUR ARMIES</div>${armiesOf(state, localHouse).map(a => `<button class="full" data-goto="${a.tile}" data-army="${a.id}">⚑ ${escape(armyName(a))} · ${sizeOf(a)} troops · ${a.tile}</button>`).join('')}${navalOverview(state,localHouse)}${generalRoster(state,localHouse)}${vassalPanel(state,localHouse)}${populationPanel()}${economySummary(state)}${rivalTurnReports(state)}${tradePanel(state)}${battleReports(state)}${ambassadorPanel()}<p class="fine">Roads must connect every hex between settlements to earn trade income. Trade agreements permit economic routes through your partners' land; alliances permit army passage.</p>`;
 }
 function councilPanel() {
   const state=displayedState;
@@ -283,6 +294,7 @@ function ledgerPanel(rulerId = null) {
 $('panel').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const d = b.dataset;
+  if(d.decree){perform('royalDecree',{decree:d.decree},()=>chooseRoyalDecree(state,localHouse,d.decree));return;}
   if(d.navalAction){
     const action=d.navalAction,fleet=d.fleet;
     if(['move','attack','unload','intercept','blockade'].includes(action)){orderMode=null;navalOrder={fleet,order:action};toast(action==='unload'?'Select a land destination beside known navigable water.':action==='attack'?'Select an enemy fleet or coastal target. Warships fire from up to 2 hexes.':'Select a water or river destination.');render();return;}
@@ -366,6 +378,12 @@ $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
 $('home').onclick = () => map.home(); $('fit-map').onclick = () => map.fit();
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !strategicPicker.dialog.open) { orderMode = null;navalOrder=null; render(); } });
 $('chronicle-button').onclick = () => $('chronicle-dialog').showModal();
+$('developments-button').onclick = () => $('developments-dialog').showModal();
+$('developments-body').addEventListener('click',e=>{
+  const button=e.target.closest('button');if(!button)return;
+  if(button.dataset.goto){$('developments-dialog').close();goTo(button.dataset.goto);}
+  else if(button.dataset.talk){$('developments-dialog').close();openDiplomacy(button.dataset.talk);}
+});
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).close()));
 $('menu-button').onclick = () => $('menu').showModal();
 $('help').onclick = () => $('help-dialog').showModal();

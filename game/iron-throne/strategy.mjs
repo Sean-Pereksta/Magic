@@ -1,4 +1,6 @@
 import { economicNeeds } from './trade-economy.mjs';
+import { premiumExpansionScore, premiumObjectives } from './ambition-ai.mjs';
+import { chooseRoyalDecree, openingActive, openingEnabled } from './opening.mjs';
 import { prepareNavalEconomy, directNavalForces, navalInvasionReady } from './naval-ai.mjs';
 import { initializeCommanders } from './command-state.mjs';
 import { difficulty, settlementAmbition, validateDifficulty } from './difficulty.mjs';
@@ -62,7 +64,7 @@ function assess(s, k) {
   const needs=economicNeeds(s,k.id);
   const reserves=Object.fromEntries(needs.map(n=>[n.resource,n.reserve+n.obligations]));
   const crisis=needs.some(n=>['food','gold'].includes(n.resource)&&n.state==='Critical');
-  return { desperation, tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, needs, crisis, war: enemyTowns.length > 0 };
+  return { view:s, desperation, tiles, towns, home: towns.find(t => t.capital === k.id) || towns[0], forces, enemies, enemyTowns, threats, wary, pledges, income, reserves, needs, crisis, war: enemyTowns.length > 0 };
 }
 
 function chooseGoal(c) {
@@ -119,6 +121,21 @@ function canSpend(k, c, cost, essential = false) {
   return canAfford(k, cost) && Object.entries(cost).every(([r, n]) =>
     k.resources[r] - n >= (essential && r === 'gold' ? 0 : c.reserves[r]));
 }
+export function chooseAIOpeningDecree(s, owner) {
+  const k=kingdom(s,owner);
+  if(!k||!openingEnabled(s,owner)||!openingActive(s,owner)||k.opening.decree)return null;
+  const view=planningView(s,owner),needs=economicNeeds(view,owner),objectives=premiumObjectives(view,owner,needs),towns=settlements(view,owner);
+  const contested=objectives.some(o=>o.rival&&o.distance<=10);
+  const wary=Object.values(k.relations).some(r=>r.wariness>=30&&r.trust<35);
+  const security=wary||view.wars.some(w=>w.split(':').includes(owner))||view.armies.some(a=>atWar(view,owner,a.owner)&&towns.some(t=>distance(view.tiles[a.tile],t)<=5));
+  const tradeOpportunity=needs.some(n=>n.need>5&&Object.values(view.tiles).some(t=>t.fog!=='unknown'&&t.owner&&t.owner!==owner&&t.resource===n.resource));
+  const crisis=needs.some(n=>['food','gold'].includes(n.resource)&&n.state==='Critical');
+  const scores={prosperity:30+(crisis?18:0)+k.greed*12+(objectives.length?4:0),
+    mobilization:k.aggression*44+k.ambition*12+(security?30:0)+(contested?12:0),
+    influence:k.honor*24+(tradeOpportunity?20:0)+(wary?12:0)+(k.paranoia>.7?6:0)};
+  const decree=Object.keys(scores).sort((a,b)=>scores[b]-scores[a]||a.localeCompare(b))[0];
+  return chooseRoyalDecree(s,owner,decree).ok?decree:null;
+}
 function buildingCandidates(s, k, c) {
   const pending = type => c.tiles.filter(t => t.project?.type === type).length;
   const totalLevel = type => c.tiles.reduce((n, t) => n + buildingLevel(t, type), 0);
@@ -128,7 +145,8 @@ function buildingCandidates(s, k, c) {
   const plans=(s.intrigue?.plans||[]).filter(p=>p.actor===k.id&&activePlan(p));
   const campaign=plans.some(militaryPlan);
   const strategic=difficulty(s).coordination>=2;
-  const grow=strategic&&!c.crisis&&!c.threats.length&&c.towns.length+pending('town')<settlementAmbition(s,k,c);
+  const opening=openingActive(s,k.id),objectives=c.premiumObjectives||premiumObjectives(s,k.id,c.needs);
+  const grow=(strategic||opening)&&!c.crisis&&!c.threats.length&&c.towns.length+pending('town')<settlementAmbition(s,k,c);
   const fortifications = c.enemyTowns.some(t => (t.walls > 0 || (t.fortIntegrity ?? fortMaximum(t)) > 0) && c.enemies.some(e=>e.tile===t.id)) || plans.some(p=>p.requiredSiege>0);
   const need = (resource, stock, flow) => {
     const n=c.needs.find(n=>n.resource===resource);
@@ -153,12 +171,12 @@ function buildingCandidates(s, k, c) {
     chancery: s.turn >= 16 && !totalLevel('chancery') ? 22 : 0,
     city: s.turn >= 12 && !c.crisis && !c.threats.length ? 54 : 0,
     storehouse: RESOURCES.some(r => r !== 'gold' && k.resources[r] > 540) && totalLevel('storehouse') < c.towns.length ? 28 : 0,
-    town: !c.crisis && !c.threats.length && k.population >= (strategic?50:70) && c.towns.length + pending('town') < settlementAmbition(s,k,c) ? 60 + k.ambition * 15 + (difficulty(s).expansion-1)*55 + (grow?28:0) : 0
+    town: !c.crisis && !c.threats.length && k.population >= (opening?45:strategic?50:70) && c.towns.length + pending('town') < settlementAmbition(s,k,c) ? 60 + k.ambition * 15 + (difficulty(s).expansion-1)*55 + (grow?28:0) : 0
   };
   for(const p of plans) if(p.building && weights[p.building]>0) weights[p.building]+=35;
   const defensePledge = c.pledges.find(p => ['BUILD_DEFENSES','PLEDGE_BUILD'].includes(p.intent.type));
   const candidates = [];
-  const sites = weights.town ? [...c.tiles, ...Object.values(s.tiles).filter(t => !t.owner && passable(t) && neighbors(s, t).some(n => n.owner === k.id))] : c.tiles;
+  const sites = weights.town ? [...c.tiles, ...Object.values(s.tiles).filter(t => t.fog!=='unknown' && !t.owner && passable(t) && neighbors(s, t).some(n => n.owner === k.id))] : c.tiles;
   for (const [type, weight] of Object.entries(weights)) {
     if (!weight || pending(type)) continue;
     for (const tile of sites) {
@@ -167,7 +185,7 @@ function buildingCandidates(s, k, c) {
       if (['barracks', 'range', 'stable'].includes(type) && buildingLevel(tile, type) >= tier) continue;
       const error = buildCheck(s, k.id, tile.id, type);
       if (error && !error.startsWith('Missing ')) continue;
-      const spec = constructionSpec(tile, type);
+      const spec = constructionSpec(tile, type, s, k.id);
       const costWeight = Object.entries(spec.cost).reduce((n, [r, v]) => n + v * RESOURCE_VALUES[r], 0);
       const quality = QUALITY[tile.quality] || 1;
       let score = weight - costWeight / 35 - distance(c.home, tile) * .2;
@@ -176,16 +194,18 @@ function buildingCandidates(s, k, c) {
         const copy = { ...tile, building: type, levels: { ...tile.levels, [type]: spec.level } };
         const r = Object.keys(BUILDINGS[type].yield)[0];
         score += (tileProduction(copy, k.id)[r] - tileProduction(tile, k.id)[r]) * .7;
+        if(tile.premiumYield===r)score+=18+(objectives.find(o=>o.tile.id===tile.id)?.score||0)*.3;
       }
+      if(tile.premiumYield==='gold'&&['market','tradeOutpost','harbor'].includes(type))score+=24;
       if (type === 'watchtower') score += Object.values(s.tiles).filter(t=>t.fog==='unknown'&&distance(tile,t)<=6).length*.6;
-      if (type === 'town') score += neighbors(s, tile).reduce((n,t)=>n+(t.resource?(QUALITY[t.quality]||1)*Math.min(8,c.needs.find(x=>x.resource===t.resource)?.value||1):0),0)+quality;
+      if (type === 'town') score += neighbors(s, tile).reduce((n,t)=>n+(t.resource?(QUALITY[t.quality]||1)*Math.min(8,c.needs.find(x=>x.resource===t.resource)?.value||1):0),0)+quality+premiumExpansionScore(s,k.id,tile,objectives);
       if (type === 'wall') score += c.threats.find(t => t.tile.id === tile.id)?.enemy || (tile.id === c.home.id ? 5 : 0);
       if (nearby(s, c.enemies, tile, 2).length && !['wall','watchtower'].includes(type)) score -= 90;
       candidates.push({ type, tile, score, cost: spec.cost, level: spec.level, kind: 'build', essential: type === 'farm' && c.crisis || type === 'market' && c.income.gold < 0 });
     }
   }
   if (defensePledge) {
-    const tile = s.tiles[defensePledge.intent.targetId], spec = constructionSpec(tile, 'fort');
+    const tile = s.tiles[defensePledge.intent.targetId], spec = constructionSpec(tile, 'fort', s, k.id);
     const error = buildCheck(s, k.id, tile?.id, 'fort');
     if (spec && (!error || error.startsWith('Missing '))) candidates.push({ type: 'fort', tile, score: 260, cost: spec.cost, level: spec.level, kind: 'build', essential: true });
   }
@@ -196,7 +216,7 @@ function buildingCandidates(s, k, c) {
     if (target) for (const id of findPath(s, c.home.id, target.id, k.id)) {
       const tile = s.tiles[id];
       if (tile.road || buildCheck(s, k.id, id, 'road')) continue;
-      const spec = constructionSpec(tile, 'road');
+      const spec = constructionSpec(tile, 'road', s, k.id);
       candidates.push({ type: 'road', tile, score: 58, cost: spec.cost, level: spec.level, kind: 'build' });
       break;
     }
@@ -222,8 +242,8 @@ function recruitmentCandidates(s, k, c, recruited) {
     if (unit.legacy || recruitCheck(s, k.id, tile.id, type) || unit.family === 'siege' && !siegeNeeded || unit.family !== 'siege' && count >= desired) continue;
     const shortage = (proportions[unit.family] || 0) - totals[unit.family] / Math.max(1, count);
     const score = (c.threats.length ? 145 : c.war || plans.length ? 90 : 52) + shortage * 60 + unit.attack * 2 +
-      (unit.family === 'siege' && siegeNeeded ? 45 + (unit.breach || 0) : 0) + (type === 'spearman' && mountedEnemy ? 25 : 0) + (type==='scout' && !c.forces.some(a=>a.units.scout>0||a.units.lightCavalry>0) ? 100 : 0);
-    candidates.push({ kind: 'recruit', type, tile, cost: recruitmentCost(tile, type), score, essential: c.threats.length > 0 });
+      (unit.family === 'siege' && siegeNeeded ? 45 + (unit.breach || 0) : 0) + (type === 'spearman' && mountedEnemy ? 25 : 0) + (type==='scout' && !c.forces.some(a=>a.scout||a.units.scout>0||a.units.lightCavalry>0) ? 100 : 0);
+    candidates.push({ kind: 'recruit', type, tile, cost: recruitmentCost(tile, type, null, s, k.id), score, essential: c.threats.length > 0 });
   }
   return candidates.sort(stableScore);
 }
@@ -231,14 +251,18 @@ function recruitmentCandidates(s, k, c, recruited) {
 function develop(s, k) {
   let recruited = 0;
   const available = k.commands;
+  let objectives;
   if(runAISpies(s,k))recordStrategyAction(s,k.id,{kind:'spy'});
   for (let n = 0; n < available && k.commands > 0; n++) {
-    const c = assess(s, k), view = planningView(s,k.id), buildings = buildingCandidates(view, k, c);
+    const c = assess(s, k), view = c.view;
+    objectives??=premiumObjectives(view,k.id,c.needs);
+    c.premiumObjectives=objectives;
+    const buildings = buildingCandidates(view, k, c);
     // Keep the best future project for the trade planner even when an
     // affordable alternative is the right use of this round's resources.
     k.economicPlan = buildings[0] ? { type: buildings[0].type, tile: buildings[0].tile.id } : null;
     const options = [...buildings, ...recruitmentCandidates(view, k, c, recruited)].sort(stableScore);
-    const expansion=difficulty(s).coordination>=2&&!c.threats.length&&buildings.find(b=>b.type==='town');
+    const expansion=(difficulty(s).coordination>=2||openingActive(s,k.id))&&!c.threats.length&&buildings.find(b=>b.type==='town');
     // Save for an actual legal settlement instead of buying an endless stream
     // of cheaper troops. Production that resolves its material shortfall and
     // emergency defenses remain eligible while those reserves accumulate.
@@ -258,16 +282,17 @@ function develop(s, k) {
   if(report)report.orders = available - k.commands;
 }
 
-function command(s, k, a, target, order = 'move', avoid = null) {
+function command(s, k, a, target, order = 'move', avoid = null, view = null) {
   const result = orderArmy(s, k.id, a.id, target.id, order, avoid);
   if (!result.ok) return false;
-  a.formation = chooseFormation(a, planningView(s,k.id).armies.find(e => e.tile === target.id && atWar(s, k.id, e.owner)), target);
+  a.formation = chooseFormation(a, (view||planningView(s,k.id)).armies.find(e => e.tile === target.id && atWar(s, k.id, e.owner)), target);
   recordStrategyAction(s, k.id, { kind: target.id === a.tile ? 'hold' : 'march', army: a.id, from: a.tile, tile: target.id });
   return true;
 }
 function directArmies(s, k, c) {
-  const world=s; s=planningView(world,k.id);
-  for (const tile of new Set(c.forces.map(a => a.tile))) if (armiesOf(world, k.id).filter(a => a.tile === tile).length > 1) {
+  const world=s; s=c.view||planningView(world,k.id);
+  const issue=(a,target,order='move',avoid=null)=>command(world,k,a,target,order,avoid,s);
+  for (const tile of new Set(c.forces.map(a => a.tile))) if (armiesOf(world, k.id).filter(a => a.tile === tile).length > 1 && !armiesOf(world,k.id).some(a=>a.tile===tile&&a.scout)) {
     mergeArmies(world, k.id, tile); recordStrategyAction(world, k.id, { kind: 'merge', tile });
   }
   c.forces = armiesOf(world, k.id);
@@ -277,33 +302,40 @@ function directArmies(s, k, c) {
     a.formation = chooseFormation(a, nearestEnemy, location);
     const safeTowns = c.towns.filter(t => forcePower(nearby(s, c.enemies, t, 1)) < strength(a, true, t)).sort((x, y) => distance(location, x) - distance(location, y));
     const refuge = safeTowns[0] || c.home;
+    // Dedicated reconnaissance survives the starting muster and never becomes
+    // a two-soldier assault or an impossible combat pledge.
+    if(a.scout){
+      if(scoutOrder(world,k,a,c,s))recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target});
+      else if(!issue(a,refuge,'retreat'))issue(a,location,'hold');
+      continue;
+    }
     if(a.retreats>(a.lastRegroupRetreats||0)){a.regroupTarget=Math.max(24,Math.ceil(sizeOf(a)*1.4));a.lastRegroupRetreats=a.retreats;}
     if(a.regroupTarget&&sizeOf(a)>=a.regroupTarget&&a.morale>=.8)delete a.regroupTarget;
     if(vassalArmyOrder(world,k,a,c))continue;
     if (a.regroupTarget || a.morale < .55 || !canEnter(s, k.id, location)) {
-      if (!command(world, k, a, refuge, 'retreat')) command(world, k, a, location, 'hold');
+      if (!issue(a, refuge, 'retreat')) issue(a, location, 'hold');
       continue;
     }
     if(c.desperation?.score>=55){
       const home=c.home,localEnemy=nearby(s,c.enemies,home,3).find(e=>!e.remembered&&assaultAssessment(s,k,a,s.tiles[e.tile]).assault);
-      if(c.desperation.score<75&&localEnemy&&command(world,k,a,s.tiles[localEnemy.tile],'attack'))continue;
+      if(c.desperation.score<75&&localEnemy&&issue(a,s.tiles[localEnemy.tile],'attack'))continue;
       const homeSafe=forcePower(nearby(s,c.enemies,home,1))<forcePower(c.forces)*1.3;
       const shelter=homeSafe?home:refuge;
-      if(!command(world,k,a,shelter,a.tile===shelter.id?'hold':'retreat'))command(world,k,a,location,'hold');
+      if(!issue(a,shelter,a.tile===shelter.id?'hold':'retreat'))issue(a,location,'hold');
       continue;
     }
     if(!c.threats.length&&a.commandId&&s.commanders?.roster.some(g=>g.commandId===a.commandId&&g.objective))continue;
-    if (scoutOrder(world,k,a,c)) { recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target}); continue; }
+    if (scoutOrder(world,k,a,c,s)) { recordStrategyAction(world,k.id,{kind:'march',army:a.id,from:a.tile,tile:a.target}); continue; }
     const pledge = c.pledges.find(p => !['BUILD_DEFENSES','PLEDGE_BUILD'].includes(p.intent.type) && (!assignedPledges.has(p.id) || p.intent.type === 'WITHDRAW'));
     if (pledge) {
       const target = ['WITHDRAW','PLEDGE_WITHDRAW'].includes(pledge.intent.type) ? refuge : pledge.intent.type === 'JOINT_WAR' ?
         settlements(s, pledge.intent.targetId).sort((x, y) => distance(location, x) - distance(location, y))[0] : s.tiles[pledge.intent.targetId];
-      if (target && command(world, k, a, target,pledge.intent.type==='PLEDGE_ATTACK'?'attack':'move')) { assignedPledges.add(pledge.id); continue; }
+      if (target && issue(a, target,pledge.intent.type==='PLEDGE_ATTACK'?'attack':'move')) { assignedPledges.add(pledge.id); continue; }
     }
     if (c.threats.length) {
       const danger = c.threats[0], invader = nearby(s, c.enemies, danger.tile, 5).sort((x, y) => distance(location, s.tiles[x.tile]) - distance(location, s.tiles[y.tile]))[0];
       const intercept = invader && !invader.remembered && assaultAssessment(s,k,a,s.tiles[invader.tile]).assault;
-      if (command(world, k, a, intercept ? s.tiles[invader.tile] : danger.tile, intercept ? 'attack' : 'move')) continue;
+      if (issue(a, intercept ? s.tiles[invader.tile] : danger.tile, intercept ? 'attack' : 'move')) continue;
     }
     const plan=operationArmyOrder(world,k,a,c)||plannedArmyOrder(world,k,a,c);
     if(plan){recordStrategyAction(world,k.id,{kind:a.path.length?'march':'hold',army:a.id,from:a.tile,tile:a.target||a.tile});continue;}
@@ -316,7 +348,7 @@ function directArmies(s, k, c) {
       let moved = false;
       for (const { tile } of candidates.slice(0, 3)) {
         if (!findPath(s, a.tile, tile.id, k.id, false, avoid).length) continue;
-        if (command(world, k, a, tile, 'attack', avoid)) {
+        if (issue(a, tile, 'attack', avoid)) {
           const plan=atWar(s,k.id,tile.owner)&&createPlan(world,k.id,'invasion',{target:tile.owner,targetTile:tile.id,objective:`Attack ${tile.name||tile.id}.`,delay:0,requiredForces:16});
           if(plan){if(!plan.assignedArmies.includes(a.id))plan.assignedArmies.push(a.id);transitionPlan(world,plan,'Executing','A favorable field objective received real attack orders.');}
           moved = true; break;
@@ -328,12 +360,12 @@ function directArmies(s, k, c) {
       const rally = [...(safeTowns.length ? safeTowns : c.towns)].sort((x, y) =>
         Math.min(...c.enemyTowns.map(t => distance(x, t))) - Math.min(...c.enemyTowns.map(t => distance(y, t))))[0];
       if (k.goal === 'ATTACK') k.goal = 'MUSTER';
-      if (command(world, k, a, rally)) continue;
+      if (issue(a, rally)) continue;
     }
     const ally = settlements(s).filter(t => t.owner !== k.id && treaty(s, k.id, t.owner, 'alliance') &&
       relation(s, k.id, t.owner).trust + personalWillingness(s,k.id,t.owner) + marriageSupport(s,k.id,t.owner) >= 40 && nearby(s, c.enemies, t, 4).length).sort((x, y) => distance(location, x) - distance(location, y))[0];
-    if (ally && command(world, k, a, ally)) { k.goal = 'SUPPORT_ALLY'; continue; }
-    if (!command(world, k, a, refuge)) command(world, k, a, location, 'hold');
+    if (ally && issue(a, ally)) { k.goal = 'SUPPORT_ALLY'; continue; }
+    if (!issue(a, refuge)) issue(a, location, 'hold');
   }
 }
 
@@ -387,6 +419,7 @@ export function runStrategyTurn(s, onProgress = () => {}, onlyOwner = null) {
     const report = reportFor(s, k.id);
     if (!alive(s, k.id)) { report.goal = 'ELIMINATED'; report.reason = 'No settlements remain.'; continue; }
     refreshHouseKnowledge(s,k.id);
+    chooseAIOpeningDecree(s,k.id);
     let c = assess(s, k);
     if(c.desperation?.score>=55){
       const partner=s.kingdoms.filter(o=>o.id!==k.id&&alive(s,o.id)&&!atWar(s,k.id,o.id)&&!treaty(s,k.id,o.id,'alliance')&&atWar(s,o.id,c.desperation.enemy)&&relation(s,k.id,o.id).trust>=10)

@@ -122,7 +122,7 @@ export function planGeneral(s,g,{force=false}={}) {
   // Rejoin same-command forces only. Core merging conserves the greatest spent budget.
   for(const tile of new Set(editable.map(a=>a.tile))) {
     const here=armiesOf(s,g.owner).filter(a=>a.tile===tile);
-    if(here.length>1&&here.every(a=>a.commandId===g.commandId&&!manualOverride(s,a)&&!a.embarkOrder))mergeArmies(s,g.owner,tile,'general');
+    if(here.length>1&&here.every(a=>!a.scout&&a.commandId===g.commandId&&!manualOverride(s,a)&&!a.embarkOrder))mergeArmies(s,g.owner,tile,'general');
   }
   const current=forces(s,g).filter(a=>!manualOverride(s,a)&&!a.embarkOrder),maxDetachments=g.quality>=3?3:2;
   // A divided command needs two independently viable forces on legal routes.
@@ -170,7 +170,7 @@ export function planGeneral(s,g,{force=false}={}) {
 }
 export function prepareGenerals(s,owner) {for(const g of s.commanders?.roster||[])if(g.owner===owner)planGeneral(s,g);}
 export function recruitAIGeneral(s,owner) {
-  const k=kingdom(s,owner),candidate=s.commanders?.candidates.find(g=>g.owner===owner),army=armiesOf(s,owner).filter(a=>!a.commandId).sort((a,b)=>sizeOf(b)-sizeOf(a))[0];
+  const k=kingdom(s,owner),candidate=s.commanders?.candidates.find(g=>g.owner===owner),army=armiesOf(s,owner).filter(a=>!a.scout&&!a.commandId).sort((a,b)=>sizeOf(b)-sizeOf(a))[0];
   if(!candidate||!army||sizeOf(army)<24||k.resources.food<70||k.resources.gold<GENERAL_QUALITIES[candidate.quality].cost+140||economyProjection(s,owner).income.gold<GENERAL_QUALITIES[candidate.quality].upkeep+3||difficulty(s).coordination===0&&candidate.quality>1)return;
   if(hireGeneral(s,owner,candidate.id).ok)assignGeneral(s,owner,candidate.id,army.id);
 }
@@ -180,7 +180,7 @@ export function prepareAIGeneralObjectives(s,owner){
   for(const g of s.commanders?.roster||[]){
     if(g.owner!==owner)continue;
     const tiles=new Set(forces(s,g).map(a=>a.tile));
-    for(const a of armiesOf(s,owner).filter(a=>!a.commandId&&tiles.has(a.tile)))assignGeneral(s,owner,g.id,a.id);
+    for(const a of armiesOf(s,owner).filter(a=>!a.scout&&!a.commandId&&tiles.has(a.tile)))assignGeneral(s,owner,g.id,a.id);
     const active=g.objective&&g.objective.status!=='Completed'&&g.objective.targets.every(id=>view.tiles[id]?.owner!==owner&&atWar(view,owner,view.tiles[id]?.owner));
     if(active)continue;
     const plan=s.intrigue.plans.find(p=>p.actor===owner&&['Committed','Executing'].includes(p.status)&&['invasion','jointWar'].includes(p.type)&&atWar(s,owner,p.target));

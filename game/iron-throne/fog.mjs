@@ -1,3 +1,4 @@
+import { projectPremiumRegions } from './premium-regions.mjs';
 import { isAiHouse } from './house-control.mjs';
 import { vassalBond, vassalMuster } from './vassal-role.mjs';
 import { fleetVision, publicFleet, SHIPS } from './naval-state.mjs';
@@ -37,7 +38,7 @@ export function visionTiles(s,viewer,{allied=true}={}) {
   for(const [id,radius] of sources)area(id,radius);
   return seen;
 }
-const geographyKeys=['id','q','r','terrain','resource','quality','owner','building','road','river','capital','name','region','biome','mountainPass','levels'];
+const geographyKeys=['id','q','r','terrain','resource','quality','owner','building','road','river','capital','name','region','biome','mountainPass','levels','premiumRegion','premiumYield','premiumFactor'];
 function rememberedTile(t) { return Object.fromEntries(geographyKeys.filter(k=>t[k]!==undefined).map(k=>[k,clone(t[k])])); }
 function record(s,viewer) { return initializeFog(s).houses[viewer]??={tiles:{},armies:{},battles:[],actions:[]}; }
 function observe(s,k,seen,source='sight',spy=null) {
@@ -81,10 +82,10 @@ export function recordSpyMapIntelligence(s,spy) {
 }
 function blankTile(t) {return {id:t.id,q:t.q,r:t.r,terrain:t.terrain,resource:null,quality:'normal',owner:null,building:null,road:false,river:false,walls:0,project:null,capital:null,levels:{}};}
 function spyCurrent(s,x,viewer) {return x.source==='spy'&&s.turn-x.turn<=2&&s.intelligence?.agents.some(a=>a.id===x.spyId&&a.owner===viewer&&a.status==='Embedded'&&a.assignedHouse===x.host&&(!x.mission||a.mission===x.mission));}
-export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
+export function knowledgeView(s,viewer='ashen',{refresh=false,forecast=true}={}) {
   if(s.knowledgeView)return s;
   if(refresh)refreshKnowledge(s,[viewer]);
-  const v=clone({...s,fog:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
+  const v=clone({...s,fog:undefined,kingdomDevelopments:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
   v.knowledgeView=viewer;v.viewHouseId=viewer;delete v.fog;
   v.courtIntelligence=projectCourtIntelligence(s,viewer);
   v.marriageBriefings=s.kingdoms.some(h=>h.id===viewer)
@@ -96,7 +97,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
   v.councilFacts={};delete v.councilInitiationTurns;
   delete v.warBaselines; delete v.warPositions;
   v.proposalFollowups=Object.fromEntries(Object.entries(s.proposalFollowups||{}).filter(([,c])=>c.actor===viewer&&c.turn===s.turn));
-  if(s.kingdoms.some(k=>k.id===viewer))v.ownAccounting={economy:economyProjection(s,viewer),population:populationProjection(s,viewer)};
+  if(s.kingdoms.some(k=>k.id===viewer))v.ownAccounting={economy:economyProjection(s,viewer),...(forecast?{population:populationProjection(s,viewer)}:{})};
   v.tiles=Object.fromEntries(Object.values(s.tiles).map(t=>{
     if(seen.has(t.id))return [t.id,{...clone(t),fog:'visible',observedTurn:s.turn}];
     const old=k.tiles[t.id];
@@ -106,6 +107,8 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     if(capital&&!old){known.capital=capital;known.knownCapital=capital;known.building='city';known.name=capitalName(capital);known.levels={city:1};}
     return [t.id,known];
   }));
+  v.premiumRegions=projectPremiumRegions(v,viewer);
+  v.kingdomDevelopments={version:1,houses:{[viewer]:{events:clone(s.kingdomDevelopments?.houses?.[viewer]?.events||[])}}};
   v.fleets=(s.fleets||[]).filter(f=>f.owner===viewer||seen.has(f.tile)).map(f=>f.owner===viewer?clone(f):publicFleet(f));
   v.shipQueues=(s.shipQueues||[]).filter(q=>q.owner===viewer).map(clone);
   v.lastSeenFleets=Object.values(k.fleets||{}).filter(f=>!v.fleets.some(x=>x.id===f.id)).map(clone);
@@ -140,7 +143,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false}={}) {
     if(h.id===viewer)continue;
     for(const [id,r]of Object.entries(h.relations))if(id!==viewer){delete r.personal;delete r.negotiation;}
     h.confidantConcerns=h.relations[viewer]?.personal?.bonds.includes('Trusted Confidant')?(h.priorities||[]).slice(0,2).map(text=>text.replace(/\s*\(\d+\)/g,'')):[];
-    h.resources=Object.fromEntries(RESOURCES.map(r=>[r,0]));h.population=0;h.happiness=0;h.commands=0;h.goal='UNKNOWN';delete h.economicPlan;
+    h.resources=Object.fromEntries(RESOURCES.map(r=>[r,0]));h.population=0;h.happiness=0;h.commands=0;h.goal='UNKNOWN';delete h.economicPlan;delete h.opening;
     h.memories=h.memories.filter(m=>m.subject===viewer&&['interpretation','speech','agreement','cooperation','war','espionage','threat','insult','relief','trade-interrupted','promise-fulfilled','promise-broken','promise-released','marriage','marriage-strained','marriage-broken'].includes(m.kind));h.memorySummary='';h.priorities=[];h.relationshipSummaries={};h.conversationSummaries={[viewer]:h.conversationSummaries?.[viewer]||''};if(s.controllers)h.conversationSummary='';
     h.resourcesUnknown=true;
   }

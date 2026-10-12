@@ -1,7 +1,8 @@
+import { effectiveArmySpeed } from './movement-timing.mjs';
 import { UNITS } from './data.mjs';
 import { atWar, distance, log } from './core.mjs';
 import { visionTiles, refreshKnowledge } from './fog.mjs';
-import { armySpeed, inflict, protection } from './warfare.mjs';
+import { inflict, protection } from './warfare.mjs';
 import { clearShot, damageStructure, structuresAt } from './structures.mjs';
 import { navalPower, damageFleet, sinkShips } from './naval-combat.mjs';
 import { cargoCount, troopCount } from './naval-state.mjs';
@@ -40,7 +41,7 @@ export function resolveLandNavalAttack(s,a) {
   const f=s.fleets.find(f=>f.tile===a.target&&atWar(s,a.owner,f.owner)),range=distance(s.tiles[a.tile],s.tiles[f.tile]);
   const before=[cargoCount(f),troopCount(a)],counter=range<=2?navalPower({...f,ships:f.ships.filter(v=>v.type==='warship')},2)*.35/protection(s.tiles[a.tile]):0;
   damageFleet(f,landPower(a,range));inflict(a,counter);const sunk=sinkShips(s,f);
-  a.movementSpent=armySpeed(a);a.order='hold';a.target=null;
+  a.movementSpent=effectiveArmySpeed(s,a);a.order='hold';a.target=null;
   record(s,f,a,before,sunk,a.owner,f.owner,f.tile);return true;
 }
 export function resolveCoastalAttack(s,f,tile) {
