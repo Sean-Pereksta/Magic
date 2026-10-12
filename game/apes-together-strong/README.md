@@ -16,7 +16,7 @@ permanent bonuses, distinct opening rescues, exclusive army or village upgrades,
 and cached tribal artwork. Ordinary climber orders cross fortress walls; the
 advanced army panel adds infiltration, discovery responses and distractions.
 Friendly spear defenses fire over scenery, villages organize defensive posts,
-and new strong prisons offer escorted elite captives.
+and high-level prison cages offer individual recruits and armored champions.
 
 See [TRIBAL-KINGDOMS.md](TRIBAL-KINGDOMS.md) for controls, exact bonuses, save
 compatibility, validation and performance limits.
@@ -297,7 +297,8 @@ node game/apes-together-strong/tests/siege-browser.cjs
   outposts 8–14, checkpoints 8–16, prisons 18–30, detention camps 42–72,
   experimental camps 80–125, forward bases 32–60, armored bases 60–110,
   and regional command bases 160–260. Larger rewards require later, more
-  defended installations. Existing saved captive stocks remain unchanged.
+  defended installations. Untouched saved high-level cells adopt the new 10–20 + 0–2 composition;
+  partially opened cells preserve their remaining stock.
   Military liberation awards 30 food per site tier once. Rescue/population
   threat contributions remain low enough to allow an early tribe to grow.
 - **Settlements:** food patches, water, fertility, nearby timber, housing, and
@@ -935,11 +936,15 @@ node --test game/apes-together-strong/tests/kingdom.test.cjs
 Fortified prison extractions can award named champions with a species archetype,
 visible equipment and a passive trait. Each of the six species has four
 archetypes: structural bruisers, support builders, saboteurs, scouts, morale
-leaders and ranged disruptors. There are at most 24 living champions; excess
-elite rewards become veterans. Ordinary followers become eligible commanders
+leaders and ranged disruptors. The 24-champion limit applies to ordinary promotions; prison champions retain
+their identity even when that limit is reached. Ordinary followers become eligible commanders
 through two training levels or five credited infantry victories.
 
-Champions have species-based additional health and 20% stronger strikes.
+Prison champions have 5.5× the health of their normal species and 1.8× strike
+damage. Their banner aura grants nearby allies 15% damage and 12% movement
+speed within 180 paces; multiple banners do not stack. Full heavy armor artwork
+and a hand-drawn back flag identify them in every facing. Other named champions
+keep their species-based additional health and 20% stronger strikes.
 Equipment refits add 5% strike damage each, capped at two. Archetype bonuses
 apply to their actual objectives: Wallbreakers breach gates/walls, Saboteurs
 cut devices, Tank Busters benefit from attacking a vehicle's flank/rear,
@@ -973,14 +978,16 @@ through a save, including retreat following a commander's death.
 
 Planning runs at most twice per second for six divisions, considering at most
 52 candidates per division. Aura work runs once per second, affects at most
-48 nearby allies per supporting champion, and keeps transient bonuses out of
+48 nearby allies per archetype support champion or 96 per prison banner, and keeps transient bonuses out of
 save data. Offscreen divisions use the existing 15 Hz distant-order simulation.
 Champion gear overlays do not expand the ordinary species sprite atlas;
-at most 24 living elites receive the richer geometry, with simplified detail
-at distance and reduced-motion support.
+prison champions share cached banner images and existing full-body armor sheets,
+with simplified detail at distance and reduced-motion support.
 
 ```sh
-node --test game/apes-together-strong/tests/champions.test.cjs
+node --test game/apes-together-strong/tests/champions.test.cjs game/apes-together-strong/tests/prison-champions.test.cjs game/apes-together-strong/tests/prison-champion-art.test.cjs
+node game/apes-together-strong/tests/prison-recruits-browser.cjs
+node game/apes-together-strong/tests/prison-champion-art-browser.cjs
 ```
 
 A 120-frame, 1440×900 headless Chrome comparison includes **all** original
@@ -1015,17 +1022,26 @@ siren, closes the intact inner riot gate and commits up to three paid defender
 waves; a nearby base may send one rescue-prevention column from its own reserves.
 Radio, power and barracks sabotage stop local reinforcement dispatches.
 
-Freed prisoners move in one visible crowd per holding block. Keep an escort
-within 210 units, lead the crowd through a real opening, and spend four safe
-seconds beyond the perimeter. Unescorted crowds exposed to guards for five
-seconds can be recaptured. Injured survivors travel slower; a nearby Rescue
-Bearer helps them. Captive slots remain reserved against the 1,000-ape limit while
-they escape; rescue statistics, champion awards and food rewards are credited
-once they are safe. Families and elders can then travel to the kingdom rally
-village. Escapes, wounds, recaptures, locks and rewards persist through saves.
+Every cage in a Blacksite, Transfer Fortress, or tier-4-or-higher prison holds
+10–20 normal monkeys plus a seeded chance of 0–2 champions (65% none, 30% one,
+5% two). Each released monkey becomes an individual follower immediately and
+can move, fight and receive
+orders. Lower-tier regional and labor prisons retain their original captive
+stocks and family/builder roles; the opening rescue is unchanged.
 
-Planning is bounded to eight nearby facilities, twelve escape crowds and eighteen
-guard duty updates each quarter-second. Remote crowds wait in saved state;
+Lead survivors through a real opening and spend four safe seconds beyond the
+perimeter to secure each rescue. Keep an escort within 210 paces; isolated
+survivors exposed to guards for five seconds can be recaptured. Reopening their
+cell releases the same surviving individuals and champions. Individual actors
+count toward the 1,000-ape limit while escaping; rescue statistics, equipment
+and food rewards are credited once at safety. Escapes, casualties, wounds,
+recaptures, locks and reward ledgers persist through saves. Untouched saved
+high-level cells adopt the new composition once; partially opened cells preserve
+their remaining stock. Old saved crowd escorts migrate to individual monkeys
+without rerolling their awards.
+
+Planning is bounded to eight nearby facilities, twelve escape ledgers and eighteen
+guard duty updates each quarter-second. Remote survivors use the normal distant-actor simulation;
 they never teleport to safety. Structure overlays, champion gear and weather
 reuse the existing view culling and adaptive detail system.
 

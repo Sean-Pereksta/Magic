@@ -164,11 +164,13 @@
         for(const contact of geometry.contacts)ellipse(c,contact.x,.35,contact.width,1.5,'rgba(0,5,6,.44)');
       }
     }
+    this.drawChampionStandard?.(c,a,p,slot,'rear');
     const held=window.ATSHeldItemArt,items=held?.ready()&&held.hasEquipment(a,p)?held.resolve(a,p):null;
     const composed=window.ATSOutfitArt?.actor(this,c,a,p,slot,frameGeometry(this,p,slot),atlasImage(this,p.atlas,a),items);
     if(composed)this.characterArtworkDraws=(this.characterArtworkDraws||0)+1;
     else {if(items)held.draw(this,c,a,p,slot,'rear',items);frame(this,c,a,p,slot);
       if(items){held.draw(this,c,a,p,slot,'front',items);held.restoreHands(this,c,a,p,slot,items,atlasImage(this,p.atlas,a))}}
+    this.drawChampionStandard?.(c,a,p,slot,'front');
     if(!options.mini&&this.detailLevel<3){
       const n=hash(a.id),rear=p.rear;
       if(!p.king&&!rear&&n%7===0){line(c,8,-46,11,-41,'rgba(205,178,146,.66)',.9);line(c,7,-45,9,-44,'#6a6554',.65)}

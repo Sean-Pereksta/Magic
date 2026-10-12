@@ -16,12 +16,12 @@ P.drawObject=function(c,o){
  if(o.type==='cage'){
   line(c,-31,-47,27,-35,'#8d9fa6',4);line(c,-31,-45,-31,-4,'#94a4a6',3);line(c,27,-35,27,7,'#6f8790',4);
   const locked=o.prisonLock!=='chain'&&!o.prisonUnlocked,color=locked?'#e6a06e':'#97cba0';c.strokeStyle=color;c.lineWidth=2;c.beginPath();c.arc(7,-24,5,Math.PI,Math.PI*2);c.stroke();poly(c,[[1,-23],[13,-21],[13,-12],[1,-14]],color,'#293d43');
-  if(o.prisonReward==='champion'||o.prisonReward==='injuredLegend')poly(c,[[-8,-59],[0,-66],[8,-59],[0,-52]],'#e8d18c','#31464a');
+  if((o.championRemaining??o.championCount??0)+(o.recapturedApes||[]).filter(a=>a.champion?.prisonChampion).length>0||o.prisonReward==='champion'||o.prisonReward==='injuredLegend')poly(c,[[-8,-59],[0,-66],[8,-59],[0,-52]],'#e8d18c','#31464a');
  }else if(o.type==='house'&&o.laboratory){line(c,-15,-55,15,-48,'#8fc2c8',4);line(c,0,-66,0,-39,'#8fc2c8',4)}else if(o.type==='gate'&&o.riotGate&&o.solid){for(let i=-2;i<=2;i++)line(c,i*18,-35+i*8,i*18+9,-31+i*8,'#dcaf72',4)}
 };
 const siege=P.drawSiege;
 P.drawSiege=function(g){siege?.call(this,g);const c=this.ctx,z=this.camera.zoom;let budget=this.quality==='low'||this.detailLevel>2?24:72;
- for(const s of g._prisons?.active||[]){const p=s.prison;if(!p)continue;for(const cohort of p.cohorts){if(!cohort.count||budget<=0)continue;const q=this.project(cohort.x,cohort.y);if(!this.visible(q,120*z))continue;const size=Math.min(cohort.count,z<.65?3:8,budget);budget-=size;
+ for(const s of g._prisons?.active||[]){const p=s.prison;if(!p)continue;for(const cohort of p.cohorts){if(cohort.memberIds||!cohort.count||budget<=0)continue;const q=this.project(cohort.x,cohort.y);if(!this.visible(q,120*z))continue;const size=Math.min(cohort.count,z<.65?3:8,budget);budget-=size;
   c.save();c.translate(q.x,q.y);c.scale(z,z);for(let i=size-1;i>=0;i--){const dx=(i%3-1)*18,dy=Math.floor(i/3)*14,bob=cohort.moving&&!this.reducedMotion?Math.sin(this.time*7+i)*1.5:0;this.drawApeMini(c,dx,dy+bob,.58,{id:cohort.id+':'+i,species:cohort.species,coatVariant:i%3,state:cohort.reward==='family'&&i%2?'young':'free',moving:cohort.moving,phase:i});if(cohort.reward==='injuredLegend')line(c,dx-5,dy-17,dx+4,dy-11,'#d5d3b2',3)}
   c.beginPath();c.ellipse(0,12,36,12,0,0,Math.PI*2);c.strokeStyle=cohort.exposed>0?'#e1a179':'#a8ceb4';c.lineWidth=1.5;c.stroke();c.restore();
  }
