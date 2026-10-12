@@ -5,6 +5,7 @@ import { capitalSeparation, foundedCapitals } from './founding.mjs';
 import { distance as hexDistance } from './world-hex.mjs';
 import { localHouseId, isHumanHouse } from './house-control.mjs';
 import { ART, AssetCache } from './asset-manifest.mjs';
+import { SPRITE_ANIMATIONS, SpritePlayback, SpriteScheduler, spriteVisible, constructionStage } from './sprite-animations.mjs';
 import { buildingLevel } from './economy.mjs';
 import { familyCount } from './warfare.mjs';
 import { BUILDINGS, UNITS } from './data.mjs';
@@ -30,6 +31,9 @@ export class WorldMap {
     this.selectionOnly=selectionOnly; this.onStrategicMarker=onStrategicMarker; this.hovered=null;
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.getState = getState; this.onSelect = onSelect;
     this.art = new MapArt(); this.assets=new AssetCache(()=>this.draw()); this.effects = new BattleEffects(); this.reducedEffects = false; this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.visibilityChange=()=>{if(document.hidden){this.spriteScheduler?.cancel();if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;}else this.draw();};
+    document.addEventListener('visibilitychange',this.visibilityChange);
+    this.motion.addEventListener('change',()=>this.draw());
     this.zoom = 1; this.x = 0; this.y = 0; this.selected = '5,6'; this.armyId = null; this.pointers = new Map(); this.drag = null; this.moved = false; this.frame = null;
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     canvas.addEventListener('pointerdown', e => {
@@ -89,7 +93,7 @@ export class WorldMap {
   center(id) { const t = this.getState().tiles[id]; if (!t) return; const p = hexPixel(t); this.x = p.x; this.y = p.y; this.draw(); }
   home() { if(this.getState().phase==='founding'&&!settlements(this.getState(),localHouseId(this.getState())).length){this.fit();return;} this.zoom = this.width < 600 ? .85 : 1.25; this.center(settlements(this.getState(), localHouseId(this.getState()))[0]?.id || '5,6'); }
   fit() { const bottom = hexPixel({ q: this.getState().width-1, r: this.getState().height-1 }); this.x = bottom.x / 2; this.y = bottom.y / 2; this.setZoom(Math.min(this.width / (bottom.x + 100), this.height / (bottom.y + 100))); }
-  draw() { if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); }); }
+  draw() { if (!document.hidden && !this.frame) this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); }); }
   hex(x, y, radius = RADIUS) {
     const c = this.ctx; c.beginPath();
     for (let i = 0; i < 6; i++) { const angle = (60 * i - 30) * Math.PI / 180; const px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius; if (i) c.lineTo(px, py); else c.moveTo(px, py); } c.closePath();
@@ -116,13 +120,23 @@ export class WorldMap {
     return this.assets.drawOutlined(c,url,x,y,w,h,color,this.zoom,this.dpr);
   }
   constructionArt(c,progress,color) {
+    const stage=Math.max(1,Math.min(3,Math.floor(progress*3)+1));
+    if(this.spriteArt(c,SPRITE_ANIMATIONS.construction[stage],{action:'build',start:0},-26,-35,52,52,color))return;
     if(this.structureArt(c,ART.construction[Math.max(0,Math.min(2,Math.floor(progress*3)))],-26,-35,52,52,color))return;
     // Scaffolding is only a fallback when neither PNG nor bundled SVG is ready.
     for(const x of [-13,13]){c.beginPath();c.moveTo(x,-13);c.lineTo(x,8);c.stroke();}
     c.beginPath();c.moveTo(-13,-12);c.lineTo(13,-12);c.lineTo(-13,7);c.lineTo(13,7);c.stroke();
   }
-  armyArt(c,units,x,y,color,sigil,phase) {
+  spriteArt(c,spec,animation,x,y,w,h,color=null) {
+    const elapsed=(this.spriteNow||0)-animation.start;
+    if(!this.assets.drawSprite?.(c,spec,animation.action,elapsed,x,y,w,h,{color,zoom:this.zoom,dpr:this.dpr,reduced:this.spriteReduced}))return false;
+    this.spriteScheduler?.use(spec,animation.action,elapsed);
+    this.spriteScheduler?.defer(animation.until-this.spriteNow);return true;
+  }
+  armyArt(c,units,x,y,color,sigil,phase=0,group=[]) {
     const dominant=Object.keys(units).filter(u=>units[u]>0).sort((a,b)=>(units[b]*(UNITS[b].family==='siege'?8:1))-(units[a]*(UNITS[a].family==='siege'?8:1)))[0];
+    const animation=this.spritePlayback?.resolve('army',group,this.spriteNow,dominant)||{action:'idle',start:0};
+    if(this.spriteArt(c,SPRITE_ANIMATIONS.troops[dominant],animation,x-22,y-36,44,44,color))return;
     if(this.structureArt(c,ART.units[dominant],x-22,y-36+phase,44,44,color))return;
     this.art.formation(c,{levy:familyCount({units},'infantry'),archer:familyCount({units},'ranged'),cavalry:familyCount({units},'mounted'),siege:familyCount({units},'siege')},x,y+4,color,sigil,this.zoom>.65,phase);
   }
@@ -134,6 +148,10 @@ export class WorldMap {
     const geography=this.geography.get(s.tiles);
     this.effects ||= new BattleEffects(); this.effects.ingest(s, now);
     const reduced = this.motion.matches || this.reducedEffects;
+    this.spriteNow=now;this.spriteReduced=reduced;
+    this.spritePlayback ||= new SpritePlayback();this.spritePlayback.ingest(s,now);
+    this.spriteScheduler ||= new SpriteScheduler(()=>this.draw());this.spriteScheduler.begin(now,reduced,document.hidden);
+    this.assets.spriteRetryAt=Infinity;
     const focus=`${s.seed}:${s.turn}:${this.selected}`;
     if(this.focus!==focus){this.focus=focus;this.pulseUntil=now+650;}
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
@@ -172,6 +190,7 @@ export class WorldMap {
     // Rows define front-to-back depth. Within a row, cities cover buildings
     // on either side; a later row can still cover a city from the foreground.
     const objectTiles=[...visible].sort((a,b)=>a.r-b.r||Number(a.building==='city')-Number(b.building==='city')||a.q-b.q);
+    const shipbuilding=new Map();for(const queue of s.shipQueues||[])if(!shipbuilding.has(queue.tile))shipbuilding.set(queue.tile,queue);
     for(const t of objectTiles){
       const p=hexPixel(t);
       if(t.building&&!t.knownCapital){
@@ -183,12 +202,14 @@ export class WorldMap {
       if(t.resource&&!t.building&&this.zoom>.8&&t.resource!=='wood'&&!this.assets.draw(c,ART.resources[t.resource],p.x-7,p.y+9,14,14)){
         c.fillStyle='#e7d9a5';c.strokeStyle='#243a3a';c.lineWidth=2;c.font='10px Georgia';c.textAlign='center';const label={iron:'⚒',stone:'◆',food:'ˇˇˇ'}[t.resource]||'';c.strokeText(label,p.x,p.y+17);c.fillText(label,p.x,p.y+17);
       }
-      if(t.project){
+      if(t.project && spriteVisible(t)){
         c.save();c.translate(p.x,p.y);c.strokeStyle='#ebca84';c.lineWidth=1;c.setLineDash([3,3]);this.hex(0,0,21);c.stroke();c.setLineDash([]);
         const progress=1-t.project.remaining/t.project.total;
-        this.constructionArt(c,progress,colors[t.owner]);
+        if(constructionStage(t.project))this.constructionArt(c,progress,colors[t.owner]);
         c.fillStyle='#152d32';c.fillRect(-15,19,30,4);c.fillStyle='#f2cd7e';c.fillRect(-15,19,30*Math.max(.08,progress),4);c.restore();
       }
+      const queue=shipbuilding.get(t.id),stage=constructionStage(queue);
+      if(!t.project && stage && spriteVisible(t) && buildingLevel(t,'shipyard'))this.spriteArt(c,SPRITE_ANIMATIONS.construction[stage],{action:'build',start:0},p.x+10,p.y-9,22,22,colors[t.owner]);
     }
     // The fog is drawn over already-filtered objects. Unknown tiles contain no
     // structures/resources to expose through labels, hit tests or animation.
@@ -229,14 +250,13 @@ export class WorldMap {
     const grouped=new Map(),offsets=new Map(),troopBadges=[];
     for(const army of s.armies){const key=`${army.tile}:${army.owner}`;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(army);}
     for(const group of grouped.values()){
-      const army=group[0],p=hexPixel(s.tiles[army.tile]);if(!inView(p))continue;
+      const army=group[0],tile=s.tiles[army.tile];if(!spriteVisible(tile))continue;const p=hexPixel(tile);if(!inView(p))continue;
       const row=offsets.get(army.tile)||0;offsets.set(army.tile,row+1);
       const selected=group.some(a=>a.id===this.armyId),total=group.reduce((n,a)=>n+sizeOf(a),0),color=colors[army.owner];
       const badgeScale=Math.max(1,.55/this.zoom), badgeY=p.y+17+row*23;
       const hit={tile:army.tile,left:p.x-19*badgeScale,right:p.x+19*badgeScale,top:badgeY-8*badgeScale,bottom:badgeY+12*badgeScale};
       const units=Object.fromEntries(Object.keys(UNITS).map(u=>[u,group.reduce((n,a)=>n+(a.units[u]||0),0)]));
-      const marching=group.some(a=>a.path.length)&&!reduced&&now<this.pulseUntil;
-      this.armyArt(c,units,p.x,p.y+row*23,color,s.kingdoms.find(h=>h.id===army.owner).sigil,marching?Math.sin(now/75)*.7:0);
+      this.armyArt(c,units,p.x,p.y+row*23,color,s.kingdoms.find(h=>h.id===army.owner).sigil,0,group);
       troopBadges.push(() => {
         this.hits.push(hit);
         c.save();c.translate(p.x,badgeY);c.scale(badgeScale,badgeScale);
@@ -257,6 +277,7 @@ export class WorldMap {
     if(this.width>500&&this.height>240){const x=this.width-42,y=this.height-68;c.strokeStyle='#dcc89590';c.lineWidth=1;c.beginPath();c.arc(x,y,18,0,Math.PI*2);c.stroke();c.fillStyle='#e6d6a6';c.beginPath();c.moveTo(x,y-16);c.lineTo(x-5,y+7);c.lineTo(x,y+3);c.lineTo(x+5,y+7);c.closePath();c.fill();c.font='10px Georgia';c.textAlign='center';c.fillText('N',x,y-24);}
     this.effects.drawResults(c,s,this.width,this.height,now);
     if(!document.hidden&&((!reduced&&now<this.pulseUntil)||this.effects.animating(now,reduced)))this.draw();
+    this.spriteScheduler.defer(this.assets.spriteRetryAt-Date.now());this.spriteScheduler.end();
     // A single expiry timer clears a result without running idle animation.
     if(this.effects.results.length&&!this.resultTimer)this.resultTimer=setTimeout(()=>{this.resultTimer=null;this.draw();},5600);
   }

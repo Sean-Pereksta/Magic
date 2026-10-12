@@ -1,7 +1,8 @@
 import { GENERAL_ROSTER } from './general-roster.mjs';
 // Cloudflare directional artwork has a local, connection-preserving fallback.
 import { GEOGRAPHY_PATHS } from './geography-assets.mjs';
-import { SpriteOutlines } from './sprite-outline.mjs';
+import { SpriteOutlines, SpriteAtlasOutlines } from './sprite-outline.mjs';
+import { SPRITE_ANIMATIONS, spriteFrame, validSpriteSheet } from './sprite-animations.mjs';
 import { BUILDINGS, RESOURCES, UNITS, CAMPAIGN_HOUSES } from './data.mjs';
 export const IRON_THRONES_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev';
 export const ironThronesAsset = path => `${IRON_THRONES_ASSET_BASE}/${path.replace(/^\/+/, '')}`;
@@ -24,6 +25,7 @@ export const IRON_THRONES_ART = {
 const flatten = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(flatten);
 export const ALL_ART_PATHS = [...new Set(flatten(IRON_THRONES_ART))];
 export const ART = {
+  animations: Object.fromEntries(Object.entries(SPRITE_ANIMATIONS).map(([family,sheets])=>[family,Object.fromEntries(Object.entries(sheets).map(([id,spec])=>[id,ironThronesAsset(spec.path)]))])),
   generals: Object.fromEntries(Object.entries(IRON_THRONES_ART.generals).map(([id,p])=>[id,ironThronesAsset(p)])),
   structures: Object.fromEntries(Object.entries(BUILDINGS).map(([id,b]) => [id, Object.fromEntries(b.levels.map(l => [l.level, ironThronesAsset(buildingPath(id,l.level))]))])),
   ships: Object.fromEntries(Object.entries(IRON_THRONES_ART.ships).map(([id,p])=>[id,ironThronesAsset(p)])),
@@ -43,22 +45,24 @@ for (const id of RESOURCES) fallbacks.set(ART.resources[id],local(`resources/${i
 ART.construction.forEach((url,i) => fallbacks.set(url,local(`construction/stage_${i+1}`)));
 // Shared for preload, map and DOM. Never evict decoded manifest images while playing.
 const records = new Map();
-export function loadArt(url, {timeout=10000} = {}) {
+export function loadArt(url, {timeout=10000,retryAfter=Infinity,quiet=false,dimensions=null} = {}) {
+  const previous=records.get(url);
+  if(previous?.failed && Date.now()>=previous.retryAt)records.delete(url);
   if (records.has(url)) return records.get(url).promise;
-  const record = {image:null,failed:false,promise:null};
+  const record = {image:null,failed:false,promise:null,retryAt:Infinity};
   records.set(url,record);
   record.promise = new Promise(resolve => {
     const image = new Image(); let done = false;
     const finish = ok => {
       if (done) return; done = true; clearTimeout(timer); image.onload = image.onerror = null;
       record.image = ok ? image : null; record.failed = !ok;
-      if (!ok) { image.src = ''; console.warn('[Iron Thrones Art] FAILED:',url); }
+      if (!ok) { record.retryAt=Date.now()+retryAfter;image.src = ''; if(!quiet)console.warn('[Iron Thrones Art] FAILED:',url); }
       else if (globalThis.IRON_THRONES_ART_DEBUG) console.info('[Iron Thrones Art] Loaded:',url);
       resolve(record.image);
     };
     const timer = setTimeout(() => finish(false),timeout);
     image.onload = async () => {
-      try { if (image.decode) await image.decode(); finish(image.naturalWidth > 0 && image.naturalHeight > 0); }
+      try { if (image.decode) await image.decode(); finish(image.naturalWidth > 0 && image.naturalHeight > 0 && (!dimensions || image.naturalWidth===dimensions.width && image.naturalHeight===dimensions.height)); }
       catch { finish(false); }
     };
     image.onerror = () => finish(false);
@@ -99,7 +103,29 @@ export async function preloadAllArt(onProgress=()=>{}, {concurrency=6,timeout=10
   return {completed,total,failed};
 }
 export class AssetCache {
-  constructor(redraw=()=>{}) { this.redraw=redraw; this.pending=new Set(); this.outlines=new SpriteOutlines(); }
+  constructor(redraw=()=>{}) { this.redraw=redraw; this.pending=new Set(); this.outlines=new SpriteOutlines(); this.atlasOutlines=new SpriteAtlasOutlines();this.spriteRetryAt=Infinity; }
+  drawSprite(c,spec,action,elapsed,x,y,w,h,{color=null,zoom=1,dpr=1,reduced=false}={}) {
+    if(!spec)return false;
+    const url=ironThronesAsset(spec.path),record=records.get(url),image=record?.image;
+    if(!validSpriteSheet(image,spec)) {
+      if(image){record.image=null;record.failed=true;record.retryAt=Date.now()+60000;}
+      if(record?.failed && record.retryAt>Date.now())this.spriteRetryAt=Math.min(this.spriteRetryAt,record.retryAt);
+      else if(!this.pending.has(url)) {
+        this.pending.add(url);
+        loadArt(url,{quiet:true,retryAfter:60000,dimensions:{width:spec.columns*spec.cell.width,height:spec.rows*spec.cell.height}}).then(()=>{this.pending.delete(url);this.redraw();});
+      }
+      return false;
+    }
+    const frame=spriteFrame(spec,action,elapsed,reduced);
+    if(color) {
+      const atlas=this.atlasOutlines.get(image,url,spec,w,h,color,zoom,dpr);
+      c.drawImage(atlas.canvas,frame.frame*atlas.cellWidth,frame.row*atlas.cellHeight,atlas.cellWidth,atlas.cellHeight,x-atlas.pad,y-atlas.pad,atlas.width,atlas.height);
+    } else {
+      const scale=Math.min(w/spec.cell.width,h/spec.cell.height),dw=spec.cell.width*scale,dh=spec.cell.height*scale;
+      c.drawImage(image,frame.x,frame.y,frame.width,frame.height,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+    }
+    return true;
+  }
   get(url) {
     if(!url)return null;
     const record=records.get(url);
