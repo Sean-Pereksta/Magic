@@ -35,7 +35,7 @@ function pose(a,p,options,time){
   else if(/saw|woodwork/.test(a.activity)){column=p.phase<.5?0:1;state='sawing'}
   else{column=p.phase<.5?0:2;state='building'}
  }
- if(options.reducedMotion&&a.moving){action=false;column=a.carrying?5:0}
+ if(options.reducedMotion&&a.moving&&['run','sprint','carry'].includes(p.state)){action=false;column=a.carrying?5:0}
  const mapping=(action?spec.actionRows:spec.motionRows),row=mapping[d],override=spec.overrides?.[(action?'a':'m')+d+':'+column];
  return {...p,atlas,row:override?.[0]??row,column:override?.[1]??column,state,worker,tribe:options.tribeId||a.tribeId,sourceDirectionCount:8,illustratedArmor:true};
 }

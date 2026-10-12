@@ -4,7 +4,7 @@ Every normal species has four independently illustrated body sheets: bare,
 basic, reinforced, and heavy. Ironback, Shadowhand, and Emberwood each retain
 their identity across six King looks: base, Age 1, Age 2, command, power, and
 shadow. The package contains 42 source PNGs and 42 runtime WebP atlases
-(13.74 MiB). The complete self-contained game is 97,475,659 bytes (92.96 MiB).
+(13.74 MiB). The complete self-contained game is approximately 92.96 MiB.
 
 ## Progression
 
@@ -81,7 +81,7 @@ cache. `tests/outfitting-browser.cjs` decodes all 42 atlases offline, renders
 the actual crafting UI and a 390-pixel mobile viewport. Performance comparisons
 and final regression totals are recorded with the PR validation results.
 
-Local regression validation: 667 game tests and 25 lobby tests passed. Browser
+Local regression validation: 668 game tests and 25 lobby tests passed. Browser
 checks cover equipment purchases, held items, tribal openings, mobile commands,
 graphics/fallback behavior, and the full desktop/mobile smoke flow. Set
 `ARMOR_MOTION_QA=1` and `QA_ARTIFACT_DIR` when running the outfitting browser
