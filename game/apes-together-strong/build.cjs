@@ -1,8 +1,8 @@
 const fs=require('node:fs'),path=require('node:path');
-const parts=['visual-assets','world','navigation','audio','settlements','forces','ape-tactics','siege','sim','arsenal','champions','kingdom','prisons','weather','nearest-orders','progression','equipment','palisade-traversal','settlement-combat','horde-commands','tribes','infiltration','garrisons','elite-prisons','movement-facing','attack-command-input','render','render-details','siege-render','arsenal-render','champions-render','prisons-render','weather-render','settlement-render','progression-render','equipment-render','palisade-render','graphics','environment-art','character-art','equipment-art','held-item-art','structure-art','vehicle-art','interface-art','tribal-render','siege-ui','champions-ui','kingdom-ui','equipment-ui','mobile-commands','tribal-ui','app'];
+const parts=['visual-assets','world','navigation','audio','settlements','forces','ape-tactics','siege','sim','arsenal','champions','kingdom','prisons','weather','nearest-orders','progression','equipment','palisade-traversal','settlement-combat','horde-commands','tribes','infiltration','garrisons','elite-prisons','movement-facing','outfitting','attack-command-input','render','render-details','siege-render','arsenal-render','champions-render','prisons-render','weather-render','settlement-render','progression-render','equipment-render','palisade-render','graphics','environment-art','character-art','equipment-art','held-item-art','outfit-art','structure-art','vehicle-art','interface-art','tribal-render','living-art','siege-ui','champions-ui','kingdom-ui','equipment-ui','mobile-commands','tribal-ui','app'];
 const shell=fs.readFileSync(path.join(__dirname,'shell.html'),'utf8');
 const assetRoot=path.join(__dirname,'assets','visual'),manifest={},sources={};
-for(const family of ['characters','environment','equipment','held-items','settlements','vehicles']){
+for(const family of ['characters','environment','equipment','held-items','settlements','vehicles','outfits']){
  const data=JSON.parse(fs.readFileSync(path.join(assetRoot,family,'manifest.json'),'utf8'));
  manifest[family]=data;
  for(const atlas of data.atlases){

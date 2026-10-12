@@ -1,0 +1,31 @@
+name: Build and verify Apes visual equipment bundle
+on:
+  push:
+    branches: [codex/apes-visual-equipment]
+    paths: [.github/workflows/build-apes-visual-once.yml]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild and verify the tested standalone bundle
+        run: |
+          node game/apes-together-strong/build.cjs
+          node game/apes-together-strong/build.cjs --check
+          test "$(git hash-object game/apes-together-strong.html)" = "fe1f5fff8a6d837116f103c9d70cfeb56d2244bf"
+      - name: Run Apes simulation and visual metadata regressions
+        run: node --test game/apes-together-strong/tests/*.test.cjs
+      - name: Commit generated bundle and remove this one-time builder
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/build-apes-visual-once.yml
+          git add game/apes-together-strong.html
+          git commit -m "Rebuild verified offline Apes visual equipment bundle"
+          git push origin HEAD:codex/apes-visual-equipment

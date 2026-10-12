@@ -34,7 +34,7 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
     for (const name of names) await page.addScriptTag({ content: fs.readFileSync(path.join(directory, name + '.js'), 'utf8') });
     await page.evaluate(async () => { if (window.ATSVisualAssets) { await ATSVisualAssets.ready; if (ATSVisualAssets.status !== 'ready') throw new Error('Incomplete art preload: ' + ATSVisualAssets.failures); } });
     await page.addScriptTag({ content: 'window.setupStressScene=' + setupScenario.toString() + ';' });
-    const scenarios = SCENARIOS.concat({ id: 'N', label: 'King alone in procedural forest', apes: 0, humans: 0 }, { id: 'O', label: '240 connected fortress wall and gate modules across four tiers', apes: 0, humans: 0, walls: true });
+    const scenarios = SCENARIOS.concat({id:'M',label:'500 followers with mixed armor, weapons, shields and utility',apes:500,humans:0,outfits:true},{id:'T',label:'300 ape fortress assault, 120 defenders, shields, gates, climbing and projectiles',apes:300,humans:120,combat:true,tanks:2,armored:2,military:true,outfits:true,fortress:true},{ id: 'N', label: 'King alone in procedural forest', apes: 0, humans: 0 }, { id: 'O', label: '240 connected fortress wall and gate modules across four tiers', apes: 0, humans: 0, walls: true });
     for (const scenario of scenarios.filter(s => only.includes(s.id))) {
       const report = await page.evaluate(async ({ scenario, frames, quality, fixedQuality, profile }) => {
         resetStressRandom();
@@ -58,6 +58,22 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
             g.world.objects.set(id,object);g.world._indexObject(object);
           }
           g.world.navRevision=(g.world.navRevision||0)+1;
+        }
+        if(scenario.outfits){
+          const bodies=['leaf','shell','ironwood','elite'];
+          for(let i=0;i<g.apes.length;i++){const a=g.apes[i];a.outfit={version:2,body:bodies[i%4],weapon:a.species==='capuchin'?'sling':a.species==='gibbon'?'hook':'club',utility:i%3?'scout':'lumber'};
+            if(['gorilla','orangutan'].includes(a.species)&&i%2){a.outfit.shield='ironShield';a.shield={hp:330,maxHp:330,equipmentId:'ironShield'}}
+            // Identical movement workload in both engines. Armor presentation
+            // varies; the new armor movement factor is neutralized in this fixture.
+            if(g.outfitModifiers)a.speed/=g.outfitModifiers(a).speed;
+          }
+        }
+        if(scenario.fortress){
+          const site={id:'visual-fortress',x:220,y:0,extentX:160,extentY:350,radius:440,military:true,fortressVersion:1,objects:[],guards:0,strength:0,stairs:[],walkways:[],known:true,climbRoutes:[]};g.world.sites.set(site.id,site);
+          for(let i=0;i<9;i++){const gate=i===4,o={id:'visual-fortress-'+i,siteId:site.id,type:gate?'gate':'wall',x:60,y:(i-4)*80,w:18,h:gate?70:80,r:12,hp:1000000,maxHp:1000000,solid:true,collision:'rect',visualHeight:80,walkHeight:80,wallTier:3,walkable:!gate,climbAccess:!gate,gateState:gate?'closed':undefined};g.world.objects.set(o.id,o);g.world._indexObject(o);site.objects.push(o.id);if(!gate)site.climbRoutes.push([o.id]);}
+          g.world.navRevision++;g.syncIndexes();const gate=g.world.objects.get('visual-fortress-4');
+          g.siege.issue(['chimpanzee','gibbon','capuchin'],[{id:'fortress-inside',type:'move',x:190,y:70}]);g.siege.issue(['gorilla','orangutan','mandrill'],[{id:'fortress-gate',type:'attack',targetId:gate.id,targetKind:'object',x:gate.x,y:gate.y}]);
+          g.king.x=-150;g.king.y=0;
         }
         const sim = [], render = [], work = [], intervals = [];
         let previous, peakVisible = 0, maxSearches = 0, maxLos = 0, maxRays = 0, maxParticles = 0;
@@ -86,7 +102,7 @@ const names = [...build.match(/const parts=\[([^\]]+)\]/)[1].matchAll(/'([^']+)'
           if(heap!==undefined){peakHeapBytes=Math.max(peakHeapBytes,heap);if(heap<previousHeap-1024*1024){heapDrops++;largestHeapDropBytes=Math.max(largestHeapDropBytes,previousHeap-heap)}previousHeap=heap}
         }
         const stats = a => ({ meanMs: a.reduce((s, n) => s + n, 0) / a.length, p95Ms: a.slice().sort((a, b) => a - b)[Math.floor(a.length * .95)], maxMs: Math.max(...a), over50Ms: a.filter(n => n > 50).length });
-        return { id: scenario.id, label: scenario.label, frames, quality, fixedQuality, methods, initialPopulation, apes: g.apes.length, humans: g.humans.length, ended: g.ended, simulation: stats(sim), render: stats(render), work: stats(work), animationFrameInterval: stats(intervals), memory: { initialHeapBytes, peakHeapBytes, finalHeapBytes: previousHeap, heapDrops, largestHeapDropBytes, note: 'Heap drops are allocation/collection observations, not direct GC pause measurements.' }, maxSearches, maxLos, maxRays, maxParticles, peakVisible, qualityLevel: g.performance?.qualityLevel || 0, characterArtworkDraws: r.characterArtworkDraws || 0, particlePoolCapacity: r._environmentArt?.pool?.length || 0, sharedCoatAtlases: r.characterCoats?.size || 0, cachedTerrainPixels: r.groundPixels || 0, wallTextureCount:r._environmentArt?.wallTextures?.size||0,wallTexturePixels:r._environmentArt?.wallTexturePixels||0,fortressModules:scenario.walls?g.world.objects.size:0 };
+        return { id: scenario.id, label: scenario.label, frames, quality, fixedQuality, methods, initialPopulation, apes: g.apes.length, humans: g.humans.length, ended: g.ended, simulation: stats(sim), render: stats(render), work: stats(work), animationFrameInterval: stats(intervals), memory: { initialHeapBytes, peakHeapBytes, finalHeapBytes: previousHeap, heapDrops, largestHeapDropBytes, note: 'Heap drops are allocation/collection observations, not direct GC pause measurements.' }, maxSearches, maxLos, maxRays, maxParticles, peakVisible, qualityLevel: g.performance?.qualityLevel || 0, characterArtworkDraws: r.characterArtworkDraws || 0, particlePoolCapacity: r._environmentArt?.pool?.length || 0, sharedCoatAtlases: r.characterCoats?.size || 0,loadoutCache:{entries:r.loadoutComposites?.entries.size||0,pixels:r.loadoutComposites?.pixels||0,hits:r.loadoutComposites?.hits||0,misses:r.loadoutComposites?.misses||0,deferred:r.loadoutComposites?.deferred||0}, cachedTerrainPixels: r.groundPixels || 0, wallTextureCount:r._environmentArt?.wallTextures?.size||0,wallTexturePixels:r._environmentArt?.wallTexturePixels||0,fortressModules:scenario.walls?g.world.objects.size:0 };
       }, { scenario, frames, quality, fixedQuality, profile });
       reports.push(report);
       assert.equal(report.apes, scenario.apes, 'all real apes retained');

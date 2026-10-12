@@ -108,10 +108,16 @@ test('every packaged atlas and frame has a valid local image, crop and ground an
       const file = path.resolve(root, atlas.file);
       assert.ok(file.startsWith(root + path.sep), 'asset stays inside its package');
       const bytes = fs.readFileSync(file);
-      assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'original PNG image');
-      assert.equal(bytes.readUInt32BE(16), atlas.width, atlas.id + ' actual width');
-      assert.equal(bytes.readUInt32BE(20), atlas.height, atlas.id + ' actual height');
-      if (atlas.id !== 'materials-atlas') assert.equal(bytes[25], 6, 'RGBA transparency is retained for cutouts');
+      if(atlas.file.endsWith('.webp')){
+        assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.equal(bytes.toString('ascii',12,16),'VP8L','lossless WebP');
+        const bits=bytes.readUInt32LE(21);assert.equal((bits&0x3fff)+1,atlas.width);assert.equal(((bits>>>14)&0x3fff)+1,atlas.height);
+        const original=fs.readFileSync(path.join(root,atlas.source));assert.equal(original.subarray(0,8).toString('hex'),'89504e470d0a1a0a','original source retained');
+      }else{
+        assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'original PNG image');
+        assert.equal(bytes.readUInt32BE(16), atlas.width, atlas.id + ' actual width');
+        assert.equal(bytes.readUInt32BE(20), atlas.height, atlas.id + ' actual height');
+        if (atlas.id !== 'materials-atlas') assert.equal(bytes[25], 6, 'RGBA transparency is retained for cutouts');
+      }
       if (atlas.sha256) assert.equal(require('node:crypto').createHash('sha256').update(bytes).digest('hex'), atlas.sha256);
     }
     const validate = (label, atlas, rect, anchor) => {
