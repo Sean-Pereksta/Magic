@@ -518,10 +518,31 @@ class Settlements {
   if(distance(a,target)>90&&job!=='scout'&&job!=='young'){const dot=(a.x-s.x)*(target.x-s.x)+(a.y-s.y)*(target.y-s.y);if(distance(a,s)>40&&dot<0){x=s.x+offset;y=s.y}}
   a.activity=activity;a.carrying=carrying;return {x,y,speed:(a.speed||90)*speed,activity,carrying,projectId:a.workTargetId};
  }
- staffFacilities(s){const g=this.game;if(g.time<(s._staffAt||0))return;s._staffAt=g.time+4;const adults=(s._adults||this.members(s).filter(a=>a.state!=='young'&&a.state!=='scout')).filter(a=>a.hp>0&&!a.kingdomMission),hasWork=this.board(s).ordered.length>0,available=adults.filter(a=>!a.expeditionCargo&&(s.attack||!['workshop','gardener'].includes(a.job)&&(a.job!=='builder'||!hasWork))),byId=new Map(available.map(a=>[a.id,a])),reserved=new Set(),candidates=available.slice().sort((a,b)=>(b.job==='guardian')-(a.job==='guardian'));
-  for(const a of adults){delete a.towerId;delete a.trainingFacilityId}
-  for(const tower of s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4)){let a=byId.get(tower.staffedBy);if(!a||reserved.has(a.id))a=candidates.find(a=>!reserved.has(a.id));tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range}
-  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4)){const keep=(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));for(const a of candidates){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}}
+ staffFacilities(s){
+  const g=this.game,attacked=!!s.attack;
+  if(g.time<(s._staffAt||0)&&s._staffAttack===attacked)return;
+  s._staffAttack=attacked;s._staffAt=g.time+(attacked?1:4);
+  const members=s._members||this.members(s),adults=members.filter(a=>a.hp>0&&a.state==='settled'&&a.settlementId===s.id&&!a.armyOrder&&!a.divisionId&&!a.kingdomMission&&!a.expeditionCargo&&!g.blastActive?.(a));
+  const hasWork=this.board(s).ordered.length>0,available=adults.filter(a=>attacked||!['workshop','gardener'].includes(a.job)&&(a.job!=='builder'||!hasWork)),byId=new Map(available.map(a=>[a.id,a])),reserved=new Set();
+  for(const f of s.facilities)if(DEFENSES[f.kind]&&f.staffedBy){const old=g.apesById?.get(f.staffedBy);if(old&&!members.includes(old))delete old.towerId}
+  const previous=new Map(members.map(a=>[a.id,a.towerId]));
+  for(const a of members){delete a.towerId;delete a.trainingFacilityId}
+  const towers=s.facilities.filter(f=>DEFENSES[f.kind]&&f.hp>0&&f.stage===4);
+  // Reserve existing crew first, including monkeys still walking to a station.
+  for(const tower of towers){const a=byId.get(tower.staffedBy);tower.staffedBy=a&&!reserved.has(a.id)?a.id:null;if(tower.staffedBy)reserved.add(a.id)}
+  for(const tower of towers){
+   tower.station=tower.station||{x:tower.x-42,y:tower.y+24};tower.range=DEFENSES[tower.kind].range;
+   let a=byId.get(tower.staffedBy);
+   if(!a){let best=Infinity;for(const candidate of available){if(reserved.has(candidate.id))continue;const score=distance(candidate,tower.station)+(candidate.job==='guardian'?0:200);if(score<best){best=score;a=candidate}}}
+   tower.staffedBy=a?.id||null;if(a){a.towerId=tower.id;reserved.add(a.id)}
+  }
+  for(const f of s.facilities)if(DEFENSES[f.kind]&&!towers.includes(f))f.staffedBy=null;
+  for(const a of members)if(previous.get(a.id)!==a.towerId){delete a._activityTarget;a._activityAt=0;delete a.garrisonPost;s._garrisonAt=0}
+  for(const facility of s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4)){
+   const keep=attacked?[]:(facility.trainingResidents||[]).map(id=>byId.get(id)).filter(a=>a&&a.trainingLevel<3&&!reserved.has(a.id));
+   if(!attacked)for(const a of available){if(keep.length>=3)break;if(!reserved.has(a.id)&&!keep.includes(a)&&(a.trainingLevel||0)<3)keep.push(a)}
+   facility.trainingResidents=keep.slice(0,3).map(a=>a.id);for(const a of keep.slice(0,3)){a.trainingFacilityId=facility.id;reserved.add(a.id)}
+  }
  }
  train(s){if(s.attack)return;const g=this.game,byId=new Map((s._adults||[]).map(a=>[a.id,a])),facilities=s.facilities.filter(f=>f.kind==='training'&&f.hp>0&&f.stage===4),selected=Array.from({length:Math.min(6,facilities.length)},(_,i)=>facilities[((s.trainingCursor||0)+i)%facilities.length]);s.trainingCursor=((s.trainingCursor||0)+selected.length)%Math.max(1,facilities.length);let work=0;for(const facility of selected)for(const id of (facility.trainingResidents||[]).slice(0,3)){const a=byId.get(id);if(!a||a.hp<=0||a.state==='young'||g.blastActive?.(a)||distance(a,facility)>80)continue;const level=clamp(Math.floor(a.trainingLevel||0),0,3);if(level>=3){a.trainingProgress=0;continue}const needed=45*(level+1),cost=3+level*2;a.trainingProgress=Math.min(needed,(a.trainingProgress||0)+(g.kingdom?.modifiers(s).training||1));a.activity='training';work++;if(a.trainingProgress>=needed&&s.food>=cost){s.food-=cost;a.trainingProgress=0;a.trainingLevel=level+1;g.applyTraining?.(a,a.trainingLevel);facility.trained=(facility.trained||0)+1}}
   s.trainingWorkers=work;
