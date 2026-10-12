@@ -1,4 +1,4 @@
-// Colored atlas fixtures verify the renderer; these are not deliverable artwork.
+// Defaults to synthetic fixtures; IRON_THRONE_SPRITE_DIR also validates an extracted art delivery.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -8,6 +8,7 @@ import path from 'node:path';
 import {SPRITE_ANIMATIONS,SPRITE_PATHS} from '../sprite-animations.mjs';
 const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
 const {chromium}=require('playwright'),root=fileURLToPath(new URL('../../../',import.meta.url));
+const production=process.env.IRON_THRONE_SPRITE_DIR?new Map(await Promise.all(SPRITE_PATHS.map(async p=>[p,await readFile(path.join(process.env.IRON_THRONE_SPRITE_DIR,p))]))):null;
 const server=http.createServer(async(req,res)=>{
   try {
     const pathname=new URL(req.url,'http://localhost').pathname;
@@ -26,11 +27,53 @@ try {
     const ctx=c.getContext('2d');for(let row=0;row<spec.rows;row++)for(let col=0;col<8;col++){ctx.fillStyle=`rgb(${50+col*20},${40+row*70},90)`;ctx.fillRect(col*spec.cell.width+20,row*spec.cell.height+20,spec.cell.width-40,spec.cell.height-40);}
     return [family,c.toDataURL().split(',')[1]];
   })),SPRITE_ANIMATIONS);await maker.close();
+  if(production) {
+    const page=await browser.newPage();
+    await page.route('https://pub-*.r2.dev/**',route=>{
+      const body=production.get(new URL(route.request().url()).pathname.slice(1));
+      return body?route.fulfill({contentType:'image/png',body}):route.fulfill({status:404,body:''});
+    });
+    await page.goto(`http://127.0.0.1:${server.address().port}/sprite-test`);
+    const result=await page.evaluate(async ({specs,dataUrls})=>{
+      const {AssetCache,loadArt,ironThronesAsset}=await import('/game/iron-throne/asset-manifest.mjs');
+      const cache=new AssetCache(),canvas=document.createElement('canvas');let count=0;
+      for(const spec of Object.values(specs).flatMap(g=>Object.values(g))) {
+        const img=await loadArt(ironThronesAsset(spec.path));
+        if(!img||img.naturalWidth!==spec.cell.width*8||img.naturalHeight!==spec.cell.height*spec.rows)throw Error(`Invalid delivered atlas: ${spec.path}`);
+        // R2 drawing intentionally requires no CORS. Inspect the same bytes via
+        // a data URL so pixel readback does not require changing bucket policy.
+        const readable=new Image();readable.src=dataUrls[spec.path];await readable.decode();
+        canvas.width=spec.cell.width;canvas.height=spec.cell.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});
+        for(const [action,a]of Object.entries(spec.actions)) {
+          const seen=new Set();
+          for(let f=0;f<8;f++) {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            if(!cache.drawSprite(ctx,spec,action,(f+.1)*1000/a.fps,0,0,canvas.width,canvas.height))throw Error(`Draw failed: ${spec.path}`);
+            canvas.width=canvas.width;
+            ctx.drawImage(readable,f*spec.cell.width,a.row*spec.cell.height,spec.cell.width,spec.cell.height,0,0,canvas.width,canvas.height);
+            const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;let visible=0,empty=0;
+            for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){
+              const alpha=pixels[(y*canvas.width+x)*4+3];if(alpha)visible++;else empty++;
+              if((x<2||y<2||x>=canvas.width-2||y>=canvas.height-2)&&alpha)throw Error(`Frame boundary bleed: ${spec.path} ${action} ${f}`);
+            }
+            if(visible<100||empty<pixels.length/16)throw Error(`Empty or opaque frame: ${spec.path}`);
+            seen.add(canvas.toDataURL());count++;
+          }
+          if(seen.size!==8)throw Error(`Repeated frames: ${spec.path} ${action}`);
+        }
+        if(!cache.drawSprite(ctx,spec,'idle',0,0,0,40,40,{color:'#ce4b45'}))throw Error(`Outline draw failed: ${spec.path}`);
+      }
+      return {sheets:Object.values(specs).reduce((n,g)=>n+Object.keys(g).length,0),frames:count,outlinePixels:cache.atlasOutlines.pixels};
+    },{specs:SPRITE_ANIMATIONS,dataUrls:Object.fromEntries([...production].map(([p,b])=>[p,`data:image/png;base64,${b.toString('base64')}`]))});
+    assert.equal(result.sheets,21);assert.equal(result.frames,456);assert.ok(result.outlinePixels<=16*1024*1024);
+    console.log(`PASS delivered artwork: ${result.sheets} sheets, ${result.frames} unique-per-action cropped frames, transparency, clear cell boundaries, all ownership outlines`);
+    await page.close();
+  }
   for(const available of [false,true]) {
     const page=await browser.newPage(),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
     await page.route('https://pub-*.r2.dev/**',route=>{
       const pathname=new URL(route.request().url()).pathname.slice(1);requests.push(pathname);
-      const body=available&&SPRITE_PATHS.includes(pathname)?Buffer.from(images[pathname.split('/')[1]],'base64'):null;
+      const body=available&&SPRITE_PATHS.includes(pathname)?production?.get(pathname)||Buffer.from(images[pathname.split('/')[1]],'base64'):null;
       return body?route.fulfill({contentType:'image/png',body}):route.fulfill({status:404,body:''});
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/sprite-test`);
