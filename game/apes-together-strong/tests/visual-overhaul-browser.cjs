@@ -15,10 +15,14 @@ const screenshot = async (page, name) => { if (output) { fs.mkdirSync(output, { 
     page.on('request', request => { if (/^https?:/i.test(request.url())) remote.push(request.url()); });
     await page.goto(url);
     await page.waitForFunction(() => window.ATSVisualAssets?.status === 'ready');
-    const assets = await page.evaluate(() => Object.values(ATSVisualAssets.manifest).flatMap(family => family.atlases.map(atlas => {
-      const image = ATSVisualAssets.get(atlas.id);
-      return { id: atlas.id, width: image?.naturalWidth, height: image?.naturalHeight, declaredWidth: atlas.width, declaredHeight: atlas.height };
-    })));
+    const assets = await page.evaluate(async () => {
+      const decoded=[];
+      for(const atlas of Object.values(ATSVisualAssets.manifest).flatMap(family=>family.atlases)){
+        await ATSVisualAssets.preload([atlas.id]);const image=ATSVisualAssets.get(atlas.id);
+        decoded.push({id:atlas.id,width:image?.naturalWidth,height:image?.naturalHeight,declaredWidth:atlas.width,declaredHeight:atlas.height});
+      }
+      return decoded;
+    });
     assert.ok(assets.length >= 3, 'character and environmental artwork is present');
     for (const atlas of assets) {
       assert.ok(atlas.width > 0 && atlas.height > 0, 'decoded ' + atlas.id);
@@ -148,7 +152,7 @@ const screenshot = async (page, name) => { if (output) { fs.mkdirSync(output, { 
     await page.evaluate(() => document.getElementById('cageReview').remove());
 
     const gallery = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    const cards = await page.evaluate(() => Object.values(ATSVisualAssets.manifest).flatMap(f => f.atlases.map(a => ({ id: a.id, source: ATSVisualAssets.get(a.id).src }))));
+    const cards = await page.evaluate(async () => {const cards=[];for(const a of Object.values(ATSVisualAssets.manifest).flatMap(f=>f.atlases)){await ATSVisualAssets.preload([a.id]);cards.push({id:a.id,source:ATSVisualAssets.get(a.id).src})}return cards});
     await gallery.setContent('<style>body{margin:28px;background:#12262a;color:#eee;font:16px system-ui}h1{font-size:26px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}article{padding:16px;background:#26383c;border:1px solid #61736c}img{width:100%;height:auto}h2{font-size:16px}</style><h1>Apes Together Strong — original sprite atlas review</h1><div class="grid"></div>');
     await gallery.evaluate(cards => { for (const card of cards) { const article = document.createElement('article'), label = document.createElement('h2'), image = document.createElement('img'); label.textContent = card.id; image.src = card.source; article.append(label, image); document.querySelector('.grid').append(article); } }, cards);
     await gallery.waitForFunction(() => [...document.images].every(image => image.complete && image.naturalWidth));

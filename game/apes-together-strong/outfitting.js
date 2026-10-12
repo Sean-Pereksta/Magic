@@ -23,6 +23,16 @@ armor('phantomWraps','Shadowhand Master Infiltrator Wraps',.21,0,50,34,4,1,.78,{
 armor('mastercraft','Emberwood Mastercraft Harness',.27,0,50,34,4,.96,1.12,{rare:2,workshop:true,build:1.1});
 item('wovenRoyal','Woven Royal Guard','royal',24,28,14,{king:true,grade:1,maxHp:185,damage:1.04,reduction:.04});
 item('timberRoyal','Timber Crown Harness','royal',45,55,18,{king:true,grade:2,population:25,maxHp:210,damage:1.08,reduction:.06});
+// The former body recipes remain readable for old saves and paid jobs. Only
+// these three follower tiers and five royal sets are offered for new orders.
+armor('basicArmor','Armor Tier 1 — Basic',.08,0,12,8,1,1,1,{health:.15,standardArmor:true});
+armor('reinforcedArmor','Armor Tier 2 — Reinforced',.17,100,28,18,2,.96,1.04,{health:.35,climb:.98,standardArmor:true});
+armor('heavyArmor','Armor Tier 3 — Heavy',.27,200,46,30,3,.88,1.18,{health:.60,climb:.88,standardArmor:true});
+item('age1Royal','Age 1 — Rootcrown Armor','royal',30,32,16,{king:true,grade:1,maxHp:210,damage:1.10,reduction:.08,reign:0,royalSet:true});
+item('age2Royal','Age 2 — Crownwarden Armor','royal',120,140,26,{king:true,grade:2,maxHp:320,damage:1.28,reduction:.15,reign:1,workshop:true,royalSet:true});
+item('commandRoyal','Warlord — Fleet Commander','royal',320,360,44,{king:true,grade:3,maxHp:400,damage:1.35,reduction:.18,speed:1.15,auraSpeed:1.10,commandSpeed:.65,reign:2,workshop:true,royalSet:true,path:'command'});
+item('powerRoyal','Warlord — Battle King','royal',380,440,50,{king:true,grade:3,maxHp:600,damage:1.70,reduction:.28,speed:.94,reign:2,workshop:true,royalSet:true,path:'power'});
+item('shadowRoyal','Warlord — Shadow Sovereign','royal',340,380,46,{king:true,grade:3,maxHp:390,damage:1.35,reduction:.17,speed:1.08,stealth:.55,suspicion:.65,reign:2,workshop:true,royalSet:true,path:'shadow'});
 item('club','Wooden Club','weapon',5,3,4,{damage:1.12,art:'baton'});
 item('sling','Stone Sling','weapon',7,4,4,{species:['capuchin'],ranged:1.25,art:'sling'});
 item('knuckles','Hardwood Knuckle Wraps','weapon',9,6,5,{species:HEAVY,damage:1.15,art:'cuffs'});
@@ -54,7 +64,7 @@ item('climbGear','Reinforced Climbing Gear','utility',26,20,10,{species:LIGHT,po
 item('mantle','Veteran War Mantle','utility',24,18,9,{population:80,guard:.04,art:'warMantle'});
 item('royalMantle','Reinforced Royal Battle Mantle','utility',32,24,12,{rare:2,workshop:true,guard:.06,art:'warMantle'});
 item('eliteShoulders','Elite Champion Shoulder Guards','utility',30,24,12,{rare:2,workshop:true,guard:.05,art:'shoulderPlate'});
-const PRESETS=Object.freeze({heavy:{name:'Heavy Assault',items:['ironwood','maul','ironShield','mantle']},shieldwall:{name:'Shieldwall',items:['shell','knuckles','log','mantle']},scout:{name:'Scout',items:['leaf','sling','scout']},infiltrator:{name:'Infiltrator',items:['climbPadding','cutters','rope']},guard:{name:'Village Guard',items:['bark','club','buckler','builder']}});
+const PRESETS=Object.freeze({heavy:{name:'Heavy Assault',items:['heavyArmor','maul','ironShield','mantle']},shieldwall:{name:'Shieldwall',items:['reinforcedArmor','knuckles','log','mantle']},scout:{name:'Scout',items:['basicArmor','sling','scout']},infiltrator:{name:'Infiltrator',items:['basicArmor','cutters','rope']},guard:{name:'Village Guard',items:['basicArmor','club','buckler','builder']}});
 const SLOTS=['body','weapon','shield','utility'];
 const orderStamp=a=>[a?.armyOrder?.group||'',a?.recallOrder?.id||'',a?.nearestOrder?.until||'',a?.divisionId||'',a?.state||''].join(':');
 const modifierCache=new WeakMap(),spec=(a,slot)=>ITEMS[a.outfit?.[slot]];
