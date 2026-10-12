@@ -373,7 +373,7 @@ class Game{
  }
  buildRelevance(){
  const focus=[];this.rescueFocus=this.rescueFocus.filter(f=>f.until>this.time);
- for(const s of this.settlements){if(!s.attack&&this.humanGrid.near(s.x,s.y,(s.radius||90)+160).some(h=>h.state!=='patrol')){s.attack=true;if(this.time>=(s.attackAlertAt||0)){s.attackAlertAt=this.time+20;this.notify(s.name+' is under attack.','red','villageAttack')}}if(s.attack)focus.push({x:s.x,y:s.y,hp:1,radius:(s.radius||90)+320})}
+ for(const s of this.settlements){if(!s.attack&&(this.humanGrid.near(s.x,s.y,(s.radius||90)+160).some(h=>h.hp>0&&h.state!=='patrol')||this.vehicleGrid.nearest(s.x,s.y,(s.radius||90)+160,1,v=>v.hp>0).length)){s.attack=true;if(this.time>=(s.attackAlertAt||0)){s.attackAlertAt=this.time+20;this.notify(s.name+' is under attack.','red','villageAttack')}}if(s.attack)focus.push({x:s.x,y:s.y,hp:1,radius:(s.radius||90)+320})}
  for(const s of this.world.sites.values())if(s.alarm)focus.push({x:s.x,y:s.y,hp:1,radius:600});
  for(const h of this.humans)if(h.hp>0&&['combat','alarm','radio'].includes(h.state))focus.push({x:h.x,y:h.y,hp:1,radius:380});
  for(const a of this.apes)if(a.hp>0&&this.time-(a.lastHit??-100)<2)focus.push({x:a.x,y:a.y,hp:1,radius:300});
@@ -688,7 +688,7 @@ class Game{
  const site=this.world.sites.get(h.siteId);
  if(h.perceptionTimer<=0&&this.performance.think()){h.perceptionTimer=.2+(ATSUtil.hash(h.id)%100)/1000;const post=this.observationPosts?.some(o=>!o.dead&&distance2(o,h)<280**2),light={x:h.x,y:h.y,dir:h.dir,range:this.forces.range(h)*(post?1.15:1),angle:h.state==='combat'?.65:.34};let seen=null;
  const perception=this.perceive(h,light);seen=perception.seen;if(perception.pending)h.perceptionTimer=0;
- if(seen){this.siege?.report(h,seen);h.lastSeenAt=this.time;h.suspicion=clamp(h.suspicion+.32,0,1);h.lastX=seen.x;h.lastY=seen.y;h.searchTime=14;this.lastContact=this.time;if(h.suspicion>=1){if(!h.reported){this.alert(h,'shout');const alarm=site?.objects.map(id=>this.world.objects.get(id)).find(o=>o?.type==='alarm'&&!o.dead);if(alarm&&dist(h,alarm)<270){h.state='alarm';h.alarmTarget=alarm.id;h.radioTimer=0}else if(h.hasRadio&&!(site?.radioDown)){h.state='radio';h.radioTimer=2.3}else h.state='combat'}else if(h.state!=='radio'&&h.state!=='alarm')h.state='combat';h.targetId=seen.id}}
+ if(seen){this.siege?.report(h,seen);h.lastSeenAt=this.time;h.suspicion=clamp(h.suspicion+(perception.suspicionGain??.32),0,1);h.lastX=seen.x;h.lastY=seen.y;h.searchTime=14;this.lastContact=this.time;if(h.suspicion>=1){if(!h.reported){this.alert(h,'shout');const alarm=site?.objects.map(id=>this.world.objects.get(id)).find(o=>o?.type==='alarm'&&!o.dead);if(alarm&&dist(h,alarm)<270){h.state='alarm';h.alarmTarget=alarm.id;h.radioTimer=0}else if(h.hasRadio&&!(site?.radioDown)){h.state='radio';h.radioTimer=2.3}else h.state='combat'}else if(h.state!=='radio'&&h.state!=='alarm')h.state='combat';h.targetId=seen.id}}
  else if(!perception.pending){h.suspicion=Math.max(0,h.suspicion-.06);if(h.state==='combat'){h.state='search';h.searchTime=18;h.targetId=null}}
  // A very large moving horde leaves audible evidence, without pinpoint vision.
  if(!seen&&!perception.pending&&this.followerCount>30&&this.king.moving&&dist(h,this.king)<Math.min(430,120+this.followerCount*2)&&h.state==='patrol'){h.state='investigate';h.lastX=this.king.x+(Math.random()-.5)*120;h.lastY=this.king.y+(Math.random()-.5)*120;h.searchTime=12}
