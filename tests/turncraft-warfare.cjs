@@ -3,7 +3,10 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
-const {chromium}=require('playwright');
+const {createRequire}=require('node:module');
+// TurnCraft's workflow installs its browser dependency in the game package.
+const requireTurncraft=createRequire(path.join(__dirname,'../game/turncraft/package.json'));
+const {chromium}=requireTurncraft('playwright');
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1280,height:900}});
