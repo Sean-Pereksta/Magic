@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0c1726" />
+    <title>TurnCraft • Multiplayer Command</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --gold: #e4bc74;
+        --line: #c0d4ec29;
+        --muted: #a9bbcf;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          linear-gradient(120deg, #08111be8, #111f34dc),
+          url('./turncraft/shattered-front/assets/menu-battlefield.webp')
+            center/cover fixed;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        color: #edf3ff;
+        min-height: 100vh;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button,
+      a.button {
+        min-height: 46px;
+        border: 1px solid #d1ae6470;
+        background: linear-gradient(#31495e, #182c3e);
+        border-radius: 8px;
+        color: #fff;
+        padding: 10px 18px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      button:hover,
+      a.button:hover {
+        border-color: var(--gold);
+        filter: brightness(1.13);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button.primary {
+        background: linear-gradient(#bd914c, #755225);
+      }
+      input,
+      select {
+        width: 100%;
+        background: #0c192a;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 11px;
+        color: #fff;
+        min-height: 46px;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 3px solid var(--gold);
+        outline-offset: 3px;
+      }
+      header,
+      main {
+        width: min(1180px, 94%);
+        margin: auto;
+      }
+      header {
+        padding: 24px 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: clamp(1.5rem, 4vw, 2.5rem);
+        line-height: 1.1;
+        letter-spacing: 0.07em;
+      }
+      small,
+      .muted {
+        color: var(--muted);
+      }
+      .eyebrow {
+        color: var(--gold);
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .panel {
+        background: #0c172ce6;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 16px 60px #0005;
+        margin-bottom: 20px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 20px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .status {
+        padding: 12px 16px;
+        border-left: 3px solid var(--gold);
+        background: #15283c;
+        min-height: 48px;
+        margin-bottom: 20px;
+      }
+      .error {
+        border-color: #ff8d91;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .commander {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .emblem,
+      .avatar {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        border-radius: 50%;
+      }
+      .avatar {
+        object-fit: cover;
+      }
+      .name {
+        font-weight: 700;
+      }
+      .ready {
+        color: #94e4ae;
+      }
+      .badge {
+        color: var(--gold);
+        font-size: 12px;
+      }
+      .room-name {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .code {
+        font-family: ui-monospace, monospace;
+        letter-spacing: 0.12em;
+      }
+      .notice {
+        border: 1px solid var(--line);
+        padding: 14px;
+        border-radius: 8px;
+        color: var(--muted);
+      }
+      .hidden,
+      [hidden] {
+        display: none !important;
+      }
+      .footer {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .rank-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .rank-table td,
+      .rank-table th {
+        text-align: left;
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .rank-table .emblem {
+        width: 28px;
+        height: 28px;
+        vertical-align: middle;
+      }
+      .launch-players {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+      }
+      .launch-card {
+        padding: 24px;
+        background: #14283b;
+        border-radius: 12px;
+        text-align: center;
+      }
+      .launch-card img {
+        height: 64px;
+        width: 64px;
+      }
+      dialog {
+        width: min(680px, 92vw);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #0c172c;
+        color: white;
+        padding: 28px;
+      }
+      dialog::backdrop {
+        background: #000c;
+      }
+      @media (max-width: 760px) {
+        header {
+          align-items: flex-start;
+        }
+        .grid,
+        .fields {
+          grid-template-columns: 1fr;
+        }
+        .panel {
+          padding: 18px;
+        }
+        .actions button {
+          flex: 1;
+        }
+        .row {
+          align-items: flex-start;
+        }
+        .room-actions button {
+          padding: 10px;
+        }
+        .rank-table th:nth-child(4),
+        .rank-table td:nth-child(4) {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          scroll-behavior: auto !important;
+        }
+      }
+      .faction-cards {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        padding: 4px 0 14px;
+      }
+      .faction-card {
+        display: flex;
+        flex-direction: column;
+        flex: 1 0 120px;
+        min-width: 0;
+        padding: 0;
+        overflow: hidden;
+        text-align: left;
+        justify-content: flex-start;
+        scroll-snap-align: center;
+      }
+      .faction-card img {
+        width: 100%;
+        height: 125px;
+        object-fit: cover;
+        object-position: top;
+      }
+      .faction-card b {
+        font-size: 12px;
+        padding: 8px 8px 4px;
+      }
+      .faction-card small {
+        font-size: 11px;
+        padding: 0 8px 10px;
+        line-height: 1.35;
+      }
+      .faction-card[aria-pressed='true'] {
+        outline: 2px solid var(--gold);
+        background: #594428;
+      }
+      .launch-card img.factionSplash {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        object-position: top;
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+      a {
+        color: var(--gold);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <div class="eyebrow">Shattered Front</div>
+        <h1>TURNCRAFT</h1>
+        <span class="muted">Multiplayer Command</span>
+      </div>
+      <a class="button" href="./turncraft.html">Main Menu</a>
+    </header>
+    <main>
+      <div id="connection" class="status" role="status" aria-live="polite">
+        Connecting to your CatnMice identity…
+      </div>
+      <nav class="actions" aria-label="Multiplayer options">
+        <button id="quick">Quick Play</button
+        ><button id="ranked">Ranked Match</button
+        ><button id="create">Create Lobby</button
+        ><button id="browse">Browse Lobbies</button
+        ><button id="code">Join by Code</button
+        ><button id="rankings">Rankings</button>
+      </nav>
+      <section id="browserPanel" class="panel">
+        <h2>Open Battlefields</h2>
+        <p class="muted">
+          Join a public custom match. Hosts launch after every commander is
+          ready.
+        </p>
+        <div id="lobbies"><p class="muted">Looking for commanders…</p></div>
+      </section>
+      <section id="roomPanel" class="grid" hidden>
+        <div class="panel">
+          <div class="eyebrow" id="roomVisibility"></div>
+          <h2 id="roomName">Command Room</h2>
+          <div id="players"></div>
+          <div class="footer">
+            <button id="ready" class="primary">Ready</button
+            ><button id="start">Start Match</button
+            ><button id="resume" hidden>Reconnect to Match</button
+            ><button id="leave">Leave Lobby</button>
+          </div>
+          <p id="roomNote" class="muted"></p>
+        </div>
+        <div class="panel">
+          <h2>Battle Orders</h2>
+          <div
+            id="roomFactionCards"
+            class="faction-cards"
+            aria-label="Faction gallery"
+          ></div>
+          <div class="fields">
+            <label
+              >Your Faction<select id="faction">
+                <option value="frontier">Frontier Directorate</option>
+                <option value="ascendant">Ascendant Conclave</option>
+                <option value="brood">Brood Dominion</option>
+              </select></label
+            ><label
+              >Teams<select disabled>
+                <option>Free for All</option>
+              </select></label
+            ><label
+              >Battlefield<select id="map">
+                <option value="classic">Classic Frontier</option>
+                <option value="ember-rift">Ember Rift</option>
+                <option value="frostline-basin">Frostline Basin</option>
+                <option value="verdant-divide">Verdant Divide</option>
+                <option value="shattered-dunes">Shattered Dunes</option>
+                <option value="orbital-foundry">Orbital Foundry</option>
+              </select></label
+            ><label
+              >Game Mode<select id="gameMode">
+                <option value="annihilation">Annihilation</option>
+                <option value="conquest">Conquest Points</option>
+                <option value="relic">Central Relic</option>
+              </select></label
+            ><label
+              >Commanders<select id="maxPlayers">
+                <option value="2">2 commanders</option>
+                <option value="3">3 commanders</option>
+              </select></label
+            ><label
+              >Visibility<select id="visibility">
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select></label
+            >
+          </div>
+          <p class="muted">
+            Standard resources. Every faction uses its existing multiplayer
+            balance. Changing orders resets everyone’s readiness.
+          </p>
+          <div class="notice">
+            <div class="eyebrow">Invite Code</div>
+            <strong id="inviteCode" class="code">—</strong>
+            <div class="footer">
+              <button id="copyInvite">Copy Invite Link</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="rankPanel" class="panel" hidden>
+        <h2>TurnCraft Rankings</h2>
+        <p id="rankNotice" class="notice"></p>
+        <div id="leaderboard"></div>
+      </section>
+      <dialog id="createDialog">
+        <form id="createForm">
+          <h2>Establish a Command Room</h2>
+          <div class="fields">
+            <label
+              >Room Name<input
+                id="newName"
+                maxlength="80"
+                required
+                value="Shattered Front" /></label
+            ><label
+              >Visibility<select id="newVisibility">
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select></label
+            >
+          </div>
+          <p class="muted">
+            Custom multiplayer supports two or three human commanders.
+          </p>
+          <div class="footer">
+            <button class="primary" type="submit">Create Lobby</button
+            ><button type="button" id="cancelCreate">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="codeDialog">
+        <form id="codeForm">
+          <h2>Join by Invite Code</h2>
+          <label
+            >12-character Code<input
+              id="joinCode"
+              class="code"
+              maxlength="12"
+              required
+              autocomplete="off"
+          /></label>
+          <div class="footer">
+            <button class="primary" type="submit">Join Lobby</button
+            ><button type="button" id="cancelCode">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="loadingDialog" aria-labelledby="loadingTitle">
+        <div class="eyebrow">Deployment</div>
+        <h2 id="loadingTitle">Entering the Battlefield</h2>
+        <div id="loadingPlayers" class="launch-players"></div>
+        <p id="loadingStatus" class="muted"></p>
+      </dialog>
+    </main>
+    <script type="module" src="./turncraft/shattered-front/lobby.mjs"></script>
+  </body>
+</html>

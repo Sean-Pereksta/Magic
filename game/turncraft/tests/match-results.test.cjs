@@ -90,3 +90,15 @@ test('commander names remain plain text in match reports',()=>{
   const run=match();run(`players[0].name='<img src=x onerror=alert(1)>';finishMatch(players[0]);`);
   const report=run.elements.get('postMatchReport').innerHTML;assert.match(report,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.doesNotMatch(report,/<img src=x/);
 });
+
+test('finishing during an in-flight custom write publishes a fresh terminal snapshot to other clients',async()=>{
+  const host=match();host(`lobbyId='shared';stateRef='shared-state';isController=true;globalThis.published=[];globalThis.releaseFirstWrite=null;setDoc=(ref,data)=>{published.push(JSON.parse(JSON.stringify(data)));return published.length===1?new Promise(resolve=>releaseFirstWrite=resolve):Promise.resolve();};void writeState(true);finishMatch(players[0],'Custom match complete.');`);
+  assert.equal(host('published.length'),1);assert.equal(host('published[0].gameOver'),false);host('releaseFirstWrite();');await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+  const snapshot=host.plain('published.at(-1)');assert.equal(snapshot.gameOver,true);assert.equal(snapshot.matchResult.winnerIdx,0);assert.ok(host('published.length')>=2);
+  const guest=match();guest(`PLAYER=1;isController=false;applyRemoteState(${JSON.stringify(snapshot)});`);assert.equal(result(guest).title,'Defeat');assert.equal(guest('gameOver'),true);
+});
+
+test('return to lobby accepts same-origin absolute URLs and rejects external redirect destinations',async()=>{
+  const run=match();run(`returnTo='http://turncraft.test/game/turncraft-lobby.html?lobbyId=confirmed';`);await run('exitGame()');assert.equal(run.context.location.href,'http://turncraft.test/game/turncraft-lobby.html?lobbyId=confirmed');
+  run.context.location.href='http://turncraft.test/game/turncraft.html';run(`returnTo='https://unrelated.example/redirect';`);await run('exitGame()');assert.equal(run.context.location.href,'/game/index.html');
+});

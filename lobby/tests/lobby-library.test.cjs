@@ -27,7 +27,7 @@ for (const key of ['cat', 'chesswarlord', 'stoneyrelic']) {
     assert.deepEqual(library.getActions(byKey[key]), [{ type: 'lobby', label: 'Create Lobby' }]);
   });
 }
-for (const key of ['warrealms', 'biblegame', 'bibleroguelike', 'turncraft', 'ironthrone']) {
+for (const key of ['warrealms', 'biblegame', 'bibleroguelike', 'ironthrone']) {
   test(`${key}: both Play Offline and Create Lobby are available`, () => {
     assert.deepEqual(library.getActions(byKey[key]), [
       { type: 'single', label: 'Play Offline' }, { type: 'lobby', label: 'Create Lobby' }
@@ -222,7 +222,7 @@ function cardHarness() {
     favorites: new Set(['turncraft']), gamePlayCounts: {turncraft: 7},
     toggleFavorite: key => calls.push(['favorite', key]),
     playSingle: (...args) => calls.push(['single', ...args]),
-    openCreateLobby: key => calls.push(['lobby', key]), toast: (...args) => calls.push(['toast', ...args])
+    openCreateLobby: key => calls.push(['lobby', key]), joinOnlineGame: (...args) => calls.push(['online', ...args]), toast: (...args) => calls.push(['toast', ...args])
   };
   return { hooks, probes, calls, create: game => library.createGameCard(game || byKey.turncraft, hooks) };
 }
@@ -231,7 +231,7 @@ test('TurnCraft keeps its existing launch configuration and card hooks', async (
   const game = byKey.turncraft;
   assert.equal(game.route, '/game/turncraft.html');
   assert.deepEqual(game.modes, ['single', 'multi']);
-  assert.equal(game.minPlayers, 1); assert.equal(game.maxPlayers, 4); assert.equal(game.autoRedirect, true);
+  assert.equal(game.minPlayers, 2); assert.equal(game.maxPlayers, 3); assert.equal(game.multiplayerRoute, '/game/turncraft-lobby.html'); assert.equal(game.autoRedirect, true);
   const harness = cardHarness(), card = harness.create();
   assert.equal(card.dataset.gameKey, 'turncraft');
   assert.match(card.className, /\btc-tile\b/);
@@ -241,7 +241,7 @@ test('TurnCraft keeps its existing launch configuration and card hooks', async (
   await card.favorite.emit('click', {stopPropagation() { propagationStopped = true; }});
   await card.actions[0].emit('click'); await card.actions[1].emit('click');
   assert.equal(propagationStopped, true);
-  assert.deepEqual(harness.calls, [['favorite', 'turncraft'], ['single', game, true], ['lobby', 'turncraft']]);
+  assert.deepEqual(harness.calls, [['favorite', 'turncraft'], ['single', game, true], ['online', game, true]]);
   assert.match(upgraded, /<link rel="stylesheet" href="\.\/turncraft-tile\.css\?v=1">/);
 });
 
@@ -285,5 +285,5 @@ test('TurnCraft suppresses duplicate launches and restores both actions after fa
   finally { console.error = originalError; }
   assert.ok(card.actions.every(button => !button.disabled));
   assert.deepEqual(harness.calls, [['toast', 'Could not open that game. Please try again.', 'bad']]);
-  await card.actions[1].emit('click'); assert.deepEqual(harness.calls.at(-1), ['lobby', 'turncraft']);
+  await card.actions[1].emit('click'); assert.deepEqual(harness.calls.at(-1), ['online', byKey.turncraft, true]);
 });
