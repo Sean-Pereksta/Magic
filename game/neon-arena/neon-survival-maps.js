@@ -1,0 +1,253 @@
+/* Endless Breach 2.0: selected-atlas environment renderer and layered map data.
+ * The existing game scales horizontal logical coordinates by 1.45; heights are
+ * already world units. Keep collision and navigation in that same convention.
+ * No dependencies; the original vertex-color renderer remains available.
+ */
+(function (root) {
+  'use strict';
+  const WORLD_SCALE = 1.45, EYE_HEIGHT = 1.86, STRIDE = 10;
+  const script = typeof document !== 'undefined' && document.currentScript;
+  const BASE = script ? new URL('assets/survival/', script.src).href : 'assets/survival/';
+  const names = ['Breach Ring','Derelict Station','Xenofall Wastes','Black Ice Cryolab','The Living Hive','Drowned Powerworks','Orbital Graveyard','The Swarm Heart'];
+  const ids = ['breach_ring','derelict_station','xenofall_wastes','black_ice_cryolab','living_hive','drowned_powerworks','orbital_graveyard','swarm_heart'];
+  const waves = [0,5,10,15,20,25,30,40];
+  const descriptions = ['Fortify a military perimeter with watchtowers and cargo lanes.','Two abandoned platforms, curved tunnels and a crossing concourse.','Open alien canyons, bone arches, corrosive pools and crystal ridges.','Research rooms, a frozen courtyard and elevated coolant passages.','Winding ribbed chambers and membrane bridges above nesting grounds.','Flooded turbine halls, wet channels and powered maintenance bridges.','Wrecked docking bays, shattered hulls and low gravity observation decks.','An immense beating heart surrounded by branching living galleries.'];
+  let selected = null, loadSerial = 0, revision = 0, navCache = null;
+  const meshCache = new Map(), gpu = new Map();
+  const clamp = (n,a,b) => Math.max(a,Math.min(b,n));
+  const inside = (x,z,b,pad=0) => Math.abs(x-b.x)<=b.w/2+pad && Math.abs(z-b.z)<=b.d/2+pad;
+  const pathURL = (path,base=BASE) => new URL(path, new URL(base, typeof location !== 'undefined' ? location.href : 'http://localhost/')).href;
+  function catalog() { return ids.map((id,i)=>({id,name:names[i],unlockWave:waves[i],description:descriptions[i],card:pathURL('tilesets/'+id+'/map_card.webp')})); }
+  async function json(url) {
+    const response=await fetch(url); if(!response.ok)throw new Error('Missing survival asset '+url+' ('+response.status+')');
+    return response.json();
+  }
+  function imageLoad(url) {
+    return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{if(![1024,2048].includes(image.width)||image.height!==image.width){reject(new Error('Survival atlas must be 2048×2048 or its 1024×1024 mobile variant: '+url));return;}resolve(image);};image.onerror=()=>reject(new Error('Missing survival texture '+url));image.src=url;});
+  }
+  async function load(id, options={}) {
+    if(!ids.includes(id))throw new Error('Unknown survival arena: '+id);
+    if(selected?.blueprint.id===id && selected.image)return selected.blueprint;
+    const serial=++loadSerial, base=options.baseUrl||BASE;
+    const manifest=await json(pathURL('manifest.json',base)), entry=manifest.maps.find(m=>m.id===id);
+    if(!entry)throw new Error('Arena missing from survival manifest: '+id);
+    if(manifest.worldScale!==WORLD_SCALE)throw new Error('Survival manifest world scale differs from game');
+    const [blueprint,tileset,prefabs]=await Promise.all([json(pathURL(entry.blueprint,base)),json(pathURL(entry.tileset,base)),json(pathURL(entry.prefabs,base))]);
+    const prefabRoot=pathURL('tilesets/'+id+'/',base), definitions={};
+    await Promise.all(prefabs.items.map(async item=>{const url=pathURL(item.file,prefabRoot),definition=await json(url),meshURL=pathURL(definition.geometry,url);if(!meshCache.has(meshURL))meshCache.set(meshURL,json(meshURL));definitions[item.id]={...definition,mesh:await meshCache.get(meshURL)};}));
+    const mobile=options.mobile??(typeof matchMedia==='function'&&matchMedia('(max-width: 760px)').matches);
+    const atlasURL=pathURL(mobile&&tileset.atlasMobile?tileset.atlasMobile:tileset.atlasColor,pathURL(entry.tileset,base));
+    const image=options.noImage?null:await imageLoad(atlasURL);
+    validateBlueprint(blueprint,tileset,definitions);
+    if(serial!==loadSerial)return blueprint; // A later selection owns the renderer.
+    disposeGPU(); selected={blueprint,tileset,definitions,image,atlasURL,objects:[],collision:[],dynamic:[],tileMap:new Map(tileset.tiles.map(t=>[t.id,t]))};
+    revision++; navCache=null;
+    return blueprint;
+  }
+  function validateBlueprint(b,t,prefabs) {
+    if(b.coordinateSystem.horizontalScale!==WORLD_SCALE)throw new Error('Map horizontal scale invalid: '+b.id);
+    const tileSet=new Set(t.tiles.map(tile=>tile.id));
+    if(t.tiles.length!==64)throw new Error('Tileset must define 64 materials: '+t.id);
+    for(const tile of t.tiles){const [x,y,w,h]=tile.pixelRect;if(x<8||y<8||w!==240||h!==240||x+w>2048||y+h>2048)throw new Error('Invalid padded atlas crop '+tile.id);}
+    for(const object of [...b.walls,...b.platforms,...b.ramps,...b.floorRegions,...b.hazardZones])if(!tileSet.has(object.tile))throw new Error('Missing material '+object.tile+' in '+b.id);
+    for(const prop of b.props)if(!prefabs[prop.prefab]?.mesh)throw new Error('Missing prefab '+prop.prefab+' in '+b.id);
+    if(!b.playerSpawns.length||b.spawnZones.length<4)throw new Error('Map has insufficient spawn routes: '+b.id);
+    for(const r of b.ramps)if(Math.abs(r.toHeight-r.fromHeight)/(r.axis==='x'?r.w:r.d)>.6)throw new Error('Ramp too steep: '+b.id);
+    return true;
+  }
+  function convert(b) {return {...b,x:b.x*WORLD_SCALE,z:b.z*WORLD_SCALE,w:(b.w||0)*WORLD_SCALE,d:(b.d||0)*WORLD_SCALE};}
+  function tag(piece,source) {
+    if(!piece)return null;
+    piece.survivalEnvironment=true;piece.survivalMaterial=source.tile;piece.mapPieceId=source.mapPieceId;
+    if(source.hp!=null && !source.safety){piece.hp=piece.maxHp=source.hp;piece.destructible=true;}
+    if(source.tags?.includes('breach_perimeter'))piece.survivorEdgeWall=true;
+    return piece;
+  }
+  /* callbacks use the old addWall/addPlat signatures and MUST return the added
+   * engine piece. addNav accepts runtime node objects, addSpawn runtime objects.
+   * The main engine keeps its existing collision, weapons and building objects.
+   */
+  function install(callbacks) {
+    if(!selected)throw new Error('Load a survival arena before installing collision');
+    const b=selected.blueprint; selected.objects=[];selected.collision=[];selected.dynamic=[];
+    let next=0;
+    function addBox(source,kind='wall',visual=true) {
+      source={...source,mapPieceId:b.id+':'+(++next)};
+      const col=b.theme.floorA;
+      const piece=kind==='platform'?callbacks.addPlatform(source.x,source.z,source.w,source.d,source.y,source.h,col,source.safety!==false && source.hp==null):callbacks.addWall(source.x,source.z,source.w,source.d,source.h,col,source.y||0,source.safety===true);
+      tag(piece,source);
+      const record={source,kind,piece,world:convert(source)};
+      selected.collision.push(record);if(visual)selected.objects.push(record);
+      return record;
+    }
+    // A safe continuous footing prevents water channels, decorative holes or
+    // demolished platforms from trapping ground enemies and blocking a wave.
+    addBox({x:0,z:0,w:b.size[0],d:b.size[1],y:-.6,h:.6,safety:true,tile:b.defaultFloor},'platform',false);
+    for(const w of b.walls)addBox(w);
+    for(const p of b.platforms)addBox(p,'platform');
+    for(const r of b.ramps){
+      selected.objects.push({source:r,kind:'ramp',world:convert(r)});
+      const steps=Math.max(12,Math.ceil(Math.abs(r.toHeight-r.fromHeight)/.125)),length=r.axis==='x'?r.w:r.d;
+      for(let i=0;i<steps;i++){
+        const at=(i+.5)/steps,top=r.fromHeight+(r.toHeight-r.fromHeight)*at;
+        if(top<.04)continue;
+        const s={x:r.x,z:r.z,w:r.w,d:r.d,y:top-.16,h:.16,safety:true,tile:r.tile,rampCollision:true};
+        s[r.axis]+=(at-.5)*length; s[r.axis==='x'?'w':'d']=length/steps+.012;
+        addBox(s,'platform',false);
+      }
+    }
+    for(const p of b.props){
+      const definition=selected.definitions[p.prefab],source={...p,mapPieceId:b.id+':prop:'+(++next)},records=[];
+      if(!p.decorative)for(const c of definition.mesh.collision||[]){
+        const yaw=p.yaw||0,s=Math.sin(yaw),co=Math.cos(yaw),x=c.x*p.w,z=c.z*p.d;
+        records.push(addBox({x:p.x+x*co+z*s,z:p.z-x*s+z*co,w:Math.abs(c.w*p.w*co)+Math.abs(c.d*p.d*s),d:Math.abs(c.w*p.w*s)+Math.abs(c.d*p.d*co),h:c.h*p.h,y:p.y+c.y*p.h,tile:p.tile,hp:p.hp||1200,safety:false},'wall',false));
+      }
+      selected.objects.push({source,kind:'mesh',world:convert(source),definition,collisionRecords:records});
+    }
+    const bound=b.boundaries,lim=b.size[0]/2;
+    for(const edge of [{x:0,z:-lim,w:b.size[0],d:.6},{x:0,z:lim,w:b.size[0],d:.6},{x:-lim,z:0,w:.6,d:b.size[1]},{x:lim,z:0,w:.6,d:b.size[1]}])addBox({...edge,y:0,h:bound.height,tile:bound.tile,topTile:'upper_00',safety:true});
+    // Reserve event geometry up front; only toggling active changes gameplay.
+    for(const zone of b.hazardZones)if(zone.structure){const object=addBox({...zone.structure,y:0,safety:false,hp:650});if(object.piece)object.piece.active=false;object.eventZone=zone;selected.dynamic.push(object);}
+    callbacks.setTheme?.({...b.theme});
+    for(const s of b.playerSpawns)callbacks.addSpawn?.({x:s.x*WORLD_SCALE,z:s.z*WORLD_SCALE,y:EYE_HEIGHT+(s.y||0),r:s.r*WORLD_SCALE});
+    revision++;navCache=null;
+    for(const node of navigation().nodes)callbacks.addNav?.({...node,y:node.y+EYE_HEIGHT,r:2.1});
+    return {blueprint:b,theme:b.theme,objects:selected.objects,collision:selected.collision};
+  }
+  function rampHeight(x,z) {
+    if(!selected)return -Infinity;
+    let height=-Infinity;
+    for(const ramp of selected.blueprint.ramps){const r=convert(ramp);if(!inside(x,z,r))continue;const t=clamp(((r.axis==='x'?x-r.x:z-r.z)/(r.axis==='x'?r.w:r.d))+.5,0,1);height=Math.max(height,r.fromHeight+(r.toHeight-r.fromHeight)*t);}
+    return height;
+  }
+  function rampSupport(actor,eyeHeight=EYE_HEIGHT) {const h=rampHeight(actor.x,actor.z);return Number.isFinite(h)&&Math.abs(actor.y-eyeHeight-h)<.20;}
+  function followRamp(actor,old,eyeHeight=EYE_HEIGHT) {
+    if(!selected||actor.flying||actor.climbing||actor.vy>1)return false;
+    const now=rampHeight(actor.x,actor.z),before=rampHeight(old.x,old.z),feet=old.y-eyeHeight;
+    if(!Number.isFinite(now)||now<-.02)return false;
+    const reachable=old.grounded && (Math.abs(feet-(Number.isFinite(before)?before:now))<.38 || Math.abs(feet-now)<.30);
+    const landing=actor.vy<=0&&feet>=now-.08&&actor.y-eyeHeight<=now+.08;
+    if(!reachable&&!landing)return false;
+    actor.y=now+eyeHeight;actor.vy=0;actor.onGround=true;return true;
+  }
+  function active(record) {
+    if(record.kind==='mesh')return !record.collisionRecords.length || record.collisionRecords.some(c=>c.piece?.active!==false);
+    return record.piece?.active!==false;
+  }
+  function environmentStateChanged() { revision++; }
+  function surfaceInfo(x,z,feet=0) {
+    if(!selected)return {walkable:false,height:0,hazard:null,layer:0};
+    const b=selected.blueprint,lim=b.size[0]/2*WORLD_SCALE;
+    if(Math.abs(x)>lim-.9||Math.abs(z)>lim-.9)return {walkable:false,height:0,hazard:null,layer:0};
+    let height=0,layer=0;
+    for(const record of selected.objects){if(record.kind!=='platform'||!active(record))continue;const p=record.source,c=record.world,top=p.y+p.h;if(inside(x,z,c) && top<=feet+.65 && top>height){height=top;layer=1;}}
+    const ramp=rampHeight(x,z);if(Number.isFinite(ramp)&&ramp<=feet+1.1){height=Math.max(height,ramp);layer=height>.4?1:0;}
+    let obstacle=null;
+    for(const record of selected.collision){if(record.kind!=='wall'||!active(record))continue;const w=record.world;if(!inside(x,z,w,.48))continue;const bottom=w.y||0,top=bottom+w.h;if(height+EYE_HEIGHT>bottom+.05&&height<top-.15){obstacle=record;break;}}
+    const hazard=b.hazardZones.find(z=>inside(x,z,convert(z))&&Math.abs((z.y||0)-height)<2)||null;
+    // Destructible defenses are routable goals. AI can request their target box.
+    const destructible=obstacle?.piece?.destructible ?? (obstacle?.source.hp!=null);
+    return {walkable:!obstacle || destructible,height,hazard,layer,obstacle:obstacle?.piece||null,destructible:!!destructible,cost:obstacle?4:hazard?.kind==='acid'?3:1};
+  }
+  function pointInfo(x,z,actor) {return surfaceInfo(x,z,actor?Math.max(0,(actor.y||EYE_HEIGHT)-(actor.eyeHeight||EYE_HEIGHT)):0);}
+  function canTraverse(from,to,actor={}) {
+    if(actor.flying)return true;
+    const fromHeight=from.height??from.y??0,toHeight=to.height??to.y??0;
+    const startGround=actor.y!=null?Math.max(0,actor.y-(actor.eyeHeight||EYE_HEIGHT)):fromHeight;
+    const start=surfaceInfo(from.x,from.z,startGround),finish=surfaceInfo(to.x,to.z,toHeight);
+    if(!start.walkable||!finish.walkable)return false;
+    const distance=Math.hypot(to.x-from.x,to.z-from.z),steps=Math.max(2,Math.ceil(distance/.8));
+    let previous=start.height;
+    for(let i=1;i<=steps;i++){const t=i/steps,expected=fromHeight+(toHeight-fromHeight)*t,info=surfaceInfo(from.x+(to.x-from.x)*t,from.z+(to.z-from.z)*t,Math.max(expected,previous));if(!info.walkable||Math.abs(info.height-previous)>.75)return false;previous=info.height;}
+    return Math.abs(previous-finish.height)<.8;
+  }
+  function navigation() {
+    if(!selected)return {nodes:[],links:[],spawnZones:[],burrowZones:[],revision};
+    if(navCache?.revision===revision)return navCache;
+    const surfaceSignature=selected.objects.filter(o=>o.kind==='platform'||o.kind==='ramp').map(o=>active(o)?'1':'0').join('');
+    // Most changes are a destroyed wall or a temporary membrane. They only
+    // alter traversal cost, so preserve the expensive spatial/link assembly.
+    // An actual floor/deck loss still regenerates the layered graph below.
+    if(navCache?.surfaceSignature===surfaceSignature){const nodes=navCache.nodes.map(n=>({...n,cost:surfaceInfo(n.x,n.z,n.height).cost||1}));navCache={...navCache,nodes,revision};return navCache;}
+    const b=selected.blueprint,nodes=[],links=[],unique=new Map(),step=b.navigation.gridStep||4,lim=40;
+    function node(x,z,y,layer=0){const wx=x*WORLD_SCALE,wz=z*WORLD_SCALE,key=[Math.round(wx*10),Math.round(wz*10),Math.round(y*10)].join(':');if(unique.has(key))return unique.get(key);const info=surfaceInfo(wx,wz,y);if(!info.walkable)return null;const item={id:'n'+nodes.length,x:wx,z:wz,y:info.height,height:info.height,layer,cost:info.cost};nodes.push(item);unique.set(key,item);return item;}
+    for(let z=-lim;z<=lim;z+=step)for(let x=-lim;x<=lim;x+=step)node(x,z,0);
+    for(const p of b.platforms)for(let z=p.z-p.d/2+1;z<=p.z+p.d/2-1;z+=3)for(let x=p.x-p.w/2+1;x<=p.x+p.w/2-1;x+=3)node(x,z,p.y+p.h,1);
+    for(const r of b.ramps){const length=r.axis==='x'?r.w:r.d,steps=Math.ceil(length/2);for(let i=0;i<=steps;i++){const t=i/steps;node(r.x+(r.axis==='x'?(t-.5)*r.w:0),r.z+(r.axis==='z'?(t-.5)*r.d:0),r.fromHeight+(r.toHeight-r.fromHeight)*t,1);}}
+    for(const zone of b.spawnZones)node(zone.x,zone.z,zone.y||0);
+    for(const s of b.playerSpawns)node(s.x,s.z,s.y||0);
+    const climbLinks=[];
+    for(const p of b.platforms)for(const side of [-1,1]){const ground=node(p.x+side*(p.w/2+.8),p.z,0),upper=node(p.x+side*(p.w/2-.8),p.z,p.y+p.h,1);if(ground&&upper&&upper.y-ground.y>2)climbLinks.push({from:ground.id,to:upper.id,kind:'climb',cost:Math.hypot(upper.x-ground.x,upper.z-ground.z)+Math.abs(upper.y-ground.y)});}
+    // Small spatial buckets avoid an O(nodes²) graph build.
+    const buckets=new Map(),cell=6.5;
+    for(const n of nodes){const key=Math.floor(n.x/cell)+':'+Math.floor(n.z/cell);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(n);}
+    for(const n of nodes){const bx=Math.floor(n.x/cell),bz=Math.floor(n.z/cell);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(const v of buckets.get((bx+dx)+':'+(bz+dz))||[]){if(Number(v.id.slice(1))<=Number(n.id.slice(1)))continue;const distance=Math.hypot(v.x-n.x,v.z-n.z);if(distance>6.7||distance<.05)continue;if(!canTraverse(n,v,{y:n.y+EYE_HEIGHT}))continue;const kind=Math.abs(v.y-n.y)>.25?'ramp':'walk';links.push({from:n.id,to:v.id,kind,cost:distance*Math.max(n.cost,v.cost)});}}
+    // Climbers have explicit optional face connections; ordinary ground species
+    // still reach every deck through the independent ramp/walk graph above.
+    links.push(...climbLinks);
+    navCache={nodes,links,revision,surfaceSignature,spawnZones:b.spawnZones.map(s=>({...s,x:s.x*WORLD_SCALE,z:s.z*WORLD_SCALE,r:s.r*WORLD_SCALE})),burrowZones:b.burrowZones.map(s=>({...s,x:s.x*WORLD_SCALE,z:s.z*WORLD_SCALE,r:s.r*WORLD_SCALE}))};
+    return navCache;
+  }
+  function spawnPoint(kind='ground',rng=Math.random) {
+    kind=kind==='fly'||kind==='flyer'?'fly':/burrow/i.test(kind)?'burrow':'ground';
+    const zones=navigation().spawnZones.filter(s=>!s.types||s.types.includes(kind));
+    if(!zones.length)return {x:0,z:0,y:EYE_HEIGHT};
+    const s=zones[Math.floor(rng()*zones.length)%zones.length],a=rng()*Math.PI*2,r=rng()*s.r*.6,x=s.x+Math.cos(a)*r,z=s.z+Math.sin(a)*r;
+    return {x,z,y:surfaceInfo(x,z,s.y||0).height+EYE_HEIGHT};
+  }
+  function pickupPoint(rng=Math.random) {
+    if(!selected)return {x:0,z:0,y:0};
+    const zones=selected.blueprint.pickupRegions;
+    for(let i=0;i<24;i++){const s=zones[Math.floor(rng()*zones.length)%zones.length],x=(s.x+(rng()-.5)*s.w)*WORLD_SCALE,z=(s.z+(rng()-.5)*s.d)*WORLD_SCALE,info=pointInfo(x,z);if(info.walkable&&!info.obstacle&&!info.hazard)return {x,z,y:info.height};}
+    return {x:selected.blueprint.playerSpawns[0].x*WORLD_SCALE,z:selected.blueprint.playerSpawns[0].z*WORLD_SCALE,y:0};
+  }
+  function canBuild(x,z,y=0) {return !!selected?.blueprint.buildRegions.some(r=>inside(x,z,convert(r))&&y<r.maxHeight)&&!pointInfo(x,z,{y:y+EYE_HEIGHT}).hazard;}
+
+  /* Textured surfaces use atlas-local UVs baked once into cached static chunks.
+   * No mipmaps: 8px gutters and half-texel inner insets keep neighboring slots
+   * out of both minified and magnified samples, including mobile WebGL1.
+   */
+  function material(id) {return selected.tileMap.get(id)||selected.tileMap.get('floor_00');}
+  function vertex(out,p,n,u,v,tile,pulse=0){const t=material(tile),uv=t.uv;out.push(p[0],p[1],p[2],uv[0]+clamp(u,0,1)*(uv[2]-uv[0]),uv[1]+clamp(v,0,1)*(uv[3]-uv[1]),n[0],n[1],n[2],t.emissive||0,pulse);}
+  function quad(out,a,b,c,d,tile,n=[0,1,0],pulse=0){for(const [p,u,v] of [[a,0,0],[b,1,0],[c,1,1],[a,0,0],[c,1,1],[d,0,1]])vertex(out,p,n,u,v,tile,pulse);}
+  function subdividedFace(out,a,b,c,d,tile,n,unit=5.8){
+    const width=Math.hypot(...a.map((v,i)=>v-b[i])),height=Math.hypot(...a.map((v,i)=>v-d[i])),nx=Math.max(1,Math.ceil(width/unit)),ny=Math.max(1,Math.ceil(height/unit));
+    const p=(u,v)=>a.map((value,i)=>value+(b[i]-value)*u+(d[i]-value)*v);
+    for(let x=0;x<nx;x++)for(let y=0;y<ny;y++)quad(out,p(x/nx,y/ny),p((x+1)/nx,y/ny),p((x+1)/nx,(y+1)/ny),p(x/nx,(y+1)/ny),tile,n);
+  }
+  function boxGeometry(out,o,kind){const x=o.world.x,z=o.world.z,w=o.world.w/2,d=o.world.d/2,s=o.source,y0=s.y||0,y1=y0+s.h;const A=[x-w,y0,z-d],B=[x+w,y0,z-d],C=[x+w,y0,z+d],D=[x-w,y0,z+d],E=[x-w,y1,z-d],F=[x+w,y1,z-d],G=[x+w,y1,z+d],H=[x-w,y1,z+d];subdividedFace(out,E,F,G,H,s.topTile||(kind==='platform'?s.tile:'upper_00'),[0,1,0]);subdividedFace(out,A,D,C,B,s.sideTile||(kind==='platform'?'trim_01':s.tile),[0,-1,0]);subdividedFace(out,A,E,H,D,s.sideTile||s.tile,[-1,0,0]);subdividedFace(out,B,C,G,F,s.sideTile||s.tile,[1,0,0]);subdividedFace(out,A,B,F,E,s.sideTile||s.tile,[0,0,-1]);subdividedFace(out,D,H,G,C,s.sideTile||s.tile,[0,0,1]);}
+  function floorGeometry(out){const b=selected.blueprint,step=4,half=b.size[0]/2;for(let x=-half;x<half;x+=step)for(let z=-half;z<half;z+=step){const xm=x+step/2,zm=z+step/2;let tile=b.defaultFloor;for(const r of b.floorRegions)if(inside(xm,zm,r))tile=r.tile;for(const r of b.hazardZones)if(inside(xm,zm,r)&&!(r.y>0))tile=r.tile;const y=.015;quad(out,[x*WORLD_SCALE,y,z*WORLD_SCALE],[(x+step)*WORLD_SCALE,y,z*WORLD_SCALE],[(x+step)*WORLD_SCALE,y,(z+step)*WORLD_SCALE],[x*WORLD_SCALE,y,(z+step)*WORLD_SCALE],tile);}}
+  function rampGeometry(out,o){const r=o.world,source=o.source,a=source.fromHeight+.025,b=source.toHeight+.025,x=r.x,z=r.z,w=r.w/2,d=r.d/2;const corners=r.axis==='x'?[[x-w,a,z-d],[x+w,b,z-d],[x+w,b,z+d],[x-w,a,z+d]]:[[x-w,a,z-d],[x+w,a,z-d],[x+w,b,z+d],[x-w,b,z+d]];const dx=corners[1][0]-corners[0][0],dy=corners[1][1]-corners[0][1],dz=corners[3][2]-corners[0][2],dyz=corners[3][1]-corners[0][1],norm=[-dy/(dx||1),1,-dyz/(dz||1)],len=Math.hypot(...norm);subdividedFace(out,...corners,source.tile,norm.map(n=>n/len));}
+  function meshGeometry(out,o){const mesh=o.definition.mesh,s=o.source,yaw=s.yaw||0,co=Math.cos(yaw),si=Math.sin(yaw),world=o.world;for(const index of mesh.indices){const ix=index*3,uv=index*2,x=mesh.positions[ix]*world.w,z=mesh.positions[ix+2]*world.d,nx=mesh.normals[ix]/world.w,ny=mesh.normals[ix+1]/s.h,nz=mesh.normals[ix+2]/world.d,len=Math.hypot(nx,ny,nz)||1;vertex(out,[world.x+x*co+z*si,(s.y||0)+mesh.positions[ix+1]*s.h,world.z-x*si+z*co],[(nx*co+nz*si)/len,ny/len,(-nx*si+nz*co)/len],mesh.uvs[uv],mesh.uvs[uv+1],s.tile,s.pulse?1:0);if(s.surfaceType==='planet')out[out.length-2]=-2;if(s.surfaceType==='stars')out[out.length-2]=-3;}}
+  function chunkKey(x,z){return Math.floor(x/24)+':'+Math.floor(z/24);}
+  function buildChunks(onlyKeys=null){const chunks=new Map(),size=24;function get(x,z){const key=chunkKey(x,z);if(onlyKeys&&!onlyKeys.has(key))return null;if(!chunks.has(key))chunks.set(key,{key,data:[],x:Math.floor(x/size)*size+size/2,z:Math.floor(z/size)*size+size/2,r:34});return chunks.get(key).data;}const floor=[];floorGeometry(floor);for(let i=0;i<floor.length;i+=STRIDE*6){const x=floor[i],z=floor[i+2],out=get(x,z);if(out)out.push(...floor.slice(i,i+STRIDE*6));}for(const o of selected.objects)if(active(o)){const out=get(o.world.x,o.world.z);if(!out)continue;if(o.source.background)chunks.get(chunkKey(o.world.x,o.world.z)).background=true;if(o.kind==='mesh')meshGeometry(out,o);else if(o.kind==='ramp')rampGeometry(out,o);else boxGeometry(out,o,o.kind);}return [...chunks.values()].map(c=>({...c,data:new Float32Array(c.data)}));}
+  function compile(gl,type,source){const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;}
+  const VS='attribute vec3 aPos;attribute vec2 aUV;attribute vec3 aNormal;attribute vec2 aEffects;uniform vec3 uCamera;uniform vec3 uRight;uniform vec3 uUp;uniform vec3 uForward;uniform float uAspect;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying float vDistance;void main(){vec3 pos=aPos+aNormal*aEffects.y*sin(uTime*2.3)*.075;vec3 d=pos-uCamera;vec3 c=vec3(dot(d,uRight),dot(d,uUp),dot(d,uForward));float n=.055;float f=180.;gl_Position=vec4(c.x*1.44*uAspect,c.y*1.44,(f+n)/(f-n)*c.z-2.*f*n/(f-n),c.z);vUV=aUV;vNormal=aNormal;vView=-d;vEffects=aEffects;vDistance=length(d);}';
+  const FS='precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFog;uniform float uFogDensity;uniform float uAmbient;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying float vDistance;void main(){vec4 tex=texture2D(uAtlas,vUV);vec3 n=normalize(vNormal);float light=uAmbient+.48*max(0.,dot(n,normalize(vec3(.25,.9,.4))));if(vEffects.x<-2.5){gl_FragColor=vec4(vec3(.75,.84,1.)*(.85+.15*sin(uTime*.4+vDistance)),1.);return;}if(vEffects.x<-1.5){float land=smoothstep(.04,.14,sin(vUV.x*340.)*sin(vUV.y*210.)+.30*sin(vUV.x*730.+vUV.y*630.));float cloud=smoothstep(.32,.75,sin(vUV.y*820.+sin(vUV.x*240.)*5.)*.5+.45);vec3 ocean=vec3(.025,.13,.27),continent=vec3(.12,.27,.21);vec3 planet=mix(mix(ocean,continent,land),vec3(.73,.86,.92),cloud*.68);planet=mix(planet,tex.rgb,.15);float atmosphere=pow(1.-max(0.,dot(n,normalize(vView))),3.);planet=planet*(.16+.85*max(0.,dot(n,normalize(vec3(-.3,.8,.5)))))+vec3(.06,.35,.65)*atmosphere;gl_FragColor=vec4(planet,1.);return;}float glow=vEffects.x*(.80+.20*sin(uTime*2.3));vec3 color=tex.rgb*(light+glow);float fog=max(smoothstep(75.,170.,vDistance)*.64,smoothstep(10.,48.,vDistance)*uFogDensity);gl_FragColor=vec4(mix(color,uFog,fog),1.);}';
+  function createGPU(gl){const program=gl.createProgram(),vs=compile(gl,gl.VERTEX_SHADER,VS),fs=compile(gl,gl.FRAGMENT_SHADER,FS);gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);gl.deleteShader(vs);gl.deleteShader(fs);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,selected.image);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);const uniforms={};for(const name of ['uCamera','uRight','uUp','uForward','uAspect','uTime','uAtlas','uFog','uFogDensity','uAmbient'])uniforms[name]=gl.getUniformLocation(program,name);const attrs={};for(const name of ['aPos','aUV','aNormal','aEffects'])attrs[name]=gl.getAttribLocation(program,name);const data={program,texture,uniforms,attrs,chunks:[],dirty:true,signature:'',objectStates:new Map()};gpu.set(gl,data);return data;}
+  function stateSignature(){return selected.collision.map(r=>r.piece?.active===false?'0':'1').join('');}
+  function render(gl,camera,options={}){
+    if(!selected?.image||!selected.objects.length)return false;
+    const previousProgram=gl.getParameter(gl.CURRENT_PROGRAM),previousBuffer=gl.getParameter(gl.ARRAY_BUFFER_BINDING),previousActive=gl.getParameter(gl.ACTIVE_TEXTURE);
+    gl.activeTexture(gl.TEXTURE0);const previousTexture=gl.getParameter(gl.TEXTURE_BINDING_2D),data=gpu.get(gl)||createGPU(gl),signature=stateSignature(),changed=new Set();
+    if(signature!==data.signature){data.signature=signature;revision++;for(const object of selected.objects){const state=active(object),key=object.source.mapPieceId||object; if(data.objectStates.get(key)!==state)changed.add(chunkKey(object.world.x,object.world.z));data.objectStates.set(key,state);}}
+    if(data.dirty||changed.size){const update=buildChunks(data.dirty?null:changed),replacement=new Set(update.map(c=>c.key));const retained=[];for(const c of data.chunks){if(data.dirty||changed.has(c.key)||replacement.has(c.key))gl.deleteBuffer(c.buffer);else retained.push(c);}data.chunks=retained.concat(update.map(c=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,c.data,gl.STATIC_DRAW);return {key:c.key,background:c.background,buffer,count:c.data.length/STRIDE,x:c.x,z:c.z,r:c.r};}));data.dirty=false;}
+    const u=data.uniforms,a=data.attrs;gl.useProgram(data.program);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,data.texture);gl.uniform1i(u.uAtlas,0);gl.uniform3fv(u.uCamera,camera.position);gl.uniform3fv(u.uRight,camera.right);gl.uniform3fv(u.uUp,camera.up);gl.uniform3fv(u.uForward,camera.forward);gl.uniform1f(u.uAspect,camera.aspect);gl.uniform1f(u.uTime,options.time??performance.now()/1000);gl.uniform3fv(u.uFog,selected.blueprint.theme.sky);const environmentEvents=eventStatus(selected.eventClock||0),fogActive=environmentEvents.some(e=>e.type==='fog'&&e.state==='active'),blackout=environmentEvents.some(e=>e.type==='visibility'&&e.state==='active');gl.uniform1f(u.uFogDensity,fogActive?.68:0);gl.uniform1f(u.uAmbient,blackout?.28:.50);
+    const enabled=[];for(const attr of Object.values(a)){enabled.push([attr,gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_ENABLED)]);gl.enableVertexAttribArray(attr);}
+    const distance=options.quality==='low'?105:options.quality==='medium'?145:180;
+    for(const c of data.chunks){if(!c.background&&Math.hypot(c.x-camera.position[0],c.z-camera.position[2])>distance+c.r)continue;gl.bindBuffer(gl.ARRAY_BUFFER,c.buffer);gl.vertexAttribPointer(a.aPos,3,gl.FLOAT,false,STRIDE*4,0);gl.vertexAttribPointer(a.aUV,2,gl.FLOAT,false,STRIDE*4,12);gl.vertexAttribPointer(a.aNormal,3,gl.FLOAT,false,STRIDE*4,20);gl.vertexAttribPointer(a.aEffects,2,gl.FLOAT,false,STRIDE*4,32);gl.drawArrays(gl.TRIANGLES,0,c.count);}
+    for(const [attr,was] of enabled)if(!was)gl.disableVertexAttribArray(attr);
+    gl.bindBuffer(gl.ARRAY_BUFFER,previousBuffer);gl.bindTexture(gl.TEXTURE_2D,previousTexture);gl.activeTexture(previousActive);gl.useProgram(previousProgram);return true;
+  }
+  function disposeGPU(){for(const [gl,data] of gpu){for(const c of data.chunks)gl.deleteBuffer(c.buffer);gl.deleteTexture(data.texture);gl.deleteProgram(data.program);}gpu.clear();}
+  function dispose(){loadSerial++;disposeGPU();selected=null;navCache=null;revision++;}
+  function eventStatus(time,wave=1){if(!selected)return [];const b=selected.blueprint;const events=b.hazardZones.map((zone,index)=>{if(!zone.period)return {...zone,index,state:'passive',x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};const phase=(time+index*17)%zone.period,warning=zone.warning||4,duration=zone.duration||7,state=phase<warning?'warning':phase<warning+duration?'active':'idle';return {...zone,index,state,phase,x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};});for(const event of b.events)if(['fog','visibility'].includes(event.type)){const index=b.hazardZones.length+events.length,phase=time%event.period,state=phase<event.warning?'warning':phase<event.warning+event.duration?'active':'idle';events.push({...event,index,phase,state,kind:event.type==='fog'?'freeze':'blackout',x:0,z:0,w:b.size[0]*WORLD_SCALE,d:b.size[1]*WORLD_SCALE});}return events;}
+  function updateEvents(time,wave=1){const events=eventStatus(time,wave);let changed=false;for(const object of selected?.dynamic||[]){const zone=events.find(e=>e.index===selected.blueprint.hazardZones.indexOf(object.eventZone)),on=zone?.state==='active',cycle=Math.floor((time+zone.index*17)/zone.period);if(on&&object.eventPhaseActive&&object.piece?.active===false)object.destroyedCycle=cycle;const desired=on&&object.destroyedCycle!==cycle;if(object.piece&&object.piece.active!==desired){object.piece.active=desired;if(desired)object.piece.hp=object.piece.maxHp;changed=true;}object.eventPhaseActive=on;}if(selected)selected.eventClock=time;if(changed)environmentStateChanged();return {events,changed};}
+  function groundModifier(actor,time){if(!selected)return {speed:1,gravity:1};const info=pointInfo(actor.x,actor.z,actor),water=selected.blueprint.floorRegions.find(r=>r.kind==='water'&&inside(actor.x,actor.z,convert(r))&&info.height<.5),hazards=eventStatus(time).filter(e=>inside(actor.x,actor.z,e)&&Math.abs((e.y||0)-info.height)<2);let speed=water?.slow||1,gravity=1;for(const h of hazards){if(h.kind==='low_gravity')gravity=h.gravity||.5;else if(h.state==='active'&&h.slow)speed=Math.min(speed,h.slow);}return {speed,gravity};}
+  // Pure setup hook used by node-based regression tests, avoiding browser IO.
+  function hydrateForTest(blueprint,tileset,definitions){dispose();validateBlueprint(blueprint,tileset,definitions);selected={blueprint,tileset,definitions,image:null,objects:[],collision:[],dynamic:[],tileMap:new Map(tileset.tiles.map(t=>[t.id,t]))};return blueprint;}
+  const api={WORLD_SCALE,catalog,load,install,render,dispose,pointInfo,canTraverse,navigation,spawnPoint,pickupPoint,canBuild,rampHeight,rampSupport,followRamp,environmentStateChanged,eventStatus,updateEvents,groundModifier,validateBlueprint,hydrateForTest,buildChunks};
+  Object.defineProperties(api,{current:{get:()=>selected?.blueprint||null},revision:{get:()=>revision},loaded:{get:()=>!!selected?.image},assetRoot:{get:()=>BASE}});
+  root.NeonSurvivalMaps=api;
+  if(typeof module!=='undefined'&&module.exports)module.exports=api;
+})(typeof window!=='undefined'?window:globalThis);

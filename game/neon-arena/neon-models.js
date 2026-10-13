@@ -80,6 +80,11 @@ class ModelCache{
   pump(){while(this.active<this.maxConcurrent&&this.queue.length){const r=this.queue.shift();r.state='loading';this.active++;this.stats.requests++;const abort=typeof AbortController!=='undefined'?new AbortController():null,timer=abort?setTimeout(()=>abort.abort(),12000):null;
     Promise.resolve().then(()=>this.fetch(r.url,{mode:'cors',credentials:'omit',signal:abort?.signal})).then(response=>{if(!response.ok)throw Error('Model HTTP '+response.status);return response.arrayBuffer();}).then(data=>{r.model=parseGLB(data,r.path);r.state='ready';this.stats.parsed++;}).catch(error=>{r.state='failed';r.failedAt=this.now();r.error=String(error?.message||error);this.stats.failed++;}).finally(()=>{if(timer)clearTimeout(timer);this.active--;this.pump();});}}
   status(){return {active:this.active,queued:this.queue.length,...this.stats};}
+  async preload(paths,options={}){
+    const entries=[...new Set(paths)].map(path=>{const url=this.resolve(path);if(!url)throw Error('Model hosting is not configured for '+path);if(options.retry&&this.records.get(url)?.state==='failed')this.records.delete(url);this.get(path);return this.records.get(url);});
+    const started=this.now();
+    while(true){const failed=entries.find(r=>r.state==='failed');if(failed)throw Error('Unable to load '+failed.path+': '+failed.error);const ready=entries.filter(r=>r.state==='ready').length;options.onProgress?.(ready,entries.length);if(ready===entries.length)return entries.map(r=>r.model);if(this.now()-started>(options.timeout||120000))throw Error('Model loading timed out. Retry to continue.');await new Promise(resolve=>setTimeout(resolve,80));}
+  }
 }
 function shader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s}
 const sharedCache=new ModelCache();
@@ -110,11 +115,11 @@ function createRenderer(gl,options={}){
     const tint=!actor.alien?options.teamTint:null;gl.uniform3fv(u.uTeamTint,tint||[1,1,1]);gl.uniform1f(u.uTeamTintAmount,tint?1:0);
     if(animate){animatedActors++;for(const part of r.parts)drawBuffer(part,multiply(matrix,actorPart(part,actor,p,now,model)),flash);}else drawBuffer(r.full,matrix,flash);actorCount++;return true;
   }
-  function drawWeapon(path,matrix,state={},foreground=false){const model=cache.get(path,true);if(!model)return false;const r=resource(model);gl.uniform3fv(u.uTeamTint,[1,1,1]);gl.uniform1f(u.uTeamTintAmount,0);if(foreground)gl.depthRange(0,.12);for(const part of r.parts){let angles=[0,0,0],offset=[0,0,0];if(part.key==='magazine'&&state.reload>0){offset[1]=-Math.sin(Math.PI*state.reload)*.30;if(path.includes('pistol'))angles[2]=Math.sin(Math.PI*state.reload)*.8;}if(part.key==='barrel')offset[2]=-(state.recoil||0)*.10;if(part.key==='energy')angles[2]=Math.sin(lastNow*8)*(state.charge||0)*.03;drawBuffer(part,multiply(matrix,pivotMatrix(part.pivot,angles,offset)),0);}if(foreground)gl.depthRange(0,1);return true;}
+  function drawWeapon(path,matrix,state={},foreground=false){const model=cache.get(path,true);if(!model)return false;const r=resource(model);gl.uniform3fv(u.uTeamTint,state.finishTint||[1,1,1]);gl.uniform1f(u.uTeamTintAmount,state.finishTint?1:0);if(foreground)gl.depthRange(0,.12);for(const part of r.parts){let angles=[0,0,0],offset=[0,0,0];if(part.key==='magazine'&&state.reload>0){offset[1]=-Math.sin(Math.PI*state.reload)*.30;if(path.includes('pistol'))angles[2]=Math.sin(Math.PI*state.reload)*.8;}if(part.key==='barrel')offset[2]=-(state.recoil||0)*.10;if(part.key==='energy')angles[2]=Math.sin(lastNow*8)*(state.charge||0)*.03;drawBuffer(part,multiply(matrix,pivotMatrix(part.pivot,angles,offset)),0);}if(foreground)gl.depthRange(0,1);return true;}
   function rememberDeath(path,actor){if(!cache.get(path))return;corpses.push({path,actor:{...actor,onGround:true,vx:0,vz:0},time:performance.now()/1000});while(corpses.length>12)corpses.shift();}
   function recentDeaths(now=lastNow){while(corpses.length&&now-corpses[0].time>.62)corpses.shift();return corpses;}
   function dispose(){for(const r of gpu.values()){gl.deleteBuffer(r.full.buffer);for(const p of r.parts)gl.deleteBuffer(p.buffer);}gpu.clear();corpses.length=0;gl.deleteProgram(program);}
-  return {cache,beginView,drawActor,drawWeapon,rememberDeath,recentDeaths,get:(p)=>cache.get(p),stats:()=>({drawCalls,animatedActors,actorCount,gpuModels:gpu.size,...cache.status()}),dispose};
+  return {cache,beginView,drawActor,drawWeapon,rememberDeath,recentDeaths,get:(p)=>cache.get(p),preload:(paths,opts)=>cache.preload(paths,opts),stats:()=>({drawCalls,animatedActors,actorCount,gpuModels:gpu.size,...cache.status()}),dispose};
 }
 // Menu portrait uses the actual model, shares downloads with the arena, and stops
 // drawing when hidden. It is intentionally independent of gameplay and HUD state.
