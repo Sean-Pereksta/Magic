@@ -9,12 +9,21 @@ The game remains `../turncraft.html`. `polish.css` is loaded after the legacy st
 - Hold still for 380 ms, then drag a box to select friendly troops with mouse or touch. Shift-drag selects immediately; double-click/tap selects the visible unit type. Moving immediately still pans, and a second finger switches safely to pinch zoom.
 - Ability buttons display Q/E/R/T and subsequent shortcuts, including on touch layouts. The same keys activate ready abilities or enter targeting; Escape cancels. Typing, modifier keys, pause, cooldowns and open dialogs suppress ability shortcuts.
 - A arms Attack (X remains available). Click an enemy to attack it, or click ground to attack the nearest visible valid enemy within four tiles; empty ground issues attack-move. Escape/Cancel Order cancels targeting. The numbered control groups retain tap/hold behavior.
+- Moving troops remain selectable at their rendered positions. A small X marks selected troops finishing a movement step; the command panel explains when the next movement order takes effect. This only describes the existing step timer and does not change orders, cooldowns, or movement.
 - Mine uses existing automatic gathering on arrival. Stop suppresses gathering until a new mining/movement order.
 - Build lists structures and lets adjacent human workers assist an unfinished building. Choose Refinery, Assimilator or Extractor and click a visible unoccupied gas vent at any distance: the worker travels to a reachable adjacent spot and constructs automatically. The cost is checked when ordering and charged once when construction begins. Replacement orders, unavailable vents, blocked routes and lost affordability cancel without a charge. Pending orders survive shared snapshots; Brood consumes its Drone only when construction begins. Ordinary buildings still require adjacent placement.
 
 ## Match setup
 
 The faction cards use three original illustrated WebP assets in `assets/factions/`; their generation prompts and provenance are documented there. They load independently of optional battlefield sprites. The menu offers Easy, Medium, Hard and Pro buttons tied to the existing AI simulation tuning and saved preference. Solo opponent selection now creates the requested one or two opponents. Faction and difficulty controls keep keyboard focus while setup status updates.
+
+The menu retains all existing faction, map popout, opponent, difficulty, temperament and objective controls. Setup and results scroll within the viewport in phone portrait and landscape layouts. Result scenes use the local commander's faction and distinguish victory, defeat, draw and early elimination; reports and their action buttons remain part of the same accessible dialog.
+
+The command banner, insignia, colors, and match-result screen follow the local commander's faction. Three new original cinematic scenes are packaged separately for Cloudflare under `effects/ui/{faction}-command.webp`; the existing faction illustrations appear immediately and remain available if the new scenes have not been uploaded. Exact prompts and artwork provenance are in `assets/ui/README.md`. `presentation.css` and `movement-feedback.css` require no build step.
+
+Match snapshots now include the winner, reason, faction, finish time, and match start time. Each client opens its result dialog once, including on reconnect to a completed match; older snapshots infer a result from the objective score or remaining command bases. Losing the last base shows a defeat report immediately while surviving commanders continue. Spectate dismisses the dialog without allowing an eliminated commander to issue orders, and the captured report does not keep changing during spectating.
+
+AI combat troops respond to raids on command bases, production structures, and construction sites independently of slow economy ticks. Nearby troops respond first, with enough compatible reinforcements recalled for larger threats. Defenders pursue visible moving attackers; damage from fog draws them to the known attacked structure. Workers retain their existing behavior, and active movement, siege, and ability timers remain authoritative.
 
 Choose from Classic Frontier and five new battlefields. Each new map has authored routes, obstacles, starting locations, six expansion sites, conquest zones, a relic location, and its own four-material terrain atlas:
 
