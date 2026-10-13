@@ -1,6 +1,47 @@
 (function (root) {
   "use strict";
 
+  const TURNCRAFT_COVER = "https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/effects/ui/turncraft-lobby.webp";
+  const turncraftCoverLoads = new WeakMap();
+  const TURNCRAFT_ART = `<div class="tc-faction-art" aria-hidden="true">
+    <span class="tc-portrait tc-frontier"><img src="/game/turncraft/assets/factions/frontier.webp" alt="" loading="lazy" decoding="async"></span>
+    <span class="tc-portrait tc-ascendant"><img src="/game/turncraft/assets/factions/ascendant.webp" alt="" loading="lazy" decoding="async"></span>
+    <span class="tc-portrait tc-brood"><img src="/game/turncraft/assets/factions/brood.webp" alt="" loading="lazy" decoding="async"></span>
+    <img class="tc-cover" alt="" decoding="async" hidden>
+  </div><span class="tc-art-badge">Faction warfare</span><span class="tc-art-rule" aria-hidden="true"></span>`;
+  const TURNCRAFT_FACTIONS = `<div class="tc-factions" aria-label="Three playable factions">
+    <span class="tc-frontier"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h10v7l-5 5-5-5V2Z M5 6h6 M8 3v7"/></svg>Frontier</span>
+    <span class="tc-ascendant"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1 5 7-5 7-5-7 5-7Z M3 8h10 M8 1v14"/></svg>Ascendant</span>
+    <span class="tc-brood"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 2 3 4 2-2 2 2 3-4 M2 7l4 2 2 5 2-5 4-2 M3 13l3-4 M13 13l-3-4"/></svg>Brood</span>
+  </div>`;
+
+  function loadTurncraftCover(card, document) {
+    // All catalog, recent and favorite cards share one probe. An unavailable
+    // upload leaves the tracked faction artwork in place without retry loops.
+    let ready = turncraftCoverLoads.get(document);
+    if (!ready) {
+      ready = new Promise(resolve => {
+        const probe = document.createElement("img");
+        probe.addEventListener("load", () => resolve(TURNCRAFT_COVER), { once: true });
+        probe.addEventListener("error", () => resolve(null), { once: true });
+        probe.src = TURNCRAFT_COVER;
+      });
+      turncraftCoverLoads.set(document, ready);
+    }
+    const cover = card.querySelector(".tc-cover");
+    ready.then(url => {
+      if (!url) return;
+      cover.addEventListener("load", () => {
+        cover.hidden = false;
+        card.classList.add("tc-cover-ready");
+      }, { once: true });
+      cover.src = url;
+    });
+    card.querySelectorAll(".tc-portrait img").forEach(image => {
+      image.addEventListener("error", () => { image.hidden = true; }, { once: true });
+    });
+  }
+
   // The hub's existing registry remains the source of truth. A shared world is
   // not a hosted room: retain its working entry action instead of creating a
   // lobby that the game's networking code cannot use.
@@ -37,7 +78,8 @@
     const { document, escapeHtml, gameColor, gameVisual, favorites, gamePlayCounts } = hooks;
     const actions = getActions(game);
     const card = document.createElement("article");
-    card.className = "game-card";
+    const isTurncraft = game.key === "turncraft";
+    card.className = isTurncraft ? "game-card tc-tile" : "game-card";
     card.dataset.gameKey = game.key;
     card.style.setProperty("--game", gameColor(game.key));
     const favorite = favorites.has(game.key);
@@ -48,9 +90,10 @@
       `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
     ).join("");
     card.innerHTML = `
-      <div class="game-art">${gameVisual(game, "art")}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
-      <div class="game-content"><div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div><div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
+      <div class="game-art">${isTurncraft ? TURNCRAFT_ART : gameVisual(game, "art")}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
+      <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div>${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
       <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}</span></div></div>`;
+    if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
       event.stopPropagation();
       hooks.toggleFavorite(game.key);
@@ -129,7 +172,7 @@
       });
     }
 ` + html.slice(end);
-    html = replaceOnce(html, "</head>", `${MARKER}\n${STYLES}\n</head>`, "document head");
+    html = replaceOnce(html, "</head>", `${MARKER}\n${STYLES}\n<link rel="stylesheet" href="./turncraft-tile.css?v=1">\n</head>`, "document head");
     return html;
   }
 
