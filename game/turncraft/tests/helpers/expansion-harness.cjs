@@ -20,6 +20,7 @@ function simulation(faction = 'frontier', options = {}) {
       style: {setProperty: noop}, dataset: {}, children: [],
       classList: {add: noop, remove: noop, toggle: noop, contains: () => false},
       appendChild: noop, append: noop, remove: noop, setAttribute: noop,
+      replaceChildren(...children) {this.children = children; this.innerHTML = '';},
       getAttribute: () => null, addEventListener: noop, removeEventListener: noop,
       querySelector: () => null, querySelectorAll: () => [], getContext: () => paint,
       getBoundingClientRect: () => ({left: 0, top: 700, width: 1280, height: 100, right: 1280, bottom: 800}),
@@ -37,6 +38,7 @@ function simulation(faction = 'frontier', options = {}) {
     addEventListener: noop, body: element(), documentElement: element()
   };
   const storage = new Map();
+  const microtasks = [];
   const network = {writes: [], deletes: [], listener: null};
   const sandbox = {
     console, document, URL, URLSearchParams,
@@ -45,6 +47,7 @@ function simulation(faction = 'frontier', options = {}) {
     innerWidth: 1280, innerHeight: 900, devicePixelRatio: 1,
     performance: {now: () => 0}, setTimeout: () => 0, clearTimeout: noop,
     setInterval: () => 0, clearInterval: noop, requestAnimationFrame: noop,
+    queueMicrotask: callback => microtasks.push(callback),
     matchMedia: () => ({matches: false, addEventListener: noop}),
     HTMLInputElement: class {}, HTMLSelectElement: class {}, Image: class {},
     initializeApp: () => ({}), getAuth: () => ({}), getFirestore: () => ({}),
@@ -71,7 +74,12 @@ globalThis.testEvaluate=source=>eval(source);`);
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(MAP_FILE, 'utf8'), context, {timeout: 30000, filename: 'turncraft/maps.js'});
   vm.runInContext(code, context, {timeout: 30000, filename: 'turncraft.html'});
-  const run = source => vm.runInContext(`testEvaluate(${JSON.stringify(source)})`, context, {timeout: 30000});
+  const run = source => {
+    const result = vm.runInContext(`testEvaluate(${JSON.stringify(source)})`, context, {timeout: 30000});
+    // Match the browser's checkpoint after the synchronous command and its wrappers.
+    while (microtasks.length) microtasks.shift()();
+    return result;
+  };
   const factions = options.factions || [faction, faction === 'ascendant' ? 'frontier' : 'ascendant', 'brood'];
   run(`nowMs=()=>testClock;entities=[];resourceNodes=[];nextEntityId=1;nextNodeId=1;
     players=${JSON.stringify(factions)}.map((id,i)=>makePlayer(i,'Player '+i,id,false));

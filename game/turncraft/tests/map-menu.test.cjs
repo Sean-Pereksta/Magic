@@ -45,7 +45,16 @@ test('deploying each map uses the selected map in the live match and shared snap
 test('map choices remain visible, accessible and tappable in portrait and landscape menus',async()=>{
   for(const [width,height]of [[390,844],[844,390],[1280,900]]){
     const {browser,page,errors}=await setup(width,height);try{
-      for(const id of ['ember-rift','orbital-foundry']){await page.locator('#mapSelectBtn').click();const choice=page.locator(`[data-map="${id}"]`);await choice.click();const result=await choice.evaluate(el=>{const r=el.getBoundingClientRect();return{w:r.width,h:r.height,label:el.getAttribute('aria-label')||el.textContent,pressed:el.getAttribute('aria-pressed')}});assert.ok(result.w>=44&&result.h>=44);assert.ok(result.label.trim().length>5);assert.equal(result.pressed,'true');await page.locator('#mapPopout').waitFor({state:'hidden'})}
+      for(const id of ['ember-rift','orbital-foundry']){
+        await page.locator('#mapSelectBtn').click();
+        const choice=page.locator(`#mapPopout .mapChoice[data-map="${id}"]`);
+        await choice.waitFor({state:'visible'});await choice.scrollIntoViewIfNeeded();
+        const result=await choice.evaluate(el=>{const r=el.getBoundingClientRect();return{w:r.width,h:r.height,label:el.getAttribute('aria-label')||el.textContent}});
+        assert.ok(result.w>=44&&result.h>=44,`${width}×${height} ${id}: ${JSON.stringify(result)}`);
+        assert.ok(result.label.trim().length>5);
+        await choice.click();await page.locator('#mapPopout').waitFor({state:'hidden'});
+        assert.equal(await choice.getAttribute('aria-pressed'),'true');
+      }
       const overflow=await page.locator('#startCard').evaluate(el=>el.scrollWidth-el.clientWidth);assert.ok(overflow<=2,`${width} menu overflow: ${overflow}`);assert.deepEqual(errors,[]);
     }finally{await browser.close()}
   }
