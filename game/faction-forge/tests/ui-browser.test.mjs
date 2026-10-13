@@ -57,6 +57,31 @@ test('collection, faction chooser, draft info, reward reveal and responsive Forg
       renderer.event({id:'fx',type:'status',kind:'temporal-field',x:2,y:3,ttl:650});await Promise.resolve();await Promise.resolve();clock=225;renderer.step(clock);const effect=layer.querySelector('.ff-effect-canvas');const result={width:canvas.width,height:canvas.height,pixel,movePixel,effectWidth:effect.width,effectCount:layer.querySelectorAll('.ff-effect-node').length};clock=800;renderer.step(clock);result.remainingEffects=layer.querySelectorAll('.ff-effect-node').length;renderer.destroy();layer.remove();return result;
     },`http://127.0.0.1:${port}`);
     assert.deepEqual(graphics.pixel,[0,255,0,255],'a cell edge contains only the selected frame');assert.equal(graphics.width,128);assert.equal(graphics.height,128);assert.deepEqual(graphics.movePixel,[255,0,0,255],'renderer.step does not reset external movement animation');assert.equal(graphics.effectWidth,128);assert.equal(graphics.effectCount,1);assert.equal(graphics.remainingEffects,0);
+    // Exercise loaded frame layers: fallback-only checks cannot catch frames
+    // obscuring faction captions or turning absolute tier badges into flow text.
+    await page.evaluate(async(base)=>{
+      ui.destroy();const {createExpansionUI}=await import(base+'/ui.js');
+      const image=document.createElement('canvas');image.width=image.height=256;
+      const ctx=image.getContext('2d');ctx.strokeStyle='#c9b77e';ctx.lineWidth=20;ctx.strokeRect(10,10,236,236);
+      const url=image.toDataURL();
+      window.ui=createExpansionUI({assets:{enabled:()=>true,unit:async()=>null,asset:async(group,key)=>key.startsWith('card-frame-')?{image,url,spec:{}}:null},troops:{rifleman:{name:'Riflemen',faction:'Vanir'},phaser:{name:'Phasers',faction:'Aesir'},hellspawn:{name:'Hell Spawn',faction:'Helions'}}});
+    },`http://127.0.0.1:${port}`);
+    for(const width of [1150,390]){
+      await page.setViewportSize({width,height:800});
+      for(const view of ['menu','faction']){
+        await page.evaluate(view=>view==='menu'?ui.showMenu():ui.chooseFaction(()=>{}),view);
+        await page.waitForFunction(()=>document.querySelectorAll('.ff-faction-artwork .ff-card-frame').length===3);
+        const cards=await page.locator('.ff-faction-banner,.ff-faction-choice').evaluateAll(cards=>cards.map(card=>{
+          const art=card.querySelector('.ff-faction-artwork').getBoundingClientRect(),name=card.querySelector('.ff-faction-name').getBoundingClientRect(),description=card.querySelector('.ff-faction-description')?.getBoundingClientRect();
+          const overlaps=rect=>rect&&art.left<rect.right&&art.right>rect.left&&art.top<rect.bottom&&art.bottom>rect.top;
+          return {square:Math.abs(art.width-art.height)<1,overlap:!!(overlaps(name)||overlaps(description)),badge:getComputedStyle(card.querySelector('.ff-tier-badge')).position};
+        }));
+        assert.equal(cards.length,3);for(const card of cards){assert.ok(card.square);assert.equal(card.overlap,false);assert.equal(card.badge,'absolute');}
+        assert.ok(await page.evaluate(()=>document.querySelector('.ff-expansion').scrollWidth<=innerWidth));
+      }
+    }
     assert.deepEqual(errors,[]);
   }finally{await browser?.close();await new Promise(r=>server.close(r));}
 });
+
+
