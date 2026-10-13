@@ -9,7 +9,6 @@ export const SPRITE_ANIMATIONS = {
 };
 export const ANIMATION_MANIFEST = {version:1,...SPRITE_ANIMATIONS};
 export const SPRITE_PATHS = Object.values(SPRITE_ANIMATIONS).flatMap(group=>Object.values(group).map(spec=>spec.path));
-export const ACTION_DURATION = 1000;
 export const spriteVisible = tile => !!tile && (!tile.fog || tile.fog==='visible');
 export const constructionStage = project => !project || !(project.total>0) || !(project.remaining>0) ? null : Math.min(3,Math.max(1,Math.floor((1-project.remaining/project.total)*3)+1));
 
@@ -24,6 +23,12 @@ const snapshot = (entities,s) => new Map((entities||[]).filter(e=>spriteVisible(
   id:e.id,owner:e.owner,tile:e.tile,node:e.node,target:e.target,attackTile:e.attackTile,order:e.order,
   pathEnd:e.path?.at(-1),units:{...e.units}
 }]));
+const orderChanged = (old,e) => old.order!==e.order || old.target!==e.target || old.attackTile!==e.attackTile || old.pathEnd!==e.pathEnd;
+const orderAction = (kind,e) => {
+  if(['attack','ranged','bombard'].includes(e.order))return 'attack';
+  if(e.order==='move' || kind==='fleet' && e.pathEnd && ['escort','intercept','unload','blockade'].includes(e.order))return kind==='army'?'march':'sailing';
+  return null;
+};
 
 export class SpritePlayback {
   constructor() { this.seed=null;this.viewer=null;this.turn=-1;this.seen=new Set();this.armies=new Map();this.fleets=new Map();this.active=new Map(); }
@@ -33,10 +38,18 @@ export class SpritePlayback {
     if(this.seed!==s.seed || this.viewer!==viewer || s.turn<this.turn || this.turn<0) {
       this.active.clear();this.seen=new Set(events.map(eventKey));
     } else {
+      // Actions belong to the displayed campaign turn, not a wall-clock timeout.
+      if(s.turn!==this.turn)this.active.clear();
+      for(const [kind,current,previous] of [['army',armies,this.armies],['fleet',fleets,this.fleets]]) {
+        for(const [id,old] of previous) {
+          const e=current.get(id);
+          if(!e || old.owner!==e.owner || orderChanged(old,e))this.active.delete(`${kind}:${id}`);
+        }
+      }
       // Position changes are completed movement, including the last path step.
-      // A queued path alone is never evidence that a unit is moving.
+      // Keep that action even when resolution automatically resets its order.
       for(const [kind,current,previous,action] of [['army',armies,this.armies,'march'],['fleet',fleets,this.fleets,'sailing']]) {
-        for(const [id,e] of current) {const old=previous.get(id);if(old && old.owner===e.owner && (old.tile!==e.tile || old.node!==e.node))this.play(kind,id,action,now);}
+        for(const [id,e] of current) {const old=previous.get(id);if(old && old.owner===e.owner && (old.tile!==e.tile || old.node!==e.node))this.play(kind,id,orderAction(kind,e)||action,now);}
       }
       for(const e of events) if(!this.seen.has(eventKey(e)) && e.turn>=s.turn-1) {
         if(!['battle','siege','structure','naval'].includes(e.action))continue;
@@ -71,16 +84,20 @@ export class SpritePlayback {
         }
       }
     }
+    // Standing orders keep their loop across turns and after loading a campaign.
+    // Only authorized visible snapshots are used; observed enemies hide orders.
+    for(const [kind,current] of [['army',armies],['fleet',fleets]])for(const [id,e] of current) {
+      const action=orderAction(kind,e);
+      if(action && !this.active.has(`${kind}:${id}`))this.play(kind,id,action,now);
+    }
     this.seed=s.seed;this.viewer=viewer;this.turn=s.turn;this.armies=armies;this.fleets=fleets;this.seen=new Set(events.map(eventKey));
-    for(const [key,value] of this.active)if(value.until<=now || !(value.kind==='army'?armies:fleets).has(value.id))this.active.delete(key);
+    for(const [key,value] of this.active)if(!(value.kind==='army'?armies:fleets).has(value.id))this.active.delete(key);
   }
   play(kind,id,action,now) {
-    const key=`${kind}:${id}`,old=this.active.get(key);
-    if(old?.action==='attack' && old.until>now && action!=='attack')return;
-    this.active.set(key,{kind,id,action,start:now,until:now+ACTION_DURATION});
+    this.active.set(`${kind}:${id}`,{kind,id,action,start:now});
   }
   resolve(kind,group,now,type) {
-    const active=group.map(e=>this.active.get(`${kind}:${e.id}`)).filter(e=>e && e.until>now && (kind!=='army'||!type||this.armies.get(e.id)?.units[type]>0));
+    const active=group.map(e=>this.active.get(`${kind}:${e.id}`)).filter(e=>e && (kind!=='army'||!type||this.armies.get(e.id)?.units[type]>0));
     return active.find(e=>e.action==='attack') || active[0] || {action:'idle',start:0};
   }
 }

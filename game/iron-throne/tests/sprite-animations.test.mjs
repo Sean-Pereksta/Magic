@@ -30,15 +30,17 @@ test('21 exact paths, catalog IDs, dimensions, exported JSON and hosted URLs agr
   }
 });
 
-test('completed movement includes the final path step; queued and blocked orders stay idle',()=>{
+test('march orders and the final path step loop for the whole turn',()=>{
   const s=world(),p=new SpritePlayback();p.ingest(s,0);
   s.armies[0].path=['b'];s.armies[0].order='move';p.ingest(s,10);
-  assert.equal(p.resolve('army',s.armies,10).action,'idle');
-  s.turn++;p.ingest(s,20);assert.equal(p.resolve('army',s.armies,20).action,'idle');
-  s.armies[0].tile='b';s.armies[0].path=[];s.armies[0].order='hold';p.ingest(s,30);
-  assert.equal(p.resolve('army',s.armies,30).action,'march');
-  p.ingest(s,900);assert.equal(p.resolve('army',s.armies,900).start,30);
-  p.ingest(s,1030);assert.equal(p.resolve('army',s.armies,1030).action,'idle');
+  assert.equal(p.resolve('army',s.armies,10).action,'march');
+  p.ingest(s,60000);assert.equal(p.resolve('army',s.armies,60000).start,10);
+  s.turn++;p.ingest(s,60010);assert.equal(p.resolve('army',s.armies,60010).action,'march');
+  s.armies[0].tile='b';s.armies[0].path=[];s.armies[0].order='hold';p.ingest(s,60020);
+  assert.equal(p.resolve('army',s.armies,60020).action,'march');
+  p.ingest(s,60900);assert.equal(p.resolve('army',s.armies,60900).start,60020);
+  p.ingest(s,120000);assert.equal(p.resolve('army',s.armies,120000).action,'march');
+  s.turn++;p.ingest(s,120010);assert.equal(p.resolve('army',s.armies,120010).action,'idle');
 });
 
 test('only recorded participants attack, including ranged siege and ship bombardment',()=>{
@@ -52,14 +54,61 @@ test('only recorded participants attack, including ranged siege and ship bombard
   assert.deepEqual(s,before,'presentation must not mutate authoritative state');
   s.militaryEvents.push({id:2,turn:1,action:'structure',attacker:'ashen',defender:'enemy',attackerArmyId:'f',tile:'shore',from:'sea'});p.ingest(s,60);
   assert.equal(p.resolve('fleet',s.fleets,60).action,'attack');
-  p.ingest(s,1100);assert.equal(p.resolve('army',s.armies,1100).action,'idle');
-  assert.equal(p.resolve('fleet',s.fleets,1100).action,'idle');
+  p.ingest(s,60000);assert.equal(p.resolve('army',s.armies,60000).action,'attack');
+  assert.equal(p.resolve('fleet',s.fleets,60000).action,'attack');
+  s.turn++;p.ingest(s,60010);
+  assert.equal(p.resolve('army',s.armies,60010).action,'idle');
+  assert.equal(p.resolve('fleet',s.fleets,60010).action,'idle');
+});
+
+test('new orders replace completed actions immediately and standing attack orders survive turn changes',()=>{
+  const s=world(),p=new SpritePlayback();p.ingest(s,0);let now=10;
+  for(const order of ['attack','ranged','bombard']) {
+    s.armies[0].order=order;s.armies[0].target='b';p.ingest(s,now);
+    assert.equal(p.resolve('army',s.armies,now).action,'attack');
+    p.ingest(s,now+60000);assert.equal(p.resolve('army',s.armies,now+60000).start,now);
+    now+=60010;s.turn++;p.ingest(s,now);assert.equal(p.resolve('army',s.armies,now).action,'attack');now+=10;
+  }
+  s.armies[0].order='move';s.armies[0].path=['b'];p.ingest(s,now);
+  assert.equal(p.resolve('army',s.armies,now).action,'march');
+  s.armies[0].tile='b';s.armies[0].path=[];s.armies[0].order='hold';s.armies[0].target=null;
+  s.militaryEvents.push({id:1,turn:s.turn,action:'battle',attacker:'ashen',attackerArmyId:'a',tile:'b'});p.ingest(s,now+=10);
+  assert.equal(p.resolve('army',s.armies,now).action,'attack','combat takes priority over movement in the same resolution');
+  s.armies[0].order='move';s.armies[0].target='a';s.armies[0].path=['a'];p.ingest(s,now+=10);
+  assert.equal(p.resolve('army',s.armies,now).action,'march','a later march replaces the previous attack');
+  s.armies[0].order='hold';s.armies[0].target=null;s.armies[0].path=[];p.ingest(s,now+=10);
+  assert.equal(p.resolve('army',s.armies,now).action,'idle','cancelled orders stop their loop');
+});
+
+test('attack orders keep the attack loop while closing on their target',()=>{
+  const s=world(),p=new SpritePlayback();s.armies[0].order='attack';s.armies[0].target='shore';s.armies[0].path=['b','shore'];
+  s.fleets=[{...fleet(),order:'attack',attackTile:'shore',path:['sea:b','sea:shore']}];p.ingest(s,0);
+  s.turn++;s.armies[0].tile='b';s.armies[0].path=['shore'];s.fleets[0].tile='b';s.fleets[0].node='sea:b';s.fleets[0].path=['sea:shore'];p.ingest(s,10);
+  assert.equal(p.resolve('army',s.armies,10).action,'attack');
+  assert.equal(p.resolve('fleet',s.fleets,10).action,'attack');
+  p.ingest(s,60000);assert.equal(p.resolve('army',s.armies,60000).action,'attack');
+});
+
+test('loading standing orders animates them without replaying old events or exposing observed orders',()=>{
+  const s=world();s.armies[0].order='move';s.armies[0].path=['b'];s.armies[0].target='b';
+  s.armies.push({...army('enemy','b','wintermere'),order:'observed'});
+  s.fleets=[{...fleet(),order:'attack',attackTile:'shore'}];
+  s.militaryEvents=[{id:1,turn:1,action:'battle',attacker:'wintermere',attackerArmyId:'enemy',tile:'b'}];
+  const before=structuredClone(s),p=new SpritePlayback();p.ingest(s,0);p.ingest(s,60000);
+  assert.equal(p.resolve('army',[s.armies[0]],60000).action,'march');
+  assert.equal(p.resolve('army',[s.armies[1]],60000).action,'idle');
+  assert.equal(p.resolve('fleet',s.fleets,60000).action,'attack');
+  assert.deepEqual(s,before,'standing-order playback must not change campaign state');
+  s.armies[0].owner='wintermere';s.armies[0].order='observed';s.armies[0].path=[];s.armies[0].target=null;
+  s.fleets=[];p.ingest(s,60010);
+  assert.equal(p.active.size,0,'ownership changes and removed entities drop old actions');
 });
 
 test('naval playback requires an actual encounter and unambiguous participant evidence',()=>{
   const s=world(),p=new SpritePlayback();s.armies=[];
   s.fleets=[{...fleet(),order:'attack',attackTile:'shore'},fleet('enemy','shore','wintermere'),fleet('unrelated','b')];
-  p.ingest(s,0);assert.equal(p.resolve('fleet',s.fleets,0).action,'idle');
+  p.ingest(s,0);assert.equal(p.resolve('fleet',[s.fleets[0]],0).action,'attack');
+  assert.equal(p.resolve('fleet',[s.fleets[1]],0).action,'idle');
   s.fleets[0].order='hold';s.fleets[0].attackTile=null;
   s.militaryEvents.push({id:1,turn:1,action:'naval',attacker:'ashen',defender:'wintermere',tile:'shore'});p.ingest(s,10);
   assert.equal(p.resolve('fleet',[s.fleets[0]],10).action,'attack');
@@ -68,7 +117,7 @@ test('naval playback requires an actual encounter and unambiguous participant ev
   s.fleets[2].tile='a';s.fleets[2].node='sea:a';p.ingest(s,30);
   assert.equal(p.resolve('fleet',[s.fleets[2]],30).action,'sailing');
   s.fleets.push(fleet('ambiguous','shore','wintermere'));
-  p.ingest(s,1200);s.militaryEvents.push({id:2,turn:1,action:'naval',attacker:'ashen',defender:'wintermere',tile:'shore'});p.ingest(s,1300);
+  s.turn++;p.ingest(s,1200);s.militaryEvents.push({id:2,turn:s.turn,action:'naval',attacker:'ashen',defender:'wintermere',tile:'shore'});p.ingest(s,1300);
   assert.equal(p.resolve('fleet',s.fleets.filter(f=>f.owner==='wintermere'),1300).action,'idle');
 });
 

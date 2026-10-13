@@ -132,7 +132,7 @@ export class WorldMap {
     const elapsed=(this.spriteNow||0)-animation.start;
     if(!this.assets.drawSprite?.(c,spec,animation.action,elapsed,x,y,w,h,{color,zoom:this.zoom,dpr:this.dpr,reduced:this.spriteReduced}))return false;
     this.spriteScheduler?.use(spec,animation.action,elapsed);
-    this.spriteScheduler?.defer(animation.until-this.spriteNow);return true;
+    return true;
   }
   armyArt(c,units,x,y,color,sigil,phase=0,group=[]) {
     const dominant=Object.keys(units).filter(u=>units[u]>0).sort((a,b)=>(units[b]*(UNITS[b].family==='siege'?8:1))-(units[a]*(UNITS[a].family==='siege'?8:1)))[0];

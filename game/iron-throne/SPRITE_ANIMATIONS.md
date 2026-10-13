@@ -25,16 +25,23 @@ provided separately. Every path and filename case agrees with this manifest.
 
 - The renderer receives the same authorized knowledge view as before. It keeps
   local snapshots of visible entities, without modifying campaign objects.
-- A changed tile/naval node triggers a one-second march/sailing cycle. A queued
-  or blocked order alone stays idle, including after a selection change.
-- Fresh battle, siege and structure events trigger a one-second attack for the
-  recorded participant IDs. Existing battle effects continue independently.
+- Move orders loop march/sailing; attack, ranged and bombard orders loop attack.
+  These communicate the assigned action, including while queued or blocked,
+  and persist across renders and turns until the order changes or is cancelled.
+- A changed tile/naval node or fresh battle, siege or structure event keeps its
+  march/sailing or attack loop for the entire displayed campaign turn, even
+  when resolution automatically clears the order. Combat takes priority over
+  movement in the same update; a later new order updates the loop immediately.
+  At the next turn, completed actions clear and standing orders select the loop.
+  Existing brief battle effects continue independently.
 - Naval events without participant IDs use an unambiguous recorded encounter
   location or target/order match. Ambiguous cases intentionally remain idle;
   wars alone never trigger an attack. Destroyed entities are not resurrected
   for playback. The existing battle effects still report their outcome.
 - Reloads, campaign changes, turn rewinds and viewer changes seed event history
-  without replaying old battles. Losing visibility removes local clocks.
+  without replaying old battles; current authorized orders still select loops.
+  Losing visibility or changing ownership removes local clocks. Observed enemy
+  snapshots hide orders, so orders never reveal hidden enemy intentions.
 - The dominant troop type, army/fleet grouping, map position, counts, ownership
   outlines, selection badges, cargo labels and hit boxes remain unchanged.
 - Active visible `tile.project` progress selects the existing three stages.
@@ -71,12 +78,18 @@ asset cache, checks per-action frame uniqueness, transparency and clear cell
 edges, and prepares all ownership outlines. Pixel inspection uses local copies
 of the bytes; production drawing does not require R2 CORS changes.
 
-The delivered-art browser run passed for all 456 frames and for both available
-and missing artwork. Movement, combat expiry, construction completion, fog,
+The original delivered-art browser run, before turn-long playback, passed for
+all 456 frames and for both available and missing artwork. Movement, combat
+expiry, construction completion, fog,
 badges, reduced motion and hidden/resume checks passed. A local synthetic
 500-army grouping sample averaged 2.24 ms/render; this is not a full campaign
 benchmark. Source poses and the exported map-scale preview were visually
 reviewed. Pixel uniqueness alone is not evidence of anatomically correct poses.
+
+Turn-long playback has regression checks for standing orders, minute-long
+loops, final movement steps, combat precedence, new orders, next-turn resets,
+loading, visibility and ownership changes. The synthetic browser test checks
+frame advancement after the old timeout and runs in the Iron Throne CI job.
 
 The earlier complete gameplay command reported 667 passing tests and a missing
 shared Firebase config in the sparse checkout. After restoring the unchanged
