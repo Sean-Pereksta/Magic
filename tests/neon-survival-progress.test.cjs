@@ -21,7 +21,7 @@ test('cleared-wave records differ from wave reached and are independently tracke
 });
 test('checkpoints, duplicate wave callbacks, and repeated results cannot double-count stats',()=>{
   const store=P.createStore({storage:memory()});store.beginRun('breach_ring');store.recordEvent('kills',17);store.recordEvent('bosses',1);store.addTime(65.5);
-  store.checkpoint();store.clearWave(5);assert.deepEqual(store.clearWave(5),{maps:[],rewards:[],achievements:[],records:[]});
+  store.checkpoint();store.clearWave(5);assert.deepEqual(store.clearWave(5),{maps:[],rewards:[],achievements:[],characters:[],records:[]});
   const a=store.finishRun(),b=store.finishRun();assert.deepEqual(a,b);assert.equal(store.getState().stats.kills,17);assert.equal(store.getState().stats.seconds,65.5);
   store.beginRun('breach_ring');store.recordEvent('kills',3);store.finishRun();assert.equal(store.getState().stats.kills,20);assert.equal(store.getState().arenas.breach_ring.runs,2);
 });

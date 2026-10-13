@@ -96,7 +96,42 @@ occupancy, geometry, actor overlap, range, height, charge and active-build check
 Valid holograms use cyan/purple; invalid holograms use muted red and a short reason.
 Destruction and structural collapse remain in the simulation.
 
-## Validation
+## Vanguard character rebuild
+
+All seven player/bot operators now use original, bulky armored GLBs with broad
+pauldrons, reinforced limbs, heavy boots and emissive visors. Human bodies render
+at 2.39 units (about 15% taller than the former 2.08); ornaments retain their
+authored size. Soles, animation pivots and head/chest aim points come from each
+model's embedded rig metadata. Movement/camera height stays at 1.86.
+
+The Character Locker appears in every mode. Breacher and Sentinel are starters.
+Survivor clears unlock Bulwark (5), Ronin (10), Warden (15), Revenant (25),
+Praetorian (40), and Overlord (50). Fortress Defender, Sky Hunter and Boss Slayer
+offer alternative unlocks for Warden, Revenant and Praetorian respectively.
+Choices persist with existing progression, including backup recovery and profile
+sync, and change appearance without granting passive stats.
+
+Upload the character ZIP's `characters/v3/` folder to the existing R2 bucket,
+preserving those exact object keys. The default configuration resolves rebuilt
+humans and portraits under that prefix; existing weapons and aliens keep their
+original keys. The same 13 GLBs and WebP portraits ship in `assets/characters/`
+as a fallback for missing files, failed CORS requests and timeouts. A failed
+remote request uses a fresh local request; both sources failing still reports a
+loading error. Only the equipped unlock is included in match preloading.
+
+Rebuild the geometry with Python's standard library:
+
+```bash
+python game/neon-arena/tools/build-characters.py
+node --test game/neon-arena/tests/characters-*.test.cjs
+```
+
+`assets/characters/manifest.json` records each model's bounds, triangle count,
+rig, size and SHA256, plus portrait checksums. The new GLBs are self-contained,
+opaque and uncompressed; no external texture or skeletal animation dependency
+is required. Portraits were captured through the actual game WebGL renderer.
+
+## Validation commands
 
 ```bash
 node --test tests/neon-*.test.cjs game/neon-arena/tests/model-renderer.cjs

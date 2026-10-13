@@ -14,7 +14,7 @@ function serve(req,res){
     else file=path.resolve(repo,'.'+(pathname.endsWith('/')?pathname+'index.html':pathname));
     const allowed=pathname.startsWith('/fixture-assets/')&&fixtures?path.resolve(fixtures):repo;
     if(!file.startsWith(allowed+path.sep))throw Error('outside');
-    let data=fs.readFileSync(file);if(file.endsWith('/neon-arena.js'))data=Buffer.from(data.toString().replace(/\}\)\(\);\s*$/,hooks+'})();'));
+    let data=fs.readFileSync(file);if(path.basename(file)==='neon-arena.js')data=Buffer.from(data.toString().replace(/\}\)\(\);\s*$/,hooks+'})();'));
     const type={'.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.glb':'model/gltf-binary','.png':'image/png','.webp':'image/webp'}[path.extname(file)]||'application/octet-stream';res.writeHead(200,{'Content-Type':type,'Access-Control-Allow-Origin':'*'});res.end(data);
   }catch(_){res.writeHead(404);res.end('not found')}
 }
