@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Turncraft Online — Expanded</title>
-<meta name="turncraft-build" content="faction-art-five-battlefields-gas-orders-2026-10-12" />
+<meta name="turncraft-build" content="faction-expansion-map-popout-2026-10-12" />
 <style>
 :root{
   --bg:#050812;--panel:rgba(8,14,27,.92);--panel2:rgba(13,22,40,.96);--line:rgba(160,196,255,.22);
@@ -384,6 +384,7 @@ body.selection-active canvas{cursor:crosshair}
 @media(pointer:coarse){.warfareAbility{min-height:56px}.warfareAbility kbd{display:none}}
 </style>
 <link rel="stylesheet" href="turncraft/polish.css">
+<link rel="stylesheet" href="turncraft/map-popout.css">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -433,7 +434,8 @@ body.selection-active canvas{cursor:crosshair}
 <div id="battleAlerts" aria-live="assertive"></div><div id="controlGroups" aria-label="Control groups"></div><div id="toast"></div>
 <div id="helpOverlay" aria-hidden="true"><div id="helpCard"><h2>Turncraft Controls</h2><p>Orders persist. Scout through true fog of war, pursue assigned targets, and win the objective selected by the pre-match vote.</p><div class="helpGrid"><div class="helpItem"><b>Camera and selection</b><small>Drag to pan, use WASD or arrows, and wheel or pinch to zoom. F or Focus Selected returns to your selection. Hold still for a moment, then drag a box to select troops with mouse or touch. Shift-drag selects immediately; double-click or double-tap selects visible units of one type.</small></div><div class="helpItem"><b>Touch orders</b><small>Tap to select, choose Move, Mine, Attack, Build, or an ability, then tap its target. Dragging never issues an order. Cancel Order or Escape clears targeting. X arms Attack.</small></div><div class="helpItem"><b>Persistent movement</b><small>Move always takes priority over autonomous combat. Groups use loose formations; units wait briefly for traffic and report blocked routes. Hold and Stop never chase enemies.</small></div><div class="helpItem"><b>Attack mode pursuit</b><small>Attack an enemy to enable attack mode and chase it outside weapon range. When that target falls, the unit acquires the nearest visible enemy within its weapon range or 7 tiles. Move, Stop, or Hold turns attack mode off.</small></div><div class="helpItem"><b>Fog and scouting</b><small>Every square outside friendly vision is fully dark. Fast scouts and advanced air units reveal farther than workers and basic troops.</small></div><div class="helpItem"><b>Match objectives</b><small>Annihilation destroys bases, Conquest holds three impact zones, and Central Relic requires carrying the relic home three times.</small></div><div class="helpItem"><b>Frontier bunker</b><small>Frontier infantry can enter a nearby Bunker. Each garrisoned troop strengthens its weapon; select the Bunker to unload everyone.</small></div><div class="helpItem"><b>Brood creep</b><small>Brood structures spread purple creep. Brood units regenerate much faster while standing on it, and most Brood structures require it.</small></div><div class="helpItem"><b>Group orders</b><small>After multi-selecting, choose Move Group then a destination, or Attack Group then an enemy. Hold a numbered group button to assign your selection; tap it to recall.</small></div><div class="helpItem"><b>Expansion economy</b><small>Minerals and gas require a completed friendly base within 5 tiles. Select or place a base to see its collection circle. Choose a worker’s gas structure and click a visible gas vent: the worker walks over, then builds if you can still afford it. Destroying a base disconnects its deposits.</small></div><div class="helpItem"><b>Ability keys</b><small>Q / E / R / T and the keys shown on each ability activate the selected units. W still pans the camera. Right-click or Escape cancels targeting. Hold an icon on touch for details. Unit abilities share their cooldown.</small></div><div class="helpItem"><b>Projectile impact</b><small>Ranged damage now resolves when the shot visually reaches its target, not when the firing animation begins.</small></div></div><button id="closeHelpBtn">Return to Battle</button></div></div>
 <div id="loadingOverlay" hidden aria-hidden="true"></div>
-<div id="overlay"><div id="startCard"><header class="menuHeader"><span class="menuEyebrow">COMMAND / CONQUER / EVOLVE</span><h1>Turncraft <span>Online</span></h1><p class="lead">Three factions. One battlefield. Choose how you conquer.</p></header><div id="startLoadingPanel"><p id="loadingStatus">Preparing Turncraft graphics while setup remains available…</p><div id="loadingTrack"><div id="loadingFill"></div></div><div id="loadingCount">0 / 0</div></div><div class="menuSectionLabel"><span>01 / Choose your faction</span><small>Distinct armies. Different ways to win.</small></div><div id="factionGrid" role="group" aria-label="Choose your faction"></div><div class="menuSectionLabel"><span>02 / Choose your battlefield</span><small>Six layouts · Six environments</small></div><div id="mapChoices" role="group" aria-label="Choose your battlefield"></div><p id="mapSummary"></p><div class="menuSectionLabel"><span>03 / Configure your battle</span></div><div id="startOptions"><div class="optionBox" id="difficultyBox"><label id="difficultyLabel">AI difficulty</label><div id="difficultyChoices" role="group" aria-labelledby="difficultyLabel"></div><select id="difficultySelect" hidden aria-hidden="true" tabindex="-1"><option value="easy">Easy — very slow learner</option><option value="medium" selected>Medium — steady commander</option><option value="hard">Hard — fast macro pressure</option><option value="pro">Pro — ruthless battlefield AI</option></select><small id="difficultyNote" class="optionNote"></small></div><div class="optionBox" id="aiCountBox"><label for="aiCountSelect">AI opponents</label><select id="aiCountSelect"><option value="1">1 AI opponent</option><option value="2" selected>2 AI opponents</option></select><small class="optionNote">Face one opposing faction, or fight a three-way war.</small></div><div class="optionBox" id="aiStyleBox"><label for="aiStyleSelect">AI temperament</label><select id="aiStyleSelect"><option value="cautious">Cautious</option><option value="balanced" selected>Balanced</option><option value="aggressive">Aggressive</option></select><small class="optionNote">Changes when armies leave their base without replacing the core difficulty scaling.</small></div><div class="optionBox" id="objectiveBox"><label for="objectiveSelect">Match objective vote</label><select id="objectiveSelect"><option value="annihilation">Annihilation</option><option value="conquest">Conquest Points</option><option value="relic">Central Relic</option></select><small id="objectiveNote" class="optionNote">Destroy every opposing command base.</small></div></div><div id="startStatus">Choose a faction and objective. In multiplayer, every commander votes and the majority objective is used.</div><div id="startActions"><div class="menuControls"><span><b>SELECT</b> Hold, then drag a box</span><span><b>ABILITIES</b> <kbd>Q</kbd> <kbd>E</kbd> <kbd>R</kbd> and keys on buttons</span><span><b>BUILD GAS</b> Choose structure, then a gas vent</span></div><button id="startBtn">Deploy Command Base <span aria-hidden="true">↗</span></button></div></div></div>
+<div id="overlay"><div id="startCard"><header class="menuHeader"><span class="menuEyebrow">COMMAND / CONQUER / EVOLVE</span><h1>Turncraft <span>Online</span></h1><p class="lead">Three factions. One battlefield. Choose how you conquer.</p></header><div id="startLoadingPanel"><p id="loadingStatus">Preparing Turncraft graphics while setup remains available…</p><div id="loadingTrack"><div id="loadingFill"></div></div><div id="loadingCount">0 / 0</div></div><div class="menuSectionLabel"><span>01 / Choose your faction</span><small>Distinct armies. Different ways to win.</small></div><div id="factionGrid" role="group" aria-label="Choose your faction"></div><div class="menuSectionLabel"><span>02 / Choose your battlefield</span><small>Six layouts · Six environments</small></div><button id="mapSelectBtn" type="button" aria-haspopup="dialog" aria-controls="mapPopout" aria-expanded="false"><canvas id="selectedMapPreview" width="168" height="120" aria-hidden="true"></canvas><span class="selectedMapText"><small>Select Battlefield</small><b id="selectedMapName"></b><span id="selectedMapTheme" class="mapTheme"></span><span id="mapSummary"></span></span><span id="mapSelectAction" class="mapSelectAction">Change Map <span aria-hidden="true">▾</span></span></button><div class="menuSectionLabel"><span>03 / Configure your battle</span></div><div id="startOptions"><div class="optionBox" id="difficultyBox"><label id="difficultyLabel">AI difficulty</label><div id="difficultyChoices" role="group" aria-labelledby="difficultyLabel"></div><select id="difficultySelect" hidden aria-hidden="true" tabindex="-1"><option value="easy">Easy — very slow learner</option><option value="medium" selected>Medium — steady commander</option><option value="hard">Hard — fast macro pressure</option><option value="pro">Pro — ruthless battlefield AI</option></select><small id="difficultyNote" class="optionNote"></small></div><div class="optionBox" id="aiCountBox"><label for="aiCountSelect">AI opponents</label><select id="aiCountSelect"><option value="1">1 AI opponent</option><option value="2" selected>2 AI opponents</option></select><small class="optionNote">Face one opposing faction, or fight a three-way war.</small></div><div class="optionBox" id="aiStyleBox"><label for="aiStyleSelect">AI temperament</label><select id="aiStyleSelect"><option value="cautious">Cautious</option><option value="balanced" selected>Balanced</option><option value="aggressive">Aggressive</option></select><small class="optionNote">Changes when armies leave their base without replacing the core difficulty scaling.</small></div><div class="optionBox" id="objectiveBox"><label for="objectiveSelect">Match objective vote</label><select id="objectiveSelect"><option value="annihilation">Annihilation</option><option value="conquest">Conquest Points</option><option value="relic">Central Relic</option></select><small id="objectiveNote" class="optionNote">Destroy every opposing command base.</small></div></div><div id="startStatus">Choose a faction and objective. In multiplayer, every commander votes and the majority objective is used.</div><div id="startActions"><div class="menuControls"><span><b>SELECT</b> Hold, then drag a box</span><span><b>ABILITIES</b> <kbd>Q</kbd> <kbd>E</kbd> <kbd>R</kbd> and keys on buttons</span><span><b>BUILD GAS</b> Choose structure, then a gas vent</span></div><button id="startBtn">Deploy Command Base <span aria-hidden="true">↗</span></button></div></div></div>
+<dialog id="mapPopout" aria-labelledby="mapPopoutTitle" aria-describedby="mapPopoutNote"><div class="mapPopoutHeader"><div><span class="menuEyebrow">COMPARE YOUR BATTLEFIELDS</span><h2 id="mapPopoutTitle">Select Battlefield</h2><p id="mapPopoutNote">Choose a map to return to battle setup.</p></div><button id="mapPopoutClose" type="button" aria-label="Close battlefield selection">×</button></div><div id="mapChoices" role="group" aria-label="Choose your battlefield"></div></dialog>
 <div id="endOverlay"><div id="endCard"><h2 id="endTitle">Victory</h2><p id="endText">The opposing command bases have fallen.</p><div id="postMatchReport"></div><div class="endActions"><button id="restartBtn">New Local Match</button><button id="spectateBtn">Spectate</button><button id="endExitBtn">Exit</button></div></div></div>
 <script src="turncraft/maps.js"></script>
 <script type="module">
@@ -622,6 +624,7 @@ let selectedId=null,selectedIds=[],legalTiles=[],interactionMode=null,interactio
 let gameStarted=false,paused=false,spectating=false,gameOver=false,lastFrame=performance.now(),simAccumulator=0,lastAiTick=0,initialCameraSet=false;
 let particles=[],shots=[],floating=[],shatters=[],areaEffects=[],pendingImpacts=[],temporaryObstacles=[],lastSeenIntel=new Map(),scanEffects=[];
 let chosenMapId='classic';
+let mapReadyPending=false,readyMapVote=null,mapPopoutCloseTimer=null;
 const MAP_DEFINITIONS=window.TurncraftMaps.definitions,mapLayoutCache=new Map(),MAP_ATLASES=new Map(),MAP_ATLAS_LOADS=new Map();
 let chosenFaction='frontier',chosenDifficulty='medium',chosenAiCount=2,chosenAiStyle='balanced',chosenGameMode='annihilation',modeState=null;
 let visionCache=new Map(),visionCacheAt=0,lastObjectiveTick=0;
@@ -721,7 +724,7 @@ function loadTurncraftImage(file,{recordFailure=true}={}){return new Promise(res
 function installFallbackAsset(file){const c=document.createElement('canvas');c.width=128;c.height=128;const x=c.getContext('2d'),seed=[...file].reduce((n,ch)=>(n*33+ch.charCodeAt(0))>>>0,5381),hue=seed%360,label=file.replace('.png','').split(/\s+/).map(v=>v[0]).join('').slice(0,3).toUpperCase();x.fillStyle=`hsl(${hue} 45% 17%)`;x.fillRect(0,0,128,128);x.strokeStyle=`hsl(${hue} 82% 68%)`;x.lineWidth=8;x.strokeRect(8,8,112,112);x.fillStyle='rgba(255,255,255,.12)';x.beginPath();x.arc(64,64,42,0,Math.PI*2);x.fill();x.fillStyle='#f5fbff';x.textAlign='center';x.textBaseline='middle';x.font='900 35px system-ui';x.fillText(label||'?',64,66);ASSET_IMAGES.set(file,c);FALLBACK_ASSETS.add(file)}
 async function recheckFailedTurncraftGraphics(failedFiles){const retryFiles=[...new Set(failedFiles||[])].filter(file=>file&&(!ASSET_IMAGES.has(file)||FALLBACK_ASSETS.has(file)));if(!retryFiles.length)return 0;loadingStatus.textContent=`Rechecking ${retryFiles.length} Turncraft graphic${retryFiles.length===1?'':'s'} that did not finish loading…`;let recovered=0,cursor=0;const concurrency=Math.min(4,retryFiles.length);async function worker(){while(cursor<retryFiles.length){const file=retryFiles[cursor++];if(await loadTurncraftImage(file,{recordFailure:false})){recovered++;const i=ASSET_FAILURES.indexOf(file);if(i>=0)ASSET_FAILURES.splice(i,1);loadingStatus.textContent=`Recovered missing graphic: ${file}`}}}await Promise.all(Array.from({length:concurrency},worker));return recovered}
 async function preloadTurncraftGraphics(){ASSET_FAILURES.length=0;FALLBACK_ASSETS.clear();const files=allTurncraftFiles();loadingCount.textContent=`0 / ${files.length}`;let completed=0,cursor=0;const concurrency=Math.min(8,files.length);async function worker(){while(cursor<files.length){const file=files[cursor++];await loadTurncraftImage(file);completed++;loadingFill.style.width=`${Math.round(completed/files.length*100)}%`;loadingCount.textContent=`${completed} / ${files.length}`;loadingStatus.textContent=`Preparing battlefield graphics · ${Math.round(completed/files.length*100)}%`}}await Promise.all(Array.from({length:concurrency},worker));const recovered=await recheckFailedTurncraftGraphics(ASSET_FAILURES);for(const file of ASSET_FAILURES)if(!ASSET_IMAGES.has(file))installFallbackAsset(file);loadingStatus.textContent=ASSET_FAILURES.length?`Battlefield ready. Some optional graphics use simplified artwork.`:`All Turncraft graphics loaded${recovered?` after recovering ${recovered} on recheck`:''}.`;renderStartMenu()}
-function imageHtmlForType(type,alt=''){const key=assetKeyForType(type),d=STRUCTURES[type]||UNITS[type]||{};if(GLYPH_ONLY_ASSETS.has(key))return `<span class="assetFallback" aria-hidden="true">${d.icon||'?'}</span>`;const source=ASSET_ALIASES[key]||key;return `<img class="assetThumb" src="${assetUrl(source)}" alt="${alt||key}" loading="eager" decoding="async" onerror="this.outerHTML='<span class=&quot;assetFallback&quot; aria-hidden=&quot;true&quot;>${d.icon||'?'}</span>'">`}
+function imageHtmlForType(type,alt=''){const key=assetKeyForType(type),d=STRUCTURES[type]||UNITS[type]||{};if(GLYPH_ONLY_ASSETS.has(key))return `<span class="assetFallback" aria-hidden="true">${d.icon||'?'}</span>`;const source=ASSET_ALIASES[key]||key;return `<img class="assetThumb" src="${assetUrl(source)}" alt="${alt||key}" loading="eager" decoding="async" onerror="if(this.parentNode)this.outerHTML='<span class=&quot;assetFallback&quot; aria-hidden=&quot;true&quot;>${d.icon||'?'}</span>'">`}
 
 
 function rand(){mapSeed=(Math.imul(mapSeed,1664525)+1013904223)>>>0;return mapSeed/4294967296}
@@ -813,7 +816,7 @@ function addExpansionCluster(site){const rotation=site.rotation||0,spots=[[2,0],
 function makePlayer(idx,name,factionId,ai=false){return {idx,name,factionId,ai,minerals:360,gas:0,eliminated:false,kills:0,lastAi:0,lastDefense:0,threats:[],attackWave:false,ready:true,research:{},strategy:{state:'rebuilding',lastSeen:{units:{},structures:{}},observedAirAt:0,recentLosses:[],buildPlan:'balanced',productionPriorities:[],rally:null,attackTarget:null,defenseTarget:null,objectivePriority:null,lastScoutAt:0,lastCompositionAt:0}}}
 function addEntity(kind,type,faction,x,y,opts={}){const d=kind==='structure'?STRUCTURES[type]:UNITS[type]||{};const e={id:nextEntityId++,kind,type,faction,x,y,px:x,py:y,alive:true,hp:opts.hp??d.hp??35,maxHp:d.hp??35,shield:opts.shield??d.shield??0,maxShield:d.shield??0,complete:opts.complete??true,buildEnd:opts.buildEnd||0,buildStart:opts.buildStart||0,moveReadyAt:opts.moveReadyAt||0,attackReadyAt:opts.attackReadyAt||0,miningReadyAt:opts.miningReadyAt||0,abilityReadyAt:0,targetId:null,lastKnownTargetX:null,lastKnownTargetY:null,attackMode:false,moveDestination:null,order:'idle',miningNodeId:null,garrisonedIn:null,garrisonedIds:opts.garrisonedIds||[],passengers:opts.passengers||[],queue:opts.queue||[],nextLarvaAt:opts.nextLarvaAt||0,powered:true,decayTick:0};entities.push(e);applyResearchStats(e,false);markDirty();return e}
 function addLarva(f,x,y,sourceId){const p=nearestFreeAround(x,y,{kind:'larva',id:-1},2);if(!p)return null;const e={id:nextEntityId++,kind:'larva',type:'larva',faction:f,x:p.x,y:p.y,px:p.x,py:p.y,alive:true,hp:35,maxHp:35,shield:0,maxShield:0,complete:true,moveReadyAt:0,attackReadyAt:0,miningReadyAt:0,targetId:null,attackMode:false,order:'idle',sourceId};entities.push(e);markDirty();return e}
-function createGame(slotConfig){mapSeed=Math.floor(Math.random()*0xffffffff);activeMapSeed=mapSeed;nextEntityId=1;nextNodeId=1;entities=[];resourceNodes=[];particles=[];shots=[];floating=[];shatters=[];areaEffects=[];pendingImpacts=[];temporaryObstacles=[];scanEffects=[];lastSeenIntel=new Map();players=[];selectedId=null;selectedIds=[];interactionMode=null;gameOver=false;modeState=null;visionCache=new Map();visionCacheAt=0;spectating=false;paused=false;pauseBtn.textContent='Pause';createTerrain();updateMapPresentation();const starts=startPositions();
+function createGame(slotConfig){closeMapPopout(false,true);mapSeed=Math.floor(Math.random()*0xffffffff);activeMapSeed=mapSeed;nextEntityId=1;nextNodeId=1;entities=[];resourceNodes=[];particles=[];shots=[];floating=[];shatters=[];areaEffects=[];pendingImpacts=[];temporaryObstacles=[];scanEffects=[];lastSeenIntel=new Map();players=[];selectedId=null;selectedIds=[];interactionMode=null;gameOver=false;modeState=null;visionCache=new Map();visionCacheAt=0;spectating=false;paused=false;pauseBtn.textContent='Pause';createTerrain();updateMapPresentation();const starts=startPositions();
   slotConfig.slice(0,3).forEach((s,i)=>{players.push(makePlayer(i,s.name,s.factionId,s.ai));addResourceCluster(starts[i],starts[i].rotation??(i===0?0:i===1?Math.PI/2:-Math.PI/2));const f=FACTIONS[s.factionId];const base=addEntity('structure',f.base,i,starts[i].x,starts[i].y,{nextLarvaAt:nowMs()+8000});const workerSpots=[[1,0],[0,1],[-1,0],[0,-1]];workerSpots.forEach(([dx,dy])=>addEntity('unit',f.worker,i,starts[i].x+dx,starts[i].y+dy));if(s.factionId==='brood'){addLarva(i,base.x,base.y,base.id);addLarva(i,base.x,base.y,base.id)}});
   for(const site of expansionPositions())addExpansionCluster(site);
   initializeNeutralObjectives();initializeObjectiveState();gameStarted=true;lastFrame=performance.now();overlay.style.display='none';endOverlay.style.display='none';initialCameraSet=false;focusOwnBase();markDirty();refreshUI(true);toast('Command base deployed. Expansion clearings are connected by broad lanes; all commands now live in the bottom panel.',4600)
@@ -837,7 +840,7 @@ function queueExtraction(dropship,x,y){const eligible=entities.filter(u=>validTr
 function isTemporaryCreepTile(f,x,y){const t=nowMs();return areaEffects.some(a=>a.kind==='temporaryCreep'&&a.faction===f&&a.endAt>t&&(a.tiles||[]).some(p=>p.x===x&&p.y===y))}
 function updateLastSeenIntel(){if(!gameStarted)return;rebuildVisionCache();const t=nowMs();for(const viewer of players){const vis=visionCache.get(viewer.idx)||new Set(),bucket=viewer.strategy?.lastSeen||(viewer.strategy.lastSeen={units:{},structures:{}});for(const e of entities){if(e.alive===false||e.faction===viewer.idx||e.faction<0)continue;if(vis.has(`${e.x},${e.y}`)){const rec={id:e.id,type:e.type,kind:e.kind,x:e.x,y:e.y,faction:e.faction,seenAt:t,hpRatio:clamp(e.hp/e.maxHp,0,1)};(e.kind==='structure'?bucket.structures:bucket.units)[e.id]=rec;if(isFlying(e))viewer.strategy.observedAirAt=t}}for(const collection of [bucket.units,bucket.structures])for(const [id,rec] of Object.entries(collection)){if(t-rec.seenAt>90000)delete collection[id];else if(vis.has(`${rec.x},${rec.y}`)&&!entityById(Number(id)))delete collection[id]}}}
 function initializeNeutralObjectives(){const sites=mapLayout().neutralSites;for(const n of sites){if(entityAt(n.x,n.y)||nodeAt(n.x,n.y))continue;const e=addEntity('structure',n.type,-1,n.x,n.y);e.captureProgress=0;e.captureFaction=null}}
-function updateNeutralObjectives(dt){for(const n of entities.filter(e=>e.alive!==false&&e.kind==='structure'&&STRUCTURES[e.type]?.neutralWatchtower)){const nearby=players.map(p=>({f:p.idx,count:playerUnits(p.idx).filter(u=>!isFlying(u)&&dist(u,n)<=1.6).length})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count);if(nearby.length&&(!nearby[1]||nearby[0].count>nearby[1].count)){const f=nearby[0].f;if(n.captureFaction!==f){n.captureFaction=f;n.captureProgress=Math.max(0,n.captureProgress*.35)}n.captureProgress=Math.min(1,(n.captureProgress||0)+dt*.23*nearby[0].count);if(n.captureProgress>=1&&n.faction!==f){n.faction=f;n.order='Controlled watchtower';visionCacheAt=0;toast(`${players[f]?.name||'A faction'} captured a Watchtower.`,1600);markDirty()}}else n.captureProgress=Math.max(0,(n.captureProgress||0)-dt*.08)}for(const cache of entities.filter(e=>e.alive!==false&&STRUCTURES[e.type]?.neutralCache)){const collector=entities.filter(u=>u.alive!==false&&u.kind==='unit'&&u.faction>=0&&dist(u,cache)<=1.1).sort((a,b)=>a.id-b.id)[0];if(!collector)continue;const kind=STRUCTURES[cache.type].neutralCache,amount=kind==='mineral'?85:55;players[collector.faction][kind==='mineral'?'minerals':'gas']+=amount;floating.push({x:cache.x+.5,y:cache.y,text:`+${amount} ${kind}`,color:kind==='mineral'?'#72d7ff':'#c09cff',life:1.4,max:1.4});cache.alive=false;spawnFx(cache.x,cache.y,kind==='mineral'?'#72d7ff':'#c09cff',16);markDirty()}}
+function updateNeutralObjectives(dt){for(const n of entities.filter(e=>e.alive!==false&&e.kind==='structure'&&STRUCTURES[e.type]?.neutralWatchtower)){const nearby=players.map(p=>({f:p.idx,count:playerUnits(p.idx).filter(u=>expansionObjectiveEligible(u)&&!isFlying(u)&&dist(u,n)<=1.6).length})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count);if(nearby.length&&(!nearby[1]||nearby[0].count>nearby[1].count)){const f=nearby[0].f;if(n.captureFaction!==f){n.captureFaction=f;n.captureProgress=Math.max(0,n.captureProgress*.35)}n.captureProgress=Math.min(1,(n.captureProgress||0)+dt*.23*nearby[0].count);if(n.captureProgress>=1&&n.faction!==f){n.faction=f;n.order='Controlled watchtower';visionCacheAt=0;toast(`${players[f]?.name||'A faction'} captured a Watchtower.`,1600);markDirty()}}else n.captureProgress=Math.max(0,(n.captureProgress||0)-dt*.08)}for(const cache of entities.filter(e=>e.alive!==false&&STRUCTURES[e.type]?.neutralCache)){const collector=entities.filter(u=>u.alive!==false&&u.kind==='unit'&&u.faction>=0&&expansionObjectiveEligible(u)&&dist(u,cache)<=1.1).sort((a,b)=>a.id-b.id)[0];if(!collector)continue;const kind=STRUCTURES[cache.type].neutralCache,amount=kind==='mineral'?85:55;players[collector.faction][kind==='mineral'?'minerals':'gas']+=amount;floating.push({x:cache.x+.5,y:cache.y,text:`+${amount} ${kind}`,color:kind==='mineral'?'#72d7ff':'#c09cff',life:1.4,max:1.4});cache.alive=false;spawnFx(cache.x,cache.y,kind==='mineral'?'#72d7ff':'#c09cff',16);markDirty()}}
 
 // ---------- Movement / path / targeting ----------
 function lineClear(x0,y0,x1,y1,ignoreId=null){let dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;while(!(x0===x1&&y0===y1)){const e2=2*err;if(e2>=dy){err+=dy;x0+=sx}if(e2<=dx){err+=dx;y0+=sy}if(x0===x1&&y0===y1)break;const blocker=entityAt(x0,y0,ignoreId);if(blocker?.kind==='structure'||groundBlocked(x0,y0))return false}return true}
@@ -1044,9 +1047,9 @@ function aiStepToward(e,tx,ty,preserveOrder=false){const legal=legalMovesFor(e);
 // ---------- Match objectives ----------
 const CONQUEST_SITES=[{x:21,y:14,label:'Central Impact'},{x:8,y:20,label:'West Impact'},{x:34,y:20,label:'East Impact'}];
 function initializeObjectiveState(){const scores=Object.fromEntries(players.map(p=>[p.idx,0]));modeState={mode:chosenGameMode,scores,conquest:mapLayout().conquestSites.map((q,i)=>({...q,id:i,controller:null,progress:0})),relic:{...mapLayout().relic,carrierId:null,respawnAt:0},lastUpdateAt:nowMs()};lastObjectiveTick=nowMs()}
-function soleController(x,y,r=2.4){const factions=new Set();for(const e of entities){if(e.alive===false||e.garrisonedIn||players[e.faction]?.eliminated||e.kind==='larva'||e.kind==='cocoon')continue;if(dist(e,{x,y})<=r)factions.add(e.faction)}return factions.size===1?[...factions][0]:null}
+function soleController(x,y,r=2.4){const factions=new Set();for(const e of entities){if(e.alive===false||e.garrisonedIn||players[e.faction]?.eliminated||e.kind==='larva'||e.kind==='cocoon'||!expansionObjectiveEligible(e))continue;if(dist(e,{x,y})<=r)factions.add(e.faction)}return factions.size===1?[...factions][0]:null}
 function finishMatch(winner,reason=''){if(gameOver)return;gameOver=true;endOverlay.style.display='flex';if(winner?.idx===PLAYER){endTitle.textContent='Victory';endText.textContent=reason||`You won ${GAME_MODES[chosenGameMode]?.name||'the match'}.`}else{endTitle.textContent='Defeat';endText.textContent=reason||`${winner?.name||'An enemy commander'} won ${GAME_MODES[chosenGameMode]?.name||'the match'}.`}markDirty()}
-function updateObjectives(dt){if(!modeState||gameOver)return;const mode=GAME_MODES[chosenGameMode]||GAME_MODES.annihilation;if(mode.id==='conquest'){for(const site of modeState.conquest){const controller=soleController(site.x,site.y,2.5);site.controller=controller;if(controller!==null){modeState.scores[controller]=(modeState.scores[controller]||0)+dt;site.progress=(site.progress||0)+dt}else site.progress=0}for(const p of players){if((modeState.scores[p.idx]||0)>=mode.scoreToWin){finishMatch(p,`${p.idx===PLAYER?'You':p.name} held the impact zones long enough to reach ${mode.scoreToWin} conquest points.`);break}}}else if(mode.id==='relic'){const relic=modeState.relic,t=nowMs();if(relic.respawnAt){if(t>=relic.respawnAt){const home=mapLayout().relic;relic.x=home.x;relic.y=home.y;relic.respawnAt=0;toast('The Central Relic has returned.',1800)}return}let carrier=entityById(relic.carrierId);if(carrier&&carrier.garrisonedIn)carrier=null;if(carrier){relic.x=carrier.x;relic.y=carrier.y;const home=playerStructures(carrier.faction).filter(isBase).sort((a,b)=>dist(a,carrier)-dist(b,carrier))[0];if(home&&dist(home,carrier)<=2.2){modeState.scores[carrier.faction]=(modeState.scores[carrier.faction]||0)+1;toast(`${players[carrier.faction].name} delivered the Central Relic (${modeState.scores[carrier.faction]}/${mode.scoreToWin}).`,2600);relic.carrierId=null;relic.respawnAt=t+5000;if(modeState.scores[carrier.faction]>=mode.scoreToWin)finishMatch(players[carrier.faction],`${players[carrier.faction].name} delivered the Central Relic ${mode.scoreToWin} times.`)}}else{relic.carrierId=null;const picker=entities.filter(e=>e.alive!==false&&!e.garrisonedIn&&e.kind==='unit'&&!isFlying(e)&&!players[e.faction]?.eliminated&&Math.hypot(e.x-relic.x,e.y-relic.y)<.45).sort((a,b)=>a.id-b.id)[0];if(picker){relic.carrierId=picker.id;toast(`${players[picker.faction].name} captured the Central Relic.`,1800)}}}if(mode.id!=='annihilation')markDirty()}
+function updateObjectives(dt){if(!modeState||gameOver)return;const mode=GAME_MODES[chosenGameMode]||GAME_MODES.annihilation;if(mode.id==='conquest'){for(const site of modeState.conquest){const controller=soleController(site.x,site.y,2.5);site.controller=controller;if(controller!==null){modeState.scores[controller]=(modeState.scores[controller]||0)+dt;site.progress=(site.progress||0)+dt}else site.progress=0}for(const p of players){if((modeState.scores[p.idx]||0)>=mode.scoreToWin){finishMatch(p,`${p.idx===PLAYER?'You':p.name} held the impact zones long enough to reach ${mode.scoreToWin} conquest points.`);break}}}else if(mode.id==='relic'){const relic=modeState.relic,t=nowMs();if(relic.respawnAt){if(t>=relic.respawnAt){const home=mapLayout().relic;relic.x=home.x;relic.y=home.y;relic.respawnAt=0;toast('The Central Relic has returned.',1800)}return}let carrier=entityById(relic.carrierId);if(carrier&&(carrier.garrisonedIn||!expansionObjectiveEligible(carrier)))carrier=null;if(carrier){relic.x=carrier.x;relic.y=carrier.y;const home=playerStructures(carrier.faction).filter(isBase).sort((a,b)=>dist(a,carrier)-dist(b,carrier))[0];if(home&&dist(home,carrier)<=2.2){modeState.scores[carrier.faction]=(modeState.scores[carrier.faction]||0)+1;toast(`${players[carrier.faction].name} delivered the Central Relic (${modeState.scores[carrier.faction]}/${mode.scoreToWin}).`,2600);relic.carrierId=null;relic.respawnAt=t+5000;if(modeState.scores[carrier.faction]>=mode.scoreToWin)finishMatch(players[carrier.faction],`${players[carrier.faction].name} delivered the Central Relic ${mode.scoreToWin} times.`)}}else{relic.carrierId=null;const picker=entities.filter(e=>e.alive!==false&&!e.garrisonedIn&&e.kind==='unit'&&expansionObjectiveEligible(e)&&!isFlying(e)&&!players[e.faction]?.eliminated&&Math.hypot(e.x-relic.x,e.y-relic.y)<.45).sort((a,b)=>a.id-b.id)[0];if(picker){relic.carrierId=picker.id;toast(`${players[picker.faction].name} captured the Central Relic.`,1800)}}}if(mode.id!=='annihilation')markDirty()}
 function objectiveHudText(){const mode=GAME_MODES[chosenGameMode]||GAME_MODES.annihilation;if(!modeState)return mode.name;if(mode.id==='conquest')return `${mode.name} · ${Math.floor(modeState.scores?.[PLAYER]||0)}/${mode.scoreToWin}`;if(mode.id==='relic')return `${mode.name} · ${modeState.scores?.[PLAYER]||0}/${mode.scoreToWin}`;return mode.name}
 
 // ---------- Victory ----------
@@ -1058,7 +1061,7 @@ const TERRAIN_CODE={ground:'g',grass:'h',moss:'m',sand:'s',dust:'d',ruins:'u',la
 function encodeTerrain(){return terrain.map(t=>TERRAIN_CODE[t.type]||'g').join('')}
 function decodeTerrain(code){return typeof code==='string'&&code.length===BOARD_W*BOARD_H?[...code].map((value,i)=>{const type=TERRAIN_FROM_CODE[value]||'ground';return{x:i%BOARD_W,y:Math.floor(i/BOARD_W),type,blocked:type==='rock'||type==='crystal'}}):null}
 function serializeState(){return {gameKey:NET_KEY,version:++stateVersion,stateVersion,simulationTick:++simulationTick,controllerUid:controllerLease?.ownerUid||'',controllerEpoch:controllerLease?.epoch||0,updatedAtMs:nowMs(),updatedBy:username,controller:controllerName,acks:[...processedCommands.keys()].slice(-30),mapSeed,activeMapSeed,players,entities:entities.filter(e=>e.alive!==false).map(serializeEntity),resourceNodes,areaEffects,pendingImpacts,temporaryObstacles,scanEffects,modeState,terrainCode:encodeTerrain(),gameOver,chosenDifficulty,chosenAiStyle,chosenGameMode,chosenMapId}}
-function applyRemoteState(data){if(!data||data.gameKey!==NET_KEY)return;const remoteEpoch=Number(data.controllerEpoch||0),localEpoch=Number(controllerLease?.epoch||0);if(remoteEpoch<localEpoch&&Number(data.simulationTick||0)<simulationTick)return;if(remoteEpoch===localEpoch&&Number(data.simulationTick||0)<simulationTick)return;for(const id of data.acks||[])unackedCommands.delete(id);const firstView=!gameStarted||!initialCameraSet;applyingRemote=true;try{stateVersion=Number(data.version||0);simulationTick=Math.max(simulationTick,Number(data.simulationTick||0));chosenMapId=mapDefinition(data.chosenMapId||'classic').id;if(Number.isFinite(data.mapSeed))mapSeed=data.mapSeed>>>0;activeMapSeed=Number.isFinite(data.activeMapSeed)?data.activeMapSeed>>>0:mapSeed;updateMapPresentation();players=Array.isArray(data.players)?data.players:players;resourceNodes=Array.isArray(data.resourceNodes)?data.resourceNodes:resourceNodes;areaEffects=Array.isArray(data.areaEffects)?data.areaEffects:[];pendingImpacts=Array.isArray(data.pendingImpacts)?data.pendingImpacts:[];temporaryObstacles=Array.isArray(data.temporaryObstacles)?data.temporaryObstacles:[];scanEffects=Array.isArray(data.scanEffects)?data.scanEffects:[];modeState=data.modeState||modeState;chosenDifficulty=data.chosenDifficulty||chosenDifficulty;chosenAiStyle=data.chosenAiStyle||chosenAiStyle;chosenGameMode=data.chosenGameMode||chosenGameMode;const decoded=decodeTerrain(data.terrainCode);if(decoded)terrain=decoded;else if(Array.isArray(data.terrain)&&data.terrain.length===BOARD_W*BOARD_H){terrain=data.terrain.map((type,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type,blocked:type==='rock'||type==='crystal'}))}const old=new Map(entities.map(e=>[e.id,e])),incoming=data.entities||[],incomingIds=new Set(incoming.map(e=>e.id));if(gameStarted&&!firstView){for(const previous of old.values())if(previous.alive!==false&&!incomingIds.has(previous.id))spawnCardShatter(previous)}entities=incoming.map(re=>{const o=old.get(re.id);return {...re,px:o?.px??re.x,py:o?.py??re.y}});nextEntityId=Math.max(1,...entities.map(e=>e.id+1));gameStarted=true;gameOver=!!data.gameOver;overlay.style.display='none';selectedIds=selectedIds.filter(id=>entityById(id));selectedId=selectedIds[0]??(selected()?selectedId:null);if(!selectedId)selectedIds=[];if(firstView)focusOwnBase();refreshUI(true)}finally{applyingRemote=false}}
+function applyRemoteState(data){if(!data||data.gameKey!==NET_KEY)return;const remoteEpoch=Number(data.controllerEpoch||0),localEpoch=Number(controllerLease?.epoch||0);if(remoteEpoch<localEpoch&&Number(data.simulationTick||0)<simulationTick)return;if(remoteEpoch===localEpoch&&Number(data.simulationTick||0)<simulationTick)return;for(const id of data.acks||[])unackedCommands.delete(id);const firstView=!gameStarted||!initialCameraSet;applyingRemote=true;try{stateVersion=Number(data.version||0);simulationTick=Math.max(simulationTick,Number(data.simulationTick||0));chosenMapId=mapDefinition(data.chosenMapId||'classic').id;if(Number.isFinite(data.mapSeed))mapSeed=data.mapSeed>>>0;activeMapSeed=Number.isFinite(data.activeMapSeed)?data.activeMapSeed>>>0:mapSeed;updateMapPresentation();players=Array.isArray(data.players)?data.players:players;resourceNodes=Array.isArray(data.resourceNodes)?data.resourceNodes:resourceNodes;areaEffects=Array.isArray(data.areaEffects)?data.areaEffects:[];pendingImpacts=Array.isArray(data.pendingImpacts)?data.pendingImpacts:[];temporaryObstacles=Array.isArray(data.temporaryObstacles)?data.temporaryObstacles:[];scanEffects=Array.isArray(data.scanEffects)?data.scanEffects:[];modeState=data.modeState||modeState;chosenDifficulty=data.chosenDifficulty||chosenDifficulty;chosenAiStyle=data.chosenAiStyle||chosenAiStyle;chosenGameMode=data.chosenGameMode||chosenGameMode;const decoded=decodeTerrain(data.terrainCode);if(decoded)terrain=decoded;else if(Array.isArray(data.terrain)&&data.terrain.length===BOARD_W*BOARD_H){terrain=data.terrain.map((type,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type,blocked:type==='rock'||type==='crystal'}))}const old=new Map(entities.map(e=>[e.id,e])),incoming=data.entities||[],incomingIds=new Set(incoming.map(e=>e.id));if(gameStarted&&!firstView){for(const previous of old.values())if(previous.alive!==false&&!incomingIds.has(previous.id))spawnCardShatter(previous)}entities=incoming.map(re=>{const o=old.get(re.id);return {...re,px:o?.px??re.x,py:o?.py??re.y}});nextEntityId=Math.max(1,...entities.map(e=>e.id+1));gameStarted=true;gameOver=!!data.gameOver;closeMapPopout(false,true);overlay.style.display='none';selectedIds=selectedIds.filter(id=>entityById(id));selectedId=selectedIds[0]??(selected()?selectedId:null);if(!selectedId)selectedIds=[];if(firstView)focusOwnBase();refreshUI(true)}finally{applyingRemote=false}}
 async function writeState(force=false){if(!lobbyId||!isController||!gameStarted||(!stateDirty&&!force)||nowMs()-lastStateWrite<STATE_WRITE_MS&&!force)return;if(stateWriteInFlight){stateDirty=true;return}lastStateWrite=nowMs();stateDirty=false;stateWriteInFlight=true;try{await setDoc(stateRef,{...serializeState(),serverUpdatedAt:serverTimestamp()},{merge:false})}catch(e){stateDirty=true;console.warn('state write failed',e)}finally{stateWriteInFlight=false;if(stateDirty&&isController)setTimeout(()=>writeState(false),STATE_WRITE_MS)}}
 function leaseFresh(l=controllerLease){return l&&Number(l.expiresAtMs||0)>nowMs()}
 function activeControllerCandidate(){const active=onlinePresence.slice().sort((a,b)=>{const ah=a.username===lobbyData?.host?0:1,bh=b.username===lobbyData?.host?0:1;return ah-bh||a.slot-b.slot||String(a.username).localeCompare(String(b.username))});return active[0]}
@@ -1080,8 +1083,15 @@ async function bootNetwork(){localStorage.setItem('gh.username',username);await 
     const existing=await getDoc(stateRef);if(existing.exists()){applyRemoteState(existing.data());overlay.style.display='none'}
     await publishPresenceInline();await refreshPresenceAndLease();presenceTimer=setInterval(async()=>{await publishPresenceInline();await refreshPresenceAndLease()},CONTROLLER_RENEW_MS);controllerTimer=setInterval(()=>writeState(false),STATE_WRITE_MS);
   }catch(e){console.warn(e);lobbyId='';setStatus('Lobby unavailable — local simulation');setNetworkBadge('offline','Offline');toast('Lobby connection failed. Starting options remain available locally.',3500);difficultyBox.style.display='block';aiCountBox.style.display='block';aiStyleBox.style.display='block'}renderStartMenu();if(!gameStarted)overlay.style.display='flex'}
-async function publishReady(){if(!lobbyRef)return;const key=safeId(username);const pick={factionId:chosenFaction,objectiveVote:chosenGameMode,mapVote:chosenMapId,ready:true,readyAtMs:nowMs(),username};try{await setDoc(lobbyRef,{chessStarfrontReady:{[key]:pick},updatedAt:serverTimestamp()},{merge:true});startBtn.disabled=true;startBtn.textContent='Ready — Waiting for Commanders';startStatus.textContent='Your faction is locked. Waiting for the shared match to initialize.'}catch(e){toast('Could not lock in your faction.',2500)}}
-function renderStartStatus(){if(!lobbyId||!lobbyData){startStatus.textContent=`${FACTIONS[chosenFaction].name} · ${DIFFICULTY_PRESENTATION[chosenDifficulty]?.name||'Medium'} AI · ${chosenAiCount} opponent${chosenAiCount===1?'':'s'} · ${GAME_MODES[chosenGameMode]?.name||'Annihilation'} · ${mapDefinition().name}`;return;}const ready=lobbyData.chessStarfrontReady||{},count=humanNames.filter(n=>ready[safeId(n)]?.ready).length,votes={};for(const n of humanNames){const vote=ready[safeId(n)]?.objectiveVote;if(vote)votes[vote]=(votes[vote]||0)+1}const voteText=Object.entries(votes).map(([id,n])=>`${GAME_MODES[id]?.name||id} ${n}`).join(' · ')||'No objective votes yet';const mapVotes={};for(const record of Object.values(ready)){if(MAP_DEFINITIONS.some(map=>map.id===record.mapVote))mapVotes[record.mapVote]=(mapVotes[record.mapVote]||0)+1}const mapText=Object.entries(mapVotes).map(([id,total])=>`${mapDefinition(id).name} ${total}`).join(' · ')||'No map votes yet';startStatus.textContent=`${count}/${humanNames.length} commanders ready. Votes: ${voteText}. Maps: ${mapText}. Match starts when all are ready, or 12 seconds after the first lock-in.`}
+async function publishReady(){
+  if(!lobbyRef||mapVoteLocked())return;
+  const key=safeId(username),pick={factionId:chosenFaction,objectiveVote:chosenGameMode,mapVote:chosenMapId,ready:true,readyAtMs:nowMs(),username};
+  mapReadyPending=true;startBtn.disabled=true;closeMapPopout();renderMapChoices();
+  try{await setDoc(lobbyRef,{chessStarfrontReady:{[key]:pick},updatedAt:serverTimestamp()},{merge:true});readyMapVote=pick.mapVote;startBtn.textContent='Ready — Waiting for Commanders';startStatus.textContent='Your faction and battlefield vote are locked. Waiting for the shared match to initialize.'}
+  catch(e){startBtn.disabled=false;toast('Could not lock in your faction.',2500)}
+  finally{mapReadyPending=false;renderMapChoices();if(!readyMapVote)renderStartStatus()}
+}
+function renderStartStatus(){renderMapChoices();if(mapVoteLocked()){startBtn.disabled=true;startBtn.textContent=mapReadyPending?'Locking in your vote…':'Ready — Waiting for Commanders'}if(!lobbyId||!lobbyData){startStatus.textContent=`${FACTIONS[chosenFaction].name} · ${DIFFICULTY_PRESENTATION[chosenDifficulty]?.name||'Medium'} AI · ${chosenAiCount} opponent${chosenAiCount===1?'':'s'} · ${GAME_MODES[chosenGameMode]?.name||'Annihilation'} · ${mapDefinition().name}`;return;}const ready=lobbyData.chessStarfrontReady||{},count=humanNames.filter(n=>ready[safeId(n)]?.ready).length,votes={};for(const n of humanNames){const vote=ready[safeId(n)]?.objectiveVote;if(vote)votes[vote]=(votes[vote]||0)+1}const voteText=Object.entries(votes).map(([id,n])=>`${GAME_MODES[id]?.name||id} ${n}`).join(' · ')||'No objective votes yet';const mapVotes={};for(const record of Object.values(ready)){if(MAP_DEFINITIONS.some(map=>map.id===record.mapVote))mapVotes[record.mapVote]=(mapVotes[record.mapVote]||0)+1}const mapText=Object.entries(mapVotes).map(([id,total])=>`${mapDefinition(id).name} ${total}`).join(' · ')||'No map votes yet';startStatus.textContent=`${count}/${humanNames.length} commanders ready. Votes: ${voteText}. Maps: ${mapText}. Match starts when all are ready, or 12 seconds after the first lock-in.`}
 async function maybeInitializeMultiplayer(){if(!lobbyId||gameStarted||!isController||!lobbyData)return;const ready=lobbyData.chessStarfrontReady||{},records=humanNames.map(n=>ready[safeId(n)]).filter(Boolean),all=records.length>=humanNames.length&&records.every(r=>r.ready),first=Math.min(...records.map(r=>Number(r.readyAtMs||Infinity)));if(!all&&(!Number.isFinite(first)||nowMs()-first<12000))return;const snap=await getDoc(stateRef);if(snap.exists()){applyRemoteState(snap.data());return}const voteRecords=records.filter(r=>r.objectiveVote),voteCounts={};for(const r of voteRecords)voteCounts[r.objectiveVote]=(voteCounts[r.objectiveVote]||0)+1;chosenGameMode=Object.keys(GAME_MODES).sort((a,b)=>(voteCounts[b]||0)-(voteCounts[a]||0)||Number(voteRecords.find(r=>r.objectiveVote===a)?.readyAtMs||Infinity)-Number(voteRecords.find(r=>r.objectiveVote===b)?.readyAtMs||Infinity))[0]||'annihilation';chosenMapId=resolveMapVote(records);const used=[];const slots=humanNames.map((name,i)=>{const id=ready[safeId(name)]?.factionId||Object.keys(FACTIONS)[i%3];used.push(id);return{name,factionId:id,ai:false}});while(slots.length<3){const id=Object.keys(FACTIONS).find(f=>!used.includes(f))||Object.keys(FACTIONS)[slots.length%3];used.push(id);slots.push({name:`AI Commander ${slots.length-humanNames.length+1}`,factionId:id,ai:true})}chosenDifficulty='medium';chosenAiStyle='balanced';createGame(slots);stateDirty=true;await writeState(true)}
 
 
@@ -1108,7 +1118,50 @@ function renderDifficultyChoices(){
 function drawMapPreview(canvas,id){const map=mapDefinition(id),layout=mapLayout(id,0x71c4),context=canvas.getContext('2d'),scale=canvas.width/BOARD_W;context.fillStyle=map.palette.ground;context.fillRect(0,0,canvas.width,canvas.height);if(layout.terrain)for(const tile of layout.terrain){context.fillStyle=map.palette[tile.type]||map.palette.ground;context.fillRect(tile.x*scale,tile.y*scale,scale+.1,scale+.1)}else{context.strokeStyle=map.palette.lane;context.lineWidth=scale*3;for(const start of layout.starts){context.beginPath();context.moveTo((start.x+.5)*scale,(start.y+.5)*scale);context.lineTo(21.5*scale,14.5*scale);context.stroke()}}
  for(const site of layout.expansions){context.fillStyle=site.rich?'#ffd166':map.palette.expansion;context.fillRect((site.x-.5)*scale,(site.y-.5)*scale,scale*2,scale*2)}for(const point of layout.conquestSites){context.strokeStyle=map.palette.objective||'#f1e0ae';context.lineWidth=1;context.beginPath();context.arc((point.x+.5)*scale,(point.y+.5)*scale,scale*1.2,0,Math.PI*2);context.stroke()}layout.starts.forEach((start,index)=>{context.fillStyle=['#75d9ff','#dcadff','#ff929f'][index];context.beginPath();context.arc((start.x+.5)*scale,(start.y+.5)*scale,scale*1.25,0,Math.PI*2);context.fill()});
 }
-function renderMapChoices(){const host=document.getElementById('mapChoices');if(!host.children.length)for(const map of MAP_DEFINITIONS){const button=document.createElement('button');button.type='button';button.className='mapChoice';button.dataset.map=map.id;button.style.setProperty('--map-accent',map.palette.accent);button.setAttribute('aria-label',map.name+'. '+map.description);button.innerHTML=`<canvas class="mapPreview" width="252" height="180" aria-hidden="true"></canvas><span class="mapChoiceText"><b>${map.name}</b><span class="mapTheme">${map.theme}</span><small>${map.subtitle}</small></span><span class="mapCheck" aria-hidden="true">✓</span>`;drawMapPreview(button.querySelector('canvas'),map.id);button.onclick=()=>{chosenMapId=map.id;localStorage.setItem('csf.map',chosenMapId);loadMapAtlas();renderMapChoices();renderStartStatus()};host.appendChild(button)}for(const button of host.children){const chosen=button.dataset.map===chosenMapId;button.classList.toggle('chosen',chosen);button.setAttribute('aria-pressed',String(chosen))}document.getElementById('mapSummary').textContent=mapDefinition().description+(lobbyId?' Commanders vote for a map; the majority choice wins.':'');}
+function mapVoteLocked(){return !!lobbyId&&(mapReadyPending||readyMapVote!==null||lobbyData?.chessStarfrontReady?.[safeId(username)]?.ready===true)}
+function openMapPopout(){
+  if(gameStarted||mapVoteLocked())return;
+  const dialog=document.getElementById('mapPopout');clearTimeout(mapPopoutCloseTimer);mapPopoutCloseTimer=null;dialog.inert=false;
+  renderMapChoices();if(!dialog.open)dialog.showModal();document.getElementById('mapSelectBtn').setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=>{if(dialog.open&&!dialog.inert)dialog.classList.add('open')});
+  const selectedChoice=dialog.querySelector('[data-map="'+chosenMapId+'"]');selectedChoice?.focus({preventScroll:true});selectedChoice?.scrollIntoView({block:'nearest'});
+}
+function closeMapPopout(restoreFocus=true,immediate=false){
+  const dialog=document.getElementById('mapPopout');if(!dialog||dialog.inert&&!immediate)return;
+  clearTimeout(mapPopoutCloseTimer);mapPopoutCloseTimer=null;document.getElementById('mapSelectBtn').setAttribute('aria-expanded','false');dialog.classList.remove('open');
+  if(!dialog.open)return;dialog.inert=true;
+  const finish=()=>{dialog.close();dialog.inert=false;mapPopoutCloseTimer=null;const trigger=document.getElementById('mapSelectBtn');if(restoreFocus&&!trigger.disabled&&!gameStarted)trigger.focus({preventScroll:true})};
+  if(immediate||window.matchMedia('(prefers-reduced-motion: reduce)').matches)finish();else mapPopoutCloseTimer=setTimeout(finish,140);
+}
+function selectBattlefield(id){
+  if(gameStarted||mapVoteLocked()||!MAP_DEFINITIONS.some(map=>map.id===id))return false;
+  chosenMapId=id;localStorage.setItem('csf.map',chosenMapId);loadMapAtlas();renderMapChoices();renderStartStatus();closeMapPopout();return true;
+}
+function renderMapChoices(){
+  const host=document.getElementById('mapChoices'),trigger=document.getElementById('mapSelectBtn'),locked=mapVoteLocked(),readyRecord=lobbyData?.chessStarfrontReady?.[safeId(username)];
+  const lockedMap=lobbyId&&(readyRecord?.ready?readyRecord.mapVote:readyMapVote);if(lockedMap&&MAP_DEFINITIONS.some(map=>map.id===lockedMap))chosenMapId=lockedMap;
+  if(!host.children.length)for(const map of MAP_DEFINITIONS){
+    const button=document.createElement('button');button.type='button';button.className='mapChoice';button.dataset.map=map.id;button.style.setProperty('--map-accent',map.palette.accent);button.setAttribute('aria-label',map.name+'. '+map.theme+'. '+map.description);
+    button.innerHTML=`<canvas class="mapPreview" width="252" height="180" aria-hidden="true"></canvas><span class="mapChoiceText"><b>${map.name}</b><span class="mapTheme">${map.theme}</span><small>${map.description}</small></span><span class="mapCheck" aria-hidden="true">✓ SELECTED</span>`;
+    drawMapPreview(button.querySelector('canvas'),map.id);button.onclick=()=>selectBattlefield(map.id);host.appendChild(button);
+  }
+  for(const button of host.children){const chosen=button.dataset.map===chosenMapId;button.classList.toggle('chosen',chosen);button.setAttribute('aria-pressed',String(chosen));button.disabled=locked}
+  const map=mapDefinition(),preview=document.getElementById('selectedMapPreview');if(preview.dataset.renderedMap!==map.id){drawMapPreview(preview,map.id);preview.dataset.renderedMap=map.id}
+  trigger.style.setProperty('--map-accent',map.palette.accent);trigger.disabled=locked;trigger.setAttribute('aria-label',(locked?'Battlefield vote locked: ':'Change battlefield: ')+map.name+'. '+map.theme+'. '+map.description);
+  document.getElementById('selectedMapName').textContent=map.name;document.getElementById('selectedMapTheme').textContent=map.theme;document.getElementById('mapSummary').textContent=map.description;
+  document.getElementById('mapSelectAction').textContent=locked?(mapReadyPending?'Locking vote…':'Vote Locked'):'Change Map ▾';
+  document.getElementById('mapPopoutNote').textContent=lobbyId?'Your choice becomes your map vote when you ready. The majority wins; ties use the existing first-ready rule.':'Choose a battlefield to save your preference and return to battle setup.';
+  if(locked&&document.getElementById('mapPopout').open)closeMapPopout(false);
+}
+document.getElementById('mapSelectBtn').onclick=openMapPopout;
+document.getElementById('mapPopoutClose').onclick=()=>closeMapPopout();
+document.getElementById('mapPopout').addEventListener('cancel',event=>{event.preventDefault();closeMapPopout()});
+document.getElementById('mapPopout').addEventListener('click',event=>{const dialog=event.currentTarget,r=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom))closeMapPopout()});
+document.getElementById('mapPopout').addEventListener('keydown',event=>{
+  if(event.key!=='Tab')return;
+  const dialog=event.currentTarget,buttons=[...dialog.querySelectorAll('button:not(:disabled)')],first=buttons[0],last=buttons[buttons.length-1];
+  if(!first)return;if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+});
 function renderStartMenu(){
   // Keep the controls mounted while graphics and lobby status update, preserving keyboard focus.
   if(!factionGrid.children.length)for(const f of Object.values(FACTIONS)){
@@ -1127,7 +1180,7 @@ function preserveMenuScroll(render){const a=actionList.scrollTop,c=commandButton
 function refreshUI(force=false){if(!gameStarted){renderStartMenu();return}const p=players[PLAYER];mineralsText.textContent=Math.floor(p?.minerals||0);gasText.textContent=Math.floor(p?.gas||0);supplyText.textContent=`${supplyUsed(PLAYER)} / ${supplyCap(PLAYER)}`;armyText.textContent=playerUnits(PLAYER).filter(e=>!isWorker(e)).length;objectiveText.textContent=objectiveHudText();refreshLegalTiles();renderSelection();const signature=computeUiSignature();if((force||signature!==uiRenderSignature)&&(!uiPointerLock||force)){preserveMenuScroll(()=>{renderCommandButtons();renderSidePanel()});uiRenderSignature=signature}renderProductionQueue();drawMinimap()}
 function selectEntity(e){setSelection(e?[e]:[])}
 function renderSelection(){const list=selectedEntities(),e=list[0],d=defOf(e);if(!e||!d){selectionName.textContent='No selection';selectionMeta.textContent='Choose one of your units or structures.';selectionOrder.textContent='Movement, attacks, mining, construction, and production use separate timers.';hpFill.style.width='0%';cooldownGrid.innerHTML='<div class="coolChip"><span>Move</span><b>—</b></div><div class="coolChip"><span>Attack</span><b>—</b></div><div class="coolChip"><span>Mine</span><b>—</b></div><div class="coolChip"><span>Ability</span><b>—</b></div>';return}if(list.length>1){const counts=new Map();for(const unit of list)counts.set(defOf(unit)?.name||unit.type,(counts.get(defOf(unit)?.name||unit.type)||0)+1);selectionName.textContent=`⚔ ${list.length} units selected`;selectionMeta.textContent=[...counts].map(([name,count])=>`${count} ${name}`).join(' · ');selectionOrder.textContent='Click any battlefield tile to move the whole group toward it. Targeted abilities fire from every ready matching unit.';const hpPct=list.reduce((sum,unit)=>sum+clamp(unit.hp/unit.maxHp,0,1),0)/list.length;hpFill.style.width=`${hpPct*100}%`;const ready=(key,eligible=list)=>eligible.filter(unit=>nowMs()>=Number(unit[key]||0)).length,attackers=list.filter(attackDef),casters=list.filter(unit=>abilitiesFor(unit).length);const chips=[['Move',`${ready('moveReadyAt')}/${list.length}`],['Attack',attackers.length?`${ready('attackReadyAt',attackers)}/${attackers.length}`:'—'],['Mine','—'],['Ability',casters.length?`${ready('abilityReadyAt',casters)}/${casters.length}`:'—']];cooldownGrid.innerHTML=chips.map(([label,value])=>`<div class="coolChip"><span>${label}</span><b>${value}</b></div>`).join('');return}selectionName.textContent=`${d.icon||''} ${d.name}${ownEntity(e)?'':' — Enemy'}`;const tags=(e.kind==='unit'?UNITS[e.type]?.tags||[]:e.kind==='structure'?['structure']:[]).map(t=>TAG_LABEL[t]||t).join(' · ');selectionMeta.textContent=`HP ${Math.max(0,Math.ceil(e.hp))}/${e.maxHp}${e.maxShield?` · Shield ${Math.ceil(e.shield)}/${e.maxShield}`:''}${tags?` · ${tags}`:''}`;const status=e.complete===false?`Constructing ${Math.max(0,Math.ceil((e.buildEnd-nowMs())/1000))}s`:e.kind==='cocoon'?`Morphing ${Math.max(0,Math.ceil((e.morphEnd-nowMs())/1000))}s`:e.siegeMode?'Siege mode: movement locked, weapon range increased':e.transportedIn?'Protected inside a Frontier Dropship':e.garrisonedIn?'Protected inside a Frontier Bunker':e.pendingBuild?`Travelling to build ${STRUCTURES[e.pendingBuild.type]?.name||'gas structure'} at ${e.pendingBuild.x}, ${e.pendingBuild.y}`:e.moveDestination?`Moving persistently to ${e.moveDestination.x}, ${e.moveDestination.y}`:e.targetId?`${e.attackMode?'Attack mode: ':''}Pursuing ${defOf(entityById(e.targetId))?.name||'assigned target'}`:e.miningNodeId?`Mining ${resourceNodes.find(n=>n.id===e.miningNodeId)?.type||''}; movement remains independent`:e.type==='dropship'&&e.passengers?.length?`Passengers: ${e.passengers.map(id=>UNITS[entityById(id)?.type]?.name||'Unit').join(' · ')}`:e.queue?.length?`Queue: ${e.queue.map(q=>q.kind==='research'?RESEARCH_DEFS[q.researchId]?.name:UNITS[q.type]?.name).join(' → ')}`:e.powered===false?'UNPOWERED — disabled and decaying':e.order||'idle';selectionOrder.textContent=status;hpFill.style.width=`${clamp(e.hp/e.maxHp*100,0,100)}%`;const move=e.kind==='unit'?cooldownSeconds(e.moveReadyAt):null,attack=attackDef(e)?cooldownSeconds(e.attackReadyAt):null,mine=isWorker(e)&&e.miningNodeId?cooldownSeconds(e.miningReadyAt):null,ability=abilitiesFor(e).length?cooldownSeconds(e.abilityReadyAt):null;const chips=[['Move',move],['Attack',attack],['Mine',mine],['Ability',ability]];cooldownGrid.innerHTML=chips.map(([label,value])=>`<div class="coolChip ${value!==null&&value<=.05?'ready':''}"><span>${label}</span><b>${value===null?'—':fmtCd(value)}</b></div>`).join('')}
-function renderProductionQueue(){productionQueue.innerHTML='';productionQueue.classList.remove('visible');const e=selected();if(!e)return;const now=nowMs(),items=[];if(e.complete===false&&e.kind==='structure'){const d=STRUCTURES[e.type],start=e.buildStart||((e.buildEnd||now)-scaledTime(d?.time||1)*1000),end=e.buildEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Structure',icon:d?.icon||'⌂',remain,pct,state:'Building'})}else if(e.kind==='cocoon'){const d=UNITS[e.morphType],start=(e.morphEnd||now)-(d?.time||1)*1000,end=e.morphEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Organism',icon:d?.icon||'◉',remain,pct,state:'Morphing'})}else if(e.kind==='structure'&&e.queue?.length){e.queue.forEach((item,index)=>{const d=item.kind==='research'?RESEARCH_DEFS[item.researchId]:UNITS[item.type],fallbackStart=index===0?(item.finishAt-(d?.time||1)*1000):(e.queue[index-1]?.finishAt||now),start=item.startAt??fallbackStart,end=item.finishAt||start+(d?.time||1)*1000,active=now>=start,remain=Math.max(0,(end-now)/1000),pct=active?clamp((now-start)/Math.max(1,end-start),0,1):0;items.push({name:d?.name||item.type||item.researchId,icon:d?.icon||'●',remain,pct,state:active?(item.kind==='research'?'Researching':'Training'):`Queued ${index+1}`})})}if(!items.length)return;productionQueue.classList.add('visible');const title=document.createElement('div');title.className='queueTitle';title.textContent='Live Queue';productionQueue.appendChild(title);for(const item of items){const wrap=document.createElement('div');wrap.className='queueItem';const deg=Math.round(item.pct*360);wrap.innerHTML=`<div class="queueCircle" style="background:conic-gradient(#69b8ff ${deg}deg,rgba(255,255,255,.08) ${deg}deg)"><b>${item.remain>0?fmtCd(item.remain):'Ready'}</b></div><div class="queueInfo">${item.icon} ${item.name}<small>${item.state} · ${Math.round(item.pct*100)}%</small></div>`;productionQueue.appendChild(wrap)}}
+function renderProductionQueue(){productionQueue.innerHTML='';productionQueue.classList.remove('visible');const e=selected();if(!e)return;const now=nowMs(),items=[];if(e.complete===false&&e.kind==='structure'){const d=STRUCTURES[e.type],start=e.buildStart||((e.buildEnd||now)-scaledTime(d?.time||1)*1000),end=e.buildEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Structure',icon:d?.icon||'⌂',remain,pct,state:'Building'})}else if(e.kind==='cocoon'){const d=UNITS[e.morphType],start=(e.morphEnd||now)-(d?.time||1)*1000,end=e.morphEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Organism',icon:d?.icon||'◉',remain,pct,state:'Morphing'})}else if((e.kind==='structure'||e.type==='forwardFabricator')&&e.queue?.length){e.queue.forEach((item,index)=>{const d=item.kind==='research'?RESEARCH_DEFS[item.researchId]:UNITS[item.type],fallbackStart=index===0?(item.finishAt-(d?.time||1)*1000):(e.queue[index-1]?.finishAt||now),start=item.startAt??fallbackStart,end=item.finishAt||start+(d?.time||1)*1000,active=now>=start,remain=Math.max(0,(end-now)/1000),pct=active?clamp((now-start)/Math.max(1,end-start),0,1):0;items.push({name:d?.name||item.type||item.researchId,icon:d?.icon||'●',remain,pct,state:active?(item.kind==='research'?'Researching':'Training'):`Queued ${index+1}`})})}if(!items.length)return;productionQueue.classList.add('visible');const title=document.createElement('div');title.className='queueTitle';title.textContent='Live Queue';productionQueue.appendChild(title);for(const item of items){const wrap=document.createElement('div');wrap.className='queueItem';const deg=Math.round(item.pct*360);wrap.innerHTML=`<div class="queueCircle" style="background:conic-gradient(#69b8ff ${deg}deg,rgba(255,255,255,.08) ${deg}deg)"><b>${item.remain>0?fmtCd(item.remain):'Ready'}</b></div><div class="queueInfo">${item.icon} ${item.name}<small>${item.state} · ${Math.round(item.pct*100)}%</small></div>`;productionQueue.appendChild(wrap)}}
 
 function renderCommandButtons(){commandButtons.innerHTML='';abilityButtons.innerHTML='';const list=selectedEntities(),e=list[0];const add=(host,label,action,disabled=false,active=false,sub='',title='',visualType=null)=>{const b=document.createElement('button');b.className='cmdBtn'+(active?' active':'')+(visualType?' abilityVisual':'');b.innerHTML=`${visualType?imageHtmlForType(visualType,label):''}<span>${label}</span>${sub?`<small>${sub}</small>`:''}${visualType&&title?`<small class="abilityExplain">${title}</small>`:''}`;b.disabled=disabled;b.title=title||sub;b.setAttribute('aria-label',[label,sub,title].filter(Boolean).join('. '));b.onclick=action;host.appendChild(b);return b};if(!e){contextMenuTitle.textContent='Context Actions';add(commandButtons,'Select Unit',()=>{},true,false,'Click battlefield');add(commandButtons,'Pan / Zoom',()=>{},true,false,'Drag or scroll');add(commandButtons,'Center Base',()=>focusOwnBase(),false,false,'Return home');contextSummary.textContent='Select one of your units, workers, larva, or structures to reveal every available action here.';hintLine.textContent='Hold on the battlefield and drag to box-select units. Double-click or double-tap a unit to select every visible unit of that type.';return}
   const group=list.length>1,owned=list.every(ownEntity);const addGroupAbility=id=>{const casters=abilityCasters(id),ready=casters.filter(unit=>nowMs()>=unit.abilityReadyAt),a=ABILITIES[id];if(!a)return;add(abilityButtons,`${a.icon} ${a.name}`,()=>{if(a.target==='tile'){interactionMode='ability';interactionPayload=id;refreshLegalTiles();refreshUI(true)}else sendCommand({type:'groupAbility',entityIds:casters.map(unit=>unit.id),abilityId:id})},!owned||!ready.length,interactionMode==='ability'&&interactionPayload===id,`${ready.length}/${casters.length} ready`,a.desc,casters[0]?.type).dataset.ability=id};
@@ -1286,7 +1339,7 @@ mobileDockToggle.onclick=()=>setMobileDockState(mobileDockState==='compact'?'exp
 function exitGame(){if(returnTo&&returnTo.startsWith('/'))location.href=returnTo;else location.href='/game/index.html'}exitBtn.onclick=exitGame;endExitBtn.onclick=exitGame;
 difficultySelect.onchange=()=>{chosenDifficulty=DIFFICULTY[difficultySelect.value]?difficultySelect.value:'medium';difficultyNote.textContent=DIFFICULTY[chosenDifficulty].label;localStorage.setItem('csf.difficulty',chosenDifficulty);renderDifficultyChoices();renderStartStatus()};aiCountSelect.onchange=()=>{chosenAiCount=Number(aiCountSelect.value);localStorage.setItem('csf.aiCount',String(chosenAiCount));renderStartStatus()};aiStyleSelect.onchange=()=>{chosenAiStyle=aiStyleSelect.value;localStorage.setItem('csf.aiStyle',chosenAiStyle)};objectiveSelect.onchange=()=>{chosenGameMode=objectiveSelect.value;objectiveNote.textContent=(GAME_MODES[chosenGameMode]||GAME_MODES.annihilation).desc;localStorage.setItem('csf.objective',chosenGameMode);renderStartStatus()};
 startBtn.onclick=async()=>{chosenDifficulty=difficultySelect.value;chosenAiCount=Number(aiCountSelect.value);chosenAiStyle=aiStyleSelect.value;chosenGameMode=objectiveSelect.value;if(lobbyId){await publishReady()}else createGame(buildSoloSlots())};
-restartBtn.onclick=()=>{lobbyId='';gameStarted=false;gameOver=false;entities=[];particles=[];shots=[];floating=[];shatters=[];areaEffects=[];pendingImpacts=[];temporaryObstacles=[];scanEffects=[];lastSeenIntel=new Map();modeState=null;selectedIds=[];selectedId=null;players=[];overlay.style.display='flex';endOverlay.style.display='none';startBtn.disabled=false;startBtn.textContent='Deploy Command Base';difficultyBox.style.display='block';aiCountBox.style.display='block';aiStyleBox.style.display='block';objectiveBox.style.display='block';setStatus('Local solo simulation');renderStartMenu()};spectateBtn.onclick=()=>{spectating=true;endOverlay.style.display='none'};
+restartBtn.onclick=()=>{lobbyId='';mapReadyPending=false;readyMapVote=null;closeMapPopout(false,true);gameStarted=false;gameOver=false;entities=[];particles=[];shots=[];floating=[];shatters=[];areaEffects=[];pendingImpacts=[];temporaryObstacles=[];scanEffects=[];lastSeenIntel=new Map();modeState=null;selectedIds=[];selectedId=null;players=[];overlay.style.display='flex';endOverlay.style.display='none';startBtn.disabled=false;startBtn.textContent='Deploy Command Base';difficultyBox.style.display='block';aiCountBox.style.display='block';aiStyleBox.style.display='block';objectiveBox.style.display='block';setStatus('Local solo simulation');renderStartMenu()};spectateBtn.onclick=()=>{spectating=true;endOverlay.style.display='none'};
 window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,120));window.addEventListener('beforeunload',()=>{if(presenceRef)deleteDoc(presenceRef).catch(()=>{});presenceUnsub?.()});
 
 
@@ -1412,7 +1465,7 @@ function drawConstruction(e,z,t){if(e.kind!=='structure'||e.complete!==false)ret
 function drawWorkEffects(){const t=nowMs(),z=TILE*cam.zoom;if(z<24)return;for(const e of entities){if(e.alive===false||!isWorker(e)||!entityVisibleToPlayer(e)||!visibleOnScreen(e))continue;const site=workingSite(e),n=!site&&!e.miningStopped&&resourceNodes.find(n=>n.id===e.miningNodeId&&n.amount>0),target=site||n;if(!target)continue;const a=worldToScreen(e.px??e.x,e.py??e.y),b=worldToScreen(target.x,target.y),human=players[e.faction]?.factionId==='frontier',phase=t*.008+e.id,color=human?(site?'#ffd180':'#a8e6ff'):factionOf(e.faction).color;let ax=a.x+z*.48,ay=a.y+z*.57,bx=b.x+z*.53,by=b.y+z*.45;if(n&&n.x===e.x&&n.y===e.y){bx+=z*.23;by+=z*.2}ctx.save();ctx.strokeStyle=color;ctx.lineWidth=human?2:3;ctx.globalAlpha=.65+.2*Math.sin(phase);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();ctx.fillStyle=color;ctx.beginPath();ctx.arc(bx,by,Math.max(2,z*.07*(1+.3*Math.sin(phase))),0,Math.PI*2);ctx.fill();if(n){ctx.lineWidth=1;ctx.strokeRect(b.x+z*.1,b.y+z*.1,z*.8,z*.8)}if(z>36){for(let i=0;i<4;i++){const q=((t*.001+i*.25+e.id*.11)%1);ctx.fillStyle=i%2?'#fff0c5':color;if(human){const angle=phase+i*1.6;ctx.fillRect(bx+Math.cos(angle)*q*z*.25,by+Math.sin(angle)*q*z*.18,2,2)}else{ctx.beginPath();ctx.arc(bx+(ax-bx)*q,by+(ay-by)*q-Math.sin(q*Math.PI)*z*.12,2,0,Math.PI*2);ctx.fill()}}if(site&&human){ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(phase)*z*.16,ay-z*.12);ctx.stroke()}}ctx.restore()}}
 function drawHitAndStatus(e,z,r,t){ctx.save();ctx.globalAlpha=1;if(t-e.lastDamagedAt<260){ctx.strokeStyle=e.shieldHitUntil>t?'#bca9ff':'#ffe7be';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,r*1.08,-.6,Math.PI*1.5);ctx.stroke()}
  if(z>35&&e.hp/e.maxHp<.28&&(hasTag(e,'mechanical')||e.kind==='structure')&&players[e.faction]?.factionId==='frontier'){for(let i=0;i<2;i++){const p=(t*.0007+i*.5)%1;ctx.globalAlpha=(1-p)*.35;ctx.fillStyle='#b1afb0';ctx.beginPath();ctx.arc(z*.12+Math.sin(t*.001+i)*z*.06,-r*.4-p*z*.4,z*(.05+p*.07),0,Math.PI*2);ctx.fill()}}
- if(e.faction===PLAYER&&z>36){const state=activityFor(e),map={Mining:['◆','#8be7dc'],Building:['⌂','#ffd166'],Fighting:['!','#ff8595'],Moving:['›','#8acbff'],Idle:['·','#b1c2cc'],Producing:['+','#c9a9ff'],Holding:['—','#c8d6e1']};const [icon,color]=map[state];ctx.globalAlpha=1;ctx.fillStyle='#06101de8';ctx.beginPath();ctx.arc(-r*.88,r*.7,Math.max(6,z*.11),0,Math.PI*2);ctx.fill();ctx.fillStyle=color;ctx.font=`bold ${Math.max(10,z*.2)}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(icon,-r*.88,r*.7)}ctx.restore()}
+ if(e.faction===PLAYER&&z>36){const state=activityFor(e),map={Mining:['◆','#8be7dc'],Building:['⌂','#ffd166'],Fighting:['!','#ff8595'],Moving:['›','#8acbff'],Idle:['·','#b1c2cc'],Producing:['+','#c9a9ff'],Holding:['—','#c8d6e1']};const [icon,color]=map[state]||[e.fabricatorDeployed?'⚙':e.tunnelExitId?'⌄':e.warpChannel?'∞':e.channelEffectId?'◴':'·',factionOf(e.faction).color];ctx.globalAlpha=1;ctx.fillStyle='#06101de8';ctx.beginPath();ctx.arc(-r*.88,r*.7,Math.max(6,z*.11),0,Math.PI*2);ctx.fill();ctx.fillStyle=color;ctx.font=`bold ${Math.max(10,z*.2)}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(icon,-r*.88,r*.7)}ctx.restore()}
 function drawTargetPreview(){const e=selected(),z=TILE*cam.zoom;if(!e||!ownEntity(e))return;ctx.save();const preview=interactionMode==='ability'?interactionPayload:previewAbility;if(preview){const a=ABILITIES[preview];for(const caster of abilityCasters(preview)){const s=worldToScreen(caster.x+.5,caster.y+.5);ctx.strokeStyle='#cca9ff88';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(s.x,s.y,(a?.range||a?.radius||1)*z,0,Math.PI*2);ctx.stroke()}ctx.setLineDash([])}if(interactionMode==='build'&&hoverTile){const valid=legalTiles.some(p=>p.x===hoverTile.x&&p.y===hoverTile.y),s=worldToScreen(hoverTile.x,hoverTile.y);ctx.globalAlpha=.5;const img=getAsset(assetKeyForTypeSafe(interactionPayload));if(img)drawContainedImage(img,s.x,s.y,z,z,2);ctx.globalAlpha=1;ctx.strokeStyle=valid?'#7dffbd':'#ff637c';ctx.lineWidth=3;ctx.strokeRect(s.x+2,s.y+2,z-4,z-4)}if(interactionMode==='mine'){for(const n of resourceNodes){if(n.amount<=0||!tileVisibleToFaction(PLAYER,n.x,n.y))continue;const s=worldToScreen(n.x,n.y);ctx.strokeStyle=resourceConnected(PLAYER,n)?'#78efbe':'#8792a655';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,z-4,z-4)}}ctx.restore()}
 function assetKeyForTypeSafe(type){return entityAssetKey({kind:'structure',type})}
 const polishEvents=[];let previewAbility=null;let previousPresentation=new Map(),previousResources=new Map(),lastPresentationScan=0;const idleSince=new Map(),idleNotified=new Set();
@@ -1555,6 +1608,629 @@ drawTargetPreview=function(){warfareDrawTargetPreview();const e=selected(),placi
 const warfareDrawStatus=drawHitAndStatus;
 drawHitAndStatus=function(e,z,r,t){warfareDrawStatus(e,z,r,t);if(e.aiRetreatUntil>t){ctx.save();ctx.fillStyle='#ffd166';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText('↶',0,-r-9);ctx.restore()}const target=entityById(e.targetId);if(target&&t-(e.acquiredAt||0)<550&&entityVisibleToPlayer(target)){const counter=Object.keys(attackDef(e)?.bonuses||{}).some(tag=>hasTag(target,tag));ctx.save();ctx.strokeStyle=counter?'#ffd166':'#ff8394';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,r+3,0,Math.PI*2);ctx.stroke();ctx.restore()}};
 
+// ---------- Faction expansion: definitions and informed AI ----------
+const EXPANSION_UNIT_TYPES=new Set(['suppressorExosuit','pulseOperative','forwardFabricator','latticeSkiff','chronoweaver','voidLancer','tunnelMaw','sporeback','broodMatriarch']);
+Object.assign(UNITS,{
+  suppressorExosuit:{f:'frontier',name:'Suppressor Exosuit',icon:'⌁',hp:180,cost:[150,100],time:8,supply:2,tags:['armored','biological','mechanical'],move:2,moveCd:2.15,requires:['factory'],attack:{damage:11,range:3,cooldown:1.85},desc:'Heavy rotary infantry. Sweeps a ground cone to suppress enemy attack recovery.'},
+  pulseOperative:{f:'frontier',name:'Pulse Operative',icon:'⌾',hp:90,cost:[125,125],time:7,supply:2,tags:['light','biological'],move:3,moveCd:1.8,requires:['academy'],attack:{damage:5,range:3,cooldown:1.5},desc:'Electronic warfare specialist. Drains shields and briefly locks enemy abilities.'},
+  forwardFabricator:{f:'frontier',name:'Forward Fabricator',icon:'⚙',hp:250,cost:[225,125],time:11,supply:3,tags:['armored','mechanical'],move:2,moveCd:2.55,requires:['factory','academy'],desc:'One per player. Deploys into forward Rifleman/Medic production at +20% cost and slower training.'},
+  latticeSkiff:{f:'ascendant',name:'Lattice Skiff',icon:'∞',hp:110,shield:110,cost:[175,150],time:9,supply:2,tags:['light','mechanical','psionic','flying'],move:4,moveCd:1.9,requires:['stargate','forge'],desc:'Support aircraft. Channels up to two eligible ground troops from a nearby friendly Pylon.'},
+  chronoweaver:{f:'ascendant',name:'Chronoweaver',icon:'◴',hp:70,shield:100,cost:[125,175],time:9,supply:2,tags:['light','biological','psionic'],move:2,moveCd:2.05,requires:['gateway','citadel'],attack:{damage:5,range:3,cooldown:1.7},desc:'Temporal caster. Slows enemy attack and ability cooldown recovery without slowing movement.'},
+  voidLancer:{f:'ascendant',name:'Void Lancer',icon:'↟',hp:130,shield:185,cost:[200,175],time:10,supply:3,tags:['armored','mechanical'],move:2,moveCd:2.55,requires:['robotics','citadel'],attack:{damage:9,range:4,cooldown:2.05},desc:'Shield-powered siege construct. Channels a structure beam for 75 damage at a cost of 70 shields.'},
+  tunnelMaw:{f:'brood',name:'Tunnel Maw',icon:'⌄',hp:240,cost:[200,125],time:10,supply:3,tags:['armored','biological'],move:2,moveCd:2.45,requires:['hive'],regen:.9,attack:{damage:6,range:1,cooldown:2.1},desc:'From friendly creep, digs a visible temporary invasion tunnel for five eligible ground troops.'},
+  sporeback:{f:'brood',name:'Sporeback',icon:'☣',hp:170,cost:[150,100],time:8,supply:2,tags:['armored','biological'],move:2,moveCd:2.3,requires:['hydraDen','evolutionNest'],regen:.7,attack:{damage:12,airDamage:12,groundDamage:2,range:5,cooldown:2.15,airSplash:1.1},desc:'Biological air denial. Explosive anti-air spores and lingering clouds; weak against ground troops.'},
+  broodMatriarch:{f:'brood',name:'Brood Matriarch',icon:'♕',hp:230,cost:[200,150],time:11,supply:3,tags:['armored','biological'],move:2,moveCd:2.35,requires:['hive'],regen:1,attack:{damage:7,range:2,cooldown:2},desc:'Mobile swarm mother. Sacrifices 25 HP to hatch three temporary Broodlings, capped at six per player.'},
+  broodling:{f:'brood',name:'Broodling',icon:'〽',hp:30,cost:[0,0],time:0,supply:0,temporary:true,temporarySummon:true,summonOnly:true,tags:['light','biological'],move:3,moveCd:1.3,attack:{damage:5,range:1,cooldown:1.15},desc:'A ten-second temporary attacker. Cannot gather, carry Relics, capture, garrison, tunnel, or morph.'}
+});
+Object.assign(STRUCTURES,{tunnelExit:{f:'brood',name:'Tunnel Exit',icon:'⌄',hp:90,cost:[0,0],time:0,supply:0,vision:4,temporaryOnly:true,tags:['armored','biological','structure'],desc:'An attackable temporary tunnel mouth. Destroy it to close the connection.'}});
+Object.assign(ABILITIES,{
+  suppressionSweep:{name:'Suppression Sweep',icon:'⌁',cooldown:21,target:'tile',range:4,desc:'Sweep a four-tile ground cone for modest damage and 30% slower attack recovery for 5 seconds. Does not stack.'},
+  disruptionPulse:{name:'Disruption Pulse',icon:'⌾',cooldown:22,target:'tile',range:4,radius:1.5,desc:'Remove up to 50 shields in a 1.5-tile radius and lock abilities for 4 seconds. Recently disrupted enemies resist repeated locks.'},
+  fieldMuster:{name:'Field Muster',icon:'⚙',cooldown:3,target:'self',desc:'Deploy for 3 seconds, then train Riflemen and Field Medics at +20% resources and slower speed. Activate again to pack up and refund queued training.'},
+  warpConduit:{name:'Warp Conduit',icon:'∞',cooldown:30,target:'tile',range:8,desc:'Select a completed friendly Pylon within 8 tiles. Channel for 2 seconds to bring up to two nearby eligible ground troops to safe positions beside the Skiff.'},
+  temporalDistortion:{name:'Temporal Distortion',icon:'◴',cooldown:26,target:'tile',range:5,radius:2,desc:'Create a two-tile temporal field for 5 seconds. Enemy attack and ability cooldowns recover 30% more slowly; movement is unchanged.'},
+  voidSpear:{name:'Void Spear',icon:'↟',cooldown:24,target:'tile',range:6,desc:'Spend 70 shields and charge for 2 seconds while immobile. Deal 75 damage to a visible enemy structure, or reduced damage to a temporary barrier.'},
+  tunnelBreach:{name:'Tunnel Breach',icon:'⌄',cooldown:35,target:'tile',range:8,desc:'On friendly creep, dig for 3 seconds to open a 15-second tunnel within 8 tiles. Up to five nearby eligible ground troops may enter; two active connections per player.'},
+  sporeBloom:{name:'Spore Bloom',icon:'☣',cooldown:24,target:'tile',range:5,radius:2,desc:'Create a two-tile spore cloud for 5 seconds. Enemy aircraft take 6 damage per second; overlapping clouds do not multiply full damage.'},
+  bloodClutch:{name:'Blood Clutch',icon:'♕',cooldown:23,target:'self',desc:'Sacrifice 25 HP to hatch up to three Broodlings into empty adjacent tiles for 10 seconds. Cannot be lethal; six active Broodlings per player.'}
+});
+for(const [type,ability] of [['suppressorExosuit','suppressionSweep'],['pulseOperative','disruptionPulse'],['forwardFabricator','fieldMuster'],['latticeSkiff','warpConduit'],['chronoweaver','temporalDistortion'],['voidLancer','voidSpear'],['tunnelMaw','tunnelBreach'],['sporeback','sporeBloom'],['broodMatriarch','bloodClutch']])UNIT_ABILITIES[type]=[ability];
+UNIT_ABILITIES.broodling=[];
+for(const [structure,types] of [['factory',['suppressorExosuit','forwardFabricator']],['barracks',['pulseOperative']],['stargate',['latticeSkiff']],['gateway',['chronoweaver']],['robotics',['voidLancer']]])STRUCTURES[structure].produces.push(...types);
+ROSTER_ORDER.frontier.push('suppressorExosuit','pulseOperative','forwardFabricator');
+ROSTER_ORDER.ascendant.push('latticeSkiff','chronoweaver','voidLancer');
+ROSTER_ORDER.brood.push('tunnelMaw','sporeback','broodMatriarch');
+Object.assign(UNIT_ROLES,{suppressorExosuit:['Suppression infantry','⌁','#7dd7ff'],pulseOperative:['Electronic warfare','⌾','#72eaff'],forwardFabricator:['Forward production','⚙','#75d9ff'],latticeSkiff:['Warp logistics','∞','#cfadff'],chronoweaver:['Temporal control','◴','#c79bff'],voidLancer:['Shield siege','↟','#ffe18b'],tunnelMaw:['Invasion transport','⌄','#ff9c75'],sporeback:['Area anti-air','☣','#a0ef7b'],broodMatriarch:['Swarm production','♕','#ff99a1'],broodling:['Temporary swarm','〽','#c2ef89']});
+Object.assign(VISION_BY_TYPE,{suppressorExosuit:6,pulseOperative:7,forwardFabricator:6,latticeSkiff:9,chronoweaver:7,voidLancer:8,tunnelMaw:7,sporeback:8,broodMatriarch:7,broodling:4});
+const expansionUnlockedUnitBase=unitUnlocked;
+unitUnlocked=function(f,type){return !UNITS[type]?.summonOnly&&!!players[f]&&expansionUnlockedUnitBase(f,type)};
+const expansionUnlockedStructureBase=structureUnlocked;
+structureUnlocked=function(f,type){return !STRUCTURES[type]?.temporaryOnly&&!!players[f]&&expansionUnlockedStructureBase(f,type)};
+
+// Composition and tactics use current faction vision, never hidden enemy state.
+// One bounded entity snapshot per decision avoids evaluating the map for each option.
+function aiExpansionIntel(f){
+  const visible=aiVisibleEnemies(f),own=playerUnits(f),combat=own.filter(u=>!isWorker(u)&&!UNITS[u.type]?.temporarySummon),commitments={};
+  for(const e of entities){if(e.alive===false||e.faction!==f)continue;if(e.kind==='unit'||e.kind==='cocoon'){const type=e.kind==='cocoon'?e.morphType:e.type;commitments[type]=(commitments[type]||0)+1}for(const item of e.queue||[])if(item.type)commitments[item.type]=(commitments[item.type]||0)+1}
+  return {visible,own,combat,commitments,ground:combat.filter(u=>!isFlying(u)),air:visible.filter(e=>e.kind==='unit'&&isFlying(e)),enemyGround:visible.filter(e=>e.kind==='unit'&&!isFlying(e)),structures:visible.filter(e=>e.kind==='structure'),shielded:visible.filter(e=>(e.shield||0)>0),casters:visible.filter(e=>e.kind==='unit'&&abilitiesFor(e).length)};
+}
+function aiExpansionUnitScore(f,type,intel=aiExpansionIntel(f)){
+  const count=intel.commitments[type]||0,army=intel.combat.filter(u=>!['forwardFabricator','latticeSkiff','tunnelMaw'].includes(u.type)).length;
+  if(type==='broodling')return -1000000;
+  if(type==='suppressorExosuit')return 24+Math.min(6,intel.enemyGround.filter(e=>hasTag(e,'light')).length)*9+(intel.enemyGround.length>=4?15:0)-count*23;
+  if(type==='pulseOperative'){if(count>=Math.max(1,Math.ceil(army/7)))return -1000;return 8+Math.min(5,intel.shielded.length)*12+Math.min(4,intel.casters.length)*9-count*30}
+  if(type==='forwardFabricator'){if(count||army<5)return -1000;return 27+Math.min(12,army)-(!intel.visible.length?12:0)}
+  if(type==='latticeSkiff'){if(intel.ground.length<4||count>=Math.max(1,Math.floor(intel.ground.length/8)))return -1000;return 28+Math.min(12,intel.ground.length)-(!intel.visible.length?8:0)-count*35}
+  if(type==='chronoweaver'){if(army<3||count>=Math.max(1,Math.ceil(army/7)))return -1000;return 20+Math.min(5,intel.enemyGround.filter(e=>(attackDef(e)?.damage||0)>=16||abilitiesFor(e).length).length)*12-count*32}
+  if(type==='voidLancer')return 14+Math.min(4,intel.structures.length)*19+(intel.structures.some(e=>attackDef(e))?12:0)-count*30;
+  if(type==='tunnelMaw'){if(army<5||count>=Math.min(2,Math.max(1,Math.floor(army/8))))return -1000;return 21+Math.min(10,army)+(intel.structures.length?14:0)-count*40}
+  if(type==='sporeback')return -10+Math.min(6,intel.air.length)*20-count*27;
+  if(type==='broodMatriarch'){if(army<3||count>=Math.max(1,Math.ceil(army/8)))return -1000;return 31+Math.min(14,army)+Math.min(10,intel.enemyGround.length*2)-count*38}
+  return -1000000;
+}
+const expansionAiCounterScoreBase=aiCounterScore;
+aiCounterScore=function(f,type){return EXPANSION_UNIT_TYPES.has(type)||type==='broodling'?aiExpansionUnitScore(f,type):expansionAiCounterScoreBase(f,type)};
+aiChooseArmyUnit=function(f,options){const intel=aiExpansionIntel(f);return options.map(type=>({type,score:EXPANSION_UNIT_TYPES.has(type)||type==='broodling'?aiExpansionUnitScore(f,type,intel):expansionAiCounterScoreBase(f,type)})).filter(option=>option.score>-999).sort((a,b)=>b.score-a.score)[0]?.type};
+
+function aiExpansionReady(e){return e&&e.alive!==false&&!e.garrisonedIn&&!e.channelEffectId&&!e.warpChannel&&!e.tunnelDigging&&!e.fabricatorDeployAt&&nowMs()>=(e.abilityReadyAt||0)&&!(typeof expansionAbilityLocked==='function'&&expansionAbilityLocked(e))}
+function aiExpansionFieldCovered(id,f,point){return areaEffects.some(effect=>effect.kind===id&&effect.faction===f&&effect.endAt>nowMs()&&dist(effect,point)<=1.5)}
+function aiExpansionTargetTile(e,id,intel){
+  const legal=legalAbilityTiles(e,id);if(!legal.length)return null;
+  const legalKeys=new Set(legal.map(p=>`${p.x},${p.y}`));
+  let targets=id==='sporeBloom'?intel.air:id==='suppressionSweep'?intel.enemyGround:id==='voidSpear'?intel.structures:intel.visible.filter(t=>t.kind==='unit');
+  if(id==='voidSpear'){
+    targets=targets.concat(temporaryObstacles.filter(o=>o.faction!==e.faction&&o.faction>=0&&o.endAt>nowMs()&&o.hp>0&&tileVisibleToFaction(e.faction,o.x,o.y)));
+    const target=targets.filter(t=>legalKeys.has(`${t.x},${t.y}`)).sort((a,b)=>((b.kind==='structure'?20:0)+(attackDef(b)?.damage||0)*2+(isBase(b)?10:0))-((a.kind==='structure'?20:0)+(attackDef(a)?.damage||0)*2+(isBase(a)?10:0)))[0];
+    return target?{x:target.x,y:target.y,targetId:target.id}:null;
+  }
+  // Enemy positions and their adjacent tiles are sufficient area candidates;
+  // this also considers optimal centers between troops without scanning the map.
+  const candidates=new Map();
+  for(const target of targets){if(dist(e,target)>ABILITIES[id].range+(ABILITIES[id].radius||0))continue;for(const [dx,dy] of [[0,0],...DIR8]){const x=target.x+dx,y=target.y+dy,key=`${x},${y}`;if(legalKeys.has(key))candidates.set(key,{x,y})}}
+  let best=null,bestScore=id==='temporalDistortion'?1.1:id==='disruptionPulse'?.9:id==='suppressionSweep'?1.7:.9;
+  for(const point of candidates.values()){
+    if(['sporeBloom','temporalDistortion'].includes(id)&&aiExpansionFieldCovered(id,e.faction,point))continue;
+    let score=0;
+    for(const target of targets){
+      if(id==='suppressionSweep'){const length=dist(e,target),dx=point.x-e.x,dy=point.y-e.y,aim=Math.hypot(dx,dy);if(!aim||length>.05+4||length<.01||((target.x-e.x)*dx+(target.y-e.y)*dy)/(length*aim)<.72)continue;score+=(target.suppressedUntil>nowMs()?.2:1)+(hasTag(target,'light')?.35:0)}
+      else if(id==='disruptionPulse'){if(dist(target,point)>1.5)continue;score+=Math.min(50,target.shield||0)/40;if(abilitiesFor(target).length&&!(typeof expansionAbilityLocked==='function'&&expansionAbilityLocked(target))&&nowMs()>=(target.disruptionImmunityUntil||0))score+=1.25}
+      else if(id==='temporalDistortion'){if(dist(target,point)>2)continue;score+=.5+(attackDef(target)?.damage||0)/25+(abilitiesFor(target).length?.4:0)}
+      else if(id==='sporeBloom'){if(dist(target,point)<=2)score+=1+(target.hp||0)/300}
+    }
+    if(score>bestScore){bestScore=score;best=point}
+  }
+  return best;
+}
+
+function aiExpansionWarpSource(e,intel){
+  if(typeof warpConduitPreview!=='function')return null;
+  const nearby=intel.visible.filter(t=>dist(e,t)<=7);if(!nearby.length)return null;
+  const legalKeys=new Set(legalAbilityTiles(e,'warpConduit').map(p=>`${p.x},${p.y}`));
+  let best=null,bestScore=0;
+  for(const pylon of playerStructures(e.faction,'pylon')){
+    if(!legalKeys.has(`${pylon.x},${pylon.y}`)||dist(e,pylon)<2.5||intel.visible.some(t=>attackDef(t)&&dist(t,pylon)<3))continue;
+    const preview=warpConduitPreview(e,pylon);if(!preview?.troops?.length||!preview.landings?.length)continue;
+    const nearest=Math.min(...nearby.map(t=>dist(e,t)));if(nearest<2.5)continue;
+    const score=Math.min(preview.troops.length,preview.landings.length)*5+dist(e,pylon)*.2;
+    if(score>bestScore){bestScore=score;best=pylon}
+  }
+  return best?{x:best.x,y:best.y,targetId:best.id}:null;
+}
+function aiExpansionTunnelTile(e,intel){
+  if(typeof logisticsGroundPassenger!=='function'||!intel.ground.some(u=>u.id!==e.id&&logisticsGroundPassenger(u,e)&&dist(u,e)<=1.6))return null;
+  const targets=intel.visible.filter(t=>dist(e,t)>=4&&dist(e,t)<=11);if(!targets.length)return null;
+  const legal=legalAbilityTiles(e,'tunnelBreach');let best=null,bestScore=0;
+  for(const point of legal){
+    if(intel.visible.some(t=>attackDef(t)&&dist(t,point)<2.5))continue;
+    for(const target of targets){const landingDistance=dist(point,target),gain=dist(e,target)-landingDistance;if(gain<2||landingDistance<2||landingDistance>5)continue;const score=gain*2+(target.kind==='structure'?3:0)-Math.abs(landingDistance-3);if(score>bestScore){bestScore=score;best=point}}
+  }
+  return best;
+}
+function aiExpansionFabricator(e,intel){
+  const nearbyArmy=intel.ground.filter(u=>u.id!==e.id&&attackDef(u)&&dist(u,e)<=5),nearThreat=intel.visible.some(t=>attackDef(t)&&dist(t,e)<3.5),home=playerStructures(e.faction).filter(isBase);
+  if(e.fabricatorDeployed){
+    if(nearThreat||e.hp/e.maxHp<.3||(!nearbyArmy.length&&!e.queue?.length)){if(typeof packFabricator==='function')return packFabricator(e);return useAbility(e,'fieldMuster')}
+    if(typeof fabricatorQueueUnit!=='function'||(e.queue||[]).length>=2)return false;
+    const medics=nearbyArmy.filter(u=>u.type==='medic').length,biological=nearbyArmy.filter(u=>hasTag(u,'biological')).length,type=biological>=3&&medics<Math.max(1,Math.floor(biological/5))?'medic':'rifleman';
+    const front=intel.visible.filter(t=>dist(t,e)>3.5).sort((a,b)=>dist(a,e)-dist(b,e))[0];if(front)e.rallyPoint={x:front.x,y:front.y};
+    return fabricatorQueueUnit(e,type);
+  }
+  if(!aiExpansionReady(e)||nearThreat||nearbyArmy.length<3||!home.length||Math.min(...home.map(b=>dist(b,e)))<4||!intel.visible.some(t=>dist(t,e)<=11))return false;
+  return typeof fabricatorCanDeploy==='function'&&fabricatorCanDeploy(e)&&useAbility(e,'fieldMuster');
+}
+function aiExpansionTactics(f,cfg=DIFFICULTY.medium){
+  const intel=aiExpansionIntel(f),limit=Math.max(1,Math.floor((cfg.commandLimit||4)/2));let used=0;
+  const units=intel.own.filter(u=>EXPANSION_UNIT_TYPES.has(u.type)&&(u.aiRetreatUntil||0)<nowMs());
+  for(const e of units){
+    if(used>=limit)break;
+    if(e.type==='forwardFabricator'){if(aiExpansionFabricator(e,intel))used++;continue}
+    if(e.type==='tunnelMaw'&&e.tunnelExitId){
+      const exit=entityById(e.tunnelExitId);if(!exit||typeof tunnelTravelUnit!=='function'||typeof logisticsGroundPassenger!=='function')continue;
+      const passengers=intel.ground.filter(u=>u.id!==e.id&&logisticsGroundPassenger(u,e)&&dist(u,e)<=1.6).slice(0,Math.min(5,e.tunnelRemainingUses||0));
+      for(const u of passengers){if(used>=limit)break;if(tunnelTravelUnit(e,u)){const target=intel.visible.slice().sort((a,b)=>dist(a,exit)-dist(b,exit))[0];if(target)issueAttackMoveOrder(u,target.x,target.y);used++}}continue;
+    }
+    if(!aiExpansionReady(e))continue;
+    const id=UNIT_ABILITIES[e.type]?.[0];let payload=null;
+    if(['suppressionSweep','disruptionPulse','temporalDistortion','voidSpear','sporeBloom'].includes(id))payload=aiExpansionTargetTile(e,id,intel);
+    else if(id==='warpConduit')payload=aiExpansionWarpSource(e,intel);
+    else if(id==='tunnelBreach')payload=aiExpansionTunnelTile(e,intel);
+    else if(id==='bloodClutch'&&e.hp>50&&e.hp/e.maxHp>.3&&intel.visible.some(t=>dist(t,e)<=5)&&(intel.commitments.broodling||0)<6)payload={};
+    if(payload&&useAbility(e,id,payload))used++;
+  }
+  return used;
+}
+const expansionLegacyUseAbilities=aiUseAbilities;
+aiUseAbilities=function(f,units,cfg){return expansionLegacyUseAbilities(f,units.filter(u=>!EXPANSION_UNIT_TYPES.has(u.type)&&!UNITS[u.type]?.temporarySummon),cfg)};
+const expansionAiThinkBase=aiThink;
+aiThink=function(f,cfg){const result=expansionAiThinkBase(f,cfg);if(players[f]?.ai&&!players[f].eliminated)aiExpansionTactics(f,cfg);return result};
+
+
+// ---------- Faction expansion: combat abilities and real cooldown recovery ----------
+const EXPANSION_COMBAT_ABILITIES=new Set(['suppressionSweep','disruptionPulse','temporalDistortion','voidSpear','sporeBloom']);
+function expansionAbilityLocked(e,t=nowMs()){return !!e&&Number(e.abilityLockedUntil||0)>t}
+function expansionCombatFieldContains(effect,e){return !!effect&&Math.hypot(e.x-effect.x,e.y-effect.y)<=(effect.radius||2)+.05}
+function expansionActiveCombatEnemy(e,f){return !!e&&e.alive!==false&&!e.garrisonedIn&&e.faction>=0&&e.faction!==f&&!players[e.faction]?.eliminated}
+function expansionCancelChannel(e){
+  if(!e)return false;
+  let canceled=false;
+  for(const effect of areaEffects){
+    if(effect.sourceId!==e.id||effect.resolved||effect.endAt<=0)continue;
+    if(effect.id!==e.channelEffectId&&!/Channel$/.test(effect.kind||''))continue;
+    effect.endAt=0;effect.canceled=true;canceled=true;
+  }
+  if(e.channelEffectId){e.channelEffectId=null;canceled=true}
+  if(canceled){if(e.order==='Charging Void Spear')e.order='idle';markDirty()}
+  return canceled;
+}
+function expansionUnionWindows(windows){
+  windows.sort((a,b)=>a[0]-b[0]);const merged=[];
+  for(const win of windows){if(win[1]<=win[0])continue;const last=merged[merged.length-1];if(last&&win[0]<=last[1])last[1]=Math.max(last[1],win[1]);else merged.push(win.slice())}
+  return merged;
+}
+// Slow recovery consumes only 70% of elapsed time, including timers already running.
+// Union windows prevent overlapping fields, or Sweep + Distortion, multiplying the penalty.
+function expansionSlowTimer(readyAt,windows){
+  let ready=Number(readyAt||0);
+  for(const [start,end] of windows){if(ready<=start)continue;ready+=.3*Math.min(end-start,(ready-start)/.7)}
+  return ready;
+}
+function expansionCombatWindows(e,fields,from,to){
+  const out=[];
+  for(const field of fields){if(field.faction===e.faction||!expansionCombatFieldContains(field,e))continue;const start=Math.max(from,field.startAt),end=Math.min(to,field.endAt);if(end>start)out.push([start,end])}
+  return expansionUnionWindows(out);
+}
+function expansionSettleCombatTimers(t=nowMs(),only=null){
+  if(lobbyId&&!isController)return;
+  if(only&&Number(only.expansionEffectsAt)===t)return;
+  const temporal=areaEffects.filter(a=>a.kind==='temporalDistortion'&&a.endAt>0),spores=areaEffects.filter(a=>a.kind==='sporeBloom'&&a.endAt>0);
+  for(const e of only?[only]:entities){
+    if(e.alive===false)continue;
+    const from=Number(e.expansionEffectsAt??t);e.expansionEffectsAt=t;
+    if(t<=from||e.kind!=='unit'||e.garrisonedIn||e.faction<0)continue;
+    const abilityWindows=expansionCombatWindows(e,temporal,from,t),attackWindows=abilityWindows.map(w=>w.slice());
+    if(Number(e.suppressedUntil||0)>from)attackWindows.push([Math.max(from,Number(e.suppressionStartAt||from)),Math.min(t,e.suppressedUntil)]);
+    const oldAttack=e.attackReadyAt,oldAbility=e.abilityReadyAt;
+    e.attackReadyAt=expansionSlowTimer(e.attackReadyAt,expansionUnionWindows(attackWindows));
+    e.abilityReadyAt=expansionSlowTimer(e.abilityReadyAt,abilityWindows);
+    if(e.attackReadyAt!==oldAttack||e.abilityReadyAt!==oldAbility)markDirty();
+    if(isFlying(e)){
+      const windows=expansionCombatWindows(e,spores,from,t),damage=windows.reduce((n,w)=>n+(w[1]-w[0])*.006,0);
+      if(damage>0){const source=spores.find(a=>a.faction!==e.faction&&expansionCombatFieldContains(a,e)&&a.endAt>from&&a.startAt<t);e.sporeDamageCarry=Number(e.sporeDamageCarry||0)+damage;const wholeDamage=Math.floor(e.sporeDamageCarry+1e-8);if(wholeDamage>0){e.sporeDamageCarry-=wholeDamage;applyDamage(e,wholeDamage,entityById(source?.sourceId)||{faction:source?.faction,type:'sporeback',kind:'unit'})}}
+    }
+  }
+}
+function expansionVoidTarget(e,payload={}){
+  const x=Number(payload.x),y=Number(payload.y),requested=entityById(payload.targetId);
+  const target=requested||entities.find(t=>t.x===x&&t.y===y&&t.kind==='structure'&&expansionActiveCombatEnemy(t,e.faction));
+  if(target&&target.kind==='structure'&&expansionActiveCombatEnemy(target,e.faction)&&dist(e,target)<=6.05&&tileVisibleToFaction(e.faction,target.x,target.y))return {target,x:target.x,y:target.y};
+  const obstacle=temporaryObstacleAt(x,y);
+  if(obstacle&&obstacle.faction!==e.faction&&obstacle.hp>0&&obstacle.endAt>nowMs()&&dist(e,{x,y})<=6.05&&tileVisibleToFaction(e.faction,x,y))return {obstacle,x,y};
+  return null;
+}
+function expansionUpdateCombatEffects(t=nowMs()){
+  if(lobbyId&&!isController)return;
+  expansionSettleCombatTimers(t);
+  for(const effect of areaEffects){
+    if(effect.kind!=='voidSpearChannel'||effect.resolved||effect.canceled)continue;
+    const e=entityById(effect.sourceId);
+    if(!e||e.channelEffectId!==effect.id||effect.endAt<=0||e.x!==effect.sourceX||e.y!==effect.sourceY||expansionAbilityLocked(e,t)){
+      if(e&&e.channelEffectId===effect.id)expansionCancelChannel(e);effect.canceled=true;effect.endAt=0;continue;
+    }
+    if(t<effect.resolveAt)continue;
+    effect.resolved=true;e.channelEffectId=null;e.order='idle';
+    const target=entityById(effect.targetId),obstacle=temporaryObstacles.find(o=>o.id===effect.obstacleId);
+    const valid=target?target.kind==='structure'&&expansionActiveCombatEnemy(target,e.faction)&&dist(e,target)<=6.05&&tileVisibleToFaction(e.faction,target.x,target.y):obstacle&&obstacle.endAt>t&&obstacle.hp>0&&obstacle.faction!==e.faction&&dist(e,obstacle)<=6.05&&tileVisibleToFaction(e.faction,obstacle.x,obstacle.y);
+    if(valid){
+      const end=t+420;e.projectileAnim={x:e.x+.5,y:e.y+.5,tx:effect.x+.5,ty:effect.y+.5,color:'#dea4ff',style:'lance',startAt:t,endAt:end,seed:e.id};
+      if(target)queueImpact(e,target,75,{splash:0,chain:0},end);
+      else pendingImpacts.push({id:`void_${e.id}_${t}`,attackerId:e.id,sourceFaction:e.faction,obstacleId:obstacle.id,damage:40,impactAt:end,expansionVoidObstacle:true});
+      addAreaEffect({id:`voidbeam_${e.id}_${t}`,kind:'voidSpearBeam',x:e.x,y:e.y,tx:effect.x,ty:effect.y,faction:e.faction,sourceId:e.id,startAt:t,endAt:end+180});
+    }
+    effect.endAt=0;markVisualDirty();
+  }
+}
+const expansionCombatLegalAbilityTiles=legalAbilityTiles;
+legalAbilityTiles=function(e,id){
+  if(!e||e.alive===false||e.complete===false||e.garrisonedIn||expansionAbilityLocked(e)||e.channelEffectId)return [];
+  let tiles=expansionCombatLegalAbilityTiles(e,id);
+  if(id==='voidSpear')tiles=Number(e.shield||0)>=70?tiles.filter(p=>!!expansionVoidTarget(e,p)):[];
+  if(id==='suppressionSweep')tiles=tiles.filter(p=>p.x!==e.x||p.y!==e.y);
+  return tiles;
+};
+const expansionCombatUseAbility=useAbility;
+useAbility=function(e,id,payload={}){
+  if(lobbyId&&!isController)return false;
+  if(!e||e.alive===false||e.complete===false||e.garrisonedIn||players[e.faction]?.eliminated||expansionAbilityLocked(e)||e.channelEffectId)return false;
+  expansionUpdateCombatEffects();
+  if(!EXPANSION_COMBAT_ABILITIES.has(id))return expansionCombatUseAbility(e,id,payload);
+  if(!abilitiesFor(e).includes(id)||nowMs()<Number(e.abilityReadyAt||0))return false;
+  const a=ABILITIES[id],x=Number(payload.x),y=Number(payload.y),t=nowMs();
+  if(!a||!legalAbilityTiles(e,id).some(p=>p.x===x&&p.y===y)){if(e.faction===PLAYER)toast(id==='voidSpear'?'Void Spear needs 70 shields and a visible enemy structure or barrier within 6 tiles.':'Choose a visible tile inside this ability’s range.');return false}
+  const finish=()=>{e.lastAbilityId=id;e.abilityReadyAt=t+effectiveAbilityCd(id,e)*1000;spawnFx(e.x,e.y,factionOf(e.faction).color,8);markVisualDirty();return true};
+  if(id==='suppressionSweep'){
+    const angle=Math.atan2(y-e.y,x-e.x),ux=Math.cos(angle),uy=Math.sin(angle);
+    for(const target of entities){if(!expansionActiveCombatEnemy(target,e.faction)||target.kind!=='unit'||isFlying(target)||!tileVisibleToFaction(e.faction,target.x,target.y))continue;const dx=target.x-e.x,dy=target.y-e.y,len=Math.hypot(dx,dy);if(len<=.05||len>4.05||(dx*ux+dy*uy)/len<Math.cos(Math.PI/4))continue;applyDamage(target,12,e);if(target.alive===false)continue;target.suppressionStartAt=t;target.suppressedUntil=Math.max(Number(target.suppressedUntil||0),t+5000)}
+    addAreaEffect({id:`sweep_${e.id}_${t}`,kind:'suppressionSweep',x:e.x,y:e.y,angle,radius:4,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+1000});return finish();
+  }
+  if(id==='disruptionPulse'){
+    for(const target of entities){if(!expansionActiveCombatEnemy(target,e.faction)||Math.hypot(target.x-x,target.y-y)>1.55)continue;const drained=Math.min(50,Number(target.shield||0));target.shield=Math.max(0,Number(target.shield||0)-drained);if(drained)target.shieldHitUntil=t+500;if(Number(target.disruptionImmunityUntil||0)<=t){target.abilityLockedUntil=t+4000;target.disruptionImmunityUntil=t+9000;expansionCancelChannel(target)}}
+    addAreaEffect({id:`emp_${e.id}_${t}`,kind:'disruptionPulse',x,y,radius:1.5,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+850});return finish();
+  }
+  if(id==='temporalDistortion'||id==='sporeBloom'){
+    addAreaEffect({id:`${id}_${e.id}_${t}`,kind:id,x,y,radius:2,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+5000});return finish();
+  }
+  if(id==='voidSpear'){
+    const aim=expansionVoidTarget(e,payload);if(!aim||Number(e.shield||0)<70)return false;
+    e.shield-=70;e.shieldHitUntil=t+700;cancelPendingBuild(e);releaseMining(e);clearMoveDestination(e);e.targetId=null;e.directTargetId=null;e.attackMoveDestination=null;e.attackMode=false;
+    const effect={id:`voidcharge_${e.id}_${t}`,kind:'voidSpearChannel',x:aim.x,y:aim.y,sourceX:e.x,sourceY:e.y,faction:e.faction,sourceId:e.id,targetId:aim.target?.id||null,obstacleId:aim.obstacle?.id||null,startAt:t,resolveAt:t+2000,endAt:t+2200};
+    e.channelEffectId=effect.id;e.order='Charging Void Spear';addAreaEffect(effect);return finish();
+  }
+  return false;
+};
+const expansionCombatUpdateCombat=updateCombat;
+updateCombat=function(dt){expansionUpdateCombatEffects();return expansionCombatUpdateCombat(dt)};
+const expansionCombatUpdateAreaEffects=updateAreaEffects;
+updateAreaEffects=function(){expansionUpdateCombatEffects();return expansionCombatUpdateAreaEffects()};
+const expansionCombatFireAt=fireAt;
+fireAt=function(e,target){if(e?.channelEffectId)return;expansionSettleCombatTimers(nowMs(),e);return expansionCombatFireAt(e,target)};
+const expansionCombatMoveEntity=moveEntity;
+moveEntity=function(e,x,y,preserveOrder=false){if(e)expansionSettleCombatTimers(nowMs(),e);if(e?.channelEffectId)expansionCancelChannel(e);return expansionCombatMoveEntity(e,x,y,preserveOrder)};
+const expansionCombatIssueMoveOrder=issueMoveOrder;
+issueMoveOrder=function(e,x,y){if(e)expansionSettleCombatTimers(nowMs(),e);expansionCancelChannel(e);return expansionCombatIssueMoveOrder(e,x,y)};
+const expansionCombatIssueAttackMoveOrder=issueAttackMoveOrder;
+issueAttackMoveOrder=function(e,x,y){if(e)expansionSettleCombatTimers(nowMs(),e);expansionCancelChannel(e);return expansionCombatIssueAttackMoveOrder(e,x,y)};
+const expansionCombatIssueAttack=issueAttack;
+issueAttack=function(e,target){expansionCancelChannel(e);return expansionCombatIssueAttack(e,target)};
+const expansionCombatKillEntity=killEntity;
+killEntity=function(e,attacker=null){expansionCancelChannel(e);return expansionCombatKillEntity(e,attacker)};
+const expansionCombatApplyCommand=applyCommand;
+applyCommand=function(c){
+  const e=entityById(c.entityId);if(e&&e.faction!==c.slot)return;
+  if(['stop','groupStop','hold','groupHold'].includes(c.type))for(const unit of (c.entityIds||[c.entityId]).map(entityById).filter(u=>u&&u.faction===c.slot))expansionCancelChannel(unit);
+  return expansionCombatApplyCommand(c);
+};
+const expansionCombatCommandAbilityReady=commandAbilityReady;
+commandAbilityReady=function(e,key,cooldown){return !!e&&!expansionAbilityLocked(e)&&!e.channelEffectId&&expansionCombatCommandAbilityReady(e,key,cooldown)};
+const expansionCombatQueueExtraction=queueExtraction;
+queueExtraction=function(e,x,y){if(expansionAbilityLocked(e))return false;return expansionCombatQueueExtraction(e,x,y)};
+const expansionCombatDamageAgainst=damageAgainst;
+damageAgainst=function(e,target){if(e?.type==='sporeback'){if(isFlying(target))return Math.round(Number(UNITS.sporeback.attack.airDamage||12)*(1+researchLevel(e.faction,'weaponSystems')*.05)*doctrineDamageMultiplier(e));return Math.min(Number(UNITS.sporeback.attack.groundDamage||2),expansionCombatDamageAgainst(e,target))}return expansionCombatDamageAgainst(e,target)};
+const expansionCombatQueueImpact=queueImpact;
+queueImpact=function(attacker,target,damage,a,impactAt){const result=expansionCombatQueueImpact(attacker,target,damage,a,impactAt);if(attacker.type==='sporeback'){const hit=pendingImpacts[pendingImpacts.length-1];if(hit){hit.sporeAirSplash=isFlying(target);hit.splash=0;hit.chain=0}}return result};
+const expansionCombatResolveImpact=resolveImpact;
+resolveImpact=function(hit){
+  if(hit.expansionVoidObstacle){const obstacle=temporaryObstacles.find(o=>o.id===hit.obstacleId&&o.endAt>nowMs()&&o.hp>0&&o.faction!==hit.sourceFaction);if(obstacle)damageTemporaryObstacle(obstacle,hit.damage,entityById(hit.attackerId));return}
+  if(hit.sporeAirSplash){const target=entityById(hit.targetId);if(!target||!isFlying(target)||target.faction===hit.sourceFaction)return;const x=target.x,y=target.y;expansionCombatResolveImpact(hit);for(const enemy of entities){if(enemy.id===hit.targetId||!expansionActiveCombatEnemy(enemy,hit.sourceFaction)||!isFlying(enemy)||Math.hypot(enemy.x-x,enemy.y-y)>1.15)continue;applyDamage(enemy,Math.round(hit.damage*.45),entityById(hit.attackerId)||{faction:hit.sourceFaction,type:'sporeback',kind:'unit'})}return}
+  return expansionCombatResolveImpact(hit);
+};
+const expansionCombatDrawAreaEffects=drawAreaEffects;
+drawAreaEffects=function(){
+  expansionCombatDrawAreaEffects();const t=nowMs(),z=TILE*cam.zoom;
+  for(const effect of areaEffects){
+    if(effect.endAt<=t||!['suppressionSweep','disruptionPulse','temporalDistortion','voidSpearChannel','voidSpearBeam','sporeBloom'].includes(effect.kind)||!tileVisibleToFaction(PLAYER,effect.x,effect.y)&&!spectating)continue;
+    const s=worldToScreen(effect.x+.5,effect.y+.5),progress=clamp((t-effect.startAt)/Math.max(1,effect.endAt-effect.startAt),0,1);ctx.save();ctx.translate(s.x,s.y);ctx.lineWidth=Math.max(2,z*.04);
+    if(effect.kind==='suppressionSweep'){
+      const angle=effect.angle,r=4*z;ctx.fillStyle='rgba(255,193,93,.1)';ctx.strokeStyle='#ffc968';ctx.globalAlpha=1-progress;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,r,angle-Math.PI/4,angle+Math.PI/4);ctx.closePath();ctx.fill();
+      for(let i=0;i<9;i++){const a=angle-Math.PI/4+i*Math.PI/16,d=((t/85+i*.2)%1)*r;ctx.beginPath();ctx.moveTo(Math.cos(a)*d,Math.sin(a)*d);ctx.lineTo(Math.cos(a)*(d+z*.3),Math.sin(a)*(d+z*.3));ctx.stroke()}
+    }else if(effect.kind==='disruptionPulse'){
+      ctx.strokeStyle='#7fdcff';ctx.shadowColor='#59cfff';ctx.shadowBlur=12;ctx.globalAlpha=1-progress;const r=(.3+progress*1.8)*z;ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<8;i++){const a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.65,Math.sin(a)*r*.65);ctx.lineTo(Math.cos(a+.1)*r,Math.sin(a+.1)*r);ctx.lineTo(Math.cos(a-.1)*r*1.12,Math.sin(a-.1)*r*1.12);ctx.stroke()}
+    }else if(effect.kind==='temporalDistortion'||effect.kind==='sporeBloom'){
+      const spore=effect.kind==='sporeBloom',r=2*z;ctx.fillStyle=spore?'rgba(106,219,66,.14)':'rgba(179,99,252,.13)';ctx.strokeStyle=spore?'#b2eb76':'#d9adff';ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(0,0,r*.85,t/1200,t/1200+Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      for(let i=0;i<10;i++){const a=i*2.399+t/(spore?1700:3000),d=(.25+(i%4)*.18)*r;ctx.fillStyle=spore?'#a6e574':'#d7b2ff';ctx.globalAlpha=.4;ctx.beginPath();ctx.arc(Math.cos(a)*d,Math.sin(a)*d,Math.max(1.5,z*.03),0,Math.PI*2);ctx.fill()}
+      ctx.globalAlpha=.9;ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font=`bold ${Math.max(8,z*.16)}px system-ui`;ctx.fillText(spore?'SPORE BLOOM':'TIME DISTORTION',0,-r-5);
+    }else{
+      const source=effect.kind==='voidSpearChannel'?worldToScreen(effect.sourceX+.5,effect.sourceY+.5):s,end=effect.kind==='voidSpearChannel'?s:worldToScreen(effect.tx+.5,effect.ty+.5);ctx.translate(-s.x,-s.y);ctx.strokeStyle='#dfa5ff';ctx.shadowColor='#ae54ff';ctx.shadowBlur=15;
+      if(effect.kind==='voidSpearChannel'){const p=clamp((t-effect.startAt)/2000,0,1);ctx.setLineDash([5,7]);ctx.globalAlpha=.3+.55*p;ctx.beginPath();ctx.moveTo(source.x,source.y);ctx.lineTo(end.x,end.y);ctx.stroke();ctx.setLineDash([]);ctx.lineWidth=2+4*p;ctx.beginPath();ctx.arc(source.x,source.y,z*(.13+.24*p),0,Math.PI*2);ctx.stroke();ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(8,z*.16)}px system-ui`;ctx.textAlign='center';ctx.fillText(`CHARGING ${Math.ceil((effect.resolveAt-t)/100)/10}s`,source.x,source.y-z*.7)}
+      else{ctx.globalAlpha=1-progress;ctx.lineWidth=Math.max(3,z*.12);ctx.beginPath();ctx.moveTo(source.x,source.y);ctx.lineTo(end.x,end.y);ctx.stroke();ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,z*.035);ctx.stroke()}
+    }
+    ctx.restore();
+  }
+};
+const expansionCombatDrawTargetPreview=drawTargetPreview;
+drawTargetPreview=function(){
+  expansionCombatDrawTargetPreview();if(interactionMode!=='ability'||!hoverTile||!EXPANSION_COMBAT_ABILITIES.has(interactionPayload))return;
+  const id=interactionPayload,z=TILE*cam.zoom,s=worldToScreen(hoverTile.x+.5,hoverTile.y+.5),valid=legalTiles.some(p=>p.x===hoverTile.x&&p.y===hoverTile.y);ctx.save();ctx.strokeStyle=valid?'#bcd8ff':'#ff7185';ctx.fillStyle=valid?'rgba(183,169,255,.1)':'rgba(255,88,120,.12)';ctx.lineWidth=2;
+  if(id==='suppressionSweep'){for(const caster of abilityCasters(id)){const origin=worldToScreen(caster.x+.5,caster.y+.5),angle=Math.atan2(hoverTile.y-caster.y,hoverTile.x-caster.x);ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.arc(origin.x,origin.y,4*z,angle-Math.PI/4,angle+Math.PI/4);ctx.closePath();ctx.fill();ctx.stroke()}}
+  else if(id==='voidSpear'){ctx.strokeRect(s.x-z*.42,s.y-z*.42,z*.84,z*.84);for(const caster of abilityCasters(id)){const o=worldToScreen(caster.x+.5,caster.y+.5);ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(o.x,o.y);ctx.lineTo(s.x,s.y);ctx.stroke()}ctx.setLineDash([])}
+  else{ctx.beginPath();ctx.arc(s.x,s.y,(id==='disruptionPulse'?1.5:2)*z,0,Math.PI*2);ctx.fill();ctx.stroke()}
+  ctx.restore();
+};
+const expansionCombatDrawStatus=drawHitAndStatus;
+drawHitAndStatus=function(e,z,r,t){
+  expansionCombatDrawStatus(e,z,r,t);let text='',color='#d5afff';if(expansionAbilityLocked(e,t)){text='DISRUPTED';color='#85dcff'}else if(e.suppressedUntil>t){text='SUPPRESSED';color='#ffcf82'}else if(areaEffects.some(a=>a.kind==='temporalDistortion'&&a.endAt>t&&a.faction!==e.faction&&expansionCombatFieldContains(a,e)))text='TIME FIELD';if(!text)return;ctx.save();ctx.fillStyle=color;ctx.font=`bold ${Math.max(7,z*.13)}px system-ui`;ctx.textAlign='center';ctx.fillText(text,0,-r-12);ctx.restore();
+};
+
+
+// ---------- Expansion logistics: mobile production, warp routes and temporary swarms ----------
+// Every persistent timer and relationship lives on an entity and is included in snapshots.
+const LOGISTICS_ABILITIES=new Set(['fieldMuster','warpConduit','tunnelBreach','bloodClutch']);
+const FIELD_MUSTER_TYPES=['rifleman','medic'];
+function logisticsAuthoritative(){return !lobbyId||isController}
+function logisticsMovementLocked(e){return !!e&&(!!e.fabricatorDeployed||!!e.fabricatorDeployAt||!!e.warpChannel||!!e.tunnelDigging||!!e.tunnelExitId)}
+function logisticsEnemyBaseNear(f,x,y){return entities.some(e=>e.alive!==false&&e.faction>=0&&e.faction!==f&&isBase(e)&&Math.hypot(e.x-x,e.y-y)<=3)}
+function logisticsHazardTile(x,y){return areaEffects.some(a=>a.endAt>nowMs()&&['psionicStorm','acidPool'].includes(a.kind)&&areaContains(a,{x,y}))}
+function logisticsEmptyTile(f,x,y,unit=null,allowEnemyBase=false){return Number.isInteger(x)&&Number.isInteger(y)&&inBounds(x,y)&&!groundBlocked(x,y,unit)&&!entityAt(x,y)&&!nodeAt(x,y)&&!temporaryObstacleAt(x,y)&&!objectiveProtectedTile(x,y)&&(allowEnemyBase||!logisticsEnemyBaseNear(f,x,y))&&!logisticsHazardTile(x,y)}
+function logisticsLandingTiles(source,unit=null,maxR=2,reserved=new Set(),allowEnemyBase=false){
+  const out=[];
+  for(let r=1;r<=maxR;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+    const x=Math.round(source.x+dx),y=Math.round(source.y+dy);
+    if(!reserved.has(`${x},${y}`)&&logisticsEmptyTile(source.faction,x,y,unit,allowEnemyBase))out.push({x,y});
+  }
+  return out;
+}
+function logisticsGroundPassenger(unit,source){
+  return !!(unit&&source&&unit.alive!==false&&unit.kind==='unit'&&unit.faction===source.faction&&!unit.garrisonedIn&&!unit.transportedIn&&!unit.temporarySummon&&unit.type!=='broodling'&&!isWorker(unit)&&!isFlying(unit)&&!hasTag(unit,'massive')&&modeState?.relic?.carrierId!==unit.id&&!logisticsMovementLocked(unit)&&(source.type!=='tunnelMaw'||attackDef(unit)));
+}
+function fabricatorProductionCost(type){return (UNITS[type]?.cost||[0,0]).map(v=>Math.ceil(v*1.2))}
+function fabricatorReservationCount(f){
+  return entities.filter(e=>e.alive!==false&&e.faction===f).reduce((n,e)=>n+(e.type==='forwardFabricator'&&e.kind==='unit'?1:0)+(e.kind==='cocoon'&&e.morphType==='forwardFabricator'?1:0)+(e.queue||[]).filter(q=>q.type==='forwardFabricator').length,0);
+}
+function fabricatorCanDeploy(e){
+  return !!(e&&e.alive!==false&&e.kind==='unit'&&e.type==='forwardFabricator'&&!e.garrisonedIn&&!e.fabricatorDeployed&&!e.fabricatorDeployAt&&!groundBlocked(e.x,e.y,e)&&!nodeAt(e.x,e.y)&&!objectiveProtectedTile(e.x,e.y)&&!logisticsEnemyBaseNear(e.faction,e.x,e.y)&&logisticsLandingTiles(e,null,2).length>=2);
+}
+function clearLogisticsOrders(e){
+  cancelPendingBuild(e);releaseMining(e);clearMoveDestination(e);e.attackMoveDestination=null;e.targetId=null;e.directTargetId=null;e.attackMode=false;
+}
+function packFabricator(e){
+  if(!logisticsAuthoritative()||!e||e.alive===false||e.type!=='forwardFabricator'||(!e.fabricatorDeployed&&!e.fabricatorDeployAt))return false;
+  // Match the existing queue cancellation refund; queue entries store the paid surcharge.
+  for(const item of e.queue||[])refund(e.faction,item.cost||[0,0]);
+  e.queue=[];e.fabricatorDeployed=false;delete e.fabricatorDeployAt;delete e.fabricatorDeployStartAt;e.order='idle';e.moveReadyAt=Math.max(e.moveReadyAt||0,nowMs()+650);
+  for(const effect of areaEffects)if(effect.sourceId===e.id&&effect.kind==='fabricatorDeploy')effect.endAt=0;
+  markDirty();return true;
+}
+function fabricatorQueueUnit(e,type){
+  if(!logisticsAuthoritative()||!e||e.alive===false||e.type!=='forwardFabricator'||!e.fabricatorDeployed||players[e.faction]?.eliminated||!FIELD_MUSTER_TYPES.includes(type)||!unitUnlocked(e.faction,type))return false;
+  e.queue=e.queue||[];
+  const d=UNITS[type],cost=fabricatorProductionCost(type);
+  if(e.queue.length>=3||!canAfford(e.faction,cost)||!aiConstructionBudgetAllows(e.faction,cost)||supplyUsed(e.faction)+queuedSupply(e.faction)+d.supply>supplyCap(e.faction))return false;
+  const start=Math.max(nowMs(),e.queue.length?e.queue[e.queue.length-1].finishAt:nowMs());
+  spend(e.faction,cost);e.queue.push({type,cost,startAt:start,finishAt:start+scaledTime(d.time)*doctrineProductionMultiplier(e.faction,type)*1250,fieldMuster:true});markDirty();return true;
+}
+function warpConduitPreview(e,pylon){
+  const empty={troops:[],landings:[]};
+  if(!e||e.alive===false||e.type!=='latticeSkiff'||!pylon||pylon.alive===false||pylon.type!=='pylon'||pylon.kind!=='structure'||!pylon.complete||pylon.faction!==e.faction||!structurePowered(pylon)||dist(e,pylon)>8.05||!tileVisibleToFaction(e.faction,pylon.x,pylon.y)||objectiveProtectedTile(e.x,e.y)||logisticsEnemyBaseNear(e.faction,e.x,e.y))return empty;
+  const eligible=entities.filter(u=>logisticsGroundPassenger(u,e)&&dist(u,pylon)<=2.1).sort((a,b)=>dist(a,pylon)-dist(b,pylon)||a.id-b.id),troops=[],landings=[],reserved=new Set();
+  for(const unit of eligible){const landing=logisticsLandingTiles(e,unit,2,reserved)[0];if(!landing)break;troops.push(unit);landings.push(landing);reserved.add(`${landing.x},${landing.y}`);if(troops.length>=2)break}
+  return {troops,landings};
+}
+function logisticsRelocateUnit(unit,landing,kind,color){
+  clearLogisticsOrders(unit);unit.x=landing.x;unit.y=landing.y;unit.px=landing.x;unit.py=landing.y;unit.moveReadyAt=nowMs()+effectiveMoveCd(unit)*1000;unit.order='idle';
+  unit.logisticsArrival={kind,startAt:nowMs(),endAt:nowMs()+700};spawnFx(unit.x,unit.y,color,12);visionCacheAt=0;markDirty();
+}
+function tunnelConnectionCount(f){return entities.filter(e=>e.alive!==false&&e.faction===f&&e.type==='tunnelMaw'&&(e.tunnelDigging||e.tunnelExitId)).length}
+function tunnelDestinationValid(e,x,y){return !!(e&&e.alive!==false&&e.type==='tunnelMaw'&&!e.garrisonedIn&&!e.tunnelDigging&&!e.tunnelExitId&&isCreepTile(e.faction,e.x,e.y)&&tunnelConnectionCount(e.faction)<2&&dist(e,{x,y})<=8.05&&dist(e,{x,y})>=2&&tileVisibleToFaction(e.faction,x,y)&&logisticsEmptyTile(e.faction,x,y,e)&&logisticsLandingTiles({x,y,faction:e.faction},null,2).length>0)}
+function closeTunnelConnection(maw){
+  if(!logisticsAuthoritative()||!maw)return false;
+  const exit=entityById(maw.tunnelExitId);
+  delete maw.tunnelDigging;delete maw.tunnelExitId;delete maw.tunnelExpiresAt;delete maw.tunnelRemainingUses;delete maw.tunnelNextTravelAt;maw.order='idle';
+  for(const effect of areaEffects)if(effect.sourceId===maw.id&&['tunnelDig','tunnelLink'].includes(effect.kind))effect.endAt=0;
+  if(exit&&exit.alive!==false)killEntity(exit);markDirty();return true;
+}
+function tunnelTravelUnit(maw,unit){
+  if(!logisticsAuthoritative()||!maw||maw.alive===false||maw.type!=='tunnelMaw'||!maw.tunnelExitId||maw.tunnelExpiresAt<=nowMs()||!(maw.tunnelRemainingUses>0)||!logisticsGroundPassenger(unit,maw)||dist(unit,maw)>1.6)return false;
+  const exit=entityById(maw.tunnelExitId);
+  if(!exit||exit.alive===false||exit.tunnelSourceId!==maw.id||logisticsEnemyBaseNear(maw.faction,exit.x,exit.y))return false;
+  const landing=logisticsLandingTiles(exit,unit,2)[0];if(!landing)return false;
+  spawnFx(unit.x,unit.y,'#9fff91',8);logisticsRelocateUnit(unit,landing,'tunnel','#a3ff82');maw.tunnelRemainingUses--;
+  if(maw.tunnelRemainingUses<=0)closeTunnelConnection(maw);markDirty();return true;
+}
+const logisticsBaseQueueUnit=queueUnit;
+queueUnit=function(e,type){
+  if(!e||e.alive===false)return false;
+  if(type==='broodling'||UNITS[type]?.temporary)return false;
+  if(type==='forwardFabricator'&&(!e||fabricatorReservationCount(e.faction)>=1))return false;
+  return e?.type==='forwardFabricator'?fabricatorQueueUnit(e,type):logisticsBaseQueueUnit(e,type);
+};
+const logisticsBaseMorphLarva=morphLarva;
+morphLarva=function(e,type){if(!e||e.alive===false)return false;if(type==='broodling'||e?.temporarySummon||UNITS[type]?.temporary||type==='forwardFabricator'&&(!e||fabricatorReservationCount(e.faction)>=1))return false;return logisticsBaseMorphLarva(e,type)};
+const logisticsBaseQueuedSupply=queuedSupply;
+queuedSupply=function(f){return logisticsBaseQueuedSupply(f)+entities.filter(e=>e.alive!==false&&e.faction===f&&e.type==='forwardFabricator'&&e.kind==='unit').reduce((n,e)=>n+(e.queue||[]).reduce((sum,q)=>sum+(UNITS[q.type]?.supply||0),0),0)};
+const logisticsBaseSetRally=setStructureRally;
+setStructureRally=function(e,x,y){
+  if(e?.type!=='forwardFabricator')return logisticsBaseSetRally(e,x,y);
+  if(!logisticsAuthoritative()||e.alive===false||!e.fabricatorDeployed||!Number.isFinite(Number(x))||!Number.isFinite(Number(y)))return false;
+  e.rallyPoint={x:clamp(Math.round(Number(x)),0,BOARD_W-1),y:clamp(Math.round(Number(y)),0,BOARD_H-1)};showCommandMarker(e.rallyPoint.x,e.rallyPoint.y,'rally');markDirty();return true;
+};
+const logisticsBaseTransportPassenger=validTransportPassenger;
+validTransportPassenger=function(unit,ship){return !unit?.temporarySummon&&unit?.type!=='broodling'&&!logisticsMovementLocked(unit)&&logisticsBaseTransportPassenger(unit,ship)};
+const logisticsBaseBunkerForUnit=bunkerForUnit;
+bunkerForUnit=function(unit){return unit?.temporarySummon||unit?.type==='broodling'||logisticsMovementLocked(unit)?null:logisticsBaseBunkerForUnit(unit)};
+const logisticsBaseMoveEntity=moveEntity;
+moveEntity=function(e,x,y,preserveOrder=false){return logisticsMovementLocked(e)?false:logisticsBaseMoveEntity(e,x,y,preserveOrder)};
+const logisticsBaseIssueMoveOrder=issueMoveOrder;
+issueMoveOrder=function(e,x,y){return logisticsMovementLocked(e)?false:logisticsBaseIssueMoveOrder(e,x,y)};
+const logisticsBaseAttackMoveOrder=issueAttackMoveOrder;
+issueAttackMoveOrder=function(e,x,y){return logisticsMovementLocked(e)?false:logisticsBaseAttackMoveOrder(e,x,y)};
+const logisticsBaseLegalMoves=legalMovesFor;
+legalMovesFor=function(e){return logisticsMovementLocked(e)?[]:logisticsBaseLegalMoves(e)};
+const logisticsBaseAbilityTiles=legalAbilityTiles;
+legalAbilityTiles=function(e,id){
+  if(!['warpConduit','tunnelBreach'].includes(id))return logisticsBaseAbilityTiles(e,id);
+  if(!e||e.alive===false||e.complete===false||e.garrisonedIn||e.channelEffectId||(typeof expansionAbilityLocked==='function'&&expansionAbilityLocked(e))||players[e.faction]?.eliminated||nowMs()<(e.abilityReadyAt||0)||!abilitiesFor(e).includes(id)||logisticsMovementLocked(e))return [];
+  if(id==='warpConduit')return entities.filter(p=>p.type==='pylon'&&warpConduitPreview(e,p).troops.length).map(p=>({x:p.x,y:p.y}));
+  const out=[];for(let y=e.y-8;y<=e.y+8;y++)for(let x=e.x-8;x<=e.x+8;x++)if(tunnelDestinationValid(e,x,y))out.push({x,y});return out;
+};
+const logisticsBaseUseAbility=useAbility;
+useAbility=function(e,id,payload={}){
+  if(!LOGISTICS_ABILITIES.has(id))return logisticsBaseUseAbility(e,id,payload);
+  if(!logisticsAuthoritative()||!e||e.alive===false||e.kind!=='unit'||e.complete===false||e.garrisonedIn||e.channelEffectId||(typeof expansionAbilityLocked==='function'&&expansionAbilityLocked(e))||players[e.faction]?.eliminated||!abilitiesFor(e).includes(id))return false;
+  if(id==='fieldMuster'&&(e.fabricatorDeployed||e.fabricatorDeployAt))return packFabricator(e);
+  if(nowMs()<(e.abilityReadyAt||0)||logisticsMovementLocked(e))return false;
+  const t=nowMs(),finish=()=>{e.lastAbilityId=id;e.abilityReadyAt=t+effectiveAbilityCd(id,e)*1000;spawnFx(e.x,e.y,factionOf(e.faction).color,10);markDirty();return true};
+  if(id==='fieldMuster'){
+    if(!fabricatorCanDeploy(e))return false;
+    clearLogisticsOrders(e);e.fabricatorDeployStartAt=t;e.fabricatorDeployAt=t+3000;e.order='Deploying Field Muster';addAreaEffect({id:`fabricator_${e.id}_${t}`,kind:'fabricatorDeploy',x:e.x,y:e.y,size:1,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+3000});return finish();
+  }
+  if(id==='warpConduit'){
+    const pylon=entityById(payload.targetId)||entityAt(Number(payload.x),Number(payload.y)),preview=warpConduitPreview(e,pylon);
+    if(!preview.troops.length)return false;
+    clearLogisticsOrders(e);e.warpChannel={pylonId:pylon.id,targetIds:preview.troops.map(u=>u.id),startAt:t,resolveAt:t+2000,x:e.x,y:e.y};e.order='Channeling Warp Conduit';addAreaEffect({id:`warp_${e.id}_${t}`,kind:'warpConduit',x:e.x,y:e.y,sourceX:pylon.x,sourceY:pylon.y,size:1,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+2250,landings:preview.landings,targetIds:e.warpChannel.targetIds});return finish();
+  }
+  if(id==='tunnelBreach'){
+    const x=Number(payload.x),y=Number(payload.y);if(!tunnelDestinationValid(e,x,y))return false;
+    clearLogisticsOrders(e);e.tunnelDigging={x,y,originX:e.x,originY:e.y,startAt:t,resolveAt:t+3000};e.order='Digging Tunnel Breach';addAreaEffect({id:`tunneldig_${e.id}_${t}`,kind:'tunnelDig',x,y,size:1,faction:e.faction,sourceId:e.id,sourceX:e.x,sourceY:e.y,startAt:t,endAt:t+3250});return finish();
+  }
+  if(id==='bloodClutch'){
+    if(e.type!=='broodMatriarch'||e.hp<=25||entities.filter(u=>u.alive!==false&&u.faction===e.faction&&(u.temporarySummon||u.type==='broodling')).length>3)return false;
+    const places=logisticsLandingTiles(e,null,1,new Set(),true).slice(0,3);if(places.length!==3)return false;
+    e.hp-=25;
+    for(const p of places){const u=addEntity('unit','broodling',e.faction,p.x,p.y);u.temporarySummon=true;u.summonSourceId=e.id;u.expiresAt=t+10000;u.noResourceRefund=true;u.supplyOverride=0;u.order='Broodling swarm';u.summonThinkAt=t;u.moveReadyAt=t+250;addAreaEffect({id:`egg_${u.id}_${t}`,kind:'bloodClutchEgg',x:p.x,y:p.y,size:1,faction:e.faction,sourceId:e.id,startAt:t,endAt:t+650})}
+    return finish();
+  }
+  return false;
+};
+function updateExpansionLogistics(){
+  if(!logisticsAuthoritative())return;
+  const t=nowMs();
+  for(const e of [...entities]){
+    if(e.alive===false)continue;
+    if(players[e.faction]?.eliminated){if(e.fabricatorDeployed||e.fabricatorDeployAt)packFabricator(e);if(e.tunnelDigging||e.tunnelExitId)closeTunnelConnection(e);delete e.warpChannel;if(e.temporarySummon)killEntity(e);continue}
+    if(typeof expansionAbilityLocked==='function'&&expansionAbilityLocked(e)&&(e.warpChannel||e.tunnelDigging||e.tunnelExitId||e.fabricatorDeployAt))cancelLogisticsChannel(e,true);
+    if(e.type==='forwardFabricator'){
+      if(e.fabricatorDeployAt&&t>=e.fabricatorDeployAt){delete e.fabricatorDeployAt;delete e.fabricatorDeployStartAt;e.fabricatorDeployed=true;e.order='Field Muster deployed';markDirty()}
+      if(e.fabricatorDeployed&&e.queue?.length&&t>=e.queue[0].finishAt){
+        const item=e.queue[0],p=logisticsLandingTiles(e,{kind:'unit',type:item.type,faction:e.faction},2)[0];
+        if(p){const unit=addEntity('unit',item.type,e.faction,p.x,p.y);recordProduced(unit.faction,unit.type);applyDoctrineStats(unit);e.queue.shift();if(e.rallyPoint)issueMoveOrder(unit,e.rallyPoint.x,e.rallyPoint.y);spawnFx(p.x,p.y,'#75d9ff',10);markDirty()}else item.finishAt=t+500;
+      }
+    }
+    if(e.warpChannel){
+      const channel=e.warpChannel,pylon=entityById(channel.pylonId);
+      const valid=pylon&&pylon.alive!==false&&pylon.complete&&pylon.faction===e.faction&&pylon.type==='pylon'&&structurePowered(pylon)&&dist(e,pylon)<=8.05&&e.x===channel.x&&e.y===channel.y&&!logisticsEnemyBaseNear(e.faction,e.x,e.y)&&!objectiveProtectedTile(e.x,e.y);
+      if(!valid){delete e.warpChannel;e.order='Warp interrupted';for(const a of areaEffects)if(a.sourceId===e.id&&a.kind==='warpConduit')a.endAt=0;markDirty()}
+      else if(t>=channel.resolveAt){
+        for(const id of channel.targetIds){const unit=entityById(id);if(!logisticsGroundPassenger(unit,e)||dist(unit,pylon)>2.1)continue;const p=logisticsLandingTiles(e,unit,2)[0];if(!p)break;spawnFx(unit.x,unit.y,'#c28cff',10);logisticsRelocateUnit(unit,p,'warp','#c28cff')}
+        delete e.warpChannel;e.order='idle';markDirty();
+      }
+    }
+    if(e.tunnelDigging&&t>=e.tunnelDigging.resolveAt){
+      const dig=e.tunnelDigging;
+      // Revalidate occupancy at completion, including arrivals after the warning began.
+      if(e.x!==dig.originX||e.y!==dig.originY||!isCreepTile(e.faction,e.x,e.y)||!logisticsEmptyTile(e.faction,dig.x,dig.y,e)||!logisticsLandingTiles({x:dig.x,y:dig.y,faction:e.faction},null,2).length){closeTunnelConnection(e);continue}
+      const exit=addEntity('structure','tunnelExit',e.faction,dig.x,dig.y);exit.tunnelSourceId=e.id;exit.temporaryLogistics=true;exit.expiresAt=t+15000;exit.order='Tunnel exit';delete e.tunnelDigging;e.tunnelExitId=exit.id;e.tunnelExpiresAt=exit.expiresAt;e.tunnelRemainingUses=5;e.order='Maintaining Tunnel Breach';addAreaEffect({id:`tunnellink_${e.id}_${t}`,kind:'tunnelLink',x:exit.x,y:exit.y,sourceX:e.x,sourceY:e.y,size:1,faction:e.faction,sourceId:e.id,startAt:t,endAt:exit.expiresAt});markDirty();
+    }
+    if(e.tunnelExitId&&(e.tunnelExpiresAt<=t||!entityById(e.tunnelExitId)||e.tunnelRemainingUses<=0))closeTunnelConnection(e);
+    if(e.type==='tunnelExit'&&(!entityById(e.tunnelSourceId)||e.expiresAt<=t)){killEntity(e);continue}
+    if(e.temporarySummon){
+      const source=entityById(e.summonSourceId);
+      if(!source||source.alive===false||e.expiresAt<=t){killEntity(e);continue}
+      if(t>=(e.summonThinkAt||0)){e.summonThinkAt=t+450;const enemy=entities.filter(target=>target.alive!==false&&target.faction>=0&&target.faction!==e.faction&&!players[target.faction]?.eliminated&&!target.garrisonedIn&&!isFlying(target)&&dist(e,target)<=5&&tileVisibleToFaction(e.faction,target.x,target.y)).sort((a,b)=>dist(e,a)-dist(e,b)||a.id-b.id)[0];if(enemy)issueAttack(e,enemy);else if(dist(e,source)>2&&!e.moveDestination)issueMoveOrder(e,source.x,source.y)}
+    }
+  }
+}
+const logisticsBaseAreaUpdate=updateAreaEffects;
+updateAreaEffects=function(){updateExpansionLogistics();return logisticsBaseAreaUpdate()};
+const logisticsBaseKillEntity=killEntity;
+killEntity=function(e,attacker=null){
+  if(!e||e.alive===false)return;
+  if(e.type==='forwardFabricator'){e.queue=[];delete e.fabricatorDeployAt;e.fabricatorDeployed=false}
+  if(e.tunnelDigging||e.tunnelExitId)closeTunnelConnection(e);
+  if(e.type==='tunnelExit'){const maw=entityById(e.tunnelSourceId);if(maw&&maw.tunnelExitId===e.id){delete maw.tunnelExitId;delete maw.tunnelExpiresAt;delete maw.tunnelRemainingUses;maw.order='Tunnel destroyed'}}
+  delete e.warpChannel;
+  for(const effect of areaEffects)if(effect.sourceId===e.id&&['fabricatorDeploy','warpConduit','tunnelDig','tunnelLink','bloodClutchEgg'].includes(effect.kind))effect.endAt=0;
+  logisticsBaseKillEntity(e,attacker);
+  for(const u of [...entities])if(u.alive!==false&&u.temporarySummon&&u.summonSourceId===e.id)killEntity(u);
+};
+function cancelLogisticsChannel(e,closeActiveTunnel=false){
+  if(!logisticsAuthoritative()||!e)return false;
+  let canceled=false;
+  if(e.warpChannel){delete e.warpChannel;e.order='Warp interrupted';canceled=true}
+  if(e.tunnelDigging||closeActiveTunnel&&e.tunnelExitId){closeTunnelConnection(e);canceled=true}
+  if(e.fabricatorDeployAt){packFabricator(e);canceled=true}
+  if(canceled){for(const a of areaEffects)if(a.sourceId===e.id&&['warpConduit','tunnelDig','fabricatorDeploy'].includes(a.kind)){a.endAt=0;a.canceled=true}markDirty()}
+  return canceled;
+}
+if(typeof expansionCancelChannel==='function'){
+  const logisticsBaseExpansionCancel=expansionCancelChannel;
+  expansionCancelChannel=function(e){const canceled=cancelLogisticsChannel(e,true);return logisticsBaseExpansionCancel(e)||canceled};
+}
+const logisticsBaseApplyCommand=applyCommand;
+applyCommand=function(c){
+  if(['stop','groupStop','hold','groupHold'].includes(c.type)&&logisticsAuthoritative())for(const unit of (c.entityIds||[c.entityId]).map(entityById).filter(u=>u&&u.faction===c.slot))cancelLogisticsChannel(unit,true);
+  if(c.type==='tunnelTravel'){
+    if(!gameStarted||!logisticsAuthoritative())return false;
+    const unit=entityById(c.entityId),maw=entityById(c.mawId);
+    if(!unit||!maw||unit.faction!==c.slot||maw.faction!==c.slot)return false;
+    const result=tunnelTravelUnit(maw,unit);refreshUI(true);return result;
+  }
+  return logisticsBaseApplyCommand(c);
+};
+const logisticsBaseAreaDraw=drawAreaEffects;
+drawAreaEffects=function(){
+  logisticsBaseAreaDraw();const t=nowMs(),z=TILE*cam.zoom;
+  for(const effect of areaEffects){
+    if(!['fabricatorDeploy','warpConduit','tunnelDig','tunnelLink','bloodClutchEgg'].includes(effect.kind)||effect.endAt<=t||!tileVisibleToFaction(PLAYER,effect.x,effect.y))continue;
+    const s=worldToScreen(effect.x+.5,effect.y+.5),pulse=1+.12*Math.sin(t/100),color=effect.kind==='warpConduit'?'#cf9aff':effect.kind==='fabricatorDeploy'?'#7ed8ff':'#a8ff7c';ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color+'25';ctx.lineWidth=Math.max(2,z*.035);ctx.shadowColor=color;ctx.shadowBlur=8;
+    if(effect.kind==='fabricatorDeploy'){const p=clamp((t-effect.startAt)/3000,0,1);ctx.strokeRect(s.x-z*.4,s.y-z*.4,z*.8,z*.8);ctx.beginPath();ctx.arc(s.x,s.y,z*.5,-Math.PI/2,-Math.PI/2+p*Math.PI*2);ctx.stroke()}
+    else if(effect.kind==='bloodClutchEgg'){ctx.beginPath();ctx.ellipse(s.x,s.y,z*.17*pulse,z*.23*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke()}
+    else{ctx.beginPath();ctx.ellipse(s.x,s.y,z*.44*pulse,z*.3,0,0,Math.PI*2);ctx.fill();ctx.stroke();if(effect.kind==='warpConduit'){for(let i=0;i<4;i++){const a=t/450+i*Math.PI/2;ctx.strokeRect(s.x+Math.cos(a)*z*.32-z*.035,s.y+Math.sin(a)*z*.32-z*.035,z*.07,z*.07)}}else if(effect.kind==='tunnelDig'){ctx.setLineDash([3,5]);ctx.beginPath();ctx.arc(s.x,s.y,z*.52,0,Math.PI*2);ctx.stroke()}
+      if(Number.isFinite(effect.sourceX)&&tileVisibleToFaction(PLAYER,effect.sourceX,effect.sourceY)){const from=worldToScreen(effect.sourceX+.5,effect.sourceY+.5);ctx.globalAlpha=.45;ctx.setLineDash([5,7]);ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(s.x,s.y);ctx.stroke()}}
+    ctx.restore();
+  }
+};
+
+
+// ---------- Expansion command presentation and objective eligibility ----------
+function expansionObjectiveEligible(e){return !!e&&!e.temporarySummon&&!e.temporaryLogistics&&e.type!=='broodling'&&e.type!=='tunnelExit'}
+const expansionPlayerStructures=playerStructures;
+playerStructures=function(f,type=null){return expansionPlayerStructures(f,type).filter(e=>!e.temporaryLogistics&&e.type!=='tunnelExit')};
+const expansionEntityAssetKey=entityAssetKey;
+entityAssetKey=function(e){if(e?.type==='forwardFabricator'&&e.fabricatorDeployed)return 'forward fabricator deployed.png';if(e?.type==='tunnelMaw'&&(e.tunnelExitId||e.tunnelDigging))return 'tunnel maw open.png';if(e?.type==='tunnelExit')return 'tunnel maw open.png';return expansionEntityAssetKey(e)};
+ASSET_ALIASES['tunnel exit.png']='tunnel maw open.png';
+const expansionAllTurncraftFiles=allTurncraftFiles;
+allTurncraftFiles=function(){return [...new Set([...expansionAllTurncraftFiles(),'forward fabricator deployed.png','tunnel maw open.png'])]};
+const expansionActivityFor=activityFor;
+activityFor=function(e){if(e.fabricatorDeployAt)return 'Deploying manufacturing platform';if(e.fabricatorDeployed)return e.queue?.length?'Field manufacturing':'Deployed manufacturing platform';if(e.tunnelDigging)return 'Digging tunnel';if(e.tunnelExitId)return `Tunnel open · ${e.tunnelRemainingUses??0} passages`;if(e.warpChannel)return 'Channeling Warp Conduit';if(e.channelEffectId)return 'Channeling';if(e.temporarySummon)return `Temporary swarm · ${fmtCd(cooldownSeconds(e.expiresAt))}`;return expansionActivityFor(e)};
+function expansionAbilityCost(id){return id==='voidSpear'?'70 shields':id==='bloodClutch'?'25 health':id==='fieldMuster'?'Infantry: +20% cost':''}
+const EXPANSION_ABILITY_ICONS={suppressionSweep:'M4 19L4 5L20 12Z M8 7L18 9 M8 12H19 M8 17L18 15',disruptionPulse:'M12 2V5 M12 19V22 M2 12H5 M19 12H22 M8 7L6 12L10 17L13 10L18 13L16 7Z',fieldMuster:'M3 16V9H14L20 13V18H3 M6 20H7 M16 20H17 M8 9V4H17L20 7 M10 12V16 M14 12V16',warpConduit:'M5 4C-1 8 -1 16 5 20 M19 4C25 8 25 16 19 20 M6 12H18 M14 8L18 12L14 16',temporalDistortion:'M12 3A9 9 0 1 0 21 12 M12 7V12L8 15 M14 2L12 3L14 5 M17 5H22 M20 2V8',voidSpear:'M3 21L17 7 M13 7H17V11 M16 3L21 8L23 1Z M5 13L10 18',tunnelBreach:'M2 19H22 M4 19V13C4 3 20 3 20 13V19 M9 18V14C9 10 15 10 15 14V18 M9 6L7 3 M15 6L17 3',sporeBloom:'M4 17C-1 11 5 6 9 8C9 1 18 1 18 8C25 8 25 18 18 18 M7 12V15 M12 9V13 M17 12V16 M9 19L8 22 M15 19L16 22',bloodClutch:'M12 4C5 8 7 17 12 17C17 17 19 8 12 4Z M4 12C0 16 1 21 4 21C7 21 8 16 4 12Z M20 12C16 16 17 21 20 21C23 21 24 16 20 12Z'};
+const expansionAbilityIcon=abilityIcon;
+abilityIcon=function(id){return EXPANSION_ABILITY_ICONS[id]?`<svg class="abilitySymbol" viewBox="0 0 24 24" aria-hidden="true"><path d="${EXPANSION_ABILITY_ICONS[id]}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`:expansionAbilityIcon(id)};
+const expansionPresentationUseAbility=useAbility;
+useAbility=function(e,id,payload={}){const ok=expansionPresentationUseAbility(e,id,payload);if(!ok&&e&&ownEntity(e)&&EXPANSION_UNIT_TYPES.has(e.type)&&!applyingRemote){const reason=expansionAbilityLocked(e)?'abilities are disrupted':e.abilityReadyAt>nowMs()?'ability is cooling down':id==='voidSpear'?'requires 70 shields and a visible enemy structure or barrier':id==='bloodClutch'?'requires more than 25 health, three empty adjacent tiles, and room under the six-Broodling cap':id==='fieldMuster'?'requires open space away from protected objectives and enemy bases':id==='warpConduit'?'requires a completed friendly Pylon with eligible nearby troops and safe landing tiles':id==='tunnelBreach'?'requires friendly creep, a visible open destination and fewer than two active tunnels':'choose a visible target in range';toast(`${ABILITIES[id]?.name||'Ability'} unavailable: ${reason}.`)}return ok};
+function expansionCasterReady(e,id){if(!e||expansionAbilityLocked(e))return false;if(id==='fieldMuster'&&e.fabricatorDeployed)return true;if(e.channelEffectId||e.warpChannel||e.tunnelDigging||e.fabricatorDeployAt)return false;return nowMs()>=e.abilityReadyAt&&(id!=='voidSpear'||e.shield>=70)&&(id!=='bloodClutch'||e.hp>25)}
+const expansionRenderCommandButtons=renderCommandButtons;
+renderCommandButtons=function(){expansionRenderCommandButtons();const e=selected();if(!e||!ownEntity(e))return;
+  if(e.type==='forwardFabricator'&&e.fabricatorDeployed){polishButton('Rally',()=>{interactionMode='rally';refreshUI(true)});polishButton('Cancel Last',()=>sendCommand({type:'cancelQueue',entityId:e.id})).disabled=!e.queue?.length}
+  if(e.kind==='unit'&&logisticsGroundPassenger(e,e)){const maws=entities.filter(m=>m.alive!==false&&m.type==='tunnelMaw'&&m.faction===e.faction&&m.tunnelExitId&&dist(m,e)<=1.6);if(maws.length){const maw=maws.sort((a,b)=>dist(a,e)-dist(b,e))[0],passengers=selectedTroops().filter(u=>logisticsGroundPassenger(u,maw)&&dist(u,maw)<=1.6);polishButton('Enter Tunnel',()=>sendCommand({type:passengers.length>1?'groupTunnelTravel':'tunnelTravel',entityId:e.id,entityIds:passengers.map(u=>u.id),mawId:maw.id}))}}
+  for(const b of abilityButtons.querySelectorAll('[data-ability]')){const id=b.dataset.ability,cost=expansionAbilityCost(id);if(cost){b.title=b.title.replace('No resource cost',cost);b.setAttribute('aria-label',b.title)}if(id==='fieldMuster'&&e.fabricatorDeployed){const label=b.querySelector('.abilityLabel');if(label)label.textContent='Pack Up';b.title='Pack Up — cancels queued orders and refunds 75% of their paid cost.';b.setAttribute('aria-label',b.title)}}
+};
+const expansionRenderSidePanel=renderSidePanel;
+renderSidePanel=function(){const e=selected();if(e?.type!=='forwardFabricator'||!ownEntity(e)||selectedEntities().length!==1)return expansionRenderSidePanel();actionList.innerHTML='';actionList.className='actionGrid';commandPanel.classList.remove('hasActions');contextMenuTitle.textContent='Field Muster';if(!e.fabricatorDeployed){contextSummary.textContent=e.fabricatorDeployAt?'Deploying: production unlocks when the platform is ready.':'Deploy Field Muster to manufacture Riflemen and Field Medics beside your army.';return}contextSummary.textContent='Forward production: 20% higher resource costs and 25% longer training. Three queued orders; packing cancels and refunds them.';
+  for(const type of ['rifleman','medic']){const d=UNITS[type],cost=fabricatorProductionCost(type),ready=unitUnlocked(PLAYER,type)&&canAfford(PLAYER,cost)&&e.queue.length<3&&supplyUsed(PLAYER)+queuedSupply(PLAYER)+d.supply<=supplyCap(PLAYER);const b=document.createElement('button');b.className='actionCard';b.disabled=!ready;b.innerHTML=`<div class="actionTitle">${imageHtmlForType(type,d.name)}<span>${d.name}</span></div><div class="actionMeta">${d.desc} · ${Math.round(scaledTime(d.time)*1.25*10)/10}s field training</div><div class="actionCost"><span>◆ ${cost[0]}</span><span>◈ ${cost[1]}</span><span>⬡ ${d.supply}</span></div>`;b.onclick=()=>sendCommand({type:'train',entityId:e.id,unitType:type});actionList.appendChild(b)}revealMobileActions(e)
+};
+const expansionRefreshUI=refreshUI;
+refreshUI=function(force=false){expansionRefreshUI(force);if(!gameStarted)return;for(const b of abilityButtons.querySelectorAll('[data-ability]')){const id=b.dataset.ability,casters=abilityCasters(id),ready=casters.filter(e=>expansionCasterReady(e,id));b.disabled=!ready.length;const small=b.querySelector('small:not(.abilityExplain)'),lock=Math.max(0,...casters.map(e=>cooldownSeconds(e.abilityLockedUntil))),cost=expansionAbilityCost(id),remain=Math.min(...casters.map(e=>cooldownSeconds(e.abilityReadyAt)));if(small){small.textContent=`${ready.length?'READY':lock>0?`DISRUPTED ${fmtCd(lock)}`:casters.some(e=>e.channelEffectId||e.warpChannel||e.tunnelDigging||e.fabricatorDeployAt)?'CHANNELING':remain>0?fmtCd(remain):id==='voidSpear'?'Need 70 shields':id==='bloodClutch'?'Need >25 health':'Unavailable'}${casters.length>1?` · ${ready.length}/${casters.length}`:''} · ${cost||'No resource cost'}`;}}
+  const e=selected();if(e&&ownEntity(e)&&typeof logisticsMovementLocked==='function'&&logisticsMovementLocked(e)){for(const b of commandButtons.querySelectorAll('button')){const label=b.querySelector('span')?.textContent;if(label==='Move'||label==='Attack Move')b.disabled=true}}if(e?.type==='tunnelMaw'&&e.tunnelExitId)selectionOrder.textContent=activityFor(e);if(interactionMode==='ability'&&['warpConduit','tunnelBreach','suppressionSweep','voidSpear'].includes(interactionPayload))hintLine.textContent=ABILITIES[interactionPayload].desc;
+};
+const expansionDrawTargetPreview=drawTargetPreview;
+drawTargetPreview=function(){expansionDrawTargetPreview();if(interactionMode!=='ability'||interactionPayload!=='warpConduit'||!hoverTile)return;const caster=abilityCasters('warpConduit').find(e=>legalAbilityTiles(e,'warpConduit').some(p=>p.x===hoverTile.x&&p.y===hoverTile.y)),pylon=entities.find(e=>e.type==='pylon'&&e.alive!==false&&e.x===hoverTile.x&&e.y===hoverTile.y);if(!caster||!pylon)return;const plan=warpConduitPreview(caster,pylon);if(!plan)return;const z=TILE*cam.zoom;ctx.save();ctx.strokeStyle='#e6b8ff';ctx.lineWidth=3;for(const u of plan.troops||[]){const s=worldToScreen(u.x,u.y);ctx.strokeRect(s.x+3,s.y+3,z-6,z-6)}ctx.fillStyle='#c77dff44';ctx.setLineDash([5,4]);for(const p of plan.landings||[]){const s=worldToScreen(p.x,p.y);ctx.fillRect(s.x+3,s.y+3,z-6,z-6);ctx.strokeRect(s.x+3,s.y+3,z-6,z-6)}ctx.restore()};
+const expansionPresentationApplyCommand=applyCommand;
+applyCommand=function(c){if(c.type!=='groupTunnelTravel')return expansionPresentationApplyCommand(c);if(!gameStarted||!logisticsAuthoritative())return false;const maw=entityById(c.mawId);if(!maw||maw.faction!==c.slot)return false;let count=0;for(const id of [...new Set(c.entityIds||[])].slice(0,5)){const u=entityById(id);if(u?.faction===c.slot&&tunnelTravelUnit(maw,u))count++}refreshUI(true);return count>0};
+
+
 // ---------- Main loop ----------
 function frame(ts){const dt=Math.min(.05,(ts-lastFrame)/1000||.016);lastFrame=ts;updatePolishCamera(dt);observePolishEvents();if(gameStarted&&!paused&&!gameOver&&(isController||!lobbyId)){simAccumulator+=dt;updatePersistentOrders();updateCombat(dt);resolveProjectileImpacts();updateProduction(dt);updateRegeneration(dt);updateAreaEffects();updateNeutralObjectives(dt);updateObjectives(dt);updateFx(dt);if(simAccumulator>=.25){simAccumulator=0;updateMining();updateLastSeenIntel();aiThinkAll();checkBaseStates()}if(lobbyId&&isController)writeState(false)}else updateFx(dt);scanEffects=scanEffects.filter(s=>s.endAt>nowMs());draw();if(gameStarted&&Math.floor(ts/150)!==Math.floor((ts-dt*1000)/150))refreshUI();requestAnimationFrame(frame)}
 function checkBaseStates(){for(const p of players)if(!p.eliminated&&!playerStructures(p.idx).some(isBase))checkElimination(p.idx)}
@@ -1567,4 +2243,3 @@ boot();
 </script>
 </body>
 </html>
-
