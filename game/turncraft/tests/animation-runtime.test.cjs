@@ -81,3 +81,22 @@ test('explicit symmetric directional flips preserve scaled source frames and des
   assert.equal(runtime.drawState(context,'drone','idle',{direction:'E',elapsedMs:0,size:40,x:12,y:20}),true);assert.deepEqual(operations[0],['translate',12,20]);assert.deepEqual(operations[1],['scale',-1,1]);const draw=operations[2];assert.deepEqual(draw.slice(1,5),[40,32,40,32]);assert.equal(12-(draw[5]+draw[7]),0);assert.equal(12-draw[5],40);assert.ok(Math.abs(20+draw[6]+2.4)<1e-9);
   operations.length=0;runtime.drawState(context,'drone','idle',{direction:'S',elapsedMs:0,size:40,x:12,y:20});assert.equal(operations.length,1,'directions without an explicit flag remain unmirrored');assert.equal(operations[0][5],0);assert.ok(Math.abs(operations[0][6]+2.4)<1e-9);const bounds=runtime.bounds({id:99,kind:'unit',type:'drone',x:0,y:0},{size:40});assert.equal(bounds.width,40);assert.equal(bounds.height,32)
 });
+
+test('measured atlas crops are repacked before downsampling and keep original drawing scale and hit bounds',()=>{
+  const images=[],blits=[],canvases=[],repair={width:384,height:144,frameWidth:192,frameHeight:144,sourceFrameWidth:96,crops:[[[12,20,80,100],[110,18,75,103]]]},cache=new TextureCache({createImage:()=>{const im={width:192,height:144};images.push(im);return im},createCanvas:()=>{const c={getContext:()=>({drawImage(...args){blits.push(args)}})};canvases.push(c);return c}});
+  const definition={anchor:[.5,.78],states:{idle:{sheet:'buggy.webp',frameWidth:96,frameHeight:144,frames:2,fps:4,directions:['S'],rows:{S:0}}}},runtime=new SpriteRuntime({manifest:{cropRepairs:{'buggy.webp':repair},assets:{hellion:definition}},cache,quality:'low'});
+  cache.get('buggy.webp');images[0].onload();assert.equal(blits.length,3,'two isolated crops, then one downsample');
+  assert.deepEqual(blits[0].slice(1),[12,20,80,100,56,20,80,100]);assert.deepEqual(blits[2].slice(1),[0,0,192,72]);assert.equal(cache.frameExpansion('buggy.webp'),2);assert.equal(cache.bytes,192*72*4);
+  const draws=[],context={globalAlpha:1,save(){},restore(){},drawImage(...args){draws.push(args.slice(1))}};
+  assert.equal(runtime.drawState(context,'hellion','idle',{size:48,progress:1}),true);assert.deepEqual(draws[0].slice(0,4),[96,0,96,72]);assert.equal(draws[0][6],96,'wider transparent cell does not squash the unit');assert.equal(draws[0][7],72,'unit vertical scale remains unchanged');
+  const bounds=runtime.bounds({id:1,type:'hellion',kind:'unit',x:0,y:0},{size:48});assert.equal(bounds.width,48);assert.equal(bounds.height,72);
+  cache.setCropRepairs({});assert.equal(cache.entries.size,0,'manifest changes invalidate old repaired textures');assert.equal(cache.bytes,0);
+});
+
+test('a bad crop or missing repair canvas falls back instead of drawing the contaminated sheet',()=>{
+  for(const createCanvas of [()=>null,()=>({getContext:()=>({drawImage(){}})})]){
+    const images=[],cache=new TextureCache({createImage:()=>{const im={width:96,height:144};images.push(im);return im},createCanvas});
+    cache.setCropRepairs({'broken.webp':{width:192,height:144,frameWidth:192,frameHeight:144,sourceFrameWidth:96,crops:[[[90,0,20,144]]]}});
+    cache.get('broken.webp');images[0].onload();assert.equal(cache.get('broken.webp'),null);assert.equal(cache.entries.get('broken.webp').status,'failed');assert.equal(cache.bytes,0);assert.equal(cache.active,0);
+  }
+});
