@@ -27,7 +27,7 @@ async function setup(width=1280,height=900){
 
 test('illustrated faction selection and real difficulty choices persist without replacing focus',async()=>{
  const {browser,page,errors}=await setup();try{
-  for(const faction of ['frontier','ascendant','brood']){await page.locator(`[data-faction="${faction}"]`).click();assert.equal(await page.locator(`[data-faction="${faction}"]`).getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>tcMenu.config.faction),faction)}
+  for(const faction of ['frontier','ascendant','brood']){const choice=page.locator(`.factionCard[data-faction="${faction}"]`);await choice.click();assert.equal(await choice.getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>tcMenu.config.faction),faction)}
   assert.equal(await page.locator('.factionHero img').evaluateAll(images=>images.filter(img=>img.complete&&img.naturalWidth===1536).length),3);
   const intervals=[];for(const id of ['easy','medium','hard','pro']){await page.locator(`[data-difficulty="${id}"]`).click();const result=await page.evaluate(()=>({config:tcMenu.config,saved:localStorage.getItem('csf.difficulty'),native:document.getElementById('difficultySelect').value}));assert.equal(result.config.difficulty,id);assert.equal(result.saved,id);assert.equal(result.native,id);intervals.push(result.config.tuning.thinkInterval)}
   assert.ok(intervals.every((value,i)=>i===0||value<intervals[i-1]));
