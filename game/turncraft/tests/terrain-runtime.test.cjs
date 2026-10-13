@@ -1,0 +1,46 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {MAP_IDS,describeTile,geometryStamp,createRenderer}=require('../terrain.js');
+
+function field(width=16,height=16){return Array.from({length:width*height},(_,i)=>({x:i%width,y:Math.floor(i/width),type:'ground',blocked:false}))}
+function drawing(){const calls=[];const context={globalAlpha:1,drawImage(...args){calls.push(args)},save(){},restore(){},beginPath(){},rect(){},arc(){},clip(){},moveTo(){},lineTo(){},stroke(){},translate(){},rotate(){}};return {calls,context,canvas:(w,h)=>({width:w,height:h,getContext:()=>context})}}
+async function renderer(){global.Image=class{constructor(){this.width=this.naturalWidth=1024;this.height=this.naturalHeight=1024}set src(value){this.url=value;this.onload()}};const paint=drawing(),r=createRenderer({makeCanvas:paint.canvas});await r.load('classic');return {r,paint}}
+
+test('six battlefields use a deterministic independent visual hash including seed zero',()=>{
+  assert.equal(MAP_IDS.length,6);const tiles=field(),at=(x,y)=>x>=0&&y>=0&&x<16&&y<16?tiles[y*16+x]:null;
+  const before=JSON.stringify(tiles),a=describeTile(tiles[17],0,at),b=describeTile(tiles[17],0,at);
+  assert.deepEqual(a,b);assert.notEqual(a.noise,describeTile(tiles[17],1,at).noise);assert.equal(JSON.stringify(tiles),before);
+});
+
+test('autotile masks distinguish straight cliff edges and concave corners from map geometry',()=>{
+  const tiles=field(3,3),at=(x,y)=>x>=0&&y>=0&&x<3&&y<3?tiles[y*3+x]:null;
+  tiles[4].blocked=true;tiles[4].type='rock';const cliff=describeTile(tiles[4],123,at);assert.equal(cliff.openMask&15,15);assert.ok(cliff.index>=8&&cliff.index<=11);
+  tiles[4].blocked=false;tiles[4].type='ground';tiles[0].type='lane';const open=describeTile(tiles[4],123,at);assert.equal(open.sameMask&15,15);assert.ok(open.innerCorners&1);assert.ok(open.outerCorners&1);
+});
+
+test('static chunks reuse identical geometry across remote snapshots and invalidate changed tiles',async()=>{
+  const {r,paint}=await renderer(),tiles=field();const input={mapId:'classic',seed:0,terrain:tiles,width:16,height:16,quality:'medium',now:10};r.prepare(input);const before=JSON.stringify(tiles);
+  for(let i=0;i<8;i++)assert.equal(r.drawTile(paint.context,tiles[i],{x:i*50,y:0},50),true);
+  assert.equal(r.stats.builds,1);assert.equal(r.stats.chunks,1);assert.equal(r.stats.hits,7);
+  r.prepare({...input,terrain:JSON.parse(before),now:20});r.drawTile(paint.context,tiles[0],{x:0,y:0},50);assert.equal(r.stats.builds,1);
+  const changed=JSON.parse(before);changed[0].blocked=true;changed[0].type='rock';r.prepare({...input,terrain:changed,now:30});r.drawTile(paint.context,changed[0],{x:0,y:0},50);assert.equal(r.stats.builds,2);assert.equal(JSON.stringify(tiles),before);assert.notEqual(geometryStamp(changed),geometryStamp(tiles));
+});
+
+test('resources, ambient loops and combat sheets draw only permitted visible information',async()=>{
+  const {r,paint}=await renderer(),tiles=field();r.prepare({mapId:'classic',seed:42,terrain:tiles,width:16,height:16,quality:'medium',now:0});
+  const node={x:1,y:1,type:'mineral',amount:500,maxAmount:500},screen={x:10,y:20},before=paint.calls.length;
+  assert.equal(r.drawResource(paint.context,node,screen,64,1000,false),false);
+  assert.equal(r.drawResource(paint.context,{...node,amount:0},screen,64,1000,true),false);
+  assert.equal(r.drawAmbient(paint.context,tiles[17],screen,64,1000,false),false);
+  assert.equal(r.drawEffect(paint.context,'explosion',10,10,40,70,{visible:false}),false);
+  assert.equal(paint.calls.length,before);
+  assert.equal(r.drawResource(paint.context,node,screen,64,1000,true),true);
+  assert.equal(r.drawEffect(paint.context,'explosion',10,10,40,70,{visible:true}),true);
+  assert.equal(r.drawEffect(paint.context,'dust',10,10,40,70,{quality:'low'}),false);
+});
+
+test('quality changes rebuild resolution once and low quality suppresses decorative loops',async()=>{
+  const {r,paint}=await renderer(),tiles=field(),input={mapId:'classic',seed:12,terrain:tiles,width:16,height:16,now:0};r.prepare({...input,quality:'medium'});r.drawTile(paint.context,tiles[0],{x:0,y:0},64);const before=r.stats.builds;
+  r.prepare({...input,quality:'low'});r.drawTile(paint.context,tiles[0],{x:0,y:0},64);assert.equal(r.stats.builds,before+1);assert.equal(r.stats.quality,'low');
+  for(const tile of tiles)assert.equal(r.drawAmbient(paint.context,tile,{x:0,y:0},64,1000,true),false);
+});

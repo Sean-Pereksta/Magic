@@ -5,10 +5,10 @@ The game remains `../turncraft.html`. `polish.css` is loaded after the legacy st
 ## Controls
 
 - Drag to pan; wheel/pinch or Zoom buttons to zoom. WASD/arrows pan; F focuses selection.
-- Touch taps select. Choose an order before tapping a target; gestures never issue orders.
+- Touch taps select friendly troops. With troops selected, tap open ground to move or an enemy to attack. Gestures never issue orders.
 - Hold still for 380 ms, then drag a box to select friendly troops with mouse or touch. Shift-drag selects immediately; double-click/tap selects the visible unit type. Moving immediately still pans, and a second finger switches safely to pinch zoom.
 - Ability buttons display Q/E/R/T and subsequent shortcuts, including on touch layouts. The same keys activate ready abilities or enter targeting; Escape cancels. Typing, modifier keys, pause, cooldowns and open dialogs suppress ability shortcuts.
-- X arms Attack. Escape/Cancel Order cancels targeting. The numbered control groups retain tap/hold behavior.
+- A arms Attack (X remains available). Click an enemy to attack it, or click ground to attack the nearest visible valid enemy within four tiles; empty ground issues attack-move. Escape/Cancel Order cancels targeting. The numbered control groups retain tap/hold behavior.
 - Mine uses existing automatic gathering on arrival. Stop suppresses gathering until a new mining/movement order.
 - Build lists structures and lets adjacent human workers assist an unfinished building. Choose Refinery, Assimilator or Extractor and click a visible unoccupied gas vent at any distance: the worker travels to a reachable adjacent spot and constructs automatically. The cost is checked when ordering and charged once when construction begins. Replacement orders, unavailable vents, blocked routes and lost affordability cancel without a charge. Pending orders survive shared snapshots; Brood consumes its Drone only when construction begins. Ordinary buildings still require adjacent placement.
 
