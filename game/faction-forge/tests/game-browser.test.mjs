@@ -40,6 +40,22 @@ test('full game opens solo menu, drafts against AI, and moves on the original gr
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
 
+test('local campaign starts with each faction army and reaches battle without progression service',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  for(const faction of ['Vanir','Aesir','Helions']){
+   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+   await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},chooseCard};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
+   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.locator('.ff-faction-choice').filter({hasText:faction}).click();
+   await page.waitForFunction(()=>globalThis.__forgeTest?.state?.phase==='draft');
+   const state=await page.evaluate(()=>({faction:__forgeTest.state.factions.p0,roster:__forgeTest.state.roster.p0,mission:__forgeTest.state.missionId}));
+   assert.equal(state.faction,faction);assert.equal(state.mission,'forge-01');assert.ok(state.roster.length>=2,'campaign player has a starting army');
+   for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}
+   await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);await context.close();
+  }
+ }finally{await browser.close();await new Promise(r=>app.close(r));}
+});
+
 test('configured secure campaign submits only legal pick inputs and renders the authoritative result',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
@@ -87,3 +103,5 @@ test('restored durable auth survives reload and joined lobbies receive the verif
   assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
+
+

@@ -63,6 +63,12 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     return node;
   }
   function frame(node,faction){node.classList.add(`ff-faction-${String(faction||"neutral").toLowerCase()}`);illustration(node,`card-frame-${String(faction||"neutral").toLowerCase()}`,{className:"ff-card-frame"});}
+  function factionArtwork(faction,{animate=false}={}){
+    const stage=element("div","ff-faction-artwork"),key=Object.keys(troops).find(k=>troops[k].faction===faction);
+    frame(stage,faction);
+    if(key)stage.appendChild(portrait(key,profile().troops?.[key]?.forgeTier||1,{animate}));
+    return stage;
+  }
   function open(view,title){
     stopPortraits();generation++;if(shell.hidden)previousFocus=document.activeElement;shell.hidden=false;shell.replaceChildren();currentView=view;
     const panel=element("section","ff-panel ff-view-"+view),header=element("header","ff-header"),titleNode=element("h1","ff-title",title);
@@ -93,7 +99,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
       ["How to Play","Draft, position, counter and conquer","how-to-play",()=>showHowToPlay()]
     ]){const item=button("",click,"ff-menu-action");if(matchActive() && ["Campaign","Play Online"].includes(title))item.disabled=true;item.append(element("strong","",title),element("span","",detail));illustration(item,icon,{className:"ff-menu-action-art"});actions.appendChild(item);}
     panel.appendChild(actions);
-    const factionShowcase=element("div","ff-faction-showcase");for(const faction of ["Vanir","Aesir","Helions"]){const card=element("div","ff-faction-banner"),key=Object.keys(troops).find(k=>troops[k].faction===faction);frame(card,faction);if(key)card.appendChild(portrait(key,profile().troops?.[key]?.forgeTier||1,{animate:true}));card.appendChild(element("strong","",faction));factionShowcase.appendChild(card);}panel.appendChild(factionShowcase);
+    const factionShowcase=element("div","ff-faction-showcase");for(const faction of ["Vanir","Aesir","Helions"]){const card=element("div","ff-faction-banner");card.append(factionArtwork(faction,{animate:true}),element("strong","ff-faction-name",faction));factionShowcase.appendChild(card);}panel.appendChild(factionShowcase);
     if(onPractice){const practice=button("Practice against AI",()=>chooseFaction(f=>invoke(onPractice,[f],shell.querySelector(".ff-status")||status,{hideOnSuccess:true})),"ff-button ff-secondary");practice.disabled=matchActive();panel.appendChild(practice);}
   }
   function showSignIn(){
@@ -106,7 +112,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
   }
   function chooseFaction(callback){
     const {panel,status}=open("faction","Choose your faction"),grid=element("div","ff-faction-choices");
-    for(const faction of ["Vanir","Aesir","Helions"]){const pick=button("",()=>callback(faction),"ff-faction-choice");frame(pick,faction);const key=Object.keys(troops).find(k=>troops[k].faction===faction);if(key)pick.appendChild(portrait(key,profile().troops?.[key]?.forgeTier||1));pick.append(element("strong","",faction),element("span","",faction==="Vanir"?"Industrial firepower and armor":faction==="Aesir"?"Arcane control and protective magic":"Swarm aggression and corruption"));grid.appendChild(pick);}panel.appendChild(grid);return status;
+    for(const faction of ["Vanir","Aesir","Helions"]){const pick=button("",()=>callback(faction),"ff-faction-choice");pick.append(factionArtwork(faction),element("strong","ff-faction-name",faction),element("span","ff-faction-description",faction==="Vanir"?"Industrial firepower and armor":faction==="Aesir"?"Arcane control and protective magic":"Swarm aggression and corruption"));grid.appendChild(pick);}panel.appendChild(grid);return status;
   }
   function showCampaign(){
     const {panel,status}=open("campaign","The War for the Forge");playerSummary(panel);const completed=profile().campaign?.missions || {},list=element("div","ff-campaign-chapters");
@@ -176,3 +182,5 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
   function notify(message){let status=shell.querySelector(".ff-status");if(!status){status=element("div","ff-toast");status.setAttribute("role","status");host.appendChild(status);setTimeout(()=>status.remove(),7000);}status.textContent=String(message||"");}
   return {showMenu,showCampaign,showForge,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseFaction,decorateDraftCard,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();shell.remove();fab.remove();}};
 }
+
+
