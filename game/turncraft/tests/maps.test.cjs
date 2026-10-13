@@ -15,7 +15,7 @@ function simulation(savedMap='classic'){
   const context=vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../maps.js'),'utf8'),context,{timeout:30000});
   const html=fs.readFileSync(path.join(__dirname,'../../turncraft.html'),'utf8');
-  const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('\nboot();','\nrefreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.testEvaluate=source=>eval(source);');
+  const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('\nboot();','\nrefreshUI=()=>{};renderMapChoices=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.testEvaluate=source=>eval(source);');
   vm.runInContext(code,context,{timeout:30000,filename:'turncraft.html'});
   return code=>vm.runInContext(`testEvaluate(${JSON.stringify(code)})`,context,{timeout:30000});
 }
