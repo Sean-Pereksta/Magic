@@ -621,3 +621,33 @@ test('desktop and phone large battles respect texture, particle and death-effect
     } finally {await browser.close()}
   }
 });
+
+test('all sixteen repaired sheets have isolated nonempty frames and transparent gutters at every quality',async()=>{
+  const {browser,page,errors}=await setup();
+  try{
+    const result=await page.evaluate(async()=>{
+      const runtime=tcAnimation.runtime;await runtime.loadManifest('/game/turncraft/assets/animation-manifest.json');
+      const failures=[],sheets=Object.entries(runtime.manifest.cropRepairs);let checked=0;
+      for(const quality of ['low','medium','high']){
+        runtime.setQuality(quality);
+        for(const [url,repair]of sheets){
+          let image=runtime.cache.get(url);for(let retry=0;!image&&retry<200;retry++){await new Promise(resolve=>setTimeout(resolve,10));image=runtime.cache.get(url)}
+          if(!image){failures.push(quality+': failed '+url);continue}
+          const scale=runtime.cache.sourceScale(url),pitch=repair.frameWidth*scale,height=repair.frameHeight*scale;
+          const canvas=document.createElement('canvas');canvas.width=pitch;canvas.height=height;const ctx=canvas.getContext('2d');
+          for(let row=0;row<8;row++)for(let col=0;col<repair.crops[row].length;col++){
+            ctx.clearRect(0,0,pitch,height);ctx.drawImage(image,col*pitch,row*height,pitch,height,0,0,pitch,height);
+            const pixels=ctx.getImageData(0,0,pitch,height).data;let visible=0,edge=0;
+            for(let y=0;y<height;y++)for(let x=0;x<pitch;x++){const alpha=pixels[(y*pitch+x)*4+3];if(alpha>16)visible++;if((x<2||x>=pitch-2)&&alpha>0)edge++}
+            if(!visible||edge)failures.push(`${quality}:${url}:${row}:${col} empty=${!visible} gutterPixels=${edge}`);
+            checked++;
+          }
+          if(Math.max(image.width,image.height)>2048)failures.push('mobile texture limit '+url);
+          if(runtime.cache.bytes>runtime.cache.maxBytes)failures.push('texture budget '+quality);
+        }
+      }
+      return {sheets:sheets.length,checked,failures};
+    });
+    assert.equal(result.sheets,16);assert.equal(result.checked,3024);assert.deepEqual(result.failures,[]);assert.deepEqual(errors,[]);
+  }finally{await browser.close()}
+});
