@@ -42,10 +42,11 @@ async function main() {
         };
         HTMLCanvasElement.prototype.requestPointerLock=function(){};
       });
-      if (fixtures) await page.addInitScript(base => {window.NEON_ASSET_CONFIG={ASSET_BASE_URL:base,version:''};}, origin+'/assets');
+      if (fixtures) await page.addInitScript(base => {window.NEON_ASSET_CONFIG={ASSET_BASE_URL:base,UI_ASSET_BASE_URL:'./assets',version:''};}, origin+'/assets');
+      else await page.addInitScript(()=>{window.NEON_ASSET_CONFIG={ASSET_BASE_URL:'',UI_ASSET_BASE_URL:'./assets',version:''};});
       await page.goto(origin+'/game/neon-arena/');
       await page.waitForFunction(()=>!!window.__NEON_TEST__,null,{timeout:8000}).catch(error=>{throw new Error(device.name+' failed to initialize: '+errors.join('; ')+' '+error.message)});
-      if(fixtures){await page.waitForFunction(()=>document.querySelector('.menuLogo').classList.contains('asset-loaded'));assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.menuLogo img')).display),'block');}
+      await page.waitForFunction(()=>document.querySelector('.menuLogo').classList.contains('asset-loaded'));assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.menuLogo img')).display),'block');
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,device.name+' overflow');
       assert.equal(await page.locator('[data-mode]').count(),5,'five selectable modes');
       for (const mode of ['dm','tdm','frag','siege','survivor']) {

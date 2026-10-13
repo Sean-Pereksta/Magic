@@ -1,6 +1,8 @@
 /* Native, dependency-free renderer for the supplied static glTF 2.0 art pack.
  * Geometry/materials and GPU buffers are shared by URL; entities only own a pose.
- * Unsupported/compressed/textured files fail closed to the game's original art.
+ * Authored vertex normals preserve curved surfaces and sharp bevels; the original
+ * assets without normals use flat face normals. Unsupported/compressed/textured
+ * files fail closed to the game's original art.
  */
 (function(root){
 'use strict';
@@ -24,12 +26,24 @@ function pivotMatrix(p,angles,offset=[0,0,0]){const m=compose([0,0,0],angles);co
 function groupFor(name,center,weapon){
   if(weapon){if(/magazine|mag_glow|ammo_block|cylinder|chamber/.test(name))return 'magazine';if(/barrel|muzzle|slide|hammer|bolt|pump/.test(name))return 'barrel';if(/coil|capacitor|plasma|crystal|core|energy|power_fin/.test(name))return 'energy';return 'body'}
   const side=center[0]<0?'L':'R';
-  if(/wing/.test(name))return 'wing'+side;
-  if(/upper_leg|lower_leg|thigh|shin|knee|boot|foot|talon/.test(name))return 'leg'+side;
-  if(/shoulder|upper_arm|elbow|forearm|glove|foreclaw|claw_tip|impact_shoulder/.test(name))return 'arm'+side;
+  if(/^wing(?:_|$)/.test(name))return 'wing'+side;
+  // The detailed pack adds muscles, joints and complete arm/jaw meshes. Attach
+  // them to the same rigid limb as their armor, rather than leaving stationary
+  // skin behind when its limb swings. Match new families by semantic prefix so
+  // torso equipment containing similar words keeps its original body grouping.
+  if(/upper_leg|lower_leg|thigh|shin|knee|boot|foot|talon/.test(name)||/^(?:calf|ankle|rear_digging_leg)(?:_|$)/.test(name))return 'leg'+side;
+  if(/shoulder|upper_arm|elbow|forearm|glove|foreclaw|claw_tip|impact_shoulder/.test(name)||/^arm(?:_|$)/.test(name))return 'arm'+side;
   if(/tail/.test(name))return 'tail';
-  if(/helmet|visor|neck_guard|^head|snout|lower_jaw|luminous_eye|beak|crown_horn|front_horn/.test(name))return 'head';
+  if(/helmet|visor|neck_guard|^head|snout|lower_jaw|luminous_eye|beak|crown_horn|front_horn/.test(name)||/^(?:jaw|acid_mouth)(?:_|$)/.test(name))return 'head';
   return 'body';
+}
+function authoredNormals(normals,positions,matrix){
+  if(normals.width!==3||normals.count!==positions.count)throw Error('Invalid GLB normal dimensions');
+  const a=[matrix[0],matrix[1],matrix[2]],b=[matrix[4],matrix[5],matrix[6]],c=[matrix[8],matrix[9],matrix[10]],cross=(p,q)=>[p[1]*q[2]-p[2]*q[1],p[2]*q[0]-p[0]*q[2],p[0]*q[1]-p[1]*q[0]],ca=cross(b,c),cb=cross(c,a),cc=cross(a,b),det=a[0]*ca[0]+a[1]*ca[1]+a[2]*ca[2];
+  if(!Number.isFinite(det)||Math.abs(det)<1e-10)throw Error('Singular GLB normal transform');
+  const out=new Float32Array(normals.data.length);
+  for(let i=0;i<normals.data.length;i+=3){const x=normals.data[i],y=normals.data[i+1],z=normals.data[i+2],unit=Math.hypot(x,y,z);if(!Number.isFinite(unit)||Math.abs(unit-1)>.025)throw Error('GLB normals must be nonzero unit vectors');let nx=(ca[0]*x+cb[0]*y+cc[0]*z)/det,ny=(ca[1]*x+cb[1]*y+cc[1]*z)/det,nz=(ca[2]*x+cb[2]*y+cc[2]*z)/det;const length=Math.hypot(nx,ny,nz);if(!Number.isFinite(length)||length<1e-10)throw Error('Invalid transformed GLB normal');out[i]=nx/length;out[i+1]=ny/length;out[i+2]=nz/length;}
+  return out;
 }
 function parseGLB(input,path=''){
   const data=input instanceof ArrayBuffer?input:input.buffer.slice(input.byteOffset,input.byteOffset+input.byteLength),v=new DataView(data);
@@ -40,9 +54,9 @@ function parseGLB(input,path=''){
   const types={SCALAR:1,VEC2:2,VEC3:3,VEC4:4},components={5120:[1,'getInt8'],5121:[1,'getUint8'],5122:[2,'getInt16'],5123:[2,'getUint16'],5125:[4,'getUint32'],5126:[4,'getFloat32']};
   function accessor(index){const a=json.accessors?.[index],b=json.bufferViews?.[a?.bufferView],c=components[a?.componentType],width=types[a?.type];if(!a||!b||!c||!width||a.sparse||b.buffer!==0)throw Error('Unsupported GLB accessor');const size=c[0]*width,stride=b.byteStride||size,start=(b.byteOffset||0)+(a.byteOffset||0),end=start+(a.count-1)*stride+size;if(a.count<1||stride<size||end>bin.byteLength||end>(b.byteOffset||0)+b.byteLength)throw Error('Invalid accessor bounds');const out=new Float32Array(a.count*width);for(let i=0;i<a.count;i++)for(let k=0;k<width;k++){let value=bin[c[1]](start+i*stride+k*c[0],true);if(a.normalized&&a.componentType!==5126)value=a.componentType===5120?Math.max(-1,value/127):a.componentType===5122?Math.max(-1,value/32767):value/(a.componentType===5121?255:65535);if(!Number.isFinite(value))throw Error('Non-finite GLB geometry');out[i*width+k]=value;}return {data:out,width,count:a.count};}
   const groups=new Map(),all=[],bounds={min:[Infinity,Infinity,Infinity],max:[-Infinity,-Infinity,-Infinity]},anchors={},weapon=path.startsWith('weapons/');let nodeCount=0;
-  function visit(index,parent,ancestors){const n=json.nodes?.[index];if(!n||ancestors.has(index))throw Error('Invalid GLB hierarchy');const branch=new Set(ancestors);branch.add(index);const world=multiply(parent,nodeMatrix(n));if(n.mesh!==undefined){const mesh=json.meshes?.[n.mesh];if(!mesh)throw Error('Invalid GLB mesh');nodeCount++;for(const primitive of mesh.primitives){if((primitive.mode??4)!==4||primitive.extensions)throw Error('Only uncompressed GLB triangles are supported');const positions=accessor(primitive.attributes.POSITION);if(positions.width!==3)throw Error('Invalid GLB positions');const indices=primitive.indices===undefined?Array.from({length:positions.count},(_,i)=>i):accessor(primitive.indices).data;if(indices.length%3)throw Error('Invalid GLB triangles');const material=json.materials?.[primitive.material]||{},base=material.pbrMetallicRoughness?.baseColorFactor||[.6,.7,.8,1],emissive=material.emissiveFactor||[0,0,0];if((material.alphaMode||'OPAQUE')!=='OPAQUE'||(base[3]??1)<1)throw Error('Transparent models require a different pass');const name=n.name||mesh.name||'',center=[world[12],world[13],world[14]],key=groupFor(name,center,weapon);if(/^head_\d+$/.test(name))anchors.head=center;if(/^(torso|chest_core)_\d+$/.test(name))anchors.core=center;let group=groups.get(key);if(!group){group={key,vertices:[],center:[],names:[]};groups.set(key,group)}group.center.push(center);group.names.push(name);
+  function visit(index,parent,ancestors){const n=json.nodes?.[index];if(!n||ancestors.has(index))throw Error('Invalid GLB hierarchy');const branch=new Set(ancestors);branch.add(index);const world=multiply(parent,nodeMatrix(n));if(n.mesh!==undefined){const mesh=json.meshes?.[n.mesh];if(!mesh)throw Error('Invalid GLB mesh');nodeCount++;for(const primitive of mesh.primitives){if((primitive.mode??4)!==4||primitive.extensions)throw Error('Only uncompressed GLB triangles are supported');const positions=accessor(primitive.attributes.POSITION);if(positions.width!==3)throw Error('Invalid GLB positions');const normals=primitive.attributes.NORMAL===undefined?null:authoredNormals(accessor(primitive.attributes.NORMAL),positions,world);const indices=primitive.indices===undefined?Array.from({length:positions.count},(_,i)=>i):accessor(primitive.indices).data;if(indices.length%3)throw Error('Invalid GLB triangles');const material=json.materials?.[primitive.material]||{},base=material.pbrMetallicRoughness?.baseColorFactor||[.6,.7,.8,1],emissive=material.emissiveFactor||[0,0,0];if((material.alphaMode||'OPAQUE')!=='OPAQUE'||(base[3]??1)<1)throw Error('Transparent models require a different pass');const name=n.name||mesh.name||'',center=[world[12],world[13],world[14]],key=groupFor(name,center,weapon);if(/^head_\d+$/.test(name))anchors.head=center;if(/^(torso|chest_core)_\d+$/.test(name))anchors.core=center;let group=groups.get(key);if(!group){group={key,vertices:[],center:[],names:[]};groups.set(key,group)}group.center.push(center);group.names.push(name);
       for(let i=0;i<indices.length;i+=3){const pts=[];for(let k=0;k<3;k++){const ind=indices[i+k];if(!Number.isInteger(ind)||ind<0||ind>=positions.count)throw Error('Invalid GLB index');const p=transform(world,positions.data.subarray(ind*3,ind*3+3));pts.push(p);for(let j=0;j<3;j++){bounds.min[j]=Math.min(bounds.min[j],p[j]);bounds.max[j]=Math.max(bounds.max[j],p[j]);}}
-        const a=pts[0],b=pts[1],c=pts[2],ab=b.map((q,j)=>q-a[j]),ac=c.map((q,j)=>q-a[j]),normal=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]],len=Math.hypot(...normal);if(len<1e-9)continue;for(let j=0;j<3;j++)normal[j]/=len;for(const p of pts){const vertex=[...p,...normal,...base.slice(0,3),...emissive];group.vertices.push(...vertex);all.push(...vertex);}
+        const a=pts[0],b=pts[1],c=pts[2],ab=b.map((q,j)=>q-a[j]),ac=c.map((q,j)=>q-a[j]),normal=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]],len=Math.hypot(...normal);if(len<1e-9)continue;for(let j=0;j<3;j++)normal[j]/=len;for(let k=0;k<3;k++){const n=normals?normals.subarray(indices[i+k]*3,indices[i+k]*3+3):normal,vertex=[...pts[k],...n,...base.slice(0,3),...emissive];group.vertices.push(...vertex);all.push(...vertex);}
       }
     }}for(const child of n.children||[])visit(child,world,branch);}
   for(const n of json.scenes?.[json.scene||0]?.nodes||[])visit(n,identity(),new Set());if(!all.length||all.length>2e6)throw Error('Empty or oversized GLB');

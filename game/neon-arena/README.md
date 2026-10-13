@@ -6,20 +6,23 @@ Serve the repository root and open `/game/neon-arena/`.
 
 ## Hosted graphics
 
-Upload the supplied `weapons/`, `characters/` and `ui/` folders, retaining their
-subdirectories. Set `ASSET_BASE_URL` in `neon-assets-config.js` to the public R2
-root (including a prefix if those folders live beneath one). The configuration
-is deliberately empty until the actual host is supplied. Empty, failed, malformed
-or unsupported models use the original procedural graphics.
+The detailed v2 `weapons/` and `characters/` models are referenced from
+`https://pub-7a87605611d24e35813d8a3e5aa78af4.r2.dev` with cache version 2.
+The 19 menu/HUD images are checked into `assets/ui/` in this repository and loaded
+from the same origin as the game. The R2 bucket only needs the two model folders.
+Failed, malformed or unsupported models use the original procedural graphics.
 
-`neon-assets.js` resolves all 14 weapons, seven humanoids, fourteen alien kinds,
-menu artwork and HUD icons from one root. It hides failed images and leaves
-interactive HTML controls and CSS fallbacks available. Increment `version` when
-replacing hosted art.
+`neon-assets.js` uses `ASSET_BASE_URL` for all 35 models and `UI_ASSET_BASE_URL`
+for menu/HUD artwork. The default UI root `./assets` resolves next to the deployed
+game, including deployments beneath a repository prefix. An explicitly empty UI
+root disables image requests; an omitted UI root retains the previous shared-root
+behavior. Failed images leave interactive HTML/CSS and icon fallbacks available.
+Increment `version` when replacing art.
 
 `neon-models.js` reads the supplied embedded, uncompressed, opaque GLB 2.0 meshes.
-It supports node matrices/TRS, indexed triangles and flat material colors with
-emissive accents. It intentionally does not implement textured, skinned, compressed,
+It supports node matrices/TRS, indexed triangles, authored smooth/crease normals
+with correct node transforms, and material colors with emissive accents. The old
+pack without normals retains flat shading. It does not implement textured, skinned, compressed,
 transparent or embedded-animation glTF; those files fall back safely. Named rigid
 parts become shoulder/hip/head/wing/tail or weapon pivots for lightweight runtime
 animation. Surface lighting approximates the supplied materials without a general
@@ -40,13 +43,20 @@ a broad, crouched posture rather than a new, taller collision hull.
 Before enabling hosted graphics, check the live files:
 
 ```bash
-node scripts/check-neon-assets.cjs https://PUBLIC_R2_ROOT https://catnmice.com
+node scripts/check-neon-assets.cjs https://pub-7a87605611d24e35813d8a3e5aa78af4.r2.dev https://catnmice.com --models-only
 ```
 
-The check downloads all 35 models and the menu/HUD art, validates model parsing,
-checks GET CORS for the supplied game origin, and checks `.glb` `model/gltf-binary`,
-`.png` `image/png`, and `.webp` `image/webp` MIME types. A local test host does not
-prove the production bucket's CORS or caching configuration.
+The check downloads all 35 models, validates parsing, records SHA-256 values,
+checks GET CORS from the game origin, and recommends `model/gltf-binary` MIME.
+`application/octet-stream` is readable through the loader's ArrayBuffer path.
+Omitting `--models-only` also checks a shared-host menu/HUD pack. Local tests do
+not prove production CORS or GPU rendering.
+
+The uploaded files currently respond to direct GETs, but the tested game-origin
+requests lack `Access-Control-Allow-Origin`. In the Cloudflare bucket's Settings
+→ CORS Policy → JSON, paste `r2-cors.json` from this directory. It allows public
+read-only GET/HEAD requests from the game's origin and preview origins. Until
+that policy is enabled, browser model fetches use procedural fallback.
 
 ## Controls and menu
 
@@ -96,8 +106,8 @@ node tests/neon-browser.cjs
 
 The browser test requires Playwright and a WebGL-capable Chromium installation.
 Set `CHROMIUM_PATH` to use an existing executable. Set `NEON_ASSET_FIXTURES` to an
-extracted supplied asset pack for browser GLB and artwork checks without uploading art to
-GitHub. For the dependency-free model tests use `NEON_ASSET_SOURCE` or
+extracted supplied model pack for browser GLB checks; UI tests use repository art.
+For the dependency-free model tests use `NEON_ASSET_SOURCE` or
 `--assets /path/to/pack`. Without fixtures, the browser suite exercises procedural fallback.
 `NEON_MOCK_WEBGL=1` is an explicit DOM/input/simulation-only fallback for environments
 without GPU libraries; it does **not** validate actual shader rendering or depth.
@@ -108,9 +118,9 @@ ceiling collisions and fast ability movement. Model tests cover parsing, caches,
 failure handling, shared GPU resources and animation/depth state. Browser checks
 cover modes, arenas, split actors, mobile controls, menu return and weapons.
 
-The R2 root, production CORS/MIME checks, real desktop/mobile GPU depth checks,
-and physical phone/controller performance measurements remain release gates until
-they have been run against the uploaded assets. Headless simulation timing should
+Production CORS, real desktop/mobile GPU depth checks and physical phone/controller
+performance measurements remain release checks. The asset URL is configured and
+the direct-download binaries are checked independently. Headless simulation timing should
 not be described as a phone FPS benchmark.
 
 ## Performance guardrails

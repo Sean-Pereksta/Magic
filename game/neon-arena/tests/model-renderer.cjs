@@ -28,12 +28,15 @@ async function until(predicate, description) {
 const near = (actual, expected, tolerance = 1e-5) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
 
-function fixture({ indices = [0, 1, 2], nodes, mutate } = {}) {
+function fixture({ indices = [0, 1, 2], normals, nodes, mutate } = {}) {
   const positions = new Float32Array([-.15, 0, 0, .15, 0, 0, 0, .3, .05]);
   const rawIndices = new Uint16Array(indices);
-  const geometry = Buffer.alloc(Math.ceil((positions.byteLength + rawIndices.byteLength) / 4) * 4);
+  const authoredNormals = normals === undefined ? null : new Float32Array(normals);
+  const normalOffset = Math.ceil((positions.byteLength + rawIndices.byteLength) / 4) * 4;
+  const geometry = Buffer.alloc(normalOffset + (authoredNormals?.byteLength || 0));
   Buffer.from(positions.buffer).copy(geometry, 0);
   Buffer.from(rawIndices.buffer).copy(geometry, positions.byteLength);
+  if (authoredNormals) Buffer.from(authoredNormals.buffer).copy(geometry, normalOffset);
   const json = {
     asset: { version: '2.0' },
     buffers: [{ byteLength: geometry.byteLength }],
@@ -57,6 +60,11 @@ function fixture({ indices = [0, 1, 2], nodes, mutate } = {}) {
     ],
     scenes: [{ nodes: [] }], scene: 0
   };
+  if (authoredNormals) {
+    json.bufferViews.push({ buffer: 0, byteOffset: normalOffset, byteLength: authoredNormals.byteLength });
+    json.accessors.push({ bufferView: 2, componentType: 5126, count: authoredNormals.length / 3, type: 'VEC3' });
+    json.meshes[0].primitives[0].attributes.NORMAL = 2;
+  }
   json.scenes[0].nodes = json.nodes.map((_, i) => i);
   mutate?.(json, geometry);
   let encoded = Buffer.from(JSON.stringify(json));
@@ -85,6 +93,15 @@ const response = (bytes, status = 200) => ({
   ok: status >= 200 && status < 300, status,
   arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
 });
+function glbJSON(bytes) {
+  let offset = 12;
+  while (offset < bytes.length) {
+    const length = bytes.readUInt32LE(offset), type = bytes.readUInt32LE(offset + 4);
+    if (type === 0x4e4f534a) return JSON.parse(bytes.subarray(offset + 8, offset + 8 + length).toString('utf8').trim());
+    offset += 8 + length;
+  }
+  assert.fail('GLB is missing JSON');
+}
 
 function controlledFetch() {
   const pending = [], requested = [];
@@ -192,6 +209,77 @@ async function main() {
     assert.throws(() => parseGLB(fixture({ mutate: j => { j.skins = [{}]; } })), /Unsupported/);
     assert.throws(() => parseGLB(fixture({ mutate: j => { j.extensionsRequired = ['KHR_draco_mesh_compression']; } })), /Unsupported/);
     assert.throws(() => parseGLB(fixture({ mutate: j => { j.materials[0].alphaMode = 'BLEND'; } })), /Transparent/);
+  });
+
+  await test('authored varying vertex normals survive nonuniform and reflected node transforms', () => {
+    const diagonal = Math.SQRT1_2, normals = [1, 0, 0, 0, diagonal, diagonal, diagonal, diagonal, 0];
+    const indices = [2, 0, 1];
+    const angle = Math.PI / 4, rotation = [0, Math.sin(angle / 2), 0, Math.cos(angle / 2)];
+    for (const scale of [[2, .5, 3], [-2, .5, 3]]) {
+      const model = parseGLB(fixture({ indices, normals, nodes: [{ name: 'chest_core_1', mesh: 0, translation: [3, 1, -2], rotation, scale }] }), 'characters/player_one.glb');
+      assert.equal(model.vertexCount, 3);
+      for (let vertex = 0; vertex < 3; vertex++) {
+        const sourceIndex = indices[vertex];
+        const corrected = normals.slice(sourceIndex * 3, sourceIndex * 3 + 3).map((value, axis) => value / scale[axis]);
+        const expected = transform(compose([0, 0, 0], [0, angle, 0]), corrected), length = Math.hypot(...expected);
+        const actual = model.vertices.subarray(vertex * 12 + 3, vertex * 12 + 6);
+        near(Math.hypot(...actual), 1);
+        for (let axis = 0; axis < 3; axis++) near(actual[axis], expected[axis] / length);
+      }
+      assert.notDeepEqual(Array.from(model.vertices.subarray(3, 6)), Array.from(model.vertices.subarray(15, 18)), 'smooth per-vertex normals cannot become one flat-face normal');
+    }
+    const flat = parseGLB(fixture({ nodes: [{ name: 'chest_core_1', mesh: 0 }] }));
+    for (const offset of [15, 27]) assert.deepEqual(Array.from(flat.vertices.subarray(offset, offset + 3)), Array.from(flat.vertices.subarray(3, 6)), 'absent NORMAL preserves flat-face fallback');
+  });
+
+  await test('malformed authored NORMAL accessors fail closed', () => {
+    const unit = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    for (const mutate of [
+      j => { j.accessors[2].type = 'VEC2'; },
+      j => { j.accessors[2].count = 2; },
+      j => { j.accessors[2].count = 4; },
+      j => { j.accessors[2].sparse = {}; },
+      j => { j.meshes[0].primitives[0].attributes.NORMAL = 99; }
+    ]) assert.throws(() => parseGLB(fixture({ normals: unit, mutate })), /normal|accessor|bounds/i);
+    for (const normals of [[0, 0, 0, 0, 1, 0, 0, 0, 1], [2, 0, 0, 0, 1, 0, 0, 0, 1], [NaN, 0, 0, 0, 1, 0, 0, 0, 1], [Infinity, 0, 0, 0, 1, 0, 0, 0, 1]]) {
+      assert.throws(() => parseGLB(fixture({ normals })), /normal|Non-finite/i);
+    }
+    assert.throws(() => parseGLB(fixture({ normals: unit, nodes: [{ name: 'head_1', mesh: 0, scale: [1, 1, 0] }] })), /normal|singular|transform/i);
+  });
+
+  await test('detailed limb and head attachments stay with their animated component', () => {
+    const expected = [
+      ['arm_119', 'armL', -.5], ['arm_135', 'armR', .5],
+      ['calf_muscle_89', 'legL', -.25], ['ankle_107', 'legR', .25],
+      ['rear_digging_leg_171', 'legL', -.3], ['rear_digging_foot_179', 'legR', .3],
+      ['rear_digging_talon_173', 'legL', -.3],
+      ['jaw_38', 'head', 0], ['jaw_lip_80', 'head', 0], ['jaw_point_79', 'head', 0],
+      ['acid_mouth_nozzle_187', 'head', 0], ['acid_mouth_flange_188', 'head', 0],
+      ['head_burrowing_brow_170', 'head', -.2],
+      ['head_eye_socket_44', 'head', -.18], ['head_upper_tooth_48', 'head', -.18],
+      ['forearm_glove_finger_70', 'armL', -.5], ['foreclaw_hook_129', 'armR', .5],
+      ['upper_arm_pauldron_60', 'armL', -.5], ['shoulder_scale_33', 'armR', .5],
+      ['boots_sole_143', 'legL', -.25], ['lower_leg_flex_rib_115', 'legR', .25],
+      ['wing_root_membrane_167', 'wingL', -.4], ['wing_tip_hook_182', 'wingR', .4],
+      ['tail_vertebral_plate_153', 'tail', 0], ['tail_grasping_tip_164', 'tail', 0],
+      ['chest_core_pack_hose_177', 'body', -.3], ['chest_core_radio_antenna_158', 'body', .3],
+      ['pelvis_utility_pouch_27', 'body', -.2], ['neck_fold_57', 'body', 0],
+      ['helmet_10', 'head', 0], ['neck_guard_11', 'head', 0],
+      ['torso_1', 'body', 0], ['impact_shoulder_14', 'armL', -.5]
+    ];
+    const nodes = expected.map(([name, , x]) => ({ name, mesh: 0, translation: [x, 1, 0] }));
+    const model = parseGLB(fixture({ nodes }), 'characters/alien_blue.glb');
+    const actual = new Map(model.parts.flatMap(part => part.names.map(name => [name, part.key])));
+    for (const [name, group] of expected) assert.equal(actual.get(name), group, name);
+    const weaponExpected = [
+      ['magazine_1', 'magazine'], ['ammo_block_2', 'magazine'], ['chamber_3', 'magazine'],
+      ['barrel_4', 'barrel'], ['muzzle_5', 'barrel'], ['slide_6', 'barrel'], ['pump_7', 'barrel'],
+      ['energy_core_8', 'energy'], ['power_fin_9', 'energy'], ['capacitor_10', 'energy'],
+      ['receiver_11', 'body'], ['grip_12', 'body'], ['stock_13', 'body']
+    ];
+    const weaponModel = parseGLB(fixture({ nodes: weaponExpected.map(([name]) => ({ name, mesh: 0 })) }), 'weapons/assault.glb');
+    const weaponGroups = new Map(weaponModel.parts.flatMap(part => part.names.map(name => [name, part.key])));
+    for (const [name, group] of weaponExpected) assert.equal(weaponGroups.get(name), group, name);
   });
 
   await test('cache deduplicates URLs and limits in-flight downloads while prioritizing queued weapons', async () => {
@@ -400,6 +488,7 @@ async function main() {
         assert.ok(model.vertexCount > 0, name); assert.ok(model.nodeCount > 0, name);
         assert.ok(model.height > 0 && Number.isFinite(model.height), name);
         assert.ok(Array.from(model.vertices).every(Number.isFinite), name);
+        for (let offset = 3; offset < model.vertices.length; offset += 12) near(Math.hypot(...model.vertices.subarray(offset, offset + 3)), 1, 1e-4);
         assert.equal(model.parts.reduce((sum, p) => sum + p.vertices.length / 12, 0), model.vertexCount, name);
         for (let axis = 0; axis < 3; axis++) assert.ok(model.bounds.max[axis] > model.bounds.min[axis], `${name}: bounds ${axis}`);
         if (name.startsWith('weapons/')) {
@@ -412,6 +501,41 @@ async function main() {
         }
         const boss = name.replace(/^characters\/alien_|\.glb$/g, '');
         near(model.authorScale, AUTHOR_SCALE[boss] || 1);
+      }
+    });
+    await test('all 21 supplied characters keep detailed limb and head attachments in the same animation group', () => {
+      const { HUMANS, ALIENS } = globalThis.NeonModels;
+      const names = [...HUMANS.map(n => `characters/${n}.glb`), ...ALIENS.map(n => `characters/alien_${n}.glb`)];
+      assert.equal(names.length, 21);
+      let detailedAttachments = 0;
+      for (const name of names) {
+        const bytes = fs.readFileSync(path.join(assetRoot, name)), json = glbJSON(bytes), model = parseGLB(bytes, name);
+        const groups = new Map(model.parts.flatMap(part => part.names.map(nodeName => [nodeName, part.key])));
+        for (const node of json.nodes) {
+          if (node.mesh === undefined) continue;
+          const nodeName = node.name || '', base = nodeName.replace(/_\d+$/, '');
+          // Pack components are named for their physical attachment, independently
+          // of the runtime's classifier. Every finger/tooth/plate must follow its
+          // arm, head or leg rather than remain frozen with the torso.
+          let expected;
+          if (/^(head(?:_|$)|snout$|jaw(?:_|$)|acid_mouth_(?:nozzle|flange)$|helmet|visor|neck_guard|luminous_eye|beak|lower_jaw|crown_horn|front_horn)/.test(base)) expected = 'head';
+          else if (/^(wing(?:_|$))/.test(base)) expected = 'wing';
+          else if (/^(tail(?:_|$))/.test(base)) expected = 'tail';
+          else if (/^(upper_leg|lower_leg|thigh|knee|calf_muscle|ankle|boots?|foot|talon|rear_talon|rear_digging)/.test(base)) expected = 'leg';
+          else if (/^(arm$|upper_arm|forearm|shoulder|elbow|glove|foreclaw)/.test(base)) expected = 'arm';
+          else if (/^(chest|pelvis|abdomen|abdominal|rib|dorsal|back|neck(?:_|$)|acid_(?!mouth)|reservoir|brood|fore_chest|shield_rim|psychic_chest|camouflage)/.test(base)) expected = 'body';
+          if (!expected) continue;
+          if (['arm', 'leg', 'wing'].includes(expected)) {
+            const centerX = node.matrix?.[12] ?? node.translation?.[0] ?? 0;
+            expected += centerX < 0 ? 'L' : 'R';
+          }
+          assert.equal(groups.get(nodeName), expected, `${name}: ${nodeName}`);
+          if (/^(arm$|calf_muscle|ankle|jaw(?:_|$)|rear_digging_leg|acid_mouth_(?:nozzle|flange))/.test(base)) detailedAttachments++;
+        }
+      }
+      // Original packs use flatter names; detailed v2 packs contain these nodes.
+      if (glbJSON(fs.readFileSync(path.join(assetRoot, 'characters/alien_blue.glb'))).meshes.some(mesh => mesh.primitives.some(p => p.attributes.NORMAL !== undefined))) {
+        assert.ok(detailedAttachments > 100, 'all detailed v2 attachment families were checked');
       }
     });
     await test('all 14 alien models fit their existing gameplay head/body targets and ground surface', () => {
