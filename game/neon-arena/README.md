@@ -1,36 +1,122 @@
 # Neon Breach
 
-Neon Breach is a dependency-free browser arena FPS with solo bots, two-player local split screen, destructible building, and five game modes.
+Dependency-free browser arena FPS with five modes, adaptive bots, weapon upgrades,
+destructible building, mobile visible-target auto-fire, and local split screen.
+Serve the repository root and open `/game/neon-arena/`.
 
-## Run
+## Hosted graphics
 
-Serve the repository root with any static HTTP server and open `/game/neon-arena/`. The game uses WebGL for the depth-buffered arena and Canvas 2D for actors, effects, first-person weapons, and the HUD.
+Upload the supplied `weapons/`, `characters/` and `ui/` folders, retaining their
+subdirectories. Set `ASSET_BASE_URL` in `neon-assets-config.js` to the public R2
+root (including a prefix if those folders live beneath one). The configuration
+is deliberately empty until the actual host is supplied. Empty, failed, malformed
+or unsupported models use the original procedural graphics.
 
-## Mobile play
+`neon-assets.js` resolves all 14 weapons, seven humanoids, fourteen alien kinds,
+menu artwork and HUD icons from one root. It hides failed images and leaves
+interactive HTML controls and CSS fallbacks available. Increment `version` when
+replacing hosted art.
 
-Phones and tablets are detected automatically and Player 1 switches to a touch input adapter. The left analog stick moves with full analog speed control, the right stick looks, and dedicated buttons handle jumping, building, weapon swaps, reloads, build mode, and upgrades. Auto-fire only locks enemies inside a small cone around the crosshair after a world ray confirms that the target is visible; target scans are throttled so touch assistance does not become a new per-frame performance bottleneck.
+`neon-models.js` reads the supplied embedded, uncompressed, opaque GLB 2.0 meshes.
+It supports node matrices/TRS, indexed triangles and flat material colors with
+emissive accents. It intentionally does not implement textured, skinned, compressed,
+transparent or embedded-animation glTF; those files fall back safely. Named rigid
+parts become shoulder/hip/head/wing/tail or weapon pivots for lightweight runtime
+animation. Surface lighting approximates the supplied materials without a general
+PBR engine or an external library download.
 
-## Files
+Downloads and parsed geometry are shared across actors and the menu portrait,
+with two concurrent requests, a timeout, and a delayed retry for failures. GPU
+buffers are cached per WebGL context. Nearby actors have animated parts; medium
+distance actors share a single static draw; distant actors use cheap silhouettes.
+Both split views use the existing projection, clipping and world depth buffer.
+First-person models retain the original weapon effects and authoritative combat.
 
-- `index.html` contains the menu, HUD, overlays, and accessibility-friendly controls.
-- `neon-arena.css` contains presentation and responsive menu layout.
-- `neon-arena.js` contains the game simulation, render pipeline, modes, bots, weapons, maps, and input adapters.
+Alien widths retain gameplay scale. Their vertical presentation fits the existing
+head/body target envelope, including the unusually low boss target bands, so the
+visible head can be aimed at without changing hitboxes. Bosses consequently have
+a broad, crouched posture rather than a new, taller collision hull.
 
-## Extension points
+Before enabling hosted graphics, check the live files:
 
-- Add or tune weapons in `WEAPONS`, then add their compact first-person dimensions in `gunSpec`. Optional muzzle and pickup silhouettes live in `MUZZLE_STYLE`, `drawMuzzleFlashes`, and `drawPickupGunIcon`.
-- Add arenas through a `build…ArenaMap` function, register their label in `MAP_META`, and route them from `buildMap`.
-- Add bot personalities in `BOT_ARCHETYPES`; weapon-distance behavior is centralized in `aiProfileForBot`.
-- Add modes through the mode selector and isolate setup/update rules next to the existing Survivor, Siege, Frag, DM, and Team DM handlers.
-- Extend mobile actions through `setupMobileControls`; aiming and visibility rules live in `mobileAimInfo` and `updateMobileAimAndFire`.
+```bash
+node scripts/check-neon-assets.cjs https://PUBLIC_R2_ROOT https://catnmice.com
+```
+
+The check downloads all 35 models and the menu/HUD art, validates model parsing,
+checks GET CORS for the supplied game origin, and checks `.glb` `model/gltf-binary`,
+`.png` `image/png`, and `.webp` `image/webp` MIME types. A local test host does not
+prove the production bucket's CORS or caching configuration.
+
+## Controls and menu
+
+Mode and arena cards retain the underlying selectors used by match setup. Survivor
+shows its exclusive Breach Ring instead of an unusable arena selector. Settings
+contains difficulty, bots, length, second player, graphics and controller inputs.
+Cards support arrow keys, keyboard focus and controller navigation.
+
+Touch uses a left analog movement stick, a right swipe area, icon controls for
+jump/build/swap, a smaller reload control and an upgrade indicator. Tap Build to
+place the assisted valid preview. Hold Build to choose Wall or Platform; pointer
+cancellation never places a structure. Auto-fire retains visibility ray checks,
+aim cones, and throttled target scans, with lock feedback in the crosshair.
+Touch combat information is compact; the feed, help labels and narrow-screen
+minimap do not occupy the play area.
+
+Desktop retains WASD/mouse, Space jump, R reload, F swap/pickup, Tab upgrades,
+right-button build preview/place, and Q build override. Controller and Player 2
+shortcuts remain available. Q/controller build toggle cycles assisted, wall,
+platform, then assisted again.
+
+## Movement and building
+
+Gravity remains 34 and normal jump impulse 23. Keyboard, touch and controller
+jumps use one rising-edge request with 0.11 second coyote time and 0.14 second
+buffering. Requests consume once and reset on respawn. Dash/grapple launches
+cannot turn the buffer into a second jump.
+
+Movement uses bounded time/travel substeps, swept descending foot intersections
+before horizontal pushes, separate ascending head tests, rounded wall corners,
+and at most 0.10 units of downward grounding assistance. Grounding never raises
+the player to a distant surface.
+
+Assisted builds infer walls on ground, platforms on elevated sides, and stacked
+walls on tops. Platform grid height is its actual standing surface; edge bridges
+match the supporting top exactly. One-cell nearby assistance still runs support,
+occupancy, geometry, actor overlap, range, height, charge and active-build checks.
+Valid holograms use cyan/purple; invalid holograms use muted red and a short reason.
+Destruction and structural collapse remain in the simulation.
+
+## Validation
+
+```bash
+node --test tests/neon-*.test.cjs game/neon-arena/tests/model-renderer.cjs
+node tests/neon-browser.cjs
+```
+
+The browser test requires Playwright and a WebGL-capable Chromium installation.
+Set `CHROMIUM_PATH` to use an existing executable. Set `NEON_ASSET_FIXTURES` to an
+extracted supplied asset pack for browser GLB and artwork checks without uploading art to
+GitHub. For the dependency-free model tests use `NEON_ASSET_SOURCE` or
+`--assets /path/to/pack`. Without fixtures, the browser suite exercises procedural fallback.
+`NEON_MOCK_WEBGL=1` is an explicit DOM/input/simulation-only fallback for environments
+without GPU libraries; it does **not** validate actual shader rendering or depth.
+
+Movement tests cover the wall/attached platform, bridge seam, corner, stacked
+wall and small-gap course, all four authored maps, low FPS, jump buffer/coyote,
+ceiling collisions and fast ability movement. Model tests cover parsing, caches,
+failure handling, shared GPU resources and animation/depth state. Browser checks
+cover modes, arenas, split actors, mobile controls, menu return and weapons.
+
+The R2 root, production CORS/MIME checks, real desktop/mobile GPU depth checks,
+and physical phone/controller performance measurements remain release gates until
+they have been run against the uploaded assets. Headless simulation timing should
+not be described as a phone FPS benchmark.
 
 ## Performance guardrails
 
-- Static world geometry is compiled into cached GPU buffers and rebuilt only when structures change.
-- A spatial hash limits movement, raycast, wall-contact, support, and collapse work to nearby structures.
-- Active player builds are capped at 320 pieces to prevent runaway simulation and render cost.
-- Auto graphics mode adjusts internal resolution and effect budgets from rolling frame time.
-- Effects, labels, and pickups use visibility budgets and bounded particle/decal arrays.
-- Split screen shares world caches while keeping separate player, controller, camera, inventory, score, health, and build state.
-
-Keep new effects bounded, prefer cached world geometry for static additions, and use `blocksNear` or `blocksAlongRay` instead of scanning every structure in per-frame code.
+Static world geometry remains in cached GPU buffers; the spatial hash bounds
+collision, raycasting, support and collapse queries. Player builds remain capped
+at 320 pieces. Adaptive resolution, effect/visibility budgets and bounded
+particles/decals remain active. Split screen shares simulation and model downloads
+while retaining separate camera, input, inventory, health, score and builds.
