@@ -1,0 +1,49 @@
+name: Faction Forge checks
+on:
+  pull_request:
+    paths:
+      - 'game/crowncouncil.html'
+      - 'game/faction-forge/**'
+      - 'server/faction-forge/**'
+      - 'server.js'
+      - 'lobby/lobby-core.html'
+      - 'firestore.rules'
+      - 'firebase.rules.json'
+      - 'package.json'
+      - '.github/workflows/faction-forge.yml'
+permissions:
+  contents: read
+concurrency:
+  group: faction-forge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  expansion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/crowncouncil.html
+            /game/faction-forge/
+            /game/apes-together-strong.html
+            /server/faction-forge/
+            /server.js
+            /lobby/
+            /firestore.rules
+            /firebase.rules.json
+            /package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:faction-forge
+      - run: npm run test:faction-forge:browser
+      - run: npm run test:faction-forge:rules
+      - run: node --experimental-vm-modules --test lobby/tests/solo-launch.test.cjs lobby/tests/lobby-library.test.cjs

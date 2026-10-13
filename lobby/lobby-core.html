@@ -780,7 +780,7 @@
       {key:"biblegame",title:"Bible Game",emoji:"📖",desc:"Train solo in Scripture Quest and Bible challenges, or join a large multiplayer Bible match.",route:"/game/biblegame.html",category:"Faith",modes:["single","multi"],maxPlayers:20,autoRedirect:true},
       {key:"bibleroguelike",title:"Bible Game — Roguelike",emoji:"📖⚔️",desc:"Fight through Scripture Quest alone or together. Shared enemies, unique verse attacks, personal builds, compact co-op health bars and branching rooms.",route:"/game/biblegame.html",singleRoute:"/game/biblegame.html?mode=roguelike",category:"Faith",modes:["single","multi"],minPlayers:1,maxPlayers:5,autoRedirect:true,autoUsername:true},
       {key:"historyrush",title:"History Rush",emoji:"🏛️",desc:"Race through history with four players.",route:"/game/historyrush.html",category:"Party",modes:["multi"],maxPlayers:4,autoRedirect:true},
-      {key:"crowncouncil",title:"Faction Forge",emoji:"👑",desc:"Create factions in a two-player duel.",route:"/game/crowncouncil.html",category:"Strategy",modes:["multi"],maxPlayers:2,autoRedirect:true},
+      {key:"crowncouncil",title:"Faction Forge",emoji:"👑",desc:"Draft animated armies, conquer a campaign, and build your troop collection.",route:"/game/crowncouncil.html",singleRoute:"/game/crowncouncil.html",autoUsername:true,category:"Strategy",modes:["single","multi"],maxPlayers:2,autoRedirect:true},
       {key:"thegame",title:"The Game  (Incomplete)",emoji:"🃏",desc:"A five-player card challenge.",route:"/game/thegame.html",category:"Cards",modes:["multi"],maxPlayers:5,autoRedirect:true},
       {key:"matchwars",title:"Match Wars",emoji:"🧩⚔️",desc:"Match pieces and push through enemy lines.",route:"/game/matchwars.html",category:"Arcade",modes:["single"]},
       {key:"catmobile",title:"Cat vs Mouse Mobile (Incomplete)",emoji:"🐭📱",desc:"Mobile-friendly eight-player chase.",route:"/game/catmousemobile.html",category:"Party",modes:["multi"],maxPlayers:8,autoRedirect:true},
@@ -1568,21 +1568,21 @@
         await runTransaction(db,async tx=>{
           const snap=await tx.get(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
           const d=snap.data();if(d.status!=="waiting"){
-            if(d.gameType==="ironthrone"&&d.members?.[auth.currentUser.uid])return;
+            if((d.gameType==="ironthrone"||d.gameType==="crowncouncil"&&d.hostUid)&&d.members?.[auth.currentUser.uid])return;
             throw new Error("This lobby has already started.");
           }
           if(getLaunchMode(getGame(d.gameType))!==MULTIPLAYER_LAUNCH_MODES.LOBBY)throw new Error("This game no longer uses hosted lobbies. Enter it from Join Online Games.");
           const players=Array.isArray(d.players)?d.players:[],cap=getMaxPlayers(d.gameType);
           if(!players.includes(username)&&Number.isFinite(cap)&&players.length>=cap)throw new Error("This lobby is full.");
-          if(d.gameType==="ironthrone"){
+          if(d.gameType==="ironthrone"||d.gameType==="crowncouncil"&&d.hostUid){
             const members=d.members||{},uid=auth.currentUser.uid;
-            if(!members[uid]&&Object.keys(members).length>=6)throw new Error("This campaign has six rulers.");
+            if(!members[uid]&&Object.keys(members).length>=(d.gameType==="crowncouncil"?2:6))throw new Error("This lobby is full.");
             tx.update(ref,{players:[...new Set([...players,username])],members:{...members,[uid]:username},updatedAt:Date.now()});
           }else if(!players.includes(username))tx.update(ref,{players:[...players,username],updatedAt:Date.now()});
         });
         if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});
         const snap=await getDoc(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
-        currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=currentLobbyData.gameType==="ironthrone"?currentLobbyData.hostUid===auth.currentUser?.uid:currentLobbyData.host===username;
+        currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=(currentLobbyData.gameType==="ironthrone"||currentLobbyData.gameType==="crowncouncil"&&currentLobbyData.hostUid)?currentLobbyData.hostUid===auth.currentUser?.uid:currentLobbyData.host===username;
         save(SK.lastLobby,id);save(SK.lastGame,currentLobbyData.gameType);listenToCurrentLobby();renderLobbyBrowser();toast(`Joined ${currentLobbyData.name}.`,"good");
         if(matchMedia("(max-width:1020px)").matches)setTimeout(()=>$("currentLobbyPanel").scrollIntoView({behavior:"smooth",block:"start"}),80);
       }catch(e){toast(e.message||"Unable to join lobby.","bad");if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});}
@@ -1602,6 +1602,7 @@
     function updateCreateGameInfo(){
       const game=getGame($("newLobbyGame").value||"chesswarlord"),cap=getMaxPlayers(game.key);
       $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${Number.isFinite(cap)?cap:"Flexible"} players max • Launches only after the host presses Start Game</div></div></div>`;
+      if(game.key==="crowncouncil")$("createLobbyGameInfo").insertAdjacentHTML("beforeend",'<label class="help" style="display:block;margin-top:12px"><input id="forgeRankedLobby" type="checkbox" checked> Ranked match · uncheck for casual Forge tier bonuses</label>');
       $("createLobbySubmit").textContent="Create Lobby";
     }
     async function createLobby(){
@@ -1611,7 +1612,7 @@
       setBusy($("createLobbySubmit"),true,"Creating…");
       try{
         if(currentLobbyId)await leaveLobby();
-        const created=await addDoc(collection(db,"lobbies"),{name,gameType:game.key,status:"waiting",players:[username],host:username,...(game.key==="ironthrone"?{hostUid:auth.currentUser.uid,members:{[auth.currentUser.uid]:username}}:{}),createdAt:Date.now(),updatedAt:Date.now(),visibility:selectedVisibility});
+        const created=await addDoc(collection(db,"lobbies"),{name,gameType:game.key,status:"waiting",players:[username],host:username,...(["ironthrone","crowncouncil"].includes(game.key)?{hostUid:auth.currentUser.uid,members:{[auth.currentUser.uid]:username}}:{}),...(game.key==="crowncouncil"?{forgeRanked:$("forgeRankedLobby")?.checked!==false}:{}),createdAt:Date.now(),updatedAt:Date.now(),visibility:selectedVisibility});
         currentLobbyId=created.id;isHost=true;save(SK.lastLobby,created.id);save(SK.lastGame,game.key);closeModal();listenToCurrentLobby();toast("Lobby created.","good");
       }catch(e){setMessage("createLobbyMessage",e.message||"Unable to create lobby.","error");}
       finally{setBusy($("createLobbySubmit"),false);}
@@ -1645,9 +1646,9 @@
           return;
         }
         const data=snapshot.data(),players=Array.isArray(data.players)?data.players:[];
-        if(data.gameType==="ironthrone"?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        if((data.gameType==="ironthrone"||data.gameType==="crowncouncil"&&data.hostUid)?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
         const changed=currentLobbyStateKey(currentLobbyData)!==currentLobbyStateKey(data);
-        currentLobbyData={id:lobbyId,...data};isHost=data.gameType==="ironthrone"?data.hostUid===auth.currentUser?.uid:data.host===username;if(changed)renderCurrentLobby();
+        currentLobbyData={id:lobbyId,...data};isHost=(data.gameType==="ironthrone"||data.gameType==="crowncouncil"&&data.hostUid)?data.hostUid===auth.currentUser?.uid:data.host===username;if(changed)renderCurrentLobby();
         if(data.status==="started"){
           redirectStartedGame(lobbyId,data);
           void cleanupInvitesForLobby(lobbyId).catch(()=>{});
@@ -1664,8 +1665,8 @@
         if(currentLobbyId!==lobbyId)return;
         if(!snap.exists()){clearCurrentLobby("That lobby has closed.");void cleanupInvitesForLobby(lobbyId).catch(()=>{});return;}
         const data=snap.data(),players=Array.isArray(data.players)?data.players:[];
-        if(data.gameType==="ironthrone"?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
-        currentLobbyData={id:snap.id,...data};isHost=data.gameType==="ironthrone"?data.hostUid===auth.currentUser?.uid:data.host===username;renderCurrentLobby();
+        if((data.gameType==="ironthrone"||data.gameType==="crowncouncil"&&data.hostUid)?!data.members?.[auth.currentUser?.uid]:!players.includes(username)){clearCurrentLobby("You are no longer in that lobby.");return;}
+        currentLobbyData={id:snap.id,...data};isHost=(data.gameType==="ironthrone"||data.gameType==="crowncouncil"&&data.hostUid)?data.hostUid===auth.currentUser?.uid:data.host===username;renderCurrentLobby();
         if(data.status==="started"){
           // Launch first. iPhone Safari can delay or suspend Firestore work during navigation,
           // so invite cleanup must never block the game redirect.
@@ -1748,7 +1749,7 @@
         const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
         launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
       }
-      launchGameUrl(`${game.route}?${launchQuery}${game.key==="ironthrone"?`&returnUrl=${encodeURIComponent(location.pathname)}`:""}`,"lobby-started");
+      launchGameUrl(`${game.route}?${launchQuery}${game.key==="ironthrone"?`&returnUrl=${encodeURIComponent(location.pathname)}`:game.key==="crowncouncil"?`&ranked=${data.forgeRanked===false?"0":"1"}`:""}`,"lobby-started");
     }
     async function removePlayerFromLobby(id,playerName){
       if(!id||!playerName)return {removed:false,closed:false};
@@ -1757,12 +1758,16 @@
         const snap=await tx.get(ref);
         if(!snap.exists())return {removed:false,closed:true};
         const data=snap.data(),existing=Array.isArray(data.players)?data.players:[];
-        if(data.gameType==="ironthrone"){
-          if(data.status!=="waiting")return {removed:false,closed:false};
+        if(data.gameType==="ironthrone"||data.gameType==="crowncouncil"&&data.hostUid){
+          if(data.gameType==="ironthrone"&&data.status!=="waiting")return {removed:false,closed:false};
           const uid=auth.currentUser?.uid,members={...(data.members||{})};
           if(!uid||!members[uid])return {removed:false,closed:false};
-          if(data.hostUid===uid){tx.delete(ref);return {removed:true,closed:true};}
-          delete members[uid];tx.update(ref,{members,players:Object.values(members),updatedAt:Date.now()});return {removed:true,closed:false};
+          if(data.hostUid===uid&&(data.gameType==="ironthrone"||playerName===username)){tx.delete(ref);return {removed:true,closed:true};}
+          if(data.hostUid!==uid&&playerName!==username)return {removed:false,closed:false};
+          if(data.gameType==="crowncouncil"&&data.hostUid===uid){
+            for(const [memberId,name] of Object.entries(members))if(name===playerName)delete members[memberId];
+          }else delete members[uid];
+          tx.update(ref,{members,players:Object.values(members),updatedAt:Date.now()});return {removed:true,closed:false};
         }
         if(!existing.includes(playerName))return {removed:false,closed:false};
         const players=existing.filter(player=>player!==playerName);
@@ -1976,6 +1981,22 @@
 
     async function handleStartupLobbyState(){
       const params=new URLSearchParams(location.search),linkLobby=params.get("lobby");
+      const handoff=params.get("forgeJoin"),handoffProof=readSession("ff.handoffLobby");
+      if(handoff&&handoff===handoffProof&&username){
+        sessionStorage.removeItem("ff.handoffLobby");
+        const snapshot=await getDoc(doc(db,"lobbies",handoff));
+        if(snapshot.exists()){
+          const data=snapshot.data(),isMember=data.hostUid?data.members?.[auth.currentUser?.uid]===username:data.players?.includes(username);
+          if(data.gameType==="crowncouncil"&&isMember&&["waiting","started"].includes(data.status)){
+            const stale=read(SK.lastLobby)||read(SK.staleLobby);
+            if(stale&&stale!==handoff)await removePlayerFromLobby(stale,username).catch(()=>{});
+            currentLobbyId=handoff;currentLobbyData={id:handoff,...data};isHost=data.hostUid?data.hostUid===auth.currentUser?.uid:data.host===username;
+            save(SK.lastLobby,handoff);save(SK.lastGame,"crowncouncil");del(SK.staleLobby);showView("multiplayer");
+            params.delete("forgeJoin");history.replaceState({},"",`${location.pathname}${params.toString()?`?${params}`:""}`);
+            listenToCurrentLobby();renderLobbyBrowser();return;
+          }
+        }
+      }
 
       // A remembered lobby is cleanup information only. Never restore it, subscribe to it,
       // or launch its game after a fresh page load.
@@ -2020,6 +2041,7 @@
       syncLobbyBrowserPolling();syncCurrentLobbySafetyPolling();
     }
     async function retryFirebaseAuth(){
+      await initialAuthReady;
       if(auth.currentUser){if(!firebaseAuthReady)await handleAuthenticatedUser(auth.currentUser);return auth.currentUser;}
       if(authRetryPromise)return authRetryPromise;
       showLobbyConnectionState("Connecting to multiplayer…");
@@ -2056,7 +2078,10 @@
     populateStaticUI();renderFeatured();renderOnlineWorlds();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
     showFirstVisitProfilePrompt();
 
+    let resolveInitialAuth;
+    const initialAuthReady=new Promise(resolve=>{resolveInitialAuth=resolve;});
     onAuthStateChanged(auth,user=>{
+      resolveInitialAuth(user);
       if(!user){firebaseAuthReady=false;syncLobbyBrowserPolling();stopCurrentLobbySafetyPolling();return;}
       void handleAuthenticatedUser(user);
     });

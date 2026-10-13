@@ -55,8 +55,46 @@ service cloud.firestore {
         ]);
     }
 
+    // New authority collections are never covered by a legacy recursive grant.
+    // Binding records are provisioned only by Firebase Admin after owner recovery.
+    match /factionForgeAccounts/{uid} {
+      allow get: if isAuthed() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /factionForgeNames/{username} { allow read, write: if false; }
+    match /factionForgeLobbySessions/{lobbyId} { allow read, write: if false; }
+    match /factionForgeProfiles/{uid} {
+      allow get: if isAuthed() && request.auth.uid == uid;
+      allow list, write: if false;
+      match /{subcollection}/{recordId} {
+        allow read: if isAuthed() && request.auth.uid == uid && subcollection in ['history','upgrades'];
+        allow write: if false;
+      }
+    }
+    // Read matches through the authenticated API. Private seeds, frozen profiles,
+    // receipts, and server replay state must never be client-mutable or public.
+    match /factionForgeMatches/{matchId} {
+      allow read, write: if false;
+      match /{sub=**} { allow read, write: if false; }
+    }
+    function forgeProtectedProfileFields() {
+      return ['crowncouncilElo','crowncouncilLastDelta','crowncouncilLastMatchAt',
+        'factionForge','factionForgeUid','forgeDust','forgeTier','troopCards',
+        'campaignProgress','ownerUid','authUid'];
+    }
+    function forgeBoundOwner(username) {
+      return !exists(/databases/$(database)/documents/factionForgeNames/$(username))
+        || get(/databases/$(database)/documents/factionForgeNames/$(username)).data.uid == request.auth.uid;
+    }
     match /users/{userId} {
-      allow read, write: if isAuthed();
+      allow read: if isAuthed();
+      // Keep existing unrelated profile fields compatible; migrated usernames
+      // become owner-only. Ratings and progression are Firebase Admin writes.
+      allow create: if isAuthed() && forgeBoundOwner(userId)
+        && !request.resource.data.keys().hasAny(forgeProtectedProfileFields());
+      allow update: if isAuthed() && forgeBoundOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(forgeProtectedProfileFields());
+      allow delete: if false;
 
       // Read the old per-device location only for that Firebase Auth identity.
       match /tiny_troops_profiles/{saveName} {
@@ -112,18 +150,60 @@ service cloud.firestore {
 
     match /lobbies/{gameId} {
       allow read: if isAuthed();
-      allow create: if isAuthed() && (request.resource.data.get('gameType','') != 'ironthrone' || (
+      allow create: if isAuthed() && ((forgeLobbyType(request.resource.data)) ? forgeLobbyCreate() : (request.resource.data.get('gameType','') != 'ironthrone' || (
         request.resource.data.hostUid == request.auth.uid && request.resource.data.members.keys().hasOnly([request.auth.uid])
-        && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting'));
-      allow update: if isAuthed() && (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
+        && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting')));
+      allow update: if isAuthed() && ((forgeLobbyType(resource.data) || forgeLobbyType(request.resource.data)) ? forgeLobbyUpdate() : (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
         resource.data.get('gameType','') == 'ironthrone' && request.resource.data.get('gameType','') == 'ironthrone' && (
           (resource.data.status == 'waiting' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','players','updatedAt'])
             && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.members.size() <= 6)
           || (resource.data.hostUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']))
           || (ironController() && ironAfter().hostUid == request.auth.uid && request.resource.data.hostUid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','host','updatedAt']))
-        )));
-      allow delete: if isAuthed() && (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting');
+        ))));
+      allow delete: if isAuthed() && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
+      function forgeLobbyType(data) { return data.get('gameType','') in ['crowncouncil','factionforge']; }
+      function forgeMemberList(data) {
+        return data.members is map && data.members.size() >= 1 && data.members.size() <= 2
+          && data.players is list && data.players.size() == data.members.size()
+          && data.players.toSet() == data.members.values().toSet()
+          && data.hostUid in data.members && data.members[data.hostUid] == data.host;
+      }
+      function forgeLobbyCreate() {
+        let data=request.resource.data;
+        return data.hostUid == request.auth.uid && data.status == 'waiting'
+          && data.visibility in ['public','private'] && data.get('forgeRanked',true) is bool && data.host is string
+          && data.host.size() >= 1 && data.host.size() <= 80
+          && forgeMemberList(data) && data.members.keys().hasOnly([request.auth.uid]);
+      }
+      function forgeLobbyUpdate() {
+        let a=resource.data; let b=request.resource.data; let fields=b.diff(a).affectedKeys();
+        // Pre-update legacy rooms retain practice compatibility but cannot be
+        // promoted to trusted UID rooms by an arbitrary authenticated writer.
+        return a.get('hostUid','') == ''
+          ? b.gameType == a.gameType && !fields.hasAny(['hostUid','members','visibility'])
+          : a.hostUid == b.hostUid && a.host == b.host && a.gameType == b.gameType
+            && a.visibility == b.visibility && forgeMemberList(b)
+            && (a.get('forgeRanked',true) == b.get('forgeRanked',true) || a.hostUid == request.auth.uid && a.status == 'waiting') && (
+              (fields.hasOnly(['members','players','updatedAt'])
+                && b.members.diff(a.members).affectedKeys().hasOnly([request.auth.uid])
+                && (request.auth.uid in a.members || a.status == 'waiting')
+                && (!(request.auth.uid in b.members) || b.members[request.auth.uid] is string
+                  && b.members[request.auth.uid].size() >= 1 && b.members[request.auth.uid].size() <= 80)
+                && (!(request.auth.uid in a.members) || !(request.auth.uid in b.members)
+                  || a.members[request.auth.uid] == b.members[request.auth.uid]))
+              || (a.hostUid == request.auth.uid && fields.hasOnly(['members','players','updatedAt'])
+                && b.members.diff(a.members).addedKeys().size() == 0
+                && b.members.diff(a.members).changedKeys().size() == 0)
+              || (a.hostUid == request.auth.uid && fields.hasOnly(['status','updatedAt'])
+                && b.status in ['waiting','started','closed'])
+              || (a.hostUid == request.auth.uid && a.status == 'waiting'
+                && fields.hasOnly(['forgeRanked','updatedAt']) && b.forgeRanked is bool)
+            );
+      }
+      function forgeLobbyDelete() {
+        return resource.data.get('hostUid','') == '' || resource.data.hostUid == request.auth.uid;
+      }
       // Iron Thrones uses UID seats and a lease-fenced simulation. These rules
       // intentionally exclude its paths from the legacy recursive lobby grant.
       function ironLobby() { return get(/databases/$(database)/documents/lobbies/$(gameId)).data; }
@@ -243,7 +323,8 @@ service cloud.firestore {
 
 
       match /crowncouncil/{docId} {
-        allow read, write: if isAuthed();
+        allow read, write: if isAuthed() && (!forgeLobbyType(ironLobby())
+          || ironLobby().get('hostUid','') == '' || request.auth.uid in ironLobby().members);
       }
 
       match /alliances/{allianceId} {
@@ -267,7 +348,7 @@ service cloud.firestore {
       // Academy and other lobby-backed games also use authenticated subcollections.
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthed() && gameId != 'world_quest'
-          && !(subcollection in ['iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
+          && !(subcollection in ['crowncouncil','iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
       }
     }
 

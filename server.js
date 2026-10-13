@@ -39,6 +39,16 @@ app.get('/', (req, res) => {
   res.send('Grid Overlord Node server running');
 });
 
+// Faction Forge reuses this runtime's initialized Firebase Admin credentials.
+// Its authentication, parsing, CORS and errors stay under its own API prefix.
+try {
+  const { mountFactionForge } = require('./server/faction-forge/mount.cjs');
+  mountFactionForge(app, { db, auth: admin.auth(), projectId: serviceAccount.project_id });
+} catch (error) {
+  console.error('Faction Forge progression is unavailable; Grid Overlord remains available.', error.code || error.name);
+}
+
+
 // ------------- GAME CONSTANTS -------------
 const BOARD_SIZE = 7;
 const BATTLE_W = 10;
