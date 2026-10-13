@@ -188,3 +188,102 @@ test('Apes Together Strong uses the installed solo route and never creates a lob
    assert.equal(launched,true);
    assert.throws(()=>library.runAction(game,'lobby',{}),/does not support/);
  });
+
+// Small event fixture for the card's asynchronous artwork and existing hooks.
+// Browser CI below exercises the actual HTML and responsive CSS.
+function cardHarness() {
+  class Element {
+    constructor() {
+      this.listeners = new Map(); this.dataset = {}; this.hidden = false; this.disabled = false;
+      this.style = { setProperty() {} };
+      this.classes = new Set(); this.classList = { add: value => this.classes.add(value) };
+    }
+    addEventListener(type, callback) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(callback);
+    }
+    async emit(type, event = {}) { await Promise.all((this.listeners.get(type) || []).map(callback => callback(event))); }
+    set innerHTML(value) {
+      this.markup = value;
+      this.favorite = new Element(); this.cover = new Element(); this.cover.hidden = true;
+      this.portraits = [new Element(), new Element(), new Element()];
+      this.actions = [...value.matchAll(/data-game-action="([^"]+)"/g)].map(match => {
+        const button = new Element(); button.dataset.gameAction = match[1]; return button;
+      });
+    }
+    get innerHTML() { return this.markup; }
+    querySelector(selector) { return selector === '.favorite-btn' ? this.favorite : this.cover; }
+    querySelectorAll(selector) { return selector === '.tc-portrait img' ? this.portraits : this.actions; }
+  }
+  const probes = [], calls = [];
+  const document = { createElement: tag => { const node = new Element(); if (tag === 'img') probes.push(node); return node; } };
+  const hooks = {
+    document, escapeHtml: value => String(value), gameColor: () => '#456', gameVisual: () => '<span>Original art</span>',
+    favorites: new Set(['turncraft']), gamePlayCounts: {turncraft: 7},
+    toggleFavorite: key => calls.push(['favorite', key]),
+    playSingle: (...args) => calls.push(['single', ...args]),
+    openCreateLobby: key => calls.push(['lobby', key]), toast: (...args) => calls.push(['toast', ...args])
+  };
+  return { hooks, probes, calls, create: game => library.createGameCard(game || byKey.turncraft, hooks) };
+}
+
+test('TurnCraft keeps its existing launch configuration and card hooks', async () => {
+  const game = byKey.turncraft;
+  assert.equal(game.route, '/game/turncraft.html');
+  assert.deepEqual(game.modes, ['single', 'multi']);
+  assert.equal(game.minPlayers, 1); assert.equal(game.maxPlayers, 4); assert.equal(game.autoRedirect, true);
+  const harness = cardHarness(), card = harness.create();
+  assert.equal(card.dataset.gameKey, 'turncraft');
+  assert.match(card.className, /\btc-tile\b/);
+  assert.match(card.innerHTML, /aria-pressed="true"/);
+  assert.match(card.innerHTML, /7 plays/);
+  let propagationStopped = false;
+  await card.favorite.emit('click', {stopPropagation() { propagationStopped = true; }});
+  await card.actions[0].emit('click'); await card.actions[1].emit('click');
+  assert.equal(propagationStopped, true);
+  assert.deepEqual(harness.calls, [['favorite', 'turncraft'], ['single', game, true], ['lobby', 'turncraft']]);
+  assert.match(upgraded, /<link rel="stylesheet" href="\.\/turncraft-tile\.css\?v=1">/);
+});
+
+test('TurnCraft uses tracked faction artwork immediately and caches failed remote uploads', async () => {
+  const harness = cardHarness(), first = harness.create(), second = harness.create();
+  for (const faction of ['frontier', 'ascendant', 'brood']) {
+    assert.match(first.innerHTML, new RegExp(`/game/turncraft/assets/factions/${faction}\\.webp`));
+  }
+  assert.equal(first.cover.hidden, true); assert.equal(second.cover.hidden, true);
+  assert.equal(harness.probes.length, 1, 'multiple cards share a single remote probe');
+  assert.match(harness.probes[0].src, /\/effects\/ui\/turncraft-lobby\.webp$/);
+  await harness.probes[0].emit('error');
+  const later = harness.create(); await Promise.resolve();
+  assert.equal(harness.probes.length, 1, 'favorite/search rerenders must not retry a missing upload');
+  assert.equal(later.cover.src, undefined); assert.equal(later.cover.hidden, true);
+  await later.portraits[0].emit('error'); assert.equal(later.portraits[0].hidden, true);
+  const other = harness.create(byKey.warrealms);
+  assert.equal(other.className, 'game-card'); assert.match(other.innerHTML, /Original art/);
+  assert.equal(harness.probes.length, 1, 'other games never request TurnCraft artwork');
+});
+
+test('TurnCraft reveals its new cover only after the actual card image loads', async () => {
+  const harness = cardHarness(), card = harness.create();
+  await harness.probes[0].emit('load'); await Promise.resolve();
+  assert.equal(card.cover.src, harness.probes[0].src);
+  assert.equal(card.cover.hidden, true, 'the fallback remains visible while the card image decodes');
+  await card.cover.emit('load');
+  assert.equal(card.cover.hidden, false); assert.equal(card.classes.has('tc-cover-ready'), true);
+  const second = harness.create(); await Promise.resolve();
+  assert.equal(harness.probes.length, 1); assert.equal(second.cover.src, card.cover.src);
+});
+
+test('TurnCraft suppresses duplicate launches and restores both actions after failure', async () => {
+  const harness = cardHarness(); let rejectLaunch;
+  harness.hooks.playSingle = () => new Promise((resolve, reject) => { rejectLaunch = reject; });
+  const card = harness.create(), launching = card.actions[0].emit('click');
+  assert.ok(card.actions.every(button => button.disabled));
+  await card.actions[1].emit('click'); assert.deepEqual(harness.calls, []);
+  const originalError = console.error; console.error = () => {};
+  try { rejectLaunch(new Error('Fixture launch failure')); await launching; }
+  finally { console.error = originalError; }
+  assert.ok(card.actions.every(button => !button.disabled));
+  assert.deepEqual(harness.calls, [['toast', 'Could not open that game. Please try again.', 'bad']]);
+  await card.actions[1].emit('click'); assert.deepEqual(harness.calls.at(-1), ['lobby', 'turncraft']);
+});

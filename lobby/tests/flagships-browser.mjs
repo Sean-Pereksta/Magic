@@ -42,14 +42,20 @@ export const query=ref=>ref,where=()=>({}),limit=()=>({}),orderBy=()=>({});
 `;
 const browser = await chromium.launch({headless:true, ...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
 const results=[];
-async function open({width=1280,user='',brokenArt=false,reducedMotion='no-preference'}={}) {
+async function open({width=1280,user='',brokenArt=false,turncraftCover=false,reducedMotion='no-preference'}={}) {
   const context=await browser.newContext({viewport:{width,height:900},reducedMotion});
+  let turncraftCoverRequests=0;
   await context.addInitScript(name=>{if(name)localStorage.setItem('gh.username',name);},user);
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.hostname==='www.gstatic.com')return route.fulfill({contentType:'text/javascript',body:firebase});
+    if(url.href==='https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/effects/ui/turncraft-lobby.webp') {
+      turncraftCoverRequests++;
+      return turncraftCover?route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#394a62"/></svg>'}):route.abort();
+    }
     if(url.origin!==origin)return route.abort();
     if(url.pathname.startsWith('/graphics/'))return brokenArt?route.abort():route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#30483e"/></svg>'});
+    if(url.pathname.startsWith('/game/turncraft/assets/factions/'))return brokenArt?route.abort():route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024"><rect width="1536" height="1024" fill="#3b5063"/></svg>'});
     if(url.pathname.startsWith('/game/'))return route.fulfill({contentType:'text/html',body:'<!doctype html><title>Verified game navigation</title>'});
     return route.continue();
   });
@@ -58,7 +64,7 @@ async function open({width=1280,user='',brokenArt=false,reducedMotion='no-prefer
   await page.goto(origin+'/lobby/lobby.html');
   await page.locator('#cnmFlagshipGrid .cnm-pick').nth(3).waitFor();
   await page.waitForFunction(()=>document.querySelector('#view-discover').classList.contains('active'));
-  return {context,page,errors};
+  return {context,page,errors,coverRequests:()=>turncraftCoverRequests};
 }
 try {
   const {context,page,errors}=await open();
@@ -83,6 +89,17 @@ try {
   await page.locator('#gameSearch').fill('');
   await page.waitForFunction(count=>document.querySelectorAll('#singleGameGrid .game-card').length===count,fullCount);
   assert.equal(await page.locator('#cnmLibraryPicks').isVisible(),true);
+  await page.locator('#gameSearch').fill('TurnCraft');
+  const turncraft=page.locator('#singleGameGrid [data-game-key="turncraft"]');
+  assert.equal(await turncraft.count(),1);
+  assert.deepEqual(await turncraft.locator('.tc-portrait img').evaluateAll(images=>images.map(image=>new URL(image.src).pathname)),['/game/turncraft/assets/factions/frontier.webp','/game/turncraft/assets/factions/ascendant.webp','/game/turncraft/assets/factions/brood.webp']);
+  await page.waitForFunction(()=>[...document.querySelectorAll('#singleGameGrid .tc-portrait img')].every(image=>image.complete&&image.naturalWidth>0));
+  assert.equal(await turncraft.locator('.tc-cover').isVisible(),false);
+  assert.deepEqual(await turncraft.locator('[data-game-action]').evaluateAll(buttons=>buttons.map(button=>[button.dataset.gameAction,button.textContent])),[['single','Play Offline'],['lobby','Create Lobby']]);
+  await turncraft.locator('[data-game-action="lobby"]').click();
+  assert.equal(await page.locator('#accountGateModal').isVisible(),true);
+  await page.locator('#gateNotNow').click();
+  results.push('TurnCraft: three faction images load before remote upload; original offline and account-gated lobby actions remain');
   await page.locator('.main-nav [data-view="discover"]').click();
   await page.locator('#cnmSearch').fill('War Realms');
   await page.locator('#cnmSearchForm button').click();
@@ -96,6 +113,13 @@ try {
   await member.page.locator('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] .favorite-btn').click();
   await member.page.waitForFunction(()=>document.querySelector('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] .favorite-btn').getAttribute('aria-pressed')==='true');
   assert.equal(await member.page.locator('#cnmLibraryGrid [data-game-key="apestogetherstrong"] .favorite-btn').getAttribute('aria-pressed'),'true');
+  await member.page.locator('.main-nav [data-view="singleplayer"]').click();
+  await member.page.locator('#singleGameGrid [data-game-key="turncraft"] .favorite-btn').click();
+  await member.page.waitForFunction(()=>document.querySelector('#favoritesStrip [data-game-key="turncraft"] .favorite-btn')?.getAttribute('aria-pressed')==='true');
+  assert.equal(await member.page.locator('#singleGameGrid [data-game-key="turncraft"] .favorite-btn').getAttribute('aria-pressed'),'true');
+  assert.equal(await member.page.locator('#favoritesStrip [data-game-key="turncraft"]').evaluate(node=>node.classList.contains('tc-tile')),true);
+  assert.equal(member.coverRequests(),1,'favorite rerenders must not retry a missing cover');
+  await member.page.locator('.main-nav [data-view="discover"]').click();
   await member.page.locator('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="lobby"]').click();
   await member.page.locator('#newLobbyName').fill('Layout check');
   await member.page.locator('#createLobbySubmit').click();
@@ -119,6 +143,23 @@ try {
   assert.deepEqual(solo.errors,[]);results.push('Native solo launch preserves WarRealms single-player route');
   await solo.context.close();
 
+  const turncraftSolo=await open({turncraftCover:true});
+  await turncraftSolo.page.locator('.main-nav [data-view="singleplayer"]').click();
+  await turncraftSolo.page.locator('#gameSearch').fill('TurnCraft');
+  await turncraftSolo.page.waitForFunction(()=>document.querySelector('#singleGameGrid .tc-tile')?.classList.contains('tc-cover-ready'));
+  assert.equal(await turncraftSolo.page.locator('#singleGameGrid .tc-cover').isVisible(),true);
+  await turncraftSolo.page.locator('#gameSearch').fill('');
+  await turncraftSolo.page.locator('#gameSearch').fill('TurnCraft');
+  await turncraftSolo.page.waitForFunction(()=>{
+    const card=document.querySelector('#singleGameGrid .tc-tile'),cover=card?.querySelector('.tc-cover');
+    return card?.classList.contains('tc-cover-ready')&&cover?.complete&&cover.naturalWidth>0&&!cover.hidden;
+  });
+  assert.equal(await turncraftSolo.page.locator('#singleGameGrid .tc-cover').isVisible(),true,'uploaded cover survives search rerenders');
+  await turncraftSolo.page.locator('#singleGameGrid [data-game-key="turncraft"] [data-game-action="single"]').click();
+  await turncraftSolo.page.waitForURL('**/game/turncraft.html');
+  assert.deepEqual(turncraftSolo.errors,[]);results.push('TurnCraft: new uploaded cover remains decoded after search rerenders, and Play Offline preserves the native route');
+  await turncraftSolo.context.close();
+
   for(const width of [320,390,768,1440]) {
     const mobile=await open({width,brokenArt:true,reducedMotion:'reduce'});
     const geometry=await mobile.page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,buttons:[...document.querySelectorAll('#cnmFlagshipGrid button,#cnmFlagshipGrid a')].filter(node=>node.getClientRects().length).map(node=>node.getBoundingClientRect().height)}));
@@ -128,6 +169,18 @@ try {
     else await mobile.page.locator('.main-nav [data-view="singleplayer"]').click();
     assert.ok(await mobile.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     assert.equal(await mobile.page.locator('#cnmLibraryGrid .cnm-pick').count(),4);
+    const tcGeometry=await mobile.page.locator('#singleGameGrid [data-game-key="turncraft"]').evaluate(card=>({
+      width:card.clientWidth,scroll:card.scrollWidth,
+      targets:[...card.querySelectorAll('button')].map(button=>({width:button.getBoundingClientRect().width,height:button.getBoundingClientRect().height})),
+      description:getComputedStyle(card.querySelector('.game-description')).fontSize,
+      hiddenCover:card.querySelector('.tc-cover').hidden,
+      labels:[...card.querySelectorAll('.tc-factions>span')].map(node=>node.textContent.trim())
+    }));
+    assert.ok(tcGeometry.scroll<=tcGeometry.width+1,`${width}px TurnCraft card overflow`);
+    assert.ok(tcGeometry.targets.every(target=>target.height>=43.9&&target.width>=43.9),`${width}px TurnCraft targets smaller than 44px`);
+    assert.ok(parseFloat(tcGeometry.description)>=12,`${width}px TurnCraft description too small`);
+    assert.equal(tcGeometry.hiddenCover,true);
+    assert.deepEqual(tcGeometry.labels,['Frontier','Ascendant','Brood']);
     assert.deepEqual(mobile.errors,[]);results.push(`${width}px: no horizontal overflow, 44px flagship actions, library access, missing-art fallback, reduced motion`);
     await mobile.context.close();
   }
