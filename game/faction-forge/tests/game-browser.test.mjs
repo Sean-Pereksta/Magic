@@ -19,6 +19,7 @@ async function server(){
 async function mockBrowser(context){
  await context.route('https://www.gstatic.com/firebasejs/**',route=>{const name=new URL(route.request().url()).pathname.split('/').at(-1);return route.fulfill({contentType:'text/javascript',body:firebaseMocks[name]||''});});
  await context.route('**/graphics/**',route=>route.fulfill({status:404,body:''}));
+ await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'',matchmakingTimeoutMs:30000};`}));
 }
 
 test('full game opens solo menu, drafts against AI, and moves on the original grid without Firebase writes',async()=>{
@@ -56,5 +57,33 @@ test('configured secure campaign submits only legal pick inputs and renders the 
   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:/Vanir Industrial/}).click();await page.waitForFunction(()=>document.querySelector('#cardRow')?.style.display==='flex');
   await page.locator('#cardRow .card').first().click();await page.getByRole('heading',{name:'Victory',exact:true}).waitFor();
   assert.equal(picks.length,1);assert.equal(picks[0].index,0);assert.equal(picks[0].sequence,1);assert.deepEqual(Object.keys(picks[0]).sort(),['index','requestId','sequence']);assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);
+ }finally{await browser.close();await new Promise(r=>app.close(r));}
+});
+
+test('restored durable auth survives reload and joined lobbies receive the verified profile name on a fresh device',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],tokens=[];page.on('pageerror',e=>errors.push(e.message));
+  await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:`
+   const durable={uid:'owner-uid',getIdToken:async()=> 'durable-token'},auth={currentUser:null};
+   export const getAuth=()=>auth;
+   export const signInAnonymously=async()=>{globalThis.__anonymousCalls=(globalThis.__anonymousCalls||0)+1;auth.currentUser={uid:'anonymous',getIdToken:async()=> 'anonymous-token'};return {user:auth.currentUser};};
+   export const signInWithEmailAndPassword=async()=>({user:durable});
+   export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>{a.currentUser=a.currentUser||durable;fn(a.currentUser)},100);return ()=>{};};
+  `}));
+  await context.route('**/firebase-firestore.js',route=>route.fulfill({contentType:'text/javascript',body:`
+   const room={name:'Open Forge',gameType:'crowncouncil',status:'waiting',visibility:'public',players:['Host'],host:'Host',hostUid:'host-uid',members:{'host-uid':'Host'},forgeRanked:true};
+   export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;
+   export const getDoc=async ref=>({exists:()=>ref.path==='lobbies/open-room',data:()=>ref.path==='lobbies/open-room'?room:{crowncouncilElo:1250}});
+   export const setDoc=async()=>{};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});
+   export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[{id:'open-room',data:()=>room}]}):fn({exists:()=>false}),0);return ()=>{};};
+  `}));
+  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:30000};`}));
+  await context.route('**/api/faction-forge/profile',async route=>{tokens.push(route.request().headers().authorization);await route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'VerifiedCommander',crowncouncilElo:1300,forgeDust:0,troops:{},campaign:{missions:{}}}})});});
+  await context.route('**/lobby/lobby.html?forgeJoin=*',route=>route.fulfill({contentType:'text/html',body:'<p>Lobby destination</p>'}));
+  await page.goto(url+'/game/crowncouncil.html');await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.equal(await page.evaluate(()=>localStorage.getItem('gh.username')),null);
+  await page.reload();await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.deepEqual(tokens,['Bearer durable-token','Bearer durable-token']);
+  await page.getByRole('button',{name:'Play Online',exact:false}).first().click();await page.getByRole('button',{name:'Join',exact:true}).click();await page.waitForURL('**/lobby/lobby.html?forgeJoin=open-room');
+  assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });

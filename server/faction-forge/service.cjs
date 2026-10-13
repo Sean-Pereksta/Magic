@@ -8,7 +8,8 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   const profileRef=uid=>db.doc(`factionForgeProfiles/${uid}`);
   const sessionRef=id=>db.doc(`factionForgeMatches/${id}`);
   const receiptRef=(id,uid)=>db.doc(`factionForgeProfiles/${uid}/history/${id}`);
-  let shared=modules?Promise.resolve(modules):loadModules();
+  let shared=modules?Promise.resolve(modules):null;
+  const sharedContent=()=>shared||(shared=loadModules());
   async function identity(token) {
     D.fail(typeof token==='string'&&token.length>0,'UNAUTHENTICATED','Sign in to save Faction Forge progress.',401);
     const decoded=await auth.verifyIdToken(token,true);
@@ -28,7 +29,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     });
   }
   function owned(profile) {return D.ALL_TROOPS.filter(key=>profile.troops[key]?.unlocked);}
-  async function engine(session) {return adapterFactory({seed:session.seed+':'+session.revision,modules:await shared});}
+  async function engine(session) {return adapterFactory({seed:session.seed+':'+session.revision,modules:await sharedContent()});}
   function newState({id,mode,faction,who,profile,missionNumber,missionId,mission}) {
     const created=now();
     return {schemaVersion:1,id,mode,missionNumber:missionNumber||null,missionId:missionId||null,seed:randomUUID(),ranked:false,revision:0,
@@ -48,7 +49,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     D.onlyKeys(request,['mode','missionId','faction']);
     D.fail(['campaign','bot','endless'].includes(request.mode),'INVALID_MODE','Choose a solo mode.');
     D.fail(['Vanir','Aesir','Helions'].includes(request.faction),'INVALID_FACTION','Choose a faction.');
-    const content=await shared;
+    const content=await sharedContent();
     const initial=await profile(who);
     if(initial.activeSessionId) return getSession(who,initial.activeSessionId);
     const options=D.canStart(initial,request);
@@ -71,7 +72,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   async function joinPvp(who,request) {
     D.onlyKeys(request,['lobbyId','faction','ranked']);
     D.safeId(request.lobbyId,'Lobby');D.fail(['Vanir','Aesir','Helions'].includes(request.faction),'INVALID_FACTION','Choose a faction.');
-    await profile(who);const content=await shared;
+    await profile(who);const content=await sharedContent();
     const link=db.doc(`factionForgeLobbySessions/${request.lobbyId}`);
     const id=randomUUID();
     await db.runTransaction(async tx=>{
@@ -146,7 +147,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     if(session.selections.p1!==undefined||session.mode==='pvp'||session.phase==='waiting'||session.phase==='battle'||session.phase==='game-over')return;
     if(session.bonusFor==='p0')return;
     const pack=session.currentPacks.p1;if(!pack?.length)return;
-    const content=await shared;const mission=session.missionNumber?content.campaign.getMission(session.missionId):session.mode==='endless'?content.campaign.createEndlessMission(session.challengeLevel):null;
+    const content=await sharedContent();const mission=session.missionNumber?content.campaign.getMission(session.missionId):session.mode==='endless'?content.campaign.createEndlessMission(session.challengeLevel):null;
     let index=adapter.aiPick(pack,session,'p1',mission?.difficulty||session.aiDifficulty||.65);
     if(typeof index==='object')index=pack.indexOf(index);if(!Number.isInteger(index)||index<0||index>=pack.length)index=0;
     const changed=adapter.pick(session,'p1',pack[index]);Object.assign(session,changed);session.selections.p1=index;
@@ -157,7 +158,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     D.safeId(id,'Session');D.safeId(request.requestId,'Request');D.fail(Number.isInteger(request.index)&&request.index>=0&&request.index<3,'INVALID_PICK','Choose one of the three draft cards.');
     D.fail(Number.isInteger(request.sequence)&&request.sequence>=0,'INVALID_SEQUENCE','Draft revision is required.');
     if(!internal)await getSession(who,id);
-    const content=await shared;
+    const content=await sharedContent();
     await db.runTransaction(async tx=>{
       const snap=await tx.get(sessionRef(id)),session=snap.data();D.fail(snap.exists,'NOT_FOUND','Match not found.',404);
       const side=session.participants.indexOf(who.uid);D.fail(side>=0,'PERMISSION_DENIED','This is another player\'s match.',403);

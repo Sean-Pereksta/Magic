@@ -947,14 +947,6 @@ const app  = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
 
-// 🔐 Reuse an existing anonymous session when the game is launched again in the same shell.
-if (!auth.currentUser) {
-  signInAnonymously(auth).catch((error) => {
-    console.error("Anon sign-in failed", error);
-  });
-}
-
-
 /* --------- safe deep clone ---------- */
 function deepClone(obj){
   if (typeof structuredClone === "function") {
@@ -4432,14 +4424,15 @@ async function startProgressionMatch(mode,missionId,faction="Vanir"){
 }
 function beginMatchmaking(){
   resetActiveRuntime();executionMode="menu";S=null;updateAssetGate();
+  const matchUsername=forgeProfile?.uid?forgeProfile.username:username;
   const onBrowse=()=>{matchSearch?.stop();location.href="../lobby/lobby.html?view=multiplayer&game=crowncouncil";};
   let rows=[],status="Searching public Faction Forge lobbies…",offerAI=null;
   const update=()=>expansionUI?.showMatchmaking({rows,status,onJoin:async row=>{try{return await matchSearch.join(row.id)}catch(error){status=error.message;update();throw error}},onBrowse,onCancel:()=>{matchSearch.stop();expansionUI.showMenu()},offerAI});
-  matchSearch=createMatchmaking({db,auth,api:{doc,collection,query,where,onSnapshot,runTransaction,getDoc},username:forgeProfile?.uid?forgeProfile.username:username,
+  matchSearch=createMatchmaking({db,auth,api:{doc,collection,query,where,onSnapshot,runTransaction,getDoc},username:matchUsername,
     timeoutMs:FACTION_FORGE_CONFIG.matchmakingTimeoutMs,
     onRows:value=>{rows=value;update()},onStatus:value=>{status=value;update()},
     onFallback:()=>{const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000);status="No human match found. A bot match is available.";offerAI={name:ai.name,mmr:ai.estimatedMmr,onStart:faction=>startProgressionMatch("bot",null,faction)};update()},
-    onJoined:id=>{try{localStorage.setItem("gh.lastLobbyId",id);localStorage.setItem("gh.lastGameType","crowncouncil")}catch{}try{sessionStorage.setItem("ff.handoffLobby",id)}catch{}location.href="../lobby/lobby.html?forgeJoin="+encodeURIComponent(id);}
+    onJoined:id=>{try{localStorage.setItem("gh.username",matchUsername);localStorage.setItem("gh.lastLobbyId",id);localStorage.setItem("gh.lastGameType","crowncouncil")}catch{}try{sessionStorage.setItem("ff.handoffLobby",id)}catch{}location.href="../lobby/lobby.html?forgeJoin="+encodeURIComponent(id);}
   });
   update();matchSearch.search();
 }
@@ -4482,8 +4475,14 @@ async function initializeExpansion(){
   else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
 }
 
+let anonymousSignIn=null;
 onAuthStateChanged(auth, (user) => {
-  if (!user) return;
+  // The first callback runs after Firebase restores persisted credentials.
+  // Creating the fallback earlier can replace a durable account on reload.
+  if (!user) {
+    if(!anonymousSignIn)anonymousSignIn=signInAnonymously(auth).catch(error=>console.error("Anon sign-in failed",error)).finally(()=>{anonymousSignIn=null;});
+    return;
+  }
   initializeExpansion(user).catch(error=>{console.error("Forge startup failed",error);expansionUI?.notify(error.message);});
 });
 

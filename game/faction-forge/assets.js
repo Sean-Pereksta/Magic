@@ -1,3 +1,5 @@
+import {ASSET_MANIFEST} from "./manifest.js";
+
 /** Faction Forge graphics are opt-in. Never borrow another game's R2 origin. */
 export const DEFAULT_ASSET_CONFIG = Object.freeze({assetBaseUrl:"", maxSheets:12, requestTimeout:7000});
 
@@ -46,8 +48,10 @@ function abortableFetch(fetchImpl,url,timeout){
   return fetchImpl(url,{signal:abort.signal,cache:"force-cache",credentials:"omit"}).finally(()=>clearTimeout(timer));
 }
 
-export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManifest,fetchImpl=globalThis.fetch,imageFactory=()=>new Image(),maxSheets=12,requestTimeout=7000}={}){
-  let base=normalizeAssetBase(baseUrl), manifest=initialManifest || null, manifestPromise=null;
+export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManifest,fallbackManifest=ASSET_MANIFEST,fetchImpl=globalThis.fetch,imageFactory=()=>new Image(),maxSheets=12,requestTimeout=7000,crossOrigin=null}={}){
+  // Checked-in metadata is sufficient when R2 contains only the five artwork folders.
+  const configuredManifest=()=>initialManifest || (!manifestUrl ? fallbackManifest : null);
+  let base=normalizeAssetBase(baseUrl), manifest=configuredManifest(), manifestPromise=null;
   const cache=new Map(), pending=new Map(), failed=new Set();
   const stats={loads:0,failures:0,evictions:0};
   const enabled=()=>!!base;
@@ -61,7 +65,7 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
         const candidate=await response.json();
         if(!candidate.units || typeof candidate.units !== "object") throw new Error("Invalid graphics manifest.");
         manifest=candidate; return manifest;
-      }catch(error){stats.failures++;return null;}
+      }catch(error){stats.failures++;manifest=fallbackManifest || null;return manifest;}
     })();
     return manifestPromise;
   }
@@ -75,7 +79,9 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
       const image=imageFactory();let settled=false;
       const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);image.onload=null;image.onerror=null;if(value){stats.loads++;touch(path,image);}else{failed.add(path);stats.failures++;}resolve(value);};
       const timer=setTimeout(()=>{finish(null);image.src="";},requestTimeout);
-      image.crossOrigin="anonymous";image.decoding="async";
+      // Display-only canvases can draw public R2 images without CORS headers.
+      // Opt into anonymous CORS only when a caller explicitly needs pixel readback.
+      if(crossOrigin)image.crossOrigin=crossOrigin;image.decoding="async";
       image.onload=()=>{if(image.width>0 && image.height>0)finish(image);else finish(null);};image.onerror=()=>finish(null);image.src=src;
     }).finally(()=>pending.delete(path));
     pending.set(path,promise);return promise;
@@ -95,7 +101,7 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
     if(spec.frameWidth && spec.frameHeight){try{const columns=spec.columns||Math.floor(image.width/spec.frameWidth),rows=spec.rows||Math.floor(image.height/spec.frameHeight);frameRectangle({...spec,columns},0,image);frameRectangle({...spec,columns},columns*rows-1,image);}catch{stats.failures++;failed.add(path);return null;}}
     return {image,spec,url:safeAssetUrl(base,path)};
   }
-  function configure(value){base=normalizeAssetBase(value);manifest=initialManifest || null;manifestPromise=null;cache.clear();failed.clear();}
+  function configure(value){base=normalizeAssetBase(value);manifest=configuredManifest();manifestPromise=null;cache.clear();failed.clear();}
   return {enabled,loadManifest,loadImage,unit,asset,url:path=>safeAssetUrl(base,path),configure,peek:path=>cache.get(path),stats,get baseUrl(){return base;},get manifest(){return manifest;},get cacheSize(){return cache.size;}};
 }
 

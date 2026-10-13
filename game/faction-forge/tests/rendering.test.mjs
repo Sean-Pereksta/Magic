@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {normalizeAssetBase,safeAssetUrl,frameRectangle,animationDefinition,createAssetLoader,drawSpriteFrame} from '../assets.js';
 import {MotionTrack,animationFrame,resolveAnimation} from '../renderer.js';
 import {forgeEligibility,upgradeCount} from '../ui.js';
+import {ASSET_MANIFEST} from '../manifest.js';
 
 const spec={path:'units/rifleman-tier1.webp',frameWidth:128,frameHeight:128,columns:6,rows:6,pivot:[.5,.9375],animations:{idle:{frames:[0,1,2,3,4,5],duration:900},move:{frames:[6,7,8,9,10,11],duration:540},ability:{frames:[18,19,20,21,22,23],duration:600},death:{frames:[30,31,32,33,34,35],duration:700,loop:false}}};
 const image={width:768,height:768};
@@ -44,7 +45,7 @@ test('ability/hurt aliases work and death holds its final frame',()=>{
 
 function mockImageFactory(){return ()=>{const image={width:768,height:768,onload:null,onerror:null};Object.defineProperty(image,'src',{set(value){image.source=value;queueMicrotask(()=>value.includes('missing')?image.onerror?.():image.onload?.());},get(){return image.source;}});return image;};}
 test('sheets load lazily, deduplicate concurrent requests, and bound decoded cache',async()=>{
-  let manifestFetches=0;const loader=createAssetLoader({baseUrl:'https://assets.example/forge',maxSheets:2,imageFactory:mockImageFactory(),fetchImpl:async()=>{manifestFetches++;return {ok:true,json:async()=>({units:{rifleman:{tiers:{'1':spec}}}})};}});
+  let manifestFetches=0;const loader=createAssetLoader({baseUrl:'https://assets.example/forge',manifestUrl:'https://assets.example/forge/manifest.json',maxSheets:2,imageFactory:mockImageFactory(),fetchImpl:async()=>{manifestFetches++;return {ok:true,json:async()=>({units:{rifleman:{tiers:{'1':spec}}}})};}});
   assert.equal(loader.stats.loads,0);const [a,b]=await Promise.all([loader.unit('rifleman',1),loader.unit('rifleman',1)]);assert.ok(a);assert.equal(a.image,b.image);assert.equal(loader.stats.loads,1);assert.equal(manifestFetches,1);
   await loader.loadImage('effects/a.webp');await loader.loadImage('effects/b.webp');assert.equal(loader.cacheSize,2);assert.equal(loader.stats.evictions,1);
   assert.equal(await loader.loadImage('units/missing.webp'),null);assert.equal(await loader.loadImage('units/missing.webp'),null);assert.equal(loader.stats.failures,1);
@@ -52,7 +53,20 @@ test('sheets load lazily, deduplicate concurrent requests, and bound decoded cac
 
 test('unconfigured or unavailable graphics gracefully keep legacy artwork',async()=>{
   let fetches=0;const disabled=createAssetLoader({fetchImpl:()=>{fetches++;throw new Error('Unexpected fetch');}});assert.equal(disabled.enabled(),false);assert.equal(await disabled.unit('rifleman',1),null);assert.equal(fetches,0);
-  const failed=createAssetLoader({baseUrl:'https://assets.example/',fetchImpl:async()=>({ok:false})});assert.equal(await failed.unit('rifleman',1),null);assert.equal(await failed.unit('golem',3),null);assert.equal(failed.stats.failures,1);
+  const failed=createAssetLoader({baseUrl:'https://assets.example/',manifestUrl:'https://assets.example/manifest.json',fallbackManifest:null,fetchImpl:async()=>({ok:false})});assert.equal(await failed.unit('rifleman',1),null);assert.equal(await failed.unit('golem',3),null);assert.equal(failed.stats.failures,1);
+});
+
+test('folder-only R2 uploads work without a remote manifest or CORS headers',async()=>{
+  let fetches=0;const loader=createAssetLoader({baseUrl:'https://assets.example/forge/',imageFactory:mockImageFactory(),fetchImpl:async()=>{fetches++;throw new Error('No hosted manifest');}});
+  const sheet=await loader.unit('rifleman',1);assert.ok(sheet);assert.equal(fetches,0);assert.equal(sheet.image.crossOrigin,undefined);assert.equal(sheet.spec.path,'units/rifleman-tier1.webp');assert.deepEqual(sheet.spec.origin,[64,120]);assert.equal(sheet.spec.sha256,ASSET_MANIFEST.units.rifleman.tiers['1'].sha256);
+  const strict=createAssetLoader({baseUrl:'https://assets.example/forge/',imageFactory:mockImageFactory(),crossOrigin:'anonymous'});assert.equal((await strict.unit('rifleman',1)).image.crossOrigin,'anonymous');
+  const custom=createAssetLoader({baseUrl:'https://assets.example/forge/',manifestUrl:'https://assets.example/manifest.json',imageFactory:mockImageFactory(),fetchImpl:async()=>({ok:false})});assert.ok(await custom.unit('golem',3));assert.equal(custom.stats.failures,1);
+});
+
+test('checked-in manifest covers all96 delivered sheets with valid action crops',()=>{
+  assert.equal(Object.keys(ASSET_MANIFEST.units).length,32);const paths=new Set();
+  for(const [key,unit] of Object.entries(ASSET_MANIFEST.units))for(const tier of ['1','2','3']){const sheet=unit.tiers[tier];paths.add(sheet.path);assert.equal(sheet.path,`units/${key}-tier${tier}.webp`);assert.equal(sheet.frames.length,36);for(const name of ['idle','move','attack','ability','hurt','death'])for(const frame of animationDefinition(sheet,name).frames)frameRectangle(sheet,frame,{width:sheet.width,height:sheet.height});}
+  assert.equal(paths.size,96);assert.equal(ASSET_MANIFEST.terrain['contested-forge'].path,'terrain/contested-tiles.webp');assert.equal(ASSET_MANIFEST.ui['card-frame-vanir'].path,'ui/vanir-card-frame.webp');
 });
 
 test('Forge tiers and battle ranks stay separate and active matches block upgrades',()=>{

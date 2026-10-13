@@ -9,3 +9,11 @@ function harness({proof='room',uid='owner',members={owner:'Commander'},url='?for
 test('an explicit in-game joined-lobby handoff is adopted without removing the freshly joined seat',async()=>{const h=harness();await h.context.runStartup();assert.equal(h.context.currentLobbyId,'room');assert.equal(h.context.isHost,true);assert.deepEqual(h.removed,[]);assert.deepEqual(h.views,['multiplayer','listen']);assert.equal(h.storage.has('ff.handoffLobby'),false);});
 test('a handoff cannot restore another UID seat or bypass the fresh-page lobby safety rule',async()=>{const h=harness({uid:'stranger'});await h.context.runStartup();assert.equal(h.context.currentLobbyId,null);assert.deepEqual(h.removed,['room']);assert.equal(h.views.includes('listen'),false);});
 test('a forged URL alone is not a joined-lobby handoff; invitation URLs remain previews',async()=>{const h=harness({proof:'other-room',url:'?forgeJoin=room&lobby=invited'});await h.context.runStartup();assert.equal(h.context.currentLobbyId,null);assert.deepEqual(h.removed,['room']);assert.deepEqual(h.views,['preview']);});
+
+test('lobby authentication waits for persisted credentials before creating a guest',async()=>{
+ const begin=html.indexOf('    async function retryFirebaseAuth()'),finish=html.indexOf('    async function recoverActiveLobbyPage()',begin);
+ let restored;let guestCalls=0;const initialized=[];
+ const context=vm.createContext({initialAuthReady:new Promise(resolve=>{restored=resolve}),auth:{currentUser:null},firebaseAuthReady:false,authRetryPromise:null,showLobbyConnectionState(){},handleAuthenticatedUser:async user=>initialized.push(user.uid),signInAnonymously:async()=>{guestCalls++;return {user:{uid:'guest'}};},toast(){},firebaseAuthError:''});
+ vm.runInContext(html.slice(begin,finish)+'globalThis.retry=retryFirebaseAuth;',context);
+ const result=context.retry();await Promise.resolve();assert.equal(guestCalls,0);context.auth.currentUser={uid:'persisted-owner'};restored();assert.equal((await result).uid,'persisted-owner');assert.equal(guestCalls,0);assert.deepEqual(initialized,['persisted-owner']);
+});

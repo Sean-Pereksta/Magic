@@ -2041,6 +2041,7 @@
       syncLobbyBrowserPolling();syncCurrentLobbySafetyPolling();
     }
     async function retryFirebaseAuth(){
+      await initialAuthReady;
       if(auth.currentUser){if(!firebaseAuthReady)await handleAuthenticatedUser(auth.currentUser);return auth.currentUser;}
       if(authRetryPromise)return authRetryPromise;
       showLobbyConnectionState("Connecting to multiplayer…");
@@ -2077,7 +2078,10 @@
     populateStaticUI();renderFeatured();renderOnlineWorlds();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
     showFirstVisitProfilePrompt();
 
+    let resolveInitialAuth;
+    const initialAuthReady=new Promise(resolve=>{resolveInitialAuth=resolve;});
     onAuthStateChanged(auth,user=>{
+      resolveInitialAuth(user);
       if(!user){firebaseAuthReady=false;syncLobbyBrowserPolling();stopCurrentLobbySafetyPolling();return;}
       void handleAuthenticatedUser(user);
     });

@@ -4,7 +4,11 @@ The checked-in game defaults to practice until its separately deployed progressi
 
 ## Service
 
-Install the repository dependencies, then run:
+The existing repository `server.js` now automatically mounts `/api/faction-forge` using its already initialized Firebase Admin connection. Deploying the latest code to that existing Node host supplies the endpoint without a separate service account or a second Firebase initialization. Its existing private `FIREBASE_SERVICE_ACCOUNT` or `serviceAccountKey.json` remains on the server. The optional mount accepts only the existing `bible-game-246c0` project; initialization failures leave Grid Overlord's original HTTP and Socket.IO host running.
+
+The shared host defaults to exactly `https://catnmice.com` and `https://www.catnmice.com` for progression CORS. `FACTION_FORGE_ALLOWED_ORIGINS` can explicitly override the allowlist. The original `/` health route remains unchanged. After deploying the Node runtime, verify its actual `/api/faction-forge/health` endpoint and set `progressionApiUrl` to that runtime's HTTPS origin plus `/api/faction-forge`. No live service address is assumed or invented. The R2 graphics address serves assets and is not the progression API.
+
+A separately hosted service is also supported. Install the repository dependencies, then run:
 
 ```sh
 npm run start:faction-forge
@@ -17,7 +21,7 @@ Required runtime settings:
 - `FACTION_FORGE_ALLOWED_ORIGINS`: comma-separated exact game origins, for example `https://catnmice.com,https://www.catnmice.com`.
 - `PORT`: optional, defaults to 8788.
 
-The service mounts `/api/faction-forge`. Expose it through HTTPS; set `progressionApiUrl` in `game/faction-forge/config.js` to the complete route base. Example: `https://YOUR-SERVICE/api/faction-forge`. Keep credentials out of GitHub and out of browser files. The existing Grid Overlord `server.js` remains independent.
+The service mounts `/api/faction-forge`. Expose it through HTTPS; set `progressionApiUrl` in `game/faction-forge/config.js` to the complete route base. Example: `https://YOUR-SERVICE/api/faction-forge`. Keep credentials out of GitHub and out of browser files. The dedicated service and the existing-host mount use the same progression implementation.
 
 Deploy `firestore.rules` to the same existing project after reviewing the protected profile fields and verifying the game code is updated. No special Firestore indexes are required for progression: all authoritative operations use document paths and transactions.
 
