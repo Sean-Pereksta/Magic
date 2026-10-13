@@ -1,0 +1,101 @@
+/* Survival-only surfaces keep the existing combat and other mode interfaces intact. */
+[hidden]#survivalArenaSelector,[hidden]#survivalUnlockNotice,[hidden]#survivalTacticalWarning,#scoreboardTable[hidden],#scoreboardPanel>.overlayButtons[hidden]{display:none!important}
+.survivalArenaSelector{width:100%;--survival-line:rgba(104,215,250,.22)}
+.survivalRecords{display:flex;flex-wrap:wrap;gap:12px;color:#93afc4;font-size:10px;letter-spacing:1px;margin:8px 0}
+.survivalRecords strong{color:#c7f7ff;font-size:16px;letter-spacing:0;margin-right:4px}
+.survivalPromise{font-size:12px;color:#a8bdd0;margin:10px 0 15px;line-height:1.5}
+.survivalArenaGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.survivalArena{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;text-align:left;min-width:0;background:linear-gradient(160deg,#142331,#080e1d);padding:0;border:1px solid rgba(145,198,235,.22);border-radius:12px;color:#e6f6ff;cursor:pointer;box-shadow:0 6px 20px #0003;transition:transform .15s,border-color .15s;touch-action:manipulation}
+.survivalArena:hover:not(:disabled){transform:translateY(-2px);border-color:var(--arena-accent)}
+.survivalArena.selected{border-color:var(--arena-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--arena-accent) 30%,transparent),0 12px 30px #0006}
+.survivalArena:focus-visible,.survivalResultsActions button:focus-visible,.survivalLocker select:focus-visible,.survivalEquipmentShopItem button:focus-visible{outline:3px solid #f5cb73;outline-offset:3px}
+.survivalArena:disabled{cursor:default;opacity:1;filter:none}
+.survivalArena.locked .survivalArenaPicture img{filter:saturate(.32) brightness(.52)}
+.survivalArenaPicture{position:relative;aspect-ratio:1.85;overflow:hidden;background:#0c1726}
+.survivalArenaPicture img{display:block;width:100%;height:100%;object-fit:cover;transition:filter .2s}
+.survivalArenaPicture:after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 35%,#080e1daa)}
+.survivalArenaNumber{position:absolute;z-index:1;top:9px;left:11px;font-size:11px;letter-spacing:2px;color:#fff9}
+.survivalArenaLock{position:absolute;z-index:1;bottom:10px;left:12px;font-size:9px;letter-spacing:1.3px;padding:5px 7px;background:#070c19c9;border:1px solid var(--arena-accent);color:var(--arena-accent);border-radius:4px}
+.survivalArenaTitle{display:block;padding:11px 12px 5px;font-size:17px;line-height:1.1;font-weight:800;letter-spacing:.3px}
+.survivalArenaTag{padding:0 12px;color:var(--arena-accent);font-size:8px;font-weight:800;letter-spacing:1.4px}
+.survivalArenaDescription{padding:8px 12px;color:#acbfd1;line-height:1.4;font-size:11px;min-height:44px}
+.survivalArenaBest{padding:9px 12px;border-top:1px solid #ffffff0c;font-size:8px;color:#95a9bd;letter-spacing:.8px;margin-top:auto;display:flex;justify-content:space-between;gap:5px}
+.survivalArenaBest b{color:#e1ecf6;white-space:nowrap}
+.survivalLocker{border:1px solid var(--survival-line);border-radius:9px;margin-top:15px;background:#080e1b80;overflow:hidden}
+.survivalLocker summary{padding:13px;font-weight:800;letter-spacing:1px;font-size:11px;cursor:pointer;color:#b0e8f8;display:flex;justify-content:space-between;gap:8px;align-items:center;list-style:none}
+.survivalLocker summary::before{content:'✦';font-size:16px}
+.survivalLocker summary span{color:#8aa2ba;font-size:8px;letter-spacing:.5px;margin-left:auto}
+.survivalLoadout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;padding:12px;border-top:1px solid var(--survival-line)}
+.survivalLoadout label{color:#acc3d9;font-size:11px;display:flex;flex-direction:column;gap:6px}
+.survivalLoadout select{width:100%;font-size:11px;padding:9px;background:#0b1828;color:#e7f3fe;border:1px solid #37526b;border-radius:5px}
+.survivalAwardGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px}
+.survivalAward{display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid #283e53;border-radius:7px;padding:9px 6px;opacity:.62;background:#0b1726}
+.survivalAward img{width:60px;height:60px;filter:grayscale(1);margin-bottom:6px}
+.survivalAward.earned{opacity:1;border-color:#5b9fb1;background:linear-gradient(160deg,#12303c,#0c172a)}
+.survivalAward.earned img{filter:none}
+.survivalAward strong{font-size:10px;line-height:1.3}
+.survivalAward small{font-size:9px;color:#9db3c7;line-height:1.35;margin:5px 0 8px}
+.survivalAward>span{font-size:7px;letter-spacing:1.4px;color:#a5bed2;margin-top:auto}
+.survivalAward.earned>span{color:#78eac6}
+.survivalEquipmentPreview{padding:12px;border-top:1px solid var(--survival-line);display:flex;flex-wrap:wrap;gap:9px}
+.survivalEquipmentPreview h3{font-size:10px;color:#b8ddee;letter-spacing:1px;margin:0;width:100%}
+.survivalEquipmentPreview p{font-size:10px;color:#9eb2c7;line-height:1.4;width:100%;margin:0 0 5px}
+.survivalEquipmentPreviewItem{display:flex;align-items:center;gap:7px;background:#112134;border-radius:5px;padding:7px;flex:1 1 170px;opacity:.6}
+.survivalEquipmentPreviewItem.available{opacity:1}
+.survivalEquipmentPreviewItem img{width:32px;height:32px}
+.survivalEquipmentPreviewItem b{font-size:9px;flex:1}
+.survivalEquipmentPreviewItem small{font-size:7px;color:#b7c6d8}
+.survivalUnlockNotice{position:fixed;top:calc(env(safe-area-inset-top,0px) + 60px);left:50%;transform:translateX(-50%);max-width:min(500px,88vw);width:420px;z-index:24;border:1px solid #d9b960;border-radius:12px;padding:13px 15px;pointer-events:none;box-shadow:0 12px 42px #000b,0 0 25px #bf95352b;background:linear-gradient(135deg,#24283aeb,#10192cef);backdrop-filter:blur(10px)}
+.survivalUnlockKicker{font-size:9px;letter-spacing:1.8px;color:#f6d993;font-weight:800;margin-bottom:9px}
+.survivalUnlockItems{display:flex;gap:10px;flex-wrap:wrap}
+.survivalUnlockItems>div{display:flex;align-items:center;gap:10px;min-width:155px;flex:1}
+.survivalUnlockItems img{width:48px;height:48px;border-radius:6px;object-fit:cover}
+.survivalUnlockItems span{display:flex;flex-direction:column;gap:4px}
+.survivalUnlockItems small{color:#96c3d0;font-size:7px;letter-spacing:1px}
+.survivalUnlockItems strong{color:#f4f8ff;font-size:13px}
+.survivalUnlockNotice p{font-size:10px;line-height:1.4;color:#bacadb;margin:10px 0 0}
+.survivalTacticalWarning{position:fixed;left:50%;bottom:24%;transform:translateX(-50%);max-width:85vw;background:#2b171deb;border:1px solid #ff926f;color:#ffe9d7;z-index:23;padding:10px 16px;border-radius:6px;font-size:12px;font-weight:800;letter-spacing:.8px;text-align:center;pointer-events:none}
+.survivalTacticalWarning[data-kind='flank']{border-color:#d48bff;background:#251535eb}
+.survivalTacticalWarning[data-kind='boss']{border-color:#ff3860;background:#3b1020ed}
+#scoreboardPanel:has(.survivalResults){width:min(900px,94vw);max-height:92dvh;overflow:auto;padding:25px}
+#scoreboardPanel:has(.survivalResults)>h2{font-size:20px;margin-bottom:8px}
+.survivalResultsHero{position:relative;min-height:190px;overflow:hidden;border:1px solid var(--arena-accent);border-radius:12px;padding:24px;text-align:left;isolation:isolate}
+.survivalResultsHero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
+.survivalResultsHero:before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#060e1deb,#060e1d55 80%),linear-gradient(0deg,#060e1dd9,transparent);z-index:-1}
+.survivalResultsHero>span{font-size:10px;letter-spacing:3px;color:var(--arena-accent)}
+.survivalResultsHero h3{margin:10px 0 22px;font-size:28px;line-height:1;color:white}
+.survivalResultsHero>strong{font-size:50px;color:#fff;line-height:1;display:flex;align-items:center;gap:14px}
+.survivalResultsHero strong small{font-size:10px;max-width:70px;line-height:1.5;letter-spacing:2px;color:#9cc9df}
+.survivalRunStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:15px 0}
+.survivalRunStats span{padding:12px 6px;border:1px solid #3860726b;background:#10233280;border-radius:7px;font-size:8px;letter-spacing:.8px;color:#99bace;text-align:center}
+.survivalRunStats b{display:block;color:#e7f9ff;font-size:23px;letter-spacing:0;margin-bottom:5px}
+.survivalResultRecord{padding:10px;border:1px solid #bc9a4d;border-radius:5px;color:#fbe1a2;font-size:11px;background:#caa52d10}
+.survivalResultsAwardTitle{color:#c5e4f6;font-size:11px;letter-spacing:1.5px;text-align:left;margin:18px 0 10px}
+.survivalResultsAwards{display:flex;gap:9px;flex-wrap:wrap}
+.survivalResultsAwards>div{display:flex;gap:10px;align-items:center;border:1px solid #405366;flex:1 1 210px;border-radius:8px;background:#13243980;padding:10px;text-align:left}
+.survivalResultsAwards img{width:52px;height:52px;object-fit:cover;border-radius:5px}
+.survivalResultsAwards span{display:flex;flex-direction:column;gap:5px}
+.survivalResultsAwards small{color:#f5d48c;font-size:7px;letter-spacing:1px}
+.survivalResultsAwards b{font-size:12px;color:#eefaff}
+.survivalNextUnlock{font-size:12px;line-height:1.5;color:#9bc8dc;border:1px solid #304d63;padding:12px;border-radius:6px}
+.survivalResultsActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:21px}
+.survivalResultsActions button{flex:1 1 140px;min-height:48px;border:1px solid #477b94;border-radius:7px;background:linear-gradient(150deg,#254a65,#112035);color:#d9f2fc;font-size:11px;font-weight:800;letter-spacing:.6px;cursor:pointer;touch-action:manipulation}
+.survivalResultsActions button:first-child{background:linear-gradient(145deg,#ddde91,#e39e37);border-color:#ffda80;color:#152133}
+.survivalEquipmentShopItem{position:relative;display:flex;flex-direction:column;align-items:flex-start;border:1px solid #396077;background:#112439;padding:12px 12px 12px 60px;border-radius:9px}
+.survivalEquipmentShopItem>img{position:absolute;left:11px;top:13px;width:40px;height:40px}
+.survivalEquipmentShopItem b{font-size:11px;color:#c8edf8}
+.survivalEquipmentShopItem small{font-size:10px;color:#a2bdd0;line-height:1.4;margin:7px 0}
+.survivalEquipmentShopItem>span{font-size:9px;color:#7edec9;margin-bottom:7px}
+.survivalEquipmentShopItem>div{display:flex;gap:7px;width:100%}
+.survivalEquipmentShopItem button{flex:1;padding:9px 5px;border:1px solid #44647a;background:#20374f;color:#e6f8ff;border-radius:4px;font-size:9px;cursor:pointer}
+.survivalEquipmentShopItem button[aria-pressed='true']{color:#8df8d4;border-color:#77c6b1}
+.survivalEquipmentShopItem button:disabled{opacity:.45;cursor:default}
+@media(min-width:1100px){#panel:has(#survivalArenaSelector:not([hidden])){max-width:850px;width:74vw}.survivalArenaGrid{grid-template-columns:repeat(4,minmax(0,1fr))}.survivalArenaTitle{font-size:14px}.survivalArenaDescription{min-height:66px}.survivalArenaTag{font-size:7px;letter-spacing:.9px}.survivalArenaBest{font-size:7px;flex-direction:column}.survivalAwardGrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:520px){.survivalArenaGrid{gap:8px}.survivalArenaTitle{font-size:13px;padding:10px 9px 5px}.survivalArenaTag{font-size:6px;letter-spacing:.7px;padding:0 9px}.survivalArenaDescription{font-size:10px;padding:7px 9px;min-height:62px}.survivalArenaBest{font-size:7px;flex-direction:column;padding:8px 9px;gap:4px}.survivalArenaLock{font-size:7px;left:8px;bottom:8px}.survivalLocker summary{font-size:9px;padding:10px}.survivalLocker summary span{font-size:6px;max-width:120px;text-align:right;line-height:1.5}.survivalAwardGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.survivalLoadout{gap:8px;padding:9px}.survivalRecords{gap:7px;font-size:7px}.survivalRecords strong{font-size:12px}#scoreboardPanel:has(.survivalResults){padding:14px;max-height:90dvh}.survivalResultsHero{padding:18px;min-height:165px}.survivalResultsHero h3{font-size:21px}.survivalRunStats{gap:7px;grid-template-columns:repeat(2,minmax(0,1fr))}.survivalResultsActions{gap:8px}.survivalResultsActions button{font-size:9px;flex-basis:110px}.survivalUnlockNotice{top:calc(env(safe-area-inset-top,0px) + 52px);padding:11px}.survivalUnlockItems img{width:34px;height:34px}.survivalUnlockItems strong{font-size:11px}.survivalUnlockItems>div{min-width:120px}.survivalTacticalWarning{font-size:10px;bottom:29%}}
+@media(prefers-reduced-motion:reduce){.survivalArena,.survivalArenaPicture img{transition:none}.survivalArena:hover:not(:disabled){transform:none}}
+#survivalGear[hidden]{display:none!important}
+#survivalGear{position:absolute;right:18px;bottom:24px;display:flex;align-items:center;gap:8px;pointer-events:auto;padding:8px;background:#071423dd;border:1px solid #64c9e766;border-radius:9px;color:#dffaff;font-size:11px}
+#survivalGear button{padding:10px;background:#173d50;border:1px solid #69c6df;border-radius:5px;color:#eaffff;font-size:10px;font-weight:800;touch-action:manipulation}
+#survivalGear button:disabled{opacity:.5}
+#shopPanel{max-height:90dvh;overflow:auto}
+@media(max-width:700px){#survivalGear{right:8px;bottom:170px;max-width:210px;flex-wrap:wrap;padding:5px}#survivalGearStatus{font-size:9px;width:100%}}

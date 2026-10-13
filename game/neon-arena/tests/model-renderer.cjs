@@ -542,7 +542,7 @@ async function main() {
       // Read only the factory's numeric radius/scale registry. No gameplay code
       // executes here, and the independently checked envelopes stay unchanged.
       const arenaSource = fs.readFileSync(path.join(__dirname, '../neon-arena.js'), 'utf8');
-      const registrySource = arenaSource.match(/function makeAlien\(kind,wave\)\{const specs=\{([\s\S]*?)\n\}\[kind\]/)?.[1];
+      const registrySource = arenaSource.match(/function makeAlien\(kind,wave\)\{[^\n]*?const specs=[^\n]*?\{([\s\S]*?)\n\}\[kind\]/)?.[1];
       assert.ok(registrySource, 'makeAlien registry must be available');
       const sizeMultiplier = Number(arenaSource.match(/ALIEN_SIZE_MULT=([\d.]+)/)?.[1]);
       assert.equal(sizeMultiplier, 1.5);

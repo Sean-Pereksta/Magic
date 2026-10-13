@@ -18,7 +18,7 @@ function serve(req, res) {
     if (!file.startsWith(allowed + path.sep)) throw new Error('Outside fixture root');
     let data = fs.readFileSync(file);
     if (file.endsWith('/neon-arena.js')) data = Buffer.from(data.toString().replace(/\}\)\(\);\s*$/, hooks + '})();'));
-    const type = {'.js':'text/javascript','.css':'text/css','.html':'text/html','.glb':'model/gltf-binary','.png':'image/png','.webp':'image/webp'}[path.extname(file)] || 'application/octet-stream';
+    const type = {'.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.html':'text/html','.glb':'model/gltf-binary','.png':'image/png','.webp':'image/webp'}[path.extname(file)] || 'application/octet-stream';
     res.writeHead(200, {'Content-Type':type, 'Access-Control-Allow-Origin':'*'}); res.end(data);
   } catch {res.writeHead(404); res.end('Not found');}
 }
@@ -58,19 +58,19 @@ async function main() {
         if(device.touch)assert.equal(state.input,'touch');
         await page.evaluate(()=>__NEON_TEST__.endMatch('Browser regression test'));
         assert.equal(await page.locator('#scoreboardOverlay').isVisible(),true);
-        await page.locator('#returnMenu').click();
+        if(mode==='survivor')await page.locator('[data-survival-action="menu"]').click();else await page.locator('#returnMenu').click();
       }
       // Every normal arena must start and preserve two separate local actors.
       for(const map of ['grid','pastel','reactor']) {
         await page.locator('[data-mode="dm"]').click();
         await page.evaluate(map=>{const select=document.getElementById('map');select.value=map;select.dispatchEvent(new Event('change'));document.getElementById('secondPlayer').value='keyboard';},map);
-        await page.locator('#start').click();
+        await page.locator('#start').click();await page.waitForFunction(()=>__NEON_TEST__.game.started&&!__NEON_TEST__.game.over);
         assert.equal(await page.evaluate(()=>{const t=__NEON_TEST__;t.draw();return t.player2!==t.player&&Number.isFinite(t.player2.x+t.player2.y+t.player2.z)&&t.gl.getError()===0}),true,map+' split');
         await page.evaluate(()=>__NEON_TEST__.endMatch('Split test'));
         await page.locator('#returnMenu').click();
       }
       await page.evaluate(()=>{document.getElementById('secondPlayer').value='off';});
-      await page.locator('#start').click();
+      await page.locator('#start').click();await page.waitForFunction(()=>__NEON_TEST__.game.started&&!__NEON_TEST__.game.over);
       if(device.touch) {
         assert.equal(await page.locator('#mobileControls').isVisible(),true);
         assert.equal(await page.locator('#mobileJump').getAttribute('aria-label'),'Jump');
@@ -87,15 +87,15 @@ async function main() {
       assert.equal(weapons.count,14);assert.equal(weapons.error,0);
       if(fixtures){
         await page.evaluate(()=>{for(const path of [...Object.values(NeonAssets.weapons),...Object.values(NeonAssets.characters)])__NEON_TEST__.models.get(path)});
-        await page.waitForFunction(()=>__NEON_TEST__.models.cache.status().parsed===35);
+        await page.waitForFunction(()=>__NEON_TEST__.models.cache.status().parsed===48);
         const stats=await page.evaluate(()=>{const t=__NEON_TEST__;t.game.over=true;for(const key of Object.keys(t.WEAPONS)){t.player.weapon=key;t.draw();}return t.models.stats()});
-        assert.equal(stats.parsed,35);assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
+        assert.equal(stats.parsed,48);assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
       }
       assert.deepEqual(errors,[],device.name+' runtime errors');
       reports.push({device:device.name,modes:5,splitMaps:3,weapons:14,errors:0});
       await context.close();
     }
-    console.log(JSON.stringify({passed:reports,assets:fixtures?'local supplied GLBs':'procedural fallback',webgl:process.env.NEON_MOCK_WEBGL==='1'?'mock (DOM/input/simulation only)':'real'},null,2));
+    console.log(JSON.stringify({passed:reports,assets:fixtures?'local supplied GLBs':'hosted GLBs',webgl:process.env.NEON_MOCK_WEBGL==='1'?'mock (DOM/input/simulation only)':'real'},null,2));
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});
