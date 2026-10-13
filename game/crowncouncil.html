@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>⚔️ Draft Brawl — Factions (2P)</title>
+<title>⚔️ Faction Forge (2P)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
@@ -870,6 +870,7 @@
     .cardInfoPanel{max-height:82vh;}
   }
 </style>
+<link rel="stylesheet" href="./faction-forge/expansion.css">
 </head>
 <body>
   <div id="assetGate" class="assetGate"><div class="assetGatePanel" role="status" aria-live="polite"><div class="assetGateTitle">Loading troop graphics</div><div id="assetGateStatus" class="assetGateStatus">Preparing the Faction Forge image set…</div><div id="assetGatePlayers" class="assetGatePlayers">Waiting for both players to finish loading.</div></div></div>
@@ -883,6 +884,7 @@
       <span id="p0Badge" class="badge p0">P0 — ❤❤❤❤</span>
       <span id="p1Badge" class="badge p1">P1 — ❤❤❤❤</span>
       <span id="timerBadge" class="badge timer">⏳ —</span>
+      <button id="forgeMenuBtn" class="btn ghost">Menu</button>
       <button id="fsBtn" class="btn ghost">⛶ Fullscreen</button>
     </div>
   </div>
@@ -917,12 +919,20 @@
   <div id="endSummary" class="endSummary"></div>
 
 <script type="module">
+import { FACTION_FORGE_CONFIG } from "./faction-forge/config.js";
+import { createAssetLoader } from "./faction-forge/assets.js";
+import { createBattleRenderer } from "./faction-forge/renderer.js";
+import { createExpansionUI } from "./faction-forge/ui.js";
+import { createProgressionService } from "./faction-forge/progression.js";
+import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
+import { getMission, createEndlessMission, chooseAIDraft, MISSIONS, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
+import * as FFUnits from "./faction-forge/units.js";
 /* ---------------- Firebase ---------------- */
 // NOTE: Make sure your Firestore rules allow access to
 // /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/state
 import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -956,14 +966,22 @@ function deepClone(obj){
 /* ---------------- URL params ---------------- */
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
-const username = params.get("username");
+let requestedRanked=params.get("ranked")!=="0";
+const username = params.get("username") || (()=>{try{return localStorage.getItem("gh.username")}catch{return null}})() || "Guest";
+let executionMode = gameId ? "legacy-online" : "menu";
+let secureSession = null, securePoll = null, securePlayback = null;
+let expansionUI = null, progression = null, forgeProfile = null, spriteRenderer = null;
+let currentMission = null, localOpponent = null, lastResultsId = null, matchSearch = null;
+let secureRequestBusy = false, playbackKey = null;
+const isLocalPractice = ()=>executionMode === "practice";
+const isSecureMode = ()=>executionMode === "secure";
 const clientInstanceId = crypto.randomUUID();
 const BATTLE_DEBUG_MODE = params.get("debugBattle") === "1";
-if (!gameId || !username){ alert("Missing gameId or username in URL."); }
 
-const lobbyRef = doc(db,"lobbies",gameId);
-const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
-const battleRef = doc(db,"lobbies",gameId,"crowncouncil","battle");
+
+const lobbyRef = doc(db,"lobbies",gameId || "forge-offline");
+const stateRef = doc(db,"lobbies",gameId || "forge-offline","crowncouncil","state");
+const battleRef = doc(db,"lobbies",gameId || "forge-offline","crowncouncil","battle");
 
 /* ---------------- Pace / sizes ---------------- */
 const PACE = {
@@ -1135,7 +1153,7 @@ function samePlayers(a,b){
 
 /* -------- transactional state creation / stale-match reset (host only) -------- */
 async function ensureStateExists(lobbyData){
-  if (didEnsure || ensureInFlight || !isHost || disposed) return;
+  if (isLocalPractice() || isSecureMode() || didEnsure || ensureInFlight || !isHost || disposed) return;
   ensureInFlight = true;
   try {
     const lob = lobbyData || {};
@@ -1515,6 +1533,7 @@ const FACTIONS = {
   Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect","golem","runebinder"],
   Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper","carrion","burrower"]
 };
+FFUnits.installUnits({TROOPS,FACTIONS,LEGENDARY_ABILITIES,TROOP_COUNTERS,TROOP_ARCHETYPES,TROOP_VISUALS});
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 
 /* ---------------- Helpers & state ---------------- */
@@ -1522,11 +1541,11 @@ const pKey = (i)=> i===0 ? "p0" : "p1";
 const idx=(x,y)=> y*W+x;
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
+const rankPalette={};
 function rankColor(lvl){
-  const root = document.documentElement;
-  if (lvl===3) return getComputedStyle(root).getPropertyValue('--rank3') || '#ef4444';
-  if (lvl===2) return getComputedStyle(root).getPropertyValue('--rank2') || '#eab308';
-  return getComputedStyle(root).getPropertyValue('--rank1') || '#22c55e';
+  const rank=Math.max(1,Math.min(3,Number(lvl)||1));
+  if(!rankPalette[rank])rankPalette[rank]=getComputedStyle(document.documentElement).getPropertyValue('--rank'+rank).trim()||['','#22c55e','#eab308','#ef4444'][rank];
+  return rankPalette[rank];
 }
 
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
@@ -1535,11 +1554,11 @@ let S=null,lobbyPlayers=[],meIndex=0,isHost=false;
 let localTroopImagesReady=false,troopImageLoadError=null,troopImageLoadPass=0,troopImageLoadPromise=null,assetReadyPublishedForSession=null;
 function assetReadyEntryValid(e,n,k){return !!e&&e.username===n&&e.sessionKey===k&&e.version===TROOP_IMAGE_VERSION}
 function bothAssetsReady(st){if(!st||!Array.isArray(st.players)||st.players.length<2||!st.sessionKey)return false;const r=st.assetReady||{};return assetReadyEntryValid(r.p0,st.players[0],st.sessionKey)&&assetReadyEntryValid(r.p1,st.players[1],st.sessionKey)}
-function updateAssetGate(){const g=$("assetGate"),st=$("assetGateStatus"),pl=$("assetGatePlayers");if(!g||!st||!pl)return;const ph=S&&S.phase,show=!!troopImageLoadError||!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading";g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);st.textContent=troopImageLoadError?"Troop graphics failed: "+troopImageLoadError.message:!localTroopImagesReady?(troopImageLoadPass?"Verifying all troop graphics — pass "+troopImageLoadPass+" of 2…":"Preparing the Faction Forge image set…"):ph==="waiting"?"Your graphics are ready. Waiting for the second player…":ph==="asset-loading"?"Your graphics are ready. Waiting for both players to confirm…":"All troop graphics are ready.";const names=(S&&Array.isArray(S.players)?S.players:lobbyPlayers).slice(0,2),r=S&&S.assetReady||{},k=S&&S.sessionKey;pl.textContent=[0,1].map(i=>{const n=names[i]||(i?"Player 2":"Player 1");return n+": "+(S&&assetReadyEntryValid(r[pKey(i)],n,k)?"ready":"loading")}).join("  •  ")}
+function updateAssetGate(){const g=$("assetGate"),st=$("assetGateStatus"),pl=$("assetGatePlayers");if(!g||!st||!pl)return;const ph=S&&S.phase,show=executionMode!=="menu"&&!isSecureMode()&&(!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading");g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);st.textContent=troopImageLoadError?"Troop graphics failed: "+troopImageLoadError.message:!localTroopImagesReady?(troopImageLoadPass?"Verifying all troop graphics — pass "+troopImageLoadPass+" of 2…":"Preparing the Faction Forge image set…"):ph==="waiting"?"Your graphics are ready. Waiting for the second player…":ph==="asset-loading"?"Your graphics are ready. Waiting for both players to confirm…":"All troop graphics are ready.";const names=(S&&Array.isArray(S.players)?S.players:lobbyPlayers).slice(0,2),r=S&&S.assetReady||{},k=S&&S.sessionKey;pl.textContent=[0,1].map(i=>{const n=names[i]||(i?"Player 2":"Player 1");return n+": "+(S&&assetReadyEntryValid(r[pKey(i)],n,k)?"ready":"loading")}).join("  •  ")}
 function loadTroopImage(src){return new Promise((ok,bad)=>{const im=new Image();let done=false;const end=e=>{if(done)return;done=true;e?bad(e):ok(src)};im.onload=async()=>{try{if(im.decode)await im.decode()}catch(_){ }im.naturalWidth&&im.naturalHeight?end():end(new Error("Invalid image: "+src))};im.onerror=()=>end(new Error("Missing image: "+src));im.decoding="async";im.src=src;if(im.complete&&im.naturalWidth)queueMicrotask(()=>im.onload())})}
-async function preloadTroopImagePass(pass){troopImageLoadPass=pass;updateAssetGate();const es=Object.entries(TROOP_IMAGE_PATHS),rs=await Promise.allSettled(es.map(([,src])=>loadTroopImage(src))),bad=[];rs.forEach((r,i)=>{if(r.status!=="fulfilled")bad.push(es[i][1])});if(bad.length)throw new Error(bad.join(", "))}
+async function preloadTroopImagePass(pass){troopImageLoadPass=pass;updateAssetGate();const es=Object.entries(TROOP_IMAGE_PATHS),rs=await Promise.allSettled(es.map(([,src])=>loadTroopImage(src))),bad=[];rs.forEach((r,i)=>{if(r.status!=="fulfilled")bad.push(es[i][1])});if(bad.length)console.warn("Some legacy graphics unavailable; using troop symbols",bad.length)}
 async function preloadTroopImagesTwice(){await preloadTroopImagePass(1);await preloadTroopImagePass(2);localTroopImagesReady=true;updateAssetGate();await publishLocalAssetReady()}
-async function publishLocalAssetReady(){if(!localTroopImagesReady||!S||!S.sessionKey||disposed)return;const ps=Array.isArray(S.players)?S.players.slice(0,2):[],i=ps.indexOf(username);if(i<0)return;const side=pKey(i),cur=S.assetReady&&S.assetReady[side];if(assetReadyEntryValid(cur,username,S.sessionKey)){assetReadyPublishedForSession=S.sessionKey;return}if(assetReadyPublishedForSession===S.sessionKey)return;try{await runTransaction(db,async tx=>{const snap=await tx.get(stateRef);if(!snap.exists())return;const d=snap.data(),players=Array.isArray(d.players)?d.players.slice(0,2):[],ix=players.indexOf(username);if(ix<0||!d.sessionKey)return;const key=pKey(ix),ready=Object.assign({p0:null,p1:null},d.assetReady||{});if(assetReadyEntryValid(ready[key],username,d.sessionKey))return;ready[key]={username,version:TROOP_IMAGE_VERSION,sessionKey:d.sessionKey,readyAt:Date.now()};tx.update(stateRef,{assetReady:ready})});assetReadyPublishedForSession=S.sessionKey}catch(e){console.error("asset readiness publish failed",e);assetReadyPublishedForSession=null}}
+async function publishLocalAssetReady(){if(executionMode!=="legacy-online")return;if(!localTroopImagesReady||!S||!S.sessionKey||disposed)return;const ps=Array.isArray(S.players)?S.players.slice(0,2):[],i=ps.indexOf(username);if(i<0)return;const side=pKey(i),cur=S.assetReady&&S.assetReady[side];if(assetReadyEntryValid(cur,username,S.sessionKey)){assetReadyPublishedForSession=S.sessionKey;return}if(assetReadyPublishedForSession===S.sessionKey)return;try{await runTransaction(db,async tx=>{const snap=await tx.get(stateRef);if(!snap.exists())return;const d=snap.data(),players=Array.isArray(d.players)?d.players.slice(0,2):[],ix=players.indexOf(username);if(ix<0||!d.sessionKey)return;const key=pKey(ix),ready=Object.assign({p0:null,p1:null},d.assetReady||{});if(assetReadyEntryValid(ready[key],username,d.sessionKey))return;ready[key]={username,version:TROOP_IMAGE_VERSION,sessionKey:d.sessionKey,readyAt:Date.now()};tx.update(stateRef,{assetReady:ready})});assetReadyPublishedForSession=S.sessionKey}catch(e){console.error("asset readiness publish failed",e);assetReadyPublishedForSession=null}}
 function startTroopImagePreload(){if(troopImageLoadPromise)return troopImageLoadPromise;troopImageLoadPromise=preloadTroopImagesTwice().catch(e=>{troopImageLoadError=e instanceof Error?e:new Error(String(e));updateAssetGate();throw troopImageLoadError});return troopImageLoadPromise}
 let lastRenderedBattleTickId = -1;
 const battleSnapshotBuffer = [];
@@ -1550,8 +1569,8 @@ const BATTLE_SYNC_BADGE_MS = 900;
 let battleSyncBadgeUntil = 0;
 const LOW_EFFECTS_MODE = false;
 const DEBUG_BIG_UNIT_FOOTPRINT = false;
-const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0});
-const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0, updatedAt:0});
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], temporalFields:[], startedAt:0, suddenDeathTickAt:0});
+const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], temporalFields:[], startedAt:0, suddenDeathTickAt:0, updatedAt:0});
 
 function battleFromStateFallback(st){
   const fld = (st && st.field) ? st.field : fieldEmpty();
@@ -1654,38 +1673,81 @@ function spawnSlot(state,p,typeKey){
   const t = TROOPS[typeKey];
   const role = t ? t.role : "front";
   const sz = t && t.size===2 ? 2 : 1;
+  const half=Math.floor(H/2),sideMin=p===0?half:0,sideMax=p===0?H:half;
   const rows = bandRows(p, role);
   for(const r of rows){
     const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
     for(const dx of order){
       const x=Math.max(0,Math.min(W-sz,cx+dx));
       const y=r;
+      if(y<sideMin||y+sz>sideMax)continue;
       if (rectangleFree(state.field.units, x, y, sz)) return {x:x,y:y};
     }
   }
   if (p===0){
-    for(let y=H-1;y>=Math.max(0,H-8);y--){
+    for(let y=sideMax-sz;y>=sideMin;y--){
       for(let x=0;x<=W-sz;x++){
         if (rectangleFree(state.field.units,x,y,sz)) return {x:x,y:y};
       }
     }
   }else{
-    for(let y=0; y<Math.min(H,8); y++){
+    for(let y=sideMin; y<=sideMax-sz; y++){
       for(let x=0;x<=W-sz;x++){
         if (rectangleFree(state.field.units,x,y,sz)) return {x:x,y:y};
       }
     }
   }
-  return {x:Math.max(0,Math.min(W-sz, Math.floor(W/2))), y:(p===0? H-2 : 1)};
+  return null;
 }
 
+function forgeUnitTier(state,p,type){
+  const side=pKey(p),collection=state.collections&&state.collections[side];
+  const tier=(state.forgeTiers&&state.forgeTiers[side]&&state.forgeTiers[side][type]) ||
+    (collection&&collection.troops&&collection.troops[type]&&collection.troops[type].forgeTier) ||
+    (collection&&collection.tiers&&collection.tiers[type]) || 1;
+  return Math.max(1,Math.min(3,Number(tier)||1));
+}
+function spawnForgeIllusion(st,parent,now){
+  if(!FFUnits.canSpawnSummon(st,parent,true))return false;
+  const dir=parent.p===0?-1:1;
+  const positions=[[parent.x,parent.y+dir],[parent.x-1,parent.y+dir],[parent.x+1,parent.y+dir],[parent.x-1,parent.y],[parent.x+1,parent.y]];
+  for(const [x,y] of positions){
+    if(!inside(x,y)||!rectangleFree(st.field.units,x,y,1))continue;
+    const maxhp=4+(parent.effectiveForgeTier===3?1:0)+(parent.arcaneBatteryReady?2:0);
+    parent.arcaneBatteryReady=false;
+    st.field.units.push({id:crypto.randomUUID(),p:parent.p,type:"miragewarden",x,y,size:1,lvl:1,battleRank:1,
+      forgeTier:parent.forgeTier||1,effectiveForgeTier:parent.effectiveForgeTier||1,
+      illusion:true,summoned:true,summonedBy:parent.id,bornAt:now,
+      expiresAt:now+Math.round(3500*(parent.forgeAbilityScale||1)),hp:maxhp,maxhp,dmg:0,armor:0,
+      armorType:"light",range:1,cd:999999,spd:0,nextAtk:999999999999,nextStep:999999999999});
+    const threat=st.field.units.find(v=>v.p!==parent.p&&v.hp>0&&rectDistance(v,parent)<=2);
+    const retreatY=parent.y-dir;
+    if(threat&&canMoveTo(parent,st.field.units,parent.x,retreatY))parent.y=retreatY;
+    return true;
+  }
+  return false;
+}
+function forgeCombatHooks(st){
+  return {width:W,height:H,inside,rectangleFree,roleFor:type=>TROOPS[type]&&TROOPS[type].role,
+    distance:rectDistance,canMoveTo,applyDamage,wardDamage:applyWardShields,auraReduce:auraDamageReduceFor,
+    knock:tryKnock,healScale,factionFor:type=>TROOPS[type]&&TROOPS[type].faction,spawnIllusion:spawnForgeIllusion,
+    event:ev=>{
+      const icons={mark:"🎯","temporal-field":"⌛","time-fracture":"🌀",mirage:"🪞",siphon:"🩸","hive-frenzy":"🔥","rail-charge":"⚡"};
+      if(ev.kind==="rail-shot"||ev.kind==="rail-overload")pushSyncedFx(st.field,Object.assign(fxTransport(ev.x,ev.y,ev.targetX,ev.targetY),{kind:"rail-shot"}),ev.at);
+      else if(icons[ev.kind])pushSyncedFx(st.field,Object.assign(fxStatus(ev.targetX==null?ev.x:ev.targetX,ev.targetY==null?ev.y:ev.targetY,icons[ev.kind]),{kind:ev.kind==="time-fracture"?"temporal-field":ev.kind==="rail-charge"?"rail-shot":ev.kind}),ev.at);
+    }};
+}
 function placeUnit(state,p,key,lvl){
-  const t=TROOPS[key]; if(!t) return;
+  const t=TROOPS[key]; if(!t) return false;
+  let placed=false;
   const spawnCount = Math.max(1, t.spawn || 1);
   for(let k=0;k<spawnCount;k++){
+    if(state.field.units.filter(v=>v.hp>0&&v.p===p).length>=FFUnits.UNIT_LIMITS.aliveUnitsPerSide)break;
     const pos=spawnSlot(state,p,key);
+    if(!pos)break;
     const b=t.base;
     const size = t.size===2?2:1;
+    if(!rectangleFree(state.field.units,pos.x,pos.y,size))break;
     let maxhp = Math.round(b.hp || 10);
     let dmg   = Math.round(b.dmg || 3);
     const cd  = Math.round((b.cd || 600)*PACE.atkMult);
@@ -1741,8 +1803,11 @@ function placeUnit(state,p,key,lvl){
       if (key === "defiler") u.plagueReady = true;
     }
 
+    FFUnits.initializeForgeUnit(u,{forgeTier:forgeUnitTier(state,p,key),ranked:state.mode==="ranked"||state.ranked===true,role:t.role});
     state.field.units.push(u);
+    placed=true;
   }
+  return placed;
 }
 
 function rebuildFieldFromRoster(state){
@@ -1758,9 +1823,11 @@ function rebuildFieldFromRoster(state){
     const roster = (state.roster && state.roster[rk]) ? state.roster[rk] : [];
     const fronts = roster.filter(r=>TROOPS[r.type] && TROOPS[r.type].role==="front");
     const backs  = roster.filter(r=>!TROOPS[r.type] || TROOPS[r.type].role!=="front");
-    for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
-    for(const r of backs ){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
+    for(const r of fronts){ for(let c=0;c<r.count;c++)if(!placeUnit(state,p,r.type,r.lvl))break; }
+    for(const r of backs ){ for(let c=0;c<r.count;c++)if(!placeUnit(state,p,r.type,r.lvl))break; }
   }
+  FFUnits.applyArmyOptions(state,Date.now(),forgeCombatHooks(state));
+  if(state.missionId&&String(state.missionId).startsWith("endless-"))prepareBattle(state,createEndlessMission(Number(String(state.missionId).slice(8))),Date.now());
 }
 
 /* Draft packs */
@@ -1804,7 +1871,7 @@ function applyTroopVisualClasses(el, type, lvl, isActing, id){
   if (isActing && visual.actionClass) el.classList.add(visual.actionClass);
 }
 function troopBodyClass(type){
-  if (["storm","wardmaker","architect","runebinder","medic","carrion"].includes(type)) return "caster";
+  if (["storm","wardmaker","architect","runebinder","medic","carrion","chronoweaver","miragewarden","hiveherald","signalhawk"].includes(type)) return "caster";
   return "fighter";
 }
 function troopArt(type,u){const hpPct=Math.max(0,Math.min(1,(u.hp||1)/Math.max(1,u.maxhp||1))),hpGlow=hpPct<.35?"drop-shadow(0 0 6px rgba(248,113,113,.85))":"drop-shadow(0 0 0 transparent)",src=troopImagePath(type),name=TROOPS[type]?.name||type||"Troop",image=src?'<img class="troop-image" src="'+escapeHtml(src)+'" alt="'+escapeHtml(name)+'" draggable="false" decoding="async">':'<span>'+escapeHtml(unitEmoji(type))+'</span>';return '<div class="troop-art" style="--hp-filter:'+hpGlow+'">'+image+'</div>'}
@@ -1812,7 +1879,7 @@ function unitActionClass(u, now){
   if ((u.animUntil||0) <= now) return "";
   return u.animType === "cast" ? "casting" : "attacking";
 }
-function packFor(roster, faction){
+function packFor(roster, faction, sideKey){
   const RELIC_CARDS = [
     { key:"banner_frontline", name:"Banner of the Frontline", desc:"Frontline units gain +2 max HP." },
     { key:"sharpshooter_doctrine", name:"Sharpshooter Doctrine", desc:"Backline units gain +1 range, -1 max HP." },
@@ -1837,7 +1904,10 @@ function packFor(roster, faction){
     { key:"protected_backline", name:"Protected Backline", desc:"Supports/ranged start farther back." },
     { key:"ambush", name:"Ambush Formation", desc:"Assassin-types start wider and slightly advanced." }
   ];
-  const poolTypes = FACTIONS[faction] || [];
+  const side = sideKey || (S?.roster?.p1 === roster ? "p1" : "p0");
+  const collection=S?.collections?.[side]||S?.profiles?.[side];
+  const unlocked = Array.isArray(collection?.unlocked)?collection.unlocked:Object.keys(collection?.troops||{}).filter(k=>collection.troops[k].unlocked);
+  const poolTypes = (FACTIONS[faction] || []).filter(key=>!TROOPS[key].unlockable || unlocked.includes(key));
 
   const troopCards = poolTypes.map(k=>({
     type:"troop",
@@ -2007,6 +2077,7 @@ function renderStatusPop(ev){
 }
 
 function emitLocalEffect(ev){
+  spriteRenderer?.event(ev);
   if (!ev) return;
   if (LOW_EFFECTS_MODE && (ev.type === "burst" || ev.type === "status")) return;
   if (ev.type==="beam") renderBeam(ev,false);
@@ -2023,7 +2094,7 @@ function pushSyncedFx(field, ev, now){
   if (!Array.isArray(field.syncedFx)) field.syncedFx = [];
   field.syncedFx.push({
     id: ev.id || crypto.randomUUID(),
-    type: ev.type,
+    type: ev.type,kind:ev.kind,ttl:ev.ttl,emoji:ev.emoji,radius:ev.radius,at:ev.at,
     x: ev.x, y: ev.y, cx: ev.cx, cy: ev.cy, x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2,
     battleTickId: Number.isFinite(field.battleTickId) ? field.battleTickId : null,
     createdAt: now || Date.now()
@@ -2079,6 +2150,7 @@ function auraDamageReduceFor(target, field){
 
 function spawnAdjacentUnit(st, parent, typeKey){
   const t = TROOPS[typeKey]; if (!t) return false;
+  if (!FFUnits.canSpawnSummon(st,parent)) return false;
   const size = (t.size===2?2:1);
   const dir = parent.p===0 ? -1 : +1;
   const candidates = [
@@ -2118,6 +2190,8 @@ function spawnAdjacentUnit(st, parent, typeKey){
         burrow:!!t.burrow, burrowDist:t.burrowDist||0, burrowCd:t.burrowCd||0, nextBurrow:0,
         nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
       };
+      u.summoned=true;u.summonedBy=parent.id;u.bornAt=Date.now();
+      FFUnits.initializeForgeUnit(u,{forgeTier:forgeUnitTier(st,parent.p,typeKey),ranked:st.mode==="ranked"||st.ranked===true,role:t.role});
       st.field.units.push(u);
       emitLocalEffect(fxBurst(x,y));
       return true;
@@ -2165,6 +2239,7 @@ function attemptViperLeap(u, units, st){
 
 function attemptBurrow(u, units, st, now){
   if (!u.burrow || u.hp<=0) return false;
+  if ((u.revealedUntil||0)>now) return false;
   if (!u.nextBurrow) u.nextBurrow = 0;
   if (now < u.nextBurrow) return false;
   const dir = (u.p===0? -1 : +1);
@@ -2220,7 +2295,7 @@ function healScale(v, now){
   return (v.woundUntil && v.woundUntil > now) ? 0.5 : 1;
 }
 function isSupportUnit(v){
-  return !!(v.heal || v.ward || v.wardShooter);
+  return !!(v.heal || v.ward || v.wardShooter || ["signalhawk","chronoweaver","miragewarden","hiveherald"].includes(v.type));
 }
 function applyShockDebuff(st, target, now, dur){
   const d = dur || 1500;
@@ -2342,30 +2417,37 @@ function getStatusIcons(u, now, field){
 function upsertVisualUnitsFromBattle(battle){
   if (!battle || !Array.isArray(battle.units)) return;
   serverBattleState = battle;
-  const now = Date.now();
+  const now = Date.now(), frameTime=performance.now();
   const liveIds = new Set();
   for (const u of battle.units){
     liveIds.add(u.id);
     const icons = getStatusIcons(u, now, battle);
     const ex = visualUnits.get(u.id);
     if (!ex){
-      visualUnits.set(u.id, { id:u.id, type:u.type, p:u.p, x:u.x, y:u.y, targetX:u.x, targetY:u.y, hp:u.hp, targetHp:u.hp, maxhp:u.maxhp, statusIcons:icons, actionClass:unitActionClass(u, now), size:unitSize(u), lvl:u.lvl||1, lastSeenAt:now, removing:false });
+      const motion=spriteRenderer?.createMotionTrack(u.x,u.y,frameTime);
+      if(motion)motion.facing=u.p===1?-1:1;
+      visualUnits.set(u.id, { id:u.id, type:u.type, p:u.p, x:u.x, y:u.y, targetX:u.x, targetY:u.y, hp:u.hp, targetHp:u.hp, maxhp:u.maxhp, statusIcons:icons, actionClass:unitActionClass(u, now), forgeTier:u.forgeTier||1,animType:u.animType,animUntil:u.animUntil,lastDamagedAt:u.lastDamagedAt,size:unitSize(u), lvl:u.lvl||1, lastSeenAt:now, removing:false,motion,facing:u.p===1?-1:1,illusion:!!u.illusion,markedUntil:u.markedUntil,markedBySide:u.markedBySide });
     } else {
-      ex.type=u.type; ex.p=u.p; ex.targetX=u.x; ex.targetY=u.y; ex.targetHp=u.hp; ex.maxhp=u.maxhp; ex.statusIcons=icons; ex.actionClass=unitActionClass(u, now); ex.size=unitSize(u); ex.lvl=u.lvl||1; ex.lastSeenAt=now; ex.removing=false;
+      ex.motion?.move(u.x,u.y,frameTime,Math.min(MOVE_MS,BATTLE_PUBLISH_MS*.7));ex.illusion=!!u.illusion;ex.markedUntil=u.markedUntil;ex.markedBySide=u.markedBySide;ex.removingAt=null;ex.forgeTier=u.forgeTier||1;ex.animType=u.animType;ex.animUntil=u.animUntil;ex.lastDamagedAt=u.lastDamagedAt;ex.type=u.type; ex.p=u.p; ex.targetX=u.x; ex.targetY=u.y; ex.targetHp=u.hp; ex.maxhp=u.maxhp; ex.statusIcons=icons; ex.actionClass=unitActionClass(u, now); ex.size=unitSize(u); ex.lvl=u.lvl||1; ex.lastSeenAt=now; ex.removing=false;
     }
   }
-  for (const [id, vu] of visualUnits.entries()) if (!liveIds.has(id)) vu.removing = true;
+  for (const [id, vu] of visualUnits.entries()) if (!liveIds.has(id) && !vu.removing){vu.removing=true;vu.removingAt=now;}
 }
 function ensureVisualLoop(){
   if (visualFrameHandle) return;
-  const step = ()=>{
-    const now = Date.now();
+  let lastVisualFrame=performance.now();
+  const step = (frameTime)=>{
+    if(spriteRenderer?.quality==="low"&&frameTime-lastVisualFrame<32){visualFrameHandle=requestAnimationFrame(step);return;}
+    const now = Date.now(), elapsed=Math.min(100,Math.max(1,frameTime-lastVisualFrame));
+    lastVisualFrame=frameTime;
+    const movementMix=1-Math.pow(.78,elapsed/(1000/60)), healthMix=1-Math.pow(.75,elapsed/(1000/60));
     if (S && S.phase === "battle" && serverBattleState){
-      paint([], serverBattleState);
+      paint([], serverBattleState);spriteRenderer?.paintFields(serverBattleState,now);
       for (const [id, vu] of visualUnits.entries()){
-        vu.x += (vu.targetX - vu.x) * 0.22;
-        vu.y += (vu.targetY - vu.y) * 0.22;
-        vu.hp += (vu.targetHp - vu.hp) * 0.25;
+        const motion=vu.motion?.sample(frameTime);
+        if(motion){vu.x=motion.x;vu.y=motion.y;vu.facing=motion.facing;}else{vu.x+=(vu.targetX-vu.x)*movementMix;vu.y+=(vu.targetY-vu.y)*movementMix;}
+        vu.hp += (vu.targetHp - vu.hp) * healthMix;
+        vu.actionClass=unitActionClass(vu,now);
         let node = unitEls.get(id) || unitDomById.get(id);
         if (!node){
           node = document.createElement("div");
@@ -2377,7 +2459,7 @@ function ensureVisualLoop(){
         }
         node.classList.toggle("fading", !!vu.removing);
         node.classList.toggle("big", vu.size===2);
-        const renderKey = [vu.type,vu.p,vu.lvl,vu.size].join("|");
+        const renderKey = [vu.type,vu.p,vu.lvl,vu.size,vu.forgeTier].join("|");
         const prevRenderKey = lastUnitRenderKey.get(id);
         node.style.transform = `translate(${vu.x * (CELL + GAP)}px, ${vu.y * (CELL + GAP)}px)`;
         node.style.width = vu.size===2 ? `calc((var(--cell) * 2) + var(--gap))` : "var(--cell)";
@@ -2385,27 +2467,37 @@ function ensureVisualLoop(){
         const under = node.querySelector(".under");
         if (under){ const color = (rankColor(vu.lvl).trim() || "#22c55e"); under.style.background = "radial-gradient(circle at top,"+color+","+color+")"; }
         const uni = node.querySelector(".unit");
-        uni.className = "unit";
-        uni.classList.toggle("team0", vu.p===0); uni.classList.toggle("team1", vu.p===1); uni.classList.toggle("big", vu.size===2);
-        uni.classList.toggle("lvl2", (vu.lvl||1)===2); uni.classList.toggle("lvl3", (vu.lvl||1)>=3);
-        applyTroopVisualClasses(uni, vu.type, vu.lvl, !!vu.actionClass, id);
-        if (vu.actionClass) uni.classList.add(vu.actionClass);
         if (prevRenderKey !== renderKey){
-          uni.innerHTML = troopArt(vu.type, vu);
-          lastUnitRenderKey.set(id, renderKey);
+          uni.className = "unit";
+          uni.classList.toggle("team0", vu.p===0); uni.classList.toggle("team1", vu.p===1); uni.classList.toggle("big", vu.size===2);
+          uni.classList.toggle("lvl2", (vu.lvl||1)===2); uni.classList.toggle("lvl3", (vu.lvl||1)>=3);
+          uni.classList.toggle("ff-illusion",!!vu.illusion);
+          applyTroopVisualClasses(uni,vu.type,vu.lvl,false,id);
+          uni.innerHTML=troopArt(vu.type,vu);node._visualActionClass=null;
+          lastUnitRenderKey.set(id,renderKey);
         }
+        if(node._visualActionClass!==vu.actionClass){
+          uni.classList.remove("casting","attacking");const action=troopVisual(vu.type).actionClass;
+          if(action)uni.classList.toggle(action,!!vu.actionClass);
+          if(vu.actionClass)uni.classList.add(vu.actionClass);node._visualActionClass=vu.actionClass;
+        }
+        uni.classList.toggle("ff-marked",(vu.markedUntil||0)>now);
+        const moving=motion?.moving ?? Math.hypot(vu.targetX-vu.x,vu.targetY-vu.y)>.04;
+        spriteRenderer?.renderUnit(uni,vu,frameTime,{moving,facing:vu.facing|| (vu.p===1?-1:1)});
         const hp = node.querySelector(".hp"); hp.classList.toggle("big", vu.size===2);
         const hpFill = node.querySelector(".hp>i");
         hpFill.classList.toggle("team0", vu.p===0); hpFill.classList.toggle("team1", vu.p===1);
         const hpPct = Math.max(0, Math.round(100 * vu.hp / Math.max(1, vu.maxhp)));
         if (lastHpPct.get(id) !== hpPct){ hpFill.style.width = hpPct + "%"; lastHpPct.set(id, hpPct); }
-        node.querySelector(".status").innerHTML = vu.statusIcons.map(i=>"<span>"+i+"</span>").join("");
-        if (vu.removing && (now - vu.lastSeenAt) > 240){ node.remove(); unitDomById.delete(id); unitEls.delete(id); lastUnitRenderKey.delete(id); lastHpPct.delete(id); visualUnits.delete(id); }
+        const statusHtml=vu.statusIcons.map(i=>"<span>"+i+"</span>").join("");
+        if(node._statusHtml!==statusHtml){node.querySelector(".status").innerHTML=statusHtml;node._statusHtml=statusHtml;}
+        if (vu.removing && (now - (vu.removingAt||vu.lastSeenAt)) > Math.max(700,spriteRenderer?.deathDuration(vu.type,vu.forgeTier)||700)){ node.remove(); unitDomById.delete(id); unitEls.delete(id); lastUnitRenderKey.delete(id); lastHpPct.delete(id); visualUnits.delete(id);spriteRenderer?.forget(id); }
       }
     } else if (unitDomById.size){
       for (const node of unitDomById.values()) node.remove();
-      unitDomById.clear(); unitEls.clear(); visualUnits.clear(); lastUnitRenderKey.clear(); lastHpPct.clear(); serverBattleState = null;
+      unitDomById.clear(); unitEls.clear(); visualUnits.clear(); lastUnitRenderKey.clear(); lastHpPct.clear(); serverBattleState = null;spriteRenderer?.clear();
     }
+    spriteRenderer?.step(performance.now());
     visualFrameHandle = requestAnimationFrame(step);
   };
   visualFrameHandle = requestAnimationFrame(step);
@@ -2478,6 +2570,8 @@ function chooseBalancedEnemy(u, units, field, preferRanged){
   return chosen;
 }
 function pickTarget(u, units, field){
+  const forgeTarget=FFUnits.chooseForgeTarget(u,units,Date.now(),{distance:rectDistance});
+  if(forgeTarget){u.targetId=forgeTarget.id;return forgeTarget;}
   const priority = strongestArmorTargetInRange(u, units);
   if (priority){ u.targetId=priority.id; return priority; }
   const current = units.find(v=>v.id===u.targetId && v.p!==u.p && v.hp>0);
@@ -2543,13 +2637,15 @@ function stepToward(u,t,units){
 }
 function canStepNow(u, now){
   if (!u.nextStep || now>=u.nextStep){
-    u.nextStep = now + MOVE_MS;
+    const temporaryHaste=(u.swarmMoveUntil||0)>now&&u.swarmBaseSpd?Math.max(.5,u.swarmBaseSpd/Math.max(1,u.spd)):1;
+    u.nextStep = now + Math.round(MOVE_MS*temporaryHaste);
     return true;
   }
   return false;
 }
 function blinkIfNeeded(u, units){
   if(!u.blink50 || u.blinked) return;
+  if((u.revealedUntil||0)>Date.now())return;
   if (u.hp <= 0.5*u.maxhp){
     const dir = (u.p===0? +1 : -1);
     for(let i=0;i<3;i++){
@@ -2762,7 +2858,8 @@ function healAction(u, st, now){
     }
   }
   if (!target) return false;
-  const raw = Math.max(1, u.healAmt|0);
+  const raw = Math.max(1, u.healAmt|0)+(u.arcaneBatteryReady?1:0);
+  u.arcaneBatteryReady=false;
   const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
   if (u.legendary && u.type==="medic" && u.reviveReady){
@@ -2803,8 +2900,9 @@ function wardAction(u, st, now){
           hCd:(u.wardHealCd||1500)
         };
 
-    const wardHp = (u.firstWardBoost ? (u.wardHp||2)+2 : (u.wardHp||2));
+    const wardHp = (u.firstWardBoost ? (u.wardHp||2)+2 : (u.wardHp||2))+(u.arcaneBatteryReady?2:0);
     if (placeWard(st, tx, ty, wardHp, u.wardDur||6000, opts)){
+      u.arcaneBatteryReady=false;
       if (u.firstWardBoost){
         const allies = st.field.units.filter(v=>v.p===u.p && v.hp>0 && (Math.abs(v.x-tx)+Math.abs(v.y-ty)<=2));
         for (const a of allies) a.hp = Math.min(a.maxhp, a.hp + 1);
@@ -2818,14 +2916,17 @@ function wardAction(u, st, now){
 }
 
 function applyDamage(victim, dmg, st){
-  victim.lastDamagedAt = Date.now();
+  dmg=Math.max(0,Number(dmg)||0);
+  const now=Date.now(),beforeHp=Math.max(0,victim.hp);
+  if((victim.startShieldUntil||0)>now&&(victim.startShield||0)>0){const absorbed=Math.min(dmg,victim.startShield);victim.startShield-=absorbed;dmg-=absorbed;}
+  if(dmg>0)victim.lastDamagedAt = now;
   if (victim.legendary && victim.type==="defiler" && victim.plagueReady && victim.hp > 0 && (victim.hp-dmg) <= Math.floor(victim.maxhp*0.35)){
     addToxicSplash(st, victim.x, victim.y, 4500, victim.p);
     victim.plagueReady = false;
   }
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
-
+  return Math.min(beforeHp,dmg);
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   const hitIds = new Set();
@@ -2835,7 +2936,10 @@ function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
       const hit=units.find(o=>o.p!==srcP && o.hp>0 && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
       if(hit && !hitIds.has(hit.id)){
         hitIds.add(hit.id);
-        const rd = reduceDamageForTarget(dmg, hit, field, opts);
+        const attacker=opts&&opts.attacker;
+        const marked=attacker?FFUnits.markedDamageBonus(attacker,hit,(opts&&opts.now)||Date.now(),{field:field},{distance:rectDistance}):0;
+        const armorRound=attacker&&attacker.antiArmorRounds&&armorTypeFor(hit.type,hit)==="armored"?1:0;
+        const rd = reduceDamageForTarget(dmg+marked+armorRound, hit, field, opts);
         applyDamage(hit, rd, {field:field});
         if(kn) tryKnock(x,y,hit,units,strong);
       }
@@ -2855,7 +2959,10 @@ function tryKnock(cx,cy,t,units,strong){
 function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   let cur = startTarget; let left=hops; const hit=new Set();
   while(cur && left>0){
-    applyDamage(cur, reduceDamageForTarget(dmg, cur, field, opts), {field:field});
+    const attacker=opts&&opts.attacker;
+    const marked=attacker?FFUnits.markedDamageBonus(attacker,cur,(opts&&opts.now)||Date.now(),{field:field},{distance:rectDistance}):0;
+    const armorRound=attacker&&attacker.antiArmorRounds&&armorTypeFor(cur.type,cur)==="armored"?1:0;
+    applyDamage(cur, reduceDamageForTarget(dmg+marked+armorRound, cur, field, opts), {field:field});
     hit.add(cur.id);
     let cand=null,bd=1e9;
     for(let i=0;i<units.length;i++){
@@ -2868,29 +2975,36 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   }
 }
 function attack(u, t, now, st){
+  if (u.illusion) return true;
   const effRange = (u.rangeDebuffUntil && u.rangeDebuffUntil > now) ? Math.max(1,(u.range||1)-1) : (u.range||1);
   const inRange = rectDistance(u,t) <= effRange;
   if (!inRange) return false;
   if (now < (u.nextAtk||0)) return true;
+  const forgeAttack=FFUnits.attackForgeUnit(u,t,now,st,forgeCombatHooks(st));
+  if (forgeAttack!==null) return forgeAttack;
 
   const ranged = (u.range||1) > 1;
   u.animUntil = now + 320;
   u.animType = troopBodyClass(u.type) === "caster" ? "cast" : "attack";
+  const firstSpellBoost=u.arcaneBatteryReady&&!u.ward&&troopBodyClass(u.type)==="caster"?1:0;
+  if(firstSpellBoost)u.arcaneBatteryReady=false;
 
   function deal(victim, raw, isRanged){
-    let dmg = raw|0;
+    let dmg = (raw|0)+firstSpellBoost+FFUnits.markedDamageBonus(u,victim,now,st,{distance:rectDistance});
     if (u.legendary && u.type==="rifleman" && victim.lastDamagedAt) dmg += 1;
     if (u.legendary && u.type==="miner" && !u.minerProc && (victim.range>1 || isSupportUnit(victim))){ dmg += 2; victim.bindUntil = Math.max(victim.bindUntil||0, now+700); u.minerProc = true; }
     if (u.legendary && u.type==="marksman" && isSupportUnit(victim)) dmg += 1;
     const attackerStrongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
     const victimArmor = victim.armorType || armorTypeFor(victim.type, victim);
     if (attackerStrongVs.includes(victimArmor)) dmg += 2;
+    if(u.antiArmorRounds&&victimArmor==="armored")dmg+=1;
     if (isRanged){
       dmg = applyWardShields(u, victim, dmg, st.field);
       if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
     }
     dmg = reduceDamageForTarget(dmg, victim, st.field, {ignoreArmor:!!u.trueDamage});
-    applyDamage(victim, dmg, st);
+    const actualDamage=applyDamage(victim, dmg, st);
+    FFUnits.siphonAfterDamage(u,victim,actualDamage,now,st,forgeCombatHooks(st));
   }
 
   if (u.kamikaze){
@@ -2900,7 +3014,7 @@ function attack(u, t, now, st){
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
       const impact = nearestPointOnRectToUnit(t, u);
-      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
     }
     if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
@@ -2911,12 +3025,12 @@ function attack(u, t, now, st){
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * (u.legendary ? 0.75 : 0.6)));
     const impact = nearestPointOnRectToUnit(t, u);
-    splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
+    splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
 
   } else if (u.chain3){
 
     if (u.type === "storm") pushSyncedFx(st.field, fxStorm(t.x,t.y), now);
-    chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg, {ignoreArmor:!!u.trueDamage});
+    chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg+firstSpellBoost, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
 
@@ -2935,7 +3049,7 @@ function attack(u, t, now, st){
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
       const impact = nearestPointOnRectToUnit(t, u);
-      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage});
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
     }
     if (u.toxicSplash){
       addToxicSplash(st, t.x, t.y, 7000, u.p);
@@ -2974,13 +3088,14 @@ function attack(u, t, now, st){
     t.woundUntil = Math.max(t.woundUntil||0, now + wd);
 
   }
+  if(u.poisonedBlades&&(u.range||1)<=1&&t.hp>0)t.woundUntil=Math.max(t.woundUntil||0,now+1000);
   if (u.suppress && t.hp > 0){
     t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
     t.slowFactor = u.slowFactor || 2;
     if (u.legendary) t.rangeDebuffUntil = Math.max(t.rangeDebuffUntil||0, t.slowUntil||0);
   }
 
-  u.nextAtk = now + (u.cd || 600);
+  u.nextAtk = now + FFUnits.attackCooldown(u,now,st,{distance:rectDistance});
   return true;
 }
 
@@ -3116,6 +3231,7 @@ function makeBattlePayload(field, battleTickId){
     sessionKey:(S&&S.sessionKey)||undefined,
     battleTickId:battleTickId|0,
     units:(cleanField.units||[]).filter(u=>u&&u.hp>0).map(compactUnitForSync),
+    temporalFields:cleanField.temporalFields||[],
     poison:cleanField.poison||[],
     toxic:cleanField.toxic||[],
     acid:cleanField.acid||[],
@@ -3127,6 +3243,7 @@ function makeBattlePayload(field, battleTickId){
   });
 }
 async function flushBattlePublishQueue(){
+  if(isLocalPractice()){if(queuedBattlePayload){B=queuedBattlePayload;queuedBattlePayload=null;upsertVisualUnitsFromBattle(B);}return;}
   if (battlePublishInFlight || disposed) return;
   battlePublishInFlight=true;
   try{
@@ -3165,7 +3282,7 @@ async function writeStatePatch(patch){
   try{
     if (S) S=Object.assign({},S,deepClone(patch));
     render();
-    await updateDoc(stateRef,sanitizeFirestoreValue(patch));
+    if(!isLocalPractice())await updateDoc(stateRef,sanitizeFirestoreValue(patch));
   }catch(e){
     S=previous;
     render();
@@ -3175,6 +3292,7 @@ async function writeStatePatch(patch){
   }
 }
 function hasHostLease(){
+  if (isSecureMode() || executionMode === "menu") return false;
   if (!isHost) return false;
   if (!S || !S.hostClientId) return true;
   return S.hostClientId===clientInstanceId;
@@ -3248,6 +3366,14 @@ async function processHostPhase(){
   try{
     const d=deepClone(S);
     const now=Date.now();
+    if(isLocalPractice() && ["draft","draft-after","loser-bonus"].includes(d.phase)){
+      const side="p1",di=d.draftIndex|0,pack=d.currentPacks?.[side]||[];
+      if(pack.length && d.selections?.[side]?.[di]==null && now>(d.phaseEndsAt||0)-7800){
+        const selections=deepClone(d.selections||{p0:[],p1:[]});
+        selections[side][di]=chooseAIDraft(pack,{myRoster:d.roster.p1,enemyRoster:d.roster.p0,myRelics:d.relics.p1,enemyRelics:d.relics.p0,difficulty:currentMission?.difficulty||.55},Math.random,{evaluateDraftCard});
+        await writeStatePatch({selections}); return;
+      }
+    }
     if ((d.hostLeaseUntil||0)-now<12000 && now-lastLeaseRenewalAt>8000){
       lastLeaseRenewalAt=now;
       await writeStatePatch({hostClientId:clientInstanceId,hostLeaseUntil:now+30000});
@@ -3311,7 +3437,9 @@ async function processHostPhase(){
           lives: d.lives || [4,4],
           roster: roster,
           field: fieldEmpty(),
-          factions: d.factions || {p0:null,p1:null}
+          factions: d.factions || {p0:null,p1:null},
+          relics:draftState.relics,tactics:draftState.tactics,formations:draftState.formations,
+          forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
         rebuildFieldFromRoster(temp);
         await writeStatePatch({
@@ -3426,7 +3554,9 @@ async function processHostPhase(){
           lives: d.lives || [4,4],
           roster: roster,
           field: fieldEmpty(),
-          factions: d.factions || {p0:null,p1:null}
+          factions: d.factions || {p0:null,p1:null},
+          relics:afterState.relics,tactics:afterState.tactics,formations:afterState.formations,
+          forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
         rebuildFieldFromRoster(temp);
         await writeStatePatch({
@@ -3474,6 +3604,7 @@ function startHostLoops(){
 }
 
 function applySuddenDeath(st,now){
+  tickCampaignHazards(st,now);
   const field=st.field;
   const started=field.startedAt||hostBattleStartedAt||now;
   if ((now-started)<SUDDEN_DEATH_MS) return;
@@ -3549,6 +3680,7 @@ async function runBattle(initialField){
         wardsHeal(st,now);
         wardsShoot(st,now);
         broodTick(st,now);
+        FFUnits.tickForgeAbilities(st,now,forgeCombatHooks(st));
         applySuddenDeath(st,now);
       }
 
@@ -3589,6 +3721,7 @@ async function runBattle(initialField){
       if (doLogic){
         const dead=st.field.units.filter(u=>u.hp<=0);
         for (const u of dead){
+          FFUnits.noteForgeDeath(u,st,now,{distance:rectDistance});
           if (u.paints){
             paintPoison(st,u.x,u.y,7000,u.p);
             pushSyncedFx(st.field,fxBurst(u.x,u.y),now);
@@ -3616,26 +3749,10 @@ async function runBattle(initialField){
         hostBattleState=null;
 
         if (winnerName){
-          const mmrInfo=calcMMRChange(st,winnerName);
-          await runTransaction(db,async(tx)=>{
-            const latest=await tx.get(stateRef);
-            if (!latest.exists()) return;
-            const live=latest.data();
-            if (live.phase==="game-over"&&live.eloCommitted) return;
-            const names=Array.isArray(st.players)?st.players.slice(0,2):[];
-            for (let i=0;i<2;i++){
-              const nm=names[i]; if(!nm) continue;
-              tx.set(doc(db,"users",nm),{
-                crowncouncilElo:mmrInfo.mmr[i],
-                crowncouncilLastDelta:mmrInfo.delta[i],
-                crowncouncilLastMatchAt:Date.now()
-              },{merge:true});
-            }
-            tx.update(stateRef,{
-              lives:lives,phase:"game-over",phaseEndsAt:0,winner:winnerName,
-              mmr:mmrInfo.mmr,mmrChange:mmrInfo.delta,eloCommitted:true,endedAt:Date.now()
-            });
-          });
+          // Competitive ratings and collectible rewards are written by the
+          // authenticated authoritative service only. Legacy hosted games are practice.
+          await writeStatePatch({lives,phase:"game-over",phaseEndsAt:0,winner:winnerName,
+            mmr:st.mmr||[1000,1000],mmrChange:[0,0],eloCommitted:false,endedAt:Date.now()});
         }else{
           const loserKey=pKey(loser),winnerKey=pKey(1-loser);
           const roster=st.roster||{p0:[],p1:[]};
@@ -3683,8 +3800,8 @@ function render(){
   const lives=(S && S.lives) || [4,4];
   const mmr = (S && S.mmr) || [1000,1000];
 
-  $("p0Badge").innerHTML = '<span class="'+rankClass(mmr[0])+'">'+p0n+'</span> ['+rankLabel(mmr[0])+' '+mmr[0]+'] — <span class="'+rankClass(mmr[0])+'">'+("❤".repeat(lives[0]))+'</span>';
-  $("p1Badge").innerHTML = '<span class="'+rankClass(mmr[1])+'">'+p1n+'</span> ['+rankLabel(mmr[1])+' '+mmr[1]+'] — <span class="'+rankClass(mmr[1])+'">'+("❤".repeat(lives[1]))+'</span>';
+  $("p0Badge").innerHTML = '<span class="'+rankClass(mmr[0])+'">'+escapeHtml(p0n)+'</span> ['+rankLabel(mmr[0])+' '+mmr[0]+'] — <span class="'+rankClass(mmr[0])+'">'+("❤".repeat(lives[0]))+'</span>';
+  $("p1Badge").innerHTML = '<span class="'+rankClass(mmr[1])+'">'+escapeHtml(p1n)+'</span> ['+rankLabel(mmr[1])+' '+mmr[1]+'] — <span class="'+rankClass(mmr[1])+'">'+("❤".repeat(lives[1]))+'</span>';
 
   const phase=(S && S.phase) || "waiting";
   $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
@@ -3709,6 +3826,10 @@ function render(){
   } else { counter.style.display="none"; }
 
   const endSummaryEl = $("endSummary");
+  if(isLocalPractice()&&S?.phase==="game-over"&&lastResultsId!==S.sessionKey){
+    lastResultsId=S.sessionKey;
+    expansionUI?.showResults({won:S.winner===username,opponent:S.players[1],mmr:S.mmr[0],mmrChange:0,estimatedMMR:false,rewardsPending:false,faction:S.factions?.p0});
+  }
   if (S && S.phase === "game-over"){
     const mmrFinal = S.mmr || [1000,1000];
     const delta = S.mmrChange || [0,0];
@@ -3725,11 +3846,11 @@ function render(){
     }
 
     endSummaryEl.innerHTML = ''+
-      '<div><strong>Winner:</strong> '+(winner||"—")+'</div>'+
-      '<div><strong>'+(players[0]||"P0")+':</strong> '+p0Before+' → '+mmrFinal[0]+' '+fmtDelta(delta[0]||0)+'</div>'+
-      '<div><strong>'+(players[1]||"P1")+':</strong> '+p1Before+' → '+mmrFinal[1]+' '+fmtDelta(delta[1]||0)+'</div>'+
+      '<div><strong>Winner:</strong> '+escapeHtml(winner||"—")+'</div>'+
+      '<div><strong>'+escapeHtml(players[0]||"P0")+':</strong> '+p0Before+' → '+mmrFinal[0]+' '+fmtDelta(delta[0]||0)+'</div>'+
+      '<div><strong>'+escapeHtml(players[1]||"P1")+':</strong> '+p1Before+' → '+mmrFinal[1]+' '+fmtDelta(delta[1]||0)+'</div>'+
       '<div style="margin-top:6px;opacity:.9">'+
-      'Factions: '+((S.factions && S.factions.p0) || "?")+' vs '+((S.factions && S.factions.p1) || "?")+
+      'Factions: '+escapeHtml((S.factions && S.factions.p0) || "?")+' vs '+escapeHtml((S.factions && S.factions.p1) || "?")+
       '</div>';
     endSummaryEl.style.display = "block";
   } else {
@@ -3749,6 +3870,9 @@ function render(){
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
   const guideBtn=$("counterGuideBtn"), guideModal=$("counterGuideModal"), guideList=$("counterGuideList");
+  if(S && S.mode && S.mode!=="pvp" && meIndex===0){
+    $("p1Badge").textContent=p1n+" · AI · Estimated MMR "+mmr[1]+" — "+"❤".repeat(lives[1]);
+  }
   if (!draftishPh){
     overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML="";
     guideBtn.style.display="none"; guideModal.style.display="none"; closeCardInfoModal();
@@ -3922,6 +4046,9 @@ function render(){
     (function(idx){
       el.onclick=function(){ chooseCard(idx); };
     })(i);
+    const artKey=c.key||c.for;
+    const tier=forgeProfile?.troops?.[artKey]?.forgeTier||1;
+    expansionUI?.decorateDraftCard(el,{key:artKey,type:c.type==="special"?c.special:c.type,faction:TROOPS[artKey]?.faction||S.factions?.[sk],tier,recommended:recText,copies:myRoster.find(r=>r.type===artKey)?.count||0,detail:infoBody});
     row.appendChild(el);
   }
   guideBtn.onclick = ()=>{ guideModal.style.display="block"; };
@@ -3930,7 +4057,17 @@ function render(){
 
 /* -------- transactional player actions -------- */
 async function chooseFaction(fac){
-  if(!S) return;
+  if(!S || !ALL_FACTIONS.includes(fac)) return;
+  if(isSecureMode()){
+    if(secureRequestBusy)return;secureRequestBusy=true;
+    try{await adoptSecureResponse(await progression.joinPvp({lobbyId:gameId,faction:fac,ranked:requestedRanked}));startSecurePolling();}
+    catch(error){expansionUI?.notify(error.message);}
+    finally{secureRequestBusy=false;}return;
+  }
+  if(isLocalPractice()){
+    if(S.phase!=="faction-select"||S.factions.p0)return;
+    await writeStatePatch({factions:{p0:fac,p1:localOpponent?.faction||ALL_FACTIONS[Math.floor(Math.random()*3)]}});return;
+  }
   const sk=pKey(meIndex);
   try{
     await runTransaction(db, async (tx)=>{
@@ -3951,6 +4088,19 @@ async function chooseFaction(fac){
 }
 async function chooseCard(i){
   if(!S) return;
+  const activePack=S.currentPacks?.[pKey(meIndex)]||[];
+  if(!Number.isInteger(i)||i<0||i>=activePack.length)return;
+  if(isSecureMode()){
+    if(secureRequestBusy)return;secureRequestBusy=true;
+    try{await adoptSecureResponse(await progression.pick(secureSession.id,i,{sequence:secureSession.revision}));}
+    catch(error){expansionUI?.notify(error.message);}
+    finally{secureRequestBusy=false;}return;
+  }
+  if(isLocalPractice()){
+    const di=S.draftIndex|0,selections=deepClone(S.selections||{p0:[],p1:[]});
+    if(selections.p0[di]!=null)return;selections.p0[di]=i;
+    await writeStatePatch({selections});return;
+  }
   const di=S.draftIndex|0;
   const sk=pKey(meIndex);
   try{
@@ -3980,7 +4130,7 @@ async function chooseCard(i){
 
 /* Listeners */
 function startListeners(){
-  if (listenersStarted) return;
+  if (executionMode!=="legacy-online" || listenersStarted) return;
   listenersStarted = true;
 
   unsubscribeLobby = onSnapshot(lobbyRef, async (snap)=>{
@@ -3989,7 +4139,7 @@ function startListeners(){
     const lob = snap.data() || {};
     const wasHost = isHost;
     lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
-    isHost = (lob.host === username);
+    isHost = lob.hostUid ? lob.hostUid===auth.currentUser?.uid : (lob.host === username);
 
     configureBattleListener();
     if (isHost) {
@@ -4171,15 +4321,170 @@ function cleanupGameRuntime(){
   if (unsubscribeLobby){ unsubscribeLobby(); unsubscribeLobby=null; }
   if (unsubscribeState){ unsubscribeState(); unsubscribeState=null; }
   if (unsubscribeBattle){ unsubscribeBattle(); unsubscribeBattle=null; }
+  clearInterval(securePoll);cancelAnimationFrame(securePlayback);matchSearch?.stop();spriteRenderer?.destroy?.();
   if (visualFrameHandle){ cancelAnimationFrame(visualFrameHandle); visualFrameHandle=0; }
   listenersStarted=false;
 }
 window.addEventListener("pagehide", cleanupGameRuntime, {once:true});
 window.addEventListener("beforeunload", cleanupGameRuntime, {once:true});
 
+/* ---------- Expansion orchestration ---------- */
+const defaultForgeProfile = ()=>({username,crowncouncilElo:1000,forgeDust:0,troops:Object.fromEntries(Object.entries(TROOPS).map(([key,troop])=>[key,{forgeTier:1,cards:0,unlocked:!troop.unlockable}])),campaign:{missions:{}},wins:0,losses:0});
+const unlockedForgeKeys=()=>Object.keys(forgeProfile?.troops||{}).filter(key=>forgeProfile.troops[key].unlocked);
+function resetActiveRuntime(){
+  stopHostLoops();clearInterval(securePoll);securePoll=null;
+  cancelAnimationFrame(securePlayback);securePlayback=null;playbackKey=null;
+  spriteRenderer?.clear();secureSession=null;lastResultsId=null;
+  for(const node of unitDomById.values())node.remove();
+  unitDomById.clear();unitEls.clear();visualUnits.clear();lastUnitRenderKey.clear();lastHpPct.clear();
+  serverBattleState=null;B=battleEmpty();
+}
+function returnToForgeMenu(){
+  resetActiveRuntime();executionMode="menu";S=null;isHost=false;updateAssetGate();$("overlay").style.display="none";$("cardRow").style.display="none";
+  expansionUI?.showMenu();
+}
+async function startPractice(faction="Vanir",missionId=null){
+  resetActiveRuntime();executionMode="practice";isHost=true;meIndex=0;
+  currentMission=missionId?(String(missionId).startsWith("endless-")?createEndlessMission(Number(String(missionId).split("-")[1])||1):getMission(missionId)):null;
+  const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000,currentMission?.difficulty||.55);
+  localOpponent={...ai,faction:currentMission?.aiFaction||ALL_FACTIONS[Math.floor(Math.random()*3)]};
+  const state=newMatchState([username,currentMission?.opponent?.name||ai.name],[forgeProfile?.crowncouncilElo||1000,ai.estimatedMmr],crypto.randomUUID());
+  state.mode="practice";state.missionId=currentMission?.id||null;state.ranked=false;state.phase="faction-select";state.phaseEndsAt=Date.now()+20000;
+  state.collections={p0:{unlocked:unlockedForgeKeys()},p1:{unlocked:Object.keys(TROOPS).filter(k=>TROOPS[k].unlockable)}};
+  state.forgeTiers={p0:{},p1:{}};
+  state.factions={p0:null,p1:localOpponent.faction};
+  if(currentMission){
+    state.roster.p0=playerStartingRoster(faction,currentMission);
+    state.roster.p1=deepClone(currentMission.startingRoster||[]);
+    state.collections.p1.unlocked=currentMission.opponent.unlockedTroops||[];
+    state.formations.p1=currentMission.opponent.formation||"balanced";
+    state.relics.p1=deepClone(currentMission.opponent.relics||[]);
+    state.tactics.p1=deepClone(currentMission.opponent.tactics||[]);
+  }
+  S=state;lobbyPlayers=state.players;expansionUI?.hide();spriteRenderer?.paintTerrain?.(cellsEl,viewport,currentMission?.theme||"contested-forge");
+  await startTroopImagePreload();ensureVisualLoop();updateAssetGate();
+  await chooseFaction(faction);startHostLoops();render();
+  expansionUI?.notify(currentMission?"Practice mission: campaign rewards require a connected profile.":"Practice match · no MMR changes");
+}
+function shiftReplayTimers(frame,offset){
+  const value=deepClone(frame);
+  for(const unit of value.units||[]){
+    for(const key of Object.keys(unit))if(typeof unit[key]==="number" && (key.endsWith("Until")||key==="lastDamagedAt") && unit[key]>0)unit[key]+=offset;
+  }
+  for(const key of ["poison","toxic","acid","wards","temporalFields"]){for(const entry of value[key]||[])if(entry.until)entry.until+=offset;}
+  for(const effect of value.syncedFx||[]){if(effect.at)effect.at+=offset;if(effect.createdAt)effect.createdAt+=offset;}
+  return value;
+}
+async function adoptSecureResponse(response){
+  if(response.profile)forgeProfile=response.profile;
+  const session=response.session;if(!session)return;
+  const previousSession=secureSession;
+  secureSession=session;meIndex=session.meIndex||0;S={...session,sessionKey:session.id,phaseEndsAt:session.deadlineAt||0};
+  if(!previousSession||previousSession.id!==session.id)expansionUI?.hide();updateAssetGate();render();
+  if(session.phase==="battle"&&session.battle?.frames?.length){
+    const key=session.battle.replayId||session.id+":"+session.round;
+    if(playbackKey!==key){
+      cancelAnimationFrame(securePlayback);playbackKey=key;
+      const battle=session.battle,frames=battle.frames,origin=battle.clockOrigin||1000;
+      const serverTime=Number(response.serverTime)||Date.now();
+      const elapsedAtStart=Math.max(0,serverTime-(battle.startedAt||serverTime));
+      const started=performance.now()-Math.min(battle.durationMs,elapsedAtStart);
+      const wallStart=Date.now()-Math.min(battle.durationMs,elapsedAtStart);
+      let frameIndex=0;
+      const tick=time=>{
+        if(!isSecureMode()||secureSession?.id!==session.id||playbackKey!==key)return;
+        const elapsed=Math.max(0,time-started);
+        while(frameIndex+1<frames.length&&frames[frameIndex+1].at<=elapsed)frameIndex++;
+        const field=shiftReplayTimers(frames[frameIndex],wallStart-origin);
+        field.battleTickId=frameIndex;field.startedAt=wallStart;
+        B=field;serverBattleState=field;upsertVisualUnitsFromBattle(field);
+        renderSyncedFxEvents(field.syncedFx||[]);paint([],field);
+        if(elapsed<battle.durationMs){securePlayback=requestAnimationFrame(tick);}
+        else{securePlayback=null;progression.getSession(session.id).then(adoptSecureResponse).catch(error=>expansionUI?.notify(error.message));}
+      };
+      securePlayback=requestAnimationFrame(tick);
+    }
+  }
+  if(session.phase==="game-over"){clearInterval(securePoll);securePoll=null;}
+  if(session.phase==="game-over"&&lastResultsId!==session.id){
+    lastResultsId=session.id;
+    expansionUI?.showResults({won:session.winner===session.players?.[meIndex]||session.winnerSide===meIndex,opponent:session.players?.[1-meIndex],mmr:forgeProfile?.crowncouncilElo,mmrChange:response.receipt?.mmrDelta||session.mmrChange?.[meIndex]||0,receipt:response.receipt,stars:response.receipt?.stars,unlockedTroops:response.receipt?.unlocks||[],faction:session.factions?.[pKey(meIndex)],campaignComplete:Object.values(forgeProfile?.campaign?.missions||{}).filter(m=>m.completed).length>=30});
+  }
+}
+function startSecurePolling(){
+  clearInterval(securePoll);if(secureSession?.phase==="game-over")return;
+  securePoll=setInterval(async()=>{
+    if(!isSecureMode()||!secureSession||secureRequestBusy)return;
+    secureRequestBusy=true;
+    try{await adoptSecureResponse(await progression.getSession(secureSession.id));}
+    catch(error){expansionUI?.notify(error.message);}
+    finally{secureRequestBusy=false;}
+  },1500);
+}
+async function startProgressionMatch(mode,missionId,faction="Vanir"){
+  if(!FACTION_FORGE_CONFIG.progressionApiUrl||!forgeProfile?.uid){return startPractice(faction,mode==="campaign"?missionId:null);}
+  try{
+    resetActiveRuntime();executionMode="secure";isHost=false;
+    const response=await progression.startSolo({mode,missionId,faction});
+    spriteRenderer?.paintTerrain?.(cellsEl,viewport,(mode==="campaign"?getMission(missionId)?.theme:null)||"contested-forge");
+    await adoptSecureResponse(response);ensureVisualLoop();startSecurePolling();
+  }catch(error){returnToForgeMenu();expansionUI?.notify(error.message);throw error;}
+}
+function beginMatchmaking(){
+  resetActiveRuntime();executionMode="menu";S=null;updateAssetGate();
+  const onBrowse=()=>{matchSearch?.stop();location.href="../lobby/lobby.html?view=multiplayer&game=crowncouncil";};
+  let rows=[],status="Searching public Faction Forge lobbies…",offerAI=null;
+  const update=()=>expansionUI?.showMatchmaking({rows,status,onJoin:async row=>{try{return await matchSearch.join(row.id)}catch(error){status=error.message;update();throw error}},onBrowse,onCancel:()=>{matchSearch.stop();expansionUI.showMenu()},offerAI});
+  matchSearch=createMatchmaking({db,auth,api:{doc,collection,query,where,onSnapshot,runTransaction,getDoc},username:forgeProfile?.uid?forgeProfile.username:username,
+    timeoutMs:FACTION_FORGE_CONFIG.matchmakingTimeoutMs,
+    onRows:value=>{rows=value;update()},onStatus:value=>{status=value;update()},
+    onFallback:()=>{const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000);status="No human match found. A bot match is available.";offerAI={name:ai.name,mmr:ai.estimatedMmr,onStart:faction=>startProgressionMatch("bot",null,faction)};update()},
+    onJoined:id=>{try{localStorage.setItem("gh.lastLobbyId",id);localStorage.setItem("gh.lastGameType","crowncouncil")}catch{}try{sessionStorage.setItem("ff.handoffLobby",id)}catch{}location.href="../lobby/lobby.html?forgeJoin="+encodeURIComponent(id);}
+  });
+  update();matchSearch.search();
+}
+let expansionInitialized=false;
+async function initializeExpansion(){
+  if(expansionInitialized)return;expansionInitialized=true;
+  forgeProfile=defaultForgeProfile();
+  progression=createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}});
+  progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
+  const assets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl});
+  spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
+  expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
+    onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
+    onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
+    onSignIn:FACTION_FORGE_CONFIG.progressionApiUrl?async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);progression.dispose();progression=createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}});progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI.updateProfile();});forgeProfile=await progression.loadProfile();expansionUI.updateProfile();return forgeProfile;}:null,
+    onResume:async()=>{if(!secureSession&&forgeProfile?.activeSessionId){executionMode="secure";await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));startSecurePolling();}expansionUI.hide();return true;},onAbandon:async()=>{const activeId=secureSession?.id||forgeProfile?.activeSessionId;if(activeId){const response=await progression.abandon(activeId);forgeProfile=response.profile||await progression.loadProfile();}returnToForgeMenu();return true;},
+    onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
+    onUpgrade:async key=>{const response=await progression.upgradeTroop(key);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
+    onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
+    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):"Cloud progress unavailable · Practice is available"
+  });
+  ensureVisualLoop();assets.loadManifest().then(()=>spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge'));
+  if(FACTION_FORGE_CONFIG.progressionApiUrl){
+    try{forgeProfile=await progression.loadProfile();}
+    catch(error){expansionUI.notify(error.message);}
+  }
+  if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
+    executionMode="secure";isHost=false;
+    await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
+    startSecurePolling();return;
+  }
+  let verifiedLobby=null;
+  if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
+    try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
+  }
+  if(verifiedLobby){
+    executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
+    S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
+  }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
+  else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
+}
+
 onAuthStateChanged(auth, (user) => {
   if (!user) return;
-  console.log("Signed in as anon uid:",user.uid);startTroopImagePreload().catch(()=>{});ensureVisualLoop();startListeners();
+  initializeExpansion(user).catch(error=>{console.error("Forge startup failed",error);expansionUI?.notify(error.message);});
 });
 
 const cardInfoModal = $("cardInfoModal");
@@ -4191,6 +4496,8 @@ if (cardInfoModal){
   const closeBtn = cardInfoModal.querySelector(".cardInfoClose");
   if (closeBtn) closeBtn.onclick = closeCardInfoModal;
 }
+
+$("forgeMenuBtn").onclick=()=>expansionUI?.showMenu();
 
 /* Fullscreen */
 $("fsBtn").onclick = async ()=>{

@@ -1,0 +1,36 @@
+'use strict';
+// Integration test uses only demo project + local emulator; never real Firebase.
+const assert=require('node:assert/strict');const admin=require('firebase-admin');
+const {createForgeService}=require('../../../server/faction-forge/service.cjs');
+const {migrate}=require('../../../server/faction-forge/migrate-account.cjs');
+const {loadModules}=require('../../../server/faction-forge/simulator.cjs');
+(async()=>{
+  if(!process.env.FIRESTORE_EMULATOR_HOST)throw new Error('FIRESTORE_EMULATOR_HOST is required.');
+  const app=admin.initializeApp({projectId:'demo-faction-forge'},'forge-integration');const db=app.firestore();
+  const who={uid:'integration-owner',username:'LegacyIntegration'};
+  const auth={verifyIdToken:async()=>({uid:who.uid}),getUser:async uid=>({uid,disabled:false})};
+  let stamp=1000000;
+  await db.doc('users/'+who.username).set({username:who.username,crowncouncilElo:1921,otherGameScore:42});
+  await migrate({db,auth,...who,now:stamp});
+  const modules=await loadModules();
+  const service=createForgeService({db,auth,now:()=>stamp,modules});
+  assert.equal((await service.profile(who)).crowncouncilElo,1921);
+  let profile=await service.profile(who);profile.troops.rifleman.cards=50;profile.forgeDust=1000;
+  await db.doc('factionForgeProfiles/'+who.uid).set(profile);
+  const calls=Array.from({length:4},()=>service.upgradeTroop(who,{troopKey:'rifleman',requestId:'parallel-retry'}));
+  const transactions=await Promise.all(calls);assert(transactions.every(t=>t.transaction.toTier===2));
+  profile=await service.profile(who);assert.equal(profile.forgeDust,900);assert.equal(profile.troops.rifleman.cards,40);
+  // A fresh service instance represents another device/API instance using same UID.
+  const device2=createForgeService({db,auth,now:()=>stamp,modules});assert.deepEqual(await device2.profile(who),profile);
+  let data=await service.startSolo(who,{mode:'campaign',missionId:'forge-01',faction:'Vanir'});const id=data.session.id;
+  await assert.rejects(service.upgradeTroop(who,{troopKey:'rifleman',requestId:'during-match'}),{code:'MATCH_ACTIVE'});
+  assert.equal((await device2.getSession(who,id)).session.id,id);
+  for(let i=0;i<3;i++)data=await service.pick(who,id,{index:0,sequence:data.session.revision,requestId:'actual-pick-'+i});
+  assert.equal(data.session.phase,'battle');assert(data.session.battle.frames.length>1);assert.equal(data.session.battle.frames[0].at,0);assert.equal(data.session.battle.clockOrigin,1000);
+  const replay=await db.doc('factionForgeMatches/'+id+'/replays/1').get();assert.equal(replay.data().encoding,'gzip-base64');assert(replay.data().engineVersion);
+  assert.equal((await device2.getSession(who,id)).session.battle.frames.length,data.session.battle.frames.length);
+  stamp+=data.session.battle.durationMs+21000;data=await device2.getSession(who,id);assert(['draft','loser-bonus'].includes(data.session.phase));
+  const abandoned=await service.abandon(who,id);assert.equal(abandoned.profile.activeSessionId,null);assert.equal(abandoned.receipt,undefined);assert.equal(abandoned.profile.crowncouncilElo,1921);
+  const legacy=await db.doc('users/'+who.username).get();assert.equal(legacy.data().otherGameScore,42);assert.equal(legacy.data().crowncouncilElo,1921);
+  await app.delete();console.log('Faction Forge emulator service: ownership, upgrade races/retries, cross-instance recovery, real 32-unit replay persistence and protected MMR passed.');
+})().catch(error=>{console.error(error);process.exitCode=1;});
