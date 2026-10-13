@@ -1,4 +1,32 @@
-/* Survival-only surfaces keep the existing combat and other mode interfaces intact. */
+/* Survival surfaces and the all-mode cosmetic character locker. */
+.characterLocker{margin-top:18px;border:1px solid #6ad9ed40;border-radius:8px;background:linear-gradient(135deg,#102338b8,#0a1122d9);overflow:hidden}
+.characterLocker>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;cursor:pointer;list-style:none;color:#d6f5ff;font-size:11px;font-weight:800;letter-spacing:1px}
+.characterLocker>summary::-webkit-details-marker{display:none}
+.characterLocker>summary small{display:block;color:#8cb8cb;font-size:8px;letter-spacing:.6px;margin-top:5px}
+.characterLocker>summary>b{color:#74e5f5;font-size:20px;font-weight:400}
+.characterLocker[open]>summary>b{transform:rotate(45deg)}
+.characterLocker>summary:focus-visible,.characterInfo button:focus-visible{outline:3px solid #f5cb73;outline-offset:-3px}
+.characterPromise{margin:0;padding:0 14px 13px;color:#9cb7c9;font-size:10px;line-height:1.5}
+.characterGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;padding:0 12px 12px}
+.characterCard{min-width:0;border:1px solid #6183a140;border-radius:7px;background:#0a1423;overflow:hidden;display:flex;flex-direction:column}
+.characterCard.equipped{border-color:var(--character-accent);box-shadow:0 0 16px color-mix(in srgb,var(--character-accent) 12%,transparent)}
+.characterPortrait{position:relative;aspect-ratio:1;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,color-mix(in srgb,var(--character-accent) 16%,#102236),#081220 85%);color:var(--character-accent)}
+.characterPortrait>svg{position:absolute;top:7%;left:24%;width:52%;height:83%;opacity:.48}
+.characterPortrait>img{position:relative;display:block;width:100%;height:100%;object-fit:contain}
+.characterPortrait>img[hidden]{display:none}
+.characterPortrait>span{position:absolute;bottom:7px;left:7px;right:7px;padding:5px 4px;border:1px solid color-mix(in srgb,var(--character-accent) 35%,transparent);border-radius:3px;background:#07111dd9;color:var(--character-accent);font-size:7px;letter-spacing:1px;text-align:center;font-weight:800}
+.characterCard.locked .characterPortrait>img{filter:grayscale(.65) brightness(.6)}
+.characterCard.locked .characterPortrait>svg{opacity:.25}
+.characterCard.locked .characterPortrait>span{color:#a1afc2;border-color:#71829450}
+.characterInfo{padding:9px;display:flex;flex-direction:column;flex:1;gap:5px}
+.characterInfo>strong{font-size:13px;color:#ecf8ff;line-height:1.2}
+.characterInfo>small{font-size:6px;letter-spacing:.8px;color:var(--character-accent);font-weight:800}
+.characterInfo>p{font-size:9px;line-height:1.4;color:#96afc3;margin:1px 0 5px}
+.characterUnlock{font-size:8px;line-height:1.4;color:#c0d4e3;margin-top:auto;min-height:24px}
+.characterInfo>button{width:100%;min-height:34px;margin:4px 0 0;padding:6px;border:1px solid #62bace66;border-radius:4px;background:#153349;color:#d9f7ff;font-size:9px;font-weight:800;letter-spacing:1px;cursor:pointer;touch-action:manipulation}
+.characterInfo>button[aria-pressed='true']{color:var(--character-accent);border-color:var(--character-accent);background:color-mix(in srgb,var(--character-accent) 12%,#0d1b2b)}
+.characterInfo>button:disabled{cursor:default;color:#8299ac;border-color:#3b5064;background:#142131}
+@media(max-width:620px){.characterGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 9px 9px}.characterPortrait{aspect-ratio:1.15}.characterInfo>small{font-size:7px}.characterInfo>p{font-size:10px}.characterInfo>strong{font-size:14px}.characterUnlock{font-size:9px}.characterInfo>button{min-height:40px}.characterLocker>summary{padding:12px}.characterPromise{padding:0 12px 12px}}
 [hidden]#survivalArenaSelector,[hidden]#survivalUnlockNotice,[hidden]#survivalTacticalWarning,#scoreboardTable[hidden],#scoreboardPanel>.overlayButtons[hidden]{display:none!important}
 .survivalArenaSelector{width:100%;--survival-line:rgba(104,215,250,.22)}
 .survivalRecords{display:flex;flex-wrap:wrap;gap:12px;color:#93afc4;font-size:10px;letter-spacing:1px;margin:8px 0}

@@ -4,17 +4,37 @@
   const P=root.NeonSurvivalProgress;
   if(!P)return;
   const art=file=>'./assets/survival/ui/'+file;
+  const characterArt=id=>root.NeonAssets?.url('characters/'+id+'.webp')||'./assets/characters/'+id+'.webp';
+  const characterSilhouette='<svg viewBox="0 0 120 140" aria-hidden="true" focusable="false"><path d="M45 13 60 5 75 13 80 35 69 44H51L40 35Z M30 46 46 42 60 49 74 42 90 46 110 60 105 83 91 79 86 118 66 124 60 114 54 124 34 118 29 79 15 83 10 60Z M37 119 53 126 52 138H30Z M67 126 83 119 90 138H68Z" fill="currentColor"/><path d="M46 24H74L69 31H51Z M47 60 60 55 73 60 68 85H52Z" fill="#08121e"/></svg>';
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const time=seconds=>{seconds=Math.floor(Math.max(0,seconds||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')};
   function create(options={}){
-    const store=options.store||P.store;let selected='breach_ring',section=null,results=null,noticeTimer=null,warningTimer=null;
+    const store=options.store||P.store;let selected='breach_ring',section=null,characterSection=null,results=null,noticeTimer=null,warningTimer=null;
     const notice=document.createElement('div');notice.id='survivalUnlockNotice';notice.className='survivalUnlockNotice';notice.hidden=true;notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');document.body.appendChild(notice);
     const warning=document.createElement('div');warning.id='survivalTacticalWarning';warning.className='survivalTacticalWarning';warning.hidden=true;warning.setAttribute('role','status');warning.setAttribute('aria-live','polite');document.body.appendChild(warning);
     function mount(parent){
       if(section)return section;
       section=document.createElement('section');section.id='survivalArenaSelector';section.className='survivalArenaSelector';section.hidden=true;section.setAttribute('aria-label','Endless Breach survival arenas');parent.appendChild(section);render();return section;
     }
+    function mountCharacters(parent){
+      if(characterSection||!parent)return characterSection;
+      characterSection=document.createElement('details');characterSection.id='neonCharacterLocker';characterSection.className='characterLocker';characterSection.setAttribute('aria-label','Choose your character');parent.appendChild(characterSection);renderCharacters();return characterSection;
+    }
+    function renderCharacters(){
+      if(!characterSection)return;
+      const catalog=store.getCharacterCatalog(),equipped=store.getEquippedCharacter(),focusId=document.activeElement?.dataset?.characterEquip;
+      characterSection.innerHTML='<summary><span>CHARACTER LOCKER<small>'+escape(equipped.name)+' EQUIPPED · '+catalog.filter(c=>c.unlocked).length+'/'+catalog.length+' AVAILABLE</small></span><b aria-hidden="true">+</b></summary><p class="characterPromise">Unlock new fighters in Survivor and bring them into any mode.</p><div class="characterGrid">'+catalog.map(character=>{
+        return '<article class="characterCard '+(character.unlocked?'':'locked ')+(character.equipped?'equipped':'')+'" style="--character-accent:'+character.accent+'"><div class="characterPortrait">'+characterSilhouette+'<img src="'+escape(characterArt(character.id))+'" alt="'+escape(character.name)+' character model" loading="lazy" decoding="async"><span>'+(character.equipped?'EQUIPPED':character.unlocked?'AVAILABLE':'LOCKED')+'</span></div><div class="characterInfo"><strong>'+escape(character.name)+'</strong><small>'+escape(character.tag)+'</small><p>'+escape(character.description)+'</p><span class="characterUnlock">'+escape(character.unlockText)+'</span><button type="button" data-character-equip="'+character.id+'" aria-pressed="'+character.equipped+'" '+(!character.unlocked?'disabled':'')+' aria-label="'+escape(character.equipped?character.name+' equipped':character.unlocked?'Equip '+character.name:character.name+'. '+character.unlockText)+'">'+(character.equipped?'EQUIPPED':character.unlocked?'EQUIP':'LOCKED')+'</button></div></article>';
+      }).join('')+'</div>';
+      characterSection.querySelectorAll('.characterPortrait img').forEach(image=>image.addEventListener('error',()=>{
+        const id=image.closest('.characterCard')?.querySelector('[data-character-equip]')?.dataset.characterEquip,fallback=id&&root.NeonAssets?.localCharacterURL('characters/'+id+'.webp');
+        if(fallback&&!image.dataset.localFallback){image.dataset.localFallback='true';image.src=fallback;}else image.hidden=true;
+      }));
+      characterSection.querySelectorAll('[data-character-equip]').forEach(button=>button.addEventListener('click',()=>{if(store.equipCharacter(button.dataset.characterEquip)){renderCharacters();options.onCharacterSelection?.(store.getEquippedCharacter());}}));
+      if(focusId)characterSection.querySelector('[data-character-equip="'+focusId+'"]')?.focus();
+    }
     function render(){
+      renderCharacters();
       if(!section)return;
       const state=store.getState();if(!store.isUnlocked(selected))selected='breach_ring';
       // Re-render only on menu entry or a progression change, never every frame.
@@ -39,11 +59,11 @@
       }).join('')+'</div><div class="survivalEquipmentPreview"><h3>TACTICAL SALVAGE</h3><p>Scrap buys temporary equipment during a run. Carry up to three charges of each tool.</p>'+P.equipment.map(e=>'<span class="survivalEquipmentPreviewItem '+(store.isEquipmentUnlocked(e.id)?'available':'')+'"><img src="'+art(e.art)+'" alt=""><b>'+escape(e.name)+'</b><small>'+(store.isEquipmentUnlocked(e.id)?e.cost+' SCRAP':'CLEAR WAVE '+e.unlockWave)+'</small></span>').join('')+'</div></details>';
     }
     function selectMap(id){if(!store.isUnlocked(id))return false;selected=id;render();options.onSelect?.(id);return true}
-    function setVisible(show){if(!section)return;section.hidden=!show;if(show)render();else hideNotice()}
+    function setVisible(show){renderCharacters();if(!section)return;section.hidden=!show;if(show)render();else hideNotice()}
     function hideNotice(){clearTimeout(noticeTimer);notice.hidden=true}
     function notifyUnlock(batch){
       if(!batch)return;
-      const earned=[...(batch.maps||[]).map(id=>({name:P.maps.find(m=>m.id===id)?.name,sub:'NEW ARENA AVAILABLE',image:'./assets/survival/tilesets/'+id+'/map_card.webp'})),...(batch.rewards||[]).map(id=>{const r=P.rewards.find(r=>r.id===id);return {name:r?.name,sub:'PERMANENT '+(r?.kind||'REWARD').toUpperCase(),image:art(r?.art||'first_breach.svg')}}),...(batch.achievements||[]).map(id=>{const a=P.achievements.find(a=>a.id===id);return {name:a?.name,sub:'CHALLENGE COMPLETED',image:art(a?.art||'first_breach.svg')}})].filter(a=>a.name);
+      const earned=[...(batch.characters||[]).map(id=>({name:P.characters.find(c=>c.id===id)?.name,sub:'CHARACTER UNLOCKED · ALL MODES',image:characterArt(id)})),...(batch.maps||[]).map(id=>({name:P.maps.find(m=>m.id===id)?.name,sub:'NEW ARENA AVAILABLE',image:'./assets/survival/tilesets/'+id+'/map_card.webp'})),...(batch.rewards||[]).map(id=>{const r=P.rewards.find(r=>r.id===id);return {name:r?.name,sub:'PERMANENT '+(r?.kind||'REWARD').toUpperCase(),image:art(r?.art||'first_breach.svg')}}),...(batch.achievements||[]).map(id=>{const a=P.achievements.find(a=>a.id===id);return {name:a?.name,sub:'CHALLENGE COMPLETED',image:art(a?.art||'first_breach.svg')}})].filter(a=>a.name);
       if(!earned.length)return;
       notice.innerHTML='<div class="survivalUnlockKicker">BREACH MILESTONE · PERMANENT UNLOCKS</div><div class="survivalUnlockItems">'+earned.slice(0,3).map(a=>'<div><img src="'+a.image+'" alt=""><span><small>'+escape(a.sub)+'</small><strong>'+escape(a.name)+'</strong></span></div>').join('')+'</div><p>'+ (earned.length>3?'+'+(earned.length-3)+' more awards. ':'')+'Keep fighting. Your current arena stays endless.</p>';
       notice.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(hideNotice,8500);
@@ -64,11 +84,11 @@
       results.querySelector('button')?.focus();return results;
     }
     function resultsAwards(summary){
-      const entries=[...(summary.earned?.maps||[]).map(id=>{const map=P.maps.find(m=>m.id===id);return {name:map?.name,image:'./assets/survival/tilesets/'+id+'/map_card.webp',type:'ARENA UNLOCKED'}}),...(summary.earned?.rewards||[]).map(id=>{const reward=P.rewards.find(r=>r.id===id);return {name:reward?.name,image:art(reward?.art||'first_breach.svg'),type:'REWARD EARNED'}}),...(summary.earned?.achievements||[]).map(id=>{const achievement=P.achievements.find(a=>a.id===id);return {name:achievement?.name,image:art(achievement?.art||'first_breach.svg'),type:'CHALLENGE COMPLETED'}})].filter(e=>e.name);
+      const entries=[...(summary.earned?.characters||[]).map(id=>({name:P.characters.find(c=>c.id===id)?.name,image:characterArt(id),type:'CHARACTER UNLOCKED · ALL MODES'})),...(summary.earned?.maps||[]).map(id=>{const map=P.maps.find(m=>m.id===id);return {name:map?.name,image:'./assets/survival/tilesets/'+id+'/map_card.webp',type:'ARENA UNLOCKED'}}),...(summary.earned?.rewards||[]).map(id=>{const reward=P.rewards.find(r=>r.id===id);return {name:reward?.name,image:art(reward?.art||'first_breach.svg'),type:'REWARD EARNED'}}),...(summary.earned?.achievements||[]).map(id=>{const achievement=P.achievements.find(a=>a.id===id);return {name:achievement?.name,image:art(achievement?.art||'first_breach.svg'),type:'CHALLENGE COMPLETED'}})].filter(e=>e.name);
       if(!entries.length)return '<p class="survivalNextUnlock">'+nextUnlock(summary.highestWave)+'</p>';
       return '<h4 class="survivalResultsAwardTitle">UNLOCKED THIS RUN</h4><div class="survivalResultsAwards">'+entries.map(entry=>'<div><img src="'+entry.image+'" alt=""><span><small>'+entry.type+'</small><b>'+escape(entry.name)+'</b></span></div>').join('')+'</div>';
     }
-    function nextUnlock(){const state=store.getState(),map=P.maps.find(m=>m.unlockWave>state.highestWave);return map?'Clear Wave '+map.unlockWave+' in any arena to unlock '+escape(map.name)+'.':'All arenas unlocked. Keep pushing your personal record.'}
+    function nextUnlock(){const state=store.getState(),map=P.maps.find(m=>m.unlockWave>state.highestWave),character=P.characters.find(c=>!store.isCharacterUnlocked(c.id));if(character&&(!map||character.unlockWave<=map.unlockWave))return escape(character.unlockText)+ ' to unlock '+escape(character.name)+'. Equip it in the Character Locker for any mode.';return map?'Clear Wave '+map.unlockWave+' in any arena to unlock '+escape(map.name)+'.':'All arenas and characters unlocked. Keep pushing your personal record.'}
     function clearResults(){results?.remove();results=null;const table=document.getElementById('scoreboardTable');if(table)table.hidden=false;const oldActions=document.querySelector('#scoreboardPanel > .overlayButtons');if(oldActions)oldActions.hidden=false}
     function renderEquipmentShop(parent,runState={}){
       if(!parent)return;
@@ -80,8 +100,8 @@
       parent.querySelectorAll('[data-equipment-buy]').forEach(button=>button.onclick=()=>runState.onBuy?.(button.dataset.equipmentBuy));
       parent.querySelectorAll('[data-equipment-select]').forEach(button=>button.onclick=()=>runState.onSelect?.(button.dataset.equipmentSelect));
     }
-    const unsubscribe=store.subscribe(()=>{if(section&&!section.hidden&&section.getClientRects().length)render()});
-    return {mount,render,selectMap,get selectedMap(){return selected},setVisible,notifyUnlock,warn,showResults,clearResults,renderEquipmentShop,hideNotice,destroy(){unsubscribe();hideNotice();clearTimeout(warningTimer);section?.remove();notice.remove();warning.remove();clearResults()}};
+    const unsubscribe=store.subscribe(()=>{if(characterSection?.getClientRects().length||section&&!section.hidden&&section.getClientRects().length)render()});
+    return {mount,mountCharacters,render,renderCharacters,selectMap,get selectedMap(){return selected},setVisible,notifyUnlock,warn,showResults,clearResults,renderEquipmentShop,hideNotice,destroy(){unsubscribe();hideNotice();clearTimeout(warningTimer);section?.remove();characterSection?.remove();notice.remove();warning.remove();clearResults()}};
   }
   root.NeonSurvivalUI={create,formatTime:time};
 })(typeof globalThis!=='undefined'?globalThis:this);
