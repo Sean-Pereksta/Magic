@@ -14,7 +14,7 @@ const renderer={scale:1,avgMs:16.7,nextTune:0,stableTicks:0,minScale:.62,maxScal
 function resize(){W=innerWidth;H=innerHeight;DPR=BASE_DPR*renderer.scale;canvas.width=Math.max(1,Math.round(W*DPR));canvas.height=Math.max(1,Math.round(H*DPR));worldCanvas.width=Math.max(1,Math.round(W*DPR));worldCanvas.height=Math.max(1,Math.round(H*DPR));canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);gl.viewport(0,0,worldCanvas.width,worldCanvas.height)}
 addEventListener('resize',resize); resize();
 const TAU=Math.PI*2, GRAV=34, PLAYER_H=1.86, HEAD_CLEAR=.18, WORLD_SCALE=1.45, MAP_LIMIT=69;
-const HUMAN_VISUAL_HEIGHT=1.08, HUMAN_VISUAL_WIDTH=1.10, ALIEN_SIZE_MULT=1.50;
+const HUMAN_VISUAL_HEIGHT=1.15, HUMAN_VISUAL_WIDTH=1.10, ALIEN_SIZE_MULT=1.50;
 const JUMP_SPEED=23, JUMP_COYOTE=.11, JUMP_BUFFER=.14, GROUND_SNAP=.10, COLLISION_SKIN=.025;
 const keys=Object.create(null);
 const mobilePointerMedia=globalThis.matchMedia?.('(pointer: coarse)')||null;
@@ -944,7 +944,7 @@ function muzzlePoint(shooter,d){
   const yaw=shooter.faceYaw||shooter.yaw||0,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);
   if(shooter===player)return {x:shooter.x+sx*.28+d.x*.58,y:shooter.y-.14+d.y*.58,z:shooter.z+sz*.28+d.z*.58};
   const g=gunSpec(shooter.weapon),forward=.72+g.body[2]/2+g.barrel[2];
-  return {x:shooter.x+fx*forward+sx*.18,y:shooter.y-.99,z:shooter.z+fz*forward+sz*.18};
+  return {x:shooter.x+fx*forward+sx*.18,y:shooter.alien?shooter.y-.99:humanTargetY(shooter,'body')-.20,z:shooter.z+fz*forward+sz*.18};
 }
 const MUZZLE_STYLE={
   pistol:{color:'#dff8ff',size:.72,life:.07},assault:{color:'#c9f7ff',size:.78,life:.065},smg:{color:'#fff4a8',size:.68,life:.05},shotgun:{color:'#ff9a3d',size:1.48,life:.105},sniper:{color:'#ffffff',size:1.18,life:.085},burst:{color:'#58ffd6',size:.82,life:.115},arc:{color:'#48c7ff',size:1.02,life:.09},rocket:{color:'#ff4a30',size:1.28,life:.11},mortar:{color:'#ff204e',size:1.34,life:.12},punch:{color:'#ff58dc',size:1.05,life:.10},harpoon:{color:'#bdfcff',size:.92,life:.105},plasma:{color:'#d85cff',size:1.08,life:.10},laser:{color:'#ff55d8',size:.72,life:.055},mender:{color:'#8ffaff',size:.56,life:.05}
@@ -1215,10 +1215,17 @@ function rocketExplosion(p,x,y,z,world=false,directTarget=null){let radius=p.rad
 function fireRocket(shooter,isPlayer){const w=WEAPONS.rocket,d=dirFrom(shooter,w.spread),ult=ultimateActive(shooter,'rocket'),grenade=isPlayer&&hasUpgrade('rocket','grenade'),fast=isPlayer&&hasUpgrade('rocket','velocity'),bigBlast=isPlayer&&hasUpgrade('rocket','blast'),cluster=isPlayer&&hasUpgrade('rocket','cluster'),siege=isPlayer&&hasUpgrade('rocket','siegeWarhead'),remote=isPlayer&&hasUpgrade('rocket','remoteDetonator')&&grenade,speed=grenade?(fast?49:39):64,life=grenade?(fast?2.15:2.85):2.35,r=grenade?.36:.42,color=ult?ultimateColor('rocket'):(grenade?'#ffea00':w.color);if(remote){const active=projectiles.filter(p=>p.owner===shooter&&p.remote&&!p.exploded);if(active.length>=MAX_REMOTE_GRENADES){rocketExplosion(active[0],active[0].x,active[0].y,active[0].z);active[0].exploded=true}}addMuzzleFlash(shooter,isPlayer,d,color,.25);if(ult)addUltimateMuzzleVisual(shooter,'rocket',d);projectiles.push({ultimate:ult,kind:'rocket',owner:shooter,x:shooter.x+d.x*.95,y:shooter.y-.05+d.y*.95,z:shooter.z+d.z*.95,px:shooter.x,py:shooter.y-.05,pz:shooter.z,vx:d.x*speed,vy:d.y*speed+(grenade?6.5:0),vz:d.z*speed,life,color,damage:w.damage*(ult?2.15:1),r:ult?r*1.35:r,tier:ult?4:(grenade?2:1),bouncy:grenade,bounces:grenade?4:0,bigBlast:bigBlast||ult,cluster:cluster||ult,siege,remote,radius:ult?14.5:8.4,pulse:0})}
 function detonateRemoteGrenades(ent){if(!game.started||game.upgradesOpen||ent?.dead||ent?.weapon!=='rocket'||ent!==player||!hasUpgrade('rocket','remoteDetonator',ent))return false;const active=projectiles.filter(p=>p.owner===ent&&p.remote&&!p.exploded);if(!active.length)return false;for(const p of active){rocketExplosion(p,p.x,p.y,p.z);p.exploded=true;p.life=0}msg('REMOTE DETONATION');tier3Cue('REMOTE DETONATION',2.2);return true}
 function targetsFor(shooter,isPlayer){if(game.mode==='survivor'){if(shooter?.alien)return [player,player2].filter(h=>h&&!h.dead);return bots.filter(b=>b.alien&&!b.dead)}const actors=[...new Set([player,player2,...bots].filter(Boolean))];return actors.filter(e=>e!==shooter&&!e.dead&&!sameTeam(shooter,e))}
+// Aim samples follow the authored head/chest after fitting from the soles.
+function humanTargetY(actor,kind='body'){
+  const model=neonModelRenderer?.get(actorModelPath(actor)),anchor=model?.anchors?.[kind==='head'?'head':'core'];
+  if(anchor){const fit=window.NeonModels.actorFit(model,actor,PLAYER_H);return actor.y-PLAYER_H+fit.offset[1]+anchor[1]*fit.scale[1];}
+  return actor.y-PLAYER_H+(PLAYER_H-(kind==='head'?.24:.86))*HUMAN_VISUAL_HEIGHT;
+}
 function rayEntity(o,d,t,range,radius=0){
   const vx=t.x-o.x,vy=t.y-o.y,vz=t.z-o.z,dist=vx*d.x+vy*d.y+vz*d.z;if(dist<0||dist>range)return null;
-  const px=o.x+d.x*dist,py=o.y+d.y*dist,pz=o.z+d.z*dist,wide=(t.alien?(t.r||.6)*1.10:(t.r||.50)*1.28),bodyCenter=t.alien?(t.y-.95*(t.alienScale||1)):(t.y-.86*HUMAN_VISUAL_HEIGHT),headCenter=t.alien?(t.y-.45*(t.alienScale||1)):(t.y-.24*HUMAN_VISUAL_HEIGHT),headMiss=Math.hypot(t.x-px,headCenter-py,t.z-pz);
-  if(headMiss<wide*.62+radius)return {dist,head:true};
+  const px=o.x+d.x*dist,py=o.y+d.y*dist,pz=o.z+d.z*dist,wide=(t.alien?(t.r||.6)*1.10:(t.r||.50)*1.28*HUMAN_VISUAL_WIDTH),bodyCenter=t.alien?(t.y-.95*(t.alienScale||1)):humanTargetY(t,'body'),headCenter=t.alien?(t.y-.45*(t.alienScale||1)):humanTargetY(t,'head'),headMiss=Math.hypot(t.x-px,headCenter-py,t.z-pz);
+  if(t.alien){if(headMiss<wide*.62+radius)return {dist,head:true};}
+  else{const headDist=vx*d.x+(headCenter-o.y)*d.y+vz*d.z;if(headDist>=0&&headDist<=range&&Math.hypot(t.x-o.x-d.x*headDist,headCenter-o.y-d.y*headDist,t.z-o.z-d.z*headDist)<wide*.62+radius)return {dist:headDist,head:true};}
   if(t.alien){
     // Tower shots come in at a steep downward angle. A single center-line body test could pass
     // between the alien's upper and lower body, especially while it is pressed against a wall.
@@ -1236,7 +1243,16 @@ function rayEntity(o,d,t,range,radius=0){
       if(bodyScore<1&&(!best||bandDist<best.dist))best={dist:bandDist,head:false};
     }
     if(best)return best;
-  }else{const bodyMiss=Math.hypot(t.x-px,bodyCenter-py,t.z-pz);if(bodyMiss<wide+radius)return {dist,head:false};}
+  }else{
+    // Keep exposed knees and shins hittable, including the low mobile aim sample.
+    // Project each band separately so steep shots use the correct impact depth.
+    let best=null;const feet=t.y-PLAYER_H;
+    for(const [cy,bodyRadius] of [[bodyCenter,wide],[feet+.86,wide*.55],[feet+.36,wide*.55]]){
+      const bandDist=vx*d.x+(cy-o.y)*d.y+vz*d.z;if(bandDist<0||bandDist>range)continue;
+      if(Math.hypot(t.x-o.x-d.x*bandDist,cy-o.y-d.y*bandDist,t.z-o.z-d.z*bandDist)<bodyRadius+radius&&(!best||bandDist<best.dist))best={dist:bandDist,head:false};
+    }
+    if(best)return best;
+  }
   return null
 }
 function lineClear(x1,y1,z1,x2,y2,z2){const dx=x2-x1,dy=y2-y1,dz=z2-z1,dist=Math.hypot(dx,dy,dz);if(dist<.02)return true;const hit=rayWorld({x:x1,y:y1,z:z1},{x:dx/dist,y:dy/dist,z:dz/dist},Math.max(0,dist-.08),false);return !hit}
@@ -1245,12 +1261,12 @@ function visibleToPlayer(ent,viewer=player){
   // Do not draw enemy bodies, labels, or guns unless at least one meaningful point is actually visible.
   // This prevents enemies from visually bleeding through the opaque pastel walls and platforms.
   const eyeY=viewer.y-.05;
-  const pts=[[ent.x,ent.y-.25,ent.z],[ent.x,ent.y-.86,ent.z],[ent.x,ent.y-1.48,ent.z]];
+  const ys=ent.alien?[ent.y-.25,ent.y-.86,ent.y-1.48]:[humanTargetY(ent,'head'),humanTargetY(ent,'body'),ent.y-PLAYER_H+.55],pts=ys.map(y=>[ent.x,y,ent.z]);
   for(const pt of pts){if(lineClear(viewer.x,eyeY,viewer.z,pt[0],pt[1],pt[2]))return true;}
   return false;
 }
 function angleDelta(target,current){return Math.atan2(Math.sin(target-current),Math.cos(target-current))}
-function mobileAimInfo(ent,target,yawCone,pitchCone){if(!target||target.dead||target.spawnGrace>0||target.burrowed)return null;const weapon=WEAPONS[ent.weapon]||WEAPONS.pistol,maxRange=Math.max(8,(weapon.range||90)*1.08),eyeY=ent.y-.05,dx=target.x-ent.x,dz=target.z-ent.z,horizontal=Math.hypot(dx,dz),desiredYaw=Math.atan2(dx,dz),yawError=angleDelta(desiredYaw,ent.yaw);if(horizontal<.01||horizontal>maxRange||Math.abs(yawError)>yawCone)return null;const scale=target.alienScale||1,aimYs=target.alien?[target.y-.42*scale,target.y-.86*scale,target.y-1.34*scale]:[target.y-.22,target.y-.70,target.y-1.24],candidates=[];for(const aimY of aimYs){const dy=eyeY-aimY,dist=Math.hypot(horizontal,dy),desiredPitch=Math.atan2(dy,horizontal),pitchError=desiredPitch-(ent.pitch||0);if(dist>maxRange||Math.abs(pitchError)>pitchCone)continue;const score=Math.hypot(yawError/yawCone,pitchError/pitchCone)+dist/maxRange*.08;candidates.push({target,aimY,dist,horizontal,desiredYaw,desiredPitch,yawError,pitchError,score})}candidates.sort((a,b)=>a.score-b.score);for(const info of candidates)if(lineClear(ent.x,eyeY,ent.z,target.x,info.aimY,target.z))return info;return null}
+function mobileAimInfo(ent,target,yawCone,pitchCone){if(!target||target.dead||target.spawnGrace>0||target.burrowed)return null;const weapon=WEAPONS[ent.weapon]||WEAPONS.pistol,maxRange=Math.max(8,(weapon.range||90)*1.08),eyeY=ent.y-.05,dx=target.x-ent.x,dz=target.z-ent.z,horizontal=Math.hypot(dx,dz),desiredYaw=Math.atan2(dx,dz),yawError=angleDelta(desiredYaw,ent.yaw);if(horizontal<.01||horizontal>maxRange||Math.abs(yawError)>yawCone)return null;const scale=target.alienScale||1,aimYs=target.alien?[target.y-.42*scale,target.y-.86*scale,target.y-1.34*scale]:[humanTargetY(target,'head'),humanTargetY(target,'body'),target.y-PLAYER_H+.55],candidates=[];for(const aimY of aimYs){const dy=eyeY-aimY,dist=Math.hypot(horizontal,dy),desiredPitch=Math.atan2(dy,horizontal),pitchError=desiredPitch-(ent.pitch||0);if(dist>maxRange||Math.abs(pitchError)>pitchCone)continue;const score=Math.hypot(yawError/yawCone,pitchError/pitchCone)+dist/maxRange*.08;candidates.push({target,aimY,dist,horizontal,desiredYaw,desiredPitch,yawError,pitchError,score})}candidates.sort((a,b)=>a.score-b.score);for(const info of candidates)if(lineClear(ent.x,eyeY,ent.z,target.x,info.aimY,target.z))return info;return null}
 function findMobileAimTarget(ent,yawCone,pitchCone){let best=null;for(const target of targetsFor(ent,true)){const info=mobileAimInfo(ent,target,yawCone,pitchCone);if(info&&(!best||info.score<best.score))best=info}return best}
 function clearMobileAutoFire(ent=player,resetThink=true){mobileInput.lockTarget=null;if(resetThink)mobileInput.aimThink=0;if(ent?.weapon==='plasma')ent.charge=0;if(ent?.mortarActive)releaseMortar(ent);updateMobileLockHud(null)}
 function updateMobileAimAndFire(ent,dt){if(!mobileCanAct()||ent.dead){clearMobileAutoFire(ent);return}const weapon=WEAPONS[ent.weapon]||WEAPONS.pistol,wideWeapon=weapon.kind==='shotgun'||weapon.kind==='punch',yawCone=wideWeapon ? .225 : .175,pitchCone=wideWeapon ? .18 : .15;mobileInput.aimThink-=dt;let info=mobileAimInfo(ent,mobileInput.lockTarget,yawCone*1.42,pitchCone*1.42);if(mobileInput.aimThink<=0){const candidate=findMobileAimTarget(ent,yawCone,pitchCone);if(candidate||!info)info=candidate;mobileInput.aimThink=.09}if(!info){clearMobileAutoFire(ent,false);return}mobileInput.lockTarget=info.target;updateMobileLockHud(info.target);const manualLook=mobileInput.swiping?1:Math.hypot(mobileInput.lookX,mobileInput.lookY),assist=clamp(dt*(manualLook>.14?7.5:12.5),0,1);ent.yaw+=angleDelta(info.desiredYaw,ent.yaw)*assist;ent.pitch=clamp(ent.pitch+(info.desiredPitch-ent.pitch)*assist,-1.25,1.25);const yawError=Math.abs(angleDelta(info.desiredYaw,ent.yaw)),pitchError=Math.abs(info.desiredPitch-ent.pitch),fireCone=wideWeapon ? .13 : .105,aligned=yawError<=fireCone&&pitchError<=.10;if(weapon.kind==='plasma'){chargeHumanPlasma(ent,dt);if(aligned&&(ent.charge||0)>=.48)releaseHumanPlasma(ent);return}if(!aligned)return;if(weapon.kind==='mortar'){if(!ent.mortarActive)beginMortar(ent,true);if(ent.mortarActive){ent.mortarActive.desiredTravel=clamp(info.horizontal,4,weapon.range);if(ent.mortarActive.holdTime>=.55)releaseMortar(ent)}return}tryFire(ent,true)}
@@ -2416,7 +2432,7 @@ let solidTriangles=[],lineSegments=[];
 let neonModelRenderer=null;try{neonModelRenderer=window.NeonModels?.createRenderer(gl,{resolve:path=>path.startsWith('items/')?'./assets/survival/common/'+path:/^characters\/alien_(leaper|stalker|screecher|artillery|lurker|warder)\.glb$/.test(path)?'./assets/survival/common/aliens/'+path.split('/').pop():window.NeonAssets?.url(path)||''})||null;}catch(error){console.warn('Neon Breach models unavailable; using procedural graphics.',error);}
 let modelWorldActors=[],modelHeldWeapons=[];
 const renderedModelGuns=new WeakMap();
-function actorModelPath(b){if(b.alien)return 'characters/alien_'+b.alienKind+'.glb';if(b===player||b.entityId==='p1')return 'characters/player_one.glb';if(b===player2||b.entityId==='p2')return 'characters/player_two.glb';return 'characters/'+({rusher:'bot_breacher',marksman:'bot_sentinel',rifler:'bot_vanguard',skirmisher:'bot_flanker',heavy:'bot_demolisher'}[b.style]||'bot_vanguard')+'.glb';}
+function actorModelPath(b){if(b.alien)return 'characters/alien_'+b.alienKind+'.glb';if(b===player||b.entityId==='p1')return survivalProgress?.getEquippedCharacterModelPath?.()||'characters/player_one.glb';if(b===player2||b.entityId==='p2')return 'characters/player_two.glb';return 'characters/'+({rusher:'bot_breacher',marksman:'bot_sentinel',rifler:'bot_vanguard',skirmisher:'bot_flanker',heavy:'bot_demolisher'}[b.style]||'bot_vanguard')+'.glb';}
 function importedModelCamera(){const c=viewEnt||player,x=cameraPoint(c.x+1,c.y,c.z),y=cameraPoint(c.x,c.y+1,c.z),z=cameraPoint(c.x,c.y,c.z+1);return {position:[c.x,c.y,c.z],right:[x.x,y.x,z.x],up:[x.y,y.y,z.y],forward:[x.z,y.z,z.z],aspect:viewRect.h/viewRect.w};}
 function modelWeaponState(ent){const w=WEAPONS[ent.weapon]||WEAPONS.assault;return {recoil:clamp((ent.cool||0)/(w.cool||.1),0,1),reload:ent.reload>0?clamp(1-ent.reload/(ent.reloadTotal||w.reload||1.5),0,1):0,charge:ent.charge||0,finishTint:game.mode==='survivor'&&survivalReward('finish')?hexRgb(survivalReward('finish').palette[1]):null};}
 function importedGunPose(ent){
@@ -2427,7 +2443,7 @@ function importedGunMatrix(pose,camera){const basis=window.NeonModels.compose(ca
 function renderImportedModels(){
   if(!neonModelRenderer)return;const now=performance.now()/1000,camera=importedModelCamera(),v=visualPreset(),budget=visualQuality==='low'?4:(visualQuality==='medium'?8:12),animatedRange=visualQuality==='low'?v.near*.65:v.near;
   neonModelRenderer.beginView(camera,now);modelWorldActors.sort((a,b)=>a.distance-b.distance);for(const item of modelWorldActors)neonModelRenderer.drawActor(item.path,item.actor,{now,animate:item.distance<animatedRange||item.actor.boss,animationBudget:budget,eyeHeight:PLAYER_H,teamTint:game.mode==='survivor'&&!item.actor.alien&&survivalReward('armor')?hexRgb(survivalReward('armor').palette[1]):game.mode==='tdm'&&!item.actor.alien?hexRgb(item.actor.team===1?'#00eaff':'#ff2bbd'):null});
-  for(const item of modelHeldWeapons){const b=item.actor,yaw=b.faceYaw??b.yaw??0,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw),rld=reloadVisualState(b,WEAPONS[b.weapon]),sc=b.alien?.50:.62;const m=window.NeonModels.compose([b.x+fx*.44+sx*.24,b.y-.86,b.z+fz*.44+sz*.24],[-(b.pitch||0)-rld.tilt*.65,yaw,0],[sc,sc,sc]);neonModelRenderer.drawWeapon(item.path,m,modelWeaponState(b));}
+  for(const item of modelHeldWeapons){const b=item.actor,yaw=b.faceYaw??b.yaw??0,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw),rld=reloadVisualState(b,WEAPONS[b.weapon]),sc=b.alien?.50:.70;const m=window.NeonModels.compose([b.x+fx*.50+sx*.52,(b.alien?b.y-.86:humanTargetY(b,'body')-.10),b.z+fz*.50+sz*.52],[-(b.pitch||0)-rld.tilt*.65,yaw,0],[sc,sc,sc]);neonModelRenderer.drawWeapon(item.path,m,modelWeaponState(b));}
   renderSalvageModels(now);
   for(const corpse of neonModelRenderer.recentDeaths(now)){const b=corpse.actor,cam=cameraPoint(b.x,b.y-.7,b.z);if(cam.z>.1&&cam.z<v.mid&&Math.abs(cam.x)<cam.z*viewRect.w/(1.44*viewRect.h)+4)neonModelRenderer.drawActor(corpse.path,b,{now,animate:false,eyeHeight:PLAYER_H,deathProgress:clamp((now-corpse.time)/.62,0,1)});}
   const ent=viewEnt||player;renderedModelGuns.delete(ent);if(game.started&&!ent.dead){const path='weapons/'+ent.weapon+'.glb',model=neonModelRenderer.get(path),pose=importedGunPose(ent);if(model&&neonModelRenderer.drawWeapon(path,importedGunMatrix(pose,camera),modelWeaponState(ent),true))renderedModelGuns.set(ent,{model,pose});}
@@ -2458,7 +2474,7 @@ function renderSalvageModels(now){
   }
   if(game.mode!=='survivor')return;
   for(const d of survivalEquipment?.devices||[]){const y=d.id==='decoy'?d.y-PLAYER_H:d.y,matrix=window.NeonModels.compose([d.x,y,d.z],[0,0,0],[1.6,1.6,1.6]);neonModelRenderer.drawWeapon('items/'+d.id+'.glb',matrix,{});
-    if(d.id==='decoy')neonModelRenderer.drawActor('characters/player_one.glb',{...player,x:d.x,y:y+PLAYER_H,z:d.z,hp:d.hp,armor:0,faceYaw:now*.4},{now,animate:false,teamTint:hexRgb('#65faff')});
+    if(d.id==='decoy')neonModelRenderer.drawActor(actorModelPath(player),{...player,x:d.x,y:y+PLAYER_H,z:d.z,hp:d.hp,armor:0,faceYaw:now*.4},{now,animate:false,teamTint:hexRgb('#65faff')});
   }
 }
 
@@ -2466,13 +2482,13 @@ function survivalReward(kind){if(game.mode!=='survivor')return null;const select
 
 async function startArenaMatch(){
   if(survivalStarting)return;survivalStarting=true;const button=el('start'),label=button.querySelector('span'),original=label?.textContent||'ENTER THE ARENA';button.disabled=true;
-  const mode=el('mode').value,arena=survivalInterface?.selectedMap||'breach_ring';
+  const mode=el('mode').value,arena=survivalInterface?.selectedMap||'breach_ring',characterPath=actorModelPath(player);
   try{
     if(!neonModelRenderer)throw Error('The model renderer is unavailable.');
-    const paths=[...Object.values(window.NeonAssets.weapons),...Object.values(window.NeonAssets.characters).filter(path=>mode==='survivor'||!path.includes('/alien_')),'items/health.glb','items/armor.glb'];
+    const paths=[...Object.values(window.NeonAssets.weapons),...window.NeonModels.HUMANS.map(id=>'characters/'+id+'.glb'),characterPath,...(mode==='survivor'?window.NeonModels.ALIENS.map(id=>'characters/alien_'+id+'.glb'):[]),'items/health.glb','items/armor.glb'];
     if(mode==='survivor'){if(!survivalProgress?.isUnlocked(arena))throw Error('Clear the required wave to unlock this arena.');for(const kind of SURVIVAL_NEW_KINDS)paths.push('characters/alien_'+kind+'.glb');for(const gear of window.NeonSurvivalProgress.equipment)paths.push('items/'+gear.id+'.glb');}
     await Promise.all([neonModelRenderer.preload(paths,{retry:true,onProgress:(ready,total)=>{if(label)label.textContent='LOADING MODELS '+ready+'/'+total;}}),mode==='survivor'?survivalMapRuntime.load(arena):Promise.resolve()]);
-    if(el('mode').value!==mode||mode==='survivor'&&survivalInterface.selectedMap!==arena)throw Error('Selection changed while loading. Press Enter the Arena again.');
+    if(el('mode').value!==mode||actorModelPath(player)!==characterPath||mode==='survivor'&&survivalInterface.selectedMap!==arena)throw Error('Selection changed while loading. Press Enter the Arena again.');
     el('scoreboardOverlay').style.display='none';el('menu').style.display='none';reset();updateMobileControlVisibility(true);if(game.p1Input==='keyboard')canvas.requestPointerLock?.();
   }catch(error){console.error('Neon Breach asset loading:',error);el('menu').style.display='flex';el('mapDescription').textContent='ASSET LOAD FAILED · '+error.message+' Check the model host and try again.';}
   finally{survivalStarting=false;button.disabled=false;if(label)label.textContent=original;}
@@ -2487,7 +2503,7 @@ function initializeSurvival(){
     acid:zone=>{game.acidZones??=[];if(game.acidZones.length>=12)game.acidZones.shift();game.acidZones.push({...zone,y:Number.isFinite(zone.y)?zone.y:topAtPoint(zone.x,zone.z),tick:0,maxLife:zone.life||7});}
   });
   survivalInterface=window.NeonSurvivalUI?.create({onSelect:()=>updateMenuSummary(),onRetry:id=>{survivalInterface.selectMap(id);el('mode').value='survivor';startArenaMatch();},onMapSelection:()=>{el('returnMenu').click();el('mode').value='survivor';updateMenuSummary();},onMainMenu:()=>{el('returnMenu').click();el('mode').value='dm';updateMenuSummary();}});
-  survivalInterface?.mount(el('survivorArenaCard'));updateMenuSummary();
+  survivalInterface?.mount(el('survivorArenaCard'));survivalInterface?.mountCharacters(el('characterLocker'));updateMenuSummary();
   const gear=document.createElement('div');gear.id='survivalGear';gear.hidden=true;gear.innerHTML='<button type="button" id="survivalDeploy">DEPLOY</button><button type="button" id="survivalCycle" aria-label="Select next tactical equipment">↔</button><span id="survivalGearStatus"></span>';el('hud').appendChild(gear);el('survivalDeploy').onclick=()=>deploySurvivalEquipment(player);el('survivalCycle').onclick=cycleSurvivalEquipment;
   addEventListener('keydown',event=>{if(game.mode!=='survivor'||!game.started||game.over||game.shopOpen||event.repeat)return;if(event.code==='KeyE')deploySurvivalEquipment(player);if(event.code==='Numpad3'&&player2)deploySurvivalEquipment(player2);if(event.code==='KeyC')cycleSurvivalEquipment();});
   addEventListener('pagehide',()=>{if(game.mode==='survivor')survivalProgress?.checkpoint();});

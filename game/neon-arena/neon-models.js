@@ -8,6 +8,8 @@
 'use strict';
 const WEAPONS=['pistol','assault','sniper','smg','shotgun','burst','arc','rocket','mortar','punch','harpoon','plasma','laser','mender'];
 const HUMANS=['player_one','player_two','bot_breacher','bot_sentinel','bot_vanguard','bot_flanker','bot_demolisher'];
+const UNLOCKABLE_HUMANS=['character_bulwark','character_ronin','character_warden','character_revenant','character_praetorian','character_overlord'];
+const HUMAN_HEIGHT=2.39;
 const ALIENS=['blue','yellow','red','green','stripe','purple','flyer','climber','rammerBoss','spitterBoss','matriarchBoss','shieldBoss','burrowerBoss','commanderBoss'];
 // Boss proportions are already baked into the shipped GLBs. Remove that authoring
 // scale before applying the simulation's alienScale, so bosses aren't scaled twice.
@@ -27,6 +29,7 @@ function groupFor(name,center,weapon){
   if(weapon){if(/magazine|mag_glow|ammo_block|cylinder|chamber/.test(name))return 'magazine';if(/barrel|muzzle|slide|hammer|bolt|pump/.test(name))return 'barrel';if(/coil|capacitor|plasma|crystal|core|energy|power_fin/.test(name))return 'energy';return 'body'}
   const side=center[0]<0?'L':'R';
   if(/^wing(?:_|$)/.test(name))return 'wing'+side;
+  if(/^(?:glove|foreclaw|claw_tip|upper_arm|forearm|shoulder)(?:_|$)/.test(name))return 'arm'+side;
   // The detailed pack adds muscles, joints and complete arm/jaw meshes. Attach
   // them to the same rigid limb as their armor, rather than leaving stationary
   // skin behind when its limb swings. Match new families by semantic prefix so
@@ -61,12 +64,15 @@ function parseGLB(input,path=''){
     }}for(const child of n.children||[])visit(child,world,branch);}
   for(const n of json.scenes?.[json.scene||0]?.nodes||[])visit(n,identity(),new Set());if(!all.length||all.length>2e6)throw Error('Empty or oversized GLB');
   const height=bounds.max[1]-bounds.min[1],kind=path.replace(/^characters\/alien_|\.glb$/g,''),authorScale=AUTHOR_SCALE[kind]||1;
+  const authoredRig=json.asset.extras?.neonBreach,rig=authoredRig&&Number.isFinite(authoredRig.bodyHeight)&&authoredRig.bodyHeight>0?authoredRig:null;
+  const anchor=(key,fallback)=>Array.isArray(rig?.[key])&&rig[key].length===3&&rig[key].every(Number.isFinite)?rig[key]:fallback;
+  if(rig){anchors.head=anchor('aimHead',anchors.head);anchors.core=anchor('aimBody',anchors.core);}
   const parts=[...groups.values()].map(g=>{const c=g.center.reduce((s,p)=>s.map((q,i)=>q+p[i]),[0,0,0]).map(q=>q/g.center.length),side=g.key.endsWith('L')?-1:1;
-    const pivot=g.key.startsWith('leg')?[side*(weapon?0:.25)*authorScale,(path.includes('/alien_')?.70:.84)*authorScale,0]:g.key.startsWith('arm')?[side*.42*authorScale,(path.includes('/alien_')?1.02:1.48)*authorScale,.02]:g.key.startsWith('wing')?[side*.40*authorScale,1.02*authorScale,-.05]:g.key==='head'?[0,height*.72,.08]:g.key==='tail'?[0,.8*authorScale,-.6*authorScale]:c;return {key:g.key,pivot,vertices:new Float32Array(g.vertices),names:g.names};});
-  return {path,bounds,height,authorScale,weapon,nodeCount,anchors,parts,vertices:new Float32Array(all),vertexCount:all.length/12};
+    const pivot=rig&&g.key.startsWith('leg')?anchor('hip',[.32,1.10,0]).map((v,i)=>i===0?Math.abs(v)*side:v):rig&&g.key.startsWith('arm')?anchor('shoulder',[.62,1.78,.02]).map((v,i)=>i===0?Math.abs(v)*side:v):rig&&g.key==='head'?anchor('headPivot',[0,1.94,.08]):g.key.startsWith('leg')?[side*(weapon?0:.25)*authorScale,(path.includes('/alien_')?.70:.84)*authorScale,0]:g.key.startsWith('arm')?[side*.42*authorScale,(path.includes('/alien_')?1.02:1.48)*authorScale,.02]:g.key.startsWith('wing')?[side*.40*authorScale,1.02*authorScale,-.05]:g.key==='head'?[0,height*.72,.08]:g.key==='tail'?[0,.8*authorScale,-.6*authorScale]:c;return {key:g.key,pivot,vertices:new Float32Array(g.vertices),names:g.names};});
+  return {path,bounds,height,bodyHeight:rig?.bodyHeight||height,authorScale,weapon,nodeCount,anchors,parts,vertices:new Float32Array(all),vertexCount:all.length/12};
 }
-function actorFit(model,actor,eyeHeight=1.86,height=2.08){
-  if(!actor.alien){const scale=height/model.height;return {scale:[scale,scale,scale],offset:[0,0,0]};}
+function actorFit(model,actor,eyeHeight=1.86,height=HUMAN_HEIGHT){
+  if(!actor.alien){const scale=height/(model.bodyHeight||model.height);return {scale:[scale,scale,scale],offset:[0,-model.bounds.min[1]*scale,0]};}
   const gameplayScale=actor.alienScale||1,scale=gameplayScale/model.authorScale,head=model.anchors.head||[0,.97*model.authorScale,.85*model.authorScale],headRadius=(actor.r||.6)*1.10*.62;
   // Alien eyeY is a legacy targeting reference, not a height-scaled human camera.
   // Fit the head to that existing sphere while keeping the soles on the support
@@ -75,10 +81,11 @@ function actorFit(model,actor,eyeHeight=1.86,height=2.08){
   return {scale:[scale,scaleY,scale],offset:[-head[0]*scale,-model.bounds.min[1]*scaleY,-head[2]*scale]};
 }
 class ModelCache{
-  constructor(options={}){this.resolve=options.resolve||((p)=>root.NeonAssets?.url?.(p)||'');this.fetch=options.fetch||root.fetch?.bind(root);this.now=options.now||(()=>Date.now());this.maxConcurrent=options.maxConcurrent||2;this.records=new Map();this.queue=[];this.active=0;this.stats={requests:0,parsed:0,failed:0};}
+  constructor(options={}){this.resolve=options.resolve||((p)=>root.NeonAssets?.url?.(p)||'');this.fallback=options.fallback||((p)=>root.NeonAssets?.localCharacterURL?.(p)||'');this.fetch=options.fetch||root.fetch?.bind(root);this.now=options.now||(()=>Date.now());this.maxConcurrent=options.maxConcurrent||2;this.records=new Map();this.queue=[];this.active=0;this.stats={requests:0,parsed:0,failed:0};}
   get(path,priority=false){const url=this.resolve(path);if(!url||!this.fetch)return null;let r=this.records.get(url);if(r?.model)return r.model;if(r?.state==='failed'&&this.now()-r.failedAt>60000){this.records.delete(url);r=null;}if(!r){r={path,url,state:'queued',model:null};this.records.set(url,r);priority?this.queue.unshift(r):this.queue.push(r);this.pump();}return null;}
-  pump(){while(this.active<this.maxConcurrent&&this.queue.length){const r=this.queue.shift();r.state='loading';this.active++;this.stats.requests++;const abort=typeof AbortController!=='undefined'?new AbortController():null,timer=abort?setTimeout(()=>abort.abort(),12000):null;
-    Promise.resolve().then(()=>this.fetch(r.url,{mode:'cors',credentials:'omit',signal:abort?.signal})).then(response=>{if(!response.ok)throw Error('Model HTTP '+response.status);return response.arrayBuffer();}).then(data=>{r.model=parseGLB(data,r.path);r.state='ready';this.stats.parsed++;}).catch(error=>{r.state='failed';r.failedAt=this.now();r.error=String(error?.message||error);this.stats.failed++;}).finally(()=>{if(timer)clearTimeout(timer);this.active--;this.pump();});}}
+  pump(){while(this.active<this.maxConcurrent&&this.queue.length){const r=this.queue.shift();r.state='loading';this.active++;this.stats.requests++;
+    const read=async url=>{const abort=typeof AbortController!=='undefined'?new AbortController():null,timer=abort?setTimeout(()=>abort.abort(),12000):null;try{const response=await this.fetch(url,{mode:'cors',credentials:'omit',signal:abort?.signal});if(!response.ok)throw Error('Model HTTP '+response.status);return parseGLB(await response.arrayBuffer(),r.path);}finally{if(timer)clearTimeout(timer);}};
+    Promise.resolve().then(async()=>{try{return await read(r.url);}catch(error){const local=this.fallback(r.path);if(!local||local===r.url)throw error;return read(local);}}).then(model=>{r.model=model;r.state='ready';this.stats.parsed++;}).catch(error=>{r.state='failed';r.failedAt=this.now();r.error=String(error?.message||error);this.stats.failed++;}).finally(()=>{this.active--;this.pump();});}}
   status(){return {active:this.active,queued:this.queue.length,...this.stats};}
   async preload(paths,options={}){
     const entries=[...new Set(paths)].map(path=>{const url=this.resolve(path);if(!url)throw Error('Model hosting is not configured for '+path);if(options.retry&&this.records.get(url)?.state==='failed')this.records.delete(url);this.get(path);return this.records.get(url);});
@@ -110,7 +117,7 @@ function createRenderer(gl,options={}){
     return pivotMatrix(part.pivot,angles,offset);
   }
   function drawActor(path,actor,options={}){
-    const model=cache.get(path);if(!model)return false;const now=options.now??lastNow,p=actorPose(actor,now),r=resource(model),fit=actorFit(model,actor,options.eyeHeight||1.86,options.height||2.08),speed=Math.hypot(actor.vx||0,actor.vz||0),death=options.deathProgress||0,landing=Math.max(0,p.landUntil-now)/.13,windup=actor.bossState==='windup',lean=(actor.climbing?-.12:windup?.07:actor.bossState==='charge'?-.08:0)+(actor.stagger>0?Math.sin(now*26)*.022:0),bob=actor.onGround?Math.abs(Math.sin((actor.walk||now*speed*2.6)*(actor.alien?.20:.28)))*Math.min(.045,speed*.002):0;
+    const model=cache.get(path);if(!model)return false;const now=options.now??lastNow,p=actorPose(actor,now),r=resource(model),fit=actorFit(model,actor,options.eyeHeight||1.86,options.height||HUMAN_HEIGHT),speed=Math.hypot(actor.vx||0,actor.vz||0),death=options.deathProgress||0,landing=Math.max(0,p.landUntil-now)/.13,windup=actor.bossState==='windup',lean=(actor.climbing?-.12:windup?.07:actor.bossState==='charge'?-.08:0)+(actor.stagger>0?Math.sin(now*26)*.022:0),bob=actor.onGround?Math.abs(Math.sin((actor.walk||now*speed*2.6)*(actor.alien?.20:.28)))*Math.min(.045,speed*.002):0;
     const matrix=multiply(compose([actor.x,actor.y-(options.eyeHeight||1.86)+bob-landing*.045-death*.18,actor.z],[lean+death*1.35,p.yaw,0]),compose(fit.offset,[0,0,0],[fit.scale[0],fit.scale[1]*(1-landing*.035),fit.scale[2]])),flash=Math.max(0,(p.flashUntil-now)/.13)*.55+(actor.shieldFlash>0?.18:0),animate=!!options.animate&&animatedActors<(options.animationBudget??12);
     const tint=!actor.alien?options.teamTint:null;gl.uniform3fv(u.uTeamTint,tint||[1,1,1]);gl.uniform1f(u.uTeamTintAmount,tint?1:0);
     if(animate){animatedActors++;for(const part of r.parts)drawBuffer(part,multiply(matrix,actorPart(part,actor,p,now,model)),flash);}else drawBuffer(r.full,matrix,flash);actorCount++;return true;
@@ -128,13 +135,15 @@ function initMenuCharacter(){
   const gl=canvas.getContext('webgl',{alpha:true,antialias:true,premultipliedAlpha:false});if(!gl)return;let renderer;try{renderer=createRenderer(gl);}catch{return;}
   let previous=0,lastLoad=0;const actor={x:0,y:1.86,z:0,yaw:Math.PI+.25,faceYaw:Math.PI+.25,vx:0,vz:0,onGround:true,hp:100,armor:50,walk:0};
   function frame(now){root.requestAnimationFrame(frame);const menu=root.document.getElementById('menu');if(root.document.hidden||!menu||menu.style.display==='none'||root.innerWidth<1100||now-previous<42)return;previous=now;
-    if(now-lastLoad>500){if(renderer.get('characters/player_one.glb')){canvas.classList.add('model-ready');canvas.parentElement?.classList.add('model-ready');}renderer.get('weapons/assault.glb');lastLoad=now;}if(!canvas.offsetWidth)return;
+    const selected=root.NeonSurvivalProgress?.store?.getEquippedCharacterModelPath?.()||'characters/player_one.glb';
+    const caption=canvas.parentElement?.querySelector('.menuHeroCaption'),name=root.NeonSurvivalProgress?.store?.getEquippedCharacter?.()?.name||'Breacher';if(caption&&caption.textContent!==name.toUpperCase()+' // READY')caption.textContent=name.toUpperCase()+' // READY';
+    if(now-lastLoad>500){if(renderer.get(selected)){canvas.classList.add('model-ready');canvas.parentElement?.classList.add('model-ready');}renderer.get('weapons/assault.glb');lastLoad=now;}if(!canvas.offsetWidth)return;
     const width=Math.round(canvas.clientWidth*Math.min(1.5,root.devicePixelRatio||1)),height=Math.round(canvas.clientHeight*Math.min(1.5,root.devicePixelRatio||1));if(width<=0||height<=0)return;if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}gl.viewport(0,0,width,height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);renderer.beginView({position:[0,1.13,-3.55],right:[1,0,0],up:[0,1,0],forward:[0,0,1],aspect:height/width},now/1000);
-    if(renderer.drawActor('characters/player_one.glb',actor,{animate:true,animationBudget:1,now:now/1000})){canvas.classList.add('model-ready');canvas.parentElement?.classList.add('model-ready');const sy=Math.sin(actor.yaw),cy=Math.cos(actor.yaw),matrix=compose([sy*.40+cy*.28,.95,cy*.40-sy*.28],[0,actor.yaw,0],[.62,.62,.62]);renderer.drawWeapon('weapons/assault.glb',matrix);}
+    if(renderer.drawActor(selected,actor,{animate:true,animationBudget:1,now:now/1000})){canvas.classList.add('model-ready');canvas.parentElement?.classList.add('model-ready');const sy=Math.sin(actor.yaw),cy=Math.cos(actor.yaw),matrix=compose([sy*.48+cy*.34,1.32,cy*.48-sy*.34],[0,actor.yaw,0],[.70,.70,.70]);renderer.drawWeapon('weapons/assault.glb',matrix);}
   }
   root.requestAnimationFrame(frame);
 }
-root.NeonModels={WEAPONS,HUMANS,ALIENS,AUTHOR_SCALE,parseGLB,actorFit,ModelCache,sharedCache,createRenderer,compose,multiply,transform,pivotMatrix,initMenuCharacter};
+root.NeonModels={WEAPONS,HUMANS,UNLOCKABLE_HUMANS,HUMAN_HEIGHT,ALIENS,AUTHOR_SCALE,parseGLB,actorFit,ModelCache,sharedCache,createRenderer,compose,multiply,transform,pivotMatrix,initMenuCharacter};
 if(typeof module!=='undefined'&&module.exports)module.exports=root.NeonModels;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',initMenuCharacter,{once:true});else initMenuCharacter();}
 })(typeof window!=='undefined'?window:globalThis);
