@@ -120,6 +120,10 @@
   const MARKER = "<!-- game-hub-library:v1 -->";
   const COPY = "Every game in one place. Play solo, create a multiplayer lobby, or enter a shared online world.";
   const STYLES = `<style id="gameLibraryStyles">
+    .game-card[data-game-key="crowncouncil"] .game-art{position:relative;overflow:hidden;background:#17232b}
+    .game-card[data-game-key="crowncouncil"] .game-visual-art{width:100%;height:100%;position:absolute;inset:0}
+    .game-card[data-game-key="crowncouncil"] .game-visual-art img{object-fit:cover;object-position:center 30%}
+    .game-card[data-game-key="crowncouncil"] .favorite-btn{z-index:2}
     .game-card .game-bottom{align-items:flex-start;gap:10px;flex-wrap:wrap}
     .game-card .game-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;min-width:0;max-width:100%}
     .game-card .game-actions .btn{min-height:44px;white-space:normal;text-align:center}
@@ -180,3 +184,5 @@
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GameHubLibrary = api;
 })(globalThis);
+
+

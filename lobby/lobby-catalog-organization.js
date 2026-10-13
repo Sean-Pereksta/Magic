@@ -10,6 +10,8 @@
   };
 
   const SHOWCASE_TITLES=new Set([
+    "Faction Forge",
+    "Neon Breach",
     "War Realms",
     "Bible Game",
     "Bible Game — Roguelike",
@@ -285,3 +287,5 @@
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});
   else boot();
 })();
+
+
