@@ -49,6 +49,9 @@ async function open({width=1280,user='',brokenArt=false,turncraftCover=false,red
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.hostname==='www.gstatic.com')return route.fulfill({contentType:'text/javascript',body:firebase});
+    // Preserve coverage of the original faction-card renderer when the optional
+    // new artwork enhancer is unavailable. Nexus artwork has its own browser suite.
+    if(url.pathname==='/lobby/lobby-artwork.js')return route.fulfill({contentType:'text/javascript',body:''});
     if(url.href==='https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/effects/ui/turncraft-lobby.webp') {
       turncraftCoverRequests++;
       return turncraftCover?route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#394a62"/></svg>'}):route.abort();
@@ -68,7 +71,7 @@ async function open({width=1280,user='',brokenArt=false,turncraftCover=false,red
 }
 try {
   const {context,page,errors}=await open();
-  assert.deepEqual(await page.locator('#cnmFlagshipGrid .cnm-pick').evaluateAll(cards=>cards.map(card=>card.dataset.gameKey)),['apestogetherstrong','warrealms','cat','ironthrone']);
+  assert.deepEqual(await page.locator('#cnmFlagshipGrid .cnm-pick').evaluateAll(cards=>cards.map(card=>card.dataset.gameKey)),['apestogetherstrong','ironthrone','warrealms','cat']);
   assert.equal(await page.locator('#modalLayer').isVisible(),false);
   assert.equal(await page.locator('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="single"]').count(),0);
   assert.equal(await page.locator('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] [data-game-action="lobby"]').count(),0);
@@ -102,7 +105,7 @@ try {
   results.push('TurnCraft: three faction images load before remote upload; Play Offline and account-gated Join Match actions remain');
   await page.locator('.main-nav [data-view="discover"]').click();
   await page.locator('#cnmSearch').fill('War Realms');
-  await page.locator('#cnmSearchForm button').click();
+  await page.locator('#cnmSearchForm [type="submit"]').click();
   assert.equal(await page.locator('#gameSearch').inputValue(),'War Realms');
   assert.equal(await page.locator('#view-singleplayer').evaluate(node=>node.classList.contains('active')),true);
   assert.deepEqual(errors,[]);results.push('Desktop: four flagships, preserved catalog, search, guest gate, correct lobby filtering, no auto-join');
@@ -112,8 +115,8 @@ try {
   assert.equal(await member.page.locator('#cnmProfileOffer').isVisible(),false);
   await member.page.locator('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] .favorite-btn').click();
   await member.page.waitForFunction(()=>document.querySelector('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] .favorite-btn').getAttribute('aria-pressed')==='true');
-  assert.equal(await member.page.locator('#cnmLibraryGrid [data-game-key="apestogetherstrong"] .favorite-btn').getAttribute('aria-pressed'),'true');
   await member.page.locator('.main-nav [data-view="singleplayer"]').click();
+  assert.equal(await member.page.locator('#cnmLibraryGrid [data-game-key="apestogetherstrong"] .favorite-btn').getAttribute('aria-pressed'),'true');
   await member.page.locator('#singleGameGrid [data-game-key="turncraft"] .favorite-btn').click();
   await member.page.waitForFunction(()=>document.querySelector('#favoritesStrip [data-game-key="turncraft"] .favorite-btn')?.getAttribute('aria-pressed')==='true');
   assert.equal(await member.page.locator('#singleGameGrid [data-game-key="turncraft"] .favorite-btn').getAttribute('aria-pressed'),'true');
@@ -177,7 +180,7 @@ try {
     const geometry=await mobile.page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,buttons:[...document.querySelectorAll('#cnmFlagshipGrid button,#cnmFlagshipGrid a')].filter(node=>node.getClientRects().length).map(node=>node.getBoundingClientRect().height)}));
     assert.ok(geometry.scroll<=geometry.width+1,`${width}px horizontal overflow: ${geometry.scroll}`);
     assert.ok(geometry.buttons.every(height=>height>=43.9),`${width}px undersized touch target`);
-    if(width<761){assert.equal(await mobile.page.locator('.mobile-nav [data-view]').count(),4);await mobile.page.locator('.mobile-nav [data-view="singleplayer"]').click();}
+    if(width<761){assert.equal(await mobile.page.locator('.mobile-nav [data-view]').count(),5);await mobile.page.locator('.mobile-nav [data-view="singleplayer"]').click();}
     else await mobile.page.locator('.main-nav [data-view="singleplayer"]').click();
     assert.ok(await mobile.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     assert.equal(await mobile.page.locator('#cnmLibraryGrid .cnm-pick').count(),4);

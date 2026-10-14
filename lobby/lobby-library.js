@@ -80,7 +80,7 @@
     const { document, escapeHtml, gameColor, gameVisual, favorites, gamePlayCounts } = hooks;
     const actions = getActions(game);
     const card = document.createElement("article");
-    const isTurncraft = game.key === "turncraft";
+    const isTurncraft = game.key === "turncraft" && !root.GameHubArtwork;
     card.className = isTurncraft ? "game-card tc-tile" : "game-card";
     card.dataset.gameKey = game.key;
     card.style.setProperty("--game", gameColor(game.key));

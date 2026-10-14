@@ -3,13 +3,23 @@
 
   const STATUS_ORDER=["showcase","playable","tools","prototype"];
   const STATUS_META={
-    showcase:{label:"Current & Showcase",icon:"⭐",short:"Current",description:"The most actively developed and polished games in the hub.",order:0},
-    playable:{label:"Playable Library",icon:"🎮",short:"Playable",description:"Established games that remain available to play.",order:1000},
-    prototype:{label:"Prototypes & Incomplete",icon:"🧪",short:"Prototype",description:"Older experiments and incomplete builds, kept available without crowding the main library.",order:3000},
+    showcase:{label:"Best Games · Built Out",icon:"⭐",short:"Built Out",description:"Our most complete games and flagship experiences, always first.",order:0},
+    playable:{label:"In Production",icon:"🛠",short:"In Production",description:"Other projects that are still being built and polished. Play their current versions.",order:1000},
+    prototype:{label:"Experimental",icon:"🧪",short:"Experimental",description:"Prototypes, incomplete builds, and early ideas. Explore them when you want something different.",order:3000},
     tools:{label:"Tools & Learning",icon:"🧰",short:"Tool",description:"Useful non-game experiences that live alongside the library.",order:2000}
   };
 
+  const showcaseConfig=globalThis.GameHubShowcase;
+  const BUILT_OUT_KEYS=new Set([...(showcaseConfig?.flagships||[]),...(showcaseConfig?.premium||[]),...(showcaseConfig?.builtOut||[])].map(game=>game.key));
+  const EXPERIMENTAL_KEYS=new Set(showcaseConfig?.experimental||[]);
+  const TOOL_KEYS=new Set(showcaseConfig?.tools||[]);
+
   const SHOWCASE_TITLES=new Set([
+    "Apes Together Strong",
+    "Iron Thrones",
+    "Cat & Mouse",
+    "TurnCraft — Shattered Front",
+    "Chris Runner",
     "Faction Forge",
     "Neon Breach",
     "War Realms",
@@ -22,7 +32,7 @@
     "Gridbound Realms",
     "Chess Warlord"
   ]);
-  const TOOL_TITLES=new Set(["PDF Reader","NFL Radio Dial"]);
+  const TOOL_TITLES=new Set(["PDF Reader","NFL Radio Dial","MTG Catalog & Deck Builder","Fantasy Football Command Center","Verse Memorizer"]);
   const PROTOTYPE_ALIASES=new Set([
     "Mountain Blade Skirmish"
   ]);
@@ -32,16 +42,18 @@
     .replace(/\s{2,}/g," ")
     .trim();
 
-  function statusForTitle(value){
+  function statusForTitle(value,key=""){
     const raw=String(value||"").trim();
     const cleaned=cleanTitle(raw);
-    if(TOOL_TITLES.has(cleaned))return "tools";
-    if(SHOWCASE_TITLES.has(cleaned))return "showcase";
+    if(TOOL_KEYS.has(key)||TOOL_TITLES.has(cleaned))return "tools";
+    if(BUILT_OUT_KEYS.has(key)||!showcaseConfig&&SHOWCASE_TITLES.has(cleaned))return "showcase";
+    if(EXPERIMENTAL_KEYS.has(key))return "prototype";
     if(/\(Incomplete\)/i.test(raw)||PROTOTYPE_ALIASES.has(cleaned))return "prototype";
     return "playable";
   }
 
-  function statusForText(value){
+  function statusForText(value,key=""){
+    if(key&&showcaseConfig)return statusForTitle(value,key);
     const raw=String(value||"");
     if(/\(Incomplete\)/i.test(raw))return "prototype";
     const normalized=cleanTitle(raw);
@@ -56,22 +68,22 @@
     const style=document.createElement("style");
     style.id="catalogOrganizationStyles";
     style.textContent=`
-      .catalog-shelf-heading{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:15px 0 1px;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(115deg,#fff,var(--surface-2));box-shadow:0 6px 18px rgba(16,24,40,.05)}
+      .catalog-shelf-heading{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:15px 0 1px;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(115deg,var(--surface),var(--surface-2));box-shadow:0 6px 18px rgba(16,24,40,.05)}
       .catalog-shelf-heading:first-child{margin-top:0}
       .catalog-shelf-title{display:flex;align-items:center;gap:9px;font-size:1.02rem;font-weight:950;letter-spacing:-.015em}
-      .catalog-shelf-count{display:inline-grid;place-items:center;min-width:26px;height:24px;padding:0 7px;border-radius:999px;background:#eef2f6;color:#344054;font-size:.72rem;font-weight:950}
+      .catalog-shelf-count{display:inline-grid;place-items:center;min-width:26px;height:24px;padding:0 7px;border-radius:999px;background:var(--surface-2);color:var(--ink);font-size:.72rem;font-weight:950}
       .catalog-shelf-description{margin-top:4px;color:var(--muted);font-size:.79rem;line-height:1.4}
-      .catalog-prototype-toggle{min-height:34px;border:1px solid #fed7aa;border-radius:10px;background:#fff7ed;color:#9a3412;padding:6px 10px;font-weight:900;font-size:.75rem;cursor:pointer;white-space:nowrap}
+      .catalog-prototype-toggle{min-height:44px;border:1px solid #5b482d;border-radius:10px;background:#30291d;color:#edc27d;padding:6px 10px;font-weight:900;font-size:.75rem;cursor:pointer;white-space:nowrap}
       .catalog-status-badge{font-weight:950!important}
-      .catalog-status-badge[data-status="showcase"]{background:#fff7ed!important;color:#9a3412!important;border-color:#fed7aa!important}
-      .catalog-status-badge[data-status="prototype"]{background:#fef2f2!important;color:#b42318!important;border-color:#fecaca!important}
-      .catalog-status-badge[data-status="tools"]{background:#eff8ff!important;color:#175cd3!important;border-color:#b2ddff!important}
-      .catalog-status-badge[data-status="playable"]{background:#f0fdf4!important;color:#166534!important;border-color:#bbf7d0!important}
+      .catalog-status-badge[data-status="showcase"]{background:#30291d!important;color:#edc27d!important;border-color:#5b482d!important}
+      .catalog-status-badge[data-status="prototype"]{background:#30202b!important;color:#f8a5b3!important;border-color:#604052!important}
+      .catalog-status-badge[data-status="tools"]{background:#192d45!important;color:#9fd1ff!important;border-color:#325b80!important}
+      .catalog-status-badge[data-status="playable"]{background:#182d27!important;color:#8cdcb3!important;border-color:#355d4a!important}
       .catalog-organized-grid[data-prototypes-open="false"] > .catalog-prototype-card{display:none!important}
       .catalog-organized-grid > .empty-state{order:9999}
-      .catalog-library-note{margin:-3px 0 16px;padding:11px 14px;border-radius:13px;background:#f8fafc;border:1px solid var(--line);color:#475467;font-size:.8rem;line-height:1.45}
-      select optgroup{font-weight:900;color:#344054}
-      select option{font-weight:500;color:#101828}
+      .catalog-library-note{margin:-3px 0 16px;padding:11px 14px;border-radius:13px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);font-size:.8rem;line-height:1.45}
+      select optgroup{font-weight:900;color:var(--ink)}
+      select option{font-weight:500;color:var(--ink)}
       @media(max-width:760px){.catalog-shelf-heading{align-items:flex-start;flex-direction:column}.catalog-prototype-toggle{width:100%}}
     `;
     document.head.appendChild(style);
@@ -93,7 +105,7 @@
     if(!name)return;
     const raw=name.dataset.catalogRawTitle||name.textContent.trim();
     name.dataset.catalogRawTitle=raw;
-    const status=statusForTitle(raw);
+    const status=statusForTitle(raw,card.dataset.gameKey);
     const cleaned=cleanTitle(raw);
     if(name.textContent.trim()!==cleaned)name.textContent=cleaned;
     card.dataset.catalogStatus=status;
@@ -105,7 +117,7 @@
     if(!game)return null;
     const raw=game.dataset.catalogRawTitle||game.childNodes[0]?.textContent?.trim()||game.textContent.trim();
     game.dataset.catalogRawTitle=raw;
-    const status=statusForTitle(raw);
+    const status=statusForTitle(raw,card.dataset.gameKey);
     if(game.childNodes[0]?.nodeType===Node.TEXT_NODE)game.childNodes[0].textContent=cleanTitle(raw)+" ";
     else game.textContent=cleanTitle(raw);
     card.dataset.catalogStatus=status;
@@ -125,7 +137,7 @@
     if(!title)return null;
     const raw=title.dataset.catalogRawTitle||title.textContent.trim();
     title.dataset.catalogRawTitle=raw;
-    const status=statusForTitle(raw);
+    const status=statusForTitle(raw,card.dataset.gameKey);
     title.textContent=cleanTitle(raw);
     card.dataset.catalogStatus=status;
     addStatusBadge(card,status,".online-world-badges");
@@ -143,7 +155,8 @@
       const button=document.createElement("button");
       button.type="button";
       button.className="catalog-prototype-toggle";
-      const refresh=()=>{button.textContent=grid.dataset.prototypesOpen==="true"?"Hide prototypes":"Show prototypes";};
+      button.setAttribute("aria-expanded",String(grid.dataset.prototypesOpen==="true"));
+      const refresh=()=>{button.setAttribute("aria-expanded",String(grid.dataset.prototypesOpen==="true"));button.textContent=grid.dataset.prototypesOpen==="true"?"Hide experimental":"Show experimental";};
       button.addEventListener("click",()=>{grid.dataset.prototypesOpen=grid.dataset.prototypesOpen==="true"?"false":"true";refresh();});
       refresh();
       heading.appendChild(button);
@@ -184,9 +197,9 @@
       if(option===allOption)return;
       const raw=option.dataset.catalogRawTitle||option.textContent;
       option.dataset.catalogRawTitle=raw;
-      const status=statusForText(raw);
+      const status=statusForText(raw,option.value);
       option.dataset.catalogStatus=status;
-      option.textContent=cleanTitle(raw)+(status==="prototype"?" — Prototype":"");
+      option.textContent=cleanTitle(raw)+(status==="prototype"?" — Experimental":"");
       buckets[status].push(option);
     });
     select.innerHTML="";
@@ -237,14 +250,14 @@
     const hostedTitle=document.querySelector("#view-multiplayer > .section-head .section-title");
     const hostedSub=document.querySelector("#view-multiplayer > .section-head .section-sub");
     if(hostedTitle)hostedTitle.textContent="Hosted Multiplayer Lobbies";
-    if(hostedSub)hostedSub.textContent="Open rooms are grouped by game quality tier; prototype lobbies remain available but stay out of the way by default.";
+    if(hostedSub)hostedSub.textContent="Rooms for our best built-out games come first, followed by In Production and Experimental projects.";
 
     const singleGrid=document.getElementById("singleGameGrid");
     if(singleGrid&&!document.getElementById("catalogLibraryNote")){
       const note=document.createElement("div");
       note.id="catalogLibraryNote";
       note.className="catalog-library-note";
-      note.textContent="Prototype games are preserved, not deleted. Use Show prototypes when you want to browse experiments and incomplete builds.";
+      note.textContent="Our best built-out games come first. Browse In Production for other projects, or use Show experimental to reveal prototypes and incomplete builds.";
       singleGrid.before(note);
     }
   }

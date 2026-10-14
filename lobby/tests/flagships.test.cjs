@@ -9,7 +9,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const ids = text => [...text.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const registry = text => new vm.Script('('+text.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]+')').runInNewContext();
 
-for (const view of ['discover','singleplayer','multiplayer','profile']) {
+for (const view of ['discover','singleplayer','multiplayer','profile','mygames']) {
   test(`restores the existing ${view} navigation`, () => assert.equal(layout.initialView(view,false),view));
 }
 test('first visits and invalid saved tabs open Discover', () => {
@@ -20,7 +20,8 @@ test('invitation links take precedence without automatically joining', () => {
 });
 test('four exact game keys, stable editorial order, missing games omitted', () => {
   const games = [{key:'cat'},{key:'other'},{key:'ironthrone'},{key:'apestogetherstrong'},{key:'warrealms'}];
-  assert.deepEqual(layout.selectPicks(games).map(p=>p.key),['apestogetherstrong','warrealms','cat','ironthrone']);
+  // Nexus orders the four existing flagships as requested in the design brief.
+  assert.deepEqual(layout.selectPicks(games).map(p=>p.key),['apestogetherstrong','ironthrone','warrealms','cat']);
   assert.deepEqual(layout.selectPicks([{key:'other'}]),[]);
 });
 test('recent games retain order, deduplicate and exclude stale saved keys', () => {

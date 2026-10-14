@@ -156,7 +156,7 @@ test('catalog organization keeps the Game Library heading after its deferred boo
 
 test('the real loader injects extra games before upgrading and preserves core module syntax', async () => {
   const loader = fs.readFileSync(path.join(__dirname, '../lobby.html'), 'utf8');
-  assert.match(loader, /<script src="\.\/lobby-library\.js"><\/script>/);
+  assert.match(loader, /<script src="\.\/lobby-library\.js(?:\?v=\d+)?"><\/script>/);
   const script = loader.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
   let written = '';
   const errors = [];
