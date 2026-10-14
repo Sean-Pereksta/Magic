@@ -87,6 +87,82 @@ test('local campaign starts with each faction army and reaches battle without pr
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
 
+test('local troop evolution and combo enhancements persist through battle, loser bonus and the next draft',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await context.route('**/game/crowncouncil.html*',async route=>{
+   let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');
+   html=html.replace('/* Fullscreen */',`globalThis.__forgeEvolutionTest={get state(){return S},get battle(){return B},
+    prepare(){stopHostLoops();S.roster.p0=[{type:'vguard',count:1,lvl:1},{type:'vrocket',count:1,lvl:1},{type:'suppressor',count:1,lvl:1}];S.roster.p1=[{type:'defiler',count:1,lvl:1}];S.factions={p0:'Vanir',p1:'Helions'};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};},
+    async issue(card,phase,index=0,side='p0'){stopHostLoops();S.phase=phase;S.draftIndex=index;S.bonusFor=phase==='loser-bonus'?side:null;S.currentPacks={p0:[{type:'troop',key:'rifleman',name:'Riflemen'}],p1:[{type:'troop',key:'hellspawn',name:'Hell Spawn'}]};S.currentPacks[side]=[card];S.selections={p0:[],p1:[]};S.selections.p0[index]=0;S.selections.p1[index]=0;S.phaseEndsAt=Date.now()+60000;await processHostPhase();},
+    finishRound(){for(const unit of hostBattleState.units)if(unit.p===0)unit.hp=0;}};\n/* Fullscreen */`);
+   await route.fulfill({contentType:'text/html',body:html});
+  });
+  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+  await page.waitForFunction(()=>__forgeEvolutionTest.state?.phase==='draft');
+  await page.evaluate(async()=>{const t=__forgeEvolutionTest;t.prepare();await t.issue({type:'evolution',key:'vrocket',for:'vrocket',path:'b'},'draft',0);});
+  assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p0.vrocket),'b');
+  assert.ok(await page.evaluate(()=>__forgeEvolutionTest.state.currentPacks.p0.every(card=>card.type!=='evolution'||card.key!=='vrocket')),'selected specialization is excluded from fresh offers');
+  await page.evaluate(()=>__forgeEvolutionTest.issue({type:'combo',key:'suppression-bombardment'},'draft',1));
+  await page.evaluate(()=>__forgeEvolutionTest.issue({type:'special',special:'upgrade',for:'vguard'},'draft',2));
+  await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='battle');
+  assert.deepEqual(await page.evaluate(()=>({path:__forgeEvolutionTest.state.evolutions.p0.vrocket,combos:__forgeEvolutionTest.state.comboEnhancements.p0,livePath:__forgeEvolutionTest.battle.units.find(unit=>unit.p===0&&unit.type==='vrocket')?.evolution})),{path:'b',combos:['suppression-bombardment'],livePath:'b'});
+  await page.evaluate(()=>__forgeEvolutionTest.finishRound());await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='loser-bonus');
+  await page.evaluate(()=>__forgeEvolutionTest.issue({type:'evolution',key:'vguard',for:'vguard',path:'b'},'loser-bonus'));
+  assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.phase),'draft-after');
+  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'rifleman',name:'Riflemen'},'draft-after',index),index);
+  await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='battle');
+  const persisted=await page.evaluate(()=>({paths:__forgeEvolutionTest.state.evolutions.p0,combos:__forgeEvolutionTest.state.comboEnhancements.p0,live:__forgeEvolutionTest.battle.units.filter(unit=>unit.p===0&&['vguard','vrocket'].includes(unit.type)).map(unit=>({type:unit.type,path:unit.evolution}))}));
+  assert.deepEqual(persisted.paths,{vrocket:'b',vguard:'b'});assert.deepEqual(persisted.combos,['suppression-bombardment']);assert.ok(persisted.live.every(unit=>unit.path==='b'));
+  await page.evaluate(()=>__forgeEvolutionTest.issue({type:'evolution',key:'defiler',for:'defiler',path:'b'},'loser-bonus',0,'p1'));
+  assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p1.defiler),'b','the opposing loser bonus writes to the correct side');
+  assert.ok(await page.evaluate(()=>__forgeEvolutionTest.state.currentPacks.p1.every(card=>card.type!=='evolution'||card.key!=='defiler')));
+  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'rifleman',name:'Riflemen'},'draft-after',index),index);
+  await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='battle');
+  assert.equal(await page.evaluate(()=>__forgeEvolutionTest.battle.units.find(unit=>unit.p===1&&unit.type==='defiler')?.evolution),'b');
+  assert.deepEqual(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p0),{vrocket:'b',vguard:'b'});
+  assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);await context.close();
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('a real finishing missile or BloodBurst survives the logical round transition and then cleans up',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  for(const type of ['vrocket','blood']){
+   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+   // Read-only instrumentation exposes the actual pooled families so the test
+   // can distinguish an impact explosion from unrelated living-unit effects.
+   await context.route('**/faction-forge/effects.js',async route=>{
+    const source=await fs.readFile(path.join(root,'game/faction-forge/effects.js'),'utf8');
+    await route.fulfill({contentType:'text/javascript',body:source.replace('active:pool.active.length,free:','families:pool.active.map(effect=>({family:effect.family,start:effect.start,end:effect.start+effect.duration})),active:pool.active.length,free:')});
+   });
+   await context.route('**/game/crowncouncil.html*',async route=>{
+    let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');
+    html=html.replace('/* Fullscreen */',`globalThis.__forgeFinisherTest={get state(){return S},get renderer(){return spriteRenderer},
+     async prepare(type){stopHostLoops();spriteRenderer.clear();spriteRenderer.configure({intensity:'high',reducedMotion:false,audio:false});S.phase='battle';S.lives=type==='blood'?[4,1]:[4,4];S.factions={p0:type==='blood'?'Helions':'Vanir',p1:'Helions'};S.roster={p0:[{type,count:1,lvl:1}],p1:[{type:'hellspawn',count:1,lvl:1}]};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};const st={...S,field:fieldEmpty()};rebuildFieldFromRoster(st);const attacker=st.field.units.find(unit=>unit.p===0),target=st.field.units.find(unit=>unit.p===1);attacker.id='finishing-attacker';target.id='finishing-target';attacker.x=3;attacker.y=8;target.x=3;target.y=type==='blood'?7:5;attacker.dmg=20;target.hp=1;target.nextAtk=target.nextStep=Date.now()+60000;attacker.nextStep=Date.now()+60000;attacker.nextAtk=Date.now()+220;st.field.units=[attacker,target];st.field.startedAt=Date.now();applyHostBattleVisual(st.field);await runBattle(st.field);},
+     snapshot(){return {phase:S.phase,bonusFor:S.bonusFor,at:performance.now(),deadline:spriteRenderer.impactDeadline('finishing-target'),stats:spriteRenderer.stats,overlayOpacity:getComputedStyle($('overlay')).opacity,cardVisibility:getComputedStyle($('cardRow')).visibility};}};
+     const __finisherWrite=writeStatePatch;writeStatePatch=async function(patch){const result=await __finisherWrite(patch);if(['loser-bonus','game-over'].includes(patch?.phase)){const test=__forgeFinisherTest;test.transition=test.snapshot();setTimeout(()=>test.impact=test.snapshot(),300);setTimeout(()=>test.finished=test.snapshot(),1150);}return result;};\n/* Fullscreen */`);
+    await route.fulfill({contentType:'text/html',body:html});
+   });
+   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+   await page.waitForFunction(()=>__forgeFinisherTest.state?.phase==='draft');
+   await page.evaluate(type=>__forgeFinisherTest.prepare(type),type);
+   await page.waitForFunction(()=>__forgeFinisherTest.transition);
+   const ending=await page.evaluate(()=>__forgeFinisherTest.transition);
+   assert.equal(ending.phase,type==='blood'?'game-over':'loser-bonus');if(type==='vrocket')assert.equal(ending.bonusFor,'p1');
+   assert.ok(ending.stats.active>0,type+' final attack remains visible after logical transition');assert.ok(ending.deadline>ending.at,type+' target health/death is held until impact');
+   await page.waitForFunction(()=>__forgeFinisherTest.impact);
+   const impact=await page.evaluate(()=>__forgeFinisherTest.impact);
+   assert.ok(impact.stats.families.some(effect=>effect.family==='explosion'&&effect.start<=impact.at&&effect.end>impact.at),type+' real explosion plays after the finishing hit');
+   assert.equal(impact.overlayOpacity,'0');assert.equal(impact.cardVisibility,'hidden');
+   await page.waitForFunction(()=>__forgeFinisherTest.finished);
+   assert.equal(await page.evaluate(()=>__forgeFinisherTest.finished.stats.active),0,type+' finished effects are automatically cleared');
+   assert.deepEqual(errors,[]);await context.close();
+  }
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
 test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies a permanent Forge tier in battle',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
