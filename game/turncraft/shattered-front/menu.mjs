@@ -1230,7 +1230,7 @@ window.addEventListener('keydown', (event) => {
   }
 });
 root.addEventListener('keydown', (event) => {
-  if (event.key !== 'Tab' || root.hidden) return;
+  if (event.key !== 'Tab' || root.hidden || document.getElementById('graphicsWarnings')?.hidden === false) return;
   const nodes = [
     ...root.querySelectorAll('button,input,select,a,summary')
   ].filter((n) => !n.disabled && n.getClientRects().length);

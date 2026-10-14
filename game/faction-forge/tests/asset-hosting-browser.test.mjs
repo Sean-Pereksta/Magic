@@ -18,11 +18,11 @@ const firebaseMocks={
   'firebase-firestore.js':`export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async()=>({exists:()=>false,data:()=>({})});export const setDoc=async ref=>{const counter=ref.path.startsWith('lobbies/')?'__fireWrites':'__soloWrites';globalThis[counter]=(globalThis[counter]||0)+1};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>false,data:()=>({})}),0);return ()=>{}};`
 };
 
-async function startupServer(){
+async function startupServer({graphicsTimeout=20000}={}){
   const app=http.createServer(async(req,res)=>{try{
     const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep))throw Error('bad path');
     let body=await fs.readFile(file);
-    if(file.endsWith('crowncouncil.html'))body=Buffer.from(body.toString().replace('/* Fullscreen */','globalThis.__forgeStartupTest={get assets(){return forgeAssets},get mode(){return executionMode},get ui(){return expansionUI}};\n/* Fullscreen */'));
+    if(file.endsWith('crowncouncil.html'))body=Buffer.from(body.toString().replace('baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl,requestTimeout:20000',`baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl,requestTimeout:${graphicsTimeout}`).replace('/* Fullscreen */','globalThis.__forgeStartupTest={get assets(){return forgeAssets},get mode(){return executionMode},get ui(){return expansionUI}};\n/* Fullscreen */'));
     res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(body);
   }catch{res.writeHead(404);res.end();}});
   await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));return {app,url:`http://127.0.0.1:${app.address().port}`};
@@ -66,24 +66,39 @@ test('opening waits for every Cloudflare graphic to decode before entering the s
   }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
 });
 
-test('failed Cloudflare artwork keeps startup blocked until a successful retry', {skip:!chromium},async()=>{
+test('missing Cloudflare artwork opens solo and multiplayer with an exact diagnostic and nonblocking retry', {skip:!chromium},async()=>{
   const {app,url}=await startupServer();let browser;
   try{
     browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
-    const context=await browser.newContext();await startupRoutes(context);const page=await context.newPage(),requested=new Map(),errors=[];let failing=true;
-    page.on('pageerror',error=>errors.push(error.message));
-    await context.route('https://forge-assets.test/**',route=>{
-      const path=new URL(route.request().url()).pathname;requested.set(path,(requested.get(path)||0)+1);
-      return path==='/units/rifleman-tier3.webp'&&failing?route.fulfill({status:503,body:'unavailable'}):route.fulfill({contentType:'image/svg+xml',body:startupImage});
-    });
-    await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Retry loading',exact:true}).waitFor();
-    assert.equal(await page.locator('body.ff-starting').count(),1);assert.equal(await page.locator('.ff-expansion').count(),0);
-    assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),138);assert.equal(requested.size,139);
-    failing=false;await page.getByRole('button',{name:'Retry loading',exact:true}).click();
-    await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor();
-    assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),139);
-    assert.equal(requested.get('/units/rifleman-tier3.webp'),2);assert.equal(requested.get('/units/vguard-tier3.webp'),1);
-    assert.equal(await page.locator('#assetGate').isVisible(),false);assert.deepEqual(errors,[]);
+    for(const multiplayer of [false,true]){
+      const context=await browser.newContext({viewport:{width:390,height:844}});await startupRoutes(context);const page=await context.newPage(),requested=new Map(),errors=[];let failing=true;
+      page.on('pageerror',error=>errors.push(error.message));
+      await context.route('https://forge-assets.test/**',route=>{
+        const path=new URL(route.request().url()).pathname;requested.set(path,(requested.get(path)||0)+1);
+        return path==='/units/rifleman-tier1.webp'&&failing?route.fulfill({status:503,headers:{'Access-Control-Allow-Origin':'*'},body:'unavailable'}):route.fulfill({contentType:'image/svg+xml',body:startupImage});
+      });
+      await page.goto(url+'/game/crowncouncil.html'+(multiplayer?'?gameId=existing-room&username=Guest':''));
+      await page.waitForFunction(()=>!document.body.classList.contains('ff-starting'));
+      await page.waitForFunction(()=>FactionForgeGraphicsReport?.failures?.[0]?.httpStatus===503);
+      assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),138);assert.equal(requested.size,139);
+      if(multiplayer)assert.equal(await page.evaluate(()=>__forgeStartupTest.mode),'legacy-online');
+      else{
+        await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor();
+        assert.ok(await page.locator('.ff-portrait-symbol').count()>0,'missing troop portraits retain their symbol fallback');
+        await page.locator('.ff-expansion button').last().focus();await page.keyboard.press('Tab');
+        assert.equal(await page.evaluate(()=>document.activeElement.id),'ffGraphicsWarningSummary','graphics details are reachable from the menu keyboard focus cycle');
+      }
+      await page.locator('#ffGraphicsWarningSummary').click();
+      assert.match(await page.locator('#ffGraphicsWarningList').textContent(),/units\/rifleman-tier1.webp.*download.*HTTP 503/s);
+      assert.equal(await page.locator('#ffGraphicsWarningList a').getAttribute('href'),'https://forge-assets.test/units/rifleman-tier1.webp');
+      assert.ok(await page.locator('#ffGraphicsWarnings').evaluate(node=>node.getBoundingClientRect().right<=innerWidth));
+      const beforeRetry=requested.get('/units/rifleman-tier1.webp');failing=false;
+      await page.getByRole('button',{name:'Retry missing graphics',exact:true}).click();
+      await page.waitForFunction(()=>FactionForgeGraphicsReport?.failures.length===0&&__forgeStartupTest.assets.preloadedSize===139);
+      assert.equal(requested.get('/units/rifleman-tier1.webp'),beforeRetry+1);assert.equal(requested.get('/units/vguard-tier3.webp'),1);
+      assert.equal(await page.locator('#ffGraphicsWarnings').isVisible(),false);assert.equal(await page.locator('body.ff-starting').count(),0);assert.deepEqual(errors,[]);
+      await context.close();
+    }
   }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
 });
 
@@ -103,6 +118,34 @@ test('multiplayer guest profile connection failure offers a working startup retr
     assert.match(await page.locator('#assetGateStatus').textContent(),/connect your profile/);assert.equal(await page.locator('.ff-expansion').isVisible(),false);
     await page.getByRole('button',{name:'Retry loading',exact:true}).click();await page.waitForFunction(()=>!document.body.classList.contains('ff-starting'));
     assert.equal(await page.evaluate(()=>__guestAttempts),2);assert.equal(await page.locator('body.ff-starting').count(),0);
+  }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('failed and stalled image decodes finish loading attempts and open both destinations', {skip:!chromium},async()=>{
+  const {app,url}=await startupServer({graphicsTimeout:500});let browser;
+  try{
+    browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
+    for(const multiplayer of [false,true]){
+      const context=await browser.newContext();await startupRoutes(context);
+      await context.addInitScript(()=>{
+        const nativeDecode=HTMLImageElement.prototype.decode;
+        HTMLImageElement.prototype.decode=async function(){
+          await nativeDecode.call(this);
+          if(this.src.endsWith('/units/rifleman-tier1.webp'))throw new DOMException('Image encoding unsupported','EncodingError');
+          if(this.src.endsWith('/units/vguard-tier1.webp'))await new Promise(()=>{});
+        };
+      });
+      await context.route('https://forge-assets.test/**',route=>route.fulfill({contentType:'image/svg+xml',body:startupImage}));
+      const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+      await page.goto(url+'/game/crowncouncil.html'+(multiplayer?'?gameId=existing-room&username=Guest':''));
+      await page.waitForFunction(()=>!document.body.classList.contains('ff-starting'));
+      const report=await page.evaluate(()=>FactionForgeGraphicsReport),byPath=Object.fromEntries(report.failures.map(entry=>[entry.path,entry]));
+      assert.equal(report.completed,139);assert.equal(report.loaded,137);assert.equal(report.failures.length,2);
+      assert.equal(byPath['units/rifleman-tier1.webp'].stage,'decode');assert.match(byPath['units/rifleman-tier1.webp'].message,/Image encoding unsupported/);
+      assert.equal(byPath['units/vguard-tier1.webp'].stage,'timeout');assert.equal(byPath['units/vguard-tier1.webp'].during,'decode');
+      assert.match(byPath['units/vguard-tier1.webp'].message,/500 ms while decoding/);
+      assert.equal(await page.evaluate(()=>__forgeStartupTest.mode),multiplayer?'legacy-online':'menu');assert.deepEqual(errors,[]);await context.close();
+    }
   }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
 });
 

@@ -69,10 +69,10 @@ test('startup preloads every Cloudflare tier and art group once, waits for decod
   assert.equal(requested.length,139,'opening menus or battles reuses retained decoded images');
 });
 
-test('startup blocks on failed downloads or decodes and retry requests only the failed graphics',async()=>{
+test('strict preload rejects failed downloads or decodes and retry requests only the failed graphics',async()=>{
   const manifest={units:{rifleman:{tiers:{'1':{path:'units/good.webp'},'2':{path:'units/missing.webp'}}}},ui:{panel:'ui/panel.webp',alias:'ui/panel.webp'}},requested=[];
   let failing=true;
-  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifest,imageFactory:()=>{
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifest,fetchImpl:async()=>({ok:false,status:404}),imageFactory:()=>{
     const image={width:768,height:768,decode:async()=>{if(failing&&image.source.endsWith('panel.webp'))throw new Error('Decode failed');}};
     Object.defineProperty(image,'src',{set(value){image.source=value;requested.push(value);queueMicrotask(()=>failing&&value.endsWith('missing.webp')?image.onerror?.():image.onload?.());}});return image;
   }});
@@ -82,6 +82,40 @@ test('startup blocks on failed downloads or decodes and retry requests only the 
   assert.equal(requested.filter(path=>path.endsWith('/good.webp')).length,1);
   assert.equal(requested.filter(path=>path.endsWith('/missing.webp')).length,2);
   assert.equal(requested.filter(path=>path.endsWith('/panel.webp')).length,2);
+});
+
+test('best-effort startup attempts every graphic and reports download, decode and timeout reasons',async()=>{
+  const manifest={units:{},ui:{good:'ui/good.webp',missing:'ui/missing.webp',bad:'ui/bad.webp',slow:'ui/slow.webp'}},requested=[];
+  let failing=true;
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifest,requestTimeout:15,fetchImpl:async()=>({ok:false,status:404,statusText:'Not Found'}),imageFactory:()=>{
+    const image={width:768,height:768,decode:async()=>{
+      if(failing&&image.source.endsWith('/bad.webp'))throw new Error('Unsupported image encoding');
+      if(failing&&image.source.endsWith('/slow.webp'))await new Promise(()=>{});
+    }};
+    Object.defineProperty(image,'src',{set(value){image.source=value;if(!value)return;requested.push(value);queueMicrotask(()=>failing&&value.endsWith('/missing.webp')?image.onerror?.({message:'Image download failed'}):image.onload?.());}});return image;
+  }});
+  const report=await loader.preloadAll({allowFailures:true});
+  assert.equal(report.loaded,1);assert.equal(report.completed,4);assert.equal(report.total,4);
+  assert.deepEqual(new Set(requested),new Set(Object.values(manifest.ui).map(path=>'https://forge-assets.test/'+path)));
+  const byPath=Object.fromEntries(report.failures.map(entry=>[entry.path,entry]));
+  assert.equal(byPath['ui/missing.webp'].stage,'download');assert.equal(byPath['ui/missing.webp'].httpStatus,404);
+  assert.equal(byPath['ui/missing.webp'].url,'https://forge-assets.test/ui/missing.webp');assert.match(byPath['ui/missing.webp'].probeMessage,/404 Not Found/);
+  assert.equal(byPath['ui/bad.webp'].stage,'decode');assert.match(byPath['ui/bad.webp'].message,/Unsupported image encoding/);
+  assert.equal(byPath['ui/slow.webp'].stage,'timeout');assert.equal(byPath['ui/slow.webp'].during,'decode');assert.match(byPath['ui/slow.webp'].message,/15 ms while decoding/);
+  failing=false;const retried=await loader.preloadAll({retry:true,allowFailures:true});assert.equal(retried.loaded,4);assert.deepEqual(retried.failures,[]);
+  assert.equal(requested.filter(url=>url.endsWith('/good.webp')).length,1,'successfully decoded images stay cached during retry');
+});
+
+test('cross-origin diagnostic failures preserve the actual browser message without inventing an HTTP status',async()=>{
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifest:{units:{},ui:{missing:'missing.webp'}},fetchImpl:async()=>{throw new TypeError('Failed to fetch');},imageFactory:mockImageFactory()});
+  await loader.preloadAll({allowFailures:true});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loader.report.failures[0].httpStatus,undefined);assert.match(loader.report.failures[0].probeMessage,/Failed to fetch.*HTTP status is unavailable/);
+});
+
+test('best-effort preload reports an unavailable manifest without preventing startup',async()=>{
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifestUrl:'https://forge-assets.test/custom-manifest.json',fallbackManifest:null,fetchImpl:async()=>({ok:false,status:503,statusText:'Service Unavailable'})});
+  const report=await loader.preloadAll({allowFailures:true});assert.equal(report.total,0);
+  assert.equal(report.failures[0].stage,'manifest');assert.equal(report.failures[0].url,'https://forge-assets.test/custom-manifest.json');assert.match(report.failures[0].message,/HTTP 503 Service Unavailable/);
 });
 
 test('unconfigured or unavailable graphics gracefully keep legacy artwork',async()=>{
