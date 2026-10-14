@@ -1,0 +1,312 @@
+/* Chris Runner's launch screen. All styles are scoped to preserve the game HUD. */
+#menuOverlay {
+  --runner-navy: #0c142a;
+  --runner-ink: #080f20;
+  --runner-cyan: #65edee;
+  --runner-yellow: #ffe76b;
+  --runner-coral: #ff756b;
+  --runner-muted: #acb9d1;
+  z-index: 30;
+  overflow: hidden;
+  padding: 20px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at 85% 20%, #173b4c 0, transparent 46%),
+    radial-gradient(ellipse at 0% 100%, #3b2342 0, transparent 40%),
+    #080f20;
+  font-family: "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif;
+}
+#menuOverlay::before,
+#menuOverlay::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 46vw;
+  height: 14px;
+  border-radius: 99px;
+  background: #65edee12;
+  transform: rotate(-35deg);
+}
+#menuOverlay::before { top: 21%; left: -12%; box-shadow: 0 35px #65edee09, 0 -35px #65edee09; }
+#menuOverlay::after { bottom: 13%; right: -12%; background: #ff756b16; box-shadow: 0 35px #ff756b09, 0 -35px #ff756b09; }
+#menuCard {
+  position: relative;
+  z-index: 1;
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  text-align: left;
+  padding: 30px 34px 24px;
+  border: 1px solid #c1dbff26;
+  border-radius: 30px;
+  background: linear-gradient(125deg, #15213aee, #0e192ced 68%, #172739ee);
+  box-shadow: 0 24px 90px #0007, inset 0 1px #ffffff0d;
+  scrollbar-width: thin;
+  scrollbar-color: #53657a #10192b;
+}
+.runnerMenuKicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  color: var(--runner-cyan);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 2.3px;
+}
+.runnerKickerLabel { display: inline-flex; align-items: center; gap: 7px; }
+.runnerKickerLabel::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--runner-cyan); box-shadow: 0 0 12px #65edee60; }
+.runnerWorldBadge { padding: 7px 10px; border: 1px solid #7f9db438; border-radius: 7px; color: #d4e0f4; font-size: 9px; letter-spacing: 1px; }
+#menuCard h1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .22em;
+  align-items: baseline;
+  margin: 0;
+  color: #fff;
+  font-family: "Arial Black", "Trebuchet MS", Arial, sans-serif;
+  font-size: clamp(42px, 5.6vw, 72px);
+  font-weight: 950;
+  font-style: italic;
+  line-height: 1.02;
+  letter-spacing: -3px;
+  text-transform: uppercase;
+  text-shadow: 3px 4px 0 #050c1a66;
+}
+.runnerTitleAccent { color: var(--runner-yellow); }
+#menuCard h2 {
+  margin: 12px 0 25px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #b8c6dc;
+  opacity: 1;
+  letter-spacing: .15px;
+}
+#menuLayout { grid-template-columns: minmax(0, 1fr) 310px; gap: 26px; }
+#menuMain { display: flex; flex-direction: column; }
+#characterHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 13px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.8px;
+  color: #edf2ff;
+}
+#characterHeading::after { content: "FIND YOUR EDGE"; color: #90a1bc; font-size: 9px; font-weight: 600; letter-spacing: .8px; }
+#characterGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+#menuOverlay .characterCard {
+  --runner-accent: #65edee;
+  display: flex;
+  flex-direction: column;
+  min-height: 175px;
+  margin: 0;
+  padding: 13px 13px 12px;
+  overflow: hidden;
+  color: #e7edf8;
+  font: inherit;
+  text-align: left;
+  border: 1px solid #63748f52;
+  border-radius: 13px;
+  background: #0a1425b3;
+  box-shadow: 0 3px #070e1d;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+#menuOverlay .characterCard[data-character="dawit"] { --runner-accent: #ffad74; }
+#menuOverlay .characterCard[data-character="jay"] { --runner-accent: #b3a1ff; }
+#menuOverlay .characterCard[data-character="anthony"] { --runner-accent: #8be6a2; }
+#menuOverlay .characterCard[data-character="kevon"] { --runner-accent: #ff9cb5; }
+#menuOverlay .characterCard:hover { transform: translateY(-3px); border-color: var(--runner-accent); background: #1a2b40; }
+#menuOverlay .characterCard.selected {
+  border: 1px solid var(--runner-accent);
+  background: linear-gradient(140deg, #20444d, #162839 85%);
+  box-shadow: 0 0 0 1px var(--runner-accent), 0 4px #050c19;
+}
+#menuOverlay .characterCard.selected::after {
+  content: "✓";
+  top: 13px;
+  right: 11px;
+  width: 19px;
+  height: 19px;
+  line-height: 19px;
+  text-align: center;
+  color: #0a1623;
+  background: var(--runner-accent);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.runnerCardTopline { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; padding-right: 20px; }
+.runnerCardNumber { color: var(--runner-accent); font-size: 9px; font-weight: 900; letter-spacing: .8px; }
+.runnerCardRole { color: #adbbd0; font-size: 8px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
+#menuOverlay .characterName { margin-bottom: 5px; color: #fff; font-size: 19px; font-weight: 900; letter-spacing: -.5px; }
+#menuOverlay .characterBuild { min-height: auto; color: var(--runner-accent); font-size: 10px; font-weight: 800; line-height: 1.45; opacity: 1; }
+#menuOverlay .characterStats { margin-top: 8px; color: #c2cde0; font-size: 10px; font-weight: 500; line-height: 1.5; }
+.runnerCardDescription { display: block; margin-bottom: 7px; }
+.runnerCardStrength { display: block; color: #cce9d9; }
+.runnerCardWeakness { display: block; margin-top: 2px; color: #a4b4cc; }
+#menuButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; justify-content: stretch; margin-top: 18px; }
+#menuOverlay #menuButtons button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 62px;
+  margin: 0;
+  padding: 13px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  color: #172133;
+  background: var(--runner-yellow);
+  box-shadow: 0 4px #a7882b;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+#menuOverlay #menuButtons button:hover { transform: translateY(-2px); filter: brightness(1.07); }
+#menuOverlay #menuButtons button:active { transform: translateY(2px); }
+#menuOverlay #menuButtons .runnerVersusButton { background: var(--runner-coral); box-shadow: 0 4px #993f43; }
+.runnerButtonLabel { display: block; }
+.runnerButtonHint { display: block; margin-top: 4px; font-size: 10px; font-weight: 600; opacity: .76; }
+.runnerButtonArrow { font-size: 22px; font-weight: 500; }
+#menuOverlay #menuButtons .runnerReplayButton {
+  grid-column: 1 / -1;
+  justify-content: center;
+  min-height: 30px;
+  margin-top: 4px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: #b2c3dd;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  box-shadow: none;
+}
+#menuOverlay button:disabled { cursor: wait; opacity: .55; transform: none; filter: none; }
+#menuControls { margin: 9px 0 0; text-align: left; font-size: 10px; color: #b4c2d8; line-height: 1.8; opacity: 1; }
+.runnerControlsSummary { width: fit-content; padding: 4px 0; color: #c5d3e9; font-size: 10px; font-weight: 700; cursor: pointer; }
+.runnerControlsBody { margin-top: 5px; padding: 9px 12px; border: 1px solid #7892b62b; border-radius: 10px; background: #080f2059; }
+.runnerMobileHint { display: none; }
+#characterPreviewWrap {
+  position: relative;
+  min-height: 450px;
+  border: 1px solid #9dc4d739;
+  border-radius: 21px;
+  background:
+    radial-gradient(ellipse at 50% 40%, #3b6887 0, #1c364d 42%, transparent 73%),
+    linear-gradient(155deg, #1b334b, #101c30 72%);
+  text-align: center;
+  isolation: isolate;
+}
+#characterPreviewWrap::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 16%;
+  right: 16%;
+  top: 38%;
+  height: 32%;
+  border: 1px solid #b6e9ff24;
+  border-radius: 50%;
+  transform: rotate(-24deg);
+  box-shadow: 0 0 0 22px #9ed6ff06, 0 0 0 44px #9ed6ff04;
+}
+.runnerPreviewKicker { position: absolute; top: 17px; left: 18px; z-index: 2; color: #a8c6da; font-size: 9px; font-weight: 900; letter-spacing: 1.5px; }
+.runnerPreviewBadge { position: absolute; top: 13px; right: 13px; z-index: 2; padding: 5px 8px; border-radius: 6px; color: #d4f7ed; background: #092a2e99; border: 1px solid #7deac62b; font-size: 9px; font-weight: 800; }
+#characterPreviewCanvas { position: relative; z-index: 1; flex: 1; min-height: 300px; }
+#characterPreviewCanvas canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+#characterPreviewInfo { position: relative; z-index: 2; padding: 16px 20px 19px; border-top: 1px solid #94b7d02b; background: #0c1827a3; }
+#previewCharacterName { color: #fff; font-size: 28px; font-weight: 950; letter-spacing: -.8px; }
+#previewCharacterTrait { margin-top: 6px; color: #b6cbe1; font-size: 10px; line-height: 1.65; }
+.runnerPreviewAbility { display: inline-block; margin: 7px 0 0; padding: 5px 8px; border: 1px solid #6cebe040; border-radius: 6px; color: #9ef5e6; font-size: 9px; font-weight: 800; }
+.runnerPreviewAbility kbd { margin-right: 4px; padding: 1px 4px; border-radius: 3px; color: #102327; background: #8ee9dd; font: inherit; }
+#menuOverlay :is(button, summary):focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+/* Full-screen preload gate: the graphics loader owns visibility and progress. */
+#runnerLoadOverlay {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #fff;
+  background: #080f20f2;
+  backdrop-filter: blur(16px);
+  font-family: "Trebuchet MS", Arial, sans-serif;
+}
+#runnerLoadOverlay[hidden] { display: none; }
+.runnerLoadCard { width: min(410px, 100%); padding: 32px; border: 1px solid #9ac9de3b; border-radius: 25px; background: linear-gradient(140deg, #1c3349, #111e33); box-shadow: 0 24px 70px #0006; }
+.runnerLoadEyebrow { color: #65edee; font-size: 10px; font-weight: 900; letter-spacing: 2px; }
+.runnerLoadTrack { display: flex; gap: 7px; margin: 23px 0 16px; transform: skewX(-24deg); }
+.runnerLoadTrack i { width: 46px; height: 10px; border-radius: 2px; background: #ffe76b; animation: runnerLoadPulse 1s ease-in-out infinite; }
+.runnerLoadTrack i:nth-child(2) { animation-delay: .15s; }
+.runnerLoadTrack i:nth-child(3) { animation-delay: .3s; }
+#runnerLoadStatus { margin: 0 0 10px; font-size: 27px; font-weight: 900; letter-spacing: -.8px; }
+#runnerLoadDetail { min-height: 36px; margin: 14px 0 0; color: #b9cbe2; font-size: 12px; line-height: 1.5; }
+#runnerLoadProgress { display: block; width: 100%; height: 10px; margin: 22px 0 0; overflow: hidden; appearance: none; border: 0; border-radius: 8px; background: #080f20; accent-color: #65edee; }
+#runnerLoadProgress::-webkit-progress-bar { background: #080f20; border-radius: 8px; }
+#runnerLoadProgress::-webkit-progress-value { border-radius: 8px; background: linear-gradient(90deg, #65edee, #ffe76b); }
+#runnerLoadProgress::-moz-progress-bar { border-radius: 8px; background: linear-gradient(90deg, #65edee, #ffe76b); }
+#runnerLoadRetry { margin: 18px 0 0; padding: 11px 18px; border: 0; border-radius: 9px; color: #132137; background: #ffe76b; font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
+#runnerLoadRetry[hidden] { display: none; }
+#runnerLoadRetry:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+@keyframes runnerLoadPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+@media (max-width: 1000px) {
+  #menuCard { padding: 25px; }
+  #menuLayout { grid-template-columns: minmax(0, 1fr) 255px; gap: 18px; }
+  #characterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #menuOverlay .characterCard { min-height: 160px; }
+  #characterPreviewWrap { min-height: 420px; }
+  #characterPreviewCanvas { min-height: 260px; }
+  #characterHeading::after { display: none; }
+}
+@media (max-width: 700px) {
+  #menuOverlay { padding: 10px; }
+  #menuCard { width: 100%; max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); padding: 20px 16px 17px; border-radius: 22px; }
+  .runnerMenuKicker { margin-bottom: 13px; font-size: 8px; letter-spacing: 1.4px; }
+  .runnerWorldBadge { font-size: 7px; padding: 6px 7px; letter-spacing: .5px; }
+  #menuCard h1 { gap: .2em; font-size: clamp(35px, 9.2vw, 61px); letter-spacing: -2px; }
+  #menuCard h2 { margin: 9px 0 16px; font-size: 11px; }
+  #menuLayout { grid-template-columns: 1fr; gap: 19px; }
+  #characterPreviewWrap { order: -1; min-height: 220px; height: 220px; flex-direction: row; align-items: stretch; border-radius: 15px; }
+  #characterPreviewCanvas { min-height: 0; min-width: 0; width: 47%; flex: 0 0 47%; }
+  #characterPreviewInfo { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; flex: 1; min-width: 0; padding: 40px 12px 18px 5px; border-top: 0; text-align: left; background: transparent; }
+  #previewCharacterName { font-size: 23px; }
+  #previewCharacterTrait { font-size: 9px; line-height: 1.6; }
+  .runnerPreviewAbility { margin-top: 9px; font-size: 8px; }
+  .runnerPreviewKicker { top: 13px; left: 13px; font-size: 8px; }
+  .runnerPreviewBadge { top: 10px; right: 10px; font-size: 8px; }
+  #characterGrid { gap: 9px; }
+  #menuOverlay .characterCard { min-height: 165px; padding: 12px 11px; }
+  #menuOverlay .characterName { font-size: 18px; }
+  #menuOverlay .characterStats { font-size: 9px; }
+  #menuOverlay .characterBuild { font-size: 9px; }
+  #menuButtons { order: -2; margin-top: 0; margin-bottom: 16px; gap: 9px; }
+  #characterHeading { order: -1; }
+  #menuOverlay #menuButtons button { padding: 13px 12px; font-size: 14px; min-height: 60px; }
+  .runnerButtonHint { font-size: 9px; }
+  #menuControls { margin-top: 6px; font-size: 9px; }
+  .runnerMobileHint { display: block; color: #b5e9df; }
+  .runnerLoadCard { padding: 26px; }
+}
+@media (max-width: 360px) {
+  #menuOverlay { padding: 6px; }
+  #menuCard { padding: 16px 12px; }
+  #menuCard h1 { font-size: 32px; }
+  .runnerCardTopline { gap: 4px; }
+  .runnerCardRole { font-size: 7px; }
+  #menuOverlay .characterCard { padding: 11px 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #menuOverlay *, #runnerLoadOverlay * { animation: none !important; transition: none !important; }
+}

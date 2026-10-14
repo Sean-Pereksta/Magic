@@ -1,6 +1,22 @@
-# Chris Runner — realms and chases
+# Chris Runner — cartoon graphics and chases
 
-The existing `game/chrisrunner.html` entry point loads `upgrade.js`. No build step or new runtime dependency is required; both files must be deployed together. The current Three.js 0.160.0 dependency remains unchanged.
+The existing `game/chrisrunner.html` entry point remains buildless. Deploy its `chris-runner/` scripts, stylesheet, and `asset-manifest.json` together. Three.js remains pinned to 0.160.0.
+
+## Cloudflare graphics and startup
+
+All 262 self-contained GLBs load from `https://pub-b0a47452b499401bb0642836b2fe3501.r2.dev/`: five runners, twelve pursuer/creature models, 128 obstacle variants, 64 ground tiles, 48 props, and five pickups. The bucket contains the six graphics folders directly at its root. The manifest ships with the game; it does not need to be uploaded to R2.
+
+`graphics.js` validates the local manifest, downloads with five concurrent requests, reports model/byte progress, verifies SHA-256 checksums, and parses the pack's embedded glTF 2.0 subset. `boot.js` creates the world and preview only after every asset is ready. The menu and programmatic starts stay gated while loading. Failed downloads show an actionable error and a Retry button; successful cache entries survive retry. There is no silent primitive-model fallback in production startup.
+
+The public R2 bucket must allow cross-origin GET/HEAD requests from the game domain (or * for this public graphics-only bucket). No Cloudflare credentials or API keys are included in the game.
+
+## Menu and model integration
+
+The responsive menu shows five runner roles, abilities, strengths, and weaknesses; a live GLB preview; clear solo/local-versus choices; saved replay loading; and expandable controls. Cards support keyboard navigation and visible focus. Reduced-motion settings pause preview movement. Touch controls stay hidden until play begins.
+
+`art-actors.js` maps authored joint names to the existing movement animation, keeps character proportions and second-player coloring, and preserves police lasers, stalker warnings, torch attacks, and spirit-dog outlines. The GLBs also contain Idle/Run/Sprint/Jump clips; gameplay drives the named pivots rather than mixing both systems. `art-world.js` instances repeated terrain/scenery while preserving obstacle collision envelopes, route logic, and moving hazard warnings.
+
+The cache owns shared geometry/materials. Cleanup skips resources marked `runnerAssetShared`; actor recolors use private materials. Preview switching, pickups, restarts, and chunk cleanup release only instance-owned resources. The generation build is `chris-runner-cartoon-v1`; older builds' replays are rejected because cosmetic generation consumes a different random sequence.
 
 ## Controls and characters
 
@@ -66,7 +82,7 @@ curl -fL https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js -o /tmp/c
 THREE_SOURCE=/tmp/chris-runner-three.js node --test game/chris-runner/upgrade.test.cjs
 ```
 
-The fifteen tests cover 10,000 connected sections with both players' full collision clearance, center-blocking frequency, seeded realm variety, abilities, blocked landings, automatic hurdles, touch cancellation, enemy behavior/models, dog outline materials, animation transitions, all hazard phases, occupied-door safety, two-player chase/tag swapping, seeded restart, and 300 chunks / 12,600 yards of bounded cleanup. Integration checks use real Three.js scene objects with a simulated DOM.
+The gameplay tests cover 10,000 connected sections with both players' full collision clearance, center-blocking frequency, seeded realm variety, abilities, blocked landings, automatic hurdles, touch cancellation, enemy behavior/models, dog outline materials, animation transitions, all hazard phases, occupied-door safety, two-player chase/tag swapping, seeded restart, and 300 chunks / 12,600 yards of bounded cleanup. Integration checks use real Three.js scene objects with a simulated DOM.
 
 Optional browser tooling (no runtime dependency):
 
@@ -76,4 +92,13 @@ THREE_SOURCE=/tmp/chris-runner-three.js node game/chris-runner/browser-smoke.cjs
 
 Set `PLAYWRIGHT_PATH` if Playwright is outside the project's dependency path, `CHROME_PATH` to use an installed Chromium browser, and `RUNNER_CAPTURE_DIR` to save screenshots and rendering metrics. `RUNNER_TEST_REALMS=dream,carnival` limits a targeted rerun. `RUNNER_TEST_ROOT` can point to an unmodified checkout for the forest/Dream comparison.
 
-Headless Chromium with desktop and 430×860 mobile viewports rendered all sixteen realms without page errors, then exercised real keyboard input and all five character selections. Captures were visually inspected. Sample render draw counts decreased from 1,017 to 813 (forest desktop), 2,665 to 1,881 (Dream desktop), 804 to 548 (forest mobile), and 2,280 to 1,398 (Dream mobile). These are software-renderer samples with different generated layouts, not a controlled hardware frame-rate benchmark. Physical-phone frame rate and hands-on long-run play remain manual QA before release.
+Headless Chromium checks desktop and mobile rendering across all sixteen realms, real keyboard input, all five character selections, and both player modes. Startup tests hold one model at 261/262 to prove the gate, verify missing-file retry downloads only that model, and check responsive menu controls and reduced motion. A separate live run reads all 262 models from the public Cloudflare host with browser CORS enforcement. Screenshots were visually inspected. Software-renderer submission timings are not hardware frame-rate benchmarks; physical-phone frame rate remains manual QA.
+
+Additional asset and startup tests:
+
+```sh
+THREE_SOURCE=/tmp/chris-runner-three.js RUNNER_PACK_ROOT=/path/to/extracted/chris-runner/cartoon-v1 node --test game/chris-runner/graphics.test.cjs
+THREE_SOURCE=/tmp/chris-runner-three.js RUNNER_ASSET_ROOT=/path/to/extracted/chris-runner/cartoon-v1 node game/chris-runner/startup-smoke.cjs
+```
+
+Set `RUNNER_LIVE_ASSETS=1` on startup-smoke to include the live Cloudflare check. Set `RUNNER_ASSET_ROOT` on browser-smoke to use the extracted asset pack as deterministic network fixtures. Without it, browser-smoke reads the public R2 assets. Both browser checks support the existing `PLAYWRIGHT_PATH`, `CHROME_PATH`, and `RUNNER_CAPTURE_DIR` options.

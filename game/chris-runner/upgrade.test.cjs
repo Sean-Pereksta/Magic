@@ -86,7 +86,7 @@ function runtime() {
   });
   vm.runInContext(fs.readFileSync(threeSource, 'utf8'), ctx);
   vm.runInContext(extension, ctx);
-  vm.runInContext(main.replace('init();\nanimate();', ''), ctx);
+  vm.runInContext(main.replace('bootRunnerPage();', ''), ctx);
   const run = source => vm.runInContext(source, ctx);
   run('scene = new THREE.Scene(); player = createPlayer(); players = [player]; activeRunnerPlayers = [player]; gameMode = 1;');
   return {run, document, window, advance(ms) {now += ms;}, flushTimers() {const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());}};

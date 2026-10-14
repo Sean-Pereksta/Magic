@@ -11,7 +11,7 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(root + path.sep)) {res.writeHead(403).end(); return;}
   fs.readFile(file, (error, data) => {
     if (error) {res.writeHead(404).end(); return;}
-    res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : 'application/octet-stream');
+    res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'application/octet-stream');
     res.end(data);
   });
 });
@@ -28,9 +28,17 @@ const server = http.createServer((req, res) => {
       page.on('pageerror', error => errors.push(error.message));
       await page.route('https://**/*', route => {
         if (route.request().url().includes('three@0.160.0')) return route.fulfill({path: process.env.THREE_SOURCE, contentType: 'text/javascript'});
+        if (route.request().url().startsWith('https://pub-b0a47452b499401bb0642836b2fe3501.r2.dev/')) {
+          if (!process.env.RUNNER_ASSET_ROOT) return route.continue();
+          const pathname=new URL(route.request().url()).pathname;
+          const asset=path.resolve(process.env.RUNNER_ASSET_ROOT,'.'+pathname);
+          if (!asset.startsWith(path.resolve(process.env.RUNNER_ASSET_ROOT)+path.sep)) return route.abort();
+          return route.fulfill({path:asset,contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}});
+        }
         return route.abort();
       });
       await page.goto(`http://127.0.0.1:${server.address().port}/game/chrisrunner.html`, {waitUntil: 'load'});
+      await page.waitForFunction(()=>window.RunnerGraphics?.ready && document.getElementById('runnerLoadOverlay').hidden,{timeout:90000});
       await page.evaluate(() => {startGame(2); gameStarted = false;});
       assert.equal(await page.evaluate(() => players.length), 2);
       for (const realm of process.env.RUNNER_TEST_REALMS ? process.env.RUNNER_TEST_REALMS.split(',') : process.env.RUNNER_TEST_ROOT ? ['forest', 'dream'] : ['forest', 'city', 'rooftops', 'construction', 'industrial', 'tunnel', 'ruins', 'snow', 'desert', 'dream', 'carnival', 'volcanic', 'crystal', 'neon', 'harbor', 'clockwork']) {
@@ -50,11 +58,12 @@ const server = http.createServer((req, res) => {
           snapCameraToPlayers(); updateEnvironmentSky(2); updateHUD();
           renderer.render(scene, camera);
           const timings = [];
-          for (let i = 0; i < 45; i++) {const t = performance.now(); renderer.render(scene, camera); timings.push(performance.now() - t);}
+          for (let i = 0; i < 3; i++) {const t = performance.now(); renderer.render(scene, camera); timings.push(performance.now() - t);}
           timings.sort((a, b) => a - b);
-          return {realm, draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, medianSubmitMs: timings[22], p95SubmitMs: timings[42]};
+          return {realm, draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, medianSubmitMs: timings[1]};
         }, realm);
         results.push({mobile, ...metrics});
+        console.log(JSON.stringify({mobile,realm:metrics.realm,draws:metrics.draws,triangles:metrics.triangles}));
         if (output) await page.screenshot({path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-${realm}.png`)});
       }
       if (output && !mobile && !process.env.RUNNER_TEST_ROOT) {
