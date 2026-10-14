@@ -52,7 +52,9 @@
     const actions = [];
     if (single) actions.push({ type: "single", label: multi ? "Play Offline" : "Play" });
     if (multi) {
-      if (game.launchMode === "realm") {
+      if (game.multiplayerRoute) {
+        actions.push({ type: "online", label: game.joinLabel || "Join Match" });
+      } else if (game.launchMode === "realm") {
         actions.push({ type: "online", label: game.joinLabel || "Enter World" });
       } else if (game.launchMode === "matchmaking") {
         actions.push({ type: "online", label: game.joinLabel || "Find Match" });

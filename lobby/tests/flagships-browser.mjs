@@ -95,11 +95,11 @@ try {
   assert.deepEqual(await turncraft.locator('.tc-portrait img').evaluateAll(images=>images.map(image=>new URL(image.src).pathname)),['/game/turncraft/assets/factions/frontier.webp','/game/turncraft/assets/factions/ascendant.webp','/game/turncraft/assets/factions/brood.webp']);
   await page.waitForFunction(()=>[...document.querySelectorAll('#singleGameGrid .tc-portrait img')].every(image=>image.complete&&image.naturalWidth>0));
   assert.equal(await turncraft.locator('.tc-cover').isVisible(),false);
-  assert.deepEqual(await turncraft.locator('[data-game-action]').evaluateAll(buttons=>buttons.map(button=>[button.dataset.gameAction,button.textContent])),[['single','Play Offline'],['lobby','Create Lobby']]);
-  await turncraft.locator('[data-game-action="lobby"]').click();
+  assert.deepEqual(await turncraft.locator('[data-game-action]').evaluateAll(buttons=>buttons.map(button=>[button.dataset.gameAction,button.textContent])),[['single','Play Offline'],['online','Join Match']]);
+  await turncraft.locator('[data-game-action="online"]').click();
   assert.equal(await page.locator('#accountGateModal').isVisible(),true);
   await page.locator('#gateNotNow').click();
-  results.push('TurnCraft: three faction images load before remote upload; original offline and account-gated lobby actions remain');
+  results.push('TurnCraft: three faction images load before remote upload; Play Offline and account-gated Join Match actions remain');
   await page.locator('.main-nav [data-view="discover"]').click();
   await page.locator('#cnmSearch').fill('War Realms');
   await page.locator('#cnmSearchForm button').click();
@@ -159,6 +159,18 @@ try {
   await turncraftSolo.page.waitForURL('**/game/turncraft.html');
   assert.deepEqual(turncraftSolo.errors,[]);results.push('TurnCraft: new uploaded cover remains decoded after search rerenders, and Play Offline preserves the native route');
   await turncraftSolo.context.close();
+
+  const turncraftOnline=await open({user:'LayoutTester'});
+  await turncraftOnline.page.locator('.main-nav [data-view="singleplayer"]').click();
+  await turncraftOnline.page.locator('#gameSearch').fill('TurnCraft');
+  await turncraftOnline.page.locator('#singleGameGrid [data-game-key="turncraft"] [data-game-action="online"]').click();
+  await turncraftOnline.page.waitForURL('**/game/turncraft-lobby.html?mode=browse&username=LayoutTester');
+  const multiplayerUrl=new URL(turncraftOnline.page.url());
+  assert.equal(multiplayerUrl.pathname,'/game/turncraft-lobby.html');
+  assert.equal(multiplayerUrl.searchParams.get('mode'),'browse');
+  assert.equal(multiplayerUrl.searchParams.get('username'),'LayoutTester');
+  assert.deepEqual(turncraftOnline.errors,[]);results.push('TurnCraft: signed-in Join Match opens the dedicated multiplayer browser with the current player identity');
+  await turncraftOnline.context.close();
 
   for(const width of [320,390,768,1440]) {
     const mobile=await open({width,brokenArt:true,reducedMotion:'reduce'});

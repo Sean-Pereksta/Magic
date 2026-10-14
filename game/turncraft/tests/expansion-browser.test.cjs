@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
+const {assetPath, enablePixelInspection} = require('./helpers/cloudflare-assets.cjs');
 
 const repo = path.resolve(__dirname, '../../..');
 const units = [
@@ -22,7 +23,7 @@ window.tcExpansion={
   prepare(faction,type){resize();terrain=Array.from({length:BOARD_W*BOARD_H},(_,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type:'ground',blocked:false}));entities=[];resourceNodes=[];players=[makePlayer(0,'Test',faction,false),makePlayer(1,'Opponent','frontier',false)];players.forEach(p=>{p.minerals=5000;p.gas=5000});gameStarted=true;gameOver=false;paused=false;modeState=null;lobbyId='';PLAYER=0;nextEntityId=1;areaEffects=[];pendingImpacts=[];temporaryObstacles=[];tileVisibleToFaction=()=>true;overlay.style.display='none';const e=addEntity('unit',type,0,8,8);selectEntity(e);focusSelected();draw();return e.id},
   select:selectEntity,
   load(file){return loadTurncraftImage(file)},
-  assets(){return [...ASSET_IMAGES].map(([file,img])=>({file,width:img.naturalWidth||img.width,height:img.naturalHeight||img.height}))}
+  assets(){return [...ASSET_IMAGES].map(([file,img])=>({file,width:img.naturalWidth||img.width,height:img.naturalHeight||img.height,atlas:img.turncraftAtlas}))}
 };`;
 const source = fs.readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
   .replace(/^import .*;$/gm, '')
@@ -32,8 +33,11 @@ const source = fs.readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
 async function setup(width = 1280, height = 900) {
   const browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--no-sandbox']});
   const page = await browser.newPage({viewport: {width, height}}), errors = [];
+  await page.addInitScript(enablePixelInspection);
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => {
+    const artwork = assetPath(route.request().url());
+    if (artwork) return route.fulfill({path: artwork, contentType: 'image/webp', headers: {'Access-Control-Allow-Origin': '*'}});
     const pathname = decodeURIComponent(new URL(route.request().url()).pathname);
     if (pathname === '/game/turncraft.html') return route.fulfill({contentType: 'text/html', body: source});
     const file = path.resolve(repo, '.' + pathname);
@@ -84,6 +88,7 @@ test('original expansion PNGs and alternate deployment states load through the r
     assert.ok(loaded.every(asset => asset.loaded), JSON.stringify(loaded));
     const assets = await page.evaluate(() => tcExpansion.assets());
     assert.ok(assets.every(asset => asset.width >= 128 && asset.height >= 128), JSON.stringify(assets));
+    assert.ok(assets.every(asset => asset.atlas?.sheet?.startsWith('https://') && asset.atlas.frame.w > 0 && asset.atlas.frame.h > 0), 'migrated static artwork must crop a real production atlas frame');
     const rendered = await page.evaluate(types => {
       const keys = [];
       for (const [faction, type] of types) {

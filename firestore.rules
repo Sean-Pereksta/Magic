@@ -6,6 +6,29 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function turncraftType(data) { return data.get('gameType','') == 'turncraft'; }
+    // Personal progress and competitive receipts use the existing Firebase Auth
+    // identity. Only Firebase Admin may write these authority collections.
+    match /turncraftProfiles/{uid} {
+      allow get: if isAuthed() && request.auth.uid == uid;
+      allow list, write: if false;
+      match /{subcollection}/{recordId} {
+        allow read: if isAuthed() && request.auth.uid == uid && subcollection == 'history';
+        allow write: if false;
+      }
+    }
+    match /turncraftRankings/{uid} { allow read: if isAuthed(); allow write: if false; }
+    match /turncraftMatches/{id} { allow read, write: if false; match /{sub=**} { allow read, write: if false; } }
+    match /turncraftInvites/{id} { allow read, write: if false; }
+    match /turncraftLobbySecrets/{id} { allow read, write: if false; }
+    match /turncraftLobbyRequests/{id} { allow read, write: if false; }
+    match /turncraftRatingPairs/{id} { allow read, write: if false; }
+    match /turncraftRankedQueue/{uid} { allow read, write: if false; }
+    function turncraftProfileCreate() { return !request.resource.data.get('gameStats',{}).keys().hasAny(['turncraft']); }
+    function turncraftProfileUpdate() {
+      return request.resource.data.get('gameStats',{}).get('turncraft',null) == resource.data.get('gameStats',{}).get('turncraft',null);
+    }
+
     function validCountryQuestScore() {
       return isAuthed()
         && request.resource.data.uid == request.auth.uid
@@ -80,7 +103,7 @@ service cloud.firestore {
     function forgeProtectedProfileFields() {
       return ['crowncouncilElo','crowncouncilLastDelta','crowncouncilLastMatchAt',
         'factionForge','factionForgeUid','forgeDust','forgeTier','troopCards',
-        'campaignProgress','ownerUid','authUid'];
+        'campaignProgress','ownerUid','authUid','turncraft','turncraftMMR','turncraftStats'];
     }
     function forgeBoundOwner(username) {
       return !exists(/databases/$(database)/documents/factionForgeNames/$(username))
@@ -91,8 +114,10 @@ service cloud.firestore {
       // Keep existing unrelated profile fields compatible; migrated usernames
       // become owner-only. Ratings and progression are Firebase Admin writes.
       allow create: if isAuthed() && forgeBoundOwner(userId)
+        && turncraftProfileCreate()
         && !request.resource.data.keys().hasAny(forgeProtectedProfileFields());
       allow update: if isAuthed() && forgeBoundOwner(userId)
+        && turncraftProfileUpdate()
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(forgeProtectedProfileFields());
       allow delete: if false;
 
@@ -150,18 +175,62 @@ service cloud.firestore {
 
     match /lobbies/{gameId} {
       allow read: if isAuthed();
-      allow create: if isAuthed() && ((forgeLobbyType(request.resource.data)) ? forgeLobbyCreate() : (request.resource.data.get('gameType','') != 'ironthrone' || (
+      allow create: if isAuthed() && !turncraftType(request.resource.data) && ((forgeLobbyType(request.resource.data)) ? forgeLobbyCreate() : (request.resource.data.get('gameType','') != 'ironthrone' || (
         request.resource.data.hostUid == request.auth.uid && request.resource.data.members.keys().hasOnly([request.auth.uid])
         && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting')));
-      allow update: if isAuthed() && ((forgeLobbyType(resource.data) || forgeLobbyType(request.resource.data)) ? forgeLobbyUpdate() : (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
+      allow update: if isAuthed() && ((turncraftType(resource.data) || turncraftType(request.resource.data)) ? turncraftLobbyUpdate() : ((forgeLobbyType(resource.data) || forgeLobbyType(request.resource.data)) ? forgeLobbyUpdate() : (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
         resource.data.get('gameType','') == 'ironthrone' && request.resource.data.get('gameType','') == 'ironthrone' && (
           (resource.data.status == 'waiting' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','players','updatedAt'])
             && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]) && request.resource.data.members.size() <= 6)
           || (resource.data.hostUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']))
           || (ironController() && ironAfter().hostUid == request.auth.uid && request.resource.data.hostUid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','host','updatedAt']))
-        ))));
-      allow delete: if isAuthed() && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
+        )))));
+      allow delete: if isAuthed() && (!turncraftType(resource.data) || resource.data.get('turncraftVersion',0) != 1) && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
+      function turncraftMember() { return isAuthed() && turncraftType(ironLobby()) && request.auth.uid in ironLobby().get('members',{}); }
+      function turncraftController() {
+        let lobby=ironLobby();let lease=lobby.get('chessStarfrontController',{});
+        return turncraftMember() && lobby.status == 'started' && lobby.get('ranked',false) == false
+          && lease.get('ownerUid','') == request.auth.uid && lease.get('expiresAtMs',0) > request.time.toMillis();
+      }
+      function turncraftLobbyUpdate() {
+        let a=resource.data;let b=request.resource.data;let fields=b.diff(a).affectedKeys();
+        let old=a.get('chessStarfrontController',{});let lease=b.get('chessStarfrontController',{});
+        return a.get('turncraftVersion',0) == 0
+          ? b.gameType == a.gameType && b.get('turncraftVersion',0) == 0 && !fields.hasAny(['ranked','hostUid','members','turncraftSeats','turncraftPlayers'])
+          : a.get('turncraftVersion',0) == 1 && turncraftType(a) && turncraftType(b)
+          && a.status == 'started' && a.get('ranked',false) == false && request.auth.uid in a.members
+          && fields.hasOnly(['chessStarfrontController','updatedAt'])
+          && lease.keys().hasOnly(['ownerUid','ownerName','expiresAtMs','epoch'])
+          && lease.ownerUid == request.auth.uid && lease.ownerName == a.members[request.auth.uid]
+          && lease.expiresAtMs > request.time.toMillis() && lease.expiresAtMs <= request.time.toMillis()+22000
+          && (old.get('ownerUid','') == request.auth.uid || old.get('expiresAtMs',0) <= request.time.toMillis())
+          && lease.epoch == (old.get('ownerUid','') == request.auth.uid ? old.get('epoch',1) : old.get('epoch',0)+1);
+      }
+      match /chess_starfront/{stateId} {
+        allow read: if turncraftMember();
+        allow create, update: if stateId == 'state' && turncraftController()
+          && request.resource.data.controllerUid == request.auth.uid
+          && request.resource.data.controllerEpoch == ironLobby().chessStarfrontController.epoch;
+        allow delete: if false;
+      }
+      match /chess_starfront_presence/{presenceId} {
+        allow read: if turncraftMember();
+        allow create, update: if turncraftMember() && ironLobby().get('ranked',false) == false && request.resource.data.uid == request.auth.uid
+          && request.resource.data.username == ironLobby().members[request.auth.uid]
+          && request.resource.data.slot is int && request.resource.data.slot >= 0
+          && ironLobby().turncraftSeats[request.resource.data.slot] == request.auth.uid;
+        allow delete: if turncraftMember() && resource.data.uid == request.auth.uid;
+      }
+      match /chess_starfront_commands/{commandId} {
+        allow read: if turncraftMember();
+        allow create: if turncraftMember() && ironLobby().get('ranked',false) == false && ironLobby().status == 'started'
+          && request.resource.data.by == ironLobby().members[request.auth.uid]
+          && request.resource.data.slot is int && request.resource.data.slot >= 0
+          && ironLobby().turncraftSeats[request.resource.data.slot] == request.auth.uid;
+        allow update: if false;
+        allow delete: if turncraftController();
+      }
       function forgeLobbyType(data) { return data.get('gameType','') in ['crowncouncil','factionforge']; }
       function forgeMemberList(data) {
         return data.members is map && data.members.size() >= 1 && data.members.size() <= 2
@@ -323,12 +392,12 @@ service cloud.firestore {
 
 
       match /crowncouncil/{docId} {
-        allow read, write: if isAuthed() && (!forgeLobbyType(ironLobby())
+        allow read, write: if isAuthed() && !turncraftType(ironLobby()) && (!forgeLobbyType(ironLobby())
           || ironLobby().get('hostUid','') == '' || request.auth.uid in ironLobby().members);
       }
 
       match /alliances/{allianceId} {
-        allow read, write: if isAuthed();
+        allow read, write: if isAuthed() && !turncraftType(ironLobby());
       }
 
       match /highscores/{scoreId} {
@@ -348,6 +417,7 @@ service cloud.firestore {
       // Academy and other lobby-backed games also use authenticated subcollections.
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthed() && gameId != 'world_quest'
+          && (!turncraftType(ironLobby()) || ironLobby().get('turncraftVersion',0) != 1)
           && !(subcollection in ['crowncouncil','iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
       }
     }
