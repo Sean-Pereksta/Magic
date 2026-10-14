@@ -5,7 +5,7 @@
  */
 (function (root) {
   'use strict';
-  const WORLD_SCALE = 1.45, EYE_HEIGHT = 1.86, STRIDE = 10, SURFACE_STRIDE = 13;
+  const WORLD_SCALE = 1.45, EYE_HEIGHT = 1.86, STANDING_HEIGHT = 2.39, CLEARANCE_MARGIN = .18, STRIDE = 10, SURFACE_STRIDE = 13;
   const script = typeof document !== 'undefined' && document.currentScript;
   const BASE = script ? new URL('assets/survival/', script.src).href : 'assets/survival/';
   const names = ['Breach Ring','Derelict Station','Xenofall Wastes','Black Ice Cryolab','The Living Hive','Drowned Powerworks','Orbital Graveyard','The Swarm Heart'];
@@ -45,21 +45,86 @@
     revision++; navCache=null;
     return blueprint;
   }
+  function validatePrefabCollision(mesh,label){
+    if(!mesh?.collision?.length)throw new Error('Solid prefab has no physical shapes: '+label);
+    for(const c of mesh.collision)if(![c.x,c.z,c.y,c.w,c.d,c.h].every(Number.isFinite)||Math.min(c.w,c.d,c.h)<=0)throw new Error('Invalid compound collision in '+label);
+    for(let i=0;i<mesh.positions.length;i+=3){const x=mesh.positions[i],y=mesh.positions[i+1],z=mesh.positions[i+2];if(!mesh.collision.some(c=>Math.abs(x-c.x)<=c.w/2+.045&&Math.abs(z-c.z)<=c.d/2+.045&&y>=c.y-.045&&y<=c.y+c.h+.045))throw new Error('Visible mesh component lacks collision: '+label+' vertex '+i/3);}
+    return true;
+  }
   function validateBlueprint(b,t,prefabs) {
     if(b.coordinateSystem.horizontalScale!==WORLD_SCALE)throw new Error('Map horizontal scale invalid: '+b.id);
     const tileSet=new Set(t.tiles.map(tile=>tile.id));
     if(t.tiles.length!==64)throw new Error('Tileset must define 64 materials: '+t.id);
     for(const tile of t.tiles){const [x,y,w,h]=tile.pixelRect;if(x<8||y<8||w!==240||h!==240||x+w>2048||y+h>2048)throw new Error('Invalid padded atlas crop '+tile.id);}
     for(const object of [...b.walls,...b.platforms,...b.ramps,...b.floorRegions,...b.hazardZones])if(!tileSet.has(object.tile))throw new Error('Missing material '+object.tile+' in '+b.id);
-    for(const prop of b.props)if(!prefabs[prop.prefab]?.mesh)throw new Error('Missing prefab '+prop.prefab+' in '+b.id);
+    for(const prop of b.props){
+      const mesh=prefabs[prop.prefab]?.mesh;
+      if(!mesh)throw new Error('Missing prefab '+prop.prefab+' in '+b.id);
+      if(prop.decorative&&!prop.background&&!prop.decorativeReason)throw new Error('Solid-looking prefab needs collision or an explicit scenery reason: '+b.id+'/'+prop.prefab);
+    }
+    const checked=new Set();
+    for(const prop of b.props){
+      if(prop.decorative||checked.has(prop.prefab))continue;checked.add(prop.prefab);
+      validatePrefabCollision(prefabs[prop.prefab].mesh,b.id+'/'+prop.prefab);
+    }
     if(!b.playerSpawns.length||b.spawnZones.length<4)throw new Error('Map has insufficient spawn routes: '+b.id);
     for(const r of b.ramps)if(Math.abs(r.toHeight-r.fromHeight)/(r.axis==='x'?r.w:r.d)>.6)throw new Error('Ramp too steep: '+b.id);
+    const propSolids=[];
+    for(const p of b.props)if(!p.decorative){const co=Math.cos(p.yaw||0),si=Math.sin(p.yaw||0);for(const c of prefabs[p.prefab].mesh.collision){const x=c.x*p.w,z=c.z*p.d;propSolids.push({x:p.x+x*co+z*si,z:p.z-x*si+z*co,w:Math.abs(c.w*p.w*co)+Math.abs(c.d*p.d*si),d:Math.abs(c.w*p.w*si)+Math.abs(c.d*p.d*co),y:(p.y||0)+c.y*p.h,h:c.h*p.h});}}
+    const report=validateGeometry({...b,walls:[...b.walls,...propSolids]});if(!report.valid)throw new Error(report.errors.map(e=>e.message).join('; '));
     return true;
   }
+  /* Pure release validator, shared by authored blueprints and the three engine
+   * arenas. Use full standing model/collision height, never the eye height.
+   * A grounded plinth is allowed; an apparently open low void is rejected.
+   */
+  function validateGeometry(input,options={}){
+    const errors=[],standingHeight=options.standingHeight||STANDING_HEIGHT,minimum=standingHeight+CLEARANCE_MARGIN,scale=input.worldCoordinates?1:WORLD_SCALE;
+    const normalize=(s,kind)=>({...s,x:s.x*scale,z:s.z*scale,w:s.w*scale,d:s.d*scale,bottom:input.worldCoordinates&&kind==='wall'?s.y-s.h/2:(s.y||0),kind});
+    const walls=(input.walls||[]).filter(p=>p.active!==false).map(p=>normalize(p,'wall')),decks=(input.platforms||[]).filter(p=>p.active!==false).map(p=>normalize(p,'platform')),ramps=(input.ramps||[]).map(r=>({...r,x:r.x*(input.worldCoordinates?WORLD_SCALE:scale),z:r.z*(input.worldCoordinates?WORLD_SCALE:scale),w:r.w*(input.worldCoordinates?WORLD_SCALE:scale),d:r.d*(input.worldCoordinates?WORLD_SCALE:scale)}));
+    for(const p of [...walls,...decks])if(![p.x,p.z,p.w,p.d,p.bottom,p.h].every(Number.isFinite)||Math.min(p.w,p.d,p.h)<=0)errors.push({code:'invalid-solid',message:(input.id||'arena')+': non-finite or empty solid'});
+    for(let index=0;index<decks.length;index++){
+      const deck=decks[index];if(deck.bottom<=.05||deck.rampCollision)continue;
+      let failure=null;
+      const nx=Math.max(2,Math.ceil(deck.w/1.1)),nz=Math.max(2,Math.ceil(deck.d/1.1));
+      for(let ix=0;ix<=nx&&!failure;ix++)for(let iz=0;iz<=nz&&!failure;iz++){
+        const x=deck.x-deck.w/2+.12+(deck.w-.24)*ix/nx,z=deck.z-deck.d/2+.12+(deck.d-.24)*iz/nz,supports=[0];
+        for(const lower of decks){const top=lower.bottom+lower.h;if(lower!==deck&&top<deck.bottom-.03&&inside(x,z,lower))supports.push(top);}
+        for(const r of ramps)if(inside(x,z,r)){const t=clamp((r.axis==='x'?(x-r.x)/r.w:(z-r.z)/r.d)+.5,0,1),h=r.fromHeight+(r.toHeight-r.fromHeight)*t;if(h<deck.bottom-.03)supports.push(h);}
+        for(const support of supports){
+          const gap=deck.bottom-support;if(gap>=minimum-.001)continue;
+          // Solid ground-to-deck structures intentionally have no passage.
+          const blocked=walls.some(w=>inside(x,z,w,.38)&&w.bottom<=support+.12&&w.bottom+w.h>support+.2)||decks.some(p=>p!==deck&&inside(x,z,p)&&p.bottom<=support+.05&&p.bottom+p.h>=deck.bottom-.03);
+          if(!blocked){failure={code:'overhead-clearance',index,x,z,clearance:gap,required:minimum,message:(input.id||'arena')+': deck '+index+' has '+gap.toFixed(2)+'m overhead clearance; needs '+minimum.toFixed(2)+'m'};break;}
+        }
+      }
+      if(failure)errors.push(failure);
+    }
+    // The same standing body must fit the complete ascent, including side lanes;
+    // sparse center samples can miss a thin wall across an otherwise valid ramp.
+    for(let index=0;index<ramps.length;index++){
+      const r=ramps[index];let failure=null;
+      for(let i=1;i<40&&!failure;i++)for(const lane of [-.3,0,.3]){
+        const t=i/40,x=r.x+(r.axis==='x'?(t-.5)*r.w:lane*r.w),z=r.z+(r.axis==='z'?(t-.5)*r.d:lane*r.d),feet=r.fromHeight+(r.toHeight-r.fromHeight)*t;
+        if(walls.some(w=>inside(x,z,w,.55)&&feet<w.bottom+w.h-.15&&feet+standingHeight>w.bottom+.05)){failure={code:'blocked-ramp',index,x,z,message:(input.id||'arena')+': ramp '+index+' has a solid obstacle in its standing route'};break;}
+      }
+      if(failure)errors.push(failure);
+    }
+    return {valid:errors.length===0,standingHeight,minimumClearance:minimum,errors};
+  }
   function convert(b) {return {...b,x:b.x*WORLD_SCALE,z:b.z*WORLD_SCALE,w:(b.w||0)*WORLD_SCALE,d:(b.d||0)*WORLD_SCALE};}
+  function physicalMaterial(source){
+    if(source.material)return source.material;
+    const prefab=source.prefab||'';
+    if(/glass|cryopod|experiment_chamber/.test(prefab))return 'glass';
+    if(/rock|cliff|stone|crystal|meteor|monolith/.test(prefab))return 'concrete';
+    if(/organic|alien_heart|egg|brood|nest|cocoon|rib|biological|living_gateway|tendril|cactus/.test(prefab))return 'organic';
+    if(prefab)return 'metal';
+    return /hive|heart/.test(selected.blueprint.id)?'organic':/xenofall/.test(selected.blueprint.id)?'concrete':'metal';
+  }
   function tag(piece,source) {
     if(!piece)return null;
-    piece.survivalEnvironment=true;piece.survivalMaterial=source.tile;piece.mapPieceId=source.mapPieceId;
+    piece.survivalEnvironment=true;piece.survivalMaterial=source.tile;piece.mapPieceId=source.mapPieceId;piece.material=physicalMaterial(source);piece.prefab=source.prefab;piece.rampCollision=!!source.rampCollision;
     if(source.hp!=null && !source.safety){piece.hp=piece.maxHp=source.hp;piece.destructible=true;}
     if(source.tags?.includes('breach_perimeter'))piece.survivorEdgeWall=true;
     return piece;
@@ -70,7 +135,7 @@
    */
   function install(callbacks) {
     if(!selected)throw new Error('Load a survival arena before installing collision');
-    const b=selected.blueprint; selected.objects=[];selected.collision=[];selected.dynamic=[];
+    const b=selected.blueprint; selected.sceneryOnly=false;selected.standardAmbient=null;selected.objects=[];selected.collision=[];selected.dynamic=[];
     let next=0;
     function addBox(source,kind='wall',visual=true) {
       source={...source,mapPieceId:b.id+':'+(++next)};
@@ -92,7 +157,7 @@
       for(let i=0;i<steps;i++){
         const at=(i+.5)/steps,top=r.fromHeight+(r.toHeight-r.fromHeight)*at;
         if(top<.04)continue;
-        const s={x:r.x,z:r.z,w:r.w,d:r.d,y:top-.16,h:.16,safety:true,tile:r.tile,rampCollision:true};
+        const s={x:r.x,z:r.z,w:r.w,d:r.d,y:0,h:top,safety:true,tile:r.tile,rampCollision:true};
         s[r.axis]+=(at-.5)*length; s[r.axis==='x'?'w':'d']=length/steps+.012;
         addBox(s,'platform',false);
       }
@@ -101,19 +166,40 @@
       const definition=selected.definitions[p.prefab],source={...p,mapPieceId:b.id+':prop:'+(++next)},records=[];
       if(!p.decorative)for(const c of definition.mesh.collision||[]){
         const yaw=p.yaw||0,s=Math.sin(yaw),co=Math.cos(yaw),x=c.x*p.w,z=c.z*p.d;
-        records.push(addBox({x:p.x+x*co+z*s,z:p.z-x*s+z*co,w:Math.abs(c.w*p.w*co)+Math.abs(c.d*p.d*s),d:Math.abs(c.w*p.w*s)+Math.abs(c.d*p.d*co),h:c.h*p.h,y:p.y+c.y*p.h,tile:p.tile,hp:p.hp||1200,safety:false},'wall',false));
+        records.push(addBox({x:p.x+x*co+z*s,z:p.z-x*s+z*co,w:Math.abs(c.w*p.w*co)+Math.abs(c.d*p.d*s),d:Math.abs(c.w*p.w*s)+Math.abs(c.d*p.d*co),h:c.h*p.h,y:p.y+c.y*p.h,tile:p.tile,material:p.material,prefab:p.prefab,hp:p.hp||1200,safety:false},'wall',false));
       }
+      const compoundPieces=records.map(r=>r.piece).filter(Boolean);for(const piece of compoundPieces)piece.compoundPieces=compoundPieces;
       selected.objects.push({source,kind:'mesh',world:convert(source),definition,collisionRecords:records});
     }
-    const bound=b.boundaries,lim=b.size[0]/2;
-    for(const edge of [{x:0,z:-lim,w:b.size[0],d:.6},{x:0,z:lim,w:b.size[0],d:.6},{x:-lim,z:0,w:.6,d:b.size[1]},{x:lim,z:0,w:.6,d:b.size[1]}])addBox({...edge,y:0,h:bound.height,tile:bound.tile,topTile:'upper_00',safety:true});
+    const bound=b.boundaries,hx=b.size[0]/2,hz=b.size[1]/2;
+    for(const edge of [{x:0,z:-hz,w:b.size[0],d:.6},{x:0,z:hz,w:b.size[0],d:.6},{x:-hx,z:0,w:.6,d:b.size[1]},{x:hx,z:0,w:.6,d:b.size[1]}])addBox({...edge,y:0,h:bound.height,tile:bound.tile,topTile:'upper_00',safety:true});
     // Reserve event geometry up front; only toggling active changes gameplay.
     for(const zone of b.hazardZones)if(zone.structure){const object=addBox({...zone.structure,y:0,safety:false,hp:650});if(object.piece)object.piece.active=false;object.eventZone=zone;selected.dynamic.push(object);}
     callbacks.setTheme?.({...b.theme});
     for(const s of b.playerSpawns)callbacks.addSpawn?.({x:s.x*WORLD_SCALE,z:s.z*WORLD_SCALE,y:EYE_HEIGHT+(s.y||0),r:s.r*WORLD_SCALE});
+    selected.collisionBuckets=new Map();for(const record of selected.collision){const w=record.world;for(let x=Math.floor((w.x-w.w/2-1)/8);x<=Math.floor((w.x+w.w/2+1)/8);x++)for(let z=Math.floor((w.z-w.d/2-1)/8);z<=Math.floor((w.z+w.d/2+1)/8);z++){const key=x+':'+z;if(!selected.collisionBuckets.has(key))selected.collisionBuckets.set(key,[]);selected.collisionBuckets.get(key).push(record);}}
+    for(const data of gpu.values()){data.dirty=true;data.objectStates.clear();}
     revision++;navCache=null;
     for(const node of navigation().nodes)callbacks.addNav?.({...node,y:node.y+EYE_HEIGHT,r:2.1});
     return {blueprint:b,theme:b.theme,objects:selected.objects,collision:selected.collision};
+  }
+  function installScenery(props,callbacks,ambientDetails=[]){
+    if(!selected)throw new Error('Load the arena atlas before installing scenery');
+    selected.sceneryOnly=true;selected.standardAmbient=ambientDetails;selected.objects=[];selected.collision=[];selected.dynamic=[];
+    let next=0;const checked=new Set();
+    for(const p of props){
+      const definition=selected.definitions[p.prefab];if(!definition?.mesh?.collision?.length)throw new Error('Missing solid arena prefab '+p.prefab);
+      if(!checked.has(p.prefab)){validatePrefabCollision(definition.mesh,'standard/'+p.prefab);checked.add(p.prefab);}
+      const source={y:0,yaw:0,...p,mapPieceId:'arena:prop:'+(++next)},records=[],yaw=source.yaw,si=Math.sin(yaw),co=Math.cos(yaw);
+      for(const c of definition.mesh.collision){
+        const cx=c.x*p.w,cz=c.z*p.d,s={x:p.x+cx*co+cz*si,z:p.z-cx*si+cz*co,w:Math.abs(c.w*p.w*co)+Math.abs(c.d*p.d*si),d:Math.abs(c.w*p.w*si)+Math.abs(c.d*p.d*co),y:source.y+c.y*p.h,h:c.h*p.h,tile:p.tile,material:p.material,prefab:p.prefab,hp:p.hp||1500,mapPieceId:source.mapPieceId+':'+records.length};
+        const piece=callbacks.addWall(s.x,s.z,s.w,s.d,s.h,'#506876',s.y,false);tag(piece,s);const record={source:s,kind:'wall',piece,world:convert(s)};selected.collision.push(record);records.push(record);
+      }
+      const compound=records.map(r=>r.piece).filter(Boolean);for(const piece of compound)piece.compoundPieces=compound;
+      selected.objects.push({source,kind:'mesh',world:convert(source),definition,collisionRecords:records});
+    }
+    for(const data of gpu.values())data.dirty=true;
+    revision++;navCache=null;return {objects:selected.objects,collision:selected.collision};
   }
   function rampHeight(x,z) {
     if(!selected)return -Infinity;
@@ -144,7 +230,7 @@
     for(const record of selected.objects){if(record.kind!=='platform'||!active(record))continue;const p=record.source,c=record.world,top=p.y+p.h;if(inside(x,z,c) && top<=feet+.65 && top>height){height=top;layer=1;}}
     const ramp=rampHeight(x,z);if(Number.isFinite(ramp)&&ramp<=feet+1.1){height=Math.max(height,ramp);layer=height>.4?1:0;}
     let obstacle=null;
-    for(const record of selected.collision){if(record.kind!=='wall'||!active(record))continue;const w=record.world;if(!inside(x,z,w,.48))continue;const bottom=w.y||0,top=bottom+w.h;if(height+EYE_HEIGHT>bottom+.05&&height<top-.15){obstacle=record;break;}}
+    for(const record of selected.collisionBuckets?.get(Math.floor(x/8)+':'+Math.floor(z/8))||selected.collision){if(record.kind!=='wall'||!active(record))continue;const w=record.world;if(!inside(x,z,w,.55))continue;const bottom=w.y||0,top=bottom+w.h;if(height+STANDING_HEIGHT>bottom+.05&&height<top-.15){obstacle=record;break;}}
     const hazard=b.hazardZones.find(z=>inside(x,z,convert(z))&&Math.abs((z.y||0)-height)<2)||null;
     // Destructible defenses are routable goals. AI can request their target box.
     const destructible=obstacle?.piece?.destructible ?? (obstacle?.source.hp!=null);
@@ -193,8 +279,10 @@
     kind=kind==='fly'||kind==='flyer'?'fly':/burrow/i.test(kind)?'burrow':'ground';
     const zones=navigation().spawnZones.filter(s=>!s.types||s.types.includes(kind));
     if(!zones.length)return {x:0,z:0,y:EYE_HEIGHT};
-    const s=zones[Math.floor(rng()*zones.length)%zones.length],a=rng()*Math.PI*2,r=rng()*s.r*.6,x=s.x+Math.cos(a)*r,z=s.z+Math.sin(a)*r;
-    return {x,z,y:surfaceInfo(x,z,s.y||0).height+EYE_HEIGHT};
+    const offset=Math.floor(rng()*zones.length)%zones.length;
+    for(let i=0;i<zones.length*6;i++){const s=zones[(offset+Math.floor(i/6))%zones.length],a=rng()*Math.PI*2,r=i%6===5?0:rng()*s.r*.6,x=s.x+Math.cos(a)*r,z=s.z+Math.sin(a)*r,info=surfaceInfo(x,z,s.y||0);if(info.walkable&&!info.obstacle)return {x,z,y:info.height+EYE_HEIGHT};}
+    const safe=navigation().nodes.find(n=>Math.hypot(n.x,n.z)>20&&!surfaceInfo(n.x,n.z,n.height).obstacle);if(safe)return {x:safe.x,z:safe.z,y:safe.height+EYE_HEIGHT};
+    throw new Error('No physical enemy spawn route in '+selected.blueprint.id);
   }
   function pickupPoint(rng=Math.random) {
     if(!selected)return {x:0,z:0,y:0};
@@ -265,7 +353,27 @@
   function rampGeometry(out,o){const r=o.world,source=o.source,a=source.fromHeight+.025,b=source.toHeight+.025,x=r.x,z=r.z,w=r.w/2,d=r.d/2;const corners=r.axis==='x'?[[x-w,a,z-d],[x+w,b,z-d],[x+w,b,z+d],[x-w,a,z+d]]:[[x-w,a,z-d],[x+w,a,z-d],[x+w,b,z+d],[x-w,b,z+d]];const dx=corners[1][0]-corners[0][0],dy=corners[1][1]-corners[0][1],dz=corners[3][2]-corners[0][2],dyz=corners[3][1]-corners[0][1],norm=[-dy/(dx||1),1,-dyz/(dz||1)],len=Math.hypot(...norm);subdividedFace(out,...corners,source.tile,norm.map(n=>n/len));}
   function meshGeometry(out,o){const mesh=o.definition.mesh,s=o.source,yaw=s.yaw||0,co=Math.cos(yaw),si=Math.sin(yaw),world=o.world;for(const index of mesh.indices){const ix=index*3,uv=index*2,x=mesh.positions[ix]*world.w,z=mesh.positions[ix+2]*world.d,nx=mesh.normals[ix]/world.w,ny=mesh.normals[ix+1]/s.h,nz=mesh.normals[ix+2]/world.d,len=Math.hypot(nx,ny,nz)||1;vertex(out,[world.x+x*co+z*si,(s.y||0)+mesh.positions[ix+1]*s.h,world.z-x*si+z*co],[(nx*co+nz*si)/len,ny/len,(-nx*si+nz*co)/len],mesh.uvs[uv],mesh.uvs[uv+1],s.tile,s.pulse?1:0);if(s.surfaceType==='planet')out[out.length-2]=-2;if(s.surfaceType==='stars')out[out.length-2]=-3;}}
   function chunkKey(x,z){return Math.floor(x/24)+':'+Math.floor(z/24);}
-  function buildChunks(onlyKeys=null){const chunks=new Map(),size=24;function get(x,z){const key=chunkKey(x,z);if(onlyKeys&&!onlyKeys.has(key))return null;if(!chunks.has(key))chunks.set(key,{key,data:[],x:Math.floor(x/size)*size+size/2,z:Math.floor(z/size)*size+size/2,r:34});return chunks.get(key).data;}const floor=[];floorGeometry(floor);for(let i=0;i<floor.length;i+=STRIDE*6){const x=floor[i],z=floor[i+2],out=get(x,z);if(out)out.push(...floor.slice(i,i+STRIDE*6));}for(const o of selected.objects)if(active(o)){const out=get(o.world.x,o.world.z);if(!out)continue;if(o.source.background)chunks.get(chunkKey(o.world.x,o.world.z)).background=true;if(o.kind==='mesh')meshGeometry(out,o);else if(o.kind==='ramp')rampGeometry(out,o);else boxGeometry(out,o,o.kind);}return [...chunks.values()].map(c=>({...c,data:new Float32Array(c.data)}));}
+  function buildChunks(onlyKeys=null){const chunks=new Map(),size=24;function get(x,z){const key=chunkKey(x,z);if(onlyKeys&&!onlyKeys.has(key))return null;if(!chunks.has(key))chunks.set(key,{key,data:[],x:Math.floor(x/size)*size+size/2,z:Math.floor(z/size)*size+size/2,r:34});return chunks.get(key).data;}const floor=[];if(!selected.sceneryOnly)floorGeometry(floor);for(let i=0;i<floor.length;i+=STRIDE*6){const x=floor[i],z=floor[i+2],out=get(x,z);if(out)out.push(...floor.slice(i,i+STRIDE*6));}for(const o of selected.objects)if(active(o)){const out=get(o.world.x,o.world.z);if(!out)continue;if(o.source.background)chunks.get(chunkKey(o.world.x,o.world.z)).background=true;if(o.kind==='mesh')meshGeometry(out,o);else if(o.kind==='ramp')rampGeometry(out,o);else boxGeometry(out,o,o.kind);}return [...chunks.values()].map(c=>({...c,data:new Float32Array(c.data)}));}
+  // A tiny shared atlas buffer supplies motion without lights, simulations or
+  // per-detail draw calls. Pure scenery has no physical/collision representation.
+  function buildAmbientGeometry(time=0,quality='high'){
+    const out=[],details=selected?.standardAmbient||selected?.blueprint.ambientDetails||[],budget=quality==='low'?8:18;
+    for(let index=0;index<Math.min(details.length,budget);index++){
+      const s=details[index],x=s.x*WORLD_SCALE,z=s.z*WORLD_SCALE,y=s.y||1,phase=time+index*1.73;
+      if(s.kind==='fan'){
+        for(let i=0;i<6;i++){const a=phase*2.6+i*Math.PI/3,b=a+.24,r=s.r||1.4;
+          quad(out,[x+Math.cos(a)*.25,y+Math.sin(a)*.25,z],[x+Math.cos(a)*r,y+Math.sin(a)*r,z],[x+Math.cos(b)*r,y+Math.sin(b)*r,z],[x+Math.cos(b)*.25,y+Math.sin(b)*.25,z],'prop_03',[0,0,-1]);}
+      }else{
+        const count=['steam','dust','spore'].includes(s.kind)?3:1;
+        for(let i=0;i<count;i++){
+          const t=(phase*.55+i/count)%1,steam=s.kind==='steam',drift=Math.sin(phase*.7+i)*.2,cy=y+(steam?t*1.8:Math.sin(phase+i)*.08),size=steam?.10+t*.16:s.kind==='pulse'?.19+Math.sin(phase*2.3)*.04:.09;
+          if(s.kind==='spark'&&Math.sin(phase*23)<.55||s.kind==='flicker'&&Math.sin(phase*17)<-.2)continue;
+          quad(out,[x+drift-size,cy-size,z],[x+drift+size,cy-size,z],[x+drift+size,cy+size,z],[x+drift-size,cy+size,z],steam?'trim_04':'prop_05',[0,0,-1]);
+        }
+      }
+    }
+    return new Float32Array(out);
+  }
   function compile(gl,type,source){const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;}
   const VS='attribute vec3 aPos;attribute vec2 aUV;attribute vec3 aNormal;attribute vec2 aEffects;attribute vec3 aTint;uniform vec3 uCamera;uniform vec3 uRight;uniform vec3 uUp;uniform vec3 uForward;uniform float uAspect;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying vec3 vTint;varying float vDistance;void main(){vec3 pos=aPos+aNormal*aEffects.y*sin(uTime*2.3)*.075;vec3 d=pos-uCamera;vec3 c=vec3(dot(d,uRight),dot(d,uUp),dot(d,uForward));float n=.055;float f=180.;gl_Position=vec4(c.x*1.44*uAspect,c.y*1.44,(f+n)/(f-n)*c.z-2.*f*n/(f-n),c.z);vUV=aUV;vNormal=aNormal;vView=-d;vEffects=aEffects;vTint=aTint;vDistance=length(d);}';
   const FS='precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFog;uniform float uFogDensity;uniform float uAmbient;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying vec3 vTint;varying float vDistance;void main(){vec4 tex=texture2D(uAtlas,vUV);vec3 n=normalize(vNormal);float light=uAmbient+.48*max(0.,dot(n,normalize(vec3(.25,.9,.4))));if(vEffects.x<-2.5){gl_FragColor=vec4(vec3(.75,.84,1.)*(.85+.15*sin(uTime*.4+vDistance)),1.);return;}if(vEffects.x<-1.5){float land=smoothstep(.04,.14,sin(vUV.x*340.)*sin(vUV.y*210.)+.30*sin(vUV.x*730.+vUV.y*630.));float cloud=smoothstep(.32,.75,sin(vUV.y*820.+sin(vUV.x*240.)*5.)*.5+.45);vec3 ocean=vec3(.025,.13,.27),continent=vec3(.12,.27,.21);vec3 planet=mix(mix(ocean,continent,land),vec3(.73,.86,.92),cloud*.68);planet=mix(planet,tex.rgb,.15);float atmosphere=pow(1.-max(0.,dot(n,normalize(vView))),3.);planet=planet*(.16+.85*max(0.,dot(n,normalize(vec3(-.3,.8,.5)))))+vec3(.06,.35,.65)*atmosphere;gl_FragColor=vec4(planet,1.);return;}float glow=vEffects.x*(.80+.20*sin(uTime*2.3));vec3 color=tex.rgb*(light+glow)*vTint;float fog=max(smoothstep(75.,170.,vDistance)*.64,smoothstep(10.,48.,vDistance)*uFogDensity);gl_FragColor=vec4(mix(color,uFog,fog),1.);}';
@@ -298,11 +406,16 @@
   }
   function render(gl,camera,options={}){
     if(!selected?.image||!selected.objects.length)return false;
-    const {data,previous}=beginAtlasDraw(gl,camera,options,true),signature=stateSignature(),changed=new Set();
+    const {data,previous}=beginAtlasDraw(gl,camera,options,!selected.sceneryOnly),signature=stateSignature(),changed=new Set();
     if(signature!==data.signature){data.signature=signature;revision++;for(const object of selected.objects){const state=active(object),key=object.source.mapPieceId||object; if(data.objectStates.get(key)!==state)changed.add(chunkKey(object.world.x,object.world.z));data.objectStates.set(key,state);}}
     if(data.dirty||changed.size){const update=buildChunks(data.dirty?null:changed),replacement=new Set(update.map(c=>c.key));const retained=[];for(const c of data.chunks){if(data.dirty||changed.has(c.key)||replacement.has(c.key))gl.deleteBuffer(c.buffer);else retained.push(c);}data.chunks=retained.concat(update.map(c=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,c.data,gl.STATIC_DRAW);return {key:c.key,background:c.background,buffer,count:c.data.length/STRIDE,x:c.x,z:c.z,r:c.r};}));data.dirty=false;}
     const distance=options.quality==='low'?105:options.quality==='medium'?145:180;
     for(const c of data.chunks){if(!c.background&&Math.hypot(c.x-camera.position[0],c.z-camera.position[2])>distance+c.r)continue;gl.bindBuffer(gl.ARRAY_BUFFER,c.buffer);atlasAttributes(gl,data.attrs,STRIDE);gl.drawArrays(gl.TRIANGLES,0,c.count);}
+    if((selected.standardAmbient||selected.blueprint.ambientDetails)?.length){
+      const time=options.time||0,key=Math.floor(time*30)+':'+options.quality;
+      if(data.ambientKey!==key){const ambient=buildAmbientGeometry(time,options.quality);data.ambientBuffer ||= gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,data.ambientBuffer);gl.bufferData(gl.ARRAY_BUFFER,ambient,gl.DYNAMIC_DRAW||gl.STATIC_DRAW);data.ambientCount=ambient.length/STRIDE;data.ambientKey=key;}
+      gl.bindBuffer(gl.ARRAY_BUFFER,data.ambientBuffer);atlasAttributes(gl,data.attrs,STRIDE);gl.drawArrays(gl.TRIANGLES,0,data.ambientCount);
+    }
     endAtlasDraw(gl,previous);return true;
   }
   function renderSurfaces(gl,camera,pieces,options={}){
@@ -323,14 +436,14 @@
     endAtlasDraw(gl,previous);return true;
   }
   function surfaceStats(gl){const data=gpu.get(gl);return {chunks:data?.surfaceChunks.size||0,uploads:data?.surfaceUploads||0,vertices:data?[...data.surfaceChunks.values()].reduce((sum,c)=>sum+c.count,0):0,pieces:data?.surfaces.size||0,geometryBuilds:data?.surfaceGeometryBuilds||0,drawCalls:data?.surfaceDrawCalls||0};}
-  function disposeGPU(){for(const [gl,data] of gpu){for(const c of data.chunks)gl.deleteBuffer(c.buffer);for(const c of data.surfaceChunks.values())gl.deleteBuffer(c.buffer);if(data.vao)data.vaoExt.deleteVertexArrayOES(data.vao);gl.deleteTexture(data.texture);gl.deleteProgram(data.program);}gpu.clear();}
+  function disposeGPU(){for(const [gl,data] of gpu){for(const c of data.chunks)gl.deleteBuffer(c.buffer);for(const c of data.surfaceChunks.values())gl.deleteBuffer(c.buffer);if(data.ambientBuffer)gl.deleteBuffer(data.ambientBuffer);if(data.vao)data.vaoExt.deleteVertexArrayOES(data.vao);gl.deleteTexture(data.texture);gl.deleteProgram(data.program);}gpu.clear();}
   function dispose(){loadSerial++;disposeGPU();selected=null;navCache=null;revision++;}
   function eventStatus(time,wave=1){if(!selected)return [];const b=selected.blueprint;const events=b.hazardZones.map((zone,index)=>{if(!zone.period)return {...zone,index,state:'passive',x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};const phase=(time+index*17)%zone.period,warning=zone.warning||4,duration=zone.duration||7,state=phase<warning?'warning':phase<warning+duration?'active':'idle';return {...zone,index,state,phase,x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};});for(const event of b.events)if(['fog','visibility'].includes(event.type)){const index=b.hazardZones.length+events.length,phase=time%event.period,state=phase<event.warning?'warning':phase<event.warning+event.duration?'active':'idle';events.push({...event,index,phase,state,kind:event.type==='fog'?'freeze':'blackout',x:0,z:0,w:b.size[0]*WORLD_SCALE,d:b.size[1]*WORLD_SCALE});}return events;}
   function updateEvents(time,wave=1){const events=eventStatus(time,wave);let changed=false;for(const object of selected?.dynamic||[]){const zone=events.find(e=>e.index===selected.blueprint.hazardZones.indexOf(object.eventZone)),on=zone?.state==='active',cycle=Math.floor((time+zone.index*17)/zone.period);if(on&&object.eventPhaseActive&&object.piece?.active===false)object.destroyedCycle=cycle;const desired=on&&object.destroyedCycle!==cycle;if(object.piece&&object.piece.active!==desired){object.piece.active=desired;if(desired)object.piece.hp=object.piece.maxHp;changed=true;}object.eventPhaseActive=on;}if(selected)selected.eventClock=time;if(changed)environmentStateChanged();return {events,changed};}
   function groundModifier(actor,time){if(!selected)return {speed:1,gravity:1};const info=pointInfo(actor.x,actor.z,actor),water=selected.blueprint.floorRegions.find(r=>r.kind==='water'&&inside(actor.x,actor.z,convert(r))&&info.height<.5),hazards=eventStatus(time).filter(e=>inside(actor.x,actor.z,e)&&Math.abs((e.y||0)-info.height)<2);let speed=water?.slow||1,gravity=1;for(const h of hazards){if(h.kind==='low_gravity')gravity=h.gravity||.5;else if(h.state==='active'&&h.slow)speed=Math.min(speed,h.slow);}return {speed,gravity};}
   // Pure setup hook used by node-based regression tests, avoiding browser IO.
   function hydrateForTest(blueprint,tileset,definitions,options={}){dispose();validateBlueprint(blueprint,tileset,definitions);selected={blueprint,tileset,definitions,image:options.image||null,objects:[],collision:[],dynamic:[],tileMap:new Map(tileset.tiles.map(t=>[t.id,t]))};return blueprint;}
-  const api={WORLD_SCALE,catalog,load,install,render,renderSurfaces,surfaceStats,buildSurfaceChunks,SURFACE_STRIDE,dispose,pointInfo,canTraverse,navigation,spawnPoint,pickupPoint,canBuild,rampHeight,rampSupport,followRamp,environmentStateChanged,eventStatus,updateEvents,groundModifier,validateBlueprint,hydrateForTest,buildChunks};
+  const api={WORLD_SCALE,STANDING_HEIGHT,CLEARANCE_MARGIN,catalog,load,install,installScenery,render,renderSurfaces,surfaceStats,buildSurfaceChunks,SURFACE_STRIDE,dispose,pointInfo,canTraverse,navigation,spawnPoint,pickupPoint,canBuild,rampHeight,rampSupport,followRamp,environmentStateChanged,eventStatus,updateEvents,groundModifier,validateBlueprint,validateGeometry,hydrateForTest,buildChunks,buildAmbientGeometry};
   Object.defineProperties(api,{current:{get:()=>selected?.blueprint||null},revision:{get:()=>revision},loaded:{get:()=>!!selected?.image},canRenderSurfaces:{get:()=>!!selected?.image},hasSurfaceMaterials:{get:()=>!!selected?.image},assetRoot:{get:()=>BASE}});
   root.NeonSurvivalMaps=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;

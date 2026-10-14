@@ -442,6 +442,29 @@ async function main() {
     renderer.dispose();
   });
 
+  await test('friendly highlights stay in the world depth pass and cannot leak between actors, views or weapons', async () => {
+    const { gl, calls } = mockGL();
+    const renderer = createRenderer(gl, { resolve: p => p, fetch: async p => response(p.startsWith('weapons/') ? weaponBytes : actorBytes) });
+    for (const modelPath of ['characters/player_one.glb', 'characters/alien_blue.glb', 'weapons/pistol.glb']) await warm(renderer, modelPath);
+    renderer.beginView(camera, 1);
+    renderer.drawActor('characters/player_one.glb', actor(), { allyHighlight: true, animate: false });
+    assert.equal(calls.draws.at(-1).uniforms.uAllyHighlight, 1);
+    assert.deepEqual(calls.draws.at(-1).depthRange, [0, 1], 'friendly tint uses the same depth range as physical world geometry');
+    renderer.drawActor('characters/player_one.glb', actor({ team: 2 }), { animate: false });
+    assert.equal(calls.draws.at(-1).uniforms.uAllyHighlight, 0, 'an enemy cannot inherit a previous ally highlight');
+    renderer.drawActor('characters/alien_blue.glb', actor({ alien: true, alienScale: 1, r: .6 }), { allyHighlight: true });
+    assert.equal(calls.draws.at(-1).uniforms.uAllyHighlight, 0);
+    renderer.drawActor('characters/player_one.glb', actor(), { allyHighlight: true });
+    renderer.drawWeapon('weapons/pistol.glb', compose(), {});
+    assert.ok(calls.draws.slice(-4).every(draw => draw.uniforms.uAllyHighlight === 0), 'held and first-person weapons reset the material state');
+    renderer.beginView(camera, 2);
+    assert.equal(calls.uniforms.uAllyHighlight, 0, 'a second local view starts with neutral material state');
+    const fragment = calls.shaders.find(shader => shader.type === gl.FRAGMENT_SHADER).source;
+    assert.match(fragment, /uniform float uAllyHighlight/); assert.match(fragment, /dot\(normalize\(vNormal\),normalize\(vViewDir\)\)/);
+    assert.equal(calls.depthRanges.length, 0, 'highlighting never bypasses depth or creates a foreground outline pass');
+    renderer.dispose();
+  });
+
   await test('shader normals remain perpendicular after nonuniform alien fitting', () => {
     const { gl, calls } = mockGL();
     const renderer = createRenderer(gl, { resolve: () => '' });

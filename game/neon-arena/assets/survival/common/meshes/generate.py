@@ -21,6 +21,15 @@ class Mesh:
         self.uv = []
         self.faces = []
         self.collision = []
+        self.compound = []
+
+    def physical_bounds(self, points):
+        """One close fitting hull per authored component, never a whole prop box."""
+        lo = [min(p[i] for p in points) for i in range(3)]
+        hi = [max(p[i] for p in points) for i in range(3)]
+        self.compound.append(dict(x=(lo[0]+hi[0])/2, z=(lo[2]+hi[2])/2,
+                                  w=max(.001,hi[0]-lo[0]), d=max(.001,hi[2]-lo[2]),
+                                  y=lo[1], h=max(.001,hi[1]-lo[1])))
 
     def vertex(self, xyz, uv=(0, 0)):
         self.vertices.append(tuple(xyz))
@@ -45,6 +54,7 @@ class Mesh:
         a, b = cx - w / 2, cx + w / 2
         c, e = cz - d / 2, cz + d / 2
         t = y + h
+        self.physical_bounds([(a,y,c),(b,t,e)])
         for face in [
             [(a, y, e), (b, y, e), (b, t, e), (a, t, e)],
             [(b, y, c), (a, y, c), (a, t, c), (b, t, c)],
@@ -57,6 +67,18 @@ class Mesh:
 
     def cylinder(self, cx, y, cz, radius, height, sides=12, top_radius=None, inner=0):
         top_radius = radius if top_radius is None else top_radius
+        if inner:
+            # Closed shell segments preserve the genuinely hollow pipe interior.
+            for i in range(sides):
+                self.physical_bounds([(cx+r*math.cos(j*TAU/sides),level,cz+r*math.sin(j*TAU/sides))
+                    for level,ro in [(y,radius),(y+height,top_radius)]
+                    for r in [inner,ro] for j in [i,i+1]])
+        else:
+            # Four axial bands follow tapered crystals rather than their full bounds.
+            for i in range(4):
+                a,b=i/4,(i+1)/4
+                r=max(radius+(top_radius-radius)*a,radius+(top_radius-radius)*b)
+                self.physical_bounds([(cx-r,y+height*a,cz-r),(cx+r,y+height*b,cz+r)])
         outer = []
         for level, r in [(y, radius), (y + height, top_radius)]:
             outer.append([self.vertex((cx + r * math.cos(i * TAU / sides), level,
@@ -92,6 +114,12 @@ class Mesh:
     def ellipsoid(self, center, radii, sides=12, rings=6):
         cx, cy, cz = center
         rx, ry, rz = radii
+        for i in range(4):
+            a,b=-1+i*.5,-1+(i+1)*.5
+            near=0 if a<=0<=b else min(abs(a),abs(b))
+            width=math.sqrt(max(0,1-near*near))
+            self.physical_bounds([(cx-rx*width,cy+ry*a,cz-rz*width),
+                                  (cx+rx*width,cy+ry*b,cz+rz*width)])
         rows = []
         for j in range(rings + 1):
             phi = j * math.pi / rings
@@ -129,6 +157,18 @@ class Mesh:
                          for k in range(3)) for i in range(sides)]
             pts.append(row)
             ids.append([self.vertex(p, (i / sides, level)) for i, p in enumerate(row)])
+        if abs(axis[2]) > .99:
+            # Axial turbine/engine housings use six close circular bands;
+            # the cylinder's empty square corners remain walkable.
+            outer=max(radius,end_radius)
+            for i in range(6):
+                a,b=-outer+i*outer/3,-outer+(i+1)*outer/3
+                near=0 if a<=0<=b else min(abs(a),abs(b))
+                half=math.sqrt(max(0,outer*outer-near*near))
+                self.physical_bounds([(start[0]+a,start[1]-half,min(start[2],end[2])),
+                                      (start[0]+b,start[1]+half,max(start[2],end[2]))])
+        else:
+            self.physical_bounds(pts[0]+pts[1])
         for i in range(sides):
             j = (i + 1) % sides
             self.quad(ids[0][i], ids[0][j], ids[1][j], ids[1][i])
@@ -150,6 +190,8 @@ class Mesh:
         front_out, front_in, back_out, back_in = rows
         for i in range(segments):
             j = i + 1
+            # Every arc segment is solid, including curved shoulders and the crown.
+            self.physical_bounds([self.vertices[row[k]] for row in rows for k in [i,j]])
             self.quad(front_out[j], front_out[i], front_in[i], front_in[j])
             self.quad(back_out[i], back_out[j], back_in[j], back_in[i])
             self.quad(front_out[i], front_out[j], back_out[j], back_out[i])
@@ -160,7 +202,9 @@ class Mesh:
     def collider(self, x, z, w, d, y, h):
         self.collision.append(dict(x=x, z=z, w=w, d=d, y=y, h=h))
 
-    def write(self):
+    def write(self, destination=None):
+        if self.name not in ['distant-planet','starfield','cargo-crate','train-carriage']:
+            self.collision = self.compound
         # Standard placement coordinates, including collision volumes.
         low = [min(v[i] for v in self.vertices) for i in range(3)]
         high = [max(v[i] for v in self.vertices) for i in range(3)]
@@ -203,12 +247,14 @@ class Mesh:
                     bounds=dict(min=[-0.5, 0, -0.5], max=[0.5, 1, 0.5]),
                     collision=[{key: round(value, 5) for key, value in box.items()}
                                for box in self.collision])
-        path = Path(__file__).parent / (self.name + '.json')
+        directory=Path(destination) if destination is not None else Path(__file__).parent
+        directory.mkdir(parents=True,exist_ok=True)
+        path = directory / (self.name + '.json')
         path.write_text(json.dumps(data, separators=(',', ':')) + '\n')
         print(f'{self.name}: {len(self.vertices)} vertices, {len(self.faces)} triangles, {path.stat().st_size} bytes')
 
 
-def build():
+def build(destination=None):
     meshes = []
     m = Mesh('curved-pipe')
     m.cylinder(0, 0, 0, 0.46, 1, 16, inner=0.33)
@@ -256,6 +302,7 @@ def build():
         a = [(sign * 0.16, 0.32, -0.27), (sign * 0.5, 0.14, 0.18),
              (sign * 0.5, 0.14, 0.42), (sign * 0.13, 0.32, 0.24)]
         b = [(x, y - 0.06, z) for x, y, z in a]
+        m.physical_bounds(a+b)
         m.surface(a if sign == -1 else a[::-1])
         m.surface(b[::-1] if sign == -1 else b)
         for i in range(4):
@@ -402,8 +449,11 @@ def build():
             m.surface([points[a],points[b],points[c]],[(.5,.5)]*3)
     meshes.append(m)
     for mesh in meshes:
-        mesh.write()
+        mesh.write(destination)
 
 
 if __name__ == '__main__':
-    build()
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output',type=Path,help='Write to a separate folder for reproducibility checks')
+    build(parser.parse_args().output)

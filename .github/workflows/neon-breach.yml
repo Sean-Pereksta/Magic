@@ -1,0 +1,30 @@
+name: Neon Breach gameplay regressions
+on:
+  pull_request:
+    paths:
+      - 'game/neon-arena/**'
+      - 'tests/neon-*'
+      - '.github/workflows/neon-breach.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/neon-arena/**'
+      - 'tests/neon-*'
+      - '.github/workflows/neon-breach.yml'
+permissions:
+  contents: read
+jobs:
+  geometry-and-gameplay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            game/neon-arena
+            tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate every map, collider, movement, AI, and preserved progression
+        run: node --test tests/neon-*.test.cjs game/neon-arena/tests/*.test.cjs

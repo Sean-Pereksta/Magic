@@ -121,7 +121,7 @@ test('production mobile aim and visibility sample enlarged head, torso and lower
   }
 });
 
-const realModels=path.resolve(__dirname,'../../original-pack/characters');
+const realModels=process.env.NEON_ASSET_FIXTURES?path.resolve(process.env.NEON_ASSET_FIXTURES,'characters'):path.resolve(__dirname,'../../original-pack/characters');
 test('original uploaded raptor GLBs grow uniformly and their real head anchors remain targetable',{skip:!fs.existsSync(path.join(realModels,'alien_blue.glb'))},()=>{
   const game=production();
   for(const kind of raptorKinds){

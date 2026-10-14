@@ -4,6 +4,11 @@ Dependency-free browser arena FPS with five modes, adaptive bots, weapon upgrade
 destructible building, mobile visible-target auto-fire, and local split screen.
 Serve the repository root and open `/game/neon-arena/`.
 
+The [tactical overhaul notes](TACTICAL-OVERHAUL.md) document the rebuilt maps,
+standing-height collision validation, ramp walking, tap-Shift/controller/touch
+slide, combat feedback, tactical bot behavior, asset inventory and release checks.
+Run `npm run test:neon` for geometry and gameplay regressions.
+
 ## Hosted graphics
 
 The detailed v2 `weapons/` and `characters/` models are referenced from
