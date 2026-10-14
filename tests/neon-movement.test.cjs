@@ -20,12 +20,73 @@ function harness(course=[floor()],options={}){
     burst:(...args)=>effects.push(args),recoverActor:e=>{state.recovered=true;e.x=e.z=0;e.y=1.86;e.vx=e.vy=e.vz=0;e.onGround=true},
     tryVoltDash:e=>{if(!state.dash)return false;state.dash=false;state.dashes++;e.vx=29;e.vy=Math.max(e.vy,4);return true}
   });
-  vm.runInContext(`${constants}\n${movement}\nthis.api={physics,requestHumanJump,resetHumanJump,verticalCollide,pushOutXZ,hasGroundSupport};`,context);
+  vm.runInContext(`${constants}\n${movement}\nthis.api={physics,requestHumanJump,resetHumanJump,verticalCollide,pushOutXZ,hasGroundSupport,requestHumanSlide,updateTacticalSlide,updateSlideView,actorEyePosition,slideSpreadMultiplier,actorStandingHeight};`,context);
   context.api.resetHumanJump(actor);
   return {actor,state,effects,game:context.game,...context.api};
 }
 function advance(h,seconds,frame=1/60){for(let t=0;t<seconds-1e-9;){const dt=Math.min(frame,seconds-t);h.physics(h.actor,dt);t+=dt}}
 function close(actual,expected,tolerance=.002){assert(Math.abs(actual-expected)<tolerance,`${actual} should be near ${expected}`)}
+function slideAdvance(h,seconds,frame=1/60,wishX=0,wishZ=1){for(let t=0;t<seconds-1e-9;){const dt=Math.min(frame,seconds-t);h.updateTacticalSlide(h.actor,dt,wishX,wishZ);h.physics(h.actor,dt);h.updateSlideView(h.actor,dt);t+=dt}}
+
+test('a tap starts a 720ms slide with decaying momentum and a real recovery cooldown',()=>{
+  const h=harness([floor()],{vz:18.4});assert.equal(h.requestHumanSlide(h.actor),true);
+  slideAdvance(h,.10);const early=Math.hypot(h.actor.vx,h.actor.vz);assert(early>25);assert(h.actor.slidePose>.7);
+  slideAdvance(h,.50);assert(Math.hypot(h.actor.vx,h.actor.vz)<early*.7);assert(h.actor.slideTimer>0);
+  slideAdvance(h,.13);assert.equal(h.actor.slideTimer,0);assert(h.actor.slideCooldown>.5);assert.equal(h.requestHumanSlide(h.actor),false);
+  slideAdvance(h,.63);assert.equal(h.actor.slideCooldown,0);assert.equal(h.requestHumanSlide(h.actor),true);
+});
+
+test('slide starts in existing movement direction and only permits limited steering',()=>{
+  const h=harness([floor()],{vx:18.4,vz:0,yaw:Math.PI});h.requestHumanSlide(h.actor);h.updateTacticalSlide(h.actor,.1,0,1);
+  assert(h.actor.vx>26);assert(h.actor.vz>0&&h.actor.vz<3,'a 90 degree input cannot snap the trajectory');
+  assert(Math.abs(Math.atan2(h.actor.vz,h.actor.vx))<=.089);
+  h.updateTacticalSlide(h.actor,.1,0,0);assert(h.actor.vx>24,'releasing movement keeps momentum');
+});
+
+test('idle, airborne, dead and overlay slide taps cannot launch or queue an endless slide',()=>{
+  const idle=harness();idle.requestHumanSlide(idle.actor);slideAdvance(idle,.2,1/60,0,0);assert.equal(idle.actor.slideTimer,0);assert.equal(idle.actor.slideRequest,0);
+  for(const opts of [{onGround:false},{dead:true}]){const h=harness([floor()],opts);assert.equal(h.requestHumanSlide(h.actor),false)}
+  const h=harness();for(const overlay of ['over','upgradesOpen','shopOpen']){h.game[overlay]=true;assert.equal(h.requestHumanSlide(h.actor),false);h.game[overlay]=false}
+});
+
+test('slides stop against thin walls and boundaries at normal and low frame rates',()=>{
+  for(const dt of [1/60,.1,.2]){
+    const h=harness([floor(),block(0,0,.12,20,4,4,'wall')],{x:-2,vx:18.4});h.requestHumanSlide(h.actor);slideAdvance(h,.22,dt,1,0);
+    assert(h.actor.x<=-.56+.003);assert.equal(h.actor.slideTimer,0);assert(h.actor.slideCooldown>0);
+  }
+  const boundary=harness([floor()],{x:63,vx:18.4});boundary.requestHumanSlide(boundary.actor);slideAdvance(boundary,.2,.2,1,0);assert(boundary.actor.x<=63.8);assert.equal(boundary.actor.slideTimer,0);
+});
+
+test('jump transitions out of slide without clipping, double jumping or snapping the camera',()=>{
+  const h=harness([floor()],{vz:18.4});h.requestHumanSlide(h.actor);slideAdvance(h,.16);const before=h.actor.slidePose;
+  h.requestHumanJump(h.actor);slideAdvance(h,.02);assert.equal(h.actor.slideTimer,0);assert(h.actor.vy>22);assert(h.actor.vz>23);assert(h.actor.slidePose>0&&h.actor.slidePose<before);
+  const vy=h.actor.vy;h.requestHumanJump(h.actor);slideAdvance(h,.05);assert(h.actor.vy<vy);
+  slideAdvance(h,.5);assert(h.actor.slidePose<.01);
+});
+
+test('full model height collides with overhead structures even though the camera and slide fit below',()=>{
+  for(const sliding of [false,true]){
+    const h=harness([floor(),block(0,0,.55,10,2.6,.5,'wall')],{x:-2,vx:18.4});
+    if(sliding){h.requestHumanSlide(h.actor);slideAdvance(h,.15,.1,1,0)}else advance(h,.15,.1);
+    assert(h.actor.x<=-.775+.003);assert.equal(h.actorStandingHeight(h.actor),2.39);
+  }
+});
+
+test('slide view easing and shooting origins agree without changing physics height or another player',()=>{
+  const h=harness([floor()],{vz:18.4}),other={...h.actor};h.requestHumanSlide(h.actor);slideAdvance(h,.12);
+  const eye=h.actorEyePosition(h.actor);assert(eye.y<h.actor.y-.5);assert(eye.z>h.actor.z);close(h.actor.y,1.86);assert(h.slideSpreadMultiplier(h.actor)>1.2);
+  assert.equal(other.slideTimer,0);assert.equal(other.slidePose,0);
+  h.resetHumanJump(h.actor);assert.equal(h.actor.slideCooldown,0);assert.equal(h.actor.slideTimer,0);assert.equal(h.actor.slidePose,0);
+});
+
+test('keyboard, controller and split-screen slide actions use independent tap edges',()=>{
+  assert.match(source,/e\.code==='ShiftLeft'.*!e\.repeat\)requestHumanSlide\(player\)/);
+  assert.match(source,/e\.code==='NumpadDecimal'.*!e\.repeat\)requestHumanSlide\(player2\)/);
+  assert.match(source,/slide:10/);assert.match(source,/slide=padDown\(pad,s\.slide\?\?10\)/);
+  assert.match(source,/if\(now\.slide&&!prev\.slide\)requestHumanSlide\(ent\)/);
+  const markup=fs.readFileSync(path.join(__dirname,'../game/neon-arena/index.html'),'utf8');assert.match(markup,/id="padSlide"/);assert.match(markup,/id="mobileSlide"[^>]+aria-label="Slide"/);
+  const a=harness([floor()],{vx:18.4}),b=harness([floor()],{vz:18.4});a.requestHumanSlide(a.actor);slideAdvance(a,.1,1/60,1,0);assert(a.actor.slideTimer>0);assert.equal(b.actor.slideTimer,0);b.requestHumanSlide(b.actor);slideAdvance(b,.1);assert(b.actor.slideTimer>0);
+});
 
 test('normal jump retains gravity 34 and impulse 23, and a second press cannot double jump',()=>{
   const h=harness();assert.equal(h.requestHumanJump(h.actor),true);h.physics(h.actor,1/120);
@@ -89,7 +150,7 @@ test('grounding assistance only snaps down close steps and never raises actors o
 
 test('ascending head collisions stop below a platform without falsely grounding',()=>{
   const ceiling=block(0,0,4,4,4,.55),h=harness([floor(),ceiling],{y:3.2,vy:23,onGround:false});h.physics(h.actor,.10);
-  assert(h.actor.y<=3.45+.001);assert(h.actor.vy<=0);assert.equal(h.actor.onGround,false);
+  assert(h.actor.y<=3.45-(2.39-1.86)+.001,'the complete 2.39 model head stays below the ceiling');assert(h.actor.vy<=0);assert.equal(h.actor.onGround,false);
 });
 
 test('swept vertical collision catches thin high platforms during very fast falls',()=>{
@@ -127,13 +188,14 @@ test('spawn reset clears pending jumps and landing feedback',()=>{
 });
 
 function authoredMap(name){
-  const course=[],scale=1.45,addPlat=(x,z,w,d,y,h)=>course.push(block(x*scale,z*scale,w*scale,d*scale,y+h,h));
-  const context=vm.createContext({Math,PLAYER_H:1.86,WORLD_SCALE:scale,game:{mode:'dm',map:name},mapTheme:null,edgeSpawns:[],
-    addPlat,addTopPlat:(x,z,w,d,top,h)=>addPlat(x,z,w,d,top-h,h),
-    addWall:(x,z,w,d,h,c,y=0)=>course.push(block(x*scale,z*scale,w*scale,d*scale,y+h,h,'wall')),
+  const course=[],platforms=[],walls=[],scale=1.45;
+  const addPlat=(x,z,w,d,y,h)=>{const p={x:x*scale,z:z*scale,w:w*scale,d:d*scale,y,h};platforms.push(p);course.push({...block(p.x,p.z,p.w,p.d,y+h,h),structure:p});return p};
+  const context=vm.createContext({Math,PLAYER_H:1.86,WORLD_SCALE:scale,game:{mode:'dm',map:name},mapTheme:null,edgeSpawns:[],nav:[],platforms,walls,
+    clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),addPlat,addTopPlat:(x,z,w,d,top,h)=>addPlat(x,z,w,d,top-h,h),
+    addWall:(x,z,w,d,h,c,y=0)=>{const p={x:x*scale,z:z*scale,w:w*scale,d:d*scale,y:y+h/2,h};walls.push(p);course.push({...block(p.x,p.z,p.w,p.d,y+h,h,'wall'),structure:p});return p},
     addPickup(){},addArmorPickup(){},addNav(){}});
-  const functions=['addArenaBounds','buildSurvivorBreachMap','buildStarterGridArenaMap','buildPastelArenaMap','buildReactorArenaMap'];
-  for(const name of functions){const a=source.indexOf('function '+name+'('),b=source.indexOf('\nfunction ',a+10);vm.runInContext(source.slice(a,b),context)}
+  for(const name of ['addArenaBounds','buildSurvivorBreachMap']){const a=source.indexOf('function '+name+'('),b=source.indexOf('\nfunction ',a+10),marker=source.indexOf('// Authored standard arenas',a);vm.runInContext(source.slice(a,marker>a&&marker<b?marker:b),context)}
+  vm.runInContext(source.slice(source.indexOf('// Authored standard arenas'),source.indexOf('function applyFragArena(')),context);
   const entry={grid:'buildStarterGridArenaMap',pastel:'buildPastelArenaMap',reactor:'buildReactorArenaMap',survivor:'buildSurvivorBreachMap'}[name];
   context[entry]();return course;
 }

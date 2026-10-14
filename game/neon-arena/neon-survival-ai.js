@@ -109,7 +109,7 @@
   function createController(host) {
     const clock = host.time || (() => performance.now() / 1000), random = host.random || Math.random;
     const eye = host.eyeHeight || 1.86, decisionInterval = .4;
-    let epoch = 0, lastRevision = '', graph = null, lastGraphSource = null, pathCount = 0, observationClock = 0;
+    let epoch = 0, lastRevision = '', graph = null, lastGraphSource = null, pathCount = 0, observationClock = 0, pathCredits = 3, creditTime = clock(), deferredPaths = 0;
     const paths = new Map(), memories = new WeakMap(), decisions = new WeakMap(), states = new WeakMap(), observations = new Map();
     const sight = (a, b) => host.lineClear ? host.lineClear(a.x, a.y - .55, a.z, b.x, b.y - .7, b.z) : false;
     const point = (p, a) => {
@@ -145,19 +145,25 @@
       }
       graph = { nodes, links, burrowZones: source?.burrowZones || [], spawnZones: source?.spawnZones || [] }; return graph;
     }
-    function allowedLink(type, a) { return !(['climb', 'fly', 'burrow'].includes(type)) || type === 'climb' && a.climber || type === 'fly' && a.flying || type === 'burrow' && (a.alienKind === 'stalker' || a.bossType === 'burrower'); }
+    function allowedLink(type, a) {
+      // Burrowing is a telegraphed species ability with an authored destination,
+      // not permission for ordinary locomotion to pass through a sealed wall.
+      return !(['climb', 'fly', 'burrow'].includes(type)) || type === 'climb' && a.climber || type === 'fly' && a.flying;
+    }
     function nearestNode(pos, g, a, outgoing) {
       const candidates = g.nodes.map((n, i) => ({ i, n, d: distance(pos, n) + Math.abs((pos.y || eye) - n.y) * 2.5 })).sort((x, y) => x.d - y.d);
       for (const entry of candidates.slice(0, 10)) if (safe(entry.n, a, true) && (outgoing ? traverse(pos, entry.n, a, true) : traverse(entry.n, pos, a, true))) return entry.i;
       return null;
     }
     function findPath(a, goal) {
-      if (a.flying || traverse(a, goal, a)) return [goal];
+      if (traverse(a, goal, a)) return [goal];
       const g = navigation(); if (!g.nodes.length) return [];
       const start = nearestNode(a, g, a, true), end = nearestNode(goal, g, a, false);
       if (start == null || end == null) return [];
-      const key = [start, end, a.climber ? 'c' : 'w', Math.ceil((a.r || .6) * 2), lastRevision].join(':');
+      const key = [start, end, a.flying ? 'f' : a.climber ? 'c' : 'w', Math.ceil((a.r || .6) * 4), Math.floor(a.jumpMax || 0), lastRevision].join(':');
       const cached = paths.get(key), now = clock(); if (cached && cached.expires > now) return cached.path.length ? [...cached.path, goal] : [];
+      pathCredits = Math.min(3, pathCredits + Math.max(0, now - creditTime) * 24); creditTime = now;
+      if (pathCredits < 1) { deferredPaths++; return []; } pathCredits--;
       pathCount++;
       const open = new Set([start]), came = new Map(), cost = new Map([[start, 0]]);
       let found = false, expanded = 0;
@@ -169,7 +175,7 @@
           if (!allowedLink(link.type, a)) continue;
           const from = g.nodes[current], to = g.nodes[link.to];
           if (!safe(to, a, true)) continue;
-          if (['walk', 'ramp', 'stairs'].includes(link.type) && !traverse(from, to, a, true)) continue;
+          if (['walk', 'ramp', 'stairs', 'fly'].includes(link.type) && !traverse(from, to, a, true)) continue;
           if (link.type === 'jump' && (Math.abs(to.y - from.y) > 5 || distance(from, to) > 10)) continue;
           const terrain = point(to, a).info, step = distance(from, to) * Math.max(1, terrain.cost || to.cost || 1) + Math.abs(from.y - to.y) * .3 + hazardCost(terrain.hazard) * 18 + (link.type === 'walk' ? 0 : 1.5);
           const proposed = cost.get(current) + step;
@@ -287,7 +293,10 @@
         decisions.set(a, previous);
       }
       while (previous.routeIndex < previous.route.length - 1 && distance(a, previous.route[previous.routeIndex]) < 2) previous.routeIndex++;
-      const waypoint = previous.route[previous.routeIndex], destination = waypoint || previous.goal;
+      const waypoint = previous.route[previous.routeIndex];
+      // When every legitimate route is closed, stop at the last valid surface
+      // until a locally observed defense can be breached or the map changes.
+      const destination = waypoint || (previous.blocked ? { x: a.x, y: a.y, z: a.z } : previous.goal);
       // A blocked route is investigated locally; only a barrier actually sensed nearby is attacked.
       const chew = previous.chew || previous.fallbackChew;
       // Approach a sensed barrier before local collision/chewing; never circle an entire map
@@ -444,8 +453,21 @@
       const source = a.wardSource;
       return alive(source) && source.wardUntil > clock() && !(source.empUntil > clock()) && distance(a, source) < (source.boss ? 12 : 17) && sight(source, a) ? .62 : 1;
     }
-    return { acquire, updateSpecial, invalidate, assignSquad, damageMultiplier, navigation, findPath,
-      stats: () => ({ cachedPaths: paths.size, pathSearches: pathCount, epoch }),
+    function flightWaypoint(a, desired) {
+      if (!a.flying || traverse(a, desired, a, true)) return null;
+      const yaw = Math.atan2(desired.x - a.x, desired.z - a.z), span = clamp(distance(a, desired), 4, 9), side = a.survivalSide || 1;
+      const options = [];
+      for (const turn of [side * .7, -side * .7, side * 1.4, -side * 1.4, Math.PI]) for (const rise of [0, 3]) {
+        const p = { x: a.x + Math.sin(yaw + turn) * span, y: clamp(a.y + rise, 3.2, 31), z: a.z + Math.cos(yaw + turn) * span };
+        if (traverse(a, p, a, true)) options.push(p);
+      }
+      const up = { x: a.x, y: Math.min(31, a.y + 5), z: a.z };
+      if (traverse(a, up, a, true)) options.push(up);
+      options.sort((p, q) => distance(p, desired) + Math.abs(p.y - desired.y) * .4 - distance(q, desired) - Math.abs(q.y - desired.y) * .4);
+      return options[0] || { x: a.x, y: a.y, z: a.z };
+    }
+    return { acquire, updateSpecial, invalidate, assignSquad, damageMultiplier, navigation, findPath, flightWaypoint,
+      stats: () => ({ cachedPaths: paths.size, pathSearches: pathCount, deferredPaths, epoch }),
       observedPerformance: () => {
         const recent = [...observations.values()].filter(o => clock() - o.time < 15);
         return { fortified: (host.structures?.() || []).filter(p => p.builtBy && alive(p)).length >= 8,

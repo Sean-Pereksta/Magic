@@ -64,7 +64,7 @@ async function main() {
       for(const map of ['grid','pastel','reactor']) {
         await page.locator('[data-mode="dm"]').click();
         await page.evaluate(map=>{const select=document.getElementById('map');select.value=map;select.dispatchEvent(new Event('change'));document.getElementById('secondPlayer').value='keyboard';},map);
-        await page.locator('#start').click();await page.waitForFunction(()=>__NEON_TEST__.game.started&&!__NEON_TEST__.game.over);
+        await page.locator('#start').click();await page.waitForFunction(()=>__NEON_TEST__.game.started&&!__NEON_TEST__.game.over).catch(async error=>{throw Error(device.name+' '+map+' split start failed: '+errors.join('; ')+' '+await page.locator('#mapDescription').innerText()+' '+error.message)});
         assert.equal(await page.evaluate(()=>{const t=__NEON_TEST__;t.draw();return t.player2!==t.player&&Number.isFinite(t.player2.x+t.player2.y+t.player2.z)&&t.gl.getError()===0}),true,map+' split');
         await page.evaluate(()=>__NEON_TEST__.endMatch('Split test'));
         await page.locator('#returnMenu').click();

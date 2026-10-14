@@ -195,3 +195,38 @@ test('production alien movement remains finite and bounded during veteran-wave s
     assert.ok(human.hp < human.maxHp, 'real production melee should reach the survivor');
   }
 });
+
+test('closing every route yields a stationary investigation rather than a wall rush', () => {
+  const f = setup({ canTraverse: () => false }), a = actor();
+  f.visible(true); f.controller.acquire(a); f.visible(false); f.tick(.6);
+  const decision = f.controller.acquire(a);
+  assert.equal(decision.memory.x, 16);
+  assert.deepEqual(decision.goal, { x: a.x, y: a.y, z: a.z });
+});
+
+test('flying paths use collision checks and steer toward a validated detour', () => {
+  const f = setup({ canTraverse: (from, to) => to.x < 3 }), a = actor('flyer'); a.flying = true; a.y = 8;
+  const blocked = { x: 10, y: 8, z: 0 };
+  assert.deepEqual(f.controller.findPath(a, blocked), [], 'flight does not bypass a sealed obstacle');
+  const waypoint = f.controller.flightWaypoint(a, blocked);
+  assert.ok(waypoint); assert.ok(f.host.canTraverse(a, waypoint));
+  assert.ok(Math.hypot(waypoint.x - a.x, waypoint.y - a.y, waypoint.z - a.z) > 0);
+});
+
+test('ordinary stalker navigation cannot use a burrow shortcut without its warned ability', () => {
+  const f = setup({ canTraverse: (from, to) => Math.hypot(from.x - to.x, from.z - to.z) < 2 }), a = actor('stalker');
+  f.graph.nodes.push({ id: 'a', x: 0, z: 0, y: 0 }, { id: 'b', x: 20, z: 0, y: 0 });
+  f.graph.links.push({ from: 'a', to: 'b', kind: 'burrow' });
+  assert.deepEqual(f.controller.findPath(a, { x: 20, y: 1.86, z: 0 }), []);
+});
+
+test('breachers attack the nearest visible face of a large defense instead of its unreachable center', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../game/neon-arena/neon-arena.js'), 'utf8');
+  const start = source.indexOf('function alienChewStructure('), end = source.indexOf('function alienNaturalWallContact(', start), hits = [];
+  const context = { Math, clamp: (n, lo, hi) => Math.max(lo, Math.min(hi, n)), lineClear: () => true, botSeparation: () => ({ x: 0, z: 0 }), damageStructure: (...args) => hits.push(args), burst: () => {}, physics: () => {} };
+  vm.createContext(context); vm.runInContext(source.slice(start, end), context);
+  const a = actor('red', 0, -7), wall = { type: 'wall', x: 0, z: 0, y: 2, w: 24, d: 12, h: 4, active: true };
+  a.meleeRange = 2; a.vx = 0; a.vz = 0; a.wallDamageMult = 2;
+  context.alienChewStructure(a, wall, 1 / 60);
+  assert.equal(hits.length, 1); assert.equal(hits[0][4].z, -6); assert.equal(hits[0][4].x, 0);
+});
