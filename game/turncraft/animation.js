@@ -56,8 +56,8 @@
       // original atlas. The extra sample is excluded from its painted bounds.
       context.drawImage(image,sx-padding,sy-padding,width,height,0,0,canvas.width,canvas.height);canvas.spriteTintCrop=[padding*canvas.width/width,padding*canvas.height/height,sw*canvas.width/width,sh*canvas.height/height];
       // Source-atop preserves every transparent edge, even on Cloudflare images
-      // without pixel-read access. Retain detail beneath a strong owner color.
-      context.globalCompositeOperation='source-atop';context.globalAlpha=.72;context.fillStyle=tint;context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';context.globalAlpha=1;
+      // without pixel-read access. A light overlay keeps faction detail visible.
+      context.globalCompositeOperation='source-atop';context.globalAlpha=.3;context.fillStyle=tint;context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';context.globalAlpha=1;
       const entry={image:canvas,frames,key,bytes:canvas.width*canvas.height*4};frames.set(key,entry);this.entries.add(entry);this.bytes+=entry.bytes;this.evict();return canvas;
     }
     evict(){for(const entry of this.entries){if(this.bytes<=this.maxBytes)break;this.entries.delete(entry);entry.frames.delete(entry.key);this.bytes-=entry.bytes;entry.image.width=0;entry.image.height=0}}
