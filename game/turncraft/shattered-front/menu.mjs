@@ -1158,6 +1158,7 @@ async function initialize() {
   api = window.TurncraftExpansion;
   if (!api || initialized) return;
   initialized = true;
+  if (window.TurncraftStartup?.ready) await window.TurncraftStartup.ready;
   if (api.ready) await api.ready;
   catalog = api.catalog;
   if (!catalog?.missions?.length) return;
@@ -1165,7 +1166,7 @@ async function initialize() {
     'sf-reduced-motion',
     localStorage.getItem('turncraft.reducedMotion') === 'true'
   );
-  if (!params.get('gameId') && !params.get('lobbyId'))
+  if (params.get('mode') === 'solo' || (!params.get('gameId') && !params.get('lobbyId')))
     show(params.get('view') === 'profile' ? 'profile' : 'home');
   loadManifest().then(() => {
     if (!root.hidden) render();

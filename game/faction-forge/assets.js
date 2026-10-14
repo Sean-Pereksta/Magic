@@ -43,6 +43,22 @@ export function animationDefinition(spec,name){
   return {frames,duration:Number(raw.duration || raw.durationMs || raw.frameDuration*frames.length || 1000),loop:raw.loop !== false && name !== "death"};
 }
 
+/** Include every tier and artwork group, deduplicating UI aliases. */
+export function manifestImagePaths(manifest){
+  const paths=new Set();
+  function visit(entry){
+    if(typeof entry==="string"){paths.add(entry);return;}
+    if(!entry || typeof entry!=="object")return;
+    const path=entry.path || entry.file;
+    if(path){paths.add(path);return;}
+    for(const value of Object.values(entry))if(value && typeof value==="object")visit(value);
+  }
+  for(const group of ["units","terrain","backgrounds","effects","ui"]){
+    for(const entry of Object.values(manifest?.[group] || {}))visit(entry);
+  }
+  return [...paths];
+}
+
 function abortableFetch(fetchImpl,url,timeout){
   const abort=new AbortController(), timer=setTimeout(()=>abort.abort(),timeout);
   return fetchImpl(url,{signal:abort.signal,cache:"force-cache",credentials:"omit"}).finally(()=>clearTimeout(timer));
@@ -52,7 +68,7 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
   // Checked-in metadata is sufficient when R2 contains only the five artwork folders.
   const configuredManifest=()=>initialManifest || (!manifestUrl ? fallbackManifest : null);
   let base=normalizeAssetBase(baseUrl), manifest=configuredManifest(), manifestPromise=null;
-  const cache=new Map(), pending=new Map(), failed=new Set();
+  const cache=new Map(), pending=new Map(), failed=new Set(), retained=new Map();
   const stats={loads:0,failures:0,evictions:0};
   const enabled=()=>!!base;
   async function loadManifest(){
@@ -72,6 +88,7 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
   function touch(path,value){cache.delete(path);cache.set(path,value);while(cache.size>maxSheets){const first=cache.keys().next().value;cache.delete(first);stats.evictions++;}return value;}
   async function loadImage(path){
     if(!base || !path || failed.has(path)) return null;
+    if(retained.has(path))return retained.get(path);
     if(cache.has(path)) return touch(path,cache.get(path));
     if(pending.has(path)) return pending.get(path);
     let src;try{src=safeAssetUrl(base,path);}catch{failed.add(path);stats.failures++;return null;}
@@ -82,7 +99,14 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
       // Display-only canvases can draw public R2 images without CORS headers.
       // Opt into anonymous CORS only when a caller explicitly needs pixel readback.
       if(crossOrigin)image.crossOrigin=crossOrigin;image.decoding="async";
-      image.onload=()=>{if(image.width>0 && image.height>0)finish(image);else finish(null);};image.onerror=()=>finish(null);image.src=src;
+      image.onload=async()=>{
+        try{
+          if(!(image.width>0 && image.height>0))throw new Error("Empty graphics image.");
+          // A completed download is not yet safe to reveal until decoding ends.
+          if(typeof image.decode==="function")await image.decode();
+          finish(image);
+        }catch{finish(null);}
+      };image.onerror=()=>finish(null);image.src=src;
     }).finally(()=>pending.delete(path));
     pending.set(path,promise);return promise;
   }
@@ -101,8 +125,28 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
     if(spec.frameWidth && spec.frameHeight){try{const columns=spec.columns||Math.floor(image.width/spec.frameWidth),rows=spec.rows||Math.floor(image.height/spec.frameHeight);frameRectangle({...spec,columns},0,image);frameRectangle({...spec,columns},columns*rows-1,image);}catch{stats.failures++;failed.add(path);return null;}}
     return {image,spec,url:safeAssetUrl(base,path)};
   }
-  function configure(value){base=normalizeAssetBase(value);manifest=configuredManifest();manifestPromise=null;cache.clear();failed.clear();}
-  return {enabled,loadManifest,loadImage,unit,asset,url:path=>safeAssetUrl(base,path),configure,peek:path=>cache.get(path),stats,get baseUrl(){return base;},get manifest(){return manifest;},get cacheSize(){return cache.size;}};
+  async function preloadAll({onProgress=()=>{},concurrency=6,retry=false}={}){
+    if(!enabled())return {loaded:0,total:0};
+    const data=await loadManifest();
+    if(!data)throw new Error("Faction Forge graphics manifest is unavailable.");
+    const paths=manifestImagePaths(data),failures=[];let next=0,loaded=0,completed=0;
+    if(retry)for(const path of paths)failed.delete(path);
+    onProgress({loaded,completed,total:paths.length});
+    const worker=async()=>{
+      while(next<paths.length){
+        const path=paths[next++],image=await loadImage(path);
+        // Keep preloaded decoded images alive for the entire game session. The
+        // ordinary lazy cache remains bounded for optional, non-manifest art.
+        if(image){retained.set(path,image);loaded++;}else failures.push(path);
+        completed++;onProgress({loaded,completed,total:paths.length});
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(paths.length,Math.max(1,Math.floor(concurrency)||1))},worker));
+    if(failures.length){const error=new Error(`Unable to load ${failures.length} Faction Forge graphic${failures.length===1?"":"s"}. Check your connection and retry.`);error.paths=failures;throw error;}
+    return {loaded,total:paths.length};
+  }
+  function configure(value){base=normalizeAssetBase(value);manifest=configuredManifest();manifestPromise=null;cache.clear();retained.clear();failed.clear();}
+  return {enabled,loadManifest,loadImage,preloadAll,unit,asset,url:path=>safeAssetUrl(base,path),configure,peek:path=>retained.get(path)||cache.get(path),stats,get baseUrl(){return base;},get manifest(){return manifest;},get cacheSize(){return cache.size;},get preloadedSize(){return retained.size;}};
 }
 
 export function drawSpriteFrame(context,image,rect,{x=0,y=0,width=rect.width,height=rect.height,flip=false}={}){

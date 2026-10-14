@@ -10,7 +10,7 @@ const source = fs
   .readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
   .replace(/^import .*https:\/\/www\.gstatic\.com.*;$/gm, '')
   .replace('<script type="module">', '<script type="module">' + stub)
-  .replace('\nboot();', '\n' + expose)
+  .replace('\nboot();', '\n' + expose + '\nwindow.TurncraftStartup?.complete();')
   .replace(
     '<script type="module" src="turncraft/shattered-front/menu.mjs"></script>',
     ''

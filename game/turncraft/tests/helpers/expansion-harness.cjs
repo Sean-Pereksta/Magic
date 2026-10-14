@@ -68,7 +68,7 @@ function simulation(faction = 'frontier', options = {}) {
     code = code.replace('// ---------- Main loop ----------', `${fragments}\n// ---------- Main loop ----------`);
   }
   if (!code.includes('\nboot();')) throw new Error('Turncraft boot boundary was not found');
-  code = code.replace('\nboot();', `\nrefreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};toast=()=>{};
+  code = code.replace('\nboot();', `\nwindow.TurncraftStartup?.complete();refreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};toast=()=>{};
 globalThis.addTestNode=(...args)=>{addNode(...args);return resourceNodes.at(-1)};
 globalThis.testEvaluate=source=>eval(source);`);
   const context = vm.createContext(sandbox);

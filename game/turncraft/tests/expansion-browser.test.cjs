@@ -27,7 +27,7 @@ window.tcExpansion={
 };`;
 const source = fs.readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
   .replace(/^import .*;$/gm, '')
-  .replace('\nboot();', '\n' + expose)
+  .replace('\nboot();', '\n' + expose + '\nwindow.TurncraftStartup?.complete();')
   .replace('<script type="module">', '<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
 
 async function setup(width = 1280, height = 900) {

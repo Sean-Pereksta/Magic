@@ -15,8 +15,96 @@ const execFileAsync=promisify(execFile);
 const firebaseMocks={
   'firebase-app.js':`export const initializeApp=()=>({});export const getApp=()=>({});export const getApps=()=>[];`,
   'firebase-auth.js':`const auth={currentUser:{uid:'owner-uid',getIdToken:async()=> 'test-token'}};export const getAuth=()=>auth;export const signInAnonymously=async()=>({user:auth.currentUser});export const signInWithEmailAndPassword=async()=>({user:auth.currentUser});export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>fn(a.currentUser),0);return ()=>{}};`,
-  'firebase-firestore.js':`export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async()=>({exists:()=>false,data:()=>({})});export const setDoc=async()=>{globalThis.__fireWrites=(globalThis.__fireWrites||0)+1};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>false,data:()=>({})}),0);return ()=>{}};`
+  'firebase-firestore.js':`export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async()=>({exists:()=>false,data:()=>({})});export const setDoc=async ref=>{const counter=ref.path.startsWith('lobbies/')?'__fireWrites':'__soloWrites';globalThis[counter]=(globalThis[counter]||0)+1};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>false,data:()=>({})}),0);return ()=>{}};`
 };
+
+async function startupServer(){
+  const app=http.createServer(async(req,res)=>{try{
+    const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep))throw Error('bad path');
+    let body=await fs.readFile(file);
+    if(file.endsWith('crowncouncil.html'))body=Buffer.from(body.toString().replace('/* Fullscreen */','globalThis.__forgeStartupTest={get assets(){return forgeAssets},get mode(){return executionMode},get ui(){return expansionUI}};\n/* Fullscreen */'));
+    res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(body);
+  }catch{res.writeHead(404);res.end();}});
+  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));return {app,url:`http://127.0.0.1:${app.address().port}`};
+}
+async function startupRoutes(context){
+  await context.route('https://www.gstatic.com/firebasejs/**',route=>route.fulfill({contentType:'text/javascript',body:firebaseMocks[new URL(route.request().url()).pathname.split('/').at(-1)]||''}));
+  await context.route('**/graphics/**',route=>route.fulfill({status:404,body:''}));
+  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'https://forge-assets.test',progressionApiUrl:'',matchmakingTimeoutMs:30000};`}));
+}
+const startupImage='<svg xmlns="http://www.w3.org/2000/svg" width="768" height="768"><rect width="768" height="768" fill="#83a7d0"/></svg>';
+
+test('opening waits for every Cloudflare graphic to decode before entering the solo menu or multiplayer game', {skip:!chromium},async()=>{
+  const {app,url}=await startupServer();let browser;
+  try{
+    browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
+    for(const multiplayer of [false,true]){
+      const context=await browser.newContext({viewport:{width:390,height:844}});await startupRoutes(context);
+      await context.addInitScript(()=>{
+        const nativeDecode=HTMLImageElement.prototype.decode;
+        HTMLImageElement.prototype.decode=async function(){
+          await nativeDecode.call(this);
+          if(this.src.endsWith('/units/rifleman-tier1.webp')){globalThis.__decodeHeld=true;await new Promise(resolve=>{globalThis.__releaseGraphicsDecode=resolve;});}
+        };
+      });
+      const requested=new Set(),page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+      await context.route('https://forge-assets.test/**',route=>{requested.add(route.request().url());return route.fulfill({contentType:'image/svg+xml',body:startupImage});});
+      await page.goto(url+'/game/crowncouncil.html'+(multiplayer?'?gameId=existing-room&username=Guest':''));
+      await page.waitForFunction(()=>globalThis.__decodeHeld&&__forgeStartupTest?.assets.stats.loads===138);
+      assert.equal(requested.size,139);assert.equal(await page.locator('body.ff-starting').count(),1);
+      assert.equal(await page.locator('#assetGate').isVisible(),true);assert.equal(await page.locator('.ff-expansion').count(),0);
+      assert.equal(await page.locator('.topbar').evaluate(node=>node.inert),true);
+      assert.ok(await page.locator('#assetGatePlayers').textContent().then(value=>value.includes(multiplayer?'multiplayer':'main menu')));
+      assert.ok(await page.locator('#assetGate').evaluate(node=>node.scrollWidth<=innerWidth));
+      await page.evaluate(()=>__releaseGraphicsDecode());await page.waitForFunction(()=>!document.body.classList.contains('ff-starting'));
+      assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),139);
+      assert.equal(await page.locator('.topbar').evaluate(node=>node.inert),false);
+      if(multiplayer){assert.equal(await page.evaluate(()=>__forgeStartupTest.mode),'legacy-online');assert.equal(await page.evaluate(()=>__forgeStartupTest.ui.view),'');}
+      else{await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor();assert.equal(await page.locator('#assetGate').isVisible(),false);}
+      assert.deepEqual(errors,[]);await context.close();
+    }
+  }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('failed Cloudflare artwork keeps startup blocked until a successful retry', {skip:!chromium},async()=>{
+  const {app,url}=await startupServer();let browser;
+  try{
+    browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
+    const context=await browser.newContext();await startupRoutes(context);const page=await context.newPage(),requested=new Map(),errors=[];let failing=true;
+    page.on('pageerror',error=>errors.push(error.message));
+    await context.route('https://forge-assets.test/**',route=>{
+      const path=new URL(route.request().url()).pathname;requested.set(path,(requested.get(path)||0)+1);
+      return path==='/units/rifleman-tier3.webp'&&failing?route.fulfill({status:503,body:'unavailable'}):route.fulfill({contentType:'image/svg+xml',body:startupImage});
+    });
+    await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Retry loading',exact:true}).waitFor();
+    assert.equal(await page.locator('body.ff-starting').count(),1);assert.equal(await page.locator('.ff-expansion').count(),0);
+    assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),138);assert.equal(requested.size,139);
+    failing=false;await page.getByRole('button',{name:'Retry loading',exact:true}).click();
+    await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>__forgeStartupTest.assets.preloadedSize),139);
+    assert.equal(requested.get('/units/rifleman-tier3.webp'),2);assert.equal(requested.get('/units/vguard-tier3.webp'),1);
+    assert.equal(await page.locator('#assetGate').isVisible(),false);assert.deepEqual(errors,[]);
+  }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('multiplayer guest profile connection failure offers a working startup retry', {skip:!chromium},async()=>{
+  const {app,url}=await startupServer();let browser;
+  try{
+    browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
+    const context=await browser.newContext();await startupRoutes(context);const page=await context.newPage();
+    await context.route('https://forge-assets.test/**',route=>route.fulfill({contentType:'image/svg+xml',body:startupImage}));
+    await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:`
+      const auth={currentUser:null};let notify;export const getAuth=()=>auth;
+      export const onAuthStateChanged=(a,fn)=>{notify=fn;setTimeout(()=>fn(a.currentUser),0);return ()=>{}};
+      export const signInAnonymously=async()=>{globalThis.__guestAttempts=(globalThis.__guestAttempts||0)+1;if(__guestAttempts===1)throw new Error('Connection unavailable');auth.currentUser={uid:'owner-uid'};setTimeout(()=>notify(auth.currentUser),0);return {user:auth.currentUser}};
+      export const signInWithEmailAndPassword=signInAnonymously;
+    `}));
+    await page.goto(url+'/game/crowncouncil.html?gameId=existing-room');await page.getByRole('button',{name:'Retry loading',exact:true}).waitFor();
+    assert.match(await page.locator('#assetGateStatus').textContent(),/connect your profile/);assert.equal(await page.locator('.ff-expansion').isVisible(),false);
+    await page.getByRole('button',{name:'Retry loading',exact:true}).click();await page.waitForFunction(()=>!document.body.classList.contains('ff-starting'));
+    assert.equal(await page.evaluate(()=>__guestAttempts),2);assert.equal(await page.locator('body.ff-starting').count(),0);
+  }finally{await browser?.close();await new Promise(resolve=>app.close(resolve));}
+});
 
 test('cross-origin display works without CORS or an uploaded manifest', {skip:!chromium},async()=>{
   const app=http.createServer(async(req,res)=>{try{const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+path.sep))throw Error('bad path');res.setHeader('Content-Type','text/javascript');res.end(await fs.readFile(file));}catch{res.writeHead(404);res.end();}});
@@ -55,8 +143,8 @@ test('live folder-only R2 graphics render in the menu, draft and battle without 
       // Chromium itself cannot use the workspace's network proxy.
       try{const {stdout}=await execFileAsync('curl',['-f','-sS','--max-time','15',route.request().url()],{encoding:null,maxBuffer:8*1024*1024});await route.fulfill({contentType:'image/webp',body:stdout});}catch{await route.abort('failed');}
     });
-    await page.goto(`http://127.0.0.1:${app.address().port}/game/crowncouncil.html`);
-    await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor();
+    await page.goto(`http://127.0.0.1:${app.address().port}/game/crowncouncil.html`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor({timeout:60000});
     await page.waitForFunction(()=>document.querySelectorAll('.ff-faction-showcase .ff-portrait-canvas').length===3,null,{timeout:20000}).catch(async error=>{throw new Error(error.message+' '+JSON.stringify({errors,requests:requests.slice(0,12),failures:failures.slice(0,8),console:consoleErrors.slice(0,6),canvases:await page.locator('canvas').count()}));});
     assert.equal(await page.locator('.ff-faction-showcase .ff-portrait-canvas').first().getAttribute('width'),'128');
     assert.ok(await page.evaluate(()=>getComputedStyle(document.querySelector('.ff-expansion')).backgroundImage.includes('ui/main-menu.webp')));
@@ -68,6 +156,6 @@ test('live folder-only R2 graphics render in the menu, draft and battle without 
     await page.waitForFunction(()=>__forgeLive.state.phase==='battle',null,{timeout:20000});
     await page.waitForFunction(()=>document.querySelectorAll('.ff-unit-sprite').length>0,null,{timeout:20000});
     const rendered=await page.locator('.ff-unit-sprite').evaluateAll(nodes=>nodes.map(n=>({width:n.width,height:n.height})));assert.ok(rendered.every(n=>n.width===128&&n.height===128));
-    assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);assert.equal(requests.filter(url=>url.endsWith('/manifest.json')).length,0);
+    assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.equal(await page.evaluate(()=>globalThis.__soloWrites||0),1);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);assert.equal(requests.filter(url=>url.endsWith('/manifest.json')).length,0);
   }finally{await browser?.close();await new Promise(r=>app.close(r));}
 });

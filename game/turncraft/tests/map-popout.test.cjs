@@ -15,7 +15,7 @@ const exposure=`window.tcPopout={
 const mocks=`const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({}),serverTimestamp=()=>1;
 window.tcWrites=[];window.tcFailWrite=false;window.tcHoldWrite=null;
 async function setDoc(ref,data,options){window.tcWrites.push({ref,data,options});if(window.tcHoldWrite)await window.tcHoldWrite;if(window.tcFailWrite)throw new Error('test write failure')}`;
-const source=html.replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure).replace('<script type="module">','<script>'+mocks);
+const source=html.replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure+'\nwindow.TurncraftStartup?.complete();').replace('<script type="module">','<script>'+mocks);
 async function setup(width=1280,height=900){
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']});
   const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));

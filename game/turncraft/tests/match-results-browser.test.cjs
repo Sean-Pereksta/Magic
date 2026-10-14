@@ -11,7 +11,7 @@ const expose=`window.tcResults={
   get snapshot(){return serializeState()},remote(data,slot=0){PLAYER=slot;applyRemoteState(data)},
   get result(){return matchResult},get shown(){return presentedMatchResult},get over(){return gameOver}
 };resize();renderStartMenu();overlay.style.display='flex';`;
-const source=html.replace(/^import .*;$/gm,'').replace('\nboot();','\n'+expose).replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
+const source=html.replace(/^import .*;$/gm,'').replace('\nboot();','\n'+expose+'\nwindow.TurncraftStartup?.complete();').replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
 async function setup(width=1280,height=800){
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']});
   const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',error=>errors.push(error.message));

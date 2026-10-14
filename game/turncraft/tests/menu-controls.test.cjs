@@ -17,7 +17,7 @@ const exposure=`window.tcMenu={
   get gasOrder(){const w=selected();return{job:w.pendingBuild,move:w.moveDestination,minerals:players[PLAYER].minerals}},
   refresh(){refreshUI(true)},pause(){paused=true}
 };window.tcMenu.menu();`;
-const source=fs.readFileSync(path.join(game,'turncraft.html'),'utf8').replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure).replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
+const source=fs.readFileSync(path.join(game,'turncraft.html'),'utf8').replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure+'\nwindow.TurncraftStartup?.complete();').replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
 async function setup(width=1280,height=900){
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
