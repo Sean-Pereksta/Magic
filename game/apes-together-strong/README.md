@@ -409,6 +409,12 @@ reinforced and fortress walls require a gate or breach. King and follower
 strikes damage contacted enemy walls, including during climbing, so a tribe
 can open passages for apes that cannot cross them.
 
+The King and every ape species climb friendly palisades, including all village
+defense rings, with a visible climb, crest and landing. Gates remain walkable.
+Nearest-human orders let eligible climbers cross walls when climbing provides
+a shorter route or walking cannot reach the target; they finish the crossing
+and resume attacking the chosen human without breaching unrelated structures.
+
 Gameplay no longer prints command acknowledgements, activity labels, damage
 numbers, cage instructions or objective hints over the world. Shape, color,
 movement, icons and health bars retain feedback. Village attack or approaching
