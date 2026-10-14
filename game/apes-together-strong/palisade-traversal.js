@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const N=ATSNavigation.prototype,G=ATSGame.prototype,clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-const friendly=b=>!!b?.fortification&&!b.gate&&!b.settlementWall&&(b.team||b.owner)==='ape'&&b.solid&&!b.dead&&b.hp>0;
+const friendly=b=>!!b?.fortification&&!b.gate&&(b.team||b.owner)==='ape'&&b.solid&&!b.dead&&b.hp>0;
 const now=nav=>nav.game?.time??nav.time;
 const radius=a=>a.radius||(a.id==='king'?12:a.state==='young'?7:10);
 const pose=a=>{
@@ -13,7 +13,17 @@ const pose=a=>{
  const p=clamp((t-.46)/.26,0,1);return{phase:'jump',progress:p,height:c.height*(1-p)+Math.sin(p*Math.PI)*8,x:c.crestX+(c.exitX-c.crestX)*p,y:c.crestY+(c.exitY-c.crestY)*p};
 };
 window.ATSPalisadePose=pose;
-N.clearPalisadeClimb=function(a){delete a.palisadeClimb;delete a._palisadeStepAt;this._palisadeClimbers?.delete(a)};
+N.clearPalisadeClimb=function(a,recover=false){
+ const c=a.palisadeClimb,r=radius(a);
+ // A hut built during the jump can invalidate the exit. Return to a real,
+ // clear endpoint rather than dropping the actor inside the solid palisade.
+ if(recover&&this.validPalisadeClimb(a)&&this.blocked(a.x,a.y,r,'ape')){
+  const from={x:c.fromX,y:c.fromY},exit={x:c.exitX,y:c.exitY},points=c.elapsed<.46?[from,exit]:[exit,from];
+  const safe=points.find(p=>!this.blocked(p.x,p.y,r,'ape')&&this.clearSegment(a.x,a.y,p.x,p.y,r,'ape',c.wallId))||this.game?.findOpen(c.fromX,c.fromY,r);
+  if(safe){a.x=safe.x;a.y=safe.y}a._nav=null;a.moving=false;
+ }
+ delete a.palisadeClimb;delete a._palisadeStepAt;this._palisadeClimbers?.delete(a);
+};
 N.validPalisadeClimb=function(a){
  const c=a.palisadeClimb,b=this.world.objects.get(c?.wallId);if(!c||!friendly(b)||a.hp<=0)return false;
  if(!['fromX','fromY','crestX','crestY','exitX','exitY','elapsed','height'].every(k=>Number.isFinite(c[k]))||c.elapsed<0||c.elapsed>.73||c.height<12||c.height>45)return false;
@@ -31,10 +41,10 @@ N.stepPalisadeClimb=function(a,dt){
  if(!a.palisadeClimb)return false;
  if(a._palisadeStepAt===now(this))return true;
  a._palisadeStepAt=now(this);
- if(!this.validPalisadeClimb(a)||a.blastReaction||a.siegeTransition||a.wallClimb||a.onWallId){this.clearPalisadeClimb(a);return false}
+ if(!this.validPalisadeClimb(a)||a.blastReaction||a.siegeTransition||a.wallClimb||a.onWallId){this.clearPalisadeClimb(a,true);return false}
  const c=a.palisadeClimb,previous=c.elapsed;c.elapsed=Math.min(.72,c.elapsed+Math.max(0,Math.min(dt,.1)));const p=pose(a),r=radius(a);
  // Even an interrupted jump may never cross a newly built hut, a tree or water.
- if(!this.clearSegment(a.x,a.y,p.x,p.y,r,'ape',c.wallId)){c.elapsed=previous;this.clearPalisadeClimb(a);a.moving=false;return true}
+ if(!this.clearSegment(a.x,a.y,p.x,p.y,r,'ape',c.wallId)){c.elapsed=previous;this.clearPalisadeClimb(a,true);a.moving=false;return true}
  a.x=p.x;a.y=p.y;a.dir=Math.atan2(c.exitY-c.fromY,c.exitX-c.fromX);a.moving=true;
  if(c.elapsed>=.72){this.clearPalisadeClimb(a);a._palisadeLandedAt=now(this);a._nav=null}
  return true;
