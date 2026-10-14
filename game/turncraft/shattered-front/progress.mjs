@@ -6,10 +6,26 @@ const empty = () => ({
 });
 export function readProgress(key) {
   try {
-    return mergeProgress(
-      empty(),
-      JSON.parse(localStorage.getItem(key) || '{}')
-    );
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    const progress = mergeProgress(empty(), saved);
+    progress.pendingResults = Array.isArray(saved?.pendingResults)
+      ? saved.pendingResults.filter((result) => {
+          if (!result || typeof result !== 'object' || Array.isArray(result))
+            return false;
+          if (result.mode === 'campaign')
+            return (
+              result.won !== false &&
+              typeof result.missionId === 'string' &&
+              result.missionId.length > 0
+            );
+          return (
+            (result.mode === 'survival' || result.mode === 'endless') &&
+            typeof result.arenaId === 'string' &&
+            result.arenaId.length > 0
+          );
+        })
+      : [];
+    return progress;
   } catch {
     return empty();
   }

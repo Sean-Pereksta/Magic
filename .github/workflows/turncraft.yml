@@ -1,10 +1,10 @@
 name: TurnCraft regression checks
 on:
   pull_request:
-    paths: ['game/turncraft.html', 'game/turncraft/**', 'game/turncraft-lobby.html', 'server/turncraft/**', 'firestore.rules', 'firebase.turncraft-test.json', 'graphics/turncraft/**', '.github/workflows/turncraft.yml']
+    paths: ['game/turncraft.html', 'game/turncraft/**', 'game/turncraft-lobby.html', 'firestore.rules', 'firebase.turncraft-test.json', 'graphics/turncraft/**', '.github/workflows/turncraft.yml']
   push:
     branches: [main]
-    paths: ['game/turncraft.html', 'game/turncraft/**', 'game/turncraft-lobby.html', 'server/turncraft/**', 'firestore.rules', 'firebase.turncraft-test.json', 'graphics/turncraft/**', '.github/workflows/turncraft.yml']
+    paths: ['game/turncraft.html', 'game/turncraft/**', 'game/turncraft-lobby.html', 'firestore.rules', 'firebase.turncraft-test.json', 'graphics/turncraft/**', '.github/workflows/turncraft.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,5 +36,4 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm install --ignore-scripts
-      - run: node --test game/turncraft/tests/authority.test.cjs server/turncraft/tests/*.test.cjs
-      - run: npx firebase emulators:exec --project demo-turncraft --config firebase.turncraft-test.json --only firestore "node game/turncraft/tests/turncraft-rules.emulator.cjs"
+      - run: npx firebase emulators:exec --project demo-turncraft --config firebase.turncraft-test.json --only firestore "node game/turncraft/tests/profile-store.emulator.cjs && node game/turncraft/tests/lobby-store.emulator.cjs && node game/turncraft/tests/turncraft-rules.emulator.cjs"

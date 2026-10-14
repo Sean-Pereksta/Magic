@@ -85,15 +85,17 @@ function saveProgress() {
   api.setProfile?.({ ...profile, ...progress });
 }
 async function flushSaves() {
-  if (syncing || !cloud || !identity.uid || !progress.pendingResults?.length)
+  if (syncing || !cloud || !identity.linked || !progress.pendingResults?.length)
     return;
+  const startedFor = progressKey;
   syncing = true;
   try {
     while (progress.pendingResults?.length) {
       const result = progress.pendingResults[0],
         owner = progressKey;
-      if (result.mode === 'campaign') await cloud.saveCampaign(result);
-      else await cloud.saveSurvival(result);
+      const account = { username: identity.username };
+      if (result.mode === 'campaign') await cloud.saveCampaign(result, account);
+      else await cloud.saveSurvival(result, account);
       if (owner !== progressKey) break;
       progress.pendingResults.shift();
       saveProgress();
@@ -104,6 +106,7 @@ async function flushSaves() {
     );
   } finally {
     syncing = false;
+    if (startedFor !== progressKey) void flushSaves();
   }
 }
 function checkpoint() {
@@ -184,7 +187,7 @@ function shell() {
     el(
       'small',
       '',
-      `${rankName()}${profile.rankedMatches ? ` · ${Math.round(profile.mmr)} MMR` : ' · Placement awaits'}`
+      `${rankName()}${profile.rankedMatches ? ` · ${Math.round(profile.mmr)} MMR` : ' · Personal progress'}`
     ),
     el(
       'small',
@@ -881,7 +884,7 @@ function multiplayer(main) {
     ['Quick Play', 'Find an available compatible public room.', 'quick'],
     [
       'Ranked Match',
-      'Competitive 1v1 with protected rating results.',
+      'Ranked matches are currently unavailable.',
       'ranked'
     ],
     [
@@ -898,6 +901,7 @@ function multiplayer(main) {
       el('p', '', copy),
       el('span', 'sf-arrow', '↗')
     );
+    if (mode === 'ranked') b.disabled = true;
     grid.append(b);
   }
   main.append(grid);
@@ -935,7 +939,7 @@ function profileScreen(main) {
     heading(
       'Survival records',
       'PERSONAL OPERATIONS',
-      'Personal runs remain separate from verified public rankings.'
+      'Your best runs are saved with your account.'
     )
   );
   const list = el('div', 'sf-records');
@@ -970,8 +974,7 @@ function profileScreen(main) {
       badges.append(badge);
     }
   main.append(
-    badges,
-    button('Open ranked leaderboard ↗', () => lobby('leaderboard'))
+    badges
   );
 }
 function settings(main) {
@@ -1170,12 +1173,17 @@ async function initialize() {
   try {
     cloud = await import('./profile.mjs');
     profileUnsub = await cloud.watchProfile((data) => {
-      if (data.identity) {
-        identity = data.identity;
-        const key = `turncraft.shattered-front.progress.${identity.uid || 'local'}.v1`;
+      {
+        identity = data.identity || { displayName: 'Local Commander' };
+        const key = `turncraft.shattered-front.progress.${encodeURIComponent(identity.username || identity.uid || 'local')}.v1`;
         if (key !== progressKey) {
+          const local = data.identity && progressKey === 'turncraft.shattered-front.progress.local.v1' ? progress : null;
           progressKey = key;
           progress = readProgress(key);
+          if (local) {
+            progress = mergeProgress(progress, local);
+            progress.pendingResults = [...(progress.pendingResults || []), ...(local.pendingResults || [])];
+          }
         }
       }
       profile = data.profile || {};
