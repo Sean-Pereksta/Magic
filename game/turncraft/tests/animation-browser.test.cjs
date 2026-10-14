@@ -65,6 +65,10 @@ test('actual startup loads the complete manifest and the deployed battlefield ad
     assert.ok(deployed.mapped>0);
     assert.ok(deployed.textures.ready>0,'the running game must decode visible animation atlases');
     assert.ok(deployed.textures.bytes<=deployed.textures.limit);
+    // A starting camera can show troops before their base. Bring a deployed
+    // structure into view before requiring a lazy structure-atlas request.
+    await page.evaluate(() => tcAnimation.run("(()=>{const base=entities.find(e=>e.alive!==false&&e.kind==='structure');if(base){centerOn(base.x,base.y);draw()}})()"));
+    await page.waitForFunction(() => tcAnimation.runtime.cache.stats().pending===0);
     await page.waitForFunction(() => tcAnimation.run("terrainRenderer.stats.loaded.includes('effects') && terrainRenderer.stats.loaded.includes('classic:props')"));
     assert.deepEqual([...new Set([...artworkRequests].map(url => new URL(url).pathname.split('/')[1]))].sort(), ['effects','structures','terrain','units']);
     assert.deepEqual(errors,[]);
@@ -427,12 +431,12 @@ test('graphics quality resamples real atlases once and keeps every source rectan
         ctx.drawImage=function(image,...args){if(args.length===8)rectangle=args.slice(0,4);return original.call(this,image,...args)};
         let drew;try{drew=spriteRuntime.drawState(ctx,'rifleman','move',{direction:'NW',progress:1,size:48})}finally{ctx.drawImage=original}
         const changed=window.previousQualityImage!==image;window.previousQualityImage=image;
-        return {drew,scale,width,height,rectangle,changed,bytes:entry.bytes,raw:TurncraftAnimation.frameForState(meta,'NW',0,{progress:1})};
+        return {drew,scale,width,height,rectangle,changed,bytes:entry.bytes,expansion:{x:spriteRuntime.cache.frameExpansion(file),y:spriteRuntime.cache.frameExpansionY(file)},raw:TurncraftAnimation.frameForState(meta,'NW',0,{progress:1})};
       })()`));
       assert.equal(result.drew,true);
       assert.equal(result.scale,scale);
       assert.equal(result.changed,true,'changing quality must rebuild the decoded image rather than repeatedly decoding at draw time');
-      assert.deepEqual(result.rectangle,[result.raw.x*scale,result.raw.y*scale,result.raw.w*scale,result.raw.h*scale]);
+      assert.deepEqual(result.rectangle,[result.raw.x*result.expansion.x*scale,result.raw.y*result.expansion.y*scale,result.raw.w*result.expansion.x*scale,result.raw.h*result.expansion.y*scale]);
       assert.ok(result.rectangle[0]+result.rectangle[2]<=result.width && result.rectangle[1]+result.rectangle[3]<=result.height);
       assert.equal(result.bytes,result.width*result.height*4);
       decoded.push(result.bytes);
@@ -440,6 +444,30 @@ test('graphics quality resamples real atlases once and keeps every source rectan
     assert.ok(decoded[0]<decoded[1] && decoded[1]<decoded[2],'lower quality must reduce actual decoded texture memory');
     assert.deepEqual(errors,[]);
   } finally {await browser.close()}
+});
+
+test('static atlas previews use the repaired vertical and horizontal frame geometry at low quality',async()=>{
+  const {browser,page,errors}=await setup();
+  try{
+    assert.equal(await page.evaluate(()=>tcAnimation.runtime.loadManifest('/game/turncraft/assets/animation-manifest.json')),true);
+    await page.evaluate(()=>tcAnimation.run("setGraphicsQuality('low');spriteRuntime.cache.get(spriteRuntime.manifest.assets.engineer.states.idle.sheet)"));
+    await page.waitForFunction(()=>tcAnimation.runtime.cache.stats().pending===0);
+    const result=await page.evaluate(()=>tcAnimation.run(`(async()=>{
+      const definition=spriteRuntime.manifest.assets.engineer.states.idle,file=definition.sheet,image=spriteRuntime.cache.get(file),rectangles=[];
+      const original=CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage=function(source,...args){if(source===image&&this.canvas.width===256&&this.canvas.height===256)rectangles.push(args.slice(0,4));return original.call(this,source,...args)};
+      let loaded;try{loaded=await loadStaticAtlasFrame('engineer.png')}finally{CanvasRenderingContext2D.prototype.drawImage=original}
+      const preview=ASSET_IMAGES.get('engineer.png'),pixels=preview?.getContext('2d').getImageData(0,0,256,256).data;
+      return {loaded,rectangles,nonempty:pixels&&pixels.some((value,index)=>index%4===3&&value>16),
+        raw:TurncraftAnimation.frameForState(definition,'S',0),scale:spriteRuntime.cache.sourceScale(file),
+        expansion:{x:spriteRuntime.cache.frameExpansion(file),y:spriteRuntime.cache.frameExpansionY(file)},type:preview?.turncraftAtlas?.type};
+    })()`));
+    assert.equal(result.loaded,true);assert.equal(result.type,'engineer');assert.equal(result.nonempty,true);
+    assert.ok(result.expansion.y>1,'this fixture must exercise a vertically padded troop atlas');
+    assert.deepEqual(result.rectangles,[[result.raw.x*result.expansion.x*result.scale,result.raw.y*result.expansion.y*result.scale,
+      result.raw.w*result.expansion.x*result.scale,result.raw.h*result.expansion.y*result.scale]]);
+    assert.deepEqual(errors,[]);
+  }finally{await browser.close()}
 });
 
 test('explicit symmetric Brood direction corrections preserve anchors and scaled texture bounds', async () => {
@@ -622,12 +650,12 @@ test('desktop and phone large battles respect texture, particle and death-effect
   }
 });
 
-test('all sixteen repaired sheets have isolated nonempty frames and transparent gutters at every quality',async()=>{
+test('every repaired sheet has isolated nonempty frames and transparent gutters at every quality',async()=>{
   const {browser,page,errors}=await setup();
   try{
     const result=await page.evaluate(async()=>{
       const runtime=tcAnimation.runtime;await runtime.loadManifest('/game/turncraft/assets/animation-manifest.json');
-      const failures=[],sheets=Object.entries(runtime.manifest.cropRepairs);let checked=0;
+      const failures=[],sheets=Object.entries(runtime.manifest.cropRepairs),expectedFrames=sheets.reduce((total,[,repair])=>total+repair.crops.reduce((sum,row)=>sum+row.length,0),0)*3;let checked=0;
       for(const quality of ['low','medium','high']){
         runtime.setQuality(quality);
         for(const [url,repair]of sheets){
@@ -635,10 +663,10 @@ test('all sixteen repaired sheets have isolated nonempty frames and transparent 
           if(!image){failures.push(quality+': failed '+url);continue}
           const scale=runtime.cache.sourceScale(url),pitch=repair.frameWidth*scale,height=repair.frameHeight*scale;
           const canvas=document.createElement('canvas');canvas.width=pitch;canvas.height=height;const ctx=canvas.getContext('2d');
-          for(let row=0;row<8;row++)for(let col=0;col<repair.crops[row].length;col++){
+          for(let row=0;row<repair.crops.length;row++)for(let col=0;col<repair.crops[row].length;col++){
             ctx.clearRect(0,0,pitch,height);ctx.drawImage(image,col*pitch,row*height,pitch,height,0,0,pitch,height);
             const pixels=ctx.getImageData(0,0,pitch,height).data;let visible=0,edge=0;
-            for(let y=0;y<height;y++)for(let x=0;x<pitch;x++){const alpha=pixels[(y*pitch+x)*4+3];if(alpha>16)visible++;if((x<2||x>=pitch-2)&&alpha>0)edge++}
+            for(let y=0;y<height;y++)for(let x=0;x<pitch;x++){const alpha=pixels[(y*pitch+x)*4+3];if(alpha>16)visible++;if((x<2||x>=pitch-2||(repair.destinationOffsets&&(y<2||y>=height-2)))&&alpha>0)edge++}
             if(!visible||edge)failures.push(`${quality}:${url}:${row}:${col} empty=${!visible} gutterPixels=${edge}`);
             checked++;
           }
@@ -646,8 +674,8 @@ test('all sixteen repaired sheets have isolated nonempty frames and transparent 
           if(runtime.cache.bytes>runtime.cache.maxBytes)failures.push('texture budget '+quality);
         }
       }
-      return {sheets:sheets.length,checked,failures};
+      return {sheets:sheets.length,checked,expectedFrames,failures};
     });
-    assert.equal(result.sheets,16);assert.equal(result.checked,3024);assert.deepEqual(result.failures,[]);assert.deepEqual(errors,[]);
+    assert.ok(result.sheets>0);assert.equal(result.checked,result.expectedFrames);assert.deepEqual(result.failures,[]);assert.deepEqual(errors,[]);
   }finally{await browser.close()}
 });

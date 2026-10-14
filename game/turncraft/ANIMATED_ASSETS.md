@@ -54,6 +54,11 @@ use the production row's actual firing/spine/energy poses. Construction follows
 the real build progress. Frontier scaffolds assemble, Ascendant parts materialize,
 and Brood bodies grow. Structure orientation is the fixed three-quarter view.
 
+Structure idle and production loops play at 3 fps, and cosmetic destruction plays
+at 3.5 fps (about 1.14 seconds), half their former playback speed. Construction
+still follows real build progress, defensive attacks retain the existing contact
+clock, and all troop and developmental animation timings remain unchanged.
+
 Larva and cocoon have separate 512 by 640 sheets with four idle, two hit, five
 death and six biological morph frames. Their packed positions are explicit
 `coordinates.S` arrays because state boundaries cross atlas rows. Cocoon morph

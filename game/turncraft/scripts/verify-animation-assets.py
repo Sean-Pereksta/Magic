@@ -69,16 +69,26 @@ repaired_frames = 0
 for url, repair in manifest.get("cropRepairs", {}).items():
     image = images[asset_path(url)]
     assert hashlib.sha256(asset_path(url).read_bytes()).hexdigest() == repair["sourceSha256"], url
-    assert len(repair["crops"]) == 8 and repair["sourceFrameWidth"] == 96, url
+    assert len(repair["crops"]) == 8 and repair["sourceFrameWidth"] in {96, 128}, url
     assert repair["height"] == 8 * repair["frameHeight"] and max(repair["width"], repair["height"]) <= 2048, url
     for row, crops in enumerate(repair["crops"]):
         assert len(crops) * repair["frameWidth"] == repair["width"], url
         for col, (x, y, w, h) in enumerate(crops):
-            assert 0 <= x < x+w <= image.width and row*144 <= y < y+h <= (row+1)*144, (url, row, col)
+            assert 0 <= x < x+w <= image.width and 0 <= y < y+h <= image.height, (url, row, col)
             assert w <= repair["frameWidth"]-8, (url, row, col, "missing gutter")
+            offsets = repair.get("destinationOffsets")
+            if offsets is not None:
+                assert len(offsets) == len(repair["crops"]) and len(offsets[row]) == len(crops), (url, "incomplete placements")
+                dx, dy = offsets[row][col]
+                assert 4 <= dx and dx+w <= repair["frameWidth"]-4, (url, row, col, "horizontal gutter")
+                assert 4 <= dy and dy+h <= repair["frameHeight"]-4, (url, row, col, "vertical gutter")
+                assert repair["sourceFrameHeight"] == 144, url
+            else:
+                assert row*144 <= y < y+h <= (row+1)*144, (url, row, col)
             assert image.crop((x,y,x+w,y+h)).getchannel("A").getbbox(), (url, row, col, "empty crop")
             if url.endswith("-demise.webp") and col < 5:
-                assert x+w <= 484, (url, row, col, "death frame selected a living ability pose")
+                limit = repair.get("deathRegionEnds", [repair.get("deathRegionEnd", 5*repair["sourceFrameWidth"]+4)]*8)[row]
+                assert x+w <= limit, (url, row, col, "death frame selected a living ability pose")
             for ex, ey, ew, eh in repair.get("erasures", {}).get(f"{row},{col}", []):
                 assert 0 <= ex < ex+ew <= w and 0 <= ey < ey+eh <= h, (url, row, col, "scrap outside crop")
             repaired_frames += 1

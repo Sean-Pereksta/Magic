@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {MAP_IDS,describeTile,geometryStamp,createRenderer}=require('../terrain.js');
+const {MAP_IDS,describeTile,hash,geometryStamp,createRenderer}=require('../terrain.js');
 
 function field(width=16,height=16){return Array.from({length:width*height},(_,i)=>({x:i%width,y:Math.floor(i/width),type:'ground',blocked:false}))}
 function drawing(){const calls=[];const context={globalAlpha:1,drawImage(...args){calls.push(args)},save(){},restore(){},beginPath(){},rect(){},arc(){},clip(){},moveTo(){},lineTo(){},stroke(){},translate(){},rotate(){}};return {calls,context,canvas:(w,h)=>({width:w,height:h,getContext:()=>context})}}
@@ -43,4 +43,30 @@ test('quality changes rebuild resolution once and low quality suppresses decorat
   const {r,paint}=await renderer(),tiles=field(),input={mapId:'classic',seed:12,terrain:tiles,width:16,height:16,now:0};r.prepare({...input,quality:'medium'});r.drawTile(paint.context,tiles[0],{x:0,y:0},64);const before=r.stats.builds;
   r.prepare({...input,quality:'low'});r.drawTile(paint.context,tiles[0],{x:0,y:0},64);assert.equal(r.stats.builds,before+1);assert.equal(r.stats.quality,'low');
   for(const tile of tiles)assert.equal(r.drawAmbient(paint.context,tile,{x:0,y:0},64,1000,true),false);
+});
+
+test('every map holds resource and ambient frames twice as long without slowing combat effects',async()=>{
+  const {r,paint}=await renderer(),tiles=field(32,32),seed=42,at=(x,y)=>x>=0&&y>=0&&x<32&&y<32?tiles[y*32+x]:null;
+  const ambient=tiles.find(tile=>describeTile(tile,seed,at).ambient);assert.ok(ambient);
+  const screen={x:0,y:0},node={x:1,y:1,type:'mineral',amount:500,maxAmount:500};
+  const frame=()=>paint.calls.at(-1)[1]/128;
+  for(const mapId of MAP_IDS){
+    await r.load(mapId);r.prepare({mapId,seed,terrain:tiles,width:32,height:32,quality:'medium',now:0});
+    for(const type of ['mineral','gas']){
+      const phase=2*(hash(seed,node.x,node.y)%2000),start=(480-phase%480)%480;
+      r.drawResource(paint.context,{...node,type},screen,64,start,true);const first=frame();
+      r.drawResource(paint.context,{...node,type},screen,64,start+479,true);assert.equal(frame(),first,mapId+' '+type+' holds its frame for 480 ms');
+      r.drawResource(paint.context,{...node,type},screen,64,start+480,true);assert.equal(frame(),(first+1)%4);
+      r.drawResource(paint.context,{...node,type},screen,64,start+1920,true);assert.equal(frame(),first,'resource cycle is 1920 ms');
+    }
+    const phase=2*(describeTile(ambient,seed,at).noise%1700),start=(520-phase%520)%520;
+    r.drawAmbient(paint.context,ambient,screen,64,start,true);const first=frame();
+    r.drawAmbient(paint.context,ambient,screen,64,start+519,true);assert.equal(frame(),first,mapId+' ambient holds its frame for 520 ms');
+    r.drawAmbient(paint.context,ambient,screen,64,start+520,true);assert.equal(frame(),(first+1)%4);
+    r.drawAmbient(paint.context,ambient,screen,64,start+2080,true);assert.equal(frame(),first,'ambient cycle is 2080 ms');
+  }
+  for(const type of ['ballistic','energy','organic','shield','explosion']){
+    r.drawEffect(paint.context,type,0,0,64,69);assert.equal(frame(),0);
+    r.drawEffect(paint.context,type,0,0,64,70);assert.equal(frame(),1,'combat still advances at 70 ms');
+  }
 });
