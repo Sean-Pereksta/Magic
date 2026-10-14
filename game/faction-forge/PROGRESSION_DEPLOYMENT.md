@@ -1,6 +1,28 @@
-# Faction Forge authoritative progression
+# Faction Forge Firebase progression
 
-The checked-in game defaults to practice until its separately deployed progression API is configured. This PR does not deploy production Firebase rules, create account bindings, or change live ratings.
+## Default: Firebase Auth + Firestore, no Node server
+
+Leave `progressionApiUrl` empty in `game/faction-forge/config.js`. Campaign and bot battles run in the browser, and personal progress saves directly to the existing `bible-game-246c0` Firebase project. No server URL, Firebase Functions deployment, Admin credentials or account-binding migration is required for this mode.
+
+Publish the updated static game files and deploy the included Firestore rules to that existing project:
+
+```sh
+firebase deploy --only firestore:rules --project bible-game-246c0
+```
+
+Firebase Console users can instead publish the repository's complete `firestore.rules` in Firestore Database → Rules. This change adds `factionForgeSoloProfiles/{uid}` with owner-only access and leaves the competitive authority collections protected. Test rules in the emulator before publishing; do not replace your rules with a broad public-write grant.
+
+Anonymous Firebase Auth, already used by the hub, owns a guest save for that browser. Clearing browser data or switching browsers changes that guest identity. A durable Firebase email/password account can sign in to its own save on another device; use the same Firebase identity. A lobby username alone does not authorize reading another player's save. The game does not create or migrate durable accounts automatically.
+
+Solo wins persist campaign stars, mission unlocks, all six troop milestones, matching cards, Forge Dust and Endless challenge progress. Upgrades deduct cards/dust and increase a permanent tier in one Firestore transaction; tiers are frozen into the next local battle. Result and upgrade receipts make retries idempotent. Interrupted reward saves remain queued under that UID on the device and retry on reload; the results screen also provides a retry button. An interrupted battle itself is not restored by this mode.
+
+These are personal, client-played solo saves, not independently verified competitive results. Solo documents have no MMR field and never update `users/{username}.crowncouncilElo` or `factionForgeProfiles`. Hosted multiplayer remains available through the existing Firebase lobby path. The optional trusted competitive service below remains a separate mode; its currency, collection and ratings are not merged with client-owned solo saves.
+
+The game reports `Progress saved with Firebase` after connecting. A permissions error specifically requests the Firebase rules update. A connection error retains pending results for retry.
+
+## Optional: authoritative competitive service
+
+The remaining sections apply only when an operator explicitly sets a non-empty `progressionApiUrl`. They are not needed for Firebase-only solo progression.
 
 ## Service
 
@@ -79,3 +101,5 @@ npm run test:faction-forge:browser
 ```
 
 The rules command starts only a demo-project Firestore emulator. It tests private ownership reads, protected rating/currency/result/upgrade writes, cross-account denial, compatible unrelated profile updates and legacy hosted snapshots. Its Admin integration exercises ownership migration, simultaneous upgrade retries, cross-instance profile/session recovery and persistence of real deterministic combat replay. It does not access production Firebase.
+
+
