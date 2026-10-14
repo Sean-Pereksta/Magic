@@ -64,9 +64,9 @@ test('worker standing on a vent steps aside, and pending construction survives a
   assert.equal(result.aside,true);assert.equal(result.saved,true);assert.equal(result.pending,false);assert.equal(result.built,true);assert.equal(result.spent,160);
 });
 
-test('gas placement highlights distant visible vents and ordinary construction stays adjacent',()=>{
+test('gas and ordinary construction highlight distant visible legal sites',()=>{
   const run=simulation();
-  const result=run(`(()=>{const w=addEntity('unit','engineer',0,3,5);addTestNode('gas',15,5,1800);addTestNode('gas',20,5,1800);tileVisibleToFaction=(f,x)=>x<20;selectedId=w.id;selectedIds=[w.id];interactionMode='build';interactionPayload='refinery';refreshLegalTiles();const gas=legalTiles.map(t=>t.x+','+t.y);interactionPayload='supplyDepot';refreshLegalTiles();return {gas,normal:legalTiles.length>0&&legalTiles.every(t=>Math.max(Math.abs(t.x-w.x),Math.abs(t.y-w.y))<=1)}})()`);
+  const result=run(`(()=>{const w=addEntity('unit','engineer',0,3,5);addTestNode('gas',15,5,1800);addTestNode('gas',20,5,1800);tileVisibleToFaction=(f,x)=>x<20;selectedId=w.id;selectedIds=[w.id];interactionMode='build';interactionPayload='refinery';refreshLegalTiles();const gas=legalTiles.map(t=>t.x+','+t.y);interactionPayload='supplyDepot';refreshLegalTiles();return {gas,normal:legalTiles.some(t=>t.x===15&&t.y===6)&&legalTiles.every(t=>t.x<20)&&!legalTiles.some(t=>t.x===15&&t.y===5)}})()`);
   assert.deepEqual(Array.from(result.gas),['15,5']);assert.equal(result.normal,true);
 });
 

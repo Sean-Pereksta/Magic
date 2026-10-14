@@ -16,23 +16,26 @@ function canvasFactory() {
   return {canvases, createCanvas};
 }
 
-test('same-faction players have obvious ownership colors with allies distinct from opponents', () => {
+test('only enemies using the viewer faction receive an ownership tint', () => {
   for (const faction of ['frontier', 'ascendant', 'brood']) {
     const run = simulation(faction, {factions: [faction, faction, faction]});
     assert.deepEqual(run.plain('[playerTintFor(0),playerTintFor(1),playerTintFor(2),playerTintFor(-1),playerTintFor(null)]'),
       [null, '#ff334f', '#ff334f', null, null]);
     assert.equal(run('playerOwnerColor(0)'), run('FACTIONS[players[0].factionId].color'));
     run('players[0].teamId=0;players[1].teamId=0;players[2].teamId=1');
-    assert.deepEqual(run.plain('[playerTintFor(0),playerTintFor(1),playerTintFor(2)]'), [null, '#35ddff', '#ff334f']);
+    assert.deepEqual(run.plain('[playerTintFor(0),playerTintFor(1),playerTintFor(2)]'), [null, null, '#ff334f']);
     run('PLAYER=2');
     assert.deepEqual(run.plain('[playerTintFor(0),playerTintFor(1),playerTintFor(2)]'), ['#ff334f', '#ff334f', null]);
+    run(`players[0].factionId=${JSON.stringify(faction === 'frontier' ? 'ascendant' : 'frontier')}`);
+    assert.equal(run('playerTintFor(0)'), null, 'different-faction opponents keep their artwork');
+    assert.equal(run('playerOwnerColor(0)'), run('FACTIONS[players[0].factionId].color'));
   }
 });
 
 test('minimap uses player ownership colors even when all players chose the same faction', () => {
   const run = simulation('ascendant', {factions: ['ascendant', 'ascendant', 'ascendant']});
   run("players[0].teamId=0;players[1].teamId=0;players[2].teamId=1;[0,1,2].forEach(slot=>addEntity('unit','probe',slot,10+slot,10));mini.offsetParent={};window.dotColors=[];mctx.fill=()=>window.dotColors.push(mctx.fillStyle);drawMinimap()");
-  assert.deepEqual(run.plain('window.dotColors'), [run('FACTIONS.ascendant.color'), '#35ddff', '#ff334f']);
+  assert.deepEqual(run.plain('window.dotColors'), [run('FACTIONS.ascendant.color'), run('FACTIONS.ascendant.color'), '#ff334f']);
 });
 
 test('tinting caches frame crops, retains detail and transparency, and skips original own artwork', () => {
@@ -44,8 +47,8 @@ test('tinting caches frame crops, retains detail and transparency, and skips ori
   assert.equal(canvases.length, 1);
   assert.deepEqual(red.operations[0], ['draw', image, 127, 255, 130, 130, 0, 0, 130, 130]);
   assert.deepEqual(red.spriteTintCrop, [1, 1, 128, 128]);
-  assert.deepEqual(red.operations[1], ['fill', 'source-atop', .72, '#ff334f', 0, 0, 130, 130]);
-  assert.notEqual(cache.frame(image, {...options, tint: '#35ddff'}), red);
+  assert.deepEqual(red.operations[1], ['fill', 'source-atop', .3, '#ff334f', 0, 0, 130, 130]);
+  assert.notEqual(cache.frame(image, {...options, tint: '#ee4455'}), red);
   assert.notEqual(cache.frame(image, {...options, sx: 256}), red);
   assert.notEqual(cache.frame({...image}, options), red, 'a repaired or reloaded source cannot retain stale color crops');
   assert.equal(cache.stats().frames, 4);
