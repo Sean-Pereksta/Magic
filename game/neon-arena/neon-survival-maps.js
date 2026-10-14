@@ -5,7 +5,7 @@
  */
 (function (root) {
   'use strict';
-  const WORLD_SCALE = 1.45, EYE_HEIGHT = 1.86, STRIDE = 10;
+  const WORLD_SCALE = 1.45, EYE_HEIGHT = 1.86, STRIDE = 10, SURFACE_STRIDE = 13;
   const script = typeof document !== 'undefined' && document.currentScript;
   const BASE = script ? new URL('assets/survival/', script.src).href : 'assets/survival/';
   const names = ['Breach Ring','Derelict Station','Xenofall Wastes','Black Ice Cryolab','The Living Hive','Drowned Powerworks','Orbital Graveyard','The Swarm Heart'];
@@ -14,6 +14,7 @@
   const descriptions = ['Fortify a military perimeter with watchtowers and cargo lanes.','Two abandoned platforms, curved tunnels and a crossing concourse.','Open alien canyons, bone arches, corrosive pools and crystal ridges.','Research rooms, a frozen courtyard and elevated coolant passages.','Winding ribbed chambers and membrane bridges above nesting grounds.','Flooded turbine halls, wet channels and powered maintenance bridges.','Wrecked docking bays, shattered hulls and low gravity observation decks.','An immense beating heart surrounded by branching living galleries.'];
   let selected = null, loadSerial = 0, revision = 0, navCache = null;
   const meshCache = new Map(), gpu = new Map();
+  const surfaceIds = new WeakMap(); let nextSurfaceId = 0;
   const clamp = (n,a,b) => Math.max(a,Math.min(b,n));
   const inside = (x,z,b,pad=0) => Math.abs(x-b.x)<=b.w/2+pad && Math.abs(z-b.z)<=b.d/2+pad;
   const pathURL = (path,base=BASE) => new URL(path, new URL(base, typeof location !== 'undefined' ? location.href : 'http://localhost/')).href;
@@ -216,38 +217,121 @@
     for(let x=0;x<nx;x++)for(let y=0;y<ny;y++)quad(out,p(x/nx,y/ny),p((x+1)/nx,y/ny),p((x+1)/nx,(y+1)/ny),p(x/nx,(y+1)/ny),tile,n);
   }
   function boxGeometry(out,o,kind){const x=o.world.x,z=o.world.z,w=o.world.w/2,d=o.world.d/2,s=o.source,y0=s.y||0,y1=y0+s.h;const A=[x-w,y0,z-d],B=[x+w,y0,z-d],C=[x+w,y0,z+d],D=[x-w,y0,z+d],E=[x-w,y1,z-d],F=[x+w,y1,z-d],G=[x+w,y1,z+d],H=[x-w,y1,z+d];subdividedFace(out,E,F,G,H,s.topTile||(kind==='platform'?s.tile:'upper_00'),[0,1,0]);subdividedFace(out,A,D,C,B,s.sideTile||(kind==='platform'?'trim_01':s.tile),[0,-1,0]);subdividedFace(out,A,E,H,D,s.sideTile||s.tile,[-1,0,0]);subdividedFace(out,B,C,G,F,s.sideTile||s.tile,[1,0,0]);subdividedFace(out,A,B,F,E,s.sideTile||s.tile,[0,0,-1]);subdividedFace(out,D,H,G,C,s.sideTile||s.tile,[0,0,1]);}
+  /* Generic engine surfaces already use world-space x/z dimensions. Unlike
+   * blueprint walls, engine wall y is its center; platform y is its base.
+   * UVs repeat by tessellating inside the padded slot, never across the atlas.
+   */
+  function surfaceKey(piece){if(piece.id!=null)return typeof piece.id+':'+piece.id;if(!surfaceIds.has(piece))surfaceIds.set(piece,++nextSurfaceId);return 'object:'+surfaceIds.get(piece);}
+  function surfaceDefinition(piece,options={}){
+    if(!selected||!piece||piece.active===false||piece.survivalEnvironment||!['wall','platform'].includes(piece.type))return null;
+    const {x,z,w,d,h}=piece,y=piece.y??0;
+    if(![x,z,w,d,h,y].every(Number.isFinite)||Math.min(w,d,h)<=0)return null;
+    const bottom=piece.type==='wall'?y-h/2:y,unit=Number.isFinite(options.tileUnit)&&options.tileUnit>0?Math.max(.5,options.tileUnit):5.8;
+    const side=piece.surfaceSideTile||piece.surfaceTile||piece.tile||(piece.type==='wall'?'wall_00':'wall_01');
+    const top=piece.surfaceTopTile||(piece.type==='wall'?'upper_00':piece.builtBy?'floor_01':'floor_00'),under=piece.surfaceBottomTile||'trim_01';
+    const color=piece.surfaceTint||piece.tint||piece.c,hex=typeof color==='string'&&/^#[\da-f]{6}$/i.test(color)?parseInt(color.slice(1),16):null;
+    let tint=Array.isArray(color)&&color.length>=3?color.slice(0,3).map(v=>Number.isFinite(v)?clamp(v,0,1):1):hex==null?[1,1,1]:[16,8,0].map(shift=>.82+((hex>>shift)&255)/255*.18);
+    const health=Number.isFinite(piece.hp)&&Number.isFinite(piece.maxHp)&&piece.maxHp>0?clamp(piece.hp/piece.maxHp,0,1):1,damage=health>.75?0:health>.5?1:health>.25?2:3;
+    tint=tint.map((v,i)=>v*(1-damage*.12)+(i===0?damage*.015:0));
+    if(piece.armorBoosted||piece.bonusHp>0)tint=tint.map((v,i)=>i===0?v*.92:Math.min(1,v*1.04));
+    const key=surfaceKey(piece),chunk=chunkKey(x,z),signature=[x,z,w,d,h,bottom,unit,side,top,under,...tint].join('|');
+    return {key,pieceId:piece.id??key,chunk,signature,x,y:bottom+h/2,z,w,d,h,bottom,unit,side,top,under,tint,r:Math.hypot(w,d)/2};
+  }
+  function surfaceFace(out,a,b,c,d,tile,n,unit,tint){
+    const width=Math.hypot(...a.map((v,i)=>v-b[i])),height=Math.hypot(...a.map((v,i)=>v-d[i])),nx=Math.ceil(width/unit),ny=Math.ceil(height/unit);
+    const point=(u,v)=>a.map((value,i)=>value+(b[i]-value)*u+(d[i]-value)*v);
+    for(let x=0;x<nx;x++)for(let y=0;y<ny;y++){
+      const x0=x*unit/width,x1=Math.min(1,(x+1)*unit/width),y0=y*unit/height,y1=Math.min(1,(y+1)*unit/height),u=(x1-x0)*width/unit,v=(y1-y0)*height/unit;
+      const A=point(x0,y0),B=point(x1,y0),C=point(x1,y1),D=point(x0,y1);
+      for(const [p,tu,tv] of [[A,0,0],[B,u,0],[C,u,v],[A,0,0],[C,u,v],[D,0,v]]){vertex(out,p,n,tu,tv,tile);out.push(...tint);}
+    }
+  }
+  function surfaceGeometry(s){
+    const out=[],x=s.x,z=s.z,w=s.w/2,d=s.d/2,y0=s.bottom,y1=y0+s.h,A=[x-w,y0,z-d],B=[x+w,y0,z-d],C=[x+w,y0,z+d],D=[x-w,y0,z+d],E=[x-w,y1,z-d],F=[x+w,y1,z-d],G=[x+w,y1,z+d],H=[x-w,y1,z+d];
+    for(const [a,b,c,d,tile,n] of [[E,F,G,H,s.top,[0,1,0]],[A,D,C,B,s.under,[0,-1,0]],[A,E,H,D,s.side,[-1,0,0]],[B,C,G,F,s.side,[1,0,0]],[A,B,F,E,s.side,[0,0,-1]],[D,H,G,C,s.side,[0,0,1]]])surfaceFace(out,a,b,c,d,tile,n,s.unit,s.tint);
+    return new Float32Array(out);
+  }
+  function assembleSurfaceChunks(states,onlyKeys=null){
+    const chunks=new Map();
+    for(const s of states.values()){
+      if(onlyKeys&&!onlyKeys.has(s.chunk))continue;
+      if(!chunks.has(s.chunk)){const [cx,cz]=s.chunk.split(':').map(Number);chunks.set(s.chunk,{key:s.chunk,x:cx*24+12,z:cz*24+12,r:0,arrays:[],length:0,pieceIds:[]});}
+      const c=chunks.get(s.chunk);c.arrays.push(s.data);c.length+=s.data.length;c.pieceIds.push(s.pieceId);c.r=Math.max(c.r,Math.hypot(s.x-c.x,s.z-c.z)+s.r);
+    }
+    return [...chunks.values()].map(c=>{const data=new Float32Array(c.length);let offset=0;for(const array of c.arrays){data.set(array,offset);offset+=array.length;}return {key:c.key,x:c.x,z:c.z,r:c.r,pieceIds:c.pieceIds,data};});
+  }
+  function buildSurfaceChunks(pieces,options={}){const states=new Map();for(const piece of pieces||[]){const s=surfaceDefinition(piece,options);if(s)states.set(s.key,{...s,data:surfaceGeometry(s)});}return assembleSurfaceChunks(states);}
   function floorGeometry(out){const b=selected.blueprint,step=4,half=b.size[0]/2;for(let x=-half;x<half;x+=step)for(let z=-half;z<half;z+=step){const xm=x+step/2,zm=z+step/2;let tile=b.defaultFloor;for(const r of b.floorRegions)if(inside(xm,zm,r))tile=r.tile;for(const r of b.hazardZones)if(inside(xm,zm,r)&&!(r.y>0))tile=r.tile;const y=.015;quad(out,[x*WORLD_SCALE,y,z*WORLD_SCALE],[(x+step)*WORLD_SCALE,y,z*WORLD_SCALE],[(x+step)*WORLD_SCALE,y,(z+step)*WORLD_SCALE],[x*WORLD_SCALE,y,(z+step)*WORLD_SCALE],tile);}}
   function rampGeometry(out,o){const r=o.world,source=o.source,a=source.fromHeight+.025,b=source.toHeight+.025,x=r.x,z=r.z,w=r.w/2,d=r.d/2;const corners=r.axis==='x'?[[x-w,a,z-d],[x+w,b,z-d],[x+w,b,z+d],[x-w,a,z+d]]:[[x-w,a,z-d],[x+w,a,z-d],[x+w,b,z+d],[x-w,b,z+d]];const dx=corners[1][0]-corners[0][0],dy=corners[1][1]-corners[0][1],dz=corners[3][2]-corners[0][2],dyz=corners[3][1]-corners[0][1],norm=[-dy/(dx||1),1,-dyz/(dz||1)],len=Math.hypot(...norm);subdividedFace(out,...corners,source.tile,norm.map(n=>n/len));}
   function meshGeometry(out,o){const mesh=o.definition.mesh,s=o.source,yaw=s.yaw||0,co=Math.cos(yaw),si=Math.sin(yaw),world=o.world;for(const index of mesh.indices){const ix=index*3,uv=index*2,x=mesh.positions[ix]*world.w,z=mesh.positions[ix+2]*world.d,nx=mesh.normals[ix]/world.w,ny=mesh.normals[ix+1]/s.h,nz=mesh.normals[ix+2]/world.d,len=Math.hypot(nx,ny,nz)||1;vertex(out,[world.x+x*co+z*si,(s.y||0)+mesh.positions[ix+1]*s.h,world.z-x*si+z*co],[(nx*co+nz*si)/len,ny/len,(-nx*si+nz*co)/len],mesh.uvs[uv],mesh.uvs[uv+1],s.tile,s.pulse?1:0);if(s.surfaceType==='planet')out[out.length-2]=-2;if(s.surfaceType==='stars')out[out.length-2]=-3;}}
   function chunkKey(x,z){return Math.floor(x/24)+':'+Math.floor(z/24);}
   function buildChunks(onlyKeys=null){const chunks=new Map(),size=24;function get(x,z){const key=chunkKey(x,z);if(onlyKeys&&!onlyKeys.has(key))return null;if(!chunks.has(key))chunks.set(key,{key,data:[],x:Math.floor(x/size)*size+size/2,z:Math.floor(z/size)*size+size/2,r:34});return chunks.get(key).data;}const floor=[];floorGeometry(floor);for(let i=0;i<floor.length;i+=STRIDE*6){const x=floor[i],z=floor[i+2],out=get(x,z);if(out)out.push(...floor.slice(i,i+STRIDE*6));}for(const o of selected.objects)if(active(o)){const out=get(o.world.x,o.world.z);if(!out)continue;if(o.source.background)chunks.get(chunkKey(o.world.x,o.world.z)).background=true;if(o.kind==='mesh')meshGeometry(out,o);else if(o.kind==='ramp')rampGeometry(out,o);else boxGeometry(out,o,o.kind);}return [...chunks.values()].map(c=>({...c,data:new Float32Array(c.data)}));}
   function compile(gl,type,source){const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;}
-  const VS='attribute vec3 aPos;attribute vec2 aUV;attribute vec3 aNormal;attribute vec2 aEffects;uniform vec3 uCamera;uniform vec3 uRight;uniform vec3 uUp;uniform vec3 uForward;uniform float uAspect;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying float vDistance;void main(){vec3 pos=aPos+aNormal*aEffects.y*sin(uTime*2.3)*.075;vec3 d=pos-uCamera;vec3 c=vec3(dot(d,uRight),dot(d,uUp),dot(d,uForward));float n=.055;float f=180.;gl_Position=vec4(c.x*1.44*uAspect,c.y*1.44,(f+n)/(f-n)*c.z-2.*f*n/(f-n),c.z);vUV=aUV;vNormal=aNormal;vView=-d;vEffects=aEffects;vDistance=length(d);}';
-  const FS='precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFog;uniform float uFogDensity;uniform float uAmbient;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying float vDistance;void main(){vec4 tex=texture2D(uAtlas,vUV);vec3 n=normalize(vNormal);float light=uAmbient+.48*max(0.,dot(n,normalize(vec3(.25,.9,.4))));if(vEffects.x<-2.5){gl_FragColor=vec4(vec3(.75,.84,1.)*(.85+.15*sin(uTime*.4+vDistance)),1.);return;}if(vEffects.x<-1.5){float land=smoothstep(.04,.14,sin(vUV.x*340.)*sin(vUV.y*210.)+.30*sin(vUV.x*730.+vUV.y*630.));float cloud=smoothstep(.32,.75,sin(vUV.y*820.+sin(vUV.x*240.)*5.)*.5+.45);vec3 ocean=vec3(.025,.13,.27),continent=vec3(.12,.27,.21);vec3 planet=mix(mix(ocean,continent,land),vec3(.73,.86,.92),cloud*.68);planet=mix(planet,tex.rgb,.15);float atmosphere=pow(1.-max(0.,dot(n,normalize(vView))),3.);planet=planet*(.16+.85*max(0.,dot(n,normalize(vec3(-.3,.8,.5)))))+vec3(.06,.35,.65)*atmosphere;gl_FragColor=vec4(planet,1.);return;}float glow=vEffects.x*(.80+.20*sin(uTime*2.3));vec3 color=tex.rgb*(light+glow);float fog=max(smoothstep(75.,170.,vDistance)*.64,smoothstep(10.,48.,vDistance)*uFogDensity);gl_FragColor=vec4(mix(color,uFog,fog),1.);}';
-  function createGPU(gl){const program=gl.createProgram(),vs=compile(gl,gl.VERTEX_SHADER,VS),fs=compile(gl,gl.FRAGMENT_SHADER,FS);gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);gl.deleteShader(vs);gl.deleteShader(fs);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,selected.image);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);const uniforms={};for(const name of ['uCamera','uRight','uUp','uForward','uAspect','uTime','uAtlas','uFog','uFogDensity','uAmbient'])uniforms[name]=gl.getUniformLocation(program,name);const attrs={};for(const name of ['aPos','aUV','aNormal','aEffects'])attrs[name]=gl.getAttribLocation(program,name);const data={program,texture,uniforms,attrs,chunks:[],dirty:true,signature:'',objectStates:new Map()};gpu.set(gl,data);return data;}
+  const VS='attribute vec3 aPos;attribute vec2 aUV;attribute vec3 aNormal;attribute vec2 aEffects;attribute vec3 aTint;uniform vec3 uCamera;uniform vec3 uRight;uniform vec3 uUp;uniform vec3 uForward;uniform float uAspect;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying vec3 vTint;varying float vDistance;void main(){vec3 pos=aPos+aNormal*aEffects.y*sin(uTime*2.3)*.075;vec3 d=pos-uCamera;vec3 c=vec3(dot(d,uRight),dot(d,uUp),dot(d,uForward));float n=.055;float f=180.;gl_Position=vec4(c.x*1.44*uAspect,c.y*1.44,(f+n)/(f-n)*c.z-2.*f*n/(f-n),c.z);vUV=aUV;vNormal=aNormal;vView=-d;vEffects=aEffects;vTint=aTint;vDistance=length(d);}';
+  const FS='precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFog;uniform float uFogDensity;uniform float uAmbient;uniform mediump float uTime;varying vec2 vUV;varying vec3 vNormal;varying vec3 vView;varying vec2 vEffects;varying vec3 vTint;varying float vDistance;void main(){vec4 tex=texture2D(uAtlas,vUV);vec3 n=normalize(vNormal);float light=uAmbient+.48*max(0.,dot(n,normalize(vec3(.25,.9,.4))));if(vEffects.x<-2.5){gl_FragColor=vec4(vec3(.75,.84,1.)*(.85+.15*sin(uTime*.4+vDistance)),1.);return;}if(vEffects.x<-1.5){float land=smoothstep(.04,.14,sin(vUV.x*340.)*sin(vUV.y*210.)+.30*sin(vUV.x*730.+vUV.y*630.));float cloud=smoothstep(.32,.75,sin(vUV.y*820.+sin(vUV.x*240.)*5.)*.5+.45);vec3 ocean=vec3(.025,.13,.27),continent=vec3(.12,.27,.21);vec3 planet=mix(mix(ocean,continent,land),vec3(.73,.86,.92),cloud*.68);planet=mix(planet,tex.rgb,.15);float atmosphere=pow(1.-max(0.,dot(n,normalize(vView))),3.);planet=planet*(.16+.85*max(0.,dot(n,normalize(vec3(-.3,.8,.5)))))+vec3(.06,.35,.65)*atmosphere;gl_FragColor=vec4(planet,1.);return;}float glow=vEffects.x*(.80+.20*sin(uTime*2.3));vec3 color=tex.rgb*(light+glow)*vTint;float fog=max(smoothstep(75.,170.,vDistance)*.64,smoothstep(10.,48.,vDistance)*uFogDensity);gl_FragColor=vec4(mix(color,uFog,fog),1.);}';
+  function createGPU(gl){const program=gl.createProgram(),vs=compile(gl,gl.VERTEX_SHADER,VS),fs=compile(gl,gl.FRAGMENT_SHADER,FS);gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);gl.deleteShader(vs);gl.deleteShader(fs);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,selected.image);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);const uniforms={};for(const name of ['uCamera','uRight','uUp','uForward','uAspect','uTime','uAtlas','uFog','uFogDensity','uAmbient'])uniforms[name]=gl.getUniformLocation(program,name);const attrs={};for(const name of ['aPos','aUV','aNormal','aEffects','aTint'])attrs[name]=gl.getAttribLocation(program,name);const data={program,texture,uniforms,attrs,chunks:[],dirty:true,signature:'',objectStates:new Map(),surfaces:new Map(),surfaceChunks:new Map(),surfaceUploads:0,surfaceGeometryBuilds:0,surfaceDrawCalls:0};const vaoExt=gl.getExtension?.('OES_vertex_array_object');if(vaoExt){data.vaoExt=vaoExt;data.vao=vaoExt.createVertexArrayOES();}gpu.set(gl,data);return data;}
   function stateSignature(){return selected.collision.map(r=>r.piece?.active===false?'0':'1').join('');}
+  function beginAtlasDraw(gl,camera,options={},environment=false){
+    const previous={program:gl.getParameter(gl.CURRENT_PROGRAM),buffer:gl.getParameter(gl.ARRAY_BUFFER_BINDING),active:gl.getParameter(gl.ACTIVE_TEXTURE)};
+    gl.activeTexture(gl.TEXTURE0);previous.texture=gl.getParameter(gl.TEXTURE_BINDING_2D);
+    const data=gpu.get(gl)||createGPU(gl),u=data.uniforms,a=data.attrs;
+    if(data.vao){
+      // A private VAO avoids dozens of driver queries on every split-screen view.
+      previous.vao=gl.getParameter(data.vaoExt.VERTEX_ARRAY_BINDING_OES);previous.vaoExt=data.vaoExt;
+      if(a.aTint>=0)previous.tint={attr:a.aTint,value:gl.getVertexAttrib(a.aTint,gl.CURRENT_VERTEX_ATTRIB)};
+      data.vaoExt.bindVertexArrayOES(data.vao);
+    }else previous.attrs=Object.values(a).filter(attr=>attr>=0).map(attr=>({attr,enabled:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_ENABLED),buffer:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING),size:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_SIZE),type:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_TYPE),normalized:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_NORMALIZED),stride:gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_STRIDE),offset:gl.getVertexAttribOffset(attr,gl.VERTEX_ATTRIB_ARRAY_POINTER),value:gl.getVertexAttrib(attr,gl.CURRENT_VERTEX_ATTRIB)}));
+    gl.useProgram(data.program);gl.bindTexture(gl.TEXTURE_2D,data.texture);gl.uniform1i(u.uAtlas,0);gl.uniform3fv(u.uCamera,camera.position);gl.uniform3fv(u.uRight,camera.right);gl.uniform3fv(u.uUp,camera.up);gl.uniform3fv(u.uForward,camera.forward);gl.uniform1f(u.uAspect,camera.aspect);gl.uniform1f(u.uTime,options.time??performance.now()/1000);gl.uniform3fv(u.uFog,options.fog||selected.blueprint.theme.sky);
+    const events=environment?eventStatus(selected.eventClock||0):[],fog=events.some(e=>e.type==='fog'&&e.state==='active'),blackout=events.some(e=>e.type==='visibility'&&e.state==='active');
+    gl.uniform1f(u.uFogDensity,fog?.68:0);gl.uniform1f(u.uAmbient,blackout?.28:.50);
+    for(const attr of [a.aPos,a.aUV,a.aNormal,a.aEffects])if(attr>=0)gl.enableVertexAttribArray(attr);
+    return {data,previous};
+  }
+  function atlasAttributes(gl,a,stride){
+    gl.vertexAttribPointer(a.aPos,3,gl.FLOAT,false,stride*4,0);gl.vertexAttribPointer(a.aUV,2,gl.FLOAT,false,stride*4,12);gl.vertexAttribPointer(a.aNormal,3,gl.FLOAT,false,stride*4,20);gl.vertexAttribPointer(a.aEffects,2,gl.FLOAT,false,stride*4,32);
+    if(a.aTint>=0){if(stride===SURFACE_STRIDE){gl.enableVertexAttribArray(a.aTint);gl.vertexAttribPointer(a.aTint,3,gl.FLOAT,false,stride*4,40);}else{gl.disableVertexAttribArray(a.aTint);gl.vertexAttrib3f(a.aTint,1,1,1);}}
+  }
+  function endAtlasDraw(gl,previous){
+    if(previous.vaoExt){if(previous.tint)gl.vertexAttrib4fv(previous.tint.attr,previous.tint.value);previous.vaoExt.bindVertexArrayOES(previous.vao);}
+    else for(const state of previous.attrs){if(state.buffer){gl.bindBuffer(gl.ARRAY_BUFFER,state.buffer);gl.vertexAttribPointer(state.attr,state.size,state.type,state.normalized,state.stride,state.offset);}if(state.enabled)gl.enableVertexAttribArray(state.attr);else gl.disableVertexAttribArray(state.attr);gl.vertexAttrib4fv(state.attr,state.value);}
+    gl.bindBuffer(gl.ARRAY_BUFFER,previous.buffer);gl.bindTexture(gl.TEXTURE_2D,previous.texture);gl.activeTexture(previous.active);gl.useProgram(previous.program);
+  }
   function render(gl,camera,options={}){
     if(!selected?.image||!selected.objects.length)return false;
-    const previousProgram=gl.getParameter(gl.CURRENT_PROGRAM),previousBuffer=gl.getParameter(gl.ARRAY_BUFFER_BINDING),previousActive=gl.getParameter(gl.ACTIVE_TEXTURE);
-    gl.activeTexture(gl.TEXTURE0);const previousTexture=gl.getParameter(gl.TEXTURE_BINDING_2D),data=gpu.get(gl)||createGPU(gl),signature=stateSignature(),changed=new Set();
+    const {data,previous}=beginAtlasDraw(gl,camera,options,true),signature=stateSignature(),changed=new Set();
     if(signature!==data.signature){data.signature=signature;revision++;for(const object of selected.objects){const state=active(object),key=object.source.mapPieceId||object; if(data.objectStates.get(key)!==state)changed.add(chunkKey(object.world.x,object.world.z));data.objectStates.set(key,state);}}
     if(data.dirty||changed.size){const update=buildChunks(data.dirty?null:changed),replacement=new Set(update.map(c=>c.key));const retained=[];for(const c of data.chunks){if(data.dirty||changed.has(c.key)||replacement.has(c.key))gl.deleteBuffer(c.buffer);else retained.push(c);}data.chunks=retained.concat(update.map(c=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,c.data,gl.STATIC_DRAW);return {key:c.key,background:c.background,buffer,count:c.data.length/STRIDE,x:c.x,z:c.z,r:c.r};}));data.dirty=false;}
-    const u=data.uniforms,a=data.attrs;gl.useProgram(data.program);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,data.texture);gl.uniform1i(u.uAtlas,0);gl.uniform3fv(u.uCamera,camera.position);gl.uniform3fv(u.uRight,camera.right);gl.uniform3fv(u.uUp,camera.up);gl.uniform3fv(u.uForward,camera.forward);gl.uniform1f(u.uAspect,camera.aspect);gl.uniform1f(u.uTime,options.time??performance.now()/1000);gl.uniform3fv(u.uFog,selected.blueprint.theme.sky);const environmentEvents=eventStatus(selected.eventClock||0),fogActive=environmentEvents.some(e=>e.type==='fog'&&e.state==='active'),blackout=environmentEvents.some(e=>e.type==='visibility'&&e.state==='active');gl.uniform1f(u.uFogDensity,fogActive?.68:0);gl.uniform1f(u.uAmbient,blackout?.28:.50);
-    const enabled=[];for(const attr of Object.values(a)){enabled.push([attr,gl.getVertexAttrib(attr,gl.VERTEX_ATTRIB_ARRAY_ENABLED)]);gl.enableVertexAttribArray(attr);}
     const distance=options.quality==='low'?105:options.quality==='medium'?145:180;
-    for(const c of data.chunks){if(!c.background&&Math.hypot(c.x-camera.position[0],c.z-camera.position[2])>distance+c.r)continue;gl.bindBuffer(gl.ARRAY_BUFFER,c.buffer);gl.vertexAttribPointer(a.aPos,3,gl.FLOAT,false,STRIDE*4,0);gl.vertexAttribPointer(a.aUV,2,gl.FLOAT,false,STRIDE*4,12);gl.vertexAttribPointer(a.aNormal,3,gl.FLOAT,false,STRIDE*4,20);gl.vertexAttribPointer(a.aEffects,2,gl.FLOAT,false,STRIDE*4,32);gl.drawArrays(gl.TRIANGLES,0,c.count);}
-    for(const [attr,was] of enabled)if(!was)gl.disableVertexAttribArray(attr);
-    gl.bindBuffer(gl.ARRAY_BUFFER,previousBuffer);gl.bindTexture(gl.TEXTURE_2D,previousTexture);gl.activeTexture(previousActive);gl.useProgram(previousProgram);return true;
+    for(const c of data.chunks){if(!c.background&&Math.hypot(c.x-camera.position[0],c.z-camera.position[2])>distance+c.r)continue;gl.bindBuffer(gl.ARRAY_BUFFER,c.buffer);atlasAttributes(gl,data.attrs,STRIDE);gl.drawArrays(gl.TRIANGLES,0,c.count);}
+    endAtlasDraw(gl,previous);return true;
   }
-  function disposeGPU(){for(const [gl,data] of gpu){for(const c of data.chunks)gl.deleteBuffer(c.buffer);gl.deleteTexture(data.texture);gl.deleteProgram(data.program);}gpu.clear();}
+  function renderSurfaces(gl,camera,pieces,options={}){
+    if(!selected?.image)return false;
+    const {data,previous}=beginAtlasDraw(gl,camera,options,options.environment===true),seen=new Set(),changed=new Set();
+    for(const piece of pieces||[]){
+      const s=surfaceDefinition(piece,options);if(!s)continue;seen.add(s.key);const old=data.surfaces.get(s.key);
+      if(old?.signature===s.signature)continue;
+      if(old)changed.add(old.chunk);changed.add(s.chunk);data.surfaces.set(s.key,{...s,data:surfaceGeometry(s)});data.surfaceGeometryBuilds++;
+    }
+    for(const [key,old] of data.surfaces)if(!seen.has(key)){data.surfaces.delete(key);changed.add(old.chunk);}
+    if(changed.size){
+      for(const key of changed){const old=data.surfaceChunks.get(key);if(old)gl.deleteBuffer(old.buffer);data.surfaceChunks.delete(key);}
+      for(const chunk of assembleSurfaceChunks(data.surfaces,changed)){const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,chunk.data,gl.STATIC_DRAW);data.surfaceChunks.set(chunk.key,{...chunk,data:undefined,buffer,count:chunk.data.length/SURFACE_STRIDE});data.surfaceUploads++;}
+    }
+    const distance=options.quality==='low'?105:options.quality==='medium'?145:180;data.surfaceDrawCalls=0;
+    for(const c of data.surfaceChunks.values()){if(Math.hypot(c.x-camera.position[0],c.z-camera.position[2])>distance+c.r)continue;gl.bindBuffer(gl.ARRAY_BUFFER,c.buffer);atlasAttributes(gl,data.attrs,SURFACE_STRIDE);gl.drawArrays(gl.TRIANGLES,0,c.count);data.surfaceDrawCalls++;}
+    endAtlasDraw(gl,previous);return true;
+  }
+  function surfaceStats(gl){const data=gpu.get(gl);return {chunks:data?.surfaceChunks.size||0,uploads:data?.surfaceUploads||0,vertices:data?[...data.surfaceChunks.values()].reduce((sum,c)=>sum+c.count,0):0,pieces:data?.surfaces.size||0,geometryBuilds:data?.surfaceGeometryBuilds||0,drawCalls:data?.surfaceDrawCalls||0};}
+  function disposeGPU(){for(const [gl,data] of gpu){for(const c of data.chunks)gl.deleteBuffer(c.buffer);for(const c of data.surfaceChunks.values())gl.deleteBuffer(c.buffer);if(data.vao)data.vaoExt.deleteVertexArrayOES(data.vao);gl.deleteTexture(data.texture);gl.deleteProgram(data.program);}gpu.clear();}
   function dispose(){loadSerial++;disposeGPU();selected=null;navCache=null;revision++;}
   function eventStatus(time,wave=1){if(!selected)return [];const b=selected.blueprint;const events=b.hazardZones.map((zone,index)=>{if(!zone.period)return {...zone,index,state:'passive',x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};const phase=(time+index*17)%zone.period,warning=zone.warning||4,duration=zone.duration||7,state=phase<warning?'warning':phase<warning+duration?'active':'idle';return {...zone,index,state,phase,x:zone.x*WORLD_SCALE,z:zone.z*WORLD_SCALE,w:zone.w*WORLD_SCALE,d:zone.d*WORLD_SCALE};});for(const event of b.events)if(['fog','visibility'].includes(event.type)){const index=b.hazardZones.length+events.length,phase=time%event.period,state=phase<event.warning?'warning':phase<event.warning+event.duration?'active':'idle';events.push({...event,index,phase,state,kind:event.type==='fog'?'freeze':'blackout',x:0,z:0,w:b.size[0]*WORLD_SCALE,d:b.size[1]*WORLD_SCALE});}return events;}
   function updateEvents(time,wave=1){const events=eventStatus(time,wave);let changed=false;for(const object of selected?.dynamic||[]){const zone=events.find(e=>e.index===selected.blueprint.hazardZones.indexOf(object.eventZone)),on=zone?.state==='active',cycle=Math.floor((time+zone.index*17)/zone.period);if(on&&object.eventPhaseActive&&object.piece?.active===false)object.destroyedCycle=cycle;const desired=on&&object.destroyedCycle!==cycle;if(object.piece&&object.piece.active!==desired){object.piece.active=desired;if(desired)object.piece.hp=object.piece.maxHp;changed=true;}object.eventPhaseActive=on;}if(selected)selected.eventClock=time;if(changed)environmentStateChanged();return {events,changed};}
   function groundModifier(actor,time){if(!selected)return {speed:1,gravity:1};const info=pointInfo(actor.x,actor.z,actor),water=selected.blueprint.floorRegions.find(r=>r.kind==='water'&&inside(actor.x,actor.z,convert(r))&&info.height<.5),hazards=eventStatus(time).filter(e=>inside(actor.x,actor.z,e)&&Math.abs((e.y||0)-info.height)<2);let speed=water?.slow||1,gravity=1;for(const h of hazards){if(h.kind==='low_gravity')gravity=h.gravity||.5;else if(h.state==='active'&&h.slow)speed=Math.min(speed,h.slow);}return {speed,gravity};}
   // Pure setup hook used by node-based regression tests, avoiding browser IO.
-  function hydrateForTest(blueprint,tileset,definitions){dispose();validateBlueprint(blueprint,tileset,definitions);selected={blueprint,tileset,definitions,image:null,objects:[],collision:[],dynamic:[],tileMap:new Map(tileset.tiles.map(t=>[t.id,t]))};return blueprint;}
-  const api={WORLD_SCALE,catalog,load,install,render,dispose,pointInfo,canTraverse,navigation,spawnPoint,pickupPoint,canBuild,rampHeight,rampSupport,followRamp,environmentStateChanged,eventStatus,updateEvents,groundModifier,validateBlueprint,hydrateForTest,buildChunks};
-  Object.defineProperties(api,{current:{get:()=>selected?.blueprint||null},revision:{get:()=>revision},loaded:{get:()=>!!selected?.image},assetRoot:{get:()=>BASE}});
+  function hydrateForTest(blueprint,tileset,definitions,options={}){dispose();validateBlueprint(blueprint,tileset,definitions);selected={blueprint,tileset,definitions,image:options.image||null,objects:[],collision:[],dynamic:[],tileMap:new Map(tileset.tiles.map(t=>[t.id,t]))};return blueprint;}
+  const api={WORLD_SCALE,catalog,load,install,render,renderSurfaces,surfaceStats,buildSurfaceChunks,SURFACE_STRIDE,dispose,pointInfo,canTraverse,navigation,spawnPoint,pickupPoint,canBuild,rampHeight,rampSupport,followRamp,environmentStateChanged,eventStatus,updateEvents,groundModifier,validateBlueprint,hydrateForTest,buildChunks};
+  Object.defineProperties(api,{current:{get:()=>selected?.blueprint||null},revision:{get:()=>revision},loaded:{get:()=>!!selected?.image},canRenderSurfaces:{get:()=>!!selected?.image},hasSurfaceMaterials:{get:()=>!!selected?.image},assetRoot:{get:()=>BASE}});
   root.NeonSurvivalMaps=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

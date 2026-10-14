@@ -86,10 +86,9 @@ async function main() {
       const weapons = await page.evaluate(()=>{const t=__NEON_TEST__;for(const key of Object.keys(t.WEAPONS)){t.player.weapon=key;t.draw();}return {count:Object.keys(t.WEAPONS).length,error:t.gl.getError()}});
       assert.equal(weapons.count,14);assert.equal(weapons.error,0);
       if(fixtures){
-        await page.evaluate(()=>{for(const path of [...Object.values(NeonAssets.weapons),...Object.values(NeonAssets.characters)])__NEON_TEST__.models.get(path)});
-        await page.waitForFunction(()=>__NEON_TEST__.models.cache.status().parsed===48);
+        const requiredModels=await page.evaluate(async()=>{const paths=[...Object.values(NeonAssets.weapons),...Object.values(NeonAssets.characters)];await __NEON_TEST__.models.preload(paths);return paths.length;});
         const stats=await page.evaluate(()=>{const t=__NEON_TEST__;t.game.over=true;for(const key of Object.keys(t.WEAPONS)){t.player.weapon=key;t.draw();}return t.models.stats()});
-        assert.equal(stats.parsed,48);assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
+        assert.ok(stats.parsed>=requiredModels,'all catalog models loaded');assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
       }
       assert.deepEqual(errors,[],device.name+' runtime errors');
       reports.push({device:device.name,modes:5,splitMaps:3,weapons:14,errors:0});

@@ -76,9 +76,11 @@ function actorFit(model,actor,eyeHeight=1.86,height=HUMAN_HEIGHT){
   const gameplayScale=actor.alienScale||1,scale=gameplayScale/model.authorScale,head=model.anchors.head||[0,.97*model.authorScale,.85*model.authorScale],headRadius=(actor.r||.6)*1.10*.62;
   // Alien eyeY is a legacy targeting reference, not a height-scaled human camera.
   // Fit the head to that existing sphere while keeping the soles on the support
-  // surface. X/Z retain the simulation scale; no targeting/collision rules change.
+  // surface. Establish that legacy fit before applying the arena's visual size
+  // multiplier, so larger raptors grow vertically as well as horizontally.
   const targetHeight=Math.max(.30,eyeHeight-.45*gameplayScale+headRadius*.18),scaleY=targetHeight/Math.max(.1,head[1]-model.bounds.min[1]);
-  return {scale:[scale,scaleY,scale],offset:[-head[0]*scale,-model.bounds.min[1]*scaleY,-head[2]*scale]};
+  const visualScale=Number.isFinite(actor.alienVisualScale)&&actor.alienVisualScale>0?actor.alienVisualScale:1;
+  return {scale:[scale*visualScale,scaleY*visualScale,scale*visualScale],offset:[-head[0]*scale*visualScale,-model.bounds.min[1]*scaleY*visualScale,-head[2]*scale*visualScale]};
 }
 class ModelCache{
   constructor(options={}){this.resolve=options.resolve||((p)=>root.NeonAssets?.url?.(p)||'');this.fallback=options.fallback||((p)=>root.NeonAssets?.localCharacterURL?.(p)||'');this.fetch=options.fetch||root.fetch?.bind(root);this.now=options.now||(()=>Date.now());this.maxConcurrent=options.maxConcurrent||2;this.records=new Map();this.queue=[];this.active=0;this.stats={requests:0,parsed:0,failed:0};}
