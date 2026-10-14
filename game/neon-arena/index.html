@@ -56,7 +56,7 @@
       <span class="menuBadge">SOLO + LOCAL 2P</span>
     </header>
     <section class="modeSection" aria-labelledby="modeHeading">
-      <div class="sectionHeading"><h2 id="modeHeading">CHOOSE YOUR FIGHT</h2><span>5 MODES · 14 WEAPONS</span></div>
+      <div class="sectionHeading"><h2 id="modeHeading">01 · CHOOSE A MODE</h2><span>5 MODES · 14 WEAPONS</span></div>
       <select id="mode" hidden aria-hidden="true" tabindex="-1"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option><option value="frag">Frag — Sniper 1v1</option><option value="siege">Siege — Castle Defense</option><option value="survivor">Survivor — Breach Waves</option></select>
       <div id="modeCards" class="modeCards" role="radiogroup" aria-labelledby="modeHeading">
         <button class="modeCard selected" type="button" role="radio" aria-checked="true" data-mode="dm"><span class="modeGlyph" aria-hidden="true">⌖</span><span>Deathmatch</span></button>
@@ -68,30 +68,35 @@
       <p id="modeDescription" class="selectionDescription">Race to 15 eliminations. Every fighter for themselves.</p>
     </section>
     <section class="arenaSection" aria-labelledby="arenaHeading">
-      <div class="sectionHeading"><h2 id="arenaHeading">SELECT AN ARENA</h2><span id="arenaTag">BALANCED</span></div>
-      <select id="map" hidden aria-hidden="true" tabindex="-1"><option value="grid">Circuit Citadel</option><option value="pastel">Prism Garden</option><option value="reactor">Obsidian Reactor</option></select>
-      <div id="arenaCards" class="arenaCards" role="radiogroup" aria-labelledby="arenaHeading">
-        <button class="arenaCard selected circuitCard" type="button" role="radio" aria-checked="true" data-map="grid"><img data-neon-asset="ui/menu/arena_circuit_citadel.webp" alt="" aria-hidden="true"><span class="arenaNumber" aria-hidden="true">01</span><span class="arenaCaption">Circuit Citadel<small>FORTIFIED LANES</small></span></button>
-        <button class="arenaCard gardenCard" type="button" role="radio" aria-checked="false" tabindex="-1" data-map="pastel"><img data-neon-asset="ui/menu/arena_prism_garden.webp" alt="" aria-hidden="true"><span class="arenaNumber" aria-hidden="true">02</span><span class="arenaCaption">Prism Garden<small>FAST ROTATIONS</small></span></button>
-        <button class="arenaCard reactorCard" type="button" role="radio" aria-checked="false" tabindex="-1" data-map="reactor"><img data-neon-asset="ui/menu/arena_obsidian_reactor.webp" alt="" aria-hidden="true"><span class="arenaNumber" aria-hidden="true">03</span><span class="arenaCaption">Obsidian Reactor<small>VERTICAL COMBAT</small></span></button>
+      <div class="sectionHeading"><h2 id="arenaHeading">02 · CHOOSE AN ARENA</h2><span id="arenaTag">6 ARENAS</span></div>
+      <select id="map" hidden aria-hidden="true" tabindex="-1"><option value="grid">Circuit Citadel</option><option value="pastel">Prism Garden</option><option value="reactor">Obsidian Reactor</option><option value="terminal">Skyrail Terminal</option><option value="foundry">Ashfall Foundry</option><option value="outpost">Rift Outpost</option></select>
+      <div class="arenaWorkspace">
+        <div class="arenaChoiceList"><div id="arenaCards" class="arenaCards" role="radiogroup" aria-labelledby="arenaHeading"></div><div id="survivorArenaCard" hidden></div></div>
+        <aside id="selectedMapPanel" class="selectedMapPanel" aria-label="Selected arena">
+          <div class="selectedMapPicture"><img id="selectedMapImage" src="./assets/ui/maps/grid.webp" alt="Circuit Citadel in-game preview"><span id="selectedMapType">INDUSTRIAL COMPOUND</span></div>
+          <div class="selectedMapInfo"><h3 id="selectedMapName">Circuit Citadel</h3><p id="mapDescription" class="selectionDescription">Generator compounds, loading yards, connected rooms, and raised service routes.</p><span id="selectedMapMode">DEATHMATCH</span></div>
+        </aside>
       </div>
-  <div id="survivorArenaCard" hidden></div>
-      <div id="mapDescription" class="selectionDescription">Generator compounds, loading yards, connected rooms, and raised service routes.</div>
     </section>
-    <div id="characterLocker"></div>
-    <div class="menuActions"><button id="start" class="enterArena" type="button"><img class="buttonFrame" data-neon-asset="ui/menu/button_primary.png" alt="" aria-hidden="true"><span>ENTER THE ARENA</span><span aria-hidden="true">↗</span></button></div>
-    <details id="advancedOptions" class="controlDetails advancedOptions"><summary><span aria-hidden="true">⚙</span> Settings <span class="detailsIndicator" aria-hidden="true">+</span></summary>
+    <details id="advancedOptions" class="controlDetails advancedOptions"><summary><span>03 · MATCH SETTINGS</span><small id="settingsSummary">6 bots · Normal · 5 minutes</small><span class="detailsIndicator" aria-hidden="true">+</span></summary>
       <div class="grid">
-        <div class="fieldCard"><label for="difficulty">Difficulty</label><select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="nightmare">Nightmare</option></select></div>
-        <div class="fieldCard"><label for="botCount">Bot Count</label><select id="botCount"><option>0</option><option>2</option><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+        <div class="fieldCard"><label id="difficultyLabel" for="difficulty">Bot skill</label><select id="difficulty"><option value="easy">Easy — forgiving</option><option value="normal" selected>Normal — balanced</option><option value="hard">Hard — tactical</option><option value="nightmare">Nightmare — elite</option></select></div>
+        <div class="fieldCard"><label for="botCount">Bot Count</label><select id="botCount"><option value="0">0 — no bots</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option></select></div>
         <div class="fieldCard"><label for="secondPlayer">Second Player</label><select id="secondPlayer"><option value="off" selected>Off</option><option value="controller">Controller</option><option value="keyboard">Keyboard</option></select></div>
-        <div class="fieldCard"><label for="matchLen">Match Length</label><select id="matchLen"><option value="180">3 Minutes</option><option value="300" selected>5 Minutes</option><option value="600">10 Minutes</option></select></div>
+        <div class="fieldCard"><label for="matchLen">Match Length</label><select id="matchLen"><option value="60">1 minute</option><option value="180">3 minutes</option><option value="300" selected>5 minutes</option><option value="600">10 minutes</option><option value="900">15 minutes</option><option value="1200">20 minutes</option></select></div>
+        <div class="fieldCard"><label for="scoreTarget">Eliminations to win</label><select id="scoreTarget"><option value="5">5</option><option value="10">10</option><option value="15" selected>15</option><option value="20">20</option><option value="30">30</option><option value="50">50</option><option value="75">75</option><option value="100">100</option></select></div>
+        <div class="fieldCard"><label for="respawnDelay">Respawn delay</label><select id="respawnDelay"><option value="0.5">0.5 seconds</option><option value="0.75">0.75 seconds</option><option value="1" selected>1 second</option><option value="1.5">1.5 seconds</option><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="5">5 seconds</option></select></div>
+        <div class="fieldCard"><label for="lookSensitivity">Look speed <output id="lookSensitivityValue">1.00×</output></label><input id="lookSensitivity" type="range" min="0.25" max="2.5" step="0.05" value="1"></div>
+        <div class="fieldCard"><label for="soundVolume">Volume <output id="soundVolumeValue">100%</output></label><input id="soundVolume" type="range" min="0" max="100" step="5" value="100"></div>
         <div class="fieldCard"><label for="visualQuality">Graphics</label><select id="visualQuality"><option value="auto" selected>Auto — Smoothest</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
       </div>
+      <p id="settingsModeNote" class="settingsModeNote">Choose zero bots for a quiet practice arena.</p>
       <label class="soundSetting"><input id="soundEnabled" type="checkbox" checked> Sound effects</label>
       <div class="settingsActions"><button id="controllerSettings" class="secondaryAction" type="button"><img class="buttonFrame" data-neon-asset="ui/menu/button_secondary.png" alt="" aria-hidden="true"><span>PLAYER INPUTS</span></button><button id="fullscreenBtn" class="secondaryAction" type="button">FULL SCREEN</button></div>
       <details class="controlDetails"><summary>Controls and mode rules <span class="detailsIndicator" aria-hidden="true">+</span></summary><div class="keys"><span>WASD + mouse: move and look</span><span>Mobile: move on the left, swipe to aim on the right</span><span>Mobile auto-fire: aim near a visible enemy</span><span>Left click / RB: fire</span><span>F / B: pick up or swap guns</span><span>Q / LB: wall or platform</span><span>Hold right click / LT: preview and build</span><span>Mobile: tap Build to place; hold for wall or platform</span><span>Space / A: jump</span><span>Tap Shift / LS: slide while moving</span><span>Mobile: tap the small slide arrow beside movement actions</span><span>R / X: reload or load ultimate</span><span>Tab / Y: upgrades</span><span>Survivor: fortify for 30 seconds, then repel waves and bosses</span><span>Siege: fortify for 60 seconds, then defend against raiders</span></div></details>
     </details>
+    <div id="characterLocker"></div>
+    <div class="menuActions"><button id="start" class="enterArena" type="button"><img class="buttonFrame" data-neon-asset="ui/menu/button_primary.png" alt="" aria-hidden="true"><span>ENTER THE ARENA</span><span aria-hidden="true">↗</span></button></div>
   </main>
   <div class="menuHero" aria-hidden="true"><canvas id="menuCharacter" class="menuCharacter"></canvas><div class="menuHeroCaption">BREACHER // READY</div></div>
 </div>
@@ -105,6 +110,9 @@
   <script src="./neon-survival-equipment.js"></script>
   <script src="./neon-combat-feedback.js"></script>
   <script src="./neon-tactical-ai.js"></script>
+  <script src="./neon-match-settings.js"></script>
+  <script src="./neon-projectile-models.js"></script>
+  <script src="./neon-explosion-fx.js"></script>
   <script src="./neon-arena.js"></script>
   <script type="module" src="./neon-survival-profile.mjs"></script>
 </body>

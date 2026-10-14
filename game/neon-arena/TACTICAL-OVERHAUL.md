@@ -9,6 +9,9 @@ The update rebuilds arena routes and physical scenery, adds a tap-to-slide movem
 | Circuit Citadel | Generator compounds, loading yards, connected rooms, supported service decks and broad ramps; authored generators, transformers and cargo. |
 | Prism Garden | Offset research wings, laboratory courtyards and observation routes; experiment chamber, consoles and laboratory machinery. |
 | Obsidian Reactor | Shielded central core, turbine zones, twin maintenance tunnels and ramped galleries; authored turbines, reactor machinery and rotating fans. |
+| Skyrail Terminal | Staggered train cars, twin passenger platforms, a cross-concourse and linked service shops. |
+| Ashfall Foundry | Asymmetric furnace yard, L-shaped maintenance gallery, lower loading gantry and turbine machinery. |
+| Rift Outpost | Grounded cliff mesas, ancient arch, survey bridge and desert research shelters. |
 | Breach Ring | Defensive checkpoints, barracks, watchtower routes and cargo fortifications. |
 | Derelict Station | Ticket/newsstand interiors, gates and connected terminal routes around the existing train cars. |
 | Xenofall Wastes | Survey shrine, crystal ridge and desert routes around the existing alien cliffs, arches and wreckage. |
@@ -48,6 +51,38 @@ The camera, field of view, weapon pose, rigid character parts, aim origin, hitbo
 - Chained shots and explosive splash respect physical cover; the existing explicitly allowed rail penetration rules remain.
 - Sound effects and quiet map-specific ambience have a persisted Sound effects setting. Sound output can be disabled without disabling AI hearing.
 
+The Punch Gun now launches an authored solid 3D fist: four curled fingers,
+knuckles, a wrapped thumb, palm and wrist cuff. It turns with the authoritative
+flight/return direction and returns along an interlocking 3D chain. The Harpoon
+launches a faceted spearhead, barbs and shaft on a thin 3D cable. Latched heads
+stay at the real impact point or follow the hooked actor. Both renderers share
+the world depth buffer, so heads and tethers are occluded by cover. These meshes
+are generated locally once; the existing weapon GLBs and collision, damage,
+pull/grapple and upgrade rules are retained.
+
+Rocket, mortar, plasma and seismic blasts use distinct short-lived volumetric
+flame lobes, hot cores, soft smoke, glowing fragments and ground shockwaves.
+Nearby physical faces bound the visual geometry; the world depth buffer hides
+effects behind cover. Splash damage still uses the existing combat visibility
+checks. Effects expire after at most 1.4 seconds, pool at most sixteen records,
+and batch into one draw per view, with ten/eight/six visible effects at high/
+medium/low quality and fewer smoke, flame and fragment elements on low quality.
+
+## Match setup
+
+The menu presents mode → arena → settings, with six actual game-rendered arena
+previews and a larger selected-map view. All six standard arenas support DM,
+Team DM, Frag and Siege; Survivor retains eight locked/unlocked map cards and
+its original progression. Arena choices and settings persist independently per
+mode and recover safely from invalid saved values.
+
+DM/Team DM accept 0–16 bots, Frag 0–1 (zero with a second local player), and Siege
+2–16 attackers. Easy/Normal/Hard/Nightmare difficulty, DM/Team DM round duration,
+DM/Team DM/Frag elimination targets, respawn delay, sensitivity, sound volume and
+graphics controls are wired into the simulation. Mode-inapplicable controls are
+hidden or disabled with a short explanation. Keyboard/controller menu navigation
+and touch-sized map cards remain available.
+
 ## Tactical AI
 
 Human bots use Aggressor, Flanker, Defender, Marksman and Balanced Soldier profiles, retaining their existing character models and preferred loadouts. They evaluate real cover and reachable peeks, sprint or slide to positions, strafe, seek elevated routes, retreat when hurt/reloading, flank exposed opponents and coordinate locally with teammates. Automatic weapons use short bursts and pauses.
@@ -76,6 +111,9 @@ assets/survival/tilesets/<map_id>/atlas_color.webp
 assets/survival/tilesets/<map_id>/atlas_color_mobile.webp
 assets/survival/common/meshes/*.json
 assets/survival/common/meshes/generate.py
+assets/ui/maps/<arena_id>.webp
+neon-projectile-models.js
+neon-explosion-fx.js
 ```
 
 The eight 2048×2048 desktop and 1024×1024 mobile atlases, padding and UV conventions are unchanged. Character, weapon and R2 asset references are unchanged. The common mesh generator reproduces the updated component collision definitions.
@@ -90,10 +128,10 @@ Run the dependency-free suites with `npm run test:neon`. Run browser checks with
 npm run test:neon:browser
 ```
 
-The browser checks cover all five modes and 14 weapons, all eleven arenas, atlas pixels, render caching/destruction, Survival unlock/save/results flows, mobile portrait/landscape and split-screen layouts, actual slide input and ramp walking. Ramp cases exercise the production movement/collision functions without jumping, in both directions, for both players, at the center and two side lanes and at 60/30/10 movement updates per second.
+The browser checks cover all five modes and 14 weapons, all fourteen arenas, atlas pixels, render caching/destruction, Survival unlock/save/results flows, mobile portrait/landscape and split-screen layouts, saved match settings, actual slide input and ramp walking. Ramp cases exercise the production movement/collision functions without jumping, in both directions, for both players, at the center and two side lanes and at 60/30/10 movement updates per second.
 
-The full ramp sweep passed **1,188 walking traversals across all 33 ramps on all eleven maps**, with no movement failures, page errors or WebGL errors.
+The full ramp sweep passed **1,620 walking traversals across all 45 ramps on all fourteen maps**, plus **432 Frag traversals across the twelve new ramps**, with no movement failures, page errors or WebGL errors. Frag boundaries leave standing landing clearance around the new ramp toes.
 
-The final local regression run passed **160 tests with no failures or skips**, using the existing model fixtures. The compact HUD passed twelve desktop/mobile/split layouts, and the ally-rendering test verified both local team perspectives and zero highlighted pixels through a solid wall. Siege startup checks also validate both defenders and all three supplies on every standard map.
+The local regression run passed **184 tests with no failures or skips**, using the existing model fixtures. The compact HUD passed twelve desktop/mobile/split layouts, and the ally-rendering test verified both local team perspectives and zero highlighted pixels through a solid wall. Siege startup checks also validate both defenders and all three supplies on every standard map. Projectile tests render different camera angles and actual launch/return/latch states; projectile and explosion tests verify zero contributed pixels behind a solid wall and restored depth/blend state.
 
 Browser rendering checks use real WebGL with SwiftShader. Mobile dimensions, touch input and controller button edges are automated; these are **not physical phone/controller tests or real-device FPS measurements**. Before release, measure sustained desktop 60 FPS and mobile 30–60 FPS on representative hardware, and playtest physical controllers/touch devices, map balance, weapon feel and audio mix. Those hardware and subjective acceptance checks remain open.

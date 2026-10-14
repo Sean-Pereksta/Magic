@@ -7,6 +7,7 @@ const path = require('node:path');
 const {chromium} = require('playwright');
 const repo = path.resolve(__dirname, '..');
 const fixtures = process.env.NEON_ASSET_FIXTURES;
+const standardMaps=['grid','pastel','reactor','terminal','foundry','outpost'];
 const hooks = `\nwindow.__NEON_TEST__ = {game, player, get player2(){return player2}, get bots(){return bots}, get platforms(){return platforms}, get walls(){return walls}, mobileInput, WEAPONS, reset, draw, physics, spawn, endMatch, getBuildPreviewFor, placeBuildFor, setBuildOverrideFor, humanBuildState, requestHumanJump, handleHumanButtons, updateMobileAimAndFire, mobileAimInfo, makeAlien, kill, switchWeapon, setActorAt, get models(){return neonModelRenderer}, get gl(){return gl}};\n`;
 function serve(req, res) {
   try {
@@ -61,7 +62,7 @@ async function main() {
         if(mode==='survivor')await page.locator('[data-survival-action="menu"]').click();else await page.locator('#returnMenu').click();
       }
       // Every normal arena must start and preserve two separate local actors.
-      for(const map of ['grid','pastel','reactor']) {
+      for(const map of standardMaps) {
         await page.locator('[data-mode="dm"]').click();
         await page.evaluate(map=>{const select=document.getElementById('map');select.value=map;select.dispatchEvent(new Event('change'));document.getElementById('secondPlayer').value='keyboard';},map);
         await page.locator('#start').click();await page.waitForFunction(()=>__NEON_TEST__.game.started&&!__NEON_TEST__.game.over).catch(async error=>{throw Error(device.name+' '+map+' split start failed: '+errors.join('; ')+' '+await page.locator('#mapDescription').innerText()+' '+error.message)});
@@ -91,7 +92,7 @@ async function main() {
         assert.ok(stats.parsed>=requiredModels,'all catalog models loaded');assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
       }
       assert.deepEqual(errors,[],device.name+' runtime errors');
-      reports.push({device:device.name,modes:5,splitMaps:3,weapons:14,errors:0});
+      reports.push({device:device.name,modes:5,splitMaps:standardMaps.length,weapons:14,errors:0});
       await context.close();
     }
     console.log(JSON.stringify({passed:reports,assets:fixtures?'local supplied GLBs':'hosted GLBs',webgl:process.env.NEON_MOCK_WEBGL==='1'?'mock (DOM/input/simulation only)':'real'},null,2));

@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const repo = path.resolve(__dirname, '..'), fixtures = process.env.NEON_ASSET_FIXTURES;
-const atlasFor = { grid: 'breach_ring', pastel: 'black_ice_cryolab', reactor: 'drowned_powerworks' };
+const atlasFor = { grid: 'breach_ring', pastel: 'black_ice_cryolab', reactor: 'drowned_powerworks', terminal: 'derelict_station', foundry: 'drowned_powerworks', outpost: 'xenofall_wastes' };
 const hooks = `
 window.__NEON_TILES_TEST__ = {game,player,get player2(){return player2},get bots(){return bots},get walls(){return walls},get platforms(){return platforms},get map(){return survivalMapRuntime},get progress(){return survivalProgress},get models(){return neonModelRenderer},get gl(){return gl},draw,equip,updateHud,markBlocksDirty,makeStructurePiece,importedModelCamera,makeAlien,rayEntity};
 const tileQA=window.__NEON_TILES_TEST__,originalSurfaceRender=survivalMapRuntime.renderSurfaces.bind(survivalMapRuntime);
@@ -158,7 +158,7 @@ async function main() {
       await page.waitForFunction(() => !!window.__NEON_TILES_TEST__?.map?.renderSurfaces, null, { timeout: 15000 }).catch(error => { throw Error(device.name + ' failed to initialize: ' + errors.join('; ') + ' ' + error.message); });
       await page.evaluate(split => { document.getElementById('secondPlayer').value = split ? 'keyboard' : 'off'; document.getElementById('botCount').value = '0'; __NEON_TILES_TEST__.progress.mergeRemote({ highestWave: 100 }); }, device.split);
       const survivalMaps = JSON.parse(fs.readFileSync(path.join(repo, 'game/neon-arena/assets/survival/manifest.json'), 'utf8')).maps.map(item => item.id);
-      const cases = process.env.NEON_TILES_CAPTURE_ONLY ? [{ mode: 'survivor', map: 'breach_ring' }] : [{ mode: 'dm', map: 'grid' }, { mode: 'dm', map: 'pastel' }, { mode: 'dm', map: 'reactor' }, { mode: 'tdm', map: 'grid' }, { mode: 'frag', map: 'grid' }, { mode: 'siege', map: 'grid' }, ...survivalMaps.map(map => ({ mode: 'survivor', map }))];
+      const cases = process.env.NEON_TILES_CAPTURE_ONLY ? [{ mode: 'survivor', map: 'breach_ring' }] : [...Object.keys(atlasFor).map(map => ({ mode: 'dm', map })), { mode: 'tdm', map: 'grid' }, { mode: 'frag', map: 'grid' }, { mode: 'siege', map: 'grid' }, ...survivalMaps.map(map => ({ mode: 'survivor', map }))];
       const checked = [], detailedAtlases = new Set(); let raptors = 0;
       for (const entry of cases) {
         const label = device.name + ' ' + entry.mode + '/' + entry.map;

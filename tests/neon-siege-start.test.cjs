@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {standardFixture,source}=require('../game/neon-arena/tests/map-fixtures.cjs');
+const {standardFixture,source,standardMaps}=require('../game/neon-arena/tests/map-fixtures.cjs');
 const functionBetween=(start,end)=>source.slice(source.indexOf('function '+start+'('),source.indexOf('function '+end+'('));
-for(const map of ['grid','pastel','reactor'])test(map+': Siege defenders and opening supplies stay clear, central and visible',()=>{
+for(const map of standardMaps)test(map+': Siege defenders and opening supplies stay clear, central and visible',()=>{
   const f=standardFixture(map);
   f.evaluate(`
     game.mode='siege';game.secondPlayer=true;

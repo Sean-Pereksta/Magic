@@ -10,8 +10,9 @@ function survivalFixture(id){
   return {b,t,definitions,pieces};
 }
 const source=fs.readFileSync(path.resolve(__dirname,'../neon-arena.js'),'utf8');
+const arenaTilesets=vm.runInNewContext(source.match(/const ARENA_TILESETS=[^;]+;/)[0]+'ARENA_TILESETS;'),standardMaps=Object.keys(arenaTilesets);
 function standardFixture(map){
-  survivalFixture({grid:'breach_ring',pastel:'black_ice_cryolab',reactor:'drowned_powerworks'}[map]);
+  survivalFixture(arenaTilesets[map]);
   const layout=source.slice(source.indexOf('// Authored standard arenas'),source.indexOf('function applyFragArena(){'));
   const spawn=source.slice(source.indexOf('function safeSpawnCandidate('),source.indexOf('function spawn(ent){'));
   const build=source.slice(source.indexOf('function buildMap(){'),source.indexOf('function buildSurvivorBreachMap(){'));
@@ -29,4 +30,4 @@ function standardFixture(map){
   return context.result;
 }
 
-module.exports={standardFixture,survivalFixture,source,read,base};
+module.exports={standardFixture,survivalFixture,source,read,base,standardMaps,arenaTilesets};
