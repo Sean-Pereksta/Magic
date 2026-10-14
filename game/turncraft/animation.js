@@ -45,6 +45,26 @@
     // to its existing 270 ms impact; this function never reschedules game events.
     return time<at?contact*clamp((time-event.start)/Math.max(1,at-event.start),0,1):contact+(1-contact)*clamp((time-at)/Math.max(1,event.end-at),0,1);
   }
+  class SpriteTintCache{
+    constructor({maxBytes=12*1024*1024,createCanvas}={}){this.maxBytes=Math.max(4,maxBytes);this.createCanvas=createCanvas||(()=>typeof document!=='undefined'?document.createElement('canvas'):typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(1,1):null);this.sources=new WeakMap();this.entries=new Set();this.bytes=0}
+    frame(image,{sx=0,sy=0,sw=image?.naturalWidth||image?.width,sh=image?.naturalHeight||image?.height,tint}={}){
+      if(!image||!tint||![sx,sy,sw,sh].every(Number.isFinite)||sw<=0||sh<=0)return null;
+      let frames=this.sources.get(image);if(!frames){frames=new Map();this.sources.set(image,frames)}
+      const key=`${sx}:${sy}:${sw}:${sh}:${tint}`,cached=frames.get(key);if(cached){this.entries.delete(cached);this.entries.add(cached);return cached.image}
+      const canvas=this.createCanvas();if(!canvas)return null;const padding=sx||sy||sw<(image.naturalWidth||image.width)||sh<(image.naturalHeight||image.height)?1:0,width=sw+padding*2,height=sh+padding*2,scale=Math.min(1,256/Math.max(width,height),Math.sqrt(this.maxBytes/(4*width*height)));canvas.width=Math.max(1,Math.floor(width*scale));canvas.height=Math.max(1,Math.floor(height*scale));const context=canvas.getContext('2d');if(!context)return null;
+      // Keep one sample outside a frame for the same edge interpolation as the
+      // original atlas. The extra sample is excluded from its painted bounds.
+      context.drawImage(image,sx-padding,sy-padding,width,height,0,0,canvas.width,canvas.height);canvas.spriteTintCrop=[padding*canvas.width/width,padding*canvas.height/height,sw*canvas.width/width,sh*canvas.height/height];
+      // Source-atop preserves every transparent edge, even on Cloudflare images
+      // without pixel-read access. Retain detail beneath a strong owner color.
+      context.globalCompositeOperation='source-atop';context.globalAlpha=.72;context.fillStyle=tint;context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';context.globalAlpha=1;
+      const entry={image:canvas,frames,key,bytes:canvas.width*canvas.height*4};frames.set(key,entry);this.entries.add(entry);this.bytes+=entry.bytes;this.evict();return canvas;
+    }
+    evict(){for(const entry of this.entries){if(this.bytes<=this.maxBytes)break;this.entries.delete(entry);entry.frames.delete(entry.key);this.bytes-=entry.bytes;entry.image.width=0;entry.image.height=0}}
+    setBudget(bytes){this.maxBytes=Math.max(4,bytes);this.evict()}
+    clear(){for(const entry of this.entries){entry.image.width=0;entry.image.height=0}this.sources=new WeakMap();this.entries.clear();this.bytes=0}
+    stats(){return{bytes:this.bytes,limit:this.maxBytes,frames:this.entries.size}}
+  }
   class TextureCache{
     constructor({baseUrl='',maxBytes=QUALITY.medium.textureBytes,concurrency=2,createImage,createCanvas}={}){this.baseUrl=baseUrl;this.maxBytes=maxBytes;this.concurrency=concurrency;this.createImage=createImage||(()=>new Image());this.createCanvas=createCanvas||(()=>typeof document!=='undefined'?document.createElement('canvas'):typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(1,1):null);this.entries=new Map();this.queue=[];this.active=0;this.bytes=0;this.counter=0;this.pinned=new Set();this.resolution=1;this.generation=0}
     resolve(file){try{return new URL(file,this.baseUrl||(typeof location!=='undefined'?location.href:'http://localhost/')).href}catch{return file}}
@@ -80,10 +100,10 @@
     stats(){return{bytes:this.bytes,limit:this.maxBytes,resolution:this.resolution,ready:[...this.entries.values()].filter(e=>e.status==='ready').length,pending:this.queue.length+this.active}}
   }
   class SpriteRuntime{
-    constructor({manifest=null,baseUrl='',quality='medium',cache}={}){this.manifest=manifest;this.cache=cache||new TextureCache({baseUrl});this.cache.setCropRepairs?.(manifest?.cropRepairs);this.states=new Map();this.ghosts=[];this.ghostIds=new Set();this.time=0;this.entityIndex=new Map();this.setQuality(quality)}
-    setQuality(value){this.quality=Object.hasOwn(QUALITY,value)?value:'medium';this.budget=QUALITY[this.quality];this.cache.setBudget(this.budget.textureBytes);this.cache.setResolution(this.budget.textureScale);while(this.ghosts.length>this.budget.ghosts){this.ghostIds.delete(this.ghosts.shift().id)}}
+    constructor({manifest=null,baseUrl='',quality='medium',cache,tintCache}={}){this.manifest=manifest;this.cache=cache||new TextureCache({baseUrl});this.tintCache=tintCache||new SpriteTintCache();this.cache.setCropRepairs?.(manifest?.cropRepairs);this.states=new Map();this.ghosts=[];this.ghostIds=new Set();this.time=0;this.entityIndex=new Map();this.setQuality(quality)}
+    setQuality(value){this.quality=Object.hasOwn(QUALITY,value)?value:'medium';this.budget=QUALITY[this.quality];this.cache.setBudget(this.budget.textureBytes);this.cache.setResolution(this.budget.textureScale);this.tintCache.setBudget(this.budget.textureBytes/8);while(this.ghosts.length>this.budget.ghosts){this.ghostIds.delete(this.ghosts.shift().id)}}
     async loadManifest(url){const controller=typeof AbortController!=='undefined'?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),6000):null;try{const response=await fetch(url,controller?{signal:controller.signal}:undefined);if(!response.ok)return false;const data=await response.json();if(!data||!data.assets)return false;this.manifest=data;this.cache.setCropRepairs?.(data.cropRepairs);return true}catch{return false}finally{if(timer)clearTimeout(timer)}}
-    reset(){this.states.clear();this.ghosts.length=0;this.ghostIds.clear();this.entityIndex.clear()}
+    reset(){this.states.clear();this.ghosts.length=0;this.ghostIds.clear();this.entityIndex.clear();this.tintCache.clear()}
     ensure(entity,time){let state=this.states.get(entity.id);if(!state||state.type!==entity.type||state.kind!==entity.kind){state={id:entity.id,type:entity.type,assetType:assetTypeFor(entity),kind:entity.kind,faction:entity.faction,x:finite(entity.x),y:finite(entity.y),direction:'S',state:'idle',stateAt:time,phaseAt:time,event:null,segment:null,logicalX:entity.x,logicalY:entity.y,visible:false,lastMoveReady:finite(entity.moveReadyAt),lastAttackReady:finite(entity.attackReadyAt),lastHit:finite(entity.lastDamagedAt),lastAbility:finite(entity.abilityReadyAt),lastDeploy:false};this.states.set(entity.id,state)}return state}
     turn(state,dx,dy,time){const next=directionForVector(dx,dy,state.direction);if(next!==state.direction){state.previousDirection=state.direction;state.turnAt=time;state.direction=next}}
     route(entity,path){const state=this.ensure(entity,this.time);state.pendingPath=path?.slice(0,16).map(p=>({x:p.x,y:p.y}))}
@@ -140,7 +160,7 @@
       this.ghosts=this.ghosts.filter(g=>{if(g.end>time&&!alive.has(g.id))return true;this.ghostIds.delete(g.id);return false});this.cache.evict();
     }
     metadata(type,state){const asset=this.manifest?.assets?.[type];if(!asset)return null;const aliases={ability:'special',deploy:'ability',production:'work',construction:'deploy',morph:'construction'};return{asset,state:asset.states?.[state]||asset.states?.[aliases[state]]||asset.states?.idle}}
-    drawState(ctx,type,state,{elapsedMs=0,progress,direction='S',size=48,x=0,y=0,rate=1,alpha=1}={}){
+    drawState(ctx,type,state,{elapsedMs=0,progress,direction='S',size=48,x=0,y=0,rate=1,alpha=1,tint=null}={}){
       const meta=this.metadata(type,state);if(!meta?.state?.sheet)return false;const image=this.cache.get(meta.state.sheet);if(!image)return false;
       const frame=frameForState(meta.state,direction,elapsedMs,{progress,rate}),anchor=meta.state.anchor||meta.asset.anchor||[.5,.5],scale=finite(meta.state.scale,finite(meta.asset.scale,1)),width=size*scale,height=width*frame.h/frame.w;
       const sourceScale=this.cache.sourceScale(meta.state.sheet),expansion=this.cache.frameExpansion?.(meta.state.sheet)||1,expansionY=this.cache.frameExpansionY?.(meta.state.sheet)||1,sx=frame.x*expansion*sourceScale,sy=frame.y*expansionY*sourceScale,sw=frame.w*expansion*sourceScale,sh=frame.h*expansionY*sourceScale,drawWidth=width*expansion,drawHeight=height*expansionY;
@@ -148,10 +168,11 @@
       // Extra transparent padding surrounds the original cell. Keep its pivot,
       // native pixel scale and logical hit bounds while isolating drifted rows.
       const top=y-height*anchor[1]-(drawHeight-height)/2;
-      ctx.save();ctx.globalAlpha*=alpha;if(meta.state.directionFlipX?.[frame.direction]===true){ctx.translate(x,y);ctx.scale(-1,1);ctx.drawImage(image,sx,sy,sw,sh,-drawWidth*(1-anchor[0]),top-y,drawWidth,drawHeight)}else ctx.drawImage(image,sx,sy,sw,sh,x-drawWidth*anchor[0],top,drawWidth,drawHeight);ctx.restore();return true;
+      const colored=this.tintCache.frame(image,{sx,sy,sw,sh,tint}),source=colored||image,crop=colored?colored.spriteTintCrop:[sx,sy,sw,sh];
+      ctx.save();ctx.globalAlpha*=alpha;if(meta.state.directionFlipX?.[frame.direction]===true){ctx.translate(x,y);ctx.scale(-1,1);ctx.drawImage(source,...crop,-drawWidth*(1-anchor[0]),top-y,drawWidth,drawHeight)}else ctx.drawImage(source,...crop,x-drawWidth*anchor[0],top,drawWidth,drawHeight);ctx.restore();return true;
     }
     bounds(entity,{size=48}={}){const state=this.ensure(entity,this.time),meta=this.metadata(state.assetType,state.state);if(!meta?.state)return null;const frame=frameForState(meta.state,state.direction,0),anchor=meta.state.anchor||meta.asset.anchor||[.5,.5],assetAnchor=meta.asset.anchor||[.5,.5],scale=finite(meta.state.scale,finite(meta.asset.scale,1)),width=size*scale,height=width*frame.h/frame.w;return{x:-width*anchor[0],y:size*(assetAnchor[1]-.5)-height*anchor[1],width,height}}
-    draw(ctx,entity,time,{size=48,zoom=1,constructionProgress=1,morphProgress=0}={}){
+    draw(ctx,entity,time,{size=48,zoom=1,constructionProgress=1,morphProgress=0,tint=null}={}){
       const state=this.ensure(entity,time);let elapsed=time-(state.state==='move'?state.phaseAt:state.event?.kind===state.state?state.event.start:state.stateAt),rate=1;
       if(state.state==='move'){const meta=this.metadata(state.assetType,'move');const cycle=Math.max(100,finite(meta?.state?.frames,8)*1000/Math.max(1,finite(meta?.state?.fps,10)));rate=clamp(cycle/Math.max(100,state.moveDuration/Math.max(1,state.moveDistance)),.55,2.8)}
       if(state.state==='idle')elapsed+=finite(entity.id)*137;
@@ -160,13 +181,13 @@
       const anchor=this.manifest?.assets?.[state.assetType]?.anchor||[.5,.5];
       // Discrete facing poses represent one body. Blending two directions can
       // expose two heads/sets of legs while a unit turns, even with isolated crops.
-      const alpha=state.appearAt?clamp((time-state.appearAt)/180,.25,1):1,options={elapsedMs:elapsed,progress,size,rate,y:size*(anchor[1]-.5)};
+      const alpha=state.appearAt?clamp((time-state.appearAt)/180,.25,1):1,options={elapsedMs:elapsed,progress,size,rate,tint,y:size*(anchor[1]-.5)};
       return this.drawState(ctx,state.assetType,state.state,{...options,direction:state.direction,alpha});
     }
-    drawGhosts(ctx,time,{visible=()=>true,worldToScreen,size=48,fallback=()=>false,airOffset=0}={}){
-      for(const ghost of this.ghosts){if(!visible(ghost))continue;const screen=worldToScreen(ghost.x+.5,ghost.y+.5),alpha=clamp((ghost.end-time)/220,0,1);const anchor=this.manifest?.assets?.[ghost.type]?.anchor||[.5,.5];ctx.save();ctx.globalAlpha=alpha;const y=screen.y+size*(anchor[1]-.5)+(this.manifest?.assets?.[ghost.type]?.flying?airOffset:0);if(!this.drawState(ctx,ghost.type,'death',{elapsedMs:time-ghost.start,progress:(time-ghost.start)/(ghost.end-ghost.start),direction:ghost.direction,x:screen.x,y,size}))fallback(ghost,screen,alpha);ctx.restore()}
+    drawGhosts(ctx,time,{visible=()=>true,worldToScreen,size=48,fallback=()=>false,airOffset=0,tintFor=()=>null}={}){
+      for(const ghost of this.ghosts){if(!visible(ghost))continue;const screen=worldToScreen(ghost.x+.5,ghost.y+.5),alpha=clamp((ghost.end-time)/220,0,1);const anchor=this.manifest?.assets?.[ghost.type]?.anchor||[.5,.5];ctx.save();ctx.globalAlpha=alpha;const y=screen.y+size*(anchor[1]-.5)+(this.manifest?.assets?.[ghost.type]?.flying?airOffset:0);if(!this.drawState(ctx,ghost.type,'death',{elapsedMs:time-ghost.start,progress:(time-ghost.start)/(ghost.end-ghost.start),direction:ghost.direction,x:screen.x,y,size,tint:tintFor(ghost)}))fallback(ghost,screen,alpha);ctx.restore()}
     }
-    stats(){return{quality:this.quality,entities:this.states.size,ghosts:this.ghosts.length,textures:this.cache.stats()}}
+    stats(){return{quality:this.quality,entities:this.states.size,ghosts:this.ghosts.length,textures:this.cache.stats(),tints:this.tintCache.stats()}}
   }
-  return {DIRECTIONS,QUALITY,assetTypeFor,selectionRenderContext,directionForVector,sampleSegment,frameForState,eventProgress,TextureCache,SpriteRuntime};
+  return {DIRECTIONS,QUALITY,assetTypeFor,selectionRenderContext,directionForVector,sampleSegment,frameForState,eventProgress,TextureCache,SpriteTintCache,SpriteRuntime};
 });
