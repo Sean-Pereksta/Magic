@@ -117,12 +117,12 @@ def main() -> None:
                 states[state] = {'sheet': f'https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/structures/{key}.webp',
                     'frameWidth': CELL, 'frameHeight': CELL, 'frames': 4,
                     'directions': ['S'], 'rows': {'S': state_index},
-                    'firstColumn': 0, 'fps': 6 if state != 'death' else 7,
+                    'firstColumn': 0, 'fps': 3.5 if state == 'death' else 6 if state == 'construction' else 3,
                     'loop': state in ('idle', 'production')}
                 if state == 'construction':
                     states[state]['progressDriven'] = True
                 if state == 'death':
-                    states[state]['durationMs'] = round(4000 / 7)
+                    states[state]['durationMs'] = round(4000 / 3.5)
             if key in DEFENSE:
                 states['attack'] = {**states['production'], 'loop': False, 'fps': 8, 'contactMs': 125}
             manifest['structures'][key] = {'anchor': [0.5, 0.8], 'frameWidth': CELL,

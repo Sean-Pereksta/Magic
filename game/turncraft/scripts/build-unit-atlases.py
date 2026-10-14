@@ -268,6 +268,8 @@ def main() -> None:
     parser.add_argument("--records", nargs="*", type=Path)
     parser.add_argument("--exclude", nargs="*", default=[], help="Leave explicitly unfinished type masters out of a staging pack")
     args = parser.parse_args()
+    combined_path = GAME / "assets/animation-manifest.json"
+    previous_combined = json.loads(combined_path.read_text()) if combined_path.exists() else {}
     roster = json.loads((GAME / "assets/unit-artwork-roster.json").read_text())
     records = args.records or sorted((GAME / "assets").glob("*unit-generation-record.json"))
     records = [p for p in records if p.exists()]
@@ -320,7 +322,19 @@ def main() -> None:
     developmental = pack_developmental()
     merged = {**entries, **structures, **developmental}
     manifest = dict(version=1, directions=DIRECTIONS, assets=merged)
-    atomic_json(GAME / "assets/animation-manifest.json",manifest)
+    # Crop measurements belong to exact production bytes. Keep them when an
+    # unchanged atlas is rebuilt, and discard stale measurements after new art.
+    unit_sheets = {state["sheet"] for asset in {**entries, **developmental}.values()
+                   for state in asset["states"].values()}
+    repairs = {}
+    for url, repair in previous_combined.get("cropRepairs", {}).items():
+        source = ROOT / "graphics/turncraft/animated/units" / url.rsplit("/", 1)[-1]
+        if (url in unit_sheets and source.is_file()
+                and hashlib.sha256(source.read_bytes()).hexdigest() == repair.get("sourceSha256")):
+            repairs[url] = repair
+    if repairs:
+        manifest["cropRepairs"] = repairs
+    atomic_json(combined_path,manifest)
     print(json.dumps({"units": len(entries), "structures": len(structures), "paintedUnitFrames":len(entries)*192,
                       "missingUnits":sorted(set(roster)-set(entries)), "sheets":len(entries)*3,
                       "additionalPaintedFrames":extra_painted_frames+sum(v["provenance"]["paintedFrames"] for v in developmental.values())}))
