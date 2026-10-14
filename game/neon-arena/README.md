@@ -131,6 +131,33 @@ rig, size and SHA256, plus portrait checksums. The new GLBs are self-contained,
 opaque and uncompressed; no external texture or skeletal animation dependency
 is required. Portraits were captured through the actual game WebGL renderer.
 
+## Raptors and textured surfaces
+
+Ground raptors (blue, yellow, red, green, striped, purple and climber) render at
+130% of their previous fitted size, including height. Their soles remain on the
+support surface. Head/body targets, mobile aiming, visibility samples and held
+guns follow the same enlargement; navigation and existing species stats retain
+their simulation dimensions.
+
+Every mode now loads an atlas before starting. Circuit Citadel uses Breach Ring
+materials, Prism Garden uses Black Ice Cryolab materials, and Obsidian Reactor
+uses Drowned Powerworks materials. Survivor retains each arena's authored tiles.
+Arena floors, walls and platforms and player-built walls/platforms share the
+selected atlas. Six-face surfaces repeat crops at a fixed world scale using the
+existing padded UV slots, rather than stretching a single tile over large walls.
+Damage shading, armor support outlines and destruction stay visible.
+
+Generic surfaces batch into 24-unit cached chunks. Building, moving, damaging or
+removing a piece rebuilds only affected chunks, and split views reuse the same
+geometry/atlas. The shader restores attribute and texture state before the
+character, gun and HUD renderers run. Existing GLBs and committed map tilesets
+supply this update; no new model or atlas files are required.
+
+```bash
+node --test tests/neon-raptor-model-fit.test.cjs game/neon-arena/tests/surface-materials.test.cjs
+NEON_ASSET_FIXTURES=/path/to/models node tests/neon-tiles-browser.cjs
+```
+
 ## Validation commands
 
 ```bash

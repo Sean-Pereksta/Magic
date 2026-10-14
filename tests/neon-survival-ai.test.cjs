@@ -175,7 +175,8 @@ test('production alien movement remains finite and bounded during veteran-wave s
       pointInfo: () => ({ walkable: true, height: 0, hazard: 0 }), canTraverse: () => true,
       navigation: () => ({ nodes: [], links: [], burrowZones: [{ x: 8, z: 0, r: 2 }] }),
       acid: zone => { if (hazards.length === 12) hazards.shift(); hazards.push(zone); }, warn: () => {}, burst: () => {}, random: () => .4 });
-    vm.createContext(context); vm.runInContext(source.slice(makeStart, makeEnd) + '\n' + source.slice(updateStart, updateEnd), context);
+    const raptorSizes=source.match(/^const RAPTOR_VISUAL_SCALE=.*;$/m)?.[0]||'';
+    vm.createContext(context); vm.runInContext(raptorSizes+'\n'+source.slice(makeStart, makeEnd) + '\n' + source.slice(updateStart, updateEnd), context);
     for (let i = 0; i < 25; i++) {
       const a = context.makeAlien(kinds[i % kinds.length], wave), angle = i * 2.4;
       a.x = Math.cos(angle) * 28; a.z = Math.sin(angle) * 28; a.onGround = true; bots.push(a);
