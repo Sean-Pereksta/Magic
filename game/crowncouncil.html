@@ -825,6 +825,8 @@
   .assetGateTitle{font-size:1.05rem;font-weight:900;color:#dbeafe;letter-spacing:.04em;text-transform:uppercase}.assetGateStatus{font-size:.88rem;color:#cbd5e1;line-height:1.35}.assetGatePlayers{font-size:.78rem;color:#93c5fd;line-height:1.45}
   .assetGate progress{width:100%;height:12px;accent-color:#d0b16e}
   .assetGate [hidden]{display:none!important}
+  .ff-graphics-warnings{position:fixed;left:12px;bottom:12px;z-index:1100;width:min(420px,calc(100vw - 24px));border:1px solid #d0b16e;border-radius:10px;background:#0f172a;color:#e5e7eb;box-shadow:0 6px 24px #0008;font-size:.82rem}
+  .ff-graphics-warnings[hidden]{display:none}.ff-graphics-warnings summary{padding:10px;cursor:pointer;font-weight:700}.ff-graphics-warning-body{padding:0 12px 12px;max-height:45vh;overflow:auto;overflow-wrap:anywhere}.ff-graphics-warning-body ul{padding-left:18px}.ff-graphics-warning-body li{margin:10px 0}.ff-graphics-warning-body a{color:#93c5fd}
   body.ff-starting>:not(#assetGate):not(script){visibility:hidden;pointer-events:none}
 
   .endSummary{
@@ -877,6 +879,7 @@
 </head>
 <body class="ff-starting">
   <div id="assetGate" class="assetGate" aria-busy="true"><div class="assetGatePanel" role="status" aria-live="polite"><div id="assetGateTitle" class="assetGateTitle">FACTION FORGE</div><div id="assetGateStatus" class="assetGateStatus">Loading graphics…</div><progress id="assetGateProgress" aria-label="Graphics loaded"></progress><div id="assetGatePlayers" class="assetGatePlayers">Preparing your game…</div><button id="assetGateRetry" class="btn" type="button" hidden>Retry loading</button></div></div>
+  <details id="ffGraphicsWarnings" class="ff-graphics-warnings" hidden><summary id="ffGraphicsWarningSummary">Graphics warnings</summary><div class="ff-graphics-warning-body"><p id="ffGraphicsWarningStatus" role="status" aria-live="polite">Some graphics are unavailable. The game is using available artwork and troop symbols.</p><ul id="ffGraphicsWarningList"></ul><button id="ffGraphicsRetry" class="btn" type="button">Retry missing graphics</button></div></details>
   <div class="topbar" inert>
     <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
@@ -1551,18 +1554,40 @@ let S=null,lobbyPlayers=[],meIndex=0,isHost=false;
 let localTroopImagesReady=false,troopImageLoadError=null,troopImageLoadPass=0,troopImageLoadPromise=null,assetReadyPublishedForSession=null;
 const forgeAssets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl,requestTimeout:20000});
 let startupLoading=true,startupProgress=null,startupError=null,startupGraphicsLoaded=false;
-async function preloadStartupGraphics(){
-  while(true){
-    try{
-      startupError=null;$("assetGateRetry").hidden=true;updateAssetGate();
-      await forgeAssets.preloadAll({retry:true,onProgress:value=>{startupProgress=value;updateAssetGate();}});
-      if(forgeAssets.enabled()){localTroopImagesReady=true;troopImageLoadPromise=Promise.resolve();}
-      startupGraphicsLoaded=true;updateAssetGate();return;
-    }catch(error){
-      startupError=error;updateAssetGate();
-      await new Promise(resolve=>{$("assetGateRetry").onclick=()=>{$("assetGateRetry").onclick=null;resolve();};});
-    }
+let retryingGraphics=false;
+function updateGraphicsWarnings(report=forgeAssets.report){
+  window.FactionForgeGraphicsReport=report;
+  const entries=report.failures || [],warning=$("ffGraphicsWarnings"),list=$("ffGraphicsWarningList");
+  warning.hidden=!entries.length&&!retryingGraphics;$("ffGraphicsWarningSummary").textContent=`Graphics warnings (${entries.length})`;
+  $("ffGraphicsRetry").disabled=retryingGraphics;$("ffGraphicsRetry").textContent=retryingGraphics?"Retrying graphics…":"Retry missing graphics";
+  $("ffGraphicsWarningStatus").textContent=retryingGraphics?"Retrying unavailable graphics. You can keep playing.":"Some graphics are unavailable. The game is using available artwork and troop symbols.";
+  list.replaceChildren();
+  for(const entry of entries){
+    const item=document.createElement("li"),label=document.createElement("strong"),reason=document.createElement("div");
+    label.textContent=entry.path || "Graphics startup";reason.textContent=`${entry.stage}${entry.during?" ("+entry.during+")":""}: ${entry.message}${entry.fallbackUsed?" Using the built-in graphics manifest.":""}${entry.probeMessage?" "+entry.probeMessage:""}`;
+    item.append(label,reason);
+    if(entry.url){const link=document.createElement("a");link.href=entry.url;link.target="_blank";link.rel="noopener noreferrer";link.textContent=entry.url;item.append(link);}
+    list.append(item);
   }
+}
+forgeAssets.subscribeDiagnostics(updateGraphicsWarnings);
+$("ffGraphicsRetry").onclick=async()=>{
+  if(retryingGraphics)return;retryingGraphics=true;updateGraphicsWarnings();
+  try{
+    await forgeAssets.preloadAll({retry:true,allowFailures:true});
+    spriteRenderer?.clear();expansionUI?.refresh();await spriteRenderer?.paintTerrain?.(cellsEl,viewport,'contested-forge');
+  }catch(error){console.warn("Graphics retry failed",error);}
+  finally{retryingGraphics=false;updateGraphicsWarnings();}
+};
+async function preloadStartupGraphics(){
+  startupError=null;$("assetGateRetry").hidden=true;updateAssetGate();
+  const report=await forgeAssets.preloadAll({allowFailures:true,onProgress:value=>{startupProgress=value;updateAssetGate();}});
+  updateGraphicsWarnings(report.failures?report:forgeAssets.report);
+  if(report.failures?.length)console.warn("Faction Forge opened with unavailable graphics",report);
+  // Readiness means every image was attempted. Missing artwork uses the existing
+  // fallback renderer and must not prevent either player from joining a match.
+  if(forgeAssets.enabled()){localTroopImagesReady=true;troopImageLoadPromise=Promise.resolve();}
+  startupGraphicsLoaded=true;updateAssetGate();
 }
 const startupGraphicsReady=preloadStartupGraphics();
 function finishExpansionStartup(){
@@ -1585,7 +1610,7 @@ function updateAssetGate(){
     g.style.display="grid";g.classList.toggle("error",!!startupError);$("assetGateTitle").textContent="FACTION FORGE";
     st.textContent=startupError?startupError.message:startupGraphicsLoaded?"Connecting your profile…":startupProgress?.total?`Loading graphics… ${startupProgress.loaded} / ${startupProgress.total}`:"Loading graphics…";
     pl.textContent=gameId?"Preparing your multiplayer game…":"Preparing your main menu…";
-    if(startupProgress?.total){progress.max=startupProgress.total;progress.value=startupProgress.loaded;}return;
+    if(startupProgress?.total){progress.max=startupProgress.total;progress.value=startupProgress.completed;}return;
   }
   const ph=S&&S.phase,show=executionMode!=="menu"&&!isSecureMode()&&(!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading");
   g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);$("assetGateTitle").textContent="Loading troop graphics";

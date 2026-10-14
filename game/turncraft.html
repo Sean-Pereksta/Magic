@@ -325,6 +325,8 @@ body.selection-active canvas{cursor:crosshair}
 #loadingOverlay[hidden]{display:none!important}
 html.tc-booting body>:not(#loadingOverlay){visibility:hidden}
 #loadingRetry{margin-top:18px;min-height:44px;padding:10px 22px;border:1px solid #8acbff;border-radius:12px;background:#153a5b;color:#fff;font-weight:800;cursor:pointer}
+#graphicsWarnings{position:fixed;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:999;max-width:min(460px,calc(100vw - 24px));max-height:55dvh;overflow:auto;padding:10px 14px;border:1px solid #bd9752;border-radius:12px;background:#152337;color:#eef5ff;font-size:12px;box-shadow:0 8px 30px #0008}
+#graphicsWarnings[hidden]{display:none}#graphicsWarnings summary{cursor:pointer;color:#ffe0a0;font-weight:700;min-height:24px}#graphicsWarnings li{margin:9px 0;overflow-wrap:anywhere}#graphicsWarnings a{color:#9dd8ff}#graphicsWarnings button{min-height:40px;margin-top:6px;padding:8px 14px;cursor:pointer}
 #overlay{display:flex;align-items:center;justify-content:center;padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));overflow:auto}
 #startCard{width:min(1040px,calc(100vw - 18px));max-height:calc(100dvh - max(16px,env(safe-area-inset-top)) - max(16px,env(safe-area-inset-bottom)));padding:15px 17px 12px;display:flex;flex-direction:column;overflow:auto;overscroll-behavior:contain}
 #startCard h1{font-size:clamp(26px,4vw,44px);margin-bottom:3px}
@@ -644,7 +646,7 @@ let gameStarted=false,paused=false,spectating=false,gameOver=false,lastFrame=per
 let particles=[],shots=[],floating=[],shatters=[],areaEffects=[],pendingImpacts=[],temporaryObstacles=[],lastSeenIntel=new Map(),scanEffects=[];
 let chosenMapId='classic';
 let mapReadyPending=false,readyMapVote=null,mapPopoutCloseTimer=null;
-const MAP_DEFINITIONS=window.TurncraftMaps.definitions,mapLayoutCache=new Map(),MAP_ATLASES=new Map(),MAP_ATLAS_LOADS=new Map();
+const MAP_DEFINITIONS=window.TurncraftMaps.definitions,BASE_MAP_IDS=new Set(MAP_DEFINITIONS.map(map=>map.id)),mapLayoutCache=new Map(),MAP_ATLASES=new Map(),MAP_ATLAS_LOADS=new Map(),MAP_ATLAS_FAILURES=new Map();
 let chosenFaction='frontier',chosenDifficulty='medium',chosenAiCount=2,chosenAiStyle='balanced',chosenGameMode='annihilation',modeState=null;
 let visionCache=new Map(),visionCacheAt=0,lastObjectiveTick=0;
 let dragging=false,dragStart=null,pointerMoved=false,activePointers=new Map(),pinch=null,selectionBox=null,selectionHoldTimer=null,lastCanvasTap={at:0,entityId:null},lastStackTap={key:'',idx:0,at:0},uiRenderSignature='',uiPointerLock=false,pseudoFullscreen=false,lastAutoExpandedSelectionId=null;
@@ -730,7 +732,17 @@ function entityAssetKey(e){if(!e)return null;if(e.kind==='larva')return 'larva.p
 function mapDefinition(id=chosenMapId){return MAP_DEFINITIONS.find(map=>map.id===id)||MAP_DEFINITIONS[0]}
 function mapLayout(id=chosenMapId,seed=activeMapSeed){const map=mapDefinition(id),key=map.id+':'+(seed>>>0);if(!mapLayoutCache.has(key)){if(mapLayoutCache.size>=16)mapLayoutCache.delete(mapLayoutCache.keys().next().value);mapLayoutCache.set(key,window.TurncraftMaps.generate(map.id,seed))}return mapLayoutCache.get(key)}
 function resolveMapVote(records){const votes=records.filter(r=>r.ready!==false&&MAP_DEFINITIONS.some(map=>map.id===r.mapVote));if(!votes.length)return 'classic';return [...MAP_DEFINITIONS].sort((a,b)=>votes.filter(r=>r.mapVote===b.id).length-votes.filter(r=>r.mapVote===a.id).length||Math.min(...votes.filter(r=>r.mapVote===a.id).map(r=>Number.isFinite(Number(r.readyAtMs))?Number(r.readyAtMs):Infinity))-Math.min(...votes.filter(r=>r.mapVote===b.id).map(r=>Number.isFinite(Number(r.readyAtMs))?Number(r.readyAtMs):Infinity))||MAP_DEFINITIONS.indexOf(a)-MAP_DEFINITIONS.indexOf(b))[0].id}
-function loadMapAtlas(id=chosenMapId){terrainRenderer?.load(id);if(id==='classic')return Promise.resolve(false);if(MAP_ATLAS_LOADS.has(id))return MAP_ATLAS_LOADS.get(id);const promise=new Promise(resolve=>{const img=new Image();img.decoding='async';let done=false;const finish=ok=>{if(done)return;done=true;clearTimeout(timer);img.onload=img.onerror=null;if(ok)MAP_ATLASES.set(id,img);else MAP_ATLAS_LOADS.delete(id);resolve(ok)},timer=setTimeout(()=>finish(false),20000);img.onload=()=>Promise.resolve(img.decode?.()).then(()=>finish(!!img.naturalWidth),()=>finish(false));img.onerror=()=>finish(false);img.src=new URL('turncraft/assets/maps/'+id+'.webp',location.href).href});MAP_ATLAS_LOADS.set(id,promise);return promise}
+function loadMapAtlas(id=chosenMapId){
+ // Campaign regions use their Cloudflare expansion terrain, not local map atlases.
+ if(!BASE_MAP_IDS.has(id))return Promise.resolve(false);
+ terrainRenderer?.load(id);if(id==='classic')return Promise.resolve(false);if(MAP_ATLAS_LOADS.has(id))return MAP_ATLAS_LOADS.get(id);
+ const url=new URL('turncraft/assets/maps/'+id+'.webp',location.href).href;
+ const promise=new Promise(resolve=>{const img=new Image();img.decoding='async';let done=false;
+  const finish=(ok,stage,reason)=>{if(done)return;done=true;clearTimeout(timer);img.onload=img.onerror=null;if(ok){MAP_ATLASES.set(id,img);MAP_ATLAS_FAILURES.delete(id)}else{MAP_ATLAS_LOADS.delete(id);MAP_ATLAS_FAILURES.set(id,{url,stage,reason})}resolve(ok)},timer=setTimeout(()=>finish(false,'timeout','Map illustration did not finish loading within 20 seconds.'),20000);
+  img.onload=()=>Promise.resolve(img.decode?.()).then(()=>finish(!!img.naturalWidth,'decode','Map illustration has no drawable pixels.'),error=>finish(false,'decode',error.message||'The browser could not decode this illustration.'));
+  img.onerror=()=>finish(false,'download','The browser could not download this map illustration.');img.src=url;
+ });MAP_ATLAS_LOADS.set(id,promise);return promise;
+}
 function updateMapPresentation(){const title=document.getElementById('minimapTitle');if(title)title.textContent=mapDefinition().name;loadMapAtlas()}
 function drawMapTerrain(tile,screen,size){if(terrainRenderer?.drawTile(ctx,tile,screen,size)){terrainRenderer.drawAmbient(ctx,tile,screen,size,nowMs(),tileVisibleToFaction(PLAYER,tile.x,tile.y));return true}if(chosenMapId==='classic'||!tile)return false;const map=mapDefinition(),atlas=MAP_ATLASES.get(chosenMapId),index=tile.blocked?2:tile.type==='lane'?1:tile.type==='expansion'?3:0;
  if(atlas){const halfW=atlas.naturalWidth/2,halfH=atlas.naturalHeight/2,smoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.drawImage(atlas,(index%2)*halfW,Math.floor(index/2)*halfH,halfW,halfH,screen.x,screen.y,size+1,size+1);ctx.imageSmoothingEnabled=smoothing}else{ctx.fillStyle=map.palette[tile.type]||map.palette.ground;ctx.fillRect(screen.x,screen.y,size+1,size+1)}
@@ -764,21 +776,43 @@ async function loadStaticAtlasFrame(file){
 function loadTurncraftImage(file,{recordFailure=true}={}){return new Promise(resolve=>{const candidates=[file,ASSET_ALIASES[file]].filter(Boolean);let index=0;const tryNext=()=>{if(index>=candidates.length){loadStaticAtlasFrame(file).catch(()=>false).then(ok=>{if(!ok&&recordFailure&&!ASSET_FAILURES.includes(file))ASSET_FAILURES.push(file);resolve(ok)});return}const img=new Image(),candidate=candidates[index++];let settled=false;const finish=ok=>{if(settled)return;settled=true;clearTimeout(timer);if(ok){ASSET_IMAGES.set(file,compactStaticAsset(img));FALLBACK_ASSETS.delete(file);resolve(true)}else tryNext()},timer=setTimeout(()=>finish(false),8000);img.decoding='async';img.onload=()=>finish(true);img.onerror=()=>finish(false);img.src=assetUrl(candidate)};tryNext()})}
 function installFallbackAsset(file){const c=document.createElement('canvas');c.width=128;c.height=128;const x=c.getContext('2d'),seed=[...file].reduce((n,ch)=>(n*33+ch.charCodeAt(0))>>>0,5381),hue=seed%360,label=file.replace('.png','').split(/\s+/).map(v=>v[0]).join('').slice(0,3).toUpperCase();x.fillStyle=`hsl(${hue} 45% 17%)`;x.fillRect(0,0,128,128);x.strokeStyle=`hsl(${hue} 82% 68%)`;x.lineWidth=8;x.strokeRect(8,8,112,112);x.fillStyle='rgba(255,255,255,.12)';x.beginPath();x.arc(64,64,42,0,Math.PI*2);x.fill();x.fillStyle='#f5fbff';x.textAlign='center';x.textBaseline='middle';x.font='900 35px system-ui';x.fillText(label||'?',64,66);ASSET_IMAGES.set(file,c);FALLBACK_ASSETS.add(file)}
 async function recheckFailedTurncraftGraphics(failedFiles){const retryFiles=[...new Set(failedFiles||[])].filter(file=>file&&(!ASSET_IMAGES.has(file)||FALLBACK_ASSETS.has(file)));if(!retryFiles.length)return 0;loadingStatus.textContent=`Rechecking ${retryFiles.length} Turncraft graphic${retryFiles.length===1?'':'s'} that did not finish loading…`;let recovered=0,cursor=0;const concurrency=Math.min(4,retryFiles.length);async function worker(){while(cursor<retryFiles.length){const file=retryFiles[cursor++];if(await loadTurncraftImage(file,{recordFailure:false})){recovered++;const i=ASSET_FAILURES.indexOf(file);if(i>=0)ASSET_FAILURES.splice(i,1);loadingStatus.textContent=`Recovered missing graphic: ${file}`}}}await Promise.all(Array.from({length:concurrency},worker));return recovered}
+function showGraphicsReport(report){
+ window.TurncraftGraphicsReport=report;
+ let panel=document.getElementById('graphicsWarnings');
+ if(!panel){panel=document.createElement('details');panel.id='graphicsWarnings';panel.setAttribute('aria-label','Graphics loading details');document.body.append(panel)}
+ panel.replaceChildren();panel.hidden=!report.failures.length;if(panel.hidden)return;
+ const summary=document.createElement('summary');summary.textContent=`Some graphics unavailable (${report.failures.length})`;
+ const note=document.createElement('p');note.textContent='The game is open using the artwork that loaded. Details below explain which graphics could not load.';
+ const list=document.createElement('ul');
+ for(const failure of report.failures){const item=document.createElement('li'),reason=document.createElement('div');reason.textContent=`${failure.stage}${failure.status?` · HTTP ${failure.status}`:''}: ${failure.reason}`;item.append(reason);if(failure.probeReason){const probe=document.createElement('div');probe.textContent=failure.probeReason;item.append(probe)}if(failure.url){const link=document.createElement(/^https?:\/\//.test(failure.url)?'a':'span');link.textContent=failure.url;if(link.tagName==='A'){link.href=failure.url;link.target='_blank';link.rel='noopener'}item.append(link)}list.append(item)}
+ const retry=document.createElement('button');retry.type='button';retry.textContent='Retry missing graphics';retry.onclick=async()=>{retry.disabled=true;retry.textContent='Retrying graphics…';window.TurncraftGraphicsReport={...report};try{await preloadTurncraftGraphics()}catch(error){showGraphicsReport({...report,failures:[...report.failures,{stage:'retry',reason:error.message||'Graphics retry failed.'}]})}};
+ const dismiss=document.createElement('button');dismiss.type='button';dismiss.textContent='Hide details';dismiss.onclick=()=>{panel.hidden=true};
+ panel.append(summary,note,list,retry,dismiss);
+ console.warn('Turncraft graphics loading report',report);
+}
 async function preloadTurncraftGraphics(){
- if(!window.TurncraftPreload)throw new Error('The graphics loader could not open. Reload this page to retry.');
- const result=await window.TurncraftPreload.preload({graphicsBaseUrl:TURNCRAFT_GRAPHICS_BASE,onProgress:progress=>{
-  loadingFill.style.width=`${progress.percent}%`;document.getElementById('loadingTrack').setAttribute('aria-valuenow',String(progress.percent));
-  loadingCount.textContent=progress.total?`${progress.completed} / ${progress.total} graphics`:'Preparing graphics catalog';
-  loadingStatus.textContent=progress.phase==='manifests'?'Reading the graphics catalog…':`Loading and decoding graphics · ${progress.percent}%`;
- }});
- if(spriteRuntime){spriteRuntime.manifest=result.animationManifest;spriteRuntime.cache.setCropRepairs?.(result.animationManifest.cropRepairs)}
- // Populate the renderer caches before any battlefield can begin.
- loadingStatus.textContent='Preparing battlefield terrain…';
- const maps=window.TurncraftTerrain?.MAP_IDS||[];
- await Promise.all(maps.map(id=>terrainRenderer?.load(id)));
- const mapResults=await Promise.all(MAP_DEFINITIONS.filter(map=>map.id!=='classic').map(map=>loadMapAtlas(map.id)));
- if(mapResults.some(ok=>!ok))throw new Error('Battlefield illustrations could not finish loading. Please retry.');
- if(terrainRenderer?.stats.failures.length)throw new Error('Battlefield terrain could not finish loading. Please retry.');
+ const startedAt=new Date().toISOString();let result={total:0,completed:0,attempted:0,failures:[]};
+ try{
+  if(!window.TurncraftPreload)throw new Error('The graphics loader script could not open. Available terrain will still load.');
+  result=await window.TurncraftPreload.preload({allowFailures:true,graphicsBaseUrl:TURNCRAFT_GRAPHICS_BASE,onProgress:progress=>{
+   const percent=Number(progress.percent)||0;loadingFill.style.width=`${percent}%`;document.getElementById('loadingTrack').setAttribute('aria-valuenow',String(percent));
+   loadingCount.textContent=progress.total?`${progress.attempted??progress.completed} / ${progress.total} checked · ${progress.completed} loaded${progress.failed?` · ${progress.failed} unavailable`:''}`:'Preparing graphics catalog';
+   loadingStatus.textContent=progress.phase==='manifests'?'Reading the graphics catalog…':`Loading available graphics · ${percent}%`;
+  }});
+ }catch(error){
+  result.failures=(error.failedUrls||[new URL('turncraft/preload.js',location.href).href]).map(url=>({url,stage:'preload',reason:error.message||'Graphics preload failed.'}));
+ }
+ if(spriteRuntime&&result.animationManifest?.assets){spriteRuntime.manifest=result.animationManifest;spriteRuntime.cache.setCropRepairs?.(result.animationManifest.cropRepairs)}
+ loadingStatus.textContent='Preparing available battlefield terrain…';
+ const preparations=await Promise.allSettled([
+  ...(window.TurncraftTerrain?.MAP_IDS||[]).map(id=>terrainRenderer?.load(id)),
+  ...[...BASE_MAP_IDS].filter(id=>id!=='classic').map(id=>loadMapAtlas(id))
+ ]);
+ const failures=[...(result.failures||[]),...MAP_ATLAS_FAILURES.values(),...(terrainRenderer?.stats.failureDetails||[])];
+ for(const preparation of preparations)if(preparation.status==='rejected')failures.push({stage:'prepare',reason:preparation.reason?.message||String(preparation.reason)});
+ const unique=[...new Map(failures.map(failure=>[failure.url||failure.stage,failure])).values()];
+ const report={startedAt,finishedAt:new Date().toISOString(),total:result.total||0,loaded:result.completed||0,attempted:result.attempted??result.completed??0,failures:unique};showGraphicsReport(report);
+ if(unique.length&&window.TurncraftPreload?.diagnoseFailures)void window.TurncraftPreload.diagnoseFailures(unique).then(failures=>{if(window.TurncraftGraphicsReport===report)showGraphicsReport({...report,failures})}).catch(error=>console.debug('Graphics diagnostics unavailable',error));
  return result;
 }
 function imageHtmlForType(type,alt=''){const key=assetKeyForType(type),d=STRUCTURES[type]||UNITS[type]||{};if(GLYPH_ONLY_ASSETS.has(key))return `<span class="assetFallback" aria-hidden="true">${d.icon||'?'}</span>`;const source=ASSET_ALIASES[key]||key;return `<img class="assetThumb" src="${assetUrl(source)}" alt="${alt||key}" loading="eager" decoding="async" onerror="if(this.parentNode)this.outerHTML='<span class=&quot;assetFallback&quot; aria-hidden=&quot;true&quot;>${d.icon||'?'}</span>'">`}
@@ -2680,7 +2714,7 @@ async function boot(){
  if(booting||window.TurncraftStartup.isReady)return;booting=true;
  const retry=document.getElementById('loadingRetry');retry.hidden=true;loadingOverlay.setAttribute('aria-busy','true');startBtn.disabled=true;
  try{
-  resize();await preloadTurncraftGraphics();
+  resize();try{await preloadTurncraftGraphics()}catch(error){showGraphicsReport({total:0,loaded:0,attempted:0,failures:[{stage:'prepare',reason:error.message||'Graphics preparation failed. Available artwork will be used.'}]})}
   loadingStatus.textContent=lobbyId?'Connecting to your multiplayer battlefield…':'Opening your command center…';
   await bootNetwork();
   if(!gameStarted)overlay.style.display='flex';

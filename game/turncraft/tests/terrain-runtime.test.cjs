@@ -15,8 +15,11 @@ test('terrain startup waits for decoding and retries a failed sheet without relo
     const renderer=createRenderer(),first=renderer.load('classic');let settled=false;first.then(()=>{settled=true});
     await new Promise(resolve=>setImmediate(resolve));assert.equal(settled,false);assert.equal(decodes.length,3);
     decodes.splice(0).forEach(done=>done());assert.equal(await first,false);assert.deepEqual(renderer.stats.failures,['classic']);
+    assert.equal(renderer.stats.failureDetails[0].stage,'decode');assert.equal(renderer.stats.failureDetails[0].reason,'Decode failed');assert.match(renderer.stats.failureDetails[0].url,/classic.terrain.webp$/);
+    const terrain=field();for(let now=0;now<3;now++)renderer.prepare({mapId:'classic',terrain,seed:1,width:16,height:16,quality:'medium',now});
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(requests.length,3,'rendering with a fallback must not retry a failed image every frame');
     const retry=renderer.load('classic');await new Promise(resolve=>setImmediate(resolve));assert.equal(decodes.length,1);
-    decodes.shift()();assert.equal(await retry,true);assert.deepEqual(renderer.stats.failures,[]);assert.equal(requests.length,4);
+    decodes.shift()();assert.equal(await retry,true);assert.deepEqual(renderer.stats.failures,[]);assert.deepEqual(renderer.stats.failureDetails,[]);assert.equal(requests.length,4);
   }finally{global.Image=original}
 });
 async function renderer(){global.Image=class{constructor(){this.width=this.naturalWidth=1024;this.height=this.naturalHeight=1024}set src(value){this.url=value;this.onload()}};const paint=drawing(),r=createRenderer({makeCanvas:paint.canvas});await r.load('classic');return {r,paint}}

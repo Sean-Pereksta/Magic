@@ -69,19 +69,50 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
   const configuredManifest=()=>initialManifest || (!manifestUrl ? fallbackManifest : null);
   let base=normalizeAssetBase(baseUrl), manifest=configuredManifest(), manifestPromise=null;
   const cache=new Map(), pending=new Map(), failed=new Set(), retained=new Map();
+  const diagnostics=new Map(),diagnosticListeners=new Set();let lastProgress={loaded:0,completed:0,total:0};
   const stats={loads:0,failures:0,evictions:0};
   const enabled=()=>!!base;
+  const report=()=>({...lastProgress,assetBaseUrl:base,failures:[...diagnostics.values()]});
+  const notifyDiagnostics=()=>{for(const listener of diagnosticListeners)listener(report());};
+  function failure(path,url,stage,error,extra={}){
+    const entry={path,url,stage,message:error?.message || String(error || "Unknown graphics error"),...extra};
+    diagnostics.set(path,entry);failed.add(path);cache.delete(path);retained.delete(path);stats.failures++;notifyDiagnostics();return entry;
+  }
+  function probeDownload(entry){
+    // Image error events hide HTTP status, particularly for cross-origin images.
+    // A separate best-effort request can explain a missing object or server error;
+    // CORS may hide that response too. This diagnostic never delays game startup.
+    if(typeof fetchImpl!=="function")return;
+    Promise.resolve().then(async()=>{
+      try{
+        const response=await abortableFetch(fetchImpl,entry.url,requestTimeout);
+        if(diagnostics.get(entry.path)!==entry)return;
+        if(response.status){entry.httpStatus=response.status;entry.httpStatusText=response.statusText || "";}
+        entry.responseType=response.type || "";
+        entry.contentType=response.headers?.get?.("content-type") || "";
+        entry.probeMessage=response.status?`Diagnostic request returned HTTP ${response.status}${response.statusText?" "+response.statusText:""}.`:"The browser did not expose an HTTP status.";
+        if(entry.contentType)entry.probeMessage+=` Content-Type: ${entry.contentType}.`;
+        if(response.ok)entry.probeMessage+=" The download endpoint responds, but the browser could not load its response as an image.";
+        // Reading the response body is unnecessary for a status-only diagnostic.
+        response.body?.cancel?.().catch?.(()=>{});
+      }catch(error){
+        if(diagnostics.get(entry.path)!==entry)return;
+        entry.probeMessage=`Diagnostic request: ${error?.message || String(error)}. HTTP status is unavailable; the browser may have blocked the request or its response (including CORS).`;
+      }
+      notifyDiagnostics();
+    });
+  }
   async function loadManifest(){
     if(manifest) return manifest;
     if(!base) return null;
     if(!manifestPromise) manifestPromise=(async()=>{
       try{
         const response=await abortableFetch(fetchImpl,manifestUrl || safeAssetUrl(base,"manifest.json"),requestTimeout);
-        if(!response.ok) throw new Error("Graphics manifest unavailable.");
+        if(!response.ok) throw new Error(`Graphics manifest returned HTTP ${response.status || "unknown"}${response.statusText?" "+response.statusText:""}.`);
         const candidate=await response.json();
         if(!candidate.units || typeof candidate.units !== "object") throw new Error("Invalid graphics manifest.");
         manifest=candidate; return manifest;
-      }catch(error){stats.failures++;manifest=fallbackManifest || null;return manifest;}
+      }catch(error){failure("manifest.json",manifestUrl || safeAssetUrl(base,"manifest.json"),"manifest",error,{fallbackUsed:!!fallbackManifest});manifest=fallbackManifest || null;return manifest;}
     })();
     return manifestPromise;
   }
@@ -91,22 +122,26 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
     if(retained.has(path))return retained.get(path);
     if(cache.has(path)) return touch(path,cache.get(path));
     if(pending.has(path)) return pending.get(path);
-    let src;try{src=safeAssetUrl(base,path);}catch{failed.add(path);stats.failures++;return null;}
+    let src;try{src=safeAssetUrl(base,path);}catch(error){failure(path,"","path",error);return null;}
     const promise=new Promise(resolve=>{
-      const image=imageFactory();let settled=false;
-      const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);image.onload=null;image.onerror=null;if(value){stats.loads++;touch(path,image);}else{failed.add(path);stats.failures++;}resolve(value);};
-      const timer=setTimeout(()=>{finish(null);image.src="";},requestTimeout);
+      let image;try{image=imageFactory();}catch(error){failure(path,src,"download",error);resolve(null);return;}
+      let settled=false,stage="download";
+      const finish=(value,error,reason=stage)=>{if(settled)return;settled=true;clearTimeout(timer);image.onload=null;image.onerror=null;if(value){stats.loads++;diagnostics.delete(path);touch(path,image);}else{const entry=failure(path,src,reason,error,reason==="timeout"?{during:stage,timeoutMs:requestTimeout}:{});if(reason==="download")probeDownload(entry);}resolve(value);};
+      const timer=setTimeout(()=>{finish(null,new Error(`Timed out after ${requestTimeout} ms while ${stage==="decode"?"decoding":"downloading"} the image.`),"timeout");image.src="";},requestTimeout);
       // Display-only canvases can draw public R2 images without CORS headers.
       // Opt into anonymous CORS only when a caller explicitly needs pixel readback.
       if(crossOrigin)image.crossOrigin=crossOrigin;image.decoding="async";
       image.onload=async()=>{
+        if(settled)return;
         try{
+          stage="decode";
           if(!(image.width>0 && image.height>0))throw new Error("Empty graphics image.");
           // A completed download is not yet safe to reveal until decoding ends.
           if(typeof image.decode==="function")await image.decode();
           finish(image);
-        }catch{finish(null);}
-      };image.onerror=()=>finish(null);image.src=src;
+        }catch(error){finish(null,error);}
+      };image.onerror=event=>finish(null,new Error(event?.message || "The browser could not load this image response. Image error events do not expose the HTTP status."),"download");
+      try{image.src=src;}catch(error){finish(null,error,"download");}
     }).finally(()=>pending.delete(path));
     pending.set(path,promise);return promise;
   }
@@ -115,22 +150,24 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
     const entry=data.units[key], spec=entry?.tiers?.[String(tier)] || entry?.[String(tier)] || data.units[`${key}-tier${tier}`];
     if(!spec) return null;
     const image=await loadImage(spec.path || spec.file);if(!image)return null;
-    try{for(const name of Object.keys(spec.animations || {idle:true})){for(const frame of animationDefinition(spec,name).frames) frameRectangle(spec,frame,image);}}catch{failed.add(spec.path || spec.file);return null;}
+    try{for(const name of Object.keys(spec.animations || {idle:true})){for(const frame of animationDefinition(spec,name).frames) frameRectangle(spec,frame,image);}}catch(error){const path=spec.path || spec.file;failure(path,safeAssetUrl(base,path),"validation",error);return null;}
     return {image,spec,key,tier};
   }
   async function asset(group,key){
     const data=await loadManifest();const entry=data?.[group]?.[key];const path=typeof entry === "string" ? entry : entry?.path || entry?.file;
     if(!path)return null;const image=await loadImage(path);if(!image)return null;
     const spec=typeof entry==="object"?entry:{path};
-    if(spec.frameWidth && spec.frameHeight){try{const columns=spec.columns||Math.floor(image.width/spec.frameWidth),rows=spec.rows||Math.floor(image.height/spec.frameHeight);frameRectangle({...spec,columns},0,image);frameRectangle({...spec,columns},columns*rows-1,image);}catch{stats.failures++;failed.add(path);return null;}}
+    if(spec.frameWidth && spec.frameHeight){try{const columns=spec.columns||Math.floor(image.width/spec.frameWidth),rows=spec.rows||Math.floor(image.height/spec.frameHeight);frameRectangle({...spec,columns},0,image);frameRectangle({...spec,columns},columns*rows-1,image);}catch(error){failure(path,safeAssetUrl(base,path),"validation",error);return null;}}
     return {image,spec,url:safeAssetUrl(base,path)};
   }
-  async function preloadAll({onProgress=()=>{},concurrency=6,retry=false}={}){
+  async function preloadAll({onProgress=()=>{},concurrency=6,retry=false,allowFailures=false}={}){
     if(!enabled())return {loaded:0,total:0};
+    if(retry&&manifestUrl&&diagnostics.has("manifest.json")){manifest=null;manifestPromise=null;diagnostics.delete("manifest.json");failed.delete("manifest.json");}
     const data=await loadManifest();
-    if(!data)throw new Error("Faction Forge graphics manifest is unavailable.");
+    if(!data){if(allowFailures)return report();throw new Error("Faction Forge graphics manifest is unavailable.");}
     const paths=manifestImagePaths(data),failures=[];let next=0,loaded=0,completed=0;
-    if(retry)for(const path of paths)failed.delete(path);
+    if(retry)for(const path of paths){failed.delete(path);diagnostics.delete(path);}
+    lastProgress={loaded,completed,total:paths.length};
     onProgress({loaded,completed,total:paths.length});
     const worker=async()=>{
       while(next<paths.length){
@@ -138,15 +175,17 @@ export function createAssetLoader({baseUrl="",manifestUrl,manifest:initialManife
         // Keep preloaded decoded images alive for the entire game session. The
         // ordinary lazy cache remains bounded for optional, non-manifest art.
         if(image){retained.set(path,image);loaded++;}else failures.push(path);
-        completed++;onProgress({loaded,completed,total:paths.length});
+        completed++;lastProgress={loaded,completed,total:paths.length};onProgress(lastProgress);
       }
     };
     await Promise.all(Array.from({length:Math.min(paths.length,Math.max(1,Math.floor(concurrency)||1))},worker));
-    if(failures.length){const error=new Error(`Unable to load ${failures.length} Faction Forge graphic${failures.length===1?"":"s"}. Check your connection and retry.`);error.paths=failures;throw error;}
+    notifyDiagnostics();
+    if(failures.length&&!allowFailures){const error=new Error(`Unable to load ${failures.length} Faction Forge graphic${failures.length===1?"":"s"}. Check your connection and retry.`);error.paths=failures;error.report=report();throw error;}
+    if(allowFailures)return report();
     return {loaded,total:paths.length};
   }
-  function configure(value){base=normalizeAssetBase(value);manifest=configuredManifest();manifestPromise=null;cache.clear();retained.clear();failed.clear();}
-  return {enabled,loadManifest,loadImage,preloadAll,unit,asset,url:path=>safeAssetUrl(base,path),configure,peek:path=>retained.get(path)||cache.get(path),stats,get baseUrl(){return base;},get manifest(){return manifest;},get cacheSize(){return cache.size;},get preloadedSize(){return retained.size;}};
+  function configure(value){base=normalizeAssetBase(value);manifest=configuredManifest();manifestPromise=null;cache.clear();retained.clear();failed.clear();diagnostics.clear();lastProgress={loaded:0,completed:0,total:0};notifyDiagnostics();}
+  return {enabled,loadManifest,loadImage,preloadAll,unit,asset,url:path=>safeAssetUrl(base,path),configure,peek:path=>retained.get(path)||cache.get(path),subscribeDiagnostics(listener){diagnosticListeners.add(listener);return ()=>diagnosticListeners.delete(listener);},stats,get report(){return report();},get baseUrl(){return base;},get manifest(){return manifest;},get cacheSize(){return cache.size;},get preloadedSize(){return retained.size;}};
 }
 
 export function drawSpriteFrame(context,image,rect,{x=0,y=0,width=rect.width,height=rect.height,flip=false}={}){
