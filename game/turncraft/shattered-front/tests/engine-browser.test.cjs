@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const repo = path.resolve(__dirname, '../../../..');
-const stub = `const initializeApp=()=>({}),getAuth=()=>({currentUser:{uid:'browser-test'}}),getFirestore=()=>({}),doc=(...parts)=>parts.slice(1).join('/'),getDoc=async()=>({exists:()=>true,data:()=>window.sfLobby}),onAuthStateChanged=(auth,callback)=>{queueMicrotask(()=>callback(auth.currentUser));return()=>{};},signInAnonymously=async()=>{},serverTimestamp=()=>({test:true}),setDoc=async(ref,data)=>{window.sfWrites=window.sfWrites||[];sfWrites.push({ref,data:JSON.parse(JSON.stringify(data))});};`;
+const stub = `const initializeApp=()=>({}),getAuth=()=>({currentUser:{uid:'browser-test'}}),getFirestore=()=>({}),doc=(...parts)=>parts.slice(1).join('/'),getDoc=async ref=>{window.sfReads=window.sfReads||[];sfReads.push(ref);return {exists:()=>ref.startsWith('users/')?!!window.sfAccounts?.[ref]:true,data:()=>ref.startsWith('users/')?window.sfAccounts?.[ref]:window.sfLobby};},onAuthStateChanged=(auth,callback)=>{queueMicrotask(()=>callback(auth.currentUser));return()=>{};},signInAnonymously=async()=>{},serverTimestamp=()=>({test:true}),runTransaction=async()=>{},setDoc=async(ref,data)=>{window.sfWrites=window.sfWrites||[];sfWrites.push({ref,data:JSON.parse(JSON.stringify(data))});};`;
 const expose = `window.sfTest={run:source=>eval(source),advance(seconds){for(let n=0;n<seconds*10;n++){window.sfClock+=100;updatePersistentOrders();updateCombat(.1);resolveProjectileImpacts();updateProduction(.1);updateRegeneration(.1);updateAreaEffects();window.TurncraftExpansion.tick(.1)}},clearWave(){for(const id of window.TurncraftExpansion.getState().activeIds){const e=entityById(id);if(e)killEntity(e,playerUnits(0).find(u=>!isWorker(u)))}}};window.sfClock=Date.now();nowMs=()=>window.sfClock;resize();window.sfResults=[];addEventListener('sf:result',event=>sfResults.push(event.detail));`;
 const source = fs
   .readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
@@ -33,8 +33,10 @@ async function setup(viewport = { width: 1360, height: 900 }) {
     if (pathname === '/game/turncraft/shattered-front/profile.mjs')
       return route.fulfill({
         contentType: 'text/javascript',
-        body: 'export async function request(path,options){return window.sfServerRequest(path,options);} export function rankFor(mmr,matches){return matches?(mmr>=1500?"Diamond":mmr>=1100?"Gold":"Silver"):"Unranked";}'
+        body: 'export function rankFor(mmr,matches){return matches?(mmr>=1500?"Diamond":mmr>=1100?"Gold":"Silver"):"Unranked";}'
       });
+    if (pathname === '/game/turncraft/shattered-front/lobby-store.mjs')
+      return route.fulfill({contentType:'text/javascript',body:'export async function completeCustomMatch(context,id){return window.sfCompleteFirestore(context,id);}'});
     const file = path.resolve(repo, '.' + pathname);
     if (
       file.startsWith(repo + path.sep) &&
@@ -213,106 +215,42 @@ test('mobile wave HUD stays within the screen and its button is touch sized', as
     await browser.close();
   }
 });
-test('ranked browser takes server snapshots and sends raw commands without simulating locally', async () => {
-  const { browser, page, errors } = await setup();
+test('custom multiplayer commands use Firestore while guests leave simulation to the controller', async () => {
+  const {browser,page,errors}=await setup();
   try {
-    const result = await page.evaluate(async () => {
-      sfTest.run(
-        `chosenMapId='classic';chosenGameMode='annihilation';createGame([{name:'Test',factionId:'frontier',ai:false},{name:'Rival',factionId:'brood',ai:false}]);window.sfServerState=serializeState();gameStarted=false;lobbyId='ranked-room';`
-      );
-      window.sfLobby = {
-        turncraftVersion: 1,
-        ranked: true,
-        matchId: 'test-match',
-        status: 'started',
-        members: { 'browser-test': 'Test', rival: 'Rival' },
-        turncraftSeats: ['browser-test', 'rival'],
-        turncraftPlayers: {
-          'browser-test': {
-            name: 'Test',
-            factionId: 'frontier',
-            mmr: 1250,
-            rankedMatches: 12
-          },
-          rival: {
-            name: 'Rival',
-            factionId: 'brood',
-            mmr: 1600,
-            rankedMatches: 20
-          }
-        },
-        settings: { mapId: 'classic', gameMode: 'annihilation' }
-      };
-      window.sfRequests = [];
-      window.sfServerRequest = async (path, options) => {
-        sfRequests.push({ path, options });
-        return { state: sfServerState };
-      };
-      await sfTest.run('bootNetwork()');
-      const id = sfServerState.entities.find(
-        (e) => e.faction === 0 && e.kind === 'unit'
-      ).id;
-      await sfTest.run(`sendCommand({type:'move',entityId:${id},x:10,y:15})`);
-      const before = sfTest.run('JSON.stringify(entities)');
-      sfTest.run('requestAnimationFrame=()=>0;frame(performance.now()+50)');
-      return {
-        requests: sfRequests,
-        controller: sfTest.run('isController'),
-        ranked: sfTest.run('rankedMatchId'),
-        localUnchanged: before === sfTest.run('JSON.stringify(entities)'),
-        badge: document.getElementById('networkText').textContent
-      };
+    const requests=[];page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/api/'))requests.push(request.url());});
+    const result=await page.evaluate(async()=>{
+      sfTest.run(`chosenMapId='classic';chosenGameMode='annihilation';createGame([{name:'Test',factionId:'frontier',ai:false},{name:'Rival',factionId:'brood',ai:false}]);window.sfSharedState=serializeState();lobbyId='custom-room';isController=false;username='Test';lobbyData={turncraftVersion:1,ranked:false,turncraftSeats:['browser-test','rival'],turncraftPlayers:{'browser-test':{name:'Test',factionId:'frontier',mmr:1250,rankedMatches:12},rival:{name:'Rival',factionId:'brood',mmr:1600,rankedMatches:20}}};applyRemoteState(sfSharedState);`);
+      const unit=sfSharedState.entities.find(e=>e.faction===0&&e.kind==='unit');
+      await sfTest.run(`sendCommand({type:'move',entityId:${unit.id},x:10,y:15})`);
+      const before=sfTest.run('JSON.stringify(entities)');sfTest.run('requestAnimationFrame=()=>0;frame(performance.now()+50)');
+      return {writes:sfWrites,controller:sfTest.run('isController'),unchanged:before===sfTest.run('JSON.stringify(entities)'),identity:TurncraftExpansion.getIdentity()};
     });
-    assert.equal(result.controller, false);
-    assert.equal(result.ranked, 'test-match');
-    assert.ok(result.localUnchanged);
-    assert.match(result.badge, /Server verified/);
-    const post = result.requests.find((r) => r.options?.method === 'POST');
-    assert.ok(post, JSON.stringify(result.requests));
-    assert.deepEqual(Object.keys(post.options.body.command).sort(), [
-      'entityId',
-      'type',
-      'x',
-      'y'
-    ]);
-    assert.match(post.options.body.requestId, /^[a-zA-Z0-9_-]{15,120}$/);
-    assert.match(
-      await page.locator('#sfMatchCommanders').textContent(),
-      /Test[\s\S]*Gold · 1250 MMR[\s\S]*Rival[\s\S]*Diamond · 1600 MMR/
-    );
-    assert.equal(
-      await page.locator('#sfMatchCommanders img[alt="Gold rank"]').count(),
-      1
-    );
-    const receipt = await page.evaluate(async () => {
-      window.sfServerState = {
-        ...sfServerState,
-        simulationTick: sfServerState.simulationTick + 1,
-        gameOver: true,
-        matchResult: {
-          winnerIdx: 0,
-          winnerName: 'Test',
-          winnerFactionId: 'frontier',
-          finishedAt: Date.now(),
-          modeId: 'annihilation',
-          reason: 'Server victory'
-        }
-      };
-      window.sfServerRequest = async () => ({
-        state: sfServerState,
-        ratingReceipt: {
-          verified: true,
-          changes: { 'browser-test': { delta: 17, after: 1017 } }
-        }
-      });
-      await sfTest.run('pollRankedState()');
-      return document.getElementById('endText').textContent;
-    });
-    assert.match(receipt, /\+17 MMR/);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser.close();
-  }
+    assert.equal(result.controller,false);assert.equal(result.unchanged,true);assert.equal(result.identity.isRanked,false);
+    const command=result.writes.find(row=>row.ref.includes('chess_starfront_commands'));
+    assert.ok(command,JSON.stringify(result.writes));assert.equal(command.data.type,'move');assert.equal(command.data.slot,0);assert.equal(command.data.by,'Test');
+    assert.match(await page.locator('#sfMatchCommanders').textContent(),/Test[\s\S]*Gold · 1250 MMR[\s\S]*Rival[\s\S]*Diamond · 1600 MMR/);
+    assert.equal(await page.locator('#sfMatchCommanders img[alt="Gold rank"]').count(),1);assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
+test('game client contains no HTTP matchmaking or background ranked polling',()=>{
+  const html=fs.readFileSync(path.join(repo,'game/turncraft.html'),'utf8');
+  assert.doesNotMatch(html,/turncraftRequest|pollRankedState|rankedPollTimer|\/api\/turncraft|\/matches\//);
+  assert.match(html,/completeFirestoreMatch\(\{db,auth,api:\{doc,runTransaction\}\}/);
+});
+
+test('in-match and result badges read existing account ratings once without adding rating data to the lobby',async()=>{
+ const {browser,page,errors}=await setup();try{
+  await page.evaluate(()=>{
+   window.sfAccounts={'users/SavedGold':{gameStats:{turncraft:{mmr:1250,rankedMatches:12}}},'users/SavedDiamond':{gameStats:{turncraft:{mmr:1625,rankedMatches:20}}}};
+   sfTest.run(`chosenMapId='classic';chosenGameMode='annihilation';createGame([{name:'SavedGold',factionId:'frontier',ai:false},{name:'SavedDiamond',factionId:'brood',ai:false}]);window.sfBadgeState=serializeState();lobbyId='custom-room';isController=false;lobbyData={turncraftVersion:1,turncraftSeats:['gold','diamond'],turncraftPlayers:{gold:{name:'SavedGold',factionId:'frontier',ready:true},diamond:{name:'SavedDiamond',factionId:'brood',ready:true}}};applyRemoteState(sfBadgeState);`);
+  });
+  await page.waitForFunction(()=>document.querySelector('#sfMatchCommanders')?.textContent.includes('Diamond · 1625 MMR'));
+  assert.match(await page.locator('#sfMatchCommanders').textContent(),/SavedGold[\s\S]*Gold · 1250 MMR[\s\S]*SavedDiamond[\s\S]*Diamond · 1625 MMR/);
+  await page.evaluate(()=>sfTest.run(`sfBadgeState={...sfBadgeState,simulationTick:sfBadgeState.simulationTick+1,gameOver:true,matchResult:{winnerIdx:0,winnerName:'SavedGold',winnerFactionId:'frontier',finishedAt:Date.now(),modeId:'annihilation',reason:'Custom match complete.'}};applyRemoteState(sfBadgeState);renderPostMatchReport(presentedMatchResult);renderPostMatchReport(presentedMatchResult);`));
+  assert.equal(await page.locator('#postMatchReport img[alt="Gold rank"]').count(),1);assert.equal(await page.locator('#postMatchReport img[alt="Diamond rank"]').count(),1);
+  const state=await page.evaluate(()=>({reads:sfReads.filter(ref=>ref.startsWith('users/')),writes:window.sfWrites||[],lobby:sfTest.run('lobbyData.turncraftPlayers')}));assert.deepEqual(state.reads.sort(),['users/SavedDiamond','users/SavedGold']);assert.deepEqual(state.writes,[]);assert.equal(Object.hasOwn(state.lobby.gold,'mmr'),false);assert.equal(Object.hasOwn(state.lobby.diamond,'rankedMatches'),false);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
 });
 test('custom terminal state is persisted immediately and the second client receives its defeat', async () => {
   const host = await setup(),
@@ -320,10 +258,10 @@ test('custom terminal state is persisted immediately and the second client recei
   try {
     const terminal = await host.page.evaluate(async () => {
       window.sfCompletions = [];
-      window.sfServerRequest = async (path, options) => {
+      window.sfCompleteFirestore = async (context, id) => {
         sfCompletions.push({
-          path,
-          options,
+          id,
+          uid:context.auth.currentUser.uid,
           persisted: sfWrites.at(-1)?.data.gameOver
         });
         return {};
@@ -348,7 +286,8 @@ test('custom terminal state is persisted immediately and the second client recei
     assert.equal(snapshot.matchResult.winnerIdx, 0);
     assert.equal(terminal.completions.length, 1);
     assert.equal(terminal.completions[0].persisted, true);
-    assert.equal(terminal.completions[0].path, '/lobbies/custom-room/complete');
+    assert.equal(terminal.completions[0].id, 'custom-room');
+    assert.equal(terminal.completions[0].uid, 'browser-test');
     const remote = await guest.page.evaluate((snapshot) => {
       sfTest.run(
         `PLAYER=1;lobbyId='custom-room';isController=false;lobbyData={turncraftVersion:1,turncraftSeats:['host','browser-test'],turncraftPlayers:{host:{name:'Host',factionId:'frontier'},'browser-test':{name:'Guest',factionId:'brood'}}};`

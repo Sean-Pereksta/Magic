@@ -9,6 +9,42 @@ import {
 } from '../campaign.mjs';
 import { buildWave, WaveDirector, ROSTERS, modifiersFor } from '../waves.mjs';
 import { createExpansion, rebaseTimers, CHECKPOINT_KEY } from '../engine.mjs';
+import { readProgress, recordResult } from '../progress.mjs';
+
+test('offline campaign and survival results remain queued after reloading local progress', (t) => {
+  const previousStorage = globalThis.localStorage;
+  const key = 'turncraft.shattered-front.progress.Commander.v1';
+  const campaign = {
+    mode: 'campaign', missionId: MISSIONS[0].id, regionId: REGIONS[0].id,
+    won: true, stars: 3, difficulty: 'hard', optionalObjectives: []
+  };
+  const survival = {
+    mode: 'survival', arenaId: CATALOG.arenas[0].id,
+    factionId: 'frontier', difficulty: 'medium', wave: 12,
+    durationSeconds: 420, enemiesDefeated: 80
+  };
+  const saved = recordResult(recordResult(null, campaign), survival);
+  saved.pendingResults = [
+    campaign, null, 'invalid', [], { mode: 'ranked' },
+    { ...campaign, won: false }, survival
+  ];
+  const storage = new Map([[key, JSON.stringify(saved)]]);
+  globalThis.localStorage = { getItem: (name) => storage.get(name) || null };
+  t.after(() => {
+    if (previousStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+  });
+
+  const restored = readProgress(key);
+  assert.deepEqual(restored.pendingResults, [campaign, survival]);
+  assert.equal(restored.campaign.completedMissions[campaign.missionId].stars, 3);
+  assert.equal(restored.survival.recordsByMap[`${survival.arenaId}:medium`].wave, 12);
+
+  storage.set(key, JSON.stringify({ ...saved, pendingResults: {} }));
+  const malformedQueue = readProgress(key);
+  assert.deepEqual(malformedQueue.pendingResults, []);
+  assert.equal(malformedQueue.campaign.completedMissions[campaign.missionId].stars, 3);
+});
 
 test('campaign has 24 authored missions, four per distinct connected region', () => {
   assert.equal(MISSIONS.length, 24);

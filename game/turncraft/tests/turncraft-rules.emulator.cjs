@@ -38,6 +38,9 @@ const {
         ['ranked', true]
       ])
         await setDoc(doc(db, 'lobbies', id), {
+          name: 'Rules fixture',
+          createdAt: 0,
+          updatedAt: 0,
           gameType: 'turncraft',
           turncraftVersion: 1,
           status: 'started',
@@ -48,10 +51,12 @@ const {
           members: { owner: 'Owner', peer: 'Peer' },
           players: ['Owner', 'Peer'],
           turncraftSeats: ['owner', 'peer'],
+          turncraftPlayers: {owner: {name:'Owner',factionId:'frontier',team:'ffa',ready:true,avatar:null},peer: {name:'Peer',factionId:'ascendant',team:'ffa',ready:true,avatar:null}},
           settings: {
             mapId: 'classic',
             gameMode: 'annihilation',
-            maxPlayers: 2
+            maxPlayers: 2,
+            startingResources: 'standard'
           },
           chessStarfrontController: {
             ownerUid: 'owner',
@@ -134,7 +139,8 @@ const {
           verified: true
         })
       );
-      await assertFails(getDoc(doc(owner, name, 'forged')));
+      if (name !== 'turncraftInvites') await assertFails(getDoc(doc(owner, name, 'forged')));
+      else await assertSucceeds(getDoc(doc(owner, name, 'forged')));
     }
     await assertFails(
       updateDoc(doc(owner, 'users', 'Owner'), {

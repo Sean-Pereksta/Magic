@@ -49,14 +49,6 @@ try {
 }
 
 
-// TurnCraft keeps progression and multiplayer endpoints under a separate prefix.
-try {
-  const { mountTurncraft } = require('./server/turncraft/mount.cjs');
-  mountTurncraft(app, { db, auth: admin.auth(), projectId: serviceAccount.project_id });
-} catch (error) {
-  console.error('TurnCraft cloud services are unavailable.', error.code || error.name);
-}
-
 // ------------- GAME CONSTANTS -------------
 const BOARD_SIZE = 7;
 const BATTLE_W = 10;

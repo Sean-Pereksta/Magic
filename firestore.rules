@@ -7,8 +7,8 @@ service cloud.firestore {
     }
 
     function turncraftType(data) { return data.get('gameType','') == 'turncraft'; }
-    // Personal progress and competitive receipts use the existing Firebase Auth
-    // identity. Only Firebase Admin may write these authority collections.
+    // Retired competitive collections remain read-only. Personal progress lives
+    // on the existing users/{username}.gameStats.turncraft profile below.
     match /turncraftProfiles/{uid} {
       allow get: if isAuthed() && request.auth.uid == uid;
       allow list, write: if false;
@@ -19,14 +19,69 @@ service cloud.firestore {
     }
     match /turncraftRankings/{uid} { allow read: if isAuthed(); allow write: if false; }
     match /turncraftMatches/{id} { allow read, write: if false; match /{sub=**} { allow read, write: if false; } }
-    match /turncraftInvites/{id} { allow read, write: if false; }
-    match /turncraftLobbySecrets/{id} { allow read, write: if false; }
+    match /turncraftInvites/{code} {
+      allow get: if isAuthed();
+      allow list, update, delete: if false;
+      allow create: if isAuthed() && code.matches('^[A-F0-9]{12}$')
+        && request.resource.data.keys().hasOnly(['lobbyId','createdAt','expiresAt'])
+        && request.resource.data.lobbyId is string && request.resource.data.createdAt is int
+        && request.resource.data.expiresAt is int && request.resource.data.expiresAt > request.time.toMillis()
+        && request.resource.data.expiresAt <= request.time.toMillis()+86460000
+        && getAfter(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)).data.hostUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/turncraftLobbySecrets/$(request.resource.data.lobbyId)).data.inviteCode == code;
+    }
+    match /turncraftLobbySecrets/{id} {
+      allow get: if isAuthed() && request.auth.uid in get(/databases/$(database)/documents/lobbies/$(id)).data.members;
+      allow list, update, delete: if false;
+      allow create: if isAuthed() && request.resource.data.keys().hasOnly(['inviteCode'])
+        && request.resource.data.inviteCode.matches('^[A-F0-9]{12}$')
+        && getAfter(/databases/$(database)/documents/lobbies/$(id)).data.hostUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.inviteCode)).data.lobbyId == id;
+    }
+    match /turncraftLobbyJoins/{id}/members/{uid} {
+      allow get: if isAuthed() && request.auth.uid == uid;
+      allow list, delete: if false;
+      allow create, update: if isAuthed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid','lobbyId','code','createdAt'])
+        && request.resource.data.uid == uid && request.resource.data.lobbyId == id
+        && request.resource.data.code is string && request.resource.data.createdAt is int
+        && get(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.code)).data.lobbyId == id
+        && get(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.code)).data.expiresAt > request.time.toMillis()
+        && uid in getAfter(/databases/$(database)/documents/lobbies/$(id)).data.members;
+    }
     match /turncraftLobbyRequests/{id} { allow read, write: if false; }
     match /turncraftRatingPairs/{id} { allow read, write: if false; }
     match /turncraftRankedQueue/{uid} { allow read, write: if false; }
-    function turncraftProfileCreate() { return !request.resource.data.get('gameStats',{}).keys().hasAny(['turncraft']); }
+    function turncraftPersonalProgress(data) {
+      let campaign = data.get('campaign', {});
+      let survival = data.get('survival', {});
+      return campaign is map && survival is map
+        && campaign.get('completedMissions', {}) is map
+        && campaign.get('completedMissions', {}).size() <= 24
+        && campaign.get('highestCompletedMission', 0) is int
+        && campaign.get('highestCompletedMission', 0) >= 0
+        && campaign.get('highestCompletedMission', 0) <= 24
+        && campaign.get('unlockedRegions', []) is list
+        && campaign.get('unlockedRegions', []).size() <= 6
+        && survival.get('recordsByMap', {}) is map
+        && survival.get('recordsByMap', {}).size() <= 24
+        && survival.get('highestWave', 0) is int
+        && survival.get('highestWave', 0) >= 0
+        && survival.get('highestWave', 0) <= 100000
+        && data.get('achievements', {}) is map
+        && data.get('achievements', {}).size() <= 64;
+    }
+    function turncraftProfileCreate() {
+      let next = request.resource.data.get('gameStats', {}).get('turncraft', {});
+      return next is map && next.keys().hasOnly(['campaign','survival','achievements'])
+        && turncraftPersonalProgress(next);
+    }
     function turncraftProfileUpdate() {
-      return request.resource.data.get('gameStats',{}).get('turncraft',null) == resource.data.get('gameStats',{}).get('turncraft',null);
+      let old = resource.data.get('gameStats', {}).get('turncraft', {});
+      let next = request.resource.data.get('gameStats', {}).get('turncraft', {});
+      return next is map && old is map
+        && (next == old || (next.diff(old).affectedKeys().hasOnly(['campaign','survival','achievements'])
+          && turncraftPersonalProgress(next)));
     }
 
     function validCountryQuestScore() {
@@ -148,7 +203,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthed();
       // Keep existing unrelated profile fields compatible; migrated usernames
-      // become owner-only. Ratings and progression are Firebase Admin writes.
+      // become owner-only. TurnCraft personal progress is client-written;
+      // competitive ratings stay protected by turncraftProfileUpdate().
       allow create: if isAuthed() && forgeBoundOwner(userId)
         && turncraftProfileCreate()
         && !request.resource.data.keys().hasAny(forgeProtectedProfileFields());
@@ -211,9 +267,9 @@ service cloud.firestore {
 
     match /lobbies/{gameId} {
       allow read: if isAuthed();
-      allow create: if isAuthed() && !turncraftType(request.resource.data) && ((forgeLobbyType(request.resource.data)) ? forgeLobbyCreate() : (request.resource.data.get('gameType','') != 'ironthrone' || (
+      allow create: if isAuthed() && (turncraftType(request.resource.data) ? turncraftLobbyCreate() : ((forgeLobbyType(request.resource.data)) ? forgeLobbyCreate() : (request.resource.data.get('gameType','') != 'ironthrone' || (
         request.resource.data.hostUid == request.auth.uid && request.resource.data.members.keys().hasOnly([request.auth.uid])
-        && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting')));
+        && request.resource.data.members[request.auth.uid] == request.resource.data.host && request.resource.data.status == 'waiting'))));
       allow update: if isAuthed() && ((turncraftType(resource.data) || turncraftType(request.resource.data)) ? turncraftLobbyUpdate() : ((forgeLobbyType(resource.data) || forgeLobbyType(request.resource.data)) ? forgeLobbyUpdate() : (resource.data.get('gameType','') != 'ironthrone' && request.resource.data.get('gameType','') != 'ironthrone' || (
         resource.data.get('gameType','') == 'ironthrone' && request.resource.data.get('gameType','') == 'ironthrone' && (
           (resource.data.status == 'waiting' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','players','updatedAt'])
@@ -224,6 +280,127 @@ service cloud.firestore {
         )))));
       allow delete: if isAuthed() && (!turncraftType(resource.data) || resource.data.get('turncraftVersion',0) != 1) && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
       function turncraftMember() { return isAuthed() && turncraftType(ironLobby()) && request.auth.uid in ironLobby().get('members',{}); }
+      function tcPlayer(d, index) {
+        return d.turncraftSeats.size() <= index || (
+          d.members[d.turncraftSeats[index]] is string && d.members[d.turncraftSeats[index]].size() >= 1 && d.members[d.turncraftSeats[index]].size() <= 80
+          && d.players[index] == d.members[d.turncraftSeats[index]]
+          && d.turncraftPlayers[d.turncraftSeats[index]].keys().hasOnly(['name','factionId','team','ready','avatar'])
+          && d.turncraftPlayers[d.turncraftSeats[index]].name == d.members[d.turncraftSeats[index]]
+          && d.turncraftPlayers[d.turncraftSeats[index]].factionId in ['frontier','ascendant','brood']
+          && d.turncraftPlayers[d.turncraftSeats[index]].team == 'ffa'
+          && d.turncraftPlayers[d.turncraftSeats[index]].ready is bool
+          && (d.turncraftPlayers[d.turncraftSeats[index]].get('avatar',null) == null || d.turncraftPlayers[d.turncraftSeats[index]].avatar is string && d.turncraftPlayers[d.turncraftSeats[index]].avatar.size() <= 2048)
+        );
+      }
+      function tcSettings(d) {
+        return d.settings is map && d.settings.keys().hasOnly(['mapId','gameMode','maxPlayers','startingResources'])
+          && d.settings.mapId in ['classic','ember-rift','frostline-basin','verdant-divide','shattered-dunes','orbital-foundry']
+          && d.settings.gameMode in ['annihilation','conquest','relic'] && d.settings.maxPlayers in [2,3]
+          && d.settings.startingResources == 'standard';
+      }
+      function tcSchema(d) {
+        return turncraftType(d) && d.turncraftVersion == 1 && d.ranked == false
+          && d.keys().hasOnly(['name','gameType','turncraftVersion','status','visibility','ranked','host','hostUid','members','players','turncraftSeats','turncraftPlayers','settings','createdAt','updatedAt','startedAt','chessStarfrontReady','chessStarfrontController','finishedAt','turncraftResult','nextLobbyId','rematchOf'])
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
+          && d.visibility in ['public','private'] && d.status in ['waiting','started','finished','closed']
+          && d.createdAt is int && (d.updatedAt is int || d.updatedAt is timestamp) && tcSettings(d)
+          && d.turncraftSeats is list && d.turncraftSeats.size() <= 3 && d.turncraftSeats.toSet().size() == d.turncraftSeats.size()
+          && d.members is map && d.members.keys().toSet() == d.turncraftSeats.toSet()
+          && d.turncraftPlayers is map && d.turncraftPlayers.keys().toSet() == d.turncraftSeats.toSet()
+          && d.players is list && d.players.size() == d.turncraftSeats.size() && d.players.toSet().size() == d.players.size()
+          && (d.status == 'closed' && d.turncraftSeats.size() == 0 || d.turncraftSeats.size() >= 1 && d.turncraftSeats.size() <= d.settings.maxPlayers && d.hostUid == d.turncraftSeats[0] && d.host == d.members[d.hostUid])
+          && tcPlayer(d,0) && tcPlayer(d,1) && tcPlayer(d,2);
+      }
+      function tcResetPlayer(a,b,index) {
+        return a.turncraftSeats.size() <= index || b.turncraftPlayers[a.turncraftSeats[index]].ready == false
+          && b.turncraftPlayers[a.turncraftSeats[index]].diff(a.turncraftPlayers[a.turncraftSeats[index]]).affectedKeys().hasOnly(['ready']);
+      }
+      function tcResetPlayers(a,b) {
+        return a.turncraftSeats == b.turncraftSeats && a.members == b.members
+          && a.turncraftPlayers.keys().toSet() == b.turncraftPlayers.keys().toSet()
+          && tcResetPlayer(a,b,0) && tcResetPlayer(a,b,1) && tcResetPlayer(a,b,2);
+      }
+      function tcAllReady(d) {
+        return d.turncraftPlayers[d.turncraftSeats[0]].ready && d.turncraftPlayers[d.turncraftSeats[1]].ready
+          && (d.turncraftSeats.size() < 3 || d.turncraftPlayers[d.turncraftSeats[2]].ready);
+      }
+      function tcRematchCreate(d) {
+        let before=get(/databases/$(database)/documents/lobbies/$(d.rematchOf)).data;
+        return before.turncraftVersion == 1 && before.ranked == false && before.status == 'finished'
+          && before.hostUid == request.auth.uid && d.settings == before.settings && d.name == before.name && d.visibility == before.visibility
+          && d.players == before.players && tcResetPlayers(before,d)
+          && getAfter(/databases/$(database)/documents/lobbies/$(d.rematchOf)).data.nextLobbyId == gameId;
+      }
+      function turncraftLobbyCreate() {
+        let d=request.resource.data;let secret=getAfter(/databases/$(database)/documents/turncraftLobbySecrets/$(gameId)).data;
+        return tcSchema(d) && d.status == 'waiting' && d.hostUid == request.auth.uid
+          && !d.keys().hasAny(['startedAt','chessStarfrontReady','chessStarfrontController','finishedAt','turncraftResult','nextLobbyId'])
+          && secret.inviteCode is string && getAfter(/databases/$(database)/documents/turncraftInvites/$(secret.inviteCode)).data.lobbyId == gameId
+          && (d.get('rematchOf','') != '' ? tcRematchCreate(d) : d.turncraftSeats == [request.auth.uid] && d.turncraftPlayers[request.auth.uid].ready == false);
+      }
+      function tcJoinProof(a) {
+        let proof=getAfter(/databases/$(database)/documents/turncraftLobbyJoins/$(gameId)/members/$(request.auth.uid)).data;
+        return proof.uid == request.auth.uid && proof.lobbyId == gameId
+          && get(/databases/$(database)/documents/turncraftInvites/$(proof.code)).data.lobbyId == gameId
+          && get(/databases/$(database)/documents/turncraftInvites/$(proof.code)).data.expiresAt > request.time.toMillis();
+      }
+      function tcAppend(a,b,index) { return a.turncraftSeats.size() <= index || a.turncraftSeats[index] == b.turncraftSeats[index]; }
+      function tcJoin(a,b,fields) {
+        return a.status == 'waiting' && !(request.auth.uid in a.members) && request.auth.uid in b.members
+          && fields.hasOnly(['members','players','turncraftSeats','turncraftPlayers','updatedAt'])
+          && b.members.diff(a.members).affectedKeys().hasOnly([request.auth.uid])
+          && b.turncraftPlayers.diff(a.turncraftPlayers).affectedKeys().hasOnly([request.auth.uid])
+          && b.turncraftPlayers[request.auth.uid].ready == false
+          && b.turncraftSeats.size() == a.turncraftSeats.size()+1 && b.turncraftSeats[b.turncraftSeats.size()-1] == request.auth.uid
+          && tcAppend(a,b,0) && tcAppend(a,b,1) && tcAppend(a,b,2)
+          && (a.visibility == 'public' || tcJoinProof(a));
+      }
+      function tcLeave(a,b,fields) {
+        return a.status in ['waiting','finished'] && request.auth.uid in a.members && !(request.auth.uid in b.members)
+          && fields.hasOnly(['members','players','turncraftSeats','turncraftPlayers','host','hostUid','status','updatedAt'])
+          && b.members.diff(a.members).affectedKeys().hasOnly([request.auth.uid])
+          && b.turncraftPlayers.diff(a.turncraftPlayers).affectedKeys().hasOnly([request.auth.uid])
+          && b.turncraftSeats == a.turncraftSeats.removeAll([request.auth.uid])
+          && b.players == a.players.removeAll([a.members[request.auth.uid]])
+          && (b.turncraftSeats.size() == 0 ? b.status == 'closed' : b.status == a.status);
+      }
+      function tcReadyRecord(d,uid) {
+        let ready=d.chessStarfrontReady[d.members[uid].replace('[^a-zA-Z0-9_@.-]','_')];
+        return ready.username == d.members[uid] && ready.factionId == d.turncraftPlayers[uid].factionId
+          && ready.objectiveVote == d.settings.gameMode && ready.mapVote == d.settings.mapId && ready.ready == true;
+      }
+      function tcStart(a,b,fields) {
+        return a.status == 'waiting' && b.status == 'started' && a.hostUid == request.auth.uid && a.turncraftSeats.size() >= 2
+          && tcAllReady(a) && fields.hasOnly(['status','startedAt','chessStarfrontReady','updatedAt'])
+          && b.startedAt is int && b.chessStarfrontReady is map && b.chessStarfrontReady.size() == b.turncraftSeats.size()
+          && tcReadyRecord(b,b.turncraftSeats[0]) && tcReadyRecord(b,b.turncraftSeats[1])
+          && (b.turncraftSeats.size() < 3 || tcReadyRecord(b,b.turncraftSeats[2]));
+      }
+      function tcStatePlayer(s,a,index) {
+        return a.turncraftSeats.size() <= index || s.players[index].name == a.players[index];
+      }
+      function tcComplete(a,b,fields) {
+        let state=get(/databases/$(database)/documents/lobbies/$(gameId)/chess_starfront/state).data;
+        return a.status == 'started' && b.status == 'finished'
+          && (a.hostUid == request.auth.uid || a.chessStarfrontController.ownerUid == request.auth.uid)
+          && fields.hasOnly(['status','finishedAt','turncraftResult','updatedAt'])
+          && state.gameKey == 'chess_starfront' && state.gameOver == true
+          && state.controllerUid == a.chessStarfrontController.ownerUid && state.controllerEpoch == a.chessStarfrontController.epoch
+          && state.players.size() == a.players.size() && tcStatePlayer(state,a,0) && tcStatePlayer(state,a,1) && tcStatePlayer(state,a,2)
+          && b.finishedAt is int && b.turncraftResult.keys().hasOnly(['winnerIdx','reason','players','durationSeconds'])
+          && b.turncraftResult.winnerIdx == state.matchResult.winnerIdx && b.turncraftResult.reason is string && b.turncraftResult.reason.size() <= 200
+          && b.turncraftResult.players is list && b.turncraftResult.players.size() == a.players.size()
+          && b.turncraftResult.durationSeconds is int && b.turncraftResult.durationSeconds >= 0;
+      }
+      function tcLease(a,b,fields) {
+        let old=a.get('chessStarfrontController',{});let lease=b.get('chessStarfrontController',{});
+        return a.status == 'started' && fields.hasOnly(['chessStarfrontController','updatedAt'])
+          && lease.keys().hasOnly(['ownerUid','ownerName','expiresAtMs','epoch'])
+          && lease.ownerUid == request.auth.uid && lease.ownerName == a.members[request.auth.uid]
+          && lease.expiresAtMs > request.time.toMillis() && lease.expiresAtMs <= request.time.toMillis()+22000
+          && (old.get('ownerUid','') == request.auth.uid || old.get('expiresAtMs',0) <= request.time.toMillis())
+          && lease.epoch == (old.get('ownerUid','') == request.auth.uid ? old.get('epoch',1) : old.get('epoch',0)+1);
+      }
       function turncraftController() {
         let lobby=ironLobby();let lease=lobby.get('chessStarfrontController',{});
         return turncraftMember() && lobby.status == 'started' && lobby.get('ranked',false) == false
@@ -231,17 +408,26 @@ service cloud.firestore {
       }
       function turncraftLobbyUpdate() {
         let a=resource.data;let b=request.resource.data;let fields=b.diff(a).affectedKeys();
-        let old=a.get('chessStarfrontController',{});let lease=b.get('chessStarfrontController',{});
         return a.get('turncraftVersion',0) == 0
           ? b.gameType == a.gameType && b.get('turncraftVersion',0) == 0 && !fields.hasAny(['ranked','hostUid','members','turncraftSeats','turncraftPlayers'])
-          : a.get('turncraftVersion',0) == 1 && turncraftType(a) && turncraftType(b)
-          && a.status == 'started' && a.get('ranked',false) == false && request.auth.uid in a.members
-          && fields.hasOnly(['chessStarfrontController','updatedAt'])
-          && lease.keys().hasOnly(['ownerUid','ownerName','expiresAtMs','epoch'])
-          && lease.ownerUid == request.auth.uid && lease.ownerName == a.members[request.auth.uid]
-          && lease.expiresAtMs > request.time.toMillis() && lease.expiresAtMs <= request.time.toMillis()+22000
-          && (old.get('ownerUid','') == request.auth.uid || old.get('expiresAtMs',0) <= request.time.toMillis())
-          && lease.epoch == (old.get('ownerUid','') == request.auth.uid ? old.get('epoch',1) : old.get('epoch',0)+1);
+          : a.turncraftVersion == 1 && a.ranked == false && b.turncraftVersion == 1 && b.gameType == a.gameType && b.ranked == false
+          && (b.updatedAt is int || b.updatedAt is timestamp) && (
+            (request.auth.uid in a.members && (
+              (a.status == 'waiting' && fields.hasOnly(['turncraftPlayers','updatedAt'])
+                && b.turncraftPlayers.diff(a.turncraftPlayers).affectedKeys().hasOnly([request.auth.uid])
+                && b.turncraftPlayers[request.auth.uid].diff(a.turncraftPlayers[request.auth.uid]).affectedKeys().hasOnly(['factionId','ready'])
+                && b.turncraftPlayers[request.auth.uid].factionId in ['frontier','ascendant','brood'] && b.turncraftPlayers[request.auth.uid].ready is bool)
+              || (a.status == 'waiting' && a.hostUid == request.auth.uid && fields.hasOnly(['settings','visibility','name','turncraftPlayers','updatedAt'])
+                && tcSettings(b) && b.settings.maxPlayers >= b.turncraftSeats.size() && b.visibility in ['public','private']
+                && b.name is string && b.name.size() >= 1 && b.name.size() <= 80 && tcResetPlayers(a,b))
+              || (a.status == 'waiting' && b.status == 'started' && tcStart(a,b,fields))
+              || (a.status == 'started' && fields.hasOnly(['chessStarfrontController','updatedAt']) && tcLease(a,b,fields))
+              || (a.status == 'started' && b.status == 'finished' && tcComplete(a,b,fields))
+              || (a.status == 'finished' && a.hostUid == request.auth.uid && a.get('nextLobbyId','') == '' && fields.hasOnly(['nextLobbyId','updatedAt'])
+                && getAfter(/databases/$(database)/documents/lobbies/$(b.nextLobbyId)).data.rematchOf == gameId)
+            ))
+            || (tcJoin(a,b,fields) && tcSchema(b)) || (tcLeave(a,b,fields) && tcSchema(b))
+          );
       }
       match /chess_starfront/{stateId} {
         allow read: if turncraftMember();
