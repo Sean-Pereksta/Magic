@@ -9,6 +9,12 @@ standing-height collision validation, ramp walking, tap-Shift/controller/touch
 slide, combat feedback, tactical bot behavior, asset inventory and release checks.
 Run `npm run test:neon` for geometry and gameplay regressions.
 
+The arsenal update adds solid 3D flying fists and harpoons, depth-tested chains
+and cables, distinct fire/smoke/shockwave explosions, and three more standard
+arenas. The main menu follows mode → arena → settings, with actual in-game map
+previews and saved match options. Standard modes have six arenas; Survivor keeps
+its eight unlockable environments.
+
 ## Hosted graphics
 
 The detailed v2 `weapons/` and `characters/` models are referenced from
@@ -64,10 +70,19 @@ checker. `r2-cors.json` documents the required public read policy.
 
 ## Controls and menu
 
-Mode and arena cards retain the underlying selectors used by match setup. Survivor
-shows eight graphical arenas with cleared-wave milestone unlocks. Settings
-contains difficulty, bots, length, second player, graphics and controller inputs.
-Cards support arrow keys, keyboard focus and controller navigation.
+Choose a mode, then select an arena from picture cards and a larger selected-map
+preview. Each mode remembers its arena and match settings. Survivor shows eight
+graphical arenas with cleared-wave milestone unlocks. Settings include bot skill,
+bot count, round length, elimination target, respawn delay, second player,
+mouse/touch sensitivity, sound volume, graphics and controller inputs. Cards
+support arrow keys, keyboard focus and controller navigation.
+
+Deathmatch and Team DM allow 0–16 bots; Frag permits 0–1 and removes the bot when
+Player 2 joins the duel. Siege requires 2–16 attackers. Survivor controls its own
+enemy waves. Timers apply to DM/Team DM; elimination targets apply to DM/Team DM/
+Frag. Invalid saved values are sanitized before the match begins. Arena previews
+are generated with `tools/capture-map-previews.cjs` and ship locally in
+`assets/ui/maps/`; no additional hosted model upload is required.
 
 Touch uses a left analog movement stick, a right swipe area, icon controls for
 jump/build/swap, a smaller reload control and an upgrade indicator. Tap Build to
@@ -146,7 +161,9 @@ their simulation dimensions.
 
 Every mode now loads an atlas before starting. Circuit Citadel uses Breach Ring
 materials, Prism Garden uses Black Ice Cryolab materials, and Obsidian Reactor
-uses Drowned Powerworks materials. Survivor retains each arena's authored tiles.
+uses Drowned Powerworks materials. Skyrail Terminal uses Derelict Station,
+Ashfall Foundry uses Drowned Powerworks, and Rift Outpost uses Xenofall Wastes.
+Survivor retains each arena's authored tiles.
 Arena floors, walls and platforms and player-built walls/platforms share the
 selected atlas. Six-face surfaces repeat crops at a fixed world scale using the
 existing padded UV slots, rather than stretching a single tile over large walls.
@@ -179,7 +196,7 @@ For the dependency-free model tests use `NEON_ASSET_SOURCE` or
 without GPU libraries; it does **not** validate actual shader rendering or depth.
 
 Movement tests cover the wall/attached platform, bridge seam, corner, stacked
-wall and small-gap course, all four authored maps, low FPS, jump buffer/coyote,
+wall and small-gap course, all fourteen authored maps, low FPS, jump buffer/coyote,
 ceiling collisions and fast ability movement. Model tests cover parsing, caches,
 failure handling, shared GPU resources and animation/depth state. Browser checks
 cover modes, arenas, split actors, mobile controls, menu return and weapons.
