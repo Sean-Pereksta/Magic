@@ -1,4 +1,6 @@
 /** Campaign definitions and strategic selection shared by UI and server replay. */
+import {comboStatus} from './combos.js';
+import {evolutionFor} from './evolutions.js';
 export const CAMPAIGN_CHAPTERS = Object.freeze([
   {id:1,title:'Sparks on the Frontier',theme:'iron-frontier',description:'Draft a balanced army and learn to protect the Vanir gunline.'},
   {id:2,title:'The Aesir Awakening',theme:'crystal-sanctum',description:'Break magical defenses and control the rhythm of battle.'},
@@ -55,11 +57,12 @@ export const CAMPAIGN_MISSIONS = Object.freeze(definitions.map((entry,number)=>{
     ...Object.entries(CAMPAIGN_UNLOCKS).filter(([key])=>Number(key.slice(6))<=number+1).map(([,key])=>key),
     ...roster.map(r=>r.type).filter(key=>Object.values(CAMPAIGN_UNLOCKS).includes(key))
   ])];
-  const opponent={name,faction,skill,difficulty:skill,formation,roster,relics,tactics,unlockedTroops};
+  const aiStyle=['early_combos','sustained_upgrades','defensive_evolution','legendary_army'][number%4];
+  const opponent={name,faction,skill,difficulty:skill,formation,roster,relics,tactics,unlockedTroops,aiStyle};
   return Object.freeze({id,number:number+1,chapter,index,title,theme:CAMPAIGN_CHAPTERS[chapter-1].theme,
     boss,objective,rewards:{cards:boss?6:3,dust:boss?40:20},replayRewards:{cards:1,dust:5},
     unlockTroop:CAMPAIGN_UNLOCKS[id]||null,prerequisite:number?'forge-'+String(number).padStart(2,'0'):null,
-    opponent,aiFaction:faction,difficulty:skill,startingRoster:roster});
+    opponent,aiFaction:faction,difficulty:skill,aiStyle,startingRoster:roster});
 }));
 export const MISSIONS = CAMPAIGN_MISSIONS;
 
@@ -152,12 +155,29 @@ const tanks=new Set(['vguard','guardian','golem','shieldcap','defiler']);
 const swarm=new Set(['hellspawn','matron','hiveherald']);
 const countMatching=(roster,keys)=>(roster||[]).reduce((sum,r)=>sum+(keys.has(r.type)?Math.max(1,Number(r.count)||1):0),0);
 const skillFor = value => typeof value==='number' ? Math.max(0,Math.min(1,value)) : ({easy:.4,normal:.65,medium:.65,hard:.9,expert:.98}[value]??.65);
+export const AI_PLAYSTYLES=Object.freeze({
+  early_combos:{name:'First Sparks',description:'Assembles Basic partnerships and attacks early.',partner:1.4,upgrade:.6,evolution:.7,enhancement:.9},
+  sustained_upgrades:{name:'Veteran Core',description:'Develops a reliable core and keeps enough bodies on the field.',partner:1,upgrade:1.3,evolution:1,enhancement:1},
+  defensive_evolution:{name:'Living Fortress',description:'Builds a durable frontline with defensive specializations.',partner:.9,upgrade:1,evolution:1.35,enhancement:1.2},
+  legendary_army:{name:'Legendary Forge',description:'Prepares upgraded partners for Legendary combinations.',partner:1.05,upgrade:1.5,evolution:1.15,enhancement:1.1}
+});
+export function resolveAIPlaystyle(context={}){
+  const selected=context.aiStyle||context.playstyle;
+  if(AI_PLAYSTYLES[selected])return selected;
+  const identity=String(context.name||context.opponentName||'Veteran Core');
+  let value=0;for(const char of identity)value=(value*31+char.charCodeAt(0))>>>0;
+  return Object.keys(AI_PLAYSTYLES)[value%4];
+}
+const allCombos=(roster,enhancements=[])=>['Aesir','Helions','Vanir'].flatMap(faction=>comboStatus(roster,faction,enhancements));
 
 /** Selects an index from the actual issued pack. The server and local AI use the
  * existing game's evaluator plus targeted support/formation/upgrade scoring. */
 export function scoreAIDraft(card,context={},hooks={}) {
   const mine=context.myRoster||[],enemy=context.enemyRoster||[];
   let score=Number(hooks.evaluateDraftCard?.(card,mine,enemy,context.myRelics||[],context.enemyRelics||[])?.score)||0;
+  const styleKey=resolveAIPlaystyle(context),style=AI_PLAYSTYLES[styleKey];
+  const kind=card.type==='special'?card.special:card.type,key=card.for||card.key;
+  const own=mine.find(r=>r.type===key&&r.count>0),bodies=mine.reduce((sum,r)=>sum+Math.max(0,Number(r.count)||0),0);
   const mineFront=countMatching(mine,fronts),mineSwarm=countMatching(mine,swarm),mineSupports=countMatching(mine,support);
   const enemyFront=countMatching(enemy,fronts),enemySwarm=countMatching(enemy,swarm),enemyTanks=countMatching(enemy,tanks);
   const enemySplash=countMatching(enemy,splash),enemyAssassins=countMatching(enemy,assassins);
@@ -171,9 +191,19 @@ export function scoreAIDraft(card,context={},hooks={}) {
     if (card.key==='hiveherald') score+=mineSwarm>=2?3.5:-2;
     if (support.has(card.key)&&mineSupports>=3) score-=2;
     score+=.15; // prefer a useful body over unrelated special cards
-  } else if (card.type==='upgrade') {
-    const own=mine.find(r=>r.type===(card.for||card.key));
+  } else if (kind==='upgrade') {
     score+=own?2+Math.min(3,Number(own.count)||1)*.75+((own.lvl||1)===2?2:0):-10;
+    if(own)score+=2*style.upgrade;
+  } else if(kind==='evolution'){
+    score+=own&&!context.evolutions?.[key]?3*style.evolution:-12;
+    if(own&&(own.lvl||1)===1)score+=1.25;
+    if(styleKey==='defensive_evolution'&&['vguard','shieldcap','guardian','wardmaker','golem','architect','defiler','carrion','medic'].includes(key))score+=2;
+    if(styleKey==='defensive_evolution'&&['shield-pulse','counter-shield','shield-on-hit','heal-pulse','triage','many-mirrors','wide-time','strong-time','counter'].includes(evolutionFor(key,card.path)?.signature))score+=3;
+    if(context.evolutions?.[key])score-=8;
+  } else if(kind==='combo'){
+    const combo=allCombos(mine,context.comboEnhancements).find(combo=>combo.id===card.key);
+    score+=combo&&!combo.missing?.length?3.5*style.enhancement:-12;
+    if((context.comboEnhancements||[]).includes(card.key))score-=12;
   } else if (card.type==='formation') {
     if (card.key==='wide') score+=enemySplash>=1?3:0;
     if (card.key==='spearhead') score+=countMatching(mine,tanks)>=2?2:0;
@@ -190,6 +220,37 @@ export function scoreAIDraft(card,context={},hooks={}) {
     if (card.key==='sabotage') score+=enemyTanks>=2?2:0;
     if ((context.myTactics||[]).includes(card.key)) score-=4;
   }
+  // A partnership is scored by actual combo requirements, rather than the
+  // legacy 'best with' text. Only issued cards are ever considered.
+  const before=allCombos(mine,context.comboEnhancements),next=mine.map(r=>({...r}));
+  if(kind==='troop'){const entry=next.find(r=>r.type===key);if(entry)entry.count++;else next.push({type:key,count:1,lvl:1});}
+  else if(own&&(kind==='upgrade'||kind==='evolution')){const entry=next.find(r=>r.type===key);entry.lvl=kind==='upgrade'?Math.min(3,(entry.lvl||1)+1):Math.max(2,entry.lvl||1);}
+  if(['troop','upgrade','evolution'].includes(kind)){
+    for(const combo of allCombos(next,context.comboEnhancements)){
+      const prior=before.find(value=>value.id===combo.id);if(!prior)continue;
+      if((prior.missing?.length||0)>0&&!combo.missing?.length)score+=4.5*style.partner;
+      else if((combo.missing?.length||0)<(prior.missing?.length||0))score+=1.1*style.partner;
+      if(!combo.missing?.length&&(combo.level||0)>(prior.level||0))score+=2.1*style.upgrade;
+    }
+  }
+  // Recognize opposing engines and choose readable counters while keeping an
+  // army that can fight before investing in expensive developments.
+  const enemyEngines=allCombos(enemy,context.enemyComboEnhancements).filter(combo=>!combo.missing?.length);
+  if(kind==='troop'||kind==='upgrade'||kind==='evolution')for(const combo of enemyEngines){
+    if(combo.units.includes('vrocket')&&assassins.has(key))score+=2;
+    if(combo.units.includes('storm')&&assassins.has(key))score+=1.5;
+    if(combo.units.includes('blood')&&['guardian','runebinder','suppressor','emp','vrocket','storm'].includes(key))score+=1.5;
+    if(combo.units.includes('matron')&&splash.has(key))score+=2;
+    if(combo.units.includes('golem')&&['railbreaker','emp','marksman'].includes(key))score+=1.5;
+  }
+  if(kind==='troop'){
+    if(mineFront===0)score+=fronts.has(key)?6:-3;
+    if(mineSupports>=Math.max(1,bodies/2)&&support.has(key))score-=3;
+    if(styleKey==='defensive_evolution'&&tanks.has(key))score+=1.5;
+    if(styleKey==='early_combos'&&assassins.has(key))score+=.8;
+  }else if(['upgrade','evolution','combo'].includes(kind)&&bodies<3)score-=3;
+  if(!mineFront&&kind!=='troop')score-=3;
+  if(styleKey==='legendary_army'&&kind==='upgrade'&&(own?.lvl||1)===2)score+=2;
   return score;
 }
 
@@ -207,5 +268,5 @@ export function practiceOpponent(mmr=1200,rng=Math.random) {
   const rating=Math.max(100,Math.round(Number(mmr)||1200));
   return {name:AI_NAMES[Math.min(AI_NAMES.length-1,Math.floor(rng()*AI_NAMES.length))],isAI:true,
     estimatedMmr:Math.max(100,rating+Math.round((rng()-.5)*120)),difficulty:Math.max(.35,Math.min(.95,.55+(rating-1200)/2000)),
-    faction:['Vanir','Aesir','Helions'][Math.min(2,Math.floor(rng()*3))],ranked:false};
+    faction:['Vanir','Aesir','Helions'][Math.min(2,Math.floor(rng()*3))],aiStyle:Object.keys(AI_PLAYSTYLES)[Math.min(3,Math.floor(rng()*4))],ranked:false};
 }

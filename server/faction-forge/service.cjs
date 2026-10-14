@@ -33,7 +33,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   function newState({id,mode,faction,who,profile,missionNumber,missionId,mission}) {
     const created=now();
     return {schemaVersion:1,id,mode,missionNumber:missionNumber||null,missionId:missionId||null,seed:randomUUID(),ranked:false,revision:0,
-      isAI:mode!=='pvp',aiDifficulty:mission?.difficulty||.65,estimatedMmr:mission?.estimatedMmr||null,participants:[who.uid,null],players:[who.username,mission?.opponent?.name||'IronWarden'],
+      isAI:mode!=='pvp',aiDifficulty:mission?.difficulty||.65,aiStyle:mission?.aiStyle||mission?.opponent?.aiStyle||'early_combos',estimatedMmr:mission?.estimatedMmr||null,participants:[who.uid,null],players:[who.username,mission?.opponent?.name||'IronWarden'],
       profiles:{p0:clone(profile),p1:D.newProfile('bot','AI',profile.crowncouncilElo)},
       factions:{p0:faction,p1:mission?.aiFaction||mission?.opponent?.faction||'Helions'},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},
       lives:[4,4],initialMmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmrChange:[0,0],currentPacks:{p0:[],p1:[]},selections:{},draftIndex:0,round:1,

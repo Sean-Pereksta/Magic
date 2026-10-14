@@ -891,6 +891,7 @@
       <span id="p1Badge" class="badge p1">P1 — ❤❤❤❤</span>
       <span id="timerBadge" class="badge timer">⏳ —</span>
       <button id="forgeMenuBtn" class="btn ghost">Menu</button>
+      <button id="effectsBtn" class="btn ghost" type="button">Effects</button>
       <button id="fsBtn" class="btn ghost">⛶ Fullscreen</button>
     </div>
   </div>
@@ -922,6 +923,17 @@
     <div id="pickCounter" class="pickCounter"></div>
   </div>
 
+  <dialog id="battleSettings" aria-labelledby="battleSettingsTitle" style="color:#e5e7eb;background:#0f172a;border:1px solid #d0b16e;border-radius:14px;max-width:90vw">
+    <form method="dialog" style="display:grid;gap:14px;min-width:240px">
+      <h3 id="battleSettingsTitle" style="margin:0">Battle effects</h3>
+      <label>Visual detail <select id="effectsIntensity"><option value="auto">Automatic</option><option value="high">High</option><option value="low">Low</option><option value="off">Off</option></select></label>
+      <label><input id="effectsMotion" type="checkbox"> Reduce motion</label>
+      <label><input id="effectsFlash" type="checkbox"> Allow brief glow flashes</label>
+      <label><input id="effectsAudio" type="checkbox"> Battle sounds</label>
+      <label>Volume <input id="effectsVolume" type="range" min="0" max="1" step="0.05" value="0.35"></label>
+      <button class="btn" type="submit">Done</button>
+    </form>
+  </dialog>
   <div id="endSummary" class="endSummary"></div>
 
 <script type="module">
@@ -934,6 +946,7 @@ import { createFirebaseProgress, soloMission } from "./faction-forge/firebase-pr
 import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
 import { getMission, createEndlessMission, chooseAIDraft, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
 import * as FFUnits from "./faction-forge/units.js";
+import * as FFDraft from "./faction-forge/drafting.js";
 /* ---------------- Firebase ---------------- */
 // NOTE: Make sure your Firestore rules allow access to
 // /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/state
@@ -1281,7 +1294,7 @@ const TROOP_VISUALS = {
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:Object.assign({},R(7,3,6,1050),{armor:0}), spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(8,6,10,2100),{splash1:true,knock:true,armor:0}) },
+  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(11,8,10,1750),{splash1:true,knock:true,armor:0}) },
   vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(22,5,800),{splash1:true,armor:3}) },
   miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(16,3,800),{spd:2,hunterRanged:true,armor:1}), spawn:2 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",
@@ -1314,8 +1327,8 @@ const TROOPS = {
   },
 
   /* Aesir */
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,5,4,1100),{blink50:true,armor:0}), spawn:2 },
-  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(14,6,700),{spd:2,armor:1}), spawn:2 },
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,4,4,1250),{blink50:true,armor:0}), spawn:2 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(12,4,850),{spd:2,armor:1}), spawn:2 },
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(7,4,3,1100),{chain3:true,armor:0}) },
   guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(24,6,900),{splash1:true,knock:true,strongKnock:true,armor:3}), size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
@@ -1332,7 +1345,7 @@ const TROOPS = {
   },
   golem:{ faction:"Aesir", name:"Sentinel Golem", emoji:"🗿", role:"front",
     base:{ hp:30, dmg:5, range:1, cd:1050, spd:1, armor:2 }, size:2,
-    rangedReduce:2
+    rangedReduce:1
   },
   runebinder:{ faction:"Aesir", name:"Rune Binder", emoji:"🪄", role:"back",
     base:{ hp:8, dmg:2, range:4, cd:1250, spd:1, armor:0 },
@@ -1344,7 +1357,7 @@ const TROOPS = {
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(9,2,500),{spd:3,armor:0}), spawn:4 },
   roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(11,4,3,1000),{armor:1}), spawn:2 },
   defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(22,4,900),{splash1:true,toxicSplash:true,armor:2}), size:1 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,3,0),{kamikaze:true,paints:true,armor:0}), spawn:2 },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,6,0),{kamikaze:true,paints:true,armor:0}), spawn:2 },
   matron:{
     faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
     base:{ hp:18, dmg:1, range:3, cd:1200, armor:1 },
@@ -1650,6 +1663,7 @@ function battleFromStateFallback(st){
 
 let B = battleEmpty();
 let serverBattleState = null;
+let battlePresentationUntil=0,lastVisualPhase=null;
 const visualUnits = new Map();
 const unitDomById = new Map();
 const lastCellTerrainKey = new Map();
@@ -1776,12 +1790,12 @@ function spawnForgeIllusion(st,parent,now){
   const positions=[[parent.x,parent.y+dir],[parent.x-1,parent.y+dir],[parent.x+1,parent.y+dir],[parent.x-1,parent.y],[parent.x+1,parent.y]];
   for(const [x,y] of positions){
     if(!inside(x,y)||!rectangleFree(st.field.units,x,y,1))continue;
-    const maxhp=4+(parent.effectiveForgeTier===3?1:0)+(parent.arcaneBatteryReady?2:0);
+    const maxhp=(parent.mirageHp||4)+(parent.effectiveForgeTier===3?1:0)+(parent.arcaneBatteryReady?2:0);
     parent.arcaneBatteryReady=false;
     st.field.units.push({id:crypto.randomUUID(),p:parent.p,type:"miragewarden",x,y,size:1,lvl:1,battleRank:1,
       forgeTier:parent.forgeTier||1,effectiveForgeTier:parent.effectiveForgeTier||1,
       illusion:true,summoned:true,summonedBy:parent.id,bornAt:now,
-      expiresAt:now+Math.round(3500*(parent.forgeAbilityScale||1)),hp:maxhp,maxhp,dmg:0,armor:0,
+      expiresAt:now+Math.round((parent.mirageDuration||3500)*(parent.forgeAbilityScale||1)),hp:maxhp,maxhp,dmg:0,armor:0,
       armorType:"light",range:1,cd:999999,spd:0,nextAtk:999999999999,nextStep:999999999999});
     const threat=st.field.units.find(v=>v.p!==parent.p&&v.hp>0&&rectDistance(v,parent)<=2);
     const retreatY=parent.y-dir;
@@ -1794,12 +1808,10 @@ function forgeCombatHooks(st){
   return {width:W,height:H,inside,rectangleFree,roleFor:type=>TROOPS[type]&&TROOPS[type].role,
     distance:rectDistance,canMoveTo,applyDamage,wardDamage:applyWardShields,auraReduce:auraDamageReduceFor,
     knock:tryKnock,healScale,factionFor:type=>TROOPS[type]&&TROOPS[type].faction,spawnIllusion:spawnForgeIllusion,
-    event:ev=>{
-      const icons={mark:"🎯","temporal-field":"⌛","time-fracture":"🌀",mirage:"🪞",siphon:"🩸","hive-frenzy":"🔥","rail-charge":"⚡"};
-      if(ev.kind==="rail-shot"||ev.kind==="rail-overload")pushSyncedFx(st.field,Object.assign(fxTransport(ev.x,ev.y,ev.targetX,ev.targetY),{kind:"rail-shot"}),ev.at);
-      else if(icons[ev.kind])pushSyncedFx(st.field,Object.assign(fxStatus(ev.targetX==null?ev.x:ev.targetX,ev.targetY==null?ev.y:ev.targetY,icons[ev.kind]),{kind:ev.kind==="time-fracture"?"temporal-field":ev.kind==="rail-charge"?"rail-shot":ev.kind}),ev.at);
-    }};
+    spawnSummon:(state,parent,key)=>spawnAdjacentUnit(state,parent,key),
+    event:ev=>pushSyncedFx(st.field,{type:"combat",ttl:ev.duration||ev.ttl||1000,...ev},ev.at)};
 }
+
 function placeUnit(state,p,key,lvl){
   const t=TROOPS[key]; if(!t) return false;
   let placed=false;
@@ -1876,6 +1888,7 @@ function placeUnit(state,p,key,lvl){
 function rebuildFieldFromRoster(state){
   if (!state.field) state.field = fieldEmpty();
   state.field.units = [];
+  state.field.comboCooldowns={};state.field.comboFields=[];state.field.artilleryCharge={p0:0,p1:0};state.field.comboFieldSerial=0;state.field.temporalFields=[];state.field.syncedFx=[];
   if (!state.field.poison) state.field.poison = [];
   if (!state.field.toxic)  state.field.toxic  = [];
   if (!state.field.acid)   state.field.acid   = [];
@@ -1942,79 +1955,18 @@ function unitActionClass(u, now){
   if ((u.animUntil||0) <= now) return "";
   return u.animType === "cast" ? "casting" : "attacking";
 }
-function packFor(roster, faction, sideKey){
-  const RELIC_CARDS = [
-    { key:"banner_frontline", name:"Banner of the Frontline", desc:"Frontline units gain +2 max HP." },
-    { key:"sharpshooter_doctrine", name:"Sharpshooter Doctrine", desc:"Backline units gain +1 range, -1 max HP." },
-    { key:"emergency_medkit", name:"Emergency Medkit", desc:"First allied unit below 35% HP heals 4 once." },
-    { key:"anti_armor_rounds", name:"Anti-Armor Rounds", desc:"Ranged units deal +1 damage to armored units." },
-    { key:"swarm_instinct", name:"Swarm Instinct", desc:"Small spawned units gain +1 speed for 3s." },
-    { key:"arcane_battery", name:"Arcane Battery", desc:"First ward or spell effect starts stronger." },
-    { key:"poisoned_blades", name:"Poisoned Blades", desc:"Melee attacks apply a tiny wound effect." }
-  ];
-  const TACTIC_CARDS = [
-    { key:"opening_volley", name:"Opening Volley", desc:"At battle start, enemy front row takes 2 damage." },
-    { key:"forced_march", name:"Forced March", desc:"Frontline units start 1 tile closer." },
-    { key:"scatter_formation", name:"Scatter Formation", desc:"Units start more spread out." },
-    { key:"bodyguard", name:"Bodyguard", desc:"Strongest backline unit starts with a temporary shield." },
-    { key:"sabotage", name:"Sabotage", desc:"Enemy highest-HP unit starts at 85% HP." },
-    { key:"cleanse", name:"Cleanse", desc:"Remove initial poison/toxic/acid from your side." }
-  ];
-  const FORMATION_CARDS = [
-    { key:"balanced", name:"Balanced Formation", desc:"Default spacing and lane balance." },
-    { key:"wide", name:"Wide Formation", desc:"Units spread across lanes; better vs splash." },
-    { key:"spearhead", name:"Spearhead Formation", desc:"Strongest tank starts center-front." },
-    { key:"protected_backline", name:"Protected Backline", desc:"Supports/ranged start farther back." },
-    { key:"ambush", name:"Ambush Formation", desc:"Assassin-types start wider and slightly advanced." }
-  ];
-  const side = sideKey || (S?.roster?.p1 === roster ? "p1" : "p0");
-  const collection=S?.collections?.[side]||S?.profiles?.[side];
-  const unlocked = Array.isArray(collection?.unlocked)?collection.unlocked:Object.keys(collection?.troops||{}).filter(k=>collection.troops[k].unlocked);
-  const poolTypes = (FACTIONS[faction] || []).filter(key=>!TROOPS[key].unlockable || unlocked.includes(key));
-
-  const troopCards = poolTypes.map(k=>({
-    type:"troop",
-    key:k,
-    name:TROOPS[k].name,
-    emoji: unitEmoji(k),
-    role:TROOPS[k].role
-  }));
-
-  const owned = Array.isArray(roster) ? roster : [];
-  const ownedTypesList      = owned.filter(r=>r.count>0).map(r=>r.type);
-  const ownedUpgradeable    = owned.filter(r=>r.count>0 && (r.lvl||1) < 3).map(r=>r.type);
-
-  const specials = [];
-  if (ownedTypesList.length){
-    if (ownedUpgradeable.length){
-      const up = ownedUpgradeable[Math.floor(Math.random()*ownedUpgradeable.length)];
-      specials.push({
-        type:"special", special:"upgrade", for:up,
-        name:"Upgrade "+TROOPS[up].name, emoji:"⬆️"
-      });
-    }
-    const db = ownedTypesList[Math.floor(Math.random()*ownedTypesList.length)];
-    specials.push({
-      type:"special", special:"double", for:db,
-      name:"Double "+TROOPS[db].name, emoji:"🃏"
-    });
-  }
-  const relic = RELIC_CARDS[Math.floor(Math.random()*RELIC_CARDS.length)];
-  const tactic = TACTIC_CARDS[Math.floor(Math.random()*TACTIC_CARDS.length)];
-  const formation = FORMATION_CARDS[Math.floor(Math.random()*FORMATION_CARDS.length)];
-
-  const pool = [
-    ...troopCards.map(item=>({ item:item, w:6 })),
-    ...specials   .map(item=>({ item:item, w:3 })),
-    { item:{ type:"relic", key:relic.key, name:relic.name, desc:relic.desc, emoji:"🪖" }, w:2 },
-    { item:{ type:"tactic", key:tactic.key, name:tactic.name, desc:tactic.desc, emoji:"📜" }, w:2 },
-    { item:{ type:"formation", key:formation.key, name:formation.name, desc:formation.desc, emoji:"🧭" }, w:1 }
-  ];
-
-  return weightedPick(pool, 3);
+function packFor(roster, faction, sideKey, matchState){
+  const state=matchState||S;
+  const side=sideKey||(state?.roster?.p1===roster?"p1":"p0");
+  const collection=state?.collections?.[side]||state?.profiles?.[side];
+  const unlocked=Array.isArray(collection?.unlocked)?collection.unlocked:Object.keys(collection?.troops||{}).filter(k=>collection.troops[k].unlocked);
+  const availableTypes=(FACTIONS[faction]||[]).filter(key=>!TROOPS[key].unlockable||unlocked.includes(key));
+  return FFDraft.createDraftPack({roster,faction,availableTypes,troops:TROOPS,evolutions:state?.evolutions?.[side]||{},comboEnhancements:state?.comboEnhancements?.[side]||[],ownedRelics:state?.relics?.[side]||[],ownedTactics:state?.tactics?.[side]||[],formation:state?.formations?.[side]},Math.random);
 }
+
 function applyPickToState(data, sideKey, pick){
   if (!pick || !sideKey) return;
+  if(FFDraft.applyDraftPick(data,sideKey,pick))return;
   const roster = data.roster || (data.roster = {p0:[],p1:[]});
   if (!roster.p0) roster.p0 = [];
   if (!roster.p1) roster.p1 = [];
@@ -2140,8 +2092,8 @@ function renderStatusPop(ev){
 }
 
 function emitLocalEffect(ev){
-  spriteRenderer?.event(ev);
   if (!ev) return;
+  if (spriteRenderer?.event(ev)) return;
   if (LOW_EFFECTS_MODE && (ev.type === "burst" || ev.type === "status")) return;
   if (ev.type==="beam") renderBeam(ev,false);
   if (ev.type==="hbeam") renderBeam(ev,true);
@@ -2155,17 +2107,12 @@ function emitLocalEffect(ev){
 function pushSyncedFx(field, ev, now){
   if (!field || !ev) return;
   if (!Array.isArray(field.syncedFx)) field.syncedFx = [];
-  field.syncedFx.push({
-    id: ev.id || crypto.randomUUID(),
-    type: ev.type,kind:ev.kind,ttl:ev.ttl,emoji:ev.emoji,radius:ev.radius,at:ev.at,
-    x: ev.x, y: ev.y, cx: ev.cx, cy: ev.cy, x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2,
-    battleTickId: Number.isFinite(field.battleTickId) ? field.battleTickId : null,
-    createdAt: now || Date.now()
-  });
-  if (field.syncedFx.length > 18) field.syncedFx.splice(0, field.syncedFx.length-18);
+  field.syncedFx.push({...ev,id:ev.id||crypto.randomUUID(),battleTickId:Number.isFinite(field.battleTickId)?field.battleTickId:null,createdAt:now||Date.now()});
+  if(field.syncedFx.length>96)field.syncedFx.splice(0,field.syncedFx.length-96);
 }
 
 function groundTickParticles(x,y, purple){
+  if(spriteRenderer?.event({type:"combat",kind:"toxic-cloud",x,y,targetX:x,targetY:y,radius:.2,ttl:380,duration:380}))return;
   const a=centerPx(x,y);
   for(let i=0;i<4;i++){
     const dot=document.createElement("div"); dot.className="p";
@@ -2255,8 +2202,9 @@ function spawnAdjacentUnit(st, parent, typeKey){
       };
       u.summoned=true;u.summonedBy=parent.id;u.bornAt=Date.now();
       FFUnits.initializeForgeUnit(u,{forgeTier:forgeUnitTier(st,parent.p,typeKey),ranked:st.mode==="ranked"||st.ranked===true,role:t.role});
+      FFUnits.applySummonEvolution(parent,u);
       st.field.units.push(u);
-      emitLocalEffect(fxBurst(x,y));
+      forgeCombatHooks(st).event({kind:"spawn",unitType:u.type,sourceId:parent.id,x:parent.x,y:parent.y,targetX:x,targetY:y,at:Date.now()});
       return true;
     }
   }
@@ -2292,7 +2240,7 @@ function attemptViperLeap(u, units, st){
     if (canMoveTo(u, units, nx, ny)){
       u.x = nx; u.y = ny;
       if ((u.lvl||1) >= 3){
-        emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
+        forgeCombatHooks(st).event({kind:"venom",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:nx,targetY:ny,at:Date.now()});
       }
       return true;
     }
@@ -2314,7 +2262,8 @@ function attemptBurrow(u, units, st, now){
     if (canMoveTo(u, units, nx, ny)){
       u.x=nx; u.y=ny;
       u.nextBurrow = now + (u.burrowCd || 2200);
-      emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
+      FFUnits.noteForgeAmbush(u,nearestEnemy(u,units,st.field),now);
+      forgeCombatHooks(st).event({kind:"burrow",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:nx,targetY:ny,at:now});
       return true;
     }
   }
@@ -2330,6 +2279,7 @@ function broodTick(st, now){
     if (!u.nextBrood) u.nextBrood = 0;
     if (now >= u.nextBrood){
       if (spawnAdjacentUnit(st, u, u.broodType || "hellspawn")){
+        u.animType="cast";u.animUntil=now+420;forgeCombatHooks(st).event({kind:"spawn",unitType:u.type,sourceId:u.id,x:u.x,y:u.y,at:now});
         if (u.firstBroodExtra){
           spawnAdjacentUnit(st, u, u.broodType || "hellspawn");
           u.firstBroodExtra = false;
@@ -2494,6 +2444,7 @@ function upsertVisualUnitsFromBattle(battle){
       ex.motion?.move(u.x,u.y,frameTime,Math.min(MOVE_MS,BATTLE_PUBLISH_MS*.7));ex.illusion=!!u.illusion;ex.markedUntil=u.markedUntil;ex.markedBySide=u.markedBySide;ex.removingAt=null;ex.forgeTier=u.forgeTier||1;ex.animType=u.animType;ex.animUntil=u.animUntil;ex.lastDamagedAt=u.lastDamagedAt;ex.type=u.type; ex.p=u.p; ex.targetX=u.x; ex.targetY=u.y; ex.targetHp=u.hp; ex.maxhp=u.maxhp; ex.statusIcons=icons; ex.actionClass=unitActionClass(u, now); ex.size=unitSize(u); ex.lvl=u.lvl||1; ex.lastSeenAt=now; ex.removing=false;
     }
   }
+  for(const u of battle.units||[]){const vu=visualUnits.get(u.id);if(vu)for(const key of ["battleRank","evolution","chainChargedUntil","comboShield","comboShieldUntil","bindUntil","slowUntil","woundUntil","statusShockUntil","statusPoisonUntil","statusAcidUntil","suppressedUntil","nextAtk","targetId","range","cd"])vu[key]=u[key];}
   for (const [id, vu] of visualUnits.entries()) if (!liveIds.has(id) && !vu.removing){vu.removing=true;vu.removingAt=now;}
 }
 function ensureVisualLoop(){
@@ -2504,12 +2455,15 @@ function ensureVisualLoop(){
     const now = Date.now(), elapsed=Math.min(100,Math.max(1,frameTime-lastVisualFrame));
     lastVisualFrame=frameTime;
     const movementMix=1-Math.pow(.78,elapsed/(1000/60)), healthMix=1-Math.pow(.75,elapsed/(1000/60));
-    if (S && S.phase === "battle" && serverBattleState){
+    const finishingBattle=frameTime<battlePresentationUntil;
+    $("overlay").style.opacity=finishingBattle?"0":"";$("cardRow").style.visibility=finishingBattle?"hidden":"";
+    if (S && (S.phase === "battle" || finishingBattle) && serverBattleState){
       paint([], serverBattleState);spriteRenderer?.paintFields(serverBattleState,now);
       for (const [id, vu] of visualUnits.entries()){
         const motion=vu.motion?.sample(frameTime);
         if(motion){vu.x=motion.x;vu.y=motion.y;vu.facing=motion.facing;}else{vu.x+=(vu.targetX-vu.x)*movementMix;vu.y+=(vu.targetY-vu.y)*movementMix;}
-        vu.hp += (vu.targetHp - vu.hp) * healthMix;
+        const impactDeadline=spriteRenderer?.impactDeadline?.(id)||0;
+        if(frameTime>=impactDeadline)vu.hp += (vu.targetHp - vu.hp) * healthMix;
         vu.actionClass=unitActionClass(vu,now);
         let node = unitEls.get(id) || unitDomById.get(id);
         if (!node){
@@ -2520,7 +2474,7 @@ function ensureVisualLoop(){
           unitDomById.set(id, node);
           unitEls.set(id, node);
         }
-        node.classList.toggle("fading", !!vu.removing);
+        node.classList.toggle("fading", !!vu.removing && frameTime>=impactDeadline);
         node.classList.toggle("big", vu.size===2);
         const renderKey = [vu.type,vu.p,vu.lvl,vu.size,vu.forgeTier].join("|");
         const prevRenderKey = lastUnitRenderKey.get(id);
@@ -2706,10 +2660,11 @@ function canStepNow(u, now){
   }
   return false;
 }
-function blinkIfNeeded(u, units){
+function blinkIfNeeded(u, units, st){
   if(!u.blink50 || u.blinked) return;
   if((u.revealedUntil||0)>Date.now())return;
   if (u.hp <= 0.5*u.maxhp){
+    const fromX=u.x,fromY=u.y;
     const dir = (u.p===0? +1 : -1);
     for(let i=0;i<3;i++){
       const nx=u.x, ny=u.y+dir;
@@ -2718,6 +2673,7 @@ function blinkIfNeeded(u, units){
       else break;
     }
     u.blinked=true;
+    if(st&&(u.x!==fromX||u.y!==fromY))forgeCombatHooks(st).event({kind:"teleport",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:u.x,targetY:u.y,at:Date.now()});
   }
 }
 
@@ -2855,7 +2811,7 @@ function wardsHeal(st, now){
     let tgt = null, minRatio = 1.01;
     for (let j=0;j<st.field.units.length;j++){
       const v = st.field.units[j];
-      if (v.hp<=0) continue;
+      if (v.hp<=0 || now<(v.nextWardHealing||0)) continue;
       if (w.p!=null && v.p !== w.p) continue;
       const d = rectDistance(w, v);
       if (d <= (w.hRange||3)){
@@ -2868,6 +2824,8 @@ function wardsHeal(st, now){
     const raw = Math.max(1, w.hAmt|0);
     const amt = Math.max(1, Math.round(raw * healScale(tgt, now)));
     tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
+    tgt.nextWardHealing=now+2500;
+    forgeCombatHooks(st).event({kind:"heal",unitType:"wardmaker",x:w.x,y:w.y,targetX:tgt.x,targetY:tgt.y,targetId:tgt.id,at:now,amount:amt});
 
     w.nextHeal = now + (w.hCd || 1500);
   }
@@ -2925,6 +2883,7 @@ function healAction(u, st, now){
   u.arcaneBatteryReady=false;
   const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
+  u.animType="cast";u.animUntil=now+320;forgeCombatHooks(st).event({kind:"heal",unitType:u.type,sourceId:u.id,targetId:target.id,x:u.x,y:u.y,targetX:target.x,targetY:target.y,at:now});
   if (u.legendary && u.type==="medic" && u.reviveReady){
     const critical = allies.find(a=>a.hp>0 && a.hp <= Math.max(2, Math.floor(a.maxhp*0.2)));
     if (critical){
@@ -2982,14 +2941,18 @@ function applyDamage(victim, dmg, st){
   dmg=Math.max(0,Number(dmg)||0);
   const now=Date.now(),beforeHp=Math.max(0,victim.hp);
   if((victim.startShieldUntil||0)>now&&(victim.startShield||0)>0){const absorbed=Math.min(dmg,victim.startShield);victim.startShield-=absorbed;dmg-=absorbed;}
+  dmg=FFUnits.absorbForgeShield(victim,dmg,now);
   if(dmg>0)victim.lastDamagedAt = now;
   if (victim.legendary && victim.type==="defiler" && victim.plagueReady && victim.hp > 0 && (victim.hp-dmg) <= Math.floor(victim.maxhp*0.35)){
     addToxicSplash(st, victim.x, victim.y, 4500, victim.p);
     victim.plagueReady = false;
   }
   victim.hp -= dmg;
-  flashAt(victim.x, victim.y, dmg);
-  return Math.min(beforeHp,dmg);
+  if(dmg>0)forgeCombatHooks(st).event({kind:"hit",unitType:victim.type,sourceId:victim.id,targetId:victim.id,x:victim.x,y:victim.y,targetX:victim.x,targetY:victim.y,amount:Math.min(beforeHp,dmg),at:now});
+  const actualDamage=Math.min(beforeHp,dmg);
+  FFUnits.noteForgeDamage(victim,actualDamage,st,now,forgeCombatHooks(st));
+  if(beforeHp>0&&victim.hp<=0)forgeCombatHooks(st).event({kind:"death",unitType:victim.type,p:victim.p,sourceId:victim.id,x:victim.x,y:victim.y,at:now});
+  return actualDamage;
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   const hitIds = new Set();
@@ -2997,7 +2960,7 @@ function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
       const hit=units.find(o=>o.p!==srcP && o.hp>0 && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
-      if(hit && !hitIds.has(hit.id)){
+      if(hit && hit.id!==opts?.excludeId && !hitIds.has(hit.id)){
         hitIds.add(hit.id);
         const attacker=opts&&opts.attacker;
         const marked=attacker?FFUnits.markedDamageBonus(attacker,hit,(opts&&opts.now)||Date.now(),{field:field},{distance:rectDistance}):0;
@@ -3065,35 +3028,37 @@ function attack(u, t, now, st){
       dmg = applyWardShields(u, victim, dmg, st.field);
       if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
     }
+    dmg += Math.min(victim.armor||0,u.armorPierce||0);
     dmg = reduceDamageForTarget(dmg, victim, st.field, {ignoreArmor:!!u.trueDamage});
     const actualDamage=applyDamage(victim, dmg, st);
     FFUnits.siphonAfterDamage(u,victim,actualDamage,now,st,forgeCombatHooks(st));
   }
 
+  const attackOrigin={x:u.x,y:u.y},attackImpact=nearestPointOnRectToUnit(t,u);
+  const attackHealth=new Map(st.field.units.filter(v=>v.p!==u.p&&v.hp>0).map(v=>[v.id,{id:v.id,x:v.x,y:v.y,hp:v.hp}]));
   if (u.kamikaze){
-    emitLocalEffect(fxBurst(u.x,u.y));
     deal(t, u.dmg, ranged);
 
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
       const impact = nearestPointOnRectToUnit(t, u);
-      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now,excludeId:t.id});
     }
     if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
     u.hp = 0;
+    forgeCombatHooks(st).event({kind:"death",unitType:u.type,p:u.p,sourceId:u.id,x:u.x,y:u.y,at:now});
 
   } else if (u.type === "vrocket"){
 
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * (u.legendary ? 0.75 : 0.6)));
     const impact = nearestPointOnRectToUnit(t, u);
-    splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
+    splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage,attacker:u,now:now,excludeId:t.id});
 
   } else if (u.chain3){
 
-    if (u.type === "storm") pushSyncedFx(st.field, fxStorm(t.x,t.y), now);
-    chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg+firstSpellBoost, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
+    chainLightning(st.field.units, st.field, t, u.p, (u.chainHops||(u.legendary?4:3)), u.dmg+firstSpellBoost, {ignoreArmor:!!u.trueDamage,attacker:u,now:now,excludeId:t.id});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
 
@@ -3103,7 +3068,7 @@ function attack(u, t, now, st){
   } else if (u.acid){
 
     deal(t, u.dmg, true);
-    addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur || 3500);
+    addAcid(st, t.x, t.y, u.acidDur || TROOPS[u.type].base.acidDur || 3500);
 
   } else {
 
@@ -3112,7 +3077,7 @@ function attack(u, t, now, st){
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
       const impact = nearestPointOnRectToUnit(t, u);
-      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage,attacker:u,now:now});
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage,attacker:u,now:now,excludeId:t.id});
     }
     if (u.toxicSplash){
       addToxicSplash(st, t.x, t.y, 7000, u.p);
@@ -3158,6 +3123,10 @@ function attack(u, t, now, st){
     if (u.legendary) t.rangeDebuffUntil = Math.max(t.rangeDebuffUntil||0, t.slowUntil||0);
   }
 
+  const attackTargets=st.field.units.filter(v=>attackHealth.has(v.id)&&v.hp<attackHealth.get(v.id).hp).map(v=>{const before=attackHealth.get(v.id);return {id:v.id,x:before.x,y:before.y,amount:Math.min(before.hp,before.hp-v.hp)}});
+  u.lastAttackDamage=attackTargets.reduce((sum,hit)=>sum+hit.amount,0);
+  forgeCombatHooks(st).event({kind:"attack",unitType:u.type,battleRank:u.lvl,sourceId:u.id,targetId:t.id,x:attackOrigin.x,y:attackOrigin.y,targetX:attackImpact.x,targetY:attackImpact.y,radius:u.splash1?1:0,targets:attackTargets,at:now,ttl:1000});
+  FFUnits.afterForgeAttack(u,t,now,st,forgeCombatHooks(st));
   u.nextAtk = now + FFUnits.attackCooldown(u,now,st,{distance:rectDistance});
   return true;
 }
@@ -3243,7 +3212,7 @@ function terrainSig(list){
 function battleFieldSignature(field){
   const units = (field.units||[]).map(unitSig).sort().join(";");
   const wards = (field.wards||[]).map(w=>[w.id||"",w.x,w.y,w.hp,w.until||0,w.disabledUntil||0,w.next||0,w.nextHeal||0].join("|")).sort().join(";");
-  return [units,wards,terrainSig(field.poison),terrainSig(field.toxic),terrainSig(field.acid)].join("#");
+  return [units,wards,terrainSig(field.poison),terrainSig(field.toxic),terrainSig(field.acid),JSON.stringify(field.comboFields||[]),(field.syncedFx||[]).map(ev=>ev.id).join(",")].join("#");
 }
 
 let hostTick=null, battleTick=null;
@@ -3281,7 +3250,7 @@ function compactUnitForSync(unit){
   return out;
 }
 function pruneBattleField(field, now){
-  field.syncedFx=(field.syncedFx||[]).filter(ev=>(ev.createdAt||0)+1400>now).slice(-18);
+  field.syncedFx=(field.syncedFx||[]).filter(ev=>(ev.createdAt||0)+Math.min(5000,Math.max(1400,ev.ttl||ev.duration||0))>now).slice(-96);
   field.poison=(field.poison||[]).filter(v=>(v.until||0)>now);
   field.toxic=(field.toxic||[]).filter(v=>(v.until||0)>now);
   field.acid=(field.acid||[]).filter(v=>(v.until||0)>now);
@@ -3295,11 +3264,12 @@ function makeBattlePayload(field, battleTickId){
     battleTickId:battleTickId|0,
     units:(cleanField.units||[]).filter(u=>u&&u.hp>0).map(compactUnitForSync),
     temporalFields:cleanField.temporalFields||[],
+    comboFields:cleanField.comboFields||[],
     poison:cleanField.poison||[],
     toxic:cleanField.toxic||[],
     acid:cleanField.acid||[],
     wards:(cleanField.wards||[]).map(sanitizeFirestoreValue),
-    syncedFx:(cleanField.syncedFx||[]).slice(-18).map(sanitizeFirestoreValue),
+    syncedFx:(cleanField.syncedFx||[]).slice(-96).map(sanitizeFirestoreValue),
     startedAt:cleanField.startedAt||hostBattleStartedAt||Date.now(),
     suddenDeathTickAt:cleanField.suddenDeathTickAt||0,
     updatedAt:Date.now()
@@ -3335,6 +3305,7 @@ function applyHostBattleVisual(field){
   const payload=makeBattlePayload(field,hostBattleTickId);
   B=payload;
   serverBattleState=payload;
+  renderSyncedFxEvents(payload.syncedFx||[]);
   upsertVisualUnitsFromBattle(payload);
   render();
 }
@@ -3433,7 +3404,7 @@ async function processHostPhase(){
       const side="p1",di=d.draftIndex|0,pack=d.currentPacks?.[side]||[];
       if(pack.length && d.selections?.[side]?.[di]==null && now>(d.phaseEndsAt||0)-7800){
         const selections=deepClone(d.selections||{p0:[],p1:[]});
-        selections[side][di]=chooseAIDraft(pack,{myRoster:d.roster.p1,enemyRoster:d.roster.p0,myRelics:d.relics.p1,enemyRelics:d.relics.p0,difficulty:currentMission?.difficulty||.55},Math.random,{evaluateDraftCard});
+        selections[side][di]=chooseAIDraft(pack,{myRoster:d.roster.p1,enemyRoster:d.roster.p0,myRelics:d.relics.p1,enemyRelics:d.relics.p0,difficulty:currentMission?.difficulty||.55,aiStyle:currentMission?.aiStyle||localOpponent?.aiStyle||"sustained_upgrades",evolutions:d.evolutions?.p1||{},comboEnhancements:d.comboEnhancements?.p1||[],enemyComboEnhancements:d.comboEnhancements?.p0||[]},Math.random,{evaluateDraftCard});
         await writeStatePatch({selections}); return;
       }
     }
@@ -3456,8 +3427,8 @@ async function processHostPhase(){
           factions:fx, phase:"draft", draftIndex:0,
           selections:{p0:[],p1:[]},
           currentPacks:{
-            p0: packFor(d.roster && d.roster.p0 ? d.roster.p0 : [], fx.p0),
-            p1: packFor(d.roster && d.roster.p1 ? d.roster.p1 : [], fx.p1)
+            p0: packFor(d.roster?.p0||[],fx.p0,"p0",d),
+            p1: packFor(d.roster?.p1||[],fx.p1,"p1",d)
           },
           phaseEndsAt: now+10000,
           bonusFor:null
@@ -3483,7 +3454,7 @@ async function processHostPhase(){
       const roster = d.roster || {p0:[],p1:[]};
       if (!roster.p0) roster.p0 = [];
       if (!roster.p1) roster.p1 = [];
-      const draftState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
+      const draftState = { ...d, roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations, evolutions:d.evolutions, comboEnhancements:d.comboEnhancements };
 
       ["p0","p1"].forEach(sk=>{
         const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
@@ -3501,7 +3472,7 @@ async function processHostPhase(){
           roster: roster,
           field: fieldEmpty(),
           factions: d.factions || {p0:null,p1:null},
-          relics:draftState.relics,tactics:draftState.tactics,formations:draftState.formations,
+          relics:draftState.relics,tactics:draftState.tactics,formations:draftState.formations,evolutions:draftState.evolutions,comboEnhancements:draftState.comboEnhancements,
           forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
         rebuildFieldFromRoster(temp);
@@ -3510,6 +3481,7 @@ async function processHostPhase(){
           relics: draftState.relics || {p0:[],p1:[]},
           tactics: draftState.tactics || {p0:[],p1:[]},
           formations: draftState.formations || {p0:"balanced",p1:"balanced"},
+          evolutions:draftState.evolutions||{p0:{},p1:{}},comboEnhancements:draftState.comboEnhancements||{p0:[],p1:[]},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
@@ -3524,11 +3496,12 @@ async function processHostPhase(){
           relics: draftState.relics || {p0:[],p1:[]},
           tactics: draftState.tactics || {p0:[],p1:[]},
           formations: draftState.formations || {p0:"balanced",p1:"balanced"},
+          evolutions:draftState.evolutions||{p0:{},p1:{}},comboEnhancements:draftState.comboEnhancements||{p0:[],p1:[]},
           selections: sel,
           draftIndex: nextIx,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
-            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
+            p0: packFor(roster.p0,d.factions?.p0||"Helions","p0",draftState),
+            p1: packFor(roster.p1,d.factions?.p1||"Helions","p1",draftState)
           },
           phaseEndsAt: Date.now()+10000,
           bonusFor:null
@@ -3555,7 +3528,7 @@ async function processHostPhase(){
         const roster=d.roster || {p0:[],p1:[]};
         if (!roster.p0) roster.p0 = [];
         if (!roster.p1) roster.p1 = [];
-        const bonusState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
+        const bonusState = { ...d, roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations, evolutions:d.evolutions, comboEnhancements:d.comboEnhancements };
 
         const pack=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
         const pickIndex = sel[loser][di];
@@ -3568,11 +3541,12 @@ async function processHostPhase(){
           relics: bonusState.relics || {p0:[],p1:[]},
           tactics: bonusState.tactics || {p0:[],p1:[]},
           formations: bonusState.formations || {p0:"balanced",p1:"balanced"},
+          evolutions:bonusState.evolutions||{p0:{},p1:{}},comboEnhancements:bonusState.comboEnhancements||{p0:[],p1:[]},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
-            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
+            p0: packFor(roster.p0,d.factions?.p0||"Helions","p0",bonusState),
+            p1: packFor(roster.p1,d.factions?.p1||"Helions","p1",bonusState)
           },
           phase:"draft-after",
           phaseEndsAt: Date.now()+10000,
@@ -3600,7 +3574,7 @@ async function processHostPhase(){
       const roster=d.roster || {p0:[],p1:[]};
       if (!roster.p0) roster.p0 = [];
       if (!roster.p1) roster.p1 = [];
-      const afterState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
+      const afterState = { ...d, roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations, evolutions:d.evolutions, comboEnhancements:d.comboEnhancements };
 
       ["p0","p1"].forEach(sk=>{
         const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
@@ -3618,7 +3592,7 @@ async function processHostPhase(){
           roster: roster,
           field: fieldEmpty(),
           factions: d.factions || {p0:null,p1:null},
-          relics:afterState.relics,tactics:afterState.tactics,formations:afterState.formations,
+          relics:afterState.relics,tactics:afterState.tactics,formations:afterState.formations,evolutions:afterState.evolutions,comboEnhancements:afterState.comboEnhancements,
           forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
         rebuildFieldFromRoster(temp);
@@ -3627,6 +3601,7 @@ async function processHostPhase(){
           relics: afterState.relics || {p0:[],p1:[]},
           tactics: afterState.tactics || {p0:[],p1:[]},
           formations: afterState.formations || {p0:"balanced",p1:"balanced"},
+          evolutions:afterState.evolutions||{p0:{},p1:{}},comboEnhancements:afterState.comboEnhancements||{p0:[],p1:[]},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
@@ -3640,11 +3615,12 @@ async function processHostPhase(){
           relics: afterState.relics || {p0:[],p1:[]},
           tactics: afterState.tactics || {p0:[],p1:[]},
           formations: afterState.formations || {p0:"balanced",p1:"balanced"},
+          evolutions:afterState.evolutions||{p0:{},p1:{}},comboEnhancements:afterState.comboEnhancements||{p0:[],p1:[]},
           selections: sel,
           draftIndex: nextIx,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
-            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
+            p0: packFor(roster.p0,d.factions?.p0||"Helions","p0",afterState),
+            p1: packFor(roster.p1,d.factions?.p1||"Helions","p1",afterState)
           },
           phaseEndsAt: Date.now()+10000
         });
@@ -3739,7 +3715,7 @@ async function runBattle(initialField){
         lastLogic=now;
         pruneBattleField(st.field,now);
         applyTerrain(st.field,units);
-        for (let i=0;i<units.length;i++) blinkIfNeeded(units[i],units);
+        for (let i=0;i<units.length;i++) blinkIfNeeded(units[i],units,st);
         wardsHeal(st,now);
         wardsShoot(st,now);
         broodTick(st,now);
@@ -3794,7 +3770,7 @@ async function runBattle(initialField){
         pruneBattleField(st.field,now);
       }
       hostBattleState=st.field;
-      if (doLogic) applyHostBattleVisual(hostBattleState);
+      applyHostBattleVisual(hostBattleState);
 
       const alive0=st.field.units.some(u=>u.p===0&&u.hp>0);
       const alive1=st.field.units.some(u=>u.p===1&&u.hp>0);
@@ -3825,7 +3801,7 @@ async function runBattle(initialField){
             selections:{p0:[],p1:[]},
             currentPacks:(()=>{
               const packs={p0:[],p1:[]};
-              packs[loserKey]=packFor(roster[loserKey],st.factions&&st.factions[loserKey]?st.factions[loserKey]:"Helions");
+              packs[loserKey]=packFor(roster[loserKey],st.factions?.[loserKey]||"Helions",loserKey,st);
               packs[winnerKey]=[]; return packs;
             })(),
             draftIndex:0,bonusFor:loserKey
@@ -3858,6 +3834,11 @@ async function runBattle(initialField){
 
 /* ----------- UI render ----------- */
 function render(){
+  const visualPhase=S?.phase||null;
+  if(lastVisualPhase==="battle"&&visualPhase!=="battle"&&serverBattleState)battlePresentationUntil=performance.now()+900;
+  if(visualPhase==="battle")battlePresentationUntil=0;lastVisualPhase=visualPhase;
+  $("overlay").style.opacity=performance.now()<battlePresentationUntil?"0":"";$("cardRow").style.visibility=performance.now()<battlePresentationUntil?"hidden":"";
+  if(expansionUI){const side=pKey(meIndex),faction=S?.factions?.[side];expansionUI.updateComboTracker({host:viewport,roster:S?.roster?.[side]||[],faction,availableTypes:(FACTIONS[faction]||[]).filter(key=>!TROOPS[key].unlockable||forgeProfile?.troops?.[key]?.unlocked),comboEnhancements:S?.comboEnhancements?.[side]||[]});}
   const p0n=(S && S.players && S.players[0]) || "P0";
   const p1n=(S && S.players && S.players[1]) || "P1";
   const lives=(S && S.lives) || [4,4];
@@ -3891,7 +3872,7 @@ function render(){
   const endSummaryEl = $("endSummary");
   if(isLocalPractice()&&S?.phase==="game-over"&&lastResultsId!==S.sessionKey){
     lastResultsId=S.sessionKey;
-    showSoloResults(S);
+    const resultState=S;afterBattlePresentation(()=>{if(S?.sessionKey===resultState.sessionKey&&S.phase==="game-over")showSoloResults(resultState)});
   }
   if (S && S.phase === "game-over"){
     const mmrFinal = S.mmr || [1000,1000];
@@ -4003,7 +3984,8 @@ function render(){
       double:{label:"DOUBLE", icon:"🪞"},
       relic:{label:"RELIC", icon:"🏺"},
       tactic:{label:"TACTIC", icon:"🧭"},
-      formation:{label:"FORMATION", icon:"🔳"}
+      formation:{label:"FORMATION", icon:"🔳"},
+      evolution:{label:"EVOLUTION",icon:"✦"},combo:{label:"COMBO",icon:"✦"}
     };
     const draftEval = evaluateDraftCard(c, myRoster, enemyRoster, myRelics, enemyRelics);
     const recText = (draftEval.labels||[]).slice(0,2).join(", ");
@@ -4060,7 +4042,7 @@ function render(){
         const legendary = nxt===3 ? LEGENDARY_ABILITIES[c.for] : null;
         roleLabel = "Upgrade";
         shortDesc = legendary ? "Upgrade toward Legendary" : "Improve this troop";
-        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP.";
+        desc = FFDraft.draftCardPresentation(c,myRoster,{faction:S.factions?.[sk],troops:TROOPS,evolutions:S.evolutions?.[sk]||{}}).improvement;
         if (legendary) desc += " Legendary unlock: "+legendary.name+" — "+legendary.desc;
       } else if (c.type==="special" && c.special==="double"){
         const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
@@ -4098,6 +4080,8 @@ function render(){
         (reasonText ? infoSection("Why it fits", reasonText) : "");
     }
 
+    const presentation=FFDraft.draftCardPresentation(c,myRoster,{faction:S.factions?.[sk],troops:TROOPS,evolutions:S.evolutions?.[sk]||{},comboEnhancements:S.comboEnhancements?.[sk]||[]});
+    if(TROOPS[presentation.key])infoBody=infoSection("Battle rank",presentation.rankLabel)+infoSection("Improvement",presentation.improvement)+infoSection("Tradeoff",presentation.tradeoff)+infoSection("Combinations",presentation.comboPreview.map(combo=>combo.name+" — "+(combo.unlocks?"Unlocks now":combo.enhances?"Enhances now":combo.description)))+infoBody;
     el.innerHTML = cardHtml;
     const infoBtn = el.querySelector(".cardInfoBtn");
     if (infoBtn){
@@ -4111,7 +4095,7 @@ function render(){
     })(i);
     const artKey=c.key||c.for;
     const tier=forgeProfile?.troops?.[artKey]?.forgeTier||1;
-    expansionUI?.decorateDraftCard(el,{key:artKey,type:c.type==="special"?c.special:c.type,faction:TROOPS[artKey]?.faction||S.factions?.[sk],tier,recommended:recText,copies:myRoster.find(r=>r.type===artKey)?.count||0,detail:infoBody});
+    expansionUI?.decorateDraftCard(el,{key:artKey,type:c.type==="special"?c.special:c.type,faction:TROOPS[artKey]?.faction||S.factions?.[sk],tier,recommended:recText,copies:myRoster.find(r=>r.type===artKey)?.count||0,detail:infoBody,card:c,roster:myRoster,evolutions:S.evolutions?.[sk]||{},comboEnhancements:S.comboEnhancements?.[sk]||[],availableTypes:(FACTIONS[S.factions?.[sk]]||[]).filter(key=>!TROOPS[key].unlockable||forgeProfile?.troops?.[key]?.unlocked)});
     row.appendChild(el);
   }
   guideBtn.onclick = ()=>{ guideModal.style.display="block"; };
@@ -4153,16 +4137,18 @@ async function chooseCard(i){
   if(!S) return;
   const activePack=S.currentPacks?.[pKey(meIndex)]||[];
   if(!Number.isInteger(i)||i<0||i>=activePack.length)return;
+  const chosenCard=activePack[i],priorRoster=deepClone(S.roster?.[pKey(meIndex)]||[]);
+  const announce=()=>expansionUI?.announceBattleUpgrade(chosenCard,priorRoster,{faction:S?.factions?.[pKey(meIndex)],evolutions:S?.evolutions?.[pKey(meIndex)]||{},comboEnhancements:S?.comboEnhancements?.[pKey(meIndex)]||[],tier:forgeProfile?.troops?.[chosenCard.for]?.forgeTier||1});
   if(isSecureMode()){
     if(secureRequestBusy)return;secureRequestBusy=true;
-    try{await adoptSecureResponse(await progression.pick(secureSession.id,i,{sequence:secureSession.revision}));}
+    try{await adoptSecureResponse(await progression.pick(secureSession.id,i,{sequence:secureSession.revision}));announce();}
     catch(error){expansionUI?.notify(error.message);}
     finally{secureRequestBusy=false;}return;
   }
   if(isLocalPractice()){
     const di=S.draftIndex|0,selections=deepClone(S.selections||{p0:[],p1:[]});
     if(selections.p0[di]!=null)return;selections.p0[di]=i;
-    await writeStatePatch({selections});return;
+    await writeStatePatch({selections});announce();return;
   }
   const di=S.draftIndex|0;
   const sk=pKey(meIndex);
@@ -4186,46 +4172,13 @@ async function chooseCard(i){
       selections[sk][di] = i;
       tx.update(stateRef, { selections: selections });
     });
+    announce();
   }catch(e){
     console.error("chooseCard failed", e);
   }
 }
 
-/* Listeners */
-function startListeners(){
-  if (executionMode!=="legacy-online" || listenersStarted) return;
-  listenersStarted = true;
-
-  unsubscribeLobby = onSnapshot(lobbyRef, async (snap)=>{
-    if (!snap.exists()) return;
-
-    const lob = snap.data() || {};
-    const wasHost = isHost;
-    lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
-    isHost = lob.hostUid ? lob.hostUid===auth.currentUser?.uid : (lob.host === username);
-
-    configureBattleListener();
-    if (isHost) {
-      await ensureStateExists(lob);
-      await syncPlayersIntoStateIfNeeded();
-      if (hasHostLease()){
-        startHostLoops();
-        if (S && S.phase === "battle" && !battleTick) runBattle();
-      }
-    } else if (wasHost) {
-      stopHostLoops();
-    }
-
-    const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
-    let idx = curPlayers.indexOf(username);
-    if (idx < 0) idx = 0;
-    meIndex = Math.max(0, Math.min(1, idx));
-
-    fitBoard();publishLocalAssetReady();updateAssetGate();render();
-  }, (err)=>{
-    console.error("lobby listener failed", err);
-  });
-
+/* Shared presentation helpers are also used by local and secure replays. */
 let seenEffectIds=new Set();
 let prevBattleForLocalFx = null;
 
@@ -4237,14 +4190,14 @@ function renderLocalFxFromBattleDiff(prevBattle, nextBattle){
     if (!prev) continue;
     if (u.hp < prev.hp){
       flashAt(u.x, u.y, prev.hp - u.hp);
-      if (!LOW_EFFECTS_MODE) emitLocalEffect(fxImpact(u.x, u.y));
+      if (!(nextBattle.syncedFx||[]).some(ev=>ev.targetId===u.id))emitLocalEffect(fxImpact(u.x, u.y));
     } else if (u.hp > prev.hp){
       emitLocalEffect(fxHeal(prev.x, prev.y, u.x, u.y));
     }
   }
   for (const prev of prevUnits.values()){
     if (!nextUnits.has(prev.id)){
-      emitLocalEffect(fxBurst(prev.x, prev.y));
+      if(!(nextBattle.syncedFx||[]).some(ev=>ev.kind==="death"&&ev.sourceId===prev.id))emitLocalEffect({id:"death-"+prev.id,type:"combat",kind:"death",unitType:prev.type,x:prev.x,y:prev.y,ttl:800});
     }
   }
 }
@@ -4255,7 +4208,7 @@ function renderSyncedFxEvents(list){
     if (!ev || !ev.id || seenEffectIds.has(ev.id)) continue;
     seenEffectIds.add(ev.id);
     emitLocalEffect(Object.assign({ttl:620}, ev));
-    setTimeout(()=> seenEffectIds.delete(ev.id), 2000);
+    if(seenEffectIds.size>4096)seenEffectIds.delete(seenEffectIds.values().next().value);
   }
 }
 
@@ -4322,6 +4275,42 @@ function applyBattleSnapshot(nextBattle){
   upsertVisualUnitsFromBattle(nextBattle);
   render();
 }
+
+
+/* Listeners */
+function startListeners(){
+  if (executionMode!=="legacy-online" || listenersStarted) return;
+  listenersStarted = true;
+
+  unsubscribeLobby = onSnapshot(lobbyRef, async (snap)=>{
+    if (!snap.exists()) return;
+
+    const lob = snap.data() || {};
+    const wasHost = isHost;
+    lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
+    isHost = lob.hostUid ? lob.hostUid===auth.currentUser?.uid : (lob.host === username);
+
+    configureBattleListener();
+    if (isHost) {
+      await ensureStateExists(lob);
+      await syncPlayersIntoStateIfNeeded();
+      if (hasHostLease()){
+        startHostLoops();
+        if (S && S.phase === "battle" && !battleTick) runBattle();
+      }
+    } else if (wasHost) {
+      stopHostLoops();
+    }
+
+    const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
+    let idx = curPlayers.indexOf(username);
+    if (idx < 0) idx = 0;
+    meIndex = Math.max(0, Math.min(1, idx));
+
+    fitBoard();publishLocalAssetReady();updateAssetGate();render();
+  }, (err)=>{
+    console.error("lobby listener failed", err);
+  });
 
 unsubscribeState = onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
@@ -4394,10 +4383,15 @@ window.addEventListener("beforeunload", cleanupGameRuntime, {once:true});
 /* ---------- Expansion orchestration ---------- */
 const defaultForgeProfile = ()=>({username,crowncouncilElo:1000,forgeDust:0,troops:Object.fromEntries(Object.entries(TROOPS).map(([key,troop])=>[key,{forgeTier:1,cards:0,unlocked:!troop.unlockable}])),campaign:{missions:{}},wins:0,losses:0});
 const unlockedForgeKeys=()=>Object.keys(forgeProfile?.troops||{}).filter(key=>forgeProfile.troops[key].unlocked);
+function afterBattlePresentation(callback){
+  const remaining=Math.max(0,battlePresentationUntil-performance.now());
+  if(remaining)setTimeout(callback,remaining);else callback();
+}
 function resetActiveRuntime(){
+  battlePresentationUntil=0;lastVisualPhase=null;
   stopHostLoops();clearInterval(securePoll);securePoll=null;
   cancelAnimationFrame(securePlayback);securePlayback=null;playbackKey=null;
-  spriteRenderer?.clear();secureSession=null;lastResultsId=null;
+  spriteRenderer?.clear();seenEffectIds.clear();secureSession=null;lastResultsId=null;
   for(const node of unitDomById.values())node.remove();
   unitDomById.clear();unitEls.clear();visualUnits.clear();lastUnitRenderKey.clear();lastHpPct.clear();
   serverBattleState=null;B=battleEmpty();
@@ -4410,7 +4404,7 @@ async function startPractice(faction="Vanir",missionId=null,{saveProgress=false,
   resetActiveRuntime();executionMode="practice";isHost=true;meIndex=0;
   currentMission=missionId?(String(missionId).startsWith("endless-")?createEndlessMission(Number(String(missionId).split("-")[1])||1):getMission(missionId)):null;
   const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000,currentMission?.difficulty||.55);
-  localOpponent={...ai,faction:currentMission?.aiFaction||ALL_FACTIONS[Math.floor(Math.random()*3)]};
+  localOpponent={...ai,aiStyle:currentMission?.aiStyle||["early_combos","sustained_upgrades","defensive_evolution","legendary_army"][Math.floor(Math.random()*4)],faction:currentMission?.aiFaction||ALL_FACTIONS[Math.floor(Math.random()*3)]};
   const state=newMatchState([username,currentMission?.opponent?.name||ai.name],[forgeProfile?.crowncouncilElo||1000,ai.estimatedMmr],crypto.randomUUID());
   state.mode="practice";state.missionId=currentMission?.id||null;state.ranked=false;state.phase="faction-select";state.phaseEndsAt=Date.now()+20000;
   state.collections={p0:{unlocked:unlockedForgeKeys()},p1:{unlocked:Object.keys(TROOPS).filter(k=>TROOPS[k].unlockable)}};
@@ -4453,7 +4447,7 @@ function shiftReplayTimers(frame,offset){
   for(const unit of value.units||[]){
     for(const key of Object.keys(unit))if(typeof unit[key]==="number" && (key.endsWith("Until")||key==="lastDamagedAt") && unit[key]>0)unit[key]+=offset;
   }
-  for(const key of ["poison","toxic","acid","wards","temporalFields"]){for(const entry of value[key]||[])if(entry.until)entry.until+=offset;}
+  for(const key of ["poison","toxic","acid","wards","temporalFields","comboFields"]){for(const entry of value[key]||[])if(entry.until)entry.until+=offset;}
   for(const effect of value.syncedFx||[]){if(effect.at)effect.at+=offset;if(effect.createdAt)effect.createdAt+=offset;}
   return value;
 }
@@ -4466,7 +4460,7 @@ async function adoptSecureResponse(response){
   if(session.phase==="battle"&&session.battle?.frames?.length){
     const key=session.battle.replayId||session.id+":"+session.round;
     if(playbackKey!==key){
-      cancelAnimationFrame(securePlayback);playbackKey=key;
+      cancelAnimationFrame(securePlayback);playbackKey=key;seenEffectIds.clear();spriteRenderer?.clear();
       const battle=session.battle,frames=battle.frames,origin=battle.clockOrigin||1000;
       const serverTime=Number(response.serverTime)||Date.now();
       const elapsedAtStart=Math.max(0,serverTime-(battle.startedAt||serverTime));
@@ -4490,7 +4484,7 @@ async function adoptSecureResponse(response){
   if(session.phase==="game-over"){clearInterval(securePoll);securePoll=null;}
   if(session.phase==="game-over"&&lastResultsId!==session.id){
     lastResultsId=session.id;
-    expansionUI?.showResults({won:session.winner===session.players?.[meIndex]||session.winnerSide===meIndex,opponent:session.players?.[1-meIndex],mmr:forgeProfile?.crowncouncilElo,mmrChange:response.receipt?.mmrDelta||session.mmrChange?.[meIndex]||0,receipt:response.receipt,stars:response.receipt?.stars,unlockedTroops:response.receipt?.unlocks||[],faction:session.factions?.[pKey(meIndex)],campaignComplete:Object.values(forgeProfile?.campaign?.missions||{}).filter(m=>m.completed).length>=30});
+    afterBattlePresentation(()=>{if(secureSession?.id===session.id&&S?.phase==="game-over")expansionUI?.showResults({won:session.winner===session.players?.[meIndex]||session.winnerSide===meIndex,opponent:session.players?.[1-meIndex],mmr:forgeProfile?.crowncouncilElo,mmrChange:response.receipt?.mmrDelta||session.mmrChange?.[meIndex]||0,receipt:response.receipt,stars:response.receipt?.stars,unlockedTroops:response.receipt?.unlocks||[],faction:session.factions?.[pKey(meIndex)],campaignComplete:Object.values(forgeProfile?.campaign?.missions||{}).filter(m=>m.completed).length>=30});});
   }
 }
 function startSecurePolling(){
@@ -4543,6 +4537,17 @@ function connectForgeProgress(){
     createFirebaseProgress({auth,db,username,troops:TROOPS,api:{doc,onSnapshot,runTransaction}});
   progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
 }
+function initializeBattleSettings(){
+  let saved={};try{saved=JSON.parse(localStorage.getItem("ff.battleEffects")||"{}")}catch{}
+  const settings={intensity:"auto",reducedMotion:matchMedia("(prefers-reduced-motion: reduce)").matches,screenFlash:false,audio:false,volume:.35,...saved};
+  spriteRenderer.configure(settings);
+  const intensity=$("effectsIntensity"),motion=$("effectsMotion"),flash=$("effectsFlash"),audio=$("effectsAudio"),volume=$("effectsVolume");
+  intensity.value=settings.intensity;motion.checked=!!settings.reducedMotion;flash.checked=!!settings.screenFlash;audio.checked=!!settings.audio;volume.value=settings.volume;
+  const update=()=>{const value={intensity:intensity.value,reducedMotion:motion.checked,screenFlash:flash.checked,audio:audio.checked,volume:Number(volume.value)};spriteRenderer.configure(value);if(value.audio)spriteRenderer.unlockAudio();try{localStorage.setItem("ff.battleEffects",JSON.stringify(value))}catch{}};
+  for(const input of [intensity,motion,flash,audio,volume])input.onchange=update;
+  $("effectsBtn").onclick=()=>$("battleSettings").showModal();
+  const unlock=()=>spriteRenderer?.unlockAudio?.();document.addEventListener("pointerdown",unlock,{once:true});document.addEventListener("keydown",unlock,{once:true});
+}
 function initializeExpansion(){
   if(initializationPromise)return initializationPromise;expansionInitialized=true;
   initializationPromise=(async()=>{
@@ -4550,6 +4555,7 @@ function initializeExpansion(){
   forgeProfile=defaultForgeProfile();
   const assets=forgeAssets;
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
+  initializeBattleSettings();
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),

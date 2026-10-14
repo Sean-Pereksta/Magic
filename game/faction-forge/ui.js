@@ -1,4 +1,5 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
+import {draftCardPresentation,relevantComboStates} from "./drafting.js";
 
 const ROMAN=["","I","II","III"], TIER_NAMES=["","Recruit","Veteran","Elite"];
 const DEFAULT_COSTS={1:{cards:10,dust:100},2:{cards:30,dust:350}};
@@ -52,7 +53,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     if(fallback){const image=element("img","ff-portrait-fallback");image.src=fallback;image.alt="";image.decoding="async";image.onerror=()=>{image.remove();node.prepend(element("span","ff-portrait-symbol",troop.emoji||"◆"));};node.appendChild(image);}else node.appendChild(element("span","ff-portrait-symbol",troop.emoji||"◆"));
     node.appendChild(badge(tier));
     if(locked)node.appendChild(element("span","ff-lock-icon","🔒"));
-    const loadPortrait=()=>assets.unit(key,tier).then(sheet=>{
+    const loadPortrait=()=> (async()=>{for(let artTier=Math.max(1,Math.min(3,Number(tier)||1));artTier>=1;artTier--){try{const sheet=await assets.unit(key,artTier);if(sheet)return sheet;}catch{}}return null;})().then(sheet=>{
       if(!sheet)return;node.querySelector(".ff-portrait-fallback")?.remove();node.querySelector(".ff-portrait-symbol")?.remove();
       const canvas=element("canvas","ff-portrait-canvas");const definition=animationDefinition(sheet.spec,"idle");let index=0;
       function draw(){const rect=frameRectangle(sheet.spec,definition.frames[index%definition.frames.length],sheet.image);if(canvas.width!==rect.width || canvas.height!==rect.height){canvas.width=rect.width;canvas.height=rect.height;}const ctx=canvas.getContext("2d");if(!ctx)return;ctx.clearRect(0,0,canvas.width,canvas.height);drawSpriteFrame(ctx,sheet.image,rect);}
@@ -163,25 +164,60 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
   }
   function showMatchmaking(state={}){matchmakingState={...matchmakingState,...state};const {panel,status}=open("matchmaking","Find Online Match");status.textContent=matchmakingState.status||"Searching CatnMice Faction Forge lobbies…";const rows=element("div","ff-match-list");for(const lobby of matchmakingState.rows || []){const row=element("div","ff-match-row"),name=lobby.name||lobby.host||"Open lobby";row.append(element("strong","",name),element("span","",`${lobby.host|| (Array.isArray(lobby.players)?lobby.players[0]:"") || "Commander"} · MMR ${lobby.mmr??1000} · ${lobby.hostUid?(lobby.forgeRanked===false?"Casual":"Ranked"):"Hosted practice"}`));const join=button("Join",async()=>{join.disabled=true;const result=await invoke(matchmakingState.onJoin,[lobby],status);if(result)hide();else join.disabled=false;});row.appendChild(join);rows.appendChild(row);}panel.appendChild(rows);if(matchmakingState.offerAI){const ai=matchmakingState.offerAI,card=element("section","ff-ai-offer");card.append(element("strong","",`${ai.name} · AI`),element("p","",`Estimated MMR ${ai.mmr??ai.estimatedMmr??1000}. Bot rewards; competitive MMR is preserved.`),button("Battle this AI",()=>chooseFaction(f=>invoke(ai.onStart,[f],shell.querySelector(".ff-status")||status,{hideOnSuccess:true}))));panel.appendChild(card);}panel.append(button("Open Multiplayer Browser",()=>invoke(matchmakingState.onBrowse||onBrowseLobbies,[],status),"ff-button ff-secondary"),button("Cancel search",()=>{matchmakingState.onCancel?.();showMenu();},"ff-button ff-secondary"));illustration(panel,"matchmaking",{className:"ff-matchmaking-art"});}
   function showHowToPlay(){const {panel}=open("help","Command the Forge");for(const [title,text] of [
-    ["Draft a coherent army","Choose a faction, then draft troops and supporting relics, tactics and formations. Inspect a card with its ? button before selecting it. Combine a durable frontline with damage and support."],
+    ["Develop your troops","Recruit a frontline and damage dealers, upgrade their battle ranks, then choose a specialization. Rank II develops the signature ability; Rank III amplifies it. Each specialization shows its tradeoff."],
+    ["Build automatic combinations","Collect complementary troops to activate Basic combos immediately. Upgrade their ranks or draft a combo enhancement for Advanced interactions. Rank III troops with upgraded partners unlock Legendary combinations. The compact tracker shows your relevant partners and counters."],
     ["Know your counters","Armor stalls weak attacks, swarms surround isolated troops, artillery punishes crowded positions and assassins threaten exposed backlines. Read strengths and weaknesses in every troop's details."],
     ["Two separate progression systems","Battle ranks I–III reset each match and retain their legendary abilities. Permanent Forge tiers Recruit, Veteran and Elite spend matching troop cards and Forge Dust and stay on your profile."],
     ["Campaign and collection","Win missions to earn stars, cards, Forge Dust and six special troops. Replay earlier missions for reduced rewards. Complete all 30 missions to enter the Endless Crucible."],
     ["Fair online matches","Ranked PvP keeps permanent statistical advantages normalized while showing your earned artwork. Real human results update your existing MMR. AI opponents show Estimated MMR and never change competitive ratings."],
     ["The Forge","Open the circular Forge button to inspect your collection, preview tier artwork and confirm one upgrade. Active battles lock permanent upgrades until the result is complete."]]){panel.append(element("h2","",title),element("p","",text));}}
-  function decorateDraftCard(node,{key,type="troop",faction,tier=1,recommended="",copies,detail=""}={}){
+  function decorateDraftCard(node,{key,type="troop",faction,tier=1,recommended="",copies,detail="",card,roster=[],evolutions={},comboEnhancements=[],availableTypes}={}){
+    const presentation=card?draftCardPresentation(card,roster,{faction,troops,evolutions,comboEnhancements,availableTypes}):null;
+    key=presentation?.key||key;
     node.classList.add("ff-draft-card");frame(node,faction||troops[key]?.faction);
-    const image=node.querySelector(".icon");if(image){image.replaceChildren();if(type==="troop")image.appendChild(portrait(key,tier,{animate:true}));else{const symbol=element("span","ff-special-fallback",image.textContent||"✦");image.appendChild(symbol);illustration(image,`special-${type}`,{className:"ff-special-card-art"}).then(loaded=>{if(loaded)symbol.remove();});}}
+    const image=node.querySelector(".icon");if(image){image.replaceChildren();if(troops[key]&&["troop","upgrade","double","evolution","combo"].includes(type)){const art=portrait(key,Math.max(tier,presentation?.resultingRank||1),{animate:true});if(presentation){art.querySelector(".ff-tier-badge")?.remove();const battleBadge=element("span","ff-battle-rank",presentation.currentRank&&presentation.currentRank!==presentation.resultingRank?`${ROMAN[presentation.currentRank]} → ${ROMAN[presentation.resultingRank]}`:ROMAN[presentation.resultingRank]);battleBadge.setAttribute("aria-label",presentation.rankLabel);art.appendChild(battleBadge);}image.appendChild(art);}else{const symbol=element("span","ff-special-fallback",image.textContent||"✦");image.appendChild(symbol);illustration(image,`special-${type}`,{className:"ff-special-card-art"}).then(loaded=>{if(loaded)symbol.remove();});}}
+    if(presentation){
+      node.dataset.battleRank=String(presentation.resultingRank);node.dataset.cardCategory=card.draftCategory||type;
+      const oldStars=node.querySelector(".troopStars");if(oldStars)oldStars.remove();
+      if(troops[key])node.appendChild(element("div","ff-draft-rank-line",presentation.rankLabel));
+      if(presentation.improvement){const short=node.querySelector(".desc.short");if(short){short.textContent=presentation.improvement;short.classList.add("ff-mechanical-improvement");}else node.appendChild(element("p","ff-mechanical-improvement",presentation.improvement));}
+      if(presentation.tradeoff)node.appendChild(element("small","ff-draft-tradeoff",presentation.tradeoff));
+      for(const combo of presentation.comboPreview){const label=combo.unlocks?"UNLOCKS":combo.enhances?"ENHANCES":combo.missing?.length?`${combo.missing.length} missing`:"ACTIVE";const line=element("div","ff-draft-combo"+(combo.unlocks?" ff-combo-unlock":""));line.append(element("strong","",`${label} · ${combo.name}`),element("span","",combo.description));node.appendChild(line);}
+    }
     if(recommended){const tag=element("span","ff-recommendation",recommended);tag.title=String(detail||"").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();node.appendChild(tag);}if(copies!==undefined)node.appendChild(element("span","ff-draft-copies",`${copies} in roster`));
     const info=node.querySelector(".cardInfoBtn");if(info)info.setAttribute("aria-label",`Inspect ${troops[key]?.name||key||type}`);
     node.addEventListener("click",event=>{if(event.target.closest?.(".cardInfoBtn"))return;node.classList.add("ff-card-selected");});
+  }
+  function updateComboTracker({host:target=host,roster=[],faction,availableTypes,comboEnhancements=[]}={}){
+    let tracker=target.querySelector(":scope > .ff-combo-tracker");
+    const combos=relevantComboStates(roster,faction,{availableTypes,comboEnhancements});
+    if(!combos.length){tracker?.remove();return;}
+    if(!tracker){tracker=element("details","ff-combo-tracker");tracker.open=!globalThis.matchMedia?.("(max-width: 600px)")?.matches;tracker.setAttribute("aria-label","Your unit combinations");for(const eventName of ["pointerdown","mousedown","touchstart","wheel"])tracker.addEventListener(eventName,event=>event.stopPropagation());target.appendChild(tracker);}
+    const signature=JSON.stringify(combos.map(combo=>[combo.id,combo.level,combo.missing]));
+    if(tracker.dataset.signature===signature)return;
+    tracker.dataset.signature=signature;tracker.replaceChildren();
+    const active=combos.filter(combo=>!combo.missing?.length).length;tracker.appendChild(element("summary","ff-combo-summary",`Combos · ${active} active${combos.length>active?` · ${combos.length-active} developing`:""}`));
+    for(const combo of combos){const row=element("div","ff-combo-row"+(combo.missing?.length?"":" ff-combo-active")),level=combo.level>=3?"LEGENDARY":combo.level>=2?"ADVANCED":"BASIC",status=combo.missing?.length?`${combo.missing.length} UNIT${combo.missing.length===1?"":"S"} MISSING`:`${level} · ACTIVE`;
+      row.append(element("strong","",combo.name),element("small","ff-combo-status",status),element("span","ff-combo-partners",combo.units.map(key=>troops[key]?.name||key).join(" + ")),element("span","ff-combo-description",combo.description));
+      if(!combo.missing?.length&&combo.level===1&&!comboEnhancements.includes(combo.id))row.appendChild(element("small","ff-combo-ready","Ready for a combo enhancement"));
+      if(combo.counterplay)row.title=combo.counterplay;tracker.appendChild(row);
+    }
+  }
+  function announceBattleUpgrade(card,roster=[],options={}){
+    if(!(card?.type==="evolution"||card?.type==="special"&&card.special==="upgrade"||card?.type==="upgrade"))return;
+    const presentation=draftCardPresentation(card,roster,{troops,...options});if(!troops[presentation.key])return;
+    host.querySelector(".ff-battle-upgrade-toast")?.remove();
+    const toast=element("aside","ff-battle-upgrade-toast"),art=portrait(presentation.key,Math.max(options.tier||1,presentation.resultingRank));
+    art.querySelector(".ff-tier-badge")?.remove();art.appendChild(element("span","ff-battle-rank",ROMAN[presentation.resultingRank]));
+    toast.setAttribute("role","status");toast.setAttribute("aria-live","polite");toast.append(art,element("strong","",`${presentation.troopName} · ${presentation.rankLabel}`),element("span","",presentation.improvement));host.appendChild(toast);
+    setTimeout(()=>toast.remove(),2600);
   }
   function updateProfile(){const count=upgradeCount(profile(),costs),indicator=fab.querySelector(".ff-upgrade-count");indicator.hidden=count===0;indicator.textContent=String(count);fab.title=`The Forge${count?` · ${count} upgrades ready`:""}`;}
   function refresh(){if(currentView==="forge")showForge();else if(currentView==="campaign")showCampaign();else if(currentView==="menu")showMenu();updateProfile();}
   const keyboard=event=>{if(shell.hidden)return;if(event.key==="Escape"){const confirmation=shell.querySelector(".ff-confirm");if(confirmation){if(confirmation.dataset.pending!=="true")confirmation.remove();else event.preventDefault();}else if(matchActive())hide();else if(currentView!=="menu")showMenu();}if(event.key==="Tab"){const confirmation=shell.querySelector(".ff-confirm"),scope=confirmation||shell,warning=document.getElementById("ffGraphicsWarnings"),warningControls=!confirmation&&warning&&!warning.hidden?[warning.querySelector("summary"),...(warning.open?warning.querySelectorAll("button:not(:disabled),a[href]"):[])]:[],focusable=[...scope.querySelectorAll("button:not(:disabled),a[href],input"),...warningControls].filter(e=>e&&!e.hidden);if(!focusable.length)return;const index=focusable.indexOf(document.activeElement);if(index>=0){event.preventDefault();focusable[(index+(event.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}}};document.addEventListener("keydown",keyboard);
   updateProfile();
   function notify(message){let status=shell.querySelector(".ff-status");if(!status){status=element("div","ff-toast");status.setAttribute("role","status");host.appendChild(status);setTimeout(()=>status.remove(),7000);}status.textContent=String(message||"");}
-  return {showMenu,showCampaign,showForge,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseFaction,decorateDraftCard,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();shell.remove();fab.remove();}};
+  return {showMenu,showCampaign,showForge,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseFaction,decorateDraftCard,updateComboTracker,announceBattleUpgrade,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();host.querySelector(".ff-battle-upgrade-toast")?.remove();shell.remove();fab.remove();}};
 }
 
 

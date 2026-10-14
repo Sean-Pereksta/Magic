@@ -1,6 +1,10 @@
 /** Extensions to Faction Forge's existing tile simulation. No clocks, random
  * numbers, DOM operations, or account writes: the browser and authoritative
  * replay invoke the same hooks with their simulation time and grid helpers. */
+import {afterComboAttack,tickCombos,noteComboDamage,noteComboAmbush} from './combos.js';
+import {applyEvolution,afterEvolutionAttack,tickEvolutions} from './evolutions.js';
+export {COMBOS,COMBO_BY_ID,COMBO_LIMITS,comboStatus} from './combos.js';
+export {EVOLUTIONS,RANK_ENHANCEMENTS,evolutionFor,evolutionDescription,applySummonEvolution} from './evolutions.js';
 export const NEW_UNIT_KEYS = Object.freeze([
   'railbreaker', 'signalhawk', 'chronoweaver', 'miragewarden', 'siphonleech', 'hiveherald'
 ]);
@@ -74,6 +78,8 @@ export function initializeForgeUnit(u,{forgeTier=1,ranked=false,role='back',appl
   u.forgeTier = clampTier(forgeTier);
   u.effectiveForgeTier = ranked ? 1 : u.forgeTier;
   u.legendary = u.battleRank>=3;
+  // BloodBurst's signature explosion is a real splash even at starting rank.
+  if(u.type==='blood')u.splash1=true;
   if (u.illusion || u._forgeInitialized) return u;
   u._forgeInitialized = true;
   const boost = applyTier ? u.effectiveForgeTier-1 : 0;
@@ -132,6 +138,8 @@ export function applyArmyOptions(st,now,hooks={}) {
       if(valid)for(const plan of plans){plan.u.x=plan.x;plan.u.y=plan.y;}
     }
     for (const u of allies) {
+      const path=st.evolutions?.[side]?.[u.type]||st.roster?.[side]?.find(r=>r.type===u.type&&r.evolution)?.evolution||'a';
+      applyEvolution(u,path);
       const role=hooks.roleFor?.(u.type)||((u.range||1)>1?'back':'front');
       if(relics.has('banner_frontline')&&role==='front'){u.maxhp+=2;u.hp+=2;}
       if(relics.has('sharpshooter_doctrine')&&role==='back'){u.range+=1;u.maxhp=Math.max(1,u.maxhp-1);u.hp=Math.min(u.hp,u.maxhp);}
@@ -164,6 +172,8 @@ export function canSpawnSummon(st,parent,illusion=false) {
 /** tick once per simulation logic tick, before targets/attacks are processed. */
 export function tickForgeAbilities(st,now,hooks={}) {
   const field=st.field, units=field.units||[];
+  tickCombos(st,now,hooks);
+  tickEvolutions(st,now,hooks);
   for(let p=0;p<2;p++){
     const side=p===0?'p0':'p1',relics=new Set(st.relics?.[side]||[]);
     if(relics.has('emergency_medkit')&&!field.medkitUsed?.[side]){
@@ -188,9 +198,10 @@ export function tickForgeAbilities(st,now,hooks={}) {
     if (u.type==='signalhawk') {
       for (const v of enemies) if (distance(u,v,hooks)<=3) v.revealedUntil=Math.max(v.revealedUntil||0,now+700);
       if (now>=(u.nextSignal||0)) {
-        const targets=ordered.filter(v=>distance(u,v,hooks)<=7).slice(0,u.legendary?2:1);
-        for (const v of targets) {v.markedBySide=u.p;v.markedUntil=Math.max(v.markedUntil||0,now+Math.round(4000*(u.forgeAbilityScale||1))); emit(hooks,'mark',u,v,now);}
-        if (targets.length) {u.nextSignal=now+5000;u.animType='cast';u.animUntil=now+500;}
+        const priority=v=>['wardmaker','architect','medic','matron','storm','railbreaker','vrocket'].includes(v.type)?0:1;
+        const targets=ordered.filter(v=>distance(u,v,hooks)<=8).sort((a,b)=>priority(a)-priority(b)||distance(u,a,hooks)-distance(u,b,hooks)).slice(0,Math.min(2,u.signalTargets||(u.legendary?2:1)));
+        for (const v of targets) {v.markedBySide=u.p;v.markedUntil=Math.max(v.markedUntil||0,now+Math.round((u.signalDuration||4000)*(u.forgeAbilityScale||1))); emit(hooks,'mark',u,v,now);}
+        if (targets.length) {u.nextSignal=now+(u.signalCooldown||5000);u.animType='cast';u.animUntil=now+500;}
       }
       const close=ordered[0];
       if (close && distance(u,close,hooks)<=2 && now>=(u.nextEvade||0)) {
@@ -202,20 +213,20 @@ export function tickForgeAbilities(st,now,hooks={}) {
       if (field.temporalFields.filter(f=>f.p===u.p).length<UNIT_LIMITS.temporalFieldsPerSide) {
         u.temporalCasts=(u.temporalCasts||0)+1;
         const fracture=u.legendary && u.temporalCasts%3===0;
-        field.temporalFields.push({sourceId:u.id,p:u.p,x:u.x,y:u.y,radius:2,
-          until:now+Math.round((fracture?2000:2800)*(u.forgeAbilityScale||1))+(u.arcaneBatteryReady?500:0),haste:.88,slow:fracture?1.38:1.2,fracture});
+        field.temporalFields.push({sourceId:u.id,p:u.p,x:u.x,y:u.y,radius:u.temporalRadius||2,
+          until:now+Math.round((u.temporalDuration||(fracture?2000:2800))*(u.forgeAbilityScale||1))+(u.arcaneBatteryReady?500:0),haste:.88,slow:fracture?1.38:(u.temporalSlow||1.2),fracture});
         u.arcaneBatteryReady=false;
-        u.nextTemporal=now+6000;u.animType='cast';u.animUntil=now+500;emit(hooks,fracture?'time-fracture':'temporal-field',u,null,now);
+        u.nextTemporal=now+(u.temporalCooldown||6000);u.animType='cast';u.animUntil=now+500;emit(hooks,fracture?'time-fracture':'temporal-field',u,null,now);
       } else u.nextTemporal=now+800;
     } else if (u.type==='miragewarden' && now>=(u.nextMirage||0)) {
-      const cap=u.legendary?2:1;
+      const cap=u.mirageCap||(u.legendary?2:1);
       const own=units.filter(v=>alive(v)&&v.illusion&&v.summonedBy===u.id).length;
       if (own<cap && canSpawnSummon(st,u,true) && hooks.spawnIllusion?.(st,u,now)) {
-        u.nextMirage=now+(u.legendary?2600:5000);u.animType='cast';u.animUntil=now+500;emit(hooks,'mirage',u,null,now);
+        u.nextMirage=now+(u.mirageCooldown||(u.legendary?2600:5000));u.animType='cast';u.animUntil=now+500;emit(hooks,'mirage',u,null,now);
       } else u.nextMirage=now+600;
     } else if (u.type==='hiveherald') {
       const focus=ordered[0];u.heraldFocusId=focus?.id;
-      for (const v of units) if (alive(v)&&v.p===u.p&&v.summoned&&!v.illusion&&isSwarm(v)&&distance(u,v,hooks)<=3&&!v.heraldWasEmpowered) {
+      for (const v of units) if (alive(v)&&v.p===u.p&&v.summoned&&!v.illusion&&isSwarm(v)&&distance(u,v,hooks)<=(u.heraldRadius||3)&&!v.heraldWasEmpowered) {
         v.heraldWasEmpowered=true;v.heraldEmpoweredBonus=1;v.dmg+=1;v.heraldEmpoweredUntil=now+Math.round(3000*(u.forgeAbilityScale||1));
       }
     }
@@ -231,6 +242,7 @@ export function attackCooldown(u,now,st,hooks={}) {
   }
   if (isSwarm(u)) for (const herald of st.field.units) if (alive(herald)&&herald.p===u.p&&herald.type==='hiveherald'&&!disabled(herald,now)&&distance(herald,u,hooks)<=3) haste=Math.min(haste,.9);
   if ((u.hiveFrenzyUntil||0)>now) haste=Math.min(haste,.82);
+  if ((u.broodSurgeUntil||0)>now) haste=Math.min(haste,.8);
   const factor=Math.max(UNIT_LIMITS.minimumCooldownFactor,Math.min(UNIT_LIMITS.maximumCooldownFactor,haste*slow));
   return Math.max(150,Math.round((u.cd||600)*factor));
 }
@@ -243,6 +255,10 @@ export function markedDamageBonus(u,victim,now,st,hooks={}) {
 export function chooseForgeTarget(u,units,now,hooks={}) {
   const enemies=units.filter(v=>alive(v)&&v.p!==u.p);
   if (!enemies.length) return null;
+  if(['vrocket','marksman','railbreaker'].includes(u.type)) {
+    const marked=enemies.filter(v=>!v.illusion&&v.markedBySide===u.p&&(v.markedUntil||0)>now&&distance(u,v,hooks)<=(u.range||1));
+    if(marked.length)return marked.sort((a,b)=>a.hp-b.hp||distance(u,a,hooks)-distance(u,b,hooks))[0];
+  }
   if (!u.splash1 && !u.chain3 && !u.kamikaze) {
     const nearest=Math.min(...enemies.filter(v=>!v.illusion).map(v=>distance(u,v,hooks)));
     const decoys=enemies.filter(v=>v.illusion&&distance(u,v,hooks)<=Math.min(u.range||1,nearest+1));
@@ -264,7 +280,7 @@ export function attackForgeUnit(u,t,now,st,hooks={}) {
   if (u.type!=='railbreaker' || u.illusion) return null;
   if (now<(u.nextAtk||0)) return true;
   if (!u.railChargeUntil) {
-    u.railChargeUntil=now+Math.round(520/(u.forgeAbilityScale||1));u.railTargetId=t.id;
+    u.railChargeUntil=now+Math.round((u.railChargeMs||520)/(u.forgeAbilityScale||1));u.railTargetId=t.id;
     u.animType='cast';u.animUntil=u.railChargeUntil;emit(hooks,'rail-charge',u,t,now);return true;
   }
   if (now<u.railChargeUntil) return true;
@@ -290,10 +306,33 @@ export function attackForgeUnit(u,t,now,st,hooks={}) {
     const vx=v.x+((v.size||1)-1)/2-ux,vy=v.y+((v.size||1)-1)/2-uy;
     return {v,projection:(vx*dx+vy*dy)/len,perpendicular:Math.abs(vx*dy-vy*dx)/len};
   }).filter(o=>o.projection>len+.25 && o.projection<=len+4 && o.perpendicular<=.55).sort((a,b)=>a.projection-b.projection);
-  for (const hit of behind.slice(0,overload?2:1)) doHit(hit.v,overload?.8:.6);
+  for (const hit of behind.slice(0,Math.min(3,(overload?2:1)+(u.railPierce||0)))) doHit(hit.v,overload?.8:.6);
   if (t.hp>0&&(t.size||1)===1&&(t.armor||0)<2) hooks.knock?.(u.x,u.y,t,st.field.units,false);
   u.animType='attack';u.animUntil=now+420;u.nextAtk=now+attackCooldown(u,now,st,hooks);
-  emit(hooks,overload?'rail-overload':'rail-shot',u,t,now);return true;
+  emit(hooks,overload?'rail-overload':'rail-shot',u,t,now);
+  afterForgeAttack(u,t,now,st,hooks);return true;
+}
+
+/** Each hook is invoked exactly once by the shared browser/server attack path. */
+export function afterForgeAttack(u,t,now,st,hooks={}) {
+  const priorBudget=st.field._secondaryBudget;
+  st.field._secondaryBudget={sourceId:u.id,remaining:rankDamageBudget(u)};
+  try {
+    afterEvolutionAttack(u,t,now,st,hooks);
+    afterComboAttack(u,t,now,st,hooks);
+  } finally {
+    if(priorBudget)st.field._secondaryBudget=priorBudget;else delete st.field._secondaryBudget;
+  }
+}
+function rankDamageBudget(u) {return (u.lvl||u.battleRank||1)>=3?12:8;}
+export function noteForgeDamage(victim,actualDamage,st,now,hooks={}) {
+  victim.evolutionDamageTaken=Math.min(24,(victim.evolutionDamageTaken||0)+Math.max(0,actualDamage));
+  noteComboDamage(victim,actualDamage,st,now,hooks);
+}
+export function noteForgeAmbush(u,t,now) {noteComboAmbush(u,t,now);}
+export function absorbForgeShield(victim,damage,now) {
+  if((victim.comboShieldUntil||0)>now&&(victim.comboShield||0)>0){const absorbed=Math.min(damage,victim.comboShield);victim.comboShield-=absorbed;return damage-absorbed;}
+  return damage;
 }
 
 export function siphonAfterDamage(u,victim,actualDamage,now,st,hooks={}) {
