@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeAssetBase,safeAssetUrl,frameRectangle,animationDefinition,createAssetLoader,drawSpriteFrame} from '../assets.js';
+import {normalizeAssetBase,safeAssetUrl,frameRectangle,animationDefinition,createAssetLoader,drawSpriteFrame,manifestImagePaths} from '../assets.js';
 import {MotionTrack,animationFrame,resolveAnimation} from '../renderer.js';
 import {forgeEligibility,upgradeCount} from '../ui.js';
 import {ASSET_MANIFEST} from '../manifest.js';
@@ -49,6 +49,39 @@ test('sheets load lazily, deduplicate concurrent requests, and bound decoded cac
   assert.equal(loader.stats.loads,0);const [a,b]=await Promise.all([loader.unit('rifleman',1),loader.unit('rifleman',1)]);assert.ok(a);assert.equal(a.image,b.image);assert.equal(loader.stats.loads,1);assert.equal(manifestFetches,1);
   await loader.loadImage('effects/a.webp');await loader.loadImage('effects/b.webp');assert.equal(loader.cacheSize,2);assert.equal(loader.stats.evictions,1);
   assert.equal(await loader.loadImage('units/missing.webp'),null);assert.equal(await loader.loadImage('units/missing.webp'),null);assert.equal(loader.stats.failures,1);
+});
+
+test('startup preloads every Cloudflare tier and art group once, waits for decode, and retains all graphics',async()=>{
+  const paths=manifestImagePaths(ASSET_MANIFEST),requested=[],decoders=[],progress=[];
+  assert.equal(paths.length,139);assert.equal(new Set(paths).size,139);
+  for(const group of ['units','terrain','backgrounds','effects','ui'])assert.ok(paths.some(path=>path.startsWith(group+'/')));
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',maxSheets:2,imageFactory:()=>{
+    const image={width:768,height:768,decode:()=>new Promise(resolve=>decoders.push(resolve))};
+    Object.defineProperty(image,'src',{set(value){requested.push(value);queueMicrotask(()=>image.onload?.());}});return image;
+  }});
+  let finished=false;const startup=loader.preloadAll({concurrency:4,onProgress:value=>progress.push(value)}).then(value=>{finished=true;return value;});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(requested.length,4);assert.equal(finished,false);assert.equal(loader.stats.loads,0);
+  while(!finished){for(const resolve of decoders.splice(0))resolve();await new Promise(resolve=>setImmediate(resolve));}
+  assert.deepEqual(await startup,{loaded:139,total:139});assert.equal(requested.length,139);assert.equal(loader.preloadedSize,139);
+  assert.equal(progress.at(-1).loaded,139);assert.equal(progress.at(-1).completed,139);
+  for(const path of paths)assert.ok(loader.peek(path),path);
+  await loader.unit('rifleman',1);await loader.asset('ui','menu-background');
+  assert.equal(requested.length,139,'opening menus or battles reuses retained decoded images');
+});
+
+test('startup blocks on failed downloads or decodes and retry requests only the failed graphics',async()=>{
+  const manifest={units:{rifleman:{tiers:{'1':{path:'units/good.webp'},'2':{path:'units/missing.webp'}}}},ui:{panel:'ui/panel.webp',alias:'ui/panel.webp'}},requested=[];
+  let failing=true;
+  const loader=createAssetLoader({baseUrl:'https://forge-assets.test',manifest,imageFactory:()=>{
+    const image={width:768,height:768,decode:async()=>{if(failing&&image.source.endsWith('panel.webp'))throw new Error('Decode failed');}};
+    Object.defineProperty(image,'src',{set(value){image.source=value;requested.push(value);queueMicrotask(()=>failing&&value.endsWith('missing.webp')?image.onerror?.():image.onload?.());}});return image;
+  }});
+  await assert.rejects(loader.preloadAll(),error=>{assert.deepEqual(error.paths.sort(),['ui/panel.webp','units/missing.webp']);return true;});
+  assert.equal(loader.preloadedSize,1);failing=false;
+  assert.deepEqual(await loader.preloadAll({retry:true}),{loaded:3,total:3});
+  assert.equal(requested.filter(path=>path.endsWith('/good.webp')).length,1);
+  assert.equal(requested.filter(path=>path.endsWith('/missing.webp')).length,2);
+  assert.equal(requested.filter(path=>path.endsWith('/panel.webp')).length,2);
 });
 
 test('unconfigured or unavailable graphics gracefully keep legacy artwork',async()=>{

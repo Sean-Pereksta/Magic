@@ -1,6 +1,6 @@
 // Expansion art is independent of the established unit/terrain asset paths.
 const DEFAULT_BASE =
-  'https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/shattered-front/';
+  'https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/';
 let manifest = { assets: {} };
 export function assetBase() {
   const value =

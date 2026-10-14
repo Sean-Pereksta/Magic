@@ -4,6 +4,21 @@ const {MAP_IDS,describeTile,hash,geometryStamp,createRenderer}=require('../terra
 
 function field(width=16,height=16){return Array.from({length:width*height},(_,i)=>({x:i%width,y:Math.floor(i/width),type:'ground',blocked:false}))}
 function drawing(){const calls=[];const context={globalAlpha:1,drawImage(...args){calls.push(args)},save(){},restore(){},beginPath(){},rect(){},arc(){},clip(){},moveTo(){},lineTo(){},stroke(){},translate(){},rotate(){}};return {calls,context,canvas:(w,h)=>({width:w,height:h,getContext:()=>context})}}
+test('terrain startup waits for decoding and retries a failed sheet without reloading ready sheets',async()=>{
+  const original=global.Image,requests=[],decodes=[];let failGround=true;
+  global.Image=class{
+    constructor(){this.width=this.naturalWidth=this.height=this.naturalHeight=1024}
+    set src(url){this.url=url;requests.push(url);queueMicrotask(()=>this.onload?.())}
+    decode(){return new Promise((resolve,reject)=>decodes.push(()=>{if(failGround&&this.url.endsWith('classic.terrain.webp')){failGround=false;reject(new Error('Decode failed'))}else resolve()}))}
+  };
+  try{
+    const renderer=createRenderer(),first=renderer.load('classic');let settled=false;first.then(()=>{settled=true});
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(settled,false);assert.equal(decodes.length,3);
+    decodes.splice(0).forEach(done=>done());assert.equal(await first,false);assert.deepEqual(renderer.stats.failures,['classic']);
+    const retry=renderer.load('classic');await new Promise(resolve=>setImmediate(resolve));assert.equal(decodes.length,1);
+    decodes.shift()();assert.equal(await retry,true);assert.deepEqual(renderer.stats.failures,[]);assert.equal(requests.length,4);
+  }finally{global.Image=original}
+});
 async function renderer(){global.Image=class{constructor(){this.width=this.naturalWidth=1024;this.height=this.naturalHeight=1024}set src(value){this.url=value;this.onload()}};const paint=drawing(),r=createRenderer({makeCanvas:paint.canvas});await r.load('classic');return {r,paint}}
 
 test('six battlefields use a deterministic independent visual hash including seed zero',()=>{

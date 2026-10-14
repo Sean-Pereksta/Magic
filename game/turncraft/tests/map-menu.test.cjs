@@ -5,7 +5,7 @@ const path=require('node:path');
 const {chromium}=require('playwright');
 const game=path.resolve(__dirname,'../..');
 const exposure=`window.tcMaps={menu(){resize();renderStartMenu();overlay.style.display='flex'},render:renderStartMenu,start(){resize();createGame(buildSoloSlots())},get config(){return{map:chosenMapId,definition:mapDefinition(),layout:mapLayout(),saved:localStorage.getItem('csf.map')}},get state(){return{map:chosenMapId,starts:startPositions(),bases:entities.filter(isBase).map(e=>({x:e.x,y:e.y})),conquest:modeState?.conquest,relic:modeState?.relic,terrain:encodeTerrain(),snapshot:serializeState()}}};window.tcMaps.menu();`;
-const source=fs.readFileSync(process.env.TURNCRAFT_SOURCE||path.join(game,'turncraft.html'),'utf8').replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure).replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
+const source=fs.readFileSync(process.env.TURNCRAFT_SOURCE||path.join(game,'turncraft.html'),'utf8').replace(/^import .*;$/gm,'').replace('\nboot();','\n'+exposure+'\nwindow.TurncraftStartup?.complete();').replace('<script type="module">','<script>const initializeApp=()=>({}),getAuth=()=>({}),getFirestore=()=>({});');
 async function setup(width=1280,height=900,savedMap){
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']});
   const page=await browser.newPage({viewport:{width,height}}),errors=[];

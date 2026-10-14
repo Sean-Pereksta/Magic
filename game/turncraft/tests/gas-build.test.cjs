@@ -13,7 +13,7 @@ function simulation(faction='frontier'){
   const sandbox={console,document,location:{search:'',href:'http://turncraft.test/game/turncraft.html'},URL,URLSearchParams,localStorage:{getItem:()=>null,setItem:noop},innerWidth:1280,innerHeight:900,devicePixelRatio:1,performance:{now:()=>0},setTimeout:()=>0,clearTimeout:noop,setInterval:()=>0,requestAnimationFrame:noop,matchMedia:()=>({matches:false,addEventListener:noop}),HTMLInputElement:class{},HTMLSelectElement:class{},Image:class{},initializeApp:()=>({}),getAuth:()=>({}),getFirestore:()=>({}),navigator:{},screen:{},addEventListener:noop};
   sandbox.window=sandbox;sandbox.testClock=100000;
   const html=fs.readFileSync(path.join(__dirname,'../../turncraft.html'),'utf8');
-  const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('\nboot();','\nrefreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.addTestNode=(...args)=>{addNode(...args);return resourceNodes.at(-1)};globalThis.testEvaluate=source=>eval(source);');
+  const code=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('\nboot();','\nwindow.TurncraftStartup?.complete();refreshUI=()=>{};showCommandMarker=()=>{};pushBattleAlert=()=>{};globalThis.addTestNode=(...args)=>{addNode(...args);return resourceNodes.at(-1)};globalThis.testEvaluate=source=>eval(source);');
   const context=vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../maps.js'),'utf8'),context,{timeout:30000});
   vm.runInContext(code,context,{timeout:30000,filename:'turncraft.html'});

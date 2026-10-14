@@ -4,7 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
 const {assetPath, enablePixelInspection} = require('./helpers/cloudflare-assets.cjs');
-const {baseUrl: cloudflareBase} = require('../assets/visual-asset-index.json');
+const {baseUrl: cloudflareBase, images: visualImages} = require('../assets/visual-asset-index.json');
+const expansionManifest = require('../shattered-front-assets.json');
+const {COMMAND_SCENE_FILES} = require('../preload.js');
+const extraArtwork = new Set([
+  ...Object.values(expansionManifest.assets).map(asset => new URL(asset.path, expansionManifest.defaultBaseURL).href),
+  ...COMMAND_SCENE_FILES.map(file => new URL(file, cloudflareBase).href)
+]);
+const fixturePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64');
 
 const repo = path.resolve(__dirname, '../../..');
 const expose = `window.animationClock=100000;nowMs=()=>window.animationClock;
@@ -33,11 +40,12 @@ async function setup(width = 1280, height = 900, {boot = false} = {}) {
   page.on('pageerror', error => errors.push(error.message));
   const source = fs.readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
     .replace(/^import .*;$/gm, '')
-    .replace('\nboot();', '\n' + expose + (boot ? '\nboot();' : ''))
+    .replace('\nboot();', '\n' + expose + (boot ? '\nboot();' : '\nwindow.TurncraftStartup?.complete();'))
     .replace('<script type="module">', '<script>const initializeApp=()=>({}),getAuth=()=>({currentUser:{uid:"local-test"}}),getFirestore=()=>({}),onAuthStateChanged=(auth,callback)=>{setTimeout(()=>callback(auth.currentUser),0);return()=>{}},signInAnonymously=()=>Promise.resolve();');
   await page.route('**/*', route => {
     const artwork = assetPath(route.request().url());
     if (artwork) return route.fulfill({path: artwork, contentType: 'image/webp', headers: {'Access-Control-Allow-Origin': '*'}});
+    if (extraArtwork.has(route.request().url())) return route.fulfill({body: fixturePng, contentType: 'image/png', headers: {'Access-Control-Allow-Origin': '*'}});
     const pathname = decodeURIComponent(new URL(route.request().url()).pathname);
     if (pathname === '/game/turncraft.html') return route.fulfill({contentType: 'text/html', body: source});
     const file = path.resolve(repo, '.' + pathname);
@@ -50,13 +58,21 @@ async function setup(width = 1280, height = 900, {boot = false} = {}) {
   return {browser, page, errors, artworkRequests};
 }
 
-test('actual startup loads the complete manifest and the deployed battlefield adopts atlases lazily', async () => {
+test('actual startup preloads every graphic while the deployed battlefield fills its bounded texture cache lazily', async () => {
   const {browser,page,errors,artworkRequests} = await setup(1280,900,{boot:true});
   try {
-    await page.waitForFunction(() => tcAnimation.runtime.manifest && document.querySelector('#loadingFill').style.width === '100%',{},{timeout:20000});
+    await page.waitForFunction(() => window.TurncraftStartup.isReady,{},{timeout:30000});
     const initial = await page.evaluate(() => tcAnimation.run(`({assets:Object.keys(spriteRuntime.manifest.assets).length,staticFiles:[...ASSET_IMAGES.keys()],textures:spriteRuntime.cache.stats()})`));
     assert.ok(initial.assets>=76,'startup must use the comprehensive production manifest');
     assert.ok(initial.staticFiles.length<=6,'startup must not decode the whole legacy PNG roster');
+    for (const file of Object.keys(visualImages)) assert.ok(artworkRequests.has(new URL(file, cloudflareBase).href), `prelaunch artwork includes ${file}`);
+    for (const url of extraArtwork) assert.ok(artworkRequests.has(url), `prelaunch artwork includes ${url}`);
+    assert.equal(initial.textures.ready, 0, 'preloading releases full images before the renderer requests visible textures');
+    assert.ok(initial.textures.bytes<=initial.textures.limit);
+    if (await page.locator('#sfMenu').isVisible()) {
+      await page.getByRole('button', {name: /Single Player/}).click();
+      await page.getByRole('button', {name: 'Battlefield & match settings →'}).click();
+    }
     await page.locator('#startBtn').click();
     await page.waitForFunction(() => tcAnimation.runtime.cache.stats().ready>0 && tcAnimation.runtime.cache.stats().pending===0,{},{timeout:20000});
     const deployed = await page.evaluate(() => tcAnimation.run(`({started:gameStarted,entities:entities.filter(e=>e.alive!==false).length,textures:spriteRuntime.cache.stats(),mapped:entities.filter(e=>spriteRuntime.manifest.assets[e.type]).length})`));
@@ -70,7 +86,7 @@ test('actual startup loads the complete manifest and the deployed battlefield ad
     await page.evaluate(() => tcAnimation.run("(()=>{const base=entities.find(e=>e.alive!==false&&e.kind==='structure');if(base){centerOn(base.x,base.y);draw()}})()"));
     await page.waitForFunction(() => tcAnimation.runtime.cache.stats().pending===0);
     await page.waitForFunction(() => tcAnimation.run("terrainRenderer.stats.loaded.includes('effects') && terrainRenderer.stats.loaded.includes('classic:props')"));
-    assert.deepEqual([...new Set([...artworkRequests].map(url => new URL(url).pathname.split('/')[1]))].sort(), ['effects','structures','terrain','units']);
+    assert.ok(Object.keys(visualImages).every(file => artworkRequests.has(new URL(file, cloudflareBase).href)));
     assert.deepEqual(errors,[]);
   } finally {await browser.close()}
 });

@@ -819,10 +819,13 @@
     to{ opacity:0; transform:translate(-50%,-130%); }
   }
 
-  .assetGate{position:fixed;inset:0;z-index:1000;display:none;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
+  .assetGate{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
   .assetGatePanel{width:min(460px,94vw);display:grid;gap:10px;padding:18px;border:1px solid rgba(96,165,250,.7);border-radius:16px;background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.98));box-shadow:0 24px 70px rgba(0,0,0,.65);text-align:center}
   .assetGate.error .assetGatePanel{border-color:rgba(248,113,113,.9)}
   .assetGateTitle{font-size:1.05rem;font-weight:900;color:#dbeafe;letter-spacing:.04em;text-transform:uppercase}.assetGateStatus{font-size:.88rem;color:#cbd5e1;line-height:1.35}.assetGatePlayers{font-size:.78rem;color:#93c5fd;line-height:1.45}
+  .assetGate progress{width:100%;height:12px;accent-color:#d0b16e}
+  .assetGate [hidden]{display:none!important}
+  body.ff-starting>:not(#assetGate):not(script){visibility:hidden;pointer-events:none}
 
   .endSummary{
     position:fixed;
@@ -872,9 +875,9 @@
 </style>
 <link rel="stylesheet" href="./faction-forge/expansion.css">
 </head>
-<body>
-  <div id="assetGate" class="assetGate"><div class="assetGatePanel" role="status" aria-live="polite"><div class="assetGateTitle">Loading troop graphics</div><div id="assetGateStatus" class="assetGateStatus">Preparing the Faction Forge image set…</div><div id="assetGatePlayers" class="assetGatePlayers">Waiting for both players to finish loading.</div></div></div>
-  <div class="topbar">
+<body class="ff-starting">
+  <div id="assetGate" class="assetGate" aria-busy="true"><div class="assetGatePanel" role="status" aria-live="polite"><div id="assetGateTitle" class="assetGateTitle">FACTION FORGE</div><div id="assetGateStatus" class="assetGateStatus">Loading graphics…</div><progress id="assetGateProgress" aria-label="Graphics loaded"></progress><div id="assetGatePlayers" class="assetGatePlayers">Preparing your game…</div><button id="assetGateRetry" class="btn" type="button" hidden>Retry loading</button></div></div>
+  <div class="topbar" inert>
     <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
       <span id="phaseBadge" class="badge phase">—</span>
@@ -889,7 +892,7 @@
     </div>
   </div>
 
-  <div class="viewport" id="viewport">
+  <div class="viewport" id="viewport" inert>
     <div class="canvas" id="canvas">
       <div id="cells" class="cells" style="--w:8; --cell:64px; --gap:4px"></div>
       <div id="beams" class="beams"></div>
@@ -1368,7 +1371,7 @@ const TROOPS = {
     burrowCd:2200
   }
 };
-const TROOP_IMAGE_VERSION="factionforge-2026-07-17-v1";
+const TROOP_IMAGE_VERSION="factionforge-preloaded-"+(FACTION_FORGE_CONFIG.assetVersion||"v2");
 const TROOP_IMAGE_PATHS=Object.freeze({
  rifleman:"../graphics/factionforge/rifleman.png",vrocket:"../graphics/factionforge/rocket.png",vguard:"../graphics/factionforge/vanir guard.png",miner:"../graphics/factionforge/miner.png",medic:"../graphics/factionforge/field medic.png",suppressor:"../graphics/factionforge/suppressor.png",shieldcap:"../graphics/factionforge/shield captain.png",marksman:"../graphics/factionforge/marksman.png",emp:"../graphics/factionforge/emp grenadier.png",
  phaser:"../graphics/factionforge/phasers.png",blade:"../graphics/factionforge/blademaster.png",storm:"../graphics/factionforge/storm seer.png",guardian:"../graphics/factionforge/guardian.png",wardmaker:"../graphics/factionforge/wardmaker.png",architect:"../graphics/factionforge/aegis architect.png",golem:"../graphics/factionforge/sentinel golem.png",runebinder:"../graphics/factionforge/rune binder.png",
@@ -1546,9 +1549,50 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
 let S=null,lobbyPlayers=[],meIndex=0,isHost=false;
 let localTroopImagesReady=false,troopImageLoadError=null,troopImageLoadPass=0,troopImageLoadPromise=null,assetReadyPublishedForSession=null;
+const forgeAssets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl,requestTimeout:20000});
+let startupLoading=true,startupProgress=null,startupError=null,startupGraphicsLoaded=false;
+async function preloadStartupGraphics(){
+  while(true){
+    try{
+      startupError=null;$("assetGateRetry").hidden=true;updateAssetGate();
+      await forgeAssets.preloadAll({retry:true,onProgress:value=>{startupProgress=value;updateAssetGate();}});
+      if(forgeAssets.enabled()){localTroopImagesReady=true;troopImageLoadPromise=Promise.resolve();}
+      startupGraphicsLoaded=true;updateAssetGate();return;
+    }catch(error){
+      startupError=error;updateAssetGate();
+      await new Promise(resolve=>{$("assetGateRetry").onclick=()=>{$("assetGateRetry").onclick=null;resolve();};});
+    }
+  }
+}
+const startupGraphicsReady=preloadStartupGraphics();
+function finishExpansionStartup(){
+  startupLoading=false;startupError=null;document.body.classList.remove("ff-starting");
+  document.querySelector(".topbar").inert=false;viewport.inert=false;$("assetGate").setAttribute("aria-busy","false");updateAssetGate();
+}
+function showStartupError(error){
+  console.error("Forge startup failed",error);startupError=error;updateAssetGate();
+  $("assetGateRetry").onclick=()=>{
+    startupError=null;updateAssetGate();profileLoadPromise=null;progressIdentity=null;
+    initializeExpansion().then(()=>{if(gameId){if(auth.currentUser)return restoreExpansionProfile(auth.currentUser);connectGuestProfile();}}).catch(showStartupError);
+  };
+}
 function assetReadyEntryValid(e,n,k){return !!e&&e.username===n&&e.sessionKey===k&&e.version===TROOP_IMAGE_VERSION}
 function bothAssetsReady(st){if(!st||!Array.isArray(st.players)||st.players.length<2||!st.sessionKey)return false;const r=st.assetReady||{};return assetReadyEntryValid(r.p0,st.players[0],st.sessionKey)&&assetReadyEntryValid(r.p1,st.players[1],st.sessionKey)}
-function updateAssetGate(){const g=$("assetGate"),st=$("assetGateStatus"),pl=$("assetGatePlayers");if(!g||!st||!pl)return;const ph=S&&S.phase,show=executionMode!=="menu"&&!isSecureMode()&&(!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading");g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);st.textContent=troopImageLoadError?"Troop graphics failed: "+troopImageLoadError.message:!localTroopImagesReady?(troopImageLoadPass?"Verifying all troop graphics — pass "+troopImageLoadPass+" of 2…":"Preparing the Faction Forge image set…"):ph==="waiting"?"Your graphics are ready. Waiting for the second player…":ph==="asset-loading"?"Your graphics are ready. Waiting for both players to confirm…":"All troop graphics are ready.";const names=(S&&Array.isArray(S.players)?S.players:lobbyPlayers).slice(0,2),r=S&&S.assetReady||{},k=S&&S.sessionKey;pl.textContent=[0,1].map(i=>{const n=names[i]||(i?"Player 2":"Player 1");return n+": "+(S&&assetReadyEntryValid(r[pKey(i)],n,k)?"ready":"loading")}).join("  •  ")}
+function updateAssetGate(){
+  const g=$("assetGate"),st=$("assetGateStatus"),pl=$("assetGatePlayers"),progress=$("assetGateProgress"),retry=$("assetGateRetry");if(!g||!st||!pl)return;
+  progress.hidden=!startupLoading;retry.hidden=!startupLoading||!startupError;
+  if(startupLoading){
+    g.style.display="grid";g.classList.toggle("error",!!startupError);$("assetGateTitle").textContent="FACTION FORGE";
+    st.textContent=startupError?startupError.message:startupGraphicsLoaded?"Connecting your profile…":startupProgress?.total?`Loading graphics… ${startupProgress.loaded} / ${startupProgress.total}`:"Loading graphics…";
+    pl.textContent=gameId?"Preparing your multiplayer game…":"Preparing your main menu…";
+    if(startupProgress?.total){progress.max=startupProgress.total;progress.value=startupProgress.loaded;}return;
+  }
+  const ph=S&&S.phase,show=executionMode!=="menu"&&!isSecureMode()&&(!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading");
+  g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);$("assetGateTitle").textContent="Loading troop graphics";
+  st.textContent=troopImageLoadError?"Troop graphics failed: "+troopImageLoadError.message:!localTroopImagesReady?(troopImageLoadPass?"Verifying all troop graphics — pass "+troopImageLoadPass+" of 2…":"Preparing the Faction Forge image set…"):ph==="waiting"?"Your graphics are ready. Waiting for the second player…":ph==="asset-loading"?"Your graphics are ready. Waiting for both players to confirm…":"All troop graphics are ready.";
+  const names=(S&&Array.isArray(S.players)?S.players:lobbyPlayers).slice(0,2),r=S&&S.assetReady||{},k=S&&S.sessionKey;
+  pl.textContent=[0,1].map(i=>{const n=names[i]||(i?"Player 2":"Player 1");return n+": "+(S&&assetReadyEntryValid(r[pKey(i)],n,k)?"ready":"loading")}).join("  •  ");
+}
 function loadTroopImage(src){return new Promise((ok,bad)=>{const im=new Image();let done=false;const end=e=>{if(done)return;done=true;e?bad(e):ok(src)};im.onload=async()=>{try{if(im.decode)await im.decode()}catch(_){ }im.naturalWidth&&im.naturalHeight?end():end(new Error("Invalid image: "+src))};im.onerror=()=>end(new Error("Missing image: "+src));im.decoding="async";im.src=src;if(im.complete&&im.naturalWidth)queueMicrotask(()=>im.onload())})}
 async function preloadTroopImagePass(pass){troopImageLoadPass=pass;updateAssetGate();const es=Object.entries(TROOP_IMAGE_PATHS),rs=await Promise.allSettled(es.map(([,src])=>loadTroopImage(src))),bad=[];rs.forEach((r,i)=>{if(r.status!=="fulfilled")bad.push(es[i][1])});if(bad.length)console.warn("Some legacy graphics unavailable; using troop symbols",bad.length)}
 async function preloadTroopImagesTwice(){await preloadTroopImagePass(1);await preloadTroopImagePass(2);localTroopImagesReady=true;updateAssetGate();await publishLocalAssetReady()}
@@ -1841,7 +1885,7 @@ function weightedPick(pool, n){
   return out;
 }
 function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
-function troopImagePath(type){return TROOP_IMAGE_PATHS[type]||""}
+function troopImagePath(type){return forgeAssets.enabled()?"":TROOP_IMAGE_PATHS[type]||""}
 function troopImageTag(type,cls){const src=troopImagePath(type),name=TROOPS[type]?.name||type||"Troop";return src?'<img class="'+escapeHtml(cls||"troop-card-image")+'" src="'+escapeHtml(src)+'" alt="'+escapeHtml(name)+'" draggable="false" decoding="async">':escapeHtml(unitEmoji(type))}
 function troopVisual(type){
   return Object.assign({}, DEFAULT_TROOP_VISUAL, TROOP_VISUALS[type] || {});
@@ -4466,7 +4510,7 @@ function beginMatchmaking(){
   });
   update();matchSearch.search();
 }
-let expansionInitialized=false,profileLoadPromise=null,progressIdentity=null;
+let expansionInitialized=false,initializationPromise=null,profileLoadPromise=null,progressIdentity=null;
 function connectForgeProgress(){
   progression?.dispose();
   progression=FACTION_FORGE_CONFIG.progressionApiUrl?
@@ -4475,9 +4519,11 @@ function connectForgeProgress(){
   progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
 }
 function initializeExpansion(){
-  if(expansionInitialized)return;expansionInitialized=true;
+  if(initializationPromise)return initializationPromise;expansionInitialized=true;
+  initializationPromise=(async()=>{
+  await startupGraphicsReady;
   forgeProfile=defaultForgeProfile();
-  const assets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl});
+  const assets=forgeAssets;
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
@@ -4490,55 +4536,69 @@ function initializeExpansion(){
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
     getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
   });
-  ensureVisualLoop();assets.loadManifest().then(()=>spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge'));
-  // Solo navigation must not wait for auth, a cloud save, or troop graphics.
-  updateAssetGate();
-  if(!gameId)expansionUI.showMenu();
+  await spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge');ensureVisualLoop();
+  // Solo navigation opens as soon as graphics are ready, independently of Firebase.
+  if(!gameId){executionMode="menu";expansionUI.showMenu();finishExpansionStartup();}
+  })().catch(error=>{
+    expansionInitialized=false;initializationPromise=null;expansionUI?.destroy();expansionUI=null;spriteRenderer?.destroy();spriteRenderer=null;
+    throw error;
+  });
+  return initializationPromise;
 }
 async function restoreExpansionProfile(user){
   if(progressIdentity===user.uid&&profileLoadPromise)return profileLoadPromise;
   progressIdentity=user.uid;
   profileLoadPromise=(async()=>{
-    connectForgeProgress();
-    try{forgeProfile=await progression.loadProfile();}
-    catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
-    if(disposed||auth.currentUser?.uid!==user.uid)return;
-    if(!gameId){
-      // Keep solo entry on its menu; an old online session can be resumed explicitly.
-      if(["menu","campaign","forge"].includes(expansionUI.view))expansionUI.refresh();
-      return;
-    }
-    if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
-      executionMode="secure";isHost=false;
-      await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
-      startSecurePolling();return;
-    }
-    let verifiedLobby=null;
-    if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
-      try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
-    }
-    if(verifiedLobby){
-      executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
-      S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
-    }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
-    else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
+  await initializeExpansion();
+  if(disposed||auth.currentUser?.uid!==user.uid)return;
+  connectForgeProgress();
+  try{forgeProfile=await progression.loadProfile();}
+  catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
+  if(disposed||auth.currentUser?.uid!==user.uid)return;
+  if(!gameId){
+    // Keep solo entry on its menu; an old online session can be resumed explicitly.
+    if(["menu","campaign","forge"].includes(expansionUI.view))expansionUI.refresh();return;
+  }
+  if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
+    executionMode="secure";isHost=false;
+    await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
+    startSecurePolling();finishExpansionStartup();return;
+  }
+  let verifiedLobby=null;
+  if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
+    try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
+  }
+  if(verifiedLobby){
+    executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
+    S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
+  }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
+  else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
+  finishExpansionStartup();
   })();
   return profileLoadPromise;
 }
 
 let anonymousSignIn=null,authConnectionStatus="Connecting to Firebase…";
-initializeExpansion();
+function connectGuestProfile(){
+  if(anonymousSignIn)return;
+  startupError=null;updateAssetGate();
+  anonymousSignIn=signInAnonymously(auth).catch(error=>{
+    console.error("Anon sign-in failed",error);authConnectionStatus="Firebase sign-in unavailable · Practice is available";
+    initializeExpansion().then(()=>{
+      if(gameId)showStartupError(new Error("Unable to connect your profile. Check your connection and retry."));
+      else if(expansionUI?.view==="menu")expansionUI.refresh();
+    }).catch(showStartupError);
+  }).finally(()=>{anonymousSignIn=null;});
+}
+initializeExpansion().catch(showStartupError);
 onAuthStateChanged(auth, (user) => {
   // The first callback runs after Firebase restores persisted credentials.
   // Creating the fallback earlier can replace a durable account on reload.
   if (!user) {
-    if(!anonymousSignIn)anonymousSignIn=signInAnonymously(auth).catch(error=>{
-      console.error("Anon sign-in failed",error);authConnectionStatus="Firebase sign-in unavailable · Practice is available";
-      if(expansionUI?.view==="menu")expansionUI.refresh();
-    }).finally(()=>{anonymousSignIn=null;});
+    connectGuestProfile();
     return;
   }
-  restoreExpansionProfile(user).catch(error=>{console.error("Forge startup failed",error);expansionUI?.notify(error.message);});
+  restoreExpansionProfile(user).catch(error=>{if(gameId)showStartupError(error);else{console.error("Forge profile failed",error);expansionUI?.notify(error.message);}});
 });
 
 const cardInfoModal = $("cardInfoModal");
@@ -4566,9 +4626,3 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
-
-
-
-
