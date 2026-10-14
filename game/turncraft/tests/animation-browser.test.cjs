@@ -250,7 +250,7 @@ test('cosmetic movement follows existing obstacle routes and keeps turning conti
   } finally {await browser.close()}
 });
 
-test('touch taps and stationary holds hit moving visible troops rather than their destination tiles', async () => {
+test('touch taps and stationary holds retain moving troop selection without issuing movement', async () => {
   const {browser,page,errors} = await setup(390,844);
   try {
     const points = await page.evaluate(() => tcAnimation.run(`(()=>{

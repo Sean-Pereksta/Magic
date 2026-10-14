@@ -3,9 +3,9 @@ const assert=require('node:assert/strict');
 const {simulation}=require('./helpers/expansion-harness.cjs');
 function setup(){const run=simulation();run(`cam.x=0;cam.y=0;cam.zoom=1;W=1600;H=1200;globalThis.hitCommands=[];sendCommand=c=>{hitCommands.push(c);applyCommand({...c,slot:PLAYER})}`);return run}
 
-test('screen hit testing selects the visible moving troop and discriminates a nearby stationary neighbor',()=>{
+test('screen hit testing selects moving troop body and logical square while discriminating a nearby stationary neighbor',()=>{
  const run=setup(),r=run.plain(`(()=>{const moving=addEntity('unit','rifleman',0,8,4),neighbor=addEntity('unit','engineer',0,4,4);moving.px=3.35;moving.py=4;let p=entityScreenAnchor(moving);handlePolishTap(p.x,p.y);const first=selectedId;testClock+=100;p=entityScreenAnchor(neighbor);handlePolishTap(p.x,p.y);return {first,moving:moving.id,second:selectedId,neighbor:neighbor.id,commands:hitCommands.length,old:selectableEntityAtScreen(8.5*TILE,4.5*TILE)?.id}})()`);
- assert.equal(r.first,r.moving);assert.equal(r.second,r.neighbor);assert.equal(r.commands,0);assert.equal(r.old,undefined,'the empty authoritative destination is not a painted unit body');
+ assert.equal(r.first,r.moving);assert.equal(r.second,r.neighbor);assert.equal(r.commands,0);assert.equal(r.old,r.moving,'the troop remains selectable throughout its logically occupied square while it animates');
 });
 
 test('exact attack targets a moving enemy body while movement still uses the authoritative clicked ground tile',()=>{
