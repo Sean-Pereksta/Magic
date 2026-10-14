@@ -618,6 +618,7 @@
   #bonusText, #flowText { display:none; }
   .hudPrimary { flex-wrap:wrap; gap:4px; }
 </style>
+<link rel="stylesheet" href="chris-runner/menu.css">
 </head>
 <body>
 
@@ -758,6 +759,18 @@
   </div>
 </div>
 
+<!-- Insert after the menu. The graphics loader controls hidden, progress, and retry. -->
+<section id="runnerLoadOverlay" role="dialog" aria-modal="true" aria-labelledby="runnerLoadStatus">
+  <div class="runnerLoadCard">
+    <div class="runnerLoadEyebrow">CHRIS RUNNER</div>
+    <div class="runnerLoadTrack" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h2 id="runnerLoadStatus" role="status" aria-live="polite">Warming up the chase</h2>
+    <progress id="runnerLoadProgress" max="100" value="0" aria-label="Graphics loading progress"></progress>
+    <p id="runnerLoadDetail">Getting your runners, worlds, and obstacles ready.</p>
+    <button id="runnerLoadRetry" type="button" hidden>Try again</button>
+  </div>
+</section>
+
 <div id="message">
   <div id="messageBox">
     <h2>Runner got caught!</h2>
@@ -767,7 +780,11 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="chris-runner/graphics.js"></script>
+<script src="chris-runner/art-actors.js"></script>
+<script src="chris-runner/art-world.js"></script>
 <script src="chris-runner/upgrade.js"></script>
+<script src="chris-runner/boot.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
@@ -939,7 +956,7 @@ let roundEnding = false;
 let roundToastTimer = null;
 
 const CHRIS_REPLAY_VERSION = 2;
-const GAME_BUILD_VERSION = "chris-runner-realms-v5";
+const GAME_BUILD_VERSION = "chris-runner-cartoon-v1";
 
 let replayRecorder = null;
 let replayPlayback = null;
@@ -1032,7 +1049,7 @@ function setupMobileControls() {
   isMobileDevice = detectMobileDevice();
   const controls = document.getElementById("mobileControls");
   if (!controls) return;
-  controls.classList.toggle("mobile-visible", isMobileDevice);
+  controls.classList.toggle("mobile-visible", isMobileDevice && gameStarted && !gameOver);
 
   if (controls.dataset.bound) return;
   const base = document.getElementById("stickBase");
@@ -1315,8 +1332,7 @@ async function saveHighScoreName() {
 }
 
 
-init();
-animate();
+bootRunnerPage();
 
 /* ============================================================
    SETUP
@@ -1625,6 +1641,7 @@ function selectCharacter(key) {
 }
 
 function buildCharacterModel(profile, jerseyColor = 0x1d4ed8) {
+  if (window.RunnerGraphics?.ready) return window.RunnerActorArt.character(profile, jerseyColor);
   const rig = new THREE.Group();
   const parts = {};
   const skin = new THREE.MeshStandardMaterial({ color: profile.skin, roughness: 0.65 });
@@ -1727,14 +1744,7 @@ function resizeCharacterPreview() {
 function refreshCharacterPreview() {
   if (!characterPreviewScene) return;
   if (characterPreviewModel) {
-    characterPreviewScene.remove(characterPreviewModel);
-    characterPreviewModel.traverse(obj => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) {
-        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-        materials.forEach(material => material.dispose());
-      }
-    });
+    disposeRunnerObject(characterPreviewModel);
   }
   const made = buildCharacterModel(getSelectedCharacterProfile(), 0x2563eb);
   characterPreviewModel = made.rig;
@@ -1749,10 +1759,11 @@ function renderCharacterPreview() {
   if (!menu || menu.style.display === "none") return;
 
   const t = performance.now() * 0.001;
-  characterPreviewModel.rotation.y = t * 0.85;
-  characterPreviewModel.position.y = -0.1 + Math.abs(Math.sin(t * 2.2)) * 0.06;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  characterPreviewModel.rotation.y = reducedMotion ? .35 : t * .85;
+  characterPreviewModel.position.y = reducedMotion ? -.1 : -.1 + Math.abs(Math.sin(t * 2.2)) * .06;
   if (characterPreviewParts) {
-    const swing = Math.sin(t * 3.3) * 0.12;
+    const swing = reducedMotion ? 0 : Math.sin(t * 3.3) * .12;
     if (characterPreviewParts.leftArm) characterPreviewParts.leftArm.rotation.x = swing;
     if (characterPreviewParts.rightArm) characterPreviewParts.rightArm.rotation.x = -swing;
   }
@@ -1831,6 +1842,11 @@ function createEnemy(x, z) {
 }
 
 function createPoliceOfficer(x, z) {
+  if (window.RunnerGraphics?.ready) {
+    const made=window.RunnerActorArt.actor('troops/police.glb');made.rig.position.set(x,0,z);scene.add(made.rig);
+    const laser=new THREE.Mesh(new THREE.BoxGeometry(.08,.08,1),new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:0,depthWrite:false}));laser.position.y=3.4;laser.visible=false;scene.add(laser);
+    return {type:'police',...made,speed:10.5+enemyBaseSpeedBonus,state:'chase',stateTimer:POLICE_CHASE_TIME,aimTimer:0,target:null,laser,pathTimer:rand(.3,.9),path:[],animTime:gameRandom()*5,wanderDir:null,wanderTimer:0};
+  }
   const rig = new THREE.Group(); rig.position.set(x, 0, z);
   const skin = new THREE.MeshStandardMaterial({ color: 0xf1c27d, roughness: 0.65 }); const uniform = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 }); const blue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 }); const black = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.6 }); const gold = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
   const torso = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.2, 0.75), uniform); torso.position.y = 3.05; torso.castShadow = true; rig.add(torso);
@@ -1848,6 +1864,10 @@ function createPoliceOfficer(x, z) {
 }
 
 function createDog(x, z) {
+  if (window.RunnerGraphics?.ready) {
+    const made=window.RunnerActorArt.canine();made.rig.position.set(x,0,z);scene.add(made.rig);
+    return {type:'dog',...made,speed:14+enemyBaseSpeedBonus+gameRandom()*2.2,turnRate:2.1,heading:gameRandom()*Math.PI*2,animTime:gameRandom()*5,wanderDir:null,wanderTimer:0};
+  }
   const rig = new THREE.Group();
   rig.position.set(x, 0, z);
 
@@ -1987,6 +2007,7 @@ function createDreamHazard(chunk, zStart) {
   const safePosition = findDreamHazardPosition(zStart, radius);
   if (!safePosition) return;
   const group = new THREE.Group();
+  if(window.RunnerGraphics?.ready){const base=window.RunnerActorArt.prop("dream-hazard-disc");base.position.y=-.15;group.add(base);}
   const fillMat = new THREE.MeshBasicMaterial({ color:0x7c3aed, transparent:true, opacity:.16, depthWrite:false, side:THREE.DoubleSide });
   const ringMat = new THREE.MeshBasicMaterial({ color:0xc084fc, transparent:true, opacity:.82, depthWrite:false, side:THREE.DoubleSide });
   const innerMat = new THREE.MeshBasicMaterial({ color:0x67e8f9, transparent:true, opacity:.62, depthWrite:false, side:THREE.DoubleSide });
@@ -2159,6 +2180,7 @@ function getBiomeConfig(biome) {
 }
 
 function createBiomeGround(width, length, biome) {
+  if (window.RunnerGraphics?.ready) return window.RunnerWorldArt.ground(TERRAIN_WIDTH, length, biome);
   const cfg = getBiomeConfig(biome);
   return new THREE.Mesh(new THREE.BoxGeometry(TERRAIN_WIDTH, .5, length), new THREE.MeshStandardMaterial({ color:cfg.groundColor, roughness:.94 }));
 }
@@ -2194,7 +2216,7 @@ function addReadableObstacleTreatment(obstacle, biome, options = {}) {
     if (obj.isMesh && !obj.userData?.isReadabilityEffect) originals.push(obj);
   });
 
-  for (const mesh of (detectMobileDevice() ? [] : originals)) {
+  for (const mesh of (detectMobileDevice() || obstacle.userData.runnerAssetPath ? [] : originals)) {
     if (!mesh.geometry) continue;
     const shell = new THREE.Mesh(
       mesh.geometry,
@@ -2259,7 +2281,7 @@ function addReadableObstacleTreatment(obstacle, biome, options = {}) {
   obstacle.userData.readabilityRing = baseRing;
 }
 
-function createForestRoadBlock() {
+function createForestRoadBlock() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('forest-log-barricade');model.userData={...model.userData,type:'wall',radiusX:2.4, radiusZ:.7};return model;}
   const g = new THREE.Group();
   const bark = new THREE.MeshStandardMaterial({ color:0x6b3f1d, roughness:.92 });
   const cut = new THREE.MeshStandardMaterial({ color:0xd6a66f, roughness:.78 });
@@ -2285,7 +2307,7 @@ function createForestRoadBlock() {
   return g;
 }
 
-function createSnowRoadBlock() {
+function createSnowRoadBlock() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('snow-ice-barricade');model.userData={...model.userData,type:'wall',radiusX:2.4, radiusZ:.7};return model;}
   const g = new THREE.Group();
   const ice = new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x1d4ed8, emissiveIntensity:.16, roughness:.25, metalness:.08, transparent:true, opacity:.94 });
   const snow = new THREE.MeshStandardMaterial({ color:0xf8fcff, roughness:.96 });
@@ -2311,7 +2333,7 @@ function createSnowRoadBlock() {
   return g;
 }
 
-function createDesertRoadBlock() {
+function createDesertRoadBlock() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('desert-stone-barricade');model.userData={...model.userData,type:'wall',radiusX:2.4, radiusZ:.7};return model;}
   const g = new THREE.Group();
   const stone = new THREE.MeshStandardMaterial({ color:0xb96f3f, roughness:.92 });
   const lightStone = new THREE.MeshStandardMaterial({ color:0xe3a66e, roughness:.88 });
@@ -2337,6 +2359,7 @@ function createBiomeRoadBlock(biome) {
 }
 
 function addRoadSurface(chunk,zStart,biome) {
+  if (window.RunnerGraphics?.ready) { window.RunnerWorldArt.road(chunk,zStart,biome); addRoadWear(chunk,zStart,biome); return; }
   const cfg=getBiomeConfig(biome);
   const road=new THREE.Mesh(new THREE.BoxGeometry(ROAD_WIDTH,.16,CHUNK_LENGTH),new THREE.MeshStandardMaterial({ color:cfg.roadColor, roughness:biome==="dream"?.34:.86, metalness:biome==="dream"?.18:0 }));
   road.position.set(0,.015,zStart+CHUNK_LENGTH/2); road.receiveShadow=true; chunk.add(road);
@@ -2356,6 +2379,7 @@ function addRoadWear(chunk,zStart,biome) {
 
 function addOuterTerrainDecor(chunk,zStart,biome) {
   const count=biome==="city"?7:10;
+  const authored=[];
   for (let i=0;i<count;i++) {
     const side=gameRandom()<.5?-1:1;
     let deco;
@@ -2364,18 +2388,19 @@ function addOuterTerrainDecor(chunk,zStart,biome) {
     deco.position.set(side*rand(WORLD_WIDTH/2+2,TERRAIN_WIDTH/2-3),0,zStart+rand(1,CHUNK_LENGTH-1));
     const scale=rand(.75,1.35); deco.scale.multiplyScalar(scale);
     enableObjectShadows(deco, true, true);
-    chunk.add(deco);
+    if (window.RunnerGraphics?.ready) authored.push(deco); else chunk.add(deco);
   }
+  if (authored.length) window.RunnerWorldArt.decor(chunk,authored);
 }
 
-function createForestTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); g.userData.treeCollisionRadius=.82; return g; }
-function createPineTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} g.userData.treeCollisionRadius=.76; return g; }
-function createPalmTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} g.userData.treeCollisionRadius=.88; return g; }
-function createCactus() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); g.userData.treeCollisionRadius=.68; return g; }
-function createForestRock(){ const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
-function createSnowRock(){ const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
-function createDesertRock(){ const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
-function createParkedCar(color = 0x2563eb) {
+function createForestTree() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('forest-tree');model.userData.treeCollisionRadius=.82;return model;} const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); g.userData.treeCollisionRadius=.82; return g; }
+function createPineTree() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('snow-pine');model.userData.treeCollisionRadius=.76;return model;} const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} g.userData.treeCollisionRadius=.76; return g; }
+function createPalmTree() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('desert-palm');model.userData.treeCollisionRadius=.88;return model;} const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} g.userData.treeCollisionRadius=.88; return g; }
+function createCactus() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('desert-cactus');model.userData.treeCollisionRadius=.68;return model;} const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); g.userData.treeCollisionRadius=.68; return g; }
+function createForestRock(){ if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('forest-rock');return model;} const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
+function createSnowRock(){ if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('snow-rock');return model;} const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
+function createDesertRock(){ if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('desert-rock');return model;} const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
+function createParkedCar(color = 0x2563eb) { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('parked-car');model.userData={...model.userData,type:'wall',radiusX:1.8, radiusZ:2.8};return model;}
   const g = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.15 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.55 });
@@ -2391,9 +2416,9 @@ function createParkedCar(color = 0x2563eb) {
   g.userData = { type: "wall", radiusX: 2.1, radiusZ: 2.9 };
   return g;
 }
-function createCrashedCar() { const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(gameRandom() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
-function createTrafficBarrier() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55 }); const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }); const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.2, 0.7), mat); base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base); for (let i = -1; i <= 1; i += 2) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 0.75), white); stripe.position.set(i * 1.1, 0.66, 0.03); stripe.rotation.z = 0.35; g.add(stripe); } g.userData = { type: "wall", radiusX: 2.4, radiusZ: 0.7 }; return g; }
-function createStreetLight() {
+function createCrashedCar() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('crashed-car');model.userData={...model.userData,type:'wall',radiusX:1.8, radiusZ:2.8};return model;} const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(gameRandom() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
+function createTrafficBarrier() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('traffic-barrier');model.userData={...model.userData,type:'wall',radiusX:2.4, radiusZ:.7};return model;} const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55 }); const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }); const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.2, 0.7), mat); base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base); for (let i = -1; i <= 1; i += 2) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 0.75), white); stripe.position.set(i * 1.1, 0.66, 0.03); stripe.rotation.z = 0.35; g.add(stripe); } g.userData = { type: "wall", radiusX: 2.4, radiusZ: 0.7 }; return g; }
+function createStreetLight() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('street-light');return model;}
   const g = new THREE.Group();
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.3 });
   const lampMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfacc15, emissiveIntensity: 0.9 });
@@ -2409,7 +2434,7 @@ function createStreetLight() {
   g.userData = { type: "wall", radiusX: 1.25, radiusZ: 1.25 };
   return g;
 }
-function createCitySign() {
+function createCitySign() { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('city-sign');return model;}
   const g = new THREE.Group();
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
   const signMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 });
@@ -2428,7 +2453,7 @@ function createCitySign() {
   g.userData = { type: "wall", radiusX: 1.65, radiusZ: 1.05 };
   return g;
 }
-function createDreamTree(isBlocker = false) {
+function createDreamTree(isBlocker = false) { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('dream-tree');model.userData.treeCollisionRadius=.82;if(isBlocker)model.userData={...model.userData,type:'wall',radiusX:.82,radiusZ:.82};return model;}
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(.18,.55,7,7),
@@ -2469,7 +2494,7 @@ function createDreamTree(isBlocker = false) {
   return g;
 }
 
-function createDreamRock(isBlocker = false) {
+function createDreamRock(isBlocker = false) { if(window.RunnerGraphics?.ready){const model=window.RunnerActorArt.prop('dream-rock');if(isBlocker)model.userData={...model.userData,type:'wall',radiusX:1.6,radiusZ:1.6};return model;}
   const g=new THREE.Group();
   const mat=new THREE.MeshStandardMaterial({
     color:isBlocker?0x5b21b6:0x40246e,
@@ -2550,7 +2575,7 @@ function generateChunk(zStart) {
 
   const ground = createBiomeGround(WORLD_WIDTH, CHUNK_LENGTH, biome);
 
-  ground.position.set(0, -0.23, zStart + CHUNK_LENGTH / 2);
+  ground.position.set(0, window.RunnerGraphics?.ready ? .02 : -.23, zStart + CHUNK_LENGTH / 2);
   ground.receiveShadow = true;
   chunk.add(ground);
 
@@ -2771,9 +2796,9 @@ function addPickups(chunk, zStart) {
       })
     );
 
-    group.add(orb);
-    group.add(ring);
-    if (pickupType !== "green") {
+    if (!window.RunnerGraphics?.ready) { group.add(orb); group.add(ring); }
+    else { orb.geometry.dispose();orb.material.dispose();ring.geometry.dispose();ring.material.dispose();group.add(window.RunnerActorArt.pickup(pickupType)); }
+    if (pickupType !== "green" && !window.RunnerGraphics?.ready) {
       const ringB = new THREE.Mesh(
         new THREE.TorusGeometry(0.98, pickupType === "black" ? 0.06 : 0.04, 8, 28),
         new THREE.MeshStandardMaterial({ color: style.ringB, emissive: style.ringA, emissiveIntensity: 0.8, transparent: true, opacity: pickupType === "black" ? 0.8 : 0.95 })
@@ -2864,7 +2889,7 @@ function spawnDangerBehindPlayer(owner) { const actor = owner.isChaser && owner.
 function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; function addTarget(e, list) { if (!e || e.dead || e.removed || e.disabled) return; if (!e.rig || e.rig.visible === false) return; all.push({ actor: e, list }); } for (const e of enemies) addTarget(e, enemies); for (const d of dogs) addTarget(d, dogs); for (const s of desertStalkers) addTarget(s, desertStalkers); for (const p of policeOfficers) addTarget(p, policeOfficers); for (const spirit of spiritDogs) addTarget(spirit, spiritDogs); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
 
 function canEnemyDamage(enemy) { return !!(enemy && !enemy.dead && !enemy.removed && !enemy.disabled && enemy.canDamage !== false && enemy.rig && enemy.rig.visible !== false && enemy.rig.parent); }
-function createBlackGlobeProjectile(fromPos, toPos, onHit) { const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111827 })); mesh.position.copy(fromPos); mesh.position.y += 2.2; const target = toPos.clone(); target.y += 1.8; scene.add(mesh); blackGlobeProjectiles.push({ mesh, target, speed: 85, onHit }); }
+function createBlackGlobeProjectile(fromPos, toPos, onHit) { const mesh = window.RunnerGraphics?.ready ? window.RunnerActorArt.prop("black-globe-projectile") : new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111827 })); mesh.position.copy(fromPos); mesh.position.y += 2.2; const target = toPos.clone(); target.y += 1.8; scene.add(mesh); blackGlobeProjectiles.push({ mesh, target, speed: 85, onHit }); }
 function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!source || !source.rig) return; const targets = getBlackGlobeTargets(owner, 5); for (const target of targets) { if (!target || !target.actor || target.actor.dead || target.actor.removed) continue; target.actor.dead = true; target.actor.disabled = true; target.actor.canDamage = false; target.actor.speed = 0; if (target.actor.velocity) target.actor.velocity.set(0, 0, 0); if (target.actor.rig) { target.actor.rig.userData.dead = true; target.actor.rig.userData.canDamage = false; } const targetPos = target.actor.rig && target.actor.rig.position ? target.actor.rig.position.clone() : source.rig.position.clone(); createBlackGlobeProjectile(source.rig.position, targetPos, () => { createRedImpactBurst(targetPos); removeEnemyActor(target.actor, target.list); }); } }
 function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { disposeRunnerObject(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
 function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { disposeRunnerObject(group); window.burstEffects.splice(i, 1); } } }
@@ -3201,8 +3226,12 @@ function animateRunner(actor, dt, isMoving, allowFarSkip) { animateRunnerMotion(
 
 function animateDog(dog, dt, moving) { animateRunnerCanine(dog, dt, moving); }
 
-function createDesertStalkerRig() { const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
-function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
+function createDesertStalkerRig() {
+  if (window.RunnerGraphics?.ready) {
+    const made=window.RunnerActorArt.actor('troops/desert-stalker.glb');
+    const warn=new THREE.Mesh(new THREE.ConeGeometry(.45,4.8,10,1,true),new THREE.MeshBasicMaterial({color:0xff6a00,transparent:true,opacity:0,side:THREE.DoubleSide}));warn.rotation.x=-Math.PI/2;warn.position.y=.08;warn.scale.set(.35,1,1);made.rig.add(warn);scene.add(made.rig);return {...made,warn};
+  } const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
+function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: made.parts || {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
 function updateDesertStalkerDash(s, dt) { s.dashCooldown -= dt; if (s.dashWindup > 0) { s.dashWindup -= dt; s.warningMesh.material.opacity = 0.75; s.rig.rotation.y = Math.atan2(s.dashDir.x, s.dashDir.z); if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warningMesh.material.opacity = 0; } return; } if (s.dashTime > 0) { s.dashTime -= dt; const old = s.rig.position.clone(); s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt); s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH / 2 + 2, WORLD_WIDTH / 2 - 2); if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; } return; } if (s.dashCooldown <= 0 && flatDistance(s.rig.position, player.rig.position) < 18) { s.dashDir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); s.dashDir.y = 0; s.dashDir.normalize(); s.dashWindup = 0.55; s.dashCooldown = rand(3.5, 6); } }
 function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
@@ -3505,8 +3534,8 @@ function updateEnemyTorch(enemy, dt) {
   }
 
   if (enemy.handTorch && frameCount % 2 === 0) {
-    const flame = enemy.handTorch.children[1];
-    flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.015) * 0.18);
+    const flame = enemy.handTorch.getObjectByName("flame") || enemy.handTorch.children[1];
+    if (flame) flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.015) * 0.18);
   }
 }
 
@@ -3523,6 +3552,7 @@ function throwTorch(enemy) {
 
   const group = new THREE.Group();
 
+  if(window.RunnerGraphics?.ready){const art=window.RunnerActorArt.prop('held-torch');art.rotation.z=-Math.PI/2;art.position.x=-.5;art.scale.setScalar(.7);group.add(art);}else{
   const stick = new THREE.Mesh(
     new THREE.CylinderGeometry(0.07, 0.08, 1.05, 6),
     new THREE.MeshStandardMaterial({ color: 0x5b3211, roughness: 0.75 })
@@ -3540,6 +3570,8 @@ function throwTorch(enemy) {
   );
   flame.position.x = 0.58;
   group.add(flame);
+
+  }
 
   group.position.copy(start);
   scene.add(group);
@@ -3568,8 +3600,8 @@ function updateTorches(dt) {
     t.group.rotation.z += dt * t.spin * 0.65;
 
     if (frameCount % 2 === 0) {
-      const flame = t.group.children[1];
-      flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.018) * 0.22);
+      const flame = t.group.getObjectByName("flame") || t.group.children[1];
+      if (flame) flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.018) * 0.22);
     }
 
     if (p >= 1) {
@@ -3874,17 +3906,7 @@ function removePickupObject(pickup) {
     scene.remove(pickup);
   }
 
-  pickup.traverse(obj => {
-    if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
-
-    if (obj.material) {
-      if (Array.isArray(obj.material)) {
-        obj.material.forEach(mat => mat.dispose && mat.dispose());
-      } else if (obj.material.dispose) {
-        obj.material.dispose();
-      }
-    }
-  });
+  disposeRunnerObject(pickup);
 }
 
 function removePickupAtIndex(index) {
@@ -4445,6 +4467,7 @@ function updatePoliceOfficers(dt) {
   const safeRemove = typeof removeEnemyActor === "function";
 
   for (const cop of policeOfficers) {
+    let animatedByChase=false;
     if (cop?.runnerStun > 0) continue;
     if (!cop || !cop.rig) continue;
 
@@ -4496,12 +4519,13 @@ function updatePoliceOfficers(dt) {
         const prevPlayer = player;
         player = target;
         chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
+        animatedByChase=true;
         player = prevPlayer;
       } else {
         movePoliceDirectlyTowardTarget(cop, target, dt);
       }
 
-      animatePoliceOfficer(cop, dt);
+      if (!animatedByChase) animatePoliceOfficer(cop, dt);
       continue;
     }
 
@@ -4515,6 +4539,7 @@ function updatePoliceOfficers(dt) {
         const prevPlayer = player;
         player = target;
         chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
+        animatedByChase=true;
         player = prevPlayer;
       } else {
         movePoliceDirectlyTowardTarget(cop, target, dt);
@@ -4566,7 +4591,7 @@ function updatePoliceOfficers(dt) {
       if (cop.laser) cop.laser.visible = false;
     }
 
-    animatePoliceOfficer(cop, dt);
+    if (!animatedByChase) animatePoliceOfficer(cop, dt);
 
     // Touch collision.
     const updatedDist = safeFlatDistance
@@ -4809,7 +4834,7 @@ function animate() {
   if (replayHud) replayHud.style.display = replayMode ? "block" : "none";
 
   if (gameOver || !gameStarted) {
-    renderer.render(scene, camera);
+    if (gameStarted) renderer.render(scene, camera);
     return;
   }
 
@@ -5153,7 +5178,7 @@ function clearObjectArray(arr, objectKey, removeExtraPoliceLaser = false) {
   if (!Array.isArray(arr)) return;
   for (const item of arr) {
     if (!item) continue;
-    if (removeExtraPoliceLaser && item.laser) scene.remove(item.laser);
+    if (removeExtraPoliceLaser && item.laser) disposeRunnerObject(item.laser);
     if (objectKey && item[objectKey]) disposeRunnerObject(item[objectKey]);
     else if (!objectKey && item.isObject3D) disposeRunnerObject(item);
     else if (!objectKey && item.group) disposeRunnerObject(item.group);
@@ -5234,6 +5259,7 @@ function endTwoPlayerRound(reason) {
   showRoundTransition(reason);
 }
 function startGame(mode) {
+  if (window.RunnerGraphics && !window.RunnerGraphics.ready) return;
   document.getElementById('hud').classList.toggle('twoPlayerHud', mode === 2);
   document.getElementById("mobileControls")?.resetRunnerInput?.();
   keys = {}; mobileDodgeQueued = false; mobileSprintDown = false;
@@ -5608,5 +5634,6 @@ function showReplayCompleteScreen(replay) {
 
 </script>
 
+<script src="chris-runner/menu.js"></script>
 </body>
 </html>

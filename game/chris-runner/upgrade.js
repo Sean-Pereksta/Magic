@@ -1,4 +1,4 @@
-/* Chris Runner's section planner and gameplay extension. No external assets. */
+/* Chris Runner section planner and gameplay extension; cartoon assets load before startup. */
 const RUNNER_ABILITIES = Object.freeze({
   chris: { name: 'Repulse', cost: 30, cooldown: 2.5, description: 'Push nearby pursuers away', strength: 'Efficient endurance', weakness: 'Short ability reach' },
   dawit: { name: 'Dash', cost: 30, cooldown: 1.8, description: 'Burst in your movement direction', strength: 'Fastest runner', weakness: 'High sprint drain' },
@@ -104,6 +104,7 @@ function runnerRealmForIndex(index) {
 }
 
 function addRunnerRealmScenery(chunk, zStart, biome) {
+  if (window.RunnerGraphics?.ready) return window.RunnerWorldArt.realmScenery(chunk,zStart,biome);
   const cfg = RUNNER_NEW_REALMS[biome];
   if (!cfg) return;
   const group = new THREE.Group(); chunk.add(group);
@@ -174,13 +175,15 @@ function addRunnerRealmSituation(chunk, zStart, biome, plan) {
   const visual = new THREE.Group(); obstacle.add(visual);
   if (biome === 'harbor') {
     const cargo = new THREE.Group(); obstacle.add(cargo);
-    for (const mesh of obstacle.children.slice()) if (mesh.isMesh && !mesh.userData.isReadabilityEffect) cargo.add(mesh);
+    for (const mesh of obstacle.children.slice()) if ((mesh.isMesh || mesh.userData.runnerAsset) && !mesh.userData.isReadabilityEffect) cargo.add(mesh);
     cargo.scale.x = .82; visual.userData.cargo = cargo;
   }
-  const moving = runnerBox(visual, [3.2, .35, .7], [0, 3.7, 0], cfg.accent, true);
+  const authoredMoving={carnival:'carnival-swing-barrier',crystal:'crystal-falling-shard'}[biome];
+  let moving;
+  if(window.RunnerGraphics?.ready && authoredMoving){moving=new THREE.Group();const art=window.RunnerActorArt.prop(authoredMoving),entry=window.RunnerGraphics.asset('props/'+authoredMoving+'.glb');art.position.y=-entry.bounds.max[1]/2;moving.add(art);moving.position.y=3.7;visual.add(moving);}else moving=runnerBox(visual,[3.2,.35,.7],[0,3.7,0],cfg.accent,true);
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.15, 16), new THREE.MeshBasicMaterial({color: 0xffc361, side: THREE.DoubleSide, depthWrite: false}));
   ring.rotation.x = -Math.PI / 2; ring.scale.y = .65; ring.position.y = .14; obstacle.add(ring);
-  if (biome === 'crystal') {const shard = new THREE.Mesh(new THREE.ConeGeometry(.75, 2.7, 5), moving.material); moving.add(shard);}
+  if (biome === 'crystal' && !window.RunnerGraphics?.ready) {const shard = new THREE.Mesh(new THREE.ConeGeometry(.75, 2.7, 5), moving.material); moving.add(shard);}
   runnerRealmSituations.push({owner: chunk, obstacle, moving, cargo: visual.userData.cargo, ring, biome, phase: (Math.floor(zStart / 42) % 5) * .7, baseY: 3.7});
   chunk.userData.notice = cfg.event;
 }
@@ -257,8 +260,8 @@ function disposeRunnerObject(root) {
     if (node.geometry) geometries.add(node.geometry);
     if (node.material) for (const mat of (Array.isArray(node.material) ? node.material : [node.material])) materials.add(mat);
   });
-  geometries.forEach(g => g.dispose());
-  materials.forEach(m => m.dispose());
+  geometries.forEach(g => {if (!g.userData.runnerAssetShared) g.dispose();});
+  materials.forEach(m => {if (!m.userData.runnerAssetShared) m.dispose();});
 }
 
 function runnerBox(group, size, position, color, glow = false) {
@@ -273,6 +276,7 @@ function runnerBox(group, size, position, color, glow = false) {
 }
 
 function createRunnerObstacle(biome, breakable, shape = 0) {
+  if (window.RunnerGraphics?.ready) return window.RunnerWorldArt.obstacle(biome,breakable,shape);
   const group = new THREE.Group();
   const colors = { forest: 0x705236, rooftops: 0x64748b, construction: 0xb98440, industrial: 0x527375, tunnel: 0x596779, ruins: 0x897d70, city: 0x43536b, snow: 0x9aabbc, desert: 0xaa784f, dream: 0x684894 };
   const h = breakable ? 2.1 : 3.4;
@@ -330,6 +334,7 @@ function addRunnerSection(chunk, zStart, biome) {
 }
 
 function addRunnerArchitecture(chunk, zStart, biome) {
+  if (window.RunnerGraphics?.ready) return window.RunnerWorldArt.architecture(chunk,zStart,biome);
   const urban = ['city', 'rooftops', 'construction', 'industrial', 'tunnel', 'ruins'].includes(biome);
   if (!urban) return;
   const architecture = new THREE.Group(); chunk.add(architecture);
@@ -529,6 +534,7 @@ function runnerArticulatedLimb(parent, parts, name, x, y, material, width, lengt
 }
 
 function buildRunnerEnemyModel(role = 'chaser', variant = 0, realm = '', equipped = false) {
+  if (window.RunnerGraphics?.ready) return window.RunnerActorArt.enemy(role,variant,realm,equipped);
   const rig = new THREE.Group(), parts = {};
   const colors = {chaser: 0xa7bbc9, fast: 0xe45a77, heavy: 0xc59c54, ambusher: 0x766084, blocker: 0x478ab2, jumper: 0x4dbf9d, ranged: 0xd38651, elite: 0xd43962};
   const cloth = new THREE.MeshStandardMaterial({color: colors[role], roughness: .75});
@@ -690,7 +696,7 @@ function animateRunnerMotion(actor, dt, moving, allowFarSkip) {
   const far = allowFarSkip && Math.abs(actor.rig.position.z - player.rig.position.z) > 65;
   if (actor.runnerFar !== far) {
     actor.runnerFar = far;
-    for (const child of actor.parts.head?.children || []) child.visible = !far || child.geometry?.type === 'SphereGeometry';
+    if (!actor.rig.userData.runnerAsset) for (const child of actor.parts.head?.children || []) child.visible = !far || child.geometry?.type === 'SphereGeometry';
     if (actor.roleRing) actor.roleRing.visible = !far;
     actor.rig.traverse(mesh => {if (mesh.isMesh) mesh.castShadow = !far && mesh.material.type !== 'MeshBasicMaterial';});
   }
@@ -771,7 +777,7 @@ function animateRunnerCanine(dog, dt, moving) {
   for (let i = 0; i < dog.legs.length; i++) {
     const phase = t + trotOffsets[i] * (1 - gallop) + gallopOffsets[i] * gallop;
     dog.legs[i].rotation.x = (Math.sin(phase) * .7 + Math.sin(phase * 2) * .15) * amount;
-    dog.legs[i].position.y = .55 + Math.max(0, Math.cos(phase)) * .12 * amount;
+    dog.legs[i].position.y = (dog.legs[i].userData.runnerBaseY ?? .55) + Math.max(0, Math.cos(phase)) * .12 * amount;
   }
   if (dog.body) {dog.body.rotation.z = Math.sin(t) * .035 * amount; dog.body.scale.z = 1 + Math.cos(t) * .04 * gallop;}
   if (dog.tail) {dog.tail.rotation.z = Math.sin(t * .5) * .2; dog.tail.rotation.x = -.9 + Math.cos(t) * .12 * amount;}
@@ -784,6 +790,10 @@ function animateRunnerCanine(dog, dt, moving) {
 }
 
 function makeRunnerSpiritDog(x, z) {
+  if (window.RunnerGraphics?.ready) {
+    const made=window.RunnerActorArt.canine(true);made.rig.position.set(x,0,z);scene.add(made.rig);gameRandom();
+    return {type:'spiritDog',...made,speed:15.2+enemyBaseSpeedBonus,turnRate:2.65,heading:gameRandom()*Math.PI*2,animTime:gameRandom()*5,phase:gameRandom()*Math.PI*2,wanderDir:null,wanderTimer:0};
+  }
   const dog = createDog(x, z); dog.type = 'spiritDog';
   dog.speed = 15.2 + enemyBaseSpeedBonus; dog.turnRate = 2.65; dog.phase = gameRandom() * Math.PI * 2;
   const bodyMaterial = new THREE.MeshStandardMaterial({color: 0x8edce8, emissive: 0x225b86, emissiveIntensity: .75, roughness: .4, opacity: 1});
