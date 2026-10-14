@@ -7,17 +7,23 @@ const library = require('../lobby-library.js');
 const core = library.upgradeHtml(fs.readFileSync(process.env.LOBBY_CORE_PATH || path.join(__dirname, '../lobby-core.html'), 'utf8').replace(/\r\n/g, '\n'));
 const registry = vm.runInNewContext(core.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]);
 const apes = registry.find(game => game.key === 'apestogetherstrong');
+const forge = registry.find(game => game.key === 'crowncouncil');
 
-function harness({username = '', write = () => new Promise(() => {})} = {}) {
-  const saved = new Map(), launches = [], modals = [], warnings = [];
+function harness({username = '', write = () => new Promise(() => {}), rememberedLobby = null} = {}) {
+  const saved = new Map(), launches = [], modals = [], warnings = [], lobbyCalls = [];
+  if (rememberedLobby) saved.set('lastLobby', rememberedLobby.id);
+  const unexpectedLobbyCall = name => (...args) => {lobbyCalls.push({name, args}); throw new Error('Solo launch attempted ' + name);};
   let renders = 0;
   const context = vm.createContext({
     username, launchingGame: false, pendingAction: null, recentGames: [], currentUserData: {},
+    currentLobbyId: rememberedLobby?.id || null, currentLobbyData: rememberedLobby,
     gamePlayCounts: {}, baseProfileCache: new Map(), profileBundleCache: new Map(),
-    SK: {recent: 'recent', lastGame: 'lastGame'}, db: {},
+    SK: {recent: 'recent', lastGame: 'lastGame', lastLobby: 'lastLobby'}, db: {},
     doc: (_db, collection, key) => ({collection, key}), setDoc: write,
+    addDoc: unexpectedLobbyCall('addDoc'), getDoc: unexpectedLobbyCall('getDoc'),
+    onSnapshot: unexpectedLobbyCall('onSnapshot'), runTransaction: unexpectedLobbyCall('runTransaction'),
     increment: value => value, serverTimestamp: () => 123,
-    save: (key, value) => saved.set(key, value), normalize: value => value.toLowerCase(),
+    save: (key, value) => saved.set(key, value), read: key => saved.get(key), normalize: value => value.toLowerCase(),
     renderAllGames: () => renders++, renderProfile: () => renders++,
     toast() {}, console: {warn: (...args) => warnings.push(args)},
     openModal: id => modals.push(id),
@@ -29,7 +35,7 @@ function harness({username = '', write = () => new Promise(() => {})} = {}) {
     const end = core.indexOf('\n    }', start) + '\n    }'.length;
     vm.runInContext(core.slice(start, end), context);
   }
-  return {context, saved, launches, modals, warnings, renders: () => renders};
+  return {context, saved, launches, modals, warnings, lobbyCalls, renders: () => renders};
 }
 
 for (const username of ['', 'Test Ape']) {
@@ -77,3 +83,34 @@ test('solo route parameters and cloud stats still work when online', async () =>
   assert.equal(h.context.currentUserData.gamePlayCounts[apes.key], 1);
   assert.equal(h.renders(), 2);
 });
+
+for (const [username, status] of [['', 'waiting'], ['Forge & Commander', 'started']]) {
+  test('Faction Forge solo action ignores a remembered ' + status + ' lobby for ' + (username || 'guest'), async () => {
+    const writes = [], actionCalls = [];
+    const h = harness({username, rememberedLobby: {id: 'old-forge-room', gameType: 'crowncouncil', status, players: [username]}, write: ref => {writes.push(ref); return new Promise(() => {});}});
+    const result = library.runAction(forge, 'single', {
+      playSingle: h.context.playSingle,
+      openCreateLobby: key => actionCalls.push({type: 'lobby', key}),
+      joinOnlineGame: game => actionCalls.push({type: 'online', key: game.key})
+    });
+    assert.deepEqual(h.launches, [{url: '/game/crowncouncil.html?mode=solo' + (username ? '&username=Forge%20%26%20Commander' : ''), reason: 'single-play'}]);
+    assert.deepEqual(actionCalls, []);
+    assert.deepEqual(h.lobbyCalls, []);
+    assert.ok(writes.every(ref => ref.collection !== 'lobbies'), 'solo analytics must not create or update a lobby');
+    assert.equal(h.saved.get('lastLobby'), 'old-forge-room');
+    assert.equal(h.saved.get('lastGame'), 'crowncouncil');
+    await result;
+  });
+}
+
+test('Faction Forge multiplayer action opens the lobby creator without launching solo', async () => {
+  const calls = [];
+  await library.runAction(forge, 'lobby', {
+    playSingle: () => calls.push('single'),
+    openCreateLobby: key => calls.push(key),
+    joinOnlineGame: () => calls.push('online')
+  });
+  assert.deepEqual(calls, ['crowncouncil']);
+});
+
+

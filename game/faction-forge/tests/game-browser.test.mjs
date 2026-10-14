@@ -22,6 +22,37 @@ async function mockBrowser(context){
  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'',matchmakingTimeoutMs:30000};`}));
 }
 
+test('solo menu appears before auth and save loading, without opening any lobby',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  for(const scenario of ['auth-pending','auth-failed','profile-pending','profile-denied']){
+   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+   await context.addInitScript(()=>{localStorage.setItem('gh.lastLobbyId','old-forge-room');localStorage.setItem('gh.lastGameType','crowncouncil');});
+   if(scenario.startsWith('auth-'))await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:`const auth={currentUser:null};export const getAuth=()=>auth;export const signInAnonymously=async()=>{throw Error('Authentication unavailable')};export const signInWithEmailAndPassword=async()=>{};export const onAuthStateChanged=(a,fn)=>{${scenario==='auth-failed'?'setTimeout(()=>fn(null),0);':''}return ()=>{}};`}));
+   if(scenario==='profile-pending')await context.route('**/firebase-firestore.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseMocks['firebase-firestore.js'].replace('export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});','export const runTransaction=()=>new Promise(()=>{});')}));
+   if(scenario==='profile-denied')await context.addInitScript(()=>globalThis.__denySolo=true);
+   await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeEntry={get gameId(){return gameId},get mode(){return executionMode},get listeners(){return listenersStarted}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
+   const query=scenario==='auth-pending'?'':'?mode=solo&gameId=old-forge-room';
+   await page.goto(url+'/game/crowncouncil.html'+query);await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor({timeout:5000});
+   assert.equal(await page.locator('#assetGate').isVisible(),false,scenario);assert.deepEqual(await page.evaluate(()=>({id:__forgeEntry.gameId,mode:__forgeEntry.mode,listeners:__forgeEntry.listeners})),{id:null,mode:'menu',listeners:false});
+   await page.getByRole('button',{name:'How to Play',exact:false}).click();await page.getByRole('heading',{name:'Command the Forge',exact:true}).waitFor();assert.equal(await page.locator('#assetGate').isVisible(),false);assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);await context.close();
+  }
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('solo entry offers an old online session for explicit resume and multiplayer entry keeps the readiness gate',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),sessionRequests=[];
+  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:30000};`}));
+  await context.route('**/api/faction-forge/**',route=>{const p=new URL(route.request().url()).pathname;if(p.includes('/sessions/'))sessionRequests.push(p);return route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'Commander',activeSessionId:'old-online-match',troops:{},campaign:{missions:{}}}})});});
+  await page.goto(url+'/game/crowncouncil.html?mode=solo&gameId=old-forge-room');await page.getByRole('button',{name:'Resume match',exact:true}).waitFor();assert.equal(await page.locator('#assetGate').isVisible(),false);assert.deepEqual(sessionRequests,[]);await context.close();
+  const multi=await browser.newContext();await mockBrowser(multi);const game=await multi.newPage();
+  await multi.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeEntry={get mode(){return executionMode},get listeners(){return listenersStarted},get gameId(){return gameId}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
+  await game.goto(url+'/game/crowncouncil.html?mode=multi&gameId=real-room');await game.waitForFunction(()=>globalThis.__forgeEntry?.listeners);assert.deepEqual(await game.evaluate(()=>({id:__forgeEntry.gameId,mode:__forgeEntry.mode})),{id:'real-room',mode:'legacy-online'});assert.equal(await game.locator('#assetGate').isVisible(),true);assert.equal(await game.locator('.ff-view-menu').count(),0);await multi.close();
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
 test('full game opens solo menu, drafts against AI, and moves on the original grid without Firebase writes',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
@@ -128,6 +159,8 @@ test('restored durable auth survives reload and joined lobbies receive the verif
   assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
+
+
 
 
 

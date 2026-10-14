@@ -780,7 +780,7 @@
       {key:"biblegame",title:"Bible Game",emoji:"📖",desc:"Train solo in Scripture Quest and Bible challenges, or join a large multiplayer Bible match.",route:"/game/biblegame.html",category:"Faith",modes:["single","multi"],maxPlayers:20,autoRedirect:true},
       {key:"bibleroguelike",title:"Bible Game — Roguelike",emoji:"📖⚔️",desc:"Fight through Scripture Quest alone or together. Shared enemies, unique verse attacks, personal builds, compact co-op health bars and branching rooms.",route:"/game/biblegame.html",singleRoute:"/game/biblegame.html?mode=roguelike",category:"Faith",modes:["single","multi"],minPlayers:1,maxPlayers:5,autoRedirect:true,autoUsername:true},
       {key:"historyrush",title:"History Rush",emoji:"🏛️",desc:"Race through history with four players.",route:"/game/historyrush.html",category:"Party",modes:["multi"],maxPlayers:4,autoRedirect:true},
-      {key:"crowncouncil",title:"Faction Forge",emoji:"👑",imagePath:"/lobby/assets/faction-forge-lobby.webp",desc:"Draft animated armies, conquer a campaign, and build your troop collection.",route:"/game/crowncouncil.html",singleRoute:"/game/crowncouncil.html",autoUsername:true,category:"Strategy",modes:["single","multi"],maxPlayers:2,autoRedirect:true},
+      {key:"crowncouncil",title:"Faction Forge",emoji:"👑",imagePath:"/lobby/assets/faction-forge-lobby.webp",desc:"Draft animated armies, conquer a campaign, and build your troop collection.",route:"/game/crowncouncil.html",singleRoute:"/game/crowncouncil.html?mode=solo",autoUsername:true,category:"Strategy",modes:["single","multi"],maxPlayers:2,autoRedirect:true},
       {key:"thegame",title:"The Game  (Incomplete)",emoji:"🃏",desc:"A five-player card challenge.",route:"/game/thegame.html",category:"Cards",modes:["multi"],maxPlayers:5,autoRedirect:true},
       {key:"matchwars",title:"Match Wars",emoji:"🧩⚔️",desc:"Match pieces and push through enemy lines.",route:"/game/matchwars.html",category:"Arcade",modes:["single"]},
       {key:"catmobile",title:"Cat vs Mouse Mobile (Incomplete)",emoji:"🐭📱",desc:"Mobile-friendly eight-player chase.",route:"/game/catmousemobile.html",category:"Party",modes:["multi"],maxPlayers:8,autoRedirect:true},
@@ -1759,7 +1759,7 @@
         const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
         launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
       }
-      launchGameUrl(`${game.route}?${launchQuery}${game.key==="ironthrone"?`&returnUrl=${encodeURIComponent(location.pathname)}`:game.key==="crowncouncil"?`&ranked=${data.forgeRanked===false?"0":"1"}`:""}`,"lobby-started");
+      launchGameUrl(`${game.route}?${launchQuery}${game.key==="ironthrone"?`&returnUrl=${encodeURIComponent(location.pathname)}`:game.key==="crowncouncil"?`&mode=multi&ranked=${data.forgeRanked===false?"0":"1"}`:""}`,"lobby-started");
     }
     async function removePlayerFromLobby(id,playerName){
       if(!id||!playerName)return {removed:false,closed:false};
@@ -2132,6 +2132,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
