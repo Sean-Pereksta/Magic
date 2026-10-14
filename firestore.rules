@@ -135,6 +135,42 @@ service cloud.firestore {
 
     // New authority collections are never covered by a legacy recursive grant.
     // Binding records are provisioned only by Firebase Admin after owner recovery.
+    // Personal campaign/Forge saves are separate from competitive authority.
+    // Firebase Auth owns each save; other players cannot read or change it.
+    match /factionForgeSoloProfiles/{uid} {
+      function ownsSoloSave() { return isAuthed() && request.auth.uid == uid; }
+      function validSoloSave() {
+        let data=request.resource.data;
+        return ownsSoloSave() && data.uid == uid && data.schemaVersion == 1
+          && data.username is string && data.username.size() >= 1 && data.username.size() <= 80
+          && data.forgeDust is int && data.forgeDust >= 0
+          && data.troops is map && data.troops.size() == 32
+          && data.campaign is map && data.campaign.missions is map && data.campaign.missions.size() <= 30
+          && data.campaign.endlessUnlocked is bool && data.campaign.endlessBest is int && data.campaign.endlessBest >= 0
+          && data.wins is int && data.wins >= 0 && data.losses is int && data.losses >= 0
+          && (data.rewardTarget == null || data.rewardTarget is string)
+          && data.rewardDay is string && data.rewardCounts is map
+          && data.updatedAt is int && data.updatedAt >= 0
+          && data.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt']);
+      }
+      allow get: if ownsSoloSave();
+      allow create, update: if validSoloSave();
+      allow list, delete: if false;
+      match /results/{id} {
+        allow get: if ownsSoloSave();
+        allow create: if ownsSoloSave() && request.resource.data.uid == uid
+          && request.resource.data.id == id && request.resource.data.mode in ['campaign','bot','endless']
+          && request.resource.data.keys().hasOnly(['id','uid','mode','won','missionId','stars','cards','forgeDust','unlocks','completedAt']);
+        allow list, update, delete: if false;
+      }
+      match /upgrades/{id} {
+        allow get: if ownsSoloSave();
+        allow create: if ownsSoloSave() && request.resource.data.uid == uid
+          && request.resource.data.requestId == id
+          && request.resource.data.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']);
+        allow list, update, delete: if false;
+      }
+    }
     match /factionForgeAccounts/{uid} {
       allow get: if isAuthed() && request.auth.uid == uid;
       allow list, write: if false;
@@ -711,3 +747,5 @@ service cloud.firestore {
     }
   }
 }
+
+

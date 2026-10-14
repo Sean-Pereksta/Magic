@@ -10,7 +10,7 @@ const root=path.resolve(import.meta.dirname,'../../..');
 const firebaseMocks={
 'firebase-app.js':`export const initializeApp=()=>({});export const getApp=()=>({});export const getApps=()=>[];`,
 'firebase-auth.js':`const auth={currentUser:{uid:'owner-uid',getIdToken:async()=> 'test-token'}};export const getAuth=()=>auth;export const signInAnonymously=async()=>({user:auth.currentUser});export const signInWithEmailAndPassword=async()=>({user:auth.currentUser});export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>fn(a.currentUser),0);return ()=>{}};`,
-'firebase-firestore.js':`export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async()=>({exists:()=>false,data:()=>({})});export const setDoc=async()=>{globalThis.__fireWrites=(globalThis.__fireWrites||0)+1};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>false,data:()=>({})}),0);return ()=>{}};`
+'firebase-firestore.js':`const docs=new Map(JSON.parse(localStorage.getItem('__forgeMockDocs')||'[]'));export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async ref=>({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}});export const setDoc=(ref,data)=>{if(globalThis.__denySolo&&ref.path.startsWith('factionForgeSoloProfiles/'))throw Object.assign(new Error('Denied'),{code:'permission-denied'});if(ref.path.startsWith('lobbies/'))globalThis.__fireWrites=(globalThis.__fireWrites||0)+1;else globalThis.__soloWrites=(globalThis.__soloWrites||0)+1;docs.set(ref.path,data);localStorage.setItem('__forgeMockDocs',JSON.stringify([...docs]));};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}}),0);return ()=>{}};`
 };
 async function server(){
  const app=http.createServer(async(req,res)=>{try{const pathname=new URL(req.url,'http://localhost').pathname;const file=path.join(root,pathname);if(!file.startsWith(root+path.sep))throw Error('bad path');const data=await fs.readFile(file);res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(data);}catch{res.writeHead(404);res.end('missing');}});
@@ -53,6 +53,31 @@ test('local campaign starts with each faction army and reaches battle without pr
    for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}
    await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);await context.close();
   }
+ }finally{await browser.close();await new Promise(r=>app.close(r));}
+});
+
+test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies a permanent Forge tier in battle',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],apiRequests=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',req=>{if(req.url().includes('/api/faction-forge'))apiRequests.push(req.url());});
+  await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},get profile(){return forgeProfile},get battle(){return B},chooseCard,get ui(){return expansionUI},complete(){stopHostLoops();S.phase="game-over";S.winner=username;S.lives=[4,0];render();}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
+  await page.goto(url+'/game/crowncouncil.html');await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
+  // Favor one troop, then clear five missions: 15 cards and 100 dust afford Recruit -> Veteran.
+  await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.rewardTarget==='rifleman');
+  for(let mission=0;mission<5;mission++){
+   await page.evaluate(()=>__forgeTest.ui.showCampaign());await page.locator('.ff-mission').nth(mission).click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');
+   if(mission===0)await page.evaluate(()=>globalThis.__denySolo=true);
+   await page.evaluate(()=>__forgeTest.complete());
+   if(mission===0){await page.getByRole('button',{name:'Retry Firebase save',exact:true}).waitFor();assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);await page.evaluate(()=>globalThis.__denySolo=false);await page.getByRole('button',{name:'Retry Firebase save',exact:true}).click();}
+   await page.getByText('Spoils of battle',{exact:true}).waitFor();
+  }
+  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),100);
+  await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>Object.keys(__forgeTest.profile.campaign.missions).length),5);
+  await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Forge Veteran',exact:true}).click();await page.getByRole('button',{name:'Confirm upgrade',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.troops.rifleman.forgeTier===2);
+  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);assert.equal(await page.evaluate(()=>__forgeTest.profile.troops.rifleman.cards),5);
+  await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();await page.evaluate(()=>__forgeTest.ui.showCampaign());assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),6);await page.locator('.ff-mission').first().click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');assert.equal(await page.evaluate(()=>__forgeTest.state.forgeTiers.p0.rifleman),2);
+  for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.ok(await page.evaluate(()=>__forgeTest.battle.units.some(unit=>unit.p===0&&unit.type==='rifleman'&&unit.forgeTier===2)));
+  assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(apiRequests,[]);assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
 
@@ -103,5 +128,7 @@ test('restored durable auth survives reload and joined lobbies receive the verif
   assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
+
+
 
 
