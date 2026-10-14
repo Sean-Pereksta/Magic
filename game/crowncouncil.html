@@ -819,7 +819,7 @@
     to{ opacity:0; transform:translate(-50%,-130%); }
   }
 
-  .assetGate{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
+  .assetGate{position:fixed;inset:0;z-index:1000;display:none;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
   .assetGatePanel{width:min(460px,94vw);display:grid;gap:10px;padding:18px;border:1px solid rgba(96,165,250,.7);border-radius:16px;background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.98));box-shadow:0 24px 70px rgba(0,0,0,.65);text-align:center}
   .assetGate.error .assetGatePanel{border-color:rgba(248,113,113,.9)}
   .assetGateTitle{font-size:1.05rem;font-weight:900;color:#dbeafe;letter-spacing:.04em;text-transform:uppercase}.assetGateStatus{font-size:.88rem;color:#cbd5e1;line-height:1.35}.assetGatePlayers{font-size:.78rem;color:#93c5fd;line-height:1.45}
@@ -958,7 +958,8 @@ function deepClone(obj){
 
 /* ---------------- URL params ---------------- */
 const params   = new URLSearchParams(location.search);
-const gameId   = params.get("gameId");
+// An explicit solo launch never inherits multiplayer context from its URL.
+const gameId   = params.get("mode") === "solo" ? null : (params.get("gameId")?.trim() || null);
 let requestedRanked=params.get("ranked")!=="0";
 const username = params.get("username") || (()=>{try{return localStorage.getItem("gh.username")}catch{return null}})() || "Guest";
 let executionMode = gameId ? "legacy-online" : "menu";
@@ -4434,6 +4435,11 @@ function startSecurePolling(){
   },1500);
 }
 async function startProgressionMatch(mode,missionId,faction="Vanir"){
+  if(profileLoadPromise)await profileLoadPromise;
+  if(!progression){
+    if(mode==="bot")return startPractice(faction);
+    throw new Error("Firebase is still connecting. Try starting the campaign again in a moment.");
+  }
   if(!FACTION_FORGE_CONFIG.progressionApiUrl){
     const mission=soloMission(forgeProfile,mode,missionId);
     return startPractice(faction,mission?.id||null,{saveProgress:true,mode});
@@ -4460,7 +4466,7 @@ function beginMatchmaking(){
   });
   update();matchSearch.search();
 }
-let expansionInitialized=false;
+let expansionInitialized=false,profileLoadPromise=null,progressIdentity=null;
 function connectForgeProgress(){
   progression?.dispose();
   progression=FACTION_FORGE_CONFIG.progressionApiUrl?
@@ -4468,51 +4474,71 @@ function connectForgeProgress(){
     createFirebaseProgress({auth,db,username,troops:TROOPS,api:{doc,onSnapshot,runTransaction}});
   progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
 }
-async function initializeExpansion(){
+function initializeExpansion(){
   if(expansionInitialized)return;expansionInitialized=true;
   forgeProfile=defaultForgeProfile();
-  connectForgeProgress();
   const assets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl});
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
     canSignIn:()=>FACTION_FORGE_CONFIG.progressionApiUrl?!forgeProfile?.uid:auth.currentUser?.isAnonymous===true,
-    onSignIn:async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);connectForgeProgress();forgeProfile=await progression.loadProfile();expansionUI.updateProfile();return forgeProfile;},
+    onSignIn:async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);await restoreExpansionProfile(auth.currentUser);expansionUI.updateProfile();return forgeProfile;},
     onResume:async()=>{if(!secureSession&&forgeProfile?.activeSessionId){executionMode="secure";await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));startSecurePolling();}expansionUI.hide();return true;},onAbandon:async()=>{const activeId=secureSession?.id||forgeProfile?.activeSessionId;if(activeId){const response=await progression.abandon(activeId);forgeProfile=response.profile||await progression.loadProfile();}returnToForgeMenu();return true;},
     onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
     onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
-    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):progression.connectionStatus+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
+    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
   });
   ensureVisualLoop();assets.loadManifest().then(()=>spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge'));
-  try{forgeProfile=await progression.loadProfile();}
-  catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
-  if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
-    executionMode="secure";isHost=false;
-    await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
-    startSecurePolling();return;
-  }
-  let verifiedLobby=null;
-  if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
-    try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
-  }
-  if(verifiedLobby){
-    executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
-    S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
-  }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
-  else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
+  // Solo navigation must not wait for auth, a cloud save, or troop graphics.
+  updateAssetGate();
+  if(!gameId)expansionUI.showMenu();
+}
+async function restoreExpansionProfile(user){
+  if(progressIdentity===user.uid&&profileLoadPromise)return profileLoadPromise;
+  progressIdentity=user.uid;
+  profileLoadPromise=(async()=>{
+    connectForgeProgress();
+    try{forgeProfile=await progression.loadProfile();}
+    catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
+    if(disposed||auth.currentUser?.uid!==user.uid)return;
+    if(!gameId){
+      // Keep solo entry on its menu; an old online session can be resumed explicitly.
+      if(["menu","campaign","forge"].includes(expansionUI.view))expansionUI.refresh();
+      return;
+    }
+    if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
+      executionMode="secure";isHost=false;
+      await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
+      startSecurePolling();return;
+    }
+    let verifiedLobby=null;
+    if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
+      try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
+    }
+    if(verifiedLobby){
+      executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
+      S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
+    }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
+    else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
+  })();
+  return profileLoadPromise;
 }
 
-let anonymousSignIn=null;
+let anonymousSignIn=null,authConnectionStatus="Connecting to Firebase…";
+initializeExpansion();
 onAuthStateChanged(auth, (user) => {
   // The first callback runs after Firebase restores persisted credentials.
   // Creating the fallback earlier can replace a durable account on reload.
   if (!user) {
-    if(!anonymousSignIn)anonymousSignIn=signInAnonymously(auth).catch(error=>console.error("Anon sign-in failed",error)).finally(()=>{anonymousSignIn=null;});
+    if(!anonymousSignIn)anonymousSignIn=signInAnonymously(auth).catch(error=>{
+      console.error("Anon sign-in failed",error);authConnectionStatus="Firebase sign-in unavailable · Practice is available";
+      if(expansionUI?.view==="menu")expansionUI.refresh();
+    }).finally(()=>{anonymousSignIn=null;});
     return;
   }
-  initializeExpansion(user).catch(error=>{console.error("Forge startup failed",error);expansionUI?.notify(error.message);});
+  restoreExpansionProfile(user).catch(error=>{console.error("Forge startup failed",error);expansionUI?.notify(error.message);});
 });
 
 const cardInfoModal = $("cardInfoModal");
@@ -4540,6 +4566,8 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
+
 
 
 
