@@ -65,6 +65,36 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
     const stranger=env.authenticatedContext('stranger').firestore();
     await assertFails(getDoc(doc(stranger,'lobbies','secure-room','crowncouncil','state')));
     await assertFails(updateDoc(doc(stranger,'lobbies','secure-room','crowncouncil','state'),{winner:'Stranger'}));
-    console.log('Faction Forge emulator rules: 44 ownership, authority, compatibility and protected UID-lobby assertions passed.');
+    // Firebase-only solo saves use a separate, private UID namespace.
+    const {newSoloProfile,createFirebaseProgress}=await import('../firebase-progress.js');
+    const {ALL_TROOPS,NEW_TROOPS}=require('../../../server/faction-forge/domain.cjs');
+    const troops=Object.fromEntries(ALL_TROOPS.map(key=>[key,{unlockable:NEW_TROOPS.includes(key)}]));
+    const profile=newSoloProfile('owner','Commander',troops),solo=doc(owner,'factionForgeSoloProfiles','owner');
+    await assertSucceeds(setDoc(solo,profile));await assertSucceeds(getDoc(solo));
+    await assertFails(getDoc(doc(attacker,'factionForgeSoloProfiles','owner')));
+    await assertFails(setDoc(doc(attacker,'factionForgeSoloProfiles','owner'),profile));
+    await assertFails(getDoc(doc(guest,'factionForgeSoloProfiles','owner')));
+    await assertFails(getDocs(collection(owner,'factionForgeSoloProfiles')));
+    await assertFails(updateDoc(solo,{forgeDust:-1}));
+    await assertFails(updateDoc(solo,{crowncouncilElo:9999}));
+    const firestore=require('firebase/firestore');
+    const progress=createFirebaseProgress({auth:{currentUser:{uid:'owner'}},db:owner,api:firestore,username:'Commander',troops,storage:{getItem:()=>null,setItem(){},removeItem(){}}});
+    try{
+      await progress.loadProfile();
+      await assertSucceeds(progress.recordSoloResult({id:'solo-win',mode:'campaign',missionId:'forge-01',won:true,lives:4}));
+      await assertSucceeds(progress.recordSoloResult({id:'solo-win',mode:'campaign',missionId:'forge-01',won:true,lives:4}));
+      if(progress.profile.forgeDust!==20)throw Error('Duplicate solo rewards were granted.');
+      await assertSucceeds(progress.setRewardTarget('rifleman'));
+      await assertSucceeds(updateDoc(solo,{forgeDust:100,'troops.rifleman.cards':10}));
+      await assertSucceeds(progress.upgradeTroop('rifleman',{requestId:'solo-upgrade'}));
+      if(progress.profile.forgeDust!==0||progress.profile.troops.rifleman.forgeTier!==2)throw Error('Solo upgrade cost was not applied.');
+    }finally{progress.dispose();}
+    await assertFails(updateDoc(doc(owner,'factionForgeSoloProfiles','owner','results','solo-win'),{forgeDust:9000}));
+    await assertFails(getDoc(doc(attacker,'factionForgeSoloProfiles','owner','results','solo-win')));
+    await assertFails(setDoc(doc(owner,'factionForgeSoloProfiles','owner','results','fake'),{uid:'attacker',id:'fake',mode:'bot'}));
+    await assertFails(deleteDoc(solo));
+    console.log('Faction Forge rules: existing authority checks and Firebase-only solo ownership, rewards, retry and upgrade assertions passed.');
   }finally{await env.cleanup();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+

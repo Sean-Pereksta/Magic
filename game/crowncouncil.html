@@ -924,6 +924,7 @@ import { createAssetLoader } from "./faction-forge/assets.js";
 import { createBattleRenderer } from "./faction-forge/renderer.js";
 import { createExpansionUI } from "./faction-forge/ui.js";
 import { createProgressionService } from "./faction-forge/progression.js";
+import { createFirebaseProgress, soloMission } from "./faction-forge/firebase-progress.js";
 import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
 import { getMission, createEndlessMission, chooseAIDraft, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
 import * as FFUnits from "./faction-forge/units.js";
@@ -3820,7 +3821,7 @@ function render(){
   const endSummaryEl = $("endSummary");
   if(isLocalPractice()&&S?.phase==="game-over"&&lastResultsId!==S.sessionKey){
     lastResultsId=S.sessionKey;
-    expansionUI?.showResults({won:S.winner===username,opponent:S.players[1],mmr:S.mmr[0],mmrChange:0,estimatedMMR:false,rewardsPending:false,faction:S.factions?.p0});
+    showSoloResults(S);
   }
   if (S && S.phase === "game-over"){
     const mmrFinal = S.mmr || [1000,1000];
@@ -4335,7 +4336,7 @@ function returnToForgeMenu(){
   resetActiveRuntime();executionMode="menu";S=null;isHost=false;updateAssetGate();$("overlay").style.display="none";$("cardRow").style.display="none";
   expansionUI?.showMenu();
 }
-async function startPractice(faction="Vanir",missionId=null){
+async function startPractice(faction="Vanir",missionId=null,{saveProgress=false,mode="bot"}={}){
   resetActiveRuntime();executionMode="practice";isHost=true;meIndex=0;
   currentMission=missionId?(String(missionId).startsWith("endless-")?createEndlessMission(Number(String(missionId).split("-")[1])||1):getMission(missionId)):null;
   const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000,currentMission?.difficulty||.55);
@@ -4343,7 +4344,8 @@ async function startPractice(faction="Vanir",missionId=null){
   const state=newMatchState([username,currentMission?.opponent?.name||ai.name],[forgeProfile?.crowncouncilElo||1000,ai.estimatedMmr],crypto.randomUUID());
   state.mode="practice";state.missionId=currentMission?.id||null;state.ranked=false;state.phase="faction-select";state.phaseEndsAt=Date.now()+20000;
   state.collections={p0:{unlocked:unlockedForgeKeys()},p1:{unlocked:Object.keys(TROOPS).filter(k=>TROOPS[k].unlockable)}};
-  state.forgeTiers={p0:{},p1:{}};
+  state.forgeTiers={p0:saveProgress?Object.fromEntries(Object.entries(forgeProfile?.troops||{}).map(([key,unit])=>[key,unit.forgeTier])):{},p1:{}};
+  state.soloProgress=saveProgress;state.soloMode=mode;
   state.factions={p0:null,p1:localOpponent.faction};
   if(currentMission){
     state.roster.p0=playerStartingRoster(faction,currentMission);
@@ -4356,7 +4358,25 @@ async function startPractice(faction="Vanir",missionId=null){
   S=state;lobbyPlayers=state.players;expansionUI?.hide();spriteRenderer?.paintTerrain?.(cellsEl,viewport,currentMission?.theme||"contested-forge");
   await startTroopImagePreload();ensureVisualLoop();updateAssetGate();
   await chooseFaction(faction);startHostLoops();render();
-  expansionUI?.notify(currentMission?"Practice mission: campaign rewards require a connected profile.":"Practice match · no MMR changes");
+  if(!saveProgress)expansionUI?.notify("Practice match · no MMR changes");
+}
+async function showSoloResults(state){
+  const result={id:state.sessionKey,mode:state.soloMode||"bot",missionId:state.missionId,won:state.winner===username,lives:state.lives?.[0]||0};
+  const details={won:result.won,opponent:state.players[1],mmr:state.mmr[0],mmrChange:0,faction:state.factions?.p0};
+  expansionUI?.showResults({...details,rewardsPending:!!state.soloProgress});
+  if(!state.soloProgress)return;
+  const save=async()=>{
+    try{
+      const response=await progression.recordSoloResult(result);forgeProfile=response.profile;
+      if(S?.sessionKey===result.id)expansionUI?.showResults({...details,receipt:response.receipt,stars:response.receipt.stars,unlockedTroops:response.receipt.unlocks,campaignComplete:forgeProfile.campaign.endlessUnlocked});
+      else if(["menu","campaign"].includes(expansionUI?.view))expansionUI.refresh();
+      return true;
+    }catch(error){
+      if(S?.sessionKey===result.id)expansionUI?.showResults({...details,saveError:error.code==="permission-denied"?"Firebase save permissions need updating. Your result is kept on this device for retry.":"Could not save to Firebase. Your result is kept on this device for retry.",retrySave:save});
+      return false;
+    }
+  };
+  await save();
 }
 function shiftReplayTimers(frame,offset){
   const value=deepClone(frame);
@@ -4414,7 +4434,11 @@ function startSecurePolling(){
   },1500);
 }
 async function startProgressionMatch(mode,missionId,faction="Vanir"){
-  if(!FACTION_FORGE_CONFIG.progressionApiUrl||!forgeProfile?.uid){return startPractice(faction,mode==="campaign"?missionId:null);}
+  if(!FACTION_FORGE_CONFIG.progressionApiUrl){
+    const mission=soloMission(forgeProfile,mode,missionId);
+    return startPractice(faction,mission?.id||null,{saveProgress:true,mode});
+  }
+  if(!forgeProfile?.uid){return startPractice(faction,mode==="campaign"?missionId:null);}
   try{
     resetActiveRuntime();executionMode="secure";isHost=false;
     const response=await progression.startSolo({mode,missionId,faction});
@@ -4437,28 +4461,33 @@ function beginMatchmaking(){
   update();matchSearch.search();
 }
 let expansionInitialized=false;
+function connectForgeProgress(){
+  progression?.dispose();
+  progression=FACTION_FORGE_CONFIG.progressionApiUrl?
+    createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}}):
+    createFirebaseProgress({auth,db,username,troops:TROOPS,api:{doc,onSnapshot,runTransaction}});
+  progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
+}
 async function initializeExpansion(){
   if(expansionInitialized)return;expansionInitialized=true;
   forgeProfile=defaultForgeProfile();
-  progression=createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}});
-  progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
+  connectForgeProgress();
   const assets=createAssetLoader({baseUrl:FACTION_FORGE_CONFIG.assetBaseUrl});
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
-    onSignIn:FACTION_FORGE_CONFIG.progressionApiUrl?async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);progression.dispose();progression=createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}});progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI.updateProfile();});forgeProfile=await progression.loadProfile();expansionUI.updateProfile();return forgeProfile;}:null,
+    canSignIn:()=>FACTION_FORGE_CONFIG.progressionApiUrl?!forgeProfile?.uid:auth.currentUser?.isAnonymous===true,
+    onSignIn:async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);connectForgeProgress();forgeProfile=await progression.loadProfile();expansionUI.updateProfile();return forgeProfile;},
     onResume:async()=>{if(!secureSession&&forgeProfile?.activeSessionId){executionMode="secure";await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));startSecurePolling();}expansionUI.hide();return true;},onAbandon:async()=>{const activeId=secureSession?.id||forgeProfile?.activeSessionId;if(activeId){const response=await progression.abandon(activeId);forgeProfile=response.profile||await progression.loadProfile();}returnToForgeMenu();return true;},
     onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
-    onUpgrade:async key=>{const response=await progression.upgradeTroop(key);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
+    onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
-    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):"Cloud progress unavailable · Practice is available"
+    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):progression.connectionStatus+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
   });
   ensureVisualLoop();assets.loadManifest().then(()=>spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge'));
-  if(FACTION_FORGE_CONFIG.progressionApiUrl){
-    try{forgeProfile=await progression.loadProfile();}
-    catch(error){expansionUI.notify(error.message);}
-  }
+  try{forgeProfile=await progression.loadProfile();}
+  catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
   if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
     executionMode="secure";isHost=false;
     await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
@@ -4511,5 +4540,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
+
 
 
