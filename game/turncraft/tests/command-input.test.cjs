@@ -8,14 +8,19 @@ test('post-match spectating selects units and structures without issuing context
  assert.equal(r.closed,r.own);assert.equal(r.inspectedEnemy,r.enemy);assert.equal(r.inspectedBuilding,r.building);assert.equal(r.inspectedOwn,r.own);assert.equal(r.empty,null);assert.equal(r.mode,null);assert.equal(r.commands,0);assert.equal(r.destination,null);assert.equal(r.sentAfterEnd,0);
 });
 
-test('Attack ground selects the nearest visible legal enemy within four tiles and preserves selection',()=>{
- const run=setup(),r=run.plain(`(()=>{const u=addEntity('unit','engineer',0,2,2),friend=addEntity('unit','rifleman',0,9,10),hidden=addEntity('unit','zealot',1,10,11),air=addEntity('unit','phoenix',1,10,9),near=addEntity('unit','zealot',1,11,10);addEntity('unit','zealot',1,13,10);tileVisibleToFaction=(f,x,y)=>x!==hidden.x||y!==hidden.y;selectEntity(u);interactionMode='attack';handlePolishTap(10,10);return {target:u.targetId,expected:near.id,ids:selectedIds,mode:interactionMode,command:testCommands[0]}})()`);
- assert.equal(r.target,r.expected);assert.deepEqual(r.ids,[r.command.entityId]);assert.equal(r.mode,null);assert.equal(r.command.type,'attack');
+test('Attack ground sends the clicked destination while the controller chooses the enemy nearest the troop',()=>{
+ const run=setup(),r=run.plain(`(()=>{const u=addEntity('unit','engineer',0,2,2),friend=addEntity('unit','rifleman',0,2,3),hidden=addEntity('unit','zealot',1,4,2),air=addEntity('unit','phoenix',1,3,2),near=addEntity('unit','zealot',1,5,2);addEntity('unit','zealot',1,11,10);tileVisibleToFaction=(f,x,y)=>x!==hidden.x||y!==hidden.y;selectEntity(u);interactionMode='attack';handlePolishTap(10,10);return {target:u.targetId,expected:near.id,ids:selectedIds,mode:interactionMode,command:testCommands[0]}})()`);
+ assert.equal(r.target,r.expected);assert.deepEqual(r.ids,[r.command.entityId]);assert.equal(r.mode,null);assert.equal(r.command.type,'attackGround');assert.equal(r.command.x,10);assert.equal(r.command.y,10);assert.equal(r.command.targetId,undefined);
 });
 
 test('empty Attack ground uses formation attack-move without seeing hidden or invalid air enemies',()=>{
  const run=setup(),r=run.plain(`(()=>{const units=[addEntity('unit','engineer',0,2,2),addEntity('unit','engineer',0,3,2)],hidden=addEntity('unit','zealot',1,10,11);addEntity('unit','phoenix',1,10,9);addEntity('unit','zealot',1,15,10);tileVisibleToFaction=(f,x,y)=>x!==hidden.x||y!==hidden.y;selectEntities(units);interactionMode='attack';handlePolishTap(10,10);return {command:testCommands[0],dest:units.map(e=>e.attackMoveDestination),distinct:new Set(units.map(e=>e.moveDestination.x+','+e.moveDestination.y)).size,selected:selectedIds,mode:interactionMode}})()`);
- assert.equal(r.command.type,'groupAttackMove');assert.equal(r.command.x,10);assert.equal(r.command.y,10);assert.ok(r.dest.every(Boolean));assert.equal(r.distinct,2);assert.deepEqual(r.selected,r.command.entityIds);assert.equal(r.mode,null);
+ assert.equal(r.command.type,'groupAttackGround');assert.equal(r.command.x,10);assert.equal(r.command.y,10);assert.ok(r.dest.every(Boolean));assert.equal(r.distinct,2);assert.deepEqual(r.selected,r.command.entityIds);assert.equal(r.mode,null);
+});
+
+test('the Attack Move button uses the same troop-centered ground order as the A key',()=>{
+ const run=setup(),r=run.plain(`(()=>{const troop=addEntity('unit','rifleman',0,10,10),near=addEntity('unit','zealot',1,13,10),clickEnemy=addEntity('unit','zealot',1,30,21);selectEntity(troop);interactionMode='attackMove';handlePolishTap(30,20);return {command:testCommands[0],target:troop.targetId,near:near.id,mode:interactionMode,selected:selectedIds}})()`);
+ assert.equal(r.command.type,'attackGround');assert.equal(r.command.x,30);assert.equal(r.command.y,20);assert.equal(r.target,r.near);assert.equal(r.mode,null);assert.deepEqual(r.selected,[r.command.entityId]);
 });
 
 test('exact enemy clicks never redirect invalid air or friendly targets into another attack or movement',()=>{
@@ -38,8 +43,8 @@ test('contextual taps retain selection after move/attack and switch or double-se
  assert.equal(r.moved,true);assert.equal(r.attacked,true);assert.equal(r.moveSelection,1);assert.equal(r.attackSelection,1);assert.equal(r.switched,2);assert.deepEqual(r.ids,[1,2]);assert.equal(r.commands,2);
 });
 
-test('nearest search excludes allied teams, neutral, dead and transported entities but neutral destructibles allow exact attacks',()=>{
- const run=setup(),r=run.plain(`(()=>{const u=addEntity('unit','rifleman',0,2,2);addEntity('unit','zealot',1,10,11);const enemy=addEntity('unit','zergling',2,13,10),neutral=addEntity('structure','neutralRock',-1,10,9),dead=addEntity('unit','zergling',2,11,10),transported=addEntity('unit','zergling',2,9,10);players[0].teamId='blue';players[1].teamId='blue';neutral.faction=-1;dead.alive=false;transported.garrisonedIn=123;selectEntity(u);const target=nearestCommandEnemy({x:10,y:10})?.id;interactionMode='attack';handlePolishTap(10,9);return {target,expected:enemy.id,exact:u.targetId,neutral:neutral.id}})()`);
+test('ground attack excludes allied teams, neutral, dead and transported entities but neutral destructibles allow exact attacks',()=>{
+ const run=setup(),r=run.plain(`(()=>{const u=addEntity('unit','rifleman',0,10,10);addEntity('unit','zealot',1,10,11);const enemy=addEntity('unit','zergling',2,13,10),neutral=addEntity('structure','neutralRock',-1,10,9),dead=addEntity('unit','zergling',2,11,10),transported=addEntity('unit','zergling',2,9,10);players[0].teamId='blue';players[1].teamId='blue';neutral.faction=-1;dead.alive=false;transported.garrisonedIn=123;selectEntity(u);interactionMode='attack';handlePolishTap(35,25);const target=u.targetId;interactionMode='attack';handlePolishTap(10,9);return {target,expected:enemy.id,exact:u.targetId,neutral:neutral.id}})()`);
  assert.equal(r.target,r.expected);assert.equal(r.exact,r.neutral);
 });
 

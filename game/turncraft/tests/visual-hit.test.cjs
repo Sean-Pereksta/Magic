@@ -18,9 +18,9 @@ test('air and ground bodies use different displayed anchors without selecting ov
  assert.equal(r.offset,12);assert.equal(r.air,r.ids[1]);assert.equal(r.ground,r.ids[0]);assert.equal(r.neighbor,r.ids[2]);
 });
 
-test('visual hit and nearest attack reject enemies hidden at either their logical or painted position',()=>{
- const run=setup(),r=run.plain(`(()=>{const own=addEntity('unit','rifleman',0,2,4),enemy=addEntity('unit','zergling',1,9,4);enemy.px=5.2;enemy.py=4;selectEntity(own);const p=entityScreenAnchor(enemy);tileVisibleToFaction=(f,x)=>x!==5;const visual=selectableEntityAtScreen(p.x,p.y)?.id,near=nearestCommandEnemy({x:9,y:5})?.id;tileVisibleToFaction=(f,x)=>x!==9;const logical=selectableEntityAtScreen(p.x,p.y)?.id;return {visual,near,logical}})()`);
- assert.equal(r.visual,undefined);assert.equal(r.near,undefined);assert.equal(r.logical,undefined);
+test('visual hit rejects hidden logical or painted positions and ground attack requires logical visibility',()=>{
+ const run=setup(),r=run.plain(`(()=>{const own=addEntity('unit','rifleman',0,2,4),enemy=addEntity('unit','zergling',1,9,4);enemy.px=5.2;enemy.py=4;selectEntity(own);const p=entityScreenAnchor(enemy);tileVisibleToFaction=(f,x)=>x!==5;const visual=selectableEntityAtScreen(p.x,p.y)?.id;tileVisibleToFaction=(f,x)=>x!==9;const logical=selectableEntityAtScreen(p.x,p.y)?.id;applyCommand({type:'attackGround',entityId:own.id,x:30,y:20,slot:0});return {visual,logical,target:own.targetId}})()`);
+ assert.equal(r.visual,undefined);assert.equal(r.logical,undefined);assert.equal(r.target,null);
 });
 
 test('held rectangle selection uses cosmetic body anchors instead of logical destination coordinates',()=>{
