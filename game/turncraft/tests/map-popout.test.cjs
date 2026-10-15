@@ -29,7 +29,7 @@ async function closed(page){await page.locator('#mapPopout').waitFor({state:'hid
 test('majority and first-ready tie resolution remain unchanged',()=>{
   require('../maps.js');const maps=globalThis.TurncraftMaps.definitions;
   // Evaluate the production resolver; UI redesign must preserve its exact voting semantics.
-  const resolver=html.match(/function resolveMapVote\(records\)\{[^\n]+/)[0];
+  const resolver=html.match(/function resolveMapVote\(records[^)]*\)\{[^\n]+/)[0];
   const context={MAP_DEFINITIONS:maps};vm.createContext(context);vm.runInContext(resolver,context);
   assert.equal(context.resolveMapVote([{mapVote:'ember-rift',ready:true,readyAtMs:3},{mapVote:'classic',ready:true,readyAtMs:1},{mapVote:'ember-rift',ready:true,readyAtMs:2}]),'ember-rift');
   assert.equal(context.resolveMapVote([{mapVote:'frostline-basin',ready:true,readyAtMs:4},{mapVote:'orbital-foundry',ready:true,readyAtMs:2}]),'orbital-foundry');
@@ -40,11 +40,11 @@ test('majority and first-ready tie resolution remain unchanged',()=>{
 function menuModel(){
   require('../maps.js');const maps=globalThis.TurncraftMaps.definitions,ids=['mapChoices','mapSelectBtn','selectedMapPreview','selectedMapName','selectedMapTheme','mapSummary','mapSelectAction','mapPopoutNote','mapPopout','mapPopoutClose','startBtn','startStatus'];
   let nextTimer=0;const timers=new Map(),previews=[],stored=new Map();
-  const node=()=>({children:[],dataset:{},disabled:false,open:false,inert:false,style:{setProperty(){}},attributes:{},listeners:{},classes:new Set(),setAttribute(key,value){this.attributes[key]=value},appendChild(child){this.children.push(child)},querySelector(selector){if(selector==='canvas')return this.preview||(this.preview=node());const match=selector.match(/data-map="([^"]+)"/);return match&&elements.mapChoices.children.find(child=>child.dataset.map===match[1])},addEventListener(key,fn){this.listeners[key]=fn},focus(){elements.active=this},scrollIntoView(){},showModal(){this.open=true},close(){this.open=false},getBoundingClientRect(){return{left:10,top:10,right:90,bottom:90}},classList:{}});
+  const node=()=>({children:[],replaceChildren(){this.children=[]},querySelectorAll(){return this.children.filter(child=>child.dataset.map)},dataset:{},disabled:false,open:false,inert:false,style:{setProperty(){}},attributes:{},listeners:{},classes:new Set(),setAttribute(key,value){this.attributes[key]=value},appendChild(child){this.children.push(child)},querySelector(selector){if(selector==='canvas')return this.preview||(this.preview=node());const match=selector.match(/data-map="([^"]+)"/);return match&&elements.mapChoices.children.find(child=>child.dataset.map===match[1])},addEventListener(key,fn){this.listeners[key]=fn},focus(){elements.active=this},scrollIntoView(){},showModal(){this.open=true},close(){this.open=false},getBoundingClientRect(){return{left:10,top:10,right:90,bottom:90}},classList:{}});
   const attach=n=>{n.classList={add:c=>n.classes.add(c),remove:c=>n.classes.delete(c),toggle(c,value){if(value)n.classes.add(c);else n.classes.delete(c)}};return n};
   const elements=Object.fromEntries(ids.map(id=>[id,attach(node())]));
   const document={getElementById:id=>elements[id],createElement:()=>attach(node())};
-  const context={document,MAP_DEFINITIONS:maps,lobbyId:'',lobbyData:null,username:'Commander',lobbyRef:{},chosenMapId:'classic',chosenFaction:'frontier',chosenGameMode:'annihilation',gameStarted:false,mapReadyPending:false,readyMapVote:null,mapPopoutCloseTimer:null,startBtn:elements.startBtn,startStatus:elements.startStatus,
+  const context={document,MAP_DEFINITIONS:maps,BASE_MAP_IDS:new Set(maps.map(map=>map.id)),ensureCompatibleMap(){},desiredParticipantCount:()=>3,mapCapacity:id=>maps.find(map=>map.id===(id||context.chosenMapId)).capacity,lobbyId:'',lobbyData:null,username:'Commander',lobbyRef:{},chosenMapId:'classic',chosenFaction:'frontier',chosenGameMode:'annihilation',gameStarted:false,mapReadyPending:false,readyMapVote:null,mapPopoutCloseTimer:null,startBtn:elements.startBtn,startStatus:elements.startStatus,
     localStorage:{setItem:(key,value)=>stored.set(key,value)},mapDefinition:id=>maps.find(map=>map.id===(id||context.chosenMapId)),safeId:id=>id,drawMapPreview:(canvas,id)=>previews.push(id),loadMapAtlas(){},renderStartStatus(){},toast(){},nowMs:()=>100,serverTimestamp:()=>1,setDoc:async()=>{},window:{matchMedia:()=>({matches:false})},requestAnimationFrame:fn=>fn(),setTimeout:fn=>{timers.set(++nextTimer,fn);return nextTimer},clearTimeout:id=>timers.delete(id)};
   vm.createContext(context);const fragment=html.slice(html.indexOf('function mapVoteLocked()'),html.indexOf('function renderStartMenu()'));vm.runInContext(fragment,context);
   vm.runInContext(html.slice(html.indexOf('async function publishReady(){'),html.indexOf('function renderStartStatus(){')),context);
@@ -52,7 +52,7 @@ function menuModel(){
 }
 
 test('menu state updates previews and persistence and closes once despite repeated renders',()=>{
-  const m=menuModel(),c=m.context;c.renderMapChoices();assert.equal(m.elements.mapChoices.children.length,6);assert.equal(m.elements.mapPopout.open,false);
+  const m=menuModel(),c=m.context;c.renderMapChoices();assert.equal(m.elements.mapChoices.children.filter(child=>child.dataset.map).length,14);assert.equal(m.elements.mapPopout.open,false);
   c.openMapPopout();assert.equal(m.elements.mapPopout.open,true);assert.equal(m.elements.active.dataset.map,'classic');
   assert.equal(c.selectBattlefield('ember-rift'),true);assert.equal(c.chosenMapId,'ember-rift');assert.equal(m.stored.get('csf.map'),'ember-rift');assert.equal(m.elements.selectedMapPreview.dataset.renderedMap,'ember-rift');assert.equal(m.elements.mapSelectBtn.attributes['aria-expanded'],'false');assert.equal(m.timers.size,1);
   c.closeMapPopout();c.closeMapPopout();assert.equal(m.timers.size,1);m.finishClose();assert.equal(m.elements.mapPopout.open,false);assert.equal(m.elements.active,m.elements.mapSelectBtn);
@@ -69,12 +69,12 @@ test('ready state keeps the voted map immutable in flight, on failure and on rec
   n.context.lobbyData={chessStarfrontReady:{Commander:{ready:true,mapVote:'frostline-basin'}}};n.context.renderMapChoices();assert.equal(n.context.chosenMapId,'frostline-basin');assert.equal(n.context.mapVoteLocked(),true);assert.equal(n.elements.mapSelectBtn.disabled,true);assert.equal(n.context.selectBattlefield('classic'),false);
 });
 
-test('compact battlefield card opens six previews and selection updates, saves and closes',async()=>{
+test('compact battlefield card opens categorized strategic previews and selection updates, saves and closes',async()=>{
   const {browser,page,errors}=await setup();try{
     assert.equal(await page.locator('#mapPopout').isVisible(),false);assert.equal(await page.locator('#startCard [data-map]').count(),0);
     assert.equal(await page.locator('#selectedMapName').textContent(),'Classic Frontier');
     for(const id of ids){
-      await open(page);assert.equal(await page.locator('#mapChoices [data-map]').count(),6);assert.equal(await page.locator('#mapSelectBtn').getAttribute('aria-expanded'),'true');
+      await open(page);assert.equal(await page.locator('#mapChoices [data-map]').count(),14);assert.equal(await page.locator('#mapSelectBtn').getAttribute('aria-expanded'),'true');
       assert.equal(await page.locator(`[data-map="${await page.evaluate(()=>tcPopout.map)}"]`).evaluate(el=>el===document.activeElement),true);
       await page.locator(`[data-map="${id}"]`).click();await closed(page);
       const result=await page.evaluate(()=>({map:tcPopout.map,saved:localStorage.getItem('csf.map'),preview:document.getElementById('selectedMapPreview').dataset.renderedMap,focused:document.activeElement.id}));

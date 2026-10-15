@@ -82,7 +82,7 @@ for url, repair in manifest.get("cropRepairs", {}).items():
                 dx, dy = offsets[row][col]
                 assert 4 <= dx and dx+w <= repair["frameWidth"]-4, (url, row, col, "horizontal gutter")
                 assert 4 <= dy and dy+h <= repair["frameHeight"]-4, (url, row, col, "vertical gutter")
-                assert repair["sourceFrameHeight"] == 144, url
+                assert repair["sourceFrameHeight"] == 144 or (url.endswith("/units/medic-healing.webp") and repair["sourceFrameHeight"] == 160 and repair["sourceFrameWidth"] == 128), url
             else:
                 assert row*144 <= y < y+h <= (row+1)*144, (url, row, col)
             assert image.crop((x,y,x+w,y+h)).getchannel("A").getbbox(), (url, row, col, "empty crop")

@@ -6,7 +6,8 @@ const vm=require('node:vm');
 const context={};
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../maps.js'),'utf8'),context);
 const {definitions,generate}=context.TurncraftMaps;
-const newMaps=definitions.filter(d=>d.id!=='classic');
+const legacyMaps=definitions.filter(d=>d.legacy);
+const newMaps=legacyMaps.filter(d=>d.id!=='classic');
 const key=p=>`${p.x},${p.y}`;
 function reachable(map,radius=0){
   const open=(x,y)=>{for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){const t=map.terrain[(y+dy)*map.width+x+dx];if(x+dx<0||x+dx>=map.width||y+dy<0||y+dy>=map.height||!t||t.blocked)return false}return true};
@@ -23,7 +24,7 @@ function resourceFootprints(map){
 }
 
 test('map catalog preserves Classic and offers five distinct deterministic battlefields',()=>{
-  assert.equal(definitions.length,6);assert.equal(newMaps.length,5);assert.equal(generate('classic',123).terrain,null);
+  assert.equal(legacyMaps.length,6);assert.equal(newMaps.length,5);assert.equal(generate('classic',123).terrain,null);
   assert.equal(generate('missing-map',123).id,'classic');
   const masks=[];
   for(const definition of newMaps){

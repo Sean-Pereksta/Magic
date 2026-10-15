@@ -9,11 +9,13 @@ There is no additional game server to configure.
 ## Publish the update
 
 1. Merge the PR and let the site's existing web deployment publish the updated
-   `game/turncraft.html`, `game/turncraft/`, `game/turncraft-lobby.html` and hub/lobby
+   `game/turncraft.html`, `game/turncraft/`, `game/turncraft-lobby.html`, the new
+   root `units/medic-healing.webp` and `effects/medic-healing.webp`, and hub/lobby
    files. The game has no frontend build step.
 2. Publish the updated root `firestore.rules` to the same existing Firebase
    project if your deployment does not already do that. These shared rules allow
-   the new personal progress fields while keeping competitive fields protected.
+   four human commanders and AI-filled strategic matches, validate map capacity
+   and snapshot dimensions, and retain personal progress and competitive protections.
    You can publish the complete file in **Firebase Console → Firestore Database
    → Rules**, or run the following from the repository root with the Firebase CLI:
 
@@ -29,6 +31,11 @@ There is no additional game server to configure.
    object is `shattered-front/ui/main_menu/battlefield.webp`. The existing public
    artwork prefix is already configured in the game; the separate R2 setup guide
    covers another artwork location.
+   The strategic update also provides `medic-healing-r2.zip`: upload its exact
+   root keys `units/medic-healing.webp` and `effects/medic-healing.webp` with
+   `Content-Type: image/webp`. The committed local files work before this upload.
+   See [Medic delivery and manifests](turncraft-medic-healing.md) for hashes,
+   filenames, animation phases and fallback behavior.
 4. Sign in through the existing CatnMice account flow, open TurnCraft, complete
    the first campaign mission and reopen the game. Check that the mission stars
    and unlocked operation remain. Repeat from another browser signed into the
@@ -76,6 +83,18 @@ dedicated `game/turncraft-lobby.html` supports public rooms, private invitations
 host configuration, faction selection, readiness, direct joins and reconnects.
 Lobby listeners update the room, and the selected browser controller publishes
 the shared match snapshots. Custom matches do not change ranked ratings.
+
+Rooms support two, three or four human commanders. The host can fill unused map
+positions with AI and choose its difficulty and temperament. Two humans on a
+four-player battlefield can therefore fight two AI commanders. All matches use
+free-for-all rules. Expanded six- and eight-commander maps are available in solo
+setup with up to seven individually configurable AI opponents. The six original
+maps and the campaign/survival maps retain their original dimensions.
+
+The shared rules must be published with the web update before four-human and
+AI-filled lobbies can be used in production. The complete rules have passed local
+Firestore tests for four human identities, mixed human/AI snapshots, private
+invitations, controller authority, malicious membership changes and saved ratings.
 
 Use two browsers to check room creation and admission, host settings, readiness,
 launch, reconnection, a completed match and a rematch. Check that old completed

@@ -1,0 +1,16 @@
+# Strategic navigation and AI performance sample
+
+Reproduce with `node scripts/strategic-benchmark.cjs 80` from this folder. This executes the actual authoritative movement, fog visibility and AI code against Fourfold Divide and Rift Dominion, with one human commander, mixed-faction armies and Hard/Pro opponents. Each commander starts with four workers and twenty army units. The sample runs 80 decision samples at 250 ms intervals, representing 20 simulation seconds. Units consumed by Brood construction are excluded from the final live count.
+
+Measurements below are wall-clock timings from a headless Node VM on the development machine. They include VM overhead and vary with other work on the machine. They measure movement, visibility and AI decisions separately; they exclude combat resolution, sprite drawing, browser layout, GPU work and network synchronization. They are not a frame-rate or mobile performance guarantee.
+
+| Scenario | Initial units | Movement mean / p95 | Visibility mean / p95 | AI mean / p95 | Setup and first command |
+| --- | ---: | --- | --- | --- | --- |
+| 4 commanders, 96×96 | 96 | 5.47 / 23.38 ms | 7.11 / 36.16 ms | 4.89 / 21.49 ms | 90.65 ms |
+| 8 commanders, 128×128 | 192 | 22.08 / 50.88 ms | 16.52 / 64.68 ms | 16.94 / 68.25 ms | 93.15 ms |
+
+Both runs produced zero overlapping living ground units and zero units on blocked terrain. Three and seven AI commanders, respectively, formed attack waves. The eight-commander run moved 160 initial units more than four tiles and retained 186 living units after Brood construction consumed workers. Route fields stayed at or below their 64-entry limit. Collision masks are shared by fields and bounded to eight faction entries; both caches invalidate when the terrain/structure/temporary-wall topology changes. Terrain rendering has separate browser coverage and a 32 MiB decoded chunk budget.
+
+The sample exposed and corrected two expensive command behaviors: formation target enumeration previously revisited the entire interior of every growing search square, and initial formation orders built individual global routes before installing their shared anchor. The perimeter enumeration now scales with candidate area, and all initial orders install the common anchor before stepping. Per-faction collision masks also prevent every destination field from rescanning every terrain tile. Unchanged visibility source footprints are cached by the terrain renderer's companion fog implementation, and AI commanders share one intelligence update within a decision batch.
+
+Separate automated navigation coverage sends 48 mixed troops, including Medics and large armored units, through a long three-tile passage, verifies alternate passage use when a new structure blocks the original route, and checks that idle friendly traffic yields while held troops keep their orders. Four- and eight-commander integration tests also run 60 seconds of actual free-for-all combat, projectiles, support healing, production, AI economies and snapshot restoration on the authored maps. Map tests validate both 1×1 and 2×2 terrain clearance across all eight strategic battlefields; logical unit occupancy retains the engine's existing one-tile model. These samples do not establish a maximum full-supply army size or promise equivalent results on physical mobile devices.

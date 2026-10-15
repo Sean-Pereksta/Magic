@@ -32,7 +32,11 @@ def asset_key(url):
 
 
 def asset_path(url, directory=None):
-    return Path(directory or cache_directory()) / asset_key(url)
+    key = asset_key(url)
+    local = INDEX["images"][key].get("localPath")
+    if local:
+        return GAME.parents[1] / local
+    return Path(directory or cache_directory()) / key
 
 
 def production_urls():
@@ -42,6 +46,7 @@ def production_urls():
     urls = {state["sheet"] for asset in animation["assets"].values() for state in asset["states"].values()}
     urls.update(record["file"] for map_assets in terrain["maps"].values() for record in map_assets.values())
     urls.add(effects["file"])
+    urls.update(value["sheet"] for value in animation.get("effects", {}).values())
     expected = {BASE_URL + key for key in INDEX["images"]}
     if urls != expected:
         raise ValueError(f"Artwork index mismatch; missing={sorted(expected-urls)}, unexpected={sorted(urls-expected)}")
@@ -61,6 +66,8 @@ def download_assets(directory=None, *, refresh=False, workers=8):
             existing = destination.read_bytes()
             if len(existing) == record["bytes"] and hashlib.sha256(existing).hexdigest() == record["sha256"]:
                 return False
+        if record.get("localPath"):
+            raise ValueError(f"Missing or modified local artwork: {destination}")
         request = Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "image/webp"})
         for attempt in range(3):
             try:

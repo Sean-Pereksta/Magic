@@ -43,11 +43,11 @@ test('a map round-trip preserves terrain, layout, objectives and future snapshot
   }
 });
 
-test('old and invalid shared snapshots resolve to the classic layout before decoding',()=>{
+test('old shared snapshots use the classic layout and unknown maps are rejected atomically',()=>{
   const run=simulation('orbital-foundry');
   for(const missing of [false,true]){
-    const result=run(`(()=>{chosenMapId='classic';createGame([{name:'One',factionId:'frontier',ai:false},{name:'Two',factionId:'brood',ai:false}]);const snapshot=JSON.parse(JSON.stringify(serializeState()));${missing?'delete snapshot.chosenMapId':"snapshot.chosenMapId='missing-map'"};chosenMapId='orbital-foundry';applyRemoteState(snapshot);return {map:chosenMapId,starts:JSON.stringify(startPositions()),classic:JSON.stringify(mapLayout('classic',snapshot.mapSeed).starts)}})()`);
-    assert.equal(result.map,'classic');assert.equal(result.starts,result.classic);
+    const result=run(`(()=>{chosenMapId='classic';createGame([{name:'One',factionId:'frontier',ai:false},{name:'Two',factionId:'brood',ai:false}]);const snapshot=JSON.parse(JSON.stringify(serializeState()));${missing?'delete snapshot.chosenMapId':"snapshot.chosenMapId='missing-map'"};chosenMapId='orbital-foundry';const accepted=applyRemoteState(snapshot);return {accepted,map:chosenMapId,starts:JSON.stringify(startPositions()),classic:JSON.stringify(mapLayout('classic',snapshot.mapSeed).starts)}})()`);
+    assert.equal(result.accepted,missing);assert.equal(result.map,missing?'classic':'orbital-foundry');if(missing)assert.equal(result.starts,result.classic);
   }
 });
 

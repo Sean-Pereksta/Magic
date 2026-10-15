@@ -1,3 +1,4 @@
+import {LOBBY_MAP_CATALOG} from './battle-config.mjs';
 import {firebase, getProfile, rankFor, rankEmblem} from './profile.mjs';
 import {createLobbyStore} from './lobby-store.mjs';
 import {assetUrl, loadManifest} from './assets.mjs';
@@ -74,9 +75,9 @@ function renderRoom() {
   $('start').disabled = started || waiting && (room.turncraftSeats.length < 2 || !room.turncraftSeats.every(uid => room.turncraftPlayers[uid].ready));
   $('resume').hidden = !started; $('leave').disabled = started;
   $('roomNote').textContent = finished ? 'Battle complete. The host can open a fresh rematch room; every commander readies again.' : started ? 'This match has started. Reconnect with the same CatnMice browser identity.' : host ? 'Launch when every commander is ready. At least two human players are required.' : 'Waiting for the host to launch after everyone is ready.';
-  for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility']) $(id).disabled = !host || !waiting;
+  for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility', 'fillAi', 'aiDifficulty', 'aiStyle']) $(id).disabled = !host || !waiting;
   $('map').value = room.settings.mapId; $('gameMode').value = room.settings.gameMode;
-  $('maxPlayers').value = String(room.settings.maxPlayers); $('visibility').value = room.visibility;
+  $('maxPlayers').value = String(room.settings.maxPlayers); $('visibility').value = room.visibility; $('fillAi').value = String(room.settings.fillAi || false); $('aiDifficulty').value = room.settings.aiDifficulty || 'medium'; $('aiStyle').value = room.settings.aiStyle || 'balanced';refreshCompatibleMaps();
   let report = $('roomResult');
   if (!report) {report = document.createElement('div'); report.id = 'roomResult'; $('players').after(report);}
   report.innerHTML = '';
@@ -137,9 +138,15 @@ function ranked() {
   $('browseCustom').onclick = () => action(() => browse());
   status('Custom multiplayer is ready to play. Ranked results are not enabled.');
 }
+function refreshCompatibleMaps() {
+  const count = Number($('maxPlayers').value) || 3;
+  for (const option of $('map').options) option.disabled = (LOBBY_MAP_CATALOG.find(map => map.id === option.value)?.capacity || 0) < count;
+  const current = LOBBY_MAP_CATALOG.find(map => map.id === $('map').value);
+  if (!current || current.capacity < count) $('map').value = LOBBY_MAP_CATALOG.find(map => map.capacity >= count)?.id || 'classic';
+}
 async function configure() {
-  if (!room) return;
-  const result = await store.configure(room.id, {settings: {mapId: $('map').value, gameMode: $('gameMode').value, maxPlayers: Number($('maxPlayers').value), startingResources: 'standard'}, visibility: $('visibility').value});
+  if (!room) return;refreshCompatibleMaps();
+  const result = await store.configure(room.id, {settings: {mapId: $('map').value, gameMode: $('gameMode').value, maxPlayers: Number($('maxPlayers').value), startingResources: 'standard', fillAi: $('fillAi').value === 'true', aiDifficulty: $('aiDifficulty').value, aiStyle: $('aiStyle').value}, visibility: $('visibility').value});
   room = {...room, ...result}; renderRoom();
 }
 $('quick').onclick = () => action(() => browse(true));
@@ -171,9 +178,11 @@ $('leave').onclick = () => action(async () => {
   await store.leave(room.id); unsubscribe?.(); room = null; sessionStorage.removeItem('turncraft.lastLobby');
   history.replaceState({}, '', '?mode=browse'); await browse();
 });
-for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility']) $(id).onchange = () => action(configure);
+for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility', 'fillAi', 'aiDifficulty', 'aiStyle']) $(id).onchange = () => action(configure);
 $('copyInvite').onclick = () => action(async () => {const url = new URL('./turncraft-lobby.html', location.href); url.searchParams.set('code', room.inviteCode); await navigator.clipboard.writeText(url.href); status('Invite link copied. Share it with another commander.');});
 async function boot() {
+  const categories = [['2-player', '2-Player Maps'], ['3-player', '3-Player Maps'], ['4-player', '4-Player Maps']];
+  for (const [id, name] of categories) {const group = document.createElement('optgroup');group.label = name;for (const map of LOBBY_MAP_CATALOG.filter(map => map.category === id)) {const option = document.createElement('option');option.value = map.id;option.textContent = `${map.name} · ${map.capacity} commanders · ${map.width}×${map.height}${map.legacy ? ' · Legacy' : ''}`;group.append(option)}$('map').append(group)}
   await loadManifest(); document.body.style.backgroundImage = `linear-gradient(120deg,#08111be8,#111f34dc),url("${assetUrl('menu.background', 'ui/main_menu/battlefield.webp')}")`;
   const response = await getProfile(); identity = response.identity;
   const {db, auth, storeApi} = await firebase();

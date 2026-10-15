@@ -2,6 +2,8 @@
   'use strict';
   // This renderer never writes to terrain, resource nodes, entities, or simulation RNG.
   const MAP_IDS=['classic','ember-rift','frostline-basin','verdant-divide','shattered-dunes','orbital-foundry'];
+  const THEME_ATLASES={'ashen-causeway':'ember-rift','ghostwood-passage':'verdant-divide','triad-basin':'shattered-dunes','obsidian-crown':'ember-rift','fourfold-divide':'frostline-basin','rift-bastion':'orbital-foundry','ashen-confluence':'ember-rift','rift-dominion':'orbital-foundry'};
+  const atlasFor=id=>THEME_ATLASES[id]||(MAP_IDS.includes(id)?id:'classic');
   const CELL=256,PROP_CELL=128,CHUNK=8;
   const RESOURCE_FRAME_MS=480,AMBIENT_FRAME_MS=520;
   const OFFSETS=[[0,-1],[1,0],[0,1],[-1,0],[-1,-1],[1,-1],[1,1],[-1,1]];
@@ -26,11 +28,11 @@
     let prepared=null,lastTerrain=null,lastStamp=0,lastCheck=0,version=0;
     const stats={builds:0,hits:0,draws:0,ambientDraws:0,effectDraws:0};
     function image(name,url,retryFailed){if(loads.has(name)){if(retryFailed&&failures.has(name))loads.delete(name);else return loads.get(name)}const promise=new Promise(resolve=>{const img=new root.Image();img.decoding='async';let done=false;const finish=(ok,stage,reason)=>{if(done)return;done=true;clearTimeout(timer);img.onload=img.onerror=null;if(ok){images.set(name,img);failures.delete(name);failureDetails.delete(name);version++;chunks.clear()}else{failures.add(name);failureDetails.set(name,{url,stage,reason})}resolve(ok)};const timer=setTimeout(()=>finish(false,'timeout','Terrain did not finish loading within 20 seconds.'),20000);img.onload=()=>Promise.resolve(img.decode?.()).then(()=>finish(!!(img.naturalWidth||img.width),'decode','Terrain has no drawable pixels.'),error=>finish(false,'decode',error.message||'The browser could not decode this terrain.'));img.onerror=()=>finish(false,'download','The browser could not download this terrain.');img.src=url});loads.set(name,promise);return promise}
-    function load(id='classic',{retryFailed=true}={}){id=MAP_IDS.includes(id)?id:'classic';return Promise.all([image(id,baseUrl+id+'.terrain.webp',retryFailed),image(id+':props',baseUrl+id+'.props.webp',retryFailed),image('effects',effectsUrl,retryFailed)]).then(results=>results[0])}
-    function prepare(input){const mapId=MAP_IDS.includes(input.mapId)?input.mapId:'classic',quality=['low','medium','high'].includes(input.quality)?input.quality:'medium',now=input.now??Date.now();
+    function load(id='classic',{retryFailed=true}={}){id=atlasFor(id);return Promise.all([image(id,baseUrl+id+'.terrain.webp',retryFailed),image(id+':props',baseUrl+id+'.props.webp',retryFailed),image('effects',effectsUrl,retryFailed)]).then(results=>results[0])}
+    function prepare(input){const mapId=atlasFor(input.mapId),quality=['low','medium','high'].includes(input.quality)?input.quality:'medium',now=input.now??Date.now(),resolution=input.tileSize<18?16:input.tileSize<30||quality==='low'?32:quality==='high'?96:64;
       if(lastTerrain!==input.terrain||now-lastCheck>500){lastStamp=geometryStamp(input.terrain);lastTerrain=input.terrain;lastCheck=now}
-      const key=[mapId,input.seed>>>0,lastStamp,quality,version,input.width,input.height].join(':');
-      if(prepared?.key!==key){chunks.clear();prepared={...input,mapId,quality,key,resolution:quality==='high'?96:quality==='low'?32:64};prepared.tileAt=(x,y)=>x>=0&&y>=0&&x<input.width&&y<input.height?input.terrain[y*input.width+x]:null}
+      const key=[mapId,input.seed>>>0,lastStamp,quality,resolution,version,input.width,input.height].join(':');
+      if(prepared?.key!==key){chunks.clear();prepared={...input,mapId,quality,key,resolution,nativeResolution:resolution};prepared.tileAt=(x,y)=>x>=0&&y>=0&&x<input.width&&y<input.height?input.terrain[y*input.width+x]:null}
       load(mapId,{retryFailed:false});return prepared;
     }
     function blit(context,atlas,index,x,y,size){context.drawImage(atlas,(index%4)*CELL,Math.floor(index/4)*CELL,CELL,CELL,x,y,size+.5,size+.5)}
@@ -46,18 +48,27 @@
     }
     function chunkAt(tile){const cx=Math.floor(tile.x/CHUNK),cy=Math.floor(tile.y/CHUNK),key=cx+','+cy;if(chunks.has(key)){stats.hits++;return chunks.get(key)}const size=prepared.resolution,canvas=options.makeCanvas?options.makeCanvas(CHUNK*size,CHUNK*size):root.document.createElement('canvas');canvas.width=CHUNK*size;canvas.height=CHUNK*size;const context=canvas.getContext('2d');context.imageSmoothingEnabled=true;
       for(let y=0;y<CHUNK;y++)for(let x=0;x<CHUNK;x++){const current=prepared.tileAt(cx*CHUNK+x,cy*CHUNK+y);if(current)paintTile(context,current,x*size,y*size,size)}
-      // A full 42×30 field uses only 24 medium 512px chunks (~24 MiB decoded).
-      if(chunks.size>=32)chunks.delete(chunks.keys().next().value);chunks.set(key,canvas);stats.builds++;return canvas;
+      // Bound decoded terrain to 32 MiB at every quality; distant views reuse smaller chunks.
+      const limit=Math.max(1,Math.floor(32*1024*1024/(CHUNK*size)**2/4));
+      if(chunks.size>=limit)chunks.delete(chunks.keys().next().value);chunks.set(key,canvas);stats.builds++;return canvas;
     }
     function drawTile(context,tile,screen,size){if(!prepared||!tile||!images.has(prepared.mapId))return false;const canvas=chunkAt(tile),r=prepared.resolution;context.drawImage(canvas,(tile.x%CHUNK)*r,(tile.y%CHUNK)*r,r,r,screen.x,screen.y,size+1,size+1);stats.draws++;return true}
+    function drawRegion(context,bounds,toScreen,size){if(!prepared||!images.has(prepared.mapId))return false;
+      const left=Math.max(0,Math.floor(bounds.left/CHUNK)),top=Math.max(0,Math.floor(bounds.top/CHUNK)),right=Math.min(Math.ceil(prepared.width/CHUNK)-1,Math.floor(bounds.right/CHUNK)),bottom=Math.min(Math.ceil(prepared.height/CHUNK)-1,Math.floor(bounds.bottom/CHUNK));
+      // Every visible chunk must fit together: evicting an early visible chunk
+      // during the same pass rebuilds the whole stationary view on its next frame.
+      const count=Math.max(0,right-left+1)*Math.max(0,bottom-top+1),resolution=[96,64,32,16].find(value=>value<=prepared.nativeResolution&&count*(CHUNK*value)**2*4<=32*1024*1024)||16;
+      if(resolution!==prepared.resolution){chunks.clear();prepared.resolution=resolution}
+      for(let cy=top;cy<=bottom;cy++)for(let cx=left;cx<=right;cx++){const tile=prepared.tileAt(cx*CHUNK,cy*CHUNK);if(!tile)continue;const canvas=chunkAt(tile),screen=toScreen(tile.x,tile.y);context.drawImage(canvas,screen.x,screen.y,CHUNK*size+.5,CHUNK*size+.5);stats.draws++}return true;
+    }
     function drawAmbient(context,tile,screen,size,now,visible){if(!prepared||prepared.quality==='low'||size<26||!visible||!images.has(prepared.mapId+':props'))return false;const d=describeTile(tile,prepared.seed,prepared.tileAt);if(!d.ambient)return false;const frame=Math.floor((now+2*(d.noise%1700))/AMBIENT_FRAME_MS)%4,scale=tile.blocked?.72:.38;context.save();context.globalAlpha=tile.blocked?.8:.48;propFrame(context,images.get(prepared.mapId+':props'),8+frame,screen.x+size*(1-scale)*.5,screen.y+size*(1-scale)*.5,size*scale);context.restore();stats.ambientDraws++;return true}
     function drawResource(context,node,screen,size,now,visible){if(!visible||node.amount<=0||!prepared)return false;const props=images.get(prepared.mapId+':props');if(!props)return false;const atlas=images.get(prepared.mapId);if(atlas&&prepared.quality!=='low'){context.save();context.globalAlpha*=.28;blit(context,atlas,15,screen.x,screen.y,size);context.restore()}const frame=prepared.quality==='low'||size<26?0:Math.floor((now+2*(hash(prepared.seed,node.x,node.y)%2000))/RESOURCE_FRAME_MS)%4,row=node.type==='gas'?1:0;propFrame(context,props,row*4+frame,screen.x+size*.08,screen.y+size*.06,size*.84);return true}
     const effectRows={ballistic:0,energy:1,organic:2,shield:3,explosion:4,dust:5};
     function drawEffect(context,type,x,y,size,ageMs=0,{visible=true,alpha=1,rotation=0,quality='medium',loop=false}={}){const atlas=images.get('effects'),row=effectRows[type];if(!visible||!atlas||row===undefined||size<4)return false;if(quality==='low'&&type==='dust')return false;const raw=Math.floor(Math.max(0,ageMs)/70),frame=loop?raw%8:Math.min(7,raw);context.save();context.globalAlpha*=alpha;context.translate(x,y);if(rotation)context.rotate(rotation);context.drawImage(atlas,frame*128,row*128,128,128,-size/2,-size/2,size,size);context.restore();stats.effectDraws++;return true}
-    return {load,prepare,drawTile,drawAmbient,drawResource,drawEffect,invalidate(){chunks.clear();lastTerrain=null},get stats(){return {...stats,chunks:chunks.size,loaded:[...images.keys()],failures:[...failures],failureDetails:[...failureDetails.values()],mapId:prepared?.mapId,quality:prepared?.quality,seed:prepared?.seed,geometry:prepared?.key}},
+    return {load,prepare,drawTile,drawRegion,drawAmbient,drawResource,drawEffect,invalidate(){chunks.clear();lastTerrain=null},get stats(){return {...stats,chunks:chunks.size,chunkBytes:chunks.size*(CHUNK*(prepared?.resolution||0))**2*4,loaded:[...images.keys()],failures:[...failures],failureDetails:[...failureDetails.values()],mapId:prepared?.mapId,quality:prepared?.quality,seed:prepared?.seed,geometry:prepared?.key}},
       // Image injection makes image loading and cache contracts testable without network.
       setImage(name,value){images.set(name,value);version++;chunks.clear()}};
   }
-  root.TurncraftTerrain={MAP_IDS,describeTile,hash,geometryStamp,createRenderer};
+  root.TurncraftTerrain={MAP_IDS,THEME_ATLASES,atlasFor,describeTile,hash,geometryStamp,createRenderer};
   if(typeof module!=='undefined'&&module.exports)module.exports=root.TurncraftTerrain;
 })(typeof window!=='undefined'?window:globalThis);

@@ -6,6 +6,15 @@
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const finite=(v,fallback=0)=>Number.isFinite(Number(v))?Number(v):fallback;
   const wrap=a=>((a+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+  const HEAL_PHASES={prepare:140,activate:160,complete:220};
+  function healingPresentation(entity,index,time,isVisible=()=>true){
+    if(entity?.type!=='medic'||entity.alive===false||entity.garrisonedIn||entity.healTargetId==null||!(entity.healUntil>time))return null;
+    const target=index.get(entity.healTargetId),start=finite(entity.healStartedAt,time);
+    if(!target||target.alive===false||target.garrisonedIn||target.faction!==entity.faction||!isVisible(entity)||!isVisible(target)||Math.hypot(target.x-entity.x,target.y-entity.y)>finite(entity.healRange,3)+.05)return null;
+    if(entity.attackAnim?.endAt>time||entity.projectileAnim?.endAt>time||entity.attackAnim?.startAt>=start||entity.projectileAnim?.startAt>=start||entity.healOrder!==undefined&&(entity.order??'')!==entity.healOrder||entity.healAbilityReadyAt!==undefined&&finite(entity.abilityReadyAt)!==entity.healAbilityReadyAt)return null;
+    const age=Math.max(0,time-start),phase=age<HEAL_PHASES.prepare?'healPrepare':age<HEAL_PHASES.prepare+HEAL_PHASES.activate?'healActivate':'healLoop';
+    return{target,start,end:entity.healUntil,age,phase,beam:phase==='healLoop'};
+  }
   const assetTypeFor=entity=>entity?.kind==='cocoon'?'cocoon':entity?.kind==='larva'?'larva':entity?.type;
   function selectionRenderContext(entities,selectedIds,selectedId,index){
     const lookup=index||new Map(entities.filter(e=>e.alive!==false).map(e=>[e.id,e])),selected=new Set(selectedIds||[]),targets=new Set();if(selectedId!=null)selected.add(selectedId);
@@ -70,6 +79,7 @@
     resolve(file){try{return new URL(file,this.baseUrl||(typeof location!=='undefined'?location.href:'http://localhost/')).href}catch{return file}}
     beginFrame(){this.pinned.clear()}
     setCropRepairs(repairs){if(this.cropRepairs===repairs)return;this.cropRepairs=repairs;this.generation++;for(const entry of this.entries.values())this.dispose(entry.image);this.entries.clear();this.queue.length=0;this.pinned.clear();this.bytes=0}
+    setLocalFallbacks(fallbacks){this.localFallbacks=fallbacks||{}}
     repairAtlas(image,repair){
       // Generated poses do not always respect their nominal grid. Repack the
       // measured crops once, with empty gutters, before any quality downsample.
@@ -92,7 +102,7 @@
     releaseOriginal(image){image.onload=null;image.onerror=null;if(typeof HTMLImageElement!=='undefined'&&image instanceof HTMLImageElement)image.src=''}
     dispose(image){if(!image)return;if(typeof image.close==='function')image.close();else if(typeof image.getContext==='function'){image.width=0;image.height=0}else this.releaseOriginal(image)}
     get(file,{priority=false}={}){if(!file)return null;let entry=this.entries.get(file);if(!entry||entry.status==='evicted'&&Date.now()>=entry.retryAt){entry={status:'queued',last:++this.counter,bytes:0};this.entries.set(file,entry);if(priority)this.queue.unshift(file);else this.queue.push(file);this.pump()}else if(priority&&entry.status==='queued'){const index=this.queue.indexOf(file);if(index>=0){this.queue.splice(index,1);this.queue.unshift(file)}}entry.last=++this.counter;this.pinned.add(file);return entry.status==='ready'?entry.image:null}
-    pump(){while(this.active<this.concurrency&&this.queue.length){const file=this.queue.shift(),entry=this.entries.get(file);if(!entry||entry.status!=='queued')continue;const generation=this.generation,resolution=this.resolution;entry.status='loading';this.active++;let image;try{image=this.createImage()}catch{entry.status='failed';this.active--;continue}image.decoding='async';let done=false;const finish=ok=>{if(done)return;done=true;clearTimeout(timer);image.onload=null;image.onerror=null;this.active--;if(generation!==this.generation||this.entries.get(file)!==entry){this.releaseOriginal(image);this.pump();return}if(ok){let output=image,sourceScale=1;const repair=this.cropRepairs?.[file];if(repair){try{output=this.repairAtlas(image,repair);entry.frameExpansion=repair.frameWidth/repair.sourceFrameWidth;entry.frameExpansionY=repair.frameHeight/(repair.sourceFrameHeight||repair.frameHeight)}catch{entry.status='failed';this.releaseOriginal(image);this.pump();return}}const width=finite(output.naturalWidth||output.width),height=finite(output.naturalHeight||output.height);if(resolution<1){try{const canvas=this.createCanvas();if(canvas){canvas.width=Math.max(1,Math.round(width*resolution));canvas.height=Math.max(1,Math.round(height*resolution));const context=canvas.getContext('2d');if(context){context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.drawImage(output,0,0,canvas.width,canvas.height);if(output!==image)this.dispose(output);output=canvas;sourceScale=resolution}}}catch{/* Original artwork remains a safe fallback when a canvas is unavailable. */}}entry.image=output;entry.sourceScale=sourceScale;entry.status='ready';entry.bytes=finite(output.naturalWidth||output.width)*finite(output.naturalHeight||output.height)*4;this.bytes+=entry.bytes;if(output!==image)this.releaseOriginal(image)}else{entry.status='failed';this.releaseOriginal(image)}this.evict();this.pump()};const timer=setTimeout(()=>finish(false),12000);image.onload=()=>finish(true);image.onerror=()=>finish(false);image.src=this.resolve(file)}}
+    pump(){while(this.active<this.concurrency&&this.queue.length){const file=this.queue.shift(),entry=this.entries.get(file);if(!entry||entry.status!=='queued')continue;const generation=this.generation,resolution=this.resolution;entry.status='loading';this.active++;let image;try{image=this.createImage()}catch{entry.status='failed';this.active--;continue}image.decoding='async';let done=false;const finish=ok=>{if(done)return;done=true;clearTimeout(timer);image.onload=null;image.onerror=null;this.active--;if(generation!==this.generation||this.entries.get(file)!==entry){this.releaseOriginal(image);this.pump();return}if(ok){let output=image,sourceScale=1;const repair=this.cropRepairs?.[file];if(repair){try{output=this.repairAtlas(image,repair);entry.frameExpansion=repair.frameWidth/repair.sourceFrameWidth;entry.frameExpansionY=repair.frameHeight/(repair.sourceFrameHeight||repair.frameHeight)}catch{entry.status='failed';this.releaseOriginal(image);this.pump();return}}const width=finite(output.naturalWidth||output.width),height=finite(output.naturalHeight||output.height);if(resolution<1){try{const canvas=this.createCanvas();if(canvas){canvas.width=Math.max(1,Math.round(width*resolution));canvas.height=Math.max(1,Math.round(height*resolution));const context=canvas.getContext('2d');if(context){context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.drawImage(output,0,0,canvas.width,canvas.height);if(output!==image)this.dispose(output);output=canvas;sourceScale=resolution}}}catch{/* Original artwork remains a safe fallback when a canvas is unavailable. */}}entry.image=output;entry.sourceScale=sourceScale;entry.status='ready';entry.bytes=finite(output.naturalWidth||output.width)*finite(output.naturalHeight||output.height)*4;this.bytes+=entry.bytes;if(output!==image)this.releaseOriginal(image)}else{entry.status='failed';this.releaseOriginal(image)}this.evict();this.pump()};const timer=setTimeout(()=>finish(false),12000);image.onload=()=>finish(true);const local=this.localFallbacks?.[file];let usingLocal=!!local;image.onerror=()=>{if(usingLocal){usingLocal=false;image.src=this.resolve(file)}else finish(false)};image.src=this.resolve(local||file)}}
     evict(){if(this.bytes<=this.maxBytes)return;const candidates=[...this.entries].filter(([,e])=>e.status==='ready').sort((a,b)=>Number(this.pinned.has(a[0]))-Number(this.pinned.has(b[0]))||a[1].last-b[1].last);for(const [file,entry]of candidates){if(this.bytes<=this.maxBytes)break;this.bytes-=entry.bytes;this.dispose(entry.image);this.entries.set(file,{status:'evicted',last:entry.last,bytes:0,retryAt:Date.now()+3000})}}
     setBudget(bytes){this.maxBytes=bytes;this.evict()}
     setResolution(scale){const next=clamp(finite(scale,1),.25,1);if(next===this.resolution)return;this.resolution=next;this.generation++;for(const entry of this.entries.values())this.dispose(entry.image);this.entries.clear();this.queue.length=0;this.pinned.clear();this.bytes=0}
@@ -100,9 +110,9 @@
     stats(){return{bytes:this.bytes,limit:this.maxBytes,resolution:this.resolution,ready:[...this.entries.values()].filter(e=>e.status==='ready').length,pending:this.queue.length+this.active}}
   }
   class SpriteRuntime{
-    constructor({manifest=null,baseUrl='',quality='medium',cache,tintCache}={}){this.manifest=manifest;this.cache=cache||new TextureCache({baseUrl});this.tintCache=tintCache||new SpriteTintCache();this.cache.setCropRepairs?.(manifest?.cropRepairs);this.states=new Map();this.ghosts=[];this.ghostIds=new Set();this.time=0;this.entityIndex=new Map();this.setQuality(quality)}
+    constructor({manifest=null,baseUrl='',quality='medium',cache,tintCache}={}){this.manifest=manifest;this.cache=cache||new TextureCache({baseUrl});this.tintCache=tintCache||new SpriteTintCache();this.cache.setCropRepairs?.(manifest?.cropRepairs);this.cache.setLocalFallbacks?.(manifest?.localFallbacks);this.states=new Map();this.ghosts=[];this.ghostIds=new Set();this.time=0;this.entityIndex=new Map();this.setQuality(quality)}
     setQuality(value){this.quality=Object.hasOwn(QUALITY,value)?value:'medium';this.budget=QUALITY[this.quality];this.cache.setBudget(this.budget.textureBytes);this.cache.setResolution(this.budget.textureScale);this.tintCache.setBudget(this.budget.textureBytes/8);while(this.ghosts.length>this.budget.ghosts){this.ghostIds.delete(this.ghosts.shift().id)}}
-    async loadManifest(url){const controller=typeof AbortController!=='undefined'?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),6000):null;try{const response=await fetch(url,controller?{signal:controller.signal}:undefined);if(!response.ok)return false;const data=await response.json();if(!data||!data.assets)return false;this.manifest=data;this.cache.setCropRepairs?.(data.cropRepairs);return true}catch{return false}finally{if(timer)clearTimeout(timer)}}
+    async loadManifest(url){const controller=typeof AbortController!=='undefined'?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),6000):null;try{const response=await fetch(url,controller?{signal:controller.signal}:undefined);if(!response.ok)return false;const data=await response.json();if(!data||!data.assets)return false;this.manifest=data;this.cache.setCropRepairs?.(data.cropRepairs);this.cache.setLocalFallbacks?.(data.localFallbacks);return true}catch{return false}finally{if(timer)clearTimeout(timer)}}
     reset(){this.states.clear();this.ghosts.length=0;this.ghostIds.clear();this.entityIndex.clear();this.tintCache.clear()}
     ensure(entity,time){let state=this.states.get(entity.id);if(!state||state.type!==entity.type||state.kind!==entity.kind){state={id:entity.id,type:entity.type,assetType:assetTypeFor(entity),kind:entity.kind,faction:entity.faction,x:finite(entity.x),y:finite(entity.y),direction:'S',state:'idle',stateAt:time,phaseAt:time,event:null,segment:null,logicalX:entity.x,logicalY:entity.y,visible:false,lastMoveReady:finite(entity.moveReadyAt),lastAttackReady:finite(entity.attackReadyAt),lastHit:finite(entity.lastDamagedAt),lastAbility:finite(entity.abilityReadyAt),lastDeploy:false};this.states.set(entity.id,state)}return state}
     turn(state,dx,dy,time){const next=directionForVector(dx,dy,state.direction);if(next!==state.direction){state.previousDirection=state.direction;state.turnAt=time;state.direction=next}}
@@ -156,8 +166,57 @@
         if(state.moving&&next==='move'&&state.segment)this.turn(state,sample?.dx??state.segment.toX-state.x,sample?.dy??state.segment.toY-state.y,time);
         if(next!==state.state){state.state=next;state.stateAt=time;if(next==='move')state.phaseAt=time}
       }
+      this.updateHealing(entities,time,isVisible);
       for(const [id,state]of this.states)if(!alive.has(id))this.states.delete(id);
       this.ghosts=this.ghosts.filter(g=>{if(g.end>time&&!alive.has(g.id))return true;this.ghostIds.delete(g.id);return false});this.cache.evict();
+    }
+
+    updateHealing(entities,time,isVisible){
+      for(const entity of entities){if(entity.type!=='medic'||entity.alive===false)continue;const state=this.states.get(entity.id);if(!state)continue;
+        const healing=healingPresentation(entity,this.entityIndex,time,isVisible);
+        if(healing){
+          state.healing=healing;state.healCompletion=null;state.state=healing.phase;
+          state.stateAt=healing.start+(healing.phase==='healActivate'?HEAL_PHASES.prepare:healing.phase==='healLoop'?HEAL_PHASES.prepare+HEAL_PHASES.activate:0);
+          const target=healing.target;this.turn(state,(target.px??target.x)-(entity.px??entity.x),(target.py??target.y)-(entity.py??entity.y),time);
+          const sheet=this.manifest?.assets?.medic?.states?.[healing.phase]?.sheet;if(sheet)this.cache.get(sheet,{priority:true});
+        }else{
+          if(state.healing&&state.healing.end<=time&&!entity.garrisonedIn&&!state.moving&&!(state.event?.end>time))state.healCompletion={start:entity.healUntil,end:entity.healUntil+HEAL_PHASES.complete};
+          state.healing=null;
+          if(state.healCompletion?.end>time&&!state.moving&&!entity.garrisonedIn&&!(state.event?.end>time)){state.state='healComplete';state.stateAt=state.healCompletion.start}else state.healCompletion=null;
+        }
+      }
+    }
+    healingEndpoints(entity,time,{size=48,zoom=1,worldToScreen=(x,y)=>({x,y})}={}){
+      const state=this.states.get(entity.id),healing=state?.healing;if(!healing?.beam||!healingPresentation(entity,this.entityIndex,time,e=>this.states.get(e.id)?.visible!==false))return null;
+      const frequency=zoom<.55?8:this.budget.fps,elapsed=Math.floor(Math.max(0,time-state.stateAt)/(1000/frequency))*(1000/frequency);
+      const definition=this.metadata('medic',state.state),frame=frameForState(definition?.state,state.direction,elapsed),asset=definition?.asset;
+      const device=asset?.healing?.deviceAnchors?.[state.direction]?.[(definition?.state?.firstColumn||0)+(frame?.index||0)]||[64,86],scale=finite(definition?.state?.scale,1),anchor=definition?.state?.anchor||asset?.anchor||[.5,.5];
+      const body=worldToScreen((entity.px??entity.x)+.5,(entity.py??entity.y)+.5),target=healing.target,impact=worldToScreen((target.px??target.x)+.5,(target.py??target.y)+.5);
+      return{origin:{x:body.x+(device[0]/128-anchor[0])*size*scale,y:body.y+size*((asset?.anchor?.[1]||.5)-.5)+(device[1]/160-anchor[1])*size*scale*160/128},target:{x:impact.x,y:impact.y-size*.22},healing};
+    }
+    drawHealingEffects(ctx,time,{size=48,zoom=1,worldToScreen,visible=()=>true,inViewport=()=>true}={}){
+      const effect=this.manifest?.effects?.medicHealing;if(!effect)return 0;
+      let count=0,limit=this.quality==='low'?12:this.quality==='high'?64:32;
+      for(const entity of this.entityIndex.values()){
+        if(count>=limit)break;if(entity.type!=='medic'||!visible(entity))continue;
+        const endpoints=this.healingEndpoints(entity,time,{size,zoom,worldToScreen});if(!endpoints||!visible(endpoints.healing.target)||!inViewport(entity)&&!inViewport(endpoints.healing.target))continue;
+        const {origin,target,healing}=endpoints,dx=target.x-origin.x,dy=target.y-origin.y,length=Math.hypot(dx,dy);if(length<2)continue;
+        const image=this.cache.get(effect.sheet,{priority:true}),sourceScale=this.cache.sourceScale(effect.sheet),frame=Math.floor((time-healing.start)/70)%8,thickness=Math.max(7,size*.24);
+        ctx.save();ctx.lineCap='round';
+        if(image){
+          ctx.translate(origin.x,origin.y);ctx.rotate(Math.atan2(dy,dx));
+          ctx.drawImage(image,(frame*128+4)*sourceScale,40*sourceScale,120*sourceScale,48*sourceScale,0,-thickness/2,length,thickness);
+        }else{
+          ctx.strokeStyle='rgba(123,246,173,.35)';ctx.lineWidth=Math.max(3,size*.08);ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.lineTo(target.x,target.y);ctx.stroke();ctx.strokeStyle='#edfff3';ctx.lineWidth=Math.max(1,size*.025);ctx.stroke();
+        }
+        ctx.restore();
+        if(image){ctx.save();ctx.globalAlpha*=.65;const impactSize=size*(this.quality==='low'?.4:.58);ctx.drawImage(image,frame*128*sourceScale,128*sourceScale,128*sourceScale,128*sourceScale,target.x-impactSize/2,target.y-impactSize*.62,impactSize,impactSize);ctx.restore()}
+        const density=this.quality==='low'?1:this.quality==='high'?5:3;
+        ctx.save();ctx.fillStyle='#ddffeb';
+        for(let i=0;i<density;i++){const pulse=((time-healing.start)/650+i/density)%1,x=origin.x+dx*pulse,y=origin.y+dy*pulse;ctx.globalAlpha=.55+.4*Math.sin(pulse*Math.PI);ctx.beginPath();ctx.arc(x,y,Math.max(1,size*.025)*(1-pulse*.3),0,Math.PI*2);ctx.fill()}
+        ctx.restore();count++;
+      }
+      return count;
     }
     metadata(type,state){const asset=this.manifest?.assets?.[type];if(!asset)return null;const aliases={ability:'special',deploy:'ability',production:'work',construction:'deploy',morph:'construction'};return{asset,state:asset.states?.[state]||asset.states?.[aliases[state]]||asset.states?.idle}}
     drawState(ctx,type,state,{elapsedMs=0,progress,direction='S',size=48,x=0,y=0,rate=1,alpha=1,tint=null}={}){
@@ -173,7 +232,7 @@
     }
     bounds(entity,{size=48}={}){const state=this.ensure(entity,this.time),meta=this.metadata(state.assetType,state.state);if(!meta?.state)return null;const frame=frameForState(meta.state,state.direction,0),anchor=meta.state.anchor||meta.asset.anchor||[.5,.5],assetAnchor=meta.asset.anchor||[.5,.5],scale=finite(meta.state.scale,finite(meta.asset.scale,1)),width=size*scale,height=width*frame.h/frame.w;return{x:-width*anchor[0],y:size*(assetAnchor[1]-.5)-height*anchor[1],width,height}}
     draw(ctx,entity,time,{size=48,zoom=1,constructionProgress=1,morphProgress=0,tint=null}={}){
-      const state=this.ensure(entity,time);let elapsed=time-(state.state==='move'?state.phaseAt:state.event?.kind===state.state?state.event.start:state.stateAt),rate=1;
+      const state=this.ensure(entity,time);let elapsed=time-(state.state==='healComplete'?state.healCompletion?.start??state.stateAt:state.state==='move'?state.phaseAt:state.event?.kind===state.state?state.event.start:state.stateAt),rate=1;
       if(state.state==='move'){const meta=this.metadata(state.assetType,'move');const cycle=Math.max(100,finite(meta?.state?.frames,8)*1000/Math.max(1,finite(meta?.state?.fps,10)));rate=clamp(cycle/Math.max(100,state.moveDuration/Math.max(1,state.moveDistance)),.55,2.8)}
       if(state.state==='idle')elapsed+=finite(entity.id)*137;
       const frequency=zoom<.55?8:this.budget.fps;elapsed=Math.floor(Math.max(0,elapsed)/(1000/frequency))*(1000/frequency);
@@ -189,5 +248,5 @@
     }
     stats(){return{quality:this.quality,entities:this.states.size,ghosts:this.ghosts.length,textures:this.cache.stats(),tints:this.tintCache.stats()}}
   }
-  return {DIRECTIONS,QUALITY,assetTypeFor,selectionRenderContext,directionForVector,sampleSegment,frameForState,eventProgress,TextureCache,SpriteTintCache,SpriteRuntime};
+  return {DIRECTIONS,QUALITY,HEAL_PHASES,healingPresentation,assetTypeFor,selectionRenderContext,directionForVector,sampleSegment,frameForState,eventProgress,TextureCache,SpriteTintCache,SpriteRuntime};
 });

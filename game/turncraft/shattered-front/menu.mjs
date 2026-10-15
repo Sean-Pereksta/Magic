@@ -765,7 +765,7 @@ function skirmish(main) {
     heading(
       'Single Player',
       'CUSTOM SKIRMISH',
-      'Configure your opponents, then choose a battlefield, difficulty, temperament, and victory condition.'
+      'Choose up to seven AI opponents, then compare compatible battlefields and configure individual difficulties and temperaments.'
     )
   );
   const panel = el('div', 'sf-setup');
@@ -780,18 +780,18 @@ function skirmish(main) {
   player.append(own);
   panel.append(player);
   const picks = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 7; i++) {
     const label = el('label', 'sf-field', `Opponent ${i + 1}`);
     const select = el('select');
     if (i) {
-      const none = el('option', '', 'No second opponent');
+      const none = el('option', '', 'Unused slot');
       none.value = '';
       select.append(none);
     }
     for (const f of factions()) {
       const o = el('option', '', f.name);
       o.value = f.id;
-      o.selected = f.id === factions()[(i + 1) % factions().length].id;
+      o.selected = i < 2 && f.id === factions()[(i + 1) % factions().length].id;
       select.append(o);
     }
     label.append(select);
