@@ -153,22 +153,43 @@ service cloud.firestore {
           && data.updatedAt is int && data.updatedAt >= 0
           && data.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt']);
       }
+      function validSoloReceipt(kind,id) {
+        let data=request.resource.data;
+        return ownsSoloSave() && data.uid == uid && (
+          (kind == 'results' && data.id == id && data.mode in ['campaign','bot','endless']
+            && data.keys().hasOnly(['id','uid','mode','won','missionId','stars','cards','forgeDust','unlocks','completedAt']))
+          || (kind == 'upgrades' && data.requestId == id
+            && data.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']))
+          || (kind == 'purchases' && data.requestId == id && data.packId in ['vanir','aesir','helions','war-chest']
+            && data.dustSpent == (data.packId == 'war-chest' ? 90 : 50)
+            && data.cards is list && data.cards.size() == (data.packId == 'war-chest' ? 6 : 3)
+            && data.completedAt is int && data.completedAt >= 0
+            && data.keys().hasOnly(['uid','requestId','packId','dustSpent','cards','completedAt']))
+          || (kind == 'rounds' && data.id == id && data.matchId is string && data.mode in ['campaign','bot','endless']
+            && data.round is int && data.round >= 1 && data.round <= 7
+            && data.cards is list && data.cards.size() <= 1
+            && data.completedAt is int && data.completedAt >= 0
+            && data.keys().hasOnly(['id','matchId','uid','mode','missionId','round','cards','completedAt']))
+        );
+      }
       allow get: if ownsSoloSave();
       allow create, update: if validSoloSave();
       allow list, delete: if false;
-      match /results/{id} {
-        allow get: if ownsSoloSave();
-        allow create: if ownsSoloSave() && request.resource.data.uid == uid
-          && request.resource.data.id == id && request.resource.data.mode in ['campaign','bot','endless']
-          && request.resource.data.keys().hasOnly(['id','uid','mode','won','missionId','stars','cards','forgeDust','unlocks','completedAt']);
+      match /{receiptCollection}/{id} {
+        allow get: if ownsSoloSave() && receiptCollection in ['results','upgrades','purchases','rounds'];
+        allow create: if validSoloReceipt(receiptCollection,id);
         allow list, update, delete: if false;
       }
-      match /upgrades/{id} {
+      // Hub accounts sharing one Firebase identity retain distinct private saves.
+      match /accounts/{accountKey} {
         allow get: if ownsSoloSave();
-        allow create: if ownsSoloSave() && request.resource.data.uid == uid
-          && request.resource.data.requestId == id
-          && request.resource.data.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']);
-        allow list, update, delete: if false;
+        allow create, update: if validSoloSave();
+        allow list, delete: if false;
+        match /{receiptCollection}/{id} {
+          allow get: if ownsSoloSave() && receiptCollection in ['results','upgrades','purchases','rounds'];
+          allow create: if validSoloReceipt(receiptCollection,id);
+          allow list, update, delete: if false;
+        }
       }
     }
     match /factionForgeAccounts/{uid} {
@@ -181,7 +202,7 @@ service cloud.firestore {
       allow get: if isAuthed() && request.auth.uid == uid;
       allow list, write: if false;
       match /{subcollection}/{recordId} {
-        allow read: if isAuthed() && request.auth.uid == uid && subcollection in ['history','upgrades'];
+        allow read: if isAuthed() && request.auth.uid == uid && subcollection in ['history','upgrades','purchases'];
         allow write: if false;
       }
     }

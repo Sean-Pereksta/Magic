@@ -88,12 +88,32 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
       await assertSucceeds(updateDoc(solo,{forgeDust:100,'troops.rifleman.cards':10}));
       await assertSucceeds(progress.upgradeTroop('rifleman',{requestId:'solo-upgrade'}));
       if(progress.profile.forgeDust!==0||progress.profile.troops.rifleman.forgeTier!==2)throw Error('Solo upgrade cost was not applied.');
+      await assertSucceeds(updateDoc(solo,{forgeDust:50}));
+      await assertSucceeds(progress.buyPack('vanir',{requestId:'solo-pack'}));await assertSucceeds(progress.buyPack('vanir',{requestId:'solo-pack'}));
+      if(progress.profile.forgeDust!==0||progress.profile.troops.rifleman.cards!==5)throw Error('Solo pack purchase duplicated spending or cards.');
+      await assertSucceeds(progress.recordSoloRoundWin({id:'solo-rounds',mode:'bot',round:1}));await assertSucceeds(progress.recordSoloRoundWin({id:'solo-rounds',mode:'bot',round:1}));
+      if(progress.profile.troops.rifleman.cards!==8)throw Error('Round win rewards were not idempotent.');
     }finally{progress.dispose();}
     await assertFails(updateDoc(doc(owner,'factionForgeSoloProfiles','owner','results','solo-win'),{forgeDust:9000}));
     await assertFails(getDoc(doc(attacker,'factionForgeSoloProfiles','owner','results','solo-win')));
     await assertFails(setDoc(doc(owner,'factionForgeSoloProfiles','owner','results','fake'),{uid:'attacker',id:'fake',mode:'bot'}));
+    await assertFails(updateDoc(doc(owner,'factionForgeSoloProfiles','owner','purchases','solo-pack'),{dustSpent:0}));
+    await assertFails(getDoc(doc(attacker,'factionForgeSoloProfiles','owner','purchases','solo-pack')));
+    await assertFails(updateDoc(doc(owner,'factionForgeSoloProfiles','owner','rounds','solo-rounds-round-1'),{cards:[]}));
+    const scopedPath=['factionForgeSoloProfiles','owner','accounts','Sean'],scopedRef=doc(owner,...scopedPath);
+    const scoped=createFirebaseProgress({auth:{currentUser:{uid:'owner'}},db:owner,api:firestore,username:'Sean',troops,profilePath:scopedPath,queueNamespace:'.name-Sean',storage:{getItem:()=>null,setItem(){},removeItem(){}}});
+    try{
+      await assertSucceeds(scoped.loadProfile());await assertSucceeds(updateDoc(scopedRef,{forgeDust:150,'troops.rifleman.cards':10}));
+      await assertSucceeds(scoped.buyPack('aesir',{requestId:'scoped-pack'}));await assertSucceeds(scoped.upgradeTroop('rifleman',{requestId:'scoped-upgrade'}));
+      await assertSucceeds(scoped.recordSoloRoundWin({id:'scoped-match',mode:'bot',round:1}));await assertSucceeds(scoped.recordSoloResult({id:'scoped-match',mode:'bot',won:false}));
+      if(scoped.profile.forgeDust!==0||scoped.profile.username!=='Sean')throw Error('Scoped account transaction failed.');
+      if((await getDoc(solo)).data().username!=='Commander')throw Error('Scoped account changed another save.');
+    }finally{scoped.dispose();}
+    await assertFails(getDoc(doc(attacker,...scopedPath)));await assertFails(updateDoc(doc(attacker,...scopedPath),{forgeDust:9999}));
+    await assertFails(getDoc(doc(attacker,...scopedPath,'rounds','scoped-match-round-1')));await assertFails(getDocs(collection(owner,'factionForgeSoloProfiles','owner','accounts')));
+    await assertFails(updateDoc(doc(owner,...scopedPath,'purchases','scoped-pack'),{dustSpent:0}));await assertFails(deleteDoc(scopedRef));
     await assertFails(deleteDoc(solo));
-    console.log('Faction Forge rules: existing authority checks and Firebase-only solo ownership, rewards, retry and upgrade assertions passed.');
+    console.log('Faction Forge rules: authority, private scoped accounts, rewards, packs, retry and upgrade assertions passed.');
   }finally{await env.cleanup();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
 

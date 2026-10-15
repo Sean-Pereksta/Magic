@@ -22,6 +22,70 @@ async function mockBrowser(context){
  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'',matchmakingTimeoutMs:30000};`}));
 }
 
+test('Sean reclaims the legacy Commander save without losing dust and other hub accounts load separately',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await context.addInitScript(()=>{
+   if(!localStorage.getItem('__forgeMockDocs')){
+    localStorage.setItem('gh.username','Sean');
+    localStorage.setItem('__forgeMockDocs',JSON.stringify([['factionForgeSoloProfiles/owner-uid',{schemaVersion:1,uid:'owner-uid',username:'Commander',forgeDust:940,troops:{rifleman:{cards:75,forgeTier:2,unlocked:true},vguard:{cards:0,forgeTier:1,unlocked:true},medic:{cards:0,forgeTier:1,unlocked:true}},campaign:{missions:{'forge-01':{completed:true,stars:3,clears:4}},endlessUnlocked:false,endlessBest:0},wins:4,losses:1,rewardTarget:null,rewardDay:'',rewardCounts:{},updatedAt:1}]]));
+   }
+  });
+  await context.route('**/game/crowncouncil.html*',async route=>{
+   let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');
+   html=html.replace('/* Fullscreen */','globalThis.__forgeAccount={get profile(){return forgeProfile},get username(){return username},get ui(){return expansionUI},get state(){return S},chooseCard,finishRound(){hostBattleState.units.forEach(unit=>{if(unit.p===1)unit.hp=0})}};\n/* Fullscreen */');
+   await route.fulfill({contentType:'text/html',body:html});
+  });
+  await page.goto(url+'/game/crowncouncil.html?mode=solo&username=Commander');
+  await page.waitForFunction(()=>__forgeAccount.profile?.uid&&__forgeAccount.profile.username==='Sean');
+  assert.equal(await page.evaluate(()=>__forgeAccount.username),'Sean');
+  assert.equal(await page.locator('.ff-player-summary strong').textContent(),'Sean');
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.forgeDust),940);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.troops.rifleman.cards),75);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.campaign.missions['forge-01'].stars),3);
+  await page.evaluate(()=>localStorage.setItem('gh.username','Other'));await page.reload();
+  await page.waitForFunction(()=>__forgeAccount.profile?.uid&&__forgeAccount.profile.username==='Other');
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.forgeDust),0);
+  await page.evaluate(()=>localStorage.setItem('gh.username','Sean'));await page.reload();
+  await page.waitForFunction(()=>__forgeAccount.profile?.uid&&__forgeAccount.profile.username==='Sean');
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.forgeDust),940);
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:/The Forge/}).first().click();
+  await page.getByRole('tab',{name:'Buy packs',exact:true}).click();
+  await page.getByRole('button',{name:'Buy Vanir Reinforcements',exact:true}).click();
+  await page.waitForFunction(()=>__forgeAccount.profile.forgeDust===890);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.troops.rifleman.cards),80);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.troops.vguard.cards),5);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.troops.medic.cards),5);
+  await page.reload();await page.waitForFunction(()=>__forgeAccount.profile?.uid&&__forgeAccount.profile.forgeDust===890);
+  await page.evaluate(()=>__forgeAccount.ui.showForge('rifleman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();
+  await page.waitForFunction(()=>__forgeAccount.profile.rewardTarget==='rifleman');await page.evaluate(()=>__forgeAccount.ui.showMenu());
+  await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+  for(let index=0;index<3;index++){await page.waitForFunction(index=>__forgeAccount.state?.phase==='draft'&&__forgeAccount.state.draftIndex===index,index);await page.evaluate(()=>__forgeAccount.chooseCard(0));}
+  await page.waitForFunction(()=>__forgeAccount.state.phase==='battle');await page.evaluate(()=>__forgeAccount.finishRound());
+  await page.waitForFunction(()=>__forgeAccount.profile.troops.rifleman.cards===83);
+  assert.equal(await page.evaluate(()=>__forgeAccount.state.lives[1]),3);
+  assert.deepEqual(errors,[]);await context.close();
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
+test('profile selection failures stay visible and can reconnect without reloading',async()=>{
+ const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await context.addInitScript(()=>{localStorage.setItem('gh.username','Sean');globalThis.__denySolo=true;});
+  await page.goto(url+'/game/crowncouncil.html?mode=solo');
+  await page.getByRole('button',{name:'Retry profile connection',exact:true}).waitFor();
+  assert.match(await page.locator('.ff-connection').textContent(),/permissions need updating/);
+  await page.evaluate(()=>globalThis.__denySolo=false);await page.getByRole('button',{name:'Retry profile connection',exact:true}).click();
+  await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
+  assert.equal(await page.locator('.ff-player-summary strong').textContent(),'Sean');
+  assert.equal(await page.getByRole('button',{name:'Retry profile connection',exact:true}).count(),0);
+  assert.deepEqual(errors,[]);await context.close();
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
+});
+
 test('solo menu appears before auth and save loading, without opening any lobby',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
@@ -169,7 +233,7 @@ test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies
   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],apiRequests=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',req=>{if(req.url().includes('/api/faction-forge'))apiRequests.push(req.url());});
   await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},get profile(){return forgeProfile},get battle(){return B},chooseCard,get ui(){return expansionUI},complete(){stopHostLoops();S.phase="game-over";S.winner=username;S.lives=[4,0];render();}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
   await page.goto(url+'/game/crowncouncil.html');await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
-  // Favor one troop, then clear five missions: 15 cards and 100 dust afford Recruit -> Veteran.
+  // Favor one troop, then clear five missions: 30 cards and 100 dust afford Recruit -> Veteran.
   await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.rewardTarget==='rifleman');
   for(let mission=0;mission<5;mission++){
    await page.evaluate(()=>__forgeTest.ui.showCampaign());await page.locator('.ff-mission').nth(mission).click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');
@@ -181,7 +245,7 @@ test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies
   assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),100);
   await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>Object.keys(__forgeTest.profile.campaign.missions).length),5);
   await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Forge Veteran',exact:true}).click();await page.getByRole('button',{name:'Confirm upgrade',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.troops.rifleman.forgeTier===2);
-  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);assert.equal(await page.evaluate(()=>__forgeTest.profile.troops.rifleman.cards),5);
+  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);assert.equal(await page.evaluate(()=>__forgeTest.profile.troops.rifleman.cards),20);
   await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();await page.evaluate(()=>__forgeTest.ui.showCampaign());assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),6);await page.locator('.ff-mission').first().click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');assert.equal(await page.evaluate(()=>__forgeTest.state.forgeTiers.p0.rifleman),2);
   for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.ok(await page.evaluate(()=>__forgeTest.battle.units.some(unit=>unit.p===0&&unit.type==='rifleman'&&unit.forgeTier===2)));
   assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(apiRequests,[]);assert.deepEqual(errors,[]);

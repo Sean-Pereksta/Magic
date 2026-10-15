@@ -31,6 +31,7 @@ function createRouter({db,auth,allowedOrigins=[],service}) {
   router.post('/sessions/:id/pick',route(req=>forge.pick(req.forgeUser,req.params.id,req.body)));
   router.post('/sessions/:id/abandon',route(req=>forge.abandon(req.forgeUser,req.params.id)));
   router.post('/upgrades',route(req=>forge.upgradeTroop(req.forgeUser,req.body)));
+  router.post('/packs',route(req=>forge.buyPack(req.forgeUser,req.body)));
   router.post('/reward-target',route(req=>forge.target(req.forgeUser,req.body.troopKey)));
   router.use((error,_req,res,_next)=>{
     if(error instanceof ForgeError)return res.status(error.status).json({error:{code:error.code,message:error.message}});

@@ -943,6 +943,7 @@ import { createBattleRenderer } from "./faction-forge/renderer.js";
 import { createExpansionUI } from "./faction-forge/ui.js";
 import { createProgressionService } from "./faction-forge/progression.js";
 import { createFirebaseProgress, soloMission } from "./faction-forge/firebase-progress.js";
+import { resolveForgeUsername, selectSoloAccount } from "./faction-forge/solo-account.js";
 import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
 import { getMission, createEndlessMission, chooseAIDraft, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
 import * as FFUnits from "./faction-forge/units.js";
@@ -980,7 +981,7 @@ const params   = new URLSearchParams(location.search);
 // An explicit solo launch never inherits multiplayer context from its URL.
 const gameId   = params.get("mode") === "solo" ? null : (params.get("gameId")?.trim() || null);
 let requestedRanked=params.get("ranked")!=="0";
-const username = params.get("username") || (()=>{try{return localStorage.getItem("gh.username")}catch{return null}})() || "Guest";
+const username = resolveForgeUsername({params,solo:!gameId});
 let executionMode = gameId ? "legacy-online" : "menu";
 let secureSession = null, securePoll = null, securePlayback = null;
 let expansionUI = null, progression = null, forgeProfile = null, spriteRenderer = null;
@@ -1043,38 +1044,25 @@ function openCardInfoModal(title, bodyHtml){
 
 let unitLayerEl = null;
 
-/* ---------------- Fit/zoom & pan ---------------- */
-let boardScale=1, pan={x:12, y:12};
+/* ---------------- Fit the complete battlefield ---------------- */
+let boardScale=1, pan={x:0, y:0};
 function applyTransform(){
   canvas.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${boardScale})`;
 }
 function fitBoard(){
-  const boardW = W*(CELL+GAP)-GAP;
-  const boardH = H*(CELL+GAP)-GAP;
+  // Include the grid's padding, and use the space left by the actual HUD height.
+  const boardW = cellsEl.offsetWidth, boardH = cellsEl.offsetHeight;
   const vw = viewport.clientWidth, vh=viewport.clientHeight;
-
-  const fitScale = Math.min(vw/boardW, vh/boardH);
-  boardScale = Math.min(2.2, fitScale * 1.25);
-
-  pan.x = Math.round((vw - boardW*boardScale) / 2);
-  pan.y = Math.round((vh - boardH*boardScale) / 2);
+  if(!boardW || !boardH || !vw || !vh)return;
+  const gutter = Math.min(12, vw/8, vh/8);
+  boardScale = Math.min(2.2, (vw-gutter*2)/boardW, (vh-gutter*2)/boardH);
+  pan.x = (vw - boardW*boardScale) / 2;
+  pan.y = (vh - boardH*boardScale) / 2;
   applyTransform();
 }
-new ResizeObserver(fitBoard).observe(viewport);
-
-/* pointer pan */
-let dragging=false, last={x:0,y:0};
-viewport.addEventListener("pointerdown", e=>{
-  dragging=true; last={x:e.clientX,y:e.clientY};
-});
-viewport.addEventListener("pointermove", e=>{
-  if(!dragging) return;
-  const dx=e.clientX-last.x, dy=e.clientY-last.y;
-  pan.x+=dx; pan.y+=dy; applyTransform();
-  last={x:e.clientX,y:e.clientY};
-});
-viewport.addEventListener("pointerup", ()=>{ dragging=false; });
-viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
+const boardResizeObserver=new ResizeObserver(fitBoard);
+boardResizeObserver.observe(viewport);
+boardResizeObserver.observe(cellsEl);
 
 let didEnsure = false;
 let ensureInFlight = false;
@@ -3781,6 +3769,10 @@ async function runBattle(initialField){
         const loser=resolveRoundLoser(st,alive0,alive1,preTickHealth);
         const lives=(st.lives||[4,4]).slice();
         lives[loser]=Math.max(0,lives[loser]-1);
+        if(isLocalPractice()&&st.soloProgress&&loser===1){
+          // A stable match/round receipt survives a refresh or uncertain save.
+          saveSoloRoundWin(st,8-lives[0]-lives[1]);
+        }
         const players=st.players||[];
         let winnerName=null;
         if (lives[0]===0&&players.length>1) winnerName=players[1];
@@ -4442,6 +4434,19 @@ async function showSoloResults(state){
   };
   await save();
 }
+async function saveSoloRoundWin(state,round){
+  const progress=progression;
+  if(!progress?.recordSoloRoundWin)return;
+  try{
+    const response=await progress.recordSoloRoundWin({id:state.sessionKey,mode:state.soloMode||"bot",missionId:state.missionId,round});
+    if(progress!==progression)return;
+    forgeProfile=response.profile;
+    const count=(response.receipt?.cards||[]).reduce((sum,entry)=>sum+entry.quantity,0);
+    if(count)expansionUI?.notify(`Round won · +${count} troop cards`);
+  }catch(error){
+    if(progress===progression)expansionUI?.notify("Round reward kept on this device · it will retry when connected.");
+  }
+}
 function shiftReplayTimers(frame,offset){
   const value=deepClone(frame);
   for(const unit of value.units||[]){
@@ -4499,6 +4504,7 @@ function startSecurePolling(){
 }
 async function startProgressionMatch(mode,missionId,faction="Vanir"){
   if(profileLoadPromise)await profileLoadPromise;
+  if(!progression&&auth.currentUser)await restoreExpansionProfile(auth.currentUser);
   if(!progression){
     if(mode==="bot")return startPractice(faction);
     throw new Error("Firebase is still connecting. Try starting the campaign again in a moment.");
@@ -4529,12 +4535,12 @@ function beginMatchmaking(){
   });
   update();matchSearch.search();
 }
-let expansionInitialized=false,initializationPromise=null,profileLoadPromise=null,progressIdentity=null;
-function connectForgeProgress(){
+let expansionInitialized=false,initializationPromise=null,profileLoadPromise=null,progressIdentity=null,profileConnectionFailed=false;
+function connectForgeProgress(account){
   progression?.dispose();
   progression=FACTION_FORGE_CONFIG.progressionApiUrl?
     createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}}):
-    createFirebaseProgress({auth,db,username,troops:TROOPS,api:{doc,onSnapshot,runTransaction}});
+    createFirebaseProgress({auth,db,username:account.username,troops:TROOPS,api:{doc,onSnapshot,runTransaction},profilePath:account.profilePath,queueNamespace:account.queueNamespace,isActiveMatch:()=>!!S&&S.phase!=="game-over"});
   progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
 }
 function initializeBattleSettings(){
@@ -4560,10 +4566,13 @@ function initializeExpansion(){
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
     canSignIn:()=>FACTION_FORGE_CONFIG.progressionApiUrl?!forgeProfile?.uid:auth.currentUser?.isAnonymous===true,
+    canRetryConnection:()=>profileConnectionFailed,
+    onRetryConnection:async()=>{if(!auth.currentUser)throw new Error("Sign in to reconnect your profile.");await restoreExpansionProfile(auth.currentUser);if(!progression)throw new Error(authConnectionStatus);expansionUI.showMenu();return true;},
     onSignIn:async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);await restoreExpansionProfile(auth.currentUser);expansionUI.updateProfile();return forgeProfile;},
     onResume:async()=>{if(!secureSession&&forgeProfile?.activeSessionId){executionMode="secure";await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));startSecurePolling();}expansionUI.hide();return true;},onAbandon:async()=>{const activeId=secureSession?.id||forgeProfile?.activeSessionId;if(activeId){const response=await progression.abandon(activeId);forgeProfile=response.profile||await progression.loadProfile();}returnToForgeMenu();return true;},
     onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
     onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
+    onBuyPack:async(packId,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before buying packs.");if(!progression?.buyPack)throw new Error("Your Forge profile is still connecting. Try again shortly.");const response=await progression.buyPack(packId,options);forgeProfile=response.profile;return response;},
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
     getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
   });
@@ -4578,13 +4587,23 @@ function initializeExpansion(){
 }
 async function restoreExpansionProfile(user){
   if(progressIdentity===user.uid&&profileLoadPromise)return profileLoadPromise;
+  if(progressIdentity&&progressIdentity!==user.uid){clearForgeIdentity();}
   progressIdentity=user.uid;
   profileLoadPromise=(async()=>{
   await initializeExpansion();
   if(disposed||auth.currentUser?.uid!==user.uid)return;
-  connectForgeProgress();
-  try{forgeProfile=await progression.loadProfile();}
-  catch(error){expansionUI.notify(FACTION_FORGE_CONFIG.progressionApiUrl?error.message:progression.connectionStatus);}
+  try{
+    const account=FACTION_FORGE_CONFIG.progressionApiUrl?null:await selectSoloAccount({auth,db,api:{doc,runTransaction},username,troops:TROOPS});
+    if(disposed||auth.currentUser?.uid!==user.uid||progressIdentity!==user.uid)return;
+    connectForgeProgress(account);
+    const connected=progression,loaded=await connected.loadProfile();
+    if(connected!==progression||auth.currentUser?.uid!==user.uid)return;
+    forgeProfile=loaded;profileConnectionFailed=false;
+  }catch(error){
+    if(auth.currentUser?.uid!==user.uid||progressIdentity!==user.uid)return;
+    authConnectionStatus=error.code==="permission-denied"?"Firebase save permissions need updating":error.message||"Firebase save unavailable · retry your connection";
+    profileConnectionFailed=true;progression?.dispose();progression=null;progressIdentity=null;profileLoadPromise=null;forgeProfile=defaultForgeProfile();
+  }
   if(disposed||auth.currentUser?.uid!==user.uid)return;
   if(!gameId){
     // Keep solo entry on its menu; an old online session can be resumed explicitly.
@@ -4610,6 +4629,11 @@ async function restoreExpansionProfile(user){
 }
 
 let anonymousSignIn=null,authConnectionStatus="Connecting to Firebase…";
+function clearForgeIdentity(){
+  progression?.dispose();progression=null;progressIdentity=null;profileLoadPromise=null;
+  unsubscribeLobby?.();unsubscribeLobby=null;unsubscribeState?.();unsubscribeState=null;unsubscribeBattle?.();unsubscribeBattle=null;listenersStarted=false;
+  returnToForgeMenu();forgeProfile=defaultForgeProfile();expansionUI?.refresh();
+}
 function connectGuestProfile(){
   if(anonymousSignIn)return;
   startupError=null;updateAssetGate();
@@ -4626,10 +4650,22 @@ onAuthStateChanged(auth, (user) => {
   // The first callback runs after Firebase restores persisted credentials.
   // Creating the fallback earlier can replace a durable account on reload.
   if (!user) {
+    if(progressIdentity)clearForgeIdentity();
     connectGuestProfile();
     return;
   }
   restoreExpansionProfile(user).catch(error=>{if(gameId)showStartupError(error);else{console.error("Forge profile failed",error);expansionUI?.notify(error.message);}});
+});
+
+// A login/logout in the hub must never keep the previous account's open game.
+window.addEventListener("storage",event=>{
+  if(event.key!=="gh.username"||event.newValue===event.oldValue)return;
+  progression?.dispose();progression=null;resetActiveRuntime();
+  const target=new URL(location.href);
+  if(event.newValue?.trim())target.searchParams.set("username",event.newValue.trim());
+  else target.searchParams.delete("username");
+  target.searchParams.set("mode","solo");target.searchParams.delete("gameId");
+  location.replace(target.href);
 });
 
 const cardInfoModal = $("cardInfoModal");
