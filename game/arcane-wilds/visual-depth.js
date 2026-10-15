@@ -195,41 +195,6 @@
   const baseDrawProp=drawProp;
   drawProp=function(p,biome){baseDrawProp(p,biome);if(biome==='town')drawTownPropAccent(p)};
 
-  const ENEMY_ACCENTS={
-    thorn:new Set(['briarprowler','bloomhexer','rootjuggernaut','thorncolossus']),
-    crystal:new Set(['prismscarab','glassoracle','shardram']),
-    storm:new Set(['stormhound','skyraider','galeweaver','stormcaller']),
-    void:new Set(['duskblade','voidmoth','abyssanchor','voideye','chainwarden']),
-    celestial:new Set(['sunwarden','starcaller','astralknight','mirrormage']),
-    horn:new Set(['marrowboar','charger','drake','executioner'])
-  };
-
-  function enemyAccentKind(type){for(const [k,set] of Object.entries(ENEMY_ACCENTS))if(set.has(type))return k;return null}
-  function drawEnemyAccent(e){
-    if(perfLow()&&!e.boss)return;
-    const kind=enemyAccentKind(e.type);if(!kind&&!e.boss)return;
-    const s=worldToScreen(e.x,e.y),r=Math.max(9,(e.r||.35)*29),c=e.proj||e.color||'#d8e7ff',bob=Math.sin(elapsed*3+(e.x+e.y))*1.2;
-    ctx.save();ctx.translate(s.x,s.y-r*.72+bob);ctx.strokeStyle=colorAlpha(c,.62);ctx.fillStyle=colorAlpha(c,.30);ctx.lineWidth=1.5;ctx.lineCap='round';
-    if(kind==='thorn'){
-      for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.35,0);ctx.lineTo(i*r*.55+(i===0?3:0),-r*.55);ctx.lineTo(i*r*.18,-r*.28);ctx.stroke()}
-    }else if(kind==='crystal'){
-      for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.4,0);ctx.lineTo(i*r*.28,-r*(.55+Math.abs(i)*.1));ctx.lineTo(i*r*.08,-r*.15);ctx.closePath();ctx.fill()}
-    }else if(kind==='storm'){
-      ctx.beginPath();ctx.moveTo(-r*.7,-r*.1);ctx.lineTo(-r*.15,-r*.28);ctx.lineTo(-r*.35,r*.05);ctx.lineTo(r*.55,-r*.15);ctx.stroke();
-    }else if(kind==='void'){
-      ctx.setLineDash([3,3]);ctx.beginPath();ctx.ellipse(0,-r*.18,r*.72,r*.22,0,0,TAU);ctx.stroke();ctx.setLineDash([]);
-    }else if(kind==='celestial'){
-      ctx.beginPath();ctx.arc(0,-r*.25,r*.55,Math.PI,TAU);ctx.stroke();ctx.beginPath();ctx.moveTo(0,-r*.72);ctx.lineTo(0,-r*.35);ctx.moveTo(-r*.18,-r*.54);ctx.lineTo(r*.18,-r*.54);ctx.stroke();
-    }else if(kind==='horn'){
-      ctx.beginPath();ctx.moveTo(-r*.28,-r*.05);ctx.lineTo(-r*.65,-r*.5);ctx.lineTo(-r*.15,-r*.32);ctx.moveTo(r*.28,-r*.05);ctx.lineTo(r*.65,-r*.5);ctx.lineTo(r*.15,-r*.32);ctx.stroke();
-    }
-    if(e.boss){ctx.strokeStyle=colorAlpha(c,.38);ctx.beginPath();ctx.ellipse(0,-r*.12,r*.9,r*.28,0,0,TAU);ctx.stroke()}
-    ctx.restore();
-  }
-
-  const baseDrawEnemy=drawEnemy;
-  drawEnemy=function(e){baseDrawEnemy(e);drawEnemyAccent(e)};
-
   const baseDrawProjectiles=drawProjectiles;
   drawProjectiles=function(){
     if(!perfLow()){

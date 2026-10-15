@@ -67,14 +67,16 @@
     for(const wall of game.enemies.filter(e=>e.type==='regionalCrystal'&&!e.dead)){const p=game.player,dd=dist(p,wall),r=p.r+wall.r;if(dd<r&&p.dodgeTime<=0){const d=norm(p.x-wall.x,p.y-wall.y);p.x=clamp(wall.x+d.x*r,.3,ROOM_W-.3);p.y=clamp(wall.y+d.y*r,.3,ROOM_H-.3);}}
   };
   const baseLoad=loadRoom;loadRoom=function(){zones=[];return baseLoad();};
-  const baseDraw=drawEnemy;drawEnemy=function(e){baseDraw(e);if(!e.ai.startsWith('regional_'))return;const s=worldToScreen(e.x,e.y,35);ctx.save();ctx.strokeStyle=e.color;ctx.fillStyle=e.color;ctx.lineWidth=2;
-    if(['regional_shaman','regional_plant','regional_spore'].includes(e.ai)){ctx.beginPath();ctx.ellipse(s.x,s.y,16,7,0,Math.PI,TAU);ctx.fill();}
-    else if(['regional_wasp','regional_oracle'].includes(e.ai)){for(const side of [-1,1]){ctx.beginPath();ctx.ellipse(s.x+side*13,s.y,12,4,side*Math.sin(elapsed*10),0,TAU);ctx.stroke();}}
-    else if(e.type==='mossbackGuardian'||e.type==='eclipseKnight'){ctx.strokeRect(s.x-12,s.y,24,24);if(e.regionalShadow){ctx.fillStyle='#bc86ef';ctx.fillRect(s.x-10,s.y+2,20,20);}}
-    else {ctx.beginPath();ctx.moveTo(s.x-10,s.y);ctx.lineTo(s.x,s.y-10);ctx.lineTo(s.x+10,s.y);ctx.stroke();}
-    if(e.state==='burrow'){ctx.globalAlpha=.6;ctx.beginPath();ctx.ellipse(s.x,s.y+35,18,5,0,0,TAU);ctx.stroke();}
-    if(e.state==='regionalWind'&&e.regionalAim){const at=worldToScreen(e.regionalAim.x,e.regionalAim.y);ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(at.x,at.y);ctx.stroke();}
-    ctx.restore();};
-  const baseFront=drawEffectsFront;drawEffectsFront=function(){baseFront();ctx.save();for(const z of zones){const s=worldToScreen(z.x,z.y);ctx.strokeStyle=z.color;ctx.globalAlpha=z.delay>0?.4:.8;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(s.x,s.y,z.r*TILE_W*.55,z.r*TILE_H*.55,0,0,TAU);ctx.stroke();}ctx.restore();};
+  const baseFront=drawEffectsFront;drawEffectsFront=function(){
+    baseFront();ctx.save();
+    for(const z of zones){const s=worldToScreen(z.x,z.y);ctx.strokeStyle=z.color;ctx.globalAlpha=z.delay>0?.4:.8;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(s.x,s.y,z.r*TILE_W*.55,z.r*TILE_H*.55,0,0,TAU);ctx.stroke();}
+    // Windup aim belongs to the attack effects, rather than the enemy's sprite.
+    for(const e of game.enemies){
+      if(e.dead||e.state!=='regionalWind'||!e.regionalAim)continue;
+      const s=worldToScreen(e.x,e.y,35),at=worldToScreen(e.regionalAim.x,e.regionalAim.y);
+      ctx.globalAlpha=1;ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(at.x,at.y);ctx.stroke();
+    }
+    ctx.restore();
+  };
   window.AWRegionalEnemies={ids:rows.map(r=>r[0]),zones:()=>zones,addZone};
 })();
