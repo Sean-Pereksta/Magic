@@ -20,7 +20,7 @@
     const b=button(parent,'',()=>select(e.key),'aw-inv-slot');b.dataset.item=e.key;b.style.setProperty('--rarity',rarityColors[e.rarity]||'#87989d');
     b.title=`${e.name} · ${e.rarity||e.type}${e.item?.prefixKey?' · Prefix: '+(e.item.prefixName||e.item.prefixKey):''}${e.item?.suffixKey?' · Suffix: '+(e.item.suffixName||e.item.suffixKey):''}`;
     b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(selected===e.key));
-    b.append(el('span',e.icon,'aw-inv-icon'),el('span',e.name,'aw-inv-name'),el('span',caption||types[e.type]||'','aw-inv-type'));
+    b.append(e.item&&window.AWArtUI?AWArtUI.preview(e.item,44,'aw-inv-icon'):el('span',e.icon,'aw-inv-icon'),el('span',e.name,'aw-inv-name'),el('span',caption||types[e.type]||'','aw-inv-type'));
     if(e.count>1)b.append(el('span',String(e.count),'aw-inv-count'));
     if(e.item?.prefixKey){const p=el('span','✨','aw-inv-prefix');p.title='Prefix: '+(e.item.prefixText||e.item.prefixKey);b.append(p);}
     if(e.item?.suffixKey){const s=el('span','🔮','aw-inv-suffix');s.title='Suffix: '+(e.item.suffixText||e.item.suffixKey);b.append(s);}
@@ -61,6 +61,7 @@
     if(!e){box.append(el('h3','Your backpack'),el('p','Pickups stay here until you choose to equip them. Materials and home supplies show their current shared quantities.'),el('p','✨ Prefix · 🔮 Suffix. Inspect an item to read the exact effects.'));return;}
     box.append(el('h3',e.icon+' '+e.name),el('p',`${e.rarity||capitalize(e.type)}${e.count>1?' · '+e.count+' owned':''}`));
     const item=e.item;
+    if(item&&window.AWArtUI)box.append(AWArtUI.preview(item,120));
     if(item){
       const slot=I.equippedSlot(item.id);box.append(el('p',slot?'Equipped in '+(slot.startsWith('trinket')?'Trinket '+(Number(slot.slice(7))+1):capitalize(slot)):'In backpack'));
       if(item.desc)box.append(el('p',item.desc));
