@@ -41,7 +41,7 @@ class ApeTactics{
   const g=this.g,candidates=g.humanGrid.nearest(a.x,a.y,range,12).map(t=>({t,kind:'human'}));
   if(a.state==='charge'){
    for(const t of g.vehicleGrid.nearest(a.x,a.y,range,4))candidates.push({t,kind:'vehicle'});
-   const objects=g.world.getObjects(a.x,a.y,range).filter(t=>!t.dead&&t.hp>0&&!['tree','rock','berry','apeBuilding'].includes(t.type)&&!(t.fortification&&t.team==='ape'));
+   const objects=g.world.getObjects(a.x,a.y,range).filter(t=>!t.dead&&t.hp>0&&!t.civilian&&t.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(t.type)&&!(t.fortification&&t.team==='ape'));
    objects.sort((x,y)=>g.objectDistance(a,x)-g.objectDistance(a,y));
    for(const t of objects.slice(0,12))candidates.push({t,kind:'object'});
   }
@@ -121,7 +121,16 @@ class ApeTactics{
   if(a.state==='free'&&(!target||d2(a,target)>30**2))return false;
   if(a.state==='charge'||target){
    const wall=g.world.objects.get(a.onWallId);
-   const barrier=wall&&!wall.dead?wall:g.world.getObjects(a.x,a.y,110).filter(o=>!o.dead&&o.hp>0&&o.solid&&(o.faction==='human'||['humanBarricade','heavyBarricade','fieldBarricade'].includes(o.type))&&g.objectDistance(a,o)<32).sort((x,y)=>g.objectDistance(a,x)-g.objectDistance(a,y))[0];
+   let barrier=wall&&!wall.dead?wall:null;
+   if(!barrier){
+    let scan=a._tacticBarrier;
+    if(!scan||g.time>=scan.until||scan.revision!==g.world.navRevision||Math.hypot(a.x-scan.x,a.y-scan.y)>18){
+     let found=null,nearest=32;
+     for(const o of g.world.getObjects(a.x,a.y,110)){if(o.dead||o.hp<=0||!o.solid||!(o.faction==='human'||['humanBarricade','heavyBarricade','fieldBarricade'].includes(o.type)))continue;const distance=g.objectDistance(a,o);if(distance<nearest){nearest=distance;found=o}}
+     scan=a._tacticBarrier={object:found,x:a.x,y:a.y,until:g.time+.12,revision:g.world.navRevision};
+    }
+    if(scan.object&&!scan.object.dead&&scan.object.hp>0&&g.objectDistance(a,scan.object)<32)barrier=scan.object;
+   }
    if(barrier){
     const goal=target&&target.id!==barrier.id?target:a.target||g.king;
     if(a.state==='charge'&&this.tryClimb(a,goal.x-a.x,goal.y-a.y,barrier))return true;
@@ -130,7 +139,7 @@ class ApeTactics{
   }
   if(!target)return false;
   const kind=a._tacticTarget.kind,distance=kind==='object'?g.objectDistance(a,target):Math.sqrt(d2(a,target)),reach=kind==='human'?30:kind==='vehicle'?40:28;
-  if(distance>reach||kind!=='object'&&!g.world.lineClear(a.x,a.y,target.x,target.y))g.move(a,target.x-a.x,target.y-a.y,a.speed*(a.state==='charge'?1.35:1.12),dt);
+  if(distance>reach||kind!=='object'&&!g.world.lineClear(a.x,a.y,target.x,target.y)){const approach=g.navigation.approachTarget(a,target,reach);g.move(a,approach.x-a.x,approach.y-a.y,a.speed*(a.state==='charge'?1.35:1.12),dt)}
   else if(a.attackCD<=0){
    a.attackCD=kind==='human'?.8:.7;g.animateAttack(a,target,kind==='object'?'overhead':kind==='vehicle'?'slam':undefined);
    const damage=g.apeDamage(a,kind==='human'?18+Math.min(12,g.apeGrid.near(target.x,target.y,48).length*2):kind==='vehicle'?24:18);

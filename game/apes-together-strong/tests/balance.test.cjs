@@ -31,7 +31,7 @@ test('births respect the shared ape population limit',()=>{
  const {c}=game(),{g,s}=colony(c.MAX_APE_POPULATION-2);s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION-1);g.refreshSettlements();g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);g.refreshSettlements();s.birthTimer=300;g.colonies.tick(s);assert.equal(g.population,c.MAX_APE_POPULATION);assert.equal(g.stats.born,2);assert.ok(s.birthTimer<=30);
 });
 test('military facilities hold substantially more captives with matching cage totals',()=>{
- const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260]};
+ const {c}=game(),w=new c.ATSWorld('balance-sites');w.ensure(0,0,1400);w.ensure(6400,6400,4200);const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260],logging:[5,12],communications:[4,9],town:[12,24],mobileCamp:[3,8]};
  assert.equal(w.sites.get('opening-rescue').count,2);assert.equal(w.sites.get('opening-hunters').count,6);
  let military=0;for(const s of w.sites.values()){if(s.tutorial)continue;const [lo,hi]=ranges[s.type];assert.ok(s.count>=lo&&s.count<=hi);const cages=s.objects.map(id=>w.objects.get(id)).filter(o=>o.type==='cage');assert.equal(cages.reduce((sum,o)=>sum+o.count,0),s.count);if(s.tier>=3)military++}assert.ok(military>0);
 });

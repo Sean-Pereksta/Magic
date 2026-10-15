@@ -10,7 +10,7 @@ class Heap {
 class Navigation {
  constructor(world){
  this.world=world;this.cell=28;this.walkCache=new Map();this.segmentCache=new Map();this.routes=new Map();this.pending=new Map();this.cohorts=new Map();this.corridorAt=new Map();this.revision=-1;this.worldRevision=-1;this.localVersions=new Map();this.chunkRevision=-1;this.time=0;
- this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0,crossings:0,recoveries:0};
+ this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0,crossings:0,recoveries:0,separationFastHits:0,formationContractions:0};
  }
  beginFrame(time,options={}){
  this.time=time;
@@ -76,14 +76,29 @@ class Navigation {
  }
  beginSeparation(){this.separationCells||(this.separationCells=new Map());this.separationCells.clear()}
  separationClear(a,b){
- // Every separation pair lies within 38 units. Gather the live collision
- // candidates once per small crowd cell; exact segment and water tests below
- // still run for every pair. This does not cache a pass/fail geometry result.
+ // Gather geometry and prove dry, streamed terrain once per crowd cell.
+ // Objects remain live references: destroying a wall changes the next pair.
+ // A pair may be 42 units apart, so the envelope covers the full 48-unit query.
  if(!this.world._queryCollision)return this.clearSegment(a.x,a.y,b.x,b.y,0);
  const cells=this.separationCells||(this.separationCells=new Map()),x=Math.floor(a.x/64),y=Math.floor(a.y/64),key=x+','+y;
- let objects=cells.get(key);
- if(!objects){objects=[];const minX=x*64-38,minY=y*64-38,maxX=(x+1)*64+38,maxY=(y+1)*64+38;this.world._queryCollision(minX,minY,maxX,maxY,o=>{if(!o.solid||o.dead||o.hp<=0)return;const radius=o._collision?.radius??o.moveRadius??o.r??15,hx=o.collision==='rect'?(o._collision?.hx??(o.w||o.r*2)/2):radius,hy=o.collision==='rect'?(o._collision?.hy??(o.h||o.r*2)/2):radius;if(o.x+hx>=minX&&o.x-hx<=maxX&&o.y+hy>=minY&&o.y-hy<=maxY)objects.push(o)});cells.set(key,objects)}
- return this.clearSegment(a.x,a.y,b.x,b.y,0,'',undefined,objects);
+ let cell=cells.get(key);
+ if(!cell){const objects=[],minX=x*64-48,minY=y*64-48,maxX=(x+1)*64+48,maxY=(y+1)*64+48;this.world._queryCollision(minX,minY,maxX,maxY,o=>{if(!o.solid||o.dead||o.hp<=0)return;const radius=o._collision?.radius??o.moveRadius??o.r??15,hx=o.collision==='rect'?(o._collision?.hx??(o.w||o.r*2)/2):radius,hy=o.collision==='rect'?(o._collision?.hy??(o.h||o.r*2)/2):radius;if(o.x+hx>=minX&&o.x-hx<=maxX&&o.y+hy>=minY&&o.y-hy<=maxY)objects.push(o)});cell={objects,ready:!this.world.boundsReady||this.world.boundsReady(minX,minY,maxX,maxY),dry:!!this.world.waterFreeBounds?.(minX,minY,maxX,maxY)};cells.set(key,cell)}
+ if(!cell.ready)return false;
+ // Most forest crowd pairs need no terrain sampling, allocation or generic
+ // swept-circle work. Keep exact live intersections for trunks and thin walls.
+ if(cell.dry){
+ const dx=b.x-a.x,dy=b.y-a.y,length2=dx*dx+dy*dy;
+ for(const o of cell.objects){if(!o.solid||o.dead||o.hp<=0)continue;
+ if(o.collision==='rect'){
+ const hx=o._collision?.hx??(o.w||o.r*2)/2,hy=o._collision?.hy??(o.h||o.r*2)/2;let lo=0,hi=1;
+ if(Math.abs(dx)<1e-9){if(a.x<o.x-hx||a.x>o.x+hx)continue}else{let t1=(o.x-hx-a.x)/dx,t2=(o.x+hx-a.x)/dx;if(t1>t2){const swap=t1;t1=t2;t2=swap}lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)continue}
+ if(Math.abs(dy)<1e-9){if(a.y<o.y-hy||a.y>o.y+hy)continue}else{let t1=(o.y-hy-a.y)/dy,t2=(o.y+hy-a.y)/dy;if(t1>t2){const swap=t1;t1=t2;t2=swap}lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)continue}
+ if(hi>=0&&lo<=1)return false;
+ }else{const r=o._collision?.radius??o.moveRadius??o.r??15,t=length2?Math.max(0,Math.min(1,((o.x-a.x)*dx+(o.y-a.y)*dy)/length2)):0;if((a.x+dx*t-o.x)**2+(a.y+dy*t-o.y)**2<r*r)return false}
+ }
+ this.stats.separationFastHits++;return true;
+ }
+ return this.clearSegment(a.x,a.y,b.x,b.y,0,'',undefined,cell.objects);
  }
  clearSegment(ax,ay,bx,by,r=10,profile='',ignoreId,objects){
  profile=this.profile(profile);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
@@ -201,9 +216,10 @@ class Navigation {
  // A blocked group earns one recovery corridor per small spatial cell. This
  // includes distant stragglers, so a thousand followers never create a
  // thousand independent A* jobs after their shared route becomes obstructed.
- const id=['recovery',Math.floor(from.x/84),Math.floor(from.y/84),Math.floor(to.x/160),Math.floor(to.y/160),r,profile].join(':');
+ const id=this.recoveryId(from,to,r,profile);
  const cohort=this.setCohortRoute(id,from,to,r,priority,profile);return cohort.path.length?cohort.path:null;
  }
+ recoveryId(from,to,r,profile){const cell=from._nav?.recoveryCell||84;return ['recovery',cell,Math.floor(from.x/cell),Math.floor(from.y/cell),Math.floor(to.x/160),Math.floor(to.y/160),r,profile].join(':')}
  _cohortPoint(a,target,r,nav,cohortId=a.navCohort){
  const cohort=this.cohorts.get(cohortId);if(!cohort||!cohort.path.length||cohort.path._navInvalid||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
  const path=cohort.path;
@@ -221,14 +237,41 @@ class Navigation {
  return null;
  }
  resetActor(a){
- for(const key of ['_nav','_navJourney','_navCrossing','_navCrossingAt','_navAvoidCrossings','_abstractPath','_abstractRequest','_abstractRetry','_abstractIndex','navCohort'])delete a[key];
+ for(const key of ['_nav','_navJourney','_navCrossing','_navCrossingAt','_navAvoidCrossings','_followSlot','_targetApproach','_abstractPath','_abstractRequest','_abstractRetry','_abstractIndex','navCohort'])delete a[key];
  }
  followTarget(a,king,x,y){
  const world=this.world,region=world.landRegionAt?.(king.x,king.y);
+ // A straggler first joins the leader's shared route. Evaluating a distant
+ // decorative slot can send it around a second obstacle before it regroups.
+ if(Math.hypot(a.x-king.x,a.y-king.y)>Math.max(300,Math.hypot(x-king.x,y-king.y)+100))return {x:king.x,y:king.y};
  // The formation may widen across a shore. Its decorative spacing must not
  // order a follower back across the river after it has reached its king.
  if(world.waterBlocked?.(x,y,a.radius||10)||region!=null&&world.landRegionAt(x,y)!==region)return {x:king.x,y:king.y};
- return {x,y};
+ const r=a.radius||10,old=a._followSlot;
+ if(old&&old.revision===this.worldRevision&&this.time<old.until&&Math.hypot(king.x-old.kingX,king.y-old.kingY)<28&&Math.hypot(x-old.x,y-old.y)<24)return {x:king.x+(x-king.x)*old.scale,y:king.y+(y-king.y)*old.scale};
+ // Formation spacing is a preference. Contract it in a narrow entrance or
+ // beside a trunk, instead of ordering apes into scenery or beyond a wall.
+ let scale=0;
+ for(const factor of [1,.75,.5,.25,0]){const px=king.x+(x-king.x)*factor,py=king.y+(y-king.y)*factor;if(!this.blocked(px,py,r,'ape')&&this.clearSegment(king.x,king.y,px,py,r,'ape')){scale=factor;break}}
+ a._followSlot={x,y,kingX:king.x,kingY:king.y,scale,revision:this.worldRevision,until:this.time+.35};if(scale<1)this.stats.formationContractions++;
+ return {x:king.x+(x-king.x)*scale,y:king.y+(y-king.y)*scale};
+ }
+ approachTarget(a,target,reach=28,r=a.radius||10){
+ const old=a._targetApproach;
+ if(old&&old.id===target.id&&old.revision===this.worldRevision&&this.time<old.until&&Math.hypot(target.x-old.x,target.y-old.y)<18)return old.point;
+ const bearing=Math.atan2(a.y-target.y,a.x-target.x),lane=((ATSUtil.hash(a.id||'ape')%9)-4)*.13,gap=Math.min(reach-5,r+7);let best=null;
+ // Stable near-side lanes spread attackers across accessible frontage. A
+ // local obstruction can choose a different side without changing the target.
+ for(const turn of [lane,0,.65,-.65,1.3,-1.3,Math.PI]){
+ const angle=bearing+turn,dx=Math.cos(angle),dy=Math.sin(angle);let extent=target._collision?.radius??target.moveRadius??target.r??(reach>30?22:9);
+ if(target.collision==='rect'){const hx=target._collision?.hx??(target.w||target.r*2)/2,hy=target._collision?.hy??(target.h||target.r*2)/2;extent=Math.min(Math.abs(dx)>.0001?hx/Math.abs(dx):Infinity,Math.abs(dy)>.0001?hy/Math.abs(dy):Infinity)}
+ // Mobile combat retains its existing center-distance melee threshold. Large
+ // vehicle render radii must not leave a chosen slot beyond that threshold.
+ const distance=this.world.objects?.get(target.id)===target?extent+gap:Math.min(reach-2,extent+gap),point={x:target.x+dx*distance,y:target.y+dy*distance};
+ if(this.blocked(point.x,point.y,r,'ape'))continue;if(!best)best=point;
+ if(this.clearSegment(a.x,a.y,point.x,point.y,r,'ape')){best=point;break}
+ }
+ const point=best||{x:target.x,y:target.y};a._targetApproach={id:target.id,x:target.x,y:target.y,revision:this.worldRevision,until:this.time+.45,point};return point;
  }
  strategicTarget(a,target,r=10,profile=this.profile(a)){
  const world=this.world,ground=profile==='ape'||profile==='human'||this.isVehicle(profile);
@@ -282,14 +325,18 @@ class Navigation {
  const goalMoved=Math.hypot(target.x-nav.goal.x,target.y-nav.goal.y)>90;
  if(nav.revision!==this.revision||nav.profile!==profile){nav.path=[];nav.revision=this.revision;nav.directAt=-1;nav.profile=profile}
  if(this.time>=nav.directAt||!nav.directGoal||Math.hypot(target.x-nav.directGoal.x,target.y-nav.directGoal.y)>35){nav.direct=this.preferredSegment(a.x,a.y,target.x,target.y,r,profile);nav.directAt=this.time+(a._simTier===2?.65:a._simTier===1?.28:.18);nav.directGoal={...target}}
- if(nav.direct){nav.path=[];nav.goal={...target};nav.revision=this.revision;return target}
+ if(nav.direct){nav.path=[];nav.goal={...target};nav.revision=this.revision;nav.recoveryCell=0;nav.recoveryMiss=0;return target}
  if(!this.isVehicle(profile)&&a.navCohort&&nav.stuck<1.4){const point=this._cohortPoint(a,target,r,nav);if(point){nav.corridorMiss=0;return point}nav.corridorMiss=(nav.corridorMiss||0)+dt}
  const priority=a._navPriority??a.navPriority??(a.id==='king'?0:a.state==='combat'||a.state==='charge'?1:nav.stuck>.8?2:a.id?.startsWith('ape')?3:a.id?.startsWith('human')?4:5);
  const waitForShared=!this.isVehicle(profile)&&a.navCohort&&this.cohorts.has(a.navCohort)&&nav.stuck<1.4&&(nav.corridorMiss||0)<.8;
  if(!this.isVehicle(profile)&&a.id?.startsWith('ape')&&!waitForShared){
- const recoveryId=['recovery',Math.floor(a.x/84),Math.floor(a.y/84),Math.floor(target.x/160),Math.floor(target.y/160),r,profile].join(':');
- this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point){nav.unreachable=null;return point}
+ const recoveryId=this.recoveryId(a,target,r,profile);
+ this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point){nav.unreachable=null;nav.recoveryMiss=0;return point}
  const cohort=this.cohorts.get(recoveryId);
+ // Nearby actors can still stand on different sides of a boulder. Reusing a
+ // corridor whose start cannot be joined must not strand that minority forever.
+ // Refine only this blocked local cohort, retaining shared goals and job caps.
+ if(cohort?.path.length&&!cohort.path._navInvalid){nav.recoveryMiss=(nav.recoveryMiss||0)+dt;if(nav.recoveryMiss>.45){nav.recoveryCell=Math.max(21,(nav.recoveryCell||84)/2);nav.recoveryMiss=0;nav.sharedAt=-1}}
  if(cohort?.failedUntil>this.time&&cohort.revision===this.revision){
  nav.unreachable={x:target.x,y:target.y,until:cohort.failedUntil,revision:this.revision};
  if(a._navCrossing?.phase===0){(a._navAvoidCrossings||(a._navAvoidCrossings={}))[a._navCrossing.id]=this.time+12;a._navCrossing=null;a._navCrossingAt=0;a._navJourney=null}

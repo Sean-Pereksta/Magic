@@ -1,5 +1,12 @@
 # Apes Together Strong
 
+## Command and connected-world upgrade
+
+Physical command standards, order-driven ape poses, obstacle-safe formations,
+faster crowd separation, four new facility blueprints and connected patrol/rescue
+operations extend the existing campaign. See [COMMAND-WORLD-UPGRADE.md](COMMAND-WORLD-UPGRADE.md)
+for artwork budgets, compatibility, reproducible tests and measured performance limits.
+
 ## Tribal Kings and equipment
 
 Each tribe now has independently illustrated King body/action sheets and five

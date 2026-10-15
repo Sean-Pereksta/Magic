@@ -54,7 +54,9 @@
   const SITE_LABELS = { transport: 'Transport Cage', hunter: 'Hunter Camp', research: 'Research House',
     checkpoint: 'Road Checkpoint', prison: 'Prison Compound', detention: 'Detention Center',
     experimental: 'Experimental Facility', forwardBase: 'Forward Operating Base',
-    armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base' };
+    armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base',
+    logging: 'Logging Operation', communications: 'Communications Station',
+    town: 'Frontier Town', mobileCamp: 'Expedition Camp' };
   const MILITARY_TYPES = new Set(['forwardBase', 'armoredDepot', 'regionalCommand']);
   const WALL_HEIGHT = [0, 28, 45, 68, 95], WALL_HP = [0, 700, 2100, 3700, 5400];
   const VEHICLE_CLEARANCE = { jeep: 21, armored: 23, command: 22, truck: 24, apc: 25, ifv: 27, tank: 31 };
@@ -71,6 +73,9 @@
       this.objects = new Map();
       this.discovered = new Set();
       this.intel = new Map();
+      this.discoveries = new Map();
+      this._regionalFacilities = new Map();
+      this.humanActivity = { version: 1, nextAt: 120, serial: 0, operations: [] };
       this._terrainCache = new Map();
       this._crossingCache = new Map();
       this._sitePlanCache = new Map();
@@ -762,13 +767,14 @@
       if (!site?.military || site.cleared || !site.campaignReserve) return false;
       const reserve = site.campaignReserve;
       if (time < (site.nextMobilizationAt ?? 90)) return false;
-      site.nextMobilizationAt = time + 90;
+      const support = this.regionalSupport(site);
+      site.nextMobilizationAt = time + 90 / support.coordination;
       const capacity = this.militaryCapacity(site);
       let rebuilt = false;
       if (!capacity.barracks) reserve.personnel = 0;
       if (!capacity.depot || !capacity.fuel) { reserve.vehicles = {};reserve.armor = 0; }
       if (capacity.barracks && reserve.personnel > 0) {
-        const amount = Math.min(18 + site.tier * 3, reserve.personnel, Math.max(0, (site.initialStrength || 100) - site.strength));
+        const amount = Math.min(Math.floor((18 + site.tier * 3) * support.logistics), reserve.personnel, Math.max(0, (site.initialStrength || 100) - site.strength));
         site.strength += amount;reserve.personnel -= amount;rebuilt = amount > 0;
       }
       if (capacity.depot && capacity.fuel) for (const [kind, count] of Object.entries(reserve.vehicles || {})) {
@@ -780,6 +786,40 @@
         break;
       }
       return rebuilt;
+    }
+
+    // Regional infrastructure changes response timing and finite resupply, not
+    // remote unit positions. Local chunk queries keep this independent of the
+    // total explored world, and destroyed facilities retain their influence.
+    regionalSupport(site) {
+      let cache = site._regionalSupport;
+      if (!cache || cache.revision !== this.chunkRevision) {
+        const nearby = this.getSites(site.x, site.y, 2400);
+        const cx = Math.floor(site.x / 2400), cy = Math.floor(site.y / 2400);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+          for (const candidate of this._regionalFacilities.get((cx + dx) + ',' + (cy + dy)) || [])
+            if (dist2(candidate, site) <= 2400 ** 2 && !nearby.includes(candidate)) nearby.push(candidate);
+        if (!nearby.includes(site) && ['communications', 'logging'].includes(site.type)) nearby.push(site);
+        cache = { revision: this.chunkRevision, communications: null, logging: null };
+        for (const candidate of nearby) {
+          if (candidate.type === 'communications' && (!cache.communications || dist2(candidate, site) < dist2(cache.communications, site))) cache.communications = candidate;
+          if (candidate.type === 'logging' && (!cache.logging || dist2(candidate, site) < dist2(cache.logging, site))) cache.logging = candidate;
+        }
+        Object.defineProperty(site, '_regionalSupport', { value: cache, writable: true, configurable: true });
+      }
+      const { communications, logging } = cache;
+      const online = (facility, type) => facility && !facility.cleared && !facility[type + 'Down']
+        && (facility.objects || []).some(id => { const o = this.objects.get(id);return o?.type === type && !o.dead && o.hp > 0; });
+      return { coordination: communications && !online(communications, 'radio') ? .45 : 1,
+        logistics: logging && !online(logging, 'depot') ? .55 : 1,
+        communicationsId: communications?.id || null, loggingId: logging?.id || null };
+    }
+
+    _indexRegionalSite(site) {
+      if (!['communications', 'logging'].includes(site.type)) return;
+      const key = Math.floor(site.x / 2400) + ',' + Math.floor(site.y / 2400);
+      if (!this._regionalFacilities.has(key)) this._regionalFacilities.set(key, new Set());
+      this._regionalFacilities.get(key).add(site);
     }
 
     militaryCapacity(site) {
@@ -807,8 +847,9 @@
       const depot = !site.depotDown && site.depotOnline !== false && online('depot', (site.tier || 0) >= 3);
       const barracks = !site.barracksDown && site.barracksOnline !== false && online('barracks', (site.tier || 0) >= 2);
       const fuel = !site.fuelDown && site.fuelOnline !== false && online('fuel', (site.tier || 0) >= 3);
+      const regional = this.regionalSupport(site);
       return { inventory: site.vehicleInventory, vehicleInventory: site.vehicleInventory, armorCapacity: Math.max(0, site.armorCapacity),
-        radio, depot, barracks, fuel, coordination: radio ? 1 : .3,
+        radio, depot, barracks, fuel, regional, coordination: (radio ? 1 : .3) * regional.coordination,
         armorFactor: depot ? 1 : .15, infantryFactor: barracks ? 1 : .3,
         fuelFactor: fuel ? 1 : .25 };
     }
@@ -881,15 +922,29 @@
               type = tier === 3 ? 'forwardBase' : tier === 4 ? militaryRoll < .55 ? 'forwardBase' : 'armoredDepot'
                 : militaryRoll < .13 ? 'regionalCommand' : militaryRoll < .65 ? 'armoredDepot' : 'forwardBase';
             }
+            // Small installations diversify travel between the existing prison
+            // and military hubs. They use their own open blueprints, not a
+            // prison perimeter with a different label.
+            if (!MILITARY_TYPES.has(type)) {
+              const encounter = r();
+              if (tier === 1 && d > 1200 && encounter < .23) type = 'logging';
+              else if (tier >= 2 && encounter < .18) type = 'communications';
+              else if (tier >= 2 && encounter < .34) type = 'logging';
+              else if (tier >= 2 && encounter < .46) type = 'mobileCamp';
+              else if (tier >= 3 && encounter < .64) type = 'town';
+            }
             const counts = { transport: [2, 4], hunter: [4, 7], research: [8, 14], checkpoint: [8, 16],
               prison: [18, 30], detention: [42, 72], experimental: [80, 125],
+              logging: [5, 12], communications: [4, 9], town: [12, 24], mobileCamp: [3, 8],
               forwardBase: [32, 60], armoredDepot: [60, 110], regionalCommand: [160, 260] };
             const guards = { transport: [0, 2], hunter: [2, 4], research: [4, 5], checkpoint: [4, 7],
               prison: [6, 10], detention: [10, 14], experimental: [14, 19],
+              logging: [3, 6], communications: [5, 8], town: [9, 15], mobileCamp: [4, 7],
               forwardBase: [30, 50], armoredDepot: [44, 68], regionalCommand: [82, 120] };
             plan = { id: 'site:' + key, x: sx, y: sy, name: choice(r, ADJECTIVES) + ' ' + SITE_LABELS[type],
               type, tier, count: int(r, ...counts[type]), guards: int(r, ...guards[type]),
               radius: type === 'regionalCommand' ? 690 : type === 'armoredDepot' ? 540 : type === 'forwardBase' ? 420
+                : type === 'town' ? 310 : type === 'logging' ? 222 : type === 'communications' ? 215 : type === 'mobileCamp' ? 185
                 : type === 'transport' ? 76 : type === 'hunter' ? 154 : 145 + tier * 20 };
             if (MILITARY_TYPES.has(type)) {
               // A larger perimeter must sit back from both main roads. Choose
@@ -933,7 +988,7 @@
                   && Math.abs(plan.y - major.y) < (major.footprintY || major.radius) + plan.radius + 45) plan = null;
               }
             }
-            if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
+            if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=type==='logging'?'regional timber supply':type==='communications'?'regional communications':type==='town'?'settlement and police garrison':type==='mobileCamp'?'mobile reconnaissance':plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
           }
         }
       }
@@ -1077,6 +1132,11 @@
         return;
       }
 
+      if (['logging', 'communications', 'town', 'mobileCamp'].includes(site.type)) {
+        this._buildHumanFacility(site, r, (type, x, y, extra) => add(type, x, y, { facility: site.type, ...extra }));
+        return;
+      }
+
       if (site.military) {
         this.militaryCapacity(site);
         site.initialStrength = site.strength;
@@ -1139,6 +1199,67 @@
       }
       add('berry', -24, 77, { r: 17, solid: false, height: 15,
         food: 120 + site.tier * 45, count: 120 + site.tier * 45, supply: true });
+    }
+
+    _buildHumanFacility(site, r, add) {
+      const type = site.type, mirrored = site.layout === 1 ? -1 : 1;
+      site.blueprintVersion = 1;
+      site.defenseRadius = site.radius + 180;
+      site.serviceEntrance = { x: site.x, y: site.y - site.radius - 28 };
+      site.patrolPoints = [{ x: site.x, y: site.y + 90 }, { x: site.x, y: site.y - 110 },
+        { x: site.x - 130 * mirrored, y: site.y }, { x: site.x + 130 * mirrored, y: site.y }];
+      // Every blueprint leaves a central access lane at least 64px wide.
+      // Cages are beside those lanes, so rescue never needs a wall bypass.
+      const cage = (x, y, count, extra = {}) => add('cage', x, y,
+        { r: 28, w: 58, h: 48, height: 42, hp: 80 + site.tier * 12, count, prisoners: count, ...extra });
+      const building = (kind, x, y, w, h, extra = {}) => add(kind, x, y,
+        { r: Math.min(w, h) / 2, w, h, height: kind === 'house' ? 58 : 44, collision: 'rect', ...extra });
+      if (type === 'logging') {
+        site.vehicleInventory = { jeep: 1, truck: 2, armored: 0, tank: 0, apc: 0, ifv: 0, command: 0, heli: 0 };
+        building('depot', -112, 70, 86, 62, { loggingEquipment: true, timberStock: true, hp: 260 });
+        building('house', 103, 74, 70, 60, { workShelter: true });
+        add('vehicle', -112, -63, { r: 29, w: 72, h: 40, height: 29, vehicleType: 'truck', parked: true, loggingEquipment: true });
+        cage(91, -68, site.count);
+        add('fuel', -157, -132, { r: 16, w: 28, h: 28, height: 27, explosive: true, blastRadius: 100 });
+        add('alarm', 160, 0, { r: 11, height: 45, alarmRange: 780, lightRange: 120 });
+        for (const y of [-142, 140]) for (const x of [-110, 110]) building('wall', x, y, 74, 14, { wallTier: 1, barricade: true, timberStack: true });
+      } else if (type === 'communications') {
+        site.vehicleInventory = { jeep: 2, truck: 1, command: 1, armored: 0, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        add('radio', -100, -82, { r: 18, height: 142, radioRange: 3200, communicationsHub: true, hp: 220 });
+        building('barracks', 102, -77, 76, 58, { securityStation: true });
+        building('depot', -108, 77, 70, 56, { communicationsEquipment: true });
+        add('fuel', -159, 0, { r: 17, w: 30, h: 30, height: 31, powerGenerator: true });
+        cage(101, 72, site.count, { captiveSpecies: 'orangutan' });
+        for (const x of [-144, 144]) add('tower', x, -135, { r: 16, height: 98, powered: true, lightRange: 510, angle: r() * TAU, sweep: .18 });
+        add('alarm', 157, 0, { r: 11, height: 52, alarmRange: 1700, lightRange: 130 });
+        for (const x of [-79, 79]) building('wall', x, 143, 60, 15, { wallTier: 2, barricade: true });
+      } else if (type === 'town') {
+        site.vehicleInventory = { jeep: 2, truck: 2, armored: 1, command: 1, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        for (const x of [-186, 186]) for (const y of [-160, 145]) building('house', x, y, 87, 72,
+          { civilian: true, combatTarget: false, roofVariant: Math.floor(r() * 3) });
+        building('barracks', 151, 0, 90, 66, { policeStation: true });
+        building('depot', -153, 0, 82, 62, { supplyWarehouse: true });
+        const left = Math.ceil(site.count / 2);cage(-72, -122, left);cage(72, -122, site.count - left);
+        add('radio', 78, 110, { r: 14, height: 90, radioRange: 2000 });
+        add('alarm', -76, 110, { r: 11, height: 51, alarmRange: 1450, lightRange: 140 });
+        add('fuel', -220, 64, { r: 16, w: 28, h: 28, height: 28, explosive: true, blastRadius: 110 });
+        for (const x of [-256, 256]) add('tower', x, 0, { r: 16, height: 92, lightRange: 430, angle: x < 0 ? Math.PI : 0, sweep: .18 });
+      } else {
+        site.mobileOperation = true;
+        site.vehicleInventory = { jeep: 1, truck: 1, command: 0, armored: 0, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        building('house', -85, -65, 62, 48, { tent: true });
+        building('house', 85, 65, 62, 48, { tent: true });
+        add('vehicle', -88, 69, { r: 28, w: 66, h: 38, height: 27, vehicleType: 'truck', parked: true });
+        cage(85, -65, site.count);
+        add('radio', -132, 0, { r: 12, height: 58, radioRange: 1100, portable: true });
+        add('alarm', 132, 0, { r: 10, height: 35, alarmRange: 650, lightRange: 100 });
+      }
+      site.armorCapacity = 0;
+      add('berry', 0, 68, { r: 14, solid: false, height: 13, supply: true,
+        food: type === 'town' ? 220 : 90, count: type === 'town' ? 220 : 90 });
+      // Access intent is metadata; tests verify collision clearance through the
+      // generated geometry. Defenses are never removed to manufacture a route.
+      site.accessBlueprint = { version: 1, intendedLaneWidth: 64, entrances: 2 };
     }
 
     _buildMilitarySite(site, r, add) {
@@ -1228,6 +1349,41 @@
       return job;
     }
 
+    _buildDiscovery(chunk, nearbySites) {
+      const key = chunk.id, id = 'discovery:' + key;
+      const saved = this.discoveries.get(id);
+      if (!saved && (Math.hypot(chunk.x, chunk.y) < 900 || this._hashAt(chunk.cx, chunk.cy, 48213) > .23)) return;
+      const r = rng(this.seed + ':' + id), x = chunk.x + 310 + r() * 130, y = chunk.y + 300 + r() * 145;
+      if (!saved && (this.waterBlocked(x, y, 120) || this._roadInfo(x, y).road
+        || nearbySites.some(site => dist2(site.x, site.y, x, y) < (site.radius + 180) ** 2))) return;
+      const types = ['cave', 'ruins', 'grove', 'highground', 'lostApes'], type = types[int(r, 0, types.length - 1)];
+      const names = { cave: 'Sheltered Cave', ruins: 'Overgrown Ruins', grove: 'Hidden Fruit Grove', highground: 'Slateback Lookout', lostApes: 'Lost Ape Refuge' };
+      const discovery = saved || { id, x, y, type, name: names[type], known: false, claimed: false, food: type === 'grove' ? 90 : 45, apes: type === 'lostApes' ? 3 : 0 };
+      this.discoveries.set(id, discovery);
+      // Discoveries get a small natural clearing before geometry is committed;
+      // only fresh procedural scenery is eligible, never a gate or building.
+      for (const object of chunk._pendingObjects || []) if (object.id.startsWith('obj:')
+        && ['tree', 'rock'].includes(object.type) && dist2(object.x, object.y, x, y) < 95 ** 2) {
+        object.dead = true;object.solid = false;object.hp = 0;
+      }
+      if (type === 'ruins') this._object(chunk, { id: id + ':ruin', type: 'house', x: x - 75, y: y - 25,
+        r: 27, w: 54, h: 45, height: 27, collision: 'rect', abandoned: true, civilian: true, combatTarget: false, landmark: type });
+      else if (type === 'cave' || type === 'highground') for (const sign of [-1, 1]) this._object(chunk,
+        { id: id + ':rock:' + sign, type: 'rock', x: x + sign * 57, y: y - 25, r: 24, height: type === 'cave' ? 61 : 45, size: 1.1, landmark: type });
+      this._object(chunk, { id: id + ':supplies', type: 'berry', x, y: y + 45, r: 15, height: 14,
+        solid: false, food: discovery.food, count: discovery.food, supply: true, discoveryId: id });
+    }
+
+    discoveriesNear(x, y, radius = 800) {
+      const result = [];
+      for (let cy = Math.floor((y - radius) / CHUNK); cy <= Math.floor((y + radius) / CHUNK); cy++)
+        for (let cx = Math.floor((x - radius) / CHUNK); cx <= Math.floor((x + radius) / CHUNK); cx++) {
+          const discovery = this.discoveries.get('discovery:' + cx + ',' + cy);
+          if (discovery && dist2(discovery.x, discovery.y, x, y) <= radius * radius) result.push(discovery);
+        }
+      return result;
+    }
+
     _advanceChunk(job, count) {
       const { chunk, r, nearbySites, attempts, occupied } = job, { cx, cy } = chunk, key = chunk.id;
       const end = Math.min(attempts, job.index + count);
@@ -1260,8 +1416,9 @@
         this._object(chunk, { id: 'opening-berries', type: 'berry', x: 48, y: 68, r: 16,
           height: 17, solid: false, food: 48, count: 48, variant: 1, size: 1.1 });
       }
+      this._buildDiscovery(chunk, nearbySites);
       for (const object of chunk._pendingObjects) { this.objects.set(object.id, object); this._indexObject(object); }
-      for (const site of chunk._pendingSites) this.sites.set(site.id, site);
+      for (const site of chunk._pendingSites) { this.sites.set(site.id, site);this._indexRegionalSite(site); }
       this.validateCrossings(chunk);
       delete chunk._pendingObjects; delete chunk._pendingSites; delete chunk._changes;
       chunk.generated = true;
@@ -1406,6 +1563,7 @@
       return { version: 1, seed: this.seed, chunks: Array.from(this.chunks.entries()),
         fortificationSerial: this._fortificationSerial || 0,
         sites: Array.from(this.sites.entries()), objects: Array.from(this.objects.entries()),
+        discoveries: Array.from(this.discoveries.entries()), humanActivity: this.humanActivity,
         coldChunks: Array.from(this._coldChunks.entries()),
         discovered: Array.from(this.discovered), intel: Array.from(this.intel.entries()) };
     }
@@ -1417,6 +1575,9 @@
       world._fortificationSerial = data.fortificationSerial || 0;
       world.chunks = new Map(data.chunks || []);
       world.sites = new Map(data.sites || []);
+      for (const site of world.sites.values()) world._indexRegionalSite(site);
+      world.discoveries = new Map(data.discoveries || []);
+      world.humanActivity = data.humanActivity || { version: 1, nextAt: 120, serial: 0, operations: [] };
       world.objects = new Map(data.objects || []);
       world._coldChunks = new Map(data.coldChunks || []);
       const coldSites = new Set();

@@ -10,7 +10,7 @@ const setDirection=(a,order,aim)=>{const d=heading(aim);order.dx=d.x;order.dy=d.
 // Anchor the forward cone to the issued charge, so routing around an obstacle
 // does not change which side of the battlefield the player ordered an attack on.
 const inDirection=(a,t)=>{const o=a.nearestOrder;if(!o?.goal)return true;const x=t.x-(o.goal.x-o.dx*RANGE),y=t.y-(o.goal.y-o.dy*RANGE);return x*o.dx+y*o.dy>=Math.hypot(x,y)*.5-1e-6};
-const hostileObject=o=>!o.dead&&o.hp>0&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
+const hostileObject=o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
 const troopTarget=(t,kind)=>kind==='human'||kind==='vehicle'||kind==='object'&&t.type==='vehicle';
 const LIGHT=new Set(['capuchin','gibbon','chimpanzee']),climbPlans=new WeakMap();
 // A ground-route failure does not prove that a climber cannot reach its target.

@@ -94,7 +94,7 @@ class Forces {
  onDeath(a){
   const g=this.game;if(a.squadId){const squad=this.squads.get(a.squadId);if(squad?.leaderId===a.id){squad.leaderId=null;squad.cohesionLossUntil=g.time+7;for(const id of squad.members){const h=g.humansById.get(id);if(h&&h.hp>0){h.cohesionLossUntil=g.time+7;h.shootTimer=Math.max(h.shootTimer,.8);h.squadOrder='Regroup'}}g.effect('text',a.x,a.y,{text:'LEADER DOWN',life:1.3,color:'#e9bb8a'})}}
   if(a.engineerJob)this.cancelEngineerJob(a,'engineer lost');
-  if(a.id?.startsWith('vehicle')){a.troopsLost=(a.troopsLost||0)+(a.troops||0);a.troops=0;a.dismounting=false;a.cannonTarget=null}
+  if(a.id?.startsWith('vehicle')){this.dropTransportCaptives(a);a.troopsLost=(a.troopsLost||0)+(a.troops||0);a.troops=0;a.dismounting=false;a.cannonTarget=null}
  }
  // Estimate only a visually confirmed concentration. A bounded sample uses the
  // shared LOS budget; blocked forest samples cannot contribute to its estimate.
@@ -209,7 +209,9 @@ class Forces {
   const gap=distance(h,target),range=options.range??this.range(h),point=options.point,squad=this.squads.get(h.squadId),order=options.order||squad?.order;
   const strategic=point&&squad&&order===squad.order&&['Fallback','Retreat','Regroup'].includes(order);
   let destination=null,speed=62,elapsed=dt,step=null;
-  if(h._shieldFlank?.until>g.time&&!strategic){destination=h._shieldFlank;speed=72}
+  const home=g.world.sites.get(h.siteId),guardFar=home&&(home.radius>0||home.defenseRadius>0)&&!h.operationId&&!h.responseAllocated&&!h.raidTarget&&distance(home,target)>(home.defenseRadius||home.radius+180)+180;
+  if(guardFar){if(distance(h,home)>(home.radius||180)*.7){destination=home;speed=72}}
+  else if(h._shieldFlank?.until>g.time&&!strategic){destination=h._shieldFlank;speed=72}
   else if(strategic){if(distance(h,point)>28){destination=point;speed=order==='Fallback'?83:70}}
   else if(gap>=range){destination=point&&distance(point,target)<range*.85?point:target}
   else if(!(h.attackTimer>0)&&!(h.shootTimer<=0&&!['mortar','sniper'].includes(h.role))){
@@ -264,6 +266,10 @@ class Forces {
  }
  updateEngineer(h,dt){
  const g=this.game;if(h.role!=='engineer')return false;
+ if(!h.engineerJob&&!h.constructing&&!h.hitTimer&&!h.operationId&&!g.apeGrid.near(h.x,h.y,180).some(a=>a.hp>0)){
+  if(g.time>=(h._repairThink||0)&&g.performance.think()){h._repairThink=g.time+1;const damaged=g.world.getObjects(h.x,h.y,240).filter(o=>o.siteId===h.siteId&&!o.dead&&o.hp>0&&o.hp<o.maxHp&&['gate','wall','tower','radio','barracks','depot'].includes(o.type));damaged.sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp);h.repairTargetId=damaged[0]?.id}
+  const repair=g.world.objects.get(h.repairTargetId);if(repair&&!repair.dead&&repair.hp>0&&repair.hp<repair.maxHp){const reach=Math.max(repair.r||0,(repair.w||0)/2,(repair.h||0)/2)+27;if(distance(h,repair)>reach)g.move(h,repair.x-h.x,repair.y-h.y,65,dt);else{repair.hp=Math.min(repair.maxHp,repair.hp+12*dt);repair.damageStage=repair.hp/repair.maxHp<.35?'damaged':repair.hp/repair.maxHp<.75?'worn':'intact';if(g.time>=(h._repairAnimationAt||0)){h._repairAnimationAt=g.time+.6;h.animation={kind:'build',start:g.time,duration:.6}}h.moving=false}return true}
+ }
  if(h.engineerJob||h.constructing){
   const job=h.engineerJob||h.constructing;h.engineerJob=h.constructing=job;
   const withdrawing=h.state==='retreat'||['Fallback','Retreat'].includes(h.squadOrder)||['Fallback','Retreat'].includes(this.squads.get(h.squadId)?.order),workRadius=Math.max(job.w||82,job.h||18)/2+32;
@@ -322,6 +328,7 @@ class Forces {
  }
  update(h,dt){
   const g=this.game;if(!h.role)this.assign(h,g.world.sites.get(h.siteId));h.hitTimer=Math.max(0,(h.hitTimer||0)-dt);if(h.engineerJob&&h.hitTimer>0)this.cancelEngineerJob(h);if(h.hitTimer>.19){h.aiming=null;return true}
+  if(this.returnDefender(h,dt))return true;
   if(!h.squadId&&h.state==='combat'&&g.tier>=3){const allies=g.humanGrid.near(h.x,h.y,140).filter(a=>a.hp>0&&!a.squadId&&a.siteId===h.siteId).slice(0,6);if(!allies.includes(h))allies.push(h);this.createSquad(allies,{x:h.lastX,y:h.lastY},{order:'Search',siteId:h.siteId})}
   if(h.role==='medic'&&g.time>h.specialAt&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.5;const ally=g.humanGrid.near(h.x,h.y,105).find(a=>a!==h&&a.hp>0&&a.hp<a.maxHp*.7);if(ally){ally.hp=Math.min(ally.maxHp,ally.hp+18);h.specialAt=g.time+6;h.animation={kind:'treat',start:g.time,duration:.5};g.effect('text',ally.x,ally.y,{text:'+18',color:'#92cdbb',life:1})}}
   if(h.role==='tracker'&&h.state==='patrol'&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.35;const sound=g.noiseGrid.near(h.x,h.y,1900).find(n=>distance(h,n)<n.radius*1.4);if(sound){h.state='investigate';h.lastX=sound.x;h.lastY=sound.y;h.searchTime=20}}
@@ -337,6 +344,18 @@ class Forces {
    }
   }else h.aiming=null;
   return this.updateDoctrine(h,dt);
+ }
+ returnDefender(h,dt){
+  const g=this.game,site=g.world.sites.get(h.siteId);if(!site||!(site.radius>0||site.defenseRadius>0)||site.cleared||h.operationId||h.responseAllocated||h.raidTarget||h.engineerJob||h.prisonGuard||h.onWallId)return false;
+  const limit=site.defenseRadius||site.radius+180,target=h.targetId==='king'?g.king:g.apesById.get(h.targetId);
+  const pursuingOutside=target&&distance(target,site)>limit+180&&distance(h,site)>limit*.72;
+  if(distance(h,site)>limit||pursuingOutside||h.returningToPost){
+   h.returningToPost=true;h.targetId=null;h.aiming=null;h.state='patrol';h.searchTime=0;h.lastX=h.homeX??site.x;h.lastY=h.homeY??site.y;
+   const squad=this.squads.get(h.squadId);if(squad&&!squad.operationId){squad.objective={x:site.x,y:site.y};squad.order='Defend Base';squad.density=0;squad.firingLine=null;squad.observedTargetId=null}
+   if(Math.hypot(h.x-h.lastX,h.y-h.lastY)>35){g.move(h,h.lastX-h.x,h.lastY-h.y,74,dt);return true}
+   h.returningToPost=false;h.reported=false;h.suspicion=Math.min(h.suspicion||0,.3);
+  }
+  return false;
  }
  initVehicle(v,vehicleClass,prepaidTroops){
   const kind=vehicleClass||v.vehicleClass||v.kind||'jeep';v.kind=v.vehicleClass=VEHICLES[kind]?kind:'jeep';const spec=this.vehicleSpec(v);v.navClass=v.vehicleClass;v.label=spec.label;v.radius=spec.radius;v.weight=spec.weight;
@@ -462,8 +481,81 @@ class Forces {
   g.blastBodies?.(h,radius,{power});
   g.colonies.damageNearby?.(h.x,h.y,radius,h.damage||72,h);
  }
+ dropTransportCaptives(v,pending=false){
+  const g=this.game,count=v.captiveCount||0;if(!count||v.captivesDropped)return false;
+  // A transport's own hull clearance is also the rescue cell clearance. No
+  // offset search can move survivors to the far side of a nearby defense.
+  const chunk=g.world.chunks.get(Math.floor(v.x/g.world.chunkSize)+','+Math.floor(v.y/g.world.chunkSize));
+  const id='rescue:'+v.id;if(g.world.sites.has(id)){v.captiveCount=0;v.captivesDropped=true;return true}
+  if(!chunk||g.world.blocked(v.x,v.y,22)){
+   if(!pending){const state=g.world.humanActivity;(state.pendingRescues||(state.pendingRescues=[])).push({id:v.id,x:v.x,y:v.y,captiveCount:count,captiveSpecies:v.captiveSpecies});v.captiveCount=0;v.pendingCaptiveRescue=true}
+   return false;
+  }
+  const site={id,x:v.x,y:v.y,type:'transport',name:'Intercepted Prisoner Transport',tier:0,radius:68,count,guards:0,strength:0,spawned:true,known:true,objects:[],cleared:false};
+  const cell=g.world._object(chunk,{id:id+':cell',type:'cage',x:v.x,y:v.y,r:22,w:44,h:34,height:34,hp:48,siteId:id,count,prisoners:count,transportRescue:true,captiveSpecies:v.captiveSpecies});
+  site.objects.push(cell.id);g.world.sites.set(id,site);chunk.sites.push(id);g.world.navigationChanged(cell);g.world.chunkRevision++;
+  v.captiveCount=0;v.captivesDropped=true;g.events.push({type:'transport-rescue',x:v.x,y:v.y,count,time:g.time});if(g.events.length>30)g.events.shift();
+  if(distance(v,g.king)<1100)g.notify('Prisoner transport stopped — break open the holding cage to rescue '+count+' apes.','gold');return true;
+ }
+ discoverNearby(){
+  const g=this.game;
+  for(const discovery of g.world.discoveriesNear?.(g.king.x,g.king.y,280)||[]){
+   if(!discovery.known){discovery.known=true;g.events.push({type:'discovery',name:discovery.name,x:discovery.x,y:discovery.y,time:g.time});if(g.events.length>30)g.events.shift();g.notify(discovery.name+' discovered'+(discovery.apes?' — a lost tribe is sheltering here.':'. Supplies can be gathered nearby.'),'green')}
+   if(discovery.apes>0&&!discovery.claimed){let joined=0;for(let i=0;i<discovery.apes;i++){const x=discovery.x+(i-1)*28,y=discovery.y+8;if(g.world.actorBlocked(x,y,12,'ape'))continue;const ape=g.makeApe(x,y,'free');if(!ape)break;joined++}discovery.apes-=joined;if(!discovery.apes)discovery.claimed=true;g.stats.freed+=joined}
+  }
+ }
+ dispatchConnectedOperation(sites){
+  const g=this.game,state=g.world.humanActivity;
+  if((state.operations||[]).filter(op=>op.status==='active').length>=2||g.activeOperations?.().length>=g.operationCapacity||g.humans.length+4+g.vehicles.reduce((n,v)=>n+(v.troops||0),0)>g.activeHumanCapacity()||g.forceWeight()+12>g.responseBudget)return false;
+  const sources=sites.filter(s=>s.spawned&&!s.cleared&&!s.alarm&&s.strength>=4&&distance(s,g.king)>360&&distance(s,g.king)<2000);
+  for(const source of sources){
+   const support=g.world.regionalSupport(source);if(support.logistics<1&&state.serial%2===0)continue;
+   const origin=source.approach?.at(-1)||source.entrance;if(!origin||g.world.actorBlocked(origin.x,origin.y,12,'human'))continue;
+   const destination=sites.filter(s=>s!==source&&!s.cleared&&distance(s,source)>500&&distance(s,source)<2300&&s.approach?.length).sort((a,b)=>distance(a,source)-distance(b,source))[0];
+   if(!destination)continue;const target=destination.approach.at(-1);if(g.world.actorBlocked(target.x,target.y,12,'human'))continue;
+   const cell=!source.prison&&(source.objects||[]).map(id=>g.world.objects.get(id)).find(o=>o?.type==='cage'&&!o.dead&&(o.count??o.prisoners??0)>2);
+   const transporting=!!cell&&state.serial%3===1&&!source.depotDown&&!source.fuelDown&&(source.vehicleInventory?.truck||0)>0&&g.vehicleRoom('truck');
+   const id='connected-'+g.nextId++,members=[];let vehicle=null;
+   if(transporting){vehicle=g.makeMilitaryVehicle(source,'truck',target,0,id);if(!vehicle)continue;vehicle.logistics=true;vehicle.prisonerTransport=true;vehicle.captiveCount=Math.min(4,cell.count??cell.prisoners);vehicle.captiveSpecies=cell.captiveSpecies||'chimpanzee';cell.count=cell.prisoners=(cell.count??cell.prisoners)-vehicle.captiveCount;source.count=Math.max(0,source.count-vehicle.captiveCount);source.vehicleInventory.truck--}
+   for(let i=0;i<(transporting?2:3);i++){const x=origin.x,y=origin.y+(i-1)*28;if(g.world.actorBlocked(x,y,12,'human'))continue;const h=g.makeHuman(x,y,source);this.assign(h,source,i===0?'tracker':'guard');h.state='search';h.lastX=target.x;h.lastY=target.y;h.searchTime=180;h.operationId=id;h.responseAllocated=true;h.reported=false;members.push(h)}
+   if(!members.length&&!vehicle)continue;
+   const squad=members.length?this.createSquad(members,target,{order:'Patrol Route',operationId:id,siteId:source.id,vehicleId:vehicle?.id}):null;source.strength=Math.max(0,source.strength-members.length);
+   const operation={id,name:transporting?'PRISONER TRANSPORT':'CONNECTED PATROL',channel:'encounter',status:'active',phase:'travel',createdAt:g.time,phaseAt:g.time,expiresAt:g.time+210,origins:[source.id],sourceId:source.id,destinationId:destination.id,target:{x:target.x,y:target.y},squadId:squad?.id,members:members.map(h=>h.id),vehicleId:vehicle?.id};
+   state.operations.push(operation);g.militaryOperations.push(operation);state.serial++;state.nextAt=g.time+100/support.coordination;
+   g.events.push({type:transporting?'prisoner-convoy':'patrol',operationId:id,x:origin.x,y:origin.y,targetX:target.x,targetY:target.y,time:g.time});if(g.events.length>30)g.events.shift();
+   g.world.requestCorridor?.(origin,target,{id,profile:transporting?'truck':'human'});
+   if(transporting&&distance(origin,g.king)<1100)g.notify('A prisoner transport is moving between human facilities. Intercept it to free its captives.','gold');return true;
+  }
+  return false;
+ }
+ updateWorldActivity(){
+  const g=this.game;if(g.time<(this._worldThink||0))return;this._worldThink=g.time+2;this.discoverNearby();
+  const state=g.world.humanActivity||(g.world.humanActivity={version:1,nextAt:g.time+120,serial:0,operations:[]});
+  state.operations=Array.isArray(state.operations)?state.operations:[];
+  // JSON records do not retain shared references. Rejoin the director record
+  // after loading, while resolving encounters that its expiry pass has ended.
+  state.operations=state.operations.map(operation=>{const director=g.militaryOperations.find(op=>op.id===operation.id);if(director){if(operation.activityResolved&&!director.activityResolved)Object.assign(director,{activityResolved:true,status:operation.status,endedAt:operation.endedAt});return director}if(!operation.activityResolved)g.militaryOperations.push(operation);return operation});
+  if(state.pendingRescues){for(const rescue of state.pendingRescues)this.dropTransportCaptives(rescue,true);state.pendingRescues=state.pendingRescues.filter(rescue=>rescue.captiveCount>0)}
+  for(const operation of state.operations){
+   if(operation.activityResolved)continue;const source=g.world.sites.get(operation.sourceId),vehicle=g.vehicles.find(v=>v.id===operation.vehicleId)||(source?.sleepingVehicles||[]).find(v=>v.id===operation.vehicleId),members=(operation.members||[]).map(id=>g.humansById.get(id)||(source?.sleepingHumans||[]).find(h=>h.id===id)).filter(h=>h?.hp>0),lead=vehicle?.hp>0?vehicle:members[0];
+   const arrived=lead&&distance(lead,operation.target)<105,destination=g.world.sites.get(operation.destinationId),expired=g.time>=operation.expiresAt;
+   if(vehicle&&vehicle.hp<=0&&vehicle.captiveCount)this.dropTransportCaptives(vehicle);
+   if(!arrived&&!expired&&lead&&operation.status==='active'){g.world.requestCorridor?.(lead,operation.target,{id:operation.id,profile:vehicle?'truck':'human'});continue}
+   if(arrived&&vehicle?.captiveCount){const cage=destination&&!destination.cleared&&(destination.objects||[]).map(id=>g.world.objects.get(id)).find(o=>o?.type==='cage'&&!o.dead);if(cage){const count=vehicle.captiveCount;cage.count=cage.prisoners=(cage.count??cage.prisoners??0)+count;if(cage.normalRemaining!==undefined){cage.normalRemaining+=count;cage.normalCount=(cage.normalCount||0)+count}destination.count=(destination.count||0)+count;destination.rescued=false;vehicle.captiveCount=0}else this.dropTransportCaptives(vehicle)}
+   if((expired||operation.status!=='active')&&vehicle?.captiveCount)this.dropTransportCaptives(vehicle);
+   operation.status=arrived?'completed':expired?'expired':'intercepted';operation.endedAt=g.time;operation.activityResolved=true;
+   const home=arrived&&destination&&!destination.cleared?destination:g.world.sites.get(operation.sourceId),squad=this.squads.get(operation.squadId);
+   for(const h of members){h.operationId=null;h.squadOperationId=null;h.responseAllocated=false;if(home){h.siteId=home.id;h.homeX=home.x;h.homeY=home.y;h.lastX=home.x;h.lastY=home.y}h.state='patrol';h.reported=false;h.targetId=null;h.searchTime=0}
+   if(squad){squad.operationId=null;squad.siteId=home?.id||squad.siteId;squad.objective={x:home?.x??operation.target.x,y:home?.y??operation.target.y};squad.order='Defend Base';squad.density=0;squad.firingLine=null}
+   for(const platoon of this.platoons.values())if(platoon.operationId===operation.id){platoon.operationId=null;platoon.objective={x:home?.x??operation.target.x,y:home?.y??operation.target.y};platoon.order='Defend Base'}
+   if(vehicle?.hp>0){vehicle.operationId=null;vehicle.target=home?.approach?.at(-1)||null;vehicle.state='idle';vehicle.logistics=false;if(home)vehicle.siteId=home.id}
+  }
+  state.operations=state.operations.filter(op=>op.status==='active'||g.time-(op.endedAt||op.createdAt)<180).slice(-8);
+  if(g.time>=(state.nextAt??120)){state.nextAt=g.time+20;this.dispatchConnectedOperation(g.world.getSites(g.king.x,g.king.y,2400))}
+  if(g.performance?.counters)g.performance.counters.worldOperations=state.operations.filter(op=>op.status==='active').length;
+ }
  tick(dt){
-  const g=this.game;for(const h of this.hazards){h.life-=dt;
+  const g=this.game;this.updateWorldActivity();for(const h of this.hazards){h.life-=dt;
    if(h.type==='shell'){const t=clamp(1-h.life/h.duration,0,1),x=h.fromX+(h.targetX-h.fromX)*t,y=h.fromY+(h.targetY-h.fromY)*t;
     if(!g.navigation.clearSegment(h.x,h.y,x,y,2)){let lo=0,hi=1;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(g.navigation.clearSegment(h.x,h.y,h.x+(x-h.x)*mid,h.y+(y-h.y)*mid,2))lo=mid;else hi=mid}h.x+=(x-h.x)*lo;h.y+=(y-h.y)*lo;h.life=0}else{h.x=x;h.y=y}if(h.life<=0)this.blast(h);
    }else if(['grenade','mortar','airstrike'].includes(h.type)&&h.life<=0)this.blast(h);

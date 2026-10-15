@@ -156,6 +156,11 @@
     .command-button[data-command=charge] { color:var(--gold); }
     .command-button .command-sub { font-size:9px; margin-left:5px; color:#819c93; }
     .command-button .key { pointer-events:none; }
+    .command-button[aria-pressed=true] { background:#344a3b; border-color:#c5b578; box-shadow:inset 3px 0 #cfb46e; }
+    #selectedCommandState { position:absolute; right:22px; top:88px; max-width:210px; padding:7px 10px; color:#d6dec6; background:#071b20e8; border:1px solid #6e8060; border-radius:4px; font-size:11px; pointer-events:none; }
+    #selectedCommandState[data-order=charge],#selectedCommandState[data-order=attack] { border-color:#b67760; color:#f0c0a7; }
+    #selectedCommandState[data-order=defend],#selectedCommandState[data-order=hold] { border-color:#8aa4a1; }
+    @media(pointer:coarse),(max-width:800px){.command-button{min-height:44px}#commandPanel{max-height:65dvh;overflow-y:auto;overscroll-behavior:contain}#selectedCommandState{right:12px;top:76px;font-size:10px;max-width:180px}}
     #commandHoldIndicator { position:absolute; z-index:8; left:50%; top:105px; transform:translateX(-50%); width:260px; padding:10px 14px; color:#d8e3ce; background:rgba(5,22,27,.94); border:1px solid #83aaa9; border-radius:5px; text-align:center; font:11px/1.5 Arial,sans-serif; pointer-events:none; } #commandHoldIndicator[data-kind=q],#commandHoldIndicator[data-kind=t] { border-color:#d7b06f; color:#efd29c; } #commandHoldProgress { display:block; width:100%; height:4px; margin-top:7px; accent-color:#abbded; } #commandHoldIndicator[data-kind=q] progress,#commandHoldIndicator[data-kind=t] progress { accent-color:#dfb476; } #commandHoldIndicator.completed { border-color:#bfe0a2; }
     #touchControls { display:none; position:absolute; z-index:2; inset:0; pointer-events:none; }
     #joystick { pointer-events:auto; position:absolute; left:max(28px,env(safe-area-inset-left)); bottom:max(100px,env(safe-area-inset-bottom)); width:108px; height:108px; border:1px solid rgba(194,217,190,.25); background:rgba(6,25,30,.44); border-radius:50%; touch-action:none; }
@@ -318,6 +323,7 @@
     <div id="toastArea" role="status" aria-live="polite"></div>
     <div class="hud-bottom"><div class="exposure-panel"><div class="exposure-title"><span>Visibility</span><span id="exposureText">Hidden</span></div><div class="exposure-track"><span id="exposureFill"></span></div></div><div id="objectiveHint" hidden></div></div>
     <div id="contextHint" hidden></div>
+    <div id="selectedCommandState" hidden role="status" aria-live="polite"></div>
     <div id="populationCount" aria-label="Total living ape population"></div>
     <div class="command-wrap"><div id="commandPanel" hidden><button class="command-button" data-command="call"><span>Call apes <span class="command-sub">hold to expand · 1.2s for entire horde</span></span><span class="key">Q</span></button><button class="command-button" data-command="charge"><span>Charge <span class="command-sub">toward pointer</span></span></button><button class="command-button" data-command="nearestTarget"><span>Charge nearest target</span><span class="key">Tap E</span></button><button class="command-button" data-command="nearestHuman"><span>Charge troops &amp; vehicles</span><span class="key">Hold E</span></button><button class="command-button" data-command="spreadCharge"><span>Spread charge</span><span class="key">Double E / X</span></button><button class="command-button" data-command="attackNearest"><span>Attack nearest foe</span></button><button class="command-button" data-command="recall"><span>Recall nearby <span class="command-sub">hold for all field apes</span></span><span class="key">R</span></button><button class="command-button" data-command="recallField"><span>Recall all field apes <span class="command-sub">hold to mobilize settlements</span></span><span class="key">T</span></button><button class="command-button" data-command="hold"><span>Hold position</span><span class="key">F</span></button><button class="command-button" data-command="settle"><span>Settle a group</span><span class="key">Z</span></button><button class="command-button" data-command="settleAll"><span>Settle all followers</span><span class="key">⇧ Z</span></button><button class="command-button" data-command="patrol"><span>Patrol this area</span><span class="key">C</span></button></div><button id="buildButton" class="button" hidden aria-haspopup="dialog" title="Commission village structures (B)">Build <span class="key">B</span></button><button id="findSettlementButton" class="button" aria-pressed="false" title="Show arrows to all settlements (V)">Find Settlement <span class="key">V</span></button><button id="commandToggle" class="button" aria-controls="commandPanel" aria-expanded="false">Commands <span aria-hidden="true">⌃</span></button></div>
     <div id="commandHoldIndicator" hidden role="status" aria-live="polite"><span id="commandHoldLabel"></span><progress id="commandHoldProgress" value="0" max="1" aria-label="Command hold progress"></progress></div><div id="touchControls"><div id="joystick" role="application" aria-label="Movement joystick"><div id="joystickKnob"></div></div><button id="attackButton" aria-label="Strike nearby target">STRIKE</button></div>
@@ -417,7 +423,9 @@
   const SITE_LABELS = { transport: 'Transport Cage', hunter: 'Hunter Camp', research: 'Research House',
     checkpoint: 'Road Checkpoint', prison: 'Prison Compound', detention: 'Detention Center',
     experimental: 'Experimental Facility', forwardBase: 'Forward Operating Base',
-    armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base' };
+    armoredDepot: 'Armored Depot', regionalCommand: 'Regional Command Base',
+    logging: 'Logging Operation', communications: 'Communications Station',
+    town: 'Frontier Town', mobileCamp: 'Expedition Camp' };
   const MILITARY_TYPES = new Set(['forwardBase', 'armoredDepot', 'regionalCommand']);
   const WALL_HEIGHT = [0, 28, 45, 68, 95], WALL_HP = [0, 700, 2100, 3700, 5400];
   const VEHICLE_CLEARANCE = { jeep: 21, armored: 23, command: 22, truck: 24, apc: 25, ifv: 27, tank: 31 };
@@ -434,6 +442,9 @@
       this.objects = new Map();
       this.discovered = new Set();
       this.intel = new Map();
+      this.discoveries = new Map();
+      this._regionalFacilities = new Map();
+      this.humanActivity = { version: 1, nextAt: 120, serial: 0, operations: [] };
       this._terrainCache = new Map();
       this._crossingCache = new Map();
       this._sitePlanCache = new Map();
@@ -1125,13 +1136,14 @@
       if (!site?.military || site.cleared || !site.campaignReserve) return false;
       const reserve = site.campaignReserve;
       if (time < (site.nextMobilizationAt ?? 90)) return false;
-      site.nextMobilizationAt = time + 90;
+      const support = this.regionalSupport(site);
+      site.nextMobilizationAt = time + 90 / support.coordination;
       const capacity = this.militaryCapacity(site);
       let rebuilt = false;
       if (!capacity.barracks) reserve.personnel = 0;
       if (!capacity.depot || !capacity.fuel) { reserve.vehicles = {};reserve.armor = 0; }
       if (capacity.barracks && reserve.personnel > 0) {
-        const amount = Math.min(18 + site.tier * 3, reserve.personnel, Math.max(0, (site.initialStrength || 100) - site.strength));
+        const amount = Math.min(Math.floor((18 + site.tier * 3) * support.logistics), reserve.personnel, Math.max(0, (site.initialStrength || 100) - site.strength));
         site.strength += amount;reserve.personnel -= amount;rebuilt = amount > 0;
       }
       if (capacity.depot && capacity.fuel) for (const [kind, count] of Object.entries(reserve.vehicles || {})) {
@@ -1143,6 +1155,40 @@
         break;
       }
       return rebuilt;
+    }
+
+    // Regional infrastructure changes response timing and finite resupply, not
+    // remote unit positions. Local chunk queries keep this independent of the
+    // total explored world, and destroyed facilities retain their influence.
+    regionalSupport(site) {
+      let cache = site._regionalSupport;
+      if (!cache || cache.revision !== this.chunkRevision) {
+        const nearby = this.getSites(site.x, site.y, 2400);
+        const cx = Math.floor(site.x / 2400), cy = Math.floor(site.y / 2400);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+          for (const candidate of this._regionalFacilities.get((cx + dx) + ',' + (cy + dy)) || [])
+            if (dist2(candidate, site) <= 2400 ** 2 && !nearby.includes(candidate)) nearby.push(candidate);
+        if (!nearby.includes(site) && ['communications', 'logging'].includes(site.type)) nearby.push(site);
+        cache = { revision: this.chunkRevision, communications: null, logging: null };
+        for (const candidate of nearby) {
+          if (candidate.type === 'communications' && (!cache.communications || dist2(candidate, site) < dist2(cache.communications, site))) cache.communications = candidate;
+          if (candidate.type === 'logging' && (!cache.logging || dist2(candidate, site) < dist2(cache.logging, site))) cache.logging = candidate;
+        }
+        Object.defineProperty(site, '_regionalSupport', { value: cache, writable: true, configurable: true });
+      }
+      const { communications, logging } = cache;
+      const online = (facility, type) => facility && !facility.cleared && !facility[type + 'Down']
+        && (facility.objects || []).some(id => { const o = this.objects.get(id);return o?.type === type && !o.dead && o.hp > 0; });
+      return { coordination: communications && !online(communications, 'radio') ? .45 : 1,
+        logistics: logging && !online(logging, 'depot') ? .55 : 1,
+        communicationsId: communications?.id || null, loggingId: logging?.id || null };
+    }
+
+    _indexRegionalSite(site) {
+      if (!['communications', 'logging'].includes(site.type)) return;
+      const key = Math.floor(site.x / 2400) + ',' + Math.floor(site.y / 2400);
+      if (!this._regionalFacilities.has(key)) this._regionalFacilities.set(key, new Set());
+      this._regionalFacilities.get(key).add(site);
     }
 
     militaryCapacity(site) {
@@ -1170,8 +1216,9 @@
       const depot = !site.depotDown && site.depotOnline !== false && online('depot', (site.tier || 0) >= 3);
       const barracks = !site.barracksDown && site.barracksOnline !== false && online('barracks', (site.tier || 0) >= 2);
       const fuel = !site.fuelDown && site.fuelOnline !== false && online('fuel', (site.tier || 0) >= 3);
+      const regional = this.regionalSupport(site);
       return { inventory: site.vehicleInventory, vehicleInventory: site.vehicleInventory, armorCapacity: Math.max(0, site.armorCapacity),
-        radio, depot, barracks, fuel, coordination: radio ? 1 : .3,
+        radio, depot, barracks, fuel, regional, coordination: (radio ? 1 : .3) * regional.coordination,
         armorFactor: depot ? 1 : .15, infantryFactor: barracks ? 1 : .3,
         fuelFactor: fuel ? 1 : .25 };
     }
@@ -1244,15 +1291,29 @@
               type = tier === 3 ? 'forwardBase' : tier === 4 ? militaryRoll < .55 ? 'forwardBase' : 'armoredDepot'
                 : militaryRoll < .13 ? 'regionalCommand' : militaryRoll < .65 ? 'armoredDepot' : 'forwardBase';
             }
+            // Small installations diversify travel between the existing prison
+            // and military hubs. They use their own open blueprints, not a
+            // prison perimeter with a different label.
+            if (!MILITARY_TYPES.has(type)) {
+              const encounter = r();
+              if (tier === 1 && d > 1200 && encounter < .23) type = 'logging';
+              else if (tier >= 2 && encounter < .18) type = 'communications';
+              else if (tier >= 2 && encounter < .34) type = 'logging';
+              else if (tier >= 2 && encounter < .46) type = 'mobileCamp';
+              else if (tier >= 3 && encounter < .64) type = 'town';
+            }
             const counts = { transport: [2, 4], hunter: [4, 7], research: [8, 14], checkpoint: [8, 16],
               prison: [18, 30], detention: [42, 72], experimental: [80, 125],
+              logging: [5, 12], communications: [4, 9], town: [12, 24], mobileCamp: [3, 8],
               forwardBase: [32, 60], armoredDepot: [60, 110], regionalCommand: [160, 260] };
             const guards = { transport: [0, 2], hunter: [2, 4], research: [4, 5], checkpoint: [4, 7],
               prison: [6, 10], detention: [10, 14], experimental: [14, 19],
+              logging: [3, 6], communications: [5, 8], town: [9, 15], mobileCamp: [4, 7],
               forwardBase: [30, 50], armoredDepot: [44, 68], regionalCommand: [82, 120] };
             plan = { id: 'site:' + key, x: sx, y: sy, name: choice(r, ADJECTIVES) + ' ' + SITE_LABELS[type],
               type, tier, count: int(r, ...counts[type]), guards: int(r, ...guards[type]),
               radius: type === 'regionalCommand' ? 690 : type === 'armoredDepot' ? 540 : type === 'forwardBase' ? 420
+                : type === 'town' ? 310 : type === 'logging' ? 222 : type === 'communications' ? 215 : type === 'mobileCamp' ? 185
                 : type === 'transport' ? 76 : type === 'hunter' ? 154 : 145 + tier * 20 };
             if (MILITARY_TYPES.has(type)) {
               // A larger perimeter must sit back from both main roads. Choose
@@ -1296,7 +1357,7 @@
                   && Math.abs(plan.y - major.y) < (major.footprintY || major.radius) + plan.radius + 45) plan = null;
               }
             }
-            if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
+            if(plan){plan.district=district.id;plan.region=district.name;plan.military=MILITARY_TYPES.has(type);plan.role=type==='logging'?'regional timber supply':type==='communications'?'regional communications':type==='town'?'settlement and police garrison':type==='mobileCamp'?'mobile reconnaissance':plan.military?'military installation':hub?'regional hub':type==='checkpoint'?'road control':type==='research'?'capture and research':'supply outpost';plan.layout=Math.floor(r()*3);}
           }
         }
       }
@@ -1440,6 +1501,11 @@
         return;
       }
 
+      if (['logging', 'communications', 'town', 'mobileCamp'].includes(site.type)) {
+        this._buildHumanFacility(site, r, (type, x, y, extra) => add(type, x, y, { facility: site.type, ...extra }));
+        return;
+      }
+
       if (site.military) {
         this.militaryCapacity(site);
         site.initialStrength = site.strength;
@@ -1502,6 +1568,67 @@
       }
       add('berry', -24, 77, { r: 17, solid: false, height: 15,
         food: 120 + site.tier * 45, count: 120 + site.tier * 45, supply: true });
+    }
+
+    _buildHumanFacility(site, r, add) {
+      const type = site.type, mirrored = site.layout === 1 ? -1 : 1;
+      site.blueprintVersion = 1;
+      site.defenseRadius = site.radius + 180;
+      site.serviceEntrance = { x: site.x, y: site.y - site.radius - 28 };
+      site.patrolPoints = [{ x: site.x, y: site.y + 90 }, { x: site.x, y: site.y - 110 },
+        { x: site.x - 130 * mirrored, y: site.y }, { x: site.x + 130 * mirrored, y: site.y }];
+      // Every blueprint leaves a central access lane at least 64px wide.
+      // Cages are beside those lanes, so rescue never needs a wall bypass.
+      const cage = (x, y, count, extra = {}) => add('cage', x, y,
+        { r: 28, w: 58, h: 48, height: 42, hp: 80 + site.tier * 12, count, prisoners: count, ...extra });
+      const building = (kind, x, y, w, h, extra = {}) => add(kind, x, y,
+        { r: Math.min(w, h) / 2, w, h, height: kind === 'house' ? 58 : 44, collision: 'rect', ...extra });
+      if (type === 'logging') {
+        site.vehicleInventory = { jeep: 1, truck: 2, armored: 0, tank: 0, apc: 0, ifv: 0, command: 0, heli: 0 };
+        building('depot', -112, 70, 86, 62, { loggingEquipment: true, timberStock: true, hp: 260 });
+        building('house', 103, 74, 70, 60, { workShelter: true });
+        add('vehicle', -112, -63, { r: 29, w: 72, h: 40, height: 29, vehicleType: 'truck', parked: true, loggingEquipment: true });
+        cage(91, -68, site.count);
+        add('fuel', -157, -132, { r: 16, w: 28, h: 28, height: 27, explosive: true, blastRadius: 100 });
+        add('alarm', 160, 0, { r: 11, height: 45, alarmRange: 780, lightRange: 120 });
+        for (const y of [-142, 140]) for (const x of [-110, 110]) building('wall', x, y, 74, 14, { wallTier: 1, barricade: true, timberStack: true });
+      } else if (type === 'communications') {
+        site.vehicleInventory = { jeep: 2, truck: 1, command: 1, armored: 0, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        add('radio', -100, -82, { r: 18, height: 142, radioRange: 3200, communicationsHub: true, hp: 220 });
+        building('barracks', 102, -77, 76, 58, { securityStation: true });
+        building('depot', -108, 77, 70, 56, { communicationsEquipment: true });
+        add('fuel', -159, 0, { r: 17, w: 30, h: 30, height: 31, powerGenerator: true });
+        cage(101, 72, site.count, { captiveSpecies: 'orangutan' });
+        for (const x of [-144, 144]) add('tower', x, -135, { r: 16, height: 98, powered: true, lightRange: 510, angle: r() * TAU, sweep: .18 });
+        add('alarm', 157, 0, { r: 11, height: 52, alarmRange: 1700, lightRange: 130 });
+        for (const x of [-79, 79]) building('wall', x, 143, 60, 15, { wallTier: 2, barricade: true });
+      } else if (type === 'town') {
+        site.vehicleInventory = { jeep: 2, truck: 2, armored: 1, command: 1, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        for (const x of [-186, 186]) for (const y of [-160, 145]) building('house', x, y, 87, 72,
+          { civilian: true, combatTarget: false, roofVariant: Math.floor(r() * 3) });
+        building('barracks', 151, 0, 90, 66, { policeStation: true });
+        building('depot', -153, 0, 82, 62, { supplyWarehouse: true });
+        const left = Math.ceil(site.count / 2);cage(-72, -122, left);cage(72, -122, site.count - left);
+        add('radio', 78, 110, { r: 14, height: 90, radioRange: 2000 });
+        add('alarm', -76, 110, { r: 11, height: 51, alarmRange: 1450, lightRange: 140 });
+        add('fuel', -220, 64, { r: 16, w: 28, h: 28, height: 28, explosive: true, blastRadius: 110 });
+        for (const x of [-256, 256]) add('tower', x, 0, { r: 16, height: 92, lightRange: 430, angle: x < 0 ? Math.PI : 0, sweep: .18 });
+      } else {
+        site.mobileOperation = true;
+        site.vehicleInventory = { jeep: 1, truck: 1, command: 0, armored: 0, tank: 0, apc: 0, ifv: 0, heli: 0 };
+        building('house', -85, -65, 62, 48, { tent: true });
+        building('house', 85, 65, 62, 48, { tent: true });
+        add('vehicle', -88, 69, { r: 28, w: 66, h: 38, height: 27, vehicleType: 'truck', parked: true });
+        cage(85, -65, site.count);
+        add('radio', -132, 0, { r: 12, height: 58, radioRange: 1100, portable: true });
+        add('alarm', 132, 0, { r: 10, height: 35, alarmRange: 650, lightRange: 100 });
+      }
+      site.armorCapacity = 0;
+      add('berry', 0, 68, { r: 14, solid: false, height: 13, supply: true,
+        food: type === 'town' ? 220 : 90, count: type === 'town' ? 220 : 90 });
+      // Access intent is metadata; tests verify collision clearance through the
+      // generated geometry. Defenses are never removed to manufacture a route.
+      site.accessBlueprint = { version: 1, intendedLaneWidth: 64, entrances: 2 };
     }
 
     _buildMilitarySite(site, r, add) {
@@ -1591,6 +1718,41 @@
       return job;
     }
 
+    _buildDiscovery(chunk, nearbySites) {
+      const key = chunk.id, id = 'discovery:' + key;
+      const saved = this.discoveries.get(id);
+      if (!saved && (Math.hypot(chunk.x, chunk.y) < 900 || this._hashAt(chunk.cx, chunk.cy, 48213) > .23)) return;
+      const r = rng(this.seed + ':' + id), x = chunk.x + 310 + r() * 130, y = chunk.y + 300 + r() * 145;
+      if (!saved && (this.waterBlocked(x, y, 120) || this._roadInfo(x, y).road
+        || nearbySites.some(site => dist2(site.x, site.y, x, y) < (site.radius + 180) ** 2))) return;
+      const types = ['cave', 'ruins', 'grove', 'highground', 'lostApes'], type = types[int(r, 0, types.length - 1)];
+      const names = { cave: 'Sheltered Cave', ruins: 'Overgrown Ruins', grove: 'Hidden Fruit Grove', highground: 'Slateback Lookout', lostApes: 'Lost Ape Refuge' };
+      const discovery = saved || { id, x, y, type, name: names[type], known: false, claimed: false, food: type === 'grove' ? 90 : 45, apes: type === 'lostApes' ? 3 : 0 };
+      this.discoveries.set(id, discovery);
+      // Discoveries get a small natural clearing before geometry is committed;
+      // only fresh procedural scenery is eligible, never a gate or building.
+      for (const object of chunk._pendingObjects || []) if (object.id.startsWith('obj:')
+        && ['tree', 'rock'].includes(object.type) && dist2(object.x, object.y, x, y) < 95 ** 2) {
+        object.dead = true;object.solid = false;object.hp = 0;
+      }
+      if (type === 'ruins') this._object(chunk, { id: id + ':ruin', type: 'house', x: x - 75, y: y - 25,
+        r: 27, w: 54, h: 45, height: 27, collision: 'rect', abandoned: true, civilian: true, combatTarget: false, landmark: type });
+      else if (type === 'cave' || type === 'highground') for (const sign of [-1, 1]) this._object(chunk,
+        { id: id + ':rock:' + sign, type: 'rock', x: x + sign * 57, y: y - 25, r: 24, height: type === 'cave' ? 61 : 45, size: 1.1, landmark: type });
+      this._object(chunk, { id: id + ':supplies', type: 'berry', x, y: y + 45, r: 15, height: 14,
+        solid: false, food: discovery.food, count: discovery.food, supply: true, discoveryId: id });
+    }
+
+    discoveriesNear(x, y, radius = 800) {
+      const result = [];
+      for (let cy = Math.floor((y - radius) / CHUNK); cy <= Math.floor((y + radius) / CHUNK); cy++)
+        for (let cx = Math.floor((x - radius) / CHUNK); cx <= Math.floor((x + radius) / CHUNK); cx++) {
+          const discovery = this.discoveries.get('discovery:' + cx + ',' + cy);
+          if (discovery && dist2(discovery.x, discovery.y, x, y) <= radius * radius) result.push(discovery);
+        }
+      return result;
+    }
+
     _advanceChunk(job, count) {
       const { chunk, r, nearbySites, attempts, occupied } = job, { cx, cy } = chunk, key = chunk.id;
       const end = Math.min(attempts, job.index + count);
@@ -1623,8 +1785,9 @@
         this._object(chunk, { id: 'opening-berries', type: 'berry', x: 48, y: 68, r: 16,
           height: 17, solid: false, food: 48, count: 48, variant: 1, size: 1.1 });
       }
+      this._buildDiscovery(chunk, nearbySites);
       for (const object of chunk._pendingObjects) { this.objects.set(object.id, object); this._indexObject(object); }
-      for (const site of chunk._pendingSites) this.sites.set(site.id, site);
+      for (const site of chunk._pendingSites) { this.sites.set(site.id, site);this._indexRegionalSite(site); }
       this.validateCrossings(chunk);
       delete chunk._pendingObjects; delete chunk._pendingSites; delete chunk._changes;
       chunk.generated = true;
@@ -1769,6 +1932,7 @@
       return { version: 1, seed: this.seed, chunks: Array.from(this.chunks.entries()),
         fortificationSerial: this._fortificationSerial || 0,
         sites: Array.from(this.sites.entries()), objects: Array.from(this.objects.entries()),
+        discoveries: Array.from(this.discoveries.entries()), humanActivity: this.humanActivity,
         coldChunks: Array.from(this._coldChunks.entries()),
         discovered: Array.from(this.discovered), intel: Array.from(this.intel.entries()) };
     }
@@ -1780,6 +1944,9 @@
       world._fortificationSerial = data.fortificationSerial || 0;
       world.chunks = new Map(data.chunks || []);
       world.sites = new Map(data.sites || []);
+      for (const site of world.sites.values()) world._indexRegionalSite(site);
+      world.discoveries = new Map(data.discoveries || []);
+      world.humanActivity = data.humanActivity || { version: 1, nextAt: 120, serial: 0, operations: [] };
       world.objects = new Map(data.objects || []);
       world._coldChunks = new Map(data.coldChunks || []);
       const coldSites = new Set();
@@ -1820,7 +1987,7 @@ class Heap {
 class Navigation {
  constructor(world){
  this.world=world;this.cell=28;this.walkCache=new Map();this.segmentCache=new Map();this.routes=new Map();this.pending=new Map();this.cohorts=new Map();this.corridorAt=new Map();this.revision=-1;this.worldRevision=-1;this.localVersions=new Map();this.chunkRevision=-1;this.time=0;
- this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0,crossings:0,recoveries:0};
+ this.stats={searches:0,cacheHits:0,sharedHits:0,expanded:0,failures:0,requested:0,completed:0,deferred:0,dropped:0,queueLength:0,frameExpanded:0,frameMs:0,crossings:0,recoveries:0,separationFastHits:0,formationContractions:0};
  }
  beginFrame(time,options={}){
  this.time=time;
@@ -1886,14 +2053,29 @@ class Navigation {
  }
  beginSeparation(){this.separationCells||(this.separationCells=new Map());this.separationCells.clear()}
  separationClear(a,b){
- // Every separation pair lies within 38 units. Gather the live collision
- // candidates once per small crowd cell; exact segment and water tests below
- // still run for every pair. This does not cache a pass/fail geometry result.
+ // Gather geometry and prove dry, streamed terrain once per crowd cell.
+ // Objects remain live references: destroying a wall changes the next pair.
+ // A pair may be 42 units apart, so the envelope covers the full 48-unit query.
  if(!this.world._queryCollision)return this.clearSegment(a.x,a.y,b.x,b.y,0);
  const cells=this.separationCells||(this.separationCells=new Map()),x=Math.floor(a.x/64),y=Math.floor(a.y/64),key=x+','+y;
- let objects=cells.get(key);
- if(!objects){objects=[];const minX=x*64-38,minY=y*64-38,maxX=(x+1)*64+38,maxY=(y+1)*64+38;this.world._queryCollision(minX,minY,maxX,maxY,o=>{if(!o.solid||o.dead||o.hp<=0)return;const radius=o._collision?.radius??o.moveRadius??o.r??15,hx=o.collision==='rect'?(o._collision?.hx??(o.w||o.r*2)/2):radius,hy=o.collision==='rect'?(o._collision?.hy??(o.h||o.r*2)/2):radius;if(o.x+hx>=minX&&o.x-hx<=maxX&&o.y+hy>=minY&&o.y-hy<=maxY)objects.push(o)});cells.set(key,objects)}
- return this.clearSegment(a.x,a.y,b.x,b.y,0,'',undefined,objects);
+ let cell=cells.get(key);
+ if(!cell){const objects=[],minX=x*64-48,minY=y*64-48,maxX=(x+1)*64+48,maxY=(y+1)*64+48;this.world._queryCollision(minX,minY,maxX,maxY,o=>{if(!o.solid||o.dead||o.hp<=0)return;const radius=o._collision?.radius??o.moveRadius??o.r??15,hx=o.collision==='rect'?(o._collision?.hx??(o.w||o.r*2)/2):radius,hy=o.collision==='rect'?(o._collision?.hy??(o.h||o.r*2)/2):radius;if(o.x+hx>=minX&&o.x-hx<=maxX&&o.y+hy>=minY&&o.y-hy<=maxY)objects.push(o)});cell={objects,ready:!this.world.boundsReady||this.world.boundsReady(minX,minY,maxX,maxY),dry:!!this.world.waterFreeBounds?.(minX,minY,maxX,maxY)};cells.set(key,cell)}
+ if(!cell.ready)return false;
+ // Most forest crowd pairs need no terrain sampling, allocation or generic
+ // swept-circle work. Keep exact live intersections for trunks and thin walls.
+ if(cell.dry){
+ const dx=b.x-a.x,dy=b.y-a.y,length2=dx*dx+dy*dy;
+ for(const o of cell.objects){if(!o.solid||o.dead||o.hp<=0)continue;
+ if(o.collision==='rect'){
+ const hx=o._collision?.hx??(o.w||o.r*2)/2,hy=o._collision?.hy??(o.h||o.r*2)/2;let lo=0,hi=1;
+ if(Math.abs(dx)<1e-9){if(a.x<o.x-hx||a.x>o.x+hx)continue}else{let t1=(o.x-hx-a.x)/dx,t2=(o.x+hx-a.x)/dx;if(t1>t2){const swap=t1;t1=t2;t2=swap}lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)continue}
+ if(Math.abs(dy)<1e-9){if(a.y<o.y-hy||a.y>o.y+hy)continue}else{let t1=(o.y-hy-a.y)/dy,t2=(o.y+hy-a.y)/dy;if(t1>t2){const swap=t1;t1=t2;t2=swap}lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)continue}
+ if(hi>=0&&lo<=1)return false;
+ }else{const r=o._collision?.radius??o.moveRadius??o.r??15,t=length2?Math.max(0,Math.min(1,((o.x-a.x)*dx+(o.y-a.y)*dy)/length2)):0;if((a.x+dx*t-o.x)**2+(a.y+dy*t-o.y)**2<r*r)return false}
+ }
+ this.stats.separationFastHits++;return true;
+ }
+ return this.clearSegment(a.x,a.y,b.x,b.y,0,'',undefined,cell.objects);
  }
  clearSegment(ax,ay,bx,by,r=10,profile='',ignoreId,objects){
  profile=this.profile(profile);if(this.isVehicle(profile))r=Math.max(r,this.world.vehicleRadius?.(profile)||r);
@@ -2011,9 +2193,10 @@ class Navigation {
  // A blocked group earns one recovery corridor per small spatial cell. This
  // includes distant stragglers, so a thousand followers never create a
  // thousand independent A* jobs after their shared route becomes obstructed.
- const id=['recovery',Math.floor(from.x/84),Math.floor(from.y/84),Math.floor(to.x/160),Math.floor(to.y/160),r,profile].join(':');
+ const id=this.recoveryId(from,to,r,profile);
  const cohort=this.setCohortRoute(id,from,to,r,priority,profile);return cohort.path.length?cohort.path:null;
  }
+ recoveryId(from,to,r,profile){const cell=from._nav?.recoveryCell||84;return ['recovery',cell,Math.floor(from.x/cell),Math.floor(from.y/cell),Math.floor(to.x/160),Math.floor(to.y/160),r,profile].join(':')}
  _cohortPoint(a,target,r,nav,cohortId=a.navCohort){
  const cohort=this.cohorts.get(cohortId);if(!cohort||!cohort.path.length||cohort.path._navInvalid||cohort.revision!==this.revision||Math.hypot(target.x-cohort.goal.x,target.y-cohort.goal.y)>190)return null;
  const path=cohort.path;
@@ -2031,14 +2214,41 @@ class Navigation {
  return null;
  }
  resetActor(a){
- for(const key of ['_nav','_navJourney','_navCrossing','_navCrossingAt','_navAvoidCrossings','_abstractPath','_abstractRequest','_abstractRetry','_abstractIndex','navCohort'])delete a[key];
+ for(const key of ['_nav','_navJourney','_navCrossing','_navCrossingAt','_navAvoidCrossings','_followSlot','_targetApproach','_abstractPath','_abstractRequest','_abstractRetry','_abstractIndex','navCohort'])delete a[key];
  }
  followTarget(a,king,x,y){
  const world=this.world,region=world.landRegionAt?.(king.x,king.y);
+ // A straggler first joins the leader's shared route. Evaluating a distant
+ // decorative slot can send it around a second obstacle before it regroups.
+ if(Math.hypot(a.x-king.x,a.y-king.y)>Math.max(300,Math.hypot(x-king.x,y-king.y)+100))return {x:king.x,y:king.y};
  // The formation may widen across a shore. Its decorative spacing must not
  // order a follower back across the river after it has reached its king.
  if(world.waterBlocked?.(x,y,a.radius||10)||region!=null&&world.landRegionAt(x,y)!==region)return {x:king.x,y:king.y};
- return {x,y};
+ const r=a.radius||10,old=a._followSlot;
+ if(old&&old.revision===this.worldRevision&&this.time<old.until&&Math.hypot(king.x-old.kingX,king.y-old.kingY)<28&&Math.hypot(x-old.x,y-old.y)<24)return {x:king.x+(x-king.x)*old.scale,y:king.y+(y-king.y)*old.scale};
+ // Formation spacing is a preference. Contract it in a narrow entrance or
+ // beside a trunk, instead of ordering apes into scenery or beyond a wall.
+ let scale=0;
+ for(const factor of [1,.75,.5,.25,0]){const px=king.x+(x-king.x)*factor,py=king.y+(y-king.y)*factor;if(!this.blocked(px,py,r,'ape')&&this.clearSegment(king.x,king.y,px,py,r,'ape')){scale=factor;break}}
+ a._followSlot={x,y,kingX:king.x,kingY:king.y,scale,revision:this.worldRevision,until:this.time+.35};if(scale<1)this.stats.formationContractions++;
+ return {x:king.x+(x-king.x)*scale,y:king.y+(y-king.y)*scale};
+ }
+ approachTarget(a,target,reach=28,r=a.radius||10){
+ const old=a._targetApproach;
+ if(old&&old.id===target.id&&old.revision===this.worldRevision&&this.time<old.until&&Math.hypot(target.x-old.x,target.y-old.y)<18)return old.point;
+ const bearing=Math.atan2(a.y-target.y,a.x-target.x),lane=((ATSUtil.hash(a.id||'ape')%9)-4)*.13,gap=Math.min(reach-5,r+7);let best=null;
+ // Stable near-side lanes spread attackers across accessible frontage. A
+ // local obstruction can choose a different side without changing the target.
+ for(const turn of [lane,0,.65,-.65,1.3,-1.3,Math.PI]){
+ const angle=bearing+turn,dx=Math.cos(angle),dy=Math.sin(angle);let extent=target._collision?.radius??target.moveRadius??target.r??(reach>30?22:9);
+ if(target.collision==='rect'){const hx=target._collision?.hx??(target.w||target.r*2)/2,hy=target._collision?.hy??(target.h||target.r*2)/2;extent=Math.min(Math.abs(dx)>.0001?hx/Math.abs(dx):Infinity,Math.abs(dy)>.0001?hy/Math.abs(dy):Infinity)}
+ // Mobile combat retains its existing center-distance melee threshold. Large
+ // vehicle render radii must not leave a chosen slot beyond that threshold.
+ const distance=this.world.objects?.get(target.id)===target?extent+gap:Math.min(reach-2,extent+gap),point={x:target.x+dx*distance,y:target.y+dy*distance};
+ if(this.blocked(point.x,point.y,r,'ape'))continue;if(!best)best=point;
+ if(this.clearSegment(a.x,a.y,point.x,point.y,r,'ape')){best=point;break}
+ }
+ const point=best||{x:target.x,y:target.y};a._targetApproach={id:target.id,x:target.x,y:target.y,revision:this.worldRevision,until:this.time+.45,point};return point;
  }
  strategicTarget(a,target,r=10,profile=this.profile(a)){
  const world=this.world,ground=profile==='ape'||profile==='human'||this.isVehicle(profile);
@@ -2092,14 +2302,18 @@ class Navigation {
  const goalMoved=Math.hypot(target.x-nav.goal.x,target.y-nav.goal.y)>90;
  if(nav.revision!==this.revision||nav.profile!==profile){nav.path=[];nav.revision=this.revision;nav.directAt=-1;nav.profile=profile}
  if(this.time>=nav.directAt||!nav.directGoal||Math.hypot(target.x-nav.directGoal.x,target.y-nav.directGoal.y)>35){nav.direct=this.preferredSegment(a.x,a.y,target.x,target.y,r,profile);nav.directAt=this.time+(a._simTier===2?.65:a._simTier===1?.28:.18);nav.directGoal={...target}}
- if(nav.direct){nav.path=[];nav.goal={...target};nav.revision=this.revision;return target}
+ if(nav.direct){nav.path=[];nav.goal={...target};nav.revision=this.revision;nav.recoveryCell=0;nav.recoveryMiss=0;return target}
  if(!this.isVehicle(profile)&&a.navCohort&&nav.stuck<1.4){const point=this._cohortPoint(a,target,r,nav);if(point){nav.corridorMiss=0;return point}nav.corridorMiss=(nav.corridorMiss||0)+dt}
  const priority=a._navPriority??a.navPriority??(a.id==='king'?0:a.state==='combat'||a.state==='charge'?1:nav.stuck>.8?2:a.id?.startsWith('ape')?3:a.id?.startsWith('human')?4:5);
  const waitForShared=!this.isVehicle(profile)&&a.navCohort&&this.cohorts.has(a.navCohort)&&nav.stuck<1.4&&(nav.corridorMiss||0)<.8;
  if(!this.isVehicle(profile)&&a.id?.startsWith('ape')&&!waitForShared){
- const recoveryId=['recovery',Math.floor(a.x/84),Math.floor(a.y/84),Math.floor(target.x/160),Math.floor(target.y/160),r,profile].join(':');
- this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point){nav.unreachable=null;return point}
+ const recoveryId=this.recoveryId(a,target,r,profile);
+ this.recoveryPath(a,target,r,priority,profile);const point=this._cohortPoint(a,target,r,nav,recoveryId);if(point){nav.unreachable=null;nav.recoveryMiss=0;return point}
  const cohort=this.cohorts.get(recoveryId);
+ // Nearby actors can still stand on different sides of a boulder. Reusing a
+ // corridor whose start cannot be joined must not strand that minority forever.
+ // Refine only this blocked local cohort, retaining shared goals and job caps.
+ if(cohort?.path.length&&!cohort.path._navInvalid){nav.recoveryMiss=(nav.recoveryMiss||0)+dt;if(nav.recoveryMiss>.45){nav.recoveryCell=Math.max(21,(nav.recoveryCell||84)/2);nav.recoveryMiss=0;nav.sharedAt=-1}}
  if(cohort?.failedUntil>this.time&&cohort.revision===this.revision){
  nav.unreachable={x:target.x,y:target.y,until:cohort.failedUntil,revision:this.revision};
  if(a._navCrossing?.phase===0){(a._navAvoidCrossings||(a._navAvoidCrossings={}))[a._navCrossing.id]=this.time+12;a._navCrossing=null;a._navCrossingAt=0;a._navJourney=null}
@@ -3518,7 +3732,7 @@ class Forces {
  onDeath(a){
   const g=this.game;if(a.squadId){const squad=this.squads.get(a.squadId);if(squad?.leaderId===a.id){squad.leaderId=null;squad.cohesionLossUntil=g.time+7;for(const id of squad.members){const h=g.humansById.get(id);if(h&&h.hp>0){h.cohesionLossUntil=g.time+7;h.shootTimer=Math.max(h.shootTimer,.8);h.squadOrder='Regroup'}}g.effect('text',a.x,a.y,{text:'LEADER DOWN',life:1.3,color:'#e9bb8a'})}}
   if(a.engineerJob)this.cancelEngineerJob(a,'engineer lost');
-  if(a.id?.startsWith('vehicle')){a.troopsLost=(a.troopsLost||0)+(a.troops||0);a.troops=0;a.dismounting=false;a.cannonTarget=null}
+  if(a.id?.startsWith('vehicle')){this.dropTransportCaptives(a);a.troopsLost=(a.troopsLost||0)+(a.troops||0);a.troops=0;a.dismounting=false;a.cannonTarget=null}
  }
  // Estimate only a visually confirmed concentration. A bounded sample uses the
  // shared LOS budget; blocked forest samples cannot contribute to its estimate.
@@ -3633,7 +3847,9 @@ class Forces {
   const gap=distance(h,target),range=options.range??this.range(h),point=options.point,squad=this.squads.get(h.squadId),order=options.order||squad?.order;
   const strategic=point&&squad&&order===squad.order&&['Fallback','Retreat','Regroup'].includes(order);
   let destination=null,speed=62,elapsed=dt,step=null;
-  if(h._shieldFlank?.until>g.time&&!strategic){destination=h._shieldFlank;speed=72}
+  const home=g.world.sites.get(h.siteId),guardFar=home&&(home.radius>0||home.defenseRadius>0)&&!h.operationId&&!h.responseAllocated&&!h.raidTarget&&distance(home,target)>(home.defenseRadius||home.radius+180)+180;
+  if(guardFar){if(distance(h,home)>(home.radius||180)*.7){destination=home;speed=72}}
+  else if(h._shieldFlank?.until>g.time&&!strategic){destination=h._shieldFlank;speed=72}
   else if(strategic){if(distance(h,point)>28){destination=point;speed=order==='Fallback'?83:70}}
   else if(gap>=range){destination=point&&distance(point,target)<range*.85?point:target}
   else if(!(h.attackTimer>0)&&!(h.shootTimer<=0&&!['mortar','sniper'].includes(h.role))){
@@ -3688,6 +3904,10 @@ class Forces {
  }
  updateEngineer(h,dt){
  const g=this.game;if(h.role!=='engineer')return false;
+ if(!h.engineerJob&&!h.constructing&&!h.hitTimer&&!h.operationId&&!g.apeGrid.near(h.x,h.y,180).some(a=>a.hp>0)){
+  if(g.time>=(h._repairThink||0)&&g.performance.think()){h._repairThink=g.time+1;const damaged=g.world.getObjects(h.x,h.y,240).filter(o=>o.siteId===h.siteId&&!o.dead&&o.hp>0&&o.hp<o.maxHp&&['gate','wall','tower','radio','barracks','depot'].includes(o.type));damaged.sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp);h.repairTargetId=damaged[0]?.id}
+  const repair=g.world.objects.get(h.repairTargetId);if(repair&&!repair.dead&&repair.hp>0&&repair.hp<repair.maxHp){const reach=Math.max(repair.r||0,(repair.w||0)/2,(repair.h||0)/2)+27;if(distance(h,repair)>reach)g.move(h,repair.x-h.x,repair.y-h.y,65,dt);else{repair.hp=Math.min(repair.maxHp,repair.hp+12*dt);repair.damageStage=repair.hp/repair.maxHp<.35?'damaged':repair.hp/repair.maxHp<.75?'worn':'intact';if(g.time>=(h._repairAnimationAt||0)){h._repairAnimationAt=g.time+.6;h.animation={kind:'build',start:g.time,duration:.6}}h.moving=false}return true}
+ }
  if(h.engineerJob||h.constructing){
   const job=h.engineerJob||h.constructing;h.engineerJob=h.constructing=job;
   const withdrawing=h.state==='retreat'||['Fallback','Retreat'].includes(h.squadOrder)||['Fallback','Retreat'].includes(this.squads.get(h.squadId)?.order),workRadius=Math.max(job.w||82,job.h||18)/2+32;
@@ -3746,6 +3966,7 @@ class Forces {
  }
  update(h,dt){
   const g=this.game;if(!h.role)this.assign(h,g.world.sites.get(h.siteId));h.hitTimer=Math.max(0,(h.hitTimer||0)-dt);if(h.engineerJob&&h.hitTimer>0)this.cancelEngineerJob(h);if(h.hitTimer>.19){h.aiming=null;return true}
+  if(this.returnDefender(h,dt))return true;
   if(!h.squadId&&h.state==='combat'&&g.tier>=3){const allies=g.humanGrid.near(h.x,h.y,140).filter(a=>a.hp>0&&!a.squadId&&a.siteId===h.siteId).slice(0,6);if(!allies.includes(h))allies.push(h);this.createSquad(allies,{x:h.lastX,y:h.lastY},{order:'Search',siteId:h.siteId})}
   if(h.role==='medic'&&g.time>h.specialAt&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.5;const ally=g.humanGrid.near(h.x,h.y,105).find(a=>a!==h&&a.hp>0&&a.hp<a.maxHp*.7);if(ally){ally.hp=Math.min(ally.maxHp,ally.hp+18);h.specialAt=g.time+6;h.animation={kind:'treat',start:g.time,duration:.5};g.effect('text',ally.x,ally.y,{text:'+18',color:'#92cdbb',life:1})}}
   if(h.role==='tracker'&&h.state==='patrol'&&g.time>=(h._roleThink||0)&&g.performance.think()){h._roleThink=g.time+.35;const sound=g.noiseGrid.near(h.x,h.y,1900).find(n=>distance(h,n)<n.radius*1.4);if(sound){h.state='investigate';h.lastX=sound.x;h.lastY=sound.y;h.searchTime=20}}
@@ -3761,6 +3982,18 @@ class Forces {
    }
   }else h.aiming=null;
   return this.updateDoctrine(h,dt);
+ }
+ returnDefender(h,dt){
+  const g=this.game,site=g.world.sites.get(h.siteId);if(!site||!(site.radius>0||site.defenseRadius>0)||site.cleared||h.operationId||h.responseAllocated||h.raidTarget||h.engineerJob||h.prisonGuard||h.onWallId)return false;
+  const limit=site.defenseRadius||site.radius+180,target=h.targetId==='king'?g.king:g.apesById.get(h.targetId);
+  const pursuingOutside=target&&distance(target,site)>limit+180&&distance(h,site)>limit*.72;
+  if(distance(h,site)>limit||pursuingOutside||h.returningToPost){
+   h.returningToPost=true;h.targetId=null;h.aiming=null;h.state='patrol';h.searchTime=0;h.lastX=h.homeX??site.x;h.lastY=h.homeY??site.y;
+   const squad=this.squads.get(h.squadId);if(squad&&!squad.operationId){squad.objective={x:site.x,y:site.y};squad.order='Defend Base';squad.density=0;squad.firingLine=null;squad.observedTargetId=null}
+   if(Math.hypot(h.x-h.lastX,h.y-h.lastY)>35){g.move(h,h.lastX-h.x,h.lastY-h.y,74,dt);return true}
+   h.returningToPost=false;h.reported=false;h.suspicion=Math.min(h.suspicion||0,.3);
+  }
+  return false;
  }
  initVehicle(v,vehicleClass,prepaidTroops){
   const kind=vehicleClass||v.vehicleClass||v.kind||'jeep';v.kind=v.vehicleClass=VEHICLES[kind]?kind:'jeep';const spec=this.vehicleSpec(v);v.navClass=v.vehicleClass;v.label=spec.label;v.radius=spec.radius;v.weight=spec.weight;
@@ -3886,8 +4119,81 @@ class Forces {
   g.blastBodies?.(h,radius,{power});
   g.colonies.damageNearby?.(h.x,h.y,radius,h.damage||72,h);
  }
+ dropTransportCaptives(v,pending=false){
+  const g=this.game,count=v.captiveCount||0;if(!count||v.captivesDropped)return false;
+  // A transport's own hull clearance is also the rescue cell clearance. No
+  // offset search can move survivors to the far side of a nearby defense.
+  const chunk=g.world.chunks.get(Math.floor(v.x/g.world.chunkSize)+','+Math.floor(v.y/g.world.chunkSize));
+  const id='rescue:'+v.id;if(g.world.sites.has(id)){v.captiveCount=0;v.captivesDropped=true;return true}
+  if(!chunk||g.world.blocked(v.x,v.y,22)){
+   if(!pending){const state=g.world.humanActivity;(state.pendingRescues||(state.pendingRescues=[])).push({id:v.id,x:v.x,y:v.y,captiveCount:count,captiveSpecies:v.captiveSpecies});v.captiveCount=0;v.pendingCaptiveRescue=true}
+   return false;
+  }
+  const site={id,x:v.x,y:v.y,type:'transport',name:'Intercepted Prisoner Transport',tier:0,radius:68,count,guards:0,strength:0,spawned:true,known:true,objects:[],cleared:false};
+  const cell=g.world._object(chunk,{id:id+':cell',type:'cage',x:v.x,y:v.y,r:22,w:44,h:34,height:34,hp:48,siteId:id,count,prisoners:count,transportRescue:true,captiveSpecies:v.captiveSpecies});
+  site.objects.push(cell.id);g.world.sites.set(id,site);chunk.sites.push(id);g.world.navigationChanged(cell);g.world.chunkRevision++;
+  v.captiveCount=0;v.captivesDropped=true;g.events.push({type:'transport-rescue',x:v.x,y:v.y,count,time:g.time});if(g.events.length>30)g.events.shift();
+  if(distance(v,g.king)<1100)g.notify('Prisoner transport stopped — break open the holding cage to rescue '+count+' apes.','gold');return true;
+ }
+ discoverNearby(){
+  const g=this.game;
+  for(const discovery of g.world.discoveriesNear?.(g.king.x,g.king.y,280)||[]){
+   if(!discovery.known){discovery.known=true;g.events.push({type:'discovery',name:discovery.name,x:discovery.x,y:discovery.y,time:g.time});if(g.events.length>30)g.events.shift();g.notify(discovery.name+' discovered'+(discovery.apes?' — a lost tribe is sheltering here.':'. Supplies can be gathered nearby.'),'green')}
+   if(discovery.apes>0&&!discovery.claimed){let joined=0;for(let i=0;i<discovery.apes;i++){const x=discovery.x+(i-1)*28,y=discovery.y+8;if(g.world.actorBlocked(x,y,12,'ape'))continue;const ape=g.makeApe(x,y,'free');if(!ape)break;joined++}discovery.apes-=joined;if(!discovery.apes)discovery.claimed=true;g.stats.freed+=joined}
+  }
+ }
+ dispatchConnectedOperation(sites){
+  const g=this.game,state=g.world.humanActivity;
+  if((state.operations||[]).filter(op=>op.status==='active').length>=2||g.activeOperations?.().length>=g.operationCapacity||g.humans.length+4+g.vehicles.reduce((n,v)=>n+(v.troops||0),0)>g.activeHumanCapacity()||g.forceWeight()+12>g.responseBudget)return false;
+  const sources=sites.filter(s=>s.spawned&&!s.cleared&&!s.alarm&&s.strength>=4&&distance(s,g.king)>360&&distance(s,g.king)<2000);
+  for(const source of sources){
+   const support=g.world.regionalSupport(source);if(support.logistics<1&&state.serial%2===0)continue;
+   const origin=source.approach?.at(-1)||source.entrance;if(!origin||g.world.actorBlocked(origin.x,origin.y,12,'human'))continue;
+   const destination=sites.filter(s=>s!==source&&!s.cleared&&distance(s,source)>500&&distance(s,source)<2300&&s.approach?.length).sort((a,b)=>distance(a,source)-distance(b,source))[0];
+   if(!destination)continue;const target=destination.approach.at(-1);if(g.world.actorBlocked(target.x,target.y,12,'human'))continue;
+   const cell=!source.prison&&(source.objects||[]).map(id=>g.world.objects.get(id)).find(o=>o?.type==='cage'&&!o.dead&&(o.count??o.prisoners??0)>2);
+   const transporting=!!cell&&state.serial%3===1&&!source.depotDown&&!source.fuelDown&&(source.vehicleInventory?.truck||0)>0&&g.vehicleRoom('truck');
+   const id='connected-'+g.nextId++,members=[];let vehicle=null;
+   if(transporting){vehicle=g.makeMilitaryVehicle(source,'truck',target,0,id);if(!vehicle)continue;vehicle.logistics=true;vehicle.prisonerTransport=true;vehicle.captiveCount=Math.min(4,cell.count??cell.prisoners);vehicle.captiveSpecies=cell.captiveSpecies||'chimpanzee';cell.count=cell.prisoners=(cell.count??cell.prisoners)-vehicle.captiveCount;source.count=Math.max(0,source.count-vehicle.captiveCount);source.vehicleInventory.truck--}
+   for(let i=0;i<(transporting?2:3);i++){const x=origin.x,y=origin.y+(i-1)*28;if(g.world.actorBlocked(x,y,12,'human'))continue;const h=g.makeHuman(x,y,source);this.assign(h,source,i===0?'tracker':'guard');h.state='search';h.lastX=target.x;h.lastY=target.y;h.searchTime=180;h.operationId=id;h.responseAllocated=true;h.reported=false;members.push(h)}
+   if(!members.length&&!vehicle)continue;
+   const squad=members.length?this.createSquad(members,target,{order:'Patrol Route',operationId:id,siteId:source.id,vehicleId:vehicle?.id}):null;source.strength=Math.max(0,source.strength-members.length);
+   const operation={id,name:transporting?'PRISONER TRANSPORT':'CONNECTED PATROL',channel:'encounter',status:'active',phase:'travel',createdAt:g.time,phaseAt:g.time,expiresAt:g.time+210,origins:[source.id],sourceId:source.id,destinationId:destination.id,target:{x:target.x,y:target.y},squadId:squad?.id,members:members.map(h=>h.id),vehicleId:vehicle?.id};
+   state.operations.push(operation);g.militaryOperations.push(operation);state.serial++;state.nextAt=g.time+100/support.coordination;
+   g.events.push({type:transporting?'prisoner-convoy':'patrol',operationId:id,x:origin.x,y:origin.y,targetX:target.x,targetY:target.y,time:g.time});if(g.events.length>30)g.events.shift();
+   g.world.requestCorridor?.(origin,target,{id,profile:transporting?'truck':'human'});
+   if(transporting&&distance(origin,g.king)<1100)g.notify('A prisoner transport is moving between human facilities. Intercept it to free its captives.','gold');return true;
+  }
+  return false;
+ }
+ updateWorldActivity(){
+  const g=this.game;if(g.time<(this._worldThink||0))return;this._worldThink=g.time+2;this.discoverNearby();
+  const state=g.world.humanActivity||(g.world.humanActivity={version:1,nextAt:g.time+120,serial:0,operations:[]});
+  state.operations=Array.isArray(state.operations)?state.operations:[];
+  // JSON records do not retain shared references. Rejoin the director record
+  // after loading, while resolving encounters that its expiry pass has ended.
+  state.operations=state.operations.map(operation=>{const director=g.militaryOperations.find(op=>op.id===operation.id);if(director){if(operation.activityResolved&&!director.activityResolved)Object.assign(director,{activityResolved:true,status:operation.status,endedAt:operation.endedAt});return director}if(!operation.activityResolved)g.militaryOperations.push(operation);return operation});
+  if(state.pendingRescues){for(const rescue of state.pendingRescues)this.dropTransportCaptives(rescue,true);state.pendingRescues=state.pendingRescues.filter(rescue=>rescue.captiveCount>0)}
+  for(const operation of state.operations){
+   if(operation.activityResolved)continue;const source=g.world.sites.get(operation.sourceId),vehicle=g.vehicles.find(v=>v.id===operation.vehicleId)||(source?.sleepingVehicles||[]).find(v=>v.id===operation.vehicleId),members=(operation.members||[]).map(id=>g.humansById.get(id)||(source?.sleepingHumans||[]).find(h=>h.id===id)).filter(h=>h?.hp>0),lead=vehicle?.hp>0?vehicle:members[0];
+   const arrived=lead&&distance(lead,operation.target)<105,destination=g.world.sites.get(operation.destinationId),expired=g.time>=operation.expiresAt;
+   if(vehicle&&vehicle.hp<=0&&vehicle.captiveCount)this.dropTransportCaptives(vehicle);
+   if(!arrived&&!expired&&lead&&operation.status==='active'){g.world.requestCorridor?.(lead,operation.target,{id:operation.id,profile:vehicle?'truck':'human'});continue}
+   if(arrived&&vehicle?.captiveCount){const cage=destination&&!destination.cleared&&(destination.objects||[]).map(id=>g.world.objects.get(id)).find(o=>o?.type==='cage'&&!o.dead);if(cage){const count=vehicle.captiveCount;cage.count=cage.prisoners=(cage.count??cage.prisoners??0)+count;if(cage.normalRemaining!==undefined){cage.normalRemaining+=count;cage.normalCount=(cage.normalCount||0)+count}destination.count=(destination.count||0)+count;destination.rescued=false;vehicle.captiveCount=0}else this.dropTransportCaptives(vehicle)}
+   if((expired||operation.status!=='active')&&vehicle?.captiveCount)this.dropTransportCaptives(vehicle);
+   operation.status=arrived?'completed':expired?'expired':'intercepted';operation.endedAt=g.time;operation.activityResolved=true;
+   const home=arrived&&destination&&!destination.cleared?destination:g.world.sites.get(operation.sourceId),squad=this.squads.get(operation.squadId);
+   for(const h of members){h.operationId=null;h.squadOperationId=null;h.responseAllocated=false;if(home){h.siteId=home.id;h.homeX=home.x;h.homeY=home.y;h.lastX=home.x;h.lastY=home.y}h.state='patrol';h.reported=false;h.targetId=null;h.searchTime=0}
+   if(squad){squad.operationId=null;squad.siteId=home?.id||squad.siteId;squad.objective={x:home?.x??operation.target.x,y:home?.y??operation.target.y};squad.order='Defend Base';squad.density=0;squad.firingLine=null}
+   for(const platoon of this.platoons.values())if(platoon.operationId===operation.id){platoon.operationId=null;platoon.objective={x:home?.x??operation.target.x,y:home?.y??operation.target.y};platoon.order='Defend Base'}
+   if(vehicle?.hp>0){vehicle.operationId=null;vehicle.target=home?.approach?.at(-1)||null;vehicle.state='idle';vehicle.logistics=false;if(home)vehicle.siteId=home.id}
+  }
+  state.operations=state.operations.filter(op=>op.status==='active'||g.time-(op.endedAt||op.createdAt)<180).slice(-8);
+  if(g.time>=(state.nextAt??120)){state.nextAt=g.time+20;this.dispatchConnectedOperation(g.world.getSites(g.king.x,g.king.y,2400))}
+  if(g.performance?.counters)g.performance.counters.worldOperations=state.operations.filter(op=>op.status==='active').length;
+ }
  tick(dt){
-  const g=this.game;for(const h of this.hazards){h.life-=dt;
+  const g=this.game;this.updateWorldActivity();for(const h of this.hazards){h.life-=dt;
    if(h.type==='shell'){const t=clamp(1-h.life/h.duration,0,1),x=h.fromX+(h.targetX-h.fromX)*t,y=h.fromY+(h.targetY-h.fromY)*t;
     if(!g.navigation.clearSegment(h.x,h.y,x,y,2)){let lo=0,hi=1;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(g.navigation.clearSegment(h.x,h.y,h.x+(x-h.x)*mid,h.y+(y-h.y)*mid,2))lo=mid;else hi=mid}h.x+=(x-h.x)*lo;h.y+=(y-h.y)*lo;h.life=0}else{h.x=x;h.y=y}if(h.life<=0)this.blast(h);
    }else if(['grenade','mortar','airstrike'].includes(h.type)&&h.life<=0)this.blast(h);
@@ -3944,7 +4250,7 @@ class ApeTactics{
   const g=this.g,candidates=g.humanGrid.nearest(a.x,a.y,range,12).map(t=>({t,kind:'human'}));
   if(a.state==='charge'){
    for(const t of g.vehicleGrid.nearest(a.x,a.y,range,4))candidates.push({t,kind:'vehicle'});
-   const objects=g.world.getObjects(a.x,a.y,range).filter(t=>!t.dead&&t.hp>0&&!['tree','rock','berry','apeBuilding'].includes(t.type)&&!(t.fortification&&t.team==='ape'));
+   const objects=g.world.getObjects(a.x,a.y,range).filter(t=>!t.dead&&t.hp>0&&!t.civilian&&t.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(t.type)&&!(t.fortification&&t.team==='ape'));
    objects.sort((x,y)=>g.objectDistance(a,x)-g.objectDistance(a,y));
    for(const t of objects.slice(0,12))candidates.push({t,kind:'object'});
   }
@@ -4024,7 +4330,16 @@ class ApeTactics{
   if(a.state==='free'&&(!target||d2(a,target)>30**2))return false;
   if(a.state==='charge'||target){
    const wall=g.world.objects.get(a.onWallId);
-   const barrier=wall&&!wall.dead?wall:g.world.getObjects(a.x,a.y,110).filter(o=>!o.dead&&o.hp>0&&o.solid&&(o.faction==='human'||['humanBarricade','heavyBarricade','fieldBarricade'].includes(o.type))&&g.objectDistance(a,o)<32).sort((x,y)=>g.objectDistance(a,x)-g.objectDistance(a,y))[0];
+   let barrier=wall&&!wall.dead?wall:null;
+   if(!barrier){
+    let scan=a._tacticBarrier;
+    if(!scan||g.time>=scan.until||scan.revision!==g.world.navRevision||Math.hypot(a.x-scan.x,a.y-scan.y)>18){
+     let found=null,nearest=32;
+     for(const o of g.world.getObjects(a.x,a.y,110)){if(o.dead||o.hp<=0||!o.solid||!(o.faction==='human'||['humanBarricade','heavyBarricade','fieldBarricade'].includes(o.type)))continue;const distance=g.objectDistance(a,o);if(distance<nearest){nearest=distance;found=o}}
+     scan=a._tacticBarrier={object:found,x:a.x,y:a.y,until:g.time+.12,revision:g.world.navRevision};
+    }
+    if(scan.object&&!scan.object.dead&&scan.object.hp>0&&g.objectDistance(a,scan.object)<32)barrier=scan.object;
+   }
    if(barrier){
     const goal=target&&target.id!==barrier.id?target:a.target||g.king;
     if(a.state==='charge'&&this.tryClimb(a,goal.x-a.x,goal.y-a.y,barrier))return true;
@@ -4033,7 +4348,7 @@ class ApeTactics{
   }
   if(!target)return false;
   const kind=a._tacticTarget.kind,distance=kind==='object'?g.objectDistance(a,target):Math.sqrt(d2(a,target)),reach=kind==='human'?30:kind==='vehicle'?40:28;
-  if(distance>reach||kind!=='object'&&!g.world.lineClear(a.x,a.y,target.x,target.y))g.move(a,target.x-a.x,target.y-a.y,a.speed*(a.state==='charge'?1.35:1.12),dt);
+  if(distance>reach||kind!=='object'&&!g.world.lineClear(a.x,a.y,target.x,target.y)){const approach=g.navigation.approachTarget(a,target,reach);g.move(a,approach.x-a.x,approach.y-a.y,a.speed*(a.state==='charge'?1.35:1.12),dt)}
   else if(a.attackCD<=0){
    a.attackCD=kind==='human'?.8:.7;g.animateAttack(a,target,kind==='object'?'overhead':kind==='vehicle'?'slam':undefined);
    const damage=g.apeDamage(a,kind==='human'?18+Math.min(12,g.apeGrid.near(target.x,target.y,48).length*2):kind==='vehicle'?24:18);
@@ -4283,7 +4598,7 @@ class Siege {
   const g=this.g;if(!a.armyOrder.areaArrived){if(this.followRoute(a,o,dt)){a.armyOrder.areaArrived=true;delete a.siegeRoute}return true}
   if(g.time>=(a._areaThink||0)){a._areaThink=g.time+.35;let target=g.humanGrid.nearest(o.x,o.y,190,8,h=>h.hp>0&&this.visibleTarget(h))[0],kind='human';
    if(!target){target=g.vehicleGrid.nearest(o.x,o.y,190,4,v=>v.hp>0&&this.visibleTarget(v))[0];kind='vehicle'}
-   if(!target){target=g.world.getObjects(o.x,o.y,190).filter(t=>!t.dead&&t.hp>0&&this.known(t)&&!['tree','rock','berry','stairs','apeBuilding'].includes(t.type)&&t.type!=='gateControl'&&!(t.type==='gate'&&!t.solid)&&dist(t,o)<190).sort((x,y)=>dist(a,x)-dist(a,y))[0];kind='object'}
+   if(!target){target=g.world.getObjects(o.x,o.y,190).filter(t=>!t.dead&&t.hp>0&&!t.civilian&&t.combatTarget!==false&&this.known(t)&&!['tree','rock','berry','stairs','apeBuilding'].includes(t.type)&&t.type!=='gateControl'&&!(t.type==='gate'&&!t.solid)&&dist(t,o)<190).sort((x,y)=>dist(a,x)-dist(a,y))[0];kind='object'}
    a.areaTarget=target?{id:target.id,kind}:null;
   }
   const ref=a.areaTarget,target=ref?this.resolve({targetId:ref.id,targetKind:ref.kind}):null;
@@ -4452,7 +4767,8 @@ class Game{
  else if(stage>=4){if(tanks)add('tank');add('apc');if(stage===5&&(this.operationSerial||0)%3===2)add('ifv');if(settlementRaid)add('truck')}
  else add('truck');
  }
- const basePeople=major?(n>=850?96+this.warProgress*24:n>=650?68+this.warProgress*20:40):options.intercept?24+this.warIntensity*6:settlementRaid?24+this.warIntensity*12:war?n>=850?105+this.warProgress*24:n>=650?80+this.warProgress*20:n>=450?60+this.warProgress*16:40:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
+ const support=this.world.regionalSupport?.(site),logistics=support?.logistics??1;
+ const basePeople=major?(n>=850?96+this.warProgress*24:n>=650?68+this.warProgress*20:40):options.intercept?24+this.warIntensity*6:settlementRaid?24+this.warIntensity*12:war?n>=850?105+this.warProgress*24:n>=650?80+this.warProgress*20:n>=450?60+this.warProgress*16:40:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*logistics*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
  return {name:settlementRaid?'Settlement Assault':major?'Major Offensive':platoon?'Tank Platoon':options.intercept?'Armored Intercept':column?'Search & Destroy':vehicles.includes('tank')?'Armored Response':vehicles.includes('apc')?'Mechanized Squad':stage>=3?'Military Squad':stage===2?'Tactical Squad':'Search Team',people,vehicles,stage,capacity};
  }
  makeMilitaryVehicle(site,kind,target,troops=0,operationId=null,index=0){
@@ -4596,12 +4912,12 @@ class Game{
  notify(text,color='gold',category='routine'){this.messages.push({text,color,category,time:this.time});if(this.messages.length>25)this.messages.shift();this.hooks.toast?.(text,color,category)}
  sound(name,strength=1,x=this.king.x){this.hooks.sound?.(name,strength,clamp((x-this.king.x)/550,-1,1))}
  effect(type,x,y,opts={}){
- const critical=type==='wave'||type==='charge'||type==='text'||type==='explosion'||distance2({x,y},this.king)<350**2;
+ const critical=type==='wave'||type==='charge'||type==='command'||type==='text'||type==='explosion'||distance2({x,y},this.king)<350**2;
  const budget=400-this.performance.qualityLevel*35;
  if(this.effects.length>=budget){
  // Merge redundant impacts away from the crown while retaining command and warning cues.
  if(!critical){for(let i=this.effects.length-1;i>=Math.max(0,this.effects.length-24);i--){const f=this.effects[i];if(f.type===type&&(f.x-x)**2+(f.y-y)**2<30**2){f.life=Math.max(f.life,opts.life||.65);return}}return}
- const index=this.effects.findIndex(f=>!['wave','charge','text','explosion'].includes(f.type)&&distance2(f,this.king)>350**2);
+ const index=this.effects.findIndex(f=>!['wave','charge','command','text','explosion'].includes(f.type)&&distance2(f,this.king)>350**2);
  if(index>=0)this.effectPool.release(this.effects.splice(index,1)[0]);else if(this.effects.length>=budget+48)return;
  }
  const life=opts.life||.65;this.effects.push(this.effectPool.take({type,x,y,life,maxLife:life,...opts}));
@@ -4896,7 +5212,7 @@ class Game{
  const wall=this.world.objects.get(this.king.onWallId);if(wall&&!wall.dead&&wall.hp>0){this.damageObject(wall,55,this.king);return}
  let candidates=this.humanGrid.near(this.king.x,this.king.y,75).filter(h=>this.world.lineClear(this.king.x,this.king.y,h.x,h.y)).concat(this.vehicles.filter(v=>v.hp>0&&dist(v,this.king)<85));let nearest=null;
  for(const h of candidates){if(!nearest||dist(h,this.king)<dist(nearest,this.king))nearest=h}
- let objs=this.world.getObjects(this.king.x,this.king.y,95).filter(o=>!o.dead&&o.hp>0&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));
+ let objs=this.world.getObjects(this.king.x,this.king.y,95).filter(o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));
  if(nearest){this.king.dir=Math.atan2(nearest.y-this.king.y,nearest.x-this.king.x);this.hurt(nearest,65,this.king);this.noise(this.king.x,this.king.y,200,'fight')}else{
  let obj=objs.sort((a,b)=>this.objectDistance(this.king,a)-this.objectDistance(this.king,b))[0];if(obj&&this.objectDistance(this.king,obj)<53)this.damageObject(obj,55,this.king);else this.effect('hit',this.king.x+Math.cos(this.king.dir)*38,this.king.y+Math.sin(this.king.dir)*38,{life:.25,color:'#e6ce96'});
  }
@@ -4941,7 +5257,8 @@ class Game{
  spawnRaid(site,target,settlementRaid=false,options={}){
  const village=settlementRaid?this.settlement(target?.id):null;if(village&&!this.colonies.canRaid(village,options.operationId))return false;
  if(site&&this.settlements.some(s=>s.population>0&&Math.max(Math.abs(site.x-s.x),Math.abs(site.y-s.y))<this.colonies.defenseExtent(s)+180))return false;
- if(!site||!target||!Number.isFinite(target.x)||!Number.isFinite(target.y)||site.cleared||site.strength<=0||this.humans.length>=this.activeHumanCapacity()||this.time-(site.lastRaid??0)<30)return false;
+ const coordination=site?(this.world.regionalSupport?.(site)?.coordination??1):1;
+ if(!site||!target||!Number.isFinite(target.x)||!Number.isFinite(target.y)||site.cleared||site.strength<=0||this.humans.length>=this.activeHumanCapacity()||this.time-(site.lastRaid??0)<30/Math.max(.1,coordination))return false;
  if(!options.operationId&&this.activeOperations().length>=this.operationCapacity)return false;
  if(!this.prepareMilitarySource(site))return false;
  const regionalReserve=!options.operationId&&!settlementRaid&&this.population>=300&&this.settlements.some(s=>s.known&&s.population>0)?Math.max(0,this.responseBudget*.7-this.forceWeight()):Infinity;
@@ -5025,7 +5342,7 @@ class Game{
  }
  if(a.state==='charge'){
  if(!this.tactics)a.chargeTime-=dt;let target=a.target||this.king;
- let objs=this.tactics?[]:this.world.getObjects(a.x,a.y,75).filter(o=>!o.dead&&o.hp>0&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));let obj=objs.sort((x,y)=>dist(a,x)-dist(a,y))[0];
+ let objs=this.tactics?[]:this.world.getObjects(a.x,a.y,75).filter(o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));let obj=objs.sort((x,y)=>dist(a,x)-dist(a,y))[0];
  let vehicle=this.tactics?null:this.vehicleGrid.nearest(a.x,a.y,80,1)[0];
  if(vehicle){if(dist(a,vehicle)>40)this.move(a,vehicle.x-a.x,vehicle.y-a.y,a.speed*1.3,dt);else if(a.attackCD<=0){a.attackCD=.65;this.animateAttack(a,vehicle,'slam');this.hurt(vehicle,this.apeDamage(a,24),a);if(vehicle.hp<=0){this.stats.structures++;this.sound('smash',2,vehicle.x)}}return}
  if(obj&&this.objectDistance(a,obj)<26){if(a.attackCD<=0){a.attackCD=.75;this.animateAttack(a,obj,'overhead');this.damageObject(obj,this.apeDamage(a,18),a)}return}
@@ -5972,7 +6289,7 @@ const setDirection=(a,order,aim)=>{const d=heading(aim);order.dx=d.x;order.dy=d.
 // Anchor the forward cone to the issued charge, so routing around an obstacle
 // does not change which side of the battlefield the player ordered an attack on.
 const inDirection=(a,t)=>{const o=a.nearestOrder;if(!o?.goal)return true;const x=t.x-(o.goal.x-o.dx*RANGE),y=t.y-(o.goal.y-o.dy*RANGE);return x*o.dx+y*o.dy>=Math.hypot(x,y)*.5-1e-6};
-const hostileObject=o=>!o.dead&&o.hp>0&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
+const hostileObject=o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&o.team!=='ape'&&o.faction!=='ape'&&o.owner!=='ape'&&!o.settlementId&&HOSTILE.has(o.type)&&(o.type!=='cage'||(o.count??o.prisoners??0)>0)&&(o.type!=='gate'||o.solid);
 const troopTarget=(t,kind)=>kind==='human'||kind==='vehicle'||kind==='object'&&t.type==='vehicle';
 const LIGHT=new Set(['capuchin','gibbon','chimpanzee']),climbPlans=new WeakMap();
 // A ground-route failure does not prove that a climber cannot reach its target.
@@ -7225,6 +7542,120 @@ window.ATSAttackCommands=Object.freeze({holdMs:HOLD_MS,doubleTapMs:DOUBLE_TAP_MS
 
 </script>
 <script>
+/* Order-driven presentation. Weak state is neither saved nor consulted by combat. */
+(() => {
+  'use strict';
+  const responses = new WeakMap(), TAU = Math.PI * 2;
+  const ORDER_STATES = new Set(['charge', 'hold', 'follow', 'retreat', 'defend', 'attack']);
+  const VISUAL_ORDERS = new Set(['charge', 'follow', 'hold', 'defend', 'retreat', 'attack', 'movement']);
+  const RECALL_COMMANDS = new Set(['call', 'recall', 'recallField', 'recallAll']);
+  const PRIMARY_POSES = new Set(['hurt', 'death', 'knockback', 'climb', 'throw', 'attack', 'heavyAttack', 'chargeAttack']);
+  const aliases = Object.freeze({ move: 'movement', regroup: 'follow', rally: 'follow', shield: 'defend',
+    assault: 'attack', sabotage: 'attack', attackArea: 'attack', climb: 'movement',
+    spreadCharge: 'charge', attackNearest: 'defend', nearestTarget: 'charge', nearestHuman: 'charge',
+    call: 'follow', recall: 'retreat', recallField: 'retreat', recallAll: 'retreat', settle: 'hold', settleAll: 'hold', patrol: 'defend' });
+  const canonical = kind => aliases[kind] || kind;
+  function orderFor(a, game, time = game?.time || 0) {
+    if (!a || a.hp <= 0 || a.id === 'king' || a.captive || a.prisoner) return null;
+    const group = a.armyOrder && game?.siege?.groups?.[a.species];
+    if (group && group.id === a.armyOrder?.group) {
+      const order = group.orders?.[a.armyOrder.index || 0];
+      if (order) return canonical(order.type);
+    }
+    if (a.nearestOrder && a.nearestOrder.until > time) return 'charge';
+    if (a.state === 'charge' && a.commandStyle === 'attackNearest') return 'defend';
+    if (a.state === 'follow' && a.retreatUntil > time && a.recallOrder?.kind !== 'recruit') return 'retreat';
+    if (ORDER_STATES.has(a.state)) return a.state;
+    return null;
+  }
+  function response(a, game, time, knownOrder) {
+    const r = responses.get(a);
+    return r && time >= r.at && time < r.until && r.order === (knownOrder === undefined ? orderFor(a, game, time) : knownOrder) ? r : null;
+  }
+  function remember(a, game) {
+    const order = orderFor(a, game);
+    if (order) responses.set(a, { order, at: game.time, until: game.time + (order === 'charge' ? .22 : .3) });
+    else responses.delete(a);
+  }
+  function signature(a) {
+    return [a.state, a.armyOrder, a.nearestOrder, a.recallOrder, a.target];
+  }
+  const G = window.ATSGame?.prototype;
+  if (G?.command) {
+    const command = G.command, effect = G.effect;
+    G.command = function (kind, ...args) {
+      const known = canonical(kind), visual = VISUAL_ORDERS.has(known);
+      if (!visual) return command.call(this, kind, ...args);
+      const before = this.receiveHordeRecall && RECALL_COMMANDS.has(kind) ? [] : (this.apes || []).map(a => [a, signature(a)]), parent = this._commandVisualIssue;
+      const aim = args[0] || this.aim || { x: 1, y: 0 }, dx = Number.isFinite(aim.x) ? aim.x : 1, dy = Number.isFinite(aim.y) ? aim.y : 0;
+      this._commandVisualIssue = { commandKind: known, dir: Math.atan2(dy, dx),
+        originX: this.king.x, originY: this.king.y };
+      let result;
+      try { result = command.call(this, kind, ...args); }
+      finally { this._commandVisualIssue = parent; }
+      if (result !== false) for (const [a, previous] of before) {
+        const current = signature(a);
+        if (current.some((value, i) => value !== previous[i])) remember(a, this);
+      }
+      return result;
+    };
+    if (effect) G.effect = function (type, x, y, options = {}) {
+      const issue = this._commandVisualIssue;
+      // Keep historical effect identifiers and lifetimes for saves, pooling and
+      // existing consumers; only their painted representation changes.
+      return effect.call(this, type, x, y, issue && (type === 'wave' || type === 'charge') ? { ...options, ...issue } : options);
+    };
+    if (G.receiveHordeRecall) {
+      const recall = G.receiveHordeRecall;
+      G.receiveHordeRecall = function (a, ...args) { const result = recall.call(this, a, ...args); remember(a, this); return result; };
+    }
+  }
+  const S = window.ATSSiege?.prototype;
+  if (S?.issue) {
+    const issue = S.issue;
+    S.issue = function (species, orders, append = false) {
+      const result = issue.call(this, species, orders, append);
+      if (!result || !orders?.length) return result;
+      const list = this.members(species).filter(a => a.armyOrder?.group === this.groups[a.species]?.id);
+      if (!list.length) return result;
+      if (!append) for (const a of list) remember(a, this.g);
+      const order = orders[0], kind = canonical(order.type), now = this.g.time;
+      // Dispatching a mixed army issues once per species. Share one standard.
+      if (!this.g.effects.some(e => e.type === 'command' && e.commandKind === kind &&
+        e.targetId === order.targetId && Math.abs(e.x - order.x) + Math.abs(e.y - order.y) < 2 && now - e.issuedAt < .08)) {
+        const center = this.center(species);
+        this.g.effect('command', order.x, order.y, { commandKind: kind, targetId: order.targetId,
+          targetKind: order.targetKind, issuedAt: now, life: .95, originX: center.x, originY: center.y,
+          dir: Math.atan2(order.y - center.y, order.x - center.x) });
+      }
+      return result;
+    };
+  }
+  window.ATSCommandAnimation = {
+    version: 1, canonical, orderFor, response,
+    tempo(a, game, time, knownOrder) {
+      const order = knownOrder === undefined ? orderFor(a, game, time) : knownOrder;
+      return order === 'charge' ? 1.42 : order === 'retreat' ? 1.28 : order === 'follow' ? 1.05 : 1;
+    },
+    apply(c, a, pose, time, reducedMotion = false) {
+      if (!pose.commandOrder || PRIMARY_POSES.has(pose.state)) return;
+      const heavy = a.species === 'gorilla', guard = pose.commandGuard;
+      // Deform around the planted feet. Never move an actor or delay its order.
+      if (guard) {
+        const breath = reducedMotion ? 0 : Math.sin(time * (heavy ? 1.8 : 2.5) + (a.phase || 0)) * .006;
+        c.scale(heavy ? 1.055 : 1.025, (heavy ? .93 : .96) + breath);
+      } else if (pose.state === 'sprint') {
+        const sx = (Math.cos(a.dir || 0) - Math.sin(a.dir || 0)) * (pose.mirror ? -1 : 1);
+        c.transform(1, 0, -Math.sign(sx) * (heavy ? .07 : .1), .98, 0, 0);
+      } else if (pose.commandCry && !reducedMotion) {
+        c.scale(1.035, 1.025 + Math.sin(pose.phase * TAU) * .008);
+      }
+    }
+  };
+})();
+
+</script>
+<script>
 /* Apes Together Strong — illustrated canvas renderer. No external assets. */
 (() => {
 'use strict';
@@ -7370,10 +7801,12 @@ class ATSRenderer {
  drawRubble(c,o){ellipse(c,0,1,28,11,'rgba(2,12,15,.25)');for(let i=0;i<7;i++){const n=hash(idHash(o.id),i),x=(n-.5)*53,y=(hash(i,idHash(o.id))-.5)*16;path(c,[[x-9,y],[x-3,y-6],[x+10,y-1],[x+5,y+4]],i%2?'#48524a':'#6d6957','#293c35',1);}if(o.type==='cage'){line(c,-22,-16,18,-3,'#769087',2);line(c,-9,-18,14,2,'#70867c',2);}}
  primateLook(a={},king=false){const species=king||a.id==='king'?'gorilla':Object.hasOwn(PRIMATE_LOOKS,a.species)?a.species:Object.keys(PRIMATE_LOOKS)[(idHash(a.id||'ape')>>>0)%6],coatVariant=Number.isFinite(a.coatVariant)?clamp(Math.round(a.coatVariant),0,2):typeof a.fur==='number'?Math.min(2,Math.floor(clamp(a.fur,0,1)*3)):(idHash(a.id||species)>>>0)%3;return PRIMATE_LOOKS[species][coatVariant];}
  drawPrimateHand(c,x,y,look,mini=false,foot=false){const w=foot?look.leg*.86:look.arm*.55+1;ellipse(c,x,y,w,foot?3.5:4.5,look.skin,foot?-.08:.12);ellipse(c,x+1,y-1,w*.72,foot?1.5:2.1,look.face);if(!mini){for(let i=0;i<3;i++)line(c,x-w*.55+i*w*.5,y+.2,x-w*.6+i*w*.5,y+(foot?2.2:3),'rgba(18,25,25,.55)',.8);ellipse(c,x-w*.84,y-.5,1.8,2.3,look.skin)}}
- primateTempo(a){return {gorilla:7.2,orangutan:6,chimpanzee:10.5,gibbon:8.8,capuchin:13,mandrill:10}[a.species]||7.2}
+ primateTempo(a){return ({gorilla:7.2,orangutan:6,chimpanzee:10.5,gibbon:8.8,capuchin:13,mandrill:10}[a.species]||7.2)*(window.ATSCommandAnimation?.tempo(a,this._commandGame,this.time)||1)}
  drawPrimateGeometry(c,a={},options={}){
   const king=!!options.king,look=this.primateLook(a,king),species=look.species,mini=!!options.mini,young=!!options.young,walk=options.walk||0,attack=options.attack||0,pose=options.pose,progress=options.progress??1,rest=!attack&&['rest','social','groom','sleep','resting','socializing','grooming','sleeping'].includes(a.activity),fur=furGradient(c,look,mini),cycle=this.reducedMotion?0:this.time*this.primateTempo(a)+(a.phase||0),stride=a.moving&&!rest&&!attack&&!this.reducedMotion?1:0,climbing=!!(a.siegeTransition&&!a.siegeTransition.stairs||a.climbingVehicleId&&a.climbUntil>this.time),bound=species==='gibbon'?4.8:species==='capuchin'?2.5:1.4,bob=rest?4:stride?-Math.abs(Math.sin(cycle))*bound:Math.abs(walk)*-1.1;
+  const commandOrder=a._commandFallbackOrder||window.ATSCommandAnimation?.orderFor(a,this._commandGame,this.time),guard=!a.moving&&['hold','defend'].includes(commandOrder),cry=window.ATSCommandAnimation?.response(a,this._commandGame,this.time)?.order==='charge';
   c.save();c.translate(stride*Math.sin(cycle)*.6,bob);const crouch=stride&&!climbing&&['gorilla','chimpanzee','mandrill','capuchin'].includes(species);if(crouch){c.transform(1,0,-.12, .85,0,0)}
+  if(!attack&&!climbing&&guard)c.scale(species==='gorilla'?1.06:1.03,species==='gorilla'?.92:.96);else if(!attack&&!climbing&&stride&&['charge','retreat','attack'].includes(commandOrder))c.transform(1,0,-.07,.98,0,0);
   if(species==='capuchin'){c.beginPath();c.moveTo(-8,-18);const sway=stride*Math.sin(cycle+.8)*7;c.bezierCurveTo(-31,-6+sway,-49,-12+sway,-46,-31+sway);c.bezierCurveTo(-43,-49+sway,-25,-44+sway,-30,-33+sway);c.strokeStyle=look.shade;c.lineWidth=6;c.lineCap='round';c.stroke();c.strokeStyle=look.fur;c.lineWidth=4;c.stroke();if(!mini){c.strokeStyle=look.light;c.lineWidth=1;c.stroke()}}
   else if(species==='mandrill'){c.beginPath();c.moveTo(-10,-19);c.quadraticCurveTo(-23,-21,-26,-10);c.strokeStyle=look.shade;c.lineWidth=5;c.lineCap='round';c.stroke();c.strokeStyle=look.fur;c.lineWidth=3;c.stroke()}
   const reach=stride?species==='gibbon'?7:5:2.6,lift=stride?Math.max(0,Math.cos(cycle))*5:0;const leftFoot={x:-7+walk*reach,y:1-lift},rightFoot={x:8-walk*reach,y:2-(stride?Math.max(0,-Math.cos(cycle))*5:0)};
@@ -7387,7 +7820,7 @@ class ATSRenderer {
   let left={x:-look.reach*.83,y:(species==='orangutan'||species==='gibbon'?5:0)+walk*3},right={x:look.reach*.9,y:(species==='orangutan'?5:0)-walk*3};
   if(stride&&!climbing){const swing=Math.sin(cycle),plant=Math.cos(cycle);if(species==='gibbon'){left={x:-look.reach*.85-swing*5,y:-28+plant*13};right={x:look.reach*.9+swing*5,y:-28-plant*13}}else{const span=species==='orangutan'?7:10;left={x:-look.reach*.83+swing*span,y:3-Math.max(0,plant)*9};right={x:look.reach*.9-swing*span,y:3-Math.max(0,-plant)*9}}}
   if(attack&&pose==='throw'){const t=progress*.8;right=t<.16?{x:16,y:-10}:t<.36?{x:-18,y:-65}:t<.46?{x:39,y:-57}:t<.64?{x:27,y:-21}:{x:look.reach*.9,y:0};left={x:-18,y:-14};if(t<.42)ellipse(c,right.x,right.y-2,3.2,2.5,'#b5ad92')}else if(attack&&pose==='rally'){left={x:-25,y:-22};right={x:25,y:-22};}else if(attack){if(pose==='overhead'||pose==='slam'){const lift=progress<.45?progress/.45:Math.max(0,1-(progress-.45)/.38);left={x:-14,y:-5-lift*59};right={x:18,y:-5-lift*60}}else if(pose==='uppercut')right={x:look.reach*.7+attack*.8,y:-7-attack*3.2};else if(pose==='backhand'){left={x:-15+attack*3.5,y:-6-attack*1.8};right={x:17,y:-16}}else if(pose==='tackle'){left={x:attack-18,y:-9-attack};right={x:24+attack*1.2,y:-8-attack}}else right={x:look.reach*.8+attack*1.7,y:-5-attack*1.6};}
-  if(rest){left.x+=5;left.y-=8;right.x-=6;right.y-=8}if(!attack&&(climbing||a.climbingWallId&&a.wallClimbUntil>this.time)){left={x:-17-Math.sin(cycle)*4,y:-57-Math.sin(cycle)*11};right={x:19+Math.sin(cycle)*4,y:-57+Math.sin(cycle)*11}}else if(!attack&&(a.carrying==='wood'||a._carryingWood)){left={x:-17,y:-25};right={x:19,y:-21}}
+  if(rest){left.x+=5;left.y-=8;right.x-=6;right.y-=8}if(!attack&&(climbing||a.climbingWallId&&a.wallClimbUntil>this.time)){left={x:-17-Math.sin(cycle)*4,y:-57-Math.sin(cycle)*11};right={x:19+Math.sin(cycle)*4,y:-57+Math.sin(cycle)*11}}else if(!attack&&(a.carrying==='wood'||a._carryingWood)){left={x:-17,y:-25};right={x:19,y:-21}}else if(!attack&&guard){left={x:-18,y:a.shield?.hp>0?-34:-18};right={x:20,y:a.shield?.hp>0?-29:-20}}else if(!attack&&cry&&!this.reducedMotion){left={x:-22,y:species==='gorilla'?-28:-53};right={x:24,y:species==='gorilla'?-34:-55}}
   taperedLimb(c,-look.shoulder+2,-34,left.x,left.y,-5,look.arm*.7,look.shade,look.shade);taperedLimb(c,look.shoulder-1,-34,right.x,right.y,6,look.arm*.74,fur,look.shade);
   softShape(c,look.fur,look.shade,()=>{c.moveTo(-look.shoulder-2,-39);c.quadraticCurveTo(-look.shoulder-look.arm*1.2,-35,-look.shoulder-look.arm*.8,-29);c.quadraticCurveTo(-look.shoulder-2,-22,-look.shoulder+look.arm*.4,-27);c.quadraticCurveTo(-look.shoulder+look.arm*.65,-34,-look.shoulder-2,-39)},.7);softShape(c,fur,look.shade,()=>{c.moveTo(look.shoulder-4,-39);c.quadraticCurveTo(look.shoulder+look.arm*.8,-39,look.shoulder+look.arm*.95,-30);c.quadraticCurveTo(look.shoulder+look.arm*.65,-25,look.shoulder-2,-27);c.quadraticCurveTo(look.shoulder-look.arm*.7,-30,look.shoulder-4,-39)},.7);if(!mini){c.beginPath();c.moveTo(look.shoulder-2,-36);c.quadraticCurveTo(look.shoulder+look.arm*.52,-35,look.shoulder+look.arm*.48,-31);c.strokeStyle=look.light;c.lineWidth=1.1;c.stroke()}
   if(!mini){line(c,look.shoulder+1,-31,(look.shoulder+right.x)*.5+4,(-34+right.y)*.5,look.light,1.4);const strands=species==='orangutan'?7:4;for(let i=0;i<strands;i++){const y=-33+i*3.4,x=-look.shoulder-1+Math.sin(i)*1.4;line(c,x,y,x-2+(i%2),y+(species==='orangutan'?8:3),i%2?look.light:look.fur,1.2)}for(let i=0;i<3;i++)line(c,2+i*3,-24+i*2,4+i*3,-20+i*2,'rgba(232,222,183,.2)',.85)}
@@ -7411,15 +7844,15 @@ class ATSRenderer {
   if(king){line(c,-11,-33,10,-33,'#ac925b',2);ellipse(c,2,-33,2.2,2.7,'#8cb9b1');this.drawCrown(c,1,hy-hr+1,1.05);if(a.hp<a.maxHp*.25)line(c,9,hy+4,11,hy+8,'#bd8f72',1.5)}c.restore();
  }
  drawApe(c,a,king=false,exposure=0){
-  const phase=a.phase??hash(idHash(a.id))*TAU,young=a.state==='young'||a.age!=null&&a.age<20,size=king?1.36:young?.63:a.state==='scout'?1.1:.95,flip=Math.cos(a.dir||0)<-.15?-1:1,walk=this.reducedMotion?0:a.moving?Math.sin(this.time*this.primateTempo(a)+phase):Math.sin(this.time*1.8+phase)*.1,progress=a.animation?clamp((this.time-a.animation.start)/(a.animation.duration||.3),0,1):.5,attack=(a.attackTimer||0)>0?(this.reducedMotion?6:Math.sin(Math.PI*progress)*14):0;
-  if(!this.usesPaintedPrimate?.(a,king))ellipse(c,0,2,king?24:young?11:17,king?8:young?4:6,'rgba(0,5,8,.4)');if(king&&exposure>.1)ellipse(c,0,0,26,10,`rgba(220,91,53,${exposure*.2})`);
+  const painted=!!this.usesPaintedPrimate?.(a,king),phase=painted?0:a.phase??hash(idHash(a.id))*TAU,young=a.state==='young'||a.age!=null&&a.age<20,size=king?1.36:young?.63:a.state==='scout'?1.1:.95,flip=Math.cos(a.dir||0)<-.15?-1:1,walk=painted||this.reducedMotion?0:a.moving?Math.sin(this.time*this.primateTempo(a)+phase):Math.sin(this.time*1.8+phase)*.1,progress=a.animation?clamp((this.time-a.animation.start)/(a.animation.duration||.3),0,1):.5,attack=(a.attackTimer||0)>0?(this.reducedMotion?6:Math.sin(Math.PI*progress)*14):0;
+  if(!painted)ellipse(c,0,2,king?24:young?11:17,king?8:young?4:6,'rgba(0,5,8,.4)');if(king&&exposure>.1)ellipse(c,0,0,26,10,`rgba(220,91,53,${exposure*.2})`);
   if(!king&&(this.quality==='low'||this.camera.zoom<.65)&&!attack){c.save();c.scale(flip,1);this.drawApeMini(c,0,0,size,a);c.restore()}else {c.save();c.scale(size*flip,size);this.drawPrimateGeometry(c,a,{king,young,walk,attack,pose:a.animation?.kind,progress,mini:this.detailLevel>=3});c.restore()}
-  if(a.state==='hold')ellipse(c,0,5,14,5,'rgba(226,191,114,.18)');if(king&&a.hp>0&&a.hp<a.maxHp*.35)this.health(c,a.hp/a.maxHp,-108,39,'#ea9b76');else if(!king&&a.hp>0&&a.maxHp&&a.hp<a.maxHp*.9)this.health(c,a.hp/a.maxHp,-73*size,24,'#b6cc92');
+  if(king&&a.hp>0&&a.hp<a.maxHp*.35)this.health(c,a.hp/a.maxHp,-108,39,'#ea9b76');else if(!king&&a.hp>0&&a.maxHp&&a.hp<a.maxHp*.9)this.health(c,a.hp/a.maxHp,-73*size,24,'#b6cc92');
  }
  actorFrame(a,phase=0){if(!a.moving||this.reducedMotion)return 6;const dx=a.x-this.camera.x,dy=a.y-this.camera.y,frames=this.detailLevel>=2&&dx*dx+dy*dy>320*320?3:6;return Math.floor(((this.time*(a.species?this.primateTempo(a):10)+phase)%TAU+TAU)%TAU/TAU*frames)*(6/frames);}
- drawApeSprite(c,a){if(a.state==='young'||a.age!=null&&a.age<20){this.drawApe(c,a,false);return false}const look=this.primateLook(a),scout=a.state==='scout',phase=a.phase??hash(idHash(a.id))*TAU,frame=this.actorFrame(a,phase),key=look.species+':'+look.coatVariant+':'+scout+':'+frame;let sprite=this.apeSprites.get(key);
-  if(!sprite){if(this.actorSpriteBudget<=0){this.drawApe(c,a,false);return false}this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=112;sprite.height=116;const sc=sprite.getContext('2d');sc.translate(56,100);const oldTime=this.time,oldQuality=this.quality,oldZoom=this.camera.zoom,oldReduced=this.reducedMotion,oldDetail=this.detailLevel;this.time=0;this.quality='high';this.camera.zoom=1;this.reducedMotion=false;this.detailLevel=0;this.drawApe(sc,{id:'cached',species:look.species,coatVariant:look.coatVariant,_atlas:true,dir:0,phase:frame/6*TAU,moving:frame!==6,hp:100,maxHp:100,age:240,state:scout?'scout':'follow'},false);this.time=oldTime;this.quality=oldQuality;this.camera.zoom=oldZoom;this.reducedMotion=oldReduced;this.detailLevel=oldDetail;this.cacheSet(this.apeSprites,key,sprite,256)}
-  c.save();c.scale((Math.cos(a.dir||0)<-.15?-1:1)*(a.bodyScale||1),a.bodyScale||1);c.drawImage(sprite,-56,-100);c.restore();if(a.state==='hold')ellipse(c,0,5,14,5,'rgba(226,191,114,.18)');if(a.hp>0&&a.maxHp&&a.hp<a.maxHp*.9)this.health(c,a.hp/a.maxHp,scout?-80:-68,24,'#b6cc92');return true}
+ drawApeSprite(c,a){if(a.state==='young'||a.age!=null&&a.age<20||window.ATSCommandAnimation?.response(a,this._commandGame,this.time)){this.drawApe(c,a,false);return false}const look=this.primateLook(a),scout=a.state==='scout',order=window.ATSCommandAnimation?.orderFor(a,this._commandGame,this.time),phase=a.phase??hash(idHash(a.id))*TAU,frame=this.actorFrame(a,phase),key=look.species+':'+look.coatVariant+':'+scout+':'+frame+':'+(order||'idle');let sprite=this.apeSprites.get(key);
+  if(!sprite){if(this.actorSpriteBudget<=0){this.drawApe(c,a,false);return false}this.actorSpriteBudget--;sprite=document.createElement('canvas');sprite.width=112;sprite.height=116;const sc=sprite.getContext('2d');sc.translate(56,100);const oldTime=this.time,oldQuality=this.quality,oldZoom=this.camera.zoom,oldReduced=this.reducedMotion,oldDetail=this.detailLevel;this.time=0;this.quality='high';this.camera.zoom=1;this.reducedMotion=false;this.detailLevel=0;this.drawApe(sc,{id:'cached',species:look.species,coatVariant:look.coatVariant,_atlas:true,_commandFallbackOrder:order,dir:0,phase:frame/6*TAU,moving:frame!==6,hp:100,maxHp:100,age:240,state:scout?'scout':order||'follow'},false);this.time=oldTime;this.quality=oldQuality;this.camera.zoom=oldZoom;this.reducedMotion=oldReduced;this.detailLevel=oldDetail;this.cacheSet(this.apeSprites,key,sprite,256)}
+  c.save();c.scale((Math.cos(a.dir||0)<-.15?-1:1)*(a.bodyScale||1),a.bodyScale||1);c.drawImage(sprite,-56,-100);c.restore();if(a.hp>0&&a.maxHp&&a.hp<a.maxHp*.9)this.health(c,a.hp/a.maxHp,scout?-80:-68,24,'#b6cc92');return true}
  drawCrown(c,x,y,s=1){c.save();c.translate(x,y);c.scale(s,s);c.shadowColor='rgba(245,205,103,.4)';c.shadowBlur=3;softShape(c,'#c89b4b','#725c37',()=>{c.moveTo(-13,2);c.quadraticCurveTo(-15,-4,-14,-9);c.lineTo(-8,-5);c.lineTo(-6,-15);c.lineTo(0,-8);c.lineTo(5,-17);c.lineTo(9,-6);c.lineTo(15,-11);c.quadraticCurveTo(16,-4,13,3);c.quadraticCurveTo(0,7,-13,2)},1);softShape(c,'#f1d589',null,()=>{c.moveTo(-13,-2);c.quadraticCurveTo(0,2,14,-2);c.lineTo(13,3);c.quadraticCurveTo(0,6,-13,2)});line(c,-12,1,12,2,'#9b7540',1);for(const [u,v]of [[-6,-14],[5,-16],[15,-10],[-14,-8]])ellipse(c,u,v,1.8,1.8,'#f8df9a');ellipse(c,1,1,2.6,3,'#557f79');ellipse(c,1,.5,1.4,1.8,'#b4d9c5');ellipse(c,-8,0,1.3,1.6,'#b56550');ellipse(c,9,.4,1.3,1.6,'#b56550');c.restore();}
  drawHuman(c,a){const walk=a.moving&&!this.reducedMotion?Math.sin(this.time*10+idHash(a.id)):0,flip=Math.cos(a.dir||0)<0?-1:1,combat=a.state==='combat',radio=a.state==='radio';ellipse(c,0,2,12,5,'rgba(0,5,8,.4)');c.save();c.scale(flip,1);line(c,-5,-18,-6+walk*3,0,'#46534c',6);line(c,5,-18,7-walk*3,0,'#59645a',6);round(c,-10+walk*3,-2,9,4,2,'#1c302d');round(c,3-walk*3,-2,9,4,2,'#1c302d');round(c,-10,-33,20,21,4,a.kind==='pistol'?'#788270':'#61735e','#344d40');path(c,[[-8,-28],[8,-28],[7,-16],[-7,-16]],'#45584a');line(c,-2,-28,-2,-17,'#8c9678',1.5);round(c,-8,-24,5,6,1,'#849176');round(c,3,-24,5,6,1,'#849176');ellipse(c,0,-41,7,8,'#b5a68b');ellipse(c,-4,-41,2,2,'#a39479');path(c,[[-8,-43],[-7,-48],[4,-49],[9,-44],[8,-40],[-7,-41]],'#596f58','#304c3b',1.2);line(c,-7,-43,9,-43,'#7c8a6a',1.5);ellipse(c,4,-40,1,1,'#273b2f');line(c,2,-35,6,-35,'#84795e',1);
  if(radio){line(c,-8,-29,-13,-37,'#84917a',5);round(c,-15,-43,5,10,1,'#263e37');line(c,-12,-44,-12,-52,'#96a488',1.5);c.save();c.scale(flip,1);this.drawSignal(c,-15,-53,a.radioTimer||0);c.restore();}else{line(c,-7,-29,0,-22,'#9b9e82',5);line(c,8,-29,17,-26,'#9b9e82',5);const rifle=a.kind!=='pistol';round(c,1,-27,rifle?28:16,4,1,'#26372f','#788773');line(c,rifle?20:12,-27,rifle?38:23,-27,'#869680',2);path(c,[[8,-25],[13,-25],[10,-18],[7,-18]],'#3c4537');if(rifle){path(c,[[-5,-27],[4,-30],[5,-24],[-5,-23]],'#6b6552');line(c,25,-28,25,-31,'#9bac8d',1.5);}if(a.kind==='machine'){line(c,28,-25,22,-2,'#788b72',2);line(c,29,-25,36,-3,'#788b72',2);}}
@@ -7913,7 +8346,7 @@ const P=ATSRenderer.prototype,baseApe=P.drawApe,baseSprite=P.drawApeSprite,baseH
 const line=(c,x,y,u,v,color,width=1)=>{c.beginPath();c.moveTo(x,y);c.lineTo(u,v);c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.stroke()},poly=(c,points,fill,stroke)=>{c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.closePath();if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke()}},ellipse=(c,x,y,w,h,color)=>{c.beginPath();c.ellipse(x,y,w,h,0,0,Math.PI*2);c.fillStyle=color;c.fill()};
 P.siegeApeDetails=function(c,a){
  if(a.shield?.hp>0&&!this.drawLogShield?.(c,a)){const ratio=a.shield.hp/a.shield.maxHp,flip=Math.cos(a.dir||0)<0?-1:1;c.save();c.scale(flip,1);c.translate(10,-24);line(c,-18,-6,20,5,'#57432d',14);line(c,-18,-9,20,2,'#a18a55',5);ellipse(c,20,5,6,8,'#c7af77');ellipse(c,20,5,3,5,'#7a623b');line(c,-12,-5,13,1,'#d0ac69',1);if(ratio<.65){line(c,-5,-10,-8,-3,'#312b24',2);line(c,-8,-3,1,1,'#312b24',2)}if(ratio<.3){line(c,10,-4,7,4,'#2c241e',3);line(c,7,4,14,9,'#2c241e',2)}c.restore()}
- if(a.rallyUntil>this.time){c.save();c.strokeStyle='#e5c484';c.lineWidth=1.5;c.beginPath();c.ellipse(0,5,19,7,0,0,Math.PI*2);c.stroke();c.restore()}
+ if(a.rallyUntil>this.time){line(c,-13,3,-5,7,'#d2b779',1.5);line(c,5,7,13,3,'#d2b779',1.5)}
 };
 P.drawApe=function(c,a,king,exposure){c.save();if(a.siegeTransition&&!a.onWallId)c.translate(0,-(a.elevation||0));baseApe.call(this,c,a,king,exposure);if(!king){if(a.onWallId)c.translate(0,-(a.elevation||0));this.siegeApeDetails(c,a)}c.restore()};
 P.drawApeSprite=function(c,a){if(a.siegeTransition||a.elevation||a.rallyCast)return this.drawApe(c,a,false);const result=baseSprite.call(this,c,a);if(result!==false)this.siegeApeDetails(c,a);return result};
@@ -7925,7 +8358,7 @@ P.drawGate=function(c,o){if(o.gateState!=='open'&&!o.forcedOpen)return baseGate.
 P.drawWall=function(c,o){baseWall.call(this,c,o);if(o.dead||!o.walkable)return;const z=o.walkHeight||o.visualHeight||70,hw=(o.w||30)/2,hh=(o.h||30)/2,pt=(x,y)=>[(x-y)*.8,(x+y)*.42-z];poly(c,[pt(-hw,-hh),pt(hw,-hh),pt(hw,hh),pt(-hw,hh)],'#687e77','#a0afa0');if(o.climbAccess){const side=(o.w||0)<(o.h||0)?1:-1;for(let i=0;i<3;i++){const x=(i-1)*7;line(c,x,0,x+side*5,-z,'#769368',2);for(let j=15;j<z;j+=18)line(c,x,-j,x+6,-j-6,'#95b777',2)}}};
 P.drawObject=function(c,o){if(o.type==='gate'&&(o.gateState==='open'||o.forcedOpen)){this.drawGate(c,o);return}if(o.type==='gateControl'){if(!o.discovered)return;if(o.dead){poly(c,[[-14,0],[0,-8],[15,0],[0,7]],'#6b6550');line(c,-8,-3,8,3,'#b6a273',3);return}poly(c,[[-13,-4],[-13,-27],[12,-22],[12,3]],'#5d7065','#a1ae8f');ellipse(c,0,-22,11,10,'#a8a886');ellipse(c,0,-22,5,5,'#445850');line(c,-12,-25,14,-17,'#c5b585',3);line(c,14,-17,14,-10,'#c5b585',3);if(o.hp<o.maxHp)this.health(c,o.hp/o.maxHp,-42,27,'#d9bd83');return}
  if(o.type==='stairs'){if(o.dead)return;const dx=(o.topX-o.x),dy=(o.topY-o.y),height=o.height||70,steps=9;for(let i=0;i<steps;i++){const f=i/steps,next=(i+1)/steps,side=12,ax=(dx*f-dy*f)*.8,ay=(dx*f+dy*f)*.42-height*f,bx=(dx*next-dy*next)*.8,by=(dx*next+dy*next)*.42-height*next;poly(c,[[ax-side,ay],[ax+side,ay+5],[bx+side,by+5],[bx-side,by]],i%2?'#6b7d75':'#84938a','#415952')}return}baseObject.call(this,c,o)};
-P.drawSiege=function(game){const siege=game.siege;if(!siege)return;const c=this.ctx,z=this.camera.zoom;
+P.drawSiege=function(game){if(this.drawCommandSiege)return this.drawCommandSiege(game);const siege=game.siege;if(!siege)return;const c=this.ctx,z=this.camera.zoom;
  for(const b of siege.stones){const p=this.project(b.x,b.y,b.z||b.z0);if(this.visible(p,20)){ellipse(c,p.x,p.y,3*z,2.3*z,'#d8c49c');const ground=this.project(b.x,b.y);ellipse(c,ground.x,ground.y,2*z,z,'rgba(5,12,10,.4)')}}
  if(!siege.selected.length)return;c.save();
  for(const a of siege.selectedMembers()){const p=this.project(a.x,a.y,a.elevation||a.wallClimbHeight||0);if(!this.visible(p,35))continue;c.beginPath();c.ellipse(p.x,p.y+4*z,19*z,7*z,0,0,Math.PI*2);c.strokeStyle='#d6dba1';c.lineWidth=1;c.stroke()}
@@ -8767,8 +9200,11 @@ P.drawPrimateGeometry=function(c,a,options={}){
     const king=!!options.king||a.id==='king',human=!!options.human||a.type==='human',d=direction(a.dir||0),
       index=Math.max(0,species.indexOf(a.species||'gorilla')),seed=(a.phase??hash(a.id)%628/100),
       hz=options.animationHz||18,clock=options.reducedMotion?0:Math.floor(time*hz)/hz,
-      urgent=a.state==='charge'||a.sprinting||a.urgent||a.state==='retreat',
-      cycle=((clock*(human?1.9:tempos[index])*(urgent?1.35:1)+seed/TAU)%1+1)%1,
+      commandOrder=human||king?null:window.ATSCommandAnimation?.orderFor(a,options.game,time),
+      commandResponse=!human&&!king?window.ATSCommandAnimation?.response(a,options.game,time,commandOrder):null,
+      urgent=commandOrder==='charge'||commandOrder==='retreat'||commandOrder==='attack'||a.state==='charge'||a.sprinting||a.urgent||a.state==='retreat',
+      commandTempo=commandOrder?window.ATSCommandAnimation.tempo(a,options.game,time,commandOrder):urgent?1.35:1,
+      cycle=((clock*(human?1.9:tempos[index])*commandTempo+seed/TAU)%1+1)%1,
       beat=Math.floor(cycle*4),anim=a.animation,
       active=anim&&time>=anim.start&&time<anim.start+(anim.duration||.5),
       progress=active?clamp((time-anim.start)/(anim.duration||.5),0,1):0;
@@ -8793,8 +9229,10 @@ P.drawPrimateGeometry=function(c,a,options={}){
     }
     else if(human&&!a.moving&&(a.aiming||a.firePlan||a.state==='combat')){state='aim';column=3}
     else if(human&&a.state==='radio'){state='radio';column=3}
+    else if(commandResponse?.order==='charge'&&!options.reducedMotion){state='command';column=5;phase=clamp((time-commandResponse.at)/.22,0,1);event='warCry'}
     else if(a.moving){state=urgent?'sprint':'run';column=d.rear&&!king?rearStep[beat]:frontStep[beat];event=beat===0?'footLeft':beat===2?'footRight':null}
     else if(!human&&a.attackCD>0&&a.attackCD<.14&&['charge','attack'].includes(a.state)){state='prepare';column=king?3:5;event='anticipation'}
+    else if(commandOrder==='hold'||commandOrder==='defend'){state='prepare';column=0;event=null}
     else if(a.hp>0&&a.hp<a.maxHp*.25){state='injured';column=king?5:0}
     else if(/rest|sleep|heal|groom/.test(a.activity||'')){state='rest';column=king?5:0}
     else if(a.carrying||a._carryingWood){state='carry';column=king?4:d.rear?3:0}
@@ -8825,6 +9263,7 @@ P.drawPrimateGeometry=function(c,a,options={}){
     if(king&&state==='death'){atlas='kingactions';row=1;column=phase<.35?0:phase<.75?1:2}
     const pose={atlas,state,column,row,
       direction:d.sector,directionName:d.name,mirror:d.mirror,rear:d.rear,phase,event,beat,king,human,
+      commandOrder,commandGuard:(commandOrder==='hold'||commandOrder==='defend')&&!a.moving,commandCry:event==='warCry',
       clipId:active?String(anim.start)+':'+anim.kind:state,sourceDirectionCount:king?8:4};
     return window.ATSOutfitArt?.pose(a,pose,options,time)||pose;
   }
@@ -8856,6 +9295,7 @@ P.drawPrimateGeometry=function(c,a,options={}){
     }
   }
   function cosmeticMotion(r,c,a,p){
+    window.ATSCommandAnimation?.apply(c,a,p,r.time,r.reducedMotion);
     if(r.reducedMotion)return;
     if(['idle','aim','radio'].includes(p.state)){
       // Breathe around the planted-foot origin. Translating the whole cutout
@@ -8868,7 +9308,7 @@ P.drawPrimateGeometry=function(c,a,options={}){
   P.usesPaintedPrimate=function(a={},king=false){return !!metadata()&&!!art()?.get(king||a.id==='king'?'characters-king':'characters-apes')};
   P.drawPrimateGeometry=function(c,a={},options={}){
     if(!art()?.get(options.king||a.id==='king'?'characters-king':'characters-apes')||!metadata())return previousGeometry.call(this,c,a,options);
-    const p=resolve(a,this.time||0,{king:options.king,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz}),
+    const p=resolve(a,this.time||0,{king:options.king,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz,game:this._commandGame}),
       index=Math.max(0,species.indexOf(a.species||'gorilla')),slot=p.king?84:sizes[index],outerFlip=Math.cos(a.dir||0)<-.15?-1:1;
     stamp(this,a,p);c.save();
     // Existing outer body wrappers use world-axis mirroring. Cancel that here
@@ -8918,9 +9358,10 @@ P.drawPrimateGeometry=function(c,a,options={}){
   };
 
   P.characterAttachment=function(a,king=false){
-    const p=resolve(a,this.time||0,{king,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz});
+    const p=resolve(a,this.time||0,{king,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz,game:this._commandGame});
     let left={x:-24,y:-15},right={x:24,y:-15};
     if(p.state==='climb'){left={x:-10,y:p.beat%2?-40:-65};right={x:12,y:p.beat%2?-65:-40}}
+    else if(p.commandGuard){left={x:-18,y:-34};right={x:20,y:-29}}
     else if(['prepare','command','victory'].includes(p.state)){left={x:-12,y:-64};right={x:16,y:-64}}
     else if(p.state==='throw'){left={x:-15,y:-28};right=p.phase<.525?{x:10,y:-65}:{x:33,y:-35}}
     else if(p.state==='attack'&&!king){left={x:-15,y:-25};right={x:29,y:-37}}
@@ -9434,6 +9875,18 @@ window.ATSOutfitArt={version:3,ready,atlasFor,pose,armor,frame,actor};
     if (o.powered !== false && this.detailLevel < 3) this.glow(c, -width * .17, -height * .22, 22, '235,181,91', .1);
   };
   P.drawObject = function (c, o) {
+    // Reuse authored environment sprites for the new facility silhouettes.
+    // Their anchors share the existing local ground origin and collision data.
+    if (!o.dead && (o.tent || o.timberStack || o.policeStation || o.powerGenerator)) {
+      const name=o.tent?'tent':o.timberStack?'fallenLog':o.policeStation?'guardhouse':'generator';
+      const width=o.timberStack?86:o.tent?94:o.policeStation?128:49;
+      const height=o.timberStack?43:o.tent?88:o.policeStation?119:59;
+      c.save();shadow(c,width);
+      const painted=env(c,name,width,height,0,5);
+      if(painted&&o.timberStack&&this.detailLevel<3)env(c,name,width*.87,height*.87,0,-4);
+      c.restore();
+      if(painted){damage(this,c,o,width,height);if(o.hp>0&&o.hp<o.maxHp)this.health(c,o.hp/o.maxHp,-height*.8,34,'#d7ae6b');return;}
+    }
     // Supersede old repair-bay and command-building geometric overlays too.
     if (!o.dead && (o.commandCenter || o.repairBay) && image(o.commandCenter ? 'command' : 'garage')) {
       this.drawBuilding(c, o, o.type);
@@ -9765,6 +10218,10 @@ window.ATSOutfitArt={version:3,ready,atlasFor,pose,armor,frame,actor};
     document.head.append(style);
     for (const button of army.commands.querySelectorAll('button')) {
       if (['call', 'nearestTarget', 'recall', 'recallField', 'hold', 'target', 'finder', 'build'].includes(button.dataset.armyCommand)) button.dataset.core = '';
+      const kind = ({ call: 'follow', rally: 'follow', recall: 'retreat', recallField: 'retreat', recallAll: 'retreat',
+        target: 'attack', nearestTarget: 'attack', nearestHuman: 'attack', attackNearest: 'defend', finish: 'attack',
+        spreadCharge: 'charge', shield: 'defend', regroup: 'follow' })[button.dataset.armyCommand] || button.dataset.armyCommand;
+      window.ATSCommandVisuals?.icon(button.querySelector('canvas'), kind);
     }
     const expand = army.root.querySelector('.army-expand');
     expand.setAttribute('aria-expanded', 'false');
@@ -10256,6 +10713,246 @@ window.ATSTribalUI={mount};
 
 </script>
 <script>
+/* Shared, cached canvas artwork: physical standards, ground scratches and spoor.
+ * No downloaded files, per-unit particles or simulation-dependent timing. */
+(() => {
+  'use strict';
+  const P = ATSRenderer.prototype, baseEffects = P.drawEffects, baseDraw = P.draw;
+  const KINDS = Object.freeze(['charge', 'follow', 'hold', 'defend', 'retreat', 'attack', 'movement']);
+  const INK = Object.freeze({ charge: '#b65343', follow: '#c4ac70', hold: '#83a2a2', defend: '#719b86', retreat: '#bc9a6d', attack: '#bc6952', movement: '#b7b38a' });
+  const cache = new Map(), MAX_MARKERS = 8, MAX_DUST = 24, MAX_CACHE = 31;
+  const TRAVEL_ORDERS = new Set(['charge', 'follow', 'retreat', 'movement', 'attack']);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const poly = (c, points, fill, stroke, width = 1) => {
+    c.beginPath(); points.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+    if (fill) { c.fillStyle = fill; c.fill(); }
+    if (stroke) { c.strokeStyle = stroke; c.lineWidth = width; c.stroke(); }
+  };
+  const line = (c, x, y, u, v, color, width = 1) => {
+    c.beginPath(); c.moveTo(x, y); c.lineTo(u, v); c.strokeStyle = color; c.lineWidth = width; c.lineCap = 'round'; c.stroke();
+  };
+  function claws(c, color, size = 1) {
+    c.save(); c.scale(size, size);
+    for (let i = 0; i < 3; i++) poly(c, [[-10 + i * 7, 9], [-5 + i * 7, -10], [-1 + i * 7, -12], [-5 + i * 7, 5]], color);
+    c.restore();
+  }
+  function shield(c, color) {
+    poly(c, [[-11, -10], [0, -14], [11, -10], [9, 5], [0, 13], [-9, 5]], '#293d36', color, 1.7);
+    line(c, 0, -9, 0, 7, color, 2); line(c, -6, -3, 6, -3, color, 2);
+  }
+  function foot(c, color) {
+    poly(c, [[-3, 8], [-5, 3], [-3, -4], [2, -6], [5, -3], [4, 1], [1, 3], [1, 8]], color);
+    for (let i = 0; i < 3; i++) line(c, -2 + i * 3, -8, -1 + i * 3, -10 + i % 2, color, 2.4);
+  }
+  function emblem(c, kind, color = '#f3dfac') {
+    if (kind === 'charge' || kind === 'attack') {
+      claws(c, color, kind === 'charge' ? .86 : 1);
+      if (kind === 'charge') { line(c, -15, 10, 13, 10, color, 2); line(c, 7, 5, 13, 10, color, 2); }
+    } else if (kind === 'defend') shield(c, color);
+    else if (kind === 'hold') {
+      shield(c, color); line(c, -16, 14, 16, 14, color, 2.2);
+    } else if (kind === 'retreat') {
+      poly(c, [[-14, 0], [-3, -10], [-3, -4], [12, -4], [12, 4], [-3, 4], [-3, 10]], color);
+      line(c, 16, -8, 16, 8, color, 2);
+    } else {
+      c.save(); c.translate(-5, 4); c.rotate(-.2); c.scale(.8, .8); foot(c, color); c.restore();
+      c.save(); c.translate(7, -5); c.rotate(.15); c.scale(.8, .8); foot(c, color); c.restore();
+      if (kind === 'follow') line(c, -13, 13, 13, 13, color, 1.8);
+    }
+  }
+  function asset(kind, frame = 0) {
+    const key = kind + ':' + frame; if (cache.has(key)) return cache.get(key);
+    const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 112;
+    const c = canvas.getContext('2d'); c.translate(48, 96);
+    if (kind === 'dust') {
+      for (let i = 0; i < 4; i++) poly(c, [[-23 + i * 9, -3], [-20 + i * 9, -9 - i % 2 * 3], [-9 + i * 9, -10], [2 + i * 9, -4], [-6 + i * 9, 1]], i % 2 ? '#b0a07d44' : '#d0bb8f37');
+    } else if (kind === 'footprint') {
+      foot(c, '#d8c596');
+    } else if (kind === 'scratch') {
+      c.save(); c.transform(.8, .42, -.8, .42, 0, 0); claws(c, '#d7ad7a', 1.4); c.restore();
+    } else {
+      const color = INK[kind] || INK.follow, flap = [-2, 0, 2, 0][frame % 4];
+      // The cloth stays above a wooden shaft; its foot is planted in a small
+      // patch of disturbed earth in the same projection as the terrain.
+      poly(c, [[-24, 0], [-11, -5], [5, 1], [-8, 7]], '#0c1b16a8');
+      line(c, -13, 1, -13, -75, '#352e22', 5); line(c, -14, -1, -14, -75, '#b59b65', 1.5);
+      poly(c, [[-16, -74], [-13, -83], [-10, -74]], '#d1bf8f', '#514933');
+      poly(c, [[-12, -71], [27, -67 + flap], [22, -48 + flap], [29, -29 + flap], [8, -36], [-12, -38]], '#25332a', '#11251f', 2);
+      poly(c, [[-11, -70], [25, -66 + flap], [21, -49 + flap], [27, -32 + flap], [8, -38], [-11, -40]], color, '#ddc18b', .8);
+      line(c, -8, -65, 19, -62 + flap, '#f2d9a14d', 2); line(c, -7, -44, 18, -40 + flap, '#352e263b', 2);
+      c.save(); c.translate(6, -53 + flap * .4); c.scale(.68, .68); emblem(c, kind); c.restore();
+      for (let i = 0; i < 3; i++) line(c, -19 + i * 8, 2 + i % 2, -16 + i * 8, 4 + i % 2, '#b4a27b', 1.5);
+    }
+    if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value);
+    cache.set(key, canvas); return canvas;
+  }
+  function target(game, e) {
+    if (!e.targetId || !game) return null;
+    const t = e.targetKind === 'human' ? game.humansById?.get(e.targetId) : e.targetKind === 'vehicle' ?
+      game.vehicleGrid?.get?.(e.targetId) || game.vehicles?.find(a => a.id === e.targetId) : game.world?.objects?.get(e.targetId);
+    return t && t.hp > 0 && !t.dead ? t : null;
+  }
+  P.draw = function (game, ...args) {
+    this._commandGame = game; this.commandMarkerDraws = 0; this.commandDustDraws = 0;
+    this.commandDustCells = this.commandDustCells || new Set(); this.commandDustCells.clear();
+    return baseDraw.call(this, game, ...args);
+  };
+  P.drawCommandMarker = function (kind, x, y, options = {}) {
+    if (this.commandMarkerDraws >= MAX_MARKERS || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    kind = KINDS.includes(kind) ? kind : 'follow'; const c = this.ctx, z = this.camera.zoom;
+    const p = this.project(x, y); if (!this.visible(p, 95 * z)) return false;
+    this.commandMarkerDraws = (this.commandMarkerDraws || 0) + 1;
+    const frame = this.reducedMotion ? 0 : Math.floor(this.time * 9) % 4;
+    const alpha = clamp(options.alpha ?? 1, 0, 1), isTarget = kind === 'attack';
+    c.save(); c.globalAlpha = alpha;
+    if (isTarget) {
+      c.drawImage(asset('scratch'), p.x - 48 * z, p.y - 96 * z, 96 * z, 112 * z);
+      // A target's compact standard sits beside its footprint, never over the
+      // soldier, vehicle roof or prison artwork.
+      const offset = clamp(options.footprint || 30, 25, 65) * z;
+      c.drawImage(asset(kind, frame), p.x + offset - 48 * z * .62, p.y + 6 * z - 96 * z * .62, 96 * z * .62, 112 * z * .62);
+    } else {
+      const size = options.selected ? .7 : .9;
+      c.drawImage(asset(kind, frame), p.x - 48 * z * size, p.y - 96 * z * size, 96 * z * size, 112 * z * size);
+    }
+    c.restore(); return true;
+  };
+  P.drawCommandFootprints = function (from, to, alpha = .5, count = 5) {
+    if (!from || !to) return; const dx = to.x - from.x, dy = to.y - from.y, distance = Math.hypot(dx, dy);
+    if (distance < 12) return; const c = this.ctx, z = this.camera.zoom, n = Math.min(6, count, Math.ceil(distance / 22));
+    // Only acknowledge the start of a heading. Long straight lines would imply
+    // a walkable path through walls, and crowd the map with unrelated overlays.
+    const span = Math.min(distance, 90), angle = Math.atan2(dy, dx) + Math.PI / 2;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 1) / (n + 1) * span / distance, side = i % 2 ? 4 : -4;
+      const p = this.project(from.x + dx * t - dy / distance * side, from.y + dy * t + dx / distance * side);
+      if (!this.visible(p, 12)) continue; c.save(); c.translate(p.x, p.y); c.transform(.8, .42, -.8, .42, 0, 0); c.rotate(angle);
+      c.globalAlpha = alpha * (1 - i / (n + 1)); c.drawImage(asset('footprint'), -48 * z * .5, -96 * z * .5, 96 * z * .5, 112 * z * .5); c.restore();
+    }
+  };
+  P.drawCommandDust = function (x, y, heavy = false, alpha = .55) {
+    const max = this.reducedMotion ? 0 : this.detailLevel >= 3 || this.quality === 'low' ? 8 : MAX_DUST;
+    if ((this.commandDustDraws || 0) >= max) return; const p = this.project(x, y), z = this.camera.zoom;
+    if (!this.visible(p, 45 * z)) return;
+    const cells = this.commandDustCells || (this.commandDustCells = new Set()), key = Math.floor(x / 78) + ',' + Math.floor(y / 78);
+    if (cells.has(key)) return; cells.add(key); this.commandDustDraws = (this.commandDustDraws || 0) + 1;
+    const size = heavy ? .95 : .65, c = this.ctx; c.save(); c.globalAlpha = alpha;
+    c.drawImage(asset('dust'), p.x - 48 * z * size, p.y - 96 * z * size, 96 * z * size, 112 * z * size); c.restore();
+  };
+  P.drawEffects = function (c, effects) {
+    const regular = [], game = this._commandGame;
+    for (const e of effects) {
+      if (e.type !== 'wave' && e.type !== 'charge' && e.type !== 'command' || e.type === 'wave' && !e.commandKind) { regular.push(e); continue; }
+      const t = clamp(1 - e.life / (e.maxLife || 1), 0, 1);
+      if (e.life <= 0) continue;
+      const kind = e.commandKind || (e.type === 'charge' ? 'charge' : 'follow'), subject = target(game, e);
+      let x = subject?.x ?? e.x, y = subject?.y ?? e.y;
+      if (e.type === 'charge' || e.type === 'wave' && (kind === 'charge' || kind === 'attack')) { const dir = e.dir ?? Math.atan2(e.dy || 0, e.dx || 1); x += Math.cos(dir) * 570; y += Math.sin(dir) * 570; }
+      const alpha = Math.min(1, (1 - t) * 2.8), drawn = this.drawCommandMarker(kind, x, y, { alpha, footprint: subject?.r || 30 });
+      if (drawn && t < .6 && kind !== 'attack' && TRAVEL_ORDERS.has(kind)) {
+        const origin = { x: e.originX ?? e.x, y: e.originY ?? e.y }, dir = e.dir ?? 0;
+        this.drawCommandFootprints(origin, { x: origin.x + Math.cos(dir) * 95, y: origin.y + Math.sin(dir) * 95 }, alpha * .7, 5);
+        if (t < .4) this.drawCommandDust(origin.x, origin.y, kind === 'charge', alpha * .8);
+      }
+    }
+    baseEffects.call(this, c, regular);
+    // Dust uses the already culled visible list and a shared world-cell budget.
+    // Paint here, outside actor-local transforms; no new particles are created.
+    if (!this.reducedMotion) for (const entry of this.drawEntries || []) {
+      if (this.commandDustDraws >= (this.detailLevel >= 3 || this.quality === 'low' ? 8 : MAX_DUST)) break;
+      const a = entry.a;
+      if (entry.type !== 'ape' || !a.moving) continue;
+      const phase = (this.time * (a.species === 'gorilla' ? 2.4 : 3.8) + (a.phase || 0)) % 1;
+      if (phase < .2 && TRAVEL_ORDERS.has(window.ATSCommandAnimation?.orderFor(a, game, this.time))) this.drawCommandDust(a.x - Math.cos(a.dir || 0) * 12, a.y - Math.sin(a.dir || 0) * 12, a.species === 'gorilla', .4 - phase);
+    }
+  };
+  P.drawCommandSiege = function (game) {
+    const siege = game.siege; if (!siege) return; const c = this.ctx, z = this.camera.zoom;
+    for (const b of siege.stones || []) {
+      const p = this.project(b.x, b.y, b.z ?? b.z0); if (!this.visible(p, 20)) continue;
+      c.save(); c.fillStyle = '#d8c49c'; c.fillRect(p.x - 2 * z, p.y - 2 * z, 4 * z, 3 * z); c.restore();
+    }
+    if (!siege.selected.length) return;
+    const members = siege.selectedMembers(), stride = Math.max(1, Math.ceil(members.length / 24));
+    for (let i = 0; i < members.length; i += stride) {
+      const a = members[i], p = this.project(a.x, a.y, a.elevation || a.wallClimbHeight || 0);
+      if (!this.visible(p, 24)) continue;
+      line(c, p.x - 10 * z, p.y + 4 * z, p.x - 4 * z, p.y + 7 * z, '#d4d5a0', 1.5);
+      line(c, p.x + 4 * z, p.y + 7 * z, p.x + 10 * z, p.y + 4 * z, '#d4d5a0', 1.5);
+    }
+    const seen = new Set(); let routes = 0;
+    for (const species of siege.selected) {
+      const group = siege.groups[species], representative = members.find(a => a.species === species);
+      if (!representative) continue;
+      const start = representative.armyOrder?.index || 0, orders = [...(group?.orders || []).slice(start), ...(siege.drafts[species] || [])];
+      let previous = representative;
+      for (const order of orders) {
+        const key = order.id + ':' + order.x + ':' + order.y;
+        if (seen.has(key)) { previous = order; continue; } seen.add(key);
+        if (routes++ >= 8) break;
+        const kind = window.ATSCommandAnimation?.canonical(order.type) || order.type, subject = target(game, order), at = subject || order;
+        if ((this.commandMarkerDraws || 0) < 4) this.drawCommandMarker(kind, at.x, at.y, { selected: true, alpha: group?.blocked ? .9 : .6, footprint: subject?.r });
+        if (routes <= 4 && !group?.blocked) this.drawCommandFootprints(previous, at, .28, 4);
+        previous = at;
+      }
+    }
+    // Preserve functional climb/control discovery cues from the former renderer.
+    for (const o of game.world.getObjects(game.king.x, game.king.y, game.viewRadius || 900)) {
+      if (o.dead || !siege.known(o) || !o.climbAccess && o.type !== 'gateControl') continue;
+      const p = this.project(o.x, o.y, (o.visualHeight || o.height || 20) + 10); if (!this.visible(p, 20)) continue;
+      if (o.climbAccess) {
+        line(c, p.x - 5, p.y + 7, p.x - 5, p.y - 7, '#b4d58d', 1.5); line(c, p.x + 5, p.y + 7, p.x + 5, p.y - 7, '#b4d58d', 1.5);
+        for (let y = -5; y <= 5; y += 5) line(c, p.x - 5, p.y + y, p.x + 5, p.y + y, '#b4d58d', 1);
+      } else poly(c, [[p.x - 5, p.y - 5], [p.x + 5, p.y - 5], [p.x + 5, p.y + 5], [p.x - 5, p.y + 5]], null, '#e2c384', 1.5);
+    }
+  };
+  function icon(canvas, kind) {
+    if (!canvas || !KINDS.includes(kind)) return false;
+    canvas.width = canvas.height = 48; const c = canvas.getContext('2d'); c.translate(24, 24); c.scale(1.1, 1.1);
+    emblem(c, kind, '#ead5a3'); return true;
+  }
+  window.ATSCommandVisuals = { version: 1, kinds: KINDS, icon,
+    status: () => ({ cachedSprites: cache.size, cacheLimit: MAX_CACHE, groupMarkersPerFrame: MAX_MARKERS, dustPerFrame: MAX_DUST }),
+    manifest: Object.freeze({ generated: 'shared canvas atlas', externalAssets: false, framesPerStandard: 4,
+      frameWidth: 96, frameHeight: 112, anchor: Object.freeze({ x: 48, y: 96 }), animationHz: 9 }) };
+})();
+
+</script>
+<script>
+/* Current orders, derived from live selected units rather than the last button. */
+(() => {
+ 'use strict';
+ const names={charge:'Charge',follow:'Follow',hold:'Hold position',defend:'Defend',retreat:'Retreat',attack:'Attack target',movement:'Move'};
+ const commandKinds={call:'follow',follow:'follow',charge:'charge',spreadCharge:'charge',nearestTarget:'charge',nearestHuman:'charge',attackNearest:'defend',recall:'retreat',recallField:'retreat',hold:'hold',shield:'defend',defend:'defend',regroup:'follow'};
+ function summarize(game){
+  const siege=game.siege;
+  if(!siege?.selected.length)return null;
+  const species=new Set(siege.selected),ids=siege.unitIds?new Set(siege.unitIds):null,counts=new Map();let total=0;
+  for(const ape of game.apes){
+   if(ape.hp<=0||!species.has(ape.species)||ids&&!ids.has(ape.id)||!['follow','charge','hold'].includes(ape.state))continue;
+   const order=window.ATSCommandAnimation?.orderFor(ape,game);
+   if(!order)continue;counts.set(order,(counts.get(order)||0)+1);total++;
+  }
+  if(!total)return null;
+  const kind=counts.size===1?counts.keys().next().value:'mixed';
+  return {kind,total,label:kind==='mixed'?'Mixed orders':names[kind]||'Ready',detail:[...counts].map(([order,count])=>count+' '+(names[order]||order).toLowerCase()).join(' · ')};
+ }
+ let last='';
+ function update(game){
+  const badge=document.getElementById('selectedCommandState');if(!badge)return;
+  const state=summarize(game),key=state?state.kind+':'+state.total+':'+state.detail:'';
+  if(key===last)return;last=key;badge.hidden=!state;
+  if(state){badge.dataset.order=state.kind;badge.textContent=state.total+' selected · '+state.label;badge.title=state.detail;}
+  for(const button of document.querySelectorAll('#commandPanel [data-command],#armyDock .army-commands [data-army-command]')){
+   const kind=commandKinds[button.dataset.armyCommand||button.dataset.command];
+   if(kind)button.setAttribute('aria-pressed',String(!!state&&kind===state.kind));
+  }
+ }
+ window.ATSCommandHUD={summarize,update};
+})();
+
+</script>
+<script>
 (function(){
 'use strict';
 const $=id=>document.getElementById(id), SAVE='ats-crown-save-v1', LEGACY='ats-crown-legacy-v1', SETTINGS='ats-crown-settings-v1';
@@ -10313,6 +11010,7 @@ function recordLegacy(g){const h={score:g.score,title:g.title,seed:g.seed,diffic
 function renderLegacy(){const list=$('legacyList');list.replaceChildren();if(!histories.length){list.textContent='Every kingdom begins with one ape. Your legacy awaits.';return}for(const h of histories){const row=document.createElement('div');row.className='legacy-row';const title=document.createElement('span');title.textContent=h.title;const score=document.createElement('strong');score.textContent=fmt(h.score);const details=document.createElement('small');details.textContent='Seed '+h.seed+' · '+Math.floor(h.time/60)+'m · '+h.stats.freed+' freed · '+h.difficulty;row.append(title,score,details);list.append(row)}}
 function deathScreen(){if(deathShown||!game)return;deathShown=true;show('death');$('legacyTitle').textContent=game.title;$('legacyScore').textContent=fmt(game.score);const stats=$('deathStats');stats.replaceChildren();const lines=[['Apes freed',game.stats.freed],['Apes born',game.stats.born],['Largest traveling horde',game.stats.largestHorde],['Settlements founded',game.stats.settlements],['Settlements surviving',game.settlements.filter(s=>s.population>0).length],['Humans defeated',game.stats.humans],['Bases liberated',game.stats.bases],['Structures destroyed',game.stats.structures],['Days survived',game.day],['Highest human threat',ATSTierNames[game.stats.highestThreat-1]],['Seed',game.seed]];for(const [label,value]of lines){const row=document.createElement('div');row.style.display='flex';row.style.justifyContent='space-between';row.style.gap='20px';const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=String(value);b.style.color='#cfb46e';row.append(a,b);stats.append(row)}}
 function updateHud(){if(!game)return;army.update();const hp=Math.max(0,game.king.hp);$('hpFill').style.width=(hp/game.king.maxHp*100)+'%';$('hpFill').style.background=hp<40?'#e37b6b':'';$('hpText').textContent=Math.ceil(hp)+' / '+game.king.maxHp;$('hordeCount').textContent=game.followers.length;$('populationCount').textContent='Population '+fmt(game.population)+' / '+fmt(MAX_APE_POPULATION);$('foodCount').textContent=fmt(game.food);$('threatText').textContent=ATSTierNames[game.tier-1];$('dayText').textContent='NIGHT '+game.day+' · '+(window.ATSTribes?.[game.tribe?.id]?.name||'Balanced kingdom');$('regionText').textContent=game.world.districtAt(game.king.x,game.king.y).name+' · '+(game.weatherInfo?.().label||'Clear night');$('exposureFill').style.width=(game.exposure*100)+'%';$('exposureText').textContent=game.exposure>.5?'IN THE LIGHT':game.time-game.lastContact<12?'BEING HUNTED':'IN THE SHADOWS';$('exposureText').style.color=game.exposure>.5?'#e37b6b':'#9facaa';
+ window.ATSCommandHUD?.update(game);
  mobileCommands.update({near:game.colonies.lodgeAt(game.king),workshop:game.equipment?.workshopAt?.(),playing:screen==='play'&&!game.ended});
  $('buildButton').firstChild.textContent=game.equipment?.workshopAt?.()?'Workshop ':'Build ';$('reignLabel').textContent=['♛ First crown','♛ Jungle King','♛ Warlord'][game.progression?.tier||0];$('buildButton').hidden=screen!=='play'||game.ended||!(game.colonies.lodgeAt(game.king)||game.equipment?.workshopAt?.());
 }
