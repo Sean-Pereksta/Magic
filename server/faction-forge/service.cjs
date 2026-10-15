@@ -37,7 +37,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
       profiles:{p0:clone(profile),p1:D.newProfile('bot','AI',profile.crowncouncilElo)},
       factions:{p0:faction,p1:mission?.aiFaction||mission?.opponent?.faction||'Helions'},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},
       lives:[4,4],initialMmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmrChange:[0,0],currentPacks:{p0:[],p1:[]},selections:{},draftIndex:0,round:1,
-      phase:'draft',bonusFor:null,phaseEndsAt:created+60000,deadlineAt:created+60000,createdAt:created,updatedAt:created,expiresAt:created+2*60*60*1000,battleReadyAt:0,battle:null,battleCount:0,completedBattles:0,serverValidated:false,processedRequests:{},winnerSide:null};
+      phase:'draft',bonusFor:null,phaseEndsAt:created+60000,deadlineAt:created+60000,createdAt:created,updatedAt:created,expiresAt:created+2*60*60*1000,battleReadyAt:0,battle:null,battleCount:0,completedBattles:0,roundWins:[0,0],serverValidated:false,processedRequests:{},winnerSide:null};
   }
   async function makePacks(session,adapter) {
     session.phaseEndsAt=now()+60000;session.deadlineAt=session.phaseEndsAt;
@@ -123,7 +123,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
       if(session.phase!=='game-over'&&session.expiresAt<=now()){dirty=true;session.phase='game-over';session.abandoned=true;session.winnerSide=null;session.endedAt=now();session.serverValidated=false;}
       if(session.phase==='battle'&&session.battleReadyAt<=now()) {
         dirty=true;
-        session.completedBattles++;const loser=1-session.battle.winnerSide;session.lives[loser]=Math.max(0,session.lives[loser]-1);session.revision++;
+        session.completedBattles++;const loser=1-session.battle.winnerSide;session.roundWins=session.roundWins||[0,0];session.roundWins[1-loser]++;session.lives[loser]=Math.max(0,session.lives[loser]-1);session.revision++;
         if(session.lives[loser]===0){session.phase='game-over';session.phaseEndsAt=0;session.deadlineAt=0;session.winnerSide=1-loser;session.winner=session.players[1-loser];session.endedAt=now();session.serverValidated=true;}
         else {session.phase='loser-bonus';session.bonusFor='p'+loser;session.draftIndex=0;session.currentPacks={p0:[],p1:[]};session.round++;session.selections={};const adapter=await engine(session);await makePacks(session,adapter);await autoBot(session,adapter);}
       }
@@ -203,6 +203,12 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     });return {profile:await profile(who),transaction};
   }
   async function target(who,troopKey){D.fail(D.ALL_TROOPS.includes(troopKey),'INVALID_ARGUMENT','Unknown troop.');const p=await profile(who);D.fail(p.troops[troopKey].unlocked,'TROOP_LOCKED','Choose an unlocked troop.');await profileRef(who.uid).update({rewardTarget:troopKey});return {profile:await profile(who)};}
+  async function buyPack(who,request){
+    D.onlyKeys(request,['packId','requestId']);const {packId,requestId}=request;D.safeId(requestId,'Request');
+    const ref=profileRef(who.uid),receipt=ref.collection('purchases').doc(requestId);let transaction;await profile(who);
+    await db.runTransaction(async tx=>{const [p,old]=await Promise.all([tx.get(ref),tx.get(receipt)]);if(old.exists){D.fail(old.data().packId===packId,'REQUEST_CONFLICT','Use a new request identifier.',409);transaction=old.data();return;}const result=D.buyPack(p.data(),packId,now());transaction={...result.transaction,uid:who.uid,requestId};tx.set(ref,result.profile);tx.create(receipt,transaction);});
+    return {profile:await profile(who),transaction};
+  }
   async function abandon(who,id) {
     D.safeId(id,'Session');await db.runTransaction(async tx=>{
       const snap=await tx.get(sessionRef(id));D.fail(snap.exists&&snap.data().participants.includes(who.uid),'PERMISSION_DENIED','This match belongs to another player.',403);
@@ -224,6 +230,6 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     const receipt=await receiptRef(session.id,who.uid).get();
     return {session:publicSession,profile:await profile(who),...(receipt.exists?{receipt:receipt.data()}:{}),serverTime:now()};
   }
-  return {identity,profile,startSolo,joinPvp,getSession,pick,upgradeTroop,target,abandon};
+  return {identity,profile,startSolo,joinPvp,getSession,pick,upgradeTroop,buyPack,target,abandon};
 }
 module.exports={createForgeService};

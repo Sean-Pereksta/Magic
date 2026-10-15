@@ -14,6 +14,10 @@ Firebase Console users can instead publish the repository's complete `firestore.
 
 Anonymous Firebase Auth, already used by the hub, owns a guest save for that browser. Clearing browser data or switching browsers changes that guest identity. A durable Firebase email/password account can sign in to its own save on another device; use the same Firebase identity. A lobby username alone does not authorize reading another player's save. The game does not create or migrate durable accounts automatically.
 
+Solo launches use the currently selected hub username, including when an old link supplies a different name. The original UID profile remains in place with its results and upgrade receipts. On the first named launch, a legacy `Commander` or `Guest` label becomes the selected name without resetting cards, Dust, tiers, or campaign progress. Other hub usernames using that Firebase identity receive separate saves under `factionForgeSoloProfiles/{uid}/accounts/{accountKey}` and separate retry queues. Hub login/logout in another tab reloads the open game into the selected account. This separates hub profiles within one Firebase identity; it does not grant access to another UID's saves.
+
+Deploy the updated Firestore rules with these static files: scoped accounts, pack-purchase receipts, and round-win receipts require the new owner-only rules. The Forge's **Buy packs** tab spends Forge Dust on displayed, fixed card sets: faction packs cost 50 Dust for 15 cards; the War Chest costs 90 Dust for 30 cards. Purchases use immutable receipts so an uncertain retry cannot charge twice. Active matches block purchases. A saved solo round win awards 3 cards, and completed-win card grants are doubled; existing match-reward caps remain, with a separate cap of 70 rewarded rounds per UTC day. Practice without a connected save still earns no collection rewards.
+
 Solo wins persist campaign stars, mission unlocks, all six troop milestones, matching cards, Forge Dust and Endless challenge progress. Upgrades deduct cards/dust and increase a permanent tier in one Firestore transaction; tiers are frozen into the next local battle. Result and upgrade receipts make retries idempotent. Interrupted reward saves remain queued under that UID on the device and retry on reload; the results screen also provides a retry button. An interrupted battle itself is not restored by this mode.
 
 These are personal, client-played solo saves, not independently verified competitive results. Solo documents have no MMR field and never update `users/{username}.crowncouncilElo` or `factionForgeProfiles`. Hosted multiplayer remains available through the existing Firebase lobby path. The optional trusted competitive service below remains a separate mode; its currency, collection and ratings are not merged with client-owned solo saves.
@@ -86,6 +90,7 @@ Rewards are configurable in `server/faction-forge/domain.cjs`: bot/endless wins 
 - `POST /sessions/:id/pick`: `{index, sequence, requestId}`
 - `POST /sessions/:id/abandon`
 - `POST /upgrades`: `{troopKey, requestId}`
+- `POST /packs`: `{packId, requestId}`
 - `POST /reward-target`: `{troopKey}`
 
 All except `/health` require a Firebase ID token in the Bearer Authorization header. Ownership reads use server-only bindings. Profile documents live at `factionForgeProfiles/{uid}`; history and upgrade receipts are subcollections. Match state, seeds, frozen collections and compressed replays live under Admin-only `factionForgeMatches/{id}`.

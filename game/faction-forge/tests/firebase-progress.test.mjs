@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newSoloProfile,settleSolo,soloMission,upgradeSolo,createFirebaseProgress} from '../firebase-progress.js';
-const troops={rifleman:{},medic:{},signalhawk:{unlockable:true},chronoweaver:{unlockable:true},siphonleech:{unlockable:true},railbreaker:{unlockable:true},miragewarden:{unlockable:true},hiveherald:{unlockable:true}};
+import {newSoloProfile,settleSolo,soloMission,upgradeSolo,buySoloPack,settleSoloRoundWin,createFirebaseProgress} from '../firebase-progress.js';
+import {FORGE_PACKS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,packEligibility} from '../packs.js';
+const troops={...Object.fromEntries(FORGE_PACKS.flatMap(pack=>pack.cards.map(card=>[card.troopKey,{}]))),signalhawk:{unlockable:true},chronoweaver:{unlockable:true},siphonleech:{unlockable:true},railbreaker:{unlockable:true},miragewarden:{unlockable:true},hiveherald:{unlockable:true}};
 const storage=()=>{const map=new Map();return {getItem:key=>map.get(key)||null,setItem:(key,value)=>map.set(key,value),removeItem:key=>map.delete(key)};};
 function firebase(){
  const docs=new Map();let serial=Promise.resolve(),failAfterCommit=false;
@@ -18,7 +19,7 @@ test('Firebase alone creates and reloads the same UID profile without any HTTP e
  await one.recordSoloResult(result());one.dispose();const two=service(store);assert.equal((await two.loadProfile()).campaign.missions['forge-01'].stars,3);assert.ok([...store.docs.keys()].every(key=>key.startsWith('factionForgeSoloProfiles/owner')));
 });
 test('campaign wins unlock the next mission and award cards and dust once despite concurrent retries',async()=>{
- const store=firebase(),one=service(store);await one.loadProfile();await Promise.all([one.recordSoloResult(result()),one.recordSoloResult(result())]);assert.equal(one.profile.forgeDust,20);assert.equal(one.profile.wins,1);assert.equal(Object.values(one.profile.troops).reduce((n,t)=>n+t.cards,0),3);assert.equal(soloMission(one.profile,'campaign','forge-02').id,'forge-02');
+ const store=firebase(),one=service(store);await one.loadProfile();await Promise.all([one.recordSoloResult(result()),one.recordSoloResult(result())]);assert.equal(one.profile.forgeDust,20);assert.equal(one.profile.wins,1);assert.equal(Object.values(one.profile.troops).reduce((n,t)=>n+t.cards,0),6);assert.equal(soloMission(one.profile,'campaign','forge-02').id,'forge-02');
 });
 test('unacknowledged rewards survive reload and recover without a duplicate grant',async()=>{
  const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();store.uncertain();await assert.rejects(one.recordSoloResult(result()),{code:'unavailable'});one.dispose();
@@ -45,12 +46,73 @@ test('losses award nothing; replay and bot reward caps preserve progress without
  for(let i=0;i<12;i++)p=settleSolo(p,{id:'bot-'+i,mode:'bot',won:true}).profile;assert.equal(p.forgeDust,145);assert.equal(p.crowncouncilElo,undefined);assert.equal(p.activeSessionId,undefined);
 });
 test('reward targets affect the next grant and are limited to unlocked troops',async()=>{
- const one=service(firebase());await one.loadProfile();await assert.rejects(one.setRewardTarget('signalhawk'),{code:'TROOP_LOCKED'});await one.setRewardTarget('medic');await one.recordSoloResult(result());assert.equal(one.profile.troops.medic.cards,3);
+ const one=service(firebase());await one.loadProfile();await assert.rejects(one.setRewardTarget('signalhawk'),{code:'TROOP_LOCKED'});await one.setRewardTarget('medic');await one.recordSoloResult(result());assert.equal(one.profile.troops.medic.cards,6);
 });
 test('a changed or disposed identity cannot write the previous UID profile',async()=>{
  const auth={currentUser:{uid:'owner'}},one=service(firebase(),{auth});await one.loadProfile();auth.currentUser={uid:'other'};await assert.rejects(one.recordSoloResult(result()),{code:'ACCOUNT_CHANGED'});one.dispose();await assert.rejects(one.loadProfile(),{code:'DISPOSED'});
 });
 test('permission errors accurately describe the required Firebase rules update',async()=>{
  const one=service({api:{doc:()=>'',runTransaction:async()=>{throw Object.assign(Error('Denied'),{code:'permission-denied'});}}});await assert.rejects(one.loadProfile(),{code:'permission-denied'});assert.equal(one.connectionStatus,'Firebase save permissions need updating');assert.equal(one.profile,null);
+});
+
+test('fixed packs show exact contents and spend their Dust once under concurrent retries',async()=>{
+ const store=firebase(),one=service(store);await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=50;
+ const [first,again]=await Promise.all([one.buyPack('vanir',{requestId:'pack-1'}),one.buyPack('vanir',{requestId:'pack-1'})]);
+ assert.deepEqual(first.transaction,again.transaction);assert.deepEqual(first.transaction.cards,FORGE_PACKS[0].cards);assert.equal(one.profile.forgeDust,0);
+ for(const card of FORGE_PACKS[0].cards)assert.equal(one.profile.troops[card.troopKey].cards,5);
+ await assert.rejects(one.buyPack('aesir',{requestId:'pack-1'}),{code:'REQUEST_CONFLICT'});
+ await assert.rejects(one.buyPack('vanir',{requestId:'pack-2'}),{code:'INSUFFICIENT_RESOURCES'});
+ assert.equal(store.docs.has('factionForgeSoloProfiles/owner/purchases/pack-2'),false);
+});
+test('two different pack purchases cannot overspend a shared balance',async()=>{
+ const store=firebase(),one=service(store);await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=50;
+ const attempts=await Promise.allSettled([one.buyPack('vanir',{requestId:'first'}),one.buyPack('aesir',{requestId:'second'})]);
+ assert.equal(attempts.filter(attempt=>attempt.status==='fulfilled').length,1);assert.equal(one.profile.forgeDust,0);assert.equal(Object.values(one.profile.troops).reduce((n,t)=>n+t.cards,0),15);
+});
+test('an uncertain pack response retains its receipt across reload without duplicate spending or cards',async()=>{
+ const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=100;
+ store.uncertain();await assert.rejects(one.buyPack('vanir',{requestId:'persisted-pack'}),{code:'unavailable'});one.dispose();
+ const two=service(store,{storage:cache});await two.loadProfile();const recovered=await two.buyPack('vanir',{requestId:'new-dialog'});
+ assert.equal(recovered.transaction.requestId,'persisted-pack');assert.equal(two.profile.forgeDust,50);assert.equal(two.profile.troops.rifleman.cards,5);assert.equal(cache.getItem('factionForge.solo.pending.owner.pack.vanir'),null);
+});
+test('pack eligibility and transactions reject active matches, invalid packs, locked troops and insufficient Dust',async()=>{
+ const p=newSoloProfile('owner','Commander',troops);p.forgeDust=90;
+ assert.equal(packEligibility(p,'war-chest').available,true);assert.equal(buySoloPack(p,'war-chest').profile.forgeDust,0);assert.equal(p.forgeDust,90);
+ assert.throws(()=>buySoloPack({...p,activeSessionId:'battle'},'vanir'),{code:'MATCH_ACTIVE'});assert.throws(()=>buySoloPack(p,'fake'),{code:'INVALID_PACK'});
+ p.troops.medic.unlocked=false;assert.equal(packEligibility(p,'vanir').available,false);assert.throws(()=>buySoloPack(p,'vanir'),{code:'TROOP_LOCKED'});
+ const store=firebase(),one=service(store,{isActiveMatch:()=>true});await one.loadProfile();await assert.rejects(one.buyPack('vanir'),{code:'MATCH_ACTIVE'});
+});
+test('round wins grant three cards exactly once, survive a match loss, and obey their own daily cap',async()=>{
+ const store=firebase(),one=service(store);await one.loadProfile();await one.setRewardTarget('medic');const round={id:'lost-match',mode:'bot',round:1};
+ await Promise.all([one.recordSoloRoundWin(round),one.recordSoloRoundWin(round)]);await one.recordSoloResult({id:'lost-match',mode:'bot',won:false});
+ assert.equal(one.profile.troops.medic.cards,ROUND_WIN_CARDS);assert.equal(one.profile.losses,1);assert.equal(one.profile.forgeDust,0);
+ const p=one.profile;p.rewardCounts.round=ROUND_WIN_DAILY_CAP;
+ assert.deepEqual(settleSoloRoundWin(p,{...round,round:2}).receipt.cards,[]);assert.throws(()=>settleSoloRoundWin(p,{...round,round:8}),{code:'INVALID_ROUND'});
+});
+test('uncertain round rewards recover before match rewards without a duplicate grant',async()=>{
+ const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();await one.setRewardTarget('medic');
+ store.uncertain();await assert.rejects(one.recordSoloRoundWin({id:'saved-round',mode:'campaign',missionId:'forge-01',round:1}),{code:'unavailable'});one.dispose();
+ const two=service(store,{storage:cache});await two.loadProfile();await two.recordSoloResult(result('saved-round'));assert.equal(two.profile.troops.medic.cards,9);assert.equal(two.profile.wins,1);assert.deepEqual(JSON.parse(cache.getItem('factionForge.solo.pending.owner.rounds')),[]);
+});
+test('scoped hub accounts isolate profiles, purchase receipts and pending request identifiers',async()=>{
+ const store=firebase(),cache=storage(),commander=service(store,{storage:cache});await commander.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=100;
+ store.uncertain();await assert.rejects(commander.buyPack('vanir',{requestId:'commander-pack'}),{code:'unavailable'});
+ const sean=service(store,{storage:cache,username:'Sean',profilePath:['factionForgeSoloProfiles','owner','accounts','Sean'],queueNamespace:'.name-Sean'});await sean.loadProfile();const path='factionForgeSoloProfiles/owner/accounts/Sean';store.docs.get(path).forgeDust=50;
+ const purchase=await sean.buyPack('vanir',{requestId:'sean-pack'});assert.equal(purchase.transaction.requestId,'sean-pack');assert.equal(sean.profile.forgeDust,0);assert.equal(store.docs.get('factionForgeSoloProfiles/owner').forgeDust,50);
+ assert.equal(cache.getItem('factionForge.solo.pending.owner.pack.vanir'),'commander-pack');assert.equal(store.docs.has(path+'/purchases/sean-pack'),true);
+ await sean.recordSoloRoundWin({id:'scoped-round',mode:'bot',round:1});assert.equal(store.docs.has(path+'/rounds/scoped-round-round-1'),true);
+ assert.throws(()=>service(store,{profilePath:['factionForgeSoloProfiles','intruder']}),{code:'INVALID_PROFILE'});
+});
+test('account switches during receipt reads and renamed stored accounts cannot write an old save',async()=>{
+ const store=firebase(),auth={currentUser:{uid:'owner'}},one=service(store,{auth});await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=100;
+ const run=store.api.runTransaction;store.api.runTransaction=(_db,fn)=>run({},tx=>fn({...tx,get:async ref=>{const snap=await tx.get(ref);if(ref.includes('/purchases/'))auth.currentUser={uid:'other'};return snap;}}));
+ await assert.rejects(one.buyPack('vanir',{requestId:'cross-account'}),{code:'ACCOUNT_CHANGED'});assert.equal(store.docs.get('factionForgeSoloProfiles/owner').forgeDust,100);assert.equal(store.docs.has('factionForgeSoloProfiles/owner/purchases/cross-account'),false);
+ store.api.runTransaction=run;auth.currentUser={uid:'owner'};store.docs.get('factionForgeSoloProfiles/owner').username='Sean';await assert.rejects(one.buyPack('vanir'),{code:'ACCOUNT_CHANGED'});
+});
+test('a save connection closed after purchase commit retains its retry receipt',async()=>{
+ const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=50;
+ const run=store.api.runTransaction;store.api.runTransaction=async(db,fn)=>{const response=await run(db,fn);one.dispose();return response;};
+ await assert.rejects(one.buyPack('vanir',{requestId:'closed-after-commit'}),{code:'DISPOSED'});assert.equal(cache.getItem('factionForge.solo.pending.owner.pack.vanir'),'closed-after-commit');
+ store.api.runTransaction=run;const two=service(store,{storage:cache});await two.loadProfile();await two.buyPack('vanir',{requestId:'new-dialog'});assert.equal(two.profile.forgeDust,0);assert.equal(two.profile.troops.rifleman.cards,5);
 });
 

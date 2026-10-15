@@ -54,7 +54,7 @@ test('campaign gates and milestone unlocks use canonical IDs; replay only grants
   const p=D.newProfile('u','Name');assert.equal(D.canStart(p,{mode:'campaign',missionId:'c1m1'}).missionId,'forge-01');assert.throws(()=>D.canStart(p,{mode:'campaign',missionId:'forge-02'}),{code:'MISSION_LOCKED'});
   const s={id:'verified',mode:'campaign',phase:'game-over',serverValidated:true,participants:['u',null],winnerSide:0,missionNumber:6,missionId:'forge-06',lives:[3,0]};
   const first=D.settle(p,s,0);assert.equal(first.receipt.forgeDust,40);assert.equal(first.receipt.stars,3);assert(first.profile.troops.signalhawk.unlocked);
-  const replay=D.settle(first.profile,{...s,id:'second'},0);assert.equal(replay.receipt.forgeDust,5);assert.equal(replay.receipt.cards.reduce((n,c)=>n+c.quantity,0),1);
+  const replay=D.settle(first.profile,{...s,id:'second'},0);assert.equal(replay.receipt.forgeDust,5);assert.equal(replay.receipt.cards.reduce((n,c)=>n+c.quantity,0),2);
 });
 test('reported outcomes cannot settle; bot MMR is immutable; farm rewards are capped',()=>{
   const p=D.newProfile('u','Name',2100);const s={id:'server',mode:'bot',phase:'game-over',serverValidated:true,participants:['u',null],winnerSide:0,lives:[4,0]};
@@ -80,7 +80,7 @@ test('solo sessions issue legal packs, reject strangers and stale/illegal picks;
     assert.equal(data.session.phase,'battle');assert.equal(data.receipt,undefined);const lean=await f.service.getSession(who,id,{knownReplayId:data.session.battle.replayId});assert.equal(lean.session.battle.frames,undefined);
     f.advance(21000);data=await f.service.getSession(who,id);
   }
-  assert.equal(data.session.phase,'game-over');assert.equal(data.receipt.forgeDust,20);assert.equal(data.profile.crowncouncilElo,1824);
+  assert.equal(data.session.phase,'game-over');assert.equal(data.receipt.forgeDust,20);assert.equal(data.profile.crowncouncilElo,1824);assert.deepEqual(data.session.roundWins,[4,0]);assert.equal(data.receipt.roundCards,12);assert.equal(data.receipt.cards.reduce((n,card)=>n+card.quantity,0),18);
   const same=await f.service.getSession(who,id);assert.deepEqual(same.receipt,data.receipt);assert.equal(same.profile.forgeDust,data.profile.forgeDust);assert.equal(same.profile.wins,1);
 });
 test('PvP needs independent verified-seat inputs and cannot award from host-only winner snapshots',async()=>{
@@ -132,4 +132,21 @@ test('rating cannot be minted at zero floor, from early forfeits, or through rep
 test('lobby-owned casual/ranked setting cannot be overridden by a participant input',async()=>{
   const f=fixture({adapterFactory:fakeAdapter});f.db.docs.set('lobbies/casual-room',{gameType:'crowncouncil',host:who.username,hostUid:who.uid,members:{[who.uid]:who.username},players:[who.username],visibility:'public',forgeRanked:false});
   const casual=await f.service.joinPvp(who,{lobbyId:'casual-room',faction:'Vanir',ranked:true});assert.equal(casual.session.ranked,false);
+});
+
+test('browser and server use identical fixed card sets, prices and boosted reward amounts',async()=>{
+  const browser=await import('../packs.js');assert.deepEqual(D.FORGE_PACKS,browser.FORGE_PACKS);assert.deepEqual(D.REWARDS,browser.WIN_REWARDS);assert.equal(D.ROUND_WIN_CARDS,browser.ROUND_WIN_CARDS);assert.equal(D.ROUND_WIN_DAILY_CAP,browser.ROUND_WIN_DAILY_CAP);
+});
+test('server pack purchases are atomic and idempotent; inputs cannot override costs or ownership',async()=>{
+  const f=fixture(),p=await f.service.profile(who);p.forgeDust=50;f.db.docs.set('factionForgeProfiles/'+who.uid,p);
+  const [a,b]=await Promise.all([f.service.buyPack(who,{packId:'vanir',requestId:'pack-race'}),f.service.buyPack(who,{packId:'vanir',requestId:'pack-race'})]);
+  assert.deepEqual(a.transaction,b.transaction);assert.equal(b.profile.forgeDust,0);assert.equal(b.profile.troops.rifleman.cards,5);assert.equal(b.transaction.cards.reduce((n,card)=>n+card.quantity,0),15);
+  await assert.rejects(f.service.buyPack(who,{packId:'aesir',requestId:'pack-race'}),{code:'REQUEST_CONFLICT'});await assert.rejects(f.service.buyPack(who,{packId:'aesir',requestId:'overspend'}),{code:'INSUFFICIENT_RESOURCES'});
+  await assert.rejects(f.service.buyPack(who,{packId:'vanir',requestId:'injected',dustSpent:0}),{code:'INVALID_ARGUMENT'});assert.throws(()=>D.buyPack({...p,activeSessionId:'battle'},'vanir'),{code:'MATCH_ACTIVE'});assert.throws(()=>D.buyPack(p,'invented'),{code:'INVALID_PACK'});
+});
+test('losing a completed match keeps rewards for rounds won and the round-card cap is independent of match wins',()=>{
+  let p=D.newProfile('loser','Loser',1500,100000);const session={id:'round-cards',mode:'bot',phase:'game-over',serverValidated:true,participants:['loser',null],winnerSide:1,lives:[0,2],roundWins:[2,4],completedBattles:6,createdAt:100000};
+  let result=D.settle(p,session,0,{now:200000});assert.equal(result.receipt.won,false);assert.equal(result.receipt.roundCards,6);assert.equal(result.receipt.cards.reduce((n,c)=>n+c.quantity,0),6);assert.equal(result.receipt.forgeDust,0);
+  p=result.profile;p.rewardDays['1970-01-01'].round=69;result=D.settle(p,{...session,id:'last-capped-round'},0,{now:200000});assert.equal(result.receipt.roundCards,3);assert.equal(result.profile.rewardDays['1970-01-01'].round,70);
+  result=D.settle(result.profile,{...session,id:'over-cap'},0,{now:200000});assert.equal(result.receipt.cards.length,0);assert.equal(result.profile.crowncouncilElo,1500);
 });

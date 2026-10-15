@@ -1,5 +1,6 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
 import {draftCardPresentation,relevantComboStates} from "./drafting.js";
+import {FORGE_PACKS,packEligibility,ROUND_WIN_CARDS} from "./packs.js";
 
 const ROMAN=["","I","II","III"], TIER_NAMES=["","Recruit","Veteran","Elite"];
 const DEFAULT_COSTS={1:{cards:10,dust:100},2:{cards:30,dust:350}};
@@ -14,12 +15,13 @@ export function forgeEligibility(profile,key,{active=false,costs=DEFAULT_COSTS}=
 }
 export function upgradeCount(profile,costs=DEFAULT_COSTS){return Object.keys(profile?.troops||{}).filter(key=>forgeEligibility(profile,key,{costs}).available).length;}
 
-export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,canSignIn=()=>!getProfile()?.uid,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onTargetReward,onMenu,onBrowseLobbies,onSignIn,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
+export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,canSignIn=()=>!getProfile()?.uid,canRetryConnection=()=>false,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onBuyPack,onTargetReward,onMenu,onBrowseLobbies,onSignIn,onRetryConnection,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
   if(!host)throw new Error("Faction Forge UI requires a DOM host.");
   const document=host.ownerDocument, shell=document.createElement("div"), fab=document.createElement("button");
   shell.className="ff-expansion";shell.hidden=true;shell.setAttribute("aria-label","Faction Forge");host.appendChild(shell);
   fab.className="ff-forge-fab";fab.type="button";fab.setAttribute("aria-label","Open The Forge");fab.innerHTML='<span class="ff-forge-fab-icon" aria-hidden="true">⚒</span><span class="ff-upgrade-count" hidden></span>';fab.onclick=()=>showForge();host.appendChild(fab);
   let currentView="",filter="All",selectedTroop=null,previewTier=1,matchmakingState={},previousFocus=null,generation=0;
+  let forgeTab="collection",packBusy=false,lastPackPurchase=null;
   const portraitTimers=new Set(), artFrames=new Set(), lazyPortraits=new Map();
   const observer=typeof globalThis.IntersectionObserver==="function"?new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){const start=lazyPortraits.get(entry.target);if(start){lazyPortraits.delete(entry.target);observer.unobserve(entry.target);start();}}},{rootMargin:"180px"}):null;
   const element=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;};
@@ -86,6 +88,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
   function showMenu(){
     const {panel,status}=open("menu","FACTION FORGE");panelArt(shell,"menu-background");panel.appendChild(element("p","ff-subtitle","The War for the Forge"));playerSummary(panel);
     if(onSignIn && canSignIn())panel.appendChild(button("Sign in to a saved profile",()=>showSignIn(),"ff-button ff-secondary"));
+    if(onRetryConnection && canRetryConnection())panel.appendChild(button("Retry profile connection",()=>invoke(onRetryConnection,[],status),"ff-button ff-secondary"));
     if(matchActive()){
       const activeActions=element("div","ff-active-match-actions");activeActions.appendChild(element("p","","A match is in progress. Resume it or leave before starting another."));
       activeActions.appendChild(button("Resume match",()=>invoke(onResume,[profile().activeSessionId],status,{hideOnSuccess:true})));
@@ -126,8 +129,12 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     if(profile().campaign?.endlessUnlocked && onEndless)panel.appendChild(button("Enter the Endless Crucible",()=>chooseFaction(f=>invoke(onEndless,[f],shell.querySelector(".ff-status")||status,{hideOnSuccess:true}))));
   }
   function unlockText(key){const mission=missionDefinitions.find(m=>m.unlockTroop===key),blueprint=`15 blueprints (${profile().troops?.[key]?.blueprints||0}/15)`;return unlockDescriptions[key] || (mission?`Chapter ${mission.chapter}, ${mission.boss?"boss":`Mission ${mission.index}`} or ${blueprint}`:`Collect ${blueprint} to unlock`);}
-  function showForge(key=selectedTroop){
-    const {panel,status}=open("forge","The Forge");playerSummary(panel);if(matchActive())panel.appendChild(element("p","ff-match-lock","Your collection is viewable during battle. Upgrade after the match."));
+  function showForge(key=selectedTroop,tab=forgeTab){
+    forgeTab=tab==="packs"?"packs":"collection";
+    const {panel,status}=open("forge","The Forge");playerSummary(panel);if(matchActive())panel.appendChild(element("p","ff-match-lock","Your collection is viewable during battle. Upgrade and buy packs after the match."));
+    const tabs=element("div","ff-forge-tabs");tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","The Forge");
+    for(const [id,label] of [["collection","Collection"],["packs","Buy packs"]]){const node=button(label,()=>showForge(selectedTroop,id),"ff-button ff-filter"+(forgeTab===id?" ff-selected":""));node.setAttribute("role","tab");node.setAttribute("aria-selected",String(forgeTab===id));tabs.appendChild(node);}panel.appendChild(tabs);
+    if(forgeTab==="packs"){showPacks(panel,status);return;}
     const filterBar=element("div","ff-filters");for(const faction of ["All","Vanir","Aesir","Helions"]){const node=button(faction,()=>{filter=faction;showForge();},"ff-button ff-filter"+(filter===faction?" ff-selected":""));node.setAttribute("aria-pressed",String(filter===faction));filterBar.appendChild(node);}panel.appendChild(filterBar);
     const body=element("div","ff-forge-body"),grid=element("div","ff-collection"),keys=Object.keys(troops).filter(k=>filter==="All" || troops[k].faction===filter);
     if(!keys.includes(key))key=keys[0];selectedTroop=key;
@@ -138,6 +145,28 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
       if(eligibility.cost){const progress=element("div","ff-upgrade-progress"),cards=element("progress",""),dust=element("progress","");cards.max=eligibility.cost.cards;cards.value=Math.min(cards.max,data?.cards||0);cards.setAttribute("aria-label","Matching card progress");dust.max=eligibility.cost.dust;dust.value=Math.min(dust.max,profile().forgeDust||0);dust.setAttribute("aria-label","Forge Dust progress");progress.append(element("span","",`${data?.cards||0}/${eligibility.cost.cards} cards`),cards,element("span","",`${profile().forgeDust||0}/${eligibility.cost.dust} Forge Dust`),dust);detail.appendChild(progress);}
       const upgrade=button(eligibility.cost?`Forge ${TIER_NAMES[(data?.forgeTier||1)+1]}`:"Elite forged",()=>confirmUpgrade(key,eligibility,status),"ff-button ff-upgrade-button");upgrade.disabled=!eligibility.available;detail.appendChild(upgrade);detail.appendChild(element("p","ff-upgrade-reason",eligibility.reason));if(data?.unlocked && onTargetReward)detail.appendChild(button("Favor this troop in rewards",()=>invoke(onTargetReward,[key],status),"ff-button ff-secondary"));body.appendChild(detail);
     }panel.appendChild(body);
+  }
+  function showPacks(panel,status){
+    panel.appendChild(element("p","ff-subtitle","Spend Forge Dust on the exact card sets below. Every card goes straight into your collection."));
+    if(lastPackPurchase&&(lastPackPurchase.uid!==profile().uid||lastPackPurchase.username!==profile().username))lastPackPurchase=null;
+    if(lastPackPurchase){const receipt=element("p","ff-pack-receipt",`Opened ${lastPackPurchase.name}: ${lastPackPurchase.cards.map(card=>`${card.quantity} ${troops[card.troopKey]?.name||card.troopKey} cards`).join(", ")}.`);receipt.setAttribute("role","status");panel.appendChild(receipt);}
+    const list=element("div","ff-pack-list");
+    for(const item of FORGE_PACKS){
+      const card=element("section","ff-pack"),eligibility=packEligibility(profile(),item.id,{active:isActiveMatch()});if(item.faction)card.classList.add(`ff-faction-${item.faction.toLowerCase()}`);
+      card.append(element("h2","",item.name),element("strong","ff-pack-price",`${item.dust} Forge Dust · ${item.totalCards} cards`));
+      const contents=element("ul","ff-pack-contents");for(const reward of item.cards)contents.appendChild(element("li","",`${reward.quantity} × ${troops[reward.troopKey]?.name||reward.troopKey}`));card.appendChild(contents);
+      const buy=button(packBusy?"Opening pack…":`Buy ${item.name}`,async()=>{
+        const latest=packEligibility(profile(),item.id,{active:isActiveMatch()});if(packBusy||!latest.available){status.textContent=latest.reason;return;}
+        packBusy=true;const owner={uid:profile().uid,username:profile().username};showForge(selectedTroop,"packs");
+        const requestId=globalThis.crypto?.randomUUID?.()||`pack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const result=await invoke(onBuyPack,[item.id,{requestId}],shell.querySelector(".ff-status")||status);packBusy=false;
+        if(result){if(owner.uid===profile().uid&&owner.username===profile().username)lastPackPurchase={...owner,name:item.name,cards:result.transaction?.cards||item.cards};showForge(selectedTroop,"packs");}
+        else {const message=shell.querySelector(".ff-status")?.textContent||"Unable to open this pack. Retry safely.";showForge(selectedTroop,"packs");shell.querySelector(".ff-status").textContent=message;}
+      },"ff-button ff-buy-pack");
+      buy.disabled=packBusy||!eligibility.available||!onBuyPack;card.appendChild(buy);
+      if(!eligibility.available)card.appendChild(element("p","ff-upgrade-reason",eligibility.reason));list.appendChild(card);
+    }
+    panel.appendChild(list);panel.appendChild(button("View collection",()=>showForge(selectedTroop,"collection"),"ff-button ff-secondary"));
   }
   function troopDetails(key){
     const content=element("div","ff-troop-details"),troop=troops[key]||{},base=troop.base||{},meta=counters[key]||troop;
@@ -168,9 +197,9 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     ["Build automatic combinations","Collect complementary troops to activate Basic combos immediately. Upgrade their ranks or draft a combo enhancement for Advanced interactions. Rank III troops with upgraded partners unlock Legendary combinations. The compact tracker shows your relevant partners and counters."],
     ["Know your counters","Armor stalls weak attacks, swarms surround isolated troops, artillery punishes crowded positions and assassins threaten exposed backlines. Read strengths and weaknesses in every troop's details."],
     ["Two separate progression systems","Battle ranks I–III reset each match and retain their legendary abilities. Permanent Forge tiers Recruit, Veteran and Elite spend matching troop cards and Forge Dust and stay on your profile."],
-    ["Campaign and collection","Win missions to earn stars, cards, Forge Dust and six special troops. Replay earlier missions for reduced rewards. Complete all 30 missions to enter the Endless Crucible."],
+    ["Campaign and collection",`Every round you win grants ${ROUND_WIN_CARDS} troop cards, including rounds in a match you lose. Match wins grant additional cards and Forge Dust; campaign wins also earn stars and six special troops. Daily reward limits apply. Complete all 30 missions to enter the Endless Crucible.`],
     ["Fair online matches","Ranked PvP keeps permanent statistical advantages normalized while showing your earned artwork. Real human results update your existing MMR. AI opponents show Estimated MMR and never change competitive ratings."],
-    ["The Forge","Open the circular Forge button to inspect your collection, preview tier artwork and confirm one upgrade. Active battles lock permanent upgrades until the result is complete."]]){panel.append(element("h2","",title),element("p","",text));}}
+    ["The Forge","Open the circular Forge button to inspect your collection, preview tier artwork and confirm an upgrade. The Buy packs tab offers fixed card sets for Forge Dust and shows every card before purchase. Active battles lock upgrades and pack purchases until the result is complete."]]){panel.append(element("h2","",title),element("p","",text));}}
   function decorateDraftCard(node,{key,type="troop",faction,tier=1,recommended="",copies,detail="",card,roster=[],evolutions={},comboEnhancements=[],availableTypes}={}){
     const presentation=card?draftCardPresentation(card,roster,{faction,troops,evolutions,comboEnhancements,availableTypes}):null;
     key=presentation?.key||key;

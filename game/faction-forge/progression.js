@@ -8,9 +8,9 @@ export function createProgressionService({auth,db,apiBaseUrl='',fetchImpl=global
   let currentProfile=null,disposed=false,subscription=null,authSubscription=null,subscriptionUid=null;const listeners=new Set();
   try {if(requestStorage===null)requestStorage=globalThis.sessionStorage;}catch{requestStorage=null;}
   const pendingRequests=new Map(),replayCache=new Map();
-  function retainedRequest(kind,provided) {if(provided)return provided;const key='factionForge.request.'+(auth?.currentUser?.uid||'unknown')+'.'+kind;let id=pendingRequests.get(key);try{id=id||requestStorage?.getItem(key);}catch{}if(!id){id=crypto.randomUUID();pendingRequests.set(key,id);try{requestStorage?.setItem(key,id);}catch{}}return id;}
-  function clearRequest(kind){const key='factionForge.request.'+(auth?.currentUser?.uid||'unknown')+'.'+kind;pendingRequests.delete(key);try{requestStorage?.removeItem(key);}catch{}}
-  async function mutation(kind,path,body,provided){body.requestId=retainedRequest(kind,provided);try{const data=await request(path,{method:'POST',body});clearRequest(kind);return data;}catch(error){if(!['CONNECTION_FAILED','INVALID_RESPONSE','SERVICE_UNAVAILABLE'].includes(error.code))clearRequest(kind);throw error;}}
+  function retainedRequest(kind,provided) {const key='factionForge.request.'+(auth?.currentUser?.uid||'unknown')+'.'+kind;let id=pendingRequests.get(key);try{id=id||requestStorage?.getItem(key);}catch{}if(!id){id=provided||crypto.randomUUID();pendingRequests.set(key,id);try{requestStorage?.setItem(key,id);}catch{}}return id;}
+  function clearRequest(kind,uid){const key='factionForge.request.'+uid+'.'+kind;pendingRequests.delete(key);try{requestStorage?.removeItem(key);}catch{}}
+  async function mutation(kind,path,body,provided){const uid=auth?.currentUser?.uid||'unknown';body.requestId=retainedRequest(kind,provided);try{const data=await request(path,{method:'POST',body});clearRequest(kind,uid);return data;}catch(error){if(!['CONNECTION_FAILED','INVALID_RESPONSE','SERVICE_UNAVAILABLE','ACCOUNT_CHANGED','DISPOSED'].includes(error.code))clearRequest(kind,uid);throw error;}}
   const endpoint=apiBaseUrl.replace(/\/+$/,'');
   const publish=profile=>{currentProfile=profile;for(const fn of listeners)fn(profile);return profile;};
   function followIdentity(user){if(subscriptionUid===user?.uid)return;subscription?.();subscription=null;subscriptionUid=user?.uid||null;replayCache.clear();if(currentProfile?.uid!==user?.uid)publish(null);if(db&&firestoreApi?.onSnapshot&&user?.uid){const uid=user.uid;subscription=firestoreApi.onSnapshot(firestoreApi.doc(db,'factionForgeProfiles',uid),snap=>{if(!disposed&&auth.currentUser?.uid===uid&&snap.exists())publish({...snap.data(),upgradeCosts:currentProfile?.upgradeCosts||snap.data().upgradeCosts});},()=>{});}}
@@ -41,6 +41,7 @@ export function createProgressionService({auth,db,apiBaseUrl='',fetchImpl=global
     getSession(id){const replay=replayCache.get(id);return request('/sessions/'+encodeURIComponent(id)+(replay?'?knownReplayId='+encodeURIComponent(replay.replayId):''));},
     pick(id,index,{sequence,requestId}={}){return mutation('pick.'+id+'.'+sequence+'.'+index,'/sessions/'+encodeURIComponent(id)+'/pick',{index,sequence},requestId);},
     upgradeTroop(troopKey,{requestId}={}){return mutation('upgrade.'+troopKey,'/upgrades',{troopKey},requestId);},
+    buyPack(packId,{requestId}={}){return mutation('pack.'+packId,'/packs',{packId},requestId);},
     setRewardTarget(troopKey){return request('/reward-target',{method:'POST',body:{troopKey}});},
     abandon(id){return request('/sessions/'+encodeURIComponent(id)+'/abandon',{method:'POST',body:{}});},
     dispose(){disposed=true;subscription?.();authSubscription?.();subscription=null;authSubscription=null;replayCache.clear();listeners.clear();}

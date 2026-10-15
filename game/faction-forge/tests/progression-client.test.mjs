@@ -39,3 +39,15 @@ test('unchanged battle polling reuses its validated replay rather than download 
   const service=createProgressionService({auth,apiBaseUrl:'https://example.invalid',requestStorage:memoryStorage(),fetchImpl:async url=>{urls.push(url);calls++;return response({session:{id:'match',phase:'battle',battle:{replayId:'1',durationMs:100,...(calls===1?{frames}:{})}}});}});
   const initial=await service.getSession('match'),next=await service.getSession('match');assert.equal(initial.session.battle.frames.length,1);assert.equal(next.session.battle.frames[0].units[0].id,'unit');assert.match(urls[1],/knownReplayId=1$/);
 });
+
+test('pack transport sends only pack and retry identity and recovers an uncertain purchase without a new identifier',async()=>{
+  const storage=memoryStorage(),sent=[];let fail=true;
+  const fetchImpl=async(url,options)=>{sent.push({url,body:JSON.parse(options.body)});if(fail){fail=false;throw Error('Lost response');}return response({profile:{uid:'owner',forgeDust:0},transaction:{packId:'vanir',dustSpent:50,cards:[{troopKey:'rifleman',quantity:5}]}});};
+  const first=createProgressionService({auth,apiBaseUrl:'https://example.invalid',requestStorage:storage,fetchImpl});await assert.rejects(first.buyPack('vanir',{requestId:'first-dialog'}),{code:'CONNECTION_FAILED'});
+  const reload=createProgressionService({auth,apiBaseUrl:'https://example.invalid',requestStorage:storage,fetchImpl}),result=await reload.buyPack('vanir',{requestId:'new-dialog-after-reload'});assert.equal(result.transaction.packId,'vanir');assert.equal(sent[0].body.requestId,sent[1].body.requestId);assert.equal(sent[1].body.requestId,'first-dialog');assert.deepEqual(Object.keys(sent[1].body).sort(),['packId','requestId']);assert.match(sent[1].url,/\/packs$/);
+});
+test('an account change after a server purchase retains the old account retry identifier and leaves the new account queue intact',async()=>{
+  const storage=memoryStorage(),identity={currentUser:{uid:'owner',getIdToken:async()=>'token'}};storage.setItem('factionForge.request.other.pack.vanir','other-pending');
+  const service=createProgressionService({auth:identity,apiBaseUrl:'https://example.invalid',requestStorage:storage,fetchImpl:async()=>{identity.currentUser={uid:'other',getIdToken:async()=>'other-token'};return response({profile:{uid:'owner',forgeDust:0}});}});
+  await assert.rejects(service.buyPack('vanir',{requestId:'committed-owner-pack'}),{code:'ACCOUNT_CHANGED'});assert.equal(storage.getItem('factionForge.request.owner.pack.vanir'),'committed-owner-pack');assert.equal(storage.getItem('factionForge.request.other.pack.vanir'),'other-pending');
+});

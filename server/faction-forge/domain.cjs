@@ -6,7 +6,14 @@ const NEW_TROOPS=Object.values(UNLOCKS);
 const ALL_TROOPS=[...BASE_TROOPS,...NEW_TROOPS];
 const FORGE_COSTS={1:{cards:10,dust:100},2:{cards:30,dust:350}};
 const RANKING={sameOpponentResultsPerDay:3,earlyForfeitPenalty:25};
-const REWARDS={pvp:{cards:4,dust:20,cap:10},bot:{cards:2,dust:10,cap:10},campaign:{cards:3,dust:20,cap:30},boss:{cards:6,dust:40,cap:30},replay:{cards:1,dust:5,cap:5},endless:{cards:2,dust:10,cap:10}};
+const REWARDS={pvp:{cards:8,dust:20,cap:10},bot:{cards:4,dust:10,cap:10},campaign:{cards:6,dust:20,cap:30},boss:{cards:12,dust:40,cap:30},replay:{cards:2,dust:5,cap:5},endless:{cards:4,dust:10,cap:10}};
+const ROUND_WIN_CARDS=3,ROUND_WIN_DAILY_CAP=70;
+const FORGE_PACKS=[
+  {id:'vanir',name:'Vanir Reinforcements',faction:'Vanir',dust:50,keys:['rifleman','vguard','medic']},
+  {id:'aesir',name:'Aesir Reinforcements',faction:'Aesir',dust:50,keys:['phaser','blade','guardian']},
+  {id:'helions',name:'Helion Reinforcements',faction:'Helions',dust:50,keys:['hellspawn','roach','defiler']},
+  {id:'war-chest',name:'War Chest',faction:null,dust:90,keys:['vrocket','marksman','storm','wardmaker','spitter','viper']}
+].map(({keys,...pack})=>({...pack,cards:keys.map(troopKey=>({troopKey,quantity:5})),totalCards:keys.length*5}));
 class ForgeError extends Error {
   constructor(code,message,status=400){super(message);this.name='ForgeError';this.code=code;this.status=status;}
 }
@@ -29,6 +36,14 @@ function upgrade(profile,troopKey,now=Date.now()) {
   fail(unit.cards>=cost.cards&&profile.forgeDust>=cost.dust,'INSUFFICIENT_RESOURCES','More matching cards and Forge Dust are required.',409);
   const next=copy(profile);next.troops[troopKey].cards-=cost.cards;next.forgeDust-=cost.dust;next.troops[troopKey].forgeTier++;next.updatedAt=now;
   return {profile:next,transaction:{troopKey,fromTier:unit.forgeTier,toTier:unit.forgeTier+1,cardsSpent:cost.cards,dustSpent:cost.dust,completedAt:now}};
+}
+function buyPack(profile,packId,now=Date.now()){
+  const pack=FORGE_PACKS.find(item=>item.id===packId);fail(pack,'INVALID_PACK','Choose a card pack.');
+  fail(!profile.activeSessionId,'MATCH_ACTIVE','Finish your current match before buying packs.',409);
+  fail(pack.cards.every(card=>profile.troops[card.troopKey]?.unlocked),'TROOP_LOCKED','Unlock the troops in this pack first.');
+  fail(Number.isSafeInteger(profile.forgeDust)&&profile.forgeDust>=pack.dust,'INSUFFICIENT_RESOURCES',`This pack requires ${pack.dust} Forge Dust.`,409);
+  const next=copy(profile);next.forgeDust-=pack.dust;for(const card of pack.cards)next.troops[card.troopKey].cards+=card.quantity;next.updatedAt=now;
+  return {profile:next,transaction:{packId:pack.id,dustSpent:pack.dust,cards:copy(pack.cards),completedAt:now}};
 }
 function missionNumber(id) {
   if(Number.isInteger(id)&&id>=1&&id<=30)return id;
@@ -115,8 +130,15 @@ function settle(profile,session,side,{now=Date.now(),opponentUid=null}={}) {
     if(num===30)next.campaign.endlessUnlocked=true;
   }
   if(won&&session.mode==='endless')next.campaign.endlessBest=Math.max(next.campaign.endlessBest||0,session.challengeLevel||1);
+  const playedRounds=Number.isInteger(session.roundWins?.[side])?Math.max(0,Math.min(7,session.roundWins[side])):0;
+  const roundEligible=!session.forfeitUid||session.completedBattles>0&&now-session.createdAt>=20000;
+  const rewardedRounds=roundEligible?Math.min(playedRounds,Math.max(0,ROUND_WIN_DAILY_CAP-(ledger.round||0))):0;
+  receipt.roundWins=playedRounds;receipt.roundCards=rewardedRounds*ROUND_WIN_CARDS;
+  const cardCount=(eligible?config.cards:0)+receipt.roundCards;
+  if(cardCount){const grant=cardRewards(next,cardCount,session.id+':'+profile.uid);next=grant.profile;receipt.cards=grant.cards;receipt.unlocks.push(...grant.unlocks);}
+  if(rewardedRounds)ledger.round=(ledger.round||0)+rewardedRounds;
   if(eligible) {
-    const grant=cardRewards(next,config.cards,session.id+':'+profile.uid);next=grant.profile;receipt.cards=grant.cards;receipt.unlocks.push(...grant.unlocks);receipt.forgeDust=config.dust;next.forgeDust+=config.dust;ledger[kind]=(ledger[kind]||0)+1;
+    receipt.forgeDust=config.dust;next.forgeDust+=config.dust;ledger[kind]=(ledger[kind]||0)+1;
     if(opponentUid)ledger['opponent_'+opponentUid]=(ledger['opponent_'+opponentUid]||0)+1;
   }
   next.rewardDays[day]=ledger;
@@ -130,4 +152,4 @@ function settle(profile,session,side,{now=Date.now(),opponentUid=null}={}) {
   }
   return {profile:next,receipt};
 }
-module.exports={ForgeError,fail,onlyKeys,safeId,safeUsername,newProfile,upgrade,settle,canStart,ratingDecision,RANKING,missionNumber,missionId,cardRewards,FORGE_COSTS,REWARDS,ALL_TROOPS,BASE_TROOPS,NEW_TROOPS};
+module.exports={ForgeError,fail,onlyKeys,safeId,safeUsername,newProfile,upgrade,buyPack,settle,canStart,ratingDecision,RANKING,missionNumber,missionId,cardRewards,FORGE_COSTS,FORGE_PACKS,REWARDS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,ALL_TROOPS,BASE_TROOPS,NEW_TROOPS};

@@ -60,7 +60,7 @@ export const CAMPAIGN_MISSIONS = Object.freeze(definitions.map((entry,number)=>{
   const aiStyle=['early_combos','sustained_upgrades','defensive_evolution','legendary_army'][number%4];
   const opponent={name,faction,skill,difficulty:skill,formation,roster,relics,tactics,unlockedTroops,aiStyle};
   return Object.freeze({id,number:number+1,chapter,index,title,theme:CAMPAIGN_CHAPTERS[chapter-1].theme,
-    boss,objective,rewards:{cards:boss?6:3,dust:boss?40:20},replayRewards:{cards:1,dust:5},
+    boss,objective,rewards:{cards:boss?12:6,dust:boss?40:20,roundCards:3},replayRewards:{cards:2,dust:5,roundCards:3},
     unlockTroop:CAMPAIGN_UNLOCKS[id]||null,prerequisite:number?'forge-'+String(number).padStart(2,'0'):null,
     opponent,aiFaction:faction,difficulty:skill,aiStyle,startingRoster:roster});
 }));
