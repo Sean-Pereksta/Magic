@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 
 const sourcePath=new URL('./grand-update.js',import.meta.url);
@@ -14,7 +15,7 @@ function section(start,end){
 }
 
 test('grand update is valid JavaScript and loads after regional content but before final mobile/performance wrappers',()=>{
-  const checked=spawnSync(process.execPath,['--check',sourcePath.pathname],{encoding:'utf8'});
+  const checked=spawnSync(process.execPath,['--check',fileURLToPath(sourcePath)],{encoding:'utf8'});
   assert.equal(checked.status,0,checked.stderr);
   const regionalAt=html.indexOf('arcane-wilds/regional-expansion.js');
   const grandAt=html.indexOf('arcane-wilds/grand-update.js');

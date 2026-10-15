@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 
 const cloudPath=new URL('./cloud-save.js',import.meta.url);
@@ -11,7 +12,7 @@ const html=readFileSync(new URL('../arcane-wilds.html',import.meta.url),'utf8');
 
 test('cloud save layers are valid JavaScript and loaded after gameplay patches',()=>{
   for(const path of [cloudPath,integrationPath]){
-    const checked=spawnSync(process.execPath,['--check',path.pathname],{encoding:'utf8'});
+    const checked=spawnSync(process.execPath,['--check',fileURLToPath(path)],{encoding:'utf8'});
     assert.equal(checked.status,0,checked.stderr);
   }
   const cloudAt=html.lastIndexOf('arcane-wilds/cloud-save.js');
