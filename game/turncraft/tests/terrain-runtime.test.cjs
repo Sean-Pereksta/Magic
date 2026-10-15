@@ -88,3 +88,17 @@ test('every map holds resource and ambient frames twice as long without slowing 
     r.drawEffect(paint.context,type,0,0,64,70);assert.equal(frame(),1,'combat still advances at 70 ms');
   }
 });
+
+test('normal high-quality desktop views keep every visible chunk cached within 32 MiB',async()=>{
+  const {r,paint}=await renderer(),terrain=field(128,128),input={mapId:'classic',terrain,seed:42,width:128,height:128,quality:'high',tileSize:40,now:1000},bounds={left:0,top:0,right:34,bottom:22},screen=(x,y)=>({x:x*40,y:y*40});
+  r.prepare(input);assert.equal(r.drawRegion(paint.context,bounds,screen,40),true);assert.equal(r.stats.builds,15);assert.equal(r.stats.chunks,15);assert.ok(r.stats.chunkBytes<=32*1024*1024);
+  const warmed=r.stats.builds;
+  for(let i=1;i<=4;i++){r.prepare({...input,now:1000+i*17});r.drawRegion(paint.context,bounds,screen,40)}
+  assert.equal(r.stats.builds,warmed,'a stationary normal-zoom desktop view must not recreate visible chunks each frame');
+  // A broad overview and subsequent return each change resolution once, then reuse.
+  const overview={...input,tileSize:12,now:1200},whole={left:0,top:0,right:127,bottom:127};
+  r.prepare(overview);r.drawRegion(paint.context,whole,screen,12);const wide=r.stats.builds;
+  r.prepare({...overview,now:1217});r.drawRegion(paint.context,whole,screen,12);assert.equal(r.stats.builds,wide);assert.ok(r.stats.chunkBytes<=32*1024*1024);
+  r.prepare({...input,now:1300});r.drawRegion(paint.context,bounds,screen,40);const returned=r.stats.builds;
+  r.prepare({...input,now:1317});r.drawRegion(paint.context,bounds,screen,40);assert.equal(r.stats.builds,returned);assert.ok(r.stats.chunkBytes<=32*1024*1024);
+});

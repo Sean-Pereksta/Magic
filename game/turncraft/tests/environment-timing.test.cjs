@@ -41,6 +41,7 @@ test('the slower structure destruction extends only cosmetic ghosts and leaves c
 
 test('all troop and developmental animation timing retains the pre-slowdown values',()=>{
   // Only temporal fields are pinned: crop rectangles and direction repairs can change freely.
-  const timing=Object.entries(manifest.assets).filter(([,asset])=>asset.kind!=='structure').map(([type,asset])=>[type,Object.entries(asset.states).map(([state,definition])=>[state,Object.fromEntries(['frames','fps','loop','contactMs','contactFrame','progressDriven','durationMs'].filter(field=>definition[field]!==undefined).map(field=>[field,definition[field]]))])]);
+  const addedHealing=new Set(['healPrepare','healActivate','healLoop','healComplete']);
+  const timing=Object.entries(manifest.assets).filter(([,asset])=>asset.kind!=='structure').map(([type,asset])=>[type,Object.entries(asset.states).filter(([state])=>type!=='medic'||!addedHealing.has(state)).map(([state,definition])=>[state,Object.fromEntries(['frames','fps','loop','contactMs','contactFrame','progressDriven','durationMs'].filter(field=>definition[field]!==undefined).map(field=>[field,definition[field]]))])]);
   assert.equal(createHash('sha256').update(JSON.stringify(timing)).digest('hex'),'1337319aa508666f308d565113f50000b8607ada7e9632d4617a1e4cfc3bab80');
 });

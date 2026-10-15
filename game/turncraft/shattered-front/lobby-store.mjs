@@ -1,5 +1,6 @@
 export const LOBBY_FACTIONS = Object.freeze(['frontier', 'ascendant', 'brood']);
-export const LOBBY_MAPS = Object.freeze(['classic', 'ember-rift', 'frostline-basin', 'verdant-divide', 'shattered-dunes', 'orbital-foundry']);
+import {LOBBY_MAPS, validateBattleSettings, battleParticipantCount} from './battle-config.mjs';
+export {LOBBY_MAPS};
 const MODES = ['annihilation', 'conquest', 'relic'];
 const clone = value => JSON.parse(JSON.stringify(value));
 const safeKey = value => String(value).replace(/[^a-zA-Z0-9_@.-]/g, '_').slice(0, 100);
@@ -15,11 +16,7 @@ function label(value, fallback = 'Commander') {
   fail(!text.includes('/'), 'A player name cannot contain a slash.');
   return text || fallback;
 }
-function settings(value = {}) {
-  const result = {mapId: value.mapId || 'classic', gameMode: value.gameMode || 'annihilation', maxPlayers: value.maxPlayers || 3, startingResources: 'standard'};
-  fail(LOBBY_MAPS.includes(result.mapId) && MODES.includes(result.gameMode) && [2, 3].includes(result.maxPlayers), 'Choose an existing battlefield and supported player count.');
-  return result;
-}
+function settings(value = {}) { return validateBattleSettings(value); }
 function inviteCode() {
   return [...globalThis.crypto.getRandomValues(new Uint8Array(6))].map(value => value.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
@@ -140,7 +137,7 @@ export function createLobbyStore({db, auth, api, getIdentity, now = Date.now}) {
         } else if (action === 'start') {
           fail(row.hostUid === user.uid, 'Only the host can start this match.', 'HOST_ONLY');
           fail(row.players.length >= 2 && row.turncraftSeats.every(uid => row.turncraftPlayers[uid].ready), 'At least two commanders must be present and everyone must be ready.', 'NOT_READY');
-          row.status = 'started'; row.startedAt = now();
+          battleParticipantCount(row.settings, row.players.length);row.status = 'started'; row.startedAt = now();
           row.chessStarfrontReady = Object.fromEntries(row.turncraftSeats.map(uid => {const player = row.turncraftPlayers[uid]; return [safeKey(player.name), {username: player.name, factionId: player.factionId, objectiveVote: row.settings.gameMode, mapVote: row.settings.mapId, ready: true, readyAtMs: row.startedAt}];}));
         }
       }
@@ -192,7 +189,7 @@ export async function completeCustomMatch({db, auth, api}, value) {
     fail(row.status === 'started', 'Start this battle first.', 'MATCH_NOT_STARTED');
     fail(uid === row.hostUid || uid === row.chessStarfrontController?.ownerUid, 'The host or current controller must confirm this result.', 'HOST_ONLY');
     const state = await tx.get(api.doc(db, 'lobbies', value, 'chess_starfront', 'state')), result = state.data();
-    fail(state.exists() && result.gameKey === 'chess_starfront' && result.gameOver === true && result.controllerUid === row.chessStarfrontController?.ownerUid && result.controllerEpoch === row.chessStarfrontController?.epoch && JSON.stringify(result.players?.map(p => p.name)) === JSON.stringify(row.players) && result.matchResult, 'The final shared battlefield snapshot has not arrived yet.', 'RESULT_NOT_READY');
+    fail(state.exists() && result.gameKey === 'chess_starfront' && result.gameOver === true && result.controllerUid === row.chessStarfrontController?.ownerUid && result.controllerEpoch === row.chessStarfrontController?.epoch && result.players?.length === battleParticipantCount(row.settings, row.players.length) && JSON.stringify(result.players.slice(0, row.players.length).map(p => p.name)) === JSON.stringify(row.players) && result.players.slice(row.players.length).every(p => p.ai === true && LOBBY_FACTIONS.includes(p.factionId)) && result.matchResult, 'The final shared battlefield snapshot has not arrived yet.', 'RESULT_NOT_READY');
     const patch = {status: 'finished', finishedAt: Date.now(), turncraftResult: {winnerIdx: result.matchResult.winnerIdx ?? null, reason: String(result.matchResult.reason || '').slice(0, 200), players: result.players.map(p => ({name: p.name, factionId: p.factionId})), durationSeconds: Math.max(0, Math.floor((Number(result.matchResult.finishedAt) - Number(result.matchStartedAt || row.startedAt)) / 1000))}, updatedAt: Date.now()};
     tx.update(ref, patch); return {id: value, ...row, ...patch};
   });

@@ -8,7 +8,7 @@ const api = require('firebase/firestore');
 (async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run through the local Firebase emulator.');
   const {createLobbyStore, completeCustomMatch} = await import(pathToFileURL(path.resolve(__dirname, '../shattered-front/lobby-store.mjs')).href);
-  const env = await initializeTestEnvironment({projectId: 'demo-turncraft', firestore: {rules: fs.readFileSync(path.resolve(__dirname, '../../../firestore.rules'), 'utf8')}});
+  const env = await initializeTestEnvironment({projectId: 'demo-turncraft', firestore: {rules: fs.readFileSync(process.env.TURNCRAFT_RULES_FILE || path.resolve(__dirname, '../../../firestore.rules'), 'utf8')}});
   try {
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async context => {
@@ -56,11 +56,13 @@ const api = require('firebase/firestore');
     assert.equal(finished.status, 'finished'); assert.equal(finished.turncraftResult.winnerIdx, 0);
     await assertFails(api.setDoc(api.doc(ownerDb, 'lobbies', room.id, 'chess_starfront', 'state'), finalState));
     await assert.rejects(peer.rematch(room.id), {code: 'HOST_ONLY'});
+    console.log('Checking rematch transaction…');
     const copies = await Promise.all([owner.rematch(room.id), owner.rematch(room.id)]);
     assert.equal(copies[0].id, copies[1].id); assert.notEqual(copies[0].id, room.id);
     assert.equal(copies[0].status, 'waiting'); assert.ok(Object.values(copies[0].turncraftPlayers).every(player => !player.ready));
     assert.equal((await peer.get(room.id)).nextLobbyId, copies[0].id);
 
+    console.log('Checking private room and host transfer…');
     const privateRoom = await owner.create({name: 'Private', visibility: 'private'});
     assert.ok(!(await stranger.browse()).lobbies.some(row => row.id === privateRoom.id));
     await assert.rejects(peer.join({lobbyId: privateRoom.id}), {code: 'INVITE_REQUIRED'});
@@ -83,8 +85,47 @@ const api = require('firebase/firestore');
     await peer.leave(three.id);
     assert.deepEqual((await owner.get(three.id)).turncraftSeats, ['owner', 'stranger']);
     assert.equal((await owner.get(three.id)).hostUid, 'owner');
+    // Four real identities launch, receive the same authored terrain, and complete.
+    const fourthDb=env.authenticatedContext('fourth').firestore();
+    const fourth=createLobbyStore({db:fourthDb,auth:{currentUser:{uid:'fourth'}},api,getIdentity:()=>({uid:'fourth',username:'Fourth'})});
+    console.log('Checking four-human lobby…');
+    const four=await owner.create({requestId:'four-commanders',settings:{mapId:'fourfold-divide',maxPlayers:4}});
+    await peer.join({lobbyId:four.id});
+    const existingFour=(await api.getDoc(api.doc(ownerDb,'lobbies',four.id))).data();
+    const joiningPatch={members:{...existingFour.members,stranger:'Stranger'},players:[...existingFour.players,'Stranger'],turncraftSeats:[...existingFour.turncraftSeats,'stranger'],turncraftPlayers:{...existingFour.turncraftPlayers,stranger:{name:'Stranger',factionId:'brood',team:'ffa',ready:false,avatar:null}},updatedAt:Date.now()};
+    await assertFails(api.updateDoc(api.doc(strangerDb,'lobbies',four.id),{...joiningPatch,turncraftPlayers:{...joiningPatch.turncraftPlayers,owner:{...existingFour.turncraftPlayers.owner,factionId:'brood'}}}));
+    await assertFails(api.updateDoc(api.doc(strangerDb,'lobbies',four.id),{...joiningPatch,players:['Peer','Owner','Stranger']}));
+    await stranger.join({lobbyId:four.id});await fourth.join({lobbyId:four.id});
+    await assertFails(api.updateDoc(api.doc(ownerDb,'lobbies',four.id),{settings:{...four.settings,mapId:'ashen-causeway'}}));
+    for(const store of [owner,peer,stranger,fourth])await store.player(four.id,{ready:true});
+    const fourStarted=await owner.start(four.id);assert.equal(fourStarted.turncraftSeats.length,4);
+    const fourLease={ownerUid:'owner',ownerName:'Owner',epoch:1,expiresAtMs:Date.now()+16000};
+    await api.updateDoc(api.doc(ownerDb,'lobbies',four.id),{chessStarfrontController:fourLease,updatedAt:api.serverTimestamp()});
+    const {battleSlots}=await import(pathToFileURL(path.resolve(__dirname,'../shattered-front/battle-config.mjs')).href);
+    const terrainCodes={ground:'g',grass:'h',moss:'m',sand:'s',dust:'d',ruins:'u',lane:'l',expansion:'e',rock:'r',crystal:'c',mineral:'i',gas:'a'};
+    const authored=globalThis.TurncraftMaps.generate('fourfold-divide',77164).terrain.map(tile=>terrainCodes[tile.type]||'g').join('');
+    const fourState={...finalState,players:battleSlots(fourStarted),chosenMapId:'fourfold-divide',boardWidth:96,boardHeight:96,terrainCode:authored,mapSeed:77164,activeMapSeed:77164,matchStartedAt:fourStarted.startedAt,simulationTick:1};
+    await api.setDoc(api.doc(ownerDb,'lobbies',four.id,'chess_starfront','state'),fourState);
+    for(const client of [peerDb,strangerDb,fourthDb])assert.deepEqual((await api.getDoc(api.doc(client,'lobbies',four.id,'chess_starfront','state'))).data(),fourState);
+    await assertFails(api.setDoc(api.doc(ownerDb,'lobbies',four.id,'chess_starfront','state'),{...fourState,boardWidth:128}));
+    await assertFails(api.setDoc(api.doc(ownerDb,'lobbies',four.id,'chess_starfront','state'),{...fourState,players:fourState.players.slice(0,3)}));
+    assert.equal((await owner.complete(four.id)).turncraftResult.players.length,4);
+
+    // Two human seats share a four-position map with two validated AI slots.
+    console.log('Checking mixed human/AI lobby…');
+    const mixed=await owner.create({requestId:'mixed-commanders',settings:{mapId:'rift-bastion',maxPlayers:4,fillAi:true,aiDifficulty:'hard',aiStyle:'aggressive'}});
+    await peer.join({lobbyId:mixed.id});await owner.player(mixed.id,{ready:true});await peer.player(mixed.id,{ready:true});
+    const mixedStarted=await owner.start(mixed.id);
+    await api.updateDoc(api.doc(ownerDb,'lobbies',mixed.id),{chessStarfrontController:{...fourLease,expiresAtMs:Date.now()+16000},updatedAt:api.serverTimestamp()});
+    const mixedState={...fourState,chosenMapId:'rift-bastion',players:battleSlots(mixedStarted),matchStartedAt:mixedStarted.startedAt};
+    assert.equal(mixedState.players.filter(player=>player.ai).length,2);
+    await api.setDoc(api.doc(ownerDb,'lobbies',mixed.id,'chess_starfront','state'),mixedState);
+    assert.deepEqual((await api.getDoc(api.doc(peerDb,'lobbies',mixed.id,'chess_starfront','state'))).data().players,mixedState.players);
+    await assertFails(api.setDoc(api.doc(ownerDb,'lobbies',mixed.id,'chess_starfront','state'),{...mixedState,players:mixedState.players.map((player,i)=>i===3?{...player,ai:false}:player)}));
+    assert.equal((await owner.complete(mixed.id)).turncraftResult.players.length,4);
+
     const saved = (await api.getDoc(api.doc(ownerDb, 'users', 'Owner'))).data();
     assert.equal(saved.gameStats.turncraft.mmr, 1500); assert.equal(saved.gameStats.turncraft.rankedMatches, 10); assert.equal(saved.gameStats.otherGame.wins, 9);
-    console.log('Direct Firestore lobby emulator passed: create/join/invites, readiness, frozen host start, controller completion, fresh rematch, host departure and unchanged ratings.');
+    console.log('Direct Firestore lobby emulator passed: create/join/invites, readiness, frozen host start, controller completion, fresh rematch, host departure, four-human authored-terrain synchronization, mixed human/AI synchronization, invalid-capacity rejection and unchanged ratings.');
   } finally {await env.cleanup();}
 })().catch(error => {console.error(error); process.exitCode = 1;});

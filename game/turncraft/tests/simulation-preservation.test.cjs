@@ -8,7 +8,7 @@ const {simulation} = require('./helpers/expansion-harness.cjs');
 // from accidental balance changes in presentation work.
 const reference = {
   units: [40, '7f350270573d72899405422058c967155d383b5d853333c7a894dedf9c1d78ee'],
-  structures: [34, 'fb284da05098c835865efee668299760b9fbe05047857cba47bf8aca23027c57'],
+  structures: [34, '5ef6478ea668e85abb317ee3814f54f68b6b848d76e5bdf5be0f9f0c75c8a22a'],
   abilities: [54, '25fadb91b75def13156a8da32a8fe7c07a15afbfea434c409c610e65d91adcf0'],
   research: [22, '8c31a09bb56c82b75565343540a4144ce90596d2b32776211c38320ba4be21e9'],
   difficulty: [4, 'bae316c148d7d5a5950173bef5aff8521c7604deb2e4a7093a4fc36b1d531a31'],

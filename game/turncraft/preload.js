@@ -63,14 +63,14 @@
         urls.add(url.href);
       } catch (error) { problem(error.message, source, 'catalog-entry'); }
     }
-    for (const path of Object.keys(visualImages)) add(path, graphicsBase, manifestUrls.visualManifest);
+    for (const [path, record] of Object.entries(visualImages)) add(record.localFallback || path, record.localFallback ? pageUrl : graphicsBase, manifestUrls.visualManifest);
     for (const asset of Object.values(expansionAssets)) add(typeof asset === 'string' ? asset : asset?.path, expansionBase, manifestUrls.expansionManifest);
     for (const asset of Object.values(animationAssets)) {
       if (!asset?.states || typeof asset.states !== 'object' || !Object.keys(asset.states).length) {
         problem('An animation catalog entry has no states.', manifestUrls.animationManifest, 'catalog-entry');
         continue;
       }
-      for (const state of Object.values(asset.states)) add(state?.sheet, graphicsBase, manifestUrls.animationManifest);
+      for (const state of Object.values(asset.states)) {const local = animationManifest.localFallbacks?.[state?.sheet];add(local || state?.sheet, local ? pageUrl : graphicsBase, manifestUrls.animationManifest);}
     }
     for (const path of legacyFiles) add(path, legacyBase, pageUrl);
     if (includeCommandScenes) for (const path of COMMAND_SCENE_FILES) add(path, graphicsBase, pageUrl);

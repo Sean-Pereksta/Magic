@@ -6,6 +6,9 @@ const {chromium} = require('playwright');
 const {assetPath, enablePixelInspection} = require('./helpers/cloudflare-assets.cjs');
 const {baseUrl: cloudflareBase, images: visualImages} = require('../assets/visual-asset-index.json');
 const expansionManifest = require('../shattered-front-assets.json');
+const animationManifest = require('../assets/animation-manifest.json');
+const localArtwork = new Set(Object.values(visualImages).filter(record => record.localFallback).map(record => new URL(record.localFallback, 'http://turncraft.test/game/turncraft.html').href));
+const requestedArtwork = (requests, file) => requests.has(new URL(file, cloudflareBase).href) || visualImages[file].localFallback && requests.has(new URL(visualImages[file].localFallback, 'http://turncraft.test/game/turncraft.html').href);
 const {COMMAND_SCENE_FILES} = require('../preload.js');
 const extraArtwork = new Set([
   ...Object.values(expansionManifest.assets).map(asset => new URL(asset.path, expansionManifest.defaultBaseURL).href),
@@ -35,7 +38,7 @@ window.tcAnimation={
 async function setup(width = 1280, height = 900, {boot = false} = {}) {
   const browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--no-sandbox']});
   const page = await browser.newPage({viewport: {width, height}}), errors = [], artworkRequests = new Set();
-  page.on('request', request => {if (request.url().startsWith(cloudflareBase)) artworkRequests.add(request.url())});
+  page.on('request', request => {if (request.url().startsWith(cloudflareBase) || localArtwork.has(request.url())) artworkRequests.add(request.url())});
   await page.addInitScript(enablePixelInspection);
   page.on('pageerror', error => errors.push(error.message));
   const source = fs.readFileSync(path.join(repo, 'game/turncraft.html'), 'utf8')
@@ -65,7 +68,7 @@ test('actual startup preloads every graphic while the deployed battlefield fills
     const initial = await page.evaluate(() => tcAnimation.run(`({assets:Object.keys(spriteRuntime.manifest.assets).length,staticFiles:[...ASSET_IMAGES.keys()],textures:spriteRuntime.cache.stats()})`));
     assert.ok(initial.assets>=76,'startup must use the comprehensive production manifest');
     assert.ok(initial.staticFiles.length<=6,'startup must not decode the whole legacy PNG roster');
-    for (const file of Object.keys(visualImages)) assert.ok(artworkRequests.has(new URL(file, cloudflareBase).href), `prelaunch artwork includes ${file}`);
+    for (const file of Object.keys(visualImages)) assert.ok(requestedArtwork(artworkRequests,file), `prelaunch artwork includes ${file}`);
     for (const url of extraArtwork) assert.ok(artworkRequests.has(url), `prelaunch artwork includes ${url}`);
     assert.equal(initial.textures.ready, 0, 'preloading releases full images before the renderer requests visible textures');
     assert.ok(initial.textures.bytes<=initial.textures.limit);
@@ -86,7 +89,7 @@ test('actual startup preloads every graphic while the deployed battlefield fills
     await page.evaluate(() => tcAnimation.run("(()=>{const base=entities.find(e=>e.alive!==false&&e.kind==='structure');if(base){centerOn(base.x,base.y);draw()}})()"));
     await page.waitForFunction(() => tcAnimation.runtime.cache.stats().pending===0);
     await page.waitForFunction(() => tcAnimation.run("terrainRenderer.stats.loaded.includes('effects') && terrainRenderer.stats.loaded.includes('classic:props')"));
-    assert.ok(Object.keys(visualImages).every(file => artworkRequests.has(new URL(file, cloudflareBase).href)));
+    assert.ok(Object.keys(visualImages).every(file => requestedArtwork(artworkRequests,file)));
     assert.deepEqual(errors,[]);
   } finally {await browser.close()}
 });
@@ -135,7 +138,7 @@ test('the real browser decodes every roster atlas and resolves every required di
     assert.equal(result.loaded, true);
     assert.equal(result.roster, 40);
     assert.equal(result.structures, 34);
-    assert.equal(result.sheets, 163);
+    assert.equal(result.sheets, new Set(Object.values(animationManifest.assets).flatMap(asset => Object.values(asset.states).map(state => state.sheet))).size);
     assert.deepEqual(result.failures, []);
     assert.deepEqual(errors, []);
   } finally {await browser.close()}

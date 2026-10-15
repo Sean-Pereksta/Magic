@@ -281,35 +281,42 @@ service cloud.firestore {
       allow delete: if isAuthed() && (!turncraftType(resource.data) || resource.data.get('turncraftVersion',0) != 1) && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
       function turncraftMember() { return isAuthed() && turncraftType(ironLobby()) && request.auth.uid in ironLobby().get('members',{}); }
       function tcPlayer(d, index) {
-        return d.turncraftSeats.size() <= index || (
-          d.members[d.turncraftSeats[index]] is string && d.members[d.turncraftSeats[index]].size() >= 1 && d.members[d.turncraftSeats[index]].size() <= 80
-          && d.players[index] == d.members[d.turncraftSeats[index]]
-          && d.turncraftPlayers[d.turncraftSeats[index]].keys().hasOnly(['name','factionId','team','ready','avatar'])
-          && d.turncraftPlayers[d.turncraftSeats[index]].name == d.members[d.turncraftSeats[index]]
-          && d.turncraftPlayers[d.turncraftSeats[index]].factionId in ['frontier','ascendant','brood']
-          && d.turncraftPlayers[d.turncraftSeats[index]].team == 'ffa'
-          && d.turncraftPlayers[d.turncraftSeats[index]].ready is bool
-          && (d.turncraftPlayers[d.turncraftSeats[index]].get('avatar',null) == null || d.turncraftPlayers[d.turncraftSeats[index]].avatar is string && d.turncraftPlayers[d.turncraftSeats[index]].avatar.size() <= 2048)
-        );
+        let seats=d.turncraftSeats;let uid=seats.size()>index ? seats[index] : '';let player=d.turncraftPlayers.get(uid,{});let name=d.members.get(uid,'');
+        return seats.size() <= index || (name is string && name.size() >= 1 && name.size() <= 80
+          && d.players[index] == name && player.keys().hasOnly(['name','factionId','team','ready','avatar'])
+          && player.name == name && player.factionId in ['frontier','ascendant','brood'] && player.team == 'ffa' && player.ready is bool
+          && (player.get('avatar',null) == null || player.avatar is string && player.avatar.size() <= 2048));
       }
+      function tcMapCapacity(id) {
+        return id in ['ashen-causeway','ghostwood-passage'] ? 2 : id in ['fourfold-divide','rift-bastion'] ? 4 : 3;
+      }
+      function tcMapWidth(id) { return tcMapCapacity(id) == 2 ? 64 : tcMapCapacity(id) == 4 ? 96 : id in ['triad-basin','obsidian-crown'] ? 80 : 42; }
+      function tcMapHeight(id) { return tcMapWidth(id) == 42 ? 30 : tcMapWidth(id); }
+      function tcParticipantCount(d) { return d.settings.get('fillAi',false) ? tcMapCapacity(d.settings.mapId) : d.players.size(); }
       function tcSettings(d) {
-        return d.settings is map && d.settings.keys().hasOnly(['mapId','gameMode','maxPlayers','startingResources'])
-          && d.settings.mapId in ['classic','ember-rift','frostline-basin','verdant-divide','shattered-dunes','orbital-foundry']
-          && d.settings.gameMode in ['annihilation','conquest','relic'] && d.settings.maxPlayers in [2,3]
-          && d.settings.startingResources == 'standard';
+        let settings=d.settings;
+        return settings is map && settings.keys().hasOnly(['mapId','gameMode','maxPlayers','startingResources','fillAi','aiDifficulty','aiStyle'])
+          && settings.mapId in ['classic','ember-rift','frostline-basin','verdant-divide','shattered-dunes','orbital-foundry','ashen-causeway','ghostwood-passage','triad-basin','obsidian-crown','fourfold-divide','rift-bastion']
+          && settings.gameMode in ['annihilation','conquest','relic'] && settings.maxPlayers in [2,3,4] && settings.maxPlayers <= tcMapCapacity(settings.mapId)
+          && settings.get('fillAi',false) is bool && settings.get('aiDifficulty','medium') in ['easy','medium','hard','pro']
+          && settings.get('aiStyle','balanced') in ['cautious','balanced','aggressive'] && settings.startingResources == 'standard';
       }
-      function tcSchema(d) {
+      function tcSchemaShape(d) {
+        let seats=d.turncraftSeats;let seatSet=seats.toSet();let members=d.members;let commanders=d.turncraftPlayers;let names=d.players;
         return turncraftType(d) && d.turncraftVersion == 1 && d.ranked == false
           && d.keys().hasOnly(['name','gameType','turncraftVersion','status','visibility','ranked','host','hostUid','members','players','turncraftSeats','turncraftPlayers','settings','createdAt','updatedAt','startedAt','chessStarfrontReady','chessStarfrontController','finishedAt','turncraftResult','nextLobbyId','rematchOf'])
           && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
           && d.visibility in ['public','private'] && d.status in ['waiting','started','finished','closed']
           && d.createdAt is int && (d.updatedAt is int || d.updatedAt is timestamp) && tcSettings(d)
-          && d.turncraftSeats is list && d.turncraftSeats.size() <= 3 && d.turncraftSeats.toSet().size() == d.turncraftSeats.size()
-          && d.members is map && d.members.keys().toSet() == d.turncraftSeats.toSet()
-          && d.turncraftPlayers is map && d.turncraftPlayers.keys().toSet() == d.turncraftSeats.toSet()
-          && d.players is list && d.players.size() == d.turncraftSeats.size() && d.players.toSet().size() == d.players.size()
-          && (d.status == 'closed' && d.turncraftSeats.size() == 0 || d.turncraftSeats.size() >= 1 && d.turncraftSeats.size() <= d.settings.maxPlayers && d.hostUid == d.turncraftSeats[0] && d.host == d.members[d.hostUid])
-          && tcPlayer(d,0) && tcPlayer(d,1) && tcPlayer(d,2);
+          && seats is list && seats.size() <= 4 && seatSet.size() == seats.size()
+          && members is map && members.keys().toSet() == seatSet
+          && commanders is map && commanders.keys().toSet() == seatSet
+          && names is list && names.size() == seats.size() && names.toSet().size() == names.size()
+          && (d.status == 'closed' && seats.size() == 0 || seats.size() >= 1 && seats.size() <= d.settings.maxPlayers && d.hostUid == seats[0] && d.host == members[d.hostUid])
+;
+      }
+      function tcSchema(d) {
+        return tcSchemaShape(d) && tcPlayer(d,0) && tcPlayer(d,1) && tcPlayer(d,2) && tcPlayer(d,3);
       }
       function tcResetPlayer(a,b,index) {
         return a.turncraftSeats.size() <= index || b.turncraftPlayers[a.turncraftSeats[index]].ready == false
@@ -318,11 +325,12 @@ service cloud.firestore {
       function tcResetPlayers(a,b) {
         return a.turncraftSeats == b.turncraftSeats && a.members == b.members
           && a.turncraftPlayers.keys().toSet() == b.turncraftPlayers.keys().toSet()
-          && tcResetPlayer(a,b,0) && tcResetPlayer(a,b,1) && tcResetPlayer(a,b,2);
+          && tcResetPlayer(a,b,0) && tcResetPlayer(a,b,1) && tcResetPlayer(a,b,2) && tcResetPlayer(a,b,3);
       }
       function tcAllReady(d) {
         return d.turncraftPlayers[d.turncraftSeats[0]].ready && d.turncraftPlayers[d.turncraftSeats[1]].ready
-          && (d.turncraftSeats.size() < 3 || d.turncraftPlayers[d.turncraftSeats[2]].ready);
+          && (d.turncraftSeats.size() < 3 || d.turncraftPlayers[d.turncraftSeats[2]].ready)
+          && (d.turncraftSeats.size() < 4 || d.turncraftPlayers[d.turncraftSeats[3]].ready);
       }
       function tcRematchCreate(d) {
         let before=get(/databases/$(database)/documents/lobbies/$(d.rematchOf)).data;
@@ -351,8 +359,8 @@ service cloud.firestore {
           && b.members.diff(a.members).affectedKeys().hasOnly([request.auth.uid])
           && b.turncraftPlayers.diff(a.turncraftPlayers).affectedKeys().hasOnly([request.auth.uid])
           && b.turncraftPlayers[request.auth.uid].ready == false
-          && b.turncraftSeats.size() == a.turncraftSeats.size()+1 && b.turncraftSeats[b.turncraftSeats.size()-1] == request.auth.uid
-          && tcAppend(a,b,0) && tcAppend(a,b,1) && tcAppend(a,b,2)
+          && b.turncraftSeats == a.turncraftSeats.concat([request.auth.uid])
+          && b.players == a.players.concat([b.members[request.auth.uid]])
           && (a.visibility == 'public' || tcJoinProof(a));
       }
       function tcLeave(a,b,fields) {
@@ -374,10 +382,19 @@ service cloud.firestore {
           && tcAllReady(a) && fields.hasOnly(['status','startedAt','chessStarfrontReady','updatedAt'])
           && b.startedAt is int && b.chessStarfrontReady is map && b.chessStarfrontReady.size() == b.turncraftSeats.size()
           && tcReadyRecord(b,b.turncraftSeats[0]) && tcReadyRecord(b,b.turncraftSeats[1])
-          && (b.turncraftSeats.size() < 3 || tcReadyRecord(b,b.turncraftSeats[2]));
+          && (b.turncraftSeats.size() < 3 || tcReadyRecord(b,b.turncraftSeats[2]))
+          && (b.turncraftSeats.size() < 4 || tcReadyRecord(b,b.turncraftSeats[3]));
       }
       function tcStatePlayer(s,a,index) {
-        return a.turncraftSeats.size() <= index || s.players[index].name == a.players[index];
+        return s.players.size() <= index || (s.players[index].factionId in ['frontier','ascendant','brood'] && (
+          a.turncraftSeats.size() > index ? s.players[index].name == a.players[index] && s.players[index].factionId == a.turncraftPlayers[a.turncraftSeats[index]].factionId && s.players[index].get('ai',false) == false : s.players[index].ai == true));
+      }
+      function tcBattleState(s,a) {
+        let map=a.settings.mapId;let width=tcMapWidth(map);let height=width == 42 ? 30 : width;
+        return s.gameKey == 'chess_starfront' && s.players is list && s.players.size() == tcParticipantCount(a)
+          && s.get('chosenMapId',map) == map && s.get('boardWidth',width) == width && s.get('boardHeight',height) == height
+          && (!s.keys().hasAny(['terrainCode']) || s.terrainCode is string && s.terrainCode.size() == width*height)
+          && tcStatePlayer(s,a,0) && tcStatePlayer(s,a,1) && tcStatePlayer(s,a,2) && tcStatePlayer(s,a,3);
       }
       function tcComplete(a,b,fields) {
         let state=get(/databases/$(database)/documents/lobbies/$(gameId)/chess_starfront/state).data;
@@ -386,10 +403,10 @@ service cloud.firestore {
           && fields.hasOnly(['status','finishedAt','turncraftResult','updatedAt'])
           && state.gameKey == 'chess_starfront' && state.gameOver == true
           && state.controllerUid == a.chessStarfrontController.ownerUid && state.controllerEpoch == a.chessStarfrontController.epoch
-          && state.players.size() == a.players.size() && tcStatePlayer(state,a,0) && tcStatePlayer(state,a,1) && tcStatePlayer(state,a,2)
+          && tcBattleState(state,a)
           && b.finishedAt is int && b.turncraftResult.keys().hasOnly(['winnerIdx','reason','players','durationSeconds'])
           && b.turncraftResult.winnerIdx == state.matchResult.winnerIdx && b.turncraftResult.reason is string && b.turncraftResult.reason.size() <= 200
-          && b.turncraftResult.players is list && b.turncraftResult.players.size() == a.players.size()
+          && b.turncraftResult.players is list && b.turncraftResult.players.size() == state.players.size()
           && b.turncraftResult.durationSeconds is int && b.turncraftResult.durationSeconds >= 0;
       }
       function tcLease(a,b,fields) {
@@ -426,14 +443,15 @@ service cloud.firestore {
               || (a.status == 'finished' && a.hostUid == request.auth.uid && a.get('nextLobbyId','') == '' && fields.hasOnly(['nextLobbyId','updatedAt'])
                 && getAfter(/databases/$(database)/documents/lobbies/$(b.nextLobbyId)).data.rematchOf == gameId)
             ))
-            || (tcJoin(a,b,fields) && tcSchema(b)) || (tcLeave(a,b,fields) && tcSchema(b))
+            || (tcJoin(a,b,fields) && tcSchemaShape(b) && tcPlayer(b,b.turncraftSeats.size()-1)) || (tcLeave(a,b,fields) && tcSchemaShape(b))
           );
       }
       match /chess_starfront/{stateId} {
         allow read: if turncraftMember();
         allow create, update: if stateId == 'state' && turncraftController()
           && request.resource.data.controllerUid == request.auth.uid
-          && request.resource.data.controllerEpoch == ironLobby().chessStarfrontController.epoch;
+          && request.resource.data.controllerEpoch == ironLobby().chessStarfrontController.epoch
+          && tcBattleState(request.resource.data,ironLobby());
         allow delete: if false;
       }
       match /chess_starfront_presence/{presenceId} {

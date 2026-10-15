@@ -9,7 +9,7 @@ function assetPath(url) {
   const parsed = new URL(url);
   const key = parsed.pathname.slice(1);
   if (parsed.origin !== base.origin || parsed.search || parsed.hash || !Object.hasOwn(index.images, key)) return null;
-  const file = path.join(cache, ...key.split('/'));
+  const file = index.images[key].localPath ? path.resolve(__dirname, '../../../..', index.images[key].localPath) : path.join(cache, ...key.split('/'));
   if (!fs.existsSync(file)) throw new Error('Missing artwork cache: run python3 scripts/cache-visual-assets.py before the checks');
   return file;
 }

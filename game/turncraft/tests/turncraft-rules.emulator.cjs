@@ -25,7 +25,7 @@ const {
     projectId: 'demo-turncraft',
     firestore: {
       rules: fs.readFileSync(
-        path.resolve(__dirname, '../../../firestore.rules'),
+        process.env.TURNCRAFT_RULES_FILE || path.resolve(__dirname, '../../../firestore.rules'),
         'utf8'
       )
     }
@@ -227,7 +227,8 @@ const {
       gameKey: 'chess_starfront',
       controllerUid: 'owner',
       controllerEpoch: 1,
-      players: [],
+      players: [{name:'Owner',factionId:'frontier',ai:false},{name:'Peer',factionId:'ascendant',ai:false}],
+      chosenMapId:'classic',boardWidth:42,boardHeight:30,terrainCode:'g'.repeat(42*30),
       entities: []
     };
     await assertSucceeds(

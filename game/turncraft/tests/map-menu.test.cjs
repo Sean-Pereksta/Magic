@@ -15,11 +15,11 @@ async function setup(width=1280,height=900,savedMap){
   await page.goto('http://turncraft.test/game/turncraft.html');assert.deepEqual(errors,[]);return{browser,page,errors};
 }
 
-test('six illustrated map choices show actual terrain previews and persist a selected map',async()=>{
+test('categorized strategic map choices show actual terrain previews and persist a selected map',async()=>{
   const {browser,page,errors}=await setup();try{
-    const choices=page.locator('#mapChoices [data-map]');assert.equal(await choices.count(),6);assert.equal(await page.locator('#mapPopout').isVisible(),false);await page.locator('#mapSelectBtn').click();
+    const choices=page.locator('#mapChoices [data-map]');assert.equal(await choices.count(),14);assert.equal(await page.locator('#mapPopout').isVisible(),false);await page.locator('#mapSelectBtn').click();
     const previews=await choices.locator('canvas').evaluateAll(canvases=>canvases.map(canvas=>{const ctx=canvas.getContext('2d'),data=ctx.getImageData(0,0,canvas.width,canvas.height).data;let colors=new Set();for(let i=0;i<data.length;i+=4)if(data[i+3])colors.add(data[i]+','+data[i+1]+','+data[i+2]);return{width:canvas.width,height:canvas.height,colors:colors.size}}));
-    assert.equal(previews.length,6);assert.ok(previews.every(p=>p.width>=42&&p.height>=30&&p.colors>=5),JSON.stringify(previews));
+    assert.equal(previews.length,14);assert.ok(previews.every(p=>p.width>=42&&p.height>=30&&p.colors>=5),JSON.stringify(previews));
     for(const id of ['classic','ember-rift','frostline-basin','verdant-divide','shattered-dunes','orbital-foundry']){
       if(!await page.locator('#mapPopout').isVisible())await page.locator('#mapSelectBtn').click();await page.locator(`[data-map="${id}"]`).click();await page.locator('#mapPopout').waitFor({state:'hidden'});const config=await page.evaluate(()=>tcMaps.config);assert.equal(config.map,id);assert.equal(config.saved,id);assert.equal(config.layout.id,id);assert.equal(await page.locator(`[data-map="${id}"]`).getAttribute('aria-pressed'),'true');assert.ok((await page.locator('#mapSummary').textContent()).trim().length>20);
     }
@@ -58,4 +58,26 @@ test('map choices remain visible, accessible and tappable in portrait and landsc
       const overflow=await page.locator('#startCard').evaluate(el=>el.scrollWidth-el.clientWidth);assert.ok(overflow<=2,`${width} menu overflow: ${overflow}`);assert.deepEqual(errors,[]);
     }finally{await browser.close()}
   }
+});
+
+test('expanded battle setup recommends eight positions and remembers individual AI commanders',async()=>{
+  const {browser,page,errors}=await setup(390,844);try{
+    await page.locator('#aiCountSelect').selectOption('7');
+    assert.equal(await page.locator('#selectedMapName').textContent(),'Rift Dominion');
+    assert.equal(await page.locator('#aiCommanderOptions .aiCommanderRow').count(),7);
+    await page.locator('#aiCommanderDetails summary').click();
+    const first=page.locator('#aiCommanderOptions .aiCommanderRow').first().locator('select');
+    await first.nth(0).selectOption('brood');await first.nth(1).selectOption('pro');await first.nth(2).selectOption('aggressive');
+    await page.locator('#mapSelectBtn').click();
+    assert.equal(await page.locator('#mapChoices .mapCategory').count(),4);
+    assert.equal(await page.locator('[data-map="ashen-causeway"]').isDisabled(),true);
+    assert.equal(await page.locator('[data-map="fourfold-divide"]').isDisabled(),true);
+    assert.equal(await page.locator('[data-map="rift-dominion"]').isDisabled(),false);
+    await page.locator('#mapPopoutClose').click();await page.locator('#mapPopout').waitFor({state:'hidden'});
+    await page.reload();assert.equal(await page.locator('#aiCountSelect').inputValue(),'7');
+    const result=await page.evaluate(()=>{tcMaps.start();return tcMaps.state.snapshot});
+    assert.equal(result.players.length,8);assert.equal(result.players.filter(p=>p.ai).length,7);
+    assert.equal(result.players[1].factionId,'brood');assert.equal(result.players[1].aiDifficulty,'pro');assert.equal(result.players[1].aiStyle,'aggressive');
+    assert.equal(result.boardWidth,128);assert.equal(result.terrainCode.length,128*128);assert.deepEqual(errors,[]);
+  }finally{await browser.close()}
 });

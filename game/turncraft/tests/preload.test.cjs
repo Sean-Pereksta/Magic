@@ -197,10 +197,10 @@ test('the shipped catalogs enumerate every graphics image and every animation sh
   const animationManifest = read('assets/animation-manifest.json');
   const urls = collectUrls({ visualManifest, expansionManifest, animationManifest });
   const expected = new Set([
-    ...Object.keys(visualManifest.images).map(file => new URL(file, visualManifest.baseUrl).href),
+    ...Object.entries(visualManifest.images).map(([file,record]) => new URL(record.localFallback || file, record.localFallback ? 'http://localhost/' : visualManifest.baseUrl).href),
     ...COMMAND_SCENE_FILES.map(file => new URL(file, visualManifest.baseUrl).href),
     ...Object.values(expansionManifest.assets).map(asset => new URL(asset.path, expansionManifest.defaultBaseURL).href),
-    ...Object.values(animationManifest.assets).flatMap(asset => Object.values(asset.states).map(state => new URL(state.sheet, visualManifest.baseUrl).href))
+    ...Object.values(animationManifest.assets).flatMap(asset => Object.values(asset.states).map(state => new URL(animationManifest.localFallbacks?.[state.sheet] || state.sheet, animationManifest.localFallbacks?.[state.sheet] ? 'http://localhost/' : visualManifest.baseUrl).href))
   ]);
   assert.equal(urls.length, expected.size);
   assert.deepEqual(new Set(urls), expected);
