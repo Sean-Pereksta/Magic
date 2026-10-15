@@ -233,7 +233,7 @@ class Siege {
   const g=this.g;if(!a.armyOrder.areaArrived){if(this.followRoute(a,o,dt)){a.armyOrder.areaArrived=true;delete a.siegeRoute}return true}
   if(g.time>=(a._areaThink||0)){a._areaThink=g.time+.35;let target=g.humanGrid.nearest(o.x,o.y,190,8,h=>h.hp>0&&this.visibleTarget(h))[0],kind='human';
    if(!target){target=g.vehicleGrid.nearest(o.x,o.y,190,4,v=>v.hp>0&&this.visibleTarget(v))[0];kind='vehicle'}
-   if(!target){target=g.world.getObjects(o.x,o.y,190).filter(t=>!t.dead&&t.hp>0&&this.known(t)&&!['tree','rock','berry','stairs','apeBuilding'].includes(t.type)&&t.type!=='gateControl'&&!(t.type==='gate'&&!t.solid)&&dist(t,o)<190).sort((x,y)=>dist(a,x)-dist(a,y))[0];kind='object'}
+   if(!target){target=g.world.getObjects(o.x,o.y,190).filter(t=>!t.dead&&t.hp>0&&!t.civilian&&t.combatTarget!==false&&this.known(t)&&!['tree','rock','berry','stairs','apeBuilding'].includes(t.type)&&t.type!=='gateControl'&&!(t.type==='gate'&&!t.solid)&&dist(t,o)<190).sort((x,y)=>dist(a,x)-dist(a,y))[0];kind='object'}
    a.areaTarget=target?{id:target.id,kind}:null;
   }
   const ref=a.areaTarget,target=ref?this.resolve({targetId:ref.id,targetKind:ref.kind}):null;

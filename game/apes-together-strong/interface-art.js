@@ -94,6 +94,10 @@
     document.head.append(style);
     for (const button of army.commands.querySelectorAll('button')) {
       if (['call', 'nearestTarget', 'recall', 'recallField', 'hold', 'target', 'finder', 'build'].includes(button.dataset.armyCommand)) button.dataset.core = '';
+      const kind = ({ call: 'follow', rally: 'follow', recall: 'retreat', recallField: 'retreat', recallAll: 'retreat',
+        target: 'attack', nearestTarget: 'attack', nearestHuman: 'attack', attackNearest: 'defend', finish: 'attack',
+        spreadCharge: 'charge', shield: 'defend', regroup: 'follow' })[button.dataset.armyCommand] || button.dataset.armyCommand;
+      window.ATSCommandVisuals?.icon(button.querySelector('canvas'), kind);
     }
     const expand = army.root.querySelector('.army-expand');
     expand.setAttribute('aria-expanded', 'false');

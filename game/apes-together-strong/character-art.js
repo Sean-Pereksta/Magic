@@ -48,8 +48,11 @@
     const king=!!options.king||a.id==='king',human=!!options.human||a.type==='human',d=direction(a.dir||0),
       index=Math.max(0,species.indexOf(a.species||'gorilla')),seed=(a.phase??hash(a.id)%628/100),
       hz=options.animationHz||18,clock=options.reducedMotion?0:Math.floor(time*hz)/hz,
-      urgent=a.state==='charge'||a.sprinting||a.urgent||a.state==='retreat',
-      cycle=((clock*(human?1.9:tempos[index])*(urgent?1.35:1)+seed/TAU)%1+1)%1,
+      commandOrder=human||king?null:window.ATSCommandAnimation?.orderFor(a,options.game,time),
+      commandResponse=!human&&!king?window.ATSCommandAnimation?.response(a,options.game,time,commandOrder):null,
+      urgent=commandOrder==='charge'||commandOrder==='retreat'||commandOrder==='attack'||a.state==='charge'||a.sprinting||a.urgent||a.state==='retreat',
+      commandTempo=commandOrder?window.ATSCommandAnimation.tempo(a,options.game,time,commandOrder):urgent?1.35:1,
+      cycle=((clock*(human?1.9:tempos[index])*commandTempo+seed/TAU)%1+1)%1,
       beat=Math.floor(cycle*4),anim=a.animation,
       active=anim&&time>=anim.start&&time<anim.start+(anim.duration||.5),
       progress=active?clamp((time-anim.start)/(anim.duration||.5),0,1):0;
@@ -74,8 +77,10 @@
     }
     else if(human&&!a.moving&&(a.aiming||a.firePlan||a.state==='combat')){state='aim';column=3}
     else if(human&&a.state==='radio'){state='radio';column=3}
+    else if(commandResponse?.order==='charge'&&!options.reducedMotion){state='command';column=5;phase=clamp((time-commandResponse.at)/.22,0,1);event='warCry'}
     else if(a.moving){state=urgent?'sprint':'run';column=d.rear&&!king?rearStep[beat]:frontStep[beat];event=beat===0?'footLeft':beat===2?'footRight':null}
     else if(!human&&a.attackCD>0&&a.attackCD<.14&&['charge','attack'].includes(a.state)){state='prepare';column=king?3:5;event='anticipation'}
+    else if(commandOrder==='hold'||commandOrder==='defend'){state='prepare';column=0;event=null}
     else if(a.hp>0&&a.hp<a.maxHp*.25){state='injured';column=king?5:0}
     else if(/rest|sleep|heal|groom/.test(a.activity||'')){state='rest';column=king?5:0}
     else if(a.carrying||a._carryingWood){state='carry';column=king?4:d.rear?3:0}
@@ -106,6 +111,7 @@
     if(king&&state==='death'){atlas='kingactions';row=1;column=phase<.35?0:phase<.75?1:2}
     const pose={atlas,state,column,row,
       direction:d.sector,directionName:d.name,mirror:d.mirror,rear:d.rear,phase,event,beat,king,human,
+      commandOrder,commandGuard:(commandOrder==='hold'||commandOrder==='defend')&&!a.moving,commandCry:event==='warCry',
       clipId:active?String(anim.start)+':'+anim.kind:state,sourceDirectionCount:king?8:4};
     return window.ATSOutfitArt?.pose(a,pose,options,time)||pose;
   }
@@ -137,6 +143,7 @@
     }
   }
   function cosmeticMotion(r,c,a,p){
+    window.ATSCommandAnimation?.apply(c,a,p,r.time,r.reducedMotion);
     if(r.reducedMotion)return;
     if(['idle','aim','radio'].includes(p.state)){
       // Breathe around the planted-foot origin. Translating the whole cutout
@@ -149,7 +156,7 @@
   P.usesPaintedPrimate=function(a={},king=false){return !!metadata()&&!!art()?.get(king||a.id==='king'?'characters-king':'characters-apes')};
   P.drawPrimateGeometry=function(c,a={},options={}){
     if(!art()?.get(options.king||a.id==='king'?'characters-king':'characters-apes')||!metadata())return previousGeometry.call(this,c,a,options);
-    const p=resolve(a,this.time||0,{king:options.king,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz}),
+    const p=resolve(a,this.time||0,{king:options.king,tribeId:a.tribeId||this._tribalGame?.tribe.id,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz,game:this._commandGame}),
       index=Math.max(0,species.indexOf(a.species||'gorilla')),slot=p.king?84:sizes[index],outerFlip=Math.cos(a.dir||0)<-.15?-1:1;
     stamp(this,a,p);c.save();
     // Existing outer body wrappers use world-axis mirroring. Cancel that here
@@ -199,9 +206,10 @@
   };
 
   P.characterAttachment=function(a,king=false){
-    const p=resolve(a,this.time||0,{king,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz});
+    const p=resolve(a,this.time||0,{king,reducedMotion:this.reducedMotion,animationHz:this.graphicsProfile?.animationHz,game:this._commandGame});
     let left={x:-24,y:-15},right={x:24,y:-15};
     if(p.state==='climb'){left={x:-10,y:p.beat%2?-40:-65};right={x:12,y:p.beat%2?-65:-40}}
+    else if(p.commandGuard){left={x:-18,y:-34};right={x:20,y:-29}}
     else if(['prepare','command','victory'].includes(p.state)){left={x:-12,y:-64};right={x:16,y:-64}}
     else if(p.state==='throw'){left={x:-15,y:-28};right=p.phase<.525?{x:10,y:-65}:{x:33,y:-35}}
     else if(p.state==='attack'&&!king){left={x:-15,y:-25};right={x:29,y:-37}}

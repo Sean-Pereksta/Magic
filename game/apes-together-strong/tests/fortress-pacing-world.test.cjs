@@ -1,12 +1,12 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 function engine(){const c=vm.createContext({console,Math,Map,Set});c.window=c;vm.runInContext(fs.readFileSync(path.join(__dirname,'..','world.js'),'utf8'),c);return c}
-const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260]};
+const ranges={transport:[2,4],hunter:[4,7],research:[8,14],checkpoint:[8,16],prison:[18,30],detention:[42,72],experimental:[80,125],forwardBase:[32,60],armoredDepot:[60,110],regionalCommand:[160,260],logging:[5,12],communications:[4,9],town:[12,24],mobileCamp:[3,8]};
 function plans(w){const found=new Map();for(let cy=-24;cy<=24;cy++)for(let cx=-24;cx<=24;cx++){const plan=w._sitePlan(cx,cy);if(plan&&!found.has(plan.type))found.set(plan.type,{plan,cx,cy})}return found}
 function openWorld(c){const w=new c.ATSWorld('facility-collision');w.ensure=()=>{};w._sitePlan=()=>null;w.terrain=()=>({biome:'forest',water:false,road:false});w.waterBlocked=()=>false;return w}
 
 test('fresh cage progression starts small and preserves every procedural site type',()=>{
- const c=engine(),w=new c.ATSWorld('fortress-cage-progression'),found=plans(w);assert.equal(found.size,10);
+ const c=engine(),w=new c.ATSWorld('fortress-cage-progression'),found=plans(w);assert.equal(found.size,Object.keys(ranges).length);
  w.ensure(0,0,800);assert.equal(w.sites.get('opening-rescue').count,2);assert.equal(w.sites.get('opening-hunters').count,6);
  for(const [type,{plan,cx,cy}]of found){w._generateChunk(cx,cy);const site=w.sites.get(plan.id),[minimum,maximum]=ranges[type];if(!site.tutorial)assert.ok(site.count>=minimum&&site.count<=maximum,type+' stock');const cages=site.objects.map(id=>w.objects.get(id)).filter(o=>o.type==='cage');assert.equal(cages.reduce((sum,o)=>sum+o.prisoners,0),site.count,type+' physical stock');assert.equal(cages.reduce((sum,o)=>sum+o.count,0),site.count)}
 });

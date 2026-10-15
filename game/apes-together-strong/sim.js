@@ -85,7 +85,8 @@ class Game{
  else if(stage>=4){if(tanks)add('tank');add('apc');if(stage===5&&(this.operationSerial||0)%3===2)add('ifv');if(settlementRaid)add('truck')}
  else add('truck');
  }
- const basePeople=major?(n>=850?96+this.warProgress*24:n>=650?68+this.warProgress*20:40):options.intercept?24+this.warIntensity*6:settlementRaid?24+this.warIntensity*12:war?n>=850?105+this.warProgress*24:n>=650?80+this.warProgress*20:n>=450?60+this.warProgress*16:40:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
+ const support=this.world.regionalSupport?.(site),logistics=support?.logistics??1;
+ const basePeople=major?(n>=850?96+this.warProgress*24:n>=650?68+this.warProgress*20:40):options.intercept?24+this.warIntensity*6:settlementRaid?24+this.warIntensity*12:war?n>=850?105+this.warProgress*24:n>=650?80+this.warProgress*20:n>=450?60+this.warProgress*16:40:[0,5,9,14,20,24][stage],people=Math.min(Math.floor(site.strength||0),Math.max(3,Math.floor(basePeople*logistics*(site.barracksDown||site.tier>=2&&capacity.barracks===false?.5:1)*(this.difficulty==='wanderer'?.85:this.difficulty==='relentless'?1.1:1))));
  return {name:settlementRaid?'Settlement Assault':major?'Major Offensive':platoon?'Tank Platoon':options.intercept?'Armored Intercept':column?'Search & Destroy':vehicles.includes('tank')?'Armored Response':vehicles.includes('apc')?'Mechanized Squad':stage>=3?'Military Squad':stage===2?'Tactical Squad':'Search Team',people,vehicles,stage,capacity};
  }
  makeMilitaryVehicle(site,kind,target,troops=0,operationId=null,index=0){
@@ -229,12 +230,12 @@ class Game{
  notify(text,color='gold',category='routine'){this.messages.push({text,color,category,time:this.time});if(this.messages.length>25)this.messages.shift();this.hooks.toast?.(text,color,category)}
  sound(name,strength=1,x=this.king.x){this.hooks.sound?.(name,strength,clamp((x-this.king.x)/550,-1,1))}
  effect(type,x,y,opts={}){
- const critical=type==='wave'||type==='charge'||type==='text'||type==='explosion'||distance2({x,y},this.king)<350**2;
+ const critical=type==='wave'||type==='charge'||type==='command'||type==='text'||type==='explosion'||distance2({x,y},this.king)<350**2;
  const budget=400-this.performance.qualityLevel*35;
  if(this.effects.length>=budget){
  // Merge redundant impacts away from the crown while retaining command and warning cues.
  if(!critical){for(let i=this.effects.length-1;i>=Math.max(0,this.effects.length-24);i--){const f=this.effects[i];if(f.type===type&&(f.x-x)**2+(f.y-y)**2<30**2){f.life=Math.max(f.life,opts.life||.65);return}}return}
- const index=this.effects.findIndex(f=>!['wave','charge','text','explosion'].includes(f.type)&&distance2(f,this.king)>350**2);
+ const index=this.effects.findIndex(f=>!['wave','charge','command','text','explosion'].includes(f.type)&&distance2(f,this.king)>350**2);
  if(index>=0)this.effectPool.release(this.effects.splice(index,1)[0]);else if(this.effects.length>=budget+48)return;
  }
  const life=opts.life||.65;this.effects.push(this.effectPool.take({type,x,y,life,maxLife:life,...opts}));
@@ -529,7 +530,7 @@ class Game{
  const wall=this.world.objects.get(this.king.onWallId);if(wall&&!wall.dead&&wall.hp>0){this.damageObject(wall,55,this.king);return}
  let candidates=this.humanGrid.near(this.king.x,this.king.y,75).filter(h=>this.world.lineClear(this.king.x,this.king.y,h.x,h.y)).concat(this.vehicles.filter(v=>v.hp>0&&dist(v,this.king)<85));let nearest=null;
  for(const h of candidates){if(!nearest||dist(h,this.king)<dist(nearest,this.king))nearest=h}
- let objs=this.world.getObjects(this.king.x,this.king.y,95).filter(o=>!o.dead&&o.hp>0&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));
+ let objs=this.world.getObjects(this.king.x,this.king.y,95).filter(o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));
  if(nearest){this.king.dir=Math.atan2(nearest.y-this.king.y,nearest.x-this.king.x);this.hurt(nearest,65,this.king);this.noise(this.king.x,this.king.y,200,'fight')}else{
  let obj=objs.sort((a,b)=>this.objectDistance(this.king,a)-this.objectDistance(this.king,b))[0];if(obj&&this.objectDistance(this.king,obj)<53)this.damageObject(obj,55,this.king);else this.effect('hit',this.king.x+Math.cos(this.king.dir)*38,this.king.y+Math.sin(this.king.dir)*38,{life:.25,color:'#e6ce96'});
  }
@@ -574,7 +575,8 @@ class Game{
  spawnRaid(site,target,settlementRaid=false,options={}){
  const village=settlementRaid?this.settlement(target?.id):null;if(village&&!this.colonies.canRaid(village,options.operationId))return false;
  if(site&&this.settlements.some(s=>s.population>0&&Math.max(Math.abs(site.x-s.x),Math.abs(site.y-s.y))<this.colonies.defenseExtent(s)+180))return false;
- if(!site||!target||!Number.isFinite(target.x)||!Number.isFinite(target.y)||site.cleared||site.strength<=0||this.humans.length>=this.activeHumanCapacity()||this.time-(site.lastRaid??0)<30)return false;
+ const coordination=site?(this.world.regionalSupport?.(site)?.coordination??1):1;
+ if(!site||!target||!Number.isFinite(target.x)||!Number.isFinite(target.y)||site.cleared||site.strength<=0||this.humans.length>=this.activeHumanCapacity()||this.time-(site.lastRaid??0)<30/Math.max(.1,coordination))return false;
  if(!options.operationId&&this.activeOperations().length>=this.operationCapacity)return false;
  if(!this.prepareMilitarySource(site))return false;
  const regionalReserve=!options.operationId&&!settlementRaid&&this.population>=300&&this.settlements.some(s=>s.known&&s.population>0)?Math.max(0,this.responseBudget*.7-this.forceWeight()):Infinity;
@@ -658,7 +660,7 @@ class Game{
  }
  if(a.state==='charge'){
  if(!this.tactics)a.chargeTime-=dt;let target=a.target||this.king;
- let objs=this.tactics?[]:this.world.getObjects(a.x,a.y,75).filter(o=>!o.dead&&o.hp>0&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));let obj=objs.sort((x,y)=>dist(a,x)-dist(a,y))[0];
+ let objs=this.tactics?[]:this.world.getObjects(a.x,a.y,75).filter(o=>!o.dead&&o.hp>0&&!o.civilian&&o.combatTarget!==false&&!['tree','rock','berry','apeBuilding'].includes(o.type)&&!(o.fortification&&o.team==='ape'));let obj=objs.sort((x,y)=>dist(a,x)-dist(a,y))[0];
  let vehicle=this.tactics?null:this.vehicleGrid.nearest(a.x,a.y,80,1)[0];
  if(vehicle){if(dist(a,vehicle)>40)this.move(a,vehicle.x-a.x,vehicle.y-a.y,a.speed*1.3,dt);else if(a.attackCD<=0){a.attackCD=.65;this.animateAttack(a,vehicle,'slam');this.hurt(vehicle,this.apeDamage(a,24),a);if(vehicle.hp<=0){this.stats.structures++;this.sound('smash',2,vehicle.x)}}return}
  if(obj&&this.objectDistance(a,obj)<26){if(a.attackCD<=0){a.attackCD=.75;this.animateAttack(a,obj,'overhead');this.damageObject(obj,this.apeDamage(a,18),a)}return}

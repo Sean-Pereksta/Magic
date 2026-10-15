@@ -138,6 +138,18 @@
     if (o.powered !== false && this.detailLevel < 3) this.glow(c, -width * .17, -height * .22, 22, '235,181,91', .1);
   };
   P.drawObject = function (c, o) {
+    // Reuse authored environment sprites for the new facility silhouettes.
+    // Their anchors share the existing local ground origin and collision data.
+    if (!o.dead && (o.tent || o.timberStack || o.policeStation || o.powerGenerator)) {
+      const name=o.tent?'tent':o.timberStack?'fallenLog':o.policeStation?'guardhouse':'generator';
+      const width=o.timberStack?86:o.tent?94:o.policeStation?128:49;
+      const height=o.timberStack?43:o.tent?88:o.policeStation?119:59;
+      c.save();shadow(c,width);
+      const painted=env(c,name,width,height,0,5);
+      if(painted&&o.timberStack&&this.detailLevel<3)env(c,name,width*.87,height*.87,0,-4);
+      c.restore();
+      if(painted){damage(this,c,o,width,height);if(o.hp>0&&o.hp<o.maxHp)this.health(c,o.hp/o.maxHp,-height*.8,34,'#d7ae6b');return;}
+    }
     // Supersede old repair-bay and command-building geometric overlays too.
     if (!o.dead && (o.commandCenter || o.repairBay) && image(o.commandCenter ? 'command' : 'garage')) {
       this.drawBuilding(c, o, o.type);
