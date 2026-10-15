@@ -614,9 +614,6 @@
       shadowAt=()=>{};
       try{oldDrawEnemy(e);}finally{shadowAt=inheritedShadow;ctx.restore();}
     }else oldDrawEnemy(e);
-    const mod=modifier(e);if(!mod||e.dead)return;
-    const p=worldToScreen(e.x,e.y,8);ctx.save();ctx.strokeStyle=eliteColors[mod];ctx.lineWidth=2;ctx.setLineDash(mod==='Echoing'?[4,4]:[]);ctx.beginPath();ctx.ellipse(p.x,p.y,e.r*54,e.r*27,0,0,TAU);ctx.stroke();
-    if(e.elite){ctx.font='bold 10px system-ui';ctx.fillStyle=eliteColors[mod];ctx.textAlign='center';ctx.fillText(mod,p.x,p.y-42);}ctx.restore();
   };
   window.AWEnemyCombat={
     definitions,profile,family,actions,start,shapes,inShape,distanceToSegment,drawAction,drawShape,

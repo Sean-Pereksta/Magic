@@ -188,11 +188,9 @@
   const oldInteract=interact;interact=function(){const o=currentInteraction();if(o?.type==='dangerArena')return breakObject(o,'earth');return oldInteract();};
   const oldDraw=drawEnemy;
   drawEnemy=function(e){
-    oldDraw(e);if(!e.dangerAffixes?.length&&!e.dangerRitual)return;
+    oldDraw(e);if(!e.dangerRitual)return;
     const p=worldToScreen(e.x,e.y,56);ctx.save();ctx.textAlign='center';ctx.font='bold 10px system-ui';ctx.fillStyle=e.intensityColor||'#d4b4ff';
-    if(e.dangerAffixes?.length)ctx.fillText(e.dangerAffixes.join(' / '),p.x,p.y-12);
     if(e.dangerRitual){const c=e.dangerRitual.corpse;B.drawShape({shape:'circle',...c,r:1},'#d8bbff',.1+e.dangerRitual.age*.08);ctx.fillText('RESURRECT • INTERRUPT',p.x,p.y-28);}
-    if(e.dangerCommander){ctx.strokeStyle='#e4d79a';ctx.globalAlpha=.45;ctx.beginPath();const q=worldToScreen(e.dangerCommander.x,e.dangerCommander.y,8);ctx.moveTo(q.x,q.y);ctx.lineTo(p.x,p.y+48);ctx.stroke();}
     ctx.restore();
   };
   const oldMarks=drawTelegraphs;

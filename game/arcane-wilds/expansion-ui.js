@@ -18,9 +18,6 @@ drawEnemyBody=function(e){
  if(e.ai==='executioner'||e.ai==='bossExecutioner'){ctx.fillRect(-14,-24,28,26);ctx.fillStyle='#b09a88';ctx.beginPath();ctx.moveTo(-11,-25);ctx.lineTo(0,-38);ctx.lineTo(11,-25);ctx.closePath();ctx.fill();ctx.strokeStyle=e.proj;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(13,1);ctx.lineTo(22,-31);ctx.stroke();ctx.fillStyle=e.proj;ctx.beginPath();ctx.moveTo(17,-33);ctx.lineTo(30,-39);ctx.lineTo(25,-24);ctx.closePath();ctx.fill();return}
  return _baseDrawEnemyBody(e);
 };
-const _baseDrawEnemy=drawEnemy;
-drawEnemy=function(e){_baseDrawEnemy(e);if(e.trait&&!e.boss){const s=worldToScreen(e.x,e.y,47);ctx.save();ctx.fillStyle='rgba(5,9,15,.8)';ctx.beginPath();ctx.roundRect(s.x-27,s.y-8,54,12,6);ctx.fill();ctx.fillStyle='#ffd477';ctx.font='900 7px system-ui';ctx.textAlign='center';ctx.fillText(e.trait.toUpperCase(),s.x,s.y);ctx.restore()}};
-
 const _baseGearCard=gearCard;
 gearCard=function(item,label){
  if(!item)return `<div class="gear-card empty-gear"><div class="rarity">${label}</div><div class="gear-preview">＋</div><div class="choice-name">Empty Trinket Slot</div></div>`;
