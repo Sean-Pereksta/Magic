@@ -4,7 +4,7 @@
   if(window.AWArt)return;
   const catalog=window.AWArtCatalog||{entries:{},regions:{}};
   const config={enabled:true,baseUrl:'https://pub-982943ccc2b14477a62ef61fa83e5179.r2.dev',stripAssetPrefix:true,maxParallel:3,maxCachedAtlases:typeof isTouch!=='undefined'&&isTouch?8:12,timeoutMs:20000,retryMs:30000,...window.AW_ART_CONFIG};
-  const records=new Map(),queue=[],pinned=new Set();let active=0,stamp=0,region=null,playerId=null;
+  const records=new Map(),queue=[],pinned=new Set();let active=0,stamp=0,region=null,playerId=null,roomVersion=0;
   const now=()=>typeof performance!=='undefined'?performance.now():Date.now();
   const entry=id=>catalog.entries[id]||null;
   function url(assetPath){
@@ -30,7 +30,8 @@
         r.status=ok?'ready':'error';r.error=ok?null:reason;r.failedAt=ok?null:now();r.used=++stamp;
         if(!ok)r.image=null;
         r.resolve(ok?r:null);if(ok&&r.entry.category==='terrain')window.AWWorld?.invalidate();
-        trim();pump();
+        // A download started in a former continent must not repopulate its cache.
+        trim(r.region!==region);pump();
       }
       image.onload=()=>finish(true);image.onerror=()=>finish(false,'Image unavailable');
       timer=setTimeout(()=>finish(false,'Image timeout'),Math.max(1000,config.timeoutMs));
@@ -48,7 +49,7 @@
       if(now()-previous.failedAt<config.retryMs)return Promise.resolve(null);
       records.delete(id);
     }
-    const r={id,entry:definition,meta:definition.meta,frames:new Map(definition.meta.frames.map(f=>[f.id,f])),status:'queued',priority,used:++stamp,image:null};
+    const r={id,entry:definition,meta:definition.meta,frames:new Map(definition.meta.frames.map(f=>[f.id,f])),status:'queued',priority,region,used:++stamp,image:null};
     r.promise=new Promise(resolve=>{r.resolve=resolve;});records.set(id,r);queue.push(r);queue.sort((a,b)=>b.priority-a.priority);pump();return r.promise;
   }
   function regionFor(room){
@@ -62,17 +63,33 @@
     if(['desert','crystal','stormlands','frost','volcanic'].includes(biome))return 'meridian';
     return 'verdant';
   }
+  function dependencies(id,ids=new Set()){
+    if(ids.has(id)||!entry(id))return ids;
+    ids.add(id);for(const child of catalog.summonDependencies?.[id]||[])dependencies(child,ids);
+    return ids;
+  }
+  function request(id,priority=2){
+    if(!config.enabled||!entry(id))return Promise.resolve(null);
+    const ids=dependencies(id);for(const wanted of ids)pinned.add(wanted);
+    const result=ensure(id,priority);
+    for(const child of ids)if(child!==id)ensure(child,priority-1);
+    return result;
+  }
   function prepare(room){
     if(!config.enabled)return Promise.resolve([]);
+    roomVersion++;
     const next=regionFor(room),changed=next!==region;region=next;
     playerId=window.AWArtRenderer?.playerAssetId()||'armor-wayfarer-cloth';
-    const ids=[playerId,...(catalog.regions[next]||[])];
+    // Load terrain for this continent and appearances needed by this room.
+    // Later waves and summons request their own sheets through the renderer.
+    const ids=[playerId,...(catalog.regions[next]||[]).filter(id=>entry(id)?.category!=='enemy')];
     if(typeof game!=='undefined')for(const enemy of game.enemies||[]){const id=window.AWArtRenderer?.enemyAssetId(enemy,room);if(id)ids.push(id);}
-    pinned.clear();for(const id of ids)pinned.add(id);
+    const wanted=new Set();for(const id of ids)dependencies(id,wanted);
+    pinned.clear();for(const id of wanted)pinned.add(id);
     // Superseded requests have no room side effects; already in-flight images may finish safely.
     for(let i=queue.length-1;i>=0;i--){const r=queue[i];if(!pinned.has(r.id)){queue.splice(i,1);records.delete(r.id);r.resolve(null);}}
-    if(changed)trim(true);
-    const wanted=[...new Set(ids)];return Promise.all(wanted.map((id,i)=>ensure(id,i===0?10:entry(id)?.category==='terrain'?5:1)));
+    trim(changed);
+    return Promise.all([...wanted].map((id,i)=>ensure(id,i===0?10:entry(id)?.category==='terrain'?5:2)));
   }
   function draw(id,context,x,y,options={}){
     const r=get(id);if(!r||![x,y].every(Number.isFinite))return false;
@@ -90,10 +107,15 @@
     context.save();if(Number.isFinite(options.alpha))context.globalAlpha*=Math.max(0,Math.min(1,options.alpha));
     context.drawImage(r.image,rect.x,rect.y,rect.w,rect.h,x-pivot.x*scale,y-pivot.y*scale,rect.w*scale,rect.h*scale);context.restore();return true;
   }
-  function status(){return {region,active,queued:queue.length,cached:[...records.values()].filter(r=>r.status==='ready').map(r=>r.id),failed:[...records.values()].filter(r=>r.status==='error').map(r=>r.id),pinned:[...pinned]};}
-  window.AWArt={entry,get,ensure,url,regionFor,prepare,draw,status,shouldRetry};
+  function status(){return {region,roomVersion,active,queued:queue.length,cached:[...records.values()].filter(r=>r.status==='ready').map(r=>r.id),failed:[...records.values()].filter(r=>r.status==='error').map(r=>r.id),pinned:[...pinned]};}
+  window.AWArt={entry,get,ensure,request,url,regionFor,prepare,draw,status,shouldRetry,roomVersion:()=>roomVersion};
   if(typeof loadRoom==='function'){
     const original=loadRoom;loadRoom=function(...args){const result=original.apply(this,args);prepare(game.roomData);return result;};
   }
-  if(typeof queueMicrotask==='function')queueMicrotask(()=>{if(typeof game!=='undefined'&&game.player)prepare(game.roomData);});
+  if(typeof queueMicrotask==='function')queueMicrotask(()=>{
+    // A queued startup can outlive its document during navigation or teardown.
+    if(typeof document==='undefined'||!document?.defaultView)return;
+    if(typeof game!=='undefined'&&game.player)prepare(game.roomData);
+  });
 })();
+

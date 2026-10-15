@@ -2,7 +2,7 @@
 /* Hosted sheets replace only visible bodies; gameplay and presentation overlays remain live. */
 (() => {
   if(window.AWArtRenderer)return;
-  const P=window.AWPresentation,clocks=new WeakMap();let requestedArmor=null;
+  const P=window.AWPresentation,clocks=new WeakMap(),requestedEnemies=new Set();let requestedArmor=null,requestedRoom=null,requestedRoomVersion=null;
   const armorNames={
     'Wayfarer Cloth':'wayfarer-cloth','Emberguard':'emberguard','Frostbound':'frostbound',
     'Verdant Oath':'verdant-oath','Nightglass':'nightglass','Sunforged':'sunforged',
@@ -19,16 +19,15 @@
   };
   const normalize=name=>String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const armorAliases=new Map(Object.entries(armorNames).map(([name,id])=>[normalize(name),'armor-'+id]));
-  const creatures=new Set([
-    'lw_thornrunner_stalker','lw_spore_hound','lw_briar_warden','lw_lantern_wasp',
-    'lw_prism_duelist','lw_thundercoil_skimmer','lw_ash_reclaimer','lw_obsidian_bulwark',
-    'lw_rift_marauder','lw_veil_stalker','lw_soul_collector','lw_astral_executioner'
-  ]);
-  const rulerAssets={'verdant-ruler':'boss_verdant-ruler','meridian-ruler':'boss_meridian-ruler','gloam-ruler':'boss_legacy-3'};
-  const bossNames=new Map([
-    ['The Thornheart Sovereign','boss_verdant-ruler'],['Vaelith, Tempest Dragon','boss_meridian-ruler'],
-    ['The Watching Dark','boss_legacy-3']
-  ].map(([name,id])=>[normalize(name),id]));
+  const normalizeBoss=name=>String(name||'').trim().replace(/^the\s+/i,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  function creatureAssetId(type){
+    const entry=window.AWArtCatalog?.entries[type];
+    return entry?.category==='enemy'&&!entry.boss&&entry.kind!=='boss'?type:null;
+  }
+  function bossAssetId(identity){
+    const catalog=window.AWArtCatalog,id=catalog?.bossAliases?.[identity]||identity,entry=catalog?.entries[id];
+    return entry?.category==='enemy'&&(entry.boss||entry.kind==='boss')?id:null;
+  }
   function armorId(gear){
     for(const name of [gear?.baseName,gear?.name]){const found=armorAliases.get(normalize(name));if(found)return found;}
     return 'armor-wayfarer-cloth';
@@ -36,13 +35,25 @@
   function playerAssetId(player=game.player){return armorId(player?.armorGear);}
   function enemyAssetId(enemy,room=game.roomData){
     if(!enemy)return null;
-    if(enemy.boss){
-      const ruler=rulerAssets[room?.campaignNode];if(ruler)return ruler;
-      const named=bossNames.get(normalize(enemy.name));if(named)return named;
-      // Other bosses keep their own appearance, even when they share a creature base.
-      return null;
-    }
-    return creatures.has(enemy.type)?enemy.type:null;
+    if(!enemy.boss||enemy.shadow)return creatureAssetId(enemy.type);
+    // Fixed encounters keep their identity when they share a creature base or arena.
+    for(const identity of [enemy.artBossId,enemy.bossId,enemy.dangerLegend]){const id=bossAssetId(identity);if(id)return id;}
+    const named=window.AWArtCatalog?.bossNames?.[normalizeBoss(enemy.name)];
+    if(named)return bossAssetId(named);
+    // Only unnamed campaign bosses may use the room identity. A new named boss
+    // must never silently borrow its room's ruler or its ordinary creature base.
+    if(enemy.name)return null;
+    const node=room?.campaignNode;
+    return bossAssetId(room?.campaignRoom===4?`${node}:4`:node);
+  }
+  function requestEnemyArt(art,id){
+    if(!art||!id)return;
+    const room=game.roomData,version=art.roomVersion?.();
+    if(room!==requestedRoom||version!==requestedRoomVersion){requestedRoom=room;requestedRoomVersion=version;requestedEnemies.clear();}
+    if(requestedEnemies.has(id)&&!art.shouldRetry?.(id))return;
+    requestedEnemies.add(id);
+    // Request pins late waves and summons in this room and prefetches their adds.
+    (art.request?.(id)||art.ensure(id))?.catch(()=>{});
   }
   function facing(entityOrDirection){
     const direction=entityOrDirection?.facing||entityOrDirection||{},x=direction.x,y=direction.y;
@@ -102,7 +113,9 @@
     const originalEnemyBody=drawEnemyBody;
     drawEnemyBody=function(enemy){
       const art=window.AWArt,id=enemyAssetId(enemy);
-      if(!id||enemy.hidden||!art?.get(id))return originalEnemyBody(enemy);
+      if(!id||enemy.hidden)return originalEnemyBody(enemy);
+      requestEnemyArt(art,id);
+      if(!art?.get(id))return originalEnemyBody(enemy);
       // drawEnemy already supplies depth, body size, recoil, shadows, health and telegraphs.
       ctx.save();if(enemy.flash>0)ctx.filter='brightness(1.8)';
       const drawn=art.draw(id,ctx,0,12,options(enemy,.34));ctx.restore();
@@ -134,3 +147,4 @@
   }
   window.AWArtRenderer={armorId,playerAssetId,enemyAssetId,facing,state};
 })();
+
