@@ -2,6 +2,7 @@ let menuFrameTimer=0;
 
 function onKeyDown(e){
   inputManager.onKeyDown(e);
+  if(inputManager.configurationMode||inputManager.suspended||inputManager.blockedKeys.has(e.code)) return;
   keys[e.code] = true;
   keys[e.key.toLowerCase()] = true;
 

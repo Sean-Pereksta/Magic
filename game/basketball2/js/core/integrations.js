@@ -1,5 +1,14 @@
 let tutorialMode = false;
 let gamePaused = false;
+let controllerSettingsPanel = null;
+
+function updateControllerSettingsVisibility(){
+  const screen=document.getElementById("controlsScreen");
+  const visible=!!screen?.classList.contains("active")&&document.getElementById("menu")?.style.display!=="none";
+  controllerSettingsPanel?.setVisible(visible);
+  const localButton=document.getElementById("controllerLocalPlayBtn");
+  if(localButton) localButton.hidden=!!gameStarted;
+}
 
 class TutorialCoach {
   constructor(){
@@ -16,7 +25,7 @@ class TutorialCoach {
       {title:"Defensive position",body:"Stay between your opponent and the basket. Movement automatically keeps you facing the action.",check:(dt,state)=>possession!==p1?.id&&Math.hypot(state.moveX,state.moveY)>.15},
       {title:"Steal",body:"Reach only when the ball is exposed. A bad reach costs recovery time.",check:()=>p1?.stats.steals>(this.baseline.steals||0)||p1?.swipeTime>0},
       {title:"Contest",body:"Use Block / Contest to challenge the release with your hands.",check:()=>p1?.blockTime>0||p1?.handsUpTime>0},
-      {title:"Team basketball",body:"In 2v2 and 3v3, face a teammate and press Pass: C, controller A / Cross, or the touch Pass button. V or RB / R1 switches teammates.",check:(dt)=>{ this.moveTime+=dt; return this.moveTime>3; }},
+      {title:"Team basketball",body:"In 2v2 and 3v3, face a teammate and use Pass. Use Switch teammate to take control of an AI teammate. Your controller bindings are shown in Controls & Settings.",check:(dt)=>{ this.moveTime+=dt; return this.moveTime>3; }},
       {title:"Ready",body:"Tutorial complete. The court is yours.",check:()=>false,complete:true}
     ];
   }
@@ -81,7 +90,7 @@ function startTutorial(){
 function setPaused(paused){
   if(!gameStarted || gameOver) return;
   gamePaused = !!paused;
-  if(gamePaused) inputManager.clearAll();
+  inputManager.clearAll();
   possessionFrozen = gamePaused || countdownTimer>0;
   const overlay = document.getElementById("pauseOverlay");
   overlay?.classList.toggle("visible",gamePaused);
@@ -93,6 +102,7 @@ function togglePause(){ setPaused(!gamePaused); }
 function showControlsScreen(returnTo="primaryMenuScreen"){
   const screen = document.getElementById("controlsScreen");
   if(!screen) return;
+  if(gameStarted&&!gameOver&&!gamePaused) setPaused(true);
   screen.dataset.returnTo = returnTo;
   showMenuScreen("controlsScreen");
   updateInputDeviceUI();
@@ -109,14 +119,13 @@ function updateInputDeviceUI(){
   const status = document.getElementById("controllerStatus");
   if(status){
     if(!pads.length) status.textContent = "No controller connected";
-    else status.textContent = pads.map((pad,index)=>`Controller ${index+1}: ${pad.id.replace(/\s*\([^)]*\)\s*/g," ").trim()}`).join(" · ");
+    else status.textContent = pads.map(pad=>`Controller ${pad.index+1}: ${pad.id.replace(/\s*\([^)]*\)\s*/g," ").trim()}`).join(" · ");
   }
   const assignment = document.getElementById("deviceAssignmentStatus");
   if(assignment){
-    if(pads.length>=2) assignment.textContent = "Player 1: Controller 1 · Player 2: Controller 2";
-    else if(pads.length===1&&twoPlayerMode) assignment.textContent = "Player 1: Keyboard · Player 2: Controller 1";
-    else if(pads.length===1) assignment.textContent = "Player 1: Controller 1 or Keyboard";
-    else assignment.textContent = "Player 1: WASD · Player 2: IJKL";
+    const assigned=inputManager.getAssignments();
+    const label=slot=>assigned[slot]?`Controller ${assigned[slot].index+1}`:slot==="p1"?"Keyboard / touch":"Keyboard";
+    assignment.textContent=`Player 1: ${label("p1")}${twoPlayerMode?` · Player 2: ${label("p2")}`:" · Solo match"}`;
   }
 }
 
@@ -164,6 +173,7 @@ function setupControlsMenu(){
     const target = event.currentTarget.closest(".menuScreen")?.dataset.returnTo || "primaryMenuScreen";
     if(target==="__pause__"){
       document.getElementById("menu").style.display="none";
+      updateControllerSettingsVisibility();
       setPaused(true);
     }else showMenuScreen(target);
   });
@@ -175,6 +185,10 @@ function setupControlsMenu(){
   });
   window.addEventListener("basketball-input-device",updateInputDeviceUI);
   window.addEventListener("basketball-gamepads-changed",updateInputDeviceUI);
+  window.addEventListener("basketball-controller-config",updateInputDeviceUI);
+  document.getElementById("controllerLocalPlayBtn")?.addEventListener("click",()=>{
+    if(!gameStarted) showQuickPlaySetup(null,true);
+  });
   document.getElementById("pauseResumeBtn")?.addEventListener("click",()=>setPaused(false));
   document.getElementById("pauseControlsBtn")?.addEventListener("click",()=>{
     showControlsScreen("__pause__");
@@ -192,7 +206,9 @@ function setupControlsMenu(){
 }
 
 function bootstrapIntegrations(){
+  controllerSettingsPanel=mountControllerSettings(document.getElementById("controllerSettingsHost"));
   setupControlsMenu();
+  updateControllerSettingsVisibility();
   inputManager.attachTouchControls();
   gameSettings.apply();
   adaptiveQuality.applyRequestedLevel();

@@ -8,6 +8,8 @@
 - `js/state.js` — game state and data definitions.
 - `js/core/settings.js` — persistent controls, simulation/arcade presets, and adaptive quality.
 - `js/core/input-manager.js` — shared keyboard, touch, and Web Gamepad action layer.
+- `js/core/controller-config.js` — validated, saved per-player controller assignments, button/trigger/combo maps and stick settings.
+- `js/core/controller-ui.js` / `styles/controller.css` — controller setup, input capture, manual mappings and live input testing in Controls & Settings.
 - `js/campaign/national-tour.js` — cities, rivals, scouting, rewards, saves, XP, and map rendering.
 - `js/ui.js` — menus, selection, tour flow, and game startup.
 - `js/rendering.js` — arena, players, materials, shot meter, and procedural models.
@@ -29,7 +31,13 @@
 
 Every device feeds the same internal actions. Player 1 uses WASD to move, Space to hold/release Shoot, C to Pass, F to Block, G to Steal, and V to switch to an available AI teammate. Player 2 uses IJKL, Enter, Comma, Numpad 2, Numpad 1, and Period. Existing Q/E and U/O skills, sprint, protect, takeover, and controller skill-stick inputs remain available.
 
-Controllers use X / Square to Shoot, A / Cross to Pass, Y / Triangle to Block, B / Circle to Steal, and RB / R1 to switch. One controller is assigned to Player 2 in local play alongside Player 1 keyboard/touch; two controllers are independently assigned to Players 1 and 2. Switching changes the controlled character without changing device assignment or team membership.
+The default controller layout uses X / Square to Shoot, A / Cross to Pass, Y / Triangle to Block, B / Circle to Steal, RT / R2 to Sprint, LT / L2 to Protect, LB / L1 for the left skill, and Menu / Options to Pause. RB / R1 switches teammates in team games and performs the right skill in 1v1. Press both stick clicks for Takeover. Switching characters preserves the player's device assignment and custom controls.
+
+Open **Controls & Settings → Controller setup**, connect an Xbox controller by USB or pair it through the device's Bluetooth settings, and press a controller button so the browser exposes it. Choose Player 1 or Player 2 and select the controller. Each controller is assigned to one player. Automatic assignment supports a controller for solo Player 1, one controller for local Player 2 alongside Player 1 keyboard/touch, or two controllers for independent local players. Surviving controllers retain their slots after a disconnect. Player 2 can be configured before starting a local match; the Settings shortcut opens two-player match setup.
+
+Choose an action's **Edit** button, release held controls, then press the desired button, trigger or axis. Every gameplay action can be remapped, including Pause and Takeover; two-input combos and manual selection are also available. Conflicting inputs swap where possible, and any additional action needing a replacement is shown as Unassigned. Movement and skill sticks support separate axis selection, direction reversal, disabling and a radial deadzone. The live tester shows mapped actions and stick movement without affecting gameplay. Settings save separately under `basketball2.controllerSettings.v1`; each player can reset their defaults independently.
+
+Controller settings are available from the main menu and the pause menu. Opening setup, changing assignments/bindings, disconnecting, losing focus or resuming cancels pending shots and requires held inputs to return to neutral. Configuration and testing cannot shoot, move, pass or resume the match. Keyboard and touch controls remain available, and controller haptics follow the assigned human player. Browser device indices and model IDs identify assignments; pairing and the initial device connection remain managed by the operating system and browser.
 
 Mobile uses one movement/facing joystick and two action buttons: Shoot and Pass on offense, Contest and Steal on defense. Pushing the joystick past 82% automatically sprints. Touch opacity, scale, and mirroring remain adjustable. Touch controls stay hidden on desktop until touch input is used.
 
@@ -77,6 +85,7 @@ node game/basketball2/tests/menu-layout.cjs
 node game/basketball2/tests/player-gameplay-browser.cjs
 node game/basketball2/tests/ai-gameplay-browser.cjs
 node game/basketball2/tests/ai-mismatch-browser.cjs
+node game/basketball2/tests/controller-browser.cjs
 ```
 
 The browser tests serve source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. Gameplay checks exercise all eight solo/local configurations, all four playbooks, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load. Menu checks cover four desktop/mobile sizes, artwork decoding, keyboard focus/activation, and style persistence through reloads and Tour. Player gameplay checks decode all three GLBs in Three.js, verify skeletal movement, make 54 open layups/jumpers using keyboard events across the three builds and both sides of the basket, and verify split/mobile rendering and repeated model disposal. Runtime unit tests use `THREE_BUNDLE` when supplied; asset and shooting pipeline tests do not require a renderer.
@@ -86,5 +95,7 @@ Automated keyboard, touch-pointer, and single/dual gamepad-frame checks compleme
 AI browser checks run the actual bot, movement, passing, gather, GLB animation, collision and scoring systems. They verify close finishes across all three player builds, running drives from 5–6 meters, a specialist's open jumper and three, rejection of covered/out-of-range threes, completed rim feeds with nearly aligned teammates, a safe reset against packed paint, a real layup contest and more anticipatory expert defense. The court-read and coordination tests cover blocked paths, help defenders, predicted interceptors, guarded catches, stable perception error, single receiving reservations, spacing and recovery.
 
 The mismatch browser check verifies immediate big-on-small finishes across twelve seeded possessions, caution against rim protection/help/timed blocks, sustained clear-lane running layups across four player builds, retention of a valuable open three, and a genuine gather collision that can still deflect a size-advantaged attempt.
+
+Controller tests cover one/two Xbox-style input streams, independent player maps, hotplug, saved and malformed configuration, axes/triggers/combos, safe rebinding and neutral release gates. The browser check supplies virtual Gamepad API hardware while running the actual UI, input manager, animation, movement, shooting, passing, skills, takeover and pause logic; it also checks capture/manual input, persistence, disconnects and desktop/mobile setup layouts. Physical controller pairing, device-specific drivers and hardware feel require a real connected controller.
 
 Browser gameplay tests use the bundled GLBs as hosted-response fixtures by default. Set `BASKETBALL_LIVE_MODELS=1` to request the actual R2 files; the player gameplay test then requires all three remote assets to load without fallback, testing the public host's browser CORS behavior as well as gameplay.
