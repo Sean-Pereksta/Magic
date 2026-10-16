@@ -1,138 +1,110 @@
-# TurnCraft personal progress and multiplayer rollout
+# TurnCraft profile saves and Firestore multiplayer
 
-TurnCraft uses the existing CatnMice Firebase Authentication session and Firestore
-database in project `bible-game-246c0`. Campaign records, survival records,
-achievements and custom multiplayer use the site's existing Firebase connection.
-The required rollout is the updated website, shared Firestore rules and artwork.
-There is no additional game server to configure.
+TurnCraft uses the existing Game Hub profile (`gh.username`) and Firebase
+Authentication session. The selected hub profile takes precedence over an old
+username in a game link. A battle keeps the profile that entered it; switching
+profiles cannot give another profile its progress or result.
 
-## Publish the update
+## Publish
 
-1. Merge the PR and let the site's existing web deployment publish the updated
-   `game/turncraft.html`, `game/turncraft/`, `game/turncraft-lobby.html`, the new
-   root `units/medic-healing.webp` and `effects/medic-healing.webp`, and hub/lobby
-   files. The game has no frontend build step.
-2. Publish the updated root `firestore.rules` to the same existing Firebase
-   project if your deployment does not already do that. These shared rules allow
-   four human commanders and AI-filled strategic matches, validate map capacity
-   and snapshot dimensions, and retain personal progress and competitive protections.
-   You can publish the complete file in **Firebase Console → Firestore Database
-   → Rules**, or run the following from the repository root with the Firebase CLI:
+Publish the updated website, including `game/turncraft.html`,
+`game/turncraft-lobby.html`, `game/turncraft/` and the hub launch settings.
 
-   ```sh
-   npx firebase login
-   npx firebase deploy --project bible-game-246c0 --config firebase.rules.json --only firestore:rules
-   ```
-
-   This command publishes the shared Firestore rules only. Review the complete
-   file because the database also serves the other CatnMice games.
-3. Upload `TurnCraft_ShatteredFront_Assets.zip` to the existing R2 artwork bucket
-   under `shattered-front/`, preserving its directories. The expected first
-   object is `shattered-front/ui/main_menu/battlefield.webp`. The existing public
-   artwork prefix is already configured in the game; the separate R2 setup guide
-   covers another artwork location.
-   The strategic update also provides `medic-healing-r2.zip`: upload its exact
-   root keys `units/medic-healing.webp` and `effects/medic-healing.webp` with
-   `Content-Type: image/webp`. The committed local files work before this upload.
-   See [Medic delivery and manifests](turncraft-medic-healing.md) for hashes,
-   filenames, animation phases and fallback behavior.
-4. Sign in through the existing CatnMice account flow, open TurnCraft, complete
-   the first campaign mission and reopen the game. Check that the mission stars
-   and unlocked operation remain. Repeat from another browser signed into the
-   same account, then test a public custom room and a private invitation with
-   two browsers.
-
-No API URL, Cloud Functions deployment, service-account key or new account
-binding migration is required for personal progress. Merging the PR does not
-itself publish Firebase rules unless the site's deployment already includes
-that step.
-
-## Personal account progress
-
-The game saves only its personal fields under the existing account document:
-
-```text
-users/{username}.gameStats.turncraft.campaign
-users/{username}.gameStats.turncraft.survival
-users/{username}.gameStats.turncraft.achievements
-```
-
-Updates merge these fields instead of replacing the account document or another
-game's statistics. The site supplies the existing username and Firebase Auth
-session. Existing verified account bindings remain honored by the shared rules;
-this update does not require creating new bindings for ordinary personal saves.
-Use the same CatnMice account to restore its cloud records on another device.
-
-Campaign progress retains completed mission records, best stars, optional
-objectives and unlocks across the six regions. Survival progress retains personal
-best waves and arena records. Cosmetics are derived from personal achievements.
-These browser-reported records are personal progress, not trusted competitive
-results.
-
-Signed-out play and an unavailable Firestore connection keep progress locally.
-Local battle checkpoints also stay in that browser. The menu can retry pending
-personal records when the account connection becomes available; a local battle
-checkpoint is separate from the account's completed-mission and survival records.
-The profile uses one Firestore listener while it is being watched; saves happen
-for completed progress, rather than on every rendered frame.
-
-## Custom multiplayer
-
-Custom matches use the existing Firestore lobby and shared-state approach. The
-dedicated `game/turncraft-lobby.html` supports public rooms, private invitations,
-host configuration, faction selection, readiness, direct joins and reconnects.
-Lobby listeners update the room, and the selected browser controller publishes
-the shared match snapshots. Custom matches do not change ranked ratings.
-
-Rooms support two, three or four human commanders. The host can fill unused map
-positions with AI and choose its difficulty and temperament. Two humans on a
-four-player battlefield can therefore fight two AI commanders. All matches use
-free-for-all rules. Expanded six- and eight-commander maps are available in solo
-setup with up to seven individually configurable AI opponents. The six original
-maps and the campaign/survival maps retain their original dimensions.
-
-The shared rules must be published with the web update before four-human and
-AI-filled lobbies can be used in production. The complete rules have passed local
-Firestore tests for four human identities, mixed human/AI snapshots, private
-invitations, controller authority, malicious membership changes and saved ratings.
-
-Use two browsers to check room creation and admission, host settings, readiness,
-launch, reconnection, a completed match and a rematch. Check that old completed
-rooms do not overwrite the new room and that the other games' lobby flows still
-work.
-
-## Competitive features
-
-Ranked matchmaking and rating updates are disabled in this Firestore-only
-deployment. A browser-controlled match cannot establish a trusted competitive
-result, so the game does not grant Elo/MMR from a client winner claim. Protected
-rating fields remain protected.
-
-Survival records and campaign achievements remain personal. Public survival
-rankings are disabled until a trusted adjudicator exists. Neither deploying the
-rules nor changing a browser preference enables competitive result validation.
-
-## Usage and verification
-
-The existing Blaze plan can incur normal Firestore usage charges for document
-reads, writes, storage and network usage. Profile/lobby listeners and multiplayer
-snapshots use that database too. This update does not promise zero charges; review
-the project's usage and budget alerts as players use the game. See
-[Firebase's Firestore billing documentation](https://firebase.google.com/docs/firestore/pricing).
-
-Install the root dependencies and the game package to run local checks:
+The Firestore rules supplied with the bug report already allow the new account
+and lobby paths through recursive `users` and `lobbies` grants. The complete
+positive save/ranked integration passed against those exact rules, so no new
+permissions are needed if they are the deployed rules. The repository's stricter
+rules also support these flows and enforce atomic ranked receipts and immutable
+completed results. If the stricter repository rules are deployed, publish the
+updated version with the website:
 
 ```sh
-npm install
-npm --prefix game/turncraft install
-npm --prefix game/turncraft test
-npm --prefix game/turncraft run test:warfare
-npm --prefix game/turncraft run test:expansion
-npx firebase emulators:exec --project demo-turncraft --config firebase.turncraft-test.json --only firestore "node game/turncraft/tests/profile-store.emulator.cjs && node game/turncraft/tests/lobby-store.emulator.cjs && node game/turncraft/tests/turncraft-rules.emulator.cjs"
+npx firebase deploy --project bible-game-246c0 --config firebase.rules.json --only firestore:rules
 ```
 
-The emulator uses a demo project and does not change production Firebase. Local
-checks cover the actual RTS engine, mission and survival progression, saved
-battles, offline result retries, account-save transactions, custom lobby behavior
-and the shared Firestore rules. Finish the live
-account-save and two-browser checks after the web files and rules are published.
+The website has no frontend build step. This change requires no Cloud Functions,
+additional game server, service-account key or new username binding. The complete
+shared rules also serve the other hub games. The updated file preserves the
+supplied Gridbound durable-room and reward validators, as well as existing
+username-scoped saves for other games. Merging website code alone does not
+publish Firebase rules.
+
+The supplied broad recursive grants permit more writes than the repository
+rules. Firestore combines matching allow statements with OR, so adding a
+restrictive block beside a broad grant does not enforce receipt protections.
+Adopt the updated stricter ruleset to enforce those checks.
+
+## Profile data
+
+```text
+users/{username}.gameStats.turncraft
+users/{username}/turncraftHistory/{lobbyId}
+users/{username}/turncraftSoloHistory/{runId}
+users/{username}/turncraftSaves/active
+```
+
+The profile stores campaign stars/unlocks, survival records, achievements,
+multiplayer totals and ranked MMR. Updates preserve the rest of the account and
+other games' statistics. The profile screen lists recent campaign, survival,
+custom and ranked games. Each multiplayer history document is also an immutable
+receipt: retries, page reloads and concurrent tabs count the match once.
+
+Campaign and survival checkpoints contain a packed battlefield snapshot under
+the selected profile, with a separate local fallback for that profile. Reopening
+loads the latest cloud checkpoint. Completed runs have stable IDs for history and
+queued offline retries. Finishing an old queued run cannot erase a newer run's
+checkpoint. Signed-out or disconnected play remains saved locally and retries
+when its original profile reconnects.
+
+## Lobbies and ranked play
+
+```text
+lobbies/{lobbyId}
+lobbies/{lobbyId}/chess_starfront/state
+lobbies/{lobbyId}/chess_starfront_presence/{player}
+lobbies/{lobbyId}/chess_starfront_commands/{command}
+lobbies/{lobbyId}/turncraft_private/invite
+lobbies/{lobbyId}/turncraft_joins/{uid}
+lobbies/{lobbyId}/turncraft_forfeits/{uid}
+lobbies/turncraft/invites/{code}
+```
+
+All live session state and invitation metadata live under lobbies. Custom rooms
+support two to four human commanders and optional AI fill. Ranked Match finds an
+open ranked room or creates one waiting for an opponent. Ranked duels require
+exactly two humans, public visibility and no AI. Both players select factions and
+ready up before the host starts.
+
+A win grants 25 MMR, a loss removes 25 down to a minimum of zero, and a draw grants
+zero. Campaign, survival and custom games do not change MMR. Rating counters,
+ranks and history save together in one transaction for each participant, based
+on the immutable completed lobby. Reopening the command center retries pending
+match receipts. Returning from an active ranked game records a forfeit; the
+current controller publishes the final result. Controller leases allow the
+remaining browser to take over after a disconnected host's lease expires.
+
+Ranked battles are simulated by a leased participant browser. Firestore rules
+validate membership, controller authority, finished results and receipt-based
+rating changes; they do not independently replay combat or provide a trusted
+anti-cheat adjudicator. Global survival rankings remain unavailable.
+
+## Verification
+
+```sh
+node --test game/turncraft/tests/match-results.test.cjs game/turncraft/tests/profile-persistence.test.cjs game/turncraft/tests/shattered-progress.test.cjs game/turncraft/shattered-front/tests/campaign.test.mjs
+node --test game/turncraft/shattered-front/tests/profile-browser.test.cjs
+npx firebase emulators:exec --project demo-turncraft --config firebase.turncraft-test.json --only firestore "node game/turncraft/tests/profile-store.emulator.cjs && node game/turncraft/tests/lobby-store.emulator.cjs && node game/turncraft/tests/turncraft-rules.emulator.cjs && node game/turncraft/tests/game-profile-compat.emulator.cjs"
+```
+
+After deployment, select a hub profile, complete a campaign run and reopen it.
+Check the same profile from a second device, switch to another hub profile and
+verify isolation, then play a ranked duel in two authenticated browsers. Confirm
+that each profile records its own outcome once, including after reconnecting,
+and that a custom rematch leaves ranked MMR unchanged.
+
+The compatibility integration also exercises Faction Forge's actual account
+selection and migration, optional inaccessible legacy saves, same-profile
+reopening under a different anonymous Auth UID, separate profile progress, and
+reward/purchase/upgrade/round replay protection. To run the same positive checks
+against another deployed rules file, set `GAME_PROFILE_RULES_FILE` to its path
+inside the emulator command. The test always uses a local demo project.

@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newSoloProfile,settleSolo,soloMission,upgradeSolo,buySoloPack,settleSoloRoundWin,createFirebaseProgress} from '../firebase-progress.js';
 import {FORGE_PACKS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,packEligibility} from '../packs.js';
+import {selectSoloAccount} from '../solo-account.js';
 const troops={...Object.fromEntries(FORGE_PACKS.flatMap(pack=>pack.cards.map(card=>[card.troopKey,{}]))),signalhawk:{unlockable:true},chronoweaver:{unlockable:true},siphonleech:{unlockable:true},railbreaker:{unlockable:true},miragewarden:{unlockable:true},hiveherald:{unlockable:true}};
 const storage=()=>{const map=new Map();return {getItem:key=>map.get(key)||null,setItem:(key,value)=>map.set(key,value),removeItem:key=>map.delete(key)};};
 function firebase(){
  const docs=new Map();let serial=Promise.resolve(),failAfterCommit=false;
- const api={doc:(_db,...parts)=>parts.join('/'),onSnapshot:()=>()=>{},runTransaction:async(_db,fn)=>{
-  const operation=serial.then(async()=>{const writes=[];const value=await fn({get:async ref=>({exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref))}),set:(ref,data)=>writes.push([ref,structuredClone(data)])});for(const [ref,data] of writes)docs.set(ref,data);if(failAfterCommit){failAfterCommit=false;throw Object.assign(Error('Disconnected'),{code:'unavailable'});}return value;});serial=operation.catch(()=>{});return operation;
+ const api={doc:(_db,...parts)=>parts.join('/'),getDoc:async ref=>({exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref))}),onSnapshot:()=>()=>{},runTransaction:async(_db,fn)=>{
+  const operation=serial.then(async()=>{const writes=[];const value=await fn({get:async ref=>{assert.equal(writes.length,0,'Firestore transactions require every read before any write');return {exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref))};},set:(ref,data)=>writes.push([ref,structuredClone(data)])});for(const [ref,data] of writes)docs.set(ref,data);if(failAfterCommit){failAfterCommit=false;throw Object.assign(Error('Disconnected'),{code:'unavailable'});}return value;});serial=operation.catch(()=>{});return operation;
  }};
  return {api,docs,uncertain:()=>{failAfterCommit=true;}};
 }
@@ -114,5 +115,62 @@ test('a save connection closed after purchase commit retains its retry receipt',
  const run=store.api.runTransaction;store.api.runTransaction=async(db,fn)=>{const response=await run(db,fn);one.dispose();return response;};
  await assert.rejects(one.buyPack('vanir',{requestId:'closed-after-commit'}),{code:'DISPOSED'});assert.equal(cache.getItem('factionForge.solo.pending.owner.pack.vanir'),'closed-after-commit');
  store.api.runTransaction=run;const two=service(store,{storage:cache});await two.loadProfile();await two.buyPack('vanir',{requestId:'new-dialog'});assert.equal(two.profile.forgeDust,0);assert.equal(two.profile.troops.rifleman.cards,5);
+});
+
+test('hub profile reopens with campaign, collection, packs and receipts after a new anonymous sign-in',async()=>{
+ const store=firebase(),cache=storage();store.docs.set('users/Sean',{username:'Sean',gameStats:{anotherGame:{wins:7}}});
+ const auth={currentUser:{uid:'first-browser'}};
+ const selection=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops});
+ const one=service(store,{auth,storage:cache,...selection});await one.loadProfile();await one.setRewardTarget('rifleman');
+ await one.recordSoloRoundWin({id:'saved-match',mode:'campaign',missionId:'forge-01',round:1});await one.recordSoloResult(result('saved-match'));
+ store.docs.get('users/Sean/factionForge/profile').forgeDust=150;store.docs.get('users/Sean/factionForge/profile').troops.rifleman.cards=20;
+ await one.upgradeTroop('rifleman',{requestId:'saved-upgrade'});await one.buyPack('vanir',{requestId:'saved-pack'});one.dispose();
+ auth.currentUser={uid:'second-browser'};
+ const selected=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops});
+ const two=service(store,{auth,storage:cache,...selected});await two.loadProfile();
+ assert.equal(two.profile.uid,'second-browser');assert.equal(two.profile.forgeDust,0);assert.equal(two.profile.troops.rifleman.forgeTier,2);assert.equal(two.profile.troops.rifleman.cards,15);
+ assert.equal(two.profile.campaign.missions['forge-01'].stars,3);assert.equal(two.profile.rewardTarget,'rifleman');assert.equal(two.profile.wins,1);
+ await two.recordSoloResult(result('saved-match'));await two.upgradeTroop('rifleman',{requestId:'saved-upgrade'});await two.buyPack('vanir',{requestId:'saved-pack'});
+ assert.equal(two.profile.forgeDust,0);assert.equal(two.profile.wins,1);assert.equal(two.profile.troops.rifleman.forgeTier,2);
+ assert.deepEqual(store.docs.get('users/Sean'),{username:'Sean',gameStats:{anotherGame:{wins:7}}});
+});
+
+test('migration recovers unacknowledged legacy rewards and spending using the original receipts',async()=>{
+ const store=firebase(),cache=storage(),auth={currentUser:{uid:'owner'}},legacy=service(store,{auth,storage:cache,username:'Sean'});await legacy.loadProfile();
+ await legacy.setRewardTarget('rifleman');store.docs.get('factionForgeSoloProfiles/owner').forgeDust=150;store.docs.get('factionForgeSoloProfiles/owner').troops.rifleman.cards=20;
+ store.uncertain();await assert.rejects(legacy.recordSoloRoundWin({id:'old-match',mode:'campaign',missionId:'forge-01',round:1}),{code:'unavailable'});
+ store.uncertain();await assert.rejects(legacy.recordSoloResult(result('old-match')),{code:'unavailable'});
+ store.uncertain();await assert.rejects(legacy.upgradeTroop('rifleman',{requestId:'old-upgrade'}),{code:'unavailable'});
+ store.uncertain();await assert.rejects(legacy.buyPack('vanir',{requestId:'old-pack'}),{code:'unavailable'});legacy.dispose();
+ const saved=structuredClone(store.docs.get('factionForgeSoloProfiles/owner'));store.docs.set('users/Sean',{username:'Sean'});
+ const selected=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops,storage:cache});
+ const current=service(store,{auth,storage:cache,...selected});await current.loadProfile();current.dispose();
+ // Changing Firebase identity after migration must retain uncertain spending receipts too.
+ auth.currentUser={uid:'new-sign-in'};
+ const reopenedSelection=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops,storage:cache});
+ const reopened=service(store,{auth,storage:cache,...reopenedSelection});await reopened.loadProfile();await reopened.upgradeTroop('rifleman',{requestId:'new-dialog'});await reopened.buyPack('vanir',{requestId:'new-dialog'});
+ assert.deepEqual(reopened.profile,{...saved,uid:'new-sign-in'});assert.equal(cache.getItem('factionForge.solo.pending.hub.Sean.upgrade.rifleman'),null);assert.equal(cache.getItem('factionForge.solo.pending.hub.Sean.pack.vanir'),null);
+ for(const [collection,id] of [['results','old-match'],['rounds','old-match-round-1'],['upgrades','old-upgrade'],['purchases','old-pack']])assert.equal(store.docs.has('users/Sean/factionForge/profile/'+collection+'/'+id),true);
+});
+
+test('same Firebase session switching hub profiles cannot mutate the previously selected save',async()=>{
+ const store=firebase();let active=true;
+ const one=service(store,{username:'Sean',profilePath:['users','Sean','factionForge','profile'],isCurrentAccount:()=>active});await one.loadProfile();active=false;
+ await assert.rejects(one.recordSoloResult(result()),{code:'ACCOUNT_CHANGED'});
+ assert.equal(store.docs.get('users/Sean/factionForge/profile').wins,0);
+});
+
+test('older rules denying scoped saves, round and pack receipts do not prevent canonical saves',async()=>{
+ const store=firebase(),cache=storage(),auth={currentUser:{uid:'owner'}};
+ store.docs.set('users/Sean',{username:'Sean'});const old=newSoloProfile('owner','Sean',troops);old.forgeDust=100;store.docs.set('factionForgeSoloProfiles/owner',old);
+ cache.setItem('factionForge.solo.pending.owner.rounds',JSON.stringify([{id:'offline-round',mode:'bot',round:1}]));cache.setItem('factionForge.solo.pending.owner.pack.vanir','offline-pack');
+ const get=store.api.getDoc;store.api.getDoc=async ref=>{if(/\/accounts\/|\/rounds\/|\/purchases\//.test(ref)&&ref.startsWith('factionForgeSoloProfiles/'))throw Object.assign(Error('Legacy path not allowed'),{code:'permission-denied'});return get(ref);};
+ const selected=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops,storage:cache});
+ const current=service(store,{auth,storage:cache,...selected});await current.loadProfile();await current.buyPack('vanir');await current.recordSoloRoundWin({id:'new-round',mode:'bot',round:1});
+ assert.equal(current.profile.forgeDust,50);assert.equal(Object.values(current.profile.troops).reduce((n,unit)=>n+unit.cards,0),21);
+ current.dispose();
+ const run=store.api.runTransaction;store.api.runTransaction=(db,fn)=>run(db,tx=>fn({...tx,get:ref=>{assert.ok(!ref.startsWith('factionForgeSoloProfiles/'),'existing canonical profile must not read any legacy save');return tx.get(ref);}}));
+ const again=await selectSoloAccount({auth,db:{},api:store.api,username:'Sean',troops,storage:cache});
+ assert.deepEqual(again.legacyProfilePaths,[]);
 });
 

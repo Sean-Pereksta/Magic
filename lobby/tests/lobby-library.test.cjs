@@ -231,7 +231,8 @@ test('TurnCraft keeps its existing launch configuration and card hooks', async (
   const game = byKey.turncraft;
   assert.equal(game.route, '/game/turncraft.html');
   assert.deepEqual(game.modes, ['single', 'multi']);
-  assert.equal(game.minPlayers, 2); assert.equal(game.maxPlayers, 3); assert.equal(game.multiplayerRoute, '/game/turncraft-lobby.html'); assert.equal(game.autoRedirect, true);
+  assert.equal(game.minPlayers, 2); assert.equal(game.maxPlayers, 4); assert.equal(game.multiplayerRoute, '/game/turncraft-lobby.html'); assert.equal(game.autoRedirect, true);
+  assert.equal(game.autoUsername, true);
   const harness = cardHarness(), card = harness.create();
   assert.equal(card.dataset.gameKey, 'turncraft');
   assert.match(card.className, /\btc-tile\b/);

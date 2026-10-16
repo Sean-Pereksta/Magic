@@ -1,6 +1,7 @@
 import { artwork, assetUrl, loadManifest } from './assets.mjs';
 import {
   CHECKPOINT_KEY,
+  checkpointKey,
   readProgress,
   mergeProgress,
   recordResult,
@@ -19,12 +20,14 @@ let api,
   faction = localStorage.getItem('csf.faction') || 'frontier',
   difficulty = 'medium';
 let identity = {
-    displayName: localStorage.getItem('gh.username') || 'Local Commander'
+    username: localStorage.getItem('gh.username') || params.get('username') || null,
+    displayName: localStorage.getItem('gh.username') || params.get('username') || 'Local Commander'
   },
   profile = {},
   cloud;
-let progressKey = 'turncraft.shattered-front.progress.local.v1',
+let progressKey = `turncraft.shattered-front.progress.${encodeURIComponent(identity.username || 'local')}.v1`,
   progress = readProgress(progressKey);
+let historyName = null, matchHistory = [], checkpointLoadedFor = null;
 let activeView = 'home',
   returnView = 'home',
   selectedRegion = '',
@@ -96,8 +99,14 @@ async function flushSaves() {
       const account = { username: identity.username };
       if (result.mode === 'campaign') await cloud.saveCampaign(result, account);
       else await cloud.saveSurvival(result, account);
+      if (result.resultId) await cloud.saveCheckpoint(null, account.username, result.resultId);
+      if (result.resultId) {
+        const key = checkpointKey(account.username);
+        try { if (JSON.parse(localStorage.getItem(key) || 'null')?.resultId === result.resultId) localStorage.removeItem(key); } catch {}
+      }
       if (owner !== progressKey) break;
       progress.pendingResults.shift();
+      historyName = null;
       saveProgress();
     }
   } catch {
@@ -111,12 +120,13 @@ async function flushSaves() {
 }
 function checkpoint() {
   try {
-    return JSON.parse(localStorage.getItem(CHECKPOINT_KEY) || 'null');
+    return JSON.parse(localStorage.getItem(checkpointKey(identity.username || api?.getIdentity?.()?.username)) || 'null');
   } catch {
     return null;
   }
 }
 function show(view = 'home', { focus = true } = {}) {
+  if (view === 'profile') historyName = null;
   if (view === 'home' && api?.getIdentity?.().lobbyId) view = 'session';
   activeView = view;
   root.hidden = false;
@@ -707,7 +717,7 @@ async function launch() {
     api.selectFaction?.(faction);
     const launch =
       pendingLaunch.mode === 'campaign' ? api.startCampaign : api.startSurvival;
-    await launch(pendingLaunch.item.id, { factionId: faction, difficulty });
+    await launch(pendingLaunch.item.id, { factionId: faction, difficulty, username: identity.username });
     hide();
     pendingLaunch = null;
   } catch (error) {
@@ -838,6 +848,7 @@ function lobby(mode) {
   }
   const url = new URL('../../turncraft-lobby.html', import.meta.url);
   url.searchParams.set('mode', mode);
+  if (identity.username) url.searchParams.set('username', identity.username);
   location.href = url.href;
 }
 function session(main) {
@@ -884,7 +895,7 @@ function multiplayer(main) {
     ['Quick Play', 'Find an available compatible public room.', 'quick'],
     [
       'Ranked Match',
-      'Ranked matches are currently unavailable.',
+      'Play a human rival in a ranked duel. Results and MMR save to your profile.',
       'ranked'
     ],
     [
@@ -901,12 +912,21 @@ function multiplayer(main) {
       el('p', '', copy),
       el('span', 'sf-arrow', '↗')
     );
-    if (mode === 'ranked') b.disabled = true;
     grid.append(b);
   }
   main.append(grid);
 }
 function profileScreen(main) {
+  if (cloud && identity.linked && historyName !== identity.username) {
+    const name = identity.username;
+    historyName = name;
+    matchHistory = [];
+    void cloud.getHistory(name).then(rows => {
+      if (identity.username !== name) return;
+      matchHistory = rows;
+      if (activeView === 'profile' && !root.hidden) render();
+    }).catch(() => { historyName = null; });
+  }
   const complete = Object.values(progress.campaign.completedMissions),
     totalStars = complete.reduce((sum, m) => sum + (m.stars || 0), 0);
   main.append(
@@ -960,6 +980,11 @@ function profileScreen(main) {
       )
     );
   main.append(list);
+  main.append(heading('Game history', 'RECENT BATTLES', 'Completed games are stored with the profile that played them.'));
+  const historyList = el('div', 'sf-records');
+  for (const record of matchHistory) historyList.append(el('p', '', `${record.mode} · ${record.outcome} · ${record.opponents?.join(', ') || record.missionId || record.arenaId || 'Solo operation'} · ${Math.floor(record.durationSeconds || 0)} seconds${record.mode === 'ranked' ? ` · ${record.mmrDelta > 0 ? '+' : ''}${record.mmrDelta} MMR` : ''}`));
+  if (!matchHistory.length) historyList.append(el('p', '', 'Your completed battles will appear here after syncing.'));
+  main.append(historyList);
   const badges = el('div', 'sf-badges');
   for (const id of Object.keys(progress.achievements))
     if (progress.achievements[id]) {
@@ -1178,18 +1203,29 @@ async function initialize() {
         identity = data.identity || { displayName: 'Local Commander' };
         const key = `turncraft.shattered-front.progress.${encodeURIComponent(identity.username || identity.uid || 'local')}.v1`;
         if (key !== progressKey) {
-          const local = data.identity && progressKey === 'turncraft.shattered-front.progress.local.v1' ? progress : null;
           progressKey = key;
           progress = readProgress(key);
-          if (local) {
-            progress = mergeProgress(progress, local);
-            progress.pendingResults = [...(progress.pendingResults || []), ...(local.pendingResults || [])];
-          }
+          historyName = null;
         }
       }
       profile = data.profile || {};
       progress = mergeProgress(progress, profile);
       saveProgress();
+      if (identity.linked && checkpointLoadedFor !== identity.username) {
+        const name = identity.username;
+        checkpointLoadedFor = name;
+        void cloud.getCheckpoint(name).then(saved => {
+          if (!saved || name !== identity.username) return;
+          const current = checkpoint();
+          if (saved.cleared) {
+            if (current && saved.savedAt >= current.savedAt && (!saved.completedRunId || saved.completedRunId === current.resultId)) localStorage.removeItem(checkpointKey(name));
+            if (!root.hidden) render();
+            return;
+          }
+          if (!current || saved.savedAt > current.savedAt) localStorage.setItem(checkpointKey(name), JSON.stringify(saved));
+          if (!root.hidden) render();
+        }).catch(() => { checkpointLoadedFor = null; });
+      }
       if (data.error)
         message =
           'Account sync is unavailable. Progress continues to save on this device.';
@@ -1207,13 +1243,24 @@ window.addEventListener('sf:ready', initialize, { once: true });
 if (window.TurncraftExpansion) initialize();
 window.addEventListener('sf:menu', () => show());
 window.addEventListener('turncraft:expansion-result', async (event) => {
+  historyName = null;
   lastResult = { ...event.detail };
   if (lastResult.mode === 'survival')
     lastResult.wave = lastResult.highestWave || lastResult.wave;
+  lastResult.resultId ||= crypto.randomUUID();
+  if (lastResult.username && lastResult.username !== identity.username) {
+    const ownerKey = `turncraft.shattered-front.progress.${encodeURIComponent(lastResult.username)}.v1`;
+    const owned = recordResult(readProgress(ownerKey), lastResult);
+    owned.pendingResults ||= [];
+    owned.pendingResults.push({...lastResult});
+    localStorage.setItem(ownerKey, JSON.stringify(owned));
+    status('This run is saved for the profile that started it. Reopen that profile to sync.');
+    return;
+  }
   const key = `${lastResult.arenaId}:${lastResult.difficulty || 'medium'}`;
   lastResult.previousBest = progress.survival.recordsByMap[key]?.wave || 0;
   progress = recordResult(progress, lastResult);
-  if (lastResult.mode !== 'campaign' || lastResult.won) {
+  {
     progress.pendingResults ||= [];
     progress.pendingResults.push({ ...lastResult });
   }
@@ -1221,8 +1268,13 @@ window.addEventListener('turncraft:expansion-result', async (event) => {
   show('result');
   await flushSaves();
 });
+window.addEventListener('turncraft:checkpoint', event => {
+  const saved = event.detail?.checkpoint;
+  if (cloud && identity.linked && saved?.username === identity.username)
+    void cloud.saveCheckpoint(saved, saved.username).catch(() => {});
+});
 window.addEventListener('online', flushSaves);
-window.addEventListener('pagehide', () => profileUnsub?.());
+window.addEventListener('pagehide', event => { if (!event.persisted) profileUnsub?.(); });
 window.addEventListener('keydown', (event) => {
   if (!root.hidden && event.key === 'Escape' && activeView !== 'home') {
     event.preventDefault();

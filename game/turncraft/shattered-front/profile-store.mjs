@@ -67,6 +67,10 @@ export function createProfileStore({ db, api }) {
         const snapshot = await transaction.get(ref);
         if (!snapshot.exists()) throw new Error('Sign into your existing CatnMice account to sync progress.');
         const account = snapshot.data(), previous = account.gameStats?.turncraft || {};
+        const historyRef = result.resultId && /^[A-Za-z0-9_-]{1,100}$/.test(result.resultId)
+          ? api.doc(db, 'users', username, 'turncraftSoloHistory', result.resultId) : null;
+        const receipt = historyRef ? await transaction.get(historyRef) : null;
+        if (receipt?.exists()) return {account, profile: previous, wrote: false};
         const next = mergePersonalResult(previous, mode, result);
         const patch = {};
         for (const field of ['campaign', 'survival', 'achievements']) {
@@ -74,7 +78,15 @@ export function createProfileStore({ db, api }) {
         }
         // Replaying a queued result that is already saved performs no write.
         if (Object.keys(patch).length) transaction.update(ref, patch);
-        return { account, profile: next, wrote: Object.keys(patch).length > 0 };
+        if (historyRef) transaction.set(historyRef, {
+          id: result.resultId, username, mode,
+          outcome: result.won === false ? 'loss' : 'win',
+          missionId: result.missionId || null, arenaId: result.arenaId || null,
+          factionId: result.factionId || 'frontier', difficulty: result.difficulty || 'medium',
+          stars: integer(result.stars, 3), wave: integer(result.wave ?? result.highestWave, 100000),
+          durationSeconds: integer(result.durationSeconds, 604800), completedAt: Number(result.completedAt) || Date.now()
+        });
+        return { account, profile: next, wrote: Object.keys(patch).length > 0 || Boolean(historyRef) };
       });
     }
   };

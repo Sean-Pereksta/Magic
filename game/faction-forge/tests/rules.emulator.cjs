@@ -7,6 +7,7 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
   if(!process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Run through Firebase emulators:exec; FIRESTORE_EMULATOR_HOST is required.');
   const env=await initializeTestEnvironment({projectId:'demo-faction-forge',firestore:{rules:fs.readFileSync(path.resolve(__dirname,'../../../firestore.rules'),'utf8')}});
   try{
+    await env.clearFirestore();
     await env.withSecurityRulesDisabled(async ctx=>{
       const db=ctx.firestore();
       await setDoc(doc(db,'factionForgeNames','Legacy'),{uid:'owner',username:'Legacy',verified:true});

@@ -98,6 +98,33 @@ test('finishing during an in-flight custom write publishes a fresh terminal snap
   const guest=match();guest(`PLAYER=1;isController=false;applyRemoteState(${JSON.stringify(snapshot)});`);assert.equal(result(guest).title,'Defeat');assert.equal(guest('gameOver'),true);
 });
 
+test('ranked forfeits award the opposing human, simultaneous forfeits draw, and forged markers are ignored',()=>{
+  const setup = run => run(`lobbyData={turncraftVersion:1,status:'started',ranked:true,turncraftSeats:['a','b'],members:{a:players[0].name,b:players[1].name}};isController=true;`);
+  const one=match();setup(one);one(`rankedForfeits=[{uid:'a',username:players[0].name}];applyRankedForfeits();`);
+  assert.equal(result(one).result.winnerIdx,1);assert.match(result(one).text,/forfeited/);
+  const both=match();setup(both);both(`rankedForfeits=[{uid:'a',username:players[0].name},{uid:'b',username:players[1].name}];applyRankedForfeits();`);
+  assert.equal(result(both).result.winnerIdx,null);
+  for(const invalid of ["{uid:'stranger',username:players[0].name}","{uid:'a',username:'impersonated'}"]){
+    const forged=match();setup(forged);forged(`rankedForfeits=[${invalid}];applyRankedForfeits();`);
+    assert.equal(result(forged).over,false);
+  }
+  const custom=match();setup(custom);custom(`lobbyData.ranked=false;rankedForfeits=[{uid:'a',username:players[0].name}];applyRankedForfeits();`);
+  assert.equal(result(custom).over,false);
+});
+
+test('the surviving controller processes a durable forfeit after an expired host lease',async()=>{
+  const run=match();
+  run(`lobbyId='ranked';lobbyRef='lobbies/ranked';presenceRef='presence';auth.currentUser={uid:'b'};isController=false;
+    lobbyData={turncraftVersion:1,status:'started',ranked:true,host:players[0].name,turncraftSeats:['a','b'],members:{a:players[0].name,b:players[1].name}};
+    controllerLease={ownerUid:'a',ownerName:players[0].name,expiresAtMs:testClock-1,epoch:1};
+    rankedForfeits=[{uid:'a',username:players[0].name}];applyRankedForfeits();
+    runTransaction=async(db,operation)=>operation({get:async()=>({exists:()=>true,data:()=>({chessStarfrontController:controllerLease})}),set:()=>{}});writeState=async()=>true;`);
+  assert.equal(result(run).over,false);
+  await run('refreshPresenceAndLease();');
+  assert.equal(run('isController'),true);assert.equal(run('controllerLease.epoch'),2);
+  assert.equal(result(run).result.winnerIdx,1);
+});
+
 test('return to lobby accepts same-origin absolute URLs and rejects external redirect destinations',async()=>{
   const run=match();run(`returnTo='http://turncraft.test/game/turncraft-lobby.html?lobbyId=confirmed';`);await run('exitGame()');assert.equal(run.context.location.href,'http://turncraft.test/game/turncraft-lobby.html?lobbyId=confirmed');
   run.context.location.href='http://turncraft.test/game/turncraft.html';run(`returnTo='https://unrelated.example/redirect';`);await run('exitGame()');assert.equal(run.context.location.href,'/game/index.html');
