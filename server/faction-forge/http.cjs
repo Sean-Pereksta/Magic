@@ -33,6 +33,8 @@ function createRouter({db,auth,allowedOrigins=[],service}) {
   router.post('/upgrades',route(req=>forge.upgradeTroop(req.forgeUser,req.body)));
   router.post('/packs',route(req=>forge.buyPack(req.forgeUser,req.body)));
   router.post('/reward-target',route(req=>forge.target(req.forgeUser,req.body.troopKey)));
+  router.post('/decks',route(req=>forge.saveDeck(req.forgeUser,req.body)));
+  router.post('/selected-deck',route(req=>forge.selectDeck(req.forgeUser,req.body)));
   router.use((error,_req,res,_next)=>{
     if(error instanceof ForgeError)return res.status(error.status).json({error:{code:error.code,message:error.message}});
     if(error.code?.startsWith('auth/'))return res.status(401).json({error:{code:'UNAUTHENTICATED',message:'Your Firebase sign-in has expired. Sign in again.'}});

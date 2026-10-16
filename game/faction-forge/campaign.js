@@ -1,6 +1,8 @@
 /** Campaign definitions and strategic selection shared by UI and server replay. */
 import {comboStatus} from './combos.js';
 import {evolutionFor} from './evolutions.js';
+import {STARTER_DECKS,MAX_ACTIVE_UNITS,sanitizeRoster} from './decks.js';
+import {COMBAT_ROLES,counterProfile} from './combat-rules.js';
 export const CAMPAIGN_CHAPTERS = Object.freeze([
   {id:1,title:'Sparks on the Frontier',theme:'iron-frontier',description:'Draft a balanced army and learn to protect the Vanir gunline.'},
   {id:2,title:'The Aesir Awakening',theme:'crystal-sanctum',description:'Break magical defenses and control the rhythm of battle.'},
@@ -9,6 +11,29 @@ export const CAMPAIGN_CHAPTERS = Object.freeze([
   {id:5,title:'The Last Crucible',theme:'contested-forge',description:'Defeat each faction’s strongest combined strategies and claim the Forge.'}
 ]);
 const R = (...entries) => entries.map(([type,count=1,lvl=1])=>({type,count,lvl}));
+/** Scenario identity is kept while every enemy recruits from a legal five-type deck. */
+export function createAIDeck(faction,{roster=[],name=''}={}){
+  const starter=STARTER_DECKS.find(deck=>deck.faction===faction)||STARTER_DECKS[0];
+  const troops=[...new Set([...roster.map(row=>row.type),...starter.troops])].slice(0,5);
+  return {id:'ai-'+faction.toLowerCase(),name:name||starter.name,faction,troops};
+}
+export const AI_DECK_ARCHETYPES=Object.freeze({
+ Vanir:[['Iron Vanguard',['vguard','marksman','suppressor','vrocket','medic']],['Precision Execution',['vguard','marksman','railbreaker','signalhawk','medic']],['Mobile Disruption',['miner','rifleman','marksman','emp','medic']],['Barrage Line',['vguard','vrocket','suppressor','rifleman','medic']]],
+ Aesir:[['Arcane Tempest',['guardian','phaser','storm','runebinder','wardmaker']],['Temporal Control',['guardian','chronoweaver','phaser','runebinder','wardmaker']],['Mirror Ambush',['blade','storm','phaser','miragewarden','wardmaker']],['Crystal Siege',['golem','architect','storm','phaser','runebinder']]],
+ Helions:[['Blight Swarm',['hellspawn','roach','defiler','spitter','blood']],['Buried Ambush',['roach','viper','burrower','defiler','carrion']],['Corrosive Execution',['roach','defiler','spitter','blood','siphonleech']],['Brood Detonation',['hellspawn','matron','hiveherald','defiler','blood']]]
+});
+/** Higher skill chooses complete counter compositions, with seeded tie breaks. */
+export function chooseAIDeck(faction,enemyDeck,difficulty=.65,rng=Math.random){
+ const options=AI_DECK_ARCHETYPES[faction]||AI_DECK_ARCHETYPES.Vanir;
+ const enemies=(enemyDeck?.troops||[]).map(type=>({type,armor:COMBAT_ROLES.defender.includes(type)?3:0,size:type==='golem'?2:1,range:COMBAT_ROLES.ranged.includes(type)?4:1,cd:COMBAT_ROLES.defender.includes(type)?1700:1000}));
+ const skill=typeof difficulty==='number'?Math.max(0,Math.min(1,difficulty)):.65;
+ let index=0;
+ if(enemies.length&&rng()<skill){
+   const ranked=options.map(([name,types],i)=>({i,score:types.reduce((score,type)=>score+enemies.reduce((sum,target)=>{const counter=counterProfile({type},target),screenPenalty=COMBAT_ROLES.assassin.includes(type)&&COMBAT_ROLES.defender.includes(target.type)?1.2:0;return sum+(counter.multiplier-1)*6+counter.penetration*(target.armor>0?1.2:0)-screenPenalty;},0),0)})).sort((a,b)=>b.score-a.score||a.i-b.i);
+   const best=ranked.filter(entry=>Math.abs(entry.score-ranked[0].score)<.05);index=best[Math.min(best.length-1,Math.floor(rng()*best.length))].i;
+ }else if(skill>.45)index=Math.min(options.length-1,Math.floor(rng()*options.length));
+ const [name,types]=options[index];return {id:'ai-'+faction.toLowerCase()+'-'+index,name,faction,troops:[...types]};
+}
 const definitions = [
   ['First Sparks','Vanir','Iron Recruit','balanced',R(['rifleman',1]),'Protect a frontline while your shooters attack.'],
   ['Hold the Line','Vanir','Gatekeeper','spearhead',R(['vguard',1],['rifleman',1]),'Draft a durable frontline before adding more backline.'],
@@ -47,7 +72,9 @@ export const CAMPAIGN_UNLOCKS = Object.freeze({
 });
 
 export const CAMPAIGN_MISSIONS = Object.freeze(definitions.map((entry,number)=>{
-  const [title,faction,name,formation,roster,objective]=entry;
+  const [title,faction,name,formation,preparedRoster,objective]=entry;
+  const deck=createAIDeck(faction,{roster:preparedRoster,name:title});
+  const roster=sanitizeRoster(preparedRoster,deck);
   const chapter=Math.floor(number/6)+1,index=number%6+1,boss=index===6;
   const skill=Number(Math.min(.96,.32+number*.021+(boss?.035:0)).toFixed(3));
   const id='forge-'+String(number+1).padStart(2,'0');
@@ -58,11 +85,11 @@ export const CAMPAIGN_MISSIONS = Object.freeze(definitions.map((entry,number)=>{
     ...roster.map(r=>r.type).filter(key=>Object.values(CAMPAIGN_UNLOCKS).includes(key))
   ])];
   const aiStyle=['early_combos','sustained_upgrades','defensive_evolution','legendary_army'][number%4];
-  const opponent={name,faction,skill,difficulty:skill,formation,roster,relics,tactics,unlockedTroops,aiStyle};
+  const opponent={name,faction,deck,skill,difficulty:skill,formation,roster,relics,tactics,unlockedTroops,aiStyle};
   return Object.freeze({id,number:number+1,chapter,index,title,theme:CAMPAIGN_CHAPTERS[chapter-1].theme,
     boss,objective,rewards:{cards:boss?12:6,dust:boss?40:20,roundCards:3},replayRewards:{cards:2,dust:5,roundCards:3},
     unlockTroop:CAMPAIGN_UNLOCKS[id]||null,prerequisite:number?'forge-'+String(number).padStart(2,'0'):null,
-    opponent,aiFaction:faction,difficulty:skill,aiStyle,startingRoster:roster});
+    opponent,deck,aiFaction:faction,difficulty:skill,aiStyle,startingRoster:roster});
 }));
 export const MISSIONS = CAMPAIGN_MISSIONS;
 
@@ -96,12 +123,11 @@ export function unlocksForMission(id) {const mission=getMission(id);return missi
 /** Both sides begin a campaign with an actual deployed army. Without this,
  * a prepared boss plus three draft cards fights a player's three-card army.
  * Starting battle ranks are scenario preparation, independent of Forge tiers. */
-export function playerStartingRoster(faction,mission) {
+export function playerStartingRoster(faction,mission,deck) {
   if(!mission)return [];
   const chapter=Math.max(1,Math.min(6,mission.chapter||1));
-  const types={Vanir:['vguard','rifleman','medic','vrocket','signalhawk'],
-    Aesir:['guardian','phaser','wardmaker','storm','chronoweaver'],
-    Helions:['defiler','roach','carrion','matron','hiveherald']}[faction];
+  deck=deck?.faction===faction?deck:STARTER_DECKS.find(item=>item.faction===faction);
+  const types=deck?.troops;
   if(!types)return [];
   const tankRank=chapter>=5?3:chapter>=3?2:1;
   const damageRank=chapter>=6?3:chapter>=4?2:1;
@@ -109,27 +135,24 @@ export function playerStartingRoster(faction,mission) {
   if(chapter>=2 || mission.number===1 || mission.boss)roster.push({type:types[2],count:1,lvl:chapter>=5?2:1});
   if(chapter>=3)roster.push({type:types[3],count:1,lvl:chapter>=5?2:1});
   if(chapter>=6)roster.push({type:types[4],count:1,lvl:2});
-  // Helions' sustain and swarm engines need their later commanders to answer
-  // elite frontlines. These are only deployed after the player earned the unlock.
-  if(faction==='Helions'&&chapter>=5)roster.push({type:'siphonleech',count:1,lvl:2});
-  if(faction==='Helions'&&chapter===5&&mission.number>=27)roster.push({type:'hiveherald',count:1,lvl:2});
-  return roster;
+  return sanitizeRoster(roster,deck);
 }
 
 export function createEndlessMission(stage=1) {
   stage=Math.max(1,Math.min(10000,Math.floor(Number(stage)||1)));
   const templates=[CAMPAIGN_MISSIONS[24],CAMPAIGN_MISSIONS[26],CAMPAIGN_MISSIONS[29],CAMPAIGN_MISSIONS[27],CAMPAIGN_MISSIONS[23]];
   const template=templates[(stage-1)%templates.length];
-  // Counter strategy and composition rotate; deployment remains bounded by the grid.
-  const roster=template.opponent.roster.map((r,index)=>({...r,lvl:Math.min(3,r.lvl+Math.floor(stage/5)),count:Math.min(3,r.count+((stage+index)%7===0?1:0))}));
+  // Difficulty raises ranks and rotates synergies without adding independent bodies.
+  const deck={...template.opponent.deck,id:'ai-endless-'+stage,name:'Crucible '+stage,troops:[...template.opponent.deck.troops]};
+  const roster=sanitizeRoster(deck.troops.map((type,index)=>({type,count:1,lvl:Math.min(3,(template.opponent.roster.find(row=>row.type===type)?.lvl||1)+Math.floor(stage/5))})),deck);
   const formation=['protected_backline','wide','spearhead','ambush'][(stage-1)%4];
   const skill=Math.min(.985,.9+stage*.004);
   return {id:'endless-'+stage,stage,number:30+stage,chapter:6,index:stage,title:'Crucible Challenge '+stage,
     theme:template.theme,boss:stage%5===0,objective:'Defeat rotating elite compositions before Crucible pressure begins after '+Math.round(Math.max(8000,60000-stage*450)/1000)+' seconds.',
     prerequisite:'forge-30',rewards:{cards:stage%5===0?2:1,dust:stage%5===0?15:10},replayRewards:{cards:1,dust:5},unlockTroop:null,
-    aiFaction:template.aiFaction,difficulty:skill,startingRoster:roster,
+    deck,aiFaction:template.aiFaction,difficulty:skill,startingRoster:roster,
     pressure:{startsAfterMs:Math.max(8000,60000-stage*450),intervalMs:Math.max(600,3000-stage*12),damage:1+Math.floor((stage-1)/30)},
-    opponent:{...template.opponent,name:template.opponent.name+' '+stage,roster,formation,skill,difficulty:skill,unlockedTroops:Object.values(CAMPAIGN_UNLOCKS)}};
+    opponent:{...template.opponent,deck,name:template.opponent.name+' '+stage,roster,formation,skill,difficulty:skill,unlockedTroops:Object.values(CAMPAIGN_UNLOCKS)}};
 }
 
 /** Endless raises urgency after tactical AI/army strength reaches its bounded
@@ -182,14 +205,16 @@ export function scoreAIDraft(card,context={},hooks={}) {
   const enemyFront=countMatching(enemy,fronts),enemySwarm=countMatching(enemy,swarm),enemyTanks=countMatching(enemy,tanks);
   const enemySplash=countMatching(enemy,splash),enemyAssassins=countMatching(enemy,assassins);
   if (card.type==='troop') {
+    if(bodies>=MAX_ACTIVE_UNITS||context.deck&&!context.deck.troops.includes(card.key))return -1000;
     if (!hooks.evaluateDraftCard) {score+=fronts.has(card.key)&&mineFront<2?3:0;score+=splash.has(card.key)&&enemySwarm>=2?4:0;score+=assassins.has(card.key)&&countMatching(enemy,support)>=1?3:0;}
-    if (card.key==='railbreaker') score+=enemyTanks*1.3-(enemySwarm>=2?2:0);
+    if (card.key==='railbreaker'||card.key==='marksman') score+=enemyTanks*2.1-(enemySwarm>=2?2:0);
     if (card.key==='signalhawk') score+=(mine.length>=2?1.5:-2)+(enemy.some(r=>r.type==='burrower')?2:0);
     if (card.key==='chronoweaver') score+=(mine.length>=2?2:-2)+(enemyFront>=3?1:0);
     if (card.key==='miragewarden') score+=enemyAssassins*1.5+mineSupports*.5-enemySplash;
     if (card.key==='siphonleech') score+=(enemyFront>0?1.5:0)-(enemy.some(r=>r.type==='carrion')?2:0);
     if (card.key==='hiveherald') score+=mineSwarm>=2?3.5:-2;
-    if (support.has(card.key)&&mineSupports>=3) score-=2;
+    if (support.has(card.key)&&mineSupports>=2) score-=3;
+    if (tanks.has(card.key)&&countMatching(mine,tanks)>=2)score-=5;
     score+=.15; // prefer a useful body over unrelated special cards
   } else if (kind==='upgrade') {
     score+=own?2+Math.min(3,Number(own.count)||1)*.75+((own.lvl||1)===2?2:0):-10;
@@ -266,7 +291,11 @@ export function chooseAIDraft(pack,context={},rng=Math.random,hooks={}) {
 export const AI_NAMES=Object.freeze(['IronWarden','AshenWolf','FrostRanger','CrimsonVale','SteelHawk']);
 export function practiceOpponent(mmr=1200,rng=Math.random) {
   const rating=Math.max(100,Math.round(Number(mmr)||1200));
+  const faction=['Vanir','Aesir','Helions'][Math.min(2,Math.floor(rng()*3))];
+  const archetypes={Vanir:[['vguard','marksman','suppressor','vrocket','medic'],['vguard','marksman','railbreaker','signalhawk','medic']],Aesir:[['guardian','phaser','storm','runebinder','wardmaker'],['blade','storm','runebinder','chronoweaver','wardmaker']],Helions:[['hellspawn','roach','defiler','spitter','blood'],['roach','viper','burrower','defiler','carrion']]};
+  const keys=archetypes[faction][rating>=1400?1:0];
+  const deck=createAIDeck(faction,{roster:keys.map(type=>({type,count:1}))});
   return {name:AI_NAMES[Math.min(AI_NAMES.length-1,Math.floor(rng()*AI_NAMES.length))],isAI:true,
     estimatedMmr:Math.max(100,rating+Math.round((rng()-.5)*120)),difficulty:Math.max(.35,Math.min(.95,.55+(rating-1200)/2000)),
-    faction:['Vanir','Aesir','Helions'][Math.min(2,Math.floor(rng()*3))],aiStyle:Object.keys(AI_PLAYSTYLES)[Math.min(3,Math.floor(rng()*4))],ranked:false};
+    faction,deck,aiStyle:Object.keys(AI_PLAYSTYLES)[Math.min(3,Math.floor(rng()*4))],ranked:false};
 }

@@ -10,6 +10,27 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   const receiptRef=(id,uid)=>db.doc(`factionForgeProfiles/${uid}/history/${id}`);
   let shared=modules?Promise.resolve(modules):null;
   const sharedContent=()=>shared||(shared=loadModules());
+  const deckRules=async()=> (await sharedContent()).decks||(await loadModules()).decks;
+  async function normalizeProfile(p){const rules=await deckRules(),decks=rules.normalizeDecks(p.decks),defaults=D.newProfile(p.uid,p.username).troops,selectedDeckIndex=Math.max(0,decks.findIndex(deck=>deck.id===p.selectedDeckId));return {...p,troops:Object.fromEntries(D.ALL_TROOPS.map(key=>[key,{...defaults[key],...p.troops?.[key]}])),decks,selectedDeckId:decks[selectedDeckIndex].id,selectedDeckIndex};}
+  async function requestedDeck(request,p,{saving=false}={}){
+    const rules=await deckRules(),decks=rules.normalizeDecks(p.decks);
+    const supplied=request.deck||decks.find(deck=>deck.id===request.deckId)||(!request.deckId&&(request.faction?decks.find(deck=>deck.faction===request.faction):decks.find(deck=>deck.id===p.selectedDeckId)))||null;
+    const checked=rules.validateDeck(supplied,{unlockedTypes:owned(p)});
+    D.fail(checked.valid,'INVALID_DECK',checked.errors.join(' '));
+    D.fail(!request.faction||request.faction===checked.deck.faction,'INVALID_DECK','The deck faction does not match the requested faction.');
+    if(!saving&&!p.activeSessionId)D.fail(decks.some(deck=>JSON.stringify(deck)===JSON.stringify(checked.deck)),'DECK_NOT_SAVED','Save this deck before starting a match.');
+    return clone(checked.deck);
+  }
+  async function normalizeSessionDecks(session){
+    const rules=await deckRules();session.decks=session.decks||{};
+    for(const side of ['p0','p1'])if(session.factions[side]){
+      const prior=session.decks[side],fallback=rules.STARTER_DECKS.find(deck=>deck.faction===session.factions[side]);
+      const checked=rules.validateDeck(prior||fallback,{unlockedTypes:owned(session.profiles[side]||D.newProfile('bot','AI'))});
+      D.fail(checked.valid,'INVALID_DECK','The locked match deck is invalid. Start a new match.');
+      session.decks[side]=clone(checked.deck);session.roster[side]=rules.sanitizeRoster(session.roster[side],checked.deck);
+    }
+    return session;
+  }
   async function identity(token) {
     D.fail(typeof token==='string'&&token.length>0,'UNAUTHENTICATED','Sign in to save Faction Forge progress.',401);
     const decoded=await auth.verifyIdToken(token,true);
@@ -23,40 +44,42 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   async function profile(who) {
     return db.runTransaction(async tx=>{
       const ref=profileRef(who.uid),snap=await tx.get(ref);
-      if(snap.exists)return {...snap.data(),upgradeCosts:clone(D.FORGE_COSTS)};
+      if(snap.exists){const next=await normalizeProfile(snap.data());if(JSON.stringify(next)!==JSON.stringify(snap.data()))tx.set(ref,next);return {...next,upgradeCosts:clone(D.FORGE_COSTS)};}
       const legacy=await tx.get(db.doc(`users/${who.username}`));
-      const created=D.newProfile(who.uid,who.username,legacy.data()?.crowncouncilElo,now());tx.create(ref,created);return {...created,upgradeCosts:clone(D.FORGE_COSTS)};
+      const created=await normalizeProfile(D.newProfile(who.uid,who.username,legacy.data()?.crowncouncilElo,now()));tx.create(ref,created);return {...created,upgradeCosts:clone(D.FORGE_COSTS)};
     });
   }
   function owned(profile) {return D.ALL_TROOPS.filter(key=>profile.troops[key]?.unlocked);}
   async function engine(session) {return adapterFactory({seed:session.seed+':'+session.revision,modules:await sharedContent()});}
-  function newState({id,mode,faction,who,profile,missionNumber,missionId,mission}) {
+  function newState({id,mode,faction,deck,who,profile,missionNumber,missionId,mission}) {
     const created=now();
     return {schemaVersion:1,id,mode,missionNumber:missionNumber||null,missionId:missionId||null,seed:randomUUID(),ranked:false,revision:0,
       isAI:mode!=='pvp',aiDifficulty:mission?.difficulty||.65,aiStyle:mission?.aiStyle||mission?.opponent?.aiStyle||'early_combos',estimatedMmr:mission?.estimatedMmr||null,participants:[who.uid,null],players:[who.username,mission?.opponent?.name||'IronWarden'],
       profiles:{p0:clone(profile),p1:D.newProfile('bot','AI',profile.crowncouncilElo)},
-      factions:{p0:faction,p1:mission?.aiFaction||mission?.opponent?.faction||'Helions'},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},
+      factions:{p0:faction,p1:mission?.aiFaction||mission?.opponent?.faction||mission?.faction||'Helions'},decks:{p0:clone(deck),p1:clone(mission?.opponent?.deck||mission?.deck||null)},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},
       lives:[4,4],initialMmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmr:[profile.crowncouncilElo,profile.crowncouncilElo],mmrChange:[0,0],currentPacks:{p0:[],p1:[]},selections:{},draftIndex:0,round:1,
       phase:'draft',bonusFor:null,phaseEndsAt:created+60000,deadlineAt:created+60000,createdAt:created,updatedAt:created,expiresAt:created+2*60*60*1000,battleReadyAt:0,battle:null,battleCount:0,completedBattles:0,roundWins:[0,0],serverValidated:false,processedRequests:{},winnerSide:null};
   }
   async function makePacks(session,adapter) {
+    await normalizeSessionDecks(session);
     session.phaseEndsAt=now()+60000;session.deadlineAt=session.phaseEndsAt;
     for(const side of ['p0','p1']) {
       session.currentPacks[side]=session.bonusFor&&session.bonusFor!==side?[]:adapter.pack(session,side,owned(session.profiles[side]));
     }
   }
   async function startSolo(who,request) {
-    D.onlyKeys(request,['mode','missionId','faction']);
+    D.onlyKeys(request,['mode','missionId','faction','deck','deckId']);
     D.fail(['campaign','bot','endless'].includes(request.mode),'INVALID_MODE','Choose a solo mode.');
-    D.fail(['Vanir','Aesir','Helions'].includes(request.faction),'INVALID_FACTION','Choose a faction.');
     const content=await sharedContent();
     const initial=await profile(who);
+    const deck=await requestedDeck(request,initial);request={...request,faction:deck.faction,deck};
     if(initial.activeSessionId) return getSession(who,initial.activeSessionId);
     const options=D.canStart(initial,request);
     const mission=options.missionNumber?content.campaign.getMission(options.missionId):request.mode==='endless'?content.campaign.createEndlessMission((initial.campaign.endlessBest||0)+1):content.campaign.practiceOpponent(initial.crowncouncilElo);
+    if(request.mode==='bot'&&content.campaign.chooseAIDeck)mission.deck=content.campaign.chooseAIDeck(mission.faction||'Helions',deck,mission.difficulty||.65);
     const id=randomUUID();const session=newState({id,...request,...options,who,profile:initial,mission});
     if(request.mode==='endless'){session.challengeLevel=(initial.campaign.endlessBest||0)+1;session.missionId='endless-'+session.challengeLevel;}
-    if(mission?.opponent){session.roster.p0=clone(content.campaign.playerStartingRoster?.(request.faction,mission)||[]);session.roster.p1=clone(mission.opponent.roster);session.formations.p1=mission.opponent.formation;session.relics.p1=clone(mission.opponent.relics||[]);session.tactics.p1=clone(mission.opponent.tactics||[]);}
+    if(mission?.opponent){session.roster.p0=clone(content.campaign.playerStartingRoster?.(request.faction,mission,deck)||[]);session.roster.p1=clone(mission.opponent.roster);session.formations.p1=mission.opponent.formation;session.relics.p1=clone(mission.opponent.relics||[]);session.tactics.p1=clone(mission.opponent.tactics||[]);}
     else if(mission){session.players[1]=mission.name;session.factions.p1=mission.faction;session.mmr[1]=mission.estimatedMmr;}
     // Campaign introduces unlockables deliberately; bot/endless opponents may
     // use the complete roster. Player collection locks are independently enforced.
@@ -70,14 +93,15 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     return view(who,session);
   }
   async function joinPvp(who,request) {
-    D.onlyKeys(request,['lobbyId','faction','ranked']);
-    D.safeId(request.lobbyId,'Lobby');D.fail(['Vanir','Aesir','Helions'].includes(request.faction),'INVALID_FACTION','Choose a faction.');
+    D.onlyKeys(request,['lobbyId','faction','ranked','deck','deckId']);
+    D.safeId(request.lobbyId,'Lobby');
     await profile(who);const content=await sharedContent();
     const link=db.doc(`factionForgeLobbySessions/${request.lobbyId}`);
     const id=randomUUID();
     await db.runTransaction(async tx=>{
       const [lobbySnap,linkSnap,pSnap]=await Promise.all([tx.get(db.doc(`lobbies/${request.lobbyId}`)),tx.get(link),tx.get(profileRef(who.uid))]);
       const lobby=lobbySnap.data(),p=pSnap.data();
+      const deck=await requestedDeck(request,p);const faction=deck.faction;
       D.fail(lobbySnap.exists&&['crowncouncil','factionforge'].includes(lobby.gameType),'LOBBY_UNAVAILABLE','This Faction Forge lobby is unavailable.',404);
       D.fail(lobby.visibility==='public','PRIVATE_PRACTICE_ONLY','Private hosted rooms remain practice matches. Ranked progression uses verified public lobbies.',409);
       D.fail(typeof lobby.hostUid==='string'&&lobby.members&&lobby.members[who.uid]===who.username&&Array.isArray(lobby.players)&&lobby.players.slice(0,2).includes(who.username),'VERIFIED_LOBBY_REQUIRED','This room needs protected Firebase UID seats. Create a new public Faction Forge lobby.',409);
@@ -87,16 +111,16 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
         D.fail(existing.ranked===(lobby.forgeRanked!==false),'LOBBY_SETTINGS_CHANGED','The lobby match rules changed. Create a new lobby.',409);
         D.fail(existing.participants[0]===lobby.hostUid,'LOBBY_OWNERSHIP_CHANGED','This lobby belongs to a different match host. Create a new lobby.',409);
         const prior=existing.participants.indexOf(who.uid);
-        if(prior>=0){D.fail(existing.factions['p'+prior]===request.faction,'FACTION_LOCKED','Your match faction is already locked.',409);return;}
+        if(prior>=0){await normalizeSessionDecks(existing);D.fail(JSON.stringify(existing.decks['p'+prior])===JSON.stringify(deck),'DECK_LOCKED','Your match deck is already locked.',409);return;}
         D.fail(existing.phase==='waiting'&&!existing.participants[1],'LOBBY_FULL','This match already has two verified players.',409);
         D.fail(!p.activeSessionId,'MATCH_ACTIVE','Finish your active match first.',409);
-        existing.participants[1]=who.uid;existing.players[1]=who.username;existing.profiles.p1=clone(p);existing.factions.p1=request.faction;existing.initialMmr[1]=p.crowncouncilElo;existing.mmr[1]=p.crowncouncilElo;existing.phase='draft';existing.revision++;
+        existing.participants[1]=who.uid;existing.players[1]=who.username;existing.profiles.p1=clone(p);existing.factions.p1=faction;existing.decks=existing.decks||{};existing.decks.p1=deck;existing.initialMmr[1]=p.crowncouncilElo;existing.mmr[1]=p.crowncouncilElo;existing.phase='draft';existing.revision++;
         const adapter=adapterFactory({seed:existing.seed+':'+existing.revision,modules:content});await makePacks(existing,adapter);
         tx.set(existingRef,existing);tx.update(profileRef(who.uid),{activeSessionId:existing.id,updatedAt:now()});
       } else {
-        D.fail(lobby.host===who.username&&lobby.hostUid===who.uid,'HOST_NOT_READY','The verified host must choose a faction first.',409);
+        D.fail(lobby.host===who.username&&lobby.hostUid===who.uid,'HOST_NOT_READY','The verified host must choose a deck first.',409);
         D.fail(!p.activeSessionId,'MATCH_ACTIVE','Finish your active match first.',409);
-        const session=newState({id,mode:'pvp',faction:request.faction,who,profile:p});session.phase='waiting';session.phaseEndsAt=0;session.deadlineAt=0;session.ranked=lobby.forgeRanked!==false;session.lobbyId=request.lobbyId;session.players[1]='Waiting for player';session.profiles.p1=null;session.factions.p1=null;
+        const session=newState({id,mode:'pvp',faction,deck,who,profile:p});session.phase='waiting';session.phaseEndsAt=0;session.deadlineAt=0;session.ranked=lobby.forgeRanked!==false;session.lobbyId=request.lobbyId;session.players[1]='Waiting for player';session.profiles.p1=null;session.factions.p1=null;
         tx.create(sessionRef(id),session);tx.set(link,{sessionId:id,hostUid:who.uid,createdAt:now()});tx.update(profileRef(who.uid),{activeSessionId:id,updatedAt:now()});
       }
     });
@@ -120,6 +144,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     await db.runTransaction(async tx=>{
       const snap=await tx.get(sessionRef(id));D.fail(snap.exists,'NOT_FOUND','Match not found.',404);session=snap.data();
       D.fail(session.participants.includes(who.uid),'PERMISSION_DENIED','This match belongs to another player.',403);
+      if(!session.decks){dirty=true;await normalizeSessionDecks(session);if(['draft','loser-bonus'].includes(session.phase)){session.revision++;session.selections={};await makePacks(session,await engine(session));}}
       if(session.phase!=='game-over'&&session.expiresAt<=now()){dirty=true;session.phase='game-over';session.abandoned=true;session.winnerSide=null;session.endedAt=now();session.serverValidated=false;}
       if(session.phase==='battle'&&session.battleReadyAt<=now()) {
         dirty=true;
@@ -161,6 +186,7 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     const content=await sharedContent();
     await db.runTransaction(async tx=>{
       const snap=await tx.get(sessionRef(id)),session=snap.data();D.fail(snap.exists,'NOT_FOUND','Match not found.',404);
+      await normalizeSessionDecks(session);
       const side=session.participants.indexOf(who.uid);D.fail(side>=0,'PERMISSION_DENIED','This is another player\'s match.',403);
       const requestKey=who.uid+'_'+request.requestId;
       if(session.processedRequests[requestKey]){const old=session.processedRequests[requestKey];D.fail(old.index===request.index&&old.sequence===request.sequence,'REQUEST_CONFLICT','Use a new identifier for a different choice.',409);return;}
@@ -202,6 +228,16 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
       const result=D.upgrade(p.data(),troopKey,now());transaction={...result.transaction,requestId,uid:who.uid};tx.set(ref,result.profile);tx.create(receipt,transaction);
     });return {profile:await profile(who),transaction};
   }
+  async function saveDeck(who,request){
+    D.onlyKeys(request,['deck']);await profile(who);const rules=await deckRules();
+    let saved;
+    await db.runTransaction(async tx=>{const ref=profileRef(who.uid),snap=await tx.get(ref),p=snap.data();D.fail(!p.activeSessionId,'MATCH_ACTIVE','Your match deck is locked.',409);D.safeId(request.deck?.id,'Deck');D.fail(!rules.STARTER_DECKS.some(deck=>deck.id===request.deck.id),'INVALID_DECK','Duplicate a starter deck before editing it.');saved=await requestedDeck(request,p,{saving:true});D.fail(p.decks.some(deck=>deck.id===saved.id)||p.decks.length<12,'DECK_LIMIT','Keep at most 12 decks.');const decks=rules.normalizeDecks(p.decks.some(deck=>deck.id===saved.id)?p.decks.map(deck=>deck.id===saved.id?saved:deck):[...p.decks,saved]);D.fail(decks.length<=12,'DECK_LIMIT','Keep at most 12 decks.');tx.update(ref,{decks,selectedDeckId:saved.id,selectedDeckIndex:decks.findIndex(deck=>deck.id===saved.id),updatedAt:now()});});
+    return {profile:await profile(who),deck:saved};
+  }
+  async function selectDeck(who,request){
+    D.onlyKeys(request,['deckId']);D.safeId(request.deckId,'Deck');await profile(who);
+    await db.runTransaction(async tx=>{const ref=profileRef(who.uid),snap=await tx.get(ref),p=snap.data();D.fail(!p.activeSessionId,'MATCH_ACTIVE','Your match deck is locked.',409);const deck=await requestedDeck(request,p);tx.update(ref,{selectedDeckId:deck.id,selectedDeckIndex:p.decks.findIndex(item=>item.id===deck.id),updatedAt:now()});});return {profile:await profile(who)};
+  }
   async function target(who,troopKey){D.fail(D.ALL_TROOPS.includes(troopKey),'INVALID_ARGUMENT','Unknown troop.');const p=await profile(who);D.fail(p.troops[troopKey].unlocked,'TROOP_LOCKED','Choose an unlocked troop.');await profileRef(who.uid).update({rewardTarget:troopKey});return {profile:await profile(who)};}
   async function buyPack(who,request){
     D.onlyKeys(request,['packId','requestId']);const {packId,requestId}=request;D.safeId(requestId,'Request');
@@ -232,6 +268,6 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
     const receipt=await receiptRef(session.id,who.uid).get();
     return {session:publicSession,profile:await profile(who),...(receipt.exists?{receipt:receipt.data()}:{}),serverTime:now()};
   }
-  return {identity,profile,startSolo,joinPvp,getSession,pick,upgradeTroop,buyPack,target,abandon};
+  return {identity,profile,startSolo,joinPvp,getSession,pick,upgradeTroop,buyPack,saveDeck,selectDeck,target,abandon};
 }
 module.exports={createForgeService};

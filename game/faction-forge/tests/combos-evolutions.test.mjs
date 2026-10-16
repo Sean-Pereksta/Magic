@@ -6,6 +6,7 @@ import {EVOLUTIONS,applyEvolution,applySummonEvolution,afterEvolutionAttack,tick
 import * as units from '../units.js';
 const require=createRequire(import.meta.url);
 const {loadModules,createCombatAdapter}=require('../../../server/faction-forge/simulator.cjs');
+const {BUILDS,stateFor,benchmark}=require('../balance-benchmark.cjs');
 let serial=0;
 const make=(type,props={})=>({id:`${type}-${++serial}`,type,p:0,x:3,y:3,hp:100,maxhp:100,dmg:6,cd:1800,range:4,armor:0,size:1,lvl:1,...props});
 function fixture(types,rank=1){
@@ -42,7 +43,7 @@ for(const combo of COMBOS)test(`${combo.name}: Rank I automatic trigger has a re
   const f=fixture(combo.units),before=f.target.hp;activate(combo.id,f);
   const ev=f.events.find(e=>e.comboId===combo.id);assert.ok(ev,combo.id);assert.equal(ev.level,1);assert.equal(ev.sourceId!=null,true);
   assert.ok(ev.radius<=COMBO_LIMITS.radius);assert.ok(ev.targets.every(t=>Number.isFinite(t.x)&&Number.isFinite(t.y)&&t.amount<=COMBO_LIMITS.damagePerTarget));
-  if(combo.id==='blood-chain'){assert.ok(f.allies[1].chainChargedUntil>1000);}
+  if(combo.id==='blood-chain'){assert.ok(f.target.corrosionUntil>1000);assert.ok(f.target.hp<before);}
   else if(combo.id==='arcane-fortress'){assert.ok(f.find('golem').comboShield>0);assert.ok(f.st.field.wards[0].hp>3);}
   else if(combo.id==='brood-detonation')assert.ok(f.find('hellspawn').broodSurgeUntil>1000);
   else if(combo.id==='predators-feast')assert.ok(f.find('siphonleech').hp>50);
@@ -61,12 +62,14 @@ test('all 14 combinations reject a missing partner and promote through battle ra
   }
 });
 
-test('a recruited BloodBurst card supplies two bodies and a charged survivor can detonate after its partner dies',()=>{
-  const tracker=comboStatus([{type:'blood',count:1,lvl:1}],'Helions');assert.equal(tracker.find(c=>c.id==='blood-chain').missing.length,0);
-  const f=fixture(['blood','blood']);const [first,second]=f.allies;afterComboAttack(first,f.target,1000,f.st,f.hooks);
-  first.hp=0;f.st.field.units=f.st.field.units.filter(v=>v!==first);second.hp=0;
-  const before=f.target.hp;afterComboAttack(second,f.target,1180,f.st,f.hooks);
-  assert.ok(f.target.hp<before);assert.equal(f.events.filter(e=>e.comboId==='blood-chain').length,2);
+test('Corrosive Chain requires two distinct deck troops and cannot invent a duplicate BloodBurst partner',()=>{
+  const missing=comboStatus([{type:'blood',count:1,lvl:1}],'Helions').find(c=>c.id==='blood-chain');
+  assert.deepEqual(missing.missing,['spitter']);
+  const ready=comboStatus([{type:'blood',count:1,lvl:1},{type:'spitter',count:1,lvl:1}],'Helions').find(c=>c.id==='blood-chain');assert.equal(ready.status,'ready');
+  const f=fixture(['blood','spitter']);f.st.decks={p0:{troops:['blood','defiler','hellspawn','roach','carrion']}};
+  afterComboAttack(f.find('blood'),f.target,1000,f.st,f.hooks);assert.equal(f.events.some(e=>e.comboId==='blood-chain'),false);
+  f.st.decks.p0.troops=['blood','spitter','hellspawn','defiler','roach'];const before=f.target.hp;
+  afterComboAttack(f.find('blood'),f.target,1200,f.st,f.hooks);assert.ok(f.target.hp<before);assert.equal(f.events.filter(e=>e.comboId==='blood-chain').length,1);
 });
 
 test('secondary damage does not recurse, clouds expire, wound reduces healing, and shields are consumed',()=>{
@@ -115,10 +118,11 @@ test('shared authoritative replays retain evolution/combo events, remain byte-id
 test('every one of the 64 paths executes through the real adapter at Rank II and Rank III',async()=>{
   const modules=await loadModules();
   for(const [type,paths] of Object.entries(EVOLUTIONS))for(const path of Object.keys(paths))for(const lvl of [2,3]){
-    const faction=modules.units.NEW_UNITS[type]?.faction||'Vanir';
-    const st={roster:{p0:[{type,count:1,lvl}],p1:[{type:'vguard',count:1,lvl:2},{type:'rifleman',count:1,lvl:1}]},factions:{p0:faction,p1:'Vanir'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},evolutions:{p0:{[type]:path},p1:{}},comboEnhancements:{p0:[],p1:[]}};
+    const faction=createCombatAdapter({seed:'catalog',modules}).troops[type].faction;
+    const st=stateFor({name:'Evolution',faction,types:[type]},{name:'Opponent',faction:'Vanir',types:['vguard','rifleman']},lvl);
+    st.evolutions.p0={[type]:path};
     const battle=createCombatAdapter({seed:`path-${type}-${path}-${lvl}`,modules}).battle(st);
-    assert.ok(battle.frames[0].units.filter(u=>u.p===0).every(u=>u.evolution===path),`${type}/${path}/${lvl}`);
+    assert.equal(battle.frames[0].units.filter(u=>u.p===0).length,1);assert.ok(battle.frames[0].units.filter(u=>u.p===0).every(u=>u.evolution===path),`${type}/${path}/${lvl}`);
     assert.ok(battle.durationMs<200000);assert.ok(battle.frames.every(f=>f.units.length<=192));
   }
 });
@@ -134,17 +138,10 @@ test('the triggering attack budget also caps damage dealt by supporting casters 
   }
 });
 
-test('seeded counterplay: a six-card Rocket Battery can break a six-card Arcane Fortress at starting and Legendary ranks',async()=>{
-  const modules=await loadModules(),fortress=['golem','wardmaker','architect','guardian','blade','phaser'],battery=['vguard','shieldcap','vrocket','vrocket','signalhawk','medic'];
-  for(const lvl of [1,3]){
-    let wins=0;
-    for(const flip of [false,true]){
-      const left=flip?battery:fortress,right=flip?fortress:battery;
-      const st={roster:{p0:left.map(type=>({type,count:1,lvl})),p1:right.map(type=>({type,count:1,lvl}))},factions:{p0:flip?'Vanir':'Aesir',p1:flip?'Aesir':'Vanir'},formations:{p0:'balanced',p1:'wide'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]}};
-      const result=createCombatAdapter({seed:'probe-0-3',modules}).battle(st,{ranked:true});wins+=result.winnerSide===(flip?0:1)?1:0;
-    }
-    assert.ok(wins>=1,`Rocket Battery needs counterplay at rank ${lvl}`);
-  }
+test('seeded counterplay: protected precision breaks three tanks with two supports at all ranks',async()=>{
+  const result=await benchmark({seeds:2,scenarios:[['precision-vs-armor','precision','tanks']]});
+  for(const row of result.rows)assert.ok(row.aWins>=2,`Precision needs meaningful counterplay at rank ${row.rank}`);
+  assert.equal(result.peakBodiesPerSide,5);
 });
 
 test('rocket impacts damage nearby enemy wards once and never damage friendly wards',()=>{
@@ -161,13 +158,8 @@ test('extra fields, control and swarm creation stay capped even with multiple ev
   const count=brood.st.field.units.length;activate('brood-detonation',brood);assert.equal(brood.st.field.units.length,count);
 });
 
-test('seeded counterplay: Rank II Assassin Swarm pressures a concentrated Rocket Battery without a guaranteed winner',async()=>{
-  const modules=await loadModules(),battery=['vguard','shieldcap','vrocket','vrocket','signalhawk','medic'],assassins=['viper','viper','burrower','hellspawn','matron','hiveherald'];
-  let assassinWins=0;
-  for(let seed=0;seed<3;seed++)for(const flip of [false,true]){
-    const left=flip?assassins:battery,right=flip?battery:assassins;
-    const st={roster:{p0:left.map(type=>({type,count:1,lvl:2})),p1:right.map(type=>({type,count:1,lvl:2}))},factions:{p0:flip?'Helions':'Vanir',p1:flip?'Vanir':'Helions'},formations:{p0:seed%2?'wide':'balanced',p1:seed%2?'balanced':'wide'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]}};
-    const result=createCombatAdapter({seed:`combo-balance-2-6-7-${seed}`,modules}).battle(st,{ranked:true});assassinWins+=result.winnerSide===(flip?0:1)?1:0;
-  }
-  assert.ok(assassinWins>0&&assassinWins<6,`Expected meaningful counterplay, got ${assassinWins}/6`);
+test('seeded counterplay: assassins can defeat an exposed five-unit ranged line',async()=>{
+  const result=await benchmark({seeds:5,scenarios:[['assassins-vs-ranged','assassins','pureRanged']]});
+  assert.ok(result.rows.every(row=>row.aWins>0),JSON.stringify(result.rows.map(row=>({rank:row.rank,wins:row.aWins}))));
+  assert.equal(result.peakBodiesPerSide,5);
 });

@@ -3,19 +3,21 @@
  * replay invoke the same hooks with their simulation time and grid helpers. */
 import {afterComboAttack,tickCombos,noteComboDamage,noteComboAmbush} from './combos.js';
 import {applyEvolution,afterEvolutionAttack,tickEvolutions} from './evolutions.js';
+import {COMBAT_LIMITS,calculateCounterDamage} from './combat-rules.js';
+export * from './combat-rules.js';
 export {COMBOS,COMBO_BY_ID,COMBO_LIMITS,comboStatus} from './combos.js';
 export {EVOLUTIONS,RANK_ENHANCEMENTS,evolutionFor,evolutionDescription,applySummonEvolution} from './evolutions.js';
 export const NEW_UNIT_KEYS = Object.freeze([
   'railbreaker', 'signalhawk', 'chronoweaver', 'miragewarden', 'siphonleech', 'hiveherald'
 ]);
 export const UNIT_LIMITS = Object.freeze({
-  temporalFieldsPerSide: 4, decoysPerSide: 4, summonsPerSide: 32,
-  summonsPerParent: 8, aliveUnitsPerSide: 96, markBonus: 1,
+  temporalFieldsPerSide: 4, decoysPerSide: 1, summonsPerSide: 2,
+  summonsPerParent: 1, aliveUnitsPerSide: COMBAT_LIMITS.activePerSide, markBonus: 1,
   minimumCooldownFactor: .65, maximumCooldownFactor: 1.4
 });
 export const NEW_UNITS = Object.freeze({
   railbreaker: {faction:'Vanir',name:'Railbreaker',emoji:'⚡',role:'back',armorType:'armored',
-    base:{hp:13,dmg:8,range:7,cd:1900,spd:1,armor:2},strongVs:['armored'], rail:true},
+    base:{hp:14,dmg:7,range:7,cd:1900,spd:1,armor:1},strongVs:['armored'], rail:true},
   signalhawk: {faction:'Vanir',name:'Signal Hawk',emoji:'🛰️',role:'back',
     base:{hp:7,dmg:1,range:5,cd:1300,spd:2,armor:0},signal:true},
   chronoweaver: {faction:'Aesir',name:'Chronoweaver',emoji:'⌛',role:'back',
@@ -31,7 +33,7 @@ export const NEW_LEGENDARIES = Object.freeze({
   railbreaker:{name:'Overload Shot',desc:'Every third charged rail shot pierces two additional enemies with stronger penetration.',notes:'3-shot cycle; no splash.'},
   signalhawk:{name:'Coordinated Strike',desc:'Marks two targets per scan. Nearby allies gain +1 damage; marks never stack.',notes:'Two marks; 2-tile ally radius.'},
   chronoweaver:{name:'Time Fracture',desc:'Every third field briefly slows enemy cooldowns more strongly.',notes:'Bounded temporal field.'},
-  miragewarden:{name:'Mirror Legion',desc:'Can maintain two fragile decoys, subject to a four-decoy team cap.',notes:'Decoys expire; no damage.'},
+  miragewarden:{name:'Mirror Legion',desc:'Creates a decoy in a vacant army slot, or a temporary mirror shield when the five-unit field is full.',notes:'One decoy; five total bodies.'},
   siphonleech:{name:'Blood Communion',desc:'One point of excess siphoned healing can restore a nearby damaged Helions ally.',notes:'Wound reduces self/ally healing.'},
   hiveherald:{name:'Hive Frenzy',desc:'A nearby swarm death grants surviving swarms brief haste, without additive stacking.',notes:'Frenzy lasts 2 seconds.'}
 });
@@ -110,7 +112,7 @@ export function applyArmyOptions(st,now,hooks={}) {
     const sideMin=p===0?Math.floor(height/2):0,sideMax=p===0?height:Math.floor(height/2);
     let formation=st.formations?.[side]||'balanced';
     if (formation==='balanced'&&tactics.has('scatter_formation')) formation='wide';
-    if (formation!=='balanced' && hooks.rectangleFree) {
+    if (hooks.rectangleFree) {
       const reserved=units.filter(v=>alive(v)&&v.p!==p),plans=[];let valid=true;
       const ordered=allies.slice().sort((a,b)=>{
         if((a.size||1)!==(b.size||1))return (b.size||1)-(a.size||1);
@@ -120,11 +122,13 @@ export function applyArmyOptions(st,now,hooks={}) {
       const counters={front:0,back:0};
       for (const u of ordered) {
         const size=u.size===2?2:1,role=hooks.roleFor?.(u.type)||((u.range||1)>1?'back':'front'),index=counters[role]++;
-        let x=u.x,y=u.y;
+        const frontRow=p===0?Math.floor(height/2)+2:Math.floor(height/2)-3;
+        const backRow=p===0?Math.floor(height/2)+5:Math.floor(height/2)-6;
+        let x=[3,4,2,5,1][index%5],y=role==='front'?frontRow:backRow;
         if(formation==='wide')x=index%2?width-size-Math.floor(index/2)*2:Math.floor(index/2)*2;
-        else if(formation==='protected_backline'&&role==='back')y-=dir;
+        else if(formation==='protected_backline'){x=[3,4,2,5,1][index%5];if(role==='back')y=frontRow-dir*2;}
         else if(formation==='spearhead'&&role==='front'&&index===0){x=Math.floor((width-size)/2);y+=dir;}
-        else if(formation==='ambush'&&['miner','blade','viper','burrower'].includes(u.type)){x=index%2?width-size:0;y+=dir;}
+        else if(formation==='ambush'&&['miner','blade','viper','burrower','hellspawn','blood'].includes(u.type)){x=index%2?width-size:0;y+=dir;}
         x=Math.max(0,Math.min(width-size,x));y=Math.max(sideMin,Math.min(sideMax-size,y));
         const candidates=[[x,y],[x,u.y],[u.x,u.y]];
         for(let row=p===0?height-size:0;p===0?row>=Math.floor(height/2):row<Math.floor(height/2);row+=dir){
@@ -163,7 +167,7 @@ export function applyArmyOptions(st,now,hooks={}) {
 
 export function canSpawnSummon(st,parent,illusion=false) {
   const units = st.field.units||[];
-  return units.filter(v=>alive(v)&&v.p===parent.p).length<UNIT_LIMITS.aliveUnitsPerSide &&
+  return alive(parent)&&!parent.illusion&&units.filter(v=>alive(v)&&v.p===parent.p).length<UNIT_LIMITS.aliveUnitsPerSide &&
     units.filter(v=>alive(v)&&v.p===parent.p&&v.summoned).length<UNIT_LIMITS.summonsPerSide &&
     units.filter(v=>alive(v)&&v.summonedBy===parent.id).length<UNIT_LIMITS.summonsPerParent &&
     (!illusion || units.filter(v=>alive(v)&&v.p===parent.p&&v.illusion).length<UNIT_LIMITS.decoysPerSide);
@@ -219,10 +223,14 @@ export function tickForgeAbilities(st,now,hooks={}) {
         u.nextTemporal=now+(u.temporalCooldown||6000);u.animType='cast';u.animUntil=now+500;emit(hooks,fracture?'time-fracture':'temporal-field',u,null,now);
       } else u.nextTemporal=now+800;
     } else if (u.type==='miragewarden' && now>=(u.nextMirage||0)) {
-      const cap=u.mirageCap||(u.legendary?2:1);
+      const cap=1;
       const own=units.filter(v=>alive(v)&&v.illusion&&v.summonedBy===u.id).length;
       if (own<cap && canSpawnSummon(st,u,true) && hooks.spawnIllusion?.(st,u,now)) {
         u.nextMirage=now+(u.mirageCooldown||(u.legendary?2600:5000));u.animType='cast';u.animUntil=now+500;emit(hooks,'mirage',u,null,now);
+      } else if(!canSpawnSummon(st,u,true)) {
+        const ally=units.filter(v=>alive(v)&&v.p===u.p&&!v.illusion&&distance(u,v,hooks)<=3).sort((a,b)=>a.hp/a.maxhp-b.hp/b.maxhp)[0];
+        if(ally){ally.comboShield=Math.max(ally.comboShield||0,u.legendary?3:2);ally.comboShieldUntil=now+2200;emit(hooks,'mirage',u,ally,now);}
+        u.nextMirage=now+(u.mirageCooldown||5000);
       } else u.nextMirage=now+600;
     } else if (u.type==='hiveherald') {
       const focus=ordered[0];u.heraldFocusId=focus?.id;
@@ -243,6 +251,7 @@ export function attackCooldown(u,now,st,hooks={}) {
   if (isSwarm(u)) for (const herald of st.field.units) if (alive(herald)&&herald.p===u.p&&herald.type==='hiveherald'&&!disabled(herald,now)&&distance(herald,u,hooks)<=3) haste=Math.min(haste,.9);
   if ((u.hiveFrenzyUntil||0)>now) haste=Math.min(haste,.82);
   if ((u.broodSurgeUntil||0)>now) haste=Math.min(haste,.8);
+  if((u.slowUntil||0)>now)slow=Math.max(slow,1.2);
   const factor=Math.max(UNIT_LIMITS.minimumCooldownFactor,Math.min(UNIT_LIMITS.maximumCooldownFactor,haste*slow));
   return Math.max(150,Math.round((u.cd||600)*factor));
 }
@@ -286,17 +295,12 @@ export function attackForgeUnit(u,t,now,st,hooks={}) {
   if (now<u.railChargeUntil) return true;
   u.railChargeUntil=0;u.railShots=(u.railShots||0)+1;
   const overload=u.legendary&&u.railShots%3===0;
-  const armorPen=overload?4:2;
   const doHit=(v,scale=1)=> {
     let raw=Math.max(1,Math.round(u.dmg*scale)) + markedDamageBonus(u,v,now,st,hooks);
-    if ((u.strongVs||[]).includes(v.armorType||((v.armor||0)>=3?'armored':'light'))) raw+=2;
-    if(u.antiArmorRounds&&(v.armorType==='armored'||(v.armor||0)>=3||v.size===2))raw+=1;
     raw=hooks.wardDamage ? hooks.wardDamage(u,v,raw,st.field) : raw;
-    if (v.rangedReduce) raw=Math.max(1,raw-v.rangedReduce);
-    const armor=Math.max(0,(v.armor||0)-armorPen);
     const aura=hooks.auraReduce ? hooks.auraReduce(v,st.field) : 0;
-    const damage=Math.max(1,raw-armor-aura);
-    hooks.applyDamage?.(v,damage,st);emit(hooks,'rail-impact',u,v,now);
+    const result=calculateCounterDamage({...u,armorPenetration:overload?1:.75},v,raw,{now,auraReduce:aura});
+    hooks.applyDamage?.(v,result.damage,st);emit(hooks,'rail-impact',u,v,now);
   };
   doHit(t);
   const ux=u.x+((u.size||1)-1)/2,uy=u.y+((u.size||1)-1)/2;

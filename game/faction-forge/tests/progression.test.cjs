@@ -26,6 +26,17 @@ function fixture({adapterFactory}={}){
 }
 const fakeAdapter=()=>({version:'test',pack:(_s,_side,unlocked)=>[{type:'troop',key:unlocked[0],name:'Test'},{type:'troop',key:unlocked[1],name:'Second'},{type:'troop',key:unlocked[2],name:'Third'}],pick(s,side,card){s=copy(s);s.roster[side].push({type:card.key,count:1,lvl:1});return s;},aiPick:()=>0,battle:()=>({frames:[{at:0,units:[]}],durationMs:100,clockOrigin:1000,winnerSide:0})});
 
+test('authoritative decks migrate, save and lock full snapshots rather than only factions',async()=>{
+ const f=fixture({adapterFactory:fakeAdapter}),p=await f.service.profile(who);assert.equal(p.decks.length,3);p.forgeDust=728;p.troops.marksman.forgeTier=3;delete p.decks;delete p.selectedDeckId;f.db.docs.set('factionForgeProfiles/'+who.uid,p);const migrated=await f.service.profile(who);assert.equal(migrated.forgeDust,728);assert.equal(migrated.troops.marksman.forgeTier,3);assert.equal(migrated.decks.length,3);
+ const deck={id:'saved-vanir',name:'Custom Iron',faction:'Vanir',troops:['vguard','marksman','vrocket','rifleman','medic']};await f.service.saveDeck(who,{deck});await f.service.selectDeck(who,{deckId:deck.id});assert.equal((await f.service.profile(who)).selectedDeckId,deck.id);
+ await assert.rejects(f.service.startSolo(who,{mode:'bot',deck:{...deck,id:'unsaved-valid'}}),{code:'DECK_NOT_SAVED'});
+ await assert.rejects(f.service.startSolo(who,{mode:'bot',deck:{...deck,troops:['vguard','marksman','medic','railbreaker','vrocket']}}),{code:'INVALID_DECK'});
+ const started=await f.service.startSolo(who,{mode:'bot',deckId:deck.id});assert.deepEqual(started.session.decks.p0,deck);deck.troops[0]='miner';assert.equal((await f.service.getSession(who,started.session.id)).session.decks.p0.troops[0],'vguard');await assert.rejects(f.service.saveDeck(who,{deck}),{code:'MATCH_ACTIVE'});await assert.rejects(f.service.selectDeck(who,{deckId:'starter-aesir'}),{code:'MATCH_ACTIVE'});
+});
+test('multiplayer rejects changing any troop or deck metadata after a seat has locked its deck',async()=>{
+ const f=fixture({adapterFactory:fakeAdapter});f.db.docs.set('lobbies/deck-lock',{gameType:'crowncouncil',host:who.username,hostUid:who.uid,members:{[who.uid]:who.username},players:[who.username],visibility:'public',status:'waiting'});const p=await f.service.profile(who),deck=p.decks[0];const first=await f.service.joinPvp(who,{lobbyId:'deck-lock',deck});assert.deepEqual(first.session.decks.p0,deck);await assert.rejects(f.service.joinPvp(who,{lobbyId:'deck-lock',deck:{...deck,name:'Changed'}}),{code:'DECK_LOCKED'});await assert.rejects(f.service.joinPvp(who,{lobbyId:'deck-lock',deck:{...deck,troops:['vguard','marksman','vrocket','rifleman','medic']}}),{code:'DECK_LOCKED'});
+});
+
 test('all 26 original troops start owned; six blueprints start locked and ranks remain independent',()=>{
   const p=D.newProfile('u','Name',1789);assert.equal(p.crowncouncilElo,1789);assert.equal(Object.keys(p.troops).length,32);assert.equal(Object.values(p.troops).filter(u=>u.unlocked).length,26);assert(D.NEW_TROOPS.every(k=>!p.troops[k].unlocked));
 });

@@ -45,7 +45,7 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
     await assertFails(updateDoc(doc(attacker,'users','Legacy'),{password:'replacement-from-unrelated-session'}));
     await assertFails(deleteDoc(doc(owner,'users','Legacy')));
     await assertSucceeds(updateDoc(doc(attacker,'users','Unmigrated'),{bio:'Existing unrelated compatibility'}));
-    await assertSucceeds(setDoc(doc(owner,'lobbies','hosted','crowncouncil','state'),{phase:'battle',winner:'Legacy'}));
+    await assertSucceeds(setDoc(doc(owner,'lobbies','hosted','crowncouncil','state'),{phase:'waiting',winner:'Legacy'}));
     // Legacy hosted snapshots still work, but cannot write protected authority.
     await assertFails(updateDoc(doc(owner,'users','Legacy'),{crowncouncilLastDelta:50}));
     // Public UID seats may be claimed only by their own authenticated owner.
@@ -62,7 +62,27 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
     await assertFails(updateDoc(doc(attacker,'lobbies','hosted'),{hostUid:'attacker',members:{attacker:'Legacy'}}));
     await assertFails(setDoc(doc(attacker,'lobbies','forged-room'),{gameType:'crowncouncil',hostUid:'owner',host:'Legacy',members:{owner:'Legacy'},players:['Legacy'],visibility:'public',status:'waiting'}));
     await assertSucceeds(setDoc(doc(attacker,'lobbies','own-room'),{gameType:'crowncouncil',hostUid:'attacker',host:'Attacker',members:{attacker:'Attacker'},players:['Attacker'],visibility:'public',status:'waiting'}));
-    await assertSucceeds(setDoc(doc(owner,'lobbies','secure-room','crowncouncil','state'),{phase:'battle'}));
+    await assertSucceeds(setDoc(doc(owner,'lobbies','secure-room','crowncouncil','state'),{phase:'waiting'}));
+    const vanirDeck={id:'starter-vanir',name:'Iron Vanguard',faction:'Vanir',troops:['vguard','marksman','suppressor','vrocket','medic']},helionDeck={id:'starter-helions',name:'Blight Swarm',faction:'Helions',troops:['hellspawn','roach','defiler','spitter','blood']};
+    const staticRef=doc(owner,'lobbies','secure-room','crowncouncil','state');
+    const lockedState={sessionKey:'deck-rules',phase:'draft',factions:{p0:'Vanir',p1:'Helions'},decks:{p0:vanirDeck,p1:helionDeck},roster:{p0:[{type:'vguard',count:1,lvl:1},{type:'marksman',count:1,lvl:1}],p1:[{type:'hellspawn',count:1,lvl:1}]}};
+    await assertSucceeds(setDoc(staticRef,lockedState));
+    await assertFails(updateDoc(staticRef,{'decks.p0':{...vanirDeck,name:'Changed during match'}}));
+    await assertFails(updateDoc(doc(attacker,'lobbies','secure-room','crowncouncil','state'),{'decks.p1':{...helionDeck,troops:['hellspawn','roach','defiler','viper','blood']}}));
+    await assertFails(updateDoc(staticRef,{'roster.p0':[{type:'vguard',count:6,lvl:1}]}));
+    await assertFails(updateDoc(staticRef,{'roster.p0':[{type:'miner',count:1,lvl:1}]}));
+    await assertSucceeds(updateDoc(staticRef,{'roster.p0':[{type:'vguard',count:1,lvl:2},{type:'marksman',count:3,lvl:2},{type:'medic',count:1,lvl:1}]}));
+    await assertSucceeds(updateDoc(staticRef,{roster:{p0:vanirDeck.troops.map(type=>({type,count:1,lvl:3})),p1:helionDeck.troops.map(type=>({type,count:1,lvl:3}))}}));
+    const battleRef=doc(owner,'lobbies','secure-room','crowncouncil','battle'),legalUnits=[...vanirDeck.troops.map(type=>({type,p:0,hp:10})),...helionDeck.troops.map(type=>({type,p:1,hp:10}))];
+    await assertSucceeds(setDoc(battleRef,{units:legalUnits,sessionKey:'deck-rules'}));
+    await assertFails(updateDoc(battleRef,{units:[...legalUnits,{type:'vguard',p:0,hp:10}]}));
+    await assertFails(updateDoc(battleRef,{units:legalUnits.map((unit,index)=>index===9?{type:'vguard',p:0,hp:10}:unit)}));
+    await assertFails(updateDoc(battleRef,{units:[{type:'miner',p:0,hp:10}]}));
+    await assertFails(updateDoc(doc(attacker,'lobbies','secure-room','crowncouncil','battle'),{units:legalUnits}));
+    const afterimageDeck={id:'afterimage-test',name:'Afterimage',faction:'Aesir',troops:['guardian','phaser','storm','runebinder','wardmaker']},broodDeck={id:'brood-test',name:'Brood',faction:'Helions',troops:['roach','matron','defiler','spitter','carrion']};
+    await assertSucceeds(setDoc(staticRef,{...lockedState,sessionKey:'summon-rules',phase:'faction-select',factions:{p0:'Aesir',p1:'Helions'},decks:{p0:afterimageDeck,p1:broodDeck},roster:{p0:[],p1:[]}}));
+    await assertSucceeds(setDoc(battleRef,{units:[{type:'phaser',p:0,hp:10},{type:'miragewarden',p:0,hp:4,dmg:0,illusion:true},{type:'matron',p:1,hp:10},{type:'hellspawn',p:1,hp:4,summoned:true}],sessionKey:'summon-rules'}));
+    await assertFails(updateDoc(battleRef,{units:[{type:'miragewarden',p:0,hp:4,dmg:9,illusion:true}]}));
     const stranger=env.authenticatedContext('stranger').firestore();
     await assertFails(getDoc(doc(stranger,'lobbies','secure-room','crowncouncil','state')));
     await assertFails(updateDoc(doc(stranger,'lobbies','secure-room','crowncouncil','state'),{winner:'Stranger'}));
@@ -82,6 +102,21 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
     const progress=createFirebaseProgress({auth:{currentUser:{uid:'owner'}},db:owner,api:firestore,username:'Commander',troops,storage:{getItem:()=>null,setItem(){},removeItem(){}}});
     try{
       await progress.loadProfile();
+      const custom={id:'rules-custom',name:'Cloud Precision',faction:'Vanir',troops:['vguard','marksman','rifleman','vrocket','medic']};
+      await assertSucceeds(progress.saveDeck(custom));await assertSucceeds(progress.selectDeck('starter-aesir'));
+      const savedDecks=(await getDoc(solo)).data().decks;
+      await assertFails(updateDoc(solo,{decks:[...savedDecks,{...custom,id:'rules-duplicate',troops:['vguard','vguard','rifleman','vrocket','medic']}]}));
+      await assertFails(updateDoc(solo,{decks:[...savedDecks,{...custom,id:'rules-locked',troops:['vguard','marksman','railbreaker','vrocket','medic']}]}));
+      const railDeck={...custom,id:'unlocked-selection',troops:['vguard','marksman','railbreaker','vrocket','medic']};
+      await assertSucceeds(setDoc(staticRef,{...lockedState,sessionKey:'unlock-selection',phase:'faction-select',decks:{p0:null,p1:null},factions:{p0:null,p1:null},roster:{p0:[],p1:[]}}));
+      await assertFails(updateDoc(staticRef,{'decks.p0':railDeck,'factions.p0':'Vanir'}));
+      await assertSucceeds(updateDoc(solo,{'troops.railbreaker.unlocked':true}));
+      await assertSucceeds(updateDoc(staticRef,{'decks.p0':railDeck,'factions.p0':'Vanir'}));
+      for(let i=0;i<8;i++)await assertSucceeds(progress.saveDeck({...custom,id:'capacity-'+i,name:'Capacity '+i}));
+      await assertSucceeds(progress.saveDeck({...custom,name:'Edited at capacity'}));
+      if(progress.profile.decks.length!==12)throw Error('The deck library did not reach its expected capacity.');
+      await assertSucceeds(setDoc(doc(owner,'users','DeckMigration','factionForge','profile'),{...progress.profile,username:'DeckMigration'}));
+      try{await progress.saveDeck({...custom,id:'over-capacity'});throw Error('Deck overflow was accepted.');}catch(error){if(error.code!=='DECK_LIMIT')throw error;}
       await assertSucceeds(progress.recordSoloResult({id:'solo-win',mode:'campaign',missionId:'forge-01',won:true,lives:4}));
       await assertSucceeds(progress.recordSoloResult({id:'solo-win',mode:'campaign',missionId:'forge-01',won:true,lives:4}));
       if(progress.profile.forgeDust!==20)throw Error('Duplicate solo rewards were granted.');

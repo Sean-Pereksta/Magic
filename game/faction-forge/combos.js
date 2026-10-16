@@ -1,6 +1,7 @@
 /** Shared deterministic combo rules. All time, damage and placement come from
  * the authoritative simulation; presentation consumes the returned events. */
-export const COMBO_LIMITS = Object.freeze({ radius:2, targets:5, damagePerTarget:5,
+import {calculateCounterDamage} from './combat-rules.js';
+export const COMBO_LIMITS = Object.freeze({ radius:2, targets:5, damagePerTarget:4,
   controlMs:450, fieldsPerSide:6, fieldTicks:3, healPerActivation:3, enhancementLevel:2 });
 const rule = (id,name,faction,units,description,trigger,cooldown,counterplay) => Object.freeze({id,name,faction,units:Object.freeze(units),description,trigger,cooldown,counterplay});
 export const COMBOS = Object.freeze([
@@ -8,7 +9,7 @@ export const COMBOS = Object.freeze([
   rule('thunderclap','Thunderclap','Aesir',['storm','guardian'],'A Guardian slam calls down a lightning shockwave.','slam',5000,'Keep ranged troops away from the frontline.'),
   rule('lightning-echo','Lightning Echo','Aesir',['storm','phaser'],'Phasers echo lightning from recently charged targets.','charged-hit',2600,'Interrupt the caster or isolate charged targets.'),
   rule('arcane-fortress','Arcane Fortress','Aesir',['wardmaker','architect','golem'],'Linked wards shield the Golem and retaliate after repeated hits.','fortress',5500,'Attack from multiple angles or destroy the builders.'),
-  rule('blood-chain','Blood Chain Reaction','Helions',['blood','blood'],'One detonation charges nearby BloodBursts for a stronger subsequent blast.','detonate',900,'Separate explosive units and eliminate them before contact.'),
+  rule('blood-chain','Corrosive Chain Reaction','Helions',['blood','spitter'],'A nearby Spitter primes a BloodBurst detonation with a bounded corrosive blast.','detonate',4200,'Separate explosive units and eliminate the Spitter before contact.'),
   rule('underground-detonation','Underground Detonation','Helions',['burrower','blood'],'A BloodBurst blast exploits a recently ambushed enemy.','ambushed-detonation',3800,'Protect the backline and separate support troops.'),
   rule('plague-explosion','Plague Explosion','Helions',['defiler','blood'],'Detonating near toxic enemies creates a short damaging plague cloud.','toxic-detonation',4500,'Move away from toxic ground and focus the Defiler.'),
   rule('brood-detonation','Brood Detonation','Helions',['matron','blood','hellspawn'],'Detonations send nearby Hell Spawn into a brief surge.','swarm-detonation',4500,'Explosive attacks punish clustered swarms.'),
@@ -32,7 +33,7 @@ function levelFor(members,enhanced) {
 /** Only relevant faction combinations are shown; duplicate requirements count. */
 export function comboStatus(roster=[],faction,enhancements=[]) {
   const counts={},ranks={};
-  for(const row of roster) { counts[row.type]=(counts[row.type]||0)+Math.max(0,row.count||0)*(row.type==='blood'?2:1);ranks[row.type]=Math.max(ranks[row.type]||0,rank(row)); }
+  for(const row of roster) { counts[row.type]=(counts[row.type]||0)+Math.max(0,row.count||0);ranks[row.type]=Math.max(ranks[row.type]||0,rank(row)); }
   return COMBOS.filter(c=>c.faction===faction&&c.units.some(k=>counts[k])).map(c=>{
     const used={},missing=[];for(const key of c.units){used[key]=(used[key]||0)+1;if(used[key]>(counts[key]||0))missing.push(key);}
     const level=missing.length?0:levelFor(c.units.map(type=>({lvl:ranks[type]})),enhancements.includes(c.id));
@@ -46,10 +47,11 @@ export function combatEvent(kind,u,target,now,extra={}) {
 function emit(hooks,kind,u,t,now,extra={}) {hooks.event?.(combatEvent(kind,u,t,now,extra));}
 function membersFor(st,u,c,now) {
   if(!st.field.units.some(v=>v.id===u.id))return null;
+  const deck=st.decks?.[sideKey(u.p)];
+  if(deck&&!c.units.every(type=>deck.troops?.includes(type)))return null;
   const used=new Set(),members=[];
   for(const type of c.units){
     const member=(type===u.type&&!used.has(u.id)?u:null)||st.field.units.find(v=>alive(v)&&v.p===u.p&&v.type===type&&!used.has(v.id)&&!disabled(v,now));
-    if(!member && c.id==='blood-chain' && u.chainPartnerRank){members.push({id:`chain-partner-${u.id}`,lvl:u.chainPartnerRank});continue;}
     if(!member || member!==u&&!alive(member))return null;used.add(member.id);members.push(member);
   }
   return members;
@@ -72,7 +74,7 @@ export function comboHit(st,u,v,raw,now,hooks={},ignoreArmor=false) {
   // or Railbreaker is the damage source. No source can bypass that cap.
   const budget=st.field._secondaryBudget;
   if(budget){if(budget.remaining<=0)return 0;amount=Math.min(amount,budget.remaining);}
-  if(!ignoreArmor)amount=Math.max(1,amount-Math.max(0,v.armor||0)-(hooks.auraReduce?.(v,st.field)||0));
+  amount=calculateCounterDamage(u,v,amount,{now,ignoreArmor,secondary:true,auraReduce:hooks.auraReduce?.(v,st.field)||0}).damage;
   if((u.range||1)>1&&hooks.wardDamage)amount=hooks.wardDamage(u,v,amount,st.field);
   const before=v.hp;hooks.applyDamage?hooks.applyDamage(v,amount,st):v.hp-=amount;
   const actual=Math.max(0,Math.min(before,before-v.hp));
@@ -123,12 +125,11 @@ export function afterComboAttack(u,t,now,st,hooks={}) {
   });
   if(u.type==='phaser'&&t.lightningChargedBy===u.p&&(t.lightningChargedUntil||0)>now)activate(st,u,t,'lightning-echo',now,hooks,level=>({targets:area(st,u,t,level,now,hooks,{radius:1,maxTargets:level+1}),radius:1}));
   if(u.type==='blood'){
-    const charged=(u.chainChargedUntil||0)>now;
-    activate(st,u,t,'blood-chain',now,hooks,level=>{
-      const nearby=st.field.units.filter(v=>alive(v)&&v.p===u.p&&v.type==='blood'&&v.id!==u.id&&dist(u,v,hooks)<=2).slice(0,4);
-      for(const v of nearby){v.chainChargedUntil=Math.max(v.chainChargedUntil||0,now+3500);v.chainPartnerRank=rank(u);}
-      if(!nearby.length&&!charged)return false;
-      return {targets:charged?area(st,u,t,Math.min(3,level+1),now,hooks,{radius:1}):[],radius:1,charged,chargedIds:nearby.map(v=>v.id)};
+    activate(st,u,t,'blood-chain',now,hooks,(level,members)=>{
+      const spitter=members.find(v=>v.type==='spitter');if(dist(spitter,t,hooks)>6)return false;
+      const targets=area(st,u,t,Math.min(3,level+1),now,hooks,{radius:1});
+      for(const hit of targets){const enemy=st.field.units.find(v=>v.id===hit.id);if(enemy)enemy.corrosionUntil=Math.max(enemy.corrosionUntil||0,now+2200);}
+      return {targets,radius:1,charged:true};
     });
     if(st.field.units.some(v=>v.p!==u.p&&v.ambushedBySide===u.p&&(v.ambushedUntil||0)>now&&dist(t,v,hooks)<=1))activate(st,u,t,'underground-detonation',now,hooks,level=>({targets:area(st,u,t,level+1,now,hooks,{radius:1}),radius:1}));
     if(st.field.units.some(v=>v.p!==u.p&&((v.toxicBySide===u.p&&(v.toxicUntil||0)>now)||(v.statusPoisonUntil||0)>now)&&dist(t,v,hooks)<=1))activate(st,u,t,'plague-explosion',now,hooks,level=>{

@@ -73,7 +73,7 @@ export async function selectSoloAccount({auth,db,api,username,troops,storage,use
       if(!saved.exists()){
         if(rootMatches&&rootName!==name)tx.set(rootRef,{...profile,username:name});
         // The original UID save and immutable receipts stay available for recovery.
-        tx.set(api.doc(db,...profilePath),source?{...source,uid,username:name}:newSoloProfile(uid,name,troops));
+        tx.set(api.doc(db,...profilePath),source?{...source,uid,username:name,...(scopedMatches&&source.decks?{deckImportAccountKey:key}:{})}:newSoloProfile(uid,name,troops));
       }
       // Retained purchase/upgrade IDs must also survive a subsequent Auth change.
       if(receipts.length&&saved.exists())tx.set(api.doc(db,...profilePath),{...saved.data(),uid});

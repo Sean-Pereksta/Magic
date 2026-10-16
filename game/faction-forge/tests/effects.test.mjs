@@ -1,3 +1,4 @@
+import {FACTION_TROOPS} from '../decks.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBattleEffects,UNIT_EFFECTS,EFFECT_LIMITS,EffectPool,projectilePosition,drawEffect} from '../effects.js';
@@ -49,6 +50,7 @@ test('actual authoritative replays for all 64 evolution paths are fully consumab
   const modules=await loadModules(),catalog=createCombatAdapter({seed:'effects-catalog',modules}).troops,kinds=new Set();
   for(const [type,paths] of Object.entries(EVOLUTIONS))for(const path of Object.keys(paths)){
     const st={roster:{p0:[{type,count:1,lvl:3}],p1:[{type:'vguard',count:1,lvl:2},{type:'rifleman',count:1,lvl:1}]},factions:{p0:catalog[type].faction,p1:'Vanir'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},evolutions:{p0:{[type]:path},p1:{}},comboEnhancements:{p0:[],p1:[]}};
+    st.decks=Object.fromEntries(['p0','p1'].map(side=>[side,{id:'effects-'+side,name:'Effects',faction:st.factions[side],troops:[...new Set([...st.roster[side].map(r=>r.type),...FACTION_TROOPS[st.factions[side]]])].slice(0,5)}]));
     const battle=createCombatAdapter({seed:`effects-${type}-${path}`,modules}).battle(st),{fx,setTime}=harness(),seen=new Set();
     for(const frame of battle.frames){setTime(frame.at);for(const ev of frame.syncedFx){if(seen.has(ev.id))continue;seen.add(ev.id);kinds.add(ev.kind||ev.type);assert.equal(fx.event(ev),true,`${type}/${path}: ${ev.kind||ev.type}`);}fx.step(frame.at);}
     assert.ok(seen.size>0,`${type}/${path} should show real battle events`);fx.destroy();
@@ -64,7 +66,8 @@ test('fortress links connect friendly members and precision follow-up uses the R
 
 test('actual Rifleman third-shot events launch a distinct follow-up from the firing Rifleman',async()=>{
   const modules=await loadModules();
-  const state={roster:{p0:[{type:'rifleman',count:1,lvl:2},{type:'vguard',count:3,lvl:3},{type:'medic',count:3,lvl:3}],p1:[{type:'vguard',count:1,lvl:3},{type:'medic',count:3,lvl:3}]},factions:{p0:'Vanir',p1:'Vanir'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},evolutions:{p0:{rifleman:'a'},p1:{}},comboEnhancements:{p0:[],p1:[]}};
+  const state={roster:{p0:[{type:'rifleman',count:1,lvl:2},{type:'vguard',count:2,lvl:3},{type:'medic',count:2,lvl:3}],p1:[{type:'vguard',count:1,lvl:3},{type:'medic',count:3,lvl:3}]},factions:{p0:'Vanir',p1:'Vanir'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},evolutions:{p0:{rifleman:'a'},p1:{}},comboEnhancements:{p0:[],p1:[]}};
+  state.decks=Object.fromEntries(['p0','p1'].map(side=>[side,{id:'rifle-'+side,name:'Rifle test',faction:'Vanir',troops:['rifleman','vguard','medic','vrocket','marksman']}]));
   const battle=createCombatAdapter({seed:'rifleman-burst-origin',modules}).battle(state),events=[...new Map(battle.frames.flatMap(frame=>frame.syncedFx).map(ev=>[ev.id,ev])).values()];
   const bonus=events.find(ev=>ev.unitType==='rifleman'&&ev.kind==='evolution-echo'&&ev.followUp);
   assert.ok(bonus,'Sustained Fire must emit its real third-shot bonus');

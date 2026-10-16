@@ -10,7 +10,7 @@ const require=createRequire(import.meta.url);
 let chromium;try{({chromium}=require('playwright'));}catch{}
 const directory=resolve(fileURLToPath(new URL('..',import.meta.url)));
 
-test('collection, faction chooser, draft info, reward reveal and responsive Forge are usable', {skip:!chromium}, async()=>{
+test('collection, deck chooser, draft info, reward reveal and responsive Forge are usable', {skip:!chromium}, async()=>{
   const server=createServer(async(req,res)=>{try{const path=resolve(directory,'.'+new URL(req.url,'http://localhost').pathname);if(!path.startsWith(directory))throw new Error();const body=await readFile(path);res.setHeader('Content-Type',extname(path)==='.css'?'text/css':'text/javascript');res.end(body);}catch{res.writeHead(404);res.end();}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
   let browser;
@@ -24,7 +24,7 @@ test('collection, faction chooser, draft info, reward reveal and responsive Forg
       const {CAMPAIGN_MISSIONS}=await import(base+'/campaign.js');
       window.profile={uid:'real-user',username:'Commander',crowncouncilElo:1178,forgeDust:450,troops:{rifleman:{forgeTier:1,cards:10,unlocked:true},golem:{forgeTier:2,cards:31,unlocked:true},railbreaker:{forgeTier:1,cards:0,blueprints:3,unlocked:false}},campaign:{missions:{'forge-01':{stars:3,completed:true}}}};
       window.active=false;window.upgrades=[];window.picks=0;window.infoClicks=0;window.mission=null;
-      const troops={rifleman:{name:'Riflemen',faction:'Vanir',emoji:'🔫',role:'back'},golem:{name:'Sentinel Golem',faction:'Aesir',emoji:'🗿',role:'front',size:2},railbreaker:{name:'Railbreaker',faction:'Vanir',emoji:'⚡',role:'back'}};
+      const troops=window.testTroops={rifleman:{name:'Riflemen',faction:'Vanir',emoji:'🔫',role:'back'},golem:{name:'Sentinel Golem',faction:'Aesir',emoji:'🗿',role:'front',size:2},railbreaker:{name:'Railbreaker',faction:'Vanir',emoji:'⚡',role:'back'}};
       window.ui=createExpansionUI({assets:{enabled:()=>false},troops,getProfile:()=>window.profile,isActiveMatch:()=>window.active,missionDefinitions:CAMPAIGN_MISSIONS,onCampaignMission:async(id,faction)=>{window.mission={id,faction};return {ok:true};},onUpgrade:async(key,options)=>{window.upgrades.push({key,options});window.profile.troops[key].forgeTier++;window.profile.troops[key].cards-=10;window.profile.forgeDust-=100;return {profile:window.profile};},onSignIn:async(email,password)=>{window.signin={email,password};return {ok:true};}});
       const card=document.querySelector('.card');card.onclick=()=>window.picks++;card.querySelector('.cardInfoBtn').onclick=event=>{event.stopPropagation();window.infoClicks++;};ui.decorateDraftCard(card,{key:'rifleman',tier:2,recommended:'Strong Counter',copies:2});ui.showMenu();
     },`http://127.0.0.1:${port}`);
@@ -38,8 +38,8 @@ test('collection, faction chooser, draft info, reward reveal and responsive Forg
     const upgraded=await page.evaluate(()=>({tier:profile.troops.rifleman.forgeTier,dust:profile.forgeDust,id:upgrades[0].options.requestId}));assert.equal(upgraded.tier,2);assert.equal(upgraded.dust,350);assert.ok(upgraded.id);
     await page.getByRole('button',{name:'Aesir',exact:true}).click();assert.equal(await page.locator('.ff-collection-card').count(),1);
     await page.evaluate(()=>{window.active=true;ui.showForge('golem');});assert.equal(await page.locator('.ff-upgrade-button').isDisabled(),true);
-    await page.evaluate(()=>{window.active=false;ui.showCampaign();});assert.equal(await page.locator('.ff-mission').count(),30);assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),2);
-    await page.locator('.ff-mission').nth(1).click();await page.locator('.ff-faction-choice').filter({hasText:'Aesir'}).click();assert.deepEqual(await page.evaluate(()=>window.mission),{id:'forge-02',faction:'Aesir'});
+    await page.evaluate(async(base)=>{const {FACTION_TROOPS}=await import(base+'/decks.js');for(const [faction,keys] of Object.entries(FACTION_TROOPS))for(const key of keys){if(!testTroops[key])testTroops[key]={name:key,faction,role:'back'};if(!profile.troops[key])profile.troops[key]={unlocked:true,forgeTier:1,cards:0};}window.active=false;ui.showCampaign();},`http://127.0.0.1:${port}`);assert.equal(await page.locator('.ff-mission').count(),30);assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),2);
+    await page.locator('.ff-mission').nth(1).click();await page.getByRole('button',{name:'Select and continue with Arcane Tempest',exact:true}).click();assert.deepEqual(await page.evaluate(()=>({id:mission.id,faction:mission.faction.faction,troops:mission.faction.troops})),{id:'forge-02',faction:'Aesir',troops:['guardian','phaser','storm','runebinder','wardmaker']});
     await page.locator('.cardInfoBtn').click();assert.equal(await page.evaluate(()=>window.picks),0);assert.equal(await page.evaluate(()=>window.infoClicks),1);
     await page.locator('#draft .card').click();assert.equal(await page.evaluate(()=>window.picks),1);assert.equal(await page.locator('#draft button').count(),1,'draft has only the info button, no Forge upgrade control');
     await page.evaluate(()=>{ui.decorateDraftCard(document.querySelector('#draft .card'),{key:'rifleman',type:'upgrade',faction:'Vanir',tier:1,card:{type:'special',special:'upgrade',for:'rifleman'},roster:[{type:'rifleman',count:2,lvl:2}],evolutions:{rifleman:'b'}});});
@@ -75,18 +75,19 @@ test('collection, faction chooser, draft info, reward reveal and responsive Forg
       const image=document.createElement('canvas');image.width=image.height=256;
       const ctx=image.getContext('2d');ctx.strokeStyle='#c9b77e';ctx.lineWidth=20;ctx.strokeRect(10,10,236,236);
       const url=image.toDataURL();
-      window.ui=createExpansionUI({assets:{enabled:()=>true,unit:async()=>null,asset:async(group,key)=>key.startsWith('card-frame-')?{image,url,spec:{}}:null},troops:{rifleman:{name:'Riflemen',faction:'Vanir'},phaser:{name:'Phasers',faction:'Aesir'},hellspawn:{name:'Hell Spawn',faction:'Helions'}}});
+      const {FACTION_TROOPS}=await import(base+'/decks.js');const troops=Object.fromEntries(Object.entries(FACTION_TROOPS).flatMap(([faction,keys])=>keys.map(key=>[key,{name:key,faction,role:'back'}])));
+      window.ui=createExpansionUI({assets:{enabled:()=>true,unit:async()=>null,asset:async(group,key)=>key.startsWith('card-frame-')?{image,url,spec:{}}:null},troops});
     },`http://127.0.0.1:${port}`);
     for(const width of [1150,390]){
       await page.setViewportSize({width,height:800});
-      for(const view of ['menu','faction']){
-        await page.evaluate(view=>view==='menu'?ui.showMenu():ui.chooseFaction(()=>{}),view);
-        await page.waitForFunction(()=>document.querySelectorAll('.ff-faction-artwork .ff-card-frame').length===3);
-        const cards=await page.locator('.ff-faction-banner,.ff-faction-choice').evaluateAll(cards=>cards.map(card=>{
+      for(const view of ['menu','decks']){
+        await page.evaluate(view=>view==='menu'?ui.showMenu():ui.chooseDeck(()=>{}),view);
+        if(view==='menu')await page.waitForFunction(()=>document.querySelectorAll('.ff-faction-artwork .ff-card-frame').length===3);
+        const cards=view==='menu'?await page.locator('.ff-faction-banner').evaluateAll(cards=>cards.map(card=>{
           const art=card.querySelector('.ff-faction-artwork').getBoundingClientRect(),name=card.querySelector('.ff-faction-name').getBoundingClientRect(),description=card.querySelector('.ff-faction-description')?.getBoundingClientRect();
           const overlaps=rect=>rect&&art.left<rect.right&&art.right>rect.left&&art.top<rect.bottom&&art.bottom>rect.top;
           return {square:Math.abs(art.width-art.height)<1,overlap:!!(overlaps(name)||overlaps(description)),badge:getComputedStyle(card.querySelector('.ff-tier-badge')).position};
-        }));
+        })):await page.locator('.ff-deck-card').evaluateAll(cards=>cards.map(card=>{const art=card.querySelector('.ff-deck-portraits').getBoundingClientRect(),name=card.querySelector('h2').getBoundingClientRect();return {square:true,overlap:art.top<name.bottom,badge:getComputedStyle(card.querySelector('.ff-tier-badge')).position};}));
         assert.equal(cards.length,3);for(const card of cards){assert.ok(card.square);assert.equal(card.overlap,false);assert.equal(card.badge,'absolute');}
         assert.ok(await page.evaluate(()=>document.querySelector('.ff-expansion').scrollWidth<=innerWidth));
       }

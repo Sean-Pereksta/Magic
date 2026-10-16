@@ -43,7 +43,7 @@ test('the entire battlefield stays visible across desktop, portrait, landscape a
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto('http://127.0.0.1:'+server.address().port+'/game/crowncouncil.html');
     await page.getByRole('button',{name:'Practice against AI',exact:true}).click();
-    await page.getByRole('button',{name:/Vanir Industrial/}).click();
+    await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
     for(let index=0;index<3;index++){
       await page.waitForFunction(index=>__forgeLayoutTest.state?.phase==='draft'&&__forgeLayoutTest.state.draftIndex===index,index);
       await page.evaluate(()=>__forgeLayoutTest.chooseCard(0));

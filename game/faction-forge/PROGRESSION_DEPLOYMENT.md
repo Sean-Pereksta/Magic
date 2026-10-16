@@ -2,6 +2,10 @@
 
 ## Default: Firebase Auth + Firestore, no Node server
 
+The deck update adds `decks` and `selectedDeckId` to existing profiles. Migration adds the three canonical starter decks and retains cards, Forge Dust, permanent tiers, unlocks, receipts, campaign stars, purchases and ratings. A saved deck contains only `{id, name, faction, troops}` with exactly five distinct unlocked troop keys from one faction. Profiles support three starters and nine custom decks. Editing a starter creates a custom copy. Deck saves and selection use the existing Firestore transactions and profile subscription; the optional service exposes equivalent `/decks` and `/selected-deck` actions.
+
+Publish the game files and updated rules together. The rules validate custom decks, bound armies and battle snapshots to five bodies per side (including decoys), and lock deck snapshots after selection. Existing live snapshots migrate to faction starters before further drafting. Optional authoritative matches validate and retain full deck snapshots, including on reconnect. No new service is required. Run `npm run test:faction-forge`, `npm run test:faction-forge:browser`, `npm run test:faction-forge:rules` and `npm run bench:faction-forge:decks` before release; the measured balance sample and tuning rationale are in `DECK_BALANCE.md`.
+
 Leave `progressionApiUrl` empty in `game/faction-forge/config.js`. Campaign and bot battles run in the browser, and personal progress saves directly to the existing `bible-game-246c0` Firebase project. No server URL, Firebase Functions deployment, Admin credentials or account-binding migration is required for this mode.
 
 Publish the updated static game files and deploy the included Firestore rules to that existing project:
