@@ -1,6 +1,7 @@
 function buildMenu(){
   loadMatchSetup();
   buildPrimaryMenu();
+  buildTeamTacticsSelectors();
   buildCharacterCards("p1Cards","p1");
   buildCharacterCards("p2Cards","p2");
   buildCharacterCards("tourP1Cards","tournamentP1");
@@ -45,11 +46,13 @@ function buildMenu(){
     const btn = document.createElement("button");
     btn.className = "difficultyBtn" + (d === selectedDifficulty ? " selected" : "");
     btn.textContent = d.toUpperCase();
+    btn.setAttribute("aria-pressed",String(d===selectedDifficulty));
     btn.onclick = () => {
       selectedDifficulty = d;
       saveMatchSetup();
-      document.querySelectorAll(".difficultyBtn").forEach(b => b.classList.remove("selected"));
+      document.querySelectorAll(".difficultyBtn").forEach(b => {b.classList.remove("selected");b.setAttribute("aria-pressed","false");});
       btn.classList.add("selected");
+      btn.setAttribute("aria-pressed","true");
     };
     diffBox.appendChild(btn);
   });
@@ -79,6 +82,11 @@ function buildMenu(){
   document.getElementById("rematchBtn").onclick = () => rematchSamePlayers();
   document.getElementById("changeCharsBtn").onclick = () => returnToCharacterMenu();
   showPrimaryMenu();
+  document.querySelectorAll("#menu .sneakerArrow").forEach(button=>{
+    if(button.hasAttribute("aria-label")) return;
+    const title=button.closest(".sneakerBox")?.querySelector(".sneakerTitle")?.textContent||"style";
+    button.setAttribute("aria-label",`${button.id.endsWith("Prev")?"Previous":"Next"} ${title}`);
+  });
 }
 
 function buildPrimaryMenu(){
@@ -102,6 +110,11 @@ function showMenuScreen(id){
   const target = document.getElementById(id);
   if(target) target.classList.add("active");
   document.getElementById("menu").style.display = "flex";
+  document.getElementById("menuBox").scrollTop=0;
+  if(target){
+    const heading=target.querySelector("h1");
+    if(heading){ heading.tabIndex=-1; heading.focus({preventScroll:true}); }
+  }
 }
 function showPrimaryMenu(message=""){
   inputManager.clearAll();
@@ -115,6 +128,7 @@ function showPrimaryMenu(message=""){
   isChampionshipGame = false;
   showMenuScreen("primaryMenuScreen");
   document.getElementById("primaryMenuMsg").textContent = message;
+  updateSavedMatchSummary();
 }
 function showQuickPlaySetup(size=null,local=null){
   gameStarted=false;
@@ -144,12 +158,16 @@ function loadMatchSetup(){
     localTeamMode=saved.localTeamMode==="cooperative"&&teamSize>1?"cooperative":"competitive";
     splitLayout=saved.splitLayout==="horizontal"?"horizontal":"vertical";
     if(difficultySettings[saved.difficulty]) selectedDifficulty=saved.difficulty;
+    if(Array.isArray(saved.offensiveStyles)){
+      teamOffensiveStyles=teamOffensiveStyles.map((fallback,index)=>
+        Object.hasOwn(OFFENSIVE_STYLES,saved.offensiveStyles[index])?saved.offensiveStyles[index]:fallback);
+    }
   }catch(error){ /* Unavailable storage leaves the playable defaults intact. */ }
 }
 
 function saveMatchSetup(){
   try{
-    localStorage.setItem("basketball2MatchV1",JSON.stringify({teamSize,twoPlayerMode,localTeamMode,splitLayout,difficulty:selectedDifficulty}));
+    localStorage.setItem("basketball2MatchV1",JSON.stringify({teamSize,twoPlayerMode,localTeamMode,splitLayout,difficulty:selectedDifficulty,offensiveStyles:[...teamOffensiveStyles]}));
   }catch(error){ /* Private browsing can disallow persistent settings. */ }
 }
 
@@ -177,7 +195,59 @@ function refreshMatchSetup(){
   document.getElementById("matchSetupSummary").textContent=description;
   document.getElementById("quickPlayTitle").textContent=`${teamSize}v${teamSize} · ${twoPlayerMode?"Local Split Screen":"Quick Play"}`;
   document.getElementById("modeText").textContent=`${teamSize}v${teamSize}${twoPlayerMode?" · Local":""}`;
+  refreshTeamTacticsSelectors();
   updateInputDeviceUI();
+}
+
+function buildTeamTacticsSelectors(){
+  ["blue","coral"].forEach((team,index)=>{
+    const select=document.getElementById(`${team}OffenseSelect`);
+    Object.entries(OFFENSIVE_STYLES).forEach(([key,style])=>{
+      const option=document.createElement("option");
+      option.value=key;
+      option.textContent=style.label;
+      select.appendChild(option);
+    });
+    select.onchange=()=>{
+      if(!Object.hasOwn(OFFENSIVE_STYLES,select.value)) return;
+      teamOffensiveStyles[index]=select.value;
+      refreshTeamTacticsSelectors();
+      saveMatchSetup();
+    };
+  });
+}
+
+function refreshTeamTacticsSelectors(){
+  const tactics=document.getElementById("teamTacticsCard");
+  if(!tactics) return;
+  tactics.hidden=teamSize===1;
+  ["blue","coral"].forEach((team,index)=>{
+    const key=Object.hasOwn(OFFENSIVE_STYLES,teamOffensiveStyles[index])?teamOffensiveStyles[index]:"balanced";
+    const select=document.getElementById(`${team}OffenseSelect`);
+    select.value=key;
+    select.disabled=teamSize===1;
+    document.getElementById(`${team}OffenseDescription`).textContent=OFFENSIVE_STYLES[key].description;
+    document.getElementById(`${team}OffenseDiagram`).innerHTML=offensiveStyleDiagram(key,team);
+  });
+}
+
+function offensiveStyleDiagram(key,team){
+  const routes={
+    balanced:'<path d="M24 61 60 73 96 54"/><path d="M60 68V43"/>',
+    motion:'<path d="M24 61Q26 29 54 24M96 54Q73 46 60 73M60 73Q30 80 24 61"/>',
+    pick_roll:'<path d="M24 61Q43 46 60 55T75 25"/><path d="M59 54 62 26"/><path class="tactic-screen" d="m49 49 13 8"/>',
+    drive_kick:'<path d="M60 73V38M60 38 26 54M60 38 96 54"/>'
+  };
+  return `<svg viewBox="0 0 120 88" focusable="false"><defs><marker id="tactic-arrow-${team}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 6 3 0 6"/></marker></defs><path class="tactic-court" d="M8 81V7h104v74M38 7v28h44V7M38 35a22 22 0 0 0 44 0M18 7v10a42 42 0 0 0 84 0V7"/><path class="tactic-hoop" d="M51 14h18m-9 0v5"/><g class="tactic-routes" style="marker-end:url(#tactic-arrow-${team})">${routes[key]||routes.balanced}</g><circle cx="24" cy="61" r="5"/><circle cx="60" cy="73" r="5"/><circle cx="96" cy="54" r="5"/><circle class="tactic-ball" cx="28" cy="59" r="2"/></svg>`;
+}
+
+function updateSavedMatchSummary(){
+  let size=teamSize,local=twoPlayerMode;
+  try{
+    const saved=JSON.parse(localStorage.getItem("basketball2MatchV1")||"null");
+    if(saved){size=[1,2,3].includes(saved.teamSize)?saved.teamSize:1;local=!!saved.twoPlayerMode;}
+  }catch(error){ /* A missing save uses the current playable matchup. */ }
+  document.getElementById("savedMatchSummary").textContent=`${size}v${size} · ${local?"Local Split Screen":"Solo"} · Your saved matchup`;
 }
 function showTournamentSetup(message=""){
   showMenuScreen("tournamentSetupScreen");
@@ -268,6 +338,7 @@ function refreshTournamentSelectorUI(){
     const key = card.querySelector(".cardPreview")?.dataset.profile;
     if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP1Jersey,selectedP1Sneaker);
     card.classList.toggle("selected",key === selectedP1);
+    card.setAttribute("aria-pressed",String(key===selectedP1));
   });
 }
 
@@ -722,10 +793,11 @@ function buildOptionButtons(containerId, options){
     const btn = document.createElement("button");
     btn.className = "optionBtn";
     btn.textContent = opt.label;
+    btn.setAttribute("aria-pressed",String(opt.selected()));
     btn.onclick = () => {
       opt.onClick();
       [...box.children].forEach(c=>c.classList.remove("selected"));
-      options.forEach((o,i)=>{ if(o.selected()) box.children[i].classList.add("selected"); });
+      options.forEach((o,i)=>{ box.children[i].classList.toggle("selected",o.selected());box.children[i].setAttribute("aria-pressed",String(o.selected())); });
     };
     if(opt.selected()) btn.classList.add("selected");
     box.appendChild(btn);
@@ -757,9 +829,11 @@ function drawProfileCardPreview(canvas,profile,jerseyKey,sneakerKey){
 function buildCharacterCards(containerId, which){
   const box = document.getElementById(containerId);
   Object.entries(profiles).forEach(([key,p]) => {
-    const div = document.createElement("div");
+    const div = document.createElement("button");
+    div.type="button";
     const selected = which === "p1" ? key === selectedP1 : (which === "tournamentP1" ? key === selectedP1 : key === selectedP2);
     div.className = "card" + (selected ? " selected" : "");
+    div.setAttribute("aria-pressed",String(selected));
     div.innerHTML = `
       <div class="cardName">${p.name} #${p.number}</div>
       <div class="cardDesc">${p.desc}</div>
@@ -770,8 +844,9 @@ function buildCharacterCards(containerId, which){
       if(which === "p1") selectedP1 = key;
       else if(which === "tournamentP1") selectedP1 = key;
       else selectedP2 = key;
-      box.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
+      box.querySelectorAll(".card").forEach(c => {c.classList.remove("selected");c.setAttribute("aria-pressed","false");});
       div.classList.add("selected");
+      div.setAttribute("aria-pressed","true");
       if(which === "tournamentP1") refreshTournamentSelectorUI();
     };
     box.appendChild(div);
