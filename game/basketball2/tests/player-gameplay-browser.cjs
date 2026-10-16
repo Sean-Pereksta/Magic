@@ -1,5 +1,6 @@
 /* Real GLB rendering and real keyboard shooting through the full game loop.
- * Uses the same optional environment variables as browser-smoke.cjs. */
+ * Uses the same optional environment variables as browser-smoke.cjs.
+ * BASKETBALL_LIVE_MODELS=1 tests the actual public R2 host and its CORS policy. */
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
@@ -23,8 +24,15 @@ const root=path.resolve(__dirname,'../../..');
       return route.fulfill({path:file,contentType:types[path.extname(file)]||'application/octet-stream'});
     });
     if(process.env.THREE_BUNDLE)await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
+    if(process.env.BASKETBALL_LIVE_MODELS!=='1')await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({
+      path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),
+      contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}
+    }));
     await page.goto('http://basketball.local/game/basketball2/');
     await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);
+    const sources=await page.evaluate(()=>[...basketballPlayerModels.assets.values()].map(asset=>asset.label));
+    assert.ok(sources.every(source=>source.startsWith('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/')),'all player builds use the primary hosted source');
+    if(process.env.BASKETBALL_LIVE_MODELS==='1')console.log('PASS: actual public R2 host loads all three GLBs through browser CORS, with no bundled fallback');
     const rigs=await page.evaluate(()=>{
       teamSize=3;twoPlayerMode=true;localTeamMode='cooperative';startGame();
       return matchPlayers.map(char=>({kind:getBasketballPlayerModelKind(char),bones:char.playerModel.bones.size,clips:char.playerModel.actions.size,

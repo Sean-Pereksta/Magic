@@ -13,9 +13,10 @@ const bytes=kind=>{
 };
 function harness(){
   const warnings=[];
-  const ctx=vm.createContext({console:{log(){},warn:(...args)=>warnings.push(args)},ArrayBuffer,DataView,Uint8Array,Int8Array,Uint16Array,Int16Array,Uint32Array,Float32Array,TextDecoder,
+  const ctx=vm.createContext({console:{log(){},warn:(...args)=>warnings.push(args)},ArrayBuffer,DataView,Uint8Array,Int8Array,Uint16Array,Int16Array,Uint32Array,Float32Array,TextDecoder,AbortController,setTimeout,clearTimeout,
     shotCharging:false,chargingPlayer:null,dunkActive:false,layupActive:false,ballState:'loose',ballSideValue:1,passFlight:{active:false},crossover:{active:false},matchPlayers:[]});
   vm.runInContext(fs.readFileSync(threeBundle,'utf8'),ctx);
+  warnings.length=0;
   vm.runInContext(runtime,ctx);
   ctx.warnings=warnings;
   return ctx;
@@ -128,11 +129,71 @@ test('malformed buffer views, joint indices, hierarchy and clips are rejected',{
   for(const [edit,expected] of edits) assert.throws(()=>ctx.parseBasketballPlayerGLB(mutate(source,edit)),expected);
 });
 
+test('remote GLBs load once per build and attach to players created during loading',{skip:!hasThree},async()=>{
+  const ctx=harness(),requests=[],player=character(ctx);
+  const body=new ctx.THREE.Group();player.group.add(body);player.legacyVisualNodes=[body];ctx.matchPlayers.push(player);
+  ctx.fetch=async url=>{
+    requests.push(url);
+    const kind=/player-(guard|wing|center)\.glb$/.exec(url)?.[1];
+    assert.ok(kind);
+    return {ok:true,arrayBuffer:async()=>bytes(kind)};
+  };
+  const first=ctx.loadPlayerModels(),second=ctx.loadPlayerModels();
+  assert.equal(await first,true);assert.equal(await second,true);
+  assert.deepEqual(requests.sort(),['center','guard','wing'].map(kind=>`https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/player-${kind}.glb`));
+  const assets=vm.runInContext('basketballPlayerModels.assets',ctx);
+  assert.equal(assets.size,3);assert.ok([...assets.values()].every(asset=>asset.label.startsWith('https://')));
+  assert.equal(player.playerModel.bones.size,24);assert.equal(body.visible,false);assert.equal(ctx.warnings.length,0);
+  ctx.disposePlayerModel(player);
+});
+
+test('each model falls back to its bundled GLB on network, HTTP or invalid remote asset failures',{skip:!hasThree},async()=>{
+  const ctx=harness(),requests=[];
+  ctx.fetch=async url=>{
+    requests.push(url);
+    const kind=/player-(guard|wing|center)\.glb$/.exec(url)?.[1];
+    assert.ok(kind);
+    if(url.startsWith('https://')){
+      if(kind==='guard') throw new TypeError('Failed to fetch');
+      if(kind==='wing') return {ok:false,status:404};
+      return {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};
+    }
+    return {ok:true,arrayBuffer:async()=>bytes(kind)};
+  };
+  assert.equal(await ctx.loadPlayerModels(),true);assert.equal(requests.length,6);
+  const assets=vm.runInContext('basketballPlayerModels.assets',ctx);
+  for(const kind of ['guard','wing','center']){
+    const remote=`https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/player-${kind}.glb`,local=`assets/models/player-${kind}.glb`;
+    assert.ok(requests.indexOf(remote)<requests.indexOf(local));
+    assert.equal(assets.get(kind).label,local);assert.equal(assets.get(kind).clips.length,12);
+  }
+  assert.equal(ctx.warnings.length,1);assert.match(ctx.warnings[0][0],/using bundled GLB players/);
+});
+
+test('a stalled remote model request aborts before the bundled model is fetched',{skip:!hasThree},async()=>{
+  const ctx=harness(),deadlines=[];let aborted=0;
+  ctx.setTimeout=(callback,delay)=>{deadlines.push(delay);return setTimeout(callback,1);};
+  ctx.fetch=async (url,options)=>{
+    if(url.startsWith('https://')){
+      assert.equal(options.credentials,'omit');
+      return {ok:true,arrayBuffer:()=>new Promise((resolve,reject)=>{
+        options.signal.addEventListener('abort',()=>{aborted++;reject(new Error('Aborted'));},{once:true});
+      })};
+    }
+    const kind=/player-(guard|wing|center)\.glb$/.exec(url)[1];
+    return {ok:true,arrayBuffer:async()=>bytes(kind)};
+  };
+  assert.equal(await ctx.loadPlayerModels(),true);assert.equal(aborted,3);
+  assert.deepEqual(deadlines,[6500,6500,6500]);
+  assert.equal(vm.runInContext('basketballPlayerModels.assets.size',ctx),3);
+  assert.equal(ctx.warnings.length,1);assert.match(ctx.warnings[0][0],/using bundled GLB players/);
+});
+
 test('async model fetches coalesce and failures preserve playable legacy geometry with one warning',{skip:!hasThree},async()=>{
   const ctx=harness();let calls=0;
   ctx.fetch=async()=>{calls++;throw new Error('offline');};
   const first=ctx.loadPlayerModels(),second=ctx.loadPlayerModels();
-  assert.equal(await first,false);assert.equal(await second,false);assert.equal(calls,3);
+  assert.equal(await first,false);assert.equal(await second,false);assert.equal(calls,6);
   const player=character(ctx),legacy=new ctx.THREE.Group();player.group.add(legacy);
   assert.equal(ctx.attachPlayerModel(player),false);assert.equal(legacy.visible,true);
   assert.equal(ctx.warnings.filter(args=>String(args[0]).includes('could not load')).length,1);

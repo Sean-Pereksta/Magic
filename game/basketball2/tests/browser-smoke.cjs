@@ -26,6 +26,10 @@ const root=path.resolve(__dirname,'../../..');
       return route.fulfill({path:file,contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':file.endsWith('.webp')?'image/webp':file.endsWith('.glb')?'model/gltf-binary':'text/javascript'});
     });
     if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
+    if(process.env.BASKETBALL_LIVE_MODELS!=='1') await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({
+      path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),
+      contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}
+    }));
     await page.goto('http://basketball.local/game/basketball2/');
     await page.waitForFunction(()=>!!window.THREE&&!!renderer);
     await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);

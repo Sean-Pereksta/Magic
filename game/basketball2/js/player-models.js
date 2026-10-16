@@ -4,6 +4,7 @@
  */
 const basketballPlayerModels = {
   assets:new Map(), pending:null, warned:false,
+  remoteBase:"https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/",
   files:{guard:"assets/models/player-guard.glb",wing:"assets/models/player-wing.glb",center:"assets/models/player-center.glb"}
 };
 
@@ -190,19 +191,30 @@ function parseBasketballPlayerGLB(source,label="basketball player"){
 async function loadPlayerModels(){
   if(basketballPlayerModels.pending) return basketballPlayerModels.pending;
   basketballPlayerModels.pending=Promise.all(Object.entries(basketballPlayerModels.files).map(async ([kind,url])=>{
-    try{
-      const response=await fetch(url);
-      if(!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-      const asset=parseBasketballPlayerGLB(await response.arrayBuffer(),url);
-      basketballPlayerModels.assets.set(kind,asset);
-      return true;
-    }catch(error){
-      if(!basketballPlayerModels.warned){console.warn("Basketball player models could not load; using the built-in players.",error);basketballPlayerModels.warned=true;}
-      return false;
+    const sources=[basketballPlayerModels.remoteBase+url.split("/").pop(),url];
+    let lastError;
+    for(const [index,source] of sources.entries()){
+      const controller=index===0 ? new AbortController() : null;
+      const timeout=controller ? setTimeout(()=>controller.abort(),6500) : null;
+      try{
+        const response=await fetch(source,controller ? {signal:controller.signal,credentials:"omit"} : undefined);
+        if(!response.ok) throw new Error(`${source}: HTTP ${response.status}`);
+        const asset=parseBasketballPlayerGLB(await response.arrayBuffer(),source);
+        basketballPlayerModels.assets.set(kind,asset);
+        return {loaded:true,remote:index===0,error:lastError};
+      }catch(error){lastError=error;}
+      finally{if(timeout!==null) clearTimeout(timeout);}
     }
+    return {loaded:false,remote:false,error:lastError};
   })).then(results=>{
+    const loaded=results.every(result=>result.loaded);
+    const fallback=results.find(result=>!result.remote);
+    if(fallback && !basketballPlayerModels.warned){
+      console.warn(loaded ? "Basketball remote player models could not load; using bundled GLB players." : "Basketball player models could not load; using the built-in players.",fallback.error);
+      basketballPlayerModels.warned=true;
+    }
     if(typeof matchPlayers!=="undefined") matchPlayers.forEach(attachPlayerModel);
-    return results.every(Boolean);
+    return loaded;
   });
   return basketballPlayerModels.pending;
 }

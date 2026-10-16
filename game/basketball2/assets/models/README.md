@@ -5,6 +5,24 @@ glTF 2.0 binary models with embedded geometry, an articulated skin, inverse bind
 matrices, PBR materials and twelve movement clips. They require no remote mesh,
 texture, decoder or animation service.
 
+## Delivery
+
+The game first fetches `player-guard.glb`, `player-wing.glb` and
+`player-center.glb` from the root of
+`https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/`. Each file independently
+falls back to the matching bundled `assets/models/` file if the remote request
+fails, takes more than 6.5 seconds, returns an error, or contains an invalid model.
+The timeout covers downloading the response body as well as opening the request.
+If both sources fail,
+the procedural player remains playable. Players already on court receive their
+rigged model when loading completes; repeated starts reuse the cached assets.
+
+The R2 bucket must permit cross-origin `GET` requests from the game's website
+origin (or `*` for these public assets). Browsers require the response's
+`Access-Control-Allow-Origin` header before JavaScript can read the GLB. No
+credentials or custom request headers are used. Bundled models continue to
+work when remote CORS is unavailable.
+
 | Asset | Build | Distinctive features |
 | --- | --- | --- |
 | `player-guard.glb` | Agile | Narrower shoulders, shorter frame, high fade |
