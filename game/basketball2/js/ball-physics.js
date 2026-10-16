@@ -1,4 +1,13 @@
 function updateBall(dt){
+  if(ballState==="pass"){
+    updatePassBall(dt);
+    if(ballShadow){
+      ballShadow.position.set(ball.position.x,.012,ball.position.z);
+      ballShadow.material.opacity=.32;
+    }
+    lastBallVisualPos.copy(ball.position);
+    return;
+  }
   rimCollisionCooldown = Math.max(0, rimCollisionCooldown - dt);
   reboundPredictionTimer = Math.max(0, reboundPredictionTimer - dt);
   outOfBoundsCooldown = Math.max(0,outOfBoundsCooldown-dt);
@@ -162,8 +171,9 @@ function updateBall(dt){
       createShotTrail(lastShotWasHook ? "hook" : "shot");
     }
 
+    ball.position.addScaledVector(ballVelocity,dt);
+    ball.position.y += .5*GRAVITY*dt*dt;
     ballVelocity.y += GRAVITY * dt;
-    ball.position.add(ballVelocity.clone().multiplyScalar(dt));
     ball.rotation.x += ballSpin.x*dt;
     ball.rotation.y += ballSpin.y*dt;
     ball.rotation.z += ballSpin.z*dt;
@@ -188,8 +198,7 @@ function updateBall(dt){
 
     resolveBackboardBallCollision(dt);
     handleBackboardAndRim();
-    checkBallPlayerBodyCollision(p1);
-    checkBallPlayerBodyCollision(p2);
+    for(const char of matchPlayers) checkBallPlayerBodyCollision(char);
     checkScore();
     handleLooseBallPickup();
 
@@ -301,14 +310,16 @@ function keepBallInBounds(){
   const outside = ball.position.x<minX || ball.position.x>maxX || ball.position.z<minZ || ball.position.z>maxZ;
   if(outside&&getGameplayTuning().outOfBounds&&outOfBoundsCooldown<=0){
     outOfBoundsCooldown=.8;
-    const nextOwner=lastShotShooter==="p1"?"p2":"p1";
+    const lastTeam=teamOf(lastTouchPlayerId || possession);
+    const nextPlayer=matchPlayers.find(char=>char.teamId!==lastTeam && char.controllerSlot) || matchPlayers.find(char=>char.teamId!==lastTeam);
+    const nextOwner=nextPlayer ? nextPlayer.id : possession;
     ball.position.x=THREE.MathUtils.clamp(ball.position.x,minX,maxX);
     ball.position.z=THREE.MathUtils.clamp(ball.position.z,minZ,maxZ);
     ballVelocity.set(0,0,0);
     ballSpin.multiplyScalar(.2);
     ballState="dead";
     updateLEDBoards("OUT OF BOUNDS");
-    setTimeout(()=>{ if(gameStarted&&!gameOver) resetPossession(nextOwner,true); },420);
+    scheduleDeadPossession(nextOwner,420);
     return;
   }
 
@@ -356,7 +367,7 @@ function handleBackboardAndRim(){
     ballState = "loose";
     const away = ball.position.clone().sub(HOOP_POS);
     away.y = 0;
-    if(away.lengthSq() < .001) away.set((Math.random()-.5),0,1);
+    if(away.lengthSq() < .001) away.set(.35,0,1);
     away.normalize();
     ballVelocity.copy(away.multiplyScalar(2.2));
     ballVelocity.y = 1.4;
@@ -405,12 +416,12 @@ function checkBallPlayerBodyCollision(char){
   const radius = 0.42*char.profile.width + BALL_RADIUS;
   const diff = ball.position.clone().sub(bodyCenter);
   if(diff.length() < radius){
-    const shooter = possession === "p1" ? p1 : p2;
-    const defender = shooter === p1 ? p2 : p1;
-    const isBlocking = char.blockTime > 0 || char.handsUpTime > 0 || !char.onGround;
-    if(ballState === "shot" && char === defender && isBlocking){
-      applyBlockDeflection(defender,shooter);
-      addBlockStat(defender,10);
+    lastTouchPlayerId=char.id;
+    const shooter = getPlayerById(lastShotShooter);
+    const isBlocking = (char.blockTime>.06 && char.blockTime<.37) || char.handsUpTime>0;
+    if(ballState === "shot" && shooter && char.teamId!==shooter.teamId && isBlocking && ball.position.y>bodyCenter.y+.25){
+      applyBlockDeflection(char,shooter);
+      addBlockStat(char,10);
       showShotFeedback("BLOCKED");
       triggerCrowdReaction("block",0.85);
       return;
@@ -489,19 +500,21 @@ function getPickupPriorityScore(char){
   score += (1.5 - handDist) * 1.2;
   score += char.profile.handle * 0.35;
   score += char.profile.jump * 0.12;
-  score += Math.random() * 0.15;
+  score += Math.max(0,char.group.position.y)*.22;
   return score;
 }
 
 function bobbleLooseBall(char){
   const forward = getForward(char.angle);
   const right = getBodyRightVector(char);
+  const incomingSide=Math.sign(ballVelocity.dot(right)) || 1;
   const bobbleDir = forward.clone()
     .multiplyScalar(0.8)
-    .add(right.clone().multiplyScalar((Math.random() - 0.5) * 1.4))
+    .add(right.clone().multiplyScalar(incomingSide*.45))
     .normalize();
-  ballVelocity.copy(bobbleDir.multiplyScalar(2.3 + Math.random() * 1.6));
-  ballVelocity.y = 0.8 + Math.random() * 1.4;
+  const incomingSpeed=ballVelocity.length();
+  ballVelocity.copy(bobbleDir.multiplyScalar(THREE.MathUtils.clamp(incomingSpeed*.35,2.1,3.5)));
+  ballVelocity.y = 1.1;
   loosePickupDelay = 0.18;
 
   char.moveState = "bobble";
@@ -514,7 +527,7 @@ function bobbleLooseBall(char){
 function attemptLooseBallGather(char){
   const gatherType = ball.position.y > 1.0 ? "catch" : "pickup";
   const quality = getLooseBallPickupQuality(char);
-  const contested = flatDistance(p1.group.position,p2.group.position) < 1.45 && ball.position.y < 1.22;
+  const contested = getOpponents(char).some(opponent=>flatDistance(char.group.position,opponent.group.position)<1.45 && canPickupLooseBall(opponent));
   if(contested){
     scrambleState.active = true;
     scrambleState.timer = 0.28;
@@ -526,26 +539,31 @@ function attemptLooseBallGather(char){
     char.moveMeta = char.moveMeta || {};
     char.moveMeta.gatherType = "pickup";
   }
-  if(Math.random() <= quality){
+  // Reach, proximity and ball speed determine a gather, rather than a per-frame dice roll.
+  const nearestHand=Math.min(getWorldHand(char,"left").distanceTo(ball.position),getWorldHand(char,"right").distanceTo(ball.position));
+  const secure=quality>=(contested ? .52 : .36) || nearestHand<.32;
+  if(secure){
+    const reboundHeight=ball.position.y;
+    const isRebound=hasShotThisPossession;
     gainPossession(char.id);
+    if(isRebound) char.stats.rebounds=(char.stats.rebounds||0)+1;
     char.moveState = "gather";
     char.moveTimer = 0;
     char.moveDuration = 0.22;
     char.moveMeta = char.moveMeta || {};
     char.moveMeta.gatherType = gatherType;
     flash(gatherType === "catch" ? `${char.id.toUpperCase()} catches it!` : `${char.id.toUpperCase()} picks it up!`);
-    if(ball.position.y > 1.05 && tipFeedbackTimer <= 0){
+    if(reboundHeight > 1.05 && tipFeedbackTimer <= 0){
       flash("REBOUND");
       tipFeedbackTimer = 0.45;
     }
     return;
   }
-  if(ball.position.y > 1.15 && char.profile.jump + char.profile.block > 2.22 && Math.random() < 0.55){
-    const tipDir = getForward(char.angle).multiplyScalar(1.1 + Math.random()*1.7);
-    tipDir.x += (Math.random() - 0.5) * 1.4;
-    tipDir.z += (Math.random() - 0.5) * 1.4;
+  if(ball.position.y > 1.15 && char.profile.jump + char.profile.block > 2.22 && !char.onGround){
+    const tipDir = getForward(char.angle).multiplyScalar(1.8);
     ballVelocity.copy(tipDir);
-    ballVelocity.y = 1.6 + Math.random()*1.5;
+    lastTouchPlayerId=char.id;
+    ballVelocity.y = 2.1;
     ballState = "loose";
     loosePickupDelay = 0.14;
     if(tipFeedbackTimer <= 0){ flash("TIP"); tipFeedbackTimer = 0.55; }
@@ -558,21 +576,13 @@ function handleLooseBallPickup(){
   if(ballState !== "loose" && ballState !== "shot") return;
   if(loosePickupDelay > 0) return;
 
-  const p1Can = canPickupLooseBall(p1);
-  const p2Can = canPickupLooseBall(p2);
-
-  if(!p1Can && !p2Can) return;
-
-  if(p1Can && p2Can){
-    const p1Score = getPickupPriorityScore(p1);
-    const p2Score = getPickupPriorityScore(p2);
-    if(p1Score >= p2Score) attemptLooseBallGather(p1);
-    else attemptLooseBallGather(p2);
-    return;
+  let receiver=null, best=-Infinity;
+  for(const char of matchPlayers){
+    if(!canPickupLooseBall(char)) continue;
+    const score=getPickupPriorityScore(char);
+    if(score>best){ receiver=char; best=score; }
   }
-
-  if(p1Can) attemptLooseBallGather(p1);
-  else if(p2Can) attemptLooseBallGather(p2);
+  if(receiver) attemptLooseBallGather(receiver);
 }
 
 function segmentSphereIntersect(a,b,center,radius){
@@ -604,6 +614,7 @@ function isDefenderBetweenBallAndRim(defender,ballPos){
 }
 
 function deflectLayupBall(owner,defender,hit){
+  lastTouchPlayerId=defender.id;
   layupBlocked = true;
   layupActive = false;
   layupScored = false;
@@ -611,6 +622,7 @@ function deflectLayupBall(owner,defender,hit){
   layupOwner = null;
   clearShotCreationStates();
   owner.hasBall = false;
+  ballOwner=null;
   const away = ball.position.clone().sub(hit.point);
   away.y = 0.25;
   if(away.lengthSq() < 0.0001){
@@ -619,10 +631,9 @@ function deflectLayupBall(owner,defender,hit){
   }
   away.normalize();
   const ownerForward = getForward(owner.angle);
-  const randomness = new THREE.Vector3((Math.random()-.5)*1.2,Math.random()*.8,(Math.random()-.5)*1.2);
   const force = hit.type === "hand" ? 4.8 : 3.4;
-  ballVelocity.copy(away.multiplyScalar(force).add(ownerForward.multiplyScalar(1.2)).add(randomness));
-  ballVelocity.y = hit.type === "hand" ? 2.6 + Math.random()*1.2 : 1.8 + Math.random()*0.8;
+  ballVelocity.copy(away.multiplyScalar(force).add(ownerForward.multiplyScalar(1.2)).addScaledVector(defender.velocity,.18));
+  ballVelocity.y = hit.type === "hand" ? 2.8 : 1.9;
   flash(hit.type === "hand" ? "LAYUP BLOCKED!" : "LAYUP DEFLECTED!");
   applyCameraShake(hit.type === "hand" ? .2 : .13,"rim");
   if(hit.type === "hand") addBlockStat(defender);
@@ -638,12 +649,13 @@ function updateLayup(dt){
   layupTimer += dt;
   layupBlockWindow = Math.max(0,layupBlockWindow - dt);
 
-  const owner = layupOwner === "p1" ? p1 : p2;
-  const defender = layupOwner === "p1" ? p2 : p1;
+  const owner = getPlayerById(layupOwner);
+  if(!owner){ layupActive=false; return; }
   const progress = THREE.MathUtils.clamp(layupTimer/layupDuration,0,1);
   const prevBallPos = ball.position.clone();
 
-  owner.group.position.add(getForward(owner.angle).multiplyScalar(2.15*dt));
+  const next=owner.group.position.clone().addScaledVector(getForward(owner.angle),1.35*dt);
+  owner.group.position.copy(moveWithCollisionDampen(owner,next));
   owner.group.rotation.x = -Math.sin(progress*Math.PI)*0.1;
   owner.leftArm.rotation.z = -0.25;
   owner.rightArm.rotation.z = 0.25;
@@ -651,54 +663,22 @@ function updateLayup(dt){
 
   const handSide = getBestHandForScreenSide(owner,getScreenSideVectorForChar(owner,"right").dot(HOOP_POS.clone().sub(owner.group.position)) > 0 ? "right" : "left");
   const hand = getWorldHand(owner,handSide);
-  const target = HOOP_POS.clone().add(new THREE.Vector3(0,.12,.08));
   const contactLayup = owner.bodyUpTimer > 0.08 || owner.contactTimer > 0.08;
-  const arcHeight = Math.sin(progress*Math.PI) * (contactLayup ? 1.08 : .9);
   if(contactLayup){ owner.group.rotation.z = THREE.MathUtils.lerp(owner.group.rotation.z,-0.12 * (owner.contactSide || 1),0.12); }
-
-  ball.position.copy(hand.lerp(target,smoothstep(progress)));
-  ball.position.y += arcHeight;
-  const collision = checkLayupDefenderCollision(owner,defender,prevBallPos,ball.position.clone());
-  if(collision.hit){
-    deflectLayupBall(owner,defender,collision);
-    return;
-  }
-
-  if(progress > .78 && layupActive && !layupBlocked && !layupScored){
-    if(isDefenderBetweenBallAndRim(defender,ball.position)){
-      deflectLayupBall(owner,defender,{type:"body",point:defender.group.position.clone().add(new THREE.Vector3(0,1.15*defender.profile.height,0))});
+  ball.position.copy(hand).add(new THREE.Vector3(0,Math.sin(progress*Math.PI)*.32,0));
+  for(const defender of getOpponents(owner)){
+    const collision=checkLayupDefenderCollision(owner,defender,prevBallPos,ball.position);
+    if(collision.hit && (defender.blockTime>0 || defender.handsUpTime>0 || collision.type==="body")){
+      deflectLayupBall(owner,defender,collision);
       return;
     }
-    if(flatDistance(ball.position,HOOP_POS) < .9){
-      const contactPenalty = contactLayup ? (0.11 - (owner.profile.layup-1)*0.1 - (owner.profile.width-1)*0.08 - (owner.contactFinishBonusOrPenalty||0)) : 0;
-      if(Math.random() < THREE.MathUtils.clamp(0.92 - Math.max(0,contactPenalty),0.62,0.97)){
-      layupScored = true;
-      if(layupOwner === "p1"){
-        scoreP1 += 2;
-        flash("P1 layup!");
-        updateMomentum(p1,true,2,"Good Contest");
-        setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),650);
-      }else{
-        scoreP2 += 2;
-        flash("P2 layup!");
-        updateMomentum(p2,true,2,"Good Contest");
-        setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),650);
-      }
-      updateScoreboard();
-      triggerNetWobble(0.9);
-      triggerCrowdReaction("make",0.62);
-      spawnCourtThemedParticle(HOOP_POS.clone(),"make");
-      checkGameWinner();
-      }
-    }
   }
-
-  if(progress >= 1 && layupActive && !layupBlocked && !layupScored){
+  if(progress>=.52){
+    const releasePoint=ball.position.clone().add(new THREE.Vector3(0,.32,0));
     layupActive = false;
-    ballState = "loose";
-    ballVelocity.set((Math.random()-.5)*1.2,1.4,1.2);
-    loosePickupDelay = Math.max(loosePickupDelay,.2);
-    triggerCrowdReaction("miss",0.26);
+    layupOwner=null;
+    ballState="dribble";
+    releaseShot(owner,"layup",{releasePoint,arcBonus:.1,countAttempt:false});
   }
 }
 
@@ -716,7 +696,7 @@ function releaseOffenseMove(char){
     shootBall(char,"fadeaway");
     return;
   }
-  const backHeld = char.id === "p1" ? !!keys["KeyS"] : !!keys["KeyK"];
+  const backHeld = char.controllerSlot === "p1" ? !!keys["KeyS"] : char.controllerSlot === "p2" ? !!keys["KeyK"] : false;
   if(backHeld && char.moveState === "normal"){
     startStepBack(char);
     return;

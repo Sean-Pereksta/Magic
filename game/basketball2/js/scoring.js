@@ -1,9 +1,12 @@
+let pendingInbound=null;
+
 function releaseShot(shooter,shotType,options={}){
   if(possession !== shooter.id || ballState !== "dribble") return false;
   shooter.hasBall = false;
   ballOwner = null;
   clearShotCreationStates();
   lastShotShooter = shooter.id;
+  lastTouchPlayerId = shooter.id;
   ballState = "shot";
   hasShotThisPossession = true;
   loosePickupDelay = 0.18;
@@ -14,6 +17,7 @@ function releaseShot(shooter,shotType,options={}){
   rimCollisionCooldown = 0;
   shooter.shotMotionTime = .46;
   shooter.moveMeta.lastShotType = shotType;
+  shooter.lastShotSlot=shooter.controllerSlot || null;
 
   const releasePoint = options.releasePoint || getShotReleasePoint(shooter,shotType);
   ball.position.copy(releasePoint);
@@ -26,63 +30,40 @@ function releaseShot(shooter,shotType,options={}){
   const held = shooter.moveMeta.chargeHeld || 0;
   const contest = calculateShotContest(shooter);
   const timing = calculateShotTiming(held,shotType,shooter,contest);
-  const timingQuality = getShotTimingQuality(held,shotType,shooter,contest);
   const meterProfile = timing.profile;
-  const distancePenalty = getDistancePenalty(shooter);
-  const movementPenalty = shooter.velocity.length() * 0.035;
-  const rushedPenalty = held < 0.2 ? 0.08 : 0;
-  const fatiguePenalty = (1 - shooter.stamina) * 0.18;
-  const highJumperPenalty = shotType === "jumper" ? 0.06 : 0;
-  const fadeawayPenalty = shotType === "fadeaway" ? 0.08 : 0;
-
-  let finalAccuracy;
-  if(shotType === "hook"){
-    const hookRating = shooter.profile.hook || 0.75;
-    const closeRangeBonus = THREE.MathUtils.clamp((5.3 - dist) * 0.045,0,0.12);
-    finalAccuracy = hookRating * 0.48 + timingQuality * 0.32 + closeRangeBonus - contest.value * 0.65 - 0.16;
-  }else{
-    finalAccuracy =
-      shooter.profile.shot * 0.45 +
-      timingQuality * 0.4 + meterProfile.baseMakeBonus -
-      getContestPenalty(shooter) -
-      distancePenalty -
-      movementPenalty -
-      rushedPenalty -
-      fatiguePenalty -
-      highJumperPenalty -
-      fadeawayPenalty;
-  }
-  if(timing.grade === "Green Release") finalAccuracy += meterProfile.baseMakeBonus + (1-contest.value)*0.12;
-  if(contest.value > 0.72 && timing.grade === "Green Release") finalAccuracy -= 0.08;
-  finalAccuracy = THREE.MathUtils.clamp(finalAccuracy,0.05,0.985);
+  const center=(meterProfile.greenStart+meterProfile.greenEnd)*.5;
+  const halfWindow=Math.max(.025,(meterProfile.greenEnd-meterProfile.greenStart)*.5);
+  const releaseError=(timing.pct-center)/halfWindow;
+  const rangePenalty=Math.max(0,dist-(shotType==="layup" ? 2.5 : 4.8))*.037;
+  const movementPenalty=shooter.velocity.length()*(shotType==="layup" ? .018 : .047);
+  const fatiguePenalty=(1-shooter.stamina)*.24;
+  const rating=shotType==="hook" ? (shooter.profile.hook || .8) : shotType==="layup" ? shooter.profile.layup : shooter.profile.shot;
+  const typePenalty=shotType==="fadeaway" ? .16 : shotType==="hook" ? .1 : shotType==="pullup" ? .05 : 0;
+  const difficulty=THREE.MathUtils.clamp(contest.value*.85+rangePenalty+movementPenalty+fatiguePenalty+typePenalty-(rating-1)*.23,0,1.5);
   const target = HOOP_POS.clone();
-  if(shotType === "layup") target.y += 0.14;
-  else if(shotType === "hook") target.y += 0.1;
-  else target.y += 0.05;
-  const missAmount = 1-finalAccuracy;
+  target.y+=.035;
   const shotLine = HOOP_POS.clone().sub(releasePoint).setY(0).normalize();
   const shotSide = new THREE.Vector3(-shotLine.z,0,shotLine.x);
-  const early = timing.grade.includes("Early");
-  const late = timing.grade.includes("Late");
-  const timingDirection = early ? 1 : late ? -1 : 0;
-  const timingSeverity = Math.abs(timing.pct-((meterProfile.greenStart+meterProfile.greenEnd)*.5));
-  target.addScaledVector(shotLine,timingDirection*timingSeverity*1.8*missAmount);
-  target.addScaledVector(shotSide,(Math.random()-.5)*(1.25+fatiguePenalty*2.4)*missAmount);
-  target.addScaledVector(shooter.velocity.clone().setY(0),.045*missAmount);
-  const contestDefender = shooter.id==="p1"?p2:p1;
+  // The same timing, positioning and momentum produce the same aim error.
+  // Early releases run long, late releases finish short; pressure moves the aim off line.
+  const timingOffset=-releaseError*(.19+Math.min(dist,12)*.015);
+  target.addScaledVector(shotLine,THREE.MathUtils.clamp(timingOffset,-2.4,2.4));
+  const motionSide=shooter.velocity.dot(shotSide);
+  const sideSign=motionSide<-.15 ? -1 : 1;
+  target.addScaledVector(shotSide,sideSign*difficulty*.62+motionSide*.025);
+  target.addScaledVector(shotLine,-difficulty*.38);
+  const contestDefender = contest.defender;
   if(contestDefender&&contest.value>.1){
     const contestPush = shooter.group.position.clone().sub(contestDefender.group.position).setY(0);
-    if(contestPush.lengthSq()>.001) target.addScaledVector(contestPush.normalize(),contest.value*.42*missAmount);
+    if(contestPush.lengthSq()>.001) target.addScaledVector(contestPush.normalize(),contest.value*.16);
   }
-  target.x += (Math.random()-.5)*.42*missAmount;
-  target.z += (Math.random()-.5)*.42*missAmount;
   const power = THREE.MathUtils.clamp(shotPower,.12,1);
-  const flightTime = THREE.MathUtils.lerp(.84,1.42,power) + (shotType === "jumper" ? .18 : 0) + (shotType === "hook" ? .12 : 0) + (shotType === "fadeaway" ? .08 : 0);
+  const arcLift=THREE.MathUtils.clamp(getArcBonus(shooter,shotType)+(options.arcBonus || 0),0,4);
+  const flightTime = (shotType==="layup" ? .64 : .88+Math.min(dist,14)*.022)+(shotType==="hook" ? .12 : 0)+arcLift*.045;
   const needed = target.clone().sub(releasePoint);
   ballVelocity.x = needed.x / flightTime;
   ballVelocity.z = needed.z / flightTime;
   ballVelocity.y = (needed.y - .5*GRAVITY*flightTime*flightTime) / flightTime;
-  ballVelocity.y += getArcBonus(shooter,shotType) + (options.arcBonus || 0);
   ballSpin.set(shooter.velocity.z*.08,-(7.2+power*2.4),-shooter.velocity.x*.08);
   if(shotType === "hook"){
     triggerShotSplash(releasePoint.clone(),"blue");
@@ -91,15 +72,19 @@ function releaseShot(shooter,shotType,options={}){
 
   shotPower = 0;
   shooter.moveMeta.chargeHeld = 0;
-  shooter.stats.fga += 1;
-  if(lastShotValue === 3) shooter.stats.tpa += 1;
+  shooter.moveMeta.lastTimingGrade=timing.grade;
+  shooter.moveMeta.lastShotDifficulty=difficulty;
+  if(options.countAttempt!==false){
+    shooter.stats.fga += 1;
+    if(lastShotValue === 3) shooter.stats.tpa += 1;
+  }
   if(timing.grade === "Green Release"){
     shooter.stats.perfect += 1;
     triggerShotSplash(releasePoint,"green");
     triggerCrowdReaction("green",0.8);
   }
   const shotLabel = shotType === "hook" ? "Hook Shot" : shotType === "fadeaway" ? "Fadeaway" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
-  showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight");
+  showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight",shooter.id);
   playShotSound();
   flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
   return true;
@@ -145,13 +130,14 @@ function shootBall(char,shotType="setshot"){
   releaseShot(char,shotType,options);
 }
 
-function botShoot(){
+function botShoot(char=getBallHandler()){
+  if(!char) return;
   shotPower = .65;
-  shootBall(p2);
+  shootBall(char);
 }
 
 function startLayup(char){
-  if(ballState !== "dribble") return;
+  if(!char || possession!==char.id || ballOwner!==char.id || ballState !== "dribble") return;
   shotCharging = false;
   chargingPlayer = null;
   hasShotThisPossession = true;
@@ -168,13 +154,14 @@ function startLayup(char){
   layupBlocked = false;
   layupBlockWindow = .34;
   char.moveMeta.gatherType = "layup";
+  char.stats.fga+=1;
   char.yVel = 3.9 * char.profile.jump;
   char.onGround = false;
   flash(`${char.id.toUpperCase()} layup!`);
 }
 
 function startDunk(char){
-  if(ballState !== "dribble") return;
+  if(!char || possession!==char.id || ballOwner!==char.id || ballState !== "dribble") return;
   shotCharging = false;
   chargingPlayer = null;
   hasShotThisPossession = true;
@@ -196,6 +183,7 @@ function startDunk(char){
   backboardCollisionCooldown = 0;
   shotHasHitRimOrBoard = false;
   char.moveMeta.gatherType = "dunk";
+  char.stats.fga+=1;
   const toRim = HOOP_POS.clone().sub(char.group.position).setY(0);
   const toRimDir = toRim.lengthSq() > 0.0001 ? toRim.clone().normalize() : getForward(char.angle).clone().normalize();
   const right = getBodyRightVector(char).normalize();
@@ -229,7 +217,8 @@ function startDunk(char){
 
 function updateDunk(dt){
   if(!dunkActive) return;
-  const owner = dunkOwner === "p1" ? p1 : p2;
+  const owner = getPlayerById(dunkOwner);
+  if(!owner){ dunkActive=false; return; }
   dunkTimer += dt;
   const t = THREE.MathUtils.clamp(dunkTimer / dunkDuration,0,1);
   const meta = owner.moveMeta && owner.moveMeta.dunk ? owner.moveMeta.dunk : null;
@@ -285,20 +274,38 @@ function updateDunk(dt){
     ball.position.copy(HOOP_POS.clone().add(new THREE.Vector3(0,0.2 - punch*0.62,0)));
     ballVelocity.set(0,-4.4 - punch*0.5,-0.08);
   }
+  if(t>.28 && t<.79 && !dunkScored){
+    for(const defender of getOpponents(owner)){
+      if(defender.blockTime<=0 && defender.handsUpTime<=0) continue;
+      const near=Math.min(getWorldHand(defender,"left").distanceTo(ball.position),getWorldHand(defender,"right").distanceTo(ball.position));
+      if(near<.54*defender.profile.block){
+        applyBlockDeflection(defender,owner);
+        addBlockStat(defender,12);
+        showMoveFeedback("DUNK BLOCKED!",.8);
+        triggerCrowdReaction("block",.8);
+        return;
+      }
+    }
+  }
   if(t >= .79 && !dunkScored){
+    const contest=calculateShotContest(owner);
+    const finishStrength=owner.profile.layup*.55+owner.profile.jump*.25+owner.profile.width*.2;
+    if(contest.value>.72 && finishStrength<1.14 && owner.stamina<.65){
+      dunkActive=false;
+      owner.hasBall=false;
+      ballOwner=null;
+      ballState="loose";
+      ball.position.copy(HOOP_POS).add(new THREE.Vector3(.45,.2,.4));
+      ballVelocity.set(1.5,1.8,2.2);
+      loosePickupDelay=.22;
+      showMoveFeedback("CONTESTED FINISH",.7);
+      return;
+    }
     dunkScored = true;
     shotHasHitRimOrBoard = true;
     const points = 2;
-    if(dunkOwner === "p1"){
-      scoreP1 += points;
-      p1.stats.fgm += 1;
-      showShotBreakdown("Power Finish","Dunk","Heavy Contest","Made");
-    }else{
-      scoreP2 += points;
-      p2.stats.fgm += 1;
-      showShotBreakdown("Power Finish","Dunk","Heavy Contest","Made");
-    }
-    updateScoreboard();
+    awardBasket(owner,points,"Dunk");
+    showShotBreakdown("Power Finish","Dunk",contest.label,"Made");
     animateNetSwish();
     triggerNetWobble(meta.style === "twohand" ? 1.55 : 1.35,HOOP_POS.clone().add(new THREE.Vector3(0,-0.1,0)),new THREE.Vector3(0.02,-1,-0.06));
     playCrowdPulse();
@@ -307,7 +314,7 @@ function updateDunk(dt){
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
     inputManager.vibrate(owner.id,1,120);
-    inputManager.vibrate(owner.id==="p1"?"p2":"p1",.36,70);
+    for(const defender of getOpponents(owner)) inputManager.vibrate(defender.id,.26,60);
     if(meta.style !== "quick") applyCameraShake(.24,"dunk");
     pulseCourtTheme("dunk");
     spawnCourtThemedParticle(HOOP_POS.clone(),"dunk");
@@ -323,8 +330,7 @@ function updateDunk(dt){
       rimHangTimer = rimHangDuration * (meta.style === "twohand" ? 1 : 0.85);
       triggerCrowdReaction("rim_hang",1.15);
     }
-    checkGameWinner();
-    setTimeout(()=>resetPossession(nextPossessionAfterScore(dunkOwner),true),620);
+    scheduleScoredPossession(owner.id,620);
   }
   if(rimHangActive){
     rimHangTimer -= dt;
@@ -334,7 +340,7 @@ function updateDunk(dt){
   if(t >= 1 && !rimHangActive){
     dunkActive = false;
     if(dunkScored){
-      ballState = "shot";
+      ballState = "dead";
       ballVelocity.set(0,-2.8,0);
     }else{
       ballState = "loose";
@@ -381,8 +387,9 @@ function isFacingTarget(char,target,minDot=.25){
 }
 
 function applyBlockDeflection(blocker,shooter){
+  lastTouchPlayerId=blocker.id;
   const blockerForward = getForward(blocker.angle);
-  const handSide = Math.random() < .5 ? "left" : "right";
+  const handSide = getWorldHand(blocker,"left").distanceToSquared(ball.position)<getWorldHand(blocker,"right").distanceToSquared(ball.position) ? "left" : "right";
   const handPoint = getWorldHand(blocker,handSide);
   const away = ball.position.clone().sub(handPoint);
   if(away.lengthSq() < 0.0001) away.copy(ball.position).sub(blocker.group.position);
@@ -393,33 +400,44 @@ function applyBlockDeflection(blocker,shooter){
   ballState = "loose";
   clearShotCreationStates();
   layupActive = false;
+  layupOwner = null;
+  dunkActive = false;
+  dunkOwner = null;
+  ballOwner = null;
+  for(const char of matchPlayers) char.hasBall=false;
   loosePickupDelay = Math.max(loosePickupDelay,.22);
 }
 
 function checkSteals(){
   if(ballState !== "dribble") return;
-  const defender = possession === "p1" ? p2 : p1;
-  const ballHandler = defender === p1 ? p2 : p1;
-  if(defender.swipeTime <= 0) return;
-  const side = defender.swipeSide || "right";
-  const hand = getWorldHand(defender,side);
-  const forearm = side === "left" ? defender.leftForearm : defender.rightForearm;
-  const forearmWorld = forearm.getWorldPosition(new THREE.Vector3());
-  const reachPoint = getReachHitPoint(defender,side);
-  const reachDist = Math.min(hand.distanceTo(ball.position),reachPoint.distanceTo(ball.position),forearmWorld.distanceTo(ball.position));
-  if(!isFacingTarget(defender,ball.position,0.15)) return;
-  if(!hasCleanStealPath(defender,ballHandler,hand,ball.position)) return;
-  if(reachDist < .52 * defender.profile.steal * getGameplayTuning().stealWindow){
+  const ballHandler=getBallHandler();
+  if(!ballHandler) return;
+  for(const defender of getOpponents(ballHandler)){
+    // Only the middle of the swipe is live, after the readable wind-up.
+    if(defender.swipeTime<.11 || defender.swipeTime>.25 || defender.swipeConnected || defender.reachRecovery>0) continue;
+    const side = defender.swipeSide || "right";
+    const hand = getWorldHand(defender,side);
+    const forearm = side === "left" ? defender.leftForearm : defender.rightForearm;
+    const forearmWorld = forearm.getWorldPosition(new THREE.Vector3());
+    const reachPoint = getReachHitPoint(defender,side);
+    const reachDist = Math.min(hand.distanceTo(ball.position),reachPoint.distanceTo(ball.position),forearmWorld.distanceTo(ball.position));
+    if(!isFacingTarget(defender,ball.position,.35)) continue;
+    if(!hasCleanStealPath(defender,ballHandler,hand,ball.position)) continue;
+    const exposed=ball.position.y<1.05 || (crossover.active && crossover.player===ballHandler && crossover.riskWindow>0);
+    const reachWindow=(exposed ? .48 : .34)*defender.profile.steal*getGameplayTuning().stealWindow;
+    if(reachDist>=reachWindow) continue;
+    defender.swipeConnected=true;
     gainPossession(defender.id);
     flash(`${defender.id.toUpperCase()} steal!`);
     showShotFeedback("Stripped!");
     triggerCrowdReaction("steal",0.75);
     defender.confidence = Math.min(1,defender.confidence + .08);
     defender.stats.steals += 1;
+    ballHandler.stats.turnovers += 1;
     addTakeover(10,defender);
     inputManager.vibrate(defender.id,.42,70);
     inputManager.vibrate(ballHandler.id,.24,55);
-    screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09,"block");
+    return;
   }
 }
 
@@ -427,8 +445,10 @@ function checkBlocksAndCatches(){
   if(ballState !== "shot" && ballState !== "layup") return;
 
   const shooterId = ballState === "layup" ? layupOwner : lastShotShooter;
-  const blocker = shooterId === "p1" ? p2 : p1;
-  if(blocker.blockTime <= 0 && blocker.handsUpTime <= 0) return;
+  const shooter=getPlayerById(shooterId);
+  if(!shooter) return;
+  for(const blocker of getOpponents(shooter)){
+  if(blocker.blockTime <= 0 && blocker.handsUpTime <= 0) continue;
 
   const handL = getWorldHand(blocker,"left");
   const handR = getWorldHand(blocker,"right");
@@ -436,17 +456,14 @@ function checkBlocksAndCatches(){
   const sweptHandContact = segmentSphereIntersect(previousBallPosition,ball.position,handL,handRadius) ||
     segmentSphereIntersect(previousBallPosition,ball.position,handR,handRadius);
   const near = sweptHandContact ? 0 : Math.min(handL.distanceTo(ball.position),handR.distanceTo(ball.position));
-  const shooter = shooterId === "p1" ? p1 : p2;
-  let threshold = (ballState === "layup" ? .68 : .62) * blocker.profile.block + (blocker.blockBoost ? .24 : 0);
-  const shotTiming = shooter && shooter.moveMeta && shooter.moveMeta.chargeHeld ? THREE.MathUtils.clamp(shooter.moveMeta.chargeHeld/1.2,0,1):.55;
-  const sDiff = difficultySettings[selectedDifficulty];
-  const timingError = Math.abs(shotTiming - (ballState === "layup" ? .62 : .58));
-  threshold *= THREE.MathUtils.clamp(1.06 - timingError * (0.35 + (1-sDiff.contestTiming)*0.22),0.82,1.08);
+  const blockProgress=1-THREE.MathUtils.clamp(blocker.blockTime/.42,0,1);
+  const timedJump=!blocker.onGround && blockProgress>.12 && blockProgress<.86;
+  let threshold = (timedJump ? .47 : .29) * blocker.profile.block + (blocker.blockBoost ? .09 : 0);
   if(ballState === "shot" && shooter && shooter.moveMeta && shooter.moveMeta.lastShotType === "jumper") threshold *= .86;
 
   if(ballState === "layup"){
     const perfect = layupBlockWindow > 0 && layupTimer > .17 && layupTimer < .58;
-    if(near < threshold && perfect){
+    if(near < threshold && perfect && timedJump){
       layupBlocked = true;
       layupScored = false;
       layupActive = false;
@@ -460,14 +477,14 @@ function checkBlocksAndCatches(){
       playBlockSound();
       inputManager.vibrate(blocker.id,.86,105);
       inputManager.vibrate(shooter.id,.46,85);
-      screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16,"block");
+      return;
     }
-    return;
+    continue;
   }
 
   if(near < threshold){
-    const catchChance = .18 + (blocker.profile.block-1)*.2 + (blocker.profile.steal-1)*.12 + (blocker.handsUpTime>0 ? .18 : 0);
-    if(ballVelocity.y < 1.5 && ball.position.y < HOOP_POS.y - 0.18 && Math.random() < catchChance){
+    const catchQuality=getLooseBallPickupQuality(blocker);
+    if(ballVelocity.length()<4.2 && ballVelocity.y<0 && ball.position.y<HOOP_POS.y-.18 && catchQuality>.72 && near<threshold*.65){
       gainPossession(blocker.id);
       flash(`${blocker.id.toUpperCase()} caught the shot!`);
     }else{
@@ -479,16 +496,18 @@ function checkBlocksAndCatches(){
       playBlockSound();
       inputManager.vibrate(blocker.id,.78,95);
       inputManager.vibrate(shooter.id,.4,75);
-      screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13,"block");
     }
+    return;
+  }
   }
 }
 
 function checkFouls(dt){
   if(ballState !== "dribble") return;
-  const dist = flatDistance(p1.group.position,p2.group.position);
-  const bodying = (p1.bodyUpTimer > 0.08 || p2.bodyUpTimer > 0.08);
-  if(dist < 1.03) foulMeter += dt * (bodying ? .12 : .18);
+  const owner=getBallHandler();
+  if(!owner) return;
+  const illegalContact=getOpponents(owner).some(defender=>flatDistance(owner.group.position,defender.group.position)<.94 && defender.swipeTime>0 && !isFacingTarget(defender,owner.group.position,.1));
+  if(illegalContact) foulMeter += dt*.3;
   else foulMeter = Math.max(0,foulMeter - dt*.08);
 
   if(foulMeter >= 1){
@@ -497,55 +516,66 @@ function checkFouls(dt){
   }
 }
 
+function awardBasket(shooter,points,kind="Jumper"){
+  if(!shooter || lastScored || gameOver) return false;
+  lastScored=true;
+  if(shooter.teamId===0) scoreP1+=points;
+  else scoreP2+=points;
+  shooter.stats.fgm+=1;
+  if(points===3) shooter.stats.tpm+=1;
+  for(const char of matchPlayers) char.hasBall=false;
+  ballOwner=null;
+  ballState="dead";
+  possessionFrozen=true;
+  rimTouchCount=0;
+  rimCollisionCooldown=0;
+  backboardCollisionCooldown=0;
+  flash(`${shooter.id.toUpperCase()} scores ${points}!`);
+  updateMomentum(shooter,true,points,shooter.lastContestLabel);
+  updateScoreboard();
+  checkGameWinner();
+  return true;
+}
+
+function scheduleScoredPossession(scorerId,delay=850){
+  pendingInbound={remaining:delay/1000,scorerId};
+}
+
+function scheduleDeadPossession(ownerId,delay=420){
+  possessionFrozen=true;
+  pendingInbound={remaining:delay/1000,ownerId};
+}
+
+function updateScoredPossession(dt){
+  if(!pendingInbound) return false;
+  pendingInbound.remaining-=dt;
+  if(pendingInbound.remaining<=0 && gameStarted && !gameOver){
+    const ownerId=pendingInbound.ownerId || nextPossessionAfterScore(pendingInbound.scorerId);
+    pendingInbound=null;
+    resetPossession(ownerId,true);
+  }
+  return true;
+}
+
 function checkScore(){
-  if(lastScored) return;
+  if(lastScored || !hasShotThisPossession || (ballState!=="shot" && ballState!=="loose")) return;
   const dist = flatDistance(ball.position,HOOP_POS);
 
   if(dist < RIM_RADIUS*.72 && ball.position.y < HOOP_POS.y && ball.position.y > HOOP_POS.y-.42 && ballVelocity.y < 0){
-    lastScored = true;
-    rimTouchCount = 0;
-    rimCollisionCooldown = 0;
-    backboardCollisionCooldown = 0;
-
-    const shooterId = ballState === "layup" ? layupOwner : (dunkActive ? dunkOwner : lastShotShooter);
+    const shooterId = lastShotShooter;
+    const shooter=getPlayerById(shooterId);
+    if(!shooter) return;
     const points = shotValueFor(shooterId);
-    if(shooterId === "p1"){
-      scoreP1 += points;
-      p1.stats.fgm += 1;
-      if(points===3) p1.stats.tpm += 1;
-      flash(`P1 scores ${points}!`);
-      const shotKind = p1.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
-      showShotBreakdown("Good",shotKind,p1.lastContestLabel,"Made");
+      const shotKind = shooter.moveMeta.lastShotType === "hook" ? "Hook Shot" : shooter.moveMeta.lastShotType==="layup" ? "Layup" : "Jumper";
+      if(!awardBasket(shooter,points,shotKind)) return;
+      showShotBreakdown(shooter.moveMeta.lastTimingGrade || "Good",shotKind,shooter.lastContestLabel,"Made");
       animateNetSwish();
       triggerNetWobble(points===3 ? 1.1 : 0.95);
       playSwishSound();
       playCrowdPulse();
-      triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p1.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(points===3?"three":(p1.moveMeta.lastShotType==="hook"?"hook_make":"make"),points===3?0.95:0.72);
-      updateMomentum(p1, true, points, p1.lastContestLabel);
-      updateMomentum(p2, false, 0, p1.lastContestLabel);
-      setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),900);
-    }else{
-      scoreP2 += points;
-      p2.stats.fgm += 1;
-      if(points===3) p2.stats.tpm += 1;
-      flash(`P2 scores ${points}!`);
-      const shotKind = p2.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
-      showShotBreakdown("Good",shotKind,p2.lastContestLabel,"Made");
-      animateNetSwish();
-      triggerNetWobble(points===3 ? 1.1 : 0.95);
-      playSwishSound();
-      playCrowdPulse();
-      triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p2.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(points===3?"three":(p2.moveMeta.lastShotType==="hook"?"hook_make":"make"),points===3?0.95:0.72);
-      updateMomentum(p2, true, points, p2.lastContestLabel);
-      updateMomentum(p1, false, 0, p2.lastContestLabel);
-      setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),900);
-    }
-
-    updateScoreboard();
-    checkGameWinner();
-    setTimeout(() => lastScored = false,1000);
+      triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(lastShotWasHook?"blue":"green"));
+      triggerCrowdReaction(points===3?"three":(lastShotWasHook?"hook_make":"make"),points===3?0.95:0.72);
+      scheduleScoredPossession(shooterId,850);
   }
 }
 
@@ -633,9 +663,9 @@ function updateHoopReaction(dt){
       netWobbleStrength = 0;
     }
   }
-  [p1,p2].forEach(pl=>{
+  matchPlayers.forEach(pl=>{
     if(!pl) return;
-    const hand = pl.group.localToWorld(new THREE.Vector3(pl.w*0.36,1.46*pl.h,0));
+    const hand = pl.group.localToWorld(new THREE.Vector3(pl.profile.width*.36,1.46*pl.profile.height,0));
     const d = hand.distanceTo(HOOP_POS);
     if(d < 0.55 && pl.velocity.y > -0.2){
       const dunkBoost = (pl.dunking || ballState === "dunk") ? 0.62 : 0.28;
@@ -645,8 +675,10 @@ function updateHoopReaction(dt){
 }
 function nextPossessionAfterScore(scorer){
   if(gameMode.makeItTakeIt) return scorer;
-  if(gameMode.losersBall) return scorer === "p1" ? (scoreP1 <= scoreP2 ? "p1":"p2") : (scoreP2 <= scoreP1 ? "p2":"p1");
-  return scorer === "p1" ? "p2" : "p1";
+  const scorerTeam=teamOf(scorer);
+  const nextTeam=gameMode.losersBall ? (scoreP1===scoreP2 ? scorerTeam : scoreP1<scoreP2 ? 0 : 1) : 1-scorerTeam;
+  const receiver=matchPlayers.find(char=>char.teamId===nextTeam && char.controllerSlot) || matchPlayers.find(char=>char.teamId===nextTeam);
+  return receiver ? receiver.id : scorer;
 }
 function endGame(winner){
   gameOver = true;
@@ -666,119 +698,42 @@ function shotValueFor(ownerId){
 }
 
 function gainPossession(who){
-  const newOwner = who === "p1" ? p1 : p2;
-  const oldOwner = who === "p1" ? p2 : p1;
-  possession = who;
-  ballOwner = who;
-  lastShotShooter = who;
-  ballState = "dribble";
-  clearShotCreationStates();
-  ballVelocity.set(0,0,0);
-  ballSpin.set(0,0,0);
-  shotCharging = false;
-  chargingPlayer = null;
-  shotPower = 0;
-  hasShotThisPossession = false;
-  layupActive = false;
-  layupOwner = null;
-  layupScored = false;
-  dunkActive = false;
-  dunkOwner = null;
-  foulMeter = 0;
-  loosePickupDelay = .12;
-  ballCollisionCooldown = 0;
-  rimCollisionCooldown = 0;
-  backboardCollisionCooldown = 0;
-  rimTouchCount = 0;
-  shotHasHitRimOrBoard = false;
-  crossover.active = false;
-  crossover.progress = 1;
-
-  p1.hasBall = who === "p1";
-  p2.hasBall = who === "p2";
-  if(oldOwner) oldOwner.hasBall = false;
-
-  ballSideValue = 1;
-  ballSide = "right";
-
-  const secureHand = getWorldHand(newOwner,"right");
-  const chest = newOwner.group.position.clone()
-    .add(new THREE.Vector3(0,1.24*newOwner.profile.height,0))
-    .add(getForward(newOwner.angle).multiplyScalar(0.22));
-  ball.position.copy(secureHand.lerp(chest,.55));
+  const newOwner=getPlayerById(who);
+  if(!newOwner || gameOver) return;
+  takePossession(newOwner);
 }
 
 function resetPossession(who,reposition){
   if(gameOver) return;
-  possession = who;
-  ballOwner = who;
-  lastShotShooter = who;
-  ballState = "dribble";
-  clearShotCreationStates();
+  pendingInbound=null;
+  const owner=getPlayerById(who) || matchPlayers[0];
+  if(!owner) return;
+  for(const char of matchPlayers) resetBody(char);
+  if(reposition) resetTeamPositions(owner.id);
+  takePossession(owner,{silent:true});
+  lastScored=false;
   lastShotValue = 2;
   lastShotWasHook = false;
   lastShotReleasePos.set(0,0,0);
-  ballSide = "right";
-  ballSideValue = 1;
-  ballVelocity.set(0,0,0);
-  ballSpin.set(0,0,0);
-  shotCharging = false;
-  chargingPlayer = null;
-  shotPower = 0;
-  hasShotThisPossession = false;
-  layupActive = false;
-  dunkActive = false;
-  dunkOwner = null;
-  foulMeter = 0;
   loosePickupDelay = 0;
-  ballCollisionCooldown = 0;
-  rimCollisionCooldown = 0;
-  backboardCollisionCooldown = 0;
-  rimTouchCount = 0;
-  shotHasHitRimOrBoard = false;
-  crossover.active = false;
-  crossover.progress = 1;
-
-  p1.hasBall = who === "p1";
-  p2.hasBall = who === "p2";
-
-  resetBody(p1);
-  resetBody(p2);
-
-  if(reposition){
-    if(who === "p1"){
-      p1.group.position.copy(P1_OFFENSE_START);
-      p2.group.position.copy(P2_DEFENSE_START);
-
-      p1.angle = Math.PI;
-      p2.angle = angleToward(p2.group.position,p1.group.position);
-
-      botStrategy = "defense";
-    }else{
-      p2.group.position.copy(P2_OFFENSE_START);
-      p1.group.position.copy(P1_DEFENSE_START);
-
-      p2.angle = Math.PI;
-      p1.angle = angleToward(p1.group.position,p2.group.position);
-
-      botStrategy = chooseBotStrategy();
-    }
-  }
-
+  botStrategy=owner.controllerSlot ? "defense" : chooseBotStrategy();
   startCountdown();
 }
 
 function rematchSamePlayers(){
   if(!gameStarted) return;
+  inputManager.clearAll();
+  resetPlayerShotFeedback();
   scoreP1 = 0; scoreP2 = 0; gameOver = false; possessionFrozen = false;
   hideWinnerOverlay();
   updateScoreboard();
   initBotBrain();
-  p1.confidence = 0; p2.confidence = 0; p1.hotStreak = 0; p2.hotStreak = 0;
-  p1.moveState = p2.moveState = "normal";
-  p1.sideHopCooldown = p2.sideHopCooldown = 0;
-  p1.pumpFakeCooldown = p2.pumpFakeCooldown = 0;
-  resetPossession("p1",true);
+  for(const char of matchPlayers){
+    char.confidence=0; char.hotStreak=0; char.moveState="normal";
+    char.sideHopCooldown=0; char.pumpFakeCooldown=0; char.reachRecovery=0;
+    for(const key of Object.keys(char.stats)) char.stats[key]=0;
+  }
+  resetPossession(matchPlayers[0].id,true);
 }
 function returnToCharacterMenu(){
   gameOver = false;
@@ -786,7 +741,7 @@ function returnToCharacterMenu(){
   showQuickPlaySetup();
 }
 function showWinnerOverlay(winner){
-  document.getElementById("winnerText").textContent = winner === "p1" ? "P1 WINS!" : "P2 WINS!";
+  document.getElementById("winnerText").textContent = matchPlayers.length>2 ? `TEAM ${winner==="p1" ? 1 : 2} WINS!` : winner === "p1" ? "P1 WINS!" : "P2 WINS!";
   showWinnerStats();
   document.getElementById("winnerOverlay").style.display = "flex";
 }
@@ -798,8 +753,13 @@ function updatePlayerStats(char,key,amount=1){
   char.stats[key] = (char.stats[key] || 0) + amount;
 }
 function showWinnerStats(){
-  if(!p1 || !p2) return;
-  const line = `P1 ${p1.stats.fgm}/${p1.stats.fga} FG, STL ${p1.stats.steals}, BLK ${p1.stats.blocks} | P2 ${p2.stats.fgm}/${p2.stats.fga} FG, STL ${p2.stats.steals}, BLK ${p2.stats.blocks}`;
+  if(!matchPlayers.length) return;
+  const lines=[0,1].map(team=>{
+    const totals={fgm:0,fga:0,steals:0,blocks:0};
+    for(const char of matchPlayers) if(char.teamId===team) for(const key of Object.keys(totals)) totals[key]+=char.stats[key] || 0;
+    return `${matchPlayers.length>2 ? "Team " : "P"}${team+1} ${totals.fgm}/${totals.fga} FG, STL ${totals.steals}, BLK ${totals.blocks}`;
+  });
+  const line=lines.join(" | ");
   document.getElementById("winnerSub").textContent = line;
 }
 function buildBroadcastScorebug(){}
@@ -817,6 +777,10 @@ function resetBody(char){
   char.moveTimer = 0;
   char.moveDuration = 0;
   char.stumbledTimer = 0;
+  char.reachRecovery=0;
+  char.swipeConnected=false;
+  char.passMotionTime=0;
+  char.velocity.set(0,0,0);
   }
 
 function chooseBotStrategy(){

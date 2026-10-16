@@ -8,16 +8,15 @@ class TutorialCoach {
     this.moveTime = 0;
     this.baseline = {};
     this.steps = [
-      {title:"Movement",body:"Use movement to circle the court.",check:(dt,state)=>{ this.moveTime += Math.hypot(state.moveX,state.moveY)>.45 ? dt : 0; return this.moveTime>1.2; }},
-      {title:"Sprint",body:"Accelerate into open space with Sprint.",check:(dt,state)=>state.sprint&&Math.hypot(state.moveX,state.moveY)>.4},
+      {title:"Movement",body:"Use movement to circle the court. Up always moves toward the basket; left and right stay consistent.",check:(dt,state)=>{ this.moveTime += Math.hypot(state.moveX,state.moveY)>.45 ? dt : 0; return this.moveTime>1.2; }},
+      {title:"Sprint",body:"Push the touch joystick to its outer edge, or hold Sprint on keyboard or controller, to accelerate into open space.",check:(dt,state)=>state.sprint&&Math.hypot(state.moveX,state.moveY)>.4},
       {title:"Shot timing",body:"Hold Shoot, then release near the center of the compact meter.",check:()=>p1?.stats.fga>(this.baseline.fga||0)},
       {title:"Finishing",body:"Drive toward the rim and use Shoot to trigger a layup or dunk.",check:()=>scoreP1>(this.baseline.score||0)},
-      {title:"Crossover",body:"Use a left or right skill input to move the ball across your body.",check:()=>crossover.active||ballSideValue<0},
-      {title:"Escape dribble",body:"Flick the skill stick backward for a step-back. A fast double lateral flick creates more space.",check:()=>["backjump","stepback","sidejump"].includes(p1?.moveState)},
-      {title:"Defensive stance",body:"Without the ball, hold Protect to stay square and slide.",check:(dt,state)=>possession!=="p1"&&state.protect&&Math.hypot(state.moveX,state.moveY)>.15},
+      {title:"Create space",body:"Cut left and right to beat your defender. Keyboard and controller skill inputs also offer crossovers.",check:(dt,state)=>{ this.moveTime += Math.abs(state.moveX)>.5 ? dt : 0; return crossover.active||this.moveTime>.8; }},
+      {title:"Defensive position",body:"Stay between your opponent and the basket. Movement automatically keeps you facing the action.",check:(dt,state)=>possession!==p1?.id&&Math.hypot(state.moveX,state.moveY)>.15},
       {title:"Steal",body:"Reach only when the ball is exposed. A bad reach costs recovery time.",check:()=>p1?.stats.steals>(this.baseline.steals||0)||p1?.swipeTime>0},
       {title:"Contest",body:"Use Block / Contest to challenge the release with your hands.",check:()=>p1?.blockTime>0||p1?.handsUpTime>0},
-      {title:"Takeover",body:"Highlights build Takeover. Activate it once full.",check:()=>p1?.takeoverActive||p1?.takeover>15},
+      {title:"Team basketball",body:"In 2v2 and 3v3, face a teammate and press Pass: C, controller A / Cross, or the touch Pass button. V or RB / R1 switches teammates.",check:(dt)=>{ this.moveTime+=dt; return this.moveTime>3; }},
       {title:"Ready",body:"Tutorial complete. The court is yours.",check:()=>false,complete:true}
     ];
   }
@@ -69,6 +68,9 @@ function startTutorial(){
   isTournamentGame = false;
   isChampionshipGame = false;
   twoPlayerMode = false;
+  teamSize = 1;
+  localTeamMode = "competitive";
+  inputManager.clearAll();
   selectedDifficulty = "rookie";
   selectedCourt = "classicArena";
   gameSettings.set("gameplayPreset","simulation");
@@ -79,6 +81,7 @@ function startTutorial(){
 function setPaused(paused){
   if(!gameStarted || gameOver) return;
   gamePaused = !!paused;
+  if(gamePaused) inputManager.clearAll();
   possessionFrozen = gamePaused || countdownTimer>0;
   const overlay = document.getElementById("pauseOverlay");
   overlay?.classList.toggle("visible",gamePaused);
@@ -118,19 +121,24 @@ function updateInputDeviceUI(){
 }
 
 function updateTouchPresentation(){
-  const touchCapable = matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints>0;
+  const touchCapable = matchMedia("(pointer: coarse)").matches || inputManager.lastDevice==="touch";
   document.body.classList.toggle("touch-capable",touchCapable);
-  document.body.classList.toggle("touch-controls-active",touchCapable&&gameStarted&&!gameOver);
-  const offense = possession === "p1";
+  document.body.classList.toggle("touch-controls-active",touchCapable&&gameStarted&&!gameOver&&!gamePaused);
+  const controlled = typeof getHumanPlayer === "function" ? getHumanPlayer("p1") : p1;
+  const possessionPlayer = typeof getPlayerById === "function" ? getPlayerById(possession) : (possession==="p1" ? p1 : p2);
+  const owner = getOwner() || possessionPlayer;
+  const offense = !!controlled && !!owner && (controlled.teamId !== undefined ? controlled.teamId===owner.teamId : controlled.id===possession);
   const primary = document.getElementById("touchPrimary");
   const secondary = document.getElementById("touchSecondary");
   if(primary){
-    primary.dataset.touchAction = offense ? "shoot" : "steal";
-    primary.textContent = offense ? "SHOOT" : "STEAL";
+    primary.dataset.touchAction = offense ? "shoot" : "block";
+    primary.textContent = offense ? "SHOOT" : "BLOCK";
+    primary.setAttribute("aria-label",offense ? "Hold and release to shoot" : "Contest or block");
   }
   if(secondary){
-    secondary.dataset.touchAction = offense ? "protect" : "block";
-    secondary.textContent = offense ? "PROTECT" : "BLOCK";
+    secondary.dataset.touchAction = offense ? "pass" : "steal";
+    secondary.textContent = offense ? "PASS" : "STEAL";
+    secondary.setAttribute("aria-label",offense ? "Pass toward the teammate you face" : "Attempt a steal");
   }
 }
 
@@ -176,6 +184,7 @@ function setupControlsMenu(){
     gameStarted = false;
     tutorialMode = false;
     tutorialCoach.stop();
+    inputManager.clearAll();
     showPrimaryMenu();
   });
   applySettingsControls();

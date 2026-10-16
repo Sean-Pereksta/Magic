@@ -1,6 +1,18 @@
 let scene, renderer, clock;
 let camMain, camP1, camP2;
 let p1, p2, ball, ballShadow, rim, backboard;
+// Human control slots are separate from individual player IDs and team ownership.
+let matchPlayers = [];
+let teamSize = 1;
+let localTeamMode = "competitive";
+let splitLayout = "vertical";
+const SIMULATION_STEP = 1 / 60;
+let simulationAccumulator = 0;
+let simulationTime = 0;
+const ballPreviousPosition = new THREE.Vector3();
+const ballSimulationPosition = new THREE.Vector3();
+const passFlight = {active:false, elapsed:0, duration:0, passerId:null, targetId:null,
+  start:new THREE.Vector3(), end:new THREE.Vector3(), previous:new THREE.Vector3()};
 let netLines = [];
 let scoreboardPlane, scoreboardTexture, scoreboardCtx;
 let arcLine;
@@ -50,6 +62,7 @@ let gameOver = false;
 let possession = "p1";
 let ballOwner = "p1";
 let lastShotShooter = "p1";
+let lastTouchPlayerId = "p1";
 let ballState = "dribble"; // dribble, shot, loose, layup, dunk
 let lastShotValue = 2;
 let lastShotReleasePos = new THREE.Vector3();
