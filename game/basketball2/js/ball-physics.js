@@ -166,44 +166,50 @@ function updateBall(dt){
   }
 
   if(ballState === "shot" || ballState === "loose"){
-    previousBallPosition.copy(ball.position);
-    if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < dt * 18){
-      createShotTrail(lastShotWasHook ? "hook" : "shot");
-    }
-
-    ball.position.addScaledVector(ballVelocity,dt);
-    ball.position.y += .5*GRAVITY*dt*dt;
-    ballVelocity.y += GRAVITY * dt;
-    ball.rotation.x += ballSpin.x*dt;
-    ball.rotation.y += ballSpin.y*dt;
-    ball.rotation.z += ballSpin.z*dt;
-    ballSpin.multiplyScalar(Math.max(.94,1-dt*.55));
-
-    keepBallInBounds();
-
-    if(ball.position.y < BALL_RADIUS){
-      ball.position.y = BALL_RADIUS;
-      const bounceTuning=getGameplayTuning().ballBounce;
-      ballVelocity.copy(reflectVelocity(new THREE.Vector3(0, 1, 0), 0.58*bounceTuning, 0.76));
-      ballSpin.multiplyScalar(.78);
-
-      if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot"){
-        ballState = "loose";
+    // Fixed simulation ticks can still cross a thin rim at high ball speed.
+    // Small flight segments keep contacts and hoop-plane scoring consistent.
+    const flightSteps=Math.max(1,Math.ceil(dt/(1/180)));
+    const flightDt=dt/flightSteps;
+    for(let flightStep=0;flightStep<flightSteps && (ballState==="shot" || ballState==="loose");flightStep++){
+      previousBallPosition.copy(ball.position);
+      if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < flightDt * 18){
+        createShotTrail(lastShotWasHook ? "hook" : "shot");
       }
 
-      ball.scale.set(1.08, 0.92, 1.08);
-      playDribbleSound();
-      updatePredictedReboundPoint(true);
-    }
+      ball.position.addScaledVector(ballVelocity,flightDt);
+      ball.position.y += .5*GRAVITY*flightDt*flightDt;
+      ballVelocity.y += GRAVITY * flightDt;
+      ball.rotation.x += ballSpin.x*flightDt;
+      ball.rotation.y += ballSpin.y*flightDt;
+      ball.rotation.z += ballSpin.z*flightDt;
+      ballSpin.multiplyScalar(Math.max(.94,1-flightDt*.55));
 
-    resolveBackboardBallCollision(dt);
-    handleBackboardAndRim();
-    for(const char of matchPlayers) checkBallPlayerBodyCollision(char);
-    checkScore();
-    handleLooseBallPickup();
+      keepBallInBounds();
 
-    if(ballState === "loose" && flatDistance(ball.position, HOOP_POS) > 2.8){
-      rimTouchCount = 0;
+      if(ball.position.y < BALL_RADIUS){
+        ball.position.y = BALL_RADIUS;
+        const bounceTuning=getGameplayTuning().ballBounce;
+        ballVelocity.copy(reflectVelocity(new THREE.Vector3(0, 1, 0), 0.58*bounceTuning, 0.76));
+        ballSpin.multiplyScalar(.78);
+
+        if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot"){
+          ballState = "loose";
+        }
+
+        ball.scale.set(1.08, 0.92, 1.08);
+        playDribbleSound();
+        updatePredictedReboundPoint(true);
+      }
+
+      resolveBackboardBallCollision(flightDt);
+      handleBackboardAndRim();
+      for(const char of matchPlayers) checkBallPlayerBodyCollision(char);
+      checkScore();
+      handleLooseBallPickup();
+
+      if(ballState === "loose" && flatDistance(ball.position, HOOP_POS) > 2.8){
+        rimTouchCount = 0;
+      }
     }
   }
 
@@ -254,44 +260,43 @@ function updateBall(dt){
 function resolveBackboardBallCollision(dt){
   if(!backboard) return;
   if(backboardCollisionCooldown > 0) return;
-
-  const boardBox = new THREE.Box3().setFromObject(backboard);
-  const min = boardBox.min;
-  const max = boardBox.max;
-  const frontPlaneZ = max.z + BALL_RADIUS;
-  const backPlaneZ = min.z - BALL_RADIUS;
-
-  const prevPos = previousBallPosition;
-  const currPos = ball.position;
-
-  const withinX = currPos.x >= min.x - BALL_RADIUS && currPos.x <= max.x + BALL_RADIUS;
-  const withinY = currPos.y >= min.y - BALL_RADIUS && currPos.y <= max.y + BALL_RADIUS;
-  if(!withinX || !withinY) return;
-
-  const crossedFront = prevPos.z > frontPlaneZ && currPos.z <= frontPlaneZ;
-  const crossedBack = prevPos.z < backPlaneZ && currPos.z >= backPlaneZ;
-  if(!crossedFront && !crossedBack){
-    const expanded = boardBox.clone().expandByScalar(BALL_RADIUS);
-    if(!expanded.containsPoint(currPos)) return;
+  // Shared dimensions stay static while the visible glass shakes on impact.
+  // Sweep the sphere against the expanded slab, including its top/side edges.
+  const g=typeof HOOP_GEOMETRY!=="undefined" ? HOOP_GEOMETRY : {
+    boardWidth:3.2,boardHeight:1.85,boardThickness:.07,
+    boardCenterY:HOOP_POS.y+.7,boardCenterZ:HOOP_POS.z-.86,
+    boardRestitution:.72,boardTangentialDamping:.96
+  };
+  const bounds={
+    x:[HOOP_POS.x-g.boardWidth*.5-BALL_RADIUS,HOOP_POS.x+g.boardWidth*.5+BALL_RADIUS],
+    y:[g.boardCenterY-g.boardHeight*.5-BALL_RADIUS,g.boardCenterY+g.boardHeight*.5+BALL_RADIUS],
+    z:[g.boardCenterZ-g.boardThickness*.5-BALL_RADIUS,g.boardCenterZ+g.boardThickness*.5+BALL_RADIUS]
+  };
+  const delta=ball.position.clone().sub(previousBallPosition);
+  let enter=0,exit=1,hitAxis=null,normalSign=0;
+  for(const axis of ["x","y","z"]){
+    const p=previousBallPosition[axis],v=delta[axis];
+    const [lo,hi]=bounds[axis];
+    if(Math.abs(v)<.0000001){ if(p<lo || p>hi) return; continue; }
+    const near=(lo-p)/v,far=(hi-p)/v;
+    const start=Math.min(near,far),end=Math.max(near,far);
+    if(start>enter){enter=start;hitAxis=axis;normalSign=v>0 ? -1 : 1;}
+    exit=Math.min(exit,end);
+    if(enter>exit) return;
   }
-
-  const hitFromFront = prevPos.z > max.z;
-  const normalZ = hitFromFront ? 1 : -1;
-
-  ball.position.z = hitFromFront ? max.z + BALL_RADIUS + 0.025 : min.z - BALL_RADIUS - 0.025;
-  ballVelocity.z = Math.abs(ballVelocity.z || 0.01) * normalZ * 0.72;
-  ballVelocity.x *= 0.92;
-  ballVelocity.y *= 0.82;
-
-  if(!Number.isFinite(ballVelocity.x) || !Number.isFinite(ballVelocity.y) || !Number.isFinite(ballVelocity.z)){
-    ballVelocity.set(0,0,0);
-  }
-
+  if(!hitAxis || enter<0 || enter>1) return;
+  const normal=new THREE.Vector3();normal[hitAxis]=normalSign;
+  const incoming=ballVelocity.dot(normal);
+  if(incoming>=0) return;
+  const impact=previousBallPosition.clone().addScaledVector(delta,enter);
+  const tangent=ballVelocity.clone().addScaledVector(normal,-incoming).multiplyScalar(g.boardTangentialDamping);
+  ballVelocity.copy(tangent).addScaledVector(normal,-incoming*g.boardRestitution);
+  ball.position.copy(impact).addScaledVector(normal,.001);
+  ball.position.addScaledVector(ballVelocity,Math.max(0,1-enter)*dt);
   shotHasHitRimOrBoard = true;
   backboardCollisionCooldown = 0.08;
   triggerBackboardImpact(0.035,0.16);
   updatePredictedReboundPoint(true);
-  handleBankShot();
   spawnParticle(ball.position,0x88d7ff);
   playRimSound();
 }
@@ -344,35 +349,28 @@ function keepBallInBounds(){
 function handleBackboardAndRim(){
   const rimFlat = new THREE.Vector3(ball.position.x-HOOP_POS.x,0,ball.position.z-HOOP_POS.z);
   const rimDist = rimFlat.length();
-  const yDiff = Math.abs(ball.position.y-HOOP_POS.y);
-
-  const centeredDrop = rimDist < RIM_RADIUS*.56 && ball.position.y < HOOP_POS.y + .4 && ballVelocity.y < 0;
-  if(centeredDrop) return;
-  if(rimCollisionCooldown <= 0 && rimDist < RIM_RADIUS + BALL_RADIUS && rimDist > RIM_RADIUS - BALL_RADIUS && yDiff < .23){
-    const n = rimFlat.normalize();
-    rimCollisionCooldown = .09;
+  if(rimDist<.000001) return;
+  const tubeRadius=typeof HOOP_GEOMETRY!=="undefined" ? HOOP_GEOMETRY.rimTubeRadius : .045;
+  const ringPoint=HOOP_POS.clone().addScaledVector(rimFlat,RIM_RADIUS/rimDist);
+  const normal=ball.position.clone().sub(ringPoint);
+  const distance=normal.length();
+  const contactRadius=BALL_RADIUS+tubeRadius;
+  if(rimCollisionCooldown <= 0 && distance<contactRadius){
+    if(distance<.000001) normal.set(0,1,0); else normal.multiplyScalar(1/distance);
+    ball.position.copy(ringPoint).addScaledVector(normal,contactRadius+.001);
+    const incoming=ballVelocity.dot(normal);
+    if(incoming>=0) return;
+    rimCollisionCooldown = .025;
     rimTouchCount++;
     shotHasHitRimOrBoard = true;
-    ball.position.add(n.clone().multiplyScalar(.08));
-    ballVelocity.copy(reflectVelocity(new THREE.Vector3(n.x,0,n.z),.68,.9));
-    ballVelocity.y = Math.max(Math.abs(ballVelocity.y)*.45 + .8,.9);
+    const tangent=ballVelocity.clone().addScaledVector(normal,-incoming).multiplyScalar(.94);
+    ballVelocity.copy(tangent).addScaledVector(normal,-incoming*.64);
+    ballSpin.multiplyScalar(.86);
     updatePredictedReboundPoint(true);
-    handleRimRattle();
     triggerNetWobble(0.45,ball.position,ballVelocity);
     spawnParticle(ball.position,0xff9f5a);
     playRimSound();
     inputManager.vibrate(lastShotShooter,.24,48);
-  }
-  if(rimTouchCount > 4){
-    ballState = "loose";
-    const away = ball.position.clone().sub(HOOP_POS);
-    away.y = 0;
-    if(away.lengthSq() < .001) away.set(.35,0,1);
-    away.normalize();
-    ballVelocity.copy(away.multiplyScalar(2.2));
-    ballVelocity.y = 1.4;
-    rimTouchCount = 0;
-    updatePredictedReboundPoint(true);
   }
 }
 
@@ -654,7 +652,9 @@ function updateLayup(dt){
   const progress = THREE.MathUtils.clamp(layupTimer/layupDuration,0,1);
   const prevBallPos = ball.position.clone();
 
-  const next=owner.group.position.clone().addScaledVector(getForward(owner.angle),1.35*dt);
+  const gatherDirection=HOOP_POS.clone().sub(owner.group.position).setY(0).normalize();
+  const gatherTravel=Math.min(1.35*dt,Math.max(0,flatDistance(owner.group.position,HOOP_POS)-1.55));
+  const next=owner.group.position.clone().addScaledVector(gatherDirection,gatherTravel);
   owner.group.position.copy(moveWithCollisionDampen(owner,next));
   owner.group.rotation.x = -Math.sin(progress*Math.PI)*0.1;
   owner.leftArm.rotation.z = -0.25;
@@ -666,6 +666,8 @@ function updateLayup(dt){
   const contactLayup = owner.bodyUpTimer > 0.08 || owner.contactTimer > 0.08;
   if(contactLayup){ owner.group.rotation.z = THREE.MathUtils.lerp(owner.group.rotation.z,-0.12 * (owner.contactSide || 1),0.12); }
   ball.position.copy(hand).add(new THREE.Vector3(0,Math.sin(progress*Math.PI)*.32,0));
+  const lift=smoothstep(THREE.MathUtils.clamp(progress/.52,0,1));
+  ball.position.y=Math.max(ball.position.y,owner.group.position.y+(1.25+1.1*lift)*owner.profile.height);
   for(const defender of getOpponents(owner)){
     const collision=checkLayupDefenderCollision(owner,defender,prevBallPos,ball.position);
     if(collision.hit && (defender.blockTime>0 || defender.handsUpTime>0 || collision.type==="body")){
@@ -674,7 +676,14 @@ function updateLayup(dt){
     }
   }
   if(progress>=.52){
-    const releasePoint=ball.position.clone().add(new THREE.Vector3(0,.32,0));
+    const releasePoint=ball.position.clone();
+    releasePoint.y=Math.max(releasePoint.y,owner.group.position.y+2.4*owner.profile.height);
+    // Release on the basket side of the body so the rising ball clears its
+    // shooter's torso instead of immediately deflecting off the same player.
+    const bodyDistance=flatDistance(owner.group.position,HOOP_POS);
+    const reach=bodyDistance<1.25 ? Math.max(0,bodyDistance-.2) : .32;
+    releasePoint.x=owner.group.position.x+gatherDirection.x*reach;
+    releasePoint.z=owner.group.position.z+gatherDirection.z*reach;
     layupActive = false;
     layupOwner=null;
     ballState="dribble";

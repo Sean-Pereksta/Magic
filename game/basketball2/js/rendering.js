@@ -643,33 +643,34 @@ function applyCourtTheme(courtKey){
 }
 
 function buildHoop(){
-  const poleMat = new THREE.MeshStandardMaterial({color:0x555b63,metalness:.55,roughness:.28});
-  const hoopBaseZ = HOOP_POS.z - 1.65;
+  const dimensions=HOOP_GEOMETRY;
+  const poleMat = new THREE.MeshStandardMaterial({color:0x34404d,metalness:.72,roughness:.3});
+  const hoopBaseZ = HOOP_POS.z - 2.1;
 
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.13,.145,4.4,24),poleMat);
-  pole.position.set(HOOP_POS.x,2.2,hoopBaseZ);
+  const pole = new THREE.Mesh(new THREE.BoxGeometry(.25,4.65,.3),poleMat);
+  pole.position.set(HOOP_POS.x,2.325,hoopBaseZ);
   pole.castShadow = true;
   scene.add(pole);
 
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(.24,.22,1.5),poleMat);
-  arm.position.set(HOOP_POS.x,HOOP_POS.y + 0.6,HOOP_POS.z - 1.05);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(.25,.2,1.55),poleMat);
+  arm.position.set(HOOP_POS.x,HOOP_POS.y + 1.2,HOOP_POS.z - 1.45);
   arm.castShadow = true;
   scene.add(arm);
 
   backboard = new THREE.Mesh(
-    new THREE.BoxGeometry(3.4,2.05,.1),
+    new THREE.BoxGeometry(dimensions.boardWidth,dimensions.boardHeight,dimensions.boardThickness),
     new THREE.MeshPhysicalMaterial({
-      color:0xdff6ff,transparent:true,opacity:.34,roughness:.12,metalness:0,
-      transmission:.15,clearcoat:.75,clearcoatRoughness:.08
+      color:0xc8edff,transparent:true,opacity:.17,roughness:.08,metalness:0,
+      transmission:0,clearcoat:.8,clearcoatRoughness:.08,depthWrite:false
     })
   );
-  backboard.position.set(HOOP_POS.x,HOOP_POS.y + 0.22,HOOP_POS.z - 0.43);
-  backboard.castShadow = true;
+  backboard.position.set(HOOP_POS.x,dimensions.boardCenterY,dimensions.boardCenterZ);
+  backboard.castShadow = false;
   backboardBasePosition.copy(backboard.position);
   scene.add(backboard);
 
   rim = new THREE.Mesh(
-    new THREE.TorusGeometry(RIM_RADIUS,.06,16,72),
+    new THREE.TorusGeometry(RIM_RADIUS,dimensions.rimTubeRadius,12,72),
     new THREE.MeshStandardMaterial({color:0xff6f1a,metalness:.72,roughness:.22})
   );
   rim.rotation.x = Math.PI/2;
@@ -677,15 +678,35 @@ function buildHoop(){
   rimBasePosition = rim.position.clone();
   scene.add(rim);
 
-  const rimBracket = new THREE.Mesh(new THREE.BoxGeometry(.34,.14,.5),new THREE.MeshStandardMaterial({color:0x3f4650,metalness:.74,roughness:.3}));
-  rimBracket.position.set(HOOP_POS.x,HOOP_POS.y-0.02,HOOP_POS.z-0.24); scene.add(rimBracket);
-  const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(3.56,2.2,.08),new THREE.MeshStandardMaterial({color:0xf8fbff,metalness:.28,roughness:.32}));
-  boardFrame.position.copy(backboard.position); boardFrame.position.z -= 0.08; scene.add(boardFrame);
+  const orange=new THREE.MeshStandardMaterial({color:0xf96921,metalness:.65,roughness:.27});
+  const rimBracket = new THREE.Mesh(new THREE.BoxGeometry(.32,.12,.25),orange);
+  rimBracket.position.set(HOOP_POS.x,HOOP_POS.y-.06,HOOP_POS.z-.73); scene.add(rimBracket);
+  const spring=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.18,12),poleMat);
+  spring.position.set(HOOP_POS.x,HOOP_POS.y-.19,HOOP_POS.z-.76);scene.add(spring);
+  // Four real frame rails leave the glass transparent; the previous solid
+  // backing panel obscured the basket and sat inside its physical clearance.
+  const frameMaterial=new THREE.MeshStandardMaterial({color:0xf3f7f9,metalness:.5,roughness:.3});
+  const frameBars=[
+    [dimensions.boardWidth+.07,.065,0,dimensions.boardHeight/2],
+    [dimensions.boardWidth+.07,.065,0,-dimensions.boardHeight/2],
+    [.065,dimensions.boardHeight,-dimensions.boardWidth/2,0],
+    [.065,dimensions.boardHeight,dimensions.boardWidth/2,0]
+  ];
+  for(const [width,height,x,y] of frameBars){
+    const rail=new THREE.Mesh(new THREE.BoxGeometry(width,height,.10),frameMaterial);
+    rail.position.set(x,y,0);rail.castShadow=true;backboard.add(rail);
+  }
+  for(const x of [-dimensions.boardWidth/2+.1,dimensions.boardWidth/2-.1]){
+    for(const y of [-dimensions.boardHeight/2+.1,dimensions.boardHeight/2-.1]){
+      const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.028,.028,.10,8),poleMat);
+      bolt.rotation.x=Math.PI/2;bolt.position.set(x,y,.015);backboard.add(bolt);
+    }
+  }
 
   const squareMat = new THREE.MeshBasicMaterial({color:0xffffff});
   const barThickness = 0.035;
-  const squareW = 1.15;
-  const squareH = 0.85;
+  const squareW = 1.05;
+  const squareH = 0.7;
   const squareZOffset = 0.055;
   const bars = [
     [squareW,barThickness,0,squareH*0.5,0],
@@ -695,43 +716,50 @@ function buildHoop(){
   ];
   bars.forEach(([w,h,x,y,z])=>{
     const bar = new THREE.Mesh(new THREE.BoxGeometry(w,h,0.01),squareMat);
-    bar.position.set(x,y,squareZOffset + z);
+    bar.position.set(x,y-.30,squareZOffset + z);
     backboard.add(bar);
   });
   const rimMount = new THREE.Mesh(
     new THREE.BoxGeometry(0.55,0.35,0.08),
     new THREE.MeshStandardMaterial({color:0x222222,roughness:0.45,metalness:0.25})
   );
-  rimMount.position.set(0,-0.24,0.09);
+  rimMount.position.set(0,-.70,.055);
   backboard.add(rimMount);
-  const polePad = new THREE.Mesh(new THREE.BoxGeometry(.48,1.05,.44),new THREE.MeshStandardMaterial({color:0x263d5f,roughness:.58}));
-  polePad.position.set(HOOP_POS.x,.56,hoopBaseZ + 0.02); scene.add(polePad);
+  const polePad = new THREE.Mesh(new THREE.BoxGeometry(.58,1.55,.55),new THREE.MeshStandardMaterial({color:0x173b59,roughness:.65}));
+  polePad.position.set(HOOP_POS.x,.8,hoopBaseZ + 0.02); scene.add(polePad);
   // Clean single-piece hoop base; replaces old stacked step blocks.
   const basePad = new THREE.Mesh(new THREE.BoxGeometry(.8,.34,.62),new THREE.MeshStandardMaterial({color:0x16263d,roughness:.64}));
   basePad.position.set(HOOP_POS.x,.17,hoopBaseZ - 0.06); scene.add(basePad);
 
   netLines = [];
   const netMat = new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.75});
-  const netSegments = graphicsQuality === "high" ? 4 : graphicsQuality === "medium" ? 3 : 2;
+  const netSegments = 5;
   const netStrands = graphicsQuality === "low" ? 14 : 20;
   for(let i=0;i<netStrands;i++){
     const a = (i/netStrands)*Math.PI*2;
     const topR = RIM_RADIUS*1.01;
-    const midR = RIM_RADIUS*0.72;
-    const botR = RIM_RADIUS*0.5;
+    const botR = RIM_RADIUS*0.53;
     const points = [];
     for(let j=0;j<=netSegments;j++){
       const t = j/netSegments;
       const rr = THREE.MathUtils.lerp(topR,botR,t);
-      const y = HOOP_POS.y - 0.05 - t*(0.9 + 0.05*Math.sin(a*2));
-      const x = Math.cos(a)*THREE.MathUtils.lerp(topR,midR,Math.min(1,t*1.3));
-      const z = HOOP_POS.z + Math.sin(a)*rr;
+      const y = HOOP_POS.y - 0.05 - t*.83;
+      const knotAngle=a+(j%2 ? Math.PI/netStrands : 0);
+      const x = HOOP_POS.x+Math.cos(knotAngle)*rr;
+      const z = HOOP_POS.z + Math.sin(knotAngle)*rr;
       points.push(new THREE.Vector3(x,y,z));
     }
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),netMat);
     line.userData.netBasePoints = points.map(p=>p.clone());
     netLines.push(line);
     scene.add(line);
+  }
+  for(const t of [.38,.72,1]){
+    const rr=THREE.MathUtils.lerp(RIM_RADIUS*1.01,RIM_RADIUS*.53,t);
+    const points=[];
+    for(let i=0;i<=netStrands;i++) points.push(new THREE.Vector3(HOOP_POS.x+Math.cos(i/netStrands*Math.PI*2)*rr,HOOP_POS.y-.05-t*.83,HOOP_POS.z+Math.sin(i/netStrands*Math.PI*2)*rr));
+    const cord=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),netMat);
+    cord.userData.netBasePoints=points.map(point=>point.clone());netLines.push(cord);scene.add(cord);
   }
 
   buildScoreboard();
@@ -1081,6 +1109,9 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
   if(sneaker.defense) player.movement.defensiveWidth *= (1 + sneaker.defense);
   if(sneaker.jump) player.profile.jump *= (1 + sneaker.jump);
+  player.legacyVisualNodes=group.children.filter(node=>
+    ![shadow,hookIndicator,player.shotIndicator,player.defenseIndicator,player.staminaIndicator].includes(node));
+  if(typeof attachPlayerModel==="function") attachPlayerModel(player);
   return player;
 }
 
@@ -1408,7 +1439,7 @@ function canLayup(player){
   const defender = getNearestOpponent(player);
   const hasBodyUp = !!(defender && defender.bodyUpTimer > 0.05 && flatDistance(defender.group.position,player.group.position) < 1.28);
   if(hasBodyUp) player.contactFinishBonusOrPenalty = THREE.MathUtils.clamp((player.profile.layup-1)*0.18 + (player.profile.width-defender.profile.width)*0.2,-0.22,0.12);
-  return dist < 3.6 && player.velocity.length() > (hasBodyUp ? 0.85 : 1.2);
+  return dist < 2.9 || dist < 3.6 && player.velocity.length() > (hasBodyUp ? .85 : 1.2);
 }
 function chooseShotType(player){
   if(!playerHasBall(player) && player.moveMeta){
@@ -1416,8 +1447,8 @@ function chooseShotType(player){
   }
   if(player.moveState === "backjump" || (player.moveMeta && player.moveMeta.fadeawayArmed)) return "fadeaway";
   if(canDunk(player)) return "dunk";
-  if(canHookShot(player)) return "hook";
   if(canLayup(player)) return "layup";
+  if(canHookShot(player)) return "hook";
   return getRequestedShotType(player);
 }
 
@@ -1425,10 +1456,10 @@ function getShotMeterProfile(shotType,shooter,contest){
   const movePenalty = THREE.MathUtils.clamp((shooter.velocity ? shooter.velocity.length() : 0) * 0.028,0,0.16);
   const contestPenalty = THREE.MathUtils.clamp((contest ? contest.value : 0) * 0.14,0,0.2);
   const base = {
-    setshot:{greenStart:.58,greenEnd:.69,slightlyEarlyStart:.35,slightlyLateEnd:.88,greenAccuracyMultiplier:1.22,baseMakeBonus:.1,meterFillSpeed:1},
-    jumper:{greenStart:.59,greenEnd:.68,slightlyEarlyStart:.36,slightlyLateEnd:.88,greenAccuracyMultiplier:1.2,baseMakeBonus:.06,meterFillSpeed:1.06},
+    setshot:{greenStart:.54,greenEnd:.73,slightlyEarlyStart:.30,slightlyLateEnd:.91,greenAccuracyMultiplier:1.22,baseMakeBonus:.1,meterFillSpeed:1},
+    jumper:{greenStart:.56,greenEnd:.71,slightlyEarlyStart:.32,slightlyLateEnd:.90,greenAccuracyMultiplier:1.2,baseMakeBonus:.06,meterFillSpeed:1.06},
     hook:{greenStart:.60,greenEnd:.68,slightlyEarlyStart:.38,slightlyLateEnd:.86,greenAccuracyMultiplier:1.15,baseMakeBonus:.05,meterFillSpeed:1.02},
-    layup:{greenStart:.54,greenEnd:.72,slightlyEarlyStart:.3,slightlyLateEnd:.9,greenAccuracyMultiplier:1.08,baseMakeBonus:.08,meterFillSpeed:.9},
+    layup:{greenStart:.40,greenEnd:.86,slightlyEarlyStart:.18,slightlyLateEnd:.96,greenAccuracyMultiplier:1.08,baseMakeBonus:.08,meterFillSpeed:.9},
     dunk:{greenStart:.50,greenEnd:.77,slightlyEarlyStart:.25,slightlyLateEnd:.92,greenAccuracyMultiplier:1.05,baseMakeBonus:.18,meterFillSpeed:.85},
     stepback:{greenStart:.56,greenEnd:.72,slightlyEarlyStart:.34,slightlyLateEnd:.9,greenAccuracyMultiplier:1.18,baseMakeBonus:.05,meterFillSpeed:1.1},
     pullup:{greenStart:.55,greenEnd:.73,slightlyEarlyStart:.33,slightlyLateEnd:.9,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1.08},
@@ -1487,10 +1518,9 @@ function getShotReleasePoint(char,shotType){
   const side = ballSideValue < 0 ? "left" : "right";
   const handWorld = getWorldHand(char,side);
   const jumpLift = shotType === "jumper" ? 0.26 + THREE.MathUtils.clamp((char.moveMeta.chargeHeld || 0) * 0.2,0,0.34) : 0.11;
-  const releaseHeight = 0.26 + char.profile.height * 0.22 + Math.max(0,char.group.position.y) + jumpLift;
-  return handWorld.clone()
-    .add(new THREE.Vector3(0,releaseHeight,0))
-    .add(forward.multiplyScalar(0.18 + (shotType === "jumper" ? 0.18 : 0.1)));
+  const release=handWorld.clone().addScaledVector(forward,shotType==="jumper"?.23:.15);
+  release.y=Math.max(release.y+(.08+jumpLift*.35),char.group.position.y+2.2*char.profile.height);
+  return release;
 }
 
 function isCloseDunkRange(char){

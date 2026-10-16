@@ -180,6 +180,12 @@ const COURT_W = 18;
 const COURT_L = 26;
 const HOOP_POS = new THREE.Vector3(0,3.28,-10.8);
 const RIM_RADIUS = 0.62;
+// Render and collision geometry share the same measured basket dimensions.
+const HOOP_GEOMETRY = Object.freeze({
+  boardWidth:3.2, boardHeight:1.85, boardThickness:.07,
+  boardCenterY:HOOP_POS.y+.70, boardCenterZ:HOOP_POS.z-.86,
+  rimTubeRadius:.045, boardRestitution:.72, boardTangentialDamping:.96
+});
 const THREE_RADIUS = 7.15;
 
 const P1_OFFENSE_START = new THREE.Vector3(0,0,4.8);
