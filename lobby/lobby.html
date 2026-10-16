@@ -21,6 +21,7 @@
         const mtgEntry='{key:"mtgcatalog",title:"MTG Catalog & Deck Builder",emoji:"🃏💰",desc:"Browse Magic: The Gathering cards and current prices, build decks, estimate total value, and analyze lands and mana curve.",route:"/game/MTG_Catalog_Deck_Builder.html",category:"Apps",modes:["single"],featured:false},';
         const fantasyEntry='{key:"fantasyfootball",title:"Fantasy Football Command Center",emoji:"🏈📊",desc:"Build and track your fantasy football draft with live player status, rankings, roster construction, stacks, comparisons, and draft intelligence.",route:"/game/Fantasy_Draft_Command_Center.html",category:"Apps",modes:["single"],featured:false},';
         const receiverWindowQbEntry='{key:"receiverwindowqb",title:"Receiver Window QB",emoji:"🏈",desc:"Build a receiving corps in an endless football franchise. Train athleticism, hands, size and jukes; earn cash on wins and losses; relive big throws with ball-cam replays. Local and cloud saves.",route:"/game/receiver-window-qb.html",category:"Sports",modes:["single"],featured:false},';
+        const quipClashEntry='{key:"quipclash",title:"Quip Clash",emoji:"💬⚡",imagePath:"/game/quip-clash/assets/quip-clash.svg",desc:"Write outrageous answers, vote for your favorites, and battle for the biggest laugh. Two prompts each, double-point round two, and a triple-point finale. Play together on your phones with 4–12 account holders.",route:"/game/quip-clash.html",multiplayerRoute:"/game/quip-clash.html",joinLabel:"Play with Friends",category:"Party",modes:["multi"],launchMode:"lobby",minPlayers:4,maxPlayers:12,autoRedirect:true,autoUsername:true,requiresUser:true,featured:false},';
         if(html.includes(gamesMarker)&&!html.includes('key:"circuitbound"')){
           html=html.replace(gamesMarker,`${gamesMarker}\n      ${circuitboundEntry}`);
         }
@@ -32,6 +33,9 @@
         }
         if(html.includes(gamesMarker)&&!html.includes('key:"receiverwindowqb"')){
           html=html.replace(gamesMarker,`${gamesMarker}\n      ${receiverWindowQbEntry}`);
+        }
+        if(html.includes(gamesMarker)&&!html.includes('key:"quipclash"')){
+          html=html.replace(gamesMarker,`${gamesMarker}\n      ${quipClashEntry}`);
         }
         html=html.replace(/const GAMES = \[([\s\S]*?)\n\s*\];/,gamesBlock=>{
           return gamesBlock.replace(/\{key:"([^"]+)"[^\n]*\}/g,(entry,key)=>{
