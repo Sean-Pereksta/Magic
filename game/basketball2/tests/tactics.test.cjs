@@ -48,7 +48,7 @@ function fixture(style='motion',size=3){
   ctx.getOpponents=char=>ctx.matchPlayers.filter(player=>player.teamId!==char.teamId);
   ctx.getNearestOpponent=char=>ctx.getOpponents(char).reduce((best,p)=>!best||ctx.flatDistance(p.group.position,char.group.position)<ctx.flatDistance(best.group.position,char.group.position)?p:best,null);
   ctx.getBetweenPlayerAndRimTarget=(defender,offense,spacing)=>offense.group.position.clone().addScaledVector(ctx.HOOP_POS.clone().sub(offense.group.position).setY(0).normalize(),spacing);
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/ai.js'),'utf8'),ctx);
+  for(const file of ['ai-reads.js','ai-coordination.js','ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'../js',file),'utf8'),ctx);
   vm.runInContext('initBotBrain();globalThis.tick=(dt,frozen=false)=>{teamAITime+=dt;updateAITactics(getBallHandler(),dt,frozen);};globalThis.plans=()=>({offense:aiTeamPlans,defense:aiDefensePlans});',ctx);
   ctx.settings=settings;
   ctx.offBall=()=>ctx.getTeammates(ctx.owner).filter(player=>!player.controllerSlot).forEach(player=>ctx.decideAIOffBall(player,player.aiBrain,ctx.owner,settings));

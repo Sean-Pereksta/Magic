@@ -162,10 +162,15 @@ function getPassTarget(char){
   return best;
 }
 
-function tryDirectionalPass(char){
+function tryDirectionalPass(char,intendedTarget=null){
   if(possessionFrozen||gamePaused||!playerHasBall(char)||char.passCooldown>0) return false;
-  const target=getPassTarget(char);
+  const target=intendedTarget||getPassTarget(char);
   if(!target){ flash(teamSize===1?"No teammate in 1v1":"Face a teammate to pass"); return false; }
+  if(intendedTarget){
+    if(target===char||target.teamId!==char.teamId||!matchPlayers.includes(target)) return false;
+    const direction=target.group.position.clone().sub(char.group.position).setY(0);
+    if(direction.length()<.8||getForward(char.angle).dot(direction.normalize())<.97) return false;
+  }
   const start=getWorldHand(char,ballSideValue<0?"left":"right");
   start.y=Math.max(1.25,start.y);
   const distance=flatDistance(start,target.group.position);

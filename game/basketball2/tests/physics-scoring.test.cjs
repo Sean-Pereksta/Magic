@@ -71,6 +71,26 @@ function setup(){
 
 const run=(ctx,source)=>vm.runInContext(source,ctx);
 
+test('an AI intended pass keeps its validated recipient and rejects an opponent or unfaced target',()=>{
+  const ctx=setup();
+  const result=run(ctx,`
+    globalThis.gamePaused=false;
+    p1.group.position.set(0,0,-2);p1.angle=0;
+    p2.group.position.set(Math.sin(.22)*4,0,-2+Math.cos(.22)*4);
+    matchPlayers[2].group.position.set(0,0,6);
+    takePossession(p1,{silent:true});
+    const automatic=getPassTarget(p1).id;
+    const invalid=tryDirectionalPass(p1,matchPlayers[3]);
+    p1.angle=Math.PI;
+    const unfaced=tryDirectionalPass(p1,p2);
+    p1.angle=0;
+    const started=tryDirectionalPass(p1,p2);
+    ({automatic,invalid,unfaced,started,target:passFlight.targetId});
+  `);
+  assert.equal(result.automatic,'a1');assert.equal(result.invalid,false);assert.equal(result.unfaced,false);
+  assert.equal(result.started,true);assert.equal(result.target,'p2');
+});
+
 test("release timing produces repeatable physical misses while pressure keeps green shots difficult",()=>{
   const ctx=setup();
   run(ctx,`

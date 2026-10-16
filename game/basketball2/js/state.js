@@ -375,6 +375,20 @@ const difficultySettings = {
   impossible:{reactionMin:.035,reactionMax:.075,steal:3.1,block:2.8,speed:4.75,sprint:1.0,attack:1.28,aggression:.90,patience:.94,mistakeChance:.02,fakeBiteChance:.035,shotDiscipline:.98,defensiveIQ:1.0,crossoverUse:.74,pumpFakeUse:.68,stepBackUse:.65,sideHopUse:.64,contestTiming:1.0,stealDiscipline:.98,staminaManagement:.98,spacingIQ:1.0,composure:1.0}
 };
 
+// Perception and decision settings, separate from player movement/shot physics.
+const difficultyCourtReads = {
+  rookie:[.22,1.10,.03,.35,.16,.80], easy:[.36,.85,.06,.46,.15,.65],
+  normal:[.58,.50,.12,.65,.11,.40], hard:[.75,.32,.21,.79,.09,.28],
+  elite:[.85,.22,.28,.87,.075,.22], nightmare:[.91,.15,.34,.92,.06,.18],
+  legend:[.96,.09,.40,.96,.05,.15], pro:[.89,.18,.31,.90,.07,.20],
+  superstar:[.95,.10,.37,.95,.055,.16], hallOfFame:[.98,.06,.43,.98,.04,.13],
+  impossible:[1,.035,.46,1,.03,.10]
+};
+for(const [level,values] of Object.entries(difficultyCourtReads)){
+  const [courtVision,readError,lookAhead,driveCommitment,passAdvantage,quickReadTime]=values;
+  Object.assign(difficultySettings[level],{courtVision,readError,lookAhead,driveCommitment,passAdvantage,quickReadTime});
+}
+
 const botPersonalities = {
   rim_runner: { drive:.38, layup:.34, pullUp:.08, pumpFake:.08, stepBack:.02, post:.10 },
   ankle_breaker: { crossover:.28, hesitation:.22, drive:.28, pullUp:.10, sideHop:.08, pumpFake:.04 },

@@ -15,7 +15,9 @@
 - `js/team-play.js` — individual/team membership, authoritative ownership, directional pass flight/interception, control switching, and roster lifecycle.
 - `js/player-models.js` — cached GLB loading, isolated skeletons/materials, animation blending, hand/forearm attachment and arm IK; safe generated-player fallback.
 - `assets/models/` — original guard/wing/center GLBs, each with 24 joints and 12 movement clips; `tools/build-models.cjs` reproducibly authors them without dependencies.
-- `js/ai.js` — opponent decision-making and difficulty behavior.
+- `js/ai-reads.js` — deterministic shot, drive, passing-window and safe setup-space assessments with bounded movement prediction.
+- `js/ai-coordination.js` — shared rim receiving pockets, weak-side spacing, drive containment, receiver tags and gap help.
+- `js/ai.js` — playbooks, opponent decisions, action execution and difficulty behavior.
 - `js/animation-contact.js` — animation blending, footwork, contests, steals, and body contact.
 - `js/ball-physics.js` — dribbles, rim/backboard response, rebounds, bounds, and loose balls.
 - `js/scoring.js` — shot outcomes, finishes, physical blocks, possession, and scoring.
@@ -38,6 +40,12 @@ Quick Play supports 1v1, 2v2, and 3v3, with one or two humans. Local team matche
 `matchPlayers` holds individual players with immutable IDs, `teamId`, and optional `controllerSlot`. `p1`/`p2` refer to the current controlled characters, so systems must resolve ball ownership by ID rather than assuming those two characters are opponents. `takePossession` grants exactly one player ownership. Passes lead a moving receiver, travel through space, and can be intercepted. `lastTouchPlayerId` controls out-of-bounds possession separately from shot credit.
 
 Gameplay runs at a fixed 60 Hz, with position/rotation interpolation for rendering. Cameras translate with the action using a constant court-relative angle and distance, including both split views. Split rendering shares the shadow update. AI uses the same movement, stamina, collision, and shooting systems as humans; difficulty changes reaction and tactical decisions. Off-ball roles include spacing, cutting, screens/rolls, assignments/help, and rebounding/outlets.
+
+Bots assess the entire route to a finish, including help at the rim and moving defenders. An open rimward drive continues into a short running layup gather; a settled shooting specialist can take a good open jumper instead. A covered paint leads to an open teammate, a clear receiving pocket beside the rim, or a safe lateral/backout setup. Passes are checked again before release so a rotating defender can close the window. A guarded catch is not treated as an open rim feed. The finish owner leaves movement to the gather solver, and defenders continue contesting the gather rather than prematurely chasing a rebound.
+
+Jumper decisions include the shooter's range, pressure, fatigue and foot speed. Reads use the court's actual three-point arc and give a modest value advantage to a clean, in-range three; deep or covered threes receive no advantage. Passing compares the teammate's catch-and-shoot value with the handler's current look. AI passes preserve the intended receiver after the passer visibly turns, using the same pass flight and interception physics as human passes.
+
+Each difficulty has separate court vision, stable spatial read error, bounded velocity look-ahead, pass advantage, drive commitment and decision time settings. Harder levels identify smaller openings sooner, coordinate one dump-off receiver with spaced outlets, contain projected drives, tag rim cutters and deny likely catches. Expert weak-side help shows in a beaten driving gap while preserving the existing two-player trap limit. Player speed, jumping, stamina and jumper timing variation remain shared across difficulty levels.
 
 Each team can choose an offense in Quick Play: **Balanced** mixes reads, **Motion** uses shared cut/fill phases and pass-and-cut actions, **Pick & Roll** coordinates a screener, the handler's turn, a roll, and a weak-side outlet, and **Drive & Kick** spreads outlets before attacking and passing against help. These choices change AI targets, movement, and passing priorities. Human teammates remain under human control. The playbook adapts to 2v2/3v3 and resets after turnovers and inbounds.
 
@@ -63,10 +71,13 @@ Run the real browser integration smoke test with the repository's Playwright dev
 node game/basketball2/tests/browser-smoke.cjs
 node game/basketball2/tests/menu-layout.cjs
 node game/basketball2/tests/player-gameplay-browser.cjs
+node game/basketball2/tests/ai-gameplay-browser.cjs
 ```
 
 The browser tests serve source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. Gameplay checks exercise all eight solo/local configurations, all four playbooks, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load. Menu checks cover four desktop/mobile sizes, artwork decoding, keyboard focus/activation, and style persistence through reloads and Tour. Player gameplay checks decode all three GLBs in Three.js, verify skeletal movement, make 54 open layups/jumpers using keyboard events across the three builds and both sides of the basket, and verify split/mobile rendering and repeated model disposal. Runtime unit tests use `THREE_BUNDLE` when supplied; asset and shooting pipeline tests do not require a renderer.
 
 Automated keyboard, touch-pointer, and single/dual gamepad-frame checks complement browser simulation. Physical touchscreen/gamepad feel and frame pacing on low-end devices still require on-device playtesting; AI tactics are lightweight heuristics, not a full basketball playbook.
+
+AI browser checks run the actual bot, movement, passing, gather, GLB animation, collision and scoring systems. They verify close finishes across all three player builds, running drives from 5–6 meters, a specialist's open jumper and three, rejection of covered/out-of-range threes, completed rim feeds with nearly aligned teammates, a safe reset against packed paint, a real layup contest and more anticipatory expert defense. The court-read and coordination tests cover blocked paths, help defenders, predicted interceptors, guarded catches, stable perception error, single receiving reservations, spacing and recovery.
 
 Browser gameplay tests use the bundled GLBs as hosted-response fixtures by default. Set `BASKETBALL_LIVE_MODELS=1` to request the actual R2 files; the player gameplay test then requires all three remote assets to load without fallback, testing the public host's browser CORS behavior as well as gameplay.
