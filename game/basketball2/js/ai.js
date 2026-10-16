@@ -1,6 +1,16 @@
 // Every AI player uses the human acceleration, stamina, collision and shot
 // systems. Difficulty changes perception and decisions, never physical stats.
 let teamAITime=0;
+const OFFENSIVE_STYLES={
+  balanced:{label:"Balanced",description:"Read the defense, space the wings, and mix cuts with ball screens."},
+  motion:{label:"Motion",description:"Pass and cut, rotate into empty spots, and keep a weak-side outlet."},
+  pick_roll:{label:"Pick & Roll",description:"Set a ball screen, turn the corner, then find the roller or weak-side wing."},
+  drive_kick:{label:"Drive & Kick",description:"Spread the floor, attack a lane, and kick to an open outlet when help arrives."}
+};
+let aiTeamPlans=Object.create(null);
+let aiDefensePlans=Object.create(null);
+let aiActiveOffenseTeam=null;
+let aiWasFrozen=false;
 
 function createTeamBrain(char){
   return {
@@ -15,6 +25,10 @@ function createTeamBrain(char){
 
 function initBotBrain(){
   teamAITime=0;
+  aiTeamPlans=Object.create(null);
+  aiDefensePlans=Object.create(null);
+  aiActiveOffenseTeam=null;
+  aiWasFrozen=false;
   (matchPlayers.length?matchPlayers:[p1,p2]).filter(Boolean).forEach(char=>{
     char.aiBrain=createTeamBrain(char);
     char.aiInput=char.aiBrain.input;
@@ -32,6 +46,164 @@ function aiRoster(){ return matchPlayers.length?matchPlayers:[p1,p2].filter(Bool
 function aiIsHuman(char){ return !!char.controllerSlot; }
 function aiSettings(){ return difficultySettings[selectedDifficulty]||difficultySettings.normal; }
 
+function aiOffensiveStyle(teamId){
+  const selected=typeof teamOffensiveStyles!=="undefined"?teamOffensiveStyles[teamId]:"balanced";
+  return OFFENSIVE_STYLES[selected]?selected:"balanced";
+}
+
+function aiNewTeamPlan(handler,previous){
+  const style=aiOffensiveStyle(handler.teamId);
+  const sameTeamPass=previous&&previous.handlerId!==handler.id&&getPlayerById(previous.handlerId)?.teamId===handler.teamId;
+  return {teamId:handler.teamId,handlerId:handler.id,style,age:0,phase:"setup",phaseAge:0,cycle:0,
+    actorId:null,actorSide:1,screenSide:handler.group.position.x>0?-1:1,screenTarget:null,
+    passerId:sameTeamPass?previous.handlerId:null,passCutUntil:sameTeamPass?teamAITime+1.75:0};
+}
+
+function aiGetTeamPlan(handler){
+  let plan=aiTeamPlans[handler.teamId];
+  if(!plan||plan.handlerId!==handler.id||plan.style!==aiOffensiveStyle(handler.teamId)){
+    plan=aiTeamPlans[handler.teamId]=aiNewTeamPlan(handler,plan);
+  }
+  const support=aiRoster().filter(player=>player.teamId===handler.teamId&&player!==handler&&!aiIsHuman(player));
+  if(!support.length){ plan.phase="solo";plan.actorId=null;return plan; }
+  if(!support.some(player=>player.id===plan.actorId)){
+    const actor=support[plan.cycle%support.length];
+    plan.actorId=actor.id;plan.actorSide=actor.group.position.x<0?-1:1;
+  }
+  if(plan.style==="pick_roll"&&!plan.screenTarget){
+    const defender=getNearestOpponent(handler);
+    const toRim=HOOP_POS.clone().sub(handler.group.position).setY(0).normalize();
+    const actor=getPlayerById(plan.actorId);
+    const sidePosition=actor.group.position.clone().sub(handler.group.position);
+    plan.screenSide=sidePosition.x*toRim.z-sidePosition.z*toRim.x>=0?1:-1;
+    plan.screenTarget=(defender?defender.group.position:handler.group.position).clone();
+    plan.screenTarget.x+=toRim.z*plan.screenSide*.8;
+    plan.screenTarget.z-=toRim.x*plan.screenSide*.8;
+    plan.screenTarget.y=0;
+    keepInCourt(plan.screenTarget);
+  }
+  return plan;
+}
+
+function aiAdvancePlay(plan,next){ plan.phase=next;plan.phaseAge=0; }
+
+function updateAITactics(handler,dt,frozen){
+  if(frozen){
+    if(!aiWasFrozen){
+      aiTeamPlans=Object.create(null);aiActiveOffenseTeam=null;
+      for(const plan of Object.values(aiDefensePlans)){
+        if(plan.trap) aiReleaseTrap(plan);
+        plan.handlerAge=0;plan.lastTime=-1;
+      }
+      for(const player of aiRoster()) if(player.aiBrain){
+        player.aiBrain.possessionAge=0;player.aiBrain.passTargetId=null;player.aiBrain.thinkIn=0;
+      }
+    }
+    aiWasFrozen=true;
+    return;
+  }
+  aiWasFrozen=false;
+  const passer=ballState==="pass"&&passFlight?.active?getPlayerById(passFlight.passerId):null;
+  const offense=passer||handler;
+  if(offense&&(ballState==="dribble"||passer)){
+    if(aiActiveOffenseTeam!==null&&aiActiveOffenseTeam!==offense.teamId) aiTeamPlans=Object.create(null);
+    aiActiveOffenseTeam=offense.teamId;
+    const plan=aiGetTeamPlan(offense);
+    plan.age+=dt;plan.phaseAge+=dt;
+    if(passer&&plan.passerId!==passer.id){plan.passerId=passer.id;plan.passCutUntil=teamAITime+1.75;}
+    if(plan.phase!=="solo"){
+      if(plan.style==="motion"){
+        if(plan.phase==="setup"&&plan.phaseAge>.55) aiAdvancePlay(plan,"cut");
+        else if(plan.phase==="cut"&&plan.phaseAge>1.5) aiAdvancePlay(plan,"fill");
+        else if(plan.phase==="fill"&&plan.phaseAge>1.2){plan.cycle++;plan.actorId=null;aiAdvancePlay(plan,"setup");}
+      }else if(plan.style==="pick_roll"){
+        const screener=getPlayerById(plan.actorId);
+        const ready=screener&&flatDistance(screener.group.position,plan.screenTarget)<.85;
+        if(plan.phase==="setup"&&(ready&&plan.phaseAge>.4||plan.phaseAge>2.8)) aiAdvancePlay(plan,"screen");
+        else if(plan.phase==="screen"&&plan.phaseAge>1.05) aiAdvancePlay(plan,"roll");
+        else if(plan.phase==="roll"&&plan.phaseAge>1.75) aiAdvancePlay(plan,"reset");
+        else if(plan.phase==="reset"&&plan.phaseAge>.85){plan.cycle++;plan.actorId=null;plan.screenTarget=null;aiAdvancePlay(plan,"setup");}
+      }else if(plan.style==="drive_kick"){
+        const pressure=getOpponents(offense).filter(player=>flatDistance(player.group.position,offense.group.position)<2.5).length;
+        if(plan.phase==="setup"&&plan.phaseAge>.5) aiAdvancePlay(plan,"drive");
+        else if(plan.phase==="drive"&&(pressure>1||plan.phaseAge>2.5)) aiAdvancePlay(plan,"kick");
+        else if(plan.phase==="kick"&&plan.phaseAge>1.3){plan.screenSide*=-1;plan.cycle++;aiAdvancePlay(plan,"setup");}
+      }
+    }
+  }else{
+    // A rebound starts a fresh play. Retain a plan only while its pass is live.
+    if(aiActiveOffenseTeam!==null) aiTeamPlans=Object.create(null);
+    aiActiveOffenseTeam=null;
+  }
+  for(const teamId of new Set(aiRoster().map(player=>player.teamId))){
+    if(handler&&handler.teamId!==teamId&&ballState==="dribble") aiGetDefensePlan(teamId,handler,aiSettings(),dt);
+    else if(aiDefensePlans[teamId]?.trap) aiReleaseTrap(aiDefensePlans[teamId]);
+  }
+}
+
+function aiReleaseTrap(plan){
+  plan.trap=null;
+  plan.cooldownUntil=teamAITime+2.8;
+  aiRoster().filter(player=>player.teamId===plan.teamId&&!aiIsHuman(player)&&player.aiBrain).forEach(player=>{player.aiBrain.thinkIn=0;});
+}
+
+function aiTrapSpace(handler,primary){
+  const position=handler.group.position;
+  const rimDistance=flatDistance(position,HOOP_POS);
+  const halfWidth=typeof COURT_W!=="undefined"?COURT_W/2:9;
+  if(Math.abs(position.x)>halfWidth-2.6&&rimDistance<10) return "sideline";
+  if(rimDistance<4.6&&(!primary||flatDistance(primary.group.position,position)>2.2)) return "paint";
+  return null;
+}
+
+function aiGetDefensePlan(teamId,handler,settings,dt=0){
+  let plan=aiDefensePlans[teamId];
+  if(!plan) plan=aiDefensePlans[teamId]={teamId,handlerId:handler.id,handlerAge:0,cooldownUntil:0,trap:null,lastTime:-1};
+  if(plan.handlerId!==handler.id){
+    if(plan.trap) aiReleaseTrap(plan);
+    plan.handlerId=handler.id;plan.handlerAge=0;
+  }
+  const defense=aiRoster().filter(player=>player.teamId===teamId);
+  const primary=defense.find(player=>aiAssignedOpponent(player)===handler);
+  const space=aiTrapSpace(handler,primary);
+  if(plan.trap){
+    const humanHelp=defense.some(player=>player.id!==plan.trap.primaryId&&aiIsHuman(player)&&flatDistance(player.group.position,handler.group.position)<2.6);
+    if(ballState!=="dribble"||teamAITime>=plan.trap.until||!space||humanHelp||flatDistance(handler.group.position,plan.trap.origin)>3.1){
+      aiReleaseTrap(plan);
+    }
+    return plan;
+  }
+  // One shared decision per frame, regardless of roster/update order.
+  if(plan.lastTime===teamAITime) return plan;
+  plan.lastTime=teamAITime;plan.handlerAge+=dt;
+  if(ballState!=="dribble"||defense.length<2||!space||teamAITime<plan.cooldownUntil||settings.defensiveIQ<=.42) return plan;
+  const exposed=handler.dribbleStyle==="sprint"||handler.dribbleStyle==="crossover"||handler.moveState==="sidehop";
+  const stalled=handler.velocity.length()<.8&&plan.handlerAge>1.4;
+  const toRim=HOOP_POS.clone().sub(handler.group.position).setY(0).normalize();
+  const driving=handler.velocity.length()>1.5&&handler.velocity.clone().setY(0).normalize().dot(toRim)>.65;
+  if(space!=="paint"&&!exposed&&!stalled&&!driving) return plan;
+  // A human already helping occupies the second spot; never send a third body.
+  if(defense.some(player=>player!==primary&&aiIsHuman(player)&&flatDistance(player.group.position,handler.group.position)<2.6)) return plan;
+  let helper=null,best=Infinity;
+  for(const defender of defense){
+    if(defender===primary||aiIsHuman(defender)) continue;
+    const distance=flatDistance(defender.group.position,handler.group.position);
+    if(distance>5.8) continue;
+    const assignment=aiAssignedOpponent(defender);
+    const threat=assignment?flatDistance(assignment.group.position,HOOP_POS):20;
+    // Don't abandon an open rim finisher to trap a harmless sideline dribble.
+    if(space!=="paint"&&threat<3.2) continue;
+    const value=distance+(threat<5?3:0)+(assignment?.profile.shot>1.12?1:0);
+    if(value<best){best=value;helper=defender;}
+  }
+  if(helper){
+    plan.trap={handlerId:handler.id,primaryId:primary?.id,helperId:helper.id,space,
+      origin:handler.group.position.clone(),until:teamAITime+(space==="paint"?1.35:1.9)};
+    defense.filter(player=>!aiIsHuman(player)&&player.aiBrain).forEach(player=>{player.aiBrain.thinkIn=0;});
+  }
+  return plan;
+}
+
 function updateTeamAI(dt,options={}){
   if(!gameStarted||gameOver||gamePaused) return;
   teamAITime+=dt;
@@ -39,6 +211,7 @@ function updateTeamAI(dt,options={}){
   const settings=aiSettings();
   const handler=getBallHandler();
   const frozen=options.countdown||possessionFrozen;
+  updateAITactics(handler,dt,frozen);
   for(const char of roster){
     if(aiIsHuman(char)) { char.aiScreen=false; continue; }
     const brain=char.aiBrain||(char.aiBrain=createTeamBrain(char));
@@ -94,7 +267,12 @@ function decideTeamPlayer(char,brain,handler,settings,frozen){
     if(passer?.teamId!==char.teamId){
       const receiver=getPlayerById(passFlight.targetId);
       const reach=flatDistance(char.group.position,ball.position);
-      if(receiver&&reach<3.6){
+      const interceptor=aiRoster().filter(player=>player.teamId===char.teamId).reduce((best,player)=>{
+        const distance=flatDistance(player.group.position,ball.position);
+        const value=distance-(aiAssignedOpponent(player)===receiver ? .45 : 0);
+        return !best||value<best.value?{player,value}:best;
+      },null)?.player;
+      if(receiver&&reach<3.6&&interceptor===char){
         brain.role="intercept";
         brain.target.copy(ball.position).addScaledVector(ballVelocity,.16).setY(0);
         brain.sprint=reach>1.5;
@@ -166,6 +344,7 @@ function aiPassLaneClearance(passer,receiver){
 
 function decideAIHandler(char,brain,settings){
   brain.role="handle";
+  const plan=aiGetTeamPlan(char);
   const position=char.group.position;
   const distance=flatDistance(position,HOOP_POS);
   const nearest=getNearestOpponent(char);
@@ -176,12 +355,14 @@ function decideAIHandler(char,brain,settings){
     const lane=aiPassLaneClearance(char,teammate);
     const separation=flatDistance(position,teammate.group.position);
     if(lane<.8||separation<2||separation>15) continue;
-    const value=aiShotQuality(teammate)+Math.min(.12,(lane-1)*.05)+(teammate.controllerSlot?.length ? .06 : 0);
+    const actionBonus=teammate.id===plan.actorId&&(plan.phase==="roll"||plan.phase==="cut")?.14:plan.style==="drive_kick"&&plan.phase==="kick"?.1:0;
+    const value=aiShotQuality(teammate)+Math.min(.12,(lane-1)*.05)+(teammate.controllerSlot?.length ? .06 : 0)+actionBonus;
     if(value>bestValue){ bestValue=value; receiver=teammate; }
   }
   const patient=brain.possessionAge>.65+settings.patience*.7;
   const share=brain.possessionAge>2.4&&bestValue>quality-.08;
-  const smartPass=receiver&&patient&&(bestValue>quality+.1||space<1.5||share);
+  const kickRead=plan.style==="drive_kick"&&plan.phase==="kick"&&bestValue>quality-.12;
+  const smartPass=receiver&&patient&&(bestValue>quality+.1||space<1.5||share||kickRead);
   if(smartPass&&!shotCharging&&brain.actionCooldown<=0){
     brain.passTargetId=receiver.id;
     brain.passUntil=teamAITime+.65;
@@ -193,7 +374,8 @@ function decideAIHandler(char,brain,settings){
   const qualityEnough=quality>THREE.MathUtils.lerp(.39,.61,settings.shotDiscipline);
   const inRange=distance<(char.profile.shot>1.12?8.2:6.5);
   const forced=brain.possessionAge>7.5;
-  if(!shotCharging&&brain.actionCooldown<=0&&brain.possessionAge>.35&&inRange&&((openEnough&&qualityEnough)||distance<2.5&&space>1.35||forced)){
+  const runningAction=plan.style!=="balanced"&&plan.phase==="setup"&&plan.age<2.8;
+  if(!shotCharging&&brain.actionCooldown<=0&&brain.possessionAge>.35&&inRange&&((!runningAction&&openEnough&&qualityEnough)||distance<2.5&&space>1.35||forced)){
     brain.target.copy(position);
     beginAIShot(char,brain);
     return;
@@ -201,10 +383,10 @@ function decideAIHandler(char,brain,settings){
   if(shotCharging&&chargingPlayer===char){ brain.target.copy(position); return; }
   const toRim=brain.input.worldDirection.copy(HOOP_POS).sub(position).setY(0).normalize();
   brain.target.copy(position).addScaledVector(toRim,3);
+  const coordinated=aiPlayHandlerTarget(char,brain,plan,toRim);
   if(nearest&&space<2.35){
     const side=brain.driveSide;
-    brain.target.x+=toRim.z*side*2;
-    brain.target.z-=toRim.x*side*2;
+    if(!coordinated){brain.target.x+=toRim.z*side*2;brain.target.z-=toRim.x*side*2;}
     // Use the same crossover action and cooldowns as a human.
     if(brain.moveCooldown<=0&&space<1.6&&Math.random()<settings.crossoverUse*.55){
       attemptCrossover(char,side<0?"left":"right");
@@ -219,6 +401,33 @@ function decideAIHandler(char,brain,settings){
   brain.sprint=space>1.7&&distance>2.8&&char.stamina>.45;
   brain.protect=space<1.25;
   keepInCourt(brain.target);
+}
+
+function aiPlayHandlerTarget(char,brain,plan,toRim){
+  if(plan.phase==="solo"||plan.style==="balanced") return false;
+  if(plan.style==="pick_roll"&&plan.screenTarget){
+    const side=plan.screenSide;
+    if(plan.phase==="setup"){
+      brain.target.copy(plan.screenTarget).addScaledVector(toRim,-1.6);
+      brain.target.x+=toRim.z*side*.6;brain.target.z-=toRim.x*side*.6;
+    }else if(plan.phase==="screen"){
+      brain.target.copy(plan.screenTarget).addScaledVector(toRim,2.1);
+      brain.target.x+=toRim.z*side*1.35;brain.target.z-=toRim.x*side*1.35;
+    }else if(plan.phase==="roll"){
+      brain.target.set(-side*2.4,0,HOOP_POS.z+3.5);
+    }
+    return true;
+  }
+  if(plan.style==="drive_kick"){
+    if(plan.phase==="setup"||plan.phase==="kick") brain.target.set(plan.screenSide*1.7,0,HOOP_POS.z+7.1);
+    else brain.target.set(plan.screenSide*2.65,0,HOOP_POS.z+2.8);
+    return true;
+  }
+  if(plan.style==="motion"){
+    brain.target.set(plan.actorSide*2.7,0,HOOP_POS.z+(plan.phase==="cut"?6.2:7.6));
+    return true;
+  }
+  return false;
 }
 
 function beginAIShot(char,brain){
@@ -258,6 +467,49 @@ function updateAIShotAndPass(char,brain,handler,dt){
 }
 
 function decideAIOffBall(char,brain,handler,settings){
+  const plan=aiGetTeamPlan(handler);
+  if(plan.style==="balanced") return decideAIBalancedOffBall(char,brain,handler,settings);
+  const support=aiRoster().filter(player=>player.teamId===char.teamId&&player!==handler);
+  const slot=Math.max(0,support.indexOf(char));
+  const side=slot%2===0?-1:1;
+  const activePasser=getPlayerById(plan.passerId);
+  const passCut=plan.style==="motion"&&activePasser&&!aiIsHuman(activePasser)&&plan.passCutUntil>teamAITime;
+  brain.role="space";brain.roleUntil=0;
+  brain.target.set(side*(support.length>1?5.4:4.9),0,HOOP_POS.z+(slot===1?5.2:7.8));
+  if(passCut&&plan.passerId===char.id){
+    brain.role="cut";brain.roleUntil=plan.passCutUntil;
+    brain.target.set(char.group.position.x<0?1.2:-1.2,0,HOOP_POS.z+2.1);brain.sprint=true;
+  }else if(plan.style==="motion"){
+    if(char.id===plan.actorId&&plan.phase==="cut"&&!passCut){
+      brain.role="cut";brain.roleUntil=teamAITime+.6;
+      brain.target.set(-side*1.1,0,HOOP_POS.z+2.2);brain.sprint=true;
+    }else if(plan.phase==="fill"||passCut){
+      brain.role="fill";
+      brain.target.set(side*5.3,0,HOOP_POS.z+8.5);
+    }
+  }else if(plan.style==="pick_roll"){
+    if(char.id===plan.actorId){
+      if(plan.phase==="setup"||plan.phase==="screen"){
+        brain.role=plan.phase==="screen"?"screen":"screen_setup";brain.roleUntil=teamAITime+.6;
+        brain.target.copy(plan.screenTarget);
+      }else if(plan.phase==="roll"){
+        brain.role="roll";brain.roleUntil=teamAITime+.6;
+        brain.target.set(plan.screenSide*1.25,0,HOOP_POS.z+2.1);brain.sprint=true;
+      }
+    }else{
+      brain.target.set(plan.screenSide*5.9,0,HOOP_POS.z+4.2);
+    }
+  }else if(plan.style==="drive_kick"){
+    brain.role="outlet";
+    const weakSide=-plan.screenSide;
+    brain.target.set((slot===0?weakSide:plan.screenSide)*6,0,HOOP_POS.z+(slot===0?3.1:6.6));
+    // When the drive crosses the outlet, lift behind it to keep a clear lane.
+    if(flatDistance(handler.group.position,brain.target)<3) brain.target.z=handler.group.position.z+3.8;
+  }
+  keepInCourt(brain.target);
+}
+
+function decideAIBalancedOffBall(char,brain,handler,settings){
   const teammates=getTeammates(char);
   const otherRoles=teammates.filter(player=>player!==handler&&player.aiBrain);
   const cutters=otherRoles.some(player=>player.aiBrain.role==="cut"&&player.aiBrain.roleUntil>teamAITime);
@@ -323,17 +575,29 @@ function decideAIDefense(char,brain,handler,settings){
   const guardingHandler=assigned===handler;
   const spacing=guardingHandler?THREE.MathUtils.lerp(1.9,1.25,settings.defensiveIQ):1.8;
   brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,spacing));
-  const handlerRimDistance=handler?flatDistance(handler.group.position,HOOP_POS):20;
   const assignedRimDistance=flatDistance(assigned.group.position,HOOP_POS);
   if(!guardingHandler&&handler){
-    const handlerDefender=aiRoster().find(player=>player.teamId===char.teamId&&aiAssignedOpponent(player)===handler);
-    const beaten=!handlerDefender||flatDistance(handlerDefender.group.position,handler.group.position)>2.2;
-    const helpCandidates=aiRoster().filter(player=>player.teamId===char.teamId&&player!==handlerDefender);
-    const closestHelper=helpCandidates.reduce((best,player)=>!best||flatDistance(player.group.position,HOOP_POS)<flatDistance(best.group.position,HOOP_POS)?player:best,null);
-    const help=closestHelper===char&&beaten&&handlerRimDistance<4.6&&settings.defensiveIQ>.42;
-    if(help){
-      brain.role="help";
-      brain.target.copy(getBetweenPlayerAndRimTarget(char,handler,1.05));
+    const trap=aiGetDefensePlan(char.teamId,handler,settings).trap;
+    if(trap&&trap.helperId===char.id){
+      brain.role=trap.space==="paint"?"help":"double";
+      // Close the escape side while the primary contains the basket side.
+      const side=trap.space==="sideline"?(handler.group.position.x>0?-1:1):(char.group.position.x>handler.group.position.x?1:-1);
+      brain.target.copy(handler.group.position);
+      brain.target.x+=side*1.05;brain.target.z+=trap.space==="paint"?-.3:.25;brain.target.y=0;
+    }else if(trap){
+      brain.role="rotate";
+      const helper=getPlayerById(trap.helperId);
+      const uncovered=helper?aiAssignedOpponent(helper):null;
+      if(uncovered&&uncovered!==handler){
+        const openTarget=getBetweenPlayerAndRimTarget(char,uncovered,1.4);
+        const threat=flatDistance(uncovered.group.position,HOOP_POS)<assignedRimDistance?.7:.4;
+        brain.target.lerp(openTarget,threat);
+        // Remain in the passing lanes, outside the two-player trap pocket.
+        if(flatDistance(brain.target,handler.group.position)<2.8){
+          brain.target.copy(assigned.group.position).lerp(uncovered.group.position,.5);
+          if(flatDistance(brain.target,handler.group.position)<2.8) brain.target.z+=3.1;
+        }
+      }
     }else{
       // Shade toward visible passing direction; never inspect human input.
       const aim=getForward(handler.angle);
@@ -343,6 +607,7 @@ function decideAIDefense(char,brain,handler,settings){
       }
     }
   }
+  keepInCourt(brain.target);
   const recovery=flatDistance(char.group.position,brain.target);
   brain.sprint=recovery>2.6;
   if(!handler) return;

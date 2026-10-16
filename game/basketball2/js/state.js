@@ -4,6 +4,7 @@ let p1, p2, ball, ballShadow, rim, backboard;
 // Human control slots are separate from individual player IDs and team ownership.
 let matchPlayers = [];
 let teamSize = 1;
+let teamOffensiveStyles = ["motion","pick_roll"];
 let localTeamMode = "competitive";
 let splitLayout = "vertical";
 const SIMULATION_STEP = 1 / 60;

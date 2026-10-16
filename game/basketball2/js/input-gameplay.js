@@ -1,3 +1,5 @@
+let menuFrameTimer=0;
+
 function onKeyDown(e){
   inputManager.onKeyDown(e);
   keys[e.code] = true;
@@ -276,15 +278,18 @@ function animate(){
   if(interpolated) interpolateBasketball(simulationAccumulator/SIMULATION_STEP);
   updateDebugDirections(dt);
   updateShotMeterVisuals(dt);
-  if(!gameStarted && document.getElementById("menu").style.display !== "none"){
-    refreshSneakerSelectorUI();
-    refreshJerseySelectorUI();
-    refreshCourtSelectorUI();
-    if(document.getElementById("tournamentSetupScreen").classList.contains("active")) refreshTournamentSelectorUI();
+  const frameDue=gameStarted||(menuFrameTimer-=dt)<=0;
+  if(frameDue&&!gameStarted){
+    menuFrameTimer=1/12;
+    if(document.getElementById("quickPlayScreen").classList.contains("active")){
+      refreshSneakerSelectorUI(); refreshJerseySelectorUI(); refreshCourtSelectorUI();
+    }else if(document.getElementById("tournamentSetupScreen").classList.contains("active")) refreshTournamentSelectorUI();
   }
   updateCameras(dt);
   updateHUD();
-  renderScene();
+  // The menu artwork is static; the covered 3D court and cosmetic previews do
+  // not need a full-rate redraw. HTML controls retain normal browser response.
+  if(frameDue) renderScene();
   if(interpolated) restoreSimulationTransforms();
 }
 
