@@ -73,7 +73,7 @@ function harness(size=3,cooperative=false){
   ctx.tryDirectionalPass=char=>{ctx.passCalls.push({id:char.id,angle:char.angle});ctx.ballState='pass';return true;};
   ctx.tryJumpBlock=char=>ctx.blockCalls.push(char.id);
   ctx.handleHandAction=char=>ctx.stealCalls.push(char.id);
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/ai.js'),'utf8'),ctx);
+  for(const file of ['ai-reads.js','ai-coordination.js','ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'../js',file),'utf8'),ctx);
   vm.runInContext('initBotBrain()',ctx);
   return ctx;
 }
@@ -181,4 +181,62 @@ test('help defense protects a beaten paint matchup and returns to its assignment
   ctx.p1.group.position.set(0,0,2);
   ctx.decideAIDefense(helpers[0],helpers[0].aiBrain,ctx.p1,ctx.difficultySettings.hard);
   assert.equal(helpers[0].aiBrain.role,'guard');
+});
+
+test('an open bot finish uses a short running gather instead of holding a jumper meter',()=>{
+  const ctx=harness(1);ctx.selectedDifficulty='impossible';
+  ctx.p2.group.position.set(0,0,ctx.HOOP_POS.z+3.2);ctx.p2.velocity.set(0,0,-3);
+  ctx.p1.group.position.set(8,0,5);ctx.ballOwner=ctx.p2.id;ctx.possession=ctx.p2.id;
+  ctx.p2.aiBrain.possessionAge=1;ctx.p2.aiBrain.actionCooldown=0;
+  ctx.chooseShotType=()=> 'layup';
+  ctx.decideAIHandler(ctx.p2,ctx.p2.aiBrain,ctx.difficultySettings.impossible);
+  assert.equal(ctx.p2.aiBrain.decision,'finish');assert.equal(ctx.chargingPlayer,ctx.p2);
+  assert.ok(ctx.p2.aiBrain.releaseAt<=.12);
+  assert.ok(ctx.p2.aiBrain.target.z<ctx.p2.group.position.z,'retain the rimward running approach');
+});
+
+test('the AI finish owner leaves gather movement to the finish solver',()=>{
+  const ctx=harness(1);ctx.ballOwner=ctx.p2.id;ctx.possession=ctx.p2.id;
+  ctx.ballState='layup';ctx.layupActive=true;ctx.layupOwner=ctx.p2.id;
+  const before=ctx.p2.group.position.clone();ctx.updateTeamAI(1/60);
+  assert.ok(!ctx.moveCalls.includes(ctx.p2.id),'do not chase the ball held in the shooter own gather');
+  assert.equal(ctx.p2.aiBrain.role,'finish');assert.equal(ctx.p2.group.position.z,before.z);
+});
+
+test('defenders continue contesting a live layup gather instead of dispatching to rebounds',()=>{
+  const ctx=harness(2);ctx.selectedDifficulty='impossible';
+  const defender=ctx.getTeammates(ctx.p1)[0];
+  ctx.p2.group.position.set(0,0,ctx.HOOP_POS.z+2.5);
+  defender.group.position.set(.9,0,ctx.HOOP_POS.z+1.2);defender.aiBrain.actionCooldown=0;
+  ctx.ballState='layup';ctx.layupActive=true;ctx.layupOwner=ctx.p2.id;
+  ctx.decideTeamPlayer(defender,defender.aiBrain,ctx.p2,ctx.difficultySettings.impossible,false);
+  assert.notEqual(defender.aiBrain.role,'rebound');assert.ok(ctx.blockCalls.includes(defender.id));
+});
+
+test('a planned pass is cancelled if the receiver becomes covered before release',()=>{
+  const ctx=harness(2);ctx.selectedDifficulty='impossible';
+  const handler=ctx.getTeammates(ctx.p1)[0];
+  handler.group.position.set(0,0,-4);ctx.p1.group.position.set(4,0,-7);
+  ctx.p2.group.position.copy(ctx.p1.group.position).add(new Vector3(.25,0,0));
+  ctx.ballOwner=handler.id;ctx.possession=handler.id;
+  handler.aiBrain.passTargetId=ctx.p1.id;handler.aiBrain.passUntil=1;
+  ctx.updateAIShotAndPass(handler,handler.aiBrain,handler,1/60);
+  assert.equal(ctx.passCalls.length,0);assert.equal(handler.aiBrain.passTargetId,null);
+  assert.equal(handler.aiBrain.thinkIn,0,'read the new opening at the next decision opportunity');
+});
+
+test('scripted setup routes also avoid occupied bodies when the paint is closed',()=>{
+  const ctx=harness(3);ctx.selectedDifficulty='impossible';ctx.teamOffensiveStyles=['motion','balanced'];
+  const handler=ctx.getTeammates(ctx.p1)[0];
+  handler.group.position.set(0,0,ctx.HOOP_POS.z+10);ctx.ballOwner=handler.id;ctx.possession=handler.id;
+  ctx.getTeammates(handler).forEach((char,index)=>char.group.position.set(5,0,ctx.HOOP_POS.z+9-index*2));
+  const opponents=ctx.getOpponents(handler);
+  opponents[0].group.position.set(1.35,0,ctx.HOOP_POS.z+8.8);
+  opponents[1].group.position.set(0,0,ctx.HOOP_POS.z+1.7);
+  opponents[2].group.position.set(-4,0,ctx.HOOP_POS.z+4.5);
+  handler.aiBrain.actionCooldown=.5;handler.aiBrain.possessionAge=1;
+  const plan=ctx.aiGetTeamPlan(handler);assert.equal(plan.phase,'setup');
+  ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
+  assert.equal(ctx.aiRouteBlocked(handler,handler.aiBrain.target),false);
+  assert.equal(handler.aiBrain.sprint,false);
 });
