@@ -14,7 +14,7 @@ test('deck library and builder save, swap, enforce unlocks, and select five troo
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
   try{
     browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
-    const page=await browser.newPage({viewport:{width:1366,height:900}}),errors=[];page.on('pageerror',error=>errors.push(error.message));const base=`http://127.0.0.1:${server.address().port}`;
+    const page=await browser.newPage({viewport:{width:1366,height:600}}),errors=[];page.on('pageerror',error=>errors.push(error.message));const base=`http://127.0.0.1:${server.address().port}`;
     await page.goto(base+'/decks.js');await page.setContent(`<link rel="stylesheet" href="${base}/expansion.css"><body></body>`);
     await page.evaluate(async base=>{
       const {createExpansionUI}=await import(base+'/ui.js'),{FACTION_TROOPS}=await import(base+'/decks.js');
@@ -24,7 +24,14 @@ test('deck library and builder save, swap, enforce unlocks, and select five troo
       const sheet=document.createElement('canvas');sheet.width=sheet.height=64;const ctx=sheet.getContext('2d');ctx.fillStyle='#95c3de';ctx.fillRect(10,5,44,56);
       window.ui=createExpansionUI({troops,assets:{enabled:()=>true,unit:async()=>({image:sheet,spec:{frameWidth:64,frameHeight:64,columns:1,animations:{idle:[0]}}}),asset:async()=>null},getProfile:()=>profile,isActiveMatch:()=>window.active,unlockDescriptions:{railbreaker:'Chapter 1 boss or 15 blueprints (3/15)'},onSaveDeck:async deck=>{saved.push(deck);profile.decks=profile.decks.filter(item=>item.id!==deck.id).concat(deck);return {profile};},onSelectDeck:async deck=>{selected.push(deck);profile.selectedDeckId=deck.id;return {profile};},onFindMatch:async deck=>{online.push(deck);return {ok:true};}});ui.showDecks();
     },base);
-    assert.equal(await page.locator('.ff-deck-card').count(),3);assert.equal(await page.locator('.ff-deck-mini-troop').count(),15);await page.waitForFunction(()=>document.querySelectorAll('.ff-deck-mini-troop canvas').length===15);assert.equal(await page.locator('.ff-deck-current h2').textContent(),'Iron Vanguard');assert.equal(await page.locator('.ff-deck-current .ff-tier-3').count(),1);
+    assert.equal(await page.locator('.ff-deck-card').count(),3);assert.equal(await page.locator('.ff-deck-mini-troop').count(),15);
+    // Portraits load on intersection. Font metrics can place the third deck
+    // below the initial viewport, so expose each card before checking its art.
+    for(const card of await page.locator('.ff-deck-card').all()){
+      await card.scrollIntoViewIfNeeded();
+      await page.waitForFunction(id=>[...document.querySelectorAll('.ff-deck-card')].find(card=>card.dataset.deckId===id)?.querySelectorAll('.ff-deck-mini-troop canvas').length===5,await card.getAttribute('data-deck-id'));
+    }
+    assert.equal(await page.locator('.ff-deck-mini-troop canvas').count(),15);assert.equal(await page.locator('.ff-deck-current h2').textContent(),'Iron Vanguard');assert.equal(await page.locator('.ff-deck-current .ff-tier-3').count(),1);
     await page.getByRole('button',{name:'Duplicate Iron Vanguard',exact:true}).click();await page.getByLabel('Deck name',{exact:true}).fill('Precision Wing');
     assert.equal(await page.locator('.ff-deck-slot-filled').count(),5);assert.equal(await page.getByRole('button',{name:'Save deck',exact:true}).isEnabled(),true);assert.match(await page.locator('.ff-deck-builder-combos').textContent(),/Suppression Bombardment/);
     const locked=page.locator('[data-troop="railbreaker"]');assert.equal(await locked.isDisabled(),true);assert.match(await locked.textContent(),/Chapter 1 boss or 15 blueprints/);
