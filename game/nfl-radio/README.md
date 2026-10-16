@@ -180,3 +180,16 @@ Validation: `node --test game/nfl-radio/*.test.mjs` and
 fixture covers stats navigation, scoring switches, filters, responsive layout,
 latest-total footers and a failed optional voice download, alongside radio and
 voice-queue regressions.
+
+### Compact game center
+
+The new Game center tab shows the selected game's field and play calls together;
+Visual still shows the full rotation, and Play-by-play provides a text-only view.
+Desktop uses adjacent panels, while narrow screens stack a shortened field above
+the calls. The transcript and player list have bounded scrolling areas.
+
+Player stats include name/team search, position filtering, an independent player
+checkbox picker, and All players / My selected players modes. Top passer, rusher,
+and receiver can each be shown or hidden. Leaders use the full game's reported
+box score, independent of player filters. Player IDs, leader visibility, and list
+mode are saved per league on the device. These choices do not change voice filters.
