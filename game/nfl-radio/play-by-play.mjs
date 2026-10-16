@@ -94,7 +94,7 @@ export function installLivePlayByPlay(){
   const liveGames=new Set();
   const fields=installFieldView();
   const statsView=installStatsView(),statsByGame=new Map();
-  const paintFields=()=>fields?.render(events,selectedGameIds(),id=>tracker.history(id).at(-1),{stale:dataFailed,getFooter:id=>playStatFooter(tracker.history(id).at(-1),statsByGame.get(id)||[])});
+  const paintFields=()=>fields?.render(events,selectedGameIds(),id=>tracker.history(id).at(-1),{stale:dataFailed,focusedGame:viewedGame,getFooter:id=>playStatFooter(tracker.history(id).at(-1),statsByGame.get(id)||[])});
   const save=()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}};
   const currentRadioId=()=>$('nowGame')?.dataset.gameId||'';
   const monitored=()=>selectedGameIds();

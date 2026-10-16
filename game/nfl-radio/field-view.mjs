@@ -71,11 +71,12 @@ function drawField(model){
 }
 export function installFieldView(){
  const grid=document.getElementById('fieldGrid');if(!grid)return null;
- let latest=[],ids=[],getEntry=()=>null,stale=false,getFooter=()=>'',view='play',paintKey='';
- try{view=localStorage.getItem(`${storagePrefix}:view`)==='visual'?'visual':'play';}catch{}
+ let latest=[],ids=[],getEntry=()=>null,stale=false,getFooter=()=>'',view='center',paintKey='',focusedGame='';
+ try{const saved=localStorage.getItem(`${storagePrefix}:view`);view=['center','visual','play'].includes(saved)?saved:'center';}catch{}
  const paint=()=>{
-  if(view!=='visual')return;
-  const models=ids.map(gameId=>{const event=latest.find(e=>id(e.id)===gameId);return {gameId,event,model:fieldModel(event,getEntry(gameId))};});
+  if(view==='play')return;
+  const visibleIds=view==='center'?ids.filter(gameId=>gameId===focusedGame):ids;
+  const models=visibleIds.map(gameId=>{const event=latest.find(e=>id(e.id)===gameId);return {gameId,event,model:fieldModel(event,getEntry(gameId))};});
   const key=JSON.stringify([models,stale,ids.map(getFooter)]);if(key===paintKey)return;paintKey=key;
   grid.replaceChildren();
   for(const {gameId,event,model:m} of models){
@@ -86,24 +87,25 @@ export function installFieldView(){
    card.append(node('p',[possessor?`${possessor} ${m.direction>0?'→':'←'}`:'',m.down,m.spot,m.lastPosition?'Last reported spot':''].filter(Boolean).join(' · '),'fieldSituation'),node('p',m.last,'fieldLast'));
    const footer=getFooter(gameId);if(footer)card.append(node('small',footer,'playStatFooter'));
    card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`${score}. View players and game stats`);
-   const inspect=()=>{switchView('play');window.dispatchEvent(new CustomEvent('nfl-radio:inspect',{detail:{gameId}}));document.getElementById('gamePlayerStats').querySelector('summary').focus({preventScroll:true});};
+   const inspect=()=>{switchView(view==='center'?'center':'play');window.dispatchEvent(new CustomEvent('nfl-radio:inspect',{detail:{gameId}}));document.getElementById('gamePlayerStats').querySelector('summary').focus({preventScroll:true});};
    card.onclick=inspect;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inspect();}};
    grid.append(card);
   }
-  if(!ids.length)grid.append(node('p','Add games to your rotation below to see their fields.','emptyState'));
+  if(!visibleIds.length)grid.append(node('p','Add games to your rotation below to see their fields.','emptyState'));
  };
  const switchView=value=>{
-  view=value;
-  document.getElementById('visualPanel').hidden=view!=='visual';
+  view=value;paintKey='';
+  document.getElementById('gameCenter').dataset.view=view;
+  document.getElementById('visualPanel').hidden=view==='play';
   for(const id of ['activeGame','playPanel'])document.getElementById(id).hidden=view==='visual';
-  for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-selected',String(button.dataset.view===view));
+  for(const button of document.querySelectorAll('[data-view]')){button.setAttribute('aria-selected',String(button.dataset.view===view));button.tabIndex=button.dataset.view===view?0:-1;}
   try{localStorage.setItem(`${storagePrefix}:view`,view);}catch{}
   paint();
  };
  for(const button of document.querySelectorAll('[data-view]')){
   button.onclick=()=>switchView(button.dataset.view);
-  button.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const buttons=[...document.querySelectorAll('[data-view]')];const target=e.key==='Home'?buttons[0]:e.key==='End'?buttons.at(-1):buttons.find(b=>b!==button);target.focus();switchView(target.dataset.view);}};
+  button.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const buttons=[...document.querySelectorAll('[data-view]')];const target=e.key==='Home'?buttons[0]:e.key==='End'?buttons.at(-1):buttons[(buttons.indexOf(button)+(e.key==='ArrowRight'?1:buttons.length-1))%buttons.length];target.focus();switchView(target.dataset.view);}};
  }
  switchView(view);
- return {render(events,selected,getLatest,options={}){latest=events;ids=selected;getEntry=getLatest;stale=!!options.stale;getFooter=options.getFooter||(()=>'');paint();}};
+ return {render(events,selected,getLatest,options={}){latest=events;ids=selected;focusedGame=String(options.focusedGame||selected[0]||'');getEntry=getLatest;stale=!!options.stale;getFooter=options.getFooter||(()=>'');paint();}};
 }

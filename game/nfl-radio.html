@@ -1,18 +1,19 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b121d"><title>NFL Radio · Catnmice</title><link rel="stylesheet" href="nfl-radio/style.css"><link rel="stylesheet" href="nfl-radio/in-app-only.css"><link rel="stylesheet" href="nfl-radio/game-updates.css"><link rel="stylesheet" href="nfl-radio/play-by-play.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b121d"><title>NFL Radio · Catnmice</title><link rel="stylesheet" href="nfl-radio/style.css"><link rel="stylesheet" href="nfl-radio/in-app-only.css"><link rel="stylesheet" href="nfl-radio/game-updates.css"><link rel="stylesheet" href="nfl-radio/play-by-play.css"><link rel="stylesheet" href="nfl-radio/game-center.css"></head>
 <body>
 <header><a href="/lobby/lobby.html" class="back">← Lobby</a><span class="brand"><span class="brandMark" aria-hidden="true">◉</span> CATNMICE <b>RADIO</b></span><button id="playByPlayButton" aria-haspopup="dialog">Voice &amp; alerts</button></header>
 <main>
 <div class="stickyTabs"><nav class="leagueTabs" aria-label="Football league"><a data-league="nfl" href="?league=nfl">NFL</a><a data-league="college" href="?league=college">College Football</a></nav>
-<div class="viewBar"><div role="tablist" aria-label="Radio display"><button id="playTab" role="tab" data-view="play" aria-selected="true" aria-controls="playPanel">Play-by-play</button><button id="visualTab" role="tab" data-view="visual" aria-selected="false" aria-controls="visualPanel">Visual</button></div><button id="fieldVoiceToggle" aria-pressed="false">Enable voice</button></div>
+<div class="viewBar"><div role="tablist" aria-label="Radio display"><button id="centerTab" role="tab" data-view="center" aria-selected="true" aria-controls="gameCenter">Game center</button><button id="playTab" role="tab" data-view="play" aria-selected="false" aria-controls="playPanel">Play-by-play</button><button id="visualTab" role="tab" data-view="visual" aria-selected="false" aria-controls="visualPanel">Visual</button></div><button id="fieldVoiceToggle" aria-pressed="false">Enable voice</button></div>
 <div class="voiceQueueBar"><span id="speechIndicator" role="status" aria-live="polite">Voice ready</span><button id="resumeVoice" hidden>Resume voice</button></div></div>
-<section id="visualPanel" role="tabpanel" aria-labelledby="visualTab" hidden><h2>Rotation field view</h2><p class="settingHint">● Ball · yellow line: first down · blue curve: completed pass · gold line: run. Schematic last-play movement, not player tracking. Voice continues in either view.</p><div id="fieldGrid"></div></section>
+
 <div id="collegeFilters" hidden><label for="collegeFilter">Show games</label> <select id="collegeFilter"><option value="all">All games</option><option value="ranked">Top 25 teams</option></select><p class="settingHint">Top 25 includes either team ranked 1–25 in ESPN’s game ranking. Your rotation stays saved when filtering.</p></div>
 <div class="masthead"><div><div id="leagueHeading" class="eyebrow">NFL RADIO COMPANION</div><h1>Your game. <span>Your call.</span></h1><p class="intro">Live radio. Play calls. The players you follow.</p></div><div class="toolbar"><button id="edit" hidden>Edit rotation</button><button id="refresh" aria-label="Refresh games">↻ Refresh</button><span id="scheduleStatus" role="status">Loading games…</span></div></div>
 <section id="activeGame" class="gameHero" aria-label="Current game">
  <div class="gameTop"><span id="gameLiveState" class="livePill">YOUR DIAL</span><label class="sr" for="transcriptGame">Game to view</label><select id="transcriptGame"></select><span id="liveDataStatus">ESPN game center</span></div>
  <div id="gameScore" class="scoreboard"></div><p id="gameSituation" class="gameSituation"></p>
 </section>
+<div id="gameCenter" class="gameCenter"><section id="visualPanel" role="tabpanel" aria-labelledby="visualTab" hidden><h2>Rotation field view</h2><p class="settingHint">● Ball · yellow line: first down · blue curve: completed pass · gold line: run. Schematic last-play movement, not player tracking. Voice continues in either view.</p><div id="fieldGrid"></div></section>
 <footer id="player" aria-label="Radio player">
  <div class="now"><span class="liveDot" id="liveDot" aria-hidden="true"></span><div><span class="eyebrow">NOW PLAYING</span><strong id="nowGame">Your game goes here</strong><p id="nowStation">Select games to get started</p></div><button id="stations">Stations ☷</button></div>
  <div id="notice" role="status" aria-live="polite">Ready when you are.</div><button id="externalFallback" class="externalFallback" hidden>External options</button>
@@ -25,9 +26,11 @@
  <p id="announcementHint" class="settingHint"></p><button id="choosePlayers" hidden><span id="selectedPlayerCount">Choose players</span> · Edit players</button>
  <p id="selectedPlayerSummary" class="settingHint" hidden></p>
  <div id="latestCall" class="latestCall"><span id="latestPlayLabel" class="eyebrow">LIVE PLAY CALL</span><p id="latestPlay">Waiting for the next play.</p><small id="latestPlayStats" class="playStatFooter"></small></div>
- <details id="gamePlayerStats" class="gamePlayerStats"><!-- Filled with ESPN box-score stats. --></details>
  <details id="liveTranscript" open><summary>Live transcript <span id="transcriptCount">0</span></summary><p id="transcriptMeta" class="settingHint"></p><ol id="transcriptList" aria-label="Recent game plays"></ol></details>
+ <details open id="gamePlayerStats" class="gamePlayerStats"><!-- Filled with ESPN box-score stats. --></details>
+
 </section>
+</div>
 <section id="setup" aria-label="Choose games"><div class="sectionTitle"><h2>Build your rotation</h2><span id="count">0 selected</span></div><div id="games" class="grid"></div><button id="start" class="primary start" disabled>Start radio rotation →</button></section>
 <section id="dial" hidden aria-label="Your rotation"><div class="sectionTitle"><h2>Your rotation</h2><span>TAP TO LISTEN</span></div><div id="rotation" class="grid"></div></section>
 <p class="availability">Live data from ESPN. Station streams play inside this app; game availability depends on the broadcaster.</p>
