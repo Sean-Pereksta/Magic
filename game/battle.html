@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+{const q=new URLSearchParams(location.search);if(q.has('battleId')&&!q.has('attacker')&&!q.has('defender')){const next=new URL('/game/mountonline.html',location.origin);if(q.get('username'))next.searchParams.set('username',q.get('username'));next.searchParams.set('legacy','pvp');location.replace(next.href);}}
+</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>⚔️ Battle</title>
@@ -189,6 +192,9 @@
   </div>
 
   <script type="module">
+    // A legacy Mount link must never execute Village Wars auth or reward code.
+    if (new URLSearchParams(location.search).has('battleId') && !new URLSearchParams(location.search).has('attacker') && !new URLSearchParams(location.search).has('defender')) await new Promise(() => {});
+
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";

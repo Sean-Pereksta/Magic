@@ -6,6 +6,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Mountain Blade II: clients submit orders to the authenticated authority.
+    // Saves, rewards, territory and ownership bindings are never client-writable.
+    match /mountOnlineProfiles/{uid} {
+      allow get: if isAuthed() && request.auth.uid == uid;
+      allow list, write: if false;
+      match /receipts/{id} { allow read, write: if false; }
+    }
+    match /mountOnlineAccounts/{uid} { allow read, write: if false; }
+    match /mountOnlineNames/{username} { allow read, write: if false; }
+    match /mountOnlineRealm/{id} { allow read, write: if false; }
+    match /mountOnlineBattles/{id} { allow read, write: if false; }
+
     function turncraftType(data) { return data.get('gameType','') == 'turncraft'; }
     // Retired competitive collections remain read-only. Personal progress lives
     // on the existing users/{username}.gameStats.turncraft profile below.
@@ -766,10 +778,13 @@ service cloud.firestore {
     }
 
     match /games_rogueduel/{gameId} {
-      allow read, write: if isAuthed();
-
+      allow read: if isAuthed();
+      // Freeze only Mountain Blade's old display-name saves for verified migration.
+      // Both rules exclude the game: a recursive allow cannot be narrowed below.
+      allow write: if isAuthed() && gameId != 'mountandblade_online';
       match /{sub=**} {
-        allow read, write: if isAuthed();
+        allow read: if isAuthed();
+        allow write: if isAuthed() && gameId != 'mountandblade_online';
       }
     }
 

@@ -1,0 +1,46 @@
+name: Mountain Blade Online
+on:
+  pull_request:
+    paths:
+      - "game/mountonline/**"
+      - "game/mountonline.html"
+      - "game/localbattle.html"
+      - "game/castlebattle.html"
+      - "game/battle.html"
+      - "graphics/mountonline/**"
+      - "server/mountonline/**"
+      - "server.js"
+      - "firestore.rules"
+      - "firebase.mountonline-test.json"
+      - "package.json"
+      - ".github/workflows/mountonline.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  game-and-multiplayer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:mountonline
+      - run: npm run bench:mountonline
+      - run: npm run test:mountonline:browser
+        env:
+          MOUNTONLINE_QA_DIR: artifacts/mountonline
+      - run: npm run test:mountonline:rules
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mountain-blade-browser-qa
+          path: artifacts/mountonline
+          if-no-files-found: ignore
