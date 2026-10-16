@@ -6,17 +6,143 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Mountain Blade II: clients submit orders to the authenticated authority.
-    // Saves, rewards, territory and ownership bindings are never client-writable.
+    // MOUNTAIN BLADE ONLINE — FIRESTORE-ONLY MULTIPLAYER
+    // Place inside match /databases/{database}/documents. Uses isAuthed().
+    // A leased player browser simulates the realm. No Admin SDK / Node service.
+    function moLease() {
+      return get(/databases/$(database)/documents/mountOnlineRealms/living-realm).data;
+    }
+    function moHost() {
+      return isAuthed() && moLease().ownerUid == request.auth.uid
+        && moLease().released == false
+        && moLease().renewedAt + duration.value(20, 's') > request.time;
+    }
+    function moHostFor(uid) {
+      return moHost()
+        && exists(/databases/$(database)/documents/mountOnlineRealms/living-realm/sessions/$(uid));
+    }
+    function moBlob(data) {
+      return data.hostSession == moLease().ownerSession
+        && data.epoch == moLease().epoch
+        && data.packed is string && data.packed.size() <= 850000
+        && data.updatedAt == request.time;
+    }
+    function moProfile(data, uid) {
+      return data.uid == uid && data.schemaVersion == 2
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 40
+        && data.gold is number && data.gold >= 0 && data.gold <= 1000000000000
+        && data.level is int && data.level >= 1 && data.level <= 100
+        && data.xp is number && data.xp >= 0
+        && data.x is number && data.x >= 0 && data.x < 128
+        && data.y is number && data.y >= 0 && data.y < 88
+        && data.army is map && data.army.size() == 14
+        && data.reserve is map && data.reserve.size() == 14
+        && data.inventory is map && data.stats is map && data.skills is map
+        && data.achievements is list && data.claimedContracts is list
+        && data.keys().hasOnly(['schemaVersion','username','gold','supplies','renown','level','xp','army','reserve','x','y','morale','inventory','achievements','stats','relations','skills','skillPoints','contracts','claimedContracts','explored','activeBattle','revision','lastIncome','uid','linked','migrated','legacyHoldings','legacyInventory','legacyAllegiance','route','routeIndex','readyAt','battleCooldown','px','py','lastBattle','allianceId','economyClock','playTime']);
+    }
     match /mountOnlineProfiles/{uid} {
-      allow get: if isAuthed() && request.auth.uid == uid;
-      allow list, write: if false;
+      allow get: if isAuthed() && (request.auth.uid == uid || moHostFor(uid));
+      allow create, update: if moHostFor(uid) && moProfile(request.resource.data, uid);
+      allow list, delete: if false;
       match /receipts/{id} { allow read, write: if false; }
     }
-    match /mountOnlineAccounts/{uid} { allow read, write: if false; }
-    match /mountOnlineNames/{username} { allow read, write: if false; }
+    // Optional legacy bindings are entered in the Firebase Console after
+    // verifying the account owner. Browser clients cannot claim another name.
+    match /mountOnlineAccounts/{uid} {
+      allow get: if isAuthed() && (request.auth.uid == uid || moHostFor(uid));
+      allow list, write: if false;
+    }
+    match /mountOnlineNames/{username} {
+      allow get: if isAuthed();
+      allow list, write: if false;
+    }
+    // Previous server-only collections stay locked; they are not used by this client.
     match /mountOnlineRealm/{id} { allow read, write: if false; }
     match /mountOnlineBattles/{id} { allow read, write: if false; }
+
+    match /mountOnlineRealms/{realmId} {
+      function living() { return realmId == 'living-realm'; }
+      function validLease() {
+        let data = request.resource.data;
+        return isAuthed() && living()
+          && data.keys().hasAll(['schemaVersion','ownerUid','ownerSession','epoch','released','renewedAt'])
+          && data.keys().hasOnly(['schemaVersion','ownerUid','ownerSession','epoch','released','renewedAt'])
+          && data.schemaVersion == 1 && data.ownerUid == request.auth.uid
+          && data.ownerSession is string && data.ownerSession.size() <= 80
+          && data.ownerSession == get(/databases/$(database)/documents/mountOnlineRealms/living-realm/sessions/$(request.auth.uid)).data.sessionId
+          && data.epoch is int && data.epoch > 0
+          && data.released is bool && data.renewedAt == request.time;
+      }
+      allow get: if isAuthed() && living();
+      allow create: if validLease() && request.resource.data.epoch == 1
+        && request.resource.data.released == false;
+      allow update: if validLease() && (
+        (resource.data.ownerUid == request.auth.uid
+          && resource.data.ownerSession == request.resource.data.ownerSession
+          && request.resource.data.epoch == resource.data.epoch)
+        || (request.resource.data.released == false
+          && request.resource.data.epoch == resource.data.epoch + 1
+          && (resource.data.released == true || resource.data.ownerUid == request.auth.uid
+            || resource.data.renewedAt + duration.value(20, 's') <= request.time)));
+      allow list, delete: if false;
+
+      match /sessions/{uid} {
+        allow read: if isAuthed() && living();
+        allow create, update: if isAuthed() && living() && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid','sessionId','username','seenAt'])
+          && request.resource.data.uid == uid
+          && request.resource.data.sessionId is string && request.resource.data.sessionId.size() >= 8 && request.resource.data.sessionId.size() <= 80
+          && request.resource.data.username is string && request.resource.data.username.size() >= 1 && request.resource.data.username.size() <= 40
+          && request.resource.data.seenAt == request.time;
+        allow delete: if false;
+      }
+      match /state/{id} {
+        allow get: if living() && moHost();
+        allow create: if living() && id == 'checkpoint' && moHost()
+          && moBlob(request.resource.data) && request.resource.data.revision == 1
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.keys().hasOnly(['schemaVersion','epoch','hostSession','revision','packed','updatedAt']);
+        allow update: if living() && id == 'checkpoint' && moHost()
+          && moBlob(request.resource.data) && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.keys().hasOnly(['schemaVersion','epoch','hostSession','revision','packed','updatedAt']);
+        allow list, delete: if false;
+      }
+      match /views/{uid} {
+        allow get: if isAuthed() && living() && (uid == request.auth.uid || moHost());
+        allow create, update: if living() && moHostFor(uid)
+          && request.resource.data.uid == uid && moBlob(request.resource.data)
+          && request.resource.data.keys().hasOnly(['uid','epoch','hostSession','packed','updatedAt']);
+        allow list, delete: if false;
+      }
+      match /commands/{id} {
+        allow get: if isAuthed() && living()
+          && (resource == null || resource.data.uid == request.auth.uid || moHost());
+        allow list: if living() && moHost();
+        allow create: if isAuthed() && living()
+          && id.matches('^[A-Za-z0-9_-]{8,80}$')
+          && request.resource.data.keys().hasOnly(['uid','sessionId','type','payload','state','createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.sessionId == get(/databases/$(database)/documents/mountOnlineRealms/living-realm/sessions/$(request.auth.uid)).data.sessionId
+          && request.resource.data.state == 'pending' && request.resource.data.createdAt == request.time
+          && request.resource.data.type in ['move','command','halt','engage','recruit','train','reserve','supplies','rest','buyBanner','equip','contract','skill','build','garrison','diplomacy','caravan','allianceCreate','allianceRequest','allianceAccept','allianceLeave']
+          && request.resource.data.payload is map && request.resource.data.payload.size() <= 16
+          && request.resource.data.payload.type == request.resource.data.type
+          && request.resource.data.payload.keys().hasOnly(['type','point','order','ids','formation','target','ability','kind','settlement','count','unit','withdraw','item','skill','faction','peace','id','name','alliance','member'])
+          && (!('ids' in request.resource.data.payload) || (request.resource.data.payload.ids is list && request.resource.data.payload.ids.size() <= 600));
+        allow update: if living() && moHost() && resource.data.state == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','result','epoch','handledAt'])
+          && request.resource.data.state in ['done','error']
+          && request.resource.data.result is map && request.resource.data.result.keys().hasOnly(['ok','message'])
+          && request.resource.data.result.ok is bool
+          && request.resource.data.epoch == moLease().epoch
+          && request.resource.data.handledAt == request.time;
+        // Durable command receipts stay immutable to prevent replayed rewards.
+        allow delete: if isAuthed() && living() && resource.data.uid == request.auth.uid
+          && resource.data.state in ['done','error'] && resource.data.type in ['move','command','halt'];
+      }
+    }
 
     function turncraftType(data) { return data.get('gameType','') == 'turncraft'; }
     // Retired competitive collections remain read-only. Personal progress lives

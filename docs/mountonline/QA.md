@@ -2,23 +2,25 @@
 
 Validation ran against the actual game source and optimized artwork, on Linux with Node v24.19.0 and headless Chromium 138. Desktop and mobile results below are browser emulation on this host, not measurements from physical phones or a production multiplayer deployment.
 
-## Functional results
+## Firestore-only correction
+
+The production game now connects directly to Cloud Firestore. The Mountain Blade Node/Admin service, HTTP endpoints, Socket.IO namespace, service-account helper, start script, and API configuration have been removed. Existing Node services for other games are untouched.
 
 | Suite | Result |
 | --- | --- |
-| Engine and progression | 21 passing tests |
-| Mountain Blade Firestore security | 30 passing allow/deny checks against the full production rules file |
-| Authoritative service | Verified name binding, legacy company/castle/inventory migration, late binding without losing newer progress, replay receipts, concurrent purchases, command ownership, forged-result rejection, PvP, restart recovery, connected-traveler recovery, atomic results, alliances, allied-castle protection, and lost-authority rollback passed |
-| Two browser clients | Desktop and touch clients shared one real server battle; defender selection used the correct side; enemy troop orders were rejected; closing and reopening a client restored its seat; both profiles received one committed result; HTTP fallback, origin restrictions, and an existing game's health endpoint passed |
-| Responsive browser flow | 1440 × 900 desktop, 390 × 844 touch portrait, and 844 × 390 touch landscape passed with zero JavaScript errors, no failed local assets, and no document overflow |
-| Shared host | All three existing Faction Forge server-mount regression tests passed |
-| Shared Firebase rules | Existing Faction Forge security and TurnCraft personal-save emulator suites passed with the updated rules |
+| Engine, progression, configuration and compression | 23 passing tests; exact supplied-rule preservation and 4,800-troop compressed checkpoint verified |
+| Repository Firestore rules | 62 passing allow/deny/transaction checks |
+| Complete rules based on the supplied deployed file | Same 62 checks passed; a SHA-256 check proves all other supplied game sections are unchanged |
+| Browser multiplayer | Real Web SDK and real Firestore emulator rules: desktop/touch companies shared one battle; purchases retried concurrently committed once; direct unauthorized saves and lease theft failed; enemy orders were rejected; reconnect restored the correct battle seat; killing the host tab transferred authority and restored the battle; both profiles received exactly one result; movement, alliance membership/protection, and duplicate-tab ownership passed |
+| Legacy migration | A URL name imported nothing; Console-style verified bindings imported gold, troops, reserve overflow, inventory, and a castle once; another reconnect did not duplicate troops |
+| Capacity | One transaction wrote 16 profiles/views plus checkpoint/lease inside the security-rule access budget; a 17th company received a private full-realm message without replacing another player; a retired-server battle reference resumed its saved company without invented rewards |
+| Responsive browser flow | 1440 × 900 desktop, 390 × 844 touch portrait, 844 × 390 touch landscape: zero JavaScript errors, no failed local artwork, no document overflow |
 
-The browser flow covers the loading screen, field guide, local campaign, settlement recruitment, promotions, reserves, map travel, halt, saving/reloading, all 14 troop cards, quality controls, single selection, additive selection, desktop drag boxes and control groups, touch long-press selection and pinch zoom, group orders, formations, rally, completed field battles, breached siege gates, and result screens. Screenshots of each viewport's menu/world/battle were inspected for layout and sprite visibility. The CI workflow uploads these screenshots as artifacts.
+The browser flow also covers local saving, all 14 troop cards, settlement recruitment, promotions/reserves, map travel, halt, quality controls, desktop boxes/control groups, touch long-press/pinch, commands/formations, abilities, completed field battles, siege gate breaches, and results.
 
-Engine tests additionally cover physical tree/cliff obstacles, bridge-only river crossings, unreachable paths, diagonal corner cuts, all nine order types, 600 distinct formation slots, self-follow handling, repeated hold stability, exhausted paths, projectile damage, deterministic battle outcomes, healer withdrawal, retreat survivors, cooldowns, contracts, invalid purchases, level-cap saves, unfinished-battle import, settlement income, assigned garrison troop classes, owner-controlled garrisons without field-army duplication, patrol attrition, caravan trade, and peace stopping hostile pressure.
+The Firestore test uses only `demo-mountonline`. In the browser fixture, test-only module responses supply emulated UID credentials to the real Web SDK. The rules, listeners, transactions, shared simulation, reconnection, and result settlement are real. Tests assert that **no `/api/mountonline` or Socket.IO requests occur**. The HTTP process serves static test files only. No production auth bypass, live rules publication, service-account access, production account writes, or production deployment is part of these tests.
 
-The emulator uses only `demo-mountonline`. Browser authentication in the two-player fixture substitutes a token verifier/Auth SDK while exercising real HTTP, Socket.IO, the shared engine, Firestore reads/writes and transactions. The production server always calls Firebase Admin's token verifier. No production accounts, saves, Firebase rules, hosting, or account bindings were changed during validation.
+The game is peer-hosted: the current elected browser is trusted to run the simulation. Rules fence host identity/epoch, ownership, private views, legal document shapes, immutable receipts and duplicate commits; they do not independently recompute battle outcomes or validate compressed simulation contents. When nobody hosts, the world pauses. An abrupt host disconnect takes up to the 20-second lease interval plus election/network time to hand over. Anonymous identities resume in the same browser; cross-device recovery requires the existing linked Firebase sign-in, rather than a display name alone.
 
 ## Performance samples
 
@@ -30,7 +32,7 @@ Seeded full-combat benchmark, including movement, targeting, projectiles, healin
 | 400 | 372 | 1.21 ms | 3.78 ms | 18.92 ms | 20.9 KB |
 | 1,200 | 487 | 4.28 ms | 15.76 ms | 34.04 ms | 54.2 KB |
 
-The 1,200-troop process reported approximately 19.8 MiB of used JS heap. This measures the simulation process, not total browser/GPU memory or end-to-end rendering latency. The server admission budget prevents unbounded simultaneous battles.
+The 1,200-troop process reported approximately 19.8 MiB of used JS heap. This measures the simulation process, not total browser/GPU memory or end-to-end rendering latency. The shared simulation admission budget bounds simultaneous battle troops; compressed checkpoint guards reject oversized saves.
 
 75 animation-frame samples during the 135-troop practice battle, after loading:
 
@@ -46,4 +48,6 @@ Essential bitmap payload is 1,697,856 bytes: two troop atlases, one terrain/prop
 
 ## Release validation still required
 
-The implementation is ready for review. Before making the online release live, deploy the authoritative Node service and matching Firestore rules, configure its HTTPS API origin for the actual frontend, and verify trusted bindings for legacy accounts. Then smoke-test real Firebase sign-in, two production accounts, a player-owned castle defense, reconnecting over real mobile networks, and physical-device frame pacing. These release checks require the deployed service and real account identities; they are not represented by the local/emulator results above.
+Publish the matching static game files and Firestore rules to the existing project. The supplied-rules replacement is `docs/mountonline/firestore-complete.rules`; no Node server, Cloud Function, Realtime Database, extra host, service account, API URL, or custom index is needed. Optional older name-based company imports use two verified binding documents entered in the Firebase Console.
+
+Smoke-test real Firebase sign-in, two production identities, castle ownership/garrison defense, real mobile-network reconnects, and physical-phone frame pacing. Local emulator/browser results do not represent those production/physical-device checks. No production rules or records were changed while preparing this PR.

@@ -243,10 +243,14 @@ async function startOnline() {
   battle = null;
   dismissed.clear();
   resultShown.clear();
-  network = new OnlineClient(remoteState, (text) => {
-    setStatus(text);
-    if ($("app").hidden) $("menuMessage").textContent = text;
-  });
+  network = new OnlineClient(
+    remoteState,
+    (text) => {
+      setStatus(text);
+      if ($("app").hidden) $("menuMessage").textContent = text;
+    },
+    { username },
+  );
   try {
     await network.start();
     if (!state) throw new Error("The realm did not return a saved company.");
@@ -266,7 +270,7 @@ async function startOnline() {
     network.stop();
     mode = null;
     $("menuMessage").textContent =
-      "The online realm is unavailable. Retry, or continue your local campaign.";
+      error.message || "The online realm is unavailable. Retry shortly.";
     $("menuMessage").classList.add("error");
     setStatus("Offline");
   } finally {
@@ -892,7 +896,7 @@ function renderPanel(type) {
   else if (type === "diplomacy")
     body.innerHTML = `<p class="panel-intro">Enemy factions respond when you seize their keeps. Hostile patrols intercept your company and reinforce threatened territory. Send envoys to repair relations before expanding again.</p><div class="card-list">${FACTIONS.map((f) => `<article class="story-card"><span class="eyebrow">${esc(f.trait)}</span><h3>${esc(f.name)} <small>Relations ${p.relations[f.id]}</small></h3><div class="inline-actions"><button data-action="diplomacy" data-faction="${f.id}" ${p.activeBattle || p.gold < 35 ? "disabled" : ""}>Send envoy · 35g</button><button data-action="diplomacy" data-faction="${f.id}" data-peace="true" ${p.activeBattle || p.gold < 120 ? "disabled" : ""}>Negotiate peace · 120g</button></div></article>`).join("")}</div>${mode === "online" ? `<h3 style="margin-top:24px">Player alliances</h3><p class="panel-intro">Found an alliance or request membership. Founders approve applications; allied commanders and their castles are protected from friendly attacks.</p><div class="inline-actions"><input id="allianceName" maxlength="30" placeholder="Alliance name" aria-label="New alliance name"><button id="createAlliance" ${p.allianceId ? "disabled" : ""}>Found · 100g</button></div><div class="card-list" style="margin-top:14px">${(state.alliances || []).map((a) => `<article class="story-card"><h3>${esc(a.name)}</h3><p>${a.members.length} / 6 commanders</p><button data-action="${p.allianceId === a.id ? "allianceLeave" : "allianceRequest"}" data-alliance="${esc(a.id)}" ${p.allianceId && p.allianceId !== a.id ? "disabled" : ""}>${p.allianceId === a.id ? "Leave alliance" : "Request membership"}</button>${a.owner === p.uid ? a.requests.map((r) => `<p>${esc(r.username)} <button data-action="allianceAccept" data-alliance="${esc(a.id)}" data-member="${esc(r.uid)}">Approve</button></p>`).join("") : ""}</article>`).join("") || '<p class="panel-intro">No alliances have been founded yet.</p>'}</div>` : ""}`;
   else if (type === "settings")
-    body.innerHTML = `<div class="settings-row"><label for="quality">Graphics quality</label><select id="quality"><option value="auto" ${settings.quality === "auto" ? "selected" : ""}>Adaptive</option><option value="high" ${settings.quality === "high" ? "selected" : ""}>High</option><option value="low" ${settings.quality === "low" ? "selected" : ""}>Performance</option></select></div><div class="settings-row"><label for="sound">Sound effects</label><input id="sound" type="checkbox" ${settings.sound ? "checked" : ""}></div><div class="settings-row"><label for="fps">Show performance</label><input id="fps" type="checkbox" ${settings.showFPS ? "checked" : ""}></div><p class="panel-intro" style="margin-top:18px">Adaptive quality limits high-density displays and reduces effects when frames slow down. Camera zoom is available on the mini-map, mouse wheel, or by pinching.</p><div class="inline-actions"><button data-panel="help">Read the field guide</button>${mode === "local" ? '<button id="exportCampaign">Export campaign</button><label><button id="importCampaign">Import campaign</button><input type="file" id="importFile" accept="application/json,.json" hidden></label>' : ""}</div><p class="panel-intro" style="margin-top:16px">${mode === "online" ? "Online saves are validated by the realm server. Reconnect with the same Firebase identity to resume your company. Local imports remain separate from online progress." : "Local campaigns keep a previous save as a recovery checkpoint. Export a campaign to move it to another device."}</p>`;
+    body.innerHTML = `<div class="settings-row"><label for="quality">Graphics quality</label><select id="quality"><option value="auto" ${settings.quality === "auto" ? "selected" : ""}>Adaptive</option><option value="high" ${settings.quality === "high" ? "selected" : ""}>High</option><option value="low" ${settings.quality === "low" ? "selected" : ""}>Performance</option></select></div><div class="settings-row"><label for="sound">Sound effects</label><input id="sound" type="checkbox" ${settings.sound ? "checked" : ""}></div><div class="settings-row"><label for="fps">Show performance</label><input id="fps" type="checkbox" ${settings.showFPS ? "checked" : ""}></div><p class="panel-intro" style="margin-top:18px">Adaptive quality limits high-density displays and reduces effects when frames slow down. Camera zoom is available on the mini-map, mouse wheel, or by pinching.</p><div class="inline-actions"><button data-panel="help">Read the field guide</button>${mode === "local" ? '<button id="exportCampaign">Export campaign</button><label><button id="importCampaign">Import campaign</button><input type="file" id="importFile" accept="application/json,.json" hidden></label>' : ""}</div><p class="panel-intro" style="margin-top:16px">${mode === "online" ? `Firebase UID: <code>${esc(network?.uid || "")}</code><br>Online saves synchronize directly through Firestore. Reconnect with the same Firebase identity to resume your company. Local imports remain separate from online progress.` : "Local campaigns keep a previous save as a recovery checkpoint. Export a campaign to move it to another device."}</p>`;
   if (assets)
     for (const canvas of body.querySelectorAll("[data-portrait]")) {
       const c = canvas.getContext("2d"),
@@ -1310,7 +1314,7 @@ function frame(now) {
     if (keys.has("arrowleft")) renderer.cam.x -= speed;
     if (keys.has("arrowright")) renderer.cam.x += speed;
   } else if (
-    now - lastKeyMove > 250 &&
+    now - lastKeyMove > (mode === "online" ? 1000 : 250) &&
     (keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d"))
   ) {
     lastKeyMove = now;
@@ -1329,7 +1333,7 @@ function frame(now) {
   let drawState = state,
     alpha =
       mode === "online"
-        ? clamp((now - remoteAt) / 200, 0, 1)
+        ? clamp((now - remoteAt) / (state.syncInterval || 500), 0, 1)
         : accumulator / STEP;
   if (mode === "online" && previousRemote && !battle) {
     const prev = previousRemote.profile,

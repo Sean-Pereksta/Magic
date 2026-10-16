@@ -14,7 +14,7 @@ function serve(req, res) {
       body = Buffer.from(body.toString() + hooks);
     if (url.pathname === "/game/mountonline/config.mjs")
       body = Buffer.from(
-        "export const API_BASE='/api/mountonline';export const ART_BASE='/graphics/mountonline/';",
+        "export const ART_BASE='/graphics/mountonline/';",
       );
     res.setHeader(
       "Content-Type",
