@@ -5,6 +5,7 @@ const assert = require("node:assert/strict"),
   path = require("node:path");
 const { initializeTestEnvironment } = require("@firebase/rules-unit-testing");
 const sdk = require("firebase/firestore");
+const sdkVersion = require("firebase/package.json").version;
 const { start } = require("./serve.cjs"),
   { launch } = require("./chromium.cjs");
 
@@ -99,8 +100,8 @@ async function main() {
         route.fulfill({
           contentType: "text/javascript",
           body: `
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
-import * as sdk from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/${sdkVersion}/firebase-app.js';
+import * as sdk from 'https://www.gstatic.com/firebasejs/${sdkVersion}/firebase-firestore.js';
 export async function connectFirebase() {
   const app = initializeApp({ projectId:'demo-mountonline', apiKey:'test-only', appId:'test-only' });
   const db = sdk.getFirestore(app);
