@@ -240,3 +240,19 @@ test('scripted setup routes also avoid occupied bodies when the paint is closed'
   assert.equal(ctx.aiRouteBlocked(handler,handler.aiBrain.target),false);
   assert.equal(handler.aiBrain.sprint,false);
 });
+
+test('a clear direct drive is kept over a lateral midrange pass, then kicked out when help closes it',()=>{
+  const ctx=harness(2);ctx.selectedDifficulty='impossible';
+  const handler=ctx.getTeammates(ctx.p1)[0];
+  handler.group.position.set(0,0,ctx.HOOP_POS.z+6);
+  ctx.p1.group.position.set(4,0,ctx.HOOP_POS.z+4.5);ctx.p1.profile.shot=1.3;
+  ctx.getOpponents(handler).forEach((char,index)=>char.group.position.set(index?8:-8,0,ctx.HOOP_POS.z+10));
+  ctx.ballOwner=handler.id;ctx.possession=handler.id;
+  handler.aiBrain.actionCooldown=0;handler.aiBrain.possessionAge=1;
+  ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
+  assert.equal(handler.aiBrain.decision,'drive');assert.equal(handler.aiBrain.passTargetId,null);
+  assert.ok(handler.aiBrain.target.z<handler.group.position.z);
+  ctx.getOpponents(handler)[0].group.position.set(0,0,ctx.HOOP_POS.z+3.3);
+  ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
+  assert.equal(handler.aiBrain.decision,'pass');assert.equal(handler.aiBrain.passTargetId,ctx.p1.id);
+});

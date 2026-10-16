@@ -52,6 +52,58 @@ function aiCoordHasRimRole(player,plan){
   return plan.actorId===player.id&&(plan.phase==="cut"||plan.phase==="roll");
 }
 
+function aiCoordCrossesDrive(start,end,handler){
+  const from=handler.group.position,dx=HOOP_POS.x-from.x,dz=HOOP_POS.z-from.z;
+  const length=Math.hypot(dx,dz);
+  if(length<.1) return false;
+  const a=dx*(start.z-from.z)-dz*(start.x-from.x);
+  const b=dx*(end.z-from.z)-dz*(end.x-from.x);
+  // A player already in the lane may leave it. An opposite-side cut must not
+  // run across a teammate who has a direct, unguarded path to the basket.
+  if(a*b>=0||Math.abs(a)/length<1.05) return false;
+  const t=a/(a-b),x=start.x+(end.x-start.x)*t,z=start.z+(end.z-start.z)*t;
+  const along=((x-from.x)*dx+(z-from.z)*dz)/(length*length);
+  return along>.05&&along<.95;
+}
+
+function aiCoordCatchBodyClear(player,target,handler,settings){
+  for(const defender of getOpponents(handler)){
+    const body=(player.bodyRadius || .55)+(defender.bodyRadius || .55)+.06;
+    if(flatDistance(defender.group.position,target)<body||
+      flatDistance(aiCoordRead(handler,defender,settings,aiCoordLookAhead(settings)),target)<body) return false;
+  }
+  return true;
+}
+
+function aiCoordYieldClearDrive(char,brain,handler,settings,intended){
+  const position=handler.group.position,toward=HOOP_POS.clone().sub(position).setY(0);
+  const distance=toward.length(),velocity=handler.velocity.clone().setY(0),speed=velocity.length();
+  if(distance<1.1||distance>10.5||speed<1.1||velocity.normalize().dot(toward.normalize())<.38||
+    aiCoordLaneSpace(handler,position,HOOP_POS,settings)<=1.55) return false;
+  const laneWidth=(handler.bodyRadius || .55)+(char.bodyRadius || .55)+.12;
+  if(!aiCoordCrossesDrive(char.group.position,intended,handler)&&
+    aiCoordDistanceToLane(intended,position,HOOP_POS)>=laneWidth) return false;
+  const across=new THREE.Vector3(-toward.z,0,toward.x);
+  const side=char.group.position.clone().sub(position).dot(across)<0?-1:1;
+  let target=null;
+  // Keep the authored cutter/roller, but let the unblocked ball handler go
+  // first. A covered same-side catch is a reason to wait outside the lane.
+  for(const [width,depth] of [[3.1,3.1],[4.3,4.4]]){
+    const waypoint=HOOP_POS.clone().addScaledVector(toward,-depth).addScaledVector(across,side*width).setY(0);
+    keepInCourt(waypoint);
+    if(aiCoordCrossesDrive(char.group.position,waypoint,handler)||
+      aiCoordDistanceToLane(waypoint,position,HOOP_POS)<laneWidth||
+      !aiCoordCatchBodyClear(char,waypoint,handler,settings)) continue;
+    const crowded=aiRoster().some(other=>other!==char&&other.teamId===char.teamId&&
+      flatDistance(other.group.position,waypoint)<(char.bodyRadius || .55)+(other.bodyRadius || .55)+.25);
+    if(!crowded){target=waypoint;break;}
+  }
+  brain.target.copy(target || char.group.position).setY(0);
+  brain.sprint=!!target&&flatDistance(char.group.position,brain.target)>1.6;
+  brain.roleUntil=Math.max(brain.roleUntil,teamAITime+.55);
+  return true;
+}
+
 function aiCoordFindReceivingRead(handler,settings,plan){
   const support=aiRoster().filter(player=>player.teamId===handler.teamId&&player!==handler);
   const bots=support.filter(player=>!aiIsHuman(player));
@@ -66,7 +118,9 @@ function aiCoordFindReceivingRead(handler,settings,plan){
   // A set screen must finish before its player becomes a receiver. Motion also
   // retains its one selected cutter rather than sending a second support inside.
   const setup=plan.style!=="balanced"&&(plan.phase==="setup"||plan.phase==="screen");
-  if(setup||!rimActors.length&&(!driving||pressure<1)) return null;
+  if(setup) return null;
+  const driveSupport=driving&&pressure>0;
+  const clearDrive=driving&&aiCoordLaneSpace(handler,position,HOOP_POS,settings)>1.55;
   const candidates=rimActors.length?rimActors:bots.filter(player=>{
     const brain=player.aiBrain;
     return brain&&brain.role!=="screen"&&brain.role!=="screen_setup"&&
@@ -80,13 +134,24 @@ function aiCoordFindReceivingRead(handler,settings,plan){
       const target=new THREE.Vector3(side*(depth<1.5?1.7:1.25),0,HOOP_POS.z+depth);
       const passingDistance=flatDistance(position,target);
       const travel=flatDistance(player.group.position,target);
-      if(passingDistance<2||travel>8.5||aiCoordDistanceToLane(target,position,HOOP_POS)<1.05) continue;
+      const laneWidth=Math.max(1.05,(handler.bodyRadius || .55)+(player.bodyRadius || .55)+.12);
+      if(passingDistance<2||travel>8.5||aiCoordDistanceToLane(target,position,HOOP_POS)<laneWidth||
+        clearDrive&&aiCoordCrossesDrive(player.group.position,target,handler)) continue;
       const clearance=aiCoordLaneSpace(handler,position,target,settings);
       const catchSpace=Math.min(8,...getOpponents(handler).map(defender=>flatDistance(aiCoordRead(handler,defender,settings,aiCoordLookAhead(settings)),target)));
-      if(clearance<1.0||catchSpace<1.3) continue;
+      const finishRead=typeof aiReadShotAt==="function"?aiReadShotAt(player,handler,target,settings,aiCoordLookAhead(settings)):null;
+      const seal=!!finishRead?.finishFavorable;
+      // A useful seal may have a small defender nearby. The pass still needs a
+      // real clear corridor and a catch point with room for both actual bodies.
+      const actualClearance=Math.min(8,...getOpponents(handler).map(defender=>aiCoordDistanceToLane(defender.group.position,position,target)));
+      if(clearance<1.0||actualClearance<.82||(!seal&&catchSpace<1.3)||
+        !aiCoordCatchBodyClear(player,target,handler,settings)) continue;
+      if(!rimActors.length&&!driveSupport&&!seal) continue;
       const weakSide=position.x*side<0?.24:0;
-      const value=Math.min(clearance,3)*.75+Math.min(catchSpace,3)*.55-travel*.13+weakSide+(aiCoordHasRimRole(player,plan)?.4:0);
-      if(!best||value>best.value||value===best.value&&String(player.id)<String(best.playerId)) best={playerId:player.id,target,value};
+      const value=Math.min(clearance,2.6)*.42+Math.min(catchSpace,2.2)*.24-travel*.11+weakSide+
+        (aiCoordHasRimRole(player,plan)?.4:0)+(finishRead?.quality ?? .6)*.7+
+        (seal?.4+(finishRead.mismatchAdvantage || 0)*.55:0)+((player.profile?.layup || 1)-1)*.14;
+      if(!best||value>best.value||value===best.value&&String(player.id)<String(best.playerId)) best={playerId:player.id,target,value,seal};
     }
   }
   return best;
@@ -103,6 +168,8 @@ function aiCoordinateOffBall(char,brain,handler,settings,plan){
     plan.receivingRead={handlerId:handler.id,until:teamAITime+.32,selected};
   }
   const selected=plan.receivingRead.selected;
+  if(aiCoordHasRimRole(char,plan)&&aiCoordYieldClearDrive(char,brain,handler,settings,
+    selected?.playerId===char.id?selected.target:brain.target)) return true;
   if(selected?.playerId===char.id){
     const rimRole=aiCoordHasRimRole(char,plan);
     if(!rimRole){brain.role="dump_off";brain.moveCooldown=Math.max(brain.moveCooldown,.85);}

@@ -360,6 +360,10 @@ function decideAIHandler(char,brain,settings){
   const shotValue=read.value??quality;
   const vision=settings.courtVision??settings.spacingIQ;
   const toRim=HOOP_POS.clone().sub(position).setY(0).normalize();
+  const committed=brain.driveUntil>teamAITime||char.velocity.dot(toRim)>2.2;
+  const driveValue=aiDriveOpportunity(char,lane,distance);
+  const drivePreferred=lane.drive&&distance>2.5&&(committed||driveValue>shotValue+.025||!read.inRange);
+  const clearRun=lane.direct&&lane.openness>.82&&lane.finishSpace>2.65&&!lane.blocked;
   // A running finish retains its approach; a jumper first settles its feet.
   if(shotCharging&&chargingPlayer===char){
     if(brain.shotKind==="layup"||brain.shotKind==="dunk") brain.target.copy(position).addScaledVector(toRim,2);
@@ -378,8 +382,9 @@ function decideAIHandler(char,brain,settings){
   }
   const ready=brain.actionCooldown<=0&&brain.possessionAge>(settings.quickReadTime??.4);
   // Take the easy basket immediately rather than waiting for a scripted play.
-  if(ready&&read.closeFinish&&read.finishOpen){
+  if(ready&&read.closeFinish&&(read.finishOpen||read.finishFavorable)){
     brain.decision="finish";brain.role="finish";
+    brain.finishRead=read.finishFavorable&&!read.finishOpen?"size_advantage":"open";
     brain.target.copy(position).addScaledVector(toRim,2);
     beginAIShot(char,brain);
     return;
@@ -388,7 +393,9 @@ function decideAIHandler(char,brain,settings){
   const rimFeed=bestRead?.rimFeed&&vision>.42&&bestValue>shotValue-.04;
   const share=brain.possessionAge>2.2&&bestValue>shotValue+.02;
   const kickRead=plan.style==="drive_kick"&&plan.phase==="kick"&&bestValue>shotValue-.05;
-  const smartPass=receiver&&patient&&(rimFeed||bestValue>shotValue+(settings.passAdvantage??.1)||space<1.5&&bestValue>.48||share||kickRead);
+  const passImprovesDrive=bestRead?.rimFeed||bestRead?.points===3&&bestRead.catchQuality>.82&&bestValue>driveValue+.06||bestValue>driveValue+.16;
+  const smartPass=receiver&&patient&&(!drivePreferred||!clearRun||passImprovesDrive)&&
+    (rimFeed||bestValue>shotValue+(settings.passAdvantage??.1)||space<1.5&&bestValue>.48||share||kickRead);
   if(smartPass&&brain.actionCooldown<=0){
     brain.passTargetId=receiver.id;
     brain.passUntil=teamAITime+.8;
@@ -396,11 +403,7 @@ function decideAIHandler(char,brain,settings){
     brain.target.copy(position);
     return;
   }
-  const committed=brain.driveUntil>teamAITime||char.velocity.dot(toRim)>2.2;
-  const shooter=(char.profile.shot||1)>1.18&&(char.profile.shot||1)>(char.profile.layup||1)+.08;
-  const driveBetter=committed||!shooter&&distance<7||quality<.68;
-  const attackLane=lane.drive&&distance>2.5&&driveBetter;
-  if(attackLane){
+  if(drivePreferred){
     brain.decision="drive";brain.role="drive";brain.target.copy(lane.target);
     brain.driveUntil=teamAITime+.35+(settings.driveCommitment??.65)*.45;
     brain.sprint=distance>3.7&&char.stamina>.45;
@@ -441,6 +444,14 @@ function decideAIHandler(char,brain,settings){
   brain.sprint=lane.drive&&space>1.7&&distance>3.7&&char.stamina>.45;
   brain.protect=space<1.25;
   keepInCourt(brain.target);
+}
+
+function aiDriveOpportunity(char,lane,distance){
+  const finishing=.81+THREE.MathUtils.clamp(((char.profile.layup||1)-1)*.16,-.08,.12);
+  const directBonus=lane.direct ? .05 : 0;
+  const fatigue=(1-(char.stamina??1))*.1;
+  const travel=Math.max(0,distance-7)*.02;
+  return THREE.MathUtils.clamp((finishing+directBonus-fatigue-travel)*lane.openness,0,1);
 }
 
 function aiRouteBlocked(char,target){
