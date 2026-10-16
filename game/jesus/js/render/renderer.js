@@ -4,7 +4,7 @@ import { biomeKey, HAZARD_ART, sampleFrame, namedFrame, AssetLoadError } from '.
 import { INTERIOR_TEXTURE_RECTS } from '../assets/terrain-textures.js';
 import { ART_ALPHA_BOUNDS, PLATFORM_SURFACES } from '../assets/art-anchors.js';
 
-const CELL=512, TILE=64;
+const CELL=512, TILE=64, PLATFORM_CONTACT_INSET=8;
 const EFFECT_ALIASES={'fx-impact':'fx-gold-impact','fx-enemy-death':'fx-damage-burst','hit-spark':'fx-gold-impact',jump:'fx-jump-dust',land:'fx-landing-dust',dash:'fx-dash-trail',pickup:'fx-pickup-collect',checkpoint:'fx-checkpoint-activation',hurt:'fx-damage-burst',attack:'fx-blessing-attack-arc'};
 const PROJECTILE_ART={orb:'fx-radial-orb',fire:'fx-fire-meteor',shockwave:'fx-ground-shockwave',javelin:'projectile-javelin',light:'projectile-lightning',lightning:'projectile-lightning',debris:'projectile-stone',stone:'projectile-stone',tablet:'projectile-tablet',thorn:'projectile-thorn',sweep:'fx-boss-sweep-slam',judgment:'fx-holy-light-judgment',eruption:'fx-fire-eruption',attackZone:'fx-boss-sweep-slam'};
 const PICKUP_ART={faith:'faith-light',light:'faith-light',coin:'faith-light',bread:'bread',fish:'fish',scroll:'scroll',relic:'sun-relic',sunRelic:'sun-relic',shield:'ability-shield',sandals:'ability-sandals',wings:'ability-wings',holyLight:'ability-holy-light',fireRain:'ability-fire-rain',chest:'secret-chest-closed',secret:'secret-chest-closed'};
@@ -116,6 +116,8 @@ export class Renderer {
   }
   _oneWayPlatform(p,biome,terrain) {
     const ctx=this.ctx,structures=this._asset(`${biome}-structures`);if(!structures)return;
+    // Feet rest inside the illustrated top plane rather than on its rear edge.
+    const top=p.y-PLATFORM_CONTACT_INSET;
     const type=p.visualKind||'ledge',bottom=Math.max(p.y+70,p.supportBottom||p.y+150);
     if(type==='bridge') {
       const frame=namedFrame(structures.meta,'bridge'),b=ART_ALPHA_BOUNDS[`${structures.meta.id}:${frame.index}`]||frame.contentBounds;
@@ -126,11 +128,11 @@ export class Renderer {
       // identifies posts and braces as background, leaving the platform top clear.
       ctx.save();ctx.globalAlpha=.54;
       const above={x:crop.x,y:crop.y,width:crop.width,height:Math.max(0,deck.y-b.y)};
-      imageRect(ctx,structures.image,above,x,p.y-above.height*sx,w,above.height*sx);
+      imageRect(ctx,structures.image,above,x,top-above.height*sx,w,above.height*sx);
       const below={x:crop.x,y:frame.rect.y+deck.bottomY,width:crop.width,height:Math.max(0,b.y+b.height-deck.bottomY)};
-      imageRect(ctx,structures.image,below,x,p.y+deckHeight,w,bottom-p.y-deckHeight);ctx.restore();
+      imageRect(ctx,structures.image,below,x,top+deckHeight,w,bottom-top-deckHeight);ctx.restore();
       const deckCrop={x:crop.x,y:frame.rect.y+deck.y,width:crop.width,height:Math.max(1,deck.bottomY-deck.y)};
-      imageRect(ctx,structures.image,deckCrop,x,p.y,w,deckCrop.height*deckScale);
+      imageRect(ctx,structures.image,deckCrop,x,top,w,deckCrop.height*deckScale);
       return;
     }
     if(type==='supported') {
@@ -149,11 +151,14 @@ export class Renderer {
       }
       ctx.restore();
     }
-    // A cropped organic cliff cap retains its alpha silhouette instead of being
-    // sliced into a flat rectangle. The source one-way collider sets its surface.
-    const frame=namedFrame(terrain.meta,'ledge'),crop=content(frame),b=frame.contentBounds,c=frame.collider;
-    const sx=p.w/c.width,depth=type==='supported'?48:60,sy=depth/(b.y+b.height-c.y);
-    imageRect(ctx,terrain.image,crop,p.x+(b.x-c.x)*sx,p.y+(b.y-c.y)*sy,b.width*sx,b.height*sy);
+    // Anchor the opaque stone deck, not the estimated collider or grass tips,
+    // to the landing plane used by characters, pickups, and decorations.
+    const frame=namedFrame(terrain.meta,'ledge'),key=`${terrain.meta.id}:${frame.index}`;
+    const b=ART_ALPHA_BOUNDS[key]||frame.contentBounds,c=frame.collider;
+    const crop={x:frame.rect.x+b.x,y:frame.rect.y+b.y,width:b.width,height:b.height};
+    const surfaceY=PLATFORM_SURFACES[key]?.y??c.y;
+    const sx=p.w/c.width,depth=type==='supported'?48:60,sy=depth/(b.y+b.height-surfaceY);
+    imageRect(ctx,terrain.image,crop,p.x+(b.x-c.x)*sx,top+(b.y-surfaceY)*sy,b.width*sx,b.height*sy);
   }
   _fillTiles(entry,x,y,w,h,view) {
     const a=namedFrame(entry.meta,'fill-a'),b=namedFrame(entry.meta,'fill-b');if(!a||!b||h<=0)return;
@@ -173,7 +178,7 @@ export class Renderer {
     const sy=moving?Math.max(.35,Math.min(2,(p.supportTop?point.y-p.supportTop:above*sx)/Math.max(1,above))):Math.min(.75,70/Math.max(1,below));
     const shake=p.collapseTimer>0?Math.sin(time*65)*2.2:0;
     this.ctx.save();this.ctx.globalAlpha=p.falling?Math.max(.2,1-(p.fallTime||0)):1;
-    imageRect(this.ctx,entry.image,crop,point.x+(b.x-c.x)*sx+shake,point.y+(b.y-surfaceY)*sy,b.width*sx,b.height*sy);this.ctx.restore();
+    imageRect(this.ctx,entry.image,crop,point.x+(b.x-c.x)*sx+shake,point.y-PLATFORM_CONTACT_INSET+(b.y-surfaceY)*sy,b.width*sx,b.height*sy);this.ctx.restore();
   }
   _decoration(e,biome,time,background) {
     if(e.kind==='checkpoint')return;
@@ -182,7 +187,9 @@ export class Renderer {
     if(name==='breakableColumn')name='spire';
     const entry=this._asset(`${biome}-${e.structure||structures.includes(name)?'structures':'terrain'}`);if(!entry)return;
     const frame=namedFrame(entry.meta,name);if(!frame)return;
-    const crop=content(frame),scale=e.scale||1,w=e.w||crop.width*.65*scale,h=e.h||crop.height*.65*scale,ctx=this.ctx;
+    const bounds=ART_ALPHA_BOUNDS[`${entry.meta.id}:${frame.index}`];
+    const crop=bounds?{x:frame.rect.x+bounds.x,y:frame.rect.y+bounds.y,width:bounds.width,height:bounds.height}:content(frame);
+    const scale=e.scale||1,w=e.w||crop.width*.65*scale,h=e.h||crop.height*.65*scale,ctx=this.ctx;
     ctx.save();ctx.globalAlpha=e.opacity??(background?.8:1);
     // Generated prop coordinates identify the ground contact; explicit topAligned is available for wall decorations.
     ctx.translate(e.x+(e.flip?w:0),(e.y??VIEW.floorY)-(e.topAligned||e.type==='breakableColumn'?0:h));ctx.scale(e.flip?-1:1,1);

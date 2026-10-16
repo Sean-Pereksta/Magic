@@ -68,6 +68,12 @@ try {
       let left=frame.rect.width,top=frame.rect.height,right=-1,bottom=-1;
       for(let y=0;y<frame.rect.height;y++)for(let x=0;x<frame.rect.width;x++)if(data[((frame.rect.y+y)*info.width+frame.rect.x+x)*4+3]>0){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
       assert.deepEqual(b,{x:left,y:top,width:right-left+1,height:bottom-top+1},id+':'+frame.index+' source alpha bounds');
+      const deck=PLATFORM_SURFACES[`${id}:${frame.index}`];
+      if(id.endsWith('-terrain')&&deck){
+        let solid=0;
+        for(let x=deck.x;x<deck.x+deck.width;x++)if(data[((frame.rect.y+deck.y)*info.width+frame.rect.x+x)*4+3]>=200)solid++;
+        assert.equal(solid,deck.width,id+' uses an opaque stone contact row');
+      }
     }
   }
 } catch(error) {if(error.code!=='ENOENT')throw error;}
@@ -173,6 +179,28 @@ assert.deepEqual(staticCalls[0],staticCalls[1],'A grounded collectible must not 
 assert.equal(staticCalls[0][5]+staticCalls[0][7],468,'The rendered bread alpha bottom must touch its physical supporting surface.');
 for(const [biome,region]of Object.entries(REGIONS)) {
   await manager.loadLevel({...region,biome});await manager.prefetchBoss(region.bossId);
+  const surfaceCalls=[];
+  const contactContext=new Proxy({drawImage:(image,...args)=>surfaceCalls.push({image,args})},{get:(target,key)=>target[key]||(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
+  const contactRenderer=new Renderer({width:960,height:540,getContext:()=>contactContext},manager);
+  const p={x:200,y:400,w:190,h:28,oneWay:true,supportBottom:728};
+  for(const visualKind of ['bridge','supported','ledge']){
+    surfaceCalls.length=0;contactRenderer._oneWayPlatform({...p,visualKind},biome,manager.get(`${biome}-terrain`));
+    const {args}=surfaceCalls.at(-1),[sx,sy,sw,sh,dx,dy,dw,dh]=args;
+    const meta=manager.metadata(`${biome}-${visualKind==='bridge'?'structures':'terrain'}`),frame=namedFrame(meta,visualKind==='bridge'?'bridge':'ledge');
+    const deck=PLATFORM_SURFACES[`${meta.id}:${frame.index}`];
+    const renderedContact=dy+(frame.rect.y+deck.y-sy)*dh/sh;
+    assert.ok(Math.abs(renderedContact-(p.y-8))<.001,`${biome}/${visualKind} top plane must extend above feet, never hang below them`);
+  }
+  for(const moving of [true,false]){
+    surfaceCalls.length=0;contactRenderer._dynamicPlatform({...p,supportTop:100},biome,0,1,moving);
+    const [sx,sy,sw,sh,dx,dy,dw,dh]=surfaceCalls.at(-1).args,meta=manager.metadata(`${biome}-structures`),frame=namedFrame(meta,moving?'moving-platform':'collapse-platform'),deck=PLATFORM_SURFACES[`${meta.id}:${frame.index}`];
+    assert.ok(Math.abs(dy+(frame.rect.y+deck.y-sy)*dh/sh-(p.y-8))<.001,`${biome} moving/collapsing deck meets its rider`);
+  }
+  for(const name of region.props){
+    surfaceCalls.length=0;contactRenderer._decoration({x:100,y:400,w:90,h:110,artFrame:name},biome,0,true);
+    const meta=manager.metadata(`${biome}-terrain`),frame=namedFrame(meta,name),b=ART_ALPHA_BOUNDS[`${meta.id}:${frame.index}`];
+    assert.deepEqual(surfaceCalls[0].args.slice(0,4),[frame.rect.x+b.x,frame.rect.y+b.y,b.width,b.height],`${biome}/${name} trims transparent padding below props`);
+  }
   const projectileTypes={warBeast:['orb','shockwave','debris','sweep'],templeJudge:['orb','judgment','eruption','light','tablet'],pitLord:['fire','eruption','shockwave'],celestialTrial:['light','judgment','tablet','eruption']}[region.bossId];
   const world={biome,bossId:region.bossId,seed:1,platforms:[{id:'ground',x:0,y:468,w:1300,h:500,kind:'ground'},{id:'slope',x:150,y:420,w:70,h:76,rise:48,kind:'slope',slopeDirection:'up'},{id:'collapse',x:330,y:300,w:160,h:28,kind:'collapsing'},...['bridge','supported','ledge'].map((visualKind,i)=>({id:visualKind,x:100+i*250,y:340,w:180,h:28,oneWay:true,visualKind,supportBottom:728}))],
     movers:[{id:'mover',x:520,y:250,w:125,h:28}],props:[{x:660,y:468,w:90,h:110,artFrame:region.props[0]}],scenery:[],hazards:region.hazardTypes.map((type,i)=>({type,x:200+i*60,y:420,w:35,h:48,active:true})),
