@@ -13,6 +13,8 @@
 - `js/rendering.js` — arena, players, materials, shot meter, and procedural models.
 - `js/input-gameplay.js` — action handling, modern 360-degree movement, game loop, and human control.
 - `js/team-play.js` — individual/team membership, authoritative ownership, directional pass flight/interception, control switching, and roster lifecycle.
+- `js/player-models.js` — cached GLB loading, isolated skeletons/materials, animation blending, hand/forearm attachment and arm IK; safe generated-player fallback.
+- `assets/models/` — original guard/wing/center GLBs, each with 24 joints and 12 movement clips; `tools/build-models.cjs` reproducibly authors them without dependencies.
 - `js/ai.js` — opponent decision-making and difficulty behavior.
 - `js/animation-contact.js` — animation blending, footwork, contests, steals, and body contact.
 - `js/ball-physics.js` — dribbles, rim/backboard response, rebounds, bounds, and loose balls.
@@ -41,9 +43,9 @@ Each team can choose an offense in Quick Play: **Balanced** mixes reads, **Motio
 
 Defenders maintain separate matchups. A shared defensive plan can send exactly one AI helper to a vulnerable sideline/corner handle or beaten paint drive while the third defender rotates into uncovered passing lanes. It accounts for nearby human help and open rim threats. Traps end on a pass, escape, or timeout and have a recovery cooldown; they are not permanent team-wide ball chasing. Only one defender pursues an interception while the others retain coverage.
 
-The menu uses original illustrated artwork in `assets/menu-hero.webp` with live HTML controls and native SVG mode/tactic diagrams. See `assets/README.md` for its generation prompt and provenance. Court/player models and gameplay effects remain generated in code. Covered court rendering and cosmetic menu previews redraw at 12 Hz while the HTML UI retains normal browser responsiveness.
+The menu uses original illustrated artwork in `assets/menu-hero.webp` with live HTML controls and native SVG mode/tactic diagrams. See `assets/README.md` for its generation prompt and provenance. Courts, hoop, basketball and effects remain generated in code. Players load original skinned GLB models with run/sprint, shuffle/pivot, jump-shot, layup/dunk, pass/catch, block and crossover clips. Colors, selected jersey numbers and shoe colors are applied per player. The loader shares mesh buffers while each athlete has independent bones, animation and materials; assets load during the menu, and failed loads retain generated players. Covered court rendering and cosmetic menu previews redraw at 12 Hz while the HTML UI retains normal browser responsiveness.
 
-Shot timing, distance, momentum, stamina, shot type and pressure determine repeatable physical aim error. Layups release a ballistic shot, while close dunk gathers can be blocked. Steals have a readable windup, a live reach interval, and recovery after a miss. Score/out-of-bounds delays advance with simulation, so pausing and restarting cannot trigger stale inbound callbacks.
+Shot timing, distance, momentum, stamina, shot type and pressure determine repeatable physical aim error. Good open jumper timing has a forgiving band; standing close shots select a layup, and tapped open layups receive finishing touch while still launching a real ball. The gather keeps the release clear of the rim underside. Pressure, body contact and timed blocks still matter. Glass dimensions and rim tube radius come from one render/collision contract; swept slab collisions reflect once, torus contacts use their 3D normal, and scoring requires a downward plane crossing with clearance for the whole ball. Bank shots physically rebound off the board. Steals have a readable windup, a live reach interval, and recovery after a miss. Score/out-of-bounds delays advance with simulation, so pausing and restarting cannot trigger stale inbound callbacks.
 
 ## Validation
 
@@ -60,8 +62,9 @@ Run the real browser integration smoke test with the repository's Playwright dev
 ```sh
 node game/basketball2/tests/browser-smoke.cjs
 node game/basketball2/tests/menu-layout.cjs
+node game/basketball2/tests/player-gameplay-browser.cjs
 ```
 
-The browser tests serve source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. Gameplay checks exercise all eight solo/local configurations, all four playbooks, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load. Menu checks cover four desktop/mobile sizes, artwork decoding, keyboard focus/activation, and style persistence through reloads and Tour.
+The browser tests serve source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. Gameplay checks exercise all eight solo/local configurations, all four playbooks, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load. Menu checks cover four desktop/mobile sizes, artwork decoding, keyboard focus/activation, and style persistence through reloads and Tour. Player gameplay checks decode all three GLBs in Three.js, verify skeletal movement, make 54 open layups/jumpers using keyboard events across the three builds and both sides of the basket, and verify split/mobile rendering and repeated model disposal. Runtime unit tests use `THREE_BUNDLE` when supplied; asset and shooting pipeline tests do not require a renderer.
 
 Automated keyboard, touch-pointer, and single/dual gamepad-frame checks complement browser simulation. Physical touchscreen/gamepad feel and frame pacing on low-end devices still require on-device playtesting; AI tactics are lightweight heuristics, not a full basketball playbook.

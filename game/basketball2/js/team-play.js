@@ -24,9 +24,10 @@ function getNearestOpponent(char){
 function disposeMatchPlayers(){
   const geometries=new Set(), materials=new Set(), textures=new Set();
   for(const player of matchPlayers.length?matchPlayers:[p1,p2].filter(Boolean)){
+    if(typeof disposePlayerModel==="function") disposePlayerModel(player);
     scene.remove(player.group);
     player.group.traverse(node=>{
-      if(node.geometry) geometries.add(node.geometry);
+      if(node.geometry&&!node.userData.sharedPlayerGeometry) geometries.add(node.geometry);
       for(const material of Array.isArray(node.material)?node.material:[node.material]){
         if(!material) continue;
         materials.add(material);

@@ -203,6 +203,10 @@ function getOwner(){
 }
 
 function getHandWorldPosition(char,handName){
+  if(typeof getModelHandWorld==="function"){
+    const modelHand=getModelHandWorld(char,handName);
+    if(modelHand) return modelHand;
+  }
   const local = handName === "left" ? char.leftHand.position.clone() : char.rightHand.position.clone();
   return char.group.localToWorld(local);
 }
@@ -370,8 +374,9 @@ function calculateReboundVector(){ return new THREE.Vector3((Math.random()-.5)*4
 function updateReboundAI(dt){
   // Rebound assignments and movement belong to updateTeamAI for every mode.
 }
-function handleRimRattle(){ ballVelocity.multiplyScalar(.92); ballVelocity.y += .25; }
-function handleBankShot(){ ballVelocity.z *= -.7; }
+// Ball response is resolved once by the physical rim/backboard solver.
+function handleRimRattle(){}
+function handleBankShot(){}
 
 function flash(text){
   if(tutorialMode){

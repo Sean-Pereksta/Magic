@@ -33,24 +33,32 @@ function releaseShot(shooter,shotType,options={}){
   const meterProfile = timing.profile;
   const center=(meterProfile.greenStart+meterProfile.greenEnd)*.5;
   const halfWindow=Math.max(.025,(meterProfile.greenEnd-meterProfile.greenStart)*.5);
-  const releaseError=(timing.pct-center)/halfWindow;
+  // An open close gather supplies the touch on a tapped layup. It still launches
+  // a real ball, and defenders can contest or block the gather and its flight.
+  const assistedFinish=shotType==="layup" && dist<=3.6 && contest.value<.25 && held<=.24;
+  if(assistedFinish) timing.grade="Open Finish";
+  const releaseError=(assistedFinish ? center : timing.pct)-center;
   const rangePenalty=Math.max(0,dist-(shotType==="layup" ? 2.5 : 4.8))*.037;
-  const movementPenalty=shooter.velocity.length()*(shotType==="layup" ? .018 : .047);
+  const movementPenalty=shotType==="layup" ? Math.max(0,shooter.velocity.length()-4)*.018 : shooter.velocity.length()*.047;
   const fatiguePenalty=(1-shooter.stamina)*.24;
   const rating=shotType==="hook" ? (shooter.profile.hook || .8) : shotType==="layup" ? shooter.profile.layup : shooter.profile.shot;
   const typePenalty=shotType==="fadeaway" ? .16 : shotType==="hook" ? .1 : shotType==="pullup" ? .05 : 0;
   const difficulty=THREE.MathUtils.clamp(contest.value*.85+rangePenalty+movementPenalty+fatiguePenalty+typePenalty-(rating-1)*.23,0,1.5);
   const target = HOOP_POS.clone();
-  target.y+=.035;
   const shotLine = HOOP_POS.clone().sub(releasePoint).setY(0).normalize();
   const shotSide = new THREE.Vector3(-shotLine.z,0,shotLine.x);
   // The same timing, positioning and momentum produce the same aim error.
   // Early releases run long, late releases finish short; pressure moves the aim off line.
-  const timingOffset=-releaseError*(.19+Math.min(dist,12)*.015);
+  // Timing error is continuous across the green band. Dividing it by the very
+  // narrow band made even a green edge release aim outside the physical rim.
+  const outsideGreen=Math.max(0,Math.abs(releaseError)-halfWindow);
+  const insideGreen=Math.min(Math.abs(releaseError),halfWindow)*.32;
+  const timingMagnitude=(insideGreen+outsideGreen*(.7+Math.max(0,outsideGreen-.06)*20))*(.9+Math.min(dist,12)*.02);
+  const timingOffset=-Math.sign(releaseError)*timingMagnitude*(shotType==="layup" ? .3 : 1);
   target.addScaledVector(shotLine,THREE.MathUtils.clamp(timingOffset,-2.4,2.4));
   const motionSide=shooter.velocity.dot(shotSide);
   const sideSign=motionSide<-.15 ? -1 : 1;
-  target.addScaledVector(shotSide,sideSign*difficulty*.62+motionSide*.025);
+  target.addScaledVector(shotSide,sideSign*difficulty*.62+motionSide*(shotType==="layup" ? .008 : .025));
   target.addScaledVector(shotLine,-difficulty*.38);
   const contestDefender = contest.defender;
   if(contestDefender&&contest.value>.1){
@@ -83,7 +91,7 @@ function releaseShot(shooter,shotType,options={}){
     triggerShotSplash(releasePoint,"green");
     triggerCrowdReaction("green",0.8);
   }
-  const shotLabel = shotType === "hook" ? "Hook Shot" : shotType === "fadeaway" ? "Fadeaway" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
+  const shotLabel = shotType === "layup" ? "Layup" : shotType === "hook" ? "Hook Shot" : shotType === "fadeaway" ? "Fadeaway" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
   showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight",shooter.id);
   playShotSound();
   flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
@@ -122,6 +130,7 @@ function shootBall(char,shotType="setshot"){
     const handPoint = getWorldHand(char,(ballSideValue < 0 ? "left" : "right"));
     const pocket = getShotReleasePoint(char,"jumper").clone().add(new THREE.Vector3(0,-0.1 + char.profile.height*0.04,0.08));
     options.releasePoint = handPoint.clone().lerp(pocket,gatherBlend);
+    options.releasePoint.y=Math.max(options.releasePoint.y,char.group.position.y+2.2*char.profile.height);
   }
   if(shotType === "fadeaway"){
     options.releasePoint = getShotReleasePoint(char,"jumper").clone().add(new THREE.Vector3(0,0.25 + char.profile.height * 0.18,0));
@@ -418,7 +427,7 @@ function checkSteals(){
     const side = defender.swipeSide || "right";
     const hand = getWorldHand(defender,side);
     const forearm = side === "left" ? defender.leftForearm : defender.rightForearm;
-    const forearmWorld = forearm.getWorldPosition(new THREE.Vector3());
+    const forearmWorld = (typeof getModelForearmWorld==="function" && getModelForearmWorld(defender,side)) || forearm.getWorldPosition(new THREE.Vector3());
     const reachPoint = getReachHitPoint(defender,side);
     const reachDist = Math.min(hand.distanceTo(ball.position),reachPoint.distanceTo(ball.position),forearmWorld.distanceTo(ball.position));
     if(!isFacingTarget(defender,ball.position,.35)) continue;
@@ -559,9 +568,17 @@ function updateScoredPossession(dt){
 
 function checkScore(){
   if(lastScored || !hasShotThisPossession || (ballState!=="shot" && ballState!=="loose")) return;
-  const dist = flatDistance(ball.position,HOOP_POS);
-
-  if(dist < RIM_RADIUS*.72 && ball.position.y < HOOP_POS.y && ball.position.y > HOOP_POS.y-.42 && ballVelocity.y < 0){
+  if(ballVelocity.y>=0) return;
+  // Test where this flight segment crosses the hoop, not a small post-step
+  // window that fast shots can skip entirely. The whole ball must fit inside.
+  const crossing=previousBallPosition.y>=HOOP_POS.y && ball.position.y<HOOP_POS.y;
+  const initialized=previousBallPosition.lengthSq()>.000001;
+  const fraction=crossing ? (previousBallPosition.y-HOOP_POS.y)/(previousBallPosition.y-ball.position.y) : 1;
+  const crossingPoint=previousBallPosition.clone().lerp(ball.position,fraction);
+  const rimTube=typeof HOOP_GEOMETRY!=="undefined" ? HOOP_GEOMETRY.rimTubeRadius : .045;
+  const clearRadius=RIM_RADIUS-rimTube-BALL_RADIUS;
+  const legacyDrop=!initialized && ball.position.y<HOOP_POS.y && ball.position.y>HOOP_POS.y-.42;
+  if((crossing || legacyDrop) && flatDistance(crossingPoint,HOOP_POS)<clearRadius){
     const shooterId = lastShotShooter;
     const shooter=getPlayerById(shooterId);
     if(!shooter) return;

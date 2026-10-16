@@ -110,9 +110,9 @@ function resolveHoopPlayerCollision(char){
   }
 
   if(!backboard) return;
-  const boardHalfW = 3.4 * 0.5;
-  const boardHalfH = 2.05 * 0.5;
-  const boardHalfT = 0.25 * 0.5;
+  const boardHalfW = HOOP_GEOMETRY.boardWidth*.5;
+  const boardHalfH = HOOP_GEOMETRY.boardHeight*.5;
+  const boardHalfT = HOOP_GEOMETRY.boardThickness*.5;
   const boardX = backboard.position.x;
   const boardY = backboard.position.y;
   const boardZ = backboard.position.z;
@@ -136,6 +136,7 @@ function updateCharacters(dt){
   updateMoveFeedback(dt);
   for(const char of matchPlayers){
     animateCharacter(char,dt);
+    if(typeof updatePlayerModel==="function") updatePlayerModel(char,dt);
     updateHookIndicator(char,dt);
     updateFloatingIndicators(char,dt);
   }
