@@ -1,4 +1,5 @@
 function buildMenu(){
+  loadMatchSetup();
   buildPrimaryMenu();
   buildCharacterCards("p1Cards","p1");
   buildCharacterCards("p2Cards","p2");
@@ -10,21 +11,34 @@ function buildMenu(){
 
   document.getElementById("onePlayerBtn").onclick = () => {
     twoPlayerMode = false;
-    document.getElementById("onePlayerBtn").classList.add("selected");
-    document.getElementById("twoPlayerBtn").classList.remove("selected");
-    document.getElementById("modeText").textContent = "1P vs Bot";
-    document.getElementById("p2Title").textContent = "Bot Character";
-    updateInputDeviceUI();
+    refreshMatchSetup();
+    saveMatchSetup();
   };
 
   document.getElementById("twoPlayerBtn").onclick = () => {
     twoPlayerMode = true;
-    document.getElementById("twoPlayerBtn").classList.add("selected");
-    document.getElementById("onePlayerBtn").classList.remove("selected");
-    document.getElementById("modeText").textContent = "2P Split Screen";
-    document.getElementById("p2Title").textContent = "Player 2 Character";
-    updateInputDeviceUI();
+    refreshMatchSetup();
+    saveMatchSetup();
   };
+
+  document.querySelectorAll("[data-team-size]").forEach(button=>{
+    button.onclick=()=>{
+      teamSize=Number(button.dataset.teamSize);
+      if(teamSize===1) localTeamMode="competitive";
+      refreshMatchSetup();
+      saveMatchSetup();
+    };
+  });
+  document.getElementById("localTeamModeSelect").onchange=event=>{
+    localTeamMode=event.target.value;
+    refreshMatchSetup();
+    saveMatchSetup();
+  };
+  document.getElementById("splitLayoutSelect").onchange=event=>{
+    splitLayout=event.target.value;
+    saveMatchSetup();
+  };
+  refreshMatchSetup();
 
   const diffBox = document.getElementById("difficultyButtons");
   Object.keys(difficultySettings).forEach(d => {
@@ -33,6 +47,7 @@ function buildMenu(){
     btn.textContent = d.toUpperCase();
     btn.onclick = () => {
       selectedDifficulty = d;
+      saveMatchSetup();
       document.querySelectorAll(".difficultyBtn").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
     };
@@ -68,6 +83,10 @@ function buildMenu(){
 
 function buildPrimaryMenu(){
   document.getElementById("primaryQuickPlayBtn").onclick = ()=>showQuickPlaySetup();
+  document.getElementById("primary1v1Btn").onclick = ()=>showQuickPlaySetup(1,false);
+  document.getElementById("primary2v2Btn").onclick = ()=>showQuickPlaySetup(2,false);
+  document.getElementById("primary3v3Btn").onclick = ()=>showQuickPlaySetup(3,false);
+  document.getElementById("primaryLocalBtn").onclick = ()=>showQuickPlaySetup(null,true);
   document.getElementById("primaryTournamentBtn").onclick = ()=>showTournamentSetup();
   document.getElementById("primaryLoadTournamentBtn").onclick = ()=>loadTournament();
   document.getElementById("quickPlayBackBtn").onclick = ()=>showPrimaryMenu();
@@ -85,6 +104,8 @@ function showMenuScreen(id){
   document.getElementById("menu").style.display = "flex";
 }
 function showPrimaryMenu(message=""){
+  inputManager.clearAll();
+  resetPlayerShotFeedback();
   gameStarted = false;
   gamePaused = false;
   tutorialMode = false;
@@ -95,8 +116,68 @@ function showPrimaryMenu(message=""){
   showMenuScreen("primaryMenuScreen");
   document.getElementById("primaryMenuMsg").textContent = message;
 }
-function showQuickPlaySetup(){
+function showQuickPlaySetup(size=null,local=null){
+  gameStarted=false;
+  gamePaused=false;
+  tutorialMode=false;
+  tutorialCoach?.stop();
+  inputManager.clearAll();
+  resetPlayerShotFeedback();
+  document.body.classList.remove("tutorial-active","touch-controls-active");
+  loadMatchSetup();
+  isTournamentGame=false;
+  isChampionshipGame=false;
+  if(size!==null) teamSize=size;
+  if(local!==null) twoPlayerMode=local;
+  if(teamSize===1) localTeamMode="competitive";
+  refreshMatchSetup();
+  saveMatchSetup();
   showMenuScreen("quickPlayScreen");
+}
+
+function loadMatchSetup(){
+  try{
+    const saved=JSON.parse(localStorage.getItem("basketball2MatchV1")||"null");
+    if(!saved) return;
+    teamSize=[1,2,3].includes(saved.teamSize)?saved.teamSize:1;
+    twoPlayerMode=!!saved.twoPlayerMode;
+    localTeamMode=saved.localTeamMode==="cooperative"&&teamSize>1?"cooperative":"competitive";
+    splitLayout=saved.splitLayout==="horizontal"?"horizontal":"vertical";
+    if(difficultySettings[saved.difficulty]) selectedDifficulty=saved.difficulty;
+  }catch(error){ /* Unavailable storage leaves the playable defaults intact. */ }
+}
+
+function saveMatchSetup(){
+  try{
+    localStorage.setItem("basketball2MatchV1",JSON.stringify({teamSize,twoPlayerMode,localTeamMode,splitLayout,difficulty:selectedDifficulty}));
+  }catch(error){ /* Private browsing can disallow persistent settings. */ }
+}
+
+function refreshMatchSetup(){
+  if(teamSize===1) localTeamMode="competitive";
+  document.querySelectorAll("[data-team-size]").forEach(button=>{
+    const selected=Number(button.dataset.teamSize)===teamSize;
+    button.classList.toggle("selected",selected);
+    button.setAttribute("aria-pressed",String(selected));
+  });
+  document.getElementById("onePlayerBtn").classList.toggle("selected",!twoPlayerMode);
+  document.getElementById("twoPlayerBtn").classList.toggle("selected",twoPlayerMode);
+  document.getElementById("onePlayerBtn").setAttribute("aria-pressed",String(!twoPlayerMode));
+  document.getElementById("twoPlayerBtn").setAttribute("aria-pressed",String(twoPlayerMode));
+  document.getElementById("localSetupOptions").hidden=!twoPlayerMode;
+  const assignment=document.getElementById("localTeamModeSelect");
+  assignment.value=localTeamMode;
+  assignment.disabled=teamSize===1;
+  document.getElementById("splitLayoutSelect").value=splitLayout;
+  document.getElementById("p2Title").textContent=twoPlayerMode?(localTeamMode==="cooperative"?"Player 2 · Teammate":"Player 2 · Opponent"):"Opponent Captain";
+  const count=teamSize-1;
+  const description=twoPlayerMode
+    ?(localTeamMode==="cooperative"?`You and Player 2${teamSize===3?" + one AI teammate":""} against ${teamSize} AI opponents.`:`Player 1 versus Player 2${count?`, each with ${count} AI teammate${count>1?"s":""}`:""}.`)
+    :`You${count?` + ${count} AI teammate${count>1?"s":""}`:""} against ${teamSize} AI opponent${teamSize>1?"s":""}.`;
+  document.getElementById("matchSetupSummary").textContent=description;
+  document.getElementById("quickPlayTitle").textContent=`${teamSize}v${teamSize} · ${twoPlayerMode?"Local Split Screen":"Quick Play"}`;
+  document.getElementById("modeText").textContent=`${teamSize}v${teamSize}${twoPlayerMode?" · Local":""}`;
+  updateInputDeviceUI();
 }
 function showTournamentSetup(message=""){
   showMenuScreen("tournamentSetupScreen");
@@ -421,25 +502,9 @@ function showTournamentLoss(message){
   document.getElementById("continueTournamentBtn").onclick = ()=>showTournamentBetweenRounds("Ready for the next matchup.");
 }
 function createTournamentBoostedProfile(enemy,isFinal=false){
-  const base = JSON.parse(JSON.stringify(profiles[enemy.profileKey] || profiles.claw));
-  const roundNum = (tournamentState?.currentStopIndex ?? tournamentState?.round-1 ?? 0)+1;
-  const roundBoost = 1 + (roundNum-1)*0.012;
-  ["speed","sprint","block","steal","layup","shot","handle","hook"].forEach(k=>base[k] *= roundBoost);
-  const archetype = enemy.archetype || "";
-  if(archetype.includes("Lightning")){ base.speed*=1.1;base.sprint*=1.12; }
-  if(archetype.includes("Magician")){ base.handle*=1.16;base.steal*=1.04; }
-  if(archetype.includes("Lockdown")||archetype.includes("Stopper")){ base.block*=1.12;base.steal*=1.14; }
-  if(archetype.includes("Sniper")){ base.shot*=1.16;base.handle*=1.06; }
-  if(archetype.includes("Beast")||archetype.includes("Tower")){ base.width*=1.1;base.block*=1.12;base.layup*=1.08; }
-  if(archetype.includes("High Flyer")){ base.jump*=1.15;base.layup*=1.12; }
-  if(archetype.includes("Pickpocket")){ base.steal*=1.2;base.speed*=1.05; }
-  if(archetype.includes("Midrange")){ base.shot*=1.12;base.handle*=1.08; }
-  base.width *= 1+(roundBoost-1)*.25;
-  if(isFinal){
-    ["speed","sprint","block","steal","layup","shot","handle","hook","jump"].forEach(k=>base[k]*=1.08);
-    base.width *= 1.06;
-  }
-  return base;
+  // Tour difficulty comes from better decisions; every opponent keeps its
+  // authored character attributes instead of gaining hidden late-tour boosts.
+  return JSON.parse(JSON.stringify(profiles[enemy.profileKey] || profiles.claw));
 }
 
 function toHex(n){ return "#" + n.toString(16).padStart(6,"0"); }
@@ -718,8 +783,13 @@ function buildCharacterCards(containerId, which){
 }
 
 function startGame(){
+  inputManager.clearAll();
+  resetPlayerShotFeedback();
+  if(tutorialMode){ teamSize=1; localTeamMode="competitive"; twoPlayerMode=false; }
   if(isTournamentGame && tournamentState){
     twoPlayerMode = false;
+    teamSize=1;
+    localTeamMode="competitive";
     const enemy = currentTournamentEnemy || tournamentState.enemies.find(e=>e.id===tournamentState.nextOpponentId);
     if(enemy){
       selectedP1 = tournamentState.playerProfileKey;
@@ -736,8 +806,7 @@ function startGame(){
     gameSettings.set("gameplayPreset","simulation");
   }
   winBy = isTournamentGame ? 2 : (gameMode.winBy2 ? 2 : 1);
-  if(p1) scene.remove(p1.group);
-  if(p2) scene.remove(p2.group);
+  disposeMatchPlayers();
   if(debugDirHelpers && debugDirHelpers.group){
     scene.remove(debugDirHelpers.group);
     debugDirHelpers = null;
@@ -754,12 +823,13 @@ function startGame(){
 
   scene.add(p1.group);
   scene.add(p2.group);
+  setupMatchPlayers();
   ensureDebugDirectionMeshes();
 
   document.getElementById("menu").style.display = "none";
   document.getElementById("p1Label").style.display = "none";
   document.getElementById("p2Label").style.display = "none";
-  document.getElementById("modeText").textContent = twoPlayerMode ? "2P Split Screen" : "1P vs Bot";
+  document.getElementById("modeText").textContent = `${teamSize}v${teamSize}${twoPlayerMode?" · Split Screen":" · Solo"}`;
 
   gameStarted = true;
   gamePaused = false;
@@ -768,8 +838,8 @@ function startGame(){
   scoreP2 = 0;
   hideWinnerOverlay();
   updateScoreboard();
-  document.getElementById("p1HudName").textContent = p1.profile.name;
-  document.getElementById("p2HudName").textContent = p2.profile.name;
+  document.getElementById("p1HudName").textContent = teamSize>1?"BLUE TEAM":p1.profile.name;
+  document.getElementById("p2HudName").textContent = teamSize>1?"CORAL TEAM":p2.profile.name;
   document.body.classList.toggle("tutorial-active",tutorialMode);
   gameSettings.apply();
   adaptiveQuality.applyRequestedLevel();

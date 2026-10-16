@@ -1,75 +1,50 @@
+// Camera position and focus translate together: this offset never depends on
+// facing, possession, velocity, or a highlight effect.
+const COURT_CAMERA_OFFSET = new THREE.Vector3(0,9,12.6);
+const courtCameraFocus = new THREE.Vector3();
+const courtCameraCrowd = new THREE.Vector3();
+
 function updateCameras(dt){
   if(!p1){
-    camMain.position.set(0,5,9);
-    camMain.lookAt(0,1,0);
+    courtCameraFocus.set(0,1.2,-3);
+    camMain.position.copy(courtCameraFocus).add(COURT_CAMERA_OFFSET);
+    camMain.lookAt(courtCameraFocus);
     return;
   }
 
-  updateFollowCamera(camP1,p1,dt,"p1",true);
-  updateFollowCamera(camP2,p2,dt,"p2",true);
-  updateFollowCamera(camMain,p1,dt,"main",false);
-  screenShake = Math.max(0,screenShake - dt*.75);
+  if(twoPlayerMode && gameStarted){
+    updateFollowCamera(camP1,p1,dt,"p1",true);
+    updateFollowCamera(camP2,p2,dt,"p2",true);
+  }else updateFollowCamera(camMain,p1,dt,"main",false);
+  screenShake = 0;
 }
 
 function updateFollowCamera(cam,char,dt,cameraKey="main",isSplit=false){
-  if(!char) return;
+  if(!char || !cam) return;
   const cState = cameraState[cameraKey] || cameraState.main;
-  const forward = getForward(char.angle);
-  const speed = char.velocity ? Math.min(1.45,char.velocity.length()/6.5) : 0;
-  const ballPos = ball.position.clone();
-  const toHoop = HOOP_POS.clone().sub(char.group.position);
-  const nearRim = flatDistance(char.group.position,HOOP_POS) < 5.2;
-  const driveLeadAmt = 0.45 + speed*1.55;
-  const driveLead = forward.clone().multiplyScalar(driveLeadAmt * (isSprinting(char) ? 1 : 0.55));
-  cState.lead.lerp(driveLead,THREE.MathUtils.clamp(dt*4.8,0,1));
-
-  let zoomTarget = 0;
-  if(speed > 0.62) zoomTarget -= 0.14;
-  if(ballState === "loose") zoomTarget -= 0.12;
-  if(shotCharging && ballOwner === char.id) zoomTarget += 0.1;
-  if(ballState === "shot") zoomTarget -= 0.04;
-  if(dunkActive && dunkOwner === char.id) zoomTarget -= 0.28;
-  if(isSplit) zoomTarget = THREE.MathUtils.clamp(zoomTarget,-0.14,0.08);
-  cState.zoom = THREE.MathUtils.lerp(cState.zoom,zoomTarget,THREE.MathUtils.clamp(dt*3.2,0,1));
-
-  const playerSpread = p1&&p2 ? flatDistance(p1.group.position,p2.group.position) : 0;
-  const narrowBoost = cam.aspect<1.15 ? (1.15-cam.aspect)*2.4 : 0;
-  const backDist = ((5.4 + cameraEffects.zoomPulse*2.2) * (1-cState.zoom)) + Math.min(1.25,playerSpread*.12) + narrowBoost;
-  const height = 3.35 + (ballState === "shot" ? 0.4 : 0) + (nearRim ? 0.15 : 0);
-  const target = char.group.position.clone().add(cState.lead).add(forward.clone().multiplyScalar(-backDist)).add(new THREE.Vector3(0,height,0));
-
-  if(nearRim) target.add(toHoop.normalize().multiplyScalar(0.8));
-  if(ballState === "shot" || ballState === "loose" || dunkActive) target.add(ballPos.clone().sub(char.group.position).multiplyScalar(0.12));
-
-  target.x = THREE.MathUtils.clamp(target.x,-8.8,8.8);
-  target.z = THREE.MathUtils.clamp(target.z,-13.2,12.8);
-  target.y = THREE.MathUtils.clamp(target.y,2.2,6.3);
-  if(Math.abs(target.z - HOOP_POS.z) < 1.35 && Math.abs(target.x) < 1.95){
-    target.z += target.z > HOOP_POS.z ? 0.9 : -0.9;
-    target.y += 0.35;
+  const playerPos = char.group.position;
+  // Retain the basket as an anchor while following the controlled player and
+  // ball. Nearby players gently influence framing without pulling the view.
+  courtCameraFocus.copy(playerPos);
+  if(ball) courtCameraFocus.lerp(ball.position,.28);
+  courtCameraFocus.lerp(HOOP_POS,.26);
+  courtCameraCrowd.set(0,0,0);
+  let nearby = 0;
+  const roster = typeof matchPlayers !== "undefined" && matchPlayers.length ? matchPlayers : [p1,p2];
+  for(const player of roster){
+    if(!player || player === char) continue;
+    const pos = player.group.position;
+    const dx = pos.x-playerPos.x, dz = pos.z-playerPos.z;
+    if(dx*dx+dz*dz > 49) continue;
+    courtCameraCrowd.add(pos);
+    nearby++;
   }
-
-  cam.position.lerp(target,THREE.MathUtils.clamp(dt*5.2,0,1));
-
-  const look = char.group.position.clone().add(forward.clone().multiplyScalar(3.1)).add(new THREE.Vector3(0,1.35,0));
-  if(!isSplit&&p1&&p2){
-    const matchupCenter=p1.group.position.clone().lerp(p2.group.position,.5).add(new THREE.Vector3(0,1.2,0));
-    look.lerp(matchupCenter,.24);
-  }
-  if(nearRim) look.lerp(HOOP_POS.clone().add(new THREE.Vector3(0,0.25,0)),0.34);
-  if(ballState === "shot" || ballState === "loose") look.lerp(ballPos,0.4);
-  if(dunkActive && dunkOwner === char.id){
-    look.lerp(HOOP_POS.clone().add(new THREE.Vector3(0,0.42,0)),0.55);
-    look.lerp(ballPos,0.42);
-  }
-  cState.look.lerp(look,THREE.MathUtils.clamp(dt*6.8,0,1));
-
-  if(screenShake > 0 || cameraEffects.shake > 0){
-    const shakeAmt = screenShake*0.6 + cameraEffects.shake;
-    cam.position.x += (Math.random()-.5)*shakeAmt;
-    cam.position.y += (Math.random()-.5)*shakeAmt*0.45;
-  }
-
+  if(nearby) courtCameraFocus.lerp(courtCameraCrowd.multiplyScalar(1/nearby),.1);
+  courtCameraFocus.x = THREE.MathUtils.clamp(courtCameraFocus.x,-5.4,5.4);
+  courtCameraFocus.z = THREE.MathUtils.clamp(courtCameraFocus.z,Math.max(-8.8,playerPos.z-8.4),4.2);
+  courtCameraFocus.y = 1.2 + (ball ? THREE.MathUtils.clamp(ball.position.y-2,0,5)*.08 : 0);
+  cState.look.lerp(courtCameraFocus,1-Math.exp(-3.8*Math.min(dt,.05)));
+  cam.position.copy(cState.look).add(COURT_CAMERA_OFFSET);
   cam.lookAt(cState.look);
 }
 
@@ -79,37 +54,137 @@ function renderScene(){
 
   renderer.setScissorTest(false);
   renderer.clear();
+  // Both viewports share the same scene; refresh its shadows only on the first render.
+  if(renderer.shadowMap?.enabled) renderer.shadowMap.needsUpdate=true;
 
   if(twoPlayerMode && gameStarted){
     renderer.setScissorTest(true);
-
-    renderer.setViewport(0,0,w/2,h);
-    renderer.setScissor(0,0,w/2,h);
-    camP1.aspect = (w/2)/h;
-    camP1.updateProjectionMatrix();
-    renderer.render(scene,camP1);
-
-    renderer.setViewport(w/2,0,w/2,h);
-    renderer.setScissor(w/2,0,w/2,h);
-    camP2.aspect = (w/2)/h;
-    camP2.updateProjectionMatrix();
-    renderer.render(scene,camP2);
-
+    const horizontal = typeof splitLayout !== "undefined" && splitLayout === "horizontal";
+    const viewW = horizontal ? w : Math.floor(w/2);
+    const viewH = horizontal ? Math.floor(h/2) : h;
+    // WebGL's origin is bottom-left, so player 1 occupies the upper view.
+    renderCourtViewport(camP1,0,horizontal ? h-viewH : 0,viewW,viewH);
+    renderCourtViewport(camP2,horizontal ? 0 : viewW,0,horizontal ? w : w-viewW,horizontal ? h-viewH : h);
     renderer.setScissorTest(false);
   }else{
-    renderer.setViewport(0,0,w,h);
-    camMain.aspect = w/h;
-    camMain.updateProjectionMatrix();
-    renderer.render(scene,camMain);
+    renderCourtViewport(camMain,0,0,w,h);
   }
+}
+
+function renderCourtViewport(cam,x,y,width,height){
+  renderer.setViewport(x,y,width,height);
+  renderer.setScissor(x,y,width,height);
+  const aspect = width/Math.max(1,height);
+  if(cam.aspect !== aspect){ cam.aspect = aspect; cam.updateProjectionMatrix(); }
+  renderer.render(scene,cam);
+}
+
+let hudScoreP1 = null, hudScoreP2 = null;
+let hudSplitLayout = null;
+const playerShotFeedback = {p1:{element:null,timer:null},p2:{element:null,timer:null}};
+
+function resetPlayerShotFeedback(){
+  for(const feedback of Object.values(playerShotFeedback)){
+    if(feedback.timer) clearTimeout(feedback.timer);
+    feedback.timer=null;
+    if(feedback.element) feedback.element.style.display="none";
+  }
+  hudScoreP1 = hudScoreP2 = null;
+  hudSplitLayout = null;
+}
+
+function showPlayerShotFeedback(shooterId,text,duration=1.5){
+  const shooter = typeof getPlayerById === "function" ? getPlayerById(shooterId) : (shooterId==="p1"?p1:p2);
+  if(!shooter) return;
+  let slot = shooter.lastShotSlot || shooter.controllerSlot;
+  if(!slot){
+    if(p1?.teamId===shooter.teamId) slot="p1";
+    else if(twoPlayerMode && p2?.teamId===shooter.teamId) slot="p2";
+  }
+  const feedback = playerShotFeedback[slot];
+  if(!feedback) return;
+  if(!feedback.element){
+    feedback.element = document.createElement("div");
+    feedback.element.id = `shotFeedback-${slot}`;
+    feedback.element.className = "splitLabel player-shot-feedback";
+    feedback.element.setAttribute("role","status");
+    feedback.element.setAttribute("aria-live","polite");
+    Object.assign(feedback.element.style,{
+      bottom:"auto",transform:"translateX(-50%)",fontSize:"11px",
+      padding:"7px 10px",textAlign:"center",pointerEvents:"none",
+      color:"#fff",borderColor:shooter.teamId===0?"#65b9ff":"#ff8b7b"
+    });
+    document.body.appendChild(feedback.element);
+  }
+  const label = shooter.lastShotSlot || shooter.controllerSlot || (shooter.teamId===0?"BLUE":"CORAL");
+  feedback.element.textContent = `${String(label).toUpperCase()} · ${text}`;
+  feedback.element.style.display = uiHidden ? "none" : "block";
+  positionShotFeedback(slot,feedback.element);
+  if(feedback.timer) clearTimeout(feedback.timer);
+  feedback.timer = setTimeout(()=>{
+    feedback.element.style.display="none";
+    feedback.timer=null;
+  },Math.max(.4,duration)*1000);
+}
+
+function positionShotFeedback(slot,element){
+  const split = twoPlayerMode && gameStarted;
+  const horizontal = split && splitLayout==="horizontal";
+  element.style.left = !split || horizontal ? "50%" : slot==="p1" ? "25%" : "75%";
+  element.style.top = horizontal && slot==="p2" ? "calc(50% + 18px)" : "72px";
+  element.style.maxWidth = split&&!horizontal ? "calc(50vw - 24px)" : "calc(100vw - 24px)";
 }
 
 function updateHUD(){
   const score = document.getElementById("scoreText");
-  if(score) score.innerHTML = `${scoreP1} <span>—</span> ${scoreP2}`;
-  if(p1) document.getElementById("p1HudName").textContent = p1.profile.name;
-  if(p2) document.getElementById("p2HudName").textContent = p2.profile.name;
-  if(messageTimer<=0&&!tutorialMode) document.getElementById("msg").textContent = "";
+  if(score && (hudScoreP1!==scoreP1 || hudScoreP2!==scoreP2)){
+    score.innerHTML = `${scoreP1} <span>—</span> ${scoreP2}`;
+    hudScoreP1 = scoreP1; hudScoreP2 = scoreP2;
+  }
+  const teams = typeof teamSize !== "undefined" && teamSize>1;
+  setHudText("p1HudName",teams ? "BLUE TEAM" : p1?.profile.name || "PLAYER 1");
+  const opponent = typeof matchPlayers !== "undefined" ? matchPlayers.find(player=>player.teamId===1) : p2;
+  setHudText("p2HudName",teams ? "CORAL TEAM" : opponent?.profile.name || p2?.profile.name || "PLAYER 2");
+  const showSplit = twoPlayerMode && gameStarted && !uiHidden;
+  const layout = showSplit ? splitLayout : "none";
+  const firstLabel = document.getElementById("p1Label");
+  const secondLabel = document.getElementById("p2Label");
+  if(layout!==hudSplitLayout){
+    for(const label of [firstLabel,secondLabel]){
+      if(!label) continue;
+      label.style.display = showSplit ? "block" : "none";
+      label.style.top = "auto";
+      label.style.right = "auto";
+      label.style.maxWidth = layout==="horizontal" ? "calc(100vw - 32px)" : "calc(50vw - 32px)";
+      label.style.fontSize = "11px";
+      label.style.pointerEvents = "none";
+    }
+    if(firstLabel){
+      firstLabel.style.left = "12px";
+      firstLabel.style.bottom = layout==="horizontal" ? "calc(50% + 12px)" : "12px";
+    }
+    if(secondLabel){
+      secondLabel.style.left = layout==="horizontal" ? "12px" : "calc(50% + 12px)";
+      secondLabel.style.bottom = "12px";
+    }
+    hudSplitLayout = layout;
+    for(const slot of ["p1","p2"]){
+      const feedback=playerShotFeedback[slot];
+      if(!feedback.element) continue;
+      positionShotFeedback(slot,feedback.element);
+      feedback.element.style.display=feedback.timer && gameStarted && !uiHidden ? "block" : "none";
+    }
+  }
+  if(showSplit){
+    if(p1) setHudText("p1Label",`P1 · ${p1.teamId===0?"BLUE":"CORAL"} · ${p1.profile.name}`);
+    if(p2) setHudText("p2Label",`P2 · ${p2.teamId===0?"BLUE":"CORAL"} · ${p2.profile.name}`);
+  }
+  if(messageTimer<=0&&!tutorialMode) setHudText("msg","");
+}
+
+function setHudText(id,text){
+  const element = document.getElementById(id);
+  if(element && element.textContent!==text) element.textContent = text;
 }
 
 function toggleUI(){
@@ -124,7 +199,7 @@ function isCloseLayupRange(char){
 }
 
 function getOwner(){
-  return ballOwner === "p1" ? p1 : p2;
+  return typeof getBallHandler === "function" ? getBallHandler() : (ballOwner === "p1" ? p1 : ballOwner === "p2" ? p2 : null);
 }
 
 function getHandWorldPosition(char,handName){
@@ -145,7 +220,8 @@ function attachBallBetweenHands(char,offset=new THREE.Vector3()){
 }
 
 function isSprinting(char){
-  const state=inputManager.getState(char===p1?"p1":"p2");
+  if(!char) return false;
+  const state=char.controllerSlot ? inputManager.getState(char.controllerSlot) : char.aiInput || (char===p1 ? inputManager.getState("p1") : createInputFrame());
   return !!state.sprint&&Math.hypot(state.moveX,state.moveY)>.18;
 }
 
@@ -184,7 +260,8 @@ function activateTakeover(char){
   updateLEDBoards("HE'S HEATING UP");
 }
 function updateTakeover(dt){
-  [p1,p2].forEach(c=>{
+  const roster = typeof matchPlayers !== "undefined" && matchPlayers.length ? matchPlayers : [p1,p2];
+  roster.forEach(c=>{
     if(!c) return;
     if(c.takeoverActive){
       c.takeoverTimer -= dt;
@@ -196,19 +273,13 @@ function updateTakeover(dt){
 function drawTakeoverUI(){}
 
 function applyCameraShake(amount,type="generic"){
-  const scale = type === "rim" ? 0.45 : type === "block" ? 0.72 : type === "dunk" ? 1.15 : 1;
-  const boosted = amount*scale*(gameMode.arcade?1.3:1);
-  cameraEffects.impulse = Math.min(1.4,cameraEffects.impulse + boosted*2.4);
+  // Highlights use animation, sound, and court feedback without displacing
+  // the fixed camera or changing the player's control frame.
+  cameraEffects.impulse = 0;
 }
-function applyCameraZoomPulse(amount){ cameraEffects.zoomPulse = Math.min(.36,cameraEffects.zoomPulse + amount); }
+function applyCameraZoomPulse(amount){ cameraEffects.zoomPulse = 0; }
 function updateCameraEffects(dt){
-  const k = 10;
-  cameraEffects.shakeVel += (cameraEffects.impulse - cameraEffects.shake)*k*dt;
-  cameraEffects.shakeVel *= Math.max(0,1-dt*5.5);
-  cameraEffects.shake += cameraEffects.shakeVel*dt;
-  cameraEffects.impulse = Math.max(0,cameraEffects.impulse - dt*2.8);
-  cameraEffects.shake = Math.max(0,Math.min(.5,cameraEffects.shake));
-  cameraEffects.zoomPulse = Math.max(0,cameraEffects.zoomPulse - dt*.9);
+  cameraEffects.shake = cameraEffects.shakeVel = cameraEffects.impulse = cameraEffects.zoomPulse = 0;
   if(activeSlowMo.timer > 0){
     activeSlowMo.timer -= dt;
     const s = activeSlowMo.scale;
@@ -284,7 +355,8 @@ function setGraphicsQuality(level){
   renderer.shadowMap.type = graphicsQuality === "high" || graphicsQuality === "ultra" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
   crowdMembers.forEach(member=>{ member.visible=qualitySettings[graphicsQuality].crowd; });
   renderer.domElement.style.imageRendering=graphicsQuality==="low"?"auto":"";
-  [p1,p2,ball,rim,backboard].forEach(obj=>{
+  const roster = typeof matchPlayers !== "undefined" && matchPlayers.length ? matchPlayers : [p1,p2];
+  [...roster,ball,rim,backboard].forEach(obj=>{
     if(obj && obj.group){
       obj.group.traverse(n=>{ if(n.isMesh){ n.castShadow = graphicsQuality !== "low"; n.receiveShadow = graphicsQuality !== "low"; }});
     }else if(obj && obj.isMesh){
@@ -296,30 +368,7 @@ function setGraphicsQuality(level){
 
 function calculateReboundVector(){ return new THREE.Vector3((Math.random()-.5)*4,2.2,Math.random()*3.8); }
 function updateReboundAI(dt){
-  if(!gameStarted || twoPlayerMode) return;
-  if(ballState !== "loose" && ballState !== "shot") return;
-  updatePredictedReboundPoint();
-  const targetBase = predictedReboundPoint ? predictedReboundPoint.clone() : ball.position.clone();
-  const opponent = p1;
-  const iq = p2.profile.shot || 1;
-  const name = (p2.profile.name || "").toLowerCase();
-  const longBoard = name.includes("flash guard") || name.includes("deep range");
-  const paintBoard = name.includes("glass tower") || name.includes("paint bruiser");
-  if(paintBoard) targetBase.lerp(HOOP_POS,0.28);
-  if(longBoard && ballVelocity.length() > 3.5) targetBase.add(ballVelocity.clone().setY(0).multiplyScalar(0.26));
-  const toSpot = targetBase.clone().sub(opponent.group.position).setY(0);
-  const toOpp = p2.group.position.clone().sub(opponent.group.position).setY(0);
-  const between = toSpot.lengthSq() > 0.01 && toOpp.lengthSq() > 0.01 && toSpot.normalize().dot(toOpp.normalize()) > 0.65;
-  if(iq > 0.9 && between && flatDistance(p2.group.position,targetBase) < 2.3){
-    const boxPos = opponent.group.position.clone().add(toSpot.clone().multiplyScalar(0.65));
-    moveBotToward(p2,boxPos,difficultySettings[selectedDifficulty].speed*0.95,dt);
-    p2.group.rotation.z = THREE.MathUtils.lerp(p2.group.rotation.z,0.06,dt*8);
-    p2.leftArm.rotation.z = THREE.MathUtils.lerp(p2.leftArm.rotation.z,-0.22,dt*10);
-    p2.rightArm.rotation.z = THREE.MathUtils.lerp(p2.rightArm.rotation.z,0.22,dt*10);
-    if(boxOutFeedbackTimer <= 0){ flash("BOX OUT"); boxOutFeedbackTimer = 0.8; }
-  }else{
-    moveBotToward(p2,targetBase,difficultySettings[selectedDifficulty].speed*(longBoard ? 1.14 : 1.03),dt);
-  }
+  // Rebound assignments and movement belong to updateTeamAI for every mode.
 }
 function handleRimRattle(){ ballVelocity.multiplyScalar(.92); ballVelocity.y += .25; }
 function handleBankShot(){ ballVelocity.z *= -.7; }

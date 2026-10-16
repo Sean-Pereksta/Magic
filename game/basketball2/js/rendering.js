@@ -8,6 +8,7 @@ function init(){
   renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.autoUpdate = false;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.autoClear = false;
   document.body.appendChild(renderer.domElement);
@@ -451,7 +452,7 @@ function updateLEDBoards(text){
 
   // FIX: use existing game state instead of undefined possessionOwner
   const currentPossession = possession || ballOwner || "p1";
-  const posLabel = currentPossession === "p2" ? "P2" : "P1";
+  const posLabel = teamSize>1 ? (teamOf(currentPossession)===0?"BLUE":"CORAL") : (teamOf(currentPossession)===1?"P2":"P1");
 
   ledBoardCtx.fillText(`${scoreP1} - ${scoreP2}  •  POS: ${posLabel}`,512,95);
 
@@ -774,7 +775,7 @@ function updateScoreboard(){
   ctx.shadowBlur = 0;
   ctx.fillStyle = "#ffd56a";
   ctx.font = "bold 24px 'Courier New', monospace";
-  ctx.fillText("P1      P2",256,145);
+  ctx.fillText(teamSize>1?"BLUE      CORAL":"P1      P2",256,145);
   ctx.font = "bold 18px Arial";
   ctx.fillStyle = "#8ce1ff";
   ctx.fillText(`First to ${targetScore}, win by ${winBy}`,256,170);
@@ -868,12 +869,14 @@ function createArcLine(){
   scene.add(arcLine);
 }
 
-function createCharacter(profile,pos,id){
+function createCharacter(profile,pos,id,assignedTeam=null){
   const group = new THREE.Group();
   group.position.copy(pos);
 
-  const jerseyKey = id === "p1" ? selectedP1Jersey : selectedP2Jersey;
-  const jerseyStyle = jerseys[jerseyKey] || jerseys.classicBlue;
+  const inferredTeam=assignedTeam ?? (id==="p1"||id==="p2"&&twoPlayerMode&&teamSize>1&&localTeamMode==="cooperative"?0:1);
+  const jerseyKey = inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
+  const selectedStyle = jerseys[jerseyKey] || jerseys.classicBlue;
+  const jerseyStyle = teamSize>1?{...selectedStyle,primary:inferredTeam===0?0x258fcd:0xe45939,secondary:inferredTeam===0?0x123656:0x59241c,accent:0xffffff}:selectedStyle;
   const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62});
   const jerseyTex = makeJerseyTexture(jerseyStyle,profile.number || "23");
   const shortsTex = makeShortsTexture(jerseyStyle);
@@ -1387,10 +1390,10 @@ function getScreenSideVectorForChar(char,screenSide){
 }
 
 function getRequestedShotType(char){
-  if(char.id === "p1"){
+  if(char.controllerSlot === "p1"){
     if(keys["KeyQ"] || keys["KeyE"] || keys["q"] || keys["e"]) return "jumper";
   }
-  if(char.id === "p2"){
+  if(char.controllerSlot === "p2"){
     if(keys["KeyU"] || keys["KeyO"] || keys["Numpad4"] || keys["Numpad6"] || keys["u"] || keys["o"]) return "jumper";
   }
   return "setshot";
@@ -1402,7 +1405,7 @@ function playerHasBall(char){
 function canLayup(player){
   if(!player.hasBall || ballState !== "dribble") return false;
   const dist = flatDistance(player.group.position,HOOP_POS);
-  const defender = player.id === "p1" ? p2 : p1;
+  const defender = getNearestOpponent(player);
   const hasBodyUp = !!(defender && defender.bodyUpTimer > 0.05 && flatDistance(defender.group.position,player.group.position) < 1.28);
   if(hasBodyUp) player.contactFinishBonusOrPenalty = THREE.MathUtils.clamp((player.profile.layup-1)*0.18 + (player.profile.width-defender.profile.width)*0.2,-0.22,0.12);
   return dist < 3.6 && player.velocity.length() > (hasBodyUp ? 0.85 : 1.2);
@@ -1422,11 +1425,11 @@ function getShotMeterProfile(shotType,shooter,contest){
   const movePenalty = THREE.MathUtils.clamp((shooter.velocity ? shooter.velocity.length() : 0) * 0.028,0,0.16);
   const contestPenalty = THREE.MathUtils.clamp((contest ? contest.value : 0) * 0.14,0,0.2);
   const base = {
-    setshot:{greenStart:.5,greenEnd:.78,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.22,baseMakeBonus:.1,meterFillSpeed:1},
-    jumper:{greenStart:.54,greenEnd:.74,slightlyEarlyStart:.32,slightlyLateEnd:.92,greenAccuracyMultiplier:1.2,baseMakeBonus:.06,meterFillSpeed:1.06},
-    hook:{greenStart:.57,greenEnd:.71,slightlyEarlyStart:.35,slightlyLateEnd:.9,greenAccuracyMultiplier:1.15,baseMakeBonus:.05,meterFillSpeed:1.02},
-    layup:{greenStart:.44,greenEnd:.8,slightlyEarlyStart:.24,slightlyLateEnd:.96,greenAccuracyMultiplier:1.08,baseMakeBonus:.08,meterFillSpeed:.9},
-    dunk:{greenStart:.38,greenEnd:.86,slightlyEarlyStart:.18,slightlyLateEnd:.98,greenAccuracyMultiplier:1.05,baseMakeBonus:.18,meterFillSpeed:.85},
+    setshot:{greenStart:.58,greenEnd:.69,slightlyEarlyStart:.35,slightlyLateEnd:.88,greenAccuracyMultiplier:1.22,baseMakeBonus:.1,meterFillSpeed:1},
+    jumper:{greenStart:.59,greenEnd:.68,slightlyEarlyStart:.36,slightlyLateEnd:.88,greenAccuracyMultiplier:1.2,baseMakeBonus:.06,meterFillSpeed:1.06},
+    hook:{greenStart:.60,greenEnd:.68,slightlyEarlyStart:.38,slightlyLateEnd:.86,greenAccuracyMultiplier:1.15,baseMakeBonus:.05,meterFillSpeed:1.02},
+    layup:{greenStart:.54,greenEnd:.72,slightlyEarlyStart:.3,slightlyLateEnd:.9,greenAccuracyMultiplier:1.08,baseMakeBonus:.08,meterFillSpeed:.9},
+    dunk:{greenStart:.50,greenEnd:.77,slightlyEarlyStart:.25,slightlyLateEnd:.92,greenAccuracyMultiplier:1.05,baseMakeBonus:.18,meterFillSpeed:.85},
     stepback:{greenStart:.56,greenEnd:.72,slightlyEarlyStart:.34,slightlyLateEnd:.9,greenAccuracyMultiplier:1.18,baseMakeBonus:.05,meterFillSpeed:1.1},
     pullup:{greenStart:.55,greenEnd:.73,slightlyEarlyStart:.33,slightlyLateEnd:.9,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1.08},
     floater:{greenStart:.5,greenEnd:.76,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.14,baseMakeBonus:.05,meterFillSpeed:.95},
@@ -1613,7 +1616,7 @@ function getHookReleasePoint(player){
 }
 function canDunk(player){
   if(!player.hasBall) return false;
-  const defender = player.id === "p1" ? p2 : p1;
+  const defender = getNearestOpponent(player);
   const toRim = HOOP_POS.clone().sub(player.group.position).setY(0);
   const dist = toRim.length();
   const dirToRim = toRim.normalize();
@@ -1650,7 +1653,7 @@ function updateAnimationBlend(char,dt){
   const moveDir = moving ? char.velocity.clone().normalize() : forward;
   const forwardDot = moving ? moveDir.dot(forward) : 0;
   const lateralDot = moving ? moveDir.dot(new THREE.Vector3(forward.z,0,-forward.x)) : 0;
-  const inputState = inputManager.getState(char.id);
+  const inputState = char.controllerSlot?inputManager.getState(char.controllerSlot):(char.aiInput||{sprint:false,moveX:0});
   const sprintKey = inputState.sprint;
   const sprinting = moving && (sprintKey || speed > 5.45);
   const backpedal = moving && forwardDot < -0.2;
@@ -1668,9 +1671,11 @@ function updateAnimationBlend(char,dt){
   char.anim.turnLean = smoothAnimValue(char.anim.turnLean || 0,turnPressed * THREE.MathUtils.clamp(speed/5.5,0,1),8,dt);
   char.anim.strideStrength = smoothAnimValue(char.anim.strideStrength || 0,THREE.MathUtils.clamp(speed/5.8,0,1.2),8,dt);
   char.anim.verticalBob = smoothAnimValue(char.anim.verticalBob || 0,moving ? THREE.MathUtils.clamp(speed/6.5,0,1) : 0,7,dt);
-  const defending = possession !== char.id && ballState === "dribble" && flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position) < (2 + char.movement.defensiveWidth*.45);
+  const handler=getBallHandler();
+  const handlerDistance=handler?flatDistance(char.group.position,handler.group.position):Infinity;
+  const defending = handler?.teamId!==char.teamId && ballState === "dribble" && handlerDistance < (2 + char.movement.defensiveWidth*.45);
   const strafeDot = Math.abs(lateralDot);
-  const stanceTarget = defending ? THREE.MathUtils.clamp((1.95-flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position))/1.95,0,1) : 0;
+  const stanceTarget = defending ? THREE.MathUtils.clamp((1.95-handlerDistance)/1.95,0,1) : 0;
   char.anim.defenseStanceBlend = smoothAnimValue(char.anim.defenseStanceBlend||0,stanceTarget,10,dt);
   const shuffleTarget = defending ? THREE.MathUtils.clamp(strafeDot * (1-sprintTarget) * walkTarget,0,1) : 0;
   char.anim.shuffleCycle = (char.anim.shuffleCycle||0) + dt * THREE.MathUtils.lerp(2.2,7.2,shuffleTarget);

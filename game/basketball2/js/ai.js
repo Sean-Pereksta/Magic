@@ -1,302 +1,417 @@
-function updateBot(dt){
-  if(!botBrain) initBotBrain();
-  updateBotMemoryOfPlayer();
-  adjustBotPersonalityByDifficulty();
-  if(updateBotLooseBall(dt)) return;
-  updateBotReactionMemory(dt);
-  if(possession === "p1") updateBotDefense(dt);
-  else updateBotOffense(dt);
-}
+// Every AI player uses the human acceleration, stamina, collision and shot
+// systems. Difficulty changes perception and decisions, never physical stats.
+let teamAITime=0;
 
-function updateBotLooseBall(dt){
-  const liveRebound = ballState === "shot" && (rimTouchCount > 0 || shotHasHitRimOrBoard || (ballVelocity.y < -1 && ball.position.y < HOOP_POS.y + 0.35));
-  if(ballState !== "loose" && !liveRebound) return false;
-
-  const target = ball.position.clone();
-  target.y = 0;
-  moveBotToward(p2,target,difficultySettings[selectedDifficulty].speed * 1.22,dt);
-
-  if(ball.position.y > 1.1 && ball.position.y < 2.6 && flatDistance(p2.group.position,ball.position) < 1.4){
-    if(p2.onGround && p2.jumpCooldown <= 0 && Math.random() < dt * difficultySettings[selectedDifficulty].defensiveIQ){
-      tryJumpBlock(p2,false);
-    }else{
-      raiseHands(p2);
-    }
-  }
-
-  return true;
-}
-
-function moveBotToward(bot,target,speed,dt){
-  const to = target.clone().sub(bot.group.position);
-  to.y = 0;
-  const dist = to.length();
-  if(dist > .1){
-    const desired = Math.atan2(to.x,to.z);
-    bot.angle = lerpAngle(bot.angle,desired,dt*4.2);
-  }
-
-  let mult = 1;
-  const settings = difficultySettings[selectedDifficulty];
-  if(bot.sprint > SPRINT_MIN && Math.random() < settings.sprint && dist > 1.2){
-    mult = 1.45;
-    bot.sprint = Math.max(0,bot.sprint - SPRINT_DRAIN * dt);
-  }else{
-    bot.sprint = Math.min(1,bot.sprint + SPRINT_RECOVER * dt);
-  }
-
-  bot.velocity.set(0,0,0);
-  if(dist > .35) bot.velocity.add(getForward(bot.angle).multiplyScalar(speed * mult));
-  bot.group.position.add(bot.velocity.clone().multiplyScalar(dt));
-  keepInCourt(bot.group.position);
-  bot.group.rotation.y = bot.angle;
+function createTeamBrain(char){
+  return {
+    target:char.group.position.clone(),role:"space",roleUntil:0,thinkIn:Math.random()*.18,
+    actionCooldown:.5,moveCooldown:1,passTargetId:null,passUntil:0,
+    possessionAge:0,lastHandler:null,releaseAt:0,driveSide:Math.random()<.5?-1:1,
+    assignedId:null,protect:false,sprint:false,fakeBiteChance:.25,
+    recentMoves:[],preferredDriveSide:1,
+    input:{moveX:0,moveY:0,sprint:false,protect:false,source:"ai",worldDirection:new THREE.Vector3()}
+  };
 }
 
 function initBotBrain(){
-  botBrain = {
-    intent:"size_up", intentTimer:0, decisionCooldown:0, reactionTimer:0,
-    lastSeenPlayerPosition:p1 ? p1.group.position.clone() : new THREE.Vector3(),
-    lastSeenBallPosition:ball ? ball.position.clone() : new THREE.Vector3(),
-    aggression:.5, patience:.5, confidence:.5, fakeBiteChance:.25, mistakeChance:.12, defensiveSpacing:1.7,
-    preferredDriveSide:Math.random()<.5?-1:1, recentMoves:[], crossedRecently:0, gotBeatRecently:0, shotClockMentalTimer:0,
-    blockCooldown:0, stealCooldown:0, crossoverCooldown:0, pumpFakeCooldown:0, stepBackCooldown:0, sideHopCooldown:0, helpDelay:0,
-    defenseIntent:"balanced_defense", defenseIntentTimer:.6
-  };
+  teamAITime=0;
+  (matchPlayers.length?matchPlayers:[p1,p2]).filter(Boolean).forEach(char=>{
+    char.aiBrain=createTeamBrain(char);
+    char.aiInput=char.aiBrain.input;
+    char.aiScreen=false;
+  });
+  botBrain=p2?.aiBrain||null;
   configureBotBrainFromDifficulty();
 }
+
 function configureBotBrainFromDifficulty(){
-  const s = difficultySettings[selectedDifficulty];
-  if(!s || !botBrain) return;
-  botBrain.aggression = s.aggression;
-  botBrain.patience = s.patience;
-  botBrain.fakeBiteChance = s.fakeBiteChance;
-  botBrain.mistakeChance = s.mistakeChance;
-  botBrain.confidence = s.composure;
-}
-function getBotPersonality(){
-  const map={sky:"rim_runner",flash:"ankle_breaker",smooth:"sharpshooter",bruiser:"post_bully",claw:"lockdown",rocket:"slasher",crafty:"fake_master",tower:"paint_anchor"};
-  return botPersonalities[map[selectedP2] || "slasher"];
-}
-function chooseBotIntent(){
-  const s = difficultySettings[selectedDifficulty];
-  const w = {...getBotPersonality()};
-  const dist = flatDistance(p2.group.position,HOOP_POS);
-  const defDist = flatDistance(p2.group.position,p1.group.position);
-  if(dist < 2.9){
-    const rimPressure = flatDistance(p1.group.position,HOOP_POS);
-    const profileFinisher = (p2.profile.layup || 1) > (p2.profile.shot || 1) * 1.08;
-    w.attack_rim = (w.attack_rim || w.drive || .22) + (profileFinisher ? .42 : .24);
-    w.layup = (w.layup || .2) + (profileFinisher ? .32 : .12);
-    if(rimPressure < 1.5 && s.defensiveIQ > .84){
-      w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse * .8;
-      w.pull_up = (w.pull_up || w.pullUp || 0) + s.shotDiscipline * .55;
-      w.attack_rim *= .62;
-    }
-  }
-  if(defDist < 1.3){ w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse*.5; w.pull_up = (w.pull_up || w.pullUp || 0) + s.pumpFakeUse*.45; }
-  if(defDist > 1.7 && s.shotDiscipline > .78 && (p2.profile.shot || 1) > (p2.profile.layup || 1)*.95){
-    w.pull_up = (w.pull_up || w.pullUp || 0) + .24 + s.shotDiscipline * .35;
-    w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse * .38;
-  }
-  if((p2.stamina || 1) < (1 - s.staminaManagement * .55)){
-    w.reset_dribble = (w.reset_dribble || w.reset || 0) + .34;
-    w.attack_rim = (w.attack_rim || w.drive || .2) * .72;
-  }
-  if(p1.stumbledTimer > 0){ w.attack_rim = (w.attack_rim || w.drive || .2) + .28; w.pull_up = (w.pull_up || w.pullUp || 0) + .22; }
-  const recentPenalty = new Set(botBrain.recentMoves.slice(-3));
-  Object.keys(w).forEach(k=>{ if(recentPenalty.has(k)) w[k] *= (selectedDifficulty==="rookie"?.9:.45); });
-  const entries = Object.entries(w).map(([k,v])=>[k,Math.max(0.01,v)]);
-  const total = entries.reduce((a,[,v])=>a+v,0);
-  let r = Math.random()*total;
-  for(const [key,val] of entries){ r -= val; if(r<=0) return normalizeIntentName(key); }
-  return "size_up";
-}
-function normalizeIntentName(key){
-  const map={pullUp:"pull_up",stepBack:"step_back",pumpFake:"pull_up",sideHop:"side_hop_right",drive:"attack_rim",layup:"attack_rim",post:"post_up",crossover:"crossover_left",safeDrive:"drive_right",backDown:"back_down",hesitation:"hesitation",reset:"reset_dribble"};
-  return map[key] || key;
-}
-function executeBotIntent(dt){
-  const bot = p2;
-  const intent = botBrain.intent;
-  if(bot.moveState !== "normal"){ updateMoveState(bot,dt); return; }
-  if(intent.includes("drive") || intent==="attack_rim"){
-    const side = intent.includes("left")?-1:1;
-    const toRim = HOOP_POS.clone().sub(bot.group.position); toRim.y=0; toRim.normalize();
-    const sideV = new THREE.Vector3(toRim.z,0,-toRim.x).multiplyScalar(side*1.3);
-    moveBotToward(bot, bot.group.position.clone().add(toRim.multiplyScalar(2.2)).add(sideV), difficultySettings[selectedDifficulty].speed, dt);
-    const rimProtecting = flatDistance(p1.group.position,HOOP_POS) < 1.5;
-    if(isCloseLayupRange(bot) && Math.random()<dt*1.3){
-      if(rimProtecting && difficultySettings[selectedDifficulty].defensiveIQ > .84 && Math.random() < difficultySettings[selectedDifficulty].stepBackUse){
-        startStepBack(bot);
-      }else startLayup(bot);
-    }
-  }else if(intent==="step_back"){ startStepBack(bot); }
-  else if(intent==="pump_fake"){
-    if(!p1.onGround && difficultySettings[selectedDifficulty].shotDiscipline > .75) botBrain.intent = "attack_rim";
-    else botBrain.intent = "pull_up";
-  }
-  else if(intent.includes("side_hop")){ startSideHop(bot,intent.includes("left")?"left":"right"); }
-  else if(intent.includes("crossover")){ attemptCrossover(bot,intent.includes("left")?"left":"right"); }
-  else if(intent==="pull_up" && flatDistance(bot.group.position,HOOP_POS)<8.4){ shotPower = .58 + Math.random()*.24; shootBall(bot,"pullup"); }
-  else if(intent==="post_up" || intent==="back_down"){
-    moveBotToward(bot,new THREE.Vector3(0,0,-8.7),difficultySettings[selectedDifficulty].speed*.86,dt);
-    const hookChance =
-      0.08 +
-      (bot.profile.hook || 0.75) * 0.08 +
-      difficultySettings[selectedDifficulty].shotDiscipline * 0.06;
-    if(canStartHookShot(bot) && Math.random() < dt * hookChance * (selectedDifficulty === "rookie" ? 0.45 : 1)){
-      shotPower = 0.56 + Math.random() * 0.16;
-      shootBall(bot,"hook");
-    }
-  }
-  else { moveBotToward(bot,new THREE.Vector3(2.2*Math.sin(performance.now()*.0017),0,-7.4),difficultySettings[selectedDifficulty].speed*.72,dt); }
-}
-function getDefenderRecoveryTarget(defender,ballHandler,s){
-  const handlerRimDist = flatDistance(ballHandler.group.position,HOOP_POS);
-  const beaten = flatDistance(defender.group.position,ballHandler.group.position) > (1.65 + (1-s.defensiveIQ)*0.45);
-  const rimProtectBias = THREE.MathUtils.clamp((defender.profile.block - 1) * 0.45 + (1-handlerRimDist/8) * 0.35,0,1);
-  const pressureBias = THREE.MathUtils.clamp((defender.profile.steal - 1) * 0.4 + s.stealDiscipline * 0.35,0,1);
-  if(handlerRimDist < 2.2 || (beaten && rimProtectBias > pressureBias + 0.08)){
-    const toBall = ballHandler.group.position.clone().sub(HOOP_POS).setY(0);
-    if(toBall.lengthSq() < .0001) return HOOP_POS.clone();
-    toBall.normalize();
-    return HOOP_POS.clone().add(toBall.multiplyScalar(0.7 + (1-rimProtectBias)*0.35));
-  }
-  return getDefensiveTarget(defender,ballHandler,"cutoff_drive");
+  if(botBrain) botBrain.fakeBiteChance=(difficultySettings[selectedDifficulty]||difficultySettings.normal).fakeBiteChance;
 }
 
-function updateBotDefense(dt){
-  const s = difficultySettings[selectedDifficulty];
-  botBrain.defenseIntentTimer = (botBrain.defenseIntentTimer || 0) - dt;
-  if(!botBrain.defenseIntent || botBrain.defenseIntentTimer <= 0){
-    botBrain.defenseIntent = chooseBotDefensiveIntent();
-    botBrain.defenseIntentTimer = THREE.MathUtils.randFloat(.35,1.05);
-  }
-  const laneAnchor = getBetweenPlayerAndRimTarget(p2,p1,1.04 - s.spacingIQ * 0.22);
-  const intentTarget = getDefensiveTarget(p2,p1,botBrain.defenseIntent);
-  const recoveryTarget = getDefenderRecoveryTarget(p2,p1,s);
-  const beaten = flatDistance(p2.group.position,p1.group.position) > (1.8 + (1-s.defensiveIQ)*0.45);
-  const recoverBlend = beaten ? THREE.MathUtils.clamp(.45 + p2.profile.block*0.18,0.38,0.9) : 0;
-  const containTarget = laneAnchor.clone().lerp(intentTarget,THREE.MathUtils.clamp(.28 + s.spacingIQ * .62,.3,.9)).lerp(recoveryTarget,recoverBlend);
-  moveBotToward(p2,containTarget,s.speed*(.86+s.defensiveIQ*.18),dt);
+function aiRoster(){ return matchPlayers.length?matchPlayers:[p1,p2].filter(Boolean); }
+function aiIsHuman(char){ return !!char.controllerSlot; }
+function aiSettings(){ return difficultySettings[selectedDifficulty]||difficultySettings.normal; }
 
-  if(ballState === "dribble" && flatDistance(p2.group.position,p1.group.position) < (1.35 + p2.movement.defensiveWidth*.42) && botBrain.stealCooldown <= 0){
-    const dist = flatDistance(p2.group.position,p1.group.position);
-    const badHandle = (p1.profile.handle || 1) < 0.96;
-    const sprintExpose = p1.velocity.length() > 4.9 && badHandle;
-    const looseWindow = p1.dribbleStyle === "sprint" || p1.dribbleStyle === "crossover" || p1.moveState === "sidehop";
-    const exposed = looseWindow || sprintExpose || (p1.bodyUpTimer > 0.03 && dist < 1.15);
-    const discipline = THREE.MathUtils.clamp(s.stealDiscipline * 0.75 + s.composure * 0.35,0.1,1);
-    const reachyMistake = Math.random() < dt * (1-discipline) * 1.2;
-    if((exposed && Math.random() < dt*s.steal*THREE.MathUtils.lerp(.6,1.2,discipline)) || reachyMistake){
-      p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34;
-      botBrain.stealCooldown = THREE.MathUtils.lerp(.38,.8,discipline);
-      if(reachyMistake) punishBadReach(p2);
+function updateTeamAI(dt,options={}){
+  if(!gameStarted||gameOver||gamePaused) return;
+  teamAITime+=dt;
+  const roster=aiRoster();
+  const settings=aiSettings();
+  const handler=getBallHandler();
+  const frozen=options.countdown||possessionFrozen;
+  for(const char of roster){
+    if(aiIsHuman(char)) { char.aiScreen=false; continue; }
+    const brain=char.aiBrain||(char.aiBrain=createTeamBrain(char));
+    char.aiInput=brain.input;
+    brain.thinkIn-=dt;
+    brain.actionCooldown=Math.max(0,brain.actionCooldown-dt);
+    brain.moveCooldown=Math.max(0,brain.moveCooldown-dt);
+    if(brain.lastHandler!==(handler?.id||null)){
+      brain.lastHandler=handler?.id||null;
+      brain.possessionAge=0;
+      brain.thinkIn=0;
+      brain.passTargetId=null;
+    }else if(handler===char&&ballState==="dribble"&&!frozen){
+      brain.possessionAge+=dt;
+    }
+    if(brain.thinkIn<=0){
+      // A visible reaction delay remains even at the top difficulty.
+      brain.thinkIn=THREE.MathUtils.clamp(THREE.MathUtils.randFloat(settings.reactionMin,settings.reactionMax),.14,.7);
+      decideTeamPlayer(char,brain,handler,settings,frozen);
+    }
+    char.aiScreen=brain.role==="screen"&&brain.roleUntil>teamAITime&&char.onGround&&char.moveState==="normal"&&char.velocity.length()<1&&flatDistance(char.group.position,brain.target)<.65;
+    moveAIPlayer(char,brain,dt);
+    if(frozen) continue;
+    updateAIShotAndPass(char,brain,handler,dt);
+  }
+}
+
+function decideTeamPlayer(char,brain,handler,settings,frozen){
+  brain.protect=false;
+  brain.sprint=false;
+  if(frozen){
+    brain.role="ready";
+    brain.target.copy(char.group.position);
+    if(handler&&handler.teamId!==char.teamId){
+      const assigned=aiAssignedOpponent(char);
+      if(assigned) brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,2.5));
+    }
+    return;
+  }
+  if(ballState==="loose"||ballState==="shot"||ballState==="layup"||ballState==="dunk"){
+    decideAIRebound(char,brain,settings);
+    return;
+  }
+  if(ballState==="pass"&&passFlight){
+    if(passFlight.targetId===char.id){
+      brain.role="receive";
+      // Keep the planned cut, but stop overrunning a pass once it is nearby.
+      if(flatDistance(char.group.position,ball.position)<2.2) brain.target.copy(ball.position).setY(0);
+      brain.sprint=flatDistance(char.group.position,ball.position)>3;
+      return;
+    }
+    const passer=getPlayerById(passFlight.passerId);
+    if(passer?.teamId!==char.teamId){
+      const receiver=getPlayerById(passFlight.targetId);
+      const reach=flatDistance(char.group.position,ball.position);
+      if(receiver&&reach<3.6){
+        brain.role="intercept";
+        brain.target.copy(ball.position).addScaledVector(ballVelocity,.16).setY(0);
+        brain.sprint=reach>1.5;
+        return;
+      }
+    }
+    if(passer?.teamId===char.teamId) decideAIOffBall(char,brain,passer,settings);
+    else decideAIDefense(char,brain,passer,settings);
+    return;
+  }
+  if(!handler){ brain.target.copy(char.group.position); return; }
+  if(handler===char) decideAIHandler(char,brain,settings);
+  else if(handler.teamId===char.teamId) decideAIOffBall(char,brain,handler,settings);
+  else decideAIDefense(char,brain,handler,settings);
+}
+
+function moveAIPlayer(char,brain,dt){
+  const input=brain.input;
+  input.worldDirection.copy(brain.target).sub(char.group.position).setY(0);
+  const distance=input.worldDirection.length();
+  const amount=char.aiScreen?0:THREE.MathUtils.clamp((distance-.22)/1.2,0,1);
+  if(distance>.001) input.worldDirection.divideScalar(distance);
+  input.moveX=amount;
+  input.moveY=0;
+  input.protect=brain.protect;
+  input.sprint=brain.sprint&&char.stamina>.32&&char.sprint>.2&&distance>1.2;
+  updateModernPlayerControl(char,input,dt);
+}
+
+function aiAssignedOpponent(char){
+  const roster=aiRoster();
+  const team=roster.filter(player=>player.teamId===char.teamId);
+  const opponents=getOpponents(char);
+  if(!opponents.length) return null;
+  const assigned=opponents[team.indexOf(char)%opponents.length];
+  if(char.aiBrain) char.aiBrain.assignedId=assigned.id;
+  return assigned;
+}
+
+function aiNearestDistance(char){
+  const opponent=getNearestOpponent(char);
+  return opponent?flatDistance(char.group.position,opponent.group.position):8;
+}
+
+function aiShotQuality(char){
+  const distance=flatDistance(char.group.position,HOOP_POS);
+  const space=aiNearestDistance(char);
+  const shooting=char.profile.shot||1;
+  const preferredRange=shooting>1.12?7.5:shooting>.95?5.8:4.2;
+  const rangePenalty=Math.max(0,distance-preferredRange)*.11;
+  const pressurePenalty=Math.max(0,2.35-space)*.23;
+  return .8-rangePenalty-pressurePenalty-Math.min(.18,char.velocity.length()*.025)+(distance<2.7?.13:0);
+}
+
+function aiPassLaneClearance(passer,receiver){
+  const a=passer.group.position,b=receiver.group.position;
+  const dx=b.x-a.x,dz=b.z-a.z;
+  const lengthSq=dx*dx+dz*dz;
+  if(lengthSq<.1) return 0;
+  let clearance=8;
+  for(const defender of getOpponents(passer)){
+    const p=defender.group.position;
+    const t=THREE.MathUtils.clamp(((p.x-a.x)*dx+(p.z-a.z)*dz)/lengthSq,0,1);
+    if(t<.1||t>.94) continue;
+    clearance=Math.min(clearance,Math.hypot(p.x-a.x-t*dx,p.z-a.z-t*dz));
+  }
+  return clearance;
+}
+
+function decideAIHandler(char,brain,settings){
+  brain.role="handle";
+  const position=char.group.position;
+  const distance=flatDistance(position,HOOP_POS);
+  const nearest=getNearestOpponent(char);
+  const space=nearest?flatDistance(position,nearest.group.position):8;
+  const quality=aiShotQuality(char);
+  let receiver=null,bestValue=-Infinity;
+  for(const teammate of getTeammates(char)){
+    const lane=aiPassLaneClearance(char,teammate);
+    const separation=flatDistance(position,teammate.group.position);
+    if(lane<.8||separation<2||separation>15) continue;
+    const value=aiShotQuality(teammate)+Math.min(.12,(lane-1)*.05)+(teammate.controllerSlot?.length ? .06 : 0);
+    if(value>bestValue){ bestValue=value; receiver=teammate; }
+  }
+  const patient=brain.possessionAge>.65+settings.patience*.7;
+  const share=brain.possessionAge>2.4&&bestValue>quality-.08;
+  const smartPass=receiver&&patient&&(bestValue>quality+.1||space<1.5||share);
+  if(smartPass&&!shotCharging&&brain.actionCooldown<=0){
+    brain.passTargetId=receiver.id;
+    brain.passUntil=teamAITime+.65;
+    brain.target.copy(position);
+    return;
+  }
+  if(brain.passTargetId&&brain.passUntil>teamAITime){ brain.target.copy(position); return; }
+  const openEnough=space>THREE.MathUtils.lerp(1.35,2.05,settings.shotDiscipline);
+  const qualityEnough=quality>THREE.MathUtils.lerp(.39,.61,settings.shotDiscipline);
+  const inRange=distance<(char.profile.shot>1.12?8.2:6.5);
+  const forced=brain.possessionAge>7.5;
+  if(!shotCharging&&brain.actionCooldown<=0&&brain.possessionAge>.35&&inRange&&((openEnough&&qualityEnough)||distance<2.5&&space>1.35||forced)){
+    brain.target.copy(position);
+    beginAIShot(char,brain);
+    return;
+  }
+  if(shotCharging&&chargingPlayer===char){ brain.target.copy(position); return; }
+  const toRim=brain.input.worldDirection.copy(HOOP_POS).sub(position).setY(0).normalize();
+  brain.target.copy(position).addScaledVector(toRim,3);
+  if(nearest&&space<2.35){
+    const side=brain.driveSide;
+    brain.target.x+=toRim.z*side*2;
+    brain.target.z-=toRim.x*side*2;
+    // Use the same crossover action and cooldowns as a human.
+    if(brain.moveCooldown<=0&&space<1.6&&Math.random()<settings.crossoverUse*.55){
+      attemptCrossover(char,side<0?"left":"right");
+      brain.moveCooldown=1.25;
+      brain.driveSide*=-1;
+    }else if(brain.moveCooldown<=0&&space<1.5&&distance<4.5&&Math.random()<settings.pumpFakeUse*.4){
+      startPumpFake(char);
+      brain.moveCooldown=1.5;
     }
   }
+  // A tired handler slows down and shares rather than receiving a speed boost.
+  brain.sprint=space>1.7&&distance>2.8&&char.stamina>.45;
+  brain.protect=space<1.25;
+  keepInCourt(brain.target);
+}
 
-  const contestedType = dunkActive ? "dunk" : layupActive ? "layup" : getRequestedShotType(p1);
-  const timingPct = shotCharging ? THREE.MathUtils.clamp((p1.moveMeta.chargeHeld || 0) / 1.2,0,1) : .2;
-  if((shotCharging || layupActive || dunkActive) && flatDistance(p2.group.position,p1.group.position) < 3.8 && botBrain.blockCooldown <= 0){
-    if(shouldBotJumpContest(p2,p1,contestedType,timingPct)){ tryJumpBlock(p2, p2.sprint > .25 && Math.random() < s.sprint); botBrain.blockCooldown = .62; }
-    else if(!p2.onGround && Math.random() < dt * s.block) raiseHands(p2);
+function beginAIShot(char,brain){
+  handleActionButton(char);
+  if(!shotCharging||chargingPlayer!==char) return;
+  const type=chooseShotType(char);
+  const profile=getShotMeterProfile(type,char,calculateShotContest(char));
+  // Identical release variation at every difficulty; no guaranteed greens.
+  const center=(profile.greenStart+profile.greenEnd)*.5;
+  brain.releaseAt=Math.max(.25,(center+(Math.random()-.5)*.18)*1.35/profile.meterFillSpeed);
+  brain.actionCooldown=.9;
+}
+
+function updateAIShotAndPass(char,brain,handler,dt){
+  if(shotCharging&&chargingPlayer===char){
+    if((char.moveMeta.chargeHeld||0)>=brain.releaseAt){
+      releaseShootOrFake(char);
+      brain.releaseAt=0;
+      brain.possessionAge=0;
+    }
+    return;
   }
-  if(ballState === "loose" && ball.position.y > 1.2 && flatDistance(p2.group.position,ball.position) < 1.65 && p2.onGround){
-    if(shouldBotJumpContest(p2,p1,"loose",.3)) tryJumpBlock(p2,false);
+  if(!brain.passTargetId||handler!==char||ballState!=="dribble") return;
+  const receiver=getPlayerById(brain.passTargetId);
+  if(!receiver||brain.passUntil<teamAITime||aiPassLaneClearance(char,receiver)<.65){ brain.passTargetId=null; return; }
+  const desired=Math.atan2(receiver.group.position.x-char.group.position.x,receiver.group.position.z-char.group.position.z);
+  char.angle=lerpAngle(char.angle,desired,1-Math.exp(-dt*13));
+  char.group.rotation.y=char.angle;
+  const direction=getForward(char.angle);
+  const targetDirection=brain.input.worldDirection.copy(receiver.group.position).sub(char.group.position).setY(0).normalize();
+  if(direction.dot(targetDirection)>.97){
+    tryDirectionalPass(char);
+    brain.passTargetId=null;
+    brain.actionCooldown=.7;
+    brain.possessionAge=0;
   }
 }
-function updateBotOffense(dt){
-  const s = difficultySettings[selectedDifficulty];
-  botBrain.intentTimer -= dt; botBrain.decisionCooldown -= dt;
-  if(botBrain.intentTimer <= 0 && botBrain.decisionCooldown <= 0){
-    botBrain.intent = chooseBotIntent();
-    botBrain.recentMoves.push(botBrain.intent); if(botBrain.recentMoves.length > 8) botBrain.recentMoves.shift();
-    botBrain.intentTimer = THREE.MathUtils.randFloat(.35,1.4);
-    botBrain.decisionCooldown = THREE.MathUtils.randFloat(.16,.34) * (1.2-s.composure*.35);
+
+function decideAIOffBall(char,brain,handler,settings){
+  const teammates=getTeammates(char);
+  const otherRoles=teammates.filter(player=>player!==handler&&player.aiBrain);
+  const cutters=otherRoles.some(player=>player.aiBrain.role==="cut"&&player.aiBrain.roleUntil>teamAITime);
+  const screeners=otherRoles.some(player=>player.aiBrain.role==="screen"&&player.aiBrain.roleUntil>teamAITime);
+  const position=char.group.position;
+  const team=aiRoster().filter(player=>player.teamId===char.teamId);
+  const slot=team.filter(player=>player!==handler).indexOf(char);
+  const side=slot===0?-1:1;
+  const spacing=team.length===3?5.1:4.5;
+  const defender=getNearestOpponent(char);
+  const handlerPressure=aiNearestDistance(handler);
+  if(brain.roleUntil>teamAITime&&(brain.role==="cut"||brain.role==="screen"||brain.role==="roll")){
+    if(brain.role==="screen"){
+      const onBallDefender=getNearestOpponent(handler);
+      if(onBallDefender&&flatDistance(position,brain.target)>.8){
+        const towardHandler=handler.group.position.clone().sub(onBallDefender.group.position).setY(0).normalize();
+        brain.target.copy(onBallDefender.group.position).addScaledVector(towardHandler,-.7);
+      }
+    }
+    brain.sprint=brain.role!=="screen";
+    return;
   }
-  executeBotIntent(dt);
+  if(brain.role==="screen"){
+    brain.role="roll";
+    brain.roleUntil=teamAITime+1.35;
+    brain.target.set(side*1.4,0,HOOP_POS.z+2.6);
+    brain.sprint=true;
+    return;
+  }
+  brain.role="space";
+  brain.target.set(side*spacing,0,HOOP_POS.z+(slot===1?5.5:7.7));
+  if(teammates.some(player=>player!==handler&&flatDistance(player.group.position,brain.target)<2)) brain.target.z+=2.2;
+  if(handler.group.position.x*side>2) brain.target.z=HOOP_POS.z+8.9;
+  // Put the wing outside the defender's shadow to create an actual pass lane.
+  if(defender&&aiPassLaneClearance(handler,char)<1.1){
+    brain.target.z+=defender.group.position.z>position.z?-1.2:1.2;
+    brain.target.x+=side*.65;
+  }
+  if(!cutters&&brain.moveCooldown<=0&&flatDistance(handler.group.position,HOOP_POS)>4&&handlerPressure>1.2&&Math.random()<.1+settings.spacingIQ*.22){
+    brain.role="cut";
+    brain.roleUntil=teamAITime+1.35;
+    brain.moveCooldown=4.5;
+    brain.target.set(-side*1.1,0,HOOP_POS.z+2.2);
+    brain.sprint=true;
+  }else if(!screeners&&brain.moveCooldown<=0&&handlerPressure<2&&flatDistance(handler.group.position,HOOP_POS)>4.4&&Math.random()<settings.spacingIQ*.2){
+    const onBallDefender=getNearestOpponent(handler);
+    if(onBallDefender){
+      brain.role="screen";
+      brain.roleUntil=teamAITime+2;
+      brain.moveCooldown=6;
+      const direction=handler.group.position.clone().sub(onBallDefender.group.position).setY(0).normalize();
+      brain.target.copy(onBallDefender.group.position).addScaledVector(direction,-.7);
+    }
+  }
+  keepInCourt(brain.target);
 }
-function updateBotReactionMemory(dt){
-  if(!botBrain) return;
-  const s = difficultySettings[selectedDifficulty];
-  botBrain.reactionTimer -= dt; botBrain.blockCooldown = Math.max(0,botBrain.blockCooldown - dt); botBrain.stealCooldown = Math.max(0,botBrain.stealCooldown - dt);
-  if(botBrain.reactionTimer <= 0){
-    botBrain.lastSeenPlayerPosition.copy(p1.group.position);
-    botBrain.lastSeenBallPosition.copy(ball.position);
-    botBrain.reactionTimer = THREE.MathUtils.randFloat(s.reactionMin,s.reactionMax);
+
+function decideAIDefense(char,brain,handler,settings){
+  const assigned=aiAssignedOpponent(char)||handler;
+  if(!assigned){ brain.target.copy(char.group.position); return; }
+  brain.role="guard";
+  brain.protect=true;
+  const guardingHandler=assigned===handler;
+  const spacing=guardingHandler?THREE.MathUtils.lerp(1.9,1.25,settings.defensiveIQ):1.8;
+  brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,spacing));
+  const handlerRimDistance=handler?flatDistance(handler.group.position,HOOP_POS):20;
+  const assignedRimDistance=flatDistance(assigned.group.position,HOOP_POS);
+  if(!guardingHandler&&handler){
+    const handlerDefender=aiRoster().find(player=>player.teamId===char.teamId&&aiAssignedOpponent(player)===handler);
+    const beaten=!handlerDefender||flatDistance(handlerDefender.group.position,handler.group.position)>2.2;
+    const helpCandidates=aiRoster().filter(player=>player.teamId===char.teamId&&player!==handlerDefender);
+    const closestHelper=helpCandidates.reduce((best,player)=>!best||flatDistance(player.group.position,HOOP_POS)<flatDistance(best.group.position,HOOP_POS)?player:best,null);
+    const help=closestHelper===char&&beaten&&handlerRimDistance<4.6&&settings.defensiveIQ>.42;
+    if(help){
+      brain.role="help";
+      brain.target.copy(getBetweenPlayerAndRimTarget(char,handler,1.05));
+    }else{
+      // Shade toward visible passing direction; never inspect human input.
+      const aim=getForward(handler.angle);
+      const toAssigned=assigned.group.position.clone().sub(handler.group.position).setY(0).normalize();
+      if(aim.dot(toAssigned)>.83&&assignedRimDistance<8.6){
+        brain.target.lerp(assigned.group.position,.3+settings.spacingIQ*.2);
+      }
+    }
+  }
+  const recovery=flatDistance(char.group.position,brain.target);
+  brain.sprint=recovery>2.6;
+  if(!handler) return;
+  const range=flatDistance(char.group.position,handler.group.position);
+  const gathering=shotCharging&&chargingPlayer===handler&&(handler.moveMeta.chargeHeld||0)>.42;
+  const finishing=layupActive&&layupOwner===handler.id||dunkActive&&dunkOwner===handler.id;
+  const fake=handler.moveState==="pumpfake";
+  if(range<2.5&&brain.actionCooldown<=0&&(gathering||finishing||fake&&Math.random()<settings.fakeBiteChance)){
+    const jump=finishing||gathering&&Math.random()<.25+settings.contestTiming*.45||fake;
+    if(jump&&char.onGround){ tryJumpBlock(char,false); brain.actionCooldown=.8; }
+    else raiseHands(char);
+  }else if(range<2.7&&(gathering||finishing)){
+    raiseHands(char);
+  }
+  if(range<1.35&&ballState==="dribble"&&brain.actionCooldown<=0){
+    const exposed=handler.dribbleStyle==="sprint"||handler.dribbleStyle==="crossover"||handler.moveState==="sidehop";
+    const reachMistake=Math.random()<settings.mistakeChance*.12;
+    if(exposed&&Math.random()<settings.stealDiscipline*.25||reachMistake){
+      handleHandAction(char,ballSideValue<0?"left":"right","ai-steal");
+      brain.actionCooldown=.85;
+      if(reachMistake) punishBadReach(char);
+    }
   }
 }
-function updateBotMemoryOfPlayer(){
-  if(!botBrain) return;
-  botBrain.playerTendency = getPlayerTendency();
-}
-function getPlayerTendency(){
-  if(!p1) return "balanced";
-  const shotRate = p1.stats.fga > 0 ? p1.stats.tpa / Math.max(1,p1.stats.fga) : .3;
-  if(shotRate > .45) return "perimeter";
-  if(p1.stats.ankle > 1) return "dribble-heavy";
-  return "drive";
-}
-function chooseCounterMove(){
-  const t = botBrain && botBrain.playerTendency;
-  if(t === "perimeter") return "closeout";
-  if(t === "dribble-heavy") return "body-up";
-  return "paint-wall";
-}
-function chooseBotDefensiveIntent(){
-  const options = ["paint_wall","pressure_steal","sag_contest","cutoff_drive","bait_jumper","balanced_defense"];
-  const weights = {paint_wall:.25,pressure_steal:.15,sag_contest:.16,cutoff_drive:.16,bait_jumper:.1,balanced_defense:.18};
-  if(selectedDifficulty === "rookie" || selectedDifficulty === "easy"){
-    weights.paint_wall -= .06; weights.bait_jumper += .06;
+
+function decideAIRebound(char,brain,settings){
+  brain.role="rebound";
+  const y=Math.max(.1,ball.position.y-.65);
+  const fallTime=THREE.MathUtils.clamp((ballVelocity.y+Math.sqrt(ballVelocity.y*ballVelocity.y+19.6*y))/9.8,0,.8);
+  brain.target.copy(ball.position).addScaledVector(ballVelocity,fallTime*.75).setY(0);
+  if(ballState!=="loose"&&ball.position.y>HOOP_POS.y+.5) brain.target.lerp(HOOP_POS,.4);
+  keepInCourt(brain.target);
+  const team=aiRoster().filter(player=>player.teamId===char.teamId);
+  const chaser=team.reduce((best,player)=>!best||flatDistance(player.group.position,brain.target)<flatDistance(best.group.position,brain.target)?player:best,null);
+  if(chaser!==char){
+    const assigned=aiAssignedOpponent(char);
+    if(assigned&&flatDistance(assigned.group.position,brain.target)<4.5){
+      brain.role="box_out";
+      const towardBall=brain.target.clone().sub(assigned.group.position).setY(0).normalize();
+      brain.target.copy(assigned.group.position).addScaledVector(towardBall,.85);
+      brain.protect=true;
+    }else{
+      brain.role="outlet";
+      brain.target.z=Math.max(brain.target.z+3.2,HOOP_POS.z+6.5);
+      brain.target.x=char.group.position.x<0?-4:4;
+    }
   }
-  if(selectedDifficulty === "hard" || selectedDifficulty === "elite" || selectedDifficulty === "legend" || selectedDifficulty === "pro" || selectedDifficulty === "superstar" || selectedDifficulty === "hallOfFame" || selectedDifficulty === "impossible"){
-    weights.cutoff_drive += .07; weights.paint_wall += .06;
+  brain.sprint=chaser===char;
+  const distance=flatDistance(char.group.position,ball.position);
+  if(chaser===char&&distance<1.6&&ball.position.y>1.15&&ball.position.y<2.6&&ballVelocity.y<0&&char.onGround&&brain.actionCooldown<=0){
+    tryJumpBlock(char,false);
+    brain.actionCooldown=.8;
   }
-  let r = Math.random() * options.reduce((a,k)=>a+weights[k],0);
-  for(const k of options){ r -= weights[k]; if(r <= 0) return k; }
-  return "balanced_defense";
 }
-function shouldBotJumpContest(defender, shooter, shotType, timingPct){
-  const s = difficultySettings[selectedDifficulty];
-  const ideal = shotType === "dunk" ? .74 : shotType === "layup" ? .63 : .58;
-  const timingWindow = THREE.MathUtils.lerp(.22,.05,s.contestTiming);
-  const timingError = Math.abs(timingPct - ideal);
-  if((shotType === "layup" || shotType === "dunk" || shotType === "jumper") && timingError > timingWindow && Math.random() < s.composure) return false;
-  const dist = flatDistance(defender.group.position, shooter.group.position);
-  const between = isDefenderBetweenBallAndRim(defender, ball.position);
-  let chance = 0;
-  if(dist < 2.2) chance += .25;
-  if(dist < 1.5) chance += .25;
-  if(between) chance += .18;
-  chance += s.contestTiming * .35;
-  chance += (defender.profile.block - 1) * .18;
-  chance += (1 - Math.min(1,timingError*1.8)) * .16;
-  if(shotType === "jumper") chance -= .1 + s.fakeBiteChance*0.1;
-  if(shotType === "pump_fake" && s.contestTiming > .72) chance *= (1 - s.composure*0.45);
-  chance -= THREE.MathUtils.clamp(timingError - timingWindow,0,0.35) * (0.3 + s.fakeBiteChance*0.2);
-  if(shotType === "dunk" || shotType === "layup") chance += .22;
-  return Math.random() < THREE.MathUtils.clamp(chance, .05, .88);
+
+// Compatibility for tournament/debug helpers. These still use the common
+// movement controller, so legacy callers cannot restore difficulty speed boosts.
+function updateBot(dt){ updateTeamAI(dt); }
+function moveBotToward(bot,target,speed,dt){
+  if(!bot) return;
+  const brain=bot.aiBrain||(bot.aiBrain=createTeamBrain(bot));
+  brain.target.copy(target);
+  brain.sprint=false;
+  bot.aiInput=brain.input;
+  moveAIPlayer(bot,brain,dt);
 }
-function adjustBotPersonalityByDifficulty(){
-  if(!botBrain) return;
-  const d = selectedDifficulty;
-  botBrain.adaptiveness = d === "impossible" ? .99 : d === "hallOfFame" ? .97 : d === "superstar" ? .96 : d === "pro" ? .95 : d === "legend" ? .95 : d === "elite" ? .78 : d === "hard" ? .58 : .35;
+function getDefensiveTarget(defender,handler,intent="balanced_defense"){
+  return getBetweenPlayerAndRimTarget(defender,handler,intent==="pressure_steal"?.85:1.65);
 }
-function getDefensiveTarget(defender,ballHandler,intent="balanced_defense"){
-  const spacing = intent === "pressure_steal" ? .7 : intent === "sag_contest" ? 1.95 : 1.28;
-  const base = getBetweenPlayerAndRimTarget(defender,ballHandler,spacing);
-  const toHoop = HOOP_POS.clone().sub(ballHandler.group.position); toHoop.y = 0;
-  if(toHoop.lengthSq() < .0001) return base;
-  toHoop.normalize();
-  const lane = new THREE.Vector3(toHoop.z,0,-toHoop.x);
-  if(intent === "cutoff_drive"){
-    return base.add(lane.multiplyScalar((botBrain.preferredDriveSide||1) * .65));
-  }
-  if(intent === "bait_jumper"){
-    return base.add(toHoop.clone().multiplyScalar(.35));
-  }
-  if(intent === "balanced_defense"){
-    return base.add(lane.multiplyScalar(Math.sin(performance.now()*.0015)*.2));
-  }
-  return base;
+function shouldBotJumpContest(defender,shooter,shotType,timingPct){
+  return flatDistance(defender.group.position,shooter.group.position)<2.5&&timingPct>.45&&Math.random()<.3+aiSettings().contestTiming*.4;
 }

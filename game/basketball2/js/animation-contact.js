@@ -38,43 +38,46 @@ function raiseHands(char){
   char.handsUpTime = Math.max(char.handsUpTime,.42);
 }
 
-function resolveBodyCollisions(){
-  const delta = p1.group.position.clone().sub(p2.group.position); delta.y = 0;
-  const dist = Math.max(0.0001,delta.length());
-  const minDist = p1.bodyRadius + p2.bodyRadius;
-  p1.contactTimer = Math.max(0,(p1.contactTimer || 0) - 0.016);
-  p2.contactTimer = Math.max(0,(p2.contactTimer || 0) - 0.016);
-  p1.contactCooldown = Math.max(0,(p1.contactCooldown || 0) - 0.016);
-  p2.contactCooldown = Math.max(0,(p2.contactCooldown || 0) - 0.016);
-  if(dist >= minDist) return;
-  const n = delta.normalize();
-  const pen = minDist - dist;
-  const relVel = p1.velocity.clone().sub(p2.velocity);
-  const closing = Math.max(0,relVel.dot(n));
-  const m1 = 1 / Math.max(0.65,p1.profile.width * 0.95 + p1.profile.block * 0.25);
-  const m2 = 1 / Math.max(0.65,p2.profile.width * 0.95 + p2.profile.block * 0.25);
-  const split1 = m1/(m1+m2), split2 = m2/(m1+m2);
-  const corr = THREE.MathUtils.clamp(pen * 0.62,0.004,0.09);
-  p1.group.position.add(n.clone().multiplyScalar(corr * split1));
-  p2.group.position.add(n.clone().multiplyScalar(-corr * split2));
-  const impulse = THREE.MathUtils.clamp(0.08 + closing*0.05 + pen*0.22,0.02,0.22);
-  p1.velocity.add(n.clone().multiplyScalar( impulse * split1));
-  p2.velocity.add(n.clone().multiplyScalar(-impulse * split2));
-  keepInCourt(p1.group.position); keepInCourt(p2.group.position);
-  const offense = possession === "p1" ? p1 : p2;
-  const defense = offense === p1 ? p2 : p1;
-  let newContact=false;
-  if(offense.contactCooldown<=0&&defense.contactCooldown<=0){
-    applyBodyContact(offense,defense);
-    offense.contactCooldown=.11;
-    defense.contactCooldown=.11;
-    newContact=true;
+function resolveBodyCollisions(dt=1/60){
+  const handler = getBallHandler();
+  for(const char of matchPlayers){
+    char.contactTimer = Math.max(0,(char.contactTimer || 0) - dt);
+    char.contactCooldown = Math.max(0,(char.contactCooldown || 0) - dt);
   }
-  const hard = offense.contactType === "hard_bump" || offense.contactType === "stonewall";
-  screenShake = Math.min(.22,screenShake + (hard ? .07 : .03)); applyCameraShake(hard ? .1 : .05);
-  if(hard&&newContact){
-    inputManager.vibrate(offense.id,.34,55);
-    inputManager.vibrate(defense.id,.28,50);
+  // Teammates occupy space as well: a planted teammate can create a real screen.
+  for(let i=0;i<matchPlayers.length;i++) for(let j=i+1;j<matchPlayers.length;j++){
+    const a = matchPlayers[i], b = matchPlayers[j];
+    if(Math.abs(a.group.position.y-b.group.position.y)>1.8) continue;
+    const delta = a.group.position.clone().sub(b.group.position).setY(0);
+    let dist = delta.length();
+    const minDist = a.bodyRadius+b.bodyRadius;
+    if(dist >= minDist) continue;
+    if(dist < .0001){ delta.set(i%2 ? 1 : -1,0,j%2 ? 1 : -1).normalize(); dist=.0001; }
+    else delta.multiplyScalar(1/dist);
+    const penetration = minDist-dist;
+    const relative = a.velocity.clone().sub(b.velocity);
+    const closing = Math.max(0,-relative.dot(delta));
+    const invA = (a.aiScreen ? .14 : 1)/Math.max(.65,a.profile.width*.95+a.profile.block*.25);
+    const invB = (b.aiScreen ? .14 : 1)/Math.max(.65,b.profile.width*.95+b.profile.block*.25);
+    const splitA=invA/(invA+invB), splitB=1-splitA;
+    const correction = Math.min(.16,penetration*.72);
+    a.group.position.addScaledVector(delta,correction*splitA);
+    b.group.position.addScaledVector(delta,-correction*splitB);
+    // Remove only velocity into the body, retaining tangential sliding and cuts.
+    a.velocity.addScaledVector(delta,closing*splitA);
+    b.velocity.addScaledVector(delta,-closing*splitB);
+    keepInCourt(a.group.position); keepInCourt(b.group.position);
+    if(a.teamId===b.teamId || (handler!==a && handler!==b)) continue;
+    const offense=handler, defense=handler===a ? b : a;
+    if(offense.contactCooldown<=0 && defense.contactCooldown<=0){
+      applyBodyContact(offense,defense);
+      offense.contactCooldown=.18;
+      defense.contactCooldown=.18;
+      if(offense.contactType==="hard_bump" || offense.contactType==="stonewall"){
+        inputManager.vibrate(offense.id,.22,45);
+        inputManager.vibrate(defense.id,.18,40);
+      }
+    }
   }
 }
 function resolveHoopPlayerCollision(char){
@@ -131,12 +134,11 @@ function resolveHoopPlayerCollision(char){
 
 function updateCharacters(dt){
   updateMoveFeedback(dt);
-  animateCharacter(p1,dt);
-  animateCharacter(p2,dt);
-  updateHookIndicator(p1,dt);
-  updateHookIndicator(p2,dt);
-  updateFloatingIndicators(p1,dt);
-  updateFloatingIndicators(p2,dt);
+  for(const char of matchPlayers){
+    animateCharacter(char,dt);
+    updateHookIndicator(char,dt);
+    updateFloatingIndicators(char,dt);
+  }
 }
 
 
@@ -248,7 +250,8 @@ function updateMoveState(char,dt){
 }
 function startStepBack(char){
   if(char.moveState !== "normal" || char.sprint < .15) return;
-  char.moveState = "stepback"; char.moveTimer = 0; char.moveDuration = 0.42; char.stepBackQuality = THREE.MathUtils.randFloat(.4,1);
+  char.moveState = "stepback"; char.moveTimer = 0; char.moveDuration = 0.42;
+  char.stepBackQuality = THREE.MathUtils.clamp(char.stamina*.65+char.profile.handle*.25-char.velocity.length()*.025,.2,1);
   char.sprint = Math.max(0,char.sprint - .18); showMoveFeedback("Step-back!");
 }
 function updateStepBack(char,dt,pct){
@@ -259,10 +262,10 @@ function updateStepBack(char,dt,pct){
   if(pct >= 1){ char.moveMeta.stepShotReleased = false; }
 }
 function startPumpFake(char){
-  if(char.moveState !== "normal") return;
+  if(char.moveState !== "normal" || char.pumpFakeCooldown>0 || !playerHasBall(char)) return;
   char.moveState = "pumpfake"; char.moveTimer = 0; char.moveDuration = .42; char.pumpFakeCooldown = .45; char.lastPumpFakeTime = performance.now()*.001;
   showMoveFeedback("Pump fake!");
-  if(!twoPlayerMode && possession === "p1" && Math.random() < botBrain.fakeBiteChance){ tryJumpBlock(p2,false); showMoveFeedback("Defender bit!"); }
+  // AI reacts to the gather through its normal perception delay; faking does not roll a free stun.
 }
 function updatePumpFake(char,dt,pct){
   char.velocity.multiplyScalar(.25);
@@ -281,23 +284,24 @@ function startSideHop(char,screenSide){
   ballSide = handSide;
   ballSideValue = handSide === "left" ? -1 : 1;
   showMoveFeedback("SIDE HOP!");
-  const defender = char.id === "p1" ? p2 : p1;
+  const defender = getNearestOpponent(char);
   triggerAnkleBreaker(defender,char);
 }
 function moveWithCollisionDampen(char,nextPos){
-  const defender = char.id === "p1" ? p2 : p1;
-  if(!defender) return nextPos;
-  const minDist = char.bodyRadius + defender.bodyRadius;
-  const delta = nextPos.clone().sub(defender.group.position);
-  delta.y = 0;
-  const dist = delta.length();
-  if(dist >= minDist || dist <= .0001) return nextPos;
-  const normal = delta.normalize();
-  const dampened = defender.group.position.clone().add(normal.multiplyScalar(minDist + .01));
-  dampened.y = nextPos.y;
-  startContactAnimation(char,"light_bump");
-  showMoveFeedback("CONTACT!",0.25);
-  return dampened;
+  const resolved=nextPos.clone();
+  for(const other of matchPlayers){
+    if(other===char || Math.abs(other.group.position.y-nextPos.y)>1.8) continue;
+    const minDist=char.bodyRadius+other.bodyRadius;
+    const delta=resolved.clone().sub(other.group.position).setY(0);
+    const dist=delta.length();
+    if(dist>=minDist) continue;
+    if(dist<.0001) delta.copy(char.group.position).sub(other.group.position).setY(0);
+    if(delta.lengthSq()<.0001) delta.set(1,0,0);
+    resolved.copy(other.group.position).addScaledVector(delta.normalize(),minDist+.01);
+    resolved.y=nextPos.y;
+    startContactAnimation(char,"light_bump");
+  }
+  return resolved;
 }
 function updateSideHop(char,dt,pct){
   const sideVec = (char.moveMeta.sideHopVec || getScreenSideVectorForChar(char,char.moveMeta.sideHop || "right")).clone();
@@ -384,7 +388,7 @@ function checkDoubleTap(char,side,inputKey){
   return ok;
 }
 function clearShotCreationStates(){
-  [p1,p2].forEach(char => {
+  matchPlayers.forEach(char => {
     if(!char || !char.moveMeta) return;
     char.moveMeta.fadeawayArmed = false;
     char.moveMeta.fadeawayWindow = 0;
@@ -400,12 +404,14 @@ function clearShotCreationStates(){
   });
 }
 function triggerAnkleBreaker(defender,attacker){
-  const movingWrongWay = defender.velocity.length() > .8 && defender.velocity.clone().normalize().dot(getForward(attacker.angle)) < -.15;
-  const chance = THREE.MathUtils.clamp(.08 + (attacker.profile.handle-1)*.18 + (movingWrongWay?.12:0) - (defender.movement.recoverySpeed-1)*.2, .02, .34);
-  if(Math.random() < chance){
-    defender.stumbledTimer = THREE.MathUtils.randFloat(.4,.9);
-    showMoveFeedback("Ankle breaker!");
-    triggerCrowdReaction("green",0.7);
+  if(!defender || defender.stumbledTimer>0 || flatDistance(defender.group.position,attacker.group.position)>2.2) return;
+  const cut=attacker.moveMeta.sideHopVec || getBodyRightVector(attacker);
+  const wrongWay=defender.velocity.length()>2 && defender.velocity.clone().normalize().dot(cut)<-.45;
+  const now=performance.now()*.001;
+  if(wrongWay && now-(attacker.lastSeparationTime || -10)>1.7 && attacker.stamina>.3){
+    defender.stumbledTimer=THREE.MathUtils.clamp(.22+(defender.velocity.length()-2)*.035,.22,.4);
+    attacker.lastSeparationTime=now;
+    showMoveFeedback("Created space!",.5);
   }
 }
 function applyBodyContact(offense,defense){
@@ -461,7 +467,8 @@ function calculateBlowByChance(offense,defense){
 
 function startPostUp(char){ char.moveState = "postup"; char.moveTimer = 0; char.moveDuration = .55; }
 function updatePostUp(char,dt){
-  const defender = char.id === "p1" ? p2 : p1;
+  const defender = getNearestOpponent(char);
+  if(!defender) return;
   const toDef = defender.group.position.clone().sub(char.group.position); toDef.y=0;
   if(toDef.length() < 1.35){
     const push = getForward(char.angle).multiplyScalar((char.movement.contactStrength-defender.movement.contactStrength)*.35*dt);
@@ -483,21 +490,30 @@ function startCloseout(defender){ defender.velocity.add(getForward(defender.angl
 function startRecoveryStep(defender){ defender.stumbledTimer = Math.max(defender.stumbledTimer,.18); }
 function punishBadReach(defender){ defender.stumbledTimer = .45; defender.stamina = Math.max(0,defender.stamina-.1); }
 function calculateShotContest(shooter){
-  const defender = shooter.id === "p1" ? p2 : p1;
-  const d = flatDistance(shooter.group.position,defender.group.position);
-  const between = isDefenderBetweenBallAndRim(defender, shooter.group.position);
-  const toShooter = shooter.group.position.clone().sub(defender.group.position).setY(0).normalize();
-  const faceDot = Math.max(0,getForward(defender.angle).dot(toShooter));
-  let value = THREE.MathUtils.clamp((2.9 - d) / 2.9,0,1) * THREE.MathUtils.clamp(defender.profile.block*.55 + defender.profile.steal*.35, .35,1.8);
-  value *= getGameplayTuning().contestStrength;
-  value *= 0.82 + faceDot*0.28;
-  if(between) value *= 1.14;
+  let strongest=0, help=0, contestDefender=null;
+  for(const defender of getOpponents(shooter)){
+    const d=flatDistance(shooter.group.position,defender.group.position);
+    if(d>3.1) continue;
+    const between=isDefenderBetweenBallAndRim(defender,shooter.group.position);
+    const toShooter=shooter.group.position.clone().sub(defender.group.position).setY(0).normalize();
+    const facing=Math.max(0,getForward(defender.angle).dot(toShooter));
+    const active=defender.blockTime>0 || defender.handsUpTime>0;
+    let pressure=THREE.MathUtils.clamp((2.9-d)/2.9,0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
+    pressure*=getGameplayTuning().contestStrength*(.55+facing*.3+(active?.24:0));
+    if(between) pressure*=1.14;
+    if(defender.stumbledTimer>0 || defender.reachRecovery>0) pressure*=.55;
+    if(pressure>strongest){ help+=strongest; strongest=pressure; contestDefender=defender; }
+    else help+=pressure;
+  }
+  let value=strongest+help*.14;
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "fadeaway") value *= .72;
   if(shooter.contactTimer > 0.02) value *= 1.08 + Math.max(0,shooter.contactStrength||0)*0.12;
   if(shooter.bodyUpTimer > 0.05) value *= 1.06;
+  value=THREE.MathUtils.clamp(value,0,1);
   const label = value < .12 ? "Open" : value < .28 ? "Light Contest" : value < .48 ? "Good Contest" : value < .7 ? "Heavy Contest" : "Smothered";
-  return {value,label};
+  shooter.lastContestLabel=label;
+  return {value,label,defender:contestDefender};
 }
 function calculateCoverage(shooter,defender){ return calculateShotContest(shooter).label; }
 function calculateReleaseGrade(power,idealPower){
@@ -507,7 +523,8 @@ function calculateReleaseGrade(power,idealPower){
   if(d < .14) return "Good";
   return power < idealPower ? "Early" : "Late";
 }
-function showShotBreakdown(release,shotType,coverage,result){
+function showShotBreakdown(release,shotType,coverage,result,shooterId=lastShotShooter){
+  if(typeof showPlayerShotFeedback==="function") showPlayerShotFeedback(shooterId,`${release} • ${coverage || "Open"} • ${result}`,1.5);
   if(!tutorialMode) return;
   const el = document.getElementById("shotFeedback");
   el.style.display = "block";
@@ -598,14 +615,29 @@ function animateCharacter(char,dt){
     return;
   }
 
+  if(char.passMotionTime>0){
+    char.passMotionTime=Math.max(0,char.passMotionTime-dt);
+    const reach=Math.sin((1-char.passMotionTime/.32)*Math.PI);
+    char.leftArm.rotation.x=-.8-reach*.45;
+    char.rightArm.rotation.x=-.8-reach*.45;
+    return;
+  }
+  if(ballState==="pass" && passFlight.active && passFlight.targetId===char.id){
+    animateGatherBall(char,.5,"catch");
+  }
   if(char.swipeTime > 0){
     char.swipeTime -= dt;
     const pct = 1 - THREE.MathUtils.clamp(char.swipeTime/.34,0,1);
     const reach = Math.sin(pct*Math.PI);
     poseSwipeArm(char,char.swipeSide || "right",reach);
+    if(char.swipeTime<=0 && !char.swipeConnected){
+      char.reachRecovery=Math.max(char.reachRecovery || 0,.26);
+      char.stumbledTimer=Math.max(char.stumbledTimer || 0,.15);
+    }
+    if(char.swipeTime<=0) char.swipeConnected=false;
     return;
   }
-  if(char.defensiveShadeSide && possession !== char.id && ballState === "dribble"){
+  if(char.defensiveShadeSide && teamOf(possession)!==char.teamId && ballState === "dribble"){
     animateDefensiveStance(char,dt);
   }
 
@@ -711,7 +743,7 @@ function getDribbleHandPosition(char){
 }
 function animateProtectDribble(char,dt){ char.rightArm.rotation.y = .3; }
 function updatePlayerLookAndShadow(char,dt){
-  const defender = char.id === "p1" ? p2 : p1;
+  const defender = getBallHandler();
   const lookTarget = possession === char.id
     ? (char.velocity.length() > 0.45 ? char.group.position.clone().add(char.velocity.clone().setY(0)) : HOOP_POS.clone())
     : (defender && defender.hasBall ? defender.group.position.clone() : ball.position.clone());
@@ -798,7 +830,8 @@ function animateDefensiveStance(char,dt){
 function animateRunCycle(char,dt){
   const moving = char.velocity.length() > .12;
   const cyc = char.anim.runCycle || 0;
-  const specialActive = shotCharging || char.blockTime > 0 || char.swipeTime > 0 || char.moveMeta.lastShotType === "hook" || (dunkActive && dunkOwner === char.id) || (layupActive && layupOwner === char.id);
+  const charging=shotCharging && chargingPlayer===char;
+  const specialActive = charging || char.blockTime > 0 || char.swipeTime > 0 || char.shotMotionTime>0 || (dunkActive && dunkOwner === char.id) || (layupActive && layupOwner === char.id);
   const walkBlend = char.anim.walkBlend || 0;
   const sprintBlend = char.anim.sprintBlend || 0;
   const backBlend = char.anim.backpedalBlend || 0;
@@ -845,7 +878,7 @@ function animateRunCycle(char,dt){
     char.leftShoe.position.lerp(leftBase,dt*8);
     char.rightShoe.position.lerp(rightBase,dt*8);
   }
-  if(!shotCharging && char.blockTime <= 0 && char.swipeTime <= 0){
+  if(!charging && char.blockTime <= 0 && char.swipeTime <= 0){
     const armDrive = 0.03 + walkBlend*0.03 + sprintBlend*0.11 - backBlend*0.005;
     const ballSide = char.hasBall ? ((char.dribbleHand || "right") === "right" ? 1 : -1) : 0;
     char.leftArm.rotation.z += Math.sin(cyc + Math.PI) * armDrive + (ballSide > 0 ? 0.03 : 0);

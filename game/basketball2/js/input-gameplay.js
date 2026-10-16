@@ -24,8 +24,10 @@ function onKeyUp(e){
 }
 
 function processUnifiedInputActions(char,state){
-  if(!char || gameOver || gamePaused) return;
+  if(!char || gameOver || gamePaused || possessionFrozen) return;
   const isOffense = possession === char.id && ballState === "dribble";
+  if(state.pressed.switchPlayer){ switchControlledPlayer(char.controllerSlot); return; }
+  if(state.pressed.pass && isOffense && tryDirectionalPass(char)) return;
 
   if(state.pressed.shoot && isOffense) handleActionButton(char);
   if(state.released.shoot && shotCharging && chargingPlayer === char) releaseShootOrFake(char);
@@ -64,7 +66,7 @@ function processUnifiedInputActions(char,state){
 
   if(state.pressed.takeover && char.takeover>=100) activateTakeover(char);
 
-  const flick = inputManager.consumeFlick(char.id);
+  const flick = inputManager.consumeFlick(char.controllerSlot || char.id);
   if(flick && isOffense){
     if(flick.direction === "back") startBackJump(char);
     else if(flick.direction === "forward") startHesitation(char);
@@ -133,6 +135,9 @@ function handleHandAction(char,screenSide,inputKey){
   if(possession === char.id && ballState === "dribble"){
     attemptCrossover(char,screenSide);
   }else{
+    const handler=getBallHandler();
+    if(!handler||handler.teamId===char.teamId||char.reachRecovery>0||char.swipeTime>0) return;
+    char.swipeConnected=false;
     char.swipeSide = handSide;
     char.swipeScreenSide = screenSide;
     char.swipeTime = .34;
@@ -184,6 +189,7 @@ function processTapInputs(e){
 }
 
 function attemptCrossover(char,screenSide){
+  if(!playerHasBall(char)||char.moveState!=="normal") return;
   const handSide = getBestHandForScreenSide(char,screenSide);
   const desiredSide = handSide === "left" ? -1 : 1;
   if(crossover.active && crossover.player === char){
@@ -191,14 +197,10 @@ function attemptCrossover(char,screenSide){
     if(unsafe){
       const chainPenalty = THREE.MathUtils.clamp((.74 - crossover.progress) * .35 + crossover.riskWindow*.4,0,.35);
       const speedPenalty = char.velocity.length() > 5 ? .14 : 0;
-      const risk = .36 - (char.profile.handle - 1) * .22 + speedPenalty + chainPenalty;
-      if(Math.random() < Math.max(0,chainPenalty - (char.profile.handle-1)*.12)){
-        char.anim.crossStumble = .32;
-      }
-      if(Math.random() < risk){
-        loseBallOnCrossover(char);
-        return;
-      }
+      char.anim.crossStumble = .22 + chainPenalty;
+      char.stumbledTimer = Math.max(char.stumbledTimer,.12+speedPenalty);
+      char.stamina = Math.max(0,char.stamina-.035);
+      // A rushed chain exposes the ball for a timed steal instead of rolling a turnover.
     }
 
     crossover.from = ballSideValue;
@@ -248,59 +250,30 @@ function loseBallOnCrossover(char){
 
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(),.033);
+  const frameDelta = clock.getDelta();
+  const dt = Math.min(frameDelta,.1);
   inputManager.tick();
-
   if(gameStarted){
     const pausePressed = inputManager.getState("p1").pressed.pause || (twoPlayerMode && inputManager.getState("p2").pressed.pause);
     if(pausePressed) togglePause();
     messageTimer -= dt;
-    if(!gamePaused) updateCountdown(dt);
-    else possessionFrozen = true;
     updateTouchPresentation();
-
     if(!gameOver && !gamePaused){
-      if(possessionFrozen){
-        updateCountdownMovement(dt);
-      }else{
-        updateHumanControls(dt);
-        if(!twoPlayerMode) updateBot(dt);
-        updateJumpPhysics(p1,dt);
-        updateJumpPhysics(p2,dt);
-        resolveBodyCollisions();
-        resolveHoopPlayerCollision(p1);
-        resolveHoopPlayerCollision(p2);
-        updateCharacters(dt);
-        updateBall(dt);
-        updateLayup(dt);
-        updateDunk(dt);
-        updateHoopReaction(dt);
-        loosePickupDelay = Math.max(0,loosePickupDelay - dt);
-        ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
-        backboardCollisionCooldown = Math.max(0,backboardCollisionCooldown - dt);
-        checkSteals();
-        checkBlocksAndCatches();
-        checkFouls(dt);
-        updateTakeover(dt);
-        updateCrowd(dt);
-        updateShotTrail(dt);
-        updateParticles(dt);
-        updateConfetti(dt);
-        updateCameraEffects(dt);
-        updateReboundAI(dt);
-        ledBoardTimer -= dt;
-        if(ledBoardTimer <= 0){
-          ledBoardTimer = 2.8;
-          const msgs = ["GAME POINT","ANKLE BREAKER","BLOCKED","HE'S HEATING UP",`FIRST TO ${targetScore}`];
-          updateLEDBoards(msgs[Math.floor(Math.random()*msgs.length)]);
-        }
-        pulseArenaLights(.35 + crowdWave*.5);
+      processUnifiedInputActions(p1,inputManager.getState("p1"));
+      if(twoPlayerMode) processUnifiedInputActions(p2,inputManager.getState("p2"));
+      simulationAccumulator+=dt;
+      while(simulationAccumulator>=SIMULATION_STEP){
+        captureSimulationPrevious();
+        simulateBasketball(SIMULATION_STEP);
+        captureSimulationCurrent();
+        simulationAccumulator-=SIMULATION_STEP;
       }
-    }
+    }else simulationAccumulator=0;
     tutorialCoach.update(dt);
-    adaptiveQuality.sample(dt);
+    adaptiveQuality.sample(frameDelta);
   }
-
+  const interpolated=gameStarted&&!gamePaused&&!gameOver;
+  if(interpolated) interpolateBasketball(simulationAccumulator/SIMULATION_STEP);
   updateDebugDirections(dt);
   updateShotMeterVisuals(dt);
   if(!gameStarted && document.getElementById("menu").style.display !== "none"){
@@ -312,6 +285,63 @@ function animate(){
   updateCameras(dt);
   updateHUD();
   renderScene();
+  if(interpolated) restoreSimulationTransforms();
+}
+
+function captureSimulationPrevious(){
+  for(const player of matchPlayers){
+    player.previousPosition.copy(player.group.position);
+    player.previousAngle=player.group.rotation.y;
+  }
+  ballPreviousPosition.copy(ball.position);
+}
+function captureSimulationCurrent(){
+  for(const player of matchPlayers){
+    player.simulationPosition.copy(player.group.position);
+    player.simulationAngle=player.group.rotation.y;
+  }
+  ballSimulationPosition.copy(ball.position);
+}
+function interpolateBasketball(alpha){
+  for(const player of matchPlayers){
+    player.group.position.lerpVectors(player.previousPosition,player.simulationPosition,alpha);
+    player.group.rotation.y=lerpAngle(player.previousAngle,player.simulationAngle,alpha);
+  }
+  ball.position.lerpVectors(ballPreviousPosition,ballSimulationPosition,alpha);
+}
+function restoreSimulationTransforms(){
+  for(const player of matchPlayers){
+    player.group.position.copy(player.simulationPosition);
+    player.group.rotation.y=player.simulationAngle;
+  }
+  ball.position.copy(ballSimulationPosition);
+}
+function simulateBasketball(dt){
+  simulationTime+=dt;
+  if(updateScoredPossession(dt)){
+    updateHoopReaction(dt); updateParticles(dt); updateConfetti(dt);
+    return;
+  }
+  updateCountdown(dt);
+  if(possessionFrozen){ updateCountdownMovement(dt); return; }
+  updateHumanControls(dt,false);
+  updateTeamAI(dt);
+  for(const player of matchPlayers){ updateJumpPhysics(player,dt); resolveHoopPlayerCollision(player); }
+  resolveBodyCollisions(dt);
+  updateCharacters(dt);
+  updateBall(dt);
+  updateLayup(dt);
+  updateDunk(dt);
+  updateHoopReaction(dt);
+  loosePickupDelay=Math.max(0,loosePickupDelay-dt);
+  ballCollisionCooldown=Math.max(0,ballCollisionCooldown-dt);
+  backboardCollisionCooldown=Math.max(0,backboardCollisionCooldown-dt);
+  checkSteals(); checkBlocksAndCatches(); checkFouls(dt);
+  updateTakeover(dt); updateTeamPresentation(dt);
+  updateCrowd(dt); updateShotTrail(dt); updateParticles(dt); updateConfetti(dt); updateCameraEffects(dt);
+  ledBoardTimer-=dt;
+  if(ledBoardTimer<=0){ ledBoardTimer=2.8; updateLEDBoards(`${teamSize}V${teamSize} · FIRST TO ${targetScore}`); }
+  pulseArenaLights(.35+crowdWave*.5);
 }
 
 function updateCountdown(dt){
@@ -338,9 +368,9 @@ function updateCountdown(dt){
   }
 }
 
-function updateHumanControls(dt){
+function updateHumanControls(dt,processActions=true){
   const p1State = inputManager.getState("p1");
-  processUnifiedInputActions(p1,p1State);
+  if(processActions) processUnifiedInputActions(p1,p1State);
   updatePlayerControl(p1, {
     state:p1State,
     left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", sprint:"ShiftLeft", handLeft:"KeyQ", handRight:"KeyE"
@@ -348,7 +378,7 @@ function updateHumanControls(dt){
 
   if(twoPlayerMode){
     const p2State = inputManager.getState("p2");
-    processUnifiedInputActions(p2,p2State);
+    if(processActions) processUnifiedInputActions(p2,p2State);
     updatePlayerControl(p2, {
       state:p2State,
       left:"KeyJ", right:"KeyL", forward:"KeyI", back:"KeyK", sprint:"ShiftRight", handLeft:["KeyU","Numpad4"], handRight:["KeyO","Numpad6"]
@@ -365,15 +395,16 @@ function updateHumanControls(dt){
 }
 
 function updateCountdownMovement(dt){
-  updateHumanControls(dt);
-  if(!twoPlayerMode) updateBotCountdown(dt);
-  resolveBodyCollisions();
+  updateHumanControls(dt,false);
+  updateTeamAI(dt,{countdown:true});
+  resolveBodyCollisions(dt);
   updateCharacters(dt);
-  const handler = possession === "p1" ? p1 : p2;
-  const defender = possession === "p1" ? p2 : p1;
-  if(handler && defender && ballState === "dribble"){
-    enforceCountdownDefenderGap(defender,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
+  const handler = getBallHandler();
+  if(handler && ballState === "dribble"){
+    for(const defender of getOpponents(handler)) enforceCountdownDefenderGap(defender,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
   }
+  updateBall(dt);
+  updateTeamPresentation(dt);
 }
 
 function enforceCountdownDefenderGap(defender,ballHandler,minDistance){
@@ -454,20 +485,15 @@ function updateModernPlayerControl(char,input,dt){
   }
 
   const amount=THREE.MathUtils.clamp(Math.hypot(input.moveX,input.moveY),0,1);
-  const camera=char.id==="p1"?(twoPlayerMode?camP1:camMain):camP2;
-  const cameraForward=new THREE.Vector3();
-  if(camera) camera.getWorldDirection(cameraForward); else cameraForward.copy(getForward(char.angle));
-  cameraForward.y=0;
-  if(cameraForward.lengthSq()<.001) cameraForward.copy(getForward(char.angle));
-  cameraForward.normalize();
-  const cameraRight=new THREE.Vector3(-cameraForward.z,0,cameraForward.x).normalize();
-  const desiredDirection=cameraForward.multiplyScalar(input.moveY).add(cameraRight.multiplyScalar(input.moveX));
+  // Court axes never change with a camera, a turn or a possession change.
+  const desiredDirection=input.worldDirection?input.worldDirection.clone().setY(0):new THREE.Vector3(input.moveX,0,-input.moveY);
   if(desiredDirection.lengthSq()>.001) desiredDirection.normalize();
 
   const balancedSpeed=THREE.MathUtils.lerp(1,profile.speed,.76);
   const balancedSprint=THREE.MathUtils.lerp(1,profile.sprint,.76);
   const offense=isBallHandler&&ballState==="dribble";
-  const defenderTarget=char.id==="p1"?p2:p1;
+  const handler=getBallHandler();
+  const defenderTarget=handler&&handler.teamId!==char.teamId?handler:getNearestOpponent(char);
   const wantsSprint=input.sprint&&amount>.18&&char.sprint>SPRINT_MIN;
   const baseSpeed=4.3*balancedSpeed*tuning.lateralSpeed;
   const sprintSpeed=7.05*balancedSpeed*balancedSprint*tuning.sprintSpeed;
@@ -477,6 +503,7 @@ function updateModernPlayerControl(char,input,dt){
   if(input.protect) targetSpeed*=offense ? .72 : .82;
   if(char.stamina<.2) targetSpeed*=.82;
   if(char.stumbledTimer>0) targetSpeed*=.42;
+  if(char.reachRecovery>0) targetSpeed*=.55;
 
   const facing=getForward(char.angle);
   const currentDirection=char.velocity.lengthSq()>.04?char.velocity.clone().normalize():facing;
@@ -504,7 +531,7 @@ function updateModernPlayerControl(char,input,dt){
     char.stamina=Math.min(1,char.stamina+(amount>.15?.11:.24)*dt*(profile.width>1.1?.78:1.05));
   }
 
-  if(offense&&amount>.08){
+  if((offense||handler?.teamId===char.teamId)&&amount>.08){
     const targetAngle=Math.atan2(desiredDirection.x,desiredDirection.z);
     char.angle=lerpAngle(char.angle,targetAngle,dt*(wantsSprint?9.2:11.5)*sizeAgility);
   }else if(!offense&&defenderTarget){
@@ -526,15 +553,15 @@ function updateModernPlayerControl(char,input,dt){
 
   char.group.position.addScaledVector(char.velocity,dt);
   if(countdownDribble&&!isBallHandler){
-    const handler=possession==="p1"?p1:p2;
-    if(handler) enforceCountdownDefenderGap(char,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
+    const handler=getBallHandler();
+    if(handler&&handler.teamId!==char.teamId) enforceCountdownDefenderGap(char,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
   }
   keepInCourt(char.group.position);
   char.group.rotation.y=char.angle;
 }
 
 function updatePlayerControl(char,ctrl,dt){
-  const input=ctrl.state||inputManager.getState(char.id);
+  const input=ctrl.state||(char.controllerSlot?inputManager.getState(char.controllerSlot):char.aiInput||createInputFrame());
   if(gameSettings.get("controlStyle")==="modern"||input.source!=="keyboard"){
     updateModernPlayerControl(char,input,dt);
     return;
@@ -596,7 +623,7 @@ function updatePlayerControl(char,ctrl,dt){
     const screenVec = getScreenSideVectorForChar(char,char.defensiveShadeSide);
     const shadeSlide = screenVec.multiplyScalar((0.36 + char.movement.defensiveWidth*0.1) * dt);
     char.group.position.add(shadeSlide);
-    const handler = possession === "p1" ? p1 : p2;
+    const handler = getBallHandler();
     if(handler){
       const toBall = handler.group.position.clone().sub(char.group.position);
       toBall.y = 0;
@@ -610,7 +637,7 @@ function updatePlayerControl(char,ctrl,dt){
   if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
   if(char.stamina < .2) char.velocity.multiplyScalar(.82);
   if(char.hasBall && ballState === "dribble"){
-    const defender = char.id === "p1" ? p2 : p1;
+    const defender = getNearestOpponent(char);
     if(defender){
       const toRim = HOOP_POS.clone().sub(char.group.position).setY(0).normalize();
       const defToBall = char.group.position.clone().sub(defender.group.position).setY(0);
@@ -635,8 +662,8 @@ function updatePlayerControl(char,ctrl,dt){
 
   char.group.position.add(char.velocity.clone().multiplyScalar(dt));
   if(countdownDribble && !isBallHandler){
-    const handler = possession === "p1" ? p1 : p2;
-    if(handler) enforceCountdownDefenderGap(char,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
+    const handler = getBallHandler();
+    if(handler&&handler.teamId!==char.teamId) enforceCountdownDefenderGap(char,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
   }
   keepInCourt(char.group.position);
   char.group.rotation.y = char.angle;
@@ -662,8 +689,8 @@ function updateDefensiveShade(char,ctrl,dt){
       clearPendingSteal(char,char.pendingStealCode);
     }
   }
-  const holdingLeft = char.id === "p1" ? !!keys["KeyQ"] : (!!keys["KeyU"] || !!keys["Numpad4"]);
-  const holdingRight = char.id === "p1" ? !!keys["KeyE"] : (!!keys["KeyO"] || !!keys["Numpad6"]);
+  const holdingLeft = char.controllerSlot === "p1" ? !!keys["KeyQ"] : (!!keys["KeyU"] || !!keys["Numpad4"]);
+  const holdingRight = char.controllerSlot === "p1" ? !!keys["KeyE"] : (!!keys["KeyO"] || !!keys["Numpad6"]);
   const desired = holdingLeft && !holdingRight ? "left" : holdingRight && !holdingLeft ? "right" : null;
   if(!desired){
     char.defensiveShadeTime = Math.max(0,char.defensiveShadeTime - dt*3.4);
