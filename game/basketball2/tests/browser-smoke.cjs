@@ -23,7 +23,7 @@ const root=path.resolve(__dirname,'../../..');
       // Keep real browser frames available for screenshots while advancing the
       // actual game simulation explicitly and reproducibly in each assertion.
       if(file.endsWith('bootstrap.js')) return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(file,'utf8').replace('animate();','')});
-      return route.fulfill({path:file,contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript'});
+      return route.fulfill({path:file,contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':file.endsWith('.webp')?'image/webp':'text/javascript'});
     });
     if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
     await page.goto('http://basketball.local/game/basketball2/');
@@ -53,6 +53,28 @@ const root=path.resolve(__dirname,'../../..');
       if(mode.ballState==='dribble') assert.deepEqual(mode.ownership,[mode.ballOwner]);
     }
     console.log('PASS: eight solo/local/team configurations, AI simulation and single ownership');
+    const playbooks=await page.evaluate(()=>{
+      const results=[];
+      for(const style of Object.keys(OFFENSIVE_STYLES)){
+        teamSize=3;twoPlayerMode=false;teamOffensiveStyles=[style,'balanced'];startGame();
+        countdownTimer=0;possessionFrozen=false;
+        getOpponents(p1).forEach(player=>player.aiBrain.actionCooldown=99);
+        const phases=new Set(),roles=new Set();
+        for(let i=0;i<480;i++){
+          simulateBasketball(1/60);
+          if(aiTeamPlans[0]) phases.add(aiTeamPlans[0].phase);
+          getTeammates(p1).forEach(player=>roles.add(player.aiBrain.role));
+        }
+        results.push({style,phases:[...phases],roles:[...roles],finite:matchPlayers.every(player=>player.group.position.toArray().every(Number.isFinite))});
+      }
+      return results;
+    });
+    assert.ok(playbooks.every(play=>play.finite));
+    const motion=playbooks.find(play=>play.style==='motion'),screen=playbooks.find(play=>play.style==='pick_roll'),drive=playbooks.find(play=>play.style==='drive_kick');
+    assert.ok(motion.phases.includes('cut')&&motion.phases.includes('fill'),'motion runs cut/fill phases');
+    assert.ok(screen.phases.includes('screen')&&screen.phases.includes('roll'),'pick and roll advances coordinated phases');
+    assert.ok(drive.phases.includes('drive')&&drive.phases.includes('kick'),'drive and kick advances coordinated phases');
+    console.log('PASS: all four playbooks run distinct coordinated actions in the real simulation');
     const autoplay=await page.evaluate(()=>{
       teamSize=3;twoPlayerMode=false;startGame();countdownTimer=0;possessionFrozen=false;
       const originalControls=updateHumanControls;

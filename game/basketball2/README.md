@@ -37,6 +37,12 @@ Quick Play supports 1v1, 2v2, and 3v3, with one or two humans. Local team matche
 
 Gameplay runs at a fixed 60 Hz, with position/rotation interpolation for rendering. Cameras translate with the action using a constant court-relative angle and distance, including both split views. Split rendering shares the shadow update. AI uses the same movement, stamina, collision, and shooting systems as humans; difficulty changes reaction and tactical decisions. Off-ball roles include spacing, cutting, screens/rolls, assignments/help, and rebounding/outlets.
 
+Each team can choose an offense in Quick Play: **Balanced** mixes reads, **Motion** uses shared cut/fill phases and pass-and-cut actions, **Pick & Roll** coordinates a screener, the handler's turn, a roll, and a weak-side outlet, and **Drive & Kick** spreads outlets before attacking and passing against help. These choices change AI targets, movement, and passing priorities. Human teammates remain under human control. The playbook adapts to 2v2/3v3 and resets after turnovers and inbounds.
+
+Defenders maintain separate matchups. A shared defensive plan can send exactly one AI helper to a vulnerable sideline/corner handle or beaten paint drive while the third defender rotates into uncovered passing lanes. It accounts for nearby human help and open rim threats. Traps end on a pass, escape, or timeout and have a recovery cooldown; they are not permanent team-wide ball chasing. Only one defender pursues an interception while the others retain coverage.
+
+The menu uses original illustrated artwork in `assets/menu-hero.webp` with live HTML controls and native SVG mode/tactic diagrams. See `assets/README.md` for its generation prompt and provenance. Court/player models and gameplay effects remain generated in code. Covered court rendering and cosmetic menu previews redraw at 12 Hz while the HTML UI retains normal browser responsiveness.
+
 Shot timing, distance, momentum, stamina, shot type and pressure determine repeatable physical aim error. Layups release a ballistic shot, while close dunk gathers can be blocked. Steals have a readable windup, a live reach interval, and recovery after a miss. Score/out-of-bounds delays advance with simulation, so pausing and restarting cannot trigger stale inbound callbacks.
 
 ## Validation
@@ -53,8 +59,9 @@ Run the real browser integration smoke test with the repository's Playwright dev
 
 ```sh
 node game/basketball2/tests/browser-smoke.cjs
+node game/basketball2/tests/menu-layout.cjs
 ```
 
-The browser test serves source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. It exercises all eight solo/local configurations, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load.
+The browser tests serve source through request interception, without a development server. Set `BASKETBALL_CHROME` to use a system Chrome executable, `THREE_BUNDLE` to an existing Three.js 0.160 UMD bundle for offline testing, and `BASKETBALL_SCREENSHOTS` to an existing output directory to capture desktop/mobile views. Gameplay checks exercise all eight solo/local configurations, all four playbooks, continuous AI possessions, passes/interceptions, switching, scoring, pause/rematch/menu, resize/split layouts, and Tour save/load. Menu checks cover four desktop/mobile sizes, artwork decoding, keyboard focus/activation, and style persistence through reloads and Tour.
 
 Automated keyboard, touch-pointer, and single/dual gamepad-frame checks complement browser simulation. Physical touchscreen/gamepad feel and frame pacing on low-end devices still require on-device playtesting; AI tactics are lightweight heuristics, not a full basketball playbook.
