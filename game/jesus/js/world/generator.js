@@ -125,6 +125,14 @@ function stampChunk(world,descriptor) {
   }));
   chunk.pickups=template.pickupSpawns.map((spawn,index)=>({...spawn,secret:isSecretPickup(spawn),id:`${prefix}:pickup:${index}`,chunkIndex:descriptor.index,x:spawn.x+offset,w:28,h:28,collected:false}));
   if(descriptor.rest)chunk.pickups.push({id:`${prefix}:pickup:rest`,chunkIndex:descriptor.index,x:offset+165,y:VIEW.floorY-52,w:28,h:28,type:"bread",collected:false});
+  // Append new IDs so existing checkpoints keep the same collected-item IDs.
+  // Supplies sit on the ordinary route, before jumps and combat, in every biome.
+  const routes=chunk.platforms.filter(p=>p.route&&!p.temporary);
+  const movementSurface=descriptor.index===0?chunk.platforms[0]:routes[0];
+  const supply=(type,p,x)=>{if(p)chunk.pickups.push({id:`${prefix}:supply:${type}`,chunkIndex:descriptor.index,x,y:surfaceY(p,x+14)-48,w:28,h:28,type,collected:false});};
+  supply(descriptor.index%2===0?'water':'wind',movementSurface,descriptor.index===0?offset+245:(movementSurface?.x||offset)+20);
+  const fireSurface=routes[Math.min(3,routes.length-1)];
+  supply('fireRain',fireSurface,(fireSurface?.x||offset)+25);
   for(const pickup of chunk.pickups)groundPickup(pickup,chunk.platforms);
   for(let i=0;i<10;i++) {
     const p=chunk.platforms[Math.min(chunk.platforms.length-1,1+i)];if(!p)continue;

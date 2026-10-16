@@ -15,6 +15,7 @@ const CORE_FX = ['jump-dust','landing-dust','dash-trail','blessing-attack-arc','
 const ENEMY_STATES = ['idle','move','attack','hurt','death'];
 const BOSS_STATES = [...ENEMY_STATES,'attack2'];
 const POWER_ART = {
+  water:['fx-water-splash','fx-wings-flight-aura'], wind:['fx-sandals-speed-trail'],
   sandals:['fx-sandals-speed-trail'], wings:['player.jesus.glide','fx-wings-flight-aura'],
   shield:['player.jesus.shield','fx-shield-pulse'], bread:['player.jesus.heal','fx-bread-healing-aura','fx-heal-recovery'],
   holyLight:['player.jesus.holy-light','fx-holy-light-judgment'], 'holy-light':['player.jesus.holy-light','fx-holy-light-judgment'],

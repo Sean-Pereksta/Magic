@@ -1,12 +1,14 @@
 import { overlaps } from "../common.js";
+import { BOOST_SECONDS } from "./boosts.js";
 import { damageEnemy, emitCombatEffect, updateCombatEffects } from "../enemies/enemies.js";
 
-export const BLESSINGS = ["shield", "sandals", "bread", "holyLight", "fireRain", "wings"];
+export const BLESSINGS = ["shield", "sandals", "bread", "holyLight", "fireRain", "wings", "water", "wind"];
 const center = (entity) => ({ x: entity.x + entity.w / 2, y: entity.y + entity.h / 2 });
 const distance = (a, b) => Math.hypot(center(a).x - center(b).x, center(a).y - center(b).y);
 
 function initializeBlessings(player) {
   player.powers ||= {};
+  player.boosts ||= {water:0,wind:0};
   if (player.blessingsReady) return;
   player.blessingsReady = true;
   const restoringReserve = Number.isFinite(player.holyLightCapacity);
@@ -22,7 +24,12 @@ function initializeBlessings(player) {
 export function grantBlessing(player, type) {
   initializeBlessings(player);
   if (!BLESSINGS.includes(type)) return;
-  if (type === "bread") {
+  if (BOOST_SECONDS[type]) {
+    // A fresh water pickup can rescue an airborne player; refreshing an active
+    // boost must not refill already-spent jumps in the same flight.
+    if(type === "water" && !(player.boosts.water > 0)) player.extraJumps = (player.extraJumps || 0) + 1;
+    player.boosts[type] = BOOST_SECONDS[type];
+  } else if (type === "bread") {
     player.powers.bread = true;
     player.hearts = Math.min(player.maxHearts, player.hearts + 2);
     player.breadRecovery = 0;
@@ -41,6 +48,7 @@ export function grantBlessing(player, type) {
 // (sandals and wings) are applied by the player controller.
 export function updateBlessings(player, world, dt) {
   initializeBlessings(player);
+  for(const key of Object.keys(BOOST_SECONDS)) player.boosts[key] = Math.max(0,(player.boosts[key] || 0)-dt);
   player.abilityCooldown = Math.max(0, player.abilityCooldown - dt);
   if ((player.attackTimer || 0) <= 0) player.abilityState = null;
   const maxLight = player.holyLightCapacity || 3;
@@ -76,7 +84,8 @@ export function collectPickups(world, player) {
     pickup.collected = true;
     grantBlessing(player, pickup.type);
     collected.push(pickup.type);
-    emitCombatEffect(world, pickup.type === "bread" ? "fx-bread-healing-aura" : "fx-pickup-collect", pickup.x + pickup.w / 2, pickup.y + pickup.h / 2, { duration: .8 });
+    const effect=pickup.type==='water'?'fx-water-splash':pickup.type==='bread'?'fx-bread-healing-aura':'fx-pickup-collect';
+    emitCombatEffect(world, effect, pickup.x + pickup.w / 2, pickup.y + pickup.h / 2, { duration: .55, scale: .32 });
     world.collectedPickupIds?.add?.(pickup.id);
     world.persistent?.collected?.add?.(pickup.id);
     world._state?.collected?.add?.(pickup.id);
@@ -140,12 +149,10 @@ export function useFireRain(player, worldOrBoss, controller = null) {
   return true;
 }
 
-// One mobile action. Fire Rain is chosen only for a crowd or exposed boss;
-// otherwise the regenerating light reserve is the predictable default.
+// Fire pickups immediately change the existing action; light returns once the
+// fire reserve is spent. Failed casts keep their charge.
 export function useAbility(player, world, bossController, options = {}) {
-  const crowd = (world.enemies || []).filter((e) => !e.dead && distance(e, player) <= 470).length >= 3;
-  const exposedBoss = bossController?.boss?.state === "VULNERABLE" && distance(bossController.boss, player) <= 520;
-  if ((options.rain || crowd || exposedBoss) && useFireRain(player, world, bossController)) return "fireRain";
+  if ((Number(player.powers.fireRain) > 0 || options.rain) && useFireRain(player, world, bossController)) return "fireRain";
   return useHolyLight(player, world, bossController) ? "holyLight" : false;
 }
 
