@@ -28,7 +28,9 @@ The length budget aims for roughly 10–15 minutes in early worlds and 15–25 m
 | Pause | Escape / P or pause button | Pause button |
 | Debug overlay | F1 | — |
 
-Keyboard bindings can be changed in Controls. Hold jump for greater height; release for a shorter jump. The camera frames lower landing surfaces before a drop; hold Down to look farther while keeping the player visible. Moving platforms travel 400 px horizontally or 280 px vertically from end to end. Push against a wall to slide, then jump away. Wings add a second jump and let held jump slow a descent. Stomp enemies or use a blessing during an opening. Light regenerates, shields recharge after blocking, and bread heals immediately and enables slow recovery. The single blessing action chooses Fire Rain for a crowd or exposed guardian when available; otherwise it uses Holy Light. Out-of-range casts preserve charges. Touch input supports simultaneous movement and action pointers, and clears held actions on cancellation, blur, or pause.
+Keyboard bindings can be changed in Controls. Hold jump for greater height; release for a shorter jump. The camera frames lower landing surfaces before a drop; hold Down to look farther while keeping the player visible. Moving platforms travel 400 px horizontally or 280 px vertically from end to end. Push against a wall to slide, then jump away. Wings add a second jump and let held jump slow a descent. Stomp enemies or use a blessing during an opening. Light regenerates, shields recharge after blocking, and bread heals immediately and enables slow recovery. The single blessing action uses collected Fire Rain charges first, then returns to regenerating Holy Light. Out-of-range casts preserve charges. Touch input supports simultaneous movement and action pointers, and clears held actions on cancellation, blur, or pause.
+
+Water pickups grant one extra air jump for 45 seconds (in addition to Wings, if owned). Wind sandals boost run and dash speed by 20% and shorten dash recovery for 30 seconds. Fire pickups refill three casts. Each chunk supplies a movement pickup and fire on the main route, alongside the original health, light, and secret rewards. A small status line shows remaining boosts and fire charges; no controls are added. Timers pause with play, refresh without stacking, and restore with the checkpoint. An available water jump remains usable until landing if its timer runs out in midair.
 
 **Artwork and streaming**
 
@@ -50,7 +52,7 @@ Journey checkpoints preserve the seeded world, checkpoint player resources, coll
 
 **Verification**
 
-With a recent Node.js installation, run all seven dependency-free core suites:
+With a recent Node.js installation, run all eight dependency-free core suites:
 
 ```sh
 npm test
@@ -62,6 +64,7 @@ npm test
 - `combat-overhaul.mjs`: all enemy species, telegraphs, weaknesses, projectiles, blessings, guardian attack routines, and vulnerability behavior.
 - `boss-simulation.mjs`: the original completable-guardian and movement regression simulations.
 - `progress-save.mjs`: progression, records, legacy migration, corrupt/blocked storage, and configurable key conflicts.
+- `pickup-playstyles.mjs`: real double/triple jumps, boost refresh and expiry, wind movement and dash changes, fire-to-light switching, main-route supplies, asset plans, and checkpoint persistence.
 - `endurance.mjs`: 144,000 shipped fixed steps, totaling 20 simulated minutes across six biomes, with bounded live entities/projectile pools/effects and collection/death restoration checks.
 
 The endurance harness deliberately relocates an invulnerable scripted actor to visit chunks and encounters. It exercises sustained simulation and persistence; it does not demonstrate a human completing the campaign or establish a device frame-rate guarantee. Browser layout, touch behavior, graphics delivery, and performance should also be checked on the intended hosting origin and target devices.

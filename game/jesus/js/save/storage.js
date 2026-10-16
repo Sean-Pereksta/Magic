@@ -1,4 +1,5 @@
 import {createJourneySave,migrateJourney,JOURNEY_BY_ID} from "../world/journey.js";
+import {cleanBoosts} from "../powers/boosts.js";
 const JOURNEY_KEY="jesusRunnerJourneyV3",LEGACY_KEY="jesusRunJourneyV2",SCORE_KEY="jesusRunHighscores";
 const POWERS=["shield","sandals","bread","holyLight","fireRain","wings"];
 const BOSS_IDS=["warBeast","templeJudge","pitLord","celestialTrial"];
@@ -28,7 +29,7 @@ function checkpointPlayer(value,challenge,permanentPowers){
   const capacity=bounded(value.holyLightCapacity,Math.max(defaultCapacity,bounded(rawPowers.holyLight,0,0,5,true)),3,5,true);
   if(rawPowers.holyLight!=null)powers.holyLight=bounded(rawPowers.holyLight,capacity,0,capacity,true);
   if(rawPowers.fireRain!=null)powers.fireRain=bounded(rawPowers.fireRain,0,0,3,true);
-  return{powers,hearts:bounded(value.hearts,challenge?3:4,1,challenge?3:4,true),
+  return{powers,boosts:cleanBoosts(value.boosts),hearts:bounded(value.hearts,challenge?3:4,1,challenge?3:4,true),
     shieldUnlocked:value.shieldUnlocked===true||powers.shield===true||permanentPowers.includes("shield"),holyLightCapacity:capacity};
 }
 function checkpointWorld(value,checkpoint){

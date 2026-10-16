@@ -211,8 +211,16 @@ export class Renderer {
     ctx.restore();this.drawnSprites++;
   }
   _pickup(p,time) {
+    if(p.type==='water') {
+      const ctx=this.ctx,x=p.x+(p.w||28)/2,y=p.y+(p.h||28)/2+Math.sin(time*3.4+p.x*.02)*3;
+      ctx.save();ctx.translate(x,y);ctx.shadowColor='#65dfff';ctx.shadowBlur=12;
+      const fill=ctx.createLinearGradient(0,-22,0,20);fill.addColorStop(0,'#edffff');fill.addColorStop(.45,'#58d9f4');fill.addColorStop(1,'#1677b9');
+      ctx.fillStyle=fill;ctx.strokeStyle='#ecddad';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-22);
+      ctx.bezierCurveTo(-4,-12,-17,-1,-16,8);ctx.bezierCurveTo(-15,25,16,25,16,8);ctx.bezierCurveTo(17,-1,4,-12,0,-22);ctx.fill();ctx.stroke();
+      ctx.shadowBlur=0;ctx.strokeStyle='#e1ffff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-7,-3);ctx.quadraticCurveTo(-12,6,-7,11);ctx.stroke();ctx.restore();this.drawnSprites++;return;
+    }
     const entry=this._asset('collectibles-atlas');if(!entry)return;
-    const frame=namedFrame(entry.meta,p.artFrame||PICKUP_ART[p.type]||p.type);if(!frame)return;
+    const frame=namedFrame(entry.meta,p.artFrame||(p.type==='wind'?'ability-sandals':PICKUP_ART[p.type])||p.type);if(!frame)return;
     const size=p.type==='chest'?70:46;
     if(p.grounded) {
       const at=groundedArtPlacement(entry.meta,frame,p.x+(p.w||28)/2,p.groundY??p.y+p.h,size,p.visualWidth,p.visualHeight);
@@ -250,6 +258,7 @@ export class Renderer {
     const alias={doubleJump:'double-jump',wallJump:'wall-jump',wallSlide:'wall-slide',holyLight:'holy-light',fireRain:'fire-rain',landing:'land',running:'run',falling:'fall',jumping:'jump',dead:'death'};
     this._sprite(`player.jesus.${alias[state]||state}`,p,p.animTime??p.stateTime??time,alpha,(p.invulnerable||0)>0&&Math.floor(time*16)%2?.45:1);
     if(p.dashTimer>0)this._effect({type:'fx-dash-trail',x:p.x+p.w/2-p.facing*24,y:p.y+p.h,time:p.animTime||0,scale:.36,facing:p.facing},false);
+    if(p.boosts?.wind>0&&Math.abs(p.vx)>100)this._effect({type:'fx-sandals-speed-trail',x:p.x+p.w/2-p.facing*20,y:p.y+p.h,time:time%.6,scale:.26,facing:p.facing},false);
     if(p.powers?.shield&&p.shieldActive>0)this._effect({type:'fx-shield-pulse',x:p.x+p.w/2,y:p.y+p.h,time,scale:.46},false);
     if(p.state==='glide')this._effect({type:'fx-wings-flight-aura',x:p.x+p.w/2,y:p.y+p.h,time,scale:.4},false);
   }

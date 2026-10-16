@@ -10,6 +10,7 @@ export function createPlayer(x = 80, y = VIEW.floorY - PHYSICS.playerHeight) {
     state: "idle", stateTime: 0, animTime: 0, attackTimer: 0, hurtTimer: 0,
     jumpStateTimer: 0, airAction: "jump", landTimer: 0, accelerationTimer: 0, stopTimer: 0, shieldTimer: 0,
     hearts: 4, maxHearts: 4, extraJumps: 0, lastSafe: { x, y },
+    boosts: {water:0,wind:0},
     powers: { sandals: false, wings: false, shield: false, bread: false, holyLight: 0, fireRain: 0 },
   };
 }
@@ -48,6 +49,8 @@ export function updatePlayer(player, world, input, dt) {
   const platforms = world.platforms || [], movers = world.movers || [];
   const surfaces = platforms.concat(movers);
   const grounded = player.onGround;
+  const airJumps = Number(Boolean(player.powers.wings)) + Number(player.boosts?.water > 0);
+  const wind = player.boosts?.wind > 0;
   const oldGround = player.groundId;
   player.previousX = player.x; player.previousY = player.y;
   const axis = clamp(input.horizontal?.() || 0, -1, 1);
@@ -61,7 +64,7 @@ export function updatePlayer(player, world, input, dt) {
   player.coyote = grounded ? PHYSICS.coyoteTime : Math.max(0, (player.coyote || 0) - dt);
   player.wallCoyote = player.wall ? 0.1 : Math.max(0, (player.wallCoyote || 0) - dt);
   if (jumpPressed) player.jumpBuffer = PHYSICS.jumpBuffer;
-  if (grounded) { player.airDashUsed = false; player.extraJumps = player.powers.wings ? 1 : 0; }
+  if (grounded) { player.airDashUsed = false; player.extraJumps = airJumps; }
 
   const ridden = grounded && oldGround ? movers.find(mover => mover.id === oldGround) : null;
   if (ridden && enabled(ridden)) { player.x += ridden.dx || 0; player.y += ridden.dy || 0; }
@@ -80,20 +83,20 @@ export function updatePlayer(player, world, input, dt) {
       if (player.coyote <= 0) player.extraJumps--; player.vy = -PHYSICS.jumpVelocity;
     }
     player.jumpStateTimer=.24;
-    emit(world,player.airAction==="doubleJump"?"fx-wings-flight-aura":"fx-jump-dust",player.x+player.w/2,player.y+player.h,.28,.35);
+    emit(world,player.airAction==="doubleJump"?(player.boosts?.water>0?"fx-water-splash":"fx-wings-flight-aura"):"fx-jump-dust",player.x+player.w/2,player.y+player.h,.28,.35);
     player.onGround = false; player.coyote = 0; player.wallCoyote = 0; player.jumpBuffer = 0; player.dashTimer = 0;
     player.groundId = null;
   }
 
   if (dashPressed && player.dashCooldown <= 0 && (grounded || !player.airDashUsed)) {
-    player.dashTimer = PHYSICS.dashDuration; player.dashCooldown = PHYSICS.dashCooldown;
-    player.airDashUsed = !grounded; player.vx = (axis ? Math.sign(axis) : player.facing) * PHYSICS.dashSpeed;
+    player.dashTimer = PHYSICS.dashDuration; player.dashCooldown = PHYSICS.dashCooldown * (wind ? .65 : 1);
+    player.airDashUsed = !grounded; player.vx = (axis ? Math.sign(axis) : player.facing) * PHYSICS.dashSpeed * (wind ? 1.2 : 1);
     player.facing = Math.sign(player.vx); player.vy = 0;
   }
   const dashing = player.dashTimer > 0;
   if (dashing) { player.dashTimer = Math.max(0, player.dashTimer - dt); player.vy = 0; }
   else {
-    const speed = player.powers.sandals ? PHYSICS.sandalsSpeed : PHYSICS.runSpeed;
+    const speed = (player.powers.sandals ? PHYSICS.sandalsSpeed : PHYSICS.runSpeed) * (wind ? 1.2 : 1);
     if (player.wallJumpLock <= 0) {
       player.vx = Math.abs(axis) > 0.02
         ? approach(player.vx, axis * speed, (grounded ? PHYSICS.groundAcceleration : PHYSICS.airAcceleration) * dt)
@@ -144,7 +147,7 @@ export function updatePlayer(player, world, input, dt) {
     if (landing) {
       if(!grounded&&player.vy>300){player.landTimer=.1;emit(world,"fx-landing-dust",player.x+player.w/2,highest,.3,.35);}
       nextY = highest - player.h; player.vy = 0; player.onGround = true; player.groundId = landing.id;
-      player.extraJumps = player.powers.wings ? 1 : 0; player.airDashUsed = false;
+      player.extraJumps = airJumps; player.airDashUsed = false;
       if (!landing.temporary && landing.kind !== "collapsing") player.lastSafe = { x: player.x, y: nextY };
     }
   } else {

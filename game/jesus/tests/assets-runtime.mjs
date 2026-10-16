@@ -162,6 +162,7 @@ transitioning.releaseLevel();
 // sheet and confirms that culling avoids drawing distant actors.
 let draws=0;
 const context=()=>new Proxy({}, {get(target,key){
+  if(key==='createLinearGradient')return()=>({addColorStop(){}});
   if(key==='drawImage')return(image,...args)=>{
     draws++;
     if(args.length===8){const [sx,sy,sw,sh]=args;assert(sx>=0&&sy>=0&&sw>0&&sh>0);assert(sx+sw<=image.naturalWidth+.001&&sy+sh<=image.naturalHeight+.001);}

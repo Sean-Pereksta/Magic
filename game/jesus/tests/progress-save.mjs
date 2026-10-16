@@ -20,7 +20,7 @@ assert.equal(recovered.player,null);assert.equal(recovered.worldState,null);
 assert.doesNotThrow(()=>{recovered.stats.time=15;recovered.stats.damage++;storage.saveJourney({...createJourneySave(),checkpoint:recovered});},'pause/pagehide can update a recovered checkpoint');
 recovered=readCheckpoint({...validCheckpoint,challenge:true,stats:{time:-2,collectibles:1.9,secrets:'7',damage:1e12,deaths:'bad',totalSecrets:null},player:{hearts:-20,holyLightCapacity:99,shieldUnlocked:'false',powers:{shield:'false',wings:true,sandals:[],bread:false,holyLight:99,fireRain:-2,unknown:true}}});
 assert.deepEqual(recovered.stats,{time:0,collectibles:1,secrets:7,damage:1000000,deaths:0,totalSecrets:0});
-assert.deepEqual(recovered.player,{hearts:1,holyLightCapacity:5,shieldUnlocked:false,powers:{wings:true,bread:false,holyLight:5,fireRain:0}},'malformed player fields cannot become truthy powers or infinite resources');
+assert.deepEqual(recovered.player,{hearts:1,holyLightCapacity:5,shieldUnlocked:false,boosts:{water:0,wind:0},powers:{wings:true,bread:false,holyLight:5,fireRain:0}},'malformed player fields cannot become truthy powers or infinite resources');
 for(const malformed of ['bad',[],42,null]){
   recovered=readCheckpoint({...validCheckpoint,stats:malformed,player:malformed});
   assert.equal(recovered.stats.time,0);assert.equal(recovered.stats.damage,0);assert.equal(recovered.player,null);
