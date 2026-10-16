@@ -704,11 +704,28 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['username','packed','savedAt','completedRunId']);
         allow list, delete: if false;
       }
+      // A Bible result belongs to the signed-in username and is applied once.
+      // Each player saves their own profile, so another game's account binding
+      // cannot prevent the rest of the room from finishing a match.
+      match /bibleGameResults/{id} {
+        allow read: if isAuthed() && get(/databases/$(database)/documents/users/$(userId)).data.get('chatAuthUid','') == request.auth.uid;
+        allow create: if isAuthed()
+          && get(/databases/$(database)/documents/users/$(userId)).data.get('chatAuthUid','') == request.auth.uid
+          && request.resource.data.keys().hasOnly(['sessionId','lobbyId','uid','appliedAt','outcome','change','oldElo','newElo'])
+          && request.resource.data.sessionId == id && request.resource.data.lobbyId is string
+          && request.resource.data.uid is string && request.resource.data.appliedAt == request.time
+          && get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(id)).data.status == 'ended'
+          && get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(id)).data.ratingsApplied == true
+          && get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(id)).data.ratingResults[request.resource.data.uid].uid == request.resource.data.uid
+          && get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(id)/players/$(request.resource.data.uid)).data.authUid == request.auth.uid
+          && get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(id)/players/$(request.resource.data.uid)).data.profileKey == userId;
+        allow update, delete: if false;
+      }
       // Preserve legacy username-scoped saves for the other hub games. The
       // explicitly validated game paths are excluded because allows combine by OR.
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthed()
-          && !(subcollection in ['factionForge','turncraftHistory','turncraftSoloHistory','turncraftSaves','turncraftPending','tiny_troops_profiles']);
+          && !(subcollection in ['factionForge','turncraftHistory','turncraftSoloHistory','turncraftSaves','turncraftPending','tiny_troops_profiles','bibleGameResults']);
       }
     }
 
@@ -772,6 +789,164 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','host','updatedAt']))
         )))));
       allow delete: if isAuthed() && (!turncraftType(resource.data) || resource.data.get('turncraftVersion',0) != 1) && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
+      // Bible room metadata and the public scoreboard can be read while a
+      // browser is joining. Private actions require a verified username and an
+      // Auth-to-player index; team chats never inherit the legacy catch-all.
+      function bibleLobby() { return get(/databases/$(database)/documents/lobbies/$(gameId)).data.get('gameType','') == 'biblegame'; }
+      function bibleName(name) {
+        return isAuthed() && bibleLobby() && name is string && name in get(/databases/$(database)/documents/lobbies/$(gameId)).data.players
+          && get(/databases/$(database)/documents/users/$(name)).data.get('chatAuthUid','') == request.auth.uid;
+      }
+      function bibleSession(sid) { return get(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)).data; }
+      function bibleMemberData(sid) { return get(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/members/$(request.auth.uid)).data; }
+      function bibleMember(sid) {
+        return isAuthed() && bibleName(bibleMemberData(sid).profileKey)
+          && get(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/players/$(bibleMemberData(sid).playerUid)).data.authUid == request.auth.uid;
+      }
+      function bibleActive(sid) {
+        return bibleMember(sid)
+          && get(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/players/$(bibleMemberData(sid).playerUid)).data.connectionId == bibleMemberData(sid).connectionId;
+      }
+      function bibleParticipant(sid) { return bibleActive(sid) && bibleMemberData(sid).playerUid in bibleSession(sid).participantUids; }
+      function bibleWindow(sid) {
+        let s=bibleSession(sid);
+        return s.status == 'playing' && (s.mode == 'coop' || request.time < s.phaseStartedAt + duration.value(s.durationMs,'ms'));
+      }
+      function bibleConnection(sid,data) { return data.connectionId == bibleMemberData(sid).connectionId; }
+      function bibleTeam(sid,team) { return bibleParticipant(sid) && (team == 'A' ? bibleMemberData(sid).playerUid in bibleSession(sid).teamA : bibleMemberData(sid).playerUid in bibleSession(sid).teamB); }
+      function bibleSessionCreate(sid) {
+        let d=request.resource.data;
+        let control=/databases/$(database)/documents/lobbies/$(gameId)/bibleGame/control;
+        return bibleName(d.hostProfileKey) && d.hostAuthUid == request.auth.uid && d.hostName == d.hostProfileKey
+          && d.sessionId == sid && d.status == 'voting' && d.roundKey == 0
+          && d.participantUids == [] && d.teamA == [] && d.teamB == [] && d.ratingsApplied == false
+          && d.phaseStartedAt == request.time && d.createdAt == request.time && d.updatedAt == request.time
+          && getAfter(control).data.activeSessionId == sid;
+      }
+      function bibleTeamUpdate(sid,a,b) {
+        return bibleWindow(sid) && a.mode == 'teams'
+          && request.time >= a.phaseStartedAt + duration.value(a.durationMs-20000,'ms')
+          && request.time >= a.phaseStartedAt + duration.value(8000,'ms') && (
+          bibleTeam(sid,'A') && a.teamLocks.A == false && b.teamLocks.A == true
+            && b.teamLocks.B == a.teamLocks.B && b.teamTotals.B == a.teamTotals.B
+            && b.teamTotals.A is number && b.teamTotals.A >= a.teamTotals.A && b.teamTotals.A <= a.teamTotals.A+5
+          || bibleTeam(sid,'B') && a.teamLocks.B == false && b.teamLocks.B == true
+            && b.teamLocks.A == a.teamLocks.A && b.teamTotals.A == a.teamTotals.A
+            && b.teamTotals.B is number && b.teamTotals.B >= a.teamTotals.B && b.teamTotals.B <= a.teamTotals.B+5);
+      }
+      function bibleSessionUpdate(sid) {
+        let a=resource.data; let b=request.resource.data; let fields=b.diff(a).affectedKeys();
+        return bibleActive(sid) && b.sessionId == a.sessionId && b.hostUid == a.hostUid && b.hostName == a.hostName
+          && b.get('hostAuthUid','') == a.get('hostAuthUid','') && b.get('hostProfileKey','') == a.get('hostProfileKey','') && b.updatedAt == request.time
+          && (a.status == 'voting' && (
+            b.status == 'voting' && fields.hasOnly(['bookPoolMode','updatedAt'])
+            || b.status == 'playing' && b.roundKey == a.roundKey+1 && b.participantUids is list
+              && b.participantUids.size() >= 1 && b.participantUids.size() <= 20
+              && bibleMemberData(sid).playerUid in b.participantUids
+              && b.mode in ['traditional','speed','category','teams','coop']
+              && b.phaseStartedAt == request.time && b.ratingsApplied == false
+              && (b.mode != 'teams' || b.teamA.size() >= 1 && b.teamB.size() >= 1
+                && b.teamA.toSet().intersection(b.teamB.toSet()).size() == 0
+                && b.teamA.toSet().union(b.teamB.toSet()) == b.participantUids.toSet()))
+          || a.status == 'playing' && bibleMemberData(sid).playerUid in a.participantUids
+            && b.participantUids == a.participantUids && b.teamA == a.teamA && b.teamB == a.teamB && b.mode == a.mode
+            && (fields.hasOnly(['teamTotals','teamLocks','roundResolvedAt','updatedAt']) ? bibleTeamUpdate(sid,a,b)
+              : b.status in ['playing','ended'] && fields.hasOnly(['status','round','roundKey','currentQuestion','chosenIds','phaseStartedAt','durationMs','teamLocks','roundResolvedAt','sharedLives','coopCorrectCount','options','coopLocked','coopLockedAt','coopAnsweredByName','coopWasRight','endReason','updatedAt']))
+          || a.status == 'ended' && bibleMemberData(sid).playerUid in a.participantUids && a.ratingsApplied == false && b.ratingsApplied == true
+            && fields.hasOnly(['ratingsApplied','ratingResults','winnerUids','winnerNames','resultSummary','ratedAt','updatedAt']) && b.ratedAt == request.time);
+      }
+      match /bibleGame/{id} {
+        allow read: if isAuthed() && bibleLobby() && id == 'control';
+        allow create: if id == 'control' && bibleName(request.resource.data.hostProfileKey)
+          && request.resource.data.hostAuthUid == request.auth.uid && request.resource.data.hostName == request.resource.data.hostProfileKey
+          && get(/databases/$(database)/documents/lobbies/$(gameId)).data.host == request.resource.data.hostProfileKey
+          && request.resource.data.updatedAt == request.time
+          && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(request.resource.data.activeSessionId)).data.hostAuthUid == request.auth.uid;
+        allow update: if id == 'control' && bibleName(request.resource.data.hostProfileKey)
+          && request.resource.data.hostAuthUid == request.auth.uid && request.resource.data.hostName == request.resource.data.hostProfileKey
+          && bibleParticipant(resource.data.activeSessionId) && bibleSession(resource.data.activeSessionId).status == 'ended'
+          && bibleSession(resource.data.activeSessionId).ratingsApplied == true && request.resource.data.updatedAt == request.time
+          && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(request.resource.data.activeSessionId)).data.hostAuthUid == request.auth.uid;
+        allow delete: if false;
+      }
+      match /bibleSessions/{sid} {
+        allow read: if isAuthed() && bibleLobby();
+        allow create: if bibleSessionCreate(sid);
+        allow update: if bibleSessionUpdate(sid);
+        allow delete: if false;
+        match /members/{authUid} {
+          allow read: if isAuthed() && authUid == request.auth.uid && bibleLobby();
+          allow create, update: if isAuthed() && authUid == request.auth.uid && bibleName(request.resource.data.profileKey)
+            && request.resource.data.keys().hasOnly(['playerUid','profileKey','connectionId','updatedAt'])
+            && request.resource.data.playerUid is string && request.resource.data.connectionId is string
+            && request.resource.data.updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/players/$(request.resource.data.playerUid)).data.authUid == request.auth.uid
+            && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/players/$(request.resource.data.playerUid)).data.profileKey == request.resource.data.profileKey
+            && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/players/$(request.resource.data.playerUid)).data.connectionId == request.resource.data.connectionId;
+          allow delete: if false;
+        }
+        match /players/{uid} {
+          function bibleOwnPlayer() {
+            let d=request.resource.data;
+            let member=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)/members/$(request.auth.uid)).data;
+            return d.uid == uid && d.authUid == request.auth.uid && bibleName(d.profileKey)
+              && member.playerUid == uid && member.profileKey == d.profileKey && member.connectionId == d.connectionId;
+          }
+          function biblePlayerUpdate() {
+            let a=resource.data; let b=request.resource.data; let fields=b.diff(a).affectedKeys();
+            let after=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)).data;
+            return bibleOwnPlayer() && b.profileKey == a.profileKey
+                && (!fields.hasAny(['score','currentQuestion','questionKey','lastAnsweredRoundKey']) || bibleParticipant(sid) && bibleWindow(sid))
+              || bibleActive(sid) && bibleSession(sid).status == 'voting' && after.status == 'playing' && uid in after.participantUids
+                && fields.hasOnly(['score','lastResult','lastAnsweredRoundKey','spectator','currentQuestion','questionKey']) && b.score == 0 && b.spectator == false
+              || bibleParticipant(sid) && after.status == 'ended' && after.ratingsApplied == true && uid in after.participantUids
+                && fields.hasOnly(['elo','rankTitle','rankEmoji','rankColor','eloChange','outcome'])
+                && b.elo == after.ratingResults[uid].newElo && b.eloChange == after.ratingResults[uid].change && b.outcome == after.ratingResults[uid].outcome;
+          }
+          allow read: if isAuthed() && bibleLobby();
+          allow create: if bibleOwnPlayer() && request.resource.data.score == 0;
+          allow update: if isAuthed() && biblePlayerUpdate();
+          allow delete: if false;
+        }
+        match /votes/{uid} {
+          allow read: if isAuthed() && bibleLobby();
+          allow create, update: if bibleActive(sid) && uid == bibleMemberData(sid).playerUid && request.resource.data.uid == uid
+            && bibleConnection(sid,request.resource.data) && bibleSession(sid).status == 'voting'
+            && request.resource.data.mode in ['traditional','speed','category','teams','coop'] && request.resource.data.updatedAt == request.time;
+          allow delete: if false;
+        }
+        match /bookChoices/{uid} {
+          allow read: if isAuthed() && bibleLobby();
+          allow create, update: if bibleActive(sid) && uid == bibleMemberData(sid).playerUid && request.resource.data.uid == uid
+            && bibleConnection(sid,request.resource.data) && bibleSession(sid).status == 'voting' && request.resource.data.updatedAt == request.time;
+          allow delete: if false;
+        }
+        match /submissions/{id} {
+          allow read: if bibleMember(sid);
+          allow create: if bibleParticipant(sid) && bibleWindow(sid)
+            && request.resource.data.uid == bibleMemberData(sid).playerUid && bibleConnection(sid,request.resource.data)
+            && request.resource.data.roundKey == bibleSession(sid).roundKey && request.resource.data.createdAt == request.time
+            && (bibleSession(sid).mode != 'teams' || request.resource.data.team in ['A','B'] && bibleTeam(sid,request.resource.data.team)
+              && id == 'team_'+string(bibleSession(sid).roundKey)+'_'+request.resource.data.team
+              && bibleSession(sid).teamLocks[request.resource.data.team] == false
+              && getAfter(/databases/$(database)/documents/lobbies/$(gameId)/bibleSessions/$(sid)).data.teamLocks[request.resource.data.team] == true);
+          allow update, delete: if false;
+        }
+        match /{chat}/{messageId} {
+          function bibleChatAccess() {
+            return chat == 'chatAll' && bibleParticipant(sid) && bibleSession(sid).mode == 'coop'
+              || chat == 'chatTeamA' && bibleSession(sid).mode == 'teams' && bibleTeam(sid,'A')
+              || chat == 'chatTeamB' && bibleSession(sid).mode == 'teams' && bibleTeam(sid,'B');
+          }
+          allow read: if bibleChatAccess();
+          allow create: if bibleChatAccess() && bibleSession(sid).status == 'playing'
+            && request.resource.data.keys().hasOnly(['uid','name','text','ts','connectionId'])
+            && request.resource.data.uid == bibleMemberData(sid).playerUid && bibleConnection(sid,request.resource.data)
+            && request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 240
+            && request.resource.data.ts == request.time;
+          allow update, delete: if false;
+        }
+      }
       // Gridbound durable room documents. Active combat is not allowed here.
       match /rpg_rooms/{roomId} {
         allow read: if isAuthed();
@@ -1280,8 +1455,27 @@ service cloud.firestore {
           && (!turncraftType(ironLobby()) || ironLobby().get('turncraftVersion',0) != 1)
           && subcollection != 'rpg_rooms'
           && !(gameId == 'turncraft' && subcollection == 'invites')
-          && !(subcollection in ['crowncouncil','iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
+          && !(subcollection in ['crowncouncil','iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads','bibleGame','bibleSessions']);
       }
+    }
+
+    // A controller can queue a completed result for disconnected participants.
+    // Only the recipient can read/remove it; the referenced session is immutable
+    // after finalization and the username receipt prevents a second application.
+    match /bibleGameRatingInbox/{authUid}/matches/{sid} {
+      function bibleInboxSession() { return getAfter(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(sid)).data; }
+      function bibleInboxSender() { return get(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/bibleSessions/$(sid)/members/$(request.auth.uid)).data; }
+      allow read, delete: if isAuthed() && authUid == request.auth.uid;
+      allow create: if isAuthed() && request.resource.data.keys().hasOnly(['lobbyId','sessionId','uid','profileKey'])
+        && request.resource.data.sessionId == sid && request.resource.data.lobbyId is string
+        && bibleInboxSession().status == 'ended' && bibleInboxSession().ratingsApplied == true
+        && bibleInboxSender().playerUid in bibleInboxSession().participantUids
+        && get(/databases/$(database)/documents/users/$(bibleInboxSender().profileKey)).data.chatAuthUid == request.auth.uid
+        && bibleInboxSession().ratingResults[request.resource.data.uid].authUid == authUid
+        && bibleInboxSession().ratingResults[request.resource.data.uid].profileKey == request.resource.data.profileKey
+        && request.resource.data.uid in bibleInboxSession().participantUids
+        && bibleInboxSession().ratingResults[request.resource.data.uid].uid == request.resource.data.uid;
+      allow update: if false;
     }
 
     match /rewards/{rewardId} {
