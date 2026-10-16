@@ -22,6 +22,13 @@ The Firestore test uses only `demo-mountonline`. In the browser fixture, test-on
 
 The game is peer-hosted: the current elected browser is trusted to run the simulation. Rules fence host identity/epoch, ownership, private views, legal document shapes, immutable receipts and duplicate commits; they do not independently recompute battle outcomes or validate compressed simulation contents. When nobody hosts, the world pauses. An abrupt host disconnect takes up to the 20-second lease interval plus election/network time to hand over. Anonymous identities resume in the same browser; cross-device recovery requires the existing linked Firebase sign-in, rather than a display name alone.
 
+## Continuous movement and lobby placement
+
+- All 29 engine/configuration/compression/motion tests pass. Six new motion tests cover early/burst snapshots, duplicate position updates, correction bounds at 30/60/120 Hz, immutable gameplay data, reconnect/respawn/battle/identity resets, actor removal, and 1,200 reused troop poses.
+- The actual Canvas app passes a dedicated irregular-snapshot browser test at desktop, phone portrait and phone landscape sizes. Commander/NPC/allied-company positions advance between saved steps; burst updates keep the current pose; battle troops glide; mouse and touch select a troop at its displayed position while its saved coordinate is several tiles ahead. Walking finishes at the destination. The fixture records zero extra network requests and zero JavaScript errors.
+- The real Firestore browser multiplayer/recovery suite and both 62-check rules suites pass with the new presentation layer. Network schema, snapshot cadence, command persistence and rules are unchanged.
+- Mountain Blade Online is promoted to the normal built-out games shelf and shared-world catalog above Experimental. Existing library/flagship regression suites pass (42 tests), and editorial metadata validation passes. Desktop/mobile catalog DOM checks confirm its normal card is visible above the collapsed Experimental group. Loader cache versions are bumped so existing browsers receive the updated categories.
+
 ## Performance samples
 
 Seeded full-combat benchmark, including movement, targeting, projectiles, healing, collisions, and casualties; fixed simulation rate 20 Hz:

@@ -24,7 +24,7 @@ Desktop: click/drag to select, Shift to add, right-click to move/attack, mouse w
 | `battle.mjs` | 20 Hz deterministic combat, roles, orders, formations, sieges, projectiles, abilities |
 | `progression.mjs` | Validated economy, training, reserves, contracts, inventory, skills, settlements |
 | `realm.mjs` | World simulation, encounters, territory, garrison control, battle settlement |
-| `renderer.mjs` | Interpolated sprite animation, culled terrain chunks, mini-map, order graphics |
+| `renderer.mjs`, `motion.mjs` | Persistent online display poses, sprite animation, culled terrain chunks, mini-map, order graphics |
 | `assets.mjs` | Essential art preload and versioned Cache API reuse |
 | `storage.mjs` | Validated local campaign import/export, previous-save recovery, battle resume |
 | `network.mjs`, `firebase.mjs` | Existing Firebase identity, direct Firestore listeners, orders, and safe retries |
@@ -68,6 +68,8 @@ Anonymous Firebase identity persists in that browser's storage. Reconnecting wit
 ## Synchronization and recovery
 
 An active browser acquires a 20-second Firestore lease through a transaction. That browser runs the same 20 Hz world and battle simulation as local play. Other players submit UID-owned command documents and listen to their private view. Each write checks the current host and lease epoch. After an abrupt host disconnect, another active browser claims the expired lease and restores the checkpoint; a normal leave releases it immediately. The world pauses when no player is hosting.
+
+Movement uses separate display positions, following the same approach as Chess Warlords: each incoming view retargets the position currently drawn on screen. Early/burst updates never restart a company or troop from the previous saved square; duplicate position updates do not restart its glide. Deadline-based frame interpolation and a short easing tail smooth corrections at different frame rates. The commander, retinue, nearby players, NPCs, battle troops, camera and mini-map use these display positions. Mouse/touch selection, selection boxes and formation previews use the visible troop positions too. Walking continues until a visible move finishes. New battle/identity scopes, long reconnects, tab resume and large respawns reset stale tracks. Poses are kept in bounded maps and reused across frames. This is presentation only: simulation positions, costs, damage, orders and saves remain authoritative, and no additional Firestore writes are needed.
 
 Lease renewals are coalesced to approximately five-second intervals. World views update at most once every 1.2 seconds; unfinished battles update every 500 ms. The renderer interpolates positions between snapshots independently of the network. Compressed native-browser payloads avoid nested-array restrictions and keep 1,200-troop battles below Firestore's document limit. Terrain and artwork are static assets and never pass through Firestore. A size guard pauses mutation rather than silently truncating a realm. Listeners replace polling, and ephemeral completed orders are removed by their owner.
 

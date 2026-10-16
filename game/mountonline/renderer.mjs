@@ -309,11 +309,11 @@ export class Renderer {
       else {
         this.sprite(
           n.kind === "bandit" ? "footmen" : "cavalry",
-          "move",
+          n.renderMoving === false ? "idle" : "move",
           n.x,
           n.y,
           time,
-          1,
+          n.renderFacing || 1,
           0.85,
         );
         this.pennon(
@@ -337,11 +337,11 @@ export class Renderer {
       if (!this.visible(o.x, o.y)) continue;
       this.sprite(
         "cavalry",
-        o.activeBattle ? "attack" : "move",
+        o.activeBattle ? "attack" : o.renderMoving === false ? "idle" : "move",
         o.x,
         o.y,
         time,
-        1,
+        o.renderFacing || 1,
         0.95,
       );
       this.label(
@@ -351,7 +351,7 @@ export class Renderer {
         o.allianceId && o.allianceId === p.allianceId ? "#9bd6bc" : "#aac6dd",
       );
     }
-    const moving = p.route?.length > p.routeIndex;
+    const moving = p.renderMoving ?? p.route?.length > p.routeIndex;
     const retinue = Object.keys(p.army).filter((k) => p.army[k] > 0);
     for (let i = Math.min(6, retinue.length * 2) - 1; i >= 0; i--) {
       const key = retinue[i % retinue.length],
@@ -363,11 +363,19 @@ export class Renderer {
         x,
         y,
         time + (i % 3) * 0.12,
-        1,
+        p.renderFacing || 1,
         0.65,
       );
     }
-    this.sprite("cavalry", moving ? "move" : "idle", p.x, p.y, time, 1, 1.05);
+    this.sprite(
+      "cavalry",
+      moving ? "move" : "idle",
+      p.x,
+      p.y,
+      time,
+      p.renderFacing || 1,
+      1.05,
+    );
     this.pennon(p.x + 0.55, p.y - 0.25, "#efd393");
     this.label(
       `${p.username} · ${armySize(p.army)}`,
