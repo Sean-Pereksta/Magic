@@ -17,6 +17,20 @@ for(const room of ROOM_LIBRARY){
  for(let i=1;i<route.length;i++)assert.ok(simulateSurfaceJump(route[i-1],route[i],{...room,platforms:route},{abilities:{dash:false,wallJump:false}}),`${room.id} critical jump ${i} uses base abilities`);
  for(const sw of room.switches)assert.ok(route.some(p=>sw.x>=p.x&&sw.x+sw.w<=p.x+p.w&&Math.abs(sw.y+20-p.y)<1),`${room.id} pressure switch stands on its approach surface`);
 }
+for(const room of ROOM_LIBRARY)for(const source of room.movers){
+ const mover={...source,id:'long-ride',phase:0,dx:0,dy:0};
+ assert.ok(mover.range>=(mover.axis==='x'?200:140),'Moving platforms cover a useful longer route');
+ const w=world([],[mover]),p=grounded(mover.x+20,mover.y-PHYSICS.playerHeight);p.groundId=mover.id;
+ let min=Infinity,max=-Infinity;
+ const steps=Math.ceil(2*Math.PI/mover.speed/dt)+1;
+ for(let i=1;i<=steps;i++){
+  updateMovers(w,i*dt,dt);updatePlayer(p,w,input(),dt);
+  const value=mover.axis==='x'?mover.x:mover.y;min=Math.min(min,value);max=Math.max(max,value);
+  assert.ok(p.onGround&&p.groundId===mover.id,`${room.id}/${mover.axis} keeps its passenger through a complete cycle`);
+  assert.ok(Math.abs(p.x-mover.x-20)<.001&&Math.abs(p.y+p.h-mover.y)<.001,'Rider stays on the actual moving collision surface');
+ }
+ assert.ok(max-min>mover.range*1.99,'Travel reaches both ends instead of only changing a range label');
+}
 assert.equal(canReachSurface({x:0,y:468,w:100},{x:500,y:100,w:100},PHYSICS,{dash:false,wings:false}),false,"unavailable wings cannot justify an impossible jump");
 {
  const from={x:0,y:468,w:200,entry:true,oneWay:true,kind:"platform"};
@@ -127,4 +141,21 @@ assert.ok(apex(90)>140&&apex(1)<75,"variable jump height reacts to release");
  const c=new Camera(),p=grounded(),w={width:320000,bounds:{top:-700,bottom:1000}};c.reset(p,w);p.x=30000;p.y=-500;p.vx=430;
  for(let i=0;i<120;i++)c.update(p,dt,w);assert.ok(c.x>29000&&c.y<-400);c.focusArena({left:30000,right:31540,top:-220,bottom:1000});c.update(p,dt,w);assert.ok(c.x>=30000&&c.x<=31540-VIEW.width);
 }
-console.log(`Validated ${ROOM_LIBRARY.length} modules with real base movement, six deterministic long worlds, ${fuzzedWorlds} seeded world/power/difficulty combinations, bounded streaming, state restoration, and movement/environment/camera mechanics.`);
+{
+ const p=grounded(1100,100-PHYSICS.playerHeight);p.facing=1;
+ const lower={id:'landing',x:1250,y:400,w:240,h:28,oneWay:true},w=world([{id:'high',x:1000,y:100,w:200,h:28,oneWay:true},lower]);
+ const c=new Camera();c.reset(p,w);
+ assert.ok(lower.y-c.y<VIEW.height-80,'A lower landing is visible before stepping off the high ledge');
+ assert.ok(p.y-c.y>=64,'Automatic drop framing keeps the player in view');
+ const flat=world(),q=grounded(1100),look=new Camera();look.reset(q,flat);const neutral=look.y;
+ for(let i=0;i<120;i++)look.update(q,dt,flat,{lookDown:true});
+ assert.ok(look.y-neutral>140,'Holding down reveals substantially more ground below');
+ assert.ok(q.y-look.y>=60,'Manual look-down never pushes the player above the screen');
+ for(let i=0;i<120;i++)look.update(q,dt,flat);
+ assert.ok(Math.abs(look.y-neutral)<20,'Camera returns smoothly after releasing down');
+ const original={width:VIEW.width,height:VIEW.height};
+ try{VIEW.width=360;VIEW.height=779;look.reset(p,w);for(let i=0;i<120;i++)look.update(p,dt,w,{lookDown:true});
+  assert.ok(p.y-look.y>=60&&lower.y-look.y<VIEW.height-60,'Portrait look-down retains both player and landing');
+ }finally{Object.assign(VIEW,original);}
+}
+console.log(`Validated ${ROOM_LIBRARY.length} modules with real base movement, six deterministic long worlds, ${fuzzedWorlds} seeded world/power/difficulty combinations, bounded streaming, state restoration, long moving-platform rides, and downward camera framing.`);

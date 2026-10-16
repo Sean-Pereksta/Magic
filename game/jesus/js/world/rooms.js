@@ -85,7 +85,7 @@ function buildModule(spec, index) {
   }
   if (tags.includes("movers")) {
     for (const i of [2,6]) movers.push(pad(365+i*250+55, floor+heights[i]-105, 125,
-      {kind:"moving",axis:i===2?"y":"x",range:i===2?55:65,speed:1.1+(index%3)*0.15,baseX:365+i*250+55,baseY:floor+heights[i]-105,phase:index*0.37,branch:"upper"}));
+      {kind:"moving",axis:i===2?"y":"x",range:i===2?140:200,speed:1.1+(index%3)*0.15,baseX:365+i*250+55,baseY:floor+heights[i]-105,phase:index*0.37,branch:"upper"}));
   }
   if (tags.includes("optional-wings")) {
     // These high shelves sit above the ordinary upper loop: a second jump opens them.

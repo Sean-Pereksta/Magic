@@ -6,19 +6,36 @@ export class Camera {
   kick(amount = 6) { this.shake = Math.min(14, Math.max(this.shake, amount)); }
   reset(player, world) {
     this.x = clamp(player.x - VIEW.width * 0.35, 0, Math.max(0, world.width - VIEW.width));
-    this.y = clamp(player.y + player.h - VIEW.height * 0.76, world.bounds?.top ?? -700, (world.bounds?.bottom ?? 1000) - VIEW.height);
+    this.y = clamp(this.verticalTarget(player, world), world.bounds?.top ?? -700, (world.bounds?.bottom ?? 1000) - VIEW.height);
     this.previousX = this.x; this.previousY = this.y; this.look = 0; this.shake = 0;
   }
-  update(player, dt, worldOrWidth) {
+  verticalTarget(player, world, lookDown = false) {
+    const feet = player.y + player.h;
+    const fallLook = player.vy > 180 ? Math.min(100, player.vy * .09) : player.vy < -100 ? -30 : 0;
+    let target = feet - VIEW.height * .65 + fallLook;
+    if ((player.onGround && !world.bossArena) || lookDown) {
+      const center = player.x + player.w / 2, ahead = Math.min(420, VIEW.width * .6);
+      const direction = player.facing || Math.sign(player.vx) || 1;
+      const left = center - (lookDown || direction < 0 ? ahead : 90);
+      const right = center + (lookDown || direction > 0 ? ahead : 90);
+      const lower = [...(world.platforms || []), ...(world.movers || [])]
+        .filter(p => !p.dead && !p.open && !p.hidden && p.kind !== 'wall' && p.kind !== 'gate'
+          && p.x + p.w > left && p.x < right && p.y >= feet + 56)
+        .sort((a, b) => a.y - b.y)[0];
+      if (lower) target = Math.max(target, lower.y + 100 - VIEW.height);
+    }
+    if (lookDown) target += Math.min(190, VIEW.height * .32);
+    // Looking down reveals landings while keeping the player's head in view.
+    return Math.min(target, player.y - 64);
+  }
+  update(player, dt, worldOrWidth, {lookDown = false} = {}) {
     const world = typeof worldOrWidth === "number" ? { width: worldOrWidth } : worldOrWidth;
     this.previousX = this.x; this.previousY = this.y;
     this.look = lerp(this.look, clamp(player.vx / 430, -1, 1) * 125, 1 - Math.exp(-4 * dt));
     const targetX = player.x + player.w / 2 - VIEW.width * 0.42 + this.look;
-    // Keep the landing zone visible during a fall, with a stable grounded horizon.
-    const verticalLook = player.vy > 180 ? Math.min(80, player.vy * 0.07) : player.vy < -100 ? -35 : 0;
-    const targetY = player.y + player.h - VIEW.height * 0.77 + verticalLook;
+    const targetY = this.verticalTarget(player, world, lookDown);
     this.x = lerp(this.x, targetX, 1 - Math.exp(-7.5 * dt));
-    const deadZone = 18;
+    const deadZone = lookDown ? 4 : 12;
     if (Math.abs(targetY - this.y) > deadZone) this.y = lerp(this.y, targetY - Math.sign(targetY - this.y) * deadZone, 1 - Math.exp(-6 * dt));
     const left = this.arena?.left ?? 0, right = this.arena?.right ?? world.width;
     this.x = clamp(this.x, left, Math.max(left, right - VIEW.width));
