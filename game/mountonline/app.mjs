@@ -18,6 +18,7 @@ import { CONTRACTS, ownerKey } from "./progression.mjs";
 import { loadAssets } from "./assets.mjs";
 import { Renderer } from "./renderer.mjs";
 import { OnlineClient } from "./network.mjs";
+import { RemoteMotion } from "./motion.mjs";
 import {
   serializeCampaign,
   parseCampaign,
@@ -42,7 +43,8 @@ const $ = (id) => document.getElementById(id),
       .trim()
       .slice(0, 40) || "Wanderer";
 const saveKey = `mountonline:v2:${username}`,
-  map = createWorld();
+  map = createWorld(),
+  remoteMotion = new RemoteMotion();
 let assets,
   renderer,
   realm = null,
@@ -59,8 +61,6 @@ let assets,
   lastSave = 0,
   accumulator = 0,
   lastFrame = performance.now(),
-  remoteAt = 0,
-  previousRemote = null,
   busy = false,
   toastTimer,
   contextSignature = "",
@@ -194,8 +194,6 @@ function beginBattle(next, nextTeam = 0) {
 }
 function remoteState(snapshot) {
   if (network?.stopped) return;
-  previousRemote = state;
-  remoteAt = performance.now();
   state = snapshot;
   team = snapshot.team || 0;
   if (snapshot.battle && !dismissed.has(snapshot.battle.id)) {
@@ -207,6 +205,7 @@ function remoteState(snapshot) {
     battle = view;
     team = snapshot.team || 0;
   } else battle = null;
+  remoteMotion.accept(state, battle);
   if (!$("app").hidden) updateHUD();
 }
 async function startLocal() {
@@ -238,6 +237,7 @@ async function startOnline() {
   $("menuMessage").classList.remove("error");
   $("menuMessage").textContent = "Connecting to your online realm…";
   mode = "online";
+  remoteMotion.reset();
   realm = null;
   state = null;
   battle = null;
@@ -329,6 +329,7 @@ function returnMenu() {
   network?.stop();
   network = null;
   mode = null;
+  remoteMotion.reset();
   realm = null;
   battle = null;
   state = null;
@@ -397,8 +398,16 @@ function selectedUnits() {
     ) || []
   );
 }
+function visibleUnits() {
+  return mode === "online" && battle && remoteMotion.battle?.id === battle.id
+    ? remoteMotion.battle.units
+    : battle?.units || [];
+}
 function selectionCenter() {
-  const units = selectedUnits();
+  const units = visibleUnits().filter(
+    (u) =>
+      u.team === team && u.hp > 0 && !u.routed && renderer.selected.has(u.id),
+  );
   return units.length
     ? {
         x: units.reduce((n, u) => n + u.x, 0) / units.length,
@@ -478,7 +487,7 @@ function chooseOrder(order) {
 function unitAt(point, ownOnly = false) {
   let best = null,
     d = 0.85;
-  for (const u of battle?.units || []) {
+  for (const u of visibleUnits()) {
     if (u.hp <= 0 || u.routed || (ownOnly && u.team !== team)) continue;
     const dist = Math.hypot(point.x - u.x, point.y - u.y);
     if (dist < d) {
@@ -579,17 +588,18 @@ function renderContext() {
     `<span class="tag">${esc(tag)}</span><h3>${esc(title)}</h3><p>${copy}</p><small class="eyebrow">${near ? "Within reach" : `${Math.round(d)} leagues away`}</small><div class="context-actions">${buttons}</div>`;
 }
 function hitWorld(point) {
-  const p = state.profile;
+  const visible = mode === "online" ? remoteMotion.state || state : state;
+  const p = visible.profile;
   let best = null,
     dist = 1.8;
-  for (const e of state.settlements) {
+  for (const e of visible.settlements) {
     const d = Math.hypot(e.x - point.x, e.y - point.y);
     if (d < dist) {
       dist = d;
       best = { kind: "settlement", id: e.id };
     }
   }
-  for (const e of state.npcs) {
+  for (const e of visible.npcs) {
     if (e.battleId) continue;
     const d = Math.hypot(e.x - point.x, e.y - point.y);
     if (d < dist) {
@@ -597,7 +607,7 @@ function hitWorld(point) {
       best = { kind: "npc", id: e.id };
     }
   }
-  for (const e of state.others) {
+  for (const e of visible.others) {
     const d = Math.hypot(e.x - point.x, e.y - point.y);
     if (d < dist) {
       dist = d;
@@ -1195,7 +1205,7 @@ function finishPointer(event, cancel = false) {
     const a = renderer.toWorld(renderer.marquee.a.x, renderer.marquee.a.y),
       b = renderer.toWorld(pos.x, pos.y);
     if (!g.shift && !addSelection) renderer.selected.clear();
-    for (const u of battle.units)
+    for (const u of visibleUnits())
       if (
         u.team === team &&
         u.hp > 0 &&
@@ -1290,6 +1300,10 @@ addEventListener("pagehide", () => {
 document.addEventListener("visibilitychange", () => {
   lastFrame = performance.now();
   accumulator = 0;
+  if (!document.hidden && mode === "online" && state) {
+    remoteMotion.reset();
+    remoteMotion.accept(state, battle);
+  }
   if (document.hidden && mode === "local") save(true);
 });
 $("result").addEventListener("cancel", (event) => event.preventDefault());
@@ -1331,42 +1345,17 @@ function frame(now) {
     });
   }
   let drawState = state,
-    alpha =
-      mode === "online"
-        ? clamp((now - remoteAt) / (state.syncInterval || 500), 0, 1)
-        : accumulator / STEP;
-  if (mode === "online" && previousRemote && !battle) {
-    const prev = previousRemote.profile,
-      p = state.profile;
-    drawState = {
-      ...state,
-      profile: {
-        ...p,
-        x: prev.x + (p.x - prev.x) * alpha,
-        y: prev.y + (p.y - prev.y) * alpha,
-      },
-      npcs: state.npcs.map((n) => {
-        const old = previousRemote.npcs.find((v) => v.id === n.id);
-        return old
-          ? {
-              ...n,
-              x: old.x + (n.x - old.x) * alpha,
-              y: old.y + (n.y - old.y) * alpha,
-            }
-          : n;
-      }),
-      others: state.others.map((n) => {
-        const old = previousRemote.others.find((v) => v.id === n.id);
-        return old
-          ? {
-              ...n,
-              x: old.x + (n.x - old.x) * alpha,
-              y: old.y + (n.y - old.y) * alpha,
-            }
-          : n;
-      }),
-    };
-  } else if (mode !== "online" && !battle) {
+    drawBattle = battle,
+    alpha = accumulator / STEP;
+  if (mode === "online") {
+    const presentation = remoteMotion.sample(now);
+    drawState = presentation?.state || state;
+    drawBattle =
+      battle && presentation?.battle?.id === battle.id
+        ? presentation.battle
+        : battle;
+    alpha = 1;
+  } else if (!battle) {
     const p = state.profile;
     drawState = {
       ...state,
@@ -1395,7 +1384,7 @@ function frame(now) {
     renderer.cam.y +=
       (drawState.profile.y - renderer.cam.y) * Math.min(1, dt * 9);
   }
-  renderer.draw(drawState, map, battle, team, alpha, now);
+  renderer.draw(drawState, map, drawBattle, team, alpha, now);
   if (now - lastHud > 250) {
     lastHud = now;
     updateHUD();

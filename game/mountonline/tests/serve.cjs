@@ -2,7 +2,7 @@ const http = require("node:http"),
   fs = require("node:fs"),
   path = require("node:path");
 const root = path.resolve(__dirname, "../../..");
-const hooks = `\nglobalThis.__MBO_TEST__={get realm(){return realm},get state(){return state},get battle(){return battle},get mode(){return mode},get renderer(){return renderer},get team(){return team},get pending(){return pending},get network(){return network},perform,returnMenu,selectGroup,openPanel,practice};\n`;
+const hooks = `\nglobalThis.__MBO_TEST__={get realm(){return realm},get state(){return state},get battle(){return battle},get mode(){return mode},get renderer(){return renderer},get team(){return team},get pending(){return pending},get network(){return network},get motion(){return remoteMotion},get context(){return selectedContext},feedRemote(snapshot){const first=mode!=="online";if(first){network?.stop();network=null;mode="online";realm=null;state=null;battle=null;dismissed.clear();resultShown.clear();remoteMotion.reset();}remoteState(snapshot);if(first)showGame();},perform,returnMenu,selectGroup,openPanel,practice};\n`;
 function serve(req, res) {
   try {
     const url = new URL(req.url, "http://localhost"),
@@ -13,9 +13,7 @@ function serve(req, res) {
     if (url.pathname === "/game/mountonline/app.mjs")
       body = Buffer.from(body.toString() + hooks);
     if (url.pathname === "/game/mountonline/config.mjs")
-      body = Buffer.from(
-        "export const ART_BASE='/graphics/mountonline/';",
-      );
+      body = Buffer.from("export const ART_BASE='/graphics/mountonline/';");
     res.setHeader(
       "Content-Type",
       {
