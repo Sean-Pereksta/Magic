@@ -13,7 +13,7 @@ const FORGE_PACKS=[
   {id:'aesir',name:'Aesir Reinforcements',faction:'Aesir',dust:50,keys:['phaser','blade','guardian']},
   {id:'helions',name:'Helion Reinforcements',faction:'Helions',dust:50,keys:['hellspawn','roach','defiler']},
   {id:'war-chest',name:'War Chest',faction:null,dust:90,keys:['vrocket','marksman','storm','wardmaker','spitter','viper']}
-].map(({keys,...pack})=>({...pack,cards:keys.map(troopKey=>({troopKey,quantity:5})),totalCards:keys.length*5}));
+].map(({keys,...pack})=>({...pack,cards:keys.map(troopKey=>({troopKey,quantity:5})),totalCards:keys.length*5})).concat([{id:'random-reinforcements',name:'Random Reinforcements',faction:null,dust:50,cards:[],totalCards:15,random:true,draws:3,cardsPerDraw:5}]);
 class ForgeError extends Error {
   constructor(code,message,status=400){super(message);this.name='ForgeError';this.code=code;this.status=status;}
 }
@@ -37,13 +37,25 @@ function upgrade(profile,troopKey,now=Date.now()) {
   const next=copy(profile);next.troops[troopKey].cards-=cost.cards;next.forgeDust-=cost.dust;next.troops[troopKey].forgeTier++;next.updatedAt=now;
   return {profile:next,transaction:{troopKey,fromTier:unit.forgeTier,toTier:unit.forgeTier+1,cardsSpent:cost.cards,dustSpent:cost.dust,completedAt:now}};
 }
-function buyPack(profile,packId,now=Date.now()){
+function packCards(profile,pack,entropy){
+  if(!pack.random)return copy(pack.cards);
+  safeId(entropy,'Server pack entropy');
+  const pool=Object.keys(profile.troops||{}).filter(key=>profile.troops[key]?.unlocked).sort();
+  if(!pool.length)return [];
+  let seed=2166136261;
+  for(const char of `${profile.username}|${pack.id}|${entropy}`)seed=Math.imul(seed^char.charCodeAt(0),16777619)>>>0;
+  const next=()=>{seed=(seed+0x6D2B79F5)>>>0;let t=seed;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(next()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  return Array.from({length:pack.draws},(_,index)=>({troopKey:pool[index%pool.length],quantity:pack.cardsPerDraw}));
+}
+function buyPack(profile,packId,now=Date.now(),entropy){
   const pack=FORGE_PACKS.find(item=>item.id===packId);fail(pack,'INVALID_PACK','Choose a card pack.');
   fail(!profile.activeSessionId,'MATCH_ACTIVE','Finish your current match before buying packs.',409);
-  fail(pack.cards.every(card=>profile.troops[card.troopKey]?.unlocked),'TROOP_LOCKED','Unlock the troops in this pack first.');
+  const cards=packCards(profile,pack,entropy);
+  fail(cards.length>0&&cards.every(card=>profile.troops[card.troopKey]?.unlocked),'TROOP_LOCKED',pack.random?'Unlock a troop before buying this pack.':'Unlock the troops in this pack first.');
   fail(Number.isSafeInteger(profile.forgeDust)&&profile.forgeDust>=pack.dust,'INSUFFICIENT_RESOURCES',`This pack requires ${pack.dust} Forge Dust.`,409);
-  const next=copy(profile);next.forgeDust-=pack.dust;for(const card of pack.cards)next.troops[card.troopKey].cards+=card.quantity;next.updatedAt=now;
-  return {profile:next,transaction:{packId:pack.id,dustSpent:pack.dust,cards:copy(pack.cards),completedAt:now}};
+  const next=copy(profile);next.forgeDust-=pack.dust;for(const card of cards)next.troops[card.troopKey].cards+=card.quantity;next.updatedAt=now;
+  return {profile:next,transaction:{packId:pack.id,dustSpent:pack.dust,cards,completedAt:now}};
 }
 function missionNumber(id) {
   if(Number.isInteger(id)&&id>=1&&id<=30)return id;

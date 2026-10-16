@@ -3,7 +3,7 @@
 import {COMBOS,comboStatus} from './combos.js';
 import {EVOLUTIONS,RANK_ENHANCEMENTS,evolutionDescription} from './evolutions.js';
 
-export const DRAFT_WEIGHTS=Object.freeze({unit:45,evolution:25,combo:20,legacy:10});
+export const DRAFT_WEIGHTS=Object.freeze({troop:65,upgrade:15,evolution:10,combo:6,legacy:4});
 export const LEGACY_DRAFT_CARDS=Object.freeze([
   {type:'relic',key:'banner_frontline',name:'Banner of the Frontline',desc:'Frontline units gain +2 max HP.'},
   {type:'relic',key:'sharpshooter_doctrine',name:'Sharpshooter Doctrine',desc:'Backline units gain +1 range, -1 max HP.'},
@@ -45,30 +45,39 @@ export function relevantComboStates(roster,faction,{availableTypes,comboEnhancem
   ).sort((a,b)=>(a.missing?.length||0)-(b.missing?.length||0)||(b.level||0)-(a.level||0)||a.id.localeCompare(b.id)).slice(0,limit);
 }
 
-/** Build weighted categories first, so a large troop roster cannot drown out
- * evolutions and combinations. Empty/locked categories redistribute naturally. */
+/** Recruitment stays the majority even for a mature army. Rank upgrades,
+ * specializations and attachments share a smaller budget, independent of roster
+ * size. Every pack retains a real troop choice; locked pools redistribute. */
 export function createDraftPack({roster=[],faction,availableTypes=[],troops={},evolutions={},comboEnhancements=[],ownedRelics=[],ownedTactics=[],formation='balanced',size=3}={},rng=Math.random){
   const available=unique(availableTypes).filter(key=>troops[key]&&troops[key].faction===faction);
   if(!available.length)return [];
   const allowed=new Set(available),owned=roster.filter(r=>r.count>0&&allowed.has(r.type));
   const name=key=>troops[key]?.name||key;
-  const recruitment=available.map(key=>({type:'troop',key,name:name(key),role:troops[key].role,draftCategory:'unit',desc:current(roster,key)?`Add ${name(key)} at Rank ${roman[rank(current(roster,key).lvl)]}. Every copy shares battle upgrades.`:`Recruit ${name(key)} at Rank I. Build its signature ability with battle upgrades.`}));
-  const upgrades=owned.filter(r=>rank(r.lvl)<3).map(r=>({type:'special',special:'upgrade',for:r.type,name:'Upgrade '+name(r.type),draftCategory:'unit',desc:evolutionDescription(r.type,evolutions[r.type]||'a',rank(r.lvl)+1)||RANK_ENHANCEMENTS[r.type]?.[rank(r.lvl)+1]||'Improve this troop’s signature ability.'}));
-  const paths=owned.filter(r=>!evolutions[r.type]&&EVOLUTIONS[r.type]).flatMap(r=>Object.values(EVOLUTIONS[r.type]).map(path=>({type:'evolution',key:r.type,for:r.type,path:path.id,name:`${name(r.type)} · ${path.name}`,draftCategory:'evolution',desc:path.description,tradeoff:path.tradeoff})));
   const relevant=relevantComboStates(roster,faction,{availableTypes:available,comboEnhancements,limit:100});
+  const partners=new Map();
+  for(const combo of relevant)if((combo.missing||[]).length===1&&!partners.has(combo.missing[0]))partners.set(combo.missing[0],combo);
+  const recruitment=available.map(key=>{
+    const partner=partners.get(key);
+    return {type:'troop',key,name:name(key),role:troops[key].role,draftCategory:'troop',
+      ...(partner?{comboId:partner.id}:{}),
+      desc:partner?`Recruit ${name(key)} to activate ${partner.name}.`:current(roster,key)?`Add ${name(key)} at Rank ${roman[rank(current(roster,key).lvl)]}. Every copy shares battle upgrades.`:`Recruit ${name(key)} at Rank I. Build its signature ability with battle upgrades.`};
+  });
+  const upgrades=owned.filter(r=>rank(r.lvl)<3).map(r=>({type:'special',special:'upgrade',for:r.type,name:'Upgrade '+name(r.type),draftCategory:'upgrade',desc:evolutionDescription(r.type,evolutions[r.type]||'a',rank(r.lvl)+1)||RANK_ENHANCEMENTS[r.type]?.[rank(r.lvl)+1]||'Improve this troop’s signature ability.'}));
+  const paths=owned.filter(r=>!evolutions[r.type]&&EVOLUTIONS[r.type]).flatMap(r=>Object.values(EVOLUTIONS[r.type]).map(path=>({type:'evolution',key:r.type,for:r.type,path:path.id,name:`${name(r.type)} · ${path.name}`,draftCategory:'evolution',desc:path.description,tradeoff:path.tradeoff})));
   const enhancements=relevant.filter(combo=>!(combo.missing||[]).length&&!comboEnhancements.includes(combo.id)).map(combo=>({type:'combo',key:combo.id,for:combo.units[0],name:'Enhance '+combo.name,draftCategory:'combo',desc:combo.description,comboId:combo.id,units:combo.units}));
-  const partners=relevant.filter(combo=>(combo.missing||[]).length===1).flatMap(combo=>combo.missing.map(key=>({type:'troop',key,name:name(key),role:troops[key].role,draftCategory:'combo',comboId:combo.id,desc:`Recruit ${name(key)} to activate ${combo.name}.`}))).filter(card=>allowed.has(card.key));
   const legacy=LEGACY_DRAFT_CARDS.filter(card=>card.type==='relic'?!ownedRelics.includes(card.key):card.type==='tactic'?!ownedTactics.includes(card.key):card.key!==formation).map(card=>({...card,draftCategory:'legacy'}));
-  const categories={unit:[...recruitment,...upgrades],evolution:paths,combo:[...enhancements,...partners],legacy};
+  const categories={troop:recruitment,upgrade:upgrades,evolution:paths,combo:enhancements,legacy};
   const selected=[],used=new Set();
   const desired=Math.max(1,Math.min(5,Math.floor(Number(size)||3)));
   while(selected.length<desired){
     const pools=Object.entries(categories).map(([category,cards])=>({category,cards:cards.filter(card=>!used.has(identity(card)))})).filter(pool=>pool.cards.length&&(owned.length||pool.category!=='legacy'||!selected.some(card=>card.draftCategory==='legacy')));
     if(!pools.length)break;
-    const pool=sample(pools,rng,value=>DRAFT_WEIGHTS[value.category]);
+    // Reserve a troop only if the other choices used the enhancement budget.
+    // Ordinary sampling keeps recruits in any slot rather than fixing slot one.
+    const requireTroop=selected.length===desired-1&&!selected.some(card=>card.type==='troop');
+    const pool=sample(requireTroop?pools.filter(value=>value.category==='troop'):pools,rng,value=>DRAFT_WEIGHTS[value.category]);
     const card=sample(pool.cards,rng,value=>{
-      if(value.type==='special')return 2.5;
-      if(value.type==='troop')return current(roster,value.key)?1.2:1.5;
+      if(value.type==='troop')return value.comboId?1.8:current(roster,value.key)?1.2:1.5;
       return 1;
     });
     selected.push(card);used.add(identity(card));

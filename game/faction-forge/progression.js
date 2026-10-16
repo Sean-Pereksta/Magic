@@ -41,6 +41,7 @@ export function createProgressionService({auth,db,apiBaseUrl='',fetchImpl=global
     getSession(id){const replay=replayCache.get(id);return request('/sessions/'+encodeURIComponent(id)+(replay?'?knownReplayId='+encodeURIComponent(replay.replayId):''));},
     pick(id,index,{sequence,requestId}={}){return mutation('pick.'+id+'.'+sequence+'.'+index,'/sessions/'+encodeURIComponent(id)+'/pick',{index,sequence},requestId);},
     upgradeTroop(troopKey,{requestId}={}){return mutation('upgrade.'+troopKey,'/upgrades',{troopKey},requestId);},
+    getPendingPackRequest(packId){const key='factionForge.request.'+(auth?.currentUser?.uid||'unknown')+'.pack.'+packId;let id=pendingRequests.get(key);try{id=id||requestStorage?.getItem(key);}catch{}return id||null;},
     buyPack(packId,{requestId}={}){return mutation('pack.'+packId,'/packs',{packId},requestId);},
     setRewardTarget(troopKey){return request('/reward-target',{method:'POST',body:{troopKey}});},
     abandon(id){return request('/sessions/'+encodeURIComponent(id)+'/abandon',{method:'POST',body:{}});},

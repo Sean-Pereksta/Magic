@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newSoloProfile,settleSolo,soloMission,upgradeSolo,buySoloPack,settleSoloRoundWin,createFirebaseProgress} from '../firebase-progress.js';
-import {FORGE_PACKS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,packEligibility} from '../packs.js';
+import {FORGE_PACKS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,packEligibility,forgePackCards} from '../packs.js';
 import {selectSoloAccount} from '../solo-account.js';
 const troops={...Object.fromEntries(FORGE_PACKS.flatMap(pack=>pack.cards.map(card=>[card.troopKey,{}]))),signalhawk:{unlockable:true},chronoweaver:{unlockable:true},siphonleech:{unlockable:true},railbreaker:{unlockable:true},miragewarden:{unlockable:true},hiveherald:{unlockable:true}};
 const storage=()=>{const map=new Map();return {getItem:key=>map.get(key)||null,setItem:(key,value)=>map.set(key,value),removeItem:key=>map.delete(key)};};
@@ -82,6 +82,33 @@ test('pack eligibility and transactions reject active matches, invalid packs, lo
  assert.throws(()=>buySoloPack({...p,activeSessionId:'battle'},'vanir'),{code:'MATCH_ACTIVE'});assert.throws(()=>buySoloPack(p,'fake'),{code:'INVALID_PACK'});
  p.troops.medic.unlocked=false;assert.equal(packEligibility(p,'vanir').available,false);assert.throws(()=>buySoloPack(p,'vanir'),{code:'TROOP_LOCKED'});
  const store=firebase(),one=service(store,{isActiveMatch:()=>true});await one.loadProfile();await assert.rejects(one.buyPack('vanir'),{code:'MATCH_ACTIVE'});
+});
+
+test('random reinforcements use every unlocked faction, retain seed across Auth changes, and never include locked troops',()=>{
+ const p=newSoloProfile('owner','Commander',troops);p.forgeDust=50;
+ const cards=forgePackCards(p,'random-reinforcements','stable-roll');
+ assert.equal(cards.length,3);assert.equal(new Set(cards.map(card=>card.troopKey)).size,3);assert.equal(cards.reduce((n,card)=>n+card.quantity,0),15);
+ assert.ok(cards.every(card=>p.troops[card.troopKey].unlocked));
+ assert.deepEqual(forgePackCards({...p,uid:'replacement-uid'},'random-reinforcements','stable-roll'),cards);
+ const encountered=new Set(Array.from({length:200},(_,i)=>forgePackCards(p,'random-reinforcements','roll-'+i)).flat().map(card=>card.troopKey));
+ assert.ok(encountered.has('rifleman')&&encountered.has('phaser')&&encountered.has('hellspawn'));
+ assert.equal(encountered.has('signalhawk'),false);p.troops.signalhawk.unlocked=true;
+ assert.ok(Array.from({length:200},(_,i)=>forgePackCards(p,'random-reinforcements','unlocked-'+i)).flat().some(card=>card.troopKey==='signalhawk'));
+ for(const key of Object.keys(p.troops))p.troops[key].unlocked=key==='rifleman';
+ assert.deepEqual(buySoloPack(p,'random-reinforcements','small-pool').transaction.cards,Array.from({length:3},()=>({troopKey:'rifleman',quantity:5})));
+ p.troops.rifleman.unlocked=false;assert.equal(packEligibility(p,'random-reinforcements').available,false);
+ assert.throws(()=>buySoloPack(p,'random-reinforcements','empty-pool'),{code:'TROOP_LOCKED'});
+ assert.throws(()=>buySoloPack(p,'random-reinforcements'),{code:'INVALID_REQUEST'});
+});
+
+test('random pack concurrent retries and uncertain reload recover the exact receipt without reroll or double spending',async()=>{
+ const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();store.docs.get('factionForgeSoloProfiles/owner').forgeDust=100;
+ const [first,again]=await Promise.all([one.buyPack('random-reinforcements',{requestId:'random-once'}),one.buyPack('random-reinforcements',{requestId:'random-once'})]);
+ assert.deepEqual(first.transaction,again.transaction);assert.equal(one.profile.forgeDust,50);assert.equal(Object.values(one.profile.troops).reduce((n,t)=>n+t.cards,0),15);
+ store.uncertain();await assert.rejects(one.buyPack('random-reinforcements',{requestId:'random-reload'}),{code:'unavailable'});const committed=structuredClone(store.docs.get('factionForgeSoloProfiles/owner/purchases/random-reload'));one.dispose();
+ const two=service(store,{storage:cache});await two.loadProfile();const recovered=await two.buyPack('random-reinforcements',{requestId:'different-dialog'});
+ assert.deepEqual(recovered.transaction,committed);assert.equal(two.profile.forgeDust,0);assert.equal(Object.values(two.profile.troops).reduce((n,t)=>n+t.cards,0),30);
+ assert.equal(cache.getItem('factionForge.solo.pending.owner.pack.random-reinforcements'),null);
 });
 test('round wins grant three cards exactly once, survive a match loss, and obey their own daily cap',async()=>{
  const store=firebase(),one=service(store);await one.loadProfile();await one.setRewardTarget('medic');const round={id:'lost-match',mode:'bot',round:1};

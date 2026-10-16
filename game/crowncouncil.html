@@ -1799,7 +1799,7 @@ function forgeCombatHooks(st){
     distance:rectDistance,canMoveTo,applyDamage,wardDamage:applyWardShields,auraReduce:auraDamageReduceFor,
     knock:tryKnock,healScale,factionFor:type=>TROOPS[type]&&TROOPS[type].faction,spawnIllusion:spawnForgeIllusion,
     spawnSummon:(state,parent,key)=>spawnAdjacentUnit(state,parent,key),
-    event:ev=>pushSyncedFx(st.field,{type:"combat",ttl:ev.duration||ev.ttl||1000,...ev},ev.at)};
+    event:ev=>{const source=st.field.units.find(u=>u.id===ev.sourceId);pushSyncedFx(st.field,{type:"combat",ttl:ev.duration||ev.ttl||1000,sourceSize:source?unitSize(source):1,...ev},ev.at);}};
 }
 
 function placeUnit(state,p,key,lvl){
@@ -2414,6 +2414,7 @@ function getStatusIcons(u, now, field){
   if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
   if (u.woundUntil && u.woundUntil > now) icons.push("🩸");
   if (u.bindUntil && u.bindUntil > now) icons.push("⚡");
+  if ((u.comboShield||0)>0&&(u.comboShieldUntil||0)>now || (u.startShield||0)>0&&(u.startShieldUntil||0)>now) icons.push("🛡️");
   if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
   return icons;
 }
@@ -2434,7 +2435,7 @@ function upsertVisualUnitsFromBattle(battle){
       ex.motion?.move(u.x,u.y,frameTime,Math.min(MOVE_MS,BATTLE_PUBLISH_MS*.7));ex.illusion=!!u.illusion;ex.markedUntil=u.markedUntil;ex.markedBySide=u.markedBySide;ex.removingAt=null;ex.forgeTier=u.forgeTier||1;ex.animType=u.animType;ex.animUntil=u.animUntil;ex.lastDamagedAt=u.lastDamagedAt;ex.type=u.type; ex.p=u.p; ex.targetX=u.x; ex.targetY=u.y; ex.targetHp=u.hp; ex.maxhp=u.maxhp; ex.statusIcons=icons; ex.actionClass=unitActionClass(u, now); ex.size=unitSize(u); ex.lvl=u.lvl||1; ex.lastSeenAt=now; ex.removing=false;
     }
   }
-  for(const u of battle.units||[]){const vu=visualUnits.get(u.id);if(vu)for(const key of ["battleRank","evolution","chainChargedUntil","comboShield","comboShieldUntil","bindUntil","slowUntil","woundUntil","statusShockUntil","statusPoisonUntil","statusAcidUntil","suppressedUntil","nextAtk","targetId","range","cd"])vu[key]=u[key];}
+  for(const u of battle.units||[]){const vu=visualUnits.get(u.id);if(vu)for(const key of ["battleRank","evolution","chainChargedUntil","comboShield","comboShieldUntil","startShield","startShieldUntil","bindUntil","slowUntil","woundUntil","statusShockUntil","statusPoisonUntil","statusAcidUntil","suppressedUntil","nextAtk","targetId","range","cd"])vu[key]=u[key];}
   for (const [id, vu] of visualUnits.entries()) if (!liveIds.has(id) && !vu.removing){vu.removing=true;vu.removingAt=now;}
 }
 function ensureVisualLoop(){
@@ -2929,9 +2930,11 @@ function wardAction(u, st, now){
 
 function applyDamage(victim, dmg, st){
   dmg=Math.max(0,Number(dmg)||0);
-  const now=Date.now(),beforeHp=Math.max(0,victim.hp);
+  const now=Date.now(),beforeHp=Math.max(0,victim.hp),beforeShield=((victim.startShieldUntil||0)>now?victim.startShield||0:0)+((victim.comboShieldUntil||0)>now?victim.comboShield||0:0);
   if((victim.startShieldUntil||0)>now&&(victim.startShield||0)>0){const absorbed=Math.min(dmg,victim.startShield);victim.startShield-=absorbed;dmg-=absorbed;}
   dmg=FFUnits.absorbForgeShield(victim,dmg,now);
+  const afterShield=((victim.startShieldUntil||0)>now?victim.startShield||0:0)+((victim.comboShieldUntil||0)>now?victim.comboShield||0:0);
+  if(beforeShield>afterShield)forgeCombatHooks(st).event({kind:"shield-hit",unitType:victim.type,sourceId:victim.id,targetId:victim.id,x:victim.x,y:victim.y,targetX:victim.x,targetY:victim.y,amount:beforeShield-afterShield,at:now});
   if(dmg>0)victim.lastDamagedAt = now;
   if (victim.legendary && victim.type==="defiler" && victim.plagueReady && victim.hp > 0 && (victim.hp-dmg) <= Math.floor(victim.maxhp*0.35)){
     addToxicSplash(st, victim.x, victim.y, 4500, victim.p);
@@ -4575,6 +4578,7 @@ function initializeExpansion(){
     onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
     onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
     onBuyPack:async(packId,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before buying packs.");if(!progression?.buyPack)throw new Error("Your Forge profile is still connecting. Try again shortly.");const response=await progression.buyPack(packId,options);forgeProfile=response.profile;return response;},
+    getPendingPackRequest:packId=>progression?.getPendingPackRequest?.(packId)||null,
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
     getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)
   });

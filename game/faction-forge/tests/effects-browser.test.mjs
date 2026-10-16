@@ -8,6 +8,43 @@ const require=createRequire(import.meta.url);
 let chromium;try{({chromium}=require('playwright'));}catch{}
 const root=resolve(import.meta.dirname,'..');
 
+test('Rifleman follow-up leaves its source separately and small statuses stay attached to recipients',{skip:!chromium},async()=>{
+  const server=createServer(async(req,res)=>{try{const file=resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!file.startsWith(root+require('node:path').sep))throw Error('path');res.setHeader('Content-Type','text/javascript');res.end(await readFile(file));}catch{res.writeHead(404);res.end();}});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser;
+  try{
+    browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox']});
+    const page=await browser.newPage({viewport:{width:1180,height:520}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/renderer.js');await page.setContent(`<style>*{box-sizing:border-box}body{margin:0;padding:24px;background:#0a1220;color:#e6edf6;font:14px system-ui}h1{font-size:23px;margin:0 0 6px}p{color:#aabbd0;margin:0 0 18px}.scenes{display:flex;gap:25px}.scene h2{font-size:13px;font-weight:600}.board{position:relative;width:336px;height:336px;overflow:hidden;border:1px solid #4b6079;border-radius:8px;background:repeating-linear-gradient(0deg,transparent 0 63px,#49657630 63px 68px),repeating-linear-gradient(90deg,#192c36 0 63px,#49657630 63px 68px)}.body{position:absolute;width:64px;height:64px;display:grid;place-items:center;font-size:38px;filter:drop-shadow(0 2px 2px #000);z-index:12}.body small{position:absolute;bottom:0;font:10px system-ui;color:#dce8f5;background:#09121bc9;padding:1px 4px}.layer{position:absolute;inset:0}</style><h1>Faction Forge · attached combat effects</h1><p>Two distinct rounds leave the Rifleman. Shields and status cues stay with affected troops.</p><div class="scenes">${['Primary round · 20 ms','Bonus round · 110 ms','Shielded allies · poisoned enemy'].map((title,i)=>`<section class="scene"><h2>${title}</h2><div class="board" id="scene${i}"><div class="layer"></div></div></section>`).join('')}</div>`);
+    const report=await page.evaluate(async base=>{
+      const {createBattleRenderer}=await import(base+'/renderer.js');
+      const audio=()=>({settings:{audio:false,volume:0},configure:()=>({audio:false,volume:0}),play:()=>false,clear(){},destroy(){},unlock:async()=>false});
+      window.reviewRenderers=[];const reports=[];
+      for(let i=0;i<3;i++){
+        let time=0;const board=document.querySelector('#scene'+i),renderer=createBattleRenderer({layer:board.querySelector('.layer'),columns:5,rows:5,now:()=>time,assets:{enabled:()=>false},audio:audio()});
+        const units=[{id:'rifle',type:'rifleman',p:0,x:0,y:4,hp:10,maxhp:10,lvl:2,evolution:'a'},{id:'ally',type:'vguard',p:0,x:2,y:4,hp:12,maxhp:12,lvl:1},{id:'target',type:'vguard',p:1,x:4,y:1,hp:15,maxhp:15,lvl:1}];
+        const hosts=new Map();for(const unit of units){const host=document.createElement('div');host.className='body';host.style.left=unit.x*68+'px';host.style.top=unit.y*68+'px';host.innerHTML=`<div class="troop-art">${unit.type==='rifleman'?'🔫':'🛡️'}</div><small>${unit.id==='rifle'?'Rifleman':unit.id==='ally'?'Ally':'Enemy'}</small>`;board.append(host);hosts.set(unit.id,host);renderer.renderUnit(host,unit);}
+        if(i<2){
+          const event={type:'combat',kind:'attack',unitType:'rifleman',sourceId:'rifle',targetId:'target',x1:0,y1:4,x2:4,y2:1,radius:0};renderer.event({...event,id:'primary'});renderer.event({...event,id:'bonus',kind:'evolution-echo',followUp:true});time=i===0?20:110;renderer.step(time);
+          reports.push({shots:renderer.projectiles,chip:hosts.get('rifle').querySelector('.ff-unit-upgrade')?.textContent});
+        }else{
+          const wall=Date.now();units[0].comboShield=2;units[0].comboShieldUntil=wall+2000;units[1].comboShield=3;units[1].comboShieldUntil=wall+2000;units[2].statusPoisonUntil=wall+2000;units[2].bindUntil=wall+1000;
+          for(const unit of units)renderer.renderUnit(hosts.get(unit.id),unit);
+          renderer.event({id:'shield',type:'combat',kind:'shield',unitType:'shieldcap',sourceId:'rifle',x1:0,y1:4,x2:0,y2:4,radius:3,targets:units.slice(0,2).map(u=>({id:u.id,x:u.x,y:u.y,amount:2}))});
+          renderer.paintFields({units,toxic:[{id:'poison-area',x:4,y:1,radius:1,until:wall+2000}]},wall);time=150;renderer.step(time);
+          reports.push({attachments:renderer.attachments,labels:hosts.get('target').getAttribute('aria-label')});
+        }
+        reviewRenderers.push(renderer);
+      }
+      return reports;
+    },base);
+    assert.equal(report[0].chip,'II · BURST');assert.equal(report[0].shots.length,2);assert.equal(report[0].shots.find(s=>s.followUp).start,75);
+    assert.equal(report[1].shots.length,1);assert.equal(report[1].shots[0].followUp,true);assert.equal(report[1].shots[0].sourceId,'rifle');assert.equal(report[1].shots[0].x,32);assert.equal(report[1].shots[0].y,304);assert.equal(report[1].shots[0].x2,304);assert.equal(report[1].shots[0].y2,100);
+    assert.ok(report[2].attachments.every(e=>e.radius<=64*.4));assert.match(report[2].labels,/Poisoned.*Bound/);assert.ok(report[2].attachments.some(e=>e.family==='unit-shield'&&e.sourceId==='ally'&&e.x===168&&e.y===304));
+    if(process.env.FACTION_FORGE_VISUAL_DIR){await mkdir(process.env.FACTION_FORGE_VISUAL_DIR,{recursive:true});await page.screenshot({path:join(process.env.FACTION_FORGE_VISUAL_DIR,'rifleman-burst-attachments.png'),fullPage:true});}
+    assert.deepEqual(errors,[]);await page.evaluate(()=>reviewRenderers.forEach(renderer=>renderer.destroy()));
+  }finally{await browser?.close();await new Promise(r=>server.close(r));}
+});
+
 test('physical missiles, storms, BloodBurst and every unit effect render on desktop/mobile with bounded canvas surfaces',{skip:!chromium},async()=>{
   const server=createServer(async(req,res)=>{try{const path=resolve(root,'.'+new URL(req.url,'http://localhost').pathname);if(!path.startsWith(root+require('node:path').sep))throw Error('path');res.setHeader('Content-Type',extname(path)==='.html'?'text/html':'text/javascript');res.end(await readFile(path));}catch{res.writeHead(404);res.end();}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser;

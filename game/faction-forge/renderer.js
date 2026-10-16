@@ -1,5 +1,6 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
 import {createBattleEffects,UNIT_EFFECTS} from "./effects.js";
+import {evolutionFor} from "./evolutions.js";
 
 /** Battle evolution changes artwork, independently of permanent Forge statistics. */
 export function unitArtTier(unit){return Math.max(1,Math.min(3,Math.max(Number(unit.forgeTier)||1,Number(unit.battleRank||unit.lvl)||1)));}
@@ -35,10 +36,22 @@ export function resolveAnimation(unit,time,moving=false){
   return moving ? "move" : "idle";
 }
 
+export function unitEffectLabels(unit,time=Date.now()){
+  const labels=[];
+  if((unit.comboShield||0)>0&&(unit.comboShieldUntil||0)>time||(unit.startShield||0)>0&&(unit.startShieldUntil||0)>time)labels.push('Shielded');
+  if((unit.statusPoisonUntil||0)>time)labels.push('Poisoned');
+  if((unit.statusAcidUntil||0)>time)labels.push('Corroded');
+  if((unit.bindUntil||0)>time)labels.push('Bound');
+  if(Math.max(unit.statusShockUntil||0,unit.shockUntil||0)>time)labels.push('Shocked');
+  if((unit.woundUntil||0)>time)labels.push('Wounded');
+  if(Math.max(unit.suppressedUntil||0,unit.suppressUntil||0,unit.slowUntil||0)>time)labels.push('Slowed');
+  return labels;
+}
+
 export function createBattleRenderer({layer,assets,cell=64,gap=4,now=()=>performance.now(),troops={},fallbackPath=()=>"",reducedMotion=globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false,...effectOptions}={}){
   const records=new Map(),reactions=new Map();let running=0;
   const clock=now;
-  const effects=createBattleEffects({layer,cell,gap,now,reducedMotion,...effectOptions,sizeFor:id=>records.get(id)?.unit.size||troops[records.get(id)?.unit.type]?.size||1,artFor:id=>{const entry=records.get(id);return entry?.sheet?{...entry.sheet,frame:animationFrame(entry.sheet.spec,entry.state,clock()-entry.stateAt),flip:entry.motion.facing<0}:null;}});
+  const effects=createBattleEffects({layer,cell,gap,now,reducedMotion,...effectOptions,sizeFor:id=>records.get(id)?.unit.size||troops[records.get(id)?.unit.type]?.size||1,positionFor:id=>{const entry=records.get(id);return entry?.node?entry.motion.sample(clock()):entry?.unit;},artFor:id=>{const entry=records.get(id);return entry?.sheet?{...entry.sheet,frame:animationFrame(entry.sheet.spec,entry.state,clock()-entry.stateAt),flip:entry.motion.facing<0}:null;}});
   function record(unit,time){
     let entry=records.get(unit.id);
     if(!entry){entry={id:unit.id,type:unit.type,tier:unitArtTier(unit),unit:{...unit},motion:new MotionTrack(unit.x,unit.y,time),state:"idle",stateAt:time,frame:null,pending:false,loadAttempted:false,loadVersion:0,sheet:null,canvas:null,host:null,lastHp:unit.targetHp??unit.hp,lastActionUntil:unit.animUntil||0};entry.motion.facing=unit.p===1?-1:1;records.set(unit.id,entry);}
@@ -55,11 +68,24 @@ export function createBattleRenderer({layer,assets,cell=64,gap=4,now=()=>perform
   }
   function renderUnit(host,unit,time=clock(),options={}){
     if(!host)return false;
+    const entry=record(unit,time);entry.unit={...unit};entry.host=host;
+    const wallTime=Date.now(),labels=unitEffectLabels(unit,wallTime),evolution=unit.evolution&&evolutionFor(unit.type,unit.evolution);
+    const effectStamp=JSON.stringify([unit.type,unit.battleRank||unit.lvl,evolution?.id,labels]);
+    if(host._ffEffectStamp!==effectStamp&&host.ownerDocument){
+      host._ffEffectStamp=effectStamp;
+      let badge=host.querySelector('.ff-unit-upgrade');
+      if(evolution&&(unit.battleRank||unit.lvl||1)>=2){
+        if(!badge){badge=host.ownerDocument.createElement('span');badge.className='ff-unit-upgrade';host.appendChild(badge);Object.assign(badge.style,{position:'absolute',right:'-5px',top:'-7px',zIndex:'8',padding:'2px 4px',border:'1px solid #dfc270',borderRadius:'3px',background:'#111b27ec',color:'#ffe8a7',font:'700 8px system-ui',lineHeight:'11px',letterSpacing:'.03em',maxWidth:'80px',pointerEvents:'none'});}
+        const short=evolution.signature==='burst'?(unit.type==='rifleman'?'BURST':unit.type==='roach'?'ACID ×2':'FOLLOW-UP'):evolution.signature.replaceAll('-',' ').toUpperCase().slice(0,18);
+        badge.textContent=`${(unit.battleRank||unit.lvl)>=3?'III':'II'} · ${short}`;
+        badge.title=`${evolution.name}: ${evolution.description}`;
+      }else badge?.remove();
+      host.setAttribute('aria-label',[troops[unit.type]?.name||unit.type,evolution?.name,...labels].filter(Boolean).join(' · '));
+    }
     host.classList.toggle("ff-illusion",!!unit.illusion);host.classList.toggle("ff-marked",(unit.markedUntil||0)>Date.now());
     host.classList.toggle("ff-bound",(unit.bindUntil||0)>Date.now());host.classList.toggle("ff-shocked",(unit.statusShockUntil||unit.shockUntil||0)>Date.now());
     host.classList.toggle("ff-suppressed",(unit.suppressedUntil||unit.suppressUntil||0)>Date.now());
     if(!assets?.enabled())return false;
-    const entry=record(unit,time);entry.unit={...unit};entry.host=host;
     if(entry.type!==unit.type || entry.tier!==unitArtTier(unit)){const previousSheet=entry.type===unit.type?entry.sheet:null;entry.type=unit.type;entry.tier=unitArtTier(unit);entry.sheet=previousSheet;entry.frame=null;entry.pending=false;entry.loadAttempted=false;entry.loadVersion++;}
     const waitingForImpact=time<effects.impactDeadline(unit.id),currentHp=unit.targetHp??unit.hp;
     if(!waitingForImpact){if(currentHp<entry.lastHp)entry.hitUntil=Date.now()+200;entry.lastHp=currentHp;}
@@ -131,7 +157,7 @@ export function createBattleRenderer({layer,assets,cell=64,gap=4,now=()=>perform
     if(ev.sourceId!=null){
       const reaction=reactions.get(ev.sourceId)||{};
       if(['attack','rocket','rail-shot','rail-overload','evolution-echo','precision-hit'].includes(ev.kind)){reaction.attackUntil=time+480;reaction.castUntil=0;if(ev.unitType==='blood')reaction.swellingUntil=time+180;}
-      else if(!['death','hit','rail-impact','ward-break','rocket-explosion','shockwave'].includes(ev.kind)){reaction.castUntil=time+500;}
+      else if(!['death','hit','rail-impact','ward-break','rocket-explosion','shockwave','shield-hit'].includes(ev.kind)){reaction.castUntil=time+500;}
       if(ev.kind==='burrow'||ev.kind==='ambush')reaction.burrowUntil=time+400;
       reactions.set(ev.sourceId,reaction);
     }
@@ -153,5 +179,5 @@ export function createBattleRenderer({layer,assets,cell=64,gap=4,now=()=>perform
   }
   function clear(){for(const entry of records.values())entry.node?.remove();records.clear();reactions.clear();effects.clear();}
   function destroy(){if(running)cancelAnimationFrame(running);running=0;clear();effects.destroy();}
-  return {renderUnit,sync,step,start,event,clear,destroy,deathDuration,paintTerrain,paintFields,configure:effects.configure,unlockAudio:effects.unlockAudio,impactDeadline:effects.impactDeadline,createMotionTrack:(x,y,time=clock())=>new MotionTrack(x,y,time),forget:id=>{records.delete(id);reactions.delete(id);},get quality(){return effects.quality;},get settings(){return effects.settings;},get stats(){return effects.stats;},get size(){return records.size;}};
+  return {renderUnit,sync,step,start,event,clear,destroy,deathDuration,paintTerrain,paintFields,configure:effects.configure,unlockAudio:effects.unlockAudio,impactDeadline:effects.impactDeadline,createMotionTrack:(x,y,time=clock())=>new MotionTrack(x,y,time),forget:id=>{records.delete(id);reactions.delete(id);},get projectiles(){return effects.projectiles;},get attachments(){return effects.attachments;},get quality(){return effects.quality;},get settings(){return effects.settings;},get stats(){return effects.stats;},get size(){return records.size;}};
 }

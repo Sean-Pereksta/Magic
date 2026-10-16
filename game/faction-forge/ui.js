@@ -1,6 +1,6 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
 import {draftCardPresentation,relevantComboStates} from "./drafting.js";
-import {FORGE_PACKS,packEligibility,ROUND_WIN_CARDS} from "./packs.js";
+import {FORGE_PACKS,packEligibility,randomPackPool,ROUND_WIN_CARDS} from "./packs.js";
 
 const ROMAN=["","I","II","III"], TIER_NAMES=["","Recruit","Veteran","Elite"];
 const DEFAULT_COSTS={1:{cards:10,dust:100},2:{cards:30,dust:350}};
@@ -15,7 +15,7 @@ export function forgeEligibility(profile,key,{active=false,costs=DEFAULT_COSTS}=
 }
 export function upgradeCount(profile,costs=DEFAULT_COSTS){return Object.keys(profile?.troops||{}).filter(key=>forgeEligibility(profile,key,{costs}).available).length;}
 
-export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,canSignIn=()=>!getProfile()?.uid,canRetryConnection=()=>false,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onBuyPack,onTargetReward,onMenu,onBrowseLobbies,onSignIn,onRetryConnection,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
+export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,getPendingPackRequest=()=>null,canSignIn=()=>!getProfile()?.uid,canRetryConnection=()=>false,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onBuyPack,onTargetReward,onMenu,onBrowseLobbies,onSignIn,onRetryConnection,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
   if(!host)throw new Error("Faction Forge UI requires a DOM host.");
   const document=host.ownerDocument, shell=document.createElement("div"), fab=document.createElement("button");
   shell.className="ff-expansion";shell.hidden=true;shell.setAttribute("aria-label","Faction Forge");host.appendChild(shell);
@@ -147,18 +147,23 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     }panel.appendChild(body);
   }
   function showPacks(panel,status){
-    panel.appendChild(element("p","ff-subtitle","Spend Forge Dust on the exact card sets below. Every card goes straight into your collection."));
+    panel.appendChild(element("p","ff-subtitle","Choose a fixed card set or open random reinforcements. Every card goes straight into your collection."));
     if(lastPackPurchase&&(lastPackPurchase.uid!==profile().uid||lastPackPurchase.username!==profile().username))lastPackPurchase=null;
     if(lastPackPurchase){const receipt=element("p","ff-pack-receipt",`Opened ${lastPackPurchase.name}: ${lastPackPurchase.cards.map(card=>`${card.quantity} ${troops[card.troopKey]?.name||card.troopKey} cards`).join(", ")}.`);receipt.setAttribute("role","status");panel.appendChild(receipt);}
     const list=element("div","ff-pack-list");
     for(const item of FORGE_PACKS){
-      const card=element("section","ff-pack"),eligibility=packEligibility(profile(),item.id,{active:isActiveMatch()});if(item.faction)card.classList.add(`ff-faction-${item.faction.toLowerCase()}`);
+      const purchaseState=()=>{const pending=getPendingPackRequest(item.id),normal=packEligibility(profile(),item.id,{active:isActiveMatch()});return pending&&profile().uid&&!matchActive()?{available:true,pending,reason:"Finish revealing your previous purchase."}:normal;};
+      const card=element("section","ff-pack"),eligibility=purchaseState();if(item.faction)card.classList.add(`ff-faction-${item.faction.toLowerCase()}`);
+      card.dataset.packId=item.id;
       card.append(element("h2","",item.name),element("strong","ff-pack-price",`${item.dust} Forge Dust · ${item.totalCards} cards`));
-      const contents=element("ul","ff-pack-contents");for(const reward of item.cards)contents.appendChild(element("li","",`${reward.quantity} × ${troops[reward.troopKey]?.name||reward.troopKey}`));card.appendChild(contents);
-      const buy=button(packBusy?"Opening pack…":`Buy ${item.name}`,async()=>{
-        const latest=packEligibility(profile(),item.id,{active:isActiveMatch()});if(packBusy||!latest.available){status.textContent=latest.reason;return;}
+      const contents=element("ul","ff-pack-contents");
+      if(item.random){contents.appendChild(element("li","",`${item.draws} random unlocked troop types × ${item.cardsPerDraw} cards`));contents.appendChild(element("li","",`Pool: all ${randomPackPool(profile()).length} unlocked troop types across every faction.`));contents.appendChild(element("li","","Contents revealed after opening. Different troop types whenever at least three are unlocked."));}
+      else for(const reward of item.cards)contents.appendChild(element("li","",`${reward.quantity} × ${troops[reward.troopKey]?.name||reward.troopKey}`));card.appendChild(contents);
+      if(eligibility.pending)card.appendChild(element("p","ff-upgrade-reason","Your previous purchase is waiting to reveal its cards. Retry the same purchase safely."));
+      const buy=button(packBusy?"Opening pack…":eligibility.pending?`Finish opening ${item.name}`:`Buy ${item.name}`,async()=>{
+        const latest=purchaseState();if(packBusy||!latest.available){status.textContent=latest.reason;return;}
         packBusy=true;const owner={uid:profile().uid,username:profile().username};showForge(selectedTroop,"packs");
-        const requestId=globalThis.crypto?.randomUUID?.()||`pack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const requestId=latest.pending||globalThis.crypto?.randomUUID?.()||`pack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const result=await invoke(onBuyPack,[item.id,{requestId}],shell.querySelector(".ff-status")||status);packBusy=false;
         if(result){if(owner.uid===profile().uid&&owner.username===profile().username)lastPackPurchase={...owner,name:item.name,cards:result.transaction?.cards||item.cards};showForge(selectedTroop,"packs");}
         else {const message=shell.querySelector(".ff-status")?.textContent||"Unable to open this pack. Retry safely.";showForge(selectedTroop,"packs");shell.querySelector(".ff-status").textContent=message;}

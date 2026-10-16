@@ -481,7 +481,7 @@ service cloud.firestore {
             && data.keys().hasOnly(['id','uid','mode','won','missionId','stars','cards','forgeDust','unlocks','completedAt']))
           || (kind == 'upgrades' && data.requestId == id
             && data.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']))
-          || (kind == 'purchases' && data.requestId == id && data.packId in ['vanir','aesir','helions','war-chest']
+          || (kind == 'purchases' && data.requestId == id && data.packId in ['vanir','aesir','helions','war-chest','random-reinforcements']
             && data.dustSpent == (data.packId == 'war-chest' ? 90 : 50)
             && data.cards is list && data.cards.size() == (data.packId == 'war-chest' ? 6 : 3)
             && data.completedAt is int && data.completedAt >= 0
@@ -587,7 +587,7 @@ service cloud.firestore {
               && d.cardsSpent is int && d.cardsSpent >= 0 && d.dustSpent is int && d.dustSpent >= 0
               && d.completedAt is int && d.completedAt >= 0
               && d.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']))
-            || (kind == 'purchases' && d.requestId == id && d.packId in ['vanir','aesir','helions','war-chest']
+            || (kind == 'purchases' && d.requestId == id && d.packId in ['vanir','aesir','helions','war-chest','random-reinforcements']
               && d.dustSpent == (d.packId == 'war-chest' ? 90 : 50)
               && d.cards is list && d.cards.size() == (d.packId == 'war-chest' ? 6 : 3)
               && d.completedAt is int && d.completedAt >= 0
