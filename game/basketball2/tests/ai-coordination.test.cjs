@@ -56,6 +56,19 @@ function fixture(withCourtReads=true){
   return ctx;
 }
 
+function mismatchFixture(){
+  const ctx=fixture();
+  ctx.handler.group.position.set(0,0,6);ctx.handler.velocity.set(0,0,0);
+  ctx.plan.style='balanced';ctx.plan.phase='space';
+  const guard=ctx.support[0],center=ctx.support[1];
+  guard.group.position.set(-2.1,0,3);guard.profile={height:.9,width:.84,layup:.82,shot:.95,block:.56};guard.bodyRadius=.462;
+  center.group.position.set(-4.5,0,4);center.profile={height:1.24,width:1.16,layup:1.22,shot:.58,block:2.05};center.bodyRadius=.638;center.stamina=1;
+  ctx.defenders[0].group.position.set(3,0,6);
+  ctx.defenders[1].group.position.set(-3,0,1.35);ctx.defenders[1].profile={height:.9,width:.84,layup:.82,shot:.95,block:.56};ctx.defenders[1].bodyRadius=.462;
+  ctx.defenders[2].group.position.set(5,0,7);
+  return ctx;
+}
+
 test('high IQ creates exactly one open dump-off pocket and retains a weak-side outlet regardless of update order',()=>{
   const selections=[];
   for(const reverse of [false,true]){
@@ -117,6 +130,71 @@ test('occupied rim pockets, covered catches and human support never produce an e
   blocked.defenders[1].group.position.set(-1.4,0,1.7);blocked.defenders[2].group.position.set(1.4,0,1.7);
   blocked.coordinate();assert.equal(blocked.plan.receivingRead.selected,null);
   assert.equal(blocked.support[1].aiBrain.role,'space');
+});
+
+test('one strong finisher seals a small defender ahead of a closer guard without sending a second player inside',()=>{
+  const choices=[];
+  for(const reverse of [false,true]){
+    const ctx=mismatchFixture(),guard=ctx.support[0],center=ctx.support[1];
+    assert.ok(ctx.flatDistance(guard.group.position,ctx.HOOP_POS)<ctx.flatDistance(center.group.position,ctx.HOOP_POS));
+    ctx.coordinate(reverse);
+    const selected=ctx.plan.receivingRead.selected;
+    assert.ok(selected,'recognizes a stationary mismatch receiver');
+    assert.equal(selected.playerId,center.id);assert.equal(selected.seal,true);
+    assert.equal(center.aiBrain.role,'dump_off');
+    assert.ok(ctx.aiReadShotAt(center,ctx.handler,selected.target,ctx.settings).finishFavorable);
+    assert.ok(ctx.flatDistance(guard.aiBrain.target,ctx.HOOP_POS)>4,'guard stays available outside the lane');
+    assert.ok(ctx.aiCoordLaneSpace(ctx.handler,ctx.handler.group.position,selected.target,ctx.settings)>=1);
+    choices.push([selected.playerId,selected.target.x,selected.target.z]);
+    ctx.teamAITime+=.4;ctx.coordinate(reverse);
+    assert.equal(ctx.plan.receivingRead.selected.playerId,center.id,'does not swap out the seal because of its movement cooldown');
+  }
+  assert.deepEqual(choices[0],choices[1]);
+});
+
+test('rim help, occupied catch bodies and guarded entry passes cancel a mismatch seal',()=>{
+  for(const obstruction of ['helper','body','passing_lane']){
+    const ctx=mismatchFixture();ctx.coordinate();
+    const target=ctx.plan.receivingRead.selected.target.clone();
+    if(obstruction==='helper') ctx.defenders[2].group.position.copy(target).addScaledVector(new Vector3(1,0,0),1.25);
+    if(obstruction==='body') ctx.defenders[1].group.position.copy(target).addScaledVector(new Vector3(-1,0,0),.9);
+    if(obstruction==='passing_lane') ctx.defenders[0].group.position.copy(ctx.handler.group.position).lerp(target,.5);
+    ctx.teamAITime+=.4;ctx.coordinate();
+    assert.equal(ctx.plan.receivingRead.selected,null,obstruction+' cannot be ignored for a favorable size matchup');
+  }
+});
+
+test('a clear running lane keeps a mismatch receiver on its own side instead of crossing the handler',()=>{
+  const ctx=mismatchFixture();ctx.handler.velocity.set(0,0,-3);
+  // The only small defender is on the other side of the open direct drive.
+  ctx.defenders[1].group.position.set(3,0,1.35);
+  ctx.coordinate();assert.equal(ctx.plan.receivingRead.selected,null);
+  const center=ctx.support[1];
+  center.group.position.set(4.5,0,4);ctx.teamAITime+=.4;ctx.coordinate();
+  assert.equal(ctx.plan.receivingRead.selected.playerId,center.id);
+  assert.ok(ctx.plan.receivingRead.selected.target.x>0,'same-side pocket preserves the direct lane');
+  assert.ok(ctx.aiCoordDistanceToLane(center.aiBrain.target,ctx.handler.group.position,ctx.HOOP_POS)>1.2);
+});
+
+test('an authored cutter or roller yields its crossing target when the direct drive is clear but rim pockets are covered',()=>{
+  for(const [style,role] of [['motion','cut'],['pick_roll','roll']]){
+    const ctx=fixture(),actor=ctx.support[0];
+    ctx.handler.group.position.set(0,0,6);ctx.handler.velocity.set(0,0,-3);
+    ctx.defenders[0].group.position.set(3.5,0,6.5);
+    ctx.defenders[1].group.position.set(-1.6,0,1.4);ctx.defenders[2].group.position.set(3.5,0,1.4);
+    ctx.plan.style=style;ctx.plan.phase=role;
+    actor.aiBrain.role=role;actor.aiBrain.roleUntil=3;actor.aiBrain.target.set(1.1,0,2.2);
+    assert.ok(ctx.aiCoordCrossesDrive(actor.group.position,actor.aiBrain.target,ctx.handler),'authored target crosses the handler');
+    assert.equal(ctx.aiCoordinateOffBall(actor,actor.aiBrain,ctx.handler,ctx.settings,ctx.plan),true);
+    assert.equal(ctx.plan.receivingRead.selected,null,'covered same-side pocket stays unavailable');
+    assert.equal(actor.aiBrain.role,role,'preserves the single authored actor');
+    assert.ok(actor.aiBrain.target.x<0,'waits on its original side');
+    assert.equal(ctx.aiCoordCrossesDrive(actor.group.position,actor.aiBrain.target,ctx.handler),false);
+    assert.ok(ctx.aiCoordDistanceToLane(actor.aiBrain.target,ctx.handler.group.position,ctx.HOOP_POS)>2.8);
+    assert.ok(ctx.aiCoordCatchBodyClear(actor,actor.aiBrain.target,ctx.handler,ctx.settings));
+    ctx.aiCoordinateOffBall(ctx.support[1],ctx.support[1].aiBrain,ctx.handler,ctx.settings,ctx.plan);
+    assert.equal(ctx.support.filter(player=>['cut','roll','dump_off'].includes(player.aiBrain.role)).length,1);
+  }
 });
 
 test('expert on-ball defense contains visible running momentum with bounded anticipation instead of speed boosts',()=>{

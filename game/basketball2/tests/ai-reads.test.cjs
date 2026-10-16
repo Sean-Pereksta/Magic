@@ -174,3 +174,76 @@ test('perception errors are stable for a brain, shrink on hard settings, and vel
   assert.ok(projected.x-defender.group.position.x<=4.8);
   assert.deepEqual(ctx.aiReadPosition(handler,defender,precise,5),ctx.aiReadPosition(handler,defender,precise,.6));
 });
+
+test('a big skilled finisher recognizes single small-guard contact at the rim without calling it open',()=>{
+  const {ctx,add}=fixture();
+  const big=add('sky_hook',0,0,-9.2,{height:1.16,width:1.02,layup:1.34,block:1.48});
+  const small=add('flash',1,.9,-9.8,{height:.9,width:.84,layup:.82,block:.56});
+  const contact=ctx.aiAssessShot(big,precise);
+  assert.equal(contact.finishOpen,false,'a size edge never turns contact into an open finish');
+  assert.equal(contact.finishFavorable,true);assert.equal(contact.finishDefender,small);
+  assert.equal(contact.paintDefenders,1);assert.ok(contact.mismatchAdvantage>.5);
+  assert.ok(contact.quality>.65&&contact.quality<.9,'the matchup earns a sensible attempt, not a guaranteed basket');
+  small.profile={height:1.16,width:1.02,layup:1.34,block:1.48};
+  const equal=ctx.aiAssessShot(big,precise);
+  assert.equal(equal.finishFavorable,false);assert.equal(equal.mismatchAdvantage,0);
+  assert.ok(equal.quality<contact.quality-.15);
+  small.profile={height:1.24,width:1.16,layup:1.22,block:2.05};
+  const protector=ctx.aiAssessShot(big,precise);
+  assert.equal(protector.finishFavorable,false);assert.ok(protector.quality<contact.quality-.2);
+});
+
+test('size-aware rim reads respect well-timed blocks, help, fatigue, and distance',()=>{
+  const {ctx,add}=fixture();
+  const big=add('big',0,0,-9.2,{height:1.16,width:1.12,layup:1.4});
+  const small=add('small',1,.9,-9.8,{height:.9,width:.84,block:.56});
+  const available=ctx.aiAssessShot(big,precise);assert.equal(available.finishFavorable,true);
+  small.blockTime=.28;small.onGround=false;
+  const blocked=ctx.aiAssessShot(big,precise);
+  assert.equal(blocked.activeBlockThreat,true);assert.equal(blocked.finishFavorable,false);
+  assert.ok(blocked.finishRisk>available.finishRisk+.4);assert.ok(blocked.quality<available.quality-.2);
+  small.blockTime=0;small.onGround=true;
+  const helper=add('help',1,-.8,-10.1,{height:1.12,width:1.08,block:1.5});
+  const doubled=ctx.aiAssessShot(big,precise);
+  assert.equal(doubled.paintDefenders,2);assert.equal(doubled.finishFavorable,false);
+  assert.ok(doubled.finishRisk>available.finishRisk+.25);
+  helper.group.position.set(6,0,-5);big.stamina=.3;
+  const tired=ctx.aiAssessShot(big,precise);
+  assert.equal(tired.finishFavorable,false);assert.equal(tired.mismatchAdvantage,0);
+  big.stamina=1;big.group.position.z=-8.3;
+  assert.equal(ctx.aiAssessShot(big,precise).finishFavorable,false,'a 2.5m attempt is not a finish over a guard at the rim');
+});
+
+test('rim feeds can target a genuine size seal while actual interceptors and paint help still close the pass',()=>{
+  const {ctx,add}=fixture(),passer=add('passer',0,4,-5);
+  const receiver=add('center',0,0,-9.2,{height:1.16,width:1.12,layup:1.4});
+  const small=add('guard',1,-1.0,-9.6,{height:.9,width:.84,block:.56});
+  const seal=ctx.aiAssessPass(passer,receiver,precise);
+  assert.equal(seal.finishOpen,false);assert.equal(seal.finishFavorable,true);
+  assert.ok(seal.catchSpace<1.55);assert.ok(seal.clearance>.82);assert.equal(seal.safe,true);
+  small.group.position.set(.8,0,-8.36);
+  const intercepted=ctx.aiAssessPass(passer,receiver,precise);
+  assert.ok(intercepted.clearance<.1);assert.equal(intercepted.safe,false,'height cannot excuse a pass through a defender');
+  const easy={courtVision:.1,readError:4,lookAhead:.1};
+  const noisyTarget=ctx.aiAssessPass(passer,receiver,easy).target;
+  small.group.position.set((passer.group.position.x+noisyTarget.x)/2,0,(passer.group.position.z+noisyTarget.z)/2);
+  assert.equal(ctx.aiAssessPass(passer,receiver,easy).safe,false,'a noisy matchup read cannot erase a body actually inside its passing corridor');
+  small.group.position.set(-1,0,-9.6);add('helper',1,0,-10.4,{height:1.24,width:1.16,block:2.05});
+  const help=ctx.aiAssessPass(passer,receiver,precise);
+  assert.equal(help.finishFavorable,false);assert.equal(help.safe,false);
+});
+
+test('an empty driving corridor stays actionable when a defender is behind the rim, but a rim anchor or rotating body still closes it',()=>{
+  const {ctx,add}=fixture(),handler=add('handler',0,0,-2.8);
+  const behind=add('behind',1,0,-12.1);
+  const available=ctx.aiFindDriveLane(handler,precise);
+  assert.equal(available.direct,true);assert.equal(available.clearCorridor,true);
+  assert.equal(available.drive,true);assert.ok(available.openness>.95);
+  behind.group.position.set(0,0,-10.8);
+  const anchor=ctx.aiReadDrivePath(handler,available.target,available.finish,precise);
+  assert.equal(anchor.clearCorridor,true);assert.ok(anchor.openness<.62,'the rim anchor remains a real finishing threat');
+  behind.group.position.set(6,0,-5);
+  const rotator=add('rotator',1,1.8,-7.1);rotator.velocity.set(-3,0,0);
+  const rotating=ctx.aiReadDrivePath(handler,available.target,available.finish,precise);
+  assert.ok(rotating.openness<.4,'predicted help still closes the route before takeoff');
+});
