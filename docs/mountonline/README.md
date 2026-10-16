@@ -7,7 +7,7 @@ The Online game now uses a shared deterministic simulation instead of separate w
 - Explore a 128 × 88 realm with roads, physical trees and cliffs, rivers, bridges, settlements, caravans, outlaws, and faction patrols. Tap ground to march or an entity to inspect it. WASD travels on the world map.
 - Recruit at settlements, promote all 14 original troop classes, rotate reserves, buy supplies and standards, complete contracts, and develop leadership, logistics, and tactics.
 - Use Move, Attack, Charge, Hold, Defend, Follow, Retreat, Patrol, and Auto commands. Attack on ground attacks enemies on the way to that location. Hold keeps the current position. Follow accepts an allied unit; including that leader in the selection holds the leader while followers converge. Patrol guards a route and returns after engagements.
-- Infantry counters charges, cavalry flanks toward missile troops, crossbows pierce armor, mages deal splash damage, and healers follow wounded allies. Shield wall and square formations protect defending troops. Commander rally, volleys, and firestorms have server-validated cooldowns.
+- Infantry counters charges, cavalry flanks toward missile troops, crossbows pierce armor, mages deal splash damage, and healers follow wounded allies. Shield wall and square formations protect defending troops. Commander rally, volleys, and firestorms have validated cooldowns.
 - Breach a castle gate before entering. A nearby, available owner controls the castle's actual garrison. Garrison casualties never duplicate or consume the owner's separate field company. An absent or occupied owner has AI defenders.
 - Castles generate income every 120 seconds of active simulation. Supply consumption and modest upkeep make logistics meaningful. Hostile patrols can recapture neglected holdings; development, garrison strength, interception, and peace negotiations protect them.
 - Online alliances support founding, membership requests, founder approval, succession, and leaving. Members cannot attack each other's companies or castles.
@@ -27,46 +27,57 @@ Desktop: click/drag to select, Shift to add, right-click to move/attack, mouse w
 | `renderer.mjs` | Interpolated sprite animation, culled terrain chunks, mini-map, order graphics |
 | `assets.mjs` | Essential art preload and versioned Cache API reuse |
 | `storage.mjs` | Validated local campaign import/export, previous-save recovery, battle resume |
-| `network.mjs` | Existing Firebase identity, authenticated HTTP, Socket.IO, safe request retries |
+| `network.mjs`, `firebase.mjs` | Existing Firebase identity, direct Firestore listeners, orders, and safe retries |
 | `app.mjs`, `style.css` | Responsive menu, management screens, selection, desktop/touch input |
-| `server/mountonline/` | Firebase Admin authority, receipts, checkpoints, leases, HTTP and Socket.IO |
+| `firestore-realm.mjs`, `codec.mjs` | Elected browser simulation, compressed snapshots/checkpoints, transactional results, host handover |
 
-Rendering runs independently of the 20 Hz simulation. Static terrain uses a bounded 21-chunk cache; the renderer culls off-screen sprites and interpolates movement. NPC decisions and unit targeting are staggered. Path replanning has a shared budget. Each army supports 600 troops; the server admits up to 4,800 simultaneous battle troops and 16 retained battle sessions to bound its workload. Limits are admission controls, not silent troop deletion.
+Rendering runs independently of the 20 Hz simulation. Static terrain uses a bounded 21-chunk cache; the renderer culls off-screen sprites and interpolates movement. NPC decisions and unit targeting are staggered. Path replanning has a shared budget. Each army supports 600 troops; the shared simulation admits up to 4,800 simultaneous battle troops and 16 commanders to bound its workload. Limits are admission controls, not silent troop deletion.
 
-## Firebase deployment
+## Firebase deployment — Firestore only
 
-The code is included in this PR; production hosting and rules deployment are separate operations.
+Mountain Blade Online is a static browser game using the existing `bible-game-246c0` Firebase project and its existing Firebase Authentication session, including anonymous sign-in. Multiplayer, saves, commands, ownership, and recovery use **Cloud Firestore directly**. There is no Node game service, Cloud Function, Realtime Database, service-account key, API endpoint configuration, or additional hosting requirement. Publish the game files through the existing Cat'N Mice/GitHub hosting.
 
-1. Deploy the Node code with the existing `bible-game-246c0` service account. `server.js` mounts `/api/mountonline` and the `/mountonline` Socket.IO namespace using its existing Admin connection. An optional `npm run start:mountonline` host serves this game and artwork directly and handles graceful shutdown.
-2. Use one active replica for this realm, with persistent Firebase access. A Firestore lease prevents a second process from settling a competing timeline. Configure `MOUNTONLINE_ALLOWED_ORIGINS` with the exact frontend origin(s). Defaults are `https://catnmice.com` and `https://www.catnmice.com`.
-3. When the frontend and Node host have different origins, set `API_BASE` in `game/mountonline/config.mjs` to the Node host's HTTPS `/api/mountonline` URL. The default is same-origin. Backend addresses are deliberately never accepted from query parameters or local campaign files because they receive Firebase tokens.
-4. Deploy `firestore.rules` to the existing project after backing up the deployed rules and confirming the frontend/backend configuration. New saves, matches, receipts, names, and realm state are server-written. Clients may only get their own new profile. The old `games_rogueduel/mountandblade_online` namespace becomes read-only; other Rogue Duel games retain their existing permissions. No production rules were deployed by creating this PR.
-5. Check `/api/mountonline/health`, then sign in from the real frontend with two accounts. Verify a company save, movement, battle, garrison defense, alliance, castle capture, and reconnect before promoting the release.
+1. Back up your deployed Firestore rules.
+2. For the rules supplied on October 16, publish the **complete replacement** in [`firestore-complete.rules`](firestore-complete.rules) using Firebase Console → Firestore Database → Rules. It retains all supplied rules for other games. The repository's aggregate `firestore.rules` contains the same Mountain Blade section alongside its other game rules.
+3. Publish this matching static game update. Check online entry with two accounts, movement, a battle, saving, and reconnecting. The game creates its own documents; no collections need to be pre-created and no custom indexes are required.
 
-The existing publicly readable display-name profile/password scheme is not treated as proof of ownership. A URL username cannot import or overwrite another player's company. Verified `mountOnlineAccounts` bindings are accepted; existing verified `factionForgeAccounts` plus matching `factionForgeNames` bindings are reused. Unlinked Firebase identities can immediately play and save their own new online company under a unique Wanderer name.
+For a manual merge into a newer rules version, insert [`firestore-additions.rules`](firestore-additions.rules) inside `match /databases/{database}/documents`, after `isAuthed()`. Also change **both** write allowances in the existing `games_rogueduel/{gameId}` block to:
 
-For an older lobby account without a trusted binding, an operator must independently verify the owner and bind its exact legacy name to its Firebase UID. The helper is server-only and defaults to a dry run:
-
-```bash
-node server/mountonline/bind-account.mjs --username Captain --uid FIREBASE_UID
-node server/mountonline/bind-account.mjs --username Captain --uid FIREBASE_UID --commit
+```rules
+allow read: if isAuthed();
+allow write: if isAuthed() && gameId != 'mountandblade_online';
 ```
 
-Run it in the trusted server environment with the existing `FIREBASE_SERVICE_ACCOUNT`, never in a browser or a public endpoint. The next fresh realm join imports the old company. If that identity already has a live unlinked session, let it leave the realm before migration. Bindings are not silently reassigned across identities.
+The exception must appear on both the parent and recursive child matches: overlapping allows cannot be restricted by another deny. This preserves old Mountain Blade records for migration and stops old clients from overwriting them. Other Rogue Duel games retain their permissions. Publish the matching rules and game version together. No production rules or records are changed by opening a pull request.
 
-Migration retains gold, level, XP, every known troop class, archived original inventory, and owned legacy castles. Forces beyond the field cap remain in reserves. Legacy castles retain their identities and garrisons at safe coordinates on the rebuilt map. Known active standards carry over; unknown banner payloads and allegiance references are archived rather than being interpreted as new authority or silently discarded. Old display-name battle URLs return to the rebuilt realm; they cannot grant a result or replay an old reward. Existing records remain available for rollback/review.
+### Older company migration, using only the Firebase Console
 
-## Durability and authority
+New companies save immediately under their Firebase UID. A lobby display name selects the displayed name; it never grants access to another player's save. Show/copy the Firebase UID from the game settings when setting up a legacy binding.
 
-Clients send intentions, never troop losses, gold gains, castle owners, or winners. Firebase ID tokens are verified by Admin; player identifiers come from the verified token and protected bindings. The server validates proximity, troop ownership, inventory, costs, target allegiance, and capacity. Both players and castle ownership settle in one Firestore transaction.
+For an older name-based save, independently verify the owner and add these two documents using Firestore's **Data** tab (no script or service account):
 
-Each durable action has a permanent per-player receipt. Retrying the same action after an uncertain response reuses its request ID; a committed purchase or reward is not applied twice. Commander orders and movement are ephemeral intentions. Progress actions, battle entry, and results checkpoint before acknowledgement/broadcast. In-flight battles checkpoint every two seconds; world/profiles checkpoint every ten seconds. An abrupt process loss can therefore roll back at most the last two seconds of battle movement or ten seconds of world movement, while acknowledged progression actions remain committed. A lost authority or failed checkpoint pauses mutation, reloads the persisted state, and retries ownership recovery.
+| Document | Fields |
+| --- | --- |
+| `mountOnlineAccounts/FIREBASE_UID` | `username` (string): exact old name; `verified` (boolean): `true` |
+| `mountOnlineNames/EXACT_OLD_NAME` | `uid` (string): the same Firebase UID |
 
-Snapshots are sent at 5 Hz over Socket.IO with nearby public companies and NPCs; full map artwork and terrain are not networked. If the WebSocket client cannot load or reconnect, the browser polls the server's cached state at 1.5-second intervals and stops polling in hidden tabs. Firestore is not polled by each player and is never used as a per-frame transport. HTTP and socket commands have separate per-identity limits and origin validation.
+Then have that player leave the online realm and reconnect after finishing any active battle. The browser host imports the old company and castles once. Late bindings retain newer skills, contracts, achievements, and progression. Gold, level, XP, all original troop classes, excess troops in reserve, archived inventory, original castle identities and garrisons survive migration. Both mappings must agree. Browser clients cannot create or edit these mappings. Do not reassign an existing binding to another person.
+
+Anonymous Firebase identity persists in that browser's storage. Reconnecting with the same UID resumes its save. Clearing browser identity or moving to another device does not authenticate the previous UID; use the site's existing linked Firebase sign-in when cross-device identity is needed. A username in a URL is insufficient proof of ownership.
+
+## Synchronization and recovery
+
+An active browser acquires a 20-second Firestore lease through a transaction. That browser runs the same 20 Hz world and battle simulation as local play. Other players submit UID-owned command documents and listen to their private view. Each write checks the current host and lease epoch. After an abrupt host disconnect, another active browser claims the expired lease and restores the checkpoint; a normal leave releases it immediately. The world pauses when no player is hosting.
+
+Lease renewals are coalesced to approximately five-second intervals. World views update at most once every 1.2 seconds; unfinished battles update every 500 ms. The renderer interpolates positions between snapshots independently of the network. Compressed native-browser payloads avoid nested-array restrictions and keep 1,200-troop battles below Firestore's document limit. Terrain and artwork are static assets and never pass through Firestore. A size guard pauses mutation rather than silently truncating a realm. Listeners replace polling, and ephemeral completed orders are removed by their owner.
+
+Progress purchases, battle entry, battle results, both participants' profiles, territory, and the permanent command receipt commit atomically. Retrying a purchase uses the same request ID and reads its result. Completed durable receipts cannot be changed or deleted by clients. Battle checkpoints commit every two seconds; world movement checkpoints every five seconds. Abrupt host loss can roll back unacknowledged movement to that checkpoint. Online writes require a live Firestore connection; cached/offline snapshots are not presented as committed online progress. Local campaigns remain available without a network.
+
+The rules restrict private reads, UID/session ownership, command fields, protected legacy bindings, checkpoint revisions, current-host writes, and immutable receipts. The host validates troop ownership, costs, distance, target allegiance, cooldowns, and battle settlement using the shared engine. **This is peer-hosted multiplayer:** Firestore rules cannot independently recompute a complete battle or validate compressed simulation contents. An elected host is trusted for simulation; this design does not claim protection against a malicious host. Firebase Rules documentation: https://firebase.google.com/docs/firestore/security/rules-conditions . Transactions documentation: https://firebase.google.com/docs/firestore/manage-data/transactions .
 
 ## Local campaigns
 
-Local campaigns do not require Firebase or the realm backend. They save every five seconds and on page hide, retain the previous checkpoint, and support JSON export/import. An invalid current save can recover from the previous save. Imports restore campaigns and unfinished battles locally; they cannot enter the online economy. Practice battles and sieges do not modify a saved campaign.
+Local campaigns do not require Firebase. They save every five seconds and on page hide, retain the previous checkpoint, and support JSON export/import. An invalid current save can recover from the previous save. Imports restore campaigns and unfinished battles locally; they cannot enter the online economy. Practice battles and sieges do not modify a saved campaign.
 
 ## Art
 
@@ -84,4 +95,4 @@ npm run test:mountonline:browser
 npm run test:mountonline:rules
 ```
 
-The emulator suite uses only `demo-mountonline`, refuses to run without `FIRESTORE_EMULATOR_HOST`, and tests production rules plus the real Admin service and two browser clients. Browser tests serve the actual game, injecting inspection hooks only into the test HTTP response. The two-player test substitutes Firebase's token verifier/browser Auth SDK; it exercises real HTTP, Socket.IO, shared simulation, Firestore transactions, reconnects, and result settlement. No fixture authentication is installed in production code. See `QA.md` for measured results and the distinction between browser emulation and physical devices.
+The emulator suite uses only `demo-mountonline` and tests both the repository rules and the complete rules based on the supplied deployed file. Two browser clients use the real Firestore Web SDK, real listeners, transactions and security rules. Only the test HTTP response supplies emulator identity credentials; there is no production auth bypass. The HTTP server in tests only serves static assets and is not a game service or deployment dependency. See `QA.md` for results and remaining physical-device/production checks.
