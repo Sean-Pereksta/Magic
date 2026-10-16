@@ -756,6 +756,7 @@
     // One registry drives routes, cards, categories, limits, lobby labels, and featured content.
     // Add imagePath:"graphics/your-image.png" to any game to use artwork; omit it to keep the emoji fallback.
     const GAMES = [
+      {key:"quipclash",title:"Quip Clash",emoji:"💬⚡",imagePath:"/game/quip-clash/assets/quip-clash.svg",desc:"Write outrageous answers, vote for your favorites, and battle for the biggest laugh. Two prompts each, double-point round two, and a triple-point finale. Play together on your phones with 4–12 account holders.",route:"/game/quip-clash.html",multiplayerRoute:"/game/quip-clash.html",joinLabel:"Play with Friends",category:"Party",modes:["multi"],launchMode:"lobby",minPlayers:4,maxPlayers:12,autoRedirect:true,autoUsername:true,requiresUser:true,featured:false},
       {key:"apestogetherstrong",title:"Apes Together Strong",emoji:"🦍👑",imagePath:"/graphics/titlegraphics/apestogetherstrong.png",desc:"Lead a living ape horde through a procedural night world. Rescue captives, evade human search parties, flank special forces and grow woodland settlements.",route:"/game/apes-together-strong.html",downloadRoute:"/game/apes-together-strong.html",category:"Survival",modes:["single"],featured:false},
       {key:"ironthrone",title:"Iron Thrones",emoji:"♛⚔️",imagePath:"/graphics/titlegraphics/iron_thrones.png",desc:"Rule a kingdom, build on a hex world, command armies and negotiate with five rival houses. Treaties become real orders. Play solo or rule alongside 1–6 humans; unclaimed kingdoms remain living AI powers. Online campaigns persist across reconnects.",route:"/game/iron-throne/index.html",category:"Strategy",modes:["single","multi"],launchMode:"lobby",minPlayers:1,maxPlayers:6,autoRedirect:true,autoUsername:true,featured:false},
       {key:"nflradio",title:"NFL Radio Dial",emoji:"🏈📻",desc:"Choose an NFL game rotation, switch authorized game audio with a tap, and hold to talk for team or broadcast selection.",route:"/game/nfl-radio.html",category:"Apps",modes:["single"],featured:false},
@@ -1335,6 +1336,10 @@
         if(!requireUser({type:"online",gameKey:game.key}))return;
         launchGameUrl(`${game.multiplayerRoute}?mode=browse&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
       }
+      if(game.key==="quipclash"){
+        if(!requireUser({type:"online",gameKey:game.key}))return;
+        launchGameUrl(`${game.multiplayerRoute}?mode=browse&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
+      }
       const mode=getLaunchMode(game);
       if(mode===MULTIPLAYER_LAUNCH_MODES.LOBBY)return openCreateLobby(game.key);
       if(!requireUser({type:"online",gameKey:game.key}))return;
@@ -1572,9 +1577,13 @@
     }
     async function joinLobby(id,inviteId=null){
       if(!username)return requestJoinLobby(id,inviteId);
-      const turncraftRoom=await getDoc(doc(db,"lobbies",id)).catch(()=>null);
-      if(turncraftRoom?.exists()&&turncraftRoom.data().gameType==="turncraft"&&turncraftRoom.data().turncraftVersion===1){
+      const dedicatedRoom=await getDoc(doc(db,"lobbies",id)).catch(()=>null);
+      if(dedicatedRoom?.exists()&&dedicatedRoom.data().gameType==="turncraft"&&dedicatedRoom.data().turncraftVersion===1){
         launchGameUrl(`/game/turncraft-lobby.html?lobbyId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
+      }
+      if(dedicatedRoom?.exists()&&dedicatedRoom.data().gameType==="quipclash"){
+        if(currentLobbyId&&currentLobbyId!==id)await leaveLobby();
+        launchGameUrl(`/game/quip-clash.html?lobbyId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}${inviteId?`&inviteId=${encodeURIComponent(inviteId)}`:""}`,"matchmaking-join");return;
       }
       if(currentLobbyId&&currentLobbyId!==id)await leaveLobby();
       const ref=doc(db,"lobbies",id);
@@ -1607,6 +1616,7 @@
       if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)return joinOnlineGame(game,true);
       if(!requireUser({type:"create",gameKey}))return;
       if(gameKey==="turncraft"){launchGameUrl(`/game/turncraft-lobby.html?mode=create&username=${encodeURIComponent(username)}`,"matchmaking-join");return;}
+      if(gameKey==="quipclash"){launchGameUrl(`/game/quip-clash.html?mode=create&username=${encodeURIComponent(username)}`,"matchmaking-join");return;}
       const fallback=LOBBY_GAMES.some(item=>item.key==="chesswarlord")?"chesswarlord":LOBBY_GAMES[0]?.key||"";
       $("newLobbyGame").value=LOBBY_GAMES.some(item=>item.key===gameKey)?gameKey:fallback;$("newLobbyName").value="";selectedVisibility="public";updateVisibilityButtons();updateCreateGameInfo();setMessage("createLobbyMessage","");openModal("createLobbyModal");
     }
@@ -1623,6 +1633,9 @@
     async function createLobby(){
       if(!username)return openModal("accountGateModal");const game=getGame($("newLobbyGame").value),name=$("newLobbyName").value.trim();
       if(game.key==="turncraft"){launchGameUrl(`/game/turncraft-lobby.html?mode=create&username=${encodeURIComponent(username)}`,"matchmaking-join");return;}
+      if(game.key==="quipclash"){
+        launchGameUrl(`/game/quip-clash.html?mode=create&username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}&visibility=${encodeURIComponent(selectedVisibility)}`,"matchmaking-join");return;
+      }
       if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)return setMessage("createLobbyMessage","This game launches directly and does not use hosted lobbies.","error");
       if(!name)return setMessage("createLobbyMessage","Enter a lobby name.","error");
       setBusy($("createLobbySubmit"),true,"Creating…");
@@ -1708,6 +1721,7 @@
       $("currentLobbyRole").textContent=isHost?"Host":"Player";$("waitingForHost").hidden=isHost;
       const warRealmsNeedsPlayer=game.key==="warrealms"&&(currentLobbyData.players||[]).length<2;
       $("invitePlayerBtn").hidden=!isHost||getMaxPlayers(game.key)<=1;$("startGameBtn").hidden=!isHost;$("startGameBtn").disabled=warRealmsNeedsPlayer;$("startGameBtn").textContent=warRealmsNeedsPlayer?"🚀 Need 2 Players":`🚀 Start ${gameTitle(game.key,true)}`;
+      if(game.key==="quipclash")$("startGameBtn").textContent="💬 Open Quip Clash";
       renderLobbyBrowser();
     }
     function clearCurrentLobby(message=""){
@@ -1721,6 +1735,9 @@
       try{
         const lobbyId=currentLobbyId,ref=doc(db,"lobbies",lobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
         const data=snap.data(),game=getGame(data.gameType),players=Array.isArray(data.players)?data.players:[];
+        if(game.key==="quipclash"){
+          launchGameUrl(`/game/quip-clash.html?lobbyId=${encodeURIComponent(lobbyId)}&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
+        }
         if(game.key==="warrealms"&&players.length<2){toast("War Realms multiplayer needs at least 2 players.","bad");return;}
         if(data.status==="started"){currentLobbyData={id:lobbyId,...data};redirectStartedGame(lobbyId,currentLobbyData);return;}
         const launchPatch={status:"started"};
@@ -1759,6 +1776,9 @@
       if(!id||data?.status!=="started"||currentLobbyId!==id||!players.includes(username))return;
       stopCurrentLobbySafetyPolling();
       const game=getGame(data.gameType),launchId=data.activeGameId||id;save(SK.lastGame,game.key);save(SK.lastLobby,id);
+      if(game.key==="quipclash"){
+        launchGameUrl(`/game/quip-clash.html?lobbyId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`,"lobby-started");return;
+      }
       const realmId=game.realmId||game.sharedRealm;
       const launchQuery=realmId?`realm=${encodeURIComponent(realmId)}&username=${encodeURIComponent(username)}`:`gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`;
       if(game.key==="stoneyrelic"){
@@ -1821,7 +1841,8 @@
         if(!snap.exists())throw new Error("This lobby no longer exists.");
         const lobby={id:snap.id,...snap.data()},game=getGame(lobby.gameType),players=Array.isArray(lobby.players)?lobby.players:[],cap=getMaxPlayers(lobby.gameType);
         if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)throw new Error("This game now launches from Join Online Games and no longer uses invite links.");
-        if(lobby.status!=="waiting")throw new Error("This lobby has already started or closed.");
+        const canRejoinQuipClash=game.key==="quipclash"&&["started","finished"].includes(lobby.status)&&lobby.members?.[auth.currentUser?.uid]===username;
+        if(lobby.status!=="waiting"&&!canRejoinQuipClash)throw new Error("This lobby has already started or closed.");
         $("linkLobbyInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div><strong>${escapeHtml(lobby.name||"Lobby")}</strong><div class="help">${escapeHtml(gameTitle(game.key,true))} • Host: ${escapeHtml(lobby.host||"Unknown")} • ${players.length}/${Number.isFinite(cap)?cap:"∞"} players</div></div></div>`;
         setBusy($("linkLobbyJoinBtn"),false);openModal("linkLobbyModal");
       }catch(e){linkedLobbyId=null;setBusy($("linkLobbyJoinBtn"),false);toast(e.message||"Unable to open that lobby.","bad");}
