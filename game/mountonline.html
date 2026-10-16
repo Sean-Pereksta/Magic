@@ -1,1960 +1,290 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>🗻🌐 Mountain Blade Online</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  :root{
-    --bg:#0b1014; --panel:#0e1726; --grid:#122033; --ink:#e6edf3; --muted:#9fb3c8;
-    --accent:#60a5fa; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --br:#1b2b4a;
-    --tile:48px; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{ margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,Segoe UI,Roboto,Arial }
-  #wrap{ display:grid; grid-template-columns:1fr 360px; gap:12px; padding:12px; height:100vh }
-  @media (max-width:1100px){
-    body{ overflow:auto }
-    #wrap{ grid-template-columns:1fr; height:auto; min-height:100vh }
-    #right{ order:-1; grid-template-rows:auto auto auto; max-height:none }
-    #stageWrap{ min-height:58vh }
-    .hud{ max-width:calc(100% - 24px); overflow:auto; white-space:nowrap }
-  }
-
-  /* Canvas area */
-  #stageWrap{ position:relative; border:1px solid var(--br); border-radius:var(--radius); background:linear-gradient(#0b1424,#0a1322); box-shadow:var(--shadow); overflow:hidden }
-  #canvas{ display:block; width:100%; height:100%; cursor:crosshair; background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: calc(var(--tile)) calc(var(--tile)), calc(var(--tile)) calc(var(--tile));
-  }
-
-  /* HUD */
-  .hud{
-    position:absolute; left:12px; top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-    background:rgba(7,12,20,.6); backdrop-filter: blur(6px); border:1px solid var(--br); border-radius:12px; padding:8px 10px;
-  }
-  .chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#0f1b2d; border:1px solid var(--br); border-radius:999px; font-size:13px }
-  .btn{ appearance:none; border:1px solid var(--br); background:#13243d; color:var(--ink); padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:700 }
-  .btn:hover{ background:#183053 }
-  .sep{ width:1px; height:24px; background:var(--br) }
-
-  /* XP bar inside a chip */
-  .xpwrap{ display:inline-flex; align-items:center; gap:8px }
-  .xpbar{ width:120px; height:8px; background:#0f1b2d; border:1px solid var(--br); border-radius:999px; overflow:hidden }
-  .xpbar > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#a78bfa,#60a5fa) }
-
-  /* Right panels */
-  #right{ display:grid; grid-template-rows:auto auto 1fr; gap:12px; min-height:0 }
-  #right .card{ min-height:0 }
-  .card{ background:var(--panel); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
-  .card-head{ padding:12px 14px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between }
-  .card-title{ font-weight:800 }
-  .card-body{ padding:12px 14px }
-  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
-  .input, .select{ background:#0f1b2d; color:var(--ink); border:1px solid var(--br); padding:8px 10px; border-radius:10px }
-  .list{ display:grid; gap:8px; max-height:260px; overflow:auto }
-  .pill{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:#0f1b2d; border:1px solid var(--br); border-radius:10px }
-  .muted{ color:var(--muted); font-size:.9rem }
-  .small{ font-size:.85rem }
-  .badge{ padding:3px 8px; border-radius:999px; border:1px solid var(--br); background:#12243d; font-size:12px }
-  .colorDot{ width:12px; height:12px; border-radius:50% }
-
-  /* Modal */
-  .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5) }
-  .modal .sheet{ width:min(640px,92vw); background:var(--panel); border:1px solid var(--br); border-radius:16px; box-shadow:var(--shadow); overflow:hidden }
-  .sheet h3{ margin:0; padding:12px 14px; border-bottom:1px solid var(--br) }
-  .sheet .inner{ padding:12px 14px; display:grid; gap:10px }
-  .actions{ display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid var(--br) }
-
-  .legend{ position:absolute; right:12px; bottom:12px; background:rgba(7,12,20,.6); border:1px solid var(--br); border-radius:12px; padding:6px 8px; font-size:12px }
-
-  #mobileControls{ position:absolute; left:10px; right:10px; bottom:12px; display:none; justify-content:space-between; align-items:flex-end; pointer-events:none }
-  #mobileControls .cluster{ display:grid; grid-template-columns:52px 52px 52px; grid-template-rows:52px 52px 52px; gap:6px; pointer-events:auto }
-  .mctl{ border:1px solid var(--br); background:#13243de6; color:var(--ink); border-radius:12px; font-weight:800; font-size:18px }
-  #mobileTop{ position:absolute; right:12px; top:76px; display:none; gap:8px; pointer-events:auto }
-  @media (max-width: 900px), (pointer: coarse){
-    #mobileControls,#mobileTop{ display:flex }
-    .legend{ display:none }
-    #right{ order:2 }
-  }
-
-</style>
-</head>
-<body>
-<div id="wrap">
-  <div id="stageWrap">
-    <canvas id="canvas"></canvas>
-
-    <!-- HUD -->
-    <div class="hud" id="hud">
-      <span class="chip">👤 <b id="hudName">player</b></span>
-      <span class="chip">💰 Gold: <b id="hudGold">0</b></span>
-      <span class="chip">🛡️ Army: <b id="hudArmy">-</b></span>
-      <span class="chip">
-        🏰 You: <b id="hudMyCastles">0</b>
-        <span class="muted small">(&nbsp;💰 <b id="hudMyIncomeVal">0</b>/day&nbsp;)</span>
-        • Ally: <b id="hudAllyCastles">0</b>
-      </span>
-      <span class="chip">
-        <span class="xpwrap">
-          <b>Lvl <span id="hudLevel">1</span></b>
-          <span class="xpbar"><i id="xpFill"></i></span>
-          <span class="small muted" id="hudXPText">0/0</span>
-        </span>
-      </span>
-      <span class="chip" id="chipPrep" style="display:none">🛡️ Prepared: <b id="prepLeft">10s</b></span>
-      <span class="chip">⏱️ Status: <b id="hudStatus">Spawning…</b></span>
-      <span class="sep"></span>
-      <button class="btn" id="btnArmy">Army</button>
-      <button class="btn" id="btnInv">Inventory</button>
-      <button class="btn" id="btnAlliances">Allegiances</button>
-    </div>
-
-    <div class="legend">
-      <div>WASD: move • Hold <b>Space</b> + drag: pan</div>
-      <div>First 10s: Prepared (can move/see; no battles or interactions)</div>
-      <div>Villages: recruit/trade (cooldowns)</div>
-      <div>Castles: trade/attack • Owners shown</div>
-    </div>
-
-    <div id="mobileTop">
-      <button class="mctl" id="btnFS">⛶</button>
-    </div>
-    <div id="mobileControls">
-      <div class="cluster">
-        <span></span><button class="mctl" data-move="w">▲</button><span></span>
-        <button class="mctl" data-move="a">◀</button><span></span><button class="mctl" data-move="d">▶</button>
-        <span></span><button class="mctl" data-move="s">▼</button><span></span>
-      </div>
-    </div>
-</div>
-  </div>
-
-  <div id="right">
-    <!-- Allegiance Bar -->
-    <div class="card">
-      <div class="card-head">
-        <div class="card-title">Allegiances</div>
-        <div class="row">
-          <input id="newAllyName" class="input" placeholder="Create (100 gold)" />
-          <button class="btn" id="btnCreateAlly">Create</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#152622" />
+    <title>Mountain Blade Online — The Living Realm</title>
+    <meta
+      name="description"
+      content="Raise a company, command the battlefield, and build a medieval kingdom in a living realm."
+    />
+    <link rel="icon" href="/lobby/assets/game-thumbnails/mountonline.webp" />
+    <link rel="stylesheet" href="./mountonline/style.css" />
+  </head>
+  <body>
+    <section id="menu" class="menu" aria-label="Main menu">
+      <div class="menu-art" aria-hidden="true"></div>
+      <div class="menu-shade" aria-hidden="true"></div>
+      <header class="menu-top">
+        <a href="/lobby/lobby.html"
+          >CAT'N MICE <span>/ THE LIVING REALM</span></a
+        ><span class="edition">A new age of command</span>
+      </header>
+      <main class="menu-content">
+        <p class="eyebrow">A company. A castle. A kingdom.</p>
+        <h1>MOUNTAIN<br /><span>BLADE</span><small>ONLINE</small></h1>
+        <p class="menu-copy">
+          March beyond the familiar. Raise your banner, command every soldier,
+          and carve a kingdom from a restless medieval world.
+        </p>
+        <div class="load-state" id="loadState">
+          <div class="load-caption">
+            <span id="loadLabel">Preparing the realm's artwork…</span
+            ><span id="loadPercent">0%</span>
+          </div>
+          <div class="load-track"><i id="loadFill"></i></div>
         </div>
-      </div>
-      <div class="card-body">
-        <div id="allyList" class="list"></div>
-        <div id="allyRequests" class="list" style="margin-top:8px"></div>
-      </div>
-    </div>
-
-    <!-- Nearby & Cooldowns -->
-    <div class="card">
-      <div class="card-head">
-        <div class="card-title">Nearby</div>
-        <div class="muted small" id="coolInfo">Cooldowns: –</div>
-      </div>
-      <div class="card-body">
-        <div id="nearList" class="list"></div>
-      </div>
-    </div>
-
-    <!-- World Log -->
-    <div class="card" style="min-height:220px">
-      <div class="card-head"><div class="card-title">World</div></div>
-      <div class="card-body"><div id="log" class="list"></div></div>
-    </div>
-  </div>
-</div>
-
-<!-- Village/Castle Modal -->
-<div class="modal" id="modal">
-  <div class="sheet">
-    <h3 id="modalTitle">Location</h3>
-    <div class="inner" id="modalBody"></div>
-    <div class="actions"><button class="btn" id="modalCancel">Exit</button></div>
-  </div>
-</div>
-
-<script type="module">
-/* =================== Firebase =================== */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
-  collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, runTransaction, limit
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.appspot.com",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-await signInAnonymously(auth);
-const db  = getFirestore(app);
-
-const MO_ROOT = ["games_rogueduel", "mountandblade_online"];
-const moCol = (name) => collection(db, ...MO_ROOT, name);
-const moDoc = (name, id) => doc(db, ...MO_ROOT, name, id);
-
-/* =================== Constants & Helpers =================== */
-const TILE = 48;
-const WORLD_W = 180; // tiles
-const WORLD_H = 120;
-const INTERACT_GRACE_MS = 10_000;         // Preparedness window
-const RECRUIT_COOLDOWN_MS = 60_000;
-const TRADE_COOLDOWN_MS   = 120_000;
-const HEARTBEAT_MS = 5_000;
-const ACTIVE_STALE_MS = 15_000;
-const MAX_BANNERS_EQUIPPED = 3;
-  const RECRUIT_MIN = 2, RECRUIT_MAX = 5;
-  // === GARRISON: neutral seed range
-const NEUTRAL_GARRISON_MIN = 50;
-const NEUTRAL_GARRISON_MAX = 200;
-
-const PRICE_PER_RECRUIT = 3;   // match your economy
-function rand2to5(){ return RECRUIT_MIN + Math.floor(Math.random()*(RECRUIT_MAX-RECRUIT_MIN+1)); }
-function mmss(ms){ const s=Math.ceil(ms/1000); const m=(s/60)|0; return `${m}:${(s%60+'').padStart(2,'0')}`; } // if missing
-
-
-/* Progression */
-const BASE_MAX_ARMY = 50;
-const BASE_MAX_PURCHASE = 10;
-const BASE_XP_NEXT = 100;
-const XP_GROWTH = 1.15; // xp to next scales each level
-const XP_PER_RECRUIT = 1;
-const XP_PER_UPGRADE = 3;
-const XP_PER_BANNER  = 5;
-const DAILY_PLAYER_PER_CASTLE = 300; // you
-const DAILY_ALLY_PER_CASTLE   = 100; // split across ally members
-  const GARRISON_MAX = 400;
-  const UNIT_TIER = {
-  recruits: 1,
-
-  footmen: 2, archers: 2, monks: 2,
-
-  veteranArchers: 3, crossbowmen: 3,
-  swordsmen: 3, cavalry: 3,
-  priests: 3, mages: 3,
-
-  romanSergeants: 4, romanChampions: 4,
-  dragonKnights: 4, venetianSaints: 4,
-};
-
-const TIER_YIELD = { 1:1, 2:3, 3:5, 4:8 };
-
-// Derive a castle's allegiance even if ownerAlly is missing
-function castleAllyId(c){
-  if (c.ownerAlly) return c.ownerAlly;
-  const ownerUser = c.ownerName || c.owner || null;
-  if (!ownerUser) return null;
-  const p = state.playersAll.get(ownerUser);
-  return p?.allegianceId || null;
-}
-
-const UPGRADE_COST = {
-  archer: 10, footman: 12, monk: 14,
-  veteranArcher: 35, crossbowman: 35,
-  swordsman: 45, cavalry: 60,
-  priest: 40, mage: 65, romanSergeant: 240,
-  romanChampion: 300,
-  dragonKnight: 350,
-  venetianSaint: 300
-};
-const START_ARMY = { recruits:10, archers:0, footmen:0, monks:0,
-  veteranArchers:0, crossbowmen:0, swordsmen:0, cavalry:0, priests:0, mages:0,
-                    romanSergeants:0, romanChampions:0, dragonKnights:0, venetianSaints:0 };
-
-/* Emojis */
-const EMOJI = {
-  village: "🏘️",
-  castle:  "🏰",
-  player:  "🧍",
-  raider:  "🏴‍☠️"
-};
-const ALLY_FLAGS=["🚩","🏴","🏳️","⚑","⚐","🎌","🛡️","🔱","⭐","🌙"];
-function allyFlag(allyId){
-  if(!allyId) return "";
-  let h=0; for(let i=0;i<allyId.length;i++) h=(h*31 + allyId.charCodeAt(i))>>>0;
-  return ALLY_FLAGS[h % ALLY_FLAGS.length];
-}
-
-
-/* DOM refs */
-const $ = sel => document.querySelector(sel);
-const logBox = $("#log"); const hudGold = $("#hudGold"); const hudArmy = $("#hudArmy");
-const hudName = $("#hudName"); const hudStatus = $("#hudStatus");
-const hudLvl = $("#hudLevel"); const xpFill = $("#xpFill"); const hudXPText = $("#hudXPText");
-const chipPrep = $("#chipPrep"); const prepLeft = $("#prepLeft");
-function log(line){ const d=document.createElement("div"); d.className="small muted"; d.textContent=line; logBox.prepend(d); }
-
-/* =================== URL / Player =================== */
-const url = new URL(location.href);
-const username = (url.searchParams.get("username") || "Guest").trim();
-hudName.textContent = username;
-
-/* =================== World State (client) =================== */
-const state = {
-  player: null, youDocRef: null,
-  cam:{ x:0, y:0, w:0, h:0 }, drag:false, dragStart:null,
-  canInteractAt: 0, // timestamp when preparedness ends
-  keys:{}, lastMoveAt:0, moveDelay:220,
-  villages:[], castles:[],
-  localRaiders: [],
-  others: new Map(),          // username -> record (active players for rendering)
-
-  // NEW — for allegiances/power ranking
-  playersAll: new Map(),      // uid -> full player doc (used to sum member armies)
-  allegiancesList: [],        // cached allegiance docs for rendering/sorting
-
-  allyMap: new Map(),         // allyId -> allegiance doc
-  allegiance: null,           // your allegiance doc (if any)
-  castleCountByPlayer: new Map(),
-  castleCountByAlly: new Map(),
-  prevCastleOwners: new Map(),
-
-
-  subscriptions: [],
-  battleEngaged: false,
-  lastSafePos: null,
-};
-
-
-/* =================== Canvas Setup =================== */
-const canvas = $("#canvas");
-const ctx = canvas.getContext("2d");
-function resize(){
-  const rect = $("#stageWrap").getBoundingClientRect();
-  canvas.width  = Math.floor(rect.width);
-  canvas.height = Math.floor(rect.height);
-  state.cam.w = canvas.width; state.cam.h = canvas.height;
-}
-addEventListener("resize", resize); resize();
-
-/* Draw helpers (emoji + nameplates + ally stripes) */
-function drawEmojiCentered(emoji, cx, cy, pxSize = Math.floor(TILE*0.9)) {
-  ctx.save();
-  ctx.font = `${pxSize}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(emoji, cx, cy);
-  ctx.restore();
-}
-function drawNameplate(text, cx, cy, dy=0, color="#cbd5e1") {
-  ctx.save();
-  ctx.font = "12px system-ui";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = color;
-  ctx.fillText(text, cx, cy + dy);
-  ctx.restore();
-}
-function drawStripe(cx, cy, w, h, color){
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.fillRect(cx - w/2, cy - h/2, w, h);
-  ctx.restore();
-}
-
-/* =================== Seeding World (villages/castles) =================== */
-async function seedWorldOnce(){
-  const metaRef = moDoc("meta", "world");
-  const metaSnap = await getDoc(metaRef);
-  if (metaSnap.exists()) return;
-
-  function randomFreeCoords(existing, count, margin){
-    const coords = []; let attempts = 0;
-    while(coords.length < count && attempts < 40000){
-      attempts++;
-      const x = Math.floor(Math.random()*WORLD_W);
-      const y = Math.floor(Math.random()*WORLD_H);
-      if (x<margin || y<margin || x>WORLD_W-margin || y>WORLD_H-margin) continue;
-      let ok = true;
-      for(const c of existing.concat(coords)){
-        const dx=c.x-x, dy=c.y-y;
-        if (Math.hypot(dx,dy) < 6) { ok=false; break; }
-      }
-      if (ok) coords.push({x,y});
-    }
-    return coords;
-  }
-
-  const exist = [];
-  const villages = randomFreeCoords(exist, 60, 4); exist.push(...villages);
-  const castles  = randomFreeCoords(exist, 18, 8); exist.push(...castles);
-
-  await setDoc(metaRef, { seededAt: serverTimestamp(), worldW:WORLD_W, worldH:WORLD_H });
-
-  const vcol = moCol("villages");
-  for (const v of villages){ await addDoc(vcol, { x:v.x, y:v.y }); }
-
-  const ccol = moCol("castles");
-  for (const c of castles){ await addDoc(ccol, { x:c.x, y:c.y, owner:null, ownerName:null, ownerAlly:null, ownerColor:null }); }
-}
-
-/* ========== Helpers for progression & counts ========== */
-function armySum(army){ return Object.values(army||START_ARMY).reduce((s,v)=>s+v,0); }
-function maxArmyForLevel(level){ return BASE_MAX_ARMY + Math.max(0, level-1)*3; }
-function maxPurchaseForLevel(level){ return BASE_MAX_PURCHASE + Math.max(0, level-1)*3; }
-function xpNextForLevel(level){ return Math.round(BASE_XP_NEXT * Math.pow(XP_GROWTH, Math.max(0, level-1))); }
-  function castlesOwnedBy(userId){ return state.castleCountByPlayer.get(userId) || 0; }
-function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0; }
-  function todayKeyLocal(){
-  // YYYY-MM-DD in local time (e.g., 2025-08-27)
-  return new Date().toLocaleDateString('en-CA');
-}
-  async function depositUnitToGarrison(castleId, unitKey){
-  if (!UNIT_TIER[unitKey]) { alert("That unit cannot be deposited."); return; }
-
-  try{
-    await runTransaction(db, async (tx)=>{
-      const cRef = moDoc("castles", castleId);
-      const pRef = state.youDocRef;
-
-      const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
-      if (!cSnap.exists() || !pSnap.exists()) throw "missing";
-      const c = cSnap.data(); const p = pSnap.data();
-
-      // Must be owner
-      const ownerUser = c.ownerName || c.owner || null;
-      if (ownerUser !== username) throw "not-owner";
-
-      const army = {...(p.army||START_ARMY)};
-      const have = army[unitKey] || 0;
-      if (have < 1) throw "no-unit";
-
-      const tier = UNIT_TIER[unitKey] || 1;
-      const yieldAmt = TIER_YIELD[tier] || 1;
-
-      const currentG = Number.isFinite(c.garrison) ? c.garrison : 0;
-      if (currentG >= GARRISON_MAX) throw "garrison-full";
-
-      // Clamp to cap
-      const room = Math.max(0, GARRISON_MAX - currentG);
-      const add = Math.min(room, yieldAmt);
-      if (add <= 0) throw "garrison-full";
-
-      // Consume one of that unit
-      army[unitKey] = have - 1;
-
-      tx.update(pRef, { army });
-      tx.update(cRef, { garrison: currentG + add });
-    });
-
-    // local refresh
-    const meSnap = await getDoc(state.youDocRef);
-    state.player.army = meSnap.data().army;
-    updateArmyHud();
-  }catch(e){
-    if (e==="no-unit") alert("You don't have that unit.");
-    else if (e==="not-owner") alert("Only the owner can deposit.");
-    else if (e==="garrison-full") alert("Garrison is at maximum.");
-    else alert("Deposit failed.");
-  }
-}
-
-async function dailyTributeOnLogin(){
-  const youRef = state.youDocRef || moDoc("players", username);
-  const youSnap = await getDoc(youRef);
-  if (!youSnap.exists()) return;
-
-  const me = youSnap.data();
-  const todayKey = todayKeyLocal();
-  if (me.lastDailyRewardKey === todayKey) return; // already paid today
-
-  // --- Personal castles (support ownerName or owner)
-  const cCol = moCol("castles");
-  const [mineByName, mineByOwner] = await Promise.all([
-    getDocs(query(cCol, where("ownerName","==", username))),
-    getDocs(query(cCol, where("owner","==", username)))
-  ]);
-  const myCastleIds = new Set();
-  mineByName.forEach(d=> myCastleIds.add(d.id));
-  mineByOwner.forEach(d=> myCastleIds.add(d.id));
-  const myCastleCount = myCastleIds.size;
-  const myGold = myCastleCount * DAILY_PLAYER_PER_CASTLE;
-
-  // --- Alliance stipend (robust to missing ownerAlly)
-  let allyGoldForMe = 0;
-  let allyName = null;
-  let allyCastleCount = 0;
-  let allyMemberCount = 0;
-
-  const aid = me.allegianceId || null;
-  if (aid){
-    const allyRef = moDoc("allegiances", aid);
-    const allySnap = await getDoc(allyRef);
-    if (allySnap.exists()){
-      const A = allySnap.data();
-      allyName = A.name || "Alliance";
-      const memberSet = new Set(A.members || []);
-      allyMemberCount = memberSet.size;
-
-      // First, quick count by ownerAlly
-      const quick = await getDocs(query(cCol, where("ownerAlly","==", aid)));
-      allyCastleCount = quick.size;
-
-      // Fallback/augment: include castles owned by any member when ownerAlly is missing
-      // (world is small, so reading all is fine)
-      if (allyCastleCount === 0 || memberSet.size){
-        const allCastles = await getDocs(cCol);
-        allyCastleCount = 0;
-        allCastles.forEach(cs=>{
-          const c = cs.data();
-          if (c.ownerAlly === aid) { allyCastleCount++; return; }
-          const ownerUser = c.ownerName || c.owner || null;
-          if (ownerUser && memberSet.has(ownerUser)) allyCastleCount++;
-        });
-      }
-
-      if (allyMemberCount > 0){
-        const totalAllyGold = allyCastleCount * DAILY_ALLY_PER_CASTLE;
-        allyGoldForMe = Math.floor(totalAllyGold / allyMemberCount);
-      }
-    }
-  }
-
-  const totalGold = myGold + allyGoldForMe;
-
-  // --- Transaction to avoid double-pay
-  await runTransaction(db, async (tx)=>{
-    const curSnap = await tx.get(youRef);
-    if (!curSnap.exists()) return;
-    const cur = curSnap.data();
-    if (cur.lastDailyRewardKey === todayKey) return; // another tab got it
-
-    tx.update(youRef, {
-      gold: (cur.gold || 0) + totalGold,
-      lastDailyRewardKey: todayKey
-    });
-  });
-
-  // Announce
-  if (myGold > 0){
-    log(`💰 Daily Tribute: +${myGold}g from ${myCastleCount} castle${myCastleCount===1?'':'s'} you own.`);
-  } else {
-    log(`💰 Daily Tribute: You own no castles today (no personal tribute).`);
-  }
-  if (aid){
-    if (allyGoldForMe > 0){
-      log(`🤝 Alliance Stipend: +${allyGoldForMe}g from ${allyName} — ${allyCastleCount} castle${allyCastleCount===1?'':'s'} split among ${allyMemberCount} member${allyMemberCount===1?'':'s'}.`);
-    } else {
-      log(`🤝 Alliance Stipend: No payout (no castles or no members to split).`);
-    }
-  }
-}
-
-
-
-function recomputeCastleOwnership(){
-  const byP = new Map();
-  const byA = new Map();
-
-  for (const c of state.castles){
-    const ownerUser = c.ownerName || c.owner || null;
-    if (ownerUser) byP.set(ownerUser, (byP.get(ownerUser) || 0) + 1);
-
-    // Prefer the castle's ownerAlly; if missing, derive from the owner's player doc
-    let allyId = c.ownerAlly || null;
-    if (!allyId && ownerUser){
-      const p = state.playersAll.get(ownerUser);
-      if (p?.allegianceId) allyId = p.allegianceId;
-    }
-    if (allyId) byA.set(allyId, (byA.get(allyId) || 0) + 1);
-  }
-
-  state.castleCountByPlayer = byP;
-  state.castleCountByAlly   = byA;
-
-  const mine = byP.get(username) || 0;
-  const myIncome = mine * DAILY_PLAYER_PER_CASTLE;
-  const myAllyId = state.player?.allegianceId || null;
-  const allyCount = myAllyId ? (byA.get(myAllyId) || 0) : 0;
-
-  const mc = document.getElementById("hudMyCastles");
-  const ac = document.getElementById("hudAllyCastles");
-  const inc = document.getElementById("hudMyIncomeVal");
-
-  if (mc)  mc.textContent  = String(mine);
-  if (ac)  ac.textContent  = String(allyCount);
-  if (inc) inc.textContent = String(myIncome); // e.g., 300/day for 1 castle, 0/day if none
-}
-
-
-
-function updateArmyHud(){
-  const a = state.player?.army || START_ARMY;
-  const sum = armySum(a);
-  const cap = state.player?.maxArmy || maxArmyForLevel(state.player?.level||1);
-  hudArmy.textContent = `${sum} / ${cap}`;
-}
-function updateLevelHud(){
-  const lvl = state.player?.level || 1;
-  const xp  = state.player?.xp || 0;
-  const nxt = state.player?.xpNext || xpNextForLevel(lvl);
-  hudLvl.textContent = String(lvl);
-  hudXPText.textContent = `${xp} / ${nxt}`;
-  const pct = Math.max(0, Math.min(100, Math.round((xp / nxt) * 100)));
-  xpFill.style.width = pct + "%";
-}
-async function gainXP(amount){
-  if (!amount) return;
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(state.youDocRef);
-    if (!snap.exists()) return;
-    const d = snap.data();
-    let level = d.level || 1;
-    let xp = (d.xp||0) + amount;
-    let xpNext = d.xpNext || xpNextForLevel(level);
-    let maxArmy = d.maxArmy ?? maxArmyForLevel(level);
-
-    while (xp >= xpNext){
-      xp -= xpNext; level += 1;
-      xpNext = xpNextForLevel(level);
-      maxArmy = maxArmyForLevel(level);
-    }
-    tx.update(state.youDocRef, { xp, level, xpNext, maxArmy });
-  });
-}
-  // === GARRISON: seed once for unowned castles that have no garrison
-async function seedNeutralGarrison(castleId){
-  try{
-    await runTransaction(db, async (tx)=>{
-      const cref = moDoc("castles", castleId);
-      const snap = await tx.get(cref);
-      if (!snap.exists()) return;
-      const d = snap.data();
-      if ((d.garrison == null) && !d.owner){
-        const g = NEUTRAL_GARRISON_MIN + Math.floor(Math.random()*(NEUTRAL_GARRISON_MAX-NEUTRAL_GARRISON_MIN+1));
-        tx.update(cref, { garrison: g });
-      }
-    });
-  }catch(e){ /* ignore */ }
-}
-
-
-/* =================== Player Doc Setup =================== */
-async function ensurePlayer(){
-  state.youDocRef = moDoc("players", username);
-  const snap = await getDoc(state.youDocRef);
-  if (!snap.exists()){
-    // pick a random free tile not on village/castle
-    let px=0, py=0;
-    const [vSnap, cSnap] = await Promise.all([
-      getDocs(moCol("villages")),
-      getDocs(moCol("castles"))
-    ]);
-    state.villages = vSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    state.castles  = cSnap.docs.map(d=>({id:d.id, ...d.data()}));
-
-    function blocked(x,y){
-      for(const v of state.villages){ if(v.x===x && v.y===y) return true; }
-      for(const c of state.castles){ if(c.x===x && c.y===y) return true; }
-      return false;
-    }
-    do { px = Math.floor(Math.random()*WORLD_W); py = Math.floor(Math.random()*WORLD_H); }
-    while (blocked(px,py));
-
-    const lvl = 1;
-    const payload = {
-      user: username, x:px, y:py,
-      gold:0, army: START_ARMY,
-      level:lvl, xp:0, xpNext: xpNextForLevel(lvl),
-      maxArmy: maxArmyForLevel(lvl),
-      active: true, inBattle:false, lastSeen: Date.now(), allegianceId: null,
-      lastRecruitAt: {}, lastTradeAt: {}, inventory: { banners:[], equipped:[] }
-    };
-    await setDoc(state.youDocRef, payload);
-    state.player = { id:username, ...payload };
-    log("Spawned new character at "+px+","+py+" with 10 recruits.");
-  } else {
-    // hydrate + ensure progression fields exist
-    const d = snap.data();
-    const lvl = d.level || 1;
-    const patch = {};
-    if (d.level == null) patch.level = lvl;
-    if (d.xp == null) patch.xp = 0;
-    if (d.xpNext == null) patch.xpNext = xpNextForLevel(lvl);
-    if (d.maxArmy == null) patch.maxArmy = maxArmyForLevel(lvl);
-    patch.active = true; patch.inBattle=false; patch.lastSeen = Date.now();
-    if (Object.keys(patch).length) await updateDoc(state.youDocRef, patch);
-    state.player = { id:username, ...d, ...patch };
-  }
-
-  // Preparedness window
-  state.canInteractAt = Date.now() + INTERACT_GRACE_MS;
-  chipPrep.style.display = "inline-flex";
-  updatePrepChip();
-  prepTicker = setInterval(updatePrepChip, 250);
-
-  hudGold.textContent = state.player.gold;
-  updateArmyHud(); updateLevelHud();
-}
-let prepTicker=null;
-function updatePrepChip(){
-  const rem = Math.max(0, state.canInteractAt - Date.now());
-  if (rem <= 0){
-    chipPrep.style.display = "none";
-    if (prepTicker){ clearInterval(prepTicker); prepTicker=null; }
-    return;
-  }
-  prepLeft.textContent = Math.ceil(rem/1000)+"s";
-}
-
-/* =================== Presence =================== */
-function setActive(val){ if (!state.youDocRef) return; updateDoc(state.youDocRef, { active:val, lastSeen: Date.now() }).catch(()=>{}); }
-addEventListener("visibilitychange", ()=> setActive(!document.hidden));
-addEventListener("pagehide", ()=> setActive(false));
-addEventListener("beforeunload", ()=> setActive(false));
-setInterval(()=>{ if(state.youDocRef) updateDoc(state.youDocRef, { lastSeen: Date.now() }).catch(()=>{}); }, HEARTBEAT_MS);
-
-/* =================== Subscriptions =================== */
-function sub(ref, cb){ const u = onSnapshot(ref, cb); state.subscriptions.push(u); return u; }
-function freshActive(p){ return p.active && (Date.now() - (p.lastSeen||0)) < ACTIVE_STALE_MS; }
-function listenPlayers(){
-  sub(moCol("players"), snap=>{
-    state.others.clear();
-    state.playersAll.clear();                    // <-- ADD
-
-    snap.forEach(d=>{
-      const p = {id:d.id, ...d.data()};
-      state.playersAll.set(p.id, p);            // <-- ADD
-      if (p.id===username) return;
-      if (freshActive(p)) state.others.set(p.id, p);
-    });
-
-    // OPTIONAL: if you want power numbers to refresh instantly:
-    if (state.allegiancesList.length && typeof renderAllyList === 'function') {
-      renderAllyList(state.allegiancesList);
-    }
-  });
-}
-
-async function listenWorld(){
-  sub(moCol("villages"), snap=>{
-    state.villages = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  });
-  sub(moCol("castles"), snap=>{
-  state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  for(const c of state.castles){
-    const prev = state.prevCastleOwners.get(c.id);
-    const nowO = c.owner || null;
-    if(prev !== undefined && prev !== nowO){
-      if(nowO) log(`🏰 ${c.ownerName||nowO} captured a castle at (${c.x},${c.y})`);
-      else log(`🏰 A castle at (${c.x},${c.y}) is now unclaimed.`);
-    }
-    state.prevCastleOwners.set(c.id, nowO);
-  }
-  recomputeCastleOwnership();
-  // === GARRISON: lazily seed for any unowned castle missing a garrison
-  snap.forEach(ds=>{
-    const c = ds.data();
-    if ((c.garrison == null) && !c.owner){
-      seedNeutralGarrison(ds.id);
-    }
-  });
-});
-
-}
-
-/* =================== Raiders (local, auto-spawn) =================== */
-const RAIDER_TYPES = ["recruits","footmen","archers"];
-const RAIDER_CAP = 60;                     // max unengaged groups visible at once
-const RAIDER_SPAWN_EVERY_MS = 10_000;      // spawn tick
-const RAIDER_SPAWN_BATCH_MAX = 4;          // up to N per spawn tick
-const RAIDER_DESPAWN_ENGAGED_MS = 90_000;  // engaged groups cleaned up
-  const RAIDER_BASE_MIN = 3;   // base minimum size at level 1
-const RAIDER_BASE_MAX = 15;  // base maximum size at level 1
-
-function raiderSizeRangeForLevel(level){
-  const lvl = Math.max(1, level|0);
-  return {
-    min: Math.max(1, Math.floor(RAIDER_BASE_MIN * lvl)),
-    max: Math.max(1, Math.floor(RAIDER_BASE_MAX * lvl))
-  };
-}
-function randInt(min, max){ return min + Math.floor(Math.random() * (max - min + 1)); }
-
-function randomFreeTile() {
-  for (let i = 0; i < 400; i++){
-    const x = Math.floor(Math.random() * WORLD_W);
-    const y = Math.floor(Math.random() * WORLD_H);
-    const onVillage = state.villages.some(v => v.x===x && v.y===y);
-    const onCastle  = state.castles.some(c => c.x===x && c.y===y);
-    const onRaider  = state.localRaiders.some(r => !r.engaged && r.x===x && r.y===y);
-    if (!onVillage && !onCastle && !onRaider && !occupiedByPlayer(x,y)) return {x,y};
-  }
-  // Fallback: spiral out from the player's tile until a free one is found (still avoids players)
-  const base = state.player ? {x:state.player.x, y:state.player.y} : {x:Math.floor(WORLD_W/2), y:Math.floor(WORLD_H/2)};
-  for (let r = 1; r < 8; r++){
-    for (let dx = -r; dx <= r; dx++){
-      for (let dy = -r; dy <= r; dy++){
-        const nx = Math.max(0, Math.min(WORLD_W-1, base.x + dx));
-        const ny = Math.max(0, Math.min(WORLD_H-1, base.y + dy));
-        const blocked =
-          state.villages.some(v=>v.x===nx && v.y===ny) ||
-          state.castles.some(c=>c.x===nx && c.y===ny) ||
-          state.localRaiders.some(rr=>!rr.engaged && rr.x===nx && rr.y===ny) ||
-          occupiedByPlayer(nx,ny);
-        if (!blocked) return {x:nx, y:ny};
-      }
-    }
-  }
-  return {x:0, y:0}; // absolute last resort
-}
-function spawnOneRaider() {
-  const pos = randomFreeTile();
-  const lvl = state.player?.level || 1;               // ← use your current level
-  const { min, max } = raiderSizeRangeForLevel(lvl);  // ← level-scaled bounds
-  const size = randInt(min, max);                      // ← pick within bounds
-
-  state.localRaiders.push({
-    id: "L"+crypto.randomUUID().slice(0,6),
-    x: pos.x, y: pos.y,
-    size,
-    type: RAIDER_TYPES[Math.floor(Math.random()*RAIDER_TYPES.length)],
-    speedBase: 900,
-    engaged: false,
-    engagedAt: 0,
-    createdAt: Date.now(),
-    _lastStep: 0
-  });
-}
-
-function seedRaidersOnce(){ state.localRaiders = []; for(let i=0;i<25;i++) spawnOneRaider(); }
-setInterval(()=>{
-  // prune engaged too long
-  const now = Date.now();
-  state.localRaiders = state.localRaiders.filter(r => !(r.engaged && now - (r.engagedAt||now) > RAIDER_DESPAWN_ENGAGED_MS));
-
-  // top up to cap
-  const available = state.localRaiders.filter(r=>!r.engaged).length;
-  const missing = Math.max(0, RAIDER_CAP - available);
-  if (missing <= 0) return;
-  const toSpawn = Math.min(missing, 1 + Math.floor(Math.random()*RAIDER_SPAWN_BATCH_MAX));
-  for (let i=0;i<toSpawn;i++) spawnOneRaider();
-}, RAIDER_SPAWN_EVERY_MS);
-
-function nearestPlayer(x,y){
-  let best=null, bd=1e9;
-  for(const p of state.others.values()){
-    const d = Math.hypot(p.x-x, p.y-y);
-    if (d<bd){ bd=d; best={ x:p.x, y:p.y, strength: armySum(p.army||{}) }; }
-  }
-  if (state.player){
-    const d2 = Math.hypot(state.player.x-x, state.player.y-y);
-    if (!best || d2<bd) best = { x:state.player.x, y:state.player.y, strength: armySum(state.player.army||{}) };
-  }
-  return best;
-}
-function findRaiderAt(x,y){ return state.localRaiders.find(r=> r.x===x && r.y===y && !r.engaged) || null; }
-setInterval(()=>{
-  for(const r of state.localRaiders){
-    if (r.engaged) continue;
-    const nearest = nearestPlayer(r.x, r.y);
-    let dx=0, dy=0;
-    const stepDelay = Math.max(250, r.speedBase + r.size*8); // bigger groups are slower
-    if (!r._lastStep || Date.now()-r._lastStep >= stepDelay){
-      r._lastStep = Date.now();
-      if (nearest){
-        const raidersStronger = r.size > nearest.strength;
-        const dist = Math.hypot(nearest.x - r.x, nearest.y - r.y);
-        if (dist <= 4){
-          const toward = raidersStronger ? 1 : -1;
-          dx = Math.sign(nearest.x - r.x) * toward;
-          dy = Math.sign(nearest.y - r.y) * toward;
-        } else { dx = Math.sign(Math.random()-.5); dy = Math.sign(Math.random()-.5); }
-      } else { dx = Math.sign(Math.random()-.5); dy = Math.sign(Math.random()-.5); }
-      r.x = Math.max(0, Math.min(WORLD_W-1, r.x+dx));
-      r.y = Math.max(0, Math.min(WORLD_H-1, r.y+dy));
-    }
-  }
-}, 250);
-
-/* =================== Allegiances =================== */
-  // --- NEW: log a raider encounter (scoped to this user) ---
-async function logRaiderEncounter(raider){
-  try{
-    const data = {
-      user: username,
-      x: state.player?.x ?? null,
-      y: state.player?.y ?? null,
-      type: raider.type,
-      size: raider.size,
-      encounteredAt: serverTimestamp()
-    };
-    // global stream (analytics / admin views)
-    await addDoc(moCol("raider_encounters"), data);
-    // per-user quick peek (your own doc)
-    await updateDoc(state.youDocRef, {
-      lastRaiderEncounter: {
-        x: data.x, y: data.y,
-        type: data.type, size: data.size,
-        at: Date.now()
-      }
-    });
-  }catch(err){
-    console.error("Failed to log raider encounter", err);
-  }
-}
-
-function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 80% 55%)`; }
-async function loadAllegiances(){
-  sub(moCol("allegiances"), snap=>{
-    state.allyMap.clear();
-    const list = [];
-    snap.forEach(d => {
-      const A = { id: d.id, ...d.data() };
-      state.allyMap.set(A.id, A);
-      list.push(A);
-    });
-
-    state.allegiancesList = list; // <-- keep raw list; we'll sort by power in render
-    // keep my doc live
-    state.allegiance = state.player?.allegianceId ? (state.allyMap.get(state.player.allegianceId) || null) : null;
-
-    renderAllyList(list); // (replaced below to include power + requests)
-  });
-}
-
-$("#btnCreateAlly").addEventListener("click", async ()=>{
-  const name = $("#newAllyName").value.trim(); if (!name) return;
-  const snap = await getDoc(state.youDocRef); if(!snap.exists()) return;
-  const me = snap.data(); if ((me.gold||0) < 100){ alert("Not enough gold (100 required)."); return; }
-  const col = moCol("allegiances");
-  const ally = await addDoc(col, { name, color: randomColor(), leader: username, members:[username], requests:[], createdAt: serverTimestamp() });
-  await updateDoc(state.youDocRef, { gold: (me.gold||0)-100, allegianceId: ally.id });
-  state.player.gold = (me.gold||0)-100; hudGold.textContent = state.player.gold;
-});
-function powerOfAllegiance(A){
-  let total = 0;
-  for (const uid of (A.members||[])){
-    const p = state.playersAll.get(uid);
-    total += p ? armySum(p.army||{}) : 0;
-  }
-  return total;
-}
-
-function renderAllyList(list){
-  const listEl = document.getElementById("allyList");
-  const reqEl  = document.getElementById("allyRequests");
-  if (!listEl || !reqEl) return;
-
-  // Build alliance → castle count, deriving ally when ownerAlly missing
-  const allyCastleCounts = new Map();
-  for (const c of state.castles){
-    const ownerUser = c.ownerName || c.owner || null;
-    let aid = c.ownerAlly || null;
-    if (!aid && ownerUser){
-      const p = state.playersAll.get(ownerUser);
-      if (p?.allegianceId) aid = p.allegianceId;
-    }
-    if (aid) allyCastleCounts.set(aid, (allyCastleCounts.get(aid) || 0) + 1);
-  }
-
-  // sort by power then member count
-  const rows = list.map(a => ({
-      ...a,
-      power: powerOfAllegiance(a),
-      castles: allyCastleCounts.get(a.id) || 0
-    }))
-    .sort((a,b)=> (b.power - a.power) || ((b.members?.length||0)-(a.members?.length||0)));
-
-  listEl.innerHTML = "";
-  rows.forEach(A=>{
-    const row = document.createElement("div");
-    row.className = "pill";
-    row.innerHTML = `
-      <div class="row">
-        <span class="colorDot" style="background:${A.color||"#cbd5e1"}"></span>
+        <div class="menu-actions">
+          <button id="startOnline" class="primary" disabled>
+            Enter the online realm <span>↗</span></button
+          ><button id="startLocal" disabled>
+            Begin a local campaign <span>→</span>
+          </button>
+        </div>
+        <div class="menu-secondary">
+          <button id="practice" disabled>Field battle</button
+          ><button id="practiceSiege" disabled>Siege practice</button
+          ><button id="help">How to command</button>
+        </div>
+        <p id="menuMessage" class="menu-message" role="status">
+          Local campaigns save on this device. Online progress belongs to your
+          Firebase identity.
+        </p>
+      </main>
+      <aside class="menu-features">
         <div>
-          <b>${A.name}</b>
-          <span class="muted small">(${A.members?.length||0} members)</span>
-          <span class="badge">Power: ${A.power}</span>
-          <span class="badge">🏰 ${A.castles}</span>
+          <b>01</b
+          ><span
+            >Command the field<small
+              >Shield walls · cavalry · archers · magic</small
+            ></span
+          >
         </div>
+        <div>
+          <b>02</b
+          ><span
+            >Build your company<small
+              >14 troop classes · branching promotions</small
+            ></span
+          >
+        </div>
+        <div>
+          <b>03</b
+          ><span
+            >Claim the realm<small
+              >Living factions · castles · alliances</small
+            ></span
+          >
+        </div>
+      </aside>
+      <footer class="menu-bottom">
+        <span>THE LIVING REALM <i>II</i></span
+        ><span id="welcome">Your story begins on the road.</span>
+      </footer>
+    </section>
+    <div id="app" hidden>
+      <canvas
+        id="map"
+        aria-label="Realm and battlefield. Select troops, then choose an order and a destination."
+        tabindex="0"
+      ></canvas>
+      <header class="hud">
+        <button id="menuButton" class="brand" title="Main menu">
+          MB<span>II</span>
+        </button>
+        <div class="hud-core">
+          <div class="commander-line">
+            <strong id="commanderName">Commander</strong
+            ><span id="connection">Local campaign</span>
+          </div>
+          <div class="resources">
+            <span>Gold <b id="gold">0</b></span
+            ><span>Company <b id="armyCount">0</b></span
+            ><span>Supplies <b id="supplies">100</b></span
+            ><span>Morale <b id="morale">100</b></span
+            ><span>Level <b id="level">1</b></span>
+          </div>
+        </div>
+        <nav class="hud-nav" aria-label="Management">
+          <button data-panel="army">Army</button
+          ><button data-panel="kingdom">Kingdom</button
+          ><button data-panel="journal">Journal</button
+          ><button data-panel="diplomacy">Diplomacy</button
+          ><button data-panel="standards">Standards</button
+          ><button data-panel="settings" aria-label="Settings">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#settings"></use>
+            </svg>
+          </button>
+        </nav>
+      </header>
+      <div id="battleHeading" class="battle-heading" hidden>
+        <span id="battleAlly"></span
+        ><b
+          ><svg class="icon" aria-hidden="true">
+            <use
+              href="/graphics/mountonline/ui/icons.svg#attack"
+            ></use></svg></b
+        ><span id="battleEnemy"></span>
       </div>
-      <div class="row" id="allyRowBtns_${A.id}"></div>
-    `;
-    listEl.appendChild(row);
-
-    const btns = row.querySelector(`#allyRowBtns_${A.id}`);
-    if (state.player?.allegianceId === A.id){
-      const tag = document.createElement("span");
-      tag.className = "badge";
-      tag.textContent = "Member";
-      btns.appendChild(tag);
-    } else {
-      const r = document.createElement("button");
-      r.className = "btn";
-      r.textContent = "Request";
-      r.onclick = ()=> requestJoinAlly(A.id);
-      btns.appendChild(r);
-    }
-  });
-
-  // Leader requests (unchanged)
-  reqEl.innerHTML = "";
-  const my = state.allegiance;
-  if (my && my.leader === state.player?.id && (my.requests||[]).length){
-    const head = document.createElement("div");
-    head.className = "muted";
-    head.textContent = "Join Requests";
-    reqEl.appendChild(head);
-
-    for (const userId of my.requests){
-      const r = document.createElement("div");
-      r.className = "pill";
-      r.innerHTML = `<div><b>${userId}</b></div>`;
-      const act = document.createElement("div");
-      act.className = "row";
-      const acc = document.createElement("button"); acc.className="btn"; acc.textContent="Accept";
-      const den = document.createElement("button"); den.className="btn"; den.textContent="Deny";
-      acc.onclick = ()=> approveRequester(userId, true);
-      den.onclick = ()=> approveRequester(userId, false);
-      act.appendChild(acc); act.appendChild(den);
-      r.appendChild(act);
-      reqEl.appendChild(r);
-    }
-  }
-}
-
-// Player requests to join an allegiance
-async function requestJoinAlly(allyId){
-  await runTransaction(db, async (tx)=>{
-    const aref = moDoc("allegiances", allyId);
-    const cur = await tx.get(aref); if(!cur.exists()) throw "no-ally";
-    const a = cur.data();
-    const req = new Set(a.requests || []);
-    req.add(state.player.id);
-    tx.update(aref, { requests: Array.from(req) });
-    tx.update(state.youDocRef, { pendingRequestId: allyId });
-  });
-}
-
-// Leader accepts or denies
-async function approveRequester(userId, accept){
-  const aid = state.allegiance?.id; if(!aid) return;
-  const aref = moDoc("allegiances", aid);
-
-  await runTransaction(db, async (tx)=>{
-    const cur = await tx.get(aref); if(!cur.exists()) throw "gone";
-    const a = cur.data();
-    if (a.leader !== state.player.id) throw "not-leader";
-
-    const remaining = (a.requests||[]).filter(u=>u!==userId);
-    const members = new Set(a.members || []);
-    if (accept) members.add(userId);
-
-    tx.update(aref, { requests: remaining, members: Array.from(members) });
-    tx.update(moDoc("players", userId), {
-      allegianceId: accept ? aid : null,
-      pendingRequestId: null
-    });
-  });
-}
-
-
-/* =================== UI: Army & Inventory =================== */
-$("#btnArmy").onclick = ()=> openArmy();
-$("#btnInv").onclick = ()=> openInventory();
-$("#btnAlliances").onclick = ()=> { document.getElementById("wrap").scrollTo({top:0, behavior:"smooth"}); };
-
-function openArmy(){
-  const a = state.player?.army || START_ARMY;
-
-  // Display order + nice singular/plural labels
-  const ORDER = [
-    "recruits","footmen","archers","monks",
-    "swordsmen","cavalry","veteranArchers","crossbowmen",
-    "priests","mages","romanSergeants","romanChampions",
-    "dragonKnights","venetianSaints"
-  ];
-  const LABELS = {
-    recruits:         ["recruit","recruits"],
-    footmen:          ["footman","footmen"],
-    archers:          ["archer","archers"],
-    monks:            ["monk","monks"],
-    swordsmen:        ["swordsman","swordsmen"],
-    cavalry:          ["cavalry","cavalry"],            // invariant
-    veteranArchers:   ["veteran archer","veteran archers"],
-    crossbowmen:      ["crossbowman","crossbowmen"],
-    priests:          ["priest","priests"],
-    mages:            ["mage","mages"],
-    romanSergeants:   ["Roman Sergeant","Roman Sergeants"],
-    romanChampions:   ["Roman Champion","Roman Champions"],
-    dragonKnights:    ["Dragon Knight","Dragon Knights"],
-    venetianSaints:   ["Venetian Saint","Venetian Saints"]
-  };
-  const parts = ORDER.map(k=>{
-    const n = a?.[k] ?? 0;
-    const [sing, plur] = LABELS[k] || [k, k+"s"];
-    return `${n} ${n===1 ? sing : plur}`;
-  });
-
-  openModal("Your Army", m=>{
-    m.innerHTML = `
-      <div class="muted small">Upgrading grants XP and doesn't change total size.</div>
-
-      <!-- Compact inline list -->
-      <div class="pill" style="white-space:normal; line-height:1.4; font-size:.95rem">
-        ${parts.join(", ")}
+      <aside
+        id="context"
+        class="context-panel"
+        hidden
+        aria-label="Selected location"
+      >
+        <button
+          id="closeContext"
+          class="close"
+          aria-label="Close selected location"
+        >
+          ×
+        </button>
+        <div id="contextBody"></div>
+      </aside>
+      <aside class="map-corner">
+        <div class="map-title">
+          <span id="mapTitle">THE CROWNLANDS</span
+          ><button id="centerCamera" title="Center on company">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#compass"></use>
+            </svg>
+          </button>
+        </div>
+        <canvas
+          id="minimap"
+          width="224"
+          height="144"
+          aria-label="Mini-map. Tap to move the camera."
+          tabindex="0"
+        ></canvas>
+        <div class="map-tools">
+          <button id="zoomOut" aria-label="Zoom out">−</button
+          ><span id="zoomLabel">100%</span
+          ><button id="zoomIn" aria-label="Zoom in">+</button
+          ><button id="panToggle" aria-pressed="false">Pan</button>
+        </div>
+      </aside>
+      <div id="objective" class="objective">
+        <span class="eyebrow">YOUR NEXT CHAPTER</span
+        ><strong>Build a company worth following.</strong
+        ><small
+          >Visit Hearthford to recruit. Explore the road and confront an outlaw
+          company.</small
+        >
       </div>
-
-      <div class="row">
-        <button class="btn" id="upg_archer">Recruit → Archer (${UPGRADE_COST.archer}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_footman">Recruit → Footman (${UPGRADE_COST.footman}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_monk">Recruit → Monk (${UPGRADE_COST.monk}g, +${XP_PER_UPGRADE}XP)</button>
+      <div id="orderHint" class="order-hint" role="status">
+        Tap a destination to march. Tap a settlement or army to inspect it.
       </div>
-
-      <div class="row">
-        <button class="btn" id="upg_varcher">Archer → Veteran Archer (${UPGRADE_COST.veteranArcher}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_xbow">Archer → Crossbowman (${UPGRADE_COST.crossbowman}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_sword">Footman → Swordsman (${UPGRADE_COST.swordsman}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_cav">Footman → Cavalry (${UPGRADE_COST.cavalry}g, +${XP_PER_UPGRADE}XP)</button>
+      <div id="worldDock" class="world-dock">
+        <button data-panel="army">Manage company</button
+        ><button data-panel="journal">Contracts</button
+        ><button id="haltMarch">Halt march</button
+        ><button id="saveGame">Save campaign</button>
       </div>
-
-      <!-- Advanced -->
-      <div class="row">
-        <button class="btn" id="upg_sergeant">Swordsman → Roman Sergeant (${UPGRADE_COST.romanSergeant}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_champion">Roman Sergeant → Roman Champion (${UPGRADE_COST.romanChampion}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_dragon">Cavalry → Dragon Knight (${UPGRADE_COST.dragonKnight}g, +${XP_PER_UPGRADE}XP)</button>
+      <section
+        id="battleDock"
+        class="battle-dock"
+        hidden
+        aria-label="Troop commands"
+      >
+        <div class="selection-row">
+          <span id="selectedCount">0 selected</span>
+          <div class="group-buttons">
+            <button data-group="all">All <kbd>1</kbd></button
+            ><button data-group="infantry">Infantry <kbd>2</kbd></button
+            ><button data-group="ranged">Ranged <kbd>3</kbd></button
+            ><button data-group="cavalry">Cavalry <kbd>4</kbd></button
+            ><button data-group="support">Support <kbd>5</kbd></button
+            ><button id="multiSelect" aria-pressed="false">
+              Add to selection
+            </button>
+          </div>
+          <label class="formation-label"
+            >Formation
+            <select id="formation">
+              <option value="line">Line</option>
+              <option value="shieldwall">Shield wall</option>
+              <option value="square">Defensive square</option>
+              <option value="wedge">Cavalry wedge</option>
+              <option value="loose">Loose ranks</option>
+            </select></label
+          >
+        </div>
+        <div class="orders">
+          <button data-order="move">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#move"></use></svg
+            >Move <kbd>M</kbd></button
+          ><button data-order="attack">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#attack"></use></svg
+            >Attack <kbd>A</kbd></button
+          ><button data-order="charge">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#charge"></use></svg
+            >Charge <kbd>C</kbd></button
+          ><button data-order="hold">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#hold"></use></svg
+            >Hold <kbd>H</kbd></button
+          ><button data-order="defend">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#defend"></use></svg
+            >Defend <kbd>D</kbd></button
+          ><button data-order="follow">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#follow"></use></svg
+            >Follow <kbd>F</kbd></button
+          ><button data-order="retreat">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#retreat"></use></svg
+            >Retreat <kbd>R</kbd></button
+          ><button data-order="patrol">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#patrol"></use></svg
+            >Patrol <kbd>P</kbd></button
+          ><button data-order="auto">
+            <svg class="icon" aria-hidden="true">
+              <use href="/graphics/mountonline/ui/icons.svg#auto"></use></svg
+            >Auto <kbd>G</kbd>
+          </button>
+        </div>
+        <div class="ability-row">
+          <span>COMMANDER ORDERS</span
+          ><button data-ability="rally">Rally</button
+          ><button data-ability="volley">Arrow volley</button
+          ><button data-ability="firestorm">Firestorm</button
+          ><span id="battleClock">00:00</span>
+        </div>
+      </section>
+      <div id="toast" class="toast" role="status" hidden></div>
+      <div id="performance" class="performance" hidden></div>
+    </div>
+    <dialog id="panel">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow" id="panelEyebrow">YOUR COMPANY</span>
+          <h2 id="panelTitle">Army</h2>
+        </div>
+        <button id="closePanel" class="close" aria-label="Close menu">×</button>
       </div>
-
-      <div class="row">
-        <button class="btn" id="upg_priest">Monk → Priest (${UPGRADE_COST.priest}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_mage">Monk → Mage (${UPGRADE_COST.mage}g, +${XP_PER_UPGRADE}XP)</button>
-        <button class="btn" id="upg_saint">Priest → Venetian Saint (${UPGRADE_COST.venetianSaint}g, +${XP_PER_UPGRADE}XP)</button>
+      <div id="panelBody" class="modal-body"></div>
+    </dialog>
+    <dialog id="result" class="result">
+      <div class="result-art" aria-hidden="true"></div>
+      <div class="result-content">
+        <p class="eyebrow">THE FIELD FALLS SILENT</p>
+        <h2 id="resultTitle">Victory</h2>
+        <p id="resultCopy"></p>
+        <div id="resultStats" class="result-stats"></div>
+        <button id="returnRealm" class="primary">Return to the realm →</button>
       </div>
-    `;
-
-    const bind = (id, fn)=> m.querySelector("#"+id).onclick = fn;
-
-    bind("upg_archer",   ()=> upgrade("recruits","archers","archer"));
-    bind("upg_footman",  ()=> upgrade("recruits","footmen","footman"));
-    bind("upg_monk",     ()=> upgrade("recruits","monks","monk"));
-
-    bind("upg_varcher",  ()=> upgrade("archers","veteranArchers","veteranArcher"));
-    bind("upg_xbow",     ()=> upgrade("archers","crossbowmen","crossbowman"));
-
-    bind("upg_sword",    ()=> upgrade("footmen","swordsmen","swordsman"));
-    bind("upg_cav",      ()=> upgrade("footmen","cavalry","cavalry"));
-
-    bind("upg_sergeant", ()=> upgrade("swordsmen","romanSergeants","romanSergeant"));
-    bind("upg_champion", ()=> upgrade("romanSergeants","romanChampions","romanChampion"));
-    bind("upg_dragon",   ()=> upgrade("cavalry","dragonKnights","dragonKnight"));
-    bind("upg_priest",   ()=> upgrade("monks","priests","priest"));
-    bind("upg_mage",     ()=> upgrade("monks","mages","mage"));
-    bind("upg_saint",    ()=> upgrade("priests","venetianSaints","venetianSaint"));
-  });
-}
-
-
-async function upgrade(fromKey, toKey, costKey){
-  const snap = await getDoc(state.youDocRef); if (!snap.exists()) return;
-  const me = snap.data(); const cost = UPGRADE_COST[costKey]||0;
-  if ((me.army[fromKey]||0) < 1) { alert("No units available to upgrade."); return; }
-  if ((me.gold||0) < cost) { alert("Not enough gold."); return; }
-  const army = {...me.army}; army[fromKey]-=1; army[toKey]=(army[toKey]||0)+1;
-  await updateDoc(state.youDocRef, { army, gold: (me.gold||0)-cost });
-  state.player.army = army; state.player.gold = (me.gold||0)-cost; hudGold.textContent = state.player.gold;
-  updateArmyHud();
-  await gainXP(XP_PER_UPGRADE);
-  log(`Upgraded 1 ${fromKey} → ${toKey} (-${cost}g, +${XP_PER_UPGRADE}XP)`);
-}
-
-/* Inventory / banners */
-function openInventory(){
-  const inv = state.player?.inventory || { banners:[], equipped:[] };
-  openModal("Inventory", m=>{
-    const eq = (inv.equipped||[]).map(b=>renderBanner(b,true)).join("");
-    const all= (inv.banners || []).map(b=>renderBanner(b,false)).join("");
-    m.innerHTML = `
-      <div><b>Equipped (${(inv.equipped||[]).length}/${MAX_BANNERS_EQUIPPED})</b></div>
-      <div class="list">${eq || '<div class="muted">No banners equipped.</div>'}</div>
-      <div style="height:8px"></div>
-      <div><b>Banners</b></div>
-      <div class="list">${all || '<div class="muted">No items yet.</div>'}</div>
-    `;
-    m.querySelectorAll("[data-equip]").forEach(btn=> btn.onclick = ()=> toggleEquip(btn.getAttribute("data-id")));
-  });
-}
-function renderBanner(b, equipped){
-  return `<div class="pill">
-    <div><b>${b.title}</b> <span class="muted small">(${b.effect})</span></div>
-    <button class="btn small" data-equip data-id="${b.id}">${equipped?'Unequip':'Equip'}</button>
-  </div>`;
-}
-async function toggleEquip(id){
-  const snap = await getDoc(state.youDocRef); const me = snap.data();
-  const inv = me.inventory || {banners:[], equipped:[]};
-  const isEq = (inv.equipped||[]).some(x=>x.id===id);
-  if (isEq){ inv.equipped = (inv.equipped||[]).filter(x=>x.id!==id); }
-  else {
-    if ((inv.equipped||[]).length >= MAX_BANNERS_EQUIPPED){ alert("Max 3 banners equipped."); return; }
-    const item = (inv.banners||[]).find(x=>x.id===id); if (!item) return;
-    inv.equipped = [...(inv.equipped||[]), item];
-  }
-  await updateDoc(state.youDocRef, { inventory: inv });
-  state.player.inventory = inv;
-  openInventory();
-}
-  // === GARRISON: owner-only deposit/withdraw (recruits only for simplicity)
-async function depositToGarrison(castleId, amount){
-  if (!amount || amount < 1) return;
-  await runTransaction(db, async (tx)=>{
-    const cRef = moDoc("castles", castleId);
-    const pRef = state.youDocRef;
-
-    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
-    if (!cSnap.exists() || !pSnap.exists()) throw "missing";
-    const c = cSnap.data(); const p = pSnap.data();
-    if ((c.ownerName||c.owner) !== username) throw "not-owner";
-
-    const army = {...(p.army||START_ARMY)};
-    if ((army.recruits||0) < amount) throw "not-enough-recruits";
-
-    army.recruits -= amount;
-    const newG = (c.garrison||0) + amount;
-
-    tx.update(pRef, { army });
-    tx.update(cRef, { garrison: newG });
-  });
-}
-
-async function withdrawFromGarrison(castleId, amount){
-  if (!amount || amount < 1) return;
-  await runTransaction(db, async (tx)=>{
-    const cRef = moDoc("castles", castleId);
-    const pRef = state.youDocRef;
-
-    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
-    if (!cSnap.exists() || !pSnap.exists()) throw "missing";
-    const c = cSnap.data(); const p = pSnap.data();
-    if ((c.ownerName||c.owner) !== username) throw "not-owner";
-
-    const g = c.garrison || 0;
-    if (g < amount) throw "not-enough-garrison";
-
-    const army = {...(p.army||START_ARMY)};
-    army.recruits = (army.recruits||0) + amount;
-
-    tx.update(pRef, { army });
-    tx.update(cRef, { garrison: g - amount });
-  });
-}
-
-
-/* =================== Modal with exit callback =================== */
-const modal = $("#modal"); const modalBody = $("#modalBody"); const modalTitle = $("#modalTitle");
-let modalExitHandler = null;
-$("#modalCancel").onclick = ()=> { if (typeof modalExitHandler === "function") modalExitHandler(); closeModal(true); };
-function openModal(title, renderFn){ modalTitle.textContent = title; modalBody.innerHTML = ""; modalExitHandler = null; renderFn(modalBody); modal.style.display="flex"; }
-function closeModal(pushBack){ modal.style.display="none"; if (pushBack) pushBackFromLocation(); }
-function pushBackFromLocation(){ if (!state.lastSafePos) return; state.player.x = state.lastSafePos.x; state.player.y = state.lastSafePos.y; commitPosition(); }
-
-/* =================== Trade & Recruit =================== */
-function rngBanners(n){
-  const names = [
-    ["Lion of Valor","+10% melee"], ["Falcon of the East","+8% speed"],
-    ["Tortoise Standard","+15% armor"], ["Crosswind Pennant","+12% ranged"],
-    ["Sunsear Banner","+6% spell power"], ["Stag Lord’s Mark","+9% cavalry dmg"],
-    ["Scribe’s Sigil","+8% priest heal"], ["Oakheart Cloth","+10% footman hp"]
-  ];
-  const out=[];
-  for(let i=0;i<n;i++){ const [title,effect] = names[Math.floor(Math.random()*names.length)]; out.push({ id: crypto.randomUUID(), title, effect, slot:"banner" }); }
-  return out;
-}
-function canUse(ts, cdMs){ return !ts || (Date.now()-ts) >= cdMs; }
-
-// REPLACE your entire openVillage(v) with this version
-async function openVillage(v){
-  const meSnap = await getDoc(state.youDocRef);
-  const me = meSnap.data();
-  const level   = me.level || 1;
-  const maxArmy = me.maxArmy ?? maxArmyForLevel(level);
-  const capLeft = Math.max(0, maxArmy - armySum(me.army||{}));
-
-  // Per-village cooldown keys (recruit/trade)
-  const kR = "v_" + v.id;
-  const kT = "v_" + v.id;
-
-  const canRecruit = canUse(me.lastRecruitAt?.[kR], RECRUIT_COOLDOWN_MS);
-  const canTrade   = canUse(me.lastTradeAt?.[kT],   TRADE_COOLDOWN_MS);
-
-  // === 2–5 recruits per visit ===
-  const offer    = (typeof rand2to5 === "function") ? rand2to5() : (2 + Math.floor(Math.random()*4));
-  const pricePer = (typeof PRICE_PER_RECRUIT === "number") ? PRICE_PER_RECRUIT : 3;
-  const price    = offer * pricePer;
-  const xpPerR   = (typeof XP_PER_RECRUIT === "number") ? XP_PER_RECRUIT : 1;
-
-  const banners = rngBanners(Math.random() < 0.5 ? 1 : 2);
-
-  openModal(`Village (${v.x},${v.y})`, m=>{
-    // Info line
-    const info = document.createElement("div");
-    info.className = "muted small";
-    info.textContent = `Capacity left: ${capLeft}`;
-    m.appendChild(info);
-
-    // === Recruit block (2–5 per use, 60s per-village cooldown) ===
-    const buyRow = document.createElement("div");
-    buyRow.className = "row";
-
-    const buyBtn = document.createElement("button");
-    buyBtn.className = "btn";
-    buyBtn.textContent = `Recruit ${offer} (${price}g, +${offer * xpPerR}XP)`;
-    buyBtn.disabled = !(canRecruit && capLeft >= 2 && (me.gold||0) >= price);
-
-    buyRow.appendChild(buyBtn);
-    m.appendChild(buyRow);
-
-    buyBtn.onclick = async ()=>{
-      // Re-read for safety
-      const s2 = await getDoc(state.youDocRef);
-      if (!s2.exists()) return;
-      const me2  = s2.data();
-
-      // Guards
-      if (!canUse(me2.lastRecruitAt?.[kR], RECRUIT_COOLDOWN_MS)) { alert("Recruit cooldown active here."); return; }
-      const max2 = me2.maxArmy ?? maxArmyForLevel(me2.level||1);
-      const cap  = Math.max(0, max2 - armySum(me2.army||{}));
-      if (cap < 2){ alert("Need at least 2 capacity for this offer."); return; }
-      if ((me2.gold||0) < price){ alert("Not enough gold."); return; }
-
-      // Apply recruit: add whole offer (clamped to capacity), pay once, set cooldown on this village
-      const army = { ...(me2.army || START_ARMY) };
-      army.recruits = (army.recruits||0) + Math.min(offer, cap);
-
-      await updateDoc(state.youDocRef, {
-        gold: (me2.gold||0) - price,
-        army,
-        lastRecruitAt: { ...(me2.lastRecruitAt||{}), [kR]: Date.now() }
-      });
-
-      // Local HUD updates
-      state.player.gold  = (me2.gold||0) - price;
-      state.player.army  = army;
-      hudGold.textContent = state.player.gold;
-      updateArmyHud();
-
-      if (typeof gainXP === "function") await gainXP(offer * xpPerR);
-
-      const tag = document.getElementById("coolInfo");
-      if (tag) tag.textContent = "Recruit cooldown active.";
-
-      // Close to reflect cooldown & prevent double-clicks
-      closeModal(true);
-    };
-
-    // --- Trading (unchanged, still has cooldown) ---
-    const tWrap = document.createElement("div");
-    tWrap.className = "list";
-    for (const b of banners){
-      const row = document.createElement("div"); row.className="pill";
-      row.innerHTML = `<div><b>${b.title}</b> <span class="muted small">${b.effect}</span></div>`;
-      const buy = document.createElement("button"); buy.className="btn"; buy.textContent="Buy (200g, +5XP)";
-      buy.disabled = !canTrade;
-      buy.onclick  = ()=> buyBanner(b, v.id, "village");
-      row.appendChild(buy);
-      tWrap.appendChild(row);
-    }
-    const tNote = document.createElement("div");
-    tNote.className = "muted small";
-    tNote.textContent = "Trading locks this village for 2 minutes (even if you exit).";
-
-    m.appendChild(document.createElement("div")).style.height = "6px";
-    m.appendChild(tWrap);
-    m.appendChild(tNote);
-
-    // keep trade cooldown behavior on exit
-    modalExitHandler = async ()=>{
-      const fresh = (await getDoc(state.youDocRef)).data();
-      const lt = { ...(fresh.lastTradeAt||{}) };
-      lt[kT] = Date.now();
-      await updateDoc(state.youDocRef, { lastTradeAt: lt });
-      const tag = document.getElementById("coolInfo");
-      if (tag) tag.textContent = "Trade cooldown active.";
-    };
-  });
-}
-
-
-async function openCastle(c){
-  // Ensure neutral gets a garrison
-  await seedNeutralGarrison(c.id);
-
-  // Figure owner / ally
-  const ownerUser = c.ownerName || c.owner || null;
-  const ownerTxt  = ownerUser ? `Owner: ${ownerUser}` : "Unowned";
-  const myAllyId  = state.player?.allegianceId || null;
-  const cAllyId   = castleAllyId(c);
-  const sameAlly  = myAllyId && cAllyId && myAllyId === cAllyId;
-
-  const me = (await getDoc(state.youDocRef)).data();
-  const kT = "c_" + c.id;
-  const canTradeHere = canUse(me.lastTradeAt?.[kT], TRADE_COOLDOWN_MS);
-
-  const youOwn = !!ownerUser && ownerUser === username;
-  const youAreLeader = !!state.allegiance && state.allegiance.leader === username;
-
-  openModal(`Castle (${c.x},${c.y}) — ${ownerTxt}`, m=>{
-    // Garrison row (with cap display)
-    const gNow = Number.isFinite(c.garrison) ? c.garrison : 0;
-    const gwrap = document.createElement("div");
-    gwrap.className = "pill";
-    gwrap.innerHTML = `<div>🪖 <b>Garrison:</b> <span id="gar_val">${gNow}</span> <span class="muted small">/ ${GARRISON_MAX}</span></div>`;
-    m.appendChild(gwrap);
-
-    // Owner-only controls: select any unit to deposit (tiered yields)
-    if (youOwn){
-      const a = state.player?.army || START_ARMY;
-
-      // Build options for units you actually have
-      const unitKeys = Object.keys(UNIT_TIER).filter(k => (a?.[k]||0) > 0);
-      const optHtml = unitKeys.map(k=>{
-        const n = a[k]||0;
-        const tier = UNIT_TIER[k];
-        const yieldAmt = TIER_YIELD[tier];
-        const label = `${k} (${n}) → +${yieldAmt}`;
-        return `<option value="${k}">${label}</option>`;
-      }).join("");
-
-      const holder = document.createElement("div");
-      holder.className = "row";
-      holder.innerHTML = `
-        <select id="selUnit" class="select" style="min-width:220px">
-          ${optHtml || '<option disabled>(No units available)</option>'}
-        </select>
-        <button class="btn" id="btnDepUnit" ${optHtml ? '' : 'disabled'}>Add to Garrison</button>
-        <span class="muted small">One unit is consumed • Yields based on tier (1/3/5/8) • Max ${GARRISON_MAX}</span>
-      `;
-      m.appendChild(holder);
-
-      holder.querySelector("#btnDepUnit").onclick = async ()=>{
-        const key = holder.querySelector("#selUnit").value;
-        if (!key) return;
-        await depositUnitToGarrison(c.id, key);
-      };
-
-      // Withdraw (generic points → recruits)
-      const row = document.createElement("div"); row.className = "row";
-      row.innerHTML = `
-        <input id="gar_amt" class="input" type="number" min="1" step="1" placeholder="Withdraw amount" style="width:160px">
-        <button class="btn" id="btnWit">Withdraw</button>
-        <span class="muted small">Withdraw converts garrison back to <b>recruits</b>.</span>
-      `;
-      m.appendChild(row);
-
-      row.querySelector("#btnWit").onclick = async ()=>{
-        const amt = Math.max(1, parseInt(row.querySelector("#gar_amt").value||"0",10));
-        try{ await withdrawFromGarrison(c.id, amt); row.querySelector("#gar_amt").value=""; }
-        catch(e){ alert(e==="not-enough-garrison" ? "Not enough in garrison." : "Withdraw failed."); }
-      };
-    }
-
-    // Shop
-    const banners = rngBanners(3);
-    const list = document.createElement("div"); list.className="list";
-    for(const b of banners){
-      const row = document.createElement("div"); row.className="pill";
-      row.innerHTML = `<div><b>${b.title}</b> <span class="muted small">${b.effect}</span></div>`;
-      const buy = document.createElement("button"); buy.className="btn"; buy.textContent="Buy (200g, +5XP)";
-      buy.disabled = !canTradeHere;
-      buy.onclick = ()=> buyBanner(b, c.id, "castle");
-      row.appendChild(buy); list.appendChild(row);
-    }
-    m.appendChild(list);
-
-    // Attack button — hidden if youOwn, sameAlly, or you're a leader
-    const allowAttack = !(youOwn || sameAlly || youAreLeader);
-    if (allowAttack){
-      const opts = document.createElement("div"); opts.className="row";
-      const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
-      attack.onclick = async ()=>{
-        if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
-        try{
-          const siegeId = await startCastleSiege(c.id);
-          location.href = `/game/castlebattle.html?siegeId=${encodeURIComponent(siegeId)}&username=${encodeURIComponent(username)}`;
-        }catch(e){
-          alert(e==="castle-in-siege" ? "This castle is already under siege." : "Failed to start siege.");
-        }
-      };
-      opts.appendChild(attack);
-      m.appendChild(opts);
-    }
-
-    const note = document.createElement("div"); note.className="muted small";
-    note.textContent = "Trading locks this castle for 2 minutes (even if you exit).";
-    m.appendChild(note);
-
-    // maintain trade cooldown on exit
-    modalExitHandler = async ()=>{
-      const fresh = (await getDoc(state.youDocRef)).data();
-      const lt = {...(fresh.lastTradeAt||{})}; lt[kT] = Date.now();
-      await updateDoc(state.youDocRef, { lastTradeAt: lt });
-      $("#coolInfo").textContent = "Trade cooldown active.";
-    };
-  });
-
-  // Live update garrison value in modal while open
-  sub(moDoc("castles", c.id), s=>{
-    if (!s.exists()) return;
-    const g = (s.data().garrison ?? 0);
-    const tag = document.getElementById("gar_val");
-    if (tag) tag.textContent = g;
-  });
-}
-
-
-async function buyBanner(b, placeId, kind){
-  const snap = await getDoc(state.youDocRef); const me = snap.data();
-  const price = 200;
-  if ((me.gold||0) < price){ alert("Not enough gold."); return; }
-  const inv = me.inventory || { banners:[], equipped:[] };
-  inv.banners = [...(inv.banners||[]), b];
-  const key = (kind==="castle" ? "c_" : "v_") + placeId;
-  await updateDoc(state.youDocRef, {
-    gold:(me.gold||0)-price,
-    inventory: inv,
-    lastTradeAt: {...(me.lastTradeAt||{}), [key]: Date.now()}
-  });
-  state.player.gold = (me.gold||0)-price; state.player.inventory = inv; hudGold.textContent = state.player.gold;
-  await gainXP(XP_PER_BANNER);
-  log(`Purchased ${b.title} (-${price}g, +${XP_PER_BANNER}XP)`);
-  closeModal(true);
-}
-
-/* =================== Movement & Camera =================== */
-function armyMoveDelay(){
-  const total = armySum(state.player?.army||START_ARMY);
-  return 180 + Math.min(520, total*10); // heavier → slower
-}
-function tryMove(dx,dy){
-  const now = Date.now();
-  if (now - state.lastMoveAt < state.moveDelay) return;
-  state.lastMoveAt = now;
-  state.lastSafePos = {x:state.player.x, y:state.player.y};
-
-  let nx = Math.max(0, Math.min(WORLD_W-1, state.player.x + dx));
-  let ny = Math.max(0, Math.min(WORLD_H-1, state.player.y + dy));
-  state.player.x = nx; state.player.y = ny;
-  commitPosition();
-  checkTile();
-}
-function commitPosition(){ if (!state.player) return; updateDoc(state.youDocRef, { x:state.player.x, y:state.player.y }).catch(()=>{}); }
-
-/* Keyboard + camera drag */
-addEventListener("keydown", e=>{ if (e.code==="Space"){ state.drag=true; e.preventDefault(); } state.keys[e.key.toLowerCase()] = true; });
-addEventListener("keyup", e=>{ if (e.code==="Space"){ state.drag=false; } state.keys[e.key.toLowerCase()] = false; });
-canvas.addEventListener("mousedown", e=>{ if (!state.drag) return; state.dragStart = { mx:e.clientX, my:e.clientY, cx:state.cam.x, cy:state.cam.y }; });
-addEventListener("mousemove", e=>{
-  if (!state.drag || !state.dragStart) return;
-  const dx = e.clientX - state.dragStart.mx, dy = e.clientY - state.dragStart.my;
-  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, state.dragStart.cx - dx));
-  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, state.dragStart.cy - dy));
-});
-addEventListener("mouseup", ()=> state.dragStart=null);
-const isCoarse = window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-let touchPan={active:false,startX:0,startY:0,camX:0,camY:0,holdTimer:null,moved:false};
-function mobileStep(key){ state.keys[key]=true; setTimeout(()=> state.keys[key]=false, 120); }
-for(const b of document.querySelectorAll('[data-move]')){ b.addEventListener('click', ()=>mobileStep(b.dataset.move)); }
-document.getElementById('btnFS')?.addEventListener('click', async ()=>{
-  const root=document.querySelector('#stageWrap');
-  try{ if(document.fullscreenElement) await document.exitFullscreen(); else await (root.requestFullscreen?.()||document.documentElement.requestFullscreen?.()); }catch(e){}
-});
-canvas.addEventListener('pointerdown', e=>{
-  if(!isCoarse) return;
-  touchPan.active=true; touchPan.moved=false;
-  touchPan.startX=e.clientX; touchPan.startY=e.clientY; touchPan.camX=state.cam.x; touchPan.camY=state.cam.y;
-  clearTimeout(touchPan.holdTimer);
-  touchPan.holdTimer=setTimeout(()=>{ state.drag=true; },180);
-});
-canvas.addEventListener('pointermove', e=>{
-  if(!isCoarse || !touchPan.active || !state.drag) return;
-  const dx=e.clientX-touchPan.startX, dy=e.clientY-touchPan.startY;
-  if(Math.hypot(dx,dy)>6) touchPan.moved=true;
-  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, touchPan.camX - dx));
-  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, touchPan.camY - dy));
-});
-canvas.addEventListener('pointerup', e=>{
-  if(!isCoarse) return;
-  clearTimeout(touchPan.holdTimer);
-  if(!touchPan.moved && !state.drag){
-    const r=canvas.getBoundingClientRect();
-    const wx=state.cam.x + (e.clientX-r.left), wy=state.cam.y + (e.clientY-r.top);
-    const gx=Math.floor(wx/TILE), gy=Math.floor(wy/TILE);
-    const dx=Math.sign(gx-state.player.x), dy=Math.sign(gy-state.player.y);
-    if(dx||dy) tryMove(dx,dy);
-  }
-  touchPan.active=false; state.drag=false;
-});
-
-function tickInput(){
-  if (state.drag) return;
-  let dx=0, dy=0;
-  if (state.keys['w']) dy -= 1;
-  if (state.keys['s']) dy += 1;
-  if (state.keys['a']) dx -= 1;
-  if (state.keys['d']) dx += 1;
-  if (dx||dy) tryMove(dx,dy);
-  state.moveDelay = armyMoveDelay();
-}
-
-/* =================== Interactions =================== */
-  // === SIEGE: create a battle seeded with castle garrison
-async function startCastleSiege(castleId){
-  const siegeId = await runTransaction(db, async (tx)=>{
-    const cRef = moDoc("castles", castleId);
-    const pRef = state.youDocRef;
-
-    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
-    if (!cSnap.exists() || !pSnap.exists()) throw "castle-missing";
-    const c = cSnap.data();
-
-    // one-at-a-time lock
-    if (c.siegeId) throw "castle-in-siege";
-
-    // ensure neutral garrison exists
-    let g = c.garrison;
-    if (g == null && !c.owner){
-      g = NEUTRAL_GARRISON_MIN + Math.floor(Math.random()*(NEUTRAL_GARRISON_MAX-NEUTRAL_GARRISON_MIN+1));
-      tx.update(cRef, { garrison: g });
-    }
-
-    const sRef = doc(moCol("sieges"));
-    tx.set(sRef, {
-      castleId,
-      castle: { x:c.x, y:c.y, owner: c.owner||null, ownerName: c.ownerName||null, ownerColor: c.ownerColor||null },
-      attacker: username,
-      garrisonAtStart: g || 0,
-      status: "started",
-      createdAt: serverTimestamp()
-    });
-
-    tx.update(cRef, { siegeId: sRef.id });
-    tx.update(pRef, { active:false, inBattle:true, battleId: sRef.id, lastSeen: Date.now() });
-
-    return sRef.id;
-  });
-  return siegeId;
-}
-
-  function occupiedByPlayer(x, y){
-  if (state.player && state.player.x === x && state.player.y === y) return true;
-  for (const p of state.others.values()){
-    if (p.x === x && p.y === y) return true;
-  }
-  return false;
-}
-function tileAt(x,y,list){ return list.find(o=> o.x===x && o.y===y); }
-async function checkTile(){
-  renderNearby();
-
-  // During Preparedness you can move/see but can't interact or battle
-  const inPreparedness = Date.now() < state.canInteractAt;
-
-  const V = tileAt(state.player.x, state.player.y, state.villages);
-  if (V && !inPreparedness){ openVillage(V); return; }
-
-  const C = tileAt(state.player.x, state.player.y, state.castles);
-  if (C && !inPreparedness){ openCastle(C); return; }
-
-// Raiders
-const raider = findRaiderAt(state.player.x, state.player.y);
-if (raider && !inPreparedness){
-  raider.engaged = true;
-  raider.engagedAt = Date.now();
-
-  // Log encounter for analytics and self
-  await logRaiderEncounter(raider);
-  await setDoc(moDoc("encounters", username), {
-    user: username,
-    type: raider.type,   // "recruits" | "footmen" | "archers"
-    size: raider.size,   // number
-    createdAt: Date.now(),
-    consumed: false
-  });
-
-  await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
-  location.href = `/game/localbattle.html?etype=${encodeURIComponent(raider.type)}&esize=${raider.size}&username=${encodeURIComponent(username)}`;
-  return;
-}
-
-
-
-
-  // PvP (same tile, non-ally), only if both active and not in Preparedness
-  if (!inPreparedness){
-    const playersHere = Array.from(state.others.values()).filter(p=> p.x===state.player.x && p.y===state.player.y);
-    const enemy = playersHere.find(p=> !(state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId));
-    if (enemy && !state.battleEngaged && freshActive(enemy)){
-      const low = [username, enemy.id].sort()[0];
-      if (low === username){ startPvPBattle(enemy.id); }
-    }
-  }
-}
-
-/* Battles listen + start */
-function listenBattles(){
-  const qy = query(moCol("battles"), where("participants","array-contains", username));
-  sub(qy, snap=>{
-    snap.forEach(s=>{
-      const d = s.data();
-      if (d.status==="started"){
-        state.battleEngaged = true;
-        updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
-        location.href = `/game/battle.html?battleId=${s.id}&username=${encodeURIComponent(username)}`;
-      }
-    });
-  });
-}
-async function startPvPBattle(other){
-  const ref = await addDoc(moCol("battles"), {
-    participants: [username, other], createdAt: serverTimestamp(), status:"started"
-  });
-  await updateDoc(state.youDocRef, { active:false, inBattle:true, battleId: ref.id, lastSeen: Date.now() }).catch(()=>{});
-  state.battleEngaged = true;
-  location.href = `/game/battle.html?battleId=${ref.id}&username=${encodeURIComponent(username)}`;
-}
-
-/* =================== Nearby Panel =================== */
-function renderNearby(){
-  const el = $("#nearList");
-  el.innerHTML = "";
-  function addRow(html){
-    const d = document.createElement("div");
-    d.className = "pill";
-    d.innerHTML = html;
-    el.appendChild(d);
-  }
-
-  const inPreparedness = Date.now() < state.canInteractAt;
-  if (inPreparedness){
-    const sec = Math.ceil((state.canInteractAt - Date.now()) / 1000);
-    addRow(`🛡️ <b>Prepared</b> — ${sec}s left (no battles or interactions)`);
-  }
-
-  // What’s underfoot?
-  const V = tileAt(state.player.x, state.player.y, state.villages);
-  const C = tileAt(state.player.x, state.player.y, state.castles);
-  const R = findRaiderAt(state.player.x, state.player.y);
-
-  if (V) addRow(`${EMOJI.village} You are at a <b>Village</b> ${inPreparedness ? '<span class="muted">(locked)</span>' : ''}`);
-
-  if (C){
-    const ownerFrag = C.ownerName ? `— Owner: <b>${C.ownerName}</b>` : "— <i>Unowned</i>";
-    const gar = (C.garrison != null) ? C.garrison : "?";
-    addRow(`${EMOJI.castle} You are at a <b>Castle</b> ${ownerFrag} • 🪖 Garrison: <b>${gar}</b> ${inPreparedness ? '<span class="muted">(locked)</span>' : ''}`);
-  }
-
-  if (R) addRow(`${EMOJI.raider} <b>Raiders</b> here: ${R.size} ${R.type} ${inPreparedness ? '<span class="muted">(no battle during Preparedness)</span>' : ''}`);
-
-  // Helpers for castle counts
-  const castlesOwnedBy = (uid)=>{
-    let n = 0;
-    for (const c of state.castles){
-      const owner = c.ownerName || c.owner;
-      if (owner === uid) n++;
-    }
-    return n;
-  };
-  const castlesForAlly = (allyId)=>{
-    if (!allyId) return 0;
-    let n = 0;
-    for (const c of state.castles){
-      if (c.ownerAlly === allyId) n++;
-    }
-    return n;
-  };
-
-  // Nearby players
-  const players = Array.from(state.others.values())
-    .filter(p => Math.hypot(p.x - state.player.x, p.y - state.player.y) <= 6);
-
-  for (const p of players){
-    const isAlly = (state.player.allegianceId && p.allegianceId && state.player.allegianceId === p.allegianceId);
-    const cnt = armySum(p.army || {});
-    const pCastles = castlesOwnedBy(p.id);
-    const aCastles = p.allegianceId ? castlesForAlly(p.allegianceId) : 0;
-
-    addRow(`${EMOJI.player} <b>${p.id}</b> (${cnt}) • 🏰 ${pCastles}${p.allegianceId ? ` • 🏰 Ally ${aCastles}` : ''} @ (${p.x},${p.y}) ${isAlly ? '<span class="badge">Ally</span>' : ''}`);
-  }
-
-  // Cooldown/status banner (right panel header)
-  const infoEl = $("#coolInfo");
-  if (!infoEl) return;
-
-  if (inPreparedness){
-    infoEl.textContent = `Prepared: ${Math.ceil((state.canInteractAt - Date.now()) / 1000)}s`;
-    return;
-  }
-
-  // Village recruit cooldown when standing on a village
-  if (V){
-    const key = "v_" + V.id;
-    const last = (state.player?.lastRecruitAt || {})[key] || 0;
-    const rem  = RECRUIT_COOLDOWN_MS - (Date.now() - last);
-    infoEl.textContent = (rem <= 0)
-      ? "Village recruit: Ready (2–5)"
-      : `Village recruit: ${mmss(rem)} remaining`;
-  }
-  // Castle garrison quick view when standing on a castle
-  else if (C){
-    const g = (C.garrison != null) ? C.garrison : "?";
-    infoEl.textContent = `Castle garrison: ${g}`;
-  }
-  else {
-    infoEl.textContent = "Ready";
-  }
-}
-
-
-
-
-/* =================== Render Loop (emoji map) =================== */
-function draw(){
-  const cam = state.cam;
-  ctx.clearRect(0,0,canvas.width, canvas.height);
-
-  // Terrain backdrop: mixed grass / dirt / sand patches
-  const x0 = Math.max(0, Math.floor(cam.x / TILE) - 1);
-  const y0 = Math.max(0, Math.floor(cam.y / TILE) - 1);
-  const x1 = Math.min(WORLD_W - 1, Math.ceil((cam.x + canvas.width) / TILE) + 1);
-  const y1 = Math.min(WORLD_H - 1, Math.ceil((cam.y + canvas.height) / TILE) + 1);
-
-  for (let ty = y0; ty <= y1; ty++){
-    for (let tx = x0; tx <= x1; tx++){
-      const n = Math.abs(Math.sin(tx * 0.31 + ty * 0.17) + Math.cos(tx * 0.11 - ty * 0.29));
-      const n2 = Math.abs(Math.sin(tx * 1.3) * Math.cos(ty * 1.1));
-      let fill = "#3f7d36"; // grass
-      if (n > 1.35) fill = "#8b6b3f";      // dirt band
-      if (n2 > 0.78) fill = "#c7b074";     // sand pockets
-      if (n < 0.55) fill = "#4c8d43";      // richer grass
-      const px = tx * TILE - cam.x;
-      const py = ty * TILE - cam.y;
-      ctx.fillStyle = fill;
-      ctx.fillRect(px, py, TILE, TILE);
-
-      // add subtle variation streaks for less flat look
-      ctx.globalAlpha = 0.12;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(px + ((tx + ty) % 6), py + ((tx * 3 + ty) % 7), TILE * 0.25, TILE * 0.2);
-      ctx.globalAlpha = 1;
-    }
-  }
-
-  // faint tile grid
-  ctx.strokeStyle = "rgba(10,20,10,.18)";
-  for (let tx = x0; tx <= x1; tx++){
-    const px = tx * TILE - cam.x;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, canvas.height); ctx.stroke();
-  }
-  for (let ty = y0; ty <= y1; ty++){
-    const py = ty * TILE - cam.y;
-    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(canvas.width, py); ctx.stroke();
-  }
-
-  // Villages 🏘️
-  for(const v of state.villages){
-    const cx = v.x*TILE + TILE/2 - cam.x, cy = v.y*TILE + TILE/2 - cam.y;
-    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
-    drawEmojiCentered(EMOJI.village, cx, cy);
-  }
-
-  // Castles 🏰 (owner stripe if owned)
-  for(const c of state.castles){
-    const cx = c.x*TILE + TILE/2 - cam.x, cy = c.y*TILE + TILE/2 - cam.y;
-    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
-    drawEmojiCentered(EMOJI.castle, cx, cy);
-    const gtxt = (c.garrison != null) ? `🪖 ${c.garrison}` : "🪖 ?";
-    drawNameplate(gtxt, cx, cy + TILE*0.55, 0, "#f8fafc");
-    if (c.ownerColor){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, c.ownerColor); }
-    const flag = allyFlag(castleAllyId(c));
-    if(flag) drawNameplate(flag, cx, cy - TILE*0.88, 0, "#f8fafc");
-  }
-
-  // Raiders 🏴‍☠️ (skip engaged)
-  for(const r of state.localRaiders){
-    if (r.engaged) continue;
-    const cx = r.x*TILE + TILE/2 - cam.x, cy = r.y*TILE + TILE/2 - cam.y;
-    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
-    drawEmojiCentered(EMOJI.raider, cx, cy);
-    drawNameplate(`${r.size} ${r.type}`, cx, cy + TILE*0.4, 0, "#eab308");
-  }
-
-  // Other players (active only) 🧍
-  for(const p of state.others.values()){
-    const cx = p.x*TILE + TILE/2 - cam.x, cy = p.y*TILE + TILE/2 - cam.y;
-    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
-    const ally = p.allegianceId ? state.allyMap.get(p.allegianceId) : null;
-    if (ally){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, ally.color); }
-    drawEmojiCentered(EMOJI.player, cx, cy);
-    const cnt = armySum(p.army||{});
-    drawNameplate(`${p.id} (${cnt})`, cx, cy + TILE*0.4);
-  }
-
-  // You 🧍 (ally color stripe)
-  if (state.player){
-    const cx = state.player.x*TILE + TILE/2 - cam.x, cy = state.player.y*TILE + TILE/2 - cam.y;
-    if (state.allegiance?.color){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, state.allegiance.color); }
-    drawEmojiCentered(EMOJI.player, cx, cy);
-    const meCnt = armySum(state.player.army||{});
-    drawNameplate(`${username} (${meCnt})`, cx, cy + TILE*0.4, 0, "#93c5fd");
-  }
-
-  requestAnimationFrame(draw);
-}
-
-/* Center camera on you periodically */
-setInterval(()=> {
-  if (!state.player) return;
-  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, state.player.x*TILE - state.cam.w/2));
-  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, state.player.y*TILE - state.cam.h/2));
-}, 120);
-
-/* =================== Loop =================== */
-function loop(){ tickInput(); renderNearby(); requestAnimationFrame(loop); }
-
-/* =================== Init =================== */
-await seedWorldOnce();
-await ensurePlayer();
-await dailyTributeOnLogin();
-seedRaidersOnce();
-await listenWorld();
-await listenPlayers();
-await loadAllegiances();
-listenBattles();
-draw(); loop();
-
-// Status HUD and live updates
-hudStatus.textContent = "Active";
-setInterval(()=>{ hudStatus.textContent = document.hidden ? "Inactive" : "Active"; }, 500);
-
-sub(moDoc("players", username), s=>{
-  if (!s.exists()) return;
-  const d = s.data(); state.player = {id:username, ...d};
-  if (d.allegianceId) state.allegiance = state.allyMap.get(d.allegianceId)||null; else state.allegiance=null;
-  hudGold.textContent = d.gold||0; updateArmyHud(); updateLevelHud(); recomputeCastleOwnership(); // update HUD ally count if allegianceId changed
-
-});
-
-/* Reserved */
-canvas.addEventListener("click", ()=>{});
-</script>
-</body>
+    </dialog>
+    <script type="module" src="./mountonline/app.mjs"></script>
+  </body>
 </html>
-
-
-
-
-
-
-
-
-
-

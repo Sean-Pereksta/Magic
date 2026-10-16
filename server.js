@@ -49,6 +49,15 @@ try {
 }
 
 
+// Mountain Blade Online shares this Firebase Admin connection and HTTP/Socket.IO host.
+// A game initialization failure is isolated from all existing services.
+try {
+  const { mountMountOnline } = require('./server/mountonline/mount.cjs');
+  void mountMountOnline(app, { db, auth: admin.auth(), io, projectId: serviceAccount.project_id });
+} catch (error) {
+  console.error('Mountain Blade Online could not start.', error.code || error.name);
+}
+
 // ------------- GAME CONSTANTS -------------
 const BOARD_SIZE = 7;
 const BATTLE_W = 10;
