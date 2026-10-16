@@ -75,6 +75,7 @@ function context(){
   };
   sandbox.document.body.appendChild=(node)=>{ nodes[node.id]=node; };
   const ctx = vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../js/core/controller-config.js"),"utf8"),ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname,"../js/core/input-manager.js"),"utf8"),ctx);
   vm.runInContext("globalThis.manager = inputManager",ctx);
   return ctx;
@@ -165,8 +166,8 @@ test("keyboard and controller pass/switch inputs retain independent local assign
   ctx.twoPlayerMode=true;
   assert.equal(m.getAssignedGamepad("p1",[a]),null);
   assert.equal(m.getAssignedGamepad("p2",[a]),a);
-  assert.equal(m.getAssignedGamepad("p1",[a,b]),a);
-  assert.equal(m.getAssignedGamepad("p2",[a,b]),b);
+  assert.equal(m.getAssignedGamepad("p1",[a,b]),b);
+  assert.equal(m.getAssignedGamepad("p2",[a,b]),a);
   assert.equal(m.readGamepad(a,"p1").pass,true);
   assert.equal(m.readGamepad(b,"p2").switchPlayer,true);
   ctx.teamSize=1;

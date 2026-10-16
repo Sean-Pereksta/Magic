@@ -19,11 +19,19 @@ class BasketballInputManager {
     };
     this.pulses = {p1:Object.create(null),p2:Object.create(null)};
     this.flicks = {p1:null,p2:null};
-    this.lastFlick = {time:0,direction:""};
+    this.lastFlick = {p1:{time:0,direction:""},p2:{time:0,direction:""}};
     this.gamepadSkillLatch = new Map();
     this.lastDevice = "keyboard";
     this.touchReady = false;
     this.suspended = false;
+    this.configurationMode = false;
+    this.physicalKeys = new Set();
+    this.blockedKeys = new Set();
+    this.gamepadNeutralRequired = new Set();
+    this.autoAssignments = {p1:null,p2:null};
+    this.assignmentMode = null;
+    this.assignmentGameMode = null;
+    this.previousPadKeys = null;
     this.touchButtonPointers = new Map();
     this.deadzone = 0.16;
     this._touchMoveGuard = event => {
@@ -31,6 +39,11 @@ class BasketballInputManager {
     };
     window.addEventListener("gamepadconnected",event=>this.handleGamepadConnection(event,true));
     window.addEventListener("gamepaddisconnected",event=>this.handleGamepadConnection(event,false));
+    window.addEventListener("basketball-controller-config",event=>{
+      if(event.detail?.reason==="assignment" || event.detail?.reason==="reset") this.autoAssignments={p1:null,p2:null};
+      this.clearAll();
+      this.pauseUnfocusedGame();
+    });
     window.addEventListener("pointerdown",event=>{
       if(event.pointerType==="touch") this.markDevice("touch");
       else if(event.pointerType==="mouse" && this.lastDevice==="touch") this.markDevice("keyboard");
@@ -49,6 +62,8 @@ class BasketballInputManager {
   }
 
   clearAll(){
+    for(const code of this.physicalKeys) this.blockedKeys.add(code);
+    for(const pad of this.getConnectedGamepads()) this.gamepadNeutralRequired.add(this.gamepadKey(pad));
     this.keys = Object.create(null);
     if(typeof keys !== "undefined") keys = {};
     this.players = {p1:createInputFrame(),p2:createInputFrame()};
@@ -59,7 +74,7 @@ class BasketballInputManager {
     this.touch.buttons = Object.create(null);
     this.touchButtonPointers.clear();
     this.gamepadSkillLatch.clear();
-    this.lastFlick = {time:0,direction:""};
+    this.lastFlick = {p1:{time:0,direction:""},p2:{time:0,direction:""}};
     document.querySelectorAll(".touch-stick-knob").forEach(knob=>{ knob.style.transform="translate(0,0)"; });
     document.querySelectorAll("[data-touch-action]").forEach(button=>button.classList.remove("pressed"));
     // A cancelled touch or focus change must never release a charged shot.
@@ -70,13 +85,16 @@ class BasketballInputManager {
 
   handleGamepadConnection(event,connected){
     this.gamepadSkillLatch.delete(event.gamepad.index);
-    if(!connected) this.clearAll();
+    this.gamepadNeutralRequired.add(this.gamepadKey(event.gamepad));
+    if(!connected){ this.clearAll(); this.pauseUnfocusedGame(); }
     window.dispatchEvent(new CustomEvent("basketball-gamepads-changed",{
       detail:{connected,index:event.gamepad.index,id:event.gamepad.id}
     }));
   }
 
   onKeyDown(event){
+    this.physicalKeys.add(event.code);
+    if(this.configurationMode || this.suspended || this.blockedKeys.has(event.code)) return;
     this.keys[event.code] = true;
     this.keys[event.key?.toLowerCase()] = true;
     if(this.isGameplayKey(event.code)){
@@ -86,6 +104,8 @@ class BasketballInputManager {
   }
 
   onKeyUp(event){
+    this.physicalKeys.delete(event.code);
+    this.blockedKeys.delete(event.code);
     this.keys[event.code] = false;
     this.keys[event.key?.toLowerCase()] = false;
     if(this.isGameplayKey(event.code) && gameStarted) event.preventDefault();
@@ -106,20 +126,79 @@ class BasketballInputManager {
 
   getConnectedGamepads(){
     if(!navigator.getGamepads) return [];
-    return Array.from(navigator.getGamepads()).filter(Boolean).sort((a,b)=>a.index-b.index);
+    try{ return Array.from(navigator.getGamepads()).filter(pad=>pad && pad.connected!==false).sort((a,b)=>a.index-b.index); }
+    catch(_error){ return []; }
   }
 
-  getAssignedGamepad(playerId,pads){
-    if(!pads.length) return null;
-    if(!twoPlayerMode) return playerId === "p1" ? pads[0] : null;
-    if(pads.length === 1) return playerId === "p2" ? pads[0] : null;
-    return playerId === "p1" ? pads[0] : pads[1];
+  gamepadKey(pad){ return `${pad.index}:${pad.id || ""}`; }
+
+  getAssignments(pads=this.getConnectedGamepads()){
+    const mode=!!twoPlayerMode;
+    const assignmentMode=`${mode}:${this.configurationMode}`;
+    const keys=new Set(pads.map(pad=>this.gamepadKey(pad)));
+    if(this.previousPadKeys){
+      if([...this.previousPadKeys].some(key=>!keys.has(key))){ this.clearAll(); this.pauseUnfocusedGame(); }
+      for(const key of keys) if(!this.previousPadKeys.has(key)) this.gamepadNeutralRequired.add(key);
+    }else for(const key of keys) this.gamepadNeutralRequired.add(key);
+    this.previousPadKeys=keys;
+    if(this.assignmentMode!==assignmentMode){
+      const gameModeChanged=this.assignmentGameMode!==mode;
+      if(gameModeChanged) this.autoAssignments={p1:null,p2:null};
+      if(this.assignmentMode!==null && gameModeChanged){
+        // startGame and Settings already clear inputs synchronously. A later
+        // polling tick must preserve fresh keyboard/touch input received since
+        // then, while pads moving between slots still have to return to neutral.
+        for(const pad of pads) this.gamepadNeutralRequired.add(this.gamepadKey(pad));
+        this.gamepadSkillLatch.clear();
+        for(const slot of ["p1","p2"]) if(this.flicks[slot]?.source==="gamepad") this.flicks[slot]=null;
+        if(typeof shotCharging!=="undefined") shotCharging=false;
+        if(typeof chargingPlayer!=="undefined") chargingPlayer=null;
+        if(typeof shotPower!=="undefined") shotPower=0;
+      }
+      this.assignmentMode=assignmentMode;
+      this.assignmentGameMode=mode;
+    }
+    const result={p1:null,p2:null},reserved=new Set();
+    const slots=mode || this.configurationMode?["p1","p2"]:["p1"];
+    for(const slot of slots){
+      const assignment=controllerConfig.getPlayer(slot).assignment;
+      if(assignment && typeof assignment==="object"){
+        const pad=pads.find(candidate=>candidate.index===assignment.index && (candidate.id || "")===assignment.id);
+        if(pad && !reserved.has(pad.index)){ result[slot]=pad;reserved.add(pad.index); }
+      }
+    }
+    // Keep surviving devices in their slots when another controller disappears.
+    for(const slot of slots){
+      if(controllerConfig.getPlayer(slot).assignment!=="auto") continue;
+      const pad=pads.find(candidate=>this.gamepadKey(candidate)===this.autoAssignments[slot]);
+      if(pad && !reserved.has(pad.index)){ result[slot]=pad;reserved.add(pad.index); }
+      else this.autoAssignments[slot]=null;
+    }
+    const autoOrder=mode && pads.length===1?["p2","p1"]:slots;
+    for(const slot of autoOrder){
+      if(result[slot] || controllerConfig.getPlayer(slot).assignment!=="auto") continue;
+      const pad=pads.find(candidate=>!reserved.has(candidate.index));
+      if(pad){ result[slot]=pad;reserved.add(pad.index);this.autoAssignments[slot]=this.gamepadKey(pad); }
+    }
+    return result;
   }
 
-  applyDeadzone(x,y){
+  getAssignedGamepad(playerId,pads=this.getConnectedGamepads()){
+    return this.getAssignments(pads)[playerId] || null;
+  }
+
+  setConfigurationMode(active){
+    active=!!active;
+    if(this.configurationMode===active) return;
+    this.configurationMode=active;
+    this.clearAll();
+    if(active) this.pauseUnfocusedGame();
+  }
+
+  applyDeadzone(x,y,deadzone=this.deadzone){
     const magnitude = Math.hypot(x,y);
-    if(magnitude <= this.deadzone) return {x:0,y:0,magnitude:0};
-    const scaled = Math.min(1,(magnitude-this.deadzone)/(1-this.deadzone));
+    if(magnitude <= deadzone) return {x:0,y:0,magnitude:0};
+    const scaled = Math.min(1,(magnitude-deadzone)/(1-deadzone));
     return {x:(x/magnitude)*scaled,y:(y/magnitude)*scaled,magnitude:scaled};
   }
 
@@ -149,34 +228,60 @@ class BasketballInputManager {
     return result;
   }
 
+  bindingPressed(gamepad,binding){
+    if(!binding) return false;
+    if(binding.context==="team" && (typeof teamSize==="undefined" || teamSize<=1)) return false;
+    if(binding.context==="single" && typeof teamSize!=="undefined" && teamSize>1) return false;
+    if(binding.type==="button"){
+      const button=gamepad.buttons?.[binding.index];
+      if(!button) return false;
+      // Some legacy devices report only a pressed flag; analog triggers use
+      // their actual value so a custom threshold remains meaningful.
+      return Number.isFinite(button.value) && button.value>0 ? button.value>(binding.threshold || .25) : !!button.pressed;
+    }
+    if(binding.type==="axis") return ((gamepad.axes?.[binding.index] || 0)*binding.direction)>(binding.threshold || .55);
+    if(binding.type==="chord"){
+      const inputs=binding.inputs || binding.buttons?.map(index=>({type:"button",index})) || [];
+      return inputs.length>=2 && inputs.every(input=>this.bindingPressed(gamepad,input));
+    }
+    return false;
+  }
+
+  gamepadIsNeutral(gamepad,playerId){
+    const profile=controllerConfig.getPlayer(playerId);
+    if((gamepad.buttons || []).some(button=>button && (button.pressed || button.value>.25))) return false;
+    for(const type of ["move","skill"]){
+      const axes=profile.axes[type];
+      if(Math.hypot(gamepad.axes?.[axes.x] || 0,gamepad.axes?.[axes.y] || 0)>profile.deadzone) return false;
+    }
+    return !INPUT_ACTIONS.some(action=>this.bindingPressed(gamepad,profile.bindings[action]));
+  }
+
   readGamepad(gamepad,playerId){
     const result = createInputFrame();
     if(!gamepad) return result;
-    const move = this.applyDeadzone(gamepad.axes[0] || 0,-(gamepad.axes[1] || 0));
-    const skill = this.applyDeadzone(gamepad.axes[2] || 0,-(gamepad.axes[3] || 0));
+    const profile=controllerConfig.getPlayer(playerId);
+    const readAxes=type=>{
+      const axes=profile.axes[type];
+      const value=index=>Math.max(-1,Math.min(1,Number.isFinite(gamepad.axes?.[index])?gamepad.axes[index]:0));
+      return this.applyDeadzone(value(axes.x)*(axes.invertX?-1:1),value(axes.y)*(axes.invertY?-1:1),profile.deadzone);
+    };
+    const move = readAxes("move");
+    const skill = readAxes("skill");
     result.moveX = move.x;
     result.moveY = move.y;
     result.skillX = skill.x;
     result.skillY = skill.y;
-    result.sprint = (gamepad.buttons[7]?.value || 0) > 0.25;
-    result.shoot = !!gamepad.buttons[2]?.pressed;
-    result.pass = !!gamepad.buttons[0]?.pressed;
-    result.switchPlayer = typeof teamSize !== "undefined" && teamSize>1 && !!gamepad.buttons[5]?.pressed;
-    result.block = !!gamepad.buttons[3]?.pressed;
-    result.steal = !!gamepad.buttons[1]?.pressed;
-    result.protect = (gamepad.buttons[6]?.value || 0) > 0.25;
-    result.leftSkill = !!gamepad.buttons[4]?.pressed;
-    result.rightSkill = (typeof teamSize === "undefined" || teamSize===1) && !!gamepad.buttons[5]?.pressed;
-    result.takeover = !!gamepad.buttons[10]?.pressed && !!gamepad.buttons[11]?.pressed;
-    result.pause = !!gamepad.buttons[9]?.pressed;
-    result.source = gamepad.id.toLowerCase().includes("playstation") || gamepad.id.toLowerCase().includes("dual") ? "playstation" : "gamepad";
+    for(const action of INPUT_ACTIONS) result[action]=this.bindingPressed(gamepad,profile.bindings[action]);
+    const name=(gamepad.id || "").toLowerCase();
+    result.source = name.includes("playstation") || name.includes("dual") ? "playstation" : "gamepad";
 
     const previousMagnitude = this.gamepadSkillLatch.get(gamepad.index) || 0;
     if(skill.magnitude > 0.68 && previousMagnitude < 0.35){
       this.queueFlick(playerId,skill.x,skill.y,"gamepad");
     }
     this.gamepadSkillLatch.set(gamepad.index,skill.magnitude);
-    if(move.magnitude > 0.08 || skill.magnitude > 0.3 || result.sprint || result.shoot || result.pass || result.switchPlayer || result.block || result.steal){
+    if(move.magnitude > 0.08 || skill.magnitude > 0.3 || INPUT_ACTIONS.some(action=>result[action])){
       this.markDevice(result.source);
     }
     return result;
@@ -213,13 +318,19 @@ class BasketballInputManager {
   }
 
   tick(){
-    if(this.suspended) return;
+    if(this.suspended || this.configurationMode) return;
     const pads = this.getConnectedGamepads();
+    const assignments=this.getAssignments(pads);
     for(const playerId of ["p1","p2"]){
       const previous = this.players[playerId];
       const frames = [this.readKeyboard(playerId)];
-      const assignedPad = this.getAssignedGamepad(playerId,pads);
-      if(assignedPad) frames.push(this.readGamepad(assignedPad,playerId));
+      const assignedPad = assignments[playerId];
+      if(assignedPad){
+        const key=this.gamepadKey(assignedPad);
+        if(this.gamepadNeutralRequired.has(key)){
+          if(this.gamepadIsNeutral(assignedPad,playerId)) this.gamepadNeutralRequired.delete(key);
+        }else frames.push(this.readGamepad(assignedPad,playerId));
+      }
       if(playerId === "p1") frames.push(this.readTouch(playerId));
       const next = this.mergeFrames(frames);
       for(const action of INPUT_ACTIONS){
@@ -235,14 +346,16 @@ class BasketballInputManager {
   getState(playerId){ return this.players[playerId] || this.idleFrame; }
 
   pulse(playerId,action){
-    if(INPUT_ACTIONS.includes(action)) this.pulses[playerId][action] = true;
+    if((playerId==="p1" || playerId==="p2") && INPUT_ACTIONS.includes(action)) this.pulses[playerId][action] = true;
   }
 
   queueFlick(playerId,x,y,source="touch"){
+    if(playerId!=="p1" && playerId!=="p2") return;
     const direction = Math.abs(x) > Math.abs(y) ? (x < 0 ? "left" : "right") : (y < 0 ? "back" : "forward");
     const now = performance.now() * 0.001;
-    const isDouble = this.lastFlick.direction === direction && now-this.lastFlick.time < 0.28;
-    this.lastFlick = {time:now,direction};
+    const previous=this.lastFlick[playerId];
+    const isDouble = previous.direction === direction && now-previous.time < 0.28;
+    this.lastFlick[playerId] = {time:now,direction};
     this.flicks[playerId] = {x,y,direction,double:isDouble,source};
     this.markDevice(source === "touch" ? "touch" : "gamepad");
   }

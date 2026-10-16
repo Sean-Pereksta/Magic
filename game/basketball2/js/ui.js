@@ -111,6 +111,7 @@ function showMenuScreen(id){
   if(target) target.classList.add("active");
   document.getElementById("menu").style.display = "flex";
   document.getElementById("menuBox").scrollTop=0;
+  if(typeof updateControllerSettingsVisibility==="function") updateControllerSettingsVisibility();
   if(target){
     const heading=target.querySelector("h1");
     if(heading){ heading.tabIndex=-1; heading.focus({preventScroll:true}); }
@@ -902,6 +903,7 @@ function startGame(){
   ensureDebugDirectionMeshes();
 
   document.getElementById("menu").style.display = "none";
+  updateControllerSettingsVisibility();
   document.getElementById("p1Label").style.display = "none";
   document.getElementById("p2Label").style.display = "none";
   document.getElementById("modeText").textContent = `${teamSize}v${teamSize}${twoPlayerMode?" · Split Screen":" · Solo"}`;
