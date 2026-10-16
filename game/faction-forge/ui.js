@@ -1,6 +1,8 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
 import {draftCardPresentation,relevantComboStates} from "./drafting.js";
 import {FORGE_PACKS,packEligibility,randomPackPool,ROUND_WIN_CARDS} from "./packs.js";
+import {mountDeckLibrary} from "./deck-ui.js";
+import {normalizeDecks} from "./decks.js";
 
 const ROMAN=["","I","II","III"], TIER_NAMES=["","Recruit","Veteran","Elite"];
 const DEFAULT_COSTS={1:{cards:10,dust:100},2:{cards:30,dust:350}};
@@ -15,13 +17,13 @@ export function forgeEligibility(profile,key,{active=false,costs=DEFAULT_COSTS}=
 }
 export function upgradeCount(profile,costs=DEFAULT_COSTS){return Object.keys(profile?.troops||{}).filter(key=>forgeEligibility(profile,key,{costs}).available).length;}
 
-export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,getPendingPackRequest=()=>null,canSignIn=()=>!getProfile()?.uid,canRetryConnection=()=>false,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onBuyPack,onTargetReward,onMenu,onBrowseLobbies,onSignIn,onRetryConnection,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
+export function createExpansionUI({host=globalThis.document?.body,assets,troops={},counters={},legendaryAbilities={},getProfile=()=>null,getPendingPackRequest=()=>null,canSignIn=()=>!getProfile()?.uid,canRetryConnection=()=>false,isActiveMatch=()=>false,missionDefinitions=[],costs=DEFAULT_COSTS,fallbackPath=()=>"",onCampaignMission,onPractice,onEndless,onFindMatch,onUpgrade,onBuyPack,onTargetReward,onSaveDeck,onSelectDeck,onMenu,onBrowseLobbies,onSignIn,onRetryConnection,onResume,onAbandon,unlockDescriptions={},getConnectionStatus=()=>""}={}){
   if(!host)throw new Error("Faction Forge UI requires a DOM host.");
   const document=host.ownerDocument, shell=document.createElement("div"), fab=document.createElement("button");
   shell.className="ff-expansion";shell.hidden=true;shell.setAttribute("aria-label","Faction Forge");host.appendChild(shell);
   fab.className="ff-forge-fab";fab.type="button";fab.setAttribute("aria-label","Open The Forge");fab.innerHTML='<span class="ff-forge-fab-icon" aria-hidden="true">⚒</span><span class="ff-upgrade-count" hidden></span>';fab.onclick=()=>showForge();host.appendChild(fab);
   let currentView="",filter="All",selectedTroop=null,previewTier=1,matchmakingState={},previousFocus=null,generation=0;
-  let forgeTab="collection",packBusy=false,lastPackPurchase=null;
+  let forgeTab="collection",packBusy=false,lastPackPurchase=null,deckUI=null;
   const portraitTimers=new Set(), artFrames=new Set(), lazyPortraits=new Map();
   const observer=typeof globalThis.IntersectionObserver==="function"?new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){const start=lazyPortraits.get(entry.target);if(start){lazyPortraits.delete(entry.target);observer.unobserve(entry.target);start();}}},{rootMargin:"180px"}):null;
   const element=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;};
@@ -73,7 +75,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     return stage;
   }
   function open(view,title){
-    stopPortraits();generation++;if(shell.hidden)previousFocus=document.activeElement;shell.hidden=false;shell.replaceChildren();currentView=view;
+    deckUI?.destroy();deckUI=null;stopPortraits();generation++;if(shell.hidden)previousFocus=document.activeElement;shell.hidden=false;shell.replaceChildren();currentView=view;fab.hidden=view==="decks";
     const panel=element("section","ff-panel ff-view-"+view),header=element("header","ff-header"),titleNode=element("h1","ff-title",title);
     header.appendChild(titleNode);if(view!=="menu")header.appendChild(button("← Menu",()=>showMenu(),"ff-button ff-back"));
     if(matchActive())header.appendChild(button("Return to match",async()=>{if(onResume){const status=shell.querySelector(".ff-status");await invoke(onResume,[profile().activeSessionId],status,{hideOnSuccess:true});}else hide();},"ff-button ff-back"));
@@ -82,7 +84,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     const status=element("p","ff-status");status.setAttribute("role","status");status.setAttribute("aria-live","polite");panel.appendChild(status);
     queueMicrotask(()=>shell.querySelector("button")?.focus());return {panel,status};
   }
-  function hide(){stopPortraits();shell.hidden=true;currentView="";previousFocus?.focus?.();}
+  function hide(){deckUI?.destroy();deckUI=null;stopPortraits();shell.hidden=true;currentView="";previousFocus?.focus?.();}
   async function invoke(callback,args,status,{hideOnSuccess=false}={}){if(!callback){status.textContent="This action is temporarily unavailable.";return null;}status.textContent="Preparing…";try{const result=await callback(...args);if(result===false){status.textContent="Unable to complete this action. Try again.";return null;}if(hideOnSuccess)hide();else status.textContent="";updateProfile();return result??{ok:true};}catch(error){status.textContent=error?.message || "Unable to complete this action. Try again.";return null;}}
   function playerSummary(parent){const p=profile(),strip=element("div","ff-player-summary"),mmr=p.crowncouncilElo??1000;strip.append(element("strong","",p.username||"Commander"),element("span","",`MMR ${mmr}`),element("span","",`${countComplete()}/30 missions`),element("span","",`${p.forgeDust||0} Forge Dust`));illustration(strip,"rank-emblems",{className:"ff-rank-emblem",frame:mmr>=2500?4:mmr>=2000?3:mmr>=1600?2:mmr>=1300?1:0,animate:false});parent.appendChild(strip);}
   function showMenu(){
@@ -98,7 +100,8 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     const next=missionDefinitions.find(m=>!profile().campaign?.missions?.[m.id]?.completed);
     for(const [title,detail,icon,click] of [
       ["Campaign",next?`Continue: ${next.title}`:"The Last Crucible conquered","campaign-map",()=>showCampaign()],
-      ["Play Online","Find a commander in the CatnMice lobbies","matchmaking",()=>{if(onFindMatch)invoke(onFindMatch,[],status);else showMatchmaking({status:"Open the CatnMice multiplayer browser to find a match."});}],
+      ["Play Online","Choose a deck and find an opposing commander","matchmaking",()=>chooseDeck(deck=>{if(onFindMatch)return invoke(onFindMatch,[deck],shell.querySelector(".ff-status")||status);showMatchmaking({status:"Open the CatnMice multiplayer browser to find a match."});})],
+      ["Your Decks",`${normalizeDecks(profile().decks).length} teams · Build, customize and prepare for battle`,"how-to-play",()=>showDecks()],
       ["The Forge",`${upgradeCount(profile(),costs)} upgrades ready · Your troop collection`,`forge-button`,()=>showForge()],
       ["How to Play","Draft, position, counter and conquer","how-to-play",()=>showHowToPlay()]
     ]){const item=button("",click,"ff-menu-action");if(matchActive() && ["Campaign","Play Online"].includes(title))item.disabled=true;item.append(element("strong","",title),element("span","",detail));illustration(item,icon,{className:"ff-menu-action-art"});actions.appendChild(item);}
@@ -114,10 +117,20 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     form.onsubmit=async event=>{event.preventDefault();submit.disabled=true;const result=await invoke(onSignIn,[email.value.trim(),password.value],status);password.value="";submit.disabled=false;if(result)showMenu();};
     panel.appendChild(element("p","","Use the same Firebase email account to load its Faction Forge progress on another device. Guest progress belongs to this browser's guest account."));panel.appendChild(form);email.focus();
   }
-  function chooseFaction(callback){
-    const {panel,status}=open("faction","Choose your faction"),grid=element("div","ff-faction-choices");
-    for(const faction of ["Vanir","Aesir","Helions"]){const pick=button("",()=>callback(faction),"ff-faction-choice");pick.append(factionArtwork(faction),element("strong","ff-faction-name",faction),element("span","ff-faction-description",faction==="Vanir"?"Industrial firepower and armor":faction==="Aesir"?"Arcane control and protective magic":"Swarm aggression and corruption"));grid.appendChild(pick);}panel.appendChild(grid);return status;
+  function showDecks(callback){
+    const {panel,status}=open("decks",callback?"Choose your deck":"Your Decks");
+    deckUI=mountDeckLibrary({container:panel,profile:profile(),getProfile:profile,troops,counters,portrait,unlockText,onBeforeRender:stopPortraits,onViewChange:view=>{panel.querySelector(".ff-title").textContent=view==="builder"?"Deck Builder":callback?"Choose your deck":"Your Decks";},isLocked:matchActive,selectionMode:!!callback,close:showMenu,onSave:onSaveDeck,onSelect:async deck=>{
+      if(matchActive())throw new Error("Finish your current match before selecting another deck.");
+      const owner=profile().uid||profile().username;
+      if(onSelectDeck){const result=await onSelectDeck(deck);if(result===false)return false;}
+      if(owner!==(profile().uid||profile().username))throw new Error("Your account changed. Select a deck for the current profile.");
+      if(callback){const result=await callback(deck);return result===null?false:result;}
+      return {ok:true};
+    }});return status;
   }
+  function chooseDeck(callback){return showDecks(callback);}
+  // Kept as an API alias for embedded hosts; callbacks now receive the full deck.
+  function chooseFaction(callback){return chooseDeck(callback);}
   function showCampaign(){
     const {panel,status}=open("campaign","The War for the Forge");playerSummary(panel);const completed=profile().campaign?.missions || {},list=element("div","ff-campaign-chapters");
     for(let chapter=1;chapter<=5;chapter++){
@@ -194,11 +207,12 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     const reward=receipt?.rewards || receipt;if(reward){const area=element("section","ff-rewards");area.appendChild(element("h2","","Spoils of battle"));illustration(area,"reward-chest",{className:"ff-reward-chest"});area.appendChild(element("strong","ff-dust-reward",`+${reward.dust ?? reward.forgeDust ?? 0} Forge Dust`));const cards=reward.cards || reward.troopCards || {};const cardEntries=Array.isArray(cards)?cards.map(c=>[c.troopKey||c.key||c.troop,c.quantity||c.count||1,c.blueprint]):Object.entries(cards);const grid=element("div","ff-reward-cards");for(const [key,quantity,blueprint] of cardEntries){const troop=troops[key];if(!troop)continue;const card=element("div","ff-reward-card");frame(card,troop.faction);card.appendChild(portrait(key,profile().troops?.[key]?.forgeTier||1));card.append(element("strong","",troop.name),element("span","",`+${quantity} ${blueprint?"blueprints":"cards"}`));const eligibility=forgeEligibility(profile(),key,{costs});if(eligibility.cost)card.appendChild(element("small","",`${profile().troops?.[key]?.cards||0}/${eligibility.cost.cards} toward next tier`));grid.appendChild(card);}area.appendChild(grid);panel.appendChild(area);}
     for(const key of unlockedTroops.length?unlockedTroops:(receipt?.unlocks||[])){const notice=element("div","ff-unlocked-notice");notice.append(element("strong","",`Troop unlocked: ${troops[key]?.name||key}`),portrait(key,1));panel.appendChild(notice);}
     if(saveError){status.textContent=saveError;if(retrySave)panel.appendChild(button("Retry Firebase save",async()=>{status.textContent="Saving your result…";await retrySave();}));}
-    const actions=element("div","ff-result-actions");actions.append(button("Campaign",()=>showCampaign()),button("The Forge",()=>showForge()),button("Find Online Match",()=>invoke(onFindMatch,[],status)),button("Main Menu",()=>{onMenu?.();showMenu();}));panel.appendChild(actions);
+    const actions=element("div","ff-result-actions");actions.append(button("Campaign",()=>showCampaign()),button("The Forge",()=>showForge()),button("Find Online Match",()=>chooseDeck(deck=>invoke(onFindMatch,[deck],shell.querySelector(".ff-status")||status))),button("Main Menu",()=>{onMenu?.();showMenu();}));panel.appendChild(actions);
   }
   function showMatchmaking(state={}){matchmakingState={...matchmakingState,...state};const {panel,status}=open("matchmaking","Find Online Match");status.textContent=matchmakingState.status||"Searching CatnMice Faction Forge lobbies…";const rows=element("div","ff-match-list");for(const lobby of matchmakingState.rows || []){const row=element("div","ff-match-row"),name=lobby.name||lobby.host||"Open lobby";row.append(element("strong","",name),element("span","",`${lobby.host|| (Array.isArray(lobby.players)?lobby.players[0]:"") || "Commander"} · MMR ${lobby.mmr??1000} · ${lobby.hostUid?(lobby.forgeRanked===false?"Casual":"Ranked"):"Hosted practice"}`));const join=button("Join",async()=>{join.disabled=true;const result=await invoke(matchmakingState.onJoin,[lobby],status);if(result)hide();else join.disabled=false;});row.appendChild(join);rows.appendChild(row);}panel.appendChild(rows);if(matchmakingState.offerAI){const ai=matchmakingState.offerAI,card=element("section","ff-ai-offer");card.append(element("strong","",`${ai.name} · AI`),element("p","",`Estimated MMR ${ai.mmr??ai.estimatedMmr??1000}. Bot rewards; competitive MMR is preserved.`),button("Battle this AI",()=>chooseFaction(f=>invoke(ai.onStart,[f],shell.querySelector(".ff-status")||status,{hideOnSuccess:true}))));panel.appendChild(card);}panel.append(button("Open Multiplayer Browser",()=>invoke(matchmakingState.onBrowse||onBrowseLobbies,[],status),"ff-button ff-secondary"),button("Cancel search",()=>{matchmakingState.onCancel?.();showMenu();},"ff-button ff-secondary"));illustration(panel,"matchmaking",{className:"ff-matchmaking-art"});}
   function showHowToPlay(){const {panel}=open("help","Command the Forge");for(const [title,text] of [
-    ["Develop your troops","Recruit a frontline and damage dealers, upgrade their battle ranks, then choose a specialization. Rank II develops the signature ability; Rank III amplifies it. Each specialization shows its tradeoff."],
+    ["Build your five-troop deck","Select a saved deck before battle. Each deck has five different unlocked troops from one faction. Every recruit, upgrade and combination comes from that team, and at most five combatants can be deployed at once. Edit or duplicate the three starter decks in Your Decks."],
+    ["Develop your troops","Protect your damage dealers and support with a frontline. Upgrade battle ranks, then choose a specialization. Rank II develops the signature ability; Rank III amplifies it. Each specialization shows its tradeoff. A full five-unit team receives useful upgrades and combinations instead of unusable recruits."],
     ["Build automatic combinations","Collect complementary troops to activate Basic combos immediately. Upgrade their ranks or draft a combo enhancement for Advanced interactions. Rank III troops with upgraded partners unlock Legendary combinations. The compact tracker shows your relevant partners and counters."],
     ["Know your counters","Armor stalls weak attacks, swarms surround isolated troops, artillery punishes crowded positions and assassins threaten exposed backlines. Read strengths and weaknesses in every troop's details."],
     ["Two separate progression systems","Battle ranks I–III reset each match and retain their legendary abilities. Permanent Forge tiers Recruit, Veteran and Elite spend matching troop cards and Forge Dust and stay on your profile."],
@@ -246,12 +260,12 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     toast.setAttribute("role","status");toast.setAttribute("aria-live","polite");toast.append(art,element("strong","",`${presentation.troopName} · ${presentation.rankLabel}`),element("span","",presentation.improvement));host.appendChild(toast);
     setTimeout(()=>toast.remove(),2600);
   }
-  function updateProfile(){const count=upgradeCount(profile(),costs),indicator=fab.querySelector(".ff-upgrade-count");indicator.hidden=count===0;indicator.textContent=String(count);fab.title=`The Forge${count?` · ${count} upgrades ready`:""}`;}
+  function updateProfile(){const count=upgradeCount(profile(),costs),indicator=fab.querySelector(".ff-upgrade-count");indicator.hidden=count===0;indicator.textContent=String(count);fab.title=`The Forge${count?` · ${count} upgrades ready`:""}`;if(currentView==="decks")deckUI?.refresh(profile());}
   function refresh(){if(currentView==="forge")showForge();else if(currentView==="campaign")showCampaign();else if(currentView==="menu")showMenu();updateProfile();}
   const keyboard=event=>{if(shell.hidden)return;if(event.key==="Escape"){const confirmation=shell.querySelector(".ff-confirm");if(confirmation){if(confirmation.dataset.pending!=="true")confirmation.remove();else event.preventDefault();}else if(matchActive())hide();else if(currentView!=="menu")showMenu();}if(event.key==="Tab"){const confirmation=shell.querySelector(".ff-confirm"),scope=confirmation||shell,warning=document.getElementById("ffGraphicsWarnings"),warningControls=!confirmation&&warning&&!warning.hidden?[warning.querySelector("summary"),...(warning.open?warning.querySelectorAll("button:not(:disabled),a[href]"):[])]:[],focusable=[...scope.querySelectorAll("button:not(:disabled),a[href],input"),...warningControls].filter(e=>e&&!e.hidden);if(!focusable.length)return;const index=focusable.indexOf(document.activeElement);if(index>=0){event.preventDefault();focusable[(index+(event.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}}};document.addEventListener("keydown",keyboard);
   updateProfile();
   function notify(message){let status=shell.querySelector(".ff-status");if(!status){status=element("div","ff-toast");status.setAttribute("role","status");host.appendChild(status);setTimeout(()=>status.remove(),7000);}status.textContent=String(message||"");}
-  return {showMenu,showCampaign,showForge,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseFaction,decorateDraftCard,updateComboTracker,announceBattleUpgrade,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();host.querySelector(".ff-battle-upgrade-toast")?.remove();shell.remove();fab.remove();}};
+  return {showMenu,showCampaign,showForge,showDecks,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseDeck,chooseFaction,decorateDraftCard,updateComboTracker,announceBattleUpgrade,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){deckUI?.destroy();stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();host.querySelector(".ff-battle-upgrade-toast")?.remove();shell.remove();fab.remove();}};
 }
 
 

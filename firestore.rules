@@ -6,6 +6,56 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function forgeDeckAllowed(faction) {
+      return faction == 'Vanir' ? ['rifleman','vrocket','vguard','miner','medic','suppressor','shieldcap','marksman','emp','signalhawk','railbreaker']
+        : faction == 'Aesir' ? ['phaser','blade','storm','guardian','wardmaker','architect','golem','runebinder','chronoweaver','miragewarden']
+        : faction == 'Helions' ? ['hellspawn','roach','defiler','blood','spitter','matron','viper','carrion','burrower','siphonleech','hiveherald'] : [];
+    }
+    function forgeDeckUnlocked(profile,key) { return profile.troops[key].unlocked == true; }
+    function forgeDeckShape(deck) {
+      return deck is map && deck.keys().hasOnly(['id','name','faction','troops'])
+        && deck.id is string && deck.id.matches('^[A-Za-z0-9_-]{1,80}$')
+        && deck.name is string && deck.name.size() >= 1 && deck.name.size() <= 48
+        && deck.faction in ['Vanir','Aesir','Helions'] && deck.troops is list && deck.troops.size() == 5
+        && deck.troops.toSet().size() == 5 && deck.troops.toSet().difference(forgeDeckAllowed(deck.faction).toSet()).size() == 0;
+    }
+    function forgeValidDeck(deck,profile) {
+      return forgeDeckShape(deck) && forgeDeckCollectionUnlocked(deck,profile);
+    }
+    function forgeDeckCollectionUnlocked(deck,profile) {
+      return forgeDeckUnlocked(profile,deck.troops[0]) && forgeDeckUnlocked(profile,deck.troops[1])
+        && forgeDeckUnlocked(profile,deck.troops[2]) && forgeDeckUnlocked(profile,deck.troops[3]) && forgeDeckUnlocked(profile,deck.troops[4]);
+    }
+    function forgeValidDeckAt(profile,index) {
+      let previous=resource == null ? [] : resource.data.get('decks',[]);
+      return profile.decks.size() <= index || (previous.size() > index && profile.decks[index] == previous[index]) || forgeValidDeck(profile.decks[index],profile);
+    }
+    function forgeDeckSelectedAt(profile,index) { return profile.decks.size() > index && profile.decks[index].id == profile.selectedDeckId; }
+    function forgeDeckImport(profile) {
+      let root=/databases/$(database)/documents/factionForgeSoloProfiles/$(request.auth.uid);
+      let key=profile.get('deckImportAccountKey','');
+      return exists(root) && get(root).data.get('decks',[]) == profile.decks
+        || key is string && key.matches('^name-[^/]{1,240}$')
+          && exists(/databases/$(database)/documents/factionForgeSoloProfiles/$(request.auth.uid)/accounts/$(key))
+          && get(/databases/$(database)/documents/factionForgeSoloProfiles/$(request.auth.uid)/accounts/$(key)).data.get('decks',[]) == profile.decks;
+    }
+    function forgeDeckFields(profile) {
+      let previous=resource == null ? [] : resource.data.get('decks',[]);
+      let index=profile.get('selectedDeckIndex',0);
+      // Existing saves remain readable/writable during rolling client migration.
+      return !profile.keys().hasAny(['decks','selectedDeckId']) || (
+        profile.decks is list && profile.decks.size() >= 3 && profile.decks.size() <= 12 && profile.selectedDeckId is string
+        && index is int && index >= 0 && index < profile.decks.size() && profile.selectedDeckId == profile.decks[index].id
+        && profile.decks[0] == {'id':'starter-vanir','name':'Iron Vanguard','faction':'Vanir','troops':['vguard','marksman','suppressor','vrocket','medic']}
+        && profile.decks[1] == {'id':'starter-aesir','name':'Arcane Tempest','faction':'Aesir','troops':['guardian','phaser','storm','runebinder','wardmaker']}
+        && profile.decks[2] == {'id':'starter-helions','name':'Blight Swarm','faction':'Helions','troops':['hellspawn','roach','defiler','spitter','blood']}
+        && (profile.decks == previous
+          || previous.size() == 0 && (profile.decks.size() == 3 || forgeDeckImport(profile))
+          || index >= 3 && forgeValidDeck(profile.decks[index],profile) && (
+            profile.decks.size() == previous.size()+1 && index == previous.size() && profile.decks.removeAll([profile.decks[index]]) == previous
+            || profile.decks.size() == previous.size() && profile.decks.removeAll([profile.decks[index]]) == previous.removeAll([previous[index]]))));
+    }
+
     // MOUNTAIN BLADE ONLINE — FIRESTORE-ONLY MULTIPLAYER
     // Place inside match /databases/{database}/documents. Uses isAuthed().
     // A leased player browser simulates the realm. No Admin SDK / Node service.
@@ -472,7 +522,8 @@ service cloud.firestore {
           && (data.rewardTarget == null || data.rewardTarget is string)
           && data.rewardDay is string && data.rewardCounts is map
           && data.updatedAt is int && data.updatedAt >= 0
-          && data.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt']);
+          && forgeDeckFields(data)
+          && data.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt','decks','selectedDeckId','selectedDeckIndex','deckImportAccountKey']);
       }
       function validSoloReceipt(kind,id) {
         let data=request.resource.data;
@@ -573,7 +624,8 @@ service cloud.firestore {
             && d.wins is int && d.wins >= 0 && d.losses is int && d.losses >= 0
             && (d.rewardTarget == null || d.rewardTarget is string)
             && d.rewardDay is string && d.rewardCounts is map && d.updatedAt is int && d.updatedAt >= 0
-            && d.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt']);
+            && forgeDeckFields(d)
+            && d.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt','decks','selectedDeckId','selectedDeckIndex','deckImportAccountKey']);
         }
         function validForgeAccountReceipt(kind,id) {
           let d=request.resource.data;
@@ -1136,9 +1188,72 @@ service cloud.firestore {
       }
 
 
+      function forgeStaticMember() { return isAuthed() && !turncraftType(ironLobby()) && (!forgeLobbyType(ironLobby()) || ironLobby().get('hostUid','') == '' || request.auth.uid in ironLobby().members); }
+      function forgeStaticHost() { return ironLobby().get('hostUid','') == '' || ironLobby().hostUid == request.auth.uid; }
+      function forgeRosterRow(rows,deck,index) {
+        let row=rows.size() > index ? rows[index] : {'type':'','count':0,'lvl':1};
+        let count=row.count;
+        return rows.size() <= index || (row.type in deck.troops && count is int && count >= 1 && row.lvl in [1,2,3]);
+      }
+      function forgeRosterCount(rows) {
+        return rows.size() == 0 ? 0 : rows.size() == 1 ? rows[0].count : rows.size() == 2 ? rows[0].count+rows[1].count : rows.size() == 3 ? rows[0].count+rows[1].count+rows[2].count : rows.size() == 4 ? rows[0].count+rows[1].count+rows[2].count+rows[3].count : rows[0].count+rows[1].count+rows[2].count+rows[3].count+rows[4].count;
+      }
+      function forgeStaticDeckOwner(deck,name) {
+        let canonical=/databases/$(database)/documents/users/$(name)/factionForge/profile;
+        let guest=/databases/$(database)/documents/factionForgeSoloProfiles/$(request.auth.uid);
+        return (ironLobby().get('hostUid','') == '' || ironLobby().members[request.auth.uid] == name) && (
+            exists(canonical) && forgeDeckCollectionUnlocked(deck,get(canonical).data) || exists(guest) && forgeDeckCollectionUnlocked(deck,get(guest).data));
+      }
+      function forgeStaticDeckCollection(deck,data,side) {
+        return deck.troops.toSet().intersection(['signalhawk','railbreaker','chronoweaver','miragewarden','siphonleech','hiveherald'].toSet()).size() == 0
+          || side == 'p0' && forgeStaticDeckOwner(deck,data.get('players',ironLobby().players)[0])
+          || side == 'p1' && forgeStaticDeckOwner(deck,data.get('players',ironLobby().players)[1]);
+      }
+      function forgeStaticSide(data,side) {
+        let deck=data.decks[side];let rows=data.roster[side];
+        return rows is list && rows.size() <= 5 && ((deck == null && data.phase in ['waiting','asset-loading','faction-select'] && rows.size() == 0)
+          || deck != null && data.factions[side] == deck.faction
+            && (resource != null && resource.data.get('decks',{}).get(side,null) == deck || forgeDeckShape(deck) && forgeStaticDeckCollection(deck,data,side))
+            && forgeRosterRow(rows,deck,0) && forgeRosterRow(rows,deck,1) && forgeRosterRow(rows,deck,2) && forgeRosterRow(rows,deck,3) && forgeRosterRow(rows,deck,4)
+            && forgeRosterCount(rows) <= 5);
+      }
+      function forgeStaticState(data) {
+        return !data.keys().hasAny(['decks']) && data.phase in ['waiting','asset-loading','faction-select']
+          || data.keys().hasAny(['decks']) && data.decks is map && data.decks.keys().hasOnly(['p0','p1']) && forgeStaticSide(data,'p0') && forgeStaticSide(data,'p1');
+      }
+      function forgeStaticDeckLock() {
+        let before=resource.data;let after=request.resource.data;
+        return !before.keys().hasAny(['decks']) || (after.keys().hasAny(['decks']) && (
+          before.decks == after.decks
+          || (before.get('sessionKey','') != after.get('sessionKey','') && after.phase in ['waiting','asset-loading','faction-select'] && forgeStaticHost())
+          || (before.phase == 'faction-select' && after.phase in ['faction-select','draft'] && (
+            forgeStaticHost() && (before.decks.p0 == null || before.decks.p0 == after.decks.p0) && (before.decks.p1 == null || before.decks.p1 == after.decks.p1)
+            || after.phase == 'faction-select' && ((ironLobby().players[0] == ironLobby().members[request.auth.uid] && before.decks.p0 == null && before.decks.p1 == after.decks.p1)
+              || (ironLobby().players.size() > 1 && ironLobby().players[1] == ironLobby().members[request.auth.uid] && before.decks.p1 == null && before.decks.p0 == after.decks.p0))))));
+      }
+      function forgeBattleUnitAt(units,allowed0,allowed1,index) {
+        return units.size() <= index || (units[index].p == 0 ? forgeBattleUnitAllowed(units[index],allowed0) : units[index].p == 1 && forgeBattleUnitAllowed(units[index],allowed1));
+      }
+      function forgeBattleUnitAllowed(unit,allowed) {
+        return unit.type in allowed
+          || unit.get('illusion',false) == true && unit.type == 'miragewarden' && unit.get('dmg',0) == 0 && ('phaser' in allowed || 'miragewarden' in allowed)
+          || unit.get('summoned',false) == true && unit.type in ['hellspawn','blood'] && 'matron' in allowed;
+      }
+      function forgeBattleSideAt(units,index) { return units.size() <= index ? 0 : units[index].p == 0 ? 1 : 0; }
+      function forgeStaticBattle(data) {
+        let units=data.units;let locked=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/crowncouncil/state).data;
+        let allowed0=locked.get('decks',{}).get('p0',null) == null ? [] : locked.decks.p0.troops;
+        let allowed1=locked.get('decks',{}).get('p1',null) == null ? [] : locked.decks.p1.troops;
+        let p0=forgeBattleSideAt(units,0)+forgeBattleSideAt(units,1)+forgeBattleSideAt(units,2)+forgeBattleSideAt(units,3)+forgeBattleSideAt(units,4)+forgeBattleSideAt(units,5)+forgeBattleSideAt(units,6)+forgeBattleSideAt(units,7)+forgeBattleSideAt(units,8)+forgeBattleSideAt(units,9);
+        return units is list && units.size() <= 10 && p0 <= 5 && units.size()-p0 <= 5
+          && forgeBattleUnitAt(units,allowed0,allowed1,0) && forgeBattleUnitAt(units,allowed0,allowed1,1) && forgeBattleUnitAt(units,allowed0,allowed1,2) && forgeBattleUnitAt(units,allowed0,allowed1,3) && forgeBattleUnitAt(units,allowed0,allowed1,4)
+          && forgeBattleUnitAt(units,allowed0,allowed1,5) && forgeBattleUnitAt(units,allowed0,allowed1,6) && forgeBattleUnitAt(units,allowed0,allowed1,7) && forgeBattleUnitAt(units,allowed0,allowed1,8) && forgeBattleUnitAt(units,allowed0,allowed1,9);
+      }
       match /crowncouncil/{docId} {
-        allow read, write: if isAuthed() && !turncraftType(ironLobby()) && (!forgeLobbyType(ironLobby())
-          || ironLobby().get('hostUid','') == '' || request.auth.uid in ironLobby().members);
+        allow read: if forgeStaticMember();
+        allow create: if forgeStaticMember() && (docId == 'state' && forgeStaticHost() && forgeStaticState(request.resource.data) || docId == 'battle' && forgeStaticHost() && forgeStaticBattle(request.resource.data));
+        allow update: if forgeStaticMember() && (docId == 'state' && forgeStaticState(request.resource.data) && forgeStaticDeckLock() || docId == 'battle' && forgeStaticHost() && forgeStaticBattle(request.resource.data));
+        allow delete: if forgeStaticMember() && forgeStaticHost();
       }
 
       match /alliances/{allianceId} {

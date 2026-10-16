@@ -44,6 +44,8 @@ export function createProgressionService({auth,db,apiBaseUrl='',fetchImpl=global
     getPendingPackRequest(packId){const key='factionForge.request.'+(auth?.currentUser?.uid||'unknown')+'.pack.'+packId;let id=pendingRequests.get(key);try{id=id||requestStorage?.getItem(key);}catch{}return id||null;},
     buyPack(packId,{requestId}={}){return mutation('pack.'+packId,'/packs',{packId},requestId);},
     setRewardTarget(troopKey){return request('/reward-target',{method:'POST',body:{troopKey}});},
+    saveDeck(deck){return request('/decks',{method:'POST',body:{deck}});},
+    selectDeck(deckId){return request('/selected-deck',{method:'POST',body:{deckId}});},
     abandon(id){return request('/sessions/'+encodeURIComponent(id)+'/abandon',{method:'POST',body:{}});},
     dispose(){disposed=true;subscription?.();authSubscription?.();subscription=null;authSubscription=null;replayCache.clear();listeners.clear();}
   };

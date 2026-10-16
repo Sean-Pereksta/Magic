@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {STARTER_DECKS,starterDeck} from '../decks.js';
 const require=createRequire(import.meta.url);
 let chromium;try{({chromium}=require('playwright'));}catch{({chromium}=require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES||'/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules','playwright')));}
 const root=path.resolve(import.meta.dirname,'../../..');
@@ -61,7 +62,7 @@ test('Sean reclaims the legacy Commander save without losing dust and other hub 
   await page.reload();await page.waitForFunction(()=>__forgeAccount.profile?.uid&&__forgeAccount.profile.forgeDust===890);
   await page.evaluate(()=>__forgeAccount.ui.showForge('rifleman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();
   await page.waitForFunction(()=>__forgeAccount.profile.rewardTarget==='rifleman');await page.evaluate(()=>__forgeAccount.ui.showMenu());
-  await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+  await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
   for(let index=0;index<3;index++){await page.waitForFunction(index=>__forgeAccount.state?.phase==='draft'&&__forgeAccount.state.draftIndex===index,index);await page.evaluate(()=>__forgeAccount.chooseCard(0));}
   await page.waitForFunction(()=>__forgeAccount.state.phase==='battle');await page.evaluate(()=>__forgeAccount.finishRound());
   await page.waitForFunction(()=>__forgeAccount.profile.troops.rifleman.cards===83);
@@ -130,7 +131,7 @@ test('full game opens solo menu, drafts against AI, and moves on the original gr
  try{
   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},get battle(){return B},chooseCard,chooseFaction,startPractice,returnToForgeMenu};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
-  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
   await page.waitForFunction(()=>globalThis.__forgeTest?.state?.phase==='draft');
   assert.equal(await page.locator('#cardRow .card').count(),3);
   const info=page.locator('#cardRow .cardInfoBtn').first();await info.click();assert.equal(await page.locator('#cardInfoModal').isVisible(),true);assert.equal(await page.evaluate(()=>__forgeTest.state.selections.p0[0]??null),null);await page.locator('.cardInfoClose').click();
@@ -149,7 +150,7 @@ test('local campaign starts with each faction army and reaches battle without pr
   for(const faction of ['Vanir','Aesir','Helions']){
    const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
    await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},chooseCard};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
-   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.locator('.ff-faction-choice').filter({hasText:faction}).click();
+   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.locator('.ff-deck-card').filter({hasText:faction}).getByRole('button',{name:/Select and continue with/}).click();
    await page.waitForFunction(()=>globalThis.__forgeTest?.state?.phase==='draft');
    const state=await page.evaluate(()=>({faction:__forgeTest.state.factions.p0,roster:__forgeTest.state.roster.p0,mission:__forgeTest.state.missionId}));
    assert.equal(state.faction,faction);assert.equal(state.mission,'forge-01');assert.ok(state.roster.length>=2,'campaign player has a starting army');
@@ -166,12 +167,12 @@ test('local troop evolution and combo enhancements persist through battle, loser
   await context.route('**/game/crowncouncil.html*',async route=>{
    let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');
    html=html.replace('/* Fullscreen */',`globalThis.__forgeEvolutionTest={get state(){return S},get battle(){return B},
-    prepare(){stopHostLoops();S.roster.p0=[{type:'vguard',count:1,lvl:1},{type:'vrocket',count:1,lvl:1},{type:'suppressor',count:1,lvl:1}];S.roster.p1=[{type:'defiler',count:1,lvl:1}];S.factions={p0:'Vanir',p1:'Helions'};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};},
-    async issue(card,phase,index=0,side='p0'){stopHostLoops();S.phase=phase;S.draftIndex=index;S.bonusFor=phase==='loser-bonus'?side:null;S.currentPacks={p0:[{type:'troop',key:'rifleman',name:'Riflemen'}],p1:[{type:'troop',key:'hellspawn',name:'Hell Spawn'}]};S.currentPacks[side]=[card];S.selections={p0:[],p1:[]};S.selections.p0[index]=0;S.selections.p1[index]=0;S.phaseEndsAt=Date.now()+60000;await processHostPhase();},
+    prepare(){stopHostLoops();S.roster.p0=[{type:'vguard',count:1,lvl:1},{type:'vrocket',count:1,lvl:1},{type:'suppressor',count:1,lvl:1}];S.roster.p1=[{type:'defiler',count:1,lvl:1}];S.factions={p0:'Vanir',p1:'Helions'};S.decks={p0:FFDecks.starterDeck('Vanir'),p1:FFDecks.starterDeck('Helions')};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};},
+    async issue(card,phase,index=0,side='p0'){stopHostLoops();S.phase=phase;S.draftIndex=index;S.bonusFor=phase==='loser-bonus'?side:null;S.currentPacks={p0:[{type:'troop',key:'marksman',name:'Marksman'}],p1:[{type:'troop',key:'hellspawn',name:'Hell Spawn'}]};S.currentPacks[side]=[card];S.selections={p0:[],p1:[]};S.selections.p0[index]=0;S.selections.p1[index]=0;S.phaseEndsAt=Date.now()+60000;await processHostPhase();},
     finishRound(){for(const unit of hostBattleState.units)if(unit.p===0)unit.hp=0;}};\n/* Fullscreen */`);
    await route.fulfill({contentType:'text/html',body:html});
   });
-  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
   await page.waitForFunction(()=>__forgeEvolutionTest.state?.phase==='draft');
   await page.evaluate(async()=>{const t=__forgeEvolutionTest;t.prepare();await t.issue({type:'evolution',key:'vrocket',for:'vrocket',path:'b'},'draft',0);});
   assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p0.vrocket),'b');
@@ -183,14 +184,14 @@ test('local troop evolution and combo enhancements persist through battle, loser
   await page.evaluate(()=>__forgeEvolutionTest.finishRound());await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='loser-bonus');
   await page.evaluate(()=>__forgeEvolutionTest.issue({type:'evolution',key:'vguard',for:'vguard',path:'b'},'loser-bonus'));
   assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.phase),'draft-after');
-  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'rifleman',name:'Riflemen'},'draft-after',index),index);
+  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'marksman',name:'Marksman'},'draft-after',index),index);
   await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='battle');
   const persisted=await page.evaluate(()=>({paths:__forgeEvolutionTest.state.evolutions.p0,combos:__forgeEvolutionTest.state.comboEnhancements.p0,live:__forgeEvolutionTest.battle.units.filter(unit=>unit.p===0&&['vguard','vrocket'].includes(unit.type)).map(unit=>({type:unit.type,path:unit.evolution}))}));
   assert.deepEqual(persisted.paths,{vrocket:'b',vguard:'b'});assert.deepEqual(persisted.combos,['suppression-bombardment']);assert.ok(persisted.live.every(unit=>unit.path==='b'));
   await page.evaluate(()=>__forgeEvolutionTest.issue({type:'evolution',key:'defiler',for:'defiler',path:'b'},'loser-bonus',0,'p1'));
   assert.equal(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p1.defiler),'b','the opposing loser bonus writes to the correct side');
   assert.ok(await page.evaluate(()=>__forgeEvolutionTest.state.currentPacks.p1.every(card=>card.type!=='evolution'||card.key!=='defiler')));
-  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'rifleman',name:'Riflemen'},'draft-after',index),index);
+  for(let index=0;index<3;index++)await page.evaluate(index=>__forgeEvolutionTest.issue({type:'troop',key:'marksman',name:'Marksman'},'draft-after',index),index);
   await page.waitForFunction(()=>__forgeEvolutionTest.state.phase==='battle');
   assert.equal(await page.evaluate(()=>__forgeEvolutionTest.battle.units.find(unit=>unit.p===1&&unit.type==='defiler')?.evolution),'b');
   assert.deepEqual(await page.evaluate(()=>__forgeEvolutionTest.state.evolutions.p0),{vrocket:'b',vguard:'b'});
@@ -212,12 +213,12 @@ test('a real finishing missile or BloodBurst survives the logical round transiti
    await context.route('**/game/crowncouncil.html*',async route=>{
     let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');
     html=html.replace('/* Fullscreen */',`globalThis.__forgeFinisherTest={get state(){return S},get renderer(){return spriteRenderer},
-     async prepare(type){stopHostLoops();spriteRenderer.clear();spriteRenderer.configure({intensity:'high',reducedMotion:false,audio:false});S.phase='battle';S.lives=type==='blood'?[4,1]:[4,4];S.factions={p0:type==='blood'?'Helions':'Vanir',p1:'Helions'};S.roster={p0:[{type,count:1,lvl:1}],p1:[{type:'hellspawn',count:1,lvl:1}]};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};const st={...S,field:fieldEmpty()};rebuildFieldFromRoster(st);const attacker=st.field.units.find(unit=>unit.p===0),target=st.field.units.find(unit=>unit.p===1);attacker.id='finishing-attacker';target.id='finishing-target';attacker.x=3;attacker.y=8;target.x=3;target.y=type==='blood'?7:5;attacker.dmg=20;target.hp=1;target.nextAtk=target.nextStep=Date.now()+60000;attacker.nextStep=Date.now()+60000;attacker.nextAtk=Date.now()+220;st.field.units=[attacker,target];st.field.startedAt=Date.now();applyHostBattleVisual(st.field);await runBattle(st.field);},
+     async prepare(type){stopHostLoops();spriteRenderer.clear();spriteRenderer.configure({intensity:'high',reducedMotion:false,audio:false});S.phase='battle';S.lives=type==='blood'?[4,1]:[4,4];S.factions={p0:type==='blood'?'Helions':'Vanir',p1:'Helions'};S.decks={p0:FFDecks.starterDeck(S.factions.p0),p1:FFDecks.starterDeck('Helions')};S.roster={p0:[{type,count:1,lvl:1}],p1:[{type:'hellspawn',count:1,lvl:1}]};S.evolutions={p0:{},p1:{}};S.comboEnhancements={p0:[],p1:[]};const st={...S,field:fieldEmpty()};rebuildFieldFromRoster(st);const attacker=st.field.units.find(unit=>unit.p===0),target=st.field.units.find(unit=>unit.p===1);attacker.id='finishing-attacker';target.id='finishing-target';attacker.x=3;attacker.y=8;target.x=3;target.y=type==='blood'?7:5;attacker.dmg=20;target.hp=1;target.nextAtk=target.nextStep=Date.now()+60000;attacker.nextStep=Date.now()+60000;attacker.nextAtk=Date.now()+220;st.field.units=[attacker,target];st.field.startedAt=Date.now();applyHostBattleVisual(st.field);await runBattle(st.field);},
      snapshot(){return {phase:S.phase,bonusFor:S.bonusFor,at:performance.now(),deadline:spriteRenderer.impactDeadline('finishing-target'),stats:spriteRenderer.stats,overlayOpacity:getComputedStyle($('overlay')).opacity,cardVisibility:getComputedStyle($('cardRow')).visibility};}};
      const __finisherWrite=writeStatePatch;writeStatePatch=async function(patch){const result=await __finisherWrite(patch);if(['loser-bonus','game-over'].includes(patch?.phase)){const test=__forgeFinisherTest;test.transition=test.snapshot();setTimeout(()=>test.impact=test.snapshot(),300);setTimeout(()=>test.finished=test.snapshot(),1150);}return result;};\n/* Fullscreen */`);
     await route.fulfill({contentType:'text/html',body:html});
    });
-   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+   await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
    await page.waitForFunction(()=>__forgeFinisherTest.state?.phase==='draft');
    await page.evaluate(type=>__forgeFinisherTest.prepare(type),type);
    await page.waitForFunction(()=>__forgeFinisherTest.transition);
@@ -242,9 +243,9 @@ test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies
   await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeTest={get state(){return S},get profile(){return forgeProfile},get battle(){return B},chooseCard,get ui(){return expansionUI},complete(){stopHostLoops();S.phase="game-over";S.winner=username;S.lives=[4,0];render();}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
   await page.goto(url+'/game/crowncouncil.html');await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
   // Favor one troop, then clear five missions: 30 cards and 100 dust afford Recruit -> Veteran.
-  await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.rewardTarget==='rifleman');
+  await page.evaluate(()=>__forgeTest.ui.showForge('marksman'));await page.getByRole('button',{name:'Favor this troop in rewards',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.rewardTarget==='marksman');
   for(let mission=0;mission<5;mission++){
-   await page.evaluate(()=>__forgeTest.ui.showCampaign());await page.locator('.ff-mission').nth(mission).click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');
+   await page.evaluate(()=>__forgeTest.ui.showCampaign());await page.locator('.ff-mission').nth(mission).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');
    if(mission===0)await page.evaluate(()=>globalThis.__denySolo=true);
    await page.evaluate(()=>__forgeTest.complete());
    if(mission===0){await page.getByRole('button',{name:'Retry Firebase save',exact:true}).waitFor();assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);await page.evaluate(()=>globalThis.__denySolo=false);await page.getByRole('button',{name:'Retry Firebase save',exact:true}).click();}
@@ -252,10 +253,10 @@ test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies
   }
   assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),100);
   await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>Object.keys(__forgeTest.profile.campaign.missions).length),5);
-  await page.evaluate(()=>__forgeTest.ui.showForge('rifleman'));await page.getByRole('button',{name:'Forge Veteran',exact:true}).click();await page.getByRole('button',{name:'Confirm upgrade',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.troops.rifleman.forgeTier===2);
-  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);assert.equal(await page.evaluate(()=>__forgeTest.profile.troops.rifleman.cards),20);
-  await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();await page.evaluate(()=>__forgeTest.ui.showCampaign());assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),6);await page.locator('.ff-mission').first().click();await page.locator('.ff-faction-choice').filter({hasText:'Vanir'}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');assert.equal(await page.evaluate(()=>__forgeTest.state.forgeTiers.p0.rifleman),2);
-  for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.ok(await page.evaluate(()=>__forgeTest.battle.units.some(unit=>unit.p===0&&unit.type==='rifleman'&&unit.forgeTier===2)));
+  await page.evaluate(()=>__forgeTest.ui.showForge('marksman'));await page.getByRole('button',{name:'Forge Veteran',exact:true}).click();await page.getByRole('button',{name:'Confirm upgrade',exact:true}).click();await page.waitForFunction(()=>__forgeTest.profile.troops.marksman.forgeTier===2);
+  assert.equal(await page.evaluate(()=>__forgeTest.profile.forgeDust),0);assert.equal(await page.evaluate(()=>__forgeTest.profile.troops.marksman.cards),20);
+  await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();await page.evaluate(()=>__forgeTest.ui.showCampaign());assert.equal(await page.locator('.ff-mission:not(:disabled)').count(),6);await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.waitForFunction(()=>__forgeTest.state?.phase==='draft');assert.equal(await page.evaluate(()=>__forgeTest.state.forgeTiers.p0.marksman),2);
+  for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeTest.state.draftIndex===i&&__forgeTest.state.phase==='draft',i);await page.evaluate(()=>__forgeTest.chooseCard(0));}await page.waitForFunction(()=>__forgeTest.state.phase==='battle');assert.ok(await page.evaluate(()=>__forgeTest.battle.units.some(unit=>unit.p===0&&unit.type==='marksman'&&unit.forgeTier===2)));
   assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(apiRequests,[]);assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
@@ -264,9 +265,9 @@ test('configured secure campaign submits only legal pick inputs and renders the 
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],picks=[];page.on('pageerror',e=>errors.push(e.message));
-  const profile={uid:'owner-uid',username:'Commander',crowncouncilElo:1300,forgeDust:0,troops:{rifleman:{forgeTier:2,cards:4,unlocked:true}},campaign:{missions:{}}};
-  const card={type:'troop',key:'rifleman',name:'Riflemen',role:'back'};
-  let session={id:'secure-one',mode:'campaign',revision:1,phase:'draft',round:1,draftIndex:0,meIndex:0,players:['Commander','IronWarden'],factions:{p0:'Vanir',p1:'Vanir'},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},lives:[4,1],mmr:[1300,1300],currentPacks:{p0:[card,card,card],p1:[]},deadlineAt:Date.now()+60000};
+  const profile={uid:'owner-uid',username:'Commander',crowncouncilElo:1300,forgeDust:0,troops:Object.fromEntries(STARTER_DECKS.flatMap(deck=>deck.troops.map(key=>[key,{forgeTier:2,cards:4,unlocked:true}]))),decks:STARTER_DECKS,selectedDeckId:'starter-vanir',campaign:{missions:{}}};
+  const card={type:'troop',key:'marksman',name:'Marksman',role:'back'};
+  let session={id:'secure-one',mode:'campaign',revision:1,phase:'draft',round:1,draftIndex:0,meIndex:0,players:['Commander','IronWarden'],factions:{p0:'Vanir',p1:'Vanir'},decks:{p0:starterDeck('Vanir'),p1:starterDeck('Vanir')},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},lives:[4,1],mmr:[1300,1300],currentPacks:{p0:[card,card,card],p1:[]},deadlineAt:Date.now()+60000};
   await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:20};`}));
   await context.route('**/api/faction-forge/**',async route=>{
     const req=route.request(),pathname=new URL(req.url()).pathname;
@@ -274,7 +275,7 @@ test('configured secure campaign submits only legal pick inputs and renders the 
     const data=pathname.endsWith('/profile')?{profile}:{session,profile,receipt:session.phase==='game-over'?{dust:20,cards:[{troopKey:'rifleman',quantity:3}],stars:3}:undefined};
     await route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
   });
-  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:/Vanir Industrial/}).click();await page.waitForFunction(()=>document.querySelector('#cardRow')?.style.display==='flex');
+  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#cardRow')?.style.display==='flex');
   await page.locator('#cardRow .card').first().click();await page.getByRole('heading',{name:'Victory',exact:true}).waitFor();
   assert.equal(picks.length,1);assert.equal(picks[0].index,0);assert.equal(picks[0].sequence,1);assert.deepEqual(Object.keys(picks[0]).sort(),['index','requestId','sequence']);assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
@@ -299,17 +300,11 @@ test('restored durable auth survives reload and joined lobbies receive the verif
    export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[{id:'open-room',data:()=>room}]}):fn({exists:()=>false}),0);return ()=>{};};
   `}));
   await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:30000};`}));
-  await context.route('**/api/faction-forge/profile',async route=>{tokens.push(route.request().headers().authorization);await route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'VerifiedCommander',crowncouncilElo:1300,forgeDust:0,troops:{},campaign:{missions:{}}}})});});
+  await context.route('**/api/faction-forge/**',async route=>{if(new URL(route.request().url()).pathname.endsWith('/profile'))tokens.push(route.request().headers().authorization);await route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'VerifiedCommander',crowncouncilElo:1300,forgeDust:0,troops:Object.fromEntries(STARTER_DECKS.flatMap(deck=>deck.troops.map(key=>[key,{forgeTier:1,cards:0,unlocked:true}]))),decks:STARTER_DECKS,selectedDeckId:'starter-vanir',campaign:{missions:{}}}})});});
   await context.route('**/lobby/lobby.html?forgeJoin=*',route=>route.fulfill({contentType:'text/html',body:'<p>Lobby destination</p>'}));
   await page.goto(url+'/game/crowncouncil.html');await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.equal(await page.evaluate(()=>localStorage.getItem('gh.username')),null);
   await page.reload();await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.deepEqual(tokens,['Bearer durable-token','Bearer durable-token']);
-  await page.getByRole('button',{name:'Play Online',exact:false}).first().click();await page.getByRole('button',{name:'Join',exact:true}).click();await page.waitForURL('**/lobby/lobby.html?forgeJoin=open-room');
+  await page.getByRole('button',{name:'Play Online',exact:false}).first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.getByRole('button',{name:'Join',exact:true}).click();await page.waitForURL('**/lobby/lobby.html?forgeJoin=open-room');
   assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
-
-
-
-
-
-

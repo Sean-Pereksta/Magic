@@ -4,11 +4,22 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as units from '../units.js';
 import * as campaign from '../campaign.js';
+import {validateDeck,rosterCount,STARTER_DECKS} from '../decks.js';
 
 const make=(type,props={})=>units.initializeForgeUnit({id:type,p:0,type,x:3,y:3,size:1,lvl:1,
   maxhp:20,hp:20,dmg:5,cd:1000,range:3,armor:0,...props},{forgeTier:props.forgeTier||1,role:units.NEW_UNITS[type]?.role||'back'});
 const state=(...troops)=>({field:{units:troops,wards:[]}});
 const hooks={applyDamage:(v,d)=>v.hp-=d,healScale:(v,now)=>(v.woundUntil||0)>now?.5:1};
+
+test('campaign and endless enemies use five-type faction decks and never grow beyond five deployed bodies',()=>{
+ for(const mission of [...campaign.MISSIONS,...[1,7,30,80,10000].map(stage=>campaign.createEndlessMission(stage))]){const {deck,roster}=mission.opponent;assert.equal(validateDeck(deck).valid,true,mission.id);assert.ok(rosterCount(roster)<=5,mission.id);assert.ok(roster.every(row=>deck.troops.includes(row.type)),mission.id);assert.equal(deck.faction,mission.aiFaction);}
+ const custom={id:'custom-campaign',name:'Flanking Precision',faction:'Vanir',troops:['miner','marksman','vrocket','emp','medic']};
+ for(const mission of campaign.MISSIONS){const roster=campaign.playerStartingRoster('Vanir',mission,custom);assert.ok(rosterCount(roster)<=5);assert.ok(roster.every(row=>custom.troops.includes(row.type)));}
+ for(let i=0;i<20;i++){const bot=campaign.practiceOpponent(1700,()=>i/20);assert.equal(validateDeck(bot.deck).valid,true);assert.equal(bot.deck.faction,bot.faction);}
+});
+test('expert bots select complete counter decks in response to armor or exposed ranged troops',()=>{
+ const armor={troops:['vguard','shieldcap','guardian','golem','medic']},ranged={troops:['marksman','vrocket','rifleman','medic','emp']};const antiArmor=campaign.chooseAIDeck('Helions',armor,1,()=>.2),ambush=campaign.chooseAIDeck('Helions',ranged,1,()=>.2);assert.equal(validateDeck(antiArmor).valid,true);assert.equal(validateDeck(ambush).valid,true);assert.ok(antiArmor.troops.includes('spitter'));assert.ok(ambush.troops.includes('viper'));assert.notDeepEqual(antiArmor.troops,ambush.troops);assert.deepEqual(campaign.chooseAIDeck('Helions',armor,1,()=>.2),antiArmor);
+});
 
 test('the actual legacy troop tables expand once to 32 and faction counts remain correct',()=>{
   const html=readFileSync(new URL('../../crowncouncil.html',import.meta.url),'utf8');

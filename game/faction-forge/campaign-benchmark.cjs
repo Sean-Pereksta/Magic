@@ -18,7 +18,7 @@ async function benchmark() {
     for(const prior of modules.campaign.MISSIONS.filter(m=>m.number<number&&m.unlockTroop))player.troops[prior.unlockTroop].unlocked=true;
     const state={mode:'campaign',missionId:mission.id,players:['Player',mission.opponent.name],
       roster:{p0:modules.campaign.playerStartingRoster(faction,mission),p1:structuredClone(mission.opponent.roster)},
-      factions:{p0:faction,p1:mission.aiFaction},profiles:{p0:player,p1:cpu},
+      factions:{p0:faction,p1:mission.aiFaction},decks:{p0:modules.decks.starterDeck(faction),p1:mission.opponent.deck},profiles:{p0:player,p1:cpu},
       relics:{p0:[],p1:structuredClone(mission.opponent.relics)},tactics:{p0:[],p1:structuredClone(mission.opponent.tactics)},
       formations:{p0:'balanced',p1:mission.opponent.formation}};
     const lives=[4,4];let round=0,bonus=null,openingWinner=null;

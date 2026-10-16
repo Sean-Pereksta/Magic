@@ -945,9 +945,10 @@ import { createProgressionService } from "./faction-forge/progression.js";
 import { createFirebaseProgress, soloMission } from "./faction-forge/firebase-progress.js";
 import { resolveForgeUsername, selectSoloAccount } from "./faction-forge/solo-account.js";
 import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
-import { getMission, createEndlessMission, chooseAIDraft, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
+import { getMission, createEndlessMission, chooseAIDraft, chooseAIDeck, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
 import * as FFUnits from "./faction-forge/units.js";
 import * as FFDraft from "./faction-forge/drafting.js";
+import * as FFDecks from "./faction-forge/decks.js";
 /* ---------------- Firebase ---------------- */
 // NOTE: Make sure your Firestore rules allow access to
 // /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/state
@@ -1138,6 +1139,7 @@ function newMatchState(players, seededMMR, sessionKey){
     tactics:  { p0: [], p1: [] },
     formations:{ p0: "balanced", p1: "balanced" },
     factions: { p0: null, p1: null },
+    decks: {p0:null,p1:null},
     selections:   { p0: [], p1: [] },
     currentPacks: { p0: [], p1: [] },
     bonusFor: null,
@@ -1283,32 +1285,32 @@ const TROOP_VISUALS = {
 
 const TROOPS = {
   /* Vanir */
-  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:Object.assign({},R(7,3,6,1050),{armor:0}), spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(11,8,10,1750),{splash1:true,knock:true,armor:0}) },
-  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(22,5,800),{splash1:true,armor:3}) },
-  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(16,3,800),{spd:2,hunterRanged:true,armor:1}), spawn:2 },
+  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:Object.assign({},R(13,5,6,1150),{armor:0}), spawn:1 },
+  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(12,8,8,1850),{splash1:true,knock:true,armor:0}) },
+  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(32,3,1200),{armor:3}) },
+  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(18,4,850),{spd:2,hunterRanged:true,armor:1}), spawn:1 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",
     base:{ hp:11, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200, armor:0 }
   },
 
   suppressor:{ faction:"Vanir", name:"Suppressor", emoji:"🧯", role:"back",
-    base:{ hp:8, dmg:2, range:3, cd:850, spd:1, armor:0 },
+    base:{ hp:12, dmg:3, range:5, cd:1150, spd:1, armor:0 },
     suppress:true,
     suppressDur:900,
     slowFactor:2
   },
 
   shieldcap:{ faction:"Vanir", name:"Shield Captain", emoji:"🛡️⭐", role:"front",
-    base:{ hp:19, dmg:3, range:1, cd:800, spd:1, armor:2 },
+    base:{ hp:28, dmg:2, range:1, cd:1300, spd:1, armor:2 },
     auraReduce:1,
-    auraRange:2
+    auraRange:1
   },
   marksman:{ faction:"Vanir", name:"Marksman", emoji:"🎯", role:"back",
-    base:{ hp:8, dmg:5, range:6, cd:1450, spd:1, armor:0 },
-    strongVs:["light"],
+    base:{ hp:10, dmg:6, range:6, cd:1550, spd:1, armor:0 },
+    strongVs:["armored"],
     antiSupport:true,
-    supportBonus:4,
-    executePct:0.35
+    supportBonus:1,
+    executePct:0.12
   },
   emp:{ faction:"Vanir", name:"EMP Grenadier", emoji:"🧲", role:"back",
     base:{ hp:9, dmg:3, range:4, cd:1200, spd:1, armor:0 },
@@ -1317,10 +1319,10 @@ const TROOPS = {
   },
 
   /* Aesir */
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,4,4,1250),{blink50:true,armor:0}), spawn:2 },
-  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(12,4,850),{spd:2,armor:1}), spawn:2 },
-  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(7,4,3,1100),{chain3:true,armor:0}) },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(24,6,900),{splash1:true,knock:true,strongKnock:true,armor:3}), size:1 },
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(13,5,5,1250),{blink50:true,armor:0}), spawn:1 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(18,5,900),{spd:2,armor:1}), spawn:1 },
+  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(13,4,5,1650),{chain3:true,armor:0}) },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(34,3,1300),{knock:true,armor:3}), size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
     base:{ hp:7, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:5100, wardHp:4, armor:0 },
     wardHealAmt:2, wardHealRange:3, wardHealCd:2500
@@ -1334,7 +1336,7 @@ const TROOPS = {
     wardCdShoot:1400
   },
   golem:{ faction:"Aesir", name:"Sentinel Golem", emoji:"🗿", role:"front",
-    base:{ hp:30, dmg:5, range:1, cd:1050, spd:1, armor:2 }, size:2,
+    base:{ hp:38, dmg:3, range:1, cd:1450, spd:1, armor:2 }, size:2,
     rangedReduce:1
   },
   runebinder:{ faction:"Aesir", name:"Rune Binder", emoji:"🪄", role:"back",
@@ -1344,10 +1346,10 @@ const TROOPS = {
   },
 
   /* Helions */
-  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(9,2,500),{spd:3,armor:0}), spawn:4 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(11,4,3,1000),{armor:1}), spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(22,4,900),{splash1:true,toxicSplash:true,armor:2}), size:1 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,6,0),{kamikaze:true,paints:true,armor:0}), spawn:2 },
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(20,4,650),{spd:3,armor:0}), spawn:1 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(17,5,3,1100),{armor:1}), spawn:1 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(27,3,1300),{splash1:true,toxicSplash:true,armor:2}), size:1 },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(17,10,0),{kamikaze:true,paints:true,armor:0}), spawn:1 },
   matron:{
     faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
     base:{ hp:18, dmg:1, range:3, cd:1200, armor:1 },
@@ -1357,21 +1359,21 @@ const TROOPS = {
   },
   viper:{
     faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
-    base:{ hp:8, dmg:14, range:1, cd:2000, spd:2, armor:0 },
+    base:{ hp:19, dmg:8, range:1, cd:1500, spd:3, armor:0 },
     strongVs:["armored"],
     hunterRanged:true,
-    trueDamage:true,
+    trueDamage:false,
     viperLeap:true,
-    leapDist:2, spawn:2
+    leapDist:2, spawn:1
   },
-  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(9,4,5,1200),{acid:true,acidDur:3500,armor:0}) },
+  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(11,4,5,1200),{acid:true,acidDur:3500,armor:0}) },
   carrion:{ faction:"Helions", name:"Carrion Priest", emoji:"🩸", role:"back",
     base:{ hp:9, dmg:3, range:4, cd:1200, spd:1, armor:0 },
     wound:true,
     woundDur:2600
   },
   burrower:{ faction:"Helions", name:"Burrower", emoji:"🪱", role:"front",
-    base:{ hp:7, dmg:7, range:1, cd:1200, spd:2, armor:0 },
+    base:{ hp:18, dmg:7, range:1, cd:1200, spd:3, armor:0 },
     burrow:true,
     burrowDist:2,
     burrowCd:2200
@@ -1384,9 +1386,9 @@ const TROOP_IMAGE_PATHS=Object.freeze({
  hellspawn:"../graphics/factionforge/hell spawn.png",roach:"../graphics/factionforge/roach.png",defiler:"../graphics/factionforge/defiler.png",blood:"../graphics/factionforge/bloodburst.png",spitter:"../graphics/factionforge/spitter brood.png",matron:"../graphics/factionforge/brood matron.png",viper:"../graphics/factionforge/viper.png",carrion:"../graphics/factionforge/carrion priest.png",burrower:"../graphics/factionforge/burrower.png"
 });
 const LEGENDARY_ABILITIES = {
-  rifleman:{name:"Overwatch Line", desc:"Fires faster and gains +1 damage vs enemies already damaged this battle.", notes:"+28% attack speed."}, vrocket:{name:"Siege Burst", desc:"Wider burst splash for anti-clump pressure.", notes:"Splash up."}, vguard:{name:"Shield Wall", desc:"Nearby backline allies take -1 incoming damage.", notes:"Aura mitigation."}, miner:{name:"Tunnel Breakers", desc:"First hit vs ranged/support stuns briefly and deals bonus damage.", notes:"One-time proc."}, medic:{name:"Emergency Revival", desc:"Once per battle, prevents a nearby ally from dying and heals a small amount.", notes:"One revive."}, suppressor:{name:"Lockdown Foam", desc:"Suppressed targets lose 1 range for longer.", notes:"Range debuff window."}, shieldcap:{name:"Rally Banner", desc:"Nearby allies gain +1 armor.", notes:"Aura armor."}, marksman:{name:"Headshot Protocol", desc:"Better support kills and non-tank execute.", notes:"Non-tank execute."}, emp:{name:"System Crash", desc:"EMP also disables nearby enemy wards briefly.", notes:"Ward disable."},
+  rifleman:{name:"Overwatch Line", desc:"Fires faster and gains +1 damage vs enemies already damaged this battle.", notes:"+28% attack speed."}, vrocket:{name:"Siege Burst", desc:"Wider burst splash for anti-clump pressure.", notes:"Splash up."}, vguard:{name:"Shield Wall", desc:"Nearby backline allies take -1 incoming damage.", notes:"Aura mitigation."}, miner:{name:"Tunnel Breakers", desc:"First hit vs ranged/support stuns briefly and deals bonus damage.", notes:"One-time proc."}, medic:{name:"Emergency Revival", desc:"Once per battle, prevents a nearby ally from dying and heals a small amount.", notes:"One revive."}, suppressor:{name:"Lockdown Foam", desc:"Suppressed targets lose 1 range for longer.", notes:"Range debuff window."}, shieldcap:{name:"Rally Banner", desc:"Nearby allies gain +1 armor.", notes:"Aura armor."}, marksman:{name:"Headshot Protocol", desc:"Armor penetration and bounded finishing shots punish heavy targets without instant executions.", notes:"65% penetration; bounded finishing damage."}, emp:{name:"System Crash", desc:"EMP also disables nearby enemy wards briefly.", notes:"Ward disable."},
   phaser:{name:"Phase Echo", desc:"First blink grants brief invulnerability.", notes:"Short invuln."}, blade:{name:"Tempest Blades", desc:"Every third attack cleaves adjacent enemies.", notes:"3-hit cleave."}, storm:{name:"Chain Storm", desc:"Chains one additional target and prefers wounded units.", notes:"4 hops."}, guardian:{name:"Gravity Slam", desc:"First impact applies stronger slow/knock control.", notes:"First-hit control."}, wardmaker:{name:"Sanctuary Ward", desc:"First ward has bonus HP and pulse-heals nearby allies.", notes:"First ward bonus."}, architect:{name:"Arcane Turret Grid", desc:"Turret wards fire faster and deal +1 damage.", notes:"Ward buff."}, golem:{name:"Mountain Core", desc:"Reduced ranged damage and ignores first knockback.", notes:"First knock immunity."}, runebinder:{name:"Greater Bind", desc:"Bind lasts longer and amplifies magic/storm follow-up.", notes:"Longer bind."},
-  hellspawn:{name:"Frenzy Swarm", desc:"Gains speed/attack speed when near other Hell Spawn.", notes:"Swarm haste."}, roach:{name:"Hardened Carapace", desc:"Below 50% HP, gains damage reduction.", notes:"Low-HP DR."}, defiler:{name:"Plague Nova", desc:"First low-HP trigger spreads toxic nearby.", notes:"One nova."}, blood:{name:"Blood Detonation", desc:"Explosion applies wound with stronger splash.", notes:"Wound splash."}, matron:{name:"Endless Brood", desc:"Spawns faster and first spawn produces an extra Hell Spawn.", notes:"First double spawn."}, viper:{name:"Apex Venom", desc:"First leap deals bonus true damage to armored/support units.", notes:"One leap proc."}, spitter:{name:"Acid Rain", desc:"Acid lasts longer and strips armor by 1 on tiles.", notes:"Longer acid."}, carrion:{name:"Blood Curse", desc:"Wounded enemies receive reduced healing.", notes:"Anti-heal uptime."}, burrower:{name:"Deep Ambush", desc:"First burrow hit roots briefly and leaves poison behind.", notes:"One ambush proc."}
+  hellspawn:{name:"Frenzy Swarm", desc:"Gains speed/attack speed when near other Hell Spawn.", notes:"Swarm haste."}, roach:{name:"Hardened Carapace", desc:"Below 50% HP, gains damage reduction.", notes:"Low-HP DR."}, defiler:{name:"Plague Nova", desc:"First low-HP trigger spreads toxic nearby.", notes:"One nova."}, blood:{name:"Blood Detonation", desc:"Explosion applies wound with stronger splash.", notes:"Wound splash."}, matron:{name:"Endless Brood", desc:"Replaces fallen troops faster; a full formation instead grants a nearby brood a temporary surge.", notes:"Five bodies; bounded brood surge."}, viper:{name:"Apex Venom", desc:"First ambush gains a bounded follow-up; leaps respect distance, occupied tiles and detection.", notes:"One leap proc."}, spitter:{name:"Acid Rain", desc:"Acid lasts longer and strips armor by 1 on tiles.", notes:"Longer acid."}, carrion:{name:"Blood Curse", desc:"Wounded enemies receive reduced healing.", notes:"Anti-heal uptime."}, burrower:{name:"Deep Ambush", desc:"First burrow hit roots briefly and leaves poison behind.", notes:"One ambush proc."}
 };
 
 const TROOP_COUNTERS = {
@@ -1397,12 +1399,12 @@ const TROOP_COUNTERS = {
   medic:{ roleLabel:"Sustain Support", archetype:"Healing Utility", strongAgainst:["Poke damage","Attrition fights","Slow DPS comps"], weakAgainst:["Assassins","Burst damage","EMP shock"], bestWith:["Vanir Guard","Shield Captain","Golem"], counterTip:"Keep Medic behind armor to outlast chip wars.", dangerTip:"Dies fast when focused or jumped." },
   suppressor:{ roleLabel:"Control Support", archetype:"Slow / Debuff", strongAgainst:["Fast melee","Rush comps","Dive threats"], weakAgainst:["Long-range poke","EMP","Burst assassins"], bestWith:["Rockets","Riflemen","Guardian"], counterTip:"Suppress key divers before they reach your backline.", dangerTip:"Low durability means bad trades when exposed." },
   shieldcap:{ roleLabel:"Aura Tank", archetype:"Frontline Mitigation", strongAgainst:["Sustained DPS","Swarm chip","Gunline mirrors"], weakAgainst:["True damage","Bind + focus","Anti-support snipes"], bestWith:["Riflemen","Medic","Storm Seer"], counterTip:"Center Shield Captain to cover multiple allies with aura.", dangerTip:"Aura value drops sharply if isolated." },
-  marksman:{ roleLabel:"Execution Carry", archetype:"Anti-Support Sniper", strongAgainst:["Light armor","Supports","Warded backlines"], weakAgainst:["Divers","Burrowers","Fast melee"], bestWith:["Vanir Guard","Suppressor","Rune Binder"], counterTip:"Pick off enemy supports to collapse their sustain.", dangerTip:"Needs protection; collapses under direct dive." },
+  marksman:{ roleLabel:"Armor Hunter", archetype:"Armor Piercing / Precision", strongAgainst:["Armored defenders","Guardians","Vanir Guards"], weakAgainst:["Divers","Burrowers","Fast melee"], bestWith:["Vanir Guard","Suppressor","Rune Binder"], counterTip:"Protected shots penetrate 65% armor and prioritize heavy defenders. Fast swarms punish its deliberate reload.", dangerTip:"Needs protection; collapses under direct dive." },
   emp:{ roleLabel:"Tech Disruptor", archetype:"Shock / Utility", strongAgainst:["Wards","Healers","Support stacks"], weakAgainst:["High HP tanks","Spread formations","Long-range burst"], bestWith:["Rockets","Marksman","Blade"], counterTip:"EMP before all-ins to disable enemy support timing.", dangerTip:"Damage is modest without follow-up." },
   phaser:{ roleLabel:"Skirmish DPS", archetype:"Mobile Backline", strongAgainst:["Slow melee","Single-target focus","Low reach comps"], weakAgainst:["Splash","Chain hits","Assassin dives"], bestWith:["Guardian","Wardmaker","Rune Binder"], counterTip:"Use blink uptime to keep Phasers firing from safe angles.", dangerTip:"Can disappear quickly under AoE pressure." },
   blade:{ roleLabel:"Duelist", archetype:"Fast Melee", strongAgainst:["Backline gunners","Isolated supports","Squishy carries"], weakAgainst:["Suppression","Knockback","Heavy armor"], bestWith:["Rune Binder","Storm Seer","EMP"], counterTip:"Let Blademasters slip through after control lands.", dangerTip:"Gets kited or stalled by control tanks." },
   storm:{ roleLabel:"AoE Caster", archetype:"Chain Damage", strongAgainst:["Swarms","Stacked lines","Summons"], weakAgainst:["Spread boards","Assassin jumps","Anti-support snipes"], bestWith:["Guardian","Wardmaker","Shield Captain"], counterTip:"Storm Seer shines when enemies bunch into one lane.", dangerTip:"Lower value when targets stay spread." },
-  guardian:{ roleLabel:"Bruiser Tank", archetype:"Knockback Frontline", strongAgainst:["Melee balls","Swarm pushes","Dive entries"], weakAgainst:["True damage","Acid","Kiting backlines"], bestWith:["Phaser","Storm Seer","Wardmaker"], counterTip:"Guardian controls space and denies direct rushes.", dangerTip:"Large body is vulnerable to focused true damage." },
+  guardian:{ roleLabel:"Frontline Defender", archetype:"Interception / Disruption", strongAgainst:["Melee balls","Swarm pushes","Dive entries"], weakAgainst:["True damage","Acid","Kiting backlines"], bestWith:["Phaser","Storm Seer","Wardmaker"], counterTip:"Guardian controls space and denies direct rushes.", dangerTip:"Large body is vulnerable to focused true damage." },
   wardmaker:{ roleLabel:"Defensive Support", archetype:"Wards / Sustain", strongAgainst:["Poke comps","Attrition","Single-target burst"], weakAgainst:["EMP shock","Marksman","Fast divers"], bestWith:["Guardian","Phaser","Golem"], counterTip:"Cycle wards early to win prolonged exchanges.", dangerTip:"If ward line falls, Wardmaker is easy to pick." },
   architect:{ roleLabel:"Fortifier", archetype:"Ward Turret Utility", strongAgainst:["Slow pushes","Frontline brawls","Low mobility comps"], weakAgainst:["EMP","Assassins","Explosive dive"], bestWith:["Guardian","Storm Seer","Rune Binder"], counterTip:"Aegis Architect snowballs when fights stay in ward range.", dangerTip:"Needs time and protection to scale value." },
   golem:{ roleLabel:"Siege Tank", archetype:"Heavy Frontline", strongAgainst:["Ranged poke","Gunlines","Chip wars"], weakAgainst:["True damage","Acid","Swarm surrounds"], bestWith:["Wardmaker","Medic","Storm Seer"], counterTip:"Use Golem to absorb ranged fire and force fair trades.", dangerTip:"Can be overwhelmed by armor-piercing swarm pressure." },
@@ -1412,7 +1414,7 @@ const TROOP_COUNTERS = {
   defiler:{ roleLabel:"Toxic Tank", archetype:"Splash Bruiser", strongAgainst:["Swarms","Melee clusters","Sustain comps"], weakAgainst:["True damage","Kiting","Anti-tank burst"], bestWith:["Hell Spawn","Carrion","Spitter"], counterTip:"Defiler punishes teams that clump on engages.", dangerTip:"Weak into focused anti-tank damage." },
   blood:{ roleLabel:"Burst Diver", archetype:"Kamikaze", strongAgainst:["Backline supports","Ward stacks","Clumped shooters"], weakAgainst:["Spacing","Knockback","Durable tanks"], bestWith:["Burrower","Viper","Suppressor"], counterTip:"Use BloodBurst to break support cores before main clash.", dangerTip:"Low HP means failed jumps are wasted tempo." },
   matron:{ roleLabel:"Summoner", archetype:"Brood Engine", strongAgainst:["Attrition","Single-target lines","Slow fronts"], weakAgainst:["Splash","EMP","Assassin dives"], bestWith:["Defiler","Hell Spawn","Wardmaker"], counterTip:"Protect Matron and win long fights through brood value.", dangerTip:"If focused early, summon plan collapses." },
-  viper:{ roleLabel:"Armor Hunter", archetype:"True Damage Assassin", strongAgainst:["Armored tanks","Backline carries","Healers"], weakAgainst:["Bind","Suppression","Swarm body-block"], bestWith:["Burrower","BloodBurst","Rune Binder"], counterTip:"Viper excels at deleting armored anchors and supports.", dangerTip:"Control effects stop its leap timing." },
+  viper:{ roleLabel:"Armor Hunter", archetype:"Flanking / Partial Penetration", strongAgainst:["Armored tanks","Backline carries","Healers"], weakAgainst:["Bind","Suppression","Swarm body-block"], bestWith:["Burrower","BloodBurst","Rune Binder"], counterTip:"Viper flanks exposed carries; partial penetration pressures armor without deleting defenders.", dangerTip:"Control effects stop its leap timing." },
   spitter:{ roleLabel:"Debuff Artillery", archetype:"Acid Ranged", strongAgainst:["Armored frontline","Tanks","Sustain walls"], weakAgainst:["Assassins","Burst dive","Long-range snipes"], bestWith:["Defiler","Guardian","Shield Captain"], counterTip:"Tag tanks with acid before your team commits.", dangerTip:"Poor survival when enemy divers connect." },
   carrion:{ roleLabel:"Anti-Heal Support", archetype:"Wound Utility", strongAgainst:["Healers","Ward sustain","Tank healing"], weakAgainst:["Burst assassins","EMP","Backline snipers"], bestWith:["Defiler","Viper","Hell Spawn"], counterTip:"Carrion Priest denies healing to secure kills.", dangerTip:"Low stats mean it needs frontline cover." },
   burrower:{ roleLabel:"Backline Diver", archetype:"Ambush Melee", strongAgainst:["Ranged backline","Supports","Static ward users"], weakAgainst:["Splash","Bind","Knockback"], bestWith:["Viper","BloodBurst","Suppressor"], counterTip:"Burrow behind tanks to disrupt core damage dealers.", dangerTip:"Gets punished by layered control and AoE." }
@@ -1731,9 +1733,9 @@ function canMoveTo(u, units, nx, ny){
 /* spawn bands */
 function bandRows(p, role){
   if (p===0){
-    return role==="back" ? [H-1,H-2,H-3] : [H-6,H-5,H-4];
+    return role==="back" ? [H-3,H-2,H-1] : [H-6,H-5,H-4];
   }else{
-    return role==="back" ? [0,1,2] : [3,4,5];
+    return role==="back" ? [2,1,0] : [5,4,3];
   }
 }
 function spawnSlot(state,p,typeKey){
@@ -1803,9 +1805,10 @@ function forgeCombatHooks(st){
 }
 
 function placeUnit(state,p,key,lvl){
+  if(!FFDecks.deckForState(state,pKey(p))?.troops.includes(key))return false;
   const t=TROOPS[key]; if(!t) return false;
   let placed=false;
-  const spawnCount = Math.max(1, t.spawn || 1);
+  const spawnCount = 1; // Brood effects share the five active slots.
   for(let k=0;k<spawnCount;k++){
     if(state.field.units.filter(v=>v.hp>0&&v.p===p).length>=FFUnits.UNIT_LIMITS.aliveUnitsPerSide)break;
     const pos=spawnSlot(state,p,key);
@@ -1814,15 +1817,15 @@ function placeUnit(state,p,key,lvl){
     const size = t.size===2?2:1;
     if(!rectangleFree(state.field.units,pos.x,pos.y,size))break;
     let maxhp = Math.round(b.hp || 10);
-    let dmg   = Math.round(b.dmg || 3);
+    let dmg   = Math.round(b.dmg ?? 3);
     const cd  = Math.round((b.cd || 600)*PACE.atkMult);
     const spd = (typeof b.spd === "number" ? b.spd : 1);
     const range = (typeof b.range === "number" ? b.range : 1);
 
-    /* +33% per level */
-    const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
+    /* Rank growth: durability +22%, damage +18% per rank. */
+    const mult = 1 + 0.22 * Math.max(0, (lvl||1)-1);
     maxhp = Math.round(maxhp * mult);
-    dmg   = Math.max(1, Math.round(dmg * mult));
+    dmg   = b.dmg===0 ? 0 : Math.max(1, Math.round(dmg * (1+0.18*Math.max(0,(lvl||1)-1))));
 
     const u={
       id:crypto.randomUUID(), p:p, type:key, x:pos.x, y:pos.y, lvl:lvl,
@@ -1856,7 +1859,7 @@ function placeUnit(state,p,key,lvl){
 
     // Level 3 legendary hooks
     if (u.legendary){
-      if (key === "rifleman") u.cd = Math.round(u.cd * 0.72);
+      if (key === "rifleman") u.cd = Math.round(u.cd * 0.86);
       if (key === "matron"){ u.broodCd = Math.round((t.broodCd || 3500) * 0.7); u.firstBroodExtra = true; }
       if (key === "suppressor") u.suppressDur = Math.round((u.suppressDur||900) * 1.4);
       if (key === "runebinder") u.bindDur = Math.round((u.bindDur||1200) * 1.35);
@@ -1886,7 +1889,8 @@ function rebuildFieldFromRoster(state){
 
   for(let p=0;p<2;p++){
     const rk = pKey(p);
-    const roster = (state.roster && state.roster[rk]) ? state.roster[rk] : [];
+    const roster = FFDecks.sanitizeRoster(state.roster?.[rk]||[],FFDecks.deckForState(state,rk));
+    if(state.roster)state.roster[rk]=roster;
     const fronts = roster.filter(r=>TROOPS[r.type] && TROOPS[r.type].role==="front");
     const backs  = roster.filter(r=>!TROOPS[r.type] || TROOPS[r.type].role!=="front");
     for(const r of fronts){ for(let c=0;c<r.count;c++)if(!placeUnit(state,p,r.type,r.lvl))break; }
@@ -1950,8 +1954,9 @@ function packFor(roster, faction, sideKey, matchState){
   const side=sideKey||(state?.roster?.p1===roster?"p1":"p0");
   const collection=state?.collections?.[side]||state?.profiles?.[side];
   const unlocked=Array.isArray(collection?.unlocked)?collection.unlocked:Object.keys(collection?.troops||{}).filter(k=>collection.troops[k].unlocked);
-  const availableTypes=(FACTIONS[faction]||[]).filter(key=>!TROOPS[key].unlockable||unlocked.includes(key));
-  return FFDraft.createDraftPack({roster,faction,availableTypes,troops:TROOPS,evolutions:state?.evolutions?.[side]||{},comboEnhancements:state?.comboEnhancements?.[side]||[],ownedRelics:state?.relics?.[side]||[],ownedTactics:state?.tactics?.[side]||[],formation:state?.formations?.[side]},Math.random);
+  const deck=FFDecks.deckForState(state,side);
+  const availableTypes=(deck?.troops||[]).filter(key=>TROOPS[key]&&(!TROOPS[key].unlockable||unlocked.includes(key)));
+  return FFDraft.createDraftPack({roster,faction,deck,availableTypes,troops:TROOPS,evolutions:state?.evolutions?.[side]||{},comboEnhancements:state?.comboEnhancements?.[side]||[],ownedRelics:state?.relics?.[side]||[],ownedTactics:state?.tactics?.[side]||[],formation:state?.formations?.[side]},Math.random);
 }
 
 function applyPickToState(data, sideKey, pick){
@@ -2135,17 +2140,11 @@ function pulseCell(x,y, cls){
 
 /* ward helpers / aura */
 function auraDamageReduceFor(target, field){
-  let reduce = 0;
-  const units = field.units || [];
-  for (const a of units) {
-    if (a.p !== target.p) continue;
-    if (!a.auraReduce || a.hp <= 0) continue;
-    const rng = a.auraRange || 0;
-    if (rng > 0 && manhattan(a, target) <= rng) {
-      if (a.auraReduce > reduce) reduce = a.auraReduce|0;
-    }
-  }
-  return reduce;
+  const now=Date.now();
+  if((target.corrosionUntil||0)>now)return 0;
+  return (field.units||[]).some(a=>a.p===target.p&&a.id!==target.id&&a.hp>0&&a.auraReduce&&
+    (a.statusShockUntil||0)<=now&&(a.bindUntil||0)<=now&&rectDistance(a,target)<=Math.min(2,a.auraRange||1)&&
+    (a.p===0?a.y<=target.y:a.y>=target.y))?1:0;
 }
 
 function spawnAdjacentUnit(st, parent, typeKey){
@@ -2218,81 +2217,48 @@ function frontBlocked(u, units){
 }
 
 function attemptViperLeap(u, units, st){
-  if (!u.viperLeap) return false;
-  const dir = (u.p===0? -1 : +1);
-  const dist = Math.max(1, u.leapDist || 2);
-
-  const fromX = u.x, fromY = u.y;
-
-  for (let d=dist; d>=1; d--){
-    const nx = u.x, ny = u.y + dir*d;
-    if (!inside(nx,ny)) continue;
-    if (canMoveTo(u, units, nx, ny)){
-      u.x = nx; u.y = ny;
-      if ((u.lvl||1) >= 3){
-        forgeCombatHooks(st).event({kind:"venom",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:nx,targetY:ny,at:Date.now()});
-      }
-      return true;
-    }
-  }
-  return false;
+  const now=Date.now();
+  if(!u.viperLeap||(u.revealedUntil||0)>now||now<(u.nextLeapAt||0))return false;
+  const target=units.find(v=>v.id===u.targetId&&v.hp>0)||nearestEnemyRangedPriority(u,units,st.field);
+  if(!target)return false;
+  const tile=FFUnits.chooseFlankLanding(u,target,units,Math.max(2,u.leapDist||2),{distance:rectDistance,canMoveTo,width:W});
+  if(!tile)return false;
+  const fromX=u.x,fromY=u.y;u.x=tile.x;u.y=tile.y;u.nextLeapAt=now+3200;
+  forgeCombatHooks(st).event({kind:"venom",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:u.x,targetY:u.y,at:now});
+  return true;
 }
 
 function attemptBurrow(u, units, st, now){
-  if (!u.burrow || u.hp<=0) return false;
-  if ((u.revealedUntil||0)>now) return false;
-  if (!u.nextBurrow) u.nextBurrow = 0;
-  if (now < u.nextBurrow) return false;
-  const dir = (u.p===0? -1 : +1);
-  const dist = Math.max(1, u.burrowDist || 2);
-  const fromX=u.x, fromY=u.y;
-  for (let d=dist; d>=1; d--){
-    const nx=u.x, ny=u.y + dir*d;
-    if (!inside(nx,ny)) continue;
-    if (canMoveTo(u, units, nx, ny)){
-      u.x=nx; u.y=ny;
-      u.nextBurrow = now + (u.burrowCd || 2200);
-      FFUnits.noteForgeAmbush(u,nearestEnemy(u,units,st.field),now);
-      forgeCombatHooks(st).event({kind:"burrow",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:nx,targetY:ny,at:now});
-      return true;
-    }
-  }
-  u.nextBurrow = now + 500;
-  return false;
+  if(!u.burrow||u.hp<=0||(u.revealedUntil||0)>now||now<(u.nextBurrow||0))return false;
+  const target=units.find(v=>v.id===u.targetId&&v.hp>0)||nearestEnemyRangedPriority(u,units,st.field);
+  if(!target)return false;
+  const tile=FFUnits.chooseFlankLanding(u,target,units,Math.max(2,u.burrowDist||2),{distance:rectDistance,canMoveTo,width:W});
+  if(!tile){u.nextBurrow=now+500;return false;}
+  const fromX=u.x,fromY=u.y;u.x=tile.x;u.y=tile.y;u.nextBurrow=now+(u.burrowCd||2200);
+  FFUnits.noteForgeAmbush(u,target,now);
+  forgeCombatHooks(st).event({kind:"burrow",unitType:u.type,sourceId:u.id,x:fromX,y:fromY,targetX:u.x,targetY:u.y,at:now});
+  return true;
 }
 
 function broodTick(st, now){
-  const units = st.field.units || [];
-  for (let i=0;i<units.length;i++){
-    const u = units[i];
-    if (!u.brood || u.hp<=0) continue;
-    if (!u.nextBrood) u.nextBrood = 0;
-    if (now >= u.nextBrood){
-      if (spawnAdjacentUnit(st, u, u.broodType || "hellspawn")){
-        u.animType="cast";u.animUntil=now+420;forgeCombatHooks(st).event({kind:"spawn",unitType:u.type,sourceId:u.id,x:u.x,y:u.y,at:now});
-        if (u.firstBroodExtra){
-          spawnAdjacentUnit(st, u, u.broodType || "hellspawn");
-          u.firstBroodExtra = false;
-        }
-        u.nextBrood = now + (u.broodCd || TROOPS[u.type]?.broodCd || 3500);
-      } else {
-        u.nextBrood = now + 800;
-      }
-    }
+  const units=st.field.units||[];
+  for(const u of units){
+    if(!u.brood||u.hp<=0||(u.statusShockUntil||0)>now||now<(u.nextBrood||0))continue;
+    if(spawnAdjacentUnit(st,u,u.broodType||"hellspawn")){
+      u.animType="cast";u.animUntil=now+420;u.firstBroodExtra=false;
+      u.nextBrood=now+(u.broodCd||3500);
+    }else if(units.filter(v=>v.p===u.p&&v.hp>0).length>=FFUnits.UNIT_LIMITS.aliveUnitsPerSide){
+      const swarm=units.filter(v=>v.hp>0&&v.p===u.p&&["hellspawn","blood","roach"].includes(v.type)&&rectDistance(u,v)<=4).sort((a,b)=>a.hp/a.maxhp-b.hp/b.maxhp)[0];
+      if(swarm){swarm.broodSurgeUntil=now+2200;swarm.comboShield=Math.max(swarm.comboShield||0,2);swarm.comboShieldUntil=now+2200;forgeCombatHooks(st).event({kind:"swarm",unitType:u.type,sourceId:u.id,targetId:swarm.id,x:u.x,y:u.y,targetX:swarm.x,targetY:swarm.y,at:now});}
+      u.nextBrood=now+(u.broodCd||3500);
+    }else u.nextBrood=now+800;
   }
 }
 
 function reduceDamageForTarget(baseDmg, target, field, opts){
-  let dmg = baseDmg|0;
-  const ignoreArmor = !!(opts && opts.ignoreArmor);
-  if (ignoreArmor) return Math.max(1, dmg);
-
-  const auraReduce = auraDamageReduceFor(target, field);
-  const armor = target && target.armor ? (target.armor|0) : 0;
-  const totalReduce = Math.max(0, auraReduce + armor);
-  if (totalReduce > 0) dmg = Math.max(1, dmg - totalReduce);
-  if (target && target.legendary && target.type==="roach" && target.hp <= target.maxhp*0.5) dmg = Math.max(1, dmg - 1);
-  return dmg;
+  return FFUnits.calculateCounterDamage(opts?.attacker||{},target,baseDmg,{
+    now:opts?.now||Date.now(),auraReduce:auraDamageReduceFor(target,field),
+    ignoreArmor:!!opts?.ignoreArmor,secondary:!!opts?.secondary}).damage;
 }
 function healScale(v, now){
   return (v.woundUntil && v.woundUntil > now) ? 0.5 : 1;
@@ -2335,27 +2301,13 @@ function unitCenter(u){
   return { x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2 };
 }
 function applyWardShields(attacker, target, rawDmg, field){
-  const wards = field.wards || [];
-  if (!wards.length || rawDmg <= 0) return rawDmg;
-
-  const a = unitCenter(attacker), b = unitCenter(target);
-  const path = tilesOnLine(a.x, a.y, b.x, b.y);
-  const now = Date.now();
-  let dmg = rawDmg;
-
-  for (let i=0;i<wards.length;i++){
-    const w=wards[i];
-    if (w.hp <= 0 || w.until <= now) continue;
-    if (w.p != null && w.p !== target.p) continue;
-
-    const onPath = path.some(pt => pt.x === w.x && pt.y === w.y);
-    if (!onPath) continue;
-
-    const reduce = (w.shieldReduce != null ? w.shieldReduce : 2);
-    dmg = Math.max(0, dmg - reduce);
-    w.hp -= 1;
-  }
-  return dmg;
+  const a=unitCenter(attacker),b=unitCenter(target),path=tilesOnLine(a.x,a.y,b.x,b.y),now=Date.now();
+  const ward=(field.wards||[]).find(w=>w.hp>0&&w.until>now&&(w.disabledUntil||0)<=now&&
+    (w.p==null||w.p===target.p)&&path.some(pt=>pt.x===w.x&&pt.y===w.y));
+  if(!ward||rawDmg<=0)return rawDmg;
+  const piercing=['marksman','railbreaker','phaser','storm'].includes(attacker.type);
+  const absorbed=Math.min(rawDmg,piercing?1:Math.min(2,ward.shieldReduce??2),ward.hp);
+  ward.hp-=absorbed;return Math.max(0,rawDmg-absorbed);
 }
 
 /* Painting board — BY RANK color */
@@ -2578,13 +2530,9 @@ function chooseBalancedEnemy(u, units, field, preferRanged){
   return chosen;
 }
 function pickTarget(u, units, field){
-  const forgeTarget=FFUnits.chooseForgeTarget(u,units,Date.now(),{distance:rectDistance});
-  if(forgeTarget){u.targetId=forgeTarget.id;return forgeTarget;}
-  const priority = strongestArmorTargetInRange(u, units);
-  if (priority){ u.targetId=priority.id; return priority; }
-  const current = units.find(v=>v.id===u.targetId && v.p!==u.p && v.hp>0);
-  if (current && rectDistance(u,current) <= Math.max(3,(u.range||1)+2)) return current;
-  return chooseBalancedEnemy(u,units,field,!!u.hunterRanged);
+  const chosen=FFUnits.chooseTacticalTarget(u,units,Date.now(),{distance:rectDistance});
+  if(chosen){u.targetId=chosen.id;return chosen;}
+  return chooseBalancedEnemy(u,units,field,false);
 }
 
 function nearestEnemyRangedPriority(u,units,field){
@@ -2618,36 +2566,16 @@ function nearbyCrowdPenalty(u, units, nx, ny){
   return penalty;
 }
 function stepToward(u,t,units){
-  const candidates = [
-    [u.x+1,u.y],[u.x-1,u.y],[u.x,u.y+1],[u.x,u.y-1]
-  ];
-  const legal = [];
-  for (const p of candidates){
-    if (!canMoveTo(u,units,p[0],p[1])) continue;
-    const probe = Object.assign({}, u, {x:p[0],y:p[1]});
-    legal.push({
-      x:p[0], y:p[1],
-      distance:rectDistance(probe,t),
-      crowd:nearbyCrowdPenalty(u,units,p[0],p[1]),
-      lane:Math.abs((p[0] + (unitSize(u)-1)/2) - (W-1)/2)
-    });
-  }
-  if (!legal.length) return false;
-  legal.sort((a,b)=>
-    (a.distance-b.distance) ||
-    (a.crowd-b.crowd) ||
-    (a.lane-b.lane) ||
-    (Math.random()-.5)
-  );
-  const best=legal[0];
-  u.x=best.x; u.y=best.y;
-  return true;
+  const tile=FFUnits.chooseCombatMove(u,t,units,{distance:rectDistance,canMoveTo,width:W});
+  if(!tile)return false;
+  u.x=tile.x;u.y=tile.y;return true;
 }
 function canStepNow(u, now){
+  if(u.illusion||(u.bindUntil||0)>now||(u.statusShockUntil||0)>now)return false;
   if (!u.nextStep || now>=u.nextStep){
-    const temporaryHaste=(u.swarmMoveUntil||0)>now&&u.swarmBaseSpd?Math.max(.5,u.swarmBaseSpd/Math.max(1,u.spd)):1;
-    u.nextStep = now + Math.round(MOVE_MS*temporaryHaste);
-    return true;
+    const mobility=Math.max(.6,1/(1+.18*Math.max(0,(u.spd||1)-1)));
+    const slowed=(u.slowUntil||0)>now?1.45:1;
+    u.nextStep=now+Math.round(MOVE_MS*mobility*slowed);return true;
   }
   return false;
 }
@@ -2930,7 +2858,10 @@ function wardAction(u, st, now){
 
 function applyDamage(victim, dmg, st){
   dmg=Math.max(0,Number(dmg)||0);
-  const now=Date.now(),beforeHp=Math.max(0,victim.hp),beforeShield=((victim.startShieldUntil||0)>now?victim.startShield||0:0)+((victim.comboShieldUntil||0)>now?victim.comboShield||0:0);
+  const now=Date.now(),beforeHp=Math.max(0,victim.hp);
+  // Clamp before absorption so several sources cannot absorb more than four.
+  if((victim.comboShieldUntil||0)>now)victim.comboShield=Math.min(victim.comboShield||0,Math.max(0,FFUnits.COMBAT_LIMITS.shieldCapacity-((victim.startShieldUntil||0)>now?victim.startShield||0:0)));
+  const beforeShield=((victim.startShieldUntil||0)>now?victim.startShield||0:0)+((victim.comboShieldUntil||0)>now?victim.comboShield||0:0);
   if((victim.startShieldUntil||0)>now&&(victim.startShield||0)>0){const absorbed=Math.min(dmg,victim.startShield);victim.startShield-=absorbed;dmg-=absorbed;}
   dmg=FFUnits.absorbForgeShield(victim,dmg,now);
   const afterShield=((victim.startShieldUntil||0)>now?victim.startShield||0:0)+((victim.comboShieldUntil||0)>now?victim.comboShield||0:0);
@@ -2958,7 +2889,7 @@ function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
         const attacker=opts&&opts.attacker;
         const marked=attacker?FFUnits.markedDamageBonus(attacker,hit,(opts&&opts.now)||Date.now(),{field:field},{distance:rectDistance}):0;
         const armorRound=attacker&&attacker.antiArmorRounds&&armorTypeFor(hit.type,hit)==="armored"?1:0;
-        const rd = reduceDamageForTarget(dmg+marked+armorRound, hit, field, opts);
+        const rd = reduceDamageForTarget(dmg+marked, hit, field, {...opts,attacker,secondary:true});
         applyDamage(hit, rd, {field:field});
         if(kn) tryKnock(x,y,hit,units,strong);
       }
@@ -2981,7 +2912,7 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
     const attacker=opts&&opts.attacker;
     const marked=attacker?FFUnits.markedDamageBonus(attacker,cur,(opts&&opts.now)||Date.now(),{field:field},{distance:rectDistance}):0;
     const armorRound=attacker&&attacker.antiArmorRounds&&armorTypeFor(cur.type,cur)==="armored"?1:0;
-    applyDamage(cur, reduceDamageForTarget(dmg+marked+armorRound, cur, field, opts), {field:field});
+    applyDamage(cur, reduceDamageForTarget(dmg+marked, cur, field, {...opts,attacker}), {field:field});
     hit.add(cur.id);
     let cand=null,bd=1e9;
     for(let i=0;i<units.length;i++){
@@ -2994,7 +2925,7 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   }
 }
 function attack(u, t, now, st){
-  if (u.illusion) return true;
+  if (u.illusion || (u.statusShockUntil||0)>now) return true;
   const effRange = (u.rangeDebuffUntil && u.rangeDebuffUntil > now) ? Math.max(1,(u.range||1)-1) : (u.range||1);
   const inRange = rectDistance(u,t) <= effRange;
   if (!inRange) return false;
@@ -3009,21 +2940,17 @@ function attack(u, t, now, st){
   if(firstSpellBoost)u.arcaneBatteryReady=false;
 
   function deal(victim, raw, isRanged){
-    let dmg = (raw|0)+firstSpellBoost+FFUnits.markedDamageBonus(u,victim,now,st,{distance:rectDistance});
-    if (u.legendary && u.type==="rifleman" && victim.lastDamagedAt) dmg += 1;
-    if (u.legendary && u.type==="miner" && !u.minerProc && (victim.range>1 || isSupportUnit(victim))){ dmg += 2; victim.bindUntil = Math.max(victim.bindUntil||0, now+700); u.minerProc = true; }
-    if (u.legendary && u.type==="marksman" && isSupportUnit(victim)) dmg += 1;
-    const attackerStrongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
-    const victimArmor = victim.armorType || armorTypeFor(victim.type, victim);
-    if (attackerStrongVs.includes(victimArmor)) dmg += 2;
-    if(u.antiArmorRounds&&victimArmor==="armored")dmg+=1;
-    if (isRanged){
-      dmg = applyWardShields(u, victim, dmg, st.field);
-      if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
-    }
-    dmg += Math.min(victim.armor||0,u.armorPierce||0);
-    dmg = reduceDamageForTarget(dmg, victim, st.field, {ignoreArmor:!!u.trueDamage});
-    const actualDamage=applyDamage(victim, dmg, st);
+    const protectedTarget=victim;
+    victim=FFUnits.interceptTarget(u,victim,st.field.units,now,{distance:rectDistance});
+    if(victim!==protectedTarget)forgeCombatHooks(st).event({kind:"shield",unitType:victim.type,sourceId:victim.id,targetId:protectedTarget.id,x:victim.x,y:victim.y,targetX:protectedTarget.x,targetY:protectedTarget.y,at:now});
+    let dmg=(raw|0)+firstSpellBoost+FFUnits.markedDamageBonus(u,victim,now,st,{distance:rectDistance});
+    if(u.legendary&&u.type==="rifleman"&&victim.lastDamagedAt)dmg+=1;
+    if(u.legendary&&u.type==="miner"&&!u.minerProc&&(victim.range>1||isSupportUnit(victim))){dmg+=1;victim.bindUntil=Math.max(victim.bindUntil||0,now+450);u.minerProc=true;}
+    if(isRanged)dmg=applyWardShields(u,victim,dmg,st.field);
+    const result=FFUnits.calculateCounterDamage(u,victim,dmg,{now,auraReduce:auraDamageReduceFor(victim,st.field),ignoreArmor:!!u.trueDamage});
+    const actualDamage=applyDamage(victim,result.damage,st);
+    if(result.penetration>0&&(victim.armor||0)>0)forgeCombatHooks(st).event({kind:"precision-hit",unitType:u.type,sourceId:u.id,targetId:victim.id,x:u.x,y:u.y,targetX:victim.x,targetY:victim.y,amount:actualDamage,at:now});
+    if(u.acid&&victim.hp>0){victim.corrosionUntil=Math.max(victim.corrosionUntil||0,now+3500);victim.woundUntil=Math.max(victim.woundUntil||0,now+2200);}
     FFUnits.siphonAfterDamage(u,victim,actualDamage,now,st,forgeCombatHooks(st));
   }
 
@@ -3088,7 +3015,7 @@ function attack(u, t, now, st){
     applyDamage(t, bonus, st);
   }
   if (u.executePct && t.hp > 0 && t.hp <= Math.floor(t.maxhp * u.executePct)){
-    applyDamage(t, t.hp, st);
+    applyDamage(t, Math.min(t.hp,u.legendary?3:2), st);
   }
   if (u.empShock && t.hp > 0){
     applyShockDebuff(st, t, now, u.shockDur || 1500);
@@ -3130,8 +3057,8 @@ function applyVguardRegen(u, st, now){
     if (!u.regenCd) u.regenCd = 2000;
     if (!u.nextRegen) u.nextRegen = 0;
     if (now >= u.nextRegen){
-      const raw = 2;
-      const amt = Math.max(1, Math.round(raw * healScale(u, now)));
+      const raw = 1;
+      const amt = Math.max(0, Math.floor(raw * healScale(u, now)));
       const before = u.hp;
       u.hp = Math.min(u.maxhp, u.hp + amt);
       if (u.hp > before){
@@ -3255,7 +3182,7 @@ function makeBattlePayload(field, battleTickId){
     schemaVersion:2,
     sessionKey:(S&&S.sessionKey)||undefined,
     battleTickId:battleTickId|0,
-    units:(cleanField.units||[]).filter(u=>u&&u.hp>0).map(compactUnitForSync),
+    units:FFDecks.sanitizeBattleUnits(cleanField.units,S).map(compactUnitForSync),
     temporalFields:cleanField.temporalFields||[],
     comboFields:cleanField.comboFields||[],
     poison:cleanField.poison||[],
@@ -3393,6 +3320,13 @@ async function processHostPhase(){
   try{
     const d=deepClone(S);
     const now=Date.now();
+    if(!d.decks&&d.factions?.p0&&d.factions?.p1){
+      const decks={p0:FFDecks.starterDeck(d.factions.p0),p1:FFDecks.starterDeck(d.factions.p1)};
+      const roster={p0:FFDecks.sanitizeRoster(d.roster?.p0,decks.p0),p1:FFDecks.sanitizeRoster(d.roster?.p1,decks.p1)};
+      const migrated={...d,decks,roster};
+      const currentPacks=['draft','draft-after','loser-bonus'].includes(d.phase)?{p0:packFor(roster.p0,d.factions.p0,'p0',migrated),p1:packFor(roster.p1,d.factions.p1,'p1',migrated)}:d.currentPacks;
+      await writeStatePatch({decks,roster,currentPacks,selections:{p0:[],p1:[]}});return;
+    }
     if(isLocalPractice() && ["draft","draft-after","loser-bonus"].includes(d.phase)){
       const side="p1",di=d.draftIndex|0,pack=d.currentPacks?.[side]||[];
       if(pack.length && d.selections?.[side]?.[di]==null && now>(d.phaseEndsAt||0)-7800){
@@ -3416,12 +3350,14 @@ async function processHostPhase(){
         fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
         fx.p1 = (d.factions && d.factions.p1) ? d.factions.p1 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
 
+        const decks=Object.fromEntries(['p0','p1'].map(side=>{const chosen=FFDecks.deckForState({...d,factions:fx},side);return [side,chosen?.faction===fx[side]?chosen:FFDecks.starterDeck(fx[side])];}));
+        const locked={...d,factions:fx,decks};
         await writeStatePatch({
-          factions:fx, phase:"draft", draftIndex:0,
+          factions:fx,decks, phase:"draft", draftIndex:0,
           selections:{p0:[],p1:[]},
           currentPacks:{
-            p0: packFor(d.roster?.p0||[],fx.p0,"p0",d),
-            p1: packFor(d.roster?.p1||[],fx.p1,"p1",d)
+            p0: packFor(d.roster?.p0||[],fx.p0,"p0",locked),
+            p1: packFor(d.roster?.p1||[],fx.p1,"p1",locked)
           },
           phaseEndsAt: now+10000,
           bonusFor:null
@@ -3464,7 +3400,7 @@ async function processHostPhase(){
           lives: d.lives || [4,4],
           roster: roster,
           field: fieldEmpty(),
-          factions: d.factions || {p0:null,p1:null},
+          factions: d.factions || {p0:null,p1:null},decks:d.decks,
           relics:draftState.relics,tactics:draftState.tactics,formations:draftState.formations,evolutions:draftState.evolutions,comboEnhancements:draftState.comboEnhancements,
           forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
@@ -3584,7 +3520,7 @@ async function processHostPhase(){
           lives: d.lives || [4,4],
           roster: roster,
           field: fieldEmpty(),
-          factions: d.factions || {p0:null,p1:null},
+          factions: d.factions || {p0:null,p1:null},decks:d.decks,
           relics:afterState.relics,tactics:afterState.tactics,formations:afterState.formations,evolutions:afterState.evolutions,comboEnhancements:afterState.comboEnhancements,
           forgeTiers:d.forgeTiers,collections:d.collections,mode:d.mode,ranked:d.ranked,missionId:d.missionId
         };
@@ -3676,6 +3612,7 @@ async function runBattle(initialField){
       }
     }
     if (!hasHostLease() || !S || S.phase!=="battle" || disposed) return;
+    hostBattleState.units=FFDecks.sanitizeBattleUnits(hostBattleState.units,S);
     hostBattleStartedAt=hostBattleState.startedAt||Date.now();
     hostBattleState.startedAt=hostBattleStartedAt;
     hostBattleTickId=Number.isFinite(hostBattleState.battleTickId)?hostBattleState.battleTickId:(Number.isFinite(B&&B.battleTickId)?B.battleTickId:0);
@@ -3716,14 +3653,16 @@ async function runBattle(initialField){
         applySuddenDeath(st,now);
       }
 
-      for (let i=0;i<units.length;i++){
-        const u=units[i];
+      const ordered=FFUnits.combatTurnOrder(units,now,st.field);
+      for (let i=0;i<ordered.length;i++){
+        const u=ordered[i];
         if (!u || u.hp<=0) continue;
         if (doLogic){
           healAction(u,st,now);
           wardAction(u,st,now);
           applyVguardRegen(u,st,now);
         }
+        if(doLogic)FFUnits.keepFiringDistance(u,units,now,forgeCombatHooks(st));
         const t=pickTarget(u,units,st.field);
         if (!t) continue;
         const attacked=attack(u,t,now,st);
@@ -3735,7 +3674,7 @@ async function runBattle(initialField){
             const t2=pickTarget(u,units,st.field);
             if (!t2) break;
             if (u.burrow) attemptBurrow(u,units,st,now);
-            if (u.viperLeap && isBacklineUnit(t2) && frontBlocked(u,units)){
+            if (u.viperLeap && isBacklineUnit(t2) && rectDistance(u,t2)>1){
               if (attemptViperLeap(u,units,st)){
                 if (rectDistance(u,t2)<=(u.range||1)) attack(u,t2,now,st);
                 continue;
@@ -3835,7 +3774,7 @@ function render(){
   if(lastVisualPhase==="battle"&&visualPhase!=="battle"&&serverBattleState)battlePresentationUntil=performance.now()+900;
   if(visualPhase==="battle")battlePresentationUntil=0;lastVisualPhase=visualPhase;
   $("overlay").style.opacity=performance.now()<battlePresentationUntil?"0":"";$("cardRow").style.visibility=performance.now()<battlePresentationUntil?"hidden":"";
-  if(expansionUI){const side=pKey(meIndex),faction=S?.factions?.[side];expansionUI.updateComboTracker({host:viewport,roster:S?.roster?.[side]||[],faction,availableTypes:(FACTIONS[faction]||[]).filter(key=>!TROOPS[key].unlockable||forgeProfile?.troops?.[key]?.unlocked),comboEnhancements:S?.comboEnhancements?.[side]||[]});}
+  if(expansionUI){const side=pKey(meIndex),faction=S?.factions?.[side];expansionUI.updateComboTracker({host:viewport,roster:S?.roster?.[side]||[],faction,availableTypes:FFDecks.deckForState(S,side)?.troops||[],comboEnhancements:S?.comboEnhancements?.[side]||[]});}
   const p0n=(S && S.players && S.players[0]) || "P0";
   const p1n=(S && S.players && S.players[1]) || "P1";
   const lives=(S && S.lives) || [4,4];
@@ -3844,8 +3783,9 @@ function render(){
   $("p0Badge").innerHTML = '<span class="'+rankClass(mmr[0])+'">'+escapeHtml(p0n)+'</span> ['+rankLabel(mmr[0])+' '+mmr[0]+'] — <span class="'+rankClass(mmr[0])+'">'+("❤".repeat(lives[0]))+'</span>';
   $("p1Badge").innerHTML = '<span class="'+rankClass(mmr[1])+'">'+escapeHtml(p1n)+'</span> ['+rankLabel(mmr[1])+' '+mmr[1]+'] — <span class="'+rankClass(mmr[1])+'">'+("❤".repeat(lives[1]))+'</span>';
 
+  for(const side of ["p0","p1"]){const deck=S?.decks?.[side];if(deck)$(side+"Badge").title=deck.name+" · "+deck.faction+" · "+deck.troops.map(key=>TROOPS[key]?.name||key).join(", ");}
   const phase=(S && S.phase) || "waiting";
-  $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
+  $("phaseBadge").textContent = phase==='faction-select'?'CHOOSE DECK':phase.replaceAll("-"," ").toUpperCase();
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   const tleft = draftish ? Math.max(0,((S && S.phaseEndsAt) || 0)-Date.now()) : 0;
   if (draftish){
@@ -3914,6 +3854,7 @@ function render(){
   if(S && S.mode && S.mode!=="pvp" && meIndex===0){
     $("p1Badge").textContent=p1n+" · AI · Estimated MMR "+mmr[1]+" — "+"❤".repeat(lives[1]);
   }
+  for(const side of ['p0','p1']){const deck=S?.decks?.[side];if(deck){const label=document.createElement('small');label.className='ff-match-deck';label.textContent=deck.name+' · '+deck.faction;$(side+'Badge').appendChild(label);}}
   if (!draftishPh){
     overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML="";
     guideBtn.style.display="none"; guideModal.style.display="none"; closeCardInfoModal();
@@ -3935,18 +3876,19 @@ function render(){
   const pickedIndex = (S && S.selections && S.selections[sk]) ? S.selections[sk][di] : null;
 
   if (phase==="faction-select"){
-    const already = S && S.factions && S.factions[sk];
+    const already = S?.decks?.[sk];
     if (already){
       row.style.display="none"; row.innerHTML="";
-      note.textContent="FACTION LOCKED: "+already;
+      note.textContent="DECK LOCKED: "+already.name+" · "+already.faction;
       note.style.display="block"; return;
     }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
-    ["Helions","Aesir","Vanir"].forEach(f=>{
+    FFDecks.normalizeDecks(forgeProfile?.decks).filter(deck=>FFDecks.validateDeck(deck,{unlockedTypes:unlockedForgeKeys()}).valid).forEach(deck=>{
+      const f=deck.faction;
       const el=document.createElement("div"); el.className="card faction-"+f;
-      const units=(FACTIONS[f]||[]).map(k=>TROOPS[k].name).join(" · "),factionImages=(FACTIONS[f]||[]).map(k=>troopImageTag(k,"faction-troop-image")).join("");
-      el.innerHTML='<div class="meta">FACTION</div><div class="icon factionIcon">'+factionImages+'</div><div class="title">'+f+'</div><div class="desc">'+units+'</div>';
-      el.onclick=()=> chooseFaction(f);
+      const units=deck.troops.map(k=>TROOPS[k].name).join(" · "),factionImages=deck.troops.map(k=>troopImageTag(k,"faction-troop-image")).join("");
+      el.innerHTML='<div class="meta">'+escapeHtml(f)+' · FIVE TROOPS</div><div class="icon factionIcon">'+factionImages+'</div><div class="title">'+escapeHtml(deck.name)+'</div><div class="desc">'+units+'</div>';
+      el.onclick=()=> chooseDeck(deck);
       row.appendChild(el);
     });
     return;
@@ -4092,7 +4034,7 @@ function render(){
     })(i);
     const artKey=c.key||c.for;
     const tier=forgeProfile?.troops?.[artKey]?.forgeTier||1;
-    expansionUI?.decorateDraftCard(el,{key:artKey,type:c.type==="special"?c.special:c.type,faction:TROOPS[artKey]?.faction||S.factions?.[sk],tier,recommended:recText,copies:myRoster.find(r=>r.type===artKey)?.count||0,detail:infoBody,card:c,roster:myRoster,evolutions:S.evolutions?.[sk]||{},comboEnhancements:S.comboEnhancements?.[sk]||[],availableTypes:(FACTIONS[S.factions?.[sk]]||[]).filter(key=>!TROOPS[key].unlockable||forgeProfile?.troops?.[key]?.unlocked)});
+    expansionUI?.decorateDraftCard(el,{key:artKey,type:c.type==="special"?c.special:c.type,faction:TROOPS[artKey]?.faction||S.factions?.[sk],tier,recommended:recText,copies:myRoster.find(r=>r.type===artKey)?.count||0,detail:infoBody,card:c,roster:myRoster,evolutions:S.evolutions?.[sk]||{},comboEnhancements:S.comboEnhancements?.[sk]||[],availableTypes:FFDecks.deckForState(S,sk)?.troops||[]});
     row.appendChild(el);
   }
   guideBtn.onclick = ()=>{ guideModal.style.display="block"; };
@@ -4100,17 +4042,20 @@ function render(){
 }
 
 /* -------- transactional player actions -------- */
-async function chooseFaction(fac){
-  if(!S || !ALL_FACTIONS.includes(fac)) return;
+async function chooseDeck(value){
+  const checked=FFDecks.validateDeck(value,{unlockedTypes:unlockedForgeKeys(),troops:TROOPS});
+  if(!S||!checked.valid)throw new Error(checked.errors.join(' '));
+  const deck=checked.deck,fac=deck.faction;
   if(isSecureMode()){
     if(secureRequestBusy)return;secureRequestBusy=true;
-    try{await adoptSecureResponse(await progression.joinPvp({lobbyId:gameId,faction:fac,ranked:requestedRanked}));startSecurePolling();}
+    try{await adoptSecureResponse(await progression.joinPvp({lobbyId:gameId,faction:fac,deck,ranked:requestedRanked}));startSecurePolling();}
     catch(error){expansionUI?.notify(error.message);}
     finally{secureRequestBusy=false;}return;
   }
   if(isLocalPractice()){
     if(S.phase!=="faction-select"||S.factions.p0)return;
-    await writeStatePatch({factions:{p0:fac,p1:localOpponent?.faction||ALL_FACTIONS[Math.floor(Math.random()*3)]}});return;
+    const enemyFaction=localOpponent?.faction||ALL_FACTIONS[Math.floor(Math.random()*3)];
+    await writeStatePatch({factions:{p0:fac,p1:enemyFaction},decks:{p0:deck,p1:S.decks?.p1||FFDecks.starterDeck(enemyFaction)}});return;
   }
   const sk=pKey(meIndex);
   try{
@@ -4124,12 +4069,14 @@ async function chooseFaction(fac){
       if (phase !== "faction-select") return;
       const newFacs = data.factions || {p0:null,p1:null};
       newFacs[sk] = fac;
-      tx.update(stateRef, { factions: newFacs });
+      const decks=data.decks||{p0:null,p1:null};decks[sk]=deck;
+      tx.update(stateRef, { factions: newFacs,decks });
     });
   }catch(e){
-    console.error("chooseFaction failed", e);
+    console.error("chooseDeck failed", e);
   }
 }
+async function chooseFaction(fac){return chooseDeck(FFDecks.starterDeck(fac));}
 async function chooseCard(i){
   if(!S) return;
   const activePack=S.currentPacks?.[pKey(meIndex)]||[];
@@ -4378,8 +4325,13 @@ window.addEventListener("pagehide", cleanupGameRuntime, {once:true});
 window.addEventListener("beforeunload", cleanupGameRuntime, {once:true});
 
 /* ---------- Expansion orchestration ---------- */
-const defaultForgeProfile = ()=>({username,crowncouncilElo:1000,forgeDust:0,troops:Object.fromEntries(Object.entries(TROOPS).map(([key,troop])=>[key,{forgeTier:1,cards:0,unlocked:!troop.unlockable}])),campaign:{missions:{}},wins:0,losses:0});
+const defaultForgeProfile = ()=>({username,crowncouncilElo:1000,forgeDust:0,troops:Object.fromEntries(Object.entries(TROOPS).map(([key,troop])=>[key,{forgeTier:1,cards:0,unlocked:!troop.unlockable}])),campaign:{missions:{}},decks:FFDecks.normalizeDecks([]),selectedDeckId:'starter-vanir',wins:0,losses:0});
 const unlockedForgeKeys=()=>Object.keys(forgeProfile?.troops||{}).filter(key=>forgeProfile.troops[key].unlocked);
+function selectedForgeDeck(value){
+  const deck=typeof value==='string'?FFDecks.starterDeck(value):value||FFDecks.normalizeDecks(forgeProfile?.decks).find(deck=>deck.id===forgeProfile?.selectedDeckId)||FFDecks.starterDeck('Vanir');
+  const checked=FFDecks.validateDeck(deck,{unlockedTypes:unlockedForgeKeys(),troops:TROOPS});
+  if(!checked.valid)throw new Error(checked.errors.join(' '));return checked.deck;
+}
 function afterBattlePresentation(callback){
   const remaining=Math.max(0,battlePresentationUntil-performance.now());
   if(remaining)setTimeout(callback,remaining);else callback();
@@ -4397,7 +4349,8 @@ function returnToForgeMenu(){
   resetActiveRuntime();executionMode="menu";S=null;isHost=false;updateAssetGate();$("overlay").style.display="none";$("cardRow").style.display="none";
   expansionUI?.showMenu();
 }
-async function startPractice(faction="Vanir",missionId=null,{saveProgress=false,mode="bot"}={}){
+async function startPractice(value,missionId=null,{saveProgress=false,mode="bot"}={}){
+  const deck=selectedForgeDeck(value),faction=deck.faction;
   resetActiveRuntime();executionMode="practice";isHost=true;meIndex=0;
   currentMission=missionId?(String(missionId).startsWith("endless-")?createEndlessMission(Number(String(missionId).split("-")[1])||1):getMission(missionId)):null;
   const ai=estimatedOpponent(forgeProfile?.crowncouncilElo||1000,currentMission?.difficulty||.55);
@@ -4408,9 +4361,10 @@ async function startPractice(faction="Vanir",missionId=null,{saveProgress=false,
   state.forgeTiers={p0:saveProgress?Object.fromEntries(Object.entries(forgeProfile?.troops||{}).map(([key,unit])=>[key,unit.forgeTier])):{},p1:{}};
   state.soloProgress=saveProgress;state.soloMode=mode;
   state.factions={p0:null,p1:localOpponent.faction};
+  state.decks={p0:null,p1:currentMission?.deck||currentMission?.opponent?.deck||chooseAIDeck(localOpponent.faction,deck,currentMission?.difficulty||.65,Math.random)};
   if(currentMission){
-    state.roster.p0=playerStartingRoster(faction,currentMission);
-    state.roster.p1=deepClone(currentMission.startingRoster||[]);
+    state.roster.p0=playerStartingRoster(faction,currentMission,deck);
+    state.roster.p1=FFDecks.sanitizeRoster(currentMission.startingRoster||[],state.decks.p1);
     state.collections.p1.unlocked=currentMission.opponent.unlockedTroops||[];
     state.formations.p1=currentMission.opponent.formation||"balanced";
     state.relics.p1=deepClone(currentMission.opponent.relics||[]);
@@ -4418,7 +4372,7 @@ async function startPractice(faction="Vanir",missionId=null,{saveProgress=false,
   }
   S=state;lobbyPlayers=state.players;expansionUI?.hide();spriteRenderer?.paintTerrain?.(cellsEl,viewport,currentMission?.theme||"contested-forge");
   await startTroopImagePreload();ensureVisualLoop();updateAssetGate();
-  await chooseFaction(faction);startHostLoops();render();
+  await chooseDeck(deck);startHostLoops();render();
   if(!saveProgress)expansionUI?.notify("Practice match · no MMR changes");
 }
 async function showSoloResults(state){
@@ -4507,26 +4461,29 @@ function startSecurePolling(){
     finally{secureRequestBusy=false;}
   },1500);
 }
-async function startProgressionMatch(mode,missionId,faction="Vanir"){
+async function startProgressionMatch(mode,missionId,value){
   if(profileLoadPromise)await profileLoadPromise;
   if(!progression&&auth.currentUser)await restoreExpansionProfile(auth.currentUser);
+  const deck=selectedForgeDeck(value),faction=deck.faction;
   if(!progression){
-    if(mode==="bot")return startPractice(faction);
+    if(mode==="bot")return startPractice(deck);
     throw new Error("Firebase is still connecting. Try starting the campaign again in a moment.");
   }
   if(!FACTION_FORGE_CONFIG.progressionApiUrl){
     const mission=soloMission(forgeProfile,mode,missionId);
-    return startPractice(faction,mission?.id||null,{saveProgress:true,mode});
+    return startPractice(deck,mission?.id||null,{saveProgress:true,mode});
   }
-  if(!forgeProfile?.uid){return startPractice(faction,mode==="campaign"?missionId:null);}
+  if(!forgeProfile?.uid){return startPractice(deck,mode==="campaign"?missionId:null);}
   try{
     resetActiveRuntime();executionMode="secure";isHost=false;
-    const response=await progression.startSolo({mode,missionId,faction});
+    const response=await progression.startSolo({mode,missionId,faction,deck});
     spriteRenderer?.paintTerrain?.(cellsEl,viewport,(mode==="campaign"?getMission(missionId)?.theme:null)||"contested-forge");
     await adoptSecureResponse(response);ensureVisualLoop();startSecurePolling();
   }catch(error){returnToForgeMenu();expansionUI?.notify(error.message);throw error;}
 }
-function beginMatchmaking(){
+async function beginMatchmaking(value){
+  const deck=selectedForgeDeck(value);
+  if(progression?.selectDeck&&forgeProfile?.selectedDeckId!==deck.id){const response=await progression.selectDeck(deck.id);forgeProfile=response.profile||forgeProfile;}
   resetActiveRuntime();executionMode="menu";S=null;updateAssetGate();
   const matchUsername=forgeProfile?.uid?forgeProfile.username:username;
   const onBrowse=()=>{matchSearch?.stop();location.href="../lobby/lobby.html?view=multiplayer&game=crowncouncil";};
@@ -4568,6 +4525,8 @@ function initializeExpansion(){
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
   initializeBattleSettings();
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
+    onSaveDeck:async deck=>{if(!progression?.saveDeck)throw new Error('Connect your profile to save a deck.');const response=await progression.saveDeck(deck);forgeProfile=response.profile;return response;},
+    onSelectDeck:async deck=>{if(progression?.selectDeck){const response=await progression.selectDeck(deck.id);forgeProfile=response.profile;return response;}forgeProfile={...forgeProfile,selectedDeckId:deck.id};return {profile:forgeProfile};},
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
     canSignIn:()=>FACTION_FORGE_CONFIG.progressionApiUrl?!forgeProfile?.uid:auth.currentUser?.isAnonymous===true,

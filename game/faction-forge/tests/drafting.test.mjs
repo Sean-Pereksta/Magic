@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import * as units from '../units.js';
 import {COMBOS} from '../combos.js';
+import {starterDeck,FACTION_TROOPS,rosterCount} from '../decks.js';
 import {EVOLUTIONS} from '../evolutions.js';
 import {createDraftPack,applyDraftPick,draftCardPresentation,relevantComboStates,DRAFT_WEIGHTS} from '../drafting.js';
 import {scoreAIDraft,chooseAIDraft,AI_PLAYSTYLES,practiceOpponent} from '../campaign.js';
@@ -15,17 +16,16 @@ const troops=context.TROOPS;
 units.installUnits({TROOPS:troops,FACTIONS:{Vanir:[],Aesir:[],Helions:[]}});
 const types=faction=>Object.keys(troops).filter(key=>troops[key].faction===faction);
 const rows=(keys,lvl=1)=>keys.map(type=>({type,count:1,lvl}));
-const options=(faction,roster=[])=>({troops,faction,roster,availableTypes:types(faction)});
+const deckWith=(faction,keys=[])=>({id:'test-'+faction,name:'Test deck',faction,troops:[...new Set([...keys,...starterDeck(faction).troops,...FACTION_TROOPS[faction]])].slice(0,5)});
+const options=(faction,roster=[],deck=deckWith(faction,roster.map(r=>r.type)))=>({troops,faction,deck,roster,availableTypes:deck.troops});
 
-test('all 32 troops can recruit, upgrade and choose two exclusive evolutions without using collection tiers',()=>{
+test('all 32 troops can recruit, upgrade and specialize within a valid five-type deck',()=>{
   assert.equal(Object.keys(troops).length,32);
-  for(const faction of ['Vanir','Aesir','Helions']){
-    const roster=rows(types(faction)),seen=new Set();
-    for(let seed=0;seed<450;seed++)for(const card of createDraftPack({...options(faction,roster),forgeTier:3},rng(faction+seed)))seen.add(card.type==='special'?'upgrade:'+card.for:card.type+':'+card.key+':'+(card.path||''));
-    for(const key of types(faction)){
-      assert.ok(seen.has('troop:'+key+':'),key+' recruits');assert.ok(seen.has('upgrade:'+key),key+' upgrades');
-      for(const path of ['a','b'])assert.ok(seen.has('evolution:'+key+':'+path),key+' '+path);
-    }
+  for(const [key,troop] of Object.entries(troops)){
+    const opts=options(troop.faction,rows([key])),seen=new Set();
+    for(let seed=0;seed<250;seed++)for(const card of createDraftPack(opts,rng(key+seed)))seen.add(card.type==='special'?'upgrade:'+card.for:card.type+':'+card.key+':'+(card.path||''));
+    assert.ok(seen.has('troop:'+key+':'),key+' recruits');assert.ok(seen.has('upgrade:'+key),key+' upgrades');
+    for(const path of ['a','b'])assert.ok(seen.has('evolution:'+key+':'+path),key+' '+path);
   }
 });
 
@@ -39,54 +39,13 @@ test('issued choices remain faction legal, owned upgrades are below III, and pat
   assert.deepEqual(createDraftPack({...opts,availableTypes:[]},rng('none')),[]);
 });
 
-test('initial packs recruit troops and mature packs keep actual troops near two thirds of choices',()=>{
-  for(let seed=0;seed<200;seed++){const pack=createDraftPack(options('Vanir'),rng('opening'+seed));assert.ok(pack.filter(card=>card.type==='troop').length>=2);assert.ok(pack.every(card=>!['evolution','combo','special'].includes(card.type)));}
-  for(const faction of ['Vanir','Aesir','Helions']){
-    const counts=Object.fromEntries(Object.keys(DRAFT_WEIGHTS).map(category=>[category,0])),troopSlots=[0,0,0];
-    for(let seed=0;seed<3000;seed++){
-      const pack=createDraftPack(options(faction,rows(types(faction))),rng('distribution-'+faction+'-'+seed));
-      assert.equal(pack.length,3);assert.ok(pack.some(card=>card.type==='troop'));
-      pack.forEach((card,index)=>{counts[card.draftCategory]++;if(card.type==='troop')troopSlots[index]++;});
-    }
-    const total=Object.values(counts).reduce((sum,count)=>sum+count,0),troopShare=counts.troop/total;
-    assert.ok(troopShare>=.65&&troopShare<=.70,faction+' actual troop share '+troopShare);
-    assert.ok(counts.troop>total-counts.troop,faction+' recruits outnumber all enhancements together');
-    for(const [category,target]of Object.entries(DRAFT_WEIGHTS))assert.ok(Math.abs(counts[category]/total*100-target)<3,faction+' '+category+': '+counts[category]/total*100);
-    assert.ok(troopSlots.every(count=>count>0&&count<3000),'troops can appear or be absent in every slot');
-  }
-});
-
-test('seeded empty, partial, fully owned and fully upgraded rosters keep troop choices legal and available',()=>{
-  const cardId=card=>card.type==='troop'?'troop:'+card.key:card.type==='special'?'upgrade:'+card.for:card.type+':'+card.key;
-  for(const faction of ['Vanir','Aesir','Helions']){
-    const all=types(faction),enhanced=COMBOS.filter(combo=>combo.faction===faction).map(combo=>combo.id);
-    for(const [label,roster,evolutions,comboEnhancements] of [
-      ['empty',[],{},[]],['partial',rows(all.slice(0,3)),{},[]],['collected',rows(all),{},[]],
-      ['upgraded',rows(all,3),Object.fromEntries(all.map(key=>[key,'b'])),enhanced]
-    ]){
-      const opts={...options(faction,roster),evolutions,comboEnhancements},counts={troop:0,enhancement:0};
-      for(let seed=0;seed<500;seed++){
-        const key=label+'-'+faction+'-'+seed,pack=createDraftPack(opts,rng(key));
-        assert.deepEqual(pack,createDraftPack(opts,rng(key)),key+' is deterministic');
-        assert.equal(pack.length,3);assert.equal(new Set(pack.map(cardId)).size,3);assert.ok(pack.some(card=>card.type==='troop'));
-        for(const card of pack){
-          if(card.type==='troop'){counts.troop++;assert.equal(card.draftCategory,'troop');assert.ok(all.includes(card.key));}
-          else counts.enhancement++;
-          if(card.type==='special')assert.ok(roster.some(row=>row.type===card.for&&row.lvl<3));
-          if(card.type==='evolution'){assert.ok(roster.some(row=>row.type===card.for));assert.ok(EVOLUTIONS[card.for]?.[card.path]);assert.ok(!evolutions[card.for]);}
-          if(card.type==='combo'){assert.ok(relevantComboStates(roster,faction,{availableTypes:all,comboEnhancements,limit:100}).some(combo=>combo.id===card.key&&!combo.missing.length));assert.ok(!comboEnhancements.includes(card.key));}
-          if(label==='upgraded')assert.ok(!['special','evolution','combo'].includes(card.type));
-        }
-      }
-      assert.ok(counts.troop>counts.enhancement,label+' '+faction+' troop majority');
-    }
-    const narrow={...options(faction,rows([all[0]])),availableTypes:[all[0],'locked-or-missing',...types(faction==='Vanir'?'Aesir':'Vanir')]};
-    for(let seed=0;seed<50;seed++){
-      const pack=createDraftPack(narrow,rng('narrow-'+faction+'-'+seed));
-      assert.equal(pack.filter(card=>card.type==='troop').length,1);
-      assert.ok(pack.filter(card=>card.type==='troop').every(card=>card.key===all[0]));
-    }
-    assert.deepEqual(createDraftPack({...options(faction),availableTypes:[]},rng('locked')),[]);
+test('empty, partial, full and exhausted five-unit teams always receive legal usable deterministic choices',()=>{
+  for(const faction of ['Vanir','Aesir','Helions'])for(const count of [0,2,5])for(const lvl of [1,2,3])for(let seed=0;seed<100;seed++){
+    const deck=starterDeck(faction),roster=rows(deck.troops.slice(0,count),lvl),opts={...options(faction,roster,deck),evolutions:lvl===3?Object.fromEntries(deck.troops.map(key=>[key,'b'])):{},comboEnhancements:lvl===3?COMBOS.map(c=>c.id):[]};
+    const pack=createDraftPack(opts,rng(seed));assert.equal(pack.length,3);assert.deepEqual(pack,createDraftPack(opts,rng(seed)));
+    for(const card of pack){if(card.type==='troop'){assert.ok(count<5);assert.ok(deck.troops.includes(card.key));}if(card.for)assert.ok(deck.troops.includes(card.for));if(card.type==='combo')assert.ok(COMBOS.find(c=>c.id===card.key).units.every(k=>deck.troops.includes(k)));}
+    if(count===0)assert.ok(pack.filter(c=>c.type==='troop').length>=2);
+    if(count===5)assert.ok(pack.every(c=>c.type!=='troop'));
   }
 });
 
@@ -94,7 +53,7 @@ test('missing combo partners stay in the recruitment pool and can still complete
   for(const combo of COMBOS){
     if(new Set(combo.units).size<2)continue;
     const missing=combo.units.at(-1),roster=rows(combo.units.filter(key=>key!==missing)),seen=[];
-    for(let seed=0;seed<150;seed++)for(const card of createDraftPack(options(combo.faction,roster),rng(combo.id+'-partner-'+seed)))if(card.type==='troop'&&card.key===missing)seen.push(card);
+    for(let seed=0;seed<150;seed++)for(const card of createDraftPack(options(combo.faction,roster,deckWith(combo.faction,combo.units)),rng(combo.id+'-partner-'+seed)))if(card.type==='troop'&&card.key===missing)seen.push(card);
     assert.ok(seen.length,combo.id+' partner remains draftable');
     assert.ok(seen.every(card=>card.draftCategory==='troop'));
     assert.ok(seen.some(card=>draftCardPresentation(card,roster,{faction:combo.faction,troops,availableTypes:types(combo.faction)}).comboPreview.some(preview=>preview.id===combo.id&&preview.unlocks)),combo.id+' partner preview');
@@ -108,12 +67,12 @@ test('evolution selections raise I to II once, preserve rank III, reject stale p
   applyDraftPick(state,'p0',{type:'evolution',key:'storm',path:'a'});assert.equal(state.evolutions.p0.storm,'b');
   state.roster.p0[0].lvl=3;delete state.evolutions.p0.storm;applyDraftPick(state,'p0',{type:'evolution',key:'storm',path:'a'});assert.equal(state.roster.p0[0].lvl,3);
   applyDraftPick(state,'p0',{type:'evolution',key:'guardian',path:'a'});assert.equal(state.evolutions.p0.guardian,undefined);
-  assert.deepEqual(profile,snapshot);assert.equal(applyDraftPick(state,'p0',{type:'special',special:'double',for:'storm'}),false,'old issued cards retain legacy processing');
+  assert.deepEqual(profile,snapshot);assert.equal(applyDraftPick(state,'p0',{type:'special',special:'double',for:'storm'}),true,'stale issued cards use shared bounded processing');
 });
 
 test('every faction combo has a relevant partner preview and a legal enhancement with no duplicate unlock',()=>{
   for(const combo of COMBOS){
-    const roster=rows([...new Set(combo.units)]),state={factions:{p0:combo.faction},roster:{p0:roster,p1:[]}};
+    const roster=rows(combo.units),state={factions:{p0:combo.faction},decks:{p0:deckWith(combo.faction,combo.units)},roster:{p0:roster,p1:[]}};
     assert.equal(applyDraftPick(state,'p0',{type:'combo',key:combo.id}),true);assert.deepEqual(state.comboEnhancements.p0,[combo.id]);
     applyDraftPick(state,'p0',{type:'combo',key:combo.id});assert.deepEqual(state.comboEnhancements.p0,[combo.id]);
     const tracker=relevantComboStates(roster,combo.faction,{availableTypes:types(combo.faction),limit:20});assert.ok(tracker.some(value=>value.id===combo.id&&value.level===1),combo.id);
@@ -134,10 +93,10 @@ test('card metadata describes current and resulting battle ranks and the selecte
 test('authoritative and local draft helpers issue identical packs and persist new choices identically',async()=>{
   const {loadModules,createCombatAdapter}=require('../../../server/faction-forge/simulator.cjs'),modules=await loadModules();
   const roster=rows(['vguard','vrocket','suppressor'],1),all=types('Vanir');
-  const state={factions:{p0:'Vanir',p1:'Helions'},roster:{p0:roster,p1:[]},evolutions:{p0:{vguard:'b'},p1:{}},comboEnhancements:{p0:[],p1:[]},relics:{p0:['anti_armor_rounds'],p1:[]},tactics:{p0:['bodyguard'],p1:[]},formations:{p0:'wide',p1:'balanced'},profiles:{p0:{troops:Object.fromEntries(all.map(key=>[key,{unlocked:true}]))}}};
+  const state={factions:{p0:'Vanir',p1:'Helions'},decks:{p0:starterDeck('Vanir'),p1:starterDeck('Helions')},roster:{p0:roster,p1:[]},evolutions:{p0:{vguard:'b'},p1:{}},comboEnhancements:{p0:[],p1:[]},relics:{p0:['anti_armor_rounds'],p1:[]},tactics:{p0:['bodyguard'],p1:[]},formations:{p0:'wide',p1:'balanced'},profiles:{p0:{troops:Object.fromEntries(all.map(key=>[key,{unlocked:true}]))}}};
   for(let seed=0;seed<20;seed++){
     const adapter=createCombatAdapter({seed:'shared-draft'+seed,modules}),issued=adapter.pack(state,'p0',all);
-    const expected=createDraftPack({...options('Vanir',roster),evolutions:state.evolutions.p0,comboEnhancements:[],ownedRelics:state.relics.p0,ownedTactics:state.tactics.p0,formation:'wide'},rng('shared-draft'+seed));
+    const expected=createDraftPack({...options('Vanir',roster,starterDeck('Vanir')),evolutions:state.evolutions.p0,comboEnhancements:[],ownedRelics:state.relics.p0,ownedTactics:state.tactics.p0,formation:'wide'},rng('shared-draft'+seed));
     assert.deepEqual(issued,expected);
   }
   for(const card of [{type:'evolution',key:'vrocket',for:'vrocket',path:'b'},{type:'combo',key:'suppression-bombardment'}]){

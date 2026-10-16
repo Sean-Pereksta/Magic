@@ -2,6 +2,7 @@
  * tiers never determine battle rank, evolution eligibility, or combo level. */
 import {COMBOS,comboStatus} from './combos.js';
 import {EVOLUTIONS,RANK_ENHANCEMENTS,evolutionDescription} from './evolutions.js';
+import {starterDeck,validateDeck,deckForState,sanitizeRoster,rosterCount,MAX_ACTIVE_UNITS} from './decks.js';
 
 export const DRAFT_WEIGHTS=Object.freeze({troop:65,upgrade:15,evolution:10,combo:6,legacy:4});
 export const LEGACY_DRAFT_CARDS=Object.freeze([
@@ -45,18 +46,19 @@ export function relevantComboStates(roster,faction,{availableTypes,comboEnhancem
   ).sort((a,b)=>(a.missing?.length||0)-(b.missing?.length||0)||(b.level||0)-(a.level||0)||a.id.localeCompare(b.id)).slice(0,limit);
 }
 
-/** Recruitment stays the majority even for a mature army. Rank upgrades,
- * specializations and attachments share a smaller budget, independent of roster
- * size. Every pack retains a real troop choice; locked pools redistribute. */
-export function createDraftPack({roster=[],faction,availableTypes=[],troops={},evolutions={},comboEnhancements=[],ownedRelics=[],ownedTactics=[],formation='balanced',size=3}={},rng=Math.random){
-  const available=unique(availableTypes).filter(key=>troops[key]&&troops[key].faction===faction);
+/** Recruits dominate while slots remain; full teams develop ranks, paths and
+ * combinations. Formation changes remain available after all upgrades. */
+export function createDraftPack({roster=[],faction,deck=starterDeck(faction),availableTypes=deck?.troops||[],troops={},evolutions={},comboEnhancements=[],ownedRelics=[],ownedTactics=[],formation='balanced',size=3}={},rng=Math.random){
+  if(!validateDeck(deck).valid||deck.faction!==faction)return [];
+  roster=sanitizeRoster(roster,deck);
+  const available=unique(availableTypes).filter(key=>deck.troops.includes(key)&&troops[key]&&troops[key].faction===faction);
   if(!available.length)return [];
   const allowed=new Set(available),owned=roster.filter(r=>r.count>0&&allowed.has(r.type));
   const name=key=>troops[key]?.name||key;
   const relevant=relevantComboStates(roster,faction,{availableTypes:available,comboEnhancements,limit:100});
   const partners=new Map();
   for(const combo of relevant)if((combo.missing||[]).length===1&&!partners.has(combo.missing[0]))partners.set(combo.missing[0],combo);
-  const recruitment=available.map(key=>{
+  const recruitment=(rosterCount(roster)<MAX_ACTIVE_UNITS?available:[]).map(key=>{
     const partner=partners.get(key);
     return {type:'troop',key,name:name(key),role:troops[key].role,draftCategory:'troop',
       ...(partner?{comboId:partner.id}:{}),
@@ -74,7 +76,7 @@ export function createDraftPack({roster=[],faction,availableTypes=[],troops={},e
     if(!pools.length)break;
     // Reserve a troop only if the other choices used the enhancement budget.
     // Ordinary sampling keeps recruits in any slot rather than fixing slot one.
-    const requireTroop=selected.length===desired-1&&!selected.some(card=>card.type==='troop');
+    const requireTroop=recruitment.length>0&&selected.length===desired-1&&!selected.some(card=>card.type==='troop');
     const pool=sample(requireTroop?pools.filter(value=>value.category==='troop'):pools,rng,value=>DRAFT_WEIGHTS[value.category]);
     const card=sample(pool.cards,rng,value=>{
       if(value.type==='troop')return value.comboId?1.8:current(roster,value.key)?1.2:1.5;
@@ -87,20 +89,37 @@ export function createDraftPack({roster=[],faction,availableTypes=[],troops={},e
   return selected;
 }
 
-/** Returns true for new card kinds (including rejected stale cards). Older
- * troop, upgrade, double and strategy cards retain their original semantics. */
+/** All card kinds, including old double cards, use the same bounded rules.
+ * Rejected stale cards are consumed without falling through to legacy logic. */
 export function applyDraftPick(state,side,card){
   if(!state||!['p0','p1'].includes(side)||!card)return false;
-  if(card.type!=='evolution'&&card.type!=='combo')return false;
-  const roster=state.roster?.[side]||[],key=card.for||card.key,own=current(roster,key);
+  const deck=deckForState(state,side);
+  if(!deck)return true;
+  state.roster||={p0:[],p1:[]};
+  const roster=state.roster[side]=sanitizeRoster(state.roster[side]||[],deck),key=card.for||card.key,own=current(roster,key);
+  const allowed=deck.troops.includes(key);
+  if(card.type==='troop'){
+    if(allowed&&rosterCount(roster)<MAX_ACTIVE_UNITS){if(own)own.count++;else roster.push({type:key,lvl:1,count:1});}
+  }else if(card.type==='special'||card.type==='upgrade'){
+    if(!allowed||!own)return true;
+    if(card.type==='upgrade'||card.special==='upgrade')own.lvl=Math.min(3,rank(own.lvl)+1);
+    if(card.special==='double')own.count+=Math.min(own.count,MAX_ACTIVE_UNITS-rosterCount(roster));
+  }else if(card.type==='relic'||card.type==='tactic'){
+    if(!LEGACY_DRAFT_CARDS.some(value=>value.type===card.type&&value.key===key))return true;
+    const field=card.type==='relic'?'relics':'tactics';state[field]||={p0:[],p1:[]};state[field][side]||=[];
+    if(!state[field][side].includes(key))state[field][side].push(key);
+  }else if(card.type==='formation'){
+    if(key!=='balanced'&&!LEGACY_DRAFT_CARDS.some(value=>value.type==='formation'&&value.key===key))return true;
+    state.formations||={p0:'balanced',p1:'balanced'};state.formations[side]=key;
+  }else
   if(card.type==='evolution'){
-    if(!own||!EVOLUTIONS[key]?.[card.path])return true;
+    if(!allowed||!own||!EVOLUTIONS[key]?.[card.path])return true;
     const all=state.evolutions||(state.evolutions={p0:{},p1:{}}),paths=all[side]||(all[side]={});
     if(paths[key])return true;
     paths[key]=card.path;own.lvl=Math.max(2,rank(own.lvl));
-  }else{
+  }else if(card.type==='combo'){
     const combo=COMBOS.find(combo=>combo.id===card.key&&combo.faction===state.factions?.[side]);
-    if(!combo)return true;
+    if(!combo||!combo.units.every(type=>deck.troops.includes(type)))return true;
     const status=comboStatus(roster,combo.faction,[]).find(value=>value.id===combo.id);
     if(!status||status.missing?.length)return true;
     const all=state.comboEnhancements||(state.comboEnhancements={p0:[],p1:[]}),enhanced=all[side]||(all[side]=[]);

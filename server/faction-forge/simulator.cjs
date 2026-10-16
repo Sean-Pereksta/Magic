@@ -54,8 +54,9 @@ async function loadModules() {
     import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/units.js')).href),
     import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/campaign.js')).href),
     import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/drafting.js')).href),
-    import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/config.js')).href)
-  ]).then(([units,campaign,drafting,config])=>({units,campaign,drafting,config}));
+    import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/config.js')).href),
+    import(pathToFileURL(path.resolve(__dirname,'../../game/faction-forge/decks.js')).href)
+  ]).then(([units,campaign,drafting,config,decks])=>({units,campaign,drafting,config,decks}));
   return modulesPromise;
 }
 function createCombatAdapter({seed,modules,html=fs.readFileSync(HTML_PATH,'utf8')}) {
@@ -65,7 +66,7 @@ function createCombatAdapter({seed,modules,html=fs.readFileSync(HTML_PATH,'utf8'
   const context=vm.createContext({
     Math:math,Date:VirtualDate,crypto:{randomUUID:()=>`sim-${++serial}`},
     FFUnits:modules?.units || {}, FFCampaign:modules?.campaign || {},
-    FFDraft:modules?.drafting || {}, FACTION_FORGE_CONFIG:modules?.config?.FACTION_FORGE_CONFIG || {},
+    FFDraft:modules?.drafting || {}, FFDecks:modules?.decks || {}, FACTION_FORGE_CONFIG:modules?.config?.FACTION_FORGE_CONFIG || {},
     ...(modules?.campaign||{}),
     console:{warn(){},log(){}}, structuredClone:clone,
     ffProfile:null,ffRanked:false,
@@ -87,11 +88,15 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
   context.__state=null;
   function run(source, timeout=5000) { return vm.runInContext(source,context,{timeout}); }
   return {
-    version:['units.js','combos.js','evolutions.js','drafting.js','campaign.js','config.js'].reduce((hash,file)=>hash.update(fs.readFileSync(path.resolve(__dirname,'../../game/faction-forge',file))),createHash('sha256').update(setup)).digest('hex').slice(0,20),
+    version:['units.js','combos.js','evolutions.js','combat-rules.js','decks.js','drafting.js','campaign.js','config.js'].reduce((hash,file)=>hash.update(fs.readFileSync(path.resolve(__dirname,'../../game/faction-forge',file))),createHash('sha256').update(setup)).digest('hex').slice(0,20),
     troops:clone(context.core.TROOPS),
     pack(state,side,unlocked) {
       context.__state=clone(state); context.__side=side;context.__unlocked=unlocked||[];
-      return clone(run(`S=__state;(()=>{const faction=S.factions[__side],prior=FACTIONS[faction];FACTIONS[faction]=prior.filter(k=>__unlocked.includes(k));try{return packFor(S.roster[__side],faction)}finally{FACTIONS[faction]=prior}})()`));
+      context.__state.collections=context.__state.collections||{};
+      const prior=context.__state.collections[side]||{},troops={...(prior.troops||{})};
+      for(const key of Object.keys(context.core.TROOPS))troops[key]={...(troops[key]||{}),unlocked:context.__unlocked.includes(key)};
+      context.__state.collections[side]={...prior,troops,unlocked:context.__unlocked};
+      return clone(run(`S=__state;(()=>{const faction=S.factions[__side],prior=FACTIONS[faction];FACTIONS[faction]=prior.filter(k=>__unlocked.includes(k));try{return packFor(S.roster[__side],faction,__side)}finally{FACTIONS[faction]=prior}})()`));
     },
     pick(state,side,card) {
       context.__state=clone(state); context.__side=side;context.__card=clone(card);
@@ -100,7 +105,7 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
     aiPick(pack,state,side,difficulty) {
       if (modules?.campaign?.chooseAIDraft) {
         const enemy=side==='p0'?'p1':'p0';
-        return modules.campaign.chooseAIDraft(pack,{myRoster:state.roster[side],enemyRoster:state.roster[enemy],formation:state.formations[side],myTactics:state.tactics[side],myRelics:state.relics[side],enemyRelics:state.relics[enemy],evolutions:state.evolutions?.[side]||{},comboEnhancements:state.comboEnhancements?.[side]||[],enemyComboEnhancements:state.comboEnhancements?.[enemy]||[],aiStyle:state.aiStyle,name:state.aiName,difficulty},random,{evaluateDraftCard:context.core.evaluateDraftCard});
+        return modules.campaign.chooseAIDraft(pack,{deck:state.decks?.[side],myRoster:state.roster[side],enemyRoster:state.roster[enemy],formation:state.formations[side],myTactics:state.tactics[side],myRelics:state.relics[side],enemyRelics:state.relics[enemy],evolutions:state.evolutions?.[side]||{},comboEnhancements:state.comboEnhancements?.[side]||[],enemyComboEnhancements:state.comboEnhancements?.[enemy]||[],aiStyle:state.aiStyle,name:state.aiName,difficulty},random,{evaluateDraftCard:context.core.evaluateDraftCard});
       }
       let best=0,score=-Infinity;
       pack.forEach((card,i)=>{const result=context.core.evaluateDraftCard(card,state.roster[side],state.roster[side==='p0'?'p1':'p0'],state.relics[side],[]);const next=typeof result==='number'?result:Number(result?.score)||0;if(next>score){best=i;score=next;}});
@@ -109,7 +114,7 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
     battle(state,{forgeProfiles={},ranked=false,mission=null}={}) {
       context.__state=clone(state);context.__profiles=forgeProfiles;context.__ranked=ranked;context.__mission=mission;
       time=1000;
-      run('S=__state;if(__mission&&__mission.id)S.missionId=__mission.id;S.ranked=__ranked;S.collections={p0:__profiles[0],p1:__profiles[1]};S.field=fieldEmpty();S.field.startedAt=1000;rebuildFieldFromRoster(S);');
+      run('S=__state;if(__mission&&__mission.id)S.missionId=__mission.id;S.ranked=__ranked;S.collections={p0:__profiles[0],p1:__profiles[1]};for(const side of ["p0","p1"]){const deck=FFDecks.deckForState(S,side);S.decks=S.decks||{};S.decks[side]=deck;S.roster[side]=FFDecks.sanitizeRoster(S.roster[side],deck);}S.field=fieldEmpty();S.field.startedAt=1000;rebuildFieldFromRoster(S);');
       const frames=[];
       const capture=()=>{
         const field=context.__state.field;
@@ -127,9 +132,9 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
         context.__now=time;context.__doLogic=logic;
         run(`(()=>{const st=S,units=st.field.units,now=__now,doLogic=__doLogic;
 if(doLogic){pruneBattleField(st.field,now);applyTerrain(st.field,units);for(const u of units)blinkIfNeeded(u,units,st);wardsHeal(st,now);wardsShoot(st,now);broodTick(st,now);FFUnits.tickForgeAbilities(st,now,forgeCombatHooks(st));applySuddenDeath(st,now);}
-for(let i=0;i<units.length&&i<192;i++){const u=units[i];if(!u||u.hp<=0)continue;if(doLogic){healAction(u,st,now);wardAction(u,st,now);applyVguardRegen(u,st,now);}const t=pickTarget(u,units,st.field);if(!t)continue;const attacked=attack(u,t,now,st);if(!attacked&&doLogic&&canStepNow(u,now)){const slowed=u.slowUntil&&u.slowUntil>now,bound=u.bindUntil&&u.bindUntil>now;const steps=bound?0:(slowed?1:PACE.moveSteps);for(let s=0;s<steps;s++){const t2=pickTarget(u,units,st.field);if(!t2)break;if(u.burrow)attemptBurrow(u,units,st,now);if(u.viperLeap&&isBacklineUnit(t2)&&frontBlocked(u,units)){if(attemptViperLeap(u,units,st)){if(rectDistance(u,t2)<=(u.range||1))attack(u,t2,now,st);continue;}}stepToward(u,t2,units);if(rectDistance(u,t2)<=(u.range||1)){attack(u,t2,now,st);break;}}}}
+const ordered=FFUnits.combatTurnOrder(units,now,st.field);for(let i=0;i<ordered.length;i++){const u=ordered[i];if(!u||u.hp<=0)continue;if(doLogic){healAction(u,st,now);wardAction(u,st,now);applyVguardRegen(u,st,now);FFUnits.keepFiringDistance?.(u,units,now,forgeCombatHooks(st));}const t=pickTarget(u,units,st.field);if(!t)continue;const attacked=attack(u,t,now,st);if(!attacked&&doLogic&&canStepNow(u,now)){const slowed=u.slowUntil&&u.slowUntil>now,bound=u.bindUntil&&u.bindUntil>now;const steps=bound?0:(slowed?1:PACE.moveSteps);for(let s=0;s<steps;s++){const t2=pickTarget(u,units,st.field);if(!t2)break;if(u.burrow)attemptBurrow(u,units,st,now);if(u.viperLeap&&isBacklineUnit(t2)&&rectDistance(u,t2)>1){if(attemptViperLeap(u,units,st)){if(rectDistance(u,t2)<=(u.range||1))attack(u,t2,now,st);continue;}}stepToward(u,t2,units);if(rectDistance(u,t2)<=(u.range||1)){attack(u,t2,now,st);break;}}}}
 if(doLogic){for(const u of st.field.units.filter(u=>u.hp<=0)){FFUnits.noteForgeDeath(u,st,now,{distance:rectDistance});if(u.paints){paintPoison(st,u.x,u.y,7000,u.p);pushSyncedFx(st.field,fxBurst(u.x,u.y),now);}}st.field.units=st.field.units.filter(u=>u.hp>0);pruneBattleField(st.field,now);}return st.field;})()`);
-        if (context.__state.field.units.length>192) throw new Error('Simulation summon cap exceeded');
+        for(const side of [0,1])if(context.__state.field.units.filter(unit=>unit.p===side&&unit.hp>0).length>5)throw new Error('Five active combatants per side exceeded');
         const nextHealth=[0,0];for(const u of context.__state.field.units)if(u.hp>0)nextHealth[u.p]+=u.hp;
         if(tick%2===0||nextHealth[0]===0||nextHealth[1]===0)capture();
         if(!nextHealth[0]||!nextHealth[1]) {

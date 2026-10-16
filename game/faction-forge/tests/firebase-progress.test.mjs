@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {newSoloProfile,settleSolo,soloMission,upgradeSolo,buySoloPack,settleSoloRoundWin,createFirebaseProgress} from '../firebase-progress.js';
 import {FORGE_PACKS,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,packEligibility,forgePackCards} from '../packs.js';
 import {selectSoloAccount} from '../solo-account.js';
+import {FACTION_TROOPS,STARTER_DECKS} from '../decks.js';
 const troops={...Object.fromEntries(FORGE_PACKS.flatMap(pack=>pack.cards.map(card=>[card.troopKey,{}]))),signalhawk:{unlockable:true},chronoweaver:{unlockable:true},siphonleech:{unlockable:true},railbreaker:{unlockable:true},miragewarden:{unlockable:true},hiveherald:{unlockable:true}};
 const storage=()=>{const map=new Map();return {getItem:key=>map.get(key)||null,setItem:(key,value)=>map.set(key,value),removeItem:key=>map.delete(key)};};
 function firebase(){
@@ -14,6 +15,23 @@ function firebase(){
 }
 const result=(id='win')=>({id,mode:'campaign',missionId:'forge-01',won:true,lives:4});
 function service(store,opts={}){return createFirebaseProgress({auth:{currentUser:{uid:'owner'}},db:{},api:store.api,username:'Commander',troops,storage:storage(),...opts});}
+
+test('deck migration adds canonical starters without changing currency, upgrades, campaign or receipts',async()=>{
+ const store=firebase(),one=service(store);const original=await one.loadProfile();const legacy={...original,forgeDust:731,wins:19,campaign:{missions:{'forge-01':{completed:true,stars:3}},endlessUnlocked:false,endlessBest:0}};delete legacy.decks;delete legacy.selectedDeckId;legacy.troops.marksman.forgeTier=3;legacy.troops.marksman.cards=22;store.docs.set('factionForgeSoloProfiles/owner',legacy);store.docs.set('factionForgeSoloProfiles/owner/results/kept',{id:'kept'});
+ const migrated=await one.loadProfile();assert.equal(migrated.decks.length,3);assert.deepEqual(migrated.decks.map(deck=>deck.id),STARTER_DECKS.map(deck=>deck.id));const {decks,selectedDeckId,...retained}=migrated;assert.deepEqual(retained,legacy);assert.deepEqual(store.docs.get('factionForgeSoloProfiles/owner/results/kept'),{id:'kept'});
+});
+test('custom decks persist across devices and reject duplicate, mixed, locked, preset and active-match edits',async()=>{
+ const allTroops=Object.fromEntries(Object.values(FACTION_TROOPS).flat().map(key=>[key,{unlockable:key==='railbreaker'}]));let active=false;const store=firebase(),one=service(store,{troops:allTroops,isActiveMatch:()=>active});await one.loadProfile();
+ const deck={id:'custom-iron',name:'Precision Guard',faction:'Vanir',troops:['vguard','marksman','vrocket','rifleman','medic']};await one.saveDeck(deck);one.dispose();const two=service(store,{troops:allTroops,isActiveMatch:()=>active});await two.loadProfile();assert.deepEqual(two.profile.decks.find(item=>item.id===deck.id),deck);assert.equal(two.profile.selectedDeckId,deck.id);await two.selectDeck('starter-aesir');assert.equal(two.profile.selectedDeckId,'starter-aesir');
+ for(const bad of [{...deck,id:'starter-vanir'},{...deck,troops:['vguard','vguard','medic','marksman','vrocket']},{...deck,troops:['vguard','marksman','medic','storm','vrocket']},{...deck,troops:['vguard','marksman','medic','railbreaker','vrocket']}])await assert.rejects(two.saveDeck(bad),{code:'INVALID_DECK'});
+ active=true;await assert.rejects(two.saveDeck(deck),{code:'MATCH_ACTIVE'});await assert.rejects(two.selectDeck('starter-vanir'),{code:'MATCH_ACTIVE'});
+});
+test('full deck libraries reject another deck before normalization and still allow existing deck edits',async()=>{
+ const allTroops=Object.fromEntries(Object.values(FACTION_TROOPS).flat().map(key=>[key,{}])),store=firebase(),one=service(store,{troops:allTroops});await one.loadProfile();const base={name:'Library Deck',faction:'Vanir',troops:['vguard','marksman','vrocket','rifleman','medic']};for(let i=0;i<9;i++)await one.saveDeck({...base,id:'library-'+i});assert.equal(one.profile.decks.length,12);await assert.rejects(one.saveDeck({...base,id:'overflow'}),{code:'DECK_LIMIT'});assert.equal(one.profile.selectedDeckId,'library-8');await one.saveDeck({...base,id:'library-0',name:'Edited Existing'});assert.equal(one.profile.decks.length,12);assert.equal(one.profile.decks[3].name,'Edited Existing');
+});
+test('old partial collections gain missing troop defaults while keeping existing cards and upgrades',async()=>{
+ const allTroops=Object.fromEntries(Object.values(FACTION_TROOPS).flat().map(key=>[key,{unlockable:key==='railbreaker'}])),store=firebase(),old=newSoloProfile('owner','Commander',allTroops);old.troops={marksman:{forgeTier:3,cards:91,unlocked:true}};delete old.decks;store.docs.set('factionForgeSoloProfiles/owner',old);const one=service(store,{troops:allTroops});const profile=await one.loadProfile();assert.equal(Object.keys(profile.troops).length,32);assert.equal(profile.troops.marksman.cards,91);assert.equal(profile.troops.marksman.forgeTier,3);assert.equal(profile.troops.vguard.unlocked,true);assert.equal(profile.troops.railbreaker.unlocked,false);
+});
 
 test('Firebase alone creates and reloads the same UID profile without any HTTP endpoint',async()=>{
  const store=firebase(),one=service(store);assert.equal(one.configured,true);const profile=await one.loadProfile();assert.equal(profile.uid,'owner');assert.equal(profile.troops.signalhawk.unlocked,false);assert.equal(one.connectionStatus,'Progress saved with Firebase');

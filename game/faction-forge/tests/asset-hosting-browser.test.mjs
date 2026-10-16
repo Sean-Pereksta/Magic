@@ -188,17 +188,18 @@ test('live folder-only R2 graphics render in the menu, draft and battle without 
     });
     await page.goto(`http://127.0.0.1:${app.address().port}/game/crowncouncil.html`,{waitUntil:'domcontentloaded'});
     await page.getByRole('heading',{name:'FACTION FORGE',exact:true}).waitFor({timeout:60000});
+    await page.locator('.ff-faction-showcase').scrollIntoViewIfNeeded();
     await page.waitForFunction(()=>document.querySelectorAll('.ff-faction-showcase .ff-portrait-canvas').length===3,null,{timeout:20000}).catch(async error=>{throw new Error(error.message+' '+JSON.stringify({errors,requests:requests.slice(0,12),failures:failures.slice(0,8),console:consoleErrors.slice(0,6),canvases:await page.locator('canvas').count()}));});
     assert.equal(await page.locator('.ff-faction-showcase .ff-portrait-canvas').first().getAttribute('width'),'128');
     assert.ok(await page.evaluate(()=>getComputedStyle(document.querySelector('.ff-expansion')).backgroundImage.includes('ui/main-menu.webp')));
     await page.getByRole('button',{name:/The Forge/}).first().click();await page.waitForFunction(()=>document.querySelector('.ff-forge-detail .ff-portrait-canvas'),null,{timeout:20000});
     assert.equal(await page.locator('.ff-collection-card').count(),32);assert.equal(await page.locator('.ff-locked-card').count(),6);
-    await page.getByRole('button',{name:'← Menu',exact:true}).click();await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:/Vanir Industrial/}).click();
+    await page.getByRole('button',{name:'← Menu',exact:true}).click();await page.getByRole('button',{name:'Practice against AI',exact:true}).click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
     await page.waitForFunction(()=>globalThis.__forgeLive?.state?.phase==='draft',null,{timeout:20000});
     for(let i=0;i<3;i++){await page.waitForFunction(i=>__forgeLive.state.draftIndex===i&&__forgeLive.state.phase==='draft',i);await page.evaluate(()=>__forgeLive.chooseCard(0));}
     await page.waitForFunction(()=>__forgeLive.state.phase==='battle',null,{timeout:20000});
     await page.waitForFunction(()=>document.querySelectorAll('.ff-unit-sprite').length>0,null,{timeout:20000});
     const rendered=await page.locator('.ff-unit-sprite').evaluateAll(nodes=>nodes.map(n=>({width:n.width,height:n.height})));assert.ok(rendered.every(n=>n.width===128&&n.height===128));
-    assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.equal(await page.evaluate(()=>globalThis.__soloWrites||0),1);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);assert.equal(requests.filter(url=>url.endsWith('/manifest.json')).length,0);
+    assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.equal(await page.evaluate(()=>globalThis.__soloWrites||0),3);assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);assert.equal(requests.filter(url=>url.endsWith('/manifest.json')).length,0);
   }finally{await browser?.close();await new Promise(r=>app.close(r));}
 });

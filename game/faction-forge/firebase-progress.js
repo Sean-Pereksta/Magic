@@ -3,15 +3,23 @@
 import {FORGE_COSTS,ProgressionError} from './progression.js';
 import {getMission,createEndlessMission} from './campaign.js';
 import {FORGE_PACKS,getForgePack,forgePackCards,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,WIN_REWARDS} from './packs.js';
+import {STARTER_DECKS,normalizeDecks,validateDeck} from './decks.js';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const validId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
 const fail=(ok,code,message)=>{if(!ok)throw new ProgressionError(code,message);};
+/** Add deck defaults without replacing any existing collection or reward data. */
+export function migrateSoloDecks(profile,troops={}){
+  const decks=normalizeDecks(profile.decks);
+  const collection={...profile.troops};for(const [key,troop] of Object.entries(troops))collection[key]={forgeTier:1,cards:0,unlocked:!troop.unlockable,...collection[key]};
+  const selectedDeckIndex=Math.max(0,decks.findIndex(deck=>deck.id===profile.selectedDeckId));
+  return {...profile,troops:collection,decks,selectedDeckId:decks[selectedDeckIndex].id,selectedDeckIndex};
+}
 export function newSoloProfile(uid,username,troops){
-  return {schemaVersion:1,uid,username:String(username||'Commander').slice(0,80),forgeDust:0,
+  return migrateSoloDecks({schemaVersion:1,uid,username:String(username||'Commander').slice(0,80),forgeDust:0,
     troops:Object.fromEntries(Object.entries(troops).map(([key,troop])=>[key,{forgeTier:1,cards:0,unlocked:!troop.unlockable}])),
     campaign:{missions:{},endlessUnlocked:false,endlessBest:0},wins:0,losses:0,rewardTarget:null,
-    rewardDay:'',rewardCounts:{},updatedAt:Date.now()};
+    rewardDay:'',rewardCounts:{},updatedAt:Date.now()},troops);
 }
 export function soloMission(profile,mode,missionId){
   fail(['campaign','bot','endless'].includes(mode),'INVALID_MODE','Choose a solo mode.');
@@ -116,10 +124,10 @@ export function createFirebaseProgress({auth,db,api,username,troops,storage=null
   const persistRounds=()=>{try{storage?.setItem(roundQueueKey,JSON.stringify([...pendingRounds.values()]));}catch{}};
   function assertIdentity(){fail(!disposed,'DISPOSED','The Firebase save connection has closed.');fail(auth.currentUser?.uid===uid&&isCurrentAccount(),'ACCOUNT_CHANGED','Your account changed. Reopen the game to load its progress.');}
   function assertAccount(profile){fail(profile?.username===accountUsername&&(hubProfile||profile.uid===uid),'ACCOUNT_CHANGED','Your account changed. Reopen the game to load its progress.');}
-  function publish(profile){assertIdentity();assertAccount(profile);currentProfile=profile;status='Progress saved with Firebase';for(const listener of listeners)listener(profile);return profile;}
+  function publish(profile){assertIdentity();assertAccount(profile);currentProfile=migrateSoloDecks(profile,troops);status='Progress saved with Firebase';for(const listener of listeners)listener(currentProfile);return currentProfile;}
   function saveError(error){status=error.code==='permission-denied'?'Firebase save permissions need updating':'Firebase save unavailable · check your connection';return error;}
   async function transaction(callback){
-    assertIdentity();try{return await api.runTransaction(db,async tx=>{assertIdentity();const guarded={get:async ref=>{const snap=await tx.get(ref);assertIdentity();return snap;},set:(...args)=>{assertIdentity();return tx.set(...args);}};const snap=await guarded.get(profileRef);let profile=snap.exists()?snap.data():newSoloProfile(uid,accountUsername,troops);assertAccount(profile);if(hubProfile)profile={...profile,uid};return callback(guarded,profile);});}catch(error){if(error instanceof ProgressionError)throw error;throw saveError(error);}
+    assertIdentity();try{return await api.runTransaction(db,async tx=>{assertIdentity();const guarded={get:async ref=>{const snap=await tx.get(ref);assertIdentity();return snap;},set:(...args)=>{assertIdentity();return tx.set(...args);}};const snap=await guarded.get(profileRef);let profile=migrateSoloDecks(snap.exists()?snap.data():newSoloProfile(uid,accountUsername,troops),troops);assertAccount(profile);if(hubProfile)profile={...profile,uid};return callback(guarded,profile);});}catch(error){if(error instanceof ProgressionError)throw error;throw saveError(error);}
   }
   async function existingReceipt(tx,profile,kind,id){
     const ref=api.doc(db,...profilePath,kind,id),saved=await tx.get(ref);
@@ -168,6 +176,23 @@ export function createFirebaseProgress({auth,db,api,username,troops,storage=null
     subscribeProfile(listener){listeners.add(listener);if(currentProfile)listener(currentProfile);if(!subscription)subscription=api.onSnapshot(profileRef,snap=>{if(!disposed&&auth.currentUser?.uid===uid&&snap.exists())try{publish(snap.data());}catch(error){if(error.code==='ACCOUNT_CHANGED'){currentProfile=null;status='Account changed · reopen Faction Forge';for(const fn of listeners)fn(null);}else saveError(error);}},saveError);return ()=>listeners.delete(listener);},
     recordSoloResult,
     recordSoloRoundWin,
+    async saveDeck(deck){
+      assertIdentity();fail(!isActiveMatch(),'MATCH_ACTIVE','Finish your current match before editing decks.');
+      const profile=await transaction((tx,profile)=>{
+        fail(!isActiveMatch(),'MATCH_ACTIVE','Finish your current match before editing decks.');
+        fail(validId(deck?.id)&&!STARTER_DECKS.some(item=>item.id===deck.id),'INVALID_DECK','Duplicate a starter deck before editing it.');
+        const result=validateDeck(deck,{unlockedTypes:Object.keys(profile.troops).filter(key=>profile.troops[key]?.unlocked)});
+        fail(result.valid,'INVALID_DECK',result.errors.join(' '));
+        const exists=profile.decks.some(item=>item.id===deck.id);fail(exists||profile.decks.length<12,'DECK_LIMIT','Keep at most 12 decks.');
+        const decks=normalizeDecks(exists?profile.decks.map(item=>item.id===deck.id?result.deck:item):[...profile.decks,result.deck]);
+        fail(decks.length<=12,'DECK_LIMIT','Keep at most 12 decks.');
+        const next={...profile,decks,selectedDeckId:result.deck.id,selectedDeckIndex:decks.findIndex(item=>item.id===result.deck.id),updatedAt:Date.now()};tx.set(profileRef,next);return next;
+      });publish(profile);return {profile:currentProfile,deck:currentProfile.decks.find(item=>item.id===deck.id)};
+    },
+    async selectDeck(deckId){
+      assertIdentity();fail(!isActiveMatch(),'MATCH_ACTIVE','Your match deck is locked.');
+      const profile=await transaction((tx,profile)=>{fail(!isActiveMatch(),'MATCH_ACTIVE','Your match deck is locked.');const deck=profile.decks.find(item=>item.id===deckId);fail(deck,'INVALID_DECK','Choose a saved deck.');const result=validateDeck(deck,{unlockedTypes:Object.keys(profile.troops).filter(key=>profile.troops[key]?.unlocked)});fail(result.valid,'INVALID_DECK',result.errors.join(' '));const next={...profile,selectedDeckId:deckId,selectedDeckIndex:profile.decks.findIndex(item=>item.id===deckId),updatedAt:Date.now()};tx.set(profileRef,next);return next;});publish(profile);return {profile:currentProfile};
+    },
     async upgradeTroop(troopKey,{requestId}={}){
       assertIdentity();
       // Keep one identifier across an uncertain retry, including a page reload.
