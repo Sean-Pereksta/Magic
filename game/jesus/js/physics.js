@@ -6,7 +6,7 @@ export function createPlayer(x = 80, y = VIEW.floorY - PHYSICS.playerHeight) {
     x, y, previousX: x, previousY: y, w: PHYSICS.playerWidth, h: PHYSICS.playerHeight,
     vx: 0, vy: 0, facing: 1, onGround: false, groundId: null, wall: 0,
     coyote: 0, wallCoyote: 0, jumpBuffer: 0, dropTimer: 0, invulnerable: 0,
-    dashTimer: 0, dashCooldown: 0, airDashUsed: false, wallJumpLock: 0,
+    dashTimer: 0, dashCooldown: 0, dashJump: false, airDashUsed: false, wallJumpLock: 0,
     state: "idle", stateTime: 0, animTime: 0, attackTimer: 0, hurtTimer: 0,
     jumpStateTimer: 0, airAction: "jump", landTimer: 0, accelerationTimer: 0, stopTimer: 0, shieldTimer: 0,
     hearts: 4, maxHearts: 4, extraJumps: 0, lastSafe: { x, y },
@@ -84,17 +84,23 @@ export function updatePlayer(player, world, input, dt) {
     }
     player.jumpStateTimer=.24;
     emit(world,player.airAction==="doubleJump"?(player.boosts?.water>0?"fx-water-splash":"fx-wings-flight-aura"):"fx-jump-dust",player.x+player.w/2,player.y+player.h,.28,.35);
-    player.onGround = false; player.coyote = 0; player.wallCoyote = 0; player.jumpBuffer = 0; player.dashTimer = 0;
+    player.onGround = false; player.coyote = 0; player.wallCoyote = 0; player.jumpBuffer = 0;
+    if(player.dashTimer>0)player.dashJump=true;
     player.groundId = null;
   }
 
   if (dashPressed && player.dashCooldown <= 0 && (grounded || !player.airDashUsed)) {
     player.dashTimer = PHYSICS.dashDuration; player.dashCooldown = PHYSICS.dashCooldown * (wind ? .65 : 1);
-    player.airDashUsed = !grounded; player.vx = (axis ? Math.sign(axis) : player.facing) * PHYSICS.dashSpeed * (wind ? 1.2 : 1);
-    player.facing = Math.sign(player.vx); player.vy = 0;
+    player.airDashUsed = !player.onGround; player.vx = (axis ? Math.sign(axis) : player.facing) * PHYSICS.dashSpeed * (wind ? 1.2 : 1);
+    player.facing = Math.sign(player.vx); player.dashJump=player.vy<0;
+    if(!player.dashJump)player.vy=0;
   }
   const dashing = player.dashTimer > 0;
-  if (dashing) { player.dashTimer = Math.max(0, player.dashTimer - dt); player.vy = 0; }
+  if (dashing) {
+    player.dashTimer = Math.max(0, player.dashTimer - dt);
+    if(player.dashJump){if(!jumpHeld&&player.vy< -PHYSICS.jumpCutVelocity)player.vy=-PHYSICS.jumpCutVelocity;player.vy=Math.min(PHYSICS.maxFall,player.vy+PHYSICS.gravity*dt);}
+    else player.vy=0;
+  }
   else {
     const speed = (player.powers.sandals ? PHYSICS.sandalsSpeed : PHYSICS.runSpeed) * (wind ? 1.2 : 1);
     if (player.wallJumpLock <= 0) {
