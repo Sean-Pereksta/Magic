@@ -134,8 +134,21 @@ test('lobby-owned casual/ranked setting cannot be overridden by a participant in
   const casual=await f.service.joinPvp(who,{lobbyId:'casual-room',faction:'Vanir',ranked:true});assert.equal(casual.session.ranked,false);
 });
 
-test('browser and server use identical fixed card sets, prices and boosted reward amounts',async()=>{
+test('browser and server use identical pack definitions, fixed contents, prices and boosted reward amounts',async()=>{
   const browser=await import('../packs.js');assert.deepEqual(D.FORGE_PACKS,browser.FORGE_PACKS);assert.deepEqual(D.REWARDS,browser.WIN_REWARDS);assert.equal(D.ROUND_WIN_CARDS,browser.ROUND_WIN_CARDS);assert.equal(D.ROUND_WIN_DAILY_CAP,browser.ROUND_WIN_DAILY_CAP);
+  const p=D.newProfile('owner','Commander');p.forgeDust=50;
+  for(const id of ['vanir','aesir','helions'])assert.deepEqual(D.buyPack(p,id,123).transaction.cards,browser.forgePackCards(p,id));
+  const random=D.buyPack(p,'random-reinforcements',123,'internal-entropy').transaction.cards;
+  assert.equal(random.length,3);assert.equal(new Set(random.map(card=>card.troopKey)).size,3);assert.ok(random.every(card=>p.troops[card.troopKey].unlocked&&card.quantity===5));
+  assert.deepEqual(D.buyPack(p,'random-reinforcements',123,'internal-entropy').transaction.cards,random);
+});
+
+test('authoritative random purchases keep one retained request outcome and reject a supplied random seed',async()=>{
+  const f=fixture(),p=await f.service.profile(who);p.forgeDust=50;f.db.docs.set('factionForgeProfiles/'+who.uid,p);
+  const [a,b]=await Promise.all([f.service.buyPack(who,{packId:'random-reinforcements',requestId:'server-random'}),f.service.buyPack(who,{packId:'random-reinforcements',requestId:'server-random'})]);
+  assert.deepEqual(a.transaction,b.transaction);assert.equal(a.profile.forgeDust,0);assert.equal(a.transaction.cards.length,3);assert.equal(new Set(a.transaction.cards.map(card=>card.troopKey)).size,3);
+  assert.ok(a.transaction.cards.every(card=>p.troops[card.troopKey].unlocked&&card.quantity===5));assert.equal(Object.values(a.profile.troops).reduce((n,t)=>n+t.cards,0),15);
+  await assert.rejects(f.service.buyPack(who,{packId:'random-reinforcements',requestId:'client-seed',seed:1}),{code:'INVALID_ARGUMENT'});
 });
 test('server pack purchases are atomic and idempotent; inputs cannot override costs or ownership',async()=>{
   const f=fixture(),p=await f.service.profile(who);p.forgeDust=50;f.db.docs.set('factionForgeProfiles/'+who.uid,p);

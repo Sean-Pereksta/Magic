@@ -113,6 +113,24 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
     await assertFails(getDoc(doc(attacker,...scopedPath)));await assertFails(updateDoc(doc(attacker,...scopedPath),{forgeDust:9999}));
     await assertFails(getDoc(doc(attacker,...scopedPath,'rounds','scoped-match-round-1')));await assertFails(getDocs(collection(owner,'factionForgeSoloProfiles','owner','accounts')));
     await assertFails(updateDoc(doc(owner,...scopedPath,'purchases','scoped-pack'),{dustSpent:0}));await assertFails(deleteDoc(scopedRef));
+    // Random packs must save through both the private guest and stable hub paths.
+    for(const [profilePath,username] of [[['factionForgeSoloProfiles','owner'],'Commander'],[['users','PackCommander','factionForge','profile'],'PackCommander']]){
+      if(profilePath[0]==='users')await setDoc(doc(owner,'users',username),{username});
+      const randomClient=createFirebaseProgress({auth:{currentUser:{uid:'owner'}},db:owner,api:firestore,username,troops,profilePath,storage:{getItem:()=>null,setItem(){},removeItem(){}}});
+      try{
+        await randomClient.loadProfile();await updateDoc(doc(owner,...profilePath),{forgeDust:50});
+        const first=await randomClient.buyPack('random-reinforcements',{requestId:'random-pack'});
+        const repeat=await randomClient.buyPack('random-reinforcements',{requestId:'random-pack'});
+        if(first.transaction.cards.length!==3||first.transaction.cards.reduce((sum,card)=>sum+card.quantity,0)!==15)throw Error('Random pack contents are incomplete.');
+        if(JSON.stringify(first.transaction.cards)!==JSON.stringify(repeat.transaction.cards)||repeat.profile.forgeDust!==0)throw Error('Random pack rerolled or charged twice.');
+        await updateDoc(doc(owner,...profilePath),{forgeDust:50});
+        const parallel=await Promise.all([randomClient.buyPack('random-reinforcements',{requestId:'random-parallel'}),randomClient.buyPack('random-reinforcements',{requestId:'random-parallel'})]);
+        if(JSON.stringify(parallel[0].transaction.cards)!==JSON.stringify(parallel[1].transaction.cards)||randomClient.profile.forgeDust!==0)throw Error('Concurrent random purchase was not recovered exactly once.');
+        await assertFails(updateDoc(doc(owner,...profilePath,'purchases','random-pack'),{cards:[]}));
+        const invalid={...first.transaction,uid:'owner',requestId:'invalid-random',packId:'random-reinforcements',dustSpent:0,completedAt:Date.now()};
+        await assertFails(setDoc(doc(owner,...profilePath,'purchases','invalid-random'),invalid));
+      }finally{randomClient.dispose();}
+    }
     await assertFails(deleteDoc(solo));
     console.log('Faction Forge rules: authority, private scoped accounts, rewards, packs, retry and upgrade assertions passed.');
   }finally{await env.cleanup();}

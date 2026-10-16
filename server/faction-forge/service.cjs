@@ -1,5 +1,5 @@
 'use strict';
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes } = require('node:crypto');
 const { gzipSync, gunzipSync } = require('node:zlib');
 const D = require('./domain.cjs');
 const { createCombatAdapter, loadModules } = require('./simulator.cjs');
@@ -206,7 +206,9 @@ function createForgeService({db,auth,now=Date.now,modules,adapterFactory=createC
   async function buyPack(who,request){
     D.onlyKeys(request,['packId','requestId']);const {packId,requestId}=request;D.safeId(requestId,'Request');
     const ref=profileRef(who.uid),receipt=ref.collection('purchases').doc(requestId);let transaction;await profile(who);
-    await db.runTransaction(async tx=>{const [p,old]=await Promise.all([tx.get(ref),tx.get(receipt)]);if(old.exists){D.fail(old.data().packId===packId,'REQUEST_CONFLICT','Use a new request identifier.',409);transaction=old.data();return;}const result=D.buyPack(p.data(),packId,now());transaction={...result.transaction,uid:who.uid,requestId};tx.set(ref,result.profile);tx.create(receipt,transaction);});
+    // The trusted service owns randomness; retain entropy across transaction retries.
+    const entropy=packId==='random-reinforcements'?randomBytes(32).toString('hex'):undefined;
+    await db.runTransaction(async tx=>{const [p,old]=await Promise.all([tx.get(ref),tx.get(receipt)]);if(old.exists){D.fail(old.data().packId===packId,'REQUEST_CONFLICT','Use a new request identifier.',409);transaction=old.data();return;}const result=D.buyPack(p.data(),packId,now(),entropy);transaction={...result.transaction,uid:who.uid,requestId};tx.set(ref,result.profile);tx.create(receipt,transaction);});
     return {profile:await profile(who),transaction};
   }
   async function abandon(who,id) {

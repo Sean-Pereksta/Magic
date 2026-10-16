@@ -2,7 +2,7 @@
  * Client-played solo progress never writes competitive profiles or ratings. */
 import {FORGE_COSTS,ProgressionError} from './progression.js';
 import {getMission,createEndlessMission} from './campaign.js';
-import {FORGE_PACKS,getForgePack,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,WIN_REWARDS} from './packs.js';
+import {FORGE_PACKS,getForgePack,forgePackCards,ROUND_WIN_CARDS,ROUND_WIN_DAILY_CAP,WIN_REWARDS} from './packs.js';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const validId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -63,14 +63,16 @@ export function upgradeSolo(profile,troopKey){
   const next=clone(profile);next.forgeDust-=cost.dust;next.troops[troopKey].cards-=cost.cards;next.troops[troopKey].forgeTier++;next.updatedAt=Date.now();
   return {profile:next,transaction:{troopKey,fromTier:unit.forgeTier,toTier:unit.forgeTier+1,cardsSpent:cost.cards,dustSpent:cost.dust}};
 }
-export function buySoloPack(profile,packId){
+export function buySoloPack(profile,packId,requestId){
   const item=getForgePack(packId);fail(item,'INVALID_PACK','Choose a card pack.');
   fail(!profile.activeSessionId,'MATCH_ACTIVE','Finish your current match before buying packs.');
-  fail(item.cards.every(card=>profile.troops[card.troopKey]?.unlocked),'TROOP_LOCKED','Unlock the troops in this pack first.');
+  if(item.random)fail(validId(requestId),'INVALID_REQUEST','A retained purchase identifier is required for a random pack.');
+  const cards=forgePackCards(profile,packId,requestId);
+  fail(cards.length>0&&cards.every(card=>profile.troops[card.troopKey]?.unlocked),'TROOP_LOCKED',item.random?'Unlock a troop before buying this pack.':'Unlock the troops in this pack first.');
   fail(Number.isSafeInteger(profile.forgeDust)&&profile.forgeDust>=item.dust,'INSUFFICIENT_RESOURCES',`This pack requires ${item.dust} Forge Dust.`);
   const next=clone(profile);next.forgeDust-=item.dust;
-  for(const card of item.cards)next.troops[card.troopKey].cards+=card.quantity;
-  next.updatedAt=Date.now();return {profile:next,transaction:{packId:item.id,dustSpent:item.dust,cards:clone(item.cards)}};
+  for(const card of cards)next.troops[card.troopKey].cards+=card.quantity;
+  next.updatedAt=Date.now();return {profile:next,transaction:{packId:item.id,dustSpent:item.dust,cards:clone(cards)}};
 }
 export function settleSoloRoundWin(profile,result){
   fail(validId(result.id),'INVALID_RESULT','Invalid solo match identifier.');
@@ -177,6 +179,7 @@ export function createFirebaseProgress({auth,db,api,username,troops,storage=null
       const response=await transaction(async(tx,profile)=>{const old=await existingReceipt(tx,profile,'upgrades',requestId);if(old){fail(old.troopKey===troopKey,'REQUEST_CONFLICT','Use a new identifier for a different upgrade.');return {profile,transaction:old};}const value=upgradeSolo(profile,troopKey);tx.set(profileRef,value.profile);tx.set(ref,{...value.transaction,uid,requestId,completedAt:Date.now()});return value;});
       publish(response.profile);upgradeRequests.delete(key);try{storage?.removeItem(key);}catch{}clearLegacyQueue('.upgrade.'+troopKey);return response;
     },
+    getPendingPackRequest(packId){if(disposed||auth.currentUser?.uid!==uid||!isCurrentAccount())return null;const key=queueKey+'.pack.'+packId;return retainedRequest(key,'.pack.'+packId)||packRequests.get(key)||null;},
     async buyPack(packId,{requestId}={}){
       assertIdentity();fail(!isActiveMatch(),'MATCH_ACTIVE','Finish your current match before buying packs.');
       const key=queueKey+'.pack.'+packId,retained=retainedRequest(key,'.pack.'+packId);
@@ -186,7 +189,7 @@ export function createFirebaseProgress({auth,db,api,username,troops,storage=null
       const clear=()=>{packRequests.delete(key);try{storage?.removeItem(key);}catch{}clearLegacyQueue('.pack.'+packId);};
       try{
         const ref=api.doc(db,...profilePath,'purchases',requestId);
-        const response=await transaction(async(tx,profile)=>{const previous=await existingReceipt(tx,profile,'purchases',requestId);if(previous){fail(previous.packId===packId,'REQUEST_CONFLICT','Use a new identifier for a different pack.');return {profile,transaction:previous};}fail(!isActiveMatch(),'MATCH_ACTIVE','Finish your current match before buying packs.');const value=buySoloPack(profile,packId);tx.set(profileRef,value.profile);const receipt={...value.transaction,uid,requestId,completedAt:Date.now()};tx.set(ref,receipt);return {profile:value.profile,transaction:receipt};});
+        const response=await transaction(async(tx,profile)=>{const previous=await existingReceipt(tx,profile,'purchases',requestId);if(previous){fail(previous.packId===packId,'REQUEST_CONFLICT','Use a new identifier for a different pack.');return {profile,transaction:previous};}fail(!isActiveMatch(),'MATCH_ACTIVE','Finish your current match before buying packs.');const value=buySoloPack(profile,packId,requestId);tx.set(profileRef,value.profile);const receipt={...value.transaction,uid,requestId,completedAt:Date.now()};tx.set(ref,receipt);return {profile:value.profile,transaction:receipt};});
         publish(response.profile);clear();return response;
       }catch(error){if(['INVALID_PACK','MATCH_ACTIVE','TROOP_LOCKED','INSUFFICIENT_RESOURCES','REQUEST_CONFLICT','permission-denied','invalid-argument','failed-precondition'].includes(error.code))clear();throw error;}
     },

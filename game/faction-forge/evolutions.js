@@ -66,10 +66,10 @@ export function applySummonEvolution(parent,summon) {
   if(parent.summonDamage||parent.summonDamageAdd)summon.dmg+=parent.summonDamage||parent.summonDamageAdd;
   summon.parentEvolution=parent.evolution;return summon;
 }
-function secondary(st,u,t,now,hooks,kind,{radius=0,max=1,raw=1,outer=false,ignoreArmor=false}={}) {
+function secondary(st,u,t,now,hooks,kind,{radius=0,max=1,raw=1,outer=false,ignoreArmor=false,followUp=false}={}) {
   const targets=st.field.units.filter(v=>alive(v)&&v.p!==u.p&&dist(t,v,hooks)<=radius&&(!outer||dist(t,v,hooks)>1)).sort((a,b)=>dist(t,a,hooks)-dist(t,b,hooks)).slice(0,max);
   const hits=targets.map(v=>({id:v.id,x:v.x,y:v.y,amount:comboHit(st,u,v,raw,now,hooks,ignoreArmor)}));
-  if(hits.length)emit(hooks,kind,u,t,now,{targets:hits,radius,duration:900,evolution:u.evolution});return hits;
+  if(hits.length)emit(hooks,kind,u,t,now,{targets:hits,radius,duration:900,evolution:u.evolution,followUp,sourceSize:u.size||1});return hits;
 }
 function field(st,u,t,now,kind,hooks) {
   const fields=st.field.comboFields||(st.field.comboFields=[]);if(fields.filter(f=>f.p===u.p&&f.until>now).length>=COMBO_LIMITS.fieldsPerSide)return;
@@ -85,7 +85,7 @@ function shield(st,u,now,hooks,radius=2) {
 export function afterEvolutionAttack(u,t,now,st,hooks={}) {
   if(!u._evolutionApplied||!t)return;
   u.evolutionAttacks=(u.evolutionAttacks||0)+1;const s=u.evolutionSignature,power=rank(u)>=3?2:1;
-  if(['burst','salvo','emp-echo','rune-echo'].includes(s)&&u.evolutionAttacks%3===0)secondary(st,u,t,now,hooks,s==='salvo'?'rocket':s==='emp-echo'?'lightning':'evolution-echo',{radius:s==='salvo'?1:0,max:s==='salvo'?2:1,raw:power+1});
+  if(['burst','salvo','emp-echo','rune-echo'].includes(s)&&u.evolutionAttacks%3===0)secondary(st,u,t,now,hooks,s==='salvo'?'rocket':s==='emp-echo'?'lightning':'evolution-echo',{radius:s==='salvo'?1:0,max:s==='salvo'?2:1,raw:power+1,followUp:true});
   if(s==='pierce')secondary(st,u,t,now,hooks,'precision-hit',{raw:power,ignoreArmor:true});
   if(s==='sweep')secondary(st,u,t,now,hooks,'slash',{radius:1,max:rank(u)>=3?3:2,raw:power+1,outer:false});
   if(s==='outer-blast')secondary(st,u,t,now,hooks,u.type==='vrocket'?'rocket-explosion':'shockwave',{radius:2,max:4,raw:power+1,outer:true});

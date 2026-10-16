@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBattleEffects,UNIT_EFFECTS,EFFECT_LIMITS,EffectPool,projectilePosition,drawEffect} from '../effects.js';
 import {createBattleAudio,AUDIO_LIMITS} from '../audio.js';
-import {unitArtTier} from '../renderer.js';
+import {unitArtTier,createBattleRenderer,unitEffectLabels} from '../renderer.js';
 import {ASSET_MANIFEST} from '../manifest.js';
 import {COMBOS} from '../combos.js';
 import {EVOLUTIONS,applyEvolution,afterEvolutionAttack,tickEvolutions} from '../evolutions.js';
@@ -62,6 +62,48 @@ test('fortress links connect friendly members and precision follow-up uses the R
   event('combo',{id:'precision',unitType:'marksman',comboId:'precision-execution',followSourceId:'rail',followX:0,followY:9});fx.step(0);const rail=fx.pool.active.find(e=>e.family==='rail');assert.equal(rail.x,32);assert.equal(rail.y,644);fx.destroy();
 });
 
+test('actual Rifleman third-shot events launch a distinct follow-up from the firing Rifleman',async()=>{
+  const modules=await loadModules();
+  const state={roster:{p0:[{type:'rifleman',count:1,lvl:2},{type:'vguard',count:3,lvl:3},{type:'medic',count:3,lvl:3}],p1:[{type:'vguard',count:1,lvl:3},{type:'medic',count:3,lvl:3}]},factions:{p0:'Vanir',p1:'Vanir'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},evolutions:{p0:{rifleman:'a'},p1:{}},comboEnhancements:{p0:[],p1:[]}};
+  const battle=createCombatAdapter({seed:'rifleman-burst-origin',modules}).battle(state),events=[...new Map(battle.frames.flatMap(frame=>frame.syncedFx).map(ev=>[ev.id,ev])).values()];
+  const bonus=events.find(ev=>ev.unitType==='rifleman'&&ev.kind==='evolution-echo'&&ev.followUp);
+  assert.ok(bonus,'Sustained Fire must emit its real third-shot bonus');
+  const primary=events.find(ev=>ev.kind==='attack'&&ev.sourceId===bonus.sourceId&&ev.at===bonus.at);
+  assert.ok(primary);assert.notEqual(bonus.sourceId,bonus.targetId);
+  assert.equal(bonus.x1,primary.x);assert.equal(bonus.y1,primary.y);
+  assert.ok(bonus.x1!==bonus.x2||bonus.y1!==bonus.y2,'the origin must not be replaced by the target');
+  let time=0;const renderer=createBattleRenderer({now:()=>time,audio:silentAudio(),assets:{enabled:()=>false}});
+  renderer.event(primary);renderer.event(bonus);
+  const shots=renderer.projectiles.filter(ev=>ev.sourceId===bonus.sourceId&&ev.family==='bullet');
+  assert.equal(shots.length,2);assert.equal(shots[0].start,0);assert.equal(shots[1].start,75);
+  assert.equal(shots[1].x,bonus.x1*68+32);assert.equal(shots[1].y,bonus.y1*68+32);
+  assert.equal(shots[1].x2,bonus.x2*68+32);assert.equal(shots[1].y2,bonus.y2*68+32);
+  assert.equal(shots[1].followUp,true);assert.ok(shots[1].start+shots[1].duration<=EFFECT_LIMITS.impactDelayMs);
+  renderer.destroy();
+});
+
+test('buff cues attach to actual recipients and stay smaller than a tile regardless of aura range',()=>{
+  const {fx,event}=harness();
+  event('shield',{unitType:'shieldcap',radius:3,targets:[{id:'source',x:1,y:8},{id:'ally',x:3,y:7}]});
+  const shields=fx.pool.active.filter(e=>e.family==='unit-shield');
+  assert.equal(shields.length,2);assert.deepEqual(shields.map(e=>[e.x,e.y]),[[100,576],[236,508]]);
+  assert.ok(shields.every(e=>e.radius<=64*.4));assert.ok(!fx.pool.active.some(e=>e.family==='ring'));
+  fx.clear();event('healing',{unitType:'medic',radius:3,targets:[{id:'one',x:2,y:7,amount:2},{id:'two',x:3,y:8,amount:1}]});
+  assert.deepEqual(fx.pool.active.filter(e=>e.family==='healing-unit').map(e=>[e.x,e.y]),[[168,508],[236,576]]);
+  fx.destroy();
+});
+
+test('small shield and poison attachments follow moving units, honor active aliases, and disappear on expiry',()=>{
+  let location={x:2,y:3};const {fx}=harness({positionFor:()=>location});
+  const unit={id:'moving',hp:5,x:1,y:2,comboShield:2,comboShieldUntil:2000,statusPoisonUntil:1800,suppressedUntil:900,slowUntil:1700};
+  fx.syncFields({units:[unit]},1000);fx.step(10);
+  assert.equal(fx.attachments.length,3);assert.ok(fx.attachments.every(e=>e.x===168&&e.y===236&&e.radius<=64*.4));
+  location={x:3,y:4};fx.step(20);assert.ok(fx.attachments.every(e=>e.x===236&&e.y===304));
+  assert.deepEqual(unitEffectLabels(unit,1000),['Shielded','Poisoned','Slowed']);
+  fx.syncFields({units:[unit]},2100);assert.equal(fx.attachments.length,0);
+  fx.destroy();
+});
+
 test('rail impacts, ward destruction and persistent special fields have separate visible shapes',()=>{
   const {fx,event}=harness();for(const kind of ['rail-impact','ward-break','lightning-field','blood-field','rupture'])assert.equal(event(kind,{id:kind,targets:[{id:'ward',x:3,y:3,amount:2}]}),true,kind);fx.step(0);
   for(const family of ['hit','debris','lightning-field','blood-field','rupture'])assert.ok(fx.pool.active.some(e=>e.family===family),family);
@@ -93,6 +135,17 @@ test('death and hit cues wait for projectile impact even when death arrives firs
   assert.ok(!fx.pool.active.some(e=>e.family==='debris'&&e.start<deadline));
   setTime(deadline);fx.step(deadline);
   assert.ok(fx.pool.active.some(e=>e.family==='debris'&&e.start===deadline));fx.destroy();
+});
+
+test('shield absorption waits for the incoming projectile even when its event arrives first',()=>{
+  const {fx,event,setTime}=harness();
+  event('shield-hit',{unitType:'vguard',sourceId:'target',x1:4,y1:3,x2:4,y2:3});
+  event('attack');const arrival=fx.impactDeadline('target');
+  setTime(arrival-1);fx.step(arrival-1);
+  assert.equal(fx.pool.active.some(effect=>effect.family==='unit-shield'),false);
+  setTime(arrival);fx.step(arrival);
+  assert.ok(fx.pool.active.some(effect=>effect.family==='unit-shield'&&effect.start===arrival));
+  fx.destroy();
 });
 
 test('BloodBurst windup, damage-radius explosion and removal share the presentation deadline',()=>{
